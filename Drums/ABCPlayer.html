@@ -20,160 +20,320 @@
 
     <script>
     
-        function CursorControl() {
-          var self = this;
+      const Mode = Object.freeze({
+        DRUMKIT: 0b0,
+        TOMS: 0b1,
+      });
 
-          self.onReady = function() {
-          };
-          self.onStart = function() {
-            var svg = document.querySelector("#paper svg");
-            var cursor = document.createElementNS("http://www.w3.org/2000/svg", "line");
-            cursor.setAttribute("class", "abcjs-cursor");
-            cursor.setAttributeNS(null, 'x1', 0);
-            cursor.setAttributeNS(null, 'y1', 0);
-            cursor.setAttributeNS(null, 'x2', 0);
-            cursor.setAttributeNS(null, 'y2', 0);
-            svg.appendChild(cursor);
+      const SnareStates = Object.freeze({
+        OFF: 0b000,
+        STROKE: 0b001,
+        CLICK: 0b010,
+        RIMSHOT: 0b011,
+        FLAM: 0b100,
+        RUFF: 0b101,
+        GHOST: 0b110,
+        ACCENT: 0b111,
+      });
 
-          };
-          self.beatSubdivisions = 2;
-          self.onBeat = function(beatNumber, totalBeats, totalTime) { };
-          self.onEvent = function(ev) {
-            if (ev.measureStart && ev.left === null)
-              return; // this was the second part of a tie across a measure line. Just ignore it.
+      const HiHatStates = Object.freeze({
+        OFF: 0b000,
+        CLOSED: 0b001,
+        PEDAL: 0b010,
+        OPEN: 0b011,
+        CRASH: 0b100,
+        CHOKE: 0b101,
+        GHOST: 0b110,
+        ACCENT: 0b111,
+      });
 
-            var lastSelection = document.querySelectorAll("#paper svg .highlight");
-            for (var k = 0; k < lastSelection.length; k++)
-              lastSelection[k].classList.remove("highlight");
+      const TomStates = Object.freeze({
+        OFF: 0b00,
+        STROKE: 0b01,
+        GHOST: 0b10,
+        ACCENT: 0b11,
+      });
 
-            JSON.stringify(ev, null, 4);
-            for (var i = 0; i < ev.elements.length; i++ ) {
-              var note = ev.elements[i];
-              for (var j = 0; j < note.length; j++) {
-                note[j].classList.add("highlight");
-              }
-            }
+      const TomSelection = Object.freeze({
+        SNARE_LOT_TOM: 0b000,
+        HIGH_TOM: 0b100,
+        MID_TOM: 0b010,
+        LOW_TOM: 0b001,
+        HIGH_MID_TOM: 0b110,
+        HIGH_LOW_TOM: 0b101,
+        MID_LOW_TOM: 0b011,
+        SNARE_HIGH_TOM: 0b111,
+      });
 
-            var cursor = document.querySelector("#paper svg .abcjs-cursor");
-            if (cursor) {
-              cursor.setAttribute("x1", ev.left - 2);
-              cursor.setAttribute("x2", ev.left - 2);
-              cursor.setAttribute("y1", ev.top);
-              cursor.setAttribute("y2", ev.top + ev.height);
-            }
-          };
-          self.onFinished = function() {
-            var els = document.querySelectorAll("svg .highlight");
-            for (var i = 0; i < els.length; i++ ) {
-              els[i].classList.remove("highlight");
-            }
-            var cursor = document.querySelector("#paper svg .abcjs-cursor");
-            if (cursor) {
-              cursor.setAttribute("x1", 0);
-              cursor.setAttribute("x2", 0);
-              cursor.setAttribute("y1", 0);
-              cursor.setAttribute("y2", 0);
-            }
-          };
+      const ReservedPattern=0b10000000;
+      const SilencePattern=0b00000000;
+
+      class DrumBit {
+        constructor(bitPattern){
+          this.bitPattern=bitPattern!==undefined?bitPattern:SilencePattern;
+        }
+      }
+
+      class Bar {
+        constructor() {
+          this.bits = new Array(16).fill().map(() => new DrumBit());
         }
 
-        var cursorControl = new CursorControl();
+        setDrumBit(index, drumBit) {
+          if (index >= 0 && index < this.bits.length)
+            this.bits[index] = drumBit;
+        }
 
-    
-        // Global variables for ABCJS synth control
-        var synthControl;
-        var currentNotationInstance;
+        getDrumBit(index) {
+          return (index >= 0 && index < this.bits.length) ? this.bits[index] :null;
+        }
+
+        clone() {
+          const newBar = new Bar();
+          newBar.bits = this.bits.map(bit => Object.assign(new DrumBit(), bit));
+          return newBar;
+        }
+      }
+
+      class DrumGroove {
+        constructor() {
+          this.bars = [];
+        }
+
+        addBar(bar, index) {
+          if (index !== undefined)
+            this.bars.splice(index, 0, bar);
+          else
+            this.bars.push(bar);
+        }
+
+        removeBar(index) {
+          if (index >= 0 && index < this.bars.length)
+            this.bars.splice(index, 1);
+        }
+
+        cloneBar(index) {
+          return (index >= 0 && index < this.bars.length) ? this.bars[index].clone(): null;
+        }
+
+        getBar(index) {
+          return (index >= 0 && index < this.bars.length) ? this.bars[index] : null;
+        }
+      }
+
+      class AbcConverter {
+        constructor() {
+          // Define any necessary constants or settings for ABC conversion here
+        }
+
+        // Convert a DrumBit to an ABC notation string
+        drumBitToAbc(drumBit) {
+          const mode = (drumBit.bitPattern & 0b10000000) >> 7;
+          if (mode === Mode.DRUMKIT) {
+            return this.drumKitBitToAbc(drumBit);
+          } else if (mode === Mode.TOMS) {
+            return this.tomsBitToAbc(drumBit);
+          } else {
+            return ''; // Return an empty string for unknown modes or reserved patterns
+          }
+        }
+
+        drumKitBitToAbc(drumBit) {
+          // Define the mapping from drum kit bits to ABC notation here
+          // You'll need to interpret the snare, hi-hat, and bass drum states
+          // and convert them to the corresponding ABC symbols
+          // Example:
+          // if ((drumBit.bitPattern & 0b01110000) >> 4 === SnareStates.STROKE) {
+          //   return 'C'; // Example: use 'C' for a snare stroke
+          // }
+          // Add similar conditions for other drum kit components
+        }
+
+        tomsBitToAbc(drumBit) {
+          // Define the mapping from tom bits to ABC notation here
+          // Interpret the tom selection and hand states and convert them
+          // to the corresponding ABC symbols
+          // Example:
+          // if ((drumBit.bitPattern & 0b01110000) >> 4 === TomSelection.HIGH_TOM) {
+          //   return 'D'; // Example: use 'D' for a high tom
+          // }
+          // Add similar conditions for other tom components
+        }
+
+        // Convert a Bar to ABC notation
+        barToAbc(bar) {
+          return bar.bits.map(this.drumBitToAbc).join('');
+        }
+
+        // Convert the entire DrumGroove to ABC notation
+        convert(drumGroove) {
+          return drumGroove.bars.map(this.barToAbc).join('|');
+        }
+      }
+
+      // used for diplaying a moving cursor while playing
+      class CursorControl {
+        constructor() {
+          this.beatSubdivisions = 2;
+        }
+
+        onReady() {
+        };
+
+        onStart() {
+          const svg = document.querySelector("#paper svg");
+          const cursor = document.createElementNS("http://www.w3.org/2000/svg", "line");
+          cursor.setAttribute("class", "abcjs-cursor");
+          cursor.setAttributeNS(null, 'x1', 0);
+          cursor.setAttributeNS(null, 'y1', 0);
+          cursor.setAttributeNS(null, 'x2', 0);
+          cursor.setAttributeNS(null, 'y2', 0);
+          svg.appendChild(cursor);
+        };
         
-        function clickListener(abcElem, tuneNumber, classes, analysis, drag, mouseEvent) {
-          var lastClicked = abcElem.midiPitches;
-          if (!lastClicked)
+        onBeat (beatNumber, totalBeats, totalTime) { };
+
+        onEvent(event) {
+          
+          // this was the second part of a tie across a measure line. Just ignore it.  
+          if (event.measureStart && event.left === null)
+            return; 
+
+          const highlightedElements = document.querySelectorAll("#paper svg .highlight");
+          for (const element of highlightedElements)
+            element.classList.remove("highlight");
+
+          JSON.stringify(event, null, 4);
+          for (const element of event.elements)
+          for (const note of element)
+            note.classList.add("highlight");
+          
+          const cursor = document.querySelector("#paper svg .abcjs-cursor");
+          if (cursor) {
+            cursor.setAttribute("x1", event.left - 2);
+            cursor.setAttribute("x2", event.left - 2);
+            cursor.setAttribute("y1", event.top);
+            cursor.setAttribute("y2", event.top + event.height);
+          }
+        };
+
+        onFinished() {
+          const highlightedElements = document.querySelectorAll("svg .highlight");
+          for (const element of highlightedElements)
+            element.classList.remove("highlight");
+          
+          const cursor = document.querySelector("#paper svg .abcjs-cursor");
+          if (cursor) {
+            cursor.setAttribute("x1", 0);
+            cursor.setAttribute("x2", 0);
+            cursor.setAttribute("y1", 0);
+            cursor.setAttribute("y2", 0);
+          }
+        };
+      }
+
+      var cursorControl = new CursorControl();
+
+
+      // Global variables for ABCJS synth control
+      var synthControl;
+      var currentNotationInstance;
+
+      function clickListener(abcElem, tuneNumber, classes, analysis, drag, mouseEvent) {
+        var lastClicked = abcElem.midiPitches;
+        if (!lastClicked)
+          return;
+
+        ABCJS.synth.playEvent(lastClicked, abcElem.midiGraceNotePitches, synthControl.visualObj.millisecondsPerMeasure()).then(function (response) {
+          console.log("note played");
+        }).catch(function (error) {
+          console.log("error playing note", error);
+        });
+      }
+
+      var abcOptions = {
+        add_classes: true,
+        clickListener: clickListener,
+        responsive: "resize"
+      };
+
+      function loadAndDisplayABC(uri) {
+        fetch(uri)
+          .then(response => response.text())
+          .then(abcNotation => {
+            if (abcNotation) {
+              displayABC(abcNotation);
+            } else {
+              console.error("No ABC notation found at the URI.");
+            }
+          })
+          .catch(error => console.error("Error loading ABC notation:", error));
+      }
+
+      function displayABC(abcNotation) {
+        // Render ABC Notation
+        currentNotationInstance = ABCJS.renderAbc("paper", abcNotation, abcOptions)[0];
+
+        // Attach Synthesizer to Rendered Notation
+        synthControl.setTune(currentNotationInstance, false);
+        document.getElementById("downloadMidi").disabled = "";
+      }
+
+      function initializeSynthControl() {
+        synthControl = new ABCJS.synth.SynthController();
+        synthControl.load("#audio", cursorControl, {
+          displayLoop: true,
+          displayRestart: true,
+          displayPlay: true,
+          displayProgress: true,
+          displayWarp: true
+        });
+      }
+
+      function setupEventHandlers() {
+        document.getElementById("downloadMidi").addEventListener("click", function () {
+          if (!currentNotationInstance)
             return;
 
-          ABCJS.synth.playEvent(lastClicked, abcElem.midiGraceNotePitches, synthControl.visualObj.millisecondsPerMeasure()).then(function (response) {
-            console.log("note played");
-          }).catch(function (error) {
-            console.log("error playing note", error);
-          });
+          var midi = ABCJS.synth.getMidiFile(currentNotationInstance);
+          var element = document.createElement('a');
+          element.setAttribute('href', 'data:audio/midi;charset=utf-8,' + encodeURIComponent(midi));
+          element.setAttribute('download', "music.mid");
+
+          element.style.display = 'none';
+          document.body.appendChild(element);
+
+          element.click();
+
+          document.body.removeChild(element);
+        });
+      }
+
+      window.onload = function () {
+        var uri = getParameterByName('uri');
+        if (uri) {
+          initializeSynthControl();
+          loadAndDisplayABC(uri);
+          setupEventHandlers();
+        } else {
+          console.error("No URI provided in the 'uri' GET parameter.");
         }
-        
-        var abcOptions = {
-          add_classes: true,
-          clickListener: clickListener,
-          responsive: "resize"
-        };
-        
-        function loadAndDisplayABC(uri) {
-            fetch(uri)
-                .then(response => response.text())
-                .then(abcNotation => {
-                    if (abcNotation) {
-                        // Render ABC Notation
-                        currentNotationInstance = ABCJS.renderAbc("paper", abcNotation, abcOptions)[0];
+      };
 
-                        // Attach Synthesizer to Rendered Notation
-                        synthControl.setTune(currentNotationInstance, false);
-                    } else {
-                        console.error("No ABC notation found at the URI.");
-                    }
-                })
-                .catch(error => console.error("Error loading ABC notation:", error));
-        }
-
-        function initializeSynthControl() {
-            synthControl = new ABCJS.synth.SynthController();
-            synthControl.load("#audio", cursorControl, {
-                displayLoop: true, 
-                displayRestart: true, 
-                displayPlay: true, 
-                displayProgress: true,
-                displayWarp: true
-            });
-        }
-
-        function setupEventHandlers() {
-            document.getElementById("downloadMidi").addEventListener("click", function() {
-                if (!currentNotationInstance)
-                  return;
-
-                var midi = ABCJS.synth.getMidiFile(currentNotationInstance);
-                var element = document.createElement('a');
-                element.setAttribute('href', 'data:audio/midi;charset=utf-8,' + encodeURIComponent(midi));
-                element.setAttribute('download', "music.mid");
-
-                element.style.display = 'none';
-                document.body.appendChild(element);
-
-                element.click();
-
-                document.body.removeChild(element);
-            });
-        }
-
-        window.onload = function() {
-            var uri = getParameterByName('uri');
-            if (uri) {
-                initializeSynthControl();
-                loadAndDisplayABC(uri);
-                setupEventHandlers();
-            } else {
-                console.error("No URI provided in the 'uri' GET parameter.");
-            }
-        };
-
-        // Function to get the value of a GET parameter by name
-        function getParameterByName(name, url = window.location.href) {
-            name = name.replace(/[\[\]]/g, '\\$&');
-            var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
-                results = regex.exec(url);
-            if (!results) return null;
-            if (!results[2]) return '';
-            return decodeURIComponent(results[2].replace(/\+/g, ' '));
-        }
+      // Function to get the value of a GET parameter by name
+      function getParameterByName(name, url = window.location.href) {
+        name = name.replace(/[\[\]]/g, '\\$&');
+        var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
+          results = regex.exec(url);
+        if (!results) return null;
+        if (!results[2]) return '';
+        return decodeURIComponent(results[2].replace(/\+/g, ' '));
+      }
     </script>
 </head>
 <body>
     <div id="audio"></div>
     <div id="paper"></div>
-    <button id="downloadMidi">Download MIDI</button>
+    <button id="downloadMidi" disabled="disabled">Download MIDI</button>
 </body>
 </html>
