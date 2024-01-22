@@ -4,7 +4,27 @@
 
 When generating or editing grooves, each groove is split into multiple bars. Each bar is further divided into 16th notes, known as DrumBits. Each DrumBit represents one byte, encoding the activity on the drum set.
 
-## The Encoding
+## The bar encoding
+
+Each bar contains 16 1/16th notes arranged in the following order:
+- ` 0`: beat **1**
+- ` 1`: beat **3**
+- ` 2`: beat **2**
+- ` 3`: beat **4**
+- ` 4`: beat 1+
+- ` 5`: beat 3+
+- ` 6`: beat 2+
+- ` 7`: beat 4+
+- ` 8`: beat *1e*
+- ` 9`: beat *3e*
+- `10`: beat *2e*
+- `11`: beat *4e*
+- `12`: beat *1a*
+- `13`: beat *3a*
+- `14`: beat *2a*
+- `15`: beat *4a*
+
+## The 16th notes encoding
 
 We use binary notation for all numbers in the DrumBit encoding.
 
@@ -57,6 +77,16 @@ We use binary notation for all numbers in the DrumBit encoding.
   - `10`: Ghost
   - `11`: Accent
 
+Hint:
+When only one tom is selected (`001`, `010`, `100`), the rr bits must be either `00` or `11`.
+
+Special Cases:
+When only one tom is selected (`001`, `010`, `100`) and rr is `11`
+  - `ll` indicates a special treatment
+    - `01`: Flam
+    - `10`: Ruff
+    - `11`: Rimshot
+
 ### Reserved Value
 - `10000000`
 
@@ -68,4 +98,8 @@ We use binary notation for all numbers in the DrumBit encoding.
 - `100000rr`: two toms selected, only one played
 - `1011ll00`: two toms selected, only one played
 - `101100rr`: two toms selected, only one played
-
+- `100100rr`: single tom selected, played with wrong hand
+- `101000rr`: single tom selected, played with wrong hand
+- `110000rr`: single tom selected, played with wrong hand
+- `1100ll01`: single tom selected, no special case
+- `1100ll10`: single tom selected, no special case
