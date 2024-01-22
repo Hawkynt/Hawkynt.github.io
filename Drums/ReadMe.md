@@ -2,27 +2,14 @@
 
 ## Basic Structure
 
-When generating or editing grooves, each groove is split into multiple bars. Each bar is further divided into 16th notes, known as DrumBits. Each DrumBit represents one byte, encoding the activity on the drum set.
+* Grooves are divided into multiple bars.
+* Each bar consists of 16 1/16th notes, known as DrumBits.
+* Each DrumBit encodes the activity on the drum set using one byte.
 
 ## The bar encoding
 
-Each bar contains 16 1/16th notes arranged in the following order:
-- ` 0`: beat **1**
-- ` 1`: beat **3**
-- ` 2`: beat **2**
-- ` 3`: beat **4**
-- ` 4`: beat 1+
-- ` 5`: beat 3+
-- ` 6`: beat 2+
-- ` 7`: beat 4+
-- ` 8`: beat *1e*
-- ` 9`: beat *3e*
-- `10`: beat *2e*
-- `11`: beat *4e*
-- `12`: beat *1a*
-- `13`: beat *3a*
-- `14`: beat *2a*
-- `15`: beat *4a*
+* Bars contain 16 1/16th notes arranged in a specific order.
+* The order is **1**, **3**, **2**, **4**, 1+, 3+, 2+, 4+, *1e*, *3e*, *2e*, *4e*, *1a*, *3a*, *2a*, *4a*.
 
 ## The 16th notes encoding
 
