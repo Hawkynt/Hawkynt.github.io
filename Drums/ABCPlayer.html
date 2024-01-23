@@ -128,21 +128,22 @@
           this._bitPattern = bitPattern;
       }
 
-      getMode = () => { return (this._bitPattern & DrumBit.ModeMask) >> DrumBit.ModeShift; }
-      getToms = () => { return this.getMode() != DrumBit.Mode.Toms ? null : (this._bitPattern & DrumBit.TomsModeMask) >> DrumBit.TomsModeShift; }
-      getLeftTom = () => { return this.getMode() != DrumBit.Mode.Toms ? null : (this._bitPattern & DrumBit.TomsLeftHandMask) >> DrumBit.TomsLeftHandShift; }
-      getRightTom = () => { return this.getMode() != DrumBit.Mode.Toms ? null : (this._bitPattern & DrumBit.TomsRightHandMask) >> DrumBit.TomsRightHandMaskShift; }
-      getHiHat = () => { return this.getMode() != DrumBit.Mode.DrumKit ? null : (this._bitPattern & DrumBit.HiHatMask) >> DrumBit.HiHatShift; }
+      _getMode = () => { return (this._bitPattern & DrumBit.ModeMask) >> DrumBit.ModeShift; }
+      _getToms = () => { return this._getMode() != DrumBit.Mode.Toms ? null : (this._bitPattern & DrumBit.TomsModeMask) >> DrumBit.TomsModeShift; }
+      _getLeftTom = () => { return this._getMode() != DrumBit.Mode.Toms ? null : (this._bitPattern & DrumBit.TomsLeftHandMask) >> DrumBit.TomsLeftHandShift; }
+      _getRightTom = () => { return this._getMode() != DrumBit.Mode.Toms ? null : (this._bitPattern & DrumBit.TomsRightHandMask) >> DrumBit.TomsRightHandMaskShift; }
+      _getHiHat = () => { return this._getMode() != DrumBit.Mode.DrumKit ? null : (this._bitPattern & DrumBit.HiHatMask) >> DrumBit.HiHatShift; }
+      _getBassDrum = () => { return this._getMode() != DrumBit.Mode.DrumKit ? null : (this._bitPattern & DrumBit.BassDrumMask) >> DrumBit.BassDrumShift; }
 
-      getSnare = () => {
-        switch (this.getMode()) {
+      _getSnare = () => {
+        switch (this._getMode()) {
           case DrumBit.Mode.DrumKit:
             return (this._bitPattern & DrumBit.SnareMask) >> DrumBit.SnareShift;
           case DrumBit.Mode.Toms:
-            switch (this.getToms()) {
+            switch (this._getToms()) {
               case DrumBit.TomSelection.SnareAndLowTom:
               case DrumBit.TomSelection.SnareAndHighTom:
-                switch (this.getLeftTom()) {
+                switch (this._getLeftTom()) {
                   case DrumBit.TomState.Stroke:
                     return DrumBit.SnareState.Stroke;
                   case DrumBit.TomState.Quiet:
@@ -154,10 +155,8 @@
         }
         return null;
       }
-
-      getBassDrum = () => { return this.getMode() != DrumBit.Mode.DrumKit ? null : (this._bitPattern & DrumBit.BassDrumMask) >> DrumBit.BassDrumShift; }
-
-      static multiTomStateConverter = (leftOrRight) => {
+      
+      static _multiTomStateConverter = (leftOrRight) => {
         switch (leftOrRight) {
           case DrumBit.TomState.Stroke:
             return PlayState.Stroke;
@@ -168,11 +167,11 @@
         }
       }
 
-      singleTomStateConverter = () => {
-        const left = this.getLeftTom();
-        const right = this.getRightTom();
+      _singleTomStateConverter = () => {
+        const left = this._getLeftTom();
+        const right = this._getRightTom();
         if (right === DrumBit.TomState.Off)
-          return DrumBit.multiTomStateConverter(left);
+          return DrumBit._multiTomStateConverter(left);
 
         if (right === DrumBit.TomState.Loud)
           switch (left) {
@@ -190,44 +189,44 @@
       getInstrument = (instrument) => {
         switch (instrument) {
           case Instrument.FloorTom:
-            switch (this.getToms()) {
+            switch (this._getToms()) {
               case DrumBit.TomSelection.LowTomOnly:
-                return this.singleTomStateConverter();
+                return this._singleTomStateConverter();
               case DrumBit.TomSelection.MidAndLowTom:
               case DrumBit.TomSelection.HighAndLowTom:
               case DrumBit.TomSelection.SnareAndLowTom:
-                return DrumBit.multiTomStateConverter(this.getRightTom());
+                return DrumBit._multiTomStateConverter(this._getRightTom());
             }
             break;
           case Instrument.MidTom:
-            switch (this.getToms()) {
+            switch (this._getToms()) {
               case DrumBit.TomSelection.MidTomOnly:
-                return this.singleTomStateConverter();
+                return this._singleTomStateConverter();
               case DrumBit.TomSelection.MidAndLowTom:
-                return DrumBit.multiTomStateConverter(this.getLeftTom());
+                return DrumBit._multiTomStateConverter(this._getLeftTom());
               case DrumBit.TomSelection.HighAndMidTom:
-                return DrumBit.multiTomStateConverter(this.getRightTom());
+                return DrumBit._multiTomStateConverter(this._getRightTom());
             }
             break;
           case Instrument.HighTom:
-            switch (this.getToms()) {
+            switch (this._getToms()) {
               case DrumBit.TomSelection.HighTomOnly:
-                return this.singleTomStateConverter();
+                return this._singleTomStateConverter();
               case DrumBit.TomSelection.HighAndLowTom:
               case DrumBit.TomSelection.HighAndMidTom:
-                return DrumBit.multiTomStateConverter(this.getLeftTom());
+                return DrumBit._multiTomStateConverter(this._getLeftTom());
               case DrumBit.TomSelection.SnareAndHighTom:
-                return DrumBit.multiTomStateConverter(this.getRightTom());
+                return DrumBit._multiTomStateConverter(this._getRightTom());
             }
             break;
           case Instrument.BassDrum:
-            switch (this.getBassDrum()) {
+            switch (this._getBassDrum()) {
               case DrumBit.BassDrumState.Kick:
                 return PlayState.Stroke;
             }
             break;
           case Instrument.Crash:
-            switch (this.getHiHat()) {
+            switch (this._getHiHat()) {
               case DrumBit.HiHatState.Crash:
                 return PlayState.Stroke;
               case DrumBit.HiHatState.Choke:
@@ -235,7 +234,7 @@
             }
             break;
           case Instrument.ClosedHiHat:
-            switch (this.getHiHat()) {
+            switch (this._getHiHat()) {
               case DrumBit.HiHatState.Closed:
                 return PlayState.Stroke;
               case DrumBit.HiHatState.Ghost:
@@ -245,19 +244,19 @@
             }
             break;
           case Instrument.OpenHiHat:
-            switch (this.getHiHat()) {
+            switch (this._getHiHat()) {
               case DrumBit.HiHatState.Open:
                 return PlayState.Stroke;
             }
             break;
           case Instrument.HiHatPedal:
-            switch (this.getHiHat()) {
+            switch (this._getHiHat()) {
               case DrumBit.HiHatState.Pedal:
                 return PlayState.Stroke;
             }
             break;
           case Instrument.SnareDrum:
-            switch (this.getSnare()) {
+            switch (this._getSnare()) {
               case DrumBit.SnareState.Stroke:
                 return PlayState.Stroke;
               case DrumBit.SnareState.Ghost:
@@ -346,24 +345,23 @@
 
     class AbcConverter {
 
+      static _instrumentMapping = Object.freeze([
+        [Instrument.SnareDrum, "c"],
+        [Instrument.BassDrum, "F"],
+        [Instrument.FloorTom, "A"],
+        [Instrument.MidTom, "d"],
+        [Instrument.HighTom, "e"],
+        [Instrument.OpenHiHat, "!open!ng"],
+        [Instrument.ClosedHiHat, "ng"],
+        [Instrument.HiHatPedal, "nD"],
+        [Instrument.Crash, "na"],
+        [Instrument.Ride, "nf"],
+      ]);
+
       // Convert a DrumBit to an ABC notation string
-      _drumBitToAbc = (drumBit) => {
+      static _drumBitToAbc = (drumBit) => {
         let result = "";
-
-        const instrumentMapping = [
-          [Instrument.SnareDrum, "c"],
-          [Instrument.BassDrum, "F"],
-          [Instrument.FloorTom, "A"],
-          [Instrument.MidTom, "d"],
-          [Instrument.HighTom, "e"],
-          [Instrument.OpenHiHat, "!open!ng"],
-          [Instrument.ClosedHiHat, "ng"],
-          [Instrument.HiHatPedal, "nD"],
-          [Instrument.Crash, "na"],
-          [Instrument.Ride, "nf"],
-        ];
-
-        for (const [instrument, notation] of instrumentMapping) {
+        for (const [instrument, notation] of AbcConverter._instrumentMapping) {
           switch (drumBit.getInstrument(instrument)) {
             case PlayState.Stroke:
               result += notation;
@@ -375,7 +373,7 @@
               result += `"@-6,-15(""@10,-15)"${notation}`;
               break;
             case PlayState.Click:
-              if (notations.StartsWith("n"))
+              if (notation.startsWith("n"))
                 result += `"@-6,-15(""@10,-15)"${notation}`;
               else
                 result += `n${notation}`;
@@ -395,63 +393,70 @@
         return result;
       }
 
+      static _drumBitToSymbol = (drumBit) => {
+        let abcNotation = AbcConverter._drumBitToAbc(drumBit);
+        var result = 'z';
+        if (abcNotation) {
+          
+          // HACK: ABC renders some stuff inside square-brackets wrong so we need to move them before the brackets
+          let prefix = '';
+          
+          // Regular expressions to match problematic parts
+          const enclosedRegex = /(![^!]+!|{[^{}]+}|"[^"]+"|\.)/g;
+
+          // Extract all enclosed parts
+          const enclosedParts = abcNotation.match(enclosedRegex);
+          if (enclosedParts) {
+            
+            // Remove duplicates from the array
+            const uniqueEnclosedParts = [...new Set(enclosedParts)];
+
+            // Collect the unique enclosed parts in 'prefix'
+            uniqueEnclosedParts.forEach((enclosedPart) => {
+              prefix += enclosedPart;
+              abcNotation = abcNotation.replaceAll(enclosedPart, '',);
+            });
+          }
+          
+          // if already multiple notes in the ABC-notation, just add them plain
+          abcNotation = abcNotation.replaceAll('[', '');
+          abcNotation = abcNotation.replaceAll(']', '');
+
+          result = `${prefix}[${abcNotation}]`;
+        }
+
+        return result;
+      }
+
+      static _beatIndexes = Object.freeze([
+        NoteIndex.Beat1,
+        NoteIndex.Beat1E,
+        NoteIndex.Beat1Plus,
+        NoteIndex.Beat1A,
+        NoteIndex.Beat2,
+        NoteIndex.Beat2E,
+        NoteIndex.Beat2Plus,
+        NoteIndex.Beat2A,
+        NoteIndex.Beat3,
+        NoteIndex.Beat3E,
+        NoteIndex.Beat3Plus,
+        NoteIndex.Beat3A,
+        NoteIndex.Beat4,
+        NoteIndex.Beat4E,
+        NoteIndex.Beat4Plus,
+        NoteIndex.Beat4A,
+      ]);
+
       // Convert a Bar to ABC notation
       _barToAbc = (bar) => {
         let result = "";
         var lastSymbol = "z";
         var symbolCount = 0;
-        const beatIndexes= [
-        NoteIndex.Beat1,
-          NoteIndex.Beat1E,
-          NoteIndex.Beat1Plus,
-          NoteIndex.Beat1A,
-          NoteIndex.Beat2,
-          NoteIndex.Beat2E,
-          NoteIndex.Beat2Plus,
-          NoteIndex.Beat2A,
-          NoteIndex.Beat3,
-          NoteIndex.Beat3E,
-          NoteIndex.Beat3Plus,
-          NoteIndex.Beat3A,
-          NoteIndex.Beat4,
-          NoteIndex.Beat4E,
-          NoteIndex.Beat4Plus,
-          NoteIndex.Beat4A,
-        ];
-
-        for (let i = 0; i < beatIndexes.length; i++) {
-          const drumBit = bar.bits[beatIndexes[i]];
-          let abcNotation = this._drumBitToAbc(drumBit);
-          var currentSymbol = 'z';
-          if (abcNotation) {
-            
-            // HACK: ABC renders some stuff inside square-brackets wrong so we need to move them before the brackets
-            let prefix = '';
-            
-            // Regular expressions to match problematic parts
-            const enclosedRegex = /(![^!]+!|{[^{}]+}|"[^"]+")/g;
-
-            // Extract all enclosed parts
-            const enclosedParts = abcNotation.match(enclosedRegex);
-            if (enclosedParts) {
-              
-              // Remove duplicates from the array
-              const uniqueEnclosedParts = [...new Set(enclosedParts)];
-
-              // Collect the unique enclosed parts in 'prefix'
-              uniqueEnclosedParts.forEach((enclosedPart) => {
-                prefix += enclosedPart;
-                abcNotation = abcNotation.replaceAll(enclosedPart, '',);
-              });
-            }
-            
-            // if already multiple notes in the ABC-notation, just add them plain
-            abcNotation = abcNotation.replaceAll('[', '');
-            abcNotation = abcNotation.replaceAll(']', '');
-
-            currentSymbol = `${prefix}[${abcNotation}]`;
-          }
-
+        
+        for (let i = 0; i < AbcConverter._beatIndexes.length; ++i) {
+          const drumBit = bar.bits[AbcConverter._beatIndexes[i]];
+          const currentSymbol = AbcConverter._drumBitToSymbol(drumBit);
+          
           if (lastSymbol === currentSymbol)
             ++symbolCount;
           else if (currentSymbol === 'z')
@@ -481,7 +486,7 @@
       }
 
       // Convert the entire DrumGroove to ABC notation
-      convert = (drumGroove, title = "Auto-Generated", artist = "CPU") => {
+      convert = (drumGroove, title = "Auto-Generated", artist = "CPU", barsPerLine = 4) => {
         const application = "ABCPlayer"
         const currentDate = new Date();
         const formattedDate = currentDate.toLocaleDateString("en-GB", {
@@ -490,7 +495,8 @@
           day: '2-digit'
         }).replace(/\//g, '.');
 
-        var abcHeader = `X:1
+        var abcHeader = `%abc
+X:1
 T:${title}
 C:${artist}
 Z:${application} (${formattedDate})
@@ -499,9 +505,10 @@ Q:75
 K:clef=perc
 U:n=!style=x!
 U:m=!style=triangle!
-%%partsbox 1  % show a box around part-names
-%%flatbeams=1 % all beams are flat
-% %%measurenb 0 % uncomment to show takt-indices
+%%stretchlast 1
+%%flatbeams 1
+%%ornament up
+%%partsbox 1
 %%staffsep 5cm % separation of lines
 %%MIDI channel 10
 %%MIDI program 0
@@ -519,7 +526,20 @@ U:m=!style=triangle!
 V:drums stem=up
 L:1/16
 `;
-        return abcHeader + '|: ' + drumGroove.bars.map(this._barToAbc).join(' | ') + ' :|';
+        let abcBody = '';
+        for (let i = 0; i < drumGroove.bars.length; ++i) {
+          abcBody += this._barToAbc(drumGroove.bars[i]);
+
+          // Add a separator for each bar except the last one
+          if (i < drumGroove.bars.length - 1)
+            abcBody += " | ";
+          
+          // Add a line break after every n-th bar, except the last bar
+          if ((i + 1) % barsPerLine === 0 && i < drumGroove.bars.length - 1)
+            abcBody += "\n";
+        }
+
+        return abcHeader + '|: ' + abcBody + ' :|';        
       }
     }
 
@@ -665,9 +685,9 @@ L:1/16
     }
 
     window.onload = function () {
+      initializeSynthControl();
       var uri = getParameterByName('uri');
       if (uri) {
-        initializeSynthControl();
         loadAndDisplayABC(uri);
         return;
       }
@@ -688,11 +708,18 @@ L:1/16
         
         bar = new Bar();
         groove.addBar(bar);
-        bar.setDrumBit(0, new DrumBit(0b11110101));
-        bar.setDrumBit(1, new DrumBit(0b11111010));
-        bar.setDrumBit(2, new DrumBit(0b11111111));
-        bar.setDrumBit(3, new DrumBit(0b01110011));
-        bar.setDrumBit(4, new DrumBit(0b01111111));
+        bar.setDrumBit(NoteIndex.Beat1, new DrumBit(0b11110101));
+        bar.setDrumBit(NoteIndex.Beat1Plus, new DrumBit(0b11111010));
+        bar.setDrumBit(NoteIndex.Beat2, new DrumBit(0b11111111));
+        bar.setDrumBit(NoteIndex.Beat3, new DrumBit(0b01110111));
+        bar.setDrumBit(NoteIndex.Beat4, new DrumBit(0b01111011));
+
+        for(var i=0;i<5;++i){
+          bar=new Bar();
+          groove.addBar(bar);
+          for(var j=0;j<16;++j)
+            bar.setDrumBit(j,new DrumBit(Math.floor(Math.random() * 256)));
+        }
 
         var abc = new AbcConverter().convert(groove);
         displayABC(abc);
