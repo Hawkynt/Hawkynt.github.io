@@ -421,8 +421,37 @@
 
         for (let i = 0; i < beatIndexes.length; i++) {
           const drumBit = bar.bits[beatIndexes[i]];
-          const abcNotation = this._drumBitToAbc(drumBit);
-          var currentSymbol = abcNotation ? `[ ${abcNotation}]` : 'z';
+          let abcNotation = this._drumBitToAbc(drumBit);
+          var currentSymbol = 'z';
+          if (abcNotation) {
+            
+            // HACK: ABC renders some stuff inside square-brackets wrong so we need to move them before the brackets
+            let prefix = '';
+            
+            // Regular expressions to match problematic parts
+            const enclosedRegex = /(![^!]+!|{[^{}]+}|"[^"]+")/g;
+
+            // Extract all enclosed parts
+            const enclosedParts = abcNotation.match(enclosedRegex);
+            if (enclosedParts) {
+              
+              // Remove duplicates from the array
+              const uniqueEnclosedParts = [...new Set(enclosedParts)];
+
+              // Collect the unique enclosed parts in 'prefix'
+              uniqueEnclosedParts.forEach((enclosedPart) => {
+                prefix += enclosedPart;
+                abcNotation = abcNotation.replaceAll(enclosedPart, '',);
+              });
+            }
+            
+            // if already multiple notes in the ABC-notation, just add them plain
+            abcNotation = abcNotation.replaceAll('[', '');
+            abcNotation = abcNotation.replaceAll(']', '');
+
+            currentSymbol = `${prefix}[${abcNotation}]`;
+          }
+
           if (lastSymbol === currentSymbol)
             ++symbolCount;
           else if (currentSymbol === 'z')
