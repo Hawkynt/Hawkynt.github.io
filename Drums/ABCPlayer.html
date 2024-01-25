@@ -186,6 +186,86 @@
         return PlayState.Silence;
       }
 
+      _setMode(mode) {
+        this._bitPattern = (this._bitPattern & ~DrumBit.ModeMask) & (mode << DrumBit.ModeShift);
+      }
+
+      _setHiHat(hiHatSate) {
+        if (this._getMode() !== DrumBit.Mode.DrumKit){
+          if(hiHatSate === DrumBit.HiHatState.Off)
+            return;
+
+          const snare = this._getSnare();
+          this._bitPattern = DrumBit.SilencePattern;
+          this._setMode(DrumBit.Mode.DrumKit);
+          this._setSnare(snare);
+        }
+
+        this._bitPattern = (this._bitPattern & ~DrumBit.HiHatMask) & (hiHatState << DrumBit.HiHatShift);
+      }
+
+      _setSnare(snareState) {
+        if (this._getMode() !== DrumBit.Mode.DrumKit) {
+          // TODO:
+        }
+
+        this._bitPattern = (this._bitPattern & ~DrumBit.SnareMask) & (snareState << DrumBit.SnareShift);
+      }
+
+      _setToms(tomSelection) {
+        // TODO:
+      }
+
+      _setLeftTom(tomState) {
+        // TODO:
+      }
+
+      _setRightTom(tomState) {
+        // TODO:
+      }
+
+      _setBassDrum(bassDrumState) {
+        if (this._getMode() !== DrumBit.Mode.DrumKit) {
+          if (bassDrumState === DrumBit.BassDrumState.Off)
+            return;
+
+          const snare = this._getSnare();
+          this._bitPattern = DrumBit.SilencePattern;
+          this._setMode(DrumBit.Mode.DrumKit);
+          this._setSnare(snare);
+        }
+        
+        this._bitPattern = (this._bitPattern & ~DrumBit.BassDrumMask) & (bassDrumState << DrumBit.BassDrumShift);
+      }
+
+      setInstrument = (instrument, playState) => {
+        switch(instrument) {
+          case Instrument.BassDrum: 
+            switch(playState){
+              case PlayState.Silence:
+                this._setBassDrum(DrumBit.BassDrumState.Off);
+              default:
+                this._setBassDrum(DrumBit.BassDrumState.Kick);
+          }
+          case Instrument.ClosedHiHat:
+            // TODO:
+          case Instrument.Crash:
+            // TODO:
+          case Instrument.OpenHiHat:
+            // TODO:
+          case Instrument.HiHatPedal:
+            // TODO:
+          case Instrument.Ride:
+            // TODO:
+          case Instrument.FloorTom:
+            // TODO:
+          case Instrument.MidTom:
+            // TODO:
+          case Instrument.HighTom:
+            // TODO:
+        }
+      }
+
       getInstrument = (instrument) => {
         switch (instrument) {
           case Instrument.FloorTom:
@@ -718,7 +798,7 @@ L:1/16
           bar=new Bar();
           groove.addBar(bar);
           for(var j=0;j<16;++j)
-            bar.setDrumBit(j,new DrumBit(Math.floor(Math.random() * 256)));
+            bar.setDrumBit(j,new DrumBit(getRandom(256)));
         }
 
         var abc = new AbcConverter().convert(groove);
@@ -728,6 +808,10 @@ L:1/16
 
       console.error("No URI provided in the 'uri' GET parameter.");
     };
+
+    function getRandom(exclusiveMaximum) {
+      return Math.floor(Math.random() * exclusiveMaximum);
+    }
 
     // Function to get the value of a GET parameter by name
     function getParameterByName(name, url = window.location.href) {
