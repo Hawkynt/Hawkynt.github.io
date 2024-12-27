@@ -1,0 +1,37 @@
+.Default {
+  font        : 80% Tahoma;
+  color       : #FFF;
+  background  : #08C;
+}
+
+.Window {
+  border-top:1px solid ButtonHighlight;
+  border-left:1px solid ButtonHighlight;
+  border-right:1px solid ButtonShadow;
+  border-bottom:1px solid ButtonShadow;
+  background-color:ButtonFace;
+  color:ButtonText;
+  margin:10px;
+  padding:4px;
+}
+
+.Editor {
+  border-bottom:1px solid ButtonHighlight;
+  border-right:1px solid ButtonHighlight;
+  border-left:1px solid ButtonShadow;
+  border-top:1px solid ButtonShadow;
+  background-color:#FFF;
+  color:#000;
+  margin:4px;
+  padding:8px;
+  overflow:scroll;
+}
+
+.History_Item {
+  margin:10px;
+}
+
+.Img {
+  width:33%;
+  height:33%;
+}
