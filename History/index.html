@@ -1,0 +1,1539 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+  <head>
+    <meta http-equiv = "content-type"        content = "text/html; charset=ISO-8859-1" />
+    <meta http-equiv = "Language"            content = "de" />
+    <meta http-equiv = "Content-Style-Type"  content = "text/css" />
+    <meta http-equiv = "Content-Script-Type" content = "text/JavaScript" />
+    <meta name       = "pagetitle"           content = "History" />
+    <meta name       = "description"         content = "»SynthelicZ«" />
+    <meta name       = "keywords"            content = "»SynthelicZ«, SZ, Hawkynt, SynthelicZ, Synth, Project, Projekt" />
+    <meta name       = "author"              content = "Hawkynt" />
+    <meta name       = "copyright"           content = "1995-2016 »SynthelicZ« Hawkynt" />
+    <meta name       = "publisher"           content = "1995-2016 »SynthelicZ« Hawkynt" />
+    <meta name       = "revisit-after"       content = "2 days" />
+    <meta name       = "robots"              content = "follow,index" />
+    <link rel        = "shortcut icon"       href    = "../favicon.ico" />
+    <meta name       = "CREATOR"             content = "Hawkynt" />
+    <meta name       = "VERSION"             content = "1.0a" />
+    <meta name       = "LASTMODIFIED"        content = "12.03.2012 18:00" />
+    <meta name       = "APPLICATION"         content = "NOTEPAD++.EXE" />
+    <meta name       = "CONTENT"             content = "XHTML 1.0/HTML 4.01/XML 1.0 - CSS 2.0 - JS 2.0 - DOM2.5" />
+    <title>
+      »SynthelicZ« History
+      <!-- 
+      <body>
+      </body>
+      -->
+    </title>
+    <!-- External Files -->
+    <link type="text/CSS" rel="stylesheet" href="screen.css" />
+    <script type="text/Javascript" language="JavaScript" src="./xdom.js"></script>
+    <script type="text/Javascript" language="JavaScript" src="./engine.js"></script>
+    <script type="text/Javascript" language="JavaScript">
+      document.title='»SynthelicZ« '+getMetaContent('PageTitle');
+    </script>
+  </head>
+  <body class="Default">
+    <!-- LOADING WINDOW                                              -->
+    <div id="LoadWindow" class="Window" style="position:relative;top:34%;left:34%;width:30%;height:30%;display:none;">
+      <img src="loading.gif" width="100%" height="100%" alt="Page loading" />
+    </div>
+    <!-- ITEM BROWSER                                                -->
+    <div id="ItemWindow" class="Window" style="position:relative;top:4%;left:4%;width:90%;height:90%;display:none;margin:0px;">
+      <div style="width:40%;height:60%;float:left;text-align:center;">
+        <div style="float:left;">
+          <a id="lnkItemREW" href="" title="One item back">
+            <img src="rew.jpg" border="0" alt="One item back" />
+          </a>
+        </div>
+        <div style="float:right;">
+          <a id="lnkItemFFD" href="" title="Next item">
+            <img src="ffd.jpg" border="0" alt="Next item" />
+          </a>
+        </div>
+        <div id="lnkItemCnt" style="font-weight:bold;">
+        </div>
+        <form name="frmListBox" action="index.htm" onsubmit="return false;">
+          <select id="selectItemList" name="selectItemList" size="1" style="width:90%;" onchange="showItem(document.forms['frmListBox'].elements['selectItemList'].options.selectedIndex);">
+            <option value="0">Last</option>
+          </select>
+        </form>
+        <div id="lblItem" style="clear:both;overflow:auto;width:95%;height:75%;text-align:left;padding:4px;">
+        </div>
+      </div>
+      <div style="width:60%;height:60%;float:right;text-align:center;">
+        <div style="float:left;">
+          <a id="lnkImgREW" href="" title="Last image">
+            <img src="rew.jpg" border="0" alt="Last image" />
+          </a>
+        </div>
+        <div style="float:right;">
+          <a id="lnkImgFFD" href="" title="Next image">
+            <img src="ffd.jpg" border="0" alt="Next image" />
+          </a>
+        </div>
+        <div id="lnkImgCnt" style="font-weight:bold;">
+        </div>
+        <div style="clear:both;width:90%;height:90%;">
+          <a id="lnkImgFull" href="" title="Fullscreen" target="blank">
+            <img id="imgItem" alt="Fullscreen" src="nopic.gif" style="width:100%;height:100%;filter:Blur(direction=0, strength=2) Blur(direction=90, strength=2) Blur(direction=180, strength=2) Blur(direction=270, strength=2)" border="0" />
+          </a>
+        </div>
+      </div>
+      <div style="width:100%;height:40%;clear:both;">
+        <div id="txtItem" class="Editor" style="width:95%;height:85%;">
+        </div>
+      </div>
+    </div>
+    <div id="MainContent">
+      <script type="text/JavaScript" language="JavaScript">
+        document.getElementById('MainContent').style.display='none';
+        document.getElementById('LoadWindow').style.display='';
+      </script>
+    <!-- Data Records
+      <!-- ========================================================= -->
+      <!-- =======================[ 1994 ]========================== -->
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">My very first "Hello World" (MegaDuck)</div>
+        <div class="Year">1994</div>
+        <div class="Language">
+          MegaDuck BASIC
+        </div>
+        <div class="Skills">
+          Output to Display
+        </div>
+        <div class="Text">
+          This was my very first "Hello World" I've coded ever. On this play&learn computer for kids, I spent hours and hours of displaying turtle like graphics with a BASIC like dialect.
+          I even found a way into the firmware by producing a heap overflow which overwrote the protected interrupt table thus letting me enter into the secret BIOS menu.
+          Now it's only a bare PCB in my personal hall of fame.
+        </div>
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <!-- =======================[ 1995 ]========================== -->
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">The first "Hello World" (Schneider CPC6128)</div>
+        <div class="Year">1995</div>
+        <div class="Language">
+          Schneider BASIC 1.1
+        </div>
+        <div class="Skills">
+          Output to Display
+        </div>
+        <div class="Text">
+          This was the first get-in-touch with a Schneider CPC 6128 personal computer.
+          Though it wasn't really a "Hello World" more sort of a show nice graphics and beep testimonial.
+          On this thingy I wrote a MegaMan clone and lots of graphics demos.
+        </div>
+        <a title="Screenshot" class="Img" href="1995/cpc6128/cpc6128.jpg">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1995/cpc6128/cpc6128.gif">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <!-- =======================[ 1996 ]========================== -->
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">First "Hello World" in Q-BASIC (IBM PC)</div>
+        <div class="Year">1996</div>
+        <div class="Language">
+          Q-BASIC 1.1
+        </div>
+        <div class="Skills">
+          Output to Display, Graphics, Music, Sound, Game development
+        </div>
+        <div class="Text">
+          This was the first "Hello World" written in interpreted Q-BASIC under MS-DOS.
+          The era with Q-BASIC lastet heavily for several years, as I programmed tons of graphic
+          demos, sounds, games and shells like a norton commander clone, viewers for several file
+          formats and more. I started by developing mods of the for this time famous Gorilla and Nibbles
+          from Microsoft.
+		</div>
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">"Hello C64" in C64-BASIC (Commodore C64)</div>
+        <div class="Year">1996</div>
+        <div class="Language">
+          C64 BASIC v2
+        </div>
+        <div class="Skills">
+          Output to Display
+        </div>
+        <div class="Text">
+          From a buy-used store I got my first C64 from Commodore. One more thing of hardware that was worth playing around
+          with it. On this platform I was forced to learn some dirty memory tricks and 6502 Assembler.
+          I even cloned the game "Superball" from the breakfast television because my family wanted to play
+          but was never called back on the telephone.
+        </div>
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">VGAEdit / VGAMaus</div>
+        <div class="Year">1996</div>
+        <div class="Language">
+          Q-BASIC 1.1 / Power BASIC 2.3
+        </div>
+        <div class="Skills">
+          Pixelediting<br />
+          Mouse movement under DOS<br />
+          BMP File Format<br />
+        </div>
+        <div class="Text">
+          The VGA Editor was created because I had the need for developing sprites in a fast and easy way.
+          Though I did not had any software that met the specific needs of Q-BASIC, I developed my own.
+          When I started with this editor it was still in 80x50 text mode to allow editing pixel by pixel.
+          The first supported sprite resolution was only 12x20 pixels which was enough for most of the games I wrote 
+          because in 320x200 cololr modes you don't have that much pixels available to fill the display at all.
+          As I progressed understanding SVGA and VESA standard, as well as x86-Assembler and machine language,
+          I had the need for even bigger sprites which led me to rewriting the text-mode application and transfer
+          it into VGA-graphics at 640x480. The Sprite size was now something at 128x64, a big improvement.
+          The first versions did not had mouse support under DOS, but Assembler was a nice way to go here,
+          though it was real machine language that was used to finally store the needed opcodes in int[]-Arrays.
+          Because of the mouse support the next version was called "VGAMaus".
+          Both programs served me well for a long time because of their ability to store graphics data in two different
+          file formats: RAW (which was abbreviated .VGA in the program) and BAS (native BASIC source code to embed the sprites 
+          directly in the code).<br />
+          One of the last additions to this software was an import routine for Microsoft Bitmaps (.bmp) which worked only for
+          bitmaps with no more than 16 colors, by design.
+          When I developed the first real SVGA library for BASIC under DOS, I also added loading routines for the sprites
+          which were created using VGAEdit/VGAMaus.
+        </div>
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild5.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild6.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild7.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild8.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild9.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild10.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild11.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild12.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild13.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild14.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild15.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild16.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild17.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild18.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild19.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild20.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild21.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild22.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild23.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild24.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild25.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild26.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1996/vgaedit/Bild27.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <!-- =======================[ 1997 ]========================== -->
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">Nettalk v1.0</div>
+        <div class="Year">1997</div>
+        <div class="Language">
+          Q-BASIC 1.1
+        </div>
+        <div class="Skills">
+          Network Drives<br />
+          Network Files<br />
+          File operations in Coop-Mode under DOS<br />
+          Remote Control under DOS<br />
+        </div>
+        <div class="Text">
+          Nettalk is a software that I developed from the needs the chat with each other in the 
+          informaticas class. The school network was entirely Novell Netware based and lacked the 
+          ability to enter a chat room and talk to other pupils. Because the local TEMP-folder was
+          mapped to the file server, I decided to use that as a base for my messages.
+          The first versions were bundled with a batch file whihc loaded the Q-BASIC interpreter and started
+          the source code. They did not had any installation or configuration routines, even their IDs were 
+          hardcoded. But you could choose your display name of course :D.
+        </div>
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">DUNE ST2</div>
+        <div class="Year">1997</div>
+        <div class="Language">
+          Q-BASIC 1.1
+        </div>
+        <div class="Skills">
+          Mouse Movement under DOS<br />
+          Machine Code in Q-BASIC<br />
+          PixelArt (16 Colors)<br />
+          Sprites<br />
+        </div>
+        <div class="Text">
+          This was written as part of a Dune5-Project. It was possibly to use the mouse
+          to place all buildings from the game and ran fluidly on the 80486 at 40MHz in 
+          Q-BASIC.
+        </div>
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild7.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild8.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild9.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild10.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild11.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild12.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild13.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild14.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild15.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild16.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild17.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild18.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild19.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild20.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild21.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild22.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild24.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild25.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild26.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild27.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild28.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/dunest2/bild29.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">AQUANOID</div>
+        <div class="Year">1997</div>
+        <div class="Language">
+          Q-BASIC 1.1
+        </div>
+        <div class="Skills">
+          Breakout algorithm<br />
+          Game programming (QB/DOS)<br />
+          Automatic Ball Movement<br />
+        </div>
+        <div class="Text">
+          This was my first and only Aquanoid-Clone. More a proof-of-concept
+          than a real game but it worked as intended. Everything was working from the game start
+          till the Game-Over, though it had no highscores anyway.<br />
+          The objective is simple: try not to get the ball down the lower bound of the screen and hit
+          every visible block on the screen with it.<br />
+          When every block was gone, the level started again, with sound from the PC speaker to get the nights over.
+        </div>
+        <a title="Screenshot" class="Img" href="1997/aquanoid/bild1.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/aquanoid/bild2.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/aquanoid/bild3.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/aquanoid/bild4.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/aquanoid/bild5.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1997/aquanoid/bild6.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <!-- =======================[ 1998 ]========================== -->
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">3D-Algorithm</div>
+        <div class="Year">1998</div>
+        <div class="Language">
+          PB3.5 / DOS
+        </div>
+        <div class="Skills">
+          SVGA-Graphics(VESA)<br />
+          Assembler and PowerBASIC - the unholy alliance<br />
+          Bitmap-Files as Textures<br />
+          3D-Arithmetics<br/>
+        </div>
+        <div class="Text">
+          This code was the first of it's kind which used a proprietary 3D-engine I made.
+          It's using most of the routines I wrote in my SVGA-library. This library was partly
+          written in PowerBASIC and partly in x86 inline-Assembler. Displaying 3-dimensional objects
+          is archieved by using 1pixel sized-voxels which are then rotated and translated in the 
+          3D-space. It could load Microsoft-BMP files and use them as textures.
+        </div>
+        <a title="Screenshot" class="Img" href="1998/3dalgo/running.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1998/3dalgo/code1.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1998/3dalgo/code2.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">3D-Algorithm v2</div>
+        <div class="Year">1998</div>
+        <div class="Language">
+          PB3.5 / DOS
+        </div>
+        <div class="Skills">
+          SVGA-Graphics(VESA)<br />
+          Assembler and PowerBASIC - the unholy alliance<br />
+          Bitmap-Files as Textures<br />
+          3D-Arithmetics<br/>
+          Code-Optimization<br />
+          3D-Vectoroperations<br />
+        </div>
+        <div class="Text">
+          This one was an advanced version of the first 3D-engine which used lines wherever
+          possible to get even better performance. All edges were displayed using lines instead
+          of single points thus saving lots of calculations. Because of the gained speed, more 
+          complex objects were possible now.
+        </div>
+        <a title="Screenshot" class="Img" href="1998/3dalgo2/pb_000.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1998/3dalgo2/pb_001.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1998/3dalgo2/pb_002.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1998/3dalgo2/pb_003.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1998/3dalgo2/pb_004.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="1998/3dalgo2/pb_005.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <!-- =======================[ 1999 ]========================== -->
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">NettalkP v10.0</div>
+        <div class="Year">1999</div>
+        <div class="Language">
+          Power BASIC 2.3
+        </div>
+        <div class="Skills">
+          Network Drives<br />
+          Network Files<br />
+          File operations in Coop-Mode under DOS<br />
+          Remote Control under DOS<br />
+          Hidden Tasks under Win9x
+          Windows Scripting Host<br />
+          Kernel Calls under Win9x<br />
+          Installation Routines under DOS<br />
+          BMP File Format<br />
+          SVGA-Graphics(VESA)<br />
+        </div>
+        <div class="Text">
+          This was the last version of Nettalk. Since I started this projects, lots of things
+          had been going on. The current version was more optimized and compiled now instead of
+          interpreted. It was supporting Windows9x and could do remoting, restarting the PC and block 
+          it if instructed to do so. Therefore an administrator could do more than just chatting,
+          but instead execute lots of commands on each remote machine. The colors could be changed,
+          memory load could be shown, users could be kicked and banned. Much was improved but due 
+          to reduced license selling and the upcoming dead of MS-DOS, the development also died with version 10.0.<br />
+          Rest in Peace my old Friend !
+        </div>
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <!-- =======================[ 2000 ]========================== -->
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">VTEXT</div>
+        <div class="Year">2000</div>
+        <div class="Language">
+          Power BASIC 3.5 (PB/DOS)
+        </div>
+        <div class="Skills">
+          VideoText<br />
+          Chardrawing in Graphics Mode<br />
+        </div>
+        <div class="Text">
+          When I was in school at former times, there was the possibility to save data streams
+          onto VHS-cassettes. These streams were saved on the normally invisible overscan area
+          of the picture. My goal was to save data streams there and making them visible again.
+          There were no specifications or anything to work with he given hardware but a tool,
+          which could only write probrietary text streams. So I had to reverse engineer was 
+          it was doing and do this myself. So my code took it even further and allowed reading and
+          writing any kind of stream, interpreted the control characters in the text streams and showed
+          the pages on the screen. Only the old driver was used to access the VHS-recorder under DOS.
+        </div>
+        <a title="Screenshot" class="Img" href="2000/vtext/Bild1.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2000/vtext/Bild2.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2000/vtext/Bild3.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2000/vtext/Bild4.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <!-- =======================[ 2001 ]========================== -->
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">Tetrix / 3D-Tetris</div>
+        <div class="Year">2001</div>
+        <div class="Language">
+          Power BASIC 3.5 (PB/DOS) / Assembler
+        </div>
+        <div class="Skills">
+          SVGA-Graphics(VESA)<br />
+          Assembler and PowerBASIC - the unholy alliance<br />
+          Bitmap-Files as Background<br/>
+          3D-Arithmetics<br/>
+        </div>
+        <div class="Text">
+          Based on my former experiences with the 3D-programming, I told my pupils
+          how to write a 3D-wireframed tetris-clone under DOS using SVGA graphics.
+          I taught young individuals from three schools and showed them how to code.
+          On the left side you can see a three-dimensional version of the upcoming tile.
+          The remaining game part is equal to every existing tetris.<br/>
+          It was a lot of fun to discuss every piece of code and seeing how the
+          pupils progressed farther and farther. The extended features of PowerBASIC
+          under DOS, especially the VESA graphics standard which we used through
+          Assembler pieces where very hard to taught. Functions for calculating sine and 
+          cosine were also written in Assembler because they were needed very often in the
+          3D-rotations and were very slow in BASIC.<br/>
+          The source code uses my SVGA library and is fairly functional.<br/>
+          Greetins to any of the AG-members of former times. It was a really nice and funny
+          time with you in 5 years. Thanks that you listened to my ideas. I hope I could've
+          turned at least some of you into great coders.
+        </div>
+        <a title="Screenshot" class="Img" href="2001/tetrix/Bild36.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2001/tetrix/Bild37.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2001/tetrix/Bild38.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2001/tetrix/Bild39.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2001/tetrix/Bild40.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2001/tetrix/Bild41.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2001/tetrix/Bild42.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2001/tetrix/Bild43.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2001/tetrix/Bild44.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2001/tetrix/Bild45.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2001/tetrix/Bild46.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2001/tetrix/Bild47.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2001/tetrix/Bild48.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2001/tetrix/Bild49.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <!-- =======================[ 2002 ]========================== -->
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">ELIZA</div>
+        <div class="Year">2002</div>
+        <div class="Language">
+          Power BASIC 3.5 (PB/DOS) / LISP
+        </div>
+        <div class="Skills">
+          Artificial Intelligence<br />
+          FuzzyLogic<br />
+        </div>
+        <div class="Text">
+          Based on stone-old code of the ELIZA in LISP, I implemented a version written in Power BASIC.
+          Being more than just a proof-of-concept, ELIZA was a real neat party gag. Even in the 
+          IT-class it was easily possible to entertain people with it.<br/>
+          ELIZA is solely based on a keyword state-machine from which it generates her answers.
+          Because of the english grammar it is really easy for a computer program to generate sentences using
+          whatever the user enters without really understanding the meaning of it.<br/>
+          ELIZA is not really intelligent or smart but bound to her limits by Fuzzy-Logic.
+          She's using therapists-like questions to force the user to tell me about himself thus having a
+          fascinating "someone-listens-to-me" effect on the people.<br/>
+          The program changes the facts from the user by using the language syntax and reflecting it back
+          to the person in front of the screen, thus posing questions in her very own way.
+        </div>
+        <a title="Screenshot" class="Img" href="2002/eliza/bild1.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2002/eliza/bild2.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2002/eliza/bild3.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <!-- =======================[ 2003 ]========================== -->
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">&raquo;SynthelicZ&laquo; Extended Console for CS1.5 v1.2</div>
+        <div class="Year">2003</div>
+        <div class="Language">
+          PERL5.6
+        </div>
+        <div class="Skills">
+          GUI Design(Perl/TK)<br />
+          File operations in Coop-Mode(Perl)<br />
+          Cooperation with the Half-Life-Engine<br />
+          Half-Life/Counter-Strike Scripting Language<br />
+        </div>
+        <div class="Text">
+          This is an extended console for the famous video game "Half-Life".
+          Though the game already has an own console, this enables the user to do even more things while playing.
+          It is possible to query the cheater-database for all users on the server and report who's has cheated lately.
+          The application also enables the user to tell others what music he's listening to while gaming and how the stats
+          on other servers are. The possibility to find known players on all servers around the world was also a nice 
+          addon.<br/>
+          A script injected this console into the native one thus allowing the user to enter new commands and even bind
+          them to keys.<br/>
+          Technically invocation of a command triggered the creation of a log file which was then parsed and processed.
+          The answers of a request were written back into a script file which was than automatically executed by the game.
+          The results could be seen on the screen, posted to other users on the server or heard via in-game sound/voice.<br/>
+          Main functions included cheat-reporting like in "Cheating-Death", background music, different voice-scripts, stats-lookup
+          and mate finding on all servers.
+        </div>
+        <a title="Screenshot" class="Img" href="2003/szxconsole/1.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/szxconsole/2.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/szxconsole/3.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/szxconsole/4.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/szxconsole/5.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/szxconsole/6.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/szxconsole/7.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/szxconsole/8.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">&raquo;SynthelicZ&laquo; Homepage</div>
+        <div class="Year">2003</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS) / PHP
+        </div>
+        <div class="Skills">
+          Dynamic Content(JS)<br />
+          Webdesign<br />
+          User management(JS)<br />
+          Applications(JS)<br />
+          File modifications(PHP)<br />
+          JavaScript/PHP Remote Procedure Call<br />
+          Plain Text Files as Data Source(JS)<br />
+        </div>
+        <div class="Text">
+          This was the first web-page of project &raquo;SynthelicZ&laquo; as well as the Counter-Strike
+          Clan [&gt;SynthelicZ&lt;]. The poll and the link list were created by using JavaScript. The
+          member area and the clan war area were navigatable through execessive use of javascript, too.
+          When adding news, members, etc. a PHP script was invoked which in fact generated more JavaScript-Code
+          on the server or changing the existing code. Thus it was possible to change a script file with 
+          JavaScript on the server side. I used techniques which are now known as AJAX to the mass but at this
+          time, this was not achievable by using XmlHttpRequest objects, so I took IFRAMES to do the magic.
+          The site had an internal area where user could login to write news etc. The passwords and usernames 
+          were hashed and saved in JavaScript files, too. When a user managed to login successfully, a cookie was
+          set which also cached the access rights in the form of flags. The design was cooperation with Naii'Ra Tee.
+        </div>
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00000.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00001.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00002.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00004.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00005.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00007.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00008.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00009.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00010.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00011.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00012.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00013.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00014.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00015.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00016.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00017.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00018.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00019.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00020.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00021.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00022.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00023.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2003/sz-2003/IMG00024.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <!-- =======================[ 2004 ]========================== -->
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">Webview Matrix</div>
+        <div class="Year">2004</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS) / Windows Scripting Host (WSH)
+        </div>
+        <div class="Skills">
+          Windows-Webviews<br />
+        </div>
+        <div class="Text">
+          This is a Webview which I used to replace the existing one in Windows 98.
+          In this project I made my first experiences with the objects and classes which were only
+          available to Webviews. Furthermore, a cross-over between WSH and JS was possible which leds to
+          interesting features.
+        </div>
+        <a title="Screenshot" class="Img" href="2004/hawk-matrix/1.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-matrix/2.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-matrix/3.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-matrix/4.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-matrix/5.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-matrix/6.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">Webview Design 26</div>
+        <div class="Year">2004</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS) / Windows Scripting Host (WSH)
+        </div>
+        <div class="Skills">
+          Windows-Webviews<br />
+          Binary Files threated as Text Files(JavaScript)<br />
+          File Type AVI<br />
+          File Type BMP<br />
+          File Type MP3<br />
+          File Type JPG<br />
+          File Type GIV<br />
+          File Type WAV<br />
+          Document Object Model<br />
+          Config-Files(JavaScript)<br />
+        </div>
+        <div class="Text">
+          This was the second Webview for Windows 98. But this time I spend a huge amount
+          of time to get it much more powerful. It could read several file types and shows
+          detailed information about the given types. It also showed verbose in-detail information
+          about the file system and the drive usage. It could calculate LFN entry-sizes, show interpret/artist etc.
+          of MP3-files, resolution/colors of images, length/frames/dimension of video files.
+          The biggest problem was to read binary files using the "OpenTextFile"-function, because no
+          "OpenBinary"-or something similar existed in the script world. 
+        </div>
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/1.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/2.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/3.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/4.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/5.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/6.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/7.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/8.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/9.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/10.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/11.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/12.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/13.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/14.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/15.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/16.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/28.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/29.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/30.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/31.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/32.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/33.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/34.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/35.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/17.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/18.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/19.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/20.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/21.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/22.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/23.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/24.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/25.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/26.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/hawk-design26/27.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">&raquo;SynthelicZ&laquo; Clanpage</div>
+        <div class="Year">2004</div>
+        <div class="Language">
+          HTML / PHP / Document Object Model (DOM) / Cascading Style Sheets (CSS)
+        </div>
+        <div class="Skills">
+          File Upload(PHP)<br />
+          Plain Text Files as Data Source(PHP)<br />
+        </div>
+        <div class="Text">
+          This page was developed to give the Counter-Strike Clan of Project &raquo;SynthelicZ&laquo;
+          a new look-and-feel. The page supports add-ins like the picture of the week and did not use
+          any content management system from the market. It was developed hands-in-hands with Stormy.
+        </div>
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00133.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00134.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00135.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00136.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00137.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00138.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00139.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00140.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00141.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00142.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00143.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00144.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00145.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00146.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00147.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00148.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00149.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00150.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00151.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00152.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-1/IMG00153.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">&raquo;SynthelicZ&laquo; Transferpage</div>
+        <div class="Year">2004</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS)
+        </div>
+        <div class="Skills">
+          none
+        </div>
+        <div class="Text">
+          This transfer page was online when time had come to transit to a new page.
+          During a maintenance time of four weeks, the visitors had to be glad to see this page.
+        </div>
+        <a title="Screenshot" class="Img" href="2004/sz-2004-2/IMG00025.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-2/IMG00026.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">&raquo;SynthelicZ&laquo; Homepage</div>
+        <div class="Year">2004</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS)
+        </div>
+        <div class="Skills">
+          Window-coding(JS)<br />
+          Eventhandling(JS)<br />
+          Cross-Browser(JS)<br />
+          Dynamic Design(JS)<br />
+          Dynamic Skinnable Elements(JS)<br />
+          typical GUI-Elements (Icons, Windows, Desktops)(JS)<br />
+          Extended Objects(JS)<br />
+        </div>
+        <div class="Text">
+          This is project was both, a proof-of-concept and a full-featured GUI with virtual
+          storage devices. There are applications which are presented in IFRAMES or DIVs depending
+          on whether they are modules or real apps. The whole page is modular which allows loading
+          needed code at runtime instead of page-load. <br />
+          There is also a lot of content belonging to Project 
+          &raquo;SynthelicZ&laquo;, and the CS-Clan.
+        </div>
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00027.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00028.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00032.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00033.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00034.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00035.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00036.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00037.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00038.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00039.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00040.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00041.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00042.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00043.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00044.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00045.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00046.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00047.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00048.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00049.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00050.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00051.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00052.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00053.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00054.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00055.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00056.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00057.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00058.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00059.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00060.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/sz-2004-3/IMG00061.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">Terrorhuhn</div>
+        <div class="Year">2004</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS)
+        </div>
+        <div class="Skills">
+          Sprites(JS)<br />
+          Event-Handling(JS)<br />
+          Mouse-Collision-Detection(JS)<br />
+          Games programming(JS)<br />
+        </div>
+        <div class="Text">
+          This Moorhuhn-Clone is the answer to the question: is it possible to write such stuff
+          in a 30 minute break. I wrote it when I was at T-Systems in my TODO: Ausbildungszeit.
+          A colleague of mine bet that it isn't possible, so I owed him an example.
+          There is no highscore-list or main menu, but the simple principle is working fine.
+          I focused mainly on the main game. I used three graphics from GoogleImages and that's it.
+          It would have been easy to add the missing things but I didn't put any effort into it after
+          the break was over.
+        </div>
+        <a title="Screenshot" class="Img" href="2004/t-huhn/IMG00195.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/t-huhn/IMG00196.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/t-huhn/IMG00197.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/t-huhn/IMG00198.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/t-huhn/IMG00199.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">Intranet Gruppenseite</div>
+        <div class="Year">2004</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS)
+        </div>
+        <div class="Skills">
+          Event-Hanling(JS)<br />
+          Dynamic-Content(JS)<br />
+        </div>
+        <div class="Text">
+          This page was developerd to show-off the two AZUBI-groups in the Telekom intranet.
+          The main theme was the "Tresor" which was chosen by the groups und realized using
+          JavaScript by myself. On the upper edge there is a menu which displays the names of 
+          the groups' members. It could be scrolled using the white arrows on the left and 
+          right side of the menu. There is also a little icon which can be found which distinguishes
+          both groups from each other. When the mouse is moved over one of the names, a face of the given
+          person is displayed on the lower edge and fades away when the mouse moves away.
+          Clicking on a name or scrolling through them using the arrow icons, opens the safe and displays
+          information about the chosen person. Depending on the group the given person is in,
+          the safe either opens on the left or on the right side of the screen, showing information,
+          photos and similar stuff. At the end of each information block, there is a link to each persons
+          home page. If this is clicked both doors open, letting the whole screen being able to be used by
+          the page. There are also two "Top Secret" documents which are transparently shown under the pages.
+          I had to remove the content on the screenshots because of data security reasons.
+        </div>
+        <a title="Screenshot" class="Img" href="2004/tt-intranet/IMG00154.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/tt-intranet/IMG00155.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/tt-intranet/IMG00156.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/tt-intranet/IMG00157.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/tt-intranet/IMG00158.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/tt-intranet/IMG00170.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/tt-intranet/IMG00171.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/tt-intranet/IMG00172.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/tt-intranet/IMG00173.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/tt-intranet/IMG00174.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/tt-intranet/IMG00175.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/tt-intranet/IMG00176.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2004/tt-intranet/IMG00177.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <!-- =======================[ 2005 ]========================== -->
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">JSP-Login and Webshop</div>
+        <div class="Year">2005</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS) / Java Server Pages(JSP)
+        </div>
+        <div class="Skills">
+          Java Beans<br />
+          SQL Connection(JAVA)<br />
+          Java Server Pages<br/>
+          WebShop(JSP)<br />
+        </div>
+        <div class="Text">
+          This was developed when a JAVA-lesson took place where the basic concepts of the language 
+          were taught to me. I just tested some stuff and this is why this little login-modules
+          with a database connection was born. One day later, it was a little web shop. The images of 
+          the items are not shown on the screenshots because of a bad tomcat configuration. On the 
+          original server, everything worked fine.
+        </div>
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00213.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00214.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00215.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00216.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00217.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00218.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00219.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00220.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00221.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00222.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00223.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00224.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00225.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00226.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00227.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00228.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00229.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00230.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00231.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/login-shop/IMG00232.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">ICS/ICFW Portmapper</div>
+        <div class="Year">2005</div>
+        <div class="Language">
+          Windows Scripting Host (WSH) / Visual BASIC Script (VBS)
+        </div>
+        <div class="Skills">
+          Windows Network Libraries(VBS)<br />
+          Windows Internet Connection Sharing(VBS)<br />
+        </div>
+        <div class="Text">
+          This script was developed because Windows XP was unable to allow me
+          to configure whole port ranges for the firewall. You had to do it
+          one after another if you wanted this. I didn't want to bring 1000
+          ports into life by hand, so this script was needed.
+          It instantiates some ActiveX objects from Microsoft and uses them to
+          insert each port into the firewall exclusion list. It is able to
+          add and remove single ports and whole ranges. For someone like me
+          who has to open or close a hundred ports for some time, this is a 
+          real help.
+        </div>
+        <a title="Screenshot" class="Img" href="2005/portsfree/IMG00205.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/portsfree/IMG00206.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/portsfree/IMG00207.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/portsfree/IMG00208.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/portsfree/IMG00209.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/portsfree/IMG00210.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/portsfree/IMG00211.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/portsfree/IMG00212.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">&raquo;SynthelicZ&laquo; Designstudie</div>
+        <div class="Year">2005</div>
+        <div class="Language">
+          HTML / Cascading Style Sheets (CSS)
+        </div>
+        <div class="Skills">
+          WebDesign<br />
+        </div>
+        <div class="Text">
+          This is nothing more than a design study. A friend asked me to test something
+          like this on an exmplary &raquo;SynthelicZ&laquo; page and this was the result.
+          I came to the conclusion, that this looks like most of the clan pages in the net,
+          but was definately not the design decision of the Project &raquo;SynthelicZ&laquo;.
+        </div>
+        <a title="Screenshot" class="Img" href="2005/sz-2005/IMG00062.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/sz-2005/IMG00063.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/sz-2005/IMG00064.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/sz-2005/IMG00065.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">&raquo;SynthelicZ&laquo; window study</div>
+        <div class="Year">2005</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS)
+        </div>
+        <div class="Skills">
+          Pixel by Pixel Layout<br />
+        </div>
+        <div class="Text">
+          This time the task was to clone an explorer window pixel by pixel and making the right part
+          usable for navitgation. So it is possible to show dynamic content through JavaScript and
+          getting back by use of the Back-Button on the upper left. Everything was filled with content
+          and send in as a request. It was approved by the administrator and used in the intranet.
+        </div>
+        <a title="Screenshot" class="Img" href="2005/winborder/IMG00199.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/winborder/IMG00200.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/winborder/IMG00201.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/winborder/IMG00202.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/winborder/IMG00203.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">DIVX Calculator</div>
+        <div class="Year">2005</div>
+        <div class="Language">
+          Power BASIC 3.5 (PB/DOS)
+        </div>
+        <div class="Skills">
+          DIVX Rate Calculation<br />
+        </div>
+        <div class="Text">
+          Dieses Programm schrieb ich, um eine Anzeige über mögliche
+          Bitraten von Filmen einer bestimmten Länge zu bekommen. Es
+          errechnet die Bitrate eines Videostreams in Abhängigkeit zu
+          seiner Länge, bezogen auf bestimmte Größenangaben, zB eine CD.
+          Beim Start kann man eine Filmlänge in Minuten angeben, die
+          dann ebenfalls berechnet und in der unteren Tabellenzeile
+          angezeigt wird. Links sieht man die einzelnen Filmlängen,
+          während oben die Grenzwerte zu sehen sind. Die Werte in der
+          Tabelle geben an, wie hoch die Bitrate des Films sein muss,
+          damit seine Gesamtgröße genau innerhalb dieses Grenzwertes
+          liegt. Die Farben zeigen an, wie gut die Bildqualität bei
+          dieser Bitrate noch ist. Dabei kann man davon ausgehen, dass
+          alles was grün oder blau ist, recht gut aussieht. Hellrot sind
+          Bitraten, die über 15000kBit/s liegen, was wohl eher
+          Verschwendung von Speicherplatz ist. Richtig fies sieht das
+          Bild meist bei den braunen und dunkelroten Bitraten aus, denn
+          da nehmen die Blöcke schon Überhand. Gelb ist die
+          durchschnittliche Qualität einer VCD/SVCD. Man kann sich mit
+          dem Cursor durch das Feld bewegen und erhält unnten die
+          genauen Werte angezeigt. An Stellen wo n/A in der Tabelle
+          steht, müsste die Bitrate des Videos negativ sein, da bereits
+          der Audiocodec mit 224kBit/s zu Buche schlägt und den
+          gegebenen Speicherplatz ausschöpft.
+        </div>
+        <a title="Screenshot" class="Img" href="2005/dcalc/Bild50.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/dcalc/Bild51.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/dcalc/Bild52.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/dcalc/Bild53.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/dcalc/Bild54.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/dcalc/Bild55.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/dcalc/Bild56.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/dcalc/Bild57.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2005/dcalc/Bild58.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <!-- =======================[ 2006 ]========================== -->
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">JavaScript Water Effects</div>
+        <div class="Year">2006</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS)
+        </div>
+        <div class="Skills">
+          Microsoft Filter and WebDesign<br />
+        </div>
+        <div class="Text">
+          In dieser kleinen Demo ging es eigentlich nur darum einen
+          aufwendigen Effekt mit Hilfe der Microsoft Web Filter zu
+          generieren. Ist zwar nur auf dem IE bzw. Browsern mit der IE -
+          Engine lauffähig, für diese Demo war allerdings auch nicht mehr
+          von N&ouml;ten. Geschrieben habe ich dies, nachdem mich in der
+          BBi jemand gefragt hat, ob es denn generell möglich sei einen
+          wasser&auml;hnlichen Effekt mit JavaScript in Echtzeit zu
+          generieren. Hier ist das Proof-of-Concept dazu.
+        </div>
+        <a title="Screenshot" class="Img" href="2006/watereffects/IMG00178.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/watereffects/IMG00183.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">&raquo;SynthelicZ&laquo; Extended Console for CS1.6 v2.0</div>
+        <div class="Year">2006</div>
+        <div class="Language">
+          VBS / HTML4.01 / CSS / JS2.0 / WSH5.6 / DOM
+        </div>
+        <div class="Skills">
+          File Operations in Coop-Mode(WSH/VBS)
+          Cooperation with the STEAM-Engine<br />
+          Half-Life/Counter-Strike Scripting Language<br />
+          Speech Synthesis with WSH/VBS<br />
+        </div>
+        <div class="Text">
+          Dies ist eine zusätzliche Konsole zu der in der Half-Life
+          Engine bereits vorhandenen. Sie ermöglicht dem Spieler neue
+          Befehle in der HLConsole, welche diese dann über eine Datei an
+          meine Konsole weitergibt. Die SZXC bearbeitet diese daraufhin
+          und liefert ihre Ergebnis wieder in Form einer Datei an die
+          HL-Engine zurück. Nun bekommt der Spieler noch mittels
+          Sprachausgabe einen Hinweis und kann eine Taste drücken, die
+          einen Befehl ausführt, um das Ergebnis der SZXC im Spiel
+          dargestellt zu bekommen. Wichtigste Funktionen sind die
+          Ingame-Cheaterabfrage ähnlich Cheating-Death und die
+          Stats-Abfrage des zum Spieleserver gehörenden Stats-Servers.
+        </div>
+        <a title="Screenshot" class="Img" href="2006/szxconsole2/1.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szxconsole2/2.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szxconsole2/3.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szxconsole2/4.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szxconsole2/6.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szxconsole2/7.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szxconsole2/8.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szxconsole2/9.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szxconsole2/10.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szxconsole2/11.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">PHP Webshop</div>
+        <div class="Year">2006</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS)
+        </div>
+        <div class="Skills">
+          MySQL Database Connections(PHP)<br />
+          User Management(PHP)<br />
+          WebShop(PHP)
+        </div>
+        <div class="Text">
+          Dieser WebShop entstand in der Berufsschule innerhalb eines
+          2-mann kleinen Entwicklungsteams. Das Modul für die
+          Benutersessions ist nicht von mir sondern von tinitram. Das
+          ganze ist ein Auktionshaus, wie ebay-nur kleiner. Prinzipiell
+          liegen sämtliche Produkte und Benutzer in einer SQL-Datenbank.
+          Es gibt kein Design der Oberfläche, daher dieser Nur-Text-Look.
+          Dafür war eine dritte Person gedacht, jedoch war diese
+          innerhalb des Projektzeitraums von gerade mal 2 Wochen krank.
+          An diesem Projekt lässt sich sehr gut ein mehrschichtiges
+          modulares Konzept erkennen, dass im Fachkonzept auch als
+          solches bezeichnet ist.
+        </div>
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00233.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00234.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00235.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00236.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00237.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00238.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00239.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00240.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00241.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00243.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00244.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00245.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00246.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00247.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00248.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00249.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00250.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00251.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00252.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00253.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/auction/IMG00254.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">Isometric JavaScript Engine(beta)</div>
+        <div class="Year">2006</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS)
+        </div>
+        <div class="Skills">
+          Isometric graphics engine(JS)<br />
+          Staggered Maps(JS)<br />
+        </div>
+        <div class="Text">
+          Dies ist ein Projekt an dem ich zur Zeit arbeite. Es soll eine
+          Spieleengine in JavaScript werden, die die Spielfläche als
+          Isometrische Karte darstellt, ähnlich wie Civilization oder
+          Diablo. Eventuell wird das ganze mit Karten in Plain Text
+          Files funktionieren. Mal schauen, ob es bei einer Studie,
+          einem Proof-of-concept oder einem beliebten MMORPG endet.
+        </div>
+        <a title="Screenshot" class="Img" href="2006/iso-engine/IMG00255.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/iso-engine/IMG00257.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/iso-engine/IMG00258.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/iso-engine/IMG00259.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/iso-engine/IMG00260.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">JavaScript Process Kernel</div>
+        <div class="Year">2006</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS)
+        </div>
+        <div class="Skills">
+          Virtual Processes(JS)<br />
+        </div>
+        <div class="Text">
+          Ein als Proof-of-concept gedachtes JavaScript Kernel. Es kann
+          virtuelle Prozesse ausführen, entweder indem aus ein Objekt
+          erstellt oder eine Funktion aufruft. Natürlich kann es auch
+          Prozesse beenden und Nachrichten mit dem Prozess austauschen.
+          Ziel ist eine Mehrschichtarchitektur, die ähnlich wie in
+          richtigen Betriebssystemen mit Multitasking und GUI arbeitet.
+          Das alljährlich erneuerte GUI-System der
+          &raquo;SynthelicZ&laquo; Seite soll mit diesem Kernel und dem
+          Dynmischen JavaScript Lader zusammengeführt werden und so als
+          Arbeitsoberfläche für die Besucher dienen.
+        </div>
+        <a title="Screenshot" class="Img" href="2006/js-kernel/IMG00183.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/js-kernel/IMG00184.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/js-kernel/IMG00186.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/js-kernel/IMG00187.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/js-kernel/IMG00188.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/js-kernel/IMG00189.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/js-kernel/IMG00190.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/js-kernel/IMG00191.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/js-kernel/IMG00192.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/js-kernel/IMG00193.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">&raquo;SynthelicZ&laquo; Transferpage</div>
+        <div class="Year">2006</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS)
+        </div>
+        <div class="Skills">
+          Cross-Browser CSS<br />
+        </div>
+        <div class="Text">
+          Dieser Transferpage war in der Zeit online, zu der gerade die
+          alte Homepage auf die neue umgestellt wurde. Dies dauerte ca.
+          2 Wochen, in denen die Besucher mit dieser Zwischenseite
+          auskommen mussten.
+        </div>
+        <a title="Screenshot" class="Img" href="2006/sz-2006-1/IMG00066.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-1/IMG00067.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-1/IMG00068.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-1/IMG00069.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-1/IMG00070.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">&raquo;SynthelicZ&laquo; Homepage</div>
+        <div class="Year">2006</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS)
+        </div>
+        <div class="Skills">
+          Window-coding(JS)<br />
+          Eventhandling(JS)<br />
+          Cross-Browser(JS)<br />
+          Dynamic Design(JS)<br />
+          Dynamic Skinnable Elements(JS)<br />
+          typical GUI-Elements (Icons, Windows, Desktops)(JS)<br />
+          Extended Objects(JS)<br />
+          Virtual File System(JS)<br />
+          ObjectViewer/-parser(JS)<br />
+          Encryption methods(JS)<br />
+          Tree-Parsing(JS)<br />
+        </div>
+        <div class="Text">
+          Mit diesem Projekt soll sowohl ein Proof-of-Concept geliefert
+          werden, als auch eine umfangreiche GUI mitsamt virtuellen
+          Datenträgern zur Verfügung gestellt werden. Außerdem ist ein
+          Verschlüsselungstool, sowie ein Objekt-Viewer enthalten.
+          Es gibt virtuelle Anwendungen, die in Form von IFRAMES oder DIVs
+          bereitgestellt werden. Das ganze ist zudem modular, so dass
+          im Betrieb Objekte eingeladen und verwendet werden können.
+          Natürlich findet sich auch allerhand Inhalt zum Project 
+          &raquo;SynthelicZ&laquo;, sowie zum CS-Clan des Projektes.
+        </div>
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00071.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00072.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00073.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00074.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00076.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00077.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00078.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00079.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00080.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00081.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00082.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00083.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00084.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00085.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00086.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00087.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00088.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00089.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00090.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00091.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00092.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00093.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00094.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00095.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00096.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00097.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00098.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00099.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00100.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00101.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">CSS Fensterstudie</div>
+        <div class="Year">2006</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS)
+        </div>
+        <div class="Skills">
+          CSS Positioning<br />
+          CSS Cross-Browser<br />
+        </div>
+        <div class="Text">
+          Bei diesem Projekt geht es darum visuelle Skins nicht wie bisher
+          &uuml;ber JavaScript, sondern allein durch CSS zu realisieren.
+          Dies soll einen Geschwindigkeitsgewinn in der n&auml;chsten
+          Fenster-basierten Oberfl&auml;che bringen. Au&szlig;erdem soll
+          damit die browser&uuml;bergreifende Engine zuverl&auml;ssiger
+          arbeiten.
+        </div>
+        <a title="Screenshot" class="Img" href="2006/sz-2006-3/IMG00102.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-3/IMG00103.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-3/IMG00104.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-3/IMG00105.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/sz-2006-3/IMG00106.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">&raquo;SynthelicZ&laquo; Askengine / D&amp;D Characterhelper</div>
+        <div class="Year">2006</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS)
+        </div>
+        <div class="Skills">
+          Dynamic Rulesets<br />
+          Dynamic Content<br />
+          Dynamic GUI<br />
+          Mix of local and web content<br />
+          Cross-browser<br />
+        </div>
+        <div class="Text">
+          In Ahnlehnung eines Charakterberaters f&uuml;r das Spiel
+          Dungeons&amp;Dragons habe ich diese Fragebogen-Engine
+          geschrieben. Sie ist universell einsetzbar und kann mit den
+          verschiedensten Fragen und Regelwerken gefüttert werden, um jede
+          Art von Fragebogen zu simulieren und die Antworten des Benuters
+          auszuwerten. Sie enth&auml;lt weiterhin einen Editor, mit dem
+          sich die Auswirkungen jeder Frage bearbeiten lassen, so dass
+          es mit wenigen Mouse-Clicks m&ouml;glich ist einen Fragebogen
+          zu generieren. Der Charakterberater f&uuml;r
+          Dungeons&amp;Dragons war das erste Regelwerk und der erste
+          Fragenkatalog f&uuml;r die Engine. Er dient dazu den jungen
+          Rollenspielern bei ihrer Wahl eines Charakters zu helfen, indem
+          er anhand ihrer Antworten auf die gestellten Fragen den
+          Charakter zusammenstellt, der ihnen am n&auml;chsten kommt.
+        </div>
+        <a title="Screenshot" class="Img" href="2006/szaskengine/IMG00117.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szaskengine/IMG00118.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szaskengine/IMG00119.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szaskengine/IMG00120.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szaskengine/IMG00121.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szaskengine/IMG00122.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szaskengine/IMG00123.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szaskengine/IMG00124.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szaskengine/IMG00125.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szaskengine/IMG00126.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szaskengine/IMG00127.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szaskengine/IMG00128.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szaskengine/IMG00129.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szaskengine/IMG00130.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szaskengine/IMG00131.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szaskengine/IMG00132.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">Containermanager</div>
+        <div class="Year">2006</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS) / Active Server Pages (ASP) / VisualBASIC Script (VBS) / OracleSQL
+        </div>
+        <div class="Skills">
+          Dynamic GUI<br />
+          Parser<br />
+          User management(ASP)<br />
+        </div>
+        <div class="Text">
+          Ein Projekt hinter dem viel Arbeit steckt ist der
+          Containermanager. Er hat einige tausend Zeilen Quellcode und
+          wurde komplett mit einem Benutzermanagement, oder
+          Benutzerverwaltung, der Implementation von Gruppen und
+          Kategorien und umfangreicher Datenbankanbindung entwickelt.
+          Das Projekt kann jede Art von Daten darstellen, solange die
+          Datenstruktur einem gewissen Schema folgt. Grundsätzlich gibt
+          es eine hierarchische Struktur bei der Anzeige, die sich in
+          Ober- und Unterklassen teilt. Dabei werden die Oberklassen
+          durch die umrandeten DIVs dargestellt und die Unterklassen
+          als Blöcke innerhalb der Oberklassen. Der Containermanager ist
+          sehr flexibel und wurde auf den Screenshots als
+          Versionverwaltung verwendet. Ebenso wäre er geeignet alle
+          Computer eines Unternehmens zu verwalten oder eine Übersicht
+          sämtlicher Server und den auf ihnen laufenden Applikationen,
+          die Auslastung derselben oder auch für ganz andere Dinge.
+          Ein Parser kann sogar Abhängigkeiten innerhalb verschiedener
+          Tabellen verfolgen und Datenblöcke farbig darstellen. Es
+          können sogar mehrere verschiedenartige Oberklassen auf einer
+          Seite dargestellt werden, die ebenfalls verschiedenartige
+          Unterklassen enthalten können. Dieses System kommt in einer
+          modifizierten Version momentan in der T-Systems zum Einsatz,
+          weswegen ich leider keinen Quellcode dazu veröffentlichen darf.
+          T-Systems verwaltet damit seine Server und ihre Applikationen
+          und stellt eine Verbindung zwischen Servern und Projekten bzw.
+          Umgebungen und Systemen her. Dort liefert der Containermanager
+          wichtige Aussagen darüber zu welchen Systemen welche Server
+          gehören und ob Server eventuell völlig unausgelastet sind.
+          Benutzer die das Tool benutzen können sich zudem ihre
+          Ansichten umsortieren und Datensätze ausblenden, die für sie
+          uninteressant sind. Bei der Entwicklung wurde peinlichst genau
+          auf CSS und HTML Konformität geachtet und auch "barrierefreies"
+          Benutzen für sehbehinderte Menschen ist möglich.
+        </div>
+        <a title="Screenshot" class="Img" href="2006/containermanager/Bild27.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/containermanager/Bild28.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/containermanager/Bild29.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/containermanager/Bild30.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/containermanager/Bild31.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/containermanager/Bild32.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">&raquo;SynthelicZ&laquo; History</div>
+        <div class="Year">2006</div>
+        <div class="Language">
+          HTML / JavaScript (JS) / Document Object Model (DOM) / Cascading Style Sheets (CSS)
+        </div>
+        <div class="Skills">
+          Dynamic GUI<br />
+          Cross-Browser<br />
+          Text-Browser compatible<br />
+          Tableless Design<br />
+        </div>
+        <div class="Text">
+          Um meine History und meine Referenzen benutzerfreundlich
+          umzusetzen und trotzdem eine JavaScript-freie Version darbieten
+          zu können, wurde diese Seite erzeugt. Sie dient einzig und
+          allein der Navigation durch meine pers&ouml;nliche
+          Programmiergeschichte und bietet auch mir selbst einen
+          &Uuml;berblick was ich schon gemacht hab und was nicht.
+        </div>
+        <a title="Screenshot" class="Img" href="2006/szhistory/IMG00107.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szhistory/IMG00108.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szhistory/IMG00109.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szhistory/IMG00110.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szhistory/IMG00111.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szhistory/IMG00112.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szhistory/IMG00113.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szhistory/IMG00114.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szhistory/IMG00115.png">Screenshot</a><br />
+        <a title="Screenshot" class="Img" href="2006/szhistory/IMG00116.png">Screenshot</a><br />
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      <!-- =======================[ 2010 ]========================== -->
+      <!-- ========================================================= -->
+      <div class="History_Item">
+        <div class="Title">&Tau;r&alpha;de&Mu;&alpha;ster&reg;</div>
+        <div class="Year">2010</div>
+        <div class="Language">
+          C# 3.5 / C++
+        </div>
+        <div class="Skills">
+          Financial Trading Systems, Distributed Systems, High-Performance Number Crunching, High-Performance Networking Sockets, Executable Self-Encryption, Very Large Databases
+        </div>
+        <div class="Text">
+          Diese Applikation findet selbstständig Regelmässigkeiten in den 
+          Forex-Märkten, berechnet daraus Handelsstrategien und erlaubt den 
+          Kunden diese zu handeln. Das System besteht aus einem verteilten
+          redundanten Serverbackend, Backtesting-Servern, vielen Clients,
+          einem Front-End in WPF 3.5, einem eigenen Update-Mechanismus inklusive
+          einem verschlüsselten Loader. Alle Komponenten sind komplette 
+          Eigenentwicklungen. Abgesehen von der Charting-Bibliothek wurden nur 
+          Standardkomponenten von Microsoft eingesetzt.<br />
+          Das interessante an diesem Projekt waren gleich mehrere Aspekte.
+          Ich entwickelte eine Komponente die innerhalb der 2GB Prozessgrenze
+          (3^15-1)*2 Möglichkeiten automatisch auf mehrere Jahre zurücktestete
+          und brauchbare Strategien ausspuckte. Trotz der immensen Datenmengen
+          gelang es das Backtesting innerhalb von zwei Tagen pro Währung zu 
+          berechnen. Zum Kalkulieren mehrerer Währung wurde es kurzerhand auf
+          verschiedene PC's verteilt, so dass es linear skalierte.<br />
+          Die Ergebnisse der Ein- und Ausstiege füllten schnell mehrere
+          TerraByte, so dass auch der SQL-Server ordentlich Arbeit bekam.
+          Also optimierte ich auch die Queries solange, bis sie weniger als 
+          zwei Tage benötigten, um die Statistiken vorzubereiten und die 
+          Strategien anhand von gewichteten Kennzahlen zu sortieren.
+          Dadurch entstanden Strategien, welche nun sogar in Portfolios 
+          gefasst werden konnten.<br />
+          Die nächste große Hürde stellte die (De-)Serialisierung der 
+          Serverobjekte auf einem Hochperformanten Socket dar. Nachdem 
+          bestehende Techniken als unzureichend bewertet wurden, entwickelte
+          ich also einen Asynchronen Socket, welcher beliebig große Datenpakete
+          weitestmöglich komprimieren, serialisieren und deserialisieren konnte.
+          Um die Geschwindigkeit optimal zu halten, wurde auf den Einsatz von 
+          Reflection gänzlich verzichtet. Eigene ByteBuffer Klassen sowie
+          multithreading und thread-sharing rundeten das Bild ab.
+        </div>
+        <hr />
+      </div>
+      <!-- ========================================================= -->
+      
+     <!-- End of records
+    <a href="http://www.SynthelicZ.de" style="display:none;" title="www.SynthelicZ.de">&raquo;SynthelicZ&laquo;</a>
+    <!-- Init JavaScript Browser                                     -->
+    <script type="text/JavaScript" language="JavaScript">
+      init();
+      if (!top.boolOSLoaded) {
+        document.write('<img src="http://webcounter.goweb.de/28121.GIF" style="position:absolute;top:0px;right:0px;" alt="WEBCounter by GOWEB" border="0" vspace="0" /><br />');
+      };
+    </script>
+  </body>
+</html>
