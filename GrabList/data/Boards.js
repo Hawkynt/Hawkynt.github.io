@@ -1,0 +1,15 @@
+GrabViewer.prototype._boardList = [
+  'CTRL - The Standard - 2011',
+  'CTRL - Blueprint - 2013',
+  'CWB - Absolute - 2014',
+  'Hyperlite - Milkcart - 2014',
+  'Hyperlite - Motive - 2012',
+  'Hyperlite - Motive - 2014',
+  'Hyperlite - Murray - 2014',
+  'Jobe - Click - 2014',
+  'Liquid Force - Deluxe Hybrid - 2014',
+  'Liquid Force - Peak - 2014',
+  'Ronix - District - 2014',
+  'Ronix - One - 2014',
+  'Slingshot - Whip - 2013',
+];
