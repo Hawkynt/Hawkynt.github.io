@@ -1,0 +1,111 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+  <head>
+    <meta http-equiv = "content-type"        content = "text/html; charset=ISO-8859-1" />
+    <meta http-equiv = "Language"            content = "de" />
+    <meta http-equiv = "Content-Style-Type"  content = "text/css" />
+    <meta http-equiv = "Content-Script-Type" content = "text/JavaScript" />
+    <meta name       = "pagetitle"           content = "Grab-List" />
+    <meta name       = "description"         content = "»SynthelicZ«" />
+    <meta name       = "keywords"            content = "»SynthelicZ«, SZ, Hawkynt, SynthelicZ, Synth, Project, Projekt" />
+    <meta name       = "author"              content = "Hawkynt" />
+    <meta name       = "copyright"           content = "1995-2020 »SynthelicZ« Hawkynt" />
+    <meta name       = "publisher"           content = "1995-2020 »SynthelicZ« Hawkynt" />
+    <meta name       = "revisit-after"       content = "2 days" />
+    <meta name       = "robots"              content = "follow,index" />
+    <link rel        = "shortcut icon"       href    = "../favicon.ico" />
+    <meta name       = "CREATOR"             content = "Hawkynt" />
+    <meta name       = "VERSION"             content = "1.0a" />
+    <meta name       = "LASTMODIFIED"        content = "02.12.2014 19:34" />
+    <meta name       = "APPLICATION"         content = "NOTEPAD++.EXE" />
+    <meta name       = "CONTENT"             content = "XHTML 1.0/HTML 4.01/XML 1.0 - CSS 3.0 - JS 2.0 - DOM2.5" />
+    
+    <title>&raquo;SynthelicZ&laquo; Wakeboard Grab-List</title>
+    
+    <script type="text/javascript" src="external/jquery-1.11.1.min.js"></script>
+    <script type="text/javascript" src="external/jQueryRotateCompressed.js"></script>
+    <script type="text/javascript" src="external/jquery.rule-1.0.2-min.js"></script>
+
+    <script type="text/javascript" src="classes/GrabViewer.js"></script>
+    <script type="text/javascript" src="data/Grabs.js"></script>
+    <script type="text/javascript" src="data/Boards.js"></script>
+
+    <link rel="stylesheet" href="css/GrabViewer.css" type="text/css"/>
+    <script type="text/javascript">
+      var viewer = new GrabViewer();
+
+      $(document).ready(function () {
+        
+        var i;
+        var option;
+
+        // load boards
+        var boards = viewer.Boards();
+        for(i = 0;i<boards.length;++i){
+          option = new Option(boards[i],i);
+          $('#boardName').append(option);
+        }
+                
+        // load grabs
+        var grabs = viewer.Grabs();
+        for(i = 0;i<grabs.length;++i){
+          option = new Option(grabs[i].displayName,i);
+          $('#grabName').append(option);
+        }
+
+        viewer.CurrentBoard(boards[0]);
+        viewer.CenterPosition([500,500]);
+        viewer.CurrentGrab(grabs[0]);
+      });
+      
+    </script>
+  </head>
+  <body>
+    <table id="menu">
+      <tr>
+        <td>Grab: </td>
+        <td><select id="grabName" onchange="viewer.CurrentGrab(viewer.Grabs()[this.value])"></select></td>
+      </tr>
+      <tr>
+        <td>Board: </td>
+        <td><select id="boardName" onchange="viewer.CurrentBoard(viewer.Boards()[this.value])"></select></td>
+      </tr>
+      <tr>
+        <td>Rotate: </td>
+        <td><input type="checkbox" onchange="viewer.AutoRotate(this.checked)"/></td>
+      </tr>
+      <tr>
+        <td>Stance: </td>
+        <td>
+          <select onchange="viewer.StanceType(this.value)">
+            <option value="1">Regular</option>
+            <option value="-1">Goofy</option>
+          </select>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="2"><a href="resources/images/cheatSheet.jpg">Download Cheat-Sheet</a></td>
+      </tr>
+    </table>
+    
+    <img id="grid" src="resources/images/Grid.png" />
+    <img id="wakeboard" src="resources/images/boards/CTRL - The Standard - 2011.png" />
+    <img id="boots" src="resources/images/Boots.png" />
+    
+    <img class="marker" id="frontHandMarker" src="resources/images/frontHand.png" />
+    <img class="marker" id="rearHandMarker" src="resources/images/rearHand.png"/>
+    <img class="marker" id="frontHandCrossMarker" src="resources/images/frontHandCross.png"/>
+    <img class="marker" id="rearHandCrossMarker" src="resources/images/rearHandCross.png"/>
+    
+    <div class="label" id="frontHandLabel">Front Hand</div>
+    <div class="label" id="rearHandLabel">Rear Hand</div>
+    <div class="label" id="frontHandCrossLabel">Front Hand through legs</div>
+    <div class="label" id="rearHandCrossLabel">Rear Hand through legs</div>
+    
+    <div class="line" id="frontHandLine"></div>
+    <div class="line" id="rearHandLine"></div>
+    <div class="line" id="frontHandCrossLine"></div>
+    <div class="line" id="rearHandCrossLine"></div>
+    
+  </body>
+</html>
