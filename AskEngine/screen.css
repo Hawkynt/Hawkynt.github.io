@@ -1,0 +1,73 @@
+.Default {
+  font: 80% Tahoma, Verdana, Arial, Monospace
+}
+
+.TableFix {
+  font-size: 100%
+}
+
+.InputWindow {
+  BORDER-RIGHT: buttonshadow 1px solid;
+  BORDER-TOP: buttonhighlight 1px solid;
+  BORDER-LEFT: buttonhighlight 1px solid;
+  BORDER-BOTTOM: buttonshadow 1px solid;
+  BACKGROUND-COLOR: buttonface;
+  COLOR: buttontext;
+}
+
+.OutputWindow {
+  BORDER-RIGHT: buttonshadow 1px solid;
+  BORDER-TOP: buttonhighlight 1px solid;
+  BORDER-LEFT: buttonhighlight 1px solid;
+  BORDER-BOTTOM: buttonshadow 1px solid;
+  COLOR: buttontext; 
+  BACKGROUND-COLOR: buttonface;
+}
+
+.ActiveWindowCaption {
+  PADDING-LEFT: 20px;
+  FONT-WEIGHT: bold;
+  COLOR: captiontext;
+  BORDER-BOTTOM: buttonshadow 1px solid;
+  BACKGROUND-COLOR: activecaption;
+  TEXT-ALIGN: left;
+}
+
+.InactiveWindowCaption {
+  PADDING-LEFT: 20px;
+  FONT-WEIGHT: bold;
+  COLOR: inactivecaptiontext;
+  BORDER-BOTTOM: buttonshadow 1px solid;
+  BACKGROUND-COLOR: inactivecaption;
+  TEXT-ALIGN: left;
+}
+
+.Fragen {
+  BORDER-RIGHT: buttonhighlight 1px solid;
+  PADDING-RIGHT: 4px;
+  BORDER-TOP: buttonshadow 1px solid;
+  PADDING-LEFT: 4px;
+  PADDING-BOTTOM: 4px;
+  MARGIN: 4px;
+  OVERFLOW: auto;
+  BORDER-LEFT: buttonshadow 1px solid;
+  COLOR: windowtext;
+  PADDING-TOP: 4px;
+  BORDER-BOTTOM: buttonhighlight 1px solid;
+  BACKGROUND-COLOR: window;
+}
+
+.Antwort {
+  BORDER-RIGHT: buttonhighlight 1px solid;
+  PADDING-RIGHT: 4px;
+  BORDER-TOP: buttonshadow 1px solid;
+  PADDING-LEFT: 4px;
+  PADDING-BOTTOM: 4px;
+  MARGIN: 4px;
+  OVERFLOW: auto;
+  BORDER-LEFT: buttonshadow 1px solid;
+  COLOR: windowtext;
+  PADDING-TOP: 4px;
+  BORDER-BOTTOM: buttonhighlight 1px solid;
+  BACKGROUND-COLOR: window;
+}
