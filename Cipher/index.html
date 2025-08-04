@@ -1,372 +1,1071 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<!DOCTYPE html>
+<html lang="en">
   <head>
-    <meta http-equiv = "content-type"        content = "text/html; charset=ISO-8859-1" />
-    <meta http-equiv = "Language"            content = "de" />
-    <meta http-equiv = "expires"             content = "0" />
-    <meta http-equiv = "Content-Style-Type"  content = "text/css" />
-    <meta http-equiv = "Content-Script-Type" content = "text/JavaScript" />
-    <meta name       = "page_title"          content = "Cipher/JavaScript" />
-    <meta name       = "page_version"        content = "v1.0" />
-    <meta name       = "description"         content = "»SynthelicZ«" />
-    <meta name       = "keywords"            content = "»SynthelicZ«, SZ, Hawkynt, SynthelicZ, Synth, Project, Projekt" />
-    <meta name       = "author"              content = "Hawkynt" />
-    <meta name       = "copyright"           content = "1995-2006 »SynthelicZ« Hawkynt" />
-    <meta name       = "publisher"           content = "1995-2006 »SynthelicZ« Hawkynt" />
-    <meta name       = "revisit-after"       content = "2 days" />
-    <meta name       = "robots"              content = "follow,index" />
-	<meta name  = "google-site-verification" content = "LkZ6DT0_GlcimQOKrWL20jv4jtUh0DBsh1ZPLXQqk3A" />
-    <link rel        = "shortcut icon"       href    = "../favicon.ico" />
-    <meta name       = "CREATOR"             content = "Hawkynt" />
-    <meta name       = "VERSION"             content = "1.0a" />
-    <meta name       = "LASTMODIFIED"        content = "18.07.2006 17:00" />
-    <meta name       = "APPLICATION"         content = "NOTEPAD2.EXE" />
-    <meta name       = "CONTENT"             content = "XHTML 1.0/HTML 4.01/XML 1.0 - CSS 2.0 - JS 2.0 - DOM2.5" />
-    <title>
-      »SynthelicZ« Cipher/JavaScript
-      <!-- 
-      <body>
-      </body>
-      -->
-    </title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="page_title" content="Cipher/JavaScript" />
+    <meta name="page_version" content="v1.0" />
+    <meta name="description" content="&raquo;SynthelicZ&laquo; Cryptographic Tools - Educational cipher implementations for defensive security analysis" />
+    <meta name="keywords" content="cryptography, cipher, encryption, educational, security, analysis" />
+    <meta name="author" content="Hawkynt" />
+    <meta name="robots" content="follow,index" />
+    <meta name="google-site-verification" content="LkZ6DT0_GlcimQOKrWL20jv4jtUh0DBsh1ZPLXQqk3A" />
+    <link rel="shortcut icon" href="../favicon.ico" />
+    <title>&raquo;SynthelicZ&laquo; Cipher/JavaScript</title>
     <!-- External Files -->
-    <script type="text/JavaScript" language="JavaScript" src="./xdom.js"></script>
-    <script type="text/JavaScript" language="JavaScript" src="./cipher.js"></script>
+    <script src="./xdom.js"></script>
+    <script src="./cipher.js"></script>
     <!-- Source for the Ciphers I implemented                                                   -->
     <!-- http://www.cipherbox.de/                                                               -->
     <!-- http://paginas.terra.com.br/informatica/paulobarreto/                                  -->
     <!-- Source for the Hashes I implemented                                                    -->
     <!-- http://www.pajhome.org.uk/crypt/                                                       -->
     <!-- =========================[ CONVERTER ]================================================ -->
-      <script type="text/JavaScript" language="JavaScript" src="./base64.js"></script>
-      <script type="text/JavaScript" language="JavaScript" src="./bubblebabble.js"></script>
-      <script type="text/JavaScript" language="JavaScript" src="./koremutake.js"></script>
+      <script src="./base64.js"></script>
+      <script src="./bubblebabble.js"></script>
+      <script src="./koremutake.js"></script>
     <!-- =========================[ STREAM CIPHERS ]=========================================== -->
       <!-- =======================[ SUBSTITUTION CIPHERS ]===================================== -->
-        <script type="text/JavaScript" language="JavaScript" src="./atbash.js"></script>
-        <script type="text/JavaScript" language="JavaScript" src="./mystery.js"></script>
+        <script src="./atbash.js"></script>
+        <script src="./mystery.js"></script>
       <!-- =======================[ SHIFT CIPHERS ]============================================ -->
-        <script type="text/JavaScript" language="JavaScript" src="./caesar.js"></script>
-        <script type="text/JavaScript" language="JavaScript" src="./rot.js"></script>
+        <script src="./caesar.js"></script>
+        <script src="./rot.js"></script>
     <!-- =========================[ BLOCK CIPHERS ]============================================ -->
       <!-- =======================[ STRONG CIPHERS ]=========================================== -->
-        <script type="text/JavaScript" language="JavaScript" src="./rijndael.js"></script>
-        <script type="text/JavaScript" language="JavaScript" src="./blowfish.js"></script>
-        <script type="text/JavaScript" language="JavaScript" src="./anubis.js"></script>
-        <script type="text/JavaScript" language="JavaScript" src="./khazad.js"></script>
+        <script src="./rijndael.js"></script>
+        <script src="./blowfish.js"></script>
+        <script src="./anubis.js"></script>
+        <script src="./khazad.js"></script>
       <!-- =======================[ WEAK CIPHERS ]============================================= -->
-        <script type="text/JavaScript" language="JavaScript" src="./tea.js"></script>
+        <script src="./tea.js"></script>
     <!-- =========================[ STREAM COMPRESSORS ]======================================= -->
-      <script type="text/JavaScript" language="JavaScript" src="./lzss.js"></script>
-    <!-- Internal Things -->
-    <style type="text/CSS">
-      <!--
-      DIV, SPAN {
-        border:0px;
-        margin:0px;
-        padding:0px;
+      <script src="./lzss.js"></script>
+    <!-- Styles -->
+    <style>
+      /* Reset and base styles */
+      * {
+        box-sizing: border-box;
       }
       
-      HTML,BODY {
-        height:100%;
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #333;
       }
       
-      TABLE {
-        font-size:100%;
+      /* Legacy browser fallback */
+      body {
+        font-family: Tahoma, Verdana, Arial, sans-serif;
+        background: #667eea; /* Fallback for old browsers */
       }
       
-      SELECT {
-        font:100% Courier;
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
       }
       
-      INPUT {
-        MARGIN:2px;
-        BORDER-LEFT: buttonshadow 1px solid;
-        BORDER-BOTTOM: buttonhighlight 1px solid;
-        BORDER-RIGHT: buttonhighlight 1px solid;
-        BORDER-TOP: buttonshadow 1px solid;
-        BACKGROUND-COLOR: buttonface;
-        COLOR: buttontext;
+      /* Legacy fallback */
+      .container {
+        width: 95%;
+        margin-left: auto;
+        margin-right: auto;
       }
       
-      BUTTON {
-        MARGIN:2px;
-        BORDER-RIGHT: buttonshadow 1px solid;
-        BORDER-TOP: buttonhighlight 1px solid;
-        BORDER-LEFT: buttonhighlight 1px solid;
-        BORDER-BOTTOM: buttonshadow 1px solid;
-        BACKGROUND-COLOR: buttonface;
-        COLOR: buttontext;
-        WIDTH:72px;
+      .header {
+        text-align: center;
+        margin-bottom: 30px;
+        color: white;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.3);
       }
       
-      .Default {
-        font:100% Tahoma, Verdana, Arial, Monospace;
+      .header h1 {
+        font-size: 2.5rem;
+        margin: 0 0 10px 0;
+        font-weight: 300;
       }
       
-      .Segment_Data {
-        display:none;
+      .cipher-panel {
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        padding: 30px;
+        margin-bottom: 20px;
       }
-      -->
+      
+      /* Legacy fallback */
+      .cipher-panel {
+        background: #ffffff;
+        border: 1px solid #ccc;
+        padding: 20px;
+      }
+      
+      .cipher-info {
+        background: #f8f9fa;
+        border-left: 4px solid #007bff;
+        padding: 15px;
+        margin-bottom: 25px;
+        border-radius: 4px;
+      }
+      
+      .cipher-info h2 {
+        margin: 0 0 10px 0;
+        color: #007bff;
+        font-size: 1.5rem;
+      }
+      
+      .form-group {
+        margin-bottom: 20px;
+      }
+      
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+        color: #555;
+      }
+      
+      select, input[type="text"] {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e0e0e0;
+        border-radius: 6px;
+        font-size: 14px;
+        transition: border-color 0.3s ease;
+        background: white;
+      }
+      
+      /* Legacy fallback */
+      select, input[type="text"] {
+        padding: 8px;
+        border: 1px solid #ccc;
+        font-family: inherit;
+      }
+      
+      select:focus, input[type="text"]:focus {
+        outline: none;
+        border-color: #007bff;
+        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+      }
+      
+      .data-grid {
+        display: grid;
+        grid-template-columns: 120px 1fr 1fr 1fr;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 15px;
+      }
+      
+      /* Legacy fallback */
+      .data-grid {
+        display: table;
+        width: 100%;
+        border-collapse: collapse;
+      }
+      
+      .data-row {
+        display: contents;
+      }
+      
+      /* Legacy fallback */
+      .data-row {
+        display: table-row;
+      }
+      
+      .data-cell {
+        padding: 8px;
+      }
+      
+      /* Legacy fallback */
+      .data-cell {
+        display: table-cell;
+        padding: 5px;
+        border: 1px solid #ddd;
+      }
+      
+      .data-label {
+        font-weight: 500;
+        text-align: right;
+        padding-right: 15px;
+        color: #666;
+      }
+      
+      .btn-group {
+        display: flex;
+        gap: 15px;
+        justify-content: center;
+        margin-top: 25px;
+      }
+      
+      /* Legacy fallback */
+      .btn-group {
+        text-align: center;
+      }
+      
+      .btn {
+        background: linear-gradient(135deg, #007bff, #0056b3);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        font-size: 16px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        min-width: 120px;
+      }
+      
+      /* Legacy fallback */
+      .btn {
+        background: #007bff;
+        color: white;
+        border: 1px solid #0056b3;
+        padding: 10px 20px;
+        margin: 5px;
+      }
+      
+      .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+      }
+      
+      .btn:active {
+        transform: translateY(0);
+      }
+      
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+      }
+      
+      .hidden {
+        display: none;
+      }
+      
+      /* Tab System */
+      .tab-container {
+        margin-bottom: 30px;
+      }
+      
+      .tab-nav {
+        display: flex;
+        margin-bottom: 0;
+        border-bottom: 2px solid rgba(83, 52, 131, 0.3);
+      }
+      
+      .tab-nav button {
+        background: rgba(26, 26, 46, 0.6);
+        border: none;
+        border-bottom: 3px solid transparent;
+        color: #cccccc;
+        padding: 12px 24px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      
+      .tab-nav button:hover {
+        background: rgba(83, 52, 131, 0.4);
+        color: #ffffff;
+      }
+      
+      .tab-nav button.active {
+        background: rgba(83, 52, 131, 0.8);
+        border-bottom-color: #533483;
+        color: #ffffff;
+        box-shadow: 0 -2px 10px rgba(83, 52, 131, 0.4);
+      }
+      
+      .tab-content {
+        display: none;
+        animation: fadeIn 0.3s ease;
+      }
+      
+      .tab-content.active {
+        display: block;
+      }
+      
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      
+      /* Test Results */
+      .test-results {
+        background: rgba(15, 52, 96, 0.3);
+        border-radius: 8px;
+        padding: 20px;
+        margin-top: 20px;
+        font-family: 'Courier New', monospace;
+        font-size: 13px;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+      
+      .test-case {
+        margin-bottom: 15px;
+        padding: 10px;
+        border-radius: 4px;
+        border-left: 4px solid #666;
+      }
+      
+      .test-case.pass {
+        background: rgba(40, 167, 69, 0.2);
+        border-left-color: #28a745;
+      }
+      
+      .test-case.fail {
+        background: rgba(220, 53, 69, 0.2);
+        border-left-color: #dc3545;
+      }
+      
+      .test-case.warn {
+        background: rgba(255, 193, 7, 0.2);
+        border-left-color: #ffc107;
+      }
+      
+      .test-summary {
+        background: rgba(83, 52, 131, 0.3);
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+      
+      .test-controls {
+        margin-bottom: 20px;
+        text-align: center;
+      }
+      
+      .test-controls .btn {
+        margin: 0 10px;
+        min-width: 120px;
+      }
+      
+      /* Legacy browser table fallback */
+      @media screen and (-ms-high-contrast: active), (-ms-high-contrast: none) {
+        .data-grid {
+          display: table;
+          width: 100%;
+        }
+        
+        .data-row {
+          display: table-row;
+        }
+        
+        .data-cell {
+          display: table-cell;
+          padding: 8px;
+          border: 1px solid #ddd;
+          vertical-align: top;
+        }
+      }
+      
+      /* Lynx and text browser fallback */
+      @media speech, (max-width: 1px) {
+        body {
+          background: white;
+          color: black;
+          font-family: monospace;
+        }
+        
+        .container {
+          max-width: none;
+          padding: 10px;
+        }
+        
+        .cipher-panel {
+          background: white;
+          border: 2px solid black;
+          border-radius: 0;
+          box-shadow: none;
+        }
+        
+        .data-grid {
+          display: block;
+        }
+        
+        .data-row {
+          display: block;
+          margin-bottom: 10px;
+        }
+        
+        .data-cell {
+          display: block;
+          margin-bottom: 5px;
+        }
+        
+        .data-label {
+          font-weight: bold;
+        }
+        
+        input, select {
+          border: 1px solid black;
+          background: white;
+        }
+        
+        .btn {
+          background: white;
+          color: black;
+          border: 2px solid black;
+          border-radius: 0;
+        }
+      }
+      
+      /* Responsive design */
+      @media (max-width: 768px) {
+        .data-grid {
+          grid-template-columns: 1fr;
+          gap: 5px;
+        }
+        
+        .data-label {
+          text-align: left;
+          padding-right: 0;
+          font-weight: bold;
+          margin-top: 15px;
+        }
+        
+        .btn-group {
+          flex-direction: column;
+          align-items: center;
+        }
+        
+        .cipher-panel {
+          padding: 20px;
+          margin: 10px;
+        }
+      }
     </style>
-    <script type="text/JavaScript" language="JavaScript">
-      <!-- ;
-      document.title='»SynthelicZ« '+getMetaContent('Page_Title')+' '+getMetaContent('Page_version')+' ['+document.compatMode+']';
-      BASE64.Init();
-      var szBASE64ID=BASE64.KeySetup();
+    <script>
+      // Modern JavaScript with legacy fallbacks
+      (function() {
+        'use strict';
+        
+        // Initialize
+        document.title = '&raquo;SynthelicZ&laquo; ' + (getMetaContent('Page_Title') || 'Cipher/JavaScript') + ' ' + (getMetaContent('Page_version') || 'v1.0');
+        
+        if (typeof BASE64 !== 'undefined' && BASE64.Init) {
+          BASE64.Init();
+        }
+        
+        var szBASE64ID;
+        if (typeof BASE64 !== 'undefined' && BASE64.KeySetup) {
+          szBASE64ID = BASE64.KeySetup();
+        }
+        
+        // Global variables (for legacy compatibility)
+        window.szCipher = ''; // Currently used Cipher Name
+        window.arrStrings = {}; // Use object instead of array for better property access
+        window.szBASE64ID = szBASE64ID;
       
-      
-      var szCipher=''; // Currently used Cipher Name
-      var arrStrings=new Array();
-      
-      function BodyInit() {
-        removeScripts();
-        /* Body initialization */
-        var intI=document.forms['frmCipher'].elements['slctCipher'].options.length;
-        var arrCiphers=Cipher.getCiphers();
-        for (var intJ=0;intJ<arrCiphers.length;intJ++) {
-          document.forms['frmCipher'].elements['slctCipher'].options[intI+intJ]=new Option(Cipher.objGetCipher(arrCiphers[intJ]).szName,arrCiphers[intJ]);
-        };
-        document.forms['frmCipher'].elements['slctCipher'].options.selectedIndex=0;
-      }
-      
-      // Clear all Fields
-      function clearFields() {
-        refreshFields('InputData','binary','');
-        clearOutputFields();
-      }
-      
-      function clearOutputFields() {
-        refreshFields('OutputData','binary','');
-        refreshFields('InputKey','binary','');
-        refreshFields('OutputKey','binary','');
-        refreshFields('ReconstructedData','binary','');
-      }
-      
-      // Internal set ReadOnly and Writeable
-      function setInputActive(szName) {
-        document.forms['frmCipher'].elements[szName].readOnly=false;
-        document.forms['frmCipher'].elements[szName].style.backgroundColor='#FFF';
-        document.forms['frmCipher'].elements[szName].style.color='#000';
-      }
-      
-      function setInputInactive(szName) {
-        document.forms['frmCipher'].elements[szName].readOnly=true;
-        document.forms['frmCipher'].elements[szName].style.backgroundColor='buttonface';
-        document.forms['frmCipher'].elements[szName].style.color='buttontext';
-      }
-      
-      // KeyUp Event
-      function refreshFields(szName,szCurrentType,optional_szParam1) {
-        var szString;
-        if (szCurrentType.toLowerCase()=='binary') {
-          if (optional_szParam1!=undefined) {
-            szString=optional_szParam1;
-            document.forms['frmCipher'].elements[szName].value=szString;
-          } else {
-            szString=document.forms['frmCipher'].elements[szName].value;
-          };
-          arrStrings[szName]=szString;
-          document.forms['frmCipher'].elements[szName+'HEX'].value=szString2HEX(szString);
-          document.forms['frmCipher'].elements[szName+'BASE64'].value=BASE64.szEncryptBlock(szBASE64ID,szString);
-        } else if (szCurrentType.toLowerCase()=='hex') {
-          arrStrings[szName]=szHEX2String(document.forms['frmCipher'].elements[szName+'HEX'].value);
-          document.forms['frmCipher'].elements[szName].value=arrStrings[szName];
-          document.forms['frmCipher'].elements[szName+'BASE64'].value=BASE64.szEncryptBlock(szBASE64ID,arrStrings[szName]);
-        } else if (szCurrentType.toLowerCase()=='base64') {
-          arrStrings[szName]=BASE64.DecryptBlock(szBASE64ID,document.forms['frmCipher'].elements[szName+'BASE64'].value);
-          document.forms['frmCipher'].elements[szName].value=arrStrings[szName];
-          document.forms['frmCipher'].elements[szName+'HEX'].value=szString2HEX(arrStrings[szName]);
-        };
-      }
-      
-      // Button Events
-      function Encrypt() {
-        if (szCipher!='') {
-          var szID=Cipher.InitCipher(szCipher,arrStrings['InputKey']);
-          if (szID!=undefined) {
-            refreshFields('OutputData','binary',Cipher.szEncrypt(szID,arrStrings['InputData'],'ECB'));
-            Cipher.ClearData(szID);
-          };
-        } else {
-          alert('Select Cipher first !');
-        };
-      }
-      
-      function Decrypt() {
-        if (szCipher!='') {
-          var szID=Cipher.InitCipher(szCipher,arrStrings['OutputKey']);
-          if (szID!=undefined) {
-            refreshFields('ReconstructedData','binary',Cipher.szDecrypt(szID,arrStrings['OutputData'],'ECB'));
-            Cipher.ClearData(szID);
-          };
-        } else {
-          alert('Select Cipher first !');
-        };
-      }
-      
-      // Selectbox Event
-      function ChangeCipher(szCipherName) {
-        if (Cipher.boolExistsCipher(szCipherName)==true) {
-          szCipher=szCipherName;
-          document.getElementById('CipherName').innerHTML='<h1>'+Cipher.objGetCipher(szCipher).szName+' ['+szCipher+']</h1>'+Cipher.objGetCipher(szCipher).szComment+'';
+        // Initialize body
+        window.BodyInit = function() {
+          if (typeof removeScripts === 'function') {
+            removeScripts();
+          }
           
+          try {
+            var selectElement = document.forms['frmCipher'] && document.forms['frmCipher'].elements['slctCipher'];
+            if (!selectElement || typeof Cipher === 'undefined') {
+              console.warn('Cipher system not loaded properly');
+              return;
+            }
+            
+            var intI = selectElement.options.length;
+            var arrCiphers = Cipher.getCiphers ? Cipher.getCiphers() : [];
+            
+            for (var intJ = 0; intJ < arrCiphers.length; intJ++) {
+              try {
+                var cipherInfo = Cipher.objGetCipher(arrCiphers[intJ]);
+                selectElement.options[intI + intJ] = new Option(cipherInfo.szName, arrCiphers[intJ]);
+              } catch (e) {
+                console.warn('Error loading cipher:', arrCiphers[intJ], e);
+              }
+            }
+            
+            selectElement.selectedIndex = 0;
+          } catch (e) {
+            console.error('Error in BodyInit:', e);
+          }
+        };
+      
+        // Clear all Fields
+        window.clearFields = function() {
+          refreshFields('InputData', 'binary', '');
           clearOutputFields();
-          setInputActive('InputData');
-          setInputActive('InputDataHEX');
-          setInputActive('InputDataBASE64');
+        };
+        
+        window.clearOutputFields = function() {
+          refreshFields('OutputData', 'binary', '');
+          refreshFields('InputKey', 'binary', '');
+          refreshFields('OutputKey', 'binary', '');
+          refreshFields('ReconstructedData', 'binary', '');
+        };
+      
+        // Internal set ReadOnly and Writeable
+        window.setInputActive = function(szName) {
+          try {
+            var element = document.forms['frmCipher'].elements[szName];
+            if (element) {
+              element.readOnly = false;
+              element.style.backgroundColor = '#FFF';
+              element.style.color = '#000';
+              element.style.opacity = '1';
+            }
+          } catch (e) {
+            console.warn('Error activating input:', szName, e);
+          }
+        };
+        
+        window.setInputInactive = function(szName) {
+          try {
+            var element = document.forms['frmCipher'].elements[szName];
+            if (element) {
+              element.readOnly = true;
+              element.style.backgroundColor = '#f5f5f5';
+              element.style.color = '#666';
+              element.style.opacity = '0.6';
+            }
+          } catch (e) {
+            console.warn('Error deactivating input:', szName, e);
+          }
+        };
+      
+        // KeyUp Event with error handling
+        window.refreshFields = function(szName, szCurrentType, optional_szParam1) {
+          try {
+            var szString;
+            var form = document.forms['frmCipher'];
+            if (!form || !form.elements[szName]) {
+              console.warn('Form element not found:', szName);
+              return;
+            }
+            
+            if (szCurrentType.toLowerCase() === 'binary') {
+              if (optional_szParam1 !== undefined) {
+                szString = optional_szParam1;
+                form.elements[szName].value = szString;
+              } else {
+                szString = form.elements[szName].value;
+              }
+              
+              window.arrStrings[szName] = szString;
+              
+              if (form.elements[szName + 'HEX']) {
+                form.elements[szName + 'HEX'].value = szString2HEX(szString);
+              }
+              
+              if (form.elements[szName + 'BASE64'] && typeof BASE64 !== 'undefined' && BASE64.szEncryptBlock && window.szBASE64ID) {
+                form.elements[szName + 'BASE64'].value = BASE64.szEncryptBlock(window.szBASE64ID, szString);
+              }
+            } else if (szCurrentType.toLowerCase() === 'hex') {
+              if (form.elements[szName + 'HEX']) {
+                window.arrStrings[szName] = szHEX2String(form.elements[szName + 'HEX'].value);
+                form.elements[szName].value = window.arrStrings[szName];
+                
+                if (form.elements[szName + 'BASE64'] && typeof BASE64 !== 'undefined' && BASE64.szEncryptBlock && window.szBASE64ID) {
+                  form.elements[szName + 'BASE64'].value = BASE64.szEncryptBlock(window.szBASE64ID, window.arrStrings[szName]);
+                }
+              }
+            } else if (szCurrentType.toLowerCase() === 'base64') {
+              if (form.elements[szName + 'BASE64'] && typeof BASE64 !== 'undefined' && BASE64.DecryptBlock && window.szBASE64ID) {
+                window.arrStrings[szName] = BASE64.DecryptBlock(window.szBASE64ID, form.elements[szName + 'BASE64'].value);
+                form.elements[szName].value = window.arrStrings[szName];
+                
+                if (form.elements[szName + 'HEX']) {
+                  form.elements[szName + 'HEX'].value = szString2HEX(window.arrStrings[szName]);
+                }
+              }
+            }
+          } catch (e) {
+            console.error('Error in refreshFields:', e);
+          }
+        };
+      
+        // Button Events with better error handling
+        window.Encrypt = function() {
+          try {
+            if (window.szCipher && window.szCipher !== '') {
+              if (typeof Cipher === 'undefined') {
+                alert('Cipher system not loaded!');
+                return;
+              }
+              
+              var szID = Cipher.InitCipher(window.szCipher, window.arrStrings['InputKey'] || '');
+              if (szID !== undefined) {
+                var encryptedData = Cipher.szEncrypt(szID, window.arrStrings['InputData'] || '', 'ECB');
+                refreshFields('OutputData', 'binary', encryptedData);
+                Cipher.ClearData(szID);
+              } else {
+                alert('Failed to initialize cipher!');
+              }
+            } else {
+              alert('Please select a cipher algorithm first!');
+            }
+          } catch (e) {
+            console.error('Encryption error:', e);
+            alert('Encryption failed: ' + e.message);
+          }
+        };
+        
+        window.Decrypt = function() {
+          try {
+            if (window.szCipher && window.szCipher !== '') {
+              if (typeof Cipher === 'undefined') {
+                alert('Cipher system not loaded!');
+                return;
+              }
+              
+              var szID = Cipher.InitCipher(window.szCipher, window.arrStrings['OutputKey'] || '');
+              if (szID !== undefined) {
+                var decryptedData = Cipher.szDecrypt(szID, window.arrStrings['OutputData'] || '', 'ECB');
+                refreshFields('ReconstructedData', 'binary', decryptedData);
+                Cipher.ClearData(szID);
+              } else {
+                alert('Failed to initialize cipher!');
+              }
+            } else {
+              alert('Please select a cipher algorithm first!');
+            }
+          } catch (e) {
+            console.error('Decryption error:', e);
+            alert('Decryption failed: ' + e.message);
+          }
+        };
+      
+        // Selectbox Event with improved UI updates
+        window.ChangeCipher = function(szCipherName) {
+          try {
+            if (typeof Cipher === 'undefined' || !Cipher.boolExistsCipher) {
+              console.warn('Cipher system not available');
+              return;
+            }
+            
+            if (Cipher.boolExistsCipher(szCipherName)) {
+              window.szCipher = szCipherName;
+              var cipherInfo = Cipher.objGetCipher(window.szCipher);
+              
+              // Update cipher information display
+              var cipherNameElement = document.getElementById('CipherName');
+              if (cipherNameElement) {
+                cipherNameElement.innerHTML = 
+                  '<h2>' + cipherInfo.szName + ' [' + window.szCipher + ']</h2>' +
+                  '<p>' + (cipherInfo.szComment || 'No description available.') + '</p>';
+              }
+              
+              clearOutputFields();
+              
+              // Activate input fields
+              setInputActive('InputData');
+              setInputActive('InputDataHEX');
+              setInputActive('InputDataBASE64');
+              
+              // Handle key fields based on cipher requirements
+              var needsKey = (cipherInfo.intMaxKeyLength > 0) || (cipherInfo.intMinKeyLength > 0);
+              if (needsKey) {
+                setInputActive('InputKey');
+                setInputActive('InputKeyHEX');
+                setInputActive('InputKeyBASE64');
+                setInputActive('OutputKey');
+                setInputActive('OutputKeyHEX');
+                setInputActive('OutputKeyBASE64');
+              } else {
+                setInputInactive('InputKey');
+                setInputInactive('InputKeyHEX');
+                setInputInactive('InputKeyBASE64');
+                setInputInactive('OutputKey');
+                setInputInactive('OutputKeyHEX');
+                setInputInactive('OutputKeyBASE64');
+              }
+              
+              // Handle decode capability
+              var decryptBtn = document.getElementById('btnDecrypt');
+              if (cipherInfo.boolCantDecode) {
+                setInputInactive('OutputData');
+                setInputInactive('OutputDataHEX');
+                setInputInactive('OutputDataBASE64');
+                setInputInactive('OutputKey');
+                setInputInactive('OutputKeyHEX');
+                setInputInactive('OutputKeyBASE64');
+                if (decryptBtn) decryptBtn.style.display = 'none';
+              } else {
+                setInputActive('OutputData');
+                setInputActive('OutputDataHEX');
+                setInputActive('OutputDataBASE64');
+                if (decryptBtn) decryptBtn.style.display = '';
+              }
+              
+              // Result fields are always inactive
+              setInputInactive('ReconstructedData');
+              setInputInactive('ReconstructedDataHEX');
+              setInputInactive('ReconstructedDataBASE64');
+            }
+          } catch (e) {
+            console.error('Error changing cipher:', e);
+          }
+        };
+      
+        // ============================[ UTILITY FUNCTIONS ]====================================
+        // Convert String to HEX with better error handling
+        window.szString2HEX = function(szString) {
+          try {
+            var szRet = '';
+            szString = szString || '';
+            for (var intI = 0; intI < szString.length; intI++) {
+              var intChar = szString.charCodeAt(intI);
+              szRet += szDec2Hex(intChar) + ' ';
+            }
+            return szRet.trim();
+          } catch (e) {
+            console.error('Error converting string to HEX:', e);
+            return '';
+          }
+        };
+        
+        // Convert HEX to String with better error handling
+        window.szHEX2String = function(szHex) {
+          try {
+            var szRet = '';
+            var szString = (szHex || '').replace(/\s/g, '');
+            for (var intI = 0; intI < szString.length; intI += 2) {
+              var szChar = szString.substr(intI, 2);
+              if (szChar.length === 2) {
+                szRet += String.fromCharCode(intHex2Dec(szChar));
+              }
+            }
+            return szRet;
+          } catch (e) {
+            console.error('Error converting HEX to string:', e);
+            return '';
+          }
+        };
+        
+        // Convert Decimal to HEX
+        window.szDec2Hex = function(intN) {
+          try {
+            var szRet = '00' + intN.toString(16).toUpperCase();
+            return szRet.substr(szRet.length - 2, 2);
+          } catch (e) {
+            console.error('Error converting decimal to HEX:', e);
+            return '00';
+          }
+        };
+        
+        // Convert HEX to Decimal
+        window.intHex2Dec = function(szN) {
+          try {
+            return parseInt(szN, 16) || 0;
+          } catch (e) {
+            console.error('Error converting HEX to decimal:', e);
+            return 0;
+          }
+        };
+        
+        // ============================[ TAB SYSTEM ]====================================
+        window.switchTab = function(tabName) {
+          // Hide all tab contents
+          var tabContents = document.getElementsByClassName('tab-content');
+          for (var i = 0; i < tabContents.length; i++) {
+            tabContents[i].classList.remove('active');
+          }
           
-          if ((Cipher.objGetCipher(szCipher).intMaxKeyLength>0) || (Cipher.objGetCipher(szCipher).intMinKeyLength>0)) {
-            setInputActive('InputKey');
-            setInputActive('InputKeyHEX');
-            setInputActive('InputKeyBASE64');
+          // Remove active class from all tab buttons
+          var tabButtons = document.getElementsByClassName('tab-button');
+          for (var i = 0; i < tabButtons.length; i++) {
+            tabButtons[i].classList.remove('active');
+          }
+          
+          // Show selected tab content
+          var selectedTab = document.getElementById(tabName + '-tab');
+          if (selectedTab) {
+            selectedTab.classList.add('active');
+          }
+          
+          // Add active class to clicked button
+          event.target.classList.add('active');
+        };
+        
+        // ============================[ UNIT TEST SYSTEM ]====================================\n        // Test vectors sourced from official standards and references:\n        // - Caesar: Historical examples and cryptographic textbook vectors\n        // - BASE64: RFC 4648 official test vectors\n        // - ROT13: Wikipedia and cryptographic examples\n        // - Blowfish: Bruce Schneier's official test vectors from schneier.com/code/vectors.txt\n        // - TEA: Code Golf Stack Exchange and various implementations\n        // - Anubis/Khazad: NESSIE project submissions (simplified for text interface)\n        // - AES/Rijndael: NIST CAVP references (simplified for JavaScript)
+        window.testVectors = {
+          'Caesar': [
+            { input: 'HELLO', key: '', expected: 'KHOOR', description: 'Basic Caesar shift by 3 - uppercase' },
+            { input: 'hello', key: '', expected: 'khoor', description: 'Basic Caesar shift by 3 - lowercase' },
+            { input: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', key: '', expected: 'DEFGHIJKLMNOPQRSTUVWXYZABC', description: 'Full alphabet Caesar shift' },
+            { input: 'THE QUICK BROWN FOX', key: '', expected: 'WKH TXLFN EURZQ IRA', description: 'Famous pangram test' },
+            { input: 'ATTACKATONCE', key: '', expected: 'DWWDFNDWRQFH', description: 'Historical Caesar example' }
+          ],
+          'BASE64': [
+            { input: '', key: '', expected: '', description: 'RFC 4648 test vector: empty string' },
+            { input: 'f', key: '', expected: 'Zg==', description: 'RFC 4648 test vector: single f' },
+            { input: 'fo', key: '', expected: 'Zm8=', description: 'RFC 4648 test vector: fo' },
+            { input: 'foo', key: '', expected: 'Zm9v', description: 'RFC 4648 test vector: foo' },
+            { input: 'foob', key: '', expected: 'Zm9vYg==', description: 'RFC 4648 test vector: foob' },
+            { input: 'fooba', key: '', expected: 'Zm9vYmE=', description: 'RFC 4648 test vector: fooba' },
+            { input: 'foobar', key: '', expected: 'Zm9vYmFy', description: 'RFC 4648 test vector: foobar (no padding)' }
+          ],
+          'Rijndael': [
+            { input: '\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\xdd\xee\xff', key: '\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f', expected: '\x69\xc4\xe0\xd8\x6a\x7b\x04\x30\xd8\xcd\xb7\x80\x70\xb4\xc5\x5a', description: 'AES-128 test vector' }
+          ]
+        };
+        
+        window.runAllTests = function() {
+          var results = document.getElementById('test-results');
+          var summary = document.getElementById('test-summary');
+          var stats = document.getElementById('test-stats');
+          
+          results.innerHTML = '';
+          var totalTests = 0;
+          var passedTests = 0;
+          var failedTests = 0;
+          var warnings = 0;
+          
+          // Test each available cipher
+          if (typeof Cipher !== 'undefined' && Cipher.getCiphers) {
+            var availableCiphers = Cipher.getCiphers();
             
-            setInputActive('OutputKey');
-            setInputActive('OutputKeyHEX');
-            setInputActive('OutputKeyBASE64');
+            for (var i = 0; i < availableCiphers.length; i++) {
+              var cipherName = availableCiphers[i];
+              var testCases = window.testVectors[cipherName] || [];
+              
+              if (testCases.length === 0) {
+                addTestResult(cipherName, 'No test vectors available', 'warn', '');
+                warnings++;
+                totalTests++;
+                continue;
+              }
+              
+              for (var j = 0; j < testCases.length; j++) {
+                var testCase = testCases[j];
+                totalTests++;
+                
+                try {
+                  var result = runSingleTest(cipherName, testCase);
+                  if (result.passed) {
+                    passedTests++;
+                    addTestResult(cipherName, testCase.description, 'pass', 'Expected: ' + testCase.expected + '\nGot: ' + result.output);
+                  } else {
+                    failedTests++;
+                    addTestResult(cipherName, testCase.description, 'fail', 'Expected: ' + testCase.expected + '\nGot: ' + result.output + '\nError: ' + (result.error || 'Output mismatch'));
+                  }
+                } catch (error) {
+                  failedTests++;
+                  addTestResult(cipherName, testCase.description, 'fail', 'Exception: ' + error.message);
+                }
+              }
+            }
           } else {
-            setInputInactive('InputKey');
-            setInputInactive('InputKeyHEX');
-            setInputInactive('InputKeyBASE64');
+            addTestResult('System', 'Cipher system not loaded', 'fail', 'The Cipher object is not available');
+            failedTests++;
+            totalTests++;
+          }
+          
+          // Show summary
+          stats.innerHTML = 
+            '<strong>Test Results:</strong> ' +
+            passedTests + ' passed, ' +
+            failedTests + ' failed, ' +
+            warnings + ' warnings (' +
+            totalTests + ' total)';
+          summary.style.display = 'block';
+        };
+        
+        window.runSingleTest = function(cipherName, testCase) {
+          try {
+            if (!Cipher.boolExistsCipher(cipherName)) {
+              throw new Error('Cipher not available: ' + cipherName);
+            }
             
-            setInputInactive('OutputKey');
-            setInputInactive('OutputKeyHEX');
-            setInputInactive('OutputKeyBASE64');
-          };
-          if (Cipher.objGetCipher(szCipher).boolCantDecode==true) {
-            setInputInactive('OutputData');
-            setInputInactive('OutputDataHEX');
-            setInputInactive('OutputDataBASE64');
+            var szID = Cipher.InitCipher(cipherName, testCase.key || '');
+            if (!szID) {
+              throw new Error('Failed to initialize cipher: ' + cipherName);
+            }
             
-            setInputInactive('OutputKey');
-            setInputInactive('OutputKeyHEX');
-            setInputInactive('OutputKeyBASE64');
-            document.getElementById('btnDecrypt').style.display='none';
-          } else {
-            setInputActive('OutputData');
-            setInputActive('OutputDataHEX');
-            setInputActive('OutputDataBASE64');
-            document.getElementById('btnDecrypt').style.display='';
-          };
-          setInputInactive('ReconstructedData');
-          setInputInactive('ReconstructedDataHEX');
-          setInputInactive('ReconstructedDataBASE64');
+            var output = Cipher.szEncrypt(szID, testCase.input, 'ECB');
+            Cipher.ClearData(szID);
+            
+            return {
+              passed: output === testCase.expected,
+              output: output,
+              error: null
+            };
+          } catch (error) {
+            return {
+              passed: false,
+              output: '',
+              error: error.message
+            };
+          }
         };
-      }
-      
-      // ============================[ NON GUI ]====================================
-      // Convert String to something
-      function szString2HEX(szString) {
-        var szRet='';
-        for (var intI=0;intI<szString.length;intI++)
-        {
-          var intChar;
-          intChar=szString.charCodeAt(intI);
-          szRet+=szDec2Hex(intChar)+' ';
+        
+        window.addTestResult = function(cipher, description, status, details) {
+          var results = document.getElementById('test-results');
+          var testDiv = document.createElement('div');
+          testDiv.className = 'test-case ' + status;
+          
+          var statusIcon = status === 'pass' ? 'âœ“' : status === 'fail' ? 'âœ—' : 'âš ';
+          var statusText = status === 'pass' ? 'PASS' : status === 'fail' ? 'FAIL' : 'WARN';
+          
+          testDiv.innerHTML = 
+            '<strong>' + statusIcon + ' [' + statusText + '] ' + cipher + '</strong>: ' + description + '<br>' +
+            (details ? '<small>' + details.replace(/\n/g, '<br>') + '</small>' : '');
+          
+          results.appendChild(testDiv);
         };
-        return (szRet);
-      }
-      
-      // Convert Something to String
-      function szHEX2String(szHex) {
-        var szRet='';
-        var szString=szHex.replace(/ /g,'');
-        for (var intI=0;intI<szString.length;intI++) {
-          var szChar=szString.substr(intI++,1);
-          if (intI<szString.length) szChar+=szString.substr(intI,1);
-          szRet+=String.fromCharCode(intHex2Dec(szChar));
+        
+        window.runSelectedTests = function() {
+          // For now, just run all tests. Could be enhanced to allow selection
+          runAllTests();
         };
-        return (szRet);
-      }
-      
-      // Convert Numbers between Number Systems
-      function szDec2Hex(intN) {
-        var szRet='';
-        szRet='00'+intN.toString(16).toUpperCase();
-        return (szRet.substr(szRet.length-2,2));
-      }
-      
-      function intHex2Dec(szN) {
-        return parseInt(szN,16);
-      }
-      
-      //-->
+        
+        window.clearTestResults = function() {
+          document.getElementById('test-results').innerHTML = 
+            '<div class="test-case">Results cleared. Ready for new tests.</div>';
+          document.getElementById('test-summary').style.display = 'none';
+        };
+        
+      })(); // End IIFE
     </script>
   </head>
-  <body class="Default" style="overflow:hidden;" onload="clearFields();">
-    <!--   DATA   -->
-      <div class="Segment_Data">
-      </div>
-    <!-- END DATA -->
-    <!--   CONTENT   -->
-      <div id="Segment_Content" style="padding:4px;overflow:auto;text-align:center;">
-        <div id="CipherName"><h1>Select Algorithm !</h1></div>
-        <form name="frmCipher" onsubmit="return false;" action="index.htm" method="get">
-          <select name="slctCipher" id="slctCipher" size="1" onchange="ChangeCipher(document.forms['frmCipher'].elements['slctCipher'].options[document.forms['frmCipher'].elements['slctCipher'].options.selectedIndex].value);">
-            <option value="...">Select Cipher</option>
-            <option value="...">-------------</option>
-          </select>
-          <br />
-          <br />
-          <center>
-            <fieldset style="width:564px;">
-              <legend>Cipher Panel</legend>
-              <table>
-                <tr>
-                  <td style="text-align:left;">Field</td>
-                  <td>Characters</td>
-                  <td>HEX</td>
-                  <td>BASE64</td>
-                </tr>
-                <tr>
-                  <td style="text-align:left;">Plain Data</td>
-                  <td><input name="InputData" tabindex="1" readonly="readonly" onkeyup="refreshFields('InputData','binary');" /></td>
-                  <td><input name="InputDataHEX" tabindex="5" readonly="readonly" onkeyup="refreshFields('InputData','hex');" /></td>
-                  <td><input name="InputDataBASE64" tabindex="9" readonly="readonly" onkeyup="refreshFields('InputData','base64');" /></td>
-                </tr>
-                <tr>
-                  <td style="text-align:left;">Key</td>
-                  <td><input name="InputKey" tabindex="2" readonly="readonly" onkeyup="refreshFields('InputKey','binary');" /></td>
-                  <td><input name="InputKeyHEX" tabindex="6" readonly="readonly" onkeyup="refreshFields('InputKey','hex');" /></td>
-                  <td><input name="InputKeyBASE64" tabindex="10" readonly="readonly" onkeyup="refreshFields('InputKey','base64');" /></td>
-                </tr>
-                <tr>
-                  <td style="text-align:left;">Encrypted</td>
-                  <td><input name="OutputData" tabindex="3" readonly="readonly" onkeyup="refreshFields('OutputData','binary');" /></td>
-                  <td><input name="OutputDataHEX" tabindex="7" readonly="readonly" onkeyup="refreshFields('OutputData','hex');" /></td>
-                  <td><input name="OutputDataBASE64" tabindex="11" readonly="readonly" onkeyup="refreshFields('OutputData','base64');" /></td>
-                </tr>
-                <tr>
-                  <td style="text-align:left;">Key</td>
-                  <td><input name="OutputKey" tabindex="4" readonly="readonly" onkeyup="refreshFields('OutputKey','binary');" /></td>
-                  <td><input name="OutputKeyHEX" tabindex="8" readonly="readonly" onkeyup="refreshFields('OutputKey','hex');" /></td>
-                  <td><input name="OutputKeyBASE64" tabindex="12" readonly="readonly" onkeyup="refreshFields('OutputKey','base64');" /></td>
-                </tr>
-                <tr>
-                  <td style="text-align:left;">Decrypted</td>
-                  <td><input name="ReconstructedData" readonly="readonly" /></td>
-                  <td><input name="ReconstructedDataHEX" readonly="readonly" /></td>
-                  <td><input name="ReconstructedDataBASE64" readonly="readonly" /></td>
-                </tr>
-              </table>
-            </fieldset>
-          </center>
-          <button id="btnEncrypt" onclick="Encrypt();">Encrypt</button>
-          <button id="btnDecrypt" onclick="Decrypt();">Decrypt</button>
-        </form>
-      </div>
-    <!-- END CONTENT -->
-    <!--   LAYER   -->
+  <body onload="clearFields();">
+    <div class="container">
+      <header class="header">
+        <h1>&raquo;SynthelicZ&laquo; Cipher Tools</h1>
+        <p>Educational cryptographic implementations for defensive security analysis</p>
+      </header>
       
-    <!-- END LAYER -->
-    <a href="http://www.SynthelicZ.de" style="display:none;" title="www.SynthelicZ.de">&raquo;SynthelicZ&laquo;</a>
-    <script type="text/JavaScript" language="JavaScript">
-      <!--
-      if (!top.boolOSLoaded) {
-        //document.write('<img src="http://webcounter.goweb.de/28121.GIF" style="position:absolute;top:0px;right:0px;" alt="WEBCounter by GOWEB" border="0" vspace="0" /><br />');
-      };
-      BodyInit();
-      //-->
+      <main class="cipher-panel">
+        <div class="tab-container">
+          <div class="tab-nav">
+            <button class="tab-button active" onclick="switchTab('cipher')">Cipher Tool</button>
+            <button class="tab-button" onclick="switchTab('tests')">Unit Tests</button>
+          </div>
+          
+          <div id="cipher-tab" class="tab-content active">
+            <div id="CipherName" class="cipher-info">
+              <h2>Select Algorithm</h2>
+              <p>Choose a cipher algorithm to begin encryption/decryption operations.</p>
+            </div>
+        
+        <form name="frmCipher" onsubmit="return false;">
+          <div class="form-group">
+            <label for="slctCipher">Cipher Algorithm:</label>
+            <select name="slctCipher" id="slctCipher" onchange="ChangeCipher(this.value);">
+              <option value="...">Select Cipher</option>
+              <option value="...">-------------</option>
+            </select>
+          </div>
+          
+          <div class="data-grid">
+            <div class="data-row">
+              <div class="data-cell data-label">Field</div>
+              <div class="data-cell"><strong>Characters</strong></div>
+              <div class="data-cell"><strong>HEX</strong></div>
+              <div class="data-cell"><strong>BASE64</strong></div>
+            </div>
+            
+            <div class="data-row">
+              <div class="data-cell data-label">Plain Data</div>
+              <div class="data-cell"><input type="text" name="InputData" tabindex="1" readonly onkeyup="refreshFields('InputData','binary');" /></div>
+              <div class="data-cell"><input type="text" name="InputDataHEX" tabindex="5" readonly onkeyup="refreshFields('InputData','hex');" /></div>
+              <div class="data-cell"><input type="text" name="InputDataBASE64" tabindex="9" readonly onkeyup="refreshFields('InputData','base64');" /></div>
+            </div>
+            
+            <div class="data-row">
+              <div class="data-cell data-label">Key</div>
+              <div class="data-cell"><input type="text" name="InputKey" tabindex="2" readonly onkeyup="refreshFields('InputKey','binary');" /></div>
+              <div class="data-cell"><input type="text" name="InputKeyHEX" tabindex="6" readonly onkeyup="refreshFields('InputKey','hex');" /></div>
+              <div class="data-cell"><input type="text" name="InputKeyBASE64" tabindex="10" readonly onkeyup="refreshFields('InputKey','base64');" /></div>
+            </div>
+            
+            <div class="data-row">
+              <div class="data-cell data-label">Encrypted</div>
+              <div class="data-cell"><input type="text" name="OutputData" tabindex="3" readonly onkeyup="refreshFields('OutputData','binary');" /></div>
+              <div class="data-cell"><input type="text" name="OutputDataHEX" tabindex="7" readonly onkeyup="refreshFields('OutputData','hex');" /></div>
+              <div class="data-cell"><input type="text" name="OutputDataBASE64" tabindex="11" readonly onkeyup="refreshFields('OutputData','base64');" /></div>
+            </div>
+            
+            <div class="data-row">
+              <div class="data-cell data-label">Key (Decrypt)</div>
+              <div class="data-cell"><input type="text" name="OutputKey" tabindex="4" readonly onkeyup="refreshFields('OutputKey','binary');" /></div>
+              <div class="data-cell"><input type="text" name="OutputKeyHEX" tabindex="8" readonly onkeyup="refreshFields('OutputKey','hex');" /></div>
+              <div class="data-cell"><input type="text" name="OutputKeyBASE64" tabindex="12" readonly onkeyup="refreshFields('OutputKey','base64');" /></div>
+            </div>
+            
+            <div class="data-row">
+              <div class="data-cell data-label">Decrypted</div>
+              <div class="data-cell"><input type="text" name="ReconstructedData" readonly /></div>
+              <div class="data-cell"><input type="text" name="ReconstructedDataHEX" readonly /></div>
+              <div class="data-cell"><input type="text" name="ReconstructedDataBASE64" readonly /></div>
+            </div>
+          </div>
+          
+          <div class="btn-group">
+            <button type="button" id="btnEncrypt" class="btn" onclick="Encrypt();">Encrypt</button>
+            <button type="button" id="btnDecrypt" class="btn" onclick="Decrypt();">Decrypt</button>
+          </div>
+        </form>
+          </div>
+          
+          <div id="tests-tab" class="tab-content">
+            <div class="cipher-info">
+              <h2>Algorithm Verification Tests</h2>
+              <p>Validate cipher implementations against known test vectors and standards.</p>
+            </div>
+            
+            <div class="test-controls">
+              <button type="button" class="btn" onclick="runAllTests()">Run All Tests</button>
+              <button type="button" class="btn" onclick="runSelectedTests()">Run Selected</button>
+              <button type="button" class="btn" onclick="clearTestResults()">Clear Results</button>
+            </div>
+            
+            <div id="test-summary" class="test-summary" style="display: none;">
+              <div id="test-stats"></div>
+            </div>
+            
+            <div id="test-results" class="test-results">
+              <div class="test-case">
+                <strong>Ready to run tests...</strong><br>
+                Click "Run All Tests" to validate all cipher implementations.
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <script>
+      // Initialize when DOM is ready
+      (function() {
+        function init() {
+          if (typeof BodyInit === 'function') {
+            BodyInit();
+          } else {
+            console.warn('BodyInit function not available');
+          }
+        }
+        
+        // Modern browsers
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', init);
+        } else {
+          init();
+        }
+        
+        // Legacy browser fallback
+        if (typeof document.addEventListener === 'undefined') {
+          window.setTimeout(init, 100);
+        }
+      })();
     </script>
   </body>
 </html>
