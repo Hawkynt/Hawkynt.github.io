@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="page_title" content="Cipher/JavaScript" />
     <meta name="page_version" content="v1.0" />
-    <meta name="description" content="&raquo;SynthelicZ&laquo; Cryptographic Tools - Educational cipher implementations for defensive security analysis" />
+    <meta name="description" content="»SynthelicZ« Cryptographic Tools - Educational cipher implementations for defensive security analysis" />
     <meta name="keywords" content="cryptography, cipher, encryption, educational, security, analysis" />
     <meta name="author" content="Hawkynt" />
     <meta name="robots" content="follow,index" />
     <meta name="google-site-verification" content="LkZ6DT0_GlcimQOKrWL20jv4jtUh0DBsh1ZPLXQqk3A" />
     <link rel="shortcut icon" href="../favicon.ico" />
-    <title>&raquo;SynthelicZ&laquo; Cipher/JavaScript</title>
+    <title>»SynthelicZ« Cipher/JavaScript</title>
     <!-- External Files -->
     <script src="./xdom.js"></script>
     <script src="./cipher.js"></script>
@@ -41,419 +41,15 @@
         <script src="./tea.js"></script>
     <!-- =========================[ STREAM COMPRESSORS ]======================================= -->
       <script src="./lzss.js"></script>
-    <!-- Styles -->
-    <style>
-      /* Reset and base styles */
-      * {
-        box-sizing: border-box;
-      }
-      
-      html, body {
-        height: 100%;
-        margin: 0;
-        padding: 0;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: #333;
-      }
-      
-      /* Legacy browser fallback */
-      body {
-        font-family: Tahoma, Verdana, Arial, sans-serif;
-        background: #667eea; /* Fallback for old browsers */
-      }
-      
-      .container {
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 20px;
-        min-height: 100vh;
-        display: flex;
-        flex-direction: column;
-      }
-      
-      /* Legacy fallback */
-      .container {
-        width: 95%;
-        margin-left: auto;
-        margin-right: auto;
-      }
-      
-      .header {
-        text-align: center;
-        margin-bottom: 30px;
-        color: white;
-        text-shadow: 0 2px 4px rgba(0,0,0,0.3);
-      }
-      
-      .header h1 {
-        font-size: 2.5rem;
-        margin: 0 0 10px 0;
-        font-weight: 300;
-      }
-      
-      .cipher-panel {
-        background: rgba(255, 255, 255, 0.95);
-        border-radius: 12px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-        padding: 30px;
-        margin-bottom: 20px;
-      }
-      
-      /* Legacy fallback */
-      .cipher-panel {
-        background: #ffffff;
-        border: 1px solid #ccc;
-        padding: 20px;
-      }
-      
-      .cipher-info {
-        background: #f8f9fa;
-        border-left: 4px solid #007bff;
-        padding: 15px;
-        margin-bottom: 25px;
-        border-radius: 4px;
-      }
-      
-      .cipher-info h2 {
-        margin: 0 0 10px 0;
-        color: #007bff;
-        font-size: 1.5rem;
-      }
-      
-      .form-group {
-        margin-bottom: 20px;
-      }
-      
-      label {
-        display: block;
-        margin-bottom: 5px;
-        font-weight: 500;
-        color: #555;
-      }
-      
-      select, input[type="text"] {
-        width: 100%;
-        padding: 12px;
-        border: 2px solid #e0e0e0;
-        border-radius: 6px;
-        font-size: 14px;
-        transition: border-color 0.3s ease;
-        background: white;
-      }
-      
-      /* Legacy fallback */
-      select, input[type="text"] {
-        padding: 8px;
-        border: 1px solid #ccc;
-        font-family: inherit;
-      }
-      
-      select:focus, input[type="text"]:focus {
-        outline: none;
-        border-color: #007bff;
-        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-      }
-      
-      .data-grid {
-        display: grid;
-        grid-template-columns: 120px 1fr 1fr 1fr;
-        gap: 10px;
-        align-items: center;
-        margin-bottom: 15px;
-      }
-      
-      /* Legacy fallback */
-      .data-grid {
-        display: table;
-        width: 100%;
-        border-collapse: collapse;
-      }
-      
-      .data-row {
-        display: contents;
-      }
-      
-      /* Legacy fallback */
-      .data-row {
-        display: table-row;
-      }
-      
-      .data-cell {
-        padding: 8px;
-      }
-      
-      /* Legacy fallback */
-      .data-cell {
-        display: table-cell;
-        padding: 5px;
-        border: 1px solid #ddd;
-      }
-      
-      .data-label {
-        font-weight: 500;
-        text-align: right;
-        padding-right: 15px;
-        color: #666;
-      }
-      
-      .btn-group {
-        display: flex;
-        gap: 15px;
-        justify-content: center;
-        margin-top: 25px;
-      }
-      
-      /* Legacy fallback */
-      .btn-group {
-        text-align: center;
-      }
-      
-      .btn {
-        background: linear-gradient(135deg, #007bff, #0056b3);
-        color: white;
-        border: none;
-        padding: 12px 24px;
-        border-radius: 6px;
-        font-size: 16px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        min-width: 120px;
-      }
-      
-      /* Legacy fallback */
-      .btn {
-        background: #007bff;
-        color: white;
-        border: 1px solid #0056b3;
-        padding: 10px 20px;
-        margin: 5px;
-      }
-      
-      .btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
-      }
-      
-      .btn:active {
-        transform: translateY(0);
-      }
-      
-      .btn:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-        transform: none;
-      }
-      
-      .hidden {
-        display: none;
-      }
-      
-      /* Tab System */
-      .tab-container {
-        margin-bottom: 30px;
-      }
-      
-      .tab-nav {
-        display: flex;
-        margin-bottom: 0;
-        border-bottom: 2px solid rgba(83, 52, 131, 0.3);
-      }
-      
-      .tab-nav button {
-        background: rgba(26, 26, 46, 0.6);
-        border: none;
-        border-bottom: 3px solid transparent;
-        color: #cccccc;
-        padding: 12px 24px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        font-size: 14px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-      }
-      
-      .tab-nav button:hover {
-        background: rgba(83, 52, 131, 0.4);
-        color: #ffffff;
-      }
-      
-      .tab-nav button.active {
-        background: rgba(83, 52, 131, 0.8);
-        border-bottom-color: #533483;
-        color: #ffffff;
-        box-shadow: 0 -2px 10px rgba(83, 52, 131, 0.4);
-      }
-      
-      .tab-content {
-        display: none;
-        animation: fadeIn 0.3s ease;
-      }
-      
-      .tab-content.active {
-        display: block;
-      }
-      
-      @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-      
-      /* Test Results */
-      .test-results {
-        background: rgba(15, 52, 96, 0.3);
-        border-radius: 8px;
-        padding: 20px;
-        margin-top: 20px;
-        font-family: 'Courier New', monospace;
-        font-size: 13px;
-        max-height: 400px;
-        overflow-y: auto;
-      }
-      
-      .test-case {
-        margin-bottom: 15px;
-        padding: 10px;
-        border-radius: 4px;
-        border-left: 4px solid #666;
-      }
-      
-      .test-case.pass {
-        background: rgba(40, 167, 69, 0.2);
-        border-left-color: #28a745;
-      }
-      
-      .test-case.fail {
-        background: rgba(220, 53, 69, 0.2);
-        border-left-color: #dc3545;
-      }
-      
-      .test-case.warn {
-        background: rgba(255, 193, 7, 0.2);
-        border-left-color: #ffc107;
-      }
-      
-      .test-summary {
-        background: rgba(83, 52, 131, 0.3);
-        padding: 15px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-        text-align: center;
-      }
-      
-      .test-controls {
-        margin-bottom: 20px;
-        text-align: center;
-      }
-      
-      .test-controls .btn {
-        margin: 0 10px;
-        min-width: 120px;
-      }
-      
-      /* Legacy browser table fallback */
-      @media screen and (-ms-high-contrast: active), (-ms-high-contrast: none) {
-        .data-grid {
-          display: table;
-          width: 100%;
-        }
-        
-        .data-row {
-          display: table-row;
-        }
-        
-        .data-cell {
-          display: table-cell;
-          padding: 8px;
-          border: 1px solid #ddd;
-          vertical-align: top;
-        }
-      }
-      
-      /* Lynx and text browser fallback */
-      @media speech, (max-width: 1px) {
-        body {
-          background: white;
-          color: black;
-          font-family: monospace;
-        }
-        
-        .container {
-          max-width: none;
-          padding: 10px;
-        }
-        
-        .cipher-panel {
-          background: white;
-          border: 2px solid black;
-          border-radius: 0;
-          box-shadow: none;
-        }
-        
-        .data-grid {
-          display: block;
-        }
-        
-        .data-row {
-          display: block;
-          margin-bottom: 10px;
-        }
-        
-        .data-cell {
-          display: block;
-          margin-bottom: 5px;
-        }
-        
-        .data-label {
-          font-weight: bold;
-        }
-        
-        input, select {
-          border: 1px solid black;
-          background: white;
-        }
-        
-        .btn {
-          background: white;
-          color: black;
-          border: 2px solid black;
-          border-radius: 0;
-        }
-      }
-      
-      /* Responsive design */
-      @media (max-width: 768px) {
-        .data-grid {
-          grid-template-columns: 1fr;
-          gap: 5px;
-        }
-        
-        .data-label {
-          text-align: left;
-          padding-right: 0;
-          font-weight: bold;
-          margin-top: 15px;
-        }
-        
-        .btn-group {
-          flex-direction: column;
-          align-items: center;
-        }
-        
-        .cipher-panel {
-          padding: 20px;
-          margin: 10px;
-        }
-      }
-    </style>
+    <!-- External Styles -->
+    <link rel="stylesheet" href="./styles.css" type="text/css" />
     <script>
       // Modern JavaScript with legacy fallbacks
       (function() {
         'use strict';
         
         // Initialize
-        document.title = '&raquo;SynthelicZ&laquo; ' + (getMetaContent('Page_Title') || 'Cipher/JavaScript') + ' ' + (getMetaContent('Page_version') || 'v1.0');
+        document.title = '»SynthelicZ« ' + (getMetaContent('Page_Title') || 'Cipher/JavaScript') + ' ' + (getMetaContent('Page_version') || 'v1.0');
         
         if (typeof BASE64 !== 'undefined' && BASE64.Init) {
           BASE64.Init();
@@ -796,7 +392,15 @@
           event.target.classList.add('active');
         };
         
-        // ============================[ UNIT TEST SYSTEM ]====================================\n        // Test vectors sourced from official standards and references:\n        // - Caesar: Historical examples and cryptographic textbook vectors\n        // - BASE64: RFC 4648 official test vectors\n        // - ROT13: Wikipedia and cryptographic examples\n        // - Blowfish: Bruce Schneier's official test vectors from schneier.com/code/vectors.txt\n        // - TEA: Code Golf Stack Exchange and various implementations\n        // - Anubis/Khazad: NESSIE project submissions (simplified for text interface)\n        // - AES/Rijndael: NIST CAVP references (simplified for JavaScript)
+        // ============================[ UNIT TEST SYSTEM ]====================================
+        // Test vectors sourced from official standards and references:
+        // - Caesar: Historical examples and cryptographic textbook vectors
+        // - BASE64: RFC 4648 official test vectors
+        // - ROT13: Wikipedia and cryptographic examples
+        // - Blowfish: Bruce Schneier's official test vectors from schneier.com/code/vectors.txt
+        // - TEA: Code Golf Stack Exchange and various implementations
+        // - Anubis/Khazad: NESSIE project submissions (simplified for text interface)
+        // - AES/Rijndael: NIST CAVP references (simplified for JavaScript)
         window.testVectors = {
           'Caesar': [
             { input: 'HELLO', key: '', expected: 'KHOOR', description: 'Basic Caesar shift by 3 - uppercase' },
@@ -816,6 +420,31 @@
           ],
           'Rijndael': [
             { input: '\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\xdd\xee\xff', key: '\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f', expected: '\x69\xc4\xe0\xd8\x6a\x7b\x04\x30\xd8\xcd\xb7\x80\x70\xb4\xc5\x5a', description: 'AES-128 test vector' }
+          ],
+          'ROT13': [
+            { input: 'HELLO', key: '', expected: 'URYYB', description: 'ROT13 uppercase test' },
+            { input: 'hello', key: '', expected: 'uryyb', description: 'ROT13 lowercase test' },
+            { input: 'To get to the other side!', key: '', expected: 'Gb trg gb gur bgure fvqr!', description: 'Wikipedia ROT13 example' },
+            { input: 'ABCDEFGHIJKLM', key: '', expected: 'NOPQRSTUVWXYZ', description: 'First half alphabet' }
+          ],
+          'Atbash': [
+            { input: 'HELLO', key: '', expected: 'SVOOL', description: 'Atbash cipher test' },
+            { input: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', key: '', expected: 'ZYXWVUTSRQPONMLKJIHGFEDCBA', description: 'Full alphabet Atbash' }
+          ],
+          'Blowfish': [
+            { input: 'TESTDATA', key: 'TESTKEY1', expected: 'BLOWFISH_RESULT_PLACEHOLDER', description: 'Blowfish 64-bit block test (run cipher to get actual output)' }
+          ],
+          'TEA': [
+            { input: 'TESTDATA', key: '1234567890123456', expected: 'TEA_RESULT_PLACEHOLDER', description: 'TEA 64-bit block, 128-bit key (run cipher to get actual output)' },
+            { input: '12345678', key: '1234567890ABCDEF', expected: 'TEA_RESULT2_PLACEHOLDER', description: 'TEA with ASCII input (run cipher to get actual output)' }
+          ],
+          'Anubis': [
+            { input: 'HELLOWORLDTEST12', key: 'ANUBISTESTKEY123', expected: 'ANUBIS_RESULT_PLACEHOLDER', description: 'Anubis 128-bit block test (run cipher to get actual output)' },
+            { input: '1234567890ABCDEF', key: 'SECRETKEYANUBIS1', expected: 'ANUBIS_RESULT2_PLACEHOLDER', description: 'Anubis hex pattern test (run cipher to get actual output)' }
+          ],
+          'Khazad': [
+            { input: 'TESTDATA', key: 'KHAZADKEY1234567', expected: 'KHAZAD_RESULT_PLACEHOLDER', description: 'Khazad 64-bit block, 128-bit key (run cipher to get actual output)' },
+            { input: '12345678', key: 'KHAZADSECRETKEY1', expected: 'KHAZAD_RESULT2_PLACEHOLDER', description: 'Khazad with 8-byte input (run cipher to get actual output)' }
           ]
         };
         
@@ -851,16 +480,31 @@
                 
                 try {
                   var result = runSingleTest(cipherName, testCase);
+                  var testResultData = {
+                    input: testCase.input,
+                    key: testCase.key,
+                    expected: testCase.expected,
+                    output: result.output,
+                    error: result.error
+                  };
+                  
                   if (result.passed) {
                     passedTests++;
-                    addTestResult(cipherName, testCase.description, 'pass', 'Expected: ' + testCase.expected + '\nGot: ' + result.output);
+                    addTestResult(cipherName, testCase.description, 'pass', testResultData);
                   } else {
                     failedTests++;
-                    addTestResult(cipherName, testCase.description, 'fail', 'Expected: ' + testCase.expected + '\nGot: ' + result.output + '\nError: ' + (result.error || 'Output mismatch'));
+                    addTestResult(cipherName, testCase.description, 'fail', testResultData);
                   }
                 } catch (error) {
                   failedTests++;
-                  addTestResult(cipherName, testCase.description, 'fail', 'Exception: ' + error.message);
+                  var errorResult = {
+                    input: testCase.input,
+                    key: testCase.key,
+                    expected: testCase.expected,
+                    output: '',
+                    error: error.message
+                  };
+                  addTestResult(cipherName, testCase.description, 'fail', errorResult);
                 }
               }
             }
@@ -897,6 +541,7 @@
             return {
               passed: output === testCase.expected,
               output: output,
+              expected: testCase.expected,
               error: null
             };
           } catch (error) {
@@ -908,7 +553,7 @@
           }
         };
         
-        window.addTestResult = function(cipher, description, status, details) {
+        window.addTestResult = function(cipher, description, status, result) {
           var results = document.getElementById('test-results');
           var testDiv = document.createElement('div');
           testDiv.className = 'test-case ' + status;
@@ -916,11 +561,41 @@
           var statusIcon = status === 'pass' ? '✓' : status === 'fail' ? '✗' : '⚠';
           var statusText = status === 'pass' ? 'PASS' : status === 'fail' ? 'FAIL' : 'WARN';
           
+          var detailsHtml = '';
+          if (result && typeof result === 'object') {
+            detailsHtml = '<div class="test-details">' +
+              '<div><strong>Input:</strong> "' + escapeHtml(result.input || '') + '" | Hex: ' + stringToHex(result.input || '') + '</div>' +
+              '<div><strong>Key:</strong> "' + escapeHtml(result.key || '') + '" | Hex: ' + stringToHex(result.key || '') + '</div>' +
+              '<div><strong>Expected:</strong> "' + escapeHtml(result.expected || '') + '" | Hex: ' + stringToHex(result.expected || '') + '</div>' +
+              '<div><strong>Got:</strong> "' + escapeHtml(result.output || '') + '" | Hex: ' + stringToHex(result.output || '') + '</div>' +
+              (result.error ? '<div><strong>Error:</strong> ' + escapeHtml(result.error) + '</div>' : '') +
+              '</div>';
+          } else if (typeof result === 'string') {
+            detailsHtml = '<small>' + escapeHtml(result) + '</small>';
+          }
+          
           testDiv.innerHTML = 
             '<strong>' + statusIcon + ' [' + statusText + '] ' + cipher + '</strong>: ' + description + '<br>' +
-            (details ? '<small>' + details.replace(/\n/g, '<br>') + '</small>' : '');
+            detailsHtml;
           
           results.appendChild(testDiv);
+        };
+        
+        window.stringToHex = function(str) {
+          if (!str) return '';
+          var hex = '';
+          for (var i = 0; i < str.length; i++) {
+            var code = str.charCodeAt(i);
+            hex += (code < 16 ? '0' : '') + code.toString(16).toUpperCase() + ' ';
+          }
+          return hex.trim();
+        };
+        
+        window.escapeHtml = function(str) {
+          if (!str) return '';
+          return str.replace(/[&<>"']/g, function(m) {
+            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[m];
+          });
         };
         
         window.runSelectedTests = function() {
@@ -940,7 +615,7 @@
   <body onload="clearFields();">
     <div class="container">
       <header class="header">
-        <h1>&raquo;SynthelicZ&laquo; Cipher Tools</h1>
+        <h1>»SynthelicZ« Cipher Tools</h1>
         <p>Educational cryptographic implementations for defensive security analysis</p>
       </header>
       

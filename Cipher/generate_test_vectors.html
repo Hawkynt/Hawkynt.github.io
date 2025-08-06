@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Vector Generator</title>
+    <script src="utils.js"></script>
+    <script src="cipher.js"></script>
+    <script src="caesar.js"></script>
+    <script src="base64.js"></script>
+    <script src="rot.js"></script>
+    <script src="atbash.js"></script>
+    <script src="blowfish.js"></script>
+    <script src="tea.js"></script>
+    <script src="anubis.js"></script>
+    <script src="khazad.js"></script>
+    <script src="rijndael.js"></script>
+    <script src="mystery.js"></script>
+</head>
+<body>
+    <h1>Test Vector Generator</h1>
+    <div id="output"></div>
+    
+    <script>
+        function stringToHex(str) {
+            var hex = '';
+            for (var i = 0; i < str.length; i++) {
+                var charCode = str.charCodeAt(i);
+                hex += charCode.toString(16).padStart(2, '0');
+            }
+            return hex;
+        }
+        
+        function generateTestVectors() {
+            var output = document.getElementById('output');
+            var results = [];
+            
+            // Initialize all ciphers
+            var ciphers = [Caesar, BASE64, ROT13, ROT5, ROT18, ROT47, ROTx, Atbash, Blowfish, TEA, Anubis, Khazad, Rijndael, Mystery];
+            for (var i = 0; i < ciphers.length; i++) {
+                if (ciphers[i].Init) ciphers[i].Init();
+            }
+            
+            // Test vectors to generate
+            var testCases = [
+                // Caesar
+                { cipher: 'Caesar', input: 'HELLO', key: '3', description: 'Caesar cipher shift 3' },
+                { cipher: 'Caesar', input: 'ABC', key: '1', description: 'Caesar cipher shift 1' },
+                
+                // BASE64
+                { cipher: 'BASE64', input: 'Man', key: '', description: 'BASE64 encoding test' },
+                { cipher: 'BASE64', input: 'f', key: '', description: 'BASE64 single char' },
+                
+                // ROT13
+                { cipher: 'ROT13', input: 'HELLO', key: '', description: 'ROT13 test' },
+                { cipher: 'ROT13', input: 'nopqrstuvwxyzabcdefghijklm', key: '', description: 'ROT13 lowercase' },
+                
+                // TEA (needs 16-byte key and 8-byte input)
+                { cipher: 'TEA', input: 'TESTDATA', key: '1234567890123456', description: 'TEA test vector' },
+                { cipher: 'TEA', input: '\x00\x00\x00\x00\x00\x00\x00\x00', key: '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00', description: 'TEA all zeros' },
+                
+                // Anubis (needs 16-byte key and 16-byte input)
+                { cipher: 'Anubis', input: '1234567890123456', key: 'TESTKEY123456789', description: 'Anubis test vector' },
+                
+                // Khazad (needs 16-byte key and 8-byte input)
+                { cipher: 'Khazad', input: 'TESTDATA', key: 'TESTKEY123456789', description: 'Khazad test vector' },
+                
+                // Blowfish
+                { cipher: 'Blowfish', input: 'TESTDATA', key: 'TESTKEY1', description: 'Blowfish test vector' }
+            ];
+            
+            for (var i = 0; i < testCases.length; i++) {
+                var testCase = testCases[i];
+                try {
+                    var cipher = window[testCase.cipher];
+                    if (!cipher) {
+                        results.push(testCase.cipher + ' not found');
+                        continue;
+                    }
+                    
+                    var keyId = cipher.KeySetup(testCase.key);
+                    var encrypted = cipher.szEncryptBlock(keyId, testCase.input);
+                    cipher.ClearData(keyId);
+                    
+                    results.push('{ cipher: \'' + testCase.cipher + '\', input: \'' + 
+                                testCase.input.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + 
+                                '\', key: \'' + testCase.key.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + 
+                                '\', expected: \'' + encrypted.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + 
+                                '\', description: \'' + testCase.description + '\' },');
+                    
+                    results.push('// Input hex: ' + stringToHex(testCase.input));
+                    results.push('// Key hex: ' + stringToHex(testCase.key));
+                    results.push('// Output hex: ' + stringToHex(encrypted));
+                    results.push('');
+                    
+                } catch (e) {
+                    results.push('Error with ' + testCase.cipher + ': ' + e.message);
+                }
+            }
+            
+            output.innerHTML = '<pre>' + results.join('\n') + '</pre>';
+        }
+        
+        // Run when page loads
+        window.onload = generateTestVectors;
+    </script>
+</body>
+</html>

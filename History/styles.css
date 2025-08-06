@@ -1,0 +1,120 @@
+/* History-specific styles - extends shared-styles.css */
+@import url('../css/shared-styles.css');
+
+/* History application specific styles */
+body {
+  font: 80% Tahoma, Verdana, Arial, sans-serif;
+  color: #FFF;
+  background: #08C;
+}
+
+.Window {
+  border-top: 1px solid ButtonHighlight;
+  border-left: 1px solid ButtonHighlight;
+  border-right: 1px solid ButtonShadow;
+  border-bottom: 1px solid ButtonShadow;
+  background-color: ButtonFace;
+  color: ButtonText;
+  margin: 10px;
+  padding: 4px;
+}
+
+.Editor {
+  border-bottom: 1px solid ButtonHighlight;
+  border-right: 1px solid ButtonHighlight;
+  border-left: 1px solid ButtonShadow;
+  border-top: 1px solid ButtonShadow;
+  background-color: #FFF;
+  color: #000;
+  margin: 4px;
+  padding: 8px;
+  overflow: scroll;
+}
+
+.History_Item {
+  font-weight: bold;
+  color: #FFF;
+  background: #333;
+  margin: 2px;
+  padding: 4px;
+}
+
+select {
+  font-family: inherit;
+  font-size: inherit;
+  background: white;
+  color: black;
+  border: 1px solid #999;
+}
+
+/* Progressive enhancement for modern browsers */
+@media screen {
+  body {
+    background: radial-gradient(1200px 500px at 20% -10%, #1c1140 10%, transparent 50%), 
+                radial-gradient(1000px 600px at 120% 20%, #0d3d7a 10%, transparent 50%), 
+                linear-gradient(180deg, var(--bg1), var(--bg2) 50%, var(--bg3));
+    color: var(--text);
+  }
+
+  .Window {
+    background: linear-gradient(180deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05));
+    border: 1px solid var(--card-bd);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+  }
+
+  .Editor {
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid var(--card-bd);
+    color: #333;
+    border-radius: 4px;
+  }
+
+  .History_Item {
+    background: rgba(116, 192, 255, 0.2);
+    color: var(--text);
+    border-radius: 4px;
+    border: 1px solid rgba(116, 192, 255, 0.3);
+  }
+
+  select {
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid var(--card-bd);
+    border-radius: 4px;
+    padding: 4px;
+  }
+
+  select:focus {
+    border-color: #74c0ff;
+    box-shadow: 0 0 0 2px rgba(116, 192, 255, 0.3);
+  }
+}
+
+/* Legacy browser fallback */
+@media speech, (max-width: 1px) {
+  body {
+    background: white;
+    color: black;
+    font-family: monospace;
+  }
+  
+  .Window {
+    background: white;
+    border: 2px solid black;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  
+  .Editor {
+    background: white;
+    border: 1px solid black;
+    color: black;
+  }
+  
+  .History_Item {
+    background: white;
+    color: black;
+    border: 1px solid black;
+  }
+}

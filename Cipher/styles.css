@@ -1,0 +1,272 @@
+/* Cipher-specific styles - extends shared-styles.css */
+@import url('../css/shared-styles.css');
+
+/* Additional cipher-specific styles */
+.cipher-info {
+  background: #f8f9fa;
+  border-left: 4px solid #007bff;
+  padding: 15px;
+  margin-bottom: 25px;
+  border-radius: 4px;
+}
+
+.cipher-info h2 {
+  margin: 0 0 10px 0;
+  color: #007bff;
+  font-size: 1.5rem;
+}
+
+.data-grid {
+  display: grid;
+  grid-template-columns: 120px 1fr 1fr 1fr;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+/* Legacy fallback */
+.data-grid {
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-row {
+  display: contents;
+}
+
+/* Legacy fallback */
+.data-row {
+  display: table-row;
+}
+
+.data-cell {
+  padding: 8px;
+}
+
+/* Legacy fallback */
+.data-cell {
+  display: table-cell;
+  padding: 5px;
+  border: 1px solid #ddd;
+}
+
+.data-label {
+  font-weight: 500;
+  text-align: right;
+  padding-right: 15px;
+  color: #666;
+}
+
+.btn-group {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+  margin-top: 25px;
+}
+
+/* Legacy fallback */
+.btn-group {
+  text-align: center;
+}
+
+.btn {
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 120px;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.hidden {
+  display: none;
+}
+
+/* Tab System */
+.tab-container {
+  margin-bottom: 30px;
+}
+
+.tab-nav {
+  display: flex;
+  margin-bottom: 0;
+  border-bottom: 2px solid rgba(83, 52, 131, 0.3);
+}
+
+.tab-nav button {
+  background: rgba(26, 26, 46, 0.6);
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: #cccccc;
+  padding: 12px 24px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.tab-nav button:hover {
+  background: rgba(83, 52, 131, 0.4);
+  color: #ffffff;
+}
+
+.tab-nav button.active {
+  background: rgba(83, 52, 131, 0.8);
+  border-bottom-color: #533483;
+  color: #ffffff;
+  box-shadow: 0 -2px 10px rgba(83, 52, 131, 0.4);
+}
+
+.tab-content {
+  display: none;
+  animation: fadeIn 0.3s ease;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Test Results */
+.test-results {
+  background: rgba(15, 52, 96, 0.3);
+  border-radius: 8px;
+  padding: 20px;
+  margin-top: 20px;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.test-case {
+  margin-bottom: 15px;
+  padding: 10px;
+  border-radius: 4px;
+  border-left: 4px solid #666;
+}
+
+.test-case.pass {
+  background: rgba(40, 167, 69, 0.2);
+  border-left-color: #28a745;
+}
+
+.test-case.fail {
+  background: rgba(220, 53, 69, 0.2);
+  border-left-color: #dc3545;
+}
+
+.test-case.warn {
+  background: rgba(255, 193, 7, 0.2);
+  border-left-color: #ffc107;
+}
+
+.test-summary {
+  background: rgba(83, 52, 131, 0.3);
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.test-controls {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.test-controls .btn {
+  margin: 0 10px;
+  min-width: 120px;
+}
+
+.test-details {
+  margin-top: 10px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.test-details div {
+  margin-bottom: 5px;
+  padding-left: 10px;
+}
+
+.test-details strong {
+  color: #a8a8ff;
+  min-width: 80px;
+  display: inline-block;
+}
+
+/* Progressive enhancement for cipher-specific elements */
+@media screen {
+  .cipher-info {
+    background: rgba(15, 52, 96, 0.2);
+    border-left: 4px solid #74c0ff;
+    backdrop-filter: blur(10px);
+  }
+  
+  .cipher-info h2 {
+    color: #74c0ff;
+  }
+  
+  .data-label {
+    color: var(--muted);
+  }
+  
+  .data-cell {
+    border: 1px solid var(--card-bd);
+  }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .data-grid {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+  
+  .data-label {
+    text-align: left;
+    padding-right: 0;
+    font-weight: bold;
+    margin-top: 15px;
+  }
+  
+  .btn-group {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .cipher-panel {
+    padding: 20px;
+    margin: 10px;
+  }
+}
