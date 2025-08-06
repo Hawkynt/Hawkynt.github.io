@@ -1,14 +1,19 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
   <head>
-    <title>
-      Key Generator
-      <!--
-      <body>
-      </body>
-      -->
-    </title>
-    <script type="text/JavaScript">
-      document.title='�SynthelicZ� under Contruction';
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="»SynthelicZ« Encryptor - Simple encryption tool" />
+    <meta name="keywords" content="encryptor, encryption, cipher, SynthelicZ" />
+    <meta name="author" content="Hawkynt" />
+    <link rel="shortcut icon" href="../favicon.ico" />
+    <title>»SynthelicZ« Encryptor</title>
+    
+    <!-- External Styles -->
+    <link rel="stylesheet" href="./styles.css" type="text/css" />
+    
+    <script type="text/javascript">
+      document.title='»SynthelicZ« Encryptor';
       
       var CD='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
       var usable='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_+';
@@ -546,38 +551,53 @@
         }
       }
       
-      testVector();
+      // Run test vector on load
+      window.addEventListener('load', testVector);
     </script>
   </head>
-  <body style="background:transparent;font:12px Lucida Console">
-    <span style="width:10px;height:10px;">
-      <fieldset>
-        <legend>
-          SynthelicZ Crypt
-        </legend>
-        Data<br>
-        <input id="MasterKey" size="34" maxlength="255" type="text" style="font:12px 'Hawdiatisch Verdana','Lucida Console';"></input><br>
-        Key<br>
-        <input id="CDKey" size="12" maxlength="12" type="text" style="font:12px 'Hawdiatisch Verdana','Lucida Console';"></input>
-        <button onclick="GUIEncode();">
-          Encode
-        </button>
-        <button onclick="GUIDecode();">
-          Decode
-        </button>
-        <br>
+  <body>
+    <div class="container">
+      <header class="header">
+        <h1>»SynthelicZ« Encryptor</h1>
+        <p>Simple encryption and decryption tool</p>
+      </header>
+      
+      <main class="main-panel">
         <fieldset>
-          <legend>
-            Output
-          </legend>
-          ASCII<br>
-          <input id="ASCIIKey" size="32" maxlength="255" type="text" style="font:12px Lucida Console;"></input><br>
-          BASE-64<br>
-          <input id="BASEKey" size="32" maxlength="255" type="text" style="font:12px Lucida Console;"></input><br>
-          HEX<br>
-          <input id="HEXKey" size="32" maxlength="255" type="text" style="font:12px Lucida Console;"></input><br>
+          <legend>»SynthelicZ« Crypt</legend>
+          
+          <div class="form-group">
+            <label for="MasterKey">Data:</label>
+            <input id="MasterKey" size="34" maxlength="255" type="text" />
+          </div>
+          
+          <div class="form-group">
+            <label for="CDKey">Key:</label>
+            <input id="CDKey" size="12" maxlength="12" type="text" />
+            <button onclick="GUIEncode();">Encode</button>
+            <button onclick="GUIDecode();">Decode</button>
+          </div>
+          
+          <fieldset>
+            <legend>Output</legend>
+            
+            <div class="form-group">
+              <label for="ASCIIKey">ASCII:</label>
+              <input id="ASCIIKey" size="32" maxlength="255" type="text" />
+            </div>
+            
+            <div class="form-group">
+              <label for="BASEKey">BASE-64:</label>
+              <input id="BASEKey" size="32" maxlength="255" type="text" />
+            </div>
+            
+            <div class="form-group">
+              <label for="HEXKey">HEX:</label>
+              <input id="HEXKey" size="32" maxlength="255" type="text" />
+            </div>
+          </fieldset>
         </fieldset>
-      </fieldset>
-    </span>
+      </main>
+    </div>
   </body>
 </html>

@@ -1,0 +1,220 @@
+/* GrabList-specific styles - extends shared-styles.css */
+@import url('../../css/shared-styles.css');
+
+/* GrabList application specific styles */
+body {
+  background-image: url("../resources/images/Background.gif");
+  -ms-background-size: 100%;
+  background-size: 100%;
+  background-attachment: fixed;
+}
+
+#menu {
+  color: #fff;
+  background: rgba(0, 0, 0, 0.8);
+  border: 4px solid rgba(255, 255, 255, 0.9);
+  font-weight: bold;
+  padding: 8px;
+  margin: 8px;
+  border-radius: 8px;
+  backdrop-filter: blur(5px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* Enhanced table styling */
+#menu table, #menu tr, #menu td {
+  border-collapse: collapse;
+}
+
+#menu td {
+  padding: 4px 8px;
+  vertical-align: middle;
+}
+
+#menu select, #menu input[type="checkbox"] {
+  font-family: inherit;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+
+#menu select:focus, #menu input[type="checkbox"]:focus {
+  outline: 2px solid #74c0ff;
+  outline-offset: 1px;
+}
+
+/* Links styling */
+a {
+  color: #ff8;
+  text-align: center;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: #ffa;
+  text-shadow: 0 0 4px rgba(255, 255, 170, 0.4);
+}
+
+/* Wakeboard application specific styles */
+#wakeboard {
+  position: absolute;
+  width: 150px;
+  height: 475px;
+  filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+#boots {
+  position: absolute;
+  width: 150px;
+  height: 475px;
+  filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+#grid {
+  position: absolute;
+  top: 64px;
+  left: 384px;
+  width: 512px;
+  height: 512px;
+  border: 4px solid #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.marker {
+  position: absolute;
+  width: 48px;
+  height: 48px;
+  opacity: 0.7;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.marker:hover {
+  opacity: 0.9;
+  transform: scale(1.05);
+}
+
+.label {
+  position: absolute;
+  left: 50px;
+  font-family: Verdana, Arial, sans-serif;
+  font-weight: bold;
+  font-size: 12px;
+  border: 4px solid;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 4px;
+  border-radius: 6px;
+  backdrop-filter: blur(3px);
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+#frontHandLabel {
+  border-color: #f00;
+}
+
+#rearHandLabel {
+  border-color: #0ff;
+}
+
+#frontHandCrossLabel {
+  border-color: #0f0;
+}
+
+#rearHandCrossLabel {
+  border-color: #c0f;
+}
+
+.line {
+  position: absolute;
+  height: 2px;
+  border-top: 1px solid #fff;
+  border-bottom: 1px solid #000;
+  opacity: 0.7;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+#frontHandLine {
+  background-color: #f00;
+}
+
+#rearHandLine {
+  background-color: #0ff;
+}
+
+#frontHandCrossLine {
+  background-color: #0f0;
+}
+
+#rearHandCrossLine {
+  background-color: #c0f;
+}
+
+/* Progressive enhancement for dark theme */
+@media screen {
+  body {
+    background: 
+      radial-gradient(1200px 500px at 20% -10%, #1c1140 10%, transparent 50%), 
+      radial-gradient(1000px 600px at 120% 20%, #0d3d7a 10%, transparent 50%), 
+      linear-gradient(180deg, var(--bg1), var(--bg2) 50%, var(--bg3)),
+      url("../resources/images/Background.gif");
+    background-blend-mode: overlay, overlay, normal, normal;
+  }
+
+  a, a:visited {
+    color: #74c0ff;
+  }
+  
+  a:hover {
+    color: #8fc7ff;
+  }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  #menu {
+    margin: 4px;
+    padding: 6px;
+    font-size: 12px;
+  }
+  
+  #grid {
+    left: 10px;
+    top: 200px;
+    width: calc(100vw - 20px);
+    height: calc(100vw - 20px);
+    max-width: 400px;
+    max-height: 400px;
+  }
+  
+  .label {
+    left: 10px;
+    font-size: 11px;
+    padding: 3px;
+  }
+}
+
+/* Legacy browser fallbacks */
+@media speech, (max-width: 1px) {
+  body {
+    background: white;
+    color: black;
+    font-family: monospace;
+  }
+  
+  #menu {
+    background: white;
+    color: black;
+    border: 2px solid black;
+  }
+  
+  .label {
+    background: white;
+    color: black;
+  }
+}

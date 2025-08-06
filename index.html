@@ -30,69 +30,8 @@
 
     <title>»SynthelicZ« — Hawkynt</title>
 
-    <!-- Colorful progressive styles; legacy-safe base first -->
-    <style type="text/css">
-      /* Base for Lynx/IE5: readable layout */
-      * { margin:0; padding:0; }
-      html, body { height:100%; }
-      body { font: 14px/1.6 Tahoma, Verdana, Arial, sans-serif; color:#111; background:#ffffff; }
-      a { color:#0645ad; }
-      a:visited { color:#0b0080; }
-      .container { max-width: 1000px; margin: 0 auto; padding: 1em; }
-      .sr-only { position:absolute; left:-9999px; top:auto; width:1px; height:1px; overflow:hidden; }
-
-      .hero { padding: 2em 1em; text-align:center; background:#f2f2f2; border-bottom: 1px solid #ddd; }
-      .hero h1 { font-size: 2em; }
-      .hero p { margin-top: .5em; color:#333; }
-
-      .grid { display:block; }
-      .card { border:1px solid #ddd; background:#fff; margin: 1em 0; padding: 1em; }
-      .card h2 { font-size: 1.2em; margin-bottom: .3em; }
-      .card p { margin: .3em 0 .6em; }
-      .badge { display:inline; font-size:.9em; }
-
-      footer { margin: 2em 0; padding-top: 1em; border-top:1px solid #e5e5e5; font-size:.9em; color:#444; }
-      ul.plain { list-style: square; margin-left: 1.5em; }
-
-      /* Progressive enhancement: vivid gradients, animated accents, colorful badges */
-      @media screen {
-        :root {
-          --bg1: #110d2e; /* deep violet */
-          --bg2: #0f2d5e; /* royal blue */
-          --bg3: #0a6aa6; /* cyan-blue */
-          --glow: rgba(255,255,255,0.6);
-          --card-bg: #0b1220;
-          --card-bd: rgba(255,255,255,0.12);
-          --text: #eef3ff;
-          --muted: #c7d0ee;
-        }
-        body { color: var(--text); background: radial-gradient(1200px 500px at 20% -10%, #1c1140 10%, transparent 50%), radial-gradient(1000px 600px at 120% 20%, #0d3d7a 10%, transparent 50%), linear-gradient(180deg, var(--bg1), var(--bg2) 50%, var(--bg3)); }
-        a, a:visited { color:#74c0ff; }
-
-        .hero { position:relative; overflow:hidden; background: transparent; border:0; padding: 3.2em 1em; }
-        .hero:before, .hero:after { content:""; position:absolute; inset:-40%; background: conic-gradient(from 180deg, rgba(255,255,255,0.08), rgba(255,255,255,0)); filter: blur(40px); animation: spin 24s linear infinite; }
-        .hero:after { animation-direction: reverse; opacity:.7; }
-        .hero h1 { font-size: 2.4em; letter-spacing: 0.02em; text-shadow: 0 2px 8px rgba(0,0,0,.5); }
-        .hero p { margin-top:.6em; color:var(--muted); }
-        .emoji { font-size: 1.2em; }
-
-        .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
-        .card { position:relative; border:1px solid var(--card-bd); background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02)); border-radius: 14px; padding: 1.1em; box-shadow: 0 1px 2px rgba(0,0,0,.25), 0 12px 34px rgba(0,0,0,.25); transition: transform .15s ease, box-shadow .15s ease, border-color .2s ease; }
-        .card:hover { transform: translateY(-3px); box-shadow: 0 3px 10px rgba(0,0,0,.35), 0 18px 48px rgba(0,0,0,.35); border-color: rgba(255,255,255,0.22); }
-        .card h2 { color:#e7ecff; }
-        .badge { display:inline-block; font-size:.75em; padding:.25em .6em; border-radius:999px; border:1px solid rgba(255,255,255,0.35); }
-        .b1 { background: linear-gradient(90deg, #ff7a7a, #ffd06a); color:#2b1a00; }
-        .b2 { background: linear-gradient(90deg, #7af0ff, #7affb6); color:#00241a; }
-        .b3 { background: linear-gradient(90deg, #c77dff, #7db2ff); color:#1b1033; }
-        .b4 { background: linear-gradient(90deg, #ffb86b, #ff6ab1); color:#2e0f1f; }
-        .b5 { background: linear-gradient(90deg, #9aff6a, #6affde); color:#06221c; }
-        .b6 { background: linear-gradient(90deg, #ffd36a, #ff7a7a); color:#2b1a00; }
-
-        .sparkle { position:absolute; right:10px; top:10px; font-size: 1.1em; opacity:.9; filter: drop-shadow(0 2px 2px rgba(0,0,0,.3)); animation: float 4s ease-in-out infinite; }
-        @keyframes float { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-4px) } }
-        @keyframes spin { to { transform: rotate(1turn); } }
-      }
-    </style>
+    <!-- External Styles -->
+    <link rel="stylesheet" href="./css/shared-styles.css" type="text/css" />
 
     <!-- JSON-LD structured data -->
     <script type="application/ld+json">

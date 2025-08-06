@@ -146,7 +146,11 @@ var TEA=new Object();
     // Make Key Setup
     this.arrKey=[]; // [4]
     for (var intI=0;intI<4;intI++) {
-      this.arrKey[intI]=szKey.charCodeAt(intI) & 0xff;
+      this.arrKey[intI]=
+        (szKey.charCodeAt(intI*4  ) & 0xff) << 24 |
+        (szKey.charCodeAt(intI*4+1) & 0xff) << 16 |
+        (szKey.charCodeAt(intI*4+2) & 0xff) << 8  |
+        (szKey.charCodeAt(intI*4+3) & 0xff)        ;
     };
   }
   // ==============[ S-BOX, U-BOX, V-BOX, P-BOX and C-BOX DATA ]========
