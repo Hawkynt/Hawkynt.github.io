@@ -1,271 +1,184 @@
 /*
  *  Extended DOM and global Functions
- *  (c)2006 Hawkynt
- *
+ *  Modernized 2025 - using native browser APIs where possible
  *
  */
 
-/* NATIVE CLASS EXTENSIONS */
-String.prototype.trim = function() {
- return (this.replace(/(^\s+|\s+$)/g, ''));
+/* POLYFILLS - Only add if not natively supported */
+if (!String.prototype.trim) {
+  String.prototype.trim = function() {
+    return this.replace(/(^\s+|\s+$)/g, '');
+  };
 }
 
-/* DOM EXTENSIONS */
-getMetaContent=function (varParam1,optional_varParam2) {
-  var szName;
-  var objObject;
-  if (optional_varParam2) {
-    szName=optional_varParam2;
-    objObject=varParam1;
+/* Modern DOM EXTENSIONS */
+const getMetaContent = (nameOrElement, optionalName) => {
+  let name, element;
+  
+  if (optionalName) {
+    element = nameOrElement;
+    name = optionalName;
   } else {
-    szName=varParam1;
-    objObject=window.document;
-  };
-  var arrMetas=getElements_ByNodeName(objObject.getElementsByTagName('head')[0],'meta');
-  for (var intI=0;intI<arrMetas.length;intI++) {
-    if (arrMetas[intI].name.toLowerCase()==szName.toLowerCase()) {
-      return arrMetas[intI].content;
-    };
-  };
-  return ('');
-}
+    element = document;
+    name = nameOrElement;
+  }
+  
+  const meta = element.querySelector(`meta[name="${name}" i]`);
+  return meta ? meta.content : '';
+};
 
-removeScripts=function () {
-  removeElements_ByNodeName(document.getElementsByTagName('head')[0],'script');
-  removeElements_ByNodeName(document.getElementsByTagName('body')[0],'script');
-  if (document.scripts) {
-    for (var intI=document.scripts.length-1;intI>=0;intI--) {
-      document.scripts[intI].parentNode.removeChild(document.scripts[intI]);
-    };
-  };
-}
+// Keep legacy function name for compatibility
+window.getMetaContent = getMetaContent;
 
-removeCSS=function () {
-  var objParent=document.getElementsByTagName('head')[0];
-  removeElements_ByNodeName(objParent,'style');
-  var arrTags=getElements_ByNodeName(objParent,'link');
-  for (var intI=0;intI<arrTags.length;intI++) {
-    if (arrTags[intI].rel=='stylesheet') {
-      objParent.removeChild(arrTags[intI]);
-    };
-  };
-}
+const removeScripts = () => {
+  document.querySelectorAll('script').forEach(script => script.remove());
+};
 
-removeElements_ByClassName=function (varParam1,optional_varParam2) {
-  var objParentNode;
-  var szClassName;
-  if (optional_varParam2) {
-    objParentNode=varParam1;
-    szClassName=optional_varParam2;
+window.removeScripts = removeScripts;
+
+const removeCSS = () => {
+  document.querySelectorAll('style, link[rel="stylesheet"]').forEach(element => element.remove());
+};
+
+window.removeCSS = removeCSS;
+
+const removeElements_ByClassName = (parentNodeOrClassName, optionalClassName) => {
+  let parentNode, className;
+  
+  if (optionalClassName) {
+    parentNode = parentNodeOrClassName;
+    className = optionalClassName;
   } else {
-    objParentNode=document.getElementsByTagName('BODY')[0];
-    szClassName=varParam1;
-  };
-  var objDOM=getElement_ByClassName(objParentNode,szClassName);
-  while (objDOM) {
-    objParentNode.removeChild(objDOM);
-    objDOM=getElement_ByClassName(objParentNode,szClassName);
-  };
-}
+    parentNode = document.body;
+    className = parentNodeOrClassName;
+  }
+  
+  parentNode.querySelectorAll(`.${className}`).forEach(element => element.remove());
+};
 
-removeElements_ByNodeName=function (varParam1,optional_varParam2) {
-  var objParentNode;
-  var szNodeName;
-  if (optional_varParam2) {
-    objParentNode=varParam1;
-    szNodeName=optional_varParam2;
+window.removeElements_ByClassName = removeElements_ByClassName;
+
+const removeElements_ByNodeName = (parentNodeOrTagName, optionalTagName) => {
+  let parentNode, tagName;
+  
+  if (optionalTagName) {
+    parentNode = parentNodeOrTagName;
+    tagName = optionalTagName;
   } else {
-    objParentNode=document.getElementsByTagName('BODY')[0];
-    szNodeName=varParam1;
-  };
-  var objDOM=getElement_ByNodeName(objParentNode,szNodeName);
-  while (objDOM) {
-    objParentNode.removeChild(objDOM);
-    objDOM=getElement_ByNodeName(objParentNode,szNodeName);
-  };
-}
+    parentNode = document.body;
+    tagName = parentNodeOrTagName;
+  }
+  
+  parentNode.querySelectorAll(tagName).forEach(element => element.remove());
+};
 
-getElements_ByClassName=function (varParam1,optional_varParam2) {
-  var objParentNode;
-  var szClassName;
-  if (optional_varParam2) {
-    objParentNode=varParam1;
-    szClassName=optional_varParam2;
+window.removeElements_ByNodeName = removeElements_ByNodeName;
+
+const getElements_ByClassName = (parentNodeOrClassName, optionalClassName) => {
+  let parentNode, className;
+  
+  if (optionalClassName) {
+    parentNode = parentNodeOrClassName;
+    className = optionalClassName;
   } else {
-    objParentNode=document.getElementsByTagName('BODY')[0];
-    szClassName=varParam1;
-  };
-  var arrItems=[];
-  for (var intI=0;intI<objParentNode.childNodes.length;intI++) {
-    if (objParentNode.childNodes[intI].className==szClassName) {
-      arrItems[arrItems.length]=objParentNode.childNodes[intI];
-    };
-  };
-  return (arrItems);
-}
+    parentNode = document.body;
+    className = parentNodeOrClassName;
+  }
+  
+  return [...parentNode.querySelectorAll(`.${className}`)];
+};
 
-getElements_ByNodeName=function (varParam1,optional_varParam2) {
-  var objParentNode;
-  var szNodeName;
-  if (optional_varParam2) {
-    objParentNode=varParam1;
-    szNodeName=optional_varParam2;
+window.getElements_ByClassName = getElements_ByClassName;
+
+const getElements_ByNodeName = (parentNodeOrTagName, optionalTagName) => {
+  let parentNode, tagName;
+  
+  if (optionalTagName) {
+    parentNode = parentNodeOrTagName;
+    tagName = optionalTagName;
   } else {
-    objParentNode=document.getElementsByTagName('BODY')[0];
-    szNodeName=varParam1;
-  };
-  var arrItems=[];
-  for (var intI=0;intI<objParentNode.childNodes.length;intI++) {
-    if (objParentNode.childNodes[intI].nodeName.toLowerCase()==szNodeName.toLowerCase()) {
-      arrItems[arrItems.length]=objParentNode.childNodes[intI];
-    };
-  };
-  return (arrItems);
-}
+    parentNode = document.body;
+    tagName = parentNodeOrTagName;
+  }
+  
+  return [...parentNode.querySelectorAll(tagName)];
+};
 
-getElement_ByClassName=function (varParam1,optional_varParam2) {
-  var objParentNode;
-  var szClassName;
-  if (optional_varParam2) {
-    objParentNode=varParam1;
-    szClassName=optional_varParam2;
+window.getElements_ByNodeName = getElements_ByNodeName;
+
+const getElement_ByClassName = (parentNodeOrClassName, optionalClassName) => {
+  let parentNode, className;
+  
+  if (optionalClassName) {
+    parentNode = parentNodeOrClassName;
+    className = optionalClassName;
   } else {
-    objParentNode=document.getElementsByTagName('BODY')[0];
-    szClassName=varParam1;
-  };
-  for (var intI=0;intI<objParentNode.childNodes.length;intI++) {
-    if (objParentNode.childNodes[intI].className==szClassName) {
-      return(objParentNode.childNodes[intI]);
-    };
-  };
-  return (false);
-}
+    parentNode = document.body;
+    className = parentNodeOrClassName;
+  }
+  
+  return parentNode.querySelector(`.${className}`) || null;
+};
 
-getElement_ByNodeName=function (varParam1,optional_varParam2) {
-  var objParentNode;
-  var szNodeName;
-  if (optional_varParam2) {
-    objParentNode=varParam1;
-    szNodeName=optional_varParam2;
+window.getElement_ByClassName = getElement_ByClassName;
+
+const getElement_ByNodeName = (parentNodeOrTagName, optionalTagName) => {
+  let parentNode, tagName;
+  
+  if (optionalTagName) {
+    parentNode = parentNodeOrTagName;
+    tagName = optionalTagName;
   } else {
-    objParentNode=document.getElementsByTagName('BODY')[0];
-    szNodeName=varParam1;
-  };
-  for (var intI=0;intI<objParentNode.childNodes.length;intI++) {
-    if (objParentNode.childNodes[intI].nodeName.toLowerCase()==szNodeName.toLowerCase()) {
-      return (objParentNode.childNodes[intI]);
-    };
-  };
-  return (false);
-}
+    parentNode = document.body;
+    tagName = parentNodeOrTagName;
+  }
+  
+  return parentNode.querySelector(tagName) || null;
+};
 
-getElement_ById=function (objParentNode,szId) {
-  for (var intI=0;intI<objParentNode.childNodes.length;intI++) {
-    if (objParentNode.childNodes[intI].id==szId) {
-      return (objParentNode.childNodes[intI]);
-    };
-  };
-  return (false);
-}
+const getElement_ById = (parentNode, id) => {
+  return parentNode.querySelector(`#${id}`) || null;
+};
 
-removeElement_ById=function (objParentNode,szId) {
-  for (var intI=0;intI<objParentNode.childNodes.length;intI++) {
-    if (objParentNode.childNodes[intI].id==szId) {
-      objParenNode.removeChild(objParentNode.childNodes[intI]);
-    };
-  };
-}
+const removeElement_ById = (parentNode, id) => {
+  const element = parentNode.querySelector(`#${id}`);
+  if (element) element.remove();
+};
 
-intGetScrollX=function () {
-  var intScrollX;
-  if (document.documentElement.scrollLeft!=undefined) {
-    intScrollX=document.documentElement.scrollLeft;
-  } else if (window.pageXOffset!=undefined) {
-    intScrollX=window.pageXOffset;
-  } else if (document.body.scrollLeft!=undefined) {
-    intScrollX=document.body.scrollLeft;
-  } else {
-    intScrollX=0;
-  };
-  return (intScrollX);
-}
+window.getElement_ByNodeName = getElement_ByNodeName;
+window.getElement_ById = getElement_ById;
+window.removeElement_ById = removeElement_ById;
 
-intGetScrollY=function () {
-  var intScrollY;
-  if (document.documentElement.scrollTop!=undefined) {
-    intScrollY=document.documentElement.scrollTop;
-  } else if (window.pageYOffset!=undefined) {
-    intScrollY=window.pageYOffset;
-  } else if (document.body.scrollTop!=undefined) {
-    intScrollY=document.body.scrollTop;
-  } else {
-    intScrollY=0;
-  };
-  return (intScrollY);
-}
+const intGetScrollX = () => window.scrollX || window.pageXOffset || document.documentElement.scrollLeft || 0;
 
-intScreenWidth=function () {
-  var intWindowWidth;
-  if (document.documentElement.offsetWidth!=undefined) {
-    intWindowWidth=document.documentElement.offsetWidth;
-    if (document.body.style.overflowX!='hidden') {
-      intWindowWidth-=20;
-    };
-  } else if (window.innerWidth!=undefined) {
-    intWindowWidth=window.innerWidth-20;
-  } else if (document.body.offsetWidth!=undefined) {
-    intWindowWidth=document.body.offsetWidth;
-    if (document.body.style.overflowX!='hidden') {
-      intWindowWidth-=20;
-    };
-  } else {
-    intWindowWidth=800-20;
-  };
-  return (intWindowWidth);
-}
+const intGetScrollY = () => window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0;
 
-intScreenHeight=function () {
-  var intWindowHeight;
-  if (document.documentElement.offsetHeight!=undefined) {
-    intWindowHeight=document.documentElement.offsetHeight;
-    if (document.body.style.overflowY!='hidden') {
-      intWindowHeight-=20;
-    };
-  } else if (window.innerHeight!=undefined) {
-    intWindowHeight=window.innerHeight-20;
-  } else if (document.body.offsetHeight!=undefined) {
-    intWindowHeight=document.body.offsetHeight;
-    if (document.body.style.overflowY!='hidden') {
-      intWindowHeight-=20;
-    };
-  } else {
-    intWindowHeight=600-20;
-  };
-  return (intWindowHeight);
-}
+window.intGetScrollX = intGetScrollX;
+window.intGetScrollY = intGetScrollY;
 
-/* EXTENSIONS */
-/* global Functions */
-szGenerateUniqueID=function (intLen) {
-  var szRet='';
-  if (!intLen) intLen=16;
-  var szChars='abcdefghijklmnopqrstuvwxz0123456789';
-  for (intI=0;intI<intLen;intI++) {
-    var intPosition=Math.floor(Math.random()*szChars.length);
-    var chChar=szChars.substr(intPosition,1);
-    szRet+=chChar;
-  };
-  return (szRet);
-}
+const intScreenWidth = () => window.innerWidth || document.documentElement.clientWidth || 800;
 
-intIsInArray=function (arrArray,varObj) {
-  for (var intI=0;intI<arrArray.length;intI++) {
-    if (arrArray[intI]==varObj) return (intI);
-  };
-  return (-1);
-}
+const intScreenHeight = () => window.innerHeight || document.documentElement.clientHeight || 600;
 
-throwException=function (szException,szParameters,szModule,szFunction) {
-  alert(szParameters+"\r\n"+szException+"\r\nFAILED in "+szModule+'::'+szFunction+' !');
-}
+window.intScreenWidth = intScreenWidth;
+window.intScreenHeight = intScreenHeight;
+
+/* Modern Utility Functions */
+const szGenerateUniqueID = (length = 16) => {
+  return crypto.randomUUID?.() || 
+    Array.from({ length }, () => 
+      'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 36)]
+    ).join('');
+};
+
+const intIsInArray = (array, obj) => array.indexOf(obj);
+
+const throwException = (exception, parameters, module, func) => {
+  console.error(`${parameters}\n${exception}\nFAILED in ${module}::${func}!`);
+  throw new Error(`${exception} in ${module}::${func}`);
+};
+
+window.szGenerateUniqueID = szGenerateUniqueID;
+window.intIsInArray = intIsInArray;
+window.throwException = throwException;
 

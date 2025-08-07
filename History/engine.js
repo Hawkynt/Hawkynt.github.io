@@ -1,106 +1,232 @@
-{
-  i='Applications';j='HistoryEngine';k='GetIDString';P='public';p='private';
-  if (!SYS_REG)                       var SYS_REG                   =new Array();
-  if (!SYS_REG[i])                    SYS_REG[i]                    =new Array();
-  if (!SYS_REG[i][j])                 SYS_REG[i][j]                 =new Array();
-  if (!SYS_REG[i][j][P])              SYS_REG[i][j][P]              =new Array();
-  if (!SYS_REG[i][j][p])              SYS_REG[i][j][p]              =new Array();
-  if (!SYS_REG[i][j][P]['variables']) SYS_REG[i][j][P]['variables'] =new Array();
-  if (!SYS_REG[i][j][P]['functions']) SYS_REG[i][j][P]['functions'] =new Array();
-  if (!SYS_REG[i][j][P]['classes'])   SYS_REG[i][j][P]['classes']   =new Array();
-  if (!SYS_REG[i][j][p]['variables']) SYS_REG[i][j][p]['variables'] =new Array();
-  if (!SYS_REG[i][j][p]['functions']) SYS_REG[i][j][p]['functions'] =new Array();
-  if (!SYS_REG[i][j][p]['classes'])   SYS_REG[i][j][p]['classes']   =new Array();
+(() => {
+  const NAMESPACE = 'Applications';
+  const MODULE = 'HistoryEngine';
   
-  SYS_REG[i][j]['InternalName']   = 'SynthelicZ::'+i+'::'+j;
-  SYS_REG[i][j]['CurrentVersion'] = '2.1a';
-  SYS_REG[i][j]['Author']         = 'Hawkynt';
-  SYS_REG[i][j]['AuthorEMAIL']    = 'Hawkynt'+''+'@'+''+'gmx'+''+'.'+''+'de';
-  SYS_REG[i][j]['LastModified']   = '29.09.2006-09:39';
-  SYS_REG[i][j]['Dependancies']   = '';
+  window.SYS_REG = window.SYS_REG || {};
+  window.SYS_REG[NAMESPACE] = window.SYS_REG[NAMESPACE] || {};
+  window.SYS_REG[NAMESPACE][MODULE] = window.SYS_REG[NAMESPACE][MODULE] || {
+    public: { variables: {}, functions: {}, classes: {} },
+    private: { variables: {}, functions: {}, classes: {} }
+  };
   
-  SYS_REG[i][j][k]=SYS_REG[i][j]['InternalName']+' &gt; v'+SYS_REG[i][j]['CurrentVersion']+'(';
-  SYS_REG[i][j][k]+=SYS_REG[i][j]['LastModified']+') coded by '+SYS_REG[i][j]['Author'];
-  // SYS_REG[i][j][k]+=' for Questions mailto:'+SYS_REG[i][j]['AuthorEMAIL'];
-  // BEGIN JAVASCRIPT LIBRARY
-  var arrItems;
-  var arrImages;
+  const module = window.SYS_REG[NAMESPACE][MODULE];
   
-  SYS_REG[i][j][p]['functions']['init']=function () {
+  Object.assign(module, {
+    InternalName: `SynthelicZ::${NAMESPACE}::${MODULE}`,
+    CurrentVersion: '3.0',
+    Author: 'Hawkynt',
+    AuthorEMAIL: 'Hawkynt@gmx.de',
+    LastModified: new Date().toISOString(),
+    Dependencies: ''
+  });
+  
+  module.GetIDString = `${module.InternalName} > v${module.CurrentVersion}(${module.LastModified}) coded by ${module.Author}`;
+  
+  let arrItems = [];
+  let arrImages = [];
+  
+  const init = () => {
     removeScripts();
     removeElements_ByNodeName(document.getElementById('MainContent'),'script');
-    arrItems=getElements_ByClassName(document.getElementById('MainContent'),'History_Item');
-    for (var intI=0;intI<arrItems.length;intI++) {
-      arrItems[intI].style.display='none';
-      document.forms['frmListBox'].elements['selectItemList'].options[intI]=new Option('['+getElement_ByClassName(arrItems[intI],'Year').innerHTML+'] '+getElement_ByClassName(arrItems[intI],'Title').innerHTML,intI);
-      arrImages=getElements_ByClassName(arrItems[intI],'Img');
-      for (var intJ=0;intJ<arrImages.length;intJ++) {
-        var szSRC=arrImages[intJ].src;
-        if (!szSRC) szSRC=arrImages[intJ].href;
-        var objA=document                                     .createElement('A');
-        objA                                                  .href=szSRC;
-        objA                                                  .className='Img';
-        arrItems[intI]                                        .appendChild(objA);
-      };
-      for (var intJ=arrImages.length-1;intJ>=0;intJ--) {
-        arrItems[intI]                                        .removeChild(arrImages[intJ]);
-      };
-    };
-    showItem(arrItems.length-1);
-    //showItem(0);
-    document.getElementById('ItemWindow').style.display='';
-    document.getElementById('LoadWindow').style.display='none';
-  };
-  
-  SYS_REG[i][j][p]['functions']['showItem']=function (intI) {
-    if (arrItems.length>0) {
-      while (intI<0) intI+=arrItems.length;
-      // if (intI<0) intI=0;
-      while (intI>=arrItems.length) intI-=arrItems.length;
-      // if (intI>=arrItems.length) intI=arrItems.length-1;
+    arrItems = [...document.getElementById('MainContent').querySelectorAll('.History_Item')];
+    
+    const selectElement = document.forms['frmListBox'].elements['selectItemList'];
+    
+    // Clear existing options
+    selectElement.innerHTML = '';
+    
+    arrItems.forEach((item, index) => {
+      item.style.display = 'none';
+      const year = item.querySelector('.Year')?.textContent || 'Unknown';
+      const title = item.querySelector('.Title')?.textContent || 'Untitled';
+      selectElement.options[index] = new Option(`[${year}] ${title}`, index);
       
-      var szTitle=getElement_ByClassName(arrItems[intI],'Title')      .innerHTML;
-      var szYear=getElement_ByClassName(arrItems[intI],'Year')        .innerHTML;
-      var szLanguage=getElement_ByClassName(arrItems[intI],'Language').innerHTML;
-      var szSkills=getElement_ByClassName(arrItems[intI],'Skills')    .innerHTML;
-      var szText=getElement_ByClassName(arrItems[intI],'Text')        .innerHTML;
-      var szHTML='';
-      szHTML+='<b>'+szTitle+' ['+szYear+']</b><br /><br />';
-      szHTML+='Programmiersprache:<br />'+szLanguage+'<br /><br />';
-      szHTML+='Schwierigkeiten:<br />'+szSkills+'<br />';
-      document.getElementById('lblItem')                      .innerHTML=szHTML;
-      document.getElementById('txtItem')                      .innerHTML=szText;
-      document.getElementById('lnkItemCnt')                   .innerHTML='['+(intI+1)+'/'+arrItems.length+']';
-      arrImages=getElements_ByClassName(arrItems[intI],'Img');
-      document.getElementById('lnkItemFFD')                   .href='javascript:showItem('+(intI+1)+');';
-      document.getElementById('lnkItemREW')                   .href='javascript:showItem('+(intI-1)+');';
-      document.forms['frmListBox'].elements['selectItemList'].options.selectedIndex=intI;
-      document.getElementById('lnkImgFull')                   .href='nopic.gif';
-      document.getElementById('imgItem')                      .src='nopic.gif';
-      SYS_REG['Applications']['HistoryEngine']['private']['functions']['showPicture'](0);
-    } else {
-      document.getElementById('lnkItemCnt').innerHTML='[0]';
-    };
+      arrImages = [...item.querySelectorAll('.Img')];
+      arrImages.forEach(img => {
+        const src = img.src || img.href;
+        const anchor = document.createElement('a');
+        anchor.href = src;
+        anchor.className = 'Img';
+        item.appendChild(anchor);
+      });
+      
+      arrImages.forEach(img => item.removeChild(img));
+    });
+    
+    // Show the most recent item
+    showItem(arrItems.length - 1);
+    
+    // Animate app appearance
+    const appContainer = document.getElementById('ItemWindow');
+    const loadWindow = document.getElementById('LoadWindow');
+    
+    appContainer.style.display = 'flex';
+    
+    setTimeout(() => {
+      loadWindow.style.opacity = '0';
+      loadWindow.style.visibility = 'hidden';
+      appContainer.classList.add('loaded');
+    }, 100);
+    
+    // Setup navigation button click handlers
+    setupNavigationHandlers();
   };
   
-  SYS_REG[i][j][p]['functions']['showPicture']=function (intI) {
-    if (arrImages.length>0) {
-      while (intI<0) intI+=arrImages.length;
-      while (intI>=arrImages.length) intI-=arrImages.length;
-      document.getElementById('lnkImgFFD')                    .href='javascript:showPicture('+(intI+1)+');';
-      document.getElementById('lnkImgREW')                    .href='javascript:showPicture('+(intI-1)+');';
-      document.getElementById('lnkImgFull')                   .href=arrImages[intI].href;
-      document.getElementById('imgItem')                      .src=arrImages[intI].href;
-      document.getElementById('lnkImgCnt')                    .innerHTML='['+(intI+1)+'/'+arrImages.length+']';
-    } else {
-      document.getElementById('lnkImgFull')                   .href='nopic.gif';
-      document.getElementById('imgItem')                      .src='nopic.gif';
-      document.getElementById('lnkImgCnt')                    .innerHTML='[0]';
-    };
+  module.private.functions.init = init;
+  
+  const showItem = (itemIndex) => {
+    if (arrItems.length === 0) {
+      document.getElementById('lnkItemCnt').textContent = '[0]';
+      return;
+    }
+    
+    // Wrap around boundaries
+    while (itemIndex < 0) itemIndex += arrItems.length;
+    while (itemIndex >= arrItems.length) itemIndex -= arrItems.length;
+    
+    const currentItem = arrItems[itemIndex];
+    const title = currentItem.querySelector('.Title')?.textContent || '';
+    const year = currentItem.querySelector('.Year')?.textContent || '';
+    const language = currentItem.querySelector('.Language')?.textContent || '';
+    const skills = currentItem.querySelector('.Skills')?.textContent || '';
+    const text = currentItem.querySelector('.Text')?.innerHTML || '';
+    
+    const infoHTML = `
+      <b>${title} [${year}]</b><br><br>
+      Programmiersprache:<br>${language}<br><br>
+      Schwierigkeiten:<br>${skills}<br>
+    `;
+    
+    document.getElementById('lblItem').innerHTML = infoHTML;
+    document.getElementById('txtItem').innerHTML = text;
+    document.getElementById('lnkItemCnt').textContent = `[${itemIndex + 1}/${arrItems.length}]`;
+    
+    arrImages = [...currentItem.querySelectorAll('.Img')];
+    
+    // Update navigation (handled by event listeners now)
+    document.forms['frmListBox'].elements['selectItemList'].selectedIndex = itemIndex;
+    document.getElementById('lnkImgFull').href = 'nopic.gif';
+    document.getElementById('imgItem').src = 'nopic.gif';
+    
+    showPicture(0);
   };
   
-  showItem=SYS_REG[i][j][p]['functions']['showItem'];
-  showPicture=SYS_REG[i][j][p]['functions']['showPicture'];
-  init=SYS_REG[i][j][p]['functions']['init'];
-  // END JAVASCRIPT LIBRARY
-}
+  module.private.functions.showItem = showItem;
+  
+  const showPicture = (imageIndex) => {
+    if (arrImages.length === 0) {
+      document.getElementById('lnkImgFull').href = 'nopic.gif';
+      document.getElementById('imgItem').src = 'nopic.gif';
+      document.getElementById('lnkImgCnt').textContent = '[0]';
+      return;
+    }
+    
+    // Wrap around boundaries
+    while (imageIndex < 0) imageIndex += arrImages.length;
+    while (imageIndex >= arrImages.length) imageIndex -= arrImages.length;
+    
+    // Update image display (navigation handled by event listeners)
+    document.getElementById('lnkImgFull').href = arrImages[imageIndex].href;
+    
+    const imgElement = document.getElementById('imgItem');
+    imgElement.style.opacity = '0.5';
+    
+    setTimeout(() => {
+      imgElement.src = arrImages[imageIndex].href;
+      imgElement.style.opacity = '1';
+    }, 150);
+    
+    document.getElementById('lnkImgCnt').textContent = `[${imageIndex + 1}/${arrImages.length}]`;
+  };
+  
+  module.private.functions.showPicture = showPicture;
+  
+  // Modern navigation handlers
+  const setupNavigationHandlers = () => {
+    // Item navigation
+    const itemPrevBtns = document.querySelectorAll('#lnkItemREW');
+    const itemNextBtns = document.querySelectorAll('#lnkItemFFD');
+    
+    itemPrevBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const currentIndex = document.forms['frmListBox'].elements['selectItemList'].selectedIndex;
+        showItem(currentIndex - 1);
+      });
+    });
+    
+    itemNextBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const currentIndex = document.forms['frmListBox'].elements['selectItemList'].selectedIndex;
+        showItem(currentIndex + 1);
+      });
+    });
+    
+    // Image navigation
+    const imgPrevBtns = document.querySelectorAll('#lnkImgREW');
+    const imgNextBtns = document.querySelectorAll('#lnkImgFFD');
+    let currentImageIndex = 0;
+    
+    imgPrevBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        currentImageIndex = Math.max(0, currentImageIndex - 1);
+        if (arrImages.length > 0) {
+          currentImageIndex = (currentImageIndex - 1 + arrImages.length) % arrImages.length;
+          showPicture(currentImageIndex);
+        }
+      });
+    });
+    
+    imgNextBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (arrImages.length > 0) {
+          currentImageIndex = (currentImageIndex + 1) % arrImages.length;
+          showPicture(currentImageIndex);
+        }
+      });
+    });
+    
+    // Keyboard navigation
+    document.addEventListener('keydown', (e) => {
+      const currentItemIndex = document.forms['frmListBox'].elements['selectItemList'].selectedIndex;
+      
+      switch(e.key) {
+        case 'ArrowLeft':
+          e.preventDefault();
+          if (e.shiftKey) {
+            // Shift + Left = Previous image
+            if (arrImages.length > 0) {
+              currentImageIndex = (currentImageIndex - 1 + arrImages.length) % arrImages.length;
+              showPicture(currentImageIndex);
+            }
+          } else {
+            // Left = Previous item
+            showItem(currentItemIndex - 1);
+          }
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          if (e.shiftKey) {
+            // Shift + Right = Next image
+            if (arrImages.length > 0) {
+              currentImageIndex = (currentImageIndex + 1) % arrImages.length;
+              showPicture(currentImageIndex);
+            }
+          } else {
+            // Right = Next item
+            showItem(currentItemIndex + 1);
+          }
+          break;
+      }
+    });
+  };
+  
+  // Export functions to global scope
+  window.showItem = showItem;
+  window.showPicture = showPicture;
+  window.init = init;
+  window.setupNavigationHandlers = setupNavigationHandlers;
+})();
