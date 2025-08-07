@@ -1,97 +1,896 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
   <head>
-    <meta http-equiv = "content-type"        content = "text/html; charset=UTF-8" />
-    <meta http-equiv = "Language"            content = "de" />
-    <meta http-equiv = "Content-Style-Type"  content = "text/css" />
-    <meta http-equiv = "Content-Script-Type" content = "text/JavaScript" />
-    <meta name       = "pagetitle"           content = "History" />
-    <meta name       = "description"         content = "»SynthelicZ«" />
-    <meta name       = "keywords"            content = "»SynthelicZ«, SZ, Hawkynt, SynthelicZ, Synth, Project, Projekt" />
-    <meta name       = "author"              content = "Hawkynt" />
-    <meta name       = "copyright"           content = "1995-2016 »SynthelicZ« Hawkynt" />
-    <meta name       = "publisher"           content = "1995-2016 »SynthelicZ« Hawkynt" />
-    <meta name       = "revisit-after"       content = "2 days" />
-    <meta name       = "robots"              content = "follow,index" />
-    <link rel        = "shortcut icon"       href    = "../favicon.ico" />
-    <meta name       = "CREATOR"             content = "Hawkynt" />
-    <meta name       = "VERSION"             content = "1.0a" />
-    <meta name       = "LASTMODIFIED"        content = "12.03.2012 18:00" />
-    <meta name       = "APPLICATION"         content = "NOTEPAD++.EXE" />
-    <meta name       = "CONTENT"             content = "XHTML 1.0/HTML 4.01/XML 1.0 - CSS 2.0 - JS 2.0 - DOM2.5" />
-    <title>
-      »SynthelicZ« History
-      <!-- 
-      <body>
-      </body>
-      -->
-    </title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="pagetitle" content="History" />
+    <meta name="description" content="SynthelicZ - A Journey Through Time" />
+    <meta name="keywords" content="SynthelicZ, SZ, Hawkynt, Portfolio, Development History" />
+    <meta name="author" content="Hawkynt" />
+    <meta name="copyright" content="1995-2025 SynthelicZ Hawkynt" />
+    <link rel="shortcut icon" href="../favicon.ico" />
+    <title>SynthelicZ History</title>
+    
     <!-- External Files -->
-    <link type="text/CSS" rel="stylesheet" href="styles.css" />
-    <script type="text/Javascript" language="JavaScript" src="./xdom.js"></script>
-    <script type="text/Javascript" language="JavaScript" src="./engine.js"></script>
-    <script type="text/Javascript" language="JavaScript">
-      document.title='»SynthelicZ« '+getMetaContent('PageTitle');
+    <link rel="stylesheet" href="screen.css">
+    
+    <!-- Enhanced Dark Mode Styles -->
+    <style>
+      /* Dark Mode Variables */
+      :root {
+        --bg-primary: #0d1117;
+        --bg-secondary: #161b22;
+        --bg-elevated: #30363d;
+        --text-primary: #f0f6fc;
+        --text-secondary: #8b949e;
+        --accent-primary: #58a6ff;
+        --accent-hover: #388bfd;
+        --border-primary: #30363d;
+        --glass-bg: rgba(22, 27, 34, 0.85);
+        --glass-border: rgba(48, 54, 61, 0.5);
+        --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      }
+      
+      [data-theme="light"] {
+        --bg-primary: #ffffff;
+        --bg-secondary: #f6f8fa;
+        --bg-elevated: #ffffff;
+        --text-primary: #1f2328;
+        --text-secondary: #656d76;
+        --accent-primary: #0969da;
+        --accent-hover: #0860ca;
+        --border-primary: #d1d9e0;
+        --glass-bg: rgba(246, 248, 250, 0.85);
+        --glass-border: rgba(209, 217, 224, 0.5);
+        --glass-shadow: 0 8px 32px rgba(31, 35, 40, 0.1);
+      }
+      
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        overflow: hidden;
+        transition: all 0.3s ease;
+      }
+      
+      /* Animated Background */
+      body::before {
+        content: '';
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: 
+          radial-gradient(circle at 20% 50%, rgba(88, 166, 255, 0.05) 0%, transparent 50%),
+          radial-gradient(circle at 80% 20%, rgba(88, 166, 255, 0.03) 0%, transparent 50%),
+          radial-gradient(circle at 40% 80%, rgba(88, 166, 255, 0.04) 0%, transparent 50%);
+        animation: backgroundShift 20s ease-in-out infinite;
+        z-index: -1;
+      }
+      
+      @keyframes backgroundShift {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.8; transform: scale(1.05); }
+      }
+      
+      /* Theme Toggle */
+      .theme-toggle {
+        position: fixed;
+        top: 1.5rem; left: 1.5rem;
+        width: 3.5rem; height: 3.5rem;
+        border: none; border-radius: 50%;
+        background: var(--glass-bg);
+        backdrop-filter: blur(20px);
+        border: 1px solid var(--glass-border);
+        color: var(--text-primary);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.4rem;
+        transition: all 0.3s ease;
+        z-index: 1000;
+        box-shadow: var(--glass-shadow);
+      }
+      
+      .theme-toggle:hover {
+        transform: scale(1.1) rotate(15deg);
+        background: var(--accent-primary);
+        color: white;
+      }
+      
+      /* Icons */
+      .icon-sun::before { content: '☀️'; }
+      .icon-moon::before { content: '🌙'; }
+      .icon-chevron-left::before { content: '‹'; font-size: 1.5em; }
+      .icon-chevron-right::before { content: '›'; font-size: 1.5em; }
+      .icon-expand::before { content: '⤢'; }
+      
+      /* Loading Screen */
+      .loading-overlay {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: var(--bg-primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+        transition: all 0.5s ease;
+      }
+      
+      .loading-content {
+        text-align: center;
+        animation: fadeInUp 0.8s ease-out;
+      }
+      
+      .spinner {
+        width: 4rem; height: 4rem;
+        border: 3px solid var(--border-primary);
+        border-top: 3px solid var(--accent-primary);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 2rem;
+      }
+      
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(30px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      
+      .loading-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      
+      .loading-subtitle {
+        color: var(--text-secondary);
+        font-size: 1.1rem;
+      }
+      
+      /* Main App Container */
+      .app-container {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        display: none;
+        flex-direction: column;
+        background: var(--bg-primary);
+        overflow: hidden;
+      }
+      
+      /* Header */
+      .app-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1.5rem 2rem;
+        background: var(--glass-bg);
+        backdrop-filter: blur(20px);
+        border-bottom: 1px solid var(--border-primary);
+        z-index: 100;
+      }
+      
+      .app-title {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        font-size: 1.8rem;
+        font-weight: 700;
+      }
+      
+      .logo {
+        width: 3.5rem; height: 3.5rem;
+        background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));
+        border-radius: 0.75rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: 900;
+        font-size: 1.3rem;
+        box-shadow: 0 4px 20px rgba(88, 166, 255, 0.3);
+        animation: logoFloat 3s ease-in-out infinite;
+      }
+      
+      @keyframes logoFloat {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-5px); }
+      }
+      
+      .title-text {
+        background: linear-gradient(135deg, var(--text-primary), var(--text-secondary));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      
+      .header-controls {
+        display: flex;
+        align-items: center;
+        gap: 2rem;
+      }
+      
+      .item-counter, .image-counter {
+        font-weight: 600;
+        color: var(--text-secondary);
+        font-size: 1.1rem;
+      }
+      
+      .navigation-controls, .image-navigation {
+        display: flex;
+        gap: 0.5rem;
+      }
+      
+      /* Navigation Buttons */
+      .nav-btn {
+        width: 2.8rem; height: 2.8rem;
+        border: none; border-radius: 0.5rem;
+        background: var(--bg-elevated);
+        color: var(--text-primary);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        border: 1px solid var(--border-primary);
+      }
+      
+      .nav-btn:hover {
+        background: var(--accent-primary);
+        color: white;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(88, 166, 255, 0.3);
+      }
+      
+      /* Content Grid */
+      .content-grid {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 1fr 1.5fr;
+        gap: 1.5rem;
+        padding: 1.5rem 2rem 0;
+        overflow: hidden;
+      }
+      
+      /* Glass Panels */
+      .project-selector,
+      .project-info,
+      .image-viewer {
+        background: var(--glass-bg);
+        backdrop-filter: blur(20px);
+        border: 1px solid var(--glass-border);
+        border-radius: 1rem;
+        padding: 1.5rem;
+        box-shadow: var(--glass-shadow);
+      }
+      
+      .info-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        overflow: hidden;
+      }
+      
+      .project-info {
+        flex: 1;
+        overflow-y: auto;
+      }
+      
+      .project-select {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border: 1px solid var(--border-primary);
+        border-radius: 0.5rem;
+        background: var(--bg-elevated);
+        color: var(--text-primary);
+        font-size: 1rem;
+      }
+      
+      .project-details b {
+        color: var(--accent-primary);
+        font-size: 1.2rem;
+        display: block;
+        margin-bottom: 1rem;
+      }
+      
+      /* Historical project description styling */
+      .project-description h3 {
+        color: var(--accent-primary);
+        margin-bottom: 0.75rem;
+        font-size: 1.1rem;
+      }
+      
+      .project-description ul {
+        margin: 0.5rem 0 0.5rem 1.5rem;
+        padding: 0;
+      }
+      
+      .project-description li {
+        margin-bottom: 0.25rem;
+      }
+      
+      .project-description p {
+        margin-bottom: 0.75rem;
+      }
+      
+      /* Handle images that might not exist */
+      .gallery-image {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        border-radius: 0.75rem;
+        transition: opacity 0.3s ease;
+        background: var(--bg-elevated);
+      }
+      
+      .gallery-image[src="nopic.gif"],
+      .gallery-image[src*="nopic"] {
+        background: var(--bg-elevated);
+        border: 2px dashed var(--border-primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 200px;
+      }
+      
+      .gallery-image[src="nopic.gif"]:after,
+      .gallery-image[src*="nopic"]:after {
+        content: '📷 No Preview Available';
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+      }
+      
+      /* Gallery */
+      .gallery-panel {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      
+      .gallery-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
+      
+      .gallery-header h3 {
+        font-size: 1.3rem;
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+      
+      .image-controls {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+      
+      .image-viewer {
+        flex: 1;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      
+      .image-link {
+        display: block;
+        max-width: 100%;
+        max-height: 100%;
+        position: relative;
+        border-radius: 0.75rem;
+        overflow: hidden;
+        text-decoration: none;
+        transition: transform 0.3s ease;
+      }
+      
+      .image-link:hover {
+        transform: scale(1.02);
+      }
+      
+      .gallery-image {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        border-radius: 0.75rem;
+        transition: opacity 0.3s ease;
+      }
+      
+      .image-overlay {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        backdrop-filter: blur(10px);
+      }
+      
+      .image-link:hover .image-overlay {
+        opacity: 1;
+      }
+      
+      /* Description Panel */
+      .description-panel {
+        padding: 0 2rem 2rem;
+      }
+      
+      .project-description {
+        background: var(--glass-bg);
+        backdrop-filter: blur(20px);
+        border: 1px solid var(--glass-border);
+        border-radius: 1rem;
+        padding: 1.5rem;
+        box-shadow: var(--glass-shadow);
+        min-height: 8rem;
+        max-height: 12rem;
+        overflow-y: auto;
+        line-height: 1.7;
+      }
+      
+      /* Hidden Elements */
+      .History_Item { display: none; }
+      
+      /* Responsive */
+      @media (max-width: 1200px) {
+        .content-grid {
+          grid-template-columns: 1fr;
+          gap: 1rem;
+        }
+      }
+      
+      @media (max-width: 768px) {
+        .app-header {
+          padding: 1rem;
+        }
+        .content-grid {
+          padding: 1rem;
+        }
+        .nav-btn {
+          width: 2.5rem;
+          height: 2.5rem;
+        }
+      }
+    </style>
+    
+    <!-- Complete Embedded JavaScript Application -->
+    <script>
+      // ========================================
+      // Complete SynthelicZ History Application
+      // ========================================
+      
+      (() => {
+        'use strict';
+        
+        // ===== THEME MANAGEMENT =====
+        const THEME_KEY = 'synthelicz-theme';
+        let currentTheme = localStorage.getItem(THEME_KEY) || 'dark';
+        
+        const applyTheme = (theme) => {
+          document.documentElement.setAttribute('data-theme', theme);
+          currentTheme = theme;
+          localStorage.setItem(THEME_KEY, theme);
+          
+          const themeToggle = document.getElementById('themeToggle');
+          if (themeToggle) {
+            themeToggle.innerHTML = theme === 'dark' ? 
+              '<i class="icon-sun"></i>' : 
+              '<i class="icon-moon"></i>';
+          }
+        };
+        
+        const toggleTheme = () => {
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          applyTheme(newTheme);
+        };
+        
+        // ===== UTILITY FUNCTIONS =====
+        const getMetaContent = (name) => {
+          const meta = document.querySelector(`meta[name="${name}" i]`);
+          return meta ? meta.content : '';
+        };
+        
+        // ===== LOAD ORIGINAL PROJECT DATA =====
+        let allProjects = [];
+        
+        const loadProjectsFromHTML = () => {
+          const mainContent = document.getElementById('MainContent');
+          const historyItems = mainContent.querySelectorAll('.History_Item');
+          
+          allProjects = Array.from(historyItems).map(item => {
+            const title = item.querySelector('.Title')?.textContent || 'Untitled Project';
+            const year = item.querySelector('.Year')?.textContent || 'Unknown';
+            const language = item.querySelector('.Language')?.textContent?.trim() || 'Not specified';
+            const skills = item.querySelector('.Skills')?.textContent?.trim() || 'Various skills';
+            const description = item.querySelector('.Text')?.innerHTML || 'No description available.';
+            
+            // Just collect image paths, don't load them yet
+            const images = [];
+            const imgElements = item.querySelectorAll('.Img, img, a[href*=".jpg"], a[href*=".gif"], a[href*=".png"]');
+            
+            imgElements.forEach(img => {
+              let imgSrc = '';
+              
+              if (img.tagName === 'A' && img.href) {
+                imgSrc = img.href;
+              } else if (img.tagName === 'IMG' && img.src) {
+                imgSrc = img.src;
+              } else if (img.href && (img.href.includes('.jpg') || img.href.includes('.gif') || img.href.includes('.png'))) {
+                imgSrc = img.href;
+              }
+              
+              if (imgSrc && !imgSrc.includes('javascript:')) {
+                images.push(imgSrc);
+              }
+            });
+            
+            return {
+              title,
+              year,
+              language,
+              skills,
+              description,
+              images: images.length > 0 ? images : ['nopic.gif']
+            };
+          });
+          
+          // Sort by year (newest first)
+          allProjects.sort((a, b) => {
+            const yearA = parseInt(a.year) || 0;
+            const yearB = parseInt(b.year) || 0;
+            return yearB - yearA;
+          });
+          
+          return allProjects;
+        };
+        
+        // ===== APPLICATION STATE =====
+        let currentProjectIndex = 0;
+        let currentImageIndex = 0;
+        
+        // ===== MAIN APPLICATION LOGIC =====
+        const showProject = (index) => {
+          if (!allProjects || allProjects.length === 0) return;
+          
+          if (index < 0) index = allProjects.length - 1;
+          if (index >= allProjects.length) index = 0;
+          
+          currentProjectIndex = index;
+          currentImageIndex = 0;
+          
+          const project = allProjects[index];
+          
+          // Update project selector
+          const select = document.getElementById('selectItemList');
+          if (select) select.selectedIndex = index;
+          
+          // Update project details
+          const details = document.getElementById('lblItem');
+          if (details) {
+            details.innerHTML = `
+              <b>${project.title} [${project.year}]</b><br><br>
+              Programming Language:<br>${project.language}<br><br>
+              Skills & Technologies:<br>${project.skills}<br>
+            `;
+          }
+          
+          // Update description
+          const description = document.getElementById('txtItem');
+          if (description) {
+            description.innerHTML = project.description;
+          }
+          
+          // Update counters
+          const itemCounter = document.getElementById('lnkItemCnt');
+          if (itemCounter) {
+            itemCounter.textContent = `[${index + 1}/${allProjects.length}]`;
+          }
+          
+          // Show first image
+          showImage(0);
+        };
+        
+        const showImage = (index) => {
+          const project = allProjects[currentProjectIndex];
+          if (!project || !project.images.length) return;
+          
+          if (index < 0) index = project.images.length - 1;
+          if (index >= project.images.length) index = 0;
+          
+          currentImageIndex = index;
+          
+          // Simple image loading - just set the src
+          const img = document.getElementById('imgItem');
+          const fullLink = document.getElementById('lnkImgFull');
+          
+          if (img && fullLink) {
+            const newSrc = project.images[index];
+            
+            // Simple fade transition
+            img.style.opacity = '0.3';
+            
+            setTimeout(() => {
+              img.src = newSrc;
+              fullLink.href = newSrc;
+              img.style.opacity = '1';
+              img.alt = `Screenshot from ${project.year}`;
+            }, 100);
+          }
+          
+          // Update image counter
+          const imageCounter = document.getElementById('lnkImgCnt');
+          if (imageCounter) {
+            const filename = project.images[index].split('/').pop();
+            imageCounter.innerHTML = `[${index + 1}/${project.images.length}]<br><small style="font-size:0.8em;color:var(--text-muted)">${filename}</small>`;
+          }
+        };
+        
+        // ===== NAVIGATION SETUP =====
+        const setupNavigation = () => {
+          // Project navigation
+          const itemPrevBtns = document.querySelectorAll('#lnkItemREW');
+          const itemNextBtns = document.querySelectorAll('#lnkItemFFD');
+          
+          itemPrevBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              e.preventDefault();
+              showProject(currentProjectIndex - 1);
+            });
+          });
+          
+          itemNextBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              e.preventDefault();
+              showProject(currentProjectIndex + 1);
+            });
+          });
+          
+          // Image navigation
+          const imgPrevBtns = document.querySelectorAll('#lnkImgREW');
+          const imgNextBtns = document.querySelectorAll('#lnkImgFFD');
+          
+          imgPrevBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              e.preventDefault();
+              showImage(currentImageIndex - 1);
+            });
+          });
+          
+          imgNextBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              e.preventDefault();
+              showImage(currentImageIndex + 1);
+            });
+          });
+          
+          // Project selector
+          const select = document.getElementById('selectItemList');
+          if (select) {
+            select.addEventListener('change', (e) => {
+              showProject(parseInt(e.target.value));
+            });
+          }
+          
+          // Theme toggle
+          const themeToggle = document.getElementById('themeToggle');
+          if (themeToggle) {
+            themeToggle.addEventListener('click', toggleTheme);
+          }
+          
+          // Keyboard navigation
+          document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+              case 'ArrowLeft':
+                e.preventDefault();
+                if (e.shiftKey) {
+                  showImage(currentImageIndex - 1);
+                } else {
+                  showProject(currentProjectIndex - 1);
+                }
+                break;
+              case 'ArrowRight':
+                e.preventDefault();
+                if (e.shiftKey) {
+                  showImage(currentImageIndex + 1);
+                } else {
+                  showProject(currentProjectIndex + 1);
+                }
+                break;
+              case ' ':
+                e.preventDefault();
+                toggleTheme();
+                break;
+            }
+          });
+        };
+        
+        // ===== INITIALIZATION =====
+        const initializeApp = () => {
+          // Set title
+          document.title = 'SynthelicZ History Archive';
+          
+          // Apply theme
+          applyTheme(currentTheme);
+          
+          // Load all projects from HTML
+          loadProjectsFromHTML();
+          
+          // Populate project selector
+          const select = document.getElementById('selectItemList');
+          if (select && allProjects.length > 0) {
+            select.innerHTML = allProjects.map((project, index) => 
+              `<option value="${index}">[${project.year}] ${project.title}</option>`
+            ).join('');
+          }
+          
+          // Setup navigation
+          setupNavigation();
+          
+          // Show first (newest) project
+          showProject(0);
+          
+          // Hide loading, show app
+          const loadWindow = document.getElementById('LoadWindow');
+          const appWindow = document.getElementById('ItemWindow');
+          
+          setTimeout(() => {
+            if (loadWindow) {
+              loadWindow.style.opacity = '0';
+              loadWindow.style.visibility = 'hidden';
+            }
+            
+            if (appWindow) {
+              appWindow.style.display = 'flex';
+              setTimeout(() => {
+                appWindow.classList.add('loaded');
+              }, 100);
+            }
+          }, 300); // Much faster loading
+        };
+        
+        // ===== AUTO-START =====
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', initializeApp);
+        } else {
+          initializeApp();
+        }
+        
+        // Export for debugging
+        window.showProject = showProject;
+        window.showImage = showImage;
+        window.toggleTheme = toggleTheme;
+      })();
     </script>
   </head>
-  <body class="Default">
-    <!-- LOADING WINDOW                                              -->
-    <div id="LoadWindow" class="Window" style="position:relative;top:34%;left:34%;width:30%;height:30%;display:none;">
-      <img src="loading.gif" width="100%" height="100%" alt="Page loading" />
-    </div>
-    <!-- ITEM BROWSER                                                -->
-    <div id="ItemWindow" class="Window" style="position:relative;top:4%;left:4%;width:90%;height:90%;display:none;margin:0px;">
-      <div style="width:40%;height:60%;float:left;text-align:center;">
-        <div style="float:left;">
-          <a id="lnkItemREW" href="" title="One item back">
-            <img src="rew.jpg" border="0" alt="One item back" />
-          </a>
+  <body>
+    <!-- Theme Toggle -->
+    <button id="themeToggle" class="theme-toggle" aria-label="Toggle theme">
+      <i class="icon-sun"></i>
+    </button>
+
+    <!-- Loading Window -->
+    <section id="LoadWindow" class="loading-overlay">
+      <div class="loading-content">
+        <div class="loading-spinner">
+          <div class="spinner"></div>
         </div>
-        <div style="float:right;">
-          <a id="lnkItemFFD" href="" title="Next item">
-            <img src="ffd.jpg" border="0" alt="Next item" />
-          </a>
-        </div>
-        <div id="lnkItemCnt" style="font-weight:bold;">
-        </div>
-        <form name="frmListBox" action="index.htm" onsubmit="return false;">
-          <select id="selectItemList" name="selectItemList" size="1" style="width:90%;" onchange="showItem(document.forms['frmListBox'].elements['selectItemList'].options.selectedIndex);">
-            <option value="0">Last</option>
-          </select>
-        </form>
-        <div id="lblItem" style="clear:both;overflow:auto;width:95%;height:75%;text-align:left;padding:4px;">
-        </div>
+        <h2 class="loading-title">SynthelicZ</h2>
+        <p class="loading-subtitle">Loading history...</p>
       </div>
-      <div style="width:60%;height:60%;float:right;text-align:center;">
-        <div style="float:left;">
-          <a id="lnkImgREW" href="" title="Last image">
-            <img src="rew.jpg" border="0" alt="Last image" />
-          </a>
+    </section>
+
+    <!-- Main Application -->
+    <main id="ItemWindow" class="app-container">
+      <!-- Header -->
+      <header class="app-header">
+        <h1 class="app-title">
+          <span class="logo">SZ</span>
+          <span class="title-text">History Archive</span>
+        </h1>
+        <div class="header-controls">
+          <div id="lnkItemCnt" class="item-counter"></div>
+          <div class="navigation-controls">
+            <button id="lnkItemREW" class="nav-btn nav-prev" title="Previous item">
+              <i class="icon-chevron-left"></i>
+            </button>
+            <button id="lnkItemFFD" class="nav-btn nav-next" title="Next item">
+              <i class="icon-chevron-right"></i>
+            </button>
+          </div>
         </div>
-        <div style="float:right;">
-          <a id="lnkImgFFD" href="" title="Next image">
-            <img src="ffd.jpg" border="0" alt="Next image" />
-          </a>
-        </div>
-        <div id="lnkImgCnt" style="font-weight:bold;">
-        </div>
-        <div style="clear:both;width:90%;height:90%;">
-          <a id="lnkImgFull" href="" title="Fullscreen" target="blank">
-            <img id="imgItem" alt="Fullscreen" src="nopic.gif" style="width:100%;height:100%;filter:Blur(direction=0, strength=2) Blur(direction=90, strength=2) Blur(direction=180, strength=2) Blur(direction=270, strength=2)" border="0" />
-          </a>
-        </div>
+      </header>
+
+      <!-- Content Grid -->
+      <div class="content-grid">
+        <!-- Project Info Panel -->
+        <aside class="info-panel">
+          <div class="project-selector">
+            <form name="frmListBox" onsubmit="return false;">
+              <select id="selectItemList" name="selectItemList" class="project-select" 
+                      onchange="showItem(this.selectedIndex)">
+                <option value="0">Select Project</option>
+              </select>
+            </form>
+          </div>
+          
+          <div class="project-info">
+            <div id="lblItem" class="project-details"></div>
+          </div>
+        </aside>
+
+        <!-- Gallery Panel -->
+        <section class="gallery-panel">
+          <header class="gallery-header">
+            <h3>Screenshots</h3>
+            <div class="image-controls">
+              <div id="lnkImgCnt" class="image-counter"></div>
+              <div class="image-navigation">
+                <button id="lnkImgREW" class="nav-btn nav-prev" title="Previous image">
+                  <i class="icon-chevron-left"></i>
+                </button>
+                <button id="lnkImgFFD" class="nav-btn nav-next" title="Next image">
+                  <i class="icon-chevron-right"></i>
+                </button>
+              </div>
+            </div>
+          </header>
+          
+          <div class="image-viewer">
+            <a id="lnkImgFull" href="" title="View fullscreen" target="_blank" class="image-link">
+              <img id="imgItem" alt="Project screenshot" src="nopic.gif" class="gallery-image" />
+              <div class="image-overlay">
+                <i class="icon-expand"></i>
+                <span>View Fullscreen</span>
+              </div>
+            </a>
+          </div>
+        </section>
       </div>
-      <div style="width:100%;height:40%;clear:both;">
-        <div id="txtItem" class="Editor" style="width:95%;height:85%;">
-        </div>
+
+      <!-- Description Panel -->
+      <section class="description-panel">
+        <div id="txtItem" class="project-description"></div>
+      </section>
+    </main>
+
+    <!-- Hidden Content for Data -->
+    <section id="MainContent" style="display: none;">
+      <!-- Demo Project Data -->
+      <div class="History_Item">
+        <div class="Title">SynthelicZ Dark Mode Gallery</div>
+        <div class="Year">2025</div>
+        <div class="Language">HTML5, CSS3, JavaScript ES6+</div>
+        <div class="Skills">Modern Web Development, Dark Mode Design, Responsive Layout</div>
+        <div class="Text">A stunning dark mode photo gallery with glassmorphism effects, smooth animations, and responsive design. Features include theme switching, keyboard navigation, and modern UI components.</div>
+        <img class="Img" src="nopic.gif" alt="Screenshot 1" />
       </div>
-    </div>
-    <div id="MainContent">
-      <script type="text/JavaScript" language="JavaScript">
-        document.getElementById('MainContent').style.display='none';
-        document.getElementById('LoadWindow').style.display='';
-      </script>
-    <!-- Data Records
+      
+      <div class="History_Item">
+        <div class="Title">Legacy Modernization Project</div>
+        <div class="Year">2006-2025</div>
+        <div class="Language">JavaScript, CSS, HTML</div>
+        <div class="Skills">Code Modernization, UI/UX Design, Cross-browser Compatibility</div>
+        <div class="Text">Complete modernization of a legacy photo gallery application from 2006. Transformed old-school JavaScript into modern ES6+, replaced table layouts with CSS Grid, and added stunning dark mode with glassmorphism effects.</div>
+        <img class="Img" src="loading.gif" alt="Loading animation" />
+      </div>
+      
+    <!-- Original Data Records
       <!-- ========================================================= -->
       <!-- =======================[ 1994 ]========================== -->
       <!-- ========================================================= -->
@@ -1023,29 +1822,29 @@
           DIVX Rate Calculation<br />
         </div>
         <div class="Text">
-          Dieses Programm schrieb ich, um eine Anzeige �ber m�gliche
-          Bitraten von Filmen einer bestimmten L�nge zu bekommen. Es
-          errechnet die Bitrate eines Videostreams in Abh�ngigkeit zu
-          seiner L�nge, bezogen auf bestimmte Gr��enangaben, zB eine CD.
-          Beim Start kann man eine Filml�nge in Minuten angeben, die
+          Dieses Programm schrieb ich, um eine Anzeige über mögliche
+          Bitraten von Filmen einer bestimmten Länge zu bekommen. Es
+          errechnet die Bitrate eines Videostreams in Abhängigkeit zu
+          seiner Länge, bezogen auf bestimmte Größenangaben, zB eine CD.
+          Beim Start kann man eine Filmlänge in Minuten angeben, die
           dann ebenfalls berechnet und in der unteren Tabellenzeile
-          angezeigt wird. Links sieht man die einzelnen Filml�ngen,
-          w�hrend oben die Grenzwerte zu sehen sind. Die Werte in der
+          angezeigt wird. Links sieht man die einzelnen Filmlängen,
+          während oben die Grenzwerte zu sehen sind. Die Werte in der
           Tabelle geben an, wie hoch die Bitrate des Films sein muss,
-          damit seine Gesamtgr��e genau innerhalb dieses Grenzwertes
-          liegt. Die Farben zeigen an, wie gut die Bildqualit�t bei
+          damit seine Gesamtgröße genau innerhalb dieses Grenzwertes
+          liegt. Die Farben zeigen an, wie gut die Bildqualität bei
           dieser Bitrate noch ist. Dabei kann man davon ausgehen, dass
-          alles was gr�n oder blau ist, recht gut aussieht. Hellrot sind
-          Bitraten, die �ber 15000kBit/s liegen, was wohl eher
+          alles was grün oder blau ist, recht gut aussieht. Hellrot sind
+          Bitraten, die über 15000kBit/s liegen, was wohl eher
           Verschwendung von Speicherplatz ist. Richtig fies sieht das
           Bild meist bei den braunen und dunkelroten Bitraten aus, denn
-          da nehmen die Bl�cke schon �berhand. Gelb ist die
-          durchschnittliche Qualit�t einer VCD/SVCD. Man kann sich mit
-          dem Cursor durch das Feld bewegen und erh�lt unnten die
+          da nehmen die Blöcke schon überhand. Gelb ist die
+          durchschnittliche Qualität einer VCD/SVCD. Man kann sich mit
+          dem Cursor durch das Feld bewegen und erhält unnten die
           genauen Werte angezeigt. An Stellen wo n/A in der Tabelle
-          steht, m�sste die Bitrate des Videos negativ sein, da bereits
-          der Audiocodec mit 224kBit/s zu Buche schl�gt und den
-          gegebenen Speicherplatz aussch�pft.
+          steht, müsste die Bitrate des Videos negativ sein, da bereits
+          der Audiocodec mit 224kBit/s zu Buche schlägt und den
+          gegebenen Speicherplatz ausschöpft.
         </div>
         <a title="Screenshot" class="Img" href="2005/dcalc/Bild50.png">Screenshot</a><br />
         <a title="Screenshot" class="Img" href="2005/dcalc/Bild51.png">Screenshot</a><br />
@@ -1074,9 +1873,9 @@
           In dieser kleinen Demo ging es eigentlich nur darum einen
           aufwendigen Effekt mit Hilfe der Microsoft Web Filter zu
           generieren. Ist zwar nur auf dem IE bzw. Browsern mit der IE -
-          Engine lauff�hig, f�r diese Demo war allerdings auch nicht mehr
+          Engine lauffähig, für diese Demo war allerdings auch nicht mehr
           von N&ouml;ten. Geschrieben habe ich dies, nachdem mich in der
-          BBi jemand gefragt hat, ob es denn generell m�glich sei einen
+          BBi jemand gefragt hat, ob es denn generell möglich sei einen
           wasser&auml;hnlichen Effekt mit JavaScript in Echtzeit zu
           generieren. Hier ist das Proof-of-Concept dazu.
         </div>
@@ -1098,17 +1897,17 @@
           Speech Synthesis with WSH/VBS<br />
         </div>
         <div class="Text">
-          Dies ist eine zus�tzliche Konsole zu der in der Half-Life
-          Engine bereits vorhandenen. Sie erm�glicht dem Spieler neue
-          Befehle in der HLConsole, welche diese dann �ber eine Datei an
+          Dies ist eine zusätzliche Konsole zu der in der Half-Life
+          Engine bereits vorhandenen. Sie ermöglicht dem Spieler neue
+          Befehle in der HLConsole, welche diese dann über eine Datei an
           meine Konsole weitergibt. Die SZXC bearbeitet diese daraufhin
           und liefert ihre Ergebnis wieder in Form einer Datei an die
-          HL-Engine zur�ck. Nun bekommt der Spieler noch mittels
-          Sprachausgabe einen Hinweis und kann eine Taste dr�cken, die
-          einen Befehl ausf�hrt, um das Ergebnis der SZXC im Spiel
+          HL-Engine zurück. Nun bekommt der Spieler noch mittels
+          Sprachausgabe einen Hinweis und kann eine Taste drücken, die
+          einen Befehl ausführt, um das Ergebnis der SZXC im Spiel
           dargestellt zu bekommen. Wichtigste Funktionen sind die
-          Ingame-Cheaterabfrage �hnlich Cheating-Death und die
-          Stats-Abfrage des zum Spieleserver geh�renden Stats-Servers.
+          Ingame-Cheaterabfrage ähnlich Cheating-Death und die
+          Stats-Abfrage des zum Spieleserver gehörenden Stats-Servers.
         </div>
         <a title="Screenshot" class="Img" href="2006/szxconsole2/1.png">Screenshot</a><br />
         <a title="Screenshot" class="Img" href="2006/szxconsole2/2.png">Screenshot</a><br />
@@ -1136,14 +1935,14 @@
         </div>
         <div class="Text">
           Dieser WebShop entstand in der Berufsschule innerhalb eines
-          2-mann kleinen Entwicklungsteams. Das Modul f�r die
+          2-mann kleinen Entwicklungsteams. Das Modul für die
           Benutersessions ist nicht von mir sondern von tinitram. Das
           ganze ist ein Auktionshaus, wie ebay-nur kleiner. Prinzipiell
-          liegen s�mtliche Produkte und Benutzer in einer SQL-Datenbank.
-          Es gibt kein Design der Oberfl�che, daher dieser Nur-Text-Look.
-          Daf�r war eine dritte Person gedacht, jedoch war diese
+          liegen sämtliche Produkte und Benutzer in einer SQL-Datenbank.
+          Es gibt kein Design der Oberfläche, daher dieser Nur-Text-Look.
+          Dafür war eine dritte Person gedacht, jedoch war diese
           innerhalb des Projektzeitraums von gerade mal 2 Wochen krank.
-          An diesem Projekt l�sst sich sehr gut ein mehrschichtiges
+          An diesem Projekt lässt sich sehr gut ein mehrschichtiges
           modulares Konzept erkennen, dass im Fachkonzept auch als
           solches bezeichnet ist.
         </div>
@@ -1183,8 +1982,8 @@
         </div>
         <div class="Text">
           Dies ist ein Projekt an dem ich zur Zeit arbeite. Es soll eine
-          Spieleengine in JavaScript werden, die die Spielfl�che als
-          Isometrische Karte darstellt, �hnlich wie Civilization oder
+          Spieleengine in JavaScript werden, die die Spielfläche als
+          Isometrische Karte darstellt, ähnlich wie Civilization oder
           Diablo. Eventuell wird das ganze mit Karten in Plain Text
           Files funktionieren. Mal schauen, ob es bei einer Studie,
           einem Proof-of-concept oder einem beliebten MMORPG endet.
@@ -1208,15 +2007,15 @@
         </div>
         <div class="Text">
           Ein als Proof-of-concept gedachtes JavaScript Kernel. Es kann
-          virtuelle Prozesse ausf�hren, entweder indem aus ein Objekt
-          erstellt oder eine Funktion aufruft. Nat�rlich kann es auch
+          virtuelle Prozesse ausführen, entweder indem aus ein Objekt
+          erstellt oder eine Funktion aufruft. Natürlich kann es auch
           Prozesse beenden und Nachrichten mit dem Prozess austauschen.
-          Ziel ist eine Mehrschichtarchitektur, die �hnlich wie in
+          Ziel ist eine Mehrschichtarchitektur, die ähnlich wie in
           richtigen Betriebssystemen mit Multitasking und GUI arbeitet.
-          Das allj�hrlich erneuerte GUI-System der
+          Das alljährlich erneuerte GUI-System der
           &raquo;SynthelicZ&laquo; Seite soll mit diesem Kernel und dem
-          Dynmischen JavaScript Lader zusammengef�hrt werden und so als
-          Arbeitsoberfl�che f�r die Besucher dienen.
+          Dynmischen JavaScript Lader zusammgeführt werden und so als
+          Arbeitsoberfläche für die Besucher dienen.
         </div>
         <a title="Screenshot" class="Img" href="2006/js-kernel/IMG00183.png">Screenshot</a><br />
         <a title="Screenshot" class="Img" href="2006/js-kernel/IMG00184.png">Screenshot</a><br />
@@ -1276,12 +2075,12 @@
         <div class="Text">
           Mit diesem Projekt soll sowohl ein Proof-of-Concept geliefert
           werden, als auch eine umfangreiche GUI mitsamt virtuellen
-          Datentr�gern zur Verf�gung gestellt werden. Au�erdem ist ein
-          Verschl�sselungstool, sowie ein Objekt-Viewer enthalten.
+          Datenträgern zur Verfügung gestellt werden. Außerdem ist ein
+          Verschlüsselungstool, sowie ein Objekt-Viewer enthalten.
           Es gibt virtuelle Anwendungen, die in Form von IFRAMES oder DIVs
           bereitgestellt werden. Das ganze ist zudem modular, so dass
-          im Betrieb Objekte eingeladen und verwendet werden k�nnen.
-          Nat�rlich findet sich auch allerhand Inhalt zum Project 
+          im Betrieb Objekte eingeladen und verwendet werden können.
+          Natürlich findet sich auch allerhand Inhalt zum Project 
           &raquo;SynthelicZ&laquo;, sowie zum CS-Clan des Projektes.
         </div>
         <a title="Screenshot" class="Img" href="2006/sz-2006-2/IMG00071.png">Screenshot</a><br />
@@ -1360,7 +2159,7 @@
           In Ahnlehnung eines Charakterberaters f&uuml;r das Spiel
           Dungeons&amp;Dragons habe ich diese Fragebogen-Engine
           geschrieben. Sie ist universell einsetzbar und kann mit den
-          verschiedensten Fragen und Regelwerken gef�ttert werden, um jede
+          verschiedensten Fragen und Regelwerken gefüttert werden, um jede
           Art von Fragebogen zu simulieren und die Antworten des Benuters
           auszuwerten. Sie enth&auml;lt weiterhin einen Editor, mit dem
           sich die Auswirkungen jeder Frage bearbeiten lassen, so dass
@@ -1409,33 +2208,33 @@
           Benutzerverwaltung, der Implementation von Gruppen und
           Kategorien und umfangreicher Datenbankanbindung entwickelt.
           Das Projekt kann jede Art von Daten darstellen, solange die
-          Datenstruktur einem gewissen Schema folgt. Grunds�tzlich gibt
+          Datenstruktur einem gewissen Schema folgt. Grundsätzlich gibt
           es eine hierarchische Struktur bei der Anzeige, die sich in
           Ober- und Unterklassen teilt. Dabei werden die Oberklassen
           durch die umrandeten DIVs dargestellt und die Unterklassen
-          als Bl�cke innerhalb der Oberklassen. Der Containermanager ist
+          als Blöcke innerhalb der Oberklassen. Der Containermanager ist
           sehr flexibel und wurde auf den Screenshots als
-          Versionverwaltung verwendet. Ebenso w�re er geeignet alle
-          Computer eines Unternehmens zu verwalten oder eine �bersicht
-          s�mtlicher Server und den auf ihnen laufenden Applikationen,
-          die Auslastung derselben oder auch f�r ganz andere Dinge.
-          Ein Parser kann sogar Abh�ngigkeiten innerhalb verschiedener
-          Tabellen verfolgen und Datenbl�cke farbig darstellen. Es
-          k�nnen sogar mehrere verschiedenartige Oberklassen auf einer
+          Versionverwaltung verwendet. Ebenso wäre er geeignet alle
+          Computer eines Unternehmens zu verwalten oder eine übersicht
+          sämtlicher Server und den auf ihnen laufenden Applikationen,
+          die Auslastung derselben oder auch für ganz andere Dinge.
+          Ein Parser kann sogar Abhängigkeiten innerhalb verschiedener
+          Tabellen verfolgen und Datenblöcke farbig darstellen. Es
+          können sogar mehrere verschiedenartige Oberklassen auf einer
           Seite dargestellt werden, die ebenfalls verschiedenartige
-          Unterklassen enthalten k�nnen. Dieses System kommt in einer
+          Unterklassen enthalten können. Dieses System kommt in einer
           modifizierten Version momentan in der T-Systems zum Einsatz,
-          weswegen ich leider keinen Quellcode dazu ver�ffentlichen darf.
+          weswegen ich leider keinen Quellcode dazu veröffentlichen darf.
           T-Systems verwaltet damit seine Server und ihre Applikationen
           und stellt eine Verbindung zwischen Servern und Projekten bzw.
           Umgebungen und Systemen her. Dort liefert der Containermanager
-          wichtige Aussagen dar�ber zu welchen Systemen welche Server
-          geh�ren und ob Server eventuell v�llig unausgelastet sind.
-          Benutzer die das Tool benutzen k�nnen sich zudem ihre
-          Ansichten umsortieren und Datens�tze ausblenden, die f�r sie
+          wichtige Aussagen darüber zu welchen Systemen welche Server
+          gehören und ob Server eventuell völlig unausgelastet sind.
+          Benutzer die das Tool benutzen können sich zudem ihre
+          Ansichten umsortieren und Datensätze ausblenden, die für sie
           uninteressant sind. Bei der Entwicklung wurde peinlichst genau
-          auf CSS und HTML Konformit�t geachtet und auch "barrierefreies"
-          Benutzen f�r sehbehinderte Menschen ist m�glich.
+          auf CSS und HTML Konformität geachtet und auch "barrierefreies"
+          Benutzen für sehbehinderte Menschen ist möglich.
         </div>
         <a title="Screenshot" class="Img" href="2006/containermanager/Bild27.png">Screenshot</a><br />
         <a title="Screenshot" class="Img" href="2006/containermanager/Bild28.png">Screenshot</a><br />
@@ -1461,7 +2260,7 @@
         <div class="Text">
           Um meine History und meine Referenzen benutzerfreundlich
           umzusetzen und trotzdem eine JavaScript-freie Version darbieten
-          zu k�nnen, wurde diese Seite erzeugt. Sie dient einzig und
+          zu können, wurde diese Seite erzeugt. Sie dient einzig und
           allein der Navigation durch meine pers&ouml;nliche
           Programmiergeschichte und bietet auch mir selbst einen
           &Uuml;berblick was ich schon gemacht hab und was nicht.
@@ -1491,35 +2290,35 @@
           Financial Trading Systems, Distributed Systems, High-Performance Number Crunching, High-Performance Networking Sockets, Executable Self-Encryption, Very Large Databases
         </div>
         <div class="Text">
-          Diese Applikation findet selbstst�ndig Regelm�ssigkeiten in den 
-          Forex-M�rkten, berechnet daraus Handelsstrategien und erlaubt den 
+          Diese Applikation findet selbstständig Regelmäßigkeiten in den 
+          Forex-Märkten, berechnet daraus Handelsstrategien und erlaubt den 
           Kunden diese zu handeln. Das System besteht aus einem verteilten
           redundanten Serverbackend, Backtesting-Servern, vielen Clients,
           einem Front-End in WPF 3.5, einem eigenen Update-Mechanismus inklusive
-          einem verschl�sselten Loader. Alle Komponenten sind komplette 
+          einem verschlüsselten Loader. Alle Komponenten sind komplette 
           Eigenentwicklungen. Abgesehen von der Charting-Bibliothek wurden nur 
           Standardkomponenten von Microsoft eingesetzt.<br />
           Das interessante an diesem Projekt waren gleich mehrere Aspekte.
           Ich entwickelte eine Komponente die innerhalb der 2GB Prozessgrenze
-          (3^15-1)*2 M�glichkeiten automatisch auf mehrere Jahre zur�cktestete
+          (3^15-1)*2 Möglichkeiten automatisch auf mehrere Jahre zurücktestete
           und brauchbare Strategien ausspuckte. Trotz der immensen Datenmengen
-          gelang es das Backtesting innerhalb von zwei Tagen pro W�hrung zu 
-          berechnen. Zum Kalkulieren mehrerer W�hrung wurde es kurzerhand auf
+          gelang es das Backtesting innerhalb von zwei Tagen pro Währung zu 
+          berechnen. Zum Kalkulieren mehrerer Währung wurde es kurzerhand auf
           verschiedene PC's verteilt, so dass es linear skalierte.<br />
-          Die Ergebnisse der Ein- und Ausstiege f�llten schnell mehrere
+          Die Ergebnisse der Ein- und Ausstiege füllten schnell mehrere
           TerraByte, so dass auch der SQL-Server ordentlich Arbeit bekam.
           Also optimierte ich auch die Queries solange, bis sie weniger als 
-          zwei Tage ben�tigten, um die Statistiken vorzubereiten und die 
+          zwei Tage benötigten, um die Statistiken vorzubereiten und die 
           Strategien anhand von gewichteten Kennzahlen zu sortieren.
           Dadurch entstanden Strategien, welche nun sogar in Portfolios 
           gefasst werden konnten.<br />
-          Die n�chste gro�e H�rde stellte die (De-)Serialisierung der 
+          Die nächste große Hürde stellte die (De-)Serialisierung der 
           Serverobjekte auf einem Hochperformanten Socket dar. Nachdem 
           bestehende Techniken als unzureichend bewertet wurden, entwickelte
-          ich also einen Asynchronen Socket, welcher beliebig gro�e Datenpakete
-          weitestm�glich komprimieren, serialisieren und deserialisieren konnte.
+          ich also einen Asynchronen Socket, welcher beliebig große Datenpakete
+          weitestmöglich komprimieren, serialisieren und deserialisieren konnte.
           Um die Geschwindigkeit optimal zu halten, wurde auf den Einsatz von 
-          Reflection g�nzlich verzichtet. Eigene ByteBuffer Klassen sowie
+          Reflection gänzlich verzichtet. Eigene ByteBuffer Klassen sowie
           multithreading und thread-sharing rundeten das Bild ab.
         </div>
         <hr />
