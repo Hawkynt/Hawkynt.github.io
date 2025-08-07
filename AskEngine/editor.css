@@ -6,12 +6,6 @@
     box-sizing: border-box;
 }
 
-/* Force light background for editor, overriding shared-styles media query */
-body {
-    background: #f8f9fa !important;
-    color: #212529 !important;
-}
-
 .container {
     background: white !important;
     background-color: white !important;
