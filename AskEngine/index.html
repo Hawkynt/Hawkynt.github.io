@@ -1,125 +1,165 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
-  <head>
-    <meta http-equiv = "content-type"        content = "text/html; charset=UTF-8" />
-    <meta http-equiv = "Language"            content = "de" />
-    <meta http-equiv = "Content-Style-Type"  content = "text/css" />
-    <meta http-equiv = "Content-Script-Type" content = "text/JavaScript" />
-    <meta name       = "pagetitle"           content = "Testbogen-Engine" />
-    <meta name       = "description"         content = "»SynthelicZ«" />
-    <meta name       = "keywords"            content = "»SynthelicZ«, SZ, Hawkynt, SynthelicZ, Synth, Project, Projekt" />
-    <meta name       = "author"              content = "Hawkynt" />
-    <meta name       = "copyright"           content = "1995-2006 »SynthelicZ« Hawkynt" />
-    <meta name       = "publisher"           content = "1995-2006 »SynthelicZ« Hawkynt" />
-    <meta name       = "revisit-after"       content = "2 days" />
-    <meta name       = "robots"              content = "follow,index" />
-    <link rel        = "shortcut icon"       href    = "../favicon.ico" />
-	<meta name  = "google-site-verification" content = "LkZ6DT0_GlcimQOKrWL20jv4jtUh0DBsh1ZPLXQqk3A" />
-    <meta name       = "CREATOR"             content = "Hawkynt" />
-    <meta name       = "VERSION"             content = "1.0a" />
-    <meta name       = "LASTMODIFIED"        content = "18.07.2006 17:00" />
-    <meta name       = "APPLICATION"         content = "NOTEPAD2.EXE" />
-    <meta name       = "CONTENT"             content = "XHTML 1.0/HTML 4.01/XML 1.0 - CSS 2.0 - JS 2.0 - DOM2.5" />
-    <title>
-      »SynthelicZ« Testbogen-Engine
-      <!-- 
-      <body>
-      </body>
-      -->
-    </title>
-    <!-- External Files -->
-    <link type="text/CSS" rel="stylesheet" href="styles.css" />
-    <script type="text/JavaScript" language="JavaScript" src="../-.lib.js/xdom.js"></script>
-    <script type="text/JavaScript" language="JavaScript" src="engine.js"></script>
-    <script type="text/JavaScript" language="JavaScript" src="dnd/ruleset.js"></script>
-    <script type="text/JavaScript" language="JavaScript" src="dnd/questions.js"></script>
-    <!-- Internal Things -->
-    <style type="text/CSS">
-      <!--
-      DIV, SPAN {
-        border:0px;
-        padding:0px;
-        margin:0px;
-      }
-      
-      BODY, HTML {
-        height:100%;
-        background:#000;
-        color:#FFF;
-      }
-      
-      TABLE {
-        font-size: 100%
-      }
-      -->
-    </style>
-    <script type="text/JavaScript" language="JavaScript">
-      <!--
-      document.title='»SynthelicZ« '+getMetaContent('PageTitle')+' '+Engine_getVersion()+' ['+document.compatMode+']';
-      //-->
-    </script>
-  </head>
-  <body class="Default">
-    <form name="frmUserInput" action="index.htm" onsubmit="return false;" style="width:100%;height:100%;overflow:hidden;">
-      <div style="width:49%;height:94%;float:left;overflow:hidden;text-align:center;">
-        <div class="InputWindow"  style="width:95%;height:95%;margin:4px;">
-          <div class="ActiveWindowCaption" id="WindowTitle" onclick="javascript:Engine_Init();">
-            ApplicationTitle
-          </div>
-          <div id="UserInput" class="Fragen"  style="width:95%;height:90%;overflow:scroll;text-align:left;">
-          </div>
-        </div>
-      </div>
-      <div style="width:49%;height:94%;float:right;overflow:hidden;text-align:center;">
-        <div class="OutputWindow" style="width:95%;height:95%;margin:4px;">
-          <div class="InactiveWindowCaption">
-            Engine-Ausgabe
-          </div>
-          <div id="EngineOutput" class="Antwort" style="width:95%;height:90%;overflow:scroll;text-align:left;">
-          </div>
-        </div>
-      </div>
-      
-      <div style="clear:both;">
-        <center>
-          <table class="Default InputWindow" border="0" cellpadding="0" cellspacing="0" width="97%" style="table-layout:fixed;" summary="DesignHelper">
-            <tr>
-              <td align="left">
-                <button onclick="javascript:Engine_Finish();" id="SolveButton">SolveButton</button>
-                &nbsp;
-                &nbsp;
-                <button onclick="javascript:Engine_SwitchMode();" id="SwitchButton">SwitchButton</button>
-              </td>
-              <td align="right" id="ScoreboardSwitch">
-                <b>Scoreboard anzeigen</b><input type="checkbox" name="ShowScoreboard" id="cbShowScoreboard" value="checked" />
-              </td>
-            </tr>
-          </table>
-        </center>
-      </div>
-    </form>
-    <div id="TooltipWindowFrame" onclick="clearTooltip();" style="position:absolute;top:0px;left:0px;width:100%;height:100%;display:none;">
-      <table style="width:100%;height:100%;" border="0" cellpadding="0" cellspacing="0">
-        <tr valign="middle">
-          <td align="center">
-            <div style="background:#000;padding:1px;margin:1px;">
-              <div id="TooltipWindowContent" class="OutputWindow" style="margin:1px;padding:4px;">
-                Tooltip Window
-              </div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="»SynthelicZ« D&D Character Creation Questionnaire - Discover your perfect D&D character!">
+    <meta name="keywords" content="D&D, character creation, questionnaire, RPG, fantasy">
+    <meta name="author" content="Hawkynt">
+    <link rel="shortcut icon" href="../favicon.ico">
+    <title>»SynthelicZ« D&D Character Creator</title>
+    
+    <!-- External Dependencies -->
+    <link rel="stylesheet" href="./index.css">
+    <script src="../-.lib.js/xdom.js"></script>
+    
+    <!-- Unified resource files -->
+    <script src="Strings.js"></script>
+    <script src="dnd/ruleset.js"></script>
+    <script src="dnd/questions.js"></script>
+    
+    <!-- Main Application -->
+    <script src="application.js"></script>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="loading-screen">
+        <div class="loading-content">
+            <div class="dice-loader">
+                <div class="dice">⚀</div>
             </div>
-          </td>
-        </tr>
-      </table>
+            <h2>Rolling character creation...</h2>
+            <div class="loading-bar">
+                <div class="loading-progress"></div>
+            </div>
+        </div>
     </div>
-    <a href="http://www.SynthelicZ.de" style="display:none;" title="www.SynthelicZ.de">&raquo;SynthelicZ&laquo;</a>
-    <script type="text/JavaScript" language="JavaScript">
-    <!--
-      Engine_SwitchMode();
-      removeScripts();
-      if (!top.boolOSLoaded) {
-        document.write('<img src="http://webcounter.goweb.de/28121.GIF" style="position:absolute;top:0px;right:0px;" alt="WEBCounter by GOWEB" border="0" vspace="0" /><br />');
-      };
-    //-->
-    </script>
-  </body>
+
+    <!-- Main Application -->
+    <div id="mainApp" class="app-container" style="display: none;">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <h1 class="app-title">
+                    <span class="brand">»SynthelicZ«</span>
+                    <span class="subtitle">D&D Character Creator</span>
+                </h1>
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div id="progressFill" class="progress-fill"></div>
+                    </div>
+                    <span id="progressText" class="progress-text">Question 1 of 12</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Welcome Screen -->
+            <div id="welcomeScreen" class="screen welcome-screen">
+                <div class="welcome-card">
+                    <div class="welcome-icon">🎲</div>
+                    <h2>Welcome, Adventurer!</h2>
+                    <p>Embark on a journey of self-discovery to find your perfect D&D character. Answer a series of questions about your preferences and personality, and we'll recommend the ideal race and class combination for your next campaign!</p>
+                    <div class="feature-list">
+                        <div class="feature-item">
+                            <span class="feature-icon">⚔️</span>
+                            <span>12 thoughtful questions</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">🏰</span>
+                            <span>Multiple race & class combinations</span>
+                        </div>
+                        <div class="feature-item">
+                            <span class="feature-icon">📊</span>
+                            <span>Detailed results analysis</span>
+                        </div>
+                    </div>
+                    <button id="startButton" class="cta-button">
+                        <span>Begin Your Quest</span>
+                        <div class="button-glow"></div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Question Screen -->
+            <div id="questionScreen" class="screen question-screen" style="display: none;">
+                <div class="question-container">
+                    <div class="question-card">
+                        <div class="question-header">
+                            <div class="question-number">Q<span id="currentQuestionNum">1</span></div>
+                            <h2 id="questionText" class="question-title">Loading question...</h2>
+                        </div>
+                        
+                        <div id="answersContainer" class="answers-container">
+                            <!-- Dynamic answer options will be inserted here -->
+                        </div>
+                        
+                        <div class="question-actions">
+                            <button id="prevButton" class="action-button secondary" disabled>
+                                ← Previous
+                            </button>
+                            <button id="nextButton" class="action-button primary" disabled>
+                                Next →
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Screen -->
+            <div id="resultsScreen" class="screen results-screen" style="display: none;">
+                <div class="results-container">
+                    <div class="results-header">
+                        <div class="results-icon">🎯</div>
+                        <h2>Your Perfect Character</h2>
+                        <p>Based on your answers, here's your recommended D&D character:</p>
+                    </div>
+                    
+                    <div class="character-reveal">
+                        <div id="characterCard" class="character-card">
+                            <div class="character-portrait">
+                                <div id="characterAvatar" class="character-avatar">⚔️</div>
+                            </div>
+                            <div class="character-info">
+                                <h3 id="characterRace" class="character-race">Human</h3>
+                                <h4 id="characterClass" class="character-class">Fighter</h4>
+                                <div id="characterDescription" class="character-description">
+                                    A versatile and adaptable warrior, ready for any challenge.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="detailed-results">
+                        <h3>Detailed Analysis</h3>
+                        <div id="scoreBreakdown" class="score-breakdown">
+                            <!-- Score breakdown will be inserted here -->
+                        </div>
+                    </div>
+                    
+                    <div class="results-actions">
+                        <button id="restartButton" class="action-button secondary">
+                            🔄 Take Quiz Again
+                        </button>
+                        <button id="shareButton" class="action-button primary">
+                            📤 Share Results
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <div class="footer-content">
+                <span class="footer-brand">»SynthelicZ« Project</span>
+                <span class="footer-version">Engine v2.2d</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Modern JavaScript Controller -->
+    <script src="modern-app.js"></script>
+</body>
 </html>

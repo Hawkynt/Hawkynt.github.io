@@ -1,627 +1,1252 @@
-{
-  var thisFileIsPublic=true;
-  if ((thisFileIsPublic) || (Engine_getVersion()<="v2.2d"))
+// Unified D&D Character Creator Questions
+// Language-specific fields use suffixes: _DE for German, no suffix for English/default
+
+const Questions = [
   {
-    Engine_clearQuestions();
-    {
-      Engine_addQuestion('Wo fühlst du dich am wohlsten ?');
-      Engine_addAnswer('In einer großen Stadt voller Leben.');
-      Engine_setModifiers('RACE_HUMAN:+2 RACE_ELF:-2 RACE_ORC:-2 RACE_GNOME:+1 RACE_HALF-ELF:-1 RACE_HALF-ORC:-1 RACE_HALFLING:+2 RACE_DWARVE:-2 CLASS_FIGHTER:+1 CLASS_BARBAR:-1 CLASS_CLERIC:+1 CLASS_ROGUE:+2 CLASS_BARD:+1 CLASS_DRUID:-2 CLASS_SORCERER:+2 CLASS_RANGER:-2 ');
-      Engine_addAnswer('Hinter den schützenden Mauern einer Kirche.');
-      Engine_setModifiers('CLASS_DRUID:-1 CLASS_CLERIC:+2 CLASS_MONK:+2 CLASS_PALADIN:+1 CLASS_ROGUE:-1');
-      Engine_addAnswer('In der Nähe von mächtigen, eindrucksvollen Bergen.');
-      Engine_setModifiers('RACE_ORC:+2 RACE_HALF-ORC:+1 RACE_HALFLING:-1 RACE_DWARVE:+2');
-      Engine_addAnswer('In einer Bibliothek voller interessanter Bücher.');
-      Engine_setModifiers('RACE_HUMAN:+1 RACE_ELF:+2 RACE_ORC:-3 RACE_GNOME:+1 RACE_HALF-ELF:+1 RACE_HALF-ORC:-2 RACE_DWARVE:-1 CLASS_WIZARD:+2 CLASS_CLERIC:+1 CLASS_DRUID:-1 CLASS_SORCERER:+1 CLASS_RANGER:-1 ');
-      Engine_addAnswer('Auf einer sonnigen Lichtung im Herzen eines lebendigen Waldes.');
-      Engine_setModifiers('RACE_ELF:+2 RACE_HALF-ELF:+1 RACE_ORC:+1 RACE_HALFLING:-1 RACE_GNOME:-1 RACE_DWARVE:-2 CLASS_DRUID:+2 CLASS_RANGER:+2 CLASS_BARBAR:+1 CLASS_BARD:-1 CLASS_ROGUE:-1');
-      Engine_addAnswer('An einem abendlichen Strand mit rauschenden Wellen.');
-      Engine_setModifiers('RACE_HUMAN:+1 RACE_HALF-ELF:+1 CLASS_MONK:+2 CLASS_SORCERER:+1 CLASS_BARD:+1 CLASS_ROGUE:-1');
-    }
-    {
-      Engine_addQuestion('Wo fühlst du dich am unwohlsten ?');
-      Engine_addAnswer('In einer großen Stadt.');
-      Engine_setModifiers('RACE_HUMAN:-2 RACE_HALF-ELF:+1 RACE_ELF:+2 RACE_ORC:+2 RACE_HALF-ORC:+1 RACE_HALFLING:-2 RACE_GNOME:-1 RACE_DWARVE:+2 CLASS_BARBAR:+1 CLASS_BARD:-1 CLASS_DRUID:+2 CLASS_SORCERER:-2 CLASS_FIGHTER:-1 CLASS_CLERIC:-1 CLASS_ROGUE:-2 CLASS_RANGER:+2');
-      Engine_addAnswer('Hinter den Mauern einer Kirche.');
-      Engine_setModifiers('CLASS_DRUID:+1 CLASS_CLERIC.-2 CLASS_MONK:-2 CLASS_PALADIN:-1 CLASS_ROGUE:+1');
-      Engine_addAnswer('In der Nähe von Bergen.');
-      Engine_setModifiers('RACE_ORC:-2 RACE_HALF-ORC:-1 RACE_HALFLING:+1 RACE_DWARVE:-2');
-      Engine_addAnswer('In einer Bibliothek.');
-      Engine_setModifiers('RACE_ORC:+3 RACE_HALF-ORC:+2 RACE_DWARVE:+1 RACE_GNOME:-1 RACE_ELF:-2 RACE_HALF-ELF:-1 CLASS_DRUID:+1 CLASS_BARBAR:+2 CLASS_FIGHTER:+1 CLASS_RANGER+1 CLASS_WIZARD:-2 CLASS_SORCERER:-1 CLASS_CLERIC:-1');
-      Engine_addAnswer('Auf einer Waldlichtung.');
-      Engine_setModifiers('RACE_ELF:-2 RACE_HALF-ELF:-1 RACE_ORC:-1 RACE_HALFLING:+1 RACE_GNOME:+1 RACE_DWARVE:+2 CLASS_DRUID:-2 CLASS_RANGER:-2 CLASS_BARBAR:-1 CLASS_BARD:+1 CLASS_ROGUE:+1');
-      Engine_addAnswer('An einem abendlichen Strand.');
-      Engine_setModifiers('CLASS_MONK:-2 CLASS_SORCERER:-1 CLASS_BARD:-1 CLASS_ROGUE:-1');
-    }
-    {
-      Engine_addQuestion('Welcher dieser Berufe würde am ehesten zu dir passen ?');
-      Engine_addAnswer('Arzt.');
-      Engine_setModifiers('ALIGN_LG:+2 CLASS_CLERIC:+2 CLASS_DRUID:+2 CLASS_RANGER+1 CLASS_PALADIN:+1 CLASS_BARBAR:-2 CLASS_FIGHTER:-2 CLASS_ROGUE:-2 CLASS_SORCERER:-1 CLASS_WIZARD:-1');
-      Engine_addAnswer('Sänger.');
-      Engine_setModifiers('ALIGN_NG:+1 CLASS_BARD:+3 CLASS_BARBAR:-2 CLASS_FIGHTER:-2 CLASS_SORCERER:-1 CLASS_WIZARD:-1 CLASS_ROGUE:-2');
-      Engine_addAnswer('Lehrer.');
-      Engine_setModifiers('ALIGN_NG:+1 CLASS_BARD:+1 CLASS_BARBAR:-2 CLASS_FIGHTER:-2 CLASS_SORCERER:+1 CLASS_WIZARD:+2 CLASS_ROGUE:-2 CLASS_MONK:+1 CLASS_DRUID:+2');
-      Engine_addAnswer('Auftragskiller.');
-      Engine_setModifiers('ALIGN_NE:+1 ALIGN_LE:+2 ALIGN_CE:+1 ALIGN_NG:-2 CLASS_BARBAR:+2 CLASS_FIGHTER:+2 CLASS_ROGUE:+2 CLASS_MONK:+2 CLASS_SORCERER:+1 CLASS_WIZARD:+1');
-      Engine_addAnswer('Gärtner.');
-      Engine_setModifiers('ALIGN_NE:+2 CLASS_DRUID:+3 CLASS_RANGER:+3 CLASS_PALADIN:+1 CLASS_SORCERER:+1 CLASS_WIZARD:+1 CLASS_FIGHTER:-2 CLASS_BARBAR:-1');
-      Engine_addAnswer('Polizist.');
-      Engine_setModifiers('ALIGN_LG:+2 CLASS_PALADIN:+5 CLASS_ROGUE:-5');
-      Engine_addAnswer('Psychologe.');
-      Engine_setModifiers('ALIGN_NN:+2 CLASS_SORCERER:+3 CLASS_BARBAR:-3');
-      Engine_addAnswer('Chemiker.');
-      Engine_setModifiers('CLASS_WIZARD:+2 CLASS_SORCERER:+1 CLASS_BARBAR:-4');
-    }
-    {
-      Engine_addQuestion('Du hast kein Geld bist aber total ausgehungert. Was würdest du tun ?');
-      Engine_addAnswer('Ich singe in der nächsten Taverne oder im nächsten wohlhabendend aussehenden Haus.');
-      Engine_setModifiers('ALIGN_NG:+1 RACE_ORC:-1 CLASS_BARBAR:-1 CLASS_BARD:+2');
-      Engine_addAnswer('Ich schneide die Kehle eines Bürgers auf um ihn zu berauben.');
-      Engine_setModifiers('ALIGN_NE:+1 ALIGN_LE:+2 ALIGN_CE:+2 RACE_ORC:+2 RACE_HALF-ORC:+1 CLASS_BARBAR:+2 CLASS_ROGUE:+1');
-      Engine_addAnswer('Ich bitte im nächsten Tempel oder der nächsten Kirche um Hilfe.');
-      Engine_setModifiers('ALIGN_NG:+1 ALIGN_LG:+2 ALIGN_LN:+1 RACE_HUMAN:+1 RACE_ORC:-1 CLASS_BARBAR:-2 CLASS_CLERIC:+2 CLASS_MONK:+2 CLASS_PALADIN:+1 CLASS_RANGER:-2');
-      Engine_addAnswer('Ich versuche das einfache Volk mit etwas Magie zu beeindrucken.');
-      Engine_setModifiers('ALIGN_NG:+1 ALIGN_LG:+2 RACE_HALF-ELF:+1 RACE_HUMAN:+2 RACE_ORC:-1 RACE_DWARVE:-1 CLASS_SORCERER:+2 CLASS_WIZARD:+1 CLASS_FIGHTER:-2 CLASS_ROGUE:-2 CLASS_RANGER:-2');
-      Engine_addAnswer('Ich verkaufe einen magischen Gegenstand, den ich für solche Zeiten aufgehoben habe.');
-      Engine_setModifiers('CLASS_WIZARD:+2 CLASS_ROGUE:+2 RACE_ORC:-1 RACE_HALFLING:+2');
-      Engine_addAnswer('Ich biete mich selbst als Leibwächter an.');
-      Engine_setModifiers('ALIGN_LG:+2 ALIGN_LE:+2 RACE_ORC:-1 RACE_ELF:+1 CLASS_FIGHTER:+2 CLASS_SORCERER:+1 CLASS_MONK:+1');
-      Engine_addAnswer('Ich erkundige mich beim Vorstand des Ortes nach Arbeit.');
-      Engine_setModifiers('ALIGN_LG:+2 RACE_ELF:+1 RACE_ORC:-2 RACE_HALF-ORC:+1 CLASS_DRUID:-1 CLASS_SORCERER:+1 CLASS_FIGHTER:+1 CLASS_WIZARD:+2');
-      Engine_addAnswer('Ich gehe im Wald nach Essen suchen.');
-      Engine_setModifiers('CLASS_BARBAR:+1 CLASS_DRUID:+2 CLASS_RANGER:+2 RACE_ELF:+2 RACE_ORC:+2 RACE_DWARVE:+1 ALIGN_NN:+2 ALIGN_NG:+1 ALIGN_NE:+1');
-    }
-    {
-      Engine_addQuestion('Beim Betreten einer Höhle stellst du fest, dass ein großer roter Drache dich bereits erwartet hat. Was tust du ?');
-      Engine_addAnswer('So schnell wie möglich weglaufen, überlegen kann man später noch.');
-      Engine_setModifiers('RACE_HALFLING:+2 RACE_GNOME:+2 CLASS_ROGUE:+1 CLASS_BARD:+2');
-      Engine_addAnswer('Ich muss nur schneller laufen als der langsamste aus der Abenteurergruppe. Also nur nicht letzter sein.');
-      Engine_setModifiers('ALIGN_LE:+2 ALIGN_NE:+2 ALIGN_CE:+2 CLASS_ROGUE:+2');
-      Engine_addAnswer('Ich ziehe mein Schwert und würfel Initiative');
-      Engine_setModifiers('ALIGN_LG:+2 ALIGN_LN:+1 ALIGN_NG:+1 ALIGN_NN:+1 RACE_HUMAN:+1 RACE_DWARVE:+2 RACE_HALF-ORC:+1 RACE_ORC:+2 CLASS_FIGHTER:+2 CLASS_PALADIN:+2 CLASS_CLERIC:+1 CLASS_MONK:+1');
-      Engine_addAnswer('Magisches Geschoss, sofort !');
-      Engine_setModifiers('CLASS_WIZARD:+2 CLASS_SORCERER:+2 CLASS_BARD:+1');
-      Engine_addAnswer('Beten, und beten, dass beten funktioniert.');
-      Engine_setModifiers('CLASS_FIGHTER:+1 CLASS_CLERIC:+2 CLASS_WIZARD:+2 CLASS_SORCERER:+1 CLASS_ROGUE:+1 CLASS_MONK:+2');
-      Engine_addAnswer('Ich hab irgendwo in meinem Rucksack noch eine Schriftrolle die Drachen vernichtet.');
-      Engine_setModifiers('CLASS_FIGHTER:+2 CLASS_SORCERER:+2 CLASS_WIZARD:+2');
-      Engine_addAnswer('Ich verkrieche mich in der nächstbesten möglichst dunkelsten Ecke.');
-      Engine_setModifiers('CLASS_PALADIN:+2 CLASS_ROGUE:+2 CLASS_BARD:+2');
-      Engine_addAnswer('Möge mein Gott mich in die Schlacht geleiten !');
-      Engine_setModifiers('CLASS_PALADIN:+2 CLASS_DRUID:+2 CLASS_RANGER:+2 ');
-      Engine_addAnswer('Ich lade meinen Bogen/meine Armbrust, ziele auf die Augen und kreuze die Finger.');
-      Engine_setModifiers('CLASS_RANGER:+2 CLASS_ROGUE:+2 RACE_HALF-ELF:+2 RACE_ELF:+2');
-    }
-    {
-      Engine_addQuestion('Deine Abenteurergruppe findet einen Schatz was tust du ?');
-      Engine_addAnswer('Ich ermorde alle hinterhältig und behalte den Schatz allein.');
-      Engine_setModifiers('ALIGN_NE:+1 ALIGN_CE:+2 ALIGN_LE:+1 ALIGN_NG:-2 ALIGN_CG:-1 ALIGN_LG:-2 CLASS_ROGUE:+2 CLASS_SORCERER:+1 CLASS_BARBAR:+1 CLASS_DRUID:-2 CLASS_MONK:-1');
-      Engine_addAnswer('Ich bin dafür es zu gleichen teilen aufzuteilen. Jeder bekommt genauso viel wie jeder andere.');
-      Engine_setModifiers('ALIGN_NN:+1 ALIGN_LG:+1 CLASS_SORCERER:+1 CLASS_PALADIN:+2 CLASS_ROGUE:-1');
-      Engine_addAnswer('Der Großteil soll der Familie des armen Abenteurers zukommen, der alle Fallen entschärft hat und dies mit seinem Leben bezahlen musste.');
-      Engine_setModifiers('ALIGN_NG:+2 ALIGN_NE:-1 ALIGN_CE:-1 ALIGN_LE:-2 CLASS_PALADIN:+1 CLASS_ROGUE:-2');
-      Engine_addAnswer('Ist mir egal, meinen Teil spende ich eh für wohltätige Zwecke.');
-      Engine_setModifiers('ALIGN_NG:+2 ALIGN_NE:-1 ALIGN_CE:-1 ALIGN_LE:-3 CLASS_PALADIN:+2 CLASS_ROGUE:-2 CLASS_DRUID:+1');
-      Engine_addAnswer('Ich nehme nur ein kleines Stück mit, den Rest darf die Gruppe unter sich ausmachen. Ist mir egal, ob es wertvoll ist oder nicht.');
-      Engine_setModifiers('CLASS_MONK:+1 CLASS_ROGUE:-2 CLASS_RANGER:+1');
-      Engine_addAnswer('Wen interessierts ich brauche nur genug um bis zum nächsten Abenteuer in Tavernen und Gasthäusern überleben zu können.');
-      Engine_setModifiers('CLASS_BARD:+2 CLASS_MONK:+1 CLASS_SORCERER:+1 CLASS_WIZARD:+1 CLASS_RANGER:+1 CLASS_ROGUE:-2');
-      Engine_addAnswer('Ich will nichts davon. Sollte man mir was zugestehen, lasse ich es hier liegen.');
-      Engine_setModifiers('CLASS_DRUID:+2 CLASS_ROGUE:-2');
-    }
-    {
-      Engine_addQuestion('Du kommst in eine gewaltige Schatzkammer. Worauf fällt dein Blick zuerst ?');
-      Engine_addAnswer('Gold, Juwelen, ich bin reich !');
-      Engine_setModifiers('RACE_ELF:-2 RACE_HALF-ELF:-1 RACE_HUMAN:+1 RACE_GNOME:+2 RACE_DWARVE:+2 CLASS_ROGUE:+2 CLASS_WIZARD:+2 CLASS_MONK:-2 CLASS_DRUID:-2 CLASS_RANGER:-1 CLASS_BARBAR:-1');
-      Engine_addAnswer('das leuchtende Schwert an der Wand');
-      Engine_setModifiers('CLASS_FIGHTER:+2 CLASS_SORCERER:-2 CLASS_WIZARD:-2 CLASS_PALADIN:+1 CLASS_RANGER:+1');
-      Engine_addAnswer('ein Facettenreiches Juwel, dass mir einen kalten Schauder über den Rücken jagd');
-      Engine_setModifiers('RACE_DWARVE:+2 RACE_GNOME:+2 CLASS_WIZARD:+2 CLASS_SORCERER:+1 CLASS_ROGUE:+2');
-      Engine_addAnswer('der antike Schrein eines uralten Gottes in der Wand');
-      Engine_setModifiers('CLASS_CLERIC:+2');
-      Engine_addAnswer('eine vergoldete Axt, die an der Wand lehnt.');
-      Engine_setModifiers('RACE_DWARVE:+2');
-      Engine_addAnswer('die handgeschnitzte hölzerne Statue');
-      Engine_setModifiers('CLASS_RANGER:+2 RACE_ELF:+2');
-      Engine_addAnswer('der Sarkophag in der Ecke mit dem bunten Emblem');
-      Engine_setModifiers('CLASS_CLERIC:+2 CLASS_SORCERER:+2 CLASS_WIZARD:+1');
-      Engine_addAnswer('die goldene Harfe in der Ecke');
-      Engine_setModifiers('CLASS_BARD:+2');
-    }
-    {
-      Engine_addQuestion('Welche Rolle in einer Abenteurergruppe nimmst du ein ?');
-      Engine_addAnswer('Ich bin der Anführer.<br /> Ich sage jedem was zu tun ist und wann der richtige Zeitpunkt dafür ist.');
-      Engine_setModifiers('CLASS_FIGHTER:+2 CLASS_ROGUE:-1 CLASS_DRUID:-1 CLASS_BARBAR:-2 RACE_HUMAN:+2 RACE_ORC:-2 RACE_HALF-ORC:-1');
-      Engine_addAnswer('Ich bin die rechte Hand des Anführers.<br /> Ich habe die Fähigkeit ein Anführer zu sein, aber ich hasse es große Entscheidungen zu treffen. Ich sorge dafür dass getan wird, was immer getan werden muss, solange mir jemand sagt was es ist.');
-      Engine_setModifiers('RACE_ORC:+2 RACE_HALF-ORC:+1 RACE_DWARVE:+1');
-      Engine_addAnswer('Ich bin derjenige mit den guten Ideen.<br /> Mir fällt immer irgendein Plan ein, und ich überlasse es den anderen darüber nachzudenken, wie diese Ideen in die Tat umgesetzt werden müssen.');
-      Engine_setModifiers('RACE_ELF:+1 CLASS_ROGUE:+2 CLASS_SORCERER:-1 CLASS_BARD:+2 CLASS_BARBAR:-1 RACE_ORC:-1');
-      Engine_addAnswer('Ich bin ein Soldat.<br /> Ich folge dem Anführer und kann oder will selbst kein Kommando haben. Sagt mir in welche Richtung es geht und was zu tun ist. Danke !');
-      Engine_setModifiers('RACE_DWARVE:+2 RACE_ORC:+2 CLASS_FIGHTER:+1 CLASS_BARBAR:+1');
-      Engine_addAnswer('Ich bin die moralische Stütze.<br /> Ich bin kein Anführer aber ich werde jederzeit sagen was ich darüber denke, abhängig von meinen eigenen Vorstellungen von Moral und Ethik, auch wenn dass die Gruppe nerven sollte.');
-      Engine_setModifiers('CLASS_BARD:+2 CLASS_BARBAR:-2 RACE_GNOME:+4 RACE_HALFLING:+2 CLASS_CLERIC:+2 RACE_ORC:-2 RACE_HALF-ORC:-1');
-      Engine_addAnswer('Ich bin der Aussenseiter.<br /> Auch wenn ich Teil der Gruppe bin, werde ich mich von den anderen distanzieren und mich nur auf mich selbst verlassen.');
-      Engine_setModifiers('CLASS_MONK:+2 CLASS_SORCERER:+2 CLASS_BARD:-2 RACE_HALFLING:-1');
-      Engine_addAnswer('Ich bin der Rebell.<br /> Ich wäre gerne Anführer und werde dies durchsetzen, sobald sich die Chance dazu bietet. Durch Intrigen werde ich die Gruppe spalten und dem alten Anführer das Zepter entreissen. Lang lebe der neue Anführer !');
-      Engine_setModifiers('ALIGN_LG:+1 ALIGN_LE:+2 ALIGN_NE:+1 ALIGN_CE:+1 RACE_HUMAN:+2 RACE_HALFLING:+1 RACE_DWARVE:+2 RACE_HALF-ORC:+1 RACE_GNOME:+1 CLASS_PALADIN:+1 CLASS_ROGUE:+2 CLASS_BARD:+1');
-      Engine_addAnswer('Ich bin die linke Hand des Anführers.<br /> Ich tue alles was er will, wie sein persönlicher Sklave. Zu ihm bin ich stets freundlich und diejenigen die unter mir stehen, werden leiden müssen.');
-      Engine_setModifiers('CLASS_PALADIN:+2 RACE_ORC:+2 RACE_HALF-ORC:+1 CLASS_BARBAR:+1');
-      Engine_addAnswer('Ich bin der Maulwurf.<br /> Ich lächle immer brav und ziehe bei jedem Plan mit, doch ich werde die Gruppe einen nach dem anderen töten und es wie Unfälle aussehen lassen.');
-      Engine_setModifiers('ALIGN_NE:+2 ALIGN_LE:+1 ALIGN_CE:+1 ALIGN_NG:-2 ALIGN_LG:-1 ALIGN_CG:-1 CLASS_ROGUE:+2 CLASS_BARBAR:+1 CLASS_SORCERER:+1 CLASS_DRUID:-1');
-    }
-    {
-      Engine_addQuestion('Womit würdest du dich <b>am liebsten</b> bekleiden ?');
-      Engine_addAnswer('wohlhabend aussehende, modische Kleidung');
-      Engine_setModifiers('CLASS_BARD:+2 CLASS_DRUID:-2');
-      Engine_addAnswer('Ist mir egal, hauptsache es erfüllt seinen Zweck wenn man auf Reisen ist.');
-      Engine_setModifiers('CLASS_DRUID:+2 CLASS_MONK:+2 CLASS_ROGUE:+1 CLASS_RANGER+1');
-      Engine_addAnswer('eine glänzende Metallrüstung');
-      Engine_setModifiers('CLASS_FIGHTER:+2 CLASS_PALADIN:+2 CLASS_RANGER:+2 CLASS_CLERIC:+2 CLASS_SORCERER:-2 CLASS_WIZARD:-2 RACE_DWARVE:+1');
-      Engine_addAnswer('abgenutzte Kleidung, wie viele andere Bürger auch');
-      Engine_setModifiers('CLASS_BARD:+2 CLASS_DRUID:+1');
-      Engine_addAnswer('Roben, Umhänge, Capes');
-      Engine_setModifiers('CLASS_SORCERER:+2 CLASS_WIZARD:+2 CLASS_ROGUE:+1 RACE_DWARVE:-1 CLASS_FIGHTER:-2 CLASS_CLERIC:+1');
-    }
-    {
-      Engine_addQuestion('Womit würdest du dich <b>am wenigsten gern</b> bekleiden ?');
-      Engine_addAnswer('wohlhabend aussehende, modische Kleidung');
-      Engine_setModifiers('CLASS_BARD:-2 CLASS_DRUID:+2');
-      Engine_addAnswer('Ist mir egal, hauptsache es erfüllt seinen Zweck wenn man auf Reisen ist.');
-      Engine_setModifiers('CLASS_DRUID:-2 CLASS_MONK:-2');
-      Engine_addAnswer('eine glänzende Metallrüstung');
-      Engine_setModifiers('CLASS_FIGHTER:-2 CLASS_PALADIN:-2 CLASS_RANGER:-2 CLASS_CLERIC:-2 CLASS_SORCERER:+2 CLASS_WIZARD:+2 RACE_DWARVE:-1');
-      Engine_addAnswer('abgenutzte Kleidung, wie viele andere Bürger auch');
-      Engine_setModifiers('CLASS_BARD:-2 CLASS_DRUID:-1');
-      Engine_addAnswer('Roben, Umhänge, Capes');
-      Engine_setModifiers('CLASS_SORCERER:-2 CLASS_WIZARD:-2 CLASS_CLERIC:-1 CLASS_FIGHTER:+2 RACE_DWARVE:+1');
-    }
-    {
-      Engine_addQuestion('Was ist deine <b>Lieblingsfarbe</b> ?');
-      Engine_addAnswer('Rot');
-      Engine_setModifiers('');
-      Engine_addAnswer('Grün');
-      Engine_setModifiers('CLASS_DRUID:+2 CLASS_RANGER:+2 CLASS_BARBAR:+1 RACE_ELF:+2 RACE_HALF-ELF:+1 RACE_HUMAN:+2');
-      Engine_addAnswer('Blau');
-      Engine_setModifiers('RACE_HUMAN:+2 CLASS_CLERIC:+1 CLASS_ROGUE:+1 CLASS_SORCERER:+2 ');
-      Engine_addAnswer('Weiss');
-      Engine_setModifiers('ALIGN_NG:+2 ALIGN_LG:+1 ALIGN_CG:+1 ALIGN_NE:-1 ALIGN_LE:-1 ALIGN_CE:-1 CLASS_CLERIC:+2 ');
-      Engine_addAnswer('Schwarz');
-      Engine_setModifiers('ALIGN_NG:-1 ALIGN_LG:-1 ALIGN_CG:-1 ALIGN_NE:+2 ALIGN_LE:+1 ALIGN_CE:+1 CLASS_CLERIC:+2 ');
-      Engine_addAnswer('Grau');
-      Engine_setModifiers('ALIGN_NN:+3 RACE_DWARVE:+3 CLASS_FIGHTER:+1 CLASS_ROGUE:+1 CLASS_BARD:-1 CLASS_SORCERER:+1 ');
-      Engine_addAnswer('Gelb');
-      Engine_setModifiers('CLASS_MONK:+1 ');
-      Engine_addAnswer('Braun');
-      Engine_setModifiers('CLASS_BARBAR:+2 CLASS_DRUID:+2 CLASS_RANGER:+1 ');
-      Engine_addAnswer('Violett');
-      Engine_setModifiers('');
-      Engine_addAnswer('Rosa');
-      Engine_setModifiers('RACE_ELF:+1 RACE_ORC:-3 RACE_HALF-ORC:-2 RACE_DWARVE:-1 CLASS_BARBAR:-2 CLASS_PALADIN:-2 CLASS_BARD:+2 ');
-      Engine_addAnswer('Orange');
-      Engine_setModifiers('RACE_GNOME:+1 CLASS_MONK:+1 ');
-      Engine_addAnswer('keine davon');
-      Engine_setModifiers('');
-    }
-    {
-      Engine_addQuestion('Welche Farbe magst du <b>am wenigstens</b> ?');
-      Engine_addAnswer('Rot');
-      Engine_setModifiers('RACE_ORC:-2 RACE_HALF-ORC:-1 CLASS_BARBAR:-2 CLASS_DRUID:-1 ');
-      Engine_addAnswer('Grün');
-      Engine_setModifiers('RACE_ELF:-2 RACE_HALF-ELF:-1 RACE_DWARVE:+1 CLASS_FIGHTER:+1 CLASS_ROGUE:+2 CLASS_DRUID:-2 CLASS_RANGER:-2 ');
-      Engine_addAnswer('Blau');
-      Engine_setModifiers('RACE_HUMAN:-2 CLASS_SORCERER:+2 ');
-      Engine_addAnswer('Weiss');
-      Engine_setModifiers('ALIGN_NG:-2 ALIGN_LG:-1 ALIGN_CG:-1 ALIGN_NE:+2 ALIGN_LE:+1 ALIGN_CE:+1 CLASS_CLERIC:+2 ');
-      Engine_addAnswer('Schwarz');
-      Engine_setModifiers('ALIGN_NG:+2 ALIGN_LG:+1 ALIGN_CG:+1 ALIGN_NE:-2 ALIGN_LE:-1 ALIGN_CE:-1 ');
-      Engine_addAnswer('Grau');
-      Engine_setModifiers('ALIGN_NN:-1 RACE_GNOME:-1 RACE_DWARVE:-1 ');
-      Engine_addAnswer('Gelb');
-      Engine_setModifiers('CLASS_MONK:-1 ');
-      Engine_addAnswer('Braun');
-      Engine_setModifiers('RACE_ORC:-2 RACE_HALF-ORC:-1 CLASS_BARBAR:-2 CLASS_DRUID:-1 ');
-      Engine_addAnswer('Violett');
-      Engine_setModifiers('RACE_ORC:+2 RACE_HALF-ORC:+1 CLASS_BARBAR:+3 CLASS_PALADIN:-1 CLASS_BARD:-2 ');
-      Engine_addAnswer('Rosa');
-      Engine_setModifiers('RACE_ORC:+3 RACE_HALF-ORC:+2 CLASS_BARD:-2 ');
-      Engine_addAnswer('Orange');
-      Engine_setModifiers('');
-      Engine_addAnswer('keine davon');
-      Engine_setModifiers('');
-    }
-    {
-      Engine_addQuestion('Was würdest du an einer Universität <b>am liebsten</b> studieren ?');
-      Engine_addAnswer('Philosophie, Religion');
-      Engine_setModifiers('RACE_HUMAN:+1 CLASS_BARBAR:-2 CLASS_PALADIN:+2 CLASS_ROGUE:-1 CLASS_CLERIC:+2 CLASS_DRUID:-2 CLASS_MONK:+2 ');
-      Engine_addAnswer('Thaumaturgie (Magie)');
-      Engine_setModifiers('RACE_ELF:+2 RACE_ORC:-2 RACE_HALF-ELF:+1 RACE_HALF-ORC:-1 RACE_DWARVE:-2 CLASS_WIZARD:+2 CLASS_FIGHTER:-2 CLASS_BARBAR:-2 CLASS_CLERIC:+1 CLASS_SORCERER:+2 CLASS_BARD:+1 CLASS_SORCERER:+1 CLASS_MONK:-1 ');
-      Engine_addAnswer('Biologie');
-      Engine_setModifiers('RACE_ORC:-2 RACE_ELF:+2 RACE_GNOME:+1 RACE_HALF-ORC:-1 RACE_HALF-ELF:+1 CLASS_BARBAR:-2 CLASS_ROGUE:+1 CLASS_PALADIN:-2 CLASS_DRUID:+2 CLASS_RANGER:+1 CLASS_MONK:+2 ');
-      Engine_addAnswer('Schwertkampf');
-      Engine_setModifiers('RACE_ORC:+2 RACE_HALF-ORC:+1 RACE_DWARVE:+1 CLASS_FIGHTER:+2 CLASS_WIZARD:-2 CLASS_BARBAR:+2 CLASS_PALADIN:+1 CLASS_CLERIC:+1 CLASS_SORCERER:-2 CLASS_RANGER:+1 CLASS_MONK:-1 ');
-      Engine_addAnswer('Musik');
-      Engine_setModifiers('CLASS_FIGHTER:-1 CLASS_BARBAR:-2 CLASS_BARD:+2 ');
-      Engine_addAnswer('Gastronomie, Kochen');
-      Engine_setModifiers('RACE_ORC:+1 RACE_HALFLING:+2 CLASS_ROGUE:-2 CLASS_BARBAR:+2');
-      Engine_addAnswer('Geologie');
-      Engine_setModifiers('RACE_ELF:-2 RACE_GNOME:+2 RACE_HALF-ELF:-1 RACE_DWARVE:+2 CLASS_PALADIN:-2 CLASS_ROGUE:-1 ');
-      Engine_addAnswer('Ingenieurswesen');
-      Engine_setModifiers('RACE_ORC:-2 RACE_GNOME:+2 RACE_HALF-ORC:-1 CLASS_BARBAR:-2 CLASS_DRUID:-1 ');
-      Engine_addAnswer('Schätze, Profit, Wirtschaft');
-      Engine_setModifiers('RACE_HUMAN:+1 RACE_ORC:-1 RACE_GNOME:+1 RACE_HALFLING:+2 RACE_DWARVE:+1 CLASS_WIZARD:+1 CLASS_BARBAR:-2 CLASS_ROGUE:+2 CLASS_DRUID:-2 CLASS_SORCERER:+1 CLASS_RANGER:-1 CLASS_MONK:-2 ');
-      Engine_addAnswer('Ich würde nicht studieren, das ist was für Streber.');
-      Engine_setModifiers('RACE_ORC:+3 RACE_HALF-ORC:+2 CLASS_BARBAR:+3 RACE_ELF:-2 RACE_HALF-ELF:-1 ');
-    }
-    {
-      Engine_addQuestion('Welches dieser Themen sagt dir <b>am wenigsten</b> zu ?');
-      Engine_addAnswer('Philosophie, Religion');
-      Engine_setModifiers('RACE_ORC:+2 RACE_HALF-ORC:+1 CLASS_FIGHTER:+2 CLASS_BARBAR:+2 CLASS_ROGUE:+1 CLASS_CLERIC:-2 CLASS_DRUID:+2 CLASS_MONK:-2 CLASS_BARD:-1 ');
-      Engine_addAnswer('Thaumaturgie (Magie)');
-      Engine_setModifiers('RACE_ELF:-2 RACE_ORC:+2 RACE_HALF-ELF:-1 RACE_HALF-ORC:+1 RACE_DWARVE:+2 CLASS_FIGHTER:+2 CLASS_WIZARD:-2 CLASS_BARBAR:+2 CLASS_SORCERER:-2 ');
-      Engine_addAnswer('Biologie');
-      Engine_setModifiers('RACE_ELF:-1 RACE_ORC:+2 RACE_GNOME:-1 RACE_HALF-ORC:+1 CLASS_BARBAR:+2 CLASS_DRUID:-2 CLASS_RANGER:-1 CLASS_MONK:-2 ');
-      Engine_addAnswer('Schwertkampf');
-      Engine_setModifiers('RACE_ELF:+2 RACE_ORC:-2 RACE_HALF-ELF:+1 RACE_HALF-ORC:-1 RACE_DWARVE:-2 CLASS_CLERIC:-1 CLASS_DRUID:+1 CLASS_FIGHTER:+2 CLASS_WIZARD:+2 CLASS_BARBAR:-2 CLASS_PALADIN:+2 CLASS_SORCERER:+2 CLASS_MONK:+2 ');
-      Engine_addAnswer('Musik');
-      Engine_setModifiers('RACE_ORC:+2 RACE_HALF-ORC:+1 RACE_DWARVE:+1 CLASS_CLERIC:-1 CLASS_BARBAR:+2 CLASS_BARD:-2 ');
-      Engine_addAnswer('Gastronomie, Kochen');
-      Engine_setModifiers('RACE_ORC:+2 RACE_HALF-ORC:+1 RACE_HALFLING:-2 CLASS_ROGUE:+2 ');
-      Engine_addAnswer('Geologie');
-      Engine_setModifiers('RACE_ELF:+2 RACE_ORC:+1 RACE_GNOME:-2 RACE_HALF-ELF:+1 RACE_DWARVE:-2 CLASS_BARBAR:+1 ');
-      Engine_addAnswer('Ingenieurswesen');
-      Engine_setModifiers('RACE_ORC:+2 RACE_GNOME:-2 RACE_HALF-ORC:+1 RACE_HALFLING:-1 CLASS_BARBAR:+2 CLASS_DRUID:+2 CLASS_RANGER:+2 CLASS_MONK:+2 ');
-      Engine_addAnswer('Schätze, Profit, Wirtschaft');
-      Engine_setModifiers('RACE_ORC:+2 RACE_HALF-ORC:+1 RACE_HALFLING:-2 CLASS_WIZARD:-1 CLASS_CLERIC:-1 CLASS_ROGUE:-2 CLASS_DRUID:+2 CLASS_MONK:+1 ');
-    }
-    {
-      Engine_addQuestion('Welches Tier hättest du <b>am liebsten</b> als Haustier oder tierischen Begleiter ?');
-      Engine_addAnswer('eine Katze');
-      Engine_setModifiers('ALIGN_NG:+2 ALIGN_LG:+1 ALIGN_CG:+1 ALIGN_NN:+1 CLASS_WIZARD:+2 CLASS_DRUID:+1 CLASS_SORCERER:+2 CLASS_RANGER:+1');
-      Engine_addAnswer('einen Hund');
-      Engine_setModifiers('ALIGN_NN:+2 ALIGN_LN:+1 ALIGN_CN:+1 RACE_HUMAN:+2 CLASS_FIGHTER:+1 CLASS_BARBAR:+1 CLASS_RANGER:+2 CLASS_DRUID:+1');
-      Engine_addAnswer('einen Wolf');
-      Engine_setModifiers('ALIGN_NN:+2 ALIGN_LN:+1 ALIGN_CN:+1 CLASS_DRUID:+2 CLASS_RANGER:+1 ');
-      Engine_addAnswer('ein Pferd');
-      Engine_setModifiers('RACE_HUMAN:+1 RACE_DWARVE:-1 CLASS_FIGHTER:+2 CLASS_PALADIN:+1 CLASS_DRUID:+1 CLASS_RANGER:+1 ');
-      Engine_addAnswer('einen Imp (kleiner Teufel)');
-      Engine_setModifiers('ALIGN_NE:+2 ALIGN_LE:+2 ALIGN_CE:+2 CLASS_WIZARD:+2 CLASS_SORCERER:+2 CLASS_DRUID:-1');
-      Engine_addAnswer('einen kleinen Drachen');
-      Engine_setModifiers('ALIGN_NG:+2 ALIGN_LG:+1 ALIGN_CG:+1 CLASS_WIZARD:+2 CLASS_SORCERER:+2 ');
-      Engine_addAnswer('ein Pixie (eine Fee)');
-      Engine_setModifiers('ALIGN_NG:+1 ALIGN_LG:+1 ALIGN_CG:+1 ALIGN_NN:+2 CLASS_DRUID:+2 CLASS_RANGER:+1');
-      Engine_addAnswer('eine Ratte');
-      Engine_setModifiers('RACE_GNOME:+2 RACE_DWARVE:+1 CLASS_BARBAR:+1 CLASS_ROGUE:+2 CLASS_DRUID:+1 ');
-      Engine_addAnswer('eine Eule');
-      Engine_setModifiers('ALIGN_NN:+2 CLASS_WIZARD:+2 CLASS_DRUID:+2 CLASS_SORCERER:+2 CLASS_RANGER:+1 ');
-      Engine_addAnswer('einen Raben');
-      Engine_setModifiers('ALIGN_NN:+1 ALIGN_NE:+2 ALIGN_LE:+1 ALIGN_CE:+1 RACE_ELF:+2 RACE_HALF-ELF:+1 CLASS_WIZARD:+2 CLASS_DRUID:+1 CLASS_SORCERER:+2 ');
-      Engine_addAnswer('etwas anderes');
-      Engine_setModifiers('');
-    }
-    {
-      Engine_addQuestion('Welches Tier hättest du <b>auch gern</b> als Haustier oder tierischen Begleiter ?');
-      Engine_addAnswer('eine Katze');
-      Engine_setModifiers('ALIGN_NG:+1 ALIGN_LG:+1 ALIGN_CG:+1 CLASS_WIZARD:+1 CLASS_SORCERER:+1 ');
-      Engine_addAnswer('einen Hund');
-      Engine_setModifiers('ALIGN_NN:+1 ALIGN_LN:+1 ALIGN_CN:+1 CLASS_FIGHTER:+1 CLASS_RANGER:+1 RACE_HUMAN:+1');
-      Engine_addAnswer('einen Wolf');
-      Engine_setModifiers('ALIGN_NN:+1 CLASS_DRUID:+1 ');
-      Engine_addAnswer('ein Pferd');
-      Engine_setModifiers('CLASS_FIGHTER:+1 CLASS_PALADIN:+1 CLASS_RANGER:+1 RACE_HUMAN:+1');
-      Engine_addAnswer('einen Imp (kleiner Teufel)');
-      Engine_setModifiers('ALIGN_NE:+1 ALIGN_LE:+1 ALIGN_CE:+1 CLASS_WIZARD:+1 CLASS_SORCERER:+1 ');
-      Engine_addAnswer('einen kleinen Drachen');
-      Engine_setModifiers('ALIGN_NE:+1 ALIGN_LE:+1 ALIGN_CE:+1 CLASS_WIZARD:+1 CLASS_SORCERER:+1 ');
-      Engine_addAnswer('ein Pixie (eine Fee)');
-      Engine_setModifiers('ALIGN_NG:+1 ALIGN_LG:+1 ALIGN_CG:+1 CLASS_DRUID:+1 ');
-      Engine_addAnswer('eine Ratte');
-      Engine_setModifiers('RACE_GNOME:+1 RACE_DWARVE:+1 CLASS_ROGUE:+1 ');
-      Engine_addAnswer('eine Eule');
-      Engine_setModifiers('CLASS_DRUID:+1 CLASS_RANGER:+1 ALIGN_NN:+1');
-      Engine_addAnswer('einen Raben');
-      Engine_setModifiers('ALIGN_NN:+1 ALIGN_NE:+1 ALIGN_LE:+1 ALIGN_CE:+1 CLASS_WIZARD:+1 CLASS_SORCERER:+1 ');
-      Engine_addAnswer('etwas anderes');
-      Engine_setModifiers('');
-    }
-    {
-      Engine_addQuestion('Welches davon hättest du <b>am wenigsten gern</b> als Haustier oder tierischen Begleiter ?');
-      Engine_addAnswer('eine Katze');
-      Engine_setModifiers('ALIGN_NG:-2 ALIGN_LG:-1 ALIGN_CG:-1 ALIGN_NN:-1 CLASS_WIZARD:-2 CLASS_DRUID:-1 CLASS_SORCERER:-2 ');
-      Engine_addAnswer('einen Hund');
-      Engine_setModifiers('RACE_HUMAN:-1 CLASS_PALADIN:-1 CLASS_DRUID:-1 CLASS_RANGER:-1 ');
-      Engine_addAnswer('einen Wolf');
-      Engine_setModifiers('ALIGN_NN:-1 CLASS_DRUID:-2 CLASS_RANGER:-1 ');
-      Engine_addAnswer('ein Pferd');
-      Engine_setModifiers('RACE_HUMAN:-1 CLASS_FIGHTER:-2 CLASS_PALADIN:-1 CLASS_RANGER:-2 CLASS_DRUID:-1');
-      Engine_addAnswer('einen Imp (kleiner Teufel)');
-      Engine_setModifiers('ALIGN_NE:-2 ALIGN_LE:-2 ALIGN_CE:-2 CLASS_WIZARD:-2 CLASS_SORCERER:-2 CLASS_DRUID:+1');
-      Engine_addAnswer('einen kleinen Drachen');
-      Engine_setModifiers('ALIGN_NG:-2 ALIGN_LG:-2 ALIGN_CG:-2 CLASS_WIZARD:-2 CLASS_SORCERER:-2 ');
-      Engine_addAnswer('ein Pixie (eine Fee)');
-      Engine_setModifiers('ALIGN_NG:-2 ALIGN_LG:-2 ALIGN_CG:-2 CLASS_DRUID:-2 ');
-      Engine_addAnswer('eine Ratte');
-      Engine_setModifiers('RACE_GNOME:-1 RACE_DWARVE:-1 CLASS_ROGUE:-2 ');
-      Engine_addAnswer('eine Eule');
-      Engine_setModifiers('CLASS_WIZARD:-1 CLASS_DRUID:-2 CLASS_SORCERER:-1 CLASS_RANGER:-1 ALIGN_NN:-1');
-      Engine_addAnswer('einen Raben');
-      Engine_setModifiers('ALIGN_NN:-1 ALIGN_NE:-2 ALIGN_LE:-1 ALIGN_CE:-1 CLASS_WIZARD:-2 CLASS_SORCERER:-2 CLASS_RANGER:-1 CLASS_DRUID:-1');
-      Engine_addAnswer('etwas anderes');
-      Engine_setModifiers('');
-    }
-    {
-      Engine_addQuestion('Während du an einer Schlucht entlangläufst, siehst du wie 100m unter dir eine alte Frau überfallen wird. Was tust du ?');
-      Engine_addAnswer('Ich töte alle, einschliesslich der alten Frau und suche nach wertvollem.');
-      Engine_setModifiers('ALIGN_NG:-3 ALIGN_LG:-2 ALIGN_CG:-3 ALIGN_NE:+3 ALIGN_LE:+1 ALIGN_CE:+2 RACE_ORC:+3 RACE_HALF-ORC:+2 CLASS_ROGUE:+1 ');
-      Engine_addAnswer('Ich schau auf die Uhr und messe wie lange die Räuber brauchen.');
-      Engine_setModifiers('ALIGN_NN:+3 ALIGN_LN:+1 ALIGN_CN:+2 CLASS_PALADIN:-3 CLASS_ROGUE:+2 ');
-      Engine_addAnswer('Ich töte die Angreifer und rette die Frau.');
-      Engine_setModifiers('');
-      Engine_addAnswer('Ich ignoriere das alles und mache mich wieder auf den Weg.');
-      Engine_setModifiers('ALIGN_NG:-2 ALIGN_LG:-3 ALIGN_CG:-1 ALIGN_NN:+2 ');
-      Engine_addAnswer('Ich versuche die Angreifer davon zu überzeugen, dass mein Gott das nicht gut findet und man das auch friedlich lösen kann.');
-      Engine_setModifiers('ALIGN_NG:+1 ALIGN_LG:+3 ALIGN_CG:+1 CLASS_BARBAR:-3 CLASS_PALADIN:+1 CLASS_CLERIC:+3 CLASS_ROGUE:-1 CLASS_DRUID:-1 ');
-      Engine_addAnswer('Ich rufe hinunter, dass Verstärkung im Anmarsch ist, begebe mich aber nicht selbst in Gefahr.');
-      Engine_setModifiers('ALIGN_NN:+3 ALIGN_LN:+1 ALIGN_CN:+1 ALIGN_NE:+1 CLASS_WIZARD:+1 CLASS_ROGUE:+1 CLASS_SORCERER:+2 ');
-      Engine_addAnswer('Ich bete für die Seele der Frau.');
-      Engine_setModifiers('ALIGN_NG:+3 ALIGN_LG:+1 ALIGN_NN:+2 CLASS_CLERIC:+3 CLASS_MONK:+2 ');
-      Engine_addAnswer('Ich schliesse mich den Angreifern an.');
-      Engine_setModifiers('ALIGN_NG:-2 ALIGN_LG:-1 ALIGN_CG:-1 ALIGN_NE:+3 ALIGN_LE:+1 ALIGN_CE:+2 RACE_DWARVE:+3 CLASS_FIGHTER:+3 CLASS_PALADIN:+1 ');
-    }
-    {
-      Engine_addQuestion('Was würdest du in einer Taverne <b>am ehesten</b> bestellen ?');
-      Engine_addAnswer('Wein und Käse');
-      Engine_setModifiers('RACE_HUMAN:+1 RACE_GNOME:+1 ');
-      Engine_addAnswer('Brot und Ale');
-      Engine_setModifiers('RACE_ELF:+2 RACE_HALF-ELF:+1 RACE_DWARVE:-2 ');
-      Engine_addAnswer('Fleisch und Bier');
-      Engine_setModifiers('RACE_ELF:-2 RACE_HALF-ELF:-1 RACE_DWARVE:+2 ');
-      Engine_addAnswer('Suppe und Salat');
-      Engine_setModifiers('CLASS_DRUID:+2 CLASS_RANGER:+1 CLASS_MONK:+1 ');
-      Engine_addAnswer('Ein Kind und etwas Blutwein');
-      Engine_setModifiers('RACE_ELF:-2 RACE_ORC:+2 RACE_HALF-ELF:-1 RACE_HALF-ORC:+1 CLASS_BARBAR:+2 CLASS_PALADIN:-2 ');
-      Engine_addAnswer('Eine Frau oder einen jungen Burschen, sowie ein Zimmer');
-      Engine_setModifiers('RACE_HUMAN:+2 RACE_HALFLING:+1 CLASS_PALADIN:-2 CLASS_CLERIC:-1 CLASS_MONK:-2 ');
-      Engine_addAnswer('Ich möchte nur ein paar Informationen über den Ort und den dem er gehört.');
-      Engine_setModifiers('RACE_ELF:+2 RACE_HALF-ELF:+1 CLASS_ROGUE:+2 CLASS_BARD:+1 ');
-    }
-    {
-      Engine_addQuestion('Was würdest du in einer Taverne <b>wohl eher nicht</b> bestellen ?');
-      Engine_addAnswer('Wein und Käse');
-      Engine_setModifiers('RACE_HUMAN:-1 RACE_GNOME:-1 ');
-      Engine_addAnswer('Brot und Ale');
-      Engine_setModifiers('RACE_ELF:-2 RACE_HALF-ELF:-1 RACE_DWARVE:+2 ');
-      Engine_addAnswer('Fleisch und Bier');
-      Engine_setModifiers('RACE_ELF:+2 RACE_HALF-ELF:+1 RACE_DWARVE:-2 ');
-      Engine_addAnswer('Suppe und Salat');
-      Engine_setModifiers('CLASS_DRUID:-2 CLASS_RANGER:-1 CLASS_MONK:-1 ');
-      Engine_addAnswer('Ein Kind und etwas Blutwein');
-      Engine_setModifiers('RACE_ELF:+2 RACE_ORC:-2 RACE_HALF-ELF:+1 RACE_HALF-ORC:-1 CLASS_BARBAR:-2 CLASS_PALADIN:+2 ');
-      Engine_addAnswer('Eine Frau oder einen jungen Burschen, sowie ein Zimmer');
-      Engine_setModifiers('RACE_HUMAN:-2 RACE_HALFLING:-1 CLASS_PALADIN:+2 CLASS_CLERIC:+1 CLASS_MONK:+2 ');
-      Engine_addAnswer('Ich möchte nur ein paar Informationen über den Ort und den dem er gehört.');
-      Engine_setModifiers('RACE_ELF:-2 RACE_HALF-ELF:-1 CLASS_ROGUE:-2 CLASS_BARD:-1 ');
-    }
-    {
-      Engine_addQuestion('Mit welcher der folgenen Personengruppen würdest du dich <b>am ehesten</b> abgeben ?');
-      Engine_addAnswer('Anwälte, Politiker, Geschäftsmänner');
-      Engine_setModifiers('CLASS_FIGHTER:+1 CLASS_WIZARD:+2 CLASS_DRUID:-3 CLASS_RANGER:-1 ');
-      Engine_addAnswer('Priester, Pfarrer');
-      Engine_setModifiers('ALIGN_NE:-1 ALIGN_LE:-1 ALIGN_CE:-2 RACE_ORC:-2 RACE_HALF-ORC:-1 CLASS_PALADIN:+1 CLASS_CLERIC:+2 CLASS_ROGUE:-2 CLASS_MONK:+2 ');
-      Engine_addAnswer('Minderheiten, Untergebene');
-      Engine_setModifiers('RACE_HALF-ELF:+3 RACE_HALF-ORC:+3 CLASS_WIZARD:+1 CLASS_ROGUE:+2 CLASS_DRUID:+1 CLASS_SORCERER:+3 ');
-      Engine_addAnswer('Sklaven');
-      Engine_setModifiers('RACE_ELF:-3 RACE_ORC:+2 RACE_HALF-ELF:-1 RACE_HALF-ORC:+1 CLASS_WIZARD:-1 CLASS_BARBAR:+3 CLASS_PALADIN:+1 CLASS_CLERIC:-1 CLASS_MONK:-1 ');
-      Engine_addAnswer('Künstler, Dichter, Autoren');
-      Engine_setModifiers('RACE_ELF:+2 RACE_ORC:-3 RACE_HALF-ELF:+1 RACE_HALF-ORC:-2 RACE_DWARVE:-1 CLASS_WIZARD:+1 CLASS_BARBAR:-2 CLASS_BARD:+3 ');
-      Engine_addAnswer('Reisende, Händler');
-      Engine_setModifiers('RACE_HUMAN:+2 RACE_GNOME:+2 RACE_HALFLING:+1 RACE_DWARVE:-1 CLASS_ROGUE:+2 CLASS_BARD:+1 ');
-      Engine_addAnswer('Stammkunden in der Taverne');
-      Engine_setModifiers('RACE_ELF:-2 RACE_DWARVE:+3 ');
-      Engine_addAnswer('Mit mir, mich selbst und nur mir.');
-      Engine_setModifiers('CLASS_ROGUE:-1 CLASS_BARD:-2 CLASS_DRUID:+1 CLASS_SORCERER:+1 CLASS_MONK:+3 ');
-    }
-    {
-      Engine_addQuestion('Mit welcher der folgenen Personengruppen würdest du dich <b>am wenigsten</b> abgeben ?');
-      Engine_addAnswer('Anwälte, Politiker, Geschäftsmänner');
-      Engine_setModifiers('CLASS_FIGHTER:-1 CLASS_WIZARD:-2 CLASS_DRUID:+3 CLASS_RANGER:+1 ');
-      Engine_addAnswer('Priester, Pfarrer');
-      Engine_setModifiers('ALIGN_NE:+1 ALIGN_LE:+1 ALIGN_CE:+2 RACE_ORC:+2 RACE_HALF-ORC:+1 CLASS_PALADIN:-1 CLASS_CLERIC:-2 CLASS_ROGUE:+2 CLASS_MONK:-2 ');
-      Engine_addAnswer('Minderheiten, Untergebene');
-      Engine_setModifiers('RACE_HALF-ELF:-3 RACE_HALF-ORC:-3 CLASS_WIZARD:-1 CLASS_ROGUE:-2 CLASS_DRUID:-1 CLASS_SORCERER:-3 ');
-      Engine_addAnswer('Sklaven');
-      Engine_setModifiers('RACE_ELF:+3 RACE_ORC:-2 RACE_HALF-ELF:+1 RACE_HALF-ORC:-1 CLASS_WIZARD:+1 CLASS_BARBAR:-1 CLASS_PALADIN:-1 CLASS_CLERIC:+1 CLASS_MONK:+1 ');
-      Engine_addAnswer('Künstler, Dichter, Autoren');
-      Engine_setModifiers('RACE_ELF:-2 RACE_ORC:+3 RACE_HALF-ELF:-1 RACE_HALF-ORC:+2 RACE_DWARVE:+1 CLASS_WIZARD:-1 CLASS_BARBAR:+2 CLASS_BARD:-3 ');
-      Engine_addAnswer('Reisende, Händler');
-      Engine_setModifiers('RACE_HUMAN:-2 RACE_GNOME:-2 RACE_HALFLING:-1 RACE_DWARVE:+1 CLASS_ROGUE:-2 CLASS_BARD:-1 ');
-      Engine_addAnswer('Stammkunden in der Taverne');
-      Engine_setModifiers('RACE_ELF:+2 RACE_DWARVE:-3 ');
-      Engine_addAnswer('Mit mir, mich selbst und nur mir.');
-      Engine_setModifiers('CLASS_ROGUE:+1 CLASS_BARD:+2 CLASS_DRUID:-1 CLASS_SORCERER:+1 CLASS_MONK:-3 ');
-    }
-    {
-      Engine_addQuestion('Was tust du wenn dir jemand einen Streich spielt ?');
-      Engine_addAnswer('Ich lache; ein wenig Spass muss sein !');
-      Engine_setModifiers('ALIGN_NN:+2 RACE_HUMAN:+2 RACE_GNOME:+5 RACE_HALF-ELF:+1 RACE_DWARVE:+2 CLASS_BARBAR:+2 ');
-      Engine_addAnswer('Ich ignoriere ihn, das ist unter meinem Niveau.');
-      Engine_setModifiers('CLASS_DRUID:+1 CLASS_MONK:+2 ');
-      Engine_addAnswer('Das zahl ich ihm zurück, aber auf eine freundliche Art und Weise.<br/> (das könnte auch heissen, dass ich ihn bestehle)');
-      Engine_setModifiers('RACE_HALFLING:+2 CLASS_FIGHTER:-1 CLASS_WIZARD:-2 CLASS_BARBAR:-2 CLASS_PALADIN:-3 CLASS_CLERIC:-3 CLASS_ROGUE:+3 CLASS_BARD:+2 CLASS_DRUID:-3 CLASS_SORCERER:-1 CLASS_RANGER:-1 ');
-      Engine_addAnswer('Ich kenne die selben Leute wie er und werde ihn subtil demütigen.');
-      Engine_setModifiers('CLASS_BARBAR:-3 CLASS_PALADIN:-2 CLASS_ROGUE:+2 CLASS_SORCERER:+3 ');
-      Engine_addAnswer('Ich werde dem Dreckskerl weh tun.');
-      Engine_setModifiers('RACE_ELF:-1 RACE_ORC:+2 RACE_HALF-ORC:+1 CLASS_BARBAR:+3 CLASS_ROGUE:+1 ');
-      Engine_addAnswer('Ich Töte den Bastard.');
-      Engine_setModifiers('ALIGN_CN:+1 ALIGN_CE:+2 RACE_ELF:-2 RACE_ORC:+3 RACE_HALF-ELF:-1 RACE_HALF-ORC:+2 CLASS_BARBAR:+3 CLASS_PALADIN:-3 ');
-    }
-    {
-      Engine_addQuestion('Man gibt dir einige Millionen Goldmünzen was würdest du damit tun ?');
-      Engine_addAnswer('Einkaufen !');
-      Engine_setModifiers('CLASS_ROGUE:+2 ');
-      Engine_addAnswer('Ich stifte das Geld einem wohltätigen Zweck.');
-      Engine_setModifiers('CLASS_PALADIN:+2 ');
-      Engine_addAnswer('Ich investiere es in Immobilien oder Geschäfte.');
-      Engine_setModifiers('CLASS_CLERIC:+2 ');
-      Engine_addAnswer('Ich lege es in Aktien, Fonds oder Wertpapiere an und lebe von den Zinsen und Gewinnen.');
-      Engine_setModifiers('CLASS_WIZARD:+2 ');
-      Engine_addAnswer('Ich mach eine eigenes Geschäft auf.');
-      Engine_setModifiers('CLASS_DRUID:+2 CLASS_SORCERER:+1 ');
-      Engine_addAnswer('Ich bringe das Geld in eienn Tempel oder zu einer Kirche.');
-      Engine_setModifiers('CLASS_PALADIN:+1 CLASS_CLERIC:+2 CLASS_ROGUE:-2 CLASS_DRUID:-2 CLASS_RANGER:-1 ');
-    }
-    {
-      Engine_addQuestion('Du gibst eine Party. Was ist dir dabei <b>am wichtigesten</b> ?');
-      Engine_addAnswer('Essen und Trinken');
-      Engine_setModifiers('RACE_ORC:+2 RACE_GNOME:+2 RACE_HALF-ORC:+1 RACE_HALFLING:+3 RACE_DWARVE:+2 CLASS_BARBAR:+2 ');
-      Engine_addAnswer('Dekoration');
-      Engine_setModifiers('RACE_HUMAN:+2 RACE_ELF:+3 RACE_ORC:-3 RACE_HALF-ELF:+2 RACE_HALF-ORC:-2 RACE_DWARVE:-1 CLASS_BARBAR:-2 CLASS_BARD:+1 ');
-      Engine_addAnswer('Unterhaltung');
-      Engine_setModifiers('RACE_HUMAN:+1 RACE_GNOME:+3 RACE_HALFLING:+1 CLASS_BARD:+3 ');
-      Engine_addAnswer('Geschenke');
-      Engine_setModifiers('RACE_GNOME:+2 RACE_HALFLING:+3 CLASS_ROGUE:+3 CLASS_DRUID:-3 CLASS_RANGER:-1 CLASS_MONK:-2 ');
-      Engine_addAnswer('Ich will eine Ein-Mann Party mit mir allein.');
-      Engine_setModifiers('RACE_HUMAN:-1 RACE_GNOME:+1 CLASS_ROGUE:-2 CLASS_BARD:-3 CLASS_DRUID:+1 CLASS_SORCERER:+1 CLASS_MONK:+3 ');
-      Engine_addAnswer('Im Wald macht man keine Parties !');
-      Engine_setModifiers('RACE_ELF:+2 RACE_HALF-ELF:+1 CLASS_BARBAR:+1 CLASS_DRUID:+2 CLASS_RANGER:+1 ');
-    }
-    {
-      Engine_addQuestion('Du gibst eine Party. Was ist dir dabei <b>am unwichtigesten</b> ?');
-      Engine_addAnswer('Essen und Trinken');
-      Engine_setModifiers('RACE_ORC:-1 RACE_HALFLING:-2 RACE_DWARVE:-1 CLASS_FIGHTER:-1 CLASS_BARBAR:-1 ');
-      Engine_addAnswer('Dekoration');
-      Engine_setModifiers('RACE_ELF:-2 RACE_HALF-ELF:-1 CLASS_WIZARD:-1 CLASS_BARD:-1 ');
-      Engine_addAnswer('Unterhaltung');
-      Engine_setModifiers('CLASS_BARD:-2 ');
-      Engine_addAnswer('Geschenke');
-      Engine_setModifiers('RACE_HUMAN:-1 RACE_HALFLING:-2 CLASS_FIGHTER:+2 CLASS_PALADIN:+1 CLASS_ROGUE:-2 CLASS_RANGER:+1 CLASS_MONK:+1 ');
-      Engine_addAnswer('Alles, hauptsache ich habe Gäste.');
-      Engine_setModifiers('CLASS_FIGHTER:+1 CLASS_BARD:-1 CLASS_RANGER:+2 ');
-      Engine_addAnswer('Ich sagte doch, dass mich Parties nicht interessieren !');
-      Engine_setModifiers('CLASS_DRUID:+3 CLASS_MONK:+3 ');
-    }
-    {
-      Engine_addQuestion('Ein richtiger Abenteurer muss für dich so aussehen:');
-      Engine_addAnswer('glänzende Rüstung, strahlendes Haar, athletischer Körper');
-      Engine_setModifiers('RACE_ELF:+3 RACE_ORC:-1 RACE_HALF-ELF:+1 RACE_DWARVE:-1 CLASS_FIGHTER:+1 CLASS_WIZARD:-2 CLASS_PALADIN:+3 CLASS_SORCERER:-2 CLASS_RANGER:+1 ');
-      Engine_addAnswer('dicke Plattenrüstung, ölverschmiertes Gesicht, Bart');
-      Engine_setModifiers('RACE_HUMAN:+1 RACE_ELF:-2 RACE_HALF-ELF:-1 RACE_DWARVE:+3 CLASS_FIGHTER:+3 CLASS_WIZARD:-2 CLASS_DRUID:-3 CLASS_SORCERER:-2 ');
-      Engine_addAnswer('jeder ist ein Abenteurer, denn das ganze Leben ist ein Abenteuer');
-      Engine_setModifiers('CLASS_FIGHTER:+1 CLASS_PALADIN:+1 CLASS_CLERIC:+2 CLASS_BARD:+1 ');
-      Engine_addAnswer('zerrissene Kleidung, Narben, frische Wunden');
-      Engine_setModifiers('RACE_ELF:-3 RACE_ORC:+3 RACE_HALF-ELF:-2 RACE_HALF-ORC:+2 CLASS_WIZARD:-3 CLASS_BARBAR:+3 CLASS_PALADIN:-3 CLASS_DRUID:+1 CLASS_SORCERER:-3 CLASS_RANGER:+1 ');
-      Engine_addAnswer('modisch gekleidet, mit einem Stab und einer Robe');
-      Engine_setModifiers('RACE_HALF-ELF:+3 CLASS_FIGHTER:-2 CLASS_WIZARD:+3 CLASS_BARBAR:-3 CLASS_CLERIC:+1 CLASS_DRUID:+1 CLASS_SORCERER:+1 ');
-      Engine_addAnswer('Abenteurer erkennt man nicht am Äusseren, doch ihre Augen erzählen Geschichten');
-      Engine_setModifiers('CLASS_FIGHTER:+1 CLASS_BARD:+3 CLASS_DRUID:+1 ');
-      Engine_addAnswer('schlank, sehnig, schön und anmutig');
-      Engine_setModifiers('RACE_ELF:+3 RACE_ORC:-3 RACE_HALF-ELF:+2 RACE_HALF-ORC:-2 RACE_DWARVE:-2 CLASS_FIGHTER:+1 CLASS_WIZARD:+1 CLASS_BARBAR:-3 CLASS_PALADIN:+1 CLASS_CLERIC:+1 CLASS_BARD:+1 CLASS_DRUID:+1 CLASS_SORCERER:+1 CLASS_RANGER:+1 ');
-      Engine_addAnswer('dick, fett, kräftig mit einer bärentiefen Stimme');
-      Engine_setModifiers('RACE_HUMAN:+1 RACE_ORC:+3 RACE_HALF-ORC:+2 RACE_DWARVE:+2 CLASS_BARBAR:+3 CLASS_PALADIN:-3 CLASS_DRUID:+1 ');
-      Engine_addAnswer('wie jeder andere Reisende auch');
-      Engine_setModifiers('CLASS_WIZARD:-1 CLASS_BARBAR:-2 CLASS_PALADIN:-2 CLASS_ROGUE:+3 CLASS_DRUID:+2 CLASS_SORCERER:-2 ');
-      Engine_addAnswer('kahlköpfig mit starken Händen und irgendwie weise');
-      Engine_setModifiers('RACE_ORC:-2 RACE_HALF-ORC:-1 CLASS_WIZARD:-1 CLASS_BARBAR:-3 CLASS_SORCERER:-1 CLASS_MONK:+3 ');
-      Engine_addAnswer('irgendwie anders');
-      Engine_setModifiers('RACE_HUMAN:+2 RACE_HALF-ELF:+2 RACE_HALF-ORC:+2 CLASS_ROGUE:+1 CLASS_DRUID:+3 CLASS_SORCERER:+3 ');
-    }
-    {
-      Engine_addQuestion('Freundschaften sind für dich ?');
-      Engine_addAnswer('sehr profitabel');
-      Engine_setModifiers('RACE_ELF:-2 CLASS_ROGUE:+2 ');
-      Engine_addAnswer('wichtig, denn man kann sich auf seine Freunde verlassen');
-      Engine_setModifiers('RACE_HUMAN:+1 RACE_ELF:+2 RACE_HALF-ELF:+1 RACE_DWARVE:+1 CLASS_ROGUE:-1 CLASS_BARD:+2 CLASS_DRUID:-1 ');
-      Engine_addAnswer('ein notwendiges Übel');
-      Engine_setModifiers('RACE_ELF:-1 RACE_HALF-ELF:-1 CLASS_ROGUE:+1 CLASS_BARD:-1 CLASS_SORCERER:+2 ');
-      Engine_addAnswer('ich kann davon nie genug bekommen');
-      Engine_setModifiers('RACE_HUMAN:+2 RACE_ORC:+1 CLASS_ROGUE:-1 CLASS_BARD:+2 CLASS_DRUID:-1 CLASS_SORCERER:-2 CLASS_RANGER:-1 ');
-      Engine_addAnswer('ich brauche keine Freunde');
-      Engine_setModifiers('ALIGN_NN:+1 ALIGN_NE:+1 ALIGN_LE:+1 ALIGN_CE:+1 RACE_HUMAN:-1 RACE_HALFLING:-1 CLASS_DRUID:+2 CLASS_SORCERER:+1 CLASS_RANGER:+1 ');
-    }
-    {
-      Engine_addQuestion('Wieviele Freunde hast du ?');
-      Engine_addAnswer('keinen einzigen');
-      Engine_setModifiers('RACE_HUMAN:-1 RACE_ELF:-1 RACE_GNOME:-1 RACE_HALFLING:-2 CLASS_BARD:-2 CLASS_DRUID:+1 CLASS_SORCERER:+1 ');
-      Engine_addAnswer('ein bis zwei');
-      Engine_setModifiers('RACE_HUMAN:+3 RACE_ELF:+2 CLASS_ROGUE:+1 CLASS_BARD:-1 CLASS_SORCERER:+2 ');
-      Engine_addAnswer('nur Kumpel - keine echten Freunde');
-      Engine_setModifiers('RACE_ELF:-2 RACE_ORC:+3 RACE_HALF-ELF:-1 RACE_HALF-ORC:+2 CLASS_BARBAR:-1 CLASS_BARD:+2 ');
-      Engine_addAnswer('eine Clique');
-      Engine_setModifiers('RACE_HUMAN:+2 CLASS_WIZARD:+2 ');
-      Engine_addAnswer('jeder ist ein Freund für mich');
-      Engine_setModifiers('RACE_HUMAN:+1 RACE_ELF:+1 CLASS_ROGUE:-1 CLASS_BARD:+3 ');
-    }
-    {
-      Engine_addQuestion('Du hast dich zum Turm einer eingesperrten und mit Handschellen gefesselten Prinzessin durchgekämpft. Was nun ?');
-      Engine_addAnswer('Ich wollte nur sehen ob ich es bis hierhin schaffe, jetzt gehe ich wieder.');
-      Engine_setModifiers('ALIGN_LN:-1 ALIGN_CN:+1 RACE_HUMAN:+1 RACE_HALFLING:+2 RACE_DWARVE:-1 CLASS_PALADIN:-2 CLASS_ROGUE:+2 CLASS_BARD:-1 CLASS_SORCERER:+2 ');
-      Engine_addAnswer('Ich befreie die Prinzessin und heirate sie.');
-      Engine_setModifiers('ALIGN_NG:+1 ALIGN_LG:+1 ALIGN_CG:+1 ALIGN_NE:-1 ALIGN_LE:-1 ALIGN_CE:-1 CLASS_FIGHTER:+1 CLASS_BARBAR:+1 CLASS_PALADIN:+1 ');
-      Engine_addAnswer('Ich befreie sie und bringe sie ihrem Vater zurück - Auftrag erledigt.');
-      Engine_setModifiers('');
-      Engine_addAnswer('Ich vergewaltige, töte oder esse sie.');
-      Engine_setModifiers('ALIGN_NG:-2 ALIGN_LG:-2 ALIGN_CG:-2 RACE_ELF:-3 RACE_ORC:+3 RACE_HALF-ELF:-2 RACE_HALF-ORC:+2 CLASS_BARBAR:+3 CLASS_PALADIN:-3 ');
-      Engine_addAnswer('Ich finde sie hässlich und hätte lieber einen Prinzen gerettet.');
-      Engine_setModifiers('RACE_ORC:-1 CLASS_BARBAR:-1 CLASS_PALADIN:-2 CLASS_ROGUE:+1 CLASS_BARD:+2 CLASS_SORCERER:+1 ');
-      Engine_addAnswer('Ich unterhalte mich mit ihr über Mode, Schmuck, Trends und Männer.');
-      Engine_setModifiers('CLASS_BARBAR:-3 CLASS_BARD:+1 ');
-      Engine_addAnswer('Ich lasse die Prinzessin angekettet und suche nach dem Schatz.');
-      Engine_setModifiers('ALIGN_NG:-2 ALIGN_LG:-2 ALIGN_CG:-2 ALIGN_NE:+2 ALIGN_LE:+2 ALIGN_CE:+2 CLASS_ROGUE:+3 CLASS_SORCERER:+1 ');
-      Engine_addAnswer('Ich lasse sie gefesselt, schlage sie K.O. und bringe sie dann zu ihrem Vater zurück.');
-      Engine_setModifiers('RACE_ELF:-1 RACE_ORC:+2 RACE_HALF-ORC:+1 RACE_DWARVE:+1 CLASS_FIGHTER:+3 CLASS_BARBAR:+2 ');
-      Engine_addAnswer('Ich stelle sie vor die Wahl mich zu heiraten oder hier angekettet zu bleiben.');
-      Engine_setModifiers('RACE_HUMAN:+1 RACE_ELF:-1 RACE_ORC:+1 CLASS_BARBAR:+1 CLASS_ROGUE:+1 ');
-      Engine_addAnswer('Ich behalte die Prinzessin als Geisel, bewache den Turm und töte jeden Eindringling.');
-      Engine_setModifiers('RACE_ORC:+2 RACE_HALF-ORC:+1 RACE_DWARVE:+2 CLASS_FIGHTER:+2 CLASS_BARBAR:+1 CLASS_PALADIN:-2 CLASS_ROGUE:+1 CLASS_SORCERER:+1 ');
-      Engine_addAnswer('Sie muss mir ihren ersten Sohn versprechen, dann befreie ich sie.');
-      Engine_setModifiers('RACE_ORC:+1 CLASS_FIGHTER:+2 CLASS_PALADIN:-1 ');
-    }
-    {
-      Engine_addQuestion('Wie lang muss ein Leben für dich mindestens sein ?');
-      Engine_addAnswer('50-100 Jahre');
-      Engine_setModifiers('RACE_HUMAN:+2 RACE_ELF:-3 RACE_ORC:+3 RACE_GNOME:-1 RACE_HALF-ELF:-2 RACE_HALF-ORC:+2 RACE_HALFLING:+2 RACE_DWARVE:-1 ');
-      Engine_addAnswer('100-150 Jahre');
-      Engine_setModifiers('RACE_ELF:-2 RACE_ORC:-2 RACE_GNOME:+2 RACE_HALF-ELF:+3 RACE_HALF-ORC:-1 RACE_HALFLING:+1 ');
-      Engine_addAnswer('150-350 Jahre');
-      Engine_setModifiers('RACE_HUMAN:-2 RACE_ELF:-1 RACE_ORC:-3 RACE_GNOME:-1 RACE_HALF-ELF:-1 RACE_HALF-ORC:-2 RACE_HALFLING:-1 RACE_DWARVE:+2 ');
-      Engine_addAnswer('mehr als 350 Jahre');
-      Engine_setModifiers('RACE_HUMAN:-3 RACE_ELF:+3 RACE_ORC:-3 RACE_GNOME:-2 RACE_HALF-ELF:-2 RACE_HALF-ORC:-3 RACE_HALFLING:-2 RACE_DWARVE:-1 ');
-    }
-    {
-      Engine_addQuestion('Wie wichtig ist körperliche Grösse für dich ?');
-      Engine_addAnswer('Ich hab ein grosses Problem damit klein zu sein.');
-      Engine_setModifiers('RACE_HUMAN:+2 RACE_ORC:+3 RACE_GNOME:-3 RACE_HALF-ORC:+2 RACE_HALFLING:-2 RACE_DWARVE:-2 ');
-      Engine_addAnswer('Es ist mir egal ob ich klein bin. die Leute werden mich nach dem was ich sage und tue beurteilen und nicht nach meiner Grösse.');
-      Engine_setModifiers('RACE_ORC:-2 RACE_GNOME:+2 RACE_HALF-ELF:+1 RACE_HALF-ORC:-1 RACE_HALFLING:+3 RACE_DWARVE:+2 ');
-      Engine_addAnswer('Ich bin gerne klein, dass hat auch seine Vorteile.');
-      Engine_setModifiers('RACE_HUMAN:+1 RACE_ORC:-3 RACE_GNOME:+3 RACE_HALF-ORC:-2 RACE_HALFLING:+3 RACE_DWARVE:+2 CLASS_BARBAR:-1 CLASS_ROGUE:+1 ');
-      Engine_addAnswer('Ich bin so gross wie der Durschnitt. Um ehrlich zu sein: Es gibt wichtigere Dinge, über die man nachdenken sollte.');
-      Engine_setModifiers('RACE_HUMAN:+1 RACE_ELF:+2 RACE_HALF-ELF:+1 ');
-      Engine_addAnswer('Alles ist mir recht, Solange ich nicht wie der Durchschnitt aussehe.');
-      Engine_setModifiers('RACE_HUMAN:+2 RACE_ELF:+1 RACE_HALF-ELF:+1 ');
-      Engine_addAnswer('Gross oder nicht - das spielt doch keine Rolle.');
-      Engine_setModifiers('RACE_HUMAN:+1 RACE_ELF:+3 RACE_ORC:-2 RACE_HALF-ELF:+2 RACE_HALF-ORC:-1 RACE_DWARVE:+1 ');
-      Engine_addAnswer('Ich hab ein Problem damit besonders gross zu sein.');
-      Engine_setModifiers('RACE_ORC:-3 RACE_GNOME:+2 RACE_HALF-ORC:-2 RACE_HALFLING:+2 ');
-      Engine_addAnswer('Je grösser desto besser.');
-      Engine_setModifiers('RACE_HUMAN:+2 RACE_ORC:+3 RACE_GNOME:-2 RACE_HALF-ORC:+2 RACE_HALFLING:-1 RACE_DWARVE:-1 CLASS_BARBAR:+2 CLASS_ROGUE:-1 ');
-    }
-    /*
-    {
-      Engine_addQuestion('Du findest einen Sack voll Gold auf der Strasse. Was tust du ?');
-      Engine_addAnswer('');
-      Engine_setModifiers('ALIGN_LG:+2 ');
-      Engine_addAnswer('');
-      Engine_setModifiers('');
-    }
-    {
-      Engine_addQuestion(' ?');
-      Engine_addAnswer('');
-      Engine_setModifiers('ALIGN_NG:+1 ALIGN_LG:-1 ALIGN_NN:+2 ALIGN_LN:-2 ALIGN_NE:+3 ALIGN_LE:-3 RACE_HUMAN:+4 RACE_ELF:-4 ');
-      Engine_addAnswer('');
-      Engine_setModifiers('');
-    }
-    */
-    if (!thisFileIsPublic) boolLocal=true;
+    text: 'Where do you feel most comfortable?',
+    text_DE: 'Wo fÃ¼hlst du dich am wohlsten?',
+    answers: [
+      { 
+        text: 'In a big city full of life.',
+        text_DE: 'In einer groÃŸen Stadt voller Leben.',
+        modifiers: 'RACE_HUMAN:+2 RACE_ELF:-2 RACE_DWARF:-1 CLASS_BARD:+1 CLASS_ROGUE:+1 CLASS_DRUID:-2'
+      },
+      { 
+        text: 'In a quiet village.',
+        text_DE: 'In einem ruhigen Dorf.',
+        modifiers: 'RACE_HALFLING:+2 RACE_HUMAN:+1 RACE_ORC:-2 CLASS_CLERIC:+1 CLASS_DRUID:+1 CLASS_BARD:-1'
+      },
+      { 
+        text: 'In the depths of a mine.',
+        text_DE: 'In den Tiefen einer Mine.',
+        modifiers: 'RACE_DWARF:+3 RACE_GNOME:+1 RACE_ELF:-2 CLASS_FIGHTER:+1 CLASS_CLERIC:+1 CLASS_WIZARD:-1'
+      },
+      { 
+        text: 'In the wilderness.',
+        text_DE: 'In der Wildnis.',
+        modifiers: 'RACE_ELF:+2 RACE_HALFORC:+1 RACE_HUMAN:-1 CLASS_DRUID:+3 CLASS_RANGER:+2 CLASS_BARBARIAN:+1'
+      },
+      { 
+        text: 'In ancient ruins.',
+        text_DE: 'In alten Ruinen.',
+        modifiers: 'RACE_ELF:+1 RACE_HUMAN:+1 CLASS_WIZARD:+2 CLASS_CLERIC:+1 CLASS_ROGUE:+1'
+      },
+      { 
+        text: 'In a noisy tavern.',
+        text_DE: 'In einer lauten Taverne.',
+        modifiers: 'RACE_HUMAN:+1 RACE_HALFLING:+1 RACE_DWARF:+1 CLASS_BARD:+2 CLASS_FIGHTER:+1 CLASS_ROGUE:+1'
+      }
+    ]
+  },
+  {
+    text: 'What do you value most?',
+    text_DE: 'Was schÃ¤tzt du am meisten?',
+    answers: [
+      { 
+        text: 'Knowledge and wisdom.',
+        text_DE: 'Wissen und Weisheit.',
+        modifiers: 'RACE_ELF:+2 RACE_GNOME:+1 RACE_ORC:-2 CLASS_WIZARD:+3 CLASS_CLERIC:+1 CLASS_DRUID:+1'
+      },
+      { 
+        text: 'Honor and duty.',
+        text_DE: 'Ehre und Pflicht.',
+        modifiers: 'RACE_HUMAN:+1 RACE_DWARF:+2 RACE_HALFORC:+1 CLASS_PALADIN:+3 CLASS_FIGHTER:+2 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'Freedom and adventure.',
+        text_DE: 'Freiheit und Abenteuer.',
+        modifiers: 'RACE_ELF:+1 RACE_HALFLING:+1 RACE_HALFORC:+1 CLASS_RANGER:+2 CLASS_BARD:+2 CLASS_ROGUE:+2'
+      },
+      { 
+        text: 'Wealth and power.',
+        text_DE: 'Reichtum und Macht.',
+        modifiers: 'RACE_HUMAN:+2 RACE_DWARF:+1 CLASS_WIZARD:+1 CLASS_ROGUE:+2 CLASS_SORCERER:+1'
+      },
+      { 
+        text: 'Family and tradition.',
+        text_DE: 'Familie und Tradition.',
+        modifiers: 'RACE_DWARF:+2 RACE_HALFLING:+2 RACE_ELF:+1 CLASS_CLERIC:+2 CLASS_FIGHTER:+1'
+      },
+      { 
+        text: 'Strength and victory.',
+        text_DE: 'StÃ¤rke und Sieg.',
+        modifiers: 'RACE_ORC:+2 RACE_HALFORC:+2 RACE_DWARF:+1 CLASS_BARBARIAN:+3 CLASS_FIGHTER:+2 CLASS_PALADIN:+1'
+      }
+    ]
+  },
+  {
+    text: 'How do you solve problems?',
+    text_DE: 'Wie lÃ¶st du Probleme?',
+    answers: [
+      { 
+        text: 'With careful planning and study.',
+        text_DE: 'Mit sorgfÃ¤ltiger Planung und Studium.',
+        modifiers: 'RACE_ELF:+1 RACE_GNOME:+2 RACE_ORC:-2 CLASS_WIZARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'By charging in headfirst.',
+        text_DE: 'Indem ich kopfÃ¼ber hineinstÃ¼rze.',
+        modifiers: 'RACE_ORC:+2 RACE_HALFORC:+2 RACE_ELF:-2 CLASS_BARBARIAN:+3 CLASS_FIGHTER:+2'
+      },
+      { 
+        text: 'By finding a clever workaround.',
+        text_DE: 'Indem ich eine clevere Umgehung finde.',
+        modifiers: 'RACE_GNOME:+2 RACE_HALFLING:+1 RACE_HUMAN:+1 CLASS_ROGUE:+3 CLASS_BARD:+2 CLASS_WIZARD:+1'
+      },
+      { 
+        text: 'By seeking divine guidance.',
+        text_DE: 'Indem ich gÃ¶ttliche FÃ¼hrung suche.',
+        modifiers: 'RACE_HUMAN:+1 RACE_DWARF:+1 CLASS_CLERIC:+3 CLASS_PALADIN:+2 CLASS_DRUID:+1'
+      },
+      { 
+        text: 'By trusting my instincts.',
+        text_DE: 'Indem ich meinen Instinkten vertraue.',
+        modifiers: 'RACE_ELF:+1 RACE_HALFORC:+1 CLASS_RANGER:+2 CLASS_DRUID:+2 CLASS_BARBARIAN:+2 CLASS_SORCERER:+2'
+      },
+      { 
+        text: 'By working with others.',
+        text_DE: 'Indem ich mit anderen zusammenarbeite.',
+        modifiers: 'RACE_HUMAN:+2 RACE_HALFLING:+2 CLASS_BARD:+2 CLASS_CLERIC:+2 CLASS_PALADIN:+1'
+      }
+    ]
+  },
+  {
+    text: 'What is your greatest strength?',
+    text_DE: 'Was ist deine grÃ¶ÃŸte StÃ¤rke?',
+    answers: [
+      { 
+        text: 'My intelligence.',
+        text_DE: 'Meine Intelligenz.',
+        modifiers: 'RACE_ELF:+2 RACE_GNOME:+2 RACE_ORC:-2 CLASS_WIZARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'My physical strength.',
+        text_DE: 'Meine kÃ¶rperliche StÃ¤rke.',
+        modifiers: 'RACE_ORC:+2 RACE_HALFORC:+2 RACE_DWARF:+1 CLASS_BARBARIAN:+3 CLASS_FIGHTER:+2'
+      },
+      { 
+        text: 'My agility.',
+        text_DE: 'Meine Beweglichkeit.',
+        modifiers: 'RACE_ELF:+2 RACE_HALFLING:+2 RACE_DWARF:-1 CLASS_ROGUE:+3 CLASS_RANGER:+2 CLASS_MONK:+2'
+      },
+      { 
+        text: 'My charisma.',
+        text_DE: 'Meine Ausstrahlung.',
+        modifiers: 'RACE_HALFELF:+2 RACE_HUMAN:+1 RACE_DWARF:-1 CLASS_BARD:+3 CLASS_PALADIN:+1 CLASS_SORCERER:+2'
+      },
+      { 
+        text: 'My wisdom.',
+        text_DE: 'Meine Weisheit.',
+        modifiers: 'RACE_ELF:+1 RACE_DWARF:+1 CLASS_CLERIC:+3 CLASS_DRUID:+3 CLASS_MONK:+2'
+      },
+      { 
+        text: 'My endurance.',
+        text_DE: 'Meine Ausdauer.',
+        modifiers: 'RACE_DWARF:+2 RACE_HALFLING:+1 RACE_HUMAN:+1 CLASS_FIGHTER:+2 CLASS_RANGER:+2'
+      }
+    ]
+  },
+  {
+    text: 'What motivates you to adventure?',
+    text_DE: 'Was motiviert dich zum Abenteuer?',
+    answers: [
+      { 
+        text: 'The pursuit of knowledge.',
+        text_DE: 'Das Streben nach Wissen.',
+        modifiers: 'RACE_ELF:+2 RACE_GNOME:+2 CLASS_WIZARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'To protect the innocent.',
+        text_DE: 'Um die Unschuldigen zu beschÃ¼tzen.',
+        modifiers: 'RACE_HUMAN:+1 RACE_DWARF:+1 CLASS_PALADIN:+3 CLASS_CLERIC:+2 CLASS_FIGHTER:+1'
+      },
+      { 
+        text: 'For fame and glory.',
+        text_DE: 'FÃ¼r Ruhm und Ehre.',
+        modifiers: 'RACE_HUMAN:+2 RACE_HALFORC:+1 CLASS_FIGHTER:+2 CLASS_BARD:+2 CLASS_BARBARIAN:+1'
+      },
+      { 
+        text: 'To find treasure.',
+        text_DE: 'Um SchÃ¤tze zu finden.',
+        modifiers: 'RACE_HUMAN:+1 RACE_DWARF:+2 RACE_HALFLING:+1 CLASS_ROGUE:+3 CLASS_RANGER:+1'
+      },
+      { 
+        text: 'To explore new places.',
+        text_DE: 'Um neue Orte zu erkunden.',
+        modifiers: 'RACE_ELF:+1 RACE_HALFLING:+2 RACE_HUMAN:+1 CLASS_RANGER:+3 CLASS_DRUID:+2 CLASS_BARD:+2'
+      },
+      { 
+        text: 'To prove myself.',
+        text_DE: 'Um mich zu beweisen.',
+        modifiers: 'RACE_HALFORC:+2 RACE_GNOME:+1 RACE_HUMAN:+1 CLASS_FIGHTER:+2 CLASS_BARBARIAN:+2 CLASS_MONK:+1'
+      }
+    ]
+  },
+  {
+    text: 'How do you prefer to fight?',
+    text_DE: 'Wie kÃ¤mpfst du am liebsten?',
+    answers: [
+      { 
+        text: 'With sword and shield.',
+        text_DE: 'Mit Schwert und Schild.',
+        modifiers: 'RACE_HUMAN:+1 RACE_DWARF:+2 CLASS_FIGHTER:+3 CLASS_PALADIN:+2'
+      },
+      { 
+        text: 'With magic spells.',
+        text_DE: 'Mit Zaubern.',
+        modifiers: 'RACE_ELF:+2 RACE_GNOME:+2 RACE_ORC:-2 CLASS_WIZARD:+3 CLASS_SORCERER:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'From the shadows.',
+        text_DE: 'Aus dem Schatten heraus.',
+        modifiers: 'RACE_ELF:+1 RACE_HALFLING:+2 CLASS_ROGUE:+3 CLASS_RANGER:+1'
+      },
+      { 
+        text: 'With raw fury.',
+        text_DE: 'Mit roher Wut.',
+        modifiers: 'RACE_ORC:+3 RACE_HALFORC:+2 RACE_DWARF:+1 CLASS_BARBARIAN:+3'
+      },
+      { 
+        text: 'With bow and arrows.',
+        text_DE: 'Mit Bogen und Pfeilen.',
+        modifiers: 'RACE_ELF:+3 RACE_HUMAN:+1 CLASS_RANGER:+3 CLASS_FIGHTER:+1'
+      },
+      { 
+        text: 'I avoid fighting.',
+        text_DE: 'Ich vermeide KÃ¤mpfe.',
+        modifiers: 'RACE_GNOME:+1 RACE_HALFLING:+1 CLASS_BARD:+2 CLASS_CLERIC:+1 CLASS_DRUID:+1'
+      }
+    ]
+  },
+  {
+    text: 'What is your ideal home?',
+    text_DE: 'Was ist dein ideales Zuhause?',
+    answers: [
+      { 
+        text: 'A tower filled with books.',
+        text_DE: 'Ein Turm voller BÃ¼cher.',
+        modifiers: 'RACE_ELF:+1 RACE_GNOME:+2 CLASS_WIZARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'A fortress protecting others.',
+        text_DE: 'Eine Festung, die andere beschÃ¼tzt.',
+        modifiers: 'RACE_HUMAN:+1 RACE_DWARF:+2 CLASS_FIGHTER:+2 CLASS_PALADIN:+3'
+      },
+      { 
+        text: 'A cozy cottage.',
+        text_DE: 'Ein gemÃ¼tliches HÃ¤uschen.',
+        modifiers: 'RACE_HALFLING:+3 RACE_GNOME:+1 CLASS_CLERIC:+1 CLASS_DRUID:+1'
+      },
+      { 
+        text: 'A cave in the mountains.',
+        text_DE: 'Eine HÃ¶hle in den Bergen.',
+        modifiers: 'RACE_DWARF:+3 RACE_ORC:+1 RACE_HALFORC:+1 CLASS_BARBARIAN:+2 CLASS_MONK:+1'
+      },
+      { 
+        text: 'A tree house in the forest.',
+        text_DE: 'Ein Baumhaus im Wald.',
+        modifiers: 'RACE_ELF:+3 RACE_HALFLING:+1 CLASS_DRUID:+3 CLASS_RANGER:+2'
+      },
+      { 
+        text: 'I don\'t need a home, I\'m always traveling.',
+        text_DE: 'Ich brauche kein Zuhause, ich bin immer unterwegs.',
+        modifiers: 'RACE_HALFELF:+2 RACE_HUMAN:+1 CLASS_BARD:+3 CLASS_RANGER:+2 CLASS_ROGUE:+2'
+      }
+    ]
+  },
+  {
+    text: 'What do you do in your free time?',
+    text_DE: 'Was machst du in deiner Freizeit?',
+    answers: [
+      { 
+        text: 'Read and study.',
+        text_DE: 'Lesen und studieren.',
+        modifiers: 'RACE_ELF:+2 RACE_GNOME:+2 RACE_ORC:-2 CLASS_WIZARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'Practice combat skills.',
+        text_DE: 'Kampffertigkeiten Ã¼ben.',
+        modifiers: 'RACE_DWARF:+1 RACE_HALFORC:+1 CLASS_FIGHTER:+3 CLASS_PALADIN:+2 CLASS_MONK:+2'
+      },
+      { 
+        text: 'Explore nature.',
+        text_DE: 'Die Natur erkunden.',
+        modifiers: 'RACE_ELF:+2 RACE_HALFLING:+1 CLASS_DRUID:+3 CLASS_RANGER:+3'
+      },
+      { 
+        text: 'Socialize and tell stories.',
+        text_DE: 'Gesellig sein und Geschichten erzÃ¤hlen.',
+        modifiers: 'RACE_HUMAN:+2 RACE_HALFLING:+2 RACE_HALFELF:+1 CLASS_BARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'Craft and tinker.',
+        text_DE: 'Basteln und tÃ¼fteln.',
+        modifiers: 'RACE_DWARF:+2 RACE_GNOME:+3 CLASS_WIZARD:+1 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'Meditate and reflect.',
+        text_DE: 'Meditieren und nachdenken.',
+        modifiers: 'RACE_ELF:+1 CLASS_MONK:+3 CLASS_DRUID:+2 CLASS_CLERIC:+2'
+      }
+    ]
+  },
+  {
+    text: 'What is your biggest fear?',
+    text_DE: 'Was ist deine grÃ¶ÃŸte Angst?',
+    answers: [
+      { 
+        text: 'Being forgotten.',
+        text_DE: 'Vergessen zu werden.',
+        modifiers: 'RACE_HUMAN:+2 RACE_HALFELF:+1 CLASS_BARD:+2 CLASS_FIGHTER:+1'
+      },
+      { 
+        text: 'Losing control.',
+        text_DE: 'Die Kontrolle zu verlieren.',
+        modifiers: 'RACE_ELF:+1 RACE_GNOME:+1 CLASS_WIZARD:+2 CLASS_MONK:+2'
+      },
+      { 
+        text: 'Being trapped or confined.',
+        text_DE: 'Gefangen oder eingesperrt zu sein.',
+        modifiers: 'RACE_ELF:+1 RACE_HALFLING:+1 CLASS_RANGER:+2 CLASS_DRUID:+2 CLASS_BARBARIAN:+2'
+      },
+      { 
+        text: 'Failing those I protect.',
+        text_DE: 'Diejenigen im Stich zu lassen, die ich beschÃ¼tze.',
+        modifiers: 'RACE_HUMAN:+1 RACE_DWARF:+2 CLASS_PALADIN:+3 CLASS_CLERIC:+2 CLASS_FIGHTER:+1'
+      },
+      { 
+        text: 'Being powerless.',
+        text_DE: 'Machtlos zu sein.',
+        modifiers: 'RACE_HALFORC:+2 RACE_GNOME:+1 CLASS_BARBARIAN:+2 CLASS_SORCERER:+2 CLASS_WIZARD:+2'
+      },
+      { 
+        text: 'Darkness and the unknown.',
+        text_DE: 'Dunkelheit und das Unbekannte.',
+        modifiers: 'RACE_HALFLING:+2 RACE_GNOME:+1 CLASS_CLERIC:+2 CLASS_PALADIN:+1'
+      }
+    ]
+  },
+  {
+    text: 'How do you make decisions?',
+    text_DE: 'Wie triffst du Entscheidungen?',
+    answers: [
+      { 
+        text: 'Through careful analysis.',
+        text_DE: 'Durch sorgfÃ¤ltige Analyse.',
+        modifiers: 'RACE_ELF:+2 RACE_GNOME:+2 CLASS_WIZARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'By following my moral code.',
+        text_DE: 'Indem ich meinem moralischen Kodex folge.',
+        modifiers: 'RACE_DWARF:+2 RACE_HUMAN:+1 CLASS_PALADIN:+3 CLASS_CLERIC:+2 CLASS_MONK:+1'
+      },
+      { 
+        text: 'Based on gut feeling.',
+        text_DE: 'Basierend auf BauchgefÃ¼hl.',
+        modifiers: 'RACE_HALFORC:+2 RACE_HALFLING:+1 CLASS_BARBARIAN:+2 CLASS_SORCERER:+2 CLASS_RANGER:+1'
+      },
+      { 
+        text: 'By considering what\'s best for everyone.',
+        text_DE: 'Indem ich bedenke, was fÃ¼r alle am besten ist.',
+        modifiers: 'RACE_HUMAN:+2 RACE_HALFELF:+2 CLASS_CLERIC:+2 CLASS_BARD:+2 CLASS_DRUID:+1'
+      },
+      { 
+        text: 'Quickly and decisively.',
+        text_DE: 'Schnell und entschlossen.',
+        modifiers: 'RACE_ORC:+2 RACE_HUMAN:+1 CLASS_FIGHTER:+2 CLASS_BARBARIAN:+2 CLASS_ROGUE:+1'
+      },
+      { 
+        text: 'After seeking advice.',
+        text_DE: 'Nachdem ich Rat gesucht habe.',
+        modifiers: 'RACE_HALFLING:+2 RACE_GNOME:+1 CLASS_BARD:+2 CLASS_CLERIC:+2'
+      }
+    ]
+  },
+  {
+    text: 'What role do you take in a group?',
+    text_DE: 'Welche Rolle Ã¼bernimmst du in einer Gruppe?',
+    answers: [
+      { 
+        text: 'The leader.',
+        text_DE: 'Der AnfÃ¼hrer.',
+        modifiers: 'RACE_HUMAN:+2 RACE_DWARF:+1 CLASS_PALADIN:+2 CLASS_FIGHTER:+2 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'The protector.',
+        text_DE: 'Der BeschÃ¼tzer.',
+        modifiers: 'RACE_DWARF:+2 RACE_HALFORC:+1 CLASS_FIGHTER:+3 CLASS_PALADIN:+2'
+      },
+      { 
+        text: 'The strategist.',
+        text_DE: 'Der Stratege.',
+        modifiers: 'RACE_ELF:+2 RACE_GNOME:+2 CLASS_WIZARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'The scout.',
+        text_DE: 'Der SpÃ¤her.',
+        modifiers: 'RACE_ELF:+2 RACE_HALFLING:+2 CLASS_RANGER:+3 CLASS_ROGUE:+2'
+      },
+      { 
+        text: 'The diplomat.',
+        text_DE: 'Der Diplomat.',
+        modifiers: 'RACE_HALFELF:+3 RACE_HUMAN:+1 CLASS_BARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'The supporter.',
+        text_DE: 'Der UnterstÃ¼tzer.',
+        modifiers: 'RACE_HALFLING:+2 RACE_GNOME:+1 CLASS_CLERIC:+3 CLASS_BARD:+2 CLASS_DRUID:+1'
+      }
+    ]
+  },
+  {
+    text: 'What would you do if you found a lost treasure?',
+    text_DE: 'Was wÃ¼rdest du tun, wenn du einen verlorenen Schatz findest?',
+    answers: [
+      { 
+        text: 'Return it to its rightful owner.',
+        text_DE: 'Ihn seinem rechtmÃ¤ÃŸigen Besitzer zurÃ¼ckgeben.',
+        modifiers: 'RACE_DWARF:+2 RACE_HALFLING:+2 CLASS_PALADIN:+3 CLASS_CLERIC:+2'
+      },
+      { 
+        text: 'Keep it for myself.',
+        text_DE: 'Ihn fÃ¼r mich behalten.',
+        modifiers: 'RACE_HUMAN:+1 CLASS_ROGUE:+2 CLASS_SORCERER:+1'
+      },
+      { 
+        text: 'Share it with my companions.',
+        text_DE: 'Ihn mit meinen GefÃ¤hrten teilen.',
+        modifiers: 'RACE_HUMAN:+2 RACE_HALFLING:+2 CLASS_FIGHTER:+2 CLASS_BARD:+2 CLASS_RANGER:+1'
+      },
+      { 
+        text: 'Donate it to those in need.',
+        text_DE: 'Ihn den BedÃ¼rftigen spenden.',
+        modifiers: 'RACE_HALFELF:+1 RACE_HUMAN:+1 CLASS_CLERIC:+3 CLASS_PALADIN:+2 CLASS_DRUID:+1'
+      },
+      { 
+        text: 'Study it to learn its history.',
+        text_DE: 'Ihn studieren, um seine Geschichte zu erfahren.',
+        modifiers: 'RACE_ELF:+2 RACE_GNOME:+2 CLASS_WIZARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'Use it to gain power.',
+        text_DE: 'Ihn nutzen, um Macht zu erlangen.',
+        modifiers: 'RACE_HALFORC:+1 RACE_HUMAN:+1 CLASS_SORCERER:+2 CLASS_WIZARD:+1'
+      }
+    ]
+  },
+  {
+    text: 'How do you view authority?',
+    text_DE: 'Wie siehst du AutoritÃ¤t?',
+    answers: [
+      { 
+        text: 'It must be respected and obeyed.',
+        text_DE: 'Sie muss respektiert und befolgt werden.',
+        modifiers: 'RACE_DWARF:+2 RACE_HUMAN:+1 CLASS_PALADIN:+3 CLASS_FIGHTER:+2 CLASS_CLERIC:+2'
+      },
+      { 
+        text: 'It should be questioned and challenged.',
+        text_DE: 'Sie sollte hinterfragt und herausgefordert werden.',
+        modifiers: 'RACE_ELF:+1 RACE_HALFELF:+1 CLASS_BARBARIAN:+2 CLASS_ROGUE:+2 CLASS_BARD:+1'
+      },
+      { 
+        text: 'It\'s necessary but not absolute.',
+        text_DE: 'Sie ist notwendig, aber nicht absolut.',
+        modifiers: 'RACE_HUMAN:+2 RACE_GNOME:+1 CLASS_CLERIC:+1 CLASS_WIZARD:+1'
+      },
+      { 
+        text: 'I prefer to be my own authority.',
+        text_DE: 'Ich ziehe es vor, meine eigene AutoritÃ¤t zu sein.',
+        modifiers: 'RACE_ELF:+1 RACE_HALFORC:+2 CLASS_RANGER:+2 CLASS_DRUID:+2 CLASS_SORCERER:+2'
+      },
+      { 
+        text: 'True authority comes from wisdom.',
+        text_DE: 'Wahre AutoritÃ¤t kommt von Weisheit.',
+        modifiers: 'RACE_ELF:+2 RACE_GNOME:+1 CLASS_DRUID:+2 CLASS_CLERIC:+2 CLASS_MONK:+2'
+      },
+      { 
+        text: 'Might makes right.',
+        text_DE: 'Macht schafft Recht.',
+        modifiers: 'RACE_ORC:+3 RACE_HALFORC:+2 CLASS_BARBARIAN:+3 CLASS_FIGHTER:+1'
+      }
+    ]
+  },
+  {
+    text: 'What is your approach to magic?',
+    text_DE: 'Wie ist deine Einstellung zur Magie?',
+    answers: [
+      { 
+        text: 'Magic should be studied and understood.',
+        text_DE: 'Magie sollte studiert und verstanden werden.',
+        modifiers: 'RACE_ELF:+2 RACE_GNOME:+2 CLASS_WIZARD:+3'
+      },
+      { 
+        text: 'Magic is a divine gift.',
+        text_DE: 'Magie ist ein gÃ¶ttliches Geschenk.',
+        modifiers: 'RACE_HUMAN:+1 CLASS_CLERIC:+3 CLASS_PALADIN:+2'
+      },
+      { 
+        text: 'Magic is natural and should flow freely.',
+        text_DE: 'Magie ist natÃ¼rlich und sollte frei flieÃŸen.',
+        modifiers: 'RACE_ELF:+1 CLASS_DRUID:+3 CLASS_SORCERER:+2'
+      },
+      { 
+        text: 'Magic is dangerous and unpredictable.',
+        text_DE: 'Magie ist gefÃ¤hrlich und unberechenbar.',
+        modifiers: 'RACE_DWARF:+1 RACE_HALFLING:+1 CLASS_FIGHTER:+2 CLASS_BARBARIAN:+2'
+      },
+      { 
+        text: 'Magic is a tool like any other.',
+        text_DE: 'Magie ist ein Werkzeug wie jedes andere.',
+        modifiers: 'RACE_HUMAN:+1 RACE_GNOME:+1 CLASS_BARD:+2 CLASS_RANGER:+1'
+      },
+      { 
+        text: 'I don\'t trust magic.',
+        text_DE: 'Ich vertraue der Magie nicht.',
+        modifiers: 'RACE_DWARF:+2 RACE_ORC:+1 CLASS_FIGHTER:+2 CLASS_BARBARIAN:+3 CLASS_MONK:+1'
+      }
+    ]
+  },
+  {
+    text: 'How do you handle betrayal?',
+    text_DE: 'Wie gehst du mit Verrat um?',
+    answers: [
+      { 
+        text: 'Seek justice through proper channels.',
+        text_DE: 'Gerechtigkeit durch die richtigen KanÃ¤le suchen.',
+        modifiers: 'RACE_DWARF:+2 RACE_HUMAN:+1 CLASS_PALADIN:+3 CLASS_CLERIC:+2'
+      },
+      { 
+        text: 'Take immediate revenge.',
+        text_DE: 'Sofortige Rache nehmen.',
+        modifiers: 'RACE_ORC:+2 RACE_HALFORC:+2 CLASS_BARBARIAN:+3 CLASS_FIGHTER:+1'
+      },
+      { 
+        text: 'Try to understand why they did it.',
+        text_DE: 'Versuchen zu verstehen, warum sie es getan haben.',
+        modifiers: 'RACE_HALFELF:+2 RACE_GNOME:+1 CLASS_BARD:+2 CLASS_CLERIC:+2 CLASS_DRUID:+1'
+      },
+      { 
+        text: 'Forgive but never forget.',
+        text_DE: 'Vergeben, aber niemals vergessen.',
+        modifiers: 'RACE_ELF:+1 RACE_HUMAN:+1 CLASS_CLERIC:+2 CLASS_MONK:+2'
+      },
+      { 
+        text: 'Cut them out of my life completely.',
+        text_DE: 'Sie komplett aus meinem Leben streichen.',
+        modifiers: 'RACE_DWARF:+1 RACE_ELF:+1 CLASS_RANGER:+2 CLASS_ROGUE:+2'
+      },
+      { 
+        text: 'Plan a careful, calculated response.',
+        text_DE: 'Eine sorgfÃ¤ltige, kalkulierte Antwort planen.',
+        modifiers: 'RACE_ELF:+2 RACE_GNOME:+1 CLASS_WIZARD:+2 CLASS_ROGUE:+3'
+      }
+    ]
+  },
+  {
+    text: 'What is your ideal adventure?',
+    text_DE: 'Was ist dein ideales Abenteuer?',
+    answers: [
+      { 
+        text: 'Exploring ancient ruins and uncovering lost knowledge.',
+        text_DE: 'Alte Ruinen erforschen und verlorenes Wissen aufdecken.',
+        modifiers: 'RACE_ELF:+2 RACE_HUMAN:+1 CLASS_WIZARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'Protecting a village from monsters.',
+        text_DE: 'Ein Dorf vor Monstern beschÃ¼tzen.',
+        modifiers: 'RACE_HUMAN:+2 RACE_DWARF:+1 CLASS_PALADIN:+3 CLASS_FIGHTER:+2 CLASS_RANGER:+1'
+      },
+      { 
+        text: 'Infiltrating an enemy stronghold.',
+        text_DE: 'Eine feindliche Festung infiltrieren.',
+        modifiers: 'RACE_HALFLING:+2 RACE_ELF:+1 CLASS_ROGUE:+3 CLASS_RANGER:+1'
+      },
+      { 
+        text: 'Surviving in the wilderness.',
+        text_DE: 'In der Wildnis Ã¼berleben.',
+        modifiers: 'RACE_ELF:+1 RACE_HALFORC:+2 CLASS_DRUID:+3 CLASS_RANGER:+3 CLASS_BARBARIAN:+2'
+      },
+      { 
+        text: 'Negotiating peace between warring factions.',
+        text_DE: 'Frieden zwischen verfeindeten Fraktionen aushandeln.',
+        modifiers: 'RACE_HALFELF:+3 RACE_HUMAN:+2 CLASS_BARD:+3 CLASS_CLERIC:+2'
+      },
+      { 
+        text: 'Conquering a great challenge through strength.',
+        text_DE: 'Eine groÃŸe Herausforderung durch StÃ¤rke bewÃ¤ltigen.',
+        modifiers: 'RACE_ORC:+2 RACE_DWARF:+2 RACE_HALFORC:+1 CLASS_BARBARIAN:+3 CLASS_FIGHTER:+2'
+      }
+    ]
+  },
+  {
+    text: 'How do you view death?',
+    text_DE: 'Wie siehst du den Tod?',
+    answers: [
+      { 
+        text: 'As a natural part of life\'s cycle.',
+        text_DE: 'Als natÃ¼rlichen Teil des Lebenszyklus.',
+        modifiers: 'RACE_ELF:+2 RACE_DWARF:+1 CLASS_DRUID:+3 CLASS_CLERIC:+2 CLASS_MONK:+2'
+      },
+      { 
+        text: 'As something to be fought against.',
+        text_DE: 'Als etwas, wogegen gekÃ¤mpft werden muss.',
+        modifiers: 'RACE_HUMAN:+2 RACE_HALFORC:+1 CLASS_PALADIN:+2 CLASS_CLERIC:+2 CLASS_FIGHTER:+1'
+      },
+      { 
+        text: 'As the ultimate mystery to solve.',
+        text_DE: 'Als ultimatives Geheimnis, das es zu lÃ¶sen gilt.',
+        modifiers: 'RACE_ELF:+1 RACE_GNOME:+2 CLASS_WIZARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'As something that gives life meaning.',
+        text_DE: 'Als etwas, das dem Leben Bedeutung gibt.',
+        modifiers: 'RACE_HUMAN:+1 RACE_ELF:+1 CLASS_MONK:+3 CLASS_CLERIC:+2'
+      },
+      { 
+        text: 'As an enemy to be defeated.',
+        text_DE: 'Als Feind, der besiegt werden muss.',
+        modifiers: 'RACE_DWARF:+1 RACE_HALFORC:+1 CLASS_BARBARIAN:+2 CLASS_PALADIN:+2 CLASS_FIGHTER:+2'
+      },
+      { 
+        text: 'I try not to think about it.',
+        text_DE: 'Ich versuche, nicht daran zu denken.',
+        modifiers: 'RACE_HALFLING:+2 RACE_GNOME:+1 CLASS_BARD:+2 CLASS_ROGUE:+1'
+      }
+    ]
+  },
+  {
+    text: 'What drives your personal growth?',
+    text_DE: 'Was treibt dein persÃ¶nliches Wachstum an?',
+    answers: [
+      { 
+        text: 'The pursuit of knowledge and wisdom.',
+        text_DE: 'Das Streben nach Wissen und Weisheit.',
+        modifiers: 'RACE_ELF:+2 RACE_GNOME:+2 CLASS_WIZARD:+3 CLASS_CLERIC:+1 CLASS_DRUID:+1'
+      },
+      { 
+        text: 'Overcoming greater challenges.',
+        text_DE: 'GrÃ¶ÃŸere Herausforderungen Ã¼berwinden.',
+        modifiers: 'RACE_HUMAN:+2 RACE_HALFORC:+1 CLASS_FIGHTER:+2 CLASS_BARBARIAN:+2 CLASS_MONK:+2'
+      },
+      { 
+        text: 'Helping others and making a difference.',
+        text_DE: 'Anderen helfen und etwas bewirken.',
+        modifiers: 'RACE_HUMAN:+2 RACE_HALFLING:+2 RACE_HALFELF:+1 CLASS_CLERIC:+3 CLASS_PALADIN:+2 CLASS_BARD:+1'
+      },
+      { 
+        text: 'Mastering new skills and abilities.',
+        text_DE: 'Neue FÃ¤higkeiten und Fertigkeiten meistern.',
+        modifiers: 'RACE_ELF:+1 RACE_GNOME:+2 RACE_HUMAN:+1 CLASS_MONK:+2 CLASS_RANGER:+2 CLASS_ROGUE:+2'
+      },
+      { 
+        text: 'Understanding my place in the world.',
+        text_DE: 'Meinen Platz in der Welt verstehen.',
+        modifiers: 'RACE_HALFELF:+2 RACE_HALFORC:+2 CLASS_DRUID:+2 CLASS_CLERIC:+2 CLASS_MONK:+1'
+      },
+      { 
+        text: 'Gaining recognition and respect.',
+        text_DE: 'Anerkennung und Respekt erlangen.',
+        modifiers: 'RACE_HUMAN:+1 RACE_DWARF:+1 CLASS_BARD:+2 CLASS_FIGHTER:+1 CLASS_PALADIN:+1'
+      }
+    ]
+  },
+  {
+    text: 'How do you handle failure?',
+    text_DE: 'Wie gehst du mit Scheitern um?',
+    answers: [
+      { 
+        text: 'Learn from it and try again.',
+        text_DE: 'Daraus lernen und es erneut versuchen.',
+        modifiers: 'RACE_HUMAN:+2 RACE_GNOME:+2 CLASS_WIZARD:+2 CLASS_MONK:+2 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'Get angry and push harder.',
+        text_DE: 'WÃ¼tend werden und hÃ¤rter kÃ¤mpfen.',
+        modifiers: 'RACE_ORC:+2 RACE_HALFORC:+2 RACE_DWARF:+1 CLASS_BARBARIAN:+3 CLASS_FIGHTER:+1'
+      },
+      { 
+        text: 'Accept it as part of a larger plan.',
+        text_DE: 'Es als Teil eines grÃ¶ÃŸeren Plans akzeptieren.',
+        modifiers: 'RACE_ELF:+1 RACE_HALFLING:+1 CLASS_CLERIC:+3 CLASS_DRUID:+2 CLASS_MONK:+2'
+      },
+      { 
+        text: 'Analyze what went wrong.',
+        text_DE: 'Analysieren, was schiefgelaufen ist.',
+        modifiers: 'RACE_ELF:+2 RACE_GNOME:+2 CLASS_WIZARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'Seek comfort from friends.',
+        text_DE: 'Trost bei Freunden suchen.',
+        modifiers: 'RACE_HALFLING:+2 RACE_HALFELF:+2 CLASS_BARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'Retreat and regroup.',
+        text_DE: 'Sich zurÃ¼ckziehen und neu formieren.',
+        modifiers: 'RACE_ELF:+1 RACE_GNOME:+1 CLASS_RANGER:+2 CLASS_ROGUE:+2 CLASS_DRUID:+1'
+      }
+    ]
+  },
+  {
+    text: 'What is your relationship with nature?',
+    text_DE: 'Wie ist dein VerhÃ¤ltnis zur Natur?',
+    answers: [
+      { 
+        text: 'I am one with nature.',
+        text_DE: 'Ich bin eins mit der Natur.',
+        modifiers: 'RACE_ELF:+3 CLASS_DRUID:+3 CLASS_RANGER:+2'
+      },
+      { 
+        text: 'Nature is to be respected and protected.',
+        text_DE: 'Die Natur ist zu respektieren und zu schÃ¼tzen.',
+        modifiers: 'RACE_ELF:+2 RACE_HALFLING:+1 CLASS_DRUID:+2 CLASS_RANGER:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'Nature is a resource to be used wisely.',
+        text_DE: 'Die Natur ist eine Ressource, die weise genutzt werden sollte.',
+        modifiers: 'RACE_HUMAN:+2 RACE_DWARF:+1 RACE_GNOME:+1 CLASS_CLERIC:+1 CLASS_WIZARD:+1'
+      },
+      { 
+        text: 'Nature is beautiful but dangerous.',
+        text_DE: 'Die Natur ist schÃ¶n, aber gefÃ¤hrlich.',
+        modifiers: 'RACE_HUMAN:+1 RACE_HALFLING:+1 CLASS_FIGHTER:+1 CLASS_ROGUE:+1'
+      },
+      { 
+        text: 'I prefer civilization to wilderness.',
+        text_DE: 'Ich bevorzuge die Zivilisation gegenÃ¼ber der Wildnis.',
+        modifiers: 'RACE_HUMAN:+2 RACE_DWARF:+1 RACE_GNOME:+1 CLASS_BARD:+2 CLASS_ROGUE:+1'
+      },
+      { 
+        text: 'Nature is something to be conquered.',
+        text_DE: 'Die Natur ist etwas, das erobert werden muss.',
+        modifiers: 'RACE_ORC:+2 RACE_HALFORC:+1 CLASS_BARBARIAN:+1 CLASS_FIGHTER:+1'
+      }
+    ]
+  },
+  {
+    text: 'How do you approach new situations?',
+    text_DE: 'Wie gehst du an neue Situationen heran?',
+    answers: [
+      { 
+        text: 'With careful planning and preparation.',
+        text_DE: 'Mit sorgfÃ¤ltiger Planung und Vorbereitung.',
+        modifiers: 'RACE_ELF:+2 RACE_GNOME:+2 RACE_DWARF:+1 CLASS_WIZARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'With enthusiasm and optimism.',
+        text_DE: 'Mit Begeisterung und Optimismus.',
+        modifiers: 'RACE_HUMAN:+2 RACE_HALFLING:+2 CLASS_BARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'With caution and skepticism.',
+        text_DE: 'Mit Vorsicht und Skepsis.',
+        modifiers: 'RACE_DWARF:+2 RACE_GNOME:+1 RACE_HALFLING:+1 CLASS_ROGUE:+2 CLASS_RANGER:+1'
+      },
+      { 
+        text: 'By charging in headfirst.',
+        text_DE: 'Indem ich kopfÃ¼ber hineinstÃ¼rze.',
+        modifiers: 'RACE_ORC:+2 RACE_HALFORC:+2 CLASS_BARBARIAN:+3 CLASS_FIGHTER:+1'
+      },
+      { 
+        text: 'By observing first, then acting.',
+        text_DE: 'Indem ich erst beobachte, dann handle.',
+        modifiers: 'RACE_ELF:+2 RACE_HALFELF:+1 CLASS_RANGER:+2 CLASS_ROGUE:+2 CLASS_MONK:+2'
+      },
+      { 
+        text: 'By seeking guidance from others.',
+        text_DE: 'Indem ich FÃ¼hrung von anderen suche.',
+        modifiers: 'RACE_HALFLING:+2 RACE_GNOME:+1 CLASS_BARD:+2 CLASS_CLERIC:+3'
+      }
+    ]
+  },
+  {
+    text: 'What legacy do you want to leave behind?',
+    text_DE: 'Welches Erbe mÃ¶chtest du hinterlassen?',
+    answers: [
+      { 
+        text: 'A body of knowledge that helps others.',
+        text_DE: 'Ein Wissensschatz, der anderen hilft.',
+        modifiers: 'RACE_ELF:+2 RACE_GNOME:+3 CLASS_WIZARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'A safer world for future generations.',
+        text_DE: 'Eine sicherere Welt fÃ¼r zukÃ¼nftige Generationen.',
+        modifiers: 'RACE_HUMAN:+2 RACE_DWARF:+2 CLASS_PALADIN:+3 CLASS_FIGHTER:+2 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'Great tales and inspiring stories.',
+        text_DE: 'GroÃŸe Geschichten und inspirierende ErzÃ¤hlungen.',
+        modifiers: 'RACE_HUMAN:+1 RACE_HALFELF:+2 CLASS_BARD:+3 CLASS_FIGHTER:+1'
+      },
+      { 
+        text: 'A preserved natural world.',
+        text_DE: 'Eine erhaltene natÃ¼rliche Welt.',
+        modifiers: 'RACE_ELF:+3 RACE_HALFLING:+1 CLASS_DRUID:+3 CLASS_RANGER:+2'
+      },
+      { 
+        text: 'Wealth and prosperity for my family.',
+        text_DE: 'Wohlstand und ProsperitÃ¤t fÃ¼r meine Familie.',
+        modifiers: 'RACE_DWARF:+2 RACE_HALFLING:+2 RACE_HUMAN:+1 CLASS_ROGUE:+1 CLASS_FIGHTER:+1'
+      },
+      { 
+        text: 'The memory of great victories.',
+        text_DE: 'Die Erinnerung an groÃŸe Siege.',
+        modifiers: 'RACE_ORC:+2 RACE_HALFORC:+1 RACE_HUMAN:+1 CLASS_BARBARIAN:+2 CLASS_FIGHTER:+2'
+      }
+    ]
+  },
+  {
+    text: 'How do you deal with boredom?',
+    text_DE: 'Wie gehst du mit Langeweile um?',
+    answers: [
+      { 
+        text: 'Study something new.',
+        text_DE: 'Etwas Neues studieren.',
+        modifiers: 'RACE_ELF:+2 RACE_GNOME:+2 CLASS_WIZARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'Practice my skills.',
+        text_DE: 'Meine Fertigkeiten Ã¼ben.',
+        modifiers: 'RACE_DWARF:+1 RACE_ELF:+1 CLASS_FIGHTER:+2 CLASS_MONK:+3 CLASS_RANGER:+2'
+      },
+      { 
+        text: 'Seek out adventure.',
+        text_DE: 'Abenteuer suchen.',
+        modifiers: 'RACE_HUMAN:+2 RACE_HALFELF:+1 CLASS_RANGER:+2 CLASS_ROGUE:+2 CLASS_BARD:+2'
+      },
+      { 
+        text: 'Socialize with friends.',
+        text_DE: 'Mit Freunden gesellig sein.',
+        modifiers: 'RACE_HUMAN:+2 RACE_HALFLING:+2 RACE_HALFELF:+1 CLASS_BARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'Work on a craft or hobby.',
+        text_DE: 'An einem Handwerk oder Hobby arbeiten.',
+        modifiers: 'RACE_DWARF:+3 RACE_GNOME:+3 RACE_HALFLING:+1 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'Find a fight or challenge.',
+        text_DE: 'Einen Kampf oder eine Herausforderung suchen.',
+        modifiers: 'RACE_ORC:+3 RACE_HALFORC:+2 CLASS_BARBARIAN:+3 CLASS_FIGHTER:+2'
+      }
+    ]
+  },
+  {
+    text: 'What is your greatest weakness?',
+    text_DE: 'Was ist deine grÃ¶ÃŸte SchwÃ¤che?',
+    answers: [
+      { 
+        text: 'I overthink everything.',
+        text_DE: 'Ich denke Ã¼ber alles zu viel nach.',
+        modifiers: 'RACE_ELF:+1 RACE_GNOME:+2 CLASS_WIZARD:+2 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'I act without thinking.',
+        text_DE: 'Ich handle ohne zu denken.',
+        modifiers: 'RACE_ORC:+2 RACE_HALFORC:+2 CLASS_BARBARIAN:+3 CLASS_FIGHTER:+1'
+      },
+      { 
+        text: 'I trust too easily.',
+        text_DE: 'Ich vertraue zu leicht.',
+        modifiers: 'RACE_HALFLING:+2 RACE_HUMAN:+1 CLASS_CLERIC:+2 CLASS_BARD:+1'
+      },
+      { 
+        text: 'I\'m too suspicious of others.',
+        text_DE: 'Ich bin anderen gegenÃ¼ber zu misstrauisch.',
+        modifiers: 'RACE_DWARF:+2 RACE_ELF:+1 CLASS_ROGUE:+2 CLASS_RANGER:+1'
+      },
+      { 
+        text: 'I\'m too proud.',
+        text_DE: 'Ich bin zu stolz.',
+        modifiers: 'RACE_ELF:+1 RACE_DWARF:+1 RACE_HALFORC:+1 CLASS_PALADIN:+2 CLASS_WIZARD:+1'
+      },
+      { 
+        text: 'I avoid conflict.',
+        text_DE: 'Ich vermeide Konflikte.',
+        modifiers: 'RACE_HALFLING:+2 RACE_GNOME:+1 CLASS_BARD:+2 CLASS_DRUID:+1 CLASS_CLERIC:+1'
+      }
+    ]
+  },
+  {
+    text: 'How do you show affection?',
+    text_DE: 'Wie zeigst du Zuneigung?',
+    answers: [
+      { 
+        text: 'Through acts of service.',
+        text_DE: 'Durch Hilfsbereitschaft.',
+        modifiers: 'RACE_DWARF:+2 RACE_HALFLING:+2 CLASS_CLERIC:+2 CLASS_PALADIN:+1 CLASS_FIGHTER:+1'
+      },
+      { 
+        text: 'With words of encouragement.',
+        text_DE: 'Mit ermutigenden Worten.',
+        modifiers: 'RACE_HUMAN:+2 RACE_HALFELF:+2 CLASS_BARD:+3 CLASS_CLERIC:+2'
+      },
+      { 
+        text: 'By sharing knowledge.',
+        text_DE: 'Indem ich Wissen teile.',
+        modifiers: 'RACE_ELF:+2 RACE_GNOME:+2 CLASS_WIZARD:+3 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'Through physical touch.',
+        text_DE: 'Durch kÃ¶rperliche BerÃ¼hrung.',
+        modifiers: 'RACE_HALFLING:+2 RACE_HUMAN:+1 CLASS_MONK:+2 CLASS_BARBARIAN:+1'
+      },
+      { 
+        text: 'By giving gifts.',
+        text_DE: 'Indem ich Geschenke mache.',
+        modifiers: 'RACE_DWARF:+2 RACE_GNOME:+1 RACE_HALFLING:+1 CLASS_ROGUE:+1'
+      },
+      { 
+        text: 'I have trouble showing affection.',
+        text_DE: 'Ich tue mich schwer damit, Zuneigung zu zeigen.',
+        modifiers: 'RACE_ORC:+1 RACE_ELF:+1 CLASS_RANGER:+1 CLASS_ROGUE:+1'
+      }
+    ]
+  },
+  {
+    text: 'What motivates you most?',
+    text_DE: 'Was motiviert dich am meisten?',
+    answers: [
+      { 
+        text: 'The thrill of discovery.',
+        text_DE: 'Der Nervenkitzel der Entdeckung.',
+        modifiers: 'RACE_ELF:+2 RACE_GNOME:+2 RACE_HUMAN:+1 CLASS_WIZARD:+2 CLASS_RANGER:+2 CLASS_BARD:+1'
+      },
+      { 
+        text: 'Protecting those I care about.',
+        text_DE: 'Die zu beschÃ¼tzen, die mir wichtig sind.',
+        modifiers: 'RACE_HUMAN:+2 RACE_DWARF:+2 RACE_HALFLING:+1 CLASS_PALADIN:+3 CLASS_FIGHTER:+2 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'Proving my worth.',
+        text_DE: 'Meinen Wert zu beweisen.',
+        modifiers: 'RACE_HALFORC:+3 RACE_GNOME:+1 RACE_HUMAN:+1 CLASS_FIGHTER:+2 CLASS_BARBARIAN:+2'
+      },
+      { 
+        text: 'Making the world better.',
+        text_DE: 'Die Welt besser zu machen.',
+        modifiers: 'RACE_HUMAN:+2 RACE_HALFELF:+2 CLASS_CLERIC:+3 CLASS_PALADIN:+2 CLASS_DRUID:+2'
+      },
+      { 
+        text: 'Personal freedom.',
+        text_DE: 'PersÃ¶nliche Freiheit.',
+        modifiers: 'RACE_ELF:+2 RACE_HALFELF:+1 CLASS_RANGER:+3 CLASS_DRUID:+2 CLASS_BARD:+2 CLASS_ROGUE:+2'
+      },
+      { 
+        text: 'The challenge itself.',
+        text_DE: 'Die Herausforderung selbst.',
+        modifiers: 'RACE_DWARF:+1 RACE_ORC:+2 RACE_HALFORC:+1 CLASS_BARBARIAN:+2 CLASS_FIGHTER:+2 CLASS_MONK:+2'
+      }
+    ]
+  },
+  {
+    text: 'How do you prefer to travel?',
+    text_DE: 'Wie reist du am liebsten?',
+    answers: [
+      { 
+        text: 'On foot through nature.',
+        text_DE: 'Zu FuÃŸ durch die Natur.',
+        modifiers: 'RACE_ELF:+2 RACE_HALFLING:+1 CLASS_DRUID:+3 CLASS_RANGER:+3 CLASS_MONK:+1'
+      },
+      { 
+        text: 'With a group of trusted companions.',
+        text_DE: 'Mit einer Gruppe vertrauter GefÃ¤hrten.',
+        modifiers: 'RACE_HUMAN:+2 RACE_DWARF:+2 RACE_HALFLING:+1 CLASS_FIGHTER:+2 CLASS_CLERIC:+2 CLASS_BARD:+2'
+      },
+      { 
+        text: 'Quickly and efficiently by any means.',
+        text_DE: 'Schnell und effizient mit allen verfÃ¼gbaren Mitteln.',
+        modifiers: 'RACE_HUMAN:+1 RACE_GNOME:+1 CLASS_ROGUE:+2 CLASS_WIZARD:+1'
+      },
+      { 
+        text: 'In comfort and style.',
+        text_DE: 'In Komfort und Stil.',
+        modifiers: 'RACE_HALFELF:+1 RACE_GNOME:+1 CLASS_BARD:+2 CLASS_ROGUE:+1'
+      },
+      { 
+        text: 'Alone and unnoticed.',
+        text_DE: 'Allein und unbemerkt.',
+        modifiers: 'RACE_ELF:+1 RACE_HALFLING:+1 CLASS_RANGER:+2 CLASS_ROGUE:+3 CLASS_DRUID:+1'
+      },
+      { 
+        text: 'I don\'t like to travel.',
+        text_DE: 'Ich reise nicht gerne.',
+        modifiers: 'RACE_DWARF:+2 RACE_GNOME:+2 RACE_HALFLING:+1 CLASS_WIZARD:+1 CLASS_CLERIC:+1'
+      }
+    ]
+  },
+  {
+    text: 'What do you think about rules?',
+    text_DE: 'Was denkst du Ã¼ber Regeln?',
+    answers: [
+      { 
+        text: 'Rules exist for good reasons and should be followed.',
+        text_DE: 'Regeln existieren aus gutem Grund und sollten befolgt werden.',
+        modifiers: 'RACE_DWARF:+3 RACE_HUMAN:+1 CLASS_PALADIN:+3 CLASS_CLERIC:+2 CLASS_FIGHTER:+2'
+      },
+      { 
+        text: 'Rules are guidelines, not absolutes.',
+        text_DE: 'Regeln sind Richtlinien, keine Absolute.',
+        modifiers: 'RACE_HUMAN:+2 RACE_HALFELF:+2 CLASS_BARD:+2 CLASS_CLERIC:+1'
+      },
+      { 
+        text: 'Rules are meant to be broken when necessary.',
+        text_DE: 'Regeln sind da, um bei Bedarf gebrochen zu werden.',
+        modifiers: 'RACE_ELF:+1 RACE_HALFELF:+1 CLASS_ROGUE:+3 CLASS_BARD:+2'
+      },
+      { 
+        text: 'I make my own rules.',
+        text_DE: 'Ich mache meine eigenen Regeln.',
+        modifiers: 'RACE_HALFORC:+2 RACE_ORC:+2 CLASS_BARBARIAN:+3 CLASS_SORCERER:+2 CLASS_RANGER:+1'
+      },
+      { 
+        text: 'Natural law is more important than human rules.',
+        text_DE: 'Naturgesetze sind wichtiger als menschliche Regeln.',
+        modifiers: 'RACE_ELF:+2 CLASS_DRUID:+3 CLASS_RANGER:+2 CLASS_BARBARIAN:+1'
+      },
+      { 
+        text: 'Rules should adapt to circumstances.',
+        text_DE: 'Regeln sollten sich den UmstÃ¤nden anpassen.',
+        modifiers: 'RACE_GNOME:+2 RACE_HALFLING:+1 CLASS_WIZARD:+2 CLASS_BARD:+2'
+      }
+    ]
+  },
+  {
+    text: 'Where do you feel LEAST comfortable?',
+    text_DE: 'Wo fÃ¼hlst du dich am unwohlsten?',
+    answers: [
+      { 
+        text: 'In a big city.',
+        text_DE: 'In einer groÃŸen Stadt.',
+        modifiers: 'RACE_HUMAN:-2 RACE_HALFELF:+1 RACE_ELF:+2 RACE_ORC:+2 RACE_HALFORC:+1 RACE_HALFLING:-2 RACE_GNOME:-1 RACE_DWARF:+2 CLASS_BARBARIAN:+1 CLASS_BARD:-1 CLASS_DRUID:+2 CLASS_SORCERER:-2 CLASS_FIGHTER:-1 CLASS_CLERIC:-1 CLASS_ROGUE:-2 CLASS_RANGER:+2'
+      },
+      { 
+        text: 'Behind the walls of a church.',
+        text_DE: 'Hinter den Mauern einer Kirche.',
+        modifiers: 'CLASS_DRUID:+1 CLASS_CLERIC:-2 CLASS_MONK:-2 CLASS_PALADIN:-1 CLASS_ROGUE:+1'
+      },
+      { 
+        text: 'Near mountains.',
+        text_DE: 'In der NÃ¤he von Bergen.',
+        modifiers: 'RACE_ORC:-2 RACE_HALFORC:-1 RACE_HALFLING:+1 RACE_DWARF:-2'
+      },
+      { 
+        text: 'In a library.',
+        text_DE: 'In einer Bibliothek.',
+        modifiers: 'RACE_ORC:+3 RACE_HALFORC:+2 RACE_DWARF:+1 RACE_GNOME:-1 RACE_ELF:-2 RACE_HALFELF:-1 CLASS_DRUID:+1 CLASS_BARBARIAN:+2 CLASS_FIGHTER:+1 CLASS_RANGER:+1 CLASS_WIZARD:-2 CLASS_SORCERER:-1 CLASS_CLERIC:-1'
+      },
+      { 
+        text: 'In a forest clearing.',
+        text_DE: 'Auf einer Waldlichtung.',
+        modifiers: 'RACE_ELF:-2 RACE_HALFELF:-1 RACE_ORC:-1 RACE_HALFLING:+1 RACE_GNOME:+1 RACE_DWARF:+2 CLASS_DRUID:-2 CLASS_RANGER:-2 CLASS_BARBARIAN:-1 CLASS_BARD:+1 CLASS_ROGUE:+1'
+      },
+      { 
+        text: 'By an evening beach.',
+        text_DE: 'An einem abendlichen Strand.',
+        modifiers: 'CLASS_MONK:-2 CLASS_SORCERER:-1 CLASS_BARD:-1 CLASS_ROGUE:-1'
+      }
+    ]
+  },
+  {
+    text: 'Which of these professions would suit you best?',
+    text_DE: 'Welcher dieser Berufe wÃ¼rde am ehesten zu dir passen?',
+    answers: [
+      { 
+        text: 'Doctor.',
+        text_DE: 'Arzt.',
+        modifiers: 'ALIGN_LG:+2 CLASS_CLERIC:+2 CLASS_DRUID:+2 CLASS_RANGER:+1 CLASS_PALADIN:+1 CLASS_BARBARIAN:-2 CLASS_FIGHTER:-2 CLASS_ROGUE:-2 CLASS_SORCERER:-1 CLASS_WIZARD:-1'
+      },
+      { 
+        text: 'Singer.',
+        text_DE: 'SÃ¤nger.',
+        modifiers: 'ALIGN_NG:+1 CLASS_BARD:+3 CLASS_BARBARIAN:-2 CLASS_FIGHTER:-2 CLASS_SORCERER:-1 CLASS_WIZARD:-1 CLASS_ROGUE:-2'
+      },
+      { 
+        text: 'Teacher.',
+        text_DE: 'Lehrer.',
+        modifiers: 'ALIGN_NG:+1 CLASS_BARD:+1 CLASS_BARBARIAN:-2 CLASS_FIGHTER:-2 CLASS_SORCERER:+1 CLASS_WIZARD:+2 CLASS_ROGUE:-2 CLASS_MONK:+1 CLASS_DRUID:+2'
+      },
+      { 
+        text: 'Assassin.',
+        text_DE: 'Auftragskiller.',
+        modifiers: 'ALIGN_NE:+1 ALIGN_LE:+2 ALIGN_CE:+1 ALIGN_NG:-2 CLASS_BARBARIAN:+2 CLASS_FIGHTER:+2 CLASS_ROGUE:+2 CLASS_MONK:+2 CLASS_SORCERER:+1 CLASS_WIZARD:+1'
+      },
+      { 
+        text: 'Gardener.',
+        text_DE: 'GÃ¤rtner.',
+        modifiers: 'ALIGN_NG:+2 CLASS_DRUID:+3 CLASS_RANGER:+3 CLASS_PALADIN:+1 CLASS_SORCERER:+1 CLASS_WIZARD:+1 CLASS_FIGHTER:-2 CLASS_BARBARIAN:-1'
+      },
+      { 
+        text: 'Police officer.',
+        text_DE: 'Polizist.',
+        modifiers: 'ALIGN_LG:+2 CLASS_PALADIN:+5 CLASS_ROGUE:-5'
+      },
+      { 
+        text: 'Psychologist.',
+        text_DE: 'Psychologe.',
+        modifiers: 'ALIGN_NN:+2 CLASS_SORCERER:+3 CLASS_BARBARIAN:-3'
+      },
+      { 
+        text: 'Chemist.',
+        text_DE: 'Chemiker.',
+        modifiers: 'CLASS_WIZARD:+2 CLASS_SORCERER:+1 CLASS_BARBARIAN:-4'
+      }
+    ]
+  },
+  {
+    text: 'What is your favorite color?',
+    text_DE: 'Was ist deine Lieblingsfarbe?',
+    answers: [
+      { 
+        text: 'Red',
+        text_DE: 'Rot',
+        modifiers: ''
+      },
+      { 
+        text: 'Green',
+        text_DE: 'GrÃ¼n',
+        modifiers: 'CLASS_DRUID:+2 CLASS_RANGER:+2 CLASS_BARBARIAN:+1 RACE_ELF:+2 RACE_HALFELF:+1 RACE_HUMAN:+2'
+      },
+      { 
+        text: 'Blue',
+        text_DE: 'Blau',
+        modifiers: 'RACE_HUMAN:+2 CLASS_CLERIC:+1 CLASS_ROGUE:+1 CLASS_SORCERER:+2'
+      },
+      { 
+        text: 'White',
+        text_DE: 'WeiÃŸ',
+        modifiers: 'ALIGN_NG:+2 ALIGN_LG:+1 ALIGN_CG:+1 ALIGN_NE:-1 ALIGN_LE:-1 ALIGN_CE:-1 CLASS_CLERIC:+2'
+      },
+      { 
+        text: 'Black',
+        text_DE: 'Schwarz',
+        modifiers: 'ALIGN_NG:-1 ALIGN_LG:-1 ALIGN_CG:-1 ALIGN_NE:+2 ALIGN_LE:+1 ALIGN_CE:+1 CLASS_CLERIC:+2'
+      },
+      { 
+        text: 'Gray',
+        text_DE: 'Grau',
+        modifiers: 'ALIGN_NN:+3 RACE_DWARF:+3 CLASS_FIGHTER:+1 CLASS_ROGUE:+1 CLASS_BARD:-1 CLASS_SORCERER:+1'
+      },
+      { 
+        text: 'Yellow',
+        text_DE: 'Gelb',
+        modifiers: 'CLASS_MONK:+1'
+      },
+      { 
+        text: 'Brown',
+        text_DE: 'Braun',
+        modifiers: 'CLASS_BARBARIAN:+2 CLASS_DRUID:+2 CLASS_RANGER:+1'
+      },
+      { 
+        text: 'Purple',
+        text_DE: 'Violett',
+        modifiers: ''
+      },
+      { 
+        text: 'Pink',
+        text_DE: 'Rosa',
+        modifiers: 'RACE_ELF:+1 RACE_ORC:-3 RACE_HALFORC:-2 RACE_DWARF:-1 CLASS_BARBARIAN:-2 CLASS_PALADIN:-2 CLASS_BARD:+2'
+      },
+      { 
+        text: 'Orange',
+        text_DE: 'Orange',
+        modifiers: 'RACE_GNOME:+1 CLASS_MONK:+1'
+      },
+      { 
+        text: 'None of these',
+        text_DE: 'Keine davon',
+        modifiers: ''
+      }
+    ]
+  },
+  {
+    text: 'Which color do you like LEAST?',
+    text_DE: 'Welche Farbe magst du am wenigsten?',
+    answers: [
+      { 
+        text: 'Red',
+        text_DE: 'Rot',
+        modifiers: 'RACE_ORC:-2 RACE_HALFORC:-1 CLASS_BARBARIAN:-2 CLASS_DRUID:-1'
+      },
+      { 
+        text: 'Green',
+        text_DE: 'GrÃ¼n',
+        modifiers: 'RACE_ELF:-2 RACE_HALFELF:-1 RACE_DWARF:+1 CLASS_FIGHTER:+1 CLASS_ROGUE:+2 CLASS_DRUID:-2 CLASS_RANGER:-2'
+      },
+      { 
+        text: 'Blue',
+        text_DE: 'Blau',
+        modifiers: 'RACE_HUMAN:-2 CLASS_SORCERER:+2'
+      },
+      { 
+        text: 'White',
+        text_DE: 'WeiÃŸ',
+        modifiers: 'ALIGN_NG:-2 ALIGN_LG:-1 ALIGN_CG:-1 ALIGN_NE:+2 ALIGN_LE:+1 ALIGN_CE:+1 CLASS_CLERIC:+2'
+      },
+      { 
+        text: 'Black',
+        text_DE: 'Schwarz',
+        modifiers: 'ALIGN_NG:+2 ALIGN_LG:+1 ALIGN_CG:+1 ALIGN_NE:-2 ALIGN_LE:-1 ALIGN_CE:-1'
+      },
+      { 
+        text: 'Gray',
+        text_DE: 'Grau',
+        modifiers: 'ALIGN_NN:-1 RACE_GNOME:-1 RACE_DWARF:-1'
+      },
+      { 
+        text: 'Yellow',
+        text_DE: 'Gelb',
+        modifiers: 'CLASS_MONK:-1'
+      },
+      { 
+        text: 'Brown',
+        text_DE: 'Braun',
+        modifiers: 'RACE_ORC:-2 RACE_HALFORC:-1 CLASS_BARBARIAN:-2 CLASS_DRUID:-1'
+      },
+      { 
+        text: 'Purple',
+        text_DE: 'Violett',
+        modifiers: 'RACE_ORC:+2 RACE_HALFORC:+1 CLASS_BARBARIAN:+3 CLASS_PALADIN:-1 CLASS_BARD:-2'
+      },
+      { 
+        text: 'Pink',
+        text_DE: 'Rosa',
+        modifiers: 'RACE_ORC:+3 RACE_HALFORC:+2 CLASS_BARD:-2'
+      },
+      { 
+        text: 'Orange',
+        text_DE: 'Orange',
+        modifiers: ''
+      },
+      { 
+        text: 'None of these',
+        text_DE: 'Keine davon',
+        modifiers: ''
+      }
+    ]
   }
-  if (thisFileIsPublic) document.write('<script type="text/JavaScript" language="JavaScript" src="C:\\tmpQuestions.js"></script>');
+];
+
+// Helper function to get localized questions
+function getLocalizedQuestions(lang = 'en') {
+  return Questions.map(question => {
+    const localizedQuestion = {
+      text: lang === 'de' && question.text_DE ? question.text_DE : question.text,
+      answers: question.answers.map(answer => ({
+        text: lang === 'de' && answer.text_DE ? answer.text_DE : answer.text,
+        modifiers: answer.modifiers
+      }))
+    };
+    return localizedQuestion;
+  });
+}
+
+// Make available globally for browser usage
+if (typeof window !== 'undefined') {
+  window.Questions = Questions;
+  window.getLocalizedQuestions = getLocalizedQuestions;
+}
+
+// Export for use in other files
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { Questions, getLocalizedQuestions };
 }
