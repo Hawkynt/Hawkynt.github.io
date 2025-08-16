@@ -1,48 +1,97 @@
-<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Use UTF-8 everywhere to avoid encoding issues; legacy UAs still render text/links. -->
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <meta http-equiv="Content-Script-Type" content="text/JavaScript" />
+    <meta http-equiv="expires" content="0" />
+    <meta http-equiv="Language" content="en" />
+
+    <!-- Modern SEO (harmless to old UAs) -->
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="page_title" content="Cipher/JavaScript" />
     <meta name="page_version" content="v1.0" />
-    <meta name="description" content="»SynthelicZ« Cryptographic Tools - Educational cipher implementations for defensive security analysis" />
-    <meta name="keywords" content="cryptography, cipher, encryption, educational, security, analysis" />
+    <meta name="description" content="»SynthelicZ« Cipher Tools - Comprehensive educational cryptographic toolkit with 13+ encryption algorithms including Salsa20, test vectors, and interactive visualization for defensive security learning." />
+    <meta name="keywords" content="cryptography, cipher, encryption, educational, security, analysis, Salsa20, AES, Blowfish, TEA, Caesar, BASE64, ROT13, Atbash, SynthelicZ, Hawkynt" />
     <meta name="author" content="Hawkynt" />
-    <meta name="robots" content="follow,index" />
+    <meta name="robots" content="index,follow" />
+
+    <!-- Open Graph / Twitter -->
+    <meta property="og:title" content="»SynthelicZ« Cipher Tools - Educational Cryptographic Toolkit" />
+    <meta property="og:description" content="Interactive educational toolkit with 13+ cipher implementations including Salsa20, test vectors, and visualization for security learning." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://hawkynt.github.io/Cipher/" />
+    <meta property="og:image" content="https://hawkynt.github.io/favicon.ico" />
+    <meta name="twitter:card" content="summary" />
+
+    <!-- Legacy site verification kept (harmless) -->
     <meta name="google-site-verification" content="LkZ6DT0_GlcimQOKrWL20jv4jtUh0DBsh1ZPLXQqk3A" />
+
     <link rel="shortcut icon" href="../favicon.ico" />
-    <title>»SynthelicZ« Cipher/JavaScript</title>
-    <!-- External Files -->
-    <script src="./xdom.js"></script>
-    <script src="./cipher.js"></script>
+    <title>»SynthelicZ« Cipher Tools - Educational Cryptographic Toolkit</title>
+    
+    <!-- JSON-LD structured data -->
+    <script type="application/ld+json">
+    {
+      "@context": "http://schema.org",
+      "@type": "WebApplication",
+      "name": "»SynthelicZ« Cipher Tools",
+      "url": "https://hawkynt.github.io/Cipher/",
+      "description": "Comprehensive educational cryptographic toolkit with 13+ cipher implementations including Salsa20 and test validation system.",
+      "applicationCategory": "Educational Tool",
+      "operatingSystem": "Web Browser",
+      "creator": { "@type": "Person", "name": "Hawkynt" }
+    }
+    </script>
+    <!-- External Styles -->
+    <link rel="stylesheet" href="../css/shared-styles.css" type="text/css" />
+    <link rel="stylesheet" href="./styles.css" type="text/css" />
+    
+    <!-- Legacy helper retained -->
+    <script type="text/JavaScript" language="JavaScript" src="../xdom.js"></script>
+    <script type="text/JavaScript" language="JavaScript" src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script type="text/JavaScript" language="JavaScript" src="./xdom.js"></script>
+    
+    <!-- Universal Cipher System (modern cross-platform implementations) -->
+    <script type="text/JavaScript" language="JavaScript" src="./universal-cipher-env.js"></script>
+    <script type="text/JavaScript" language="JavaScript" src="./cipher-universal.js"></script>
+    
     <!-- Source for the Ciphers I implemented                                                   -->
     <!-- http://www.cipherbox.de/                                                               -->
     <!-- http://paginas.terra.com.br/informatica/paulobarreto/                                  -->
     <!-- Source for the Hashes I implemented                                                    -->
     <!-- http://www.pajhome.org.uk/crypt/                                                       -->
     <!-- =========================[ CONVERTER ]================================================ -->
-      <script src="./base64.js"></script>
-      <script src="./bubblebabble.js"></script>
-      <script src="./koremutake.js"></script>
+      <script type="text/JavaScript" language="JavaScript" src="./base64-universal.js"></script>
+      <script type="text/JavaScript" language="JavaScript" src="./bubblebabble.js"></script>
+      <script type="text/JavaScript" language="JavaScript" src="./koremutake.js"></script>
     <!-- =========================[ STREAM CIPHERS ]=========================================== -->
       <!-- =======================[ SUBSTITUTION CIPHERS ]===================================== -->
-        <script src="./atbash.js"></script>
-        <script src="./mystery.js"></script>
+        <script type="text/JavaScript" language="JavaScript" src="./atbash-universal.js"></script>
+        <script type="text/JavaScript" language="JavaScript" src="./mystery.js"></script>
       <!-- =======================[ SHIFT CIPHERS ]============================================ -->
-        <script src="./caesar.js"></script>
-        <script src="./rot.js"></script>
+        <script type="text/JavaScript" language="JavaScript" src="./caesar-universal.js"></script>
+        <script type="text/JavaScript" language="JavaScript" src="./rot-universal.js"></script>
     <!-- =========================[ BLOCK CIPHERS ]============================================ -->
       <!-- =======================[ STRONG CIPHERS ]=========================================== -->
-        <script src="./rijndael.js"></script>
-        <script src="./blowfish.js"></script>
-        <script src="./anubis.js"></script>
-        <script src="./khazad.js"></script>
+        <script type="text/JavaScript" language="JavaScript" src="./rijndael.js"></script>
+        <script type="text/JavaScript" language="JavaScript" src="./blowfish.js"></script>
+        <script type="text/JavaScript" language="JavaScript" src="./anubis-universal.js"></script>
+        <script type="text/JavaScript" language="JavaScript" src="./noekeon-universal.js"></script>
+        <script type="text/JavaScript" language="JavaScript" src="./sm4-universal.js"></script>
+        <script type="text/JavaScript" language="JavaScript" src="./speck-universal.js"></script>
+        <script type="text/JavaScript" language="JavaScript" src="./salsa20-universal.js"></script>
+        <script type="text/JavaScript" language="JavaScript" src="./chacha20-universal.js"></script>
+        <script type="text/JavaScript" language="JavaScript" src="./khazad.js"></script>
       <!-- =======================[ WEAK CIPHERS ]============================================= -->
-        <script src="./tea.js"></script>
+        <script type="text/JavaScript" language="JavaScript" src="./tea.js"></script>
     <!-- =========================[ STREAM COMPRESSORS ]======================================= -->
-      <script src="./lzss.js"></script>
-    <!-- External Styles -->
-    <link rel="stylesheet" href="./styles.css" type="text/css" />
+      <script type="text/JavaScript" language="JavaScript" src="./lzss.js"></script>
+    
+    <!-- =========================[ OFFICIAL TEST VECTORS ]================================ -->
+      <script type="text/JavaScript" language="JavaScript" src="./official_test_vectors.js"></script>
+      <script type="text/JavaScript" language="JavaScript" src="./nessie_test_vectors.js"></script>
     <script>
       // Modern JavaScript with legacy fallbacks
       (function() {
@@ -603,20 +652,229 @@
           runAllTests();
         };
         
+        // Run NESSIE-specific tests for Anubis and Khazad
+        window.runNessieTests = function() {
+          if (typeof nessieTestVectors === 'undefined') {
+            addTestResult('System', 'NESSIE test vectors not loaded', 'fail', '');
+            return;
+          }
+          
+          clearTestResults();
+          addTestResult('System', 'Running NESSIE cipher validation tests...', 'warn', '');
+          
+          var totalTests = 0;
+          var passedTests = 0;
+          var failedTests = 0;
+          
+          // Test NESSIE ciphers (Anubis and Khazad)
+          for (var cipherName in nessieTestVectors) {
+            var testVectors = nessieTestVectors[cipherName];
+            if (!testVectors || testVectors.length === 0) continue;
+            
+            addTestResult(cipherName, 'Testing ' + testVectors.length + ' NESSIE test vectors...', 'warn', '');
+            
+            // Initialize cipher if needed
+            var cipher = window[cipherName];
+            if (cipher && typeof cipher.Init === 'function' && !cipher.boolInit) {
+              cipher.Init();
+            }
+            
+            for (var i = 0; i < testVectors.length; i++) {
+              var testVector = testVectors[i];
+              totalTests++;
+              
+              try {
+                if (!cipher || !cipher.KeySetup) {
+                  throw new Error('Cipher ' + cipherName + ' not found or improperly implemented');
+                }
+                
+                var keyId = cipher.KeySetup(testVector.key);
+                var actual = cipher.szEncryptBlock(keyId, testVector.input);
+                cipher.ClearData(keyId);
+                
+                // Convert to hex for comparison
+                function toHex(str) {
+                  var hex = '';
+                  for (var j = 0; j < str.length; j++) {
+                    var code = str.charCodeAt(j);
+                    hex += (code < 16 ? '0' : '') + code.toString(16).toUpperCase();
+                  }
+                  return hex;
+                }
+                
+                var actualHex = toHex(actual);
+                var expectedHex = toHex(testVector.expected);
+                
+                if (actualHex === expectedHex) {
+                  passedTests++;
+                  addTestResult(cipherName, testVector.description, 'pass', {
+                    input: toHex(testVector.input),
+                    key: toHex(testVector.key),
+                    expected: expectedHex,
+                    output: actualHex
+                  });
+                } else {
+                  failedTests++;
+                  addTestResult(cipherName, testVector.description + ' - OUTPUT MISMATCH', 'fail', {
+                    input: toHex(testVector.input),
+                    key: toHex(testVector.key),
+                    expected: expectedHex,
+                    output: actualHex
+                  });
+                }
+                
+              } catch (error) {
+                failedTests++;
+                addTestResult(cipherName, testVector.description + ' - ERROR', 'fail', {
+                  input: testVector.input ? toHex(testVector.input) : '',
+                  key: testVector.key ? toHex(testVector.key) : '',
+                  expected: testVector.expected ? toHex(testVector.expected) : '',
+                  output: '',
+                  error: error.message
+                });
+              }
+            }
+          }
+          
+          // Show summary
+          var summaryDiv = document.getElementById('test-summary');
+          var statsDiv = document.getElementById('test-stats');
+          
+          var passRate = totalTests > 0 ? Math.round((passedTests / totalTests) * 100) : 0;
+          var statusClass = passedTests === totalTests ? 'success' : failedTests > passedTests ? 'error' : 'warning';
+          
+          statsDiv.innerHTML = 
+            '<div class="stats-grid">' +
+            '<div class="stat-item ' + statusClass + '">' +
+            '<span class="stat-number">' + passedTests + '/' + totalTests + '</span>' +
+            '<span class="stat-label">NESSIE Tests Passed (' + passRate + '%)</span>' +
+            '</div>' +
+            '<div class="stat-item">' +
+            '<span class="stat-number">' + Object.keys(nessieTestVectors).length + '</span>' +
+            '<span class="stat-label">NESSIE Ciphers Tested</span>' +
+            '</div>' +
+            '</div>';
+          
+          summaryDiv.style.display = 'block';
+          
+          // Final result
+          if (passedTests === totalTests && totalTests > 0) {
+            addTestResult('Summary', '🎉 All NESSIE tests passed! Anubis and Khazad implementations are correct.', 'pass', '');
+          } else {
+            addTestResult('Summary', '⚠️ ' + failedTests + ' NESSIE tests failed. Some implementations need fixes.', 'fail', '');
+          }
+        };
+        
         window.clearTestResults = function() {
           document.getElementById('test-results').innerHTML = 
             '<div class="test-case">Results cleared. Ready for new tests.</div>';
           document.getElementById('test-summary').style.display = 'none';
         };
         
+        // Updated runAllTests to use official test vectors
+        window.runAllTests = function() {
+          if (typeof officialTestVectors === 'undefined') {
+            addTestResult('System', 'Error', 'fail', 'Official test vectors not loaded');
+            return;
+          }
+          
+          clearTestResults();
+          addTestResult('System', 'Starting comprehensive cipher validation...', 'warn', '');
+          
+          var totalTests = 0;
+          var passedTests = 0;
+          var failedTests = 0;
+          
+          // Test each cipher against official test vectors
+          for (var cipherName in officialTestVectors) {
+            var testVectors = officialTestVectors[cipherName];
+            if (!testVectors || testVectors.length === 0) continue;
+            
+            addTestResult(cipherName, 'Testing against ' + testVectors.length + ' official test vectors...', 'warn', '');
+            
+            for (var i = 0; i < testVectors.length; i++) {
+              var testVector = testVectors[i];
+              totalTests++;
+              
+              try {
+                var cipher = window[cipherName];
+                if (!cipher || !cipher.KeySetup) {
+                  throw new Error('Cipher ' + cipherName + ' not found or improperly implemented');
+                }
+                
+                var keyId = cipher.KeySetup(testVector.key);
+                var actual = cipher.szEncryptBlock(keyId, testVector.input);
+                cipher.ClearData(keyId);
+                
+                if (actual === testVector.expected) {
+                  passedTests++;
+                  addTestResult(cipherName, testVector.description, 'pass', {
+                    input: testVector.input,
+                    key: testVector.key,
+                    expected: testVector.expected,
+                    output: actual
+                  });
+                } else {
+                  failedTests++;
+                  addTestResult(cipherName, testVector.description + ' - OUTPUT MISMATCH', 'fail', {
+                    input: testVector.input,
+                    key: testVector.key,
+                    expected: testVector.expected,
+                    output: actual
+                  });
+                }
+                
+              } catch (error) {
+                failedTests++;
+                addTestResult(cipherName, testVector.description + ' - ERROR', 'fail', {
+                  input: testVector.input,
+                  key: testVector.key,
+                  expected: testVector.expected,
+                  output: '',
+                  error: error.message
+                });
+              }
+            }
+          }
+          
+          // Show summary
+          var summaryDiv = document.getElementById('test-summary');
+          var statsDiv = document.getElementById('test-stats');
+          
+          var passRate = Math.round((passedTests / totalTests) * 100);
+          var statusClass = passedTests === totalTests ? 'success' : failedTests > passedTests ? 'error' : 'warning';
+          
+          statsDiv.innerHTML = 
+            '<div class="stats-grid">' +
+            '<div class="stat-item ' + statusClass + '">' +
+            '<span class="stat-number">' + passedTests + '/' + totalTests + '</span>' +
+            '<span class="stat-label">Tests Passed (' + passRate + '%)</span>' +
+            '</div>' +
+            '<div class="stat-item">' +
+            '<span class="stat-number">' + Object.keys(officialTestVectors).length + '</span>' +
+            '<span class="stat-label">Algorithms Tested</span>' +
+            '</div>' +
+            '</div>';
+          
+          summaryDiv.style.display = 'block';
+          
+          // Final result
+          if (passedTests === totalTests) {
+            addTestResult('Summary', '🎉 All tests passed! All cipher implementations are compliant with official standards.', 'pass', '');
+          } else {
+            addTestResult('Summary', '⚠️ ' + failedTests + ' tests failed. Some implementations need fixes.', 'fail', '');
+          }
+        };
+        
       })(); // End IIFE
     </script>
   </head>
   <body onload="clearFields();">
-    <div class="container">
-      <header class="header">
+    <div class="container" role="main">
+      <header class="hero">
         <h1>»SynthelicZ« Cipher Tools</h1>
-        <p>Educational cryptographic implementations for defensive security analysis</p>
+        <p>Educational Cryptographic Toolkit — 12+ cipher implementations with test vectors and interactive visualization for defensive security learning.</p>
+        <p><a href="../">← Back to Main Portfolio</a> — <a href="./generate_test_vectors.html">Test Vector Generator →</a></p>
       </header>
       
       <main class="cipher-panel">
@@ -700,6 +958,7 @@
             
             <div class="test-controls">
               <button type="button" class="btn" onclick="runAllTests()">Run All Tests</button>
+              <button type="button" class="btn" onclick="runNessieTests()">Run NESSIE Tests</button>
               <button type="button" class="btn" onclick="runSelectedTests()">Run Selected</button>
               <button type="button" class="btn" onclick="clearTestResults()">Clear Results</button>
             </div>
@@ -742,5 +1001,18 @@
         }
       })();
     </script>
+    
+    <footer>
+      <p>© 1995–2025 Hawkynt — &raquo;SynthelicZ&laquo; Cipher Tools.</p>
+      <p><strong>Educational Purpose:</strong> All cipher implementations are for learning and defensive security analysis only.</p>
+    </footer>
+    </div>
+    
+    <noscript>
+      <div class="main-panel">
+        <h2>JavaScript Required</h2>
+        <p>The SynthelicZ Cipher Tools require JavaScript to perform encryption operations and display interactive content. Please enable JavaScript in your browser to use this educational cryptographic toolkit.</p>
+      </div>
+    </noscript>
   </body>
 </html>
