@@ -1,5 +1,5 @@
-# 🔐 »SynthelicZ« Cryptographic Algorithm Collection
-*Educational Cryptography Toolkit for Learning and Research*
+# 🔐 Cryptographic Algorithm Collection
+*Entering the cipher rabbit hole*
 
 ---
 
@@ -21,7 +21,8 @@
 
 ## 🎯 Project Overview
 
-The »SynthelicZ« Cryptographic Algorithm Collection is a comprehensive educational toolkit featuring **96 cryptographic algorithms** implemented in JavaScript. This project serves as a hands-on learning environment for exploring classical and modern cryptography, from ancient ciphers like Caesar and Atbash to modern algorithms like AES and ChaCha20.
+This Algorithm Collection is a comprehensive educational toolkit featuring cryptographic algorithms implemented in JavaScript. 
+This project serves as a hands-on learning environment for exploring classical and modern cryptography, from ancient ciphers like Caesar and Atbash to modern algorithms like AES and ChaCha20.
 
 ### Key Technologies
 
@@ -43,24 +44,21 @@ The »SynthelicZ« Cryptographic Algorithm Collection is a comprehensive educati
 ## 🚀 Features
 
 ### 🎨 Modern Dark UI
+
 - Blue-black gradient design with responsive CSS Grid layout
 - Graceful degradation to HTML tables for legacy browsers (IE5, Lynx)
 - Real-time hex display for viewing binary cipher outputs
 - Live testing suite with detailed pass/fail reporting
 
-### 🔄 Universal Architecture
-- **Cross-platform compatibility** - Identical behavior in browser and Node.js
-- **Environment detection** - Automatic setup of required globals and dependencies
-- **Modular design** - Each algorithm as independent universal module
-- **Backward compatibility** - Existing browser interface works seamlessly
-
 ### 🧪 Comprehensive Testing
+
 - **Official test vectors** from RFC, NIST, FIPS, and academic sources
 - **Automated validation** with detailed failure analysis
 - **Cross-platform test runner** for both environments
 - **100% test coverage** for all cryptographic operations
 
 ### 📚 Educational Tools
+
 - **Interactive encryption/decryption** with immediate feedback
 - **Algorithm comparisons** and historical context
 - **Clean code examples** optimized for learning
@@ -68,125 +66,9 @@ The »SynthelicZ« Cryptographic Algorithm Collection is a comprehensive educati
 
 ---
 
-## 🔧 Supported Algorithms
-
-### ✅ Currently Implemented (8 algorithms)
-
-| Algorithm | Type | Status | Test Coverage | Standard |
-|-----------|------|--------|---------------|----------|
-| **Caesar** | Classical | ✅ Working | 5/5 tests pass | Classical shift cipher |
-| **BASE64** | Encoding | ✅ Working | 7/7 tests pass | RFC 4648 compliant |
-| **ROT13/5/47** | Classical | ✅ Working | 5/5 tests pass | Standard rotations |
-| **Atbash** | Classical | ✅ Working | 4/4 tests pass | Hebrew reversal cipher |
-
-### 🚧 Partially Implemented (1 algorithm)
-
-| Algorithm | Type | Status | Issue | Standard |
-|-----------|------|--------|-------|----------|
-| **DES** | Block Cipher | 🚧 Needs Fixes | Test vector failures | NIST FIPS 46-3 |
-
-### 📋 Ready for Conversion (Legacy implementations available)
-
-| Algorithm | Type | Key Size | Block Size | Standard |
-|-----------|------|----------|------------|----------|
-| **AES (Rijndael)** | Block | 128/192/256-bit | 128-bit | NIST FIPS 197 |
-| **Blowfish** | Block | 32-448-bit | 64-bit | Bruce Schneier 1993 |
-| **TEA** | Block | 128-bit | 64-bit | Wheeler/Needham 1994 |
-| **Anubis** | Block | 128-320-bit | 128-bit | NESSIE Project |
-| **Khazad** | Block | 128-bit | 64-bit | NESSIE Project |
-
-### 📦 High Priority Planned (85+ algorithms)
-
-#### Implementation Goals
-Get all algorithms into a state where they are built upon language-agnostic building blocks defined in OpCodes.js so they can easily be converted into other programming languages.
-
-#### 🏗️ Symmetric Block Ciphers (25 algorithms)
-- **AES (Rijndael)** - 128/192/256-bit keys, 128-bit blocks (NIST FIPS 197)
-- **3DES (TDES)** - 112/168-bit keys, 64-bit blocks (NIST FIPS 46-3)
-- **Twofish** - 128/192/256-bit keys, 128-bit blocks (AES Finalist)
-- **Serpent** - 128/192/256-bit keys, 128-bit blocks (AES Finalist)
-- **Camellia** - 128/192/256-bit keys, 128-bit blocks (RFC 3713)
-- **IDEA** - 128-bit keys, 64-bit blocks (X-IDEA)
-- **RC5/RC6** - Variable keys, configurable blocks (RSA Data Security)
-- **CAST-128/256** - Variable keys, 64/128-bit blocks (RFC 2144)
-- **MARS** - 128-448-bit keys, 128-bit blocks (AES Candidate)
-- **Noekeon** - 128-bit keys, 128-bit blocks (NESSIE Project) *[C reference available]*
-- **BaseKing** - Variable keys/blocks (Custom Algorithm) *[C reference available]*
-- **SkipJack** - 80-bit keys, 64-bit blocks (NSA Clipper)
-
-#### 🌊 Stream Ciphers (5 algorithms)
-- **ChaCha20** - 256-bit keys (RFC 7539)
-- **Salsa20** - 128/256-bit keys (Daniel Bernstein)
-- **RC4** - 40-2048-bit keys (RSA Data Security)
-- **Rabbit** - 128-bit keys (RFC 4503)
-- **Sapphire** - Variable keys (M. Markus & others)
-
-#### #️⃣ Hash Functions (12 algorithms)
-- **SHA-256/384/512** - NIST FIPS 180-4 family
-- **SHA-3 (Keccak)** - 224/256/384/512-bit outputs (NIST FIPS 202)
-- **BLAKE2/BLAKE2b/BLAKE2s** - 256/512-bit outputs (RFC 7693)
-- **MD5** - 128-bit output (RFC 1321) *[Broken - educational only]*
-- **SHA-1** - 160-bit output (NIST FIPS 180-4) *[Deprecated]*
-- **Whirlpool** - 512-bit output (ISO/IEC 10118-3)
-- **RIPEMD-160** - 160-bit output (ISO/IEC 10118-3)
-
-#### 🏛️ National Standards (3 algorithms)
-- **GOST 28147-89** - 256-bit keys, 64-bit blocks (Russian Federal)
-- **SM4** - 128-bit keys, 128-bit blocks (Chinese National)
-- **ARIA** - 128/192/256-bit keys, 128-bit blocks (Korean Standard)
-
-#### 🪶 Lightweight Ciphers (4 algorithms)
-- **PRESENT** - 80/128-bit keys, 64-bit blocks (ISO/IEC 29192)
-- **CLEFIA** - 128/192/256-bit keys, 128-bit blocks (Sony 2007)
-- **Simon** - 64-256-bit keys, 32-128-bit blocks (NSA 2013)
-- **Speck** - 64-256-bit keys, 32-128-bit blocks (NSA 2013)
-
-#### 🔐 Authenticated Encryption (4 algorithms)
-- **AES-GCM** - 128/192/256-bit keys (NIST SP 800-38D)
-- **AES-CCM** - 128/192/256-bit keys (RFC 3610)
-- **ChaCha20-Poly1305** - 256-bit keys (RFC 8439)
-- **AES-OCB** - 128/192/256-bit keys (RFC 7253)
-
-#### 🏗️ Block Cipher Modes (5 modes)
-- **CBC** - Cipher Block Chaining (NIST SP 800-38A)
-- **CFB** - Cipher FeedBack (NIST SP 800-38A)
-- **OFB** - Output FeedBack (NIST SP 800-38A)
-- **CTR** - Counter mode (NIST SP 800-38A)
-- **GCM** - Galois/Counter Mode (NIST SP 800-38D)
-
-#### 🔑 Key Derivation Functions (5 algorithms)
-- **PBKDF2** - Password-Based KDF (RFC 2898)
-- **Scrypt** - Memory-hard KDF (RFC 7914)
-- **Argon2** - Modern password hashing (RFC 9106)
-- **HKDF** - HMAC-based KDF (RFC 5869)
-- **bcrypt** - Blowfish-based KDF (OpenBSD)
-
-#### 🏺 Classical Ciphers (6 algorithms)
-- **Vigenère** - Polyalphabetic substitution
-- **Playfair** - Digraph substitution (5x5 grid)
-- **Affine** - Mathematical linear transformation
-- **Hill** - Matrix-based polygraphic substitution
-- **Four-Square** - Polygram cipher with 4 squares
-- **Enigma** - WWII rotor machine simulation
-
-#### 📂 Encoding/Conversion (3 algorithms)
-- **BASE32** - Base32 encoding (RFC 4648)
-- **BASE16 (Hex)** - Hexadecimal encoding (RFC 4648)
-- **BubbleBabble** - SSH fingerprint encoding (Antti Huima)
-
-#### 🗜️ Compression Algorithms (7 algorithms)
-- **LZSS** - Dictionary-based compression (Lempel-Ziv) *[Already implemented]*
-- **LZ77** - Dictionary-based compression (Lempel-Ziv) *[C reference available]*
-- **LZ78** - Improved dictionary compression
-- **LZH** - LZ77 with Huffman coding
-- **LZA** - Advanced LZ variant
-- **LZW** - Lempel-Ziv-Welch (Welch)
-- **Huffman** - Statistical compression algorithm
-- **Arithmetic** - Arithmetic coding compression
-
----
-
 ## 🏗️ Architecture
+
+Get all algorithms into a state where they are built upon language-agnostic building blocks defined in OpCodes.js so they can easily be converted into other programming languages.
 
 ### Universal System Design
 
@@ -206,21 +88,25 @@ Cipher/
 ### Modular Components
 
 #### 1. **Environment Layer** (`universal-cipher-env.js`)
+
 - Detects Node.js vs Browser environment
 - Provides universal utility functions
 - Sets up required globals for compatibility
 
 #### 2. **Cipher Registry** (`cipher-universal.js`)
+
 - Modern cipher management system
 - Improved error handling and validation
 - Consistent API across all algorithms
 
 #### 3. **Universal Implementations** (`*-universal.js`)
+
 - Self-contained algorithm modules
 - Environment-agnostic using IIFE pattern
 - OpCodes.js integration for clean code
 
 #### 4. **Testing Framework** (`universal-test-runner.js`)
+
 - Works in both Node.js and browser
 - Official test vectors from standards
 - Detailed reporting and failure analysis
@@ -228,6 +114,7 @@ Cipher/
 ### Legacy Compatibility
 
 The system maintains full backward compatibility:
+
 - Existing browser UI continues to work unchanged
 - Legacy algorithm files coexist during transition
 - Progressive migration to universal format
@@ -344,6 +231,7 @@ OpCodes.SecureCompare(arr1, arr2)            // Secure array comparison
 ### Usage Examples
 
 #### AES MixColumns Implementation
+
 ```javascript
 function mixColumn(column) {
   return [
@@ -356,6 +244,7 @@ function mixColumn(column) {
 ```
 
 #### Block Cipher Word Processing
+
 ```javascript
 // Convert plaintext to 32-bit words for processing
 const plaintext = "Hello World!1234"; // 16 bytes = 4 words
@@ -365,6 +254,7 @@ const result = OpCodes.Words32BEToString(processedWords);
 ```
 
 #### Stream Cipher Implementation
+
 ```javascript
 // XOR plaintext with keystream
 const plainBytes = OpCodes.StringToBytes(plaintext);
@@ -373,6 +263,7 @@ const encrypted = OpCodes.XorArrays(plainBytes, keyStream);
 ```
 
 #### Clean Bit Manipulation
+
 ```javascript
 // Before (traditional approach) - messy and error-prone
 const a = (x >>> 24) & 0xFF;
@@ -387,6 +278,7 @@ const result = OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
 ```
 
 ### Performance Characteristics
+
 - **Bit operations**: ~12.5M operations/second
 - **Byte packing**: ~10M operations/second
 - **GF(2^8) multiplication**: ~5M operations/second
@@ -394,17 +286,20 @@ const result = OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
 - **Array operations**: ~8M operations/second
 
 ### Security Features
+
 - **Constant-time comparison** preventing timing attacks (`SecureCompare`)
 - **Secure array clearing** for sensitive data cleanup (`ClearArray`)
 - **Proper PKCS#7 padding** with validation to prevent padding oracle attacks
 - **Mathematical operations** designed to avoid common implementation vulnerabilities
 
 ### Cross-Platform Compatibility
+
 - **Browser**: All modern browsers (IE9+) and legacy browsers with graceful degradation
 - **Node.js**: All versions with JavaScript ES5 support
 - **Universal**: Identical behavior across all platforms
 
 ### Testing
+
 ```bash
 # Run comprehensive OpCodes test suite
 node test-opcodes.js
@@ -419,6 +314,7 @@ node test-opcodes.js
 ### Quick Start - Web Interface
 
 1. **Open the main interface**:
+
    ```bash
    # No build step required - open directly in browser
    open index.html
@@ -444,12 +340,12 @@ node test-des.js
 
 ### Browser Compatibility
 
-| Environment | Support Level | Features |
-|-------------|---------------|----------|
-| **Modern Browsers** | Full | CSS Grid, dark theme, animations |
-| **Legacy Browsers** | Graceful degradation | HTML tables, basic styling |
-| **Text Browsers** | Fully functional | Lynx, w3m compatible |
-| **Node.js** | Full | Headless testing, automation |
+| Environment         | Support Level        | Features                         |
+|---------------------|----------------------|----------------------------------|
+| **Modern Browsers** | Full                 | CSS Grid, dark theme, animations |
+| **Legacy Browsers** | Graceful degradation | HTML tables, basic styling       |
+| **Text Browsers**   | Fully functional     | Lynx, w3m compatible             |
+| **Node.js**         | Full                 | Headless testing, automation     |
 
 ---
 
@@ -457,7 +353,24 @@ node test-des.js
 
 ### Adding New Universal Algorithms
 
-1. **Create universal implementation**:
+1. **Add official test vectors**:
+
+   ```javascript
+   // In official_test_vectors.js
+   algorithmTestVectors: [
+     {
+       name: "Official test vector",
+       key: "test-key",
+       plaintext: "test-input",
+       expected: "expected-output",
+       blocksize: 128,
+       keysize: 32
+     }
+   ]
+   ```
+
+2. **Create universal implementation**:
+
    ```javascript
    // algorithm-universal.js
    (function() {
@@ -484,20 +397,8 @@ node test-des.js
    })();
    ```
 
-2. **Add official test vectors**:
-   ```javascript
-   // In official_test_vectors.js
-   algorithmTestVectors: [
-     {
-       name: "Official test vector",
-       key: "test-key",
-       plaintext: "test-input",
-       expected: "expected-output"
-     }
-   ]
-   ```
-
 3. **Validate implementation**:
+
    ```bash
    node universal-test-runner.js
    ```
@@ -505,14 +406,15 @@ node test-des.js
 ### Converting Legacy Implementations
 
 1. **Study existing algorithm** - understand interface and behavior
-2. **Create universal wrapper** - use IIFE pattern with environment detection
-3. **Integrate OpCodes** - replace manual bit operations with OpCodes functions
-4. **Add test vectors** - include official standards (RFC, NIST, FIPS)
+2. **Add test vectors** - include official standards (RFC, NIST, FIPS)
+3. **Create universal wrapper** - use IIFE pattern with environment detection
+4. **Integrate OpCodes** - replace manual bit operations with OpCodes functions
 5. **Validate thoroughly** - ensure identical behavior to original
 
 ### Consistent API Pattern
 
 All algorithms follow this interface:
+
 ```javascript
 const Algorithm = {
   szInternalName: 'unique-id',
@@ -534,103 +436,11 @@ const Algorithm = {
 
 ---
 
-## 📊 Implementation Status & Tracking
-
-### 📊 Implementation Status Legend
-
-| Symbol | Status | Meaning |
-|--------|--------|---------|
-| ✅ | Complete | Fully implemented with test vectors and working correctly |
-| 🚧 | Partial | Implemented but needs fixes or test vector validation |
-| 📦 | Reference | Reference implementation available but not yet converted |
-| 📋 | Planned | Planned for implementation with test vectors available |
-| ❌ | Not Started | No implementation or reference available |
-
-### Current Progress (99 Total Algorithms)
-- ✅ **8 Complete** (8.1%) - Fully working with test vectors
-- 🚧 **1 Partial** (1.0%) - Implemented but needs fixes
-- 📦 **2 Reference** (2.0%) - C reference code available
-- 📋 **88 Planned** (88.9%) - Test vectors ready, awaiting implementation
-
-### 🏗️ Detailed Implementation Tracking
-
-#### Currently Working Algorithms (9 total)
-
-| Algorithm | Type | Key Size | Block Size | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source |
-|-----------|------|----------|------------|--------------|----------|--------------|---------|-----------------|
-| **Caesar** | Classical | None | N/A | ✅ | ✅ | ✅ | ✅ | Classical shift cipher |
-| **BASE64** | Encoding | None | N/A | ✅ | ✅ | ✅ | ✅ | RFC 4648 |
-| **ROT13** | Classical | None | N/A | ✅ | ✅ | ✅ | ✅ | RFC Examples |
-| **ROT5** | Classical | None | N/A | ✅ | ✅ | ✅ | ✅ | Standard |
-| **ROT47** | Classical | None | N/A | ✅ | ✅ | ✅ | ✅ | Standard |
-| **Atbash** | Classical | None | N/A | ✅ | ✅ | ✅ | ✅ | Hebrew Script |
-| **DES** | Block | 56-bit | 64-bit | ✅ | ✅ | ✅ | 🚧 | NIST FIPS 46-3 (Test failures) |
-| **BubbleBabble** | Encoding | None | N/A | ✅ | ✅ | ❌ | ❌ | Antti Huima |
-| **LZSS** | Compression | None | N/A | ✅ | ✅ | ❌ | ❌ | Lempel-Ziv |
-
-#### Ready for Universal Conversion (5 algorithms)
-
-| Algorithm | Type | Key Size | Block Size | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source |
-|-----------|------|----------|------------|--------------|----------|--------------|---------|-----------------|
-| **AES (Rijndael)** | Block | 128/192/256-bit | 128-bit | ✅ | ✅ | 📋 | 📋 | NIST FIPS 197 |
-| **Blowfish** | Block | 32-448-bit | 64-bit | ✅ | ✅ | 📋 | 📋 | Bruce Schneier 1993 |
-| **TEA** | Block | 128-bit | 64-bit | ✅ | ✅ | 📋 | 📋 | Wheeler/Needham 1994 |
-| **Anubis** | Block | 128-320-bit | 128-bit | ✅ | ✅ | 📋 | 📋 | NESSIE Project |
-| **Khazad** | Block | 128-bit | 64-bit | ✅ | ✅ | 📋 | 📋 | NESSIE Project |
-
-#### High Priority Planned Implementations
-
-| Category | Count | Examples | Priority |
-|----------|-------|----------|----------|
-| **Modern Block Ciphers** | 15 | Twofish, Serpent, Camellia, IDEA | High |
-| **Stream Ciphers** | 5 | ChaCha20, Salsa20, RC4 | High |
-| **Hash Functions** | 12 | SHA-256/512, SHA-3, BLAKE2, MD5 | High |
-| **National Standards** | 3 | GOST, SM4, ARIA | Medium |
-| **Lightweight Ciphers** | 4 | PRESENT, CLEFIA, Simon, Speck | Medium |
-| **Authenticated Encryption** | 4 | AES-GCM, ChaCha20-Poly1305 | Medium |
-| **Key Derivation Functions** | 5 | PBKDF2, Scrypt, Argon2 | Medium |
-| **Classical Ciphers** | 6 | Vigenère, Playfair, Enigma | Low |
-| **Block Cipher Modes** | 5 | CBC, CFB, OFB, CTR, GCM | Low |
-| **Encoding/Compression** | 10 | BASE32, Hex, LZ77, LZH, LZA, Arithmetic | Low |
-
-### Priority Implementation Queue
-
-#### 🚨 Immediate (High Priority)
-1. **Fix DES implementation** - Currently failing test vectors (0/5 tests pass)
-2. **Convert legacy to universal format**:
-   - Rijndael (AES) → `rijndael-universal.js`
-   - Blowfish → `blowfish-universal.js`
-   - TEA → `tea-universal.js`
-   - Anubis → `anubis-universal.js`
-   - Khazad → `khazad-universal.js`
-
-#### ⚡ Short Term (Medium Priority)
-3. **Modern stream ciphers**:
-   - ChaCha20 → `chacha20-universal.js`
-   - Salsa20 → `salsa20-universal.js`
-4. **Essential hash functions**:
-   - SHA-256 → `sha256-universal.js`
-   - MD5 → `md5-universal.js`
-5. **AES finalists**:
-   - Twofish → `twofish-universal.js`
-   - Serpent → `serpent-universal.js`
-
-#### 🔄 Medium Term (Lower Priority)
-6. **Block cipher modes** - CBC, CFB, OFB, CTR
-7. **National standards** - GOST, SM4, ARIA
-8. **Classical ciphers** - Vigenère, Playfair, Enigma
-
-#### 📚 Long Term (Educational Expansion)
-9. **Lightweight ciphers** - PRESENT, CLEFIA, Simon, Speck
-10. **Authenticated encryption** - AES-GCM, ChaCha20-Poly1305
-11. **Key derivation functions** - PBKDF2, Scrypt, Argon2
-12. **Compression algorithms** - LZ77, LZW, Huffman
-
 ### Test Vector Coverage
-- **Official Standards Available**: 88 algorithms (88.9%)
-- **Reference Implementations Available**: 90 algorithms (90.9%)
+
+- **Official Standards Available**: 88 algorithms
+- **Reference Implementations Available**: 90 algorithms
 - **Comprehensive Test Suites**: All implemented algorithms
-- **Missing Test Vectors**: 11 algorithms (11.1%)
 
 ---
 
@@ -638,146 +448,347 @@ const Algorithm = {
 
 ### 🏗️ Symmetric Block Ciphers
 
-| Algorithm | Type | Key Size | Block Size | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source |
-|-----------|------|----------|------------|--------------|----------|--------------|---------|-----------------|
-| **AES (Rijndael)** | Block | 128/192/256-bit | 128-bit | ✅ | ✅ | 🚧 | 🚧 | NIST FIPS 197 |
-| **DES** | Block | 56-bit | 64-bit | ✅ | ✅ | ✅ | 🚧 | NIST FIPS 46-3 (Retired) |
-| **3DES (TDES)** | Block | 112/168-bit | 64-bit | ✅ | ✅ | 📋 | 📋 | NIST FIPS 46-3 |
-| **Blowfish** | Block | 32-448-bit | 64-bit | ✅ | ✅ | 📋 | 📋 | Bruce Schneier 1993 |
-| **Twofish** | Block | 128/192/256-bit | 128-bit | ✅ | 📋 | ❌ | ❌ | AES Finalist |
-| **Anubis** | Block | 128-320-bit | 128-bit | ✅ | ✅ | 📋 | 📋 | NESSIE Project |
-| **Khazad** | Block | 128-bit | 64-bit | ✅ | ✅ | 📋 | 📋 | NESSIE Project |
-| **TEA** | Block | 128-bit | 64-bit | ✅ | ✅ | 📋 | 📋 | Wheeler/Needham 1994 |
-| **XTEA** | Block | 128-bit | 64-bit | ✅ | 📋 | ❌ | ❌ | Needham/Wheeler 1997 |
-| **Serpent** | Block | 128/192/256-bit | 128-bit | ✅ | 📋 | ❌ | ❌ | AES Finalist |
-| **Camellia** | Block | 128/192/256-bit | 128-bit | ✅ | 📋 | ❌ | ❌ | RFC 3713 |
-| **IDEA** | Block | 128-bit | 64-bit | ✅ | 📋 | ❌ | ❌ | X-IDEA |
-| **RC5** | Block | 0-2040-bit | 32/64/128-bit | ✅ | 📋 | ❌ | ❌ | RSA Data Security |
-| **RC6** | Block | 128/192/256-bit | 128-bit | ✅ | 📋 | ❌ | ❌ | AES Candidate |
-| **CAST-128** | Block | 40-128-bit | 64-bit | ✅ | 📋 | ❌ | ❌ | RFC 2144 |
-| **CAST-256** | Block | 128/160/192/224/256-bit | 128-bit | ✅ | 📋 | ❌ | ❌ | AES Candidate |
-| **MARS** | Block | 128-448-bit | 128-bit | ✅ | 📋 | ❌ | ❌ | AES Candidate |
-| **RC2** | Block | 8-1024-bit | 64-bit | ✅ | 📋 | ❌ | ❌ | RFC 2268 |
-| **SAFER** | Block | 64-bit | 64-bit | ✅ | 📋 | ❌ | ❌ | Massey 1993 |
-| **Safer+** | Block | 128/192/256-bit | 128-bit | ✅ | 📋 | ❌ | ❌ | AES Candidate |
-| **NewDES** | Block | 120-bit | 64-bit | ✅ | 📋 | ❌ | ❌ | Scott 1985 |
-| **Noekeon** | Block | 128-bit | 128-bit | ✅ | 📦 | ❌ | ❌ | NESSIE Project |
-| **BaseKing** | Block | Variable | Variable | ✅ | 📦 | ❌ | ❌ | Custom Algorithm |
-| **SkipJack** | Block | 80-bit | 64-bit | ✅ | 📋 | ❌ | ❌ | NSA Clipper |
-| **Square** | Block | 128-bit | 128-bit | ✅ | 📋 | ❌ | ❌ | Daemen/Rijmen |
+#### 🎁 Block Ciphers
 
-### 🌊 Stream Ciphers
+| Algorithm           | Type               | Key Size         | Block Size       | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source          |
+|:--------------------|:-------------------|:-----------------|:-----------------|:------------:|:--------:|:------------:|:-------:|:-------------------------|
+| **3-Way**           | Block              | 96-bit           | 96-bit           |      ✅       |    📋    |      ❌       |    ❌    | Daemen/Rijmen            |
+| **3DES (TDES)**     | Feistel            | 112/168-bit      | 64-bit           |      ✅       |    ✅     |      📋      |   📋    | NIST FIPS 46-3           |
+| **Adiantum**        | Permutation        | 256-bit          | Varies           |      ✅       |    📦    |      ❌       |    ❌    | Google                   |
+| **AES (Rijndael)**  | SPN                | 128/192/256-bit  | 128-bit          |      ✅       |    ✅     |      🚧      |   🚧    | NIST FIPS 197            |
+| **Akelarre**        | Block              | 128-bit          | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | NESSIE Project           |
+| **Anubis**          | SPN                | 128-320-bit      | 128-bit          |      ✅       |    ✅     |      📋      |   📋    | NESSIE Project           |
+| **ARIA**            | SPN                | 128/192/256-bit  | 128-bit          |      ✅       |    📋    |      ❌       |    ❌    | Korean Standard          |
+| **Ascon**           | SPN                | 128-bit          | 64/128-bit       |      ✅       |    📋    |      ❌       |    ❌    | NIST Lightweight Crypto  |
+| **BaseKing**        | Feistel            | 192-bit          | 64-bit           |      ❓       |    📦    |      ❌       |    ❌    | Custom Algorithm         |
+| **BassOmatic**      | Feistel            | 2048-bit         | 2048-bit         |      ❓       |    📦    |      ❌       |    ❌    | Custom Algorithm         |
+| **BATON**           | Feistel            | 320-bit          | 96-bit           |      ❓       |    📦    |      ❌       |    ❌    | NSA                      |
+| **BEAR/LION**       | Feistel            | Varies           | Varies           |      ✅       |    📦    |      ❌       |    ❌    | Anderson/Biham           |
+| **Blowfish**        | Feistel            | 32-448-bit       | 64-bit           |      ✅       |    ✅     |      📋      |   📋    | Bruce Schneier 1993      |
+| **Camellia**        | Feistel            | 128/192/256-bit  | 128-bit          |      ✅       |    📋    |      ❌       |    ❌    | RFC 3713                 |
+| **CAST-128**        | Feistel            | 40-128-bit       | 64-bit           |      ✅       |    📋    |      ❌       |    ❌    | RFC 2144                 |
+| **CAST-256**        | Feistel            | 128-256-bit      | 128-bit          |      ✅       |    📋    |      ❌       |    ❌    | AES Candidate            |
+| **Chiasmus**        | Feistel            | 128-bit          | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | BSI                      |
+| **CIKS-1**          | Feistel            | 64-bit           | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | South Korea              |
+| **CIPHERUNICORN-A** | Feistel            | 128/192/256-bit  | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | NEC                      |
+| **CIPHERUNICORN-E** | Feistel            | 128-bit          | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | NEC                      |
+| **CLEFIA**          | Feistel            | 128/192/256-bit  | 128-bit          |      ✅       |    📋    |      ❌       |    ❌    | Sony 2007                |
+| **CMEA**            | Block              | 64-bit           | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | TIA                      |
+| **Cobra**           | Block              | 64-256-bit       | 64/128-bit       |      ✅       |    📦    |      ❌       |    ❌    | C. Ankel                 |
+| **COCONUT98**       | Feistel            | 256-bit          | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | Serge Vaudenay           |
+| **Crab**            | Block              | 256-bit          | 8192-bit         |      ❓       |    📦    |      ❌       |    ❌    | Biham/McWilliams         |
+| **Cryptomeria/C2**  | Feistel            | 128-bit          | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | 4C Entity                |
+| **CRYPTON**         | SPN                | 64-256-bit       | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | Chae Hoon Lim            |
+| **CS-Cipher**       | Feistel            | 0-128-bit        | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | Stern/Vaudenay           |
+| **DEAL**            | Feistel            | 128/192/256-bit  | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | Knudsen                  |
+| **DES**             | Feistel            | 56-bit           | 64-bit           |      ✅       |    ✅     |      ✅       |   🚧    | NIST FIPS 46-3 (Retired) |
+| **DES-X**           | Feistel            | 184-bit          | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | Ron Rivest               |
+| **DFC**             | Feistel            | 128/192/256-bit  | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | ENS/CNRS                 |
+| **E2**              | Feistel            | 128/192/256-bit  | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | NTT                      |
+| **FEA-M**           | Block              | 64-bit           | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | Fujitsu                  |
+| **FEAL**            | Feistel            | 64-bit           | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | NTT                      |
+| **FROG**            | Unconventional     | 40-1000-bit      | 64-1024-bit      |      ✅       |    📦    |      ❌       |    ❌    | Diamanti/Georgoudis      |
+| **G-DES**           | Feistel            | Varies           | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | Schaumueller-Bichl       |
+| **GOST 28147-89**   | Feistel            | 256-bit          | 64-bit           |      ✅       |    📋    |      ❌       |    ❌    | Russian Federal          |
+| **Grand Cru**       | SPN                | 128-bit          | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | Joan Daemen              |
+| **Hasty Pudding**   | Block              | Varies           | Varies           |      ✅       |    📦    |      ❌       |    ❌    | Richard Schroeppel       |
+| **Hierocrypt**      | SPN                | 128-bit          | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | Toshiba                  |
+| **ICE**             | Feistel            | 64-bit           | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | Matthew Kwan             |
+| **IDEA**            | Lai-Massey         | 128-bit          | 64-bit           |      ✅       |    📋    |      ❌       |    ❌    | Lai/Massey               |
+| **IDEA NXT**        | Block              | 128/256-bit      | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | MediaCrypt               |
+| **Intel Cascade**   | Feistel            | 128-bit          | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | Intel                    |
+| **Iraqi**           | Block              | 192-256-bit (?)  | 64-bit           |      ❓       |    📦    |      ❌       |    ❌    | Unknown                  |
+| **Kalyna**          | SPN                | 128/256/512-bit  | 128/256/512-bit  |      ✅       |    📦    |      ❌       |    ❌    | Ukrainian Standard       |
+| **KASUMI**          | Feistel            | 128-bit          | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | 3GPP                     |
+| **KeeLoq**          | NLFSR              | 64-bit           | 32-bit           |      ✅       |    📦    |      ❌       |    ❌    | Microchip                |
+| **KHAZAD**          | SPN                | 128-bit          | 64-bit           |      ✅       |    ✅     |      📋      |   📋    | Barreto/Rijmen           |
+| **Khufu/Khafre**    | Feistel            | 512/64-bit       | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | Ralph Merkle             |
+| **KN-Cipher**       | Block              | 64/128/256-bit   | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | KISA                     |
+| **Kuznyechik**      | SPN                | 256-bit          | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | Russian Federal          |
+| **Ladder-DES**      | Feistel            | 80-bit           | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | Terry Ritter             |
+| **LEA**             | ARX                | 128/192/256-bit  | 128-bit          |      ✅       |    📋    |      ❌       |    ❌    | ISO/IEC 18033-3          |
+| **LOKI89/91/97**    | Feistel            | 64/128-256-bit   | 64/128-bit       |      ✅       |    📦    |      ❌       |    ❌    | Brown/Pieprzyk/Seberry   |
+| **Lucifer**         | SPN/Feistel        | 128-bit          | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | IBM                      |
+| **M6**              | Feistel            | 40/64/128-bit    | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | ETSI                     |
+| **M8**              | Block              | 128-bit          | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | D.G. Fon-Der-Flaass      |
+| **MacGuffin**       | Feistel            | 128-bit          | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | Schneier/Kelsey          |
+| **Madryga**         | Block              | 64-bit           | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | W. E. Madryga            |
+| **MAGENTA**         | Feistel            | 128-bit          | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | Deutsche Telekom         |
+| **MARS**            | Feistel            | 128-448-bit      | 128-bit          |      ✅       |    📋    |      ❌       |    ❌    | AES Candidate (IBM)      |
+| **Mercy**           | Block              | 128-bit          | 4096-bit         |      ❓       |    📦    |      ❌       |    ❌    | Paul Crowley             |
+| **MESH**            | Block              | 2x Block Size    | 64/96/128-bit    |      ✅       |    📦    |      ❌       |    ❌    | Fujitsu                  |
+| **MISTY1**          | Feistel            | 128-bit          | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | Mitsubishi               |
+| **MMB**             | Block              | 128-bit          | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | Daemen                   |
+| **MULTI2**          | Block              | 256-bit          | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | ARIB                     |
+| **MultiSwap**       | Block              | Varies           | Varies           |      ✅       |    📦    |      ❌       |    ❌    | Johan Håstad             |
+| **New Data Seal**   | Block              | 128-bit          | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | IBM                      |
+| **NewDES**          | Feistel            | 120-bit          | 64-bit           |      ✅       |    📋    |      ❌       |    ❌    | Robert Scott             |
+| **Nimbus**          | Block              | 128-bit          | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | Alexis Warner            |
+| **NOEKEON**         | SPN                | 128-bit          | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | NESSIE Project           |
+| **NUSH**            | Feistel            | 128/192/256-bit  | 64/128/256-bit   |      ✅       |    📦    |      ❌       |    ❌    | Daniel/Liu/Deng          |
+| **PRESENT**         | SPN                | 80/128-bit       | 64-bit           |      ✅       |    📋    |      ❌       |    ❌    | ISO/IEC 29192            |
+| **Prince**          | SPN                | 128-bit          | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | Knudsen et al.           |
+| **Q**               | Block              | 128/192/256-bit  | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | Leslie McBride           |
+| **QARMA**           | SPN                | 64/128-bit       | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | R. Avanzi                |
+| **RC2**             | Feistel            | 8-1024-bit       | 64-bit           |      ✅       |    📋    |      ❌       |    ❌    | RFC 2268                 |
+| **RC5**             | ARX                | 0-2040-bit       | 32/64/128-bit    |      ✅       |    📋    |      ❌       |    ❌    | RSA Data Security        |
+| **RC6**             | Feistel            | 128/192/256-bit  | 128-bit          |      ✅       |    📋    |      ❌       |    ❌    | AES Candidate            |
+| **REDOC**           | Block              | 160-bit          | 80-bit           |      ✅       |    📦    |      ❌       |    ❌    | Cusick/Wood              |
+| **Red Pike**        | Block              | 64-bit           | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | GCHQ                     |
+| **S-1**             | Block              | Varies           | Varies           |      ❓       |    📦    |      ❌       |    ❌    | NSA                      |
+| **SAFER**           | SPN                | 64-128-bit       | 64-128-bit       |      ✅       |    📋    |      ❌       |    ❌    | James Massey             |
+| **Safer+**          | SPN                | 128/192/256-bit  | 128-bit          |      ✅       |    📋    |      ❌       |    ❌    | AES Candidate            |
+| **SAVILLE**         | Feistel            | 128-bit (?)      | 128-bit          |      ❓       |    📦    |      ❌       |    ❌    | NSA                      |
+| **SC2000**          | Feistel            | 128/192/256-bit  | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | Fujitsu                  |
+| **SEED**            | Feistel            | 128-bit          | 128-bit          |      ✅       |    📋    |      ❌       |    ❌    | Korean Standard          |
+| **Serpent**         | SPN                | 128/192/256-bit  | 128-bit          |      ✅       |    📋    |      ❌       |    ❌    | AES Finalist             |
+| **SHACAL**          | SHA-based          | 128-512-bit      | 160/256-bit      |      ✅       |    📦    |      ❌       |    ❌    | Gemplus                  |
+| **SHARK**           | SPN                | 128-bit          | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | Rijmen/Daemen/Preneel    |
+| **Simon**           | Feistel            | 64-256-bit       | 32-128-bit       |      ✅       |    📋    |      ❌       |    ❌    | NSA 2013                 |
+| **SkipJack**        | Unbalanced Feistel | 80-bit           | 64-bit           |      ✅       |    📋    |      ❌       |    ❌    | NSA Clipper              |
+| **SM4**             | Feistel            | 128-bit          | 128-bit          |      ✅       |    📋    |      ❌       |    ❌    | Chinese National         |
+| **Speck**           | ARX                | 64-256-bit       | 32-128-bit       |      ✅       |    📋    |      ❌       |    ❌    | NSA 2013                 |
+| **Spectr-H64**      | Feistel            | 256-bit          | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | R. E. S.                 |
+| **Square**          | SPN                | 128-bit          | 128-bit          |      ✅       |    📋    |      ❌       |    ❌    | Daemen/Rijmen            |
+| **SXAL/MBAL**       | Feistel            | 128-bit          | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | G.S.C.                   |
+| **TEA**             | Feistel            | 128-bit          | 64-bit           |      ✅       |    ✅     |      📋      |   📋    | Wheeler/Needham 1994     |
+| **Threefish**       | Block              | 256/512/1024-bit | 256/512/1024-bit |      ✅       |    📦    |      ❌       |    ❌    | Schneier et al.          |
+| **Treyfer**         | Substitution       | 64-bit           | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | Gideon Yu. Treyfer       |
+| **Twofish**         | Feistel            | 128/192/256-bit  | 128-bit          |      ✅       |    📋    |      ❌       |    ❌    | AES Finalist             |
+| **UES**             | Feistel            | 128-bit          | 128-bit          |      ✅       |    📦    |      ❌       |    ❌    | Fujitsu                  |
+| **xmx**             | Block              | 256-bit          | 128-bit          |      ❓       |    📦    |      ❌       |    ❌    | Unknown                  |
+| **XTEA**            | Feistel            | 128-bit          | 64-bit           |      ✅       |    📋    |      ❌       |    ❌    | Needham/Wheeler 1997     |
+| **XXTEA**           | ARX                | 128-bit          | 64+-bit          |      ✅       |    📦    |      ❌       |    ❌    | Needham/Wheeler          |
+| **Zodiac**          | Block              | 128-bit          | 64-bit           |      ✅       |    📦    |      ❌       |    ❌    | Lee/Kim/Hong/Lee         |
 
-| Algorithm | Type | Key Size | Block Size | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source |
-|-----------|------|----------|------------|--------------|----------|--------------|---------|-----------------|
-| **ChaCha20** | Stream | 256-bit | N/A | ✅ | 📋 | ❌ | ❌ | RFC 7539 |
-| **Salsa20** | Stream | 128/256-bit | N/A | ✅ | 📋 | ❌ | ❌ | Daniel Bernstein |
-| **RC4** | Stream | 40-2048-bit | N/A | ✅ | 📋 | ❌ | ❌ | RSA Data Security |
-| **Rabbit** | Stream | 128-bit | N/A | ✅ | 📋 | ❌ | ❌ | RFC 4503 |
-| **Sapphire** | Stream | Variable | N/A | ✅ | 📋 | ❌ | ❌ | M. Markus & others |
+#### 🌊 Stream Ciphers
 
-### 🏛️ National Standards
+| Algorithm          | Type             | Key Size       | Block Size | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source             |
+|:-------------------|:-----------------|:---------------|:-----------|:------------:|:--------:|:------------:|:-------:|:----------------------------|
+| **A5/1, A5/2**     | LFSR             | 64/54-bit      | N/A        |      ✅       |    📋    |      ❌       |    ❌    | ETSI/3GPP                   |
+| **Achterbahn**     | NLFSR            | 80-bit         | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Berbain, Gilbert, et al.    |
+| **ChaCha20**       | ARX              | 256-bit        | N/A        |      ✅       |    📋    |      ❌       |    ❌    | RFC 7539 / D. Bernstein     |
+| **Crypto-1**       | NLFSR            | 48-bit         | N/A        |      ✅       |    📋    |      ❌       |    ❌    | NXP Semiconductors          |
+| **E0 (Bluetooth)** | LFSR             | 128-bit        | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Bluetooth SIG               |
+| **F-FCSR**         | FCSR             | 80/128/160-bit | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Arnault, Berger             |
+| **FISH**           | Lagged Fibonacci | Variable       | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Siemens                     |
+| **Grain**          | LFSR/NLFSR       | 80/128-bit     | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Hell, Johansson, et al.     |
+| **HC-128**         | Table-based      | 128-bit        | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Hongjun Wu                  |
+| **ISAAC**          | Table-based      | Variable       | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Bob Jenkins                 |
+| **KCipher-2**      | LFSR-based       | 128-bit        | N/A        |      ✅       |    📋    |      ❌       |    ❌    | KDDI                        |
+| **MICKEY**         | LFSR             | 80/128-bit     | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Babbage, Dodd               |
+| **MUGI**           | Block-based      | 128-bit        | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Hitachi                     |
+| **ORYX**           | LFSR             | 32-bit         | N/A        |      ✅       |    📋    |      ❌       |    ❌    | David A. Wagner             |
+| **Panama**         | Sponge-like      | 256-bit        | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Daemen, Clapp               |
+| **Phelix**         | ARX              | 128/256-bit    | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Whiting, Ferguson, et al.   |
+| **Pike**           | FISH-based       | Variable       | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Ross Anderson               |
+| **Py**             | RC4-like         | 64-2048-bit    | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Biham, Seberry              |
+| **QUAD**           | Multivariate     | 160-bit        | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Berbain, Gilbert, et al.    |
+| **Rabbit**         | Table-based      | 128-bit        | N/A        |      ✅       |    📋    |      ❌       |    ❌    | RFC 4503                    |
+| **RC4**            | Key-scheduling   | 40-2048-bit    | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Ron Rivest (RSA)            |
+| **RC4+, RC4A**     | Key-scheduling   | Variable       | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Sprayer; Paul & Maitra      |
+| **Salsa20**        | ARX              | 128/256-bit    | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Daniel Bernstein            |
+| **Sapphire**       | RC4-like         | Variable       | N/A        |      ✅       |    📋    |      ❌       |    ❌    | M. Markus, et al.           |
+| **Scream**         | LFSR             | 128-bit        | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Halevi, Coppersmith, et al. |
+| **SEAL**           | LFSR             | 160-bit        | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Rogaway, Coppersmith        |
+| **SNOW**           | LFSR             | 128/256-bit    | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Ekdahl, Johansson           |
+| **SOBER**          | LFSR             | Variable       | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Hawkes, Rose                |
+| **SOBER-128**      | LFSR             | 128-bit        | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Hawkes, Rose                |
+| **SOSEMANUK**      | ARX              | 128-bit        | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Berbain, Billet, et al.     |
+| **Spritz**         | RC4-like Sponge  | Variable       | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Rivest, Schuldt             |
+| **Trivium**        | NLFSR            | 80-bit         | N/A        |      ✅       |    📋    |      ❌       |    ❌    | De Cannière, Preneel        |
+| **Turing**         | SEAL-based       | 160-bit        | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Rose, Hawkes                |
+| **VEST**           | ARX              | 128/256-bit    | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Sean O'Neil                 |
+| **VMPC**           | Key-scheduling   | 128-512-bit    | N/A        |      ✅       |    📋    |      ❌       |    ❌    | Bartosz Żółtak              |
+| **WAKE**           | Block-based      | 256-bit        | N/A        |      ✅       |    📋    |      ❌       |    ❌    | David Wheeler               |
 
-| Algorithm | Type | Key Size | Block Size | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source |
-|-----------|------|----------|------------|--------------|----------|--------------|---------|-----------------|
-| **GOST 28147-89** | Block | 256-bit | 64-bit | ✅ | 📋 | ❌ | ❌ | Russian Federal |
-| **SM4** | Block | 128-bit | 128-bit | ✅ | 📋 | ❌ | ❌ | Chinese National |
-| **ARIA** | Block | 128/192/256-bit | 128-bit | ✅ | 📋 | ❌ | ❌ | Korean Standard |
+### 🏗️ Asymmetric Ciphers
 
-### 🪶 Lightweight Ciphers
-
-| Algorithm | Type | Key Size | Block Size | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source |
-|-----------|------|----------|------------|--------------|----------|--------------|---------|-----------------|
-| **PRESENT** | Block | 80/128-bit | 64-bit | ✅ | 📋 | ❌ | ❌ | ISO/IEC 29192 |
-| **CLEFIA** | Block | 128/192/256-bit | 128-bit | ✅ | 📋 | ❌ | ❌ | Sony 2007 |
-| **Simon** | Block | 64-256-bit | 32-128-bit | ✅ | 📋 | ❌ | ❌ | NSA 2013 |
-| **Speck** | Block | 64-256-bit | 32-128-bit | ✅ | 📋 | ❌ | ❌ | NSA 2013 |
+| Name                                  | Type (Based On)                   | Typical Key Sizes (bits)   | Primary Purpose(s)            | Inventor(s) / Source    |
+|:--------------------------------------|:----------------------------------|:---------------------------|:------------------------------|:------------------------|
+| **RSA**                               | Integer Factorization             | 2048, 3072, 4096           | Encryption, Digital Signature | Rivest, Shamir, Adleman |
+| **Diffie-Hellman (DH)**               | Discrete Logarithm                | 2048, 3072 (group size)    | Key Exchange                  | Diffie & Hellman        |
+| **Digital Signature Algorithm (DSA)** | Discrete Logarithm                | 2048, 3072 (group size)    | Digital Signature             | NIST (FIPS 186)         |
+| **ElGamal**                           | Discrete Logarithm                | 2048, 3072, 4096           | Encryption, Digital Signature | Taher Elgamal           |
+| **ECDH** (Elliptic Curve DH)          | Elliptic Curve Discrete Logarithm | 256, 384, 521 (curve size) | Key Exchange                  | Koblitz & Miller (ECC)  |
+| **ECDSA** (Elliptic Curve DSA)        | Elliptic Curve Discrete Logarithm | 256, 384, 521 (curve size) | Digital Signature             | NIST (FIPS 186)         |
+| **CRYSTALS-Kyber**                    | Lattice-based                     | Varies by security level   | Key Encapsulation (KEM)       | NIST PQC Standard       |
+| **CRYSTALS-Dilithium**                | Lattice-based                     | Varies by security level   | Digital Signature             | NIST PQC Standard       |
+| **Falcon**                            | Lattice-based                     | Varies by security level   | Digital Signature             | NIST PQC Standard       |
+| **SPHINCS+**                          | Hash-based                        | Varies by security level   | Digital Signature             | NIST PQC Standard       |
 
 ### 🔐 Authenticated Encryption
 
-| Algorithm | Type | Key Size | Block Size | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source |
-|-----------|------|----------|------------|--------------|----------|--------------|---------|-----------------|
-| **AES-GCM** | AEAD | 128/192/256-bit | 128-bit | ✅ | 📋 | ❌ | ❌ | NIST SP 800-38D |
-| **AES-CCM** | AEAD | 128/192/256-bit | 128-bit | ✅ | 📋 | ❌ | ❌ | RFC 3610 |
-| **ChaCha20-Poly1305** | AEAD | 256-bit | N/A | ✅ | 📋 | ❌ | ❌ | RFC 8439 |
-| **AES-OCB** | AEAD | 128/192/256-bit | 128-bit | ✅ | 📋 | ❌ | ❌ | RFC 7253 |
+| Algorithm             | Type | Key Size        | Block Size | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source |
+|-----------------------|------|-----------------|------------|--------------|----------|--------------|---------|-----------------|
+| **AES-GCM**           | AEAD | 128/192/256-bit | 128-bit    | ✅            | 📋       | ❌            | ❌       | NIST SP 800-38D |
+| **AES-CCM**           | AEAD | 128/192/256-bit | 128-bit    | ✅            | 📋       | ❌            | ❌       | RFC 3610        |
+| **ChaCha20-Poly1305** | AEAD | 256-bit         | N/A        | ✅            | 📋       | ❌            | ❌       | RFC 8439        |
+| **AES-OCB**           | AEAD | 128/192/256-bit | 128-bit    | ✅            | 📋       | ❌            | ❌       | RFC 7253        |
 
 ### 🏗️ Block Cipher Modes
 
-| Mode | Description | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source |
-|------|-------------|--------------|----------|--------------|---------|-----------------|
-| **ECB** | Electronic CodeBook | ✅ | ✅ | ✅ | ✅ | Basic mode |
-| **CBC** | Cipher Block Chaining | ✅ | 📋 | ❌ | ❌ | NIST SP 800-38A |
-| **CFB** | Cipher FeedBack | ✅ | 📋 | ❌ | ❌ | NIST SP 800-38A |
-| **OFB** | Output FeedBack | ✅ | 📋 | ❌ | ❌ | NIST SP 800-38A |
-| **CTR** | Counter mode | ✅ | 📋 | ❌ | ❌ | NIST SP 800-38A |
-| **GCM** | Galois/Counter Mode | ✅ | 📋 | ❌ | ❌ | NIST SP 800-38D |
+| Mode      | Description                                                 | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source |
+|-----------|-------------------------------------------------------------|--------------|----------|--------------|---------|-----------------|
+| **ECB**   | Electronic CodeBook                                         | ✅            | ✅        | ✅            | ✅       | Basic mode      |
+| **CBC**   | Cipher Block Chaining                                       | ✅            | 📋       | ❌            | ❌       | NIST SP 800-38A |
+| **CFB**   | Cipher FeedBack                                             | ✅            | 📋       | ❌            | ❌       | NIST SP 800-38A |
+| **OFB**   | Output FeedBack                                             | ✅            | 📋       | ❌            | ❌       | NIST SP 800-38A |
+| **CTR**   | Counter mode                                                | ✅            | 📋       | ❌            | ❌       | NIST SP 800-38A |
+| **GCM**   | Galois/Counter Mode                                         | ✅            | 📋       | ❌            | ❌       | NIST SP 800-38D |
+| **XTS**   | XEX-based tweaked-codebook mode with ciphertext stealing    | ✅            | 📋       | ❌            | ❌       | IEEE P1619      |
+| **CMM**   | Cipher Block Chaining with Masking                          | ✅            | 📋       | ❌            | ❌       |                 |
+| **SIV**   | Synthetic Initialization Vector                             | ✅            | 📋       | ❌            | ❌       |                 |
+| **PCBC**  | Propagating cipher block chaining                           | ✅            | 📋       | ❌            | ❌       |                 |
+| **ESSIV** | Encrypted salt-sector initialization vector                 | ✅            | 📋       | ❌            | ❌       |                 |
+| **LRW**   | Liskov, Rivest, and Wagner                                  | ✅            | 📋       | ❌            | ❌       |                 |
+| **XEX**   | Xor–encrypt–xor                                             | ✅            | 📋       | ❌            | ❌       |                 |
+| **CMC**   | CBC–mask–CBC                                                | ✅            | 📋       | ❌            | ❌       |                 |
+| **EME**   | ECB–mask–ECB                                                | ✅            | 📋       | ❌            | ❌       |                 |
+| **HCTR**  | Hash Counter Mode                                           | ✅            | 📋       | ❌            | ❌       |                 |
+| **HCTR2** | Hash Counter Mode 2                                         | ✅            | 📋       | ❌            | ❌       |                 |
+| **DFF**   | Delegatable Feistel-based Format-preserving Encryption Mode | ✅            | 📋       | ❌            | ❌       |                 |
+| **FFX**   | Format-preserving Feistel-based Encryption Mode             | ✅            | 📋       | ❌            | ❌       |                 |
+| **RAC**   | Random Access Counter                                       | ✅            | 📋       | ❌            | ❌       |                 |
 
-### #️⃣ Hash Functions
+### #️⃣ Hash & Checksum Functions
 
-| Algorithm | Type | Output Size | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source |
-|-----------|------|-------------|--------------|----------|--------------|---------|-----------------|
-| **MD5** | Hash | 128-bit | ✅ | 📋 | ❌ | ❌ | RFC 1321 (Broken) |
-| **SHA-1** | Hash | 160-bit | ✅ | 📋 | ❌ | ❌ | NIST FIPS 180-4 |
-| **SHA-224** | Hash | 224-bit | ✅ | 📋 | ❌ | ❌ | NIST FIPS 180-4 |
-| **SHA-256** | Hash | 256-bit | ✅ | 📋 | ❌ | ❌ | NIST FIPS 180-4 |
-| **SHA-384** | Hash | 384-bit | ✅ | 📋 | ❌ | ❌ | NIST FIPS 180-4 |
-| **SHA-512** | Hash | 512-bit | ✅ | 📋 | ❌ | ❌ | NIST FIPS 180-4 |
-| **SHA-3 (Keccak)** | Hash | 224/256/384/512-bit | ✅ | 📋 | ❌ | ❌ | NIST FIPS 202 |
-| **BLAKE2** | Hash | 256/512-bit | ✅ | 📋 | ❌ | ❌ | RFC 7693 |
-| **BLAKE2b** | Hash | 512-bit | ✅ | 📋 | ❌ | ❌ | RFC 7693 |
-| **BLAKE2s** | Hash | 256-bit | ✅ | 📋 | ❌ | ❌ | RFC 7693 |
-| **Whirlpool** | Hash | 512-bit | ✅ | 📋 | ❌ | ❌ | ISO/IEC 10118-3 |
-| **RIPEMD-160** | Hash | 160-bit | ✅ | 📋 | ❌ | ❌ | ISO/IEC 10118-3 |
+| Algorithm                                                     | Category                | Output Size                 | Construction / Operation      | Test Vectors | Ref Impl | JS Support | Working | Standard / Source  |
+| ------------------------------------------------------------- | ----------------------- | --------------------------- | ----------------------------- | ------------ | -------- | ---------- | ------- | ------------------ |
+| **CRC-8/16/32/64**                                            | CRC                     | 8/16/32/64-bit              | Cyclic redundancy check       | ✅            | 📋       | ❌          | ❌       | —                  |
+| **BSD checksum**                                              | Checksum                | 16-bit                      | Sum + circular rotation       | ❌            | ❌        | ❌          | ❌       | Unix               |
+| **SYSV checksum**                                             | Checksum                | 16-bit                      | Sum + circular rotation       | ❌            | ❌        | ❌          | ❌       | Unix               |
+| **sum8/16/24/32**                                             | Checksum                | 8/16/24/32-bit              | Sum                           | ❌            | ❌        | ❌          | ❌       | —                  |
+| **Internet checksum**                                         | Checksum                | 16-bit                      | One’s complement sum          | ❌            | ❌        | ❌          | ❌       | RFC 1071           |
+| **Fletcher-4/8/16/32**                                        | Checksum                | 4/8/16/32-bit               | Modular sums                  | ❌            | ❌        | ❌          | ❌       | —                  |
+| **Adler-32**                                                  | Checksum                | 32-bit                      | Modular sums                  | ✅            | 📋       | ❌          | ❌       | zlib               |
+| **xor8**                                                      | Checksum                | 8-bit                       | XOR                           | ❌            | ❌        | ❌          | ❌       | —                  |
+| **Luhn / Verhoeff / Damm**                                    | Check digit             | 1 digit                     | Sum / quasigroup op           | ❌            | ❌        | ❌          | ❌       | ISO, research      |
+| **Rabin fingerprint**                                         | Hash (non-crypto)       | Variable                    | Polynomial / multiply         | ❌            | ❌        | ❌          | ❌       | —                  |
+| **Tabulation hashing**                                        | Hash (non-crypto)       | Variable                    | XOR table                     | ❌            | ❌        | ❌          | ❌       | —                  |
+| **Zobrist hashing**                                           | Hash (non-crypto)       | Variable                    | XOR                           | ❌            | ❌        | ❌          | ❌       | Game AI            |
+| **Pearson hashing**                                           | Hash (non-crypto)       | ≥8-bit                      | XOR + lookup                  | ❌            | ❌        | ❌          | ❌       | —                  |
+| **SuperFastHash (Paul Hsieh)**                                | Hash (non-crypto)       | 32-bit                      | Mix/add                       | ❌            | ❌        | ❌          | ❌       | —                  |
+| **Buzhash**                                                   | Hash (non-crypto)       | Variable                    | Rotation / XOR                | ❌            | ❌        | ❌          | ❌       | —                  |
+| **FNV (Fowler–Noll–Vo)**                                      | Hash (non-crypto)       | 32–1024-bit                 | Multiply–XOR                  | ✅            | 📋       | ❌          | ❌       | —                  |
+| **Jenkins hash**                                              | Hash (non-crypto)       | 32/64-bit                   | XOR + add                     | ❌            | ❌        | ❌          | ❌       | —                  |
+| **djb2 (Bernstein)**                                          | Hash (non-crypto)       | 32/64-bit                   | Shift/add/mult                | ❌            | ❌        | ❌          | ❌       | —                  |
+| **PJW / ELF hash**                                            | Hash (non-crypto)       | 32/64-bit                   | Shift/add/XOR                 | ❌            | ❌        | ❌          | ❌       | —                  |
+| **MurmurHash**                                                | Hash (non-crypto)       | 32/64/128-bit               | Multiply + rotate             | ✅            | 📋       | ❌          | ❌       | —                  |
+| **SpookyHash**                                                | Hash (non-crypto)       | 32/64/128-bit               | Jenkins variant               | ❌            | ❌        | ❌          | ❌       | —                  |
+| **CityHash / FarmHash / MetroHash**                           | Hash (non-crypto)       | 32–256-bit                  | Product/rotation              | ❌            | ❌        | ❌          | ❌       | Google             |
+| **xxHash**                                                    | Hash (non-crypto)       | 32/64/128-bit               | Product/rotation              | ✅            | 📋       | ❌          | ❌       | —                  |
+| **t1ha**                                                      | Hash (non-crypto)       | 64/128-bit                  | Product/rotation/XOR          | ❌            | ❌        | ❌          | ❌       | —                  |
+| **komihash**                                                  | Hash (non-crypto)       | 64-bit                      | Product/split/add/XOR         | ❌            | ❌        | ❌          | ❌       | —                  |
+| **SDBM**                                                      | Hash (non-crypto)       | 32/64-bit                   | Mult/add or shift/add         | ❌            | ❌        | ❌          | ❌       | GNU AWK            |
+| **OSDB hash**                                                 | Hash (non-crypto)       | 64-bit                      | Add                           | ❌            | ❌        | ❌          | ❌       | —                  |
+| **SipHash**                                                   | MAC/PRF                 | 32/64/128-bit               | PRF (not collision resistant) | ✅            | 📋       | ❌          | ❌       | —                  |
+| **Poly1305-AES**                                              | MAC                     | 128-bit                     | Nonce-based MAC               | ✅            | 📋       | ❌          | ❌       | RFC 8439           |
+| **HMAC**                                                      | MAC                     | Depends on hash             | Keyed hash (prefix-MAC)       | ✅            | 📋       | ❌          | ❌       | RFC 2104           |
+| **KMAC**                                                      | MAC                     | Arbitrary                   | Based on Keccak               | ✅            | 📋       | ❌          | ❌       | NIST SP 800-185    |
+| **PMAC / OMAC / CMAC**                                        | MAC                     | Block size dependent        | PRF from block cipher         | ✅            | 📋       | ❌          | ❌       | NIST SP 800-38B    |
+| **UMAC / VMAC**                                               | MAC                     | Variable                    | Universal hashing + cipher    | ❌            | ❌        | ❌          | ❌       | —                  |
+| **HighwayHash**                                               | PRF                     | 64/128/256-bit              | Vectorized PRF                | ❌            | ❌        | ❌          | ❌       | Google             |
+| **BLAKE2 (b/s/x)**                                            | Hash (crypto)           | 256/512-bit or variable     | HAIFA / XOF                   | ✅            | 📋       | ❌          | ❌       | RFC 7693           |
+| **BLAKE3**                                                    | Hash (crypto)           | Arbitrary                   | Merkle tree + XOF             | ✅            | 📋       | ❌          | ❌       | —                  |
+| **SHA-1 / 2 (224/256/384/512)**                               | Hash (crypto)           | 160–512-bit                 | Merkle–Damgård                | ✅            | 📋       | ❌          | ❌       | NIST FIPS 180-4    |
+| **SHA-3 (Keccak)**                                            | Hash (crypto)           | 224/256/384/512-bit         | Sponge function               | ✅            | 📋       | ❌          | ❌       | NIST FIPS 202      |
+| **MD2 / MD4 / MD5**                                           | Hash (crypto)           | 128-bit                     | Merkle–Damgård                | ✅            | 📋       | ❌          | ❌       | RFC 1319/1320/1321 |
+| **RIPEMD (128/160/256/320)**                                  | Hash (crypto)           | 128–320-bit                 | Merkle–Damgård                | ✅            | 📋       | ❌          | ❌       | ISO/IEC 10118-3    |
+| **Whirlpool**                                                 | Hash (crypto)           | 512-bit                     | Wide-pipe                     | ✅            | 📋       | ❌          | ❌       | ISO/IEC 10118-3    |
+| **Tiger**                                                     | Hash (crypto)           | 192-bit                     | Merkle–Damgård                | ✅            | 📋       | ❌          | ❌       | —                  |
+| **Streebog (GOST R 34.11-2012)**                              | Hash (crypto)           | 256/512-bit                 | Merkle–Damgård                | ✅            | 📋       | ❌          | ❌       | Russian standard   |
+| **Grøstl / Skein / JH / LSH**                                 | Hash (crypto)           | 224–512-bit                 | Wide-pipe, UBI, sponge, etc.  | ✅            | 📋       | ❌          | ❌       | SHA-3 competition  |
+| **FSB / ECOH / RadioGatún / Spectral Hash / Snefru / SWIFFT** | Hash (crypto, research) | Various                     | Experimental                  | ❌            | ❌        | ❌          | ❌       | —                  |
+| **Perceptual hashes (pHash, dHash, aHash)**                   | Perceptual              | Variable (e.g., 64/128-bit) | Image/audio fingerprint       | ❌            | ❌        | ❌          | ❌       | —                  |
 
 ### 🔑 Key Derivation Functions
 
-| Algorithm | Type | Output Size | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source |
-|-----------|------|-------------|--------------|----------|--------------|---------|-----------------|
-| **PBKDF2** | KDF | Variable | ✅ | 📋 | ❌ | ❌ | RFC 2898 |
-| **Scrypt** | KDF | Variable | ✅ | 📋 | ❌ | ❌ | RFC 7914 |
-| **Argon2** | KDF | Variable | ✅ | 📋 | ❌ | ❌ | RFC 9106 |
-| **HKDF** | KDF | Variable | ✅ | 📋 | ❌ | ❌ | RFC 5869 |
-| **bcrypt** | KDF | Variable | ✅ | 📋 | ❌ | ❌ | OpenBSD |
+| Algorithm  | Type | Output Size | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source |
+|------------|------|-------------|--------------|----------|--------------|---------|-----------------|
+| **PBKDF2** | KDF  | Variable    | ✅            | 📋       | ❌            | ❌       | RFC 2898        |
+| **Scrypt** | KDF  | Variable    | ✅            | 📋       | ❌            | ❌       | RFC 7914        |
+| **Argon2** | KDF  | Variable    | ✅            | 📋       | ❌            | ❌       | RFC 9106        |
+| **HKDF**   | KDF  | Variable    | ✅            | 📋       | ❌            | ❌       | RFC 5869        |
+| **bcrypt** | KDF  | Variable    | ✅            | 📋       | ❌            | ❌       | OpenBSD         |
 
 ### 🏺 Classical/Substitution Ciphers
 
-| Algorithm | Type | Key Type | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source |
-|-----------|------|----------|--------------|----------|--------------|---------|-----------------|
-| **Caesar** | Substitution | Shift (3) | ✅ | ✅ | ✅ | ✅ | Classical |
-| **ROT13** | Substitution | Shift (13) | ✅ | ✅ | ✅ | ✅ | RFC Examples |
-| **ROT5** | Substitution | Shift (5) | ✅ | ✅ | ✅ | ✅ | Standard |
-| **ROT47** | Substitution | Shift (47) | ✅ | ✅ | ✅ | ✅ | Standard |
-| **Atbash** | Substitution | Alphabet Reversal | ✅ | ✅ | ✅ | ✅ | Hebrew Script |
-| **Vigenère** | Polyalphabetic | Keyword | ✅ | 📋 | ❌ | ❌ | Classical |
-| **Playfair** | Digraph | 5x5 Grid | ✅ | 📋 | ❌ | ❌ | Classical |
-| **Affine** | Mathematical | a,b parameters | ✅ | 📋 | ❌ | ❌ | Classical |
-| **Hill** | Matrix | Matrix key | ✅ | 📋 | ❌ | ❌ | Classical |
-| **Four-Square** | Polygram | 4 squares | ✅ | 📋 | ❌ | ❌ | Classical |
-| **Enigma** | Rotor | Machine config | ✅ | 📋 | ❌ | ❌ | WWII Machine |
+| Algorithm       | Type           | Key Type          | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source |
+|-----------------|----------------|-------------------|--------------|----------|--------------|---------|-----------------|
+| **Caesar**      | Substitution   | Shift (3)         | ✅            | ✅        | ✅            | ✅       | Classical       |
+| **ROT13**       | Substitution   | Shift (13)        | ✅            | ✅        | ✅            | ✅       | RFC Examples    |
+| **ROT5**        | Substitution   | Shift (5)         | ✅            | ✅        | ✅            | ✅       | Standard        |
+| **ROT47**       | Substitution   | Shift (47)        | ✅            | ✅        | ✅            | ✅       | Standard        |
+| **Atbash**      | Substitution   | Alphabet Reversal | ✅            | ✅        | ✅            | ✅       | Hebrew Script   |
+| **Vigenère**    | Polyalphabetic | Keyword           | ✅            | 📋       | ❌            | ❌       | Classical       |
+| **Playfair**    | Digraph        | 5x5 Grid          | ✅            | 📋       | ❌            | ❌       | Classical       |
+| **Affine**      | Mathematical   | a,b parameters    | ✅            | 📋       | ❌            | ❌       | Classical       |
+| **Hill**        | Matrix         | Matrix key        | ✅            | 📋       | ❌            | ❌       | Classical       |
+| **Four-Square** | Polygram       | 4 squares         | ✅            | 📋       | ❌            | ❌       | Classical       |
+| **Enigma**      | Rotor          | Machine config    | ✅            | 📋       | ❌            | ❌       | WWII Machine    |
 
 ### 📂 Encoding/Conversion
 
-| Algorithm | Type | Purpose | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source |
-|-----------|------|---------|--------------|----------|--------------|---------|-----------------|
-| **BASE64** | Encoding | Data transmission | ✅ | ✅ | ✅ | ✅ | RFC 4648 |
-| **BASE32** | Encoding | Data transmission | ✅ | 📋 | ❌ | ❌ | RFC 4648 |
-| **BASE16 (Hex)** | Encoding | Data representation | ✅ | 📋 | ❌ | ❌ | RFC 4648 |
-| **BubbleBabble** | Encoding | SSH fingerprints | ✅ | ✅ | ❌ | ❌ | Antti Huima |
-| **Koremutake** | Encoding | Memorable strings | ✅ | ✅ | ❌ | ❌ | Shorl.com |
+| Algorithm        | Type     | Purpose             | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source |
+|------------------|----------|---------------------|--------------|----------|--------------|---------|-----------------|
+| **BASE64**       | Encoding | Data transmission   | ✅            | ✅        | ✅            | ✅       | RFC 4648        |
+| **BASE32**       | Encoding | Data transmission   | ✅            | 📋       | ❌            | ❌       | RFC 4648        |
+| **BASE16 (Hex)** | Encoding | Data representation | ✅            | 📋       | ❌            | ❌       | RFC 4648        |
+| **BubbleBabble** | Encoding | SSH fingerprints    | ✅            | ✅        | ❌            | ❌       | Antti Huima     |
+| **Koremutake**   | Encoding | Memorable strings   | ✅            | ✅        | ❌            | ❌       | Shorl.com       |
 
 ### 🗜️ Compression Algorithms
 
-| Algorithm | Type | Purpose | Test Vectors | Ref Impl | Universal JS | Working | Standard/Source |
-|-----------|------|---------|--------------|----------|--------------|---------|-----------------|
-| **LZSS** | Compression | Dictionary-based | ✅ | ✅ | ❌ | ❌ | Lempel-Ziv |
-| **LZ77** | Compression | Dictionary-based | ✅ | 📦 | ❌ | ❌ | Lempel-Ziv |
-| **LZ78** | Compression | Improved dictionary | ✅ | 📋 | ❌ | ❌ | Lempel-Ziv |
-| **LZH** | Compression | LZ77 with Huffman | ✅ | 📋 | ❌ | ❌ | Haruhiko Okumura |
-| **LZA** | Compression | Advanced LZ variant | ✅ | 📋 | ❌ | ❌ | Advanced Systems |
-| **LZW** | Compression | Dictionary-based | ✅ | 📋 | ❌ | ❌ | Welch |
-| **Huffman** | Compression | Statistical | ✅ | 📋 | ❌ | ❌ | Huffman |
-| **Arithmetic** | Compression | Arithmetic coding | ✅ | 📋 | ❌ | ❌ | Arithmetic Coding |
+| Algorithm                                | Category   | Description & Purpose                                                                             | Inventor(s) / Source            |
+|:-----------------------------------------|:-----------|:--------------------------------------------------------------------------------------------------|:--------------------------------|
+| **842**                                  | Dictionary | An LZ77 variant used in the an 842-controller.                                                    | IBM                             |
+| **Adaptive Coding**                      | Entropy    | A general class of coding that adapts to the data's probabilities as it's processed.              | General Concept                 |
+| **Arithmetic**                           | Entropy    | Encodes an entire message into a single fraction, achieving near-optimal compression.             | Jorma Rissanen                  |
+| **Asymmetric Numeral Systems (ANS)**     | Entropy    | Combines the high compression ratio of Arithmetic coding with speeds similar to Huffman.          | Jarosław Duda                   |
+| **Brotli**                               | Hybrid     | Combines LZ77, Huffman coding, and a static dictionary for high-ratio compression.                | Google                          |
+| **Burrows–Wheeler Transform (BWT)**      | Transform  | A reversible block-sorting transform that groups similar characters together to aid compression.  | Michael Burrows & David Wheeler |
+| **Byte-Pair Encoding (BPE)**             | Dictionary | Replaces the most frequent pair of adjacent bytes with a single, unused byte.                     | Philip Gage                     |
+| **bzip2**                                | Hybrid     | Chains BWT with a Move-to-Front transform and Huffman coding for high-ratio compression.          | Julian Seward                   |
+| **Canonical Huffman**                    | Entropy    | A modified Huffman code that allows for more compact representation of the codebook.              | General Optimization            |
+| **Context Mixing (CM)**                  | Other      | A high-performance technique that combines predictions from multiple statistical models.          | General Concept                 |
+| **Context Tree Weighting (CTW)**         | Other      | A statistical method that averages predictions from a set of variable-order Markov models.        | Willems, Shtarkov, Tjalkens     |
+| **Deflate**                              | Hybrid     | The core of ZIP and GZIP; combines LZ77 dictionary coding with Huffman entropy coding.            | Phil Katz                       |
+| **Delta Encoding**                       | Other      | Stores the difference between sequential data entries rather than the entries themselves.         | General Concept                 |
+| **Dynamic Markov Compression (DMC)**     | Other      | Uses a finite state machine to predict the next symbol based on the context.                      | Cormack & Horspool              |
+| **Elias Gamma / Delta**                  | Entropy    | Universal codes used to encode positive integers of unknown size.                                 | Peter Elias                     |
+| **Exponential-Golomb**                   | Entropy    | A universal code variant where smaller numbers get shorter codes.                                 | General Concept                 |
+| **Fibonacci Coding**                     | Entropy    | A universal code that represents integers using Fibonacci numbers.                                | General Concept                 |
+| **Golomb Coding**                        | Entropy    | An entropy code for non-negative integers using a tunable parameter.                              | Solomon W. Golomb               |
+| **Grammar-Based Coding**                 | Other      | Replaces text phrases with rules in a context-free grammar.                                       | General Concept                 |
+| **Huffman**                              | Entropy    | Assigns variable-length codes to symbols based on their frequency of occurrence.                  | David A. Huffman                |
+| **LHA / LZH**                            | Hybrid     | A popular archive format that combines LZSS dictionary coding with Huffman coding.                | Haruyasu Yoshizaki              |
+| **Levenshtein Coding**                   | Entropy    | A universal code for positive integers based on representing a number iteratively.                | Vladimir Levenshtein            |
+| **LZ4**                                  | Dictionary | An extremely fast LZ77 variant focused on compression and decompression speed.                    | Yann Collet                     |
+| **LZ77**                                 | Dictionary | The foundational sliding-window algorithm that replaces strings with references to previous data. | Ziv & Lempel                    |
+| **LZ78**                                 | Dictionary | Builds an explicit dictionary of phrases encountered in the data.                                 | Ziv & Lempel                    |
+| **LZA**                                  | Dictionary | An advanced LZ variant known for its use in the Amiga operating system.                           | Advanced Systems                |
+| **LZFSE**                                | Hybrid     | Apple's algorithm combining LZ77 with Finite State Entropy (a form of ANS).                       | Apple Inc.                      |
+| **LZHAM**                                | Hybrid     | An LZMA-like algorithm with a focus on very high decompression speeds.                            | Richard Geldreich               |
+| **LZJB**                                 | Dictionary | A fast LZ-based algorithm designed by Jeff Bonwick for ZFS.                                       | Jeff Bonwick                    |
+| **LZMA**                                 | Hybrid     | Combines an LZ77 variant with Range coding and Markov chains for very high compression ratios.    | Igor Pavlov                     |
+| **LZO**                                  | Dictionary | A fast LZ77 variant optimized for high-speed decompression.                                       | Markus F. X. J. Oberhumer       |
+| **LZRW**                                 | Dictionary | A series of fast LZ-based algorithms developed by Ross Williams.                                  | Ross Williams                   |
+| **LZS**                                  | Hybrid     | Lempel-Ziv-Stac; used in Stacker disk compression.                                                | Stac Electronics                |
+| **LZSS**                                 | Dictionary | An enhancement of LZ77 that avoids expanding data if a match is too short.                        | Storer & Szymanski              |
+| **LZW**                                  | Dictionary | An LZ78 variant that was widely used in GIF and TIFF formats.                                     | Welch, Lempel, Ziv              |
+| **LZX**                                  | Hybrid     | An LZ77 variant used by Microsoft in CAB and CHM files.                                           | Jonathan Forbes & Tomi Poutanen |
+| **Move-to-Front (MTF)**                  | Transform  | A transform that encodes symbols based on their recency, improving entropy coding.                | Ryabko, Bentley et al.          |
+| **PAQ**                                  | Other      | A family of context-mixing archivers known for extremely high (but slow) compression.             | Matt Mahoney                    |
+| **Prediction by Partial Matching (PPM)** | Other      | A statistical, adaptive model that uses the last few symbols (the context) to predict the next.   | Cleary & Witten                 |
+| **Range Coding**                         | Entropy    | A form of arithmetic coding that processes data in chunks for faster implementation.              | G. Nigel N. Martin              |
+| **Run-Length Encoding (RLE)**            | Other      | A simple method that replaces sequences of identical characters with a count and a character.     | Classic Technique               |
+| **Sequitur**                             | Grammar    | An algorithm that infers a context-free grammar from a sequence of symbols.                       | Nevill-Manning & Witten         |
+| **Shannon-Fano**                         | Entropy    | A precursor to Huffman coding that assigns variable-length codes based on probabilities.          | Shannon & Fano                  |
+| **Snappy**                               | Dictionary | An LZ77-type compressor from Google, designed for high speed over compression ratio.              | Google                          |
+| **Tunstall Coding**                      | Entropy    | A code that maps source symbols to a fixed number of bits, useful for binary data.                | Brian Parker Tunstall           |
+| **Unary Coding**                         | Entropy    | The simplest code for positive integers, representing *N* with *N-1* ones followed by a zero.     | Classic Technique               |
+| **Zstandard (Zstd)**                     | Hybrid     | Combines a fast LZ77 stage with both Huffman and ANS entropy coding for wide versatility.         | Yann Collet (Facebook)          |
 
 ---
 
@@ -816,17 +827,10 @@ To contribute a new algorithm:
 
 ### 🛡️ CRITICAL SECURITY ADVISORY
 
-**ALL IMPLEMENTATIONS ARE FOR EDUCATIONAL PURPOSES ONLY**
-
 This collection is designed for learning cryptography and defensive security analysis.
 
-#### Educational Use Only
-- **Classical Ciphers** (Caesar, ROT*, Atbash) - Trivially broken, for learning only
-- **Modern Ciphers** (AES, Blowfish, TEA) - Educational implementations may have vulnerabilities
-- **Block Ciphers** - ECB mode only, unsuitable for real data protection
-- **Random Numbers** - Uses JavaScript Math.random(), cryptographically insecure
-
 #### Defensive Security Features
+
 - **Constant-time operations** where possible to prevent timing attacks
 - **Secure memory handling** with proper array clearing
 - **Validated padding schemes** to prevent padding oracle attacks
@@ -834,142 +838,19 @@ This collection is designed for learning cryptography and defensive security ana
 
 ---
 
-## 📚 References & Standards
-
-### Official Cryptographic Standards
-
-#### NIST Publications
-- **NIST FIPS 197** - Advanced Encryption Standard (AES) / Rijndael
-- **NIST FIPS 180-4** - Secure Hash Standard (SHA-1, SHA-224, SHA-256, SHA-384, SHA-512)
-- **NIST FIPS 202** - SHA-3 Standard (Keccak)
-- **NIST FIPS 46-3** - Data Encryption Standard (DES) - Withdrawn 2005
-- **NIST SP 800-38A** - Block Cipher Modes of Operation (CBC, CFB, OFB, CTR)
-- **NIST SP 800-38D** - Galois/Counter Mode (GCM) for Authenticated Encryption
-- **NIST SP 800-20** - Triple Data Encryption Algorithm (3DES)
-
-#### IETF RFC Documents
-- **RFC 4648** - Base16, Base32, and Base64 Data Encodings
-- **RFC 7539** - ChaCha20 and Poly1305 for IETF Protocols
-- **RFC 8439** - ChaCha20-Poly1305 AEAD Cipher for IETF
-- **RFC 3713** - A Description of the Camellia Encryption Algorithm
-- **RFC 2144** - The CAST-128 Encryption Algorithm
-- **RFC 2268** - A Description of the RC2(r) Encryption Algorithm
-- **RFC 3610** - Counter with CBC-MAC (CCM)
-- **RFC 7253** - The OCB Authenticated-Encryption Algorithm
-- **RFC 4503** - A Description of the Rabbit Stream Cipher Algorithm
-- **RFC 7693** - The BLAKE2 Cryptographic Hash and Message Authentication Code (MAC)
-- **RFC 2898** - PKCS #5: Password-Based Cryptography Specification Version 2.0
-- **RFC 7914** - The scrypt Password-Based Key Derivation Function
-- **RFC 9106** - Argon2 Memory-Hard Function for Password Hashing and Proof-of-Work Applications
-- **RFC 5869** - HMAC-based Extract-and-Expand Key Derivation Function (HKDF)
-- **RFC 5830** - GOST 28147-89: Encryption, Decryption, and Message Authentication Code (MAC) Algorithms
-- **RFC 5794** - A Description of the ARIA Encryption Algorithm
-
-#### ISO/IEC Standards
-- **ISO/IEC 29192** - Lightweight cryptography (PRESENT cipher)
-- **ISO/IEC 10118-3** - Hash functions (Whirlpool, RIPEMD-160)
-
-### Academic Publications
-
-#### Original Algorithm Papers
-- **Bruce Schneier** (1993) - "Description of a New Variable-Length Key, 64-bit Block Cipher (Blowfish)"
-- **Wheeler & Needham** (1994) - "TEA, a Tiny Encryption Algorithm"
-- **Wheeler & Needham** (1997) - "TEA extensions"
-- **Daniel J. Bernstein** (2008) - "ChaCha, a variant of Salsa20"
-- **Daniel J. Bernstein** (2005) - "Salsa20 specification"
-- **Barreto & Rijmen** (2000) - "The Anubis Block Cipher"
-- **Barreto & Rijmen** (2000) - "The Khazad Block Cipher"
-- **Daemen & Rijmen** (1997) - "Square: a new multiround block cipher"
-- **Massey** (1993) - "SAFER K-64: A Byte-Oriented Block-Ciphering Algorithm"
-- **Scott** (1985) - "Wide Open Encryption Design Offers Flexible Implementations"
-
-#### AES Competition Papers
-- **Schneier et al.** (1998) - "Twofish: A 128-Bit Block Cipher"
-- **Anderson et al.** (1998) - "Serpent: A New Block Cipher Proposal"
-- **Adams et al.** (1999) - "The CAST-256 Encryption Algorithm"
-- **IBM Research** (1999) - "MARS - A Candidate Cipher for AES"
-- **Burwick et al.** (1999) - "MARS - IBM's Candidate for AES"
-- **Rivest et al.** (1998) - "The RC6™ Block Cipher"
-
-#### Cryptographic Research
-- **Lai & Massey** (1990) - "A Proposal for a New Block Encryption Standard"
-- **Shirai et al.** (2007) - "The 128-bit blockcipher CLEFIA"
-- **NSA** (2013) - "Simon and Speck: Block Ciphers for the Internet of Things"
-- **Bogdanov et al.** (2007) - "PRESENT: An Ultra-Lightweight Block Cipher"
-
-### NESSIE Project
-- **NESSIE Portfolio** - New European Schemes for Signatures, Integrity and Encryption
-- **Anubis** - 128-bit block cipher submission
-- **Khazad** - 64-bit block cipher submission  
-- **Noekeon** - 128-bit block cipher with direct/indirect modes
-
-### National Cryptographic Standards
-
-#### Russian Standards
-- **GOST 28147-89** - Soviet/Russian encryption standard
-- **GOST R 34.11-94** - Russian hash function standard
-
-#### Chinese Standards
-- **GB/T 32907-2016** - SM4 block cipher algorithm
-- **GM/T 0002-2012** - SM4 cryptographic algorithm
-
-#### Korean Standards
-- **KS X 1213-1** - ARIA encryption algorithm
-
-### Implementation References
-
-#### Test Vector Sources
-- **NIST CAVP** - Cryptographic Algorithm Validation Program
-- **ECRYPT** - European Network of Excellence for Cryptology
-- **eSTREAM** - ECRYPT Stream Cipher Project
-- **Algorithm authors** - Original test vectors from papers
-
-#### Reference Implementations
-- **OpenSSL** - Production cryptographic library
-- **Crypto++** - C++ class library of cryptographic schemes
-- **Botan** - C++ crypto library
-- **libgcrypt** - GNU's basic cryptographic library
-
-### Historical Sources
-
-#### Classical Cryptography
-- **Kahn, David** (1967) - "The Codebreakers"
-- **Singh, Simon** (1999) - "The Code Book"
-- **Historical examples** - Caesar cipher, Atbash, Polybius square
-- **WWII cryptography** - Enigma machine specifications
-
-#### Compression Algorithms
-- **Ziv & Lempel** (1977) - "A Universal Algorithm for Sequential Data Compression"
-- **Ziv & Lempel** (1978) - "Compression of Individual Sequences via Variable-Rate Coding"
-- **Welch** (1984) - "A Technique for High-Performance Data Compression"
-- **Huffman** (1952) - "A Method for the Construction of Minimum-Redundancy Codes"
-- **Okumura** (1982) - Various compression algorithm implementations
-
-### Educational Resources
-
-#### Cryptographic Textbooks
-- **Schneier, Bruce** - "Applied Cryptography" (2nd Edition)
-- **Menezes et al.** - "Handbook of Applied Cryptography"
-- **Stinson** - "Cryptography: Theory and Practice"
-- **Ferguson & Schneier** - "Practical Cryptography"
-
-#### Online Resources
-- **IACR ePrint Archive** - Cryptology research papers
-- **Crypto Museum** - Historical cryptographic devices
-- **Wikipedia** - Comprehensive algorithm descriptions
-- **Coursera/edX** - Online cryptography courses
-
----
-
 ## 📄 License & Usage
 
+LGPL3
+
 This project is part of the »SynthelicZ« educational toolkit, designed for:
+
 - **Learning cryptography** and understanding algorithm implementations
 - **Research purposes** and academic study
 - **Defensive security analysis** and vulnerability research
 - **Educational demonstrations** of cryptographic concepts
 
 **Not suitable for:**
+
 - Any malicious or harmful purposes
 
 ---
