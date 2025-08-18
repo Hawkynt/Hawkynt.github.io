@@ -18,78 +18,78 @@
  *
  *  Methods:
  *   Init()                            --> Initializes the Algo
- *   KeySetup(szKey):szID              --> returns szID of Algos internal Object after creating it
- *   EncryptBlock(szID,szBlock):String --> Encrypt a Block
- *   DecryptBlock(szID,szBlock):String --> Decrypt a Block
- *   ClearData(szID)                   --> deletes an Algos Object
+ *   KeySetup(key):szID              --> returns szID of Algos internal Object after creating it
+ *   EncryptBlock(id,szBlock):String --> Encrypt a Block
+ *   DecryptBlock(id,szBlock):String --> Decrypt a Block
+ *   ClearData(id)                   --> deletes an Algos Object
  */
-if (!window.XObjectInstances) window.XObjectInstances=[];
+if (!window.objectInstances) window.objectInstances=[];
 var %CiphersName%=new Object();
 {
   // =======================[ PUBLIC INTERFACE ]========================
-  %CiphersName%.szInternalName='%CiphersName%';
-  %CiphersName%.szName='%CiphersName%';
-  %CiphersName%.szComment='This is the normal %CiphersName% Cipher Algorithm';
-  %CiphersName%.intMinKeyLength=0;
-  %CiphersName%.intMaxKeyLength=0;
-  %CiphersName%.intStepKeyLength=1;
-  %CiphersName%.intMinBlockSize=0;
-  %CiphersName%.intMaxBlockSize=0;
-  %CiphersName%.intStepBlockSize=1;
-  %CiphersName%.arrInstances=[];
+  %CiphersName%.internalName='%CiphersName%';
+  %CiphersName%.name='%CiphersName%';
+  %CiphersName%.comment='This is the normal %CiphersName% Cipher Algorithm';
+  %CiphersName%.minKeyLength=0;
+  %CiphersName%.maxKeyLength=0;
+  %CiphersName%.stepKeyLength=1;
+  %CiphersName%.minBlockSize=0;
+  %CiphersName%.maxBlockSize=0;
+  %CiphersName%.stepBlockSize=1;
+  %CiphersName%.instances=[];
   
-  %CiphersName%.boolCantDecode=false;
-  %CiphersName%.boolInit=false;
+  %CiphersName%.cantDecode=false;
+  %CiphersName%.isInitialized=false;
   // =======================[ PRIVATE STATIC ]==========================
   // TODO:
   // =======================[ PUBLIC STATIC ]===========================
   %CiphersName%.Init=function () {
     // TODO:
-    %CiphersName%.boolInit=true;
+    %CiphersName%.isInitialized=true;
   }
   
   %CiphersName%.KeySetup=function (optional_szKey) {
-    var szID;
+    var id;
     do {
-      szID='%CiphersName%['+szGenerateUniqueID()+']';
-    } while ((%CiphersName%.arrInstances[szID]) || (%CiphersName%.arrInstances[szID]!=undefined) || (window.XObjectInstances[szID]) || (window.XObjectInstances[szID]!=undefined));
-    %CiphersName%.arrInstances[szID]=new %CiphersName%.class%CiphersName%(optional_szKey);
-    return (szID);
+      id ='%CiphersName%['+szGenerateUniqueID()+']';
+    } while ((%CiphersName%.instances[id]) || (%CiphersName%.instances[id]!=undefined) || (window.objectInstances[id]) || (window.objectInstances[id]!=undefined));
+    %CiphersName%.instances[szID]=new %CiphersName%.class%CiphersName%(optional_szKey);
+    return (id);
   }
   
-  %CiphersName%.ClearData=function (szID) {
-    if ((%CiphersName%.arrInstances[szID]) && (%CiphersName%.arrInstances[szID]!=undefined)) {
-      window.XObjectInstances[szID]=undefined;
-      delete %CiphersName%.arrInstances[szID];
+  %CiphersName%.ClearData=function (id) {
+    if ((%CiphersName%.instances[id]) && (%CiphersName%.instances[id]!=undefined)) {
+      window.objectInstances[szID]=undefined;
+      delete %CiphersName%.instances[szID];
       return (true);
     } else {
-      throwException('Unknown Object Reference Exception',szID,'%CiphersName%','ClearData');
+      throwException('Unknown Object Reference Exception',id,'%CiphersName%','ClearData');
       return (false);
     };
   }
   
-  %CiphersName%.szEncryptBlock=function (szID,szPlainText) {
-    if ((%CiphersName%.arrInstances[szID]) && (%CiphersName%.arrInstances[szID]!=undefined)) {
+  %CiphersName%.encryptBlock=function (id,szPlainText) {
+    if ((%CiphersName%.instances[id]) && (%CiphersName%.instances[id]!=undefined)) {
       var szRet='';
       // TODO:
       return (szRet);
     } else {
-      throwException('Unknown Object Reference Exception',szID,'%CiphersName%','szEncryptBlock');
+      throwException('Unknown Object Reference Exception',id,'%CiphersName%','encryptBlock');
     };
   }
   
-  %CiphersName%.szDecryptBlock=function (szID,szCipherText) {
-    if ((%CiphersName%.arrInstances[szID]) && (%CiphersName%.arrInstances[szID]!=undefined)) {
+  %CiphersName%.decryptBlock=function (id,szCipherText) {
+    if ((%CiphersName%.instances[id]) && (%CiphersName%.instances[id]!=undefined)) {
       var szRet='';
       // TODO:
       return szRet;
     } else {
-      throwException('Unknown Object Reference Exception',szID,'%CiphersName%','szEncryptBlock');
+      throwException('Unknown Object Reference Exception',id,'%CiphersName%','encryptBlock');
     };
   }
   // =======================[ PRIVATE FUNCTIONS ]=======================
   // =======================[ PRIVATE CLASS ]===========================
-  %CiphersName%.class%CiphersName%=function (szKey) {
+  %CiphersName%.class%CiphersName%=function (key) {
     // Make Key Setup
     // TODO:
   }
