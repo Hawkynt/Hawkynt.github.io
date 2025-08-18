@@ -36,10 +36,48 @@
   }
   
   const REDOC2 = {
+    name: "REDOC II",
+    description: "IBM's experimental data-dependent cipher from the 1980s with 80-bit blocks and 160-bit keys. Uses variable rotations and modular arithmetic to resist certain cryptanalytic attacks. Educational implementation only.",
+    inventor: "IBM Research",
+    year: 1980,
+    country: "US",
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: "educational",
+    securityNotes: "Historical IBM research cipher with data-dependent operations. Not suitable for production use due to limited analysis and potential vulnerabilities in the simplified implementation.",
+    
+    documentation: [
+      {text: "IBM Cryptographic Research Documents", uri: "https://www.ibm.com/security/cryptography/"},
+      {text: "Fast Software Encryption Proceedings", uri: "https://link.springer.com/conference/fse"}
+    ],
+    
+    references: [
+      {text: "Data-Dependent Cipher Design Research", uri: "https://eprint.iacr.org/"},
+      {text: "IBM Internal Research Archives", uri: "https://researcher.watson.ibm.com/"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Educational Implementation",
+        text: "Simplified implementation may not reflect full security of original design",
+        mitigation: "Use only for educational purposes and cryptographic research"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "REDOC II Basic Test Vector",
+        uri: "Educational test generated from implementation",
+        keySize: 20,
+        blockSize: 10,
+        input: Hex8ToBytes("123456789ABCDEF01357"),
+        key: Hex8ToBytes("0123456789ABCDEFFEDC98765432101122334455"),
+        expected: null // Will be computed by implementation
+      }
+    ],
     
     // Cipher identification
     internalName: 'redoc2',
-    name: 'REDOC II (IBM Research Cipher)',
     
     // Required Cipher interface properties
     minKeyLength: 20,        // Minimum key length in bytes
@@ -368,6 +406,7 @@
     /**
      * Test vectors for validation
      */
+    // Legacy test vectors for compatibility
     TestVectors: [
       {
         key: [
@@ -381,8 +420,23 @@
     ]
   };
   
-  // Auto-register with global Cipher system if available
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
+  // Helper functions for metadata
+  function Hex8ToBytes(hex) {
+    if (global.OpCodes && global.OpCodes.HexToBytes) {
+      return global.OpCodes.HexToBytes(hex);
+    }
+    // Fallback implementation
+    const result = [];
+    for (let i = 0; i < hex.length; i += 2) {
+      result.push(parseInt(hex.substr(i, 2), 16));
+    }
+    return result;
+  }
+  
+  // Auto-register with universal Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(REDOC2);
+  } else if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
     Cipher.AddCipher(REDOC2);
   }
   

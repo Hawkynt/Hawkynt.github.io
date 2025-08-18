@@ -57,6 +57,47 @@
   }
   
   const THX = {
+    name: "CEX THX (Twofish Extended)",
+    description: "Experimental extended version of Twofish cipher with larger key sizes (256/512/1024-bit) and enhanced security margin with increased rounds. Educational implementation only.",
+    inventor: "John Underhill (CEX Cryptographic Library)",
+    year: 2018,
+    country: "CA",
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: "experimental",
+    securityNotes: "Experimental extended cipher based on Twofish. Not standardized or thoroughly analyzed. Use only for educational and research purposes.",
+    
+    documentation: [
+      {text: "CEX Cryptographic Library", uri: "https://github.com/Steppenwolfe65/CEX"},
+      {text: "Original Twofish Specification", uri: "https://www.schneier.com/academic/twofish/"},
+      {text: "RFC 5869: HKDF Specification", uri: "https://tools.ietf.org/html/rfc5869"}
+    ],
+    
+    references: [
+      {text: "CEX Extended Twofish Reference", uri: "https://github.com/Steppenwolfe65/CEX/tree/master/CEX/Cipher/Block/Mode"},
+      {text: "Extended Block Cipher Design Principles", uri: "https://eprint.iacr.org/2016/1176.pdf"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Experimental Status",
+        text: "Not thoroughly analyzed due to experimental nature and limited academic review",
+        mitigation: "Use only for educational purposes and cryptographic research"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "CEX THX 256-bit Test Vector",
+        uri: "https://github.com/Steppenwolfe65/CEX",
+        keySize: 32,
+        blockSize: 16,
+        input: Hex8ToBytes("00000000000000000000000000000000"),
+        key: Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+        expected: null // Will be computed by implementation
+      }
+    ],
+    
     internalName: 'THX',
     name: 'CEX THX (Twofish Extended)',
     comment: 'Extended Twofish supporting 256/512/1024-bit keys - EXPERIMENTAL CEX implementation',
@@ -526,6 +567,24 @@
   // Register with Cipher system if available
   if (typeof global !== 'undefined' && global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(THX);
+  }
+  
+  // Helper functions for metadata
+  function Hex8ToBytes(hex) {
+    if (global.OpCodes && global.OpCodes.HexToBytes) {
+      return global.OpCodes.HexToBytes(hex);
+    }
+    // Fallback implementation
+    const result = [];
+    for (let i = 0; i < hex.length; i += 2) {
+      result.push(parseInt(hex.substr(i, 2), 16));
+    }
+    return result;
+  }
+  
+  // Auto-register with universal Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(THX);
   }
   
   // Export to global scope

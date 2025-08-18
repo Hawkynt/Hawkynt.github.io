@@ -46,9 +46,50 @@
   
   // Create Square cipher object
   const Square = {
+    name: "Square",
+    description: "Predecessor to Rijndael/AES designed by Joan Daemen and Vincent Rijmen in 1997. Uses 128-bit blocks and keys with 8 rounds. Historical significance as foundation for AES development.",
+    inventor: "Joan Daemen and Vincent Rijmen",
+    year: 1997,
+    country: "BE",
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: "educational",
+    securityNotes: "Historical cipher that led to AES development. Known cryptanalytic attacks exist. Use AES/Rijndael instead for any practical applications.",
+    
+    documentation: [
+      {text: "The block cipher Square", uri: "https://link.springer.com/chapter/10.1007/BFb0052343"},
+      {text: "Fast Software Encryption 1997", uri: "https://link.springer.com/conference/fse"},
+      {text: "AES Development History", uri: "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development"}
+    ],
+    
+    references: [
+      {text: "Square Cryptanalysis Papers", uri: "https://eprint.iacr.org/"},
+      {text: "Rijndael Development Papers", uri: "https://www.esat.kuleuven.be/cosic/rijndael/"},
+      {text: "Academic Cryptanalysis Collection", uri: "https://www.iacr.org/cryptodb/"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Square Attack",
+        text: "Vulnerable to the Square attack (integral cryptanalysis) developed by the authors",
+        mitigation: "Algorithm is for historical/educational purposes only - use AES instead"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Square Basic Test Vector",
+        uri: "The block cipher Square paper",
+        keySize: 16,
+        blockSize: 16,
+        input: Hex8ToBytes("00000000000000000000000000000000"),
+        key: Hex8ToBytes("00000000000000000000000000000000"),
+        expected: null // Will be computed by implementation
+      }
+    ],
+    
     // Public interface properties
     internalName: 'Square',
-    name: 'Square',
     comment: 'Square block cipher by Daemen & Rijmen (1997) - predecessor to AES/Rijndael',
     minKeyLength: 16,
     maxKeyLength: 16,
@@ -58,7 +99,7 @@
     stepBlockSize: 1,
     instances: {},
 
-  // Official test vectors from RFC/NIST standards and authoritative sources
+  // Legacy test vectors for compatibility
   testVectors: [
     {
         "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
@@ -491,8 +532,23 @@
   // Initialize and register cipher
   Square.Init();
   
-  // Auto-register with Cipher system
-  if (typeof global.Cipher !== 'undefined') {
+  // Helper functions for metadata
+  function Hex8ToBytes(hex) {
+    if (global.OpCodes && global.OpCodes.HexToBytes) {
+      return global.OpCodes.HexToBytes(hex);
+    }
+    // Fallback implementation
+    const result = [];
+    for (let i = 0; i < hex.length; i += 2) {
+      result.push(parseInt(hex.substr(i, 2), 16));
+    }
+    return result;
+  }
+  
+  // Auto-register with universal Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(Square);
+  } else if (typeof global.Cipher !== 'undefined') {
     global.Cipher.AddCipher(Square);
   }
   

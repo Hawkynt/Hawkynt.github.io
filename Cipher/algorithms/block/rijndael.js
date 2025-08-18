@@ -54,9 +54,62 @@
   
   // Create Rijndael cipher object
   const Rijndael = {
+    name: "Rijndael (AES)",
+    description: "The Advanced Encryption Standard, selected by NIST in 2001. Supports 128/192/256-bit keys with 128-bit blocks and 10/12/14 rounds respectively. Widely used and thoroughly analyzed.",
+    inventor: "Joan Daemen and Vincent Rijmen",
+    year: 1998,
+    country: "BE",
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: null,
+    securityNotes: "Current NIST standard for symmetric encryption. Extensively analyzed and considered secure for current applications.",
+    
+    documentation: [
+      {text: "FIPS 197 - Advanced Encryption Standard (AES)", uri: "https://csrc.nist.gov/publications/detail/fips/197/final"},
+      {text: "NIST SP 800-38A - Block Cipher Modes of Operation", uri: "https://csrc.nist.gov/publications/detail/sp/800-38a/final"},
+      {text: "RFC 3268 - AES Ciphersuites for TLS", uri: "https://tools.ietf.org/rfc/rfc3268.txt"}
+    ],
+    
+    references: [
+      {text: "OpenSSL AES Implementation", uri: "https://github.com/openssl/openssl/blob/master/crypto/aes/"},
+      {text: "Mbed TLS AES Implementation", uri: "https://github.com/Mbed-TLS/mbedtls/tree/development/library/aes.c"},
+      {text: "libgcrypt Rijndael Implementation", uri: "https://github.com/gpg/libgcrypt/blob/master/cipher/rijndael.c"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "FIPS 197 AES-128 Test Vector",
+        uri: "https://csrc.nist.gov/publications/detail/fips/197/final",
+        keySize: 16,
+        blockSize: 16,
+        input: Hex8ToBytes("3243f6a8885a308d313198a2e0370734"),
+        key: Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+        expected: Hex8ToBytes("3925841d02dc09fbdc1185971969a0b32")
+      },
+      {
+        text: "NIST SP 800-38A AES-192 Test Vector", 
+        uri: "https://csrc.nist.gov/publications/detail/sp/800-38a/final",
+        keySize: 24,
+        blockSize: 16,
+        input: Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
+        key: Hex8ToBytes("8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b"),
+        expected: Hex8ToBytes("bd334f1d6e45f25ff712a214571fa5cc")
+      },
+      {
+        text: "NIST SP 800-38A AES-256 Test Vector",
+        uri: "https://csrc.nist.gov/publications/detail/sp/800-38a/final",
+        keySize: 32, 
+        blockSize: 16,
+        input: Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
+        key: Hex8ToBytes("603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"),
+        expected: Hex8ToBytes("f3eed1bdb5d2a03c064b5a7e3db181f8")
+      }
+    ],
+    
     // Public interface properties
     internalName: 'Rijndael',
-    name: 'Rijndael (AES-128/192/256)',
     comment: 'Advanced Encryption Standard - Rijndael cipher supporting 128/192/256-bit keys (FIPS 197)',
     minKeyLength: 16,
     maxKeyLength: 32,
@@ -143,8 +196,7 @@
       125
     ],
     
-    // Official AES test vectors from NIST FIPS 197 and SP 800-38A
-    // Comprehensive test vectors with authoritative sources and validation data
+    // Legacy test vectors for compatibility
     testVectors: [
       // FIPS 197 AES-128 official test vector
       {
@@ -732,8 +784,23 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
+  // Helper functions for metadata
+  function Hex8ToBytes(hex) {
+    if (global.OpCodes && global.OpCodes.HexToBytes) {
+      return global.OpCodes.HexToBytes(hex);
+    }
+    // Fallback implementation
+    const result = [];
+    for (let i = 0; i < hex.length; i += 2) {
+      result.push(parseInt(hex.substr(i, 2), 16));
+    }
+    return result;
+  }
+  
+  // Auto-register with universal Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(Rijndael);
+  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(Rijndael);
   }
   

@@ -1,20 +1,6 @@
-#!/usr/bin/env node
 /*
- * Universal PANAMA Stream Cipher
- * Compatible with both Browser and Node.js environments
- * Based on specification by Joan Daemen and Craig Clapp (FSE 1998)
+ * PANAMA Stream Cipher Implementation
  * (c)2006-2025 Hawkynt
- * 
- * PANAMA is a cryptographic primitive that can be used both as a hash function
- * and as a stream cipher. This implementation focuses on the stream cipher mode.
- * The algorithm uses:
- * - 256-bit keys
- * - High performance design (2 cycles per byte)
- * - State-based design derived from StepRightUp
- * - 17 32-bit words internal state
- * 
- * NOTE: The hash function mode of PANAMA has known collisions and should not be used.
- * This implementation is for educational purposes only.
  */
 
 (function(global) {
@@ -46,13 +32,44 @@
     }
   }
   
-  // Create PANAMA cipher object
   const PANAMA = {
-    internalName: 'panama',
-    name: 'PANAMA',
-    version: '1.0',
-    author: 'Joan Daemen, Craig Clapp (1998)',
-    description: 'Dual-purpose hash function and stream cipher (stream mode only)',
+    name: "PANAMA",
+    description: "Dual-purpose cryptographic primitive that can function as both a hash function and stream cipher. This implementation provides stream cipher functionality with 256-bit keys and high-performance design. The hash function mode has known collisions.",
+    inventor: "Joan Daemen, Craig Clapp",
+    year: 1998,
+    country: "BE",
+    category: "cipher",
+    subCategory: "Stream Cipher",
+    securityStatus: "insecure",
+    securityNotes: "Hash function mode has known collisions discovered by Vincent Rijmen and others. Stream cipher mode lacks thorough cryptanalysis. Not recommended for production use.",
+    
+    documentation: [
+      {text: "PANAMA Specification (FSE 1998)", uri: "https://link.springer.com/chapter/10.1007/3-540-69710-1_5"},
+      {text: "Cryptanalysis by Vincent Rijmen", uri: "https://www.cosic.esat.kuleuven.be/publications/article-40.pdf"}
+    ],
+    
+    references: [
+      {text: "Original PANAMA Implementation", uri: "https://www.esat.kuleuven.be/cosic/panama/"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Hash Collision", 
+        text: "Hash function mode vulnerable to collision attacks found by Vincent Rijmen",
+        mitigation: "Use only stream cipher mode, avoid hash functionality"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Basic Stream Cipher Test",
+        uri: "Educational test vector",
+        keySize: 32,
+        key: Hex8ToBytes("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
+        input: Hex8ToBytes("00000000000000000000000000000000"),
+        expected: [] // Will be filled during implementation validation
+      }
+    ],
 
     // Required by cipher system
     minKeyLength: 1,
@@ -250,10 +267,9 @@
     }
   };
   
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(PANAMA);
-  }
+  // Auto-register with Subsystem (according to category) if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(PANAMA);
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {

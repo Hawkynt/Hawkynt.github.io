@@ -51,14 +51,27 @@ class AlgorithmCard {
      */
     createBadges() {
         let badges = `<div class="card-badges">`;
-        badges += `<span class="badge badge-category">${this.algorithm.category}</span>`;
         
-        if (this.algorithm.country) {
-            badges += `<span class="badge badge-country">${this.algorithm.country}</span>`;
+        // Category badge with proper handling of metadata structure
+        const categoryName = this.getCategoryDisplayName();
+        badges += `<span class="badge badge-category" style="background-color: ${this.getCategoryColor()}">${categoryName}</span>`;
+        
+        // Country badge with flag and name
+        const countryInfo = this.getCountryInfo();
+        if (countryInfo) {
+            badges += `<span class="badge badge-country">${countryInfo.flag} ${countryInfo.name}</span>`;
         }
         
-        if (this.algorithm.year) {
-            badges += `<span class="badge badge-year">${this.algorithm.year}</span>`;
+        // Year badge
+        const year = this.getYear();
+        if (year && year !== 2025) { // Don't show default year for unknown algorithms
+            badges += `<span class="badge badge-year">${year}</span>`;
+        }
+        
+        // Security status badge
+        const securityInfo = this.getSecurityInfo();
+        if (securityInfo) {
+            badges += `<span class="badge badge-security" style="background-color: ${securityInfo.color}" title="${securityInfo.name}">${securityInfo.icon}</span>`;
         }
         
         badges += `</div>`;
@@ -69,10 +82,16 @@ class AlgorithmCard {
      * Create action buttons
      */
     createActions() {
+        const testVectorCount = this.getTestVectorCount();
+        const testVectorBadge = testVectorCount > 0 ? `<span class="action-badge">${testVectorCount}</span>` : '';
+        
         return `
             <div class="card-actions">
                 <button class="btn btn-primary btn-small card-details-btn">
                     📖 Details
+                </button>
+                <button class="btn btn-secondary btn-small card-test-btn" title="Run test vectors">
+                    🧪 Test ${testVectorBadge}
                 </button>
                 <button class="btn btn-secondary btn-small card-use-btn">
                     🔧 Use
@@ -133,6 +152,24 @@ class AlgorithmCard {
                 } else {
                     console.error('No cipherController available and no onDetailsClick handler provided');
                     alert('Unable to show details: Controller not ready');
+                }
+            });
+        }
+        
+        // Test button
+        const testBtn = card.querySelector('.card-test-btn');
+        if (testBtn) {
+            testBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                console.log(`Running tests for algorithm: ${this.algorithm.name}`);
+                
+                if (this.options.onTestClick) {
+                    this.options.onTestClick(this.algorithm, e);
+                } else if (window.cipherController) {
+                    window.cipherController.runAlgorithmTests(this.algorithm.name);
+                } else {
+                    console.error('No cipherController available and no onTestClick handler provided');
+                    alert('Unable to run tests: Controller not ready');
                 }
             });
         }
@@ -222,6 +259,73 @@ class AlgorithmCard {
     }
     
     /**
+     * Helper methods for metadata extraction
+     */
+    getCategoryDisplayName() {
+        if (this.algorithm.metadata && this.algorithm.metadata.category) {
+            return this.algorithm.metadata.category.name || 'Unknown';
+        }
+        return AlgorithmCard.getCategoryDisplayName(this.algorithm.category || 'unknown');
+    }
+    
+    getCategoryColor() {
+        if (this.algorithm.metadata && this.algorithm.metadata.category) {
+            return this.algorithm.metadata.category.color || '#6c757d';
+        }
+        // Default colors for legacy categories
+        const colorMap = {
+            'block': '#007bff',
+            'stream': '#17a2b8',
+            'hash': '#ffc107',
+            'classical': '#fd7e14',
+            'encoding': '#6f42c1',
+            'compression': '#28a745',
+            'asymmetric': '#dc3545',
+            'special': '#20c997',
+            'mac': '#e83e8c',
+            'kdf': '#6c757d',
+            'mode': '#343a40',
+            'padding': '#6c757d'
+        };
+        return colorMap[this.algorithm.category] || '#6c757d';
+    }
+    
+    getCountryInfo() {
+        if (this.algorithm.metadata && this.algorithm.metadata.country) {
+            return this.algorithm.metadata.country;
+        }
+        // Handle legacy string country format
+        if (this.algorithm.country && typeof this.algorithm.country === 'string') {
+            return { flag: '🏳️', name: this.algorithm.country };
+        }
+        return null;
+    }
+    
+    getYear() {
+        if (this.algorithm.metadata) {
+            return this.algorithm.metadata.year;
+        }
+        return this.algorithm.year;
+    }
+    
+    getSecurityInfo() {
+        if (this.algorithm.metadata && this.algorithm.metadata.security) {
+            return this.algorithm.metadata.security;
+        }
+        return null;
+    }
+    
+    getTestVectorCount() {
+        if (this.algorithm.implementation && this.algorithm.implementation.testVectors) {
+            return this.algorithm.implementation.testVectors.length;
+        }
+        if (this.algorithm.testVectors) {
+            return this.algorithm.testVectors.length;
+        }
+        return 0;
+    }
+    
+    /**
      * Static method to create cards grouped by category
      */
     static createCategorizedCards(algorithmsByCategory, container, options = {}) {
@@ -233,10 +337,15 @@ class AlgorithmCard {
             section.className = 'palette-section';
             section.setAttribute('data-category', category);
             
-            // Create header
+            // Create header with algorithm count
             const header = document.createElement('div');
             header.className = 'palette-header';
-            header.textContent = AlgorithmCard.getCategoryDisplayName(category);
+            const displayName = AlgorithmCard.getCategoryDisplayName(category);
+            const count = algorithms.length;
+            header.innerHTML = `
+                <span class="category-title">${displayName}</span>
+                <span class="category-count">${count} algorithm${count !== 1 ? 's' : ''}</span>
+            `;
             
             // Create grid
             const grid = document.createElement('div');

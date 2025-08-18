@@ -1,17 +1,6 @@
-#!/usr/bin/env node
 /*
- * Universal RC4 Stream Cipher
- * Compatible with both Browser and Node.js environments
- * Based on RC4 specification and RFC 6229 test vectors
+ * RC4 Stream Cipher Implementation
  * (c)2006-2025 Hawkynt
- * 
- * RC4 is a stream cipher designed by Ron Rivest in 1987.
- * It consists of two main algorithms:
- * 1. KSA (Key Scheduling Algorithm) - Initializes the S-box permutation
- * 2. PRGA (Pseudo-Random Generation Algorithm) - Generates keystream bytes
- * 
- * WARNING: RC4 has known cryptographic weaknesses and should not be used 
- * in production systems. This implementation is for educational purposes only.
  */
 
 (function(global) {
@@ -43,21 +32,51 @@
     }
   }
   
-  // Load metadata system
-  if (!global.CipherMetadata && typeof require !== 'undefined') {
-    try {
-      require('../../cipher-metadata.js');
-    } catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
-    }
-  }
-  
-  // Create RC4 cipher object
   const RC4 = {
+    name: "RC4",
+    description: "Variable-key-size stream cipher using a secret internal state of 256 bytes with two index pointers. Originally a trade secret until leaked in 1994, widely used but now deprecated due to numerous vulnerabilities.",
+    inventor: "Ron Rivest",
+    year: 1987,
+    country: "US",
+    category: "cipher",
+    subCategory: "Stream Cipher",
+    securityStatus: "insecure",
+    securityNotes: "RC4 has numerous critical vulnerabilities including bias in keystream, weak keys, and related-key attacks. Deprecated in all major protocols. Use for educational purposes only.",
+    
+    documentation: [
+      {text: "RFC 6229 Test Vectors", uri: "https://tools.ietf.org/html/rfc6229"},
+      {text: "Wikipedia RC4", uri: "https://en.wikipedia.org/wiki/RC4"}
+    ],
+    
+    references: [
+      {text: "Applied Cryptography RC4", uri: "https://www.schneier.com/academic/paperfiles/paper-rc4.pdf"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Bias Attacks", 
+        text: "RC4 keystream has statistical biases exploitable in broadcast attacks and WEP cracking",
+        mitigation: "Algorithm completely deprecated - use ChaCha20, AES-CTR, or similar modern stream ciphers"
+      },
+      {
+        type: "Related-Key Attacks", 
+        text: "RC4 vulnerable to related-key attacks when keys share common prefixes or patterns",
+        mitigation: "Use cryptographically secure key derivation and modern stream ciphers"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "RFC 6229 Test Vector 1",
+        uri: "https://tools.ietf.org/html/rfc6229#section-2",
+        keySize: 5,
+        key: Hex8ToBytes("0102030405"),
+        input: Hex8ToBytes("00000000000000000000000000000000"),
+        expected: Hex8ToBytes("b2396305f03dc027ccc3524a0a1118a8")
+      }
+    ],
+
     // Public interface properties
-    internalName: 'RC4',
-    name: 'RC4 Stream Cipher',
-    comment: 'RC4 Stream Cipher - Educational implementation with RFC 6229 test vectors',
     minKeyLength: 1,    // RC4 supports 1-256 byte keys
     maxKeyLength: 256,
     stepKeyLength: 1,
@@ -67,16 +86,6 @@
     instances: {},
     cantDecode: false,
     isInitialized: false,
-    
-    // Comprehensive metadata
-    metadata: global.CipherMetadata ? global.CipherMetadata.createMetadata({
-      algorithm: 'RC4',
-      displayName: 'RC4 Stream Cipher',
-      description: 'Variable-key-size stream cipher widely used in the past but now considered insecure. Uses a secret internal state of 256 bytes with two 8-bit index pointers to generate a pseudo-random keystream.',
-      
-      inventor: 'Ron Rivest (RSA Security)',
-      year: 1987,
-      background: 'Originally a trade secret of RSA Security until it was anonymously leaked in 1994. Became widely adopted due to its simplicity and speed, used in WEP, WPA (TKIP), TLS, and SSH.',
       
       securityStatus: global.CipherMetadata.SecurityStatus.DEPRECATED,
       securityNotes: 'DEPRECATED: Known biases in keystream, related-key attacks, and weaknesses in key scheduling. Banned from TLS 1.3 and prohibited by RFC 7465.',
@@ -489,10 +498,9 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(RC4);
-  }
+  // Auto-register with Subsystem (according to category) if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(RC4);
   
   // Export to global scope
   global.RC4 = RC4;

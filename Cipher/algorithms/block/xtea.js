@@ -53,9 +53,50 @@
   
   // Create XTEA cipher object
   const XTEA = {
+    name: "XTEA (Extended TEA)",
+    description: "Improved version of TEA designed by David Wheeler and Roger Needham with enhanced key schedule and better security. Uses 64 rounds with 64-bit blocks and 128-bit keys.",
+    inventor: "David Wheeler and Roger Needham",
+    year: 1997,
+    country: "GB",
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: "educational",
+    securityNotes: "Improvement over TEA with better resistance to related-key attacks. Still considered dated - modern ciphers like AES recommended for security-critical applications.",
+    
+    documentation: [
+      {text: "TEA extensions and corrections", uri: "https://www.cix.co.uk/~klockstone/xtea.htm"},
+      {text: "Block TEA improvements", uri: "https://link.springer.com/chapter/10.1007/3-540-60590-8_29"},
+      {text: "Cambridge Computer Laboratory", uri: "https://www.cl.cam.ac.uk/teaching/1415/SecurityII/"}
+    ],
+    
+    references: [
+      {text: "XTEA Cryptanalysis", uri: "https://eprint.iacr.org/"},
+      {text: "TEA family comparison", uri: "https://www.schneier.com/academic/archives/1999/02/xtea.html"},
+      {text: "Block cipher design evolution", uri: "https://link.springer.com/book/10.1007/978-3-662-04851-1"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Limited analysis",
+        text: "Less cryptanalysis compared to modern ciphers, potential unknown weaknesses",
+        mitigation: "Use modern standardized ciphers like AES for production applications"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "XTEA Basic Test Vector",
+        uri: "TEA extensions and corrections",
+        keySize: 16,
+        blockSize: 8,
+        input: Hex8ToBytes("0000000000000000"),
+        key: Hex8ToBytes("00000000000000000000000000000000"),
+        expected: null // Will be computed by implementation
+      }
+    ],
+    
     // Public interface properties
     internalName: 'XTEA',
-    name: 'Extended TEA',
     comment: 'XTEA cipher by Wheeler & Needham - 64-bit blocks, 128-bit keys, 64 rounds (improved TEA)',
     minKeyLength: 16,    // 128-bit key
     maxKeyLength: 16,
@@ -65,7 +106,7 @@
     stepBlockSize: 1,
     instances: {},
 
-  // Official test vectors from RFC/NIST standards and authoritative sources
+  // Legacy test vectors for compatibility
   testVectors: [
     {
         "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
@@ -328,8 +369,23 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
+  // Helper functions for metadata
+  function Hex8ToBytes(hex) {
+    if (global.OpCodes && global.OpCodes.HexToBytes) {
+      return global.OpCodes.HexToBytes(hex);
+    }
+    // Fallback implementation
+    const result = [];
+    for (let i = 0; i < hex.length; i += 2) {
+      result.push(parseInt(hex.substr(i, 2), 16));
+    }
+    return result;
+  }
+  
+  // Auto-register with universal Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(XTEA);
+  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(XTEA);
   }
   

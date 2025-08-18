@@ -1,17 +1,7 @@
 #!/usr/bin/env node
 /*
- * Universal SHA-224 Hash Function
- * Compatible with both Browser and Node.js environments
- * Based on NIST FIPS 180-4 specification
+ * SHA-224 Implementation
  * (c)2006-2025 Hawkynt
- * 
- * Educational implementation of the SHA-224 secure hash algorithm.
- * Produces 224-bit (28-byte) hash values from input data.
- * 
- * IMPLEMENTATION NOTES:
- * - Uses SHA-256 algorithm with different initial values and truncated output
- * - Based on NIST FIPS 180-4 Section 6.3
- * - Optimized with OpCodes for cross-platform portability
  */
 
 (function(global) {
@@ -54,21 +44,59 @@
     }
   }
   
-  // Create SHA-224 hash object
   const SHA224 = {
-    // Public interface properties
-    internalName: 'SHA224',
-    name: 'SHA-224',
-    comment: 'SHA-224 Secure Hash Algorithm (NIST FIPS 180-4) - Educational Implementation',
+    name: "SHA-224",
+    description: "Truncated version of SHA-256 producing 224-bit digest. Part of the SHA-2 family with identical security properties to SHA-256 but shorter output. Widely supported and standardized.",
+    inventor: "National Security Agency (NSA)",
+    year: 2001,
+    country: "US",
+    category: "hash",
+    subCategory: "Cryptographic Hash",
+    securityStatus: null,
+    securityNotes: "Considered secure with no known practical attacks. Provides equivalent security to SHA-256 with shorter output.",
     
-    // Cipher interface properties (required for registration)
-    minKeyLength: 0,    // Hash functions don't use keys
-    maxKeyLength: 0,    // Hash functions don't use keys
-    stepKeyLength: 1,   // Not applicable for hash functions
-    minBlockSize: 1,    // Can hash any amount of data
-    maxBlockSize: 0,    // No maximum block size (0 = unlimited)
-    stepBlockSize: 1,   // Can process byte by byte
-    instances: {},      // Instance tracking
+    documentation: [
+      {text: "NIST FIPS 180-4: Secure Hash Standard", uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf"},
+      {text: "RFC 6234: US Secure Hash Algorithms", uri: "https://tools.ietf.org/html/rfc6234"},
+      {text: "Wikipedia: SHA-2", uri: "https://en.wikipedia.org/wiki/SHA-2"}
+    ],
+    
+    references: [
+      {text: "OpenSSL Implementation", uri: "https://github.com/openssl/openssl/blob/master/crypto/sha/sha256.c"},
+      {text: "NIST CAVP Test Vectors", uri: "https://csrc.nist.gov/Projects/Cryptographic-Algorithm-Validation-Program/Secure-Hashing"},
+      {text: "RFC 6234 Specification", uri: "https://tools.ietf.org/html/rfc6234"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "Empty string test vector",
+        uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+        input: [],
+        expected: OpCodes.Hex8ToBytes("d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f")
+      },
+      {
+        text: "String 'abc' test vector",
+        uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+        input: OpCodes.StringToBytes("abc"),
+        expected: OpCodes.Hex8ToBytes("23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7")
+      },
+      {
+        text: "Alphabet test vector",
+        uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+        input: OpCodes.StringToBytes("abcdefghijklmnopqrstuvwxyz"),
+        expected: OpCodes.Hex8ToBytes("45a5f72c39c5cff2522eb3429799e49e5f44b356ef926bcf390dccc2")
+      }
+    ],
+
+    minKeyLength: 0,
+    maxKeyLength: 0,
+    stepKeyLength: 1,
+    minBlockSize: 1,
+    maxBlockSize: 0,
+    stepBlockSize: 1,
+    instances: {},
     
     // Inherit SHA-256 implementation
     _sha256: null,
@@ -144,9 +172,8 @@
   };
   
   // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(SHA224);
-  }
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(SHA224);
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {

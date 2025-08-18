@@ -25,8 +25,42 @@
   }
   
   const Kalyna = {
+    name: "Kalyna",
+    description: "Ukrainian national encryption standard (DSTU 7624:2014). Substitution-permutation network with variable block sizes (128/256/512-bit) and corresponding key sizes.",
+    inventor: "Roman Oliynykov, Ivan Gorbenko, Oleksandr Kazymyrov, Victor Ruzhentsev, Oleksandr Kuznetsov, Yuriy Gorbenko, Artem Boiko, Oleksandr Dyrda, Viktor Dolgov, Andrii Pushkaryov",
+    year: 2007,
+    country: "UA",
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: null,
+    securityNotes: "Winner of Ukrainian National Public Cryptographic Competition (2007-2010). Not thoroughly analyzed by international community.",
+    
+    documentation: [
+      {text: "DSTU 7624:2014 Standard", uri: "https://csrc.nist.gov/CSRC/media/Events/Lightweight-Cryptography-Workshop-2015/documents/papers/session1-kuznyechik-paper.pdf"},
+      {text: "Wikipedia Article", uri: "https://en.wikipedia.org/wiki/Kalyna_(cipher)"},
+      {text: "Kalyna Design Paper", uri: "https://eprint.iacr.org/2015/650.pdf"}
+    ],
+    
+    references: [
+      {text: "Reference Implementation", uri: "https://github.com/Roman-Oliynykov/Kalyna-reference"},
+      {text: "DSTU 7624:2014 Test Vectors", uri: "https://github.com/Roman-Oliynykov/Kalyna-reference/blob/master/test_vectors.txt"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "DSTU 7624:2014 Test Vector - Kalyna-128/128",
+        uri: "https://github.com/Roman-Oliynykov/Kalyna-reference/blob/master/test_vectors.txt",
+        keySize: 16,
+        blockSize: 16,
+        input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
+        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        expected: OpCodes.Hex8ToBytes("81bf1c7d779bac20e1c9ea39b4d2ad06")
+      }
+    ],
+
     internalName: 'kalyna',
-    name: 'Kalyna (DSTU 7624:2014)',
     // Required Cipher interface properties
     minKeyLength: 16,        // Minimum key length in bytes
     maxKeyLength: 32,        // Maximum key length in bytes
@@ -406,7 +440,12 @@
     ]
   };
   
-  // Register with global Cipher system if available
+  // Auto-register with Cipher subsystem if available
+  if (typeof global !== 'undefined' && global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(Kalyna);
+  }
+
+  // Register with global Cipher system if available (legacy support)
   if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
     const KalynaCipher = {
       internalName: Kalyna.internalName,

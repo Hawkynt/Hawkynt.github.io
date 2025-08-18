@@ -1,19 +1,6 @@
-#!/usr/bin/env node
 /*
- * PBKDF2 (Password-Based Key Derivation Function 2) - Universal Implementation
- * Compatible with both Browser and Node.js environments
- * 
- * Based on RFC 2898 (PKCS #5 v2.0) and RFC 8018 (PKCS #5 v2.1)
- * 
- * Educational implementation for learning purposes only.
- * Use proven cryptographic libraries for production systems.
- * 
- * Features:
- * - RFC 2898 and RFC 8018 compliant
- * - Supports HMAC-SHA1, HMAC-SHA256, HMAC-SHA512
- * - Configurable iteration count and derived key length
- * - Salt-based key stretching for password security
- * - Constant-time operations to prevent timing attacks
+ * PBKDF2 Implementation
+ * (c)2006-2025 Hawkynt
  */
 
 (function(global) {
@@ -58,34 +45,87 @@
   }
   
   const PBKDF2 = {
-    // Public interface properties
+    name: "PBKDF2",
+    description: "Password-Based Key Derivation Function 2 using HMAC for key stretching. Applies cryptographic hash function with salt and iteration count to derive keys from passwords.",
+    inventor: "RSA Laboratories",
+    year: 2000,
+    country: "US",
+    category: "keyDerivation",
+    subCategory: "Password-Based",
+    securityStatus: null,
+    securityNotes: "Secure with sufficient iterations (100,000+ recommended). Iteration count should be adjusted based on computational resources and threat model.",
+    
+    documentation: [
+      {text: "RFC 2898 - PKCS #5: Password-Based Cryptography Specification Version 2.0", uri: "https://tools.ietf.org/rfc/rfc2898.txt"},
+      {text: "RFC 8018 - PKCS #5: Password-Based Cryptography Specification Version 2.1", uri: "https://tools.ietf.org/rfc/rfc8018.txt"},
+      {text: "RFC 6070 - PBKDF2 Test Vectors", uri: "https://tools.ietf.org/rfc/rfc6070.txt"},
+      {text: "Wikipedia - PBKDF2", uri: "https://en.wikipedia.org/wiki/PBKDF2"}
+    ],
+    
+    references: [
+      {text: "OpenSSL PBKDF2 Implementation", uri: "https://github.com/openssl/openssl/blob/master/crypto/evp/p5_crpt2.c"},
+      {text: "Python hashlib PBKDF2", uri: "https://github.com/python/cpython/blob/main/Lib/hashlib.py"},
+      {text: "Crypto++ PBKDF2 Implementation", uri: "https://github.com/weidai11/cryptopp/blob/master/pwdbased.cpp"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Insufficient Iterations", 
+        text: "Low iteration counts make PBKDF2 vulnerable to brute force attacks using modern hardware including GPUs and ASICs",
+        mitigation: "Use at least 100,000 iterations for new applications and increase over time as hardware improves"
+      },
+      {
+        type: "Salt Reuse", 
+        text: "Reusing salts allows attackers to use rainbow tables and reduces the effectiveness of key stretching",
+        mitigation: "Always use unique, cryptographically random salts for each password"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "RFC 6070 PBKDF2-HMAC-SHA1 Test Case 1",
+        uri: "https://tools.ietf.org/rfc/rfc6070.txt",
+        keySize: 20,
+        input: ANSIToBytes("password"),
+        salt: ANSIToBytes("salt"),
+        iterations: 1,
+        expected: Hex8ToBytes("0c60c80f961f0e71f3a9b524af6012062fe037a6")
+      },
+      {
+        text: "RFC 6070 PBKDF2-HMAC-SHA1 Test Case 3",
+        uri: "https://tools.ietf.org/rfc/rfc6070.txt",
+        keySize: 20,
+        input: ANSIToBytes("password"),
+        salt: ANSIToBytes("salt"),
+        iterations: 4096,
+        expected: Hex8ToBytes("4b007901b765489abead49d926f721d065a429c1")
+      }
+    ],
+
+    // Legacy interface properties for compatibility
     internalName: 'PBKDF2',
-    name: 'PBKDF2',
-    comment: 'Password-Based Key Derivation Function 2 (RFC 2898/8018) - Educational Implementation',
-    minKeyLength: 1,      // Minimum password length
-    maxKeyLength: 1024,   // Maximum password length
+    minKeyLength: 1,
+    maxKeyLength: 1024,
     stepKeyLength: 1,
-    minBlockSize: 1,      // Minimum derived key length
-    maxBlockSize: 1024,   // Maximum derived key length
+    minBlockSize: 1,
+    maxBlockSize: 1024,
     stepBlockSize: 1,
     instances: {},
-    cantDecode: true,     // PBKDF2 is one-way
+    cantDecode: true,
     isInitialized: false,
     
-    // PBKDF2 parameters and defaults
-    DEFAULT_ITERATIONS: 100000,    // RFC 8018 recommends at least 1000, modern practice uses 100k+
-    DEFAULT_HASH: 'SHA256',        // Default hash function
-    DEFAULT_KEY_LENGTH: 32,        // Default derived key length (256 bits)
+    DEFAULT_ITERATIONS: 100000,
+    DEFAULT_HASH: 'SHA256',
+    DEFAULT_KEY_LENGTH: 32,
     
-    // Supported hash functions and their output sizes
     HASH_FUNCTIONS: {
       'SHA1': { size: 20, name: 'SHA1' },
       'SHA256': { size: 32, name: 'SHA256' },
       'SHA512': { size: 64, name: 'SHA512' }
     },
     
-    // Comprehensive test vectors from RFC 6070 and other standards
-    testVectors: [
+    // Legacy test vectors for compatibility
+    legacyTestVectors: [
       {
         algorithm: 'PBKDF2-HMAC-SHA1',
         description: 'Basic PBKDF2 with SHA1 - RFC 6070 Test Case 1',
@@ -96,9 +136,9 @@
         salt: 'salt',
         iterations: 1,
         keyLength: 20,
-        derivedKey: '0c60c80f961f0e71f3a9b524af6012062fe037a6',
-        passwordHex: '70617373776f7264',
-        saltHex: '73616c74',
+        derivedKey: Hex8ToBytes('0c60c80f961f0e71f3a9b524af6012062fe037a6'),
+        passwordHex: Hex8ToBytes('70617373776f7264'),
+        saltHex: Hex8ToBytes('73616c74'),
         notes: 'Single iteration test - fastest case',
         category: 'basic'
       },
@@ -112,9 +152,9 @@
         salt: 'salt',
         iterations: 2,
         keyLength: 20,
-        derivedKey: 'ea6c014dc72d6f8ccd1ed92ace1d41f0d8de8957',
-        passwordHex: '70617373776f7264',
-        saltHex: '73616c74',
+        derivedKey: Hex8ToBytes('ea6c014dc72d6f8ccd1ed92ace1d41f0d8de8957'),
+        passwordHex: Hex8ToBytes('70617373776f7264'),
+        saltHex: Hex8ToBytes('73616c74'),
         notes: 'Two iterations test',
         category: 'basic'
       },
@@ -128,9 +168,9 @@
         salt: 'salt',
         iterations: 4096,
         keyLength: 20,
-        derivedKey: '4b007901b765489abead49d926f721d065a429c1',
-        passwordHex: '70617373776f7264',
-        saltHex: '73616c74',
+        derivedKey: Hex8ToBytes('4b007901b765489abead49d926f721d065a429c1'),
+        passwordHex: Hex8ToBytes('70617373776f7264'),
+        saltHex: Hex8ToBytes('73616c74'),
         notes: 'Standard iteration count test',
         category: 'standard'
       },
@@ -144,9 +184,9 @@
         salt: 'salt',
         iterations: 16777216,
         keyLength: 20,
-        derivedKey: 'eefe3d61cd4da4e4e9945b3d6ba2158c2634e984',
-        passwordHex: '70617373776f7264',
-        saltHex: '73616c74',
+        derivedKey: Hex8ToBytes('eefe3d61cd4da4e4e9945b3d6ba2158c2634e984'),
+        passwordHex: Hex8ToBytes('70617373776f7264'),
+        saltHex: Hex8ToBytes('73616c74'),
         notes: 'High iteration count test (computationally expensive)',
         category: 'stress',
         skip: true  // Skip in normal testing due to computation time
@@ -161,9 +201,9 @@
         salt: 'saltSALTsaltSALTsaltSALTsaltSALTsalt',
         iterations: 4096,
         keyLength: 25,
-        derivedKey: '3d2eec4fe41c849b80c8d83662c0e44a8b291a964cf2f07038',
-        passwordHex: '70617373776f726450415353574f524470617373776f7264',
-        saltHex: '73616c7453414c5473616c7453414c5473616c7453414c5473616c7453414c5473616c74',
+        derivedKey: Hex8ToBytes('3d2eec4fe41c849b80c8d83662c0e44a8b291a964cf2f07038'),
+        passwordHex: Hex8ToBytes('70617373776f726450415353574f524470617373776f7264'),
+        saltHex: Hex8ToBytes('73616c7453414c5473616c7453414c5473616c7453414c5473616c7453414c5473616c74'),
         notes: 'Long password and salt test',
         category: 'boundary'
       },
@@ -177,9 +217,9 @@
         salt: 'sa\x00lt',
         iterations: 4096,
         keyLength: 16,
-        derivedKey: '56fa6aa75548099dcc37d7f03425e0c3',
-        passwordHex: '7061737300776f7264',
-        saltHex: '736100736c74',
+        derivedKey: Hex8ToBytes('56fa6aa75548099dcc37d7f03425e0c3'),
+        passwordHex: Hex8ToBytes('7061737300776f7264'),
+        saltHex: Hex8ToBytes('736100736c74'),
         notes: 'Null bytes in password and salt',
         category: 'boundary'
       },
@@ -193,9 +233,9 @@
         salt: 'salt',
         iterations: 100000,
         keyLength: 32,
-        derivedKey: '120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b',
-        passwordHex: '70617373776f7264',
-        saltHex: '73616c74',
+        derivedKey: Hex8ToBytes('120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b'),
+        passwordHex: Hex8ToBytes('70617373776f7264'),
+        saltHex: Hex8ToBytes('73616c74'),
         notes: 'Modern SHA256-based PBKDF2 with high iteration count',
         category: 'modern'
       },
@@ -209,9 +249,9 @@
         salt: 'salt',
         iterations: 100000,
         keyLength: 64,
-        derivedKey: '867f70cf1ade02cff3752599a3a53dc4af34c7a669815ae5d513554e1c8cf252c02d470a285a0501bad999bfe943c08f050235d7d68b1da55e63f73b60a57fce',
-        passwordHex: '70617373776f7264',
-        saltHex: '73616c74',
+        derivedKey: Hex8ToBytes('867f70cf1ade02cff3752599a3a53dc4af34c7a669815ae5d513554e1c8cf252c02d470a285a0501bad999bfe943c08f050235d7d68b1da55e63f73b60a57fce'),
+        passwordHex: Hex8ToBytes('70617373776f7264'),
+        saltHex: Hex8ToBytes('73616c74'),
         notes: 'SHA512-based PBKDF2 for maximum security',
         category: 'modern'
       },
@@ -225,9 +265,9 @@
         salt: 'salt',
         iterations: 1000,
         keyLength: 32,
-        derivedKey: '89b69d0516f829893c696226650a8687b80a18aec5b6e8c7d8d2b7d9b1c6b55c',
-        passwordHex: '',
-        saltHex: '73616c74',
+        derivedKey: Hex8ToBytes('89b69d0516f829893c696226650a8687b80a18aec5b6e8c7d8d2b7d9b1c6b55c'),
+        passwordHex: Hex8ToBytes(''),
+        saltHex: Hex8ToBytes('73616c74'),
         notes: 'Edge case: empty password handling',
         category: 'boundary'
       },
@@ -241,9 +281,9 @@
         salt: 'IEEE',
         iterations: 4096,
         keyLength: 32,
-        derivedKey: '0dc0d6eb90555ed6419756b9a15ec3e3209b63df457dd8d1870b9c14e1cc5e67',
-        passwordHex: '706173737068726173',
-        saltHex: '49454545',
+        derivedKey: Hex8ToBytes('0dc0d6eb90555ed6419756b9a15ec3e3209b63df457dd8d1870b9c14e1cc5e67'),
+        passwordHex: Hex8ToBytes('706173737068726173'),
+        saltHex: Hex8ToBytes('49454545'),
         notes: 'Real-world application: WiFi WPA2 PSK derivation',
         category: 'application'
       }
@@ -612,10 +652,20 @@
       this.iterations = params.iterations;
       this.keyLength = params.keyLength;
       this.hashFunction = params.hashFunction;
+    },
+
+    Init: function() {
+      return true;
     }
+
+    // TODO: Implementation methods here...
   };
-  
-  // Auto-register with Cipher system if available
+
+  // Auto-register with Subsystem if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(PBKDF2);
+
+  // Legacy registration for compatibility
   if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(PBKDF2);
   }

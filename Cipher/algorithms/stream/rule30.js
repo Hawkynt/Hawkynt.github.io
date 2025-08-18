@@ -1,19 +1,6 @@
-#!/usr/bin/env node
 /*
- * Universal Rule30 Cellular Automata Stream Cipher
- * Compatible with both Browser and Node.js environments
- * Based on Stephen Wolfram's Rule 30 cellular automaton
+ * Rule30 Cellular Automata Stream Cipher Implementation
  * (c)2006-2025 Hawkynt
- * 
- * Rule 30 is a one-dimensional cellular automaton that exhibits chaotic behavior
- * and can be used as a pseudorandom number generator. The algorithm uses:
- * - Elementary cellular automaton with rule 30
- * - Configurable array size (typically 31, 63, or 127 cells)
- * - Binary state evolution based on simple local rules
- * - Central cell output for keystream generation
- * 
- * Rule 30 pattern: 00011110 (binary) = 30 (decimal)
- * This implementation is for educational purposes only.
  */
 
 (function(global) {
@@ -45,13 +32,44 @@
     }
   }
   
-  // Create Rule30 cipher object
   const Rule30 = {
-    internalName: 'rule30',
-    name: 'Rule30',
-    version: '1.0',
-    author: 'Stephen Wolfram (1983)',
-    description: 'Cellular automata-based pseudorandom number generator',
+    name: "Rule30",
+    description: "Elementary cellular automaton-based pseudorandom number generator using Rule 30 pattern. Exhibits chaotic behavior suitable for simple random number generation but not cryptographically secure.",
+    inventor: "Stephen Wolfram",
+    year: 1983,
+    country: "GB",
+    category: "cipher",
+    subCategory: "Stream Cipher",
+    securityStatus: "educational",
+    securityNotes: "Cellular automaton not designed for cryptographic use. Predictable with sufficient state knowledge and lacks proper cryptographic properties. Educational use only.",
+    
+    documentation: [
+      {text: "Rule 30 Wikipedia", uri: "https://en.wikipedia.org/wiki/Rule_30"},
+      {text: "A New Kind of Science", uri: "https://www.wolframscience.com/nks/"}
+    ],
+    
+    references: [
+      {text: "Wolfram's Original Paper", uri: "https://www.stephenwolfram.com/publications/cellular-automata-irreversibility/"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Predictability", 
+        text: "State can be reconstructed from sufficient keystream output, not cryptographically secure",
+        mitigation: "Use only for educational purposes, never for actual cryptography"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Basic Rule30 Test",
+        uri: "Educational test case",
+        keySize: 8,
+        key: Hex8ToBytes("0102030405060708"),
+        input: Hex8ToBytes("00000000000000000000000000000000"),
+        expected: [] // No official test vectors, cellular automaton based
+      }
+    ],
 
     // Required by cipher system
     minKeyLength: 1,
@@ -268,10 +286,9 @@
     }
   };
   
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(Rule30);
-  }
+  // Auto-register with Subsystem (according to category) if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(Rule30);
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {

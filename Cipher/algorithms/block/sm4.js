@@ -43,9 +43,44 @@
   
   // Create SM4 cipher object
   const SM4 = {
+    name: "SM4",
+    description: "Chinese national block cipher standard (GB/T 32907-2016) with 128-bit blocks and keys. Uses 32-round unbalanced Feistel network with single S-box design. Officially standardized by China.",
+    inventor: "Chinese Academy of Sciences",
+    year: 2006,
+    country: "CN",
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: null,
+    securityNotes: "Chinese national standard with growing international adoption. Limited independent cryptanalysis compared to AES. Consider for compliance with Chinese regulations.",
+    
+    documentation: [
+      {text: "GB/T 32907-2016 Chinese National Standard", uri: "http://www.gb688.cn/bzgk/gb/newGbInfo?hcno=7803DE42D3BC5E80B0C3E5D8E873D56A"},
+      {text: "RFC 8018 - SM4 Encryption Algorithm", uri: "https://tools.ietf.org/rfc/rfc8018.txt"},
+      {text: "SM4 Specification (English)", uri: "https://eprint.iacr.org/2008/329.pdf"}
+    ],
+    
+    references: [
+      {text: "OpenSSL SM4 Implementation", uri: "https://github.com/openssl/openssl/blob/master/crypto/sm4/"},
+      {text: "GmSSL SM4 Implementation", uri: "https://github.com/guanzhi/GmSSL"},
+      {text: "Bouncy Castle SM4 Implementation", uri: "https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/engines"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "SM4 Standard Test Vector",
+        uri: "GB/T 32907-2016",
+        keySize: 16,
+        blockSize: 16,
+        input: Hex8ToBytes("0123456789ABCDEFFEDCBA9876543210"),
+        key: Hex8ToBytes("0123456789ABCDEFFEDCBA9876543210"),
+        expected: Hex8ToBytes("681EDF34D206965E86B3E94F536E4246")
+      }
+    ],
+    
     // Public interface properties
     internalName: 'sm4',
-    name: 'SM4',
     comment: 'SM4 Chinese National Standard Block Cipher (GB/T 32907-2016)',
     minKeyLength: 16,
     maxKeyLength: 16,
@@ -294,8 +329,23 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
+  // Helper functions for metadata
+  function Hex8ToBytes(hex) {
+    if (global.OpCodes && global.OpCodes.HexToBytes) {
+      return global.OpCodes.HexToBytes(hex);
+    }
+    // Fallback implementation
+    const result = [];
+    for (let i = 0; i < hex.length; i += 2) {
+      result.push(parseInt(hex.substr(i, 2), 16));
+    }
+    return result;
+  }
+  
+  // Auto-register with universal Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(SM4);
+  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(SM4);
   }
   

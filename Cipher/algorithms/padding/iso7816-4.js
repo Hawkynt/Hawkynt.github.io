@@ -28,21 +28,21 @@
     testVectors: [
       {
         description: 'ISO 7816-4 padding for 16-byte block, 13 bytes input',
-        input: '6bc1bee22e409f96e93d7e11739317',
+        input: Hex8ToBytes('6bc1bee22e409f96e93d7e11739317'),
         blockSize: 16,
-        expected: '6bc1bee22e409f96e93d7e11739317800000'
+        expected: Hex8ToBytes('6bc1bee22e409f96e93d7e11739317800000')
       },
       {
         description: 'ISO 7816-4 padding for 8-byte block, 5 bytes input',
-        input: '6bc1bee22e',
+        input: Hex8ToBytes('6bc1bee22e'),
         blockSize: 8,
-        expected: '6bc1bee22e800000'
+        expected: Hex8ToBytes('6bc1bee22e800000')
       },
       {
         description: 'ISO 7816-4 padding for full block',
-        input: '6bc1bee22e409f96e93d7e117393172a',
+        input: Hex8ToBytes('6bc1bee22e409f96e93d7e117393172a'),
         blockSize: 16,
-        expected: '6bc1bee22e409f96e93d7e117393172a8000000000000000000000000000000000'
+        expected: Hex8ToBytes('6bc1bee22e409f96e93d7e117393172a8000000000000000000000000000000000')
       }
     ]
   });

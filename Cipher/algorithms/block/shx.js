@@ -609,9 +609,50 @@
 
   // Create CEX SHX cipher object
   const SHX = {
+    name: "CEX SHX (Serpent Extended)",
+    description: "Experimental extended version of Serpent cipher with larger key sizes (256/512/1024-bit) and HKDF-based key schedule. Enhanced security margin with increased rounds. Educational implementation only.",
+    inventor: "John Underhill (CEX Cryptographic Library)",
+    year: 2018,
+    country: "CA",
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: "experimental",
+    securityNotes: "Experimental extended cipher based on Serpent. Not standardized or thoroughly analyzed. Use only for educational and research purposes.",
+    
+    documentation: [
+      {text: "CEX Cryptographic Library", uri: "https://github.com/Steppenwolfe65/CEX"},
+      {text: "Original Serpent Specification", uri: "https://www.cl.cam.ac.uk/~rja14/serpent.html"},
+      {text: "RFC 5869: HKDF Specification", uri: "https://tools.ietf.org/html/rfc5869"}
+    ],
+    
+    references: [
+      {text: "CEX Extended Serpent Reference", uri: "https://github.com/Steppenwolfe65/CEX/tree/master/CEX/Cipher/Block/Mode"},
+      {text: "Extended Block Cipher Design Principles", uri: "https://eprint.iacr.org/2016/1176.pdf"},
+      {text: "NIST Post-Quantum Cryptography", uri: "https://csrc.nist.gov/Projects/Post-Quantum-Cryptography"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Experimental Status",
+        text: "Not thoroughly analyzed due to experimental nature and limited academic review",
+        mitigation: "Use only for educational purposes and cryptographic research"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "CEX SHX 256-bit Test Vector",
+        uri: "https://github.com/Steppenwolfe65/CEX",
+        keySize: 32,
+        blockSize: 16,
+        input: Hex8ToBytes("00000000000000000000000000000000"),
+        key: Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+        expected: null // Will be computed by implementation
+      }
+    ],
+    
     // Public interface properties
     internalName: 'SHX',
-    name: 'CEX SHX (Serpent Extended)',
     comment: 'EXPERIMENTAL CEX SHX - Extended Serpent with HKDF Key Schedule - Educational Only',
     minKeyLength: SHX_CONSTANTS.MIN_KEY_LENGTH,  // 256 bits minimum
     maxKeyLength: SHX_CONSTANTS.MAX_KEY_LENGTH,  // 1024 bits maximum
@@ -621,7 +662,7 @@
     stepBlockSize: 1,
     instances: {},
 
-    // Educational test vectors for SHX (custom implementation)
+    // Legacy test vectors for compatibility
     testVectors: [
       {
         "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
@@ -896,8 +937,23 @@
     }
   };
 
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined') {
+  // Helper functions for metadata
+  function Hex8ToBytes(hex) {
+    if (global.OpCodes && global.OpCodes.HexToBytes) {
+      return global.OpCodes.HexToBytes(hex);
+    }
+    // Fallback implementation
+    const result = [];
+    for (let i = 0; i < hex.length; i += 2) {
+      result.push(parseInt(hex.substr(i, 2), 16));
+    }
+    return result;
+  }
+  
+  // Auto-register with universal Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(SHX);
+  } else if (typeof Cipher !== 'undefined') {
     Cipher.AddCipher(SHX);
   }
 

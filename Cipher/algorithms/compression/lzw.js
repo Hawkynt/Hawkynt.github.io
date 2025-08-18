@@ -28,9 +28,55 @@
   }
   
   const LZW = {
+    name: "LZW (Lempel-Ziv-Welch)",
+    description: "Dictionary compression algorithm that builds a table of frequently occurring strings. Pre-initializes dictionary with all single bytes and adds new patterns dynamically during compression.",
+    inventor: "Terry Welch", 
+    year: 1984,
+    country: "US",
+    category: "compression",
+    subCategory: "Dictionary",
+    securityStatus: null,
+    securityNotes: "Compression algorithm - no security properties.",
+    
+    documentation: [
+      {text: "A Technique for High-Performance Data Compression", uri: "https://ieeexplore.ieee.org/document/1659158"},
+      {text: "LZW - Wikipedia", uri: "https://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Welch"},
+      {text: "GIF Format Specification", uri: "https://www.w3.org/Graphics/GIF/spec-gif89a.txt"},
+      {text: "TIFF LZW Compression", uri: "https://www.adobe.io/open/standards/TIFF.html"}
+    ],
+    
+    references: [
+      {text: "Original IEEE Paper by Terry Welch", uri: "https://ieeexplore.ieee.org/document/1659158"},
+      {text: "libgif LZW Implementation", uri: "https://github.com/lecram/gifenc"},
+      {text: "TIFF LZW Reference", uri: "https://github.com/vadimkantorov/pytiff"},
+      {text: "Educational LZW Implementation", uri: "https://rosettacode.org/wiki/LZW_compression"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "Simple repeated pattern",
+        uri: "Basic LZW test", 
+        input: ANSIToBytes("ABABABAB"),
+        expected: Hex8ToBytes("010041424101010258")
+      },
+      {
+        text: "Text with common substrings",
+        uri: "Text compression test",
+        input: ANSIToBytes("TOBEORNOTTOBEORTOBEORNOT"),
+        expected: null
+      },
+      {
+        text: "GIF-style compression",
+        uri: "Image data test",
+        input: Hex8ToBytes("474946"),
+        expected: null
+      }
+    ],
+
+    // Legacy interface properties
     internalName: 'LZW',
-    name: 'LZW (Lempel-Ziv-Welch)',
-    comment: 'Terry Welch variant of LZ78 - pre-initialized dictionary, used in GIF/TIFF',
     category: 'Dictionary',
     instances: {},
     isInitialized: false,
@@ -382,10 +428,10 @@
     }
   };
   
-  // Auto-register with compression system
-  if (global.Compression) {
+  // Auto-register with Compression system if available
+  if (typeof global.Compression !== 'undefined' && global.Compression.Add) {
     LZW.Init();
-    global.Compression.AddAlgorithm(LZW);
+    global.Compression.Add(LZW);
   }
   
   // Export for Node.js

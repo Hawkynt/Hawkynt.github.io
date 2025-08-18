@@ -28,9 +28,55 @@
   }
   
   const RLE = {
+    name: "Run-Length Encoding (RLE)",
+    description: "Simple compression algorithm that replaces consecutive identical bytes with a count-value pair. Most effective on data with long runs of repeated values.",
+    inventor: "Unknown (fundamental technique)",
+    year: 1967,
+    country: "US",
+    category: "compression",
+    subCategory: "Transform",
+    securityStatus: null,
+    securityNotes: "Compression algorithm - no security properties.",
+    
+    documentation: [
+      {text: "Run-Length Encoding - Wikipedia", uri: "https://en.wikipedia.org/wiki/Run-length_encoding"},
+      {text: "PCX Image Format Specification", uri: "https://web.archive.org/web/20100206055706/http://www.qzx.com/pc-gpe/pcx.txt"},
+      {text: "TIFF PackBits Algorithm", uri: "https://www.adobe.io/open/standards/TIFF.html"},
+      {text: "ITU-T T.4 Fax Standard", uri: "https://www.itu.int/rec/T-REC-T.4/en"}
+    ],
+    
+    references: [
+      {text: "Mark Nelson RLE Article", uri: "https://web.archive.org/web/20071013094925/http://www.dogma.net/markn/articles/rle/rle.htm"}, 
+      {text: "Stanford CS106B Compression", uri: "https://web.stanford.edu/class/cs106b/lectures/compression/"},
+      {text: "MIT Compression Algorithms", uri: "https://ocw.mit.edu/courses/electrical-engineering-and-computer-science/"},
+      {text: "Image Compression Examples", uri: "https://testimages.org/"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "Simple repeated pattern",
+        uri: "Basic RLE test",
+        input: ANSIToBytes("AAABBBCCC"),
+        expected: Hex8ToBytes("1B0341421B03421B0343")
+      },
+      {
+        text: "Long run compression",
+        uri: "Maximum compression test",
+        input: ANSIToBytes("AAAAAAAAAA"),
+        expected: Hex8ToBytes("1B0A41")
+      },
+      {
+        text: "No repeated characters", 
+        uri: "Worst case test",
+        input: ANSIToBytes("ABCDEF"),
+        expected: ANSIToBytes("ABCDEF")
+      }
+    ],
+
+    // Legacy interface properties
     internalName: 'RLE',
-    name: 'Run-Length Encoding',
-    comment: 'Simple repetition compression algorithm - compresses consecutive identical characters',
     category: 'Simple',
     instances: {},
     isInitialized: false,
@@ -39,7 +85,7 @@
     MAX_RUN_LENGTH: 255, // Maximum run length in a single encoding
     ESCAPE_CHAR: 0x1B,   // Escape character (ESC)
     
-    // Comprehensive test vectors for RLE algorithm
+    // Legacy test vectors for compatibility
     testVectors: [
       {
         algorithm: 'RLE',
@@ -127,60 +173,6 @@
       }
     ],
     
-    // Reference links for RLE specifications and implementations
-    referenceLinks: {
-      specifications: [
-        {
-          name: 'PCX Image Format Specification (uses RLE)',
-          url: 'https://web.archive.org/web/20100206055706/http://www.qzx.com/pc-gpe/pcx.txt',
-          description: 'ZSoft PCX format using RLE compression for images'
-        },
-        {
-          name: 'TIFF Specification - PackBits RLE',
-          url: 'https://www.adobe.io/open/standards/TIFF.html',
-          description: 'Adobe TIFF format PackBits RLE compression method'
-        },
-        {
-          name: 'ITU-T T.4 Fax Compression (Modified RLE)',
-          url: 'https://www.itu.int/rec/T-REC-T.4/en',
-          description: 'International standard for fax compression using RLE variant'
-        }
-      ],
-      implementations: [
-        {
-          name: 'Mark Nelson\'s RLE Article',
-          url: 'https://web.archive.org/web/20071013094925/http://www.dogma.net/markn/articles/rle/rle.htm',
-          description: 'Classic implementation guide with C code examples'
-        },
-        {
-          name: 'Stanford CS106B Compression Lecture',
-          url: 'https://web.stanford.edu/class/cs106b/lectures/compression/',
-          description: 'Educational implementation with detailed explanations'
-        },
-        {
-          name: 'MIT OpenCourseWare - Compression Algorithms',
-          url: 'https://ocw.mit.edu/courses/electrical-engineering-and-computer-science/',
-          description: 'Academic treatment of RLE and other compression methods'
-        }
-      ],
-      validation: [
-        {
-          name: 'Image Compression Test Images',
-          url: 'https://testimages.org/',
-          description: 'Standard test images for evaluating RLE compression on graphics'
-        },
-        {
-          name: 'Canterbury Corpus (includes binary files)',
-          url: 'https://corpus.canterbury.ac.nz/',
-          description: 'Standard compression benchmark including files suitable for RLE'
-        },
-        {
-          name: 'Repetitive Data Benchmark',
-          url: 'http://pizzachili.dcc.uchile.cl/repcorpus.html',
-          description: 'Corpus specifically designed for repetitive data compression'
-        }
-      ]
-    },
     
     /**
      * Initialize the algorithm
@@ -431,10 +423,10 @@
     }
   };
   
-  // Auto-register with compression system
-  if (global.Compression) {
+  // Auto-register with Compression system if available
+  if (typeof global.Compression !== 'undefined' && global.Compression.Add) {
     RLE.Init();
-    global.Compression.AddAlgorithm(RLE);
+    global.Compression.Add(RLE);
   }
   
   // Export for Node.js

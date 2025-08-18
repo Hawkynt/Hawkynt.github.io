@@ -1,15 +1,7 @@
 #!/usr/bin/env node
 /*
- * Universal SHA-1 Hash Function
- * Compatible with both Browser and Node.js environments
- * Based on RFC 3174 specification
+ * SHA-1 Implementation
  * (c)2006-2025 Hawkynt
- * 
- * Educational implementation of the SHA-1 secure hash algorithm.
- * Produces 160-bit (20-byte) hash values from input data.
- * 
- * WARNING: SHA-1 is cryptographically broken and should not be used for security purposes.
- * This implementation is for educational purposes only.
  */
 
 (function(global) {
@@ -42,20 +34,78 @@
     }
   }
   
-  // Create SHA-1 hash object
   const SHA1 = {
-    // Public interface properties
-    internalName: 'SHA1',
-    name: 'SHA-1',
-    comment: 'Secure Hash Algorithm 1 (RFC 3174) - Educational Implementation',
-    minKeyLength: 0,    // Hash functions don't use keys
+    name: "SHA-1",
+    description: "Secure Hash Algorithm producing 160-bit digest. First SHA standard by NIST but now cryptographically broken due to collision attacks. Should not be used for security purposes.",
+    inventor: "National Security Agency (NSA)", 
+    year: 1995,
+    country: "US",
+    category: "hash",
+    subCategory: "Cryptographic Hash",
+    securityStatus: "insecure",
+    securityNotes: "Completely broken by practical collision attacks in 2017 (SHAttered). Should never be used for cryptographic purposes. Educational use only.",
+    
+    documentation: [
+      {text: "RFC 3174: US Secure Hash Algorithm 1", uri: "https://tools.ietf.org/html/rfc3174"},
+      {text: "NIST FIPS 180-1 (Superseded)", uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-1.pdf"},
+      {text: "SHAttered Attack", uri: "https://shattered.io/"}
+    ],
+    
+    references: [
+      {text: "OpenSSL Implementation (Deprecated)", uri: "https://github.com/openssl/openssl/blob/master/crypto/sha/sha1dgst.c"},
+      {text: "RFC 3174 Specification", uri: "https://tools.ietf.org/html/rfc3174"},
+      {text: "Git SHA-1DC Implementation", uri: "https://github.com/git/git/blob/master/sha1dc/"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Collision Attack",
+        text: "Practical collision attacks demonstrated in 2017. Two different PDFs can produce the same SHA-1 hash.",
+        mitigation: "Use SHA-256 or SHA-3 instead. Never use SHA-1 for digital signatures, certificates, or security purposes."
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Empty string test vector",
+        uri: "https://tools.ietf.org/html/rfc3174",
+        input: [],
+        expected: OpCodes.Hex8ToBytes("da39a3ee5e6b4b0d3255bfef95601890afd80709")
+      },
+      {
+        text: "Single character 'a' test vector",
+        uri: "https://tools.ietf.org/html/rfc3174",
+        input: OpCodes.StringToBytes("a"),
+        expected: OpCodes.Hex8ToBytes("86f7e437faa5a7fce15d1ddcb9eaeaea377667b8")
+      },
+      {
+        text: "String 'abc' test vector",
+        uri: "https://tools.ietf.org/html/rfc3174",
+        input: OpCodes.StringToBytes("abc"),
+        expected: OpCodes.Hex8ToBytes("a9993e364706816aba3e25717850c26c9cd0d89d")
+      },
+      {
+        text: "Message 'message digest' test vector",
+        uri: "https://tools.ietf.org/html/rfc3174",
+        input: OpCodes.StringToBytes("message digest"),
+        expected: OpCodes.Hex8ToBytes("c12252ceda8be8994d5fa0290a47231c1d16aae3")
+      },
+      {
+        text: "Alphabet test vector",
+        uri: "https://tools.ietf.org/html/rfc3174",
+        input: OpCodes.StringToBytes("abcdefghijklmnopqrstuvwxyz"),
+        expected: OpCodes.Hex8ToBytes("32d10c7b8cf96570ca04ce37f2a19d84240d3a89")
+      }
+    ],
+
+    minKeyLength: 0,
     maxKeyLength: 0,
     stepKeyLength: 1,
-    minBlockSize: 0,    // Can hash any length input
+    minBlockSize: 0,
     maxBlockSize: 0,
     stepBlockSize: 1,
     instances: {},
-    cantDecode: true,  // Hash functions are one-way
+    cantDecode: true,
     isInitialized: false,
     
     // SHA-1 constants
@@ -69,180 +119,6 @@
     H3: 0x10325476,
     H4: 0xC3D2E1F0,
     
-    // Comprehensive test vectors from RFC 3174 and NIST
-    testVectors: [
-      {
-        algorithm: 'SHA-1',
-        description: 'Empty string',
-        origin: 'RFC 3174',
-        link: 'https://tools.ietf.org/html/rfc3174',
-        standard: 'RFC 3174',
-        input: '',
-        hash: 'da39a3ee5e6b4b0d3255bfef95601890afd80709',
-        inputHex: '',
-        hashHex: 'da39a3ee5e6b4b0d3255bfef95601890afd80709',
-        notes: 'Standard empty string test vector from RFC 3174',
-        category: 'basic'
-      },
-      {
-        algorithm: 'SHA-1',
-        description: 'Single character a',
-        origin: 'RFC 3174',
-        link: 'https://tools.ietf.org/html/rfc3174',
-        standard: 'RFC 3174',
-        input: 'a',
-        hash: '86f7e437faa5a7fce15d1ddcb9eaeaea377667b8',
-        inputHex: '61',
-        hashHex: '86f7e437faa5a7fce15d1ddcb9eaeaea377667b8',
-        notes: 'Single ASCII character test',
-        category: 'basic'
-      },
-      {
-        algorithm: 'SHA-1',
-        description: 'abc string',
-        origin: 'RFC 3174',
-        link: 'https://tools.ietf.org/html/rfc3174',
-        standard: 'RFC 3174',
-        input: 'abc',
-        hash: 'a9993e364706816aba3e25717850c26c9cd0d89d',
-        inputHex: '616263',
-        hashHex: 'a9993e364706816aba3e25717850c26c9cd0d89d',
-        notes: 'Standard abc test vector from RFC 3174',
-        category: 'basic'
-      },
-      {
-        algorithm: 'SHA-1',
-        description: 'Message digest',
-        origin: 'RFC 3174',
-        link: 'https://tools.ietf.org/html/rfc3174',
-        standard: 'RFC 3174',
-        input: 'message digest',
-        hash: 'c12252ceda8be8994d5fa0290a47231c1d16aae3',
-        inputHex: '6d65737361676520646967657374',
-        hashHex: 'c12252ceda8be8994d5fa0290a47231c1d16aae3',
-        notes: 'RFC 3174 example message',
-        category: 'basic'
-      },
-      {
-        algorithm: 'SHA-1',
-        description: 'Alphabet string',
-        origin: 'RFC 3174',
-        link: 'https://tools.ietf.org/html/rfc3174',
-        standard: 'RFC 3174',
-        input: 'abcdefghijklmnopqrstuvwxyz',
-        hash: '32d10c7b8cf96570ca04ce37f2a19d84240d3a89',
-        inputHex: '6162636465666768696a6b6c6d6e6f707172737475767778797a',
-        hashHex: '32d10c7b8cf96570ca04ce37f2a19d84240d3a89',
-        notes: 'Full alphabet test vector',
-        category: 'basic'
-      },
-      {
-        algorithm: 'SHA-1',
-        description: 'Long repeated pattern',
-        origin: 'RFC 3174',
-        link: 'https://tools.ietf.org/html/rfc3174',
-        standard: 'RFC 3174',
-        input: 'abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq',
-        hash: '84983e441c3bd26ebaae4aa1f95129e5e54670f1',
-        inputHex: '6162636462636465636465666465666765666768666768696768696a68696a6b696a6b6c6a6b6c6d6b6c6d6e6c6d6e6f6d6e6f706e6f7071',
-        hashHex: '84983e441c3bd26ebaae4aa1f95129e5e54670f1',
-        notes: 'RFC 3174 test case - overlapping pattern',
-        category: 'basic'
-      },
-      {
-        algorithm: 'SHA-1',
-        description: 'Million a characters',
-        origin: 'RFC 3174',
-        link: 'https://tools.ietf.org/html/rfc3174',
-        standard: 'RFC 3174',
-        input: 'a'.repeat(1000000),
-        hash: '34aa973cd4c4daa4f61eeb2bdbad27316534016f',
-        inputHex: '61'.repeat(1000000),
-        hashHex: '34aa973cd4c4daa4f61eeb2bdbad27316534016f',
-        notes: 'Long message test - 1 million a characters',
-        category: 'long'
-      },
-      {
-        algorithm: 'SHA-1',
-        description: 'SECURITY WARNING: SHA-1 is deprecated',
-        origin: 'Google/CWI collision research',
-        link: 'https://shattered.io/',
-        standard: 'Research',
-        input: 'DEPRECATION_WARNING_SHA1_BROKEN',
-        hash: 'warning_sha1_collision_attacks_demonstrated',
-        inputHex: '4445505245434154494f4e5f5741524e494e475f53484131425f524f4b454e',
-        hashHex: '7761726e696e675f736861315f636f6c6c6973696f6e5f617474616265735f64656d6f6e737472617465',
-        notes: 'WARNING: SHA-1 broken by collision attacks in 2017 - DO NOT USE for security',
-        category: 'security'
-      }
-    ],
-    
-    // Reference links for SHA-1
-    referenceLinks: {
-      specifications: [
-        {
-          name: 'RFC 3174: US Secure Hash Algorithm 1 (SHA1)',
-          url: 'https://tools.ietf.org/html/rfc3174',
-          description: 'Original SHA-1 specification'
-        },
-        {
-          name: 'NIST FIPS 180-1: Secure Hash Standard (Superseded)',
-          url: 'https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-1.pdf',
-          description: 'Original NIST standard for SHA-1 (now superseded)'
-        },
-        {
-          name: 'NIST SP 800-131A: Cryptographic Algorithm and Key Length Deprecation',
-          url: 'https://csrc.nist.gov/publications/detail/sp/800-131a/rev-2/final',
-          description: 'NIST policy deprecating SHA-1 for cryptographic use'
-        }
-      ],
-      implementations: [
-        {
-          name: 'OpenSSL libcrypto (deprecated)',
-          url: 'https://github.com/openssl/openssl/blob/master/crypto/sha/sha1dgst.c',
-          description: 'OpenSSL implementation - deprecated for cryptographic use'
-        },
-        {
-          name: 'libgcrypt',
-          url: 'https://github.com/gpg/libgcrypt/blob/master/cipher/sha1.c',
-          description: 'GNU Cryptographic Library implementation'
-        },
-        {
-          name: 'Git SHA-1 implementation',
-          url: 'https://github.com/git/git/blob/master/sha1dc/',
-          description: 'Git version with collision detection (SHA-1DC)'
-        }
-      ],
-      validation: [
-        {
-          name: 'RFC 3174 Test Vectors',
-          url: 'https://tools.ietf.org/html/rfc3174#section-7.3',
-          description: 'Original test vectors from RFC specification'
-        },
-        {
-          name: 'NIST CAVP SHA-1 Test Vectors',
-          url: 'https://csrc.nist.gov/Projects/Cryptographic-Algorithm-Validation-Program/Secure-Hashing',
-          description: 'Comprehensive SHA-1 test vectors (deprecated)'
-        }
-      ],
-      security: [
-        {
-          name: 'SHAttered: SHA-1 Collision Attack',
-          url: 'https://shattered.io/',
-          description: 'First practical SHA-1 collision attack (2017)'
-        },
-        {
-          name: 'NIST Policy on SHA-1 Deprecation',
-          url: 'https://csrc.nist.gov/News/2015/NIST-Approves-Revisions-to-FIPS-180-4',
-          description: 'NIST guidance on SHA-1 deprecation timeline'
-        },
-        {
-          name: 'Theoretical Attacks on SHA-1',
-          url: 'https://en.wikipedia.org/wiki/SHA-1#Attacks',
-          description: 'Overview of cryptanalytic attacks on SHA-1'
-        }
-      ]
-    },
     
     // Initialize cipher
     Init: function() {
@@ -443,9 +319,8 @@
   };
   
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(SHA1);
-  }
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(SHA1);
   
   // Export to global scope
   global.SHA1 = SHA1;

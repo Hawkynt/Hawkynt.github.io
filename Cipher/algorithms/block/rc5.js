@@ -45,9 +45,43 @@
   
   // Create RC5 cipher object
   const RC5 = {
+    name: "RC5",
+    description: "Variable symmetric block cipher designed by Ron Rivest. Features data-dependent rotations and configurable parameters (word size, rounds, key length).",
+    inventor: "Ronald Rivest",
+    year: 1994,
+    country: "US", 
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: null,
+    securityNotes: "Patented algorithm with good security record when used with adequate parameters. Patent expired in 2015.",
+    
+    documentation: [
+      {text: "RFC 2040", uri: "https://tools.ietf.org/rfc/rfc2040.txt"},
+      {text: "RC5 Original Paper", uri: "https://people.csail.mit.edu/rivest/Rivest-rc5rev.pdf"},
+      {text: "Wikipedia Article", uri: "https://en.wikipedia.org/wiki/RC5"}
+    ],
+    
+    references: [
+      {text: "Rivest's RC5 Reference", uri: "https://people.csail.mit.edu/rivest/Rivest-rc5rev.pdf"},
+      {text: "RFC 2040 Specification", uri: "https://tools.ietf.org/rfc/rfc2040.txt"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "RFC 2040 Test Vector - RC5-32/12/16",
+        uri: "https://tools.ietf.org/rfc/rfc2040.txt",
+        keySize: 16,
+        blockSize: 8,
+        input: OpCodes.Hex8ToBytes("0000000000000000"),
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("21a5dbee154b8f6d")
+      }
+    ],
+
     // Public interface properties
     internalName: 'RC5',
-    name: 'RC5',
     comment: 'RC5 Variable Block Cipher (RC5-32/12/16 default)',
     minKeyLength: 0,     // 0 bytes minimum
     maxKeyLength: 255,   // 255 bytes maximum

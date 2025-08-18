@@ -28,9 +28,55 @@
   }
   
   const LZ77 = {
+    name: "LZ77 Sliding Window Compression",
+    description: "Dictionary-based compression using sliding window technique. Encodes data as (distance, length, literal) tuples by finding matches in a sliding history buffer.", 
+    inventor: "Abraham Lempel, Jacob Ziv",
+    year: 1977,
+    country: "IL",
+    category: "compression",
+    subCategory: "Dictionary", 
+    securityStatus: null,
+    securityNotes: "Compression algorithm - no security properties.",
+    
+    documentation: [
+      {text: "A Universal Algorithm for Sequential Data Compression", uri: "https://ieeexplore.ieee.org/document/1055714"},
+      {text: "RFC 1951 - DEFLATE Specification", uri: "https://tools.ietf.org/html/rfc1951"},
+      {text: "LZ77 and LZ78 - Wikipedia", uri: "https://en.wikipedia.org/wiki/LZ77_and_LZ78"},
+      {text: "Data Compression: The Complete Reference", uri: "https://www.amazon.com/Data-Compression-Complete-Reference/dp/1846286026"}
+    ],
+    
+    references: [
+      {text: "Mark Nelson Implementation Guide", uri: "https://marknelson.us/posts/1989/10/01/lzw-data-compression.html"},
+      {text: "GZIP/zlib Implementation", uri: "https://github.com/madler/zlib"}, 
+      {text: "Educational LZ77 Implementation", uri: "https://www.cs.duke.edu/csed/curious/compression/lz77.html"},
+      {text: "LZSS Variant", uri: "https://web.archive.org/web/20070823091851/http://www.cs.bell-labs.com/who/sjk/data/lzss.ps"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "Simple repetitive pattern",
+        uri: "Basic sliding window test",
+        input: ANSIToBytes("AABCAABCABC"),
+        expected: null
+      },
+      {
+        text: "Long repeated substring",
+        uri: "Maximum distance test", 
+        input: ANSIToBytes("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefgh"),
+        expected: null
+      },
+      {
+        text: "Self-overlapping pattern", 
+        uri: "https://en.wikipedia.org/wiki/LZ77_and_LZ78#Example",
+        input: ANSIToBytes("ABCABCABCABCABC"),
+        expected: null
+      }
+    ],
+
+    // Legacy interface properties
     internalName: 'LZ77',
-    name: 'LZ77 Sliding Window',
-    comment: 'Lempel-Ziv 1977 algorithm - sliding window dictionary compression',
     category: 'Dictionary',
     instances: {},
     isInitialized: false,
@@ -41,7 +87,7 @@
     MIN_MATCH_LENGTH: 3,    // Minimum match length to encode
     MAX_MATCH_LENGTH: 258,  // Maximum match length (LOOKAHEAD_SIZE + MIN_MATCH_LENGTH - 1)
     
-    // Comprehensive test vectors for LZ77 algorithm
+    // Legacy test vectors for compatibility
     testVectors: [
       {
         algorithm: 'LZ77',
@@ -117,60 +163,6 @@
       }
     ],
     
-    // Reference links for LZ77 specifications and implementations
-    referenceLinks: {
-      specifications: [
-        {
-          name: 'Original LZ77 Paper: A Universal Algorithm for Sequential Data Compression',
-          url: 'https://ieeexplore.ieee.org/document/1055714',
-          description: 'Jacob Ziv and Abraham Lempel\'s original 1977 paper'
-        },
-        {
-          name: 'RFC 1951 - DEFLATE Compressed Data Format (LZ77 + Huffman)',
-          url: 'https://tools.ietf.org/html/rfc1951',
-          description: 'Official specification of LZ77 in DEFLATE compression'
-        },
-        {
-          name: 'LZSS Variant - Bell Labs Technical Report',
-          url: 'https://web.archive.org/web/20070823091851/http://www.cs.bell-labs.com/who/sjk/data/lzss.ps',
-          description: 'Storer and Szymanski improvement to LZ77'
-        }
-      ],
-      implementations: [
-        {
-          name: 'Mark Nelson Data Compression Reference',
-          url: 'https://marknelson.us/posts/1989/10/01/lzw-data-compression.html',
-          description: 'Comprehensive implementation guide with working code'
-        },
-        {
-          name: 'GZIP Implementation (LZ77 + Huffman)',
-          url: 'https://github.com/madler/zlib',
-          description: 'Production-quality implementation by Mark Adler'
-        },
-        {
-          name: 'Educational LZ77 Implementation',
-          url: 'https://www.cs.duke.edu/csed/curious/compression/lz77.html',
-          description: 'Step-by-step educational implementation'
-        }
-      ],
-      validation: [
-        {
-          name: 'Canterbury Corpus Compression Benchmark',
-          url: 'https://corpus.canterbury.ac.nz/',
-          description: 'Standard test files for compression algorithms'
-        },
-        {
-          name: 'Silesia Compression Corpus',
-          url: 'http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia',
-          description: 'Large-scale compression benchmarking files'
-        },
-        {
-          name: 'Calgary Compression Corpus',
-          url: 'http://www.data-compression.info/Corpora/CalgaryCorpus/',
-          description: 'Historical standard for compression testing'
-        }
-      ]
-    },
     
     /**
      * Initialize the algorithm
@@ -553,10 +545,10 @@
     }
   };
   
-  // Auto-register with compression system
-  if (global.Compression) {
+  // Auto-register with Compression system if available
+  if (typeof global.Compression !== 'undefined' && global.Compression.Add) {
     LZ77.Init();
-    global.Compression.AddAlgorithm(LZ77);
+    global.Compression.Add(LZ77);
   }
   
   // Export for Node.js

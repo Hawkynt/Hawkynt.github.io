@@ -426,32 +426,62 @@ Each algorithm displays as an interactive card with:
 
 ## 🔬 Testing Framework
 
+### Universal Algorithm Tester
+
+**🚀 New Universal Test Runner System:**
+
+The collection now features an advanced universal test runner that automatically validates test vectors for any algorithm, regardless of category:
+
+**📊 Auto-Detection Features:**
+- **Algorithm Type Detection** - Automatically identifies ciphers, hashes, encodings, compression, MACs, KDFs, checksums
+- **Smart Parameter Detection** - Extracts keys, IVs, nonces, salts, and other parameters from test vectors
+- **Category-Specific Testing** - Uses appropriate test logic for each algorithm type
+- **Comprehensive Reporting** - Detailed pass/fail status with diagnostic information
+
+**🔧 Usage Examples:**
+```bash
+# Test all algorithms
+node universal-algorithm-tester.js
+
+# Test specific category
+node universal-algorithm-tester.js category hash
+
+# Full compliance validation
+node run-compliance-validation.js
+```
+
+**📋 Supported Algorithm Categories:**
+- **Ciphers** - Block/Stream/Classical/Asymmetric (encrypt/decrypt testing)
+- **Hash Functions** - Cryptographic/Fast/Specialized (hash verification)  
+- **Encoding Schemes** - Base/Text/Binary (encode/decode testing)
+- **Compression** - Dictionary/Statistical/Transform (compress/decompress)
+- **MAC Functions** - HMAC/CMAC/Universal Hash (authentication testing)
+- **KDF Functions** - Password/Key/Function-based (key derivation)
+- **Checksums** - CRC/Simple/Network (checksum verification)
+
 ### Test Vector Management
 
-**📋 Test Vector Structure:**
+**📋 Standard Test Vector Structure:**
 ```javascript
-testVectors: [{
-  input: 'plaintext data',
-  key: 'encryption key',
-  expected: 'expected ciphertext',
-  description: 'Test case description',
-  origin: {
-    source: 'NIST FIPS 197 Appendix B',
-    url: 'https://csrc.nist.gov/publications/detail/fips/197/final',
-    section: 'B.1',
-    verified: true,
-    date: '2001-11-26'
-  }
+tests: [{
+  text: "NIST FIPS 197 Test Vector",
+  uri: "https://csrc.nist.gov/publications/detail/fips/197/final",
+  keySize: 16,
+  blockSize: 16,
+  input: Hex8ToBytes("3243f6a8885a308d313198a2e0370734"),
+  key: Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+  expected: Hex8ToBytes("3925841d02dc09fbdc1185971969a0b32")
 }]
 ```
 
-**🧪 Testing Capabilities:**
-- **Individual test execution** with detailed reporting
-- **Batch testing** across multiple algorithms
+**🧪 Advanced Testing Capabilities:**
+- **Individual test execution** with detailed error reporting
+- **Batch testing** across all 276+ algorithm files
 - **Performance benchmarking** with operation timing
 - **Cross-platform validation** (Browser + Node.js)
-- **Test result export** (JSON, CSV, XML formats)
-- **Historical tracking** of test execution
+- **Metadata compliance checking** against CONTRIBUTING.md guidelines  
+- **Automatic file discovery** and algorithm loading
+- **Category-based filtering** and testing
 
 ### Validation Sources
 

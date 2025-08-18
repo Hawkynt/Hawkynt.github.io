@@ -316,17 +316,10 @@
     }
   };
   
-  // Auto-register with Cipher system
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(Columnar);
-  }
+  // Auto-register with Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(Columnar);
   
-  // Export to global scope
   global.Columnar = Columnar;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Columnar;
-  }
   
 })(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);

@@ -1,21 +1,6 @@
-#!/usr/bin/env node
 /*
- * Universal Rabbit Stream Cipher
- * Compatible with both Browser and Node.js environments
- * Based on RFC 4503 specification
+ * Rabbit Stream Cipher Implementation
  * (c)2006-2025 Hawkynt
- * 
- * Rabbit is a high-speed stream cipher designed for software implementations.
- * It uses:
- * - 8 state variables: X0-X7 (32-bit each)
- * - 8 counter variables: C0-C7 (32-bit each)  
- * - 1 counter carry bit: b
- * Total internal state: 513 bits
- * 
- * Key size: 128 bits, IV size: 64 bits (optional)
- * Designed to encrypt up to 2^64 128-bit message blocks under same key
- * 
- * This implementation follows RFC 4503 exactly.
  */
 
 (function(global) {
@@ -47,12 +32,40 @@
     }
   }
   
-  // Create Rabbit cipher object
   const Rabbit = {
+    name: "Rabbit",
+    description: "High-speed stream cipher with 513-bit internal state using 8 state variables, 8 counter variables, and 1 carry bit. Designed for software implementations with 128-bit keys and optional 64-bit IV.",
+    inventor: "Martin Boesgaard, Mette Vesterager, Thomas Pedersen, Jesper Christiansen, Ove Scavenius",
+    year: 2003,
+    country: "DK",
+    category: "cipher",
+    subCategory: "Stream Cipher",
+    securityStatus: null,
+    securityNotes: "Well-analyzed eSTREAM finalist with no known practical attacks. However, use established libraries for production.",
+    
+    documentation: [
+      {text: "RFC 4503 Specification", uri: "https://tools.ietf.org/html/rfc4503"},
+      {text: "eSTREAM Portfolio", uri: "https://www.ecrypt.eu.org/stream/"}
+    ],
+    
+    references: [
+      {text: "Original Rabbit Paper", uri: "https://www.ecrypt.eu.org/stream/papersdir/2005/009.pdf"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "RFC 4503 Test Vector 1",
+        uri: "https://tools.ietf.org/html/rfc4503#section-A.1",
+        keySize: 16,
+        key: global.OpCodes ? global.OpCodes.HexToBytes("00112233445566778899aabbccddeeff") : [],
+        input: global.OpCodes ? global.OpCodes.HexToBytes("0000000000000000000000000000000000000000000000000000000000000000") : [],
+        expected: global.OpCodes ? global.OpCodes.HexToBytes("edb70567375dcd7cd0ac834a1016ce0d859d06d08b9c4ba09fe5a07c09c9b6d4") : []
+      }
+    ],
+
     // Public interface properties
-    internalName: 'Rabbit',
-    name: 'Rabbit Stream Cipher',
-    comment: 'Rabbit RFC 4503 Stream Cipher - High-speed implementation with 513-bit internal state',
     minKeyLength: 16,   // Rabbit uses 128-bit keys (16 bytes)
     maxKeyLength: 16,
     stepKeyLength: 1,
@@ -61,7 +74,7 @@
     stepBlockSize: 1,
     instances: {},
 
-    // Official test vectors from RFC 4503 and eSTREAM specification
+    // Legacy test vectors for compatibility
     testVectors: [
       {
         algorithm: 'Rabbit',
@@ -535,10 +548,9 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(Rabbit);
-  }
+  // Auto-register with Subsystem (according to category) if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(Rabbit);
   
   // Export to global scope
   global.Rabbit = Rabbit;

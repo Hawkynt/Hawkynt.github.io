@@ -73,9 +73,50 @@
   
   // Create RHX cipher object
   const RHX = {
+    name: "RHX (Rijndael Extended)",
+    description: "Extended version of Rijndael/AES with larger key sizes (256/512/1024-bit) for theoretical post-quantum resistance. Uses HKDF key expansion and increased rounds. Experimental implementation only.",
+    inventor: "John Underhill (CEX Cryptographic Library)",
+    year: 2017,
+    country: "CA",
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: "experimental",
+    securityNotes: "Experimental post-quantum cipher with extended key sizes. Not standardized or thoroughly analyzed. Use only for research and educational purposes.",
+    
+    documentation: [
+      {text: "CEX Cryptographic Library Documentation", uri: "https://github.com/Steppenwolfe65/CEX/blob/master/Docs/CEX.pdf"},
+      {text: "FIPS 197 - Advanced Encryption Standard (AES)", uri: "https://csrc.nist.gov/publications/detail/fips/197/final"},
+      {text: "RFC 5869 - HKDF Key Derivation Function", uri: "https://tools.ietf.org/html/rfc5869"}
+    ],
+    
+    references: [
+      {text: "CEX Library C++ Implementation", uri: "https://github.com/Steppenwolfe65/CEX/tree/master/CEX/RHX.cpp"},
+      {text: "CEX Cryptographic Library", uri: "https://github.com/Steppenwolfe65/CEX"},
+      {text: "Post-Quantum Cryptography Resources", uri: "https://csrc.nist.gov/Projects/Post-Quantum-Cryptography"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Experimental Status",
+        text: "Not thoroughly analyzed for security vulnerabilities due to experimental nature",
+        mitigation: "Use only for research and educational purposes, not in production systems"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "RHX-256 ECB Test Vector",
+        uri: "https://github.com/Steppenwolfe65/CEX",
+        keySize: 32,
+        blockSize: 16,
+        input: Hex8ToBytes("00112233445566778899aabbccddeeff"),
+        key: Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+        expected: Hex8ToBytes("337dd0805d5d63eac0b189e982650163")
+      }
+    ],
+    
     // Public interface properties
     internalName: 'RHX',
-    name: 'RHX (Rijndael Extended)',
     comment: 'CEX RHX - Extended Rijndael with 256/512/1024-bit keys and HKDF expansion (EXPERIMENTAL)',
     minKeyLength: 32,   // 256-bit minimum
     maxKeyLength: 128,  // 1024-bit maximum
@@ -148,7 +189,7 @@
     MIX_COLUMNS: [0x02, 0x03, 0x01, 0x01],
     INV_MIX_COLUMNS: [0x0e, 0x0b, 0x0d, 0x09],
     
-    // Comprehensive test vectors for all RHX variants
+    // Legacy test vectors for compatibility
     testVectors: [
       // RHX-256 (22 rounds) - AES-256 compatible base
       {
@@ -669,8 +710,23 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
+  // Helper functions for metadata
+  function Hex8ToBytes(hex) {
+    if (global.OpCodes && global.OpCodes.HexToBytes) {
+      return global.OpCodes.HexToBytes(hex);
+    }
+    // Fallback implementation
+    const result = [];
+    for (let i = 0; i < hex.length; i += 2) {
+      result.push(parseInt(hex.substr(i, 2), 16));
+    }
+    return result;
+  }
+  
+  // Auto-register with universal Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(RHX);
+  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(RHX);
   }
   

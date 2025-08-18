@@ -42,14 +42,60 @@
   }
   
   const Huffman = {
+    name: "Huffman Coding",
+    description: "Variable-length prefix-free coding algorithm that assigns shorter codes to more frequent symbols. Achieves optimal compression for symbol-by-symbol encoding using a binary tree structure.",
+    inventor: "David A. Huffman",
+    year: 1952,
+    country: "US",
+    category: "compression", 
+    subCategory: "Statistical",
+    securityStatus: null,
+    securityNotes: "Compression algorithm - no security properties.",
+    
+    documentation: [
+      {text: "A Method for the Construction of Minimum-Redundancy Codes", uri: "https://compression.ca/act/act_pdf/Huffman1952.pdf"},
+      {text: "Huffman Coding - Wikipedia", uri: "https://en.wikipedia.org/wiki/Huffman_coding"},
+      {text: "RFC 1951 - DEFLATE Specification", uri: "https://tools.ietf.org/html/rfc1951"},
+      {text: "Introduction to Data Compression", uri: "https://marknelson.us/posts/1996/01/01/huffman-coding.html"}
+    ],
+    
+    references: [
+      {text: "Stanford CS106B Huffman Assignment", uri: "https://web.stanford.edu/class/cs106b/assignments/huffman/"},
+      {text: "DEFLATE Algorithm Implementation", uri: "https://github.com/madler/zlib"},
+      {text: "JPEG Huffman Tables", uri: "https://www.w3.org/Graphics/JPEG/"},
+      {text: "Mark Nelson Implementation Guide", uri: "https://marknelson.us/posts/1996/01/01/huffman-coding.html"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "Basic frequency encoding test",
+        uri: "https://en.wikipedia.org/wiki/Huffman_coding#Example",
+        input: ANSIToBytes("AAABBC"),
+        expected: Hex8ToBytes("01110010111")
+      },
+      {
+        text: "Single character optimization", 
+        uri: "Edge case test",
+        input: ANSIToBytes("AAAAA"),
+        expected: Hex8ToBytes("00000")
+      },
+      {
+        text: "Text compression example",
+        uri: "Canterbury Corpus",
+        input: ANSIToBytes("Lorem ipsum"),
+        expected: null
+      }
+    ],
+
+    // Legacy interface properties
     internalName: 'Huffman',
-    name: 'Huffman Coding',
-    comment: 'Variable-length coding algorithm by David Huffman - optimal prefix-free coding',
     category: 'Entropy',
     instances: {},
     isInitialized: false,
     
-    // Comprehensive test vectors from various sources
+    // Legacy test vectors for compatibility
     testVectors: [
       {
         algorithm: 'Huffman',
@@ -113,60 +159,6 @@
       }
     ],
     
-    // Reference links for specifications and implementations
-    referenceLinks: {
-      specifications: [
-        {
-          name: 'Original Paper: A Method for the Construction of Minimum-Redundancy Codes',
-          url: 'https://compression.ca/act/act_pdf/Huffman1952.pdf',
-          description: 'David Huffman\'s original 1952 paper introducing the algorithm'
-        },
-        {
-          name: 'RFC 1951 - DEFLATE Specification (includes Huffman)',
-          url: 'https://tools.ietf.org/html/rfc1951',
-          description: 'Official specification of Huffman coding in DEFLATE format'
-        },
-        {
-          name: 'IEEE Standard for Huffman Coding',
-          url: 'https://ieeexplore.ieee.org/document/9354764',
-          description: 'Modern IEEE standard for Huffman coding implementations'
-        }
-      ],
-      implementations: [
-        {
-          name: 'Mark Nelson\'s Data Compression Book',
-          url: 'https://marknelson.us/posts/1996/01/01/huffman-coding.html',
-          description: 'Comprehensive implementation guide with examples'
-        },
-        {
-          name: 'Stanford CS106B Huffman Assignment',
-          url: 'https://web.stanford.edu/class/cs106b/assignments/huffman/',
-          description: 'Educational implementation with test cases'
-        },
-        {
-          name: 'NIST Data Compression Reference',
-          url: 'https://www.nist.gov/itl/sed/topic-areas/data-compression',
-          description: 'Government reference for compression algorithms'
-        }
-      ],
-      validation: [
-        {
-          name: 'Canterbury Corpus',
-          url: 'https://corpus.canterbury.ac.nz/',
-          description: 'Standard test files for compression algorithm benchmarking'
-        },
-        {
-          name: 'Large Text Compression Benchmark',
-          url: 'http://mattmahoney.net/dc/text.html',
-          description: 'Comprehensive text compression benchmarks'
-        },
-        {
-          name: 'Silesia Compression Corpus',
-          url: 'http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia',
-          description: 'Standard files for evaluating compression algorithms'
-        }
-      ]
-    },
     
     /**
      * Initialize the algorithm
@@ -615,10 +607,10 @@
     }
   };
   
-  // Auto-register with compression system
-  if (global.Compression) {
+  // Auto-register with Compression system if available
+  if (typeof global.Compression !== 'undefined' && global.Compression.Add) {
     Huffman.Init();
-    global.Compression.AddAlgorithm(Huffman);
+    global.Compression.Add(Huffman);
   }
   
   // Export for Node.js

@@ -49,12 +49,52 @@
   
   // Create A5/3 cipher object
   const A5_3 = {
+    name: "A5/3",
+    description: "Stream cipher used in 3G/UMTS mobile communications based on KASUMI block cipher. More secure replacement for A5/1 and A5/2. Uses 128-bit keys derived from Kc with KASUMI operated in OFB-like mode for keystream generation.",
+    inventor: "3GPP (3rd Generation Partnership Project)",
+    year: 1999,
+    country: "INT",
+    category: "cipher",
+    subCategory: "Stream Cipher",
+    securityStatus: null,
+    securityNotes: "Currently used in UMTS networks. No known practical attacks against properly implemented A5/3, but relies on KASUMI which has theoretical weaknesses.",
+    
+    documentation: [
+      {text: "Wikipedia: A5/3", uri: "https://en.wikipedia.org/wiki/A5/3"},
+      {text: "3GPP TS 55.216 - A5/3 Algorithm Specification", uri: "https://www.3gpp.org/DynaReport/55216.htm"},
+      {text: "KASUMI Specification (3GPP TS 35.202)", uri: "https://www.3gpp.org/ftp/Specs/archive/35_series/35.202/"}
+    ],
+    
+    references: [
+      {text: "KASUMI Reference Implementation", uri: "https://github.com/mitshell/CryptoMobile"},
+      {text: "3GPP A5/3 Test Vectors", uri: "https://www.3gpp.org/DynaReport/55216.htm"},
+      {text: "A5/3 Analysis (Dunkelman et al.)", uri: "https://www.iacr.org/archive/fse2010/59450099/59450099.pdf"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Related-Key Attack on KASUMI", 
+        text: "Theoretical attacks on underlying KASUMI block cipher, but not practical for A5/3 usage",
+        mitigation: "Continue using A5/3 as attacks are not practical in mobile communication context"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "3GPP A5/3 Test Vector (Educational)",
+        uri: "https://www.3gpp.org/DynaReport/55216.htm",
+        keySize: 16,
+        input: Hex8ToBytes("00000000000000000000000000000000"),
+        key: Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        expected: Hex8ToBytes("5bb0ca88d8c7a40d3d56d33a8eff3bc1")
+      }
+    ],
+
+    // Legacy interface properties
     internalName: 'a5-3',
-    name: 'A5/3',
     version: '1.0',
     author: '3GPP (UMTS/LTE)',
-    description: 'KASUMI-based stream cipher for 3G mobile communications',
-
+    
     // Required by cipher system
     minKeyLength: 1,
     maxKeyLength: 1024,
@@ -359,9 +399,9 @@
     }
   };
   
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(A5_3);
+  // Auto-register with Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(A5_3);
   }
   
   // Export for Node.js

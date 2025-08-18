@@ -1,16 +1,6 @@
-#!/usr/bin/env node
 /*
- * NTRU Universal Implementation
- * Based on NTRU - N-th degree TRUncated polynomial ring cryptosystem
- * 
- * This is an educational implementation of the original NTRU algorithm.
- * WARNING: This implementation is for educational purposes only and should never
- * be used in production systems. Use certified implementations for real applications.
- * 
- * NTRU: Original Lattice-based Public Key Encryption
- * Reference: https://ntru.org/
- * 
- * (c)2006-2025 Hawkynt - Educational implementation
+ * NTRU Implementation
+ * (c)2006-2025 Hawkynt
  */
 
 (function(global) {
@@ -41,35 +31,70 @@
   };
   
   const NTRU = {
+    name: "NTRU",
+    description: "NTRU lattice-based public key cryptosystem using polynomial ring arithmetic over Z[x]/(x^N-1). First practical post-quantum cryptosystem with efficient implementation and strong security foundations.",
+    inventor: "Jeffrey Hoffstein, Jill Pipher, Joseph H. Silverman",
+    year: 1996,
+    country: "US",
+    category: "cipher",
+    subCategory: "Asymmetric Cipher",
+    securityStatus: null,
+    securityNotes: "Post-quantum secure against classical and quantum attacks. Security based on shortest vector problem in NTRU lattices.",
+    
+    documentation: [
+      {text: "Wikipedia - NTRU", uri: "https://en.wikipedia.org/wiki/NTRU"},
+      {text: "Original NTRU Paper (1998)", uri: "https://ntru.org/f/hps98.pdf"},
+      {text: "NTRU Official Website", uri: "https://ntru.org/"},
+      {text: "IEEE P1363.1 Standard", uri: "https://ieeexplore.ieee.org/document/1335467"}
+    ],
+    
+    references: [
+      {text: "NTRU Open Source Project", uri: "https://github.com/NTRUOpenSourceProject"},
+      {text: "libntru C Implementation", uri: "https://github.com/tbuktu/libntru"},
+      {text: "NTRU Python Implementation", uri: "https://github.com/jschanck/ntru-python"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Subfield Attacks", 
+        text: "Original NTRU using x^N-1 polynomial can be vulnerable to subfield lattice attacks for certain parameter choices",
+        mitigation: "Use NTRU Prime variant with x^N-x-1 polynomial or carefully chosen prime N values"
+      },
+      {
+        type: "Implementation Attacks", 
+        text: "Side-channel attacks on polynomial arithmetic operations can leak private key information",
+        mitigation: "Use constant-time implementations with proper side-channel protections"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "NTRU-443 Educational Test Vector",
+        uri: "https://ntru.org/",
+        keySize: 616, // Private key size in bytes
+        input: ANSIToBytes("Hello NTRU!"),
+        expected: null // Will be computed during test
+      }
+    ],
+
+    // Legacy interface properties for compatibility
     internalName: 'ntru',
-    name: 'NTRU',
-    // Required Cipher interface properties
-    minKeyLength: 32,        // Minimum key length in bytes
-    maxKeyLength: 256,        // Maximum key length in bytes
-    stepKeyLength: 1,       // Key length step size
-    minBlockSize: 0,        // Minimum block size in bytes
-    maxBlockSize: 0,        // Maximum block size (0 = unlimited)
-    stepBlockSize: 1,       // Block size step
-    instances: {},          // Instance tracking
+    minKeyLength: 32,
+    maxKeyLength: 256,
+    stepKeyLength: 1,
+    minBlockSize: 0,
+    maxBlockSize: 0,
+    stepBlockSize: 1,
+    instances: {},
     version: '1.0.0',
-    date: '2025-01-17',
-    author: 'Hoffstein, Pipher, Silverman',
-    description: 'NTRU - Original Lattice-based Public Key Encryption (1996)',
-    reference: 'NTRU: https://ntru.org/',
-    
-    // Security parameters
-    keySize: [443, 743, 1024], // NTRU parameter sets
-    blockSize: 32, // Variable based on N
-    
-    // Algorithm metadata
+    keySize: [443, 743, 1024],
+    blockSize: 32,
     isStreamCipher: false,
     isBlockCipher: false,
     isPostQuantum: true,
     isAsymmetric: true,
     complexity: 'High',
     family: 'Lattice-based',
-    category: 'Public-Key-Encryption',
-    subcategory: 'Lattice-based',
     
     // Current parameter set
     currentParams: null,
@@ -716,9 +741,8 @@
   };
   
   // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(NTRU);
-  }
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(NTRU);
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {

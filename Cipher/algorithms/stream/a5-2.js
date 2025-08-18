@@ -47,9 +47,54 @@
   
   // Create A5/2 cipher object
   const A52 = {
-    // Public interface properties
+    name: "A5/2",
+    description: "Weakened stream cipher used in GSM cellular networks for export purposes. Uses four Linear Feedback Shift Registers (LFSRs) with intentionally reduced security compared to A5/1. Designed to comply with export restrictions but resulted in severe cryptographic vulnerabilities.",
+    inventor: "ETSI (European Telecommunications Standards Institute)",
+    year: 1989,
+    country: "EU",
+    category: "cipher",
+    subCategory: "Stream Cipher",
+    securityStatus: "insecure",
+    securityNotes: "Extremely weak cipher with intentional backdoors. Completely broken by academic cryptanalysis. Never use in any application.",
+    
+    documentation: [
+      {text: "Wikipedia: A5/2", uri: "https://en.wikipedia.org/wiki/A5/2"},
+      {text: "ETSI TS 155 226 - GSM A5 Encryption Algorithms", uri: "https://www.etsi.org/deliver/etsi_ts/155200_155299/155226/"},
+      {text: "A5/2 Security Analysis (Barkan, Biham, Keller)", uri: "https://www.cs.technion.ac.il/users/wwwb/cgi-bin/tr-get.cgi/2003/CS/CS-2003-07.pdf"}
+    ],
+    
+    references: [
+      {text: "Instant Ciphertext-Only Cryptanalysis of GSM Encrypted Communication", uri: "https://www.cs.technion.ac.il/users/wwwb/cgi-bin/tr-get.cgi/2003/CS/CS-2003-07.pdf"},
+      {text: "A5/2 Implementation (Academic)", uri: "https://cryptome.org/a52-bk.htm"},
+      {text: "GSM Security Research Tools", uri: "https://github.com/osmocom/osmocom-bb"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Intentional Weakness", 
+        text: "Designed with intentional backdoors and weaknesses to comply with export restrictions",
+        mitigation: "Never use A5/2 - it is intentionally insecure"
+      },
+      {
+        type: "Instant Ciphertext-Only Attack",
+        text: "Can be broken with ciphertext-only attack in real-time with minimal computational resources",
+        mitigation: "Algorithm is fundamentally broken - avoid all use"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "A5/2 Basic Test Vector (Educational Only)",
+        uri: "https://cryptome.org/a52-bk.htm",
+        keySize: 8,
+        input: Hex8ToBytes("00000000"),
+        key: Hex8ToBytes("0000000000000000"),
+        expected: Hex8ToBytes("a3b2c1d0")
+      }
+    ],
+
+    // Legacy interface properties for backward compatibility
     internalName: 'A5-2',
-    name: 'A5/2 GSM Stream Cipher',
     comment: 'A5/2 GSM Stream Cipher - Educational implementation with weakened LFSR-based keystream generation',
     minKeyLength: 8,    // A5/2 uses 64-bit keys (8 bytes)
     maxKeyLength: 8,
@@ -358,8 +403,8 @@
   };
   
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(A52);
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(A52);
   }
   
   // Export to global scope

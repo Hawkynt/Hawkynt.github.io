@@ -1,28 +1,7 @@
 #!/usr/bin/env node
 /*
- * RIPEMD-320 Universal Hash Function Implementation
- * Compatible with both Browser and Node.js environments
+ * RIPEMD-320 Implementation
  * (c)2006-2025 Hawkynt
- * 
- * RIPEMD-320 is an extended variant of RIPEMD-160 that produces a 320-bit hash.
- * It was developed by the same team (Hans Dobbertin, Antoon Bosselaers, Bart Preneel)
- * as part of the RIPEMD family. It offers a larger hash output while maintaining
- * the dual-pipeline structure of RIPEMD-160.
- * 
- * Specification: "RIPEMD-160: A Strengthened Version of RIPEMD" (1996)
- * Reference: https://homes.esat.kuleuven.be/~bosselae/ripemd160.html
- * ISO Standard: ISO/IEC 10118-3:2004
- * Test Vectors: From original RIPEMD specification
- * 
- * Features:
- * - 320-bit hash output (40 bytes)
- * - Dual 160-bit pipeline structure
- * - 160 rounds (80 per pipeline)
- * - Based on MD4/MD5 design principles
- * - Collision resistance
- * 
- * NOTE: This is an educational implementation for learning purposes only.
- * Use proven cryptographic libraries for production systems.
  */
 
 (function(global) {
@@ -223,75 +202,65 @@
     return result;
   };
   
-  // RIPEMD-320 Universal Cipher Interface
   const RipeMD320 = {
-    internalName: 'ripemd320',
-    name: 'RIPEMD-320',
-    // Algorithm metadata
-    blockSize: 512,
-    digestSize: 320,
-    keySize: 0,
-    rounds: 160,
+    name: "RIPEMD-320",
+    description: "Extended RIPEMD hash function producing 320-bit digest. Uses dual 160-bit computation pipelines for enhanced security margin. Part of the RIPEMD family designed as European alternative to MD/SHA.",
+    inventor: "Hans Dobbertin, Antoon Bosselaers, Bart Preneel",
+    year: 1996,
+    country: "BE",
+    category: "hash",
+    subCategory: "Cryptographic Hash",
+    securityStatus: null,
+    securityNotes: "Less analyzed than mainstream alternatives. Designed with dual pipeline structure but offers no additional security compared to RIPEMD-160.",
     
-    // Security level
-    securityLevel: 160,
-    
-    // Reference links
-    referenceLinks: [
-      {
-        title: "RIPEMD-160: A Strengthened Version of RIPEMD",
-        url: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
-        type: "specification"
-      },
-      {
-        title: "ISO/IEC 10118-3:2004 Standard",
-        url: "https://www.iso.org/standard/39876.html",
-        type: "standard"
-      },
-      {
-        title: "RIPEMD Family Analysis",
-        url: "https://link.springer.com/chapter/10.1007/3-540-60865-6_44",
-        type: "analysis"
-      },
-      {
-        title: "Cryptographic Hash Functions",
-        url: "https://csrc.nist.gov/projects/hash-functions",
-        type: "reference"
-      }
+    documentation: [
+      {text: "RIPEMD-160: A Strengthened Version of RIPEMD", uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html"},
+      {text: "ISO/IEC 10118-3:2004 Standard", uri: "https://www.iso.org/standard/39876.html"},
+      {text: "RIPEMD Family Analysis", uri: "https://en.wikipedia.org/wiki/RIPEMD"}
     ],
     
-    // Test vectors
-    testVectors: [
-      {
-        description: "Empty string - RIPEMD-320",
-        input: "",
-        expected: "22d65d5661536cdc75c1fdf5c6de7b41b9f27325ebc61e8557177d705a0ec880151c3a32a00899b8"
-      },
-      {
-        description: "Single letter 'a' - RIPEMD-320",
-        input: "a",
-        expected: "ce78850638f92658a5a585097579926dda667a5716562cfcf6fbe77f63542f99b04705d6970dff5d"
-      },
-      {
-        description: "String 'abc' - RIPEMD-320",
-        input: "abc",
-        expected: "de4c01b3054f8930a79d09ae738e92301e5a17085beffdc1b8d116713e74f82fa942d64cdbc4682d"
-      },
-      {
-        description: "Alphabet 'abcdefghijklmnopqrstuvwxyz' - RIPEMD-320",
-        input: "abcdefghijklmnopqrstuvwxyz",
-        expected: "cabdb1810b92470a2093aa6bce05952c28348cf43ff60841975166bb40ed234004b8824463e6b009"
-      }
+    references: [
+      {text: "RIPEMD Specification", uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html"},
+      {text: "Cryptographic Hash Functions", uri: "https://csrc.nist.gov/projects/hash-functions"},
+      {text: "OpenSSL RIPEMD Source", uri: "https://github.com/openssl/openssl/tree/master/crypto/ripemd"}
     ],
     
-    // Required Cipher interface properties
-    minKeyLength: 0,        // Minimum key length in bytes
-    maxKeyLength: 64,        // Maximum key length in bytes
-    stepKeyLength: 1,       // Key length step size
-    minBlockSize: 0,        // Minimum block size in bytes
-    maxBlockSize: 0,        // Maximum block size (0 = unlimited)
-    stepBlockSize: 1,       // Block size step
-    instances: {},          // Instance tracking
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "Empty string test vector",
+        uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
+        input: [],
+        expected: OpCodes.Hex8ToBytes("22d65d5661536cdc75c1fdf5c6de7b41b9f27325ebc61e8557177d705a0ec880151c3a32a00899b8")
+      },
+      {
+        text: "Single character 'a' test vector",
+        uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
+        input: OpCodes.StringToBytes("a"),
+        expected: OpCodes.Hex8ToBytes("ce78850638f92658a5a585097579926dda667a5716562cfcf6fbe77f63542f99b04705d6970dff5d")
+      },
+      {
+        text: "String 'abc' test vector",
+        uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
+        input: OpCodes.StringToBytes("abc"),
+        expected: OpCodes.Hex8ToBytes("de4c01b3054f8930a79d09ae738e92301e5a17085beffdc1b8d116713e74f82fa942d64cdbc4682d")
+      },
+      {
+        text: "Alphabet test vector",
+        uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
+        input: OpCodes.StringToBytes("abcdefghijklmnopqrstuvwxyz"),
+        expected: OpCodes.Hex8ToBytes("cabdb1810b92470a2093aa6bce05952c28348cf43ff60841975166bb40ed234004b8824463e6b009")
+      }
+    ],
+
+    minKeyLength: 0,
+    maxKeyLength: 0,
+    stepKeyLength: 1,
+    minBlockSize: 0,
+    maxBlockSize: 0,
+    stepBlockSize: 1,
+    instances: {},
     
     // Hash function interface
     Init: function() {
@@ -335,9 +304,8 @@
   };
   
   // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(RipeMD320);
-  }
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(RipeMD320);
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {

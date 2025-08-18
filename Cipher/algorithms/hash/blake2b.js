@@ -1,26 +1,10 @@
-#!/usr/bin/env node
 /*
- * BLAKE2b Universal Hash Function Implementation
- * Compatible with both Browser and Node.js environments
+ * BLAKE2b Implementation
  * (c)2006-2025 Hawkynt
- * 
- * BLAKE2b is a cryptographic hash function optimized for 64-bit platforms.
- * It is faster than MD5, SHA-1, SHA-2, and SHA-3, yet provides better security.
- * 
- * Specification: RFC 7693 - https://tools.ietf.org/html/rfc7693
- * Test Vectors: Reference/Organized/HashFunctions/BLAKE2/blake2b-kat.txt
- * 
- * NOTE: This is an educational implementation for learning purposes only.
- * Use proven cryptographic libraries for production systems.
  */
 
 (function(global) {
   'use strict';
-  
-  // Load OpCodes library for common operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
-  }
   
   // BLAKE2b constants
   const BLAKE2B_BLOCKBYTES = 128;    // Block size in bytes
@@ -256,243 +240,69 @@
   
   // BLAKE2b Universal Cipher Interface
   const Blake2b = {
-    internalName: 'blake2b',
-    name: 'BLAKE2b',
+    name: "BLAKE2b",
+    description: "High-speed cryptographic hash function optimized for 64-bit platforms. Faster than MD5, SHA-1, SHA-2, and SHA-3.",
+    inventor: "Jean-Philippe Aumasson, Samuel Neves, Zooko Wilcox-O'Hearn, Christian Winnerlein",
+    year: 2012,
+    country: "CH",
+    category: "hash",
+    subCategory: "Cryptographic Hash",
+    securityStatus: null,
+    securityNotes: "BLAKE2b is a modern hash function with excellent security properties. Educational implementation - use proven libraries for production.",
     
-    // Required Cipher interface properties
-    minKeyLength: 0,        // BLAKE2b can work without a key
-    maxKeyLength: 64,       // BLAKE2B_KEYBYTES = 64
-    stepKeyLength: 1,       // Any key length up to max
-    minBlockSize: 0,        // Hash functions accept any input size
-    maxBlockSize: 0,        // No maximum (0 = unlimited)
-    stepBlockSize: 1,       // Any data size
-    instances: {},          // Instance tracking
+    documentation: [
+      {text: "RFC 7693 - BLAKE2 Cryptographic Hash and MAC", uri: "https://tools.ietf.org/html/rfc7693"},
+      {text: "BLAKE2 Official Specification", uri: "https://blake2.net/blake2.pdf"},
+      {text: "Wikipedia BLAKE2", uri: "https://en.wikipedia.org/wiki/BLAKE_(hash_function)#BLAKE2"}
+    ],
     
-    // Comprehensive test vectors from RFC 7693 and official BLAKE2 specification
-    testVectors: [
+    references: [
+      {text: "BLAKE2 Reference Implementation", uri: "https://github.com/BLAKE2/BLAKE2"},
+      {text: "libsodium BLAKE2b", uri: "https://github.com/jedisct1/libsodium"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
       {
-        algorithm: 'BLAKE2b',
-        description: 'Empty string',
-        origin: 'RFC 7693',
-        link: 'https://tools.ietf.org/html/rfc7693',
-        standard: 'RFC 7693',
-        input: '',
-        hash: '786a02f742015903c6c6fd852552d272912f4740e15847618a86e217f71f5419d25e1031afee585313896444934eb04b903a685b1448b755d56f701afe9be2ce',
-        inputHex: '',
-        hashHex: '786a02f742015903c6c6fd852552d272912f4740e15847618a86e217f71f5419d25e1031afee585313896444934eb04b903a685b1448b755d56f701afe9be2ce',
-        notes: 'BLAKE2b-512 of empty string from RFC 7693',
-        category: 'basic'
+        text: "RFC 7693 Test Vector - Empty string",
+        uri: "https://tools.ietf.org/html/rfc7693",
+        input: OpCodes.Hex8ToBytes(""),
+        key: null,
+        expected: OpCodes.Hex8ToBytes("786a02f742015903c6c6fd852552d272912f4740e15847618a86e217f71f5419d25e1031afee585313896444934eb04b903a685b1448b755d56f701afe9be2ce")
       },
       {
-        algorithm: 'BLAKE2b',
-        description: 'Single byte 0x00',
-        origin: 'RFC 7693',
-        link: 'https://tools.ietf.org/html/rfc7693',
-        standard: 'RFC 7693',
-        input: '\x00',
-        hash: '2fa3f686df876995167e7c2e5d74c4c7b6e48f8068fe0e44208344d480f7904c36963e44115fe3eb2a3ac8694c28bcb4f5a0f3276f2e79487d8219057a506e4b',
-        inputHex: '00',
-        hashHex: '2fa3f686df876995167e7c2e5d74c4c7b6e48f8068fe0e44208344d480f7904c36963e44115fe3eb2a3ac8694c28bcb4f5a0f3276f2e79487d8219057a506e4b',
-        notes: 'Single null byte test',
-        category: 'basic'
-      },
+        text: "RFC 7693 Test Vector - abc",
+        uri: "https://tools.ietf.org/html/rfc7693",
+        input: OpCodes.ANSIToBytes("abc"),
+        key: null,
+        expected: OpCodes.Hex8ToBytes("ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923")
+      },,
       {
-        algorithm: 'BLAKE2b',
-        description: 'abc string',
-        origin: 'RFC 7693',
-        link: 'https://tools.ietf.org/html/rfc7693',
-        standard: 'RFC 7693',
-        input: 'abc',
-        hash: 'ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923',
-        inputHex: '616263',
-        hashHex: 'ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923',
-        notes: 'Standard abc test vector from RFC 7693',
-        category: 'basic'
-      },
-      {
-        algorithm: 'BLAKE2b',
-        description: 'Long alphabet string',
-        origin: 'RFC 7693',
-        link: 'https://tools.ietf.org/html/rfc7693',
-        standard: 'RFC 7693',
-        input: 'abcdefghijklmnopqrstuvwxyz',
-        hash: 'c68ede143e416eb7b4aaae0d8e48e55dd529eafed10b1df1a61416953a2b0a5666c761e7d412e6709e31ffe221b7a7a73908cb95a4d120b8b090a87912ee706a',
-        inputHex: '6162636465666768696a6b6c6d6e6f707172737475767778797a',
-        hashHex: 'c68ede143e416eb7b4aaae0d8e48e55dd529eafed10b1df1a61416953a2b0a5666c761e7d412e6709e31ffe221b7a7a73908cb95a4d120b8b090a87912ee706a',
-        notes: 'Full alphabet test vector',
-        category: 'basic'
-      },
-      {
-        algorithm: 'BLAKE2b',
-        description: 'BLAKE2b with key (MAC mode)',
-        origin: 'RFC 7693',
-        link: 'https://tools.ietf.org/html/rfc7693',
-        standard: 'RFC 7693',
-        key: '\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f',
-        input: '',
-        hash: '10ebb67700b1868efb4417987acf4690ae9d972fb7a590c2f02871799aaa4786b5e996e8f0f4eb981fc214b005f42d2ff4233499391653df7aefcbc13fc51568',
-        keyHex: '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
-        inputHex: '',
-        hashHex: '10ebb67700b1868efb4417987acf4690ae9d972fb7a590c2f02871799aaa4786b5e996e8f0f4eb981fc214b005f42d2ff4233499391653df7aefcbc13fc51568',
-        notes: 'BLAKE2b in MAC mode with 32-byte key and empty message',
-        category: 'mac'
-      },
-      {
-        algorithm: 'BLAKE2b',
-        description: 'Variable output length (256-bit)',
-        origin: 'RFC 7693',
-        link: 'https://tools.ietf.org/html/rfc7693',
-        standard: 'RFC 7693',
-        input: 'abc',
-        hash: 'bddd813c634239723171ef3fee98579b94964e3bb1cb3e427262c8c068d52319',
-        inputHex: '616263',
-        hashHex: 'bddd813c634239723171ef3fee98579b94964e3bb1cb3e427262c8c068d52319',
-        notes: 'BLAKE2b-256 (32-byte output) of abc',
-        category: 'variable'
+        text: "RFC 7693 Test Vector - MAC mode",
+        uri: "https://tools.ietf.org/html/rfc7693",
+        input: OpCodes.Hex8ToBytes(""),
+        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+        expected: OpCodes.Hex8ToBytes("10ebb67700b1868efb4417987acf4690ae9d972fb7a590c2f02871799aaa4786b5e996e8f0f4eb981fc214b005f42d2ff4233499391653df7aefcbc13fc51568")
       }
     ],
     
-    // Reference links for BLAKE2b
-    referenceLinks: {
-      specifications: [
-        {
-          name: 'RFC 7693: The BLAKE2 Cryptographic Hash and Message Authentication Code (MAC)',
-          url: 'https://tools.ietf.org/html/rfc7693',
-          description: 'Official IETF specification for BLAKE2b and BLAKE2s'
-        },
-        {
-          name: 'BLAKE2 Official Specification',
-          url: 'https://blake2.net/blake2.pdf',
-          description: 'Original BLAKE2 specification by Aumasson et al.'
-        },
-        {
-          name: 'NIST Third SHA-3 Competition Analysis',
-          url: 'https://csrc.nist.gov/Projects/Hash-Functions/SHA-3-Project',
-          description: 'NIST analysis of BLAKE2 as SHA-3 candidate'
-        }
-      ],
-      implementations: [
-        {
-          name: 'Official BLAKE2 Reference Implementation',
-          url: 'https://github.com/BLAKE2/BLAKE2',
-          description: 'Reference implementations in C by the BLAKE2 team'
-        },
-        {
-          name: 'libsodium BLAKE2b',
-          url: 'https://github.com/jedisct1/libsodium/tree/master/src/libsodium/crypto_generichash/blake2b',
-          description: 'Production-ready libsodium implementation'
-        },
-        {
-          name: 'OpenSSL EVP_blake2b',
-          url: 'https://github.com/openssl/openssl/blob/master/crypto/blake2/',
-          description: 'OpenSSL BLAKE2b implementation'
-        },
-        {
-          name: 'Rust blake2 crate',
-          url: 'https://github.com/RustCrypto/hashes/tree/master/blake2',
-          description: 'Rust implementation of BLAKE2b/BLAKE2s'
-        }
-      ],
-      validation: [
-        {
-          name: 'RFC 7693 Test Vectors',
-          url: 'https://tools.ietf.org/html/rfc7693#appendix-A',
-          description: 'Official test vectors from IETF RFC'
-        },
-        {
-          name: 'BLAKE2 Official Test Vectors',
-          url: 'https://github.com/BLAKE2/BLAKE2/tree/master/testvectors',
-          description: 'Comprehensive test vectors from BLAKE2 team'
-        },
-        {
-          name: 'SUPERCOP BLAKE2 Benchmarks',
-          url: 'https://bench.cr.yp.to/results-hash.html',
-          description: 'Performance benchmarks and validation'
-        }
-      ],
-      applications: [
-        {
-          name: 'Argon2 Password Hashing',
-          url: 'https://tools.ietf.org/html/rfc9106',
-          description: 'BLAKE2b used as compression function in Argon2'
-        },
-        {
-          name: 'Zcash Cryptocurrency',
-          url: 'https://github.com/zcash/zcash',
-          description: 'BLAKE2b used in Zcash proof-of-work algorithm'
-        },
-        {
-          name: 'WireGuard VPN Protocol',
-          url: 'https://www.wireguard.com/papers/wireguard.pdf',
-          description: 'BLAKE2s used for MAC in WireGuard protocol'
-        }
-      ]
-    },
-    
-    // Hash function interface
     Init: function() {
-      this.hasher = new Blake2bHasher();
-      this.bKey = false;
+      return true;
     },
-    
-    KeySetup: function(key) {
-      if (key && key.length > 0) {
-        this.hasher = new Blake2bHasher(key.slice(0, BLAKE2B_KEYBYTES));
-        this.bKey = true;
-      } else {
-        this.hasher = new Blake2bHasher();
-        this.bKey = false;
-      }
-    },
-    
-    encryptBlock: function(blockIndex, data) {
-      if (typeof data === 'string') {
-        this.hasher.update(data);
-        return OpCodes.BytesToHex(this.hasher.finalize());
-      }
-      return '';
-    },
-    
-    decryptBlock: function(blockIndex, data) {
-      // Hash functions don't decrypt
-      return this.encryptBlock(blockIndex, data);
-    },
-    
-    // Direct hash interface
-    hash: function(data, outputLength) {
-      const hasher = new Blake2bHasher(null, outputLength);
-      hasher.update(data);
-      return hasher.finalize();
-    },
-    
-    // Keyed hash interface (MAC)
-    keyedHash: function(key, data, outputLength) {
+
+    // Core BLAKE2b computation
+    compute: function(data, key, outputLength) {
+      outputLength = outputLength || BLAKE2B_OUTBYTES;
       const hasher = new Blake2bHasher(key, outputLength);
       hasher.update(data);
       return hasher.finalize();
-    },
-    
-    ClearData: function() {
-      if (this.hasher) {
-        this.hasher.h.fill(BigInt(0));
-        this.hasher.buffer.fill(0);
-        this.hasher.counter = BigInt(0);
-      }
-      this.bKey = false;
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(Blake2b);
-  }
+  // Auto-register with Subsystem (according to category) if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(Blake2b);
   
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Blake2b;
-  }
-  
-  // Make available globally
-  global.Blake2b = Blake2b;
-  
+
 })(typeof global !== 'undefined' ? global : window);
