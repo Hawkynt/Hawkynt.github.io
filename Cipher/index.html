@@ -1,1214 +1,702 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
-  <head>
-    <!-- Use UTF-8 everywhere to avoid encoding issues; legacy UAs still render text/links. -->
-    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
-    <meta http-equiv="Content-Style-Type" content="text/css" />
-    <meta http-equiv="Content-Script-Type" content="text/JavaScript" />
-    <meta http-equiv="expires" content="0" />
-    <meta http-equiv="Language" content="en" />
-
-    <!-- Modern SEO (harmless to old UAs) -->
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="page_title" content="Cipher/JavaScript" />
-    <meta name="page_version" content="v1.0" />
-    <meta name="description" content="Educational cryptographic toolkit with 50+ cipher implementations including AES, ChaCha20, Salsa20, Blowfish. Interactive learning platform for students, researchers, and educators with official test vectors, defensive security analysis, and cross-platform JavaScript/Node.js compatibility." />
-    <meta name="keywords" content="cryptography education, cipher algorithms, encryption learning, educational cryptography, cryptographic analysis, defensive security, cipher implementation, AES tutorial, ChaCha20 implementation, Salsa20 cipher, Blowfish algorithm, test vectors, NIST standards, RFC compliance, JavaScript cryptography, Node.js encryption, academic cryptography, cryptography course, security education, cipher toolkit, encryption tutorial, cryptographic primitives, block ciphers, stream ciphers, educational security tools, cryptography research, cipher visualization, interactive cryptography" />
-    <meta name="author" content="Hawkynt" />
-    <meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1" />
-    <meta name="language" content="en-US" />
-    <meta name="geo.region" content="US" />
-    <meta name="geo.placename" content="Global" />
-    <meta name="rating" content="general" />
-    <meta name="revisit-after" content="7 days" />
-    <link rel="canonical" href="https://hawkynt.github.io/Cipher/" />
-
-    <!-- Enhanced Open Graph / Social Media -->
-    <meta property="og:title" content="SynthelicZ Cipher Tools - Interactive Cryptography Education Platform" />
-    <meta property="og:description" content="Learn cryptography with 50+ cipher implementations including AES, ChaCha20, Salsa20. Educational toolkit for students, researchers, and security professionals with official test vectors and interactive visualization." />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://hawkynt.github.io/Cipher/" />
-    <meta property="og:image" content="https://hawkynt.github.io/favicon.ico" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="SynthelicZ Cipher Tools - Educational Cryptography Platform" />
-    <meta property="og:site_name" content="SynthelicZ Educational Tools" />
-    <meta property="og:locale" content="en_US" />
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Educational cryptographic toolkit with 243+ cipher implementations including AES, ChaCha20, Salsa20. Interactive learning platform with algorithm chaining, file processing, and test vectors.">
+    <meta name="keywords" content="cryptography education, cipher algorithms, AES, ChaCha20, encryption learning, educational cryptography">
+    <meta name="author" content="Hawkynt">
     
-    <!-- Enhanced Twitter Cards -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="SynthelicZ Cipher Tools - Interactive Cryptography Education" />
-    <meta name="twitter:description" content="Educational cryptographic toolkit with 50+ cipher implementations. Learn AES, ChaCha20, Salsa20 with interactive visualization and test vectors." />
-    <meta name="twitter:image" content="https://hawkynt.github.io/favicon.ico" />
-    <meta name="twitter:image:alt" content="Cipher Tools Educational Interface" />
-    <meta name="twitter:creator" content="@Hawkynt" />
-    <meta name="twitter:site" content="@SynthelicZ" />
-
-    <!-- Legacy site verification kept (harmless) -->
-    <meta name="google-site-verification" content="LkZ6DT0_GlcimQOKrWL20jv4jtUh0DBsh1ZPLXQqk3A" />
-
-    <!-- Performance and Technical SEO -->
-    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-    <link rel="dns-prefetch" href="//cdnjs.cloudflare.com">
-    <link rel="shortcut icon" href="../favicon.ico" />
-    <link rel="icon" type="image/x-icon" href="../favicon.ico" />
-    <link rel="apple-touch-icon" href="../favicon.ico" />
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="»SynthelicZ« Cipher Tools - Interactive Cryptography Education">
+    <meta property="og:description" content="Learn cryptography with 243+ cipher implementations. Educational toolkit with algorithm chaining and interactive visualization.">
+    <meta property="og:url" content="https://hawkynt.github.io/Cipher/">
     
-    <!-- SEO and Performance -->
-    <title>SynthelicZ Cipher Tools - Interactive Cryptography Education Platform | 50+ Algorithms</title>
-    <meta name="theme-color" content="#1a365d" />
-    <meta name="msapplication-TileColor" content="#1a365d" />
-    <meta name="application-name" content="SynthelicZ Cipher Tools" />
-    <meta name="apple-mobile-web-app-title" content="Cipher Tools" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="format-detection" content="telephone=no" />
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="»SynthelicZ« Cipher Tools">
+    <meta name="twitter:description" content="Educational cryptographic toolkit with 243+ algorithms">
     
-    <!-- Comprehensive JSON-LD structured data -->
-    <script type="application/ld+json">
-    [
-      {
-        "@context": "https://schema.org",
-        "@type": "WebApplication",
-        "name": "SynthelicZ Cipher Tools",
-        "alternateName": "Interactive Cryptography Education Platform",
-        "url": "https://hawkynt.github.io/Cipher/",
-        "description": "Educational cryptographic toolkit with 50+ cipher implementations including AES, ChaCha20, Salsa20, Blowfish. Interactive learning platform for students, researchers, and educators with official test vectors and cross-platform compatibility.",
-        "applicationCategory": "EducationalApplication",
-        "applicationSubCategory": "Cryptography Education",
-        "operatingSystem": ["Web Browser", "Node.js", "Cross-platform"],
-        "browserRequirements": "JavaScript enabled, supports ES5+",
-        "softwareVersion": "v1.0",
-        "dateCreated": "2024-01-01",
-        "dateModified": "2025-01-01",
-        "inLanguage": "en-US",
-        "isAccessibleForFree": true,
-        "creator": {
-          "@type": "Person",
-          "name": "Hawkynt",
-          "url": "https://hawkynt.github.io"
-        },
-        "publisher": {
-          "@type": "Organization",
-          "name": "SynthelicZ",
-          "url": "https://hawkynt.github.io"
-        },
-        "about": [
-          {
-            "@type": "Thing",
-            "name": "Cryptography",
-            "sameAs": "https://en.wikipedia.org/wiki/Cryptography"
-          },
-          {
-            "@type": "Thing", 
-            "name": "Computer Security",
-            "sameAs": "https://en.wikipedia.org/wiki/Computer_security"
-          },
-          {
-            "@type": "Thing",
-            "name": "Educational Technology",
-            "sameAs": "https://en.wikipedia.org/wiki/Educational_technology"
-          }
-        ],
-        "featureList": [
-          "50+ Universal Cipher Implementations",
-          "AES/Rijndael Encryption",
-          "ChaCha20 Stream Cipher", 
-          "Salsa20 Implementation",
-          "Blowfish Block Cipher",
-          "Interactive Visualization",
-          "Official Test Vectors",
-          "NIST Standard Compliance",
-          "RFC Test Vector Validation",
-          "Cross-platform Compatibility",
-          "Educational Test Framework",
-          "OpCodes Cryptographic Library"
-        ],
-        "keywords": "cryptography education, cipher algorithms, AES implementation, ChaCha20, Salsa20, educational cryptography, interactive learning, test vectors",
-        "offers": {
-          "@type": "Offer",
-          "price": "0",
-          "priceCurrency": "USD",
-          "availability": "https://schema.org/InStock"
-        }
-      },
-      {
-        "@context": "https://schema.org",
-        "@type": "Course",
-        "name": "Interactive Cryptography Education",
-        "description": "Learn cryptographic algorithms through hands-on implementation and testing with 50+ cipher examples including AES, ChaCha20, and Salsa20.",
-        "provider": {
-          "@type": "Organization",
-          "name": "SynthelicZ Educational Tools"
-        },
-        "educationalLevel": "Undergraduate",
-        "teaches": [
-          "Cryptographic Algorithm Implementation",
-          "Block Cipher Analysis", 
-          "Stream Cipher Design",
-          "Test Vector Validation",
-          "Defensive Security Analysis",
-          "Cross-platform Cryptography"
-        ],
-        "courseMode": "Online",
-        "isAccessibleForFree": true,
-        "inLanguage": "en-US"
-      },
-      {
-        "@context": "https://schema.org",
-        "@type": "SoftwareApplication", 
-        "name": "Universal Cipher Implementation Library",
-        "description": "Cross-platform JavaScript/Node.js cryptographic library with 50+ algorithm implementations and comprehensive test framework.",
-        "applicationCategory": "DeveloperApplication",
-        "operatingSystem": ["Browser", "Node.js"],
-        "programmingLanguage": "JavaScript",
-        "codeRepository": "https://hawkynt.github.io/Cipher/",
-        "downloadUrl": "https://hawkynt.github.io/Cipher/",
-        "softwareVersion": "1.0",
-        "fileSize": "2MB",
-        "requirements": "JavaScript ES5+, Modern Browser or Node.js",
-        "releaseNotes": "Universal cipher implementations with OpCodes library and test framework"
-      },
-      {
-        "@context": "https://schema.org",
-        "@type": "Organization",
-        "name": "SynthelicZ",
-        "description": "Educational software development focusing on cryptographic tools and security education.",
-        "url": "https://hawkynt.github.io",
-        "founder": {
-          "@type": "Person",
-          "name": "Hawkynt"
-        },
-        "foundingDate": "1995",
-        "areaServed": "Worldwide",
-        "knowsAbout": [
-          "Cryptography",
-          "Educational Software",
-          "Computer Security",
-          "Cross-platform Development"
-        ]
-      }
-    ]
-    </script>
-    <!-- External Styles -->
-    <link rel="stylesheet" href="../css/shared-styles.css" type="text/css" />
-    <link rel="stylesheet" href="./styles.css" type="text/css" />
+    <title>»SynthelicZ« Cipher Tools - Interactive Cryptography Education</title>
+    <link rel="shortcut icon" href="../favicon.ico">
     
-    <link rel="stylesheet" href="./ui-enhanced-styles.css" type="text/css" />
-    <!-- Legacy helper retained -->
-    <script type="text/JavaScript" language="JavaScript" src="../xdom.js"></script>
-    <script type="text/JavaScript" language="JavaScript" src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-    <script type="text/JavaScript" language="JavaScript" src="./xdom.js"></script>
+    <!-- External dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/vs2015.min.css">
     
-    <!-- Universal Cipher System (modern cross-platform implementations) -->
-    <script type="text/JavaScript" language="JavaScript" src="./universal-cipher-env.js"></script>
-    <script type="text/JavaScript" language="JavaScript" src="./OpCodes.js"></script>
-    <script type="text/JavaScript" language="JavaScript" src="./cipher-metadata.js"></script>
-    <script type="text/JavaScript" language="JavaScript" src="./cipher.js"></script>
-    
-    <!-- Source for the Ciphers I implemented                                                   -->
-    <!-- http://www.cipherbox.de/                                                               -->
-    <!-- http://paginas.terra.com.br/informatica/paulobarreto/                                  -->
-    <!-- Source for the Hashes I implemented                                                    -->
-    <!-- http://www.pajhome.org.uk/crypt/                                                       -->
-    <!-- =========================[ CONVERTER ]================================================ -->
-      <script type="text/JavaScript" language="JavaScript" src="./algorithms/encoding/base64.js"></script>
-      <script type="text/JavaScript" language="JavaScript" src="./algorithms/encoding/bubblebabble.js"></script>
-      <script type="text/JavaScript" language="JavaScript" src="./algorithms/encoding/koremutake.js"></script>
-    <!-- =========================[ STREAM CIPHERS ]=========================================== -->
-      <!-- =======================[ SUBSTITUTION CIPHERS ]===================================== -->
-        <script type="text/JavaScript" language="JavaScript" src="./algorithms/encoding/atbash.js"></script>
-        <!-- <script type="text/JavaScript" language="JavaScript" src="./mystery.js"></script> <!-- File not available -->
-      <!-- =======================[ SHIFT CIPHERS ]============================================ -->
-        <script type="text/JavaScript" language="JavaScript" src="./algorithms/classical/caesar.js"></script>
-        <script type="text/JavaScript" language="JavaScript" src="./algorithms/encoding/rot.js"></script>
-    <!-- =========================[ BLOCK CIPHERS ]============================================ -->
-      <!-- =======================[ STRONG CIPHERS ]=========================================== -->
-        <script type="text/JavaScript" language="JavaScript" src="./algorithms/block/rijndael.js"></script>
-        <script type="text/JavaScript" language="JavaScript" src="./algorithms/block/blowfish.js"></script>
-        <script type="text/JavaScript" language="JavaScript" src="./algorithms/block/anubis.js"></script>
-        <script type="text/JavaScript" language="JavaScript" src="./algorithms/block/noekeon.js"></script>
-        <script type="text/JavaScript" language="JavaScript" src="./algorithms/block/sm4.js"></script>
-        <script type="text/JavaScript" language="JavaScript" src="./algorithms/block/speck.js"></script>
-        <script type="text/JavaScript" language="JavaScript" src="./algorithms/stream/salsa20.js"></script>
-        <script type="text/JavaScript" language="JavaScript" src="./algorithms/stream/chacha20.js"></script>
-        <script type="text/JavaScript" language="JavaScript" src="./algorithms/block/khazad.js"></script>
-      <!-- =======================[ POST-QUANTUM ASYMMETRIC ]================================= -->
-        <script type="text/JavaScript" language="JavaScript" src="./algorithms/asymmetric/ml-dsa.js"></script>
-      <!-- =======================[ WEAK CIPHERS ]============================================= -->
-        <script type="text/JavaScript" language="JavaScript" src="./algorithms/block/tea.js"></script>
-    <!-- =========================[ STREAM COMPRESSORS ]======================================= -->
-      <!-- Use modern compression algorithms from algorithms/compression/ directory -->
-      <!-- <script type="text/JavaScript" language="JavaScript" src="./lzss.js"></script> <!-- File not available -->
-    
-    <!-- =========================[ OFFICIAL TEST VECTORS ]================================ -->
-      <script type="text/JavaScript" language="JavaScript" src="./test-vector-database.js"></script>
-      <script type="text/JavaScript" language="JavaScript" src="./test-vector-system.js"></script>
-    
-    <!-- =========================[ UI ENHANCEMENTS ]===================================== -->
-      <script type="text/JavaScript" language="JavaScript" src="./ui-enhancements.js"></script>
-    <script>
-      // Modern JavaScript with legacy fallbacks
-      (function() {
-        'use strict';
-        
-        // Initialize
-        document.title = '»SynthelicZ« ' + (getMetaContent('Page_Title') || 'Cipher/JavaScript') + ' ' + (getMetaContent('Page_version') || 'v1.0');
-        
-        if (typeof BASE64 !== 'undefined' && BASE64.Init) {
-          BASE64.Init();
-        }
-        
-        var szBASE64ID;
-        if (typeof BASE64 !== 'undefined' && BASE64.KeySetup) {
-          szBASE64ID = BASE64.KeySetup();
-        }
-        
-        // Global variables (for legacy compatibility)
-        window.szCipher = ''; // Currently used Cipher Name
-        window.arrStrings = {}; // Use object instead of array for better property access
-        window.szBASE64ID = szBASE64ID;
-      
-        // Initialize body
-        window.BodyInit = function() {
-          if (typeof removeScripts === 'function') {
-            removeScripts();
-          }
-          
-          try {
-            var selectElement = document.forms['frmCipher'] && document.forms['frmCipher'].elements['slctCipher'];
-            if (!selectElement || typeof Cipher === 'undefined') {
-              console.warn('Cipher system not loaded properly');
-              return;
-            }
-            
-            var intI = selectElement.options.length;
-            var arrCiphers = Cipher.getCiphers ? Cipher.getCiphers() : [];
-            
-            for (var intJ = 0; intJ < arrCiphers.length; intJ++) {
-              try {
-                var cipherInfo = Cipher.objGetCipher(arrCiphers[intJ]);
-                selectElement.options[intI + intJ] = new Option(cipherInfo.szName, arrCiphers[intJ]);
-              } catch (e) {
-                console.warn('Error loading cipher:', arrCiphers[intJ], e);
-              }
-            }
-            
-            selectElement.selectedIndex = 0;
-          } catch (e) {
-            console.error('Error in BodyInit:', e);
-          }
-        };
-      
-        // Clear all Fields
-        window.clearFields = function() {
-          refreshFields('InputData', 'binary', '');
-          clearOutputFields();
-        };
-        
-        window.clearOutputFields = function() {
-          refreshFields('OutputData', 'binary', '');
-          refreshFields('InputKey', 'binary', '');
-          refreshFields('OutputKey', 'binary', '');
-          refreshFields('ReconstructedData', 'binary', '');
-        };
-      
-        // Internal set ReadOnly and Writeable
-        window.setInputActive = function(szName) {
-          try {
-            var element = document.forms['frmCipher'].elements[szName];
-            if (element) {
-              element.readOnly = false;
-              element.style.backgroundColor = '#FFF';
-              element.style.color = '#000';
-              element.style.opacity = '1';
-            }
-          } catch (e) {
-            console.warn('Error activating input:', szName, e);
-          }
-        };
-        
-        window.setInputInactive = function(szName) {
-          try {
-            var element = document.forms['frmCipher'].elements[szName];
-            if (element) {
-              element.readOnly = true;
-              element.style.backgroundColor = '#f5f5f5';
-              element.style.color = '#666';
-              element.style.opacity = '0.6';
-            }
-          } catch (e) {
-            console.warn('Error deactivating input:', szName, e);
-          }
-        };
-      
-        // KeyUp Event with error handling
-        window.refreshFields = function(szName, szCurrentType, optional_szParam1) {
-          try {
-            var szString;
-            var form = document.forms['frmCipher'];
-            if (!form || !form.elements[szName]) {
-              console.warn('Form element not found:', szName);
-              return;
-            }
-            
-            if (szCurrentType.toLowerCase() === 'binary') {
-              if (optional_szParam1 !== undefined) {
-                szString = optional_szParam1;
-                form.elements[szName].value = szString;
-              } else {
-                szString = form.elements[szName].value;
-              }
-              
-              window.arrStrings[szName] = szString;
-              
-              if (form.elements[szName + 'HEX']) {
-                form.elements[szName + 'HEX'].value = szString2HEX(szString);
-              }
-              
-              if (form.elements[szName + 'BASE64'] && typeof BASE64 !== 'undefined' && BASE64.szEncryptBlock && window.szBASE64ID) {
-                form.elements[szName + 'BASE64'].value = BASE64.szEncryptBlock(window.szBASE64ID, szString);
-              }
-            } else if (szCurrentType.toLowerCase() === 'hex') {
-              if (form.elements[szName + 'HEX']) {
-                window.arrStrings[szName] = szHEX2String(form.elements[szName + 'HEX'].value);
-                form.elements[szName].value = window.arrStrings[szName];
-                
-                if (form.elements[szName + 'BASE64'] && typeof BASE64 !== 'undefined' && BASE64.szEncryptBlock && window.szBASE64ID) {
-                  form.elements[szName + 'BASE64'].value = BASE64.szEncryptBlock(window.szBASE64ID, window.arrStrings[szName]);
-                }
-              }
-            } else if (szCurrentType.toLowerCase() === 'base64') {
-              if (form.elements[szName + 'BASE64'] && typeof BASE64 !== 'undefined' && BASE64.DecryptBlock && window.szBASE64ID) {
-                window.arrStrings[szName] = BASE64.DecryptBlock(window.szBASE64ID, form.elements[szName + 'BASE64'].value);
-                form.elements[szName].value = window.arrStrings[szName];
-                
-                if (form.elements[szName + 'HEX']) {
-                  form.elements[szName + 'HEX'].value = szString2HEX(window.arrStrings[szName]);
-                }
-              }
-            }
-          } catch (e) {
-            console.error('Error in refreshFields:', e);
-          }
-        };
-      
-        // Button Events with better error handling
-        window.Encrypt = function() {
-          try {
-            if (window.szCipher && window.szCipher !== '') {
-              if (typeof Cipher === 'undefined') {
-                alert('Cipher system not loaded!');
-                return;
-              }
-              
-              var szID = Cipher.InitCipher(window.szCipher, window.arrStrings['InputKey'] || '');
-              if (szID !== undefined) {
-                var encryptedData = Cipher.szEncrypt(szID, window.arrStrings['InputData'] || '', 'ECB');
-                refreshFields('OutputData', 'binary', encryptedData);
-                Cipher.ClearData(szID);
-              } else {
-                alert('Failed to initialize cipher!');
-              }
-            } else {
-              alert('Please select a cipher algorithm first!');
-            }
-          } catch (e) {
-            console.error('Encryption error:', e);
-            alert('Encryption failed: ' + e.message);
-          }
-        };
-        
-        window.Decrypt = function() {
-          try {
-            if (window.szCipher && window.szCipher !== '') {
-              if (typeof Cipher === 'undefined') {
-                alert('Cipher system not loaded!');
-                return;
-              }
-              
-              var szID = Cipher.InitCipher(window.szCipher, window.arrStrings['OutputKey'] || '');
-              if (szID !== undefined) {
-                var decryptedData = Cipher.szDecrypt(szID, window.arrStrings['OutputData'] || '', 'ECB');
-                refreshFields('ReconstructedData', 'binary', decryptedData);
-                Cipher.ClearData(szID);
-              } else {
-                alert('Failed to initialize cipher!');
-              }
-            } else {
-              alert('Please select a cipher algorithm first!');
-            }
-          } catch (e) {
-            console.error('Decryption error:', e);
-            alert('Decryption failed: ' + e.message);
-          }
-        };
-      
-        // Selectbox Event with improved UI updates
-        window.ChangeCipher = function(szCipherName) {
-          try {
-            if (typeof Cipher === 'undefined' || !Cipher.boolExistsCipher) {
-              console.warn('Cipher system not available');
-              return;
-            }
-            
-            if (Cipher.boolExistsCipher(szCipherName)) {
-              window.szCipher = szCipherName;
-              var cipherInfo = Cipher.objGetCipher(window.szCipher);
-              
-              // Update cipher information display
-              var cipherNameElement = document.getElementById('CipherName');
-              if (cipherNameElement) {
-                cipherNameElement.innerHTML = 
-                  '<h2>' + cipherInfo.szName + ' [' + window.szCipher + ']</h2>' +
-                  '<p>' + (cipherInfo.szComment || 'No description available.') + '</p>';
-              }
-              
-              clearOutputFields();
-              
-              // Activate input fields
-              setInputActive('InputData');
-              setInputActive('InputDataHEX');
-              setInputActive('InputDataBASE64');
-              
-              // Handle key fields based on cipher requirements
-              var needsKey = (cipherInfo.intMaxKeyLength > 0) || (cipherInfo.intMinKeyLength > 0);
-              if (needsKey) {
-                setInputActive('InputKey');
-                setInputActive('InputKeyHEX');
-                setInputActive('InputKeyBASE64');
-                setInputActive('OutputKey');
-                setInputActive('OutputKeyHEX');
-                setInputActive('OutputKeyBASE64');
-              } else {
-                setInputInactive('InputKey');
-                setInputInactive('InputKeyHEX');
-                setInputInactive('InputKeyBASE64');
-                setInputInactive('OutputKey');
-                setInputInactive('OutputKeyHEX');
-                setInputInactive('OutputKeyBASE64');
-              }
-              
-              // Handle decode capability
-              var decryptBtn = document.getElementById('btnDecrypt');
-              if (cipherInfo.boolCantDecode) {
-                setInputInactive('OutputData');
-                setInputInactive('OutputDataHEX');
-                setInputInactive('OutputDataBASE64');
-                setInputInactive('OutputKey');
-                setInputInactive('OutputKeyHEX');
-                setInputInactive('OutputKeyBASE64');
-                if (decryptBtn) decryptBtn.style.display = 'none';
-              } else {
-                setInputActive('OutputData');
-                setInputActive('OutputDataHEX');
-                setInputActive('OutputDataBASE64');
-                if (decryptBtn) decryptBtn.style.display = '';
-              }
-              
-              // Result fields are always inactive
-              setInputInactive('ReconstructedData');
-              setInputInactive('ReconstructedDataHEX');
-              setInputInactive('ReconstructedDataBASE64');
-            }
-          } catch (e) {
-            console.error('Error changing cipher:', e);
-          }
-        };
-      
-        // ============================[ UTILITY FUNCTIONS ]====================================
-        // Convert String to HEX with better error handling
-        window.szString2HEX = function(szString) {
-          try {
-            var szRet = '';
-            szString = szString || '';
-            for (var intI = 0; intI < szString.length; intI++) {
-              var intChar = szString.charCodeAt(intI);
-              szRet += szDec2Hex(intChar) + ' ';
-            }
-            return szRet.trim();
-          } catch (e) {
-            console.error('Error converting string to HEX:', e);
-            return '';
-          }
-        };
-        
-        // Convert HEX to String with better error handling
-        window.szHEX2String = function(szHex) {
-          try {
-            var szRet = '';
-            var szString = (szHex || '').replace(/\s/g, '');
-            for (var intI = 0; intI < szString.length; intI += 2) {
-              var szChar = szString.substr(intI, 2);
-              if (szChar.length === 2) {
-                szRet += String.fromCharCode(intHex2Dec(szChar));
-              }
-            }
-            return szRet;
-          } catch (e) {
-            console.error('Error converting HEX to string:', e);
-            return '';
-          }
-        };
-        
-        // Convert Decimal to HEX
-        window.szDec2Hex = function(intN) {
-          try {
-            var szRet = '00' + intN.toString(16).toUpperCase();
-            return szRet.substr(szRet.length - 2, 2);
-          } catch (e) {
-            console.error('Error converting decimal to HEX:', e);
-            return '00';
-          }
-        };
-        
-        // Convert HEX to Decimal
-        window.intHex2Dec = function(szN) {
-          try {
-            return parseInt(szN, 16) || 0;
-          } catch (e) {
-            console.error('Error converting HEX to decimal:', e);
-            return 0;
-          }
-        };
-        
-        // ============================[ TAB SYSTEM ]====================================
-        window.switchTab = function(tabName) {
-          // Hide all tab contents
-          var tabContents = document.getElementsByClassName('tab-content');
-          for (var i = 0; i < tabContents.length; i++) {
-            tabContents[i].classList.remove('active');
-          }
-          
-          // Remove active class from all tab buttons
-          var tabButtons = document.getElementsByClassName('tab-button');
-          for (var i = 0; i < tabButtons.length; i++) {
-            tabButtons[i].classList.remove('active');
-          }
-          
-          // Show selected tab content
-          var selectedTab = document.getElementById(tabName + '-tab');
-          if (selectedTab) {
-            selectedTab.classList.add('active');
-          }
-          
-          // Add active class to clicked button
-          event.target.classList.add('active');
-        };
-        
-        // ============================[ UNIT TEST SYSTEM ]====================================
-        // Test vectors sourced from official standards and references:
-        // - Caesar: Historical examples and cryptographic textbook vectors
-        // - BASE64: RFC 4648 official test vectors
-        // - ROT13: Wikipedia and cryptographic examples
-        // - Blowfish: Bruce Schneier's official test vectors from schneier.com/code/vectors.txt
-        // - TEA: Code Golf Stack Exchange and various implementations
-        // - Anubis/Khazad: NESSIE project submissions (simplified for text interface)
-        // - AES/Rijndael: NIST CAVP references (simplified for JavaScript)
-        window.testVectors = {
-          'Caesar': [
-            { input: 'HELLO', key: '', expected: 'KHOOR', description: 'Basic Caesar shift by 3 - uppercase' },
-            { input: 'hello', key: '', expected: 'khoor', description: 'Basic Caesar shift by 3 - lowercase' },
-            { input: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', key: '', expected: 'DEFGHIJKLMNOPQRSTUVWXYZABC', description: 'Full alphabet Caesar shift' },
-            { input: 'THE QUICK BROWN FOX', key: '', expected: 'WKH TXLFN EURZQ IRA', description: 'Famous pangram test' },
-            { input: 'ATTACKATONCE', key: '', expected: 'DWWDFNDWRQFH', description: 'Historical Caesar example' }
-          ],
-          'BASE64': [
-            { input: '', key: '', expected: '', description: 'RFC 4648 test vector: empty string' },
-            { input: 'f', key: '', expected: 'Zg==', description: 'RFC 4648 test vector: single f' },
-            { input: 'fo', key: '', expected: 'Zm8=', description: 'RFC 4648 test vector: fo' },
-            { input: 'foo', key: '', expected: 'Zm9v', description: 'RFC 4648 test vector: foo' },
-            { input: 'foob', key: '', expected: 'Zm9vYg==', description: 'RFC 4648 test vector: foob' },
-            { input: 'fooba', key: '', expected: 'Zm9vYmE=', description: 'RFC 4648 test vector: fooba' },
-            { input: 'foobar', key: '', expected: 'Zm9vYmFy', description: 'RFC 4648 test vector: foobar (no padding)' }
-          ],
-          'Rijndael': [
-            { input: '\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\xdd\xee\xff', key: '\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f', expected: '\x69\xc4\xe0\xd8\x6a\x7b\x04\x30\xd8\xcd\xb7\x80\x70\xb4\xc5\x5a', description: 'AES-128 test vector' }
-          ],
-          'ROT13': [
-            { input: 'HELLO', key: '', expected: 'URYYB', description: 'ROT13 uppercase test' },
-            { input: 'hello', key: '', expected: 'uryyb', description: 'ROT13 lowercase test' },
-            { input: 'To get to the other side!', key: '', expected: 'Gb trg gb gur bgure fvqr!', description: 'Wikipedia ROT13 example' },
-            { input: 'ABCDEFGHIJKLM', key: '', expected: 'NOPQRSTUVWXYZ', description: 'First half alphabet' }
-          ],
-          'Atbash': [
-            { input: 'HELLO', key: '', expected: 'SVOOL', description: 'Atbash cipher test' },
-            { input: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', key: '', expected: 'ZYXWVUTSRQPONMLKJIHGFEDCBA', description: 'Full alphabet Atbash' }
-          ],
-          'Blowfish': [
-            { input: 'TESTDATA', key: 'TESTKEY1', expected: 'BLOWFISH_RESULT_PLACEHOLDER', description: 'Blowfish 64-bit block test (run cipher to get actual output)' }
-          ],
-          'TEA': [
-            { input: 'TESTDATA', key: '1234567890123456', expected: 'TEA_RESULT_PLACEHOLDER', description: 'TEA 64-bit block, 128-bit key (run cipher to get actual output)' },
-            { input: '12345678', key: '1234567890ABCDEF', expected: 'TEA_RESULT2_PLACEHOLDER', description: 'TEA with ASCII input (run cipher to get actual output)' }
-          ],
-          'Anubis': [
-            { input: 'HELLOWORLDTEST12', key: 'ANUBISTESTKEY123', expected: 'ANUBIS_RESULT_PLACEHOLDER', description: 'Anubis 128-bit block test (run cipher to get actual output)' },
-            { input: '1234567890ABCDEF', key: 'SECRETKEYANUBIS1', expected: 'ANUBIS_RESULT2_PLACEHOLDER', description: 'Anubis hex pattern test (run cipher to get actual output)' }
-          ],
-          'Khazad': [
-            { input: 'TESTDATA', key: 'KHAZADKEY1234567', expected: 'KHAZAD_RESULT_PLACEHOLDER', description: 'Khazad 64-bit block, 128-bit key (run cipher to get actual output)' },
-            { input: '12345678', key: 'KHAZADSECRETKEY1', expected: 'KHAZAD_RESULT2_PLACEHOLDER', description: 'Khazad with 8-byte input (run cipher to get actual output)' }
-          ]
-        };
-        
-        window.runAllTests = function() {
-          var results = document.getElementById('test-results');
-          var summary = document.getElementById('test-summary');
-          var stats = document.getElementById('test-stats');
-          
-          results.innerHTML = '';
-          var totalTests = 0;
-          var passedTests = 0;
-          var failedTests = 0;
-          var warnings = 0;
-          
-          // Test each available cipher
-          if (typeof Cipher !== 'undefined' && Cipher.getCiphers) {
-            var availableCiphers = Cipher.getCiphers();
-            
-            for (var i = 0; i < availableCiphers.length; i++) {
-              var cipherName = availableCiphers[i];
-              var testCases = window.testVectors[cipherName] || [];
-              
-              if (testCases.length === 0) {
-                addTestResult(cipherName, 'No test vectors available', 'warn', '');
-                warnings++;
-                totalTests++;
-                continue;
-              }
-              
-              for (var j = 0; j < testCases.length; j++) {
-                var testCase = testCases[j];
-                totalTests++;
-                
-                try {
-                  var result = runSingleTest(cipherName, testCase);
-                  var testResultData = {
-                    input: testCase.input,
-                    key: testCase.key,
-                    expected: testCase.expected,
-                    output: result.output,
-                    error: result.error
-                  };
-                  
-                  if (result.passed) {
-                    passedTests++;
-                    addTestResult(cipherName, testCase.description, 'pass', testResultData);
-                  } else {
-                    failedTests++;
-                    addTestResult(cipherName, testCase.description, 'fail', testResultData);
-                  }
-                } catch (error) {
-                  failedTests++;
-                  var errorResult = {
-                    input: testCase.input,
-                    key: testCase.key,
-                    expected: testCase.expected,
-                    output: '',
-                    error: error.message
-                  };
-                  addTestResult(cipherName, testCase.description, 'fail', errorResult);
-                }
-              }
-            }
-          } else {
-            addTestResult('System', 'Cipher system not loaded', 'fail', 'The Cipher object is not available');
-            failedTests++;
-            totalTests++;
-          }
-          
-          // Show summary
-          stats.innerHTML = 
-            '<strong>Test Results:</strong> ' +
-            passedTests + ' passed, ' +
-            failedTests + ' failed, ' +
-            warnings + ' warnings (' +
-            totalTests + ' total)';
-          summary.style.display = 'block';
-        };
-        
-        window.runSingleTest = function(cipherName, testCase) {
-          try {
-            if (!Cipher.boolExistsCipher(cipherName)) {
-              throw new Error('Cipher not available: ' + cipherName);
-            }
-            
-            var szID = Cipher.InitCipher(cipherName, testCase.key || '');
-            if (!szID) {
-              throw new Error('Failed to initialize cipher: ' + cipherName);
-            }
-            
-            var output = Cipher.szEncrypt(szID, testCase.input, 'ECB');
-            Cipher.ClearData(szID);
-            
-            return {
-              passed: output === testCase.expected,
-              output: output,
-              expected: testCase.expected,
-              error: null
-            };
-          } catch (error) {
-            return {
-              passed: false,
-              output: '',
-              error: error.message
-            };
-          }
-        };
-        
-        window.addTestResult = function(cipher, description, status, result) {
-          var results = document.getElementById('test-results');
-          var testDiv = document.createElement('div');
-          testDiv.className = 'test-case ' + status;
-          
-          var statusIcon = status === 'pass' ? '✓' : status === 'fail' ? '✗' : '⚠';
-          var statusText = status === 'pass' ? 'PASS' : status === 'fail' ? 'FAIL' : 'WARN';
-          
-          var detailsHtml = '';
-          if (result && typeof result === 'object') {
-            detailsHtml = '<div class="test-details">' +
-              '<div><strong>Input:</strong> "' + escapeHtml(result.input || '') + '" | Hex: ' + stringToHex(result.input || '') + '</div>' +
-              '<div><strong>Key:</strong> "' + escapeHtml(result.key || '') + '" | Hex: ' + stringToHex(result.key || '') + '</div>' +
-              '<div><strong>Expected:</strong> "' + escapeHtml(result.expected || '') + '" | Hex: ' + stringToHex(result.expected || '') + '</div>' +
-              '<div><strong>Got:</strong> "' + escapeHtml(result.output || '') + '" | Hex: ' + stringToHex(result.output || '') + '</div>' +
-              (result.error ? '<div><strong>Error:</strong> ' + escapeHtml(result.error) + '</div>' : '') +
-              '</div>';
-          } else if (typeof result === 'string') {
-            detailsHtml = '<small>' + escapeHtml(result) + '</small>';
-          }
-          
-          testDiv.innerHTML = 
-            '<strong>' + statusIcon + ' [' + statusText + '] ' + cipher + '</strong>: ' + description + '<br>' +
-            detailsHtml;
-          
-          results.appendChild(testDiv);
-        };
-        
-        window.stringToHex = function(str) {
-          if (!str) return '';
-          var hex = '';
-          for (var i = 0; i < str.length; i++) {
-            var code = str.charCodeAt(i);
-            hex += (code < 16 ? '0' : '') + code.toString(16).toUpperCase() + ' ';
-          }
-          return hex.trim();
-        };
-        
-        window.escapeHtml = function(str) {
-          if (!str) return '';
-          return str.replace(/[&<>"']/g, function(m) {
-            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[m];
-          });
-        };
-        
-        window.runSelectedTests = function() {
-          // For now, just run all tests. Could be enhanced to allow selection
-          runAllTests();
-        };
-        
-        // Run NESSIE-specific tests for Anubis and Khazad
-        window.runNessieTests = function() {
-          if (typeof nessieTestVectors === 'undefined') {
-            addTestResult('System', 'NESSIE test vectors not loaded', 'fail', '');
-            return;
-          }
-          
-          clearTestResults();
-          addTestResult('System', 'Running NESSIE cipher validation tests...', 'warn', '');
-          
-          var totalTests = 0;
-          var passedTests = 0;
-          var failedTests = 0;
-          
-          // Test NESSIE ciphers (Anubis and Khazad)
-          for (var cipherName in nessieTestVectors) {
-            var testVectors = nessieTestVectors[cipherName];
-            if (!testVectors || testVectors.length === 0) continue;
-            
-            addTestResult(cipherName, 'Testing ' + testVectors.length + ' NESSIE test vectors...', 'warn', '');
-            
-            // Initialize cipher if needed
-            var cipher = window[cipherName];
-            if (cipher && typeof cipher.Init === 'function' && !cipher.boolInit) {
-              cipher.Init();
-            }
-            
-            for (var i = 0; i < testVectors.length; i++) {
-              var testVector = testVectors[i];
-              totalTests++;
-              
-              try {
-                if (!cipher || !cipher.KeySetup) {
-                  throw new Error('Cipher ' + cipherName + ' not found or improperly implemented');
-                }
-                
-                var keyId = cipher.KeySetup(testVector.key);
-                var actual = cipher.szEncryptBlock(keyId, testVector.input);
-                cipher.ClearData(keyId);
-                
-                // Convert to hex for comparison
-                function toHex(str) {
-                  var hex = '';
-                  for (var j = 0; j < str.length; j++) {
-                    var code = str.charCodeAt(j);
-                    hex += (code < 16 ? '0' : '') + code.toString(16).toUpperCase();
-                  }
-                  return hex;
-                }
-                
-                var actualHex = toHex(actual);
-                var expectedHex = toHex(testVector.expected);
-                
-                if (actualHex === expectedHex) {
-                  passedTests++;
-                  addTestResult(cipherName, testVector.description, 'pass', {
-                    input: toHex(testVector.input),
-                    key: toHex(testVector.key),
-                    expected: expectedHex,
-                    output: actualHex
-                  });
-                } else {
-                  failedTests++;
-                  addTestResult(cipherName, testVector.description + ' - OUTPUT MISMATCH', 'fail', {
-                    input: toHex(testVector.input),
-                    key: toHex(testVector.key),
-                    expected: expectedHex,
-                    output: actualHex
-                  });
-                }
-                
-              } catch (error) {
-                failedTests++;
-                addTestResult(cipherName, testVector.description + ' - ERROR', 'fail', {
-                  input: testVector.input ? toHex(testVector.input) : '',
-                  key: testVector.key ? toHex(testVector.key) : '',
-                  expected: testVector.expected ? toHex(testVector.expected) : '',
-                  output: '',
-                  error: error.message
-                });
-              }
-            }
-          }
-          
-          // Show summary
-          var summaryDiv = document.getElementById('test-summary');
-          var statsDiv = document.getElementById('test-stats');
-          
-          var passRate = totalTests > 0 ? Math.round((passedTests / totalTests) * 100) : 0;
-          var statusClass = passedTests === totalTests ? 'success' : failedTests > passedTests ? 'error' : 'warning';
-          
-          statsDiv.innerHTML = 
-            '<div class="stats-grid">' +
-            '<div class="stat-item ' + statusClass + '">' +
-            '<span class="stat-number">' + passedTests + '/' + totalTests + '</span>' +
-            '<span class="stat-label">NESSIE Tests Passed (' + passRate + '%)</span>' +
-            '</div>' +
-            '<div class="stat-item">' +
-            '<span class="stat-number">' + Object.keys(nessieTestVectors).length + '</span>' +
-            '<span class="stat-label">NESSIE Ciphers Tested</span>' +
-            '</div>' +
-            '</div>';
-          
-          summaryDiv.style.display = 'block';
-          
-          // Final result
-          if (passedTests === totalTests && totalTests > 0) {
-            addTestResult('Summary', '🎉 All NESSIE tests passed! Anubis and Khazad implementations are correct.', 'pass', '');
-          } else {
-            addTestResult('Summary', '⚠️ ' + failedTests + ' NESSIE tests failed. Some implementations need fixes.', 'fail', '');
-          }
-        };
-        
-        window.clearTestResults = function() {
-          document.getElementById('test-results').innerHTML = 
-            '<div class="test-case">Results cleared. Ready for new tests.</div>';
-          document.getElementById('test-summary').style.display = 'none';
-        };
-        
-        // Updated runAllTests to use official test vectors
-        window.runAllTests = function() {
-          if (typeof officialTestVectors === 'undefined') {
-            addTestResult('System', 'Error', 'fail', 'Official test vectors not loaded');
-            return;
-          }
-          
-          clearTestResults();
-          addTestResult('System', 'Starting comprehensive cipher validation...', 'warn', '');
-          
-          var totalTests = 0;
-          var passedTests = 0;
-          var failedTests = 0;
-          
-          // Test each cipher against official test vectors
-          for (var cipherName in officialTestVectors) {
-            var testVectors = officialTestVectors[cipherName];
-            if (!testVectors || testVectors.length === 0) continue;
-            
-            addTestResult(cipherName, 'Testing against ' + testVectors.length + ' official test vectors...', 'warn', '');
-            
-            for (var i = 0; i < testVectors.length; i++) {
-              var testVector = testVectors[i];
-              totalTests++;
-              
-              try {
-                var cipher = window[cipherName];
-                if (!cipher || !cipher.KeySetup) {
-                  throw new Error('Cipher ' + cipherName + ' not found or improperly implemented');
-                }
-                
-                var keyId = cipher.KeySetup(testVector.key);
-                var actual = cipher.szEncryptBlock(keyId, testVector.input);
-                cipher.ClearData(keyId);
-                
-                if (actual === testVector.expected) {
-                  passedTests++;
-                  addTestResult(cipherName, testVector.description, 'pass', {
-                    input: testVector.input,
-                    key: testVector.key,
-                    expected: testVector.expected,
-                    output: actual
-                  });
-                } else {
-                  failedTests++;
-                  addTestResult(cipherName, testVector.description + ' - OUTPUT MISMATCH', 'fail', {
-                    input: testVector.input,
-                    key: testVector.key,
-                    expected: testVector.expected,
-                    output: actual
-                  });
-                }
-                
-              } catch (error) {
-                failedTests++;
-                addTestResult(cipherName, testVector.description + ' - ERROR', 'fail', {
-                  input: testVector.input,
-                  key: testVector.key,
-                  expected: testVector.expected,
-                  output: '',
-                  error: error.message
-                });
-              }
-            }
-          }
-          
-          // Show summary
-          var summaryDiv = document.getElementById('test-summary');
-          var statsDiv = document.getElementById('test-stats');
-          
-          var passRate = Math.round((passedTests / totalTests) * 100);
-          var statusClass = passedTests === totalTests ? 'success' : failedTests > passedTests ? 'error' : 'warning';
-          
-          statsDiv.innerHTML = 
-            '<div class="stats-grid">' +
-            '<div class="stat-item ' + statusClass + '">' +
-            '<span class="stat-number">' + passedTests + '/' + totalTests + '</span>' +
-            '<span class="stat-label">Tests Passed (' + passRate + '%)</span>' +
-            '</div>' +
-            '<div class="stat-item">' +
-            '<span class="stat-number">' + Object.keys(officialTestVectors).length + '</span>' +
-            '<span class="stat-label">Algorithms Tested</span>' +
-            '</div>' +
-            '</div>';
-          
-          summaryDiv.style.display = 'block';
-          
-          // Final result
-          if (passedTests === totalTests) {
-            addTestResult('Summary', '🎉 All tests passed! All cipher implementations are compliant with official standards.', 'pass', '');
-          } else {
-            addTestResult('Summary', '⚠️ ' + failedTests + ' tests failed. Some implementations need fixes.', 'fail', '');
-          }
-        };
-        
-      })(); // End IIFE
-    </script>
-  </head>
-  <body onload="clearFields();">
-    <div class="container" role="main">
-      <header class="hero">
-        <h1>SynthelicZ Cipher Tools - Interactive Cryptography Education Platform</h1>
-        <p class="hero-subtitle">Educational Cryptographic Toolkit with 50+ Algorithm Implementations</p>
-        <p class="hero-description">Learn cryptography through hands-on implementation and testing. Comprehensive educational platform featuring AES, ChaCha20, Salsa20, Blowfish, and more with official test vectors, interactive visualization, and cross-platform JavaScript/Node.js compatibility for students, researchers, and security professionals.</p>
-        <nav class="hero-nav" role="navigation" aria-label="Site navigation">
-          <a href="../" rel="up">← Back to Main Portfolio</a> | 
-          <a href="./generate_test_vectors.html" rel="related">Test Vector Generator →</a> |
-          <a href="#cipher-tab" rel="bookmark">Interactive Tool</a> |
-          <a href="#tests-tab" rel="bookmark">Algorithm Tests</a>
-        </nav>
-      </header>
-      
-      <main class="cipher-panel">
-        <div class="tab-container">
-          <div class="tab-nav" role="tablist" aria-label="Cipher tool navigation">
-            <button class="tab-button active" onclick="switchTab('cipher')" role="tab" aria-controls="cipher-tab" aria-selected="true" id="cipher-tab-btn">
-              <span class="tab-icon">🔐</span> Cipher Tool
-            </button>
-            <button class="tab-button" onclick="switchTab('tests')" role="tab" aria-controls="tests-tab" aria-selected="false" id="tests-tab-btn">
-              <span class="tab-icon">🧪</span> Unit Tests
-            </button>
-            <button class="tab-button" onclick="switchTab('code')" role="tab" aria-controls="code-tab" aria-selected="false" id="code-tab-btn">
-              <span class="tab-icon">💻</span> Code View
-            </button>
-            <button class="tab-button" onclick="switchTab('metadata')" role="tab" aria-controls="metadata-tab" aria-selected="false" id="metadata-tab-btn">
-              <span class="tab-icon">📋</span> Metadata
-            </button>
-            <button class="tab-button" onclick="switchTab('convert')" role="tab" aria-controls="convert-tab" aria-selected="false" id="convert-tab-btn">
-              <span class="tab-icon">🌐</span> Convert
-            </button>
-          </div>
-          
-          <div id="cipher-tab" class="tab-content active">
-            <div id="CipherName" class="cipher-info">
-              <h2>Interactive Cipher Algorithm Tool</h2>
-              <p>Choose from 50+ cryptographic algorithms to explore encryption and decryption operations. Educational implementations include AES (Advanced Encryption Standard), ChaCha20 stream cipher, Salsa20, Blowfish block cipher, and many more with cross-platform compatibility.</p>
+    <!-- Application CSS -->
+    <link rel="stylesheet" href="index.css">
+    <link rel="stylesheet" href="components/algorithm-card.css">
+</head>
+<body>
+    <div class="app">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <div class="logo-icon">🔐</div>
+                    <div class="logo-text">&raquo;SynthelicZ&laquo; Cipher Tools</div>
+                </div>
+                <div class="header-stats">
+                    <div class="stat-badge">
+                        <span id="total-algorithms">243</span> Algorithms
+                    </div>
+                    <div class="stat-badge">
+                        <span id="working-algorithms">152</span> Working
+                    </div>
+                    <div class="stat-badge">
+                        <span id="categories">12</span> Categories
+                    </div>
+                </div>
             </div>
+            <nav class="nav-tabs">
+                <button class="nav-tab active" data-tab="algorithms">Algorithms</button>
+                <button class="nav-tab" data-tab="cipher">Cipher Interface</button>
+                <button class="nav-tab" data-tab="chaining">Algorithm Chaining</button>
+                <button class="nav-tab" data-tab="testing">Testing</button>
+            </nav>
+        </header>
         
-        <form name="frmCipher" onsubmit="return false;">
-          <div class="form-group">
-            <label for="slctCipher">Cipher Algorithm:</label>
-            <select name="slctCipher" id="slctCipher" onchange="ChangeCipher(this.value);">
-              <option value="...">Select Cipher</option>
-              <option value="...">-------------</option>
-            </select>
-          </div>
-          
-          <div class="data-grid">
-            <div class="data-row">
-              <div class="data-cell data-label">Field</div>
-              <div class="data-cell"><strong>Characters</strong></div>
-              <div class="data-cell"><strong>HEX</strong></div>
-              <div class="data-cell"><strong>BASE64</strong></div>
+        <main class="main">
+            <div class="container">
+                <!-- Algorithms Tab -->
+                <div class="tab-content active" id="algorithms-tab">
+                    <section class="algorithms-section">
+                        <div class="section-header">
+                            <h2 class="section-title">Cryptographic Algorithms</h2>
+                            <div class="search-filter">
+                                <input type="text" class="search-input" placeholder="Search algorithms..." id="search-input">
+                                <select class="filter-select" id="category-filter">
+                                    <option value="">All Categories</option>
+                                    <option value="asymmetric">Asymmetric (Public Key)</option>
+                                    <option value="block">Block Ciphers</option>
+                                    <option value="stream">Stream Ciphers</option>
+                                    <option value="hash">Hash Functions</option>
+                                    <option value="classical">Classical Ciphers</option>
+                                    <option value="encoding">Encoding Schemes</option>
+                                    <option value="compression">Compression</option>
+                                    <option value="mode">Mode of Operation</option>
+                                    <option value="padding">Padding Schemes</option>
+                                    <option value="special">Special Purpose</option>
+                                    <option value="mac">Message Auth Codes</option>
+                                    <option value="kdf">Key Derivation</option>
+                                    <option value="ecc">Error Correction</option>
+                                    <option value="checksum">Checksums</option>
+                                </select>
+                                <button class="btn btn-secondary btn-small" id="run-all-tests">
+                                    ⚡ Test All
+                                </button>
+                            </div>
+                        </div>
+                        <div class="algorithms-grid" id="algorithms-grid">
+                            <div class="loading">Loading algorithms...</div>
+                        </div>
+                    </section>
+                </div>
+                
+                <!-- Cipher Interface Tab -->
+                <div class="tab-content" id="cipher-tab">
+                    <div class="cipher-interface">
+                        <div class="interface-grid">
+                            <div class="input-section">
+                                <h3 class="section-title-small">Input</h3>
+                                <div class="file-upload-area" id="file-upload-area">
+                                    <div class="file-upload-icon">📁</div>
+                                    <div class="file-upload-text">
+                                        Drop files here or <strong>click to browse</strong><br>
+                                        <small>Supports text files, images, and binary data up to 50MB</small>
+                                    </div>
+                                    <input type="file" class="file-upload-input" id="file-input" multiple>
+                                </div>
+                                <div class="format-tabs">
+                                    <button class="format-tab active" data-format="text">Text</button>
+                                    <button class="format-tab" data-format="hex">Hex</button>
+                                    <button class="format-tab" data-format="base64">Base64</button>
+                                </div>
+                                <textarea class="textarea" id="input-text" placeholder="Enter your text or drop a file above..."></textarea>
+                            </div>
+                            
+                            <div class="output-section">
+                                <h3 class="section-title-small">Output</h3>
+                                <div class="format-tabs">
+                                    <button class="format-tab active" data-format="text">Text</button>
+                                    <button class="format-tab" data-format="hex">Hex</button>
+                                    <button class="format-tab" data-format="base64">Base64</button>
+                                </div>
+                                <textarea class="textarea" id="output-text" readonly placeholder="Encrypted/decrypted text will appear here..."></textarea>
+                                <div class="card-actions">
+                                    <button class="btn btn-secondary btn-small" id="copy-output">📋 Copy</button>
+                                    <button class="btn btn-secondary btn-small" id="download-output">💾 Download</button>
+                                </div>
+                            </div>
+                            
+                            <div class="controls-section">
+                                <div class="algorithm-selector">
+                                    <label>Algorithm:</label>
+                                    <select class="select" id="selected-algorithm">
+                                        <option value="">Select an algorithm...</option>
+                                    </select>
+                                    <label>Mode:</label>
+                                    <select class="select" id="cipher-mode">
+                                        <option value="ECB">ECB (Electronic Codebook)</option>
+                                        <option value="CBC">CBC (Cipher Block Chaining)</option>
+                                        <option value="PCBC">PCBC (Propagating CBC)</option>
+                                        <option value="CFB">CFB (Cipher Feedback)</option>
+                                        <option value="OFB">OFB (Output Feedback)</option>
+                                        <option value="CTR">CTR (Counter Mode)</option>
+                                        <option value="GCM">GCM (Galois/Counter Mode)</option>
+                                        <option value="CCM">CCM (Counter with CBC-MAC)</option>
+                                        <option value="EAX">EAX (Encrypt-then-Authenticate-then-Translate)</option>
+                                        <option value="OCB">OCB (Offset Codebook)</option>
+                                        <option value="SIV">SIV (Synthetic IV)</option>
+                                        <option value="XTS">XTS (XEX-based Tweaked-Codebook)</option>
+                                        <option value="XEX">XEX (XOR-Encrypt-XOR)</option>
+                                        <option value="LRW">LRW (Liskov-Rivest-Wagner)</option>
+                                        <option value="EME">EME (ECB-Mix-ECB)</option>
+                                        <option value="CMC">CMC (CBC-Mask-CBC)</option>
+                                        <option value="CMM">CMM (CBC-Mix-MAC)</option>
+                                        <option value="ESSIV">ESSIV (Encrypted Salt-Sector IV)</option>
+                                        <option value="RAC">RAC (Random Access Counter)</option>
+                                        <option value="FFX">FFX (Format-Preserving Encryption)</option>
+                                        <option value="DFF">DFF (Disk Full Encryption)</option>
+                                        <option value="HCTR">HCTR (Hash-Counter-Hash)</option>
+                                        <option value="HCTR2">HCTR2 (Hash-Counter-Hash v2)</option>
+                                    </select>
+                                    <label>Padding:</label>
+                                    <select class="select" id="cipher-padding">
+                                        <option value="None">No Padding</option>
+                                        <option value="PKCS7">PKCS#7</option>
+                                        <option value="ISO7816">ISO/IEC 7816-4</option>
+                                        <option value="ANSI923">ANSI X9.23</option>
+                                        <option value="Zero">Zero Padding</option>
+                                    </select>
+                                    <input type="text" class="search-input" placeholder="Key (optional)" id="cipher-key" style="max-width: 200px;">
+                                </div>
+                                <div class="action-buttons">
+                                    <button class="btn btn-primary" id="encrypt-btn">🔒 Encrypt</button>
+                                    <button class="btn btn-primary" id="decrypt-btn">🔓 Decrypt</button>
+                                    <button class="btn btn-secondary" id="clear-btn">🗑️ Clear</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Algorithm Chaining Tab -->
+                <div class="tab-content" id="chaining-tab">
+                    <div class="chaining-interface">
+                        <div class="chain-workspace">
+                            <div class="chain-controls">
+                                <h3 class="section-title-small">Visual Chain Builder</h3>
+                                <div class="zoom-controls">
+                                    <button class="zoom-btn" id="zoom-out">−</button>
+                                    <div class="zoom-level" id="zoom-level">100%</div>
+                                    <button class="zoom-btn" id="zoom-in">+</button>
+                                </div>
+                                <button class="btn btn-secondary btn-small" id="reset-chain">🔄 Reset</button>
+                                <button class="btn btn-primary" id="execute-chain">▶️ Execute Chain</button>
+                            </div>
+                            
+                            <div class="chain-canvas" id="chain-canvas">
+                                <div class="chain-canvas-inner" id="chain-canvas-inner">
+                                    <svg class="connection-lines" id="connection-svg">
+                                        <!-- Connection lines will be drawn here -->
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="algorithm-palette" id="algorithm-palette">
+                            <h4 style="margin-bottom: 1rem; color: #2d3748;">Algorithm Palette</h4>
+                            <!-- Algorithm categories will be populated here -->
+                        </div>
+                    </div>
+                    
+                    <!-- Properties Panel -->
+                    <div class="properties-panel" id="properties-panel">
+                        <div class="properties-header" id="properties-header">
+                            Select a node to see properties
+                        </div>
+                        <div id="properties-content">
+                            <!-- Properties will be populated here -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Testing Tab -->
+                <div class="tab-content" id="testing-tab">
+                    <div class="test-dashboard">
+                        <div class="test-header">
+                            <h3 class="section-title-small mb-2">🧪 Algorithm Test Dashboard</h3>
+                            <div class="test-controls">
+                                <div class="filter-group">
+                                    <label>Filter by Status:</label>
+                                    <select id="test-filter-status">
+                                        <option value="all">All Algorithms</option>
+                                        <option value="passed">✅ Passed</option>
+                                        <option value="partial">🟡 Partial</option>
+                                        <option value="failed">❌ Failed</option>
+                                        <option value="untested">⚪ Not Tested</option>
+                                        <option value="testing">🟨 Currently Testing</option>
+                                    </select>
+                                </div>
+                                <div class="filter-group">
+                                    <label>Filter by Category:</label>
+                                    <select id="test-filter-category">
+                                        <option value="all">All Categories</option>
+                                        <option value="block">Block Ciphers</option>
+                                        <option value="stream">Stream Ciphers</option>
+                                        <option value="hash">Hash Functions</option>
+                                        <option value="classical">Classical</option>
+                                        <option value="encoding">Encoding</option>
+                                        <option value="compression">Compression</option>
+                                        <option value="mode">Mode of Operation</option>
+                                        <option value="padding">Padding</option>
+                                        <option value="asymmetric">Asymmetric</option>
+                                        <option value="mac">MAC</option>
+                                        <option value="kdf">KDF</option>
+                                        <option value="special">Special</option>
+                                    </select>
+                                </div>
+                                <div class="search-group">
+                                    <input type="text" id="test-search" placeholder="Search algorithms..." />
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="test-summary">
+                            <div class="test-stat">
+                                <div class="test-stat-number" id="total-algorithms">0</div>
+                                <div class="test-stat-label">Total Algorithms</div>
+                            </div>
+                            <div class="test-stat">
+                                <div class="test-stat-number" id="passed-algorithms" style="color: #38a169;">0</div>
+                                <div class="test-stat-label">✅ Passed</div>
+                            </div>
+                            <div class="test-stat">
+                                <div class="test-stat-number" id="partial-algorithms" style="color: #d69e2e;">0</div>
+                                <div class="test-stat-label">🟡 Partial</div>
+                            </div>
+                            <div class="test-stat">
+                                <div class="test-stat-number" id="failed-algorithms" style="color: #e53e3e;">0</div>
+                                <div class="test-stat-label">❌ Failed</div>
+                            </div>
+                            <div class="test-stat">
+                                <div class="test-stat-number" id="success-rate">0%</div>
+                                <div class="test-stat-label">Success Rate</div>
+                            </div>
+                        </div>
+                        
+                        <div class="test-actions">
+                            <button class="btn btn-primary" id="run-all-tests">🚀 Test All Algorithms</button>
+                            <button class="btn btn-secondary" id="run-selected-tests">▶️ Test Selected</button>
+                            <button class="btn btn-secondary" id="stop-testing">⏹️ Stop Testing</button>
+                            <button class="btn btn-secondary" id="export-test-results">📊 Export Results</button>
+                            <div class="test-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="test-progress-fill"></div>
+                                </div>
+                                <span id="test-progress-text">Ready to test</span>
+                            </div>
+                        </div>
+                        
+                        <div class="test-grid-container">
+                            <table class="test-grid" id="test-grid">
+                                <thead>
+                                    <tr>
+                                        <th class="sortable" data-column="selected">
+                                            <input type="checkbox" id="select-all-tests" />
+                                        </th>
+                                        <th class="sortable" data-column="status">Status</th>
+                                        <th class="sortable" data-column="name">Algorithm Name</th>
+                                        <th class="sortable" data-column="category">Category</th>
+                                        <th class="sortable" data-column="test-vectors">Test Vectors</th>
+                                        <th class="sortable" data-column="passed">Passed</th>
+                                        <th class="sortable" data-column="failed">Failed</th>
+                                        <th class="sortable" data-column="success-rate">Success %</th>
+                                        <th class="sortable" data-column="duration">Duration</th>
+                                        <th class="sortable" data-column="last-tested">Last Tested</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="test-grid-body">
+                                    <!-- Test rows will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <div class="test-details-panel" id="test-details-panel">
+                            <div class="test-details-header">
+                                <h4 id="test-details-title">Select an algorithm to view test details</h4>
+                                <button class="btn btn-small" onclick="app.closeTestDetails()">×</button>
+                            </div>
+                            <div class="test-details-content" id="test-details-content">
+                                <!-- Detailed test results will be shown here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            
-            <div class="data-row">
-              <div class="data-cell data-label">Plain Data</div>
-              <div class="data-cell"><input type="text" name="InputData" tabindex="1" readonly onkeyup="refreshFields('InputData','binary');" /></div>
-              <div class="data-cell"><input type="text" name="InputDataHEX" tabindex="5" readonly onkeyup="refreshFields('InputData','hex');" /></div>
-              <div class="data-cell"><input type="text" name="InputDataBASE64" tabindex="9" readonly onkeyup="refreshFields('InputData','base64');" /></div>
+        </main>
+        
+        <!-- Algorithm Metadata Modal -->
+        <div class="metadata-modal" id="metadata-modal">
+            <div class="metadata-content">
+                <div class="metadata-header">
+                    <div class="metadata-title" id="metadata-title">Algorithm Details</div>
+                    <button class="metadata-close" onclick="app.closeMetadataModal()">×</button>
+                </div>
+                <div class="metadata-tabs">
+                    <button class="metadata-tab active" onclick="app.switchMetadataTab(event, 'info')">📋 Info</button>
+                    <button class="metadata-tab" onclick="app.switchMetadataTab(event, 'references')">📚 References</button>
+                    <button class="metadata-tab" onclick="app.switchMetadataTab(event, 'test-vectors')">🧪 Test Vectors</button>
+                    <button class="metadata-tab" onclick="app.switchMetadataTab(event, 'code')">💻 Code</button>
+                </div>
+                <div class="metadata-body" id="metadata-body">
+                    <!-- Tab content will be populated here -->
+                </div>
             </div>
-            
-            <div class="data-row">
-              <div class="data-cell data-label">Key</div>
-              <div class="data-cell"><input type="text" name="InputKey" tabindex="2" readonly onkeyup="refreshFields('InputKey','binary');" /></div>
-              <div class="data-cell"><input type="text" name="InputKeyHEX" tabindex="6" readonly onkeyup="refreshFields('InputKey','hex');" /></div>
-              <div class="data-cell"><input type="text" name="InputKeyBASE64" tabindex="10" readonly onkeyup="refreshFields('InputKey','base64');" /></div>
-            </div>
-            
-            <div class="data-row">
-              <div class="data-cell data-label">Encrypted</div>
-              <div class="data-cell"><input type="text" name="OutputData" tabindex="3" readonly onkeyup="refreshFields('OutputData','binary');" /></div>
-              <div class="data-cell"><input type="text" name="OutputDataHEX" tabindex="7" readonly onkeyup="refreshFields('OutputData','hex');" /></div>
-              <div class="data-cell"><input type="text" name="OutputDataBASE64" tabindex="11" readonly onkeyup="refreshFields('OutputData','base64');" /></div>
-            </div>
-            
-            <div class="data-row">
-              <div class="data-cell data-label">Key (Decrypt)</div>
-              <div class="data-cell"><input type="text" name="OutputKey" tabindex="4" readonly onkeyup="refreshFields('OutputKey','binary');" /></div>
-              <div class="data-cell"><input type="text" name="OutputKeyHEX" tabindex="8" readonly onkeyup="refreshFields('OutputKey','hex');" /></div>
-              <div class="data-cell"><input type="text" name="OutputKeyBASE64" tabindex="12" readonly onkeyup="refreshFields('OutputKey','base64');" /></div>
-            </div>
-            
-            <div class="data-row">
-              <div class="data-cell data-label">Decrypted</div>
-              <div class="data-cell"><input type="text" name="ReconstructedData" readonly /></div>
-              <div class="data-cell"><input type="text" name="ReconstructedDataHEX" readonly /></div>
-              <div class="data-cell"><input type="text" name="ReconstructedDataBASE64" readonly /></div>
-            </div>
-          </div>
-          
-          <div class="btn-group">
-            <button type="button" id="btnEncrypt" class="btn" onclick="Encrypt();">Encrypt</button>
-            <button type="button" id="btnDecrypt" class="btn" onclick="Decrypt();">Decrypt</button>
-          </div>
-        </form>
-          </div>
-          
-          <div id="tests-tab" class="tab-content">
-            <div class="cipher-info">
-              <h2>Cryptographic Algorithm Verification and Test Vectors</h2>
-              <p>Comprehensive testing framework validates cipher implementations against official standards including NIST, RFC, and NESSIE test vectors. Educational testing ensures compliance with cryptographic standards for defensive security analysis and academic research.</p>
-            </div>
-            
-            <div class="test-controls">
-              <button type="button" class="btn" onclick="runAllTests()">Run All Tests</button>
-              <button type="button" class="btn" onclick="runNessieTests()">Run NESSIE Tests</button>
-              <button type="button" class="btn" onclick="runSelectedTests()">Run Selected</button>
-              <button type="button" class="btn" onclick="clearTestResults()">Clear Results</button>
-            </div>
-            
-            <div id="test-summary" class="test-summary" style="display: none;">
-              <div id="test-stats"></div>
-            </div>
-            
-            <div id="test-results" class="test-results">
-              <div class="test-case">
-                <strong>Ready to run tests...</strong><br>
-                Click "Run All Tests" to validate all cipher implementations.
-              </div>
-            </div>
-          </div>
         </div>
-      </main>
     </div>
+
+    <!-- Core Scripts -->
+    <script src="./OpCodes.js"></script>
+    <script src="./universal-cipher-env.js"></script>
+    <script src="./cipher.js"></script>
+    
+    <!-- All Algorithm Implementations -->
+    <!-- Asymmetric Algorithms -->
+    <script src="./algorithms/asymmetric/beth-piper.js"></script>
+    <script src="./algorithms/asymmetric/dilithium.js"></script>
+    <script src="./algorithms/asymmetric/ml-kem.js"></script>
+    <script src="./algorithms/asymmetric/slh-dsa.js"></script>
+    <script src="./algorithms/asymmetric/sphincs-plus.js"></script>
+    
+    <!-- Block Ciphers -->
+    <script src="./algorithms/block/3des.js"></script>
+    <script src="./algorithms/block/anubis.js"></script>
+    <script src="./algorithms/block/aria.js"></script>
+    <script src="./algorithms/block/baseking.js"></script>
+    <script src="./algorithms/block/blowfish.js"></script>
+    <script src="./algorithms/block/camellia.js"></script>
+    <script src="./algorithms/block/cast128.js"></script>
+    <script src="./algorithms/block/cast256.js"></script>
+    <script src="./algorithms/block/cham.js"></script>
+    <script src="./algorithms/block/clefia.js"></script>
+    <script src="./algorithms/block/crypton.js"></script>
+    <script src="./algorithms/block/deal.js"></script>
+    <script src="./algorithms/block/des.js"></script>
+    <script src="./algorithms/block/des-x.js"></script>
+    <script src="./algorithms/block/dfc.js"></script>
+    <script src="./algorithms/block/feal.js"></script>
+    <script src="./algorithms/block/ff1.js"></script>
+    <script src="./algorithms/block/ff3.js"></script>
+    <script src="./algorithms/block/gost-kuznyechik.js"></script>
+    <script src="./algorithms/block/gost28147.js"></script>
+    <script src="./algorithms/block/idea.js"></script>
+    <script src="./algorithms/block/kalyna.js"></script>
+    <script src="./algorithms/block/khazad.js"></script>
+    <script src="./algorithms/block/lea.js"></script>
+    <script src="./algorithms/block/loki89.js"></script>
+    <script src="./algorithms/block/loki97.js"></script>
+    <script src="./algorithms/block/lucifer.js"></script>
+    <script src="./algorithms/block/magenta.js"></script>
+    <script src="./algorithms/block/mars.js"></script>
+    <script src="./algorithms/block/misty1.js"></script>
+    <script src="./algorithms/block/misty2.js"></script>
+    <script src="./algorithms/block/newdes.js"></script>
+    <script src="./algorithms/block/noekeon.js"></script>
+    <script src="./algorithms/block/present.js"></script>
+    <script src="./algorithms/block/present128.js"></script>
+    <script src="./algorithms/block/rc2.js"></script>
+    <script src="./algorithms/block/rc5.js"></script>
+    <script src="./algorithms/block/rc6.js"></script>
+    <script src="./algorithms/block/rijndael.js"></script>
+    <script src="./algorithms/block/safer.js"></script>
+    <script src="./algorithms/block/seed.js"></script>
+    <script src="./algorithms/block/serpent.js"></script>
+    <script src="./algorithms/block/simon.js"></script>
+    <script src="./algorithms/block/skipjack.js"></script>
+    <script src="./algorithms/block/sm4.js"></script>
+    <script src="./algorithms/block/speck.js"></script>
+    <script src="./algorithms/block/square.js"></script>
+    <script src="./algorithms/block/tea.js"></script>
+    <script src="./algorithms/block/threefish.js"></script>
+    <script src="./algorithms/block/twofish.js"></script>
+    <script src="./algorithms/block/xtea.js"></script>
+    <script src="./algorithms/block/xxtea.js"></script>
+    
+    <!-- Classical Ciphers -->
+    <script src="./algorithms/classical/affine.js"></script>
+    <script src="./algorithms/classical/beaufort.js"></script>
+    <script src="./algorithms/classical/caesar.js"></script>
+    <script src="./algorithms/classical/enigma.js"></script>
+    <script src="./algorithms/classical/foursquare.js"></script>
+    <script src="./algorithms/classical/hill.js"></script>
+    <script src="./algorithms/classical/nihilist.js"></script>
+    <script src="./algorithms/classical/playfair.js"></script>
+    <script src="./algorithms/classical/scytale.js"></script>
+    <script src="./algorithms/classical/twosquare.js"></script>
+    <script src="./algorithms/classical/vigenere.js"></script>
+    
+    <!-- Compression Algorithms -->
+    <script src="./algorithms/compression/bpe.js"></script>
+    <script src="./algorithms/compression/brotli.js"></script>
+    <script src="./algorithms/compression/bwt.js"></script>
+    <script src="./algorithms/compression/deflate-simple.js"></script>
+    <script src="./algorithms/compression/delta.js"></script>
+    <script src="./algorithms/compression/elias-delta.js"></script>
+    <script src="./algorithms/compression/elias-gamma.js"></script>
+    <script src="./algorithms/compression/fibonacci.js"></script>
+    <script src="./algorithms/compression/huffman.js"></script>
+    <script src="./algorithms/compression/lz4.js"></script>
+    <script src="./algorithms/compression/lz77.js"></script>
+    <script src="./algorithms/compression/lz78.js"></script>
+    <script src="./algorithms/compression/lzw.js"></script>
+    <script src="./algorithms/compression/rle.js"></script>
+    <script src="./algorithms/compression/shannon-fano.js"></script>
+    <script src="./algorithms/compression/unary.js"></script>
+    
+    <!-- Encoding Schemes -->
+    <script src="./algorithms/encoding/atbash.js"></script>
+    <script src="./algorithms/encoding/base16.js"></script>
+    <script src="./algorithms/encoding/base32.js"></script>
+    <script src="./algorithms/encoding/base58.js"></script>
+    <script src="./algorithms/encoding/base64.js"></script>
+    <script src="./algorithms/encoding/base85.js"></script>
+    <script src="./algorithms/encoding/base91.js"></script>
+    <script src="./algorithms/encoding/baudot.js"></script>
+    <script src="./algorithms/encoding/binhex.js"></script>
+    <script src="./algorithms/encoding/bubblebabble.js"></script>
+    <script src="./algorithms/encoding/koremutake.js"></script>
+    <script src="./algorithms/encoding/manchester.js"></script>
+    <script src="./algorithms/encoding/morse.js"></script>
+    <script src="./algorithms/encoding/pem.js"></script>
+    <script src="./algorithms/encoding/polybius.js"></script>
+    <script src="./algorithms/encoding/rot.js"></script>
+    <script src="./algorithms/encoding/uuencode.js"></script>
+    <script src="./algorithms/encoding/xxencode.js"></script>
+    
+    <!-- Hash Functions -->
+    <script src="./algorithms/hash/adler32.js"></script>
+    <script src="./algorithms/hash/blake2b.js"></script>
+    <script src="./algorithms/hash/blake2s.js"></script>
+    <script src="./algorithms/hash/blake3.js"></script>
+    <script src="./algorithms/hash/crc16.js"></script>
+    <script src="./algorithms/hash/crc32.js"></script>
+    <script src="./algorithms/hash/fnv.js"></script>
+    <script src="./algorithms/hash/md2.js"></script>
+    <script src="./algorithms/hash/md4.js"></script>
+    <script src="./algorithms/hash/md5.js"></script>
+    <script src="./algorithms/hash/ripemd160.js"></script>
+    <script src="./algorithms/hash/sha1.js"></script>
+    <script src="./algorithms/hash/sha224.js"></script>
+    <script src="./algorithms/hash/sha256.js"></script>
+    <script src="./algorithms/hash/sha3-256.js"></script>
+    <script src="./algorithms/hash/sha384.js"></script>
+    <script src="./algorithms/hash/sha512.js"></script>
+    <script src="./algorithms/hash/shake128.js"></script>
+    <script src="./algorithms/hash/siphash.js"></script>
+    <script src="./algorithms/hash/streebog.js"></script>
+    <script src="./algorithms/hash/tiger.js"></script>
+    <script src="./algorithms/hash/whirlpool.js"></script>
+    <script src="./algorithms/hash/xxhash32.js"></script>
+    
+    <!-- Key Derivation Functions -->
+    <script src="./algorithms/kdf/argon2.js"></script>
+    <script src="./algorithms/kdf/hkdf.js"></script>
+    <script src="./algorithms/kdf/pbkdf2.js"></script>
+    <script src="./algorithms/kdf/scrypt.js"></script>
+    
+    <!-- Message Authentication Codes -->
+    <script src="./algorithms/mac/cmac.js"></script>
+    <script src="./algorithms/mac/gmac.js"></script>
+    <script src="./algorithms/mac/hmac.js"></script>
+    <script src="./algorithms/mac/omac.js"></script>
+    <script src="./algorithms/mac/poly1305.js"></script>
+    <script src="./algorithms/mac/vmac.js"></script>
+    
+    <!-- Special Purpose Algorithms -->
+    <script src="./algorithms/special/3way.js"></script>
+    <script src="./algorithms/special/aegis-128.js"></script>
+    <script src="./algorithms/special/aes-gcm-siv.js"></script>
+    <script src="./algorithms/special/aes-siv.js"></script>
+    <script src="./algorithms/special/ascon.js"></script>
+    <script src="./algorithms/special/ascon-128.js"></script>
+    <script src="./algorithms/special/ccm.js"></script>
+    <script src="./algorithms/special/chacha20-poly1305.js"></script>
+    <script src="./algorithms/special/eax.js"></script>
+    <script src="./algorithms/special/fiat-shamir.js"></script>
+    <script src="./algorithms/special/fish.js"></script>
+    <script src="./algorithms/special/gimli.js"></script>
+    <script src="./algorithms/special/ocb.js"></script>
+    <script src="./algorithms/special/ocb3.js"></script>
+    <script src="./algorithms/special/shamir-secret-sharing.js"></script>
+    <script src="./algorithms/special/time-lock-puzzle.js"></script>
+    
+    <!-- Stream Ciphers -->
+    <script src="./algorithms/stream/a5-1.js"></script>
+    <script src="./algorithms/stream/a5-2.js"></script>
+    <script src="./algorithms/stream/a5-3.js"></script>
+    <script src="./algorithms/stream/achterbahn.js"></script>
+    <script src="./algorithms/stream/chacha20.js"></script>
+    <script src="./algorithms/stream/crypto1.js"></script>
+    <script src="./algorithms/stream/e0.js"></script>
+    <script src="./algorithms/stream/e2.js"></script>
+    <script src="./algorithms/stream/f-fcsr.js"></script>
+    <script src="./algorithms/stream/geffe.js"></script>
+    <script src="./algorithms/stream/grain.js"></script>
+    <script src="./algorithms/stream/grain-v1.js"></script>
+    <script src="./algorithms/stream/hc-128.js"></script>
+    <script src="./algorithms/stream/isaac.js"></script>
+    <script src="./algorithms/stream/mickey.js"></script>
+    <script src="./algorithms/stream/miller.js"></script>
+    <script src="./algorithms/stream/mugi.js"></script>
+    <script src="./algorithms/stream/panama.js"></script>
+    <script src="./algorithms/stream/rabbit.js"></script>
+    <script src="./algorithms/stream/rc4.js"></script>
+    <script src="./algorithms/stream/rule30.js"></script>
+    <script src="./algorithms/stream/salsa20.js"></script>
+    <script src="./algorithms/stream/shrinking-generator.js"></script>
+    <script src="./algorithms/stream/snow3g.js"></script>
+    <script src="./algorithms/stream/sosemanuk.js"></script>
+    <script src="./algorithms/stream/spritz.js"></script>
+    <script src="./algorithms/stream/trivium.js"></script>
+    <script src="./algorithms/stream/wake.js"></script>
+    <script src="./algorithms/stream/xchacha20.js"></script>
+    <script src="./algorithms/stream/xsalsa20.js"></script>
+    <script src="./algorithms/stream/zuc.js"></script>
+    
+    <!-- Additional Categories -->
+    <!-- Checksum Functions -->
+    <script src="./algorithms/checksum/fletcher32.js"></script>
+    
+    <!-- Error Correction Codes -->
+    <script src="./algorithms/ecc/bch.js"></script>
+    <script src="./algorithms/ecc/hamming.js"></script>
+    <script src="./algorithms/ecc/ldpc.js"></script>
+    <script src="./algorithms/ecc/reed-solomon.js"></script>
+    
+    <!-- Additional Encoding Schemes -->
+    <script src="./algorithms/encoding/base62.js"></script>
+    <script src="./algorithms/encoding/yenc.js"></script>
+    <script src="./algorithms/encoding/z85.js"></script>
+    
+    <!-- Additional Hash Functions -->
+    <script src="./algorithms/hash/cityhash.js"></script>
+    <script src="./algorithms/hash/groestl.js"></script>
+    <script src="./algorithms/hash/haval.js"></script>
+    <script src="./algorithms/hash/jh.js"></script>
+    <script src="./algorithms/hash/murmurhash3.js"></script>
+    <script src="./algorithms/hash/radiogatun.js"></script>
+    <script src="./algorithms/hash/ripemd256.js"></script>
+    <script src="./algorithms/hash/ripemd320.js"></script>
+    <script src="./algorithms/hash/skein.js"></script>
+    <script src="./algorithms/hash/xxhash.js"></script>
+    
+    <!-- Additional Block Ciphers -->
+    <script src="./algorithms/block/loki91.js"></script>
+    <script src="./algorithms/block/redoc2.js"></script>
+    <script src="./algorithms/block/redoc3.js"></script>
+    <script src="./algorithms/block/rhx.js"></script>
+    <script src="./algorithms/block/shx.js"></script>
+    <script src="./algorithms/block/thx.js"></script>
+    
+    <!-- Additional Classical Ciphers -->
+    <script src="./algorithms/classical/autokey.js"></script>
+    <script src="./algorithms/classical/bazeries.js"></script>
+    <script src="./algorithms/classical/bifid.js"></script>
+    <script src="./algorithms/classical/cadaenus.js"></script>
+    <script src="./algorithms/classical/columnar.js"></script>
+    <script src="./algorithms/classical/gronsfeld.js"></script>
+    <script src="./algorithms/classical/phillips.js"></script>
+    <script src="./algorithms/classical/porta.js"></script>
+    <script src="./algorithms/classical/railfence.js"></script>
+    <script src="./algorithms/classical/solitaire.js"></script>
+    <script src="./algorithms/classical/trifid.js"></script>
+    
+    <!-- Additional Compression Algorithms -->
+    <script src="./algorithms/compression/arithmetic.js"></script>
+    <script src="./algorithms/compression/ppm.js"></script>
+    <script src="./algorithms/compression/zstd.js"></script>
+    
+    <!-- Additional Stream Ciphers -->
+    <script src="./algorithms/stream/dragon.js"></script>
+    <script src="./algorithms/stream/hc-256.js"></script>
+    <script src="./algorithms/stream/leviathan.js"></script>
+    <script src="./algorithms/stream/mickey-128.js"></script>
+    <script src="./algorithms/stream/phelix-simple.js"></script>
+    <script src="./algorithms/stream/pike.js"></script>
+    <script src="./algorithms/stream/pomaranch.js"></script>
+    <script src="./algorithms/stream/tsc-4.js"></script>
+    <script src="./algorithms/stream/vest.js"></script>
+    
+    <!-- Additional Asymmetric Algorithms -->
+    <script src="./algorithms/asymmetric/bike.js"></script>
+    <script src="./algorithms/asymmetric/classic-mceliece.js"></script>
+    <script src="./algorithms/asymmetric/falcon.js"></script>
+    <script src="./algorithms/asymmetric/frodokem.js"></script>
+    <script src="./algorithms/asymmetric/hqc.js"></script>
+    <script src="./algorithms/asymmetric/lwe-signature.js"></script>
+    <script src="./algorithms/asymmetric/ntru.js"></script>
+    <script src="./algorithms/asymmetric/rainbow.js"></script>
+    <script src="./algorithms/asymmetric/rsa.js"></script>
+    <script src="./algorithms/asymmetric/sike.js"></script>
+    
+    <!-- Mode of Operation Algorithms -->
+    <script src="./algorithms/modes/ecb.js"></script>
+    <script src="./algorithms/modes/cbc.js"></script>
+    <script src="./algorithms/modes/ctr.js"></script>
+    <script src="./algorithms/modes/cfb.js"></script>
+    <script src="./algorithms/modes/ofb.js"></script>
+    <script src="./algorithms/modes/gcm.js"></script>
+    <script src="./algorithms/modes/xts.js"></script>
+    <script src="./algorithms/modes/pcbc.js"></script>
+    <script src="./algorithms/modes/cts.js"></script>
+    <script src="./algorithms/modes/ccm.js"></script>
+    <script src="./algorithms/modes/eax.js"></script>
+    <script src="./algorithms/modes/ocb.js"></script>
+    <script src="./algorithms/modes/siv.js"></script>
+    <script src="./algorithms/modes/xex.js"></script>
+    <script src="./algorithms/modes/lrw.js"></script>
+    <script src="./algorithms/modes/cmc.js"></script>
+    <script src="./algorithms/modes/eme.js"></script>
+    <script src="./algorithms/modes/ffx.js"></script>
+    <script src="./algorithms/modes/gcm-siv.js"></script>
+    <script src="./algorithms/modes/ige.js"></script>
+    <script src="./algorithms/modes/kw.js"></script>
+    <script src="./algorithms/modes/kwp.js"></script>
+    <script src="./algorithms/modes/fpe.js"></script>
+    
+    <!-- Padding Schemes -->
+    <script src="./algorithms/padding/pkcs7.js"></script>
+    <script src="./algorithms/padding/zero.js"></script>
+    <script src="./algorithms/padding/pkcs1.js"></script>
+    <script src="./algorithms/padding/pkcs5.js"></script>
+    <script src="./algorithms/padding/ansi-x923.js"></script>
+    <script src="./algorithms/padding/iso10126.js"></script>
+    <script src="./algorithms/padding/iso7816-4.js"></script>
+    <script src="./algorithms/padding/oaep.js"></script>
+    <script src="./algorithms/padding/pss.js"></script>
+    <script src="./algorithms/padding/no-padding.js"></script>
+    <script src="./algorithms/padding/random.js"></script>
+    <script src="./algorithms/padding/bit-padding.js"></script>
+    
+    <!-- Cipher System Core (loaded earlier) -->
+    
+    <!-- Application Models -->
+    <script src="index.models.algorithms.js"></script>
+    <script src="index.models.chain.js"></script>
+    
+    <!-- UI Components -->
+    <script src="components/algorithm-card.js"></script>
+    
+    <!-- Application Controller -->
+    <script src="index.controller.js"></script>
+    
     <script>
-      // Initialize when DOM is ready
-      (function() {
-        function init() {
-          if (typeof BodyInit === 'function') {
-            BodyInit();
-          } else {
-            console.warn('BodyInit function not available');
-          }
-        }
-        
-        // Modern browsers
-        if (document.readyState === 'loading') {
-          document.addEventListener('DOMContentLoaded', init);
-        } else {
-          init();
-        }
-        
-        // Legacy browser fallback
-        if (typeof document.addEventListener === 'undefined') {
-          window.setTimeout(init, 100);
-        }
-      })();
+        // Application initialized by index.controller.js
+        console.log('🔐 »SynthelicZ« Cipher Tools Loading...');
     </script>
-    
-    <footer role="contentinfo">
-      <div class="footer-content">
-        <div class="footer-section">
-          <h3>About SynthelicZ Cipher Tools</h3>
-          <p>Educational cryptographic platform providing interactive learning experiences for students, researchers, and security professionals. Features 50+ algorithm implementations with official test vectors and cross-platform compatibility.</p>
-        </div>
-        <div class="footer-section">
-          <h3>Educational Resources</h3>
-          <ul>
-            <li><a href="#cipher-tab" rel="bookmark">Interactive Cipher Tool</a></li>
-            <li><a href="#tests-tab" rel="bookmark">Algorithm Testing</a></li>
-            <li><a href="./generate_test_vectors.html" rel="related">Test Vector Generator</a></li>
-            <li><a href="../" rel="up">More Educational Tools</a></li>
-          </ul>
-        </div>
-        <div class="footer-section">
-          <h3>Supported Algorithms</h3>
-          <p>AES/Rijndael, ChaCha20, Salsa20, Blowfish, TEA, Anubis, NOEKEON, Caesar, ROT13, BASE64, and 40+ more cryptographic algorithms for educational analysis.</p>
-        </div>
-      </div>
-      <div class="footer-bottom">
-        <p>© 1995–2025 Hawkynt — SynthelicZ Educational Cryptographic Tools</p>
-        <p><strong>Educational Purpose:</strong> All cipher implementations are for learning, research, and defensive security analysis only. Not for production use.</p>
-        <p><small>Keywords: cryptography education, cipher algorithms, educational cryptography, interactive learning, test vectors, JavaScript cryptography, Node.js encryption</small></p>
-      </div>
-    </footer>
-    </div>
-    
-    <noscript>
-      <div class="main-panel">
-        <h2>JavaScript Required</h2>
-        <p>The SynthelicZ Cipher Tools require JavaScript to perform encryption operations and display interactive content. Please enable JavaScript in your browser to use this educational cryptographic toolkit.</p>
-      </div>
-    </noscript>
-  </body>
+</body>
 </html>
