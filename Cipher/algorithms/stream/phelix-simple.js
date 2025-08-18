@@ -24,12 +24,46 @@
     }
   }
 
-  // Create Simplified Phelix cipher object
   const PhelixSimple = {
+    name: "Phelix Simple",
+    description: "Educational implementation inspired by Phelix stream cipher. Uses XOR, addition mod 2^32, and rotation operations for demonstration purposes. This is a simplified version with known security flaws.",
+    inventor: "Doug Whiting, Bruce Schneier, Stefan Lucks, Frédéric Muller",
+    year: 2004,
+    country: "US",
+    category: "cipher",
+    subCategory: "Stream Cipher",
+    securityStatus: "educational",
+    securityNotes: "Educational implementation with known security flaws. Original Phelix also has documented vulnerabilities. Never use for production.",
+    
+    documentation: [
+      {text: "Phelix Wikipedia", uri: "https://en.wikipedia.org/wiki/Phelix"},
+      {text: "eSTREAM Project", uri: "https://www.ecrypt.eu.org/stream/"}
+    ],
+    
+    references: [
+      {text: "Original Phelix Paper", uri: "https://www.schneier.com/academic/paperfiles/paper-phelix.pdf"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Differential Attack", 
+        text: "Original Phelix vulnerable to differential cryptanalysis by Wu and Preneel",
+        mitigation: "Educational use only, never use in production"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Educational Test Vector",
+        uri: "Educational test case",
+        keySize: 16,
+        key: Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        input: Hex8ToBytes("00000000000000000000000000000000"),
+        expected: [] // Educational implementation, no official test vectors
+      }
+    ],
+
     // Public interface properties
-    internalName: 'PhelixSimple',
-    name: 'Phelix Simple (Educational)',
-    comment: 'Simplified Phelix-inspired stream cipher for educational purposes only',
     minKeyLength: 16,
     maxKeyLength: 32,
     stepKeyLength: 1,
@@ -38,46 +72,6 @@
     stepBlockSize: 1,
     instances: {},
     cantDecode: false,
-
-    // ===== COMPREHENSIVE METADATA =====
-    metadata: {
-      description: 'A simplified educational implementation inspired by Phelix stream cipher. Uses only XOR, addition mod 2^32, and rotation operations.',
-      country: 'US',
-      countryName: 'United States',
-      nYear: 2004,
-      inventor: 'Doug Whiting, Bruce Schneier, Stefan Lucks, Frédéric Muller (Original Phelix)',
-      
-      category: 'stream',
-      categoryName: 'Stream Cipher',
-      type: 'synchronous_stream',
-      securityLevel: 'INSECURE',
-      complexity: 'advanced',
-      
-      blockSize: 0, // Stream cipher
-      keySizes: [16, 32], // 128-256 bits
-      keyType: 'binary',
-      symmetric: true,
-      deterministic: true,
-      
-      tags: ['educational', 'BROKEN', 'INSECURE', 'stream', 'experimental', 'estream'],
-      educationalLevel: 'advanced',
-      prerequisites: ['stream_ciphers', 'xor_operations', 'modular_arithmetic'],
-      learningObjectives: 'Understanding stream cipher principles and security analysis',
-      
-      secure: false,
-      deprecated: true,
-      securityWarning: 'CRITICAL: This is a simplified educational implementation with KNOWN SECURITY FLAWS. NEVER use for real cryptography. Original Phelix also has vulnerabilities.',
-      vulnerabilities: ['differential_attacks', 'nonce_reuse', 'simplified_design', 'educational_only'],
-      
-      specifications: [
-        {
-          name: 'Original Phelix Specification',
-          url: 'https://en.wikipedia.org/wiki/Phelix',
-          type: 'reference',
-          notes: 'This implementation is a simplified educational version'
-        }
-      ]
-    },
 
     // Initialize cipher
     Init: function() {
@@ -252,10 +246,9 @@
     return output;
   };
   
-  // Auto-register with Cipher system
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(PhelixSimple);
-  }
+  // Auto-register with Subsystem (according to category) if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(PhelixSimple);
   
   // Export to global scope
   global.PhelixSimple = PhelixSimple;

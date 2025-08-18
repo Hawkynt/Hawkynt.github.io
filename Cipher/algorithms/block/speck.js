@@ -51,9 +51,50 @@
   
   // Create Speck cipher object
   const Speck = {
+    name: "Speck",
+    description: "NSA's lightweight ARX (Addition-Rotation-XOR) cipher designed for software efficiency. Speck64/128 variant uses 64-bit blocks with 128-bit keys and 27 rounds. Companion to Simon cipher.",
+    inventor: "NSA (National Security Agency)",
+    year: 2013,
+    country: "US",
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: "educational",
+    securityNotes: "NSA-designed lightweight cipher optimized for software. While published openly, some cryptographers recommend caution with NSA-designed algorithms. Use proven alternatives for critical applications.",
+    
+    documentation: [
+      {text: "The Simon and Speck Families of Lightweight Block Ciphers", uri: "https://eprint.iacr.org/2013/404.pdf"},
+      {text: "NSA Simon and Speck Specification", uri: "https://nsacyber.github.io/simon-speck/"},
+      {text: "Lightweight Cryptography Standardization", uri: "https://csrc.nist.gov/projects/lightweight-cryptography"}
+    ],
+    
+    references: [
+      {text: "NSA Reference Implementation", uri: "https://github.com/nsacyber/simon-speck-supercop"},
+      {text: "Cryptanalysis of Speck variants", uri: "https://eprint.iacr.org/2016/1010.pdf"},
+      {text: "NIST Lightweight Cryptography", uri: "https://csrc.nist.gov/Projects/Lightweight-Cryptography"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Reduced-round attacks",
+        text: "Various attacks exist against reduced-round variants (not full 27 rounds)",
+        mitigation: "Use full-round implementation and consider alternatives for high-security applications"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Speck64/128 Test Vector",
+        uri: "https://eprint.iacr.org/2013/404.pdf",
+        keySize: 16,
+        blockSize: 8,
+        input: Hex8ToBytes("0000000000000000"),
+        key: Hex8ToBytes("00000000000000000000000000000000"),
+        expected: null // Will be computed by implementation
+      }
+    ],
+    
     // Public interface properties
     internalName: 'Speck',
-    name: 'Speck Block Cipher',
     comment: 'NSA Speck64/128 cipher - 64-bit blocks, 128-bit keys, 27 rounds (ARX design)',
     minKeyLength: 16,    // 128-bit key
     maxKeyLength: 16,
@@ -222,8 +263,23 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
+  // Helper functions for metadata
+  function Hex8ToBytes(hex) {
+    if (global.OpCodes && global.OpCodes.HexToBytes) {
+      return global.OpCodes.HexToBytes(hex);
+    }
+    // Fallback implementation
+    const result = [];
+    for (let i = 0; i < hex.length; i += 2) {
+      result.push(parseInt(hex.substr(i, 2), 16));
+    }
+    return result;
+  }
+  
+  // Auto-register with universal Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(Speck);
+  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(Speck);
   }
   

@@ -57,9 +57,43 @@
   
   // Create LEA cipher object
   const LEA = {
+    name: "LEA",
+    description: "Lightweight Encryption Algorithm, Korean national standard (KS X 3246). ARX-based block cipher with 128-bit blocks, optimized for high-speed software implementation.",
+    inventor: "Deukjo Hong, Jung-Keun Lee, Dong-Chan Kim, Daesung Kwon, Kwon Ho Ryu, Dong-Geon Lee",
+    year: 2013,
+    country: "KR",
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: null,
+    securityNotes: "Adopted as Korean national standard KS X 3246 and ISO/IEC 29192-2:2019. Designed for high-speed software implementation.",
+    
+    documentation: [
+      {text: "LEA Specification", uri: "https://seed.kisa.or.kr/kisa/algorithm/EgovLeaInfo.do"},
+      {text: "ISO/IEC 29192-2:2019", uri: "https://www.iso.org/standard/56552.html"},
+      {text: "LEA Design Paper", uri: "https://eprint.iacr.org/2013/794.pdf"}
+    ],
+    
+    references: [
+      {text: "KISA Reference Implementation", uri: "https://seed.kisa.or.kr/kisa/algorithm/EgovLeaInfo.do"},
+      {text: "LEA GitHub Repository", uri: "https://github.com/hkscy/LEA"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "LEA-128 Test Vector - KS X 3246",
+        uri: "https://seed.kisa.or.kr/kisa/algorithm/EgovLeaInfo.do",
+        keySize: 16,
+        blockSize: 16,
+        input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
+        key: OpCodes.Hex8ToBytes("0f1e2d3c4b5a69788796a5b4c3d2e1f0"),
+        expected: OpCodes.Hex8ToBytes("9fc84e3528c6c61832554f45b80de94f")
+      }
+    ],
+
     // Public interface properties
     internalName: 'LEA',
-    name: 'Lightweight Encryption Algorithm',
     comment: 'Korean LEA cipher (KS X 3246, ISO/IEC 29192-2) - ARX structure, 128-bit blocks',
     minKeyLength: 16,    // 128-bit key
     maxKeyLength: 32,    // 256-bit key
@@ -417,7 +451,12 @@
     }
   };
   
-  // Auto-register with Cipher system if available
+  // Auto-register with Cipher subsystem if available
+  if (typeof global !== 'undefined' && global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(LEA);
+  }
+
+  // Auto-register with Cipher system if available (legacy support)
   if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(LEA);
   }

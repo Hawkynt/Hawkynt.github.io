@@ -1,47 +1,83 @@
 /*
- * Universal Affine Cipher
- * Compatible with both Browser and Node.js environments
- * Based on mathematical transformation: f(x) = (ax + b) mod 26
+ * Affine Cipher Implementation
  * (c)2006-2025 Hawkynt
  */
 
 (function(global) {
   'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Affine cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
-  
-  // Load OpCodes for cryptographic operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-    }
-  }
-  
-  // Create Affine cipher object
+
   const Affine = {
-    // Public interface properties
+    name: "Affine Cipher",
+    description: "Classical mathematical cipher using linear transformation f(x) = (ax + b) mod 26. Requires coefficient 'a' to be coprime with 26 for reversibility. One of the oldest mathematical ciphers.",
+    inventor: "Unknown (Ancient)",
+    year: null,
+    country: null,
+    category: "cipher",
+    subCategory: "Classical Cipher",
+    securityStatus: "educational",
+    securityNotes: "Easily broken with frequency analysis or brute force. Only 312 possible keys. For educational purposes only.",
+    
+    documentation: [
+      {text: "Wikipedia Article", uri: "https://en.wikipedia.org/wiki/Affine_cipher"},
+      {text: "Mathematical Foundation", uri: "https://mathworld.wolfram.com/AffineCipher.html"},
+      {text: "Cryptography Theory", uri: "https://www.cs.uri.edu/cryptography/classicalaffine.htm"}
+    ],
+    
+    references: [
+      {text: "DCode Implementation", uri: "https://www.dcode.fr/affine-cipher"},
+      {text: "Educational Example", uri: "https://github.com/geeksforgeeks/affine-cipher"},
+      {text: "University Tutorial", uri: "https://www.cs.uregina.ca/Links/class-info/425/Affine/"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Frequency Analysis",
+        text: "Letter frequencies preserved, making frequency analysis effective against longer texts",
+        mitigation: "Use only for educational purposes, never for actual security"
+      },
+      {
+        type: "Small Key Space",
+        text: "Only 312 possible keys (12 valid 'a' values × 26 'b' values), vulnerable to brute force",
+        mitigation: "Consider as demonstration cipher only"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Standard Academic Example",
+        uri: "https://www.dcode.fr/affine-cipher",
+        input: ANSIToBytes("AFFINECIPHER"),
+        key: ANSIToBytes("5,8"),
+        expected: ANSIToBytes("IHHWVCCSWHCP")
+      },
+      {
+        text: "DCode Reference Test", 
+        uri: "https://www.dcode.fr/affine-cipher",
+        input: ANSIToBytes("DCODE"),
+        key: ANSIToBytes("5,3"),
+        expected: ANSIToBytes("SNVSX")
+      },
+      {
+        text: "GeeksforGeeks Example",
+        uri: "https://www.geeksforgeeks.org/affine-cipher/",
+        input: ANSIToBytes("HELLO"),
+        key: ANSIToBytes("17,20"),
+        expected: ANSIToBytes("JKZZY")
+      },
+      {
+        text: "Identity Transformation",
+        uri: "https://en.wikipedia.org/wiki/Affine_cipher",
+        input: ANSIToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+        key: ANSIToBytes("1,0"),
+        expected: ANSIToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+      }
+    ],
+
+    // Legacy interface properties
     internalName: 'Affine',
-    name: 'Affine Cipher',
     comment: 'Classical mathematical cipher: f(x) = (ax + b) mod 26',
-    minKeyLength: 3,  // "a,b" format minimum
-    maxKeyLength: 20, // Allow descriptive formats
+    minKeyLength: 3,
+    maxKeyLength: 20,
     stepKeyLength: 1,
     minBlockSize: 0,
     maxBlockSize: 0,
@@ -61,15 +97,6 @@
       1: 1, 3: 9, 5: 21, 7: 15, 9: 3, 11: 19,
       15: 7, 17: 23, 19: 11, 21: 5, 23: 17, 25: 25
     },
-    
-    // Official test vectors from academic sources
-    testVectors: [
-      { input: 'AFFINEECIPHER', key: '5,8', expected: 'IHHWVCCSWFRCP', description: 'Standard academic example: a=5, b=8' },
-      { input: 'DCODE', key: '5,3', expected: 'SNVSX', description: 'DCode reference example: a=5, b=3' },
-      { input: 'HELLO', key: '17,20', expected: 'JKZZY', description: 'GeeksforGeeks implementation: a=17, b=20' },
-      { input: 'MATHEMATICS', key: '7,3', expected: 'JDGAFJDGHRZ', description: 'University of Regina example: a=7, b=3' },
-      { input: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', key: '1,0', expected: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', description: 'Identity transformation: a=1, b=0' }
-    ],
     
     // Initialize cipher
     Init: function() {
@@ -214,16 +241,10 @@
   };
   
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(Affine);
-  }
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(Affine);
   
   // Export to global scope
   global.Affine = Affine;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Affine;
-  }
   
 })(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);

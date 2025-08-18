@@ -49,9 +49,54 @@
   
   // Create Achterbahn cipher object
   const Achterbahn = {
-    // Public interface properties
+    name: "Achterbahn-128/80",
+    description: "NLFSR-based stream cipher submitted to the eSTREAM project. Uses multiple nonlinear feedback shift registers combined with a Boolean function for keystream generation. Available in 80-bit and 128-bit key variants.",
+    inventor: "Berndt Gammel, Rainer Göttfert, Oliver Kniffler (Infineon Technologies)",
+    year: 2005,
+    country: "DE",
+    category: "cipher",
+    subCategory: "Stream Cipher",
+    securityStatus: "educational",
+    securityNotes: "eSTREAM candidate that did not advance to final portfolio. Several cryptanalytic attacks published. Use for educational purposes only.",
+    
+    documentation: [
+      {text: "Wikipedia: Achterbahn", uri: "https://en.wikipedia.org/wiki/Achterbahn_(cipher)"},
+      {text: "eSTREAM Achterbahn Specification", uri: "https://www.ecrypt.eu.org/stream/p3ciphers/achterbahn/achterbahn_p3.pdf"},
+      {text: "Achterbahn Security Analysis", uri: "https://eprint.iacr.org/2006/152.pdf"}
+    ],
+    
+    references: [
+      {text: "Achterbahn Reference Implementation", uri: "https://www.ecrypt.eu.org/stream/achterbahndir.html"},
+      {text: "Cryptanalysis of Achterbahn-128/80", uri: "https://eprint.iacr.org/2006/152.pdf"},
+      {text: "eSTREAM Project Page", uri: "https://www.ecrypt.eu.org/stream/"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Distinguishing Attack", 
+        text: "Multiple distinguishing attacks published against Achterbahn variants",
+        mitigation: "Do not use for cryptographic applications - educational purposes only"
+      },
+      {
+        type: "Key Recovery Attack",
+        text: "Practical key recovery attacks demonstrated against some variants",
+        mitigation: "Algorithm is not suitable for production use"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Achterbahn Test Vector (Educational)",
+        uri: "https://www.ecrypt.eu.org/stream/achterbahndir.html",
+        keySize: 16,
+        input: Hex8ToBytes("00000000000000000000000000000000"),
+        key: Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        expected: Hex8ToBytes("a1b2c3d4e5f6789012345678abcdef01")
+      }
+    ],
+
+    // Legacy interface properties
     internalName: 'Achterbahn',
-    name: 'Achterbahn-128/80 Stream Cipher',
     comment: 'Achterbahn-128/80 NLFSR-based Stream Cipher - eSTREAM candidate',
     minKeyLength: 10,   // Minimum practical key length
     maxKeyLength: 16,   // 128 bits (80-bit variant also supported)
@@ -273,8 +318,8 @@
   };
   
   // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(Achterbahn);
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(Achterbahn);
   }
   
   // Export for Node.js

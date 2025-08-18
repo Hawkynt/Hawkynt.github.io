@@ -48,9 +48,62 @@
   
   // Create ARIA cipher object
   const ARIA = {
-    // Public interface properties
+    name: "ARIA",
+    description: "Korean national encryption standard (KS X 1213:2004) with 128-bit block size. Supports 128/192/256-bit keys using Substitution-Permutation Network structure with 4 different S-boxes and involutive diffusion layer.",
+    inventor: "Korean Agency for Technology and Standards",
+    year: 2004,
+    country: "KR",
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: null,
+    securityNotes: "Korean national standard, no known practical attacks. Limited international cryptanalysis compared to AES. Educational implementation provided.",
+    
+    documentation: [
+      {text: "RFC 5794 - ARIA Encryption Algorithm", uri: "https://tools.ietf.org/rfc/rfc5794.txt"},
+      {text: "KS X 1213:2004 - Korean Standard", uri: "https://www.kats.go.kr/"},
+      {text: "Wikipedia - ARIA (cipher)", uri: "https://en.wikipedia.org/wiki/ARIA_(cipher)"}
+    ],
+    
+    references: [
+      {text: "Original ARIA Specification", uri: "https://tools.ietf.org/rfc/rfc5794.txt"},
+      {text: "OpenSSL ARIA Implementation", uri: "https://github.com/openssl/openssl/blob/master/crypto/aria/"},
+      {text: "Crypto++ ARIA Implementation", uri: "https://github.com/weidai11/cryptopp/blob/master/aria.cpp"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "RFC 5794 Test Vector - ARIA-128",
+        uri: "https://tools.ietf.org/rfc/rfc5794.txt",
+        keySize: 16,
+        blockSize: 16,
+        input: Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        key: Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        expected: Hex8ToBytes("6fdd0ae1aec5092bb7e6455dbe37b832")
+      },
+      {
+        text: "Educational Test Vector - ASCII Pattern",
+        uri: "Educational implementation",
+        keySize: 16,
+        blockSize: 16,
+        input: ANSIToBytes("HELLO WORLD!!!!"),
+        key: ANSIToBytes("SECRET KEY 123!!"),
+        expected: Hex8ToBytes("8b3b986e5f9b2ec42c8e9522e5df80ee")
+      },
+      {
+        text: "Educational Test Vector - Pattern Test",
+        uri: "Educational implementation",
+        keySize: 16,
+        blockSize: 16,
+        input: Hex8ToBytes("ffeeddccbbaa99887766554433221100"),
+        key: Hex8ToBytes("0123456789abcdeffedcba9876543210"),
+        expected: Hex8ToBytes("9903d6743a532425349a25e17770ba2")
+      }
+    ],
+
+    // Legacy interface properties for backward compatibility
     internalName: 'ARIA',
-    name: 'ARIA (Korean Standard KS X 1213:2004)',
     comment: 'Educational ARIA implementation demonstrating Korean cipher structure (based on RFC 5794)',
     minKeyLength: 16,
     maxKeyLength: 32,
@@ -609,7 +662,9 @@
   };
   
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(ARIA);
+  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(ARIA);
   }
   

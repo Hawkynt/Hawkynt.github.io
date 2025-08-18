@@ -1,16 +1,6 @@
-#!/usr/bin/env node
 /*
- * RSA Universal Implementation
- * Based on RSA - Rivest-Shamir-Adleman Public Key Cryptosystem
- * 
- * This is an educational implementation of the RSA algorithm.
- * WARNING: This implementation is for educational purposes only and should never
- * be used in production systems. Use certified implementations for real applications.
- * 
- * RSA: Classical Public Key Cryptosystem (1977)
- * Reference: https://tools.ietf.org/rfc/rfc3447.txt
- * 
- * (c)2006-2025 Hawkynt - Educational implementation
+ * RSA Implementation
+ * (c)2006-2025 Hawkynt
  */
 
 (function(global) {
@@ -50,36 +40,77 @@
   };
   
   const RSA = {
+    name: "RSA",
+    description: "RSA public key cryptosystem based on integer factorization. First practical asymmetric encryption algorithm enabling secure communication without shared secrets. Vulnerable to quantum attacks using Shor's algorithm.",
+    inventor: "Ron Rivest, Adi Shamir, Leonard Adleman",
+    year: 1977,
+    country: "US",
+    category: "cipher",
+    subCategory: "Asymmetric Cipher",
+    securityStatus: null,
+    securityNotes: "Quantum-vulnerable to Shor's algorithm but still widely used. Minimum 2048-bit keys recommended for legacy systems.",
+    
+    documentation: [
+      {text: "Wikipedia - RSA (cryptosystem)", uri: "https://en.wikipedia.org/wiki/RSA_(cryptosystem)"},
+      {text: "Original RSA Paper (1978)", uri: "https://dl.acm.org/doi/10.1145/359340.359342"},
+      {text: "RFC 3447 - PKCS #1: RSA Cryptography Specifications", uri: "https://tools.ietf.org/rfc/rfc3447.txt"},
+      {text: "NIST SP 800-56B - Key Establishment Using Integer Factorization", uri: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-56Br2.pdf"}
+    ],
+    
+    references: [
+      {text: "OpenSSL RSA Implementation", uri: "https://github.com/openssl/openssl/blob/master/crypto/rsa/rsa_lib.c"},
+      {text: "GnuPG RSA Implementation", uri: "https://github.com/gpg/gnupg/blob/master/g10/pubkey-enc.c"},
+      {text: "Python cryptography library RSA", uri: "https://github.com/pyca/cryptography/tree/main/src/cryptography/hazmat/primitives/asymmetric"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Quantum Attack", 
+        text: "Shor's algorithm can factor RSA moduli in polynomial time on sufficiently large quantum computers",
+        mitigation: "Migrate to post-quantum cryptographic algorithms before practical quantum computers arrive"
+      },
+      {
+        type: "Small Key Size", 
+        text: "RSA-1024 and smaller can be factored using classical methods with significant computational resources",
+        mitigation: "Use minimum 2048-bit keys, prefer 3072-bit or larger for new applications"
+      },
+      {
+        type: "Implementation Attacks", 
+        text: "Timing attacks, power analysis, and fault injection can reveal private keys in poorly implemented RSA",
+        mitigation: "Use constant-time implementations with proper side-channel protections"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "RSA-2048 PKCS#1 v1.5 Test Vector",
+        uri: "https://tools.ietf.org/rfc/rfc3447.txt",
+        keySize: 256, // 2048 bits = 256 bytes
+        input: Hex8ToBytes("48656c6c6f20525341"), // "Hello RSA"
+        // Note: RSA test vectors require specific key pairs - using educational example
+        expected: null // Will be computed during test
+      }
+    ],
+
+    // Legacy interface properties for compatibility
     internalName: 'rsa',
-    name: 'RSA',
-    // Required Cipher interface properties
-    minKeyLength: 128,       // Minimum key length in bytes
-    maxKeyLength: 512,       // Maximum key length in bytes
-    stepKeyLength: 1,        // Key length step size
-    minBlockSize: 0,         // Minimum block size in bytes
-    maxBlockSize: 0,         // Maximum block size (0 = unlimited)
-    stepBlockSize: 1,        // Block size step
-    instances: {},           // Instance tracking
+    minKeyLength: 128,
+    maxKeyLength: 512,
+    stepKeyLength: 1,
+    minBlockSize: 0,
+    maxBlockSize: 0,
+    stepBlockSize: 1,
+    instances: {},
     version: '1.0.0',
-    date: '2025-01-17',
-    author: 'Rivest, Shamir, Adleman',
-    description: 'RSA - Classical Public Key Cryptosystem (1977)',
-    reference: 'RFC 3447: https://tools.ietf.org/rfc/rfc3447.txt',
-    
-    // Security parameters
-    keySize: [1024, 2048, 3072, 4096], // RSA key sizes in bits
-    blockSize: 32, // Variable based on key size
-    
-    // Algorithm metadata
+    keySize: [1024, 2048, 3072, 4096],
+    blockSize: 32,
     isStreamCipher: false,
     isBlockCipher: false,
-    isPostQuantum: false, // Vulnerable to Shor's algorithm
+    isPostQuantum: false,
     isAsymmetric: true,
-    isSignature: true, // Can be used for signatures
+    isSignature: true,
     complexity: 'Medium',
     family: 'Classical',
-    category: 'Public-Key-Cryptosystem',
-    subcategory: 'Integer-Factorization',
     
     // Current parameter set
     currentParams: null,
@@ -875,9 +906,8 @@
   };
   
   // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(RSA);
-  }
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(RSA);
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {

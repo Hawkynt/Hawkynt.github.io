@@ -28,15 +28,15 @@
     testVectors: [
       {
         description: 'PKCS#5 padding for 8-byte block, 5 bytes input',
-        input: '6bc1bee22e',
+        input: Hex8ToBytes('6bc1bee22e'),
         blockSize: 8,
-        expected: '6bc1bee22e030303'
+        expected: Hex8ToBytes('6bc1bee22e030303')
       },
       {
         description: 'PKCS#5 padding for full 8-byte block',
-        input: '6bc1bee22e409f96',
+        input: Hex8ToBytes('6bc1bee22e409f96'),
         blockSize: 8,
-        expected: '6bc1bee22e409f960808080808080808'
+        expected: Hex8ToBytes('6bc1bee22e409f960808080808080808')
       }
     ]
   });

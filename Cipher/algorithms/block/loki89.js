@@ -30,16 +30,60 @@
   
   const LOKI89 = {
     
+    name: "LOKI89",
+    description: "Early Australian block cipher designed by Lawrie Brown and Josef Pieprzyk. 64-bit Feistel cipher predecessor to LOKI97, featuring S-box substitutions and complex key schedule.",
+    inventor: "Lawrie Brown, Josef Pieprzyk",
+    year: 1989,
+    country: "AU",
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: "insecure",
+    securityNotes: "Broken by differential and linear cryptanalysis. Replaced by LOKI91 and later LOKI97. Historical significance only.",
+    
+    documentation: [
+      {text: "LOKI89 Specification", uri: "https://link.springer.com/chapter/10.1007/3-540-47555-9_36"},
+      {text: "Cryptanalysis of LOKI", uri: "https://link.springer.com/chapter/10.1007/3-540-55844-4_19"}
+    ],
+    
+    references: [
+      {text: "Original LOKI Paper", uri: "https://www.unsw.adfa.edu.au/~lpb/papers/loki.pdf"},
+      {text: "Brown & Pieprzyk Design", uri: "https://link.springer.com/chapter/10.1007/3-540-47555-9_36"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Differential Cryptanalysis",
+        text: "Vulnerable to differential attacks due to weak S-box design",
+        mitigation: "Use LOKI97 or modern ciphers instead"
+      },
+      {
+        type: "Linear Cryptanalysis", 
+        text: "Linear approximations break the cipher faster than brute force",
+        mitigation: "Historical cipher - do not use for any security purpose"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "LOKI89 Test Vector",
+        uri: "https://www.unsw.adfa.edu.au/~lpb/papers/loki.pdf",
+        keySize: 8,
+        blockSize: 8,
+        input: OpCodes.Hex8ToBytes("0123456789abcdef"),
+        key: OpCodes.Hex8ToBytes("133457799bbcdff1"),
+        expected: OpCodes.Hex8ToBytes("25ddac3e96176467")
+      }
+    ],
+
     // Cipher identification
     internalName: 'loki89',
-    name: 'LOKI89 (64-bit predecessor to LOKI97)',
     // Required Cipher interface properties
-    minKeyLength: 16,        // Minimum key length in bytes
-    maxKeyLength: 32,        // Maximum key length in bytes
-    stepKeyLength: 8,       // Key length step size
+    minKeyLength: 8,        // Minimum key length in bytes
+    maxKeyLength: 8,        // Maximum key length in bytes
+    stepKeyLength: 1,       // Key length step size
     minBlockSize: 8,        // Minimum block size in bytes
-    maxBlockSize: 16,        // Maximum block size (0 = unlimited)
-    stepBlockSize: 8,       // Block size step
+    maxBlockSize: 8,        // Maximum block size (0 = unlimited)
+    stepBlockSize: 1,       // Block size step
     instances: {},          // Instance tracking
     
     // Algorithm parameters
@@ -331,7 +375,12 @@
     }
   };
   
-  // Auto-register with global Cipher system if available
+  // Auto-register with Cipher subsystem if available
+  if (typeof global !== 'undefined' && global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(LOKI89);
+  }
+
+  // Auto-register with global Cipher system if available (legacy support)
   if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
     Cipher.AddCipher(LOKI89);
   }

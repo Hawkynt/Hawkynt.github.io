@@ -1,22 +1,6 @@
-#!/usr/bin/env node
 /*
- * Universal PIKE Stream Cipher
- * Compatible with both Browser and Node.js environments
- * Based on PIKE specification by Ross Anderson (eSTREAM candidate)
+ * PIKE Stream Cipher Implementation
  * (c)2006-2025 Hawkynt
- * 
- * PIKE is a fast stream cipher designed by Ross Anderson for high-speed
- * software implementation. It features:
- * - Variable key sizes (128, 192, 256 bits)
- * - 64-bit initialization vectors
- * - Word-based operations optimized for modern processors
- * - Simple and fast design for high throughput
- * 
- * PIKE was submitted to the eSTREAM project and was designed to achieve
- * very high speeds in software (multiple Gbps on modern processors).
- * 
- * SECURITY WARNING: PIKE was withdrawn from eSTREAM due to cryptanalytic
- * concerns. This implementation is for educational purposes only.
  */
 
 (function(global) {
@@ -48,23 +32,46 @@
     }
   }
   
-  // Load metadata system
-  if (!global.CipherMetadata && typeof require !== 'undefined') {
-    try {
-      require('../../cipher-metadata.js');
-    } catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
-    }
-  }
-  
-  // Create PIKE cipher object
   const PIKE = {
-    internalName: 'pike',
-    name: 'PIKE Stream Cipher',
-    version: '1.0',
-    author: 'Ross Anderson (2005)',
-    description: 'Fast stream cipher optimized for high-speed software implementation',
+    name: "PIKE",
+    description: "Ultra-fast stream cipher designed for maximum software performance using ARX operations and minimal state. Submitted to eSTREAM project but withdrawn due to security concerns.",
+    inventor: "Ross Anderson",
+    year: 2005,
+    country: "GB",
+    category: "cipher",
+    subCategory: "Stream Cipher",
+    securityStatus: "insecure",
+    securityNotes: "Withdrawn from eSTREAM competition due to discovered cryptanalytic vulnerabilities. Not suitable for production use.",
     
+    documentation: [
+      {text: "eSTREAM PIKE Specification", uri: "https://www.ecrypt.eu.org/stream/pikepf.html"},
+      {text: "Ross Anderson's Page", uri: "https://www.cl.cam.ac.uk/~rja14/pike.html"}
+    ],
+    
+    references: [
+      {text: "PIKE Cryptanalysis", uri: "https://www.ecrypt.eu.org/stream/papers/2005/046.pdf"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Cryptanalytic Attack", 
+        text: "Vulnerable to various cryptanalytic attacks discovered during eSTREAM evaluation",
+        mitigation: "Algorithm withdrawn from competition, use only for educational purposes"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Educational Test Vector",
+        uri: "Educational test case",
+        keySize: 16,
+        key: Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        iv: Hex8ToBytes("0001020304050607"),
+        input: Hex8ToBytes("00000000000000000000000000000000"),
+        expected: [] // No official test vectors due to withdrawal
+      }
+    ],
+
     // Cipher parameters
     nBlockSizeInBits: 32,   // 32-bit word-based operations
     nKeySizeInBits: 128,    // Default 128-bit key
@@ -78,52 +85,6 @@
     maxBlockSize: 1024, // Maximum block size
     stepBlockSize: 1,   // Step size
     instances: {},
-    
-    // Comprehensive metadata
-    metadata: global.CipherMetadata ? global.CipherMetadata.createMetadata({
-      algorithm: 'PIKE',
-      displayName: 'PIKE Stream Cipher',
-      description: 'Ultra-fast stream cipher designed for maximum software performance using simple operations and minimal state.',
-      
-      inventor: 'Ross Anderson',
-      year: 2005,
-      background: 'Submitted to eSTREAM project with focus on achieving maximum software throughput (multi-Gbps speeds). Withdrawn due to security concerns.',
-      
-      securityStatus: global.CipherMetadata.SecurityStatus.BROKEN,
-      securityNotes: 'Withdrawn from eSTREAM due to cryptanalytic vulnerabilities. Not suitable for production use.',
-      
-      category: global.CipherMetadata.Categories.STREAM,
-      subcategory: 'Fast software-oriented',
-      complexity: global.CipherMetadata.ComplexityLevels.INTERMEDIATE,
-      
-      keySize: '128/192/256', // Variable key sizes
-      blockSize: 4, // 32-bit words
-      rounds: 'continuous', // Stream cipher
-      
-      specifications: [
-        {
-          name: 'eSTREAM PIKE Specification',
-          url: 'https://www.ecrypt.eu.org/stream/pikepf.html'
-        }
-      ],
-      
-      references: [
-        {
-          name: 'PIKE Cryptanalysis Papers',
-          url: 'https://www.cl.cam.ac.uk/~rja14/pike.html'
-        }
-      ],
-      
-      implementationNotes: 'Simple word-based operations, minimal state, optimized for modern processor architectures.',
-      performanceNotes: 'Designed for multi-Gbps throughput in software with simple operations.',
-      
-      educationalValue: 'Example of performance-focused stream cipher design and the trade-offs between speed and security.',
-      prerequisites: ['Stream cipher concepts', 'Performance optimization'],
-      
-      tags: ['stream', 'estream', 'fast', 'software', 'broken', 'performance', 'educational'],
-      
-      version: '1.0'
-    }) : null,
     
     // PIKE constants
     STATE_SIZE: 8,        // 8 words of state (32 bits each)
@@ -405,10 +366,9 @@
     }
   };
   
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(PIKE);
-  }
+  // Auto-register with Subsystem (according to category) if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(PIKE);
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {

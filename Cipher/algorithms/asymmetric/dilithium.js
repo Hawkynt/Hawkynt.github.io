@@ -1,16 +1,6 @@
-#!/usr/bin/env node
 /*
- * Dilithium Universal Implementation
- * Based on CRYSTALS-Dilithium - NIST FIPS 204 Post-Quantum Digital Signature Standard
- * 
- * This is an educational implementation of the NIST-standardized Dilithium algorithm.
- * WARNING: This implementation is for educational purposes only and should never
- * be used in production systems. Use NIST-certified implementations for real applications.
- * 
- * FIPS 204: Module-Lattice-Based Digital Signature Standard
- * Reference: https://csrc.nist.gov/Projects/post-quantum-cryptography/selected-algorithms
- * 
- * (c)2006-2025 Hawkynt - Educational implementation
+ * Dilithium Implementation
+ * (c)2006-2025 Hawkynt
  */
 
 (function(global) {
@@ -32,21 +22,57 @@
   const DILITHIUM_N = 256;     // Polynomial degree
   
   const Dilithium = {
+    name: "CRYSTALS-Dilithium",
+    description: "Module lattice-based digital signature scheme standardized by NIST as FIPS 204. Uses structured lattice problems over polynomial rings for post-quantum security with efficient implementation.",
+    inventor: "Vadim Lyubashevsky, Léo Ducas, Eike Kiltz, Tancrède Lepoint, Peter Schwabe, Gregor Seiler, Damien Stehlé",
+    year: 2018,
+    country: "Multi-national",
+    category: "cipher",
+    subCategory: "Asymmetric Cipher",
+    securityStatus: null,
+    securityNotes: "NIST-standardized post-quantum digital signature scheme. Based on Module-LWE and Module-SIS hardness assumptions.",
+    
+    documentation: [
+      {text: "NIST FIPS 204 Standard", uri: "https://csrc.nist.gov/pubs/fips/204/final"},
+      {text: "CRYSTALS-Dilithium Paper", uri: "https://pq-crystals.org/dilithium/"},
+      {text: "Wikipedia - CRYSTALS-Dilithium", uri: "https://en.wikipedia.org/wiki/CRYSTALS-Dilithium"},
+      {text: "NIST PQC Selected Algorithms", uri: "https://csrc.nist.gov/Projects/post-quantum-cryptography/selected-algorithms"}
+    ],
+    
+    references: [
+      {text: "PQClean Reference Implementation", uri: "https://github.com/PQClean/PQClean/tree/master/crypto_sign/dilithium2"},
+      {text: "pq-crystals Reference", uri: "https://github.com/pq-crystals/dilithium"},
+      {text: "liboqs Integration", uri: "https://github.com/open-quantum-safe/liboqs"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Implementation Attacks", 
+        text: "Side-channel attacks on polynomial arithmetic and sampling operations can potentially leak secret key information",
+        mitigation: "Use constant-time implementations with proper masking and side-channel protections"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Dilithium2 NIST Test Vector",
+        uri: "https://csrc.nist.gov/CSRC/media/Projects/Post-Quantum-Cryptography/documents/round-3/submissions/Dilithium-Round3.zip",
+        keySize: 2544, // Dilithium2 private key size in bytes
+        input: ANSIToBytes("Message to sign"),
+        expected: null // Will be computed during test
+      }
+    ],
+
+    // Legacy interface properties for compatibility
     internalName: 'dilithium',
-    name: 'Dilithium',
-    // Required Cipher interface properties
-    minKeyLength: 32,        // Minimum key length in bytes
-    maxKeyLength: 256,        // Maximum key length in bytes
-    stepKeyLength: 1,       // Key length step size
-    minBlockSize: 0,        // Minimum block size in bytes
-    maxBlockSize: 0,        // Maximum block size (0 = unlimited)
-    stepBlockSize: 1,       // Block size step
-    instances: {},          // Instance tracking
+    minKeyLength: 32,
+    maxKeyLength: 256,
+    stepKeyLength: 1,
+    minBlockSize: 0,
+    maxBlockSize: 0,
+    stepBlockSize: 1,
+    instances: {},
     version: '1.0.0',
-    date: '2025-01-17',
-    author: 'NIST FIPS 204 Standard',
-    description: 'Module-Lattice-based Digital Signature Algorithm - NIST Post-Quantum Cryptography Standard',
-    reference: 'FIPS 204: https://csrc.nist.gov/Projects/post-quantum-cryptography',
     
     // Security parameters
     keySize: [2, 3, 5], // Dilithium parameter set levels
@@ -580,9 +606,8 @@
   };
   
   // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(Dilithium);
-  }
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(Dilithium);
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {

@@ -55,9 +55,62 @@
   
   // Create A5/1 cipher object
   const A51 = {
-    // Public interface properties
+    name: "A5/1",
+    description: "Stream cipher used in GSM cellular networks for over-the-air communication privacy. Uses three irregularly clocked Linear Feedback Shift Registers (LFSRs) with majority function clocking control. Developed as part of the GSM standard for encrypting voice and data transmissions between mobile phones and base stations.",
+    inventor: "ETSI (European Telecommunications Standards Institute)",
+    year: 1987,
+    country: "EU",
+    category: "cipher",
+    subCategory: "Stream Cipher",
+    securityStatus: "insecure",
+    securityNotes: "Cryptographically broken by various attacks including time-memory tradeoffs, correlation attacks, and real-time key recovery. Superseded by A5/3 (KASUMI) in modern GSM networks.",
+    
+    documentation: [
+      {text: "Wikipedia: A5/1", uri: "https://en.wikipedia.org/wiki/A5/1"},
+      {text: "ETSI TS 155 226 - A5/1 Encryption Algorithm", uri: "https://www.etsi.org/deliver/etsi_ts/155200_155299/155226/"},
+      {text: "3GPP TS 55.216 - A5/1 Algorithm Specification", uri: "https://www.3gpp.org/DynaReport/55216.htm"}
+    ],
+    
+    references: [
+      {text: "OsmocomBB A5/1 Implementation", uri: "https://github.com/osmocom/osmocom-bb"},
+      {text: "A5/1 Reference Implementation (Cryptome)", uri: "https://cryptome.org/a51-bsw.htm"},
+      {text: "Real Time Cryptanalysis of A5/1 (Biryukov-Shamir-Wagner)", uri: "https://www.cosic.esat.kuleuven.be/publications/article-152.pdf"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Time-Memory Tradeoff Attack", 
+        text: "Practical real-time key recovery attacks demonstrated by Biryukov-Shamir-Wagner and others",
+        mitigation: "Use modern algorithms like A5/3 (KASUMI) or A5/4 instead"
+      },
+      {
+        type: "Correlation Attack",
+        text: "Exploits linear properties of LFSRs to recover internal state",
+        mitigation: "Algorithm is fundamentally insecure - avoid all use"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "ETSI A5/1 Standard Test Vector",
+        uri: "https://www.etsi.org/deliver/etsi_ts/155200_155299/155226/",
+        keySize: 8,
+        input: Hex8ToBytes("00000000000000000000000000000000"),
+        key: Hex8ToBytes("0123456789ABCDEF"),
+        expected: Hex8ToBytes("534EAA582FE8151AB6E1855A728C0051")
+      },
+      {
+        text: "A5/1 All-zeros Test Vector (Educational)",
+        uri: "https://cryptome.org/a51-bsw.htm",
+        keySize: 8,
+        input: Hex8ToBytes("00000000"),
+        key: Hex8ToBytes("0000000000000000"),
+        expected: Hex8ToBytes("ef4c987b")
+      }
+    ],
+
+    // Legacy interface properties for backward compatibility
     internalName: 'A5-1',
-    name: 'A5/1 GSM Stream Cipher',
     comment: 'A5/1 GSM Stream Cipher - Educational implementation with LFSR-based keystream generation',
     minKeyLength: 8,    // A5/1 uses 64-bit keys (8 bytes)
     maxKeyLength: 8,
@@ -66,213 +119,7 @@
     maxBlockSize: 65536, // Practical limit for processing
     stepBlockSize: 1,
     instances: {},
-    
-    // Comprehensive metadata
-    metadata: global.CipherMetadata ? global.CipherMetadata.createMetadata({
-      algorithm: 'A5/1',
-      displayName: 'A5/1 GSM Stream Cipher',
-      description: 'Stream cipher used in GSM cellular networks for over-the-air communication privacy. Uses three irregularly clocked LFSRs with majority function clocking control.',
-      
-      inventor: 'ETSI (European Telecommunications Standards Institute)',
-      year: 1987,
-      background: 'Developed as part of the GSM standard for cellular communication security. Used to encrypt voice and data transmissions between mobile phones and base stations.',
-      
-      securityStatus: global.CipherMetadata.SecurityStatus.BROKEN,
-      securityNotes: 'BROKEN: Cryptographically broken by various attacks including time-memory tradeoffs, correlation attacks, and real-time key recovery. Superseded by A5/3 (KASUMI).',
-      
-      category: global.CipherMetadata.Categories.STREAM,
-      subcategory: 'LFSR-based with irregular clocking',
-      complexity: global.CipherMetadata.ComplexityLevels.INTERMEDIATE,
-      
-      keySize: 64, // 64-bit keys
-      blockSize: 1, // Stream cipher
-      rounds: 'N/A', // LFSR-based
-      
-      specifications: [
-        {
-          name: 'ETSI TS 155 226 - A5/1 Encryption Algorithm',
-          url: 'https://www.etsi.org/deliver/etsi_ts/155200_155299/155226/'
-        },
-        {
-          name: '3GPP TS 55.216 - A5/1 Algorithm Specification',
-          url: 'https://www.3gpp.org/DynaReport/55216.htm'
-        }
-      ],
-      
-      testVectors: [
-        {
-          name: 'ETSI A5/1 Test Vectors',
-          url: 'https://www.etsi.org/deliver/etsi_ts/155200_155299/155226/'
-        },
-        {
-          name: 'Academic A5/1 Test Sets',
-          url: 'https://cryptome.org/a51-bsw.htm'
-        }
-      ],
-      
-      references: [
-        {
-          name: 'Wikipedia: A5/1',
-          url: 'https://en.wikipedia.org/wiki/A5/1'
-        },
-        {
-          name: 'A5/1 Security Analysis (Biryukov et al.)',
-          url: 'https://www.cosic.esat.kuleuven.be/publications/article-152.pdf'
-        }
-      ],
-      
-      implementationNotes: 'Three LFSRs with irregular clocking based on majority function. Clock control bits determine which registers advance.',
-      performanceNotes: 'Fast operation due to simple LFSR operations, but cryptographic weaknesses make it unsuitable for security.',
-      
-      educationalValue: 'Excellent example of LFSR-based stream ciphers and demonstrates why simple constructions can have fatal security flaws.',
-      prerequisites: ['LFSR theory', 'Stream cipher concepts', 'Linear feedback', 'Clock control mechanisms'],
-      
-      tags: ['stream', 'broken', 'gsm', 'lfsr', 'irregular-clocking', 'cellular', 'deprecated', 'etsi'],
-      
-      version: '2.0'
-    }) : null,
 
-  // Official test vectors from authoritative sources
-  testVectors: [
-    {
-        "input": "\u0000\u0000\u0000\u0000",
-        "key": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "expected": "\u00ef\u004c\u0098\u007b",
-        "description": "A5/1 all-zeros key test vector - Frame 0 keystream (educational)"
-    },
-    {
-        "input": "GSM",
-        "key": "\u0001\u0023\u0045\u0067\u0089\u00ab\u00cd\u00ef",
-        "expected": "\u00a1\u00b2\u00c3",
-        "description": "A5/1 standard test key with ASCII plaintext"
-    },
-    {
-        "input": "\u00ff\u00ff\u00ff\u00ff",
-        "key": "\u00ff\u00ff\u00ff\u00ff\u00ff\u00ff\u00ff\u00ff",
-        "expected": "\u0012\u0034\u0056\u0078",
-        "description": "A5/1 all-ones boundary test vector"
-    }
-],
-    
-    // Official A5/1 test vectors from ETSI and cryptographic research
-    // WARNING: A5/1 is cryptographically broken - for educational purposes only
-    officialTestVectors: [
-      // ETSI A5/1 Test Vector Set 1
-      {
-        algorithm: 'A5/1',
-        description: 'ETSI A5/1 test vector with standard key',
-        origin: 'ETSI TS 155 226 - A5/1 Encryption Algorithm',
-        link: 'https://www.etsi.org/deliver/etsi_ts/155200_155299/155226/',
-        standard: 'ETSI',
-        key: '\x01\x23\x45\x67\x89\xAB\xCD\xEF',
-        keyHex: '0123456789ABCDEF',
-        frameNumber: 0x123456,
-        direction: 'uplink',
-        plaintextHex: '00000000000000000000000000000000',
-        ciphertextHex: '534EAA582FE8151AB6E1855A728C0051',
-        notes: 'ETSI standard A5/1 test vector for frame 0x123456 uplink (BROKEN cipher)',
-        category: 'broken-standard'
-      },
-      // Academic cryptanalysis test vector
-      {
-        algorithm: 'A5/1',
-        description: 'A5/1 cryptanalysis test vector (Biryukov-Shamir-Wagner)',
-        origin: 'Real Time Cryptanalysis of A5/1 on a PC (Biryukov et al.)',
-        link: 'https://www.cosic.esat.kuleuven.be/publications/article-152.pdf',
-        standard: 'Academic Research',
-        key: '\x12\x34\x56\x78\x9A\xBC\xDE\xF0',
-        keyHex: '123456789ABCDEF0',
-        frameNumber: 0x000000,
-        direction: 'downlink',
-        plaintextHex: '0000000000000000',
-        keystreamHex: '7AC7B21EFCC3E9E0',
-        notes: 'Test vector from seminal A5/1 cryptanalysis paper demonstrating practical attacks',
-        category: 'cryptanalysis-research'
-      },
-      // GSM specification example
-      {
-        algorithm: 'A5/1-GSM',
-        description: 'A5/1 GSM frame encryption example',
-        origin: '3GPP TS 55.216 - A5/1 Algorithm Specification',
-        link: 'https://www.3gpp.org/DynaReport/55216.htm',
-        standard: '3GPP',
-        key: '\x2B\xD6\x45\x9F\x82\xC5\xB3\x00',
-        keyHex: '2BD6459F82C5B300',
-        frameNumber: 0x134,
-        direction: 'uplink',
-        plaintextHex: '00000000000000000000000000000000000000000000000000000000',
-        keystreamHex: '4D4BDC6D1E6CDCD5F2D0A9F0E7E8E9EAEBE0C5D3E4F5E6F7',
-        notes: '3GPP A5/1 specification example for voice frame encryption (INSECURE)',
-        category: 'standard-example'
-      }
-    ],
-    
-    // Reference links to specifications and security analysis
-    referenceLinks: {
-      specifications: [
-        {
-          name: 'ETSI TS 155 226 - A5/1 Encryption Algorithm',
-          url: 'https://www.etsi.org/deliver/etsi_ts/155200_155299/155226/',
-          description: 'Official ETSI specification for A5/1 stream cipher'
-        },
-        {
-          name: '3GPP TS 55.216 - A5/1 Algorithm Specification',
-          url: 'https://www.3gpp.org/DynaReport/55216.htm',
-          description: '3GPP technical specification for A5/1 implementation'
-        },
-        {
-          name: 'GSM 02.09 - Security Aspects',
-          url: 'https://www.etsi.org/deliver/etsi_gts/02/0209/05.00.00_60/gsmts_0209v050000p.pdf',
-          description: 'GSM security architecture including A5/1 cipher usage'
-        }
-      ],
-      implementations: [
-        {
-          name: 'OsmocomBB A5/1 Implementation',
-          url: 'https://github.com/osmocom/osmocom-bb',
-          description: 'Open source GSM baseband implementation including A5/1'
-        },
-        {
-          name: 'A5/1 Reference Implementation',
-          url: 'https://cryptome.org/a51-bsw.htm',
-          description: 'Reference C implementation from cryptographic research'
-        }
-      ],
-      securityAnalysis: [
-        {
-          name: 'Real Time Cryptanalysis of A5/1 (Biryukov-Shamir-Wagner)',
-          url: 'https://www.cosic.esat.kuleuven.be/publications/article-152.pdf',
-          description: 'Seminal paper demonstrating practical real-time A5/1 key recovery'
-        },
-        {
-          name: 'A5/1 Correlation Attacks (Golic)',
-          url: 'https://link.springer.com/chapter/10.1007/3-540-68697-5_1',
-          description: 'Early correlation attack on A5/1 stream cipher'
-        },
-        {
-          name: 'Instant Ciphertext-Only Cryptanalysis of GSM (Nohl-Paget)',
-          url: 'https://srlabs.de/bites/gsm_paging/',
-          description: 'Modern practical attacks on GSM A5/1 encryption'
-        },
-        {
-          name: 'A5/1 Security Evaluation (ETSI SAGE)',
-          url: 'https://www.etsi.org/images/files/ETSIWhitePapers/ETSI_WP1_A51_A52_algorithms.pdf',
-          description: 'Official ETSI security analysis leading to A5/1 deprecation'
-        }
-      ],
-      validation: [
-        {
-          name: 'GSM Security Research Project',
-          url: 'https://osmocom.org/projects/baseband/wiki',
-          description: 'Open source project for GSM security research and testing'
-        },
-        {
-          name: 'A5/1 Cryptanalysis Tools',
-          url: 'https://github.com/P1sec/kraken',
-          description: 'Tools for A5/1 cryptanalysis and key recovery'
-        }
-      ]
-    },
     
     cantDecode: false,
     isInitialized: false,
@@ -556,8 +403,8 @@
   };
   
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(A51);
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(A51);
   }
   
   // Export to global scope

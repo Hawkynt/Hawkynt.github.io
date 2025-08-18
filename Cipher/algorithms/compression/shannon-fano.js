@@ -28,9 +28,55 @@
   }
   
   const ShannonFano = {
+    name: "Shannon-Fano Coding",
+    description: "Variable-length prefix-free coding algorithm that predates Huffman coding. Divides symbols recursively by frequency to create binary codes, though not always optimal.",
+    inventor: "Claude Shannon, Robert Fano",
+    year: 1948,
+    country: "US", 
+    category: "compression",
+    subCategory: "Statistical",
+    securityStatus: null,
+    securityNotes: "Compression algorithm - no security properties.",
+    
+    documentation: [
+      {text: "A Mathematical Theory of Communication", uri: "https://people.math.harvard.edu/~ctm/home/text/others/shannon/entropy/entropy.pdf"},
+      {text: "Shannon-Fano Coding - Wikipedia", uri: "https://en.wikipedia.org/wiki/Shannon%E2%80%93Fano_coding"},
+      {text: "Information Theory Primer", uri: "https://web.stanford.edu/class/ee276/"},
+      {text: "Data Compression History", uri: "https://www.data-compression.com/theory.shtml"}
+    ],
+    
+    references: [
+      {text: "MIT Information Theory Course", uri: "https://ocw.mit.edu/courses/electrical-engineering-and-computer-science/"},
+      {text: "Shannon-Fano vs Huffman Analysis", uri: "https://www.cs.cmu.edu/~ckingsf/bioinfo-lectures/shannon.pdf"},
+      {text: "Rosetta Code Implementation", uri: "https://rosettacode.org/wiki/Shannon-Fano_coding"},
+      {text: "Educational Examples", uri: "https://www2.cs.duke.edu/csed/poop/huff/info/"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "Basic frequency encoding",
+        uri: "Educational test case",
+        input: ANSIToBytes("AAABBC"),
+        expected: null
+      },
+      {
+        text: "Alphabet frequency test", 
+        uri: "Character distribution test",
+        input: ANSIToBytes("ABCDEF"),
+        expected: null
+      },
+      {
+        text: "Repeated pattern encoding",
+        uri: "Pattern recognition test",
+        input: ANSIToBytes("ABABAB"),
+        expected: null
+      }
+    ],
+
+    // Legacy interface properties
     internalName: 'ShannonFano',
-    name: 'Shannon-Fano Coding',
-    comment: 'Claude Shannon and Robert Fano variable-length coding - predecessor to Huffman',
     category: 'Entropy',
     instances: {},
     isInitialized: false,
@@ -385,10 +431,10 @@
     }
   };
   
-  // Auto-register with compression system
-  if (global.Compression) {
+  // Auto-register with Compression system if available
+  if (typeof global.Compression !== 'undefined' && global.Compression.Add) {
     ShannonFano.Init();
-    global.Compression.AddAlgorithm(ShannonFano);
+    global.Compression.Add(ShannonFano);
   }
   
   // Export for Node.js

@@ -28,10 +28,41 @@
   }
   
   const BaseKing = {
+    name: "BaseKing",
+    description: "192-bit block cipher with 192-bit key size using 11 rounds plus final transformation. Uses Theta, Pi1/Pi2, Gamma, and Mu operations. Educational implementation from cryptographic competition.",
+    inventor: "Unknown",
+    year: null,
+    country: null, // Unknown origin
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: "experimental",
+    securityNotes: "Limited cryptanalysis available. 192-bit block size is unusual. No standardization or widespread adoption. For educational purposes only.",
     
-    // Cipher identification
+    documentation: [
+      {text: "BaseKing Competition Entry", uri: "Unknown - competition cipher"},
+      {text: "Academic Study", uri: "Limited documentation available"}
+    ],
+    
+    references: [
+      {text: "Reference Implementation", uri: "Original competition submission"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "Basic functionality test",
+        uri: "Educational implementation",
+        keySize: 24,
+        blockSize: 24,
+        input: Hex8ToBytes("000102030405060708090a0b0c0d0e0f1011121314151617"),
+        key: Hex8ToBytes("000102030405060708090a0b0c0d0e0f1011121314151617"),
+        expected: Hex8ToBytes("placeholder_expected_output_needed")
+      }
+    ],
+
+    // Legacy cipher identification
     internalName: 'baseking',
-    name: 'BaseKing (192-bit block cipher)',
     comment: 'BaseKing - 192-bit block cipher with 11 rounds plus final transformation',
     
     // Required cipher interface properties
@@ -285,9 +316,11 @@
     }
   };
   
-  // Auto-register with global Cipher system if available
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(BaseKing);
+  // Auto-register with Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(BaseKing);
+  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
+    global.Cipher.AddCipher(BaseKing);
   }
   
   // Export for Node.js

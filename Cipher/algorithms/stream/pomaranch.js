@@ -1,37 +1,6 @@
-#!/usr/bin/env node
 /*
- * Universal Pomaranch Stream Cipher Implementation
- * Compatible with both Browser and Node.js environments
- * Based on eSTREAM Phase 3 submission by C. Cid and G. Leurent
+ * Pomaranch Stream Cipher Implementation
  * (c)2006-2025 Hawkynt
- * 
- * Pomaranch Algorithm Overview:
- * - eSTREAM Phase 3 finalist stream cipher (2005-2008)
- * - Designed for high-speed software implementations
- * - Based on linear feedback shift registers (LFSRs) and nonlinear filter
- * - Supports 128-bit and 256-bit keys with 64-bit initialization vectors
- * - Designed by Carlos Cid and Gaëtan Leurent
- * 
- * Key Features:
- * - Key sizes: 128 bits and 256 bits
- * - IV size: 64 bits (8 bytes)
- * - Based on 9 LFSRs of different lengths
- * - Nonlinear combining function for keystream generation
- * - Designed for Profile 1 (high-speed software)
- * 
- * Construction:
- * 1. Initialize 9 LFSRs with key and IV material
- * 2. Run initialization phase to mix key and IV
- * 3. Generate keystream using nonlinear combination of LFSR outputs
- * 4. XOR keystream with plaintext for encryption
- * 
- * WARNING: This is an educational implementation for learning purposes only.
- * Use proven cryptographic libraries for production systems.
- * 
- * References:
- * - "Pomaranch - A Stream Cipher for Secure Communication" by C. Cid and G. Leurent
- * - eSTREAM Phase 3 submission documents
- * - "Analysis of the Pomaranch Stream Cipher" (various cryptanalysis papers)
  */
 
 (function(global) {
@@ -62,21 +31,47 @@
     }
   }
   
-  // Load metadata system
-  if (!global.CipherMetadata && typeof require !== 'undefined') {
-    try {
-      require('../../cipher-metadata.js');
-    } catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
-    }
-  }
-  
-  // Create Pomaranch cipher object
   const Pomaranch = {
+    name: "Pomaranch",
+    description: "eSTREAM Phase 3 finalist stream cipher based on nine linear feedback shift registers (LFSRs) with nonlinear filtering. Designed for high-speed software implementations with 128/256-bit keys.",
+    inventor: "Carlos Cid, Gaëtan Leurent",
+    year: 2005,
+    country: "GB",
+    category: "cipher",
+    subCategory: "Stream Cipher",
+    securityStatus: "insecure",
+    securityNotes: "Various cryptanalytic attacks have been published against Pomaranch. Historical interest only, not recommended for production use.",
+    
+    documentation: [
+      {text: "eSTREAM Pomaranch Specification", uri: "https://www.ecrypt.eu.org/stream/p3ciphers/pomaranch/pomaranch_p3.pdf"},
+      {text: "eSTREAM Portfolio", uri: "https://www.ecrypt.eu.org/stream/"}
+    ],
+    
+    references: [
+      {text: "Pomaranch Cryptanalysis Papers", uri: "https://eprint.iacr.org/search?q=pomaranch"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Time-Memory-Data Tradeoff", 
+        text: "Vulnerable to TMDT attacks and various algebraic attacks on LFSR structure",
+        mitigation: "Algorithm deprecated, use modern stream ciphers instead"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "eSTREAM Test Vector",
+        uri: "https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/pomaranch/",
+        keySize: 16,
+        key: Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        iv: Hex8ToBytes("0001020304050607"),
+        input: Hex8ToBytes("00000000000000000000000000000000"),
+        expected: [] // Official test vectors available from eSTREAM
+      }
+    ],
+
     // Public interface properties
-    internalName: 'Pomaranch',
-    name: 'Pomaranch Stream Cipher',
-    comment: 'Pomaranch - eSTREAM Phase 3 finalist stream cipher with LFSR-based design',
     minKeyLength: 16,   // 128-bit keys
     maxKeyLength: 32,   // 256-bit keys
     stepKeyLength: 16,  // 128 or 256 bits only
@@ -86,52 +81,6 @@
     instances: {},
     cantDecode: false,
     isInitialized: false,
-    
-    // Comprehensive metadata
-    metadata: global.CipherMetadata ? global.CipherMetadata.createMetadata({
-      algorithm: 'Pomaranch',
-      displayName: 'Pomaranch Stream Cipher',
-      description: 'eSTREAM Phase 3 finalist stream cipher based on linear feedback shift registers (LFSRs) and nonlinear filtering. Designed for high-speed software implementations.',
-      
-      inventor: 'Carlos Cid, Gaëtan Leurent',
-      year: 2005,
-      background: 'Submitted to eSTREAM competition Phase 1 and advanced to Phase 3. Based on traditional LFSR design with modern nonlinear filtering for security.',
-      
-      securityStatus: global.CipherMetadata.SecurityStatus.DEPRECATED,
-      securityNotes: 'Historical interest only. Various cryptanalytic attacks have been published. Not recommended for production use.',
-      
-      category: global.CipherMetadata.Categories.STREAM,
-      subcategory: 'LFSR-based',
-      complexity: global.CipherMetadata.ComplexityLevels.INTERMEDIATE,
-      
-      keySize: '128 or 256 bits',
-      blockSize: 32, // 32-bit keystream words
-      rounds: 'N/A (stream cipher)',
-      ivSize: '64 bits (8 bytes)',
-      
-      specifications: [
-        {
-          name: 'eSTREAM Phase 3 Pomaranch Specification',
-          url: 'https://www.ecrypt.eu.org/stream/p3ciphers/pomaranch/pomaranch_p3.pdf'
-        }
-      ],
-      
-      testVectors: [
-        {
-          name: 'eSTREAM Pomaranch Test Vectors',
-          url: 'https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/pomaranch/'
-        }
-      ],
-      
-      references: [
-        {
-          name: 'eSTREAM Portfolio',
-          url: 'https://www.ecrypt.eu.org/stream/'
-        },
-        {
-          name: 'Stream Cipher Analysis Papers',
-          url: 'https://eprint.iacr.org/search?q=pomaranch'
-        }
       ],
       
       implementationNotes: 'Uses 9 LFSRs of different primitive polynomials with nonlinear combining function. Educational implementation showing LFSR-based stream cipher design.',
@@ -496,10 +445,9 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(Pomaranch);
-  }
+  // Auto-register with Subsystem (according to category) if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(Pomaranch);
   
   // Export to global scope
   global.Pomaranch = Pomaranch;

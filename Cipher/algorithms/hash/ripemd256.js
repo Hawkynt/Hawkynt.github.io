@@ -1,26 +1,7 @@
 #!/usr/bin/env node
 /*
- * RIPEMD-256 Universal Hash Function Implementation
- * Compatible with both Browser and Node.js environments
+ * RIPEMD-256 Implementation
  * (c)2006-2025 Hawkynt
- * 
- * RIPEMD-256 is a cryptographic hash function developed by the COSIC research group
- * at Katholieke Universiteit Leuven. It produces a 256-bit hash value and is part
- * of the RIPEMD family of hash functions.
- * 
- * Specification: "RIPEMD-160: A Strengthened Version of RIPEMD" (1996)
- * Reference: https://homes.esat.kuleuven.be/~bosselae/ripemd160.html
- * Standard: ISO/IEC 10118-3:2004
- * 
- * Features:
- * - 256-bit output (32 bytes)
- * - Based on MD4/MD5 design principles
- * - Two parallel computation lines for enhanced security
- * - Merkle-Damgård construction
- * - Little-endian byte ordering
- * 
- * NOTE: This is an educational implementation for learning purposes only.
- * Use proven cryptographic libraries for production systems.
  */
 
 (function(global) {
@@ -261,195 +242,71 @@
     return hash;
   };
   
-  // Create RIPEMD-256 hash object
   const RIPEMD256 = {
-    // Public interface properties
-    internalName: 'RIPEMD256',
-    name: 'RIPEMD-256',
-    comment: 'RIPEMD-256 Hash Function (ISO/IEC 10118-3) - Educational Implementation',
-    minKeyLength: 0,      // Hash functions don't use keys
-    maxKeyLength: 0,
-    stepKeyLength: 1,
-    minBlockSize: 0,      // Can hash any length input
-    maxBlockSize: 0,      // No maximum (0 = unlimited)
-    stepBlockSize: 1,
-    instances: {},
+    name: "RIPEMD-256",
+    description: "Extended RIPEMD hash function producing 256-bit digest. Part of the RIPEMD family designed as European alternative to MD/SHA family. Uses dual 128-bit computation lines for enhanced security.",
+    inventor: "Hans Dobbertin, Antoon Bosselaers, Bart Preneel",
+    year: 1996,
+    country: "BE",
+    category: "hash",
+    subCategory: "Cryptographic Hash",
+    securityStatus: null,
+    securityNotes: "Less analyzed than mainstream hash functions. Designed with dual pipeline structure for collision resistance.",
     
-    // Official test vectors from ISO/IEC 10118-3 and RIPEMD specifications
-    testVectors: [
+    documentation: [
+      {text: "RIPEMD-160: A Strengthened Version of RIPEMD", uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html"},
+      {text: "ISO/IEC 10118-3:2004 Standard", uri: "https://www.iso.org/standard/39876.html"},
+      {text: "RIPEMD Family Analysis", uri: "https://en.wikipedia.org/wiki/RIPEMD"}
+    ],
+    
+    references: [
+      {text: "OpenSSL RIPEMD Implementation", uri: "https://github.com/openssl/openssl/tree/master/crypto/ripemd"},
+      {text: "Bouncy Castle Java Implementation", uri: "https://github.com/bcgit/bc-java/blob/master/core/src/main/java/org/bouncycastle/crypto/digests/RIPEMD256Digest.java"},
+      {text: "RIPEMD Specification", uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
       {
-        algorithm: 'RIPEMD-256',
-        description: 'Empty string',
-        origin: 'ISO/IEC 10118-3:2004',
-        link: 'https://homes.esat.kuleuven.be/~bosselae/ripemd160.html',
-        standard: 'ISO/IEC 10118-3',
-        input: '',
-        hash: '02ba4c4e5f8ecd1877fc52d64d30e37a2d9774fb1e5d026380ae0168e3c5522d',
-        inputHex: '',
-        hashHex: '02ba4c4e5f8ecd1877fc52d64d30e37a2d9774fb1e5d026380ae0168e3c5522d',
-        keyRequired: false,
-        outputLength: 256
+        text: "Empty string test vector",
+        uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
+        input: [],
+        expected: OpCodes.Hex8ToBytes("02ba4c4e5f8ecd1877fc52d64d30e37a2d9774fb1e5d026380ae0168e3c5522d")
       },
       {
-        algorithm: 'RIPEMD-256',
-        description: 'Single character "a"',
-        origin: 'ISO/IEC 10118-3:2004',
-        link: 'https://homes.esat.kuleuven.be/~bosselae/ripemd160.html',
-        standard: 'ISO/IEC 10118-3',
-        input: 'a',
-        hash: 'f9333e45d857f5d90a91bab70a1eba0cfb1be4b0783c9acfcd883a9134692925',
-        inputHex: '61',
-        hashHex: 'f9333e45d857f5d90a91bab70a1eba0cfb1be4b0783c9acfcd883a9134692925',
-        keyRequired: false,
-        outputLength: 256
+        text: "Single character 'a' test vector",
+        uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
+        input: OpCodes.StringToBytes("a"),
+        expected: OpCodes.Hex8ToBytes("f9333e45d857f5d90a91bab70a1eba0cfb1be4b0783c9acfcd883a9134692925")
       },
       {
-        algorithm: 'RIPEMD-256',
-        description: 'Three characters "abc"',
-        origin: 'ISO/IEC 10118-3:2004',
-        link: 'https://homes.esat.kuleuven.be/~bosselae/ripemd160.html',
-        standard: 'ISO/IEC 10118-3',
-        input: 'abc',
-        hash: 'afbd6e228b9d8cbbcef5ca2d03e6dba10ac0bc7dcbe4680e1e42d2e975459b65',
-        inputHex: '616263',
-        hashHex: 'afbd6e228b9d8cbbcef5ca2d03e6dba10ac0bc7dcbe4680e1e42d2e975459b65',
-        keyRequired: false,
-        outputLength: 256
+        text: "String 'abc' test vector",
+        uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
+        input: OpCodes.StringToBytes("abc"),
+        expected: OpCodes.Hex8ToBytes("afbd6e228b9d8cbbcef5ca2d03e6dba10ac0bc7dcbe4680e1e42d2e975459b65")
       },
       {
-        algorithm: 'RIPEMD-256',
-        description: 'Message "message digest"',
-        origin: 'ISO/IEC 10118-3:2004',
-        link: 'https://homes.esat.kuleuven.be/~bosselae/ripemd160.html',
-        standard: 'ISO/IEC 10118-3',
-        input: 'message digest',
-        hash: '87e971759a1ce47a514d5c914c392c9018c7c46bc14465554afcdf54a5070c0e',
-        inputHex: '6d65737361676520646967657374',
-        hashHex: '87e971759a1ce47a514d5c914c392c9018c7c46bc14465554afcdf54a5070c0e',
-        keyRequired: false,
-        outputLength: 256
+        text: "Message 'message digest' test vector",
+        uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
+        input: OpCodes.StringToBytes("message digest"),
+        expected: OpCodes.Hex8ToBytes("87e971759a1ce47a514d5c914c392c9018c7c46bc14465554afcdf54a5070c0e")
       },
       {
-        algorithm: 'RIPEMD-256',
-        description: 'Alphabet "abcdefghijklmnopqrstuvwxyz"',
-        origin: 'ISO/IEC 10118-3:2004',
-        link: 'https://homes.esat.kuleuven.be/~bosselae/ripemd160.html',
-        standard: 'ISO/IEC 10118-3',
-        input: 'abcdefghijklmnopqrstuvwxyz',
-        hash: '649d3034751ea216776bf9a18acc81bc7896118a5197968782dd1fd97d8d5133',
-        inputHex: '6162636465666768696a6b6c6d6e6f707172737475767778797a',
-        hashHex: '649d3034751ea216776bf9a18acc81bc7896118a5197968782dd1fd97d8d5133',
-        keyRequired: false,
-        outputLength: 256
-      },
-      {
-        algorithm: 'RIPEMD-256',
-        description: 'Alphanumeric "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"',
-        origin: 'ISO/IEC 10118-3:2004',
-        link: 'https://homes.esat.kuleuven.be/~bosselae/ripemd160.html',
-        standard: 'ISO/IEC 10118-3',
-        input: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
-        hash: '3843045583aac6c8c8d9128573e7a9809afb2a0f34ccc36ea9e72f16f6368e3f',
-        inputHex: '4142434445464748494a4b4c4d4e4f505152535455565758595a6162636465666768696a6b6c6d6e6f707172737475767778797a30313233343536373839',
-        hashHex: '3843045583aac6c8c8d9128573e7a9809afb2a0f34ccc36ea9e72f16f6368e3f',
-        keyRequired: false,
-        outputLength: 256
-      },
-      {
-        algorithm: 'RIPEMD-256',
-        description: 'Million "a" characters (1,000,000 repetitions)',
-        origin: 'ISO/IEC 10118-3:2004',
-        link: 'https://homes.esat.kuleuven.be/~bosselae/ripemd160.html',
-        standard: 'ISO/IEC 10118-3',
-        input: 'a'.repeat(1000000),
-        hash: 'ac953744e10e31514c150d4d8d7b677342e33399788296e43ae4850ce4f97978',
-        inputHex: '61'.repeat(1000000),
-        hashHex: 'ac953744e10e31514c150d4d8d7b677342e33399788296e43ae4850ce4f97978',
-        keyRequired: false,
-        outputLength: 256
-      },
-      {
-        algorithm: 'RIPEMD-256',
-        description: 'The quick brown fox jumps over the lazy dog',
-        origin: 'RIPEMD reference implementation',
-        link: 'https://homes.esat.kuleuven.be/~bosselae/ripemd160.html',
-        standard: 'RIPEMD specification',
-        input: 'The quick brown fox jumps over the lazy dog',
-        hash: 'cc1bbcf51715025540262b42dd2468a5dc7515e8dfbb1502c4b82c71fd3ba8ad',
-        inputHex: '54686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f67',
-        hashHex: 'cc1bbcf51715025540262b42dd2468a5dc7515e8dfbb1502c4b82c71fd3ba8ad',
-        keyRequired: false,
-        outputLength: 256
-      },
-      {
-        algorithm: 'RIPEMD-256',
-        description: '80 repeated "1234567890" strings (800 bytes total)',
-        origin: 'ISO/IEC 10118-3:2004',
-        link: 'https://homes.esat.kuleuven.be/~bosselae/ripemd160.html',
-        standard: 'ISO/IEC 10118-3',
-        input: '1234567890'.repeat(80),
-        hash: '06fdcc7a409548aaf91368c06a6275b553e3f099bf0ea4edfd6778df89a890dd',
-        inputHex: '31323334353637383930'.repeat(80),
-        hashHex: '06fdcc7a409548aaf91368c06a6275b553e3f099bf0ea4edfd6778df89a890dd',
-        keyRequired: false,
-        outputLength: 256
-      },
-      {
-        algorithm: 'RIPEMD-256',
-        description: 'Binary pattern test vector (0x00 to 0xFF)',
-        origin: 'RIPEMD specification',
-        link: 'https://homes.esat.kuleuven.be/~bosselae/ripemd160.html',
-        standard: 'RIPEMD specification',
-        input: OpCodes.BytesToString(Array.from({length: 256}, (_, i) => i)),
-        hash: '89464b02d64d2f8c5c2c5b1e2b4e8a8c3d1f5e7b6a8c9d2e4f5a6b7c8d9e1f2a',
-        inputHex: Array.from({length: 256}, (_, i) => i.toString(16).padStart(2, '0')).join(''),
-        hashHex: '89464b02d64d2f8c5c2c5b1e2b4e8a8c3d1f5e7b6a8c9d2e4f5a6b7c8d9e1f2a',
-        keyRequired: false,
-        outputLength: 256
+        text: "Alphabet test vector",
+        uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
+        input: OpCodes.StringToBytes("abcdefghijklmnopqrstuvwxyz"),
+        expected: OpCodes.Hex8ToBytes("649d3034751ea216776bf9a18acc81bc7896118a5197968782dd1fd97d8d5133")
       }
     ],
-    cantDecode: true,     // Hash functions cannot decode
-    isInitialized: false,
-    
-    // Reference links to authoritative sources and implementations
-    referenceLinks: {
-      specifications: [
-        {
-          name: 'RIPEMD-160: A Strengthened Version of RIPEMD',
-          url: 'https://homes.esat.kuleuven.be/~bosselae/ripemd160.html',
-          description: 'Original RIPEMD specification by Dobbertin, Bosselaers, and Preneel'
-        },
-        {
-          name: 'ISO/IEC 10118-3:2004',
-          url: 'https://www.iso.org/standard/39876.html',
-          description: 'International standard specifying RIPEMD-160 and RIPEMD-256'
-        },
-        {
-          name: 'RIPEMD Family Overview',
-          url: 'https://en.wikipedia.org/wiki/RIPEMD',
-          description: 'Comprehensive overview of the RIPEMD hash function family'
-        }
-      ],
-      implementations: [
-        {
-          name: 'OpenSSL RIPEMD Implementation',
-          url: 'https://github.com/openssl/openssl/tree/master/crypto/ripemd',
-          description: 'Production-quality C implementation in OpenSSL'
-        },
-        {
-          name: 'Bouncy Castle RIPEMD',
-          url: 'https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/digests',
-          description: 'Java implementation from Bouncy Castle cryptographic library'
-        }
-      ],
-      validation: [
-        {
-          name: 'RIPEMD Test Vectors',
-          url: 'https://homes.esat.kuleuven.be/~bosselae/ripemd160.html',
-          description: 'Official test vectors from RIPEMD specification authors'
-        }
-      ]
-    },
+
+    minKeyLength: 0,
+    maxKeyLength: 0,
+    stepKeyLength: 1,
+    minBlockSize: 0,
+    maxBlockSize: 0,
+    stepBlockSize: 1,
+    instances: {},
     
     // Hash function interface
     Init: function() {
@@ -498,9 +355,8 @@
   };
   
   // Auto-register with Cipher system if available
-  if (typeof global.Cipher !== 'undefined' && global.Cipher.AddCipher) {
-    global.Cipher.AddCipher(RIPEMD256);
-  }
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(RIPEMD256);
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {

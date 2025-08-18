@@ -1,44 +1,73 @@
 /*
- * Universal Caesar Cipher
- * Compatible with both Browser and Node.js environments
- * Based on original caesar.js but modernized for cross-platform use
+ * Caesar Cipher Implementation
  * (c)2006-2025 Hawkynt
  */
 
 (function(global) {
   'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Caesar cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
-  
-  // Load metadata system
-  if (!global.CipherMetadata && typeof require !== 'undefined') {
-    try {
-      require('../../cipher-metadata.js');
-    } catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
-    }
-  }
 
-  // Create Caesar cipher object
   const Caesar = {
-    // Public interface properties
+    name: "Caesar Cipher",
+    description: "Ancient Roman substitution cipher shifting each letter by fixed number of positions in alphabet. Used by Julius Caesar for military communications with standard shift of 3.",
+    inventor: "Julius Caesar",
+    year: -50,
+    country: "IT",
+    category: "cipher",
+    subCategory: "Classical Cipher",
+    securityStatus: "insecure",
+    securityNotes: "Completely broken cipher with only 25 possible keys. Trivially broken by frequency analysis or brute force. Historical significance only.",
+    
+    documentation: [
+      {text: "Wikipedia Article", uri: "https://en.wikipedia.org/wiki/Caesar_cipher"},
+      {text: "Historical Context", uri: "https://en.wikipedia.org/wiki/Julius_Caesar"},
+      {text: "Cryptanalysis Methods", uri: "https://www.dcode.fr/caesar-cipher"}
+    ],
+    
+    references: [
+      {text: "DCode Implementation", uri: "https://www.dcode.fr/caesar-cipher"},
+      {text: "Educational Tutorial", uri: "https://cryptii.com/pipes/caesar-cipher"},
+      {text: "Practical Cryptography", uri: "https://practicalcryptography.com/ciphers/classical-era/caesar/"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Brute Force Attack",
+        text: "Only 25 possible keys (shifts 1-25), making brute force trivial even by hand",
+        mitigation: "None - cipher is fundamentally insecure"
+      },
+      {
+        type: "Frequency Analysis",
+        text: "Letter frequencies preserved, making frequency analysis immediately effective",
+        mitigation: "Use only for educational demonstrations of cryptanalysis"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Historical Caesar Example",
+        uri: "https://en.wikipedia.org/wiki/Caesar_cipher",
+        input: ANSIToBytes("HELLO"),
+        key: ANSIToBytes("3"),
+        expected: ANSIToBytes("KHOOR")
+      },
+      {
+        text: "Classic Educational Test",
+        uri: "https://www.dcode.fr/caesar-cipher",
+        input: ANSIToBytes("ATTACKATDAWN"),
+        key: ANSIToBytes("3"),
+        expected: ANSIToBytes("DWWDFNDWGDZQ")
+      },
+      {
+        text: "Full Alphabet Shift",
+        uri: "https://practicalcryptography.com/ciphers/classical-era/caesar/",
+        input: ANSIToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+        key: ANSIToBytes("3"),
+        expected: ANSIToBytes("DEFGHIJKLMNOPQRSTUVWXYZABC")
+      }
+    ],
+
+    // Legacy interface properties
     internalName: 'Caesar',
-    name: 'Caesar Cipher',
     comment: 'Classical Caesar Cipher Algorithm with shift-by-3',
     minKeyLength: 0,
     maxKeyLength: 0,
@@ -48,35 +77,6 @@
     stepBlockSize: 1,
     instances: {},
     cantDecode: false,
-
-    // ===== COMPREHENSIVE METADATA =====
-    metadata: {
-      // Basic Information
-      description: 'The Caesar cipher is a simple substitution cipher where each letter is shifted a fixed number of positions in the alphabet. Named after Julius Caesar who used it for military communications.',
-      country: 'IT', // Ancient Rome (modern Italy)
-      countryName: 'Roman Empire',
-      year: -50, // Approximately 50 BCE
-      inventor: 'Julius Caesar',
-      
-      // Classification
-      category: 'classical',
-      categoryName: 'Classical Cipher',
-      type: 'substitution',
-      securityLevel: 'obsolete',
-      complexity: 'beginner',
-      
-      // Technical Details
-      blockSize: 1, // Character-by-character
-      keySizes: [1], // Single shift value
-      keyType: 'integer',
-      symmetric: true,
-      deterministic: true,
-      
-      // Educational Value
-      tags: ['historical', 'educational', 'broken', 'ancient', 'rome', 'military'],
-      educationalLevel: 'elementary',
-      prerequisites: ['basic_alphabet'],
-      learningObjectives: 'Understanding basic substitution ciphers and frequency analysis vulnerabilities',
       
       // Security Status
       secure: false,
@@ -588,16 +588,9 @@
   };
   
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(Caesar);
-  }
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(Caesar);
   
-  // Export to global scope
   global.Caesar = Caesar;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Caesar;
-  }
   
 })(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);

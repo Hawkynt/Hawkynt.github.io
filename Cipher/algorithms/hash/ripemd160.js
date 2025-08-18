@@ -1,17 +1,7 @@
 #!/usr/bin/env node
 /*
- * Universal RIPEMD-160 Hash Function
- * Compatible with both Browser and Node.js environments
- * Based on original RIPEMD-160 specification
+ * RIPEMD-160 Implementation
  * (c)2006-2025 Hawkynt
- * 
- * Educational implementation of the RIPEMD-160 secure hash algorithm.
- * Produces 160-bit (20-byte) hash values from input data.
- * 
- * IMPLEMENTATION NOTES:
- * - Alternative to SHA-1 with different design
- * - Developed in Europe as part of RIPEMD family
- * - Still considered secure for most applications
  */
 
 (function(global) {
@@ -44,21 +34,72 @@
     }
   }
   
-  // Create RIPEMD-160 hash object
   const RIPEMD160 = {
-    // Public interface properties
-    internalName: 'RIPEMD160',
-    name: 'RIPEMD-160',
-    comment: 'RIPEMD-160 Hash Algorithm - Educational Implementation',
+    name: "RIPEMD-160",
+    description: "RACE Integrity Primitives Evaluation Message Digest with 160-bit output. Developed as a European alternative to SHA-1 with different design principles. Produces a 160-bit hash digest.",
+    inventor: "Hans Dobbertin, Antoon Bosselaers, Bart Preneel",
+    year: 1996,
+    country: "BE",
+    category: "hash",
+    subCategory: "Cryptographic Hash",
+    securityStatus: null,
+    securityNotes: "Generally considered secure but less analyzed than SHA-256. Designed as SHA-1 alternative with different structure.",
     
-    // Cipher interface properties (required for registration)
-    minKeyLength: 0,    // Hash functions don't use keys
-    maxKeyLength: 0,    // Hash functions don't use keys
-    stepKeyLength: 1,   // Not applicable for hash functions
-    minBlockSize: 1,    // Can hash any amount of data
-    maxBlockSize: 0,    // No maximum block size (0 = unlimited)
-    stepBlockSize: 1,   // Can process byte by byte
-    instances: {},      // Instance tracking
+    documentation: [
+      {text: "RIPEMD-160: A Strengthened Version of RIPEMD", uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html"},
+      {text: "ISO/IEC 10118-3:2004 Standard", uri: "https://www.iso.org/standard/39876.html"},
+      {text: "Wikipedia Article", uri: "https://en.wikipedia.org/wiki/RIPEMD"}
+    ],
+    
+    references: [
+      {text: "OpenSSL Implementation", uri: "https://github.com/openssl/openssl/tree/master/crypto/ripemd"},
+      {text: "Bouncy Castle Java Implementation", uri: "https://github.com/bcgit/bc-java/blob/master/core/src/main/java/org/bouncycastle/crypto/digests/RIPEMD160Digest.java"},
+      {text: "Original Specification", uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "Empty string test vector",
+        uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
+        input: [],
+        expected: OpCodes.Hex8ToBytes("9c1185a5c5e9fc54612808977ee8f548b2258d31")
+      },
+      {
+        text: "Single character 'a' test vector", 
+        uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
+        input: OpCodes.StringToBytes("a"),
+        expected: OpCodes.Hex8ToBytes("0bdc9d2d256b3ee9daae347be6f4dc835a467ffe")
+      },
+      {
+        text: "String 'abc' test vector",
+        uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
+        input: OpCodes.StringToBytes("abc"),
+        expected: OpCodes.Hex8ToBytes("8eb208f7e05d987a9b044a8e98c6b087f15a0bfc")
+      },
+      {
+        text: "Message 'message digest' test vector",
+        uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
+        input: OpCodes.StringToBytes("message digest"),
+        expected: OpCodes.Hex8ToBytes("5d0689ef49d2fae572b881b123a85ffa21595f36")
+      },
+      {
+        text: "Alphabet test vector",
+        uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
+        input: OpCodes.StringToBytes("abcdefghijklmnopqrstuvwxyz"),
+        expected: OpCodes.Hex8ToBytes("f71c27109c692c1b56bbdceb5b9d2865b3708dbc")
+      }
+    ],
+
+    // Required cipher interface properties
+    minKeyLength: 0,
+    maxKeyLength: 0,
+    stepKeyLength: 1,
+    minBlockSize: 1,
+    maxBlockSize: 0,
+    stepBlockSize: 1,
+    instances: {},
     
     // Hash state variables
     _h: null,
@@ -262,9 +303,8 @@
   };
   
   // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(RIPEMD160);
-  }
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(RIPEMD160);
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {

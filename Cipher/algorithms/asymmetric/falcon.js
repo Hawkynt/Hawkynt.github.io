@@ -1,16 +1,6 @@
-#!/usr/bin/env node
 /*
- * FALCON Universal Implementation
- * Based on FALCON - Fast-Fourier Lattice-based Compact Signatures over NTRU
- * 
- * This is an educational implementation of the NIST-selected FALCON algorithm.
- * WARNING: This implementation is for educational purposes only and should never
- * be used in production systems. Use NIST-certified implementations for real applications.
- * 
- * NIST Post-Quantum Cryptography Competition Selected Algorithm
- * Reference: https://csrc.nist.gov/Projects/post-quantum-cryptography/round-3-submissions
- * 
- * (c)2006-2025 Hawkynt - Educational implementation
+ * FALCON Implementation
+ * (c)2006-2025 Hawkynt
  */
 
 (function(global) {
@@ -44,10 +34,50 @@
   };
   
   const Falcon = {
+    name: "FALCON",
+    description: "Fast-Fourier lattice-based compact signatures over NTRU. NIST post-quantum digital signature scheme offering smallest signature sizes among lattice-based algorithms.",
+    inventor: "Thomas Prest, Pierre-Alain Fouque, Jeffrey Hoffstein, Paul Kirchner, Vadim Lyubashevsky, Thomas Pornin, Thomas Ricosset, Gregor Seiler, William Whyte, Zhenfei Zhang",
+    year: 2017,
+    country: "Multi-national",
+    category: "cipher",
+    subCategory: "Asymmetric Cipher",
+    securityStatus: null,
+    securityNotes: "NIST post-quantum standard offering compact signatures. Security based on NTRU lattice problems with FFT optimization.",
+    
+    documentation: [
+      {text: "FALCON Official Website", uri: "https://falcon-sign.info/"},
+      {text: "NIST PQC Round 3 Submission", uri: "https://csrc.nist.gov/Projects/post-quantum-cryptography/round-3-submissions"},
+      {text: "Wikipedia - FALCON", uri: "https://en.wikipedia.org/wiki/FALCON_(signature_scheme)"},
+      {text: "FALCON Specification", uri: "https://falcon-sign.info/falcon.pdf"}
+    ],
+    
+    references: [
+      {text: "FALCON Reference Implementation", uri: "https://github.com/tprest/falcon.py"},
+      {text: "PQClean FALCON", uri: "https://github.com/PQClean/PQClean/tree/master/crypto_sign/falcon-512"},
+      {text: "liboqs Integration", uri: "https://github.com/open-quantum-safe/liboqs"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Floating Point Precision", 
+        text: "FALCON uses floating-point arithmetic which can introduce precision issues and potential side-channel vulnerabilities",
+        mitigation: "Use carefully implemented floating-point operations with constant-time guarantees"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "FALCON-512 Test Vector",
+        uri: "https://falcon-sign.info/",
+        keySize: 1281, // FALCON-512 private key size in bytes
+        input: ANSIToBytes("Message to sign"),
+        expected: null // Will be computed during test
+      }
+    ],
+
+    // Legacy interface properties for compatibility
     internalName: 'falcon',
-    name: 'FALCON',
-    // Required Cipher interface properties
-    minKeyLength: 32,        // Minimum key length in bytes
+    minKeyLength: 32,
     maxKeyLength: 256,        // Maximum key length in bytes
     stepKeyLength: 1,       // Key length step size
     minBlockSize: 0,        // Minimum block size in bytes
@@ -679,9 +709,8 @@
   };
   
   // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(Falcon);
-  }
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(Falcon);
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {

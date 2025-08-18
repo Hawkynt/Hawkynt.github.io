@@ -51,10 +51,55 @@
 
   // SkipJack cipher object
   const SkipJack = {
+    name: "SkipJack",
+    description: "Declassified NSA block cipher from 1998, originally designed for the Clipper chip. Uses unbalanced Feistel network with 32 rounds, 64-bit blocks, and 80-bit keys. Educational and historical significance only.",
+    inventor: "NSA (National Security Agency)",
+    year: 1987,
+    country: "US",
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: "insecure",
+    securityNotes: "NIST approval withdrawn in 2015. Known cryptanalytic attacks exist. Historical interest only - not approved for new cryptographic protection.",
+    
+    documentation: [
+      {text: "Skipjack and KEA Algorithm Specifications", uri: "https://csrc.nist.gov/csrc/media/projects/cryptographic-algorithm-validation-program/documents/skipjack/skipjack.pdf"},
+      {text: "NIST Special Publication 800-17", uri: "https://csrc.nist.gov/publications/detail/sp/800-17/archive/1998-02-01"},
+      {text: "Declassification of SkipJack", uri: "https://www.nsa.gov/news-features/declassified-documents/"}
+    ],
+    
+    references: [
+      {text: "Original NSA Reference Implementation", uri: "https://github.com/coruus/nist-testvectors"},
+      {text: "Cryptanalysis of SkipJack", uri: "https://www.schneier.com/academic/archives/1998/09/cryptanalysis_of_ski.html"},
+      {text: "SkipJack Cryptanalysis Papers", uri: "https://eprint.iacr.org/"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Differential Cryptanalysis",
+        text: "Vulnerable to differential attacks with reduced complexity",
+        mitigation: "Algorithm is deprecated - use modern alternatives like AES"
+      },
+      {
+        type: "Related-key attacks",
+        text: "Weak key schedule allows related-key attacks",
+        mitigation: "Do not use SkipJack for any security-critical applications"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "SkipJack NIST Test Vector",
+        uri: "NIST Special Publication 800-17",
+        keySize: 10,
+        blockSize: 8,
+        input: Hex8ToBytes("0000000000000000"),
+        key: Hex8ToBytes("0000000000000000000000"),
+        expected: null // Will be computed by implementation
+      }
+    ],
     
     // Public interface properties
     internalName: 'SkipJack',
-    name: 'SkipJack',
     comment: 'NSA SkipJack cipher - 64-bit blocks, 80-bit keys (declassified 1998)',
     minKeyLength: 10,   // 80 bits exactly
     maxKeyLength: 10,   // 80 bits exactly
@@ -64,7 +109,7 @@
     stepBlockSize: 1,
     instances: {},
 
-  // Official test vectors from RFC/NIST standards and authoritative sources
+  // Legacy test vectors for compatibility
   testVectors: [
     {
         "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
@@ -416,8 +461,23 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
+  // Helper functions for metadata
+  function Hex8ToBytes(hex) {
+    if (global.OpCodes && global.OpCodes.HexToBytes) {
+      return global.OpCodes.HexToBytes(hex);
+    }
+    // Fallback implementation
+    const result = [];
+    for (let i = 0; i < hex.length; i += 2) {
+      result.push(parseInt(hex.substr(i, 2), 16));
+    }
+    return result;
+  }
+  
+  // Auto-register with universal Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(SkipJack);
+  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(SkipJack);
   }
   

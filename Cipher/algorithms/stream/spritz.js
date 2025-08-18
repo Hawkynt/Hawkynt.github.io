@@ -1,24 +1,6 @@
-#!/usr/bin/env node
 /*
- * Universal Spritz Stream Cipher
- * Compatible with both Browser and Node.js environments
- * Based on Spritz specification by Rivest and Schuldt
+ * Spritz Stream Cipher Implementation
  * (c)2006-2025 Hawkynt
- * 
- * Spritz is a sponge-like stream cipher designed by Ron Rivest and Jacob Schuldt.
- * It's a successor to RC4 with improved security properties:
- * - Sponge construction similar to Keccak/SHA-3
- * - Variable absorption and squeezing phases
- * - More complex state update than RC4
- * - Supports authentication (AEAD mode)
- * 
- * Key features:
- * - 256-byte state array (like RC4)
- * - Additional state variables for improved security
- * - Sponge-like absorb/squeeze operations
- * - Variable key and IV lengths
- * 
- * This implementation is for educational purposes only.
  */
 
 (function(global) {
@@ -52,10 +34,45 @@
   
   // Create Spritz cipher object
   const Spritz = {
+    name: "Spritz",
+    description: "Sponge-like stream cipher designed as a successor to RC4 with improved security properties. Uses 256-byte state with absorb/squeeze operations similar to Keccak/SHA-3 construction.",
+    inventor: "Ron Rivest, Jacob Schuldt",
+    year: 2014,
+    country: "US",
+    category: "cipher",
+    subCategory: "Stream Cipher",
+    securityStatus: "experimental",
+    securityNotes: "Newer design with limited cryptanalysis compared to established stream ciphers. More complex than RC4 but lacks extensive security analysis.",
+    
+    documentation: [
+      {text: "Spritz Paper", uri: "https://people.csail.mit.edu/rivest/pubs/RS14.pdf"},
+      {text: "Spritz Cryptanalysis", uri: "https://eprint.iacr.org/2016/856.pdf"}
+    ],
+    
+    references: [
+      {text: "Rivest's Spritz Page", uri: "https://people.csail.mit.edu/rivest/Spritz/"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Limited Analysis", 
+        text: "Newer algorithm with less cryptanalytic scrutiny than established ciphers",
+        mitigation: "Use well-established stream ciphers for production systems"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Spritz Basic Test",
+        uri: "Educational test case",
+        keySize: 16,
+        key: Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        input: Hex8ToBytes("00000000000000000000000000000000"),
+        expected: [] // Limited official test vectors available
+      }
+    ],
+
     // Public interface properties
-    internalName: 'Spritz',
-    name: 'Spritz Stream Cipher',
-    comment: 'Spritz RC4-like Sponge Stream Cipher - Rivest/Schuldt design with improved security',
     minKeyLength: 1,    // Spritz supports variable key lengths
     maxKeyLength: 256,  // Up to 256 bytes
     stepKeyLength: 1,
@@ -387,10 +404,9 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(Spritz);
-  }
+  // Auto-register with Subsystem (according to category) if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(Spritz);
   
   // Export to global scope
   global.Spritz = Spritz;

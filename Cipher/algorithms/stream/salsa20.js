@@ -1,27 +1,6 @@
-#!/usr/bin/env node
 /*
- * Universal Salsa20 Stream Cipher
- * Compatible with both Browser and Node.js environments
- * Based on Daniel J. Bernstein's Salsa20 specification and RFC 7914
+ * Salsa20 Stream Cipher Implementation
  * (c)2006-2025 Hawkynt
- * 
- * Salsa20 is a stream cipher designed by Daniel J. Bernstein in 2005.
- * It's part of the eSTREAM portfolio and uses a 256-bit key and 64-bit nonce.
- * The core function applies 20 rounds of quarter-round operations.
- * 
- * Key features:
- * - 256-bit keys with 64-bit nonces (also supports 128-bit keys)
- * - ARX design (Addition, Rotation, XOR)
- * - High performance and security
- * - No S-boxes or lookup tables
- * 
- * WARNING: This is an educational implementation for learning purposes only.
- * Use proven cryptographic libraries for production systems.
- * 
- * References:
- * - Daniel J. Bernstein's Salsa20 specification
- * - RFC 7914 (Salsa20/8 Core test vectors)
- * - eSTREAM portfolio submission
  */
 
 (function(global) {
@@ -53,21 +32,42 @@
     }
   }
   
-  // Load metadata system
-  if (!global.CipherMetadata && typeof require !== 'undefined') {
-    try {
-      require('../../cipher-metadata.js');
-    } catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
-    }
-  }
-  
-  // Create Salsa20 cipher object
   const Salsa20 = {
+    name: "Salsa20",
+    description: "ARX-based stream cipher designed for high performance and security using Addition, Rotation, and XOR operations. Part of eSTREAM portfolio with no S-boxes or lookup tables required.",
+    inventor: "Daniel J. Bernstein",
+    year: 2005,
+    country: "US",
+    category: "cipher",
+    subCategory: "Stream Cipher",
+    securityStatus: null,
+    securityNotes: "Well-analyzed eSTREAM finalist with strong security record. However, use established cryptographic libraries for production systems.",
+    
+    documentation: [
+      {text: "Salsa20 Specification", uri: "https://cr.yp.to/snuffle/spec.pdf"},
+      {text: "RFC 7914", uri: "https://tools.ietf.org/html/rfc7914"},
+      {text: "eSTREAM Portfolio", uri: "https://www.ecrypt.eu.org/stream/"}
+    ],
+    
+    references: [
+      {text: "DJB's Salsa20 Page", uri: "https://cr.yp.to/snuffle.html"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "Salsa20 Test Vector",
+        uri: "https://cr.yp.to/snuffle/spec.pdf",
+        keySize: 32,
+        key: Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
+        nonce: Hex8ToBytes("0102030405060708"),
+        input: Hex8ToBytes("00000000000000000000000000000000"),
+        expected: [] // Official test vectors available
+      }
+    ],
+
     // Public interface properties
-    internalName: 'Salsa20',
-    name: 'Salsa20 Stream Cipher',
-    comment: 'Salsa20 Stream Cipher - Educational implementation with RFC test vectors',
     minKeyLength: 16,   // 128-bit minimum
     maxKeyLength: 32,   // 256-bit maximum
     stepKeyLength: 16,  // Support 128-bit and 256-bit keys
@@ -620,10 +620,9 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(Salsa20);
-  }
+  // Auto-register with Subsystem (according to category) if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(Salsa20);
   
   // Export to global scope
   global.Salsa20 = Salsa20;

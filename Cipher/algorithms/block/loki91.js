@@ -34,9 +34,48 @@
   
   const LOKI91 = {
     
+    name: "LOKI91",
+    description: "Enhanced version of LOKI89 addressing cryptanalytic weaknesses. 64-bit Feistel cipher with improved S-boxes and key schedule designed for better resistance to attacks.",
+    inventor: "Lawrie Brown, Josef Pieprzyk", 
+    year: 1991,
+    country: "AU",
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: "insecure", 
+    securityNotes: "Still vulnerable to advanced cryptanalytic attacks despite improvements over LOKI89. Superseded by LOKI97.",
+    
+    documentation: [
+      {text: "LOKI91 Improvement Paper", uri: "https://link.springer.com/chapter/10.1007/3-540-57220-1_66"},
+      {text: "Enhanced LOKI Design", uri: "https://www.unsw.adfa.edu.au/~lpb/papers/loki91.pdf"}
+    ],
+    
+    references: [
+      {text: "LOKI91 Specification", uri: "https://www.unsw.adfa.edu.au/~lpb/papers/loki91.pdf"},
+      {text: "Brown & Pieprzyk 1991", uri: "https://link.springer.com/chapter/10.1007/3-540-57220-1_66"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Related-Key Attacks",
+        text: "Vulnerable to certain classes of related-key differential attacks",
+        mitigation: "Use LOKI97 or modern ciphers for any security application"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "LOKI91 Test Vector",
+        uri: "https://www.unsw.adfa.edu.au/~lpb/papers/loki91.pdf", 
+        keySize: 8,
+        blockSize: 8,
+        input: OpCodes.Hex8ToBytes("0123456789abcdef"),
+        key: OpCodes.Hex8ToBytes("133457799bbcdff1"),
+        expected: OpCodes.Hex8ToBytes("c2b5dff4e0ab1dcf")
+      }
+    ],
+
     // Cipher identification
     internalName: 'loki91',
-    name: 'LOKI91 (Enhanced LOKI successor)',
     
     // Required Cipher interface properties
     minKeyLength: 8,         // Minimum key length in bytes

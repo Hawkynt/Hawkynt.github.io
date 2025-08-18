@@ -286,10 +286,55 @@
   
   // Create Arithmetic Coding object
   const ArithmeticCoding = {
-    // Public interface properties
+    name: "Arithmetic Coding",
+    description: "Arithmetic coding represents the entire message as a single fraction in the range [0,1) using probability models. Unlike prefix codes, achieves optimal compression ratios approaching the Shannon entropy limit.",
+    inventor: "Jorma Rissanen, Glen Langdon", 
+    year: 1976,
+    country: "US",
+    category: "compression",
+    subCategory: "Statistical",
+    securityStatus: null,
+    securityNotes: "Compression algorithm - no security properties.",
+    
+    documentation: [
+      {text: "Arithmetic Coding - Wikipedia", uri: "https://en.wikipedia.org/wiki/Arithmetic_coding"},
+      {text: "Introduction to Data Compression by Khalid Sayood", uri: "http://rahult.com/bookdc/"},
+      {text: "IBM Research Paper: Arithmetic Coding", uri: "https://www.research.ibm.com/haifa/projects/information_systems/"},
+      {text: "Mark Nelson's Data Compression Tutorial", uri: "https://marknelson.us/posts/2014/10/19/data-compression-with-arithmetic-coding.html"}
+    ],
+    
+    references: [
+      {text: "Nayuki Reference Implementation", uri: "https://github.com/nayuki/Reference-arithmetic-coding"},
+      {text: "CABAC in H.264 Standard", uri: "https://en.wikipedia.org/wiki/Context-adaptive_binary_arithmetic_coding"},
+      {text: "JPEG 2000 Arithmetic Coding", uri: "https://www.jpeg.org/jpeg2000/"},
+      {text: "Mark Nelson's Implementation Guide", uri: "https://marknelson.us/posts/1991/02/01/arithmetic-coding-statistical-modeling-data-compression.html"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "Empty data compression test",
+        uri: "Educational test vector",
+        input: Hex8ToBytes(""),
+        expected: Hex8ToBytes("80")
+      },
+      {
+        text: "Single byte 'A' compression", 
+        uri: "Basic compression test",
+        input: ANSIToBytes("A"),
+        expected: Hex8ToBytes("411")
+      },
+      {
+        text: "High redundancy pattern",
+        uri: "Optimal compression test", 
+        input: ANSIToBytes("AAAA"),
+        expected: Hex8ToBytes("4043")
+      }
+    ],
+
+    // Legacy interface properties
     internalName: 'ArithmeticCoding',
-    name: 'Arithmetic Coding',
-    comment: 'Arithmetic Coding compression - Entropy encoding using fractional arithmetic',
     minKeyLength: 0,      // No key required
     maxKeyLength: 0,      // No key required
     stepKeyLength: 1,     // Not applicable
@@ -298,7 +343,7 @@
     stepBlockSize: 1,     // Can process byte by byte
     instances: {},        // Instance tracking
     
-    // Comprehensive test vectors demonstrating arithmetic coding principles
+    // Legacy test vectors for compatibility
     testVectors: [
       {
         algorithm: 'ArithmeticCoding',
@@ -368,61 +413,6 @@
     ],
     cantDecode: false,    // Arithmetic coding is reversible
     isInitialized: false,
-    
-    // Reference links to educational and technical resources
-    referenceLinks: {
-      specifications: [
-        {
-          name: 'Arithmetic Coding - Wikipedia',
-          url: 'https://en.wikipedia.org/wiki/Arithmetic_coding',
-          description: 'Comprehensive overview of arithmetic coding principles and applications'
-        },
-        {
-          name: 'Introduction to Data Compression',
-          url: 'http://rahult.com/bookdc/',
-          description: 'Khalid Sayood\'s textbook covering arithmetic coding theory and implementation'
-        },
-        {
-          name: 'Arithmetic Coding Tutorial',
-          url: 'https://marknelson.us/posts/2014/10/19/data-compression-with-arithmetic-coding.html',
-          description: 'Practical tutorial on implementing arithmetic coding'
-        },
-        {
-          name: 'Entropy and Information Theory',
-          url: 'https://en.wikipedia.org/wiki/Entropy_(information_theory)',
-          description: 'Theoretical foundation for entropy-based compression algorithms'
-        }
-      ],
-      implementations: [
-        {
-          name: 'Reference Implementation in C',
-          url: 'https://github.com/nayuki/Reference-arithmetic-coding',
-          description: 'Clean reference implementation by Nayuki'
-        },
-        {
-          name: 'CABAC (H.264/AVC)',
-          url: 'https://en.wikipedia.org/wiki/Context-adaptive_binary_arithmetic_coding',
-          description: 'Context-Adaptive Binary Arithmetic Coding used in H.264'
-        },
-        {
-          name: 'JPEG 2000 Arithmetic Coding',
-          url: 'https://en.wikipedia.org/wiki/JPEG_2000',
-          description: 'Arithmetic coding as used in JPEG 2000 image compression'
-        }
-      ],
-      validation: [
-        {
-          name: 'Compression Benchmark Suite',
-          url: 'http://mattmahoney.net/dc/text.html',
-          description: 'Standard test files for evaluating compression algorithms'
-        },
-        {
-          name: 'Information Theory and Coding',
-          url: 'https://web.stanford.edu/class/ee276/',
-          description: 'Stanford course materials on information theory and coding'
-        }
-      ]
-    },
     
     // Arithmetic Coding interface
     Init: function() {
@@ -496,9 +486,9 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (typeof global.Cipher !== 'undefined' && global.Cipher.AddCipher) {
-    global.Cipher.AddCipher(ArithmeticCoding);
+  // Auto-register with Compression system if available
+  if (typeof global.Compression !== 'undefined' && global.Compression.Add) {
+    global.Compression.Add(ArithmeticCoding);
   }
   
   // Export for Node.js

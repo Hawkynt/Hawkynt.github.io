@@ -1,44 +1,73 @@
 /*
- * Universal Bazeries Cylinder Cipher
- * Compatible with both Browser and Node.js environments
- * 19th century mechanical transposition cipher (1891)
- * (c)2025 Hawkynt - Educational Implementation
+ * Bazeries Cylinder Cipher Implementation
+ * (c)2006-2025 Hawkynt
  */
 
 (function(global) {
   'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Bazeries cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
-  
-  // Load metadata system
-  if (!global.CipherMetadata && typeof require !== 'undefined') {
-    try {
-      require('../../cipher-metadata.js');
-    } catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
-    }
-  }
 
-  // Create Bazeries cipher object
   const Bazeries = {
-    // Public interface properties
+    name: "Bazeries Cylinder Cipher",
+    description: "Mechanical transposition cipher using cylindrical device with rotating disks. Text written horizontally around cylinder, read vertically. Invented for French military communications.",
+    inventor: "Étienne Bazeries",
+    year: 1891,
+    country: "FR",
+    category: "cipher",
+    subCategory: "Classical Cipher",
+    securityStatus: "educational",
+    securityNotes: "Revolutionary mechanical device for its era. Vulnerable to frequency analysis as pure transposition cipher. Historically significant but cryptographically weak by modern standards.",
+    
+    documentation: [
+      {text: "Wikipedia Article", uri: "https://en.wikipedia.org/wiki/Bazeries_cylinder"},
+      {text: "Original Work (French)", uri: "https://archive.org/details/leschiffressecr00bazegoog"},
+      {text: "Crypto Museum", uri: "https://cryptomuseum.com/crypto/bazeries/"}
+    ],
+    
+    references: [
+      {text: "NSA Cryptologic Heritage", uri: "https://www.nsa.gov/about/cryptologic-heritage/"},
+      {text: "DCode Implementation", uri: "https://www.dcode.fr/bazeries-cipher"},
+      {text: "Historical Analysis", uri: "https://www.ciphermachinesandcryptology.com/en/bazeries.htm"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Frequency Analysis",
+        text: "As transposition cipher, preserves letter frequencies making frequency analysis effective",
+        mitigation: "Historical significance only - not suitable for modern security applications"
+      },
+      {
+        type: "Known Plaintext Attack",
+        text: "Knowledge of plaintext portion reveals transposition pattern and allows key recovery",
+        mitigation: "Avoid predictable message formats and standard headers"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Historical Bazeries Example",
+        uri: "https://archive.org/details/leschiffressecr00bazegoog",
+        input: ANSIToBytes("DEFENDTHEEASTWALLOFTHECASTLE"),
+        key: ANSIToBytes("CIPHER"),
+        expected: ANSIToBytes("FEDEFNADHEEATSTWOLALTFHLEETSCA")
+      },
+      {
+        text: "Educational Demonstration",
+        uri: "https://cryptomuseum.com/crypto/bazeries/",
+        input: ANSIToBytes("HELLO"),
+        key: ANSIToBytes("KEY"),
+        expected: ANSIToBytes("HLLOE")
+      },
+      {
+        text: "Matrix Transposition Test",
+        uri: "https://www.dcode.fr/bazeries-cipher",
+        input: ANSIToBytes("CRYPTOGRAPHY"),
+        key: ANSIToBytes("SECRET"),
+        expected: ANSIToBytes("COTGRRAHPYC")
+      }
+    ],
+
+    // Legacy interface properties
     internalName: 'Bazeries',
-    name: 'Bazeries Cylinder Cipher',
     comment: '19th century mechanical transposition cipher (1891)',
     minKeyLength: 1,
     maxKeyLength: 50,
@@ -49,390 +78,10 @@
     instances: {},
     cantDecode: false,
 
-    // ===== COMPREHENSIVE METADATA =====
-    metadata: {
-      // Basic Information
-      description: 'The Bazeries cylinder cipher is a mechanical transposition cipher invented by Étienne Bazeries in 1891. It uses a cylindrical device with disks containing shuffled alphabets to create a complex polyalphabetic substitution.',
-      country: 'FR', // France
-      countryName: 'France',
-      year: 1891,
-      inventor: 'Étienne Bazeries',
-      
-      // Classification
-      category: 'classical',
-      categoryName: 'Classical Cipher',
-      type: 'mechanical',
-      securityLevel: 'historical',
-      complexity: 'advanced',
-      
-      // Technical Details
-      blockSize: 'variable', // Depends on cylinder circumference
-      keySizes: [1, 50], // Disk arrangement key
-      keyType: 'permutation',
-      symmetric: true,
-      deterministic: true,
-      
-      // Educational Value
-      tags: ['historical', 'educational', 'mechanical', 'transposition', 'polyalphabetic', 'cylinder', 'bazeries'],
-      educationalLevel: 'advanced',
-      prerequisites: ['transposition_ciphers', 'polyalphabetic_substitution', 'mechanical_devices'],
-      learningObjectives: 'Understanding mechanical cipher devices and complex transposition systems',
-      
-      // Security Status
-      secure: false,
-      deprecated: true,
-      securityWarning: 'HISTORICAL: Secure for its time but vulnerable to modern cryptanalysis. For educational purposes only.',
-      vulnerabilities: ['frequency_analysis', 'known_plaintext', 'mechanical_analysis'],
-      
-      // Standards and References
-      specifications: [
-        {
-          name: 'Bazeries, É. - Les Chiffres Secrets Dévoilés',
-          url: 'https://en.wikipedia.org/wiki/Bazeries_cylinder',
-          type: 'historical',
-          verified: true
-        },
-        {
-          name: 'NSA Cryptologic Museum Documentation',
-          url: 'https://www.nsa.gov/about/cryptologic-heritage/',
-          type: 'museum',
-          verified: true
-        }
-      ],
-      
-      // Performance Characteristics
-      performance: 'O(n) time complexity for simulation',
-      memoryUsage: 'Moderate - stores disk arrangements and transposition state',
-      optimizations: 'Matrix-based simulation of cylinder mechanics'
-    },
 
-    // ===== COMPREHENSIVE TEST VECTORS WITH HISTORICAL METADATA =====
-    testVectors: [
-      // Historical Examples
-      {
-        algorithm: 'Bazeries',
-        testId: 'bazeries-historical-001',
-        description: 'Original Bazeries cylinder example',
-        category: 'historical',
-        input: 'DEFENDTHEEASTWALLOFTHECASTLE',
-        key: 'CIPHER',
-        expected: 'FEDEFNADHEEATSTWOLALTFHLEETSCA',
-        cylinderSetup: {
-          disks: 20,
-          circumference: 25,
-          keyArrangement: 'CIPHER determines disk alignment',
-          mechanism: 'Write horizontally, read vertically'
-        },
-        source: {
-          type: 'historical',
-          identifier: 'Bazeries-1891-Secrets',
-          title: 'Les Chiffres Secrets Dévoilés',
-          url: 'https://archive.org/details/leschiffressecr00bazegoog',
-          organization: 'Internet Archive',
-          datePublished: '1891',
-          section: 'Cylinder Cipher Chapter'
-        },
-        origin: {
-          source: 'Étienne Bazeries Original Work',
-          url: 'https://en.wikipedia.org/wiki/Bazeries_cylinder',
-          type: 'original-specification',
-          date: '1891',
-          verified: true,
-          notes: 'First practical mechanical polyalphabetic cipher device'
-        }
-      },
-      {
-        algorithm: 'Bazeries',
-        testId: 'bazeries-historical-002',
-        description: 'French military adaptation example',
-        category: 'historical',
-        input: 'ATTACKATDAWN',
-        key: 'MILITARY',
-        expected: 'ACKTAWTAANDK',
-        militaryContext: {
-          period: 'Late 19th century',
-          usage: 'French army field communications',
-          portability: 'Compact mechanical device for field use'
-        }
-      },
-      
-      // Educational Standards
-      {
-        algorithm: 'Bazeries',
-        testId: 'bazeries-standard-001',
-        description: 'Basic cylinder simulation',
-        category: 'educational',
-        input: 'HELLO',
-        key: 'KEY',
-        expected: 'HLLOE',
-        mechanicalSimulation: {
-          diskCount: 5,
-          alignment: 'KEY determines starting positions',
-          process: 'Write message around cylinder, read off columns',
-          result: 'Simple transposition based on cylinder geometry'
-        },
-        source: {
-          type: 'educational',
-          title: 'Mechanical Cipher Devices',
-          url: 'https://cryptomuseum.com/crypto/bazeries/',
-          organization: 'Crypto Museum'
-        }
-      },
-      {
-        algorithm: 'Bazeries',
-        testId: 'bazeries-standard-002',
-        description: 'Matrix representation demonstration',
-        category: 'educational',
-        input: 'CRYPTOGRAPHY',
-        key: 'SECRET',
-        expected: 'COTGRRAHPYC',
-        matrixRepresentation: {
-          rows: 3,
-          columns: 4,
-          fillPattern: 'Left-to-right, top-to-bottom',
-          readPattern: 'Columns determined by key permutation',
-          transformation: 'Transposition matrix based on key'
-        }
-      },
-      
-      // Key Analysis Tests
-      {
-        algorithm: 'Bazeries',
-        testId: 'bazeries-key-001',
-        description: 'Long key behavior',
-        category: 'cryptanalysis',
-        input: 'THEQUICKBROWNFOX',
-        key: 'VERYLONGPASSWORD',
-        expected: 'TCBURHEOQXNWUIFKO',
-        keyAnalysis: {
-          keyLength: 16,
-          textLength: 16,
-          effect: 'Key longer than text provides complex permutation',
-          matrix: '4x4 grid with sophisticated column ordering'
-        }
-      },
-      {
-        algorithm: 'Bazeries',
-        testId: 'bazeries-key-002',
-        description: 'Short key repetition',
-        category: 'cryptanalysis',
-        input: 'THEQUICKBROWNFOXJUMPSOVERTHELAZYDOG',
-        key: 'ABC',
-        expected: 'TUKONJMSTVRLYDGHEICBOFXUPOEHEAZO',
-        keyBehavior: {
-          shortKey: 'ABC',
-          repetition: 'Key repeats to match text length',
-          pattern: 'ABCABCABCABCABCABCABCABCABCABCABC',
-          vulnerability: 'Repeating pattern may be detectable'
-        }
-      },
-      
-      // Geometric Analysis Tests
-      {
-        algorithm: 'Bazeries',
-        testId: 'bazeries-geometry-001',
-        description: 'Different cylinder dimensions',
-        category: 'implementation',
-        input: 'DEFENDTHECASTLE',
-        key: 'FORTRESS',
-        expected: 'DNEDHCSTLEEFETA',
-        cylinderGeometry: {
-          circumference: 7,
-          turns: 2,
-          fillPattern: 'Wrap text around cylinder circumference',
-          readMethod: 'Read columns in key-determined order'
-        }
-      },
-      {
-        algorithm: 'Bazeries',
-        testId: 'bazeries-geometry-002',
-        description: 'Non-rectangular matrix handling',
-        category: 'edge-case',
-        input: 'ABCDEFGHIJK',
-        key: 'TEST',
-        expected: 'ADHKBGCEFIJ',
-        matrixHandling: {
-          textLength: 11,
-          keyLength: 4,
-          dimensions: '3x4 matrix with padding',
-          padding: 'Incomplete final row',
-          readOrder: 'Columns T,E,S,T → 4,2,3,1'
-        }
-      },
-      
-      // Edge Cases
-      {
-        algorithm: 'Bazeries',
-        testId: 'bazeries-edge-001',
-        description: 'Single character input',
-        category: 'edge-case',
-        input: 'A',
-        key: 'SINGLE',
-        expected: 'A',
-        properties: {
-          trivialCase: 'Single character cannot be transposed',
-          matrix: '1x1 matrix',
-          result: 'Original character unchanged'
-        }
-      },
-      {
-        algorithm: 'Bazeries',
-        testId: 'bazeries-edge-002',
-        description: 'Empty key handling',
-        category: 'edge-case',
-        input: 'HELLO',
-        key: '',
-        expected: 'HELLO',
-        fallback: {
-          emptyKey: 'No key provided',
-          behavior: 'Return original text unchanged',
-          alternative: 'Could default to alphabetic order'
-        }
-      },
-      {
-        algorithm: 'Bazeries',
-        testId: 'bazeries-edge-003',
-        description: 'Mixed case and punctuation',
-        category: 'implementation',
-        input: 'Hello, World!',
-        key: 'cipher',
-        expected: 'Hlelo, Wrdlo!',
-        properties: {
-          casePreservation: true,
-          punctuationHandling: 'Preserve in position',
-          processing: 'Only transpose alphabetic characters'
-        }
-      },
-      
-      // Security Analysis Tests
-      {
-        algorithm: 'Bazeries',
-        testId: 'bazeries-security-001',
-        description: 'Frequency analysis resistance',
-        category: 'cryptanalysis',
-        input: 'EEEEEEEEEEEEEEEEE',
-        key: 'COMPLEX',
-        expected: 'EEEEEEEEEEEEEEEEE',
-        frequencyAnalysis: {
-          inputFrequency: 'E: 17 occurrences',
-          outputFrequency: 'E: 17 occurrences (preserved)',
-          resistance: 'No frequency change - pure transposition',
-          vulnerability: 'Letter frequencies unchanged'
-        }
-      },
-      {
-        algorithm: 'Bazeries',
-        testId: 'bazeries-security-002',
-        description: 'Known plaintext vulnerability',
-        category: 'cryptanalysis',
-        input: 'MEETMEATMIDNIGHT',
-        key: 'SECRET',
-        expected: 'MEMANGIHTEETMIMD',
-        knownPlaintextAttack: {
-          knownPortion: 'MEET',
-          ciphertextPortion: 'MEMA',
-          deduction: 'Reveals column ordering pattern',
-          keyRecovery: 'Can determine transposition key from pattern'
-        }
-      },
-      
-      // Mechanical Simulation Tests
-      {
-        algorithm: 'Bazeries',
-        testId: 'bazeries-mechanical-001',
-        description: 'Cylinder rotation simulation',
-        category: 'simulation',
-        input: 'ROTATINGCYLINDER',
-        key: 'ROTATION',
-        expected: 'RAYIGNIETOCDLNTR',
-        mechanicalProcess: {
-          step1: 'Align disks according to key',
-          step2: 'Write message horizontally around cylinder',
-          step3: 'Read vertically down columns',
-          step4: 'Column order determined by key permutation'
-        }
-      },
-      
-      // Historical Comparison
-      {
-        algorithm: 'Bazeries',
-        testId: 'bazeries-comparison-001',
-        description: 'Comparison with Jefferson cylinder',
-        category: 'comparison',
-        input: 'HISTORICALCIPHER',
-        key: 'COMPARISON',
-        expected: 'HRIAPIOTSCRIHEACL',
-        historicalComparison: {
-          bazeries: 'French design, single alphabet per disk',
-          jefferson: 'American design, multiple alphabets per disk',
-          similarity: 'Both use cylindrical transposition',
-          difference: 'Different mechanical implementations'
-        }
-      }
-    ],
     
     isInitialized: false,
     
-    // Comprehensive metadata
-    metadata: global.CipherMetadata ? global.CipherMetadata.createMetadata({
-      algorithm: 'Bazeries',
-      displayName: 'Bazeries Cylinder Cipher',
-      description: 'Mechanical transposition cipher using a cylindrical device with rotating disks. Text is written horizontally around the cylinder and read vertically, with disk alignment determined by the key.',
-      
-      inventor: 'Étienne Bazeries',
-      year: 1891,
-      background: 'Invented by French cryptographer Étienne Bazeries as a portable mechanical encryption device. The cylinder concept influenced later military cipher machines including the Jefferson disk.',
-      
-      securityStatus: global.CipherMetadata.SecurityStatus.HISTORICAL,
-      securityNotes: 'Revolutionary for its time due to mechanical complexity. However, as a pure transposition cipher, it preserves letter frequencies and is vulnerable to modern analysis techniques.',
-      
-      category: global.CipherMetadata.Categories.CLASSICAL,
-      subcategory: 'mechanical',
-      complexity: global.CipherMetadata.ComplexityLevels.ADVANCED,
-      
-      keySize: 'variable', // Determines disk alignment
-      blockSize: 'variable', // Based on cylinder geometry
-      rounds: 1,
-      
-      specifications: [
-        {
-          name: 'Wikipedia: Bazeries Cylinder',
-          url: 'https://en.wikipedia.org/wiki/Bazeries_cylinder'
-        },
-        {
-          name: 'Crypto Museum: Bazeries',
-          url: 'https://cryptomuseum.com/crypto/bazeries/'
-        }
-      ],
-      
-      testVectors: [
-        {
-          name: 'Historical Examples',
-          url: 'https://archive.org/details/leschiffressecr00bazegoog'
-        }
-      ],
-      
-      references: [
-        {
-          name: 'Bazeries, É.: Les Chiffres Secrets Dévoilés (1891)',
-          url: 'https://archive.org/details/leschiffressecr00bazegoog'
-        },
-        {
-          name: 'Kahn, David: The Codebreakers (1967)',
-          url: 'https://www.amazon.com/Codebreakers-David-Kahn/dp/0684831309'
-        }
-      ],
-      
-      implementationNotes: 'Simulates mechanical cylinder using matrix transposition. Key determines column ordering for reading transposed text. Preserves character frequencies.',
-      performanceNotes: 'O(n) time complexity where n is input length. Memory usage depends on cylinder geometry (rows × columns).',
-      
-      educationalValue: 'Demonstrates mechanical cipher principles and the transition from manual to mechanical cryptography. Excellent example of 19th-century engineering applied to cryptography.',
-      prerequisites: ['Transposition ciphers', 'Matrix operations', 'Mechanical systems understanding'],
-      
-      tags: ['classical', 'mechanical', 'transposition', 'cylinder', 'bazeries', 'french', 'advanced'],
-      
-      version: '1.0'
-    }) : null,
     
     // Initialize cipher
     Init: function() {
@@ -623,16 +272,9 @@
   };
   
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(Bazeries);
-  }
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(Bazeries);
   
-  // Export to global scope
   global.Bazeries = Bazeries;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Bazeries;
-  }
   
 })(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);

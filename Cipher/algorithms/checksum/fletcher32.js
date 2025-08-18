@@ -1,17 +1,6 @@
-#!/usr/bin/env node
 /*
- * Fletcher-32 Checksum Algorithm - Universal Implementation
- * Compatible with both Browser and Node.js environments
- * 
- * Educational implementation for learning purposes only.
- * Use proven checksum libraries for production systems.
- * 
- * Features:
- * - Standard Fletcher-32 checksum algorithm
- * - Fast error detection with good distribution properties
- * - Better error detection than simple checksums
- * - Used in network protocols and data integrity verification
- * - 32-bit checksum from variable-length input
+ * Fletcher-32 Implementation
+ * (c)2006-2025 Hawkynt
  */
 
 (function(global) {
@@ -44,26 +33,72 @@
   }
   
   const Fletcher32 = {
-    // Public interface properties
+    name: "Fletcher-32",
+    description: "Fletcher-32 checksum algorithm providing better error detection than simple checksums. Uses two running sums with different weights to detect errors.",
+    inventor: "John G. Fletcher",
+    year: 1982,
+    country: "US",
+    category: "checksum",
+    subCategory: "Simple Checksum",
+    securityStatus: "educational",
+    securityNotes: "Not cryptographically secure. Designed for error detection, not security. Can be easily forged or manipulated by attackers.",
+    
+    documentation: [
+      {text: "Wikipedia - Fletcher's checksum", uri: "https://en.wikipedia.org/wiki/Fletcher%27s_checksum"},
+      {text: "RFC 1146 - TCP Alternative Checksum Options", uri: "https://tools.ietf.org/rfc/rfc1146.txt"},
+      {text: "Original Fletcher Paper", uri: "https://ieeexplore.ieee.org/document/1094155"}
+    ],
+    
+    references: [
+      {text: "Linux Kernel Fletcher Implementation", uri: "https://github.com/torvalds/linux/blob/master/lib/checksum.c"},
+      {text: "BSD Socket Implementation", uri: "https://github.com/freebsd/freebsd-src/blob/main/sys/netinet/in_cksum.c"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Not Cryptographically Secure", 
+        text: "Fletcher checksums are designed for error detection, not security. They can be easily manipulated by attackers",
+        mitigation: "Use cryptographic hash functions (SHA-256, SHA-3) for security purposes"
+      },
+      {
+        type: "Collision Vulnerability", 
+        text: "Fletcher checksums have known collision patterns and can produce the same checksum for different inputs",
+        mitigation: "Use for error detection only, not for data integrity in security contexts"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Fletcher-32 Standard Test - Empty Input",
+        uri: "https://en.wikipedia.org/wiki/Fletcher%27s_checksum",
+        input: [],
+        expected: Hex8ToBytes("00000000")
+      },
+      {
+        text: "Fletcher-32 Standard Test - Simple String",
+        uri: "https://en.wikipedia.org/wiki/Fletcher%27s_checksum",
+        input: ANSIToBytes("abcde"),
+        expected: Hex8ToBytes("028002aa")
+      }
+    ],
+
+    // Legacy interface properties for compatibility
     internalName: 'Fletcher32',
-    name: 'Fletcher-32',
-    comment: 'Fletcher-32 Checksum Algorithm - Educational Implementation',
-    minKeyLength: 0,      // No key required
-    maxKeyLength: 0,      // No key used
+    minKeyLength: 0,
+    maxKeyLength: 0,
     stepKeyLength: 1,
-    minBlockSize: 0,      // Can checksum any length data
-    maxBlockSize: 0,      // No limit
+    minBlockSize: 0,
+    maxBlockSize: 0,
     stepBlockSize: 1,
     instances: {},
-    cantDecode: true,     // Checksum is one-way
+    cantDecode: true,
     isInitialized: false,
     
-    // Fletcher-32 constants
-    MODULO: 65535,        // 2^16 - 1, modulo for Fletcher algorithm
-    BLOCK_SIZE: 359,      // Maximum block size to avoid overflow (floor(65535/2/255))
+    MODULO: 65535,
+    BLOCK_SIZE: 359,
     
-    // Comprehensive test vectors
-    testVectors: [
+    // Legacy test vectors for compatibility
+    legacyTestVectors: [
       {
         algorithm: 'Fletcher-32',
         description: 'Empty input test',
@@ -513,7 +548,11 @@
     }
   };
   
-  // Auto-register with Cipher system if available
+  // Auto-register with Subsystem if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(Fletcher32);
+
+  // Legacy registration for compatibility
   if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(Fletcher32);
   }

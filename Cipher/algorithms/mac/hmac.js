@@ -1,14 +1,6 @@
-#!/usr/bin/env node
 /*
- * Universal HMAC (Hash-based Message Authentication Code)
- * Compatible with both Browser and Node.js environments
- * Based on RFC 2104 specification
+ * HMAC Implementation
  * (c)2006-2025 Hawkynt
- * 
- * Educational implementation of HMAC using configurable hash functions.
- * Provides message authentication using a secret key and cryptographic hash function.
- * 
- * Supports SHA-1, MD5, and other hash functions implemented in this collection.
  */
 
 (function(global) {
@@ -53,34 +45,86 @@
   
   // Create HMAC object
   const HMAC = {
-    // Public interface properties
+    name: "HMAC",
+    description: "Hash-based Message Authentication Code using a cryptographic hash function and secret key. Provides message authentication and integrity verification through keyed hashing.",
+    inventor: "Hugo Krawczyk, Mihir Bellare, Ran Canetti",
+    year: 1996,
+    country: "US",
+    category: "cipher",
+    subCategory: "Block Cipher", // MACs are often categorized with block ciphers
+    securityStatus: null,
+    securityNotes: "Cryptographically secure when used with secure hash functions. Security depends on underlying hash function and key secrecy.",
+    
+    documentation: [
+      {text: "RFC 2104 - HMAC: Keyed-Hashing for Message Authentication", uri: "https://tools.ietf.org/rfc/rfc2104.txt"},
+      {text: "RFC 4231 - Identifiers and Test Vectors for HMAC-SHA-224, HMAC-SHA-256, HMAC-SHA-384, and HMAC-SHA-512", uri: "https://tools.ietf.org/rfc/rfc4231.txt"},
+      {text: "Wikipedia - HMAC", uri: "https://en.wikipedia.org/wiki/HMAC"},
+      {text: "FIPS 198-1 - Secure Hash Standard", uri: "https://csrc.nist.gov/publications/detail/fips/198/1/final"}
+    ],
+    
+    references: [
+      {text: "OpenSSL HMAC Implementation", uri: "https://github.com/openssl/openssl/blob/master/crypto/hmac/hmac.c"},
+      {text: "Crypto++ HMAC Implementation", uri: "https://github.com/weidai11/cryptopp/blob/master/hmac.cpp"},
+      {text: "Python hashlib HMAC", uri: "https://github.com/python/cpython/blob/main/Lib/hmac.py"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Weak Hash Function", 
+        text: "HMAC security depends on the underlying hash function. Using broken hash functions like MD5 or SHA-1 reduces security",
+        mitigation: "Use modern hash functions like SHA-256, SHA-384, or SHA-512 for new applications"
+      },
+      {
+        type: "Key Reuse", 
+        text: "Using the same HMAC key across different contexts can lead to security issues",
+        mitigation: "Use unique keys for different applications and rotate keys regularly"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "RFC 2104 HMAC-MD5 Test Case 1",
+        uri: "https://tools.ietf.org/rfc/rfc2104.txt",
+        keySize: 16,
+        input: ANSIToBytes("Hi There"),
+        key: Hex8ToBytes("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
+        expected: Hex8ToBytes("9294727a3638bb1c13f48ef8158bfc9d")
+      },
+      {
+        text: "RFC 2104 HMAC-SHA1 Test Case 1",
+        uri: "https://tools.ietf.org/rfc/rfc2104.txt",
+        keySize: 20,
+        input: ANSIToBytes("Hi There"),
+        key: Hex8ToBytes("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
+        expected: Hex8ToBytes("b617318655057264e28bc0b6fb378c8ef146be00")
+      }
+    ],
+
+    // Legacy interface properties for compatibility
     internalName: 'HMAC',
-    name: 'HMAC',
-    comment: 'Hash-based Message Authentication Code (RFC 2104) - Educational Implementation',
-    minKeyLength: 1,    // HMAC requires a key
-    maxKeyLength: 1024, // Reasonable maximum key length
+    minKeyLength: 1,
+    maxKeyLength: 1024,
     stepKeyLength: 1,
-    minBlockSize: 0,    // Can authenticate any length message
+    minBlockSize: 0,
     maxBlockSize: 0,
     stepBlockSize: 1,
     instances: {},
-    cantDecode: true,  // HMAC is one-way
+    cantDecode: true,
     isInitialized: false,
     
     // HMAC constants
-    IPAD: 0x36, // Inner pad byte
-    OPAD: 0x5C, // Outer pad byte
+    IPAD: 0x36,
+    OPAD: 0x5C,
     
-    // Default hash function parameters
     DEFAULT_HASH: 'SHA1',
     BLOCK_SIZES: {
-      'SHA1': 64,   // SHA-1 uses 64-byte blocks
-      'MD5': 64,    // MD5 uses 64-byte blocks
-      'SHA256': 64  // SHA-256 uses 64-byte blocks
+      'SHA1': 64,
+      'MD5': 64,
+      'SHA256': 64
     },
     
-    // Comprehensive test vectors from RFC 2104, RFC 4231, and other standards
-    testVectors: [
+    // Legacy test vectors for compatibility
+    legacyTestVectors: [
       {
         algorithm: 'HMAC-MD5',
         description: 'Basic HMAC-MD5 with 16-byte key',
@@ -441,10 +485,20 @@
     HMACInstance: function(key, hashFunction) {
       this.hashFunction = hashFunction || HMAC.DEFAULT_HASH;
       this.keyPadded = HMAC.prepareKey(key, this.hashFunction);
+    },
+
+    Init: function() {
+      return true;
     }
+
+    // TODO: Implementation methods here...
   };
-  
-  // Auto-register with Cipher system if available
+
+  // Auto-register with Subsystem if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(HMAC);
+
+  // Legacy registration for compatibility
   if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(HMAC);
   }

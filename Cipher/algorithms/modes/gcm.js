@@ -7,93 +7,78 @@
 (function(global) {
   'use strict';
 
-  const CipherMetadata = global.CipherMetadata || {};
-
-  const GCMMetadata = CipherMetadata.createMetadata({
-    name: 'GCM',
-    category: 'mode',
-    description: 'Galois/Counter Mode - authenticated encryption combining counter mode with universal hashing for authentication. Provides both confidentiality and authenticity.',
+  const GCM = {
+    name: "GCM",
+    description: "Galois/Counter Mode providing authenticated encryption by combining CTR mode with Galois field multiplication for authentication. Widely used in TLS, IPsec, and other security protocols.",
+    inventor: "David A. McGrew, John Viega",
     year: 2007,
-    country: 'US',
-    keySize: 'Variable (depends on underlying cipher)',
-    blockSize: 'Variable (depends on underlying cipher)',
-    cryptoFamily: 'Mode of operation',
-    cryptoType: 'Symmetric',
-    security: 'High - authenticated encryption, widely used in TLS and IPsec',
+    country: "US",
+    category: "modeOfOperation",
+    subCategory: "Authenticated Mode",
+    securityStatus: null,
+    securityNotes: "Secure when used with unique nonces. Catastrophic failure occurs with nonce reuse under the same key.",
     
     documentation: [
-      {
-        text: "NIST SP 800-38D Standard",
-        uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf"
-      },
-      {
-        text: "GCM Wikipedia Article",
-        uri: "https://en.wikipedia.org/wiki/Galois/Counter_Mode"
-      },
-      {
-        text: "The Galois/Counter Mode of Operation (McGrew & Viega)",
-        uri: "https://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.58.4924"
-      }
+      {text: "NIST SP 800-38D Standard", uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf"},
+      {text: "Wikipedia - Galois/Counter Mode", uri: "https://en.wikipedia.org/wiki/Galois/Counter_Mode"},
+      {text: "Original GCM Paper (McGrew & Viega)", uri: "https://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.58.4924"},
+      {text: "RFC 5288 - AES GCM Cipher Suites for TLS", uri: "https://tools.ietf.org/rfc/rfc5288.txt"}
     ],
     
     references: [
+      {text: "OpenSSL GCM Implementation", uri: "https://github.com/openssl/openssl/blob/master/crypto/modes/gcm128.c"},
+      {text: "ISO/IEC 19772:2009 Standard", uri: "https://www.iso.org/standard/46345.html"},
+      {text: "Crypto++ GCM Implementation", uri: "https://github.com/weidai11/cryptopp/blob/master/gcm.cpp"}
+    ],
+    
+    knownVulnerabilities: [
       {
-        text: "RFC 5288 - AES Galois Counter Mode (GCM) Cipher Suites for TLS",
-        uri: "https://tools.ietf.org/rfc/rfc5288.txt"
+        type: "Nonce Reuse Attack", 
+        text: "Reusing the same nonce with the same key completely breaks confidentiality and authenticity",
+        mitigation: "Always use unique nonces; implement proper nonce generation and tracking"
       },
       {
-        text: "OpenSSL GCM Implementation",
-        uri: "https://github.com/openssl/openssl/blob/master/crypto/modes/gcm128.c"
-      },
-      {
-        text: "ISO/IEC 19772:2009",
-        uri: "https://www.iso.org/standard/46345.html"
+        type: "Authentication Key Recovery", 
+        text: "With nonce reuse, the authentication key can be recovered allowing forgery of arbitrary messages",
+        mitigation: "Use SIV mode or other nonce-misuse resistant AEAD schemes for critical applications"
       }
     ],
     
-    testVectors: [
+    tests: [
       {
-        description: 'AES-128 GCM Test Case 1 (NIST SP 800-38D)',
-        source: 'NIST SP 800-38D',
-        key: '00000000000000000000000000000000',
-        iv: '000000000000000000000000',
-        plaintext: '',
-        aad: '',
-        expected: '58e2fccefa7e3061367f1d57a4e7455a'
+        text: "NIST SP 800-38D Test Case 1",
+        uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf",
+        keySize: 16,
+        blockSize: 16,
+        input: Hex8ToBytes(""), // empty plaintext
+        key: Hex8ToBytes("00000000000000000000000000000000"),
+        iv: Hex8ToBytes("000000000000000000000000"),
+        expected: Hex8ToBytes("58e2fccefa7e3061367f1d57a4e7455a")
       },
       {
-        description: 'AES-128 GCM Test Case 2 (NIST SP 800-38D)',
-        source: 'NIST SP 800-38D',
-        key: '00000000000000000000000000000000',
-        iv: '000000000000000000000000',
-        plaintext: '00000000000000000000000000000000',
-        aad: '',
-        expected: '0388dace60b6a392f328c2b971b2fe78ab6e47d42cec13bdf53a67b21257bddf'
+        text: "NIST SP 800-38D Test Case 2",
+        uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf",
+        keySize: 16,
+        blockSize: 16,
+        input: Hex8ToBytes("00000000000000000000000000000000"),
+        key: Hex8ToBytes("00000000000000000000000000000000"),
+        iv: Hex8ToBytes("000000000000000000000000"),
+        expected: Hex8ToBytes("0388dace60b6a392f328c2b971b2fe78ab6e47d42cec13bdf53a67b21257bddf")
       }
     ],
-    
-    performance: {
-      throughput: "~2-4 GB/s with AES-NI hardware support",
-      memoryUsage: "Small constant memory overhead for authentication state",
-      parallelizable: true
-    },
-    
-    vulnerabilities: [
-      {
-        type: "IV/Nonce reuse",
-        description: "Catastrophic failure if same IV is used with same key",
-        mitigation: "Always use unique IVs; consider SIV mode for nonce-misuse resistance"
-      }
-    ],
-    
-    usage: {
-      recommended: true,
-      deprecated: false,
-      replacedBy: null,
-      useCases: ["TLS 1.2/1.3", "IPsec", "General authenticated encryption", "High-performance AEAD"]
-    }
-  });
 
+    Init: function() {
+      return true;
+    }
+
+    // TODO: Implementation methods here...
+  };
+
+  // Auto-register with Subsystem if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(GCM);
+
+  // Legacy registration for compatibility
   if (typeof Cipher !== 'undefined' && Cipher.RegisterCipher) {
     Cipher.RegisterCipher('GCM', {
       szName: 'GCM',

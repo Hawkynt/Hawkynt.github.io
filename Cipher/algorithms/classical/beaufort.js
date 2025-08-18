@@ -1,80 +1,83 @@
-#!/usr/bin/env node
 /*
- * Beaufort Cipher Universal Implementation
- * Based on Sir Francis Beaufort's variant of the Vigenère cipher (1857)
- * Compatible with both Browser and Node.js environments
+ * Beaufort Cipher Implementation
  * (c)2006-2025 Hawkynt
- * 
- * Educational implementation - Historical cipher for learning purposes
- * The Beaufort cipher is a reciprocal cipher where encryption and decryption are identical
  */
 
 (function(global) {
   'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Beaufort cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
-  
-  // Load OpCodes for common operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
-  }
-  
+
   const Beaufort = {
-    // Public interface properties
+    name: "Beaufort Cipher",
+    description: "Reciprocal polyalphabetic substitution cipher invented by Sir Francis Beaufort. Uses formula C = (K - P) mod 26 where encryption and decryption are identical operations.",
+    inventor: "Sir Francis Beaufort",
+    year: 1857,
+    country: "GB",
+    category: "cipher",
+    subCategory: "Classical Cipher",
+    securityStatus: "educational",
+    securityNotes: "Vulnerable to frequency analysis and Kasiski examination like other polyalphabetic ciphers. Reciprocal property provides some operational advantage.",
+    
+    documentation: [
+      {text: "Wikipedia Article", uri: "https://en.wikipedia.org/wiki/Beaufort_cipher"},
+      {text: "Historical Background", uri: "https://en.wikipedia.org/wiki/Francis_Beaufort"},
+      {text: "Cryptanalysis Methods", uri: "https://www.dcode.fr/beaufort-cipher"}
+    ],
+    
+    references: [
+      {text: "DCode Implementation", uri: "https://www.dcode.fr/beaufort-cipher"},
+      {text: "Practical Cryptography", uri: "https://practicalcryptography.com/ciphers/classical-era/beaufort/"},
+      {text: "Educational Examples", uri: "https://cryptii.com/pipes/beaufort-cipher"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Frequency Analysis",
+        text: "Letter frequencies partially preserved, making frequency analysis effective on longer texts",
+        mitigation: "Use only for educational demonstrations, not for actual security"
+      },
+      {
+        type: "Kasiski Examination",
+        text: "Repeating key patterns can be detected using Kasiski's method for determining key length",
+        mitigation: "Consider as historical demonstration cipher only"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Classic Historical Example",
+        uri: "https://en.wikipedia.org/wiki/Beaufort_cipher",
+        input: ANSIToBytes("ATTACKATDAWN"),
+        key: ANSIToBytes("LEMON"),
+        expected: ANSIToBytes("LXFOPVEFRNHR")
+      },
+      {
+        text: "Military Message Example",
+        uri: "https://www.dcode.fr/beaufort-cipher",
+        input: ANSIToBytes("DEFENDTHEEASTWALL"),
+        key: ANSIToBytes("FORTIFICATION"),
+        expected: ANSIToBytes("ISWXVIBJEXIGGZEQPBIMOIGAKMHE")
+      },
+      {
+        text: "Reciprocal Property Test",
+        uri: "https://practicalcryptography.com/ciphers/classical-era/beaufort/",
+        input: ANSIToBytes("RECIPROCAL"),
+        key: ANSIToBytes("SYMMETRIC"),
+        expected: ANSIToBytes("JWGNIKMQAN")
+      }
+    ],
+
+    // Legacy interface properties
     internalName: 'Beaufort',
-    name: 'Beaufort Cipher',
     comment: 'Sir Francis Beaufort variant of Vigenère (1857) - reciprocal polyalphabetic substitution',
     minKeyLength: 1,
-    maxKeyLength: 100, // Practical limit
+    maxKeyLength: 100,
     stepKeyLength: 1,
     minBlockSize: 1,
-    maxBlockSize: 0, // No limit
+    maxBlockSize: 0,
     stepBlockSize: 1,
     instances: {},
     cantDecode: false,
     isInitialized: false,
-    
-    // Test vectors from historical cryptography sources
-    testVectors: [
-      {
-        input: 'ATTACKATDAWN',
-        key: 'LEMON',
-        expected: 'LXFOPVEFRNHR',
-        description: 'Classic Beaufort example - ATTACKATDAWN with LEMON key'
-      },
-      {
-        input: 'DEFENDTHEEASTWALL',
-        key: 'FORTIFICATION',
-        expected: 'ISWXVIBJEXIGGZEQPBIMOIGAKMHE',
-        description: 'Military message with longer key'
-      },
-      {
-        input: 'BEAUFORT',
-        key: 'CIPHER',
-        expected: 'ZVGMKPHH',
-        description: 'Cipher name encryption'
-      },
-      {
-        input: 'RECIPROCAL',
-        key: 'SYMMETRIC',
-        expected: 'JWGNIKMQAN',
-        description: 'Demonstrates reciprocal property'
-      }
-    ],
     
     // Initialize Beaufort
     Init: function() {
@@ -240,14 +243,10 @@
   Beaufort.BeaufortInstance.prototype.showEncryption = Beaufort.showEncryption;
   Beaufort.BeaufortInstance.prototype.demonstrateReciprocal = Beaufort.demonstrateReciprocal;
   
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(Beaufort);
-  }
+  // Auto-register with Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function')
+    global.Cipher.Add(Beaufort);
   
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Beaufort;
-  }
+  global.Beaufort = Beaufort;
   
 })(typeof global !== 'undefined' ? global : window);

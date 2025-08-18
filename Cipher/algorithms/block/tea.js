@@ -47,9 +47,55 @@
   
   // Create TEA cipher object
   const TEA = {
+    name: "TEA (Tiny Encryption Algorithm)",
+    description: "Simple and fast 64-bit block cipher with 128-bit keys designed by David Wheeler and Roger Needham. Uses 32 rounds with only XOR, shift, and add operations. Known cryptanalytic weaknesses.",
+    inventor: "David Wheeler and Roger Needham",
+    year: 1994,
+    country: "GB",
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: "insecure",
+    securityNotes: "Multiple known attacks including related-key attacks and equivalent keys. XTEA was developed to address these weaknesses. Not suitable for secure applications.",
+    
+    documentation: [
+      {text: "TEA: A Tiny Encryption Algorithm", uri: "https://www.cix.co.uk/~klockstone/tea.htm"},
+      {text: "Cambridge Computer Laboratory TEA Page", uri: "https://www.cl.cam.ac.uk/teaching/1415/SecurityII/tea.pdf"},
+      {text: "Original TEA Paper", uri: "https://link.springer.com/chapter/10.1007/3-540-60590-8_29"}
+    ],
+    
+    references: [
+      {text: "TEA Cryptanalysis Papers", uri: "https://eprint.iacr.org/"},
+      {text: "Equivalent Keys in TEA", uri: "https://www.schneier.com/academic/archives/1997/10/on_the_security_of_t.html"},
+      {text: "Related-key attacks on TEA", uri: "https://link.springer.com/chapter/10.1007/3-540-45708-9_1"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Related-key attacks",
+        text: "TEA is vulnerable to related-key attacks due to weak key schedule",
+        mitigation: "Use XTEA or a modern cipher like AES instead"
+      },
+      {
+        type: "Equivalent keys",
+        text: "Multiple keys can encrypt to the same ciphertext",
+        mitigation: "Algorithm is obsolete - use modern alternatives"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "TEA Basic Test Vector",
+        uri: "TEA: A Tiny Encryption Algorithm",
+        keySize: 16,
+        blockSize: 8,
+        input: Hex8ToBytes("0000000000000000"),
+        key: Hex8ToBytes("00000000000000000000000000000000"),
+        expected: null // Will be computed by implementation
+      }
+    ],
+    
     // Public interface properties
     internalName: 'TEA',
-    name: 'Tiny Encryption Algorithm',
     comment: 'TEA cipher by Wheeler & Needham - 64-bit blocks, 128-bit keys, 32 rounds',
     minKeyLength: 16,    // 128-bit key
     maxKeyLength: 16,
@@ -59,7 +105,7 @@
     stepBlockSize: 1,
     instances: {},
 
-  // Official test vectors from RFC/NIST standards and authoritative sources
+  // Legacy test vectors for compatibility
   testVectors: [
     {
         "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
@@ -443,8 +489,23 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
+  // Helper functions for metadata
+  function Hex8ToBytes(hex) {
+    if (global.OpCodes && global.OpCodes.HexToBytes) {
+      return global.OpCodes.HexToBytes(hex);
+    }
+    // Fallback implementation
+    const result = [];
+    for (let i = 0; i < hex.length; i += 2) {
+      result.push(parseInt(hex.substr(i, 2), 16));
+    }
+    return result;
+  }
+  
+  // Auto-register with universal Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(TEA);
+  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(TEA);
   }
   

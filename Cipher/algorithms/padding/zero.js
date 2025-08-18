@@ -27,21 +27,21 @@
     testVectors: [
       {
         description: 'Zero padding for 16-byte block, 13 bytes input',
-        input: '6bc1bee22e409f96e93d7e11739317',
+        input: Hex8ToBytes('6bc1bee22e409f96e93d7e11739317'),
         blockSize: 16,
-        expected: '6bc1bee22e409f96e93d7e11739317000000'
+        expected: Hex8ToBytes('6bc1bee22e409f96e93d7e11739317000000')
       },
       {
         description: 'Zero padding for 8-byte block, 5 bytes input',
-        input: '6bc1bee22e',
+        input: Hex8ToBytes('6bc1bee22e'),
         blockSize: 8,
-        expected: '6bc1bee22e000000'
+        expected: Hex8ToBytes('6bc1bee22e000000')
       },
       {
         description: 'Zero padding for full block (no padding needed)',
-        input: '6bc1bee22e409f96e93d7e117393172a',
+        input: Hex8ToBytes('6bc1bee22e409f96e93d7e117393172a'),
         blockSize: 16,
-        expected: '6bc1bee22e409f96e93d7e117393172a'
+        expected: Hex8ToBytes('6bc1bee22e409f96e93d7e117393172a')
       }
     ]
   });

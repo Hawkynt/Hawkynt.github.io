@@ -47,9 +47,49 @@
   
   // Create Khazad cipher object
   const Khazad = {
+    name: "Khazad",
+    description: "NESSIE submission block cipher with 64-bit blocks and 128-bit keys. Uses substitution-permutation network with involutional components for efficient encryption and decryption.",
+    inventor: "Paulo S.L.M. Barreto, Vincent Rijmen",
+    year: 2000,
+    country: "BR",
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: "educational",
+    securityNotes: "NESSIE submission that was not selected. Suitable for educational purposes and understanding SPN design principles.",
+    
+    documentation: [
+      {text: "NESSIE Submission", uri: "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/khazad.zip"},
+      {text: "Khazad Specification", uri: "https://www.cosic.esat.kuleuven.be/nessie/reports/phase1/khaWP1-008.pdf"},
+      {text: "Wikipedia Article", uri: "https://en.wikipedia.org/wiki/Khazad"}
+    ],
+    
+    references: [
+      {text: "Original Java Reference", uri: "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/khazad.zip"},
+      {text: "NESSIE Portfolio", uri: "https://www.cosic.esat.kuleuven.be/nessie/"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Weak Key Schedule",
+        text: "Some weak key properties identified during NESSIE evaluation process",
+        mitigation: "Use only for educational purposes, not for production systems"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "NESSIE Test Vector - All zeros",
+        uri: "https://www.cosic.esat.kuleuven.be/nessie/testvectors/",
+        keySize: 16,
+        blockSize: 8,
+        input: OpCodes.Hex8ToBytes("0000000000000000"),
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("49a4ce32ac6f2d2d")
+      }
+    ],
+
     // Public interface properties
     internalName: 'Khazad',
-    name: 'Khazad',
     comment: 'NESSIE Khazad Legacy-Level Block Cipher (64-bit blocks, 128-bit keys) - Round-trip verified',
     minKeyLength: 16,
     maxKeyLength: 16,
@@ -425,7 +465,12 @@
     }
   };
   
-  // Auto-register with Cipher system if available
+  // Auto-register with Cipher subsystem if available
+  if (typeof global !== 'undefined' && global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(Khazad);
+  }
+
+  // Auto-register with Cipher system if available (legacy support)
   if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(Khazad);
   }

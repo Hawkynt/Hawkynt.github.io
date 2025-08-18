@@ -589,32 +589,161 @@
     text-decoration: underline;
 }
 
+/* Security Badge Styles */
+.badge-security {
+    background: rgba(0, 0, 0, 0.1);
+    color: white;
+    font-weight: 600;
+    font-size: 0.7rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Action Badge for Test Vector Count */
+.action-badge {
+    background: #667eea;
+    color: white;
+    font-size: 0.7rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 10px;
+    margin-left: 0.3rem;
+    min-width: 1.2rem;
+    text-align: center;
+    display: inline-block;
+}
+
+/* Enhanced Palette Header */
+.palette-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+    font-size: 1.125rem;
+    color: white;
+    margin-bottom: 1rem;
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    border-left: 4px solid var(--category-color, #667eea);
+}
+
+.category-title {
+    flex: 1;
+}
+
+.category-count {
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.7);
+    font-weight: 400;
+}
+
 /* Test Vector Styles */
-.test-vector-item {
+.test-vector-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 1.5rem;
     padding: 1rem;
     background: rgba(255, 255, 255, 0.05);
     border-radius: 8px;
-    border-left: 3px solid #667eea;
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.test-vector-item h5 {
-    margin: 0 0 0.75rem 0;
+.test-vector-count {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.test-vectors-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.test-vector-item {
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    border-left: 3px solid #667eea;
+    transition: all 0.2s ease;
+}
+
+.test-vector-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.test-vector-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.test-vector-header h5 {
+    margin: 0;
     color: white;
     font-size: 1rem;
     font-weight: 600;
+}
+
+.test-result {
+    margin-left: 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.test-result.success {
+    color: #38a169;
+}
+
+.test-result.failure {
+    color: #e53e3e;
+}
+
+.test-result.error {
+    color: #dd6b20;
+}
+
+.test-result.running {
+    color: #3182ce;
+}
+
+.test-success {
+    color: #38a169;
+}
+
+.test-failure {
+    color: #e53e3e;
+}
+
+.test-error {
+    color: #dd6b20;
+}
+
+.test-running {
+    color: #3182ce;
 }
 
 .test-vector-description {
     margin-bottom: 0.75rem;
     color: rgba(255, 255, 255, 0.8);
     font-style: italic;
+    font-size: 0.9rem;
 }
 
 .test-vector-field {
     margin-bottom: 0.5rem;
     color: rgba(255, 255, 255, 0.9);
-    word-break: break-all;
+    font-size: 0.875rem;
+    line-height: 1.4;
+}
+
+.test-vector-field strong {
+    color: white;
+    font-weight: 600;
+    margin-right: 0.5rem;
 }
 
 .test-vector-field code {
@@ -622,8 +751,12 @@
     padding: 0.25rem 0.5rem;
     border-radius: 4px;
     font-family: 'Courier New', monospace;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     color: #f8f8f2;
+    word-break: break-all;
+    display: inline-block;
+    max-width: 100%;
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .test-vector-origin {
@@ -632,6 +765,16 @@
     border-top: 1px solid rgba(255, 255, 255, 0.1);
     color: rgba(255, 255, 255, 0.7);
     font-size: 0.85rem;
+}
+
+.test-vector-origin a {
+    color: #667eea;
+    text-decoration: none;
+}
+
+.test-vector-origin a:hover {
+    color: #5a67d8;
+    text-decoration: underline;
 }
 
 /* Code Block Styles */

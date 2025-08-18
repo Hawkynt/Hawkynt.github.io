@@ -51,9 +51,62 @@
   
   // Create Anubis cipher object
   const Anubis = {
-    // Public interface properties
+    name: "Anubis",
+    description: "128-bit block cipher designed by Vincent Rijmen and Paulo Barreto for the NESSIE project. Features variable key length from 128-320 bits in 32-bit increments. Uses Substitution-Permutation Network structure.",
+    inventor: "Vincent Rijmen, Paulo S.L.M. Barreto",
+    year: 2000,
+    country: "BE", // Belgium (Rijmen's affiliation)
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: null,
+    securityNotes: "No known practical attacks, but not widely adopted. Educational implementation - thorough cryptanalysis recommended before production use.",
+    
+    documentation: [
+      {text: "NESSIE Project - Anubis Specification", uri: "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/anubis.zip"},
+      {text: "Wikipedia - Anubis (cipher)", uri: "https://en.wikipedia.org/wiki/Anubis_(cipher)"},
+      {text: "Original Anubis Paper", uri: "https://www.cosic.esat.kuleuven.be/publications/article-40.pdf"}
+    ],
+    
+    references: [
+      {text: "NESSIE Reference Implementation", uri: "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions.html"},
+      {text: "Crypto++ Anubis Implementation", uri: "https://github.com/weidai11/cryptopp/blob/master/anubis.cpp"},
+      {text: "Original Specification Document", uri: "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/anubis.zip"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "NESSIE Test Vector - 128-bit key all zeros",
+        uri: "https://www.cosic.esat.kuleuven.be/nessie/testvectors/",
+        keySize: 16,
+        blockSize: 16,
+        input: Hex8ToBytes("00000000000000000000000000000000"),
+        key: Hex8ToBytes("00000000000000000000000000000000"),
+        expected: Hex8ToBytes("625F0F663BF00F2D67B1E8B04F67A484")
+      },
+      {
+        text: "NESSIE Test Vector - 128-bit key test pattern",
+        uri: "https://www.cosic.esat.kuleuven.be/nessie/testvectors/",
+        keySize: 16,
+        blockSize: 16,
+        input: Hex8ToBytes("0123456789ABCDEF0011223344556677"),
+        key: Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+        expected: Hex8ToBytes("020AA91C3A43B34445471767436BEE2D")
+      },
+      {
+        text: "NESSIE Test Vector - 160-bit key",
+        uri: "https://www.cosic.esat.kuleuven.be/nessie/testvectors/",
+        keySize: 20,
+        blockSize: 16,
+        input: Hex8ToBytes("00000000000000000000000000000000"),
+        key: Hex8ToBytes("0000000000000000000000000000000000000000"),
+        expected: Hex8ToBytes("761E6A8D9816F79F24EE40010F729098")
+      }
+    ],
+
+    // Legacy interface properties for backward compatibility
     internalName: 'Anubis',
-    name: 'Anubis',
     comment: 'NESSIE Anubis Cipher - 128-bit block cipher with variable key length (128-320 bits)',
     minKeyLength: 16,  // 128 bits
     maxKeyLength: 40,  // 320 bits
@@ -424,7 +477,9 @@
   };
   
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(Anubis);
+  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(Anubis);
   }
   

@@ -71,70 +71,40 @@
     cantDecode: false,
     isInitialized: false,
     
-    // Comprehensive metadata
-    metadata: global.CipherMetadata ? global.CipherMetadata.createMetadata({
-      algorithm: 'ChaCha20',
-      displayName: 'ChaCha20 Stream Cipher',
-      description: 'Modern stream cipher designed by Daniel J. Bernstein as a variant of Salsa20 with improved diffusion. Uses 20 rounds of quarter-round operations and supports 256-bit keys with 96-bit nonces.',
-      
-      inventor: 'Daniel J. Bernstein',
-      year: 2008,
-      background: 'Designed as an improved version of Salsa20 with better diffusion properties. ChaCha20 became widely adopted after being standardized in RFC 7539 and is used in TLS 1.3, SSH, and other modern protocols.',
-      
-      securityStatus: global.CipherMetadata.SecurityStatus.SECURE,
-      securityNotes: 'Currently secure with no known practical attacks. Adopted by major protocols (TLS 1.3, SSH). 256-bit key provides excellent security margin.',
-      
-      category: global.CipherMetadata.Categories.STREAM,
-      subcategory: 'ARX (Add-Rotate-XOR)',
-      complexity: global.CipherMetadata.ComplexityLevels.INTERMEDIATE,
-      
-      keySize: 256, // 256-bit keys
-      blockSize: 512, // 64-byte keystream blocks
-      rounds: 20,
-      
-      specifications: [
-        {
-          name: 'RFC 7539: ChaCha20 and Poly1305 for IETF Protocols',
-          url: 'https://tools.ietf.org/html/rfc7539'
-        },
-        {
-          name: 'Bernstein: ChaCha, a variant of Salsa20',
-          url: 'https://cr.yp.to/chacha/chacha-20080128.pdf'
-        }
-      ],
-      
-      testVectors: [
-        {
-          name: 'RFC 7539 Test Vectors',
-          url: 'https://tools.ietf.org/html/rfc7539#section-2.4.2'
-        },
-        {
-          name: 'IETF ChaCha20 Test Suite',
-          url: 'https://github.com/RustCrypto/stream-ciphers/tree/master/chacha20/tests'
-        }
-      ],
-      
-      references: [
-        {
-          name: 'Wikipedia: ChaCha20-Poly1305',
-          url: 'https://en.wikipedia.org/wiki/ChaCha20-Poly1305'
-        },
-        {
-          name: 'Cryptographic Right Answers - ChaCha20',
-          url: 'https://latacora.micro.blog/2018/04/03/cryptographic-right-answers.html'
-        }
-      ],
-      
-      implementationNotes: 'RFC 7539 compliant implementation with 96-bit nonce and 32-bit counter. Uses OpCodes for rotations and word operations.',
-      performanceNotes: 'Very fast on modern CPUs due to ARX operations. Approximately 3-4 cycles per byte on modern x86-64 processors.',
-      
-      educationalValue: 'Excellent example of modern stream cipher design, ARX operations, and nonce-based cryptography. Shows evolution from block to stream ciphers.',
-      prerequisites: ['Stream cipher concepts', 'Bitwise operations', 'Modular arithmetic', 'Cryptographic nonces'],
-      
-      tags: ['stream', 'modern', 'secure', 'rfc7539', 'bernstein', 'salsa20-variant', 'tls', 'arx'],
-      
-      version: '2.0'
-    }) : null,
+    name: "ChaCha20",
+    description: "Modern stream cipher designed by Daniel J. Bernstein as a variant of Salsa20 with improved diffusion. Uses 20 rounds of quarter-round operations with 256-bit keys and 96-bit nonces. Widely adopted in TLS 1.3, SSH, and other modern protocols.",
+    inventor: "Daniel J. Bernstein",
+    year: 2008,
+    country: "US",
+    category: "cipher",
+    subCategory: "Stream Cipher",
+    securityStatus: null,
+    securityNotes: "Widely adopted in modern cryptographic protocols. No known practical attacks against ChaCha20 when properly implemented with unique nonces.",
+    
+    documentation: [
+      {text: "RFC 7539: ChaCha20 and Poly1305 for IETF Protocols", uri: "https://tools.ietf.org/html/rfc7539"},
+      {text: "Bernstein: ChaCha, a variant of Salsa20", uri: "https://cr.yp.to/chacha/chacha-20080128.pdf"},
+      {text: "Wikipedia: ChaCha20-Poly1305", uri: "https://en.wikipedia.org/wiki/ChaCha20-Poly1305"}
+    ],
+    
+    references: [
+      {text: "IETF ChaCha20 Test Vectors", uri: "https://github.com/RustCrypto/stream-ciphers/tree/master/chacha20/tests"},
+      {text: "RFC 7539 Reference Implementation", uri: "https://tools.ietf.org/html/rfc7539#appendix-A"},
+      {text: "ChaCha Family of Stream Ciphers", uri: "https://cr.yp.to/chacha.html"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "RFC 7539 ChaCha20 Test Vector 1",
+        uri: "https://tools.ietf.org/html/rfc7539#section-2.4.2",
+        keySize: 32,
+        input: Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+        key: Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+        expected: Hex8ToBytes("76b8e0ada0f13d90405d6ae55386bd28bdd219b8a08ded1aa836efcc8b770dc7da41597c5157488d7724e03fb8d84a376a43b8f41518a11cc387b669b2ee6586")
+      }
+    ],
 
   // Official test vectors from RFC/NIST standards and authoritative sources
   testVectors: [
@@ -181,13 +151,13 @@
         link: 'https://tools.ietf.org/rfc/rfc7539.txt',
         standard: 'RFC 7539',
         key: '\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f',
-        keyHex: '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
+        keyHex: Hex8ToBytes('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f'),
         nonce: '\x00\x00\x00\x09\x00\x00\x00\x4a\x00\x00\x00\x00',
-        nonceHex: '000000090000004a00000000',
+        nonceHex: Hex8ToBytes('000000090000004a00000000'),
         counter: 1,
         plaintext: 'Ladies and Gentlemen of the class of \'99: If I could offer you only one tip for the future, sunscreen would be it.',
         ciphertext: '\x6e\x2e\x35\x9a\x25\x68\xf9\x80\x41\xba\x07\x28\xdd\x0d\x69\x81\xe9\x7e\x7a\xec\x1d\x43\x60\xc2\x0a\x27\xaf\xcc\xfd\x9f\xae\x0b\xf9\x1b\x65\xc5\x52\x47\x33\xab\x8f\x59\x3d\xab\xcd\x62\xb3\x57\x16\x39\xd6\x24\xe6\x51\x52\xab\x8f\x53\x0c\x35\x9f\x08\x61\xd8\x07\xca\x0d\xbf\x50\x0d\x6a\x61\x56\xa3\x8e\x08\x8a\x22\xb6\x5e\x52\xbc\x51\x4d\x16\xcc\xf8\x06\x81\x8c\xe9\x1a\xb7\x79\x37\x36\x5a\xf9\x0b\xbf\x74\xa3\x5b\xe6\xb4\x0b\x8e\xed\xf2\x78\x5e\x42\x87\x4d',
-        ciphertextHex: '6e2e359a2568f98041ba0728dd0d6981e97e7aec1d4360c20a27afccfd9fae0bf91b65c5524733ab8f593dabcd62b3571639d624e65152ab8f530c359f0861d807ca0dbf500d6a6156a38e088a22b65e52bc514d16ccf806818ce91ab77937365af90bbf74a35be6b40b8eedf2785e42874d',
+        ciphertextHex: Hex8ToBytes('6e2e359a2568f98041ba0728dd0d6981e97e7aec1d4360c20a27afccfd9fae0bf91b65c5524733ab8f593dabcd62b3571639d624e65152ab8f530c359f0861d807ca0dbf500d6a6156a38e088a22b65e52bc514d16ccf806818ce91ab77937365af90bbf74a35be6b40b8eedf2785e42874d'),
         notes: 'Official RFC 7539 test vector demonstrating ChaCha20 encryption with full message',
         category: 'official-standard'
       },
@@ -554,8 +524,8 @@
   };
   
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(ChaCha20);
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(ChaCha20);
   }
   
   // Export to global scope

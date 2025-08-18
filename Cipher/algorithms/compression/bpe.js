@@ -28,9 +28,55 @@
   }
   
   const BPE = {
+    name: "Byte-Pair Encoding (BPE)",
+    description: "Iteratively replaces the most frequently occurring byte pairs with unused byte values. Simple greedy approach that can achieve good compression on structured data with repeated patterns.",
+    inventor: "Philip Gage",
+    year: 1994,
+    country: "US", 
+    category: "compression",
+    subCategory: "Transform",
+    securityStatus: null,
+    securityNotes: "Compression algorithm - no security properties.",
+    
+    documentation: [
+      {text: "A New Algorithm for Data Compression - Philip Gage", uri: "http://www.cbloom.com/papers/gage_bpe.pdf"},
+      {text: "Byte Pair Encoding - Wikipedia", uri: "https://en.wikipedia.org/wiki/Byte_pair_encoding"},
+      {text: "Neural Machine Translation of Rare Words", uri: "https://arxiv.org/abs/1508.07909"},
+      {text: "BPE Algorithm Explanation", uri: "https://leimao.github.io/blog/Byte-Pair-Encoding/"}
+    ],
+    
+    references: [
+      {text: "Philip Gage Original Implementation", uri: "http://www.cbloom.com/src/index_lz.html"},
+      {text: "sentencepiece BPE Implementation", uri: "https://github.com/google/sentencepiece"},
+      {text: "Modern BPE in NLP", uri: "https://github.com/rsennrich/subword-nmt"},
+      {text: "BPE Compression Examples", uri: "https://github.com/karpathy/minGPT/blob/master/mingpt/bpe.py"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "Simple repeated pattern",
+        uri: "Educational test case", 
+        input: ANSIToBytes("ababab"),
+        expected: Hex8ToBytes("01009697979661620003000397")
+      },
+      {
+        text: "Text with common pairs",
+        uri: "Text compression test",
+        input: ANSIToBytes("hello world hello"),
+        expected: Hex8ToBytes("0200010065006C00680065006C006C006F0020776F726C64201000")
+      },
+      {
+        text: "No repeated pairs",
+        uri: "Worst case test",
+        input: ANSIToBytes("abcdef"),
+        expected: Hex8ToBytes("000000060061006200630064006500660")
+      }
+    ],
+
+    // Legacy interface properties
     internalName: 'BPE',
-    name: 'Byte-Pair Encoding',
-    comment: 'Philip Gage pair replacement algorithm - simple and effective compression',
     category: 'Simple',
     instances: {},
     isInitialized: false,
@@ -366,10 +412,10 @@
     }
   };
   
-  // Auto-register with compression system
-  if (global.Compression) {
+  // Auto-register with Compression system if available
+  if (typeof global.Compression !== 'undefined' && global.Compression.Add) {
     BPE.Init();
-    global.Compression.AddAlgorithm(BPE);
+    global.Compression.Add(BPE);
   }
   
   // Export for Node.js

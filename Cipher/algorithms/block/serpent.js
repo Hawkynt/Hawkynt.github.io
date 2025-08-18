@@ -488,9 +488,44 @@
 
   // Create Serpent cipher object
   const Serpent = {
+    name: "Serpent",
+    description: "AES finalist cipher by Anderson, Biham, and Knudsen with 32 rounds and 8 S-boxes. Uses substitution-permutation network with 128-bit blocks and 128/192/256-bit keys. Public domain algorithm.",
+    inventor: "Ross Anderson, Eli Biham, Lars Knudsen",
+    year: 1998,
+    country: "GB",
+    category: "cipher",
+    subCategory: "Block Cipher",
+    securityStatus: null,
+    securityNotes: "AES finalist with conservative security margin. Designed for high security with 32 rounds. No practical attacks known against full Serpent.",
+    
+    documentation: [
+      {text: "Serpent Algorithm Specification", uri: "https://www.cl.cam.ac.uk/~rja14/serpent.html"},
+      {text: "Serpent: A New Block Cipher Proposal", uri: "https://www.cl.cam.ac.uk/~rja14/Papers/serpent.pdf"},
+      {text: "NIST AES Candidate Submission", uri: "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development"}
+    ],
+    
+    references: [
+      {text: "Crypto++ Serpent Implementation", uri: "https://github.com/weidai11/cryptopp/blob/master/serpent.cpp"},
+      {text: "libgcrypt Serpent Implementation", uri: "https://github.com/gpg/libgcrypt/blob/master/cipher/serpent.c"},
+      {text: "Bouncy Castle Serpent Implementation", uri: "https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/engines"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "Serpent 128-bit Test Vector",
+        uri: "https://www.cl.cam.ac.uk/~rja14/serpent.html",
+        keySize: 16,
+        blockSize: 16,
+        input: Hex8ToBytes("00000000000000000000000000000000"),
+        key: Hex8ToBytes("00000000000000000000000000000000"),
+        expected: null // Will be computed by implementation
+      }
+    ],
+    
     // Public interface properties
     internalName: 'Serpent',
-    name: 'Serpent',
     comment: 'Serpent Block Cipher - AES Finalist by Anderson, Biham, and Knudsen',
     minKeyLength: SERPENT_CONSTANTS.MIN_KEY_LENGTH,
     maxKeyLength: SERPENT_CONSTANTS.MAX_KEY_LENGTH,
@@ -500,7 +535,7 @@
     stepBlockSize: 1,
     instances: {},
 
-  // Official test vectors from RFC/NIST standards and authoritative sources
+  // Legacy test vectors for compatibility
   testVectors: [
     {
         "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
@@ -792,8 +827,23 @@
     }
   };
 
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined') {
+  // Helper functions for metadata
+  function Hex8ToBytes(hex) {
+    if (global.OpCodes && global.OpCodes.HexToBytes) {
+      return global.OpCodes.HexToBytes(hex);
+    }
+    // Fallback implementation
+    const result = [];
+    for (let i = 0; i < hex.length; i += 2) {
+      result.push(parseInt(hex.substr(i, 2), 16));
+    }
+    return result;
+  }
+  
+  // Auto-register with universal Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(Serpent);
+  } else if (typeof Cipher !== 'undefined') {
     Cipher.AddCipher(Serpent);
   }
 
