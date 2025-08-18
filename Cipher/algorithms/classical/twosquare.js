@@ -82,39 +82,39 @@
         id = 'TwoSquare[' + global.generateUniqueID() + ']';
       } while (TwoSquare.instances[id] || global.objectInstances[id]);
       
-      TwoSquare.instances[szID] = new TwoSquare.TwoSquareInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      TwoSquare.instances[id] = new TwoSquare.TwoSquareInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear Two-Square data
     ClearData: function(id) {
       if (TwoSquare.instances[id]) {
-        delete TwoSquare.instances[szID];
-        delete global.objectInstances[szID];
+        delete TwoSquare.instances[id];
+        delete global.objectInstances[id];
       }
     },
     
     // Encrypt using Two-Square cipher
-    encryptBlock: function(intInstanceID, szInput) {
+    encryptBlock: function(intInstanceID, input) {
       const id = 'TwoSquare[' + intInstanceID + ']';
       if (!TwoSquare.instances[id]) return '';
       
-      return TwoSquare.instances[szID].encrypt(szInput);
+      return TwoSquare.instances[id].encrypt(input);
     },
     
     // Decrypt using Two-Square cipher
-    decryptBlock: function(intInstanceID, szInput) {
+    decryptBlock: function(intInstanceID, input) {
       const id = 'TwoSquare[' + intInstanceID + ']';
       if (!TwoSquare.instances[id]) return '';
       
-      return TwoSquare.instances[szID].decrypt(szInput);
+      return TwoSquare.instances[id].decrypt(input);
     },
     
     // Two-Square Instance Class
     TwoSquareInstance: function(key) {
       // Parse the two keys
-      const keys = szKey.split('|');
+      const keys = key.split('|');
       if (keys.length !== 2) {
         throw new Error('Two-Square: Key must contain two keywords separated by |');
       }

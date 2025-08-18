@@ -84,21 +84,21 @@
         id = 'A5-2[' + global.generateUniqueID() + ']';
       } while (A52.instances[id] || global.objectInstances[id]);
       
-      A52.instances[szID] = new A52.A52Instance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      A52.instances[id] = new A52.A52Instance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (A52.instances[id]) {
         // Clear sensitive data
-        const instance = A52.instances[szID];
+        const instance = A52.instances[id];
         if (global.OpCodes) {
           global.OpCodes.ClearArray([instance.lfsr1, instance.lfsr2, instance.lfsr3, instance.lfsr4]);
         }
-        delete A52.instances[szID];
-        delete global.objectInstances[szID];
+        delete A52.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'A5-2', 'ClearData');
@@ -107,29 +107,29 @@
     },
     
     // Encrypt block (for stream cipher, this generates keystream and XORs with input)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!A52.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'A5-2', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = A52.instances[szID];
+      const instance = A52.instances[id];
       let result = '';
       
-      for (let n = 0; n < szPlainText.length; n++) {
+      for (let n = 0; n < plaintext.length; n++) {
         const keystreamByte = instance.generateKeystreamByte();
-        const plaintextByte = szPlainText.charCodeAt(n) & 0xFF;
+        const plaintextByte = plaintext.charCodeAt(n) & 0xFF;
         const ciphertextByte = plaintextByte ^ keystreamByte;
-        szResult += String.fromCharCode(ciphertextByte);
+        result += String.fromCharCode(ciphertextByte);
       }
       
-      return szResult;
+      return result;
     },
     
     // Decrypt block (same as encrypt for stream cipher)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       // For stream ciphers, decryption is identical to encryption
-      return A52.encryptBlock(id, szCipherText);
+      return A52.encryptBlock(id, ciphertext);
     },
     
     // A5/2 Instance class

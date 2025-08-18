@@ -269,26 +269,26 @@
     },
     
     // Set up key
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'CAST128[' + global.generateUniqueID() + ']';
       } while (CAST128.instances[id] || global.objectInstances[id]);
       
-      CAST128.instances[szID] = new CAST128.CAST128Instance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      CAST128.instances[id] = new CAST128.CAST128Instance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (CAST128.instances[id]) {
-        const instance = CAST128.instances[szID];
+        const instance = CAST128.instances[id];
         if (instance.Km) global.OpCodes.ClearArray(instance.Km);
         if (instance.Kr) global.OpCodes.ClearArray(instance.Kr);
         
-        delete CAST128.instances[szID];
-        delete global.objectInstances[szID];
+        delete CAST128.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'CAST128', 'ClearData');
@@ -297,19 +297,19 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!CAST128.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'CAST128', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = CAST128.instances[szID];
+      const instance = CAST128.instances[id];
       
       // Convert input to bytes
-      const input = global.OpCodes.StringToBytes(szPlainText);
+      const input = global.OpCodes.StringToBytes(plaintext);
       if (input.length !== CAST128.BLOCK_SIZE) {
         global.throwException('Invalid Block Size Exception', input.length, 'CAST128', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       // Pack into 32-bit words (big-endian)
@@ -332,19 +332,19 @@
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!CAST128.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'CAST128', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const instance = CAST128.instances[szID];
+      const instance = CAST128.instances[id];
       
       // Convert input to bytes
-      const input = global.OpCodes.StringToBytes(szCipherText);
+      const input = global.OpCodes.StringToBytes(ciphertext);
       if (input.length !== CAST128.BLOCK_SIZE) {
         global.throwException('Invalid Block Size Exception', input.length, 'CAST128', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       // Pack into 32-bit words (big-endian)
@@ -409,7 +409,7 @@
     
     // CAST-128 Instance class
     CAST128Instance: function(key) {
-      this.key = szKey || '';
+      this.key = key || '';
       this.Km = []; // 16 masking subkeys (32-bit each)
       this.Kr = []; // 16 rotation subkeys (5-bit each)
       

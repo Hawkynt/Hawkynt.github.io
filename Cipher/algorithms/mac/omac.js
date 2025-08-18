@@ -157,7 +157,7 @@
     generateSubkeys: function(instance) {
       // Step 1: L = E_K(0^n)
       const zeroBlock = new Array(instance.blockSize).fill(0);
-      const L = instance.cipher.szEncryptBlock(instance.cipherId, zeroBlock);
+      const L = instance.cipher.encryptBlock(instance.cipherId, zeroBlock);
       
       // Determine reduction polynomial based on block size
       let rb;
@@ -224,7 +224,7 @@
         }
         
         // Encrypt block
-        instance.intermediate = instance.cipher.szEncryptBlock(instance.cipherId, block);
+        instance.intermediate = instance.cipher.encryptBlock(instance.cipherId, block);
       }
       
       return true;
@@ -270,7 +270,7 @@
       }
       
       // Final encryption
-      const tag = instance.cipher.szEncryptBlock(instance.cipherId, finalBlock);
+      const tag = instance.cipher.encryptBlock(instance.cipherId, finalBlock);
       
       return tag;
     },

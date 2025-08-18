@@ -221,16 +221,16 @@
         id = 'Rabbit[' + global.generateUniqueID() + ']';
       } while (Rabbit.instances[id] || global.objectInstances[id]);
       
-      Rabbit.instances[szID] = new Rabbit.RabbitInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      Rabbit.instances[id] = new Rabbit.RabbitInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (Rabbit.instances[id]) {
         // Clear sensitive data
-        const instance = Rabbit.instances[szID];
+        const instance = Rabbit.instances[id];
         if (instance.X && global.OpCodes) {
           global.OpCodes.ClearArray(instance.X);
         }
@@ -240,8 +240,8 @@
         if (instance.keyBytes && global.OpCodes) {
           global.OpCodes.ClearArray(instance.keyBytes);
         }
-        delete Rabbit.instances[szID];
-        delete global.objectInstances[szID];
+        delete Rabbit.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'Rabbit', 'ClearData');
@@ -250,29 +250,29 @@
     },
     
     // Encrypt block (for stream cipher, this generates keystream and XORs with input)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Rabbit.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Rabbit', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = Rabbit.instances[szID];
+      const instance = Rabbit.instances[id];
       let result = '';
       
-      for (let n = 0; n < szPlainText.length; n++) {
+      for (let n = 0; n < plaintext.length; n++) {
         const keystreamByte = instance.getNextKeystreamByte();
-        const plaintextByte = szPlainText.charCodeAt(n) & 0xFF;
+        const plaintextByte = plaintext.charCodeAt(n) & 0xFF;
         const ciphertextByte = plaintextByte ^ keystreamByte;
-        szResult += String.fromCharCode(ciphertextByte);
+        result += String.fromCharCode(ciphertextByte);
       }
       
-      return szResult;
+      return result;
     },
     
     // Decrypt block (same as encrypt for stream cipher)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       // For stream ciphers, decryption is identical to encryption
-      return Rabbit.encryptBlock(id, szCipherText);
+      return Rabbit.encryptBlock(id, ciphertext);
     },
     
     // Rabbit Instance class

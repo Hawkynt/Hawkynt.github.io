@@ -468,13 +468,13 @@
     },
     
     // Set up key (passphrase or deck arrangement)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'Solitaire[' + global.generateUniqueID() + ']';
       } while (Solitaire.instances[id] || global.objectInstances[id]);
       
-      Solitaire.instances[id] = new Solitaire.SolitaireInstance(optional_szKey);
+      Solitaire.instances[id] = new Solitaire.SolitaireInstance(optional_key);
       global.objectInstances[id] = true;
       return id;
     },
@@ -492,20 +492,20 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
-      return Solitaire.processBlock(id, szPlainText, true);
+    encryptBlock: function(id, plaintext) {
+      return Solitaire.processBlock(id, plaintext, true);
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
-      return Solitaire.processBlock(id, szCipherText, false);
+    decryptBlock: function(id, ciphertext) {
+      return Solitaire.processBlock(id, ciphertext, false);
     },
     
     // Process block (both encrypt and decrypt)
-    processBlock: function(id, szText, encrypt) {
+    processBlock: function(id, text, encrypt) {
       if (!Solitaire.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Solitaire', 'processBlock');
-        return szText;
+        return text;
       }
       
       const instance = Solitaire.instances[id];
@@ -513,8 +513,8 @@
       let result = '';
       let letterIndex = 0;
       
-      for (let i = 0; i < szText.length; i++) {
-        const char = szText.charAt(i);
+      for (let i = 0; i < text.length; i++) {
+        const char = text.charAt(i);
         
         if (Solitaire.isLetter(char)) {
           const keystreamValue = Solitaire.generateKeystreamValue(instance.deck);
@@ -676,12 +676,12 @@
     },
     
     // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, szPlainText) {
-      return this.encryptBlock(id, szPlainText);
+    EncryptBlock: function(id, plaintext) {
+      return this.encryptBlock(id, plaintext);
     },
     
-    DecryptBlock: function(id, szCipherText) {
-      return this.decryptBlock(id, szCipherText);
+    DecryptBlock: function(id, ciphertext) {
+      return this.decryptBlock(id, ciphertext);
     }
   };
   

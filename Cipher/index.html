@@ -202,6 +202,8 @@
     
     <!-- Universal Cipher System (modern cross-platform implementations) -->
     <script type="text/JavaScript" language="JavaScript" src="./universal-cipher-env.js"></script>
+    <script type="text/JavaScript" language="JavaScript" src="./OpCodes.js"></script>
+    <script type="text/JavaScript" language="JavaScript" src="./cipher-metadata.js"></script>
     <script type="text/JavaScript" language="JavaScript" src="./cipher.js"></script>
     
     <!-- Source for the Ciphers I implemented                                                   -->
@@ -211,36 +213,37 @@
     <!-- http://www.pajhome.org.uk/crypt/                                                       -->
     <!-- =========================[ CONVERTER ]================================================ -->
       <script type="text/JavaScript" language="JavaScript" src="./algorithms/encoding/base64.js"></script>
-      <script type="text/JavaScript" language="JavaScript" src="./bubblebabble.js"></script>
-      <script type="text/JavaScript" language="JavaScript" src="./koremutake.js"></script>
+      <script type="text/JavaScript" language="JavaScript" src="./algorithms/encoding/bubblebabble.js"></script>
+      <script type="text/JavaScript" language="JavaScript" src="./algorithms/encoding/koremutake.js"></script>
     <!-- =========================[ STREAM CIPHERS ]=========================================== -->
       <!-- =======================[ SUBSTITUTION CIPHERS ]===================================== -->
         <script type="text/JavaScript" language="JavaScript" src="./algorithms/encoding/atbash.js"></script>
-        <script type="text/JavaScript" language="JavaScript" src="./mystery.js"></script>
+        <!-- <script type="text/JavaScript" language="JavaScript" src="./mystery.js"></script> <!-- File not available -->
       <!-- =======================[ SHIFT CIPHERS ]============================================ -->
         <script type="text/JavaScript" language="JavaScript" src="./algorithms/classical/caesar.js"></script>
         <script type="text/JavaScript" language="JavaScript" src="./algorithms/encoding/rot.js"></script>
     <!-- =========================[ BLOCK CIPHERS ]============================================ -->
       <!-- =======================[ STRONG CIPHERS ]=========================================== -->
-        <script type="text/JavaScript" language="JavaScript" src="./rijndael.js"></script>
-        <script type="text/JavaScript" language="JavaScript" src="./blowfish.js"></script>
+        <script type="text/JavaScript" language="JavaScript" src="./algorithms/block/rijndael.js"></script>
+        <script type="text/JavaScript" language="JavaScript" src="./algorithms/block/blowfish.js"></script>
         <script type="text/JavaScript" language="JavaScript" src="./algorithms/block/anubis.js"></script>
         <script type="text/JavaScript" language="JavaScript" src="./algorithms/block/noekeon.js"></script>
         <script type="text/JavaScript" language="JavaScript" src="./algorithms/block/sm4.js"></script>
         <script type="text/JavaScript" language="JavaScript" src="./algorithms/block/speck.js"></script>
         <script type="text/JavaScript" language="JavaScript" src="./algorithms/stream/salsa20.js"></script>
         <script type="text/JavaScript" language="JavaScript" src="./algorithms/stream/chacha20.js"></script>
-        <script type="text/JavaScript" language="JavaScript" src="./khazad.js"></script>
+        <script type="text/JavaScript" language="JavaScript" src="./algorithms/block/khazad.js"></script>
       <!-- =======================[ POST-QUANTUM ASYMMETRIC ]================================= -->
         <script type="text/JavaScript" language="JavaScript" src="./algorithms/asymmetric/ml-dsa.js"></script>
       <!-- =======================[ WEAK CIPHERS ]============================================= -->
-        <script type="text/JavaScript" language="JavaScript" src="./tea.js"></script>
+        <script type="text/JavaScript" language="JavaScript" src="./algorithms/block/tea.js"></script>
     <!-- =========================[ STREAM COMPRESSORS ]======================================= -->
-      <script type="text/JavaScript" language="JavaScript" src="./lzss.js"></script>
+      <!-- Use modern compression algorithms from algorithms/compression/ directory -->
+      <!-- <script type="text/JavaScript" language="JavaScript" src="./lzss.js"></script> <!-- File not available -->
     
     <!-- =========================[ OFFICIAL TEST VECTORS ]================================ -->
-      <script type="text/JavaScript" language="JavaScript" src="./official_test_vectors.js"></script>
-      <script type="text/JavaScript" language="JavaScript" src="./nessie_test_vectors.js"></script>
+      <script type="text/JavaScript" language="JavaScript" src="./test-vector-database.js"></script>
+      <script type="text/JavaScript" language="JavaScript" src="./test-vector-system.js"></script>
     
     <!-- =========================[ UI ENHANCEMENTS ]===================================== -->
       <script type="text/JavaScript" language="JavaScript" src="./ui-enhancements.js"></script>

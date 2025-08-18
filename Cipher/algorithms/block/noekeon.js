@@ -109,10 +109,10 @@
     },
     
     // Key setup for encryption/decryption
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       if (!this.isInitialized) this.Init();
       
-      if (!optional_szKey || optional_szKey.length !== 16) {
+      if (!optional_key || optional_key.length !== 16) {
         throw new Error('Noekeon requires exactly 16-byte (128-bit) keys');
       }
       
@@ -123,7 +123,7 @@
       } while (this.instances[id] || global.objectInstances[id]);
       
       // Convert key bytes to 32-bit words (big-endian)
-      const arrKey = OpCodes.StringToBytes(optional_szKey);
+      const arrKey = OpCodes.StringToBytes(optional_key);
       const key = new Array(4);
       for (let i = 0; i < 4; i++) {
         const offset = i * 4;
@@ -136,13 +136,13 @@
       }
       
       // Store the key for this instance
-      this.instances[szID] = {
+      this.instances[id] = {
         key: key,
         workingKey: key.slice() // Copy for working key
       };
       
-      global.objectInstances[szID] = true;
-      return szID;
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Theta transformation - diffusion layer
@@ -245,7 +245,7 @@
     
     // Encrypt single block
     encryptBlock: function(id, strPlainText) {
-      const instance = this.instances[szID];
+      const instance = this.instances[id];
       if (!instance) {
         throw new Error('Noekeon instance not initialized');
       }
@@ -283,7 +283,7 @@
     
     // Decrypt single block
     decryptBlock: function(id, strCipherText) {
-      const instance = this.instances[szID];
+      const instance = this.instances[id];
       if (!instance) {
         throw new Error('Noekeon instance not initialized');
       }
@@ -330,8 +330,8 @@
         // Clear the key data
         OpCodes.ClearArray(this.instances[id].key);
         OpCodes.ClearArray(this.instances[id].workingKey);
-        delete this.instances[szID];
-        delete global.objectInstances[szID];
+        delete this.instances[id];
+        delete global.objectInstances[id];
       }
       return true;
     }

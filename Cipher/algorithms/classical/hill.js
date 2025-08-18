@@ -611,16 +611,16 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Hill.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Hill', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       const instance = Hill.instances[id];
-      const normalizedText = Hill.normalizeText(szPlainText);
+      const normalizedText = Hill.normalizeText(plaintext);
       const paddedText = Hill.padText(normalizedText, instance.size);
-      let szRet = '';
+      let result = '';
       
       // Process text in blocks
       for (let i = 0; i < paddedText.length; i += instance.size) {
@@ -637,23 +637,23 @@
         
         // Convert back to letters
         for (let j = 0; j < encrypted.length; j++) {
-          szRet += Hill.ALPHABET[encrypted[j]];
+          result += Hill.ALPHABET[encrypted[j]];
         }
       }
       
-      return szRet;
+      return result;
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Hill.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Hill', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       const instance = Hill.instances[id];
-      const normalizedText = Hill.normalizeText(szCipherText);
-      let szRet = '';
+      const normalizedText = Hill.normalizeText(ciphertext);
+      let result = '';
       
       // Process text in blocks
       for (let i = 0; i < normalizedText.length; i += instance.size) {
@@ -670,11 +670,11 @@
         
         // Convert back to letters
         for (let j = 0; j < decrypted.length; j++) {
-          szRet += Hill.ALPHABET[decrypted[j]];
+          result += Hill.ALPHABET[decrypted[j]];
         }
       }
       
-      return szRet;
+      return result;
     },
     
     // Instance class

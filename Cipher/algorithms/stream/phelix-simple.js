@@ -116,14 +116,14 @@
     },
 
     // Set up key and nonce
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'PhelixSimple[' + global.generateUniqueID() + ']';
       } while (PhelixSimple.instances[id] || global.objectInstances[id]);
       
       try {
-        PhelixSimple.instances[id] = new PhelixSimple.PhelixSimpleInstance(optional_szKey);
+        PhelixSimple.instances[id] = new PhelixSimple.PhelixSimpleInstance(optional_key);
         global.objectInstances[id] = true;
         return id;
       } catch (e) {
@@ -157,14 +157,14 @@
     },
     
     // Generate keystream and XOR with input
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!PhelixSimple.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'PhelixSimple', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       const instance = PhelixSimple.instances[id];
-      const inputWords = PhelixSimple.stringToWords(szPlainText);
+      const inputWords = PhelixSimple.stringToWords(plaintext);
       const outputWords = [];
       
       for (let i = 0; i < inputWords.length; i++) {
@@ -173,32 +173,32 @@
       }
       
       // Handle remaining bytes
-      const remainder = szPlainText.length % 4;
+      const remainder = plaintext.length % 4;
       if (remainder > 0) {
         const keystream = instance.generateKeystreamWord();
         let lastWord = 0;
         for (let j = 0; j < remainder; j++) {
-          const charCode = szPlainText.charCodeAt(szPlainText.length - remainder + j);
+          const charCode = plaintext.charCodeAt(plaintext.length - remainder + j);
           lastWord |= (charCode << (j * 8));
         }
         outputWords[outputWords.length - 1] = (lastWord ^ keystream) >>> 0;
       }
       
-      return PhelixSimple.wordsToString(outputWords).substring(0, szPlainText.length);
+      return PhelixSimple.wordsToString(outputWords).substring(0, plaintext.length);
     },
     
     // Decrypt (same as encrypt for stream cipher)
-    decryptBlock: function(id, szCipherText) {
-      return this.encryptBlock(id, szCipherText);
+    decryptBlock: function(id, ciphertext) {
+      return this.encryptBlock(id, ciphertext);
     },
     
     // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, szPlainText) {
-      return this.encryptBlock(id, szPlainText);
+    EncryptBlock: function(id, plaintext) {
+      return this.encryptBlock(id, plaintext);
     },
     
-    DecryptBlock: function(id, szCipherText) {
-      return this.decryptBlock(id, szCipherText);
+    DecryptBlock: function(id, ciphertext) {
+      return this.decryptBlock(id, ciphertext);
     },
     
     // Instance class

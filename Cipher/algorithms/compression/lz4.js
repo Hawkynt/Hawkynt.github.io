@@ -94,7 +94,7 @@
     },
     
     /**
-     * Alias for szEncryptBlock (compression doesn't "decrypt")
+     * Alias for encryptBlock (compression doesn't "decrypt")
      */
     decryptBlock: function(mode, data) {
       return this.encryptBlock(mode, data);

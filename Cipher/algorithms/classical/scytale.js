@@ -88,33 +88,33 @@
         id = 'Scytale[' + global.generateUniqueID() + ']';
       } while (Scytale.instances[id] || global.objectInstances[id]);
       
-      Scytale.instances[szID] = new Scytale.ScytaleInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      Scytale.instances[id] = new Scytale.ScytaleInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear Scytale data
     ClearData: function(id) {
       if (Scytale.instances[id]) {
-        delete Scytale.instances[szID];
-        delete global.objectInstances[szID];
+        delete Scytale.instances[id];
+        delete global.objectInstances[id];
       }
     },
     
     // Encrypt using Scytale
-    encryptBlock: function(intInstanceID, szInput) {
+    encryptBlock: function(intInstanceID, input) {
       const id = 'Scytale[' + intInstanceID + ']';
       if (!Scytale.instances[id]) return '';
       
-      return Scytale.instances[szID].encrypt(szInput);
+      return Scytale.instances[id].encrypt(input);
     },
     
     // Decrypt using Scytale
-    decryptBlock: function(intInstanceID, szInput) {
+    decryptBlock: function(intInstanceID, input) {
       const id = 'Scytale[' + intInstanceID + ']';
       if (!Scytale.instances[id]) return '';
       
-      return Scytale.instances[szID].decrypt(szInput);
+      return Scytale.instances[id].decrypt(input);
     },
     
     // Scytale Instance Class

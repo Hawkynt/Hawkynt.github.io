@@ -93,16 +93,16 @@
         id = 'ISAAC[' + global.generateUniqueID() + ']';
       } while (ISAAC.instances[id] || global.objectInstances[id]);
       
-      ISAAC.instances[szID] = new ISAAC.ISAACInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      ISAAC.instances[id] = new ISAAC.ISAACInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (ISAAC.instances[id]) {
         // Clear sensitive data
-        const instance = ISAAC.instances[szID];
+        const instance = ISAAC.instances[id];
         if (instance.mem && global.OpCodes) {
           global.OpCodes.ClearArray(instance.mem);
         }
@@ -112,8 +112,8 @@
         if (instance.keyBytes && global.OpCodes) {
           global.OpCodes.ClearArray(instance.keyBytes);
         }
-        delete ISAAC.instances[szID];
-        delete global.objectInstances[szID];
+        delete ISAAC.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'ISAAC', 'ClearData');
@@ -122,29 +122,29 @@
     },
     
     // Encrypt block (for stream cipher, this generates keystream and XORs with input)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!ISAAC.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'ISAAC', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = ISAAC.instances[szID];
+      const instance = ISAAC.instances[id];
       let result = '';
       
-      for (let n = 0; n < szPlainText.length; n++) {
+      for (let n = 0; n < plaintext.length; n++) {
         const keystreamByte = instance.getNextByte();
-        const plaintextByte = szPlainText.charCodeAt(n) & 0xFF;
+        const plaintextByte = plaintext.charCodeAt(n) & 0xFF;
         const ciphertextByte = plaintextByte ^ keystreamByte;
-        szResult += String.fromCharCode(ciphertextByte);
+        result += String.fromCharCode(ciphertextByte);
       }
       
-      return szResult;
+      return result;
     },
     
     // Decrypt block (same as encrypt for stream cipher)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       // For stream ciphers, decryption is identical to encryption
-      return ISAAC.encryptBlock(id, szCipherText);
+      return ISAAC.encryptBlock(id, ciphertext);
     },
     
     // ISAAC Instance class

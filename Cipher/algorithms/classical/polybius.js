@@ -386,13 +386,13 @@
     },
     
     // Set up key (optional keyword for custom grid)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'Polybius[' + global.generateUniqueID() + ']';
       } while (Polybius.instances[id] || global.objectInstances[id]);
       
-      Polybius.instances[id] = new Polybius.PolybiusInstance(optional_szKey);
+      Polybius.instances[id] = new Polybius.PolybiusInstance(optional_key);
       global.objectInstances[id] = true;
       return id;
     },
@@ -410,10 +410,10 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Polybius.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Polybius', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       const instance = Polybius.instances[id];
@@ -421,7 +421,7 @@
       let result = [];
       
       // Convert to uppercase and filter to letters only
-      const cleanText = szPlainText.toUpperCase().replace(/[^A-Z]/g, '');
+      const cleanText = plaintext.toUpperCase().replace(/[^A-Z]/g, '');
       
       for (let i = 0; i < cleanText.length; i++) {
         let char = cleanText.charAt(i);
@@ -452,10 +452,10 @@
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Polybius.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Polybius', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       const instance = Polybius.instances[id];
@@ -463,7 +463,7 @@
       let result = '';
       
       // Split by spaces and process each coordinate pair
-      const coordinates = szCipherText.trim().split(/\s+/);
+      const coordinates = ciphertext.trim().split(/\s+/);
       
       for (let i = 0; i < coordinates.length; i++) {
         const coord = coordinates[i];
@@ -540,12 +540,12 @@
     },
     
     // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, szPlainText) {
-      return this.encryptBlock(id, szPlainText);
+    EncryptBlock: function(id, plaintext) {
+      return this.encryptBlock(id, plaintext);
     },
     
-    DecryptBlock: function(id, szCipherText) {
-      return this.decryptBlock(id, szCipherText);
+    DecryptBlock: function(id, ciphertext) {
+      return this.decryptBlock(id, ciphertext);
     }
   };
   

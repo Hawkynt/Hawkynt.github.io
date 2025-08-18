@@ -418,13 +418,13 @@
     },
     
     // Set up key (optional keyword for custom cube + period)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'Trifid[' + global.generateUniqueID() + ']';
       } while (Trifid.instances[id] || global.objectInstances[id]);
       
-      Trifid.instances[id] = new Trifid.TrifidInstance(optional_szKey);
+      Trifid.instances[id] = new Trifid.TrifidInstance(optional_key);
       global.objectInstances[id] = true;
       return id;
     },
@@ -442,10 +442,10 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Trifid.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Trifid', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       const instance = Trifid.instances[id];
@@ -453,7 +453,7 @@
       const period = instance.period;
       
       // Convert to uppercase and keep only valid characters
-      const cleanText = Trifid.filterText(szPlainText);
+      const cleanText = Trifid.filterText(plaintext);
       if (cleanText.length === 0) return '';
       
       let result = '';
@@ -468,10 +468,10 @@
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Trifid.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Trifid', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       const instance = Trifid.instances[id];
@@ -479,7 +479,7 @@
       const period = instance.period;
       
       // Keep only valid characters
-      const cleanText = Trifid.filterText(szCipherText);
+      const cleanText = Trifid.filterText(ciphertext);
       if (cleanText.length === 0) return '';
       
       let result = '';
@@ -682,12 +682,12 @@
     },
     
     // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, szPlainText) {
-      return this.encryptBlock(id, szPlainText);
+    EncryptBlock: function(id, plaintext) {
+      return this.encryptBlock(id, plaintext);
     },
     
-    DecryptBlock: function(id, szCipherText) {
-      return this.decryptBlock(id, szCipherText);
+    DecryptBlock: function(id, ciphertext) {
+      return this.decryptBlock(id, ciphertext);
     }
   };
   

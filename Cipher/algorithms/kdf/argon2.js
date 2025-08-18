@@ -334,10 +334,10 @@
       },
       
       // For the cipher system, we'll use it as a password hasher
-      encryptBlock: function(nKeyIndex, szPlaintext) {
+      encryptBlock: function(nKeyIndex, plaintext) {
         try {
           // Parse input as password:salt format or just password
-          const parts = szPlaintext.split(':');
+          const parts = plaintext.split(':');
           const password = parts[0];
           const salt = parts[1] || 'defaultsalt';
           
@@ -355,7 +355,7 @@
         }
       },
       
-      decryptBlock: function(nKeyIndex, szCiphertext) {
+      decryptBlock: function(nKeyIndex, ciphertext) {
         return "Password hashes cannot be reversed";
       },
       

@@ -84,33 +84,33 @@
         id = 'EAX[' + global.generateUniqueID() + ']';
       } while (EAX.instances[id] || global.objectInstances[id]);
       
-      EAX.instances[szID] = new EAX.EAXInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      EAX.instances[id] = new EAX.EAXInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear EAX data
     ClearData: function(id) {
       if (EAX.instances[id]) {
-        delete EAX.instances[szID];
-        delete global.objectInstances[szID];
+        delete EAX.instances[id];
+        delete global.objectInstances[id];
       }
     },
     
     // Encrypt and authenticate with EAX
-    encryptBlock: function(intInstanceID, szInput, optional_szNonce, optional_szAAD) {
+    encryptBlock: function(intInstanceID, input, optional_nonce, optional_aad) {
       const id = 'EAX[' + intInstanceID + ']';
       if (!EAX.instances[id]) return '';
       
-      return EAX.instances[szID].encrypt(szInput, optional_szNonce || '00000000000000000000000000000000', optional_szAAD || '');
+      return EAX.instances[id].encrypt(input, optional_nonce || '00000000000000000000000000000000', optional_aad || '');
     },
     
     // Decrypt and verify with EAX
-    decryptBlock: function(intInstanceID, szInput, optional_szNonce, optional_szAAD) {
+    decryptBlock: function(intInstanceID, input, optional_nonce, optional_aad) {
       const id = 'EAX[' + intInstanceID + ']';
       if (!EAX.instances[id]) return '';
       
-      return EAX.instances[szID].decrypt(szInput, optional_szNonce || '00000000000000000000000000000000', optional_szAAD || '');
+      return EAX.instances[id].decrypt(input, optional_nonce || '00000000000000000000000000000000', optional_aad || '');
     },
     
     // EAX Instance Class

@@ -186,7 +186,7 @@
     },
     
     // Set up key
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       if (!Anubis.isInitialized) {
         Anubis.Init();
       }
@@ -196,16 +196,16 @@
         id = 'Anubis[' + global.generateUniqueID() + ']';
       } while (Anubis.instances[id] || global.objectInstances[id]);
       
-      Anubis.instances[szID] = new Anubis.AnubisInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      Anubis.instances[id] = new Anubis.AnubisInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (Anubis.instances[id]) {
         // Securely clear round keys
-        const instance = Anubis.instances[szID];
+        const instance = Anubis.instances[id];
         if (instance.roundKeyEnc) {
           OpCodes.ClearArray(instance.roundKeyEnc);
         }
@@ -213,8 +213,8 @@
           OpCodes.ClearArray(instance.roundKeyDec);
         }
         
-        delete Anubis.instances[szID];
-        delete global.objectInstances[szID];
+        delete Anubis.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'Anubis', 'ClearData');
@@ -223,28 +223,28 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Anubis.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Anubis', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      return Anubis._crypt(szPlainText, Anubis.instances[id].roundKeyEnc);
+      return Anubis._crypt(plaintext, Anubis.instances[id].roundKeyEnc);
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Anubis.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Anubis', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      return Anubis._crypt(szCipherText, Anubis.instances[id].roundKeyDec);
+      return Anubis._crypt(ciphertext, Anubis.instances[id].roundKeyDec);
     },
     
     // Core encryption/decryption function
-    _crypt: function(szText, roundKey) {
-      if (szText.length !== 16) {
+    _crypt: function(text, roundKey) {
+      if (text.length !== 16) {
         throw new Error('Anubis requires exactly 16-byte blocks');
       }
       
@@ -253,7 +253,7 @@
       const R = roundKey.length - 1;
       
       // Convert input text to state array using OpCodes
-      const bytes = OpCodes.StringToBytes(szText);
+      const bytes = OpCodes.StringToBytes(text);
       for (let i = 0; i < 4; i++) {
         state[i] = OpCodes.Pack32BE(bytes[i*4], bytes[i*4+1], bytes[i*4+2], bytes[i*4+3]);
         state[i] = (state[i] ^ roundKey[0][i]) >>> 0;

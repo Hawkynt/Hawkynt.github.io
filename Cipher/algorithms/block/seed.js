@@ -355,23 +355,23 @@
     },
 
     // Set up key
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'SEED[' + global.generateUniqueID() + ']';
       } while (SEED.instances[id] || global.objectInstances[id]);
       
-      SEED.instances[szID] = new SEED.SEEDInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      SEED.instances[id] = new SEED.SEEDInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
 
     // Clear cipher data
     ClearData: function(id) {
       if (SEED.instances[id]) {
-        SEED.instances[szID].clearKey();
-        delete SEED.instances[szID];
-        delete global.objectInstances[szID];
+        SEED.instances[id].clearKey();
+        delete SEED.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'SEED', 'ClearData');
@@ -380,31 +380,31 @@
     },
 
     // Encrypt block (RFC 4269 implementation)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!SEED.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'SEED', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = SEED.instances[szID];
+      const instance = SEED.instances[id];
       if (!instance.roundKeys) {
         global.throwException('Key not set', id, 'SEED', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      if (szPlainText.length !== 16) {
+      if (plaintext.length !== 16) {
         global.throwException('SEED requires 16-byte blocks', id, 'SEED', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       // Convert input to 32-bit words (big-endian as per RFC 4269)
       const L = [
-        OpCodes.Pack32BE(szPlainText.charCodeAt(0), szPlainText.charCodeAt(1), szPlainText.charCodeAt(2), szPlainText.charCodeAt(3)),
-        OpCodes.Pack32BE(szPlainText.charCodeAt(4), szPlainText.charCodeAt(5), szPlainText.charCodeAt(6), szPlainText.charCodeAt(7))
+        OpCodes.Pack32BE(plaintext.charCodeAt(0), plaintext.charCodeAt(1), plaintext.charCodeAt(2), plaintext.charCodeAt(3)),
+        OpCodes.Pack32BE(plaintext.charCodeAt(4), plaintext.charCodeAt(5), plaintext.charCodeAt(6), plaintext.charCodeAt(7))
       ];
       const R = [
-        OpCodes.Pack32BE(szPlainText.charCodeAt(8), szPlainText.charCodeAt(9), szPlainText.charCodeAt(10), szPlainText.charCodeAt(11)),
-        OpCodes.Pack32BE(szPlainText.charCodeAt(12), szPlainText.charCodeAt(13), szPlainText.charCodeAt(14), szPlainText.charCodeAt(15))
+        OpCodes.Pack32BE(plaintext.charCodeAt(8), plaintext.charCodeAt(9), plaintext.charCodeAt(10), plaintext.charCodeAt(11)),
+        OpCodes.Pack32BE(plaintext.charCodeAt(12), plaintext.charCodeAt(13), plaintext.charCodeAt(14), plaintext.charCodeAt(15))
       ];
       
       // 16 rounds of SEED Feistel network (15 with swap + 1 without swap)
@@ -434,31 +434,31 @@
     },
 
     // Decrypt block (RFC 4269 implementation)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!SEED.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'SEED', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const instance = SEED.instances[szID];
+      const instance = SEED.instances[id];
       if (!instance.roundKeys) {
         global.throwException('Key not set', id, 'SEED', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      if (szCipherText.length !== 16) {
+      if (ciphertext.length !== 16) {
         global.throwException('SEED requires 16-byte blocks', id, 'SEED', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       // Convert input to 32-bit words (big-endian as per RFC 4269)
       const L = [
-        OpCodes.Pack32BE(szCipherText.charCodeAt(0), szCipherText.charCodeAt(1), szCipherText.charCodeAt(2), szCipherText.charCodeAt(3)),
-        OpCodes.Pack32BE(szCipherText.charCodeAt(4), szCipherText.charCodeAt(5), szCipherText.charCodeAt(6), szCipherText.charCodeAt(7))
+        OpCodes.Pack32BE(ciphertext.charCodeAt(0), ciphertext.charCodeAt(1), ciphertext.charCodeAt(2), ciphertext.charCodeAt(3)),
+        OpCodes.Pack32BE(ciphertext.charCodeAt(4), ciphertext.charCodeAt(5), ciphertext.charCodeAt(6), ciphertext.charCodeAt(7))
       ];
       const R = [
-        OpCodes.Pack32BE(szCipherText.charCodeAt(8), szCipherText.charCodeAt(9), szCipherText.charCodeAt(10), szCipherText.charCodeAt(11)),
-        OpCodes.Pack32BE(szCipherText.charCodeAt(12), szCipherText.charCodeAt(13), szCipherText.charCodeAt(14), szCipherText.charCodeAt(15))
+        OpCodes.Pack32BE(ciphertext.charCodeAt(8), ciphertext.charCodeAt(9), ciphertext.charCodeAt(10), ciphertext.charCodeAt(11)),
+        OpCodes.Pack32BE(ciphertext.charCodeAt(12), ciphertext.charCodeAt(13), ciphertext.charCodeAt(14), ciphertext.charCodeAt(15))
       ];
       
       // Decryption: reverse of encryption

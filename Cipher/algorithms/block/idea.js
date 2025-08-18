@@ -173,27 +173,27 @@
     },
     
     // Set up key
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'IDEA[' + global.generateUniqueID() + ']';
       } while (IDEA.instances[id] || global.objectInstances[id]);
       
-      IDEA.instances[szID] = new IDEA.IDEAInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      IDEA.instances[id] = new IDEA.IDEAInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (IDEA.instances[id]) {
         // Clear sensitive data
-        const instance = IDEA.instances[szID];
+        const instance = IDEA.instances[id];
         if (instance.encryptKeys) global.OpCodes.ClearArray(instance.encryptKeys);
         if (instance.decryptKeys) global.OpCodes.ClearArray(instance.decryptKeys);
         
-        delete IDEA.instances[szID];
-        delete global.objectInstances[szID];
+        delete IDEA.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'IDEA', 'ClearData');
@@ -202,23 +202,23 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!IDEA.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'IDEA', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      return IDEA.encryptBlock(szPlainText, IDEA.instances[id]);
+      return IDEA.encryptBlock(plaintext, IDEA.instances[id]);
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!IDEA.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'IDEA', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      return IDEA.decryptBlock(szCipherText, IDEA.instances[id]);
+      return IDEA.decryptBlock(ciphertext, IDEA.instances[id]);
     },
     
     /**
@@ -434,21 +434,21 @@
     },
     
     // Encrypt a 64-bit block
-    encryptBlock: function(szText, objIDEA) {
-      if (szText.length !== 8) {
+    encryptBlock: function(text, objIDEA) {
+      if (text.length !== 8) {
         throw new Error('IDEA block size must be exactly 8 bytes');
       }
       
-      return IDEA.processBlock(szText, objIDEA.encryptKeys);
+      return IDEA.processBlock(text, objIDEA.encryptKeys);
     },
     
     // Decrypt a 64-bit block
-    decryptBlock: function(szText, objIDEA) {
-      if (szText.length !== 8) {
+    decryptBlock: function(text, objIDEA) {
+      if (text.length !== 8) {
         throw new Error('IDEA block size must be exactly 8 bytes');
       }
       
-      return IDEA.processBlock(szText, objIDEA.decryptKeys);
+      return IDEA.processBlock(text, objIDEA.decryptKeys);
     },
     
     // Instance class
@@ -457,7 +457,7 @@
       const keyBytes = [];
       if (key && key.length >= 16) {
         for (let i = 0; i < 16; i++) {
-          keyBytes[i] = szKey.charCodeAt(i) & 0xFF;
+          keyBytes[i] = key.charCodeAt(i) & 0xFF;
         }
       } else {
         // Default key if not provided or too short

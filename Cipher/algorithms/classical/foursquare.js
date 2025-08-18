@@ -223,15 +223,15 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!FourSquare.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'FourSquare', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       const instance = FourSquare.instances[id];
-      const preparedText = FourSquare.prepareText(szPlainText);
-      let szRet = '';
+      const preparedText = FourSquare.prepareText(plaintext);
+      let result = '';
       
       // Process text in digraphs (pairs)
       for (let i = 0; i < preparedText.length; i += 2) {
@@ -244,7 +244,7 @@
         
         if (!pos1 || !pos2) {
           // Should not happen with normalized text, but defensive programming
-          szRet += char1 + char2;
+          result += char1 + char2;
           continue;
         }
         
@@ -253,22 +253,22 @@
         const cipher1 = instance.square2[pos1.row][pos2.col];
         const cipher2 = instance.square3[pos2.row][pos1.col];
         
-        szRet += cipher1 + cipher2;
+        result += cipher1 + cipher2;
       }
       
-      return szRet;
+      return result;
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!FourSquare.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'FourSquare', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       const instance = FourSquare.instances[id];
-      const normalizedText = FourSquare.normalizeText(szCipherText);
-      let szRet = '';
+      const normalizedText = FourSquare.normalizeText(ciphertext);
+      let result = '';
       
       // Process text in digraphs (pairs)
       for (let i = 0; i < normalizedText.length; i += 2) {
@@ -281,7 +281,7 @@
         
         if (!pos1 || !pos2) {
           // Should not happen with normalized text, but defensive programming
-          szRet += cipher1 + cipher2;
+          result += cipher1 + cipher2;
           continue;
         }
         
@@ -290,19 +290,19 @@
         const plain1 = instance.square1[pos1.row][pos2.col];
         const plain2 = instance.square4[pos2.row][pos1.col];
         
-        szRet += plain1 + plain2;
+        result += plain1 + plain2;
       }
       
-      return szRet;
+      return result;
     },
     
     // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, szPlainText) {
-      return this.encryptBlock(id, szPlainText);
+    EncryptBlock: function(id, plaintext) {
+      return this.encryptBlock(id, plaintext);
     },
     
-    DecryptBlock: function(id, szCipherText) {
-      return this.decryptBlock(id, szCipherText);
+    DecryptBlock: function(id, ciphertext) {
+      return this.decryptBlock(id, ciphertext);
     },
     
     // Instance class

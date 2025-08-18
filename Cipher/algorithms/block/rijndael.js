@@ -319,14 +319,14 @@
     },
     
     // Set up key with comprehensive validation
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       // Validate key
-      if (!optional_szKey) {
+      if (!optional_key) {
         global.throwException('Invalid Key Exception', 'Key cannot be null or undefined', 'Rijndael', 'KeySetup');
         return null;
       }
       
-      const keyLength = optional_szKey.length;
+      const keyLength = optional_key.length;
       if (keyLength !== 16 && keyLength !== 24 && keyLength !== 32) {
         global.throwException('Invalid Key Length Exception', 
           `AES requires key length of 16, 24, or 32 bytes. Got ${keyLength} bytes`, 'Rijndael', 'KeySetup');
@@ -339,7 +339,7 @@
       } while (Rijndael.instances[id] || global.objectInstances[id]);
       
       try {
-        Rijndael.instances[id] = new Rijndael.RijndaelInstance(optional_szKey);
+        Rijndael.instances[id] = new Rijndael.RijndaelInstance(optional_key);
         global.objectInstances[id] = true;
         return id;
       } catch (e) {
@@ -373,16 +373,16 @@
     },
     
     // Encrypt block with enhanced validation and error handling
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Rijndael.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Rijndael', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      if (!szPlainText || szPlainText.length !== 16) {
+      if (!plaintext || plaintext.length !== 16) {
         global.throwException('Invalid Block Size Exception', 
-          `AES requires exactly 16-byte blocks. Got ${szPlainText ? szPlainText.length : 0} bytes`, 'Rijndael', 'encryptBlock');
-        return szPlainText;
+          `AES requires exactly 16-byte blocks. Got ${plaintext ? plaintext.length : 0} bytes`, 'Rijndael', 'encryptBlock');
+        return plaintext;
       }
       
       const instance = Rijndael.instances[id];
@@ -393,7 +393,7 @@
         instance.keyExpanded = true;
       }
       
-      const state = Rijndael.stringToState(szPlainText);
+      const state = Rijndael.stringToState(plaintext);
       
       // Record operation for performance monitoring
       if (global.OpCodes.RecordOperation) {
@@ -420,16 +420,16 @@
     },
     
     // Decrypt block with enhanced validation and error handling
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Rijndael.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Rijndael', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      if (!szCipherText || szCipherText.length !== 16) {
+      if (!ciphertext || ciphertext.length !== 16) {
         global.throwException('Invalid Block Size Exception', 
-          `AES requires exactly 16-byte blocks. Got ${szCipherText ? szCipherText.length : 0} bytes`, 'Rijndael', 'decryptBlock');
-        return szCipherText;
+          `AES requires exactly 16-byte blocks. Got ${ciphertext ? ciphertext.length : 0} bytes`, 'Rijndael', 'decryptBlock');
+        return ciphertext;
       }
       
       const instance = Rijndael.instances[id];
@@ -440,7 +440,7 @@
         instance.keyExpanded = true;
       }
       
-      const state = Rijndael.stringToState(szCipherText);
+      const state = Rijndael.stringToState(ciphertext);
       
       // Record operation for performance monitoring
       if (global.OpCodes.RecordOperation) {

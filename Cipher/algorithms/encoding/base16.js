@@ -70,22 +70,22 @@
     },
     
     // Set up key (BASE16 doesn't use keys, but required by interface)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'BASE16[' + global.generateUniqueID() + ']';
       } while (BASE16.instances[id] || global.objectInstances[id]);
       
-      BASE16.instances[szID] = new BASE16.BASE16Instance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      BASE16.instances[id] = new BASE16.BASE16Instance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear encoder data
     ClearData: function(id) {
       if (BASE16.instances[id]) {
-        delete BASE16.instances[szID];
-        delete global.objectInstances[szID];
+        delete BASE16.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'BASE16', 'ClearData');
@@ -112,13 +112,13 @@
     },
     
     // Encode block (encryption)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!BASE16.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'BASE16', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const bytes = BASE16.stringToBytes(szPlainText);
+      const bytes = BASE16.stringToBytes(plaintext);
       let encoded = '';
       
       for (let i = 0; i < bytes.length; i++) {
@@ -131,26 +131,26 @@
     },
     
     // Decode block (decryption)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!BASE16.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'BASE16', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       // Remove whitespace and convert to uppercase
-      const normalized = szCipherText.replace(/\s/g, '').toUpperCase();
+      const normalized = ciphertext.replace(/\s/g, '').toUpperCase();
       
       // Check for valid length (must be even)
       if (normalized.length % 2 !== 0) {
         global.throwException('Invalid BASE16 Length Exception', normalized.length, 'BASE16', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       // Check for valid characters
       for (let i = 0; i < normalized.length; i++) {
         if (BASE16.ALPHABET.indexOf(normalized[i]) === -1) {
           global.throwException('Invalid BASE16 Character Exception', normalized[i], 'BASE16', 'decryptBlock');
-          return szCipherText;
+          return ciphertext;
         }
       }
       
@@ -170,7 +170,7 @@
     // Instance class
     BASE16Instance: function(key) {
       // BASE16 doesn't need key storage, but maintain interface
-      this.key = szKey || '';
+      this.key = key || '';
     }
   };
   

@@ -117,33 +117,33 @@
         id = 'SNOW3G[' + global.generateUniqueID() + ']';
       } while (SNOW3G.instances[id] || global.objectInstances[id]);
       
-      SNOW3G.instances[szID] = new SNOW3G.SNOW3GInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      SNOW3G.instances[id] = new SNOW3G.SNOW3GInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear SNOW 3G data
     ClearData: function(id) {
       if (SNOW3G.instances[id]) {
-        delete SNOW3G.instances[szID];
-        delete global.objectInstances[szID];
+        delete SNOW3G.instances[id];
+        delete global.objectInstances[id];
       }
     },
     
     // Generate keystream and encrypt
-    encryptBlock: function(intInstanceID, szInput, optional_szIV) {
+    encryptBlock: function(intInstanceID, input, optional_iv) {
       const id = 'SNOW3G[' + intInstanceID + ']';
       if (!SNOW3G.instances[id]) return '';
       
-      return SNOW3G.instances[szID].encrypt(szInput, optional_szIV || '00000000000000000000000000000000');
+      return SNOW3G.instances[id].encrypt(input, optional_iv || '00000000000000000000000000000000');
     },
     
     // Generate keystream and decrypt (same as encrypt for stream cipher)
-    decryptBlock: function(intInstanceID, szInput, optional_szIV) {
+    decryptBlock: function(intInstanceID, input, optional_iv) {
       const id = 'SNOW3G[' + intInstanceID + ']';
       if (!SNOW3G.instances[id]) return '';
       
-      return SNOW3G.instances[szID].encrypt(szInput, optional_szIV || '00000000000000000000000000000000');
+      return SNOW3G.instances[id].encrypt(input, optional_iv || '00000000000000000000000000000000');
     },
     
     // SNOW 3G Instance Class

@@ -114,22 +114,22 @@
     },
     
     // Set up key
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'PRESENT[' + global.generateUniqueID() + ']';
       } while (PRESENT.instances[id] || global.objectInstances[id]);
       
-      PRESENT.instances[szID] = new PRESENT.PRESENTInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      PRESENT.instances[id] = new PRESENT.PRESENTInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (PRESENT.instances[id]) {
-        delete PRESENT.instances[szID];
-        delete global.objectInstances[szID];
+        delete PRESENT.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'PRESENT', 'ClearData');
@@ -138,16 +138,16 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!PRESENT.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'PRESENT', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = PRESENT.instances[szID];
+      const instance = PRESENT.instances[id];
       
       // Convert input string to 64-bit state
-      let state = PRESENT.stringToState(szPlainText);
+      let state = PRESENT.stringToState(plaintext);
       
       // Apply 31 rounds
       for (let round = 0; round < PRESENT.ROUNDS; round++) {
@@ -170,16 +170,16 @@
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!PRESENT.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'PRESENT', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const instance = PRESENT.instances[szID];
+      const instance = PRESENT.instances[id];
       
       // Convert input string to 64-bit state
-      let state = PRESENT.stringToState(szCipherText);
+      let state = PRESENT.stringToState(ciphertext);
       
       // Remove final round key
       state = PRESENT.addRoundKey(state, instance.roundKeys[PRESENT.ROUNDS]);
@@ -362,7 +362,7 @@
     // Instance class
     PRESENTInstance: function(key) {
       // Process and validate key for PRESENT-80
-      let processedKey = szKey || '';
+      let processedKey = key || '';
       
       // Pad with zeros if too short
       while (processedKey.length < PRESENT.KEY_SIZE) {

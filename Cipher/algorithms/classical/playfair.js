@@ -527,41 +527,41 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Playfair.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Playfair', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       const instance = Playfair.instances[id];
-      const preparedText = Playfair.prepareText(szPlainText);
-      let szRet = '';
+      const preparedText = Playfair.prepareText(plaintext);
+      let result = '';
       
       for (let i = 0; i < preparedText.length; i += 2) {
         const digraph = preparedText.substr(i, 2);
-        szRet += Playfair.encryptDigraph(instance.keyMatrix, digraph);
+        result += Playfair.encryptDigraph(instance.keyMatrix, digraph);
       }
       
-      return szRet;
+      return result;
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Playfair.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Playfair', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       const instance = Playfair.instances[id];
-      const normalizedText = Playfair.normalizeText(szCipherText);
-      let szRet = '';
+      const normalizedText = Playfair.normalizeText(ciphertext);
+      let result = '';
       
       for (let i = 0; i < normalizedText.length; i += 2) {
         const digraph = normalizedText.substr(i, 2);
-        szRet += Playfair.decryptDigraph(instance.keyMatrix, digraph);
+        result += Playfair.decryptDigraph(instance.keyMatrix, digraph);
       }
       
-      return szRet;
+      return result;
     },
     
     // Instance class

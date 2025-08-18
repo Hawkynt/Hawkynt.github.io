@@ -96,24 +96,24 @@
         id = 'SOSEMANUK[' + global.generateUniqueID() + ']';
       } while (SOSEMANUK.instances[id] || global.objectInstances[id]);
       
-      SOSEMANUK.instances[szID] = new SOSEMANUK.SOSEMANUKInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      SOSEMANUK.instances[id] = new SOSEMANUK.SOSEMANUKInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (SOSEMANUK.instances[id]) {
         // Clear sensitive data
-        const instance = SOSEMANUK.instances[szID];
+        const instance = SOSEMANUK.instances[id];
         if (instance.lfsr && global.OpCodes) {
           global.OpCodes.ClearArray(instance.lfsr);
         }
         if (instance.keyBytes && global.OpCodes) {
           global.OpCodes.ClearArray(instance.keyBytes);
         }
-        delete SOSEMANUK.instances[szID];
-        delete global.objectInstances[szID];
+        delete SOSEMANUK.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'SOSEMANUK', 'ClearData');
@@ -122,29 +122,29 @@
     },
     
     // Encrypt block (for stream cipher, this generates keystream and XORs with input)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!SOSEMANUK.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'SOSEMANUK', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = SOSEMANUK.instances[szID];
+      const instance = SOSEMANUK.instances[id];
       let result = '';
       
-      for (let n = 0; n < szPlainText.length; n++) {
+      for (let n = 0; n < plaintext.length; n++) {
         const keystreamByte = instance.getNextKeystreamByte();
-        const plaintextByte = szPlainText.charCodeAt(n) & 0xFF;
+        const plaintextByte = plaintext.charCodeAt(n) & 0xFF;
         const ciphertextByte = plaintextByte ^ keystreamByte;
-        szResult += String.fromCharCode(ciphertextByte);
+        result += String.fromCharCode(ciphertextByte);
       }
       
-      return szResult;
+      return result;
     },
     
     // Decrypt block (same as encrypt for stream cipher)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       // For stream ciphers, decryption is identical to encryption
-      return SOSEMANUK.encryptBlock(id, szCipherText);
+      return SOSEMANUK.encryptBlock(id, ciphertext);
     },
     
     // SOSEMANUK Instance class

@@ -414,13 +414,13 @@
     },
     
     // Set up key (optional keyword for custom grid + period)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'Bifid[' + global.generateUniqueID() + ']';
       } while (Bifid.instances[id] || global.objectInstances[id]);
       
-      Bifid.instances[id] = new Bifid.BifidInstance(optional_szKey);
+      Bifid.instances[id] = new Bifid.BifidInstance(optional_key);
       global.objectInstances[id] = true;
       return id;
     },
@@ -438,10 +438,10 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Bifid.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Bifid', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       const instance = Bifid.instances[id];
@@ -449,7 +449,7 @@
       const period = instance.period;
       
       // Convert to uppercase and filter to letters only
-      const cleanText = szPlainText.toUpperCase().replace(/[^A-Z]/g, '');
+      const cleanText = plaintext.toUpperCase().replace(/[^A-Z]/g, '');
       if (cleanText.length === 0) return '';
       
       let result = '';
@@ -464,10 +464,10 @@
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Bifid.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Bifid', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       const instance = Bifid.instances[id];
@@ -475,7 +475,7 @@
       const period = instance.period;
       
       // Filter to letters only
-      const cleanText = szCipherText.toUpperCase().replace(/[^A-Z]/g, '');
+      const cleanText = ciphertext.toUpperCase().replace(/[^A-Z]/g, '');
       if (cleanText.length === 0) return '';
       
       let result = '';
@@ -655,12 +655,12 @@
     },
     
     // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, szPlainText) {
-      return this.encryptBlock(id, szPlainText);
+    EncryptBlock: function(id, plaintext) {
+      return this.encryptBlock(id, plaintext);
     },
     
-    DecryptBlock: function(id, szCipherText) {
-      return this.decryptBlock(id, szCipherText);
+    DecryptBlock: function(id, ciphertext) {
+      return this.decryptBlock(id, ciphertext);
     }
   };
   

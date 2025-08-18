@@ -137,16 +137,16 @@
         id = 'Koremutake[' + global.generateUniqueID() + ']';
       } while (Koremutake.instances[id] || global.objectInstances[id]);
       
-      Koremutake.instances[szID] = { initialized: true };
-      global.objectInstances[szID] = true;
-      return szID;
+      Koremutake.instances[id] = { initialized: true };
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear encoding data
     ClearData: function(id) {
       if (Koremutake.instances[id]) {
-        delete Koremutake.instances[szID];
-        delete global.objectInstances[szID];
+        delete Koremutake.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'Koremutake', 'ClearData');
@@ -155,18 +155,18 @@
     },
     
     // Encode to Koremutake
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Koremutake.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Koremutake', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      if (szPlainText.length === 0) {
+      if (plaintext.length === 0) {
         return 'BA'; // Empty string maps to first syllable
       }
       
       // Convert string to a large number
-      let num = Koremutake.stringToNumber(szPlainText);
+      let num = Koremutake.stringToNumber(plaintext);
       let result = '';
       
       // Convert number to syllables (base 128, using 7 bits per syllable)
@@ -180,19 +180,19 @@
     },
     
     // Decode from Koremutake
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Koremutake.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Koremutake', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      if (szCipherText === 'BA') {
+      if (ciphertext === 'BA') {
         return ''; // First syllable maps to empty string
       }
       
       // Parse syllables from input
       const syllables = [];
-      let remaining = szCipherText.toUpperCase();
+      let remaining = ciphertext.toUpperCase();
       
       while (remaining.length > 0) {
         let found = false;

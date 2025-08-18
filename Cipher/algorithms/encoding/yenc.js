@@ -272,7 +272,7 @@
      * @param {Object} options - Encoding options (filename, part, etc.)
      * @returns {string} yEnc encoded data with headers
      */
-    szEncryptBlock: function(keyId, data, options) {
+    encryptBlock: function(keyId, data, options) {
       const instance = this.instances[keyId];
       if (!instance) {
         throw new Error('Invalid instance ID');
@@ -347,7 +347,7 @@
      * @param {string} encoded - yEnc encoded data
      * @returns {Object} {data: string, crc32: number, filename: string, verified: boolean}
      */
-    szDecryptBlock: function(keyId, encoded) {
+    decryptBlock: function(keyId, encoded) {
       const instance = this.instances[keyId];
       if (!instance) {
         throw new Error('Invalid instance ID');
@@ -605,7 +605,7 @@
      */
     CompareWithBase64: function(data) {
       const keyId = this.KeySetup();
-      const yencEncoded = this.szEncryptBlock(keyId, data, { includeHeaders: false });
+      const yencEncoded = this.encryptBlock(keyId, data, { includeHeaders: false });
       
       // Simple Base64 calculation (4 chars per 3 bytes)
       const base64Size = Math.ceil(data.length / 3) * 4;
@@ -648,8 +648,8 @@
               inputData = testVector.inputBytes;
             }
             
-            actualEncoded = this.szEncryptBlock(keyId, inputData, { includeHeaders: false });
-            decoded = this.szDecryptBlock(keyId, actualEncoded);
+            actualEncoded = this.encryptBlock(keyId, inputData, { includeHeaders: false });
+            decoded = this.decryptBlock(keyId, actualEncoded);
             
             if (testVector.inputBytes) {
               const originalBytes = testVector.inputBytes;
@@ -661,8 +661,8 @@
           } else {
             // For other categories, test round-trip encoding
             if (testVector.input) {
-              actualEncoded = this.szEncryptBlock(keyId, testVector.input, { includeHeaders: false });
-              decoded = this.szDecryptBlock(keyId, actualEncoded);
+              actualEncoded = this.encryptBlock(keyId, testVector.input, { includeHeaders: false });
+              decoded = this.decryptBlock(keyId, actualEncoded);
               passed = decoded.data === testVector.input && decoded.verified;
             } else {
               passed = true; // Specification test

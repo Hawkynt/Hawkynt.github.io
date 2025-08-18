@@ -437,14 +437,14 @@
         }
       },
       
-      encryptBlock: function(nKeyIndex, szPlaintext) {
+      encryptBlock: function(nKeyIndex, plaintext) {
         try {
           const expectedLength = (this.currentBlockSize / 8) * 2; // Hex chars
-          if (szPlaintext.length !== expectedLength) {
+          if (plaintext.length !== expectedLength) {
             return `Block must be ${expectedLength} hex characters (${this.currentBlockSize} bits)`;
           }
           
-          const plaintext = OpCodes.HexToBytes(szPlaintext);
+          const plaintext = OpCodes.HexToBytes(plaintext);
           const ciphertext = Kalyna.EncryptBlock(plaintext, this.currentKey);
           return OpCodes.BytesToHex(ciphertext);
         } catch (e) {
@@ -452,14 +452,14 @@
         }
       },
       
-      decryptBlock: function(nKeyIndex, szCiphertext) {
+      decryptBlock: function(nKeyIndex, ciphertext) {
         try {
           const expectedLength = (this.currentBlockSize / 8) * 2; // Hex chars
-          if (szCiphertext.length !== expectedLength) {
+          if (ciphertext.length !== expectedLength) {
             return `Block must be ${expectedLength} hex characters (${this.currentBlockSize} bits)`;
           }
           
-          const ciphertext = OpCodes.HexToBytes(szCiphertext);
+          const ciphertext = OpCodes.HexToBytes(ciphertext);
           const plaintext = Kalyna.DecryptBlock(ciphertext, this.currentKey);
           return OpCodes.BytesToHex(plaintext);
         } catch (e) {

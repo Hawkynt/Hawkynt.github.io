@@ -89,35 +89,35 @@
         id = 'Crypto1[' + global.generateUniqueID() + ']';
       } while (Crypto1.instances[id] || global.objectInstances[id]);
       
-      Crypto1.instances[szID] = new Crypto1.Crypto1Instance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      Crypto1.instances[id] = new Crypto1.Crypto1Instance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (Crypto1.instances[id]) {
         // Clear sensitive data
-        const instance = Crypto1.instances[szID];
+        const instance = Crypto1.instances[id];
         if (instance.state && global.OpCodes) {
           global.OpCodes.ClearArray(instance.state);
         }
         if (instance.keyBytes && global.OpCodes) {
           global.OpCodes.ClearArray(instance.keyBytes);
         }
-        delete Crypto1.instances[szID];
-        delete global.objectInstances[szID];
+        delete Crypto1.instances[id];
+        delete global.objectInstances[id];
       }
     },
     
     // Generate keystream and XOR with input (encryption/decryption)
-    encryptBlock: function(id, szInput) {
-      const instance = Crypto1.instances[szID];
+    encryptBlock: function(id, input) {
+      const instance = Crypto1.instances[id];
       if (!instance) {
         throw new Error('Invalid Crypto-1 instance ID');
       }
       
-      const inputBytes = global.OpCodes.StringToBytes(szInput);
+      const inputBytes = global.OpCodes.StringToBytes(input);
       const outputBytes = new Array(inputBytes.length);
       
       for (let i = 0; i < inputBytes.length; i++) {
@@ -129,8 +129,8 @@
     },
     
     // Decryption is identical to encryption for stream ciphers
-    decryptBlock: function(id, szInput) {
-      return Crypto1.encryptBlock(id, szInput);
+    decryptBlock: function(id, input) {
+      return Crypto1.encryptBlock(id, input);
     },
     
     // Crypto-1 instance class

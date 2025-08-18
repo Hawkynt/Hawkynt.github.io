@@ -82,16 +82,16 @@
         id = 'Grain[' + global.generateUniqueID() + ']';
       } while (Grain.instances[id] || global.objectInstances[id]);
       
-      Grain.instances[szID] = new Grain.GrainInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      Grain.instances[id] = new Grain.GrainInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (Grain.instances[id]) {
         // Clear sensitive data
-        const instance = Grain.instances[szID];
+        const instance = Grain.instances[id];
         if (instance.lfsr && global.OpCodes) {
           global.OpCodes.ClearArray(instance.lfsr);
         }
@@ -101,8 +101,8 @@
         if (instance.keyBytes && global.OpCodes) {
           global.OpCodes.ClearArray(instance.keyBytes);
         }
-        delete Grain.instances[szID];
-        delete global.objectInstances[szID];
+        delete Grain.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'Grain', 'ClearData');
@@ -111,29 +111,29 @@
     },
     
     // Encrypt block (for stream cipher, this generates keystream and XORs with input)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Grain.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Grain', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = Grain.instances[szID];
+      const instance = Grain.instances[id];
       let result = '';
       
-      for (let n = 0; n < szPlainText.length; n++) {
+      for (let n = 0; n < plaintext.length; n++) {
         const keystreamByte = instance.generateKeystreamByte();
-        const plaintextByte = szPlainText.charCodeAt(n) & 0xFF;
+        const plaintextByte = plaintext.charCodeAt(n) & 0xFF;
         const ciphertextByte = plaintextByte ^ keystreamByte;
-        szResult += String.fromCharCode(ciphertextByte);
+        result += String.fromCharCode(ciphertextByte);
       }
       
-      return szResult;
+      return result;
     },
     
     // Decrypt block (same as encrypt for stream cipher)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       // For stream ciphers, decryption is identical to encryption
-      return Grain.encryptBlock(id, szCipherText);
+      return Grain.encryptBlock(id, ciphertext);
     },
     
     // Grain Instance class

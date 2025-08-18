@@ -95,16 +95,16 @@
         id = 'E0[' + global.generateUniqueID() + ']';
       } while (E0.instances[id] || global.objectInstances[id]);
       
-      E0.instances[szID] = new E0.E0Instance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      E0.instances[id] = new E0.E0Instance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (E0.instances[id]) {
         // Clear sensitive data
-        const instance = E0.instances[szID];
+        const instance = E0.instances[id];
         if (instance.lfsr && global.OpCodes) {
           for (let i = 0; i < instance.lfsr.length; i++) {
             global.OpCodes.ClearArray(instance.lfsr[i]);
@@ -113,19 +113,19 @@
         if (instance.keyBytes && global.OpCodes) {
           global.OpCodes.ClearArray(instance.keyBytes);
         }
-        delete E0.instances[szID];
-        delete global.objectInstances[szID];
+        delete E0.instances[id];
+        delete global.objectInstances[id];
       }
     },
     
     // Generate keystream and XOR with input (encryption/decryption)
-    encryptBlock: function(id, szInput) {
-      const instance = E0.instances[szID];
+    encryptBlock: function(id, input) {
+      const instance = E0.instances[id];
       if (!instance) {
         throw new Error('Invalid E0 instance ID');
       }
       
-      const inputBytes = global.OpCodes.StringToBytes(szInput);
+      const inputBytes = global.OpCodes.StringToBytes(input);
       const outputBytes = new Array(inputBytes.length);
       
       for (let i = 0; i < inputBytes.length; i++) {
@@ -137,8 +137,8 @@
     },
     
     // Decryption is identical to encryption for stream ciphers
-    decryptBlock: function(id, szInput) {
-      return E0.encryptBlock(id, szInput);
+    decryptBlock: function(id, input) {
+      return E0.encryptBlock(id, input);
     },
     
     // E0 instance class

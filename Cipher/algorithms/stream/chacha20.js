@@ -277,24 +277,24 @@
         id = 'ChaCha20[' + global.generateUniqueID() + ']';
       } while (ChaCha20.instances[id] || global.objectInstances[id]);
       
-      ChaCha20.instances[szID] = new ChaCha20.ChaCha20Instance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      ChaCha20.instances[id] = new ChaCha20.ChaCha20Instance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (ChaCha20.instances[id]) {
         // Clear sensitive data
-        const instance = ChaCha20.instances[szID];
+        const instance = ChaCha20.instances[id];
         if (instance.state && global.OpCodes) {
           global.OpCodes.ClearArray(instance.state);
         }
         if (instance.keyBytes && global.OpCodes) {
           global.OpCodes.ClearArray(instance.keyBytes);
         }
-        delete ChaCha20.instances[szID];
-        delete global.objectInstances[szID];
+        delete ChaCha20.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'ChaCha20', 'ClearData');
@@ -303,29 +303,29 @@
     },
     
     // Encrypt block (for stream cipher, this generates keystream and XORs with input)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!ChaCha20.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'ChaCha20', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = ChaCha20.instances[szID];
+      const instance = ChaCha20.instances[id];
       let result = '';
       
-      for (let n = 0; n < szPlainText.length; n++) {
+      for (let n = 0; n < plaintext.length; n++) {
         const keystreamByte = instance.getNextKeystreamByte();
-        const plaintextByte = szPlainText.charCodeAt(n) & 0xFF;
+        const plaintextByte = plaintext.charCodeAt(n) & 0xFF;
         const ciphertextByte = plaintextByte ^ keystreamByte;
-        szResult += String.fromCharCode(ciphertextByte);
+        result += String.fromCharCode(ciphertextByte);
       }
       
-      return szResult;
+      return result;
     },
     
     // Decrypt block (same as encrypt for stream cipher)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       // For stream ciphers, decryption is identical to encryption
-      return ChaCha20.encryptBlock(id, szCipherText);
+      return ChaCha20.encryptBlock(id, ciphertext);
     },
     
     // ChaCha20 Instance class

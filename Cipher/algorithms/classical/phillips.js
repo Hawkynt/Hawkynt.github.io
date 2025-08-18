@@ -453,13 +453,13 @@
     },
     
     // Set up key (keyword:blocksize format)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'Phillips[' + global.generateUniqueID() + ']';
       } while (Phillips.instances[id] || global.objectInstances[id]);
       
-      Phillips.instances[id] = new Phillips.PhillipsInstance(optional_szKey);
+      Phillips.instances[id] = new Phillips.PhillipsInstance(optional_key);
       global.objectInstances[id] = true;
       return id;
     },
@@ -477,20 +477,20 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
-      return Phillips.processBlock(id, szPlainText, true);
+    encryptBlock: function(id, plaintext) {
+      return Phillips.processBlock(id, plaintext, true);
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
-      return Phillips.processBlock(id, szCipherText, false);
+    decryptBlock: function(id, ciphertext) {
+      return Phillips.processBlock(id, ciphertext, false);
     },
     
     // Process block (both encrypt and decrypt)
-    processBlock: function(id, szText, encrypt) {
+    processBlock: function(id, text, encrypt) {
       if (!Phillips.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Phillips', 'processBlock');
-        return szText;
+        return text;
       }
       
       const instance = Phillips.instances[id];
@@ -498,9 +498,9 @@
       const blockSize = instance.blockSize;
       
       // Extract only letters for processing
-      const letters = Phillips.extractLetters(szText);
+      const letters = Phillips.extractLetters(text);
       if (letters.length === 0) {
-        return szText;
+        return text;
       }
       
       let result = '';
@@ -513,7 +513,7 @@
       }
       
       // Reinsert non-letter characters
-      return Phillips.reinsertNonLetters(szText, result);
+      return Phillips.reinsertNonLetters(text, result);
     },
     
     // Process a single text block
@@ -693,12 +693,12 @@
     },
     
     // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, szPlainText) {
-      return this.encryptBlock(id, szPlainText);
+    EncryptBlock: function(id, plaintext) {
+      return this.encryptBlock(id, plaintext);
     },
     
-    DecryptBlock: function(id, szCipherText) {
-      return this.decryptBlock(id, szCipherText);
+    DecryptBlock: function(id, ciphertext) {
+      return this.decryptBlock(id, ciphertext);
     }
   };
   

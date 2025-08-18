@@ -247,8 +247,8 @@
     },
     
     // Set up key
-    KeySetup: function(optional_szKey) {
-      if (!optional_szKey || (optional_szKey.length !== 16 && optional_szKey.length !== 24 && optional_szKey.length !== 32)) {
+    KeySetup: function(optional_key) {
+      if (!optional_key || (optional_key.length !== 16 && optional_key.length !== 24 && optional_key.length !== 32)) {
         global.throwException('Camellia Key Exception', 'Key must be 16, 24, or 32 bytes', 'Camellia', 'KeySetup');
         return null;
       }
@@ -258,16 +258,16 @@
         id = 'Camellia[' + global.generateUniqueID() + ']';
       } while (Camellia.instances[id] || global.objectInstances[id]);
       
-      Camellia.instances[szID] = new Camellia.CamelliaInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      Camellia.instances[id] = new Camellia.CamelliaInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (Camellia.instances[id]) {
         // Clear sensitive key data
-        const instance = Camellia.instances[szID];
+        const instance = Camellia.instances[id];
         if (instance.subkeys) {
           global.OpCodes.ClearArray(instance.subkeys);
         }
@@ -277,8 +277,8 @@
         if (instance.ke) {
           global.OpCodes.ClearArray(instance.ke);
         }
-        delete Camellia.instances[szID];
-        delete global.objectInstances[szID];
+        delete Camellia.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'Camellia', 'ClearData');
@@ -359,22 +359,22 @@
     },
     
     // Encrypt 128-bit block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Camellia.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Camellia', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      if (szPlainText.length !== 16) {
+      if (plaintext.length !== 16) {
         global.throwException('Camellia Block Size Exception', 'Input must be exactly 16 bytes', 'Camellia', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = Camellia.instances[szID];
+      const instance = Camellia.instances[id];
       const subkey = instance.subkey;
       
       // Convert input to 32-bit words (big-endian)
-      const words = global.OpCodes.StringToWords32BE(szPlainText);
+      const words = global.OpCodes.StringToWords32BE(plaintext);
       let D1 = words[0];
       let D2 = words[1];
       let D3 = words[2];
@@ -425,22 +425,22 @@
     },
     
     // Decrypt 128-bit block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Camellia.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Camellia', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      if (szCipherText.length !== 16) {
+      if (ciphertext.length !== 16) {
         global.throwException('Camellia Block Size Exception', 'Input must be exactly 16 bytes', 'Camellia', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const instance = Camellia.instances[szID];
+      const instance = Camellia.instances[id];
       const subkey = instance.subkey;
       
       // Convert input to 32-bit words (big-endian)
-      const words = global.OpCodes.StringToWords32BE(szCipherText);
+      const words = global.OpCodes.StringToWords32BE(ciphertext);
       let D1 = words[0];
       let D2 = words[1];
       let D3 = words[2];

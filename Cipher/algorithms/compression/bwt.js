@@ -91,7 +91,7 @@
     },
     
     /**
-     * Alias for szEncryptBlock
+     * Alias for encryptBlock
      */
     decryptBlock: function(mode, data) {
       return this.encryptBlock(mode, data);

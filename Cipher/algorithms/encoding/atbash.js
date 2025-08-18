@@ -59,22 +59,22 @@
     },
     
     // Set up key (Atbash doesn't use keys)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'Atbash[' + global.generateUniqueID() + ']';
       } while (Atbash.instances[id] || global.objectInstances[id]);
       
-      Atbash.instances[szID] = new Atbash.AtbashInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      Atbash.instances[id] = new Atbash.AtbashInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (Atbash.instances[id]) {
-        delete Atbash.instances[szID];
-        delete global.objectInstances[szID];
+        delete Atbash.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'Atbash', 'ClearData');
@@ -83,23 +83,23 @@
     },
     
     // Encrypt block (Atbash is symmetric - encrypt and decrypt are the same)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Atbash.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Atbash', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      return Atbash.transform(szPlainText);
+      return Atbash.transform(plaintext);
     },
     
     // Decrypt block (same as encrypt for Atbash)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Atbash.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Atbash', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      return Atbash.transform(szCipherText);
+      return Atbash.transform(ciphertext);
     },
     
     // Transform text using Atbash
@@ -132,7 +132,7 @@
     
     // Instance class
     AtbashInstance: function(key) {
-      this.key = szKey || '';
+      this.key = key || '';
     }
   };
   

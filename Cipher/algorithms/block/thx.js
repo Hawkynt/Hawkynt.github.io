@@ -178,13 +178,13 @@
       THX.isInitialized = true;
     },
     
-    KeySetup: function(szKey) {
+    KeySetup: function(key) {
       let id;
       do {
         id = 'THX[' + global.generateUniqueID() + ']';
       } while (THX.instances[id] || global.objectInstances[id]);
       
-      THX.instances[id] = new THX.Instance(szKey);
+      THX.instances[id] = new THX.Instance(key);
       global.objectInstances[id] = true;
       return id;
     },
@@ -201,16 +201,16 @@
       }
     },
     
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!THX.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'THX', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       const instance = THX.instances[id];
       
       // Pad if necessary
-      let input = szPlainText;
+      let input = plaintext;
       while (input.length % 16 !== 0) {
         input += '\x00';
       }
@@ -225,17 +225,17 @@
       return result;
     },
     
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!THX.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'THX', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       const instance = THX.instances[id];
       
       let result = '';
-      for (let i = 0; i < szCipherText.length; i += 16) {
-        const block = szCipherText.substr(i, 16);
+      for (let i = 0; i < ciphertext.length; i += 16) {
+        const block = ciphertext.substr(i, 16);
         const decryptedBlock = THX.decryptSingleBlock(instance, block);
         result += decryptedBlock;
       }
@@ -422,9 +422,9 @@
       ]);
     },
     
-    Instance: function(szKey) {
+    Instance: function(key) {
       // Validate and normalize key
-      this.originalKey = szKey || '\x00'.repeat(32);
+      this.originalKey = key || '\x00'.repeat(32);
       
       // Ensure key is proper length
       if (this.originalKey.length < 32) {

@@ -213,9 +213,9 @@
     },
 
     // Set up key - supports both EDE2 (16-byte) and EDE3 (24-byte) keys
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       // Validate key length
-      if (!optional_szKey || (optional_szKey.length !== 16 && optional_szKey.length !== 24)) {
+      if (!optional_key || (optional_key.length !== 16 && optional_key.length !== 24)) {
         global.throwException('Invalid Key Length Exception', '3DES requires 16 bytes (EDE2) or 24 bytes (EDE3) key length', '3DES', 'KeySetup');
         return null;
       }
@@ -225,22 +225,22 @@
         id = '3DES[' + global.generateUniqueID() + ']';
       } while (TripleDES.instances[id] || global.objectInstances[id]);
 
-      TripleDES.instances[szID] = new TripleDES.TripleDESInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      TripleDES.instances[id] = new TripleDES.TripleDESInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
 
     // Clear cipher data
     ClearData: function(id) {
       if (TripleDES.instances[id]) {
         // Clear all DES instances used by this 3DES instance
-        const instance = TripleDES.instances[szID];
+        const instance = TripleDES.instances[id];
         if (instance.desInstance1) global.DES.ClearData(instance.desInstance1);
         if (instance.desInstance2) global.DES.ClearData(instance.desInstance2);
         if (instance.desInstance3) global.DES.ClearData(instance.desInstance3);
         
-        delete TripleDES.instances[szID];
-        delete global.objectInstances[szID];
+        delete TripleDES.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, '3DES', 'ClearData');
@@ -249,23 +249,23 @@
     },
 
     // Encrypt block using Triple DES EDE mode
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!TripleDES.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, '3DES', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
 
       // Validate block size
-      if (!szPlainText || szPlainText.length !== 8) {
+      if (!plaintext || plaintext.length !== 8) {
         global.throwException('Invalid Block Size Exception', '3DES requires exactly 8 bytes block size', '3DES', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
 
-      const instance = TripleDES.instances[szID];
+      const instance = TripleDES.instances[id];
       
       // Triple DES EDE encryption: E_K3(D_K2(E_K1(P)))
       // Standard EDE sequence: Encrypt with K1, Decrypt with K2, Encrypt with K3
-      let result = szPlainText;
+      let result = plaintext;
       
       try {
         // Step 1: Encrypt with K1
@@ -280,28 +280,28 @@
         return result;
       } catch (e) {
         global.throwException('3DES Encryption Error', e.message, '3DES', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
     },
 
     // Decrypt block using Triple DES EDE mode
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!TripleDES.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, '3DES', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
 
       // Validate block size
-      if (!szCipherText || szCipherText.length !== 8) {
+      if (!ciphertext || ciphertext.length !== 8) {
         global.throwException('Invalid Block Size Exception', '3DES requires exactly 8 bytes block size', '3DES', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
 
-      const instance = TripleDES.instances[szID];
+      const instance = TripleDES.instances[id];
       
       // Triple DES EDE decryption: D_K1(E_K2(D_K3(C)))
       // Reverse of encryption: Decrypt with K3, Encrypt with K2, Decrypt with K1
-      let result = szCipherText;
+      let result = ciphertext;
       
       try {
         // Step 1: Decrypt with K3 (or K1 for EDE2)
@@ -316,7 +316,7 @@
         return result;
       } catch (e) {
         global.throwException('3DES Decryption Error', e.message, '3DES', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
     },
 
@@ -324,8 +324,8 @@
     TripleDESInstance: function(key) {
       if (key.length === 16) {
         // EDE2 mode: K1-K2-K1 (16-byte key = K1 + K2)
-        const key1 = szKey.substring(0, 8);
-        const key2 = szKey.substring(8, 16);
+        const key1 = key.substring(0, 8);
+        const key2 = key.substring(8, 16);
         
         this.keyMode = 'EDE2';
         this.desInstance1 = global.DES.KeySetup(key1);  // K1
@@ -334,9 +334,9 @@
         
       } else if (key.length === 24) {
         // EDE3 mode: K1-K2-K3 (24-byte key = K1 + K2 + K3)
-        const key1 = szKey.substring(0, 8);
-        const key2 = szKey.substring(8, 16);
-        const key3 = szKey.substring(16, 24);
+        const key1 = key.substring(0, 8);
+        const key2 = key.substring(8, 16);
+        const key3 = key.substring(16, 24);
         
         this.keyMode = 'EDE3';
         this.desInstance1 = global.DES.KeySetup(key1);  // K1
@@ -373,7 +373,7 @@
       
       // Check each 8-byte segment
       for (let i = 0; i < key.length; i += 8) {
-        const keySegment = szKey.substring(i, i + 8);
+        const keySegment = key.substring(i, i + 8);
         for (let j = 0; j < weakKeys.length; j++) {
           if (keySegment === weakKeys[j]) {
             return true;
@@ -390,7 +390,7 @@
         return null;
       }
       
-      const instance = TripleDES.instances[szID];
+      const instance = TripleDES.instances[id];
       return {
         mode: instance.keyMode,
         description: instance.keyMode === 'EDE2' ? 

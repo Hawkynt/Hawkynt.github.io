@@ -166,27 +166,27 @@
     },
     
     // Set up key and create instance
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'RC5[' + global.generateUniqueID() + ']';
       } while (RC5.instances[id] || global.objectInstances[id]);
       
-      RC5.instances[szID] = new RC5.RC5Instance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      RC5.instances[id] = new RC5.RC5Instance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (RC5.instances[id]) {
         // Securely clear the key table
-        const instance = RC5.instances[szID];
+        const instance = RC5.instances[id];
         if (instance.S && global.OpCodes && global.OpCodes.ClearArray) {
           global.OpCodes.ClearArray(instance.S);
         }
-        delete RC5.instances[szID];
-        delete global.objectInstances[szID];
+        delete RC5.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'RC5', 'ClearData');
@@ -195,16 +195,16 @@
     },
     
     // Encrypt 8-byte block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!RC5.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'RC5', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = RC5.instances[szID];
+      const instance = RC5.instances[id];
       
       // Handle string input - pad to 8 bytes if needed
-      let input = szPlainText;
+      let input = plaintext;
       while (input.length < 8) {
         input += '\0';
       }
@@ -221,18 +221,18 @@
     },
     
     // Decrypt 8-byte block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!RC5.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'RC5', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const instance = RC5.instances[szID];
+      const instance = RC5.instances[id];
       
       // Process in 8-byte blocks
       let result = '';
-      for (let blockStart = 0; blockStart < szCipherText.length; blockStart += 8) {
-        const block = szCipherText.substr(blockStart, 8);
+      for (let blockStart = 0; blockStart < ciphertext.length; blockStart += 8) {
+        const block = ciphertext.substr(blockStart, 8);
         if (block.length === 8) {
           const decryptedBlock = RC5._decryptBlock(instance, block);
           result += decryptedBlock;
@@ -314,7 +314,7 @@
     RC5Instance: function(key) {
       this.wordSize = RC5.DEFAULT_WORD_SIZE;
       this.rounds = RC5.DEFAULT_ROUNDS;
-      this.keyBytes = szKey ? szKey.length : RC5.DEFAULT_KEY_BYTES;
+      this.keyBytes = key ? key.length : RC5.DEFAULT_KEY_BYTES;
       this.tableSize = 2 * (this.rounds + 1); // t = 2*(r+1)
       this.S = new Array(this.tableSize); // Expanded key table
       

@@ -196,8 +196,8 @@
     },
     
     // Set up key
-    KeySetup: function(optional_szKey) {
-      if (!optional_szKey || optional_szKey.length !== 16) {
+    KeySetup: function(optional_key) {
+      if (!optional_key || optional_key.length !== 16) {
         global.throwException('XXTEA Key Exception', 'Key must be exactly 16 bytes (128 bits)', 'XXTEA', 'KeySetup');
         return null;
       }
@@ -207,9 +207,9 @@
         id = 'XXTEA[' + global.generateUniqueID() + ']';
       } while (XXTEA.instances[id] || global.objectInstances[id]);
       
-      XXTEA.instances[szID] = new XXTEA.XXTEAInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      XXTEA.instances[id] = new XXTEA.XXTEAInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
@@ -219,8 +219,8 @@
         if (XXTEA.instances[id].key) {
           global.OpCodes.ClearArray(XXTEA.instances[id].key);
         }
-        delete XXTEA.instances[szID];
-        delete global.objectInstances[szID];
+        delete XXTEA.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'XXTEA', 'ClearData');
@@ -229,21 +229,21 @@
     },
     
     // Encrypt variable-length block (minimum 8 bytes, multiple of 4)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!XXTEA.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'XXTEA', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      if (szPlainText.length < 8 || szPlainText.length % 4 !== 0) {
+      if (plaintext.length < 8 || plaintext.length % 4 !== 0) {
         global.throwException('XXTEA Block Size Exception', 'Input must be at least 8 bytes and multiple of 4', 'XXTEA', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const objXXTEA = XXTEA.instances[szID];
+      const objXXTEA = XXTEA.instances[id];
       
       // Convert string to bytes using OpCodes
-      const ptBytes = global.OpCodes.StringToBytes(szPlainText);
+      const ptBytes = global.OpCodes.StringToBytes(plaintext);
       
       // Convert to 32-bit words using OpCodes (big-endian)
       const words = [];
@@ -265,21 +265,21 @@
     },
     
     // Decrypt variable-length block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!XXTEA.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'XXTEA', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      if (szCipherText.length < 8 || szCipherText.length % 4 !== 0) {
+      if (ciphertext.length < 8 || ciphertext.length % 4 !== 0) {
         global.throwException('XXTEA Block Size Exception', 'Input must be at least 8 bytes and multiple of 4', 'XXTEA', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const objXXTEA = XXTEA.instances[szID];
+      const objXXTEA = XXTEA.instances[id];
       
       // Convert string to bytes using OpCodes
-      const ctBytes = global.OpCodes.StringToBytes(szCipherText);
+      const ctBytes = global.OpCodes.StringToBytes(ciphertext);
       
       // Convert to 32-bit words using OpCodes (big-endian)
       const words = [];

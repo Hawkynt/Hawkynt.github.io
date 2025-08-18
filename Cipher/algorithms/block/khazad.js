@@ -208,7 +208,7 @@
     },
     
     // Set up key
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       if (!Khazad.isInitialized) {
         Khazad.Init();
       }
@@ -218,16 +218,16 @@
         id = 'Cipher[' + global.generateUniqueID() + ']';
       } while (Khazad.instances[id] || global.objectInstances[id]);
       
-      Khazad.instances[szID] = new Khazad.KhazadInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      Khazad.instances[id] = new Khazad.KhazadInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (Khazad.instances[id]) {
-        delete Khazad.instances[szID];
-        delete global.objectInstances[szID];
+        delete Khazad.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'Khazad', 'ClearData');
@@ -236,29 +236,29 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Khazad.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Khazad', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      return Khazad.Crypt(szPlainText, Khazad.instances[id].roundKeyEnc);
+      return Khazad.Crypt(plaintext, Khazad.instances[id].roundKeyEnc);
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Khazad.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Khazad', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      return Khazad.Crypt(szCipherText, Khazad.instances[id].roundKeyDec);
+      return Khazad.Crypt(ciphertext, Khazad.instances[id].roundKeyDec);
     },
     
     // Core encryption/decryption function exactly like Java reference
-    Crypt: function(szText, roundKey) {
+    Crypt: function(text, roundKey) {
       // Map byte array block to cipher state (mu) and add initial round key (sigma[K^0])
-      let state = Khazad.bytesToLong(szText, 0);
+      let state = Khazad.bytesToLong(text, 0);
       state = Khazad.xor64(state, roundKey[0]);
       
       // R - 1 full rounds

@@ -103,16 +103,16 @@
         id = 'MUGI[' + global.generateUniqueID() + ']';
       } while (MUGI.instances[id] || global.objectInstances[id]);
       
-      MUGI.instances[szID] = new MUGI.MUGIInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      MUGI.instances[id] = new MUGI.MUGIInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (MUGI.instances[id]) {
         // Clear sensitive data
-        const instance = MUGI.instances[szID];
+        const instance = MUGI.instances[id];
         if (instance.state && global.OpCodes) {
           global.OpCodes.ClearArray(instance.state);
         }
@@ -122,19 +122,19 @@
         if (instance.keyBytes && global.OpCodes) {
           global.OpCodes.ClearArray(instance.keyBytes);
         }
-        delete MUGI.instances[szID];
-        delete global.objectInstances[szID];
+        delete MUGI.instances[id];
+        delete global.objectInstances[id];
       }
     },
     
     // Generate keystream and XOR with input (encryption/decryption)
-    encryptBlock: function(id, szInput) {
-      const instance = MUGI.instances[szID];
+    encryptBlock: function(id, input) {
+      const instance = MUGI.instances[id];
       if (!instance) {
         throw new Error('Invalid MUGI instance ID');
       }
       
-      const inputBytes = global.OpCodes.StringToBytes(szInput);
+      const inputBytes = global.OpCodes.StringToBytes(input);
       const outputBytes = new Array(inputBytes.length);
       
       for (let i = 0; i < inputBytes.length; i++) {
@@ -146,8 +146,8 @@
     },
     
     // Decryption is identical to encryption for stream ciphers
-    decryptBlock: function(id, szInput) {
-      return MUGI.encryptBlock(id, szInput);
+    decryptBlock: function(id, input) {
+      return MUGI.encryptBlock(id, input);
     },
     
     // MUGI instance class

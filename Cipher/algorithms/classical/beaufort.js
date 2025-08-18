@@ -88,38 +88,38 @@
         id = 'Beaufort[' + global.generateUniqueID() + ']';
       } while (Beaufort.instances[id] || global.objectInstances[id]);
       
-      Beaufort.instances[szID] = new Beaufort.BeaufortInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      Beaufort.instances[id] = new Beaufort.BeaufortInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear Beaufort data
     ClearData: function(id) {
       if (Beaufort.instances[id]) {
-        delete Beaufort.instances[szID];
-        delete global.objectInstances[szID];
+        delete Beaufort.instances[id];
+        delete global.objectInstances[id];
       }
     },
     
     // Encrypt using Beaufort cipher
-    encryptBlock: function(intInstanceID, szInput) {
+    encryptBlock: function(intInstanceID, input) {
       const id = 'Beaufort[' + intInstanceID + ']';
       if (!Beaufort.instances[id]) return '';
       
-      return Beaufort.instances[szID].encrypt(szInput);
+      return Beaufort.instances[id].encrypt(input);
     },
     
     // Decrypt using Beaufort cipher (same as encrypt due to reciprocal property)
-    decryptBlock: function(intInstanceID, szInput) {
+    decryptBlock: function(intInstanceID, input) {
       const id = 'Beaufort[' + intInstanceID + ']';
       if (!Beaufort.instances[id]) return '';
       
-      return Beaufort.instances[szID].encrypt(szInput); // Beaufort is reciprocal
+      return Beaufort.instances[id].encrypt(input); // Beaufort is reciprocal
     },
     
     // Beaufort Instance Class
     BeaufortInstance: function(key) {
-      this.key = szKey.toUpperCase().replace(/[^A-Z]/g, ''); // Keep only letters
+      this.key = key.toUpperCase().replace(/[^A-Z]/g, ''); // Keep only letters
       if (this.key.length === 0) {
         throw new Error('Beaufort: Key must contain at least one letter');
       }

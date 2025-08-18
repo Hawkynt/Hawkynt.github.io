@@ -131,15 +131,15 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Vigenere.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Vigenere', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       const instance = Vigenere.instances[id];
-      const normalizedText = Vigenere.normalizeText(szPlainText);
-      let szRet = '';
+      const normalizedText = Vigenere.normalizeText(plaintext);
+      let result = '';
       
       for (let i = 0; i < normalizedText.length; i++) {
         const textChar = normalizedText[i];
@@ -151,26 +151,26 @@
         if (textIndex !== -1 && keyIndex !== -1) {
           // Vigenère encryption: (text + key) mod 26
           const encryptedIndex = (textIndex + keyIndex) % 26;
-          szRet += Vigenere.ALPHABET[encryptedIndex];
+          result += Vigenere.ALPHABET[encryptedIndex];
         } else {
           // Should not happen with normalized text, but defensive programming
-          szRet += textChar;
+          result += textChar;
         }
       }
       
-      return szRet;
+      return result;
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Vigenere.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Vigenere', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       const instance = Vigenere.instances[id];
-      const normalizedText = Vigenere.normalizeText(szCipherText);
-      let szRet = '';
+      const normalizedText = Vigenere.normalizeText(ciphertext);
+      let result = '';
       
       for (let i = 0; i < normalizedText.length; i++) {
         const cipherChar = normalizedText[i];
@@ -182,14 +182,14 @@
         if (cipherIndex !== -1 && keyIndex !== -1) {
           // Vigenère decryption: (cipher - key + 26) mod 26
           const decryptedIndex = (cipherIndex - keyIndex + 26) % 26;
-          szRet += Vigenere.ALPHABET[decryptedIndex];
+          result += Vigenere.ALPHABET[decryptedIndex];
         } else {
           // Should not happen with normalized text, but defensive programming
-          szRet += cipherChar;
+          result += cipherChar;
         }
       }
       
-      return szRet;
+      return result;
     },
     
     // Instance class

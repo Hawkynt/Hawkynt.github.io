@@ -78,33 +78,33 @@
         id = 'FF3[' + global.generateUniqueID() + ']';
       } while (FF3.instances[id] || global.objectInstances[id]);
       
-      FF3.instances[szID] = new FF3.FF3Instance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      FF3.instances[id] = new FF3.FF3Instance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear FF3 data
     ClearData: function(id) {
       if (FF3.instances[id]) {
-        delete FF3.instances[szID];
-        delete global.objectInstances[szID];
+        delete FF3.instances[id];
+        delete global.objectInstances[id];
       }
     },
     
     // Encrypt a block using FF3
-    encryptBlock: function(intInstanceID, szInput, optional_szTweak, optional_intRadix) {
+    encryptBlock: function(intInstanceID, input, optional_tweak, optional_intRadix) {
       const id = 'FF3[' + intInstanceID + ']';
       if (!FF3.instances[id]) return '';
       
-      return FF3.instances[szID].encrypt(szInput, optional_szTweak || '0000000000000000', optional_intRadix || 10);
+      return FF3.instances[id].encrypt(input, optional_tweak || '0000000000000000', optional_intRadix || 10);
     },
     
     // Decrypt a block using FF3
-    decryptBlock: function(intInstanceID, szInput, optional_szTweak, optional_intRadix) {
+    decryptBlock: function(intInstanceID, input, optional_tweak, optional_intRadix) {
       const id = 'FF3[' + intInstanceID + ']';
       if (!FF3.instances[id]) return '';
       
-      return FF3.instances[szID].decrypt(szInput, optional_szTweak || '0000000000000000', optional_intRadix || 10);
+      return FF3.instances[id].decrypt(input, optional_tweak || '0000000000000000', optional_intRadix || 10);
     },
     
     // FF3 Instance Class

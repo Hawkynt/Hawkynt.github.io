@@ -235,9 +235,9 @@
       } while (Blowfish.instances[id] || global.objectInstances[id]);
       
       try {
-        Blowfish.instances[szID] = new Blowfish.BlowfishInstance(optional_szKey);
-        global.objectInstances[szID] = true;
-        return szID;
+        Blowfish.instances[id] = new Blowfish.BlowfishInstance(optional_szKey);
+        global.objectInstances[id] = true;
+        return id;
       } catch (e) {
         global.throwException('Key Setup Exception', e.message, 'Blowfish', 'KeySetup');
         return null;
@@ -248,7 +248,7 @@
     ClearData: function(id) {
       if (Blowfish.instances[id]) {
         // Securely clear sensitive data
-        const instance = Blowfish.instances[szID];
+        const instance = Blowfish.instances[id];
         
         // Use constant-time memory clearing
         if (instance.arrM_pbox) {
@@ -273,8 +273,8 @@
           global.OpCodes.ReturnToPool(instance.arrM_sbox4);
         }
         
-        delete Blowfish.instances[szID];
-        delete global.objectInstances[szID];
+        delete Blowfish.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'Blowfish', 'ClearData');
@@ -301,7 +301,7 @@
         global.OpCodes.RecordOperation('Blowfish-encrypt', 1);
       }
       
-      return Blowfish.encryptBlock(szPlainText, Blowfish.instances[id]);
+      return Blowfish._encryptBlock(szPlainText, Blowfish.instances[id]);
     },
     
     // Decrypt block with enhanced validation and performance monitoring
@@ -323,7 +323,7 @@
         global.OpCodes.RecordOperation('Blowfish-decrypt', 1);
       }
       
-      return Blowfish.decryptBlock(szCipherText, Blowfish.instances[id]);
+      return Blowfish._decryptBlock(szCipherText, Blowfish.instances[id]);
     },
     
     // Core Feistel function - matches original Blowfish F-function exactly
@@ -344,7 +344,7 @@
     },
     
     // Encrypt a 64-bit block - matches original implementation exactly
-    encryptBlock: function(szText, objBlowfish) {
+    _encryptBlock: function(szText, objBlowfish) {
       // Split input into two 32-bit halves exactly like original
       let left = 
         (szText.charCodeAt(0) & 0xff) << 24 |
@@ -396,7 +396,7 @@
     },
     
     // Decrypt a 64-bit block - matches original implementation exactly  
-    decryptBlock: function(szText, objBlowfish) {
+    _decryptBlock: function(szText, objBlowfish) {
       // Split input into two 32-bit halves exactly like original
       let left = 
         (szText.charCodeAt(0) & 0xff) << 24 |
@@ -485,7 +485,7 @@
           throw new Error(`Block ${i} has invalid size: ${blocks[i].length} bytes`);
         }
         
-        const encrypted = Blowfish.encryptBlock(keyInstance, blocks[i]);
+        const encrypted = Blowfish._encryptBlock(blocks[i], keyInstance);
         results.push(encrypted);
       }
       
@@ -511,7 +511,7 @@
           throw new Error(`Block ${i} has invalid size: ${blocks[i].length} bytes`);
         }
         
-        const decrypted = Blowfish.decryptBlock(keyInstance, blocks[i]);
+        const decrypted = Blowfish._decryptBlock(blocks[i], keyInstance);
         results.push(decrypted);
       }
       

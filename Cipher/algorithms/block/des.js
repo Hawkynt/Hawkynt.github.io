@@ -346,15 +346,15 @@
     },
 
     // Set up key with enhanced validation
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       // Validate key length
-      if (!optional_szKey || optional_szKey.length !== 8) {
+      if (!optional_key || optional_key.length !== 8) {
         global.throwException('Invalid Key Length Exception', 'DES requires exactly 8 bytes key length', 'DES', 'KeySetup');
         return null;
       }
       
       // Check for weak keys
-      if (DES.isWeakKey(optional_szKey)) {
+      if (DES.isWeakKey(optional_key)) {
         console.warn('Warning: Detected weak or semi-weak DES key. Consider using a different key.');
       }
 
@@ -364,9 +364,9 @@
       } while (DES.instances[id] || global.objectInstances[id]);
 
       try {
-        DES.instances[szID] = new DES.DESInstance(optional_szKey);
-        global.objectInstances[szID] = true;
-        return szID;
+        DES.instances[id] = new DES.DESInstance(optional_key);
+        global.objectInstances[id] = true;
+        return id;
       } catch (e) {
         global.throwException('Key Setup Exception', e.message, 'DES', 'KeySetup');
         return null;
@@ -418,7 +418,7 @@
     // Clear cipher data with secure cleanup
     ClearData: function(id) {
       if (DES.instances[id]) {
-        const instance = DES.instances[szID];
+        const instance = DES.instances[id];
         
         // Securely clear subkeys
         if (instance.subkeys) {
@@ -430,8 +430,8 @@
           global.OpCodes.ClearArray(instance.subkeys);
         }
         
-        delete DES.instances[szID];
-        delete global.objectInstances[szID];
+        delete DES.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'DES', 'ClearData');
@@ -440,51 +440,51 @@
     },
 
     // Encrypt block with enhanced validation and monitoring
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!DES.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'DES', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
 
       // Validate block size
-      if (!szPlainText || szPlainText.length !== 8) {
+      if (!plaintext || plaintext.length !== 8) {
         global.throwException('Invalid Block Size Exception', 'DES requires exactly 8 bytes block size', 'DES', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
 
-      const instance = DES.instances[szID];
+      const instance = DES.instances[id];
       
       // Record operation for performance monitoring
       if (global.OpCodes.RecordOperation) {
         global.OpCodes.RecordOperation('DES-encrypt', 1);
       }
       
-      const plaintextBytes = DES.stringToBytes(szPlainText);
+      const plaintextBytes = DES.stringToBytes(plaintext);
       const encryptedBytes = DES.crypt(plaintextBytes, instance.subkeys, false);
       return DES.bytesToString(encryptedBytes);
     },
 
     // Decrypt block with enhanced validation and monitoring
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!DES.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'DES', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
 
       // Validate block size
-      if (!szCipherText || szCipherText.length !== 8) {
+      if (!ciphertext || ciphertext.length !== 8) {
         global.throwException('Invalid Block Size Exception', 'DES requires exactly 8 bytes block size', 'DES', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
 
-      const instance = DES.instances[szID];
+      const instance = DES.instances[id];
       
       // Record operation for performance monitoring
       if (global.OpCodes.RecordOperation) {
         global.OpCodes.RecordOperation('DES-decrypt', 1);
       }
       
-      const ciphertextBytes = DES.stringToBytes(szCipherText);
+      const ciphertextBytes = DES.stringToBytes(ciphertext);
       const decryptedBytes = DES.crypt(ciphertextBytes, instance.subkeys, true);
       return DES.bytesToString(decryptedBytes);
     },

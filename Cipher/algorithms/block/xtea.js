@@ -171,8 +171,8 @@
     },
     
     // Set up key
-    KeySetup: function(optional_szKey) {
-      if (!optional_szKey || optional_szKey.length !== 16) {
+    KeySetup: function(optional_key) {
+      if (!optional_key || optional_key.length !== 16) {
         global.throwException('XTEA Key Exception', 'Key must be exactly 16 bytes (128 bits)', 'XTEA', 'KeySetup');
         return null;
       }
@@ -182,9 +182,9 @@
         id = 'XTEA[' + global.generateUniqueID() + ']';
       } while (XTEA.instances[id] || global.objectInstances[id]);
       
-      XTEA.instances[szID] = new XTEA.XTEAInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      XTEA.instances[id] = new XTEA.XTEAInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
@@ -194,8 +194,8 @@
         if (XTEA.instances[id].key) {
           global.OpCodes.ClearArray(XTEA.instances[id].key);
         }
-        delete XTEA.instances[szID];
-        delete global.objectInstances[szID];
+        delete XTEA.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'XTEA', 'ClearData');
@@ -204,23 +204,23 @@
     },
     
     // Encrypt 64-bit block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!XTEA.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'XTEA', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      if (szPlainText.length !== 8) {
+      if (plaintext.length !== 8) {
         global.throwException('XTEA Block Size Exception', 'Input must be exactly 8 bytes', 'XTEA', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const objXTEA = XTEA.instances[szID];
+      const objXTEA = XTEA.instances[id];
       
       // Convert input string to bytes manually (to match working version exactly)
       const ptBytes = [];
-      for (let i = 0; i < szPlainText.length; i++) {
-        ptBytes[i] = szPlainText.charCodeAt(i);
+      for (let i = 0; i < plaintext.length; i++) {
+        ptBytes[i] = plaintext.charCodeAt(i);
       }
       
       // Pack to 32-bit words (big-endian, manual to match working version)
@@ -258,23 +258,23 @@
     },
     
     // Decrypt 64-bit block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!XTEA.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'XTEA', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      if (szCipherText.length !== 8) {
+      if (ciphertext.length !== 8) {
         global.throwException('XTEA Block Size Exception', 'Input must be exactly 8 bytes', 'XTEA', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const objXTEA = XTEA.instances[szID];
+      const objXTEA = XTEA.instances[id];
       
       // Convert input string to bytes manually (to match working version exactly)
       const ctBytes = [];
-      for (let i = 0; i < szCipherText.length; i++) {
-        ctBytes[i] = szCipherText.charCodeAt(i);
+      for (let i = 0; i < ciphertext.length; i++) {
+        ctBytes[i] = ciphertext.charCodeAt(i);
       }
       
       // Pack to 32-bit words (big-endian, manual to match working version)
@@ -316,7 +316,7 @@
       // Convert 128-bit key to four 32-bit words manually (to match working version)
       const keyBytes = [];
       for (let i = 0; i < key.length; i++) {
-        keyBytes[i] = szKey.charCodeAt(i);
+        keyBytes[i] = key.charCodeAt(i);
       }
       
       this.key = [

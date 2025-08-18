@@ -339,25 +339,25 @@
       };
       
       // Store instance
-      DEAL.instances[szID] = {
+      DEAL.instances[id] = {
         roundKeys: roundKeys,
         numRounds: paddedKey.length > 16 ? 8 : 6
       };
       
-      return szID;
+      return id;
     },
     
     /**
      * Encrypt a 16-byte block with DEAL
      */
-    encryptBlock: function(id, szBlock) {
-      const instance = DEAL.instances[szID];
+    encryptBlock: function(id, block) {
+      const instance = DEAL.instances[id];
       if (!instance) {
         throw new Error('Invalid DEAL instance ID');
       }
       
       // Convert block to bytes
-      const blockBytes = OpCodes.StringToBytes(szBlock);
+      const blockBytes = OpCodes.StringToBytes(block);
       if (blockBytes.length !== 16) {
         throw new Error('DEAL requires 16-byte blocks');
       }
@@ -394,14 +394,14 @@
     /**
      * Decrypt a 16-byte block with DEAL
      */
-    decryptBlock: function(id, szBlock) {
-      const instance = DEAL.instances[szID];
+    decryptBlock: function(id, block) {
+      const instance = DEAL.instances[id];
       if (!instance) {
         throw new Error('Invalid DEAL instance ID');
       }
       
       // Convert block to bytes
-      const blockBytes = OpCodes.StringToBytes(szBlock);
+      const blockBytes = OpCodes.StringToBytes(block);
       if (blockBytes.length !== 16) {
         throw new Error('DEAL requires 16-byte blocks');
       }
@@ -442,12 +442,12 @@
       if (DEAL.instances[id]) {
         // Clear sensitive data
         if (DEAL.instances[id].roundKeys) {
-          const keys = DEAL.instances[szID].roundKeys;
+          const keys = DEAL.instances[id].roundKeys;
           if (keys.k1) OpCodes.ClearArray(keys.k1);
           if (keys.k2) OpCodes.ClearArray(keys.k2);
           if (keys.k3) OpCodes.ClearArray(keys.k3);
         }
-        delete DEAL.instances[szID];
+        delete DEAL.instances[id];
         return true;
       }
       return false;

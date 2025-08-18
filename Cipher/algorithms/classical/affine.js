@@ -79,7 +79,7 @@
     // Parse key string to extract a and b values
     parseKey: function(key) {
       // Support formats: "a,b", "a:b", "a b", or "a;b"
-      const parts = szKey.replace(/[^\d,\-]/g, ' ').split(/[\s,:;]+/);
+      const parts = key.replace(/[^\d,\-]/g, ' ').split(/[\s,:;]+/);
       if (parts.length < 2) {
         throw new Error('Affine key must contain two values: a and b (e.g., "5,8")');
       }
@@ -111,9 +111,9 @@
       } while (Affine.instances[id] || global.objectInstances[id]);
       
       try {
-        Affine.instances[szID] = new Affine.AffineInstance(key);
-        global.objectInstances[szID] = true;
-        return szID;
+        Affine.instances[id] = new Affine.AffineInstance(key);
+        global.objectInstances[id] = true;
+        return id;
       } catch (error) {
         global.throwException('Invalid Key Exception', error.message, 'Affine', 'KeySetup');
         return null;
@@ -124,13 +124,13 @@
     ClearData: function(id) {
       if (Affine.instances[id]) {
         // Secure cleanup - clear the key values
-        const instance = Affine.instances[szID];
+        const instance = Affine.instances[id];
         instance.a = 0;
         instance.b = 0;
         instance.aInverse = 0;
         instance.originalKey = '';
-        delete Affine.instances[szID];
-        delete global.objectInstances[szID];
+        delete Affine.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'Affine', 'ClearData');
@@ -144,15 +144,15 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Affine.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Affine', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = Affine.instances[szID];
-      const normalizedText = Affine.normalizeText(szPlainText);
-      let szRet = '';
+      const instance = Affine.instances[id];
+      const normalizedText = Affine.normalizeText(plaintext);
+      let result = '';
       
       for (let i = 0; i < normalizedText.length; i++) {
         const char = normalizedText[i];
@@ -161,26 +161,26 @@
         if (x !== -1) {
           // Apply affine transformation: y = (ax + b) mod 26
           const y = OpCodes.AddMod(OpCodes.MulMod(instance.a, x, 26), instance.b, 26);
-          szRet += Affine.ALPHABET[y];
+          result += Affine.ALPHABET[y];
         } else {
           // Should not happen with normalized text, but defensive programming
-          szRet += char;
+          result += char;
         }
       }
       
-      return szRet;
+      return result;
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Affine.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Affine', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const instance = Affine.instances[szID];
-      const normalizedText = Affine.normalizeText(szCipherText);
-      let szRet = '';
+      const instance = Affine.instances[id];
+      const normalizedText = Affine.normalizeText(ciphertext);
+      let result = '';
       
       for (let i = 0; i < normalizedText.length; i++) {
         const char = normalizedText[i];
@@ -189,19 +189,19 @@
         if (y !== -1) {
           // Apply inverse affine transformation: x = a^(-1)(y - b) mod 26
           const x = OpCodes.MulMod(instance.aInverse, OpCodes.SubMod(y, instance.b, 26), 26);
-          szRet += Affine.ALPHABET[x];
+          result += Affine.ALPHABET[x];
         } else {
           // Should not happen with normalized text, but defensive programming
-          szRet += char;
+          result += char;
         }
       }
       
-      return szRet;
+      return result;
     },
     
     // Instance class
     AffineInstance: function(key) {
-      this.originalKey = szKey;
+      this.originalKey = key;
       const parsed = Affine.parseKey(key);
       this.a = parsed.a;
       this.b = parsed.b;

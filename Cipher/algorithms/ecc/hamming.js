@@ -297,7 +297,7 @@
      * @param {Array|string} data - Input data (array of bits or binary string)
      * @returns {Array} Encoded codeword with parity bits
      */
-    szEncryptBlock: function(keyId, data) {
+    encryptBlock: function(keyId, data) {
       const instance = this.instances[keyId];
       if (!instance) {
         throw new Error('Invalid instance ID');
@@ -354,7 +354,7 @@
      * @param {Array} codeword - Received codeword (may contain errors)
      * @returns {Object} {data: Array, corrected: boolean, errorPosition: number, syndrome: Array}
      */
-    szDecryptBlock: function(keyId, codeword) {
+    decryptBlock: function(keyId, codeword) {
       const instance = this.instances[keyId];
       if (!instance) {
         throw new Error('Invalid instance ID');
@@ -590,12 +590,12 @@
       const demonstrations = [];
       
       // Original encoding
-      const originalCodeword = this.szEncryptBlock(keyId, dataBits);
+      const originalCodeword = this.encryptBlock(keyId, dataBits);
       demonstrations.push({
         description: 'Original codeword (no errors)',
         codeword: originalCodeword.slice(),
         errorPosition: 0,
-        result: this.szDecryptBlock(keyId, originalCodeword)
+        result: this.decryptBlock(keyId, originalCodeword)
       });
       
       // Test each possible single bit error
@@ -603,7 +603,7 @@
         const corruptedCodeword = originalCodeword.slice();
         corruptedCodeword[pos] ^= 1; // Flip bit at position pos
         
-        const result = this.szDecryptBlock(keyId, corruptedCodeword);
+        const result = this.decryptBlock(keyId, corruptedCodeword);
         
         demonstrations.push({
           description: `Error in bit position ${pos + 1}`,
@@ -631,11 +631,11 @@
             
             if (testVector.dataBits) {
               // Test encoding
-              const encoded = this.szEncryptBlock(keyId, testVector.dataBits);
+              const encoded = this.encryptBlock(keyId, testVector.dataBits);
               
               // Test decoding (with or without errors)
               const received = testVector.received || encoded;
-              const decoded = this.szDecryptBlock(keyId, received);
+              const decoded = this.decryptBlock(keyId, received);
               
               const passed = testVector.received ? 
                 (decoded.corrected && decoded.errorPosition === testVector.errorPosition) :

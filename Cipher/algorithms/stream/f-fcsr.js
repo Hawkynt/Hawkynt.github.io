@@ -85,16 +85,16 @@
         id = 'F-FCSR[' + global.generateUniqueID() + ']';
       } while (FFCSR.instances[id] || global.objectInstances[id]);
       
-      FFCSR.instances[szID] = new FFCSR.FFCSRInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      FFCSR.instances[id] = new FFCSR.FFCSRInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (FFCSR.instances[id]) {
         // Clear sensitive data
-        const instance = FFCSR.instances[szID];
+        const instance = FFCSR.instances[id];
         if (instance.mainRegister && global.OpCodes) {
           global.OpCodes.ClearArray(instance.mainRegister);
         }
@@ -104,19 +104,19 @@
         if (instance.keyBytes && global.OpCodes) {
           global.OpCodes.ClearArray(instance.keyBytes);
         }
-        delete FFCSR.instances[szID];
-        delete global.objectInstances[szID];
+        delete FFCSR.instances[id];
+        delete global.objectInstances[id];
       }
     },
     
     // Generate keystream and XOR with input (encryption/decryption)
-    encryptBlock: function(id, szInput) {
-      const instance = FFCSR.instances[szID];
+    encryptBlock: function(id, input) {
+      const instance = FFCSR.instances[id];
       if (!instance) {
         throw new Error('Invalid F-FCSR instance ID');
       }
       
-      const inputBytes = global.OpCodes.StringToBytes(szInput);
+      const inputBytes = global.OpCodes.StringToBytes(input);
       const outputBytes = new Array(inputBytes.length);
       
       for (let i = 0; i < inputBytes.length; i++) {
@@ -128,8 +128,8 @@
     },
     
     // Decryption is identical to encryption for stream ciphers
-    decryptBlock: function(id, szInput) {
-      return FFCSR.encryptBlock(id, szInput);
+    decryptBlock: function(id, input) {
+      return FFCSR.encryptBlock(id, input);
     },
     
     // F-FCSR instance class

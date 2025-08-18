@@ -143,13 +143,13 @@
     },
     
     // Set up key (BASE64 doesn't use keys)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'BASE64[' + global.generateUniqueID() + ']';
       } while (BASE64.instances[id] || global.objectInstances[id]);
       
-      BASE64.instances[id] = new BASE64.Base64Instance(optional_szKey);
+      BASE64.instances[id] = new BASE64.Base64Instance(optional_key);
       global.objectInstances[id] = true;
       return id;
     },
@@ -167,23 +167,23 @@
     },
     
     // Encrypt block (encode to BASE64)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!BASE64.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'BASE64', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      return BASE64.encode(szPlainText);
+      return BASE64.encode(plaintext);
     },
     
     // Decrypt block (decode from BASE64)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!BASE64.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'BASE64', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      return BASE64.decode(szCipherText);
+      return BASE64.decode(ciphertext);
     },
     
     // Encode string to BASE64
@@ -248,12 +248,12 @@
     },
     
     // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, szPlainText) {
-      return this.encryptBlock(id, szPlainText);
+    EncryptBlock: function(id, plaintext) {
+      return this.encryptBlock(id, plaintext);
     },
     
-    DecryptBlock: function(id, szCipherText) {
-      return this.decryptBlock(id, szCipherText);
+    DecryptBlock: function(id, ciphertext) {
+      return this.decryptBlock(id, ciphertext);
     }
   };
   

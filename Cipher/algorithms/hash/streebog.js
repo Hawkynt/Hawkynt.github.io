@@ -341,10 +341,10 @@
       
       // For the cipher system, we'll treat it as a hash function
       // that operates on hex strings
-      encryptBlock: function(nKeyIndex, szPlaintext) {
+      encryptBlock: function(nKeyIndex, plaintext) {
         try {
           // Parse hex input
-          const bytes = OpCodes.HexToBytes(szPlaintext);
+          const bytes = OpCodes.HexToBytes(plaintext);
           const hash = Streebog.Hash(bytes, false); // 512-bit
           return OpCodes.BytesToHex(hash);
         } catch (e) {
@@ -352,7 +352,7 @@
         }
       },
       
-      decryptBlock: function(nKeyIndex, szCiphertext) {
+      decryptBlock: function(nKeyIndex, ciphertext) {
         // Hash functions are one-way
         return "Hash functions cannot be reversed";
       },
