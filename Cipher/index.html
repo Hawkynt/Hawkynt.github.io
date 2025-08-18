@@ -338,25 +338,6 @@
                 </div>
             </div>
         </main>
-        
-        <!-- Algorithm Metadata Modal -->
-        <div class="metadata-modal" id="metadata-modal">
-            <div class="metadata-content">
-                <div class="metadata-header">
-                    <div class="metadata-title" id="metadata-title">Algorithm Details</div>
-                    <button class="metadata-close" onclick="app.closeMetadataModal()">×</button>
-                </div>
-                <div class="metadata-tabs">
-                    <button class="metadata-tab active" onclick="app.switchMetadataTab(event, 'info')">📋 Info</button>
-                    <button class="metadata-tab" onclick="app.switchMetadataTab(event, 'references')">📚 References</button>
-                    <button class="metadata-tab" onclick="app.switchMetadataTab(event, 'test-vectors')">🧪 Test Vectors</button>
-                    <button class="metadata-tab" onclick="app.switchMetadataTab(event, 'code')">💻 Code</button>
-                </div>
-                <div class="metadata-body" id="metadata-body">
-                    <!-- Tab content will be populated here -->
-                </div>
-            </div>
-        </div>
     </div>
 
     <!-- Core Scripts -->
@@ -683,6 +664,9 @@
     <script src="./algorithms/padding/bit-padding.js"></script>
     
     <!-- Cipher System Core (loaded earlier) -->
+    
+    <!-- Algorithm Metadata System -->
+    <script src="algorithm-metadata.js"></script>
     
     <!-- Application Models -->
     <script src="index.models.algorithms.js"></script>

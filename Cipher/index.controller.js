@@ -101,6 +101,7 @@ class CipherController {
         console.log('📚 Loading algorithms...');
         console.log('Cipher object available:', typeof Cipher !== 'undefined');
         console.log('GetCiphers method available:', typeof Cipher !== 'undefined' && typeof Cipher.GetCiphers === 'function');
+        console.log('AlgorithmMetadata available:', typeof AlgorithmMetadata !== 'undefined');
         
         // Load from universal cipher system if available
         if (typeof Cipher !== 'undefined' && Cipher.GetCiphers) {
@@ -109,16 +110,39 @@ class CipherController {
             for (const name of cipherNames) {
                 const cipher = Cipher.GetCipher(name);
                 if (cipher) {
-                    // Use category from cipher properties or infer from implementation
-                    let category = cipher.szCategory || this.inferCategory(name, cipher) || 'unknown';
+                    // Get enhanced metadata from AlgorithmMetadata system
+                    let metadata = null;
+                    let category = 'unknown';
+                    let country = '';
+                    let year = null;
+                    
+                    if (typeof AlgorithmMetadata !== 'undefined') {
+                        metadata = AlgorithmMetadata.getMetadata(name);
+                        if (metadata) {
+                            console.log(`Found metadata for ${name}:`, metadata);
+                            category = metadata.category?.name?.toLowerCase() || this.inferCategory(name, cipher) || 'unknown';
+                            country = metadata.country?.name || '';
+                            year = metadata.year || null;
+                        } else {
+                            console.log(`No metadata found for ${name}, using fallback`);
+                            category = cipher.szCategory || this.inferCategory(name, cipher) || 'unknown';
+                            country = cipher.szCountry || '';
+                            year = cipher.nYear || null;
+                        }
+                    } else {
+                        // Fallback to cipher properties
+                        category = cipher.szCategory || this.inferCategory(name, cipher) || 'unknown';
+                        country = cipher.szCountry || '';
+                        year = cipher.nYear || null;
+                    }
                     
                     this.algorithms.set(name, {
                         name: cipher.szName || name,
                         category: category,
-                        country: cipher.szCountry || cipher.metadata?.country || '',
-                        year: cipher.nYear || cipher.metadata?.year || null,
+                        country: country,
+                        year: year,
                         working: cipher.working !== false,
-                        metadata: cipher.metadata,
+                        metadata: metadata || cipher.metadata,
                         implementation: cipher
                     });
                 }
@@ -256,7 +280,22 @@ class CipherController {
         grid.className = 'algorithms-grid';
         
         algorithms.forEach(algorithm => {
-            const card = this.createAlgorithmCard(algorithm);
+            let card;
+            
+            // Use AlgorithmCard component if available, otherwise fall back to old method
+            if (window.AlgorithmCard) {
+                const algorithmCard = new AlgorithmCard(algorithm, {
+                    showActions: true,
+                    showStatus: true,
+                    showBadges: true,
+                    onDetailsClick: (algo) => this.showMetadata(algo.name),
+                    onUseClick: (algo) => this.selectAlgorithm(algo.name)
+                });
+                card = algorithmCard.createElement();
+            } else {
+                card = this.createAlgorithmCard(algorithm);
+            }
+            
             grid.appendChild(card);
         });
         
@@ -401,6 +440,9 @@ class CipherController {
             document.body.appendChild(modal);
         }
         
+        // Set the category data attribute for styling
+        modal.setAttribute('data-category', algorithm.category);
+        
         // Populate modal with algorithm data
         this.populateMetadataModal(modal, algorithm);
         
@@ -419,8 +461,25 @@ class CipherController {
                     <h2 id="modal-algorithm-name">Algorithm Details</h2>
                     <span class="modal-close">&times;</span>
                 </div>
+                <div class="modal-tabs">
+                    <button class="modal-tab active" data-tab="info">📋 Info</button>
+                    <button class="modal-tab" data-tab="references">📚 References</button>
+                    <button class="modal-tab" data-tab="test-vectors">🧪 Test Vectors</button>
+                    <button class="modal-tab" data-tab="code">💻 Code</button>
+                </div>
                 <div class="modal-body">
-                    <div id="modal-algorithm-info"></div>
+                    <div class="modal-tab-content active" id="modal-tab-info">
+                        <!-- Info content will be populated here -->
+                    </div>
+                    <div class="modal-tab-content" id="modal-tab-references">
+                        <!-- References content will be populated here -->
+                    </div>
+                    <div class="modal-tab-content" id="modal-tab-test-vectors">
+                        <!-- Test vectors content will be populated here -->
+                    </div>
+                    <div class="modal-tab-content" id="modal-tab-code">
+                        <!-- Code content will be populated here -->
+                    </div>
                 </div>
             </div>
         `;
@@ -435,16 +494,65 @@ class CipherController {
             }
         });
         
+        // Add keyboard support (ESC key to close)
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.classList.contains('active')) {
+                this.closeMetadataModal();
+            }
+        });
+        
+        // Add tab switching functionality
+        const tabButtons = modal.querySelectorAll('.modal-tab');
+        tabButtons.forEach(button => {
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                const tabName = button.getAttribute('data-tab');
+                this.switchMetadataTab(tabName);
+            });
+        });
+        
         return modal;
+    }
+    
+    switchMetadataTab(tabName) {
+        const modal = document.getElementById('metadata-modal');
+        if (!modal) return;
+        
+        // Remove active class from all tabs and tab contents
+        modal.querySelectorAll('.modal-tab').forEach(tab => tab.classList.remove('active'));
+        modal.querySelectorAll('.modal-tab-content').forEach(content => content.classList.remove('active'));
+        
+        // Add active class to selected tab and content
+        const selectedTab = modal.querySelector(`[data-tab="${tabName}"]`);
+        const selectedContent = modal.querySelector(`#modal-tab-${tabName}`);
+        
+        if (selectedTab) selectedTab.classList.add('active');
+        if (selectedContent) selectedContent.classList.add('active');
     }
     
     populateMetadataModal(modal, algorithm) {
         const nameEl = modal.querySelector('#modal-algorithm-name');
-        const infoEl = modal.querySelector('#modal-algorithm-info');
-        
         nameEl.textContent = `${algorithm.name} - Details`;
         
+        // Populate Info tab
+        this.populateInfoTab(modal, algorithm);
+        
+        // Populate References tab
+        this.populateReferencesTab(modal, algorithm);
+        
+        // Populate Test Vectors tab
+        this.populateTestVectorsTab(modal, algorithm);
+        
+        // Populate Code tab
+        this.populateCodeTab(modal, algorithm);
+    }
+    
+    populateInfoTab(modal, algorithm) {
+        const infoContent = modal.querySelector('#modal-tab-info');
+        
         // Create an algorithm card instance for the modal
+        let cardHtml = '';
+        
         if (window.AlgorithmCard) {
             const modalCard = new AlgorithmCard(algorithm, {
                 showActions: false, // Don't show Use/Details buttons in modal
@@ -454,131 +562,318 @@ class CipherController {
             });
             
             const cardElement = modalCard.createElement();
+            cardHtml = cardElement.outerHTML;
+        }
+        
+        // Add expanded details section after the card
+        let expandedDetails = '';
+        const metadata = algorithm.metadata;
+        
+        if (metadata) {
+            expandedDetails += '<div class="expanded-details">';
+            expandedDetails += '<h3>Algorithm Information</h3>';
             
-            // Add expanded details section after the card
-            let expandedDetails = '';
+            // Basic Information
+            expandedDetails += '<div class="detail-section">';
+            expandedDetails += '<h4>Basic Information</h4>';
             
-            if (algorithm.metadata) {
-                const metadata = algorithm.metadata;
+            if (metadata.description) {
+                expandedDetails += `<div class="detail-item"><strong>Description:</strong> ${metadata.description}</div>`;
+            }
+            
+            if (metadata.inventor) {
+                expandedDetails += `<div class="detail-item"><strong>Inventor/Designer:</strong> ${metadata.inventor}</div>`;
+            }
+            
+            if (metadata.year) {
+                expandedDetails += `<div class="detail-item"><strong>Year:</strong> ${metadata.year}</div>`;
+            }
+            
+            if (metadata.country && metadata.country.name) {
+                expandedDetails += `<div class="detail-item"><strong>Origin:</strong> ${metadata.country.flag} ${metadata.country.name}</div>`;
+            }
+            
+            expandedDetails += '</div>';
+            
+            // Technical Specifications
+            if (metadata.keySize !== undefined || metadata.blockSize !== undefined || metadata.category) {
+                expandedDetails += '<div class="detail-section">';
+                expandedDetails += '<h4>Technical Specifications</h4>';
                 
-                expandedDetails += '<div class="expanded-details">';
-                expandedDetails += '<h3>Technical Details</h3>';
-                
-                // Technical specifications
-                if (metadata.keySize || metadata.blockSize || metadata.cryptoFamily || metadata.cryptoType) {
-                    expandedDetails += '<div class="detail-section">';
-                    expandedDetails += '<h4>Specifications</h4>';
-                    if (metadata.keySize) {
-                        expandedDetails += `<div class="detail-item"><strong>Key Size:</strong> ${metadata.keySize}</div>`;
+                if (metadata.category && metadata.category.name) {
+                    expandedDetails += `<div class="detail-item"><strong>Category:</strong> ${metadata.category.icon} ${metadata.category.name}</div>`;
+                    if (metadata.category.description) {
+                        expandedDetails += `<div class="detail-item"><strong>Category Description:</strong> ${metadata.category.description}</div>`;
                     }
-                    if (metadata.blockSize) {
-                        expandedDetails += `<div class="detail-item"><strong>Block Size:</strong> ${metadata.blockSize}</div>`;
-                    }
-                    if (metadata.cryptoFamily) {
-                        expandedDetails += `<div class="detail-item"><strong>Crypto Family:</strong> ${metadata.cryptoFamily}</div>`;
-                    }
-                    if (metadata.cryptoType) {
-                        expandedDetails += `<div class="detail-item"><strong>Crypto Type:</strong> ${metadata.cryptoType}</div>`;
-                    }
-                    expandedDetails += '</div>';
                 }
                 
-                // Security information
-                if (metadata.security || metadata.securityNotes || (metadata.knownVulnerabilities && metadata.knownVulnerabilities.length > 0)) {
-                    expandedDetails += '<div class="detail-section">';
-                    expandedDetails += '<h4>Security Information</h4>';
-                    
-                    if (metadata.security) {
-                        expandedDetails += `<div class="detail-item"><strong>Security Assessment:</strong> ${metadata.security}</div>`;
-                    }
-                    if (metadata.securityNotes) {
-                        expandedDetails += `<div class="detail-item"><strong>Security Notes:</strong> ${metadata.securityNotes}</div>`;
-                    }
-                    
-                    if (metadata.knownVulnerabilities && metadata.knownVulnerabilities.length > 0) {
-                        expandedDetails += '<div class="detail-item"><strong>Known Vulnerabilities:</strong>';
-                        expandedDetails += '<ul class="vulnerability-list">';
-                        metadata.knownVulnerabilities.forEach(vuln => {
-                            expandedDetails += `<li><strong>${vuln.type}:</strong> ${vuln.text}`;
-                            if (vuln.mitigation) {
-                                expandedDetails += ` <em>Mitigation: ${vuln.mitigation}</em>`;
-                            }
-                            expandedDetails += `</li>`;
-                        });
-                        expandedDetails += '</ul></div>';
-                    }
-                    expandedDetails += '</div>';
+                if (metadata.keySize !== undefined && metadata.keySize > 0) {
+                    expandedDetails += `<div class="detail-item"><strong>Key Size:</strong> ${metadata.keySize} bits</div>`;
                 }
                 
-                // Documentation links
-                if (metadata.documentation && metadata.documentation.length > 0) {
-                    expandedDetails += '<div class="detail-section">';
-                    expandedDetails += '<h4>Documentation</h4>';
-                    expandedDetails += '<ul class="link-list">';
-                    metadata.documentation.forEach(doc => {
-                        expandedDetails += `<li><a href="${doc.uri}" target="_blank" rel="noopener">${doc.text}</a></li>`;
-                    });
-                    expandedDetails += '</ul></div>';
+                if (metadata.blockSize !== undefined && metadata.blockSize > 0) {
+                    expandedDetails += `<div class="detail-item"><strong>Block Size:</strong> ${metadata.blockSize} bits</div>`;
                 }
                 
-                // References
-                if (metadata.references && metadata.references.length > 0) {
-                    expandedDetails += '<div class="detail-section">';
-                    expandedDetails += '<h4>Reference Implementations</h4>';
-                    expandedDetails += '<ul class="link-list">';
-                    metadata.references.forEach(ref => {
-                        if (typeof ref === 'string') {
-                            expandedDetails += `<li>${ref}</li>`;
-                        } else if (ref.text && ref.uri) {
-                            expandedDetails += `<li><a href="${ref.uri}" target="_blank" rel="noopener">${ref.text}</a></li>`;
-                        } else if (ref.text) {
-                            expandedDetails += `<li>${ref.text}</li>`;
-                        }
-                    });
-                    expandedDetails += '</ul></div>';
-                }
-                
-                // Performance characteristics
-                if (metadata.performance) {
-                    expandedDetails += '<div class="detail-section">';
-                    expandedDetails += '<h4>Performance</h4>';
-                    if (metadata.performance.throughput) {
-                        expandedDetails += `<div class="detail-item"><strong>Throughput:</strong> ${metadata.performance.throughput}</div>`;
-                    }
-                    if (metadata.performance.memoryUsage) {
-                        expandedDetails += `<div class="detail-item"><strong>Memory Usage:</strong> ${metadata.performance.memoryUsage}</div>`;
-                    }
-                    if (metadata.performance.parallelizable !== undefined) {
-                        expandedDetails += `<div class="detail-item"><strong>Parallelizable:</strong> ${metadata.performance.parallelizable ? 'Yes' : 'No'}</div>`;
-                    }
-                    expandedDetails += '</div>';
-                }
-                
-                // Test information
-                if ((metadata.testVectors && metadata.testVectors.length > 0) || (metadata.tests && metadata.tests.length > 0)) {
-                    expandedDetails += '<div class="detail-section">';
-                    expandedDetails += '<h4>Test Information</h4>';
-                    if (metadata.testVectors && metadata.testVectors.length > 0) {
-                        expandedDetails += `<div class="detail-item"><strong>Test Vectors:</strong> ${metadata.testVectors.length} available</div>`;
-                    }
-                    if (metadata.tests && metadata.tests.length > 0) {
-                        expandedDetails += `<div class="detail-item"><strong>Tests:</strong> ${metadata.tests.length} available</div>`;
-                    }
-                    expandedDetails += '</div>';
+                if (metadata.complexity) {
+                    expandedDetails += `<div class="detail-item"><strong>Complexity Level:</strong> <span style="color: ${metadata.complexity.color}">${metadata.complexity.name}</span></div>`;
                 }
                 
                 expandedDetails += '</div>';
             }
             
-            // Combine card with expanded details
-            infoEl.innerHTML = '';
-            infoEl.appendChild(cardElement);
-            if (expandedDetails) {
-                infoEl.innerHTML += expandedDetails;
+            // Security Information
+            if (metadata.security) {
+                expandedDetails += '<div class="detail-section">';
+                expandedDetails += '<h4>Security Assessment</h4>';
+                
+                expandedDetails += `<div class="detail-item"><strong>Security Status:</strong> <span style="color: ${metadata.security.color}">${metadata.security.icon} ${metadata.security.name}</span></div>`;
+                
+                // Add security recommendations based on status
+                if (metadata.security && typeof SecurityStatus !== 'undefined') {
+                    if (metadata.security === SecurityStatus.BROKEN) {
+                        expandedDetails += `<div class="detail-item" style="color: #dc3545;"><strong>⚠️ Warning:</strong> This algorithm is cryptographically broken and should not be used for secure applications.</div>`;
+                    } else if (metadata.security === SecurityStatus.DEPRECATED) {
+                        expandedDetails += `<div class="detail-item" style="color: #ffc107;"><strong>⚠️ Note:</strong> This algorithm is deprecated and newer alternatives are recommended.</div>`;
+                    } else if (metadata.security === SecurityStatus.EDUCATIONAL) {
+                        expandedDetails += `<div class="detail-item" style="color: #fd7e14;"><strong>📚 Note:</strong> This algorithm is intended for educational purposes only.</div>`;
+                    }
+                }
+                
+                expandedDetails += '</div>';
             }
+            
+            expandedDetails += '</div>';
         } else {
-            // Fallback to old format if AlgorithmCard not available
-            infoEl.innerHTML = '<p>AlgorithmCard component not loaded</p>';
+            // Fallback when no metadata is available
+            expandedDetails += '<div class="expanded-details">';
+            expandedDetails += '<h3>Algorithm Information</h3>';
+            expandedDetails += '<div class="detail-section">';
+            expandedDetails += '<div class="detail-item">No detailed metadata available for this algorithm.</div>';
+            expandedDetails += '</div>';
+            expandedDetails += '</div>';
+        }
+        
+        infoContent.innerHTML = cardHtml + expandedDetails;
+    }
+    
+    populateReferencesTab(modal, algorithm) {
+        const referencesContent = modal.querySelector('#modal-tab-references');
+        
+        let content = '<div class="tab-content-wrapper">';
+        content += '<h3>📚 References & Documentation</h3>';
+        
+        const metadata = algorithm.metadata;
+        
+        if (metadata && metadata.documentation && metadata.documentation.length > 0) {
+            content += '<div class="detail-section">';
+            content += '<h4>Official Documentation</h4>';
+            content += '<ul class="link-list">';
+            metadata.documentation.forEach(doc => {
+                content += `<li><a href="${doc.uri}" target="_blank" rel="noopener">${doc.text}</a></li>`;
+            });
+            content += '</ul></div>';
+        }
+        
+        if (metadata && metadata.references && metadata.references.length > 0) {
+            content += '<div class="detail-section">';
+            content += '<h4>Reference Implementations</h4>';
+            content += '<ul class="link-list">';
+            metadata.references.forEach(ref => {
+                if (typeof ref === 'string') {
+                    content += `<li>${ref}</li>`;
+                } else if (ref.text && ref.uri) {
+                    content += `<li><a href="${ref.uri}" target="_blank" rel="noopener">${ref.text}</a></li>`;
+                } else if (ref.text) {
+                    content += `<li>${ref.text}</li>`;
+                }
+            });
+            content += '</ul></div>';
+        }
+        
+        // Add some standard references based on algorithm type
+        if (algorithm.implementation) {
+            content += '<div class="detail-section">';
+            content += '<h4>Standard References</h4>';
+            content += '<div class="detail-item">Algorithm implementation follows standard cryptographic practices and may reference:</div>';
+            content += '<ul class="link-list">';
+            content += '<li><a href="https://csrc.nist.gov/" target="_blank" rel="noopener">NIST Cryptographic Standards</a></li>';
+            content += '<li><a href="https://tools.ietf.org/rfc/" target="_blank" rel="noopener">IETF RFC Documents</a></li>';
+            content += '<li><a href="https://www.iso.org/committee/45306.html" target="_blank" rel="noopener">ISO/IEC JTC 1/SC 27</a></li>';
+            content += '</ul></div>';
+        }
+        
+        if (!metadata || (!metadata.documentation && !metadata.references)) {
+            content += '<div class="detail-section">';
+            content += '<div class="detail-item">No specific references available for this algorithm.</div>';
+            content += '</div>';
+        }
+        
+        content += '</div>';
+        referencesContent.innerHTML = content;
+    }
+    
+    populateTestVectorsTab(modal, algorithm) {
+        const testVectorsContent = modal.querySelector('#modal-tab-test-vectors');
+        
+        let content = '<div class="tab-content-wrapper">';
+        content += '<h3>🧪 Test Vectors</h3>';
+        
+        // Check if the algorithm has test vectors
+        const implementation = algorithm.implementation;
+        
+        if (implementation && implementation.testVectors && implementation.testVectors.length > 0) {
+            content += '<div class="detail-section">';
+            content += `<h4>Available Test Vectors (${implementation.testVectors.length})</h4>`;
+            
+            implementation.testVectors.forEach((vector, index) => {
+                content += '<div class="test-vector-item">';
+                content += `<h5>Test Vector ${index + 1}</h5>`;
+                
+                if (vector.description) {
+                    content += `<div class="test-vector-description"><strong>Description:</strong> ${vector.description}</div>`;
+                }
+                
+                if (vector.input) {
+                    content += `<div class="test-vector-field"><strong>Input:</strong> <code>${this.formatTestData(vector.input)}</code></div>`;
+                }
+                
+                if (vector.key) {
+                    content += `<div class="test-vector-field"><strong>Key:</strong> <code>${this.formatTestData(vector.key)}</code></div>`;
+                }
+                
+                if (vector.expected) {
+                    content += `<div class="test-vector-field"><strong>Expected:</strong> <code>${this.formatTestData(vector.expected)}</code></div>`;
+                }
+                
+                if (vector.origin) {
+                    content += '<div class="test-vector-origin">';
+                    content += `<strong>Source:</strong> ${vector.origin.source || 'Unknown'}`;
+                    if (vector.origin.url) {
+                        content += ` (<a href="${vector.origin.url}" target="_blank" rel="noopener">Link</a>)`;
+                    }
+                    content += '</div>';
+                }
+                
+                content += '</div>';
+            });
+            
+            content += '</div>';
+        } else {
+            content += '<div class="detail-section">';
+            content += '<div class="detail-item">No test vectors are currently available for this algorithm.</div>';
+            content += '<div class="detail-item">Test vectors may be added in future updates or can be found in the algorithm\'s official specification.</div>';
+            content += '</div>';
+        }
+        
+        content += '</div>';
+        testVectorsContent.innerHTML = content;
+    }
+    
+    populateCodeTab(modal, algorithm) {
+        const codeContent = modal.querySelector('#modal-tab-code');
+        
+        let content = '<div class="tab-content-wrapper">';
+        content += '<h3>💻 Implementation Code</h3>';
+        
+        content += '<div class="detail-section">';
+        content += '<h4>Algorithm Implementation</h4>';
+        content += '<div class="detail-item">This section shows the core implementation structure for educational purposes.</div>';
+        
+        // Show basic algorithm structure
+        content += '<pre class="code-block">';
+        content += '<code class="language-javascript">';
+        content += `// ${algorithm.name} Implementation Structure\n`;
+        content += `const ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')} = {\n`;
+        content += `  // Algorithm metadata\n`;
+        content += `  szInternalName: '${algorithm.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}',\n`;
+        content += `  szName: '${algorithm.name}',\n`;
+        content += `  szCategory: '${algorithm.category}',\n`;
+        
+        if (algorithm.country) {
+            content += `  szCountry: '${algorithm.country}',\n`;
+        }
+        
+        if (algorithm.year) {
+            content += `  nYear: ${algorithm.year},\n`;
+        }
+        
+        content += `\n`;
+        content += `  // Core implementation methods\n`;
+        content += `  Init: function() {\n`;
+        content += `    // Algorithm initialization\n`;
+        content += `  },\n\n`;
+        
+        if (algorithm.category === 'block' || algorithm.category === 'stream') {
+            content += `  KeySetup: function(key) {\n`;
+            content += `    // Key schedule/setup\n`;
+            content += `    return keyId;\n`;
+            content += `  },\n\n`;
+            
+            content += `  EncryptBlock: function(keyId, data) {\n`;
+            content += `    // Encryption implementation\n`;
+            content += `    return encryptedData;\n`;
+            content += `  },\n\n`;
+            
+            content += `  DecryptBlock: function(keyId, data) {\n`;
+            content += `    // Decryption implementation\n`;
+            content += `    return decryptedData;\n`;
+            content += `  }\n`;
+        } else if (algorithm.category === 'hash') {
+            content += `  Hash: function(data) {\n`;
+            content += `    // Hash computation\n`;
+            content += `    return hashValue;\n`;
+            content += `  }\n`;
+        }
+        
+        content += `};\n`;
+        content += '</code>';
+        content += '</pre>';
+        
+        content += '</div>';
+        
+        // Add usage example
+        content += '<div class="detail-section">';
+        content += '<h4>Usage Example</h4>';
+        content += '<pre class="code-block">';
+        content += '<code class="language-javascript">';
+        content += `// Example usage of ${algorithm.name}\n`;
+        
+        if (algorithm.category === 'block' || algorithm.category === 'stream') {
+            content += `const algorithm = Cipher.GetCipher('${algorithm.name}');\n`;
+            content += `const keyId = algorithm.KeySetup([0x01, 0x23, 0x45, 0x67]); // Example key\n`;
+            content += `const encrypted = algorithm.EncryptBlock(keyId, [0x00, 0x11, 0x22, 0x33]);\n`;
+            content += `const decrypted = algorithm.DecryptBlock(keyId, encrypted);\n`;
+        } else if (algorithm.category === 'hash') {
+            content += `const algorithm = Cipher.GetCipher('${algorithm.name}');\n`;
+            content += `const hash = algorithm.Hash([0x48, 0x65, 0x6c, 0x6c, 0x6f]); // "Hello"\n`;
+        } else {
+            content += `const algorithm = Cipher.GetCipher('${algorithm.name}');\n`;
+            content += `// See algorithm documentation for specific usage\n`;
+        }
+        
+        content += '</code>';
+        content += '</pre>';
+        content += '</div>';
+        
+        content += '</div>';
+        codeContent.innerHTML = content;
+        
+        // Apply syntax highlighting if available
+        if (typeof hljs !== 'undefined') {
+            codeContent.querySelectorAll('pre code').forEach(block => {
+                hljs.highlightElement(block);
+            });
+        }
+    }
+    
+    formatTestData(data) {
+        if (typeof data === 'string') {
+            return data;
+        } else if (Array.isArray(data)) {
+            return data.map(b => '0x' + b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+        } else {
+            return String(data);
         }
     }
     
