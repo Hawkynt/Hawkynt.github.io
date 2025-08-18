@@ -745,6 +745,134 @@
   transform: translateX(0);
 }
 
+/* Modal Algorithm Card Styles */
+.modal .algorithm-card {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0 0 20px 0;
+  box-shadow: none;
+  transform: none;
+  backdrop-filter: none;
+}
+
+.modal .algorithm-card:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: transparent;
+}
+
+.modal .algorithm-card .card-header {
+  margin-bottom: 15px;
+}
+
+.modal .algorithm-card .card-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #eef3ff;
+}
+
+.modal .algorithm-card .card-description {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #c7d0ee;
+  margin-bottom: 15px;
+}
+
+.modal .algorithm-card .card-badges {
+  opacity: 0.9;
+}
+
+.modal .algorithm-card .card-actions {
+  display: none; /* Hide actions in modal since they're not needed */
+}
+
+/* Expanded Details Section */
+.expanded-details {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 20px;
+  margin-top: 20px;
+}
+
+.expanded-details h3 {
+  color: #74c0ff;
+  font-size: 16px;
+  margin-bottom: 15px;
+  font-weight: 600;
+}
+
+.detail-section {
+  margin-bottom: 20px;
+}
+
+.detail-section h4 {
+  color: #eef3ff;
+  font-size: 14px;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+.detail-item {
+  margin-bottom: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #c7d0ee;
+}
+
+.detail-item strong {
+  color: #eef3ff;
+  min-width: 120px;
+  display: inline-block;
+}
+
+/* Vulnerability List */
+.vulnerability-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.vulnerability-list li {
+  background: rgba(220, 53, 69, 0.1);
+  border: 1px solid rgba(220, 53, 69, 0.2);
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.vulnerability-list li strong {
+  color: #ff6b6b;
+}
+
+.vulnerability-list li em {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Link Lists */
+.link-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.link-list li {
+  margin-bottom: 6px;
+}
+
+.link-list a {
+  color: #74c0ff;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.link-list a:hover {
+  text-decoration: underline;
+  color: #a8d0ff;
+}
+
 /* File Upload/Download Area */
 .file-operations {
   background: var(--secondary-bg);

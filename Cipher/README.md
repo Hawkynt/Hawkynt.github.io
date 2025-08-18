@@ -685,6 +685,47 @@ Cipher/
 - Code review and documentation review
 - Performance baseline establishment
 
+### 🏷️ Metadata Requirements
+
+**⚠️ CRITICAL: All contributors MUST follow the metadata template structure:**
+
+```javascript
+const AlgorithmName = {
+    name: "Algorithm Display Name",
+    description: "Clear description (max 3 sentences)",
+    inventor: "Creator Name", // Empty string if unknown
+    year: 1995, // Year published, or null if unknown  
+    country: "US", // ISO country code, or null
+    category: "cipher", // See valid categories below
+    subCategory: "Block Cipher", // Specific type
+    securityStatus: null, // ONLY "insecure", "educational", or null
+    securityNotes: "Brief security assessment (max 3 sentences)",
+    documentation: [/* Links to papers/specs */],
+    references: [/* Links to implementations */], 
+    knownVulnerabilities: [/* Security issues */],
+    tests: [/* Official test vectors with sources */]
+};
+```
+
+**📋 Valid Categories:**
+- `"cipher"` - Block/stream ciphers (AES, ChaCha20)
+- `"modeOfOperation"` - Cipher modes (CBC, GCM)
+- `"paddingScheme"` - Padding methods (PKCS#7, OAEP)
+- `"hash"` - Hash functions (SHA-256, Blake2)
+- `"checksum"` - Checksums (CRC32, Adler32)
+- `"compression"` - Compression (DEFLATE, LZ77)
+- `"keyDerivation"` - KDF (PBKDF2, Argon2)
+- `"encodingScheme"` - Encoding (Base64, Hex)
+- `"errorCorrection"` - Error correction codes
+
+**🛡️ Security Status Rules:**
+- **NEVER** claim an algorithm is "secure"
+- **Use `null`** for unknown/not analyzed (safest default)
+- **Use `"educational"`** for learning-only algorithms
+- **Use `"insecure"`** for known broken algorithms
+
+**📖 Detailed Guidelines:** See [METADATA-GUIDELINES.md](METADATA-GUIDELINES.md)
+
 ---
 
 ## 📊 Implementation Status

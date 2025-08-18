@@ -100,6 +100,39 @@
       return this.getCipher(cipherName);
     },
     
+    // RegisterCipher method for new individual algorithm files
+    RegisterCipher: function(name, implementation) {
+      // Create a simplified cipher object compatible with the old system
+      const cipher = {
+        internalName: name,
+        name: implementation.szName || name,
+        minKeyLength: 1,
+        maxKeyLength: 512,
+        stepKeyLength: 1,
+        minBlockSize: 1,
+        maxBlockSize: 512,
+        stepBlockSize: 1,
+        szCategory: implementation.szCategory || 'unknown',
+        szCountry: implementation.szCountry || 'International', 
+        nYear: implementation.nYear || null,
+        working: implementation.working !== false,
+        metadata: implementation.metadata,
+        
+        // Store the implementation for access by the controller
+        implementation: implementation,
+        
+        // Create minimal instances lookup
+        instances: {
+          [name]: implementation
+        }
+      };
+      
+      // Register using the existing AddCipher method
+      Cipher.ciphers[name] = cipher;
+      console.log(`✅ Registered cipher: ${name} (${implementation.szCategory || 'unknown'})`);
+      return true;
+    },
+    
     // Initialize cipher with key
     InitCipher: function(cipherName, key) {
       if (!Cipher.existsCipher(cipherName)) {

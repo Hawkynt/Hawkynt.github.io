@@ -12,27 +12,37 @@
   // Metadata schema definitions
   const CipherMetadata = {
     
-    // Security status classifications
+    // Security status classifications - NEVER claim algorithms are "secure"
     SecurityStatus: {
-      SECURE: 'secure',           // Currently considered secure by cryptographic community
-      DEPRECATED: 'deprecated',   // Known vulnerabilities, should not be used
-      EDUCATIONAL: 'educational', // For learning purposes only
-      OBSOLETE: 'obsolete',      // Completely broken, historical interest only
-      EXPERIMENTAL: 'experimental' // New/research algorithms, not yet proven
+      INSECURE: 'insecure',       // Known vulnerabilities, should not be used in production
+      EDUCATIONAL: 'educational', // For learning purposes only, not production
+      UNKNOWN: null               // Not yet broken or thoroughly analyzed (safest default)
+      // NOTE: We deliberately do NOT provide a "secure" status
+      // Cryptographic security evolves and we are not qualified to make such claims
     },
     
-    // Algorithm categories
+    // Algorithm categories (matching Metadata-template.js exactly)
     Categories: {
-      BLOCK: 'block',                    // Block ciphers (AES, DES, etc.)
-      STREAM: 'stream',                  // Stream ciphers (ChaCha20, RC4, etc.)
-      HASH: 'hash',                      // Hash functions (SHA-256, MD5, etc.)
-      MAC: 'mac',                        // Message Authentication Codes
-      CLASSICAL: 'classical',            // Historical ciphers (Caesar, Atbash, etc.)
-      ENCODING: 'encoding',              // Encoding schemes (Base64, Hex, etc.)
-      COMPRESSION: 'compression',        // Compression algorithms
-      ASYMMETRIC: 'asymmetric',         // Public key cryptography
-      POST_QUANTUM: 'post-quantum',     // Post-quantum secure algorithms
-      AUTHENTICATED: 'authenticated'     // Authenticated encryption modes
+      CIPHER: 'cipher',                         // Block/stream ciphers (AES, ChaCha20, etc.)
+      MODE_OF_OPERATION: 'modeOfOperation',     // Cipher modes (CBC, GCM, etc.)
+      PADDING_SCHEME: 'paddingScheme',          // Padding methods (PKCS#7, OAEP, etc.)
+      HASH: 'hash',                             // Hash functions (SHA-256, Blake2, etc.)
+      CHECKSUM: 'checksum',                     // Checksums (CRC32, Adler32, etc.)
+      COMPRESSION: 'compression',               // Compression algorithms (DEFLATE, LZ77, etc.)
+      KEY_DERIVATION: 'keyDerivation',          // KDF functions (PBKDF2, Argon2, etc.)
+      RANDOM_NUMBER_GENERATOR: 'randomNumberGenerator', // RNG algorithms
+      ENCODING_SCHEME: 'encodingScheme',        // Encoding methods (Base64, Hex, etc.)
+      ERROR_CORRECTION: 'errorCorrection',      // Error correction codes
+      
+      // Legacy categories for backward compatibility
+      BLOCK: 'cipher',                    // Maps to cipher
+      STREAM: 'cipher',                   // Maps to cipher  
+      MODE: 'modeOfOperation',            // Maps to modeOfOperation
+      PADDING: 'paddingScheme',           // Maps to paddingScheme
+      CLASSICAL: 'cipher',                // Maps to cipher
+      ENCODING: 'encodingScheme',         // Maps to encodingScheme
+      ASYMMETRIC: 'cipher',               // Maps to cipher
+      EDUCATIONAL: 'cipher'               // Maps to cipher
     },
     
     // Complexity levels for educational purposes
@@ -43,37 +53,50 @@
       EXPERT: 'expert'             // Cutting-edge cryptographic concepts
     },
     
-    // Standard metadata structure
+    // Standard metadata structure with backward compatibility
     createMetadata: function(config) {
       return {
-        // Basic information
-        algorithm: config.algorithm || '',
-        displayName: config.displayName || config.algorithm || '',
+        // Basic information (supports both old and new template)
+        algorithm: config.algorithm || config.name || '',
+        name: config.name || config.algorithm || '',
+        displayName: config.displayName || config.name || config.algorithm || '',
         description: config.description || '',
         
         // Historical context
         inventor: config.inventor || '',
         year: config.year || null,
+        country: config.country || '',
         background: config.background || '',
         
-        // Security and usage
-        securityStatus: config.securityStatus || CipherMetadata.SecurityStatus.EDUCATIONAL,
+        // Security and usage (updated to match template)
+        securityStatus: config.securityStatus !== undefined ? config.securityStatus : CipherMetadata.SecurityStatus.UNKNOWN,
         securityNotes: config.securityNotes || '',
+        security: config.security || '', // Backward compatibility field
         
-        // Classification
-        category: config.category || CipherMetadata.Categories.EDUCATIONAL,
-        subcategory: config.subcategory || '',
+        // Classification (updated to match template)
+        category: config.category || CipherMetadata.Categories.CIPHER,
+        subCategory: config.subCategory || config.subcategory || '', // Support both naming conventions
         complexity: config.complexity || CipherMetadata.ComplexityLevels.BEGINNER,
         
-        // Technical specifications
+        // Technical specifications (enhanced)
         keySize: config.keySize || null,
         blockSize: config.blockSize || null,
         rounds: config.rounds || null,
+        cryptoFamily: config.cryptoFamily || '',
+        cryptoType: config.cryptoType || '',
         
-        // References and specifications
+        // References and specifications (enhanced for new template)
         specifications: config.specifications || [],
         testVectors: config.testVectors || [],
+        tests: config.tests || config.testVectors || [], // Template naming compatibility
         references: config.references || [],
+        documentation: config.documentation || [], // New template field
+        
+        // Performance characteristics (new template fields)
+        performance: config.performance || null,
+        knownVulnerabilities: config.knownVulnerabilities || config.vulnerabilities || [], // Template naming
+        vulnerabilities: config.vulnerabilities || config.knownVulnerabilities || [], // Backward compatibility
+        usage: config.usage || null,
         
         // Implementation notes
         implementationNotes: config.implementationNotes || '',
@@ -90,6 +113,47 @@
         lastUpdated: config.lastUpdated || new Date().toISOString().split('T')[0],
         version: config.version || '1.0'
       };
+    },
+    
+    // Helper functions for template compatibility
+    Hex8ToBytes: function(hexString) {
+      if (!hexString || typeof hexString !== 'string') {
+        throw new Error('Invalid hex string input');
+      }
+      
+      // Remove any whitespace and convert to lowercase
+      const cleanHex = hexString.replace(/\s+/g, '').toLowerCase();
+      
+      // Validate hex characters
+      if (!/^[0-9a-f]*$/i.test(cleanHex)) {
+        throw new Error('Invalid hex characters in string');
+      }
+      
+      // Ensure even length
+      if (cleanHex.length % 2 !== 0) {
+        throw new Error('Hex string must have even length');
+      }
+      
+      const bytes = [];
+      for (let i = 0; i < cleanHex.length; i += 2) {
+        bytes.push(parseInt(cleanHex.substr(i, 2), 16));
+      }
+      
+      return bytes;
+    },
+    
+    // Convert bytes to hex string
+    BytesToHex8: function(bytes) {
+      if (!Array.isArray(bytes)) {
+        throw new Error('Input must be an array of bytes');
+      }
+      
+      return bytes.map(b => {
+        if (typeof b !== 'number' || b < 0 || b > 255) {
+          throw new Error('Invalid byte value: ' + b);
+        }
+        return b.toString(16).padStart(2, '0').toLowerCase();
+      }).join('');
     },
     
     // Validation functions
@@ -294,6 +358,10 @@
   
   // Export to global scope
   global.CipherMetadata = CipherMetadata;
+  
+  // Make helper functions globally available for template usage
+  global.Hex8ToBytes = CipherMetadata.Hex8ToBytes;
+  global.BytesToHex8 = CipherMetadata.BytesToHex8;
   
   // Node.js module export
   if (typeof module !== 'undefined' && module.exports) {
