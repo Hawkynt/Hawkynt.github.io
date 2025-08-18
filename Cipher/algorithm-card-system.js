@@ -356,6 +356,7 @@
               <option value="perl">🔄 Perl</option>
               <option value="basic">📚 BASIC</option>
               <option value="delphi">🏗️ Delphi</option>
+              <option value="go">🐹 Go</option>
             </select>
             <button class="btn-copy-code" onclick="AlgorithmCardSystem.copyCode('${cipher.internalName}')">
               📋 Copy Code
@@ -431,19 +432,48 @@ ${this.getAlgorithmCode(cipher, 'javascript')}
 
     // Get algorithm code in specified language
     getAlgorithmCode: function(cipher, language) {
-      // For now, return JavaScript implementation
-      // In a full implementation, this would use the OpCodes code generation
+      // Use the CodeGenerationInterface for actual code generation
+      if (typeof CodeGenerationInterface !== 'undefined') {
+        try {
+          // Map language values to CodeGenerationInterface methods
+          const languageMap = {
+            'javascript': 'JavaScript',
+            'python': 'Python',
+            'cpp': 'Cpp',
+            'java': 'Java',
+            'rust': 'Rust',
+            'csharp': 'CSharp',
+            'kotlin': 'Kotlin',
+            'perl': 'Perl',
+            'basic': 'FreeBASIC',
+            'delphi': 'Delphi',
+            'go': 'Go'
+          };
+          
+          const mappedLanguage = languageMap[language];
+          if (mappedLanguage) {
+            const methodName = `generate${mappedLanguage}`;
+            if (typeof CodeGenerationInterface[methodName] === 'function') {
+              return CodeGenerationInterface[methodName](cipher.internalName);
+            }
+          }
+        } catch (error) {
+          console.warn('Code generation failed:', error);
+        }
+      }
+      
+      // Fallback to JavaScript implementation if available
       if (language === 'javascript') {
         return this.getJavaScriptImplementation(cipher);
       }
       
+      // Final fallback to placeholder
       return `// ${language.toUpperCase()} implementation for ${cipher.name}
-// This would be generated using the OpCodes multi-language system
-// Currently showing placeholder for demonstration
+// Code generation interface not available
+// Please ensure CodeGenerationInterface is loaded
 
 function ${cipher.internalName.toLowerCase()}Encrypt(plaintext, key) {
     // ${language} implementation would go here
-    // Generated from OpCodes universal operations
     return "Implementation pending...";
 }`;
     },
@@ -684,6 +714,84 @@ const ${cipher.internalName} = {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = ${cipher.internalName};
 }`;
+    },
+
+    // Copy code to clipboard
+    copyCode: function(algorithmId) {
+      const codeDisplay = document.getElementById(`code-display-${algorithmId}`);
+      if (!codeDisplay) return;
+      
+      const code = codeDisplay.textContent;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(code).then(() => {
+          console.log('Code copied to clipboard');
+          // Show temporary success feedback
+          const button = document.querySelector(`button[onclick*="copyCode('${algorithmId}')"]`);
+          if (button) {
+            const originalText = button.textContent;
+            button.textContent = '✅ Copied!';
+            button.style.backgroundColor = '#4CAF50';
+            setTimeout(() => {
+              button.textContent = originalText;
+              button.style.backgroundColor = '';
+            }, 2000);
+          }
+        });
+      } else {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = code;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        console.log('Code copied to clipboard (fallback)');
+      }
+    },
+
+    // Download code as file
+    downloadCode: function(algorithmId) {
+      const cipher = this.getCipherById(algorithmId);
+      if (!cipher) return;
+      
+      const codeDisplay = document.getElementById(`code-display-${algorithmId}`);
+      if (!codeDisplay) return;
+      
+      const languageSelector = document.getElementById(`language-selector-${algorithmId}`);
+      const language = languageSelector ? languageSelector.value : 'javascript';
+      
+      const code = codeDisplay.textContent;
+      
+      // Determine file extension based on language
+      const extensions = {
+        'javascript': 'js',
+        'python': 'py',
+        'cpp': 'cpp',
+        'java': 'java',
+        'rust': 'rs',
+        'csharp': 'cs',
+        'kotlin': 'kt',
+        'perl': 'pl',
+        'basic': 'bas',
+        'delphi': 'pas',
+        'go': 'go'
+      };
+      
+      const extension = extensions[language] || 'txt';
+      const filename = `${cipher.internalName.toLowerCase()}.${extension}`;
+      
+      // Create download
+      const blob = new Blob([code], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      console.log(`Code downloaded as ${filename}`);
     }
   };
 
