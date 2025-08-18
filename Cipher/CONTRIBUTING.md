@@ -86,6 +86,65 @@ Use these exact category (=Subsystem) values:
 - `"encodingScheme"` - Encoding methods (Base64, Hex, etc.)
 - `"errorCorrection"` - Error correction codes
 
+## Valid SubCategories by Category
+
+### `"cipher"` subcategories:
+- `"Block Cipher"` - Fixed-size block encryption (AES, DES, Blowfish)
+- `"Stream Cipher"` - Byte-by-byte encryption (ChaCha20, RC4, Salsa20)
+- `"Classical Cipher"` - Historical/educational ciphers (Caesar, Vigenère, Enigma)
+- `"Asymmetric Cipher"` - Public key cryptography (RSA, NTRU, Post-Quantum)
+
+### `"modeOfOperation"` subcategories:
+- `"Confidentiality Mode"` - Encryption only (ECB, CBC, CTR, OFB, CFB)
+- `"Authenticated Mode"` - Encryption + authentication (GCM, CCM, EAX, OCB)
+- `"Format Preserving"` - Structure-preserving (XTS, FFX, FPE)
+- `"Key Wrapping"` - Key encryption modes (KW, KWP)
+
+### `"paddingScheme"` subcategories:
+- `"Block Padding"` - For block ciphers (PKCS#7, PKCS#5, ISO 10126)
+- `"Signature Padding"` - For digital signatures (PSS, PKCS#1 v1.5)
+- `"Encryption Padding"` - For asymmetric encryption (OAEP, PKCS#1 v1.5)
+- `"Bit Padding"` - Bit-level padding (ISO 7816-4, Bit Padding)
+
+### `"hash"` subcategories:
+- `"Cryptographic Hash"` - Cryptographic hash functions (SHA-2, SHA-3, BLAKE2, MD5, SHA-1, MD4)
+- `"Fast Hash"` - Non-cryptographic hashes (xxHash, MurmurHash, CityHash)
+- `"Specialized Hash"` - Domain-specific (SipHash, SHAKE, Groestl)
+
+### `"checksum"` subcategories:
+- `"CRC Family"` - Cyclic redundancy checks (CRC32, CRC16, Adler32)
+- `"Simple Checksum"` - Basic checksums (Fletcher, BSD checksum)
+- `"Network Checksum"` - Protocol checksums (Internet checksum)
+
+### `"compression"` subcategories:
+- `"Dictionary"` - Dictionary-based (LZ77, LZ78, LZW, LZ4)
+- `"Statistical"` - Entropy-based (Huffman, Arithmetic, Shannon-Fano)
+- `"Transform"` - Transform-based (BWT, Delta, RLE)
+- `"Modern"` - Advanced algorithms (Brotli, Zstandard, PPM)
+
+### `"keyDerivation"` subcategories:
+- `"Password-Based"` - From passwords (PBKDF2, scrypt, Argon2)
+- `"Key-Based"` - From existing keys (HKDF, KBKDF)
+- `"Function-Based"` - Mathematical functions (Balloon, bcrypt)
+
+### `"encodingScheme"` subcategories:
+- `"Base Encoding"` - Base-n encodings (Base64, Base32, Base58, Base85)
+- `"Text Encoding"` - Character encodings (Morse, Baudot, Atbash)
+- `"Binary Encoding"` - Binary representations (Hex, BinHex, UUEncode)
+- `"Specialized"` - Domain-specific (PEM, Bubble Babble, Z85)
+
+### `"errorCorrection"` subcategories:
+- `"Block Code"` - Block-based codes (Hamming, BCH, Reed-Solomon)
+- `"Convolutional"` - Convolutional codes and turbo codes
+- `"LDPC"` - Low-density parity-check codes
+- `"Linear Code"` - Linear algebraic codes
+
+### `"randomNumberGenerator"` subcategories:
+- `"CSPRNG"` - Cryptographically secure (ChaCha20-DRNG, HMAC-DRNG)
+- `"PRNG"` - Pseudorandom generators (Linear congruential, Mersenne Twister)
+- `"Hardware RNG"` - Hardware-based entropy sources
+- `"Stream Cipher RNG"` - Stream ciphers used as RNGs
+
 ## Security Status Guidelines
 
 ### When to use `null` (DEFAULT)
@@ -148,7 +207,7 @@ tests: [
     text: "SHAKE128 32-byte output",
     uri: "https://nvlpubs.nist.gov/...",
     outputSize: 32, // Output size in bytes
-    input: Hex8ToBytes("00010203"),
+    input: ANSIToBytes("Hello World"),
     expected: Hex8ToBytes("46b9dd2b0ba88d13233b3feb743eeb24...")
 }
 ```
