@@ -1,21 +1,5 @@
 #!/usr/bin/env node
 /*
- * BaseKing Block Cipher - Universal Implementation
- * 
- * BaseKing is a block cipher with 192-bit block size and 192-bit key size.
- * It uses 11 rounds plus a final transformation.
- * 
- * Key features:
- * - Block size: 192 bits (12 × 16-bit words)
- * - Key size: 192 bits (12 × 16-bit words) 
- * - Rounds: 11 + final transformation
- * - Operations: Theta (linear), Pi1/Pi2 (permutations), Gamma (nonlinear), Mu (word reversal)
- * 
- * Based on reference implementation from BaseKing cryptographic competition.
- * 
- * Educational implementation - not for production use.
- * Compatible with both Browser and Node.js environments.
- * 
  * (c)2006-2025 Hawkynt
  */
 
@@ -77,8 +61,8 @@
     instances: {},        // Instance storage
     
     // Algorithm parameters
-    BLOCK_SIZE: 24,      // 192 bits = 24 bytes = 12 words
-    KEY_SIZE: 24,        // 192 bits = 24 bytes = 12 words
+    BLOCK_SIZE: 24,      // 192 bits = 24 bytes = 12 words x 16 Bits
+    KEY_SIZE: 24,        // 192 bits = 24 bytes = 12 words x 16 Bits
     WORD_SIZE: 2,        // 16-bit words
     NUM_ROUNDS: 11,      // Number of main rounds
     NUM_WORDS: 12,       // Number of 16-bit words in block/key

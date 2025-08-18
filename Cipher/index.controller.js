@@ -264,12 +264,31 @@ class CipherController {
         
         container.innerHTML = '';
         
-        // Group algorithms by category
-        const algorithmsByCategory = this.groupAlgorithmsByCategory();
+        // Get all algorithms and sort alphabetically by name
+        const allAlgorithms = Array.from(this.algorithms.entries())
+            .map(([name, algorithm]) => ({ name, ...algorithm }))
+            .sort((a, b) => a.name.localeCompare(b.name));
         
-        // Render each category
-        Object.entries(algorithmsByCategory).forEach(([category, algorithms]) => {
-            this.renderAlgorithmCategory(container, category, algorithms);
+        // Render each algorithm card directly (no category grouping)
+        allAlgorithms.forEach(algorithm => {
+            let card;
+            
+            // Use AlgorithmCard component if available, otherwise fall back to old method
+            if (window.AlgorithmCard) {
+                const algorithmCard = new AlgorithmCard(algorithm, {
+                    showActions: true,
+                    showStatus: true,
+                    showBadges: true,
+                    onDetailsClick: (algo) => this.showMetadata(algo.name),
+                    onTestClick: (algo) => this.runTestAndSwitchToTestVectors(algo.name),
+                    onUseClick: (algo) => this.selectAlgorithm(algo.name)
+                });
+                card = algorithmCard.createElement();
+            } else {
+                card = this.createAlgorithmCard(algorithm);
+            }
+            
+            container.appendChild(card);
         });
     }
     
@@ -468,37 +487,36 @@ class CipherController {
         this.populateMetadataModal(modal, algorithm);
         
         // Show modal
-        modal.style.display = 'block';
-        modal.classList.add('active');
+        modal.classList.add('visible');
     }
     
     createMetadataModal() {
         const modal = document.createElement('div');
         modal.id = 'metadata-modal';
-        modal.className = 'modal';
+        modal.className = 'metadata-modal';
         modal.innerHTML = `
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h2 id="modal-algorithm-name">Algorithm Details</h2>
-                    <span class="modal-close">&times;</span>
+            <div class="metadata-content">
+                <div class="metadata-header">
+                    <h2 class="metadata-title" id="modal-algorithm-name">Algorithm Details</h2>
+                    <button class="metadata-close">&times;</button>
                 </div>
-                <div class="modal-tabs">
-                    <button class="modal-tab active" data-tab="info">📋 Info</button>
-                    <button class="modal-tab" data-tab="references">📚 References</button>
-                    <button class="modal-tab" data-tab="test-vectors">🧪 Test Vectors</button>
-                    <button class="modal-tab" data-tab="code">💻 Code</button>
+                <div class="metadata-tabs">
+                    <button class="metadata-tab active" data-tab="info">📋 Info</button>
+                    <button class="metadata-tab" data-tab="references">📚 References</button>
+                    <button class="metadata-tab" data-tab="test-vectors">🧪 Test Vectors</button>
+                    <button class="metadata-tab" data-tab="code">💻 Code</button>
                 </div>
-                <div class="modal-body">
-                    <div class="modal-tab-content active" id="modal-tab-info">
+                <div class="metadata-body">
+                    <div class="tab-content active" id="modal-tab-info">
                         <!-- Info content will be populated here -->
                     </div>
-                    <div class="modal-tab-content" id="modal-tab-references">
+                    <div class="tab-content" id="modal-tab-references">
                         <!-- References content will be populated here -->
                     </div>
-                    <div class="modal-tab-content" id="modal-tab-test-vectors">
+                    <div class="tab-content" id="modal-tab-test-vectors">
                         <!-- Test vectors content will be populated here -->
                     </div>
-                    <div class="modal-tab-content" id="modal-tab-code">
+                    <div class="tab-content" id="modal-tab-code">
                         <!-- Code content will be populated here -->
                     </div>
                 </div>
@@ -506,7 +524,7 @@ class CipherController {
         `;
         
         // Add close functionality
-        const closeBtn = modal.querySelector('.modal-close');
+        const closeBtn = modal.querySelector('.metadata-close');
         closeBtn.addEventListener('click', () => this.closeMetadataModal());
         
         modal.addEventListener('click', (e) => {
@@ -517,13 +535,13 @@ class CipherController {
         
         // Add keyboard support (ESC key to close)
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && modal.classList.contains('active')) {
+            if (e.key === 'Escape' && modal.classList.contains('visible')) {
                 this.closeMetadataModal();
             }
         });
         
         // Add tab switching functionality
-        const tabButtons = modal.querySelectorAll('.modal-tab');
+        const tabButtons = modal.querySelectorAll('.metadata-tab');
         tabButtons.forEach(button => {
             button.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -540,8 +558,8 @@ class CipherController {
         if (!modal) return;
         
         // Remove active class from all tabs and tab contents
-        modal.querySelectorAll('.modal-tab').forEach(tab => tab.classList.remove('active'));
-        modal.querySelectorAll('.modal-tab-content').forEach(content => content.classList.remove('active'));
+        modal.querySelectorAll('.metadata-tab').forEach(tab => tab.classList.remove('active'));
+        modal.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
         
         // Add active class to selected tab and content
         const selectedTab = modal.querySelector(`[data-tab="${tabName}"]`);
@@ -571,118 +589,143 @@ class CipherController {
     populateInfoTab(modal, algorithm) {
         const infoContent = modal.querySelector('#modal-tab-info');
         
-        // Create an algorithm card instance for the modal
-        let cardHtml = '';
-        
-        if (window.AlgorithmCard) {
-            const modalCard = new AlgorithmCard(algorithm, {
-                showActions: false, // Don't show Use/Details buttons in modal
-                showStatus: true,
-                showBadges: true,
-                onClick: null // Disable click handling in modal
-            });
-            
-            const cardElement = modalCard.createElement();
-            cardHtml = cardElement.outerHTML;
-        }
-        
-        // Add expanded details section after the card
+        // Don't show duplicate card - go straight to expanded details
         let expandedDetails = '';
         const metadata = algorithm.metadata;
         
         if (metadata) {
-            expandedDetails += '<div class="expanded-details">';
-            expandedDetails += '<h3>Algorithm Information</h3>';
-            
-            // Basic Information
-            expandedDetails += '<div class="detail-section">';
-            expandedDetails += '<h4>Basic Information</h4>';
+            expandedDetails += '<div class="metadata-section">';
+            expandedDetails += '<h3 class="metadata-section-title">Algorithm Information</h3>';
+            expandedDetails += '<div class="metadata-grid">';
             
             if (metadata.description) {
-                expandedDetails += `<div class="detail-item"><strong>Description:</strong> ${metadata.description}</div>`;
+                expandedDetails += `<div class="metadata-item">`;
+                expandedDetails += `<div class="metadata-label">Description</div>`;
+                expandedDetails += `<div class="metadata-value">${metadata.description}</div>`;
+                expandedDetails += `</div>`;
             }
             
             if (metadata.inventor) {
-                expandedDetails += `<div class="detail-item"><strong>Inventor/Designer:</strong> ${metadata.inventor}</div>`;
+                expandedDetails += `<div class="metadata-item">`;
+                expandedDetails += `<div class="metadata-label">Inventor/Designer</div>`;
+                expandedDetails += `<div class="metadata-value">${metadata.inventor}</div>`;
+                expandedDetails += `</div>`;
             }
             
             if (metadata.year && metadata.year !== 2025) {
-                expandedDetails += `<div class="detail-item"><strong>Year:</strong> ${metadata.year}</div>`;
+                expandedDetails += `<div class="metadata-item">`;
+                expandedDetails += `<div class="metadata-label">Year</div>`;
+                expandedDetails += `<div class="metadata-value">${metadata.year}</div>`;
+                expandedDetails += `</div>`;
             }
             
             if (metadata.country && metadata.country.name) {
-                expandedDetails += `<div class="detail-item"><strong>Origin:</strong> ${metadata.country.flag} ${metadata.country.name}</div>`;
+                const flagElement = metadata.country.code ? 
+                    `<img class="country-flag" src="https://flagcdn.com/16x12/${metadata.country.code.toLowerCase()}.png" alt="${metadata.country.code}" onerror="this.style.display='none'">` :
+                    '';
+                expandedDetails += `<div class="metadata-item">`;
+                expandedDetails += `<div class="metadata-label">Origin</div>`;
+                expandedDetails += `<div class="metadata-value">${flagElement}${metadata.country.name}</div>`;
+                expandedDetails += `</div>`;
             }
             
-            expandedDetails += '</div>';
+            expandedDetails += '</div></div>';
             
             // Technical Specifications
             if (metadata.keySize !== undefined || metadata.blockSize !== undefined || metadata.category) {
-                expandedDetails += '<div class="detail-section">';
-                expandedDetails += '<h4>Technical Specifications</h4>';
+                expandedDetails += '<div class="metadata-section">';
+                expandedDetails += '<h3 class="metadata-section-title">Technical Specifications</h3>';
+                expandedDetails += '<div class="metadata-grid">';
                 
                 if (metadata.category && metadata.category.name) {
-                    expandedDetails += `<div class="detail-item"><strong>Category:</strong> ${metadata.category.icon} ${metadata.category.name}</div>`;
-                    if (metadata.category.description) {
-                        expandedDetails += `<div class="detail-item"><strong>Category Description:</strong> ${metadata.category.description}</div>`;
-                    }
+                    expandedDetails += `<div class="metadata-item">`;
+                    expandedDetails += `<div class="metadata-label">Category</div>`;
+                    expandedDetails += `<div class="metadata-value">${metadata.category.icon || ''} ${metadata.category.name}</div>`;
+                    expandedDetails += `</div>`;
                 }
                 
                 if (metadata.keySize !== undefined && metadata.keySize > 0) {
                     const keySize = metadata.keySize * 8; // Convert bytes to bits if needed
-                    expandedDetails += `<div class="detail-item"><strong>Key Size:</strong> ${keySize} bits</div>`;
+                    expandedDetails += `<div class="metadata-item">`;
+                    expandedDetails += `<div class="metadata-label">Key Size</div>`;
+                    expandedDetails += `<div class="metadata-value">${keySize} bits</div>`;
+                    expandedDetails += `</div>`;
                 }
                 
                 if (metadata.blockSize !== undefined && metadata.blockSize > 0) {
                     const blockSize = metadata.blockSize * 8; // Convert bytes to bits if needed 
-                    expandedDetails += `<div class="detail-item"><strong>Block Size:</strong> ${blockSize} bits</div>`;
+                    expandedDetails += `<div class="metadata-item">`;
+                    expandedDetails += `<div class="metadata-label">Block Size</div>`;
+                    expandedDetails += `<div class="metadata-value">${blockSize} bits</div>`;
+                    expandedDetails += `</div>`;
                 }
                 
                 if (metadata.complexity) {
-                    expandedDetails += `<div class="detail-item"><strong>Complexity Level:</strong> <span style="color: ${metadata.complexity.color}">${metadata.complexity.name}</span></div>`;
+                    expandedDetails += `<div class="metadata-item">`;
+                    expandedDetails += `<div class="metadata-label">Complexity Level</div>`;
+                    expandedDetails += `<div class="metadata-value" style="color: ${metadata.complexity.color}">${metadata.complexity.name}</div>`;
+                    expandedDetails += `</div>`;
                 }
                 
-                expandedDetails += '</div>';
+                expandedDetails += '</div></div>';
             }
             
             // Security Information
             if (metadata.security) {
-                expandedDetails += '<div class="detail-section">';
-                expandedDetails += '<h4>Security Assessment</h4>';
+                expandedDetails += '<div class="metadata-section">';
+                expandedDetails += '<h3 class="metadata-section-title">Security Assessment</h3>';
+                expandedDetails += '<div class="metadata-grid">';
                 
-                expandedDetails += `<div class="detail-item"><strong>Security Status:</strong> <span style="color: ${metadata.security.color}">${metadata.security.icon} ${metadata.security.name}</span></div>`;
+                expandedDetails += `<div class="metadata-item">`;
+                expandedDetails += `<div class="metadata-label">Security Status</div>`;
+                expandedDetails += `<div class="metadata-value" style="color: ${metadata.security.color}">${metadata.security.icon || ''} ${metadata.security.name}</div>`;
+                expandedDetails += `</div>`;
                 
                 // Add security recommendations based on status name
                 if (metadata.security.name) {
+                    let recommendation = '';
                     if (metadata.security.name === 'Broken') {
-                        expandedDetails += `<div class="detail-item" style="color: #dc3545;"><strong>⚠️ Warning:</strong> This algorithm is cryptographically broken and should not be used for secure applications.</div>`;
+                        recommendation = '⚠️ This algorithm is cryptographically broken and should not be used for secure applications.';
                     } else if (metadata.security.name === 'Deprecated') {
-                        expandedDetails += `<div class="detail-item" style="color: #ffc107;"><strong>⚠️ Note:</strong> This algorithm is deprecated and newer alternatives are recommended.</div>`;
+                        recommendation = '⚠️ This algorithm is deprecated and newer alternatives are recommended.';
                     } else if (metadata.security.name === 'Educational Only') {
-                        expandedDetails += `<div class="detail-item" style="color: #fd7e14;"><strong>📚 Note:</strong> This algorithm is intended for educational purposes only.</div>`;
+                        recommendation = '📚 This algorithm is intended for educational purposes only.';
                     } else if (metadata.security.name === 'Experimental') {
-                        expandedDetails += `<div class="detail-item" style="color: #17a2b8;"><strong>🧪 Note:</strong> This algorithm is experimental and should not be used in production.</div>`;
+                        recommendation = '🧪 This algorithm is experimental and should not be used in production.';
                     } else if (metadata.security.name === 'Secure') {
-                        expandedDetails += `<div class="detail-item" style="color: #28a745;"><strong>✅ Note:</strong> This algorithm is considered secure for current applications.</div>`;
+                        recommendation = '✅ This algorithm has no known vulnerabilities yet for current applications.';
+                    }
+                    
+                    if (recommendation) {
+                        expandedDetails += `<div class="metadata-item">`;
+                        expandedDetails += `<div class="metadata-label">Recommendation</div>`;
+                        expandedDetails += `<div class="metadata-value">${recommendation}</div>`;
+                        expandedDetails += `</div>`;
                     }
                 }
                 
-                expandedDetails += '</div>';
+                expandedDetails += '</div></div>';
             }
             
             expandedDetails += '</div>';
         } else {
             // Fallback when no metadata is available
-            expandedDetails += '<div class="expanded-details">';
-            expandedDetails += '<h3>Algorithm Information</h3>';
-            expandedDetails += '<div class="detail-section">';
-            expandedDetails += '<div class="detail-item">No detailed metadata available for this algorithm.</div>';
-            expandedDetails += '<div class="detail-item">This may be a dynamically loaded algorithm or one without comprehensive documentation.</div>';
+            expandedDetails += '<div class="metadata-section">';
+            expandedDetails += '<h3 class="metadata-section-title">Algorithm Information</h3>';
+            expandedDetails += '<div class="metadata-grid">';
+            expandedDetails += '<div class="metadata-item">';
+            expandedDetails += '<div class="metadata-label">Status</div>';
+            expandedDetails += '<div class="metadata-value">No detailed metadata available for this algorithm.</div>';
+            expandedDetails += '</div>';
+            expandedDetails += '<div class="metadata-item">';
+            expandedDetails += '<div class="metadata-label">Note</div>';
+            expandedDetails += '<div class="metadata-value">This may be a dynamically loaded algorithm or one without comprehensive documentation.</div>';
+            expandedDetails += '</div>';
             expandedDetails += '</div>';
             expandedDetails += '</div>';
         }
         
-        infoContent.innerHTML = cardHtml + expandedDetails;
+        infoContent.innerHTML = expandedDetails;
     }
     
     populateReferencesTab(modal, algorithm) {
@@ -765,177 +808,640 @@ class CipherController {
     populateTestVectorsTab(modal, algorithm) {
         const testVectorsContent = modal.querySelector('#modal-tab-test-vectors');
         
-        let content = '<div class="tab-content-wrapper">';
-        content += '<h3>🧪 Test Vectors</h3>';
-        
         // Check if the algorithm has test vectors
         const implementation = algorithm.implementation;
         const testVectors = this.extractTestVectors(implementation);
         
+        let content = '<div class="test-vectors-header">';
+        content += '<h3 class="metadata-section-title">🧪 Test Vectors</h3>';
+        
         if (testVectors && testVectors.length > 0) {
-            // Add control panel for running tests
-            content += '<div class="test-vector-controls">';
-            content += `<button class="btn btn-primary" onclick="cipherController.runTestVectors('${algorithm.name}')">Run All Test Vectors</button>`;
-            content += `<span class="test-vector-count">${testVectors.length} test vector${testVectors.length !== 1 ? 's' : ''} available</span>`;
+            content += '<div class="test-vectors-controls">';
+            content += '<div class="controls-group">';
+            content += `<button class="btn btn-primary btn-small" onclick="cipherController.runAllTestVectors('${algorithm.name}')">▶️ Run All</button>`;
+            content += `<button class="btn btn-secondary btn-small" onclick="cipherController.runSelectedTestVectors('${algorithm.name}')">▶️ Run Selected</button>`;
+            content += `<button class="btn btn-secondary btn-small" onclick="cipherController.selectAllTestVectors()">☑️ Select All</button>`;
+            content += `<button class="btn btn-secondary btn-small" onclick="cipherController.deselectAllTestVectors()">☐ Deselect All</button>`;
+            content += '</div>';
+            content += `<div class="vector-stats">${testVectors.length} test vector${testVectors.length !== 1 ? 's' : ''} available</div>`;
+            content += '</div>';
             content += '</div>';
             
-            content += '<div class="detail-section">';
-            content += '<div class="test-vectors-list">';
+            // Create data grid view
+            content += '<div class="test-vectors-table">';
+            content += '<table class="vectors-table">';
             
+            // Table headers
+            content += '<thead>';
+            content += '<tr>';
+            content += '<th><input type="checkbox" id="select-all-vectors" onclick="cipherController.toggleAllTestVectors(this)"></th>';
+            content += '<th class="sortable-vector" data-column="name">Test Name</th>';
+            content += '<th class="sortable-vector" data-column="input">Input</th>';
+            content += '<th class="sortable-vector" data-column="expected">Expected</th>';
+            content += '<th class="sortable-vector" data-column="source">Source</th>';
+            content += '<th class="sortable-vector" data-column="status">Status</th>';
+            content += '<th>Link</th>';
+            content += '</tr>';
+            content += '</thead>';
+            
+            // Table body
+            content += '<tbody>';
             testVectors.forEach((vector, index) => {
-                content += `<div class="test-vector-item" id="test-vector-${index}">`;
-                content += '<div class="test-vector-header">';
-                content += `<h5>Test Vector ${index + 1}</h5>`;
-                content += `<button class="btn btn-small" onclick="cipherController.runSingleTestVector('${algorithm.name}', ${index})">Run Test</button>`;
-                content += '<div class="test-result" id="test-result-' + index + '"></div>';
-                content += '</div>';
+                const testName = vector.name || vector.description || vector.text || `Test Vector ${index + 1}`;
+                const inputData = vector.input || vector.plaintext || vector.data || vector.message || '';
+                const expectedData = vector.expected || vector.ciphertext || vector.output || vector.hash || '';
+                const source = vector.origin?.source || vector.source || 'Unknown';
                 
-                if (vector.text || vector.description) {
-                    content += `<div class="test-vector-description"><strong>Description:</strong> ${vector.text || vector.description}</div>`;
+                content += `<tr class="vector-row" id="vector-row-${index}">`;
+                content += `<td><input type="checkbox" class="vector-checkbox" data-index="${index}"></td>`;
+                content += `<td class="vector-name">${testName}</td>`;
+                content += `<td class="vector-data"><code>${this.formatTestData(inputData)}</code></td>`;
+                content += `<td class="vector-data"><code>${this.formatTestData(expectedData)}</code></td>`;
+                content += `<td class="vector-source">${source}</td>`;
+                content += `<td class="vector-status" id="vector-status-${index}">⚪ Ready</td>`;
+                
+                // Link column
+                const hasLink = vector.uri || vector.origin?.url;
+                if (hasLink) {
+                    const linkUrl = vector.uri || vector.origin.url;
+                    content += `<td><a href="${linkUrl}" target="_blank" rel="noopener" class="source-link">🔗</a></td>`;
+                } else {
+                    content += `<td><span class="no-source">-</span></td>`;
                 }
                 
-                // Handle different test vector formats
-                const inputData = vector.input || vector.plaintext || vector.data || vector.message;
-                if (inputData) {
-                    content += `<div class="test-vector-field"><strong>Input:</strong> <code>${this.formatTestData(inputData)}</code></div>`;
-                }
-                
-                if (vector.key) {
-                    content += `<div class="test-vector-field"><strong>Key:</strong> <code>${this.formatTestData(vector.key)}</code></div>`;
-                }
-                
-                const expectedData = vector.expected || vector.ciphertext || vector.output || vector.hash;
-                if (expectedData) {
-                    content += `<div class="test-vector-field"><strong>Expected:</strong> <code>${this.formatTestData(expectedData)}</code></div>`;
-                }
-                
-                // Show test vector source
-                if (vector.text && vector.uri) {
-                    content += '<div class="test-vector-origin">';
-                    content += `<strong>Source:</strong> <a href="${vector.uri}" target="_blank" rel="noopener">${vector.text}</a>`;
-                    content += '</div>';
-                } else if (vector.origin) {
-                    content += '<div class="test-vector-origin">';
-                    content += `<strong>Source:</strong> ${vector.origin.source || 'Unknown'}`;
-                    if (vector.origin.url) {
-                        content += ` (<a href="${vector.origin.url}" target="_blank" rel="noopener">Link</a>)`;
-                    }
-                    content += '</div>';
-                }
-                
-                content += '</div>';
+                content += '</tr>';
             });
+            content += '</tbody>';
+            content += '</table>';
+            content += '</div>';
             
+            // Test results summary
+            content += '<div class="test-results-summary" id="test-results-summary" style="display: none;">';
+            content += '<h4>Test Results</h4>';
+            content += '<div class="results-stats">';
+            content += '<span class="stat" id="vectors-passed">Passed: 0</span>';
+            content += '<span class="stat" id="vectors-failed">Failed: 0</span>';
+            content += '<span class="stat" id="vectors-total">Total: 0</span>';
             content += '</div>';
             content += '</div>';
         } else {
-            content += '<div class="detail-section">';
-            content += '<div class="detail-item">No test vectors are currently available for this algorithm.</div>';
-            content += '<div class="detail-item">Test vectors may be added in future updates or can be found in the algorithm\'s official specification.</div>';
+            content += '</div>';
+            content += '<div class="metadata-section">';
+            content += '<div class="metadata-item">';
+            content += '<div class="metadata-label">Status</div>';
+            content += '<div class="metadata-value">No test vectors are currently available for this algorithm.</div>';
+            content += '</div>';
+            content += '<div class="metadata-item">';
+            content += '<div class="metadata-label">Note</div>';
+            content += '<div class="metadata-value">Test vectors may be added in future updates or can be found in the algorithm\'s official specification.</div>';
+            content += '</div>';
             content += '</div>';
         }
         
-        content += '</div>';
         testVectorsContent.innerHTML = content;
+        
+        // Set up sorting functionality for the test vectors table
+        if (testVectors && testVectors.length > 0) {
+            this.setupTestVectorsSorting();
+        }
     }
     
     populateCodeTab(modal, algorithm) {
         const codeContent = modal.querySelector('#modal-tab-code');
         
-        let content = '<div class="tab-content-wrapper">';
-        content += '<h3>💻 Implementation Code</h3>';
-        
-        content += '<div class="detail-section">';
-        content += '<h4>Algorithm Implementation</h4>';
-        content += '<div class="detail-item">This section shows the core implementation structure for educational purposes.</div>';
-        
-        // Show basic algorithm structure
-        content += '<pre class="code-block">';
-        content += '<code class="language-javascript">';
-        content += `// ${algorithm.name} Implementation Structure\n`;
-        content += `const ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')} = {\n`;
-        content += `  // Algorithm metadata\n`;
-        content += `  szInternalName: '${algorithm.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}',\n`;
-        content += `  szName: '${algorithm.name}',\n`;
-        content += `  szCategory: '${algorithm.category}',\n`;
-        
-        if (algorithm.country) {
-            content += `  szCountry: '${algorithm.country}',\n`;
-        }
-        
-        if (algorithm.year) {
-            content += `  nYear: ${algorithm.year},\n`;
-        }
-        
-        content += `\n`;
-        content += `  // Core implementation methods\n`;
-        content += `  Init: function() {\n`;
-        content += `    // Algorithm initialization\n`;
-        content += `  },\n\n`;
-        
-        if (algorithm.category === 'block' || algorithm.category === 'stream') {
-            content += `  KeySetup: function(key) {\n`;
-            content += `    // Key schedule/setup\n`;
-            content += `    return keyId;\n`;
-            content += `  },\n\n`;
-            
-            content += `  EncryptBlock: function(keyId, data) {\n`;
-            content += `    // Encryption implementation\n`;
-            content += `    return encryptedData;\n`;
-            content += `  },\n\n`;
-            
-            content += `  DecryptBlock: function(keyId, data) {\n`;
-            content += `    // Decryption implementation\n`;
-            content += `    return decryptedData;\n`;
-            content += `  }\n`;
-        } else if (algorithm.category === 'hash') {
-            content += `  Hash: function(data) {\n`;
-            content += `    // Hash computation\n`;
-            content += `    return hashValue;\n`;
-            content += `  }\n`;
-        }
-        
-        content += `};\n`;
-        content += '</code>';
-        content += '</pre>';
-        
+        let content = '<div class="code-controls">';
+        content += '<div class="code-language-selector">';
+        content += '<label>Language:</label>';
+        content += '<select id="code-language-select" onchange="cipherController.changeCodeLanguage(this.value)">';
+        content += '<option value="javascript">JavaScript</option>';
+        content += '<option value="python">Python</option>';
+        content += '<option value="cpp">C++</option>';
+        content += '<option value="java">Java</option>';
+        content += '<option value="rust">Rust</option>';
+        content += '<option value="csharp">C#</option>';
+        content += '<option value="go">Go</option>';
+        content += '</select>';
+        content += '</div>';
+        content += '<div class="code-actions">';
+        content += `<button class="btn btn-secondary btn-small" onclick="cipherController.downloadOriginalJS('${algorithm.name}')">📥 Download Original JS</button>`;
+        content += `<button class="btn btn-secondary btn-small" onclick="cipherController.downloadCode('${algorithm.name}')">💾 Download Code</button>`;
+        content += `<button class="btn btn-secondary btn-small" onclick="cipherController.copyCodeToClipboard()">📋 Copy</button>`;
+        content += `<button class="btn btn-secondary btn-small" onclick="cipherController.toggleLineNumbers()">🔢 Line Numbers</button>`;
+        content += `<button class="btn btn-secondary btn-small" onclick="cipherController.toggleWordWrap()">📄 Word Wrap</button>`;
+        content += '</div>';
         content += '</div>';
         
-        // Add usage example
-        content += '<div class="detail-section">';
-        content += '<h4>Usage Example</h4>';
-        content += '<pre class="code-block">';
-        content += '<code class="language-javascript">';
-        content += `// Example usage of ${algorithm.name}\n`;
+        content += '<div class="metadata-section">';
+        content += '<h3 class="metadata-section-title">💻 Implementation Code</h3>';
         
-        if (algorithm.category === 'block' || algorithm.category === 'stream') {
-            content += `const algorithm = Cipher.GetCipher('${algorithm.name}');\n`;
-            content += `const keyId = algorithm.KeySetup([0x01, 0x23, 0x45, 0x67]); // Example key\n`;
-            content += `const encrypted = algorithm.EncryptBlock(keyId, [0x00, 0x11, 0x22, 0x33]);\n`;
-            content += `const decrypted = algorithm.DecryptBlock(keyId, encrypted);\n`;
-        } else if (algorithm.category === 'hash') {
-            content += `const algorithm = Cipher.GetCipher('${algorithm.name}');\n`;
-            content += `const hash = algorithm.Hash([0x48, 0x65, 0x6c, 0x6c, 0x6f]); // "Hello"\n`;
-        } else {
-            content += `const algorithm = Cipher.GetCipher('${algorithm.name}');\n`;
-            content += `// See algorithm documentation for specific usage\n`;
-        }
+        content += '<div class="code-container">';
+        content += '<div class="code-preview" id="algorithm-code-display">';
+        // Initial JavaScript code will be populated here
+        content += '</div>';
+        content += '</div>';
         
-        content += '</code>';
-        content += '</pre>';
+        content += '<div class="integration-note">';
+        content += '<h5>Integration Notes</h5>';
+        content += '<ul>';
+        content += '<li>This is auto-generated code based on the algorithm structure</li>';
+        content += '<li>For production use, consider proper error handling and validation</li>';
+        content += '<li>Original implementation may have optimizations not shown here</li>';
+        content += '<li>Test with known test vectors before deployment</li>';
+        content += '</ul>';
         content += '</div>';
         
         content += '</div>';
+        
         codeContent.innerHTML = content;
+        
+        // Generate and display the initial JavaScript code
+        this.generateAndDisplayCode(algorithm, 'javascript');
+    }
+    
+    /**
+     * Generate and display code in specified language
+     */
+    generateAndDisplayCode(algorithm, language) {
+        const codeDisplay = document.getElementById('algorithm-code-display');
+        if (!codeDisplay) return;
+        
+        let code = '';
+        
+        switch (language) {
+            case 'javascript':
+                code = this.generateJavaScriptCode(algorithm);
+                break;
+            case 'python':
+                code = this.generatePythonCode(algorithm);
+                break;
+            case 'cpp':
+                code = this.generateCppCode(algorithm);
+                break;
+            case 'java':
+                code = this.generateJavaCode(algorithm);
+                break;
+            case 'rust':
+                code = this.generateRustCode(algorithm);
+                break;
+            case 'csharp':
+                code = this.generateCSharpCode(algorithm);
+                break;
+            case 'go':
+                code = this.generateGoCode(algorithm);
+                break;
+            default:
+                code = this.generateJavaScriptCode(algorithm);
+        }
+        
+        codeDisplay.innerHTML = `<code class="language-${language}">${code}</code>`;
+        
+        // Store current algorithm and language for other functions
+        this.currentAlgorithm = algorithm;
+        this.currentLanguage = language;
         
         // Apply syntax highlighting if available
         if (typeof hljs !== 'undefined') {
-            codeContent.querySelectorAll('pre code').forEach(block => {
+            codeDisplay.querySelectorAll('code').forEach(block => {
                 hljs.highlightElement(block);
             });
         }
     }
     
+    /**
+     * Generate JavaScript code
+     */
+    generateJavaScriptCode(algorithm) {
+        let code = `// ${algorithm.name} Implementation\n`;
+        code += `// Generated code for educational purposes\n\n`;
+        code += `const ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')} = {\n`;
+        code += `  // Algorithm metadata\n`;
+        code += `  name: '${algorithm.name}',\n`;
+        code += `  category: '${algorithm.category}',\n`;
+        
+        if (algorithm.metadata) {
+            if (algorithm.metadata.country) {
+                code += `  country: '${algorithm.metadata.country.name}',\n`;
+            }
+            if (algorithm.metadata.year && algorithm.metadata.year !== 2025) {
+                code += `  year: ${algorithm.metadata.year},\n`;
+            }
+            if (algorithm.metadata.keySize) {
+                code += `  keySize: ${algorithm.metadata.keySize * 8}, // bits\n`;
+            }
+            if (algorithm.metadata.blockSize) {
+                code += `  blockSize: ${algorithm.metadata.blockSize * 8}, // bits\n`;
+            }
+        }
+        
+        code += `\n  // Core implementation methods\n`;
+        code += `  init() {\n`;
+        code += `    // Algorithm initialization\n`;
+        code += `    return true;\n`;
+        code += `  },\n\n`;
+        
+        if (algorithm.category === 'block' || algorithm.category === 'stream') {
+            code += `  keySetup(key) {\n`;
+            code += `    // Key schedule/setup\n`;
+            code += `    // Validate key size\n`;
+            code += `    if (!key || key.length === 0) {\n`;
+            code += `      throw new Error('Key is required');\n`;
+            code += `    }\n`;
+            code += `    return { keySchedule: key, keyId: Date.now() };\n`;
+            code += `  },\n\n`;
+            
+            code += `  encryptBlock(keySchedule, data) {\n`;
+            code += `    // Block encryption implementation\n`;
+            code += `    // This is a placeholder - actual implementation would go here\n`;
+            code += `    return data.map(byte => byte ^ 0xAA); // Simple XOR for demo\n`;
+            code += `  },\n\n`;
+            
+            code += `  decryptBlock(keySchedule, data) {\n`;
+            code += `    // Block decryption implementation\n`;
+            code += `    // This is a placeholder - actual implementation would go here\n`;
+            code += `    return data.map(byte => byte ^ 0xAA); // Simple XOR for demo\n`;
+            code += `  }\n`;
+        } else if (algorithm.category === 'hash') {
+            code += `  hash(data) {\n`;
+            code += `    // Hash computation implementation\n`;
+            code += `    // This is a placeholder - actual implementation would go here\n`;
+            code += `    let hash = 0;\n`;
+            code += `    for (let i = 0; i < data.length; i++) {\n`;
+            code += `      hash = ((hash << 5) - hash + data[i]) & 0xFFFFFFFF;\n`;
+            code += `    }\n`;
+            code += `    return [hash >> 24, hash >> 16, hash >> 8, hash].map(b => b & 0xFF);\n`;
+            code += `  }\n`;
+        } else {
+            code += `  process(data, options = {}) {\n`;
+            code += `    // Algorithm-specific processing\n`;
+            code += `    // This is a placeholder - actual implementation would go here\n`;
+            code += `    return data;\n`;
+            code += `  }\n`;
+        }
+        
+        code += `};\n\n`;
+        
+        // Add usage example
+        code += `// Usage example:\n`;
+        if (algorithm.category === 'block' || algorithm.category === 'stream') {
+            code += `const key = [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF];\n`;
+            code += `const data = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77];\n`;
+            code += `const keySchedule = ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')}.keySetup(key);\n`;
+            code += `const encrypted = ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')}.encryptBlock(keySchedule, data);\n`;
+            code += `const decrypted = ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')}.decryptBlock(keySchedule, encrypted);\n`;
+        } else if (algorithm.category === 'hash') {
+            code += `const data = [0x48, 0x65, 0x6c, 0x6c, 0x6f]; // "Hello"\n`;
+            code += `const hash = ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')}.hash(data);\n`;
+        }
+        
+        return code;
+    }
+    
+    /**
+     * Generate Python code
+     */
+    generatePythonCode(algorithm) {
+        let code = `# ${algorithm.name} Implementation\n`;
+        code += `# Generated code for educational purposes\n\n`;
+        code += `class ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')}:\n`;
+        code += `    """${algorithm.name} algorithm implementation"""\n\n`;
+        code += `    def __init__(self):\n`;
+        code += `        self.name = "${algorithm.name}"\n`;
+        code += `        self.category = "${algorithm.category}"\n`;
+        
+        if (algorithm.metadata) {
+            if (algorithm.metadata.keySize) {
+                code += `        self.key_size = ${algorithm.metadata.keySize * 8}  # bits\n`;
+            }
+            if (algorithm.metadata.blockSize) {
+                code += `        self.block_size = ${algorithm.metadata.blockSize * 8}  # bits\n`;
+            }
+        }
+        
+        code += `\n`;
+        
+        if (algorithm.category === 'block' || algorithm.category === 'stream') {
+            code += `    def key_setup(self, key):\n`;
+            code += `        """Setup key schedule"""\n`;
+            code += `        if not key:\n`;
+            code += `            raise ValueError("Key is required")\n`;
+            code += `        return {"key_schedule": key, "key_id": id(key)}\n\n`;
+            
+            code += `    def encrypt_block(self, key_schedule, data):\n`;
+            code += `        """Encrypt a block of data"""\n`;
+            code += `        # This is a placeholder - actual implementation would go here\n`;
+            code += `        return [byte ^ 0xAA for byte in data]  # Simple XOR for demo\n\n`;
+            
+            code += `    def decrypt_block(self, key_schedule, data):\n`;
+            code += `        """Decrypt a block of data"""\n`;
+            code += `        # This is a placeholder - actual implementation would go here\n`;
+            code += `        return [byte ^ 0xAA for byte in data]  # Simple XOR for demo\n`;
+        } else if (algorithm.category === 'hash') {
+            code += `    def hash(self, data):\n`;
+            code += `        """Compute hash of data"""\n`;
+            code += `        # This is a placeholder - actual implementation would go here\n`;
+            code += `        hash_val = 0\n`;
+            code += `        for byte in data:\n`;
+            code += `            hash_val = ((hash_val << 5) - hash_val + byte) & 0xFFFFFFFF\n`;
+            code += `        return [(hash_val >> 24) & 0xFF, (hash_val >> 16) & 0xFF, \n`;
+            code += `                (hash_val >> 8) & 0xFF, hash_val & 0xFF]\n`;
+        } else {
+            code += `    def process(self, data, options=None):\n`;
+            code += `        """Process data with algorithm"""\n`;
+            code += `        if options is None:\n`;
+            code += `            options = {}\n`;
+            code += `        # This is a placeholder - actual implementation would go here\n`;
+            code += `        return data\n`;
+        }
+        
+        code += `\n# Usage example:\n`;
+        if (algorithm.category === 'block' || algorithm.category === 'stream') {
+            code += `cipher = ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')}()\n`;
+            code += `key = [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]\n`;
+            code += `data = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77]\n`;
+            code += `key_schedule = cipher.key_setup(key)\n`;
+            code += `encrypted = cipher.encrypt_block(key_schedule, data)\n`;
+            code += `decrypted = cipher.decrypt_block(key_schedule, encrypted)\n`;
+        } else if (algorithm.category === 'hash') {
+            code += `hasher = ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')}()\n`;
+            code += `data = [0x48, 0x65, 0x6c, 0x6c, 0x6f]  # "Hello"\n`;
+            code += `hash_result = hasher.hash(data)\n`;
+        }
+        
+        return code;
+    }
+    
+    /**
+     * Generate C++ code (simplified)
+     */
+    generateCppCode(algorithm) {
+        let code = `// ${algorithm.name} Implementation\n`;
+        code += `// Generated code for educational purposes\n\n`;
+        code += `#include <vector>\n`;
+        code += `#include <stdexcept>\n\n`;
+        code += `class ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')} {\n`;
+        code += `public:\n`;
+        
+        if (algorithm.category === 'block' || algorithm.category === 'stream') {
+            code += `    struct KeySchedule {\n`;
+            code += `        std::vector<uint8_t> key;\n`;
+            code += `        uint64_t keyId;\n`;
+            code += `    };\n\n`;
+            
+            code += `    KeySchedule keySetup(const std::vector<uint8_t>& key) {\n`;
+            code += `        if (key.empty()) {\n`;
+            code += `            throw std::invalid_argument("Key is required");\n`;
+            code += `        }\n`;
+            code += `        return {key, static_cast<uint64_t>(std::hash<std::vector<uint8_t>>{}(key))};\n`;
+            code += `    }\n\n`;
+            
+            code += `    std::vector<uint8_t> encryptBlock(const KeySchedule& keySchedule, \n`;
+            code += `                                      const std::vector<uint8_t>& data) {\n`;
+            code += `        // This is a placeholder - actual implementation would go here\n`;
+            code += `        std::vector<uint8_t> result = data;\n`;
+            code += `        for (auto& byte : result) {\n`;
+            code += `            byte ^= 0xAA; // Simple XOR for demo\n`;
+            code += `        }\n`;
+            code += `        return result;\n`;
+            code += `    }\n\n`;
+            
+            code += `    std::vector<uint8_t> decryptBlock(const KeySchedule& keySchedule, \n`;
+            code += `                                      const std::vector<uint8_t>& data) {\n`;
+            code += `        // This is a placeholder - actual implementation would go here\n`;
+            code += `        return encryptBlock(keySchedule, data); // XOR is symmetric\n`;
+            code += `    }\n`;
+        } else if (algorithm.category === 'hash') {
+            code += `    std::vector<uint8_t> hash(const std::vector<uint8_t>& data) {\n`;
+            code += `        // This is a placeholder - actual implementation would go here\n`;
+            code += `        uint32_t hashVal = 0;\n`;
+            code += `        for (uint8_t byte : data) {\n`;
+            code += `            hashVal = ((hashVal << 5) - hashVal + byte);\n`;
+            code += `        }\n`;
+            code += `        return {\n`;
+            code += `            static_cast<uint8_t>(hashVal >> 24),\n`;
+            code += `            static_cast<uint8_t>(hashVal >> 16),\n`;
+            code += `            static_cast<uint8_t>(hashVal >> 8),\n`;
+            code += `            static_cast<uint8_t>(hashVal)\n`;
+            code += `        };\n`;
+            code += `    }\n`;
+        }
+        
+        code += `};\n`;
+        
+        return code;
+    }
+    
+    /**
+     * Generate basic code for other languages (simplified implementations)
+     */
+    generateJavaCode(algorithm) {
+        return `// ${algorithm.name} Implementation in Java\n// Simplified implementation for educational purposes\n\n// Implementation details would go here...`;
+    }
+    
+    generateRustCode(algorithm) {
+        return `// ${algorithm.name} Implementation in Rust\n// Simplified implementation for educational purposes\n\n// Implementation details would go here...`;
+    }
+    
+    generateCSharpCode(algorithm) {
+        return `// ${algorithm.name} Implementation in C#\n// Simplified implementation for educational purposes\n\n// Implementation details would go here...`;
+    }
+    
+    generateGoCode(algorithm) {
+        return `// ${algorithm.name} Implementation in Go\n// Simplified implementation for educational purposes\n\n// Implementation details would go here...`;
+    }
+    
+    /**
+     * Change code language
+     */
+    changeCodeLanguage(language) {
+        if (this.currentAlgorithm) {
+            this.generateAndDisplayCode(this.currentAlgorithm, language);
+        }
+    }
+    
+    /**
+     * Download original JavaScript file
+     */
+    downloadOriginalJS(algorithmName) {
+        // In a real implementation, this would fetch the actual source file
+        const algorithm = this.algorithms.get(algorithmName);
+        if (!algorithm) return;
+        
+        const code = this.generateJavaScriptCode(algorithm);
+        const blob = new Blob([code], { type: 'application/javascript' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${algorithmName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}.js`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+    
+    /**
+     * Download code in current language
+     */
+    downloadCode(algorithmName) {
+        const language = this.currentLanguage || 'javascript';
+        const algorithm = this.currentAlgorithm;
+        if (!algorithm) return;
+        
+        let code = '';
+        let extension = 'txt';
+        let mimeType = 'text/plain';
+        
+        switch (language) {
+            case 'javascript':
+                code = this.generateJavaScriptCode(algorithm);
+                extension = 'js';
+                mimeType = 'application/javascript';
+                break;
+            case 'python':
+                code = this.generatePythonCode(algorithm);
+                extension = 'py';
+                mimeType = 'text/x-python';
+                break;
+            case 'cpp':
+                code = this.generateCppCode(algorithm);
+                extension = 'cpp';
+                mimeType = 'text/x-c++src';
+                break;
+            case 'java':
+                code = this.generateJavaCode(algorithm);
+                extension = 'java';
+                mimeType = 'text/x-java-source';
+                break;
+            case 'rust':
+                code = this.generateRustCode(algorithm);
+                extension = 'rs';
+                mimeType = 'text/x-rust';
+                break;
+            case 'csharp':
+                code = this.generateCSharpCode(algorithm);
+                extension = 'cs';
+                mimeType = 'text/x-csharp';
+                break;
+            case 'go':
+                code = this.generateGoCode(algorithm);
+                extension = 'go';
+                mimeType = 'text/x-go';
+                break;
+        }
+        
+        const blob = new Blob([code], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${algorithmName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}.${extension}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+    
+    /**
+     * Copy code to clipboard
+     */
+    copyCodeToClipboard() {
+        const codeDisplay = document.getElementById('algorithm-code-display');
+        if (!codeDisplay) return;
+        
+        const codeElement = codeDisplay.querySelector('code');
+        if (!codeElement) return;
+        
+        const code = codeElement.textContent;
+        
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(code).then(() => {
+                // Show temporary feedback
+                const originalText = document.querySelector('[onclick*="copyCodeToClipboard"]').textContent;
+                const button = document.querySelector('[onclick*="copyCodeToClipboard"]');
+                button.textContent = '✅ Copied!';
+                setTimeout(() => {
+                    button.textContent = originalText;
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                this.fallbackCopyTextToClipboard(code);
+            });
+        } else {
+            this.fallbackCopyTextToClipboard(code);
+        }
+    }
+    
+    /**
+     * Fallback copy to clipboard method
+     */
+    fallbackCopyTextToClipboard(text) {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.top = "0";
+        textArea.style.left = "0";
+        textArea.style.position = "fixed";
+        
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        try {
+            const successful = document.execCommand('copy');
+            if (successful) {
+                const button = document.querySelector('[onclick*="copyCodeToClipboard"]');
+                if (button) {
+                    const originalText = button.textContent;
+                    button.textContent = '✅ Copied!';
+                    setTimeout(() => {
+                        button.textContent = originalText;
+                    }, 2000);
+                }
+            }
+        } catch (err) {
+            console.error('Fallback: Oops, unable to copy', err);
+        }
+        
+        document.body.removeChild(textArea);
+    }
+    
+    /**
+     * Toggle line numbers display
+     */
+    toggleLineNumbers() {
+        const codeDisplay = document.getElementById('algorithm-code-display');
+        if (!codeDisplay) return;
+        
+        codeDisplay.classList.toggle('show-line-numbers');
+        
+        const button = document.querySelector('[onclick*="toggleLineNumbers"]');
+        if (button) {
+            if (codeDisplay.classList.contains('show-line-numbers')) {
+                button.textContent = '🔢 Hide Numbers';
+            } else {
+                button.textContent = '🔢 Line Numbers';
+            }
+        }
+    }
+    
+    /**
+     * Toggle word wrap
+     */
+    toggleWordWrap() {
+        const codeDisplay = document.getElementById('algorithm-code-display');
+        if (!codeDisplay) return;
+        
+        codeDisplay.classList.toggle('word-wrap');
+        
+        const button = document.querySelector('[onclick*="toggleWordWrap"]');
+        if (button) {
+            if (codeDisplay.classList.contains('word-wrap')) {
+                button.textContent = '📄 No Wrap';
+            } else {
+                button.textContent = '📄 Word Wrap';
+            }
+        }
+    }
+
     /**
      * Extract test vectors from algorithm implementation
      */
@@ -959,6 +1465,122 @@ class CipherController {
         return [];
     }
     
+    /**
+     * Setup sorting functionality for test vectors table
+     */
+    setupTestVectorsSorting() {
+        const sortableHeaders = document.querySelectorAll('.sortable-vector');
+        sortableHeaders.forEach(header => {
+            header.addEventListener('click', (e) => {
+                const column = e.target.getAttribute('data-column');
+                if (column) {
+                    this.sortTestVectors(column);
+                }
+            });
+        });
+    }
+    
+    /**
+     * Sort test vectors table
+     */
+    sortTestVectors(column) {
+        // Implementation for sorting test vectors table
+        console.log(`Sorting test vectors by ${column}`);
+        // This would implement the actual sorting logic
+    }
+    
+    /**
+     * Toggle all test vectors selection
+     */
+    toggleAllTestVectors(checkbox) {
+        const vectorCheckboxes = document.querySelectorAll('.vector-checkbox');
+        vectorCheckboxes.forEach(cb => {
+            cb.checked = checkbox.checked;
+        });
+    }
+    
+    /**
+     * Select all test vectors
+     */
+    selectAllTestVectors() {
+        const vectorCheckboxes = document.querySelectorAll('.vector-checkbox');
+        const selectAllCheckbox = document.getElementById('select-all-vectors');
+        vectorCheckboxes.forEach(cb => {
+            cb.checked = true;
+        });
+        if (selectAllCheckbox) selectAllCheckbox.checked = true;
+    }
+    
+    /**
+     * Deselect all test vectors
+     */
+    deselectAllTestVectors() {
+        const vectorCheckboxes = document.querySelectorAll('.vector-checkbox');
+        const selectAllCheckbox = document.getElementById('select-all-vectors');
+        vectorCheckboxes.forEach(cb => {
+            cb.checked = false;
+        });
+        if (selectAllCheckbox) selectAllCheckbox.checked = false;
+    }
+    
+    /**
+     * Run all test vectors for an algorithm
+     */
+    async runAllTestVectors(algorithmName) {
+        console.log(`Running all test vectors for ${algorithmName}`);
+        await this.runTestVectors(algorithmName);
+    }
+    
+    /**
+     * Run selected test vectors for an algorithm
+     */
+    async runSelectedTestVectors(algorithmName) {
+        const selectedCheckboxes = document.querySelectorAll('.vector-checkbox:checked');
+        const selectedIndices = Array.from(selectedCheckboxes).map(cb => parseInt(cb.dataset.index));
+        
+        console.log(`Running ${selectedIndices.length} selected test vectors for ${algorithmName}`);
+        
+        // Run each selected test vector
+        for (const index of selectedIndices) {
+            await this.runSingleTestVector(algorithmName, index);
+        }
+        
+        // Update summary
+        this.updateTestVectorsSummary();
+    }
+    
+    /**
+     * Update test vectors summary
+     */
+    updateTestVectorsSummary() {
+        const summaryDiv = document.getElementById('test-results-summary');
+        if (!summaryDiv) return;
+        
+        // Count test results
+        let passed = 0;
+        let failed = 0;
+        let total = 0;
+        
+        const statusElements = document.querySelectorAll('[id^="vector-status-"]');
+        statusElements.forEach(el => {
+            const status = el.textContent;
+            total++;
+            if (status.includes('✅') || status.includes('Passed')) {
+                passed++;
+            } else if (status.includes('❌') || status.includes('Failed')) {
+                failed++;
+            }
+        });
+        
+        // Update summary display
+        if (total > 0) {
+            document.getElementById('vectors-passed').textContent = `Passed: ${passed}`;
+            document.getElementById('vectors-failed').textContent = `Failed: ${failed}`;
+            document.getElementById('vectors-total').textContent = `Total: ${total}`;
+            summaryDiv.style.display = 'block';
+        }
+    }
+
     /**
      * Run test vectors for an algorithm
      */
@@ -1031,11 +1653,16 @@ class CipherController {
         }
         
         const vector = testVectors[vectorIndex];
-        const resultEl = document.getElementById(`test-result-${vectorIndex}`);
+        const statusEl = document.getElementById(`vector-status-${vectorIndex}`);
+        const rowEl = document.getElementById(`vector-row-${vectorIndex}`);
         
-        if (resultEl) {
-            resultEl.innerHTML = '<span class="test-running">Running...</span>';
-            resultEl.className = 'test-result running';
+        if (statusEl) {
+            statusEl.innerHTML = '🟡 Running...';
+            statusEl.className = 'vector-status running';
+        }
+        
+        if (rowEl) {
+            rowEl.className = 'vector-row testing';
         }
         
         try {
@@ -1053,26 +1680,41 @@ class CipherController {
             const testResult = StrictAlgorithmTester.runSingleTest(algorithm.implementation, vector, validation.strategy);
             
             // Update UI with results
-            if (resultEl) {
+            if (statusEl) {
                 if (testResult.success) {
-                    resultEl.innerHTML = '<span class="test-success">✓ PASSED</span>';
-                    resultEl.className = 'test-result success';
-                    resultEl.title = testResult.message || 'Test passed';
+                    statusEl.innerHTML = '✅ Passed';
+                    statusEl.className = 'vector-status passed';
+                    statusEl.title = testResult.message || 'Test passed';
                 } else {
-                    resultEl.innerHTML = '<span class="test-failure">✗ FAILED</span>';
-                    resultEl.className = 'test-result failure';
-                    resultEl.title = testResult.message || 'Test failed';
+                    statusEl.innerHTML = '❌ Failed';
+                    statusEl.className = 'vector-status failed';
+                    statusEl.title = testResult.message || 'Test failed';
+                }
+            }
+            
+            if (rowEl) {
+                if (testResult.success) {
+                    rowEl.className = 'vector-row passed';
+                } else {
+                    rowEl.className = 'vector-row failed';
                 }
             }
             
         } catch (error) {
             console.error('Error running test vector:', error);
-            if (resultEl) {
-                resultEl.innerHTML = '<span class="test-error">✗ ERROR</span>';
-                resultEl.className = 'test-result error';
-                resultEl.title = error.message;
+            if (statusEl) {
+                statusEl.innerHTML = '❌ Error';
+                statusEl.className = 'vector-status error';
+                statusEl.title = error.message;
+            }
+            
+            if (rowEl) {
+                rowEl.className = 'vector-row failed';
             }
         }
+        
+        // Update summary after running test
+        this.updateTestVectorsSummary();
     }
     
     formatTestData(data) {
@@ -1111,8 +1753,7 @@ class CipherController {
     closeMetadataModal() {
         const modal = document.getElementById('metadata-modal');
         if (modal) {
-            modal.style.display = 'none';
-            modal.classList.remove('active');
+            modal.classList.remove('visible');
         }
     }
     
@@ -1166,6 +1807,23 @@ class CipherController {
         console.log('Setting up metadata modal...');
     }
     
+    /**
+     * Run tests and switch to test vectors tab - called from card test button
+     */
+    async runTestAndSwitchToTestVectors(algorithmName) {
+        console.log(`Running tests and switching to test vectors for ${algorithmName}`);
+        
+        // Switch to metadata modal and show test vectors tab
+        this.showMetadata(algorithmName);
+        
+        // Wait a moment for modal to open, then switch to test vectors tab
+        setTimeout(() => {
+            this.switchMetadataTab('test-vectors');
+            // Auto-run all test vectors
+            this.runTestVectors(algorithmName);
+        }, 100);
+    }
+
     /**
      * Run tests for a specific algorithm
      */

@@ -59,7 +59,10 @@ class AlgorithmCard {
         // Country badge with flag and name
         const countryInfo = this.getCountryInfo();
         if (countryInfo) {
-            badges += `<span class="badge badge-country">${countryInfo.flag} ${countryInfo.name}</span>`;
+            const flagElement = countryInfo.flag ? 
+                `<img class="country-flag" src="${countryInfo.flag}" alt="${countryInfo.code || 'flag'}" onerror="this.style.display='none'">` :
+                '';
+            badges += `<span class="badge badge-country">${flagElement}${countryInfo.name}</span>`;
         }
         
         // Year badge
@@ -292,11 +295,26 @@ class AlgorithmCard {
     
     getCountryInfo() {
         if (this.algorithm.metadata && this.algorithm.metadata.country) {
-            return this.algorithm.metadata.country;
+            const country = this.algorithm.metadata.country;
+            // Convert to flagcdn.com format
+            if (country.code) {
+                return {
+                    name: country.name,
+                    code: country.code,
+                    flag: `https://flagcdn.com/16x12/${country.code.toLowerCase()}.png`
+                };
+            }
+            return country;
         }
         // Handle legacy string country format
         if (this.algorithm.country && typeof this.algorithm.country === 'string') {
-            return { flag: '🏳️', name: this.algorithm.country };
+            const countryName = this.algorithm.country;
+            const countryCode = this.getCountryCode(countryName);
+            return { 
+                name: countryName, 
+                code: countryCode,
+                flag: countryCode ? `https://flagcdn.com/16x12/${countryCode.toLowerCase()}.png` : null
+            };
         }
         return null;
     }
@@ -323,6 +341,54 @@ class AlgorithmCard {
             return this.algorithm.testVectors.length;
         }
         return 0;
+    }
+    
+    /**
+     * Map country names to ISO country codes for flagcdn.com
+     */
+    getCountryCode(countryName) {
+        const countryMap = {
+            'United States': 'us',
+            'USA': 'us',
+            'US': 'us',
+            'Germany': 'de',
+            'Belgium': 'be',
+            'France': 'fr',
+            'Netherlands': 'nl',
+            'United Kingdom': 'gb',
+            'UK': 'gb',
+            'Britain': 'gb',
+            'Russia': 'ru',
+            'Soviet Union': 'ru',
+            'USSR': 'ru',
+            'Japan': 'jp',
+            'China': 'cn',
+            'South Korea': 'kr',
+            'Israel': 'il',
+            'Canada': 'ca',
+            'Australia': 'au',
+            'Brazil': 'br',
+            'Switzerland': 'ch',
+            'Austria': 'at',
+            'Sweden': 'se',
+            'Norway': 'no',
+            'Denmark': 'dk',
+            'Finland': 'fi',
+            'Italy': 'it',
+            'Spain': 'es',
+            'Czech Republic': 'cz',
+            'Czechia': 'cz',
+            'Slovakia': 'sk',
+            'Poland': 'pl',
+            'Ukraine': 'ua',
+            'India': 'in',
+            'Iran': 'ir',
+            'Turkey': 'tr',
+            'Egypt': 'eg',
+            'Saudi Arabia': 'sa'
+        };
+        
+        return countryMap[countryName] || null;
     }
     
     /**
