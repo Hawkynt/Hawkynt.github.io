@@ -124,10 +124,15 @@ class AlgorithmCard {
         if (detailsBtn) {
             detailsBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                console.log(`Opening details for algorithm: ${this.algorithm.name}`);
+                
                 if (this.options.onDetailsClick) {
                     this.options.onDetailsClick(this.algorithm, e);
                 } else if (window.cipherController) {
                     window.cipherController.showMetadata(this.algorithm.name);
+                } else {
+                    console.error('No cipherController available and no onDetailsClick handler provided');
+                    alert('Unable to show details: Controller not ready');
                 }
             });
         }
@@ -137,10 +142,15 @@ class AlgorithmCard {
         if (useBtn) {
             useBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
+                console.log(`Selecting algorithm for use: ${this.algorithm.name}`);
+                
                 if (this.options.onUseClick) {
                     this.options.onUseClick(this.algorithm, e);
                 } else if (window.cipherController) {
                     window.cipherController.selectAlgorithm(this.algorithm.name);
+                } else {
+                    console.error('No cipherController available and no onUseClick handler provided');
+                    alert('Unable to use algorithm: Controller not ready');
                 }
             });
         }
