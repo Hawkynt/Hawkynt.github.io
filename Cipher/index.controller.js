@@ -149,20 +149,10 @@ class CipherController {
             }
         }
         
-        // Load mode of operation and padding algorithms from individual .js files
-        await this.loadModeAndPaddingFiles();
-        
         // Store original order for unsorted state
         this.originalAlgorithmOrder = Array.from(this.algorithms.keys());
         
         console.log(`📈 Loaded ${this.algorithms.size} algorithms`);
-        
-        // Debug: Log algorithm categories for verification
-        const categories = {};
-        this.algorithms.forEach((alg, name) => {
-            categories[alg.category] = (categories[alg.category] || 0) + 1;
-        });
-        console.log('📊 Algorithms by category:', categories);
     }
     
     /**
@@ -184,79 +174,6 @@ class CipherController {
         
         return categoryMap[categoryName] || 'unknown';
     }
-    
-    inferCategory(algorithmName, cipher) {
-        // Infer category from algorithm name and characteristics
-        const name = algorithmName.toLowerCase();
-        
-        // Check common algorithm name patterns
-        if (name.includes('aes') || name.includes('des') || name.includes('rijndael') || 
-            name.includes('blowfish') || name.includes('twofish') || name.includes('serpent') ||
-            name.includes('cast') || name.includes('idea') || name.includes('skipjack')) {
-            return 'block';
-        }
-        
-        if (name.includes('chacha') || name.includes('salsa') || name.includes('rc4') ||
-            name.includes('stream') || name.includes('a5-') || name.includes('trivium')) {
-            return 'stream';
-        }
-        
-        if (name.includes('sha') || name.includes('md5') || name.includes('md4') || 
-            name.includes('blake') || name.includes('hash') || name.includes('ripemd') ||
-            name.includes('tiger') || name.includes('whirlpool')) {
-            return 'hash';
-        }
-        
-        if (name.includes('base64') || name.includes('base32') || name.includes('base16') ||
-            name.includes('hex') || name.includes('morse') || name.includes('atbash')) {
-            return 'encoding';
-        }
-        
-        if (name.includes('caesar') || name.includes('vigenere') || name.includes('playfair') ||
-            name.includes('enigma') || name.includes('scytale')) {
-            return 'classical';
-        }
-        
-        if (name.includes('cbc') || name.includes('ecb') || name.includes('gcm') || 
-            name.includes('ctr') || name.includes('cfb') || name.includes('ofb')) {
-            return 'mode';
-        }
-        
-        if (name.includes('pkcs') || name.includes('padding') || name.includes('oaep') ||
-            name.includes('pss')) {
-            return 'padding';
-        }
-        
-        if (name.includes('hmac') || name.includes('cmac') || name.includes('gmac') ||
-            name.includes('poly1305')) {
-            return 'mac';
-        }
-        
-        if (name.includes('rsa') || name.includes('ecdsa') || name.includes('dh') ||
-            name.includes('asymmetric')) {
-            return 'asymmetric';
-        }
-        
-        if (name.includes('lz') || name.includes('deflate') || name.includes('huffman') ||
-            name.includes('rle') || name.includes('compress')) {
-            return 'compression';
-        }
-        
-        if (name.includes('crc') || name.includes('adler') || name.includes('checksum') ||
-            name.includes('fletcher')) {
-            return 'checksum';
-        }
-        
-        // If we can't infer, return null (will become 'unknown')
-        return null;
-    }
-
-    async loadModeAndPaddingFiles() {
-        // Individual .js files in algorithms/modes/ and algorithms/padding/ 
-        // automatically register themselves when loaded via script tags
-        console.log('✅ Mode and padding files loaded via script tags');
-    }
-    
     
     renderAlgorithms() {
         const container = document.getElementById('algorithms-grid');
@@ -913,13 +830,29 @@ class CipherController {
         content += '<div class="code-language-selector">';
         content += '<label>Language:</label>';
         content += '<select id="code-language-select" onchange="cipherController.changeCodeLanguage(this.value)">';
-        content += '<option value="javascript">JavaScript</option>';
-        content += '<option value="python">Python</option>';
-        content += '<option value="cpp">C++</option>';
-        content += '<option value="java">Java</option>';
-        content += '<option value="rust">Rust</option>';
-        content += '<option value="csharp">C#</option>';
-        content += '<option value="go">Go</option>';
+        
+        // Dynamically populate languages from MultiLanguageGenerator
+        if (!window.MultiLanguageGenerator) {
+            console.error('FATAL: MultiLanguageGenerator not loaded! Cannot populate language dropdown.');
+            content += '<option value="javascript">⚠️ JavaScript (Fallback - Generator not loaded)</option>';
+        } else {
+            try {
+                const languages = window.MultiLanguageGenerator.getSupportedLanguages();
+                if (!languages || languages.length === 0) {
+                    console.error('FATAL: MultiLanguageGenerator.getSupportedLanguages() returned no languages');
+                    content += '<option value="javascript">⚠️ JavaScript (Fallback - No languages available)</option>';
+                } else {
+                    console.log('Loading languages from MultiLanguageGenerator:', languages.map(l => l.name));
+                    languages.forEach(lang => {
+                        content += `<option value="${lang.key}">${lang.icon} ${lang.name}</option>`;
+                    });
+                }
+            } catch (error) {
+                console.error('Error getting languages from MultiLanguageGenerator:', error);
+                content += '<option value="javascript">⚠️ JavaScript (Fallback - Error loading languages)</option>';
+            }
+        }
+        
         content += '</select>';
         content += '</div>';
         content += '<div class="code-actions">';
@@ -929,6 +862,20 @@ class CipherController {
         content += `<button class="btn btn-secondary btn-small" onclick="cipherController.toggleLineNumbers()">🔢 Line Numbers</button>`;
         content += `<button class="btn btn-secondary btn-small" onclick="cipherController.toggleWordWrap()">📄 Word Wrap</button>`;
         content += '</div>';
+        
+        // Add code generation options
+        content += '<div class="code-options">';
+        content += '<div class="options-group">';
+        content += '<label>Generation Options:</label>';
+        content += '<div class="options-checkboxes">';
+        content += '<label class="option-checkbox"><input type="checkbox" id="include-comments" checked> Include detailed comments</label>';
+        content += '<label class="option-checkbox"><input type="checkbox" id="include-examples" checked> Include usage examples</label>';
+        content += '<label class="option-checkbox" title="Generate code without external dependencies"><input type="checkbox" id="standalone-code"> Standalone implementation</label>';
+        content += '</div>';
+        content += '</div>';
+        content += `<button class="btn btn-primary btn-small" onclick="cipherController.regenerateCode('${algorithm.name}')">🔄 Regenerate</button>`;
+        content += '</div>';
+        
         content += '</div>';
         
         content += '<div class="metadata-section">';
@@ -959,41 +906,112 @@ class CipherController {
     }
     
     /**
-     * Generate and display code in specified language
+     * Generate and display code in specified language using MultiLanguageGenerator
      */
     generateAndDisplayCode(algorithm, language) {
         const codeDisplay = document.getElementById('algorithm-code-display');
-        if (!codeDisplay) return;
+        if (!codeDisplay) {
+            console.error('Code display element not found');
+            return;
+        }
         
         let code = '';
         
-        switch (language) {
-            case 'javascript':
-                code = this.generateJavaScriptCode(algorithm);
-                break;
-            case 'python':
-                code = this.generatePythonCode(algorithm);
-                break;
-            case 'cpp':
-                code = this.generateCppCode(algorithm);
-                break;
-            case 'java':
-                code = this.generateJavaCode(algorithm);
-                break;
-            case 'rust':
-                code = this.generateRustCode(algorithm);
-                break;
-            case 'csharp':
-                code = this.generateCSharpCode(algorithm);
-                break;
-            case 'go':
-                code = this.generateGoCode(algorithm);
-                break;
-            default:
-                code = this.generateJavaScriptCode(algorithm);
+        try {
+            // Use MultiLanguageGenerator - REQUIRED, no fallbacks
+            if (!window.MultiLanguageGenerator) {
+                console.error('FATAL: MultiLanguageGenerator not available for code generation');
+                throw new Error('MultiLanguageGenerator dependency missing - cannot generate code');
+            }
+            
+            // Verify language is supported
+            if (!window.MultiLanguageGenerator.isLanguageSupported(language)) {
+                throw new Error(`Language '${language}' is not supported by MultiLanguageGenerator`);
+            }
+            
+            // Read generation options from UI
+            const options = {
+                includeComments: document.getElementById('include-comments')?.checked !== false,
+                includeExamples: document.getElementById('include-examples')?.checked !== false,
+                includeTests: false,
+                standalone: document.getElementById('standalone-code')?.checked === true
+            };
+            
+            console.log(`Generating ${language} code for algorithm:`, algorithm.name);
+            console.log('Generation options:', options);
+            console.log('Algorithm object structure:', {
+                name: algorithm.name,
+                internalName: algorithm.implementation?.internalName,
+                hasImplementation: !!algorithm.implementation,
+                hasEncrypt: typeof algorithm.implementation?.encryptBlock === 'function',
+                hasDecrypt: typeof algorithm.implementation?.decryptBlock === 'function'
+            });
+            
+            // Prepare algorithm object for the generator
+            const algorithmForGenerator = {
+                name: algorithm.name,
+                internalName: algorithm.implementation?.internalName || algorithm.name,
+                blockSize: algorithm.implementation?.blockSize || 8,
+                minKeyLength: algorithm.implementation?.minKeyLength || 16,
+                maxKeyLength: algorithm.implementation?.maxKeyLength || 32,
+                category: algorithm.category,
+                description: algorithm.description,
+                encryptBlock: algorithm.implementation?.encryptBlock,
+                decryptBlock: algorithm.implementation?.decryptBlock,
+                // Include any other relevant properties from the implementation
+                ...algorithm.implementation
+            };
+            
+            code = window.MultiLanguageGenerator.convertAlgorithm(language, algorithmForGenerator, options);
+            
+            if (!code || code.trim().length === 0) {
+                console.error('FATAL: MultiLanguageGenerator returned empty code');
+                throw new Error(`Code generation failed - empty result for ${language}`);
+            }
+            
+            console.log(`Successfully generated ${code.length} characters of ${language} code`);
+        } catch (error) {
+            console.error('FATAL: Code generation failed:', error);
+            console.error('Algorithm object:', algorithm);
+            console.error('Target language:', language);
+            
+            // Show user-friendly error message
+            const languageInfo = window.MultiLanguageGenerator?.getLanguageInfo(language);
+            const languageName = languageInfo?.name || language;
+            
+            code = `// Code generation failed for ${languageName}
+// Error: ${error.message}
+// 
+// This could be due to:
+// - Missing algorithm implementation details
+// - Unsupported language features
+// - Invalid algorithm structure
+//
+// Please check the browser console for more details.
+
+// Fallback: Basic algorithm template
+class ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')} {
+    // Algorithm implementation would go here
+    // Original algorithm name: ${algorithm.name}
+    // Category: ${algorithm.category || 'unknown'}
+    
+    encrypt(data, key) {
+        // ${algorithm.name} encryption implementation needed
+        throw new Error('Implementation not available');
+    }
+    
+    decrypt(data, key) {
+        // ${algorithm.name} decryption implementation needed
+        throw new Error('Implementation not available');
+    }
+}`;
+            
+            // Also display the error in a user-friendly way
+            this.showCodeGenerationError(error, language, algorithm);
         }
         
-        codeDisplay.innerHTML = `<code class="language-${language}">${code}</code>`;
+        // Display the code with proper escaping
+        codeDisplay.innerHTML = `<code class="language-${language}">${this.escapeHtml(code)}</code>`;
         
         // Store current algorithm and language for other functions
         this.currentAlgorithm = algorithm;
@@ -1006,339 +1024,32 @@ class CipherController {
             });
         }
     }
-    
+
     /**
-     * Generate JavaScript code
+     * Show user-friendly error message for code generation failures
      */
-    generateJavaScriptCode(algorithm) {
-        let code = `// ${algorithm.name} Implementation\n`;
-        code += `// Generated code for educational purposes\n\n`;
-        code += `const ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')} = {\n`;
-        code += `  // Algorithm metadata\n`;
-        code += `  name: '${algorithm.name}',\n`;
-        code += `  category: '${algorithm.category}',\n`;
+    showCodeGenerationError(error, language, algorithm) {
+        const languageInfo = window.MultiLanguageGenerator?.getLanguageInfo(language);
+        const languageName = languageInfo?.name || language;
         
-        if (algorithm.metadata) {
-            if (algorithm.metadata.country) {
-                code += `  country: '${algorithm.metadata.country.name}',\n`;
-            }
-            if (algorithm.metadata.year && algorithm.metadata.year !== 2025) {
-                code += `  year: ${algorithm.metadata.year},\n`;
-            }
-            if (algorithm.metadata.keySize) {
-                code += `  keySize: ${algorithm.metadata.keySize * 8}, // bits\n`;
-            }
-            if (algorithm.metadata.blockSize) {
-                code += `  blockSize: ${algorithm.metadata.blockSize * 8}, // bits\n`;
-            }
-        }
+        console.warn(`Code generation error for ${languageName}:`, error.message);
         
-        code += `\n  // Core implementation methods\n`;
-        code += `  init() {\n`;
-        code += `    // Algorithm initialization\n`;
-        code += `    return true;\n`;
-        code += `  },\n\n`;
-        
-        if (algorithm.category === 'block' || algorithm.category === 'stream') {
-            code += `  keySetup(key) {\n`;
-            code += `    // Key schedule/setup\n`;
-            code += `    // Validate key size\n`;
-            code += `    if (!key || key.length === 0) {\n`;
-            code += `      throw new Error('Key is required');\n`;
-            code += `    }\n`;
-            code += `    return { keySchedule: key, keyId: Date.now() };\n`;
-            code += `  },\n\n`;
-            
-            code += `  encryptBlock(keySchedule, data) {\n`;
-            code += `    // Block encryption implementation\n`;
-            code += `    // This is a placeholder - actual implementation would go here\n`;
-            code += `    return data.map(byte => byte ^ 0xAA); // Simple XOR for demo\n`;
-            code += `  },\n\n`;
-            
-            code += `  decryptBlock(keySchedule, data) {\n`;
-            code += `    // Block decryption implementation\n`;
-            code += `    // This is a placeholder - actual implementation would go here\n`;
-            code += `    return data.map(byte => byte ^ 0xAA); // Simple XOR for demo\n`;
-            code += `  }\n`;
-        } else if (algorithm.category === 'hash') {
-            code += `  hash(data) {\n`;
-            code += `    // Hash computation implementation\n`;
-            code += `    // This is a placeholder - actual implementation would go here\n`;
-            code += `    let hash = 0;\n`;
-            code += `    for (let i = 0; i < data.length; i++) {\n`;
-            code += `      hash = ((hash << 5) - hash + data[i]) & 0xFFFFFFFF;\n`;
-            code += `    }\n`;
-            code += `    return [hash >> 24, hash >> 16, hash >> 8, hash].map(b => b & 0xFF);\n`;
-            code += `  }\n`;
-        } else {
-            code += `  process(data, options = {}) {\n`;
-            code += `    // Algorithm-specific processing\n`;
-            code += `    // This is a placeholder - actual implementation would go here\n`;
-            code += `    return data;\n`;
-            code += `  }\n`;
-        }
-        
-        code += `};\n\n`;
-        
-        // Add usage example
-        code += `// Usage example:\n`;
-        if (algorithm.category === 'block' || algorithm.category === 'stream') {
-            code += `const key = [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF];\n`;
-            code += `const data = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77];\n`;
-            code += `const keySchedule = ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')}.keySetup(key);\n`;
-            code += `const encrypted = ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')}.encryptBlock(keySchedule, data);\n`;
-            code += `const decrypted = ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')}.decryptBlock(keySchedule, encrypted);\n`;
-        } else if (algorithm.category === 'hash') {
-            code += `const data = [0x48, 0x65, 0x6c, 0x6c, 0x6f]; // "Hello"\n`;
-            code += `const hash = ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')}.hash(data);\n`;
-        }
-        
-        return code;
+        // You could show a toast notification or modal here
+        // For now, we'll just log it as the error is already shown in the generated code
     }
-    
+
     /**
-     * Generate Python code
+     * Escape HTML entities for safe display
      */
-    generatePythonCode(algorithm) {
-        let code = `# ${algorithm.name} Implementation\n`;
-        code += `# Generated code for educational purposes\n\n`;
-        code += `class ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')}:\n`;
-        code += `    """${algorithm.name} algorithm implementation"""\n\n`;
-        code += `    def __init__(self):\n`;
-        code += `        self.name = "${algorithm.name}"\n`;
-        code += `        self.category = "${algorithm.category}"\n`;
-        
-        if (algorithm.metadata) {
-            if (algorithm.metadata.keySize) {
-                code += `        self.key_size = ${algorithm.metadata.keySize * 8}  # bits\n`;
-            }
-            if (algorithm.metadata.blockSize) {
-                code += `        self.block_size = ${algorithm.metadata.blockSize * 8}  # bits\n`;
-            }
-        }
-        
-        code += `\n`;
-        
-        if (algorithm.category === 'block' || algorithm.category === 'stream') {
-            code += `    def key_setup(self, key):\n`;
-            code += `        """Setup key schedule"""\n`;
-            code += `        if not key:\n`;
-            code += `            raise ValueError("Key is required")\n`;
-            code += `        return {"key_schedule": key, "key_id": id(key)}\n\n`;
-            
-            code += `    def encrypt_block(self, key_schedule, data):\n`;
-            code += `        """Encrypt a block of data"""\n`;
-            code += `        # This is a placeholder - actual implementation would go here\n`;
-            code += `        return [byte ^ 0xAA for byte in data]  # Simple XOR for demo\n\n`;
-            
-            code += `    def decrypt_block(self, key_schedule, data):\n`;
-            code += `        """Decrypt a block of data"""\n`;
-            code += `        # This is a placeholder - actual implementation would go here\n`;
-            code += `        return [byte ^ 0xAA for byte in data]  # Simple XOR for demo\n`;
-        } else if (algorithm.category === 'hash') {
-            code += `    def hash(self, data):\n`;
-            code += `        """Compute hash of data"""\n`;
-            code += `        # This is a placeholder - actual implementation would go here\n`;
-            code += `        hash_val = 0\n`;
-            code += `        for byte in data:\n`;
-            code += `            hash_val = ((hash_val << 5) - hash_val + byte) & 0xFFFFFFFF\n`;
-            code += `        return [(hash_val >> 24) & 0xFF, (hash_val >> 16) & 0xFF, \n`;
-            code += `                (hash_val >> 8) & 0xFF, hash_val & 0xFF]\n`;
-        } else {
-            code += `    def process(self, data, options=None):\n`;
-            code += `        """Process data with algorithm"""\n`;
-            code += `        if options is None:\n`;
-            code += `            options = {}\n`;
-            code += `        # This is a placeholder - actual implementation would go here\n`;
-            code += `        return data\n`;
-        }
-        
-        code += `\n# Usage example:\n`;
-        if (algorithm.category === 'block' || algorithm.category === 'stream') {
-            code += `cipher = ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')}()\n`;
-            code += `key = [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]\n`;
-            code += `data = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77]\n`;
-            code += `key_schedule = cipher.key_setup(key)\n`;
-            code += `encrypted = cipher.encrypt_block(key_schedule, data)\n`;
-            code += `decrypted = cipher.decrypt_block(key_schedule, encrypted)\n`;
-        } else if (algorithm.category === 'hash') {
-            code += `hasher = ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')}()\n`;
-            code += `data = [0x48, 0x65, 0x6c, 0x6c, 0x6f]  # "Hello"\n`;
-            code += `hash_result = hasher.hash(data)\n`;
-        }
-        
-        return code;
-    }
-    
-    /**
-     * Generate C++ code (simplified)
-     */
-    generateCppCode(algorithm) {
-        let code = `// ${algorithm.name} Implementation\n`;
-        code += `// Generated code for educational purposes\n\n`;
-        code += `#include <vector>\n`;
-        code += `#include <stdexcept>\n\n`;
-        code += `class ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')} {\n`;
-        code += `public:\n`;
-        
-        if (algorithm.category === 'block' || algorithm.category === 'stream') {
-            code += `    struct KeySchedule {\n`;
-            code += `        std::vector<uint8_t> key;\n`;
-            code += `        uint64_t keyId;\n`;
-            code += `    };\n\n`;
-            
-            code += `    KeySchedule keySetup(const std::vector<uint8_t>& key) {\n`;
-            code += `        if (key.empty()) {\n`;
-            code += `            throw std::invalid_argument("Key is required");\n`;
-            code += `        }\n`;
-            code += `        return {key, static_cast<uint64_t>(std::hash<std::vector<uint8_t>>{}(key))};\n`;
-            code += `    }\n\n`;
-            
-            code += `    std::vector<uint8_t> encryptBlock(const KeySchedule& keySchedule, \n`;
-            code += `                                      const std::vector<uint8_t>& data) {\n`;
-            code += `        // This is a placeholder - actual implementation would go here\n`;
-            code += `        std::vector<uint8_t> result = data;\n`;
-            code += `        for (auto& byte : result) {\n`;
-            code += `            byte ^= 0xAA; // Simple XOR for demo\n`;
-            code += `        }\n`;
-            code += `        return result;\n`;
-            code += `    }\n\n`;
-            
-            code += `    std::vector<uint8_t> decryptBlock(const KeySchedule& keySchedule, \n`;
-            code += `                                      const std::vector<uint8_t>& data) {\n`;
-            code += `        // This is a placeholder - actual implementation would go here\n`;
-            code += `        return encryptBlock(keySchedule, data); // XOR is symmetric\n`;
-            code += `    }\n`;
-        } else if (algorithm.category === 'hash') {
-            code += `    std::vector<uint8_t> hash(const std::vector<uint8_t>& data) {\n`;
-            code += `        // This is a placeholder - actual implementation would go here\n`;
-            code += `        uint32_t hashVal = 0;\n`;
-            code += `        for (uint8_t byte : data) {\n`;
-            code += `            hashVal = ((hashVal << 5) - hashVal + byte);\n`;
-            code += `        }\n`;
-            code += `        return {\n`;
-            code += `            static_cast<uint8_t>(hashVal >> 24),\n`;
-            code += `            static_cast<uint8_t>(hashVal >> 16),\n`;
-            code += `            static_cast<uint8_t>(hashVal >> 8),\n`;
-            code += `            static_cast<uint8_t>(hashVal)\n`;
-            code += `        };\n`;
-            code += `    }\n`;
-        }
-        
-        code += `};\n`;
-        
-        return code;
-    }
-    
-    /**
-     * Generate basic code for other languages (simplified implementations)
-     */
-    generateJavaCode(algorithm) {
-        return `// ${algorithm.name} Implementation in Java\n// Simplified implementation for educational purposes\n\n// Implementation details would go here...`;
-    }
-    
-    generateRustCode(algorithm) {
-        return `// ${algorithm.name} Implementation in Rust\n// Simplified implementation for educational purposes\n\n// Implementation details would go here...`;
-    }
-    
-    generateCSharpCode(algorithm) {
-        return `// ${algorithm.name} Implementation in C#\n// Simplified implementation for educational purposes\n\n// Implementation details would go here...`;
-    }
-    
-    generateGoCode(algorithm) {
-        return `// ${algorithm.name} Implementation in Go\n// Simplified implementation for educational purposes\n\n// Implementation details would go here...`;
-    }
-    
-    /**
-     * Change code language
-     */
-    changeCodeLanguage(language) {
-        if (this.currentAlgorithm) {
-            this.generateAndDisplayCode(this.currentAlgorithm, language);
-        }
-    }
-    
-    /**
-     * Download original JavaScript file
-     */
-    downloadOriginalJS(algorithmName) {
-        // In a real implementation, this would fetch the actual source file
-        const algorithm = this.algorithms.get(algorithmName);
-        if (!algorithm) return;
-        
-        const code = this.generateJavaScriptCode(algorithm);
-        const blob = new Blob([code], { type: 'application/javascript' });
-        const url = URL.createObjectURL(blob);
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${algorithmName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}.js`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }
-    
-    /**
-     * Download code in current language
-     */
-    downloadCode(algorithmName) {
-        const language = this.currentLanguage || 'javascript';
-        const algorithm = this.currentAlgorithm;
-        if (!algorithm) return;
-        
-        let code = '';
-        let extension = 'txt';
-        let mimeType = 'text/plain';
-        
-        switch (language) {
-            case 'javascript':
-                code = this.generateJavaScriptCode(algorithm);
-                extension = 'js';
-                mimeType = 'application/javascript';
-                break;
-            case 'python':
-                code = this.generatePythonCode(algorithm);
-                extension = 'py';
-                mimeType = 'text/x-python';
-                break;
-            case 'cpp':
-                code = this.generateCppCode(algorithm);
-                extension = 'cpp';
-                mimeType = 'text/x-c++src';
-                break;
-            case 'java':
-                code = this.generateJavaCode(algorithm);
-                extension = 'java';
-                mimeType = 'text/x-java-source';
-                break;
-            case 'rust':
-                code = this.generateRustCode(algorithm);
-                extension = 'rs';
-                mimeType = 'text/x-rust';
-                break;
-            case 'csharp':
-                code = this.generateCSharpCode(algorithm);
-                extension = 'cs';
-                mimeType = 'text/x-csharp';
-                break;
-            case 'go':
-                code = this.generateGoCode(algorithm);
-                extension = 'go';
-                mimeType = 'text/x-go';
-                break;
-        }
-        
-        const blob = new Blob([code], { type: mimeType });
-        const url = URL.createObjectURL(blob);
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${algorithmName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}.${extension}`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+    escapeHtml(text) {
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, m => map[m]);
     }
     
     /**
@@ -1370,40 +1081,7 @@ class CipherController {
             this.fallbackCopyTextToClipboard(code);
         }
     }
-    
-    /**
-     * Fallback copy to clipboard method
-     */
-    fallbackCopyTextToClipboard(text) {
-        const textArea = document.createElement("textarea");
-        textArea.value = text;
-        textArea.style.top = "0";
-        textArea.style.left = "0";
-        textArea.style.position = "fixed";
         
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        
-        try {
-            const successful = document.execCommand('copy');
-            if (successful) {
-                const button = document.querySelector('[onclick*="copyCodeToClipboard"]');
-                if (button) {
-                    const originalText = button.textContent;
-                    button.textContent = '✅ Copied!';
-                    setTimeout(() => {
-                        button.textContent = originalText;
-                    }, 2000);
-                }
-            }
-        } catch (err) {
-            console.error('Fallback: Oops, unable to copy', err);
-        }
-        
-        document.body.removeChild(textArea);
-    }
-    
     /**
      * Toggle line numbers display
      */
@@ -1424,20 +1102,46 @@ class CipherController {
     }
     
     /**
-     * Toggle word wrap
+     * Regenerate code with current options
+     */
+    regenerateCode(algorithmName) {
+        if (!this.currentAlgorithm) return;
+        
+        const language = this.currentLanguage || 'javascript';
+        this.generateAndDisplayCode(this.currentAlgorithm, language);
+    }
+    
+    /**
+     * Toggle word wrap functionality with better wrapping options
      */
     toggleWordWrap() {
         const codeDisplay = document.getElementById('algorithm-code-display');
         if (!codeDisplay) return;
         
-        codeDisplay.classList.toggle('word-wrap');
+        // Toggle between different wrap modes
+        if (codeDisplay.classList.contains('word-wrap-soft')) {
+            // Currently soft wrap -> switch to no wrap
+            codeDisplay.classList.remove('word-wrap-soft');
+            codeDisplay.classList.add('word-wrap-none');
+        } else if (codeDisplay.classList.contains('word-wrap-none')) {
+            // Currently no wrap -> switch to break-all
+            codeDisplay.classList.remove('word-wrap-none');
+            codeDisplay.classList.add('word-wrap-break');
+        } else {
+            // Default or break-all -> switch to soft wrap
+            codeDisplay.classList.remove('word-wrap-break', 'word-wrap');
+            codeDisplay.classList.add('word-wrap-soft');
+        }
         
+        // Update button text
         const button = document.querySelector('[onclick*="toggleWordWrap"]');
         if (button) {
-            if (codeDisplay.classList.contains('word-wrap')) {
+            if (codeDisplay.classList.contains('word-wrap-soft')) {
+                button.textContent = '📄 Soft Wrap';
+            } else if (codeDisplay.classList.contains('word-wrap-none')) {
                 button.textContent = '📄 No Wrap';
             } else {
-                button.textContent = '📄 Word Wrap';
+                button.textContent = '📄 Break All';
             }
         }
     }
@@ -1447,22 +1151,7 @@ class CipherController {
      */
     extractTestVectors(implementation) {
         if (!implementation) return [];
-        
-        // Check multiple possible locations for test vectors
-        const possibleSources = [
-            implementation.tests,
-            implementation.testVectors,
-            implementation.metadata && implementation.metadata.testVectors,
-            implementation.metadata && implementation.metadata.tests
-        ];
-        
-        for (const source of possibleSources) {
-            if (Array.isArray(source) && source.length > 0) {
-                return source;
-            }
-        }
-        
-        return [];
+        return implementation.tests || [];
     }
     
     /**
@@ -2272,6 +1961,180 @@ class CipherController {
         }
     }
     
+    /**
+     * Change code language and regenerate display
+     */
+    changeCodeLanguage(language) {
+        if (!this.currentAlgorithm) {
+            console.error('No current algorithm selected for code generation');
+            return;
+        }
+
+        console.log(`Changing code language to: ${language}`);
+        
+        try {
+            // Update the current language
+            this.currentLanguage = language;
+            
+            // Regenerate code with the new language
+            this.generateAndDisplayCode(this.currentAlgorithm, language);
+            
+            // Update language display info if available
+            const languageInfo = window.MultiLanguageGenerator?.getLanguageInfo(language);
+            if (languageInfo) {
+                console.log(`Generated ${languageInfo.name} code (${languageInfo.description})`);
+            }
+        } catch (error) {
+            console.error('Failed to change code language:', error);
+            alert(`Failed to generate ${language} code: ${error.message}`);
+        }
+    }
+
+    /**
+     * Download the currently displayed generated code
+     */
+    downloadCode(algorithmName) {
+        const codeDisplay = document.getElementById('algorithm-code-display');
+        if (!codeDisplay) {
+            alert('No code available to download');
+            return;
+        }
+
+        const codeElement = codeDisplay.querySelector('code');
+        if (!codeElement) {
+            alert('No code content found');
+            return;
+        }
+
+        const code = codeElement.textContent;
+        const language = this.currentLanguage || 'javascript';
+        const languageInfo = window.MultiLanguageGenerator?.getLanguageInfo(language);
+        const extension = languageInfo?.extension || '.txt';
+        
+        // Create filename
+        const sanitizedName = algorithmName.replace(/[^a-zA-Z0-9-_]/g, '_');
+        const filename = `${sanitizedName}_${language}${extension}`;
+        
+        this.downloadTextAsFile(code, filename);
+        
+        console.log(`Downloaded ${language} code for ${algorithmName} as ${filename}`);
+    }
+
+    /**
+     * Download the original JavaScript implementation
+     */
+    downloadOriginalJS(algorithmName) {
+        const algorithm = this.algorithms.get(algorithmName);
+        if (!algorithm) {
+            alert('Algorithm not found');
+            return;
+        }
+
+        try {
+            // Get the original implementation
+            const implementation = algorithm.implementation;
+            if (!implementation) {
+                alert('No implementation available for download');
+                return;
+            }
+
+            // Extract the original JavaScript code
+            let originalCode = '';
+            
+            if (implementation.encryptBlock && typeof implementation.encryptBlock === 'function') {
+                originalCode += '// Encrypt function:\n';
+                originalCode += implementation.encryptBlock.toString() + '\n\n';
+            }
+            
+            if (implementation.decryptBlock && typeof implementation.decryptBlock === 'function') {
+                originalCode += '// Decrypt function:\n';
+                originalCode += implementation.decryptBlock.toString() + '\n\n';
+            }
+            
+            // Add any other relevant properties
+            originalCode += '// Algorithm properties:\n';
+            Object.keys(implementation).forEach(key => {
+                if (typeof implementation[key] !== 'function') {
+                    originalCode += `// ${key}: ${JSON.stringify(implementation[key])}\n`;
+                }
+            });
+
+            if (!originalCode.trim()) {
+                alert('No extractable code found in the original implementation');
+                return;
+            }
+
+            const filename = `${algorithmName.replace(/[^a-zA-Z0-9-_]/g, '_')}_original.js`;
+            this.downloadTextAsFile(originalCode, filename);
+            
+            console.log(`Downloaded original JS for ${algorithmName} as ${filename}`);
+        } catch (error) {
+            console.error('Failed to download original JS:', error);
+            alert(`Failed to download original code: ${error.message}`);
+        }
+    }
+
+    /**
+     * Helper method to download text as file
+     */
+    downloadTextAsFile(text, filename) {
+        try {
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.style.display = 'none';
+            
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            // Clean up the URL object
+            setTimeout(() => window.URL.revokeObjectURL(url), 100);
+        } catch (error) {
+            console.error('Failed to download file:', error);
+            alert('Failed to download file. Please try copying the text manually.');
+        }
+    }
+
+    /**
+     * Fallback method for copying text to clipboard
+     */
+    fallbackCopyTextToClipboard(text) {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        try {
+            const successful = document.execCommand('copy');
+            if (successful) {
+                // Show temporary feedback
+                const button = document.querySelector('[onclick*="copyCodeToClipboard"]');
+                if (button) {
+                    const originalText = button.textContent;
+                    button.textContent = '✅ Copied!';
+                    setTimeout(() => {
+                        button.textContent = originalText;
+                    }, 2000);
+                }
+            } else {
+                alert('Failed to copy text to clipboard');
+            }
+        } catch (err) {
+            console.error('Fallback copy failed:', err);
+            alert('Failed to copy text to clipboard');
+        } finally {
+            document.body.removeChild(textArea);
+        }
+    }
+
     /**
      * Clear cipher interface inputs and outputs
      */
