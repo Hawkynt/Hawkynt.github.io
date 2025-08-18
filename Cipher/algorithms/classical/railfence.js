@@ -107,14 +107,14 @@
     },
 
     // Set up key (number of rails)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'RailFence[' + global.generateUniqueID() + ']';
       } while (RailFence.instances[id] || global.objectInstances[id]);
       
       try {
-        RailFence.instances[id] = new RailFence.RailFenceInstance(optional_szKey);
+        RailFence.instances[id] = new RailFence.RailFenceInstance(optional_key);
         global.objectInstances[id] = true;
         return id;
       } catch (e) {
@@ -136,21 +136,21 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!RailFence.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'RailFence', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       const instance = RailFence.instances[id];
       const rails = instance.rails;
       
-      if (szPlainText.length === 0) {
+      if (plaintext.length === 0) {
         return '';
       }
       
       if (rails < 2) {
-        return szPlainText; // No transformation needed
+        return plaintext; // No transformation needed
       }
       
       // Create rail arrays
@@ -163,8 +163,8 @@
       let currentRail = 0;
       let direction = 1; // 1 for down, -1 for up
       
-      for (let i = 0; i < szPlainText.length; i++) {
-        railArrays[currentRail].push(szPlainText.charAt(i));
+      for (let i = 0; i < plaintext.length; i++) {
+        railArrays[currentRail].push(plaintext.charAt(i));
         
         // Move to next rail
         currentRail += direction;
@@ -176,30 +176,30 @@
       }
       
       // Read off rails horizontally
-      let szResult = '';
+      let result = '';
       for (let i = 0; i < rails; i++) {
-        szResult += railArrays[i].join('');
+        result += railArrays[i].join('');
       }
       
-      return szResult;
+      return result;
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!RailFence.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'RailFence', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       const instance = RailFence.instances[id];
       const rails = instance.rails;
       
-      if (szCipherText.length === 0) {
+      if (ciphertext.length === 0) {
         return '';
       }
       
       if (rails < 2) {
-        return szCipherText; // No transformation needed
+        return ciphertext; // No transformation needed
       }
       
       // Create rail arrays
@@ -213,7 +213,7 @@
       let currentRail = 0;
       let direction = 1;
       
-      for (let i = 0; i < szCipherText.length; i++) {
+      for (let i = 0; i < ciphertext.length; i++) {
         railLengths[currentRail]++;
         currentRail += direction;
         
@@ -226,7 +226,7 @@
       let pos = 0;
       for (let i = 0; i < rails; i++) {
         for (let j = 0; j < railLengths[i]; j++) {
-          railArrays[i].push(szCipherText.charAt(pos++));
+          railArrays[i].push(ciphertext.charAt(pos++));
         }
       }
       
@@ -234,10 +234,10 @@
       const railIndices = new Array(rails).fill(0);
       currentRail = 0;
       direction = 1;
-      let szResult = '';
+      let result = '';
       
-      for (let i = 0; i < szCipherText.length; i++) {
-        szResult += railArrays[currentRail][railIndices[currentRail]++];
+      for (let i = 0; i < ciphertext.length; i++) {
+        result += railArrays[currentRail][railIndices[currentRail]++];
         currentRail += direction;
         
         if (currentRail === rails - 1 || currentRail === 0) {
@@ -245,16 +245,16 @@
         }
       }
       
-      return szResult;
+      return result;
     },
     
     // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, szPlainText) {
-      return this.encryptBlock(id, szPlainText);
+    EncryptBlock: function(id, plaintext) {
+      return this.encryptBlock(id, plaintext);
     },
     
-    DecryptBlock: function(id, szCipherText) {
-      return this.decryptBlock(id, szCipherText);
+    DecryptBlock: function(id, ciphertext) {
+      return this.decryptBlock(id, ciphertext);
     },
     
     // Instance class

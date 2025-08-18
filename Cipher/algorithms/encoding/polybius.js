@@ -97,33 +97,33 @@
         id = 'Polybius[' + global.generateUniqueID() + ']';
       } while (Polybius.instances[id] || global.objectInstances[id]);
       
-      Polybius.instances[szID] = new Polybius.PolybiusInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      Polybius.instances[id] = new Polybius.PolybiusInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear Polybius data
     ClearData: function(id) {
       if (Polybius.instances[id]) {
-        delete Polybius.instances[szID];
-        delete global.objectInstances[szID];
+        delete Polybius.instances[id];
+        delete global.objectInstances[id];
       }
     },
     
     // Encrypt using Polybius Square
-    encryptBlock: function(intInstanceID, szInput) {
+    encryptBlock: function(intInstanceID, input) {
       const id = 'Polybius[' + intInstanceID + ']';
       if (!Polybius.instances[id]) return '';
       
-      return Polybius.instances[szID].encrypt(szInput);
+      return Polybius.instances[id].encrypt(input);
     },
     
     // Decrypt using Polybius Square
-    decryptBlock: function(intInstanceID, szInput) {
+    decryptBlock: function(intInstanceID, input) {
       const id = 'Polybius[' + intInstanceID + ']';
       if (!Polybius.instances[id]) return '';
       
-      return Polybius.instances[szID].decrypt(szInput);
+      return Polybius.instances[id].decrypt(input);
     },
     
     // Polybius Instance Class

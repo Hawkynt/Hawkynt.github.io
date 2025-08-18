@@ -247,8 +247,8 @@
     },
     
     // Key setup
-    KeySetup: function(optional_szKey) {
-      if (!optional_szKey || optional_szKey.length !== 16) {
+    KeySetup: function(optional_key) {
+      if (!optional_key || optional_key.length !== 16) {
         throw new Error('Lucifer requires exactly 16-byte (128-bit) key');
       }
       
@@ -257,17 +257,17 @@
         id = 'LUCIFER[' + global.generateUniqueID() + ']';
       } while (Lucifer.instances[id] || global.objectInstances[id]);
       
-      Lucifer.instances[szID] = new Lucifer.LuciferInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      Lucifer.instances[id] = new Lucifer.LuciferInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear data
     ClearData: function(id) {
       if (Lucifer.instances[id]) {
-        Lucifer.instances[szID].clearKey();
-        delete Lucifer.instances[szID];
-        delete global.objectInstances[szID];
+        Lucifer.instances[id].clearKey();
+        delete Lucifer.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'Lucifer', 'ClearData');
@@ -276,27 +276,27 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Lucifer.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Lucifer', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = Lucifer.instances[szID];
+      const instance = Lucifer.instances[id];
       if (!instance.roundKeys) {
         global.throwException('Key not set', id, 'Lucifer', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      if (szPlainText.length !== 16) {
+      if (plaintext.length !== 16) {
         global.throwException('Lucifer requires 16-byte blocks', id, 'Lucifer', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       // Convert to byte array
       let state = new Array(16);
       for (let i = 0; i < 16; i++) {
-        state[i] = szPlainText.charCodeAt(i);
+        state[i] = plaintext.charCodeAt(i);
       }
       
       // Apply 16 rounds
@@ -309,27 +309,27 @@
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Lucifer.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Lucifer', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const instance = Lucifer.instances[szID];
+      const instance = Lucifer.instances[id];
       if (!instance.roundKeys) {
         global.throwException('Key not set', id, 'Lucifer', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      if (szCipherText.length !== 16) {
+      if (ciphertext.length !== 16) {
         global.throwException('Lucifer requires 16-byte blocks', id, 'Lucifer', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       // Convert to byte array
       let state = new Array(16);
       for (let i = 0; i < 16; i++) {
-        state[i] = szCipherText.charCodeAt(i);
+        state[i] = ciphertext.charCodeAt(i);
       }
       
       // Apply inverse rounds in reverse order

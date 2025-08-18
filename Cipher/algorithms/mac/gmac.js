@@ -123,7 +123,7 @@
         // Use AES to encrypt zero block
         const aesId = global.Cipher.GetCipher('Rijndael').Init();
         global.Cipher.GetCipher('Rijndael').KeySetup(aesId, key);
-        instance.h = global.Cipher.GetCipher('Rijndael').szEncryptBlock(aesId, zeroBlock);
+        instance.h = global.Cipher.GetCipher('Rijndael').encryptBlock(aesId, zeroBlock);
         global.Cipher.GetCipher('Rijndael').ClearData(aesId);
       } catch (e) {
         throw new Error('Failed to generate GMAC authentication key: ' + e.message);
@@ -270,7 +270,7 @@
       try {
         const aesId = global.Cipher.GetCipher('Rijndael').Init();
         global.Cipher.GetCipher('Rijndael').KeySetup(aesId, instance.key);
-        tagMask = global.Cipher.GetCipher('Rijndael').szEncryptBlock(aesId, j0);
+        tagMask = global.Cipher.GetCipher('Rijndael').encryptBlock(aesId, j0);
         global.Cipher.GetCipher('Rijndael').ClearData(aesId);
       } catch (e) {
         throw new Error('Failed to generate GMAC tag mask: ' + e.message);

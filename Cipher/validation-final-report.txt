@@ -1,0 +1,432 @@
+[1m[36m🔍 SynthelicZ Cipher Metadata Requirements Validation[0m
+
+Found [1m200[0m algorithm files to validate
+
+[31m❌ beth-piper (4%)[0m
+[31m❌ bike (24%)[0m
+[31m❌ classic-mceliece (24%)[0m
+[31m❌ dilithium (16%)[0m
+[31m❌ falcon (20%)[0m
+[31m❌ frodokem (16%)[0m
+[31m❌ hqc (24%)[0m
+[31m❌ lwe-signature (24%)[0m
+[31m❌ ml-kem (20%)[0m
+[31m❌ ntru (16%)[0m
+[31m❌ rainbow (24%)[0m
+[31m❌ rsa (16%)[0m
+[31m❌ sike (16%)[0m
+[31m❌ sphincs-plus (24%)[0m
+[31m❌ 3DES (24%)[0m
+[31m❌ Anubis (24%)[0m
+[31m❌ ARIA (20%)[0m
+[31m❌ baseking (4%)[0m
+[31m❌ Blowfish (24%)[0m
+[31m❌ Camellia (20%)[0m
+[31m❌ cast-128 (24%)[0m
+[31m❌ cast256 (4%)[0m
+[31m❌ CHAM (24%)[0m
+[31m❌ CLEFIA (4%)[0m
+[31m❌ crypton (4%)[0m
+[31m❌ deal (4%)[0m
+[31m❌ DES-X (4%)[0m
+[31m❌ DES (24%)[0m
+[31m❌ dfc (4%)[0m
+[31m❌ FEAL (4%)[0m
+[31m❌ FF1 (16%)[0m
+[31m❌ FF3 (16%)[0m
+[31m❌ GOST-Kuznyechik (4%)[0m
+[31m❌ gost-28147-89 (20%)[0m
+[31m❌ idea (16%)[0m
+[31m❌ kalyna (4%)[0m
+[31m❌ Khazad (20%)[0m
+[31m❌ LEA (24%)[0m
+[31m❌ loki89 (4%)[0m
+[31m❌ loki91 (4%)[0m
+[31m❌ loki97 (4%)[0m
+[31m❌ lucifer (24%)[0m
+[31m❌ magenta (4%)[0m
+[31m❌ MARS (16%)[0m
+[31m❌ MISTY1 (4%)[0m
+[31m❌ misty2 (4%)[0m
+[31m❌ newdes (4%)[0m
+[31m❌ Noekeon (24%)[0m
+[31m❌ PRESENT (16%)[0m
+[31m❌ present-128 (4%)[0m
+[31m❌ RC2 (20%)[0m
+[31m❌ RC5 (20%)[0m
+[31m❌ RC6 (24%)[0m
+[31m❌ redoc2 (4%)[0m
+[31m❌ redoc3 (4%)[0m
+[31m❌ RHX (40%)[0m
+[31m❌ Rijndael (44%)[0m
+[31m❌ SAFER (24%)[0m
+[31m❌ seed (24%)[0m
+[31m❌ Serpent (20%)[0m
+[31m❌ SHX (20%)[0m
+[31m❌ Simon (4%)[0m
+[31m❌ SkipJack (24%)[0m
+[31m❌ sm4 (4%)[0m
+[31m❌ Speck (4%)[0m
+[31m❌ Square (20%)[0m
+[31m❌ TEA (20%)[0m
+[31m❌ Threefish (16%)[0m
+[31m❌ Twofish (16%)[0m
+[31m❌ XTEA (20%)[0m
+[31m❌ XXTEA (4%)[0m
+[31m❌ Fletcher32 (44%)[0m
+[31m❌ Affine (24%)[0m
+[31m❌ Beaufort (20%)[0m
+[32m✅ Caesar (79%)[0m
+[31m❌ Columnar (17%)[0m
+[31m❌ Enigma (20%)[0m
+[31m❌ FourSquare (24%)[0m
+[31m❌ Hill (4%)[0m
+[31m❌ Nihilist (20%)[0m
+[31m❌ Playfair (4%)[0m
+[31m❌ RailFence (42%)[0m
+[31m❌ Scytale (20%)[0m
+[31m❌ TwoSquare (20%)[0m
+[31m❌ Vigenere (24%)[0m
+[31m❌ BPE (4%)[0m
+[31m❌ brotli (4%)[0m
+[31m❌ bwt (4%)[0m
+[31m❌ DeflateSimple (4%)[0m
+[31m❌ Delta (44%)[0m
+[31m❌ EliasDelta (4%)[0m
+[31m❌ EliasGamma (4%)[0m
+[31m❌ Fibonacci (4%)[0m
+[31m❌ Huffman (44%)[0m
+[31m❌ lz4 (4%)[0m
+[31m❌ LZ77 (44%)[0m
+[31m❌ LZ78 (44%)[0m
+[31m❌ LZW (4%)[0m
+[31m❌ RLE (44%)[0m
+[31m❌ ShannonFano (4%)[0m
+[31m❌ Unary (4%)[0m
+[31m❌ Atbash (20%)[0m
+[31m❌ BASE16 (24%)[0m
+[31m❌ BASE32 (44%)[0m
+[31m❌ base58 (4%)[0m
+[31m❌ BASE64 (66%)[0m
+[31m❌ base85 (4%)[0m
+[31m❌ base91 (4%)[0m
+[31m❌ baudot (4%)[0m
+[31m❌ binhex (4%)[0m
+[31m❌ BubbleBabble (24%)[0m
+[31m❌ Koremutake (24%)[0m
+[31m❌ manchester (4%)[0m
+[31m❌ morse (4%)[0m
+[31m❌ pem (4%)[0m
+[31m❌ Polybius (20%)[0m
+[31m❌ ROT13 (24%)[0m
+[31m❌ uuencode (4%)[0m
+[31m❌ xxencode (4%)[0m
+[31m❌ Adler32 (4%)[0m
+[31m❌ blake2b (44%)[0m
+[31m❌ blake2s (4%)[0m
+[31m❌ blake3 (4%)[0m
+[31m❌ CityHash (44%)[0m
+[31m❌ crc16 (4%)[0m
+[31m❌ CRC32 (4%)[0m
+[31m❌ FNV1a32 (4%)[0m
+[31m❌ groestl (16%)[0m
+[31m❌ haval (20%)[0m
+[31m❌ jh (16%)[0m
+[31m❌ MD2 (4%)[0m
+[31m❌ MD4 (4%)[0m
+[31m❌ MD5 (44%)[0m
+[31m❌ MurmurHash3 (44%)[0m
+[31m❌ radiogatun (4%)[0m
+[31m❌ RIPEMD160 (4%)[0m
+[31m❌ ripemd320 (20%)[0m
+[31m❌ SHA1 (44%)[0m
+[31m❌ SHA224 (4%)[0m
+[32m✅ SHA256 (94%)[0m
+[31m❌ sha3-256 (4%)[0m
+[31m❌ SHA384 (4%)[0m
+[31m❌ SHA512 (4%)[0m
+[31m❌ shake128 (4%)[0m
+[31m❌ siphash (4%)[0m
+[31m❌ skein (16%)[0m
+[31m❌ streebog (4%)[0m
+[31m❌ tiger (4%)[0m
+[31m❌ whirlpool (4%)[0m
+[31m❌ xxHash (44%)[0m
+[31m❌ xxhash32 (4%)[0m
+[31m❌ argon2 (4%)[0m
+[31m❌ HKDF (44%)[0m
+[31m❌ PBKDF2 (44%)[0m
+[31m❌ scrypt (44%)[0m
+[31m❌ cmac (4%)[0m
+[31m❌ HMAC (44%)[0m
+[31m❌ Poly1305 (4%)[0m
+[31m❌ 3way (20%)[0m
+[31m❌ ascon (4%)[0m
+[31m❌ CCM (16%)[0m
+[31m❌ EAX (16%)[0m
+[31m❌ FISH (4%)[0m
+[31m❌ OCB (16%)[0m
+[32m✅ A5-1 (86%)[0m
+[31m❌ A5-2 (4%)[0m
+[31m❌ a5-3 (4%)[0m
+[31m❌ Achterbahn (4%)[0m
+[32m✅ ChaCha20 (77%)[0m
+[31m❌ Crypto-1 (4%)[0m
+[31m❌ dragon (50%)[0m
+[31m❌ E0 (4%)[0m
+[31m❌ e2 (4%)[0m
+[31m❌ F-FCSR (4%)[0m
+[31m❌ geffe (4%)[0m
+[31m❌ grain-v1 (4%)[0m
+[31m❌ Grain (4%)[0m
+[31m❌ HC-128 (4%)[0m
+[31m❌ hc-256 (50%)[0m
+[31m❌ ISAAC (4%)[0m
+[31m❌ leviathan (50%)[0m
+[31m❌ MICKEY (4%)[0m
+[31m❌ miller (4%)[0m
+[31m❌ MUGI (4%)[0m
+[31m❌ panama (4%)[0m
+[31m❌ PhelixSimple (42%)[0m
+[31m❌ pike (50%)[0m
+[31m❌ Rabbit (4%)[0m
+[32m✅ RC4 (90%)[0m
+[31m❌ rule30 (4%)[0m
+[32m✅ Salsa20 (86%)[0m
+[31m❌ shrinking-generator (4%)[0m
+[31m❌ SNOW3G (16%)[0m
+[31m❌ SOSEMANUK (4%)[0m
+[31m❌ Spritz (4%)[0m
+[32m✅ Trivium (86%)[0m
+[31m❌ tsc-4 (50%)[0m
+[31m❌ vest (50%)[0m
+[31m❌ wake (4%)[0m
+[31m❌ zuc (4%)[0m
+
+================================================================================
+
+[1m[34m📊 METADATA COMPLIANCE REPORT[0m
+
+[1mOverall Compliance: 4% (7/200)[0m
+
+[1m📂 Category Breakdown:[0m
+  [31masymmetric: 0% (0/14)[0m
+  [31mblock: 0% (0/57)[0m
+  [31mchecksum: 0% (0/1)[0m
+  [31mclassical: 8% (1/13)[0m
+  [31mcompression: 0% (0/16)[0m
+  [31mencoding: 0% (0/18)[0m
+  [31mhash: 3% (1/32)[0m
+  [31mkdf: 0% (0/4)[0m
+  [31mmac: 0% (0/3)[0m
+  [31mspecial: 0% (0/6)[0m
+  [31mstream: 14% (5/36)[0m
+
+[1m[31m❌ ALGORITHMS NEEDING ATTENTION (193):[0m
+
+[1mbeth-piper[0m (algorithms/asymmetric/beth-piper.js)
+  Compliance: 4%
+  Scores:
+    [31mbasicInfo: 20%[0m
+    [31mreferences: 0%[0m
+    [31mtestVectors: 0%[0m
+    [31mvectorAttribution: 0%[0m
+    [31msourceMaterial: 0%[0m
+  [31mIssues:[0m
+    ❌ Missing algorithm description
+    ❌ Missing invention/publication year
+    ❌ Missing country of origin
+
+[1mbike[0m (algorithms/asymmetric/bike.js)
+  Compliance: 24%
+  Scores:
+    [31mbasicInfo: 20%[0m
+    [31mreferences: 0%[0m
+    [32mtestVectors: 100%[0m
+    [31mvectorAttribution: 0%[0m
+    [31msourceMaterial: 0%[0m
+  [31mIssues:[0m
+    ❌ Missing algorithm description
+    ❌ Missing invention/publication year
+    ❌ Missing country of origin
+
+[1mclassic-mceliece[0m (algorithms/asymmetric/classic-mceliece.js)
+  Compliance: 24%
+  Scores:
+    [31mbasicInfo: 20%[0m
+    [31mreferences: 0%[0m
+    [32mtestVectors: 100%[0m
+    [31mvectorAttribution: 0%[0m
+    [31msourceMaterial: 0%[0m
+  [31mIssues:[0m
+    ❌ Missing algorithm description
+    ❌ Missing invention/publication year
+    ❌ Missing country of origin
+
+[1mdilithium[0m (algorithms/asymmetric/dilithium.js)
+  Compliance: 16%
+  Scores:
+    [31mbasicInfo: 20%[0m
+    [31mreferences: 0%[0m
+    [33mtestVectors: 60%[0m
+    [31mvectorAttribution: 0%[0m
+    [31msourceMaterial: 0%[0m
+  [31mIssues:[0m
+    ❌ Missing algorithm description
+    ❌ Missing invention/publication year
+    ❌ Missing country of origin
+
+[1mfalcon[0m (algorithms/asymmetric/falcon.js)
+  Compliance: 20%
+  Scores:
+    [31mbasicInfo: 20%[0m
+    [31mreferences: 0%[0m
+    [32mtestVectors: 80%[0m
+    [31mvectorAttribution: 0%[0m
+    [31msourceMaterial: 0%[0m
+  [31mIssues:[0m
+    ❌ Missing algorithm description
+    ❌ Missing invention/publication year
+    ❌ Missing country of origin
+
+[1mfrodokem[0m (algorithms/asymmetric/frodokem.js)
+  Compliance: 16%
+  Scores:
+    [31mbasicInfo: 20%[0m
+    [31mreferences: 0%[0m
+    [33mtestVectors: 60%[0m
+    [31mvectorAttribution: 0%[0m
+    [31msourceMaterial: 0%[0m
+  [31mIssues:[0m
+    ❌ Missing algorithm description
+    ❌ Missing invention/publication year
+    ❌ Missing country of origin
+
+[1mhqc[0m (algorithms/asymmetric/hqc.js)
+  Compliance: 24%
+  Scores:
+    [31mbasicInfo: 20%[0m
+    [31mreferences: 0%[0m
+    [32mtestVectors: 100%[0m
+    [31mvectorAttribution: 0%[0m
+    [31msourceMaterial: 0%[0m
+  [31mIssues:[0m
+    ❌ Missing algorithm description
+    ❌ Missing invention/publication year
+    ❌ Missing country of origin
+
+[1mlwe-signature[0m (algorithms/asymmetric/lwe-signature.js)
+  Compliance: 24%
+  Scores:
+    [31mbasicInfo: 20%[0m
+    [31mreferences: 0%[0m
+    [32mtestVectors: 100%[0m
+    [31mvectorAttribution: 0%[0m
+    [31msourceMaterial: 0%[0m
+  [31mIssues:[0m
+    ❌ Missing algorithm description
+    ❌ Missing invention/publication year
+    ❌ Missing country of origin
+
+[1mml-kem[0m (algorithms/asymmetric/ml-kem.js)
+  Compliance: 20%
+  Scores:
+    [31mbasicInfo: 20%[0m
+    [31mreferences: 0%[0m
+    [32mtestVectors: 80%[0m
+    [31mvectorAttribution: 0%[0m
+    [31msourceMaterial: 0%[0m
+  [31mIssues:[0m
+    ❌ Missing algorithm description
+    ❌ Missing invention/publication year
+    ❌ Missing country of origin
+
+[1mntru[0m (algorithms/asymmetric/ntru.js)
+  Compliance: 16%
+  Scores:
+    [31mbasicInfo: 20%[0m
+    [31mreferences: 0%[0m
+    [33mtestVectors: 60%[0m
+    [31mvectorAttribution: 0%[0m
+    [31msourceMaterial: 0%[0m
+  [31mIssues:[0m
+    ❌ Missing algorithm description
+    ❌ Missing invention/publication year
+    ❌ Missing country of origin
+
+... and 183 more algorithms
+
+[1m[32m🏆 TOP PERFORMING ALGORITHMS:[0m
+
+  ✅ [32mSHA256[0m - 94%
+  ✅ [32mRC4[0m - 90%
+
+[1m[33m💡 ACTIONABLE RECOMMENDATIONS:[0m
+
+[1m🔧 Most Common Issues to Fix:[0m
+  ❌ Missing country of origin (196 algorithms)
+  ❌ Missing specifications array (186 algorithms)
+  ❌ Missing main reference URL (184 algorithms)
+  ❌ No valid source material URLs found (184 algorithms)
+  ❌ Missing algorithm description (183 algorithms)
+
+[1m🎯 Priority Fixes:[0m
+  1. Add basic metadata (name, description, year, country) to algorithms missing it
+  2. Include at least one test vector with source attribution
+  3. Add reference URLs to specifications or documentation
+  4. Ensure country codes use 2-letter ISO format (e.g., 'US', 'DE', 'JP')
+  5. Validate all URLs are accessible and properly formatted
+
+[1m🌐 Suggested Sources for Missing URLs:[0m
+  • Wikipedia articles for algorithm overviews
+  • Original academic papers (Google Scholar, ACM Digital Library)
+  • NIST/RFC specifications for standardized algorithms
+  • OpenSSL/libsodium implementations for production examples
+  • Cryptographic textbooks and educational resources
+
+[1m[35m📋 README.md UPDATE RECOMMENDATIONS:[0m
+
+[1mSuggested Badge Updates:[0m
+[![Algorithms](https://img.shields.io/badge/Algorithms-200+-blue.svg)](https://hawkynt.github.io/Cipher/)
+[![Metadata](https://img.shields.io/badge/Metadata%20Compliant-7%20(4%25)-red.svg)](https://hawkynt.github.io/Cipher/)
+
+[1mAlgorithm Table with Compliance Status:[0m
+| Algorithm | Category | Compliance | Issues | Status |
+|-----------|----------|------------|--------|--------|
+| SHA256 | hash | 🟢 94% | 1 | ✅ Complete |
+| RC4 | stream | 🟢 90% | 1 | ✅ Complete |
+| A5-1 | stream | 🟡 86% | 1 | ✅ Complete |
+| Salsa20 | stream | 🟡 86% | 1 | ✅ Complete |
+| Trivium | stream | 🟡 86% | 1 | ✅ Complete |
+| Caesar | classical | 🟡 79% | 0 | ✅ Complete |
+| ChaCha20 | stream | 🟡 77% | 1 | ✅ Complete |
+| BASE64 | encoding | 🔴 66% | 2 | ⚠️ Needs Work |
+| dragon | stream | 🔴 50% | 2 | ⚠️ Needs Work |
+| hc-256 | stream | 🔴 50% | 2 | ⚠️ Needs Work |
+| leviathan | stream | 🔴 50% | 2 | ⚠️ Needs Work |
+| pike | stream | 🔴 50% | 2 | ⚠️ Needs Work |
+| tsc-4 | stream | 🔴 50% | 2 | ⚠️ Needs Work |
+| vest | stream | 🔴 50% | 2 | ⚠️ Needs Work |
+| Rijndael | block | 🔴 44% | 6 | ⚠️ Needs Work |
+| Fletcher32 | checksum | 🔴 44% | 6 | ⚠️ Needs Work |
+| Delta | compression | 🔴 44% | 6 | ⚠️ Needs Work |
+| Huffman | compression | 🔴 44% | 6 | ⚠️ Needs Work |
+| LZ77 | compression | 🔴 44% | 6 | ⚠️ Needs Work |
+| LZ78 | compression | 🔴 44% | 6 | ⚠️ Needs Work |
+| ... | ... | ... | ... | ... |
+| (180 more algorithms) | | | | |
+
+[1mLegend:[0m
+🟢 90-100% - Excellent metadata compliance
+🟡 70-89% - Good compliance, minor improvements needed
+🔴 <70% - Needs significant metadata improvements
+
+[1mSummary Statistics:[0m
+• Total Algorithms: 200
+• Metadata Compliant (≥70%): 7 (4%)
+• Excellent (≥90%): 2
+• Good (70-89%): 5
+• Needs Work (<70%): 193
+
+[1m📁 Detailed results saved to: [36m/storage/6233-3832/Documents/Working Copies/Hawkynt.github.io/Cipher/metadata-validation-results.json[0m
+

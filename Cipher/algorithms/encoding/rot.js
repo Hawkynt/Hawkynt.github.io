@@ -83,22 +83,22 @@
     },
     
     // Set up key (ROT13 doesn't use keys)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'ROT13[' + global.generateUniqueID() + ']';
       } while (ROT13.instances[id] || global.objectInstances[id]);
       
-      ROT13.instances[szID] = new ROT13.Rot13Instance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      ROT13.instances[id] = new ROT13.Rot13Instance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (ROT13.instances[id]) {
-        delete ROT13.instances[szID];
-        delete global.objectInstances[szID];
+        delete ROT13.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'ROT13', 'ClearData');
@@ -107,23 +107,23 @@
     },
     
     // Encrypt block (ROT13 is symmetric - encrypt and decrypt are the same)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!ROT13.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'ROT13', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      return ROT13.transform(szPlainText);
+      return ROT13.transform(plaintext);
     },
     
     // Decrypt block (same as encrypt for ROT13)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!ROT13.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'ROT13', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      return ROT13.transform(szCipherText);
+      return ROT13.transform(ciphertext);
     },
     
     // Transform text using ROT13
@@ -156,7 +156,7 @@
     
     // Instance class
     Rot13Instance: function(key) {
-      this.key = szKey || '';
+      this.key = key || '';
     }
   };
   

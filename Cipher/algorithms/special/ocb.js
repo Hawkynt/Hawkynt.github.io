@@ -86,33 +86,33 @@
         id = 'OCB[' + global.generateUniqueID() + ']';
       } while (OCB.instances[id] || global.objectInstances[id]);
       
-      OCB.instances[szID] = new OCB.OCBInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      OCB.instances[id] = new OCB.OCBInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear OCB data
     ClearData: function(id) {
       if (OCB.instances[id]) {
-        delete OCB.instances[szID];
-        delete global.objectInstances[szID];
+        delete OCB.instances[id];
+        delete global.objectInstances[id];
       }
     },
     
     // Encrypt and authenticate with OCB
-    encryptBlock: function(intInstanceID, szInput, optional_szNonce, optional_szAAD) {
+    encryptBlock: function(intInstanceID, input, optional_nonce, optional_aad) {
       const id = 'OCB[' + intInstanceID + ']';
       if (!OCB.instances[id]) return '';
       
-      return OCB.instances[szID].encrypt(szInput, optional_szNonce || '000000000000000000000000', optional_szAAD || '');
+      return OCB.instances[id].encrypt(input, optional_nonce || '000000000000000000000000', optional_aad || '');
     },
     
     // Decrypt and verify with OCB
-    decryptBlock: function(intInstanceID, szInput, optional_szNonce, optional_szAAD) {
+    decryptBlock: function(intInstanceID, input, optional_nonce, optional_aad) {
       const id = 'OCB[' + intInstanceID + ']';
       if (!OCB.instances[id]) return '';
       
-      return OCB.instances[szID].decrypt(szInput, optional_szNonce || '000000000000000000000000', optional_szAAD || '');
+      return OCB.instances[id].decrypt(input, optional_nonce || '000000000000000000000000', optional_aad || '');
     },
     
     // OCB Instance Class

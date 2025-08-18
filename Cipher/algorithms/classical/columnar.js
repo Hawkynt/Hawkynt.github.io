@@ -113,14 +113,14 @@
     },
 
     // Set up key
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'Columnar[' + global.generateUniqueID() + ']';
       } while (Columnar.instances[id] || global.objectInstances[id]);
       
       try {
-        Columnar.instances[id] = new Columnar.ColumnarInstance(optional_szKey);
+        Columnar.instances[id] = new Columnar.ColumnarInstance(optional_key);
         global.objectInstances[id] = true;
         return id;
       } catch (e) {
@@ -142,10 +142,10 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Columnar.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Columnar', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       const instance = Columnar.instances[id];
@@ -153,14 +153,14 @@
       const columnOrder = instance.columnOrder;
       const numCols = keyword.length;
       
-      if (szPlainText.length === 0) {
+      if (plaintext.length === 0) {
         return '';
       }
       
       // Remove spaces and non-alphabetic chars, convert to uppercase
       let cleanText = '';
-      for (let i = 0; i < szPlainText.length; i++) {
-        const char = szPlainText.charAt(i).toUpperCase();
+      for (let i = 0; i < plaintext.length; i++) {
+        const char = plaintext.charAt(i).toUpperCase();
         if (char >= 'A' && char <= 'Z') {
           cleanText += char;
         }
@@ -206,10 +206,10 @@
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Columnar.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Columnar', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       const instance = Columnar.instances[id];
@@ -217,11 +217,11 @@
       const columnOrder = instance.columnOrder;
       const numCols = keyword.length;
       
-      if (szCipherText.length === 0) {
+      if (ciphertext.length === 0) {
         return '';
       }
       
-      const cleanText = szCipherText.toUpperCase();
+      const cleanText = ciphertext.toUpperCase();
       const numRows = Math.ceil(cleanText.length / numCols);
       
       // Create empty grid
@@ -283,12 +283,12 @@
     },
     
     // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, szPlainText) {
-      return this.encryptBlock(id, szPlainText);
+    EncryptBlock: function(id, plaintext) {
+      return this.encryptBlock(id, plaintext);
     },
     
-    DecryptBlock: function(id, szCipherText) {
-      return this.decryptBlock(id, szCipherText);
+    DecryptBlock: function(id, ciphertext) {
+      return this.decryptBlock(id, ciphertext);
     },
     
     // Instance class

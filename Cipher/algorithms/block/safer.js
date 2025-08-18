@@ -204,9 +204,9 @@
         id = 'SAFER[' + global.generateUniqueID() + ']';
       } while (Safer.instances[id] || global.objectInstances[id]);
       
-      Safer.instances[szID] = new Safer.SaferInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      Safer.instances[id] = new Safer.SaferInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
@@ -216,8 +216,8 @@
         if (Safer.instances[id].expandedKey) {
           global.OpCodes.ClearArray(Safer.instances[id].expandedKey);
         }
-        delete Safer.instances[szID];
-        delete global.objectInstances[szID];
+        delete Safer.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'SAFER', 'ClearData');
@@ -226,20 +226,20 @@
     },
     
     // Encrypt a 64-bit block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Safer.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'SAFER', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = Safer.instances[szID];
+      const instance = Safer.instances[id];
       if (!instance.expandedKey) {
         global.throwException('Key Not Set Exception', id, 'SAFER', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       // Convert string to bytes and pad if necessary
-      let bytes = global.OpCodes.StringToBytes(szPlainText);
+      let bytes = global.OpCodes.StringToBytes(plaintext);
       while (bytes.length < SAFER_BLOCK_LEN) {
         bytes.push(0);
       }
@@ -252,20 +252,20 @@
     },
     
     // Decrypt a 64-bit block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Safer.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'SAFER', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const instance = Safer.instances[szID];
+      const instance = Safer.instances[id];
       if (!instance.expandedKey) {
         global.throwException('Key Not Set Exception', id, 'SAFER', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       // Convert string to bytes
-      let bytes = global.OpCodes.StringToBytes(szCipherText);
+      let bytes = global.OpCodes.StringToBytes(ciphertext);
       while (bytes.length < SAFER_BLOCK_LEN) {
         bytes.push(0);
       }

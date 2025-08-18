@@ -159,14 +159,14 @@
       for (let i = 0; i < 8; i++) {
         const counterBlock = new Array(16).fill(0);
         counterBlock[15] = i + 1;
-        const derivedKey = instance.aesKey.szEncryptBlock(instance.aesId, counterBlock);
+        const derivedKey = instance.aesKey.encryptBlock(instance.aesId, counterBlock);
         instance.kh.push(derivedKey);
       }
       
       // Generate encryption key
       const encBlock = new Array(16).fill(0);
       encBlock[15] = 0x80; // Special marker for encryption key
-      instance.ke = instance.aesKey.szEncryptBlock(instance.aesId, encBlock);
+      instance.ke = instance.aesKey.encryptBlock(instance.aesId, encBlock);
     },
     
     /**
@@ -329,7 +329,7 @@
       const l3Result = this.l3Hash(l2Result, 2, instance.tagLength);
       
       // Step 4: Encrypt nonce and XOR with hash result
-      const encryptedNonce = instance.aesKey.szEncryptBlock(instance.aesId, nonce);
+      const encryptedNonce = instance.aesKey.encryptBlock(instance.aesId, nonce);
       
       let tag;
       if (instance.tagLength === 8) {

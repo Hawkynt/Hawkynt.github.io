@@ -213,14 +213,14 @@
     },
     
     // Set up key with enhanced validation and configuration
-    KeySetup: function(optional_szKey, options) {
+    KeySetup: function(optional_key, options) {
       // Use default test key if none provided, empty, or wrong length
-      if (!optional_szKey || optional_szKey.length === 0 || optional_szKey.length !== 16) {
-        optional_szKey = '1234567890123456'; // Default 16-byte key for testing
+      if (!optional_key || optional_key.length === 0 || optional_key.length !== 16) {
+        optional_key = '1234567890123456'; // Default 16-byte key for testing
       }
       
       // At this point, key should always be 16 bytes, but double-check
-      if (optional_szKey.length !== 16) {
+      if (optional_key.length !== 16) {
         global.throwException('TEA Key Exception', 'Key must be exactly 16 bytes (128 bits)', 'TEA', 'KeySetup');
         return null;
       }
@@ -242,7 +242,7 @@
       } while (TEA.instances[id] || global.objectInstances[id]);
       
       try {
-        TEA.instances[id] = new TEA.TEAInstance(optional_szKey, rounds);
+        TEA.instances[id] = new TEA.TEAInstance(optional_key, rounds);
         global.objectInstances[id] = true;
         return id;
       } catch (e) {
@@ -273,21 +273,21 @@
     },
     
     // Encrypt 64-bit block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!TEA.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'TEA', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      if (szPlainText.length !== 8) {
+      if (plaintext.length !== 8) {
         global.throwException('TEA Block Size Exception', 'Input must be exactly 8 bytes', 'TEA', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       const objTEA = TEA.instances[id];
       
       // Convert input string to 32-bit words using OpCodes (big-endian)
-      const bytes = global.OpCodes.StringToBytes(szPlainText);
+      const bytes = global.OpCodes.StringToBytes(plaintext);
       let v0 = global.OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
       let v1 = global.OpCodes.Pack32BE(bytes[4], bytes[5], bytes[6], bytes[7]);
       
@@ -312,21 +312,21 @@
     },
     
     // Decrypt 64-bit block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!TEA.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'TEA', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      if (szCipherText.length !== 8) {
+      if (ciphertext.length !== 8) {
         global.throwException('TEA Block Size Exception', 'Input must be exactly 8 bytes', 'TEA', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       const objTEA = TEA.instances[id];
       
       // Convert input string to 32-bit words using OpCodes (big-endian)
-      const bytes = global.OpCodes.StringToBytes(szCipherText);
+      const bytes = global.OpCodes.StringToBytes(ciphertext);
       let v0 = global.OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
       let v1 = global.OpCodes.Pack32BE(bytes[4], bytes[5], bytes[6], bytes[7]);
       
@@ -434,12 +434,12 @@
     },
     
     // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, szPlainText) {
-      return this.encryptBlock(id, szPlainText);
+    EncryptBlock: function(id, plaintext) {
+      return this.encryptBlock(id, plaintext);
     },
     
-    DecryptBlock: function(id, szCipherText) {
-      return this.decryptBlock(id, szCipherText);
+    DecryptBlock: function(id, ciphertext) {
+      return this.decryptBlock(id, ciphertext);
     }
   };
   

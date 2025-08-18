@@ -262,7 +262,7 @@
      * @param {string|Array} data - Input data (string or byte array)
      * @returns {string} Z85 encoded string
      */
-    szEncryptBlock: function(keyId, data) {
+    encryptBlock: function(keyId, data) {
       const instance = this.instances[keyId];
       if (!instance) {
         throw new Error('Invalid instance ID');
@@ -311,7 +311,7 @@
      * @param {string} encoded - Z85 encoded string
      * @returns {string} Decoded data
      */
-    szDecryptBlock: function(keyId, encoded) {
+    decryptBlock: function(keyId, encoded) {
       const instance = this.instances[keyId];
       if (!instance) {
         throw new Error('Invalid instance ID');
@@ -517,8 +517,8 @@
             
             if (testVector.inputBytes) {
               // Test with specific byte values
-              actualEncoded = this.szEncryptBlock(keyId, testVector.inputBytes);
-              actualDecoded = this.szDecryptBlock(keyId, actualEncoded);
+              actualEncoded = this.encryptBlock(keyId, testVector.inputBytes);
+              actualDecoded = this.decryptBlock(keyId, actualEncoded);
               
               // For standard test vectors, check expected encoding
               if (testVector.encoded) {
@@ -530,8 +530,8 @@
                 passed = JSON.stringify(originalBytes.slice(0, decodedBytes.length)) === JSON.stringify(decodedBytes);
               }
             } else if (testVector.input !== undefined) {
-              actualEncoded = this.szEncryptBlock(keyId, testVector.input);
-              actualDecoded = this.szDecryptBlock(keyId, actualEncoded);
+              actualEncoded = this.encryptBlock(keyId, testVector.input);
+              actualDecoded = this.decryptBlock(keyId, actualEncoded);
               passed = actualDecoded.startsWith(testVector.input); // Account for padding
             } else {
               passed = true; // Parameter validation only
@@ -539,8 +539,8 @@
           } else {
             // For other categories, test round-trip encoding
             if (testVector.input) {
-              actualEncoded = this.szEncryptBlock(keyId, testVector.input);
-              actualDecoded = this.szDecryptBlock(keyId, actualEncoded);
+              actualEncoded = this.encryptBlock(keyId, testVector.input);
+              actualDecoded = this.decryptBlock(keyId, actualEncoded);
               passed = actualDecoded.startsWith(testVector.input); // Account for padding
             } else {
               passed = true; // Specification test

@@ -145,8 +145,8 @@
     },
     
     // Set up key
-    KeySetup: function(optional_szKey) {
-      if (!optional_szKey || (optional_szKey.length !== 16 && optional_szKey.length !== 24 && optional_szKey.length !== 32)) {
+    KeySetup: function(optional_key) {
+      if (!optional_key || (optional_key.length !== 16 && optional_key.length !== 24 && optional_key.length !== 32)) {
         global.throwException('LEA Key Exception', 'Key must be 16, 24, or 32 bytes (128, 192, or 256 bits)', 'LEA', 'KeySetup');
         return null;
       }
@@ -156,9 +156,9 @@
         id = 'LEA[' + global.generateUniqueID() + ']';
       } while (LEA.instances[id] || global.objectInstances[id]);
       
-      LEA.instances[szID] = new LEA.LEAInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      LEA.instances[id] = new LEA.LEAInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
@@ -174,8 +174,8 @@
         if (LEA.instances[id].key) {
           global.OpCodes.ClearArray(LEA.instances[id].key);
         }
-        delete LEA.instances[szID];
-        delete global.objectInstances[szID];
+        delete LEA.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'LEA', 'ClearData');
@@ -184,21 +184,21 @@
     },
     
     // Encrypt 128-bit block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!LEA.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'LEA', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      if (szPlainText.length !== 16) {
+      if (plaintext.length !== 16) {
         global.throwException('LEA Block Size Exception', 'Input must be exactly 16 bytes', 'LEA', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const objLEA = LEA.instances[szID];
+      const objLEA = LEA.instances[id];
       
       // Convert input string to 32-bit words using OpCodes (little-endian for LEA)
-      const bytes = global.OpCodes.StringToBytes(szPlainText);
+      const bytes = global.OpCodes.StringToBytes(plaintext);
       let X = [
         global.OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]),
         global.OpCodes.Pack32LE(bytes[4], bytes[5], bytes[6], bytes[7]),
@@ -238,21 +238,21 @@
     },
     
     // Decrypt 128-bit block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!LEA.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'LEA', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      if (szCipherText.length !== 16) {
+      if (ciphertext.length !== 16) {
         global.throwException('LEA Block Size Exception', 'Input must be exactly 16 bytes', 'LEA', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const objLEA = LEA.instances[szID];
+      const objLEA = LEA.instances[id];
       
       // Convert input string to 32-bit words using OpCodes (little-endian for LEA)
-      const bytes = global.OpCodes.StringToBytes(szCipherText);
+      const bytes = global.OpCodes.StringToBytes(ciphertext);
       let X = [
         global.OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]),
         global.OpCodes.Pack32LE(bytes[4], bytes[5], bytes[6], bytes[7]),
@@ -300,7 +300,7 @@
     
     // Instance class
     LEAInstance: function(key) {
-      const keyLen = szKey.length;
+      const keyLen = key.length;
       this.keyLength = keyLen;
       
       // Determine number of rounds based on key length

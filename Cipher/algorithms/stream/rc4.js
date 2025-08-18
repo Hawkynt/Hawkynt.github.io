@@ -342,21 +342,21 @@
         id = 'RC4[' + global.generateUniqueID() + ']';
       } while (RC4.instances[id] || global.objectInstances[id]);
       
-      RC4.instances[szID] = new RC4.RC4Instance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      RC4.instances[id] = new RC4.RC4Instance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (RC4.instances[id]) {
         // Clear sensitive data
-        const instance = RC4.instances[szID];
+        const instance = RC4.instances[id];
         if (instance.S && global.OpCodes) {
           global.OpCodes.ClearArray(instance.S);
         }
-        delete RC4.instances[szID];
-        delete global.objectInstances[szID];
+        delete RC4.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'RC4', 'ClearData');
@@ -365,29 +365,29 @@
     },
     
     // Encrypt block (for stream cipher, this generates keystream and XORs with input)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!RC4.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'RC4', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = RC4.instances[szID];
+      const instance = RC4.instances[id];
       let result = '';
       
-      for (let n = 0; n < szPlainText.length; n++) {
+      for (let n = 0; n < plaintext.length; n++) {
         const keystreamByte = instance.generateKeystreamByte();
-        const plaintextByte = szPlainText.charCodeAt(n) & 0xFF;
+        const plaintextByte = plaintext.charCodeAt(n) & 0xFF;
         const ciphertextByte = plaintextByte ^ keystreamByte;
-        szResult += String.fromCharCode(ciphertextByte);
+        result += String.fromCharCode(ciphertextByte);
       }
       
-      return szResult;
+      return result;
     },
     
     // Decrypt block (same as encrypt for stream cipher)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       // For stream ciphers, decryption is identical to encryption
-      return RC4.encryptBlock(id, szCipherText);
+      return RC4.encryptBlock(id, ciphertext);
     },
     
     // RC4 Instance class
@@ -403,7 +403,7 @@
           this.keyBytes.push(key.charCodeAt(k) & 0xFF);
         }
       } else if (Array.isArray(key)) {
-        this.keyBytes = szKey.slice(0); // Copy array
+        this.keyBytes = key.slice(0); // Copy array
       } else {
         throw new Error('RC4 key must be string or byte array');
       }

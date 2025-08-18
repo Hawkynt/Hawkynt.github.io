@@ -446,13 +446,13 @@
     },
     
     // Set up key (alphabetic string)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'Porta[' + global.generateUniqueID() + ']';
       } while (Porta.instances[id] || global.objectInstances[id]);
       
-      Porta.instances[id] = new Porta.PortaInstance(optional_szKey);
+      Porta.instances[id] = new Porta.PortaInstance(optional_key);
       global.objectInstances[id] = true;
       return id;
     },
@@ -470,34 +470,34 @@
     },
     
     // Encrypt block (same operation as decrypt due to reciprocal property)
-    encryptBlock: function(id, szPlainText) {
-      return Porta.processBlock(id, szPlainText);
+    encryptBlock: function(id, plaintext) {
+      return Porta.processBlock(id, plaintext);
     },
     
     // Decrypt block (same operation as encrypt due to reciprocal property)
-    decryptBlock: function(id, szCipherText) {
-      return Porta.processBlock(id, szCipherText);
+    decryptBlock: function(id, ciphertext) {
+      return Porta.processBlock(id, ciphertext);
     },
     
     // Process block (used for both encryption and decryption)
-    processBlock: function(id, szText) {
+    processBlock: function(id, text) {
       if (!Porta.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Porta', 'processBlock');
-        return szText;
+        return text;
       }
       
       const instance = Porta.instances[id];
       const key = instance.key;
       
       if (!key || key.length === 0) {
-        return szText; // No key, no processing
+        return text; // No key, no processing
       }
       
       let result = '';
       let keyIndex = 0;
       
-      for (let i = 0; i < szText.length; i++) {
-        const char = szText.charAt(i);
+      for (let i = 0; i < text.length; i++) {
+        const char = text.charAt(i);
         
         if (Porta.isLetter(char)) {
           const keyChar = key.charAt(keyIndex % key.length);
@@ -562,12 +562,12 @@
     },
     
     // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, szPlainText) {
-      return this.encryptBlock(id, szPlainText);
+    EncryptBlock: function(id, plaintext) {
+      return this.encryptBlock(id, plaintext);
     },
     
-    DecryptBlock: function(id, szCipherText) {
-      return this.decryptBlock(id, szCipherText);
+    DecryptBlock: function(id, ciphertext) {
+      return this.decryptBlock(id, ciphertext);
     }
   };
   

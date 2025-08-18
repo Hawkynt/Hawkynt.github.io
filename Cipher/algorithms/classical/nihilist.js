@@ -91,38 +91,38 @@
         id = 'Nihilist[' + global.generateUniqueID() + ']';
       } while (Nihilist.instances[id] || global.objectInstances[id]);
       
-      Nihilist.instances[szID] = new Nihilist.NihilistInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      Nihilist.instances[id] = new Nihilist.NihilistInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear Nihilist data
     ClearData: function(id) {
       if (Nihilist.instances[id]) {
-        delete Nihilist.instances[szID];
-        delete global.objectInstances[szID];
+        delete Nihilist.instances[id];
+        delete global.objectInstances[id];
       }
     },
     
     // Encrypt using Nihilist cipher
-    encryptBlock: function(intInstanceID, szInput) {
+    encryptBlock: function(intInstanceID, input) {
       const id = 'Nihilist[' + intInstanceID + ']';
       if (!Nihilist.instances[id]) return '';
       
-      return Nihilist.instances[szID].encrypt(szInput);
+      return Nihilist.instances[id].encrypt(input);
     },
     
     // Decrypt using Nihilist cipher
-    decryptBlock: function(intInstanceID, szInput) {
+    decryptBlock: function(intInstanceID, input) {
       const id = 'Nihilist[' + intInstanceID + ']';
       if (!Nihilist.instances[id]) return '';
       
-      return Nihilist.instances[szID].decrypt(szInput);
+      return Nihilist.instances[id].decrypt(input);
     },
     
     // Nihilist Instance Class
     NihilistInstance: function(key) {
-      this.key = szKey.toUpperCase().replace(/[^A-Z]/g, ''); // Remove non-letters
+      this.key = key.toUpperCase().replace(/[^A-Z]/g, ''); // Remove non-letters
       if (this.key.length === 0) {
         throw new Error('Nihilist: Key must contain at least one letter');
       }

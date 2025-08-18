@@ -149,22 +149,22 @@
     },
     
     // Set up key and create cipher instance
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'Square[' + global.generateUniqueID() + ']';
       } while (Square.instances[id] || global.objectInstances[id]);
       
-      Square.instances[szID] = new Square.SquareInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      Square.instances[id] = new Square.SquareInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (Square.instances[id]) {
         // Clear sensitive key material
-        const instance = Square.instances[szID];
+        const instance = Square.instances[id];
         if (instance.roundKeysE) {
           for (let i = 0; i < instance.roundKeysE.length; i++) {
             OpCodes.ClearArray(instance.roundKeysE[i]);
@@ -176,8 +176,8 @@
           }
         }
         
-        delete Square.instances[szID];
-        delete global.objectInstances[szID];
+        delete Square.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'Square', 'ClearData');
@@ -186,25 +186,25 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Square.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Square', 'encryptBlock');
         return '';
       }
       
-      const instance = Square.instances[szID];
-      return instance.encryptBlock(szPlainText);
+      const instance = Square.instances[id];
+      return instance.encryptBlock(plaintext);
     },
     
     // Decrypt block  
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Square.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Square', 'decryptBlock');
         return '';
       }
       
-      const instance = Square.instances[szID];
-      return instance.decryptBlock(szCipherText);
+      const instance = Square.instances[id];
+      return instance.decryptBlock(ciphertext);
     },
     
     // Galois Field multiplication in GF(2^8)

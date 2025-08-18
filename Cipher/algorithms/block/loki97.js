@@ -163,24 +163,24 @@
       const roundKeys = LOKI97._keySchedule(keyBytes);
       
       // Store instance
-      LOKI97.instances[szID] = {
+      LOKI97.instances[id] = {
         roundKeys: roundKeys
       };
       
-      return szID;
+      return id;
     },
     
     /**
      * Encrypt a 16-byte block with LOKI97
      */
-    encryptBlock: function(id, szBlock) {
-      const instance = LOKI97.instances[szID];
+    encryptBlock: function(id, block) {
+      const instance = LOKI97.instances[id];
       if (!instance) {
         throw new Error('Invalid LOKI97 instance ID');
       }
       
       // Convert block to bytes
-      const blockBytes = OpCodes.StringToBytes(szBlock);
+      const blockBytes = OpCodes.StringToBytes(block);
       if (blockBytes.length !== 16) {
         throw new Error('LOKI97 requires 16-byte blocks');
       }
@@ -217,14 +217,14 @@
     /**
      * Decrypt a 16-byte block with LOKI97
      */
-    decryptBlock: function(id, szBlock) {
-      const instance = LOKI97.instances[szID];
+    decryptBlock: function(id, block) {
+      const instance = LOKI97.instances[id];
       if (!instance) {
         throw new Error('Invalid LOKI97 instance ID');
       }
       
       // Convert block to bytes
-      const blockBytes = OpCodes.StringToBytes(szBlock);
+      const blockBytes = OpCodes.StringToBytes(block);
       if (blockBytes.length !== 16) {
         throw new Error('LOKI97 requires 16-byte blocks');
       }
@@ -267,7 +267,7 @@
         if (LOKI97.instances[id].roundKeys) {
           OpCodes.ClearArray(LOKI97.instances[id].roundKeys);
         }
-        delete LOKI97.instances[szID];
+        delete LOKI97.instances[id];
         return true;
       }
       return false;

@@ -126,9 +126,9 @@
     },
     
     // Set up key
-    KeySetup: function(optional_szKey) {
-      if (!optional_szKey || optional_szKey.length !== 10) {
-        global.throwException('Key Length Exception', optional_szKey ? optional_szKey.length : 0, 'SkipJack', 'KeySetup');
+    KeySetup: function(optional_key) {
+      if (!optional_key || optional_key.length !== 10) {
+        global.throwException('Key Length Exception', optional_key ? optional_key.length : 0, 'SkipJack', 'KeySetup');
         return false;
       }
       
@@ -137,19 +137,19 @@
         id = 'SkipJack[' + global.generateUniqueID() + ']';
       } while (SkipJack.instances[id] || global.objectInstances[id]);
       
-      SkipJack.instances[szID] = new SkipJack.SkipJackInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      SkipJack.instances[id] = new SkipJack.SkipJackInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (SkipJack.instances[id]) {
-        const instance = SkipJack.instances[szID];
+        const instance = SkipJack.instances[id];
         if (instance.key) global.OpCodes.ClearArray(instance.key);
         
-        delete SkipJack.instances[szID];
-        delete global.objectInstances[szID];
+        delete SkipJack.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'SkipJack', 'ClearData');
@@ -260,22 +260,22 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!SkipJack.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'SkipJack', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      if (szPlainText.length !== 8) {
-        global.throwException('Block Size Exception', szPlainText.length, 'SkipJack', 'encryptBlock');
-        return szPlainText;
+      if (plaintext.length !== 8) {
+        global.throwException('Block Size Exception', plaintext.length, 'SkipJack', 'encryptBlock');
+        return plaintext;
       }
       
-      const instance = SkipJack.instances[szID];
+      const instance = SkipJack.instances[id];
       const key = instance.key;
       
       // Convert plaintext to 4 16-bit words using OpCodes
-      const bytes = global.OpCodes.StringToBytes(szPlainText);
+      const bytes = global.OpCodes.StringToBytes(plaintext);
       let w1 = global.OpCodes.Pack32BE(bytes[0], bytes[1], 0, 0) >>> 16;
       let w2 = global.OpCodes.Pack32BE(bytes[2], bytes[3], 0, 0) >>> 16;
       let w3 = global.OpCodes.Pack32BE(bytes[4], bytes[5], 0, 0) >>> 16;
@@ -333,22 +333,22 @@
     },
     
     // Decrypt block  
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!SkipJack.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'SkipJack', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      if (szCipherText.length !== 8) {
-        global.throwException('Block Size Exception', szCipherText.length, 'SkipJack', 'decryptBlock');
-        return szCipherText;
+      if (ciphertext.length !== 8) {
+        global.throwException('Block Size Exception', ciphertext.length, 'SkipJack', 'decryptBlock');
+        return ciphertext;
       }
       
-      const instance = SkipJack.instances[szID];
+      const instance = SkipJack.instances[id];
       const key = instance.key;
       
       // Convert ciphertext to 4 16-bit words using OpCodes
-      const bytes = global.OpCodes.StringToBytes(szCipherText);
+      const bytes = global.OpCodes.StringToBytes(ciphertext);
       let w1 = global.OpCodes.Pack32BE(bytes[0], bytes[1], 0, 0) >>> 16;
       let w2 = global.OpCodes.Pack32BE(bytes[2], bytes[3], 0, 0) >>> 16;
       let w3 = global.OpCodes.Pack32BE(bytes[4], bytes[5], 0, 0) >>> 16;

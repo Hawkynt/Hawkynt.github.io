@@ -230,9 +230,9 @@
         id = 'SM4[' + global.generateUniqueID() + ']';
       } while (SM4.instances[id] || global.objectInstances[id]);
       
-      SM4.instances[szID] = new SM4.SM4Instance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      SM4.instances[id] = new SM4.SM4Instance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
@@ -242,8 +242,8 @@
         if (SM4.instances[id].roundKeys) {
           OpCodes.ClearArray(SM4.instances[id].roundKeys);
         }
-        delete SM4.instances[szID];
-        delete global.objectInstances[szID];
+        delete SM4.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'SM4', 'ClearData');
@@ -252,35 +252,35 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!SM4.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'SM4', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = SM4.instances[szID];
-      if (szPlainText.length !== 16) {
+      const instance = SM4.instances[id];
+      if (plaintext.length !== 16) {
         global.throwException('Block Size Exception', 'SM4 requires exactly 16 bytes', 'SM4', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      return SM4.encryptBlock(szPlainText, instance.roundKeys);
+      return SM4.encryptBlock(plaintext, instance.roundKeys);
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!SM4.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'SM4', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const instance = SM4.instances[szID];
-      if (szCipherText.length !== 16) {
+      const instance = SM4.instances[id];
+      if (ciphertext.length !== 16) {
         global.throwException('Block Size Exception', 'SM4 requires exactly 16 bytes', 'SM4', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      return SM4.decryptBlock(szCipherText, instance.roundKeys);
+      return SM4.decryptBlock(ciphertext, instance.roundKeys);
     },
     
     // Instance class
@@ -289,7 +289,7 @@
         throw new Error('SM4 requires exactly 16-byte key');
       }
       
-      this.key = szKey;
+      this.key = key;
       this.roundKeys = SM4.keyExpansion(key);
     }
   };

@@ -440,13 +440,13 @@
     },
     
     // Set up key (permutation key)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'Bazeries[' + global.generateUniqueID() + ']';
       } while (Bazeries.instances[id] || global.objectInstances[id]);
       
-      Bazeries.instances[id] = new Bazeries.BazeriesInstance(optional_szKey);
+      Bazeries.instances[id] = new Bazeries.BazeriesInstance(optional_key);
       global.objectInstances[id] = true;
       return id;
     },
@@ -464,33 +464,33 @@
     },
     
     // Encrypt block (perform transposition)
-    encryptBlock: function(id, szPlainText) {
-      return Bazeries.processBlock(id, szPlainText, true);
+    encryptBlock: function(id, plaintext) {
+      return Bazeries.processBlock(id, plaintext, true);
     },
     
     // Decrypt block (reverse transposition)
-    decryptBlock: function(id, szCipherText) {
-      return Bazeries.processBlock(id, szCipherText, false);
+    decryptBlock: function(id, ciphertext) {
+      return Bazeries.processBlock(id, ciphertext, false);
     },
     
     // Process block (both encrypt and decrypt)
-    processBlock: function(id, szText, encrypt) {
+    processBlock: function(id, text, encrypt) {
       if (!Bazeries.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Bazeries', 'processBlock');
-        return szText;
+        return text;
       }
       
       const instance = Bazeries.instances[id];
       const key = instance.key;
       
       if (!key || key.length === 0) {
-        return szText; // No key, no processing
+        return text; // No key, no processing
       }
       
       // Extract only letters for processing
-      const letters = Bazeries.extractLetters(szText);
+      const letters = Bazeries.extractLetters(text);
       if (letters.length === 0) {
-        return szText;
+        return text;
       }
       
       // Determine matrix dimensions
@@ -524,7 +524,7 @@
       }
       
       // Reinsert non-letter characters
-      return Bazeries.reinsertNonLetters(szText, result);
+      return Bazeries.reinsertNonLetters(text, result);
     },
     
     // Extract only letters from text
@@ -613,12 +613,12 @@
     },
     
     // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, szPlainText) {
-      return this.encryptBlock(id, szPlainText);
+    EncryptBlock: function(id, plaintext) {
+      return this.encryptBlock(id, plaintext);
     },
     
-    DecryptBlock: function(id, szCipherText) {
-      return this.decryptBlock(id, szCipherText);
+    DecryptBlock: function(id, ciphertext) {
+      return this.decryptBlock(id, ciphertext);
     }
   };
   

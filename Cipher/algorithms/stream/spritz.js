@@ -82,24 +82,24 @@
         id = 'Spritz[' + global.generateUniqueID() + ']';
       } while (Spritz.instances[id] || global.objectInstances[id]);
       
-      Spritz.instances[szID] = new Spritz.SpritzInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      Spritz.instances[id] = new Spritz.SpritzInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (Spritz.instances[id]) {
         // Clear sensitive data
-        const instance = Spritz.instances[szID];
+        const instance = Spritz.instances[id];
         if (instance.S && global.OpCodes) {
           global.OpCodes.ClearArray(instance.S);
         }
         if (instance.keyBytes && global.OpCodes) {
           global.OpCodes.ClearArray(instance.keyBytes);
         }
-        delete Spritz.instances[szID];
-        delete global.objectInstances[szID];
+        delete Spritz.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'Spritz', 'ClearData');
@@ -108,29 +108,29 @@
     },
     
     // Encrypt block (for stream cipher, this generates keystream and XORs with input)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Spritz.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Spritz', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = Spritz.instances[szID];
+      const instance = Spritz.instances[id];
       let result = '';
       
-      for (let n = 0; n < szPlainText.length; n++) {
+      for (let n = 0; n < plaintext.length; n++) {
         const keystreamByte = instance.squeeze();
-        const plaintextByte = szPlainText.charCodeAt(n) & 0xFF;
+        const plaintextByte = plaintext.charCodeAt(n) & 0xFF;
         const ciphertextByte = plaintextByte ^ keystreamByte;
-        szResult += String.fromCharCode(ciphertextByte);
+        result += String.fromCharCode(ciphertextByte);
       }
       
-      return szResult;
+      return result;
     },
     
     // Decrypt block (same as encrypt for stream cipher)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       // For stream ciphers, decryption is identical to encryption
-      return Spritz.encryptBlock(id, szCipherText);
+      return Spritz.encryptBlock(id, ciphertext);
     },
     
     // Spritz Instance class

@@ -117,18 +117,18 @@
     },
     
     // Encrypt block (for stream cipher, this generates keystream and XORs with input)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!MICKEY.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'MICKEY', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       const instance = MICKEY.instances[id];
       let result = '';
       
-      for (let n = 0; n < szPlainText.length; n++) {
+      for (let n = 0; n < plaintext.length; n++) {
         const keystreamByte = instance.generateKeystreamByte();
-        const plaintextByte = szPlainText.charCodeAt(n) & 0xFF;
+        const plaintextByte = plaintext.charCodeAt(n) & 0xFF;
         const ciphertextByte = plaintextByte ^ keystreamByte;
         result += String.fromCharCode(ciphertextByte);
       }
@@ -137,9 +137,9 @@
     },
     
     // Decrypt block (same as encrypt for stream cipher)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       // For stream ciphers, decryption is identical to encryption
-      return MICKEY.encryptBlock(id, szCipherText);
+      return MICKEY.encryptBlock(id, ciphertext);
     },
     
     // MICKEY Instance class

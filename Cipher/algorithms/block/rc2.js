@@ -112,26 +112,26 @@
     },
     
     // Set up key
-    KeySetup: function(optional_szKey, effectiveBits = 1024) {
+    KeySetup: function(optional_key, effectiveBits = 1024) {
       let id;
       do {
         id = 'RC2[' + global.generateUniqueID() + ']';
       } while (RC2.instances[id] || global.objectInstances[id]);
       
-      RC2.instances[szID] = new RC2.RC2Instance(optional_szKey, effectiveBits);
-      global.objectInstances[szID] = true;
-      return szID;
+      RC2.instances[id] = new RC2.RC2Instance(optional_key, effectiveBits);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (RC2.instances[id]) {
         // Clear sensitive data
-        const instance = RC2.instances[szID];
+        const instance = RC2.instances[id];
         if (instance.expandedKey) global.OpCodes.ClearArray(instance.expandedKey);
         
-        delete RC2.instances[szID];
-        delete global.objectInstances[szID];
+        delete RC2.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'RC2', 'ClearData');
@@ -140,9 +140,9 @@
     },
     
     // Encrypt a block
-    encryptBlock: function(id, szInput) {
+    encryptBlock: function(id, input) {
       if (RC2.instances[id]) {
-        return RC2.instances[szID].encryptBlock(szInput);
+        return RC2.instances[id].encryptBlock(input);
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'RC2', 'encryptBlock');
         return '';
@@ -150,9 +150,9 @@
     },
     
     // Decrypt a block
-    decryptBlock: function(id, szInput) {
+    decryptBlock: function(id, input) {
       if (RC2.instances[id]) {
-        return RC2.instances[szID].decryptBlock(szInput);
+        return RC2.instances[id].decryptBlock(input);
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'RC2', 'decryptBlock');
         return '';

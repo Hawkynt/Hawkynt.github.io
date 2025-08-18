@@ -409,9 +409,9 @@
       },
       
       // Compression
-      encryptBlock: function(nKeyIndex, szPlaintext) {
+      encryptBlock: function(nKeyIndex, plaintext) {
         try {
-          const result = Brotli.Compress(szPlaintext);
+          const result = Brotli.Compress(plaintext);
           this.lastCompressedData = result.compressed;
           this.lastHuffmanTree = result.huffmanTree;
           
@@ -424,7 +424,7 @@
       },
       
       // Decompression
-      decryptBlock: function(nKeyIndex, szCiphertext) {
+      decryptBlock: function(nKeyIndex, ciphertext) {
         try {
           if (!this.lastCompressedData || !this.lastHuffmanTree) {
             return "Error: No compression data available. Compress first.";

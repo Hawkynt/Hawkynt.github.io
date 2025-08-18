@@ -335,16 +335,16 @@
         id = 'Poly1305[' + global.generateUniqueID() + ']';
       } while (Poly1305.instances[id] || global.objectInstances[id]);
       
-      Poly1305.instances[szID] = new Poly1305.Poly1305Instance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      Poly1305.instances[id] = new Poly1305.Poly1305Instance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear MAC data
     ClearData: function(id) {
       if (Poly1305.instances[id]) {
-        delete Poly1305.instances[szID];
-        delete global.objectInstances[szID];
+        delete Poly1305.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'Poly1305', 'ClearData');
@@ -359,7 +359,7 @@
         return '';
       }
       
-      const instance = Poly1305.instances[szID];
+      const instance = Poly1305.instances[id];
       return instance.computeMAC(message);
     },
     
@@ -376,9 +376,9 @@
         return ''; // Invalid: too short for tag
       }
       
-      const instance = Poly1305.instances[szID];
-      const message = szData.substring(0, data.length - Poly1305.TAG_SIZE);
-      const providedTag = szData.substring(data.length - Poly1305.TAG_SIZE);
+      const instance = Poly1305.instances[id];
+      const message = data.substring(0, data.length - Poly1305.TAG_SIZE);
+      const providedTag = data.substring(data.length - Poly1305.TAG_SIZE);
       const computedTag = instance.computeMAC(message);
       
       // Constant-time comparison

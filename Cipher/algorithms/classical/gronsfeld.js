@@ -407,13 +407,13 @@
     },
     
     // Set up key (numeric string)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'Gronsfeld[' + global.generateUniqueID() + ']';
       } while (Gronsfeld.instances[id] || global.objectInstances[id]);
       
-      Gronsfeld.instances[id] = new Gronsfeld.GronsfeldInstance(optional_szKey);
+      Gronsfeld.instances[id] = new Gronsfeld.GronsfeldInstance(optional_key);
       global.objectInstances[id] = true;
       return id;
     },
@@ -431,24 +431,24 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Gronsfeld.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Gronsfeld', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       const instance = Gronsfeld.instances[id];
       const key = instance.key;
       
       if (!key || key.length === 0) {
-        return szPlainText; // No key, no encryption
+        return plaintext; // No key, no encryption
       }
       
       let result = '';
       let keyIndex = 0;
       
-      for (let i = 0; i < szPlainText.length; i++) {
-        const char = szPlainText.charAt(i);
+      for (let i = 0; i < plaintext.length; i++) {
+        const char = plaintext.charAt(i);
         
         if (Gronsfeld.isLetter(char)) {
           const shift = parseInt(key.charAt(keyIndex % key.length));
@@ -465,24 +465,24 @@
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Gronsfeld.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Gronsfeld', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       const instance = Gronsfeld.instances[id];
       const key = instance.key;
       
       if (!key || key.length === 0) {
-        return szCipherText; // No key, no decryption
+        return ciphertext; // No key, no decryption
       }
       
       let result = '';
       let keyIndex = 0;
       
-      for (let i = 0; i < szCipherText.length; i++) {
-        const char = szCipherText.charAt(i);
+      for (let i = 0; i < ciphertext.length; i++) {
+        const char = ciphertext.charAt(i);
         
         if (Gronsfeld.isLetter(char)) {
           const shift = parseInt(key.charAt(keyIndex % key.length));
@@ -539,12 +539,12 @@
     },
     
     // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, szPlainText) {
-      return this.encryptBlock(id, szPlainText);
+    EncryptBlock: function(id, plaintext) {
+      return this.encryptBlock(id, plaintext);
     },
     
-    DecryptBlock: function(id, szCipherText) {
-      return this.decryptBlock(id, szCipherText);
+    DecryptBlock: function(id, ciphertext) {
+      return this.decryptBlock(id, ciphertext);
     }
   };
   

@@ -135,22 +135,22 @@
     },
     
     // Set up key
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'GOST-Kuznyechik[' + global.generateUniqueID() + ']';
       } while (this.instances[id] || global.objectInstances[id]);
       
-      this.instances[szID] = new this.KuznyechikInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      this.instances[id] = new this.KuznyechikInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (this.instances[id]) {
-        delete this.instances[szID];
-        delete global.objectInstances[szID];
+        delete this.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'GOST-Kuznyechik', 'ClearData');
@@ -159,14 +159,14 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!this.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'GOST-Kuznyechik', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = this.instances[szID];
-      const state = this.stringToBytes(szPlainText);
+      const instance = this.instances[id];
+      const state = this.stringToBytes(plaintext);
       
       // Initial whitening with first round key
       this.addRoundKey(state, instance.roundKeys[0]);
@@ -182,14 +182,14 @@
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!this.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'GOST-Kuznyechik', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const instance = this.instances[szID];
-      const state = this.stringToBytes(szCipherText);
+      const instance = this.instances[id];
+      const state = this.stringToBytes(ciphertext);
       
       // Reverse the encryption process
       for (let round = 9; round >= 1; round--) {
@@ -386,7 +386,7 @@
     // Instance class
     KuznyechikInstance: function(key) {
       // Process and validate 256-bit key
-      let processedKey = szKey || '';
+      let processedKey = key || '';
       
       // Pad with zeros if too short
       while (processedKey.length < 32) {

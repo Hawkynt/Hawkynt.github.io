@@ -115,8 +115,8 @@
     },
     
     // Set up key and create cipher instance
-    KeySetup: function(optional_szKey) {
-      if (!optional_szKey || optional_szKey.length !== 16) {
+    KeySetup: function(optional_key) {
+      if (!optional_key || optional_key.length !== 16) {
         global.throwException('CHAM Key Exception', 'Key must be exactly 16 bytes (128 bits)', 'CHAM', 'KeySetup');
         return null;
       }
@@ -126,9 +126,9 @@
         id = 'CHAM[' + global.generateUniqueID() + ']';
       } while (CHAM.instances[id] || global.objectInstances[id]);
       
-      CHAM.instances[szID] = new CHAM.CHAMInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      CHAM.instances[id] = new CHAM.CHAMInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data securely
@@ -141,8 +141,8 @@
         if (CHAM.instances[id].key) {
           global.OpCodes.ClearArray(CHAM.instances[id].key);
         }
-        delete CHAM.instances[szID];
-        delete global.objectInstances[szID];
+        delete CHAM.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'CHAM', 'ClearData');
@@ -151,21 +151,21 @@
     },
     
     // Encrypt 128-bit block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!CHAM.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'CHAM', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      if (szPlainText.length !== 16) {
+      if (plaintext.length !== 16) {
         global.throwException('CHAM Block Size Exception', 'Input must be exactly 16 bytes', 'CHAM', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const objCHAM = CHAM.instances[szID];
+      const objCHAM = CHAM.instances[id];
       
       // Convert input string to 32-bit words using OpCodes (little-endian for CHAM)
-      const bytes = global.OpCodes.StringToBytes(szPlainText);
+      const bytes = global.OpCodes.StringToBytes(plaintext);
       let X = [
         global.OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]),
         global.OpCodes.Pack32LE(bytes[4], bytes[5], bytes[6], bytes[7]),
@@ -208,21 +208,21 @@
     },
     
     // Decrypt 128-bit block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!CHAM.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'CHAM', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      if (szCipherText.length !== 16) {
+      if (ciphertext.length !== 16) {
         global.throwException('CHAM Block Size Exception', 'Input must be exactly 16 bytes', 'CHAM', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const objCHAM = CHAM.instances[szID];
+      const objCHAM = CHAM.instances[id];
       
       // Convert input string to 32-bit words using OpCodes (little-endian)
-      const bytes = global.OpCodes.StringToBytes(szCipherText);
+      const bytes = global.OpCodes.StringToBytes(ciphertext);
       let X = [
         global.OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]),
         global.OpCodes.Pack32LE(bytes[4], bytes[5], bytes[6], bytes[7]),

@@ -91,22 +91,22 @@
     },
     
     // Set up instance (checksum functions don't use keys)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'CRC32[' + global.generateUniqueID() + ']';
       } while (CRC32.instances[id] || global.objectInstances[id]);
       
-      CRC32.instances[szID] = new CRC32.CRC32Instance();
-      global.objectInstances[szID] = true;
-      return szID;
+      CRC32.instances[id] = new CRC32.CRC32Instance();
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear checksum data
     ClearData: function(id) {
       if (CRC32.instances[id]) {
-        delete CRC32.instances[szID];
-        delete global.objectInstances[szID];
+        delete CRC32.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'CRC32', 'ClearData');
@@ -115,19 +115,19 @@
     },
     
     // Calculate checksum (encryption interface)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!CRC32.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'CRC32', 'encryptBlock');
         return '';
       }
       
-      return CRC32.checksum(szPlainText);
+      return CRC32.checksum(plaintext);
     },
     
     // Checksum function is one-way (no decryption)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       global.throwException('Operation Not Supported Exception', 'CRC-32 checksum function cannot be reversed', 'CRC32', 'decryptBlock');
-      return szCipherText;
+      return ciphertext;
     },
     
     /**

@@ -131,24 +131,24 @@
         id = 'CLEFIA[' + global.generateUniqueID() + ']';
       } while (CLEFIA.instances[id] || global.objectInstances[id]);
       
-      CLEFIA.instances[szID] = new CLEFIA.Instance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      CLEFIA.instances[id] = new CLEFIA.Instance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
 
     // Clear cipher data
     ClearData: function(id) {
       if (CLEFIA.instances[id]) {
         // Secure cleanup
-        const instance = CLEFIA.instances[szID];
+        const instance = CLEFIA.instances[id];
         if (instance.roundKeys) {
           global.OpCodes && global.OpCodes.ClearArray && global.OpCodes.ClearArray(instance.roundKeys);
         }
         if (instance.whiteningKeys) {
           global.OpCodes && global.OpCodes.ClearArray && global.OpCodes.ClearArray(instance.whiteningKeys);
         }
-        delete CLEFIA.instances[szID];
-        delete global.objectInstances[szID];
+        delete CLEFIA.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'CLEFIA', 'ClearData');
@@ -224,16 +224,16 @@
     },
 
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!CLEFIA.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'CLEFIA', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
 
-      const instance = CLEFIA.instances[szID];
+      const instance = CLEFIA.instances[id];
       
       // Convert input to bytes
-      const plainBytes = global.OpCodes.StringToBytes(szPlainText);
+      const plainBytes = global.OpCodes.StringToBytes(plaintext);
       
       // Process complete 16-byte blocks
       let result = '';
@@ -256,20 +256,20 @@
     },
 
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!CLEFIA.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'CLEFIA', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
 
-      const instance = CLEFIA.instances[szID];
+      const instance = CLEFIA.instances[id];
       
       // Convert input to bytes
-      const cipherBytes = global.OpCodes.StringToBytes(szCipherText);
+      const cipherBytes = global.OpCodes.StringToBytes(ciphertext);
       
       if (cipherBytes.length % 16 !== 0) {
-        global.throwException('Invalid cipher text length for CLEFIA', szCipherText.length, 'CLEFIA', 'decryptBlock');
-        return szCipherText;
+        global.throwException('Invalid cipher text length for CLEFIA', ciphertext.length, 'CLEFIA', 'decryptBlock');
+        return ciphertext;
       }
       
       // Process 16-byte blocks
@@ -400,7 +400,7 @@
     // Instance class
     Instance: function(key) {
       this.keyBytes = global.OpCodes.StringToBytes(key);
-      this.keyLength = szKey.length;
+      this.keyLength = key.length;
       
       // Determine number of rounds based on key length
       if (this.keyLength === 16) {

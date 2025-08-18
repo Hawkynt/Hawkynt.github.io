@@ -82,16 +82,16 @@
         id = 'HC-128[' + global.generateUniqueID() + ']';
       } while (HC128.instances[id] || global.objectInstances[id]);
       
-      HC128.instances[szID] = new HC128.HC128Instance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      HC128.instances[id] = new HC128.HC128Instance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (HC128.instances[id]) {
         // Clear sensitive data
-        const instance = HC128.instances[szID];
+        const instance = HC128.instances[id];
         if (instance.P && global.OpCodes) {
           global.OpCodes.ClearArray(instance.P);
         }
@@ -101,8 +101,8 @@
         if (instance.keyBytes && global.OpCodes) {
           global.OpCodes.ClearArray(instance.keyBytes);
         }
-        delete HC128.instances[szID];
-        delete global.objectInstances[szID];
+        delete HC128.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'HC-128', 'ClearData');
@@ -111,29 +111,29 @@
     },
     
     // Encrypt block (for stream cipher, this generates keystream and XORs with input)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!HC128.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'HC-128', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = HC128.instances[szID];
+      const instance = HC128.instances[id];
       let result = '';
       
-      for (let n = 0; n < szPlainText.length; n++) {
+      for (let n = 0; n < plaintext.length; n++) {
         const keystreamByte = instance.getNextKeystreamByte();
-        const plaintextByte = szPlainText.charCodeAt(n) & 0xFF;
+        const plaintextByte = plaintext.charCodeAt(n) & 0xFF;
         const ciphertextByte = plaintextByte ^ keystreamByte;
-        szResult += String.fromCharCode(ciphertextByte);
+        result += String.fromCharCode(ciphertextByte);
       }
       
-      return szResult;
+      return result;
     },
     
     // Decrypt block (same as encrypt for stream cipher)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       // For stream ciphers, decryption is identical to encryption
-      return HC128.encryptBlock(id, szCipherText);
+      return HC128.encryptBlock(id, ciphertext);
     },
     
     // HC-128 Instance class

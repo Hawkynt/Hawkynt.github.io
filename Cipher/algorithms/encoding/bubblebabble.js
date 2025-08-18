@@ -118,16 +118,16 @@
         id = 'BubbleBabble[' + global.generateUniqueID() + ']';
       } while (BubbleBabble.instances[id] || global.objectInstances[id]);
       
-      BubbleBabble.instances[szID] = { initialized: true };
-      global.objectInstances[szID] = true;
-      return szID;
+      BubbleBabble.instances[id] = { initialized: true };
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear encoding data
     ClearData: function(id) {
       if (BubbleBabble.instances[id]) {
-        delete BubbleBabble.instances[szID];
-        delete global.objectInstances[szID];
+        delete BubbleBabble.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'BubbleBabble', 'ClearData');
@@ -136,13 +136,13 @@
     },
     
     // Encode to BubbleBabble
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!BubbleBabble.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'BubbleBabble', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const data = BubbleBabble.stringToBytes(szPlainText);
+      const data = BubbleBabble.stringToBytes(plaintext);
       let result = 'x';
       let checksum = 0;
       
@@ -218,14 +218,14 @@
     },
     
     // Decode from BubbleBabble
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!BubbleBabble.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'BubbleBabble', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       // Remove dashes and normalize
-      const cleaned = szCipherText.toLowerCase().replace(/-/g, '');
+      const cleaned = ciphertext.toLowerCase().replace(/-/g, '');
       
       // Check format (should start and end with x)
       if (!cleaned.startsWith('x') || !cleaned.endsWith('x')) {

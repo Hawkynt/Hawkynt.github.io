@@ -417,15 +417,15 @@
       },
       
       // Encrypt/Decrypt using ZUC stream cipher
-      encryptBlock: function(nKeyIndex, szPlaintext) {
+      encryptBlock: function(nKeyIndex, plaintext) {
         try {
           // Use first 32 chars as IV if longer than 32 chars
           let iv = this.currentIV;
-          let plaintext = szPlaintext;
+          let plaintext = plaintext;
           
-          if (szPlaintext.length > 32) {
-            iv = OpCodes.HexToBytes(szPlaintext.substring(0, 32));
-            plaintext = szPlaintext.substring(32);
+          if (plaintext.length > 32) {
+            iv = OpCodes.HexToBytes(plaintext.substring(0, 32));
+            plaintext = plaintext.substring(32);
           }
           
           const data = OpCodes.HexToBytes(plaintext);
@@ -436,9 +436,9 @@
         }
       },
       
-      decryptBlock: function(nKeyIndex, szCiphertext) {
+      decryptBlock: function(nKeyIndex, ciphertext) {
         // Stream cipher - decryption is the same as encryption
-        return this.encryptBlock(nKeyIndex, szCiphertext);
+        return this.encryptBlock(nKeyIndex, ciphertext);
       },
       
       ClearData: function() {

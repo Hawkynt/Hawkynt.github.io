@@ -81,16 +81,16 @@
         id = 'Achterbahn[' + global.generateUniqueID() + ']';
       } while (Achterbahn.instances[id] || global.objectInstances[id]);
       
-      Achterbahn.instances[szID] = new Achterbahn.AchterbahnInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      Achterbahn.instances[id] = new Achterbahn.AchterbahnInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (Achterbahn.instances[id]) {
         // Clear sensitive data
-        const instance = Achterbahn.instances[szID];
+        const instance = Achterbahn.instances[id];
         if (instance.nlfsr && global.OpCodes) {
           for (let i = 0; i < instance.nlfsr.length; i++) {
             global.OpCodes.ClearArray(instance.nlfsr[i]);
@@ -99,19 +99,19 @@
         if (instance.keyBytes && global.OpCodes) {
           global.OpCodes.ClearArray(instance.keyBytes);
         }
-        delete Achterbahn.instances[szID];
-        delete global.objectInstances[szID];
+        delete Achterbahn.instances[id];
+        delete global.objectInstances[id];
       }
     },
     
     // Generate keystream and XOR with input (encryption/decryption)
-    encryptBlock: function(id, szInput) {
-      const instance = Achterbahn.instances[szID];
+    encryptBlock: function(id, input) {
+      const instance = Achterbahn.instances[id];
       if (!instance) {
         throw new Error('Invalid Achterbahn instance ID');
       }
       
-      const inputBytes = global.OpCodes.StringToBytes(szInput);
+      const inputBytes = global.OpCodes.StringToBytes(input);
       const outputBytes = new Array(inputBytes.length);
       
       for (let i = 0; i < inputBytes.length; i++) {
@@ -123,8 +123,8 @@
     },
     
     // Decryption is identical to encryption for stream ciphers
-    decryptBlock: function(id, szInput) {
-      return Achterbahn.encryptBlock(id, szInput);
+    decryptBlock: function(id, input) {
+      return Achterbahn.encryptBlock(id, input);
     },
     
     // Achterbahn instance class

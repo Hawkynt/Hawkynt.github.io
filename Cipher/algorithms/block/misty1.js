@@ -182,8 +182,8 @@
     },
     
     // Set up key and expand to round keys
-    KeySetup: function(optional_szKey) {
-      if (!optional_szKey || optional_szKey.length !== 16) {
+    KeySetup: function(optional_key) {
+      if (!optional_key || optional_key.length !== 16) {
         global.throwException('MISTY1 Key Exception', 'Key must be exactly 16 bytes (128 bits)', 'MISTY1', 'KeySetup');
         return null;
       }
@@ -193,9 +193,9 @@
         id = 'MISTY1[' + global.generateUniqueID() + ']';
       } while (MISTY1.instances[id] || global.objectInstances[id]);
       
-      MISTY1.instances[szID] = new MISTY1.MISTY1Instance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      MISTY1.instances[id] = new MISTY1.MISTY1Instance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
@@ -205,8 +205,8 @@
         if (MISTY1.instances[id].roundKeys) {
           global.OpCodes.ClearArray(MISTY1.instances[id].roundKeys);
         }
-        delete MISTY1.instances[szID];
-        delete global.objectInstances[szID];
+        delete MISTY1.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'MISTY1', 'ClearData');
@@ -215,21 +215,21 @@
     },
     
     // Encrypt 64-bit block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!MISTY1.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'MISTY1', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      if (szPlainText.length !== 8) {
+      if (plaintext.length !== 8) {
         global.throwException('MISTY1 Block Size Exception', 'Input must be exactly 8 bytes', 'MISTY1', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const objMISTY1 = MISTY1.instances[szID];
+      const objMISTY1 = MISTY1.instances[id];
       
       // Convert input to 32-bit words using OpCodes (big-endian)
-      const bytes = global.OpCodes.StringToBytes(szPlainText);
+      const bytes = global.OpCodes.StringToBytes(plaintext);
       let left = global.OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
       let right = global.OpCodes.Pack32BE(bytes[4], bytes[5], bytes[6], bytes[7]);
       
@@ -265,21 +265,21 @@
     },
     
     // Decrypt 64-bit block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!MISTY1.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'MISTY1', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      if (szCipherText.length !== 8) {
+      if (ciphertext.length !== 8) {
         global.throwException('MISTY1 Block Size Exception', 'Input must be exactly 8 bytes', 'MISTY1', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const objMISTY1 = MISTY1.instances[szID];
+      const objMISTY1 = MISTY1.instances[id];
       
       // Convert input to 32-bit words using OpCodes (big-endian)
-      const bytes = global.OpCodes.StringToBytes(szCipherText);
+      const bytes = global.OpCodes.StringToBytes(ciphertext);
       let left = global.OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
       let right = global.OpCodes.Pack32BE(bytes[4], bytes[5], bytes[6], bytes[7]);
       

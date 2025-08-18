@@ -259,7 +259,7 @@
      * @param {Array|string} data - Input data (array of symbols or string)
      * @returns {Array} Encoded codeword with ECC symbols appended
      */
-    szEncryptBlock: function(keyId, data) {
+    encryptBlock: function(keyId, data) {
       const instance = this.instances[keyId];
       if (!instance) {
         throw new Error('Invalid instance ID');
@@ -298,7 +298,7 @@
      * @param {Array} codeword - Received codeword (may contain errors)
      * @returns {Object} {data: Array, corrected: boolean, errorsFound: number}
      */
-    szDecryptBlock: function(keyId, codeword) {
+    decryptBlock: function(keyId, codeword) {
       const instance = this.instances[keyId];
       if (!instance) {
         throw new Error('Invalid instance ID');
@@ -726,7 +726,7 @@
         try {
           if (testVector.category === 'basic' && testVector.input) {
             const keyId = this.KeySetup(testVector.dataSymbols, testVector.eccSymbols);
-            const encoded = this.szEncryptBlock(keyId, testVector.input);
+            const encoded = this.encryptBlock(keyId, testVector.input);
             
             // Test error correction by introducing an error
             const corrupted = encoded.slice();
@@ -734,7 +734,7 @@
               corrupted[0] ^= 1; // Flip one bit in first symbol
             }
             
-            const decoded = this.szDecryptBlock(keyId, corrupted);
+            const decoded = this.decryptBlock(keyId, corrupted);
             
             results.push({
               description: testVector.description,

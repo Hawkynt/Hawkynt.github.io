@@ -83,33 +83,33 @@
         id = 'CCM[' + global.generateUniqueID() + ']';
       } while (CCM.instances[id] || global.objectInstances[id]);
       
-      CCM.instances[szID] = new CCM.CCMInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      CCM.instances[id] = new CCM.CCMInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear CCM data
     ClearData: function(id) {
       if (CCM.instances[id]) {
-        delete CCM.instances[szID];
-        delete global.objectInstances[szID];
+        delete CCM.instances[id];
+        delete global.objectInstances[id];
       }
     },
     
     // Encrypt and authenticate with CCM
-    encryptBlock: function(intInstanceID, szInput, optional_szNonce, optional_szAAD) {
+    encryptBlock: function(intInstanceID, input, optional_nonce, optional_aad) {
       const id = 'CCM[' + intInstanceID + ']';
       if (!CCM.instances[id]) return '';
       
-      return CCM.instances[szID].encrypt(szInput, optional_szNonce || '1011121314151617', optional_szAAD || '');
+      return CCM.instances[id].encrypt(input, optional_nonce || '1011121314151617', optional_aad || '');
     },
     
     // Decrypt and verify with CCM
-    decryptBlock: function(intInstanceID, szInput, optional_szNonce, optional_szAAD) {
+    decryptBlock: function(intInstanceID, input, optional_nonce, optional_aad) {
       const id = 'CCM[' + intInstanceID + ']';
       if (!CCM.instances[id]) return '';
       
-      return CCM.instances[szID].decrypt(szInput, optional_szNonce || '1011121314151617', optional_szAAD || '');
+      return CCM.instances[id].decrypt(input, optional_nonce || '1011121314151617', optional_aad || '');
     },
     
     // CCM Instance Class

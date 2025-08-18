@@ -631,18 +631,18 @@
     },
     
     // Standard cipher interface method aliases
-    szEncryptBlock: function(id, plaintext) {
+    encryptBlock: function(id, plaintext) {
       return RHX.encryptBlock(id, plaintext);
     },
     
-    szDecryptBlock: function(id, ciphertext) {
+    decryptBlock: function(id, ciphertext) {
       return RHX.decryptBlock(id, ciphertext);
     },
     
     // Legacy interface properties for compatibility
-    get szInternalName() { return this.internalName; },
-    get szName() { return this.name; },
-    get szComment() { return this.comment; },
+    get internalName() { return this.internalName; },
+    get name() { return this.name; },
+    get comment() { return this.comment; },
     get nMinKeyLength() { return this.minKeyLength; },
     get nMaxKeyLength() { return this.maxKeyLength; },
     get nStepKeyLength() { return this.stepKeyLength; },

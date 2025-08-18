@@ -428,13 +428,13 @@
     },
     
     // Set up key (initial alphabetic string)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'Autokey[' + global.generateUniqueID() + ']';
       } while (Autokey.instances[id] || global.objectInstances[id]);
       
-      Autokey.instances[id] = new Autokey.AutokeyInstance(optional_szKey);
+      Autokey.instances[id] = new Autokey.AutokeyInstance(optional_key);
       global.objectInstances[id] = true;
       return id;
     },
@@ -452,28 +452,28 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Autokey.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Autokey', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       const instance = Autokey.instances[id];
       const initialKey = instance.key;
       
       if (!initialKey || initialKey.length === 0) {
-        return szPlainText; // No key, no encryption
+        return plaintext; // No key, no encryption
       }
       
       // Build extended key: initial key + plaintext letters
-      const plaintextLetters = Autokey.extractLetters(szPlainText);
+      const plaintextLetters = Autokey.extractLetters(plaintext);
       const extendedKey = initialKey + plaintextLetters;
       
       let result = '';
       let keyIndex = 0;
       
-      for (let i = 0; i < szPlainText.length; i++) {
-        const char = szPlainText.charAt(i);
+      for (let i = 0; i < plaintext.length; i++) {
+        const char = plaintext.charAt(i);
         
         if (Autokey.isLetter(char)) {
           if (keyIndex < extendedKey.length) {
@@ -495,25 +495,25 @@
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Autokey.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Autokey', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       const instance = Autokey.instances[id];
       const initialKey = instance.key;
       
       if (!initialKey || initialKey.length === 0) {
-        return szCipherText; // No key, no decryption
+        return ciphertext; // No key, no decryption
       }
       
       let result = '';
       let keyIndex = 0;
       let plaintextSoFar = '';
       
-      for (let i = 0; i < szCipherText.length; i++) {
-        const char = szCipherText.charAt(i);
+      for (let i = 0; i < ciphertext.length; i++) {
+        const char = ciphertext.charAt(i);
         
         if (Autokey.isLetter(char)) {
           // Determine current key character
@@ -610,12 +610,12 @@
     },
     
     // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, szPlainText) {
-      return this.encryptBlock(id, szPlainText);
+    EncryptBlock: function(id, plaintext) {
+      return this.encryptBlock(id, plaintext);
     },
     
-    DecryptBlock: function(id, szCipherText) {
-      return this.decryptBlock(id, szCipherText);
+    DecryptBlock: function(id, ciphertext) {
+      return this.decryptBlock(id, ciphertext);
     }
   };
   

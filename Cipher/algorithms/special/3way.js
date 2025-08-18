@@ -157,8 +157,8 @@
     },
     
     // Key setup
-    KeySetup: function(optional_szKey) {
-      if (!optional_szKey || optional_szKey.length !== 12) {
+    KeySetup: function(optional_key) {
+      if (!optional_key || optional_key.length !== 12) {
         throw new Error('3-Way requires exactly 12-byte (96-bit) key');
       }
       
@@ -167,17 +167,17 @@
         id = '3WAY[' + global.generateUniqueID() + ']';
       } while (ThreeWay.instances[id] || global.objectInstances[id]);
       
-      ThreeWay.instances[szID] = new ThreeWay.ThreeWayInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      ThreeWay.instances[id] = new ThreeWay.ThreeWayInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear data
     ClearData: function(id) {
       if (ThreeWay.instances[id]) {
-        ThreeWay.instances[szID].clearKey();
-        delete ThreeWay.instances[szID];
-        delete global.objectInstances[szID];
+        ThreeWay.instances[id].clearKey();
+        delete ThreeWay.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, '3-Way', 'ClearData');
@@ -186,36 +186,36 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!ThreeWay.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, '3-Way', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = ThreeWay.instances[szID];
+      const instance = ThreeWay.instances[id];
       if (!instance.key) {
         global.throwException('Key not set', id, '3-Way', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      if (szPlainText.length !== 12) {
+      if (plaintext.length !== 12) {
         global.throwException('3-Way requires 12-byte blocks', id, '3-Way', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
       // Convert to three 32-bit words (big-endian)
       let state = [
         OpCodes.Pack32BE(
-          szPlainText.charCodeAt(0), szPlainText.charCodeAt(1), 
-          szPlainText.charCodeAt(2), szPlainText.charCodeAt(3)
+          plaintext.charCodeAt(0), plaintext.charCodeAt(1), 
+          plaintext.charCodeAt(2), plaintext.charCodeAt(3)
         ),
         OpCodes.Pack32BE(
-          szPlainText.charCodeAt(4), szPlainText.charCodeAt(5),
-          szPlainText.charCodeAt(6), szPlainText.charCodeAt(7)
+          plaintext.charCodeAt(4), plaintext.charCodeAt(5),
+          plaintext.charCodeAt(6), plaintext.charCodeAt(7)
         ),
         OpCodes.Pack32BE(
-          szPlainText.charCodeAt(8), szPlainText.charCodeAt(9),
-          szPlainText.charCodeAt(10), szPlainText.charCodeAt(11)
+          plaintext.charCodeAt(8), plaintext.charCodeAt(9),
+          plaintext.charCodeAt(10), plaintext.charCodeAt(11)
         )
       ];
       
@@ -255,36 +255,36 @@
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!ThreeWay.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, '3-Way', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const instance = ThreeWay.instances[szID];
+      const instance = ThreeWay.instances[id];
       if (!instance.key) {
         global.throwException('Key not set', id, '3-Way', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      if (szCipherText.length !== 12) {
+      if (ciphertext.length !== 12) {
         global.throwException('3-Way requires 12-byte blocks', id, '3-Way', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       // Convert to three 32-bit words (big-endian)
       let state = [
         OpCodes.Pack32BE(
-          szCipherText.charCodeAt(0), szCipherText.charCodeAt(1),
-          szCipherText.charCodeAt(2), szCipherText.charCodeAt(3)
+          ciphertext.charCodeAt(0), ciphertext.charCodeAt(1),
+          ciphertext.charCodeAt(2), ciphertext.charCodeAt(3)
         ),
         OpCodes.Pack32BE(
-          szCipherText.charCodeAt(4), szCipherText.charCodeAt(5),
-          szCipherText.charCodeAt(6), szCipherText.charCodeAt(7)
+          ciphertext.charCodeAt(4), ciphertext.charCodeAt(5),
+          ciphertext.charCodeAt(6), ciphertext.charCodeAt(7)
         ),
         OpCodes.Pack32BE(
-          szCipherText.charCodeAt(8), szCipherText.charCodeAt(9),
-          szCipherText.charCodeAt(10), szCipherText.charCodeAt(11)
+          ciphertext.charCodeAt(8), ciphertext.charCodeAt(9),
+          ciphertext.charCodeAt(10), ciphertext.charCodeAt(11)
         )
       ];
       

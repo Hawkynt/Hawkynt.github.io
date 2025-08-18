@@ -310,25 +310,25 @@
       }
       
       // Store instance
-      CAST256.instances[szID] = {
+      CAST256.instances[id] = {
         km: km,
         kr: kr
       };
       
-      return szID;
+      return id;
     },
     
     /**
      * Encrypt a 16-byte block with CAST-256
      */
-    encryptBlock: function(id, szBlock) {
-      const instance = CAST256.instances[szID];
+    encryptBlock: function(id, block) {
+      const instance = CAST256.instances[id];
       if (!instance) {
         throw new Error('Invalid CAST-256 instance ID');
       }
       
       // Convert block to bytes
-      const blockBytes = OpCodes.StringToBytes(szBlock);
+      const blockBytes = OpCodes.StringToBytes(block);
       if (blockBytes.length !== 16) {
         throw new Error('CAST-256 requires 16-byte blocks');
       }
@@ -370,14 +370,14 @@
     /**
      * Decrypt a 16-byte block with CAST-256
      */
-    decryptBlock: function(id, szBlock) {
-      const instance = CAST256.instances[szID];
+    decryptBlock: function(id, block) {
+      const instance = CAST256.instances[id];
       if (!instance) {
         throw new Error('Invalid CAST-256 instance ID');
       }
       
       // Convert block to bytes
-      const blockBytes = OpCodes.StringToBytes(szBlock);
+      const blockBytes = OpCodes.StringToBytes(block);
       if (blockBytes.length !== 16) {
         throw new Error('CAST-256 requires 16-byte blocks');
       }
@@ -428,7 +428,7 @@
         if (CAST256.instances[id].kr) {
           OpCodes.ClearArray(CAST256.instances[id].kr);
         }
-        delete CAST256.instances[szID];
+        delete CAST256.instances[id];
         return true;
       }
       return false;

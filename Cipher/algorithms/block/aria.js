@@ -190,15 +190,15 @@
     },
     
     // Set up key
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'ARIA[' + global.generateUniqueID() + ']';
       } while (ARIA.instances[id] || global.objectInstances[id]);
       
-      ARIA.instances[szID] = new ARIA.ARIAInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      ARIA.instances[id] = new ARIA.ARIAInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
@@ -208,8 +208,8 @@
         if (ARIA.instances[id].roundKeys) {
           global.OpCodes.ClearArray(ARIA.instances[id].roundKeys);
         }
-        delete ARIA.instances[szID];
-        delete global.objectInstances[szID];
+        delete ARIA.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'ARIA', 'ClearData');
@@ -218,18 +218,18 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!ARIA.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'ARIA', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = ARIA.instances[szID];
+      const instance = ARIA.instances[id];
       
       // Convert plaintext to byte array
       const P = [];
       for (let i = 0; i < 16; i++) {
-        P[i] = szPlainText.charCodeAt(i) & 0xFF;
+        P[i] = plaintext.charCodeAt(i) & 0xFF;
       }
       
       // Initial round key addition
@@ -279,18 +279,18 @@
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!ARIA.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'ARIA', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const instance = ARIA.instances[szID];
+      const instance = ARIA.instances[id];
       
       // Convert ciphertext to byte array
       const C = [];
       for (let i = 0; i < 16; i++) {
-        C[i] = szCipherText.charCodeAt(i) & 0xFF;
+        C[i] = ciphertext.charCodeAt(i) & 0xFF;
       }
       
       // Initial round key addition (with last round key)
@@ -439,7 +439,7 @@
     // Instance class
     ARIAInstance: function(key) {
       // Process and validate key for ARIA-128/192/256
-      let processedKey = szKey || '';
+      let processedKey = key || '';
       
       // Determine key size and rounds based on input length
       let keySize, rounds;

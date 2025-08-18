@@ -269,26 +269,26 @@
     },
     
     // Set up instance (hash functions don't use keys)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'MD5[' + global.generateUniqueID() + ']';
       } while (MD5.instances[id] || global.objectInstances[id]);
       
-      MD5.instances[szID] = new MD5.MD5Instance();
-      global.objectInstances[szID] = true;
-      return szID;
+      MD5.instances[id] = new MD5.MD5Instance();
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear hash data
     ClearData: function(id) {
       if (MD5.instances[id]) {
         // Secure cleanup
-        const instance = MD5.instances[szID];
+        const instance = MD5.instances[id];
         if (instance.buffer) OpCodes.ClearArray(instance.buffer);
         
-        delete MD5.instances[szID];
-        delete global.objectInstances[szID];
+        delete MD5.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'MD5', 'ClearData');
@@ -297,19 +297,19 @@
     },
     
     // Hash input (encryption interface)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!MD5.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'MD5', 'encryptBlock');
         return '';
       }
       
-      return MD5.hash(szPlainText);
+      return MD5.hash(plaintext);
     },
     
     // Hash function is one-way (no decryption)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       global.throwException('Operation Not Supported Exception', 'MD5 hash function cannot be reversed', 'MD5', 'decryptBlock');
-      return szCipherText;
+      return ciphertext;
     },
     
     /**

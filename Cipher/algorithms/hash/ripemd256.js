@@ -488,11 +488,11 @@
     },
     
     // Legacy interface for compatibility
-    szEncryptBlock: function(dataOffset, data) {
+    encryptBlock: function(dataOffset, data) {
       return this.Encode(data);
     },
     
-    szDecryptBlock: function(dataOffset, data) {
+    decryptBlock: function(dataOffset, data) {
       throw new Error('Hash functions cannot decrypt');
     }
   };

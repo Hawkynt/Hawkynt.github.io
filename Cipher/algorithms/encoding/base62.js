@@ -245,7 +245,7 @@
      * @param {string|Array|number} data - Input data (string, byte array, or number)
      * @returns {string} Base62 encoded string
      */
-    szEncryptBlock: function(keyId, data) {
+    encryptBlock: function(keyId, data) {
       const instance = this.instances[keyId];
       if (!instance) {
         throw new Error('Invalid instance ID');
@@ -288,7 +288,7 @@
      * @param {string} encoded - Base62 encoded string
      * @returns {string} Decoded data
      */
-    szDecryptBlock: function(keyId, encoded) {
+    decryptBlock: function(keyId, encoded) {
       const instance = this.instances[keyId];
       if (!instance) {
         throw new Error('Invalid instance ID');
@@ -528,16 +528,16 @@
           if (testVector.category === 'boundary' || testVector.category === 'basic') {
             if (testVector.inputBytes) {
               // Test with specific byte values
-              actualEncoded = this.szEncryptBlock(keyId, testVector.inputBytes);
-              actualDecoded = this.szDecryptBlock(keyId, actualEncoded);
+              actualEncoded = this.encryptBlock(keyId, testVector.inputBytes);
+              actualDecoded = this.decryptBlock(keyId, actualEncoded);
               
               // Check round-trip encoding
               const originalBytes = testVector.inputBytes;
               const decodedBytes = OpCodes.StringToBytes(actualDecoded);
               passed = JSON.stringify(originalBytes) === JSON.stringify(decodedBytes);
             } else if (testVector.input !== undefined) {
-              actualEncoded = this.szEncryptBlock(keyId, testVector.input);
-              actualDecoded = this.szDecryptBlock(keyId, actualEncoded);
+              actualEncoded = this.encryptBlock(keyId, testVector.input);
+              actualDecoded = this.decryptBlock(keyId, actualEncoded);
               passed = actualDecoded === testVector.input;
             } else {
               passed = true; // Parameter validation only
@@ -549,8 +549,8 @@
           } else {
             // For other categories, test round-trip encoding
             if (testVector.input) {
-              actualEncoded = this.szEncryptBlock(keyId, testVector.input);
-              actualDecoded = this.szDecryptBlock(keyId, actualEncoded);
+              actualEncoded = this.encryptBlock(keyId, testVector.input);
+              actualDecoded = this.decryptBlock(keyId, actualEncoded);
               passed = actualDecoded === testVector.input;
             } else {
               passed = true; // Specification test

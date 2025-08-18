@@ -116,23 +116,23 @@
         id = 'GOST28147[' + global.generateUniqueID() + ']';
       } while (GOST28147.instances[id] || global.objectInstances[id]);
       
-      GOST28147.instances[szID] = new GOST28147.GOSTInstance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      GOST28147.instances[id] = new GOST28147.GOSTInstance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (GOST28147.instances[id]) {
         // Clear sensitive key material
-        const instance = GOST28147.instances[szID];
+        const instance = GOST28147.instances[id];
         if (instance.subkeys) {
           for (let i = 0; i < instance.subkeys.length; i++) {
             instance.subkeys[i] = 0;
           }
         }
-        delete GOST28147.instances[szID];
-        delete global.objectInstances[szID];
+        delete GOST28147.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'GOST28147', 'ClearData');
@@ -158,23 +158,23 @@
     },
     
     // Encrypt single 64-bit block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!GOST28147.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'GOST28147', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      if (szPlainText.length !== 8) {
-        global.throwException('Invalid Block Size Exception', szPlainText.length, 'GOST28147', 'encryptBlock');
-        return szPlainText;
+      if (plaintext.length !== 8) {
+        global.throwException('Invalid Block Size Exception', plaintext.length, 'GOST28147', 'encryptBlock');
+        return plaintext;
       }
       
-      const instance = GOST28147.instances[szID];
+      const instance = GOST28147.instances[id];
       const input = [];
       
       // Convert string to byte array
       for (let i = 0; i < 8; i++) {
-        input[i] = szPlainText.charCodeAt(i) & 0xFF;
+        input[i] = plaintext.charCodeAt(i) & 0xFF;
       }
       
       // Split into 32-bit halves (little-endian)
@@ -219,23 +219,23 @@
     },
     
     // Decrypt single 64-bit block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!GOST28147.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'GOST28147', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      if (szCipherText.length !== 8) {
-        global.throwException('Invalid Block Size Exception', szCipherText.length, 'GOST28147', 'decryptBlock');
-        return szCipherText;
+      if (ciphertext.length !== 8) {
+        global.throwException('Invalid Block Size Exception', ciphertext.length, 'GOST28147', 'decryptBlock');
+        return ciphertext;
       }
       
-      const instance = GOST28147.instances[szID];
+      const instance = GOST28147.instances[id];
       const input = [];
       
       // Convert string to byte array
       for (let i = 0; i < 8; i++) {
-        input[i] = szCipherText.charCodeAt(i) & 0xFF;
+        input[i] = ciphertext.charCodeAt(i) & 0xFF;
       }
       
       // Split into 32-bit halves (little-endian)
@@ -287,7 +287,7 @@
       for (let i = 0; i < 8; i++) {
         const keyBytes = [];
         for (let j = 0; j < 4; j++) {
-          keyBytes[j] = szKey.charCodeAt(i * 4 + j) & 0xFF;
+          keyBytes[j] = key.charCodeAt(i * 4 + j) & 0xFF;
         }
         // Pack as little-endian 32-bit word
         this.subkeys[i] = global.OpCodes.Pack32LE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]);

@@ -406,13 +406,13 @@
     },
     
     // Set up key
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'CADAENUS[' + global.generateUniqueID() + ']';
       } while (CADAENUS.instances[id] || global.objectInstances[id]);
       
-      CADAENUS.instances[id] = new CADAENUS.CADAENUSInstance(optional_szKey);
+      CADAENUS.instances[id] = new CADAENUS.CADAENUSInstance(optional_key);
       global.objectInstances[id] = true;
       return id;
     },
@@ -430,34 +430,34 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
-      return CADAENUS.processBlock(id, szPlainText, true);
+    encryptBlock: function(id, plaintext) {
+      return CADAENUS.processBlock(id, plaintext, true);
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
-      return CADAENUS.processBlock(id, szCipherText, false);
+    decryptBlock: function(id, ciphertext) {
+      return CADAENUS.processBlock(id, ciphertext, false);
     },
     
     // Process block (both encrypt and decrypt)
-    processBlock: function(id, szText, encrypt) {
+    processBlock: function(id, text, encrypt) {
       if (!CADAENUS.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'CADAENUS', 'processBlock');
-        return szText;
+        return text;
       }
       
       const instance = CADAENUS.instances[id];
       const key = instance.key;
       
       if (!key || key.length === 0) {
-        return szText; // No key, no processing
+        return text; // No key, no processing
       }
       
       let result = '';
       let letterIndex = 0;
       
-      for (let i = 0; i < szText.length; i++) {
-        const char = szText.charAt(i);
+      for (let i = 0; i < text.length; i++) {
+        const char = text.charAt(i);
         
         if (CADAENUS.isLetter(char)) {
           const processed = CADAENUS.transformCharacter(char, key, letterIndex, encrypt);
@@ -559,12 +559,12 @@
     },
     
     // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, szPlainText) {
-      return this.encryptBlock(id, szPlainText);
+    EncryptBlock: function(id, plaintext) {
+      return this.encryptBlock(id, plaintext);
     },
     
-    DecryptBlock: function(id, szCipherText) {
-      return this.decryptBlock(id, szCipherText);
+    DecryptBlock: function(id, ciphertext) {
+      return this.decryptBlock(id, ciphertext);
     }
   };
   

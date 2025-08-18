@@ -215,13 +215,13 @@
     },
     
     // Set up key (BASE32 doesn't use keys, but required by interface)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'BASE32[' + global.generateUniqueID() + ']';
       } while (BASE32.instances[id] || global.objectInstances[id]);
       
-      BASE32.instances[id] = new BASE32.BASE32Instance(optional_szKey);
+      BASE32.instances[id] = new BASE32.BASE32Instance(optional_key);
       global.objectInstances[id] = true;
       return id;
     },
@@ -257,13 +257,13 @@
     },
     
     // Encode block (encryption)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!BASE32.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'BASE32', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const bytes = BASE32.stringToBytes(szPlainText);
+      const bytes = BASE32.stringToBytes(plaintext);
       let encoded = '';
       let buffer = 0;
       let bitsLeft = 0;
@@ -295,14 +295,14 @@
     },
     
     // Decode block (decryption)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!BASE32.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'BASE32', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
       // Remove whitespace and convert to uppercase
-      let normalized = szCipherText.replace(/\s/g, '').toUpperCase();
+      let normalized = ciphertext.replace(/\s/g, '').toUpperCase();
       
       // Remove padding
       let paddingCount = 0;
@@ -315,7 +315,7 @@
       for (let i = 0; i < normalized.length; i++) {
         if (BASE32.ALPHABET.indexOf(normalized[i]) === -1) {
           global.throwException('Invalid BASE32 Character Exception', normalized[i], 'BASE32', 'decryptBlock');
-          return szCipherText;
+          return ciphertext;
         }
       }
       

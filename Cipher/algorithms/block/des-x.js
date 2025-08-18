@@ -82,16 +82,16 @@
         id = 'DESX[' + global.generateUniqueID() + ']';
       } while (DESX.instances[id] || global.objectInstances[id]);
       
-      DESX.instances[szID] = new DESX.Instance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      DESX.instances[id] = new DESX.Instance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
 
     // Clear cipher data
     ClearData: function(id) {
       if (DESX.instances[id]) {
         // Secure cleanup
-        const instance = DESX.instances[szID];
+        const instance = DESX.instances[id];
         if (instance.desInstance) {
           global.DES.ClearData(instance.desInstance);
         }
@@ -101,8 +101,8 @@
         if (instance.K2) {
           global.OpCodes && global.OpCodes.ClearArray && global.OpCodes.ClearArray(instance.K2);
         }
-        delete DESX.instances[szID];
-        delete global.objectInstances[szID];
+        delete DESX.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'DES-X', 'ClearData');
@@ -111,16 +111,16 @@
     },
 
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!DESX.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'DES-X', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
 
-      const instance = DESX.instances[szID];
+      const instance = DESX.instances[id];
       
       // Convert input to bytes
-      const plainBytes = global.OpCodes.StringToBytes(szPlainText);
+      const plainBytes = global.OpCodes.StringToBytes(plaintext);
       
       // Process complete 8-byte blocks
       let result = '';
@@ -143,20 +143,20 @@
     },
 
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!DESX.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'DES-X', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
 
-      const instance = DESX.instances[szID];
+      const instance = DESX.instances[id];
       
       // Convert input to bytes
-      const cipherBytes = global.OpCodes.StringToBytes(szCipherText);
+      const cipherBytes = global.OpCodes.StringToBytes(ciphertext);
       
       if (cipherBytes.length % 8 !== 0) {
-        global.throwException('Invalid cipher text length for DES-X', szCipherText.length, 'DES-X', 'decryptBlock');
-        return szCipherText;
+        global.throwException('Invalid cipher text length for DES-X', ciphertext.length, 'DES-X', 'decryptBlock');
+        return ciphertext;
       }
       
       // Process 8-byte blocks

@@ -48,19 +48,19 @@ var %CiphersName%=new Object();
     %CiphersName%.isInitialized=true;
   }
   
-  %CiphersName%.KeySetup=function (optional_szKey) {
+  %CiphersName%.KeySetup=function (optional_key) {
     var id;
     do {
       id ='%CiphersName%['+szGenerateUniqueID()+']';
     } while ((%CiphersName%.instances[id]) || (%CiphersName%.instances[id]!=undefined) || (window.objectInstances[id]) || (window.objectInstances[id]!=undefined));
-    %CiphersName%.instances[szID]=new %CiphersName%.class%CiphersName%(optional_szKey);
+    %CiphersName%.instances[id]=new %CiphersName%.class%CiphersName%(optional_key);
     return (id);
   }
   
   %CiphersName%.ClearData=function (id) {
     if ((%CiphersName%.instances[id]) && (%CiphersName%.instances[id]!=undefined)) {
-      window.objectInstances[szID]=undefined;
-      delete %CiphersName%.instances[szID];
+      window.objectInstances[id]=undefined;
+      delete %CiphersName%.instances[id];
       return (true);
     } else {
       throwException('Unknown Object Reference Exception',id,'%CiphersName%','ClearData');
@@ -68,23 +68,23 @@ var %CiphersName%=new Object();
     };
   }
   
-  %CiphersName%.encryptBlock=function (id,szPlainText) {
+  %CiphersName%.encryptBlock=function (id,plaintext) {
     if ((%CiphersName%.instances[id]) && (%CiphersName%.instances[id]!=undefined)) {
-      var szRet='';
+      var result='';
       // TODO:
-      return (szRet);
+      return (result);
     } else {
       throwException('Unknown Object Reference Exception',id,'%CiphersName%','encryptBlock');
     };
   }
   
-  %CiphersName%.decryptBlock=function (id,szCipherText) {
+  %CiphersName%.decryptBlock=function (id,ciphertext) {
     if ((%CiphersName%.instances[id]) && (%CiphersName%.instances[id]!=undefined)) {
-      var szRet='';
+      var result='';
       // TODO:
-      return szRet;
+      return result;
     } else {
-      throwException('Unknown Object Reference Exception',id,'%CiphersName%','encryptBlock');
+      throwException('Unknown Object Reference Exception',id,'%CiphersName%','decryptBlock');
     };
   }
   // =======================[ PRIVATE FUNCTIONS ]=======================

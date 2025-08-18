@@ -377,19 +377,19 @@
     },
     
     // Encrypt using Enigma (Enigma is reciprocal)
-    encryptBlock: function(intInstanceID, szInput) {
+    encryptBlock: function(intInstanceID, input) {
       const id = 'Enigma[' + intInstanceID + ']';
       if (!Enigma.instances[id]) return '';
       
-      return Enigma.instances[id].encrypt(szInput);
+      return Enigma.instances[id].encrypt(input);
     },
     
     // Decrypt using Enigma (same as encrypt due to reciprocal property)
-    decryptBlock: function(intInstanceID, szInput) {
+    decryptBlock: function(intInstanceID, input) {
       const id = 'Enigma[' + intInstanceID + ']';
       if (!Enigma.instances[id]) return '';
       
-      return Enigma.instances[id].encrypt(szInput); // Enigma is reciprocal
+      return Enigma.instances[id].encrypt(input); // Enigma is reciprocal
     },
     
     // Enigma Instance Class

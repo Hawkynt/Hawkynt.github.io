@@ -135,8 +135,8 @@
     },
     
     // Set up key
-    KeySetup: function(optional_szKey) {
-      if (!optional_szKey || optional_szKey.length < 16 || optional_szKey.length > 56) {
+    KeySetup: function(optional_key) {
+      if (!optional_key || optional_key.length < 16 || optional_key.length > 56) {
         global.throwException('MARS Key Exception', 'Key must be between 16 and 56 bytes', 'MARS', 'KeySetup');
         return null;
       }
@@ -146,21 +146,21 @@
         id = 'MARS[' + global.generateUniqueID() + ']';
       } while (MARS.instances[id] || global.objectInstances[id]);
       
-      MARS.instances[szID] = new MARS.MARSInstance(optional_szKey);
-      global.objectInstances[szID] = true;
-      return szID;
+      MARS.instances[id] = new MARS.MARSInstance(optional_key);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
     ClearData: function(id) {
       if (MARS.instances[id]) {
         // Clear sensitive key data
-        const instance = MARS.instances[szID];
+        const instance = MARS.instances[id];
         if (instance.expandedKey) {
           global.OpCodes.ClearArray(instance.expandedKey);
         }
-        delete MARS.instances[szID];
-        delete global.objectInstances[szID];
+        delete MARS.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'MARS', 'ClearData');
@@ -313,27 +313,27 @@
     },
     
     // Encrypt 128-bit block using MARS algorithm
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!MARS.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'MARS', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      if (szPlainText.length !== 16) {
+      if (plaintext.length !== 16) {
         global.throwException('MARS Block Size Exception', 'Input must be exactly 16 bytes', 'MARS', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = MARS.instances[szID];
+      const instance = MARS.instances[id];
       
       // Convert input to 32-bit words (MARS uses little-endian)
       const data = [];
       for (let i = 0; i < 4; i++) {
         const offset = i * 4;
-        const b0 = szPlainText.charCodeAt(offset) & 0xFF;
-        const b1 = szPlainText.charCodeAt(offset + 1) & 0xFF;
-        const b2 = szPlainText.charCodeAt(offset + 2) & 0xFF;
-        const b3 = szPlainText.charCodeAt(offset + 3) & 0xFF;
+        const b0 = plaintext.charCodeAt(offset) & 0xFF;
+        const b1 = plaintext.charCodeAt(offset + 1) & 0xFF;
+        const b2 = plaintext.charCodeAt(offset + 2) & 0xFF;
+        const b3 = plaintext.charCodeAt(offset + 3) & 0xFF;
         data[i] = (b3 << 24) | (b2 << 16) | (b1 << 8) | b0; // Little-endian
       }
       
@@ -377,27 +377,27 @@
     },
     
     // Decrypt 128-bit block using MARS algorithm (reverse of encryption)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!MARS.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'MARS', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      if (szCipherText.length !== 16) {
+      if (ciphertext.length !== 16) {
         global.throwException('MARS Block Size Exception', 'Input must be exactly 16 bytes', 'MARS', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const instance = MARS.instances[szID];
+      const instance = MARS.instances[id];
       
       // Convert input to 32-bit words (MARS uses little-endian)
       const data = [];
       for (let i = 0; i < 4; i++) {
         const offset = i * 4;
-        const b0 = szCipherText.charCodeAt(offset) & 0xFF;
-        const b1 = szCipherText.charCodeAt(offset + 1) & 0xFF;
-        const b2 = szCipherText.charCodeAt(offset + 2) & 0xFF;
-        const b3 = szCipherText.charCodeAt(offset + 3) & 0xFF;
+        const b0 = ciphertext.charCodeAt(offset) & 0xFF;
+        const b1 = ciphertext.charCodeAt(offset + 1) & 0xFF;
+        const b2 = ciphertext.charCodeAt(offset + 2) & 0xFF;
+        const b3 = ciphertext.charCodeAt(offset + 3) & 0xFF;
         data[i] = (b3 << 24) | (b2 << 16) | (b1 << 8) | b0; // Little-endian
       }
       

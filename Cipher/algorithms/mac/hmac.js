@@ -308,20 +308,20 @@
       } while (HMAC.instances[id] || global.objectInstances[id]);
       
       const hashFunc = hashFunction || HMAC.DEFAULT_HASH;
-      HMAC.instances[szID] = new HMAC.HMACInstance(key, hashFunc);
-      global.objectInstances[szID] = true;
-      return szID;
+      HMAC.instances[id] = new HMAC.HMACInstance(key, hashFunc);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear HMAC data
     ClearData: function(id) {
       if (HMAC.instances[id]) {
         // Secure cleanup
-        const instance = HMAC.instances[szID];
+        const instance = HMAC.instances[id];
         if (instance.keyPadded) OpCodes.ClearArray(instance.keyPadded);
         
-        delete HMAC.instances[szID];
-        delete global.objectInstances[szID];
+        delete HMAC.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'HMAC', 'ClearData');
@@ -336,14 +336,14 @@
         return '';
       }
       
-      const instance = HMAC.instances[szID];
+      const instance = HMAC.instances[id];
       return HMAC.calculate(message, instance.keyPadded, instance.hashFunction);
     },
     
     // HMAC is one-way (no decryption)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       global.throwException('Operation Not Supported Exception', 'HMAC function cannot be reversed', 'HMAC', 'decryptBlock');
-      return szCipherText;
+      return ciphertext;
     },
     
     /**

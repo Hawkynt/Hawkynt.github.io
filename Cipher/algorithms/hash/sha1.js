@@ -250,27 +250,27 @@
     },
     
     // Set up instance (hash functions don't use keys)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'SHA1[' + global.generateUniqueID() + ']';
       } while (SHA1.instances[id] || global.objectInstances[id]);
       
-      SHA1.instances[szID] = new SHA1.SHA1Instance();
-      global.objectInstances[szID] = true;
-      return szID;
+      SHA1.instances[id] = new SHA1.SHA1Instance();
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear hash data
     ClearData: function(id) {
       if (SHA1.instances[id]) {
         // Secure cleanup
-        const instance = SHA1.instances[szID];
+        const instance = SHA1.instances[id];
         if (instance.W) OpCodes.ClearArray(instance.W);
         if (instance.buffer) OpCodes.ClearArray(instance.buffer);
         
-        delete SHA1.instances[szID];
-        delete global.objectInstances[szID];
+        delete SHA1.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'SHA1', 'ClearData');
@@ -279,19 +279,19 @@
     },
     
     // Hash input (encryption interface)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!SHA1.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'SHA1', 'encryptBlock');
         return '';
       }
       
-      return SHA1.hash(szPlainText);
+      return SHA1.hash(plaintext);
     },
     
     // Hash function is one-way (no decryption)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       global.throwException('Operation Not Supported Exception', 'SHA-1 hash function cannot be reversed', 'SHA1', 'decryptBlock');
-      return szCipherText;
+      return ciphertext;
     },
     
     /**

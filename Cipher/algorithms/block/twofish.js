@@ -128,21 +128,21 @@ const TwofishCorrected = {
     TwofishCorrected.isInitialized = true;
   },
 
-  KeySetup: function(optional_szKey) {
+  KeySetup: function(optional_key) {
     let id;
     do {
       id = 'Twofish[' + global.generateUniqueID() + ']';
     } while (TwofishCorrected.instances[id] || global.objectInstances[id]);
 
-    TwofishCorrected.instances[szID] = new TwofishCorrected.Instance(optional_szKey);
-    global.objectInstances[szID] = true;
-    return szID;
+    TwofishCorrected.instances[id] = new TwofishCorrected.Instance(optional_key);
+    global.objectInstances[id] = true;
+    return id;
   },
 
   ClearData: function(id) {
     if (TwofishCorrected.instances[id]) {
-      delete TwofishCorrected.instances[szID];
-      delete global.objectInstances[szID];
+      delete TwofishCorrected.instances[id];
+      delete global.objectInstances[id];
       return true;
     } else {
       global.throwException('Unknown Object Reference Exception', id, 'Twofish', 'ClearData');
@@ -150,16 +150,16 @@ const TwofishCorrected = {
     }
   },
 
-  encryptBlock: function(id, szPlainText) {
+  encryptBlock: function(id, plaintext) {
     if (!TwofishCorrected.instances[id]) {
       global.throwException('Unknown Object Reference Exception', id, 'Twofish', 'encryptBlock');
-      return szPlainText;
+      return plaintext;
     }
 
-    const instance = TwofishCorrected.instances[szID];
+    const instance = TwofishCorrected.instances[id];
     
     // Pad if necessary
-    let input = szPlainText;
+    let input = plaintext;
     while (input.length % 16 !== 0) {
       input += '\x00';
     }
@@ -174,17 +174,17 @@ const TwofishCorrected = {
     return result;
   },
 
-  decryptBlock: function(id, szCipherText) {
+  decryptBlock: function(id, ciphertext) {
     if (!TwofishCorrected.instances[id]) {
       global.throwException('Unknown Object Reference Exception', id, 'Twofish', 'decryptBlock');
-      return szCipherText;
+      return ciphertext;
     }
 
-    const instance = TwofishCorrected.instances[szID];
+    const instance = TwofishCorrected.instances[id];
 
     let result = '';
-    for (let i = 0; i < szCipherText.length; i += 16) {
-      const block = szCipherText.substr(i, 16);
+    for (let i = 0; i < ciphertext.length; i += 16) {
+      const block = ciphertext.substr(i, 16);
       const decryptedBlock = TwofishCorrected.decryptBlock(instance, block);
       result += decryptedBlock;
     }
@@ -243,7 +243,7 @@ const TwofishCorrected = {
 
   Instance: function(key) {
     // Default to 128-bit zero key if no key provided
-    this.key = szKey || '\x00'.repeat(16);
+    this.key = key || '\x00'.repeat(16);
     
     // Pad key to supported lengths
     if (this.key.length < 16) {

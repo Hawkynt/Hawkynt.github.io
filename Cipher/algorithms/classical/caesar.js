@@ -474,13 +474,13 @@
     },
     
     // Set up key (Caesar doesn't use keys, but required by interface)
-    KeySetup: function(optional_szKey) {
+    KeySetup: function(optional_key) {
       let id;
       do {
         id = 'Caesar[' + global.generateUniqueID() + ']';
       } while (Caesar.instances[id] || global.objectInstances[id]);
       
-      Caesar.instances[id] = new Caesar.CaesarInstance(optional_szKey);
+      Caesar.instances[id] = new Caesar.CaesarInstance(optional_key);
       global.objectInstances[id] = true;
       return id;
     },
@@ -498,15 +498,15 @@
     },
     
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!Caesar.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Caesar', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      let szRet = '';
-      for (let i = 0; i < szPlainText.length; i++) {
-        const chChar = szPlainText.charAt(i);
+      let result = '';
+      for (let i = 0; i < plaintext.length; i++) {
+        const chChar = plaintext.charAt(i);
         let newChar = chChar; // Default: don't change non-alphabetic characters
         
         // Handle uppercase letters
@@ -529,21 +529,21 @@
           }
         }
         
-        szRet += newChar;
+        result += newChar;
       }
-      return szRet;
+      return result;
     },
     
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!Caesar.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'Caesar', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      let szRet = '';
-      for (let i = 0; i < szCipherText.length; i++) {
-        const chChar = szCipherText.charAt(i);
+      let result = '';
+      for (let i = 0; i < ciphertext.length; i++) {
+        const chChar = ciphertext.charAt(i);
         let newChar = chChar; // Default: don't change non-alphabetic characters
         
         // Handle uppercase letters (shift backward)
@@ -566,9 +566,9 @@
           }
         }
         
-        szRet += newChar;
+        result += newChar;
       }
-      return szRet;
+      return result;
     },
     
     // Instance class
@@ -578,12 +578,12 @@
     },
     
     // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, szPlainText) {
-      return this.encryptBlock(id, szPlainText);
+    EncryptBlock: function(id, plaintext) {
+      return this.encryptBlock(id, plaintext);
     },
     
-    DecryptBlock: function(id, szCipherText) {
-      return this.decryptBlock(id, szCipherText);
+    DecryptBlock: function(id, ciphertext) {
+      return this.decryptBlock(id, ciphertext);
     }
   };
   

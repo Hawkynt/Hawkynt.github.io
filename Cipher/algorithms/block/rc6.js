@@ -183,7 +183,7 @@
       if (typeof key === 'string') {
         keyBytes = global.OpCodes.StringToBytes(key);
       } else if (Array.isArray(key)) {
-        keyBytes = szKey;
+        keyBytes = key;
       } else {
         global.throwException('Invalid key format', key, 'RC6', 'KeySetup');
         return null;
@@ -195,9 +195,9 @@
         return null;
       }
       
-      RC6.instances[szID] = new RC6.RC6Instance(keyBytes);
-      global.objectInstances[szID] = true;
-      return szID;
+      RC6.instances[id] = new RC6.RC6Instance(keyBytes);
+      global.objectInstances[id] = true;
+      return id;
     },
     
     // Clear cipher data
@@ -207,8 +207,8 @@
         if (RC6.instances[id].keySchedule) {
           global.OpCodes.ClearArray(RC6.instances[id].keySchedule);
         }
-        delete RC6.instances[szID];
-        delete global.objectInstances[szID];
+        delete RC6.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'RC6', 'ClearData');
@@ -217,22 +217,22 @@
     },
     
     // Encrypt block (128 bits = 16 bytes)
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!RC6.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'RC6', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
       
-      const instance = RC6.instances[szID];
+      const instance = RC6.instances[id];
       
       // Convert input to bytes
       let plainBytes;
-      if (typeof szPlainText === 'string') {
-        plainBytes = global.OpCodes.StringToBytes(szPlainText);
-      } else if (Array.isArray(szPlainText)) {
-        plainBytes = szPlainText;
+      if (typeof plaintext === 'string') {
+        plainBytes = global.OpCodes.StringToBytes(plaintext);
+      } else if (Array.isArray(plaintext)) {
+        plainBytes = plaintext;
       } else {
-        return szPlainText; // Invalid input
+        return plaintext; // Invalid input
       }
       
       // Pad to 16 bytes if needed
@@ -249,29 +249,29 @@
       }
       
       // Convert back to string if input was string
-      if (typeof szPlainText === 'string') {
+      if (typeof plaintext === 'string') {
         return global.OpCodes.BytesToString(result);
       }
       return result;
     },
     
     // Decrypt block (128 bits = 16 bytes)
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!RC6.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'RC6', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
       
-      const instance = RC6.instances[szID];
+      const instance = RC6.instances[id];
       
       // Convert input to bytes
       let cipherBytes;
-      if (typeof szCipherText === 'string') {
-        cipherBytes = global.OpCodes.StringToBytes(szCipherText);
-      } else if (Array.isArray(szCipherText)) {
-        cipherBytes = szCipherText;
+      if (typeof ciphertext === 'string') {
+        cipherBytes = global.OpCodes.StringToBytes(ciphertext);
+      } else if (Array.isArray(ciphertext)) {
+        cipherBytes = ciphertext;
       } else {
-        return szCipherText; // Invalid input
+        return ciphertext; // Invalid input
       }
       
       // Process 16-byte blocks
@@ -283,7 +283,7 @@
       }
       
       // Convert back to string if input was string
-      if (typeof szCipherText === 'string') {
+      if (typeof ciphertext === 'string') {
         return global.OpCodes.BytesToString(result);
       }
       return result;

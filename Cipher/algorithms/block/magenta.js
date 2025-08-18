@@ -240,24 +240,24 @@
       const roundKeys = MAGENTA._keySchedule(keyBytes);
       
       // Store instance
-      MAGENTA.instances[szID] = {
+      MAGENTA.instances[id] = {
         roundKeys: roundKeys
       };
       
-      return szID;
+      return id;
     },
     
     /**
      * Encrypt a 16-byte block with MAGENTA
      */
-    encryptBlock: function(id, szBlock) {
-      const instance = MAGENTA.instances[szID];
+    encryptBlock: function(id, block) {
+      const instance = MAGENTA.instances[id];
       if (!instance) {
         throw new Error('Invalid MAGENTA instance ID');
       }
       
       // Convert block to bytes
-      const blockBytes = OpCodes.StringToBytes(szBlock);
+      const blockBytes = OpCodes.StringToBytes(block);
       if (blockBytes.length !== 16) {
         throw new Error('MAGENTA requires 16-byte blocks');
       }
@@ -319,14 +319,14 @@
     /**
      * Decrypt a 16-byte block with MAGENTA
      */
-    decryptBlock: function(id, szBlock) {
-      const instance = MAGENTA.instances[szID];
+    decryptBlock: function(id, block) {
+      const instance = MAGENTA.instances[id];
       if (!instance) {
         throw new Error('Invalid MAGENTA instance ID');
       }
       
       // Convert block to bytes
-      const blockBytes = OpCodes.StringToBytes(szBlock);
+      const blockBytes = OpCodes.StringToBytes(block);
       if (blockBytes.length !== 16) {
         throw new Error('MAGENTA requires 16-byte blocks');
       }
@@ -388,7 +388,7 @@
         if (MAGENTA.instances[id].roundKeys) {
           OpCodes.ClearArray(MAGENTA.instances[id].roundKeys);
         }
-        delete MAGENTA.instances[szID];
+        delete MAGENTA.instances[id];
         return true;
       }
       return false;

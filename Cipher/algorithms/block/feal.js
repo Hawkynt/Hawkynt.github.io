@@ -77,21 +77,21 @@
         id = 'FEAL[' + global.generateUniqueID() + ']';
       } while (FEAL.instances[id] || global.objectInstances[id]);
       
-      FEAL.instances[szID] = new FEAL.Instance(key);
-      global.objectInstances[szID] = true;
-      return szID;
+      FEAL.instances[id] = new FEAL.Instance(key);
+      global.objectInstances[id] = true;
+      return id;
     },
 
     // Clear cipher data
     ClearData: function(id) {
       if (FEAL.instances[id]) {
         // Secure cleanup
-        const instance = FEAL.instances[szID];
+        const instance = FEAL.instances[id];
         if (instance.roundKeys) {
           global.OpCodes && global.OpCodes.ClearArray && global.OpCodes.ClearArray(instance.roundKeys);
         }
-        delete FEAL.instances[szID];
-        delete global.objectInstances[szID];
+        delete FEAL.instances[id];
+        delete global.objectInstances[id];
         return true;
       } else {
         global.throwException('Unknown Object Reference Exception', id, 'FEAL', 'ClearData');
@@ -150,16 +150,16 @@
     },
 
     // Encrypt block
-    encryptBlock: function(id, szPlainText) {
+    encryptBlock: function(id, plaintext) {
       if (!FEAL.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'FEAL', 'encryptBlock');
-        return szPlainText;
+        return plaintext;
       }
 
-      const instance = FEAL.instances[szID];
+      const instance = FEAL.instances[id];
       
       // Convert input to bytes
-      const plainBytes = global.OpCodes.StringToBytes(szPlainText);
+      const plainBytes = global.OpCodes.StringToBytes(plaintext);
       
       // Process complete 8-byte blocks
       let result = '';
@@ -182,20 +182,20 @@
     },
 
     // Decrypt block
-    decryptBlock: function(id, szCipherText) {
+    decryptBlock: function(id, ciphertext) {
       if (!FEAL.instances[id]) {
         global.throwException('Unknown Object Reference Exception', id, 'FEAL', 'decryptBlock');
-        return szCipherText;
+        return ciphertext;
       }
 
-      const instance = FEAL.instances[szID];
+      const instance = FEAL.instances[id];
       
       // Convert input to bytes
-      const cipherBytes = global.OpCodes.StringToBytes(szCipherText);
+      const cipherBytes = global.OpCodes.StringToBytes(ciphertext);
       
       if (cipherBytes.length % 8 !== 0) {
-        global.throwException('Invalid cipher text length for FEAL', szCipherText.length, 'FEAL', 'decryptBlock');
-        return szCipherText;
+        global.throwException('Invalid cipher text length for FEAL', ciphertext.length, 'FEAL', 'decryptBlock');
+        return ciphertext;
       }
       
       // Process 8-byte blocks
@@ -269,7 +269,7 @@
 
     // Instance class
     Instance: function(key) {
-      this.key = szKey;
+      this.key = key;
       this.roundKeys = FEAL.generateRoundKeys(key);
     }
   };
