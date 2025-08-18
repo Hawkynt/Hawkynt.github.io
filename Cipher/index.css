@@ -205,11 +205,9 @@ body {
 }
 
 .algorithms-grid {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 1.5rem;
-    justify-content: flex-start;
     align-items: stretch;
 }
 
@@ -225,9 +223,11 @@ body {
     cursor: pointer;
     position: relative;
     overflow: hidden;
-    flex: 0 0 300px;
-    min-width: 300px;
-    max-width: 350px;
+    width: 100%;
+    min-height: 180px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }
 
 .algorithm-card:hover {
@@ -1052,16 +1052,41 @@ option[data-category] {
 }
 
 .vector-row.testing {
-    background: rgba(251, 191, 36, 0.2);
+    background: rgba(251, 191, 36, 0.3);
     animation: testing-pulse 1s infinite alternate;
 }
 
 .vector-row.passed {
-    background: rgba(16, 185, 129, 0.2);
+    background: rgba(34, 197, 94, 0.2);
 }
 
 .vector-row.failed {
     background: rgba(239, 68, 68, 0.2);
+}
+
+.vector-row.selected {
+    background: rgba(59, 130, 246, 0.2);
+}
+
+/* Vector status styling */
+.vector-status {
+    font-weight: 500;
+}
+
+.vector-status.running {
+    color: #d97706;
+}
+
+.vector-status.passed {
+    color: #059669;
+}
+
+.vector-status.failed {
+    color: #dc2626;
+}
+
+.vector-status.error {
+    color: #dc2626;
 }
 
 .vector-data code {
@@ -1154,6 +1179,39 @@ option[data-category] {
     font-size: 0.875rem;
     line-height: 1.5;
     color: #e2e8f0;
+    position: relative;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.code-preview.word-wrap {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-x: hidden;
+}
+
+.code-preview.show-line-numbers {
+    counter-reset: line;
+}
+
+.code-preview.show-line-numbers code {
+    counter-increment: line;
+}
+
+.code-preview.show-line-numbers code::before {
+    content: counter(line);
+    position: absolute;
+    left: 0;
+    width: 3em;
+    text-align: right;
+    color: rgba(255, 255, 255, 0.4);
+    border-right: 1px solid rgba(255, 255, 255, 0.2);
+    margin-right: 1em;
+    padding-right: 0.5em;
+}
+
+.code-preview.show-line-numbers {
+    padding-left: 4.5em;
 }
 
 .code-preview code {
@@ -1740,11 +1798,13 @@ option[data-category] {
 
 .country-flag {
     display: inline-block;
-    width: 20px;
-    height: 15px;
+    width: 16px;
+    height: 12px;
     margin-right: 0.5rem;
     vertical-align: middle;
     border-radius: 2px;
+    object-fit: cover;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 /* Test Vector Table */
