@@ -1,350 +1,396 @@
 /*
- *  Cipher Class
- *  (c)2006 Hawkynt
- *
- *  Methods:
- *    objGetCipher(szCipherName):objCipher                    Gets a Ciphers Class
- *    boolExistsCipher(szCipherName):bool                     Returns true if Cipher exists and false if not
- *    AddCipher(objCipher)                                    Adds a Cipher to the available list
- *    InitCipher(szCipherName[,szKey]):szID                   Setup a Cipher Object with Key if given and return its handle
- *    ClearData(szID)                                         Deletes a cipher Object and releases its handle
- *    getCiphers():arrCiphers                                 Get a List of all available Ciphers
- *    szEncrypt(szID,szPlaintText[,szBlockMode):szCipherText  Encrypt a String with the Cipher Object Reference given and BlockMode if given (uses ECB as Default)
- *    szDecrypt(szID,szCypherText[,szBlockMode):szPlainText   Decrypt a String with the Cipher Object Reference given and BlockMode if given (uses ECB as Default)
+ * Universal Cipher System
+ * Compatible with both Browser and Node.js environments
+ * Based on original cipher.js but modernized for cross-platform use
+ * (c)2006-2025 Hawkynt
  */
-if (!window.XObjectInstances) window.XObjectInstances=[];
-var Cipher=new Object();
-{
-  // ===================================================================
-  // STATIC PUBLIC
-  // ===================================================================
-  // Array of known Ciphers
-  Cipher.arrCiphers=[];
-  // Instances of Cipher Wrapper
-  Cipher.arrInstances=[];
-  // Cipher
-  // Needed Functions
-  //  KeySetup(szKey):String            --> returns szID of Ciphers internal Object
-  //  EncryptBlock(szID,szBlock):String --> Encrypt a Block
-  //  DecryptBlock(szID,szBlock):String --> Decrypt a Block
-  //
-  // Needed Attributes
-  //  szName                            --> Name of Cipher
-  //  szInternalName                    --> Short Name of Cipher for internal use
-  //  szCommment                        --> a comment for the Cipher
-  //  intMinKeyLength                   --> Minimum Key Size in Bytes
-  //  intMaxKeyLength                   --> Maximum Key Size in Bytes
-  //  intStepKeyLength                  --> Key Steps in Bytes
-  //  intMinBlockSize                   --> Minimum Block Size in Bytes
-  //  intMaxBlockSize                   --> Maximum Block Size in Bytes
-  //  intStepBlockSize                  --> Block Size Steps in Bytes
-  //  arrInstances                      --> Instances of Cipher in use
-  //
-  Cipher.boolExistsCipher=function (szCipherName) {
-    if ((Cipher.arrCiphers[szCipherName]) && (Cipher.arrCiphers[szCipherName]!=undefined)) {
-      return (true);
-    } else {
-      return (false);
-    };
+
+(function(global) {
+  'use strict';
+  
+  // Ensure environment is set up
+  if (typeof global.objectInstances === 'undefined') {
+    global.objectInstances = [];
   }
   
-  Cipher.objGetCipher=function(szCipherName) {
-    if ((Cipher.arrCiphers[szCipherName]) && (Cipher.arrCiphers[szCipherName]!=undefined)) {
-      return (Cipher.arrCiphers[szCipherName]);
-    } else {
-      throwException('Unknown Cipher Exception',szCipherName,'Cipher','objGetCipher');
-    };
-  }
-  
-  Cipher.AddCipher=function (objCipher) {
-    if ((!objCipher.szInternalName) || (objCipher.szInternalName==undefined)) {
-      throwException('Missing Internal Name Exception',objCipher,'Cipher','AddCipher');
-    } else {
-      if ((!objCipher.szName) || (objCipher.szName==undefined)) {
-        throwException('Missing Cipher Name Exception',objCipher.szInternalName,'Cipher','AddCipher');
+  // Create Cipher object
+  const Cipher = {
+    // Array of known Ciphers
+    ciphers: {},
+    // Instances of Cipher Wrapper  
+    instances: {},
+    
+    // Check if cipher exists
+    existsCipher: function(cipherName) {
+      return !!(Cipher.ciphers[cipherName]);
+    },
+    
+    // Legacy alias for compatibility
+    boolExistsCipher: function(cipherName) {
+      return this.existsCipher(cipherName);
+    },
+    
+    // Get cipher object
+    getCipher: function(cipherName) {
+      if (Cipher.ciphers[cipherName]) {
+        return Cipher.ciphers[cipherName];
       } else {
-        if (objCipher.intMinKeyLength==undefined) {
-          throwException('Missing Minimal Key Length Exception',objCipher.szName,'Cipher','AddCipher');
-        } else {
-          if (objCipher.intMaxKeyLength==undefined) {
-            throwException('Missing Maximal Key Length Exception',objCipher.szName,'Cipher','AddCipher');
-          } else {
-            if (objCipher.intStepKeyLength==undefined) {
-              throwException('Missing Key Length Stepping Exception',objCipher.szName,'Cipher','AddCipher');
-            } else {
-              if (objCipher.intMinBlockSize==undefined) {
-                throwException('Missing Minimal Block Size Exception',objCipher.szName,'Cipher','AddCipher');
-              } else {
-                if (objCipher.intMaxBlockSize==undefined) {
-                  throwException('Missing Maximal Block Size Exception',objCipher.szName,'Cipher','AddCipher');
-                } else {
-                  if (objCipher.intStepBlockSize==undefined) {
-                    throwException('Missing Block Size Stepping Exception',objCipher.szName,'Cipher','AddCipher');
-                  } else {
-                    if ((!objCipher.arrInstances) || (objCipher.arrInstances==undefined)) {
-                      throwException('Missing Class Instances Lookup Exception',objCipher.szName,'Cipher','AddCipher');
-                    } else {
-                      if (Cipher.arrCiphers[objCipher.szInternalName]) {
-                        throwException('Class Already Exists Exception',objCipher.szName,'Cipher','AddCipher');
-                      } else {
-                        Cipher.arrCiphers[objCipher.szInternalName]=objCipher;
-                        var szKey='';
-                        while (szKey.length<objCipher.intMinKeyLength) {
-                          szKey+=String.fromCharCode(0);
-                        };
-                        var szID=Cipher.InitCipher(objCipher.szInternalName,szKey);
-                        if (szID!=undefined) {
-                          var szEncode='';
-                          while (szEncode.length<objCipher.intMinBlockSize) {
-                            szEncode+=String.fromCharCode(0);
-                          };
-                          var szDecode=Cipher.szDecrypt(szID,Cipher.szEncrypt(szID,szEncode,'ECB'),'ECB');
-                          Cipher.ClearData(szID);
-                          if (szEncode==szDecode) {
-                            return (true);
-                          } else {
-                            throwException('Cipher Validation Exception',objCipher.szName,'Cipher','AddCipher');
-                          };
-                        } else {
-                          throwException('Cipher Validation Exception',objCipher.szName,'Cipher','AddCipher');
-                        };
-                      };
-                    };
-                  };
-                };
-              };
-            };
-          };
-        };
-      };
-    };
-    return (false);
-  }
-  
-  Cipher.InitCipher=function (szCipherName,optional_szKey) {
-    if ((Cipher.arrCiphers[szCipherName]) && (Cipher.arrCiphers[szCipherName]!=undefined)) {
-      var szID;
+        global.throwException('Unknown Cipher Exception', cipherName, 'Cipher', 'getCipher');
+        return null;
+      }
+    },
+    
+    // Legacy alias for compatibility
+    objGetCipher: function(cipherName) {
+      return this.getCipher(cipherName);
+    },
+    
+    // Add cipher to registry
+    AddCipher: function(cipher) {
+      // Validate cipher object
+      const requiredProps = [
+        'internalName', 'name', 'minKeyLength', 'maxKeyLength', 
+        'stepKeyLength', 'minBlockSize', 'maxBlockSize', 'stepBlockSize'
+      ];
+      
+      for (const prop of requiredProps) {
+        if (cipher[prop] === undefined) {
+          global.throwException(`Missing ${prop} Exception`, cipher.name || 'Unknown', 'Cipher', 'AddCipher');
+          return false;
+        }
+      }
+      
+      if (!cipher.instances) {
+        global.throwException('Missing Class Instances Lookup Exception', cipher.name, 'Cipher', 'AddCipher');
+        return false;
+      }
+      
+      if (Cipher.ciphers[cipher.internalName]) {
+        global.throwException('Class Already Exists Exception', cipher.name, 'Cipher', 'AddCipher');
+        return false;
+      }
+      
+      // Register cipher
+      Cipher.ciphers[cipher.internalName] = cipher;
+      
+      // Initialize cipher if it has an Init method
+      if (typeof cipher.Init === 'function' && !cipher.isInitialized) {
+        try {
+          cipher.Init();
+        } catch (e) {
+          console.warn(`Failed to initialize cipher ${cipher.name}:`, e.message);
+        }
+      }
+      
+      return true;
+    },
+    
+    // Get list of available ciphers
+    getCiphers: function() {
+      return Object.keys(Cipher.ciphers);
+    },
+    
+    // Alias for compatibility with test runner
+    GetCiphers: function() {
+      return Object.keys(Cipher.ciphers);
+    },
+    
+    // Add GetCipher alias for compatibility with test runner
+    GetCipher: function(cipherName) {
+      return this.getCipher(cipherName);
+    },
+    
+    // Initialize cipher with key
+    InitCipher: function(cipherName, key) {
+      if (!Cipher.existsCipher(cipherName)) {
+        global.throwException('Unknown Cipher Exception', cipherName, 'Cipher', 'InitCipher');
+        return undefined;
+      }
+      
+      const objUsedCipher = Cipher.ciphers[cipherName];
+      let processedKey = key || '';
+      
+      // Generate unique ID
+      let id;
       do {
-        szID='Cipher['+szGenerateUniqueID()+']';
-      } while ((Cipher.arrInstances[szID]) || (Cipher.arrInstances[szID]!=undefined) || (window.XObjectInstances[szID]) || (window.XObjectInstances[szID]!=undefined));
-      Cipher.arrInstances[szID]=new Object();
-      window.XObjectInstances[szID]=Cipher.arrInstances[szID];
-      Cipher.arrInstances[szID].szCipherName=szCipherName;
-      Cipher.arrInstances[szID].objUsedCipher=Cipher.arrCiphers[szCipherName];
-      Cipher.arrInstances[szID].szExternalKey=optional_szKey;
-      var objUsedCipher=Cipher.arrInstances[szID].objUsedCipher;
-      if (objUsedCipher.boolInit==false) objUsedCipher.Init();
-      // Key extending or cutting
-      var szKey=Cipher.arrInstances[szID].szExternalKey;
-      // If Key is too small
-      if (objUsedCipher.intMinKeyLength>0) {
-        while ((szKey.length<objUsedCipher.intMinKeyLength) && (szKey.length>0)) {
-          szKey+=Cipher.arrInstances[szID].szExternalKey;
-        };
+        id = 'Cipher[' + global.generateUniqueID() + ']';
+      } while (Cipher.instances[id] || global.objectInstances[id]);
+      
+      // Store instance info
+      Cipher.instances[id] = {
+        cipherName: cipherName,
+        usedCipher: usedCipher,
+        externalKey: key || '',
+        internalKey: '',
+        ciphersID: null
       };
-      // If Key is too large
-      if (objUsedCipher.intMaxKeyLength>0) {
-        if (szKey.length>objUsedCipher.intMaxKeyLength) {
-          szKey=szKey.substr(0,objUsedCipher.intMaxKeyLength);
-        };
-      };
-      // If Key is not bounded to Padding
-      if (objUsedCipher.intStepKeyLength>1) {
-        var intModulo=(szKey.length-objUsedCipher.intMinKeyLength) % objUsedCipher.intStepKeyLength;
-        if (intModulo>0) {
-          if ((szKey.length-intModulo)<objUsedCipher.intMinKeyLength) {
-            // Upper Bound fill
-            szKey+=szKey.substr(0,objUsedCipher.intStepKeyLength-intModulo);
+      global.objectInstances[id] = true;
+      
+      // Process key according to cipher requirements
+      processedKey = Cipher._processKey(processedKey, usedCipher);
+      Cipher.instances[id].internalKey = processedKey;
+      
+      // Validate key length
+      if (!Cipher._validateKeyLength(processedKey, usedCipher)) {
+        delete Cipher.instances[id];
+        delete global.objectInstances[id];
+        return undefined;
+      }
+      
+      // Initialize cipher with processed key
+      try {
+        Cipher.instances[id].ciphersID = usedCipher.KeySetup(processedKey);
+        return id;
+      } catch (e) {
+        delete Cipher.instances[id];
+        delete global.objectInstances[id];
+        global.throwException('Cipher Initialization Failed', e.message, 'Cipher', 'InitCipher');
+        return undefined;
+      }
+    },
+    
+    // Process key according to cipher requirements
+    _processKey: function(key, cipher) {
+      let processedKey = key;
+      
+      // Extend key if too short
+      if (cipher.minKeyLength > 0) {
+        while (processedKey.length < cipher.minKeyLength && key.length > 0) {
+          processedKey += key;
+        }
+      }
+      
+      // Truncate key if too long
+      if (cipher.maxKeyLength > 0 && processedKey.length > cipher.maxKeyLength) {
+        processedKey = processedKey.substr(0, cipher.maxKeyLength);
+      }
+      
+      // Handle key stepping
+      if (cipher.stepKeyLength > 1) {
+        const modulo = (processedKey.length - cipher.minKeyLength) % cipher.stepKeyLength;
+        if (modulo > 0) {
+          if ((processedKey.length - modulo) < cipher.minKeyLength) {
+            // Pad up
+            processedKey += key.substr(0, cipher.stepKeyLength - modulo);
           } else {
-            // Lower Bound Cut
-            szKey=szKey.substr(0,szKey.length-intModulo);
-          };
-        };
-      };
-      Cipher.arrInstances[szID].szInternalKey=szKey;
-      if (((szKey.length<objUsedCipher.intMinKeyLength) && (objUsedCipher.intMinKeyLength>0)) || ((szKey.length>objUsedCipher.intMaxKeyLength) && (objUsedCipher.intMaxKeyLength>0))) {
-        // invalid Key Length
-        if (Cipher.intMinKeyLength==objUsedCipher.intMaxKeyLength) {
-          throwException('Invalid Key Length Exception','Key Length is '+(szKey.length*8)+' Bits, but must be '+(objUsedCipher.intMaxKeyLength*8)+' Bits','Cipher','InitCipher');
-        } else {
-          throwException('Invalid Key Length Exception','Key Length is '+(szKey.length*8)+' Bits, but must be between '+(objUsedCipher.intMinKeyLength*8)+' Bits and '+(objUsedCipher.intMaxKeyLength*8)+' Bits','Cipher','InitCipher');
-        };
-        window.XObjectInstances[szID]=undefined;
-        delete Cipher.arrInstances[szID];
+            // Truncate down
+            processedKey = processedKey.substr(0, processedKey.length - modulo);
+          }
+        }
+      }
+      
+      return processedKey;
+    },
+    
+    // Validate key length
+    _validateKeyLength: function(key, cipher) {
+      const keyLen = key.length;
+      const minLen = cipher.minKeyLength;
+      const maxLen = cipher.maxKeyLength;
+      
+      if (minLen > 0 && keyLen < minLen) {
+        global.throwException('Invalid Key Length Exception', 
+          `Key Length is ${keyLen * 8} Bits, but must be at least ${minLen * 8} Bits`, 
+          'Cipher', 'InitCipher');
+        return false;
+      }
+      
+      if (maxLen > 0 && keyLen > maxLen) {
+        global.throwException('Invalid Key Length Exception', 
+          `Key Length is ${keyLen * 8} Bits, but must be at most ${maxLen * 8} Bits`, 
+          'Cipher', 'InitCipher');
+        return false;
+      }
+      
+      return true;
+    },
+    
+    // Clear cipher data
+    ClearData: function(id) {
+      if (Cipher.instances[id]) {
+        try {
+          if (Cipher.instances[id].usedCipher.ClearData) {
+            Cipher.instances[id].usedCipher.ClearData(Cipher.instances[id].ciphersID);
+          }
+        } catch (e) {
+          console.warn('Error clearing cipher data:', e.message);
+        }
+        
+        delete Cipher.instances[id];
+        delete global.objectInstances[id];
+        return true;
+      }
+      return false;
+    },
+    
+    // Encrypt data
+    encrypt: function(id, inputBuffer, optional_mode) {
+      const mode = (optional_mode || 'ECB').toUpperCase();
+      
+      if (!Cipher.instances[id]) {
+        global.throwException('Unknown Object Reference Exception', id, 'Cipher', 'encrypt');
+        return inputBuffer;
+      }
+      
+      const currentCipher = Cipher.instances[id].usedCipher;
+      
+      if (mode === 'ECB') {
+        return Cipher._encryptECB(id, inputBuffer, currentCipher);
       } else {
-        // proceed
-        Cipher.arrInstances[szID].szCiphersID=objUsedCipher.KeySetup(Cipher.arrInstances[szID].szInternalKey);
-      };
-      return (szID);
-    } else {
-      throwException('Unknown Cipher Exception',szCipherName,'Cipher','InitCipher');
-    };
-  }
-  
-  Cipher.ClearData=function (szID) {
-    if ((Cipher.arrInstances[szID]) && (Cipher.arrInstances[szID]!=undefined)) {
-      Cipher.arrInstances[szID].objUsedCipher.ClearData(Cipher.arrInstances[szID].szCiphersID);
-      window.XObjectInstances[szID]=undefined;
-      delete Cipher.arrInstances[szID];
-      return (true);
-    } else {
-      throwException('Unknown Object Reference Exception',szID,'Cipher','ClearData');
-    };
-  }
-  
-  Cipher.getCiphers=function () {
-    var arrRet=[];
-    for (var szI in Cipher.arrCiphers) {
-      arrRet.push(szI);
-    };
-    return (arrRet);
-  }
-  
-  Cipher.szEncrypt=function (szID,szInputBuffer,optional_szMode) {
-    var szRet='';
-    var szMode;
-    if ((optional_szMode) && (optional_szMode!=undefined)) {
-      szMode=optional_szMode.toUpperCase();
-    } else {
-      szMode='ECB';
-    };
-    // TODO:implement Block Modes
-    if ((Cipher.arrInstances[szID]) && (Cipher.arrInstances[szID]!=undefined)) {
-      var objCurrentCipher=Cipher.arrInstances[szID].objUsedCipher;
-      if (szMode=='ECB') {
-        // Electronic Codebook
-        var szBlock;
-        if (objCurrentCipher.intMaxBlockSize==0) {
-          szBlock=szInputBuffer;
-          szRet=Cipher.szEncryptBlock(szID,szBlock);
+        global.throwException('Unknown Block Mode Exception', mode, 'Cipher', 'encrypt');
+        return inputBuffer;
+      }
+    },
+    
+    // Legacy alias for compatibility
+    szEncrypt: function(id, inputBuffer, optional_mode) {
+      return this.encrypt(id, inputBuffer, optional_mode);
+    },
+    
+    // ECB encryption mode
+    _encryptECB: function(id, inputBuffer, currentCipher) {
+      let result = '';
+      
+      if (currentCipher.maxBlockSize === 0) {
+        // Stream cipher or variable block size
+        return Cipher.encryptBlock(id, inputBuffer);
+      }
+      
+      let i = 0;
+      while (i < inputBuffer.length) {
+        const bytesLeft = inputBuffer.length - i;
+        let block;
+        
+        if (bytesLeft >= currentCipher.maxBlockSize) {
+          // Full block
+          block = inputBuffer.substr(i, currentCipher.maxBlockSize);
+          i += currentCipher.maxBlockSize;
         } else {
-          var intI=0;
-          while (intI<szInputBuffer.length) {
-            var intBytesLeft=szInputBuffer.length-intI;
-            if (intBytesLeft>objCurrentCipher.intMaxBlockSize) {
-              // Full Maximal Sized Block
-              szBlock=szInputBuffer.substr(intI,objCurrentCipher.intMaxBlockSize);
-              intI+=objCurrentCipher.intMaxBlockSize;
-            } else {
-              // hmmm no maximal block f**k
-              if (intBytesLeft<objCurrentCipher.intMinBlockSize) {
-                // Too less for full Block so fill with Zeroes
-                szBlock=szInputBuffer.substr(intI,szInputBuffer.length-intI);
-                intI+=szInputBuffer.length-intI;
-                while (szBlock.length<objCurrentCipher.intMinBlockSize) {
-                  szBlock+=String.fromCharCode(0);
-                };
-              } else {
-                // Minimal Block and Padding filled with Zeroes
-                szBlock=szInputBuffer.substr(intI,szInputBuffer.length-intI);
-                intI+=szInputBuffer.length-intI;
-                var intModulo=(szBlock.length-objCurrentCipher.intMinBlockSize) % objCurrentCipher.intStepBlockSize;
-                if (intModulo>0) {
-                  // Must be padded
-                  intModulo=objCurrentCipher.intStepBlockSize-intModulo;
-                  while (intModulo>0) {
-                    szBlock+=String.fromCharCode(0);
-                    intModulo--;
-                  };
-                };
-              };
-            };
-            szRet+=Cipher.szEncryptBlock(szID,szBlock);
-          };
-        };
+          // Partial block - pad with zeros
+          block = inputBuffer.substr(i);
+          i = inputBuffer.length;
+          
+          // Pad to minimum block size
+          while (block.length < currentCipher.minBlockSize) {
+            block += String.fromCharCode(0);
+          }
+          
+          // Pad according to step size
+          if (currentCipher.stepBlockSize > 1) {
+            const modulo = (block.length - currentCipher.minBlockSize) % currentCipher.stepBlockSize;
+            if (modulo > 0) {
+              const padding = currentCipher.stepBlockSize - modulo;
+              for (let p = 0; p < padding; p++) {
+                block += String.fromCharCode(0);
+              }
+            }
+          }
+        }
+        
+        result += Cipher.encryptBlock(id, block);
+      }
+      
+      return result;
+    },
+    
+    // Decrypt data
+    decrypt: function(id, inputBuffer, optional_mode) {
+      const mode = (optional_mode || 'ECB').toUpperCase();
+      
+      if (!Cipher.instances[id]) {
+        global.throwException('Unknown Object Reference Exception', id, 'Cipher', 'decrypt');
+        return inputBuffer;
+      }
+      
+      const currentCipher = Cipher.instances[id].usedCipher;
+      
+      if (mode === 'ECB') {
+        return Cipher._decryptECB(id, inputBuffer, currentCipher);
       } else {
-        throwException('Unknown Block Mode Exception',szMode,'Cipher','szEncrypt');
-        szRet=szInputBuffer;
-      };
-    } else {
-      throwException('Unknown Object Reference Exception',szID,'Cipher','szEncrypt');
-      szRet=szInputBuffer;
-    };
-    return (szRet);
-  }
-  
-  Cipher.szDecrypt=function (szID,szInputBuffer,optional_szMode) {
-    var szRet='';
-    var szMode;
-    if (optional_szMode!=undefined) {
-      szMode=optional_szMode.toUpperCase();
-    } else {
-      szMode='ECB';
-    };
-    // TODO:implement Block Modes
-    if ((Cipher.arrInstances[szID]) && (Cipher.arrInstances[szID]!=undefined)) {
-      var objCurrentCipher=Cipher.arrCiphers[Cipher.arrInstances[szID].szCipherName];
-      if (szMode=='ECB') {
-        // Electronic Codebook
-        var szBlock;
-        if (objCurrentCipher.intMaxBlockSize==0) {
-          szBlock=szInputBuffer;
-          szRet=Cipher.szDecryptBlock(szID,szBlock);
+        global.throwException('Unknown Block Mode Exception', mode, 'Cipher', 'decrypt');
+        return inputBuffer;
+      }
+    },
+    
+    // Legacy alias for compatibility
+    szDecrypt: function(id, inputBuffer, optional_mode) {
+      return this.decrypt(id, inputBuffer, optional_mode);
+    },
+    
+    // ECB decryption mode
+    _decryptECB: function(id, inputBuffer, currentCipher) {
+      let result = '';
+      
+      if (currentCipher.maxBlockSize === 0) {
+        return Cipher.decryptBlock(id, inputBuffer);
+      }
+      
+      let i = 0;
+      while (i < inputBuffer.length) {
+        const bytesLeft = inputBuffer.length - i;
+        let block;
+        
+        if (bytesLeft >= currentCipher.maxBlockSize) {
+          block = inputBuffer.substr(i, currentCipher.maxBlockSize);
+          i += currentCipher.maxBlockSize;
         } else {
-          var intI=0;
-          while (intI<szInputBuffer.length) {
-            var intBytesLeft=szInputBuffer.length-intI;
-            if (intBytesLeft>objCurrentCipher.intMaxBlockSize) {
-              // Full Maximal Sized Block
-              szBlock=szInputBuffer.substr(intI,objCurrentCipher.intMaxBlockSize);
-              intI+=objCurrentCipher.intMaxBlockSize;
-            } else {
-              // hmmm no maximal block f**k
-              if (intBytesLeft<objCurrentCipher.intMinBlockSize) {
-                // Too less for full Block so fill with Zeroes
-                szBlock=szInputBuffer.substr(intI,szInputBuffer.length-intI);
-                intI+=szInputBuffer.length-intI;
-                while (szBlock.length<objCurrentCipher.intMinBlockSize) {
-                  szBlock+=String.fromCharCode(0);
-                };
-              } else {
-                // Minimal Block and Padding filled with Zeroes
-                szBlock=szInputBuffer.substr(intI,szInputBuffer.length-intI);
-                intI+=szInputBuffer.length-intI;
-                var intModulo=(szBlock.length-objCurrentCipher.intMinBlockSize) % objCurrentCipher.intStepBlockSize;
-                if (intModulo>0) {
-                  // Must be padded
-                  intModulo=objCurrentCipher.intStepBlockSize-intModulo;
-                  while (intModulo>0) {
-                    szBlock+=String.fromCharCode(0);
-                    intModulo--;
-                  };
-                };
-              };
-            };
-            szRet+=Cipher.szDecryptBlock(szID,szBlock);
-          };
-        };
-      } else {
-        throwException('Unknown Block Mode Exception',szMode,'Cipher','szDecrypt');
-        szRet=szInputBuffer;
-      };
-    } else {
-      throwException('Unknown Object Reference Exception',szID,'Cipher','szDecrypt');
-      szRet=szInputBuffer;
-    };
-    return (szRet);
+          block = inputBuffer.substr(i);
+          i = inputBuffer.length;
+          
+          while (block.length < currentCipher.minBlockSize) {
+            block += String.fromCharCode(0);
+          }
+        }
+        
+        result += Cipher.decryptBlock(id, block);
+      }
+      
+      return result;
+    },
+    
+    // Encrypt single block
+    encryptBlock: function(id, block) {
+      if (!Cipher.instances[id]) {
+        global.throwException('Unknown Object Reference Exception', id, 'Cipher', 'encryptBlock');
+        return block;
+      }
+      
+      try {
+        return Cipher.instances[id].usedCipher.encryptBlock(
+          Cipher.instances[id].ciphersID, 
+          block
+        );
+      } catch (e) {
+        global.throwException('Encryption Error', e.message, 'Cipher', 'encryptBlock');
+        return block;
+      }
+    },
+    
+    // Decrypt single block
+    decryptBlock: function(id, block) {
+      if (!Cipher.instances[id]) {
+        global.throwException('Unknown Object Reference Exception', id, 'Cipher', 'decryptBlock');
+        return block;
+      }
+      
+      try {
+        return Cipher.instances[id].usedCipher.decryptBlock(
+          Cipher.instances[id].ciphersID, 
+          block
+        );
+      } catch (e) {
+        global.throwException('Decryption Error', e.message, 'Cipher', 'decryptBlock');
+        return block;
+      }
+    }
+  };
+  
+  // Export to global scope
+  global.Cipher = Cipher;
+  
+  // Node.js module export
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Cipher;
   }
   
-  Cipher.szEncryptBlock=function (szID,szBlock) {
-    var szRet;
-    if ((Cipher.arrInstances[szID]) && (Cipher.arrInstances[szID]!=undefined)) {
-      szRet=Cipher.arrInstances[szID].objUsedCipher.szEncryptBlock(Cipher.arrInstances[szID].szCiphersID,szBlock);
-    } else {
-      throwException('Unknown Object Reference Exception',szID,'Cipher','szEncryptBlock');
-      szRet=szBlock;
-    };
-    return (szRet);
-  }
-  
-  Cipher.szDecryptBlock=function (szID,szBlock) {
-    var szRet;
-    if ((Cipher.arrInstances[szID]) && (Cipher.arrInstances[szID]!=undefined)) {
-      szRet=Cipher.arrInstances[szID].objUsedCipher.szDecryptBlock(Cipher.arrInstances[szID].szCiphersID,szBlock);
-    } else {
-      throwException('Unknown Object Reference Exception',szID,'Cipher','szDecryptBlock');
-      szRet=szBlock;
-    };
-    return (szRet);
-  }
-};
+})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);

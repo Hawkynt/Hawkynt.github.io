@@ -12,13 +12,13 @@ String.prototype.trim = function() {
 
 /* DOM EXTENSIONS */
 getMetaContent=function (varParam1,optional_varParam2) {
-  var szName;
+  var name;
   var objObject;
   if (optional_varParam2) {
-    szName=optional_varParam2;
+    name =optional_varParam2;
     objObject=varParam1;
   } else {
-    szName=varParam1;
+    name =varParam1;
     objObject=window.document;
   };
   var arrMetas=getElements_ByNodeName(objObject.getElementsByTagName('head')[0],'meta');
@@ -246,7 +246,7 @@ intScreenHeight=function () {
 
 /* EXTENSIONS */
 /* global Functions */
-szGenerateUniqueID=function (intLen) {
+generateUniqueID =function (intLen) {
   var szRet='';
   if (!intLen) intLen=16;
   var szChars='abcdefghijklmnopqrstuvwxz0123456789';
@@ -265,7 +265,7 @@ intIsInArray=function (arrArray,varObj) {
   return (-1);
 }
 
-throwException=function (szException,szParameters,szModule,szFunction) {
+throwException =function (szException,szParameters,szModule,szFunction) {
   alert(szParameters+"\r\n"+szException+"\r\nFAILED in "+szModule+'::'+szFunction+' !');
 }
 

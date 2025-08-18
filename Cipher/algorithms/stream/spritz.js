@@ -1,0 +1,403 @@
+#!/usr/bin/env node
+/*
+ * Universal Spritz Stream Cipher
+ * Compatible with both Browser and Node.js environments
+ * Based on Spritz specification by Rivest and Schuldt
+ * (c)2006-2025 Hawkynt
+ * 
+ * Spritz is a sponge-like stream cipher designed by Ron Rivest and Jacob Schuldt.
+ * It's a successor to RC4 with improved security properties:
+ * - Sponge construction similar to Keccak/SHA-3
+ * - Variable absorption and squeezing phases
+ * - More complex state update than RC4
+ * - Supports authentication (AEAD mode)
+ * 
+ * Key features:
+ * - 256-byte state array (like RC4)
+ * - Additional state variables for improved security
+ * - Sponge-like absorb/squeeze operations
+ * - Variable key and IV lengths
+ * 
+ * This implementation is for educational purposes only.
+ */
+
+(function(global) {
+  'use strict';
+  
+  // Ensure environment dependencies are available
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    try {
+      require('../../OpCodes.js');
+    } catch (e) {
+      console.error('Failed to load OpCodes:', e.message);
+      return;
+    }
+  }
+  
+  if (!global.Cipher) {
+    if (typeof require !== 'undefined') {
+      // Node.js environment - load dependencies
+      try {
+        require('../../universal-cipher-env.js');
+        require('../../cipher.js');
+      } catch (e) {
+        console.error('Failed to load cipher dependencies:', e.message);
+        return;
+      }
+    } else {
+      console.error('Spritz cipher requires Cipher system to be loaded first');
+      return;
+    }
+  }
+  
+  // Create Spritz cipher object
+  const Spritz = {
+    // Public interface properties
+    internalName: 'Spritz',
+    name: 'Spritz Stream Cipher',
+    comment: 'Spritz RC4-like Sponge Stream Cipher - Rivest/Schuldt design with improved security',
+    minKeyLength: 1,    // Spritz supports variable key lengths
+    maxKeyLength: 256,  // Up to 256 bytes
+    stepKeyLength: 1,
+    minBlockSize: 1,    // Stream cipher - processes byte by byte
+    maxBlockSize: 65536, // Practical limit for processing
+    stepBlockSize: 1,
+    instances: {},
+    cantDecode: false,
+    isInitialized: false,
+    boolIsStreamCipher: true, // Mark as stream cipher
+    
+    // Spritz constants
+    STATE_SIZE: 256,       // 256-byte state array
+    
+    // Initialize cipher
+    Init: function() {
+      Spritz.isInitialized = true;
+    },
+    
+    // Set up key and initialize Spritz state
+    KeySetup: function(key) {
+      let id;
+      do {
+        id = 'Spritz[' + global.generateUniqueID() + ']';
+      } while (Spritz.instances[id] || global.objectInstances[id]);
+      
+      Spritz.instances[szID] = new Spritz.SpritzInstance(key);
+      global.objectInstances[szID] = true;
+      return szID;
+    },
+    
+    // Clear cipher data
+    ClearData: function(id) {
+      if (Spritz.instances[id]) {
+        // Clear sensitive data
+        const instance = Spritz.instances[szID];
+        if (instance.S && global.OpCodes) {
+          global.OpCodes.ClearArray(instance.S);
+        }
+        if (instance.keyBytes && global.OpCodes) {
+          global.OpCodes.ClearArray(instance.keyBytes);
+        }
+        delete Spritz.instances[szID];
+        delete global.objectInstances[szID];
+        return true;
+      } else {
+        global.throwException('Unknown Object Reference Exception', id, 'Spritz', 'ClearData');
+        return false;
+      }
+    },
+    
+    // Encrypt block (for stream cipher, this generates keystream and XORs with input)
+    encryptBlock: function(id, szPlainText) {
+      if (!Spritz.instances[id]) {
+        global.throwException('Unknown Object Reference Exception', id, 'Spritz', 'encryptBlock');
+        return szPlainText;
+      }
+      
+      const instance = Spritz.instances[szID];
+      let result = '';
+      
+      for (let n = 0; n < szPlainText.length; n++) {
+        const keystreamByte = instance.squeeze();
+        const plaintextByte = szPlainText.charCodeAt(n) & 0xFF;
+        const ciphertextByte = plaintextByte ^ keystreamByte;
+        szResult += String.fromCharCode(ciphertextByte);
+      }
+      
+      return szResult;
+    },
+    
+    // Decrypt block (same as encrypt for stream cipher)
+    decryptBlock: function(id, szCipherText) {
+      // For stream ciphers, decryption is identical to encryption
+      return Spritz.encryptBlock(id, szCipherText);
+    },
+    
+    // Spritz Instance class
+    SpritzInstance: function(key, iv) {
+      this.S = new Array(Spritz.STATE_SIZE);    // State array (256 bytes)
+      this.i = 0;                               // State pointer i
+      this.j = 0;                               // State pointer j
+      this.k = 0;                               // State pointer k
+      this.z = 0;                               // State pointer z
+      this.a = 0;                               // Absorb counter
+      this.w = 1;                               // Whip counter
+      this.keyBytes = [];                       // Store key as byte array
+      this.ivBytes = [];                        // Store IV as byte array
+      
+      // Convert key to byte array
+      if (typeof key === 'string') {
+        for (let k = 0; k < key.length; k++) {
+          this.keyBytes.push(key.charCodeAt(k) & 0xFF);
+        }
+      } else if (Array.isArray(key)) {
+        for (let k = 0; k < key.length; k++) {
+          this.keyBytes.push(key[k] & 0xFF);
+        }
+      } else if (key) {
+        throw new Error('Spritz key must be string or byte array');
+      }
+      
+      // Process IV if provided
+      if (iv) {
+        if (typeof iv === 'string') {
+          for (let n = 0; n < iv.length; n++) {
+            this.ivBytes.push(iv.charCodeAt(n) & 0xFF);
+          }
+        } else if (Array.isArray(iv)) {
+          for (let n = 0; n < iv.length; n++) {
+            this.ivBytes.push(iv[n] & 0xFF);
+          }
+        }
+      }
+      
+      // Initialize the cipher
+      this.initialize();
+    }
+  };
+  
+  // Add methods to SpritzInstance prototype
+  Spritz.SpritzInstance.prototype = {
+    
+    /**
+     * Initialize Spritz cipher state
+     */
+    initialize: function() {
+      this.initializeState();
+      this.absorb(this.keyBytes);
+      
+      if (this.ivBytes.length > 0) {
+        this.absorbStop();
+        this.absorb(this.ivBytes);
+      }
+      
+      this.absorbStop();
+      this.shuffle();
+    },
+    
+    /**
+     * Initialize state array to identity permutation
+     */
+    initializeState: function() {
+      this.i = 0;
+      this.j = 0;
+      this.k = 0;
+      this.z = 0;
+      this.a = 0;
+      this.w = 1;
+      
+      // Initialize S to identity permutation
+      for (let v = 0; v < Spritz.STATE_SIZE; v++) {
+        this.S[v] = v;
+      }
+    },
+    
+    /**
+     * Absorb data into the state (sponge absorb phase)
+     * @param {Array} data - Byte array to absorb
+     */
+    absorb: function(data) {
+      for (let v = 0; v < data.length; v++) {
+        this.absorbByte(data[v]);
+      }
+    },
+    
+    /**
+     * Absorb a single byte
+     * @param {number} b - Byte to absorb (0-255)
+     */
+    absorbByte: function(b) {
+      this.absorbNibble(b & 0xF);       // Low nibble
+      this.absorbNibble((b >>> 4) & 0xF); // High nibble
+    },
+    
+    /**
+     * Absorb a single nibble (4 bits)
+     * @param {number} x - Nibble to absorb (0-15)
+     */
+    absorbNibble: function(x) {
+      if (this.a === (Spritz.STATE_SIZE / 2)) {
+        this.shuffle();
+      }
+      
+      // Swap S[a] and S[128 + x]
+      const temp = this.S[this.a];
+      this.S[this.a] = this.S[128 + x];
+      this.S[128 + x] = temp;
+      
+      this.a = (this.a + 1) % (Spritz.STATE_SIZE / 2);
+    },
+    
+    /**
+     * Stop absorbing (pad and transition to squeeze phase)
+     */
+    absorbStop: function() {
+      if (this.a === (Spritz.STATE_SIZE / 2)) {
+        this.shuffle();
+      }
+      
+      this.a = (this.a + 1) % (Spritz.STATE_SIZE / 2);
+    },
+    
+    /**
+     * Shuffle the state (equivalent to multiple whip operations)
+     */
+    shuffle: function() {
+      this.whip(512);  // 2 * STATE_SIZE whips
+      this.crush();
+      this.whip(512);  // 2 * STATE_SIZE whips
+      this.crush();
+      this.whip(512);  // 2 * STATE_SIZE whips
+      this.a = 0;
+    },
+    
+    /**
+     * Whip operation (state mixing)
+     * @param {number} r - Number of whip rounds
+     */
+    whip: function(r) {
+      for (let v = 0; v < r; v++) {
+        this.update();
+      }
+      this.w = (this.w + 2) % 256;
+    },
+    
+    /**
+     * Crush operation (ensures proper avalanche)
+     */
+    crush: function() {
+      for (let v = 0; v < (Spritz.STATE_SIZE / 2); v++) {
+        if (this.S[v] > this.S[Spritz.STATE_SIZE - 1 - v]) {
+          // Swap S[v] and S[STATE_SIZE - 1 - v]
+          const temp = this.S[v];
+          this.S[v] = this.S[Spritz.STATE_SIZE - 1 - v];
+          this.S[Spritz.STATE_SIZE - 1 - v] = temp;
+        }
+      }
+    },
+    
+    /**
+     * Update state pointers and mix state
+     */
+    update: function() {
+      this.i = (this.i + this.w) % Spritz.STATE_SIZE;
+      this.j = (this.k + this.S[(this.j + this.S[this.i]) % Spritz.STATE_SIZE]) % Spritz.STATE_SIZE;
+      this.k = (this.i + this.k + this.S[this.j]) % Spritz.STATE_SIZE;
+      
+      // Swap S[i] and S[j]
+      const temp = this.S[this.i];
+      this.S[this.i] = this.S[this.j];
+      this.S[this.j] = temp;
+    },
+    
+    /**
+     * Drip operation (prepare for output)
+     * @returns {number} Output byte candidate
+     */
+    drip: function() {
+      if (this.a > 0) {
+        this.shuffle();
+      }
+      
+      this.update();
+      return this.output();
+    },
+    
+    /**
+     * Output function
+     * @returns {number} Output byte
+     */
+    output: function() {
+      this.z = this.S[(this.j + this.S[(this.i + this.S[(this.z + this.k) % Spritz.STATE_SIZE]) % Spritz.STATE_SIZE]) % Spritz.STATE_SIZE];
+      return this.z;
+    },
+    
+    /**
+     * Squeeze operation (sponge squeeze phase)
+     * @returns {number} Keystream byte (0-255)
+     */
+    squeeze: function() {
+      if (this.a > 0) {
+        this.shuffle();
+      }
+      
+      return this.drip();
+    },
+    
+    /**
+     * Generate multiple keystream bytes
+     * @param {number} length - Number of bytes to generate
+     * @returns {Array} Array of keystream bytes
+     */
+    generateKeystream: function(length) {
+      const keystream = [];
+      for (let n = 0; n < length; n++) {
+        keystream.push(this.squeeze());
+      }
+      return keystream;
+    },
+    
+    /**
+     * Reset the cipher to initial state with optional new IV
+     * @param {Array|string} newIV - Optional new IV
+     */
+    reset: function(newIV) {
+      if (newIV !== undefined) {
+        this.ivBytes = [];
+        if (typeof newIV === 'string') {
+          for (let n = 0; n < newIV.length; n++) {
+            this.ivBytes.push(newIV.charCodeAt(n) & 0xFF);
+          }
+        } else if (Array.isArray(newIV)) {
+          for (let n = 0; n < newIV.length; n++) {
+            this.ivBytes.push(newIV[n] & 0xFF);
+          }
+        }
+      }
+      
+      this.initialize();
+    },
+    
+    /**
+     * Set a new IV and reinitialize
+     * @param {Array|string} newIV - New IV value
+     */
+    setIV: function(newIV) {
+      this.reset(newIV);
+    }
+  };
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
+    global.Cipher.AddCipher(Spritz);
+  }
+  
+  // Export to global scope
+  global.Spritz = Spritz;
+  
+  // Node.js module export
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Spritz;
+  }
+  
+})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
