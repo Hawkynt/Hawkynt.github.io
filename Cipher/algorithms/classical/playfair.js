@@ -36,9 +36,67 @@
   
   // Create Playfair cipher object
   const Playfair = {
+    name: "Playfair Cipher", 
+    description: "Classical digraph substitution cipher using 5x5 key grid. Encrypts pairs of letters according to position rules. Invented by Charles Wheatstone but popularized by Lord Playfair.",
+    inventor: "Charles Wheatstone",
+    year: 1854,
+    country: "GB",
+    category: "cipher",
+    subCategory: "Classical Cipher", 
+    securityStatus: "educational",
+    securityNotes: "Broken by frequency analysis of digraphs and known plaintext attacks. More secure than monoalphabetic ciphers but still vulnerable.",
+    
+    documentation: [
+      {text: "Wikipedia Article", uri: "https://en.wikipedia.org/wiki/Playfair_cipher"},
+      {text: "Historical Background", uri: "https://en.wikipedia.org/wiki/Charles_Wheatstone"},
+      {text: "Cryptanalysis Methods", uri: "https://www.dcode.fr/playfair-cipher"}
+    ],
+    
+    references: [
+      {text: "DCode Implementation", uri: "https://www.dcode.fr/playfair-cipher"},
+      {text: "Educational Tutorial", uri: "https://cryptii.com/pipes/playfair-cipher"},
+      {text: "Practical Cryptography", uri: "https://practicalcryptography.com/ciphers/classical-era/playfair/"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Digraph Frequency Analysis",
+        text: "Common digraph patterns in plaintext create patterns in ciphertext, enabling cryptanalysis",
+        mitigation: "Educational use only - use modern ciphers for real security"
+      },
+      {
+        type: "Known Plaintext Attack",
+        text: "If plaintext-ciphertext pairs are known, key matrix can be reconstructed",
+        mitigation: "Avoid using with predictable or repeated messages"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Lord Playfair Demonstration",
+        uri: "https://en.wikipedia.org/wiki/Playfair_cipher#History",
+        input: "HIDETHEGOLDINTHETREESTUMP".split('').map(c => c.charCodeAt(0)),
+        key: "PLAYFAIREXAMPLE".split('').map(c => c.charCodeAt(0)),
+        expected: "BMODZBXDNABEKUDMUIXMMOUVIF".split('').map(c => c.charCodeAt(0))
+      },
+      {
+        text: "Standard Educational Example", 
+        uri: "https://www.dcode.fr/playfair-cipher",
+        input: "INSTRUMENTS".split('').map(c => c.charCodeAt(0)),
+        key: "MONARCHY".split('').map(c => c.charCodeAt(0)),
+        expected: "GATLMZCLRQ".split('').map(c => c.charCodeAt(0))
+      },
+      {
+        text: "Hello World Test",
+        uri: "https://practicalcryptography.com/ciphers/classical-era/playfair/",
+        input: "HELLO".split('').map(c => c.charCodeAt(0)),
+        key: "KEYWORD".split('').map(c => c.charCodeAt(0)),
+        expected: "GYIXZS".split('').map(c => c.charCodeAt(0))
+      }
+    ],
+    
     // Public interface properties
     internalName: 'Playfair',
-    name: 'Playfair Cipher',
     comment: 'Classical digraph substitution cipher using 5x5 key grid',
     minKeyLength: 1,
     maxKeyLength: 256,
@@ -48,8 +106,8 @@
     stepBlockSize: 1,
     instances: {},
 
-  // ===== COMPREHENSIVE PLAYFAIR TEST VECTORS WITH HISTORICAL AND CRYPTANALYTIC METADATA =====
-  testVectors: [
+  // Historical test vectors (retained for educational value)
+  historicalTestVectors: [
     // Historical Military Examples
     {
       algorithm: 'Playfair',

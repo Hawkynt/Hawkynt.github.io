@@ -60,10 +60,10 @@
         text: "Salsa20 Test Vector",
         uri: "https://cr.yp.to/snuffle/spec.pdf",
         keySize: 32,
-        key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
-        nonce: OpCodes.Hex8ToBytes("0102030405060708"),
-        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: [] // Official test vectors available
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20") : [],
+        nonce: global.OpCodes ? global.OpCodes.Hex8ToBytes("0102030405060708") : [],
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000000000000000") : [],
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("4dfa5e481da23ea09a31022050859936") : []
       }
     ],
 
@@ -86,8 +86,8 @@
       year: 2005,
       background: 'Designed for the eSTREAM project as a high-speed stream cipher. Uses a simple ARX (Add-Rotate-XOR) design with no S-boxes or lookup tables, making it fast on a wide variety of platforms.',
       
-      securityStatus: global.CipherMetadata.SecurityStatus.SECURE,
-      securityNotes: 'Currently secure with no known practical attacks. Part of eSTREAM portfolio. Inspired the design of ChaCha20.',
+      securityStatus: null,
+      securityNotes: 'Well-analyzed eSTREAM finalist with strong security record. Part of the eSTREAM portfolio. Inspired the design of ChaCha20.',
       
       category: global.CipherMetadata.Categories.STREAM,
       subcategory: 'ARX (Add-Rotate-XOR)',

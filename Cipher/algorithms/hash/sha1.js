@@ -175,6 +175,11 @@
      * @param {string} message - Input message to hash
      * @returns {string} Hex-encoded SHA-1 hash (40 characters)
      */
+    // Required interface method for hash functions
+    Hash: function(message) {
+      return this.hash(message);
+    },
+
     hash: function(message) {
       // Convert message to byte array
       const msgBytes = OpCodes.StringToBytes(message);

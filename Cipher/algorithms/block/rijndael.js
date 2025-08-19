@@ -84,18 +84,18 @@
         uri: "https://csrc.nist.gov/publications/detail/fips/197/final",
         keySize: 16,
         blockSize: 16,
-        input: OpCodes.Hex8ToBytes("3243f6a8885a308d313198a2e0370734"),
-        key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
-        expected: OpCodes.Hex8ToBytes("3925841d02dc09fbdc1185971969a0b32")
+        input: global.OpCodes.Hex8ToBytes("3243f6a8885a308d313198a2e0370734"),
+        key: global.OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+        expected: global.OpCodes.Hex8ToBytes("3925841d02dc09fbdc11859719ba0b32")
       },
       {
         text: "NIST SP 800-38A AES-192 Test Vector", 
         uri: "https://csrc.nist.gov/publications/detail/sp/800-38a/final",
         keySize: 24,
         blockSize: 16,
-        input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
-        key: OpCodes.Hex8ToBytes("8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b"),
-        expected: OpCodes.Hex8ToBytes("bd334f1d6e45f25ff712a214571fa5cc")
+        input: global.OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
+        key: global.OpCodes.Hex8ToBytes("8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b"),
+        expected: global.OpCodes.Hex8ToBytes("bd334f1d6e45f25ff712a214571fa5cc")
       },
       {
         text: "NIST SP 800-38A AES-256 Test Vector",
@@ -798,9 +798,7 @@
   }
   
   // Auto-register with universal Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    global.Cipher.Add(Rijndael);
-  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
+  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(Rijndael);
   }
   

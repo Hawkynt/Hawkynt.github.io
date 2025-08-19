@@ -39,32 +39,40 @@
     ],
     
     knownVulnerabilities: [
-      "Practical collision attacks (Wang et al. 2004)",
-      "Chosen-prefix collision attacks",
-      "Not suitable for any security application",
-      "Vulnerable to rainbow table attacks"
+      {
+        type: "Collision Attack", 
+        text: "Practical collision attacks demonstrated by Wang et al. in 2004. Can generate two different messages with same MD5 hash in reasonable time.",
+        mitigation: "Use SHA-256 or newer hash functions for any security application"
+      },
+      {
+        type: "Chosen-prefix Collision", 
+        text: "Attackers can create collisions with chosen prefixes, enabling sophisticated attacks on certificates and documents.",
+        mitigation: "Never use MD5 for digital signatures or certificates"
+      },
+      {
+        type: "Rainbow Table Attack", 
+        text: "Common passwords and short inputs vulnerable to precomputed rainbow table attacks.",
+        mitigation: "Use proper salting and modern password hashing functions like Argon2"
+      }
     ],
     
     tests: [
       {
         text: "RFC 1321 Test Vector - Empty string",
         uri: "https://tools.ietf.org/html/rfc1321",
-        input: OpCodes.StringToBytes(""),
-        key: null,
+        input: null,
         expected: OpCodes.Hex8ToBytes("d41d8cd98f00b204e9800998ecf8427e")
       },
       {
         text: "RFC 1321 Test Vector - 'a'",
         uri: "https://tools.ietf.org/html/rfc1321",
         input: OpCodes.StringToBytes("a"),
-        key: null,
         expected: OpCodes.Hex8ToBytes("0cc175b9c0f1b6a831c399e269772661")
       },
       {
         text: "RFC 1321 Test Vector - 'abc'",
         uri: "https://tools.ietf.org/html/rfc1321",
         input: OpCodes.StringToBytes("abc"),
-        key: null,
         expected: OpCodes.Hex8ToBytes("900150983cd24fb0d6963f7d28e17f72")
       }
     ],
@@ -98,6 +106,11 @@
       4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,
       6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21
     ],
+
+    // Required interface method for hash functions
+    Hash: function(data) {
+      return this.compute(data);
+    },
 
     // Core MD5 computation
     compute: function(data) {

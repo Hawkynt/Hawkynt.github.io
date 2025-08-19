@@ -415,7 +415,7 @@
         delete global.objectInstances[id];
         return true;
       } else {
-        global.throwException('Unknown Object Reference Exception', id, 'PBKDF2', 'ClearData');
+        throw new Error('Unknown Object Reference Exception: ' + id + ' in PBKDF2.ClearData');
         return false;
       }
     },
@@ -423,7 +423,7 @@
     // Derive key (encryption interface)
     encryptBlock: function(id, unused) {
       if (!PBKDF2.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'PBKDF2', 'encryptBlock');
+        throw new Error('Unknown Object Reference Exception: ' + id + ' in PBKDF2.encryptBlock');
         return '';
       }
       
@@ -439,7 +439,7 @@
     
     // PBKDF2 is one-way (no decryption)
     decryptBlock: function(id, cipherText) {
-      global.throwException('Operation Not Supported Exception', 'PBKDF2 function cannot be reversed', 'PBKDF2', 'decryptBlock');
+      throw new Error('Operation Not Supported Exception: PBKDF2 function cannot be reversed in PBKDF2.decryptBlock');
       return cipherText;
     },
     

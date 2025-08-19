@@ -77,6 +77,7 @@
   };
   
   const Cross = {
+    internalName: "CROSS",
     name: "CROSS",
     description: "Code-based signature scheme using Random linear codes Over a Small field. NIST Round 2 post-quantum signature scheme based on syndrome decoding.",
     inventor: "Marco Baldi, Sebastian Bitzer, Alessio Pavoni, Paolo Santini, Antonia Wachter-Zeh, Violetta Weger",
@@ -94,6 +95,7 @@
     minBlockSize: 16,
     maxBlockSize: 2048,
     stepBlockSize: 16,
+    instances: {},
     
     documentation: [
       {text: "NIST PQC Additional Digital Signatures", uri: "https://csrc.nist.gov/projects/pqc-dig-sig"},

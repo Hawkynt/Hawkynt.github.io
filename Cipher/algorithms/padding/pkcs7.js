@@ -77,7 +77,7 @@
       szCategory: 'padding',
       szCountry: 'USA',
       nYear: 1993,
-      metadata: PKCS7Metadata,
+      metadata: PKCS7,
       working: true,
       
       Init: function() {

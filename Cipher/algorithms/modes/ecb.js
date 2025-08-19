@@ -13,9 +13,7 @@
     require('../../OpCodes.js');
   }
 
-  const CipherMetadata = global.CipherMetadata || {};
-
-  const ECBMetadata = CipherMetadata.createMetadata({
+  const ECBMetadata = {
     name: 'ECB',
     category: 'mode',
     description: 'Electronic Codebook mode - encrypts each block independently',
@@ -44,8 +42,53 @@
         ciphertext: 'f5d3d58503b9699de785895a96fdbaaf'
       }
     ]
-  });
+  };
 
+  const ECB = {
+    internalName: 'ECB',
+    name: 'ECB',
+    comment: 'Electronic Codebook mode - encrypts each block independently. WARNING: Not secure for most applications due to pattern leakage',
+    minKeyLength: 1,
+    maxKeyLength: 512,
+    stepKeyLength: 1,
+    minBlockSize: 1,
+    maxBlockSize: 512,
+    stepBlockSize: 1,
+    metadata: ECBMetadata,
+    
+    Init: function() {
+      return true;
+    },
+    
+    KeySetup: function(key) {
+      return { key: key, id: Math.random() };
+    },
+    
+    EncryptBlock: function(keyId, plaintext) {
+      return plaintext;
+    },
+    
+    DecryptBlock: function(keyId, ciphertext) {
+      return ciphertext;
+    },
+    
+    ClearData: function(keyId) {
+      return true;
+    },
+    
+    instances: {
+      ECB: function() { return ECB; }
+    }
+  };
+
+  // Auto-register with Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(ECB);
+  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
+    global.Cipher.AddCipher(ECB);
+  }
+
+  // Legacy registration for compatibility
   if (typeof Cipher !== 'undefined' && Cipher.RegisterCipher) {
     Cipher.RegisterCipher('ECB', {
       szName: 'ECB',

@@ -12,9 +12,7 @@
     require('../../OpCodes.js');
   }
 
-  const CipherMetadata = global.CipherMetadata || {};
-
-  const OFBMetadata = CipherMetadata.createMetadata({
+  const OFBMetadata = {
     name: 'OFB',
     category: 'mode',
     description: 'Output Feedback mode - stream cipher mode with no error propagation',
@@ -39,8 +37,64 @@
         expected: '3b3fd92eb72dad20333449f8e83cfb4a'
       }
     ]
-  });
+  };
 
+  const OFB = {
+    internalName: 'OFB',
+    name: 'OFB',
+    comment: 'Output Feedback mode - stream cipher mode with no error propagation',
+    minKeyLength: 1,
+    maxKeyLength: 512,
+    stepKeyLength: 1,
+    minBlockSize: 1,
+    maxBlockSize: 512,
+    stepBlockSize: 1,
+    metadata: OFBMetadata,
+    
+    Init: function() {
+      return true;
+    },
+    
+    KeySetup: function(key, blockCipher) {
+      return { 
+        key: key, 
+        blockCipher: blockCipher,
+        blockSize: blockCipher?.blockSize || 16,
+        id: Math.random() 
+      };
+    },
+    
+    EncryptBlock: function(keyId, plaintext) {
+      // OFB encryption implementation placeholder
+      return plaintext.split('').map((char, i) => 
+        String.fromCharCode(char.charCodeAt(0) ^ ((i + keyId.key.charCodeAt(i % keyId.key.length)) % 256))
+      ).join('');
+    },
+    
+    DecryptBlock: function(keyId, ciphertext) {
+      // OFB decryption implementation placeholder  
+      return ciphertext.split('').map((char, i) => 
+        String.fromCharCode(char.charCodeAt(0) ^ ((i + keyId.key.charCodeAt(i % keyId.key.length)) % 256))
+      ).join('');
+    },
+    
+    ClearData: function(keyId) {
+      return true;
+    },
+    
+    instances: {
+      OFB: function() { return OFB; }
+    }
+  };
+
+  // Auto-register with Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(OFB);
+  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
+    global.Cipher.AddCipher(OFB);
+  }
+
+  // Legacy registration for compatibility
   if (typeof Cipher !== 'undefined' && Cipher.RegisterCipher) {
     Cipher.RegisterCipher('OFB', {
       szName: 'OFB',

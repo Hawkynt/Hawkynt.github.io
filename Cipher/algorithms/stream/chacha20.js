@@ -59,7 +59,7 @@
   const ChaCha20 = {
     // Public interface properties
     internalName: 'ChaCha20',
-    name: 'ChaCha20 Stream Cipher',
+    name: 'ChaCha20',
     comment: 'ChaCha20 Stream Cipher - RFC 7539 specification with official test vectors',
     minKeyLength: 32,   // ChaCha20 requires exactly 32-byte keys
     maxKeyLength: 32,
@@ -71,7 +71,7 @@
     cantDecode: false,
     isInitialized: false,
     
-    name: "ChaCha20",
+    // Required metadata following CONTRIBUTING.md
     description: "Modern stream cipher designed by Daniel J. Bernstein as a variant of Salsa20 with improved diffusion. Uses 20 rounds of quarter-round operations with 256-bit keys and 96-bit nonces. Widely adopted in TLS 1.3, SSH, and other modern protocols.",
     inventor: "Daniel J. Bernstein",
     year: 2008,
@@ -100,9 +100,9 @@
         text: "RFC 7539 ChaCha20 Test Vector 1",
         uri: "https://tools.ietf.org/html/rfc7539#section-2.4.2",
         keySize: 32,
-        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
-        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
-        expected: OpCodes.Hex8ToBytes("76b8e0ada0f13d90405d6ae55386bd28bdd219b8a08ded1aa836efcc8b770dc7da41597c5157488d7724e03fb8d84a376a43b8f41518a11cc387b669b2ee6586")
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000") : [],
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f") : [],
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("76b8e0ada0f13d90405d6ae55386bd28bdd219b8a08ded1aa836efcc8b770dc7da41597c5157488d7724e03fb8d84a376a43b8f41518a11cc387b669b2ee6586") : []
       }
     ],
 
@@ -296,6 +296,36 @@
     decryptBlock: function(id, ciphertext) {
       // For stream ciphers, decryption is identical to encryption
       return ChaCha20.encryptBlock(id, ciphertext);
+    },
+
+    // Required interface method for stream ciphers
+    encrypt: function(id, plaintext) {
+      // Convert byte array to string if necessary
+      if (Array.isArray(plaintext)) {
+        plaintext = String.fromCharCode.apply(null, plaintext);
+      }
+      const result = this.encryptBlock(id, plaintext);
+      // Convert result back to byte array
+      const bytes = [];
+      for (let i = 0; i < result.length; i++) {
+        bytes.push(result.charCodeAt(i));
+      }
+      return bytes;
+    },
+
+    // Required interface method for stream ciphers  
+    decrypt: function(id, ciphertext) {
+      // Convert byte array to string if necessary
+      if (Array.isArray(ciphertext)) {
+        ciphertext = String.fromCharCode.apply(null, ciphertext);
+      }
+      const result = this.decryptBlock(id, ciphertext);
+      // Convert result back to byte array
+      const bytes = [];
+      for (let i = 0; i < result.length; i++) {
+        bytes.push(result.charCodeAt(i));
+      }
+      return bytes;
     },
     
     // ChaCha20 Instance class

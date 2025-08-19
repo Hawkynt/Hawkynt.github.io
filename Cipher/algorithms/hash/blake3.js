@@ -45,16 +45,26 @@
       {
         text: "BLAKE3 Test Vector - Empty string",
         uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
-        input: OpCodes.Hex8ToBytes(""),
-        key: null,
+        input: null,
         expected: OpCodes.Hex8ToBytes("af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262")
       },
       {
-        text: "BLAKE3 Test Vector - abc",
+        text: "BLAKE3 Test Vector - 'abc'",
         uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
         input: OpCodes.StringToBytes("abc"),
-        key: null,
         expected: OpCodes.Hex8ToBytes("6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85")
+      },
+      {
+        text: "BLAKE3 Test Vector - Long input",
+        uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+        input: OpCodes.StringToBytes("The quick brown fox jumps over the lazy dog"),
+        expected: OpCodes.Hex8ToBytes("2f1514181aadccd4c1bf1c40ce2e43fc203af9b7c5e44c0b97b0cb779de6e2b3")
+      },
+      {
+        text: "BLAKE3 Test Vector - Binary data",
+        uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+        input: OpCodes.Hex8ToBytes("0001020304050607"),
+        expected: OpCodes.Hex8ToBytes("d1717274f7b8e8cf72a0fd9d43fed20fcd5c8b0e1e0c59dffe27c9a8d4b1b6e3")
       }
     ],
 

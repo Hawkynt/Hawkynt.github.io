@@ -105,6 +105,16 @@
      * @param {string|Array} data - Input data
      * @returns {Array} Compressed data
      */
+    // Required interface method for compression algorithms
+    Compress: function(data) {
+      return this.compress(data);
+    },
+
+    // Required interface method for compression algorithms  
+    Decompress: function(data) {
+      return this.decompress(data);
+    },
+
     compress: function(data) {
       // Convert input to byte array
       let input;

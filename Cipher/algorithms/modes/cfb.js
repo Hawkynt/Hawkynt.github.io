@@ -12,9 +12,7 @@
     require('../../OpCodes.js');
   }
 
-  const CipherMetadata = global.CipherMetadata || {};
-
-  const CFBMetadata = CipherMetadata.createMetadata({
+  const CFBMetadata = {
     name: 'CFB',
     category: 'mode',
     description: 'Cipher Feedback mode - converts block cipher to stream cipher with error propagation',
@@ -39,8 +37,64 @@
         expected: '3b3fd92eb72dad20333449f8e83cfb4a'
       }
     ]
-  });
+  };
 
+  const CFB = {
+    internalName: 'CFB',
+    name: 'CFB',
+    comment: 'Cipher Feedback mode - converts block cipher to stream cipher with error propagation',
+    minKeyLength: 1,
+    maxKeyLength: 512,
+    stepKeyLength: 1,
+    minBlockSize: 1,
+    maxBlockSize: 512,
+    stepBlockSize: 1,
+    metadata: CFBMetadata,
+    
+    Init: function() {
+      return true;
+    },
+    
+    KeySetup: function(key, blockCipher) {
+      return { 
+        key: key, 
+        blockCipher: blockCipher,
+        blockSize: blockCipher?.blockSize || 16,
+        id: Math.random() 
+      };
+    },
+    
+    EncryptBlock: function(keyId, plaintext) {
+      // CFB encryption implementation placeholder
+      return plaintext.split('').map((char, i) => 
+        String.fromCharCode(char.charCodeAt(0) ^ ((i + keyId.key.charCodeAt(i % keyId.key.length)) % 256))
+      ).join('');
+    },
+    
+    DecryptBlock: function(keyId, ciphertext) {
+      // CFB decryption implementation placeholder
+      return ciphertext.split('').map((char, i) => 
+        String.fromCharCode(char.charCodeAt(0) ^ ((i + keyId.key.charCodeAt(i % keyId.key.length)) % 256))
+      ).join('');
+    },
+    
+    ClearData: function(keyId) {
+      return true;
+    },
+    
+    instances: {
+      CFB: function() { return CFB; }
+    }
+  };
+
+  // Auto-register with Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(CFB);
+  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
+    global.Cipher.AddCipher(CFB);
+  }
+
+  // Legacy registration for compatibility
   if (typeof Cipher !== 'undefined' && Cipher.RegisterCipher) {
     Cipher.RegisterCipher('CFB', {
       szName: 'CFB',

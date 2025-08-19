@@ -70,9 +70,9 @@
         text: "RFC 6229 Test Vector 1",
         uri: "https://tools.ietf.org/html/rfc6229#section-2",
         keySize: 5,
-        key: OpCodes.Hex8ToBytes("0102030405"),
-        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: OpCodes.Hex8ToBytes("b2396305f03dc027ccc3524a0a1118a8")
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("0102030405") : [],
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000000000000000") : [],
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("b2396305f03dc027ccc3524a0a1118a8") : []
       }
     ],
 
@@ -87,58 +87,6 @@
     cantDecode: false,
     isInitialized: false,
     
-    // Metadata for educational purposes  
-    metadata: {
-      securityStatus: global.CipherMetadata.SecurityStatus.DEPRECATED,
-      securityNotes: 'DEPRECATED: Known biases in keystream, related-key attacks, and weaknesses in key scheduling. Banned from TLS 1.3 and prohibited by RFC 7465.',
-      
-      category: global.CipherMetadata.Categories.STREAM,
-      subcategory: 'byte-oriented stream cipher',
-      complexity: global.CipherMetadata.ComplexityLevels.BEGINNER,
-      
-      keySize: 'variable (1-256 bytes)', // Variable key size
-      blockSize: 1, // Byte-oriented
-      rounds: 'N/A', // Stream cipher
-      
-      specifications: [
-        {
-          name: 'RFC 6229: Test Vectors for the Stream Cipher RC4',
-          url: 'https://tools.ietf.org/html/rfc6229'
-        },
-        {
-          name: 'Applied Cryptography - Bruce Schneier',
-          url: 'https://www.schneier.com/academic/paperfiles/paper-rc4.pdf'
-        }
-      ],
-      
-      testVectors: [
-        {
-          name: 'RFC 6229 Test Vectors',
-          url: 'https://tools.ietf.org/html/rfc6229'
-        }
-      ],
-      
-      references: [
-        {
-          name: 'Wikipedia: RC4',
-          url: 'https://en.wikipedia.org/wiki/RC4'
-        },
-        {
-          name: 'RFC 7465: Prohibiting RC4 Cipher Suites',
-          url: 'https://tools.ietf.org/html/rfc7465'
-        }
-      ],
-      
-      implementationNotes: 'Standard KSA/PRGA implementation. Educational only - demonstrates why simple stream ciphers can have subtle but fatal flaws.',
-      performanceNotes: 'Very fast - approximately 7 cycles per byte. However, security flaws make it unsuitable for any real use.',
-      
-      educationalValue: 'Excellent case study in cryptographic failures, stream cipher design, and why cryptographic primitives need rigorous analysis.',
-      prerequisites: ['Stream cipher concepts', 'Pseudo-random number generation', 'Cryptographic security models'],
-      
-      tags: ['stream', 'deprecated', 'insecure', 'historical', 'rsa-security', 'rivest', 'wep', 'tls-deprecated'],
-      
-      version: '2.0'
-    },
 
     // Official test vectors from RFC/NIST standards and authoritative sources
     officialTestVectors: [
@@ -332,6 +280,36 @@
     decryptBlock: function(id, ciphertext) {
       // For stream ciphers, decryption is identical to encryption
       return RC4.encryptBlock(id, ciphertext);
+    },
+
+    // Required interface method for stream ciphers
+    encrypt: function(id, plaintext) {
+      // Convert byte array to string if necessary
+      if (Array.isArray(plaintext)) {
+        plaintext = String.fromCharCode.apply(null, plaintext);
+      }
+      const result = this.encryptBlock(id, plaintext);
+      // Convert result back to byte array
+      const bytes = [];
+      for (let i = 0; i < result.length; i++) {
+        bytes.push(result.charCodeAt(i));
+      }
+      return bytes;
+    },
+
+    // Required interface method for stream ciphers  
+    decrypt: function(id, ciphertext) {
+      // Convert byte array to string if necessary
+      if (Array.isArray(ciphertext)) {
+        ciphertext = String.fromCharCode.apply(null, ciphertext);
+      }
+      const result = this.decryptBlock(id, ciphertext);
+      // Convert result back to byte array
+      const bytes = [];
+      for (let i = 0; i < result.length; i++) {
+        bytes.push(result.charCodeAt(i));
+      }
+      return bytes;
     },
     
     // RC4 Instance class

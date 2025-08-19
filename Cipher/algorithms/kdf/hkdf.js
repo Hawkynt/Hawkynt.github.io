@@ -331,7 +331,7 @@
         delete global.objectInstances[id];
         return true;
       } else {
-        global.throwException('Unknown Object Reference Exception', id, 'HKDF', 'ClearData');
+        throw new Error('Unknown Object Reference Exception: ' + id + ' in HKDF.ClearData');
         return false;
       }
     },
@@ -339,7 +339,7 @@
     // Derive key (encryption interface)
     encryptBlock: function(id, unused) {
       if (!HKDF.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'HKDF', 'encryptBlock');
+        throw new Error('Unknown Object Reference Exception: ' + id + ' in HKDF.encryptBlock');
         return '';
       }
       
@@ -355,7 +355,7 @@
     
     // HKDF is one-way (no decryption)
     decryptBlock: function(id, cipherText) {
-      global.throwException('Operation Not Supported Exception', 'HKDF function cannot be reversed', 'HKDF', 'decryptBlock');
+      throw new Error('Operation Not Supported Exception: HKDF function cannot be reversed in HKDF.decryptBlock');
       return cipherText;
     },
     

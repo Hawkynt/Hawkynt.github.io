@@ -368,7 +368,7 @@
         delete global.objectInstances[id];
         return true;
       } else {
-        global.throwException('Unknown Object Reference Exception', id, 'HMAC', 'ClearData');
+        throw new Error('Unknown Object Reference Exception: ' + id + ' in HMAC.ClearData');
         return false;
       }
     },
@@ -376,7 +376,7 @@
     // Generate HMAC (encryption interface)
     encryptBlock: function(id, message) {
       if (!HMAC.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'HMAC', 'encryptBlock');
+        throw new Error('Unknown Object Reference Exception: ' + id + ' in HMAC.encryptBlock');
         return '';
       }
       
@@ -386,7 +386,7 @@
     
     // HMAC is one-way (no decryption)
     decryptBlock: function(id, ciphertext) {
-      global.throwException('Operation Not Supported Exception', 'HMAC function cannot be reversed', 'HMAC', 'decryptBlock');
+      throw new Error('Operation Not Supported Exception: HMAC function cannot be reversed in HMAC.decryptBlock');
       return ciphertext;
     },
     
