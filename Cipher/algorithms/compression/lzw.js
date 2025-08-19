@@ -58,19 +58,19 @@
       {
         text: "Simple repeated pattern",
         uri: "Basic LZW test", 
-        input: ANSIToBytes("ABABABAB"),
-        expected: Hex8ToBytes("010041424101010258")
+        input: OpCodes.StringToBytes("ABABABAB"),
+        expected: OpCodes.Hex8ToBytes("010041424101010258")
       },
       {
         text: "Text with common substrings",
         uri: "Text compression test",
-        input: ANSIToBytes("TOBEORNOTTOBEORTOBEORNOT"),
+        input: OpCodes.StringToBytes("TOBEORNOTTOBEORTOBEORNOT"),
         expected: null
       },
       {
         text: "GIF-style compression",
         uri: "Image data test",
-        input: Hex8ToBytes("474946"),
+        input: OpCodes.Hex8ToBytes("474946"),
         expected: null
       }
     ],

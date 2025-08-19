@@ -28,14 +28,16 @@
   const TIGER_DIGESTSIZE = 24;      // 192 bits
   const TIGER_ROUNDS = 3;           // Number of passes
   
-  // Tiger S-boxes (8x256 entries each, using 32-bit representation)
-  // These are the official Tiger S-boxes reduced to 32-bit for compatibility
+  // Tiger S-boxes (8x256 entries each, using 32-bit representation for compatibility)
+  // First S-box sample converted to hex format for readability
   const SBOX = [
-    // S-box 0 (first 64 entries shown, full implementation would include all 256)
-    [0x02AAB17C, 0xF4324D90, 0x6B6B51F4, 0x5B682138, 0x89D809A7, 0xFC439CFC, 0xF39DD476, 0x7A2DBDDE,
-     0x8FE97DB7, 0x8B948F94, 0x5A728994, 0xB15A0E8A, 0xEF4A8A4B, 0xE4B699A4, 0x570426F4, 0x1F83D9AB,
-     0xC9E4B8F4, 0xB71C7294, 0x8A324D94, 0xF4B618F4, 0x5ACAD694, 0xE7F4B294, 0x7A18F494, 0x9BE4D894,
-     0x6A4B7E94, 0xF5B81294, 0x8D2A4694, 0xC4F69494, 0x7B18F294, 0xAE7C9494, 0x6D2B4894, 0xF8B61694],
+    // S-box 0 - Convert first 32 entries to demonstrate hex format
+    OpCodes.Hex8ToBytes(
+      "02AAB17CF4324D906B6B51F45B68213889D809A7FC439CFCF39DD4767A2DBDDE" +
+      "8FE97DB78B948F945A728994B15A0E8AEF4A8A4BE4B699A4570426F41F83D9AB" +
+      "C9E4B8F4B71C72948A324D94F4B618F45ACAD694E7F4B2947A18F4949BE4D894" +
+      "6A4B7E94F5B812948D2A4694C4F694947B18F294AE7C94946D2B4894F8B61694"
+    ),
     // Additional S-boxes would follow similar pattern...
     // For educational purposes, using simplified S-boxes
     [], [], [], [], [], [], []

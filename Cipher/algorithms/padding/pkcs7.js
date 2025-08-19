@@ -6,6 +6,11 @@
 
 (function(global) {
   'use strict';
+  
+  // Environment detection and OpCodes loading
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    require('../../OpCodes.js');
+  }
 
   const PKCS7 = {
     name: "PKCS#7 Padding",
@@ -42,15 +47,15 @@
         text: "PKCS#7 Padding Test - 13 bytes to 16-byte boundary",
         uri: "https://tools.ietf.org/rfc/rfc2315.txt",
         blockSize: 16,
-        input: Hex8ToBytes("6bc1bee22e409f96e93d7e11739317"),
-        expected: Hex8ToBytes("6bc1bee22e409f96e93d7e11739317030303")
+        input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317"),
+        expected: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317030303")
       },
       {
         text: "PKCS#7 Padding Test - Full block gets full padding block",
         uri: "https://tools.ietf.org/rfc/rfc2315.txt",
         blockSize: 16,
-        input: Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
-        expected: Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a10101010101010101010101010101010")
+        input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
+        expected: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a10101010101010101010101010101010")
       }
     ],
 

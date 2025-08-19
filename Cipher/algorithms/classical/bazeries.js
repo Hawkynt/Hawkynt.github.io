@@ -5,6 +5,21 @@
 
 (function(global) {
   'use strict';
+  
+  // Load dependencies
+  if (!global.OpCodes) {
+    if (typeof require !== 'undefined') {
+      try {
+        require('../../OpCodes.js');
+      } catch (e) {
+        console.error('Failed to load OpCodes dependency:', e.message);
+        return;
+      }
+    } else {
+      console.error('Algorithm requires OpCodes library to be loaded first');
+      return;
+    }
+  }
 
   const Bazeries = {
     name: "Bazeries Cylinder Cipher",
@@ -46,23 +61,23 @@
       {
         text: "Historical Bazeries Example",
         uri: "https://archive.org/details/leschiffressecr00bazegoog",
-        input: ANSIToBytes("DEFENDTHEEASTWALLOFTHECASTLE"),
-        key: ANSIToBytes("CIPHER"),
-        expected: ANSIToBytes("FEDEFNADHEEATSTWOLALTFHLEETSCA")
+        input: OpCodes.StringToBytes("DEFENDTHEEASTWALLOFTHECASTLE"),
+        key: OpCodes.StringToBytes("CIPHER"),
+        expected: OpCodes.StringToBytes("FEDEFNADHEEATSTWOLALTFHLEETSCA")
       },
       {
         text: "Educational Demonstration",
         uri: "https://cryptomuseum.com/crypto/bazeries/",
-        input: ANSIToBytes("HELLO"),
-        key: ANSIToBytes("KEY"),
-        expected: ANSIToBytes("HLLOE")
+        input: OpCodes.StringToBytes("HELLO"),
+        key: OpCodes.StringToBytes("KEY"),
+        expected: OpCodes.StringToBytes("HLLOE")
       },
       {
         text: "Matrix Transposition Test",
         uri: "https://www.dcode.fr/bazeries-cipher",
-        input: ANSIToBytes("CRYPTOGRAPHY"),
-        key: ANSIToBytes("SECRET"),
-        expected: ANSIToBytes("COTGRRAHPYC")
+        input: OpCodes.StringToBytes("CRYPTOGRAPHY"),
+        key: OpCodes.StringToBytes("SECRET"),
+        expected: OpCodes.StringToBytes("COTGRRAHPYC")
       }
     ],
 

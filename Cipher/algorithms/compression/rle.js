@@ -58,20 +58,20 @@
       {
         text: "Simple repeated pattern",
         uri: "Basic RLE test",
-        input: ANSIToBytes("AAABBBCCC"),
-        expected: Hex8ToBytes("1B0341421B03421B0343")
+        input: OpCodes.StringToBytes("AAABBBCCC"),
+        expected: OpCodes.Hex8ToBytes("1B0341421B03421B0343")
       },
       {
         text: "Long run compression",
         uri: "Maximum compression test",
-        input: ANSIToBytes("AAAAAAAAAA"),
-        expected: Hex8ToBytes("1B0A41")
+        input: OpCodes.StringToBytes("AAAAAAAAAA"),
+        expected: OpCodes.Hex8ToBytes("1B0A41")
       },
       {
         text: "No repeated characters", 
         uri: "Worst case test",
-        input: ANSIToBytes("ABCDEF"),
-        expected: ANSIToBytes("ABCDEF")
+        input: OpCodes.StringToBytes("ABCDEF"),
+        expected: OpCodes.StringToBytes("ABCDEF")
       }
     ],
 

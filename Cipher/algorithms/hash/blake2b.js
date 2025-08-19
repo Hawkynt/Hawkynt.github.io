@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /*
  * BLAKE2b Implementation
  * (c)2006-2025 Hawkynt
@@ -5,6 +6,16 @@
 
 (function(global) {
   'use strict';
+  
+  // Load OpCodes for cryptographic operations
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    try {
+      require('../../OpCodes.js');
+    } catch (e) {
+      console.error('Failed to load OpCodes.js:', e.message);
+      return;
+    }
+  }
   
   // BLAKE2b constants
   const BLAKE2B_BLOCKBYTES = 128;    // Block size in bytes
@@ -247,7 +258,7 @@
     country: "CH",
     category: "hash",
     subCategory: "Cryptographic Hash",
-    securityStatus: null,
+    securityStatus: "secure",
     securityNotes: "BLAKE2b is a modern hash function with excellent security properties. Educational implementation - use proven libraries for production.",
     
     documentation: [
@@ -274,10 +285,10 @@
       {
         text: "RFC 7693 Test Vector - abc",
         uri: "https://tools.ietf.org/html/rfc7693",
-        input: OpCodes.ANSIToBytes("abc"),
+        input: OpCodes.StringToBytes("abc"),
         key: null,
         expected: OpCodes.Hex8ToBytes("ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923")
-      },,
+      },
       {
         text: "RFC 7693 Test Vector - MAC mode",
         uri: "https://tools.ietf.org/html/rfc7693",
@@ -304,5 +315,12 @@
   if (global.Cipher && typeof global.Cipher.Add === 'function')
     global.Cipher.Add(Blake2b);
   
+  // Export for Node.js
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Blake2b;
+  }
+  
+  // Export to global scope
+  global.Blake2b = Blake2b;
 
 })(typeof global !== 'undefined' ? global : window);

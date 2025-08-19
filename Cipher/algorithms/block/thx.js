@@ -92,8 +92,8 @@
         uri: "https://github.com/Steppenwolfe65/CEX",
         keySize: 32,
         blockSize: 16,
-        input: Hex8ToBytes("00000000000000000000000000000000"),
-        key: Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
         expected: null // Will be computed by implementation
       }
     ],

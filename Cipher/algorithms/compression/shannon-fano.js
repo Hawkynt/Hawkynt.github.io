@@ -58,19 +58,19 @@
       {
         text: "Basic frequency encoding",
         uri: "Educational test case",
-        input: ANSIToBytes("AAABBC"),
+        input: OpCodes.StringToBytes("AAABBC"),
         expected: null
       },
       {
         text: "Alphabet frequency test", 
         uri: "Character distribution test",
-        input: ANSIToBytes("ABCDEF"),
+        input: OpCodes.StringToBytes("ABCDEF"),
         expected: null
       },
       {
         text: "Repeated pattern encoding",
         uri: "Pattern recognition test",
-        input: ANSIToBytes("ABABAB"),
+        input: OpCodes.StringToBytes("ABABAB"),
         expected: null
       }
     ],

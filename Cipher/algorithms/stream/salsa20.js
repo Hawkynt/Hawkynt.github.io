@@ -60,9 +60,9 @@
         text: "Salsa20 Test Vector",
         uri: "https://cr.yp.to/snuffle/spec.pdf",
         keySize: 32,
-        key: Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
-        nonce: Hex8ToBytes("0102030405060708"),
-        input: Hex8ToBytes("00000000000000000000000000000000"),
+        key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
+        nonce: OpCodes.Hex8ToBytes("0102030405060708"),
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
         expected: [] // Official test vectors available
       }
     ],

@@ -5,6 +5,21 @@
 
 (function(global) {
   'use strict';
+  
+  // Load dependencies
+  if (!global.OpCodes) {
+    if (typeof require !== 'undefined') {
+      try {
+        require('../../OpCodes.js');
+      } catch (e) {
+        console.error('Failed to load OpCodes dependency:', e.message);
+        return;
+      }
+    } else {
+      console.error('Algorithm requires OpCodes library to be loaded first');
+      return;
+    }
+  }
 
   const Affine = {
     name: "Affine Cipher",
@@ -46,30 +61,30 @@
       {
         text: "Standard Academic Example",
         uri: "https://www.dcode.fr/affine-cipher",
-        input: ANSIToBytes("AFFINECIPHER"),
-        key: ANSIToBytes("5,8"),
-        expected: ANSIToBytes("IHHWVCCSWHCP")
+        input: OpCodes.StringToBytes("AFFINECIPHER"),
+        key: OpCodes.StringToBytes("5,8"),
+        expected: OpCodes.StringToBytes("IHHWVCCSWHCP")
       },
       {
         text: "DCode Reference Test", 
         uri: "https://www.dcode.fr/affine-cipher",
-        input: ANSIToBytes("DCODE"),
-        key: ANSIToBytes("5,3"),
-        expected: ANSIToBytes("SNVSX")
+        input: OpCodes.StringToBytes("DCODE"),
+        key: OpCodes.StringToBytes("5,3"),
+        expected: OpCodes.StringToBytes("SNVSX")
       },
       {
         text: "GeeksforGeeks Example",
         uri: "https://www.geeksforgeeks.org/affine-cipher/",
-        input: ANSIToBytes("HELLO"),
-        key: ANSIToBytes("17,20"),
-        expected: ANSIToBytes("JKZZY")
+        input: OpCodes.StringToBytes("HELLO"),
+        key: OpCodes.StringToBytes("17,20"),
+        expected: OpCodes.StringToBytes("JKZZY")
       },
       {
         text: "Identity Transformation",
         uri: "https://en.wikipedia.org/wiki/Affine_cipher",
-        input: ANSIToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
-        key: ANSIToBytes("1,0"),
-        expected: ANSIToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        input: OpCodes.StringToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+        key: OpCodes.StringToBytes("1,0"),
+        expected: OpCodes.StringToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
       }
     ],
 

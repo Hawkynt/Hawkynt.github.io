@@ -72,19 +72,19 @@
       {
         text: "Basic frequency encoding test",
         uri: "https://en.wikipedia.org/wiki/Huffman_coding#Example",
-        input: ANSIToBytes("AAABBC"),
-        expected: Hex8ToBytes("01110010111")
+        input: OpCodes.StringToBytes("AAABBC"),
+        expected: OpCodes.Hex8ToBytes("01110010111")
       },
       {
         text: "Single character optimization", 
         uri: "Edge case test",
-        input: ANSIToBytes("AAAAA"),
-        expected: Hex8ToBytes("00000")
+        input: OpCodes.StringToBytes("AAAAA"),
+        expected: OpCodes.Hex8ToBytes("00000")
       },
       {
         text: "Text compression example",
         uri: "Canterbury Corpus",
-        input: ANSIToBytes("Lorem ipsum"),
+        input: OpCodes.StringToBytes("Lorem ipsum"),
         expected: null
       }
     ],
