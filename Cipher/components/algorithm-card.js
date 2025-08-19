@@ -334,11 +334,9 @@ class AlgorithmCard {
     }
     
     getTestVectorCount() {
-        if (this.algorithm.implementation && this.algorithm.implementation.testVectors) {
-            return this.algorithm.implementation.testVectors.length;
-        }
-        if (this.algorithm.testVectors) {
-            return this.algorithm.testVectors.length;
+        // Per CONTRIBUTING.md, test vectors should be in algorithm.tests
+        if (this.algorithm.tests && Array.isArray(this.algorithm.tests)) {
+            return this.algorithm.tests.length;
         }
         return 0;
     }

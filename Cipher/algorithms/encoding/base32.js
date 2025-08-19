@@ -36,9 +36,60 @@
   
   // Create BASE32 encoder object
   const BASE32 = {
-    // Public interface properties
+    // Required metadata per CONTRIBUTING.md
+    name: "Base32 Encoding",
+    description: "Binary-to-text encoding scheme that represents binary data in ASCII string format using a radix-32 representation. Uses alphabet A-Z and 2-7 with padding for data transport and storage.",
+    inventor: "Originally in RFC 989, standardized in RFC 4648",
+    year: 1987,
+    country: "US",
+    category: "encodingScheme", 
+    subCategory: "Base Encoding",
+    securityStatus: null,
+    securityNotes: "Not encryption - only encoding for safe transport. Provides no security or obfuscation, easily reversible.",
+    
+    documentation: [
+      {text: "RFC 4648: The Base16, Base32, and Base64 Data Encodings", uri: "https://tools.ietf.org/html/rfc4648"},
+      {text: "Base32 - Wikipedia", uri: "https://en.wikipedia.org/wiki/Base32"},
+      {text: "RFC 3548 (Obsoleted by RFC 4648)", uri: "https://tools.ietf.org/html/rfc3548"}
+    ],
+    
+    references: [
+      {text: "Python base64 module", uri: "https://docs.python.org/3/library/base64.html#base64.b32encode"},
+      {text: "JavaScript Base32 Implementation", uri: "https://github.com/LinusU/base32-encode"},
+      {text: "Google Authenticator Base32 Usage", uri: "https://github.com/google/google-authenticator/wiki/Key-Uri-Format"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "RFC 4648 empty string test",
+        uri: "https://tools.ietf.org/html/rfc4648#section-10",
+        input: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("") : [],
+        expected: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("") : []
+      },
+      {
+        text: "RFC 4648 single character test", 
+        uri: "https://tools.ietf.org/html/rfc4648#section-10",
+        input: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("f") : [102],
+        expected: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("MY======") : [77, 89, 61, 61, 61, 61, 61, 61]
+      },
+      {
+        text: "RFC 4648 standard foo test",
+        uri: "https://tools.ietf.org/html/rfc4648#section-10", 
+        input: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("foo") : [102, 111, 111],
+        expected: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("MZXW6===") : [77, 90, 88, 87, 54, 61, 61, 61]
+      },
+      {
+        text: "RFC 4648 extended foobar test",
+        uri: "https://tools.ietf.org/html/rfc4648#section-10",
+        input: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("foobar") : [102, 111, 111, 98, 97, 114],
+        expected: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("MZXW6YTBOI======") : [77, 90, 88, 87, 54, 89, 84, 66, 79, 73, 61, 61, 61, 61, 61, 61]
+      }
+    ],
+
+    // Legacy interface properties for compatibility  
     internalName: 'BASE32',
-    name: 'BASE32',
     comment: 'RFC 4648 compliant BASE32 encoding',
     minKeyLength: 0,
     maxKeyLength: 0,
@@ -54,7 +105,7 @@
     ALPHABET: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567',
     PADDING: '=',
     
-    // Comprehensive test vectors for BASE32 encoding
+    // Legacy test vectors for compatibility
     testVectors: [
       {
         algorithm: 'BASE32',
@@ -154,61 +205,6 @@
       }
     ],
     
-    // Reference links for BASE32 specifications and implementations
-    referenceLinks: {
-      specifications: [
-        {
-          name: 'RFC 4648: The Base16, Base32, and Base64 Data Encodings',
-          url: 'https://tools.ietf.org/html/rfc4648',
-          description: 'Official specification for Base32 encoding standard'
-        },
-        {
-          name: 'RFC 3548: Base64/32 Data Encodings (obsoleted by RFC 4648)',
-          url: 'https://tools.ietf.org/html/rfc3548',
-          description: 'Historical specification - superseded by RFC 4648'
-        },
-        {
-          name: 'Base32 Extended Hex Alphabet',
-          url: 'https://tools.ietf.org/html/rfc4648#section-7',
-          description: 'Alternative Base32 encoding using extended hex alphabet'
-        }
-      ],
-      implementations: [
-        {
-          name: 'Python base64 module documentation',
-          url: 'https://docs.python.org/3/library/base64.html#base64.b32encode',
-          description: 'Standard library implementation reference'
-        },
-        {
-          name: 'Base32 JavaScript Implementation Guide',
-          url: 'https://github.com/LinusU/base32-encode',
-          description: 'Popular JavaScript implementation with examples'
-        },
-        {
-          name: 'Google Authenticator Base32 Usage',
-          url: 'https://github.com/google/google-authenticator/wiki/Key-Uri-Format',
-          description: 'Real-world usage in two-factor authentication'
-        }
-      ],
-      validation: [
-        {
-          name: 'Base32 Online Encoder/Decoder',
-          url: 'https://emn178.github.io/online-tools/base32_encode.html',
-          description: 'Online tool for validating Base32 encoding results'
-        },
-        {
-          name: 'RFC 4648 Test Vectors',
-          url: 'https://tools.ietf.org/html/rfc4648#section-10',
-          description: 'Official test vectors for validation'
-        },
-        {
-          name: 'Base32 Crockford Specification',
-          url: 'https://www.crockford.com/base32.html',
-          description: 'Alternative Base32 specification with different alphabet'
-        }
-      ]
-    },
-    
     // Initialize encoder
     Init: function() {
       BASE32.isInitialized = true;
@@ -254,6 +250,34 @@
         str += String.fromCharCode(bytes[i]);
       }
       return str;
+    },
+
+    // Required interface method for encoding schemes
+    Encode: function(input) {
+      // Create temporary instance for encoding
+      const tempId = this.KeySetup();
+      try {
+        // Convert byte array to string if necessary
+        if (Array.isArray(input)) {
+          input = this.bytesToString(input);
+        }
+        return this.encryptBlock(tempId, input);
+      } finally {
+        this.ClearData(tempId);
+      }
+    },
+
+    // Required interface method for encoding schemes
+    Decode: function(input) {
+      // Create temporary instance for decoding
+      const tempId = this.KeySetup();
+      try {
+        const result = this.decryptBlock(tempId, input);
+        // Convert result to byte array
+        return this.stringToBytes(result);
+      } finally {
+        this.ClearData(tempId);
+      }
     },
     
     // Encode block (encryption)

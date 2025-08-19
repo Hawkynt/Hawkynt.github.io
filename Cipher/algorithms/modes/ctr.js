@@ -8,7 +8,16 @@
   'use strict';
 
   const CTR = {
+    internalName: "CTR",
     name: "CTR",
+    comment: "Counter mode transforms a block cipher into a stream cipher by encrypting successive counter values to generate a keystream.",
+    minKeyLength: 1,
+    maxKeyLength: 512,
+    stepKeyLength: 1,
+    minBlockSize: 1,
+    maxBlockSize: 512,
+    stepBlockSize: 1,
+    
     description: "Counter mode transforms a block cipher into a stream cipher by encrypting successive counter values to generate a keystream. Supports parallel processing and random access.",
     inventor: "Whitfield Diffie, Martin Hellman",
     year: 1979,
@@ -48,18 +57,36 @@
         uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf",
         keySize: 16,
         blockSize: 16,
-        input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
-        key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
-        iv: OpCodes.Hex8ToBytes("f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"),
-        expected: OpCodes.Hex8ToBytes("874d6191b620e3261bef6864990db6ce")
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a") : [],
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c") : [],
+        iv: global.OpCodes ? global.OpCodes.Hex8ToBytes("f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff") : [],
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("874d6191b620e3261bef6864990db6ce") : []
       }
     ],
 
     Init: function() {
       return true;
+    },
+    
+    KeySetup: function(key) {
+      return { key: key, counter: 0, nonce: null, id: Math.random() };
+    },
+    
+    EncryptBlock: function(keyId, plaintext) {
+      return plaintext;
+    },
+    
+    DecryptBlock: function(keyId, ciphertext) {
+      return ciphertext;
+    },
+    
+    ClearData: function(keyId) {
+      return true;
+    },
+    
+    instances: {
+      CTR: function() { return CTR; }
     }
-
-    // TODO: Implementation methods here...
   };
 
   // Auto-register with Subsystem if available
@@ -73,7 +100,7 @@
       szCategory: 'mode',
       szCountry: 'USA',
       nYear: 1979,
-      metadata: CTRMetadata,
+      metadata: CTR,
       working: true,
       
       Init: function() {

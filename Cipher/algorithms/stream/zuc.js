@@ -352,11 +352,25 @@
     }
   };
   
-  // Register with global Cipher system if available
+  // Auto-register with Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(ZUC);
+  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
+    global.Cipher.AddCipher(ZUC);
+  }
+  
+  // Legacy registration for compatibility
   if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
     const ZUCCipher = {
       internalName: ZUC.internalName,
       name: ZUC.name,
+      minKeyLength: ZUC.minKeyLength,
+      maxKeyLength: ZUC.maxKeyLength,
+      stepKeyLength: ZUC.stepKeyLength,
+      minBlockSize: ZUC.minBlockSize,
+      maxBlockSize: ZUC.maxBlockSize,
+      stepBlockSize: ZUC.stepBlockSize,
+      instances: {},
       
       // Store current key and IV
       currentKey: null,
@@ -375,7 +389,7 @@
           if (key.length !== 32) {
             return "Key must be 32 hex characters (128 bits)";
           }
-          this.currentKey = OpCodes.HexToBytes(key);
+          this.currentKey = global.OpCodes.HexToBytes(key);
           return "Key set successfully";
         } catch (e) {
           return "Error: " + e.message;
@@ -387,16 +401,16 @@
         try {
           // Use first 32 chars as IV if longer than 32 chars
           let iv = this.currentIV;
-          let plaintext = plaintext;
+          let plaintextData = plaintext;
           
-          if (plaintext.length > 32) {
-            iv = OpCodes.HexToBytes(plaintext.substring(0, 32));
-            plaintext = plaintext.substring(32);
+          if (plaintextData.length > 32) {
+            iv = global.OpCodes.HexToBytes(plaintextData.substring(0, 32));
+            plaintextData = plaintextData.substring(32);
           }
           
-          const data = OpCodes.HexToBytes(plaintext);
+          const data = global.OpCodes.HexToBytes(plaintextData);
           const result = ZUC.Process(data, this.currentKey, iv);
-          return OpCodes.BytesToHex(result);
+          return global.OpCodes.BytesToHex(result);
         } catch (e) {
           return "Error: " + e.message;
         }
@@ -409,23 +423,23 @@
       
       ClearData: function() {
         if (this.currentKey) {
-          OpCodes.ClearArray(this.currentKey);
+          global.OpCodes.ClearArray(this.currentKey);
         }
         if (this.currentIV) {
-          OpCodes.ClearArray(this.currentIV);
+          global.OpCodes.ClearArray(this.currentIV);
         }
         if (ZUC.LFSR) {
-          OpCodes.ClearArray(ZUC.LFSR);
+          global.OpCodes.ClearArray(ZUC.LFSR);
         }
         if (ZUC.X) {
-          OpCodes.ClearArray(ZUC.X);
+          global.OpCodes.ClearArray(ZUC.X);
         }
         ZUC.R1 = 0;
         ZUC.R2 = 0;
       }
     };
     
-    Cipher.AddCipher(ZUC);
+    // Removed duplicate registration to prevent conflicts
   }
   
   // Export for Node.js

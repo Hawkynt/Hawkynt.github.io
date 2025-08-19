@@ -40,9 +40,16 @@
     ],
     
     knownVulnerabilities: [
-      "Not cryptographically secure",
-      "Vulnerable to intentional collision attacks",
-      "Can be easily forged with specific bit patterns"
+      {
+        type: "Collision Attack", 
+        text: "CRC-32 can be easily manipulated to produce collisions with specific bit patterns. Not designed for cryptographic security.",
+        mitigation: "Use cryptographic hash functions like SHA-256 for security applications"
+      },
+      {
+        type: "Forgery Attack", 
+        text: "Attackers can modify data and adjust trailing bytes to maintain the same CRC-32 value.",
+        mitigation: "Never rely on CRC-32 for authentication or integrity in adversarial environments"
+      }
     ],
     
     tests: [
@@ -50,21 +57,18 @@
         text: "CRC-32 Test Vector - '123456789'",
         uri: "https://www.w3.org/TR/PNG/#D-CRCAppendix",
         input: OpCodes.StringToBytes("123456789"),
-        key: null,
         expected: OpCodes.Hex8ToBytes("CBF43926")
       },
       {
         text: "CRC-32 Test Vector - Empty",
         uri: "https://tools.ietf.org/html/rfc1952",
-        input: OpCodes.StringToBytes(""),
-        key: null,
+        input: null,
         expected: OpCodes.Hex8ToBytes("00000000")
       },
       {
         text: "CRC-32 Test Vector - 'A'",
         uri: "https://www.w3.org/TR/PNG/#D-CRCAppendix",
         input: OpCodes.StringToBytes("A"),
-        key: null,
         expected: OpCodes.Hex8ToBytes("D3D99E8B")
       }
     ],

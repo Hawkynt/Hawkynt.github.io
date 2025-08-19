@@ -51,9 +51,41 @@
   const GrainV1 = {
     internalName: 'grain-v1',
     name: 'Grain v1',
-    version: '1.0',
-    author: 'Hell, Johansson, Meier (2004)',
-    description: 'Lightweight eSTREAM finalist stream cipher for hardware',
+    comment: 'Grain v1 Stream Cipher - eSTREAM Profile 2 portfolio cipher for hardware',
+    
+    // Required metadata following CONTRIBUTING.md
+    description: "Lightweight stream cipher using LFSR and NFSR designed for restricted hardware environments. Selected for eSTREAM Portfolio Profile 2. Uses 80-bit keys and 64-bit IVs with 160-bit total state.",
+    inventor: "Martin Hell, Thomas Johansson, and Willi Meier",
+    year: 2004,
+    country: "SE",
+    category: "cipher",
+    subCategory: "Stream Cipher",
+    securityStatus: null,
+    securityNotes: "Part of eSTREAM Portfolio Profile 2. Designed for hardware efficiency with limited gate count. No known practical attacks.",
+    
+    documentation: [
+      {text: "eSTREAM Grain v1 Specification", uri: "https://www.ecrypt.eu.org/stream/grainpf.html"},
+      {text: "Grain - A New Stream Cipher", uri: "https://www.eit.lth.se/fileadmin/eit/courses/eit060f/Grain.pdf"},
+      {text: "eSTREAM Portfolio", uri: "https://www.ecrypt.eu.org/stream/"}
+    ],
+    
+    references: [
+      {text: "eSTREAM Grain Page", uri: "https://www.ecrypt.eu.org/stream/grainpf.html"},
+      {text: "Grain Family Website", uri: "http://www.grain-cipher.com/"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "eSTREAM Grain v1 Test Vector",
+        uri: "https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/grain/",
+        keySize: 10,
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("0000000000000000") : [],
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000") : [],
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("6b12c5c6a594a0d5") : []
+      }
+    ],
     
     // Cipher parameters
     nBlockSizeInBits: 1,   // Stream cipher - 1 bit at a time
@@ -281,8 +313,8 @@
   };
   
   // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(GrainV1);
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(GrainV1);
   }
   
   // Export for Node.js

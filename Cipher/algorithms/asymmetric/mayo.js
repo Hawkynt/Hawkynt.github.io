@@ -72,6 +72,7 @@
   initGF16Tables();
   
   const Mayo = {
+    internalName: "MAYO",
     name: "MAYO",
     description: "Multivariate quadrAtIc digital signatures with vOlatile keys. NIST Round 2 post-quantum signature scheme based on Oil and Vinegar multivariate cryptography.",
     inventor: "Ward Beullens",
@@ -89,6 +90,7 @@
     minBlockSize: 16,
     maxBlockSize: 1024,
     stepBlockSize: 16,
+    instances: {},
     
     documentation: [
       {text: "NIST PQC Additional Digital Signatures", uri: "https://csrc.nist.gov/projects/pqc-dig-sig"},

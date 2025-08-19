@@ -109,7 +109,8 @@ class CipherController {
         // Load from universal cipher system if available
         if (typeof Cipher !== 'undefined' && Cipher.GetCiphers) {
             const cipherNames = Cipher.GetCiphers();
-            console.log('Found cipher names:', cipherNames?.length || 0, cipherNames?.slice(0, 10));
+            console.log('📊 REGISTERED CIPHERS COUNT:', cipherNames?.length || 0);
+            console.log('📋 First 10 registered ciphers:', cipherNames?.slice(0, 10));
             
             for (const name of cipherNames) {
                 const cipher = Cipher.GetCipher(name);
@@ -152,9 +153,98 @@ class CipherController {
         // Store original order for unsorted state
         this.originalAlgorithmOrder = Array.from(this.algorithms.keys());
         
-        console.log(`📈 Loaded ${this.algorithms.size} algorithms`);
+        console.log(`📈 FINAL ALGORITHM COUNT: ${this.algorithms.size} algorithms loaded and validated for UI display`);
+        
+        // Show the difference between registered vs displayed
+        const registeredCount = (typeof Cipher !== 'undefined' && Cipher.GetCiphers) ? Cipher.GetCiphers().length : 0;
+        if (registeredCount > this.algorithms.size) {
+            console.log(`⚠️  DISCREPANCY: ${registeredCount} registered vs ${this.algorithms.size} displayed (${registeredCount - this.algorithms.size} filtered out)`);
+        } else {
+            console.log(`✅ All ${registeredCount} registered algorithms are displayed`);
+        }
     }
     
+    /**
+     * Infer category from algorithm name and properties
+     * TODO: this should be removed, as soon as all legacy code has the right properties available
+     */
+    inferCategory(name, cipher) {
+        const nameLower = name.toLowerCase();
+        
+        // Pattern matching for categories
+        if (nameLower.includes('aes') || nameLower.includes('des') || nameLower.includes('blowfish') || 
+            nameLower.includes('rijndael') || nameLower.includes('block')) {
+            return 'block';
+        }
+        
+        if (nameLower.includes('stream') || nameLower.includes('rc4') || nameLower.includes('chacha') || 
+            nameLower.includes('salsa')) {
+            return 'stream';
+        }
+        
+        if (nameLower.includes('sha') || nameLower.includes('md5') || nameLower.includes('hash') || 
+            nameLower.includes('blake') || nameLower.includes('digest')) {
+            return 'hash';
+        }
+        
+        if (nameLower.includes('caesar') || nameLower.includes('vigenere') || nameLower.includes('playfair') || 
+            nameLower.includes('classical') || nameLower.includes('enigma')) {
+            return 'classical';
+        }
+        
+        if (nameLower.includes('base64') || nameLower.includes('base32') || nameLower.includes('hex') || 
+            nameLower.includes('encoding') || nameLower.includes('morse')) {
+            return 'encoding';
+        }
+        
+        if (nameLower.includes('compress') || nameLower.includes('deflate') || nameLower.includes('huffman') || 
+            nameLower.includes('lz77') || nameLower.includes('lz4')) {
+            return 'compression';
+        }
+        
+        if (nameLower.includes('rsa') || nameLower.includes('asymmetric') || nameLower.includes('public') || 
+            nameLower.includes('ntru') || nameLower.includes('falcon')) {
+            return 'asymmetric';
+        }
+        
+        if (nameLower.includes('mode') || nameLower.includes('ecb') || nameLower.includes('cbc') || 
+            nameLower.includes('gcm') || nameLower.includes('ctr')) {
+            return 'mode';
+        }
+        
+        if (nameLower.includes('padding') || nameLower.includes('pkcs') || nameLower.includes('oaep')) {
+            return 'padding';
+        }
+        
+        if (nameLower.includes('mac') || nameLower.includes('hmac') || nameLower.includes('cmac')) {
+            return 'mac';
+        }
+        
+        if (nameLower.includes('kdf') || nameLower.includes('pbkdf') || nameLower.includes('argon') || 
+            nameLower.includes('scrypt')) {
+            return 'kdf';
+        }
+        
+        if (nameLower.includes('ecc') || nameLower.includes('hamming') || nameLower.includes('reed')) {
+            return 'ecc';
+        }
+        
+        if (nameLower.includes('checksum') || nameLower.includes('crc') || nameLower.includes('fletcher')) {
+            return 'checksum';
+        }
+        
+        // Check cipher properties for additional clues
+        if (cipher && cipher.maxBlockSize > 0) {
+            return 'block';
+        }
+        
+        if (cipher && cipher.maxBlockSize === 0) {
+            return 'stream';
+        }
+        
+        return 'special';
+    }
+
     /**
      * Map metadata category names to simple strings for compatibility
      */
@@ -726,8 +816,7 @@ class CipherController {
         const testVectorsContent = modal.querySelector('#modal-tab-test-vectors');
         
         // Check if the algorithm has test vectors
-        const implementation = algorithm.implementation;
-        const testVectors = this.extractTestVectors(implementation);
+        const testVectors = this.extractTestVectors(algorithm);
         
         let content = '<div class="test-vectors-header">';
         content += '<h3 class="metadata-section-title">🧪 Test Vectors</h3>';
@@ -764,10 +853,11 @@ class CipherController {
             // Table body
             content += '<tbody>';
             testVectors.forEach((vector, index) => {
-                const testName = vector.name || vector.description || vector.text || `Test Vector ${index + 1}`;
-                const inputData = vector.input || vector.plaintext || vector.data || vector.message || '';
-                const expectedData = vector.expected || vector.ciphertext || vector.output || vector.hash || '';
-                const source = vector.origin?.source || vector.source || 'Unknown';
+                // Per CONTRIBUTING.md standard fields
+                const testName = vector.text || vector.description || vector.name || vector.algorithm || `Test Vector ${index + 1}`;
+                const inputData = vector.input || vector.plaintext || vector.data || vector.message || vector.inputHex || '';
+                const expectedData = vector.expected || vector.ciphertext || vector.output || vector.hash || vector.hashHex || '';
+                const source = vector.uri || vector.origin?.source || vector.source || vector.standard || 'Unknown';
                 
                 content += `<tr class="vector-row" id="vector-row-${index}">`;
                 content += `<td><input type="checkbox" class="vector-checkbox" data-index="${index}"></td>`;
@@ -777,10 +867,10 @@ class CipherController {
                 content += `<td class="vector-source">${source}</td>`;
                 content += `<td class="vector-status" id="vector-status-${index}">⚪ Ready</td>`;
                 
-                // Link column
-                const hasLink = vector.uri || vector.origin?.url;
+                // Link column (per CONTRIBUTING.md, links should be in uri field)
+                const hasLink = vector.uri || vector.origin?.url || vector.link;
                 if (hasLink) {
-                    const linkUrl = vector.uri || vector.origin.url;
+                    const linkUrl = vector.uri || vector.origin?.url || vector.link;
                     content += `<td><a href="${linkUrl}" target="_blank" rel="noopener" class="source-link">🔗</a></td>`;
                 } else {
                     content += `<td><span class="no-source">-</span></td>`;
@@ -1149,9 +1239,23 @@ class ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')} {
     /**
      * Extract test vectors from algorithm implementation
      */
-    extractTestVectors(implementation) {
-        if (!implementation) return [];
-        return implementation.tests || [];
+    extractTestVectors(algorithm) {
+        if (!algorithm) return [];
+        
+        // According to CONTRIBUTING.md, test vectors should be in algorithm.tests
+        // Some older algorithms still use algorithm.testVectors (legacy)
+        
+        // Primary location: algorithm.tests (per CONTRIBUTING.md standard)
+        if (algorithm.tests && Array.isArray(algorithm.tests)) {
+            return algorithm.tests;
+        }
+        
+        // Secondary location: algorithm.testVectors (legacy naming)
+        if (algorithm.testVectors && Array.isArray(algorithm.testVectors)) {
+            return algorithm.testVectors;
+        }
+        
+        return [];
     }
     
     /**
@@ -1294,7 +1398,7 @@ class ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')} {
             const success = testResult.interfaceValid && testResult.testsPassed > 0;
             
             // Update UI with results
-            const testVectors = this.extractTestVectors(algorithm.implementation);
+            const testVectors = this.extractTestVectors(algorithm);
             testVectors.forEach((vector, index) => {
                 const resultEl = document.getElementById(`test-result-${index}`);
                 if (resultEl) {
@@ -1335,7 +1439,7 @@ class ${algorithm.name.replace(/[^a-zA-Z0-9]/g, '')} {
             return;
         }
         
-        const testVectors = this.extractTestVectors(algorithm.implementation);
+        const testVectors = this.extractTestVectors(algorithm);
         if (!testVectors || vectorIndex >= testVectors.length) {
             console.error(`Test vector ${vectorIndex} not found`);
             return;

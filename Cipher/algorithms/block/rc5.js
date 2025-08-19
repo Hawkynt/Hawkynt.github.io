@@ -74,9 +74,9 @@
         uri: "https://tools.ietf.org/rfc/rfc2040.txt",
         keySize: 16,
         blockSize: 8,
-        input: OpCodes.Hex8ToBytes("0000000000000000"),
-        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: OpCodes.Hex8ToBytes("21a5dbee154b8f6d")
+        input: global.OpCodes.Hex8ToBytes("0000000000000000"),
+        key: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("21a5dbee154b8f6d")
       }
     ],
 
@@ -91,8 +91,8 @@
     stepBlockSize: 1,
     instances: {},
 
-  // Official test vectors from RFC/NIST standards and authoritative sources
-  testVectors: [
+  // Legacy testVectors section - replaced with compliant tests above
+    legacyTestVectors: [
     {
         "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
         "key": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",

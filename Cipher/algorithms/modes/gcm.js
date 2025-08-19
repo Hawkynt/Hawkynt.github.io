@@ -90,7 +90,7 @@
       szCategory: 'mode',
       szCountry: 'USA',
       nYear: 2007,
-      metadata: GCMMetadata,
+      metadata: GCM,
       working: true,
       
       Init: function() {

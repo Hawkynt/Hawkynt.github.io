@@ -110,6 +110,34 @@
       }
       return str;
     },
+
+    // Required interface method for encoding schemes
+    Encode: function(input) {
+      // Create temporary instance for encoding
+      const tempId = this.KeySetup();
+      try {
+        // Convert byte array to string if necessary
+        if (Array.isArray(input)) {
+          input = this.bytesToString(input);
+        }
+        return this.encryptBlock(tempId, input);
+      } finally {
+        this.ClearData(tempId);
+      }
+    },
+
+    // Required interface method for encoding schemes
+    Decode: function(input) {
+      // Create temporary instance for decoding
+      const tempId = this.KeySetup();
+      try {
+        const result = this.decryptBlock(tempId, input);
+        // Convert result to byte array
+        return this.stringToBytes(result);
+      } finally {
+        this.ClearData(tempId);
+      }
+    },
     
     // Encode block (encryption)
     encryptBlock: function(id, plaintext) {

@@ -25,9 +25,66 @@
   
   // Create ROT13 cipher object
   const ROT13 = {
-    // Public interface properties
+    // Required metadata per CONTRIBUTING.md
+    name: "ROT13",
+    description: "Simple letter substitution cipher that replaces each letter with the letter 13 positions after it in the alphabet. ROT13 is its own inverse - applying ROT13 twice returns the original text.",
+    inventor: "Unknown (folklore origin)",
+    year: 1980,
+    country: null,
+    category: "encodingScheme",
+    subCategory: "Text Encoding",
+    securityStatus: "educational",
+    securityNotes: "Provides no security - trivially broken. Used for spoiler text and simple obfuscation. Educational purposes only.",
+    
+    documentation: [
+      {text: "ROT13 - Wikipedia", uri: "https://en.wikipedia.org/wiki/ROT13"},
+      {text: "Caesar Cipher Family", uri: "https://en.wikipedia.org/wiki/Caesar_cipher"},
+      {text: "Usenet ROT13 Usage", uri: "https://tools.ietf.org/html/rfc1036#section-5.2"}
+    ],
+    
+    references: [
+      {text: "UNIX tr Command Examples", uri: "https://www.gnu.org/software/coreutils/manual/html_node/tr-invocation.html"},
+      {text: "Python ROT13 Codec", uri: "https://docs.python.org/3/library/codecs.html#text-encodings"},
+      {text: "Educational Cryptography Examples", uri: "https://cryptomuseum.com/crypto/usa/rot13/index.htm"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Frequency Analysis",
+        text: "Letter frequencies remain unchanged, making it vulnerable to basic frequency analysis attacks",
+        mitigation: "Do not use for any security purposes"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Basic uppercase test",
+        uri: "https://en.wikipedia.org/wiki/ROT13#Example",
+        input: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("HELLO") : "HELLO".split('').map(c => c.charCodeAt(0)),
+        expected: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("URYYB") : "URYYB".split('').map(c => c.charCodeAt(0))
+      },
+      {
+        text: "Basic lowercase test",
+        uri: "Educational standard",
+        input: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("hello") : "hello".split('').map(c => c.charCodeAt(0)),
+        expected: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("uryyb") : "uryyb".split('').map(c => c.charCodeAt(0))
+      },
+      {
+        text: "Wikipedia mixed case example",
+        uri: "https://en.wikipedia.org/wiki/ROT13#Example",
+        input: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("To get to the other side!") : "To get to the other side!".split('').map(c => c.charCodeAt(0)),
+        expected: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("Gb trg gb gur bgure fvqr!") : "Gb trg gb gur bgure fvqr!".split('').map(c => c.charCodeAt(0))
+      },
+      {
+        text: "First half alphabet transformation",
+        uri: "Educational validation",
+        input: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("ABCDEFGHIJKLM") : "ABCDEFGHIJKLM".split('').map(c => c.charCodeAt(0)),
+        expected: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("NOPQRSTUVWXYZ") : "NOPQRSTUVWXYZ".split('').map(c => c.charCodeAt(0))
+      }
+    ],
+
+    // Legacy interface properties for compatibility
     internalName: 'ROT13',
-    name: 'ROT13',
     comment: 'ROT13 cipher - rotates letters by 13 positions',
     minKeyLength: 0,
     maxKeyLength: 0,
@@ -37,39 +94,39 @@
     stepBlockSize: 1,
     instances: {},
 
-  // Official test vectors from RFC/NIST standards and authoritative sources
-  testVectors: [
-    {
+    // Legacy test vectors for compatibility
+    testVectors: [
+      {
         "input": "HELLO",
         "key": "",
         "expected": "URYYB",
         "description": "ROT13 uppercase test"
-    },
-    {
+      },
+      {
         "input": "hello",
         "key": "",
         "expected": "uryyb",
         "description": "ROT13 lowercase test"
-    },
-    {
+      },
+      {
         "input": "To get to the other side!",
         "key": "",
         "expected": "Gb trg gb gur bgure fvqr!",
         "description": "Wikipedia ROT13 example"
-    },
-    {
+      },
+      {
         "input": "ABCDEFGHIJKLM",
         "key": "",
         "expected": "NOPQRSTUVWXYZ",
         "description": "First half alphabet"
-    },
-    {
+      },
+      {
         "input": "NOPQRSTUVWXYZ",
         "key": "",
         "expected": "ABCDEFGHIJKLM",
         "description": "Second half alphabet"
-    }
-],
+      }
+    ],
     cantDecode: false,
     isInitialized: false,
     

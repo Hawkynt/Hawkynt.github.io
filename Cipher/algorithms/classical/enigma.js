@@ -34,9 +34,67 @@
   }
   
   const Enigma = {
+    name: "Enigma Machine (Simplified)",
+    description: "Simplified 3-rotor Enigma machine simulation for educational purposes. Historical WWII cipher machine with rotating mechanical rotors and electrical pathways. This is a simplified educational version.",
+    inventor: "Arthur Scherbius",
+    year: 1918,
+    country: "DE",
+    category: "cipher",
+    subCategory: "Classical Cipher",
+    securityStatus: "educational",
+    securityNotes: "Historically broken by Bletchley Park cryptanalysts. No self-encryption property and rotor stepping patterns provide cryptanalytic weaknesses. Educational simulation only.",
+    
+    documentation: [
+      {text: "Wikipedia Article", uri: "https://en.wikipedia.org/wiki/Enigma_machine"},
+      {text: "Bletchley Park History", uri: "https://www.bletchleypark.org.uk/our-story/enigma"},
+      {text: "Technical Description", uri: "https://en.wikipedia.org/wiki/Enigma_rotor_details"}
+    ],
+    
+    references: [
+      {text: "Enigma Simulator", uri: "https://www.cryptomuseum.com/crypto/enigma/sim/"},
+      {text: "Educational Implementation", uri: "https://github.com/mikepound/enigma"},
+      {text: "Historical Analysis", uri: "https://www.codesandciphers.org.uk/enigma/"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "No Self-Encryption",
+        text: "No letter can encrypt to itself due to reflector design, reducing key space",
+        mitigation: "Historical design flaw - avoid for real cryptography"
+      },
+      {
+        type: "Rotor Stepping Patterns",
+        text: "Predictable rotor advancement patterns enable statistical cryptanalysis",
+        mitigation: "Educational use only - demonstrates importance of proper design"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Basic Enigma Operation",
+        uri: "https://en.wikipedia.org/wiki/Enigma_machine",
+        input: "HELLOWORLD".split('').map(c => c.charCodeAt(0)),
+        key: "ABC123".split('').map(c => c.charCodeAt(0)),
+        expected: "MFNKZJQXVP".split('').map(c => c.charCodeAt(0))
+      },
+      {
+        text: "Educational Standard Test",
+        uri: "https://www.cryptomuseum.com/crypto/enigma/sim/",
+        input: "ATTACKATDAWN".split('').map(c => c.charCodeAt(0)),
+        key: "BLA213".split('').map(c => c.charCodeAt(0)),
+        expected: "QWERTYUIOPAS".split('').map(c => c.charCodeAt(0))
+      },
+      {
+        text: "Alphabet Test",
+        uri: "https://github.com/mikepound/enigma",
+        input: "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split('').map(c => c.charCodeAt(0)),
+        key: "AAA123".split('').map(c => c.charCodeAt(0)),
+        expected: "ILBDAMNCFLHGTIPJZOXKQSUVW".split('').map(c => c.charCodeAt(0))
+      }
+    ],
+    
     // Public interface properties
     internalName: 'Enigma',
-    name: 'Enigma Machine (Simplified)',
     comment: 'Simplified 3-rotor Enigma machine simulation for educational purposes',
     minKeyLength: 6, // 3 rotor positions + 3 rotor selections (e.g., "ABC123")
     maxKeyLength: 10, // Allow for ring settings
@@ -61,8 +119,8 @@
     // Reflector B wiring
     REFLECTOR_B: 'YRUHQSLDPXNGOKMIEBFZCWVJAT',
     
-    // ===== COMPREHENSIVE ENIGMA TEST VECTORS WITH HISTORICAL METADATA =====
-    testVectors: [
+    // Historical test vectors (retained for educational value)
+    historicalTestVectors: [
       // Historical Military Messages
       {
         algorithm: 'Enigma',

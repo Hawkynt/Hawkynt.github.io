@@ -78,7 +78,7 @@
       szCategory: 'mode',
       szCountry: 'USA',
       nYear: 1976,
-      metadata: CBCMetadata,
+      metadata: CBC,
       working: true,
       
       Init: function() {

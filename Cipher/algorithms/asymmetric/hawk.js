@@ -61,6 +61,7 @@
   }
   
   const Hawk = {
+    internalName: "HAWK",
     name: "HAWK",
     description: "Hash-and-sign signature scheme based on NTRU lattices. NIST Round 2 post-quantum signature scheme using GPV framework with NTRU-style polynomial rings.",
     inventor: "Chitchanok Chuengsatiansup, Thomas Prest, Damien Stehlé, Alexandre Wallet, Katsuyuki Takashima",
@@ -78,6 +79,7 @@
     minBlockSize: 32,
     maxBlockSize: 2048,
     stepBlockSize: 32,
+    instances: {},
     
     documentation: [
       {text: "NIST PQC Additional Digital Signatures", uri: "https://csrc.nist.gov/projects/pqc-dig-sig"},

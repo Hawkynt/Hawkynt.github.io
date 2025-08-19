@@ -39,10 +39,56 @@
   }
   
   const MorseCode = {
+    // Required metadata per CONTRIBUTING.md
+    name: "Morse Code (International)",
+    description: "Method of transmitting text information as a series of on-off tones, lights, or clicks using standardized sequences of short and long signals called dots and dashes. Based on International Telegraph Union standards for global compatibility.",
+    inventor: "Samuel Morse",
+    year: 1836,
+    country: "US",
+    category: "encodingScheme",
+    subCategory: "Text Encoding",
+    securityStatus: "educational",
+    securityNotes: "Not encryption - text encoding only. Easily decoded. For educational purposes and basic communication.",
+    
+    documentation: [
+      {text: "ITU-R M.1677-1: International Morse Code", uri: "https://www.itu.int/dms_pubrec/itu-r/rec/m/R-REC-M.1677-1-200910-I!!PDF-E.pdf"},
+      {text: "Morse Code - Wikipedia", uri: "https://en.wikipedia.org/wiki/Morse_code"},
+      {text: "International Telegraph Alphabet", uri: "https://en.wikipedia.org/wiki/Telegraph_code"}
+    ],
+    
+    references: [
+      {text: "GNU Radio Morse Code Implementation", uri: "https://github.com/gnuradio/gnuradio/tree/master/gr-digital/lib"},
+      {text: "Ham Radio Morse Code Standards", uri: "https://www.arrl.org/morse-code"},
+      {text: "Educational Morse Code Examples", uri: "https://morsecode.world/international/morse.html"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "Basic alphabet encoding test",
+        uri: "https://en.wikipedia.org/wiki/Morse_code#Letters",
+        input: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("HELLO") : "HELLO".split('').map(c => c.charCodeAt(0)),
+        expected: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes(".... . .-.. .-.. ---") : ".... . .-.. .-.. ---".split('').map(c => c.charCodeAt(0))
+      },
+      {
+        text: "Numbers and punctuation test",
+        uri: "ITU-R M.1677-1 standard",
+        input: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("SOS") : "SOS".split('').map(c => c.charCodeAt(0)),
+        expected: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("... --- ...") : "... --- ...".split('').map(c => c.charCodeAt(0))
+      },
+      {
+        text: "Mixed case and space test",
+        uri: "Educational standard",
+        input: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("Hello World") : "Hello World".split('').map(c => c.charCodeAt(0)),
+        expected: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes(".... . .-.. .-.. ---  /  .-- --- .-. .-.. -..") : ".... . .-.. .-.. ---  /  .-- --- .-. .-.. -..".split('').map(c => c.charCodeAt(0))
+      }
+    ],
+
+    // Legacy interface properties for compatibility
     internalName: 'morse',
-    name: 'Morse Code (International)',
     version: '1.0.0',
-        comment: 'Educational implementation for learning purposes',
+    comment: 'Educational implementation for learning purposes',
     minKeyLength: 0,
     maxKeyLength: 0,
     stepKeyLength: 1,

@@ -681,9 +681,9 @@
     },
     
     // Legacy interface properties for compatibility
-    get internalName() { return this.internalName; },
-    get name() { return this.name; },
-    get comment() { return this.comment; },
+    get internalName() { return 'RHX'; },
+    get name() { return 'RHX (Rijndael Extended)'; },
+    get comment() { return 'Extended version of Rijndael/AES with larger key sizes (256/512/1024-bit) for theoretical post-quantum resistance. Uses HKDF key expansion and increased rounds. Experimental implementation only.'; },
     get nMinKeyLength() { return this.minKeyLength; },
     get nMaxKeyLength() { return this.maxKeyLength; },
     get nStepKeyLength() { return this.stepKeyLength; },

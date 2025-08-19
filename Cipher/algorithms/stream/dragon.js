@@ -469,8 +469,10 @@
   };
   
   // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(DRAGON);
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(DRAGON);
+  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
+    global.Cipher.AddCipher(DRAGON);
   }
   
   // Export for Node.js

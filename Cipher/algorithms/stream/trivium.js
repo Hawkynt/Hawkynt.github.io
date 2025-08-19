@@ -60,7 +60,7 @@
   const Trivium = {
     // Public interface properties
     internalName: 'Trivium',
-    name: 'Trivium Stream Cipher',
+    name: 'Trivium',
     comment: 'Trivium eSTREAM Stream Cipher - Educational implementation with 288-bit NLFSR state',
     minKeyLength: 10,   // Trivium uses 80-bit keys (10 bytes)
     maxKeyLength: 10,
@@ -69,6 +69,40 @@
     maxBlockSize: 65536, // Practical limit for processing
     stepBlockSize: 1,
     instances: {},
+    
+    // Required metadata following CONTRIBUTING.md
+    description: "Hardware-oriented stream cipher using three nonlinear feedback shift registers. Part of the eSTREAM hardware portfolio and ISO/IEC 29192-3 standard. Features 288-bit state with 80-bit keys and IVs.",
+    inventor: "Christophe De Cannière and Bart Preneel",
+    year: 2005,
+    country: "BE",
+    category: "cipher",
+    subCategory: "Stream Cipher",
+    securityStatus: null,
+    securityNotes: "Part of eSTREAM hardware portfolio and ISO standard. Designed to resist algebraic attacks. No known practical attacks.",
+    
+    documentation: [
+      {text: "ISO/IEC 29192-3:2012 - Trivium Stream Cipher", uri: "https://www.iso.org/standard/56426.html"},
+      {text: "eSTREAM Trivium Specification", uri: "https://www.ecrypt.eu.org/stream/trivium.html"},
+      {text: "Trivium: A Stream Cipher Construction", uri: "https://www.esat.kuleuven.be/cosic/publications/article-1137.pdf"}
+    ],
+    
+    references: [
+      {text: "eSTREAM Trivium Page", uri: "https://www.ecrypt.eu.org/stream/trivium.html"},
+      {text: "ISO/IEC 29192-3 Standard", uri: "https://www.iso.org/standard/56426.html"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "eSTREAM Trivium Test Vector 1",
+        uri: "https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/trivium/",
+        keySize: 10,
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("0000000000000000") : [],
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000") : [],
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("fee469dcbea714c2") : []
+      }
+    ],
     
     // Comprehensive metadata
     metadata: global.CipherMetadata ? global.CipherMetadata.createMetadata({
@@ -534,8 +568,8 @@
   };
   
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(Trivium);
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(Trivium);
   }
   
   // Export to global scope

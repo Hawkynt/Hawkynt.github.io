@@ -303,6 +303,11 @@
     },
 
     // Core BLAKE2b computation
+    // Required interface method for hash functions
+    Hash: function(data, key, outputLength) {
+      return this.compute(data, key, outputLength);
+    },
+
     compute: function(data, key, outputLength) {
       outputLength = outputLength || BLAKE2B_OUTBYTES;
       const hasher = new Blake2bHasher(key, outputLength);

@@ -186,6 +186,26 @@
       return BASE64.decode(ciphertext);
     },
     
+    // Required interface method for encoding schemes
+    Encode: function(input) {
+      // Convert byte array to string if necessary
+      if (Array.isArray(input)) {
+        input = String.fromCharCode.apply(null, input);
+      }
+      return this.encode(input);
+    },
+
+    // Required interface method for encoding schemes  
+    Decode: function(input) {
+      const result = this.decode(input);
+      // Convert string to byte array
+      const bytes = [];
+      for (let i = 0; i < result.length; i++) {
+        bytes.push(result.charCodeAt(i));
+      }
+      return bytes;
+    },
+
     // Encode string to BASE64
     encode: function(input) {
       if (!input) return '';
