@@ -5,6 +5,16 @@
 
 (function(global) {
   'use strict';
+  
+  // Load OpCodes for cryptographic operations
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    try {
+      require('../../OpCodes.js');
+    } catch (e) {
+      console.error('Failed to load OpCodes.js:', e.message);
+      return;
+    }
+  }
 
   const MD5 = {
     name: "MD5",
@@ -39,21 +49,21 @@
       {
         text: "RFC 1321 Test Vector - Empty string",
         uri: "https://tools.ietf.org/html/rfc1321",
-        input: OpCodes.ANSIToBytes(""),
+        input: OpCodes.StringToBytes(""),
         key: null,
         expected: OpCodes.Hex8ToBytes("d41d8cd98f00b204e9800998ecf8427e")
       },
       {
         text: "RFC 1321 Test Vector - 'a'",
         uri: "https://tools.ietf.org/html/rfc1321",
-        input: OpCodes.ANSIToBytes("a"),
+        input: OpCodes.StringToBytes("a"),
         key: null,
         expected: OpCodes.Hex8ToBytes("0cc175b9c0f1b6a831c399e269772661")
       },
       {
         text: "RFC 1321 Test Vector - 'abc'",
         uri: "https://tools.ietf.org/html/rfc1321",
-        input: OpCodes.ANSIToBytes("abc"),
+        input: OpCodes.StringToBytes("abc"),
         key: null,
         expected: OpCodes.Hex8ToBytes("900150983cd24fb0d6963f7d28e17f72")
       }
@@ -91,7 +101,7 @@
 
     // Core MD5 computation
     compute: function(data) {
-      const msgBytes = Array.isArray(data) ? data : OpCodes.ANSIToBytes(data);
+      const msgBytes = Array.isArray(data) ? data : OpCodes.StringToBytes(data);
       
       // Pre-processing: append padding
       const paddedMsg = this.padMessage(msgBytes);
@@ -199,5 +209,14 @@
   if (global.Cipher && typeof global.Cipher.Add === 'function')
     global.Cipher.Add(MD5);
   
+
+
+  // Export for Node.js
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = MD5;
+  }
+  
+  // Export to global scope
+  global.MD5 = MD5;
 
 })(typeof global !== 'undefined' ? global : window);

@@ -70,9 +70,9 @@
         text: "RFC 6229 Test Vector 1",
         uri: "https://tools.ietf.org/html/rfc6229#section-2",
         keySize: 5,
-        key: Hex8ToBytes("0102030405"),
-        input: Hex8ToBytes("00000000000000000000000000000000"),
-        expected: Hex8ToBytes("b2396305f03dc027ccc3524a0a1118a8")
+        key: OpCodes.Hex8ToBytes("0102030405"),
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("b2396305f03dc027ccc3524a0a1118a8")
       }
     ],
 
@@ -86,7 +86,9 @@
     instances: {},
     cantDecode: false,
     isInitialized: false,
-      
+    
+    // Metadata for educational purposes  
+    metadata: {
       securityStatus: global.CipherMetadata.SecurityStatus.DEPRECATED,
       securityNotes: 'DEPRECATED: Known biases in keystream, related-key attacks, and weaknesses in key scheduling. Banned from TLS 1.3 and prohibited by RFC 7465.',
       
@@ -136,77 +138,10 @@
       tags: ['stream', 'deprecated', 'insecure', 'historical', 'rsa-security', 'rivest', 'wep', 'tls-deprecated'],
       
       version: '2.0'
-    }) : null,
+    },
 
-  // Official test vectors from RFC/NIST standards and authoritative sources
-  testVectors: [
-    {
-        "input": "pedia",
-        "key": "Wiki",
-        "expected": "\u0010!¿\u0004 ",
-        "description": "RC4 Wikipedia test vector - Wiki + pedia (verified)"
-    },
-    {
-        "input": "Plaintext",
-        "key": "Key",
-        "expected": "»ó\u0016èÙ@¯\nÓ",
-        "description": "RC4 classic Key + Plaintext test vector"
-    },
-    {
-        "input": "Attack at dawn",
-        "key": "Secret",
-        "expected": "E \u001fd_Ã[85RTKõ",
-        "description": "RC4 famous \"Attack at dawn\" with Secret key (cryptographic literature)"
-    },
-    {
-        "input": "\u0000\u0000\u0000\u0000\u0000",
-        "key": "\u0001\u0002\u0003\u0004\u0005",
-        "expected": "²9c\u0005ð",
-        "description": "RC4 RFC 6229 40-bit key test vector (5 bytes all-zeros plaintext)"
-    },
-    {
-        "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "key": "\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b",
-        "expected": "«\u001bð¯¹a",
-        "description": "RC4 RFC 6229 64-bit key test vector (8 bytes all-zeros plaintext)"
-    },
-    {
-        "input": "Hello",
-        "key": "Test",
-        "expected": "2\u000b!$-",
-        "description": "RC4 simple ASCII test - Test key with Hello plaintext"
-    },
-    {
-        "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "key": "\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n",
-        "expected": "íã°FCåÌ}",
-        "description": "RC4 RFC 6229 80-bit key test vector (10 bytes all-zeros plaintext)"
-    },
-    {
-        "input": "ÿÿÿÿ",
-        "key": "ÿÿÿÿ",
-        "expected": "ÚÐÛ",
-        "description": "RC4 boundary test - all ones key and plaintext (4 bytes)"
-    },
-    {
-        "input": "TESTDATA",
-        "key": "12345678",
-        "expected": "ï¶jMðæ",
-        "description": "RC4 educational test - ASCII key and plaintext (8 bytes each)"
-    },
-    {
-        "input": "\u0001#Eg",
-        "key": "þÜº",
-        "expected": "Óç",
-        "description": "RC4 binary pattern test - 4-byte key and plaintext"
-    }
-],
-    
-    // Official RC4 test vectors from RFC 6229 and authoritative sources
-    // IMPORTANT: These test vectors are for educational purposes only
-    // RC4 is cryptographically broken and must not be used in production
+    // Official test vectors from RFC/NIST standards and authoritative sources
     officialTestVectors: [
-      // RFC 6229 Test Vector Set 1 - 40-bit key
       {
         algorithm: 'RC4',
         description: 'RFC 6229 40-bit key test vector',

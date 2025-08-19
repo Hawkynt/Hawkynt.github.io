@@ -95,17 +95,17 @@
         text: "ETSI A5/1 Standard Test Vector",
         uri: "https://www.etsi.org/deliver/etsi_ts/155200_155299/155226/",
         keySize: 8,
-        input: Hex8ToBytes("00000000000000000000000000000000"),
-        key: Hex8ToBytes("0123456789ABCDEF"),
-        expected: Hex8ToBytes("534EAA582FE8151AB6E1855A728C0051")
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        key: OpCodes.Hex8ToBytes("0123456789ABCDEF"),
+        expected: OpCodes.Hex8ToBytes("534EAA582FE8151AB6E1855A728C0051")
       },
       {
         text: "A5/1 All-zeros Test Vector (Educational)",
         uri: "https://cryptome.org/a51-bsw.htm",
         keySize: 8,
-        input: Hex8ToBytes("00000000"),
-        key: Hex8ToBytes("0000000000000000"),
-        expected: Hex8ToBytes("ef4c987b")
+        input: OpCodes.Hex8ToBytes("00000000"),
+        key: OpCodes.Hex8ToBytes("0000000000000000"),
+        expected: OpCodes.Hex8ToBytes("ef4c987b")
       }
     ],
 

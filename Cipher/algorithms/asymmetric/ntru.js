@@ -72,7 +72,7 @@
         text: "NTRU-443 Educational Test Vector",
         uri: "https://ntru.org/",
         keySize: 616, // Private key size in bytes
-        input: ANSIToBytes("Hello NTRU!"),
+        input: OpCodes.StringToBytes("Hello NTRU!"),
         expected: null // Will be computed during test
       }
     ],

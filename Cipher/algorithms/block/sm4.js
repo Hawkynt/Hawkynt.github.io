@@ -73,9 +73,9 @@
         uri: "GB/T 32907-2016",
         keySize: 16,
         blockSize: 16,
-        input: Hex8ToBytes("0123456789ABCDEFFEDCBA9876543210"),
-        key: Hex8ToBytes("0123456789ABCDEFFEDCBA9876543210"),
-        expected: Hex8ToBytes("681EDF34D206965E86B3E94F536E4246")
+        input: OpCodes.Hex8ToBytes("0123456789ABCDEFFEDCBA9876543210"),
+        key: OpCodes.Hex8ToBytes("0123456789ABCDEFFEDCBA9876543210"),
+        expected: OpCodes.Hex8ToBytes("681EDF34D206965E86B3E94F536E4246")
       }
     ],
     

@@ -109,9 +109,9 @@
         uri: "https://github.com/Steppenwolfe65/CEX",
         keySize: 32,
         blockSize: 16,
-        input: Hex8ToBytes("00112233445566778899aabbccddeeff"),
-        key: Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
-        expected: Hex8ToBytes("337dd0805d5d63eac0b189e982650163")
+        input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
+        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+        expected: OpCodes.Hex8ToBytes("337dd0805d5d63eac0b189e982650163")
       }
     ],
     

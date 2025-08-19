@@ -5,6 +5,21 @@
 
 (function(global) {
   'use strict';
+  
+  // Load dependencies
+  if (!global.OpCodes) {
+    if (typeof require !== 'undefined') {
+      try {
+        require('../../OpCodes.js');
+      } catch (e) {
+        console.error('Failed to load OpCodes dependency:', e.message);
+        return;
+      }
+    } else {
+      console.error('Algorithm requires OpCodes library to be loaded first');
+      return;
+    }
+  }
 
   const Autokey = {
     name: "Autokey Cipher",
@@ -46,23 +61,23 @@
       {
         text: "Vigenère's Historical Example",
         uri: "https://en.wikipedia.org/wiki/Autokey_cipher", 
-        input: ANSIToBytes("ATTACKATDAWN"),
-        key: ANSIToBytes("QUEENLY"),
-        expected: ANSIToBytes("QNXEPVYTWTWP")
+        input: OpCodes.StringToBytes("ATTACKATDAWN"),
+        key: OpCodes.StringToBytes("QUEENLY"),
+        expected: OpCodes.StringToBytes("QNXEPVYTWTWP")
       },
       {
         text: "Educational Standard Example",
         uri: "https://cryptii.com/pipes/autokey-cipher",
-        input: ANSIToBytes("HELLO"),
-        key: ANSIToBytes("KEY"), 
-        expected: ANSIToBytes("RIJVS")
+        input: OpCodes.StringToBytes("HELLO"),
+        key: OpCodes.StringToBytes("KEY"), 
+        expected: OpCodes.StringToBytes("RIJVS")
       },
       {
         text: "Cryptanalysis Demonstration",
         uri: "https://www.dcode.fr/autokey-cipher",
-        input: ANSIToBytes("DEFENDTHECASTLE"),
-        key: ANSIToBytes("ROYAL"),
-        expected: ANSIToBytes("VYXZMPZGUCAVNXR")
+        input: OpCodes.StringToBytes("DEFENDTHECASTLE"),
+        key: OpCodes.StringToBytes("ROYAL"),
+        expected: OpCodes.StringToBytes("VYXZMPZGUCAVNXR")
       }
     ],
 

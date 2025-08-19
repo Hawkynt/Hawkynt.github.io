@@ -5,6 +5,21 @@
 
 (function(global) {
   'use strict';
+  
+  // Load dependencies
+  if (!global.OpCodes) {
+    if (typeof require !== 'undefined') {
+      try {
+        require('../../OpCodes.js');
+      } catch (e) {
+        console.error('Failed to load OpCodes dependency:', e.message);
+        return;
+      }
+    } else {
+      console.error('Algorithm requires OpCodes library to be loaded first');
+      return;
+    }
+  }
 
   const Caesar = {
     name: "Caesar Cipher",
@@ -46,23 +61,23 @@
       {
         text: "Historical Caesar Example",
         uri: "https://en.wikipedia.org/wiki/Caesar_cipher",
-        input: ANSIToBytes("HELLO"),
-        key: ANSIToBytes("3"),
-        expected: ANSIToBytes("KHOOR")
+        input: OpCodes.StringToBytes("HELLO"),
+        key: OpCodes.StringToBytes("3"),
+        expected: OpCodes.StringToBytes("KHOOR")
       },
       {
         text: "Classic Educational Test",
         uri: "https://www.dcode.fr/caesar-cipher",
-        input: ANSIToBytes("ATTACKATDAWN"),
-        key: ANSIToBytes("3"),
-        expected: ANSIToBytes("DWWDFNDWGDZQ")
+        input: OpCodes.StringToBytes("ATTACKATDAWN"),
+        key: OpCodes.StringToBytes("3"),
+        expected: OpCodes.StringToBytes("DWWDFNDWGDZQ")
       },
       {
         text: "Full Alphabet Shift",
         uri: "https://practicalcryptography.com/ciphers/classical-era/caesar/",
-        input: ANSIToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
-        key: ANSIToBytes("3"),
-        expected: ANSIToBytes("DEFGHIJKLMNOPQRSTUVWXYZABC")
+        input: OpCodes.StringToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+        key: OpCodes.StringToBytes("3"),
+        expected: OpCodes.StringToBytes("DEFGHIJKLMNOPQRSTUVWXYZABC")
       }
     ],
 
@@ -104,8 +119,7 @@
       // Performance Characteristics
       performance: 'O(n) time complexity, instant encryption/decryption',
       memoryUsage: 'Minimal - single shift value',
-      optimizations: 'Modular arithmetic for alphabet wrapping'
-    },
+      optimizations: 'Modular arithmetic for alphabet wrapping',
 
     // ===== COMPREHENSIVE TEST VECTORS WITH HISTORICAL AND CRYPTANALYTIC METADATA =====
     testVectors: [

@@ -65,8 +65,8 @@
         text: "Basic Rule30 Test",
         uri: "Educational test case",
         keySize: 8,
-        key: Hex8ToBytes("0102030405060708"),
-        input: Hex8ToBytes("00000000000000000000000000000000"),
+        key: OpCodes.Hex8ToBytes("0102030405060708"),
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
         expected: [] // No official test vectors, cellular automaton based
       }
     ],

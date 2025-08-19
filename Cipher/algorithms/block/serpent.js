@@ -518,8 +518,8 @@
         uri: "https://www.cl.cam.ac.uk/~rja14/serpent.html",
         keySize: 16,
         blockSize: 16,
-        input: Hex8ToBytes("00000000000000000000000000000000"),
-        key: Hex8ToBytes("00000000000000000000000000000000"),
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
         expected: null // Will be computed by implementation
       }
     ],

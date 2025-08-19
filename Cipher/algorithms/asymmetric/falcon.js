@@ -70,7 +70,7 @@
         text: "FALCON-512 Test Vector",
         uri: "https://falcon-sign.info/",
         keySize: 1281, // FALCON-512 private key size in bytes
-        input: ANSIToBytes("Message to sign"),
+        input: OpCodes.StringToBytes("Message to sign"),
         expected: null // Will be computed during test
       }
     ],

@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /*
  * CityHash Implementation
  * (c)2006-2025 Hawkynt
@@ -5,6 +6,16 @@
 
 (function(global) {
   'use strict';
+  
+  // Load OpCodes for cryptographic operations
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    try {
+      require('../../OpCodes.js');
+    } catch (e) {
+      console.error('Failed to load OpCodes.js:', e.message);
+      return;
+    }
+  }
 
   const CityHash = {
     name: "CityHash",
@@ -37,21 +48,21 @@
       {
         text: "CityHash Test Vector - Empty string",
         uri: "https://github.com/google/cityhash/blob/master/src/city_test.cc",
-        input: OpCodes.ANSIToBytes(""),
+        input: OpCodes.StringToBytes(""),
         key: null,
         expected: OpCodes.Hex8ToBytes("9ae16a3b2f90404f")
       },
       {
         text: "CityHash Test Vector - abc",
         uri: "https://github.com/google/cityhash/blob/master/src/city_test.cc",
-        input: OpCodes.ANSIToBytes("abc"),
+        input: OpCodes.StringToBytes("abc"),
         key: null,
         expected: OpCodes.Hex8ToBytes("17137c2285c31d83")
       },
       {
         text: "CityHash Test Vector - hello",
         uri: "https://github.com/google/cityhash/blob/master/src/city_test.cc",
-        input: OpCodes.ANSIToBytes("hello"),
+        input: OpCodes.StringToBytes("hello"),
         key: null,
         expected: OpCodes.Hex8ToBytes("e59b1b5bb7a872e3")
       }
@@ -68,7 +79,7 @@
 
     // Core CityHash computation (64-bit version)
     compute: function(data) {
-      const bytes = Array.isArray(data) ? data : OpCodes.ANSIToBytes(data);
+      const bytes = Array.isArray(data) ? data : OpCodes.StringToBytes(data);
       const hash64 = this.cityHash64(bytes);
       
       // Convert to 8-byte array (little-endian)
@@ -272,5 +283,14 @@
   if (global.Cipher && typeof global.Cipher.Add === 'function')
     global.Cipher.Add(CityHash);
   
+
+
+  // Export for Node.js
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = CityHash;
+  }
+  
+  // Export to global scope
+  global.CityHash = CityHash;
 
 })(typeof global !== 'undefined' ? global : window);

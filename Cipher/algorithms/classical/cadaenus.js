@@ -5,6 +5,21 @@
 
 (function(global) {
   'use strict';
+  
+  // Load dependencies
+  if (!global.OpCodes) {
+    if (typeof require !== 'undefined') {
+      try {
+        require('../../OpCodes.js');
+      } catch (e) {
+        console.error('Failed to load OpCodes dependency:', e.message);
+        return;
+      }
+    } else {
+      console.error('Algorithm requires OpCodes library to be loaded first');
+      return;
+    }
+  }
 
   const CADAENUS = {
     name: "CADAENUS Cipher",
@@ -46,23 +61,23 @@
       {
         text: "Basic Educational Example",
         uri: "https://cryptii.com/pipes/cadaenus-cipher",
-        input: ANSIToBytes("HELLO"),
-        key: ANSIToBytes("SECRET"),
-        expected: ANSIToBytes("MJQQT")
+        input: OpCodes.StringToBytes("HELLO"),
+        key: OpCodes.StringToBytes("SECRET"),
+        expected: OpCodes.StringToBytes("MJQQT")
       },
       {
         text: "Alphabet Transformation Test",
         uri: "https://www.dcode.fr/cadaenus-cipher",
-        input: ANSIToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
-        key: ANSIToBytes("KEY"),
-        expected: ANSIToBytes("LJDGMSPEHURAVWQZXYBFTIKOCN")
+        input: OpCodes.StringToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+        key: OpCodes.StringToBytes("KEY"),
+        expected: OpCodes.StringToBytes("LJDGMSPEHURAVWQZXYBFTIKOCN")
       },
       {
         text: "Position Dependency Demo",
         uri: "https://en.wikipedia.org/wiki/CADAENUS",
-        input: ANSIToBytes("AAAAA"),
-        key: ANSIToBytes("CIPHER"),
-        expected: ANSIToBytes("DJNTR")
+        input: OpCodes.StringToBytes("AAAAA"),
+        key: OpCodes.StringToBytes("CIPHER"),
+        expected: OpCodes.StringToBytes("DJNTR")
       }
     ],
 
@@ -200,15 +215,17 @@
     // Non-linear transformation for enhanced security
     nonLinearTransform: function(charCode, encrypt) {
       // S-box style transformation for better diffusion
-      const forwardSBox = [
-        15, 2, 8, 21, 6, 12, 3, 23, 18, 1, 9, 24, 16, 20, 5, 0,
-        14, 7, 11, 17, 13, 4, 25, 19, 22, 10
-      ];
+      // Forward S-box: Convert decimal array to clean hex format for readability
+      const forwardSBox = global.OpCodes ? 
+        global.OpCodes.Hex8ToBytes("0F020815060C031712010918101405000E070B110D041913160A") :
+        [15, 2, 8, 21, 6, 12, 3, 23, 18, 1, 9, 24, 16, 20, 5, 0,
+         14, 7, 11, 17, 13, 4, 25, 19, 22, 10];
       
-      const reverseSBox = [
-        15, 9, 1, 6, 21, 14, 4, 17, 2, 10, 25, 18, 5, 20, 16, 0,
-        12, 19, 8, 23, 13, 3, 24, 7, 11, 22
-      ];
+      // Reverse S-box: Inverse mapping for decryption
+      const reverseSBox = global.OpCodes ?
+        global.OpCodes.Hex8ToBytes("0F090106150E0411020A1912051410000C1308170D0318070B16") :
+        [15, 9, 1, 6, 21, 14, 4, 17, 2, 10, 25, 18, 5, 20, 16, 0,
+         12, 19, 8, 23, 13, 3, 24, 7, 11, 22];
       
       if (encrypt) {
         return forwardSBox[charCode % 26];

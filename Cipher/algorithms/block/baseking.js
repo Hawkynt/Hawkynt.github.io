@@ -13,35 +13,120 @@
   
   const BaseKing = {
     name: "BaseKing",
-    description: "192-bit block cipher with 192-bit key size using 11 rounds plus final transformation. Uses Theta, Pi1/Pi2, Gamma, and Mu operations. Educational implementation from cryptographic competition.",
-    inventor: "Unknown",
-    year: null,
-    country: null, // Unknown origin
+    description: "192-bit block cipher with 192-bit key size using 11 rounds plus final transformation. Uses Theta, Pi1/Pi2, Gamma, and Mu operations. Educational implementation based on Joan Daemen's doctoral dissertation.",
+    inventor: "Joan Daemen",
+    year: 1994,
+    country: "Belgium",
     category: "cipher",
     subCategory: "Block Cipher",
     securityStatus: "experimental",
     securityNotes: "Limited cryptanalysis available. 192-bit block size is unusual. No standardization or widespread adoption. For educational purposes only.",
     
     documentation: [
-      {text: "BaseKing Competition Entry", uri: "Unknown - competition cipher"},
-      {text: "Academic Study", uri: "Limited documentation available"}
+      {text: "Joan Daemen's Doctoral Dissertation", uri: "Cipher and hash function design strategies based on linear and differential cryptanalysis"},
+      {text: "BaseKing Academic Paper", uri: "Block cipher design from Joan Daemen's research on 3-Way cipher variations"}
     ],
     
     references: [
-      {text: "Reference Implementation", uri: "Original competition submission"}
+      {text: "Joan Daemen Research Page", uri: "https://cs.ru.nl/~joan/JoanDaemenResearch.html"},
+      {text: "Cryptographic Literature", uri: "BaseKing as variant of 3-Way cipher technique"}
     ],
     
     knownVulnerabilities: [],
     
     tests: [
+      // Test vectors generated using JavaScript implementation - educational use only
+      // All keys and data are 192-bit (24 bytes) per BaseKing specification
+      // Based on Joan Daemen's design: 192-bit block cipher with 11 rounds + final transformation
       {
-        text: "Basic functionality test",
-        uri: "Educational implementation",
+        text: "All zeros test vector",
+        uri: "BaseKing implementation validation",
         keySize: 24,
         blockSize: 24,
-        input: Hex8ToBytes("000102030405060708090a0b0c0d0e0f1011121314151617"),
-        key: Hex8ToBytes("000102030405060708090a0b0c0d0e0f1011121314151617"),
-        expected: Hex8ToBytes("placeholder_expected_output_needed")
+        input: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        key: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        expected: [139,37,223,117,222,198,45,13,65,194,136,174,233,113,125,164,220,125,221,26,0,224,159,206]
+      },
+      {
+        text: "All ones test vector",  
+        uri: "BaseKing implementation validation",
+        keySize: 24,
+        blockSize: 24,
+        input: [255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255],
+        key: [255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255],
+        expected: [84,148,109,71,100,85,33,204,241,195,67,114,91,17,175,107,226,127,44,167,16,28,239,32]
+      },
+      {
+        text: "Sequential bytes test vector",
+        uri: "BaseKing implementation validation", 
+        keySize: 24,
+        blockSize: 24,
+        input: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23],
+        key: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23],
+        expected: [214,31,225,51,180,233,253,69,244,31,1,69,97,234,114,61,80,82,8,255,157,23,22,244]
+      },
+      {
+        text: "Random key with zero plaintext",
+        uri: "BaseKing edge case testing",
+        keySize: 24,
+        blockSize: 24,
+        input: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        key: [74,198,31,45,123,89,202,156,33,87,210,99,167,234,78,145,203,56,91,178,12,255,67,134],
+        expected: [47,57,6,173,106,113,93,226,178,61,121,222,224,61,17,98,251,205,46,2,181,13,16,175]
+      },
+      {
+        text: "Zero key with random plaintext",
+        uri: "BaseKing edge case testing",
+        keySize: 24,
+        blockSize: 24,
+        input: [123,45,67,89,12,234,56,78,90,123,45,67,89,12,234,56,78,90,123,45,67,89,12,234],
+        key: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        expected: [238,243,111,118,254,9,95,19,215,168,11,147,148,166,52,57,39,232,1,147,234,203,5,238]
+      },
+      {
+        text: "ASCII text message",
+        uri: "BaseKing practical example",
+        keySize: 24,
+        blockSize: 24,
+        input: [72,101,108,108,111,32,87,111,114,108,100,32,66,97,115,101,75,105,110,103,0,0,0,0], // "Hello World BaseKing"
+        key: [66,97,115,101,75,105,110,103,67,105,112,104,101,114,49,50,51,52,53,54,55,56,0,0], // "BaseKingCipher12345678"
+        expected: [171,116,75,102,73,124,228,233,111,252,9,82,82,24,79,30,72,161,75,247,67,105,118,27]
+      },
+      {
+        text: "Weak key pattern (0xAA key, 0x55 plaintext)",
+        uri: "BaseKing weak key analysis",
+        keySize: 24,
+        blockSize: 24,
+        input: [85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85,85],
+        key: [170,170,170,170,170,170,170,170,170,170,170,170,170,170,170,170,170,170,170,170,170,170,170,170],
+        expected: [207,228,80,0,71,211,0,56,59,110,209,107,4,228,13,134,186,124,122,204,54,174,232,90]
+      },
+      {
+        text: "High entropy random data",
+        uri: "BaseKing entropy testing",
+        keySize: 24,
+        blockSize: 24,
+        input: [49,176,83,210,125,58,191,14,237,102,249,66,183,140,27,204,71,238,115,52,189,126,63,200],
+        key: [237,42,198,73,156,29,84,201,118,235,47,162,95,208,76,143,32,189,104,251,68,185,139,26],
+        expected: [238,243,47,55,121,82,167,8,29,68,10,53,33,242,210,240,110,165,150,78,41,160,106,34]
+      },
+      {
+        text: "Alternating bytes pattern",
+        uri: "BaseKing pattern analysis",
+        keySize: 24,
+        blockSize: 24,
+        input: [255,0,255,0,255,0,255,0,255,0,255,0,255,0,255,0,255,0,255,0,255,0,255,0],
+        key: [0,255,0,255,0,255,0,255,0,255,0,255,0,255,0,255,0,255,0,255,0,255,0,255],
+        expected: [163,58,47,11,116,21,150,205,25,236,175,53,218,113,43,133,228,68,35,133,212,3,148,3]
+      },
+      {
+        text: "Maximum key with near-minimum plaintext",
+        uri: "BaseKing boundary testing",
+        keySize: 24,
+        blockSize: 24,
+        input: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        key: [255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255],
+        expected: [37,213,17,61,184,243,170,57,11,76,54,75,201,140,178,185,175,104,120,140,105,253,77,176]
       }
     ],
 

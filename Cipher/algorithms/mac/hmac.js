@@ -86,17 +86,17 @@
         text: "RFC 2104 HMAC-MD5 Test Case 1",
         uri: "https://tools.ietf.org/rfc/rfc2104.txt",
         keySize: 16,
-        input: ANSIToBytes("Hi There"),
-        key: Hex8ToBytes("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
-        expected: Hex8ToBytes("9294727a3638bb1c13f48ef8158bfc9d")
+        input: OpCodes.StringToBytes("Hi There"),
+        key: OpCodes.Hex8ToBytes("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
+        expected: OpCodes.Hex8ToBytes("9294727a3638bb1c13f48ef8158bfc9d")
       },
       {
         text: "RFC 2104 HMAC-SHA1 Test Case 1",
         uri: "https://tools.ietf.org/rfc/rfc2104.txt",
         keySize: 20,
-        input: ANSIToBytes("Hi There"),
-        key: Hex8ToBytes("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
-        expected: Hex8ToBytes("b617318655057264e28bc0b6fb378c8ef146be00")
+        input: OpCodes.StringToBytes("Hi There"),
+        key: OpCodes.Hex8ToBytes("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
+        expected: OpCodes.Hex8ToBytes("b617318655057264e28bc0b6fb378c8ef146be00")
       }
     ],
 

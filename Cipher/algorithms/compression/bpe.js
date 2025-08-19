@@ -58,20 +58,20 @@
       {
         text: "Simple repeated pattern",
         uri: "Educational test case", 
-        input: ANSIToBytes("ababab"),
-        expected: Hex8ToBytes("01009697979661620003000397")
+        input: OpCodes.StringToBytes("ababab"),
+        expected: OpCodes.Hex8ToBytes("01009697979661620003000397")
       },
       {
         text: "Text with common pairs",
         uri: "Text compression test",
-        input: ANSIToBytes("hello world hello"),
-        expected: Hex8ToBytes("0200010065006C00680065006C006C006F0020776F726C64201000")
+        input: OpCodes.StringToBytes("hello world hello"),
+        expected: OpCodes.Hex8ToBytes("0200010065006C00680065006C006C006F0020776F726C64201000")
       },
       {
         text: "No repeated pairs",
         uri: "Worst case test",
-        input: ANSIToBytes("abcdef"),
-        expected: Hex8ToBytes("000000060061006200630064006500660")
+        input: OpCodes.StringToBytes("abcdef"),
+        expected: OpCodes.Hex8ToBytes("000000060061006200630064006500660")
       }
     ],
 
