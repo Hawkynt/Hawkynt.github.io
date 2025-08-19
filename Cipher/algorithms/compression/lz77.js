@@ -58,19 +58,19 @@
       {
         text: "Simple repetitive pattern",
         uri: "Basic sliding window test",
-        input: ANSIToBytes("AABCAABCABC"),
+        input: OpCodes.StringToBytes("AABCAABCABC"),
         expected: null
       },
       {
         text: "Long repeated substring",
         uri: "Maximum distance test", 
-        input: ANSIToBytes("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefgh"),
+        input: OpCodes.StringToBytes("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefgh"),
         expected: null
       },
       {
         text: "Self-overlapping pattern", 
         uri: "https://en.wikipedia.org/wiki/LZ77_and_LZ78#Example",
-        input: ANSIToBytes("ABCABCABCABCABC"),
+        input: OpCodes.StringToBytes("ABCABCABCABCABC"),
         expected: null
       }
     ],

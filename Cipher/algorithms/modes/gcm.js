@@ -7,6 +7,11 @@
 (function(global) {
   'use strict';
 
+  // Environment detection and OpCodes loading
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    require('../../OpCodes.js');
+  }
+
   const GCM = {
     name: "GCM",
     description: "Galois/Counter Mode providing authenticated encryption by combining CTR mode with Galois field multiplication for authentication. Widely used in TLS, IPsec, and other security protocols.",
@@ -50,20 +55,20 @@
         uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf",
         keySize: 16,
         blockSize: 16,
-        input: Hex8ToBytes(""), // empty plaintext
-        key: Hex8ToBytes("00000000000000000000000000000000"),
-        iv: Hex8ToBytes("000000000000000000000000"),
-        expected: Hex8ToBytes("58e2fccefa7e3061367f1d57a4e7455a")
+        input: OpCodes.Hex8ToBytes(""), // empty plaintext
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        iv: OpCodes.Hex8ToBytes("000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("58e2fccefa7e3061367f1d57a4e7455a")
       },
       {
         text: "NIST SP 800-38D Test Case 2",
         uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf",
         keySize: 16,
         blockSize: 16,
-        input: Hex8ToBytes("00000000000000000000000000000000"),
-        key: Hex8ToBytes("00000000000000000000000000000000"),
-        iv: Hex8ToBytes("000000000000000000000000"),
-        expected: Hex8ToBytes("0388dace60b6a392f328c2b971b2fe78ab6e47d42cec13bdf53a67b21257bddf")
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        iv: OpCodes.Hex8ToBytes("000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("0388dace60b6a392f328c2b971b2fe78ab6e47d42cec13bdf53a67b21257bddf")
       }
     ],
 

@@ -71,8 +71,8 @@
         uri: "Educational test generated from implementation",
         keySize: 32,
         blockSize: 16,
-        input: Hex8ToBytes("123456789ABCDEF01357BD24680ACE02"),
-        key: Hex8ToBytes("0123456789ABCDEFFEDC98765432101122334455667788990102030405060708"),
+        input: OpCodes.Hex8ToBytes("123456789ABCDEF01357BD24680ACE02"),
+        key: OpCodes.Hex8ToBytes("0123456789ABCDEFFEDC98765432101122334455667788990102030405060708"),
         expected: null // Will be computed by implementation
       }
     ],

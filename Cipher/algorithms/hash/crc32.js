@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /*
  * CRC32 Implementation
  * (c)2006-2025 Hawkynt
@@ -5,6 +6,16 @@
 
 (function(global) {
   'use strict';
+  
+  // Load OpCodes for cryptographic operations
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    try {
+      require('../../OpCodes.js');
+    } catch (e) {
+      console.error('Failed to load OpCodes.js:', e.message);
+      return;
+    }
+  }
 
   const CRC32 = {
     name: "CRC-32",
@@ -38,21 +49,21 @@
       {
         text: "CRC-32 Test Vector - '123456789'",
         uri: "https://www.w3.org/TR/PNG/#D-CRCAppendix",
-        input: OpCodes.ANSIToBytes("123456789"),
+        input: OpCodes.StringToBytes("123456789"),
         key: null,
         expected: OpCodes.Hex8ToBytes("CBF43926")
       },
       {
         text: "CRC-32 Test Vector - Empty",
         uri: "https://tools.ietf.org/html/rfc1952",
-        input: OpCodes.ANSIToBytes(""),
+        input: OpCodes.StringToBytes(""),
         key: null,
         expected: OpCodes.Hex8ToBytes("00000000")
       },
       {
         text: "CRC-32 Test Vector - 'A'",
         uri: "https://www.w3.org/TR/PNG/#D-CRCAppendix",
-        input: OpCodes.ANSIToBytes("A"),
+        input: OpCodes.StringToBytes("A"),
         key: null,
         expected: OpCodes.Hex8ToBytes("D3D99E8B")
       }
@@ -69,7 +80,7 @@
 
     // Core CRC32 computation
     compute: function(data) {
-      const bytes = Array.isArray(data) ? data : OpCodes.ANSIToBytes(data);
+      const bytes = Array.isArray(data) ? data : OpCodes.StringToBytes(data);
       const table = this.getTable();
       let crc = this.INITIAL_CRC;
       
@@ -122,5 +133,14 @@
   if (global.Cipher && typeof global.Cipher.Add === 'function')
     global.Cipher.Add(CRC32);
   
+
+
+  // Export for Node.js
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = CRC32;
+  }
+  
+  // Export to global scope
+  global.CRC32 = CRC32;
 
 })(typeof global !== 'undefined' ? global : window);

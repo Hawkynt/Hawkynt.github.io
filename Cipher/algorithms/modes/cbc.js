@@ -6,6 +6,11 @@
 
 (function(global) {
   'use strict';
+  
+  // Environment detection and OpCodes loading
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    require('../../OpCodes.js');
+  }
 
   const CBC = {
     name: "CBC",
@@ -48,10 +53,10 @@
         uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf",
         keySize: 16,
         blockSize: 16,
-        input: Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
-        key: Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
-        iv: Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-        expected: Hex8ToBytes("7649abac8119b246cee98e9b12e9197d")
+        input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
+        key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+        iv: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        expected: OpCodes.Hex8ToBytes("7649abac8119b246cee98e9b12e9197d")
       }
     ],
 

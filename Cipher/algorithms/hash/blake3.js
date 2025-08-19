@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /*
  * BLAKE3 Implementation
  * (c)2006-2025 Hawkynt
@@ -5,6 +6,16 @@
 
 (function(global) {
   'use strict';
+  
+  // Load OpCodes for cryptographic operations
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    try {
+      require('../../OpCodes.js');
+    } catch (e) {
+      console.error('Failed to load OpCodes.js:', e.message);
+      return;
+    }
+  }
 
   const Blake3 = {
     name: "BLAKE3",
@@ -41,7 +52,7 @@
       {
         text: "BLAKE3 Test Vector - abc",
         uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
-        input: OpCodes.ANSIToBytes("abc"),
+        input: OpCodes.StringToBytes("abc"),
         key: null,
         expected: OpCodes.Hex8ToBytes("6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85")
       }
@@ -341,5 +352,14 @@
   if (global.Cipher && typeof global.Cipher.Add === 'function')
     global.Cipher.Add(Blake3);
   
+
+
+  // Export for Node.js
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Blake3;
+  }
+  
+  // Export to global scope
+  global.Blake3 = Blake3;
 
 })(typeof global !== 'undefined' ? global : window);

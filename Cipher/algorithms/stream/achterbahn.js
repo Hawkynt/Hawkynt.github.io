@@ -89,9 +89,9 @@
         text: "Achterbahn Test Vector (Educational)",
         uri: "https://www.ecrypt.eu.org/stream/achterbahndir.html",
         keySize: 16,
-        input: Hex8ToBytes("00000000000000000000000000000000"),
-        key: Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-        expected: Hex8ToBytes("a1b2c3d4e5f6789012345678abcdef01")
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        expected: OpCodes.Hex8ToBytes("a1b2c3d4e5f6789012345678abcdef01")
       }
     ],
 

@@ -86,7 +86,7 @@
         text: "RSA-2048 PKCS#1 v1.5 Test Vector",
         uri: "https://tools.ietf.org/rfc/rfc3447.txt",
         keySize: 256, // 2048 bits = 256 bytes
-        input: Hex8ToBytes("48656c6c6f20525341"), // "Hello RSA"
+        input: OpCodes.Hex8ToBytes("48656c6c6f20525341"), // "Hello RSA"
         // Note: RSA test vectors require specific key pairs - using educational example
         expected: null // Will be computed during test
       }

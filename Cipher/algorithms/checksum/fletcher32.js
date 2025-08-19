@@ -72,13 +72,13 @@
         text: "Fletcher-32 Standard Test - Empty Input",
         uri: "https://en.wikipedia.org/wiki/Fletcher%27s_checksum",
         input: [],
-        expected: Hex8ToBytes("00000000")
+        expected: OpCodes.Hex8ToBytes("00000000")
       },
       {
         text: "Fletcher-32 Standard Test - Simple String",
         uri: "https://en.wikipedia.org/wiki/Fletcher%27s_checksum",
-        input: ANSIToBytes("abcde"),
-        expected: Hex8ToBytes("028002aa")
+        input: OpCodes.StringToBytes("abcde"),
+        expected: OpCodes.Hex8ToBytes("028002aa")
       }
     ],
 

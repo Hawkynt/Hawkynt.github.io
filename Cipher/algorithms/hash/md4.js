@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /*
  * MD4 Implementation
  * (c)2006-2025 Hawkynt
@@ -5,6 +6,16 @@
 
 (function(global) {
   'use strict';
+  
+  // Load OpCodes for cryptographic operations
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    try {
+      require('../../OpCodes.js');
+    } catch (e) {
+      console.error('Failed to load OpCodes.js:', e.message);
+      return;
+    }
+  }
 
   const MD4 = {
     name: "MD4",
@@ -37,14 +48,14 @@
       {
         text: "RFC 1320 Test Vector - Empty string",
         uri: "https://tools.ietf.org/html/rfc1320",
-        input: OpCodes.ANSIToBytes(""),
+        input: OpCodes.StringToBytes(""),
         key: null,
         expected: OpCodes.Hex8ToBytes("31d6cfe0d16ae931b73c59d7e0c089c0")
       },
       {
         text: "RFC 1320 Test Vector - 'a'",
         uri: "https://tools.ietf.org/html/rfc1320",
-        input: OpCodes.ANSIToBytes("a"),
+        input: OpCodes.StringToBytes("a"),
         key: null,
         expected: OpCodes.Hex8ToBytes("bde52cb31de33e46245e05fbdbd6fb24")
       }
@@ -64,7 +75,7 @@
 
     // Core MD4 computation (simplified but functional)
     compute: function(data) {
-      const msgBytes = Array.isArray(data) ? data : OpCodes.ANSIToBytes(data);
+      const msgBytes = Array.isArray(data) ? data : OpCodes.StringToBytes(data);
       
       // Pre-processing: append padding
       const paddedMsg = this.padMessage(msgBytes);
@@ -141,5 +152,14 @@
   if (global.Cipher && typeof global.Cipher.Add === 'function')
     global.Cipher.Add(MD4);
   
+
+
+  // Export for Node.js
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = MD4;
+  }
+  
+  // Export to global scope
+  global.MD4 = MD4;
 
 })(typeof global !== 'undefined' ? global : window);

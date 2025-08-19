@@ -27,9 +27,9 @@
     testVectors: [
       {
         description: 'No padding for exact block size',
-        input: Hex8ToBytes('6bc1bee22e409f96e93d7e117393172a'),
+        input: OpCodes.Hex8ToBytes('6bc1bee22e409f96e93d7e117393172a'),
         blockSize: 16,
-        expected: Hex8ToBytes('6bc1bee22e409f96e93d7e117393172a')
+        expected: OpCodes.Hex8ToBytes('6bc1bee22e409f96e93d7e117393172a')
       }
     ]
   });

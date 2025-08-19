@@ -7,6 +7,11 @@
 (function(global) {
   'use strict';
 
+  // Environment detection and OpCodes loading
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    require('../../OpCodes.js');
+  }
+
   const CipherMetadata = global.CipherMetadata || {};
 
   const CFBMetadata = CipherMetadata.createMetadata({
