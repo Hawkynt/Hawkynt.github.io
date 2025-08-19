@@ -2047,6 +2047,15 @@
       }
     }
   };
+  /**
+   * Generate a unique ID for cipher instances
+   * @returns {string} Unique identifier
+   */
+  OpCodes.GenerateID = function() {
+    const timestamp = Date.now().toString(36);
+    const random = Math.random().toString(36).substr(2, 5);
+    return 'cipher_' + timestamp + '_' + random;
+  };
   
   // Export to global scope
   global.OpCodes = OpCodes;
