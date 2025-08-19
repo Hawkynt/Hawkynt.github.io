@@ -49,13 +49,11 @@
   const FLAG_FIRST = 1 << 62;
   const FLAG_FINAL = 1 << 63;
   
-  // Skein-512 constants (using Threefish-512)
-  const SKEIN512_IV = [
-    0x4903ADFF, 0x749C51CE, 0x0D95DE39, 0x9703F9DF,
-    0x8D9F8C66, 0x539A4C17, 0xFE3FE1B5, 0x468B0A95,
-    0x1E83F43F, 0x90A91A1A, 0x5BADE6E4, 0x7FCA5D2C,
-    0xC4138FF8, 0xA8E4E10E, 0x4E8BDDBB, 0x6AE54C2A
-  ];
+  // Skein-512 constants (using Threefish-512) - converted to hex bytes for clarity
+  const SKEIN512_IV = OpCodes.Hex8ToBytes(
+    "4903ADFF749C51CE0D95DE399703F9DF8D9F8C66539A4C17FE3FE1B5468B0A95" +
+    "1E83F43F90A91A1A5BADE6E47FCA5D2CC4138FF8A8E4E10E4E8BDDBB6AE54C2A"
+  );
   
   /**
    * 64-bit operations using 32-bit arithmetic

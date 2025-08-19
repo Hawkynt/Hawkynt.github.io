@@ -81,27 +81,27 @@
         uri: "https://www.cosic.esat.kuleuven.be/nessie/testvectors/",
         keySize: 16,
         blockSize: 16,
-        input: Hex8ToBytes("00000000000000000000000000000000"),
-        key: Hex8ToBytes("00000000000000000000000000000000"),
-        expected: Hex8ToBytes("625F0F663BF00F2D67B1E8B04F67A484")
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("625F0F663BF00F2D67B1E8B04F67A484")
       },
       {
         text: "NESSIE Test Vector - 128-bit key test pattern",
         uri: "https://www.cosic.esat.kuleuven.be/nessie/testvectors/",
         keySize: 16,
         blockSize: 16,
-        input: Hex8ToBytes("0123456789ABCDEF0011223344556677"),
-        key: Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-        expected: Hex8ToBytes("020AA91C3A43B34445471767436BEE2D")
+        input: OpCodes.Hex8ToBytes("0123456789ABCDEF0011223344556677"),
+        key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+        expected: OpCodes.Hex8ToBytes("020AA91C3A43B34445471767436BEE2D")
       },
       {
         text: "NESSIE Test Vector - 160-bit key",
         uri: "https://www.cosic.esat.kuleuven.be/nessie/testvectors/",
         keySize: 20,
         blockSize: 16,
-        input: Hex8ToBytes("00000000000000000000000000000000"),
-        key: Hex8ToBytes("0000000000000000000000000000000000000000"),
-        expected: Hex8ToBytes("761E6A8D9816F79F24EE40010F729098")
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("761E6A8D9816F79F24EE40010F729098")
       }
     ],
 

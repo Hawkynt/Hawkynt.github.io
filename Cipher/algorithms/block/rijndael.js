@@ -84,27 +84,27 @@
         uri: "https://csrc.nist.gov/publications/detail/fips/197/final",
         keySize: 16,
         blockSize: 16,
-        input: Hex8ToBytes("3243f6a8885a308d313198a2e0370734"),
-        key: Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
-        expected: Hex8ToBytes("3925841d02dc09fbdc1185971969a0b32")
+        input: OpCodes.Hex8ToBytes("3243f6a8885a308d313198a2e0370734"),
+        key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+        expected: OpCodes.Hex8ToBytes("3925841d02dc09fbdc1185971969a0b32")
       },
       {
         text: "NIST SP 800-38A AES-192 Test Vector", 
         uri: "https://csrc.nist.gov/publications/detail/sp/800-38a/final",
         keySize: 24,
         blockSize: 16,
-        input: Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
-        key: Hex8ToBytes("8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b"),
-        expected: Hex8ToBytes("bd334f1d6e45f25ff712a214571fa5cc")
+        input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
+        key: OpCodes.Hex8ToBytes("8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b"),
+        expected: OpCodes.Hex8ToBytes("bd334f1d6e45f25ff712a214571fa5cc")
       },
       {
         text: "NIST SP 800-38A AES-256 Test Vector",
         uri: "https://csrc.nist.gov/publications/detail/sp/800-38a/final",
         keySize: 32, 
         blockSize: 16,
-        input: Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
-        key: Hex8ToBytes("603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"),
-        expected: Hex8ToBytes("f3eed1bdb5d2a03c064b5a7e3db181f8")
+        input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
+        key: OpCodes.Hex8ToBytes("603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"),
+        expected: OpCodes.Hex8ToBytes("f3eed1bdb5d2a03c064b5a7e3db181f8")
       }
     ],
     

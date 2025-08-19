@@ -101,18 +101,18 @@
         uri: "https://csrc.nist.gov/publications/detail/fips/46/3/archive/1999-10-25",
         keySize: 16,
         blockSize: 8,
-        input: Hex8ToBytes("0123456789abcdef"),
-        key: Hex8ToBytes("0123456789abcdef23456789abcdef01"),
-        expected: Hex8ToBytes("cd49158537d6b2")
+        input: OpCodes.Hex8ToBytes("0123456789abcdef"),
+        key: OpCodes.Hex8ToBytes("0123456789abcdef23456789abcdef01"),
+        expected: OpCodes.Hex8ToBytes("cd49158537d6b2")
       },
       {
         text: "3DES EDE3 mode - three distinct keys",
         uri: "https://csrc.nist.gov/publications/detail/sp/800-67/rev-2/final",
         keySize: 24,
         blockSize: 8,
-        input: Hex8ToBytes("0123456789abcdef"),
-        key: Hex8ToBytes("0123456789abcdef23456789abcdef01456789abcdef0123"),
-        expected: Hex8ToBytes("e570cb4bca28ad")
+        input: OpCodes.Hex8ToBytes("0123456789abcdef"),
+        key: OpCodes.Hex8ToBytes("0123456789abcdef23456789abcdef01456789abcdef0123"),
+        expected: OpCodes.Hex8ToBytes("e570cb4bca28ad")
       }
     ],
 

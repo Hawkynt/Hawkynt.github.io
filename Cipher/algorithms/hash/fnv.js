@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /*
  * FNV Hash Implementation
  * (c)2006-2025 Hawkynt
@@ -5,6 +6,16 @@
 
 (function(global) {
   'use strict';
+  
+  // Load OpCodes for cryptographic operations
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    try {
+      require('../../OpCodes.js');
+    } catch (e) {
+      console.error('Failed to load OpCodes.js:', e.message);
+      return;
+    }
+  }
 
   const FNV = {
     name: "FNV-1a",
@@ -38,21 +49,21 @@
       {
         text: "FNV-1a Test Vector - Empty string",
         uri: "http://www.isthe.com/chongo/tech/comp/fnv/",
-        input: OpCodes.ANSIToBytes(""),
+        input: OpCodes.StringToBytes(""),
         key: null,
         expected: OpCodes.Hex8ToBytes("811c9dc5")
       },
       {
         text: "FNV-1a Test Vector - 'a'",
         uri: "http://www.isthe.com/chongo/tech/comp/fnv/",
-        input: OpCodes.ANSIToBytes("a"),
+        input: OpCodes.StringToBytes("a"),
         key: null,
         expected: OpCodes.Hex8ToBytes("e40c292c")
       },
       {
         text: "FNV-1a Test Vector - 'foobar'",
         uri: "http://www.isthe.com/chongo/tech/comp/fnv/",
-        input: OpCodes.ANSIToBytes("foobar"),
+        input: OpCodes.StringToBytes("foobar"),
         key: null,
         expected: OpCodes.Hex8ToBytes("a9f37ed7")
       }
@@ -68,7 +79,7 @@
 
     // Core FNV-1a computation
     compute: function(data) {
-      const bytes = Array.isArray(data) ? data : OpCodes.ANSIToBytes(data);
+      const bytes = Array.isArray(data) ? data : OpCodes.StringToBytes(data);
       let hash = this.FNV_32_OFFSET_BASIS;
       
       for (let i = 0; i < bytes.length; i++) {
@@ -88,7 +99,7 @@
 
     // FNV-1 (different from FNV-1a) - multiply first, then XOR
     computeFNV1: function(data) {
-      const bytes = Array.isArray(data) ? data : OpCodes.ANSIToBytes(data);
+      const bytes = Array.isArray(data) ? data : OpCodes.StringToBytes(data);
       let hash = this.FNV_32_OFFSET_BASIS;
       
       for (let i = 0; i < bytes.length; i++) {
@@ -111,5 +122,14 @@
   if (global.Cipher && typeof global.Cipher.Add === 'function')
     global.Cipher.Add(FNV);
   
+
+
+  // Export for Node.js
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = FNV;
+  }
+  
+  // Export to global scope
+  global.FNV = FNV;
 
 })(typeof global !== 'undefined' ? global : window);

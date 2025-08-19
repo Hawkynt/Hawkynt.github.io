@@ -92,8 +92,8 @@
         uri: "NIST Special Publication 800-17",
         keySize: 10,
         blockSize: 8,
-        input: Hex8ToBytes("0000000000000000"),
-        key: Hex8ToBytes("0000000000000000000000"),
+        input: OpCodes.Hex8ToBytes("0000000000000000"),
+        key: OpCodes.Hex8ToBytes("0000000000000000000000"),
         expected: null // Will be computed by implementation
       }
     ],

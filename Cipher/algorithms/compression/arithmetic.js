@@ -316,20 +316,20 @@
       {
         text: "Empty data compression test",
         uri: "Educational test vector",
-        input: Hex8ToBytes(""),
-        expected: Hex8ToBytes("80")
+        input: OpCodes.Hex8ToBytes(""),
+        expected: OpCodes.Hex8ToBytes("80")
       },
       {
         text: "Single byte 'A' compression", 
         uri: "Basic compression test",
-        input: ANSIToBytes("A"),
-        expected: Hex8ToBytes("411")
+        input: OpCodes.StringToBytes("A"),
+        expected: OpCodes.Hex8ToBytes("411")
       },
       {
         text: "High redundancy pattern",
         uri: "Optimal compression test", 
-        input: ANSIToBytes("AAAA"),
-        expected: Hex8ToBytes("4043")
+        input: OpCodes.StringToBytes("AAAA"),
+        expected: OpCodes.Hex8ToBytes("4043")
       }
     ],
 

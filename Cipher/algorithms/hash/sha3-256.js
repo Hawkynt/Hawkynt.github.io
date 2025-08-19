@@ -29,7 +29,7 @@
   const SHA3_256_OUTPUT = 32;       // Output size in bytes
   const KECCAK_ROUNDS = 24;         // Number of Keccak-f[1600] rounds
   
-  // Keccak round constants
+  // Keccac round constants (24 rounds, 64-bit each) - more readable as hex literals
   const RC = [
     0x0000000000000001, 0x0000000000008082, 0x800000000000808a, 0x8000000080008000,
     0x000000000000808b, 0x0000000080000001, 0x8000000080008081, 0x8000000000008009,

@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /*
  * CRC16 Implementation
  * (c)2006-2025 Hawkynt
@@ -5,6 +6,16 @@
 
 (function(global) {
   'use strict';
+  
+  // Load OpCodes for cryptographic operations
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    try {
+      require('../../OpCodes.js');
+    } catch (e) {
+      console.error('Failed to load OpCodes.js:', e.message);
+      return;
+    }
+  }
 
   const CRC16 = {
     name: "CRC-16",
@@ -38,21 +49,21 @@
       {
         text: "CRC-16-CCITT Test Vector - '123456789'",
         uri: "http://www.ross.net/crc/",
-        input: OpCodes.ANSIToBytes("123456789"),
+        input: OpCodes.StringToBytes("123456789"),
         key: null,
         expected: OpCodes.Hex8ToBytes("29B1")
       },
       {
         text: "CRC-16-IBM Test Vector - Empty",
         uri: "http://reveng.sourceforge.net/crc-catalogue/",
-        input: OpCodes.ANSIToBytes(""),
+        input: OpCodes.StringToBytes(""),
         key: null,
         expected: OpCodes.Hex8ToBytes("0000")
       },
       {
         text: "CRC-16-CCITT Test Vector - 'A'",
         uri: "http://www.ross.net/crc/",
-        input: OpCodes.ANSIToBytes("A"),
+        input: OpCodes.StringToBytes("A"),
         key: null,
         expected: OpCodes.Hex8ToBytes("B915")
       }
@@ -106,7 +117,7 @@
         throw new Error('Unknown CRC16 variant: ' + variant);
       }
 
-      const bytes = Array.isArray(data) ? data : OpCodes.ANSIToBytes(data);
+      const bytes = Array.isArray(data) ? data : OpCodes.StringToBytes(data);
       const table = this.generateTable(params.polynomial, params.refIn);
       let crc = params.initial;
 
@@ -170,5 +181,14 @@
   if (global.Cipher && typeof global.Cipher.Add === 'function')
     global.Cipher.Add(CRC16);
   
+
+
+  // Export for Node.js
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = CRC16;
+  }
+  
+  // Export to global scope
+  global.CRC16 = CRC16;
 
 })(typeof global !== 'undefined' ? global : window);

@@ -58,7 +58,7 @@
         text: "Dilithium2 NIST Test Vector",
         uri: "https://csrc.nist.gov/CSRC/media/Projects/Post-Quantum-Cryptography/documents/round-3/submissions/Dilithium-Round3.zip",
         keySize: 2544, // Dilithium2 private key size in bytes
-        input: ANSIToBytes("Message to sign"),
+        input: OpCodes.StringToBytes("Message to sign"),
         expected: null // Will be computed during test
       }
     ],

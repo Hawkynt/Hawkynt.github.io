@@ -5,6 +5,21 @@
 
 (function(global) {
   'use strict';
+  
+  // Load dependencies
+  if (!global.OpCodes) {
+    if (typeof require !== 'undefined') {
+      try {
+        require('../../OpCodes.js');
+      } catch (e) {
+        console.error('Failed to load OpCodes dependency:', e.message);
+        return;
+      }
+    } else {
+      console.error('Algorithm requires OpCodes library to be loaded first');
+      return;
+    }
+  }
 
   const Beaufort = {
     name: "Beaufort Cipher",
@@ -46,23 +61,23 @@
       {
         text: "Classic Historical Example",
         uri: "https://en.wikipedia.org/wiki/Beaufort_cipher",
-        input: ANSIToBytes("ATTACKATDAWN"),
-        key: ANSIToBytes("LEMON"),
-        expected: ANSIToBytes("LXFOPVEFRNHR")
+        input: OpCodes.StringToBytes("ATTACKATDAWN"),
+        key: OpCodes.StringToBytes("LEMON"),
+        expected: OpCodes.StringToBytes("LXFOPVEFRNHR")
       },
       {
         text: "Military Message Example",
         uri: "https://www.dcode.fr/beaufort-cipher",
-        input: ANSIToBytes("DEFENDTHEEASTWALL"),
-        key: ANSIToBytes("FORTIFICATION"),
-        expected: ANSIToBytes("ISWXVIBJEXIGGZEQPBIMOIGAKMHE")
+        input: OpCodes.StringToBytes("DEFENDTHEEASTWALL"),
+        key: OpCodes.StringToBytes("FORTIFICATION"),
+        expected: OpCodes.StringToBytes("ISWXVIBJEXIGGZEQPBIMOIGAKMHE")
       },
       {
         text: "Reciprocal Property Test",
         uri: "https://practicalcryptography.com/ciphers/classical-era/beaufort/",
-        input: ANSIToBytes("RECIPROCAL"),
-        key: ANSIToBytes("SYMMETRIC"),
-        expected: ANSIToBytes("JWGNIKMQAN")
+        input: OpCodes.StringToBytes("RECIPROCAL"),
+        key: OpCodes.StringToBytes("SYMMETRIC"),
+        expected: OpCodes.StringToBytes("JWGNIKMQAN")
       }
     ],
 

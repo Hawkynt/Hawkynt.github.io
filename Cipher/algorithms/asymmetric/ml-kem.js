@@ -55,7 +55,7 @@
         text: "ML-KEM-512 NIST Test Vector",
         uri: "https://csrc.nist.gov/CSRC/media/Projects/Post-Quantum-Cryptography/documents/round-3/submissions/CRYSTALS-Kyber-Round3.zip",
         keySize: 1632, // ML-KEM-512 private key size in bytes
-        input: Hex8ToBytes("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"),
+        input: OpCodes.Hex8ToBytes("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"),
         expected: null // Will be computed during test
       }
     ],

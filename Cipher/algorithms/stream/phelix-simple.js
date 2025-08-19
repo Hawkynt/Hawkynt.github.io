@@ -8,6 +8,11 @@
 (function(global) {
   'use strict';
   
+  // Ensure OpCodes is available
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    require('../../OpCodes.js');
+  }
+  
   // Ensure environment dependencies are available
   if (!global.Cipher) {
     if (typeof require !== 'undefined') {
@@ -57,8 +62,8 @@
         text: "Educational Test Vector",
         uri: "Educational test case",
         keySize: 16,
-        key: Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-        input: Hex8ToBytes("00000000000000000000000000000000"),
+        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
         expected: [] // Educational implementation, no official test vectors
       }
     ],

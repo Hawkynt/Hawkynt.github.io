@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /*
  * Adler-32 Checksum Implementation
  * (c)2006-2025 Hawkynt
@@ -5,6 +6,16 @@
 
 (function(global) {
   'use strict';
+  
+  // Load OpCodes for cryptographic operations
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    try {
+      require('../../OpCodes.js');
+    } catch (e) {
+      console.error('Failed to load OpCodes.js:', e.message);
+      return;
+    }
+  }
 
   const Adler32 = {
     name: "Adler-32",
@@ -42,14 +53,14 @@
       {
         text: "RFC 1950 Test Vector - Single byte",
         uri: "https://tools.ietf.org/html/rfc1950",
-        input: OpCodes.ANSIToBytes("a"),
+        input: OpCodes.StringToBytes("a"),
         key: null,
         expected: OpCodes.Hex8ToBytes("00620062")
       },
       {
         text: "RFC 1950 Test Vector - Wikipedia example",
         uri: "https://en.wikipedia.org/wiki/Adler-32",
-        input: OpCodes.ANSIToBytes("Wikipedia"),
+        input: OpCodes.StringToBytes("Wikipedia"),
         key: null,
         expected: OpCodes.Hex8ToBytes("11E60398")
       }
@@ -64,7 +75,7 @@
 
     // Core Adler-32 computation
     compute: function(data) {
-      const bytes = Array.isArray(data) ? data : OpCodes.ANSIToBytes(data);
+      const bytes = Array.isArray(data) ? data : OpCodes.StringToBytes(data);
       let a = 1, b = 0;
       
       for (let i = 0; i < bytes.length; i++) {
@@ -87,5 +98,14 @@
   if (global.Cipher && typeof global.Cipher.Add === 'function')
     global.Cipher.Add(Adler32);
   
+
+
+  // Export for Node.js
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Adler32;
+  }
+  
+  // Export to global scope
+  global.Adler32 = Adler32;
 
 })(typeof global !== 'undefined' ? global : window);

@@ -64,9 +64,9 @@
         text: "eSTREAM Test Vector",
         uri: "https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/pomaranch/",
         keySize: 16,
-        key: Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-        iv: Hex8ToBytes("0001020304050607"),
-        input: Hex8ToBytes("00000000000000000000000000000000"),
+        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        iv: OpCodes.Hex8ToBytes("0001020304050607"),
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
         expected: [] // Official test vectors available from eSTREAM
       }
     ],
@@ -81,8 +81,9 @@
     instances: {},
     cantDecode: false,
     isInitialized: false,
-      ],
-      
+    
+    // Metadata for educational purposes
+    metadata: {
       implementationNotes: 'Uses 9 LFSRs of different primitive polynomials with nonlinear combining function. Educational implementation showing LFSR-based stream cipher design.',
       performanceNotes: 'Designed for high-speed software but has known security issues. Modern alternatives like ChaCha20 are preferred.',
       
@@ -92,7 +93,7 @@
       tags: ['stream', 'historical', 'estream', 'lfsr', 'deprecated', 'educational', 'phase3'],
       
       version: '1.0'
-    }) : null,
+    },
 
     // Test vectors for Pomaranch (educational/historical)
     testVectors: [

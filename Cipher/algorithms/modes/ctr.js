@@ -48,10 +48,10 @@
         uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf",
         keySize: 16,
         blockSize: 16,
-        input: Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
-        key: Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
-        iv: Hex8ToBytes("f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"),
-        expected: Hex8ToBytes("874d6191b620e3261bef6864990db6ce")
+        input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
+        key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+        iv: OpCodes.Hex8ToBytes("f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"),
+        expected: OpCodes.Hex8ToBytes("874d6191b620e3261bef6864990db6ce")
       }
     ],
 

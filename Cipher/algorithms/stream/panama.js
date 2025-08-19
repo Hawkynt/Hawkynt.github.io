@@ -65,8 +65,8 @@
         text: "Basic Stream Cipher Test",
         uri: "Educational test vector",
         keySize: 32,
-        key: Hex8ToBytes("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
-        input: Hex8ToBytes("00000000000000000000000000000000"),
+        key: OpCodes.Hex8ToBytes("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
         expected: [] // Will be filled during implementation validation
       }
     ],

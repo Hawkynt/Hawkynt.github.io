@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /*
  * BLAKE2s Implementation
  * (c)2006-2025 Hawkynt
@@ -5,6 +6,16 @@
 
 (function(global) {
   'use strict';
+  
+  // Load OpCodes for cryptographic operations
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    try {
+      require('../../OpCodes.js');
+    } catch (e) {
+      console.error('Failed to load OpCodes.js:', e.message);
+      return;
+    }
+  }
 
   const Blake2s = {
     name: "BLAKE2s",
@@ -41,7 +52,7 @@
       {
         text: "RFC 7693 Test Vector - abc",
         uri: "https://tools.ietf.org/html/rfc7693",
-        input: OpCodes.ANSIToBytes("abc"),
+        input: OpCodes.StringToBytes("abc"),
         key: null,
         expected: OpCodes.Hex8ToBytes("508c5e8c327c14e2e1a72ba34eeb452f37458b209ed63a294d999b4c86675982")
       }
@@ -261,5 +272,14 @@
   if (global.Cipher && typeof global.Cipher.Add === 'function')
     global.Cipher.Add(Blake2s);
   
+
+
+  // Export for Node.js
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Blake2s;
+  }
+  
+  // Export to global scope
+  global.Blake2s = Blake2s;
 
 })(typeof global !== 'undefined' ? global : window);

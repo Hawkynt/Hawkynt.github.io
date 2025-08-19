@@ -28,15 +28,15 @@
     testVectors: [
       {
         description: 'ANSI X9.23 padding for 16-byte block, 13 bytes input',
-        input: Hex8ToBytes('6bc1bee22e409f96e93d7e11739317'),
+        input: OpCodes.Hex8ToBytes('6bc1bee22e409f96e93d7e11739317'),
         blockSize: 16,
-        expected: Hex8ToBytes('6bc1bee22e409f96e93d7e11739317000003')
+        expected: OpCodes.Hex8ToBytes('6bc1bee22e409f96e93d7e11739317000003')
       },
       {
         description: 'ANSI X9.23 padding for 8-byte block, 5 bytes input', 
-        input: Hex8ToBytes('6bc1bee22e'),
+        input: OpCodes.Hex8ToBytes('6bc1bee22e'),
         blockSize: 8,
-        expected: Hex8ToBytes('6bc1bee22e000003')
+        expected: OpCodes.Hex8ToBytes('6bc1bee22e000003')
       }
     ]
   });

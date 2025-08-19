@@ -66,8 +66,8 @@
         text: "Spritz Basic Test",
         uri: "Educational test case",
         keySize: 16,
-        key: Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-        input: Hex8ToBytes("00000000000000000000000000000000"),
+        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
         expected: [] // Limited official test vectors available
       }
     ],
