@@ -345,12 +345,35 @@ class TestSuite {
           }
         }
         
-        // Check category matches subfolder (more flexible mapping)
-        const categoryName = algorithm.category?.name?.toLowerCase() || '';
-        const categoryMatch = categoryName.includes(expectedCategory.toLowerCase()) ||
-                             (expectedCategory === 'classical' && categoryName.includes('classical')) ||
-                             (expectedCategory === 'block' && (categoryName.includes('block') || categoryName.includes('cipher'))) ||
-                             (expectedCategory === 'stream' && (categoryName.includes('stream') || categoryName.includes('cipher')));
+        // Check category matches subfolder (direct CategoryType mapping)
+        const algorithmCategory = algorithm.category;
+        let categoryMatch = false;
+        
+        if (algorithmCategory) {
+          // Map folder names directly to CategoryType frozen instances
+          const folderToCategoryTypeMap = {
+            'asymmetric': global.AlgorithmFramework.CategoryType.ASYMMETRIC,
+            'block': global.AlgorithmFramework.CategoryType.BLOCK,
+            'stream': global.AlgorithmFramework.CategoryType.STREAM,
+            'hash': global.AlgorithmFramework.CategoryType.HASH,
+            'checksum': global.AlgorithmFramework.CategoryType.CHECKSUM,
+            'compression': global.AlgorithmFramework.CategoryType.COMPRESSION,
+            'encoding': global.AlgorithmFramework.CategoryType.ENCODING,
+            'classical': global.AlgorithmFramework.CategoryType.CLASSICAL,
+            'mac': global.AlgorithmFramework.CategoryType.MAC,
+            'kdf': global.AlgorithmFramework.CategoryType.KDF,
+            'ecc': global.AlgorithmFramework.CategoryType.ECC,
+            'modes': global.AlgorithmFramework.CategoryType.MODE,
+            'padding': global.AlgorithmFramework.CategoryType.PADDING,
+            'aead': global.AlgorithmFramework.CategoryType.AEAD,
+            'special': global.AlgorithmFramework.CategoryType.SPECIAL,
+            'pqc': global.AlgorithmFramework.CategoryType.PQC,
+            'random': global.AlgorithmFramework.CategoryType.RANDOM
+          };
+          
+          const expectedCategoryType = folderToCategoryTypeMap[expectedCategory.toLowerCase()];
+          categoryMatch = algorithmCategory === expectedCategoryType;
+        }
         
         if (!categoryMatch) {
           missingFields.push(`category mismatch: expected ${expectedCategory}, got ${algorithm.category}`);
