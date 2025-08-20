@@ -21,6 +21,7 @@ class TestSuite {
   constructor() {
     this.totalAlgorithms = 0;
     this.algorithmsPerCategory = {};
+    this.verbose = false;
     this.results = {
       compilation: { passed: 0, failed: 0, errors: [] },
       interface: { passed: 0, failed: 0, errors: [] },
@@ -42,8 +43,13 @@ class TestSuite {
       // Load OpCodes first
       await this.loadDependencies();
       
-      // Check if single file test was requested
-      const singleFile = process.argv[2];
+      // Parse command line arguments
+      const args = process.argv.slice(2);
+      this.verbose = args.includes('--verbose') || args.includes('-v');
+      
+      // Filter out flags to get the filename
+      const singleFile = args.find(arg => !arg.startsWith('--') && !arg.startsWith('-'));
+      
       if (singleFile) {
         await this.testSingleFile(singleFile);
       } else {
@@ -103,7 +109,7 @@ class TestSuite {
       if (files.includes(filename)) {
         foundFile = true;
         console.log(`Found ${filename} in category: ${category}`);
-        this.algorithmsPerCategory[category] = 1;
+        this.algorithmsPerCategory[category] = 0; // Initialize to 0, will be incremented in testAlgorithm
         await this.testAlgorithm(category, filename);
         break;
       }
@@ -234,9 +240,19 @@ class TestSuite {
       return true;
       
     } catch (error) {
-      algorithmData.details.compilationError = error.stderr || error.message;
+      const errorMsg = error.stderr || error.message;
+      algorithmData.details.compilationError = errorMsg;
       this.results.compilation.failed++;
-      this.results.compilation.errors.push(`${algorithmData.name}: ${error.stderr || error.message}`);
+      this.results.compilation.errors.push(`${algorithmData.name}: ${errorMsg}`);
+      
+      if (this.verbose) {
+        console.log(`\n=== COMPILATION ERROR DETAILS for ${algorithmData.name} ===`);
+        console.log(`File: ${filePath}`);
+        console.log(`Node.js Output:`);
+        console.log(errorMsg);
+        console.log('===============================================\n');
+      }
+      
       return false;
     }
   }
@@ -264,16 +280,40 @@ class TestSuite {
         this.results.interface.passed++;
         return true;
       } else {
-        algorithmData.details.interfaceError = 'No algorithms registered (RegisterAlgorithm likely failed)';
+        const errorMsg = 'No algorithms registered (RegisterAlgorithm likely failed)';
+        algorithmData.details.interfaceError = errorMsg;
         this.results.interface.failed++;
-        this.results.interface.errors.push(`${algorithmData.name}: No algorithms registered`);
+        this.results.interface.errors.push(`${algorithmData.name}: ${errorMsg}`);
+        
+        if (this.verbose) {
+          console.log(`\n=== INTERFACE ERROR DETAILS for ${algorithmData.name} ===`);
+          console.log(`File: ${filePath}`);
+          console.log(`Error: ${errorMsg}`);
+          console.log(`Possible Issues:`);
+          console.log(`- Missing RegisterAlgorithm() call`);
+          console.log(`- Algorithm class not properly exported`);
+          console.log(`- RegisterAlgorithm() call failed silently`);
+          console.log('==================================================\n');
+        }
+        
         return false;
       }
       
     } catch (error) {
-      algorithmData.details.interfaceError = error.message;
+      const errorMsg = error.message;
+      algorithmData.details.interfaceError = errorMsg;
       this.results.interface.failed++;
-      this.results.interface.errors.push(`${algorithmData.name}: ${error.message}`);
+      this.results.interface.errors.push(`${algorithmData.name}: ${errorMsg}`);
+      
+      if (this.verbose) {
+        console.log(`\n=== INTERFACE ERROR DETAILS for ${algorithmData.name} ===`);
+        console.log(`File: ${filePath}`);
+        console.log(`Error: ${errorMsg}`);
+        console.log(`Stack Trace:`);
+        console.log(error.stack);
+        console.log('==================================================\n');
+      }
+      
       return false;
     }
   }
@@ -319,7 +359,7 @@ class TestSuite {
         // Count documentation, vulnerabilities, tests
         const docCount = algorithm.documentation ? algorithm.documentation.length : 0;
         const vulnCount = algorithm.knownVulnerabilities ? algorithm.knownVulnerabilities.length : 0;
-        const testCount = algorithm.testVectors ? algorithm.testVectors.length : 0;
+        const testCount = algorithm.tests ? algorithm.tests.length : 0;
         
         const algorithmMetadata = {
           algorithm: algorithm.name,
@@ -350,14 +390,46 @@ class TestSuite {
       } else {
         this.results.metadata.failed++;
         const failedAlgorithms = metadataResults.filter(r => !r.hasAllRequiredFields).length;
-        this.results.metadata.errors.push(`${algorithmData.name}: ${failedAlgorithms}/${metadataResults.length} algorithms failed metadata validation`);
+        const errorMsg = `${failedAlgorithms}/${metadataResults.length} algorithms failed metadata validation`;
+        this.results.metadata.errors.push(`${algorithmData.name}: ${errorMsg}`);
+        
+        if (this.verbose) {
+          console.log(`\n=== METADATA ERROR DETAILS for ${algorithmData.name} ===`);
+          console.log(`File: ${filePath}`);
+          console.log(`Results: ${errorMsg}`);
+          console.log(`\nDetailed Breakdown:`);
+          
+          for (const result of metadataResults) {
+            console.log(`\nAlgorithm: ${result.algorithm}`);
+            console.log(`  Required Fields: ${result.hasAllRequiredFields ? '✓' : '✗'}`);
+            if (result.missingFields.length > 0) {
+              console.log(`  Missing/Wrong Fields: ${result.missingFields.join(', ')}`);
+            }
+            console.log(`  Category Match: ${result.categoryMatch ? '✓' : '✗'}`);
+            console.log(`  Documentation: ${result.documentationCount} items`);
+            console.log(`  Test Vectors: ${result.testVectorCount} items`);
+          }
+          console.log('================================================\n');
+        }
+        
         return false;
       }
       
     } catch (error) {
-      algorithmData.details.metadataError = error.message;
+      const errorMsg = error.message;
+      algorithmData.details.metadataError = errorMsg;
       this.results.metadata.failed++;
-      this.results.metadata.errors.push(`${algorithmData.name}: ${error.message}`);
+      this.results.metadata.errors.push(`${algorithmData.name}: ${errorMsg}`);
+      
+      if (this.verbose) {
+        console.log(`\n=== METADATA ERROR DETAILS for ${algorithmData.name} ===`);
+        console.log(`File: ${filePath}`);
+        console.log(`Error: ${errorMsg}`);
+        console.log(`Stack Trace:`);
+        console.log(error.stack);
+        console.log('================================================\n');
+      }
+      
       return false;
     }
   }
@@ -400,12 +472,39 @@ class TestSuite {
         const issuesSummary = foundIssues.map(issue => `${issue.count} ${issue.type}`).join(', ');
         this.results.issues.failed++;
         this.results.issues.errors.push(`${algorithmData.name}: ${issuesSummary}`);
+        
+        if (this.verbose) {
+          console.log(`\n=== ISSUE TAGS FOUND for ${algorithmData.name} ===`);
+          console.log(`File: ${filePath}`);
+          console.log(`Total Issues: ${totalIssueCount}`);
+          console.log(`\nBreakdown by Type:`);
+          
+          for (const issue of foundIssues) {
+            console.log(`\n${issue.type} (${issue.count} found):`);
+            issue.comments.forEach((comment, index) => {
+              console.log(`  ${index + 1}. ${comment.trim()}`);
+            });
+          }
+          console.log('=============================================\n');
+        }
+        
         return false;
       }
       
     } catch (error) {
-      algorithmData.details.issuesError = error.message;
+      const errorMsg = error.message;
+      algorithmData.details.issuesError = errorMsg;
       this.results.issues.failed++;
+      this.results.issues.errors.push(`${algorithmData.name}: ${errorMsg}`);
+      
+      if (this.verbose) {
+        console.log(`\n=== ISSUE SCAN ERROR for ${algorithmData.name} ===`);
+        console.log(`File: ${filePath}`);
+        console.log(`Error: ${errorMsg}`);
+        console.log('=============================================\n');
+      }
+      
+      return false;
       this.results.issues.errors.push(`${algorithmData.name}: ${error.message}`);
       return false;
     }
@@ -436,7 +535,7 @@ class TestSuite {
       for (const algorithm of registeredAlgorithms) {
         try {
           // Get test vectors from metadata
-          const testVectors = algorithm.testVectors || [];
+          const testVectors = algorithm.tests || [];
           
           if (testVectors.length === 0) {
             testResults.push({
@@ -447,12 +546,14 @@ class TestSuite {
             continue;
           }
           
-          // Test first vector (or all if reasonable number)
-          const vectorsToTest = testVectors.slice(0, Math.min(3, testVectors.length));
+          // Test all vectors
+          const vectorsToTest = testVectors;
           let vectorsPassed = 0;
           let roundTripsPassed = 0;
+          const vectorDetails = []; // Store details for verbose output
           
-          for (const vector of vectorsToTest) {
+          for (let i = 0; i < vectorsToTest.length; i++) {
+            const vector = vectorsToTest[i];
             try {
               // Create fresh instance for each test vector
               const testInstance = algorithm.CreateInstance(false); // false = forward/encrypt mode
@@ -478,7 +579,20 @@ class TestSuite {
               
               // Compare with expected output (try both 'expected' and 'output' properties)
               const expectedOutput = vector.expected || vector.output;
-              if (this.compareArrays(result, expectedOutput)) {
+              const passed = this.compareArrays(result, expectedOutput);
+              
+              // Store details for verbose output
+              vectorDetails.push({
+                index: i + 1,
+                text: vector.text || `Test Vector ${i + 1}`,
+                passed: passed,
+                input: vector.input,
+                expected: expectedOutput,
+                actual: result,
+                roundTripSuccess: false
+              });
+              
+              if (passed) {
                 vectorsPassed++;
                 
                 // Try round-trip test by attempting to create an inverse instance
@@ -507,6 +621,7 @@ class TestSuite {
                     // Check if we get back the original input
                     if (this.compareArrays(decryptedResult, vector.input)) {
                       roundTripsPassed++;
+                      vectorDetails[vectorDetails.length - 1].roundTripSuccess = true;
                     }
                   }
                 } catch (inverseError) {
@@ -515,8 +630,17 @@ class TestSuite {
                 }
               }
             } catch (vectorError) {
-              // Vector failed, but continue testing others
-              continue;
+              // Vector failed, store error details
+              vectorDetails.push({
+                index: i + 1,
+                text: vector.text || `Test Vector ${i + 1}`,
+                passed: false,
+                input: vector.input,
+                expected: vector.expected || vector.output,
+                actual: null,
+                error: vectorError.message,
+                roundTripSuccess: false
+              });
             }
           }
           
@@ -528,7 +652,8 @@ class TestSuite {
               vectorsPassed: vectorsPassed,
               vectorsTotal: vectorsToTest.length,
               roundTripsPassed: roundTripsPassed,
-              roundTripsAttempted: vectorsPassed // Only attempt round-trip on successful vectors
+              roundTripsAttempted: vectorsPassed, // Only attempt round-trip on successful vectors
+              vectorDetails: vectorDetails
             });
           } else {
             testResults.push({
@@ -537,7 +662,8 @@ class TestSuite {
               vectorsPassed: 0,
               vectorsTotal: vectorsToTest.length,
               roundTripsPassed: 0,
-              roundTripsAttempted: 0
+              roundTripsAttempted: 0,
+              vectorDetails: vectorDetails
             });
           }
           
@@ -556,16 +682,87 @@ class TestSuite {
         this.results.functionality.passed++;
         return true;
       } else {
-        algorithmData.details.functionalityError = 'All algorithm tests failed';
+        const errorMsg = 'All algorithm tests failed';
+        algorithmData.details.functionalityError = errorMsg;
         this.results.functionality.failed++;
         this.results.functionality.errors.push(`${algorithmData.name}: All algorithms failed testing`);
+        
+        if (this.verbose) {
+          console.log(`\n=== FUNCTIONALITY TEST DETAILS for ${algorithmData.name} ===`);
+          console.log(`File: ${filePath}`);
+          console.log(`Overall Result: ${errorMsg}`);
+          console.log(`\nTest Results by Algorithm:`);
+          
+          for (const result of testResults) {
+            console.log(`\nAlgorithm: ${result.algorithm}`);
+            console.log(`  Status: ${result.status}`);
+            
+            if (result.status === 'passed') {
+              console.log(`  Vectors Passed: ${result.vectorsPassed}/${result.vectorsTotal}`);
+              console.log(`  Round-trips Passed: ${result.roundTripsPassed}/${result.roundTripsAttempted}`);
+            } else if (result.status === 'failed') {
+              console.log(`  Vectors Passed: ${result.vectorsPassed}/${result.vectorsTotal} (all failed)`);
+              console.log(`  Issue: Test vectors produced wrong output`);
+            } else if (result.status === 'no-tests') {
+              console.log(`  Issue: ${result.message}`);
+            } else if (result.status === 'error') {
+              console.log(`  Error: ${result.message}`);
+            }
+            
+            // Show detailed vector results if available
+            if (result.vectorDetails && result.vectorDetails.length > 0) {
+              console.log(`\n  Detailed Vector Results:`);
+              for (const vector of result.vectorDetails) {
+                console.log(`    Vector ${vector.index}: ${vector.text}`);
+                console.log(`      Status: ${vector.passed ? '✓ PASS' : '✗ FAIL'}`);
+                
+                if (!vector.passed) {
+                  if (vector.error) {
+                    console.log(`      Error: ${vector.error}`);
+                  } else {
+                    // Helper function to format byte arrays as hex
+                    const formatBytes = (bytes) => {
+                      if (!bytes) return 'null';
+                      if (bytes.length <= 16) {
+                        return bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+                      } else {
+                        const start = bytes.slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('');
+                        const end = bytes.slice(-8).map(b => b.toString(16).padStart(2, '0')).join('');
+                        return `${start}...${end} (${bytes.length} bytes)`;
+                      }
+                    };
+                    
+                    console.log(`      Input:    ${formatBytes(vector.input)}`);
+                    console.log(`      Expected: ${formatBytes(vector.expected)}`);
+                    console.log(`      Actual:   ${formatBytes(vector.actual)}`);
+                  }
+                } else if (vector.roundTripSuccess) {
+                  console.log(`      Round-trip: ✓ PASS`);
+                }
+              }
+            }
+          }
+          console.log('===================================================\n');
+        }
+        
         return false;
       }
       
     } catch (error) {
-      algorithmData.details.functionalityError = error.message;
+      const errorMsg = error.message;
+      algorithmData.details.functionalityError = errorMsg;
       this.results.functionality.failed++;
-      this.results.functionality.errors.push(`${algorithmData.name}: ${error.message}`);
+      this.results.functionality.errors.push(`${algorithmData.name}: ${errorMsg}`);
+      
+      if (this.verbose) {
+        console.log(`\n=== FUNCTIONALITY TEST ERROR for ${algorithmData.name} ===`);
+        console.log(`File: ${filePath}`);
+        console.log(`Error: ${errorMsg}`);
+        console.log(`Stack Trace:`);
+        console.log(error.stack);
+        console.log('===================================================\n');
+      }
+      
       return false;
     }
   }
@@ -624,15 +821,49 @@ class TestSuite {
         this.results.optimization.passed++;
         return true;
       } else {
+        const issuesSummary = algorithmData.details.optimization.issues.join(', ');
         this.results.optimization.failed++;
-        this.results.optimization.errors.push(`${algorithmData.name}: ${algorithmData.details.optimization.issues.join(', ')}`);
+        this.results.optimization.errors.push(`${algorithmData.name}: ${issuesSummary}`);
+        
+        if (this.verbose) {
+          console.log(`\n=== OPTIMIZATION SUGGESTIONS for ${algorithmData.name} ===`);
+          console.log(`File: ${filePath}`);
+          console.log(`Uses OpCodes: ${algorithmData.details.optimization.usesOpCodes ? '✓' : '✗'}`);
+          console.log(`\nOptimization Issues Found:`);
+          
+          if (algorithmData.details.optimization.bareHexCount > 0) {
+            console.log(`  • ${algorithmData.details.optimization.bareHexCount} bare hex values (should use OpCodes.Hex8ToBytes)`);
+          }
+          if (algorithmData.details.optimization.stringLiteralCount > 0) {
+            console.log(`  • ${algorithmData.details.optimization.stringLiteralCount} string literals (should use byte arrays)`);
+          }
+          if (algorithmData.details.optimization.potentialOptimizations > 0) {
+            console.log(`  • ${algorithmData.details.optimization.potentialOptimizations} bit operations (could use OpCodes utilities)`);
+          }
+          
+          console.log(`\nRecommendations:`);
+          console.log(`  - Replace hex strings with OpCodes.Hex8ToBytes("hexstring")`);
+          console.log(`  - Use OpCodes bit manipulation functions`);
+          console.log(`  - Convert string literals to byte arrays`);
+          console.log('====================================================\n');
+        }
+        
         return false;
       }
       
     } catch (error) {
-      algorithmData.details.optimizationError = error.message;
+      const errorMsg = error.message;
+      algorithmData.details.optimizationError = errorMsg;
       this.results.optimization.failed++;
-      this.results.optimization.errors.push(`${algorithmData.name}: ${error.message}`);
+      this.results.optimization.errors.push(`${algorithmData.name}: ${errorMsg}`);
+      
+      if (this.verbose) {
+        console.log(`\n=== OPTIMIZATION TEST ERROR for ${algorithmData.name} ===`);
+        console.log(`File: ${filePath}`);
+        console.log(`Error: ${errorMsg}`);
+        console.log('====================================================\n');
+      }
+      
       return false;
     }
   }
