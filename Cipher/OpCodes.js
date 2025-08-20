@@ -371,7 +371,7 @@
       
       const bytes = [];
       for (let i = 0; i < hexString.length; i += 2)
-        bytes.push(parseInt(hexPairhexString.substr(i, 2), 16));
+        bytes.push(parseInt(hexString.substr(i, 2), 16));
       
       return bytes;
     },
