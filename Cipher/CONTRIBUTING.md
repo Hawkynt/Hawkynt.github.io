@@ -1,173 +1,301 @@
-# Metadata Guidelines for Contributors
+# Algorithm Implementation Guidelines
+
+## 🏗️ Architecture Overview
+
+We are designing a clean, interface architecture for maximum usability and consistency. This document outlines the system we're building toward.
+
+The user wants to:
+* implement different kinds of algorithms in a meaningful hierarchical structure (symmetric/asymmetric block/stream ciphers, rngs, kdfs, paddingschemes, modes of operation, hashes/checksums, compression, encoding, errorcorrection, authentication, aead)
+* register all algorithm instances in a global list (IAlgorithm)
+* can inspect metadata of all algorithms in the list
+* have an algorithm instance implement some members that do transformations based on default parameter configurations
+* have algorithms to CreateInstance (IAlgorithmInstance) where he can modify properties
+* use said instance to do transformations
+* wrap multiple transformations around another e.g. EncodingAlgorithmInstance(ErrorCorrectionAlgorithmInstance(ModeAlgorithmInstance(PaddingAlgorithmInstance(CipherAlgorithmInstance(CompressionAlgorithmInstance(Data))))))
+* want arbitrary nesting like Cipher1(Padding1(Cipher2(Padding2(data)))) and Hash1(Hash2(data))
+* may want to do Cipher2(Padding2(Mode1(Cipher1(Padding1(data),Kdf(key1)),Prng(key1))),Hash(key2))
+* process arbitrary length stream of bytes (IEnumerable<byte>)
+* want the class design work in multiple languages, like JavaScript, C#, Perl, Python, PHP, Ruby, LUA, Rust, C++, FreeBASIC, Delphi
+* dont pollute everything with public classes, but keep it as closed as possible, e.g. AesInstance is nested in AesAlgorithm and can only be created by its CreateInstance
+
+```mermaid
+classDiagram
+
+%% ===== Core value objects =====
+class LinkItem {
+  +string text
+  +string uri
+}
+
+class TestCase {
+  +byte[] input      %% mandatory
+  +byte[] expected   %% mandatory
+  %% duck-typed extras: key, iv, nonce, aad, tag, seed, erasures, etc.
+}
+TestCase --|> LinkItem
+
+class Vulnerability {
+  +string type
+  +string mitigation
+  %% duck-typed extras: severity, cwe, disclosureDate, etc.
+}
+Vulnerability --|> LinkItem
+
+%% ===== Auth result =====
+class AuthResult {
+  +bool Success
+  +string? FailureReason
+  +byte[]? Output
+}
+
+%% ==== Core Interfaces ====
+class IAlgorithmInstance {
+  <<interface>>
+  +Algorithm algorithm
+  +void Feed(byte[] data)
+  +byte[] Result()
+}
+
+%% ===== Algorithm base =====
+class Algorithm {
+  <<abstract>>
+  +string name
+  +string description
+  +string inventor
+  +short? year
+  +CategoryType category
+  +string subCategory
+  +SecurityStatus securityStatus
+  +ComplexityType complexity
+  +CountryCode country
+
+  +LinkItem[] documentation
+  +LinkItem[] references
+  +Vulnerability[] knownVulnerabilities
+  +TestCase[] tests
+
+  +IAlgorithmInstance CreateInstance(bool isInverse)
+}
+
+Algorithm "1" --> "0..*" LinkItem : documentation
+Algorithm "1" --> "0..*" Vulnerability : vulnerabilities
+Algorithm "1" --> "0..*" TestCase : tests
+
+%% ==== Specialized Algorithm Families ====
+Algorithm <|-- CryptoAlgorithm
+Algorithm <|-- EncodingAlgorithm
+Algorithm <|-- CompressionAlgorithm
+Algorithm <|-- ErrorCorrectionAlgorithm
+Algorithm <|-- HashFunctionAlgorithm
+Algorithm <|-- MacAlgorithm
+Algorithm <|-- KdfAlgorithm
+Algorithm <|-- PaddingAlgorithm
+Algorithm <|-- CipherModeAlgorithm
+Algorithm <|-- AeadAlgorithm
+Algorithm <|-- RandomGenerationAlgorithm
+
+%% ==== Crypto Subtypes ====
+CryptoAlgorithm <|-- SymmetricCipherAlgorithm
+CryptoAlgorithm <|-- AsymmetricCipherAlgorithm
+
+SymmetricCipherAlgorithm <|-- BlockCipherAlgorithm
+SymmetricCipherAlgorithm <|-- StreamCipherAlgorithm
+
+%% ==== Instance Subtypes ====
+IAlgorithmInstance <|-- IBlockCipherInstance
+IAlgorithmInstance <|-- IHashFunctionInstance
+IAlgorithmInstance <|-- IMacInstance
+IAlgorithmInstance <|-- IKdfInstance
+IAlgorithmInstance <|-- IAeadInstance
+IAlgorithmInstance <|-- IErrorCorrectionInstance
+IAlgorithmInstance <|-- IRandomGeneratorInstance
+
+%% ===== Crypto metadata & capabilities =====
+class KeySize {
+  +word minSize
+  +word maxSize
+  +word stepSize
+}
+
+class BlockCipherAlgorithm {
+  +KeySize[] SupportedKeySizes
+  +KeySize[] SupportedBlockSizes
+}
+BlockCipherAlgorithm --|> SymmetricCipherAlgorithm
+
+class HashFunctionAlgorithm {
+  +KeySize[] SupportedOutputSizes
+}
+HashFunctionAlgorithm --|> Algorithm
+
+class KdfAlgorithm {
+  +KeySize[] SupportedOutputSizes
+  +bool SaltRequired
+}
+KdfAlgorithm --|> Algorithm
+
+class AeadAlgorithm {
+  +KeySize[] SupportedTagSizes
+  +bool SupportsDetached
+}
+AeadAlgorithm --|> CryptoAlgorithm
+
+class MacAlgorithm {
+  +KeySize[] SupportedMacSizes
+  +bool NeedsKey
+}
+MacAlgorithm --|> Algorithm
+
+class PaddingAlgorithm {
+  +bool IsLengthIncluded
+}
+PaddingAlgorithm --|> Algorithm
+
+class CipherModeAlgorithm {
+  +bool RequiresIV
+  +KeySize[] SupportedIVSizes
+}
+CipherModeAlgorithm --|> Algorithm
+
+class RandomGenerationAlgorithm {
+  +bool IsDeterministic
+  +bool IsCryptographicallySecure
+  +KeySize[] SupportedSeedSizes
+}
+RandomGenerationAlgorithm --|> Algorithm
+
+%% ===== Instance methods =====
+class IBlockCipherInstance {
+  <<interface>>
+  +word BlockSize
+  +word KeySize
+}
+
+class IHashFunctionInstance {
+  <<interface>>
+  +word OutputSize
+}
+
+class IMacInstance {
+  <<interface>>
+  +byte[] ComputeMac(byte[] data)
+}
+
+class IKdfInstance {
+  <<interface>>
+  +word OutputSize
+  +qword Iterations
+}
+
+class IAeadInstance {
+  <<interface>>
+  byte[] aad
+  word tagSize
+}
+
+class IErrorCorrectionInstance {
+  <<interface>>
+  +bool DetectError(byte[] input)
+}
+
+class IRandomGeneratorInstance {
+  <<interface>>
+  +byte[] NextBytes(word count)
+}
+
+```
+
+## 📋 Metadata Requirements
+
+It is important that we know the name of the algorithm we have at hand and that we can read us into it by examining descriptions, papers and reference sources. To verify that it works, we also need tests. When it is broken, we need proof to, thats what the vulnerabilities field is for.
+
+## 🔧 Current Implementation Guidelines
+
+### Direct Enum Assignment
+Always use direct enum object assignment for metadata properties:
+
+### Available Enum Values
+
+**Categories:**
+- `CategoryType.SYMMETRIC_BLOCK` - Block-based symmetric encryption 
+- `CategoryType.SYMMETRIC_STREAM` - Stream-based symmetric encryption
+- `CategoryType.ASYMMETRIC_BLOCK` - Public-key block ciphers
+- `CategoryType.ASYMMETRIC_STREAM` - Public-key stream ciphers  
+- `CategoryType.HASH` - Cryptographic hash algorithms
+- `CategoryType.MAC` - Message authentication codes
+- `CategoryType.COMPRESSION` - Data compression algorithms
+- `CategoryType.ENCODING` - Data encoding and representation
+- `CategoryType.CLASSICAL` - Historical and educational ciphers
+- `CategoryType.RANDOM` - Pseudo-random number generators
+- `CategoryType.EXPERIMENTAL` - Research and experimental algorithms
+
+### SubCategory Examples by Category:
+
+**SYMMETRIC_BLOCK:**
+- "Block Cipher" - Standard block ciphers
+- "Cipher Mode" - Operating modes (CBC, ECB, etc.)
+- "AEAD" - Authenticated operating modes (GCM, EAX, etc.)
+- "Block Padding" - PKCS#7, ISO 10126, etc.
+- "Signature Padding" - PSS, PKCS#1, etc.
+
+**SYMMETRIC_STREAM:**  
+- "Stream Cipher" - Standard stream ciphers
+- "Authenticated Stream" - Stream ciphers with authentication
+
+**HASH:**
+- "Cryptographic Hash" - SHA family, BLAKE, etc.
+- "Fast Hash" - xxHash, MurmurHash, etc.
+- "Checksum" - CRC32, Adler32, etc.
+
+**ENCODING:**
+- "Base Encoding" - Base64, Base32, etc.
+- "Error Control" - Reed-Solomon, Fountain, etc.
+
+**COMPRESSION:**
+- "Dictionary" - LZ77, LZW, etc.
+- "Statistical" - Huffman, Arithmetic, etc.
+- "Modern" - Brotli, Zstandard, etc.
+
+**RANDOM:**
+- "Hardware RNG" - Hardware-based entropy sources
+- "PRNG" - Pseudo-random
+- "CSRNG" - Cryptographically strong
+- "Stream Cipher RNG" - Stream ciphers used as RNGs
+
+## **Security Status:**
+- `SecurityStatus.SECURE` - Currently considered cryptographically secure
+- `SecurityStatus.DEPRECATED` - Still secure but deprecated/being phased out  
+- `SecurityStatus.BROKEN` - Cryptographically broken, unsafe for production
+- `SecurityStatus.OBSOLETE` - Completely obsolete, historical interest only
+- `SecurityStatus.EXPERIMENTAL` - Research phase, security not established
+- `SecurityStatus.EDUCATIONAL` - Educational purposes only, not for production
+
+**Countries:** `CountryCode.US`, `CountryCode.RU`, `CountryCode.CN`, `CountryCode.DE`, `CountryCode.GB`, `CountryCode.FR`, `CountryCode.JP`, `CountryCode.KR`, `CountryCode.IL`, `CountryCode.BE`, `CountryCode.CA`, `CountryCode.AU`, `CountryCode.IT`, `CountryCode.NL`, `CountryCode.CH`, `CountryCode.SE`, `CountryCode.NO`, `CountryCode.IN`, `CountryCode.BR`, `CountryCode.UA`, `CountryCode.INTL`, `CountryCode.ANCIENT`, `CountryCode.UNKNOWN`, etc.
+
+**Complexity:** `ComplexityType.BEGINNER`, `ComplexityType.INTERMEDIATE`, `ComplexityType.ADVANCED`, `ComplexityType.EXPERT`, `ComplexityType.RESEARCH`
+
+## 🎯 Coding Standards
+
+### Naming Conventions
+- **PascalCase** for methods: `EncryptBlock()`, `DecryptBlock()`, `ComputeHash()`
+- **camelCase** for fields: `blockSize`, `keySize`, `roundCount`  
+- **underscore prefix** for private: `_keySchedule`, `_roundKeys`, `_CompressRound()`
 
 ## ⚠️ Critical Security Guidelines
 
 ### Security Status Rules
-- **NEVER** set `securityStatus` to anything claiming the algorithm is "secure"
-- **Only use**: `"insecure"`, `"educational"`, `"experimental"`,or `null`
+- **NEVER** set `securityStatus` to `SecurityStatus.SECURE` unless absolutely certain
+- **Prefer**: `SecurityStatus.BROKEN`, `SecurityStatus.EDUCATIONAL`, `SecurityStatus.EXPERIMENTAL`, or `null`
 - `null` means "not yet broken or thoroughly analyzed" - this is the safest default
-- `"educational"` means "for learning purposes only"
-- `"insecure"` means "known vulnerabilities, should not be used in production"
-- `"experimental"` means "cleanroom implementation without any testvectors just from specs/papers"
+- `SecurityStatus.EDUCATIONAL` means "for learning purposes only"
+- `SecurityStatus.BROKEN` means "known vulnerabilities, should not be used in production"
+- `SecurityStatus.EXPERIMENTAL` means "research implementation without thorough analysis"
 
 ### Why We Don't Claim "Secure"
 - Cryptographic security is constantly evolving
-- New attacks are discovered regularly
-- We are not cryptanalysts - we are implementers
+- New attacks are discovered regularly  
+- We are implementers, not cryptanalysts
 - Making security claims creates liability and false confidence
-
-## Required Metadata Structure
-
-Follow this exact structure from `Metadata-template.js`:
-
-```javascript
-const AlgorithmName = {
-    name: "Algorithm Display Name",
-    description: "Clear description (maximum 3 sentences). Explain what it does and primary use case. Keep concise but informative.",
-    inventor: "Person/Organization Who Created It", // Empty string if unknown
-    year: 1995, // Year first published/appeared, or null if unknown
-    country: "US", // ISO country code where developed, or null
-    category: "cipher", // See categories below
-    subCategory: "Block Cipher", // Specific type within category
-    securityStatus: null, // ONLY "insecure", "educational", or null
-    securityNotes: "Brief security assessment (max 3 sentences). Known issues or analysis status.",
-    
-    documentation: [
-        // Links to papers, specifications, analysis
-        {text: "Wikipedia Article", uri: "https://en.wikipedia.org/..."},
-        {text: "Original Paper", uri: "https://..."},
-        {text: "NIST Standard", uri: "https://..."}
-    ],
-    
-    references: [
-        // Links to actual implementations (code repositories)
-        {text: "OpenSSL Implementation", uri: "https://github.com/openssl/..."},
-        {text: "Author's C++ Code", uri: "https://github.com/.../file.cpp"},
-        {text: "RFC Specification", uri: "https://tools.ietf.org/rfc/..."}
-    ],
-    
-    knownVulnerabilities: [
-        {
-            type: "Attack Type", 
-            text: "Description of vulnerability and impact",
-            mitigation: "How to mitigate or why to avoid"
-        }
-    ],
-    
-    tests: [
-        // Test vectors - use official sources when possible
-        {
-            text: "Test Vector Description",
-            uri: "Source URL (NIST, RFC, etc.)",
-            keySize: 16, // For ciphers
-            blockSize: 16, // For block ciphers
-            input: Hex8ToBytes("input_hex"),
-            key: Hex8ToBytes("key_hex"), // For ciphers
-            expected: Hex8ToBytes("expected_output_hex")
-        }
-    ],
-
-    /* methods and implementation following */
-    //
-};
-```
-
-## Valid Categories
-
-Use these exact category (=Subsystem) values:
-
-- `"cipher"` - Block/stream ciphers (AES, ChaCha20, etc.)
-- `"modeOfOperation"` - Cipher modes (CBC, GCM, etc.)  
-- `"paddingScheme"` - Padding methods (PKCS#7, OAEP, etc.)
-- `"hash"` - Hash functions (SHA-256, Blake2, etc.)
-- `"checksum"` - Checksums (CRC32, Adler32, etc.)
-- `"compression"` - Compression algorithms (DEFLATE, LZ77, etc.)
-- `"keyDerivation"` - KDF functions (PBKDF2, Argon2, etc.)
-- `"randomNumberGenerator"` - RNG algorithms
-- `"encodingScheme"` - Encoding methods (Base64, Hex, etc.)
-- `"errorCorrection"` - Error correction codes
-
-## Valid SubCategories by Category
-
-### `"cipher"` subcategories:
-- `"Block Cipher"` - Fixed-size block encryption (AES, DES, Blowfish)
-- `"Stream Cipher"` - Byte-by-byte encryption (ChaCha20, RC4, Salsa20)
-- `"Classical Cipher"` - Historical/educational ciphers (Caesar, Vigenère, Enigma)
-- `"Asymmetric Cipher"` - Public key cryptography (RSA, NTRU, Post-Quantum)
-
-### `"modeOfOperation"` subcategories:
-- `"Confidentiality Mode"` - Encryption only (ECB, CBC, CTR, OFB, CFB)
-- `"Authenticated Mode"` - Encryption + authentication (GCM, CCM, EAX, OCB)
-- `"Format Preserving"` - Structure-preserving (XTS, FFX, FPE)
-- `"Key Wrapping"` - Key encryption modes (KW, KWP)
-
-### `"paddingScheme"` subcategories:
-- `"Block Padding"` - For block ciphers (PKCS#7, PKCS#5, ISO 10126)
-- `"Signature Padding"` - For digital signatures (PSS, PKCS#1 v1.5)
-- `"Encryption Padding"` - For asymmetric encryption (OAEP, PKCS#1 v1.5)
-- `"Bit Padding"` - Bit-level padding (ISO 7816-4, Bit Padding)
-
-### `"hash"` subcategories:
-- `"Cryptographic Hash"` - Cryptographic hash functions (SHA-2, SHA-3, BLAKE2, MD5, SHA-1, MD4)
-- `"Fast Hash"` - Non-cryptographic hashes (xxHash, MurmurHash, CityHash)
-- `"Specialized Hash"` - Domain-specific (SipHash, SHAKE, Groestl)
-
-### `"checksum"` subcategories:
-- `"CRC Family"` - Cyclic redundancy checks (CRC32, CRC16, Adler32)
-- `"Simple Checksum"` - Basic checksums (Fletcher, BSD checksum)
-- `"Network Checksum"` - Protocol checksums (Internet checksum)
-
-### `"compression"` subcategories:
-- `"Dictionary"` - Dictionary-based (LZ77, LZ78, LZW, LZ4)
-- `"Statistical"` - Entropy-based (Huffman, Arithmetic, Shannon-Fano)
-- `"Transform"` - Transform-based (BWT, Delta, RLE)
-- `"Modern"` - Advanced algorithms (Brotli, Zstandard, PPM)
-
-### `"keyDerivation"` subcategories:
-- `"Password-Based"` - From passwords (PBKDF2, scrypt, Argon2)
-- `"Key-Based"` - From existing keys (HKDF, KBKDF)
-- `"Function-Based"` - Mathematical functions (Balloon, bcrypt)
-
-### `"encodingScheme"` subcategories:
-- `"Base Encoding"` - Base-n encodings (Base64, Base32, Base58, Base85)
-- `"Text Encoding"` - Character encodings (Morse, Baudot, Atbash)
-- `"Binary Encoding"` - Binary representations (Hex, BinHex, UUEncode)
-- `"Specialized"` - Domain-specific (PEM, Bubble Babble, Z85)
-
-### `"errorCorrection"` subcategories:
-- `"Block Code"` - Block-based codes (Hamming, BCH, Reed-Solomon)
-- `"Convolutional"` - Convolutional codes and turbo codes
-- `"LDPC"` - Low-density parity-check codes
-- `"Linear Code"` - Linear algebraic codes
-
-### `"randomNumberGenerator"` subcategories:
-- `"CSPRNG"` - Cryptographically secure (ChaCha20-DRNG, HMAC-DRNG)
-- `"PRNG"` - Pseudorandom generators (Linear congruential, Mersenne Twister)
-- `"Hardware RNG"` - Hardware-based entropy sources
-- `"Stream Cipher RNG"` - Stream ciphers used as RNGs
-
-## Security Status Guidelines
-
-### When to use `null` (DEFAULT)
-- Algorithm is widely used but not thoroughly analyzed by us
-- No known practical attacks but not claiming security
-- Standard algorithms like AES, ChaCha20, SHA-256
-- **This is the safest and recommended default**
-
-### When to use `"educational"`
-- Algorithm designed for teaching cryptographic concepts
-- Simple classical ciphers (Caesar, Vigenère)
-- Toy algorithms for demonstration
-- Deprecated algorithms still useful for learning
-
-### When to use `"insecure"`  
-- Algorithm has known practical attacks
-- Completely broken algorithms (DES, MD5, RC4)
-- Academic attacks that make it unsuitable for production
-
-### When to use `"experimental"`  
-- Algorithm has no known reference sources nor test-vectors
-- At the current form of implementation it can not be verified for correctness and is just a mere toy
 
 ## Test Vector Guidelines
 
@@ -178,1077 +306,720 @@ Use these exact category (=Subsystem) values:
 - Always start implementation with the test-vectors so you have something to check against.
 
 ### Use Proper Format
+
+**The AlgorithmFramework automatically processes and validates test vectors when you register an algorithm.**
+
+You can use either format - the framework will convert plain objects to TestCase objects:
+
+**Option 1: Plain test objects (Recommended for simplicity):**
 ```javascript
-tests: [
+this.tests = [
     {
-        text: "NIST SP 800-38A Vector #1", // Descriptive name
-        uri: "https://nvlpubs.nist.gov/...", // Official source
-        keySize: 16, // Key size in bytes
-        blockSize: 16, // Block size in bytes (if applicable)
-        input: Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
-        key: Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
-        expected: Hex8ToBytes("3ad77bb40d7a3660a89ecaf32466ef97")
+        text: "NIST SP 800-38A Vector #1",
+        uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf",
+        input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
+        key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+        expected: OpCodes.Hex8ToBytes("3ad77bb40d7a3660a89ecaf32466ef97")
+    },
+    {
+        text: "Another test vector",
+        uri: "https://nvlpubs.nist.gov/...",
+        input: OpCodes.Hex8ToBytes("ae2d8a571e03ac9c9eb76fac45af8e51"),
+        key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+        iv: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        expected: OpCodes.Hex8ToBytes("f5d3d58503b9699de785895a96fdbaaf")
     }
-]
+];
 ```
+
+**Option 2: TestCase objects (More explicit):**
+```javascript
+this.tests = [
+    new TestCase(
+        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // input
+        OpCodes.Hex8ToBytes("3ad77bb40d7a3660a89ecaf32466ef97"), // expected
+        "NIST SP 800-38A Vector #1",                              // description
+        "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/..."         // source URI
+    )
+];
+
+// Additional properties can be added after construction
+this.tests[0].key = OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c");
 
 ### Hash Function Tests
 ```javascript
-{
-    text: "Empty string hash",
-    uri: "https://tools.ietf.org/rfc/rfc...",
-    input: null, // Can be empty array or null, too
-    expected: Hex8ToBytes("e3b0c44298fc1c149afbf4c8996fb924")
-}
-```
-
-### Variable Output Tests
-```javascript
-{
-    text: "SHAKE128 32-byte output",
-    uri: "https://nvlpubs.nist.gov/...",
-    outputSize: 32, // Output size in bytes
-    input: ANSIToBytes("Hello World"),
-    expected: Hex8ToBytes("46b9dd2b0ba88d13233b3feb743eeb24...")
-}
-```
-
-## Required Method Signatures for Testing
-
-### Critical: Testing Framework Dependencies
-
-**The testing framework expects specific method signatures.** Algorithms that don't implement these exact methods will fail all tests, regardless of correctness.
-
-### Block Cipher Required Methods
-
-```javascript
-// Required for cipher registration and testing
-const YourCipher = {
-  // Interface properties (REQUIRED)
-  internalName: 'your-cipher-name',  // Used by testing framework
-  minKeyLength: 16,                  // Bytes
-  maxKeyLength: 32,                  // Bytes  
-  stepKeyLength: 1,                  // Key size increment
-  minBlockSize: 16,                  // Bytes
-  maxBlockSize: 16,                  // Bytes
-  stepBlockSize: 1,                  // Block size increment
-  instances: {},                     // Instance storage (REQUIRED)
-  cantDecode: false,                 // true if encryption-only
-  isInitialized: false,              // Initialization flag
-
-  // REQUIRED METHOD: KeySetup(key) -> instanceId
-  KeySetup: function(key) {
-    // Must validate key length and return unique ID
-    // Testing framework calls this before every test vector
-  },
-
-  // REQUIRED METHOD: encryptBlock(instanceId, plaintext) -> ciphertext  
-  encryptBlock: function(id, plaintext) {
-    // Must encrypt exactly one block using the instance
-    // Testing framework validates output against test vectors
-  },
-
-  // REQUIRED METHOD: decryptBlock(instanceId, ciphertext) -> plaintext
-  decryptBlock: function(id, ciphertext) {
-    // Must decrypt exactly one block using the instance  
-    // Testing framework validates round-trip encryption
-  }
-};
-```
-
-### Hash Function Required Methods
-
-```javascript
-const YourHash = {
-  // Interface properties
-  name: "Your Hash",
-  category: "hash",
-  subCategory: "Cryptographic Hash", // or "Fast Hash", "Specialized Hash"
-  // ... metadata ...
-
-  // REQUIRED METHOD: Init() -> boolean
-  Init: function() {
-    return true; // Return true if initialization successful
-  },
-
-  // REQUIRED METHOD: Hash(input) -> output
-  Hash: function(input) {
-    // Input: byte array or null/empty for empty string
-    // Output: hash digest as byte array
-    // Testing framework validates against test vectors
-  },
-
-  // OPTIONAL: For variable-output hashes (SHAKE, etc.)
-  HashWithLength: function(input, outputLength) {
-    // Generate hash with specified output length
-    // Used for extendable-output functions
-  }
-};
-```
-
-### Stream Cipher Required Methods
-
-```javascript
-const YourStreamCipher = {
-  // Interface properties  
-  name: "Your Stream Cipher",
-  category: "cipher",
-  subCategory: "Stream Cipher",
-  minKeyLength: 16,
-  maxKeyLength: 32,
-  instances: {},
-  // ... metadata ...
-
-  // REQUIRED METHOD: KeySetup(key, iv) -> instanceId
-  KeySetup: function(key, iv) {
-    // Initialize keystream generator with key and optional IV
-    // Return unique instance ID
-    const instanceId = global.OpCodes.GenerateID();
-    this.instances[instanceId] = new this.StreamInstance(key, iv);
-    return instanceId;
-  },
-
-  // REQUIRED METHOD: encrypt(instanceId, plaintext) -> ciphertext
-  encrypt: function(id, plaintext) {
-    // Generate keystream and XOR with plaintext
-    // Return ciphertext of same length
-  },
-
-  // REQUIRED METHOD: decrypt(instanceId, ciphertext) -> plaintext  
-  decrypt: function(id, ciphertext) {
-    // Generate same keystream and XOR with ciphertext
-    // Stream ciphers: encrypt and decrypt are typically identical
-  },
-
-  // OPTIONAL: For resettable stream ciphers
-  reset: function(id) {
-    // Reset keystream to initial state
-  }
-};
-```
-
-### Checksum Required Methods
-
-```javascript
-const YourChecksum = {
-  // Interface properties
-  name: "Your Checksum",
-  category: "checksum",
-  subCategory: "CRC Family", // or "Simple Checksum", "Network Checksum"
-  // ... metadata ...
-
-  // REQUIRED METHOD: Init() -> boolean
-  Init: function() {
-    return true;
-  },
-
-  // REQUIRED METHOD: Calculate(input) -> checksum
-  Calculate: function(input) {
-    // Input: byte array
-    // Output: checksum value (number or byte array)
-    // For CRC: typically return as 32-bit number
-    // For Adler32: return as 32-bit number
-  },
-
-  // OPTIONAL: For incremental checksums
-  Update: function(state, newData) {
-    // Update existing checksum with new data
-    // Return updated checksum state
-  }
-};
-```
-
-### Compression Required Methods
-
-```javascript
-const YourCompression = {
-  // Interface properties
-  name: "Your Compression",
-  category: "compression", 
-  subCategory: "Dictionary", // or "Statistical", "Transform", "Modern"
-  // ... metadata ...
-
-  // REQUIRED METHOD: Init() -> boolean
-  Init: function() {
-    return true;
-  },
-
-  // REQUIRED METHOD: Compress(input) -> compressed
-  Compress: function(input) {
-    // Input: byte array to compress
-    // Output: compressed byte array
-    // Should be smaller than input for typical data
-  },
-
-  // REQUIRED METHOD: Decompress(compressed) -> original
-  Decompress: function(compressed) {
-    // Input: compressed byte array
-    // Output: original uncompressed byte array
-    // Must exactly match original Compress() input
-  },
-
-  // OPTIONAL: For streaming compression
-  CompressStream: function(inputStream) {
-    // Handle streaming data compression
-  }
-};
-```
-
-### ECC (Elliptic Curve) Required Methods
-
-```javascript
-const YourECC = {
-  // Interface properties
-  name: "Your ECC Algorithm",
-  category: "ecc",
-  subCategory: "ECDSA", // or "ECDH", "EdDSA", "Curve25519"
-  // ... metadata ...
-
-  // REQUIRED METHOD: Init() -> boolean
-  Init: function() {
-    return true;
-  },
-
-  // REQUIRED METHOD: GenerateKeyPair() -> {publicKey, privateKey}
-  GenerateKeyPair: function() {
-    // Generate ECC key pair
-    // Return object with publicKey and privateKey byte arrays
-  },
-
-  // REQUIRED METHOD: Sign(privateKey, message) -> signature
-  Sign: function(privateKey, message) {
-    // Sign message with private key
-    // Return signature as byte array
-  },
-
-  // REQUIRED METHOD: Verify(publicKey, message, signature) -> boolean
-  Verify: function(publicKey, message, signature) {
-    // Verify signature against message and public key
-    // Return true if signature is valid
-  },
-
-  // For ECDH key exchange:
-  // REQUIRED METHOD: ComputeSharedSecret(privateKey, publicKey) -> sharedSecret
-  ComputeSharedSecret: function(privateKey, publicKey) {
-    // Compute shared secret for key exchange
-    // Return shared secret as byte array
-  }
-};
-```
-
-### Encoding Required Methods
-
-```javascript
-const YourEncoding = {
-  // Interface properties
-  name: "Your Encoding",
-  category: "encodingScheme",
-  subCategory: "Base Encoding", // or "Text Encoding", "Binary Encoding", "Specialized"
-  // ... metadata ...
-
-  // REQUIRED METHOD: Init() -> boolean
-  Init: function() {
-    return true;
-  },
-
-  // REQUIRED METHOD: Encode(input) -> encoded
-  Encode: function(input) {
-    // Input: byte array to encode
-    // Output: encoded string or byte array
-    // E.g., Base64: bytes -> ASCII string
-  },
-
-  // REQUIRED METHOD: Decode(encoded) -> original
-  Decode: function(encoded) {
-    // Input: encoded string or byte array
-    // Output: original byte array
-    // Must exactly reverse Encode() operation
-  },
-
-  // OPTIONAL: For validation
-  IsValid: function(encoded) {
-    // Check if encoded data is valid for this encoding
-    // Return boolean
-  }
-};
-```
-
-### Padding Scheme Required Methods
-
-```javascript
-const YourPadding = {
-  // Interface properties
-  name: "Your Padding",
-  category: "paddingScheme",
-  subCategory: "Block Padding", // or "Signature Padding", "Encryption Padding", "Bit Padding"
-  // ... metadata ...
-
-  // REQUIRED METHOD: Init() -> boolean  
-  Init: function() {
-    return true;
-  },
-
-  // REQUIRED METHOD: Pad(data, blockSize) -> paddedData
-  Pad: function(data, blockSize) {
-    // Input: data to pad, target block size
-    // Output: padded data that's multiple of blockSize
-    // E.g., PKCS#7: add bytes with value = number of padding bytes
-  },
-
-  // REQUIRED METHOD: Unpad(paddedData) -> originalData
-  Unpad: function(paddedData) {
-    // Input: padded data from Pad()
-    // Output: original data with padding removed
-    // Must validate padding is correct and throw if invalid
-  },
-
-  // OPTIONAL: Validation
-  ValidatePadding: function(paddedData, blockSize) {
-    // Check if padding is valid
-    // Return boolean
-  }
-};
-```
-
-### Mode of Operation Required Methods
-
-```javascript
-const YourMode = {
-  // Interface properties
-  name: "Your Mode",
-  category: "modeOfOperation", 
-  subCategory: "Confidentiality Mode", // or "Authenticated Mode", "Format Preserving", "Key Wrapping"
-  // ... metadata ...
-
-  // REQUIRED METHOD: Init() -> boolean
-  Init: function() {
-    return true;
-  },
-
-  // REQUIRED METHOD: Encrypt(cipher, key, plaintext, iv) -> ciphertext
-  Encrypt: function(cipher, key, plaintext, iv) {
-    // Input: cipher object, key, plaintext, optional IV
-    // Output: encrypted data (may include IV/auth tag for some modes)
-    // Use provided cipher for block encryption
-  },
-
-  // REQUIRED METHOD: Decrypt(cipher, key, ciphertext, iv) -> plaintext
-  Decrypt: function(cipher, key, ciphertext, iv) {
-    // Input: cipher object, key, ciphertext, optional IV
-    // Output: decrypted plaintext
-    // For authenticated modes: verify auth tag and throw if invalid
-  },
-
-  // For authenticated modes:
-  // REQUIRED METHOD: EncryptWithAuth(cipher, key, plaintext, aad, iv) -> {ciphertext, authTag}
-  EncryptWithAuth: function(cipher, key, plaintext, aad, iv) {
-    // Additional Authenticated Data (AAD) for AEAD modes
-    // Return object with ciphertext and authentication tag
-  }
-};
-```
-
-### MAC (Message Authentication Code) Required Methods
-
-```javascript
-const YourMAC = {
-  // Interface properties
-  name: "Your MAC",
-  category: "mac",
-  subCategory: "HMAC", // or "CMAC", "GMAC", "Poly1305"
-  minKeyLength: 16,
-  maxKeyLength: 64,
-  // ... metadata ...
-
-  // REQUIRED METHOD: Init() -> boolean
-  Init: function() {
-    return true;
-  },
-
-  // REQUIRED METHOD: Generate(key, message) -> mac
-  Generate: function(key, message) {
-    // Input: secret key, message to authenticate
-    // Output: MAC tag as byte array
-    // Fixed or variable length depending on algorithm
-  },
-
-  // REQUIRED METHOD: Verify(key, message, mac) -> boolean
-  Verify: function(key, message, mac) {
-    // Input: secret key, message, MAC tag to verify
-    // Output: true if MAC is valid for message
-    // Should use constant-time comparison
-  },
-
-  // OPTIONAL: For incremental MAC computation
-  StartMAC: function(key) {
-    // Initialize MAC computation state
-    // Return state object
-  },
-
-  UpdateMAC: function(state, data) {
-    // Update MAC with additional data
-    // Modify state object
-  },
-
-  FinalizeMAC: function(state) {
-    // Finalize MAC computation
-    // Return MAC tag
-  }
-};
-```
-
-### KDF (Key Derivation Function) Required Methods
-
-```javascript
-const YourKDF = {
-  // Interface properties
-  name: "Your KDF",
-  category: "keyDerivation",
-  subCategory: "Password-Based", // or "Key-Based", "Function-Based"
-  // ... metadata ...
-
-  // REQUIRED METHOD: Init() -> boolean
-  Init: function() {
-    return true;
-  },
-
-  // REQUIRED METHOD: DeriveKey(password, salt, iterations, keyLength) -> derivedKey
-  DeriveKey: function(password, salt, iterations, keyLength) {
-    // Input: password/key material, salt, iteration count, desired key length
-    // Output: derived key of specified length
-    // For PBKDF2, scrypt, Argon2, etc.
-  },
-
-  // For HKDF-style KDFs:
-  // REQUIRED METHOD: Extract(salt, inputKeyMaterial) -> pseudoRandomKey
-  Extract: function(salt, inputKeyMaterial) {
-    // Extract step: extract pseudorandom key from input
-  },
-
-  // REQUIRED METHOD: Expand(pseudoRandomKey, info, length) -> outputKeyMaterial  
-  Expand: function(pseudoRandomKey, info, length) {
-    // Expand step: expand to desired length with optional context info
-  },
-
-  // OPTIONAL: For parameter validation
-  ValidateParameters: function(iterations, memorySize, parallelism) {
-    // Validate KDF parameters are secure
-    // Return boolean or throw exception
-  }
-};
-```
-
-### Random Number Generator Required Methods
-
-```javascript
-const YourRNG = {
-  // Interface properties
-  name: "Your RNG",
-  category: "randomNumberGenerator",
-  subCategory: "CSPRNG", // or "PRNG", "Hardware RNG", "Stream Cipher RNG"
-  // ... metadata ...
-
-  // REQUIRED METHOD: Init(seed) -> boolean
-  Init: function(seed) {
-    // Initialize RNG with seed material
-    // Return true if successful
-  },
-
-  // REQUIRED METHOD: GenerateBytes(length) -> randomBytes
-  GenerateBytes: function(length) {
-    // Generate specified number of random bytes
-    // Output: byte array of requested length
-  },
-
-  // REQUIRED METHOD: GenerateUInt32() -> randomInteger  
-  GenerateUInt32: function() {
-    // Generate random 32-bit integer
-    // Return number in range [0, 2^32-1]
-  },
-
-  // REQUIRED METHOD: GenerateUInt64() -> randomInteger  
-  GenerateUInt64: function() {
-    // Generate random 64-bit integer
-    // Return number in range [0, 2^64-1]
-  },
-
-  // OPTIONAL: For reseeding
-  Reseed: function(additionalSeed) {
-    // Add entropy to existing RNG state
-  },
-
-  // OPTIONAL: For statistical testing
-  GetEntropyEstimate: function() {
-    // Return estimated bits of entropy per output bit
-  }
-};
-```
-
-### Error Correction Code Required Methods
-
-```javascript
-const YourECC_ErrorCorrection = {
-  // Interface properties (note: different from elliptic curves)
-  name: "Your Error Correction",
-  category: "errorCorrection",
-  subCategory: "Block Code", // or "Convolutional", "LDPC", "Linear Code"
-  // ... metadata ...
-
-  // REQUIRED METHOD: Init() -> boolean
-  Init: function() {
-    return true;
-  },
-
-  // REQUIRED METHOD: Encode(data) -> codedData
-  Encode: function(data) {
-    // Input: original data to protect
-    // Output: data with error correction codes added
-    // Adds redundancy for error detection/correction
-  },
-
-  // REQUIRED METHOD: Decode(codedData) -> {data, errorsDetected, errorsCorrected}
-  Decode: function(codedData) {
-    // Input: possibly corrupted coded data
-    // Output: object with original data and error statistics
-    // Detect and correct errors where possible
-  },
-
-  // OPTIONAL: For specific error patterns
-  CorrectErrors: function(codedData, errorPositions) {
-    // Correct known error positions
-  },
-
-  // OPTIONAL: For syndrome calculation
-  CalculateSyndrome: function(codedData) {
-    // Calculate error syndrome for debugging
-  }
-};
-```
-
-### Post-Quantum Cryptography Required Methods
-
-```javascript
-const YourPQC = {
-  // Interface properties
-  name: "Your Post-Quantum Algorithm", 
-  category: "pqc", // or could be "asymmetric" with PQC subcategory
-  subCategory: "Lattice-Based", // or "Code-Based", "Multivariate", "Hash-Based"
-  // ... metadata ...
-
-  // REQUIRED METHOD: Init() -> boolean
-  Init: function() {
-    return true;
-  },
-
-  // For PQC Key Encapsulation Mechanisms (KEMs):
-  // REQUIRED METHOD: GenerateKeyPair() -> {publicKey, privateKey}
-  GenerateKeyPair: function() {
-    // Generate post-quantum key pair
-    // Keys are typically much larger than classical crypto
-  },
-
-  // REQUIRED METHOD: Encapsulate(publicKey) -> {ciphertext, sharedSecret}
-  Encapsulate: function(publicKey) {
-    // Encapsulate a random shared secret
-    // Return ciphertext and the shared secret
-  },
-
-  // REQUIRED METHOD: Decapsulate(privateKey, ciphertext) -> sharedSecret
-  Decapsulate: function(privateKey, ciphertext) {
-    // Decapsulate shared secret from ciphertext
-    // Return the shared secret (should match Encapsulate output)
-  },
-
-  // For PQC Digital Signatures:
-  // REQUIRED METHOD: Sign(privateKey, message) -> signature
-  Sign: function(privateKey, message) {
-    // Sign message with post-quantum signature scheme
-  },
-
-  // REQUIRED METHOD: Verify(publicKey, message, signature) -> boolean
-  Verify: function(publicKey, message, signature) {
-    // Verify post-quantum signature
-  }
-};
-```
-
-### Classical Cipher Required Methods
-
-```javascript
-const YourClassicalCipher = {
-  // Interface properties
-  name: "Your Classical Cipher",
-  category: "cipher",
-  subCategory: "Classical Cipher",
-  // ... metadata ...
-
-  // REQUIRED METHOD: Init() -> boolean
-  Init: function() {
-    return true;
-  },
-
-  // REQUIRED METHOD: Encrypt(plaintext, key) -> ciphertext
-  Encrypt: function(plaintext, key) {
-    // Input: plaintext string, key (string, number, or array)
-    // Output: ciphertext string
-    // Classical ciphers often work on text, not bytes
-  },
-
-  // REQUIRED METHOD: Decrypt(ciphertext, key) -> plaintext
-  Decrypt: function(ciphertext, key) {
-    // Input: ciphertext string, key
-    // Output: plaintext string
-    // Should exactly reverse Encrypt operation
-  },
-
-  // OPTIONAL: For key validation
-  ValidateKey: function(key) {
-    // Check if key is valid for this cipher
-    // Return boolean or throw exception
-  },
-
-  // OPTIONAL: For alphabet management
-  SetAlphabet: function(alphabet) {
-    // Set custom alphabet for the cipher
-    // Default usually English A-Z
-  }
-};
-```
-
-### Special Algorithm Category Methods
-
-```javascript
-const YourSpecialAlgorithm = {
-  // Interface properties
-  name: "Your Special Algorithm",
-  category: "special", // For algorithms that don't fit other categories
-  subCategory: "Custom Type",
-  // ... metadata ...
-
-  // REQUIRED METHOD: Init() -> boolean
-  Init: function() {
-    return true;
-  },
-
-  // REQUIRED METHOD: Process(input, parameters) -> output
-  Process: function(input, parameters) {
-    // Generic processing method for special algorithms
-    // Input/output depends on specific algorithm purpose
-  },
-
-  // OPTIONAL: Algorithm-specific methods
-  Configure: function(options) {
-    // Configure algorithm-specific parameters
-  },
-
-  Reset: function() {
-    // Reset algorithm to initial state
-  }
-};
-```
-
-### Why These Signatures Are Mandatory
-
-1. **Automated Testing**: The test runner calls these exact method names
-2. **Interface Validation**: `StrictAlgorithmTester` checks for these methods
-3. **Integration**: The `Cipher` system expects this interface
-4. **Test Vectors**: Framework maps test vector data to these method calls
-
-### Testing Framework Flow
-
-```
-Block Ciphers:
-1. Load algorithm file
-2. Check for required methods (KeySetup, encryptBlock, decryptBlock)
-3. For each test vector:
-   a. Call KeySetup(test.key) -> get instanceId
-   b. Call encryptBlock(instanceId, test.input) -> get result
-   c. Compare result with test.expected
-   d. Call decryptBlock(instanceId, result) -> verify round-trip
-4. Report pass/fail for each vector
-
-Hash Functions:
-1. Load algorithm file  
-2. Check for required methods (Init, Hash)
-3. For each test vector:
-   a. Call Hash(test.input) -> get result
-   b. Compare result with test.expected
-4. Report pass/fail for each vector
-
-Stream Ciphers:
-1. Load algorithm file
-2. Check for required methods (KeySetup, encrypt, decrypt)
-3. For each test vector:
-   a. Call KeySetup(test.key, test.iv) -> get instanceId
-   b. Call encrypt(instanceId, test.input) -> get result
-   c. Compare result with test.expected
-   d. Call decrypt(instanceId, result) -> verify round-trip
-4. Report pass/fail for each vector
-
-Compression Algorithms:
-1. Load algorithm file
-2. Check for required methods (Init, Compress, Decompress)
-3. For each test vector:
-   a. Call Compress(test.input) -> get compressed
-   b. Call Decompress(compressed) -> get decompressed
-   c. Compare decompressed with test.input (round-trip test)
-   d. Optionally compare compressed with test.expected
-4. Report pass/fail for each vector
-
-Encoding Schemes:
-1. Load algorithm file
-2. Check for required methods (Init, Encode, Decode)
-3. For each test vector:
-   a. Call Encode(test.input) -> get encoded
-   b. Compare encoded with test.expected
-   c. Call Decode(encoded) -> verify round-trip
-4. Report pass/fail for each vector
-
-MAC/KDF/Other Categories:
-1. Load algorithm file
-2. Check for category-specific required methods
-3. Run category-appropriate test vectors
-4. Report results
-```
-
-**⚠️ Missing any required method = ALL TESTS FAIL**
-
-### Error Handling Requirements
-
-The testing framework expects specific error handling patterns:
-
-```javascript
-// Use global.throwException for errors (REQUIRED format)
-if (!this.instances[id]) {
-  global.throwException('Unknown Object Reference Exception', id, 'YourCipher', 'encryptBlock');
-  return plaintext; // Always return something
-}
-
-if (key.length < this.minKeyLength) {
-  global.throwException('Invalid Key Length Exception', key.length, 'YourCipher', 'KeySetup'); 
-  return null;
-}
-```
-
-### Required Dependencies
-
-Every algorithm file MUST include these dependencies:
-
-```javascript
-// Load OpCodes for cryptographic operations (REQUIRED)
-if (!global.OpCodes && typeof require !== 'undefined') {
-  require('../../OpCodes.js');
-}
-
-// Load Cipher system (REQUIRED)  
-if (!global.Cipher) {
-  if (typeof require !== 'undefined') {
-    try {
-      require('../../universal-cipher-env.js');
-      require('../../cipher.js');
-    } catch (e) {
-      console.error('Failed to load cipher dependencies:', e.message);
-      return;
+this.tests = [
+    {
+        text: "Empty string hash",
+        uri: "https://tools.ietf.org/rfc/rfc...",
+        input: OpCodes.AnsiToBytes(""), 
+        expected: OpCodes.Hex8ToBytes("e3b0c44298fc1c149afbf4c8996fb924")
+    },
+    {
+        text: "Simple string hash",
+        uri: "https://tools.ietf.org/rfc/rfc...",
+        input: OpCodes.AnsiToBytes("abc"),
+        expected: OpCodes.Hex8ToBytes("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
     }
+];
+```
+
+### Variable Output Tests (for algorithms like SHAKE)
+```javascript
+this.tests = [
+    {
+        text: "SHAKE128 32-byte output",
+        uri: "https://nvlpubs.nist.gov/...",
+        input: OpCodes.AnsiToBytes("Hello World"),
+        outputSize: 32, // Specify desired output length
+        expected: OpCodes.Hex8ToBytes("46b9dd2b0ba88d13233b3feb743eeb24...")
+    },
+    {
+        text: "SHAKE128 64-byte output",  
+        uri: "https://nvlpubs.nist.gov/...",
+        input: OpCodes.AnsiToBytes("Hello World"),
+        outputSize: 64,
+        expected: OpCodes.Hex8ToBytes("46b9dd2b0ba88d13233b3feb743eeb24...")
+    }
+];
+```
+
+**✅ Framework Benefits:**
+- Automatically converts plain objects to TestCase objects
+- Validates that `input` and `expected` are present and valid
+- Ensures test vectors are properly formatted
+- Throws helpful error messages for invalid test data
+- Prevents duplicate algorithm registration
+```javascript
+[
+    {
+        text: "SHAKE128 32-byte output",
+        uri: "https://nvlpubs.nist.gov/...",
+        input: OpCodes.AnsiToBytes("Hello World"),
+        outputSize: 32,
+        expected: OpCodes.Hex8ToBytes("46b9dd2b0ba88d13233b3feb743eeb24...")
+    },
+    {
+        text: "SHAKE128 16-byte output", 
+        uri: "https://nvlpubs.nist.gov/...",
+        input: OpCodes.AnsiToBytes("Hello World"),
+        outputSize: 16,
+        expected: OpCodes.Hex8ToBytes("46b9dd2b0ba88d13233b3feb743eeb24")
+    }
+]
+```
+
+### Stream Cipher Tests
+```javascript
+[
+    {
+        text: "Basic stream encryption",
+        uri: "https://example.com/spec",
+        input: OpCodes.AnsiToBytes("Hello World"),
+        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        iv: OpCodes.Hex8ToBytes("0001020304050607"),
+        expected: OpCodes.Hex8ToBytes("1a2b3c4d5e6f708190a1b2")
+    }
+]
+```
+
+## Required Interface Implementation
+
+### Critical: Feed/Result Pattern
+
+**All algorithms must implement the Feed/Result pattern through CreateInstance:**
+
+1. **Algorithm Class**: Extends appropriate base class and implements `CreateInstance(isInverse)`
+2. **Instance Class**: Extends `IAlgorithmInstance` and implements `Feed(data)` and `Result()`
+3. **Properties**: Instance properties can be set to configure behavior (key, iv, outputSize, etc.)
+
+### CreateInstance Return Values
+
+**The `CreateInstance(isInverse)` method should:**
+- Return a new instance object when the operation is supported
+- Return `null` when the requested operation is not available
+- **Never throw** for unsupported inverse operations
+
+**Examples:**
+```javascript
+CreateInstance(isInverse = false) {
+  if (isInverse) {
+    return null; // Hash functions don't have inverse operations
   }
+  return new YourHashFunctionInstance(this);
+}
+
+CreateInstance(isInverse = false) {
+  // Block ciphers typically support both encrypt and decrypt
+  return new YourBlockCipherInstance(this, isInverse);
+}
+
+CreateInstance(isInverse = false) {
+  if (isInverse && !this.supportsDecryption) {
+    return null; // Some stream ciphers might not support decryption
+  }
+  return new YourStreamCipherInstance(this, isInverse);
 }
 ```
 
-### Test Vector Requirements for Testing Framework
+**Why return null instead of throwing:**
+- Allows testing framework to gracefully handle unsupported operations
+- Enables round-trip testing to automatically skip when inverse isn't available
+- Follows the "null object pattern" for cleaner error handling
+- Prevents test failures when algorithms legitimately don't support inverse operations
 
-The testing framework expects test vectors in this exact format:
+### Why This Architecture
 
-```javascript
-tests: [
-  {
-    text: "Test Vector Description",                    // REQUIRED: Human-readable description
-    uri: "https://official-source.com/test-vectors",   // OPTIONAL: Official source URL
-    keySize: 16,                                        // OPTIONAL: Key size in bytes (for ciphers)
-    blockSize: 16,                                      // OPTIONAL: Block size in bytes (for block ciphers)
-    input: OpCodes.Hex8ToBytes("plaintext_hex"),       // REQUIRED: Input as byte array
-    key: OpCodes.Hex8ToBytes("key_hex"),               // OPTIONAL: Key as byte array (for ciphers)
-    iv: OpCodes.Hex8ToBytes("iv_hex"),                 // OPTIONAL: IV as byte array (if needed)
-    expected: OpCodes.Hex8ToBytes("expected_hex")      // REQUIRED: Expected output as byte array
-  }
-]
-```
-
-### Alternative Test Vector Formats
-
-```javascript
-// For legacy compatibility, these formats also work:
-testVectors: [
-  {
-    input: OpCodes.StringToBytes("string_input"),          // String input (converted to bytes)
-    key: OpCodes.StringToBytes("string_key"),              // String key  
-    expected: OpCodes.StringToBytes("string_output"),      // String expected output
-    text: "Test description"
-  }
-]
-
-// Hash function test vectors:
-tests: [
-  {
-    text: "Hash test vector",
-    uri: "https://source.com",
-    input: OpCodes.StringToBytes("message"),     // Message to hash
-    expected: OpCodes.Hex8ToBytes("hash_hex")    // Expected hash output
-  }
-]
-
-// Stream cipher test vectors:
-tests: [
-  {
-    text: "Stream cipher test vector",
-    uri: "https://source.com",
-    keySize: 32,
-    input: OpCodes.Hex8ToBytes("plaintext_hex"),
-    key: OpCodes.Hex8ToBytes("key_hex"),
-    iv: OpCodes.Hex8ToBytes("iv_hex"),           // Initialization vector
-    expected: OpCodes.Hex8ToBytes("ciphertext_hex")
-  }
-]
-
-// Compression algorithm test vectors:
-tests: [
-  {
-    text: "Compression test vector",
-    uri: "https://source.com", 
-    input: OpCodes.StringToBytes("repetitive data data data"),
-    expected: OpCodes.Hex8ToBytes("compressed_hex"), // Optional: expected compressed form
-    // Note: Round-trip test (compress->decompress) is always performed
-  }
-]
-
-// Encoding scheme test vectors:
-tests: [
-  {
-    text: "Base64 encoding test",
-    uri: "https://tools.ietf.org/rfc/rfc4648.txt",
-    input: OpCodes.StringToBytes("Hello World"),
-    expected: OpCodes.StringToBytes("SGVsbG8gV29ybGQ=")  // Expected encoded string
-  }
-]
-
-// MAC test vectors:
-tests: [
-  {
-    text: "HMAC test vector",
-    uri: "https://tools.ietf.org/rfc/rfc2104.txt",
-    keySize: 16,
-    input: OpCodes.StringToBytes("message"),
-    key: OpCodes.Hex8ToBytes("key_hex"),
-    expected: OpCodes.Hex8ToBytes("mac_hex")
-  }
-]
-
-// KDF test vectors:
-tests: [
-  {
-    text: "PBKDF2 test vector",
-    uri: "https://tools.ietf.org/rfc/rfc6070.txt",
-    password: OpCodes.StringToBytes("password"),
-    salt: OpCodes.StringToBytes("salt"),
-    iterations: 1000,
-    keyLength: 32,
-    expected: OpCodes.Hex8ToBytes("derived_key_hex")
-  }
-]
-
-// Checksum test vectors:
-tests: [
-  {
-    text: "CRC32 test vector", 
-    uri: "https://source.com",
-    input: OpCodes.StringToBytes("123456789"),
-    expected: OpCodes.Hex8ToBytes("CBF43926")  // Expected CRC32 value as number
-  }
-]
-
-// ECC test vectors:
-tests: [
-  {
-    text: "ECDSA signature test",
-    uri: "https://source.com",
-    privateKey: OpCodes.Hex8ToBytes("private_key_hex"),
-    publicKey: OpCodes.Hex8ToBytes("public_key_hex"),
-    message: OpCodes.StringToBytes("message to sign"),
-    signature: OpCodes.Hex8ToBytes("signature_hex"),
-    // Note: Signature verification test, not generation (due to randomness)
-  }
-]
-```
+1. **Unified Interface**: All transformations use the same Feed/Result pattern
+2. **Composability**: Instances can be easily chained together
+3. **Configurability**: Properties can be modified after instance creation
+4. **Stateful Processing**: Instances maintain state between Feed calls
+5. **Streaming Support**: Can process data in chunks via multiple Feed calls
 
 ### Critical Test Vector Guidelines
 
-1. **Always use OpCodes helpers**: `Hex8ToBytes()`, `StringToBytes()`, `ANSIToBytes()`
+1. **Always use OpCodes helpers**: `Hex8ToBytes()`, `AnsiToBytes()`
 2. **Byte arrays only**: Testing framework works with byte arrays, not strings
 3. **Exact block sizes**: Input must match algorithm's block size requirements  
 4. **Official sources**: Link to NIST, RFC, or original paper test vectors
 5. **Multiple vectors**: Include at least 3 test vectors to verify correctness
 
-### Instance ID Generation
+## Testing Framework Flow
 
-Use the OpCodes helper for generating unique instance IDs:
+```
+All Algorithm Types:
+1. Load algorithm file and get registered algorithm from AlgorithmFramework.Algorithms
+2. For each test vector:
+   a. Call algorithm.CreateInstance(isInverse) -> get instance
+   b. Framework automatically applies test vector properties to instance:
+      - if (test.key) instance.key = test.key
+      - if (test.iv) instance.iv = test.iv  
+      - if (test.outputSize) instance.outputSize = test.outputSize
+      - if (test.nonce) instance.nonce = test.nonce
+      - etc. (any property found in test vector)
+   c. Call instance.Feed(test.input)
+   d. Call instance.Result() -> get output
+   e. Compare output with test.expected
+   f. For round-trip testing: create inverse instance and test reverse operation
+3. Report pass/fail for each vector
 
-```javascript
-KeySetup: function(key) {
-  const instanceId = global.OpCodes.GenerateID();
-  this.instances[instanceId] = new this.YourCipherInstance(key);
-  return instanceId;
-}
+Block Ciphers:
+- Test properties: input, expected, key (required), iv (optional)
+- Framework sets instance.key = test.key before Feed()
+- Feed test.input, expect test.expected from Result()
+
+Hash Functions:  
+- Test properties: input, expected, outputSize (optional)
+- Framework sets instance.outputSize = test.outputSize if specified
+- Feed test.input, expect test.expected from Result()
+
+Stream Ciphers:
+- Test properties: input, expected, key (required), iv (optional)
+- Framework sets instance.key = test.key and instance.iv = test.iv
+- Feed test.input, expect test.expected from Result()
+
+Compression:
+- Test properties: input, expected  
+- Feed test.input, compare Result() with test.expected
+- For round-trip: create inverse instance, feed compressed, get decompressed
+
+Encoding:
+- Test properties: input, expected, outputSize (optional)
+- Feed test.input, compare Result() with test.expected
+- For round-trip: create inverse instance, feed encoded, get decoded
 ```
 
-## Implementation Template
+**✅ Key Benefits:**
+- Test vectors contain all configuration in one place
+- No manual property setting needed in test code
+- Framework automatically applies test properties to instances
+- Consistent testing across all algorithm types
 
-Use this template for new algorithms (NewAlgo):
+**⚠️ No method-specific calls like KeySetup, EncryptBlock, Hash, etc.**
+
+### Error Handling Requirements
+
+The testing framework expects specific error handling patterns:
+
+**Instance Creation:**
+- Throw `Error("CreateInstance() not implemented")` if not overridden
+- Return `null` when inverse operations are not available (e.g. `CreateInstance(true)` for hash functions)
+- Return `null` when the requested operation mode is not supported by the algorithm
+
+**Feed/Result Operations:**
+- Throw `Error("Feed() not implemented")` if not overridden  
+- Throw `Error("Result() not implemented")` if not overridden
+- Throw `Error("Invalid input data")` for malformed input
+
+**Property Validation:**
+- Throw `Error("Invalid key size")` for unsupported key lengths
+- Throw `Error("Invalid block size")` for incorrect input lengths  
+- Throw `Error("Invalid output size")` for unsupported digest lengths
+- Throw `Error("Key not set")` if key required but not provided
+
+**General:**
+- Use standard JavaScript `Error` objects
+- Include descriptive error messages
+- Validate properties before processing
+- Handle edge cases (empty arrays, null values, etc.)
+
+### Required Dependencies
+
+Every algorithm file should include these dependencies and register itself:
 
 ```javascript
-/*
- * NewAlgo Implementation
- * (c)2006-2025 Hawkynt
- */
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
 
-(function(global) {
-  'use strict';
+// Load OpCodes for cryptographic operations (RECOMMENDED)
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
 
-  const NewAlgo = {
-    name: "Algorithm Name",
-    description: "What it does (max 3 sentences).",
-    inventor: "Creator Name",
-    year: 2005,
-    country: "US",
-    category: "cipher",
-    subCategory: "Block/Symmetric",
-    securityStatus: null, // NEVER claim "secure"!
-    securityNotes: "Not thoroughly analyzed. Use at your own risk.",
+// Import required classes
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
+
+// Define your algorithm class
+class YourAlgorithm extends BlockCipherAlgorithm {
+  // ... implementation
+}
+
+// Register immediately when file loads
+RegisterAlgorithm(new YourAlgorithm());
+```
+
+## 📐 Implementation Template
+
+### Block Cipher Algorithm
+
+```javascript
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
+
+// Load OpCodes for cryptographic operations (RECOMMENDED)
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
+
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
+
+class YourBlockCipher extends BlockCipherAlgorithm {
+  constructor() {
+    super();
     
-    documentation: [ // documentation is a MUST, it must have been described somewhere
-      {text: "Wikipedia", uri: "https://..."},
-      {text: "Original Paper", uri: "https://..."}
-    ],
-    
-    references: [ // at least one reference SHOULD exist
-      {text: "Reference Implementation", uri: "https://github.com/..."}
-    ],
-    
-    knownVulnerabilities: [
-      // COULD add if any are known or leave empty or null
-    ],
-    
-    tests: [ // we SHOULD at least have one test-vector to verify our implementation otherwise this is "experimental"
+    // Required metadata
+    this.name = "Your Block Cipher";
+    this.description = "Brief description of what this cipher does";
+    this.inventor = "Algorithm Creator Name";
+    this.year = 2024;
+    this.category = CategoryType.SYMMETRIC_BLOCK;
+    this.subCategory = "Block Cipher";
+    this.securityStatus = SecurityStatus.EDUCATIONAL; // Be honest about security
+    this.complexity = ComplexityType.INTERMEDIATE;
+    this.country = CountryCode.US;
+
+    // Algorithm-specific metadata
+    this.SupportedKeySizes = [
+      new KeySize(16, 32, 8) // 16-32 bytes, 8-byte steps
+    ];
+    this.SupportedBlockSizes = [
+      new KeySize(16, 16, 1) // Fixed 16-byte blocks
+    ];
+
+    // Documentation and references
+    this.documentation = [
+      new LinkItem("Algorithm Specification", "https://example.com/spec")
+    ];
+
+    this.references = [
+      new LinkItem("Original Paper", "https://example.com/paper")
+    ];
+
+    // Test vectors (REQUIRED) - Include all properties directly
+    this.tests = [
       {
-        text: "Official Test Vector",
-        uri: "https://...",
-        input: OpCodes.Hex8ToBytes("..."),     // these are byte array always, use Hex8ToBytes()
-        iv: OpCodes.ANSIToBytes("HelloWorld"), // or ANSIToBytes() helper
-        key: null,                     // null means empty array
-        expected: []                   // also empty array
+        text: "NIST SP 800-38A Vector #1",
+        uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf",
+        input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
+        key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+        expected: OpCodes.Hex8ToBytes("3ad77bb40d7a3660a89ecaf32466ef97")
       }
-    ],
+    ];
+  }
 
-    Init: function() {
-      return true;
+  // Required: Create instance for this algorithm
+  CreateInstance(isInverse = false) {
+    return new YourBlockCipherInstance(this, isInverse);
+  }
+}
+
+// Instance class - handles the actual encryption/decryption
+class YourBlockCipherInstance extends IBlockCipherInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.key = null;
+    this.keySchedule = null;
+    this.inputBuffer = [];
+    this.BlockSize = 16; // bytes
+    this.KeySize = 0;    // will be set when key is assigned
+  }
+
+  // Property setter for key - validates and sets up key schedule
+  set key(keyBytes) {
+    if (!keyBytes) {
+      this._key = null;
+      this.keySchedule = null;
+      this.KeySize = 0;
+      return;
     }
 
-    // Required interface properties for block ciphers
-    internalName: 'algorithm-internal-name',
-    minKeyLength: 16,      // Minimum key size in bytes
-    maxKeyLength: 32,      // Maximum key size in bytes  
-    stepKeyLength: 1,      // Key size increment step
-    minBlockSize: 16,      // Minimum block size in bytes
-    maxBlockSize: 16,      // Maximum block size in bytes
-    stepBlockSize: 1,      // Block size increment step
-    instances: {},         // Storage for cipher instances
-    cantDecode: false,     // Set to true if algorithm only encrypts
-    isInitialized: false,  // Initialization status
-
-    // Required method: Key setup and instance creation
-    KeySetup: function(key) {
-      // Validate key length
-      if (key.length < this.minKeyLength || key.length > this.maxKeyLength) {
-        global.throwException('Invalid Key Length Exception', key.length, 'NewAlgo', 'KeySetup');
-        return null;
-      }
-      
-      // Generate unique instance ID
-      const instanceId = global.OpCodes.GenerateID();
-      
-      // Create and store cipher instance with key
-      this.instances[instanceId] = new this.NewAlgoInstance(key);
-      
-      return instanceId;
-    },
-
-    // Required method: Encrypt single block
-    encryptBlock: function(id, plaintext) {
-      if (!this.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'NewAlgo', 'encryptBlock');
-        return plaintext;
-      }
-      
-      if (plaintext.length !== this.minBlockSize) {
-        global.throwException('Invalid Block Size Exception', plaintext.length, 'NewAlgo', 'encryptBlock');
-        return plaintext;
-      }
-      
-      // Implement encryption logic here
-      const instance = this.instances[id];
-      return this.encrypt(instance, plaintext);
-    },
-
-    // Required method: Decrypt single block  
-    decryptBlock: function(id, ciphertext) {
-      if (this.cantDecode) {
-        global.throwException('Decode Not Supported Exception', '', 'NewAlgo', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      if (!this.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'NewAlgo', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      if (ciphertext.length !== this.minBlockSize) {
-        global.throwException('Invalid Block Size Exception', ciphertext.length, 'NewAlgo', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      // Implement decryption logic here
-      const instance = this.instances[id];
-      return this.decrypt(instance, ciphertext);
-    },
-
-    // Core encryption function (implement algorithm here)
-    encrypt: function(instance, plaintext) {
-      // TODO: Implement your encryption algorithm
-      // Input: instance (from KeySetup), plaintext (string of exact block size)
-      // Output: encrypted string of same length
-      throw new Error('NewAlgo encryption not yet implemented');
-    },
-
-    // Core decryption function (implement algorithm here)  
-    decrypt: function(instance, ciphertext) {
-      // TODO: Implement your decryption algorithm
-      // Input: instance (from KeySetup), ciphertext (string of exact block size) 
-      // Output: decrypted string of same length
-      throw new Error('NewAlgo decryption not yet implemented');
-    },
-
-    // Instance constructor for storing key-specific data
-    NewAlgoInstance: function(key) {
-      // Store processed key, subkeys, or other key-derived state
-      this.key = key;
-      // Add key expansion, subkey generation, etc. here
+    // Validate key size
+    const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
+      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+      (keyBytes.length - ks.minSize) % ks.stepSize === 0
+    );
+    
+    if (!isValidSize) {
+      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
     }
-  };
 
-  // Auto-register with Cipher subsystem if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function')
-    global.Cipher.AddCipher(NewAlgo); // System validates interface and metadata
-  
+    this._key = [...keyBytes]; // Copy the key
+    this.KeySize = keyBytes.length;
+    this.keySchedule = this._generateKeySchedule(keyBytes);
+  }
 
-})(typeof global !== 'undefined' ? global : window);
+  get key() {
+    return this._key ? [...this._key] : null; // Return copy
+  }
+
+  // Feed data to the cipher (accumulates until we have complete blocks)
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    if (!this.key) throw new Error("Key not set");
+
+    // Add data to input buffer
+    this.inputBuffer.push(...data);
+  }
+
+  // Get the result of the transformation
+  Result() {
+    if (!this.key) throw new Error("Key not set");
+    if (this.inputBuffer.length === 0) throw new Error("No data fed");
+
+    // Process complete blocks
+    const output = [];
+    const blockSize = this.BlockSize;
+    
+    // Validate input length for block cipher
+    if (this.inputBuffer.length % blockSize !== 0) {
+      throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+    }
+
+    // Process each block
+    for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
+      const block = this.inputBuffer.slice(i, i + blockSize);
+      const processedBlock = this.isInverse 
+        ? this._decryptBlock(block) 
+        : this._encryptBlock(block);
+      output.push(...processedBlock);
+    }
+
+    // Clear input buffer for next operation
+    this.inputBuffer = [];
+    
+    return output;
+  }
+
+  // Private methods for actual crypto operations
+  _generateKeySchedule(key) {
+    // Implement your key schedule generation here
+    // This is algorithm-specific
+    return key; // Simplified
+  }
+
+  _encryptBlock(block) {
+    // Implement your block encryption here
+    // This is algorithm-specific
+    return block.map(b => b ^ this.keySchedule[0]); // Simplified XOR
+  }
+
+  _decryptBlock(block) {
+    // Implement your block decryption here
+    // For this simple example, it's the same as encryption
+    return block.map(b => b ^ this.keySchedule[0]); // Simplified XOR
+  }
+}
+
+// Register the algorithm immediately
+RegisterAlgorithm(new YourBlockCipher());
+```
+
+### Hash Function Algorithm
+
+```javascript
+// Load dependencies
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
+
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+        HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
+
+class YourHashFunction extends HashFunctionAlgorithm {
+  constructor() {
+    super();
+    
+    this.name = "Your Hash Function";
+    this.description = "Brief description of your hash function";
+    this.category = CategoryType.HASH;
+    this.subCategory = "Cryptographic Hash";
+    this.securityStatus = SecurityStatus.EDUCATIONAL;
+    this.complexity = ComplexityType.INTERMEDIATE;
+    this.country = CountryCode.US;
+    
+    this.SupportedOutputSizes = [
+      new KeySize(32, 32, 1) // Fixed 32-byte output
+    ];
+
+    // Test vectors - include all properties directly
+    this.tests = [
+      {
+        text: "Empty string test",
+        uri: "https://example.com/spec",
+        input: OpCodes.AnsiToBytes(""),
+        expected: OpCodes.Hex8ToBytes("e3b0c44298fc1c149afbf4c8996fb924") // SHA-256 empty string
+      },
+      {
+        text: "Simple string test", 
+        uri: "https://example.com/spec",
+        input: OpCodes.AnsiToBytes("abc"),
+        expected: OpCodes.Hex8ToBytes("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+      }
+    ];
+  }
+
+  CreateInstance(isInverse = false) {
+    if (isInverse) {
+      return null; // Hash functions do not support inverse operations
+    }
+    return new YourHashFunctionInstance(this);
+  }
+}
+
+class YourHashFunctionInstance extends IHashFunctionInstance {
+  constructor(algorithm) {
+    super(algorithm);
+    this.outputSize = 32; // Default output size
+    this.inputBuffer = [];
+    this.OutputSize = 32;
+  }
+
+  // Property setter for output size (for variable-length hashes)
+  set outputSize(size) {
+    const isValidSize = this.algorithm.SupportedOutputSizes.some(os => 
+      size >= os.minSize && size <= os.maxSize &&
+      (size - os.minSize) % os.stepSize === 0
+    );
+    
+    if (!isValidSize) {
+      throw new Error(`Invalid output size: ${size} bytes`);
+    }
+    
+    this._outputSize = size;
+    this.OutputSize = size;
+  }
+
+  get outputSize() {
+    return this._outputSize || 32;
+  }
+
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    
+    // Accumulate all input data
+    this.inputBuffer.push(...data);
+  }
+
+  Result() {
+    // Implement your hash function here
+    const hash = new Array(this.outputSize).fill(0);
+    
+    // Simple example: XOR all input bytes into hash positions
+    for (let i = 0; i < this.inputBuffer.length; i++) {
+      hash[i % this.outputSize] ^= this.inputBuffer[i];
+    }
+    
+    // Clear buffer for next operation
+    this.inputBuffer = [];
+    
+    return hash;
+  }
+}
+
+RegisterAlgorithm(new YourHashFunction());
+```
+
+### Stream Cipher Algorithm
+
+```javascript
+// Load dependencies
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
+
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+        StreamCipherAlgorithm, IAlgorithmInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
+
+class YourStreamCipher extends StreamCipherAlgorithm {
+  constructor() {
+    super();
+    
+    this.name = "Your Stream Cipher";
+    this.description = "Brief description of your stream cipher";
+    this.category = CategoryType.SYMMETRIC_STREAM;
+    this.subCategory = "Stream Cipher";
+    this.securityStatus = SecurityStatus.EDUCATIONAL;
+    this.complexity = ComplexityType.INTERMEDIATE;
+    this.country = CountryCode.US;
+
+    // Test vectors - include all properties directly
+    this.tests = [
+      {
+        text: "Basic encryption test",
+        uri: "https://example.com/spec",
+        input: OpCodes.AnsiToBytes("Hello World"),
+        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        iv: OpCodes.Hex8ToBytes("0001020304050607"),
+        expected: OpCodes.Hex8ToBytes("1a2b3c4d5e6f708190a1b2")
+      }
+    ];
+  }
+
+  CreateInstance(isInverse = false) {
+    return new YourStreamCipherInstance(this, isInverse);
+  }
+}
+
+class YourStreamCipherInstance extends IAlgorithmInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse; // For stream ciphers, encrypt/decrypt are typically the same
+    this.key = null;
+    this.iv = null;
+    this.state = null;
+    this.inputBuffer = [];
+  }
+
+  // Property setters with validation
+  set key(keyBytes) {
+    if (!keyBytes) {
+      this._key = null;
+      this._initializeState();
+      return;
+    }
+
+    // Validate key (implement your key size requirements)
+    if (keyBytes.length < 16 || keyBytes.length > 32) {
+      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+    }
+
+    this._key = [...keyBytes];
+    this._initializeState();
+  }
+
+  get key() {
+    return this._key ? [...this._key] : null;
+  }
+
+  set iv(ivBytes) {
+    if (!ivBytes) {
+      this._iv = null;
+      this._initializeState();
+      return;
+    }
+
+    // Validate IV (implement your IV size requirements)
+    if (ivBytes.length !== 8) {
+      throw new Error(`Invalid IV size: ${ivBytes.length} bytes`);
+    }
+
+    this._iv = [...ivBytes];
+    this._initializeState();
+  }
+
+  get iv() {
+    return this._iv ? [...this._iv] : null;
+  }
+
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    if (!this.key) throw new Error("Key not set");
+
+    // For stream ciphers, we can process data immediately
+    this.inputBuffer.push(...data);
+  }
+
+  Result() {
+    if (!this.key) throw new Error("Key not set");
+    if (this.inputBuffer.length === 0) throw new Error("No data fed");
+
+    // Generate keystream and XOR with input
+    const keystream = this._generateKeystream(this.inputBuffer.length);
+    const output = this.inputBuffer.map((byte, i) => byte ^ keystream[i]);
+
+    // Clear buffer for next operation
+    this.inputBuffer = [];
+
+    return output;
+  }
+
+  _initializeState() {
+    if (!this.key) {
+      this.state = null;
+      return;
+    }
+
+    // Initialize cipher state from key and IV
+    this.state = {
+      key: this.key,
+      iv: this.iv || new Array(8).fill(0),
+      counter: 0
+    };
+  }
+
+  _generateKeystream(length) {
+    if (!this.state) {
+      throw new Error("Cipher state not initialized");
+    }
+
+    // Implement your keystream generation here
+    // This is a simplified example
+    const keystream = new Array(length);
+    for (let i = 0; i < length; i++) {
+      // Simple LFSR-style keystream (not cryptographically secure!)
+      const index = (this.state.counter + i) % this.state.key.length;
+      keystream[i] = this.state.key[index] ^ this.state.iv[i % this.state.iv.length];
+    }
+
+    this.state.counter += length;
+    return keystream;
+  }
+}
+
+RegisterAlgorithm(new YourStreamCipher());
 ```
 
 ## Common Mistakes to Avoid
@@ -1259,6 +1030,7 @@ Use this template for new algorithms (NewAlgo):
 - Link to general pages instead of specific implementations  
 - Use categories not in the approved list
 - Include implementation details in description
+- Spilling warnings about unsecure status or educational purpose
 
 ✅ **DO:**
 - Use `securityStatus: null` as default
@@ -1269,141 +1041,105 @@ Use this template for new algorithms (NewAlgo):
 
 ## Helper Functions Available
 
+The OpCodes library provides essential helper functions for algorithm implementations:
+
 ```javascript
 // Convert hex string to byte array
-Hex8ToBytes("deadbeef") // → [0xde, 0xad, 0xbe, 0xef]
+OpCodes.Hex8ToBytes("deadbeef") // → [0xde, 0xad, 0xbe, 0xef]
 
-// Convert byte array to hex string  
-ANSIToBytes("ABC") // → [0x41, 0x42, 0x43]
+// Convert ASCII string to byte array  
+OpCodes.AnsiToBytes("ABC") // → [0x41, 0x42, 0x43]
+
+// Convert byte array to hex string
+OpCodes.BytesToHex8([0xde, 0xad, 0xbe, 0xef]) // → "deadbeef"
+
+// XOR byte arrays
+OpCodes.XorBytes([0x01, 0x02], [0x03, 0x04]) // → [0x02, 0x06]
+
+// Rotate operations (useful for many ciphers)
+OpCodes.RotL32(0x12345678, 8) // Rotate left 32-bit
+OpCodes.RotR32(0x12345678, 8) // Rotate right 32-bit
+
+// Pack/unpack operations (endianness conversion)
+OpCodes.PackBytes32BE([0x12, 0x34, 0x56, 0x78]) // → 0x12345678 (big-endian)
+OpCodes.UnpackBytes32LE(0x12345678) // → [0x78, 0x56, 0x34, 0x12] (little-endian)
 ```
 
-## Questions?
-
-If you're unsure about:
-- Security status → Use `null`
-- Category → Check the approved list above  
-- Test vectors → Look for official NIST/RFC sources
-- Implementation → Follow the template exactly
+**Note:** Always use `OpCodes.Hex8ToBytes()` and `OpCodes.AnsiToBytes()` in test vectors, never hardcode byte arrays.
 
 ## Testing Troubleshooting
 
 ### Common Test Failures and Solutions
 
-❌ **"Interface validation failed"**
-- **Cause**: Missing required methods for your algorithm category
-- **Solution**: Implement all required methods with exact signatures for your category
+❌ **"CreateInstance() not implemented"**
+- **Cause**: Algorithm class doesn't override CreateInstance method
+- **Solution**: Implement CreateInstance method that returns appropriate instance class
 
-❌ **"Unknown Object Reference Exception"**  
-- **Cause**: `KeySetup` didn't store instance or returned invalid ID (block/stream ciphers)
-- **Solution**: Ensure `KeySetup` returns valid ID and stores in `this.instances[id]`
+❌ **"Feed() not implemented"** 
+- **Cause**: Instance class doesn't override Feed method from IAlgorithmInstance
+- **Solution**: Implement Feed method to accept and process input data
 
-❌ **"Invalid Block Size Exception"**
-- **Cause**: Input length doesn't match `minBlockSize`/`maxBlockSize` (block ciphers)
-- **Solution**: Validate input length in your methods
+❌ **"Result() not implemented"**
+- **Cause**: Instance class doesn't override Result method from IAlgorithmInstance
+- **Solution**: Implement Result method to return transformation output
 
-❌ **"Hash function returned wrong length"**
-- **Cause**: Hash output doesn't match expected digest size
-- **Solution**: Ensure your Hash() method returns correct number of bytes
+❌ **"Key not set"**
+- **Cause**: Algorithm requires key but instance.key property not set before Feed()
+- **Solution**: Set instance.key = keyBytes before calling Feed()
 
-❌ **"Compression round-trip failed"** 
-- **Cause**: Decompress(Compress(data)) != data
-- **Solution**: Debug your compression/decompression logic for data integrity
+❌ **"No data fed"**
+- **Cause**: Result() called before any Feed() calls
+- **Solution**: Call Feed() with data before calling Result()
 
-❌ **"Encoding round-trip failed"**
-- **Cause**: Decode(Encode(data)) != data  
-- **Solution**: Ensure encoding/decoding are exact inverses
-
-❌ **"MAC verification failed"**
-- **Cause**: Generate() and Verify() methods are inconsistent
-- **Solution**: Ensure Verify(key, msg, Generate(key, msg)) returns true
-
-❌ **"Stream cipher keystream mismatch"**
-- **Cause**: encrypt() and decrypt() generate different keystreams
-- **Solution**: Ensure both methods generate identical keystream sequences
-
-❌ **"KDF output length incorrect"**
-- **Cause**: DeriveKey() doesn't return requested key length
-- **Solution**: Verify output byte array has exact requested length
+❌ **"Invalid key size"** / **"Invalid IV size"** / **"Invalid output size"**
+- **Cause**: Property validation failed for algorithm requirements
+- **Solution**: Check algorithm's Supported*Sizes arrays for valid ranges
 
 ❌ **"Test vector mismatch"**
 - **Cause**: Algorithm output doesn't match expected result
-- **Solution**: Debug your core algorithm logic with test vectors
+- **Solution**: Debug your Feed/Result implementation with test vectors
 
-❌ **"Algorithm not found"**
-- **Cause**: Algorithm not properly registered with appropriate subsystem
-- **Solution**: Call correct registration function based on category:
-  - Block/Stream Ciphers: `global.Cipher.AddCipher(YourAlgorithm)`
-  - Hash Functions: `global.Hash.AddHash(YourAlgorithm)` (if hash subsystem exists)
-  - Other: Follow category-specific registration pattern
+❌ **"Algorithm not found in registry"**
+- **Cause**: Algorithm not properly registered via RegisterAlgorithm()
+- **Solution**: Ensure RegisterAlgorithm(new YourAlgorithm()) is called
 
-### Testing Checklist
+❌ **"Round-trip test failed"**
+- **Cause**: algorithm.CreateInstance(false) + algorithm.CreateInstance(true) don't reverse each other
+- **Solution**: Ensure inverse instance properly reverses the transformation, or return `null` from CreateInstance(true) if inverse operations are not supported
 
-Before submitting your algorithm, verify:
+❌ **"Property setter validation failed"**
+- **Cause**: Instance property setters have validation that's too strict or incorrect
+- **Solution**: Review property setter validation logic and SupportedSizes metadata
 
-✅ **Required Properties** (all algorithms):
-- [ ] `name` property set with clear algorithm name
-- [ ] `category` property matches approved categories
-- [ ] `subCategory` property matches approved subcategories
-- [ ] Complete metadata (description, inventor, year, etc.)
+### Testing Your Implementation
 
-✅ **Category-Specific Properties**:
-- [ ] Block/Stream Ciphers: `internalName`, `minKeyLength`, `maxKeyLength`, `instances`
-- [ ] Block Ciphers: `minBlockSize`, `maxBlockSize`, `cantDecode`
-- [ ] Hash Functions: Appropriate digest size documentation
-- [ ] Compression: Input/output size relationships documented
-- [ ] MAC/KDF: Key size requirements specified
+```javascript
+// Basic test of your algorithm
+const algorithm = AlgorithmFramework.Find("Your Algorithm Name");
+const instance = algorithm.CreateInstance(false);
 
-✅ **Required Methods** (category-dependent):
-- [ ] **Block Ciphers**: `KeySetup(key)`, `encryptBlock(id, plaintext)`, `decryptBlock(id, ciphertext)`
-- [ ] **Stream Ciphers**: `KeySetup(key, iv)`, `encrypt(id, plaintext)`, `decrypt(id, ciphertext)`
-- [ ] **Hash Functions**: `Init()`, `Hash(input)`
-- [ ] **Compression**: `Init()`, `Compress(input)`, `Decompress(compressed)`
-- [ ] **Encoding**: `Init()`, `Encode(input)`, `Decode(encoded)`
-- [ ] **MAC**: `Init()`, `Generate(key, message)`, `Verify(key, message, mac)`
-- [ ] **KDF**: `Init()`, `DeriveKey(password, salt, iterations, keyLength)`
-- [ ] **Checksum**: `Init()`, `Calculate(input)`
-- [ ] **ECC**: `Init()`, `GenerateKeyPair()`, `Sign()`, `Verify()` or similar
-- [ ] **Classical**: `Init()`, `Encrypt(plaintext, key)`, `Decrypt(ciphertext, key)`
+// Configure the instance
+instance.key = OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f");
 
-✅ **Error Handling**:
-- [ ] All methods use `global.throwException` for errors
-- [ ] Proper error message format: `(type, value, algorithmName, methodName)`
-- [ ] Methods return sensible defaults when errors occur
-- [ ] Input validation (key sizes, block sizes, parameter ranges)
+// Test with simple data
+instance.Feed(OpCodes.AnsiToBytes("Hello"));
+const result = instance.Result();
+console.log("Result:", OpCodes.BytesToHex8(result));
 
-✅ **Test Vectors**:
-- [ ] At least 3 test vectors provided for main functionality
-- [ ] Test vectors use `OpCodes.Hex8ToBytes()`, `OpCodes.StringToBytes()`, or similar
-- [ ] Official sources linked in `uri` field (NIST, RFC, papers)
-- [ ] Test vectors cover edge cases (empty input, maximum sizes, etc.)
-- [ ] All test vectors pass when algorithm is run
-
-✅ **Integration**:
-- [ ] Dependencies loaded (`OpCodes.js`, `cipher.js`, etc.)
-- [ ] Algorithm auto-registers with appropriate subsystem
-- [ ] No console errors when loading algorithm file
-- [ ] Proper IIFE wrapper with global/window detection
-
-✅ **Round-Trip Testing**:
-- [ ] **Block/Stream Ciphers**: encrypt(decrypt(x)) == x and decrypt(encrypt(x)) == x
-- [ ] **Compression**: decompress(compress(x)) == x
-- [ ] **Encoding**: decode(encode(x)) == x
-- [ ] **MAC**: verify(key, msg, generate(key, msg)) == true
-- [ ] **KDF**: Deterministic output for same inputs
+// Test round-trip
+const inverse = algorithm.CreateInstance(true);
+inverse.key = instance.key;
+inverse.Feed(result);
+const recovered = inverse.Result();
+console.log("Recovered:", OpCodes.BytesToHex8(recovered));
+```
 
 ### Manual Testing
 
 Test your algorithm manually before submitting:
 
-```javascript
-// 1. Load your algorithm file
-// 2. Test basic functionality:
-const testKey = OpCodes.Hex8ToBytes("0123456789abcdef0123456789abcdef");
-const testInput = OpCodes.Hex8ToBytes("0123456789abcdef");
+Run:
 
-const id = YourAlgorithm.KeySetup(testKey);
-const encrypted = YourAlgorithm.encryptBlock(id, testInput);
-const decrypted = YourAlgorithm.decryptBlock(id, encrypted);
-
-console.log("Round-trip test:", testInput === decrypted);
+```bash
+node Tests/TestSuite.js Algorithm.js
 ```
