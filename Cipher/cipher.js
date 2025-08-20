@@ -136,7 +136,6 @@
         }
       }
       
-      console.log(`✅[Cipher.Add] Registered cipher: ${cipher.name} (${cipher.category || 'unknown'})`);
       return true;
     },
 
