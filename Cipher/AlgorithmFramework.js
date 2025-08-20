@@ -28,26 +28,20 @@
   
 //#region ===== ENUMS =====
 const CategoryType = Object.freeze({
-  ASYMMETRIC_BLOCK: { 
-    name: 'Asymmetric Block Ciphers', 
+  ASYMMETRIC: { 
+    name: 'Asymmetric Ciphers', 
     color: '#dc3545', // Red
     icon: '🔐',
     description: 'Public-key cryptography algorithms' 
   },
-  ASYMMETRIC_STREAM: { 
-    name: 'Asymmetric Stream Ciphers', 
-    color: '#dc3545', // Red
-    icon: '🔐',
-    description: 'Public-key cryptography algorithms' 
-  },
-  SYMMETRIC_BLOCK: { 
-    name: 'Symmetric Block Ciphers', 
+  BLOCK: { 
+    name: 'Block Ciphers', 
     color: '#007bff', // Blue
     icon: '🧱',
     description: 'Block-based symmetric encryption' 
   },
-  SYMMETRIC_STREAM: { 
-    name: 'Symmetric Stream Ciphers', 
+  STREAM: { 
+    name: 'Stream Ciphers', 
     color: '#17a2b8', // Light blue
     icon: '🌊',
     description: 'Stream-based symmetric encryption' 
@@ -57,6 +51,12 @@ const CategoryType = Object.freeze({
     color: '#ffc107', // Yellow
     icon: '#️⃣',
     description: 'Cryptographic hash algorithms' 
+  },
+  CHECKSUM: { 
+    name: 'Checksums', 
+    color: '#20c997', // Teal
+    icon: '✔️',
+    description: 'Checksum and integrity verification algorithms' 
   },
   COMPRESSION: { 
     name: 'Compression Algorithms', 
@@ -82,17 +82,53 @@ const CategoryType = Object.freeze({
     icon: '✅',
     description: 'Message authentication codes' 
   },
+  KDF: { 
+    name: 'Key Derivation Functions', 
+    color: '#343a40', // Dark gray
+    icon: '🔑',
+    description: 'Key derivation and stretching functions' 
+  },
+  ECC: { 
+    name: 'Error Correction', 
+    color: '#17a2b8', // Info blue
+    icon: '🔧',
+    description: 'Error correction codes' 
+  },
+  MODE: { 
+    name: 'Cipher Modes', 
+    color: '#495057', // Gray
+    icon: '⚙️',
+    description: 'Block cipher modes of operation' 
+  },
+  PADDING: { 
+    name: 'Padding Schemes', 
+    color: '#6c757d', // Gray
+    icon: '📦',
+    description: 'Data padding algorithms' 
+  },
+  AEAD: { 
+    name: 'Authenticated Encryption', 
+    color: '#dc3545', // Red variant
+    icon: '🛡️',
+    description: 'Authenticated encryption with associated data' 
+  },
+  SPECIAL: { 
+    name: 'Special Algorithms', 
+    color: '#6f42c1', // Purple
+    icon: '✨',
+    description: 'Special purpose algorithms' 
+  },
+  PQC: { 
+    name: 'Post-Quantum Cryptography', 
+    color: '#e83e8c', // Pink variant
+    icon: '🔮',
+    description: 'Quantum-resistant cryptographic algorithms' 
+  },
   RANDOM: { 
     name: 'Random Number Generators', 
     color: '#6c757d', // Gray
     icon: '🎲',
     description: 'Pseudo-random number generators' 
-  },
-  EXPERIMENTAL: { 
-    name: 'Experimental/Research', 
-    color: '#20c997', // Teal
-    icon: '🧪',
-    description: 'Research and experimental algorithms' 
   }
 });
 
@@ -114,29 +150,29 @@ const ComplexityType = Object.freeze({
 });
 
 const CountryCode = Object.freeze({
-  US: { flag: '🇺🇸', name: 'United States' },
-  RU: { flag: '🇷🇺', name: 'Russia' },
-  CN: { flag: '🇨🇳', name: 'China' },
-  UA: { flag: '🇺🇦', name: 'Ukraine' },
-  DE: { flag: '🇩🇪', name: 'Germany' },
-  GB: { flag: '🇬🇧', name: 'United Kingdom' },
-  FR: { flag: '🇫🇷', name: 'France' },
-  JP: { flag: '🇯🇵', name: 'Japan' },
-  KR: { flag: '🇰🇷', name: 'South Korea' },
-  IL: { flag: '🇮🇱', name: 'Israel' },
-  BE: { flag: '🇧🇪', name: 'Belgium' },
-  CA: { flag: '🇨🇦', name: 'Canada' },
-  AU: { flag: '🇦🇺', name: 'Australia' },
-  IT: { flag: '🇮🇹', name: 'Italy' },
-  NL: { flag: '🇳🇱', name: 'Netherlands' },
-  CH: { flag: '🇨🇭', name: 'Switzerland' },
-  SE: { flag: '🇸🇪', name: 'Sweden' },
-  NO: { flag: '🇳🇴', name: 'Norway' },
-  IN: { flag: '🇮🇳', name: 'India' },
-  BR: { flag: '🇧🇷', name: 'Brazil' },
-  INTL: { flag: '🌐', name: 'International' },
-  ANCIENT: { flag: '🏛️', name: 'Ancient' },
-  UNKNOWN: { flag: '❓', name: 'Unknown' }
+  US: { icon: '🇺🇸', name: 'United States' },
+  RU: { icon: '🇷🇺', name: 'Russia' },
+  CN: { icon: '🇨🇳', name: 'China' },
+  UA: { icon: '🇺🇦', name: 'Ukraine' },
+  DE: { icon: '🇩🇪', name: 'Germany' },
+  GB: { icon: '🇬🇧', name: 'United Kingdom' },
+  FR: { icon: '🇫🇷', name: 'France' },
+  JP: { icon: '🇯🇵', name: 'Japan' },
+  KR: { icon: '🇰🇷', name: 'South Korea' },
+  IL: { icon: '🇮🇱', name: 'Israel' },
+  BE: { icon: '🇧🇪', name: 'Belgium' },
+  CA: { icon: '🇨🇦', name: 'Canada' },
+  AU: { icon: '🇦🇺', name: 'Australia' },
+  IT: { icon: '🇮🇹', name: 'Italy' },
+  NL: { icon: '🇳🇱', name: 'Netherlands' },
+  CH: { icon: '🇨🇭', name: 'Switzerland' },
+  SE: { icon: '🇸🇪', name: 'Sweden' },
+  NO: { icon: '🇳🇴', name: 'Norway' },
+  IN: { icon: '🇮🇳', name: 'India' },
+  BR: { icon: '🇧🇷', name: 'Brazil' },
+  INTL: { icon: '🌐', name: 'International' },
+  ANCIENT: { icon: '🏛️', name: 'Ancient' },
+  UNKNOWN: { icon: '❓', name: 'Unknown' }
 });
 //#endregion
 

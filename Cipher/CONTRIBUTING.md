@@ -217,50 +217,109 @@ Always use direct enum object assignment for metadata properties:
 ### Available Enum Values
 
 **Categories:**
-- `CategoryType.SYMMETRIC_BLOCK` - Block-based symmetric encryption 
-- `CategoryType.SYMMETRIC_STREAM` - Stream-based symmetric encryption
-- `CategoryType.ASYMMETRIC_BLOCK` - Public-key block ciphers
-- `CategoryType.ASYMMETRIC_STREAM` - Public-key stream ciphers  
+- `CategoryType.ASYMMETRIC` - Public-key cryptography algorithms
+- `CategoryType.BLOCK` - Block-based symmetric encryption
+- `CategoryType.STREAM` - Stream-based symmetric encryption
 - `CategoryType.HASH` - Cryptographic hash algorithms
-- `CategoryType.MAC` - Message authentication codes
+- `CategoryType.CHECKSUM` - Checksum and integrity verification algorithms
 - `CategoryType.COMPRESSION` - Data compression algorithms
 - `CategoryType.ENCODING` - Data encoding and representation
 - `CategoryType.CLASSICAL` - Historical and educational ciphers
+- `CategoryType.MAC` - Message authentication codes
+- `CategoryType.KDF` - Key derivation and stretching functions
+- `CategoryType.ECC` - Error correction codes
+- `CategoryType.MODE` - Block cipher modes of operation
+- `CategoryType.PADDING` - Data padding algorithms
+- `CategoryType.AEAD` - Authenticated encryption with associated data
+- `CategoryType.SPECIAL` - Special purpose algorithms
+- `CategoryType.PQC` - Quantum-resistant cryptographic algorithms
 - `CategoryType.RANDOM` - Pseudo-random number generators
-- `CategoryType.EXPERIMENTAL` - Research and experimental algorithms
 
-### SubCategory Examples by Category:
+### SubCategory Examples by Category
 
-**SYMMETRIC_BLOCK:**
-- "Block Cipher" - Standard block ciphers
-- "Cipher Mode" - Operating modes (CBC, ECB, etc.)
-- "AEAD" - Authenticated operating modes (GCM, EAX, etc.)
-- "Block Padding" - PKCS#7, ISO 10126, etc.
-- "Signature Padding" - PSS, PKCS#1, etc.
+**ASYMMETRIC:**
+- "Public Key Encryption" - RSA, ECC-based encryption
+- "Digital Signatures" - RSA signatures, ECDSA, EdDSA
+- "Key Exchange" - Diffie-Hellman, ECDH
+- "Post-Quantum" - Lattice-based, code-based algorithms
 
-**SYMMETRIC_STREAM:**  
-- "Stream Cipher" - Standard stream ciphers
-- "Authenticated Stream" - Stream ciphers with authentication
+**BLOCK:**
+- "Block Cipher" - AES, DES, Blowfish, etc.
+- "Lightweight" - PRESENT, Simon, Speck
+- "National Standards" - GOST, SM4, Camellia
+
+**STREAM:**
+- "Stream Cipher" - RC4, ChaCha20, Salsa20
+- "Synchronous" - LFSR-based ciphers
+- "Self-Synchronizing" - CFB mode stream ciphers
 
 **HASH:**
 - "Cryptographic Hash" - SHA family, BLAKE, etc.
 - "Fast Hash" - xxHash, MurmurHash, etc.
-- "Checksum" - CRC32, Adler32, etc.
 
-**ENCODING:**
-- "Base Encoding" - Base64, Base32, etc.
-- "Error Control" - Reed-Solomon, Fountain, etc.
+**CHECKSUM:**
+- "Error Detection" - CRC32, Adler32, Fletcher
+- "Simple Checksums" - Parity, XOR checksums
 
 **COMPRESSION:**
 - "Dictionary" - LZ77, LZW, etc.
 - "Statistical" - Huffman, Arithmetic, etc.
 - "Modern" - Brotli, Zstandard, etc.
 
+**ENCODING:**
+- "Base Encoding" - Base64, Base32, etc.
+- "Character Encoding" - ASCII variants, EBCDIC
+
+**CLASSICAL:**
+- "Substitution" - Caesar, Atbash, Simple substitution
+- "Transposition" - Rail fence, Columnar transposition
+- "Polyalphabetic" - Vigenère, Playfair, Enigma
+
+**MAC:**
+- "HMAC" - HMAC-SHA family
+- "CMAC" - CMAC-AES, OMAC
+- "Universal Hash" - Poly1305, GHASH
+
+**KDF:**
+- "Password-Based" - PBKDF2, scrypt, Argon2
+- "Key Stretching" - bcrypt, HKDF
+- "Random Oracle" - MGF1, SHAKE
+
+**ECC:**
+- "Block Codes" - Hamming, BCH, Reed-Solomon
+- "Convolutional" - Turbo codes, LDPC
+- "Modern" - Fountain codes, Raptor codes
+
+**MODE:**
+- "Confidentiality" - ECB, CBC, CTR, OFB, CFB
+- "Authenticated" - GCM, CCM, EAX, OCB
+- "Disk Encryption" - XTS, LRW
+
+**PADDING:**
+- "Block Padding" - PKCS#7, ISO 10126, ANSI X9.23
+- "Signature Padding" - PSS, PKCS#1, ISO/IEC 9796
+
+**AEAD:**
+- "GCM Family" - AES-GCM, ChaCha20-Poly1305
+- "OCB Family" - OCB1, OCB2, OCB3
+- "CCM Family" - AES-CCM, Camellia-CCM
+
+**SPECIAL:**
+- "Format Preserving" - FF1, FF3-1
+- "Homomorphic" - Paillier, BGV, CKKS
+- "Zero Knowledge" - zk-SNARKs, Bulletproofs
+
+**PQC:**
+- "Lattice-Based" - Kyber, Dilithium, NTRU
+- "Code-Based" - Classic McEliece, BIKE
+- "Multivariate" - Rainbow, GeMSS
+- "Hash-Based" - SPHINCS+, XMSS
+
 **RANDOM:**
 - "Hardware RNG" - Hardware-based entropy sources
-- "PRNG" - Pseudo-random
-- "CSRNG" - Cryptographically strong
-- "Stream Cipher RNG" - Stream ciphers used as RNGs
+- "PRNG" - Linear congruential, Mersenne Twister
+- "CSRNG" - Cryptographically strong PRNGs
+- "Stream Cipher RNG" - ChaCha20-based, RC4-based
 
 ## **Security Status:**
 - `SecurityStatus.SECURE` - Currently considered cryptographically secure
@@ -618,7 +677,7 @@ class YourBlockCipher extends BlockCipherAlgorithm {
     this.description = "Brief description of what this cipher does";
     this.inventor = "Algorithm Creator Name";
     this.year = 2024;
-    this.category = CategoryType.SYMMETRIC_BLOCK;
+    this.category = CategoryType.BLOCK;
     this.subCategory = "Block Cipher";
     this.securityStatus = SecurityStatus.EDUCATIONAL; // Be honest about security
     this.complexity = ComplexityType.INTERMEDIATE;
@@ -889,7 +948,7 @@ class YourStreamCipher extends StreamCipherAlgorithm {
     
     this.name = "Your Stream Cipher";
     this.description = "Brief description of your stream cipher";
-    this.category = CategoryType.SYMMETRIC_STREAM;
+    this.category = CategoryType.STREAM;
     this.subCategory = "Stream Cipher";
     this.securityStatus = SecurityStatus.EDUCATIONAL;
     this.complexity = ComplexityType.INTERMEDIATE;
