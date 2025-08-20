@@ -299,6 +299,205 @@
       const mask = ~(0xFF << shift);
       return ((word & mask) | ((value & 0xFF) << shift)) >>> 0;
     },
+
+    /**
+     * Split JavaScript number into high/low 32-bit components
+     * Safely handles JavaScript's 53-bit integer limitation for 64-bit operations
+     * @param {number} value - JavaScript number to split
+     * @returns {Object} {high32, low32} - High and low 32-bit components
+     */
+    Split64: function(value) {
+      const low32 = value & 0xFFFFFFFF;
+      const high32 = Math.floor(value / 0x100000000);
+      return { high32: high32, low32: low32 };
+    },
+
+    /**
+     * Combine high/low 32-bit components into JavaScript number
+     * @param {number} high32 - High 32 bits
+     * @param {number} low32 - Low 32 bits
+     * @returns {number} Combined JavaScript number
+     */
+    Combine64: function(high32, low32) {
+      return (high32 * 0x100000000) + (low32 >>> 0);
+    },
+
+    // ========================[ 64-BIT ARITHMETIC UTILITIES ]========================
+    
+    /**
+     * 64-bit unsigned integer arithmetic utilities
+     * Uses [high32, low32] representation for JavaScript compatibility
+     * Essential for SHA-512, SHA-384, and other 64-bit cryptographic algorithms
+     */
+    UInt64: {
+      /**
+       * Create 64-bit value from high and low 32-bit components
+       * @param {number} high - High 32 bits
+       * @param {number} low - Low 32 bits  
+       * @returns {Array} [high32, low32] representation
+       */
+      create: function(high, low) {
+        return [high >>> 0, low >>> 0];
+      },
+
+      /**
+       * 64-bit addition
+       * @param {Array} a - First 64-bit value [high32, low32]
+       * @param {Array} b - Second 64-bit value [high32, low32]
+       * @returns {Array} Sum as [high32, low32]
+       */
+      add: function(a, b) {
+        const low = (a[1] + b[1]) >>> 0;
+        const high = (a[0] + b[0] + (low < a[1] ? 1 : 0)) >>> 0;
+        return [high, low];
+      },
+
+      /**
+       * 64-bit right rotation
+       * @param {Array} a - 64-bit value [high32, low32]
+       * @param {number} n - Number of positions to rotate (0-63)
+       * @returns {Array} Rotated value as [high32, low32]
+       */
+      rotr: function(a, n) {
+        if (n === 0) return a;
+        n = n % 64; // Ensure n is within valid range
+        
+        if (n < 32) {
+          // For rotations less than 32 bits
+          const high = ((a[0] >>> n) | ((a[1] << (32 - n)) & 0xFFFFFFFF)) >>> 0;
+          const low = ((a[1] >>> n) | ((a[0] << (32 - n)) & 0xFFFFFFFF)) >>> 0;
+          return [high, low];
+        } else {
+          // For rotations 32 bits or more, swap and adjust
+          const shift = n - 32;
+          const high = ((a[1] >>> shift) | ((a[0] << (32 - shift)) & 0xFFFFFFFF)) >>> 0;
+          const low = ((a[0] >>> shift) | ((a[1] << (32 - shift)) & 0xFFFFFFFF)) >>> 0;
+          return [high, low];
+        }
+      },
+
+      /**
+       * 64-bit left rotation
+       * @param {Array} a - 64-bit value [high32, low32]
+       * @param {number} n - Number of positions to rotate (0-63)
+       * @returns {Array} Rotated value as [high32, low32]
+       */
+      rotl: function(a, n) {
+        if (n === 0) return a;
+        return OpCodes.UInt64.rotr(a, 64 - (n % 64));
+      },
+
+      /**
+       * 64-bit right shift (logical)
+       * @param {Array} a - 64-bit value [high32, low32]
+       * @param {number} n - Number of positions to shift (0-63)
+       * @returns {Array} Shifted value as [high32, low32]
+       */
+      shr: function(a, n) {
+        if (n === 0) return a;
+        if (n < 32) {
+          const high = (a[0] >>> n) >>> 0;
+          const low = ((a[1] >>> n) | (a[0] << (32 - n))) >>> 0;
+          return [high, low];
+        } else {
+          return [0, (a[0] >>> (n - 32)) >>> 0];
+        }
+      },
+
+      /**
+       * 64-bit left shift (logical)
+       * @param {Array} a - 64-bit value [high32, low32]
+       * @param {number} n - Number of positions to shift (0-63)
+       * @returns {Array} Shifted value as [high32, low32]
+       */
+      shl: function(a, n) {
+        if (n === 0) return a;
+        if (n < 32) {
+          const high = ((a[0] << n) | (a[1] >>> (32 - n))) >>> 0;
+          const low = (a[1] << n) >>> 0;
+          return [high, low];
+        } else {
+          return [(a[1] << (n - 32)) >>> 0, 0];
+        }
+      },
+
+      /**
+       * 64-bit XOR operation
+       * @param {Array} a - First 64-bit value [high32, low32]
+       * @param {Array} b - Second 64-bit value [high32, low32]
+       * @returns {Array} XOR result as [high32, low32]
+       */
+      xor: function(a, b) {
+        return [(a[0] ^ b[0]) >>> 0, (a[1] ^ b[1]) >>> 0];
+      },
+
+      /**
+       * 64-bit AND operation
+       * @param {Array} a - First 64-bit value [high32, low32]
+       * @param {Array} b - Second 64-bit value [high32, low32]
+       * @returns {Array} AND result as [high32, low32]
+       */
+      and: function(a, b) {
+        return [(a[0] & b[0]) >>> 0, (a[1] & b[1]) >>> 0];
+      },
+
+      /**
+       * 64-bit OR operation
+       * @param {Array} a - First 64-bit value [high32, low32]
+       * @param {Array} b - Second 64-bit value [high32, low32]
+       * @returns {Array} OR result as [high32, low32]
+       */
+      or: function(a, b) {
+        return [(a[0] | b[0]) >>> 0, (a[1] | b[1]) >>> 0];
+      },
+
+      /**
+       * 64-bit NOT operation
+       * @param {Array} a - 64-bit value [high32, low32]
+       * @returns {Array} NOT result as [high32, low32]
+       */
+      not: function(a) {
+        return [(~a[0]) >>> 0, (~a[1]) >>> 0];
+      },
+
+      /**
+       * Convert 64-bit value to JavaScript number (loses precision beyond 53 bits)
+       * @param {Array} a - 64-bit value [high32, low32]
+       * @returns {number} JavaScript number representation
+       */
+      toNumber: function(a) {
+        return OpCodes.Combine64(a[0], a[1]);
+      },
+
+      /**
+       * Create 64-bit value from JavaScript number
+       * @param {number} num - JavaScript number
+       * @returns {Array} 64-bit representation as [high32, low32]
+       */
+      fromNumber: function(num) {
+        const split = OpCodes.Split64(num);
+        return [split.high32, split.low32];
+      },
+
+      /**
+       * Compare two 64-bit values for equality
+       * @param {Array} a - First 64-bit value [high32, low32]
+       * @param {Array} b - Second 64-bit value [high32, low32]
+       * @returns {boolean} True if equal
+       */
+      equals: function(a, b) {
+        return a[0] === b[0] && a[1] === b[1];
+      },
+
+      /**
+       * Clone 64-bit value
+       * @param {Array} a - 64-bit value [high32, low32]
+       * @returns {Array} Cloned value as [high32, low32]
+       */
+      clone: function(a) {
+        return [a[0], a[1]];
+      }
+    },
     
     // ========================[ STRING/BYTE CONVERSIONS ]========================
     
@@ -837,6 +1036,45 @@
     TimingSafeSelect: function(condition, a, b) {
       const mask = -(condition & 1);
       return (a & ~mask) | (b & mask);
+    },
+
+    // ========================[ HASH ALGORITHM UTILITIES ]========================
+    
+    /**
+     * Encode 64-bit message length for MD5/SHA-1 (little-endian)
+     * Safely handles JavaScript's 53-bit integer limitation
+     * @param {number} bitLength - Message length in bits
+     * @returns {Array} 8-byte array in little-endian format
+     */
+    EncodeMsgLength64LE: function(bitLength) {
+      const split = OpCodes.Split64(bitLength);
+      
+      // Pack low 32 bits in little-endian
+      const lowBytes = OpCodes.Unpack32LE(split.low32);
+      // Pack high 32 bits in little-endian  
+      const highBytes = OpCodes.Unpack32LE(split.high32);
+      
+      return lowBytes.concat(highBytes);
+    },
+    
+    /**
+     * Encode 128-bit message length for SHA-384/SHA-512 (big-endian)
+     * Safely handles JavaScript's 53-bit integer limitation
+     * @param {number} bitLength - Message length in bits
+     * @returns {Array} 16-byte array in big-endian format
+     */
+    EncodeMsgLength128BE: function(bitLength) {
+      const split = OpCodes.Split64(bitLength);
+      
+      // First 8 bytes are zero for typical message lengths
+      const result = [0, 0, 0, 0, 0, 0, 0, 0];
+      
+      // Pack high 32 bits in big-endian (bytes 8-11)
+      const highBytes = OpCodes.Unpack32BE(split.high32);
+      // Pack low 32 bits in big-endian (bytes 12-15)
+      const lowBytes = OpCodes.Unpack32BE(split.low32);
+      
+      return result.concat(highBytes).concat(lowBytes);
     },
 
     // ========================[ ADDITIONAL CONSOLIDATION FUNCTIONS ]========================
