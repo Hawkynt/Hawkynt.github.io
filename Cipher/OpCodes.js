@@ -93,7 +93,99 @@
       positions &= 31;
       return ((value >>> positions) | (value << (32 - positions))) >>> 0;
     },
+
     
+    /**
+     * 64-bit left rotation (for future 64-bit ciphers)
+     * @param {number} low - Low 32 bits
+     * @param {number} high - High 32 bits
+     * @param {number} positions - Rotation positions (0-63)
+     * @returns {Object} {low, high} - Rotated 64-bit value
+     */
+    RotL64: function(low, high, positions) {
+      positions &= 63;
+      if (positions === 0) return {low: low, high: high};
+      
+      if (positions < 32) {
+        const newHigh = ((high << positions) | (low >>> (32 - positions))) >>> 0;
+        const newLow = ((low << positions) | (high >>> (32 - positions))) >>> 0;
+        return {low: newLow, high: newHigh};
+      } else {
+        // positions >= 32, swap and rotate
+        positions -= 32;
+        const newHigh = ((low << positions) | (high >>> (32 - positions))) >>> 0;
+        const newLow = ((high << positions) | (low >>> (32 - positions))) >>> 0;
+        return {low: newLow, high: newHigh};
+      }
+    },
+    
+    /**
+     * 64-bit right rotation (for future 64-bit ciphers)
+     * @param {number} low - Low 32 bits
+     * @param {number} high - High 32 bits
+     * @param {number} positions - Rotation positions (0-63)
+     * @returns {Object} {low, high} - Rotated 64-bit value
+     */
+    RotR64: function(low, high, positions) {
+      positions &= 63;
+      if (positions === 0) return {low: low, high: high};
+      
+      if (positions < 32) {
+        const newLow = ((low >>> positions) | (high << (32 - positions))) >>> 0;
+        const newHigh = ((high >>> positions) | (low << (32 - positions))) >>> 0;
+        return {low: newLow, high: newHigh};
+      } else {
+        // positions >= 32, swap and rotate
+        positions -= 32;
+        const newLow = ((high >>> positions) | (low << (32 - positions))) >>> 0;
+        const newHigh = ((low >>> positions) | (high << (32 - positions))) >>> 0;
+        return {low: newLow, high: newHigh};
+      }
+    },
+    
+    /**
+     * Rotate 128-bit value represented as 16-byte array to the left
+     * @param {Array} bytes - 16-byte array representing 128-bit value
+     * @param {number} positions - Number of bits to rotate left
+     * @returns {Array} Rotated 16-byte array
+     */
+    RotL128: function(bytes, positions) {
+      if (positions === 0 || bytes.length !== 16) return bytes.slice(0);
+      
+      positions = positions % 128;
+      if (positions === 0) return bytes.slice(0);
+      
+      const result = new Array(16);
+      const byteShift = Math.floor(positions / 8);
+      const bitShift = positions % 8;
+      
+      for (let i = 0; i < 16; ++i) {
+        const sourceIdx = (i + byteShift) % 16;
+        let value = bytes[sourceIdx];
+        
+        if (bitShift > 0) {
+          const nextIdx = (sourceIdx + 1) % 16;
+          value = ((value << bitShift) | (bytes[nextIdx] >>> (8 - bitShift))) & 0xFF;
+        }
+        
+        result[i] = value;
+      }
+      
+      return result;
+    },
+
+    /**
+     * Rotate 128-bit value represented as 16-byte array to the right
+     * @param {Array} bytes - 16-byte array representing 128-bit value
+     * @param {number} positions - Number of bits to rotate right
+     * @returns {Array} Rotated 16-byte array
+     */
+    RotR128: function(bytes, positions) {
+      if (positions === 0 || bytes.length !== 16) return bytes.slice(0);
+      positions = positions % 128;
+      return OpCodes.RotL128(bytes, 128 - positions);
+    },
+
     // ========================[ BYTE/WORD OPERATIONS ]========================
     
     /**
@@ -149,7 +241,42 @@
         (word >>> 24) & 0xFF
       ];
     },
+
     
+    /**
+     * Convert 32-bit words array to bytes array (big-endian)
+     * @param {Array} words - Array of 32-bit words
+     * @returns {Array} Array of bytes
+     */
+    Words32ToBytesBE: function(words) {
+      const bytes = [];
+      for (let i = 0; i < words.length; ++i) {
+        const word = words[i] >>> 0;
+        bytes.push((word >>> 24) & 0xFF);
+        bytes.push((word >>> 16) & 0xFF);
+        bytes.push((word >>> 8) & 0xFF);
+        bytes.push(word & 0xFF);
+      }
+      return bytes;
+    },
+
+    /**
+     * Convert bytes array to 32-bit words array (big-endian)
+     * @param {Array} bytes - Array of bytes
+     * @returns {Array} Array of 32-bit words
+     */
+    BytesToWords32BE: function(bytes) {
+      const words = [];
+      for (let i = 0; i < bytes.length; i += 4) {
+        const b0 = i < bytes.length ? bytes[i] : 0;
+        const b1 = i + 1 < bytes.length ? bytes[i + 1] : 0;
+        const b2 = i + 2 < bytes.length ? bytes[i + 2] : 0;
+        const b3 = i + 3 < bytes.length ? bytes[i + 3] : 0;
+        words.push(OpCodes.Pack32BE(b0, b1, b2, b3));
+      }
+      return words;
+    },
+
     /**
      * Extract specific byte from 32-bit word
      * @param {number} word - 32-bit word
@@ -182,12 +309,25 @@
      */
     AnsiToBytes: function(str) {
       const bytes = [];
-      for (let i = 0; i < str.length; i++) {
+      for (let i = 0; i < str.length; ++i)
         bytes.push(str.charCodeAt(i) & 0x7F);
-      }
+      
       return bytes;
     },
      
+    /**
+     * Convert string to byte array
+     * @param {string} str - Input string
+     * @returns {Array} Array of byte values
+     */
+    AsciiToBytes: function(str) {
+      const bytes = [];
+      for (let i = 0; i < str.length; ++i)
+        bytes.push(str.charCodeAt(i) & 0xFF);
+      
+      return bytes;
+    },
+    
     // ========================[ COMPREHENSIVE HEX UTILITIES ]========================
 
     /**
@@ -197,20 +337,16 @@
      * @returns {Array} Array of byte values (0-15 each)
      */
     Hex4ToBytes: function(hexString) {
-      if (typeof hexString !== 'string') {
+      if (typeof hexString !== 'string')
         throw new Error('Hex4ToBytes: Input must be a string');
-      }
             
       // Validate hex characters
-      if (!/^[0-9A-F]*$/.test(hexString)) {
+      if (!/^[0-9A-Fa-f]*$/.test(hexString))
         throw new Error('Hex4ToBytes: Invalid hex characters found');
-      }
       
       const bytes = [];
-      for (let i = 0; i < hexString.length; i++) {
-        const digit = parseInt(hexString.charAt(i), 16);
-        bytes.push(digit);
-      }
+      for (let i = 0; i < hexString.length; ++i)
+        bytes.push(parseInt(hexString.charAt(i), 16));
       
       return bytes;
     },
@@ -222,26 +358,20 @@
      * @returns {Array} Array of byte values (0-255 each)
      */
     Hex8ToBytes: function(hexString) {
-      if (typeof hexString !== 'string') {
+      if (typeof hexString !== 'string')
         throw new Error('Hex8ToBytes: Input must be a string');
-      }
       
       // Validate hex characters
-      if (!/^[0-9A-Fa-f]*$/.test(hexString)) {
+      if (!/^[0-9A-Fa-f]*$/.test(hexString))
         throw new Error('Hex8ToBytes: Invalid hex characters found');
-      }
       
-      // Pad to even length if necessary
-      if (hexString.length % 2 === 1) {
-        hexString = '0' + hexString;
-      }
+      // Validate length
+      if (hexString.length & 1 !== 0)
+        throw new Error('Hex8ToBytes: Length must be even');
       
       const bytes = [];
-      for (let i = 0; i < hexString.length; i += 2) {
-        const hexPair = hexString.substr(i, 2);
-        const byte = parseInt(hexPair, 16);
-        bytes.push(byte);
-      }
+      for (let i = 0; i < hexString.length; i += 2)
+        bytes.push(parseInt(hexPairhexString.substr(i, 2), 16));
       
       return bytes;
     },
@@ -253,29 +383,20 @@
      * @returns {Array} Array of 16-bit word values (0-65535 each)
      */
     Hex16ToWords: function(hexString) {
-      if (typeof hexString !== 'string') {
+      if (typeof hexString !== 'string')
         throw new Error('Hex16ToWords: Input must be a string');
-      }
-      
-      // Remove whitespace and convert to uppercase
-      hexString = hexString.replace(/\s+/g, '').toUpperCase();
       
       // Validate hex characters
-      if (!/^[0-9A-F]*$/.test(hexString)) {
+      if (!/^[0-9A-Fa-f]*$/.test(hexString)) 
         throw new Error('Hex16ToWords: Invalid hex characters found');
-      }
       
-      // Pad to multiple of 4 if necessary
-      while (hexString.length % 4 !== 0) {
-        hexString = '0' + hexString;
-      }
-      
+      // Validate length
+      if (hexString.length & 3 !== 0)
+        throw new Error('Hex16ToWords: Length must be divisible by 4');
+
       const words = [];
-      for (let i = 0; i < hexString.length; i += 4) {
-        const hexQuad = hexString.substr(i, 4);
-        const word = parseInt(hexQuad, 16);
-        words.push(word);
-      }
+      for (let i = 0; i < hexString.length; i += 4)
+        words.push(parseInt(hexString.substr(i, 4), 16));
       
       return words;
     },
@@ -286,347 +407,23 @@
      * @param {string} hexString - Hex string with octets
      * @returns {Array} Array of 32-bit word values
      */
-    Hex32ToBytes: function(hexString) {
-      if (typeof hexString !== 'string') {
-        throw new Error('Hex32ToBytes: Input must be a string');
-      }
-      
-      // Remove whitespace and convert to uppercase
-      hexString = hexString.replace(/\s+/g, '').toUpperCase();
+    Hex32ToDWords: function(hexString) {
+      if (typeof hexString !== 'string')
+        throw new Error('Hex32ToDWords: Input must be a string');
       
       // Validate hex characters
-      if (!/^[0-9A-F]*$/.test(hexString)) {
-        throw new Error('Hex32ToBytes: Invalid hex characters found');
-      }
+      if (!/^[0-9A-Fa-f]*$/.test(hexString)) 
+        throw new Error('Hex32ToDWords: Invalid hex characters found');
       
-      // Pad to multiple of 8 if necessary
-      while (hexString.length % 8 !== 0) {
-        hexString = '0' + hexString;
-      }
+      // Validate length
+      if (hexString.length & 7 !== 0)
+        throw new Error('Hex32ToDWords: Length must be divisible by 8');
       
       const words = [];
-      for (let i = 0; i < hexString.length; i += 8) {
-        const hexOctet = hexString.substr(i, 8);
-        const word = parseInt(hexOctet, 16) >>> 0; // Ensure unsigned 32-bit
-        words.push(word);
-      }
+      for (let i = 0; i < hexString.length; i += 8)
+        words.push( parseInt(hexString.substr(i, 8), 16) >>> 0);
       
       return words;
-    },
-
-    /**
-     * Convert bytes to hex nibbles (reverse of Hex4ToBytes)
-     * [15, 1, 2, 3] → "F123"
-     * @param {Array} bytes - Array of nibble values (0-15 each)
-     * @returns {string} Hex string representation
-     */
-    BytesToHex4: function(bytes) {
-      if (!Array.isArray(bytes)) {
-        throw new Error('BytesToHex4: Input must be an array');
-      }
-      
-      let hex = '';
-      for (let i = 0; i < bytes.length; i++) {
-        const byte = bytes[i] & 0x0F; // Ensure nibble range
-        hex += byte.toString(16).toUpperCase();
-      }
-      
-      return hex;
-    },
-
-    /**
-     * Convert bytes to hex pairs (reverse of Hex8ToBytes)
-     * [0xf1, 0x23] → "F123"
-     * @param {Array} bytes - Array of byte values (0-255 each)
-     * @returns {string} Hex string representation
-     */
-    BytesToHex8: function(bytes) {
-      if (!Array.isArray(bytes)) {
-        throw new Error('BytesToHex8: Input must be an array');
-      }
-      
-      let hex = '';
-      for (let i = 0; i < bytes.length; i++) {
-        const byte = bytes[i] & 0xFF; // Ensure byte range
-        hex += ('0' + byte.toString(16)).slice(-2).toUpperCase();
-      }
-      
-      return hex;
-    },
-
-    /**
-     * Convert 16-bit words to hex quads (reverse of Hex16ToWords)
-     * [0xf123, 0xabcd] → "F123ABCD"
-     * @param {Array} words - Array of 16-bit word values
-     * @returns {string} Hex string representation
-     */
-    WordsToHex16: function(words) {
-      if (!Array.isArray(words)) {
-        throw new Error('WordsToHex16: Input must be an array');
-      }
-      
-      let hex = '';
-      for (let i = 0; i < words.length; i++) {
-        const word = words[i] & 0xFFFF; // Ensure 16-bit range
-        hex += ('000' + word.toString(16)).slice(-4).toUpperCase();
-      }
-      
-      return hex;
-    },
-
-    /**
-     * Convert 32-bit words to hex octets (reverse of Hex32ToBytes)
-     * [0xf123abcd, 0x9876] → "F123ABCD00009876"
-     * @param {Array} words - Array of 32-bit word values
-     * @returns {string} Hex string representation
-     */
-    BytesToHex32: function(words) {
-      if (!Array.isArray(words)) {
-        throw new Error('BytesToHex32: Input must be an array');
-      }
-      
-      let hex = '';
-      for (let i = 0; i < words.length; i++) {
-        const word = (words[i] >>> 0); // Ensure unsigned 32-bit
-        hex += ('0000000' + word.toString(16)).slice(-8).toUpperCase();
-      }
-      
-      return hex;
-    },
-
-    /**
-     * Validate hex string format
-     * @param {string} hexString - Hex string to validate
-     * @param {number} expectedLength - Expected length (optional)
-     * @returns {boolean} True if valid hex string
-     */
-    IsValidHex: function(hexString, expectedLength) {
-      if (typeof hexString !== 'string') {
-        return false;
-      }
-      
-      // Remove whitespace
-      const cleanHex = hexString.replace(/\s+/g, '');
-      
-      // Check for valid hex characters
-      if (!/^[0-9A-Fa-f]*$/.test(cleanHex)) {
-        return false;
-      }
-      
-      // Check expected length if provided
-      if (expectedLength !== undefined && cleanHex.length !== expectedLength) {
-        return false;
-      }
-      
-      return true;
-    },
-
-    /**
-     * Format hex string with spacing for readability
-     * @param {string} hexString - Input hex string
-     * @param {number} groupSize - Number of hex digits per group (default: 2)
-     * @param {string} separator - Group separator (default: ' ')
-     * @returns {string} Formatted hex string
-     */
-    FormatHex: function(hexString, groupSize, separator) {
-      if (typeof hexString !== 'string') {
-        throw new Error('FormatHex: Input must be a string');
-      }
-      
-      groupSize = groupSize || 2;
-      separator = separator || ' ';
-      
-      // Remove existing whitespace and convert to uppercase
-      const cleanHex = hexString.replace(/\s+/g, '').toUpperCase();
-      
-      // Validate hex
-      if (!OpCodes.IsValidHex(cleanHex)) {
-        throw new Error('FormatHex: Invalid hex string');
-      }
-      
-      // Add separators
-      let formatted = '';
-      for (let i = 0; i < cleanHex.length; i += groupSize) {
-        if (i > 0) {
-          formatted += separator;
-        }
-        formatted += cleanHex.substr(i, groupSize);
-      }
-      
-      return formatted;
-    },
-
-    /**
-     * Convert multiline hex string to clean hex (removes formatting)
-     * @param {string} hexString - Formatted hex string (may contain newlines, spaces)
-     * @returns {string} Clean hex string
-     */
-    CleanHex: function(hexString) {
-      if (typeof hexString !== 'string') {
-        throw new Error('CleanHex: Input must be a string');
-      }
-      
-      // Remove all whitespace, newlines, and non-hex characters except 0-9A-Fa-f
-      return hexString.replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
-    },
-
-    /**
-     * Parse hex constants from formatted strings (common in cryptographic literature)
-     * Examples: "0x1234", "1234h", "$1234", "16#1234#"
-     * @param {string} hexConstant - Formatted hex constant
-     * @returns {number} Parsed numeric value
-     */
-    ParseHexConstant: function(hexConstant) {
-      if (typeof hexConstant !== 'string') {
-        throw new Error('ParseHexConstant: Input must be a string');
-      }
-      
-      let cleanHex = hexConstant.trim();
-      
-      // Handle different hex formats
-      if (cleanHex.startsWith('0x') || cleanHex.startsWith('0X')) {
-        cleanHex = cleanHex.slice(2);
-      } else if (cleanHex.startsWith('$')) {
-        cleanHex = cleanHex.slice(1);
-      } else if (cleanHex.endsWith('h') || cleanHex.endsWith('H')) {
-        cleanHex = cleanHex.slice(0, -1);
-      } else if (cleanHex.startsWith('16#') && cleanHex.endsWith('#')) {
-        cleanHex = cleanHex.slice(3, -1);
-      }
-      
-      // Validate and parse
-      if (!OpCodes.IsValidHex(cleanHex)) {
-        throw new Error('ParseHexConstant: Invalid hex constant format');
-      }
-      
-      return parseInt(cleanHex, 16);
-    },
-
-    /**
-     * Convert S-box definition from various formats to standard byte array
-     * Handles: hex strings, arrays of hex constants, formatted blocks
-     * @param {string|Array} sboxDef - S-box definition in various formats
-     * @returns {Array} Standard 256-byte S-box array
-     */
-    ParseSBox: function(sboxDef) {
-      if (typeof sboxDef === 'string') {
-        // Handle hex string format
-        const cleanHex = OpCodes.CleanHex(sboxDef);
-        if (cleanHex.length !== 512) { // 256 bytes * 2 hex chars each
-          throw new Error('ParseSBox: Hex string must be exactly 512 characters (256 bytes)');
-        }
-        return OpCodes.Hex8ToBytes(cleanHex);
-      } else if (Array.isArray(sboxDef)) {
-        // Handle array format (may contain hex constants)
-        if (sboxDef.length !== 256) {
-          throw new Error('ParseSBox: Array must contain exactly 256 elements');
-        }
-        
-        const result = new Array(256);
-        for (let i = 0; i < 256; i++) {
-          if (typeof sboxDef[i] === 'string') {
-            result[i] = OpCodes.ParseHexConstant(sboxDef[i]) & 0xFF;
-          } else if (typeof sboxDef[i] === 'number') {
-            result[i] = sboxDef[i] & 0xFF;
-          } else {
-            throw new Error(`ParseSBox: Invalid element type at index ${i}`);
-          }
-        }
-        return result;
-      } else {
-        throw new Error('ParseSBox: Input must be string or array');
-      }
-    },
-
-    /**
-     * Convert P-box definition from hex string to permutation array
-     * @param {string} pboxHex - Hex string representing P-box indices
-     * @param {number} size - Expected P-box size (default: auto-detect)
-     * @returns {Array} P-box permutation array
-     */
-    ParsePBox: function(pboxHex, size) {
-      if (typeof pboxHex !== 'string') {
-        throw new Error('ParsePBox: Input must be a hex string');
-      }
-      
-      const cleanHex = OpCodes.CleanHex(pboxHex);
-      const bytes = OpCodes.Hex8ToBytes(cleanHex);
-      
-      if (size && bytes.length !== size) {
-        throw new Error(`ParsePBox: Expected ${size} bytes, got ${bytes.length}`);
-      }
-      
-      return bytes;
-    },
-
-    /**
-     * Generate hex string representation of S-box for code generation
-     * @param {Array} sbox - 256-byte S-box array
-     * @param {number} lineLength - Hex characters per line (default: 32)
-     * @returns {string} Formatted hex string suitable for code inclusion
-     */
-    SBoxToHex: function(sbox, lineLength) {
-      if (!Array.isArray(sbox) || sbox.length !== 256) {
-        throw new Error('SBoxToHex: Input must be 256-element array');
-      }
-      
-      lineLength = lineLength || 32;
-      const hex = OpCodes.BytesToHex8(sbox);
-      
-      let formatted = '';
-      for (let i = 0; i < hex.length; i += lineLength) {
-        if (i > 0) {
-          formatted += '\n';
-        }
-        formatted += hex.substr(i, lineLength);
-      }
-      
-      return formatted;
-    },
-
-    /**
-     * Efficient batch hex conversion for performance-critical operations
-     * @param {Array} hexStrings - Array of hex strings to convert
-     * @returns {Array} Array of byte arrays
-     */
-    BatchHex8ToBytes: function(hexStrings) {
-      if (!Array.isArray(hexStrings)) {
-        throw new Error('BatchHex8ToBytes: Input must be array of hex strings');
-      }
-      
-      const results = new Array(hexStrings.length);
-      for (let i = 0; i < hexStrings.length; i++) {
-        results[i] = OpCodes.Hex8ToBytes(hexStrings[i]);
-      }
-      
-      return results;
-    },
-
-    /**
-     * Memory-efficient hex streaming for large data sets
-     * @param {string} hexString - Large hex string
-     * @param {number} chunkSize - Bytes per chunk (default: 1024)
-     * @param {Function} callback - Callback function(chunkBytes, isLast)
-     */
-    StreamHex8ToBytes: function(hexString, chunkSize, callback) {
-      if (typeof hexString !== 'string') {
-        throw new Error('StreamHex8ToBytes: Input must be a string');
-      }
-      
-      if (typeof callback !== 'function') {
-        throw new Error('StreamHex8ToBytes: Callback must be a function');
-      }
-      
-      chunkSize = chunkSize || 1024;
-      const cleanHex = OpCodes.CleanHex(hexString);
-      const hexChunkSize = chunkSize * 2; // 2 hex chars per byte
-      
-      for (let i = 0; i < cleanHex.length; i += hexChunkSize) {
-        const hexChunk = cleanHex.substr(i, hexChunkSize);
-        const bytes = OpCodes.Hex8ToBytes(hexChunk);
-        const isLast = (i + hexChunkSize) >= cleanHex.length;
-        callback(bytes, isLast);
-      }
     },
     
     // ========================[ ARRAY OPERATIONS ]========================
@@ -652,6 +449,15 @@
      * @returns {Array} Copied array
      */
     CopyArray: function(arr) {
+      if (arr.length <= 16) {
+        // Unrolled copy for small arrays (faster than slice)
+        const result = [];
+        for (let i = 0; i < arr.length; ++i)
+          result[i] = arr[i];
+        
+        return result;
+      }
+
       return arr.slice(0);
     },
     
@@ -660,9 +466,8 @@
      * @param {Array} arr - Array to clear (modified in place)
      */
     ClearArray: function(arr) {
-      for (let i = 0; i < arr.length; i++) {
+      for (let i = 0; i < arr.length; ++i)
         arr[i] = 0;
-      }
     },
     
     /**
@@ -673,10 +478,28 @@
      */
     CompareArrays: function(arr1, arr2) {
       if (arr1.length !== arr2.length) return false;
-      for (let i = 0; i < arr1.length; i++) {
+      for (let i = 0; i < arr1.length; ++i)
         if (arr1[i] !== arr2[i]) return false;
-      }
+
       return true;
+    },
+    
+    
+    /**
+     * Secure comparison (constant time) for preventing timing attacks
+     * @param {Array} arr1 - First array
+     * @param {Array} arr2 - Second array
+     * @returns {boolean} True if arrays are equal
+     */
+    SecureCompare: function(arr1, arr2) {
+      if (arr1.length !== arr2.length)
+        return false;
+      
+      let result = 0;
+      for (let i = 0; i < arr1.length; ++i)
+        result |= arr1[i] ^ arr2[i];
+      
+      return result === 0;
     },
     
     // ========================[ MATHEMATICAL OPERATIONS ]========================
@@ -724,130 +547,23 @@
       let result = 0;
       a &= 0xFF;
       b &= 0xFF;
-      
-      for (let i = 0; i < 8; i++) {
-        if (b & 1) {
+
+      for (let i = 0; i < 8; ++i) {
+        if (b & 1)
           result ^= a;
-        }
+
         const highBit = a & 0x80;
         a = (a << 1) & 0xFF;
-        if (highBit) {
+        if (highBit)
           a ^= 0x1B; // AES irreducible polynomial x^8 + x^4 + x^3 + x + 1
-        }
+
         b >>>= 1;
       }
       
       return result & 0xFF;
     },
     
-    // ========================[ UTILITY FUNCTIONS ]========================
-    
-    /**
-     * Generate padding for block ciphers (PKCS#7)
-     * @param {number} blockSize - Block size in bytes
-     * @param {number} dataLength - Length of data to pad
-     * @returns {Array} Padding bytes
-     */
-    PKCS7Padding: function(blockSize, dataLength) {
-      const padLength = blockSize - (dataLength % blockSize);
-      const padding = [];
-      for (let i = 0; i < padLength; i++) {
-        padding.push(padLength);
-      }
-      return padding;
-    },
-    
-    /**
-     * Remove PKCS#7 padding
-     * @param {Array} paddedData - Data with PKCS#7 padding
-     * @returns {Array} Data without padding
-     */
-    RemovePKCS7Padding: function(paddedData) {
-      if (paddedData.length === 0) return paddedData;
-      
-      const padLength = paddedData[paddedData.length - 1];
-      if (padLength === 0 || padLength > paddedData.length) {
-        return paddedData; // Invalid padding
-      }
-      
-      // Verify padding
-      for (let i = paddedData.length - padLength; i < paddedData.length; i++) {
-        if (paddedData[i] !== padLength) {
-          return paddedData; // Invalid padding
-        }
-      }
-      
-      return paddedData.slice(0, paddedData.length - padLength);
-    },
-    
-    /**
-     * Secure comparison (constant time) for preventing timing attacks
-     * @param {Array} arr1 - First array
-     * @param {Array} arr2 - Second array
-     * @returns {boolean} True if arrays are equal
-     */
-    SecureCompare: function(arr1, arr2) {
-      if (arr1.length !== arr2.length) {
-        return false;
-      }
-      
-      let result = 0;
-      for (let i = 0; i < arr1.length; i++) {
-        result |= arr1[i] ^ arr2[i];
-      }
-      
-      return result === 0;
-    },
-    
     // ========================[ ADVANCED OPERATIONS ]========================
-    
-    /**
-     * 64-bit left rotation (for future 64-bit ciphers)
-     * @param {number} low - Low 32 bits
-     * @param {number} high - High 32 bits
-     * @param {number} positions - Rotation positions (0-63)
-     * @returns {Object} {low, high} - Rotated 64-bit value
-     */
-    RotL64: function(low, high, positions) {
-      positions &= 63;
-      if (positions === 0) return {low: low, high: high};
-      
-      if (positions < 32) {
-        const newHigh = ((high << positions) | (low >>> (32 - positions))) >>> 0;
-        const newLow = ((low << positions) | (high >>> (32 - positions))) >>> 0;
-        return {low: newLow, high: newHigh};
-      } else {
-        // positions >= 32, swap and rotate
-        positions -= 32;
-        const newHigh = ((low << positions) | (high >>> (32 - positions))) >>> 0;
-        const newLow = ((high << positions) | (low >>> (32 - positions))) >>> 0;
-        return {low: newLow, high: newHigh};
-      }
-    },
-    
-    /**
-     * 64-bit right rotation (for future 64-bit ciphers)
-     * @param {number} low - Low 32 bits
-     * @param {number} high - High 32 bits
-     * @param {number} positions - Rotation positions (0-63)
-     * @returns {Object} {low, high} - Rotated 64-bit value
-     */
-    RotR64: function(low, high, positions) {
-      positions &= 63;
-      if (positions === 0) return {low: low, high: high};
-      
-      if (positions < 32) {
-        const newLow = ((low >>> positions) | (high << (32 - positions))) >>> 0;
-        const newHigh = ((high >>> positions) | (low << (32 - positions))) >>> 0;
-        return {low: newLow, high: newHigh};
-      } else {
-        // positions >= 32, swap and rotate
-        positions -= 32;
-        const newLow = ((high >>> positions) | (low << (32 - positions))) >>> 0;
-        const newHigh = ((low >>> positions) | (high << (32 - positions))) >>> 0;
-        return {low: newLow, high: newHigh};
-      }
-    },
     
     /**
      * S-box substitution (generic)
@@ -867,11 +583,10 @@
      */
     MatrixMultiply4x4: function(matrix, column) {
       const result = [0, 0, 0, 0];
-      for (let i = 0; i < 4; i++) {
-        for (let j = 0; j < 4; j++) {
-          result[i] ^= OpCodes.GF256Mul(matrix[i][j], column[j]);
-        }
-      }
+      for (let i = 0; i < 4; ++i)
+      for (let j = 0; j < 4; ++j)
+        result[i] ^= OpCodes.GF256Mul(matrix[i][j], column[j]);
+        
       return result;
     },
     
@@ -971,69 +686,13 @@
      */
     GenerateRoundConstants: function(count, generator) {
       const constants = [];
-      for (let i = 0; i < count; i++) {
+      for (let i = 0; i < count; ++i)
         constants[i] = generator(i);
-      }
+
       return constants;
     },
     
-    /**
-     * Secure random byte generation (for key generation)
-     * @param {number} length - Number of bytes needed
-     * @returns {Array} Array of random bytes
-     */
-    SecureRandomBytes: function(length) {
-      const bytes = [];
-      if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-        // Browser crypto API
-        const array = new Uint8Array(length);
-        crypto.getRandomValues(array);
-        for (let i = 0; i < length; i++) {
-          bytes[i] = array[i];
-        }
-      } else if (typeof require !== 'undefined') {
-        // Node.js crypto
-        try {
-          const nodeCrypto = require('crypto');
-          const buffer = nodeCrypto.randomBytes(length);
-          for (let i = 0; i < length; i++) {
-            bytes[i] = buffer[i];
-          }
-        } catch (e) {
-          // Fallback to Math.random (not cryptographically secure)
-          console.warn('Using insecure Math.random for key generation');
-          for (let i = 0; i < length; i++) {
-            bytes[i] = Math.floor(Math.random() * 256);
-          }
-        }
-      } else {
-        // Fallback to Math.random (not cryptographically secure)
-        console.warn('Using insecure Math.random for key generation');
-        for (let i = 0; i < length; i++) {
-          bytes[i] = Math.floor(Math.random() * 256);
-        }
-      }
-      return bytes;
-    },
-
     // ========================[ PERFORMANCE OPTIMIZATIONS ]========================
-
-    /**
-     * Fast byte array cloning using optimized memory copying
-     * @param {Array} source - Source array to clone
-     * @returns {Array} Cloned array
-     */
-    FastCloneArray: function(source) {
-      if (source.length <= 16) {
-        // Unrolled copy for small arrays (faster than slice)
-        const result = [];
-        for (let i = 0; i < source.length; i++) {
-          result[i] = source[i];
-        }
-        return result;
-      }
-      return source.slice(0); // Use native slice for larger arrays
-    },
 
     /**
      * Optimized XOR for same-length arrays (no bounds checking)
@@ -1129,15 +788,12 @@
       else if (size <= 32) pool = this._memoryPool.arrays32;
       else return new Array(size); // Too large for pooling
 
-      if (pool.length > 0) {
-        const array = pool.pop();
-        // Clear the array
-        for (let i = 0; i < size; i++) {
-          array[i] = 0;
-        }
-        return array;
-      }
-      return new Array(size);
+      if (pool.length <= 0)
+        return new Array(size);
+
+      const array = pool.pop();
+      this.ClearArray(array);
+      return array;
     },
 
     /**
@@ -1148,14 +804,13 @@
       if (!array || array.length === 0) return;
       
       let pool;
-      if (array.length <= 8) pool = this._memoryPool.arrays8;
-      else if (array.length <= 16) pool = this._memoryPool.arrays16;
-      else if (array.length <= 32) pool = this._memoryPool.arrays32;
-      else return; // Too large for pooling
+      if (array.length === 8) pool = this._memoryPool.arrays8;
+      else if (array.length === 16) pool = this._memoryPool.arrays16;
+      else if (array.length === 32) pool = this._memoryPool.arrays32;
+      else return; // Not from pool
 
-      if (pool.length < this._memoryPool.maxPoolSize) {
+      if (pool.length < this._memoryPool.maxPoolSize)
         pool.push(array);
-      }
     },
 
     /**
@@ -1184,111 +839,6 @@
       return (a & ~mask) | (b & mask);
     },
 
-    /**
-     * Optimized GF(2^8) table-based multiplication
-     * Pre-computed for common multipliers in AES
-     */
-    _gf256Tables: null,
-
-    /**
-     * Initialize GF(2^8) multiplication tables
-     */
-    InitGF256Tables: function() {
-      if (this._gf256Tables) return; // Already initialized
-      
-      this._gf256Tables = {
-        mul2: new Array(256),
-        mul3: new Array(256),
-        mul9: new Array(256),
-        mul11: new Array(256),
-        mul13: new Array(256),
-        mul14: new Array(256)
-      };
-
-      // Pre-compute common multiplication tables
-      for (let i = 0; i < 256; i++) {
-        this._gf256Tables.mul2[i] = this.GF256Mul(i, 0x02);
-        this._gf256Tables.mul3[i] = this.GF256Mul(i, 0x03);
-        this._gf256Tables.mul9[i] = this.GF256Mul(i, 0x09);
-        this._gf256Tables.mul11[i] = this.GF256Mul(i, 0x0b);
-        this._gf256Tables.mul13[i] = this.GF256Mul(i, 0x0d);
-        this._gf256Tables.mul14[i] = this.GF256Mul(i, 0x0e);
-      }
-    },
-
-    /**
-     * Fast table-based GF(2^8) multiplication
-     * @param {number} a - First operand
-     * @param {number} multiplier - Multiplier (2, 3, 9, 11, 13, or 14)
-     * @returns {number} Product in GF(2^8)
-     */
-    FastGF256Mul: function(a, multiplier) {
-      if (!this._gf256Tables) this.InitGF256Tables();
-      
-      switch (multiplier) {
-        case 0x02: return this._gf256Tables.mul2[a];
-        case 0x03: return this._gf256Tables.mul3[a];
-        case 0x09: return this._gf256Tables.mul9[a];
-        case 0x0b: return this._gf256Tables.mul11[a];
-        case 0x0d: return this._gf256Tables.mul13[a];
-        case 0x0e: return this._gf256Tables.mul14[a];
-        default: return this.GF256Mul(a, multiplier); // Fallback to general function
-      }
-    },
-
-    /**
-     * Performance monitoring utilities
-     */
-    _perfCounters: {
-      operationCounts: {},
-      totalTime: 0,
-      startTime: 0
-    },
-
-    /**
-     * Start performance monitoring
-     */
-    StartPerfMonitoring: function() {
-      this._perfCounters.startTime = Date.now();
-      this._perfCounters.operationCounts = {};
-    },
-
-    /**
-     * Record operation execution
-     * @param {string} operation - Operation name
-     * @param {number} count - Number of operations performed
-     */
-    RecordOperation: function(operation, count) {
-      count = count || 1;
-      if (!this._perfCounters.operationCounts[operation]) {
-        this._perfCounters.operationCounts[operation] = 0;
-      }
-      this._perfCounters.operationCounts[operation] += count;
-    },
-
-    /**
-     * Get performance statistics
-     * @returns {Object} Performance statistics
-     */
-    GetPerfStats: function() {
-      const elapsed = Date.now() - this._perfCounters.startTime;
-      const stats = {
-        elapsedMs: elapsed,
-        operationCounts: this._perfCounters.operationCounts,
-        totalOperations: 0
-      };
-      
-      for (const op in this._perfCounters.operationCounts) {
-        stats.totalOperations += this._perfCounters.operationCounts[op];
-      }
-      
-      if (elapsed > 0) {
-        stats.operationsPerSecond = Math.round(stats.totalOperations * 1000 / elapsed);
-      }
-      
-      return stats;
-    },
-
     // ========================[ ADDITIONAL CONSOLIDATION FUNCTIONS ]========================
 
     /**
@@ -1311,9 +861,9 @@
     CreateArray: function(length, value) {
       value = value !== undefined ? value : 0;
       const arr = new Array(length);
-      for (let i = 0; i < length; i++) {
+      for (let i = 0; i < length; ++i)
         arr[i] = value;
-      }
+
       return arr;
     },
 
@@ -1327,29 +877,10 @@
     ArraySlice: function(arr, start, end) {
       end = end !== undefined ? end : arr.length;
       const result = [];
-      for (let i = start; i < end && i < arr.length; i++) {
+      for (let i = start; i < end && i < arr.length; ++i)
         result.push(arr[i]);
-      }
-      return result;
-    },
 
-    /**
-     * Convert multiple bytes to single string character efficiently
-     * @param {Array} bytes - Array of byte values
-     * @returns {string} String representation
-     */
-    BytesToStringFast: function(bytes) {
-      // Use String.fromCharCode.apply for better performance on large arrays
-      if (bytes.length > 1000) {
-        let result = '';
-        for (let i = 0; i < bytes.length; i += 1000) {
-          const chunk = bytes.slice(i, i + 1000);
-          result += String.fromCharCode.apply(null, chunk);
-        }
-        return result;
-      } else {
-        return String.fromCharCode.apply(null, bytes);
-      }
+      return result;
     },
 
     /**
@@ -1359,64 +890,20 @@
      */
     ConcatArrays: function() {
       let totalLength = 0;
-      for (let i = 0; i < arguments.length; i++) {
+      for (let i = 0; i < arguments.length; ++i)
         totalLength += arguments[i].length;
-      }
 
       const result = new Array(totalLength);
       let offset = 0;
-      for (let i = 0; i < arguments.length; i++) {
+      for (let i = 0; i < arguments.length; ++i) {
         const arr = arguments[i];
-        for (let j = 0; j < arr.length; j++) {
+        for (let j = 0; j < arr.length; ++j)
           result[offset + j] = arr[j];
-        }
+
         offset += arr.length;
       }
       
       return result;
-    },
-
-    /**
-     * Rotate 128-bit value represented as 16-byte array to the left
-     * @param {Array} bytes - 16-byte array representing 128-bit value
-     * @param {number} positions - Number of bits to rotate left
-     * @returns {Array} Rotated 16-byte array
-     */
-    RotL128: function(bytes, positions) {
-      if (positions === 0 || bytes.length !== 16) return bytes.slice(0);
-      
-      positions = positions % 128;
-      if (positions === 0) return bytes.slice(0);
-      
-      const result = new Array(16);
-      const byteShift = Math.floor(positions / 8);
-      const bitShift = positions % 8;
-      
-      for (let i = 0; i < 16; i++) {
-        const sourceIdx = (i + byteShift) % 16;
-        let value = bytes[sourceIdx];
-        
-        if (bitShift > 0) {
-          const nextIdx = (sourceIdx + 1) % 16;
-          value = ((value << bitShift) | (bytes[nextIdx] >>> (8 - bitShift))) & 0xFF;
-        }
-        
-        result[i] = value;
-      }
-      
-      return result;
-    },
-
-    /**
-     * Rotate 128-bit value represented as 16-byte array to the right
-     * @param {Array} bytes - 16-byte array representing 128-bit value
-     * @param {number} positions - Number of bits to rotate right
-     * @returns {Array} Rotated 16-byte array
-     */
-    RotR128: function(bytes, positions) {
-      if (positions === 0 || bytes.length !== 16) return bytes.slice(0);
-      positions = positions % 128;
-      return OpCodes.RotL128(bytes, 128 - positions);
     },
 
     /**
@@ -1426,11 +913,10 @@
      * @returns {number} Input value that produces the output
      */
     InverseSBoxLookup: function(sbox, output) {
-      for (let i = 0; i < 256; i++) {
-        if (sbox[i] === output) {
+      for (let i = 0; i < 256; ++i)
+        if (sbox[i] === output)
           return i;
-        }
-      }
+
       return 0; // Default fallback
     },
 
@@ -1441,9 +927,9 @@
      */
     BuildInverseSBox: function(sbox) {
       const inverse = new Array(256);
-      for (let i = 0; i < 256; i++) {
+      for (let i = 0; i < 256; ++i)
         inverse[sbox[i]] = i;
-      }
+
       return inverse;
     },
 
@@ -1506,7 +992,7 @@
       value = value >>> 0; // Ensure unsigned
       while (value) {
         value &= value - 1; // Clear lowest set bit
-        count++;
+        ++count;
       }
       return count;
     },
@@ -1529,45 +1015,7 @@
      * @returns {number} Modified value
      */
     SetBit: function(value, bitIndex, bitValue) {
-      if (bitValue & 1) {
-        return value | (1 << bitIndex);
-      } else {
-        return value & ~(1 << bitIndex);
-      }
-    },
-
-    /**
-     * Convert 32-bit words array to bytes array (big-endian)
-     * @param {Array} words - Array of 32-bit words
-     * @returns {Array} Array of bytes
-     */
-    Words32ToBytesBE: function(words) {
-      const bytes = [];
-      for (let i = 0; i < words.length; i++) {
-        const word = words[i] >>> 0;
-        bytes.push((word >>> 24) & 0xFF);
-        bytes.push((word >>> 16) & 0xFF);
-        bytes.push((word >>> 8) & 0xFF);
-        bytes.push(word & 0xFF);
-      }
-      return bytes;
-    },
-
-    /**
-     * Convert bytes array to 32-bit words array (big-endian)
-     * @param {Array} bytes - Array of bytes
-     * @returns {Array} Array of 32-bit words
-     */
-    BytesToWords32BE: function(bytes) {
-      const words = [];
-      for (let i = 0; i < bytes.length; i += 4) {
-        const b0 = i < bytes.length ? bytes[i] : 0;
-        const b1 = i + 1 < bytes.length ? bytes[i + 1] : 0;
-        const b2 = i + 2 < bytes.length ? bytes[i + 2] : 0;
-        const b3 = i + 3 < bytes.length ? bytes[i + 3] : 0;
-        words.push(OpCodes.Pack32BE(b0, b1, b2, b3));
-      }
-      return words;
+      return bitValue & 1 ? value | (1 << bitIndex) : value & ~(1 << bitIndex);
     },
 
     /**
@@ -1626,9 +1074,9 @@
     XorArrayWithByte: function(array, value) {
       const result = new Array(array.length);
       value = value & 0xFF;
-      for (let i = 0; i < array.length; i++) {
+      for (let i = 0; i < array.length; ++i)
         result[i] = (array[i] ^ value) & 0xFF;
-      }
+
       return result;
     },
 
@@ -1661,289 +1109,8 @@
       }
       
       return result & mask;
-    },
-
-    // ========================[ PADDING SCHEMES ]========================
-
-    /**
-     * Apply PKCS#7 padding to data
-     * @param {number} blockSize - Block size in bytes
-     * @param {number} dataLength - Length of data to pad
-     * @returns {Array} Padding bytes to append
-     */
-    PKCS7Padding: function(blockSize, dataLength) {
-      if (blockSize <= 0 || blockSize > 255) {
-        throw new Error('Block size must be between 1 and 255 bytes');
-      }
-      
-      const padLength = blockSize - (dataLength % blockSize);
-      const padding = new Array(padLength);
-      
-      for (let i = 0; i < padLength; i++) {
-        padding[i] = padLength;
-      }
-      
-      return padding;
-    },
-
-    /**
-     * Remove PKCS#7 padding from data
-     * @param {Array} data - Padded data
-     * @returns {Array} Data with padding removed
-     */
-    RemovePKCS7Padding: function(data) {
-      if (!data || data.length === 0) {
-        throw new Error('Data cannot be empty');
-      }
-      
-      const padLength = data[data.length - 1];
-      
-      if (padLength <= 0 || padLength > data.length) {
-        throw new Error('Invalid PKCS#7 padding');
-      }
-      
-      // Verify padding bytes
-      for (let i = data.length - padLength; i < data.length; i++) {
-        if (data[i] !== padLength) {
-          throw new Error('Invalid PKCS#7 padding bytes');
-        }
-      }
-      
-      return data.slice(0, data.length - padLength);
-    },
-
-    /**
-     * Apply ISO/IEC 7816-4 padding (bit padding)
-     * @param {number} blockSize - Block size in bytes
-     * @param {number} dataLength - Length of data to pad
-     * @returns {Array} Padding bytes to append
-     */
-    ISO7816Padding: function(blockSize, dataLength) {
-      if (blockSize <= 0) {
-        throw new Error('Block size must be positive');
-      }
-      
-      const padLength = blockSize - (dataLength % blockSize);
-      const padding = new Array(padLength);
-      
-      // First padding byte is 0x80, rest are 0x00
-      padding[0] = 0x80;
-      for (let i = 1; i < padLength; i++) {
-        padding[i] = 0x00;
-      }
-      
-      return padding;
-    },
-
-    /**
-     * Remove ISO/IEC 7816-4 padding from data
-     * @param {Array} data - Padded data
-     * @returns {Array} Data with padding removed
-     */
-    RemoveISO7816Padding: function(data) {
-      if (!data || data.length === 0) {
-        throw new Error('Data cannot be empty');
-      }
-      
-      // Find the last 0x80 byte
-      let paddingStart = -1;
-      for (let i = data.length - 1; i >= 0; i--) {
-        if (data[i] === 0x80) {
-          paddingStart = i;
-          break;
-        } else if (data[i] !== 0x00) {
-          throw new Error('Invalid ISO 7816-4 padding');
-        }
-      }
-      
-      if (paddingStart === -1) {
-        throw new Error('No padding marker found');
-      }
-      
-      return data.slice(0, paddingStart);
-    },
-
-    /**
-     * Apply ANSI X9.23 padding
-     * @param {number} blockSize - Block size in bytes
-     * @param {number} dataLength - Length of data to pad
-     * @returns {Array} Padding bytes to append
-     */
-    ANSIX923Padding: function(blockSize, dataLength) {
-      if (blockSize <= 0 || blockSize > 255) {
-        throw new Error('Block size must be between 1 and 255 bytes');
-      }
-      
-      const padLength = blockSize - (dataLength % blockSize);
-      const padding = new Array(padLength);
-      
-      // All padding bytes are zero except the last one
-      for (let i = 0; i < padLength - 1; i++) {
-        padding[i] = 0x00;
-      }
-      padding[padLength - 1] = padLength;
-      
-      return padding;
-    },
-
-    /**
-     * Remove ANSI X9.23 padding from data
-     * @param {Array} data - Padded data
-     * @returns {Array} Data with padding removed
-     */
-    RemoveANSIX923Padding: function(data) {
-      if (!data || data.length === 0) {
-        throw new Error('Data cannot be empty');
-      }
-      
-      const padLength = data[data.length - 1];
-      
-      if (padLength <= 0 || padLength > data.length) {
-        throw new Error('Invalid ANSI X9.23 padding');
-      }
-      
-      // Verify padding bytes (should be zeros except last)
-      for (let i = data.length - padLength; i < data.length - 1; i++) {
-        if (data[i] !== 0x00) {
-          throw new Error('Invalid ANSI X9.23 padding bytes');
-        }
-      }
-      
-      return data.slice(0, data.length - padLength);
-    },
-
-    /**
-     * Apply zero padding
-     * @param {number} blockSize - Block size in bytes
-     * @param {number} dataLength - Length of data to pad
-     * @returns {Array} Padding bytes to append
-     */
-    ZeroPadding: function(blockSize, dataLength) {
-      if (blockSize <= 0) {
-        throw new Error('Block size must be positive');
-      }
-      
-      const padLength = blockSize - (dataLength % blockSize);
-      const padding = new Array(padLength);
-      
-      for (let i = 0; i < padLength; i++) {
-        padding[i] = 0x00;
-      }
-      
-      return padding;
-    },
-
-    /**
-     * Remove zero padding from data (ambiguous - removes trailing zeros)
-     * @param {Array} data - Padded data
-     * @returns {Array} Data with padding removed
-     */
-    RemoveZeroPadding: function(data) {
-      if (!data || data.length === 0) {
-        return data;
-      }
-      
-      // Remove trailing zeros
-      let end = data.length;
-      while (end > 0 && data[end - 1] === 0x00) {
-        end--;
-      }
-      
-      return data.slice(0, end);
-    },
-
-    /**
-     * Apply no padding (data must be block-aligned)
-     * @param {number} blockSize - Block size in bytes
-     * @param {number} dataLength - Length of data
-     * @returns {Array} Empty array (no padding added)
-     */
-    NoPadding: function(blockSize, dataLength) {
-      if (blockSize <= 0) {
-        throw new Error('Block size must be positive');
-      }
-      
-      if (dataLength % blockSize !== 0) {
-        throw new Error(`Data length (${dataLength}) must be multiple of block size (${blockSize}) for no padding`);
-      }
-      
-      return [];
-    },
-
-    /**
-     * Remove no padding (no-op)
-     * @param {Array} data - Data
-     * @returns {Array} Unchanged data
-     */
-    RemoveNoPadding: function(data) {
-      return data;
-    },
-
-    /**
-     * Apply padding scheme by name
-     * @param {string} scheme - Padding scheme name
-     * @param {number} blockSize - Block size in bytes
-     * @param {number} dataLength - Length of data to pad
-     * @returns {Array} Padding bytes to append
-     */
-    ApplyPadding: function(scheme, blockSize, dataLength) {
-      switch (scheme.toUpperCase()) {
-        case 'PKCS7':
-        case 'PKCS5':
-          return this.PKCS7Padding(blockSize, dataLength);
-        case 'ISO7816':
-        case 'ISO7816-4':
-          return this.ISO7816Padding(blockSize, dataLength);
-        case 'ANSIX923':
-        case 'X923':
-          return this.ANSIX923Padding(blockSize, dataLength);
-        case 'ZERO':
-        case 'ZEROS':
-          return this.ZeroPadding(blockSize, dataLength);
-        case 'NONE':
-        case 'NO':
-          return this.NoPadding(blockSize, dataLength);
-        default:
-          throw new Error(`Unknown padding scheme: ${scheme}`);
-      }
-    },
-
-    /**
-     * Remove padding scheme by name
-     * @param {string} scheme - Padding scheme name
-     * @param {Array} data - Padded data
-     * @returns {Array} Data with padding removed
-     */
-    RemovePadding: function(scheme, data) {
-      switch (scheme.toUpperCase()) {
-        case 'PKCS7':
-        case 'PKCS5':
-          return this.RemovePKCS7Padding(data);
-        case 'ISO7816':
-        case 'ISO7816-4':
-          return this.RemoveISO7816Padding(data);
-        case 'ANSIX923':
-        case 'X923':
-          return this.RemoveANSIX923Padding(data);
-        case 'ZERO':
-        case 'ZEROS':
-          return this.RemoveZeroPadding(data);
-        case 'NONE':
-        case 'NO':
-          return this.RemoveNoPadding(data);
-        default:
-          throw new Error(`Unknown padding scheme: ${scheme}`);
-      }
     }
-  };
-  /**
-   * Generate a unique ID for cipher instances
-   * @returns {string} Unique identifier
-   */
-  OpCodes.GenerateID = function() {
-    const timestamp = Date.now().toString(36);
-    const random = Math.random().toString(36).substr(2, 5);
-    return 'cipher_' + timestamp + '_' + random;
+
   };
   
   // Export to global scope
