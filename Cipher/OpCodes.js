@@ -180,119 +180,14 @@
      * @param {string} str - Input string
      * @returns {Array} Array of byte values
      */
-    StringToBytes: function(str) {
+    AnsiToBytes: function(str) {
       const bytes = [];
       for (let i = 0; i < str.length; i++) {
-        bytes.push(str.charCodeAt(i) & 0xFF);
+        bytes.push(str.charCodeAt(i) & 0x7F);
       }
       return bytes;
     },
-    
-    /**
-     * Convert byte array to string
-     * @param {Array} bytes - Array of byte values
-     * @returns {string} Resulting string
-     */
-    BytesToString: function(bytes) {
-      let str = '';
-      for (let i = 0; i < bytes.length; i++) {
-        str += String.fromCharCode(bytes[i] & 0xFF);
-      }
-      return str;
-    },
-    
-    /**
-     * Convert string to 32-bit word array (big-endian)
-     * @param {string} str - Input string (length must be multiple of 4)
-     * @returns {Array} Array of 32-bit words
-     */
-    StringToWords32BE: function(str) {
-      const words = [];
-      for (let i = 0; i < str.length; i += 4) {
-        const b0 = str.charCodeAt(i) & 0xFF;
-        const b1 = i + 1 < str.length ? str.charCodeAt(i + 1) & 0xFF : 0;
-        const b2 = i + 2 < str.length ? str.charCodeAt(i + 2) & 0xFF : 0;
-        const b3 = i + 3 < str.length ? str.charCodeAt(i + 3) & 0xFF : 0;
-        words.push(OpCodes.Pack32BE(b0, b1, b2, b3));
-      }
-      return words;
-    },
-    
-    /**
-     * Convert 32-bit word array to string (big-endian)
-     * @param {Array} words - Array of 32-bit words
-     * @returns {string} Resulting string
-     */
-    Words32BEToString: function(words) {
-      let str = '';
-      for (let i = 0; i < words.length; i++) {
-        const bytes = OpCodes.Unpack32BE(words[i]);
-        for (let j = 0; j < bytes.length; j++) {
-          str += String.fromCharCode(bytes[j]);
-        }
-      }
-      return str;
-    },
-    
-    // ========================[ HEX UTILITIES ]========================
-    
-    /**
-     * Convert byte to hex string
-     * @param {number} byte - Byte value (0-255)
-     * @returns {string} Two-character hex string
-     */
-    ByteToHex: function(byte) {
-      return ('0' + (byte & 0xFF).toString(16)).slice(-2).toUpperCase();
-    },
-    
-    /**
-     * Convert hex string to byte
-     * @param {string} hex - Two-character hex string
-     * @returns {number} Byte value (0-255)
-     */
-    HexToByte: function(hex) {
-      return parseInt(hex, 16) & 0xFF;
-    },
-    
-    /**
-     * Convert string to hex representation
-     * @param {string} str - Input string
-     * @returns {string} Hex string representation
-     */
-    StringToHex: function(str) {
-      let hex = '';
-      for (let i = 0; i < str.length; i++) {
-        hex += OpCodes.ByteToHex(str.charCodeAt(i));
-      }
-      return hex;
-    },
-    
-    /**
-     * Convert hex string to regular string
-     * @param {string} hex - Hex string (even length)
-     * @returns {string} Decoded string
-     */
-    HexToString: function(hex) {
-      let str = '';
-      for (let i = 0; i < hex.length; i += 2) {
-        str += String.fromCharCode(OpCodes.HexToByte(hex.substr(i, 2)));
-      }
-      return str;
-    },
-    
-    /**
-     * Convert hex string to byte array
-     * @param {string} hex - Hex string (even length)
-     * @returns {Array} Array of byte values
-     */
-    HexToBytes: function(hex) {
-      const bytes = [];
-      for (let i = 0; i < hex.length; i += 2) {
-        bytes.push(OpCodes.HexToByte(hex.substr(i, 2)));
-      }
-      return bytes;
-    },
-
+     
     // ========================[ COMPREHENSIVE HEX UTILITIES ]========================
 
     /**
@@ -305,10 +200,7 @@
       if (typeof hexString !== 'string') {
         throw new Error('Hex4ToBytes: Input must be a string');
       }
-      
-      // Remove whitespace and convert to uppercase
-      hexString = hexString.replace(/\s+/g, '').toUpperCase();
-      
+            
       // Validate hex characters
       if (!/^[0-9A-F]*$/.test(hexString)) {
         throw new Error('Hex4ToBytes: Invalid hex characters found');
@@ -334,11 +226,8 @@
         throw new Error('Hex8ToBytes: Input must be a string');
       }
       
-      // Remove whitespace and convert to uppercase
-      hexString = hexString.replace(/\s+/g, '').toUpperCase();
-      
       // Validate hex characters
-      if (!/^[0-9A-F]*$/.test(hexString)) {
+      if (!/^[0-9A-Fa-f]*$/.test(hexString)) {
         throw new Error('Hex8ToBytes: Invalid hex characters found');
       }
       
