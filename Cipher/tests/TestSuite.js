@@ -31,8 +31,14 @@ class TestSuite {
       // Load OpCodes first
       await this.loadDependencies();
       
-      // Discover and test all algorithms
-      await this.discoverAlgorithms();
+      // Check if single file test was requested
+      const singleFile = process.argv[2];
+      if (singleFile) {
+        await this.testSingleFile(singleFile);
+      } else {
+        // Discover and test all algorithms
+        await this.discoverAlgorithms();
+      }
       
       // Generate final report
       this.generateReport();
@@ -61,6 +67,38 @@ class TestSuite {
       console.log('✓ Dependencies loaded successfully\n');
     } catch (error) {
       throw new Error(`Failed to load dependencies: ${error.message}`);
+    }
+  }
+
+  // Test a single file specified by filename
+  async testSingleFile(filename) {
+    const algorithmsDir = path.join(__dirname, '..', 'algorithms');
+    let foundFile = false;
+    
+    console.log(`Searching for file: ${filename}`);
+    console.log('');
+    
+    // Search through all categories
+    const categories = fs.readdirSync(algorithmsDir).filter(item => 
+      fs.statSync(path.join(algorithmsDir, item)).isDirectory()
+    );
+    
+    for (const category of categories) {
+      const categoryPath = path.join(algorithmsDir, category);
+      const files = fs.readdirSync(categoryPath).filter(file => file.endsWith('.js'));
+      
+      if (files.includes(filename)) {
+        foundFile = true;
+        console.log(`Found ${filename} in category: ${category}`);
+        this.algorithmsPerCategory[category] = 1;
+        await this.testAlgorithm(category, filename);
+        break;
+      }
+    }
+    
+    if (!foundFile) {
+      console.error(`Error: File '${filename}' not found in any algorithm category.`);
+      process.exit(1);
     }
   }
 
