@@ -644,7 +644,8 @@ class TestSuite {
             }
           }
           
-          if (vectorsPassed > 0) {
+          // Algorithm passes only if ALL test vectors pass
+          if (vectorsPassed === vectorsToTest.length && vectorsToTest.length > 0) {
             anySuccess = true;
             testResults.push({
               algorithm: algorithm.name,
