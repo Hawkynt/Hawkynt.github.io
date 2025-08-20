@@ -1200,5 +1200,5 @@ Test your algorithm manually before submitting:
 Run:
 
 ```bash
-node Tests/TestSuite.js Algorithm.js
+node Tests/TestSuite.js Algorithm.js --verbose
 ```
