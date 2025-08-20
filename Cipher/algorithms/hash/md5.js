@@ -1,235 +1,293 @@
+#!/usr/bin/env node
 /*
- * MD5 Implementation
+ * MD5 Hash Function Implementation
+ * Compatible with AlgorithmFramework.js
+ * Based on RFC 1321 specification
  * (c)2006-2025 Hawkynt
+ * 
+ * Educational implementation of the MD5 message-digest algorithm.
+ * WARNING: MD5 is cryptographically broken - DO NOT USE for security!
  */
 
 (function(global) {
   'use strict';
   
-  // Load OpCodes for cryptographic operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
+  // Load dependencies
+  if (typeof require !== 'undefined') {
     try {
-      require('../../OpCodes.js');
+      const path = require('path');
+      require(path.resolve(__dirname, '../../OpCodes.js'));
+      require(path.resolve(__dirname, '../../AlgorithmFramework.js'));
     } catch (e) {
-      console.error('Failed to load OpCodes.js:', e.message);
+      console.error('Failed to load dependencies:', e.message);
       return;
     }
   }
 
-  const MD5 = {
-    name: "MD5",
-    description: "128-bit cryptographic hash function. Fast but cryptographically broken.",
-    inventor: "Ronald Rivest",
-    year: 1991,
-    country: "US",
-    category: "hash",
-    subCategory: "Cryptographic Hash",
-    securityStatus: "insecure",
-    securityNotes: "MD5 is cryptographically broken with practical collision attacks. DO NOT USE for security purposes. Educational only.",
-    
-    documentation: [
-      {text: "RFC 1321 - MD5 Message-Digest Algorithm", uri: "https://tools.ietf.org/html/rfc1321"},
-      {text: "NIST SP 800-107 - Hash Function Security", uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-107r1.pdf"},
-      {text: "Wikipedia MD5", uri: "https://en.wikipedia.org/wiki/MD5"}
-    ],
-    
-    references: [
-      {text: "OpenSSL MD5 (deprecated)", uri: "https://github.com/openssl/openssl/blob/master/crypto/md5/md5_dgst.c"},
-      {text: "MD5 Collision Research", uri: "https://www.win.tue.nl/hashclash/rogue-ca/"}
-    ],
-    
-    knownVulnerabilities: [
-      {
-        type: "Collision Attack", 
-        text: "Practical collision attacks demonstrated by Wang et al. in 2004. Can generate two different messages with same MD5 hash in reasonable time.",
-        mitigation: "Use SHA-256 or newer hash functions for any security application"
-      },
-      {
-        type: "Chosen-prefix Collision", 
-        text: "Attackers can create collisions with chosen prefixes, enabling sophisticated attacks on certificates and documents.",
-        mitigation: "Never use MD5 for digital signatures or certificates"
-      },
-      {
-        type: "Rainbow Table Attack", 
-        text: "Common passwords and short inputs vulnerable to precomputed rainbow table attacks.",
-        mitigation: "Use proper salting and modern password hashing functions like Argon2"
-      }
-    ],
-    
-    tests: [
-      {
-        text: "RFC 1321 Test Vector - Empty string",
-        uri: "https://tools.ietf.org/html/rfc1321",
-        input: null,
-        expected: OpCodes.Hex8ToBytes("d41d8cd98f00b204e9800998ecf8427e")
-      },
-      {
-        text: "RFC 1321 Test Vector - 'a'",
-        uri: "https://tools.ietf.org/html/rfc1321",
-        input: OpCodes.StringToBytes("a"),
-        expected: OpCodes.Hex8ToBytes("0cc175b9c0f1b6a831c399e269772661")
-      },
-      {
-        text: "RFC 1321 Test Vector - 'abc'",
-        uri: "https://tools.ietf.org/html/rfc1321",
-        input: OpCodes.StringToBytes("abc"),
-        expected: OpCodes.Hex8ToBytes("900150983cd24fb0d6963f7d28e17f72")
-      }
-    ],
-
-    Init: function() {
-      return true;
-    },
-
-    // MD5 constants
-    H0: 0x67452301,
-    H1: 0xEFCDAB89,
-    H2: 0x98BADCFE,
-    H3: 0x10325476,
-
-    // MD5 sine-based constants K[i] = floor(2^32 * abs(sin(i + 1)))
-    K: [
-      0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee, 0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
-      0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be, 0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821,
-      0xf61e2562, 0xc040b340, 0x265e5a51, 0xe9b6c7aa, 0xd62f105d, 0x02441453, 0xd8a1e681, 0xe7d3fbc8,
-      0x21e1cde6, 0xc33707d6, 0xf4d50d87, 0x455a14ed, 0xa9e3e905, 0xfcefa3f8, 0x676f02d9, 0x8d2a4c8a,
-      0xfffa3942, 0x8771f681, 0x6d9d6122, 0xfde5380c, 0xa4beea44, 0x4bdecfa9, 0xf6bb4b60, 0xbebfbc70,
-      0x289b7ec6, 0xeaa127fa, 0xd4ef3085, 0x04881d05, 0xd9d4d039, 0xe6db99e5, 0x1fa27cf8, 0xc4ac5665,
-      0xf4292244, 0x432aff97, 0xab9423a7, 0xfc93a039, 0x655b59c3, 0x8f0ccc92, 0xffeff47d, 0x85845dd1,
-      0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1, 0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391
-    ],
-
-    // Per-round shift amounts
-    s: [
-      7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,
-      5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,
-      4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,
-      6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21
-    ],
-
-    // Required interface method for hash functions
-    Hash: function(data) {
-      return this.compute(data);
-    },
-
-    // Core MD5 computation
-    compute: function(data) {
-      const msgBytes = Array.isArray(data) ? data : OpCodes.StringToBytes(data);
-      
-      // Pre-processing: append padding
-      const paddedMsg = this.padMessage(msgBytes);
-      
-      // Initialize MD5 buffer
-      let a = this.H0;
-      let b = this.H1;
-      let c = this.H2;
-      let d = this.H3;
-      
-      // Process message in 512-bit chunks
-      for (let chunkStart = 0; chunkStart < paddedMsg.length; chunkStart += 64) {
-        const chunk = paddedMsg.slice(chunkStart, chunkStart + 64);
-        
-        // Break chunk into sixteen 32-bit little-endian words
-        const X = new Array(16);
-        for (let i = 0; i < 16; i++) {
-          const offset = i * 4;
-          X[i] = OpCodes.Pack32LE(
-            chunk[offset], 
-            chunk[offset + 1], 
-            chunk[offset + 2], 
-            chunk[offset + 3]
-          );
-        }
-        
-        // Save a copy of the hash values
-        const AA = a, BB = b, CC = c, DD = d;
-        
-        // MD5 main loop (64 rounds in 4 groups of 16)
-        for (let i = 0; i < 64; i++) {
-          let F, g;
-          
-          if (i < 16) {
-            // Round 1: F(b,c,d) = (b & c) | (~b & d)
-            F = (b & c) | ((~b) & d);
-            g = i;
-          } else if (i < 32) {
-            // Round 2: F(b,c,d) = (b & d) | (c & ~d)
-            F = (b & d) | (c & (~d));
-            g = (5 * i + 1) % 16;
-          } else if (i < 48) {
-            // Round 3: F(b,c,d) = b ^ c ^ d
-            F = b ^ c ^ d;
-            g = (3 * i + 5) % 16;
-          } else {
-            // Round 4: F(b,c,d) = c ^ (b | ~d)
-            F = c ^ (b | (~d));
-            g = (7 * i) % 16;
-          }
-          
-          // MD5 step: a = b + leftrotate((a + F + K[i] + X[g]), s[i])
-          const temp = (a + F + this.K[i] + X[g]) >>> 0;
-          a = d;
-          d = c;
-          c = b;
-          b = (b + OpCodes.RotL32(temp, this.s[i])) >>> 0;
-        }
-        
-        // Add this chunk's hash to result so far
-        a = (a + AA) >>> 0;
-        b = (b + BB) >>> 0;
-        c = (c + CC) >>> 0;
-        d = (d + DD) >>> 0;
-      }
-      
-      // Convert to byte array (little-endian)
-      const result = [];
-      [a, b, c, d].forEach(word => {
-        const bytes = OpCodes.Unpack32LE(word);
-        result.push(...bytes);
-      });
-      
-      return result;
-    },
-
-    padMessage: function(msgBytes) {
-      const msgLength = msgBytes.length;
-      const bitLength = msgLength * 8;
-      
-      // Create copy for padding
-      const padded = msgBytes.slice();
-      
-      // Append the '1' bit (plus zero padding to make it a byte)
-      padded.push(0x80);
-      
-      // Append 0 <= k < 512 bits '0', such that the resulting message length in bits
-      // is congruent to 448 (mod 512)
-      while ((padded.length % 64) !== 56) {
-        padded.push(0x00);
-      }
-      
-      // Append original length in bits mod 2^64 to message as 64-bit little-endian integer
-      const bitLengthLow = bitLength & 0xFFFFFFFF;
-      const bitLengthHigh = Math.floor(bitLength / 0x100000000);
-      
-      const lengthBytes = OpCodes.Unpack32LE(bitLengthLow).concat(OpCodes.Unpack32LE(bitLengthHigh));
-      padded.push(...lengthBytes);
-      
-      return padded;
-    }
-  };
-
-  // Auto-register with Subsystem (according to category) if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
-    global.Cipher.Add(MD5);
-  
-
-
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = MD5;
+  // Ensure framework is available
+  const Framework = global.AlgorithmFramework;
+  if (!Framework) {
+    console.error('AlgorithmFramework not found');
+    return;
   }
-  
-  // Export to global scope
-  global.MD5 = MD5;
 
-})(typeof global !== 'undefined' ? global : window);
+  const { HashFunctionAlgorithm, IHashFunctionInstance, CategoryType, SecurityStatus, ComplexityType, CountryCode, TestCase, LinkItem, Vulnerability } = Framework;
+
+  class MD5Instance extends IHashFunctionInstance {
+    constructor(algorithm) {
+      super(algorithm);
+      this.OutputSize = 16; // 128 bits
+      this._Reset();
+    }
+
+    _Reset() {
+      // MD5 initialization values (RFC 1321)
+      this.h = new Uint32Array([
+        0x67452301,
+        0xEFCDAB89,
+        0x98BADCFE,
+        0x10325476
+      ]);
+      
+      this.buffer = new Uint8Array(64);
+      this.bufferLength = 0;
+      this.totalLength = 0;
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      
+      const input = new Uint8Array(data);
+      this.totalLength += input.length;
+      
+      let offset = 0;
+      
+      // Process any remaining bytes in buffer
+      if (this.bufferLength > 0) {
+        const needed = 64 - this.bufferLength;
+        const available = Math.min(needed, input.length);
+        
+        this.buffer.set(input.slice(0, available), this.bufferLength);
+        this.bufferLength += available;
+        offset = available;
+        
+        if (this.bufferLength === 64) {
+          this._ProcessBlock(this.buffer);
+          this.bufferLength = 0;
+        }
+      }
+      
+      // Process complete 64-byte blocks
+      while (offset + 64 <= input.length) {
+        this._ProcessBlock(input.slice(offset, offset + 64));
+        offset += 64;
+      }
+      
+      // Store remaining bytes in buffer
+      if (offset < input.length) {
+        const remaining = input.slice(offset);
+        this.buffer.set(remaining, 0);
+        this.bufferLength = remaining.length;
+      }
+    }
+
+    Result() {
+      // Create padding
+      const msgLength = this.totalLength;
+      const padLength = (msgLength % 64 < 56) ? (56 - (msgLength % 64)) : (120 - (msgLength % 64));
+      
+      // Add padding
+      const padding = new Uint8Array(padLength + 8);
+      padding[0] = 0x80; // First padding bit is 1
+      
+      // Add length in bits as 64-bit little-endian
+      const bitLength = msgLength * 8;
+      for (let i = 0; i < 8; i++) {
+        padding[padLength + i] = (bitLength >>> (i * 8)) & 0xFF;
+      }
+      
+      this.Feed(padding);
+      
+      // Convert hash to bytes (little-endian)
+      const result = new Uint8Array(16);
+      for (let i = 0; i < 4; i++) {
+        result[i * 4] = this.h[i] & 0xFF;
+        result[i * 4 + 1] = (this.h[i] >>> 8) & 0xFF;
+        result[i * 4 + 2] = (this.h[i] >>> 16) & 0xFF;
+        result[i * 4 + 3] = (this.h[i] >>> 24) & 0xFF;
+      }
+      
+      return Array.from(result);
+    }
+
+    _ProcessBlock(block) {
+      // Convert block to 32-bit words (little-endian)
+      const w = new Uint32Array(16);
+      for (let i = 0; i < 16; i++) {
+        w[i] = block[i * 4] | 
+               (block[i * 4 + 1] << 8) | 
+               (block[i * 4 + 2] << 16) | 
+               (block[i * 4 + 3] << 24);
+      }
+      
+      // Initialize working variables
+      let a = this.h[0], b = this.h[1], c = this.h[2], d = this.h[3];
+      
+      // MD5 round constants
+      const k = [
+        0xD76AA478, 0xE8C7B756, 0x242070DB, 0xC1BDCEEE, 0xF57C0FAF, 0x4787C62A, 0xA8304613, 0xFD469501,
+        0x698098D8, 0x8B44F7AF, 0xFFFF5BB1, 0x895CD7BE, 0x6B901122, 0xFD987193, 0xA679438E, 0x49B40821,
+        0xF61E2562, 0xC040B340, 0x265E5A51, 0xE9B6C7AA, 0xD62F105D, 0x02441453, 0xD8A1E681, 0xE7D3FBC8,
+        0x21E1CDE6, 0xC33707D6, 0xF4D50D87, 0x455A14ED, 0xA9E3E905, 0xFCEFA3F8, 0x676F02D9, 0x8D2A4C8A,
+        0xFFFA3942, 0x8771F681, 0x6D9D6122, 0xFDE5380C, 0xA4BEEA44, 0x4BDECFA9, 0xF6BB4B60, 0xBEBFBC70,
+        0x289B7EC6, 0xEAA127FA, 0xD4EF3085, 0x04881D05, 0xD9D4D039, 0xE6DB99E5, 0x1FA27CF8, 0xC4AC5665,
+        0xF4292244, 0x432AFF97, 0xAB9423A7, 0xFC93A039, 0x655B59C3, 0x8F0CCC92, 0xFFEFF47D, 0x85845DD1,
+        0x6FA87E4F, 0xFE2CE6E0, 0xA3014314, 0x4E0811A1, 0xF7537E82, 0xBD3AF235, 0x2AD7D2BB, 0xEB86D391
+      ];
+      
+      // MD5 auxiliary functions
+      const F = (x, y, z) => (x & y) | (~x & z);
+      const G = (x, y, z) => (x & z) | (y & ~z);
+      const H = (x, y, z) => x ^ y ^ z;
+      const I = (x, y, z) => y ^ (x | ~z);
+      
+      // Rotate left
+      const rotl = (x, n) => (x << n) | (x >>> (32 - n));
+      
+      // MD5 rounds
+      for (let i = 0; i < 64; i++) {
+        let f, g;
+        
+        if (i < 16) {
+          f = F(b, c, d);
+          g = i;
+        } else if (i < 32) {
+          f = G(b, c, d);
+          g = (5 * i + 1) % 16;
+        } else if (i < 48) {
+          f = H(b, c, d);
+          g = (3 * i + 5) % 16;
+        } else {
+          f = I(b, c, d);
+          g = (7 * i) % 16;
+        }
+        
+        f = (f + a + k[i] + w[g]) >>> 0;
+        a = d;
+        d = c;
+        c = b;
+        
+        const shifts = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
+        const shiftIndex = (Math.floor(i / 16) * 4) + (i % 4);
+        b = (b + rotl(f, shifts[shiftIndex])) >>> 0;
+      }
+      
+      // Add to hash
+      this.h[0] = (this.h[0] + a) >>> 0;
+      this.h[1] = (this.h[1] + b) >>> 0;
+      this.h[2] = (this.h[2] + c) >>> 0;
+      this.h[3] = (this.h[3] + d) >>> 0;
+    }
+  }
+
+  class MD5Algorithm extends HashFunctionAlgorithm {
+    constructor() {
+      super();
+      
+      // Basic information
+      this.name = "MD5";
+      this.description = "128-bit cryptographic hash function designed by Ronald Rivest. Fast but cryptographically broken with practical collision attacks.";
+      this.inventor = "Ronald Rivest";
+      this.year = 1991;
+      this.category = CategoryType.HASH;
+      this.subCategory = "Cryptographic Hash";
+      this.securityStatus = SecurityStatus.BROKEN;
+      this.complexity = ComplexityType.BEGINNER;
+      this.country = CountryCode.US;
+      
+      // Capabilities
+      this.SupportedOutputSizes = [{ minSize: 16, maxSize: 16, stepSize: 1 }];
+      
+      // Documentation
+      this.documentation = [
+        new LinkItem("RFC 1321 - The MD5 Message-Digest Algorithm", "https://tools.ietf.org/html/rfc1321"),
+        new LinkItem("NIST SP 800-107 - Recommendation for Applications Using Approved Hash Algorithms", "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-107r1.pdf"),
+        new LinkItem("Wikipedia - MD5", "https://en.wikipedia.org/wiki/MD5")
+      ];
+      
+      // References
+      this.references = [
+        new LinkItem("OpenSSL MD5 Implementation", "https://github.com/openssl/openssl/blob/master/crypto/md5/md5_dgst.c"),
+        new LinkItem("MD5 Collision Research", "https://www.win.tue.nl/hashclash/rogue-ca/"),
+        new LinkItem("RFC 6151 - Updated Security Considerations for MD5", "https://tools.ietf.org/html/rfc6151")
+      ];
+      
+      // Known vulnerabilities
+      this.knownVulnerabilities = [
+        new Vulnerability("Collision Attack", "Practical collision attacks demonstrated by Wang et al. in 2004. Can generate two different messages with same MD5 hash.", "https://eprint.iacr.org/2004/199.pdf"),
+        new Vulnerability("Chosen-prefix Collision", "Attackers can create collisions with chosen prefixes, enabling sophisticated attacks.", "https://www.win.tue.nl/hashclash/rogue-ca/"),
+        new Vulnerability("Rainbow Table Attack", "Common passwords vulnerable to precomputed rainbow table attacks.", "")
+      ];
+      
+      // Test vectors from RFC 1321
+      this.tests = [
+        {
+          input: [],
+          expected: global.OpCodes.Hex8ToBytes("d41d8cd98f00b204e9800998ecf8427e"),
+          text: "RFC 1321 Test Vector - Empty string",
+          uri: "https://tools.ietf.org/html/rfc1321"
+        },
+        {
+          input: global.OpCodes.AnsiToBytes("a"),
+          expected: global.OpCodes.Hex8ToBytes("0cc175b9c0f1b6a831c399e269772661"),
+          text: "RFC 1321 Test Vector - 'a'",
+          uri: "https://tools.ietf.org/html/rfc1321"
+        },
+        {
+          input: global.OpCodes.AnsiToBytes("abc"),
+          expected: global.OpCodes.Hex8ToBytes("900150983cd24fb0d6963f7d28e17f72"),
+          text: "RFC 1321 Test Vector - 'abc'",
+          uri: "https://tools.ietf.org/html/rfc1321"
+        },
+        {
+          input: global.OpCodes.AnsiToBytes("message digest"),
+          expected: global.OpCodes.Hex8ToBytes("f96b697d7cb7938d525a2f31aaf161d0"),
+          text: "RFC 1321 Test Vector - 'message digest'",
+          uri: "https://tools.ietf.org/html/rfc1321"
+        },
+        {
+          input: global.OpCodes.AnsiToBytes("abcdefghijklmnopqrstuvwxyz"),
+          expected: global.OpCodes.Hex8ToBytes("c3fcd3d76192e4007dfb496cca67e13b"),
+          text: "RFC 1321 Test Vector - alphabet",
+          uri: "https://tools.ietf.org/html/rfc1321"
+        },
+        {
+          input: global.OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"),
+          expected: global.OpCodes.Hex8ToBytes("d174ab98d277d9f5a5611c2c9f419d9f"),
+          text: "RFC 1321 Test Vector - alphanumeric",
+          uri: "https://tools.ietf.org/html/rfc1321"
+        },
+        {
+          input: global.OpCodes.AnsiToBytes("1234567890".repeat(8)),
+          expected: global.OpCodes.Hex8ToBytes("57edf4a22be3c955ac49da2e2107b67a"),
+          text: "RFC 1321 Test Vector - numeric sequence",
+          uri: "https://tools.ietf.org/html/rfc1321"
+        }
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      // Hash functions don't have an inverse operation
+      if (isInverse) {
+        return null;
+      }
+      return new MD5Instance(this);
+    }
+  }
+
+  // Register the algorithm
+  if (Framework.RegisterAlgorithm) {
+    Framework.RegisterAlgorithm(new MD5Algorithm());
+  }
+
+})(typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : this)));
