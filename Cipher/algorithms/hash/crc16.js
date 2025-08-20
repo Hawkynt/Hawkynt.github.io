@@ -16,6 +16,19 @@
       return;
     }
   }
+  
+  // Load Cipher system
+  if (!global.Cipher) {
+    if (typeof require !== 'undefined') {
+      try {
+        require('../../universal-cipher-env.js');
+        require('../../cipher.js');
+      } catch (e) {
+        console.error('Failed to load cipher dependencies:', e.message);
+        return;
+      }
+    }
+  }
 
   const CRC16 = {
     name: "CRC-16",
@@ -23,8 +36,8 @@
     inventor: "W. Wesley Peterson",
     year: 1961,
     country: "US",
-    category: "checksum",
-    subCategory: "CRC Family",
+    category: "hash",
+    subCategory: "Specialized Hash",
     securityStatus: null,
     securityNotes: "CRC-16 is designed for error detection, not cryptographic security. Can be easily manipulated by attackers.",
     
@@ -174,6 +187,16 @@
         }
       }
       return result;
+      },
+      
+      // Required interface methods
+      Hash: function(input) {
+      return this.compute ? this.compute(input) : input;
+    },
+
+    ClearData: function() {
+      // No persistent state to clear
+      return true;
     }
   };
 
