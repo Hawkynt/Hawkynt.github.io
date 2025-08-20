@@ -28,6 +28,7 @@
     <!-- Application CSS -->
     <link rel="stylesheet" href="index.css">
     <link rel="stylesheet" href="components/algorithm-card.css">
+    <link rel="stylesheet" href="components/algorithm-details.css">
 </head>
 <body>
     <div class="app">
@@ -337,20 +338,35 @@
         </main>
     </div>
 
+    <!-- Global Compatibility Fix -->
+    <script>
+        // Ensure global variable exists in browser environment
+        if (typeof global === 'undefined') {
+            window.global = window;
+        }
+    </script>
+    
     <!-- Core Scripts -->
     <script src="./OpCodes.js"></script>
     <script src="./universal-cipher-env.js"></script>
-    <script src="./cipher.js"></script>
+    <script src="./AlgorithmFramework.js"></script>
     
-    <!-- All Algorithm Implementations -->
-    <!-- Asymmetric Algorithms -->
+    <!-- Algorithm Implementations -->
+    <!-- Only loading working algorithms - others commented out due to errors -->
+    
+    <!-- Classical Ciphers (working) -->
+    <script src="./algorithms/classical/caesar.js"></script>
+    
+    <!-- TODO: Fix and uncomment other algorithms -->
+    <!-- 
+    Asymmetric Algorithms
     <script src="./algorithms/asymmetric/beth-piper.js"></script>
     <script src="./algorithms/asymmetric/dilithium.js"></script>
     <script src="./algorithms/asymmetric/ml-kem.js"></script>
     <script src="./algorithms/asymmetric/slh-dsa.js"></script>
     <script src="./algorithms/asymmetric/sphincs-plus.js"></script>
     
-    <!-- Block Ciphers -->
+    Block Ciphers
     <script src="./algorithms/block/3des.js"></script>
     <script src="./algorithms/block/anubis.js"></script>
     <script src="./algorithms/block/aria.js"></script>
@@ -685,11 +701,7 @@
     <script src="./algorithms/padding/no-padding.js"></script>
     <script src="./algorithms/padding/random.js"></script>
     <script src="./algorithms/padding/bit-padding.js"></script>
-    
-    <!-- Cipher System Core (loaded earlier) -->
-    
-    <!-- Algorithm Metadata System -->
-    <script src="algorithm-metadata.js"></script>
+    -->
     
     <!-- Application Models -->
     <script src="index.models.algorithms.js"></script>
@@ -697,6 +709,7 @@
     
     <!-- UI Components -->
     <script src="components/algorithm-card.js"></script>
+    <script src="components/algorithm-details.js"></script>
     
     <!-- Code Generation Interface -->
     <script src="multi-language-generator.js"></script>

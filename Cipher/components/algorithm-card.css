@@ -940,3 +940,31 @@
         padding: 0.4rem 0;
     }
 }
+
+/* Flag styling */
+.country-flag-emoji {
+    margin-right: 0.25rem;
+    font-size: 1em;
+    vertical-align: middle;
+}
+
+.country-flag {
+    width: 16px;
+    height: 12px;
+    margin-right: 0.25rem;
+    vertical-align: middle;
+    border-radius: 2px;
+}
+
+/* Test count badge in action buttons */
+.action-badge {
+    background: rgba(255, 255, 255, 0.2);
+    color: inherit;
+    border-radius: 10px;
+    padding: 0.125rem 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: 0.25rem;
+    min-width: 1.5rem;
+    text-align: center;
+}
