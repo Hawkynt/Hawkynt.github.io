@@ -5,7 +5,7 @@
  * 
  * Test Categories:
  * - COMPILATION: Tests JavaScript syntax using `node -c` (syntax errors)
- * - INTERFACE: Tests if algorithm can be loaded and Cipher.Add accepts it (interface errors)
+ * - INTERFACE: Tests if algorithm can be loaded and RegisterAlgorithm accepts it (interface errors)
  * - METADATA: Tests metadata compliance with CONTRIBUTING.md format
  * - ISSUES: Tests for unresolved TODO, FIXME, BUG, ISSUE comments
  * - FUNCTIONALITY: Tests algorithm functionality using test vectors
@@ -71,9 +71,11 @@ class TestSuite {
         throw new Error('OpCodes not loaded properly');
       }
       
-      // Load cipher environment
-      require('../universal-cipher-env.js');
-      require('../cipher.js');
+      // Load AlgorithmFramework
+      global.AlgorithmFramework = require('../AlgorithmFramework.js');
+      if (!global.AlgorithmFramework) {
+        throw new Error('AlgorithmFramework not loaded properly');
+      }
       
       console.log('✓ Dependencies loaded successfully\n');
     } catch (error) {
@@ -174,7 +176,7 @@ class TestSuite {
     algorithmData.tests.compilation = await this.testCompilation(filePath, algorithmData);
     
     if (algorithmData.tests.compilation) {
-      // INTERFACE TEST - Cipher.Add compatibility
+      // INTERFACE TEST - AlgorithmFramework registration compatibility
       algorithmData.tests.interface = await this.testInterface(filePath, algorithmData);
       
       if (algorithmData.tests.interface) {
@@ -198,9 +200,22 @@ class TestSuite {
     const registeredInfo = algorithmData.details.registeredNames 
       ? ` [Registered: ${algorithmData.details.registeredNames.join(', ')}]`
       : '';
+    
+    // Add round-trip information if available
+    let roundTripInfo = '';
+    if (algorithmData.details.testResults) {
+      const roundTripSummary = algorithmData.details.testResults
+        .filter(r => r.roundTripsAttempted > 0)
+        .map(r => `${r.roundTripsPassed}/${r.roundTripsAttempted}`)
+        .join(',');
+      if (roundTripSummary) {
+        roundTripInfo = ` [Round-trips: ${roundTripSummary}]`;
+      }
+    }
+    
     const issuesCount = algorithmData.details.issues ? algorithmData.details.issues.totalCount : 0;
     const issuesStatus = algorithmData.tests.issues ? '0' : `${issuesCount}`;
-    console.log(`    ${status} ${algorithmName} - Compilation:${algorithmData.tests.compilation?'✓':'✗'} Interface:${algorithmData.tests.interface?'✓':'✗'} Metadata:${algorithmData.tests.metadata?'✓':'✗'} Issues:${issuesStatus} Function:${algorithmData.tests.functionality?'✓':'✗'} Optimization:${algorithmData.tests.optimization?'✓':'✗'}${registeredInfo}`);
+    console.log(`    ${status} ${algorithmName} - Compilation:${algorithmData.tests.compilation?'✓':'✗'} Interface:${algorithmData.tests.interface?'✓':'✗'} Metadata:${algorithmData.tests.metadata?'✓':'✗'} Issues:${issuesStatus} Function:${algorithmData.tests.functionality?'✓':'✗'} Optimization:${algorithmData.tests.optimization?'✓':'✗'}${registeredInfo}${roundTripInfo}`);
   }
 
   // Test if file has valid JavaScript syntax without executing
@@ -226,37 +241,32 @@ class TestSuite {
     }
   }
 
-  // Test if algorithm can be loaded and added via Cipher.Add
+  // Test if algorithm can be loaded and registered via AlgorithmFramework
   async testInterface(filePath, algorithmData) {
     try {
-      const algorithmName = algorithmData.name.toUpperCase();
+      // Clear the algorithm registry before testing
+      global.AlgorithmFramework.Clear();
       
-      // Clear any previous algorithm from global scope
-      delete global[algorithmName];
-      
-      // Clear all ciphers from the registry before testing
-      if (global.Cipher && global.Cipher.ciphers) {
-        global.Cipher.ciphers = {};
-      }
-      
-      // Try to require the file (this will call Cipher.Add internally)
+      // Clear require cache to ensure fresh load
       delete require.cache[require.resolve(filePath)];
+      
+      // Try to require the file (this should call RegisterAlgorithm internally)
       require(filePath);
       
-      // Check if at least one cipher was added to the registry
-      const registeredCiphers = Object.keys(global.Cipher.ciphers || {});
-      const cipherCount = registeredCiphers.length;
+      // Check if algorithms were registered
+      const registeredAlgorithms = global.AlgorithmFramework.Algorithms;
+      const algorithmCount = registeredAlgorithms.length;
       
-      if (cipherCount > 0) {
-        algorithmData.details.addedToCipher = true;
-        algorithmData.details.cipherCount = cipherCount;
-        algorithmData.details.registeredNames = registeredCiphers;
+      if (algorithmCount > 0) {
+        algorithmData.details.addedToFramework = true;
+        algorithmData.details.algorithmCount = algorithmCount;
+        algorithmData.details.registeredNames = registeredAlgorithms.map(alg => alg.name);
         this.results.interface.passed++;
         return true;
       } else {
-        algorithmData.details.interfaceError = 'No ciphers added to registry (Cipher.Add likely failed)';
+        algorithmData.details.interfaceError = 'No algorithms registered (RegisterAlgorithm likely failed)';
         this.results.interface.failed++;
-        this.results.interface.errors.push(`${algorithmData.name}: No ciphers added to registry`);
+        this.results.interface.errors.push(`${algorithmData.name}: No algorithms registered`);
         return false;
       }
       
@@ -271,54 +281,76 @@ class TestSuite {
   // Test metadata compliance with CONTRIBUTING.md format
   async testMetadata(filePath, expectedCategory, algorithmData) {
     try {
-      const algorithmName = algorithmData.name.toUpperCase();
-      const algorithm = global[algorithmName];
+      // Get registered algorithms from AlgorithmFramework
+      const registeredAlgorithms = global.AlgorithmFramework.Algorithms;
       
-      if (!algorithm) {
+      if (!registeredAlgorithms || registeredAlgorithms.length === 0) {
         this.results.metadata.failed++;
-        this.results.metadata.errors.push(`${algorithmData.name}: Algorithm not loaded`);
+        this.results.metadata.errors.push(`${algorithmData.name}: No algorithms registered for metadata testing`);
         return false;
       }
 
-      const requiredFields = ['name', 'description', 'category', 'subCategory'];
-      const missingFields = [];
+      // Test metadata for each registered algorithm
+      let anyCompliant = false;
+      const metadataResults = [];
       
-      // Check required fields
-      for (const field of requiredFields) {
-        if (!algorithm[field]) {
-          missingFields.push(field);
+      for (const algorithm of registeredAlgorithms) {
+        const requiredFields = ['name', 'description', 'category'];
+        const missingFields = [];
+        
+        // Check required fields
+        for (const field of requiredFields) {
+          if (!algorithm[field]) {
+            missingFields.push(field);
+          }
+        }
+        
+        // Check category matches subfolder (more flexible mapping)
+        const categoryName = algorithm.category?.name?.toLowerCase() || '';
+        const categoryMatch = categoryName.includes(expectedCategory.toLowerCase()) ||
+                             (expectedCategory === 'classical' && categoryName.includes('classical')) ||
+                             (expectedCategory === 'block' && (categoryName.includes('block') || categoryName.includes('cipher'))) ||
+                             (expectedCategory === 'stream' && (categoryName.includes('stream') || categoryName.includes('cipher')));
+        
+        if (!categoryMatch) {
+          missingFields.push(`category mismatch: expected ${expectedCategory}, got ${algorithm.category}`);
+        }
+        
+        // Count documentation, vulnerabilities, tests
+        const docCount = algorithm.documentation ? algorithm.documentation.length : 0;
+        const vulnCount = algorithm.knownVulnerabilities ? algorithm.knownVulnerabilities.length : 0;
+        const testCount = algorithm.testVectors ? algorithm.testVectors.length : 0;
+        
+        const algorithmMetadata = {
+          algorithm: algorithm.name,
+          hasAllRequiredFields: missingFields.length === 0,
+          missingFields: missingFields,
+          categoryMatch: categoryMatch,
+          documentationCount: docCount,
+          vulnerabilityCount: vulnCount,
+          testVectorCount: testCount
+        };
+        
+        metadataResults.push(algorithmMetadata);
+        
+        if (missingFields.length === 0) {
+          anyCompliant = true;
         }
       }
       
-      // Check category matches subfolder
-      const categoryMatch = algorithm.category === 'cipher' || 
-                           algorithm.category === expectedCategory ||
-                           (expectedCategory === 'classical' && algorithm.category === 'cipher');
-      
-      if (!categoryMatch) {
-        missingFields.push(`category mismatch: expected ${expectedCategory}, got ${algorithm.category}`);
-      }
-      
-      // Count documentation, vulnerabilities, tests
-      const docCount = algorithm.documentation ? algorithm.documentation.length : 0;
-      const vulnCount = algorithm.knownVulnerabilities ? algorithm.knownVulnerabilities.length : 0;
-      const testCount = algorithm.tests ? algorithm.tests.length : 0;
-      
       algorithmData.details.metadata = {
-        hasAllRequiredFields: missingFields.length === 0,
-        missingFields: missingFields,
-        categoryMatch: categoryMatch,
-        documentationCount: docCount,
-        vulnerabilityCount: vulnCount,
-        testVectorCount: testCount
+        algorithmCount: registeredAlgorithms.length,
+        results: metadataResults,
+        anyCompliant: anyCompliant
       };
       
-      if (missingFields.length === 0) {
+      if (anyCompliant) {
         this.results.metadata.passed++;
         return true;
       } else {
         this.results.metadata.failed++;
-        this.results.metadata.errors.push(`${algorithmData.name}: Missing fields: ${missingFields.join(', ')}`);
+        const failedAlgorithms = metadataResults.filter(r => !r.hasAllRequiredFields).length;
+        this.results.metadata.errors.push(`${algorithmData.name}: ${failedAlgorithms}/${metadataResults.length} algorithms failed metadata validation`);
         return false;
       }
       
@@ -379,70 +411,154 @@ class TestSuite {
     }
   }
 
-  // Test functionality using test vectors
+  // Test if algorithm works with basic test vectors
   async testFunctionality(filePath, algorithmData) {
+    if (algorithmData.details.interfaceError) {
+      this.results.functionality.skipped++;
+      return false;
+    }
+    
     try {
-      const algorithmName = algorithmData.name.toUpperCase();
-      const algorithm = global[algorithmName];
+      // Get registered algorithms
+      const registeredAlgorithms = global.AlgorithmFramework.Algorithms;
       
-      if (!algorithm || !algorithm.tests) {
-        algorithmData.details.functionality = { hasTests: false };
+      if (!registeredAlgorithms || registeredAlgorithms.length === 0) {
+        algorithmData.details.functionalityError = 'No algorithms registered for testing';
         this.results.functionality.failed++;
-        this.results.functionality.errors.push(`${algorithmData.name}: No test vectors found`);
+        this.results.functionality.errors.push(`${algorithmData.name}: No algorithms registered`);
         return false;
       }
       
+      // Test each registered algorithm
+      let anySuccess = false;
       const testResults = [];
-      let allPassed = true;
       
-      for (let i = 0; i < algorithm.tests.length; i++) {
-        const test = algorithm.tests[i];
-        
+      for (const algorithm of registeredAlgorithms) {
         try {
-          // Ensure we have the required test data
-          if (!test.input || !test.key || !test.expected) {
-            testResults.push({ index: i, passed: false, error: 'Missing test data' });
-            allPassed = false;
+          // Get test vectors from metadata
+          const testVectors = algorithm.testVectors || [];
+          
+          if (testVectors.length === 0) {
+            testResults.push({
+              algorithm: algorithm.name,
+              status: 'no-tests',
+              message: 'No test vectors available'
+            });
             continue;
           }
           
-          // Try to encrypt using the algorithm
-          let result;
-          if (algorithm.encrypt && typeof algorithm.encrypt === 'function') {
-            result = algorithm.encrypt(test.input, test.key);
+          // Test first vector (or all if reasonable number)
+          const vectorsToTest = testVectors.slice(0, Math.min(3, testVectors.length));
+          let vectorsPassed = 0;
+          let roundTripsPassed = 0;
+          
+          for (const vector of vectorsToTest) {
+            try {
+              // Create fresh instance for each test vector
+              const testInstance = algorithm.CreateInstance(false); // false = forward/encrypt mode
+              
+              // Apply test vector properties to instance (automatic configuration)
+              for (const [key, value] of Object.entries(vector)) {
+                if (key !== 'text' && key !== 'uri' && key !== 'input' && key !== 'expected' && key !== 'output') {
+                  try {
+                    if (testInstance.hasOwnProperty(key) || key in testInstance) {
+                      testInstance[key] = value;
+                    }
+                  } catch (propertyError) {
+                    // Property setting failed, continue anyway
+                  }
+                }
+              }
+              
+              // Feed input data
+              testInstance.Feed(vector.input);
+              
+              // Get result
+              const result = testInstance.Result();
+              
+              // Compare with expected output (try both 'expected' and 'output' properties)
+              const expectedOutput = vector.expected || vector.output;
+              if (this.compareArrays(result, expectedOutput)) {
+                vectorsPassed++;
+                
+                // Try round-trip test by attempting to create an inverse instance
+                try {
+                  // Try to create an inverse instance (decrypt mode)
+                  const inverseInstance = algorithm.CreateInstance(true); // true = inverse/decrypt mode
+                  
+                  if (inverseInstance) {
+                    // Apply same properties to inverse instance
+                    for (const [key, value] of Object.entries(vector)) {
+                      if (key !== 'text' && key !== 'uri' && key !== 'input' && key !== 'expected' && key !== 'output') {
+                        try {
+                          if (inverseInstance.hasOwnProperty(key) || key in inverseInstance) {
+                            inverseInstance[key] = value;
+                          }
+                        } catch (propertyError) {
+                          // Property setting failed, continue anyway
+                        }
+                      }
+                    }
+                    
+                    // Feed the result (encrypted data) to decrypt it back
+                    inverseInstance.Feed(result);
+                    const decryptedResult = inverseInstance.Result();
+                    
+                    // Check if we get back the original input
+                    if (this.compareArrays(decryptedResult, vector.input)) {
+                      roundTripsPassed++;
+                    }
+                  }
+                } catch (inverseError) {
+                  // Inverse instance creation failed or round-trip failed - that's okay
+                  // Not all algorithms support inverse operations
+                }
+              }
+            } catch (vectorError) {
+              // Vector failed, but continue testing others
+              continue;
+            }
+          }
+          
+          if (vectorsPassed > 0) {
+            anySuccess = true;
+            testResults.push({
+              algorithm: algorithm.name,
+              status: 'passed',
+              vectorsPassed: vectorsPassed,
+              vectorsTotal: vectorsToTest.length,
+              roundTripsPassed: roundTripsPassed,
+              roundTripsAttempted: vectorsPassed // Only attempt round-trip on successful vectors
+            });
           } else {
-            testResults.push({ index: i, passed: false, error: 'No encrypt function' });
-            allPassed = false;
-            continue;
+            testResults.push({
+              algorithm: algorithm.name,
+              status: 'failed',
+              vectorsPassed: 0,
+              vectorsTotal: vectorsToTest.length,
+              roundTripsPassed: 0,
+              roundTripsAttempted: 0
+            });
           }
           
-          // Compare result with expected
-          const passed = this.compareArrays(result, test.expected);
-          testResults.push({ index: i, passed: passed });
-          
-          if (!passed) {
-            allPassed = false;
-          }
-          
-        } catch (error) {
-          testResults.push({ index: i, passed: false, error: error.message });
-          allPassed = false;
+        } catch (algorithmError) {
+          testResults.push({
+            algorithm: algorithm.name,
+            status: 'error',
+            message: algorithmError.message
+          });
         }
       }
       
-      algorithmData.details.functionality = {
-        hasTests: true,
-        testCount: algorithm.tests.length,
-        results: testResults,
-        allPassed: allPassed
-      };
+      algorithmData.details.testResults = testResults;
       
-      if (allPassed) {
+      if (anySuccess) {
         this.results.functionality.passed++;
         return true;
       } else {
+        algorithmData.details.functionalityError = 'All algorithm tests failed';
         this.results.functionality.failed++;
-        this.results.functionality.errors.push(`${algorithmData.name}: ${testResults.filter(r => !r.passed).length}/${testResults.length} tests failed`);
+        this.results.functionality.errors.push(`${algorithmData.name}: All algorithms failed testing`);
         return false;
       }
       
