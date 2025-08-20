@@ -1,7 +1,16 @@
 #!/usr/bin/env node
 /*
  * Comprehensive Test Suite for Cipher Algorithms
- * Tests syntax, metadata compliance, functionality, and optimization
+ * Tests compilation, interface compatibility, metadata compliance, unresolved issues, functionality, and optimization
+ * 
+ * Test Categories:
+ * - COMPILATION: Tests JavaScript syntax using `node -c` (syntax errors)
+ * - INTERFACE: Tests if algorithm can be loaded and Cipher.Add accepts it (interface errors)
+ * - METADATA: Tests metadata compliance with CONTRIBUTING.md format
+ * - ISSUES: Tests for unresolved TODO, FIXME, BUG, ISSUE comments
+ * - FUNCTIONALITY: Tests algorithm functionality using test vectors
+ * - OPTIMIZATION: Tests OpCodes usage for performance optimization
+ * 
  * (c)2006-2025 Hawkynt
  */
 
@@ -13,8 +22,10 @@ class TestSuite {
     this.totalAlgorithms = 0;
     this.algorithmsPerCategory = {};
     this.results = {
-      syntax: { passed: 0, failed: 0, errors: [] },
+      compilation: { passed: 0, failed: 0, errors: [] },
+      interface: { passed: 0, failed: 0, errors: [] },
       metadata: { passed: 0, failed: 0, errors: [] },
+      issues: { passed: 0, failed: 0, errors: [] },
       functionality: { passed: 0, failed: 0, errors: [] },
       optimization: { passed: 0, failed: 0, errors: [] }
     };
@@ -149,60 +160,110 @@ class TestSuite {
       category: category,
       file: filename,
       tests: {
-        syntax: false,
+        compilation: false,
+        interface: false,
         metadata: false,
+        issues: false,
         functionality: false,
         optimization: false
       },
       details: {}
     };
 
-    // SYNTAX TEST - JavaScript compilation
-    algorithmData.tests.syntax = await this.testSyntax(filePath, algorithmData);
+    // COMPILATION TEST - JavaScript syntax and loading
+    algorithmData.tests.compilation = await this.testCompilation(filePath, algorithmData);
     
-    if (algorithmData.tests.syntax) {
-      // METADATA TEST - CONTRIBUTING.MD interface format
-      algorithmData.tests.metadata = await this.testMetadata(filePath, category, algorithmData);
+    if (algorithmData.tests.compilation) {
+      // INTERFACE TEST - Cipher.Add compatibility
+      algorithmData.tests.interface = await this.testInterface(filePath, algorithmData);
       
-      // FUNCTIONALITY TEST - Test vectors
-      algorithmData.tests.functionality = await this.testFunctionality(filePath, algorithmData);
-      
-      // OPTIMIZATION TEST - OpCodes usage
-      algorithmData.tests.optimization = await this.testOptimization(filePath, algorithmData);
+      if (algorithmData.tests.interface) {
+        // METADATA TEST - CONTRIBUTING.MD interface format
+        algorithmData.tests.metadata = await this.testMetadata(filePath, category, algorithmData);
+        
+        // ISSUES TEST - Check for TODO, ISSUE, BUG, FIXME comments
+        algorithmData.tests.issues = await this.testIssues(filePath, algorithmData);
+        
+        // FUNCTIONALITY TEST - Test vectors
+        algorithmData.tests.functionality = await this.testFunctionality(filePath, algorithmData);
+        
+        // OPTIMIZATION TEST - OpCodes usage
+        algorithmData.tests.optimization = await this.testOptimization(filePath, algorithmData);
+      }
     }
     
     this.algorithmDetails.push(algorithmData);
     
     const status = Object.values(algorithmData.tests).every(t => t) ? '✓' : '✗';
-    console.log(`    ${status} ${algorithmName} - Syntax:${algorithmData.tests.syntax?'✓':'✗'} Metadata:${algorithmData.tests.metadata?'✓':'✗'} Function:${algorithmData.tests.functionality?'✓':'✗'} Optimization:${algorithmData.tests.optimization?'✓':'✗'}`);
+    const registeredInfo = algorithmData.details.registeredNames 
+      ? ` [Registered: ${algorithmData.details.registeredNames.join(', ')}]`
+      : '';
+    const issuesCount = algorithmData.details.issues ? algorithmData.details.issues.totalCount : 0;
+    const issuesStatus = algorithmData.tests.issues ? '0' : `${issuesCount}`;
+    console.log(`    ${status} ${algorithmName} - Compilation:${algorithmData.tests.compilation?'✓':'✗'} Interface:${algorithmData.tests.interface?'✓':'✗'} Metadata:${algorithmData.tests.metadata?'✓':'✗'} Issues:${issuesStatus} Function:${algorithmData.tests.functionality?'✓':'✗'} Optimization:${algorithmData.tests.optimization?'✓':'✗'}${registeredInfo}`);
   }
 
-  // Test if file loads without syntax errors
-  async testSyntax(filePath, algorithmData) {
+  // Test if file has valid JavaScript syntax without executing
+  async testCompilation(filePath, algorithmData) {
     try {
-      // Clear any previous algorithm from global scope
+      // Use Node.js to check syntax without executing
+      const { exec } = require('child_process');
+      const { promisify } = require('util');
+      const execAsync = promisify(exec);
+      
+      // Use the full path for node -c
+      await execAsync(`node -c "${filePath}"`);
+      
+      algorithmData.details.syntaxValid = true;
+      this.results.compilation.passed++;
+      return true;
+      
+    } catch (error) {
+      algorithmData.details.compilationError = error.stderr || error.message;
+      this.results.compilation.failed++;
+      this.results.compilation.errors.push(`${algorithmData.name}: ${error.stderr || error.message}`);
+      return false;
+    }
+  }
+
+  // Test if algorithm can be loaded and added via Cipher.Add
+  async testInterface(filePath, algorithmData) {
+    try {
       const algorithmName = algorithmData.name.toUpperCase();
+      
+      // Clear any previous algorithm from global scope
       delete global[algorithmName];
       
-      // Try to require the file
+      // Clear all ciphers from the registry before testing
+      if (global.Cipher && global.Cipher.ciphers) {
+        global.Cipher.ciphers = {};
+      }
+      
+      // Try to require the file (this will call Cipher.Add internally)
       delete require.cache[require.resolve(filePath)];
       require(filePath);
       
-      // Check if algorithm was properly loaded
-      if (global[algorithmName]) {
-        algorithmData.details.loadedSuccessfully = true;
-        this.results.syntax.passed++;
+      // Check if at least one cipher was added to the registry
+      const registeredCiphers = Object.keys(global.Cipher.ciphers || {});
+      const cipherCount = registeredCiphers.length;
+      
+      if (cipherCount > 0) {
+        algorithmData.details.addedToCipher = true;
+        algorithmData.details.cipherCount = cipherCount;
+        algorithmData.details.registeredNames = registeredCiphers;
+        this.results.interface.passed++;
         return true;
       } else {
-        algorithmData.details.syntaxError = 'Algorithm not found in global scope';
-        this.results.syntax.failed++;
-        this.results.syntax.errors.push(`${algorithmData.name}: Algorithm not exported to global scope`);
+        algorithmData.details.interfaceError = 'No ciphers added to registry (Cipher.Add likely failed)';
+        this.results.interface.failed++;
+        this.results.interface.errors.push(`${algorithmData.name}: No ciphers added to registry`);
         return false;
       }
+      
     } catch (error) {
-      algorithmData.details.syntaxError = error.message;
-      this.results.syntax.failed++;
-      this.results.syntax.errors.push(`${algorithmData.name}: ${error.message}`);
+      algorithmData.details.interfaceError = error.message;
+      this.results.interface.failed++;
+      this.results.interface.errors.push(`${algorithmData.name}: ${error.message}`);
       return false;
     }
   }
@@ -265,6 +326,55 @@ class TestSuite {
       algorithmData.details.metadataError = error.message;
       this.results.metadata.failed++;
       this.results.metadata.errors.push(`${algorithmData.name}: ${error.message}`);
+      return false;
+    }
+  }
+
+  // Test for unresolved issues (TODO, ISSUE, BUG, FIXME comments)
+  async testIssues(filePath, algorithmData) {
+    try {
+      const fileContent = fs.readFileSync(filePath, 'utf8');
+      
+      // Define issue patterns to search for
+      const issuePatterns = [
+        { type: 'TODO', pattern: /\/\/.*TODO.*|\/\*.*TODO.*\*\//gi },
+        { type: 'FIXME', pattern: /\/\/.*FIXME.*|\/\*.*FIXME.*\*\//gi },
+        { type: 'BUG', pattern: /\/\/.*BUG.*|\/\*.*BUG.*\*\//gi },
+        { type: 'ISSUE', pattern: /\/\/.*ISSUE.*|\/\*.*ISSUE.*\*\//gi }
+      ];
+      
+      const foundIssues = [];
+      let totalIssueCount = 0;
+      
+      // Search for each issue type
+      issuePatterns.forEach(({ type, pattern }) => {
+        const matches = fileContent.match(pattern) || [];
+        if (matches.length > 0) {
+          foundIssues.push({ type, count: matches.length, comments: matches });
+          totalIssueCount += matches.length;
+        }
+      });
+      
+      algorithmData.details.issues = {
+        totalCount: totalIssueCount,
+        issueTypes: foundIssues,
+        hasUnresolvedIssues: totalIssueCount > 0
+      };
+      
+      if (totalIssueCount === 0) {
+        this.results.issues.passed++;
+        return true;
+      } else {
+        const issuesSummary = foundIssues.map(issue => `${issue.count} ${issue.type}`).join(', ');
+        this.results.issues.failed++;
+        this.results.issues.errors.push(`${algorithmData.name}: ${issuesSummary}`);
+        return false;
+      }
+      
+    } catch (error) {
+      algorithmData.details.issuesError = error.message;
+      this.results.issues.failed++;
+      this.results.issues.errors.push(`${algorithmData.name}: ${error.message}`);
       return false;
     }
   }
@@ -426,7 +536,7 @@ class TestSuite {
   generateReport() {
     
     // Show errors if any
-    ['syntax', 'metadata', 'functionality', 'optimization'].forEach(testType => {
+    ['compilation', 'interface', 'metadata', 'issues', 'functionality', 'optimization'].forEach(testType => {
       if (this.results[testType].errors.length > 0) {
         console.log(`\n=== ${testType.toUpperCase()} ERRORS ===`);
         this.results[testType].errors.forEach(error => {
@@ -436,7 +546,7 @@ class TestSuite {
     });
     
     // Overall score
-    const totalTests = this.totalAlgorithms * 4;
+    const totalTests = this.totalAlgorithms * 6; // 6 test categories: compilation, interface, metadata, issues, functionality, optimization
     const totalPassed = Object.values(this.results).reduce((sum, result) => sum + result.passed, 0);
     const overallScore = ((totalPassed / totalTests) * 100).toFixed(1);
     
@@ -448,10 +558,12 @@ class TestSuite {
     });
     
     console.log('\n=== TEST RESULTS SUMMARY ===');
-    console.log(`SYNTAX:        ${this.results.syntax.passed}/${this.totalAlgorithms} passed`);
-    console.log(`METADATA:      ${this.results.metadata.passed}/${this.totalAlgorithms} passed`);
-    console.log(`FUNCTIONALITY: ${this.results.functionality.passed}/${this.totalAlgorithms} passed`);
-    console.log(`OPTIMIZATION:  ${this.results.optimization.passed}/${this.totalAlgorithms} passed`);
+    console.log(`🔧 COMPILATION:   ${this.results.compilation.passed}/${this.totalAlgorithms} passed`);
+    console.log(`🔌 INTERFACE:     ${this.results.interface.passed}/${this.totalAlgorithms} passed`);
+    console.log(`📋 METADATA:      ${this.results.metadata.passed}/${this.totalAlgorithms} passed`);
+    console.log(`⚠️ ISSUES:        ${this.results.issues.passed}/${this.totalAlgorithms} passed`);
+    console.log(`⚡ FUNCTIONALITY: ${this.results.functionality.passed}/${this.totalAlgorithms} passed`);
+    console.log(`🚀 OPTIMIZATION:  ${this.results.optimization.passed}/${this.totalAlgorithms} passed`);
     
     console.log(`\n=== OVERALL SCORE ===`);
     console.log(`${totalPassed}/${totalTests} tests passed (${overallScore}%)`);
