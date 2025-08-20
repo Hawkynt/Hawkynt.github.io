@@ -424,18 +424,6 @@ class TestSuite {
 
   // Generate comprehensive test report
   generateReport() {
-    console.log('\n=== COMPREHENSIVE TEST REPORT ===');
-    console.log(`Total algorithms tested: ${this.totalAlgorithms}`);
-    console.log('\nAlgorithms per category:');
-    Object.entries(this.algorithmsPerCategory).forEach(([cat, count]) => {
-      console.log(`  ${cat}: ${count}`);
-    });
-    
-    console.log('\n=== TEST RESULTS SUMMARY ===');
-    console.log(`SYNTAX:        ${this.results.syntax.passed}/${this.totalAlgorithms} passed`);
-    console.log(`METADATA:      ${this.results.metadata.passed}/${this.totalAlgorithms} passed`);
-    console.log(`FUNCTIONALITY: ${this.results.functionality.passed}/${this.totalAlgorithms} passed`);
-    console.log(`OPTIMIZATION:  ${this.results.optimization.passed}/${this.totalAlgorithms} passed`);
     
     // Show errors if any
     ['syntax', 'metadata', 'functionality', 'optimization'].forEach(testType => {
@@ -451,6 +439,19 @@ class TestSuite {
     const totalTests = this.totalAlgorithms * 4;
     const totalPassed = Object.values(this.results).reduce((sum, result) => sum + result.passed, 0);
     const overallScore = ((totalPassed / totalTests) * 100).toFixed(1);
+    
+    console.log('\n=== COMPREHENSIVE TEST REPORT ===');
+    console.log(`Total algorithms tested: ${this.totalAlgorithms}`);
+    console.log('\nAlgorithms per category:');
+    Object.entries(this.algorithmsPerCategory).forEach(([cat, count]) => {
+      console.log(`  ${cat}: ${count}`);
+    });
+    
+    console.log('\n=== TEST RESULTS SUMMARY ===');
+    console.log(`SYNTAX:        ${this.results.syntax.passed}/${this.totalAlgorithms} passed`);
+    console.log(`METADATA:      ${this.results.metadata.passed}/${this.totalAlgorithms} passed`);
+    console.log(`FUNCTIONALITY: ${this.results.functionality.passed}/${this.totalAlgorithms} passed`);
+    console.log(`OPTIMIZATION:  ${this.results.optimization.passed}/${this.totalAlgorithms} passed`);
     
     console.log(`\n=== OVERALL SCORE ===`);
     console.log(`${totalPassed}/${totalTests} tests passed (${overallScore}%)`);
