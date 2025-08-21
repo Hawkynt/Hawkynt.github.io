@@ -891,9 +891,75 @@ class AlgorithmDetails {
             
             resultsContainer.innerHTML = html;
             
+            // Update the algorithm's test results and refresh the card
+            this.updateAlgorithmTestResults();
+            
         } catch (error) {
             resultsContainer.innerHTML = `<div class="test-status failure">❌ FAILED</div><div class="test-error">Error: ${error.message}</div>`;
             console.error('Test execution failed:', error);
+            
+            // Update the algorithm's test results and refresh the card
+            this.updateAlgorithmTestResults();
+        }
+    }
+
+    /**
+     * Update the algorithm's test results and refresh the algorithm card
+     */
+    updateAlgorithmTestResults() {
+        if (!this.currentAlgorithm || !this.element) {
+            return;
+        }
+        
+        // Count test results from the DOM
+        const testItems = this.element.querySelectorAll('.test-vector-item');
+        let totalTests = 0;
+        let passedTests = 0;
+        
+        testItems.forEach(item => {
+            const resultsContainer = item.querySelector('.test-results');
+            if (resultsContainer) {
+                const statusEl = resultsContainer.querySelector('.test-status');
+                if (statusEl) {
+                    totalTests++;
+                    if (statusEl.classList.contains('success')) {
+                        passedTests++;
+                    }
+                }
+            }
+        });
+        
+        // Store results on the algorithm object
+        this.currentAlgorithm.testResults = {
+            passed: passedTests,
+            total: totalTests,
+            lastUpdated: Date.now()
+        };
+        
+        // Refresh the algorithm card in the main UI
+        this.refreshAlgorithmCard();
+    }
+    
+    /**
+     * Refresh the algorithm card to update test status colors
+     */
+    refreshAlgorithmCard() {
+        // Find the algorithm card in the main UI and update its test button
+        const algorithmCard = document.querySelector(`[data-name="${this.currentAlgorithm.name}"]`);
+        if (algorithmCard) {
+            const testButton = algorithmCard.querySelector('.card-test-btn');
+            if (testButton) {
+                // Create a temporary card instance to get the new status
+                const tempCard = new AlgorithmCard(this.currentAlgorithm);
+                const newStatus = tempCard.getTestStatus();
+                
+                // Remove old status classes
+                testButton.classList.remove('test-status-none', 'test-status-some', 'test-status-all', 'test-status-untested');
+                
+                // Add new status class
+                testButton.classList.add(`test-status-${newStatus}`);
+                testButton.setAttribute('data-test-status', newStatus);
+            }
         }
     }
 
@@ -908,7 +974,13 @@ class AlgorithmDetails {
         const tests = this.currentAlgorithm.tests;
         for (let i = 0; i < tests.length; i++) {
             // Add small delay between tests to show progress
-            setTimeout(() => this.runSingleTest(i), i * 100);
+            setTimeout(() => {
+                this.runSingleTest(i);
+                // Update results after the last test completes
+                if (i === tests.length - 1) {
+                    setTimeout(() => this.updateAlgorithmTestResults(), 50);
+                }
+            }, i * 100);
         }
     }
 
