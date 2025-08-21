@@ -9,11 +9,20 @@ class CipherController {
         // Only use AlgorithmFramework - no local storage
         this.testResults = null;
         
-        this.initializeApplication();
+        // Don't auto-initialize - wait for manual call
     }
     
     async initializeApplication() {
         console.log('🔐 Initializing Cipher Tools Application...');
+        
+        // Verify AlgorithmFramework is available
+        if (typeof AlgorithmFramework === 'undefined') {
+            console.error('❌ AlgorithmFramework not available');
+            return;
+        }
+        
+        console.log('✅ AlgorithmFramework available');
+        console.log('📊 Algorithms registered:', AlgorithmFramework.Algorithms.length);
         
         // Setup UI systems (will throw if AlgorithmFramework is not available)
         this.setupEventListeners();
