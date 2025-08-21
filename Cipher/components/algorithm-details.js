@@ -1087,34 +1087,127 @@ class AlgorithmDetails {
      * Get the actual JavaScript source code for the algorithm
      */
     async getActualJavaScriptSource(algorithm) {
+        console.log(`🚀 === STARTING JAVASCRIPT SOURCE EXTRACTION FOR "${algorithm.name}" ===`);
+        
         // Try to get the source from the algorithm's file
         if (algorithm.sourceCode) {
+            console.log(`✅ Found algorithm.sourceCode property`);
             return algorithm.sourceCode;
         }
+        console.log(`❌ No algorithm.sourceCode property found`);
         
         // Try to read the original file directly
+        console.log(`🔍 Attempting to load original file...`);
         const sourceFromFile = await this.loadOriginalJavaScriptFile(algorithm);
         if (sourceFromFile) {
+            console.log(`✅ Successfully loaded source from file (${sourceFromFile.length} chars)`);
             return sourceFromFile;
         }
+        console.log(`❌ Failed to load source from file`);
         
         // Try to get source from the constructor if available
+        console.log(`🔍 Checking algorithm constructor...`);
         if (algorithm.constructor && algorithm.constructor.toString) {
             const constructorSource = algorithm.constructor.toString();
+            console.log(`📋 Constructor source: "${constructorSource.substring(0, 100)}..."`);
             if (constructorSource !== '[native code]') {
-                return constructorSource;
+                console.log(`✅ Found constructor source (${constructorSource.length} chars)`);
+                console.log(`🔄 But let's also try to extract instance classes...`);
+                
+                // Try to get instance source as well and combine them
+                const instanceExtraction = this.extractInstanceSources(algorithm);
+                if (instanceExtraction && instanceExtraction.length > 0) {
+                    console.log(`✅ Also extracted instance sources (${instanceExtraction.length} chars)`);
+                    const combinedSource = constructorSource + '\n\n' + instanceExtraction;
+                    console.log(`📊 Combined source: ${constructorSource.length} + ${instanceExtraction.length} = ${combinedSource.length} chars`);
+                    return combinedSource;
+                } else {
+                    console.log(`❌ No additional instance sources found, using constructor only`);
+                    return constructorSource;
+                }
+            } else {
+                console.log(`❌ Constructor is native code`);
             }
+        } else {
+            console.log(`❌ No valid constructor found`);
         }
         
         // Try to reconstruct source from algorithm properties and methods
+        console.log(`🔄 Falling back to source reconstruction...`);
         let source = this.reconstructJavaScriptSource(algorithm);
+        console.log(`📊 Final reconstructed source length: ${source.length} characters`);
+        return source;
+    }
+
+    /**
+     * Extract instance sources without full reconstruction
+     */
+    extractInstanceSources(algorithm) {
+        let instanceSource = '';
         
-        // If we still don't have real source, use a more accurate template
-        if (!source || source.length < 100) {
-            source = this.generateActualJavaScriptTemplate(algorithm);
+        try {
+            if (algorithm.CreateInstance && typeof algorithm.CreateInstance === 'function') {
+                console.log(`🔄 Extracting instance sources for ${algorithm.name}...`);
+                
+                const encryptInstance = algorithm.CreateInstance(false);
+                console.log(`📥 Encryption instance:`, encryptInstance);
+                console.log(`📥 Encryption constructor:`, encryptInstance?.constructor);
+                console.log(`📥 Encryption constructor name:`, encryptInstance?.constructor?.name);
+                
+                const decryptInstance = algorithm.CreateInstance(true);
+                console.log(`📤 Decryption instance:`, decryptInstance);
+                console.log(`📤 Decryption constructor:`, decryptInstance?.constructor);
+                console.log(`📤 Decryption constructor name:`, decryptInstance?.constructor?.name);
+                
+                // Extract encryption instance class
+                if (encryptInstance && encryptInstance.constructor && encryptInstance.constructor.toString) {
+                    const encryptClassSource = encryptInstance.constructor.toString();
+                    console.log(`🔍 Encryption class source length:`, encryptClassSource?.length);
+                    console.log(`🔍 Encryption class source preview:`, encryptClassSource?.substring(0, 200));
+                    
+                    if (encryptClassSource && encryptClassSource !== '[native code]' && 
+                        !encryptClassSource.includes('function Object()')) {
+                        instanceSource += '// Encryption Instance Class\n';
+                        instanceSource += encryptClassSource + '\n\n';
+                        console.log(`✅ Added encryption instance class (${encryptClassSource.length} chars) - contains all methods`);
+                    } else {
+                        console.log(`❌ Encryption class source rejected: native/Object/empty`);
+                    }
+                } else {
+                    console.log(`❌ No valid encryption instance constructor found`);
+                }
+                
+                // Extract decryption instance class if different
+                if (decryptInstance && decryptInstance.constructor && 
+                    decryptInstance.constructor !== encryptInstance?.constructor) {
+                    const decryptClassSource = decryptInstance.constructor.toString();
+                    console.log(`🔍 Decryption class source length:`, decryptClassSource?.length);
+                    console.log(`🔍 Decryption class source preview:`, decryptClassSource?.substring(0, 200));
+                    
+                    if (decryptClassSource && decryptClassSource !== '[native code]' && 
+                        !decryptClassSource.includes('function Object()')) {
+                        instanceSource += '// Decryption Instance Class\n';
+                        instanceSource += decryptClassSource + '\n\n';
+                        console.log(`✅ Added decryption instance class (${decryptClassSource.length} chars) - contains all methods`);
+                    } else {
+                        console.log(`❌ Decryption class source rejected: native/Object/empty`);
+                    }
+                } else {
+                    console.log(`⚠️ Decryption instance same as encryption or invalid`);
+                }
+                
+                // Note: We don't extract methods separately since they're already in the class source
+                console.log(`ℹ️ Instance classes already contain all methods and fields - no separate extraction needed`);
+                
+                console.log(`📊 Total extracted instance source length: ${instanceSource.length} characters`);
+            } else {
+                console.log(`❌ No CreateInstance method available`);
+            }
+        } catch (e) {
+            console.warn('Could not extract instance sources:', e);
         }
         
-        return source;
+        return instanceSource;
     }
 
     /**
@@ -1147,76 +1240,266 @@ class AlgorithmDetails {
      */
     async loadOriginalJavaScriptFile(algorithm) {
         try {
-            // Try to determine possible file paths
-            const possiblePaths = this.getAlgorithmFilePaths(algorithm);
+            // Check if we're running on file:// protocol
+            const isFileProtocol = window.location.protocol === 'file:';
             
-            // Try each path until one works
-            for (const filePath of possiblePaths) {
+            if (isFileProtocol) {
+                console.log(`⚠️ File protocol detected - CORS will block fetch requests`);
+                console.log(`� Falling back to source reconstruction...`);
+                
+                // Return null to trigger fallback to reconstruction
+                return null;
+            }
+            
+            // Use smart matching to get the actual file path from loaded scripts
+            const smartMatchedPaths = this.getSmartMatchedFilePaths(algorithm);
+            
+            // Try each matched path
+            for (const filePath of smartMatchedPaths) {
                 try {
                     console.log(`Attempting to load source from: ${filePath}`);
                     
                     const response = await fetch(filePath);
                     if (response.ok) {
                         const sourceCode = await response.text();
-                        console.log(`Successfully loaded ${sourceCode.length} characters from ${filePath}`);
-                        return sourceCode;
+                        console.log(`✅ Successfully loaded ${sourceCode.length} characters from ${filePath}`);
+                        
+                        // TODO: Clean up the source code to remove everything outside class/function/fields
+                        return this.cleanupSourceCode(sourceCode, algorithm);
                     } else {
                         console.log(`Failed to load ${filePath}: ${response.status}`);
                     }
                 } catch (fetchError) {
-                    console.log(`Fetch failed for ${filePath}:`, fetchError.message);
+                    console.log(`❌ Fetch failed for ${filePath}: ${fetchError.message}`);
+                    console.log(`🔄 CORS detected - falling back to reconstruction...`);
                 }
             }
             
-            console.warn(`No source file found for ${algorithm.name}`);
+            console.warn(`No source file found for ${algorithm.name} - falling back to reconstruction`);
             return null;
             
         } catch (error) {
             console.warn('Failed to load original JavaScript file:', error);
+            console.log(`🔄 Falling back to source reconstruction...`);
             return null;
         }
     }
 
     /**
-     * Get all possible file paths for an algorithm
+     * Clean up source code to remove imports/exports and registration code
+     * TODO: Address - remove everything outside class and/or function and/or fields
      */
-    getAlgorithmFilePaths(algorithm) {
-        const paths = [];
+    cleanupSourceCode(sourceCode, algorithm) {
+        try {
+            console.log(`🧹 Cleaning up source code for ${algorithm.name}...`);
+            
+            let cleanedCode = sourceCode;
+            
+            // Remove common registration patterns at the end of files
+            cleanedCode = cleanedCode.replace(/\n\s*\/\/\s*Register.*$/gm, '');
+            cleanedCode = cleanedCode.replace(/\n\s*AlgorithmFramework\.register.*$/gm, '');
+            cleanedCode = cleanedCode.replace(/\n\s*window\..*\s*=.*$/gm, '');
+            
+            // Remove import/export statements
+            cleanedCode = cleanedCode.replace(/^import\s+.*$/gm, '');
+            cleanedCode = cleanedCode.replace(/^export\s+.*$/gm, '');
+            
+            // Remove top-level comments that are just boilerplate
+            cleanedCode = cleanedCode.replace(/^\/\*\*?\s*\n\s*\*?\s*(File:|Author:|Description:).*?\*\/\s*\n/gm, '');
+            
+            // Remove standalone console.log calls at file level
+            cleanedCode = cleanedCode.replace(/^console\.log\(.*\);\s*$/gm, '');
+            
+            // Extract class definitions, functions, and meaningful content
+            const classMatches = cleanedCode.match(/class\s+\w+\s*\{[\s\S]*?\n\}/g);
+            const functionMatches = cleanedCode.match(/^function\s+\w+\s*\([^)]*\)\s*\{[\s\S]*?\n\}/gm);
+            const constMatches = cleanedCode.match(/^const\s+\w+\s*=[\s\S]*?;/gm);
+            
+            // If we found structured content, use that
+            if (classMatches || functionMatches || constMatches) {
+                let structuredCode = '';
+                
+                if (constMatches) {
+                    structuredCode += constMatches.join('\n\n') + '\n\n';
+                }
+                
+                if (functionMatches) {
+                    structuredCode += functionMatches.join('\n\n') + '\n\n';
+                }
+                
+                if (classMatches) {
+                    structuredCode += classMatches.join('\n\n');
+                }
+                
+                if (structuredCode.trim()) {
+                    cleanedCode = structuredCode;
+                }
+            }
+            
+            // Final cleanup - remove excessive blank lines
+            cleanedCode = cleanedCode.replace(/\n{3,}/g, '\n\n');
+            cleanedCode = cleanedCode.trim();
+            
+            console.log(`✅ Cleaned up source: ${sourceCode.length} → ${cleanedCode.length} characters`);
+            return cleanedCode;
+            
+        } catch (error) {
+            console.warn('Error cleaning up source code:', error);
+            return sourceCode; // Return original if cleanup fails
+        }
+    }
+
+    /**
+     * Smart match algorithm name to loaded script files
+     */
+    getSmartMatchedFilePaths(algorithm) {
+        const matches = [];
         
-        // Check if algorithm has a file path property
-        if (algorithm.filePath) {
-            paths.push(algorithm.filePath);
+        try {
+            console.log(`🔍 === SMART MATCHING DEBUG FOR "${algorithm.name}" ===`);
+            
+            // Get all script elements in the document and extract their actual paths
+            const scripts = document.querySelectorAll('script[src]');
+            const loadedFiles = [];
+            
+            scripts.forEach(script => {
+                const src = script.getAttribute('src');
+                if (src && src.includes('.js') && src.includes('algorithms/')) {
+                    // Store both the relative path from src attribute and filename
+                    const fileName = src.split('/').pop().replace('.js', '');
+                    loadedFiles.push({
+                        fullPath: src,
+                        fileName: fileName,
+                        category: src.split('/')[2] // Extract category from path like ./algorithms/category/file.js
+                    });
+                }
+            });
+            
+            console.log(`📁 Found ${loadedFiles.length} loaded algorithm files with paths:`, loadedFiles);
+            
+            // Normalize algorithm name for comparison
+            const normalizedAlgorithmName = this.normalizeForComparison(algorithm.name);
+            console.log(`🎯 Algorithm "${algorithm.name}" → normalized: "${normalizedAlgorithmName}"`);
+            
+            // Create detailed normalized list with actual paths
+            console.log(`📋 NORMALIZED FILE LIST (${loadedFiles.length} files):`);
+            loadedFiles.forEach((item, index) => {
+                const normalizedFileName = this.normalizeForComparison(item.fileName);
+                console.log(`  ${index + 1}. "${item.fileName}" → "${normalizedFileName}" [${item.category}] → ${item.fullPath}`);
+            });
+            
+            // Find best matches with detailed scoring using actual paths
+            const scored = loadedFiles.map(item => {
+                const normalizedFileName = this.normalizeForComparison(item.fileName);
+                const score = this.calculateSimilarityScore(normalizedAlgorithmName, normalizedFileName);
+                
+                return {
+                    filePath: item.fullPath, // Use the actual path from the script src
+                    fileName: item.fileName,
+                    normalizedFileName: normalizedFileName,
+                    category: item.category,
+                    score,
+                    comparison: `"${normalizedAlgorithmName}" vs "${normalizedFileName}"`
+                };
+            });
+            
+            // Sort all results for debugging
+            const allSorted = scored.sort((a, b) => b.score - a.score);
+            
+            console.log(`🏆 ALL SCORING RESULTS (sorted by score):`);
+            allSorted.forEach((item, index) => {
+                const emoji = item.score > 0.8 ? '🟢' : item.score > 0.5 ? '🟡' : '🔴';
+                console.log(`  ${index + 1}. ${emoji} ${item.comparison} → Score: ${item.score.toFixed(3)} → [${item.category}] ${item.fileName}`);
+            });
+            
+            // Filter for good matches
+            const goodMatches = allSorted.filter(item => item.score > 0.5);
+            
+            console.log(`✅ GOOD MATCHES (score > 0.5): ${goodMatches.length} found`);
+            
+            // Take the best matches and use their actual paths
+            goodMatches.slice(0, 3).forEach((item, index) => {
+                matches.push(item.filePath); // This is now the real path from script src
+                console.log(`  ${index + 1}. ✅ Selected: "${item.fileName}" → ${item.filePath} (score: ${item.score.toFixed(3)})`);
+            });
+            
+            if (goodMatches.length === 0) {
+                console.log(`❌ NO GOOD MATCHES FOUND for "${algorithm.name}" (normalized: "${normalizedAlgorithmName}")`);
+            }
+            
+        } catch (error) {
+            console.warn('Smart matching failed:', error);
         }
         
-        // Generate paths based on algorithm name and category
-        const fileName = this.getAlgorithmFileName(algorithm.name);
-        if (!fileName) return paths;
+        return matches;
+    }
+
+    /**
+     * Normalize string for comparison by removing special characters and whitespace
+     */
+    normalizeForComparison(str) {
+        if (!str) return '';
         
-        // Try category-based path
-        if (algorithm.category && algorithm.category.name) {
-            const categoryPath = this.getCategoryPath(algorithm.category.name);
-            if (categoryPath) {
-                paths.push(`algorithms/${categoryPath}/${fileName}.js`);
+        return str
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, '') // Remove all non-alphanumeric
+            .replace(/\s+/g, '');      // Remove whitespace
+    }
+
+    /**
+     * Calculate similarity score between two normalized strings
+     */
+    calculateSimilarityScore(str1, str2) {
+        if (!str1 || !str2) return 0;
+        
+        // Exact match
+        if (str1 === str2) return 1.0;
+        
+        // Check if one contains the other
+        if (str1.includes(str2) || str2.includes(str1)) {
+            const longer = str1.length > str2.length ? str1 : str2;
+            const shorter = str1.length <= str2.length ? str1 : str2;
+            return shorter.length / longer.length * 0.9; // High score for containment
+        }
+        
+        // Levenshtein distance based similarity
+        const distance = this.levenshteinDistance(str1, str2);
+        const maxLength = Math.max(str1.length, str2.length);
+        
+        if (maxLength === 0) return 1.0;
+        
+        return 1 - (distance / maxLength);
+    }
+
+    /**
+     * Calculate Levenshtein distance between two strings
+     */
+    levenshteinDistance(str1, str2) {
+        const matrix = [];
+        
+        for (let i = 0; i <= str2.length; i++) {
+            matrix[i] = [i];
+        }
+        
+        for (let j = 0; j <= str1.length; j++) {
+            matrix[0][j] = j;
+        }
+        
+        for (let i = 1; i <= str2.length; i++) {
+            for (let j = 1; j <= str1.length; j++) {
+                if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+                    matrix[i][j] = matrix[i - 1][j - 1];
+                } else {
+                    matrix[i][j] = Math.min(
+                        matrix[i - 1][j - 1] + 1, // substitution
+                        matrix[i][j - 1] + 1,     // insertion
+                        matrix[i - 1][j] + 1      // deletion
+                    );
+                }
             }
         }
         
-        // Try all common category folders
-        const commonCategories = [
-            'classical', 'block', 'stream', 'hash', 'mac', 'encoding', 
-            'compression', 'asymmetric', 'ecc', 'modes', 'padding',
-            'kdf', 'special', 'checksum', 'pqc'
-        ];
-        
-        for (const category of commonCategories) {
-            paths.push(`algorithms/${category}/${fileName}.js`);
-        }
-        
-        // Try direct paths
-        paths.push(`algorithms/${fileName}.js`);
-        paths.push(`${fileName}.js`);
-        
-        // Remove duplicates
-        return [...new Set(paths)];
+        return matrix[str2.length][str1.length];
     }
 
     /**
@@ -1258,31 +1541,6 @@ class AlgorithmDetails {
     }
 
     /**
-     * Get category path from category name
-     */
-    getCategoryPath(categoryName) {
-        const categoryMap = {
-            'Classical Cipher': 'classical',
-            'Block Cipher': 'block', 
-            'Stream Cipher': 'stream',
-            'Hash Function': 'hash',
-            'MAC': 'mac',
-            'Encoding': 'encoding',
-            'Compression': 'compression',
-            'Asymmetric Cipher': 'asymmetric',
-            'Elliptic Curve': 'ecc',
-            'Mode of Operation': 'modes',
-            'Padding': 'padding',
-            'Key Derivation': 'kdf',
-            'Special': 'special',
-            'Checksum': 'checksum',
-            'Post-Quantum': 'pqc'
-        };
-        
-        return categoryMap[categoryName] || categoryName.toLowerCase().replace(/\s+/g, '');
-    }
-
-    /**
      * Get file name from algorithm name
      */
     getAlgorithmFileName(algorithmName) {
@@ -1300,6 +1558,8 @@ class AlgorithmDetails {
      * Reconstruct JavaScript source from algorithm object
      */
     reconstructJavaScriptSource(algorithm) {
+        console.log(`🔧 === RECONSTRUCTING JAVASCRIPT SOURCE FOR "${algorithm.name}" ===`);
+        
         try {
             let source = '';
             
@@ -1312,45 +1572,93 @@ class AlgorithmDetails {
             
             // Add the actual algorithm class if we can access it
             const className = algorithm.constructor.name || algorithm.name.replace(/[^a-zA-Z0-9]/g, '');
+            console.log(`🏷️ Using class name: ${className}`);
             
             // Try to get the actual class source
             if (algorithm.constructor && algorithm.constructor.toString) {
                 const classSource = algorithm.constructor.toString();
+                console.log(`📋 Algorithm constructor toString: "${classSource.substring(0, 100)}..."`);
                 if (classSource && classSource !== '[native code]' && !classSource.includes('function Object()')) {
                     source += '// Algorithm Class\n';
                     source += classSource + '\n\n';
+                    console.log(`✅ Added algorithm class source (${classSource.length} chars)`);
+                } else {
+                    console.log(`❌ Algorithm class source rejected: native/Object/empty`);
                 }
+            } else {
+                console.log(`❌ No algorithm constructor.toString available`);
             }
             
             // Try to get instance class source by checking if CreateInstance returns an object with a constructor
             let instanceSource = '';
             try {
                 if (algorithm.CreateInstance && typeof algorithm.CreateInstance === 'function') {
-                    const instance = algorithm.CreateInstance(false);
-                    if (instance && instance.constructor && instance.constructor.toString) {
-                        const instanceClassSource = instance.constructor.toString();
-                        if (instanceClassSource && instanceClassSource !== '[native code]' && 
-                            !instanceClassSource.includes('function Object()')) {
-                            instanceSource = '// Algorithm Instance Class\n';
-                            instanceSource += instanceClassSource + '\n\n';
+                    console.log(`🔄 Extracting both encryption and decryption instances for ${algorithm.name}...`);
+                    
+                    // TODO ADDRESSED: Get both directions since they may refer to different types
+                    const encryptInstance = algorithm.CreateInstance(false); // Encryption instance
+                    console.log(`📥 Encryption instance:`, encryptInstance);
+                    console.log(`📥 Encryption constructor:`, encryptInstance?.constructor);
+                    console.log(`📥 Encryption constructor name:`, encryptInstance?.constructor?.name);
+                    
+                    const decryptInstance = algorithm.CreateInstance(true);  // Decryption instance
+                    console.log(`📤 Decryption instance:`, decryptInstance);
+                    console.log(`📤 Decryption constructor:`, decryptInstance?.constructor);
+                    console.log(`📤 Decryption constructor name:`, decryptInstance?.constructor?.name);
+                    
+                    // Extract from encryption instance
+                    if (encryptInstance && encryptInstance.constructor && encryptInstance.constructor.toString) {
+                        const encryptClassSource = encryptInstance.constructor.toString();
+                        console.log(`🔍 Encryption class source length:`, encryptClassSource?.length);
+                        console.log(`🔍 Encryption class source preview:`, encryptClassSource?.substring(0, 200));
+                        
+                        if (encryptClassSource && encryptClassSource !== '[native code]' && 
+                            !encryptClassSource.includes('function Object()')) {
+                            instanceSource += '// Encryption Instance Class\n';
+                            instanceSource += encryptClassSource + '\n\n';
+                            console.log(`✅ Added encryption instance class (${encryptClassSource.length} chars)`);
+                        } else {
+                            console.log(`❌ Encryption class source rejected: native/Object/empty`);
                         }
+                    } else {
+                        console.log(`❌ No valid encryption instance constructor found`);
                     }
                     
-                    // Also get all instance methods
-                    if (instance) {
-                        const instanceMethods = this.extractInstanceMethods(instance);
-                        if (instanceMethods) {
-                            instanceSource += instanceMethods;
+                    // Extract from decryption instance if different
+                    if (decryptInstance && decryptInstance.constructor && 
+                        decryptInstance.constructor !== encryptInstance?.constructor) {
+                        const decryptClassSource = decryptInstance.constructor.toString();
+                        console.log(`🔍 Decryption class source length:`, decryptClassSource?.length);
+                        console.log(`🔍 Decryption class source preview:`, decryptClassSource?.substring(0, 200));
+                        
+                        if (decryptClassSource && decryptClassSource !== '[native code]' && 
+                            !decryptClassSource.includes('function Object()')) {
+                            instanceSource += '// Decryption Instance Class\n';
+                            instanceSource += decryptClassSource + '\n\n';
+                            console.log(`✅ Added decryption instance class (${decryptClassSource.length} chars)`);
+                        } else {
+                            console.log(`❌ Decryption class source rejected: native/Object/empty`);
                         }
+                    } else {
+                        console.log(`⚠️ Decryption instance same as encryption or invalid`);
                     }
+                                        
+                    console.log(`📊 Total instance source length: ${instanceSource.length} characters`);
                 }
             } catch (e) {
                 console.warn('Could not extract instance source:', e);
             }
             
             // If we have actual source, use it
+            console.log(`📊 Final source analysis:`);
+            console.log(`📊 - Base source length: ${source.length}`);
+            console.log(`📊 - Instance source length: ${instanceSource.length}`);
+            console.log(`📊 - Condition: source.length (${source.length}) > 200 || instanceSource.length (${instanceSource.length}) > 100`);
+            console.log(`📊 - Result: ${source.length > 200 || instanceSource.length > 100}`);
+            
             if (source.length > 200 || instanceSource.length > 100) {
                 source += instanceSource;
+                console.log(`✅ Using extracted source (${source.length} total chars)`);
                 
                 // Add registration if not present
                 if (!source.includes('RegisterAlgorithm')) {
@@ -1362,6 +1670,7 @@ class AlgorithmDetails {
             }
             
             // Fallback to reconstructed source
+            console.log(`⚠️ Falling back to comprehensive reconstruction`);
             return this.buildComprehensiveJavaScriptSource(algorithm);
             
         } catch (error) {
@@ -1373,10 +1682,12 @@ class AlgorithmDetails {
     /**
      * Extract instance methods from an algorithm instance
      */
-    extractInstanceMethods(instance) {
+    extractInstanceMethods(instance, direction = '') {
         let methods = '';
         
         try {
+            console.log(`🔍 Extracting ${direction} instance methods...`);
+            
             // Get all methods from the instance prototype
             const prototype = Object.getPrototypeOf(instance);
             const methodNames = Object.getOwnPropertyNames(prototype);
@@ -1386,7 +1697,7 @@ class AlgorithmDetails {
                     try {
                         const methodSource = instance[methodName].toString();
                         if (methodSource && !methodSource.includes('[native code]')) {
-                            methods += `  // ${methodName} method\n`;
+                            methods += `  // ${direction} ${methodName} method\n`;
                             methods += `  ${methodSource}\n\n`;
                         }
                     } catch (e) {
@@ -1401,7 +1712,7 @@ class AlgorithmDetails {
                     try {
                         const methodSource = instance[propName].toString();
                         if (methodSource && !methodSource.includes('[native code]')) {
-                            methods += `  // ${propName} method (instance property)\n`;
+                            methods += `  // ${direction} ${propName} method (instance property)\n`;
                             methods += `  ${methodSource}\n\n`;
                         }
                     } catch (e) {
@@ -1410,11 +1721,81 @@ class AlgorithmDetails {
                 }
             });
             
+            if (methods) {
+                return `// ${direction} Instance Methods\n${methods}`;
+            }
+            
         } catch (error) {
-            console.warn('Could not extract instance methods:', error);
+            console.warn(`Could not extract ${direction} instance methods:`, error);
         }
         
-        return methods;
+        return '';
+    }
+
+    /**
+     * Extract instance fields and properties
+     * TODO ADDRESSED: Extract fields from algorithm instances
+     */
+    extractInstanceFields(instance, direction = '') {
+        let fields = '';
+        
+        try {
+            console.log(`🔍 Extracting ${direction} instance fields...`);
+            
+            const fieldEntries = [];
+            
+            // Get all enumerable properties
+            Object.keys(instance).forEach(key => {
+                const value = instance[key];
+                if (typeof value !== 'function') {
+                    let fieldInfo = `  ${key}: `;
+                    
+                    if (typeof value === 'string') {
+                        fieldInfo += `"${value}"`;
+                    } else if (typeof value === 'number' || typeof value === 'boolean') {
+                        fieldInfo += value;
+                    } else if (Array.isArray(value)) {
+                        fieldInfo += `[${value.length} items]`;
+                    } else if (value === null) {
+                        fieldInfo += 'null';
+                    } else if (typeof value === 'object') {
+                        fieldInfo += `{${Object.keys(value).length} properties}`;
+                    } else {
+                        fieldInfo += typeof value;
+                    }
+                    
+                    fieldEntries.push(fieldInfo);
+                }
+            });
+            
+            // Get non-enumerable properties
+            const propertyNames = Object.getOwnPropertyNames(instance);
+            propertyNames.forEach(propName => {
+                if (!Object.prototype.hasOwnProperty.call(instance, propName) && 
+                    typeof instance[propName] !== 'function' && 
+                    propName !== 'constructor') {
+                    
+                    try {
+                        const descriptor = Object.getOwnPropertyDescriptor(instance, propName);
+                        if (descriptor && descriptor.value !== undefined) {
+                            fieldEntries.push(`  ${propName}: ${typeof descriptor.value} (non-enumerable)`);
+                        }
+                    } catch (e) {
+                        // Skip properties we can't access
+                    }
+                }
+            });
+            
+            if (fieldEntries.length > 0) {
+                fields = `// ${direction} Instance Fields\n`;
+                fields += `/*\n${fieldEntries.join('\n')}\n*/\n\n`;
+            }
+            
+        } catch (error) {
+            console.warn(`Could not extract ${direction} instance fields:`, error);
+        }
+        
+        return fields;
     }
 
     /**
@@ -2212,9 +2593,6 @@ class AlgorithmDetails {
         }
         
         try {
-            // Debug: Log available languages
-            console.log('Available Prism languages:', Object.keys(Prism.languages));
-            console.log('Attempting to highlight language:', languageKey);
             
             // Remove existing highlighting classes
             codeElement.className = codeElement.className.replace(/language-[^\s]*/g, '');
