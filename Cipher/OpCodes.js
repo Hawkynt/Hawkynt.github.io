@@ -2658,6 +2658,85 @@
       }
       
       return result & mask;
+    },
+
+    /**
+     * Create Uint32Array from hex string values (for cryptographic constants)
+     * @param {Array<string>} hexValues - Array of hex strings
+     * @returns {Uint32Array} Array of 32-bit values
+     */
+    CreateUint32ArrayFromHex: function(hexValues) {
+      const result = new Uint32Array(hexValues.length);
+      for (let i = 0; i < hexValues.length; i++) {
+        let hexStr = hexValues[i];
+        // Remove 0x prefix if present
+        if (hexStr.startsWith('0x') || hexStr.startsWith('0X')) {
+          hexStr = hexStr.substring(2);
+        }
+        // Validate hex string
+        if (!/^[0-9A-Fa-f]+$/.test(hexStr)) {
+          throw new Error('CreateUint32ArrayFromHex: Invalid hex string: ' + hexValues[i]);
+        }
+        // Parse as 32-bit unsigned integer
+        result[i] = parseInt(hexStr, 16) >>> 0;
+      }
+      return result;
+    },
+
+    /**
+     * Create byte array from hex string values (for cryptographic constants)
+     * @param {Array<string>} hexValues - Array of hex strings (each representing bytes)
+     * @returns {Array} Array of byte values
+     */
+    CreateByteArrayFromHex: function(hexValues) {
+      const result = [];
+      for (let i = 0; i < hexValues.length; i++) {
+        let hexStr = hexValues[i];
+        // Remove 0x prefix if present
+        if (hexStr.startsWith('0x') || hexStr.startsWith('0X')) {
+          hexStr = hexStr.substring(2);
+        }
+        // Validate hex string
+        if (!/^[0-9A-Fa-f]+$/.test(hexStr)) {
+          throw new Error('CreateByteArrayFromHex: Invalid hex string: ' + hexValues[i]);
+        }
+        // Convert hex string to bytes
+        const bytes = OpCodes.Hex8ToBytes(hexStr);
+        for (let j = 0; j < bytes.length; j++) {
+          result.push(bytes[j]);
+        }
+      }
+      return result;
+    },
+
+    /**
+     * Create array of 64-bit values as [high32, low32] pairs from hex strings
+     * @param {Array<string>} hexValues - Array of 16-character hex strings representing 64-bit values
+     * @returns {Array<Array<number>>} Array of [high32, low32] pairs
+     */
+    CreateUint64ArrayFromHex: function(hexValues) {
+      const result = [];
+      for (let i = 0; i < hexValues.length; i++) {
+        let hexStr = hexValues[i];
+        // Remove 0x prefix if present
+        if (hexStr.startsWith('0x') || hexStr.startsWith('0X')) {
+          hexStr = hexStr.substring(2);
+        }
+        // Validate hex string
+        if (!/^[0-9A-Fa-f]+$/.test(hexStr)) {
+          throw new Error('CreateUint64ArrayFromHex: Invalid hex string: ' + hexValues[i]);
+        }
+        // Pad to 16 characters if needed
+        hexStr = hexStr.padStart(16, '0');
+        if (hexStr.length !== 16) {
+          throw new Error('CreateUint64ArrayFromHex: Hex string must represent 64-bit value: ' + hexValues[i]);
+        }
+        // Split into high and low 32-bit parts
+        const high = parseInt(hexStr.substring(0, 8), 16) >>> 0;
+        const low = parseInt(hexStr.substring(8, 16), 16) >>> 0;
+        result.push([high, low]);
+      }
+      return result;
     }
 
   };

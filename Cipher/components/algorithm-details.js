@@ -21,21 +21,54 @@ class AlgorithmDetails {
      * Show the modal with algorithm details
      */
     show(algorithm) {
-        this.currentAlgorithm = algorithm;
-        
-        if (!this.element) {
-            this.createElement();
-            document.body.appendChild(this.element);
+        try {
+            this.currentAlgorithm = algorithm;
+            
+            if (!this.element) {
+                this.createElement();
+                document.body.appendChild(this.element);
+            }
+            
+            this.populateContent();
+            this.element.classList.add('visible');
+            
+            // Make instance globally accessible for onclick handlers
+            window.algorithmDetailsInstance = this;
+            
+            // Focus management for accessibility
+            this.element.focus();
+        } catch (error) {
+            console.error('Error showing algorithm details modal:', error);
+            console.error('Algorithm:', algorithm ? algorithm.name : 'undefined');
+            
+            // Try to show a fallback error modal
+            try {
+                if (!this.element) {
+                    this.createElement();
+                    document.body.appendChild(this.element);
+                }
+                
+                const content = this.element.querySelector('.algorithm-details-content');
+                if (content) {
+                    content.innerHTML = `
+                        <div class="error-modal">
+                            <h2>Error Loading Algorithm Details</h2>
+                            <p>Sorry, there was an error loading the details for this algorithm.</p>
+                            <p><strong>Algorithm:</strong> ${algorithm ? algorithm.name : 'Unknown'}</p>
+                            <p><strong>Error:</strong> ${error.message}</p>
+                            <button onclick="window.algorithmDetailsInstance.hide()" class="btn btn-primary">Close</button>
+                        </div>
+                    `;
+                }
+                
+                this.element.classList.add('visible');
+                window.algorithmDetailsInstance = this;
+                this.element.focus();
+            } catch (fallbackError) {
+                console.error('Even the fallback modal failed:', fallbackError);
+                alert('Error loading algorithm details: ' + error.message);
+            }
         }
-        
-        this.populateContent();
-        this.element.classList.add('visible');
-        
-        // Make instance globally accessible for onclick handlers
-        window.algorithmDetailsInstance = this;
-        
-        // Focus management for accessibility
-        this.element.focus();
     }
 
     /**
@@ -637,12 +670,19 @@ class AlgorithmDetails {
             'United Kingdom': 'gb',
             'Russia': 'ru',
             'China': 'cn',
-            'Japan': 'jp'
+            'Japan': 'jp',
+            'Unknown': null, // Special case for unknown countries
+            'International': null // Special case for international standards
         };
         
         const code = countryMap[country.name];
-        if (!code) {
+        if (code === undefined) {
             throw new Error(`AlgorithmDetails: No country code mapping found for '${country.name}'. Add mapping to AlgorithmFramework.CountryCode`);
+        }
+        
+        // Return empty string for unknown countries (no flag)
+        if (code === null) {
+            return '';
         }
         
         return `<img class="country-flag" src="https://flagcdn.com/16x12/${code.toLowerCase()}.png" alt="${code}" onerror="this.style.display='none'">`;
