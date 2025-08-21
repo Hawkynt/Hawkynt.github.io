@@ -30,9 +30,15 @@ class CipherController {
         this.renderAlgorithms();
         this.updateStats();
         
+        // Initialize testing tab
+        this.updateTestingTabResults();
+        
         console.log('✅ Application initialized successfully');
         console.log('📊 Loaded algorithms:', this.getAllAlgorithms().length);
         console.log('📋 Algorithm names:', this.getAllAlgorithms().map(a => a.name));
+        
+        // Auto-run tests for all algorithms
+        setTimeout(() => this.autoRunAllTests(), 1000);
     }
     
     setupEventListeners() {
@@ -46,6 +52,14 @@ class CipherController {
         const categoryFilter = document.getElementById('category-filter');
         if (categoryFilter) {
             categoryFilter.addEventListener('change', (e) => this.filterByCategory(e.target.value));
+        }
+        
+        // Global progress bar click to navigate to Testing tab
+        const globalProgressContainer = document.getElementById('global-progress-container');
+        if (globalProgressContainer) {
+            globalProgressContainer.addEventListener('click', () => {
+                this.switchTab('testing');
+            });
         }
         
         // Test grid functionality
@@ -120,6 +134,239 @@ class CipherController {
      */
     getAlgorithm(name) {
         return AlgorithmFramework.Find(name);
+    }
+    
+    /**
+     * Auto-run tests for all algorithms after page load
+     */
+    async autoRunAllTests() {
+        console.log('🧪 Starting auto-test for all algorithms...');
+        
+        const algorithms = this.getAllAlgorithms().filter(alg => alg.tests && alg.tests.length > 0);
+        console.log(`📊 Found ${algorithms.length} algorithms with test vectors`);
+        
+        // Show global testing indicator
+        this.updateGlobalTestingProgress(0, algorithms.length, `Starting tests...`);
+        
+        // Process algorithms one by one with delay
+        for (let i = 0; i < algorithms.length; i++) {
+            const algorithm = algorithms[i];
+            
+            try {
+                // Update global progress
+                this.updateGlobalTestingProgress(i, algorithms.length, `Testing ${algorithm.name}...`);
+                
+                // Update card to show testing state (hourglass)
+                this.updateCardTestingState(algorithm.name, true);
+                
+                // Give visual time to see hourglass
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
+                // Run tests for this algorithm
+                await this.runAlgorithmTests(algorithm);
+                
+                // Update testing tab with results
+                this.updateTestingTabResults();
+                
+                // Small delay between algorithms
+                await new Promise(resolve => setTimeout(resolve, 200));
+                
+            } catch (error) {
+                console.error(`❌ Auto-test failed for ${algorithm.name}:`, error);
+                
+                // Store failed result
+                algorithm.testResults = {
+                    passed: 0,
+                    total: algorithm.tests?.length || 0,
+                    lastUpdated: Date.now(),
+                    autoRun: true
+                };
+                
+                // Update card to show failure
+                this.updateCardTestingState(algorithm.name, false);
+            }
+        }
+        
+        // Complete global testing
+        this.updateGlobalTestingProgress(algorithms.length, algorithms.length, `Completed testing ${algorithms.length} algorithms`);
+        
+        // Final update to testing tab
+        this.updateTestingTabResults();
+        
+        console.log('✅ Auto-test completed for all algorithms');
+    }
+    
+    /**
+     * Run tests for a single algorithm
+     */
+    async runAlgorithmTests(algorithm) {
+        if (!algorithm.tests || algorithm.tests.length === 0) {
+            return;
+        }
+        
+        let passedTests = 0;
+        const totalTests = algorithm.tests.length;
+        const startTime = performance.now();
+        
+        // Test each vector
+        for (const test of algorithm.tests) {
+            try {
+                const result = this.executeAlgorithmTest(algorithm, test);
+                if (result.success) {
+                    passedTests++;
+                }
+            } catch (error) {
+                console.warn(`Test failed for ${algorithm.name}:`, error.message);
+            }
+        }
+        
+        const duration = performance.now() - startTime;
+        
+        // Store results on algorithm
+        algorithm.testResults = {
+            passed: passedTests,
+            total: totalTests,
+            duration: duration,
+            lastUpdated: Date.now(),
+            autoRun: true
+        };
+        
+        // Update the card UI
+        this.updateCardTestingState(algorithm.name, false);
+    }
+    
+    /**
+     * Execute a single test for an algorithm
+     */
+    executeAlgorithmTest(algorithm, test) {
+        const startTime = performance.now();
+        
+        try {
+            // Validate test structure
+            if (!test.input || !test.expected) {
+                return {
+                    success: false,
+                    error: 'Test vector missing required input or expected output',
+                    duration: performance.now() - startTime
+                };
+            }
+            
+            // Create algorithm instance
+            const instance = algorithm.CreateInstance();
+            if (!instance) {
+                return {
+                    success: false,
+                    error: 'Failed to create algorithm instance',
+                    duration: performance.now() - startTime
+                };
+            }
+            
+            // Feed input data
+            instance.Feed(test.input);
+            
+            // Get output
+            const output = instance.Result();
+            
+            // Compare with expected
+            const success = this.compareByteArrays(output, test.expected);
+            
+            return {
+                success: success,
+                output: output,
+                expected: test.expected,
+                duration: performance.now() - startTime
+            };
+            
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message,
+                duration: performance.now() - startTime
+            };
+        }
+    }
+    
+    /**
+     * Compare two byte arrays for equality
+     */
+    compareByteArrays(arr1, arr2) {
+        if (!arr1 || !arr2) return false;
+        if (arr1.length !== arr2.length) return false;
+        
+        for (let i = 0; i < arr1.length; i++) {
+            if (arr1[i] !== arr2[i]) return false;
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Update algorithm card testing state (show hourglass during testing)
+     */
+    updateCardTestingState(algorithmName, isTesting) {
+        const algorithmCard = document.querySelector(`[data-name="${algorithmName}"]`);
+        if (!algorithmCard) {
+            console.warn(`⚠️ Card not found for algorithm: ${algorithmName}`);
+            return;
+        }
+        
+        const testButton = algorithmCard.querySelector('.card-test-btn');
+        if (!testButton) {
+            console.warn(`⚠️ Test button not found for algorithm: ${algorithmName}`);
+            return;
+        }
+        
+        if (isTesting) {
+            // Store original content and show hourglass
+            const originalText = testButton.innerHTML;
+            console.log(`⏳ Starting test for ${algorithmName}, original text: "${originalText}"`);
+            testButton.setAttribute('data-original-text', originalText);
+            // Replace the test tube emoji with hourglass, handling any additional content like badges
+            const updatedText = originalText.replace('🧪', '⏳');
+            console.log(`⏳ Updated text: "${updatedText}"`);
+            testButton.innerHTML = updatedText;
+            testButton.disabled = true;
+            testButton.style.opacity = '0.8';
+            testButton.style.backgroundColor = '#ffa500';
+            testButton.style.transform = 'scale(0.95)';
+            testButton.style.transition = 'all 0.2s ease';
+        } else {
+            // Restore original content and update status
+            const originalText = testButton.getAttribute('data-original-text');
+            if (originalText) {
+                testButton.innerHTML = originalText;
+                testButton.removeAttribute('data-original-text');
+            }
+            testButton.disabled = false;
+            testButton.style.opacity = '1';
+            testButton.style.backgroundColor = '';
+            testButton.style.transform = '';
+            testButton.style.transition = '';
+            
+            // Update status color based on results
+            const algorithm = this.getAlgorithm(algorithmName);
+            if (algorithm && algorithm.testResults) {
+                const { passed, total } = algorithm.testResults;
+                let status = 'untested';
+                
+                if (total === 0) {
+                    status = 'untested';
+                } else if (passed === 0) {
+                    status = 'none';
+                } else if (passed === total) {
+                    status = 'all';
+                } else {
+                    status = 'some';
+                }
+                
+                // Remove old status classes
+                testButton.classList.remove('test-status-none', 'test-status-some', 'test-status-all', 'test-status-untested');
+                
+                // Add new status class
+                testButton.classList.add(`test-status-${status}`);
+                testButton.setAttribute('data-test-status', status);
+            }
+        }
     }
     
     /**
@@ -436,6 +683,154 @@ class CipherController {
         if (typeof category === 'string') return category;
         if (category && category.name) return category.name;
         return 'unknown';
+    }
+
+    /**
+     * Update global testing progress indicator
+     */
+    updateGlobalTestingProgress(current, total, message) {
+        const progressContainer = document.getElementById('global-progress-container');
+        const progressFill = document.getElementById('global-test-progress-fill');
+        const progressText = document.getElementById('global-test-progress-text');
+        
+        // Show progress bar when testing starts
+        if (progressContainer) {
+            progressContainer.style.display = current > 0 || total > 0 ? 'block' : 'none';
+        }
+        
+        if (progressFill) {
+            const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+            progressFill.style.width = `${percentage}%`;
+        }
+        
+        if (progressText) {
+            progressText.textContent = message || `${current}/${total} algorithms tested`;
+        }
+        
+        
+        console.log(`📊 Testing progress: ${current}/${total} - ${message}`);
+    }
+    
+    /**
+     * Update the Testing tab with current test results
+     */
+    updateTestingTabResults() {
+        const algorithms = this.getAllAlgorithms();
+        const testedAlgorithms = algorithms.filter(alg => alg.testResults);
+        
+        // Update summary statistics
+        let passed = 0, partial = 0, failed = 0;
+        
+        testedAlgorithms.forEach(alg => {
+            if (alg.testResults.total === 0) return;
+            
+            if (alg.testResults.passed === 0) {
+                failed++;
+            } else if (alg.testResults.passed === alg.testResults.total) {
+                passed++;
+            } else {
+                partial++;
+            }
+        });
+        
+        // Update summary UI
+        const passedEl = document.getElementById('passed-algorithms');
+        const partialEl = document.getElementById('partial-algorithms');
+        const failedEl = document.getElementById('failed-algorithms');
+        const successRateEl = document.getElementById('success-rate');
+        
+        if (passedEl) passedEl.textContent = passed;
+        if (partialEl) partialEl.textContent = partial;
+        if (failedEl) failedEl.textContent = failed;
+        if (successRateEl) {
+            const total = passed + partial + failed;
+            const rate = total > 0 ? Math.round((passed / total) * 100) : 0;
+            successRateEl.textContent = `${rate}%`;
+        }
+        
+        // Update test grid
+        this.populateTestGrid(algorithms);
+    }
+    
+    /**
+     * Populate the test grid with algorithm results
+     */
+    populateTestGrid(algorithms) {
+        const tbody = document.getElementById('test-grid-body');
+        if (!tbody) return;
+        
+        tbody.innerHTML = '';
+        
+        algorithms.forEach(algorithm => {
+            const row = document.createElement('tr');
+            const testCount = algorithm.tests ? algorithm.tests.length : 0;
+            const results = algorithm.testResults;
+            
+            let status = '⚪ Not Tested';
+            let statusClass = 'untested';
+            let passed = 0, total = testCount;
+            let successRate = 0;
+            let duration = '-';
+            let lastTested = '-';
+            
+            if (results) {
+                passed = results.passed || 0;
+                total = results.total || testCount;
+                lastTested = new Date(results.lastUpdated).toLocaleTimeString();
+                
+                // Format duration
+                if (results.duration !== undefined) {
+                    if (results.duration < 1000) {
+                        duration = `${Math.round(results.duration)}ms`;
+                    } else {
+                        duration = `${Math.round(results.duration / 1000 * 100) / 100}s`;
+                    }
+                }
+                
+                if (total === 0) {
+                    status = '⚪ No Tests';
+                } else if (passed === 0) {
+                    status = '❌ Failed';
+                    statusClass = 'failed';
+                } else if (passed === total) {
+                    status = '✅ Passed';
+                    statusClass = 'passed';
+                } else {
+                    status = '🟡 Partial';
+                    statusClass = 'partial';
+                }
+                
+                successRate = total > 0 ? Math.round((passed / total) * 100) : 0;
+            }
+            
+            // Apply CSS class for row background tinting
+            row.className = statusClass;
+            
+            row.innerHTML = `
+                <td><input type="checkbox" class="row-checkbox" data-algorithm="${algorithm.name}" /></td>
+                <td><span class="test-status ${statusClass}">${status}</span></td>
+                <td>${algorithm.name}</td>
+                <td>${this.getCategoryString(algorithm.category)}</td>
+                <td>${testCount}</td>
+                <td>${passed}</td>
+                <td>${total - passed}</td>
+                <td>${successRate}%</td>
+                <td>${duration}</td>
+                <td>${lastTested}</td>
+            `;
+            
+            // Add checkbox event listener for row selection
+            const checkbox = row.querySelector('.row-checkbox');
+            checkbox.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    row.classList.add('selected');
+                } else {
+                    row.classList.remove('selected');
+                }
+            });
+            
+            tbody.appendChild(row);
+        });
     }
 
     setupTestGridEventListeners() {

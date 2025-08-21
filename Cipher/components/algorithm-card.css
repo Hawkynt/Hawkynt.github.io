@@ -80,7 +80,8 @@
 
 .badge-country {
     background: rgba(0, 0, 0, 0.1);
-    color: #4a5568;
+    color: white;
+    font-weight: 500;
 }
 
 .badge-year {
@@ -967,4 +968,42 @@
     margin-left: 0.25rem;
     min-width: 1.5rem;
     text-align: center;
+}
+
+/* Test Status Button Colors */
+.test-status-untested {
+    /* No special styling - uses default button styling */
+}
+
+.test-status-none {
+    background-color: #e53e3e !important; /* Red - all tests failed (including single test) */
+    color: white !important;
+    border-color: #e53e3e !important;
+}
+
+.test-status-none:hover {
+    background-color: #c53030 !important;
+    border-color: #c53030 !important;
+}
+
+.test-status-some {
+    background-color: #d69e2e !important; /* Yellow - some tests pass */
+    color: white !important;
+    border-color: #d69e2e !important;
+}
+
+.test-status-some:hover {
+    background-color: #b7791f !important;
+    border-color: #b7791f !important;
+}
+
+.test-status-all {
+    background-color: #38a169 !important; /* Green - all tests pass */
+    color: white !important;
+    border-color: #38a169 !important;
+}
+
+.test-status-all:hover {
+    background-color: #2f855a !important;
+    border-color: #2f855a !important;
 }

@@ -69,14 +69,20 @@ class AlgorithmCard {
         return badges;
     }
     
+    /**
+     * Create action buttons for the algorithm card
+     * @returns {string} HTML string for the action buttons
+     */
     createActions() {
         const testVectorCount = this.getTestVectorCount();
         const testVectorBadge = testVectorCount > 0 ? `<span class="action-badge">${testVectorCount}</span>` : '';
+        const testStatus = this.getTestStatus();
+        const testButtonClass = `btn btn-secondary btn-small card-test-btn test-status-${testStatus}`;
         
         return `
             <div class="card-actions">
                 <button class="btn btn-primary btn-small card-details-btn">📖 Details</button>
-                <button class="btn btn-secondary btn-small card-test-btn" title="Run test vectors">🧪 Test ${testVectorBadge}</button>
+                <button class="${testButtonClass}" title="Run test vectors" data-test-status="${testStatus}">🧪 Test ${testVectorBadge}</button>
                 <button class="btn btn-secondary btn-small card-use-btn">🔧 Use</button>
             </div>
         `;
@@ -221,11 +227,44 @@ class AlgorithmCard {
         return this.algorithm.year || null;
     }
     
+    /**
+     * Get the number of test vectors for this algorithm
+     * @returns {number} The number of test vectors
+     */
     getTestVectorCount() {
         if (this.algorithm.tests && Array.isArray(this.algorithm.tests)) {
             return this.algorithm.tests.length;
         }
         return 0;
+    }
+    
+    /**
+     * Get the test status for this algorithm based on test results
+     * @returns {'none'|'some'|'all'|'untested'} Test status indicator
+     */
+    getTestStatus() {
+        const testCount = this.getTestVectorCount();
+        
+        if (testCount === 0) {
+            return 'untested'; // No test vectors - no tinting
+        }
+        
+        // Check if we have stored test results
+        if (this.algorithm.testResults) {
+            const passed = this.algorithm.testResults.passed || 0;
+            const total = this.algorithm.testResults.total || testCount;
+            
+            if (passed === 0) {
+                return 'none'; // None passed (including single test failure) - red
+            } else if (passed === total) {
+                return 'all'; // All passed - green
+            } else {
+                return 'some'; // Some passed - yellow
+            }
+        }
+        
+        // Default to 'untested' (no tinting) if we have tests but no results yet
+        return 'untested';
     }
 }
 
