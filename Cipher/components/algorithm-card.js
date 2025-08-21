@@ -164,8 +164,29 @@ class AlgorithmCard {
     }
     
     getCategoryKey() {
-        if (this.algorithm.category && typeof this.algorithm.category === 'object') {
-            return this.algorithm.category.name ? this.algorithm.category.name.toLowerCase().replace(/\s+/g, '') : 'unknown';
+        if (this.algorithm.category && typeof this.algorithm.category === 'object' && this.algorithm.category.name) {
+            // Use the same category mapping as the controller
+            const categoryMap = {
+                'Asymmetric Ciphers': 'asymmetric',
+                'Block Ciphers': 'block',
+                'Stream Ciphers': 'stream',
+                'Hash Functions': 'hash',
+                'Compression Algorithms': 'compression',
+                'Encoding Schemes': 'encoding',
+                'Classical Ciphers': 'classical',
+                'Message Authentication': 'mac',
+                'Key Derivation Functions': 'kdf',
+                'Error Correction': 'ecc',
+                'Checksums': 'checksum',
+                'Cipher Modes': 'mode',
+                'Padding Schemes': 'padding',
+                'Authenticated Encryption': 'aead',
+                'Special Algorithms': 'special',
+                'Post-Quantum Cryptography': 'pqc',
+                'Random Number Generators': 'random'
+            };
+            
+            return categoryMap[this.algorithm.category.name] || this.algorithm.category.name.toLowerCase().replace(/\s+/g, '-');
         }
         return String(this.algorithm.category || 'unknown').toLowerCase();
     }

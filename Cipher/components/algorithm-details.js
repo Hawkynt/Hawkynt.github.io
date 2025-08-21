@@ -583,9 +583,8 @@ class AlgorithmDetails {
         html += '</div>';
         html += '<pre class="code-content" id="generated-code"><code class="language-javascript">';
         
-        // Generate initial code (JavaScript by default)
-        const initialCode = this.generateCodeForLanguage('javascript');
-        html += this.escapeHtml(initialCode);
+        // Generate initial code (JavaScript by default) - placeholder for now
+        html += '// Loading source code...';
         
         html += '</code></pre>';
         html += '</div>';
@@ -629,13 +628,11 @@ class AlgorithmDetails {
         // Store current language
         this.currentLanguage = 'javascript';
         
-        // Apply syntax highlighting if available
+        // Apply syntax highlighting if available - load actual code asynchronously
         const codeElement = content.querySelector('#generated-code code');
         if (codeElement) {
-            // Add a small delay to ensure Prism is fully loaded
-            setTimeout(() => {
-                this.applySyntaxHighlighting(codeElement, 'javascript');
-            }, 100);
+            // Load the actual JavaScript code
+            this.loadCodeAsync('javascript', codeElement);
         }
     }
 
@@ -737,7 +734,28 @@ class AlgorithmDetails {
             throw new Error(`AlgorithmDetails: Missing category name for ${algorithm.name}`);
         }
         
-        return algorithm.category.name.toLowerCase().replace(/\s+/g, '');
+        // Use the same category mapping as the controller
+        const categoryMap = {
+            'Asymmetric Ciphers': 'asymmetric',
+            'Block Ciphers': 'block',
+            'Stream Ciphers': 'stream',
+            'Hash Functions': 'hash',
+            'Compression Algorithms': 'compression',
+            'Encoding Schemes': 'encoding',
+            'Classical Ciphers': 'classical',
+            'Message Authentication': 'mac',
+            'Key Derivation Functions': 'kdf',
+            'Error Correction': 'ecc',
+            'Checksums': 'checksum',
+            'Cipher Modes': 'mode',
+            'Padding Schemes': 'padding',
+            'Authenticated Encryption': 'aead',
+            'Special Algorithms': 'special',
+            'Post-Quantum Cryptography': 'pqc',
+            'Random Number Generators': 'random'
+        };
+        
+        return categoryMap[algorithm.category.name] || algorithm.category.name.toLowerCase().replace(/\s+/g, '-');
     }
 
     /**
@@ -1036,11 +1054,16 @@ class AlgorithmDetails {
     /**
      * Generate code for a specific language
      */
-    generateCodeForLanguage(languageKey) {
+    async generateCodeForLanguage(languageKey) {
         const algorithm = this.currentAlgorithm;
         
         if (!algorithm) {
             throw new Error('AlgorithmDetails: No algorithm available for code generation');
+        }
+        
+        // For JavaScript, show the actual source code if available
+        if (languageKey === 'javascript') {
+            return await this.getActualJavaScriptSource(algorithm);
         }
         
         const config = this.getCodeGenerationConfig();
@@ -1058,6 +1081,647 @@ class AlgorithmDetails {
             // Generate AlgorithmFramework structure code
             return this.generateFallbackCode(languageKey);
         }
+    }
+
+    /**
+     * Get the actual JavaScript source code for the algorithm
+     */
+    async getActualJavaScriptSource(algorithm) {
+        // Try to get the source from the algorithm's file
+        if (algorithm.sourceCode) {
+            return algorithm.sourceCode;
+        }
+        
+        // Try to read the original file directly
+        const sourceFromFile = await this.loadOriginalJavaScriptFile(algorithm);
+        if (sourceFromFile) {
+            return sourceFromFile;
+        }
+        
+        // Try to get source from the constructor if available
+        if (algorithm.constructor && algorithm.constructor.toString) {
+            const constructorSource = algorithm.constructor.toString();
+            if (constructorSource !== '[native code]') {
+                return constructorSource;
+            }
+        }
+        
+        // Try to reconstruct source from algorithm properties and methods
+        let source = this.reconstructJavaScriptSource(algorithm);
+        
+        // If we still don't have real source, use a more accurate template
+        if (!source || source.length < 100) {
+            source = this.generateActualJavaScriptTemplate(algorithm);
+        }
+        
+        return source;
+    }
+
+    /**
+     * Load code asynchronously and update the display
+     */
+    async loadCodeAsync(languageKey, codeElement) {
+        try {
+            // Show loading state
+            codeElement.textContent = '// Loading source code...';
+            
+            // Generate the code
+            const generatedCode = await this.generateCodeForLanguage(languageKey);
+            
+            // Update the display
+            codeElement.textContent = generatedCode;
+            
+            // Apply syntax highlighting
+            setTimeout(() => {
+                this.applySyntaxHighlighting(codeElement, languageKey);
+            }, 100);
+            
+        } catch (error) {
+            console.error('Failed to load code:', error);
+            codeElement.textContent = `// Error loading source code: ${error.message}`;
+        }
+    }
+
+    /**
+     * Load the original JavaScript file for the algorithm
+     */
+    async loadOriginalJavaScriptFile(algorithm) {
+        try {
+            // Try to determine possible file paths
+            const possiblePaths = this.getAlgorithmFilePaths(algorithm);
+            
+            // Try each path until one works
+            for (const filePath of possiblePaths) {
+                try {
+                    console.log(`Attempting to load source from: ${filePath}`);
+                    
+                    const response = await fetch(filePath);
+                    if (response.ok) {
+                        const sourceCode = await response.text();
+                        console.log(`Successfully loaded ${sourceCode.length} characters from ${filePath}`);
+                        return sourceCode;
+                    } else {
+                        console.log(`Failed to load ${filePath}: ${response.status}`);
+                    }
+                } catch (fetchError) {
+                    console.log(`Fetch failed for ${filePath}:`, fetchError.message);
+                }
+            }
+            
+            console.warn(`No source file found for ${algorithm.name}`);
+            return null;
+            
+        } catch (error) {
+            console.warn('Failed to load original JavaScript file:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Get all possible file paths for an algorithm
+     */
+    getAlgorithmFilePaths(algorithm) {
+        const paths = [];
+        
+        // Check if algorithm has a file path property
+        if (algorithm.filePath) {
+            paths.push(algorithm.filePath);
+        }
+        
+        // Generate paths based on algorithm name and category
+        const fileName = this.getAlgorithmFileName(algorithm.name);
+        if (!fileName) return paths;
+        
+        // Try category-based path
+        if (algorithm.category && algorithm.category.name) {
+            const categoryPath = this.getCategoryPath(algorithm.category.name);
+            if (categoryPath) {
+                paths.push(`algorithms/${categoryPath}/${fileName}.js`);
+            }
+        }
+        
+        // Try all common category folders
+        const commonCategories = [
+            'classical', 'block', 'stream', 'hash', 'mac', 'encoding', 
+            'compression', 'asymmetric', 'ecc', 'modes', 'padding',
+            'kdf', 'special', 'checksum', 'pqc'
+        ];
+        
+        for (const category of commonCategories) {
+            paths.push(`algorithms/${category}/${fileName}.js`);
+        }
+        
+        // Try direct paths
+        paths.push(`algorithms/${fileName}.js`);
+        paths.push(`${fileName}.js`);
+        
+        // Remove duplicates
+        return [...new Set(paths)];
+    }
+
+    /**
+     * Determine the file path for an algorithm
+     */
+    getAlgorithmFilePath(algorithm) {
+        // Check if algorithm has a file path property
+        if (algorithm.filePath) {
+            return algorithm.filePath;
+        }
+        
+        // Try to determine from algorithm name and category
+        if (algorithm.category && algorithm.category.name) {
+            const categoryPath = this.getCategoryPath(algorithm.category.name);
+            const fileName = this.getAlgorithmFileName(algorithm.name);
+            
+            if (categoryPath && fileName) {
+                return `algorithms/${categoryPath}/${fileName}.js`;
+            }
+        }
+        
+        // Try common patterns
+        const fileName = this.getAlgorithmFileName(algorithm.name);
+        if (fileName) {
+            // Try different category folders
+            const commonCategories = [
+                'classical', 'block', 'stream', 'hash', 'mac', 'encoding', 
+                'compression', 'asymmetric', 'ecc', 'modes', 'padding',
+                'kdf', 'special', 'checksum', 'pqc'
+            ];
+            
+            for (const category of commonCategories) {
+                // We'll try the first match in the calling code
+                return `algorithms/${category}/${fileName}.js`;
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Get category path from category name
+     */
+    getCategoryPath(categoryName) {
+        const categoryMap = {
+            'Classical Cipher': 'classical',
+            'Block Cipher': 'block', 
+            'Stream Cipher': 'stream',
+            'Hash Function': 'hash',
+            'MAC': 'mac',
+            'Encoding': 'encoding',
+            'Compression': 'compression',
+            'Asymmetric Cipher': 'asymmetric',
+            'Elliptic Curve': 'ecc',
+            'Mode of Operation': 'modes',
+            'Padding': 'padding',
+            'Key Derivation': 'kdf',
+            'Special': 'special',
+            'Checksum': 'checksum',
+            'Post-Quantum': 'pqc'
+        };
+        
+        return categoryMap[categoryName] || categoryName.toLowerCase().replace(/\s+/g, '');
+    }
+
+    /**
+     * Get file name from algorithm name
+     */
+    getAlgorithmFileName(algorithmName) {
+        if (!algorithmName) return null;
+        
+        // Convert algorithm name to likely file name
+        return algorithmName
+            .toLowerCase()
+            .replace(/[^a-z0-9\-]/g, '-')  // Replace non-alphanumeric with hyphens
+            .replace(/-+/g, '-')           // Multiple hyphens to single
+            .replace(/^-|-$/g, '');        // Remove leading/trailing hyphens
+    }
+
+    /**
+     * Reconstruct JavaScript source from algorithm object
+     */
+    reconstructJavaScriptSource(algorithm) {
+        try {
+            let source = '';
+            
+            // Add header comment
+            source += `/*\n * ${algorithm.name}\n`;
+            if (algorithm.description) source += ` * ${algorithm.description}\n`;
+            if (algorithm.inventor) source += ` * Inventor: ${algorithm.inventor}\n`;
+            if (algorithm.year && algorithm.year !== 2025) source += ` * Year: ${algorithm.year}\n`;
+            source += ' */\n\n';
+            
+            // Add the actual algorithm class if we can access it
+            const className = algorithm.constructor.name || algorithm.name.replace(/[^a-zA-Z0-9]/g, '');
+            
+            // Try to get the actual class source
+            if (algorithm.constructor && algorithm.constructor.toString) {
+                const classSource = algorithm.constructor.toString();
+                if (classSource && classSource !== '[native code]' && !classSource.includes('function Object()')) {
+                    source += '// Algorithm Class\n';
+                    source += classSource + '\n\n';
+                }
+            }
+            
+            // Try to get instance class source by checking if CreateInstance returns an object with a constructor
+            let instanceSource = '';
+            try {
+                if (algorithm.CreateInstance && typeof algorithm.CreateInstance === 'function') {
+                    const instance = algorithm.CreateInstance(false);
+                    if (instance && instance.constructor && instance.constructor.toString) {
+                        const instanceClassSource = instance.constructor.toString();
+                        if (instanceClassSource && instanceClassSource !== '[native code]' && 
+                            !instanceClassSource.includes('function Object()')) {
+                            instanceSource = '// Algorithm Instance Class\n';
+                            instanceSource += instanceClassSource + '\n\n';
+                        }
+                    }
+                    
+                    // Also get all instance methods
+                    if (instance) {
+                        const instanceMethods = this.extractInstanceMethods(instance);
+                        if (instanceMethods) {
+                            instanceSource += instanceMethods;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('Could not extract instance source:', e);
+            }
+            
+            // If we have actual source, use it
+            if (source.length > 200 || instanceSource.length > 100) {
+                source += instanceSource;
+                
+                // Add registration if not present
+                if (!source.includes('RegisterAlgorithm')) {
+                    source += `\n// Register the algorithm\n`;
+                    source += `RegisterAlgorithm(new ${className}());\n`;
+                }
+                
+                return source;
+            }
+            
+            // Fallback to reconstructed source
+            return this.buildComprehensiveJavaScriptSource(algorithm);
+            
+        } catch (error) {
+            console.warn('Failed to reconstruct JavaScript source:', error);
+            return this.buildComprehensiveJavaScriptSource(algorithm);
+        }
+    }
+
+    /**
+     * Extract instance methods from an algorithm instance
+     */
+    extractInstanceMethods(instance) {
+        let methods = '';
+        
+        try {
+            // Get all methods from the instance prototype
+            const prototype = Object.getPrototypeOf(instance);
+            const methodNames = Object.getOwnPropertyNames(prototype);
+            
+            methodNames.forEach(methodName => {
+                if (methodName !== 'constructor' && typeof instance[methodName] === 'function') {
+                    try {
+                        const methodSource = instance[methodName].toString();
+                        if (methodSource && !methodSource.includes('[native code]')) {
+                            methods += `  // ${methodName} method\n`;
+                            methods += `  ${methodSource}\n\n`;
+                        }
+                    } catch (e) {
+                        // Skip methods we can't access
+                    }
+                }
+            });
+            
+            // Also check for methods directly on the instance
+            Object.getOwnPropertyNames(instance).forEach(propName => {
+                if (typeof instance[propName] === 'function' && propName !== 'constructor') {
+                    try {
+                        const methodSource = instance[propName].toString();
+                        if (methodSource && !methodSource.includes('[native code]')) {
+                            methods += `  // ${propName} method (instance property)\n`;
+                            methods += `  ${methodSource}\n\n`;
+                        }
+                    } catch (e) {
+                        // Skip
+                    }
+                }
+            });
+            
+        } catch (error) {
+            console.warn('Could not extract instance methods:', error);
+        }
+        
+        return methods;
+    }
+
+    /**
+     * Build comprehensive JavaScript source when actual source isn't available
+     */
+    buildComprehensiveJavaScriptSource(algorithm) {
+        let source = '';
+        
+        // Header
+        source += `/*\n * ${algorithm.name}\n`;
+        if (algorithm.description) source += ` * ${algorithm.description}\n`;
+        if (algorithm.inventor) source += ` * Inventor: ${algorithm.inventor}\n`;
+        if (algorithm.year && algorithm.year !== 2025) source += ` * Year: ${algorithm.year}\n`;
+        source += ' */\n\n';
+        
+        // Imports
+        source += 'const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,\n';
+        source += '        CryptoAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;\n\n';
+        
+        const className = algorithm.name.replace(/[^a-zA-Z0-9]/g, '');
+        
+        // Main Algorithm Class with all available properties and methods
+        source += `class ${className} extends CryptoAlgorithm {\n`;
+        source += '  constructor() {\n';
+        source += '    super();\n\n';
+        
+        // Add all algorithm properties
+        Object.keys(algorithm).forEach(key => {
+            if (typeof algorithm[key] !== 'function' && !key.startsWith('_')) {
+                const value = algorithm[key];
+                if (typeof value === 'string') {
+                    source += `    this.${key} = "${value}";\n`;
+                } else if (typeof value === 'number') {
+                    source += `    this.${key} = ${value};\n`;
+                } else if (typeof value === 'boolean') {
+                    source += `    this.${key} = ${value};\n`;
+                } else if (Array.isArray(value)) {
+                    source += `    this.${key} = [${value.slice(0, 5).join(', ')}${value.length > 5 ? ', ...' : ''}];\n`;
+                }
+            }
+        });
+        
+        source += '  }\n\n';
+        
+        // Add all algorithm methods
+        Object.getOwnPropertyNames(Object.getPrototypeOf(algorithm)).forEach(methodName => {
+            if (methodName !== 'constructor' && typeof algorithm[methodName] === 'function') {
+                try {
+                    const methodSource = algorithm[methodName].toString();
+                    if (methodSource && !methodSource.includes('[native code]')) {
+                        source += `  // ${methodName} method\n`;
+                        source += `  ${methodSource}\n\n`;
+                    }
+                } catch (e) {
+                    // Add a placeholder for methods we can't access
+                    source += `  // ${methodName} method\n`;
+                    source += `  ${methodName}() {\n`;
+                    source += `    // Implementation not accessible\n`;
+                    source += `  }\n\n`;
+                }
+            }
+        });
+        
+        source += '}\n\n';
+        
+        // Instance Class - try to get actual instance and extract its structure
+        source += `class ${className}Instance extends IAlgorithmInstance {\n`;
+        source += '  constructor(algorithm, isInverse = false) {\n';
+        source += '    super(algorithm);\n';
+        source += '    this.isInverse = isInverse;\n';
+        
+        // Try to get actual instance to see its properties
+        try {
+            if (algorithm.CreateInstance) {
+                const instance = algorithm.CreateInstance(false);
+                if (instance) {
+                    // Add instance properties
+                    Object.getOwnPropertyNames(instance).forEach(propName => {
+                        if (!propName.startsWith('_') && typeof instance[propName] !== 'function') {
+                            const value = instance[propName];
+                            if (typeof value === 'string') {
+                                source += `    this.${propName} = "${value}";\n`;
+                            } else if (typeof value === 'number') {
+                                source += `    this.${propName} = ${value};\n`;
+                            } else if (typeof value === 'boolean') {
+                                source += `    this.${propName} = ${value};\n`;
+                            } else if (Array.isArray(value)) {
+                                source += `    this.${propName} = [];\n`;
+                            } else if (value === null) {
+                                source += `    this.${propName} = null;\n`;
+                            }
+                        }
+                    });
+                }
+            }
+        } catch (e) {
+            // Fallback properties
+            source += '    this.inputBuffer = [];\n';
+        }
+        
+        source += '  }\n\n';
+        
+        // Add instance methods
+        try {
+            if (algorithm.CreateInstance) {
+                const instance = algorithm.CreateInstance(false);
+                if (instance) {
+                    // Get prototype methods
+                    const prototype = Object.getPrototypeOf(instance);
+                    Object.getOwnPropertyNames(prototype).forEach(methodName => {
+                        if (methodName !== 'constructor' && typeof instance[methodName] === 'function') {
+                            try {
+                                const methodSource = instance[methodName].toString();
+                                if (methodSource && !methodSource.includes('[native code]')) {
+                                    source += `  // ${methodName} method\n`;
+                                    source += `  ${methodSource}\n\n`;
+                                }
+                            } catch (e) {
+                                // Add placeholder
+                                source += `  // ${methodName} method\n`;
+                                source += `  ${methodName}() {\n`;
+                                source += `    // Implementation not accessible\n`;
+                                source += `  }\n\n`;
+                            }
+                        }
+                    });
+                    
+                    // Get instance methods
+                    Object.getOwnPropertyNames(instance).forEach(propName => {
+                        if (typeof instance[propName] === 'function' && propName !== 'constructor') {
+                            try {
+                                const methodSource = instance[propName].toString();
+                                if (methodSource && !methodSource.includes('[native code]')) {
+                                    source += `  // ${propName} method\n`;
+                                    source += `  ${methodSource}\n\n`;
+                                }
+                            } catch (e) {
+                                // Skip
+                            }
+                        }
+                    });
+                }
+            }
+        } catch (e) {
+            // Add standard methods as placeholders
+            source += '  Feed(data) {\n';
+            source += '    // Implementation not accessible\n';
+            source += '  }\n\n';
+            source += '  Result() {\n';
+            source += '    // Implementation not accessible\n';
+            source += '  }\n\n';
+        }
+        
+        source += '}\n\n';
+        
+        // Registration
+        source += `// Register the algorithm\n`;
+        source += `RegisterAlgorithm(new ${className}());\n`;
+        
+        return source;
+    }
+
+    /**
+     * Generate a more accurate JavaScript template when actual source isn't available
+     */
+    generateActualJavaScriptTemplate(algorithm) {
+        const config = this.getCodeGenerationConfig();
+        
+        let code = '';
+        
+        if (config.includeComments) {
+            code += `/*\n * ${algorithm.name}\n * ${algorithm.description}\n`;
+            if (algorithm.inventor) code += ` * Inventor: ${algorithm.inventor}\n`;
+            if (algorithm.year && algorithm.year !== 2025) code += ` * Year: ${algorithm.year}\n`;
+            if (algorithm.country) code += ` * Origin: ${algorithm.country.name}\n`;
+            code += ' */\n\n';
+        }
+        
+        // Import statement
+        code += '// Import AlgorithmFramework\n';
+        code += 'const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,\n';
+        code += '        CryptoAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;\n\n';
+        
+        const className = algorithm.name.replace(/[^a-zA-Z0-9]/g, '');
+        
+        // Main algorithm class with actual metadata
+        code += `class ${className} extends CryptoAlgorithm {\n`;
+        code += '  constructor() {\n';
+        code += '    super();\n\n';
+        
+        // Real algorithm metadata
+        code += `    this.name = "${algorithm.name}";\n`;
+        code += `    this.description = "${algorithm.description}";\n`;
+        if (algorithm.inventor) code += `    this.inventor = "${algorithm.inventor}";\n`;
+        if (algorithm.year && algorithm.year !== 2025) code += `    this.year = ${algorithm.year};\n`;
+        if (algorithm.category) code += `    this.category = CategoryType.${algorithm.category.name.toUpperCase().replace(/\s+/g, '_')};\n`;
+        if (algorithm.securityStatus) code += `    this.securityStatus = SecurityStatus.${algorithm.securityStatus.name.toUpperCase()};\n`;
+        if (algorithm.complexity) code += `    this.complexity = ComplexityType.${algorithm.complexity.name.toUpperCase()};\n`;
+        if (algorithm.country) code += `    this.country = CountryCode.${algorithm.country.name.replace(/\s+/g, '_').toUpperCase()};\n`;
+        if (algorithm.keySize) code += `    this.keySize = ${algorithm.keySize};\n`;
+        if (algorithm.blockSize) code += `    this.blockSize = ${algorithm.blockSize};\n`;
+        
+        // Test vectors if requested and available
+        if (config.includeTests && algorithm.tests && algorithm.tests.length > 0) {
+            code += '\n    // Test Vectors\n';
+            code += '    this.tests = [\n';
+            algorithm.tests.slice(0, 3).forEach((test, i) => {
+                code += '      {\n';
+                if (test.input) code += `        input: [${test.input.slice(0, 10).join(', ')}${test.input.length > 10 ? ', ...' : ''}],\n`;
+                if (test.expected) code += `        expected: [${test.expected.slice(0, 10).join(', ')}${test.expected.length > 10 ? ', ...' : ''}],\n`;
+                if (test.key !== undefined) code += `        key: ${Array.isArray(test.key) ? `[${test.key.join(', ')}]` : test.key},\n`;
+                if (test.shift !== undefined) code += `        shift: ${test.shift},\n`;
+                code += '      }' + (i < Math.min(algorithm.tests.length, 3) - 1 ? ',' : '') + '\n';
+            });
+            if (algorithm.tests.length > 3) {
+                code += `      // ... ${algorithm.tests.length - 3} more test vectors\n`;
+            }
+            code += '    ];\n';
+        }
+        
+        code += '  }\n\n';
+        
+        // CreateInstance method
+        code += '  // Create algorithm instance\n';
+        code += '  CreateInstance(isInverse = false) {\n';
+        code += `    return new ${className}Instance(this, isInverse);\n`;
+        code += '  }\n';
+        code += '}\n\n';
+        
+        // Instance class
+        code += `// Algorithm Instance Implementation\n`;
+        code += `class ${className}Instance extends IAlgorithmInstance {\n`;
+        code += '  constructor(algorithm, isInverse = false) {\n';
+        code += '    super(algorithm);\n';
+        code += '    this.isInverse = isInverse;\n';
+        code += '    this.inputBuffer = [];\n';
+        
+        // Add algorithm-specific properties
+        if (algorithm.name.toLowerCase().includes('caesar')) {
+            code += '    this.shift = 3; // Default Caesar shift\n';
+        } else if (algorithm.name.toLowerCase().includes('vigenere')) {
+            code += '    this.keyword = "KEY"; // Default Vigenère keyword\n';
+        } else if (algorithm.keySize) {
+            code += `    this.key = null; // ${algorithm.keySize}-bit key\n`;
+        }
+        
+        code += '  }\n\n';
+        
+        // Feed method
+        code += '  // Feed data to the algorithm\n';
+        code += '  Feed(data) {\n';
+        code += '    if (!data || data.length === 0) return;\n';
+        code += '    this.inputBuffer.push(...data);\n';
+        code += '  }\n\n';
+        
+        // Result method
+        code += '  // Get processed result\n';
+        code += '  Result() {\n';
+        code += '    if (this.inputBuffer.length === 0) return [];\n';
+        code += '    \n';
+        code += '    const output = this.processData(this.inputBuffer);\n';
+        code += '    this.inputBuffer = []; // Clear buffer\n';
+        code += '    return output;\n';
+        code += '  }\n\n';
+        
+        // Core algorithm method with hints based on algorithm type
+        code += '  // Core algorithm implementation\n';
+        code += '  processData(data) {\n';
+        
+        if (algorithm.name.toLowerCase().includes('caesar')) {
+            code += '    // Caesar cipher implementation\n';
+            code += '    return data.map(byte => {\n';
+            code += '      if (byte >= 65 && byte <= 90) { // A-Z\n';
+            code += '        return ((byte - 65 + this.shift) % 26) + 65;\n';
+            code += '      } else if (byte >= 97 && byte <= 122) { // a-z\n';
+            code += '        return ((byte - 97 + this.shift) % 26) + 97;\n';
+            code += '      }\n';
+            code += '      return byte; // Non-alphabetic characters unchanged\n';
+            code += '    });\n';
+        } else if (algorithm.name.toLowerCase().includes('base64')) {
+            code += '    // Base64 encoding/decoding implementation\n';
+            code += '    // Implementation would go here\n';
+            code += '    return data; // Placeholder\n';
+        } else {
+            code += '    // Algorithm-specific processing logic\n';
+            code += '    // Implementation would go here\n';
+            code += '    return data; // Placeholder\n';
+        }
+        
+        code += '  }\n';
+        code += '}\n\n';
+        
+        // Registration
+        code += '// Register the algorithm\n';
+        code += `RegisterAlgorithm(new ${className}());\n`;
+        
+        // Usage example if requested
+        if (config.includeExamples) {
+            code += '\n// Usage Example\n';
+            code += `const cipher = new ${className}();\n`;
+            code += 'const instance = cipher.CreateInstance();\n';
+            code += 'instance.Feed(OpCodes.AnsiToBytes("Hello World"));\n';
+            code += 'const result = instance.Result();\n';
+            code += 'console.log(OpCodes.BytesToAnsi(result));';
+        }
+        
+        return code;
     }
     
     /**
@@ -1449,27 +2113,19 @@ class AlgorithmDetails {
                 if (langInfo) {
                     languageName = langInfo.name;
                 }
-            }
-            languageDisplay.textContent = languageName;
+        }
+        languageDisplay.textContent = languageName;
         }
         
-        // Generate new code
-        const generatedCode = this.generateCodeForLanguage(languageKey);
-        
-        // Update code display
+        // Update code display with async loading
         const codeElement = this.element.querySelector('#generated-code code');
         if (codeElement) {
-            codeElement.textContent = generatedCode;
-            
-            // Apply syntax highlighting
-            this.applySyntaxHighlighting(codeElement, languageKey);
+            this.loadCodeAsync(languageKey, codeElement);
         }
         
         // Store current language
         this.currentLanguage = languageKey;
-    }
-    
-    /**
+    }    /**
      * Copy current code to clipboard
      */
     copyCurrentCode() {
