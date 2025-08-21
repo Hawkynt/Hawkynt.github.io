@@ -660,32 +660,31 @@ class AlgorithmDetails {
             throw new Error('AlgorithmDetails: Missing country name in CountryCode object');
         }
         
-        // Extract country code from country name - this should be standardized in CountryCode objects
-        // but if we need a mapping, it should be comprehensive and maintained in AlgorithmFramework
-        const countryMap = {
-            'Italy': 'it',
-            'United States': 'us',
-            'Germany': 'de',
-            'France': 'fr',
-            'United Kingdom': 'gb',
-            'Russia': 'ru',
-            'China': 'cn',
-            'Japan': 'jp',
-            'Unknown': null, // Special case for unknown countries
-            'International': null // Special case for international standards
-        };
+        // Dynamically generate country mapping from AlgorithmFramework.CountryCode
+        // This ensures we always have up-to-date mappings without manual maintenance
+        let isoCode = null;
         
-        const code = countryMap[country.name];
-        if (code === undefined) {
-            throw new Error(`AlgorithmDetails: No country code mapping found for '${country.name}'. Add mapping to AlgorithmFramework.CountryCode`);
+        // Check if AlgorithmFramework is available and has CountryCode
+        if (typeof AlgorithmFramework !== 'undefined' && AlgorithmFramework.CountryCode) {
+            // Create reverse lookup from country name to ISO code
+            for (const [key, countryData] of Object.entries(AlgorithmFramework.CountryCode)) {
+                if (countryData.name === country.name) {
+                    // Special cases that shouldn't show flags
+                    if (key === 'UNKNOWN' || key === 'ANCIENT' || key === 'INTL') {
+                        return '';
+                    }
+                    isoCode = key.toLowerCase();
+                    break;
+                }
+            }
         }
         
-        // Return empty string for unknown countries (no flag)
-        if (code === null) {
-            return '';
+        // If not found in AlgorithmFramework, show error
+        if (isoCode === null) {
+            throw new Error(`AlgorithmDetails: No country code mapping found for '${country.name}'. Add to AlgorithmFramework.CountryCode`);
         }
         
-        return `<img class="country-flag" src="https://flagcdn.com/16x12/${code.toLowerCase()}.png" alt="${code}" onerror="this.style.display='none'">`;
+        return `<img class="country-flag" src="https://flagcdn.com/16x12/${isoCode}.png" alt="${isoCode}" onerror="this.style.display='none'">`;
     }
 
     /**
