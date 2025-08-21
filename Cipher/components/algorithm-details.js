@@ -581,7 +581,7 @@ class AlgorithmDetails {
         html += '<button class="code-download-btn" onclick="window.algorithmDetailsInstance.downloadCurrentCode()">💾 Download</button>';
         html += '</div>';
         html += '</div>';
-        html += '<pre class="code-content" id="generated-code"><code>';
+        html += '<pre class="code-content" id="generated-code"><code class="language-javascript">';
         
         // Generate initial code (JavaScript by default)
         const initialCode = this.generateCodeForLanguage('javascript');
@@ -632,7 +632,10 @@ class AlgorithmDetails {
         // Apply syntax highlighting if available
         const codeElement = content.querySelector('#generated-code code');
         if (codeElement) {
-            this.applySyntaxHighlighting(codeElement, 'javascript');
+            // Add a small delay to ensure Prism is fully loaded
+            setTimeout(() => {
+                this.applySyntaxHighlighting(codeElement, 'javascript');
+            }, 100);
         }
     }
 
@@ -1544,17 +1547,23 @@ class AlgorithmDetails {
     }
 
     /**
-     * Apply syntax highlighting to code element
+     * Apply syntax highlighting to code element using Prism.js
      */
     applySyntaxHighlighting(codeElement, languageKey) {
-        if (!window.hljs || !codeElement) return;
+        if (!window.Prism || !codeElement) {
+            console.warn('Prism not available or no code element');
+            return;
+        }
         
         try {
-            // Remove existing highlighting
-            delete codeElement.dataset.highlighted;
-            codeElement.className = codeElement.className.replace(/hljs[^\s]*/g, '');
+            // Debug: Log available languages
+            console.log('Available Prism languages:', Object.keys(Prism.languages));
+            console.log('Attempting to highlight language:', languageKey);
             
-            // Map language keys to highlight.js language identifiers
+            // Remove existing highlighting classes
+            codeElement.className = codeElement.className.replace(/language-[^\s]*/g, '');
+            
+            // Map language keys to Prism language identifiers
             const languageMap = {
                 'javascript': 'javascript',
                 'python': 'python', 
@@ -1569,28 +1578,41 @@ class AlgorithmDetails {
                 'go': 'go'
             };
             
-            const hlLanguage = languageMap[languageKey] || languageKey;
+            const prismLanguage = languageMap[languageKey] || languageKey;
+            
+            // Check if the language is supported by Prism
+            const supportedLanguages = Object.keys(Prism.languages);
+            const finalLanguage = supportedLanguages.includes(prismLanguage) ? prismLanguage : 'javascript';
+            
+            // Add the language class for Prism
+            codeElement.classList.add(`language-${finalLanguage}`);
+            
+            // Clear any existing Prism highlighting
+            codeElement.removeAttribute('data-highlighted');
             
             // For line-numbered code, we need to highlight each line content separately
             if (codeElement.querySelector('.code-line')) {
                 const lineContents = codeElement.querySelectorAll('.line-content');
                 lineContents.forEach(lineContent => {
                     if (lineContent.textContent.trim()) {
-                        const result = hljs.highlight(lineContent.textContent, { language: hlLanguage });
-                        lineContent.innerHTML = result.value;
+                        lineContent.classList.add(`language-${finalLanguage}`);
+                        lineContent.removeAttribute('data-highlighted');
+                        Prism.highlightElement(lineContent);
                     }
                 });
             } else {
                 // Standard highlighting for non-line-numbered code
-                const result = hljs.highlight(codeElement.textContent, { language: hlLanguage });
-                codeElement.innerHTML = result.value;
-                codeElement.classList.add('hljs');
+                Prism.highlightElement(codeElement);
             }
         } catch (error) {
             console.warn('Syntax highlighting failed:', error);
-            // Fallback to basic highlighting
-            if (window.hljs.highlightElement) {
-                hljs.highlightElement(codeElement);
+            // Fallback - just add a basic language class
+            codeElement.classList.add('language-javascript');
+            codeElement.removeAttribute('data-highlighted');
+            try {
+                Prism.highlightElement(codeElement);
+            } catch (fallbackError) {
+                console.warn('Fallback highlighting also failed:', fallbackError);
             }
         }
     }
@@ -1624,90 +1646,70 @@ class AlgorithmDetails {
     }
 
     /**
-     * Toggle line numbers in code display
+     * Toggle line numbers in code display using Prism's line-numbers plugin
      */
     toggleLineNumbers() {
         if (!this.element) {
             throw new Error('AlgorithmDetails: Modal not available for line numbers toggle');
         }
         
-        const codeContent = this.element.querySelector('#generated-code');
+        const codeContainer = this.element.querySelector('#generated-code'); // This is the <pre> element
         const toggleBtn = this.element.querySelector('#toggle-line-numbers');
         
-        if (!codeContent || !toggleBtn) {
+        if (!codeContainer || !toggleBtn) {
             throw new Error('AlgorithmDetails: Code elements not found for line numbers toggle');
         }
         
-        const hasLineNumbers = codeContent.classList.contains('line-numbers');
+        const hasLineNumbers = codeContainer.classList.contains('line-numbers');
         
         if (hasLineNumbers) {
-            codeContent.classList.remove('line-numbers');
+            codeContainer.classList.remove('line-numbers');
             toggleBtn.textContent = '🔢 Numbers';
             toggleBtn.classList.remove('active');
-            this.removeLineNumbers();
         } else {
-            codeContent.classList.add('line-numbers');
+            codeContainer.classList.add('line-numbers');
             toggleBtn.textContent = '🔢 No Numbers';
             toggleBtn.classList.add('active');
-            this.addLineNumbers();
+        }
+        
+        // Re-highlight to apply line numbers with Prism
+        const codeElement = codeContainer.querySelector('code');
+        if (codeElement && this.currentLanguage) {
+            // For Prism line numbers to work, we need to re-process the element
+            codeElement.removeAttribute('data-highlighted');
+            this.applySyntaxHighlighting(codeElement, this.currentLanguage);
         }
     }
 
     /**
-     * Add line numbers to code display
+     * Add line numbers using Prism's line-numbers plugin
      */
     addLineNumbers() {
-        const codeElement = this.element.querySelector('#generated-code code');
-        if (!codeElement) return;
-        
-        const code = codeElement.textContent || '';
-        const lines = code.split('\n');
-        const maxLineNumber = lines.length;
-        const lineNumberWidth = Math.max(maxLineNumber.toString().length, 2);
-        
-        // Store original code for later restoration
-        if (!codeElement.hasAttribute('data-original-code')) {
-            codeElement.setAttribute('data-original-code', code);
-        }
-        
-        // Create numbered lines with proper structure
-        const numberedLines = lines.map((line, index) => {
-            const lineNumber = (index + 1).toString().padStart(lineNumberWidth, ' ');
-            return `<div class="code-line"><span class="line-number">${lineNumber}</span><span class="line-content">${this.escapeHtml(line || ' ')}</span></div>`;
-        }).join('');
-        
-        codeElement.innerHTML = numberedLines;
-        
-        // Re-apply syntax highlighting if available
-        if (this.currentLanguage) {
-            this.applySyntaxHighlighting(codeElement, this.currentLanguage);
+        // Prism handles line numbers automatically when line-numbers class is present
+        // This method is kept for backward compatibility but delegates to Prism
+        const codeContainer = this.element.querySelector('#generated-code');
+        if (codeContainer) {
+            codeContainer.classList.add('line-numbers');
+            const codeElement = codeContainer.querySelector('code');
+            if (codeElement && this.currentLanguage) {
+                this.applySyntaxHighlighting(codeElement, this.currentLanguage);
+            }
         }
     }
 
     /**
-     * Remove line numbers from code display
+     * Remove line numbers using Prism's line-numbers plugin
      */
     removeLineNumbers() {
-        const codeElement = this.element.querySelector('#generated-code code');
-        if (!codeElement) return;
-        
-        // Restore original code from stored attribute
-        const originalCode = codeElement.getAttribute('data-original-code');
-        if (originalCode) {
-            codeElement.textContent = originalCode;
-            codeElement.removeAttribute('data-original-code');
-        } else {
-            // Fallback: extract from line-content spans
-            const lineContents = codeElement.querySelectorAll('.line-content');
-            if (lineContents.length > 0) {
-                const extractedCode = Array.from(lineContents).map(span => span.textContent).join('\n');
-                codeElement.textContent = extractedCode;
+        // Prism handles line numbers automatically when line-numbers class is removed
+        // This method is kept for backward compatibility but delegates to Prism
+        const codeContainer = this.element.querySelector('#generated-code');
+        if (codeContainer) {
+            codeContainer.classList.remove('line-numbers');
+            const codeElement = codeContainer.querySelector('code');
+            if (codeElement && this.currentLanguage) {
+                this.applySyntaxHighlighting(codeElement, this.currentLanguage);
             }
-        }
-        
-        // Re-apply syntax highlighting if available
-        if (this.currentLanguage) {
-            this.applySyntaxHighlighting(codeElement, this.currentLanguage);
         }
     }
 
