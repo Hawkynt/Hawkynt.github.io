@@ -362,6 +362,13 @@ class CipherController {
             return;
         }
         
+        // Filter individual algorithm cards
+        cards.forEach(card => {
+            const cardCategory = card.getAttribute('data-category');
+            card.style.display = cardCategory === category ? 'block' : 'none';
+        });
+        
+        // Filter palette sections (for chaining tab)
         sections.forEach(section => {
             const sectionCategory = section.getAttribute('data-category');
             section.style.display = sectionCategory === category ? 'block' : 'none';
