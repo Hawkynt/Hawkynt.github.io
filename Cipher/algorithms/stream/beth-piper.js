@@ -1,21 +1,11 @@
-#!/usr/bin/env node
 /*
- * Universal Beth-Piper Generator Stream Cipher
- * Compatible with both Browser and Node.js environments
- * Based on the Beth-Piper clock-controlled generator design
+ * Beth-Piper Stop-and-Go Generator Stream Cipher
+ * Universal cipher implementation compatible with Browser and Node.js
  * (c)2006-2025 Hawkynt
  * 
- * The Beth-Piper generator is a clock-controlled stream cipher using two Linear
- * Feedback Shift Registers (LFSRs) where one LFSR controls the clocking of the other.
- * The algorithm uses:
- * - Two LFSRs of different lengths
- * - Clock control mechanism where LFSR1 controls LFSR2 stepping
- * - Output from the controlled LFSR2
- * - Stop-and-go clocking strategy
- * 
- * This design provides better security than simple combining generators by
- * introducing irregular clocking patterns. This implementation is for
- * educational purposes only.
+ * Implementation of the stop-and-go generator by Thomas Beth and Fred Piper (EUROCRYPT 1984).
+ * Uses clock-controlled LFSRs where one LFSR controls the clocking of another.
+ * This educational implementation demonstrates irregular clocking techniques in stream ciphers.
  */
 
 (function(global) {
@@ -31,12 +21,12 @@
     }
   }
   
-  if (!global.Cipher) {
+  if (!global.AlgorithmFramework) {
     if (typeof require !== 'undefined') {
       // Node.js environment - load dependencies
       try {
         require('../../universal-cipher-env.js');
-        require('../../cipher.js');
+        require('../../AlgorithmFramework.js');
       } catch (e) {
         console.error('Failed to load cipher dependencies:', e.message);
         return;
@@ -47,26 +37,43 @@
     }
   }
   
-  // Create Beth-Piper generator cipher object
   const BethPiper = {
-    internalName: 'beth-piper',
-    name: 'Beth-Piper Generator',
-    version: '1.0',
-    author: 'Beth and Piper',
-    description: 'Clock-controlled dual-LFSR stream cipher',
-
-    // Required by cipher system
-    minKeyLength: 1,
-    maxKeyLength: 1024,
-    stepKeyLength: 1,
-    minBlockSize: 1,
-    maxBlockSize: 1024,
-    stepBlockSize: 1,
-    instances: {},
+    name: 'Beth-Piper Stop-and-Go Generator',
+    description: 'Clock-controlled LFSR stream cipher using stop-and-go clocking strategy. One LFSR controls the irregular clocking of a second LFSR to introduce nonlinearity. Educational implementation for understanding clock-controlled generators.',
+    inventor: 'Thomas Beth, Fred Piper',
+    year: 1984,
+    country: 'DE',
+    category: 'cipher',
+    subCategory: 'Stream Cipher',
+    securityStatus: 'educational',
+    securityNotes: 'Clock-controlled generators can be vulnerable to correlation attacks and algebraic attacks. Modern cryptanalysis has shown weaknesses in simple stop-and-go generators.',
     
-    // Cipher parameters
-    nBlockSizeInBits: 8,     // Generate 8 bits at a time
-    nKeySizeInBits: 128,     // 128-bit key
+    documentation: [
+      {text: 'EUROCRYPT 1984 Paper', uri: 'https://link.springer.com/chapter/10.1007/3-540-39757-4_17'},
+      {text: 'Stream Ciphers Overview', uri: 'https://en.wikipedia.org/wiki/Stream_cipher'}
+    ],
+    
+    references: [
+      {text: 'Clock-Controlled Generators', uri: 'https://link.springer.com/chapter/10.1007/978-3-030-12850-0_1'}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: 'Correlation Attack',
+        text: 'Clock-controlled generators can be vulnerable to correlation attacks that exploit dependencies between control and data sequences.',
+        mitigation: 'Use only for educational purposes, not in production systems.'
+      }
+    ],
+    
+    tests: [
+      {
+        text: 'Basic functionality test with known key',
+        uri: 'Educational test vector',
+        input: OpCodes ? OpCodes.Hex8ToBytes('48656C6C6F20576F726C64') : [],
+        key: OpCodes ? OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F') : [],
+        expected: OpCodes ? OpCodes.Hex8ToBytes('D99A8F65AFFFD6ACBE039B') : []
+      }
+    ],
     
     // LFSR parameters (use coprime lengths)
     CLOCK_LFSR_LENGTH: 19,   // Clock control LFSR length
@@ -236,30 +243,36 @@
     
     /**
      * Encrypt block using Beth-Piper generator
-     * @param {number} position - Block position (unused for stream cipher)
-     * @param {string} input - Input data as string
-     * @returns {string} Encrypted data as string
+     * @param {number} blockIndex - Block index (position)
+     * @param {string|Array} input - Input data
+     * @returns {string|Array} Encrypted data
      */
-    encryptBlock: function(position, input) {
+    EncryptBlock: function(blockIndex, input) {
       if (!this.isInitialized) {
-        throw new Error('Cipher not initialized');
+        throw new Error('Cipher not initialized - call KeySetup first');
       }
       
-      const inputBytes = OpCodes.StringToBytes(input);
-      const keystream = this.generateKeystream(inputBytes.length);
-      const outputBytes = OpCodes.XorArrays(inputBytes, keystream);
-      
-      return OpCodes.BytesToString(outputBytes);
+      let inputBytes;
+      if (typeof input === 'string') {
+        inputBytes = OpCodes.AsciiToBytes(input);
+        const keystream = this.generateKeystream(inputBytes.length);
+        const outputBytes = OpCodes.XorArrays(inputBytes, keystream);
+        return String.fromCharCode(...outputBytes);
+      } else {
+        inputBytes = input;
+        const keystream = this.generateKeystream(inputBytes.length);
+        return OpCodes.XorArrays(inputBytes, keystream);
+      }
     },
     
     /**
      * Decrypt block (same as encrypt for stream cipher)
-     * @param {number} position - Block position
-     * @param {string} input - Input data as string
-     * @returns {string} Decrypted data as string
+     * @param {number} blockIndex - Block index (position)
+     * @param {string|Array} input - Input data
+     * @returns {string|Array} Decrypted data
      */
-    decryptBlock: function(position, input) {
-      return this.encryptBlock(position, input);
+    DecryptBlock: function(blockIndex, input) {
+      return this.EncryptBlock(blockIndex, input);
     },
     
     /**
@@ -330,16 +343,16 @@
   };
   
   // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(BethPiper);
+  if (global.Cipher) {
+    global.AlgorithmFramework.RegisterAlgorithm(BethPiper);
   }
+  
+  // Make available globally (using filename format for test compatibility)
+  global['BETH-PIPER'] = BethPiper;
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = BethPiper;
   }
-  
-  // Make available globally
-  global.BethPiper = BethPiper;
   
 })(typeof global !== 'undefined' ? global : window);
