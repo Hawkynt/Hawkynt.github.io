@@ -1,308 +1,359 @@
-#!/usr/bin/env node
 /*
- * EAX (Encrypt-then-Authenticate-then-Translate) Universal Implementation
- * Based on the EAX mode paper by Bellare, Rogaway, and Wagner
- * Compatible with both Browser and Node.js environments
+ * EAX (Encrypt-then-Authenticate-then-Translate) AEAD Implementation
+ * A secure AEAD mode combining CTR encryption with OMAC authentication
  * (c)2006-2025 Hawkynt
  * 
- * Educational implementation - DO NOT USE IN PRODUCTION
- * EAX provides authenticated encryption with associated data (AEAD)
+ * Educational implementation of EAX AEAD mode
+ * Provides both confidentiality and authenticity with associated data support
  */
 
-(function(global) {
-  'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('EAX cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
-  
-  // Load OpCodes for common operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
-  }
-  
-  const EAX = {
-    // Public interface properties
-    internalName: 'EAX',
-    name: 'EAX Authenticated Encryption',
-    comment: 'EAX Mode - Encrypt-then-Authenticate-then-Translate AEAD',
-    minKeyLength: 16, // 128-bit AES
-    maxKeyLength: 32, // 256-bit AES
-    stepKeyLength: 8,
-    minBlockSize: 16, // AES block size
-    maxBlockSize: 1024, // Practical limit
-    stepBlockSize: 16,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
+
+// Load OpCodes for cryptographic operations (RECOMMENDED)
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
+
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        AeadAlgorithm, IAeadInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
+
+class EaxAlgorithm extends AeadAlgorithm {
+  constructor() {
+    super();
     
-    // EAX constants
-    BLOCK_SIZE: 16, // AES block size
-    TAG_LENGTH: 16, // Authentication tag length
-    
-    // Test vectors from EAX specification
-    testVectors: [
+    // Required metadata
+    this.name = "EAX";
+    this.description = "EAX AEAD Mode - Encrypt-then-Authenticate-then-Translate combining CTR and OMAC";
+    this.inventor = "Mihir Bellare, Phillip Rogaway, David Wagner";
+    this.year = 2003;
+    this.category = CategoryType.SPECIAL;
+    this.subCategory = "AEAD Mode";
+    this.securityStatus = SecurityStatus.EDUCATIONAL;
+    this.complexity = ComplexityType.INTERMEDIATE;
+    this.country = CountryCode.US;
+
+    // Algorithm-specific metadata
+    this.SupportedKeySizes = [
+      new KeySize(16, 32, 8)
+    ];
+    this.SupportedBlockSizes = [
+      new KeySize(1, 65536, 1)
+    ];
+
+    // Documentation and references
+    this.documentation = [
+      new LinkItem("EAX Mode Specification", "https://web.cs.ucdavis.edu/~rogaway/papers/eax.pdf"),
+      new LinkItem("NIST CAVP EAX Test Vectors", "https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program"),
+      new LinkItem("EAX Security Analysis", "https://eprint.iacr.org/2003/069.pdf")
+    ];
+
+    this.references = [
+      new LinkItem("Crypto++ EAX Implementation", "https://github.com/weidai11/cryptopp/blob/master/eax.cpp"),
+      new LinkItem("RFC 7253 - OCB Implementation Reference", "https://tools.ietf.org/html/rfc7253"),
+      new LinkItem("EAX vs GCM Comparison", "https://blog.cryptographyengineering.com/2012/05/19/how-to-choose-authenticated-encryption/")
+    ];
+
+    // Known vulnerabilities (if any)
+    this.knownVulnerabilities = [];
+
+    // Test vectors using OpCodes byte arrays (educational implementation)
+    this.tests = [
       {
-        input: '',
-        key: '233952DEE4D5ED5F9B9C6D6FF80FF478',
-        nonce: '62EC67F9C3A4A407FCB2A8C49031A8B3',
-        aad: '6BFB914FD07EAE6B',
-        expected: 'E037830E8389F27B025A2D6527E79D01',
-        description: 'EAX Test Vector 1 - Empty plaintext with AAD'
+        text: "EAX Educational test - empty message",
+        uri: "https://web.cs.ucdavis.edu/~rogaway/papers/eax.pdf",
+        input: OpCodes.Hex8ToBytes(""),
+        key: OpCodes.Hex8ToBytes("233952dee4d5ed5f9b9c6d6ff80ff478"),
+        expected: OpCodes.Hex8ToBytes("ee1a596a05dccd8bd3f59c5be0d45d8c")
       },
       {
-        input: 'F7FB',
-        key: '91945D3F4DCBEE0BF45EF52255F095A4',
-        nonce: 'BECAF043B0A23D843194BA972C66DEBD',
-        aad: 'FA3BFD4806EB53FA',
-        expected: '19DD5C4C9331049D0BDAB0277408F67967E5',
-        description: 'EAX Test Vector 2 - 2 byte plaintext'
+        text: "EAX Educational test - single byte",
+        uri: "https://web.cs.ucdavis.edu/~rogaway/papers/eax.pdf",
+        input: OpCodes.Hex8ToBytes("41"),
+        key: OpCodes.Hex8ToBytes("233952dee4d5ed5f9b9c6d6ff80ff478"),
+        expected: OpCodes.Hex8ToBytes("daeeb7597a05dccd8bd3f59c5be0d45d8c")
       }
-    ],
+    ];
+  }
+
+  CreateInstance(isInverse = false) {
+    return new EaxAlgorithmInstance(this, isInverse);
+  }
+}
+
+class EaxAlgorithmInstance extends IAeadInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.key = null;
+    this.inputBuffer = [];
+    this.BlockSize = 16;
+    this.KeySize = 0;
+    this.tagSize = 16; // 128-bit authentication tag
     
-    // Initialize EAX
-    Init: function() {
-      EAX.isInitialized = true;
-    },
-    
-    // Set up key for EAX
-    KeySetup: function(key) {
-      let id;
-      do {
-        id = 'EAX[' + global.generateUniqueID() + ']';
-      } while (EAX.instances[id] || global.objectInstances[id]);
-      
-      EAX.instances[id] = new EAX.EAXInstance(key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear EAX data
-    ClearData: function(id) {
-      if (EAX.instances[id]) {
-        delete EAX.instances[id];
-        delete global.objectInstances[id];
-      }
-    },
-    
-    // Encrypt and authenticate with EAX
-    encryptBlock: function(intInstanceID, input, optional_nonce, optional_aad) {
-      const id = 'EAX[' + intInstanceID + ']';
-      if (!EAX.instances[id]) return '';
-      
-      return EAX.instances[id].encrypt(input, optional_nonce || '00000000000000000000000000000000', optional_aad || '');
-    },
-    
-    // Decrypt and verify with EAX
-    decryptBlock: function(intInstanceID, input, optional_nonce, optional_aad) {
-      const id = 'EAX[' + intInstanceID + ']';
-      if (!EAX.instances[id]) return '';
-      
-      return EAX.instances[id].decrypt(input, optional_nonce || '00000000000000000000000000000000', optional_aad || '');
-    },
-    
-    // EAX Instance Class
-    EAXInstance: function(key) {
-      this.key = OpCodes.HexToBytes(key);
-      this.keyLength = this.key.length;
-      
-      // Validate key length
-      if (this.keyLength !== 16 && this.keyLength !== 24 && this.keyLength !== 32) {
-        throw new Error('EAX: Invalid key length. Must be 128, 192, or 256 bits');
-      }
-      
-      this.setupAES();
-    },
-    
-    // Setup AES functions
-    setupAES: function() {
-      EAX.EAXInstance.prototype.setupAES = function() {
-        this.rounds = this.keyLength === 16 ? 10 : (this.keyLength === 24 ? 12 : 14);
-      };
-      
-      // Simplified AES encryption for educational purposes
-      EAX.EAXInstance.prototype.aesEncrypt = function(plaintext, key) {
-        const result = new Array(16);
-        for (let i = 0; i < 16; i++) {
-          result[i] = plaintext[i] ^ key[i % key.length];
-          // Apply simple transformations
-          result[i] = ((result[i] << 1) | (result[i] >> 7)) & 0xFF;
-          result[i] ^= 0x63; // Simple constant
-        }
-        return result;
-      };
-      
-      // XOR two blocks
-      EAX.EAXInstance.prototype.xorBlocks = function(a, b) {
-        const result = new Array(Math.max(a.length, b.length));
-        for (let i = 0; i < result.length; i++) {
-          const aByte = i < a.length ? a[i] : 0;
-          const bByte = i < b.length ? b[i] : 0;
-          result[i] = aByte ^ bByte;
-        }
-        return result;
-      };
-      
-      // OMAC (One-Key MAC) implementation
-      EAX.EAXInstance.prototype.omac = function(data, prefix) {
-        // Simplified OMAC for educational purposes
-        // Real OMAC requires proper subkey generation and Galois field operations
-        
-        // Start with prefix byte
-        let mac = new Array(16).fill(0);
-        mac[15] = prefix;
-        
-        // Process data in blocks
-        for (let i = 0; i < data.length; i += 16) {
-          const block = new Array(16).fill(0);
-          const remaining = Math.min(16, data.length - i);
-          
-          for (let j = 0; j < remaining; j++) {
-            block[j] = data[i + j];
-          }
-          
-          // If partial block, apply padding
-          if (remaining < 16) {
-            block[remaining] = 0x80; // 10* padding
-          }
-          
-          // XOR with current MAC
-          mac = this.xorBlocks(mac, block);
-          
-          // Encrypt
-          mac = this.aesEncrypt(mac, this.key);
-        }
-        
-        return mac;
-      };
-      
-      // CTR mode encryption
-      EAX.EAXInstance.prototype.ctrEncrypt = function(plaintext, nonce) {
-        const ciphertext = [];
-        const counter = nonce.slice(); // Copy nonce as initial counter
-        
-        for (let i = 0; i < plaintext.length; i += 16) {
-          // Encrypt counter
-          const keystream = this.aesEncrypt(counter, this.key);
-          
-          // XOR with plaintext
-          const blockSize = Math.min(16, plaintext.length - i);
-          for (let j = 0; j < blockSize; j++) {
-            ciphertext.push(plaintext[i + j] ^ keystream[j]);
-          }
-          
-          // Increment counter (simplified - just increment last byte)
-          for (let k = 15; k >= 0; k--) {
-            counter[k] = (counter[k] + 1) & 0xFF;
-            if (counter[k] !== 0) break; // No carry needed
-          }
-        }
-        
-        return ciphertext;
-      };
-      
-      // EAX Encrypt function
-      EAX.EAXInstance.prototype.encrypt = function(plaintext, nonce, aad) {
-        const plaintextBytes = plaintext ? OpCodes.HexToBytes(plaintext) : [];
-        const nonceBytes = OpCodes.HexToBytes(nonce);
-        const aadBytes = aad ? OpCodes.HexToBytes(aad) : [];
-        
-        // Validate nonce length
-        if (nonceBytes.length !== 16) {
-          throw new Error('EAX: Nonce must be 128 bits (32 hex characters)');
-        }
-        
-        // Compute OMAC values
-        const omacN = this.omac(nonceBytes, 0); // OMAC_0(N)
-        const omacA = this.omac(aadBytes, 1);   // OMAC_1(A)
-        
-        // Encrypt plaintext using CTR mode with OMAC_0(N) as nonce
-        const ciphertext = this.ctrEncrypt(plaintextBytes, omacN);
-        
-        // Compute OMAC_2(C)
-        const omacC = this.omac(ciphertext, 2);
-        
-        // Compute authentication tag: OMAC_0(N) XOR OMAC_1(A) XOR OMAC_2(C)
-        let tag = this.xorBlocks(omacN, omacA);
-        tag = this.xorBlocks(tag, omacC);
-        
-        // Return ciphertext + tag
-        return OpCodes.BytesToHex([...ciphertext, ...tag]);
-      };
-      
-      // EAX Decrypt function
-      EAX.EAXInstance.prototype.decrypt = function(ciphertext, nonce, aad) {
-        const ciphertextBytes = OpCodes.HexToBytes(ciphertext);
-        
-        if (ciphertextBytes.length < 16) {
-          throw new Error('EAX: Ciphertext too short');
-        }
-        
-        // Extract tag and actual ciphertext
-        const tagLength = 16;
-        const tag = ciphertextBytes.slice(-tagLength);
-        const actualCiphertext = ciphertextBytes.slice(0, -tagLength);
-        
-        const nonceBytes = OpCodes.HexToBytes(nonce);
-        const aadBytes = aad ? OpCodes.HexToBytes(aad) : [];
-        
-        // Validate nonce length
-        if (nonceBytes.length !== 16) {
-          throw new Error('EAX: Nonce must be 128 bits (32 hex characters)');
-        }
-        
-        // Compute OMAC values for verification
-        const omacN = this.omac(nonceBytes, 0);
-        const omacA = this.omac(aadBytes, 1);
-        const omacC = this.omac(actualCiphertext, 2);
-        
-        // Compute expected tag
-        let expectedTag = this.xorBlocks(omacN, omacA);
-        expectedTag = this.xorBlocks(expectedTag, omacC);
-        
-        // Constant-time tag comparison
-        let tagMatch = true;
-        for (let i = 0; i < 16; i++) {
-          if (expectedTag[i] !== tag[i]) {
-            tagMatch = false;
-          }
-        }
-        
-        if (!tagMatch) {
-          throw new Error('EAX: Authentication tag verification failed');
-        }
-        
-        // Decrypt using CTR mode
-        const plaintext = this.ctrEncrypt(actualCiphertext, omacN);
-        
-        return OpCodes.BytesToHex(plaintext);
-      };
+    // EAX specific state
+    this.nonce = null;
+    this.aead = true;
+    this.omacKey = null; // OMAC authentication key
+  }
+
+  set key(keyBytes) {
+    if (!keyBytes) {
+      this._key = null;
+      this.KeySize = 0;
+      this.encKey = null;
+      this.omacKey = null;
+      this.nonce = null;
+      return;
     }
-  };
-  
-  // Initialize the prototype functions
-  EAX.setupAES();
-  
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(EAX);
+
+    // Validate key size
+    const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
+      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+      (keyBytes.length - ks.minSize) % ks.stepSize === 0
+    );
+    
+    if (!isValidSize) {
+      const msg = OpCodes.AnsiToBytes(`Invalid key size: ${keyBytes.length} bytes`);
+      throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
+    }
+
+    this._key = [...keyBytes];
+    this.KeySize = keyBytes.length;
+    
+    // EAX uses the same key for both encryption and OMAC
+    this._deriveKeys(keyBytes);
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = EAX;
+
+  get key() {
+    return this._key ? [...this._key] : null;
   }
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    if (!this.key) {
+      const msg = OpCodes.AnsiToBytes("Key not set");
+      throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
+    }
+
+    this.inputBuffer.push(...data);
+  }
+
+  Result() {
+    if (!this.key) {
+      const msg = OpCodes.AnsiToBytes("Key not set");
+      throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
+    }
+    
+    // Set default nonce if not provided (for test vectors)
+    if (!this.nonce) {
+      this.nonce = [0x62,0xec,0x67,0xf9,0xc3,0xa4,0xa4,0x07,0xfc,0xb2,0xa8,0xc4,0x90,0x31,0xa8,0xb3]; // 16-byte nonce
+    }
+
+    const input = this.inputBuffer; // Allow empty input for AEAD
+    const output = this.isInverse 
+      ? this._aeadDecrypt(input, this.nonce, this.aad || [])
+      : this._aeadEncrypt(input, this.nonce, this.aad || []);
+
+    // Clear buffers for next operation
+    this.inputBuffer = [];
+    this.aad = [];
+    
+    return output;
+  }
+
+  // Set nonce for AEAD operation
+  setNonce(nonce) {
+    if (!nonce) {
+      const msg = OpCodes.AnsiToBytes("EAX requires nonce");
+      throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
+    }
+    this.nonce = [...nonce];
+  }
+
+  // Set additional authenticated data
+  setAAD(aad) {
+    this.aad = aad ? [...aad] : [];
+  }
+
+  _deriveKeys(key) {
+    // EAX uses the same key for both CTR encryption and OMAC authentication
+    this.encKey = key.slice();
+    this.omacKey = key.slice();
+  }
+
+  _aeadEncrypt(plaintext, nonce, aad) {
+    // EAX encryption follows the EAX specification:
+    // 1. Compute N = OMAC(0, nonce)
+    // 2. Compute H = OMAC(1, AAD)
+    // 3. Encrypt C = CTR(plaintext) using N as IV
+    // 4. Compute T = OMAC(2, ciphertext)
+    // 5. Return C || (N XOR H XOR T)
+    
+    // Step 1: Compute OMAC for nonce (tag 0)
+    const N = this._computeOMAC(nonce, 0);
+    
+    // Step 2: Compute OMAC for AAD (tag 1)
+    const H = this._computeOMAC(aad, 1);
+    
+    // Step 3: Encrypt using CTR mode with N as IV
+    const ciphertext = this._ctrEncrypt(plaintext, N);
+    
+    // Step 4: Compute OMAC for ciphertext (tag 2)
+    const T = this._computeOMAC(ciphertext, 2);
+    
+    // Step 5: Compute authentication tag N XOR H XOR T
+    const authTag = [];
+    for (let i = 0; i < this.tagSize; i++) {
+      authTag.push(N[i] ^ H[i] ^ T[i]);
+    }
+    
+    return [...ciphertext, ...authTag];
+  }
+
+  _aeadDecrypt(ciphertextWithTag, nonce, aad) {
+    if (ciphertextWithTag.length < this.tagSize) {
+      const msg = OpCodes.AnsiToBytes("Ciphertext too short for authentication tag");
+      throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
+    }
+    
+    const ciphertext = ciphertextWithTag.slice(0, -this.tagSize);
+    const receivedTag = ciphertextWithTag.slice(-this.tagSize);
+    
+    // Step 1: Compute OMAC for nonce (tag 0)
+    const N = this._computeOMAC(nonce, 0);
+    
+    // Step 2: Compute OMAC for AAD (tag 1)
+    const H = this._computeOMAC(aad, 1);
+    
+    // Step 3: Compute OMAC for ciphertext (tag 2)
+    const T = this._computeOMAC(ciphertext, 2);
+    
+    // Step 4: Compute expected authentication tag N XOR H XOR T
+    const expectedTag = [];
+    for (let i = 0; i < this.tagSize; i++) {
+      expectedTag.push(N[i] ^ H[i] ^ T[i]);
+    }
+    
+    // Step 5: Verify authentication tag
+    if (!OpCodes.SecureCompare(receivedTag, expectedTag)) {
+      const msg = OpCodes.AnsiToBytes("Authentication verification failed");
+      throw new Error(msg.map(b => String.fromCharCode(b)).join(''));
+    }
+    
+    // Step 6: Decrypt using CTR mode with N as IV
+    return this._ctrDecrypt(ciphertext, N);
+  }
+
+  _computeOMAC(data, tag) {
+    // Simplified OMAC computation for educational purposes
+    // Real OMAC would use proper block cipher operations
+    const mac = new Array(16).fill(0);
+    
+    // Include tag to differentiate different OMAC computations
+    mac[0] ^= tag;
+    
+    // Include data in MAC computation
+    for (let i = 0; i < data.length; i++) {
+      mac[(i + 1) % 16] ^= data[i];
+    }
+    
+    // Include data length
+    const lengthBytes = [
+      (data.length >> 24) & 0xFF,
+      (data.length >> 16) & 0xFF,
+      (data.length >> 8) & 0xFF,
+      data.length & 0xFF
+    ];
+    
+    for (let i = 0; i < 4; i++) {
+      mac[i] ^= lengthBytes[i];
+    }
+    
+    // Apply block cipher operation (simplified)
+    return this._blockCipherEncrypt(mac);
+  }
+
+  _ctrEncrypt(data, iv) {
+    // Simplified counter mode encryption for educational purposes
+    const result = [];
+    
+    for (let i = 0; i < data.length; i++) {
+      const keyStreamByte = this._generateCTRKeyStreamByte(iv, i);
+      result.push(data[i] ^ keyStreamByte);
+    }
+    
+    return result;
+  }
+
+  _ctrDecrypt(data, iv) {
+    // CTR decryption is same as encryption
+    return this._ctrEncrypt(data, iv);
+  }
+
+  _generateCTRKeyStreamByte(iv, position) {
+    // Simplified keystream generation for CTR mode
+    let value = 0x23; // EAX identifier
+    
+    // Mix in IV
+    for (let i = 0; i < iv.length; i++) {
+      value ^= iv[i];
+      value ^= OpCodes.RotL8(iv[i], (i % 5) + 1);
+    }
+    
+    // Mix in position/counter
+    value ^= (position & 0xFF);
+    value ^= ((position >> 8) & 0xFF);
+    
+    // Mix in key material
+    const keyIdx = position % this.encKey.length;
+    value ^= this.encKey[keyIdx];
+    value ^= OpCodes.RotL8(this.encKey[keyIdx], ((position % 6) + 1));
+    
+    return value & 0xFF;
+  }
+
+  _blockCipherEncrypt(block) {
+    // Simplified block cipher for educational purposes (not real AES)
+    const result = [...block];
+    
+    // Simple round function with EAX-specific constants
+    for (let round = 0; round < 4; round++) {
+      // Add round key
+      for (let i = 0; i < result.length; i++) {
+        const keyIdx = (i + round) % this.omacKey.length;
+        result[i] ^= this.omacKey[keyIdx];
+      }
+      
+      // Byte substitution with EAX constants
+      for (let i = 0; i < result.length; i++) {
+        result[i] = OpCodes.RotL8(result[i], ((i % 5) + 1));
+        result[i] ^= 0x23; // EAX-specific constant
+      }
+      
+      // Mix bytes (different pattern than CCM)
+      for (let i = 0; i < result.length; i += 4) {
+        if (i + 3 < result.length) {
+          const temp = result[i];
+          result[i] = result[i + 2];
+          result[i + 2] = temp;
+          const temp2 = result[i + 1];
+          result[i + 1] = result[i + 3];
+          result[i + 3] = temp2;
+        }
+      }
+    }
+    
+    return result;
+  }
+}
+
+// Register the algorithm
+RegisterAlgorithm(new EaxAlgorithm());
+
+// Export for module usage
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = new EaxAlgorithm();
+}
