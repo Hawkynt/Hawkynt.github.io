@@ -302,7 +302,7 @@ class AriaInstance extends IBlockCipherInstance {
     for (let i = 0; i < 16; i++) {
       result[i] = data[i];
       for (let j = 1; j < 16; j++) {
-        result[i] ^= OpCodes.GF256Mult(data[j], ((i + j) % 16) + 1);
+        result[i] ^= OpCodes.GF256Mul(data[j], ((i + j) % 16) + 1);
       }
     }
     
