@@ -185,14 +185,14 @@ class TEAInstance extends IBlockCipherInstance {
 
   _encryptBlock(block) {
     // Convert block to two 32-bit words (big-endian)
-    let v0 = OpCodes.Pack32BE([block[0], block[1], block[2], block[3]]);
-    let v1 = OpCodes.Pack32BE([block[4], block[5], block[6], block[7]]);
+    let v0 = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
+    let v1 = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
     
     // Extract key as four 32-bit words (big-endian)
-    const k0 = OpCodes.Pack32BE([this._key[0], this._key[1], this._key[2], this._key[3]]);
-    const k1 = OpCodes.Pack32BE([this._key[4], this._key[5], this._key[6], this._key[7]]);
-    const k2 = OpCodes.Pack32BE([this._key[8], this._key[9], this._key[10], this._key[11]]);
-    const k3 = OpCodes.Pack32BE([this._key[12], this._key[13], this._key[14], this._key[15]]);
+    const k0 = OpCodes.Pack32BE(this._key[0], this._key[1], this._key[2], this._key[3]);
+    const k1 = OpCodes.Pack32BE(this._key[4], this._key[5], this._key[6], this._key[7]);
+    const k2 = OpCodes.Pack32BE(this._key[8], this._key[9], this._key[10], this._key[11]);
+    const k3 = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
     
     let sum = 0;
     
@@ -212,14 +212,14 @@ class TEAInstance extends IBlockCipherInstance {
 
   _decryptBlock(block) {
     // Convert block to two 32-bit words (big-endian)
-    let v0 = OpCodes.Pack32BE([block[0], block[1], block[2], block[3]]);
-    let v1 = OpCodes.Pack32BE([block[4], block[5], block[6], block[7]]);
+    let v0 = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
+    let v1 = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
     
     // Extract key as four 32-bit words (big-endian)
-    const k0 = OpCodes.Pack32BE([this._key[0], this._key[1], this._key[2], this._key[3]]);
-    const k1 = OpCodes.Pack32BE([this._key[4], this._key[5], this._key[6], this._key[7]]);
-    const k2 = OpCodes.Pack32BE([this._key[8], this._key[9], this._key[10], this._key[11]]);
-    const k3 = OpCodes.Pack32BE([this._key[12], this._key[13], this._key[14], this._key[15]]);
+    const k0 = OpCodes.Pack32BE(this._key[0], this._key[1], this._key[2], this._key[3]);
+    const k1 = OpCodes.Pack32BE(this._key[4], this._key[5], this._key[6], this._key[7]);
+    const k2 = OpCodes.Pack32BE(this._key[8], this._key[9], this._key[10], this._key[11]);
+    const k3 = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
     
     let sum = (this.DELTA * this.ROUNDS) >>> 0;
     

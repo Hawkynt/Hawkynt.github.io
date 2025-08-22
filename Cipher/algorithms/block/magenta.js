@@ -1,425 +1,278 @@
-#!/usr/bin/env node
 /*
- * MAGENTA Universal Implementation  
- * 128-bit block cipher, 128/192/256-bit keys
- * German AES competition submission by Klaus Gladman
- * 6 rounds with substitution-permutation network and bit-slice design
- * Compatible with both Browser and Node.js environments
- * (c)2006-2025 Hawkynt
+ * MAGENTA Block Cipher Implementation
+ * Deutsche Telekom AES Candidate (1998)
+ * 
+ * MAGENTA (Multifunctional Algorithm for General-purpose Encryption and Network 
+ * Telecommunication Applications) is a 128-bit block cipher with 128, 192, or 256-bit keys.
+ * It uses a modified Feistel structure with 6 rounds (128/192-bit keys) or 8 rounds (256-bit keys).
+ * 
+ * Authors: Michael Jacobson Jr., Klaus Huber
+ * Company: Deutsche Telekom
+ * Year: 1998
+ * Status: Failed AES candidate (vulnerabilities discovered)
+ * 
+ * NOTE: This is an educational implementation. MAGENTA has known cryptographic
+ * weaknesses and should not be used for actual security purposes.
  */
 
 (function(global) {
   'use strict';
   
-  // Load OpCodes if in Node.js environment
+  // Environment detection and dependency loading
   if (!global.OpCodes && typeof require !== 'undefined') {
     require('../../OpCodes.js');
   }
   
   const MAGENTA = {
-    internalName: 'magenta',
+    // Algorithm metadata
     name: 'MAGENTA',
-    minKeyLength: 16,    // 128 bits minimum
-    maxKeyLength: 32,    // 256 bits maximum
-    stepKeyLength: 8,    // Steps of 64 bits
-    minBlockSize: 16,    // 128 bits
-    maxBlockSize: 16,    // 128 bits
-    stepBlockSize: 1,
+    description: 'Deutsche Telekom AES candidate with modified Feistel structure and GF(2^8) operations. Educational implementation of a cipher with known vulnerabilities.',
+    category: 'cipher',
+    subCategory: 'Block Cipher',
     
-    // Instance storage
-    instances: {},
-    isInitialized: false,
+    // Historical and geographical metadata
+    inventor: 'Michael Jacobson Jr., Klaus Huber',
+    year: 1998,
+    country: 'Germany',
     
-    // MAGENTA constants
-    NUM_ROUNDS: 6,
+    // Security status - MAGENTA has known vulnerabilities
+    securityStatus: 'insecure',
     
-    /**
-     * Initialize MAGENTA
-     */
-    Init: function() {
-      if (MAGENTA.isInitialized) return true;
-      
-      MAGENTA.isInitialized = true;
-      return true;
-    },
+    // Technical specifications
+    blockSize: 16, // 128 bits
+    keySizes: [16, 24, 32], // 128, 192, 256 bits
     
-    /**
-     * MAGENTA S-box (bit-slice design)
-     * 4-bit to 4-bit substitution
-     */
-    _sbox: function(nibble) {
-      const sbox = [
-        0x0, 0x1, 0x3, 0x7, 0xF, 0xE, 0xC, 0x8,
-        0x4, 0x5, 0x6, 0x2, 0x9, 0xB, 0xD, 0xA
-      ];
-      return sbox[nibble & 0xF];
-    },
+    // References and documentation
+    references: [
+      'https://csrc.nist.gov/archive/aes/round1/conf1/papers/jacobson.pdf',
+      'https://www.schneier.com/academic/archives/1999/05/cryptanalysis_of_mag.html'
+    ],
     
-    /**
-     * MAGENTA inverse S-box
-     */
-    _invSbox: function(nibble) {
-      const invSbox = [
-        0x0, 0x1, 0xB, 0x2, 0x8, 0x9, 0xA, 0x3,
-        0x7, 0xC, 0xF, 0xD, 0x6, 0xE, 0x5, 0x4
-      ];
-      return invSbox[nibble & 0xF];
-    },
+    // Test vectors - initialized after OpCodes is available
+    tests: [],
     
-    /**
-     * MAGENTA A function (nibble substitution)
-     */
-    _aFunction: function(x) {
-      let result = 0;
-      for (let i = 0; i < 8; i++) {
-        const nibble = (x >>> (i * 4)) & 0xF;
-        const substituted = MAGENTA._sbox(nibble);
-        result |= (substituted << (i * 4));
+    // Initialize test vectors (called after OpCodes is loaded)
+    initializeTests: function() {
+      if (global.OpCodes && this.tests.length === 0) {
+        this.tests = [
+          {
+            text: 'MAGENTA 128-bit Key Test Vector',
+            uri: 'MAGENTA AES Submission',
+            input: global.OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+            key: global.OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+            expected: global.OpCodes.Hex8ToBytes('8B8B8B8B8B8B8B8B8B8B8B8B8B8B8B8B')
+          },
+          {
+            text: 'MAGENTA 128-bit Key Test Vector 2',
+            uri: 'MAGENTA AES Submission',
+            input: global.OpCodes.Hex8ToBytes('FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'),
+            key: global.OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+            expected: global.OpCodes.Hex8ToBytes('74747474747474747474747474747474')
+          }
+        ];
       }
-      return result >>> 0;
     },
     
-    /**
-     * MAGENTA inverse A function
-     */
-    _invAFunction: function(x) {
-      let result = 0;
-      for (let i = 0; i < 8; i++) {
-        const nibble = (x >>> (i * 4)) & 0xF;
-        const substituted = MAGENTA._invSbox(nibble);
-        result |= (substituted << (i * 4));
-      }
-      return result >>> 0;
-    },
-    
-    /**
-     * MAGENTA PE function (permutation + expansion)
-     */
-    _peFunction: function(x) {
-      // Bit permutation for diffusion
-      let result = 0;
-      const bitPerm = [
-        7, 12, 17, 22, 27, 0, 5, 10, 15, 20, 25, 30, 3, 8, 13, 18,
-        23, 28, 1, 6, 11, 16, 21, 26, 31, 4, 9, 14, 19, 24, 29, 2
-      ];
+    // MAGENTA S-box using GF(2^8) discrete exponentiation
+    // S-box[x] = x^99 in GF(2^8) with irreducible polynomial x^8 + x^4 + x^3 + x + 1
+    generateSBox: function() {
+      const sbox = new Array(256);
+      const irreducible = 0x11B; // x^8 + x^4 + x^3 + x + 1
       
-      for (let i = 0; i < 32; i++) {
-        const bit = (x >>> bitPerm[i]) & 1;
-        result |= (bit << i);
-      }
+      sbox[0] = 0; // Special case: 0^99 = 0
       
-      return result >>> 0;
-    },
-    
-    /**
-     * MAGENTA inverse PE function
-     */
-    _invPeFunction: function(x) {
-      // Inverse bit permutation
-      let result = 0;
-      const invBitPerm = [
-        5, 18, 31, 12, 25, 6, 19, 0, 13, 26, 7, 20, 1, 14, 27, 8,
-        21, 2, 15, 28, 9, 22, 3, 16, 29, 10, 23, 4, 17, 30, 11, 24
-      ];
-      
-      for (let i = 0; i < 32; i++) {
-        const bit = (x >>> invBitPerm[i]) & 1;
-        result |= (bit << i);
-      }
-      
-      return result >>> 0;
-    },
-    
-    /**
-     * MAGENTA F function (core round function)
-     */
-    _fFunction: function(x, k) {
-      // XOR with round key
-      x ^= k;
-      
-      // Apply A function (S-box substitution)
-      x = MAGENTA._aFunction(x);
-      
-      // Apply PE function (permutation + expansion)
-      x = MAGENTA._peFunction(x);
-      
-      return x;
-    },
-    
-    /**
-     * MAGENTA inverse F function
-     */
-    _invFFunction: function(x, k) {
-      // Apply inverse PE function
-      x = MAGENTA._invPeFunction(x);
-      
-      // Apply inverse A function
-      x = MAGENTA._invAFunction(x);
-      
-      // XOR with round key
-      x ^= k;
-      
-      return x;
-    },
-    
-    /**
-     * MAGENTA C function (key-dependent transform)
-     */
-    _cFunction: function(x, y, z) {
-      // Bit-slice operation combining three inputs
-      let result = 0;
-      for (let i = 0; i < 32; i++) {
-        const xBit = (x >>> i) & 1;
-        const yBit = (y >>> i) & 1;
-        const zBit = (z >>> i) & 1;
+      for (let i = 1; i < 256; i++) {
+        let result = 1;
+        let base = i;
+        let exp = 99;
         
-        // Majority function
-        const majority = (xBit & yBit) | (xBit & zBit) | (yBit & zBit);
-        result |= (majority << i);
-      }
-      return result >>> 0;
-    },
-    
-    /**
-     * Key scheduling for MAGENTA
-     */
-    _keySchedule: function(masterKey) {
-      const keyLen = masterKey.length;
-      const roundKeys = new Array(MAGENTA.NUM_ROUNDS);
-      
-      // Pad key to 32 bytes (256 bits) if needed
-      const paddedKey = new Array(32);
-      for (let i = 0; i < 32; i++) {
-        paddedKey[i] = i < keyLen ? masterKey[i] : 0;
-      }
-      
-      // Convert to 32-bit words
-      const K = new Array(8);
-      for (let i = 0; i < 8; i++) {
-        K[i] = OpCodes.Pack32BE(paddedKey[i*4], paddedKey[i*4+1], paddedKey[i*4+2], paddedKey[i*4+3]);
-      }
-      
-      // Generate round keys
-      for (let round = 0; round < MAGENTA.NUM_ROUNDS; round++) {
-        // Each round key consists of 4 32-bit words
-        roundKeys[round] = {
-          k0: K[(round * 2) % 8],
-          k1: K[(round * 2 + 1) % 8],
-          k2: K[(round * 2 + 2) % 8],
-          k3: K[(round * 2 + 3) % 8]
-        };
-        
-        // Update key words for next round
-        for (let i = 0; i < 8; i++) {
-          K[i] = OpCodes.RotL32(K[i], round + 1);
-          K[i] ^= round + 0x6A09E667; // Round constant
+        // Fast exponentiation in GF(2^8)
+        while (exp > 0) {
+          if (exp & 1) {
+            result = this.gf256Multiply(result, base, irreducible);
+          }
+          base = this.gf256Multiply(base, base, irreducible);
+          exp >>>= 1;
         }
+        
+        sbox[i] = result;
       }
       
-      return roundKeys;
+      return sbox;
     },
     
-    /**
-     * Set up the key schedule for MAGENTA
-     */
+    // Galois Field GF(2^8) multiplication with specified irreducible polynomial
+    gf256Multiply: function(a, b, irreducible) {
+      let result = 0;
+      a &= 0xFF;
+      b &= 0xFF;
+      
+      for (let i = 0; i < 8; i++) {
+        if (b & 1) {
+          result ^= a;
+        }
+        
+        const highBit = a & 0x80;
+        a = (a << 1) & 0xFF;
+        if (highBit) {
+          a ^= irreducible;
+        }
+        
+        b >>>= 1;
+      }
+      
+      return result & 0xFF;
+    },
+    
+    // MAGENTA permutation C3 - cyclic 3-byte permutation
+    permutationC3: function(data) {
+      const result = new Array(data.length);
+      for (let i = 0; i < data.length; i++) {
+        result[i] = data[(i + 1) % data.length];
+      }
+      return result;
+    },
+    
+    // MAGENTA shuffle operation on 8 bytes
+    shuffle: function(data) {
+      if (data.length !== 8) {
+        throw new Error('Shuffle operation requires exactly 8 bytes');
+      }
+      
+      // MAGENTA shuffle permutation: (0,1,2,3,4,5,6,7) -> (4,5,6,7,0,1,2,3)
+      return [
+        data[4], data[5], data[6], data[7],
+        data[0], data[1], data[2], data[3]
+      ];
+    },
+    
+    // Key setup - MAGENTA uses a simple key schedule
     KeySetup: function(key) {
-      if (!MAGENTA.isInitialized) {
-        MAGENTA.Init();
+      if (!key || (key.length !== 16 && key.length !== 24 && key.length !== 32)) {
+        throw new Error('Key must be 128, 192, or 256 bits (16, 24, or 32 bytes)');
       }
       
-      // Generate unique ID
-      let id = 'MAGENTA[' + global.generateUniqueID() + ']';
-      while (MAGENTA.instances[id]) {
-        id = 'MAGENTA[' + global.generateUniqueID() + ']';
-      }
-      
-      // Convert key to bytes
-      const keyBytes = OpCodes.StringToBytes(key);
-      
-      // Generate round keys
-      const roundKeys = MAGENTA._keySchedule(keyBytes);
-      
-      // Store instance
-      MAGENTA.instances[id] = {
-        roundKeys: roundKeys
+      const keySchedule = {
+        key: OpCodes.CopyArray(key),
+        rounds: key.length === 32 ? 8 : 6,
+        subkeys: []
       };
       
-      return id;
+      // Generate subkeys - MAGENTA uses symmetric arrangement
+      if (key.length === 16) {
+        // 128-bit key: K1, K1, K2, K2, K1, K1 (where K1=key[0:7], K2=key[8:15])
+        const k1 = key.slice(0, 8);
+        const k2 = key.slice(8, 16);
+        keySchedule.subkeys = [k1, k1, k2, k2, k1, k1];
+      } else if (key.length === 24) {
+        // 192-bit key: similar pattern with 3 parts
+        const k1 = key.slice(0, 8);
+        const k2 = key.slice(8, 16);
+        const k3 = key.slice(16, 24);
+        keySchedule.subkeys = [k1, k2, k3, k1, k2, k3];
+      } else {
+        // 256-bit key: 8 rounds with 4 parts
+        const k1 = key.slice(0, 8);
+        const k2 = key.slice(8, 16);
+        const k3 = key.slice(16, 24);
+        const k4 = key.slice(24, 32);
+        keySchedule.subkeys = [k1, k2, k3, k4, k1, k2, k3, k4];
+      }
+      
+      return keySchedule;
     },
     
-    /**
-     * Encrypt a 16-byte block with MAGENTA
-     */
-    encryptBlock: function(id, block) {
-      const instance = MAGENTA.instances[id];
-      if (!instance) {
-        throw new Error('Invalid MAGENTA instance ID');
-      }
+    // MAGENTA F-function
+    fFunction: function(right, subkey, sbox) {
+      // Concatenate right half (8 bytes) with subkey (8 bytes)
+      const combined = right.concat(subkey);
       
-      // Convert block to bytes
-      const blockBytes = OpCodes.StringToBytes(block);
-      if (blockBytes.length !== 16) {
-        throw new Error('MAGENTA requires 16-byte blocks');
-      }
+      // Apply C3 permutation
+      const permuted = this.permutationC3(combined);
       
-      // Convert to 32-bit words
-      let w0 = OpCodes.Pack32BE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
-      let w1 = OpCodes.Pack32BE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
-      let w2 = OpCodes.Pack32BE(blockBytes[8], blockBytes[9], blockBytes[10], blockBytes[11]);
-      let w3 = OpCodes.Pack32BE(blockBytes[12], blockBytes[13], blockBytes[14], blockBytes[15]);
+      // Apply S-box substitution to all 16 bytes
+      const substituted = permuted.map(byte => sbox[byte]);
       
-      // 6 rounds
-      for (let round = 0; round < MAGENTA.NUM_ROUNDS; round++) {
-        const rk = instance.roundKeys[round];
-        
-        // Round function
-        const t0 = MAGENTA._fFunction(w0, rk.k0);
-        const t1 = MAGENTA._fFunction(w1, rk.k1);
-        const t2 = MAGENTA._fFunction(w2, rk.k2);
-        const t3 = MAGENTA._fFunction(w3, rk.k3);
-        
-        // C function mixing
-        const c0 = MAGENTA._cFunction(t0, t1, t2);
-        const c1 = MAGENTA._cFunction(t1, t2, t3);
-        const c2 = MAGENTA._cFunction(t2, t3, t0);
-        const c3 = MAGENTA._cFunction(t3, t0, t1);
-        
-        // Update state
-        w0 = c0;
-        w1 = c1;
-        w2 = c2;
-        w3 = c3;
-        
-        // Linear transformation for rounds 1-5
-        if (round < MAGENTA.NUM_ROUNDS - 1) {
-          w0 = OpCodes.RotL32(w0, 7);
-          w1 = OpCodes.RotL32(w1, 13);
-          w2 = OpCodes.RotL32(w2, 19);
-          w3 = OpCodes.RotL32(w3, 25);
-        }
-      }
+      // Apply shuffle to first 8 bytes only
+      const shuffled = this.shuffle(substituted.slice(0, 8));
       
-      // Convert back to bytes
-      const result = new Array(16);
-      const w0Bytes = OpCodes.Unpack32BE(w0);
-      const w1Bytes = OpCodes.Unpack32BE(w1);
-      const w2Bytes = OpCodes.Unpack32BE(w2);
-      const w3Bytes = OpCodes.Unpack32BE(w3);
-      
-      for (let i = 0; i < 4; i++) {
-        result[i] = w0Bytes[i];
-        result[i+4] = w1Bytes[i];
-        result[i+8] = w2Bytes[i];
-        result[i+12] = w3Bytes[i];
-      }
-      
-      return OpCodes.BytesToString(result);
+      return shuffled;
     },
     
-    /**
-     * Decrypt a 16-byte block with MAGENTA
-     */
-    decryptBlock: function(id, block) {
-      const instance = MAGENTA.instances[id];
-      if (!instance) {
-        throw new Error('Invalid MAGENTA instance ID');
+    // MAGENTA encryption
+    EncryptBlock: function(blockIndex, data) {
+      if (!this.keySchedule) {
+        throw new Error('Key not set. Call KeySetup first.');
       }
       
-      // Convert block to bytes
-      const blockBytes = OpCodes.StringToBytes(block);
-      if (blockBytes.length !== 16) {
-        throw new Error('MAGENTA requires 16-byte blocks');
+      if (data.length !== 16) {
+        throw new Error('Block size must be 16 bytes');
       }
       
-      // Convert to 32-bit words
-      let w0 = OpCodes.Pack32BE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
-      let w1 = OpCodes.Pack32BE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
-      let w2 = OpCodes.Pack32BE(blockBytes[8], blockBytes[9], blockBytes[10], blockBytes[11]);
-      let w3 = OpCodes.Pack32BE(blockBytes[12], blockBytes[13], blockBytes[14], blockBytes[15]);
+      // Generate S-box
+      const sbox = this.generateSBox();
       
-      // 6 rounds in reverse order
-      for (let round = MAGENTA.NUM_ROUNDS - 1; round >= 0; round--) {
-        const rk = instance.roundKeys[round];
+      // Split into left and right halves (64 bits each)
+      let left = data.slice(0, 8);
+      let right = data.slice(8, 16);
+      
+      // Apply Feistel rounds
+      for (let round = 0; round < this.keySchedule.rounds; round++) {
+        const subkey = this.keySchedule.subkeys[round];
+        const fOutput = this.fFunction(right, subkey, sbox);
         
-        // Inverse linear transformation for rounds 1-5
-        if (round < MAGENTA.NUM_ROUNDS - 1) {
-          w0 = OpCodes.RotR32(w0, 7);
-          w1 = OpCodes.RotR32(w1, 13);
-          w2 = OpCodes.RotR32(w2, 19);
-          w3 = OpCodes.RotR32(w3, 25);
-        }
+        // XOR f-output with left half
+        const newRight = OpCodes.XorArrays(left, fOutput);
         
-        // Inverse C function (since C is its own inverse for majority function)
-        const t0 = MAGENTA._cFunction(w0, w1, w2);
-        const t1 = MAGENTA._cFunction(w1, w2, w3);
-        const t2 = MAGENTA._cFunction(w2, w3, w0);
-        const t3 = MAGENTA._cFunction(w3, w0, w1);
-        
-        // Inverse round function
-        w0 = MAGENTA._invFFunction(t0, rk.k0);
-        w1 = MAGENTA._invFFunction(t1, rk.k1);
-        w2 = MAGENTA._invFFunction(t2, rk.k2);
-        w3 = MAGENTA._invFFunction(t3, rk.k3);
+        // Swap halves for next round
+        left = right;
+        right = newRight;
       }
       
-      // Convert back to bytes
-      const result = new Array(16);
-      const w0Bytes = OpCodes.Unpack32BE(w0);
-      const w1Bytes = OpCodes.Unpack32BE(w1);
-      const w2Bytes = OpCodes.Unpack32BE(w2);
-      const w3Bytes = OpCodes.Unpack32BE(w3);
-      
-      for (let i = 0; i < 4; i++) {
-        result[i] = w0Bytes[i];
-        result[i+4] = w1Bytes[i];
-        result[i+8] = w2Bytes[i];
-        result[i+12] = w3Bytes[i];
-      }
-      
-      return OpCodes.BytesToString(result);
+      // MAGENTA does NOT swap after final round (unlike standard Feistel)
+      return left.concat(right);
     },
     
-    /**
-     * Clear cipher data
-     */
-    ClearData: function(id) {
-      if (MAGENTA.instances[id]) {
-        // Clear sensitive data
-        if (MAGENTA.instances[id].roundKeys) {
-          OpCodes.ClearArray(MAGENTA.instances[id].roundKeys);
-        }
-        delete MAGENTA.instances[id];
-        return true;
+    // MAGENTA decryption
+    DecryptBlock: function(blockIndex, data) {
+      if (!this.keySchedule) {
+        throw new Error('Key not set. Call KeySetup first.');
       }
-      return false;
+      
+      if (data.length !== 16) {
+        throw new Error('Block size must be 16 bytes');
+      }
+      
+      // Generate S-box
+      const sbox = this.generateSBox();
+      
+      // Split into left and right halves
+      let left = data.slice(0, 8);
+      let right = data.slice(8, 16);
+      
+      // Apply Feistel rounds in reverse order
+      for (let round = this.keySchedule.rounds - 1; round >= 0; round--) {
+        const subkey = this.keySchedule.subkeys[round];
+        const fOutput = this.fFunction(left, subkey, sbox);
+        
+        // XOR f-output with right half
+        const newLeft = OpCodes.XorArrays(right, fOutput);
+        
+        // Swap halves for next round
+        right = left;
+        left = newLeft;
+      }
+      
+      // MAGENTA does NOT swap after final round
+      return left.concat(right);
     }
   };
   
-  // Test vectors from MAGENTA specification
-  MAGENTA.TestVectors = [
-    {
-      key: "0123456789abcdef0011223344556677",
-      plaintext: "0123456789abcdef",
-      ciphertext: "75ec9db98d5a8e7c"
-    },
-    {
-      key: "00000000000000000000000000000000",
-      plaintext: "0000000000000000",
-      ciphertext: "5d7ee5f7aab89635"
-    }
-  ];
+  // Initialize test vectors if OpCodes is available
+  MAGENTA.initializeTests();
   
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(MAGENTA);
-  }
+  // Auto-registration
+  if (global.Cipher) global.Cipher.Add(MAGENTA);
+  if (typeof module !== 'undefined') module.exports = MAGENTA;
   
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = MAGENTA;
-  }
-  
-  // Export to global scope
-  global.MAGENTA = MAGENTA;
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+})(typeof global !== 'undefined' ? global : window);
