@@ -12,15 +12,15 @@ if (!global.AlgorithmFramework && typeof require !== 'undefined') {
   global.AlgorithmFramework = require('../../AlgorithmFramework.js');
 }
 
-// Use AlgorithmFramework properties directly without destructuring to avoid conflicts
-
-
 // Load OpCodes for cryptographic operations (RECOMMENDED)
 if (!global.OpCodes && typeof require !== 'undefined') {
-  OpCodes = require('../../OpCodes.js');
+  global.OpCodes = require('../../OpCodes.js');
 }
 
-class CRC16Checksum extends AlgorithmFramework.HashFunctionAlgorithm {
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        Algorithm, IAlgorithmInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
+
+class CRC16Algorithm extends Algorithm {
   constructor() {
     super();
     
@@ -29,56 +29,51 @@ class CRC16Checksum extends AlgorithmFramework.HashFunctionAlgorithm {
     this.description = "16-bit Cyclic Redundancy Check algorithm using polynomial 0x1021. Commonly used for error detection in telecommunications and data storage. Fast and simple integrity verification.";
     this.inventor = "W. Wesley Peterson";
     this.year = 1961;
-    this.category = AlgorithmFramework.CategoryType.CHECKSUM;
-    this.subCategory = "Error Detection";
-    this.securityStatus = AlgorithmFramework.SecurityStatus.EDUCATIONAL; // Not cryptographically secure
-    this.complexity = AlgorithmFramework.ComplexityType.BEGINNER;
-    this.country = AlgorithmFramework.CountryCode.US;
-
-    // Fixed output size
-    this.SupportedOutputSizes = [
-      new AlgorithmFramework.KeySize(2, 2, 1) // Fixed 2-byte (16-bit) output
-    ];
+    this.category = CategoryType.CHECKSUM;
+    this.subCategory = "Cyclic Redundancy Check";
+    this.securityStatus = SecurityStatus.EDUCATIONAL;
+    this.complexity = ComplexityType.BEGINNER;
+    this.country = CountryCode.US;
 
     // Documentation and references
     this.documentation = [
-      new AlgorithmFramework.LinkItem("CRC Theory", "https://en.wikipedia.org/wiki/Cyclic_redundancy_check"),
-      new AlgorithmFramework.LinkItem("CRC16-CCITT", "https://en.wikipedia.org/wiki/Cyclic_redundancy_check#CRC-16"),
-      new AlgorithmFramework.LinkItem("Error Detection Codes", "https://web.archive.org/web/20180820004844/http://www.cs.jhu.edu/~scheideler/courses/600.344_S02/CRC.html")
+      new LinkItem("CRC Theory", "https://en.wikipedia.org/wiki/Cyclic_redundancy_check"),
+      new LinkItem("CRC16-CCITT", "https://en.wikipedia.org/wiki/Cyclic_redundancy_check#CRC-16"),
+      new LinkItem("Error Detection Codes", "https://web.archive.org/web/20180820004844/http://www.cs.jhu.edu/~scheideler/courses/600.344_S02/CRC.html")
     ];
 
     this.references = [
-      new AlgorithmFramework.LinkItem("Peterson & Brown Paper", "https://dl.acm.org/doi/10.1145/321075.321076"),
-      new AlgorithmFramework.LinkItem("ITU-T Recommendation", "https://www.itu.int/rec/T-REC-V.41"),
-      new AlgorithmFramework.LinkItem("CRC Catalogue", "http://reveng.sourceforge.net/crc-catalogue/")
+      new LinkItem("Peterson & Brown Paper", "https://dl.acm.org/doi/10.1145/321075.321076"),
+      new LinkItem("ITU-T Recommendation", "https://www.itu.int/rec/T-REC-V.41"),
+      new LinkItem("CRC Catalogue", "http://reveng.sourceforge.net/crc-catalogue/")
     ];
 
     // Test vectors
     this.tests = [
-      {
-        text: "Empty string CRC16",
-        uri: "http://reveng.sourceforge.net/crc-catalogue/",
-        input: OpCodes.AnsiToBytes(""),
-        expected: OpCodes.Hex8ToBytes("0000") // CRC16-CCITT of empty string
-      },
-      {
-        text: "Single byte 'A' CRC16",
-        uri: "http://reveng.sourceforge.net/crc-catalogue/",
-        input: OpCodes.AnsiToBytes("A"),
-        expected: OpCodes.Hex8ToBytes("b915") // CRC16-CCITT of 'A' (0x41)
-      },
-      {
-        text: "String '123456789' CRC16",
-        uri: "http://reveng.sourceforge.net/crc-catalogue/",
-        input: OpCodes.AnsiToBytes("123456789"),
-        expected: OpCodes.Hex8ToBytes("29b1") // CRC16-CCITT of "123456789"
-      },
-      {
-        text: "String 'Hello World' CRC16",
-        uri: "http://reveng.sourceforge.net/crc-catalogue/",
-        input: OpCodes.AnsiToBytes("Hello World"),
-        expected: OpCodes.Hex8ToBytes("8b13") // CRC16-CCITT of "Hello World"
-      }
+      new TestCase(
+        OpCodes.AnsiToBytes(""),
+        OpCodes.Hex8ToBytes("0000"),
+        "Empty string CRC16-CCITT",
+        "http://reveng.sourceforge.net/crc-catalogue/"
+      ),
+      new TestCase(
+        OpCodes.AnsiToBytes("A"),
+        OpCodes.Hex8ToBytes("b915"),
+        "Single byte 'A' CRC16-CCITT",
+        "http://reveng.sourceforge.net/crc-catalogue/"
+      ),
+      new TestCase(
+        OpCodes.AnsiToBytes("123456789"),
+        OpCodes.Hex8ToBytes("29b1"),
+        "String '123456789' CRC16-CCITT",
+        "http://reveng.sourceforge.net/crc-catalogue/"
+      ),
+      new TestCase(
+        OpCodes.AnsiToBytes("Hello World"),
+        OpCodes.Hex8ToBytes("8b13"),
+        "String 'Hello World' CRC16-CCITT",
+        "http://reveng.sourceforge.net/crc-catalogue/"
+      )
     ];
   }
 
@@ -90,12 +85,10 @@ class CRC16Checksum extends AlgorithmFramework.HashFunctionAlgorithm {
   }
 }
 
-class CRC16Instance extends AlgorithmFramework.IHashFunctionInstance {
+class CRC16Instance extends IAlgorithmInstance {
   constructor(algorithm) {
     super(algorithm);
     this.crc = 0x0000; // Initial value
-    this.inputBuffer = [];
-    this.OutputSize = 2; // 16-bit = 2 bytes
     
     // Pre-computed CRC16-CCITT lookup table (polynomial 0x1021)
     this.crcTable = this._generateTable();
@@ -105,9 +98,8 @@ class CRC16Instance extends AlgorithmFramework.IHashFunctionInstance {
     if (!data || data.length === 0) return;
     
     // Process each byte
-    for (let i = 0; i < data.length; i++) {
+    for (let i = 0; i < data.length; ++i)
       this.crc = this._updateCRC(this.crc, data[i]);
-    }
   }
 
   Result() {
@@ -152,4 +144,9 @@ class CRC16Instance extends AlgorithmFramework.IHashFunctionInstance {
 }
 
 // Register the algorithm
-AlgorithmFramework.RegisterAlgorithm(new CRC16Checksum());
+RegisterAlgorithm(new CRC16Algorithm());
+
+// Export for Node.js
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { CRC16Algorithm, CRC16Instance };
+}
