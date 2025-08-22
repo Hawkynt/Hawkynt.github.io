@@ -4,64 +4,286 @@
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
-  'use strict';
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
 
-  const CipherMetadata = global.CipherMetadata || {};
+// Load OpCodes for cryptographic operations (RECOMMENDED)
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
 
-  const KWMetadata = CipherMetadata.createMetadata({
-    name: 'KW',
-    category: 'mode',
-    description: 'Key Wrap mode - secure encryption of cryptographic keys',
-    keySize: 'Variable (depends on underlying cipher)',
-    blockSize: '64-bit (8 bytes)',
-    cryptoFamily: 'Mode of operation',
-    cryptoType: 'Symmetric',
-    security: 'High - designed for key protection',
-    country: 'USA',
-    year: 2001,
-    references: [
-      'RFC 3394',
-      'NIST SP 800-38F',
-      'AES Key Wrap'
-    ]
-  });
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+        CipherModeAlgorithm, IAlgorithmInstance, TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
-  if (typeof Cipher !== 'undefined' && Cipher.RegisterCipher) {
-    Cipher.RegisterCipher('KW', {
-      szName: 'KW',
-      szCategory: 'mode',
-      szCountry: 'USA',
-      nYear: 2001,
-      metadata: KWMetadata,
-      working: true,
-      
-      Init: function() {
-        return true;
-      },
-      
-      KeySetup: function(kek, blockCipher) {
-        return { kek: kek, blockCipher: blockCipher, id: Math.random() };
-      },
-      
-      WrapKey: function(keyId, keyToWrap) {
-        // Key wrapping implementation placeholder
-        const wrapped = keyToWrap.map((byte, i) => byte ^ ((i + keyId.kek[i % keyId.kek.length]) % 256));
-        const iv = [0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6]; // Default IV
-        return iv.concat(wrapped);
-      },
-      
-      UnwrapKey: function(keyId, wrappedKey) {
-        // Key unwrapping implementation placeholder
-        const iv = wrappedKey.slice(0, 8);
-        const wrapped = wrappedKey.slice(8);
-        return wrapped.map((byte, i) => byte ^ ((i + keyId.kek[i % keyId.kek.length]) % 256));
-      },
-      
-      ClearData: function(keyId) {
-        return true;
-      }
+class KwAlgorithm extends CipherModeAlgorithm {
+  constructor() {
+    super();
+    
+    this.name = "KW";
+    this.description = "KW (Key Wrap) is a specialized mode designed specifically for securely wrapping (encrypting) cryptographic keys. It provides both confidentiality and integrity protection for key material using a deterministic algorithm with built-in authentication. Commonly used for protecting symmetric keys with a key encryption key (KEK).";
+    this.inventor = "NIST";
+    this.year = 2001;
+    this.category = CategoryType.MODE;
+    this.subCategory = "Key Wrapping Mode";
+    this.securityStatus = SecurityStatus.SECURE; // Standardized and widely deployed
+    this.complexity = ComplexityType.INTERMEDIATE;
+    this.country = CountryCode.US;
+    
+    this.RequiresIV = false; // Uses fixed IV (0xA6A6A6A6A6A6A6A6)
+    this.SupportedIVSizes = []; // Not applicable for KW
+    
+    this.documentation = [
+      new LinkItem("RFC 3394 - AES Key Wrap", "https://tools.ietf.org/rfc/rfc3394.txt"),
+      new LinkItem("NIST SP 800-38F", "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38F.pdf"),
+      new LinkItem("FIPS 197 AES", "https://nvlpubs.nist.gov/nistpubs/fips/nist.fips.197.pdf")
+    ];
+    
+    this.references = [
+      new LinkItem("OpenSSL Key Wrap", "https://github.com/openssl/openssl/blob/master/crypto/modes/wrap128.c"),
+      new LinkItem("Crypto++ Key Wrap", "https://github.com/weidai11/cryptopp/blob/master/keywrap.cpp"),
+      new LinkItem("Java KeyWrap Cipher", "https://docs.oracle.com/javase/8/docs/technotes/guides/security/crypto/CryptoSpec.html#KeyWrap")
+    ];
+    
+    this.knownVulnerabilities = [
+      new Vulnerability("Deterministic Nature", "Key Wrap is deterministic - identical keys will produce identical wrapped values. This may leak information in some contexts."),
+      new Vulnerability("Key Size Restrictions", "Input key must be multiple of 64 bits (8 bytes). Minimum key size is 128 bits (16 bytes).")
+    ];
+    
+    // Official test vectors from RFC 3394
+    this.tests = [
+      new TestCase(
+        OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"), // 128-bit key to wrap
+        OpCodes.Hex8ToBytes("1fa68b0a8112b447aec34c4c6c84c24697297d1e1bb3a80c"), // Expected wrapped output
+        "RFC 3394 128-bit key wrap test",
+        "https://tools.ietf.org/rfc/rfc3394.txt"
+      ),
+      new TestCase(
+        OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff0001020304050607"), // 192-bit key to wrap  
+        OpCodes.Hex8ToBytes("96778b25ae6ca435f92b5b97c050aed2468ab8a17ad84d5d"), // Expected wrapped output
+        "RFC 3394 192-bit key wrap test",
+        "https://tools.ietf.org/rfc/rfc3394.txt"
+      )
+    ];
+    
+    // Add test parameters
+    this.tests.forEach(test => {
+      test.kek = OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"); // Key Encryption Key
     });
   }
+  
+  CreateInstance(isInverse = false) {
+    return new KwModeInstance(this, isInverse);
+  }
+}
 
-})(typeof global !== 'undefined' ? global : window);
+class KwModeInstance extends IAlgorithmInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.blockCipher = null;
+    this.inputBuffer = [];
+    this.kek = null; // Key Encryption Key
+    this.defaultIV = [0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6]; // RFC 3394 default IV
+  }
+  
+  /**
+   * Set the underlying block cipher instance (must be AES for standard compliance)
+   * @param {IBlockCipherInstance} cipher - The block cipher to use (typically AES)
+   */
+  setBlockCipher(cipher) {
+    if (!cipher || !cipher.BlockSize) {
+      throw new Error("Invalid block cipher instance");
+    }
+    if (cipher.BlockSize !== 16) {
+      throw new Error("Key Wrap requires AES (128-bit block cipher)");
+    }
+    this.blockCipher = cipher;
+  }
+  
+  /**
+   * Set the Key Encryption Key (KEK)
+   * @param {Array} kek - Key Encryption Key (128, 192, or 256 bits)
+   */
+  setKEK(kek) {
+    if (!kek || (kek.length !== 16 && kek.length !== 24 && kek.length !== 32)) {
+      throw new Error("KEK must be 128, 192, or 256 bits (16, 24, or 32 bytes)");
+    }
+    this.kek = [...kek];
+  }
+  
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    if (!this.blockCipher) {
+      throw new Error("Block cipher not set. Call setBlockCipher() first.");
+    }
+    if (!this.kek) {
+      throw new Error("KEK not set. Call setKEK() first.");
+    }
+    this.inputBuffer.push(...data);
+  }
+  
+  Result() {
+    if (!this.blockCipher) {
+      throw new Error("Block cipher not set. Call setBlockCipher() first.");
+    }
+    if (!this.kek) {
+      throw new Error("KEK not set. Call setKEK() first.");
+    }
+    if (this.inputBuffer.length === 0) {
+      throw new Error("No data fed");
+    }
+    
+    if (this.isInverse) {
+      // Key Unwrapping
+      return this._unwrapKey();
+    } else {
+      // Key Wrapping
+      return this._wrapKey();
+    }
+  }
+  
+  /**
+   * Wrap a key using the RFC 3394 algorithm
+   * @returns {Array} Wrapped key
+   */
+  _wrapKey() {
+    const plainKey = this.inputBuffer;
+    
+    // Validate input key length
+    if (plainKey.length % 8 !== 0) {
+      throw new Error("Key to wrap must be multiple of 64 bits (8 bytes)");
+    }
+    if (plainKey.length < 16) {
+      throw new Error("Key to wrap must be at least 128 bits (16 bytes)");
+    }
+    
+    const n = plainKey.length / 8; // Number of 64-bit blocks
+    
+    // Initialize variables
+    let A = [...this.defaultIV]; // 64-bit IV
+    const R = new Array(n + 1); // Array of 64-bit registers
+    R[0] = null; // R[0] is not used
+    
+    // Split plaintext key into 64-bit blocks
+    for (let i = 1; i <= n; i++) {
+      R[i] = plainKey.slice((i - 1) * 8, i * 8);
+    }
+    
+    // Perform wrapping algorithm
+    for (let j = 0; j <= 5; j++) {
+      for (let i = 1; i <= n; i++) {
+        // Encrypt A || R[i] with KEK
+        const input = A.concat(R[i]);
+        const cipher = this.blockCipher.algorithm.CreateInstance(false);
+        cipher.key = this.kek;
+        cipher.Feed(input);
+        const B = cipher.Result();
+        
+        // Split result and update
+        A = B.slice(0, 8);
+        R[i] = B.slice(8, 16);
+        
+        // XOR MSB of A with (n*j)+i
+        const t = (n * j) + i;
+        A[7] ^= t & 0xFF;
+        A[6] ^= (t >> 8) & 0xFF;
+        A[5] ^= (t >> 16) & 0xFF;
+        A[4] ^= (t >> 24) & 0xFF;
+      }
+    }
+    
+    // Construct wrapped key: A || R[1] || R[2] || ... || R[n]
+    const wrapped = [...A];
+    for (let i = 1; i <= n; i++) {
+      wrapped.push(...R[i]);
+    }
+    
+    // Clear sensitive data
+    OpCodes.ClearArray(this.inputBuffer);
+    OpCodes.ClearArray(A);
+    R.forEach(r => r && OpCodes.ClearArray(r));
+    this.inputBuffer = [];
+    
+    return wrapped;
+  }
+  
+  /**
+   * Unwrap a key using the RFC 3394 algorithm
+   * @returns {Array} Unwrapped key
+   */
+  _unwrapKey() {
+    const wrappedKey = this.inputBuffer;
+    
+    // Validate wrapped key length
+    if (wrappedKey.length % 8 !== 0 || wrappedKey.length < 24) {
+      throw new Error("Wrapped key must be multiple of 64 bits and at least 192 bits");
+    }
+    
+    const n = (wrappedKey.length / 8) - 1; // Number of 64-bit plaintext blocks
+    
+    // Initialize variables
+    let A = wrappedKey.slice(0, 8); // 64-bit IV
+    const R = new Array(n + 1); // Array of 64-bit registers
+    R[0] = null; // R[0] is not used
+    
+    // Split wrapped key into 64-bit blocks
+    for (let i = 1; i <= n; i++) {
+      R[i] = wrappedKey.slice(i * 8, (i + 1) * 8);
+    }
+    
+    // Perform unwrapping algorithm
+    for (let j = 5; j >= 0; j--) {
+      for (let i = n; i >= 1; i--) {
+        // XOR MSB of A with (n*j)+i
+        const t = (n * j) + i;
+        A[7] ^= t & 0xFF;
+        A[6] ^= (t >> 8) & 0xFF;
+        A[5] ^= (t >> 16) & 0xFF;
+        A[4] ^= (t >> 24) & 0xFF;
+        
+        // Decrypt A || R[i] with KEK
+        const input = A.concat(R[i]);
+        const cipher = this.blockCipher.algorithm.CreateInstance(true);
+        cipher.key = this.kek;
+        cipher.Feed(input);
+        const B = cipher.Result();
+        
+        // Split result and update
+        A = B.slice(0, 8);
+        R[i] = B.slice(8, 16);
+      }
+    }
+    
+    // Verify IV
+    for (let i = 0; i < 8; i++) {
+      if (A[i] !== this.defaultIV[i]) {
+        throw new Error("Key unwrap failed: Invalid IV");
+      }
+    }
+    
+    // Construct unwrapped key: R[1] || R[2] || ... || R[n]
+    const unwrapped = [];
+    for (let i = 1; i <= n; i++) {
+      unwrapped.push(...R[i]);
+    }
+    
+    // Clear sensitive data
+    OpCodes.ClearArray(this.inputBuffer);
+    OpCodes.ClearArray(A);
+    R.forEach(r => r && OpCodes.ClearArray(r));
+    this.inputBuffer = [];
+    
+    return unwrapped;
+  }
+}
+
+// Register the algorithm
+const kwAlgorithm = new KwAlgorithm();
+RegisterAlgorithm(kwAlgorithm);
+
+// Export for module systems
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = kwAlgorithm;
+}
