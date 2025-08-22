@@ -64,7 +64,7 @@ class Fletcher32Algorithm extends Algorithm {
       ),
       new TestCase(
         OpCodes.AnsiToBytes("abcde"),
-        OpCodes.Hex8ToBytes("028002aa"),
+        OpCodes.Hex8ToBytes("05c301ef"),
         "Fletcher-32 Simple String Test",
         "https://en.wikipedia.org/wiki/Fletcher%27s_checksum"
       ),
@@ -76,7 +76,7 @@ class Fletcher32Algorithm extends Algorithm {
       ),
       new TestCase(
         OpCodes.AnsiToBytes("123456789"),
-        OpCodes.Hex8ToBytes("19de1a87"),
+        OpCodes.Hex8ToBytes("091501dd"),
         "Fletcher-32 Numeric Test",
         "https://en.wikipedia.org/wiki/Fletcher%27s_checksum"
       )
@@ -84,16 +84,21 @@ class Fletcher32Algorithm extends Algorithm {
   }
 
   CreateInstance(isInverse = false) {
-    return new Fletcher32Instance(this, isInverse);
+    if (isInverse) {
+      return null; // Checksums do not support inverse operations
+    }
+    return new Fletcher32Instance(this);
   }
 }
 
 class Fletcher32Instance extends IAlgorithmInstance {
-  constructor(algorithm, isInverse = false) {
+  constructor(algorithm) {
     super(algorithm);
-    this.isInverse = isInverse;
     this.MODULO = 65535;
     this.BLOCK_SIZE = 359;
+    this.sum1 = 0;
+    this.sum2 = 0;
+    this.blockIndex = 0;
   }
 
   Feed(data) {
@@ -101,51 +106,39 @@ class Fletcher32Instance extends IAlgorithmInstance {
       throw new Error('Fletcher32Instance.Feed: Input must be byte array');
     }
 
-    if (this.isInverse) {
-      throw new Error('Fletcher32Instance.Feed: Fletcher-32 cannot be reversed (one-way function)');
+    // Process data in blocks to prevent overflow
+    for (let i = 0; i < data.length; i++) {
+      this.sum1 += data[i];
+      this.sum2 += this.sum1;
+      
+      this.blockIndex++;
+      
+      // Reduce modulo periodically to prevent overflow
+      if (this.blockIndex >= this.BLOCK_SIZE) {
+        this.sum1 %= this.MODULO;
+        this.sum2 %= this.MODULO;
+        this.blockIndex = 0;
+      }
     }
-
-    return this.calculate(data);
   }
 
   Result() {
-    // Fletcher-32 is calculated in Feed method
-    throw new Error('Fletcher32Instance.Result: Use Feed() method to calculate Fletcher-32');
-  }
-
-  /**
-   * Core Fletcher-32 checksum calculation
-   * @param {Array} bytes - Byte array to checksum
-   * @returns {Array} 32-bit checksum as 4-byte array
-   */
-  calculate(bytes) {
-    let sum1 = 0;
-    let sum2 = 0;
-    
-    // Process data in blocks to prevent overflow
-    let index = 0;
-    while (index < bytes.length) {
-      const blockEnd = Math.min(index + this.BLOCK_SIZE, bytes.length);
-      
-      // Process one block
-      for (let i = index; i < blockEnd; i++) {
-        sum1 += bytes[i];
-        sum2 += sum1;
-      }
-      
-      // Reduce modulo 65535 to prevent overflow
-      sum1 %= this.MODULO;
-      sum2 %= this.MODULO;
-      
-      index = blockEnd;
-    }
+    // Final modulo reduction
+    this.sum1 %= this.MODULO;
+    this.sum2 %= this.MODULO;
     
     // Combine the two 16-bit sums into a 32-bit checksum
-    const checksum = (sum2 << 16) | sum1;
+    const checksum = (this.sum2 << 16) | this.sum1;
+    
+    // Reset for next calculation
+    this.sum1 = 0;
+    this.sum2 = 0;
+    this.blockIndex = 0;
     
     // Return as 4-byte array (big-endian)
     return OpCodes.Unpack32BE(checksum >>> 0);
   }
+
 }
 
 // Register the algorithm

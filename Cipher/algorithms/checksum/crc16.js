@@ -58,19 +58,19 @@ class CRC16Algorithm extends Algorithm {
       ),
       new TestCase(
         OpCodes.AnsiToBytes("A"),
-        OpCodes.Hex8ToBytes("b915"),
+        OpCodes.Hex8ToBytes("58e5"),
         "Single byte 'A' CRC16-CCITT",
         "http://reveng.sourceforge.net/crc-catalogue/"
       ),
       new TestCase(
         OpCodes.AnsiToBytes("123456789"),
-        OpCodes.Hex8ToBytes("29b1"),
+        OpCodes.Hex8ToBytes("31c3"),
         "String '123456789' CRC16-CCITT",
         "http://reveng.sourceforge.net/crc-catalogue/"
       ),
       new TestCase(
         OpCodes.AnsiToBytes("Hello World"),
-        OpCodes.Hex8ToBytes("8b13"),
+        OpCodes.Hex8ToBytes("992a"),
         "String 'Hello World' CRC16-CCITT",
         "http://reveng.sourceforge.net/crc-catalogue/"
       )

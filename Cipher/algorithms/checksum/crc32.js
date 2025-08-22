@@ -107,16 +107,19 @@ class CRC32Algorithm extends Algorithm {
   }
 
   CreateInstance(isInverse = false) {
-    return new CRC32Instance(this, isInverse);
+    if (isInverse) {
+      return null; // Checksums do not support inverse operations
+    }
+    return new CRC32Instance(this);
   }
 }
 
 class CRC32Instance extends IAlgorithmInstance {
-  constructor(algorithm, isInverse = false) {
+  constructor(algorithm) {
     super(algorithm);
-    this.isInverse = isInverse;
     this.polynomial = 0xEDB88320; // IEEE 802.3 polynomial (reversed)
     this.table = this.generateTable();
+    this.crc = 0xFFFFFFFF; // Initial value
   }
 
   generateTable() {
@@ -142,43 +145,41 @@ class CRC32Instance extends IAlgorithmInstance {
       throw new Error('CRC32Instance.Feed: Input must be byte array');
     }
 
-    if (this.isInverse) {
-      throw new Error('CRC32Instance.Feed: CRC-32 cannot be reversed (one-way function)');
-    }
-
-    let crc = 0xFFFFFFFF; // Initial value
-
+    // Process each byte
     for (let i = 0; i < data.length; i++) {
       const byte = data[i] & 0xFF;
-      const tableIndex = (crc ^ byte) & 0xFF;
-      crc = (crc >>> 8) ^ this.table[tableIndex];
+      const tableIndex = (this.crc ^ byte) & 0xFF;
+      this.crc = (this.crc >>> 8) ^ this.table[tableIndex];
     }
-
-    // Final XOR
-    crc = crc ^ 0xFFFFFFFF;
-
-    // Convert to byte array (big-endian for consistency)
-    return OpCodes.Unpack32BE(crc >>> 0);
   }
 
   Result() {
-    // CRC is calculated in Feed method
-    throw new Error('CRC32Instance.Result: Use Feed() method to calculate CRC-32');
+    // Final XOR and convert to byte array (big-endian)
+    const finalCrc = this.crc ^ 0xFFFFFFFF;
+    const result = OpCodes.Unpack32BE(finalCrc >>> 0);
+    
+    // Reset for next calculation
+    this.crc = 0xFFFFFFFF;
+    
+    return result;
   }
 
   // Additional utility methods
   calculateString(str) {
     const bytes = OpCodes.AnsiToBytes(str);
-    return this.Feed(bytes);
+    this.Feed(bytes);
+    return this.Result();
   }
 
   calculateHex(hexString) {
     const bytes = OpCodes.Hex8ToBytes(hexString);
-    return this.Feed(bytes);
+    this.Feed(bytes);
+    return this.Result();
   }
 
   verify(data, expectedCrc) {
-    const calculatedCrc = this.Feed(data);
+    this.Feed(data);
+    const calculatedCrc = this.Result();
     return OpCodes.SecureCompare(calculatedCrc, expectedCrc);
   }
 }
