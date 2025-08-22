@@ -144,6 +144,10 @@ class TestJavaScriptAST {
      * Get context lines around an error position
      */
     getErrorContext(code, errorLine, contextLines = 5) {
+        if (!code || !errorLine || errorLine < 1) {
+            return 'Unable to determine error location';
+        }
+        
         const lines = code.split('\n');
         const startLine = Math.max(0, errorLine - contextLines - 1);
         const endLine = Math.min(lines.length - 1, errorLine + contextLines - 1);
@@ -152,16 +156,23 @@ class TestJavaScriptAST {
         for (let i = startLine; i <= endLine; i++) {
             const lineNum = (i + 1).toString().padStart(4, ' ');
             const marker = (i === errorLine - 1) ? ' >>> ' : '     ';
-            contextCode.push(`${lineNum}${marker}${lines[i] || ''}`);
+            const lineContent = lines[i] || '';
+            contextCode.push(`${lineNum}${marker}${lineContent}`);
         }
         
-        return contextCode.join('\n');
+        return contextCode.length > 0 ? contextCode.join('\n') : 'Unable to determine error location';
     }
 
     /**
      * Extract line number from error message
      */
-    extractLineNumberFromError(error, code) {
+    extractLineNumberFromError(error, code, parser = null) {
+        // First try to use parser's current token position if available
+        if (parser && parser.currentToken && parser.currentToken.position !== undefined) {
+            const lines = code.substring(0, parser.currentToken.position).split('\n');
+            return lines.length;
+        }
+        
         // Try to get line from parser position if available
         if (error.parser && error.parser.position !== undefined) {
             const lines = code.substring(0, error.parser.position).split('\n');
@@ -216,13 +227,14 @@ class TestJavaScriptAST {
     testFile(filePath) {
         console.log(`\n📁 Testing: ${path.relative(this.algorithmsPath, filePath)}`);
         
+        let parser = null;
         try {
             // Read file content
             const code = fs.readFileSync(filePath, 'utf8');
             this.results.totalFiles++;
             
             // Create parser instance
-            const parser = new TypeAwareJSASTTranspiler.TypeAwareJSASTParser(code);
+            parser = new TypeAwareJSASTTranspiler.TypeAwareJSASTParser(code);
             
             // Test tokenization
             console.log('  🔤 Tokenizing...');
@@ -241,11 +253,11 @@ class TestJavaScriptAST {
             console.log(`  ❌ Parse error: ${error.message}`);
             
             const code = fs.readFileSync(filePath, 'utf8');
-            const errorLine = this.extractLineNumberFromError(error, code);
+            const errorLine = this.extractLineNumberFromError(error, code, parser);
             const context = errorLine ? this.getErrorContext(code, errorLine) : 'Unable to determine error location';
             
             // Show context immediately if verbose mode is enabled
-            if (verbose && errorLine) {
+            if ((verbose || global.verbose) && errorLine) {
                 console.log('\n  📄 Error Context (+/-5 lines):');
                 console.log('  ─'.repeat(40));
                 console.log(context.split('\n').map(line => `  ${line}`).join('\n'));
@@ -330,7 +342,7 @@ class TestJavaScriptAST {
             console.log('─'.repeat(40));
             
             // Show stack trace only in verbose mode
-            if (verbose && error.stack) {
+            if ((verbose || global.verbose) && error.stack) {
                 console.log('\n🔍 Stack Trace (verbose):');
                 console.log('─'.repeat(40));
                 console.log(error.stack);
@@ -399,7 +411,7 @@ class TestJavaScriptAST {
     async run() {
         console.log('🚀 Starting JavaScript AST Parser Test Suite');
         console.log('Testing TypeAware transpiler against all algorithm files...');
-        if (verbose) {
+        if (verbose || global.verbose) {
             console.log('🔍 Verbose mode enabled - showing detailed error context immediately');
         }
         console.log('');
