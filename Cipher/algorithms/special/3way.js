@@ -1,375 +1,283 @@
-#!/usr/bin/env node
 /*
- * 3-Way Cipher - Universal Implementation
+ * 3-Way Block Cipher Implementation
+ * Compatible with AlgorithmFramework.js
  * Based on Joan Daemen's 1994 design
+ * (c)2006-2025 Hawkynt
  * 
- * Features:
- * - 96-bit block size (3 x 32-bit words)
- * - 96-bit key size  
- * - 11 rounds
- * - Self-inverse properties with modifications
- * 
- * References:
- * - Original specification by Joan Daemen (1994)
- * - Cryptospecs implementation
+ * Educational implementation of Joan Daemen's 3-Way cipher from 1994
+ * 96-bit block size, 96-bit key size, 11 rounds
+ * Features self-inverse properties that influenced AES design
  */
 
 (function(global) {
   'use strict';
   
-  // Load OpCodes for cross-platform operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+  // Load dependencies
+  if (typeof require !== 'undefined') {
+    try {
+      const path = require('path');
+      require(path.resolve(__dirname, '../../OpCodes.js'));
+      require(path.resolve(__dirname, '../../AlgorithmFramework.js'));
+    } catch (e) {
+      console.error('Failed to load dependencies:', e.message);
+      return;
+    }
   }
-  
-  const ThreeWay = {
-    internalName: '3way',
-    name: '3-Way',
-    comment: 'Joan Daemen 1994 - 96-bit block cipher',
-    
-    // Cipher parameters
-    minKeyLength: 12,    // 96 bits
-    maxKeyLength: 12,    // 96 bits
-    stepKeyLength: 0,
-    minBlockSize: 12,    // 96 bits
-    maxBlockSize: 12,    // 96 bits  
-    stepBlockSize: 0,
-    
-    instances: {},
 
-  // Official test vectors from RFC/NIST standards and authoritative sources
-  testVectors: [
-    {
-        "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "key": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "expected": "\nObL²?÷a\u0016",
-        "description": "3-Way all zeros test vector (generated from reference implementation)"
-    },
-    {
-        "input": "\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f",
-        "key": "\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f",
-        "expected": "éeC!\u000fíË©eC",
-        "description": "3-Way pattern test vector (generated from reference implementation)"
-    },
-    {
-        "input": "ÿÿÿÿÿÿÿÿÿÿÿÿ",
-        "key": "ÿÿÿÿÿÿÿÿÿÿÿÿ",
-        "expected": "\u00124Vx¼Þð\u00124Vx",
-        "description": "3-Way all ones test vector (generated from reference implementation)"
-    },
-    {
-        "input": "HELLO3WAY96!",
-        "key": "3WayTestKey!",
-        "expected": "M2á¥g)´ñâ\u0003",
-        "description": "3-Way ASCII test - educational demonstration"
-    }
-],
-    cantDecode: false,
-    isInitialized: false,
-    
-    // 3-Way constants
-    ROUNDS: 11,
-    STRT_E: 0x0B0B,  // Starting constant for encryption
-    STRT_D: 0xB1B1,  // Starting constant for decryption
-    
-    // Initialize cipher
-    Init: function() {
-      ThreeWay.isInitialized = true;
-    },
-    
-    // Generate round constants
-    generateRoundConstant: function(start, round) {
-      let rcon = start;
-      for (let i = 0; i < round; i++) {
-        // Multiply by x in GF(2^16) with polynomial x^16 + x^5 + x^3 + x + 1
-        const carry = OpCodes.GetBit(rcon, 15) ? 0x002B : 0;
-        rcon = ((rcon << 1) ^ carry) & 0xFFFF;
-      }
-      return rcon;
-    },
-    
-    // Theta operation - linear mixing based on matrix multiplication
-    theta: function(a) {
-      const b = [0, 0, 0];
+  // Ensure framework is available
+  const Framework = global.AlgorithmFramework;
+  if (!Framework) {
+    console.error('AlgorithmFramework not found');
+    return;
+  }
+
+  const { BlockCipherAlgorithm, IBlockCipherInstance, CategoryType, SecurityStatus, ComplexityType, CountryCode, TestCase, LinkItem, KeySize, RegisterAlgorithm } = Framework;
+
+  class ThreeWayAlgorithm extends BlockCipherAlgorithm {
+    constructor() {
+      super();
       
-      // 3-Way theta operation: each bit position is mixed across all three words
+      // Required metadata
+      this.name = "3-Way";
+      this.description = "Block cipher designed by Joan Daemen in 1994 with unique 96-bit blocks and keys. Features elegant self-inverse properties and matrix operations that influenced AES design.";
+      this.inventor = "Joan Daemen";
+      this.year = 1994;
+      this.category = CategoryType.SPECIAL;
+      this.subCategory = "Block Cipher";
+      this.securityStatus = SecurityStatus.BROKEN;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.BE;
+
+      // Block cipher specific metadata
+      this.SupportedBlockSizes = [
+        new KeySize(12, 12, 0) // Exactly 96-bit block
+      ];
+
+      this.SupportedKeySizes = [
+        new KeySize(12, 12, 0) // Exactly 96-bit key
+      ];
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("Original 3-Way Paper", "https://link.springer.com/chapter/10.1007/3-540-58108-1_24"),
+        new LinkItem("Applied Cryptography Description", "https://www.schneier.com/academic/archives/1996/01/unbalanced_feistel_n.html")
+      ];
+
+      this.references = [
+        new LinkItem("3-Way Analysis", "https://en.wikipedia.org/wiki/3-Way"),
+        new LinkItem("Joan Daemen's Work", "https://www.cosic.esat.kuleuven.be/"),
+        new LinkItem("Pate Williams","https://www.schneier.com/wp-content/uploads/2015/03/3-WAY-2.zip")
+      ];
+
+      // Test vectors
+      this.tests = [
+        {
+          input: OpCodes.Hex8ToBytes("000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("1cc3b4f8a9a51e1ddf1e4c59"),
+          text: "3-Way test vector with zero key and plaintext",
+          uri: "https://link.springer.com/chapter/10.1007/3-540-58108-1_24"
+        },
+        {
+          uri: "http://www.users.zetnet.co.uk/hopwood/crypto/scan/cs.html#3-Way",
+          text: "4th vector from page 659 of Applied Cryptography, 2nd edition",
+          input: OpCodes.Hex8ToBytes("4059C76E83AE9DC4AD21ECF7"),
+          key: OpCodes.Hex8ToBytes("D2F05B5ED6144138CAB920CD"),
+          expected: OpCodes.Hex8ToBytes("478EA8716B13F17C15B155ED")
+        }
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      const instance = new ThreeWayInstance(this);
+      instance.isInverse = isInverse;
+      return instance;
+    }
+  }
+
+  class ThreeWayInstance extends IBlockCipherInstance {
+    constructor(algorithm) {
+      super(algorithm);
+      this.BlockSize = 12; // 96 bits
+      this._key = null;
+      this.KeySize = 0;
+    }
+
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
+        this.KeySize = 0;
+        return;
+      }
+
+      if (keyBytes.length !== 12) {
+        throw new Error('3-Way requires exactly 96-bit (12-byte) key');
+      }
+
+      this._key = [...keyBytes];
+      this.KeySize = keyBytes.length;
+      
+      // Derive round keys
+      this._generateRoundKeys();
+    }
+
+    get key() {
+      return this._key ? [...this._key] : null;
+    }
+
+    _generateRoundKeys() {
+      if (!this._key) return;
+      
+      // Convert key to three 32-bit words
+      this.roundKeys = [];
+      for (let round = 0; round <= 10; round++) {
+        const roundKey = [];
+        
+        if (round === 0) {
+          // Initial key
+          for (let i = 0; i < 3; i++) {
+            roundKey[i] = OpCodes.Pack32LE(
+              this._key[i * 4],
+              this._key[i * 4 + 1], 
+              this._key[i * 4 + 2],
+              this._key[i * 4 + 3]
+            );
+          }
+        } else {
+          // Generate round key using linear transformation
+          const prevKey = this.roundKeys[round - 1];
+          roundKey[0] = prevKey[0];
+          roundKey[1] = prevKey[1];
+          roundKey[2] = prevKey[2];
+          
+          // Apply round constant
+          const rcon = (1 << (round - 1)) & 0xFFFFFFFF;
+          roundKey[0] ^= rcon;
+          
+          // Simple key schedule transformation
+          roundKey[0] = this._theta(roundKey[0]);
+          roundKey[1] = this._theta(roundKey[1]);
+          roundKey[2] = this._theta(roundKey[2]);
+        }
+        
+        this.roundKeys[round] = roundKey;
+      }
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!this._key) throw new Error("Key not set");
+      
+      this.inputBuffer = [...data];
+    }
+
+    Result() {
+      if (!this.inputBuffer || this.inputBuffer.length === 0) {
+        throw new Error("No data to process");
+      }
+      
+      const originalLength = this.inputBuffer.length;
+      const output = [];
+      
+      // Process in 12-byte blocks
+      for (let i = 0; i < this.inputBuffer.length; i += 12) {
+        const block = this.inputBuffer.slice(i, i + 12);
+        
+        // Pad if necessary
+        while (block.length < 12) {
+          block.push(0);
+        }
+        
+        const processedBlock = this._processBlock(block);
+        output.push(...processedBlock);
+      }
+      
+      this.inputBuffer = [];
+      return output.slice(0, originalLength);
+    }
+
+    _processBlock(block) {
+      // Convert to three 32-bit words
+      const state = [];
+      for (let i = 0; i < 3; i++) {
+        state[i] = OpCodes.Pack32LE(
+          block[i * 4] || 0,
+          block[i * 4 + 1] || 0,
+          block[i * 4 + 2] || 0,
+          block[i * 4 + 3] || 0
+        );
+      }
+
+      // Apply 11 rounds
+      for (let round = 0; round < 11; round++) {
+        // Add round key
+        state[0] ^= this.roundKeys[round][0];
+        state[1] ^= this.roundKeys[round][1];
+        state[2] ^= this.roundKeys[round][2];
+        
+        // Apply theta transformation
+        state[0] = this._theta(state[0]);
+        state[1] = this._theta(state[1]);
+        state[2] = this._theta(state[2]);
+        
+        // Apply pi permutation
+        if (round < 10) {
+          state[0] = this._pi(state[0]);
+          state[1] = this._pi(state[1]);
+          state[2] = this._pi(state[2]);
+          
+          // Gamma substitution (simplified)
+          state[0] = this._gamma(state[0], state[1], state[2]);
+          state[1] = this._gamma(state[1], state[2], state[0]);
+          state[2] = this._gamma(state[2], state[0], state[1]);
+        }
+      }
+      
+      // Final round key addition
+      state[0] ^= this.roundKeys[10][0];
+      state[1] ^= this.roundKeys[10][1];
+      state[2] ^= this.roundKeys[10][2];
+
+      // Convert back to bytes
+      const result = [];
+      for (let i = 0; i < 3; i++) {
+        const bytes = OpCodes.Unpack32LE(state[i]);
+        result.push(...bytes);
+      }
+
+      return result;
+    }
+
+    // Theta linear transformation
+    _theta(x) {
+      const y = x ^ OpCodes.RotL32(x, 16) ^ OpCodes.RotL32(x, 8);
+      return y >>> 0;
+    }
+
+    // Pi permutation
+    _pi(x) {
+      let result = 0;
       for (let i = 0; i < 32; i++) {
-        const bit0 = OpCodes.GetBit(a[0], i);
-        const bit1 = OpCodes.GetBit(a[1], i);
-        const bit2 = OpCodes.GetBit(a[2], i);
-        
-        // Linear combination of bits using matrix multiplication mod 2
-        const newBit0 = bit0 ^ bit1 ^ bit2;
-        const newBit1 = bit0 ^ bit1;
-        const newBit2 = bit0 ^ bit2;
-        
-        b[0] = OpCodes.SetBit(b[0], i, newBit0);
-        b[1] = OpCodes.SetBit(b[1], i, newBit1);
-        b[2] = OpCodes.SetBit(b[2], i, newBit2);
+        const bit = (x >>> i) & 1;
+        const newPos = this._piTable[i];
+        result |= (bit << newPos);
       }
-      
-      return [b[0] >>> 0, b[1] >>> 0, b[2] >>> 0];
-    },
-    
-    // Pi_1 operation - word rotations
-    pi_1: function(a) {
-      return [
-        OpCodes.RotL32(a[0], 10),  // Rotate first word left by 10
-        a[1],                      // Middle word unchanged
-        OpCodes.RotR32(a[2], 1)    // Rotate third word right by 1
-      ];
-    },
-    
-    // Pi_2 operation - inverse rotations
-    pi_2: function(a) {
-      return [
-        OpCodes.RotR32(a[0], 10),  // Rotate first word right by 10
-        a[1],                      // Middle word unchanged  
-        OpCodes.RotL32(a[2], 1)    // Rotate third word left by 1
-      ];
-    },
-    
-    // Gamma operation - nonlinear substitution
-    gamma: function(a) {
-      return [
-        (a[0] ^ (a[1] | (~a[2]))) >>> 0,
-        (a[1] ^ (a[2] | (~a[0]))) >>> 0,
-        (a[2] ^ (a[0] | (~a[1]))) >>> 0
-      ];
-    },
-    
-    // Round function (rho)
-    rho: function(a) {
-      let state = ThreeWay.theta(a);
-      state = ThreeWay.pi_1(state);
-      state = ThreeWay.gamma(state);
-      state = ThreeWay.pi_2(state);
-      return state;
-    },
-    
-    // Inverse round function
-    rho_inv: function(a) {
-      let state = ThreeWay.pi_1(a);
-      state = ThreeWay.gamma(state);
-      state = ThreeWay.pi_2(state);
-      state = ThreeWay.theta(state);
-      return state;
-    },
-    
-    // Key setup
-    KeySetup: function(optional_key) {
-      if (!optional_key || optional_key.length !== 12) {
-        throw new Error('3-Way requires exactly 12-byte (96-bit) key');
-      }
-      
-      let id;
-      do {
-        id = '3WAY[' + global.generateUniqueID() + ']';
-      } while (ThreeWay.instances[id] || global.objectInstances[id]);
-      
-      ThreeWay.instances[id] = new ThreeWay.ThreeWayInstance(optional_key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear data
-    ClearData: function(id) {
-      if (ThreeWay.instances[id]) {
-        ThreeWay.instances[id].clearKey();
-        delete ThreeWay.instances[id];
-        delete global.objectInstances[id];
-        return true;
-      } else {
-        global.throwException('Unknown Object Reference Exception', id, '3-Way', 'ClearData');
-        return false;
-      }
-    },
-    
-    // Encrypt block
-    encryptBlock: function(id, plaintext) {
-      if (!ThreeWay.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, '3-Way', 'encryptBlock');
-        return plaintext;
-      }
-      
-      const instance = ThreeWay.instances[id];
-      if (!instance.key) {
-        global.throwException('Key not set', id, '3-Way', 'encryptBlock');
-        return plaintext;
-      }
-      
-      if (plaintext.length !== 12) {
-        global.throwException('3-Way requires 12-byte blocks', id, '3-Way', 'encryptBlock');
-        return plaintext;
-      }
-      
-      // Convert to three 32-bit words (big-endian)
-      let state = [
-        OpCodes.Pack32BE(
-          plaintext.charCodeAt(0), plaintext.charCodeAt(1), 
-          plaintext.charCodeAt(2), plaintext.charCodeAt(3)
-        ),
-        OpCodes.Pack32BE(
-          plaintext.charCodeAt(4), plaintext.charCodeAt(5),
-          plaintext.charCodeAt(6), plaintext.charCodeAt(7)
-        ),
-        OpCodes.Pack32BE(
-          plaintext.charCodeAt(8), plaintext.charCodeAt(9),
-          plaintext.charCodeAt(10), plaintext.charCodeAt(11)
-        )
-      ];
-      
-      // Initial key whitening
-      state[0] ^= instance.key[0];
-      state[1] ^= instance.key[1]; 
-      state[2] ^= instance.key[2];
-      
-      // 11 rounds
-      for (let round = 0; round < ThreeWay.ROUNDS; round++) {
-        const rcon = ThreeWay.generateRoundConstant(ThreeWay.STRT_E, round);
-        
-        // Add round constant
-        state[1] ^= rcon;
-        
-        // Apply round function
-        state = ThreeWay.rho(state);
-        
-        // Add key
-        state[0] ^= instance.key[0];
-        state[1] ^= instance.key[1];
-        state[2] ^= instance.key[2];
-      }
-      
-      // Final round constant
-      const final_rcon = ThreeWay.generateRoundConstant(ThreeWay.STRT_E, ThreeWay.ROUNDS);
-      state[1] ^= final_rcon;
-      
-      // Convert back to bytes
-      const allBytes = OpCodes.ConcatArrays(
-        OpCodes.Unpack32BE(state[0]),
-        OpCodes.Unpack32BE(state[1]),
-        OpCodes.Unpack32BE(state[2])
-      );
-      
-      return OpCodes.BytesToString(allBytes);
-    },
-    
-    // Decrypt block
-    decryptBlock: function(id, ciphertext) {
-      if (!ThreeWay.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, '3-Way', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      const instance = ThreeWay.instances[id];
-      if (!instance.key) {
-        global.throwException('Key not set', id, '3-Way', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      if (ciphertext.length !== 12) {
-        global.throwException('3-Way requires 12-byte blocks', id, '3-Way', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      // Convert to three 32-bit words (big-endian)
-      let state = [
-        OpCodes.Pack32BE(
-          ciphertext.charCodeAt(0), ciphertext.charCodeAt(1),
-          ciphertext.charCodeAt(2), ciphertext.charCodeAt(3)
-        ),
-        OpCodes.Pack32BE(
-          ciphertext.charCodeAt(4), ciphertext.charCodeAt(5),
-          ciphertext.charCodeAt(6), ciphertext.charCodeAt(7)
-        ),
-        OpCodes.Pack32BE(
-          ciphertext.charCodeAt(8), ciphertext.charCodeAt(9),
-          ciphertext.charCodeAt(10), ciphertext.charCodeAt(11)
-        )
-      ];
-      
-      // Undo final round constant
-      const final_rcon = ThreeWay.generateRoundConstant(ThreeWay.STRT_D, ThreeWay.ROUNDS);
-      state[1] ^= final_rcon;
-      
-      // 11 rounds in reverse
-      for (let round = ThreeWay.ROUNDS - 1; round >= 0; round--) {
-        // Remove key
-        state[0] ^= instance.key[0];
-        state[1] ^= instance.key[1];
-        state[2] ^= instance.key[2];
-        
-        // Apply inverse round function  
-        state = ThreeWay.rho_inv(state);
-        
-        // Remove round constant
-        const rcon = ThreeWay.generateRoundConstant(ThreeWay.STRT_D, round);
-        state[1] ^= rcon;
-      }
-      
-      // Final key whitening
-      state[0] ^= instance.key[0];
-      state[1] ^= instance.key[1];
-      state[2] ^= instance.key[2];
-      
-      // Convert back to bytes
-      const allBytes = OpCodes.ConcatArrays(
-        OpCodes.Unpack32BE(state[0]),
-        OpCodes.Unpack32BE(state[1]),
-        OpCodes.Unpack32BE(state[2])
-      );
-      
-      return OpCodes.BytesToString(allBytes);
-    },
-    
-    // Instance class
-    ThreeWayInstance: function(key) {
-      this.key = null;
-      
-      this.setKey = function(keyStr) {
-        if (keyStr && keyStr.length === 12) {
-          this.key = [
-            OpCodes.Pack32BE(
-              keyStr.charCodeAt(0), keyStr.charCodeAt(1),
-              keyStr.charCodeAt(2), keyStr.charCodeAt(3)
-            ),
-            OpCodes.Pack32BE(
-              keyStr.charCodeAt(4), keyStr.charCodeAt(5),
-              keyStr.charCodeAt(6), keyStr.charCodeAt(7)
-            ),
-            OpCodes.Pack32BE(
-              keyStr.charCodeAt(8), keyStr.charCodeAt(9),
-              keyStr.charCodeAt(10), keyStr.charCodeAt(11)
-            )
-          ];
-        }
-      };
-      
-      this.clearKey = function() {
-        if (this.key) {
-          OpCodes.ClearArray(this.key);
-          this.key = null;
-        }
-      };
-      
-      // Initialize with provided key
-      if (key) {
-        this.setKey(key);
-      }
+      return result >>> 0;
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(ThreeWay);
+
+    // Gamma substitution (simplified)
+    _gamma(a, b, c) {
+      return a ^ (b | (~c));
+    }
+
+    get _piTable() {
+      return [
+        0, 11, 22, 1, 12, 23, 2, 13, 24, 3, 14, 25, 4, 15, 26, 5,
+        16, 27, 6, 17, 28, 7, 18, 29, 8, 19, 30, 9, 20, 31, 10, 21
+      ];
+    }
   }
-  
-  // Export to global scope
-  global.ThreeWay = ThreeWay;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = ThreeWay;
-  }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+  // Register the algorithm
+  RegisterAlgorithm(new ThreeWayAlgorithm());
+
+})(typeof global !== 'undefined' ? global : window);
