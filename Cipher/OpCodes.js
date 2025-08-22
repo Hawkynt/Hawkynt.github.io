@@ -204,6 +204,18 @@
      * @param {number} b3 - Least significant byte
      * @returns {number} 32-bit word
      */
+    Pack16BE: function(b0, b1) {
+      return ((b0 & 0xFF) << 8) | (b1 & 0xFF);
+    },
+    
+    /**
+     * Pack 4 bytes into a 32-bit word (big-endian)
+     * @param {number} b0 - Most significant byte
+     * @param {number} b1 - Second byte
+     * @param {number} b2 - Third byte
+     * @param {number} b3 - Least significant byte
+     * @returns {number} 32-bit word
+     */
     Pack32BE: function(b0, b1, b2, b3) {
       return (((b0 & 0xFF) << 24) | ((b1 & 0xFF) << 16) | ((b2 & 0xFF) << 8) | (b3 & 0xFF)) >>> 0;
     },
@@ -218,6 +230,19 @@
      */
     Pack32LE: function(b0, b1, b2, b3) {
       return (((b3 & 0xFF) << 24) | ((b2 & 0xFF) << 16) | ((b1 & 0xFF) << 8) | (b0 & 0xFF)) >>> 0;
+    },
+    
+    /**
+     * Unpack 16-bit word to 2 bytes (big-endian)
+     * @param {number} word - 16-bit word to unpack
+     * @returns {Array} Array of 2 bytes [b0, b1]
+     */
+    Unpack16BE: function(word) {
+      word = word & 0xFFFF;
+      return [
+        (word >>> 8) & 0xFF,
+        word & 0xFF
+      ];
     },
     
     /**
@@ -1978,6 +2003,19 @@
     ClearArray: function(arr) {
       for (let i = 0; i < arr.length; ++i)
         arr[i] = 0;
+    },
+    
+    /**
+     * Copy bytes from source to destination array
+     * @param {Array} src - Source array
+     * @param {number} srcOffset - Source offset
+     * @param {Array} dst - Destination array
+     * @param {number} dstOffset - Destination offset
+     * @param {number} length - Number of bytes to copy
+     */
+    CopyBytes: function(src, srcOffset, dst, dstOffset, length) {
+      for (let i = 0; i < length; ++i)
+        dst[dstOffset + i] = src[srcOffset + i];
     },
     
     /**

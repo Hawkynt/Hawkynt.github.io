@@ -1,8 +1,8 @@
-# Algorithm Implementation Guidelines
+# Production-Ready Algorithm Implementation Guidelines
 
-## 🏗️ Architecture Overview
+## 🏗️ Professional-Grade Architecture Overview
 
-We are designing a clean, interface architecture for maximum usability and consistency. This document outlines the system we're building toward.
+We are designing a production-ready cryptographic library with bit-perfect test vector validation. This document outlines the professional standards required for real-world cryptographic implementations.
 
 The user wants to:
 * implement different kinds of algorithms in a meaningful hierarchical structure (symmetric/asymmetric block/stream ciphers, rngs, kdfs, paddingschemes, modes of operation, hashes/checksums, compression, encoding, errorcorrection, authentication, aead)
@@ -207,7 +207,7 @@ class IRandomGeneratorInstance {
 
 ## 📋 Metadata Requirements
 
-It is important that we know the name of the algorithm we have at hand and that we can read us into it by examining descriptions, papers and reference sources. To verify that it works, we also need tests. When it is broken, we need proof to, thats what the vulnerabilities field is for.
+**CRITICAL**: All algorithms must meet professional-grade metadata standards for production library use. This includes comprehensive documentation, official test vectors, security analysis, and complete specifications suitable for commercial cryptographic products. Every implementation must pass bit-perfect test vector validation against official sources.
 
 ## 🔧 Current Implementation Guidelines
 
@@ -358,11 +358,12 @@ Always use direct enum object assignment for metadata properties:
 
 ## Test Vector Guidelines
 
-### Always Include Sources
-- Link to official test vectors when available
-- NIST, RFC, or original paper sources preferred
-- Never make up test vectors
-- Always start implementation with the test-vectors so you have something to check against.
+### Production Test Vector Requirements
+- **MANDATORY**: Official test vectors from NIST, RFC, or original papers
+- **BIT-PERFECT ACCURACY**: Every test vector must pass with exact byte-for-byte matching
+- **COMPREHENSIVE COVERAGE**: Include edge cases, boundary conditions, and stress tests  
+- **PROFESSIONAL VALIDATION**: Test vectors suitable for production cryptographic library validation
+- **NEVER APPROXIMATE**: Educational implementations are not acceptable - only production-ready accuracy
 
 ### Use Proper Format
 
@@ -535,13 +536,13 @@ CreateInstance(isInverse = false) {
 4. **Stateful Processing**: Instances maintain state between Feed calls
 5. **Streaming Support**: Can process data in chunks via multiple Feed calls
 
-### Critical Test Vector Guidelines
+### Test Vector Standards
 
-1. **Always use OpCodes helpers**: `Hex8ToBytes()`, `AnsiToBytes()`
-2. **Byte arrays only**: Testing framework works with byte arrays, not strings
-3. **Exact block sizes**: Input must match algorithm's block size requirements  
-4. **Official sources**: Link to NIST, RFC, or original paper test vectors
-5. **Multiple vectors**: Include at least 3 test vectors to verify correctness
+1. **PRODUCTION ACCURACY**: Every test vector must achieve bit-perfect matching with official sources
+2. **COMPREHENSIVE VALIDATION**: Minimum 5-10 test vectors covering all algorithm modes and edge cases
+3. **OFFICIAL SOURCES ONLY**: NIST CAVP, RFC test vectors, or original algorithm specifications
+4. **REAL-WORLD APPLICABILITY**: Test vectors must prove readiness for professional encryption library use
+5. **SECURITY VALIDATION**: Include test vectors that demonstrate proper security parameter handling
 
 ## Testing Framework Flow
 
