@@ -100,10 +100,9 @@ class FF3Algorithm extends BlockCipherAlgorithm {
   }
 
   CreateInstance(isInverse = false) {
-    // Show deprecation warning
-    console.warn("WARNING: FF3 is DEPRECATED and BROKEN. Do not use in any application!");
-    console.warn("FF3 was withdrawn by NIST due to security vulnerabilities.");
-    console.warn("Use FF1 or modern encryption algorithms instead.");
+    // FF3 is DEPRECATED and BROKEN - do not use in any application
+    // FF3 was withdrawn by NIST due to security vulnerabilities
+    // Use FF1 or modern encryption algorithms instead
     
     return new FF3Instance(this, isInverse);
   }
