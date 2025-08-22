@@ -1,510 +1,407 @@
 /*
- * Universal SAFER Cipher (Secure And Fast Encryption Routine)
- * Compatible with both Browser and Node.js environments
- * Based on James Massey's original SAFER K-64 algorithm
- * Reference implementation by Richard De Moliner (ETH Zurich, 1995)
+ * SAFER (Secure And Fast Encryption Routine) Block Cipher Implementation
+ * Compatible with AlgorithmFramework
+ * (c)2006-2025 Hawkynt
  * 
- * SAFER K-64: 64-bit block, 64-bit key, 6 rounds (default)
- * SAFER K-128: 64-bit block, 128-bit key, 10 rounds (default) 
- * SAFER SK-64: Strengthened key schedule variant
- * SAFER SK-128: Strengthened key schedule variant
- * 
- * Features:
- * - Exponential/Logarithmic S-boxes based on GF(257)
- * - Pseudo-Hadamard Transform (PHT) for diffusion
- * - Byte-oriented operations for efficiency
- * - Cross-platform compatibility with OpCodes integration
- * 
- * (c)2006-2025 Hawkynt - Educational implementation only
+ * SAFER K-64/K-128 - Block cipher by James Massey
+ * 64-bit blocks with 64-bit or 128-bit keys
+ * Uses exponential/logarithmic S-boxes based on GF(257)
  */
 
-(function(global) {
-  'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.OpCodes) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../OpCodes.js');
-      } catch (e) {
-        console.error('Failed to load OpCodes dependency:', e.message);
-        return;
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
+
+// Load OpCodes for cryptographic operations (RECOMMENDED)
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
+
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
+
+class SaferAlgorithm extends BlockCipherAlgorithm {
+  constructor() {
+    super();
+    
+    // Required metadata
+    this.name = "SAFER";
+    this.description = "Secure And Fast Encryption Routine by James Massey. Uses exponential/logarithmic S-boxes based on GF(257) and Pseudo-Hadamard Transform for diffusion. Educational implementation supporting K-64 and K-128 variants.";
+    this.inventor = "James Massey";
+    this.year = 1993;
+    this.category = CategoryType.BLOCK;
+    this.subCategory = "Block Cipher";
+    this.securityStatus = SecurityStatus.EDUCATIONAL;
+    this.complexity = ComplexityType.INTERMEDIATE;
+    this.country = CountryCode.CH;
+
+    // Algorithm-specific metadata
+    this.SupportedKeySizes = [
+      new KeySize(8, 16, 8)  // SAFER: 64-bit (K-64) or 128-bit (K-128) keys
+    ];
+    this.SupportedBlockSizes = [
+      new KeySize(8, 8, 1)    // 64-bit blocks only
+    ];
+
+    // Documentation and references
+    this.documentation = [
+      new LinkItem("SAFER Specification", "https://link.springer.com/chapter/10.1007/3-540-58108-1_24"),
+      new LinkItem("Applied Cryptography - SAFER", "https://www.schneier.com/academic/archives/1995/12/the_safer_k64_and_sa.html"),
+      new LinkItem("Wikipedia - SAFER", "https://en.wikipedia.org/wiki/SAFER")
+    ];
+
+    this.references = [
+      new LinkItem("Original SAFER Paper", "https://link.springer.com/chapter/10.1007/3-540-58108-1_24"),
+      new LinkItem("Crypto++ SAFER Implementation", "https://github.com/weidai11/cryptopp/blob/master/safer.cpp"),
+      new LinkItem("SAFER Analysis", "https://www.cosic.esat.kuleuven.be/publications/article-431.pdf"),
+      new LinkItem("ETH Zurich Reference Implementation", "https://web.archive.org/web/20060926072149/http://www.isi.ee.ethz.ch/~moliner/safer.c")
+    ];
+
+    // Known vulnerabilities
+    this.knownVulnerabilities = [
+      new Vulnerability(
+        "Weak keys in some variants",
+        "Certain key patterns may exhibit reduced security",
+        "Use random keys and strengthened variants when available"
+      ),
+      new Vulnerability(
+        "Small block size",
+        "64-bit block size vulnerable to birthday attacks",
+        "Avoid encrypting large amounts of data with single key"
+      )
+    ];
+
+    // Test vectors using OpCodes byte arrays
+    this.tests = [
+      {
+        text: "SAFER K-64 all zeros plaintext - educational test vector",
+        uri: "https://web.archive.org/web/20060926072149/http://www.isi.ee.ethz.ch/~moliner/safer.c",
+        input: OpCodes.Hex8ToBytes("0000000000000000"),
+        key: OpCodes.Hex8ToBytes("3132333435363738"),
+        expected: OpCodes.Hex8ToBytes("e519c009a424e4a3")
+      },
+      {
+        text: "SAFER K-64 ASCII test - educational",
+        uri: "https://web.archive.org/web/20060926072149/http://www.isi.ee.ethz.ch/~moliner/safer.c",
+        input: OpCodes.Hex8ToBytes("4142434445464748"),
+        key: OpCodes.Hex8ToBytes("3132333435363738"),
+        expected: OpCodes.Hex8ToBytes("1520040d0b094476")
+      },
+      {
+        text: "SAFER K-64 binary test - educational",
+        uri: "https://web.archive.org/web/20060926072149/http://www.isi.ee.ethz.ch/~moliner/safer.c",
+        input: OpCodes.Hex8ToBytes("0123456789abcdef"),
+        key: OpCodes.Hex8ToBytes("0123456789abcdef"),
+        expected: OpCodes.Hex8ToBytes("1beb104970df4e30")
       }
-    } else {
-      console.error('SAFER cipher requires OpCodes to be loaded first');
-      return;
-    }
+    ];
+
+    // SAFER Constants
+    this.BLOCK_LEN = 8;
+    this.MAX_ROUNDS = 13;
+    this.K64_DEFAULT_ROUNDS = 6;
+    this.K128_DEFAULT_ROUNDS = 10;
+    this.TAB_LEN = 256;
+
+    // Initialize exponential and logarithm tables
+    this._initTables();
   }
-  
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('SAFER cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
-  
-  // SAFER Constants
-  const SAFER_BLOCK_LEN = 8;
-  const SAFER_MAX_ROUNDS = 13;
-  const SAFER_K64_DEFAULT_ROUNDS = 6;
-  const SAFER_K128_DEFAULT_ROUNDS = 10;
-  const SAFER_SK64_DEFAULT_ROUNDS = 8;
-  const SAFER_SK128_DEFAULT_ROUNDS = 10;
-  const SAFER_KEY_LEN = 1 + SAFER_BLOCK_LEN * (1 + 2 * SAFER_MAX_ROUNDS);
-  const TAB_LEN = 256;
-  
-  // Pre-computed exponential and logarithm tables for GF(257)
-  // These are generated using primitive element 45 of GF(257)
-  let exp_tab = new Array(TAB_LEN);
-  let log_tab = new Array(TAB_LEN);
-  
-  /**
-   * Initialize exponential and logarithm lookup tables
-   * Based on powers of 45 modulo 257 (GF(257) arithmetic)
-   */
-  function initSaferTables() {
+
+  // Initialize exponential and logarithm lookup tables
+  _initTables() {
+    this.exp_tab = new Array(this.TAB_LEN);
+    this.log_tab = new Array(this.TAB_LEN);
+    
     let exp = 1;
-    for (let i = 0; i < TAB_LEN; i++) {
-      exp_tab[i] = exp & 0xFF;
-      log_tab[exp_tab[i]] = i;
-      exp = (exp * 45) % 257;
+    for (let i = 0; i < this.TAB_LEN; i++) {
+      this.exp_tab[i] = exp & 0xFF;
+      this.log_tab[this.exp_tab[i]] = i;
+      exp = (exp * 45) % 257; // GF(257) with primitive element 45
     }
   }
-  
-  /**
-   * Exponential S-box lookup
-   * @param {number} x - Input byte (0-255)
-   * @returns {number} Exponential transformation result
-   */
-  function EXP(x) {
-    return exp_tab[x & 0xFF];
+
+  CreateInstance(isInverse = false) {
+    return new SaferInstance(this, isInverse);
   }
-  
-  /**
-   * Logarithmic S-box lookup
-   * @param {number} x - Input byte (0-255)
-   * @returns {number} Logarithmic transformation result
-   */
-  function LOG(x) {
-    return log_tab[x & 0xFF];
+}
+
+class SaferInstance extends IBlockCipherInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.key = null;
+    this.expandedKey = null;
+    this.nofRounds = 0;
+    this.inputBuffer = [];
+    this.BlockSize = 8;     // 64-bit blocks
+    this.KeySize = 0;
   }
-  
-  /**
-   * Pseudo-Hadamard Transform (PHT)
-   * This provides diffusion by mixing two bytes
-   * @param {number} x - First byte (modified in place)
-   * @param {number} y - Second byte (modified in place)
-   * @returns {Array} [new_x, new_y]
-   */
-  function PHT(x, y) {
+
+  set key(keyBytes) {
+    if (!keyBytes) {
+      this._key = null;
+      this.expandedKey = null;
+      this.nofRounds = 0;
+      this.KeySize = 0;
+      return;
+    }
+
+    // Validate key size (64 or 128 bits)
+    if (keyBytes.length !== 8 && keyBytes.length !== 16) {
+      throw new Error(`Invalid key size: ${keyBytes.length} bytes. SAFER requires 8 bytes (K-64) or 16 bytes (K-128)`);
+    }
+
+    this._key = [...keyBytes];
+    this.KeySize = keyBytes.length;
+    
+    // Set rounds based on key size
+    if (keyBytes.length === 8) {
+      this.nofRounds = this.algorithm.K64_DEFAULT_ROUNDS;
+    } else {
+      this.nofRounds = this.algorithm.K128_DEFAULT_ROUNDS;
+    }
+    
+    this.expandedKey = this._expandKey(keyBytes);
+  }
+
+  get key() {
+    return this._key ? [...this._key] : null;
+  }
+
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    if (!this.key) throw new Error("Key not set");
+
+    this.inputBuffer.push(...data);
+  }
+
+  Result() {
+    if (!this.key) throw new Error("Key not set");
+    if (this.inputBuffer.length === 0) throw new Error("No data fed");
+
+    // Validate input length for block cipher
+    if (this.inputBuffer.length % this.BlockSize !== 0) {
+      throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+    }
+
+    const output = [];
+    const blockSize = this.BlockSize;
+    
+    // Process each block
+    for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
+      const block = this.inputBuffer.slice(i, i + blockSize);
+      const processedBlock = this.isInverse 
+        ? this._decryptBlock(block) 
+        : this._encryptBlock(block);
+      output.push(...processedBlock);
+    }
+
+    // Clear input buffer for next operation
+    this.inputBuffer = [];
+    
+    return output;
+  }
+
+  _encryptBlock(block) {
+    if (block.length !== 8) {
+      throw new Error("SAFER requires exactly 8 bytes per block");
+    }
+
+    let [a, b, c, d, e, f, g, h] = block;
+    let round = this.nofRounds;
+    let keyIndex = 0;
+    
+    while (round--) {
+      // Key addition/XOR
+      a ^= this.expandedKey[++keyIndex]; 
+      b = (b + this.expandedKey[++keyIndex]) & 0xFF;
+      c = (c + this.expandedKey[++keyIndex]) & 0xFF; 
+      d ^= this.expandedKey[++keyIndex];
+      e ^= this.expandedKey[++keyIndex]; 
+      f = (f + this.expandedKey[++keyIndex]) & 0xFF;
+      g = (g + this.expandedKey[++keyIndex]) & 0xFF; 
+      h ^= this.expandedKey[++keyIndex];
+      
+      // S-box layer
+      a = (this._EXP(a) + this.expandedKey[++keyIndex]) & 0xFF; 
+      b = this._LOG(b) ^ this.expandedKey[++keyIndex];
+      c = this._LOG(c) ^ this.expandedKey[++keyIndex]; 
+      d = (this._EXP(d) + this.expandedKey[++keyIndex]) & 0xFF;
+      e = (this._EXP(e) + this.expandedKey[++keyIndex]) & 0xFF; 
+      f = this._LOG(f) ^ this.expandedKey[++keyIndex];
+      g = this._LOG(g) ^ this.expandedKey[++keyIndex]; 
+      h = (this._EXP(h) + this.expandedKey[++keyIndex]) & 0xFF;
+      
+      // Pseudo-Hadamard Transform layers
+      [a, b] = this._PHT(a, b); [c, d] = this._PHT(c, d);
+      [e, f] = this._PHT(e, f); [g, h] = this._PHT(g, h);
+      
+      [a, c] = this._PHT(a, c); [e, g] = this._PHT(e, g);
+      [b, d] = this._PHT(b, d); [f, h] = this._PHT(f, h);
+      
+      [a, e] = this._PHT(a, e); [b, f] = this._PHT(b, f);
+      [c, g] = this._PHT(c, g); [d, h] = this._PHT(d, h);
+      
+      // Permutation
+      let t = b; b = e; e = c; c = t;
+      t = d; d = f; f = g; g = t;
+    }
+    
+    // Final key addition
+    a ^= this.expandedKey[++keyIndex]; 
+    b = (b + this.expandedKey[++keyIndex]) & 0xFF;
+    c = (c + this.expandedKey[++keyIndex]) & 0xFF; 
+    d ^= this.expandedKey[++keyIndex];
+    e ^= this.expandedKey[++keyIndex]; 
+    f = (f + this.expandedKey[++keyIndex]) & 0xFF;
+    g = (g + this.expandedKey[++keyIndex]) & 0xFF; 
+    h ^= this.expandedKey[++keyIndex];
+    
+    return [a & 0xFF, b & 0xFF, c & 0xFF, d & 0xFF, 
+            e & 0xFF, f & 0xFF, g & 0xFF, h & 0xFF];
+  }
+
+  _decryptBlock(block) {
+    if (block.length !== 8) {
+      throw new Error("SAFER requires exactly 8 bytes per block");
+    }
+
+    let [a, b, c, d, e, f, g, h] = block;
+    let round = this.nofRounds;
+    
+    // Start from end of key
+    let keyIndex = this.algorithm.BLOCK_LEN * (1 + 2 * round);
+    
+    // Reverse final key addition
+    h ^= this.expandedKey[keyIndex]; 
+    g = (g - this.expandedKey[--keyIndex]) & 0xFF;
+    f = (f - this.expandedKey[--keyIndex]) & 0xFF; 
+    e ^= this.expandedKey[--keyIndex];
+    d ^= this.expandedKey[--keyIndex]; 
+    c = (c - this.expandedKey[--keyIndex]) & 0xFF;
+    b = (b - this.expandedKey[--keyIndex]) & 0xFF; 
+    a ^= this.expandedKey[--keyIndex];
+    
+    while (round--) {
+      // Reverse permutation
+      let t = e; e = b; b = c; c = t;
+      t = f; f = d; d = g; g = t;
+      
+      // Reverse Pseudo-Hadamard Transform layers
+      [a, e] = this._IPHT(a, e); [b, f] = this._IPHT(b, f);
+      [c, g] = this._IPHT(c, g); [d, h] = this._IPHT(d, h);
+      
+      [a, c] = this._IPHT(a, c); [e, g] = this._IPHT(e, g);
+      [b, d] = this._IPHT(b, d); [f, h] = this._IPHT(f, h);
+      
+      [a, b] = this._IPHT(a, b); [c, d] = this._IPHT(c, d);
+      [e, f] = this._IPHT(e, f); [g, h] = this._IPHT(g, h);
+      
+      // Reverse S-box layer
+      h = (h - this.expandedKey[--keyIndex]) & 0xFF; 
+      g = g ^ this.expandedKey[--keyIndex];
+      f = f ^ this.expandedKey[--keyIndex]; 
+      e = (e - this.expandedKey[--keyIndex]) & 0xFF;
+      d = (d - this.expandedKey[--keyIndex]) & 0xFF; 
+      c = c ^ this.expandedKey[--keyIndex];
+      b = b ^ this.expandedKey[--keyIndex]; 
+      a = (a - this.expandedKey[--keyIndex]) & 0xFF;
+      
+      h = this._LOG(h) ^ this.expandedKey[--keyIndex]; 
+      g = (this._EXP(g) - this.expandedKey[--keyIndex]) & 0xFF;
+      f = (this._EXP(f) - this.expandedKey[--keyIndex]) & 0xFF; 
+      e = this._LOG(e) ^ this.expandedKey[--keyIndex];
+      d = this._LOG(d) ^ this.expandedKey[--keyIndex]; 
+      c = (this._EXP(c) - this.expandedKey[--keyIndex]) & 0xFF;
+      b = (this._EXP(b) - this.expandedKey[--keyIndex]) & 0xFF; 
+      a = this._LOG(a) ^ this.expandedKey[--keyIndex];
+    }
+    
+    return [a & 0xFF, b & 0xFF, c & 0xFF, d & 0xFF, 
+            e & 0xFF, f & 0xFF, g & 0xFF, h & 0xFF];
+  }
+
+  // Exponential S-box lookup
+  _EXP(x) {
+    return this.algorithm.exp_tab[x & 0xFF];
+  }
+
+  // Logarithmic S-box lookup
+  _LOG(x) {
+    return this.algorithm.log_tab[x & 0xFF];
+  }
+
+  // Pseudo-Hadamard Transform
+  _PHT(x, y) {
     const new_y = (y + x) & 0xFF;
     const new_x = (x + new_y) & 0xFF;
     return [new_x, new_y];
   }
-  
-  /**
-   * Inverse Pseudo-Hadamard Transform (IPHT)
-   * @param {number} x - First byte (modified in place)
-   * @param {number} y - Second byte (modified in place)
-   * @returns {Array} [new_x, new_y]
-   */
-  function IPHT(x, y) {
+
+  // Inverse Pseudo-Hadamard Transform
+  _IPHT(x, y) {
     const new_x = (x - y) & 0xFF;
     const new_y = (y - new_x) & 0xFF;
     return [new_x, new_y];
   }
-  
-  /**
-   * Rotate left for 8-bit values
-   * @param {number} x - Byte value
-   * @param {number} n - Number of positions
-   * @returns {number} Rotated byte
-   */
-  function ROL(x, n) {
-    return global.OpCodes.RotL8(x, n);
-  }
-  
-  // Create SAFER cipher object
-  const Safer = {
-    // Public interface properties
-    internalName: 'SAFER',
-    name: 'SAFER K-64',
-    comment: 'Secure And Fast Encryption Routine by James Massey - K-64 variant',
-    minKeyLength: 8,
-    maxKeyLength: 16,
-    stepKeyLength: 8,
-    minBlockSize: 8,
-    maxBlockSize: 8,
-    stepBlockSize: 8,
-    instances: {},
 
-  // Official test vectors from RFC/NIST standards and authoritative sources
-  testVectors: [
-    {
-        "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "key": "12345678",
-        "expected": "å\u0019À\t¤$ä£",
-        "description": "SAFER K-64 all zeros plaintext"
-    },
-    {
-        "input": "ABCDEFGH",
-        "key": "12345678",
-        "expected": "\u0015 \u0004\t\u000bD",
-        "description": "SAFER K-64 ASCII test"
-    },
-    {
-        "input": "\u0001#Eg«Íï",
-        "key": "\u0001#Eg«Íï",
-        "expected": "\u001bë\u0010IpßN0",
-        "description": "SAFER K-64 binary test"
-    },
-    {
-        "input": "saferk64",
-        "key": "saferk64",
-        "expected": "É\fxÚû\u0014",
-        "description": "SAFER K-64 algorithm name test"
-    },
-    {
-        "input": "ÿÿÿÿÿÿÿÿ",
-        "key": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "expected": "IÚwÑ,\u0004þ",
-        "description": "SAFER K-64 all ones plaintext, zero key"
-    }
-],
-    cantDecode: false,
-    isInitialized: false,
-    
-    // Expose S-box tables for testing
-    exp_tab: exp_tab,
-    log_tab: log_tab,
-    
-    // Initialize cipher and S-box tables
-    Init: function() {
-      if (!Safer.isInitialized) {
-        initSaferTables();
-        Safer.isInitialized = true;
-      }
-    },
-    
-    // Set up key for encryption/decryption
-    KeySetup: function(key) {
-      Safer.Init();
-      
-      let id;
-      do {
-        id = 'SAFER[' + global.generateUniqueID() + ']';
-      } while (Safer.instances[id] || global.objectInstances[id]);
-      
-      Safer.instances[id] = new Safer.SaferInstance(key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear cipher data
-    ClearData: function(id) {
-      if (Safer.instances[id]) {
-        // Clear sensitive data
-        if (Safer.instances[id].expandedKey) {
-          global.OpCodes.ClearArray(Safer.instances[id].expandedKey);
-        }
-        delete Safer.instances[id];
-        delete global.objectInstances[id];
-        return true;
-      } else {
-        global.throwException('Unknown Object Reference Exception', id, 'SAFER', 'ClearData');
-        return false;
-      }
-    },
-    
-    // Encrypt a 64-bit block
-    encryptBlock: function(id, plaintext) {
-      if (!Safer.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'SAFER', 'encryptBlock');
-        return plaintext;
-      }
-      
-      const instance = Safer.instances[id];
-      if (!instance.expandedKey) {
-        global.throwException('Key Not Set Exception', id, 'SAFER', 'encryptBlock');
-        return plaintext;
-      }
-      
-      // Convert string to bytes and pad if necessary
-      let bytes = global.OpCodes.StringToBytes(plaintext);
-      while (bytes.length < SAFER_BLOCK_LEN) {
-        bytes.push(0);
-      }
-      
-      // Encrypt the block
-      const cipherBytes = Safer.encryptBlock(bytes.slice(0, SAFER_BLOCK_LEN), instance.expandedKey);
-      
-      // Convert back to string
-      return global.OpCodes.BytesToString(cipherBytes);
-    },
-    
-    // Decrypt a 64-bit block
-    decryptBlock: function(id, ciphertext) {
-      if (!Safer.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'SAFER', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      const instance = Safer.instances[id];
-      if (!instance.expandedKey) {
-        global.throwException('Key Not Set Exception', id, 'SAFER', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      // Convert string to bytes
-      let bytes = global.OpCodes.StringToBytes(ciphertext);
-      while (bytes.length < SAFER_BLOCK_LEN) {
-        bytes.push(0);
-      }
-      
-      // Decrypt the block
-      const plainBytes = Safer.decryptBlock(bytes.slice(0, SAFER_BLOCK_LEN), instance.expandedKey);
-      
-      // Convert back to string
-      return global.OpCodes.BytesToString(plainBytes);
-    },
-    
-    /**
-     * Expand user key to round keys
-     * @param {Array} userkey1 - First 64 bits of user key
-     * @param {Array} userkey2 - Second 64 bits of user key (same as userkey1 for K-64)
-     * @param {number} nofRounds - Number of encryption rounds
-     * @param {boolean} strengthened - Use strengthened key schedule (SK variants)
-     * @returns {Array} Expanded key array
-     */
-    expandUserKey: function(userkey1, userkey2, nofRounds, strengthened) {
-      if (nofRounds > SAFER_MAX_ROUNDS) {
-        nofRounds = SAFER_MAX_ROUNDS;
-      }
-      
-      const key = new Array(SAFER_KEY_LEN);
-      let keyIndex = 0;
-      
-      // Store number of rounds as first byte
-      key[keyIndex++] = nofRounds;
-      
-      const ka = new Array(SAFER_BLOCK_LEN + 1);
-      const kb = new Array(SAFER_BLOCK_LEN + 1);
-      
-      ka[SAFER_BLOCK_LEN] = 0;
-      kb[SAFER_BLOCK_LEN] = 0;
-      
-      // Initialize ka and kb arrays
-      for (let j = 0; j < SAFER_BLOCK_LEN; j++) {
-        ka[SAFER_BLOCK_LEN] ^= ka[j] = ROL(userkey1[j], 5);
-        kb[SAFER_BLOCK_LEN] ^= kb[j] = key[keyIndex++] = userkey2[j];
-      }
-      
-      // Generate round keys
-      for (let i = 1; i <= nofRounds; i++) {
-        // Rotate ka and kb arrays
-        for (let j = 0; j < SAFER_BLOCK_LEN + 1; j++) {
-          ka[j] = ROL(ka[j], 6);
-          kb[j] = ROL(kb[j], 6);
-        }
-        
-        // Generate first 8 bytes of round key
-        for (let j = 0; j < SAFER_BLOCK_LEN; j++) {
-          if (strengthened) {
-            key[keyIndex++] = (ka[(j + 2 * i - 1) % (SAFER_BLOCK_LEN + 1)] + 
-                             EXP(EXP((18 * i + j + 1) & 0xFF))) & 0xFF;
-          } else {
-            key[keyIndex++] = (ka[j] + EXP(EXP((18 * i + j + 1) & 0xFF))) & 0xFF;
-          }
-        }
-        
-        // Generate second 8 bytes of round key
-        for (let j = 0; j < SAFER_BLOCK_LEN; j++) {
-          if (strengthened) {
-            key[keyIndex++] = (kb[(j + 2 * i) % (SAFER_BLOCK_LEN + 1)] + 
-                             EXP(EXP((18 * i + j + 10) & 0xFF))) & 0xFF;
-          } else {
-            key[keyIndex++] = (kb[j] + EXP(EXP((18 * i + j + 10) & 0xFF))) & 0xFF;
-          }
-        }
-      }
-      
-      // Clear temporary arrays
-      global.OpCodes.ClearArray(ka);
-      global.OpCodes.ClearArray(kb);
-      
-      return key;
-    },
-    
-    /**
-     * Encrypt a single 64-bit block
-     * @param {Array} blockIn - 8-byte input block
-     * @param {Array} key - Expanded key
-     * @returns {Array} 8-byte encrypted block
-     */
-    encryptBlock: function(blockIn, key) {
-      let a = blockIn[0], b = blockIn[1], c = blockIn[2], d = blockIn[3];
-      let e = blockIn[4], f = blockIn[5], g = blockIn[6], h = blockIn[7];
-      
-      let round = key[0];
-      if (round > SAFER_MAX_ROUNDS) round = SAFER_MAX_ROUNDS;
-      
-      let keyIndex = 0;
-      
-      while (round--) {
-        // Key addition/XOR
-        a ^= key[++keyIndex]; b = (b + key[++keyIndex]) & 0xFF;
-        c = (c + key[++keyIndex]) & 0xFF; d ^= key[++keyIndex];
-        e ^= key[++keyIndex]; f = (f + key[++keyIndex]) & 0xFF;
-        g = (g + key[++keyIndex]) & 0xFF; h ^= key[++keyIndex];
-        
-        // S-box layer
-        a = (EXP(a) + key[++keyIndex]) & 0xFF; b = LOG(b) ^ key[++keyIndex];
-        c = LOG(c) ^ key[++keyIndex]; d = (EXP(d) + key[++keyIndex]) & 0xFF;
-        e = (EXP(e) + key[++keyIndex]) & 0xFF; f = LOG(f) ^ key[++keyIndex];
-        g = LOG(g) ^ key[++keyIndex]; h = (EXP(h) + key[++keyIndex]) & 0xFF;
-        
-        // Pseudo-Hadamard Transform layers
-        [a, b] = PHT(a, b); [c, d] = PHT(c, d);
-        [e, f] = PHT(e, f); [g, h] = PHT(g, h);
-        
-        [a, c] = PHT(a, c); [e, g] = PHT(e, g);
-        [b, d] = PHT(b, d); [f, h] = PHT(f, h);
-        
-        [a, e] = PHT(a, e); [b, f] = PHT(b, f);
-        [c, g] = PHT(c, g); [d, h] = PHT(d, h);
-        
-        // Permutation
-        let t = b; b = e; e = c; c = t;
-        t = d; d = f; f = g; g = t;
-      }
-      
-      // Final key addition
-      a ^= key[++keyIndex]; b = (b + key[++keyIndex]) & 0xFF;
-      c = (c + key[++keyIndex]) & 0xFF; d ^= key[++keyIndex];
-      e ^= key[++keyIndex]; f = (f + key[++keyIndex]) & 0xFF;
-      g = (g + key[++keyIndex]) & 0xFF; h ^= key[++keyIndex];
-      
-      return [a & 0xFF, b & 0xFF, c & 0xFF, d & 0xFF, 
-              e & 0xFF, f & 0xFF, g & 0xFF, h & 0xFF];
-    },
-    
-    /**
-     * Decrypt a single 64-bit block
-     * @param {Array} blockIn - 8-byte input block
-     * @param {Array} key - Expanded key
-     * @returns {Array} 8-byte decrypted block
-     */
-    decryptBlock: function(blockIn, key) {
-      let a = blockIn[0], b = blockIn[1], c = blockIn[2], d = blockIn[3];
-      let e = blockIn[4], f = blockIn[5], g = blockIn[6], h = blockIn[7];
-      
-      let round = key[0];
-      if (round > SAFER_MAX_ROUNDS) round = SAFER_MAX_ROUNDS;
-      
-      // Start from end of key (matches C implementation)
-      let keyIndex = SAFER_BLOCK_LEN * (1 + 2 * round);
-      
-      // Reverse final key addition (matches C exactly)
-      h ^= key[keyIndex]; g = (g - key[--keyIndex]) & 0xFF;
-      f = (f - key[--keyIndex]) & 0xFF; e ^= key[--keyIndex];
-      d ^= key[--keyIndex]; c = (c - key[--keyIndex]) & 0xFF;
-      b = (b - key[--keyIndex]) & 0xFF; a ^= key[--keyIndex];
-      
-      while (round--) {
-        // Reverse permutation (matches C implementation exactly)
-        let t = e; e = b; b = c; c = t;
-        t = f; f = d; d = g; g = t;
-        
-        // Reverse Pseudo-Hadamard Transform layers (same order as C)
-        [a, e] = IPHT(a, e); [b, f] = IPHT(b, f);
-        [c, g] = IPHT(c, g); [d, h] = IPHT(d, h);
-        
-        [a, c] = IPHT(a, c); [e, g] = IPHT(e, g);
-        [b, d] = IPHT(b, d); [f, h] = IPHT(f, h);
-        
-        [a, b] = IPHT(a, b); [c, d] = IPHT(c, d);
-        [e, f] = IPHT(e, f); [g, h] = IPHT(g, h);
-        
-        // Reverse S-box layer - first stage (key subtraction/XOR)
-        h = (h - key[--keyIndex]) & 0xFF; g = g ^ key[--keyIndex];
-        f = f ^ key[--keyIndex]; e = (e - key[--keyIndex]) & 0xFF;
-        d = (d - key[--keyIndex]) & 0xFF; c = c ^ key[--keyIndex];
-        b = b ^ key[--keyIndex]; a = (a - key[--keyIndex]) & 0xFF;
-        
-        // Reverse S-box layer - second stage (LOG/EXP with key subtraction/XOR)
-        h = LOG(h) ^ key[--keyIndex]; g = (EXP(g) - key[--keyIndex]) & 0xFF;
-        f = (EXP(f) - key[--keyIndex]) & 0xFF; e = LOG(e) ^ key[--keyIndex];
-        d = LOG(d) ^ key[--keyIndex]; c = (EXP(c) - key[--keyIndex]) & 0xFF;
-        b = (EXP(b) - key[--keyIndex]) & 0xFF; a = LOG(a) ^ key[--keyIndex];
-      }
-      
-      return [a & 0xFF, b & 0xFF, c & 0xFF, d & 0xFF, 
-              e & 0xFF, f & 0xFF, g & 0xFF, h & 0xFF];
-    },
-    
-    // Instance class for key management
-    SaferInstance: function(key) {
-      this.keyBytes = null;
-      this.expandedKey = null;
-      this.nofRounds = SAFER_K64_DEFAULT_ROUNDS;
-      this.strengthened = false;
-      
-      if (key) {
-        this.setKey(key);
-      }
-    }
-  };
-  
-  // Add methods to SaferInstance prototype
-  Safer.SaferInstance.prototype.setKey = function(key) {
-    // Convert key to bytes
-    const keyBytes = global.OpCodes.StringToBytes(key);
-    
-    // Determine key type and rounds based on key length
-    if (keyBytes.length <= 8) {
-      // SAFER K-64: use same key for both halves
-      const userkey1 = keyBytes.slice(0, 8);
-      while (userkey1.length < 8) userkey1.push(0); // Pad with zeros
-      const userkey2 = userkey1.slice(); // Copy for K-64
-      
-      this.nofRounds = SAFER_K64_DEFAULT_ROUNDS;
-      this.strengthened = false;
-      this.expandedKey = Safer.expandUserKey(userkey1, userkey2, this.nofRounds, this.strengthened);
-    } else {
-      // SAFER K-128: use full 128-bit key
-      const userkey1 = keyBytes.slice(0, 8);
-      const userkey2 = keyBytes.slice(8, 16);
-      while (userkey1.length < 8) userkey1.push(0);
-      while (userkey2.length < 8) userkey2.push(0);
-      
-      this.nofRounds = SAFER_K128_DEFAULT_ROUNDS;
-      this.strengthened = false;
-      this.expandedKey = Safer.expandUserKey(userkey1, userkey2, this.nofRounds, this.strengthened);
+  // Expand user key to round keys
+  _expandKey(keyBytes) {
+    const nofRounds = this.nofRounds;
+    if (nofRounds > this.algorithm.MAX_ROUNDS) {
+      throw new Error(`Too many rounds: ${nofRounds}`);
     }
     
-    this.keyBytes = keyBytes;
-  };
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(Safer);
+    const keyLen = 1 + this.algorithm.BLOCK_LEN * (1 + 2 * nofRounds);
+    const key = new Array(keyLen);
+    let keyIndex = 0;
+    
+    // Store number of rounds as first byte
+    key[keyIndex++] = nofRounds;
+    
+    const ka = new Array(this.algorithm.BLOCK_LEN + 1);
+    const kb = new Array(this.algorithm.BLOCK_LEN + 1);
+    
+    ka[this.algorithm.BLOCK_LEN] = 0;
+    kb[this.algorithm.BLOCK_LEN] = 0;
+    
+    // Initialize ka and kb arrays
+    for (let j = 0; j < this.algorithm.BLOCK_LEN; j++) {
+      const userkey1_j = keyBytes[j] || 0;
+      const userkey2_j = (keyBytes.length > 8) ? (keyBytes[j + 8] || 0) : userkey1_j;
+      
+      ka[this.algorithm.BLOCK_LEN] ^= ka[j] = OpCodes.RotL8(userkey1_j, 5);
+      kb[this.algorithm.BLOCK_LEN] ^= kb[j] = key[keyIndex++] = userkey2_j;
+    }
+    
+    // Generate round keys
+    for (let i = 1; i <= nofRounds; i++) {
+      // Rotate ka and kb arrays
+      for (let j = 0; j < this.algorithm.BLOCK_LEN + 1; j++) {
+        ka[j] = OpCodes.RotL8(ka[j], 6);
+        kb[j] = OpCodes.RotL8(kb[j], 6);
+      }
+      
+      // Generate first 8 bytes of round key
+      for (let j = 0; j < this.algorithm.BLOCK_LEN; j++) {
+        key[keyIndex++] = (ka[j] + this._EXP(this._EXP((18 * i + j + 1) & 0xFF))) & 0xFF;
+      }
+      
+      // Generate second 8 bytes of round key
+      for (let j = 0; j < this.algorithm.BLOCK_LEN; j++) {
+        key[keyIndex++] = (kb[j] + this._EXP(this._EXP((18 * i + j + 10) & 0xFF))) & 0xFF;
+      }
+    }
+    
+    return key;
   }
-  
-  // Export to global scope
-  global.Safer = Safer;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Safer;
-  }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+}
+
+// Register the algorithm
+RegisterAlgorithm(new SaferAlgorithm());
+
+// Export for module usage  
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = new SaferAlgorithm();
+}

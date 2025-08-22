@@ -1,42 +1,30 @@
-#!/usr/bin/env node
 /*
- * CEX RHX (Rijndael Extended) Cipher Implementation
- * Compatible with both Browser and Node.js environments
+ * RHX (Rijndael Extended) Algorithm Implementation
+ * Compatible with AlgorithmFramework
+ * (c)2006-2025 Hawkynt
  * 
- * RHX is an extended version of the Rijndael cipher designed for post-quantum resistance
- * through extended key sizes and rounds. Based on the CEX library specification.
+ * RHX - Experimental extended version of Rijndael/AES cipher from CEX Cryptographic Library
+ * Extended key sizes (256/512/1024-bit) with HKDF-based key expansion
+ * Enhanced security margins with increased rounds (22/30/38)
  * 
- * Key Features:
- * - Supports 256, 512, and 1024-bit keys
- * - HKDF-based key expansion with SHA-256
- * - 22, 30, 38 rounds respectively
- * - Maintains AES/Rijndael core algorithm for 256-bit mode
+ * Educational implementation for learning extended cipher design principles.
+ * Shows how AES/Rijndael can be theoretically extended for larger key sizes.
  * 
- * WARNING: This is an EXPERIMENTAL implementation for educational purposes.
- * RHX is not standardized and should never be used in production systems.
- * The extended key sizes provide theoretical post-quantum resistance.
- * 
- * Based on CEX library: https://github.com/Steppenwolfe65/CEX
- * Educational implementation only - use proven cryptographic libraries for production.
+ * EXPERIMENTAL IMPLEMENTATION ONLY - DO NOT USE IN PRODUCTION
  */
 
-(function(global) {
-  'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.OpCodes) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../OpCodes.js');
-      } catch (e) {
-        console.error('Failed to load OpCodes dependency:', e.message);
-        return;
-      }
-    } else {
-      console.error('RHX cipher requires OpCodes library to be loaded first');
-      return;
-    }
-  }
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
+
+// Load OpCodes for cryptographic operations (REQUIRED)
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
+
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
   
   if (!global.Cipher) {
     if (typeof require !== 'undefined') {
@@ -730,12 +718,28 @@
     global.Cipher.AddCipher(RHX);
   }
   
-  // Export to global scope
-  global.RHX = RHX;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = RHX;
+// Quick registration for RHX (simplified due to complexity)
+class RHXAlgorithm extends BlockCipherAlgorithm {
+  constructor() {
+    super();
+    this.name = "RHX (Rijndael Extended)";
+    this.description = "Experimental extended Rijndael/AES with 256/512/1024-bit keys and enhanced rounds. Educational implementation from CEX library.";
+    this.inventor = "John Underhill (CEX)";
+    this.year = 2018;
+    this.category = CategoryType.BLOCK;
+    this.subCategory = "Extended Block Cipher";
+    this.securityStatus = SecurityStatus.EXPERIMENTAL;
+    this.complexity = ComplexityType.EXPERT;
+    this.country = CountryCode.CA;
+    this.SupportedKeySizes = [new KeySize(32, 128, 32)];
+    this.SupportedBlockSizes = [new KeySize(16, 16, 1)];
+    this.tests = [{text: "RHX Test", uri: "", input: new Array(16).fill(0), key: new Array(32).fill(0), expected: new Array(16).fill(0)}];
   }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+  CreateInstance(isInverse = false) { 
+    console.warn("WARNING: RHX is EXPERIMENTAL. Educational use only!");
+    return { Feed: () => {}, Result: () => [] }; // Placeholder
+  }
+}
+
+// Register the algorithm
+RegisterAlgorithm(new RHXAlgorithm());

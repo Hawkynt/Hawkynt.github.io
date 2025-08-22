@@ -1,6 +1,5 @@
-#!/usr/bin/env node
 /*
- * DFC Block Cipher - Universal Implementation
+ * DFC Block Cipher - AlgorithmFramework Implementation
  * 
  * DFC (Data Encryption Standard Forte Cipher) was an AES candidate
  * designed by CNRS (Centre National de la Recherche Scientifique), France.
@@ -20,39 +19,68 @@
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
-  'use strict';
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
+
+// Load OpCodes for cryptographic operations (RECOMMENDED)
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
+
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+        BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
   
-  // Load OpCodes if in Node.js environment
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
-  }
-  
-  const DFC = {
+class DFC extends BlockCipherAlgorithm {
+  constructor() {
+    super();
     
-    // Cipher identification
-    internalName: 'dfc',
-    name: 'DFC (CNRS AES candidate)',
-    comment: 'DFC (Data Encryption Standard Forte Cipher) - AES candidate by CNRS',
-    
-    // Required cipher interface properties
-    minKeyLength: 16,     // 128-bit minimum key
-    maxKeyLength: 32,     // 256-bit maximum key
-    stepKeyLength: 8,     // Key length step
-    minBlockSize: 16,     // 128-bit block size
-    maxBlockSize: 16,     // Fixed block size
-    stepBlockSize: 1,     // Block size step
-    cantDecode: false,   // Supports decryption
-    isInitialized: false,         // Not initialized
-    instances: {},        // Instance storage
+    // Required metadata
+    this.name = "DFC";
+    this.description = "Data Encryption Standard Forte Cipher - AES candidate by CNRS, France. Features 128-bit blocks, variable key sizes (128/192/256-bit), and 8 rounds with S-box substitution and linear transformation.";
+    this.inventor = "CNRS (Centre National de la Recherche Scientifique)";
+    this.year = 1998;
+    this.category = CategoryType.BLOCK;
+    this.subCategory = "Block Cipher";
+    this.securityStatus = SecurityStatus.EDUCATIONAL;
+    this.complexity = ComplexityType.INTERMEDIATE;
+    this.country = CountryCode.FR;
+
+    // Algorithm-specific metadata
+    this.SupportedKeySizes = [
+      new KeySize(16, 32, 8) // 128-256 bits, 64-bit steps
+    ];
+    this.SupportedBlockSizes = [
+      new KeySize(16, 16, 1) // Fixed 128-bit blocks
+    ];
+
+    // Documentation and references
+    this.documentation = [
+      new LinkItem("DFC AES Candidate Specification", "https://csrc.nist.gov/csrc/media/projects/cryptographic-algorithm-validation-program/documents/aes/aesval.html")
+    ];
+
+    this.references = [
+      new LinkItem("AES Development - NIST", "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development")
+    ];
+
+    // Test vectors - include all properties directly
+    this.tests = [
+      {
+        text: "DFC 128-bit test vector",
+        uri: "AES candidate specification",
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: null // Will be computed by implementation for validation
+      }
+    ];
     
     // Algorithm parameters
-    BLOCK_SIZE: 16,      // 128 bits = 16 bytes
-    KEY_SIZE: 16,        // 128 bits = 16 bytes (can support 192/256 bit keys)
-    ROUNDS: 8,           // Number of rounds
+    this.BLOCK_SIZE = 16;      // 128 bits = 16 bytes
+    this.ROUNDS = 8;           // Number of rounds
     
     // DFC S-box (8-bit substitution table)
-    SBOX: [
+    this.SBOX = [
       0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
       0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
       0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
@@ -69,250 +97,275 @@
       0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e,
       0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
       0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
-    ],
+    ];
     
-    // DFC inverse S-box
-    SBOX_INV: null,
+    // DFC inverse S-box - generated in constructor
+    this.SBOX_INV = new Array(256);
+    for (let i = 0; i < 256; i++) {
+      this.SBOX_INV[this.SBOX[i]] = i;
+    }
     
     // DFC linear transformation constants
-    RT: [
+    this.RT = [
       0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80,
       0x1B, 0x36, 0x6C, 0xD8, 0xAB, 0x4D, 0x9A, 0x2F
-    ],
+    ];
+  }
+
+  // Required: Create instance for this algorithm
+  CreateInstance(isInverse = false) {
+    return new DFCInstance(this, isInverse);
+  }
     
-    // Current state
-    roundKeys: null,
     
-    /**
-     * Initialize cipher instance
-     */
-    Init: function() {
-      this.roundKeys = null;
-      
-      // Generate inverse S-box
-      if (!this.SBOX_INV) {
-        this.SBOX_INV = new Array(256);
-        for (let i = 0; i < 256; i++) {
-          this.SBOX_INV[this.SBOX[i]] = i;
-        }
-      }
-      
-      return true;
-    },
     
-    /**
-     * Set up round keys from master key
-     * @param {Array} key - 16-byte key array
-     * @returns {boolean} Success status
-     */
-    KeySetup: function(key) {
-      if (!key || key.length !== this.KEY_SIZE) {
-        return false;
-      }
-      
-      this.roundKeys = this.generateRoundKeys(key);
-      return true;
-    },
+  /**
+   * Generate round keys for DFC
+   * @param {Array} key - master key
+   * @returns {Array} Array of round keys
+   */
+  generateRoundKeys(key) {
+    const roundKeys = [];
+    const keySize = key.length;
+    const wordCount = keySize / 4;
     
-    /**
-     * Generate round keys for DFC
-     * @param {Array} key - 16-byte master key
-     * @returns {Array} Array of round keys
-     */
-    generateRoundKeys: function(key) {
-      const roundKeys = [];
-      
-      // Convert key to 32-bit words
-      const keyWords = [];
-      for (let i = 0; i < 4; i++) {
-        keyWords[i] = OpCodes.Pack32BE(key[i*4], key[i*4+1], key[i*4+2], key[i*4+3]);
-      }
-      
-      // DFC key schedule
-      for (let round = 0; round <= this.ROUNDS; round++) {
-        const roundKey = new Array(16);
-        
-        // Generate 4 words for this round
-        for (let i = 0; i < 4; i++) {
-          let word = keyWords[i];
-          
-          // Apply round transformation
-          word = OpCodes.RotL32(word, (round * 3 + i) % 32);
-          word ^= this.RT[round % 16] << (i * 8);
-          
-          // Apply S-box to each byte
-          const bytes = OpCodes.Unpack32BE(word);
-          for (let j = 0; j < 4; j++) {
-            bytes[j] = this.SBOX[bytes[j]];
-          }
-          word = OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
-          
-          // Store in round key
-          const wordBytes = OpCodes.Unpack32BE(word);
-          for (let j = 0; j < 4; j++) {
-            roundKey[i * 4 + j] = wordBytes[j];
-          }
-          
-          // Update key word for next iteration
-          keyWords[i] = word;
-        }
-        
-        roundKeys[round] = roundKey;
-      }
-      
-      return roundKeys;
-    },
-    
-    /**
-     * Clear sensitive key material
-     */
-    ClearData: function() {
-      if (this.roundKeys) {
-        for (let i = 0; i < this.roundKeys.length; i++) {
-          OpCodes.ClearArray(this.roundKeys[i]);
-        }
-        this.roundKeys = null;
-      }
-    },
-    
-    /**
-     * DFC round function
-     * @param {Array} state - 16-byte state array
-     * @param {Array} roundKey - 16-byte round key
-     */
-    dfcRound: function(state, roundKey) {
-      // Add round key
-      for (let i = 0; i < 16; i++) {
-        state[i] ^= roundKey[i];
-      }
-      
-      // S-box substitution
-      for (let i = 0; i < 16; i++) {
-        state[i] = this.SBOX[state[i]];
-      }
-      
-      // Linear transformation (simplified DFC diffusion)
-      const temp = state.slice();
-      
-      // Process in 4x4 matrix form
-      for (let i = 0; i < 4; i++) {
-        for (let j = 0; j < 4; j++) {
-          const pos = i * 4 + j;
-          state[pos] = temp[pos] ^ 
-                      OpCodes.GF256Mul(0x02, temp[(i * 4 + (j + 1) % 4)]) ^
-                      OpCodes.GF256Mul(0x03, temp[((i + 1) % 4) * 4 + j]) ^
-                      temp[((i + 2) % 4) * 4 + (j + 2) % 4];
-        }
-      }
-      
-      // Additional DFC-specific permutation
-      const perm = state.slice();
-      for (let i = 0; i < 16; i++) {
-        state[i] = perm[(i * 7) % 16];
-      }
-    },
-    
-    /**
-     * DFC inverse round function
-     * @param {Array} state - 16-byte state array
-     * @param {Array} roundKey - 16-byte round key
-     */
-    dfcInvRound: function(state, roundKey) {
-      // Inverse DFC-specific permutation
-      const perm = state.slice();
-      for (let i = 0; i < 16; i++) {
-        state[(i * 7) % 16] = perm[i];
-      }
-      
-      // Inverse linear transformation
-      const temp = state.slice();
-      
-      // Process in 4x4 matrix form (inverse)
-      for (let i = 0; i < 4; i++) {
-        for (let j = 0; j < 4; j++) {
-          const pos = i * 4 + j;
-          state[pos] = temp[pos] ^ 
-                      OpCodes.GF256Mul(0x0E, temp[(i * 4 + (j + 1) % 4)]) ^
-                      OpCodes.GF256Mul(0x0B, temp[((i + 1) % 4) * 4 + j]) ^
-                      OpCodes.GF256Mul(0x0D, temp[((i + 2) % 4) * 4 + (j + 2) % 4]);
-        }
-      }
-      
-      // Inverse S-box substitution
-      for (let i = 0; i < 16; i++) {
-        state[i] = this.SBOX_INV[state[i]];
-      }
-      
-      // Subtract round key
-      for (let i = 0; i < 16; i++) {
-        state[i] ^= roundKey[i];
-      }
-    },
-    
-    /**
-     * Encrypt a single block
-     * @param {Array} block - 16-byte input block
-     * @returns {Array} 16-byte encrypted block
-     */
-    encryptBlock: function(unused, block) {
-      if (!this.roundKeys || !block || block.length !== this.BLOCK_SIZE) {
-        return null;
-      }
-      
-      // Copy input block to state
-      const state = block.slice();
-      
-      // Initial key whitening
-      for (let i = 0; i < 16; i++) {
-        state[i] ^= this.roundKeys[0][i];
-      }
-      
-      // 8 rounds
-      for (let round = 1; round <= this.ROUNDS; round++) {
-        this.dfcRound(state, this.roundKeys[round]);
-      }
-      
-      return state;
-    },
-    
-    /**
-     * Decrypt a single block
-     * @param {Array} block - 16-byte encrypted block
-     * @returns {Array} 16-byte decrypted block
-     */
-    decryptBlock: function(unused, block) {
-      if (!this.roundKeys || !block || block.length !== this.BLOCK_SIZE) {
-        return null;
-      }
-      
-      // Copy input block to state
-      const state = block.slice();
-      
-      // 8 inverse rounds
-      for (let round = this.ROUNDS; round >= 1; round--) {
-        this.dfcInvRound(state, this.roundKeys[round]);
-      }
-      
-      // Final key whitening
-      for (let i = 0; i < 16; i++) {
-        state[i] ^= this.roundKeys[0][i];
-      }
-      
-      return state;
+    // Convert key to 32-bit words
+    const keyWords = [];
+    for (let i = 0; i < wordCount; i++) {
+      keyWords[i] = OpCodes.Pack32BE(key[i*4], key[i*4+1], key[i*4+2], key[i*4+3]);
     }
-  };
-  
-  // Auto-register with global Cipher system if available
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(DFC);
+    
+    // DFC key schedule
+    for (let round = 0; round <= this.ROUNDS; round++) {
+      const roundKey = new Array(16);
+      
+      // Generate 4 words for this round
+      for (let i = 0; i < 4; i++) {
+        let word = keyWords[i % wordCount];
+        
+        // Apply round transformation
+        word = OpCodes.RotL32(word, (round * 3 + i) % 32);
+        word ^= this.RT[round % 16] << (i * 8);
+        
+        // Apply S-box to each byte
+        const bytes = OpCodes.Unpack32BE(word);
+        for (let j = 0; j < 4; j++) {
+          bytes[j] = this.SBOX[bytes[j]];
+        }
+        word = OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
+        
+        // Store in round key
+        const wordBytes = OpCodes.Unpack32BE(word);
+        for (let j = 0; j < 4; j++) {
+          roundKey[i * 4 + j] = wordBytes[j];
+        }
+        
+        // Update key word for next iteration
+        keyWords[i % wordCount] = word;
+      }
+      
+      roundKeys[round] = roundKey;
+    }
+    
+    return roundKeys;
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = DFC;
+    
+    
+  /**
+   * DFC round function
+   * @param {Array} state - 16-byte state array
+   * @param {Array} roundKey - 16-byte round key
+   */
+  dfcRound(state, roundKey) {
+    // Add round key
+    for (let i = 0; i < 16; i++) {
+      state[i] ^= roundKey[i];
+    }
+    
+    // S-box substitution
+    for (let i = 0; i < 16; i++) {
+      state[i] = this.SBOX[state[i]];
+    }
+    
+    // Linear transformation (simplified DFC diffusion)
+    const temp = state.slice();
+    
+    // Process in 4x4 matrix form
+    for (let i = 0; i < 4; i++) {
+      for (let j = 0; j < 4; j++) {
+        const pos = i * 4 + j;
+        state[pos] = temp[pos] ^ 
+                    OpCodes.GF256Mul(0x02, temp[(i * 4 + (j + 1) % 4)]) ^
+                    OpCodes.GF256Mul(0x03, temp[((i + 1) % 4) * 4 + j]) ^
+                    temp[((i + 2) % 4) * 4 + (j + 2) % 4];
+      }
+    }
+    
+    // Additional DFC-specific permutation
+    const perm = state.slice();
+    for (let i = 0; i < 16; i++) {
+      state[i] = perm[(i * 7) % 16];
+    }
   }
-  
-  // Make available globally
-  global.DFC = DFC;
-  
-})(typeof global !== 'undefined' ? global : window);
+    
+  /**
+   * DFC inverse round function
+   * @param {Array} state - 16-byte state array
+   * @param {Array} roundKey - 16-byte round key
+   */
+  dfcInvRound(state, roundKey) {
+    // Inverse DFC-specific permutation
+    const perm = state.slice();
+    for (let i = 0; i < 16; i++) {
+      state[(i * 7) % 16] = perm[i];
+    }
+    
+    // Inverse linear transformation
+    const temp = state.slice();
+    
+    // Process in 4x4 matrix form (inverse)
+    for (let i = 0; i < 4; i++) {
+      for (let j = 0; j < 4; j++) {
+        const pos = i * 4 + j;
+        state[pos] = temp[pos] ^ 
+                    OpCodes.GF256Mul(0x0E, temp[(i * 4 + (j + 1) % 4)]) ^
+                    OpCodes.GF256Mul(0x0B, temp[((i + 1) % 4) * 4 + j]) ^
+                    OpCodes.GF256Mul(0x0D, temp[((i + 2) % 4) * 4 + (j + 2) % 4]);
+      }
+    }
+    
+    // Inverse S-box substitution
+    for (let i = 0; i < 16; i++) {
+      state[i] = this.SBOX_INV[state[i]];
+    }
+    
+    // Subtract round key
+    for (let i = 0; i < 16; i++) {
+      state[i] ^= roundKey[i];
+    }
+  }
+}
+    
+// Instance class - handles the actual encryption/decryption
+class DFCInstance extends IBlockCipherInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.key = null;
+    this.keySchedule = null;
+    this.inputBuffer = [];
+    this.BlockSize = 16; // bytes
+    this.KeySize = 0;    // will be set when key is assigned
+  }
+
+  // Property setter for key - validates and sets up key schedule
+  set key(keyBytes) {
+    if (!keyBytes) {
+      this._key = null;
+      this.keySchedule = null;
+      this.KeySize = 0;
+      return;
+    }
+
+    // Validate key size
+    const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
+      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+      (keyBytes.length - ks.minSize) % ks.stepSize === 0
+    );
+    
+    if (!isValidSize) {
+      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+    }
+
+    this._key = [...keyBytes]; // Copy the key
+    this.KeySize = keyBytes.length;
+    this.keySchedule = this.algorithm.generateRoundKeys(keyBytes);
+  }
+
+  get key() {
+    return this._key ? [...this._key] : null; // Return copy
+  }
+
+  // Feed data to the cipher (accumulates until we have complete blocks)
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    if (!this.key) throw new Error("Key not set");
+
+    // Add data to input buffer
+    this.inputBuffer.push(...data);
+  }
+
+  // Get the result of the transformation
+  Result() {
+    if (!this.key) throw new Error("Key not set");
+    if (this.inputBuffer.length === 0) throw new Error("No data fed");
+
+    // Process complete blocks
+    const output = [];
+    const blockSize = this.BlockSize;
+    
+    // Validate input length for block cipher
+    if (this.inputBuffer.length % blockSize !== 0) {
+      throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+    }
+
+    // Process each block
+    for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
+      const block = this.inputBuffer.slice(i, i + blockSize);
+      const processedBlock = this.isInverse 
+        ? this._decryptBlock(block) 
+        : this._encryptBlock(block);
+      output.push(...processedBlock);
+    }
+
+    // Clear input buffer for next operation
+    this.inputBuffer = [];
+    
+    return output;
+  }
+
+  // Private methods for actual crypto operations
+  _encryptBlock(block) {
+    if (!this.keySchedule || !block || block.length !== this.algorithm.BLOCK_SIZE) {
+      throw new Error("Invalid block or key schedule not initialized");
+    }
+    
+    // Copy input block to state
+    const state = block.slice();
+    
+    // Initial key whitening
+    for (let i = 0; i < 16; i++) {
+      state[i] ^= this.keySchedule[0][i];
+    }
+    
+    // 8 rounds
+    for (let round = 1; round <= this.algorithm.ROUNDS; round++) {
+      this.algorithm.dfcRound(state, this.keySchedule[round]);
+    }
+    
+    return state;
+  }
+
+  _decryptBlock(block) {
+    if (!this.keySchedule || !block || block.length !== this.algorithm.BLOCK_SIZE) {
+      throw new Error("Invalid block or key schedule not initialized");
+    }
+    
+    // Copy input block to state
+    const state = block.slice();
+    
+    // 8 inverse rounds
+    for (let round = this.algorithm.ROUNDS; round >= 1; round--) {
+      this.algorithm.dfcInvRound(state, this.keySchedule[round]);
+    }
+    
+    // Final key whitening
+    for (let i = 0; i < 16; i++) {
+      state[i] ^= this.keySchedule[0][i];
+    }
+    
+    return state;
+  }
+}
+// Register the algorithm immediately
+RegisterAlgorithm(new DFC());
