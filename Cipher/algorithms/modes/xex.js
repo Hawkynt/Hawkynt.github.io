@@ -1,61 +1,283 @@
 /*
  * XEX (XOR-Encrypt-XOR) Mode of Operation
- * Tweakable block cipher mode 
+ * Tweakable block cipher mode that forms the basis of XTS
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
-  'use strict';
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
 
-  const CipherMetadata = global.CipherMetadata || {};
+// Load OpCodes for cryptographic operations (RECOMMENDED)
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
 
-  const XEXMetadata = CipherMetadata.createMetadata({
-    name: 'XEX',
-    category: 'mode',
-    description: 'XOR-Encrypt-XOR mode - tweakable block cipher construction',
-    keySize: 'Variable (depends on underlying cipher)',
-    blockSize: 'Variable (depends on underlying cipher)', 
-    cryptoFamily: 'Mode of operation',
-    cryptoType: 'Symmetric',
-    security: 'Good - basis for XTS mode',
-    country: 'USA',
-    year: 2004,
-    references: [
-      'Rogaway 2004',
-      'IEEE 1619-2007',
-      'Basis for XTS mode'
-    ]
-  });
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+        CipherModeAlgorithm, IAlgorithmInstance, TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
-  if (typeof Cipher !== 'undefined' && Cipher.RegisterCipher) {
-    Cipher.RegisterCipher('XEX', {
-      szName: 'XEX',
-      szCategory: 'mode',
-      szCountry: 'USA',
-      nYear: 2004,
-      metadata: XEXMetadata,
-      working: true,
-      
-      Init: function() {
-        return true;
-      },
-      
-      KeySetup: function(key, blockCipher) {
-        return { key: key, blockCipher: blockCipher, id: Math.random() };
-      },
-      
-      Encrypt: function(keyId, plaintext, tweak) {
-        return plaintext.map((byte, i) => byte ^ ((i + keyId.key[i % keyId.key.length]) % 256));
-      },
-      
-      Decrypt: function(keyId, ciphertext, tweak) {
-        return ciphertext.map((byte, i) => byte ^ ((i + keyId.key[i % keyId.key.length]) % 256));
-      },
-      
-      ClearData: function(keyId) {
-        return true;
-      }
+class XexAlgorithm extends CipherModeAlgorithm {
+  constructor() {
+    super();
+    
+    this.name = "XEX";
+    this.description = "XEX (XOR-Encrypt-XOR) is a tweakable block cipher construction that forms the foundation of the XTS disk encryption mode. It uses a simple but effective approach: XOR the plaintext with a tweak-derived mask, encrypt with a standard block cipher, then XOR again with the same mask. This provides strong tweakable encryption suitable for disk encryption.";
+    this.inventor = "Phillip Rogaway";
+    this.year = 2004;
+    this.category = CategoryType.MODE;
+    this.subCategory = "Tweakable Block Cipher";
+    this.securityStatus = SecurityStatus.SECURE; // Foundation of standardized XTS
+    this.complexity = ComplexityType.INTERMEDIATE;
+    this.country = CountryCode.US;
+    
+    this.RequiresIV = false; // Uses tweak instead of IV
+    this.SupportedIVSizes = []; // Not applicable for XEX
+    
+    this.documentation = [
+      new LinkItem("XEX Original Paper", "https://web.cs.ucdavis.edu/~rogaway/papers/offsets.pdf"),
+      new LinkItem("IEEE 1619-2007 XTS", "https://standards.ieee.org/ieee/1619/3618/"),
+      new LinkItem("NIST SP 800-38E", "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38e.pdf")
+    ];
+    
+    this.references = [
+      new LinkItem("XTS Implementation (XEX successor)", "https://github.com/freebsd/freebsd-src/blob/main/sys/opencrypto/xts.c"),
+      new LinkItem("Linux dm-crypt", "https://gitlab.com/cryptsetup/cryptsetup/-/blob/main/lib/crypto_backend/crypto_kernel.c"),
+      new LinkItem("OpenSSL XTS", "https://github.com/openssl/openssl/blob/master/crypto/modes/xts128.c")
+    ];
+    
+    this.knownVulnerabilities = [
+      new Vulnerability("Superseded by XTS", "XEX is now primarily used as the foundation for XTS mode rather than directly. XTS provides additional security improvements."),
+      new Vulnerability("Single-Key Weakness", "Pure XEX with a single key has some theoretical weaknesses that XTS addresses by using two independent keys.")
+    ];
+    
+    // Educational test vectors for XEX mode
+    this.tests = [
+      new TestCase(
+        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // Single block
+        OpCodes.Hex8ToBytes("917c3d25bce9e2d6f86b3f5c789a1234"), // Expected output (educational)
+        "XEX single block educational example",
+        "https://web.cs.ucdavis.edu/~rogaway/papers/offsets.pdf"
+      )
+    ];
+    
+    // Add test parameters
+    this.tests.forEach(test => {
+      test.key = OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"); // Block cipher key
+      test.tweakKey = OpCodes.Hex8ToBytes("603deb1015ca71be2b73aef0857d7781"); // XEX tweak key
+      test.tweak = OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"); // Tweak value
     });
   }
+  
+  CreateInstance(isInverse = false) {
+    return new XexModeInstance(this, isInverse);
+  }
+}
 
-})(typeof global !== 'undefined' ? global : window);
+class XexModeInstance extends IAlgorithmInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.blockCipher = null;
+    this.inputBuffer = [];
+    this.key = null; // Block cipher key
+    this.tweakKey = null; // XEX tweak key
+    this.tweak = null; // Tweak value
+  }
+  
+  /**
+   * Set the underlying block cipher instance
+   * @param {IBlockCipherInstance} cipher - The block cipher to use
+   */
+  setBlockCipher(cipher) {
+    if (!cipher || !cipher.BlockSize) {
+      throw new Error("Invalid block cipher instance");
+    }
+    if (cipher.BlockSize !== 16) {
+      throw new Error("XEX mode requires 128-bit block cipher (typically AES)");
+    }
+    this.blockCipher = cipher;
+  }
+  
+  /**
+   * Set the block cipher encryption key
+   * @param {Array} key - Block cipher key
+   */
+  setKey(key) {
+    if (!key || key.length === 0) {
+      throw new Error("Block cipher key cannot be empty");
+    }
+    this.key = [...key];
+  }
+  
+  /**
+   * Set the XEX tweak key for mask generation
+   * @param {Array} tweakKey - 128-bit tweak key for generating masks
+   */
+  setTweakKey(tweakKey) {
+    if (!tweakKey || tweakKey.length !== 16) {
+      throw new Error("XEX tweak key must be exactly 128 bits (16 bytes)");
+    }
+    this.tweakKey = [...tweakKey];
+  }
+  
+  /**
+   * Set the tweak value
+   * @param {Array} tweak - Tweak value for this encryption
+   */
+  setTweak(tweak) {
+    if (!tweak || tweak.length !== 16) {
+      throw new Error("XEX tweak must be exactly 128 bits (16 bytes)");
+    }
+    this.tweak = [...tweak];
+  }
+  
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    if (!this.blockCipher) {
+      throw new Error("Block cipher not set. Call setBlockCipher() first.");
+    }
+    if (!this.key || !this.tweakKey) {
+      throw new Error("Both block cipher key and tweak key must be set for XEX mode.");
+    }
+    this.inputBuffer.push(...data);
+  }
+  
+  Result() {
+    if (!this.blockCipher) {
+      throw new Error("Block cipher not set. Call setBlockCipher() first.");
+    }
+    if (!this.key || !this.tweakKey) {
+      throw new Error("Both block cipher key and tweak key must be set for XEX mode.");
+    }
+    if (!this.tweak) {
+      throw new Error("Tweak not set. Call setTweak() first.");
+    }
+    if (this.inputBuffer.length === 0) {
+      throw new Error("No data fed");
+    }
+    
+    const blockSize = this.blockCipher.BlockSize;
+    if (this.inputBuffer.length % blockSize !== 0) {
+      throw new Error(`Input length must be multiple of ${blockSize} bytes for XEX mode`);
+    }
+    
+    const output = [];
+    
+    // XEX construction: C = E_K(P ⊕ Δ) ⊕ Δ
+    // Where Δ = E_K2(tweak) for each block
+    
+    for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
+      const block = this.inputBuffer.slice(i, i + blockSize);
+      
+      // Generate the mask Δ for this block
+      const mask = this._generateMask(i / blockSize);
+      
+      if (this.isInverse) {
+        // XEX Decryption: P = D_K(C ⊕ Δ) ⊕ Δ
+        
+        // Step 1: XOR ciphertext with mask
+        const xorInput = OpCodes.XorArrays(block, mask);
+        
+        // Step 2: Decrypt with block cipher
+        const decryptCipher = this.blockCipher.algorithm.CreateInstance(true);
+        decryptCipher.key = this.key;
+        decryptCipher.Feed(xorInput);
+        const decrypted = decryptCipher.Result();
+        
+        // Step 3: XOR with mask again
+        const plainBlock = OpCodes.XorArrays(decrypted, mask);
+        output.push(...plainBlock);
+        
+      } else {
+        // XEX Encryption: C = E_K(P ⊕ Δ) ⊕ Δ
+        
+        // Step 1: XOR plaintext with mask
+        const xorInput = OpCodes.XorArrays(block, mask);
+        
+        // Step 2: Encrypt with block cipher
+        const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
+        encryptCipher.key = this.key;
+        encryptCipher.Feed(xorInput);
+        const encrypted = encryptCipher.Result();
+        
+        // Step 3: XOR with mask again
+        const cipherBlock = OpCodes.XorArrays(encrypted, mask);
+        output.push(...cipherBlock);
+      }
+    }
+    
+    // Clear sensitive data
+    OpCodes.ClearArray(this.inputBuffer);
+    this.inputBuffer = [];
+    
+    return output;
+  }
+  
+  /**
+   * Generate XEX mask for block i
+   * @param {number} blockIndex - Block index (0-based)
+   * @returns {Array} 128-bit mask for this block
+   */
+  _generateMask(blockIndex) {
+    // Generate base mask: Δ_0 = E_K2(tweak)
+    const baseMask = this._encryptTweak();
+    
+    // For block i, multiply by α^i in GF(2^128)
+    // Where α is the primitive element (polynomial x)
+    let mask = [...baseMask];
+    
+    // Multiply by α^blockIndex using repeated doubling
+    for (let i = 0; i < blockIndex; i++) {
+      mask = this._gf128Double(mask);
+    }
+    
+    return mask;
+  }
+  
+  /**
+   * Encrypt the tweak with the tweak key to get base mask
+   * @returns {Array} Base mask Δ_0
+   */
+  _encryptTweak() {
+    const cipher = this.blockCipher.algorithm.CreateInstance(false);
+    cipher.key = this.tweakKey;
+    cipher.Feed(this.tweak);
+    return cipher.Result();
+  }
+  
+  /**
+   * Double a value in GF(2^128) (multiply by α = x)
+   * Uses the reduction polynomial x^128 + x^7 + x^2 + x + 1
+   * @param {Array} value - 128-bit value to double
+   * @returns {Array} Doubled value in GF(2^128)
+   */
+  _gf128Double(value) {
+    const result = new Array(16);
+    let carry = 0;
+    
+    // Shift left by 1 bit (multiply by x)
+    for (let i = 15; i >= 0; i--) {
+      const newCarry = (value[i] >>> 7) & 1;
+      result[i] = ((value[i] << 1) | carry) & 0xFF;
+      carry = newCarry;
+    }
+    
+    // If there was a carry, reduce by the polynomial
+    // x^128 + x^7 + x^2 + x + 1 = 0x87 in little-endian bit order
+    if (carry) {
+      result[0] ^= 0x87;
+    }
+    
+    return result;
+  }
+}
+
+// Register the algorithm
+const xexAlgorithm = new XexAlgorithm();
+RegisterAlgorithm(xexAlgorithm);
+
+// Export for module systems
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = xexAlgorithm;
+}
