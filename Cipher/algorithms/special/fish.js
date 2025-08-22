@@ -1,247 +1,266 @@
-#!/usr/bin/env node
 /*
- * Universal FISH Stream Cipher
- * Compatible with both Browser and Node.js environments
- * Based on Siemens specification by Blöcher and Dichtl (1993)
  * (c)2006-2025 Hawkynt
- * 
- * FISH (FIbonacci SHrinking) is a software-based stream cipher that combines:
- * - Lagged Fibonacci generators for fast 32-bit word operations
- * - Shrinking generator principle for output selection
- * - Variable key length support
- * 
- * Key characteristics:
- * - Designed for fast software implementation (15 Mbit/s on Intel 486)
- * - Uses 32-bit word operations for efficiency
- * - Variable key length (large keys supported)
- * - Lagged Fibonacci generator with shrinking
- * 
- * SECURITY WARNING: FISH has known cryptanalytic vulnerabilities (broken by 
- * Ross Anderson with few thousand bits of known plaintext). Educational use only.
  */
 
-(function(global) {
-  'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-      return;
-    }
-  }
-  
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
+if (!global.AlgorithmFramework && typeof require !== 'undefined')
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+
+if (!global.OpCodes && typeof require !== 'undefined')
+  global.OpCodes = require('../../OpCodes.js');
+
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        StreamCipherAlgorithm, IAlgorithmInstance, TestCase, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
+
+class FishAlgorithm extends StreamCipherAlgorithm {
+  constructor() {
+    super();
+    
+    // Required metadata
+    this.name = "FISH Stream Cipher";
+    this.description = "FISH (FIbonacci SHrinking) Stream Cipher designed by Blöcher and Dichtl (1993). Combines Lagged Fibonacci generators with shrinking generator principle for fast software implementation. Cryptographically broken by Ross Anderson.";
+    this.inventor = "Blöcher, Dichtl";
+    this.year = 1993;
+    this.category = CategoryType.SPECIAL;
+    this.subCategory = "Stream Cipher";
+    this.securityStatus = SecurityStatus.BROKEN;
+    this.complexity = ComplexityType.INTERMEDIATE;
+    this.country = CountryCode.DE;
+
+    // Stream cipher specific metadata
+    this.SupportedKeySizes = [
+      new KeySize(4, 256, 1)  // Variable key length 4-256 bytes
+    ];
+
+    // Documentation and references
+    this.documentation = [
+      new LinkItem("FISH Specification", "https://en.wikipedia.org/wiki/FISH_(cipher)"),
+      new LinkItem("Siemens Technical Report", "https://www.schneier.com/academic/archives/1994/09/description_of_a_new.html")
+    ];
+
+    this.references = [
+      new LinkItem("Ross Anderson's Cryptanalysis", "https://www.cl.cam.ac.uk/~rja14/Papers/fish.pdf"),
+      new LinkItem("Fast Software Encryption Workshop", "https://link.springer.com/chapter/10.1007/3-540-60590-8_6")
+    ];
+
+    // Known vulnerabilities
+    this.knownVulnerabilities = [
+      new Vulnerability(
+        "Known Plaintext Attack",
+        "Ross Anderson demonstrated successful cryptanalysis with few thousand bits of known plaintext",
+        "https://www.cl.cam.ac.uk/~rja14/Papers/fish.pdf"
+      ),
+      new Vulnerability(
+        "Statistical Weaknesses",
+        "Lagged Fibonacci generators have inherent statistical weaknesses exploitable in cryptanalysis",
+        "https://en.wikipedia.org/wiki/FISH_(cipher)#Security"
+      )
+    ];
+
+    // Test vectors using OpCodes byte arrays
+    this.tests = [
+      {
+        text: "Basic keystream generation",
+        uri: "https://en.wikipedia.org/wiki/FISH_(cipher)",
+        input: [72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100], // "Hello World"
+        key: [116, 101, 115, 116], // "test"
+        expected: [0xec, 0x86, 0x5a, 0xdd, 0x43, 0x8b, 0xa0, 0xa2, 0xfe, 0x55, 0x6b] // Computed output
+      },
+      {
+        text: "Empty input test",
+        uri: "https://en.wikipedia.org/wiki/FISH_(cipher)",
+        input: [], // empty
+        key: [116, 101, 115, 116, 107, 101, 121], // "testkey"
+        expected: [] // empty
+      },
+      {
+        text: "Single byte test",
+        uri: "https://en.wikipedia.org/wiki/FISH_(cipher)",
+        input: [65], // "A"
+        key: [107, 101, 121, 49], // "key1"
+        expected: [0xfe] // Computed output for 'A' with key1
       }
-    } else {
-      console.error('FISH cipher requires Cipher system to be loaded first');
-      return;
-    }
+    ];
   }
-  
-  // Create FISH cipher object
-  const FISH = {
-    // Public interface properties
-    internalName: 'FISH',
-    name: 'FISH Stream Cipher',
-    comment: 'FISH (FIbonacci SHrinking) Stream Cipher - DEPRECATED: Cryptographically broken',
-    minKeyLength: 4,    // Minimum practical key length
-    maxKeyLength: 256,  // Large key support (huge key length)
-    stepKeyLength: 1,
-    minBlockSize: 1,    // Stream cipher - processes byte by byte
-    maxBlockSize: 65536, // Practical limit for processing
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
-    boolIsStreamCipher: true, // Mark as stream cipher
+
+  CreateInstance(isInverse = false) {
+    return new FishAlgorithmInstance(this, isInverse);
+  }
+}
+
+class FishAlgorithmInstance extends IAlgorithmInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.key = null;
+    this.inputBuffer = [];
+    this.KeySize = 0;
+    
+    // FISH-specific state
+    this.fibonacciRegister = null;
+    this.shrinkingRegister = null;
+    this.fibPos = 0;
+    this.shrinkPos = 0;
+    this.currentWord = 0;
+    this.wordBytesUsed = 4; // Force generation of new word
     
     // FISH constants
-    LAG_P: 17,             // First lag parameter
-    LAG_Q: 5,              // Second lag parameter  
-    REGISTER_SIZE: 17,     // Size of Lagged Fibonacci register
-    WORD_SIZE: 32,         // 32-bit words for efficiency
-    
-    // Initialize cipher
-    Init: function() {
-      FISH.isInitialized = true;
-    },
-    
-    // Set up key and initialize FISH state
-    KeySetup: function(key) {
-      let id;
-      do {
-        id = 'FISH[' + global.generateUniqueID() + ']';
-      } while (FISH.instances[id] || global.objectInstances[id]);
-      
-      FISH.instances[id] = new FISH.FISHInstance(key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear cipher data
-    ClearData: function(id) {
-      if (FISH.instances[id]) {
-        // Clear sensitive data
-        const instance = FISH.instances[id];
-        if (instance.fibonacciRegister && global.OpCodes) {
-          global.OpCodes.ClearArray(instance.fibonacciRegister);
-        }
-        if (instance.shrinkingRegister && global.OpCodes) {
-          global.OpCodes.ClearArray(instance.shrinkingRegister);
-        }
-        if (instance.keyBytes && global.OpCodes) {
-          global.OpCodes.ClearArray(instance.keyBytes);
-        }
-        delete FISH.instances[id];
-        delete global.objectInstances[id];
+    this.LAG_P = 17;
+    this.LAG_Q = 5;
+    this.REGISTER_SIZE = 17;
+  }
+
+  set key(keyBytes) {
+    if (!keyBytes) {
+      this._key = null;
+      this.KeySize = 0;
+      // Clear sensitive data
+      if (this._key && global.OpCodes) {
+        global.OpCodes.ClearArray(this._key);
       }
-    },
-    
-    // Generate keystream and XOR with input (encryption/decryption)
-    encryptBlock: function(id, input) {
-      const instance = FISH.instances[id];
-      if (!instance) {
-        throw new Error('Invalid FISH instance ID');
-      }
-      
-      const inputBytes = global.OpCodes.StringToBytes(input);
-      const outputBytes = new Array(inputBytes.length);
-      
-      for (let i = 0; i < inputBytes.length; i++) {
-        const keystreamByte = instance.generateKeystreamByte();
-        outputBytes[i] = inputBytes[i] ^ keystreamByte;
-      }
-      
-      return global.OpCodes.BytesToString(outputBytes);
-    },
-    
-    // Decryption is identical to encryption for stream ciphers
-    decryptBlock: function(id, input) {
-      return FISH.encryptBlock(id, input);
-    },
-    
-    // FISH instance class
-    FISHInstance: function(key) {
-      this.keyBytes = global.OpCodes.StringToBytes(key);
-      this.keyLength = this.keyBytes.length;
-      
-      // Initialize Lagged Fibonacci generator (32-bit words)
-      this.fibonacciRegister = new Array(FISH.REGISTER_SIZE).fill(0);
-      
-      // Initialize shrinking control register
-      this.shrinkingRegister = new Array(FISH.REGISTER_SIZE).fill(0);
-      
-      // Position counters
-      this.fibPos = 0;
-      this.shrinkPos = 0;
-      
-      this.initializeRegisters();
+      return;
     }
-  };
-  
-  // Add methods to the instance prototype
-  FISH.FISHInstance.prototype.initializeRegisters = function() {
+
+    // Validate key size
+    const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
+      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+      (keyBytes.length - ks.minSize) % ks.stepSize === 0
+    );
+    
+    if (!isValidSize) {
+      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+    }
+
+    this._key = [...keyBytes];
+    this.KeySize = keyBytes.length;
+    
+    // Algorithm-specific key setup
+    this._initializeRegisters();
+  }
+
+  get key() {
+    return this._key ? [...this._key] : null;
+  }
+
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    if (!this.key) throw new Error("Key not set");
+
+    this.inputBuffer.push(...data);
+  }
+
+  Result() {
+    if (!this.key) throw new Error("Key not set");
+    
+    const output = new Array(this.inputBuffer.length);
+    
+    // Generate keystream and XOR with input (stream cipher)
+    for (let i = 0; i < this.inputBuffer.length; i++) {
+      const keystreamByte = this._generateKeystreamByte();
+      output[i] = this.inputBuffer[i] ^ keystreamByte;
+    }
+
+    // Clear input buffer for next operation
+    this.inputBuffer = [];
+    
+    return output;
+  }
+
+  _initializeRegisters() {
+    if (!this._key) return;
+    
     // Initialize Lagged Fibonacci register with key material
-    for (let i = 0; i < FISH.REGISTER_SIZE; i++) {
+    this.fibonacciRegister = new Array(this.REGISTER_SIZE);
+    for (let i = 0; i < this.REGISTER_SIZE; i++) {
       let word = 0;
       
       // Pack 4 key bytes into each 32-bit word
       for (let j = 0; j < 4; j++) {
-        const keyIndex = (i * 4 + j) % this.keyLength;
-        word |= (this.keyBytes[keyIndex] << (j * 8));
+        const keyIndex = (i * 4 + j) % this._key.length;
+        word |= (this._key[keyIndex] << (j * 8));
       }
       
       // Ensure non-zero values in register
       if (word === 0) {
-        word = 0x12345678 + i;
+        const initBytes = [0x12, 0x34, 0x56, 0x78];
+        word = OpCodes.Pack32BE(initBytes[0], initBytes[1], initBytes[2], initBytes[3]) + i;
       }
       
       this.fibonacciRegister[i] = word >>> 0; // Ensure 32-bit unsigned
     }
     
     // Initialize shrinking register differently
-    for (let i = 0; i < FISH.REGISTER_SIZE; i++) {
+    this.shrinkingRegister = new Array(this.REGISTER_SIZE);
+    for (let i = 0; i < this.REGISTER_SIZE; i++) {
       let word = 0;
       
       // Use different key pattern for shrinking register
       for (let j = 0; j < 4; j++) {
-        const keyIndex = (i * 4 + j + this.keyLength / 2) % this.keyLength;
-        word |= (this.keyBytes[keyIndex] << (j * 8));
+        const keyIndex = (i * 4 + j + Math.floor(this._key.length / 2)) % this._key.length;
+        word |= (this._key[keyIndex] << (j * 8));
       }
       
       if (word === 0) {
-        word = 0x87654321 + i;
+        const initBytes = [0x87, 0x65, 0x43, 0x21];
+        word = OpCodes.Pack32BE(initBytes[0], initBytes[1], initBytes[2], initBytes[3]) + i;
       }
       
       this.shrinkingRegister[i] = word >>> 0;
     }
     
+    // Reset positions
+    this.fibPos = 0;
+    this.shrinkPos = 0;
+    this.wordBytesUsed = 4; // Force new word generation
+    
     // Warm-up the generators
     for (let i = 0; i < 100; i++) {
-      this.clockFibonacci();
-      this.clockShrinking();
+      this._clockFibonacci();
+      this._clockShrinking();
     }
-  };
-  
-  FISH.FISHInstance.prototype.clockFibonacci = function() {
+  }
+
+  _clockFibonacci() {
     // Lagged Fibonacci generator: X[n] = X[n-p] + X[n-q] (mod 2^32)
-    const p = FISH.LAG_P;
-    const q = FISH.LAG_Q;
-    
-    const pos_p = (this.fibPos - p + FISH.REGISTER_SIZE) % FISH.REGISTER_SIZE;
-    const pos_q = (this.fibPos - q + FISH.REGISTER_SIZE) % FISH.REGISTER_SIZE;
+    const pos_p = (this.fibPos - this.LAG_P + this.REGISTER_SIZE) % this.REGISTER_SIZE;
+    const pos_q = (this.fibPos - this.LAG_Q + this.REGISTER_SIZE) % this.REGISTER_SIZE;
     
     const newValue = (this.fibonacciRegister[pos_p] + this.fibonacciRegister[pos_q]) >>> 0;
     
     this.fibonacciRegister[this.fibPos] = newValue;
-    this.fibPos = (this.fibPos + 1) % FISH.REGISTER_SIZE;
+    this.fibPos = (this.fibPos + 1) % this.REGISTER_SIZE;
     
     return newValue;
-  };
-  
-  FISH.FISHInstance.prototype.clockShrinking = function() {
+  }
+
+  _clockShrinking() {
     // Shrinking generator control sequence
-    const p = FISH.LAG_P;
-    const q = FISH.LAG_Q;
-    
-    const pos_p = (this.shrinkPos - p + FISH.REGISTER_SIZE) % FISH.REGISTER_SIZE;
-    const pos_q = (this.shrinkPos - q + FISH.REGISTER_SIZE) % FISH.REGISTER_SIZE;
+    const pos_p = (this.shrinkPos - this.LAG_P + this.REGISTER_SIZE) % this.REGISTER_SIZE;
+    const pos_q = (this.shrinkPos - this.LAG_Q + this.REGISTER_SIZE) % this.REGISTER_SIZE;
     
     const newValue = (this.shrinkingRegister[pos_p] ^ this.shrinkingRegister[pos_q]) >>> 0;
     
     this.shrinkingRegister[this.shrinkPos] = newValue;
-    this.shrinkPos = (this.shrinkPos + 1) % FISH.REGISTER_SIZE;
+    this.shrinkPos = (this.shrinkPos + 1) % this.REGISTER_SIZE;
     
     return newValue;
-  };
-  
-  FISH.FISHInstance.prototype.generateKeystreamWord = function() {
+  }
+
+  _generateKeystreamWord() {
     // FISH shrinking principle: generate Fibonacci values until shrinking bit is 1
     let fibValue, shrinkValue;
     
     do {
-      fibValue = this.clockFibonacci();
-      shrinkValue = this.clockShrinking();
+      fibValue = this._clockFibonacci();
+      shrinkValue = this._clockShrinking();
     } while ((shrinkValue & 1) === 0); // Continue until LSB of shrinking value is 1
     
     return fibValue;
-  };
-  
-  FISH.FISHInstance.prototype.generateKeystreamByte = function() {
-    // Generate a 32-bit keystream word
-    if (!this.currentWord || this.wordBytesUsed >= 4) {
-      this.currentWord = this.generateKeystreamWord();
+  }
+
+  _generateKeystreamByte() {
+    // Generate a 32-bit keystream word if needed
+    if (this.wordBytesUsed >= 4) {
+      this.currentWord = this._generateKeystreamWord();
       this.wordBytesUsed = 0;
     }
     
@@ -250,16 +269,11 @@
     this.wordBytesUsed++;
     
     return byte;
-  };
-  
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(FISH);
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = FISH;
-  }
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // Additional algorithm-specific methods for FISH stream cipher
+  // All core functionality is implemented above
+}
+
+// Register the algorithm
+RegisterAlgorithm(new FishAlgorithm());
