@@ -1,128 +1,211 @@
 /*
- * Counter (CTR) Mode
- * Turns a block cipher into a stream cipher by encrypting successive counter values
+ * CTR (Counter) Mode of Operation
+ * Converts a block cipher into a stream cipher by encrypting counter values
+ * Supports parallel processing and random access
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
-  'use strict';
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
 
-  const CTR = {
-    internalName: "CTR",
-    name: "CTR",
-    comment: "Counter mode transforms a block cipher into a stream cipher by encrypting successive counter values to generate a keystream.",
-    minKeyLength: 1,
-    maxKeyLength: 512,
-    stepKeyLength: 1,
-    minBlockSize: 1,
-    maxBlockSize: 512,
-    stepBlockSize: 1,
-    
-    description: "Counter mode transforms a block cipher into a stream cipher by encrypting successive counter values to generate a keystream. Supports parallel processing and random access.",
-    inventor: "Whitfield Diffie, Martin Hellman",
-    year: 1979,
-    country: "US",
-    category: "modeOfOperation",
-    subCategory: "Confidentiality Mode",
-    securityStatus: null,
-    securityNotes: "Secure with proper nonce management. Counter values must never repeat under the same key. Provides no authentication.",
-    
-    documentation: [
-      {text: "NIST SP 800-38A - Block Cipher Modes", uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf"},
-      {text: "Wikipedia - Block cipher mode of operation", uri: "https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Counter_(CTR)"},
-      {text: "RFC 3686 - AES Counter Mode", uri: "https://tools.ietf.org/rfc/rfc3686.txt"}
-    ],
-    
-    references: [
-      {text: "OpenSSL CTR Implementation", uri: "https://github.com/openssl/openssl/blob/master/crypto/modes/ctr128.c"},
-      {text: "Crypto++ CTR Mode", uri: "https://github.com/weidai11/cryptopp/blob/master/modes.cpp"}
-    ],
-    
-    knownVulnerabilities: [
-      {
-        type: "Nonce Reuse", 
-        text: "Reusing the same nonce/counter combination with the same key reveals XOR of plaintexts",
-        mitigation: "Ensure unique nonces for each encryption operation and implement proper counter management"
-      },
-      {
-        type: "Bit Flipping Attack", 
-        text: "CTR mode provides no authentication, allowing attackers to flip bits in ciphertext to modify plaintext",
-        mitigation: "Use authenticated encryption modes like GCM or combine with HMAC for authentication"
-      }
-    ],
-    
-    tests: [
-      {
-        text: "NIST SP 800-38A CTR Test Vector",
-        uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf",
-        keySize: 16,
-        blockSize: 16,
-        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a") : [],
-        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c") : [],
-        iv: global.OpCodes ? global.OpCodes.Hex8ToBytes("f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff") : [],
-        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("874d6191b620e3261bef6864990db6ce") : []
-      }
-    ],
+// Load OpCodes for cryptographic operations (RECOMMENDED) 
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
 
-    Init: function() {
-      return true;
-    },
-    
-    KeySetup: function(key) {
-      return { key: key, counter: 0, nonce: null, id: Math.random() };
-    },
-    
-    EncryptBlock: function(keyId, plaintext) {
-      return plaintext;
-    },
-    
-    DecryptBlock: function(keyId, ciphertext) {
-      return ciphertext;
-    },
-    
-    ClearData: function(keyId) {
-      return true;
-    },
-    
-    instances: {
-      CTR: function() { return CTR; }
-    }
-  };
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+        CipherModeAlgorithm, IAlgorithmInstance, TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
-  // Auto-register with Subsystem if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
-    global.Cipher.Add(CTR);
-
-  // Legacy registration for compatibility
-  if (typeof Cipher !== 'undefined' && Cipher.RegisterCipher) {
-    Cipher.RegisterCipher('CTR', {
-      szName: 'CTR',
-      szCategory: 'mode',
-      szCountry: 'USA',
-      nYear: 1979,
-      metadata: CTR,
-      working: true,
-      
-      Init: function() {
-        return true;
-      },
-      
-      KeySetup: function(key) {
-        return { key: key, counter: 0, nonce: null, id: Math.random() };
-      },
-      
-      EncryptBlock: function(keyId, plaintext) {
-        return plaintext;
-      },
-      
-      DecryptBlock: function(keyId, ciphertext) {
-        return ciphertext;
-      },
-      
-      ClearData: function(keyId) {
-        return true;
-      }
+class CtrAlgorithm extends CipherModeAlgorithm {
+  constructor() {
+    super();
+    
+    this.name = "CTR";
+    this.description = "Counter mode converts a block cipher into a stream cipher by encrypting successive counter values to generate a keystream. Allows parallel processing and random access. The counter typically combines a nonce (number used once) with an incrementing counter value. Both encryption and decryption use the block cipher in encryption mode only.";
+    this.inventor = "Whitfield Diffie, Martin Hellman";
+    this.year = 1979;
+    this.category = CategoryType.MODE;
+    this.subCategory = "Stream Cipher Mode";
+    this.securityStatus = SecurityStatus.SECURE;
+    this.complexity = ComplexityType.INTERMEDIATE;
+    this.country = CountryCode.US;
+    
+    this.RequiresIV = true;
+    this.SupportedIVSizes = [
+      new KeySize(8, 32, 8) // Common block sizes: 8 (DES), 16 (AES), 32 (256-bit blocks)
+    ];
+    
+    this.documentation = [
+      new LinkItem("NIST SP 800-38A", "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf"),
+      new LinkItem("RFC 3686 - AES-CTR", "https://tools.ietf.org/rfc/rfc3686.txt"),
+      new LinkItem("Applied Cryptography", "Bruce Schneier - Chapter 9")
+    ];
+    
+    this.references = [
+      new LinkItem("OpenSSL CTR Implementation", "https://github.com/openssl/openssl/blob/master/crypto/modes/ctr128.c"),
+      new LinkItem("Crypto++ CTR Mode", "https://github.com/weidai11/cryptopp/blob/master/modes.cpp")
+    ];
+    
+    this.knownVulnerabilities = [
+      new Vulnerability("Nonce Reuse", "Reusing nonce/counter combination reveals XOR of plaintexts. Ensure unique nonces and proper counter management."),
+      new Vulnerability("Counter Overflow", "If counter overflows and wraps around, keystream may repeat. Use sufficiently large counter space."),
+      new Vulnerability("No Authentication", "CTR provides no integrity protection. Use AEAD modes or combine with MAC for authentication.")
+    ];
+    
+    this.tests = [
+      new TestCase(
+        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // Single block
+        OpCodes.Hex8ToBytes("874d6191b620e3261bef6864990db6ce"), // Expected CTR output
+        "NIST SP 800-38A CTR test vector",
+        "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf"
+      ),
+      new TestCase(
+        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e5130c81c46a35ce411e5fbc1191a0a52eff69f2445df4f9b17ad2b417be66c3710"), // Multi-block
+        OpCodes.Hex8ToBytes("874d6191b620e3261bef6864990db6ce9806f66b7970fdff8617187bb9fffdff5ae4df3edbd5d35e5b4f09020db03eab1e031dda2fbe03d1792170a0f3009cee"), // Expected CTR multi-block
+        "NIST SP 800-38A CTR multi-block",
+        "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf"
+      )
+    ];
+    
+    // Add common test parameters
+    this.tests.forEach(test => {
+      test.key = OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"); // AES-128 test key
+      test.iv = OpCodes.Hex8ToBytes("f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"); // Test nonce/IV
     });
   }
+  
+  CreateInstance(isInverse = false) {
+    return new CtrModeInstance(this, isInverse);
+  }
+}
 
-})(typeof global !== 'undefined' ? global : window);
+class CtrModeInstance extends IAlgorithmInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.blockCipher = null;
+    this.inputBuffer = [];
+    this.nonce = null;
+    this.counter = 0;
+  }
+  
+  /**
+   * Set the underlying block cipher instance
+   * @param {IBlockCipherInstance} cipher - The block cipher to use
+   */
+  setBlockCipher(cipher) {
+    if (!cipher || !cipher.BlockSize) {
+      throw new Error("Invalid block cipher instance");
+    }
+    this.blockCipher = cipher;
+  }
+  
+  /**
+   * Set the nonce (IV for counter mode)
+   * @param {Array} nonce - Nonce value (must match block size)
+   */
+  setNonce(nonce) {
+    if (!this.blockCipher) {
+      throw new Error("Block cipher must be set before nonce");
+    }
+    if (!nonce || nonce.length !== this.blockCipher.BlockSize) {
+      throw new Error(`Nonce must be ${this.blockCipher.BlockSize} bytes`);
+    }
+    this.nonce = [...nonce]; // Copy nonce
+    this.counter = 0; // Reset counter when setting new nonce
+  }
+  
+  /**
+   * Alternative method for compatibility with IV-based interfaces
+   */
+  setIV(iv) {
+    this.setNonce(iv);
+  }
+  
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    if (!this.blockCipher) {
+      throw new Error("Block cipher not set. Call setBlockCipher() first.");
+    }
+    if (!this.nonce) {
+      throw new Error("Nonce not set. Call setNonce() first.");
+    }
+    this.inputBuffer.push(...data);
+  }
+  
+  /**
+   * Increment counter in big-endian format
+   * @param {Array} counterBlock - Counter block to increment
+   * @param {number} increment - Value to add to counter
+   */
+  _incrementCounter(counterBlock, increment = 1) {
+    const result = [...counterBlock];
+    let carry = increment;
+    
+    // Add from least significant byte (right to left)
+    for (let i = result.length - 1; i >= 0 && carry > 0; i--) {
+      const sum = result[i] + carry;
+      result[i] = sum & 0xFF;
+      carry = Math.floor(sum / 256);
+    }
+    
+    return result;
+  }
+  
+  Result() {
+    if (!this.blockCipher) {
+      throw new Error("Block cipher not set. Call setBlockCipher() first.");
+    }
+    if (!this.nonce) {
+      throw new Error("Nonce not set. Call setNonce() first.");
+    }
+    if (this.inputBuffer.length === 0) {
+      throw new Error("No data fed");
+    }
+    
+    const blockSize = this.blockCipher.BlockSize;
+    const output = [];
+    let counterBlock = [...this.nonce]; // Start with nonce as initial counter
+    
+    // NOTE: CTR encryption and decryption are identical operations
+    // Both use the block cipher in encryption mode only
+    for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
+      const remainingBytes = Math.min(blockSize, this.inputBuffer.length - i);
+      const inputBlock = this.inputBuffer.slice(i, i + remainingBytes);
+      
+      // Encrypt the counter block to create keystream
+      const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
+      encryptCipher.key = this.blockCipher.key;
+      encryptCipher.Feed(counterBlock);
+      const keystream = encryptCipher.Result();
+      
+      // XOR input with keystream to get output
+      const outputBlock = [];
+      for (let j = 0; j < remainingBytes; j++) {
+        outputBlock[j] = inputBlock[j] ^ keystream[j];
+      }
+      output.push(...outputBlock);
+      
+      // Increment counter for next block
+      counterBlock = this._incrementCounter(counterBlock, 1);
+    }
+    
+    // Clear sensitive data
+    OpCodes.ClearArray(this.inputBuffer);
+    OpCodes.ClearArray(counterBlock);
+    this.inputBuffer = [];
+    
+    return output;
+  }
+}
+
+// Register the algorithm
+const ctrAlgorithm = new CtrAlgorithm();
+RegisterAlgorithm(ctrAlgorithm);
+
+// Export for module systems
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = ctrAlgorithm;
+}
