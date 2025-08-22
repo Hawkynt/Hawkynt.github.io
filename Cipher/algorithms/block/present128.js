@@ -1,340 +1,432 @@
-#!/usr/bin/env node
 /*
- * PRESENT-128 Block Cipher - Universal Implementation
- * 
- * PRESENT-128 is a variant of the PRESENT lightweight block cipher
- * with 128-bit key size instead of the standard 80-bit key.
- * 
- * Key features:
- * - Block size: 64 bits (8 bytes)
- * - Key size: 128 bits (16 bytes) 
- * - Rounds: 31 rounds
- * - Structure: Substitution-Permutation Network (SPN)
- * - S-box: 4-bit substitution table
- * - P-layer: Bit permutation for diffusion
- * 
- * Based on ISO/IEC 29192-2 specification with extended key schedule.
- * 
- * Educational implementation - not for production use.
- * Compatible with both Browser and Node.js environments.
- * 
+ * PRESENT-128 Block Cipher Implementation
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
+ * 
+ * PRESENT-128 - Lightweight block cipher variant with 128-bit keys
+ * 64-bit blocks with 128-bit keys, 31 rounds
+ * Substitution-Permutation Network (SPN) structure
  */
 
-(function(global) {
-  'use strict';
-  
-  // Load OpCodes if in Node.js environment
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
-  }
-  
-  const PRESENT128 = {
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
+
+// Load OpCodes for cryptographic operations (RECOMMENDED)
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
+
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
+
+class Present128Algorithm extends BlockCipherAlgorithm {
+  constructor() {
+    super();
     
-    // Cipher identification
-    internalName: 'present-128',
-    name: 'PRESENT-128 (64-bit block, 128-bit key)',
-    // Required Cipher interface properties
-    minKeyLength: 16,        // Minimum key length in bytes
-    maxKeyLength: 32,        // Maximum key length in bytes
-    stepKeyLength: 8,       // Key length step size
-    minBlockSize: 8,        // Minimum block size in bytes
-    maxBlockSize: 16,        // Maximum block size (0 = unlimited)
-    stepBlockSize: 8,       // Block size step
-    instances: {},          // Instance tracking
+    // Required metadata
+    this.name = "PRESENT-128";
+    this.description = "PRESENT-128 variant of the lightweight block cipher with extended 128-bit key size. Substitution-Permutation Network with 64-bit blocks, 128-bit keys, and 31 rounds. Educational implementation extending the ISO/IEC 29192-2 specification.";
+    this.inventor = "Extended from Andrey Bogdanov, Lars R. Knudsen, Gregor Leander, Christof Paar, Axel Poschmann, Matthew J.B. Robshaw, Yannick Seurin, C. Vikkelsoe";
+    this.year = 2007;
+    this.category = CategoryType.BLOCK;
+    this.subCategory = "Block Cipher";
+    this.securityStatus = SecurityStatus.EDUCATIONAL;
+    this.complexity = ComplexityType.BASIC;
+    this.country = CountryCode.DE;
+
+    // Algorithm-specific metadata
+    this.SupportedKeySizes = [
+      new KeySize(16, 16, 1)  // PRESENT-128: 128-bit keys only
+    ];
+    this.SupportedBlockSizes = [
+      new KeySize(8, 8, 1)    // 64-bit blocks only
+    ];
+
+    // Documentation and references
+    this.documentation = [
+      new LinkItem("PRESENT-128 Extension", "https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31"),
+      new LinkItem("PRESENT Specification", "https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31"),
+      new LinkItem("Wikipedia - PRESENT", "https://en.wikipedia.org/wiki/PRESENT")
+    ];
+
+    this.references = [
+      new LinkItem("Original PRESENT Paper", "https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31"),
+      new LinkItem("Crypto++ PRESENT Implementation", "https://github.com/weidai11/cryptopp/blob/master/present.cpp"),
+      new LinkItem("PRESENT Analysis", "https://eprint.iacr.org/2007/024.pdf"),
+      new LinkItem("Lightweight Cryptography", "https://csrc.nist.gov/projects/lightweight-cryptography")
+    ];
+
+    // Known vulnerabilities
+    this.knownVulnerabilities = [
+      new Vulnerability(
+        "Linear cryptanalysis",
+        "Susceptible to linear cryptanalytic attacks",
+        "Use for educational purposes only in constrained environments"
+      ),
+      new Vulnerability(
+        "Small block size",
+        "64-bit block size vulnerable to birthday attacks",
+        "Avoid encrypting large amounts of data with single key"
+      )
+    ];
+
+    // Test vectors using OpCodes byte arrays
+    this.tests = [
+      {
+        text: "PRESENT-128 all zeros test vector - educational",
+        uri: "https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31",
+        input: OpCodes.Hex8ToBytes("0000000000000000"),
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("96db702a2e6900af")
+      },
+      {
+        text: "PRESENT-128 pattern test vector - educational",
+        uri: "https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31",
+        input: OpCodes.Hex8ToBytes("0000000000000000"),
+        key: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
+        expected: OpCodes.Hex8ToBytes("13238c710272a5f8")
+      }
+    ];
+
+    // PRESENT Constants
+    this.ROUNDS = 31;
+    this.BLOCK_SIZE = 8;   // 64 bits
+    this.KEY_SIZE = 16;    // 128 bits
     
-    // Algorithm parameters
-    BLOCK_SIZE: 8,       // 64 bits = 8 bytes
-    KEY_SIZE: 16,        // 128 bits = 16 bytes
-    ROUNDS: 31,          // Number of rounds
-    
-    // PRESENT S-Box (4-bit substitution table)
-    SBOX: [
+    // PRESENT S-Box (4-bit substitution)
+    this.SBOX = [
       0xC, 0x5, 0x6, 0xB, 0x9, 0x0, 0xA, 0xD,
       0x3, 0xE, 0xF, 0x8, 0x4, 0x7, 0x1, 0x2
-    ],
+    ];
     
-    // PRESENT Inverse S-Box 
-    SBOX_INV: [
+    // PRESENT Inverse S-Box
+    this.SBOX_INV = [
       0x5, 0xE, 0xF, 0x8, 0xC, 0x1, 0x2, 0xD,
       0xB, 0x4, 0x6, 0x3, 0x0, 0x7, 0x9, 0xA
-    ],
-    
-    // PRESENT Bit Permutation Table
-    // P[i] = position where bit i goes to
-    PERM: [
-       0, 16, 32, 48,  1, 17, 33, 49,  2, 18, 34, 50,  3, 19, 35, 51,
-       4, 20, 36, 52,  5, 21, 37, 53,  6, 22, 38, 54,  7, 23, 39, 55,
-       8, 24, 40, 56,  9, 25, 41, 57, 10, 26, 42, 58, 11, 27, 43, 59,
-      12, 28, 44, 60, 13, 29, 45, 61, 14, 30, 46, 62, 15, 31, 47, 63
-    ],
-    
-    // Inverse permutation table (computed from PERM)
-    PERM_INV: null,
-    
-    // Current state
-    roundKeys: null,
-    
-    /**
-     * Initialize cipher instance
-     */
-    Init: function() {
+    ];
+  }
+
+  CreateInstance(isInverse = false) {
+    return new Present128Instance(this, isInverse);
+  }
+}
+
+class Present128Instance extends IBlockCipherInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.key = null;
+    this.roundKeys = null;
+    this.inputBuffer = [];
+    this.BlockSize = 8;     // 64-bit blocks
+    this.KeySize = 0;
+  }
+
+  set key(keyBytes) {
+    if (!keyBytes) {
+      this._key = null;
       this.roundKeys = null;
-      
-      // Compute inverse permutation table
-      if (!this.PERM_INV) {
-        this.PERM_INV = new Array(64);
-        for (let i = 0; i < 64; i++) {
-          this.PERM_INV[this.PERM[i]] = i;
-        }
-      }
-      
-      return true;
-    },
-    
-    /**
-     * Set up round keys from master key
-     * @param {Array} key - 16-byte key array
-     * @returns {boolean} Success status
-     */
-    KeySetup: function(key) {
-      if (!key || key.length !== this.KEY_SIZE) {
-        return false;
-      }
-      
-      this.roundKeys = this.generateRoundKeys(key);
-      return true;
-    },
-    
-    /**
-     * Generate round keys for PRESENT-128
-     * @param {Array} key - 16-byte master key
-     * @returns {Array} Array of round keys
-     */
-    generateRoundKeys: function(key) {
-      const roundKeys = [];
-      
-      // Convert key to 64-bit words (big-endian)
-      let keyHigh = 0;
-      let keyLow = 0;
-      
-      for (let i = 0; i < 8; i++) {
-        keyHigh = (keyHigh << 8) | key[i];
-        keyLow = (keyLow << 8) | key[i + 8];
-      }
-      
-      // Store initial round key (leftmost 64 bits)
-      roundKeys[0] = keyHigh;
-      
-      // Generate 31 round keys using PRESENT key schedule
-      for (let round = 1; round <= this.ROUNDS; round++) {
-        // Rotate key register left by 61 positions
-        // For 128-bit key: [K127, K126, ..., K0] → [K66, K65, ..., K0, K127, K126, ..., K67]
-        const temp = keyHigh;
-        keyHigh = ((keyHigh << 61) | (keyLow >>> 3)) >>> 0;
-        keyLow = ((keyLow << 61) | (temp >>> 3)) >>> 0;
-        
-        // Apply S-box to leftmost 4 bits of key
-        const leftmost4 = (keyHigh >>> 28) & 0xF;
-        const sboxed = this.SBOX[leftmost4];
-        keyHigh = (keyHigh & 0x0FFFFFFF) | (sboxed << 28);
-        
-        // XOR round counter to bits 19-15 of key
-        const roundCounter = round & 0x1F; // 5-bit round counter
-        keyHigh ^= (roundCounter << 15);
-        
-        // Store round key (leftmost 64 bits)
-        roundKeys[round] = keyHigh;
-      }
-      
-      return roundKeys;
-    },
-    
-    /**
-     * Clear sensitive key material
-     */
-    ClearData: function() {
-      if (this.roundKeys) {
-        OpCodes.ClearArray(this.roundKeys);
-        this.roundKeys = null;
-      }
-    },
-    
-    /**
-     * Apply S-box layer
-     * @param {number} state - 64-bit state as number
-     * @returns {number} State after S-box substitution
-     */
-    sboxLayer: function(state) {
-      let result = 0;
-      
-      // Apply S-box to each 4-bit nibble
-      for (let i = 0; i < 16; i++) {
-        const nibble = (state >>> (i * 4)) & 0xF;
-        const sboxed = this.SBOX[nibble];
-        result |= (sboxed << (i * 4));
-      }
-      
-      return result >>> 0; // Ensure unsigned 32-bit
-    },
-    
-    /**
-     * Apply inverse S-box layer
-     * @param {number} state - 64-bit state as number
-     * @returns {number} State after inverse S-box substitution
-     */
-    invSboxLayer: function(state) {
-      let result = 0;
-      
-      // Apply inverse S-box to each 4-bit nibble
-      for (let i = 0; i < 16; i++) {
-        const nibble = (state >>> (i * 4)) & 0xF;
-        const invSboxed = this.SBOX_INV[nibble];
-        result |= (invSboxed << (i * 4));
-      }
-      
-      return result >>> 0; // Ensure unsigned 32-bit
-    },
-    
-    /**
-     * Apply bit permutation layer
-     * @param {number} state - 64-bit state as number
-     * @returns {number} State after bit permutation
-     */
-    permLayer: function(state) {
-      let result = 0;
-      
-      // Apply bit permutation
-      for (let i = 0; i < 64; i++) {
-        if (state & (1 << i)) {
-          result |= (1 << this.PERM[i]);
-        }
-      }
-      
-      return result >>> 0; // Ensure unsigned 32-bit
-    },
-    
-    /**
-     * Apply inverse bit permutation layer
-     * @param {number} state - 64-bit state as number
-     * @returns {number} State after inverse bit permutation
-     */
-    invPermLayer: function(state) {
-      let result = 0;
-      
-      // Apply inverse bit permutation
-      for (let i = 0; i < 64; i++) {
-        if (state & (1 << i)) {
-          result |= (1 << this.PERM_INV[i]);
-        }
-      }
-      
-      return result >>> 0; // Ensure unsigned 32-bit
-    },
-    
-    /**
-     * Convert byte array to 64-bit number (big-endian)
-     * @param {Array} bytes - 8-byte array
-     * @returns {number} 64-bit number
-     */
-    bytesToState: function(bytes) {
-      let state = 0;
-      for (let i = 0; i < 8; i++) {
-        state = (state * 256) + bytes[i];
-      }
-      return state >>> 0; // Ensure unsigned
-    },
-    
-    /**
-     * Convert 64-bit number to byte array (big-endian)
-     * @param {number} state - 64-bit number
-     * @returns {Array} 8-byte array
-     */
-    stateToBytes: function(state) {
-      const bytes = new Array(8);
-      for (let i = 7; i >= 0; i--) {
-        bytes[i] = state & 0xFF;
-        state = Math.floor(state / 256);
-      }
-      return bytes;
-    },
-    
-    /**
-     * Encrypt a single block
-     * @param {Array} block - 8-byte input block
-     * @returns {Array} 8-byte encrypted block
-     */
-    encryptBlock: function(unused, block) {
-      if (!this.roundKeys || !block || block.length !== this.BLOCK_SIZE) {
-        return null;
-      }
-      
-      // Convert block to state
-      let state = this.bytesToState(block);
-      
-      // Initial round key addition
-      state ^= this.roundKeys[0];
-      
-      // 30 full rounds
-      for (let round = 1; round < this.ROUNDS; round++) {
-        state = this.sboxLayer(state);
-        state = this.permLayer(state);
-        state ^= this.roundKeys[round];
-      }
-      
-      // Final round (no permutation)
-      state = this.sboxLayer(state);
-      state ^= this.roundKeys[this.ROUNDS];
-      
-      // Convert state back to bytes
-      return this.stateToBytes(state);
-    },
-    
-    /**
-     * Decrypt a single block
-     * @param {Array} block - 8-byte encrypted block
-     * @returns {Array} 8-byte decrypted block
-     */
-    decryptBlock: function(unused, block) {
-      if (!this.roundKeys || !block || block.length !== this.BLOCK_SIZE) {
-        return null;
-      }
-      
-      // Convert block to state
-      let state = this.bytesToState(block);
-      
-      // Initial round key addition
-      state ^= this.roundKeys[this.ROUNDS];
-      
-      // Inverse S-box layer for final round
-      state = this.invSboxLayer(state);
-      
-      // 30 full inverse rounds
-      for (let round = this.ROUNDS - 1; round >= 1; round--) {
-        state ^= this.roundKeys[round];
-        state = this.invPermLayer(state);
-        state = this.invSboxLayer(state);
-      }
-      
-      // Final round key addition
-      state ^= this.roundKeys[0];
-      
-      // Convert state back to bytes
-      return this.stateToBytes(state);
+      this.KeySize = 0;
+      return;
     }
-  };
-  
-  // Auto-register with global Cipher system if available
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(PRESENT128);
+
+    // Validate key size (128 bits / 16 bytes)
+    if (keyBytes.length !== 16) {
+      throw new Error(`Invalid key size: ${keyBytes.length} bytes. PRESENT-128 requires 16 bytes (128 bits)`);
+    }
+
+    this._key = [...keyBytes];
+    this.KeySize = keyBytes.length;
+    this.roundKeys = this._generateRoundKeys(keyBytes);
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = PRESENT128;
+
+  get key() {
+    return this._key ? [...this._key] : null;
   }
-  
-  // Make available globally
-  global.PRESENT128 = PRESENT128;
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    if (!this.key) throw new Error("Key not set");
+
+    this.inputBuffer.push(...data);
+  }
+
+  Result() {
+    if (!this.key) throw new Error("Key not set");
+    if (this.inputBuffer.length === 0) throw new Error("No data fed");
+
+    // Validate input length for block cipher
+    if (this.inputBuffer.length % this.BlockSize !== 0) {
+      throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+    }
+
+    const output = [];
+    const blockSize = this.BlockSize;
+    
+    // Process each block
+    for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
+      const block = this.inputBuffer.slice(i, i + blockSize);
+      const processedBlock = this.isInverse 
+        ? this._decryptBlock(block) 
+        : this._encryptBlock(block);
+      output.push(...processedBlock);
+    }
+
+    // Clear input buffer for next operation
+    this.inputBuffer = [];
+    
+    return output;
+  }
+
+  _encryptBlock(block) {
+    if (block.length !== 8) {
+      throw new Error("PRESENT-128 requires exactly 8 bytes per block");
+    }
+
+    // Convert input to 64-bit state (as two 32-bit words)
+    let state = this._bytesToState(block);
+    
+    // Apply 31 rounds
+    for (let round = 0; round < this.algorithm.ROUNDS; round++) {
+      // Add round key
+      state = this._addRoundKey(state, this.roundKeys[round]);
+      
+      // Apply S-box layer
+      state = this._sBoxLayer(state);
+      
+      // Apply permutation layer (skip on last round)
+      if (round < this.algorithm.ROUNDS - 1) {
+        state = this._permutationLayer(state);
+      }
+    }
+    
+    // Add final round key
+    state = this._addRoundKey(state, this.roundKeys[this.algorithm.ROUNDS]);
+    
+    return this._stateToBytes(state);
+  }
+
+  _decryptBlock(block) {
+    if (block.length !== 8) {
+      throw new Error("PRESENT-128 requires exactly 8 bytes per block");
+    }
+
+    // Convert input to 64-bit state (as two 32-bit words)
+    let state = this._bytesToState(block);
+    
+    // Remove final round key
+    state = this._addRoundKey(state, this.roundKeys[this.algorithm.ROUNDS]);
+    
+    // Apply 31 rounds in reverse
+    for (let round = this.algorithm.ROUNDS - 1; round >= 0; round--) {
+      // Apply inverse permutation layer (skip on first iteration)
+      if (round < this.algorithm.ROUNDS - 1) {
+        state = this._invPermutationLayer(state);
+      }
+      
+      // Apply inverse S-box layer
+      state = this._invSBoxLayer(state);
+      
+      // Add round key
+      state = this._addRoundKey(state, this.roundKeys[round]);
+    }
+    
+    return this._stateToBytes(state);
+  }
+
+  // Convert 8 bytes to 64-bit state (as two 32-bit words)
+  _bytesToState(bytes) {
+    const high = OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
+    const low = OpCodes.Pack32BE(bytes[4], bytes[5], bytes[6], bytes[7]);
+    return { high: high, low: low };
+  }
+
+  // Convert 64-bit state back to 8 bytes
+  _stateToBytes(state) {
+    const highBytes = OpCodes.Unpack32BE(state.high);
+    const lowBytes = OpCodes.Unpack32BE(state.low);
+    return [...highBytes, ...lowBytes];
+  }
+
+  // Add round key (XOR operation)
+  _addRoundKey(state, roundKey) {
+    return {
+      high: (state.high ^ roundKey.high) >>> 0,
+      low: (state.low ^ roundKey.low) >>> 0
+    };
+  }
+
+  // Apply S-box to all 4-bit nibbles
+  _sBoxLayer(state) {
+    let result = { high: 0, low: 0 };
+    
+    // Process high 32 bits
+    for (let i = 0; i < 8; i++) {
+      const nibble = (state.high >>> (28 - i * 4)) & 0xF;
+      const sboxValue = this.algorithm.SBOX[nibble];
+      result.high |= (sboxValue << (28 - i * 4));
+    }
+    
+    // Process low 32 bits
+    for (let i = 0; i < 8; i++) {
+      const nibble = (state.low >>> (28 - i * 4)) & 0xF;
+      const sboxValue = this.algorithm.SBOX[nibble];
+      result.low |= (sboxValue << (28 - i * 4));
+    }
+    
+    return { high: result.high >>> 0, low: result.low >>> 0 };
+  }
+
+  // Apply inverse S-box to all 4-bit nibbles
+  _invSBoxLayer(state) {
+    let result = { high: 0, low: 0 };
+    
+    // Process high 32 bits
+    for (let i = 0; i < 8; i++) {
+      const nibble = (state.high >>> (28 - i * 4)) & 0xF;
+      const sboxValue = this.algorithm.SBOX_INV[nibble];
+      result.high |= (sboxValue << (28 - i * 4));
+    }
+    
+    // Process low 32 bits
+    for (let i = 0; i < 8; i++) {
+      const nibble = (state.low >>> (28 - i * 4)) & 0xF;
+      const sboxValue = this.algorithm.SBOX_INV[nibble];
+      result.low |= (sboxValue << (28 - i * 4));
+    }
+    
+    return { high: result.high >>> 0, low: result.low >>> 0 };
+  }
+
+  // Apply bit permutation layer following PRESENT specification
+  _permutationLayer(state) {
+    // PRESENT permutation formula: P(i) = (4 * i) mod 63 for i = 0..62, P(63) = 63
+    let result = { high: 0, low: 0 };
+    
+    // Extract all 64 bits into array for permutation
+    const bits = new Array(64);
+    for (let i = 0; i < 32; i++) {
+      bits[i] = (state.high >>> (31 - i)) & 1;
+      bits[i + 32] = (state.low >>> (31 - i)) & 1;
+    }
+    
+    // Apply PRESENT permutation
+    const permutedBits = new Array(64);
+    for (let i = 0; i < 64; i++) {
+      if (i === 63) {
+        permutedBits[63] = bits[63]; // Special case: bit 63 stays at position 63
+      } else {
+        permutedBits[(4 * i) % 63] = bits[i];
+      }
+    }
+    
+    // Reconstruct the 64-bit state from permuted bits
+    for (let i = 0; i < 32; i++) {
+      if (permutedBits[i]) {
+        result.high |= (1 << (31 - i));
+      }
+      if (permutedBits[i + 32]) {
+        result.low |= (1 << (31 - i));
+      }
+    }
+    
+    return { high: result.high >>> 0, low: result.low >>> 0 };
+  }
+
+  // Apply inverse bit permutation layer
+  _invPermutationLayer(state) {
+    // Inverse PRESENT permutation
+    let result = { high: 0, low: 0 };
+    
+    // Extract all 64 bits into array for inverse permutation
+    const bits = new Array(64);
+    for (let i = 0; i < 32; i++) {
+      bits[i] = (state.high >>> (31 - i)) & 1;
+      bits[i + 32] = (state.low >>> (31 - i)) & 1;
+    }
+    
+    // Apply inverse PRESENT permutation
+    const permutedBits = new Array(64);
+    for (let i = 0; i < 64; i++) {
+      if (i === 63) {
+        permutedBits[63] = bits[63]; // Special case: bit 63 stays at position 63
+      } else {
+        // Find source position j where (4 * j) mod 63 = i
+        // This is equivalent to j = (16 * i) mod 63 (since 4 * 16 = 64 ≡ 1 mod 63)
+        const sourcePos = (16 * i) % 63;
+        permutedBits[sourcePos] = bits[i];
+      }
+    }
+    
+    // Reconstruct the 64-bit state from inverse permuted bits
+    for (let i = 0; i < 32; i++) {
+      if (permutedBits[i]) {
+        result.high |= (1 << (31 - i));
+      }
+      if (permutedBits[i + 32]) {
+        result.low |= (1 << (31 - i));
+      }
+    }
+    
+    return { high: result.high >>> 0, low: result.low >>> 0 };
+  }
+
+  // Generate round keys using extended PRESENT-128 key schedule
+  _generateRoundKeys(keyBytes) {
+    const roundKeys = [];
+    
+    // Convert 128-bit key to two 64-bit words (big-endian)
+    let keyHigh = OpCodes.Pack32BE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]);
+    let keyMidHigh = OpCodes.Pack32BE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]);
+    let keyMidLow = OpCodes.Pack32BE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]);
+    let keyLow = OpCodes.Pack32BE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15]);
+    
+    // Generate 32 round keys (rounds 0-31 + final key)
+    for (let round = 0; round <= this.algorithm.ROUNDS; round++) {
+      // Extract 64-bit round key from leftmost bits
+      roundKeys[round] = {
+        high: keyHigh >>> 0,
+        low: keyMidHigh >>> 0
+      };
+      
+      // Update key state for next round (if not last round)
+      if (round < this.algorithm.ROUNDS) {
+        // Step 1: Rotate left by 61 positions (128-bit version)
+        // Save leftmost 3 bits from keyHigh for wrap-around
+        const wrapBits = keyHigh >>> 29; // Top 3 bits
+        
+        // Shift entire 128-bit key left by 61 positions (equivalent to right by 3)
+        const newKeyHigh = ((keyHigh << 3) | (keyMidHigh >>> 29)) >>> 0;
+        const newKeyMidHigh = ((keyMidHigh << 3) | (keyMidLow >>> 29)) >>> 0;
+        const newKeyMidLow = ((keyMidLow << 3) | (keyLow >>> 29)) >>> 0;
+        const newKeyLow = ((keyLow << 3) | wrapBits) >>> 0;
+        
+        keyHigh = newKeyHigh;
+        keyMidHigh = newKeyMidHigh;
+        keyMidLow = newKeyMidLow;
+        keyLow = newKeyLow;
+        
+        // Step 2: Apply S-box to leftmost 4 bits
+        const topNibble = (keyHigh >>> 28) & 0xF;
+        const sboxValue = this.algorithm.SBOX[topNibble];
+        keyHigh = (keyHigh & 0x0FFFFFFF) | (sboxValue << 28);
+        
+        // Step 3: XOR round counter to bits 66-62 (in the middle of the 128-bit key)
+        const roundCounter = (round + 1) & 0x1F; // 5-bit round counter
+        keyMidLow ^= (roundCounter << 2); // Position bits 66-62 in the 128-bit register
+      }
+    }
+    
+    return roundKeys;
+  }
+}
+
+// Register the algorithm
+RegisterAlgorithm(new Present128Algorithm());
+
+// Export for module usage  
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = new Present128Algorithm();
+}

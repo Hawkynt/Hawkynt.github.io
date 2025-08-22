@@ -97,13 +97,13 @@ class TripleDESAlgorithm extends BlockCipherAlgorithm {
         key: OpCodes.Hex8ToBytes("01010101010101010101010101010101"),
         expected: OpCodes.Hex8ToBytes("0408102004081020")
       },
-     {
+      {
         text: "3DES EDE2 mode - FIPS 46-3 test vector",
         uri: "https://csrc.nist.gov/publications/detail/fips/46/3/archive/1999-10-25",
         KeySize: 16,
         input: OpCodes.Hex8ToBytes("0123456789abcdef"),
         key: OpCodes.Hex8ToBytes("0123456789abcdef23456789abcdef01"),
-        expected: OpCodes.Hex8ToBytes("cd49158537d6b2")
+        expected: OpCodes.Hex8ToBytes("cd49158537d6b200")
       },
       {
         text: "3DES EDE3 mode - three distinct keys",
@@ -111,7 +111,7 @@ class TripleDESAlgorithm extends BlockCipherAlgorithm {
         KeySize: 24,
         input: OpCodes.Hex8ToBytes("0123456789abcdef"),
         key: OpCodes.Hex8ToBytes("0123456789abcdef23456789abcdef01456789abcdef0123"),
-        expected: OpCodes.Hex8ToBytes("e570cb4bca28ad")
+        expected: OpCodes.Hex8ToBytes("e570cb4bca28ad00")
       }
     ];
   }

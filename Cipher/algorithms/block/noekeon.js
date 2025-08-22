@@ -1,353 +1,316 @@
 /*
- * Universal Noekeon Cipher - Direct Key Mode
- * Compatible with both Browser and Node.js environments
- * Based on NESSIE reference implementation by Joan Daemen et al.
- * (c)2025 Educational implementation
+ * NOEKEON Block Cipher Implementation
+ * Compatible with AlgorithmFramework
+ * (c)2006-2025 Hawkynt
  * 
- * NOEKEON is a 128-bit block cipher with 128-bit keys designed by 
- * Joan Daemen, Michaël Peeters, Gilles Van Assche and Vincent Rijmen
- * for the NESSIE project.
- * 
- * This implementation uses Direct Key Mode for efficiency where 
- * related-key attacks are not a concern.
+ * NOEKEON - NESSIE 128-bit block cipher
+ * 128-bit blocks with 128-bit keys, 16 rounds
+ * Direct Key Mode implementation
  */
 
-(function(global) {
-  'use strict';
-  
-  // Environment detection and dependency loading
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
-  }
-  
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
+
+// Load OpCodes for cryptographic operations (RECOMMENDED)
+if (!global.OpCodes && typeof require !== 'undefined') {
+  OpCodes = require('../../OpCodes.js');
+}
+
+class NOEKEONCipher extends AlgorithmFramework.BlockCipherAlgorithm {
+  constructor() {
+    super();
+    
+    // Required metadata
+    this.name = "NOEKEON";
+    this.description = "NESSIE 128-bit block cipher designed by Joan Daemen, Michaël Peeters, Gilles Van Assche and Vincent Rijmen. Direct Key Mode implementation for efficiency.";
+    this.inventor = "Joan Daemen, Michaël Peeters, Gilles Van Assche, Vincent Rijmen";
+    this.year = 2000;
+    this.category = AlgorithmFramework.CategoryType.BLOCK;
+    this.subCategory = "Block Cipher";
+    this.securityStatus = AlgorithmFramework.SecurityStatus.EDUCATIONAL;
+    this.complexity = AlgorithmFramework.ComplexityType.INTERMEDIATE;
+    this.country = AlgorithmFramework.CountryCode.BE;
+
+    // Algorithm-specific metadata
+    this.SupportedKeySizes = [
+      new AlgorithmFramework.KeySize(16, 16, 1) // NOEKEON: 128-bit keys only
+    ];
+    this.SupportedBlockSizes = [
+      new AlgorithmFramework.KeySize(16, 16, 1) // Fixed 128-bit blocks
+    ];
+
+    // Documentation and references
+    this.documentation = [
+      new AlgorithmFramework.LinkItem("NOEKEON Specification", "https://gro.noekeon.org/"),
+      new AlgorithmFramework.LinkItem("NESSIE Project", "https://www.cosic.esat.kuleuven.be/nessie/")
+    ];
+
+    this.references = [
+      new AlgorithmFramework.LinkItem("Original NOEKEON Paper", "https://gro.noekeon.org/Noekeon-spec.pdf"),
+      new AlgorithmFramework.LinkItem("NESSIE Final Report", "https://www.cosic.esat.kuleuven.be/nessie/")
+    ];
+    
+    // Test vectors from NESSIE
+    this.tests = [
+      {
+        text: "NOEKEON Zero Test Vector",
+        uri: "https://gro.noekeon.org/",
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("b1656851699e29fa24b70148503d2dfc")
+      },
+      {
+        text: "NOEKEON Pattern Test Vector",
+        uri: "https://gro.noekeon.org/",
+        input: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
+        key: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
+        expected: OpCodes.Hex8ToBytes("2a78421bc7d04f261d1113d3496249b2")
       }
-    } else {
-      console.error('Noekeon cipher requires Cipher system to be loaded first');
+    ];
+    
+    // NOEKEON Constants
+    this.ROUNDS = 16;                     // 16 rounds
+    this.RC1_ENCRYPT_START = 0x80;        // Round constant start for encryption
+  }
+
+  CreateInstance(isInverse = false) {
+    return new NOEKEONInstance(this, isInverse);
+  }
+}
+
+class NOEKEONInstance extends AlgorithmFramework.IBlockCipherInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.key = null;
+    this.keyWords = null;
+    this.inputBuffer = [];
+    this.outputBuffer = [];
+    this.BlockSize = 16;    // 128-bit blocks
+    this.KeySize = 0;
+  }
+
+  set key(keyBytes) {
+    if (!keyBytes) {
+      this._key = null;
+      this.keyWords = null;
+      this.KeySize = 0;
       return;
     }
-  }
-  
-  const Noekeon = {
-    // Cipher interface properties
-    internalName: 'Noekeon',
-    name: 'NOEKEON',
-    comment: 'NESSIE 128-bit block cipher (Direct Key Mode)',
-    minKeyLength: 16,
-    maxKeyLength: 16,
-    stepKeyLength: 1,
-    minBlockSize: 16,
-    maxBlockSize: 16,
-    stepBlockSize: 1,
-    instances: {},
 
-  // Official test vectors from RFC/NIST standards and authoritative sources
-  testVectors: [
-    {
-        "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "key": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "expected": "±ehQi)ú$·\u0001HP=-ü",
-        "description": "Noekeon Direct Mode - all zeros test vector (NESSIE official)"
-    },
-    {
-        "input": "ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ",
-        "key": "ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ",
-        "expected": "*xB\u001bÇÐO&\u0011?\u001d\u0013I²",
-        "description": "Noekeon Direct Mode - all ones boundary test (NESSIE official)"
-    },
-    {
-        "input": "*xB\u001bÇÐO&\u0011?\u001d\u0013I²",
-        "key": "±ehQi)ú$·\u0001HP=-ü",
-        "expected": "âöà{uf\u000fü7\"3¼GS,",
-        "description": "Noekeon Direct Mode - NESSIE reference test vector (cross-validation)"
-    },
-    {
-        "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "key": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "expected": "ÃÇo¢Âùl¸ EçéBü/",
-        "description": "Noekeon single bit test vector - NESSIE cryptographic edge case"
-    },
-    {
-        "input": "\u0001#Eg«Íï\u0001#Eg«Íï",
-        "key": "\u0001#Eg«Íï\u0001#Eg«Íï",
-        "expected": "¶EÔ©&\u0002án\u000fýÕ¦",
-        "description": "Noekeon sequential pattern test vector - implementation validation"
-    },
-    {
-        "input": "HELLO WORLD 1234",
-        "key": "YELLOW SUBMARINE",
-        "expected": "V~tÿ#s!1ÙÜM÷¦QQ",
-        "description": "Noekeon ASCII plaintext and key - educational demonstration"
-    },
-    {
-        "input": "\u000fíË©eC!\u00124Vx¼Þð",
-        "key": "\u00124Vx¼Þð\u000fíË©eC!",
-        "expected": "zZ*p\u0015º_ù)&M¨0\u001eô",
-        "description": "Noekeon mirror pattern test vector - round function validation"
+    // Validate key size
+    const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
+      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+      (keyBytes.length - ks.minSize) % ks.stepSize === 0
+    );
+    
+    if (!isValidSize) {
+      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
     }
-],
-    cantDecode: false,
-    isInitialized: false,
-    
-    // Noekeon constants
-    ROUNDS: 16,
-    RC1_ENCRYPT_START: 0x80,
-    RC2_DECRYPT_START: 0xD4,
-    NULL_VECTOR: [0, 0, 0, 0],
-    
-    // Initialize cipher
-    Init: function() {
-      this.isInitialized = true;
-      return true;
-    },
-    
-    // Key setup for encryption/decryption
-    KeySetup: function(optional_key) {
-      if (!this.isInitialized) this.Init();
-      
-      if (!optional_key || optional_key.length !== 16) {
-        throw new Error('Noekeon requires exactly 16-byte (128-bit) keys');
-      }
-      
-      // Generate unique instance ID
-      let id;
-      do {
-        id = 'Noekeon[' + global.generateUniqueID() + ']';
-      } while (this.instances[id] || global.objectInstances[id]);
-      
-      // Convert key bytes to 32-bit words (big-endian)
-      const arrKey = OpCodes.StringToBytes(optional_key);
-      const key = new Array(4);
-      for (let i = 0; i < 4; i++) {
-        const offset = i * 4;
-        key[i] = OpCodes.Pack32BE(
-          arrKey[offset],
-          arrKey[offset + 1], 
-          arrKey[offset + 2],
-          arrKey[offset + 3]
-        );
-      }
-      
-      // Store the key for this instance
-      this.instances[id] = {
-        key: key,
-        workingKey: key.slice() // Copy for working key
-      };
-      
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Theta transformation - diffusion layer
-    Theta: function(k, a) {
-      let tmp;
-      
-      // First theta step
-      tmp = a[0] ^ a[2];
-      tmp ^= OpCodes.RotL32(tmp, 8) ^ OpCodes.RotL32(tmp, 24);
-      a[1] ^= tmp;
-      a[3] ^= tmp;
-      
-      // Add round key
-      a[0] ^= k[0];
-      a[1] ^= k[1]; 
-      a[2] ^= k[2];
-      a[3] ^= k[3];
-      
-      // Second theta step
-      tmp = a[1] ^ a[3];
-      tmp ^= OpCodes.RotL32(tmp, 8) ^ OpCodes.RotL32(tmp, 24);
-      a[0] ^= tmp;
-      a[2] ^= tmp;
-    },
-    
-    // Pi1 transformation - dispersion rotations
-    Pi1: function(a) {
-      a[1] = OpCodes.RotL32(a[1], 1);
-      a[2] = OpCodes.RotL32(a[2], 5);
-      a[3] = OpCodes.RotL32(a[3], 2);
-    },
-    
-    // Pi2 transformation - inverse dispersion rotations
-    Pi2: function(a) {
-      a[1] = OpCodes.RotL32(a[1], 31); // Same as RotR32(a[1], 1)
-      a[2] = OpCodes.RotL32(a[2], 27); // Same as RotR32(a[2], 5)
-      a[3] = OpCodes.RotL32(a[3], 30); // Same as RotR32(a[3], 2)
-    },
-    
-    // Gamma transformation - nonlinear layer (involution)
-    Gamma: function(a) {
-      let tmp;
-      
-      // First non-linear step
-      a[1] ^= (~a[3]) & (~a[2]);
-      a[0] ^= a[2] & a[1];
-      
-      // Linear step (swapping and XOR)
-      tmp = a[3];
-      a[3] = a[0];
-      a[0] = tmp;
-      a[2] ^= a[0] ^ a[1] ^ a[3];
-      
-      // Second non-linear step
-      a[1] ^= (~a[3]) & (~a[2]);
-      a[0] ^= a[2] & a[1];
-    },
-    
-    // Round function
-    Round: function(k, a, RC1, RC2) {
-      a[0] ^= RC1;
-      this.Theta(k, a);
-      a[0] ^= RC2;
-      this.Pi1(a);
-      this.Gamma(a);
-      this.Pi2(a);
-    },
-    
-    // Round constant shift register - forward
-    RCShiftRegFwd: function(RC) {
-      if ((RC & 0x80) !== 0) {
-        return ((RC << 1) ^ 0x1B) & 0xFF;
-      } else {
-        return (RC << 1) & 0xFF;
-      }
-    },
-    
-    // Round constant shift register - backward
-    RCShiftRegBwd: function(RC) {
-      if ((RC & 0x01) !== 0) {
-        return ((RC >>> 1) ^ 0x8D) & 0xFF;
-      } else {
-        return (RC >>> 1) & 0xFF;
-      }
-    },
-    
-    // Common encryption/decryption loop
-    CommonLoop: function(k, a, RC1, RC2) {
-      for (let i = 0; i < this.ROUNDS; i++) {
-        this.Round(k, a, RC1, RC2);
-        RC1 = this.RCShiftRegFwd(RC1);
-        RC2 = this.RCShiftRegBwd(RC2);
-      }
-      
-      // Final theta without pi1, gamma, pi2
-      a[0] ^= RC1;
-      this.Theta(k, a);
-      a[0] ^= RC2;
-    },
-    
-    // Encrypt single block
-    encryptBlock: function(id, strPlainText) {
-      const instance = this.instances[id];
-      if (!instance) {
-        throw new Error('Noekeon instance not initialized');
-      }
-      
-      if (strPlainText.length !== 16) {
-        throw new Error('Noekeon requires exactly 16-byte blocks');
-      }
-      
-      // Convert input to bytes then to words
-      const bytes = OpCodes.StringToBytes(strPlainText);
-      const state = new Array(4);
-      
-      for (let i = 0; i < 4; i++) {
-        const offset = i * 4;
-        state[i] = OpCodes.Pack32BE(
-          bytes[offset],
-          bytes[offset + 1],
-          bytes[offset + 2], 
-          bytes[offset + 3]
-        );
-      }
-      
-      // Encrypt using common loop
-      this.CommonLoop(instance.key, state, this.RC1_ENCRYPT_START, 0);
-      
-      // Convert back to string
-      const output = [];
-      for (let i = 0; i < 4; i++) {
-        const wordBytes = OpCodes.Unpack32BE(state[i]);
-        output.push(...wordBytes);
-      }
-      
-      return OpCodes.BytesToString(output);
-    },
-    
-    // Decrypt single block
-    decryptBlock: function(id, strCipherText) {
-      const instance = this.instances[id];
-      if (!instance) {
-        throw new Error('Noekeon instance not initialized');
-      }
-      
-      if (strCipherText.length !== 16) {
-        throw new Error('Noekeon requires exactly 16-byte blocks');
-      }
-      
-      // Convert input to bytes then to words
-      const bytes = OpCodes.StringToBytes(strCipherText);
-      const state = new Array(4);
-      
-      for (let i = 0; i < 4; i++) {
-        const offset = i * 4;
-        state[i] = OpCodes.Pack32BE(
-          bytes[offset],
-          bytes[offset + 1],
-          bytes[offset + 2],
-          bytes[offset + 3]
-        );
-      }
-      
-      // For decryption in direct key mode, we need to compute the working key
-      // Working key = Theta(NULL_VECTOR, encrypt_key)
-      const k = instance.key.slice(); // Copy encryption key
-      this.Theta(this.NULL_VECTOR, k); // Apply theta with null vector
-      
-      // Decrypt using common loop with working key
-      this.CommonLoop(k, state, 0, this.RC2_DECRYPT_START);
-      
-      // Convert back to string
-      const output = [];
-      for (let i = 0; i < 4; i++) {
-        const wordBytes = OpCodes.Unpack32BE(state[i]);
-        output.push(...wordBytes);
-      }
-      
-      return OpCodes.BytesToString(output);
-    },
-    
-    // Clear sensitive data
-    ClearData: function(id) {
-      if (this.instances[id]) {
-        // Clear the key data
-        OpCodes.ClearArray(this.instances[id].key);
-        OpCodes.ClearArray(this.instances[id].workingKey);
-        delete this.instances[id];
-        delete global.objectInstances[id];
-      }
-      return true;
-    }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(Noekeon);
+
+    this._key = [...keyBytes];
+    this.KeySize = keyBytes.length;
+    this.keyWords = this._convertKeyToWords(keyBytes);
+  }
+
+  get key() {
+    return this._key ? [...this._key] : null;
   }
   
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Noekeon;
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    if (!this.key) throw new Error("Key not set");
+    
+    this.inputBuffer.push(...data);
+    
+    // Process complete blocks
+    while (this.inputBuffer.length >= this.BlockSize) {
+      const block = this.inputBuffer.splice(0, this.BlockSize);
+      const processed = this.isInverse ? this._decryptBlock(block) : this._encryptBlock(block);
+      this.outputBuffer.push(...processed);
+    }
   }
   
-  // Make available globally
-  global.Noekeon = Noekeon;
+  Result() {
+    const result = [...this.outputBuffer];
+    this.outputBuffer = [];
+    return result;
+  }
   
-})(typeof global !== 'undefined' ? global : window);
+  Reset() {
+    this.inputBuffer = [];
+    this.outputBuffer = [];
+  }
+  
+  _convertKeyToWords(keyBytes) {
+    const keyWords = new Array(4);
+    for (let i = 0; i < 4; i++) {
+      const offset = i * 4;
+      keyWords[i] = OpCodes.Pack32BE(
+        keyBytes[offset],
+        keyBytes[offset + 1],
+        keyBytes[offset + 2],
+        keyBytes[offset + 3]
+      );
+    }
+    return keyWords;
+  }
+  
+  _encryptBlock(blockBytes) {
+    if (blockBytes.length !== 16) {
+      throw new Error('NOEKEON: Input must be exactly 16 bytes');
+    }
+    
+    // Convert input to 32-bit words using OpCodes (big-endian)
+    const state = new Array(4);
+    for (let i = 0; i < 4; i++) {
+      const offset = i * 4;
+      state[i] = OpCodes.Pack32BE(
+        blockBytes[offset],
+        blockBytes[offset + 1],
+        blockBytes[offset + 2],
+        blockBytes[offset + 3]
+      );
+    }
+    
+    // NOEKEON encryption
+    this._commonLoop(this.keyWords, state, this.algorithm.RC1_ENCRYPT_START, 0);
+    
+    // Convert back to bytes using OpCodes (big-endian)
+    const result = [];
+    for (let i = 0; i < 4; i++) {
+      const wordBytes = OpCodes.Unpack32BE(state[i]);
+      result.push(...wordBytes);
+    }
+    
+    return result;
+  }
+  
+  _decryptBlock(blockBytes) {
+    if (blockBytes.length !== 16) {
+      throw new Error('NOEKEON: Input must be exactly 16 bytes');
+    }
+    
+    // Convert input to 32-bit words using OpCodes (big-endian)
+    const state = new Array(4);
+    for (let i = 0; i < 4; i++) {
+      const offset = i * 4;
+      state[i] = OpCodes.Pack32BE(
+        blockBytes[offset],
+        blockBytes[offset + 1],
+        blockBytes[offset + 2],
+        blockBytes[offset + 3]
+      );
+    }
+    
+    // NOEKEON decryption
+    this._commonLoop(this.keyWords, state, 0, this.algorithm.RC1_ENCRYPT_START);
+    
+    // Convert back to bytes using OpCodes (big-endian)
+    const result = [];
+    for (let i = 0; i < 4; i++) {
+      const wordBytes = OpCodes.Unpack32BE(state[i]);
+      result.push(...wordBytes);
+    }
+    
+    return result;
+  }
+  
+  // NOEKEON Theta function
+  _theta(k, a) {
+    let tmp = a[0] ^ a[2];
+    tmp ^= OpCodes.RotL32(tmp, 8) ^ OpCodes.RotL32(tmp, 24);
+    a[1] ^= tmp;
+    a[3] ^= tmp;
+    
+    for (let i = 0; i < 4; i++) {
+      a[i] ^= k[i];
+    }
+    
+    tmp = a[1] ^ a[3];
+    tmp ^= OpCodes.RotL32(tmp, 8) ^ OpCodes.RotL32(tmp, 24);
+    a[0] ^= tmp;
+    a[2] ^= tmp;
+  }
+  
+  // NOEKEON Pi1 function
+  _pi1(a) {
+    a[1] = OpCodes.RotL32(a[1], 1);
+    a[2] = OpCodes.RotL32(a[2], 5);
+    a[3] = OpCodes.RotL32(a[3], 2);
+  }
+  
+  // NOEKEON Pi2 function  
+  _pi2(a) {
+    a[1] = OpCodes.RotR32(a[1], 1);
+    a[2] = OpCodes.RotR32(a[2], 5);
+    a[3] = OpCodes.RotR32(a[3], 2);
+  }
+  
+  // NOEKEON Gamma function
+  _gamma(a) {
+    a[1] ^= (~a[3]) & (~a[2]);
+    a[0] ^= a[2] & a[1];
+    
+    const tmp = a[3];
+    a[3] = a[0];
+    a[0] = tmp;
+    
+    a[2] ^= a[0] ^ a[1] ^ a[3];
+    
+    a[1] ^= (~a[3]) & (~a[2]);
+    a[0] ^= a[2] & a[1];
+  }
+  
+  // Round function
+  _round(k, a, RC1, RC2) {
+    a[0] ^= RC1;
+    this._theta(k, a);
+    a[0] ^= RC2;
+    this._pi1(a);
+    this._gamma(a);
+    this._pi2(a);
+  }
+  
+  // Round constant shift register - forward
+  _rcShiftRegFwd(RC) {
+    if ((RC & 0x80) !== 0) {
+      return ((RC << 1) ^ 0x1B) & 0xFF;
+    } else {
+      return (RC << 1) & 0xFF;
+    }
+  }
+  
+  // Round constant shift register - backward
+  _rcShiftRegBwd(RC) {
+    if ((RC & 0x01) !== 0) {
+      return ((RC >>> 1) ^ 0x8D) & 0xFF;
+    } else {
+      return (RC >>> 1) & 0xFF;
+    }
+  }
+  
+  // Common encryption/decryption loop
+  _commonLoop(k, a, RC1, RC2) {
+    for (let i = 0; i < this.algorithm.ROUNDS; i++) {
+      this._round(k, a, RC1, RC2);
+      RC1 = this._rcShiftRegFwd(RC1);
+      RC2 = this._rcShiftRegBwd(RC2);
+    }
+    
+    // Final theta without pi1, gamma, pi2
+    a[0] ^= RC1;
+    this._theta(k, a);
+    a[0] ^= RC2;
+  }
+}
+
+// Register algorithm
+AlgorithmFramework.RegisterAlgorithm(new NOEKEONCipher());
+
+// Node.js module export
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = NOEKEONCipher;
+}

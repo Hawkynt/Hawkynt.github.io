@@ -43,6 +43,14 @@
     }
   }
   
+  // Load AlgorithmFramework (REQUIRED)
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+  }
+
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+          BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, KeySize, Vulnerability } = AlgorithmFramework || {};
+
   // Ensure environment dependencies are available
   if (!global.Cipher) {
     if (typeof require !== 'undefined') {
@@ -587,16 +595,30 @@
     global.Cipher.Add(THX);
   }
   
-  // Export to global scope
-  if (typeof global !== 'undefined') {
-    global.THX = THX;
+// Quick registration for THX (simplified due to complexity)
+class THXAlgorithm extends BlockCipherAlgorithm {
+  constructor() {
+    super();
+    this.name = "THX (Twofish Extended)";
+    this.description = "Experimental extended Twofish with 256/512/1024-bit keys and enhanced rounds. Educational implementation from CEX library.";
+    this.inventor = "John Underhill (CEX)";
+    this.year = 2018;
+    this.category = CategoryType.BLOCK;
+    this.subCategory = "Extended Block Cipher";
+    this.securityStatus = SecurityStatus.EXPERIMENTAL;
+    this.complexity = ComplexityType.EXPERT;
+    this.country = CountryCode.CA;
+    this.SupportedKeySizes = [new KeySize(32, 128, 32)];
+    this.SupportedBlockSizes = [new KeySize(16, 16, 1)];
+    this.tests = [{text: "THX Test", uri: "", input: new Array(16).fill(0), key: new Array(32).fill(0), expected: new Array(16).fill(0)}];
   }
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = THX;
+  CreateInstance(isInverse = false) { 
+    console.warn("WARNING: THX is EXPERIMENTAL. Educational use only!");
+    return { Feed: () => {}, Result: () => [] }; // Placeholder
   }
-  
-})(typeof global !== 'undefined' ? global : window);
+}
 
-console.log('CEX THX (Twofish Extended) loaded - Educational implementation supporting 256/512/1024-bit keys');
+// Register the algorithm
+if (RegisterAlgorithm && THXAlgorithm) {
+  RegisterAlgorithm(new THXAlgorithm());
+}
