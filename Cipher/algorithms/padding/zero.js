@@ -4,153 +4,194 @@
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
-  'use strict';
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
 
-  const ZeroPaddingMetadata = {
-    name: 'Zero Padding',
-    category: 'padding',
-    description: 'Zero byte padding - fills remaining bytes with zeros',
-    keySize: 'N/A (padding scheme)',
-    blockSize: 'Variable',
-    cryptoFamily: 'Padding scheme',
-    cryptoType: 'Symmetric',
-    security: 'Weak - can cause ambiguity if data ends with zeros',
-    country: 'International',
-    year: 1970,
-    references: [
-      'ISO/IEC 9797-1',
-      'Common padding method'
-    ],
-    testVectors: [
-      {
-        description: 'Zero padding for 16-byte block, 13 bytes input',
-        input: OpCodes.Hex8ToBytes('6bc1bee22e409f96e93d7e11739317'),
-        blockSize: 16,
-        expected: OpCodes.Hex8ToBytes('6bc1bee22e409f96e93d7e11739317000000')
-      },
-      {
-        description: 'Zero padding for 8-byte block, 5 bytes input',
-        input: OpCodes.Hex8ToBytes('6bc1bee22e'),
-        blockSize: 8,
-        expected: OpCodes.Hex8ToBytes('6bc1bee22e000000')
-      },
-      {
-        description: 'Zero padding for full block (no padding needed)',
-        input: OpCodes.Hex8ToBytes('6bc1bee22e409f96e93d7e117393172a'),
-        blockSize: 16,
-        expected: OpCodes.Hex8ToBytes('6bc1bee22e409f96e93d7e117393172a')
-      }
-    ]
-  };
+// Load OpCodes for cryptographic operations (RECOMMENDED)
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
 
-  const ZeroPadding = {
-    internalName: 'ZeroPadding',
-    name: 'Zero Padding',
-    comment: 'Pads data with zero bytes to reach block size. WARNING: Ambiguous when data ends with zeros',
-    minKeyLength: 0,
-    maxKeyLength: 0,
-    stepKeyLength: 1,
-    minBlockSize: 1,
-    maxBlockSize: 512,
-    stepBlockSize: 1,
-    metadata: ZeroPaddingMetadata,
-    
-    Init: function() {
-      return true;
-    },
-    
-    KeySetup: function(blockSize) {
-      return { blockSize: blockSize || 16, id: Math.random() };
-    },
-    
-    EncryptBlock: function(keyId, data) {
-      // For padding schemes, EncryptBlock performs padding
-      const blockSize = keyId.blockSize;
-      const paddingLength = blockSize - (data.length % blockSize);
-      
-      if (paddingLength === blockSize) {
-        return data; // No padding needed
-      }
-      
-      let result = data;
-      for (let i = 0; i < paddingLength; i++) {
-        result += String.fromCharCode(0);
-      }
-      return result;
-    },
-    
-    DecryptBlock: function(keyId, paddedData) {
-      // For padding schemes, DecryptBlock performs unpadding
-      // Warning: Zero padding removal is ambiguous
-      let result = paddedData;
-      while (result.length > 0 && result.charCodeAt(result.length - 1) === 0) {
-        result = result.slice(0, -1);
-      }
-      return result;
-    },
-    
-    ClearData: function(keyId) {
-      return true;
-    },
-    
-    instances: {
-      ZeroPadding: function() { return ZeroPadding; }
-    }
-  };
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+        PaddingAlgorithm, IAlgorithmInstance, TestCase, LinkItem, Vulnerability } = AlgorithmFramework;
 
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    global.Cipher.Add(ZeroPadding);
-  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(ZeroPadding);
-  }
-
-  // Legacy registration for compatibility
-  if (typeof Cipher !== 'undefined' && Cipher.RegisterCipher) {
-    Cipher.RegisterCipher('Zero Padding', {
-      szName: 'Zero Padding',
-      szCategory: 'padding',
-      szCountry: 'International',
-      nYear: 1970,
-      metadata: ZeroPaddingMetadata,
-      working: true,
-      
-      Init: function() {
-        return true;
-      },
-      
-      KeySetup: function(blockSize) {
-        return { blockSize: blockSize || 16, id: Math.random() };
-      },
-      
-      PadData: function(keyId, data) {
-        const blockSize = keyId.blockSize;
-        const paddingLength = blockSize - (data.length % blockSize);
-        
-        if (paddingLength === blockSize) {
-          return data; // No padding needed
-        }
-        
-        const padding = new Array(paddingLength).fill(0);
-        return data.concat(padding);
-      },
-      
-      UnpadData: function(keyId, paddedData) {
-        // Warning: Zero padding removal is ambiguous
-        // This removes trailing zeros, but can't distinguish padding from actual data
-        let lastNonZero = paddedData.length - 1;
-        while (lastNonZero >= 0 && paddedData[lastNonZero] === 0) {
-          lastNonZero--;
-        }
-        
-        return paddedData.slice(0, lastNonZero + 1);
-      },
-      
-      ClearData: function(keyId) {
-        return true;
+class ZeroPaddingAlgorithm extends PaddingAlgorithm {
+  constructor() {
+    super();
+    
+    this.name = "Zero Padding";
+    this.description = "Zero padding scheme fills remaining bytes with zero values to reach the block size. This is the simplest padding method but has ambiguity issues when the original data ends with zero bytes, making it impossible to distinguish padding from actual data during removal.";
+    this.inventor = "N/A";
+    this.year = 1970;
+    this.category = CategoryType.PADDING;
+    this.subCategory = "Simple Padding";
+    this.securityStatus = SecurityStatus.EDUCATIONAL; // Ambiguous padding removal
+    this.complexity = ComplexityType.TRIVIAL;
+    this.country = CountryCode.INTERNATIONAL;
+    
+    this.documentation = [
+      new LinkItem("ISO/IEC 9797-1", "https://www.iso.org/standard/31136.html"),
+      new LinkItem("Padding Ambiguity Issues", "https://en.wikipedia.org/wiki/Padding_(cryptography)#Zero_padding"),
+      new LinkItem("Block Cipher Padding", "https://tools.ietf.org/rfc/rfc3852.txt")
+    ];
+    
+    this.references = [
+      new LinkItem("Cryptographic Padding Methods", "https://csrc.nist.gov/publications/detail/sp/800-38a/final"),
+      new LinkItem("Block Cipher Modes", "https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation"),
+      new LinkItem("ISO Standards", "https://www.iso.org/committee/45144.html")
+    ];
+    
+    this.knownVulnerabilities = [
+      new Vulnerability("Ambiguous Padding Removal", "Cannot distinguish between padding zeros and actual data zeros, leading to potential data corruption during unpadding."),
+      new Vulnerability("Data Loss Risk", "If original data ends with zeros, those zeros will be incorrectly removed during unpadding."),
+      new Vulnerability("Protocol Vulnerabilities", "The ambiguity can be exploited in certain protocols where message length matters.")
+    ];
+    
+    // Test vectors for zero padding
+    this.tests = [
+      new TestCase(
+        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317"), // 15 bytes
+        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317000000000000000000000000000000000000"), // Padded to 32 bytes
+        "Zero padding with 17 bytes needed",
+        "Zero padding specification"
+      ),
+      new TestCase(
+        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // 16 bytes (full block)
+        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // No padding needed
+        "Zero padding for exact block size",
+        "Zero padding specification"
+      ),
+      new TestCase(
+        OpCodes.Hex8ToBytes("6bc1bee22e"), // 5 bytes
+        OpCodes.Hex8ToBytes("6bc1bee22e000000"), // Padded to 8 bytes
+        "Zero padding with 3 bytes needed",
+        "Zero padding specification"
+      )
+    ];
+    
+    // Add block sizes for tests
+    this.tests.forEach((test, index) => {
+      if (index === 0) {
+        test.blockSize = 32; // 32-byte block for first test
+      } else if (index === 1) {
+        test.blockSize = 16; // 16-byte block for second test
+      } else {
+        test.blockSize = 8; // 8-byte block for third test
       }
     });
   }
+  
+  CreateInstance(isInverse = false) {
+    return new ZeroPaddingInstance(this, isInverse);
+  }
+}
 
-})(typeof global !== 'undefined' ? global : window);
+class ZeroPaddingInstance extends IAlgorithmInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.inputBuffer = [];
+    this.blockSize = 16; // Default block size
+  }
+  
+  /**
+   * Set the block size for padding
+   * @param {number} blockSize - Block size in bytes (1-255)
+   */
+  setBlockSize(blockSize) {
+    if (!blockSize || blockSize < 1 || blockSize > 255) {
+      throw new Error("Block size must be between 1 and 255 bytes");
+    }
+    this.blockSize = blockSize;
+  }
+  
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    this.inputBuffer.push(...data);
+  }
+  
+  Result() {
+    if (this.inputBuffer.length === 0) {
+      throw new Error("No data fed");
+    }
+    
+    if (this.isInverse) {
+      return this._removePadding();
+    } else {
+      return this._addPadding();
+    }
+  }
+  
+  /**
+   * Add zero padding to data
+   * @returns {Array} Padded data
+   */
+  _addPadding() {
+    const data = this.inputBuffer;
+    const paddingLength = this.blockSize - (data.length % this.blockSize);
+    
+    // Only add padding if needed
+    if (paddingLength === this.blockSize) {
+      // Data is already exact multiple of block size
+      const result = [...data];
+      
+      // Clear input buffer
+      OpCodes.ClearArray(this.inputBuffer);
+      this.inputBuffer = [];
+      
+      return result;
+    }
+    
+    // Create zero padding
+    const padding = new Array(paddingLength).fill(0);
+    const result = [...data, ...padding];
+    
+    // Clear input buffer
+    OpCodes.ClearArray(this.inputBuffer);
+    this.inputBuffer = [];
+    
+    return result;
+  }
+  
+  /**
+   * Remove zero padding from data (WARNING: Ambiguous)
+   * @returns {Array} Unpadded data
+   */
+  _removePadding() {
+    const paddedData = this.inputBuffer;
+    
+    if (paddedData.length === 0) {
+      return paddedData;
+    }
+    
+    if (paddedData.length % this.blockSize !== 0) {
+      throw new Error("Padded data length must be multiple of block size");
+    }
+    
+    // WARNING: This is ambiguous - we can't distinguish between
+    // padding zeros and actual data zeros
+    let lastNonZero = paddedData.length - 1;
+    while (lastNonZero >= 0 && paddedData[lastNonZero] === 0) {
+      lastNonZero--;
+    }
+    
+    const result = paddedData.slice(0, lastNonZero + 1);
+    
+    // Clear input buffer
+    OpCodes.ClearArray(this.inputBuffer);
+    this.inputBuffer = [];
+    
+    return result;
+  }
+}
+
+// Register the algorithm
+const zeroPaddingAlgorithm = new ZeroPaddingAlgorithm();
+RegisterAlgorithm(zeroPaddingAlgorithm);
+
+// Export for module systems
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = zeroPaddingAlgorithm;
+}
