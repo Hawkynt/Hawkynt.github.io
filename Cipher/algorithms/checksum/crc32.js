@@ -1,6 +1,7 @@
 /*
- * CRC-32 Implementation
- * Educational implementation of Cyclic Redundancy Check (IEEE 802.3 standard)
+ * CRC-32 Implementation with Multiple Variants
+ * Educational implementation of Cyclic Redundancy Check with support for
+ * multiple standard parameter configurations
  * (c)2006-2025 Hawkynt
  */
 
@@ -18,12 +19,15 @@ const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, Country
         Algorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
 
 class CRC32Algorithm extends Algorithm {
-  constructor() {
+  constructor(variant = 'IEEE') {
     super();
     
+    // Get configuration for this variant
+    this.config = this._getVariantConfig(variant);
+    
     // Required metadata
-    this.name = "CRC-32";
-    this.description = "CRC-32 (IEEE 802.3) cyclic redundancy check algorithm for error detection in data transmission and storage. Uses polynomial 0xEDB88320 (reversed 0x04C11DB7). Educational implementation demonstrating polynomial mathematics in error detection.";
+    this.name = `CRC-32-${variant}`;
+    this.description = `${this.config.description} Uses polynomial ${this.config.polynomial.toString(16).toUpperCase().padStart(8, '0')}h with initial value ${this.config.initialValue.toString(16).toUpperCase().padStart(8, '0')}h.`;
     this.inventor = "W. Wesley Peterson";
     this.year = 1961;
     this.category = CategoryType.CHECKSUM;
@@ -59,82 +63,102 @@ class CRC32Algorithm extends Algorithm {
       }
     ];
 
-    // Test vectors
-    this.tests = [
-      new TestCase(
-        OpCodes.AnsiToBytes(""),
-        OpCodes.Hex8ToBytes("00000000"),
-        "CRC-32 Empty String Test - IEEE 802.3 standard",
-        "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-32-ieee-802.3"
-      ),
-      new TestCase(
-        OpCodes.AnsiToBytes("a"),
-        OpCodes.Hex8ToBytes("e8b7be43"),
-        "CRC-32 Single Character Test",
-        "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-32-ieee-802.3"
-      ),
-      new TestCase(
-        OpCodes.AnsiToBytes("abc"),
-        OpCodes.Hex8ToBytes("352441c2"),
-        "CRC-32 ABC Test Vector",
-        "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-32-ieee-802.3"
-      ),
-      new TestCase(
-        OpCodes.AnsiToBytes("message digest"),
-        OpCodes.Hex8ToBytes("20159d7f"),
-        "CRC-32 Message Digest Test",
-        "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-32-ieee-802.3"
-      ),
-      new TestCase(
-        OpCodes.AnsiToBytes("abcdefghijklmnopqrstuvwxyz"),
-        OpCodes.Hex8ToBytes("4c2750bd"),
-        "CRC-32 Alphabet Test Vector",
-        "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-32-ieee-802.3"
-      ),
-      new TestCase(
-        OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog"),
-        OpCodes.Hex8ToBytes("414fa339"),
-        "CRC-32 Classic Pangram Test",
-        "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-32-ieee-802.3"
-      ),
-      new TestCase(
-        OpCodes.AnsiToBytes("1234567890"),
-        OpCodes.Hex8ToBytes("261daee5"),
-        "CRC-32 Numeric Test Vector",
-        "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-32-ieee-802.3"
-      )
-    ];
+    // Test vectors specific to this variant
+    this.tests = this.config.tests;
+  }
+
+  _getVariantConfig(variant) {
+    const configs = {
+      'IEEE': {
+        description: 'CRC-32 (IEEE 802.3) standard used in Ethernet, zip files, and many protocols',
+        polynomial: 0x04C11DB7,
+        initialValue: 0xFFFFFFFF,
+        inputReflected: true,
+        resultReflected: true,
+        finalXor: 0xFFFFFFFF,
+        tests: [
+          new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+          new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("e8b7be43"), "Single character 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+          new TestCase(OpCodes.AnsiToBytes("abc"), OpCodes.Hex8ToBytes("352441c2"), "String 'abc'", "https://reveng.sourceforge.io/crc-catalogue/"),
+          new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("cbf43926"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+        ]
+      },
+      'POSIX': {
+        description: 'CRC-32 used in POSIX cksum utility and other systems',
+        polynomial: 0x04C11DB7,
+        initialValue: 0x00000000,
+        inputReflected: false,
+        resultReflected: false,
+        finalXor: 0xFFFFFFFF,
+        tests: [
+          new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("ffffffff"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+          new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("bd50274c"), "Single character 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+          new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("765e7680"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+        ]
+      },
+      'BZIP2': {
+        description: 'CRC-32 used in BZIP2 compression format',
+        polynomial: 0x04C11DB7,
+        initialValue: 0xFFFFFFFF,
+        inputReflected: false,
+        resultReflected: false,
+        finalXor: 0xFFFFFFFF,
+        tests: [
+          new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+          new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("43af2db3"), "Single character 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+          new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("9a1a017f"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+        ]
+      }
+    };
+    
+    return configs[variant] || configs['IEEE'];
   }
 
   CreateInstance(isInverse = false) {
     if (isInverse) {
       return null; // Checksums do not support inverse operations
     }
-    return new CRC32Instance(this);
+    return new CRC32Instance(this, this.config);
   }
 }
 
 class CRC32Instance extends IAlgorithmInstance {
-  constructor(algorithm) {
+  constructor(algorithm, config) {
     super(algorithm);
-    this.polynomial = 0xEDB88320; // IEEE 802.3 polynomial (reversed)
+    this.config = config;
     this.table = this.generateTable();
-    this.crc = 0xFFFFFFFF; // Initial value
+    this.crc = config.initialValue;
   }
 
   generateTable() {
     const table = new Array(256);
     
     for (let i = 0; i < 256; i++) {
-      let crc = i;
-      for (let j = 0; j < 8; j++) {
-        if (crc & 1) {
-          crc = (crc >>> 1) ^ this.polynomial;
-        } else {
-          crc = crc >>> 1;
+      let crc;
+      
+      if (this.config.inputReflected) {
+        // Generate reflected table
+        crc = i;
+        for (let j = 0; j < 8; j++) {
+          if (crc & 1) {
+            crc = (crc >>> 1) ^ this._reflect32(this.config.polynomial);
+          } else {
+            crc = crc >>> 1;
+          }
+        }
+      } else {
+        // Generate normal table
+        crc = i << 24;
+        for (let j = 0; j < 8; j++) {
+          if (crc & 0x80000000) {
+            crc = (crc << 1) ^ this.config.polynomial;
+          } else {
+            crc = crc << 1;
+          }
         }
       }
-      table[i] = crc;
+      
+      table[i] = crc >>> 0; // Ensure unsigned 32-bit
     }
     
     return table;
@@ -147,21 +171,45 @@ class CRC32Instance extends IAlgorithmInstance {
 
     // Process each byte
     for (let i = 0; i < data.length; i++) {
-      const byte = data[i] & 0xFF;
-      const tableIndex = (this.crc ^ byte) & 0xFF;
-      this.crc = (this.crc >>> 8) ^ this.table[tableIndex];
+      let byte = data[i] & 0xFF;
+      
+      if (this.config.inputReflected) {
+        // Reflected algorithm (LSB first)
+        const tableIndex = (this.crc ^ byte) & 0xFF;
+        this.crc = ((this.crc >>> 8) ^ this.table[tableIndex]) >>> 0;
+      } else {
+        // Normal algorithm (MSB first)
+        const tableIndex = ((this.crc >>> 24) ^ byte) & 0xFF;
+        this.crc = ((this.crc << 8) ^ this.table[tableIndex]) >>> 0;
+      }
     }
   }
 
   Result() {
-    // Final XOR and convert to byte array (big-endian)
-    const finalCrc = this.crc ^ 0xFFFFFFFF;
-    const result = OpCodes.Unpack32BE(finalCrc >>> 0);
+    // Apply final XOR
+    let finalCrc = (this.crc ^ this.config.finalXor) >>> 0;
+    
+    // Apply result reflection if specified
+    if (this.config.resultReflected) {
+      finalCrc = this._reflect32(finalCrc);
+    }
+    
+    // Convert to byte array (big-endian)
+    const result = OpCodes.Unpack32BE(finalCrc);
     
     // Reset for next calculation
-    this.crc = 0xFFFFFFFF;
+    this.crc = this.config.initialValue;
     
     return result;
+  }
+
+  _reflect32(value) {
+    let reflected = 0;
+    for (let i = 0; i < 32; i++) {
+      reflected = (reflected << 1) | (value & 1);
+      value >>>= 1;
+    }
+    return reflected >>> 0;
   }
 
   // Additional utility methods
@@ -184,8 +232,10 @@ class CRC32Instance extends IAlgorithmInstance {
   }
 }
 
-// Register the algorithm
-RegisterAlgorithm(new CRC32Algorithm());
+// Register all CRC32 variants
+RegisterAlgorithm(new CRC32Algorithm('IEEE'));
+RegisterAlgorithm(new CRC32Algorithm('POSIX'));
+RegisterAlgorithm(new CRC32Algorithm('BZIP2'));
 
 // Export for Node.js
 if (typeof module !== 'undefined' && module.exports) {
