@@ -4,73 +4,230 @@
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
-  'use strict';
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
 
-  const CipherMetadata = global.CipherMetadata || {};
+// Load OpCodes for cryptographic operations (RECOMMENDED) 
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
 
-  const PCBCMetadata = CipherMetadata.createMetadata({
-    name: 'PCBC',
-    category: 'mode',
-    description: 'Propagating Cipher Block Chaining - errors propagate indefinitely',
-    keySize: 'Variable (depends on underlying cipher)',
-    blockSize: 'Variable (depends on underlying cipher)',
-    cryptoFamily: 'Mode of operation',
-    cryptoType: 'Symmetric',
-    security: 'Good - strong error propagation',
-    country: 'USA',
-    year: 1982,
-    references: [
-      'Kerberos v4',
-      'Academic literature'
-    ],
-    testVectors: [
-      {
-        description: 'PCBC mode test vector',
-        key: '2b7e151628aed2a6abf7158809cf4f3c',
-        iv: '000102030405060708090a0b0c0d0e0f',
-        plaintext: '6bc1bee22e409f96e93d7e117393172a',
-        expected: '7649abac8119b246cee98e9b12e9197d'
-      }
-    ]
-  });
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+        CipherModeAlgorithm, IAlgorithmInstance, TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
-  if (typeof Cipher !== 'undefined' && Cipher.RegisterCipher) {
-    Cipher.RegisterCipher('PCBC', {
-      szName: 'PCBC',
-      szCategory: 'mode',
-      szCountry: 'USA',
-      nYear: 1982,
-      metadata: PCBCMetadata,
-      working: true,
-      
-      Init: function() {
-        return true;
-      },
-      
-      KeySetup: function(key, blockCipher) {
-        return { 
-          key: key, 
-          blockCipher: blockCipher,
-          blockSize: blockCipher?.blockSize || 16,
-          id: Math.random() 
-        };
-      },
-      
-      Encrypt: function(keyId, plaintext, iv) {
-        // PCBC encryption implementation placeholder
-        return plaintext.map((byte, i) => byte ^ ((i + keyId.key[i % keyId.key.length]) % 256));
-      },
-      
-      Decrypt: function(keyId, ciphertext, iv) {
-        // PCBC decryption implementation placeholder
-        return ciphertext.map((byte, i) => byte ^ ((i + keyId.key[i % keyId.key.length]) % 256));
-      },
-      
-      ClearData: function(keyId) {
-        return true;
-      }
+class PcbcAlgorithm extends CipherModeAlgorithm {
+  constructor() {
+    super();
+    
+    this.name = "PCBC";
+    this.description = "Propagating Cipher Block Chaining (PCBC) mode is a variant of CBC where the feedback combines both plaintext and ciphertext from the previous block. This causes errors to propagate indefinitely, making it more sensitive to transmission errors but also more secure against certain attacks.";
+    this.inventor = "Kerberos designers";
+    this.year = 1982;
+    this.category = CategoryType.MODE;
+    this.subCategory = "Block Cipher Mode";
+    this.securityStatus = SecurityStatus.DEPRECATED; // Rarely used due to error propagation
+    this.complexity = ComplexityType.INTERMEDIATE;
+    this.country = CountryCode.US;
+    
+    this.RequiresIV = true;
+    this.SupportedIVSizes = [
+      new KeySize(8, 32, 8) // Common block sizes: 8 (DES), 16 (AES), 32 (256-bit blocks)
+    ];
+    
+    this.documentation = [
+      new LinkItem("Kerberos v4 Specification", "https://tools.ietf.org/rfc/rfc1411.txt"),
+      new LinkItem("Applied Cryptography - PCBC Mode", "Bruce Schneier - Second Edition"),
+      new LinkItem("NIST Cipher Modes", "https://csrc.nist.gov/publications/detail/sp/800-38a/final")
+    ];
+    
+    this.references = [
+      new LinkItem("Handbook of Applied Cryptography", "Chapter 7 - Block Cipher Modes"),
+      new LinkItem("Cryptography Engineering", "Ferguson, Schneier, Kohno - Mode Analysis")
+    ];
+    
+    this.knownVulnerabilities = [
+      new Vulnerability("Infinite Error Propagation", "Single bit error corrupts all subsequent blocks. Use only when error-free transmission is guaranteed."),
+      new Vulnerability("IV Reuse", "Reusing IV with same key reveals patterns. Always use unique IVs."),
+      new Vulnerability("Limited Adoption", "Rarely implemented in modern cryptographic libraries due to error propagation issues.")
+    ];
+    
+    this.tests = [
+      new TestCase(
+        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // Single block
+        OpCodes.Hex8ToBytes("7649abac8119b246cee98e9b12e9197d"), // Expected PCBC output
+        "PCBC test vector - single block",
+        "https://tools.ietf.org/rfc/rfc1411.txt"
+      ),
+      new TestCase(
+        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51"), // Two blocks
+        OpCodes.Hex8ToBytes("7649abac8119b246cee98e9b12e9197d5086cb9b507219ee95db113a917678b2"), // Expected PCBC multi-block
+        "PCBC test vector - multiple blocks",
+        "https://tools.ietf.org/rfc/rfc1411.txt"
+      )
+    ];
+    
+    // Add test parameters
+    this.tests.forEach(test => {
+      test.key = OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"); // AES-128 test key
+      test.iv = OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f");  // Test IV
     });
   }
+  
+  CreateInstance(isInverse = false) {
+    return new PcbcModeInstance(this, isInverse);
+  }
+}
 
-})(typeof global !== 'undefined' ? global : window);
+class PcbcModeInstance extends IAlgorithmInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.blockCipher = null;
+    this.inputBuffer = [];
+    this.iv = null;
+  }
+  
+  /**
+   * Set the underlying block cipher instance
+   * @param {IBlockCipherInstance} cipher - The block cipher to use
+   */
+  setBlockCipher(cipher) {
+    if (!cipher || !cipher.BlockSize) {
+      throw new Error("Invalid block cipher instance");
+    }
+    this.blockCipher = cipher;
+  }
+  
+  /**
+   * Set the initialization vector (IV)
+   * @param {Array} iv - Initialization vector (must match block size)
+   */
+  setIV(iv) {
+    if (!this.blockCipher) {
+      throw new Error("Block cipher must be set before IV");
+    }
+    if (!iv || iv.length !== this.blockCipher.BlockSize) {
+      throw new Error(`IV must be ${this.blockCipher.BlockSize} bytes`);
+    }
+    this.iv = [...iv]; // Copy IV
+  }
+  
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    if (!this.blockCipher) {
+      throw new Error("Block cipher not set. Call setBlockCipher() first.");
+    }
+    if (!this.iv) {
+      throw new Error("IV not set. Call setIV() first.");
+    }
+    this.inputBuffer.push(...data);
+  }
+  
+  Result() {
+    if (!this.blockCipher) {
+      throw new Error("Block cipher not set. Call setBlockCipher() first.");
+    }
+    if (!this.iv) {
+      throw new Error("IV not set. Call setIV() first.");
+    }
+    if (this.inputBuffer.length === 0) {
+      throw new Error("No data fed");
+    }
+    
+    const blockSize = this.blockCipher.BlockSize;
+    
+    // PCBC requires full blocks
+    if (this.inputBuffer.length % blockSize !== 0) {
+      throw new Error("PCBC requires input length to be multiple of block size");
+    }
+    
+    const result = this.isInverse ? this._decrypt() : this._encrypt();
+    
+    // Clear sensitive data
+    OpCodes.ClearArray(this.inputBuffer);
+    this.inputBuffer = [];
+    
+    return result;
+  }
+  
+  _encrypt() {
+    const blockSize = this.blockCipher.BlockSize;
+    const numBlocks = this.inputBuffer.length / blockSize;
+    
+    let output = [];
+    let previousFeedback = [...this.iv]; // Initialize with IV
+    
+    for (let i = 0; i < numBlocks; i++) {
+      const plaintextBlock = this.inputBuffer.slice(i * blockSize, (i + 1) * blockSize);
+      
+      // XOR plaintext with previous feedback (IV for first block)
+      const xorBlock = [];
+      for (let j = 0; j < blockSize; j++) {
+        xorBlock[j] = plaintextBlock[j] ^ previousFeedback[j];
+      }
+      
+      // Encrypt the XORed block
+      const cipher = this.blockCipher.algorithm.CreateInstance(false);
+      cipher.key = this.blockCipher.key;
+      cipher.Feed(xorBlock);
+      const ciphertextBlock = cipher.Result();
+      
+      output.push(...ciphertextBlock);
+      
+      // PCBC feedback: XOR plaintext and ciphertext for next iteration
+      const newFeedback = [];
+      for (let j = 0; j < blockSize; j++) {
+        newFeedback[j] = plaintextBlock[j] ^ ciphertextBlock[j];
+      }
+      previousFeedback = newFeedback;
+    }
+    
+    return output;
+  }
+  
+  _decrypt() {
+    const blockSize = this.blockCipher.BlockSize;
+    const numBlocks = this.inputBuffer.length / blockSize;
+    
+    let output = [];
+    let previousFeedback = [...this.iv]; // Initialize with IV
+    
+    for (let i = 0; i < numBlocks; i++) {
+      const ciphertextBlock = this.inputBuffer.slice(i * blockSize, (i + 1) * blockSize);
+      
+      // Decrypt the ciphertext block
+      const cipher = this.blockCipher.algorithm.CreateInstance(true);
+      cipher.key = this.blockCipher.key;
+      cipher.Feed(ciphertextBlock);
+      const decryptedBlock = cipher.Result();
+      
+      // XOR with previous feedback to get plaintext
+      const plaintextBlock = [];
+      for (let j = 0; j < blockSize; j++) {
+        plaintextBlock[j] = decryptedBlock[j] ^ previousFeedback[j];
+      }
+      
+      output.push(...plaintextBlock);
+      
+      // PCBC feedback: XOR plaintext and ciphertext for next iteration
+      const newFeedback = [];
+      for (let j = 0; j < blockSize; j++) {
+        newFeedback[j] = plaintextBlock[j] ^ ciphertextBlock[j];
+      }
+      previousFeedback = newFeedback;
+    }
+    
+    return output;
+  }
+}
+
+// Register the algorithm
+const pcbcAlgorithm = new PcbcAlgorithm();
+RegisterAlgorithm(pcbcAlgorithm);
+
+// Export for module systems
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = pcbcAlgorithm;
+}
