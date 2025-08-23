@@ -531,6 +531,16 @@
     global.AlgorithmFramework.RegisterAlgorithm(Trivium);
   }
   
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(Trivium);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(Trivium);
+  }
+  
   // Export to global scope
   global.Trivium = Trivium;
   

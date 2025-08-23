@@ -8,79 +8,106 @@
 (function(global) {
   'use strict';
   
-  // Load dependencies
-  if (!global.Compression && typeof require !== 'undefined') {
-    try {
-      require('../../compression.js');
-    } catch (e) {
-      console.error('Failed to load compression framework:', e.message);
-      return;
-    }
+  // Load AlgorithmFramework (REQUIRED)
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
   }
   
+  // Load OpCodes for cryptographic operations (RECOMMENDED)
   if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes.js:', e.message);
-      return;
+    global.OpCodes = require('../../OpCodes.js');
+  }
+  
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          CompressionAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = global.AlgorithmFramework;
+  
+  class DeflateSimpleAlgorithm extends CompressionAlgorithm {
+    constructor() {
+      super();
+      
+      // Required metadata
+      this.name = "Simplified Deflate";
+      this.description = "Educational LZ77 + Huffman hybrid implementation demonstrating core algorithm of ZIP/GZIP compression.";
+      this.category = CategoryType.COMPRESSION;
+      this.subCategory = "Hybrid";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.ADVANCED;
+      this.inventor = "Jacob Ziv, Abraham Lempel, David Huffman";
+      this.year = 1977;
+      this.country = CountryCode.US;
+      
+      // Configuration
+      this.WINDOW_SIZE = 1024;    // Smaller than full LZ77 for simplicity
+      this.LOOKAHEAD_SIZE = 15;   // Smaller lookahead
+      this.MIN_MATCH_LENGTH = 3;
+      
+      this.documentation = [
+        new LinkItem("DEFLATE Compressed Data Format Specification", "https://tools.ietf.org/html/rfc1951"),
+        new LinkItem("LZ77 Algorithm Description", "https://en.wikipedia.org/wiki/LZ77_and_LZ78"),
+        new LinkItem("Huffman Coding Tutorial", "https://web.stanford.edu/class/archive/cs/cs106b/cs106b.1126/")
+      ];
+      
+      this.references = [
+        new LinkItem("Data Compression: The Complete Reference", "https://www.springer.com/gp/book/9781846286025"),
+        new LinkItem("Introduction to Data Compression", "https://www.elsevier.com/books/introduction-to-data-compression/sayood/978-0-12-620862-7")
+      ];
+      
+      // Convert existing tests to new format
+      this.tests = [
+        new TestCase( //TODO: OpCodes:Ansi2Bytes
+          [65, 66, 67, 65, 66, 67, 65, 66, 67], // ABCABCABC
+          [123, 34, 104, 117, 102, 102, 109, 97, 110, 82, 101, 115, 117, 108, 116, 34, 58, 123, 34, 99, 111, 100, 101, 115, 34, 58, 123, 34, 108, 105, 116, 101, 114, 97, 108, 58, 54, 53, 34, 58, 34, 48, 48, 48, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 54, 54, 34, 58, 34, 48, 48, 49, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 54, 55, 34, 58, 34, 48, 49, 48, 34, 44, 34, 108, 101, 110, 103, 116, 104, 58, 51, 34, 58, 34, 48, 49, 49, 34, 44, 34, 100, 105, 115, 116, 97, 110, 99, 101, 58, 51, 34, 58, 34, 49, 48, 48, 34, 125, 44, 34, 101, 110, 99, 111, 100, 101, 100, 66, 105, 116, 115, 34, 58, 34, 48, 48, 48, 48, 48, 49, 48, 49, 48, 48, 49, 49, 49, 48, 48, 48, 48, 48, 48, 48, 49, 48, 49, 48, 34, 125, 44, 34, 111, 114, 105, 103, 105, 110, 97, 108, 76, 101, 110, 103, 116, 104, 34, 58, 57, 125],
+          "Basic string with repeated substrings",
+          "Educational test case"
+        ),
+        new TestCase( //TODO: OpCodes:Ansi2Bytes
+          [84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 116, 104, 101, 32, 108, 97, 122, 121, 32, 100, 111, 103], // The quick brown fox...
+          [123, 34, 104, 117, 102, 102, 109, 97, 110, 82, 101, 115, 117, 108, 116, 34, 58, 123, 34, 99, 111, 100, 101, 115, 34, 58, 123, 34, 108, 105, 116, 101, 114, 97, 108, 58, 56, 52, 34, 58, 34, 48, 48, 48, 48, 48, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 48, 52, 34, 58, 34, 48, 48, 48, 48, 49, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 48, 49, 34, 58, 34, 48, 48, 48, 49, 48, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 51, 50, 34, 58, 34, 48, 48, 48, 49, 49, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 49, 51, 34, 58, 34, 48, 48, 49, 48, 48, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 49, 55, 34, 58, 34, 48, 48, 49, 48, 49, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 48, 53, 34, 58, 34, 48, 48, 49, 49, 48, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 57, 57, 34, 58, 34, 48, 48, 49, 49, 49, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 48, 55, 34, 58, 34, 48, 49, 48, 48, 48, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 57, 56, 34, 58, 34, 48, 49, 48, 48, 49, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 49, 52, 34, 58, 34, 48, 49, 48, 49, 48, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 49, 49, 34, 58, 34, 48, 49, 48, 49, 49, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 49, 57, 34, 58, 34, 48, 49, 49, 48, 48, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 49, 48, 34, 58, 34, 48, 49, 49, 48, 49, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 48, 50, 34, 58, 34, 48, 49, 49, 49, 48, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 50, 48, 34, 58, 34, 48, 49, 49, 49, 49, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 48, 54, 34, 58, 34, 49, 48, 48, 48, 48, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 48, 57, 34, 58, 34, 49, 48, 48, 48, 49, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 49, 50, 34, 58, 34, 49, 48, 48, 49, 48, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 49, 53, 34, 58, 34, 49, 48, 48, 49, 49, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 49, 56, 34, 58, 34, 49, 48, 49, 48, 48, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 49, 54, 34, 58, 34, 49, 48, 49, 48, 49, 34, 44, 34, 108, 101, 110, 103, 116, 104, 58, 51, 34, 58, 34, 49, 48, 49, 49, 48, 34, 44, 34, 100, 105, 115, 116, 97, 110, 99, 101, 58, 51, 49, 34, 58, 34, 49, 48, 49, 49, 49, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 48, 56, 34, 58, 34, 49, 49, 48, 48, 48, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 57, 55, 34, 58, 34, 49, 49, 48, 48, 49, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 50, 50, 34, 58, 34, 49, 49, 48, 49, 48, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 50, 49, 34, 58, 34, 49, 49, 48, 49, 49, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 48, 48, 34, 58, 34, 49, 49, 49, 48, 48, 34, 44, 34, 108, 105, 116, 101, 114, 97, 108, 58, 49, 48, 51, 34, 58, 34, 49, 49, 49, 48, 49, 34, 125, 44, 34, 101, 110, 99, 111, 100, 101, 100, 66, 105, 116, 115, 34, 58, 34, 48, 48, 48, 48, 48, 48, 48, 48, 48, 49, 48, 48, 48, 49, 48, 48, 48, 48, 49, 49, 48, 48, 49, 48, 48, 48, 48, 49, 48, 49, 48, 48, 49, 49, 48, 48, 48, 49, 49, 49, 48, 49, 48, 48, 48, 48, 48, 48, 49, 49, 48, 49, 48, 48, 49, 48, 49, 48, 49, 48, 48, 49, 48, 49, 49, 48, 49, 49, 48, 48, 48, 49, 49, 48, 49, 48, 48, 48, 49, 49, 48, 49, 49, 49, 48, 48, 49, 48, 49, 49, 48, 49, 49, 49, 49, 48, 48, 48, 49, 49, 49, 48, 48, 48, 48, 48, 48, 49, 48, 49, 49, 48, 48, 48, 49, 49, 48, 48, 49, 48, 49, 48, 48, 49, 49, 48, 48, 48, 49, 49, 48, 49, 48, 49, 49, 49, 48, 49, 48, 48, 48, 48, 48, 49, 48, 48, 49, 48, 49, 48, 48, 48, 48, 49, 49, 49, 48, 49, 48, 49, 49, 48, 49, 49, 48, 49, 48, 49, 49, 49, 49, 49, 48, 48, 48, 49, 49, 48, 48, 49, 49, 49, 48, 49, 48, 49, 49, 48, 49, 49, 48, 48, 48, 49, 49, 49, 49, 49, 48, 48, 48, 49, 48, 49, 49, 49, 49, 49, 48, 49, 34, 125, 44, 34, 111, 114, 105, 103, 105, 110, 97, 108, 76, 101, 110, 103, 116, 104, 34, 58, 52, 51, 125],
+          "English text compression test",
+          "Standard text compression benchmark"
+        )
+      ];
+      
+      // For test suite compatibility
+      this.testVectors = this.tests;
+    }
+    
+    CreateInstance(isInverse = false) {
+      return new DeflateSimpleInstance(this, isInverse);
     }
   }
   
-  const DeflateSimple = {
-    internalName: 'DeflateSimple',
-    name: 'Simplified Deflate',
-    comment: 'Educational LZ77 + Huffman hybrid - core algorithm of ZIP/GZIP',
-    category: 'Hybrid',
-    instances: {},
-    isInitialized: false,
+  class DeflateSimpleInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse; // true = decompress, false = compress
+      this.inputBuffer = [];
+    }
     
-    // Configuration
-    WINDOW_SIZE: 1024,    // Smaller than full LZ77 for simplicity
-    LOOKAHEAD_SIZE: 15,   // Smaller lookahead
-    MIN_MATCH_LENGTH: 3,
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      this.inputBuffer.push(...data);
+    }
     
-    /**
-     * Initialize the algorithm
-     */
-    Init: function() {
-      this.isInitialized = true;
-      console.log('Simplified Deflate algorithm initialized');
-    },
-    
-    /**
-     * Create a new instance
-     */
-    KeySetup: function() {
-      const id = this.internalName + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
-      this.instances[id] = {
-        initialized: true,
-        compressionRatio: 0,
-        lastInputSize: 0,
-        lastOutputSize: 0
-      };
-      return id;
-    },
-    
-    /**
-     * Compress data using Simplified Deflate
-     * @param {string} keyId - Instance identifier
-     * @param {string} data - Input data to compress
-     * @returns {string} Compressed data
-     */
-    Compress: function(keyId, data) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
-      }
+    Result() {
+      if (this.inputBuffer.length === 0) return [];
       
-      if (!data || data.length === 0) {
-        return '';
-      }
+      // Process using existing compression logic
+      const result = this.isInverse ? 
+        this.decompress(this.inputBuffer) : 
+        this.compress(this.inputBuffer);
       
-      const instance = this.instances[keyId];
+      this.inputBuffer = [];
+      return result;
+    }
+    
+    compress(data) {
+      if (!data || data.length === 0) return [];
+      
+      const inputString = this._bytesToString(data);
       
       // Step 1: Apply LZ77 compression
-      const lz77Tokens = this._applyLZ77(data);
+      const lz77Tokens = this._applyLZ77(inputString);
       
       // Step 2: Convert tokens to symbol stream
       const symbolStream = this._tokensToSymbols(lz77Tokens);
@@ -89,33 +116,18 @@
       const huffmanResult = this._applyHuffman(symbolStream);
       
       // Step 4: Pack compressed data
-      const compressed = this._packCompressedData(huffmanResult, data.length);
+      const compressed = this._packCompressedData(huffmanResult, inputString.length);
       
-      // Update statistics
-      instance.lastInputSize = data.length;
-      instance.lastOutputSize = compressed.length;
-      instance.compressionRatio = data.length / compressed.length;
-      
-      return compressed;
-    },
+      return this._stringToBytes(compressed);
+    }
     
-    /**
-     * Decompress Simplified Deflate data
-     * @param {string} keyId - Instance identifier
-     * @param {string} compressedData - Compressed data
-     * @returns {string} Decompressed data
-     */
-    Decompress: function(keyId, compressedData) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
-      }
+    decompress(data) {
+      if (!data || data.length === 0) return [];
       
-      if (!compressedData || compressedData.length === 0) {
-        return '';
-      }
+      const compressedString = this._bytesToString(data);
       
       // Step 1: Unpack compressed data
-      const { huffmanResult, originalLength } = this._unpackCompressedData(compressedData);
+      const { huffmanResult, originalLength } = this._unpackCompressedData(compressedString);
       
       // Step 2: Decompress Huffman to get symbol stream
       const symbolStream = this._decompressHuffman(huffmanResult);
@@ -130,32 +142,21 @@
         throw new Error('Decompressed length mismatch');
       }
       
-      return decompressed;
-    },
-    
-    /**
-     * Clear instance data
-     */
-    ClearData: function(keyId) {
-      if (this.instances[keyId]) {
-        delete this.instances[keyId];
-        return true;
-      }
-      return false;
-    },
+      return this._stringToBytes(decompressed);
+    }
     
     /**
      * Apply LZ77 compression (simplified version)
      * @private
      */
-    _applyLZ77: function(data) {
+    _applyLZ77(data) {
       const tokens = [];
       let position = 0;
       
       while (position < data.length) {
         const match = this._findLongestMatch(data, position);
         
-        if (match.length >= this.MIN_MATCH_LENGTH) {
+        if (match.length >= this.algorithm.MIN_MATCH_LENGTH) {
           // Encode as match + literal
           const nextChar = position + match.length < data.length ? 
                            data.charAt(position + match.length) : '';
@@ -180,16 +181,16 @@
       }
       
       return tokens;
-    },
+    }
     
     /**
      * Find longest match in sliding window
      * @private
      */
-    _findLongestMatch: function(data, position) {
-      const windowStart = Math.max(0, position - this.WINDOW_SIZE);
+    _findLongestMatch(data, position) {
+      const windowStart = Math.max(0, position - this.algorithm.WINDOW_SIZE);
       const windowEnd = position;
-      const lookaheadEnd = Math.min(data.length, position + this.LOOKAHEAD_SIZE);
+      const lookaheadEnd = Math.min(data.length, position + this.algorithm.LOOKAHEAD_SIZE);
       
       let bestMatch = { distance: 0, length: 0 };
       
@@ -211,13 +212,13 @@
       }
       
       return bestMatch;
-    },
+    }
     
     /**
      * Convert LZ77 tokens to symbol stream for Huffman
      * @private
      */
-    _tokensToSymbols: function(tokens) {
+    _tokensToSymbols(tokens) {
       const symbols = [];
       
       for (const token of tokens) {
@@ -245,13 +246,13 @@
       }
       
       return symbols;
-    },
+    }
     
     /**
      * Convert symbols back to LZ77 tokens
      * @private
      */
-    _symbolsToTokens: function(symbols) {
+    _symbolsToTokens(symbols) {
       const tokens = [];
       let i = 0;
       
@@ -291,13 +292,13 @@
       }
       
       return tokens;
-    },
+    }
     
     /**
      * Apply simplified Huffman coding
      * @private
      */
-    _applyHuffman: function(symbols) {
+    _applyHuffman(symbols) {
       // Build frequency table
       const frequencies = {};
       for (const symbol of symbols) {
@@ -316,13 +317,13 @@
       }
       
       return { codes, encodedBits };
-    },
+    }
     
     /**
      * Build simplified Huffman codes
      * @private
      */
-    _buildSimpleHuffmanCodes: function(frequencies) {
+    _buildSimpleHuffmanCodes(frequencies) {
       const symbols = Object.keys(frequencies);
       const codes = {};
       
@@ -339,13 +340,13 @@
       }
       
       return codes;
-    },
+    }
     
     /**
      * Decompress Huffman encoded data
      * @private
      */
-    _decompressHuffman: function(huffmanResult) {
+    _decompressHuffman(huffmanResult) {
       const { codes, encodedBits } = huffmanResult;
       
       // Build reverse mapping
@@ -372,13 +373,13 @@
       }
       
       return symbols;
-    },
+    }
     
     /**
      * Decompress LZ77 tokens
      * @private
      */
-    _decompressLZ77: function(tokens) {
+    _decompressLZ77(tokens) {
       let output = '';
       
       for (const token of tokens) {
@@ -398,13 +399,13 @@
       }
       
       return output;
-    },
+    }
     
     /**
      * Pack compressed data
      * @private
      */
-    _packCompressedData: function(huffmanResult, originalLength) {
+    _packCompressedData(huffmanResult, originalLength) {
       // Simplified packing - just store the basics
       const data = JSON.stringify({
         huffmanResult: huffmanResult,
@@ -412,13 +413,13 @@
       });
       
       return data;
-    },
+    }
     
     /**
      * Unpack compressed data
      * @private
      */
-    _unpackCompressedData: function(compressedData) {
+    _unpackCompressedData(compressedData) {
       try {
         const data = JSON.parse(compressedData);
         return {
@@ -428,58 +429,33 @@
       } catch (e) {
         throw new Error('Invalid Deflate compressed data format');
       }
-    },
-    
-    /**
-     * Get compression statistics
-     */
-    GetStats: function(keyId) {
-      const instance = this.instances[keyId];
-      if (!instance) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      return {
-        inputSize: instance.lastInputSize,
-        outputSize: instance.lastOutputSize,
-        compressionRatio: instance.compressionRatio,
-        spaceSavings: ((instance.lastInputSize - instance.lastOutputSize) / instance.lastInputSize * 100).toFixed(2) + '%',
-        windowSize: this.WINDOW_SIZE,
-        lookaheadSize: this.LOOKAHEAD_SIZE,
-        description: 'Simplified Deflate: LZ77 dictionary compression + Huffman entropy coding'
-      };
-    },
+    }
     
     // Utility functions
-    _stringToBytes: function(str) {
+    _stringToBytes(str) {
       const bytes = [];
       for (let i = 0; i < str.length; i++) {
         bytes.push(str.charCodeAt(i) & 0xFF);
       }
       return bytes;
-    },
+    }
     
-    _bytesToString: function(bytes) {
+    _bytesToString(bytes) {
       let str = '';
       for (let i = 0; i < bytes.length; i++) {
         str += String.fromCharCode(bytes[i]);
       }
       return str;
     }
-  };
-  
-  // Auto-register with compression system
-  if (global.Compression) {
-    DeflateSimple.Init();
-    global.Compression.AddAlgorithm(DeflateSimple);
   }
+    
+  
+  // Register the algorithm
+  RegisterAlgorithm(new DeflateSimpleAlgorithm());
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = DeflateSimple;
+    module.exports = DeflateSimpleAlgorithm;
   }
-  
-  // Make globally available
-  global.DeflateSimple = DeflateSimple;
   
 })(typeof global !== 'undefined' ? global : window);

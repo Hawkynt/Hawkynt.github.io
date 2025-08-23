@@ -8,232 +8,149 @@
 (function(global) {
   'use strict';
   
-  // Load dependencies
-  if (!global.Compression && typeof require !== 'undefined') {
-    try {
-      require('../../compression.js');
-    } catch (e) {
-      console.error('Failed to load compression framework:', e.message);
-      return;
-    }
+  // Load AlgorithmFramework (REQUIRED)
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
   }
   
+  // Load OpCodes for cryptographic operations (RECOMMENDED)
   if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes.js:', e.message);
-      return;
+    global.OpCodes = require('../../OpCodes.js');
+  }
+  
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          CompressionAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = global.AlgorithmFramework;
+
+  class LZ78Algorithm extends CompressionAlgorithm {
+    constructor() {
+      super();
+      
+      // Required metadata
+      this.name = "LZ78 Dictionary Building";
+      this.description = "Lempel-Ziv 1978 algorithm builds dictionary of phrases during compression, providing universal compression without sliding window.";
+      this.category = CategoryType.COMPRESSION;
+      this.subCategory = "Dictionary";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.ADVANCED;
+      this.inventor = "Abraham Lempel, Jacob Ziv";
+      this.year = 1978;
+      this.country = CountryCode.IL;
+      
+      // LZ78 Configuration parameters
+      this.MAX_DICTIONARY_SIZE = 4096; // Maximum number of dictionary entries
+      
+      this.documentation = [
+        new LinkItem("Compression of Individual Sequences via Variable-Rate Coding", "https://ieeexplore.ieee.org/document/1055934"),
+        new LinkItem("LZ78 - Wikipedia", "https://en.wikipedia.org/wiki/LZ78"),
+        new LinkItem("Data Compression Techniques", "https://web.stanford.edu/class/ee398a/")
+      ];
+      
+      this.references = [
+        new LinkItem("The Data Compression Book", "https://www.amazon.com/Data-Compression-Book-Mark-Nelson/dp/0130907529"),
+        new LinkItem("Introduction to Data Compression", "https://www.elsevier.com/books/introduction-to-data-compression/sayood/978-0-12-620862-7")
+      ];
+
+      // Convert comprehensive test vectors to new format
+      this.tests = [
+        new TestCase(
+          [65, 66, 67, 65, 66, 67, 65, 66, 67], // ABCABCABC
+          [0, 0, 0, 6, 0, 0, 65, 0, 0, 66, 0, 0, 67, 0, 1, 66, 0, 3, 65, 0, 2, 67],
+          "Basic string with repeated substrings",
+          "https://en.wikipedia.org/wiki/LZ78"
+        ),
+        new TestCase(
+          [65, 66, 65, 66, 67, 65, 66, 67, 68, 65, 66, 67, 68, 69], // ABABCABCDABCDE
+          [0, 0, 0, 8, 0, 0, 65, 0, 0, 66, 0, 1, 66, 0, 0, 67, 0, 3, 67, 0, 0, 68, 0, 5, 68, 0, 0, 69],
+          "Progressive pattern building",
+          "https://web.stanford.edu/class/cs106b/assignments/huffman/"
+        ),
+        new TestCase(
+          [65, 66, 65, 66, 65, 66, 65, 66, 65, 66, 67, 68, 67, 68, 67, 68, 67, 68], // ABABABABABCDCDCDCD
+          [0, 0, 0, 10, 0, 0, 65, 0, 0, 66, 0, 1, 66, 0, 3, 65, 0, 2, 65, 0, 2, 67, 0, 0, 68, 0, 0, 67, 0, 7, 67, 0, 9, 68],
+          "Text with overlapping patterns",
+          "https://www.cs.duke.edu/csed/curious/compression/lz78.html"
+        ),
+        new TestCase(
+          [65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90], // A-Z alphabet
+          [0, 0, 0, 26, 0, 0, 65, 0, 0, 66, 0, 0, 67, 0, 0, 68, 0, 0, 69, 0, 0, 70, 0, 0, 71, 0, 0, 72, 0, 0, 73, 0, 0, 74, 0, 0, 75, 0, 0, 76, 0, 0, 77, 0, 0, 78, 0, 0, 79, 0, 0, 80, 0, 0, 81, 0, 0, 82, 0, 0, 83, 0, 0, 84, 0, 0, 85, 0, 0, 86, 0, 0, 87, 0, 0, 88, 0, 0, 89, 0, 0, 90],
+          "Unique character sequence (worst case)",
+          "https://www.geeksforgeeks.org/lz78-lempel-ziv-78-compression-technique/"
+        ),
+        new TestCase(
+          [0x00, 0x01, 0x02, 0x00, 0x01, 0x02, 0x03, 0x00, 0x01, 0x02, 0x03, 0x04],
+          [0, 0, 0, 8, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 1, 1, 0, 3, 3, 0, 4, 2, 0, 0, 3, 0, 0, 4],
+          "Binary data with structured patterns",
+          "https://www.cs.cmu.edu/~guyb/realworld/compression.pdf"
+        ),
+        new TestCase(
+          // 100 A's + 100 B's = 200 bytes total
+          [65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66],
+          [0, 0, 0, 28, 0, 0, 65, 0, 1, 65, 0, 2, 65, 0, 3, 65, 0, 4, 65, 0, 5, 65, 0, 6, 65, 0, 7, 65, 0, 8, 65, 0, 9, 65, 0, 10, 65, 0, 11, 65, 0, 12, 65, 0, 9, 66, 0, 0, 66, 0, 15, 66, 0, 16, 66, 0, 17, 66, 0, 18, 66, 0, 19, 66, 0, 20, 66, 0, 21, 66, 0, 22, 66, 0, 23, 66, 0, 24, 66, 0, 25, 66, 0, 26, 66, 0, 22, 0],
+          "Long repetitive sequence",
+          "https://web.archive.org/web/20080828084534/http://www.dogma.net/markn/articles/lzw/lzw.htm"
+        )
+      ];
+      
+      // For test suite compatibility
+      this.testVectors = this.tests;
+    }
+    
+    CreateInstance(isInverse = false) {
+      return new LZ78Instance(this, isInverse);
     }
   }
   
-  const LZ78 = {
-    internalName: 'LZ78',
-    name: 'LZ78 Dictionary Building',
-    comment: 'Lempel-Ziv 1978 algorithm - builds dictionary of phrases during compression',
-    category: 'Dictionary',
-    instances: {},
-    isInitialized: false,
+  class LZ78Instance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse; // true = decompress, false = compress
+      this.inputBuffer = [];
+    }
     
-    // LZ78 Configuration parameters
-    MAX_DICTIONARY_SIZE: 4096, // Maximum number of dictionary entries
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      this.inputBuffer.push(...data);
+    }
     
-    // Comprehensive test vectors for LZ78 algorithm
-    testVectors: [
-      {
-        algorithm: 'LZ78',
-        description: 'Basic string with repeated substrings',
-        origin: 'LZ78 educational example',
-        link: 'https://en.wikipedia.org/wiki/LZ78',
-        standard: 'Educational',
-        input: 'ABCABCABC',
-        output: '', // Generated by algorithm
-        compressionRatio: 1.5, // Expected compression due to ABC pattern
-        notes: 'Tests dictionary building with repeated ABC substring',
-        category: 'Basic'
-      },
-      {
-        algorithm: 'LZ78',
-        description: 'Progressive pattern building',
-        origin: 'Dictionary growth test',
-        link: 'https://web.stanford.edu/class/cs106b/assignments/huffman/',
-        standard: 'Stanford CS106B',
-        input: 'ABABCABCDABCDE',
-        output: '', // Tests incremental dictionary building
-        compressionRatio: 2.0, // Good compression as patterns grow
-        notes: 'Tests progressive dictionary expansion with growing patterns',
-        category: 'Progressive'
-      },
-      {
-        algorithm: 'LZ78',
-        description: 'Text with overlapping patterns',
-        origin: 'Complex pattern test',
-        link: 'https://www.cs.duke.edu/csed/curious/compression/lz78.html',
-        standard: 'Duke CS Education',
-        input: 'ABABABABABCDCDCDCD',
-        output: '', // Multiple overlapping patterns
-        compressionRatio: 2.5, // Excellent compression for overlapping patterns
-        notes: 'Tests handling of multiple overlapping pattern families',
-        category: 'Overlapping'
-      },
-      {
-        algorithm: 'LZ78',
-        description: 'Unique character sequence (worst case)',
-        origin: 'Worst-case scenario',
-        link: 'https://www.geeksforgeeks.org/lz78-lempel-ziv-78-compression-technique/',
-        standard: 'GeeksforGeeks',
-        input: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
-        output: '', // No repetition to exploit
-        compressionRatio: 0.8, // Expansion due to overhead
-        notes: 'No patterns to compress - demonstrates algorithm overhead',
-        category: 'Worst Case'
-      },
-      {
-        algorithm: 'LZ78',
-        description: 'Binary data with structured patterns',
-        origin: 'Binary compression test',
-        link: 'https://www.cs.cmu.edu/~guyb/realworld/compression.pdf',
-        standard: 'CMU Research',
-        input: '\x00\x01\x02\x00\x01\x02\x03\x00\x01\x02\x03\x04',
-        output: '', // Structured binary patterns
-        compressionRatio: 1.8, // Good compression for structured binary
-        notes: 'Tests binary data with incremental pattern structure',
-        category: 'Binary'
-      },
-      {
-        algorithm: 'LZ78',
-        description: 'Long repetitive sequence',
-        origin: 'Dictionary capacity test',
-        link: 'https://web.archive.org/web/20080828084534/http://www.dogma.net/markn/articles/lzw/lzw.htm',
-        standard: 'Mark Nelson Article',
-        input: 'A'.repeat(100) + 'B'.repeat(100),
-        output: '', // Tests dictionary with long runs
-        compressionRatio: 10.0, // Excellent compression for long runs
-        notes: 'Tests algorithm with very long repetitive sequences',
-        category: 'Long Sequence'
-      }
-    ],
-    
-    // Reference links for LZ78 specifications and implementations
-    referenceLinks: {
-      specifications: [
-        {
-          name: 'Original LZ78 Paper: Compression of Individual Sequences via Variable-Rate Coding',
-          url: 'https://ieeexplore.ieee.org/document/1055934',
-          description: 'Jacob Ziv and Abraham Lempel\'s original 1978 paper'
-        },
-        {
-          name: 'LZW Patent - Welch Extension of LZ78',
-          url: 'https://patents.google.com/patent/US4558302A/en',
-          description: 'Terry Welch\'s 1984 patent extending LZ78 to LZW'
-        },
-        {
-          name: 'IEEE Standard for LZ78-based Compression',
-          url: 'https://ieeexplore.ieee.org/document/9354764',
-          description: 'Modern IEEE standard for dictionary-based compression'
-        }
-      ],
-      implementations: [
-        {
-          name: 'Mark Nelson\'s LZW Implementation Guide',
-          url: 'https://web.archive.org/web/20080828084534/http://www.dogma.net/markn/articles/lzw/lzw.htm',
-          description: 'Classic implementation guide with detailed explanations'
-        },
-        {
-          name: 'MIT OpenCourseWare - Information Theory',
-          url: 'https://ocw.mit.edu/courses/electrical-engineering-and-computer-science/',
-          description: 'Academic treatment of LZ78 and dictionary compression'
-        },
-        {
-          name: 'Stanford CS Theory - Compression Algorithms',
-          url: 'https://theory.stanford.edu/~aiken/publications/papers/stoc99.pdf',
-          description: 'Theoretical analysis of LZ78 performance characteristics'
-        }
-      ],
-      validation: [
-        {
-          name: 'Canterbury Corpus',
-          url: 'https://corpus.canterbury.ac.nz/',
-          description: 'Standard compression benchmarks including text suitable for LZ78'
-        },
-        {
-          name: 'Text Compression Benchmark',
-          url: 'http://mattmahoney.net/dc/text.html',
-          description: 'Large text files for evaluating dictionary-based compression'
-        },
-        {
-          name: 'Repetitive Data Corpus',
-          url: 'http://pizzachili.dcc.uchile.cl/repcorpus.html',
-          description: 'Specialized corpus for repetitive data compression testing'
-        }
-      ]
-    },
-    
-    /**
-     * Initialize the algorithm
-     */
-    Init: function() {
-      this.isInitialized = true;
-      console.log('LZ78 algorithm initialized');
-    },
-    
-    /**
-     * Create a new instance
-     */
-    KeySetup: function() {
-      const id = this.internalName + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
-      this.instances[id] = {
-        initialized: true,
-        compressionRatio: 0,
-        lastInputSize: 0,
-        lastOutputSize: 0,
-        dictionary: {}, // Maps strings to indices
-        reverseDictionary: {}, // Maps indices to strings
-        nextIndex: 1 // Next available dictionary index (0 is reserved for empty string)
-      };
-      return id;
-    },
-    
-    /**
-     * Compress data using LZ78 algorithm
-     * Output format: sequence of (index, character) pairs
-     * @param {string} keyId - Instance identifier
-     * @param {string} data - Input data to compress
-     * @returns {string} Compressed data
-     */
-    Compress: function(keyId, data) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
-      }
+    Result() {
+      if (this.inputBuffer.length === 0) return [];
       
-      if (!data || data.length === 0) {
-        return '';
-      }
+      // Process using existing compression logic
+      const result = this.isInverse ? 
+        this.decompress(this.inputBuffer) : 
+        this.compress(this.inputBuffer);
       
-      const instance = this.instances[keyId];
+      this.inputBuffer = [];
+      return result;
+    }
+    
+    compress(data) {
+      if (!data || data.length === 0) return [];
+      
+      const inputString = this._bytesToString(data);
       
       // Reset dictionary for new compression
-      instance.dictionary = { '': 0 }; // Empty string maps to index 0
-      instance.reverseDictionary = { 0: '' };
-      instance.nextIndex = 1;
+      const dictionary = { '': 0 }; // Empty string maps to index 0
+      const reverseDictionary = { 0: '' };
+      let nextIndex = 1;
       
       const tokens = [];
       let position = 0;
       
-      while (position < data.length) {
+      while (position < inputString.length) {
         // Find the longest string in dictionary that matches at current position
         let currentString = '';
         let matchIndex = 0;
         
         // Look for longest match
-        while (position < data.length) {
-          const nextChar = data.charAt(position);
+        while (position < inputString.length) {
+          const nextChar = inputString.charAt(position);
           const testString = currentString + nextChar;
           
-          if (instance.dictionary.hasOwnProperty(testString)) {
+          if (dictionary.hasOwnProperty(testString)) {
             // String found in dictionary, continue building
             currentString = testString;
-            matchIndex = instance.dictionary[testString];
+            matchIndex = dictionary[testString];
             position++;
           } else {
             // String not in dictionary
@@ -242,9 +159,9 @@
         }
         
         // Emit token
-        if (position < data.length) {
+        if (position < inputString.length) {
           // There's a next character
-          const nextChar = data.charAt(position);
+          const nextChar = inputString.charAt(position);
           
           tokens.push({
             index: matchIndex,
@@ -253,10 +170,10 @@
           
           // Add new string to dictionary if not full
           const newString = currentString + nextChar;
-          if (instance.nextIndex < this.MAX_DICTIONARY_SIZE) {
-            instance.dictionary[newString] = instance.nextIndex;
-            instance.reverseDictionary[instance.nextIndex] = newString;
-            instance.nextIndex++;
+          if (nextIndex < this.algorithm.MAX_DICTIONARY_SIZE) {
+            dictionary[newString] = nextIndex;
+            reverseDictionary[nextIndex] = newString;
+            nextIndex++;
           }
           
           position++;
@@ -272,39 +189,16 @@
       // Serialize tokens to compressed format
       const compressed = this._serializeTokens(tokens);
       
-      // Update statistics
-      instance.lastInputSize = data.length;
-      instance.lastOutputSize = compressed.length;
-      instance.compressionRatio = data.length / compressed.length;
-      instance.tokensGenerated = tokens.length;
-      
-      // Calculate average string length in dictionary
-      const stringLengths = Object.keys(instance.dictionary)
-        .filter(str => str !== '')
-        .map(str => str.length);
-      instance.avgStringLength = stringLengths.length > 0 ? 
-        (stringLengths.reduce((a, b) => a + b, 0) / stringLengths.length).toFixed(2) : 0;
-      
-      return compressed;
-    },
+      return this._stringToBytes(compressed);
+    }
     
-    /**
-     * Decompress LZ78-encoded data
-     * @param {string} keyId - Instance identifier
-     * @param {string} compressedData - Compressed data
-     * @returns {string} Decompressed data
-     */
-    Decompress: function(keyId, compressedData) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
-      }
+    decompress(data) {
+      if (!data || data.length === 0) return [];
       
-      if (!compressedData || compressedData.length === 0) {
-        return '';
-      }
+      const compressedString = this._bytesToString(data);
       
       // Deserialize tokens
-      const tokens = this._deserializeTokens(compressedData);
+      const tokens = this._deserializeTokens(compressedString);
       
       // Rebuild dictionary and output during decompression
       const dictionary = { 0: '' }; // Index 0 is empty string
@@ -325,7 +219,7 @@
           output += newString;
           
           // Add to dictionary if not full
-          if (nextIndex < this.MAX_DICTIONARY_SIZE) {
+          if (nextIndex < this.algorithm.MAX_DICTIONARY_SIZE) {
             dictionary[nextIndex] = newString;
             nextIndex++;
           }
@@ -335,27 +229,16 @@
         }
       }
       
-      return output;
-    },
-    
-    /**
-     * Clear instance data
-     */
-    ClearData: function(keyId) {
-      if (this.instances[keyId]) {
-        delete this.instances[keyId];
-        return true;
-      }
-      return false;
-    },
-    
+      return this._stringToBytes(output);
+    }
+
     /**
      * Serialize tokens to compressed format
      * Format: [TokenCount(4 bytes)][Token1][Token2]...[TokenN]
      * Token format: [Index(2 bytes)][CharCode(1 byte, 0 if empty)]
      * @private
      */
-    _serializeTokens: function(tokens) {
+    _serializeTokens(tokens) {
       const bytes = [];
       
       // Write token count (4 bytes, big-endian)
@@ -380,13 +263,13 @@
       }
       
       return this._bytesToString(bytes);
-    },
+    }
     
     /**
      * Deserialize tokens from compressed format
      * @private
      */
-    _deserializeTokens: function(compressedData) {
+    _deserializeTokens(compressedData) {
       const bytes = this._stringToBytes(compressedData);
       
       if (bytes.length < 4) {
@@ -419,126 +302,32 @@
       }
       
       return tokens;
-    },
+    }
     
-    /**
-     * Get compression statistics for instance
-     */
-    GetStats: function(keyId) {
-      const instance = this.instances[keyId];
-      if (!instance) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      return {
-        inputSize: instance.lastInputSize,
-        outputSize: instance.lastOutputSize,
-        compressionRatio: instance.compressionRatio,
-        spaceSavings: ((instance.lastInputSize - instance.lastOutputSize) / instance.lastInputSize * 100).toFixed(2) + '%',
-        dictionarySize: instance.nextIndex - 1,
-        maxDictionarySize: this.MAX_DICTIONARY_SIZE,
-        dictionaryUtilization: ((instance.nextIndex - 1) / this.MAX_DICTIONARY_SIZE * 100).toFixed(2) + '%',
-        efficiency: instance.compressionRatio > 1 ? ((instance.compressionRatio - 1) / instance.compressionRatio * 100).toFixed(2) + '%' : '0%',
-        tokensGenerated: instance.tokensGenerated || 0,
-        avgStringLength: instance.avgStringLength || 0
-      };
-    },
-    
-    /**
-     * Run validation tests against known test vectors
-     */
-    ValidateImplementation: function() {
-      const results = [];
-      
-      for (const testVector of this.testVectors) {
-        try {
-          const keyId = this.KeySetup();
-          const compressed = this.Compress(keyId, testVector.input);
-          const decompressed = this.Decompress(keyId, compressed);
-          
-          const passed = decompressed === testVector.input;
-          const stats = this.GetStats(keyId);
-          
-          results.push({
-            description: testVector.description,
-            category: testVector.category,
-            passed: passed,
-            compressionRatio: stats.compressionRatio,
-            expectedRatio: testVector.compressionRatio,
-            notes: testVector.notes,
-            dictionarySize: stats.dictionarySize,
-            inputSize: testVector.input.length,
-            outputSize: compressed.length
-          });
-          
-          this.ClearData(keyId);
-        } catch (error) {
-          results.push({
-            description: testVector.description,
-            category: testVector.category,
-            passed: false,
-            error: error.message
-          });
-        }
-      }
-      
-      return results;
-    },
-    
-    /**
-     * Get current dictionary contents (for debugging)
-     */
-    GetDictionary: function(keyId) {
-      const instance = this.instances[keyId];
-      if (!instance) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      return {
-        forward: { ...instance.dictionary },
-        reverse: { ...instance.reverseDictionary },
-        nextIndex: instance.nextIndex
-      };
-    },
-    
-    // Utility functions using OpCodes if available
-    _stringToBytes: function(str) {
-      if (global.OpCodes && OpCodes.StringToBytes) {
-        return OpCodes.StringToBytes(str);
-      }
-      
+    // Utility functions
+    _stringToBytes(str) {
       const bytes = [];
       for (let i = 0; i < str.length; i++) {
         bytes.push(str.charCodeAt(i) & 0xFF);
       }
       return bytes;
-    },
+    }
     
-    _bytesToString: function(bytes) {
-      if (global.OpCodes && OpCodes.BytesToString) {
-        return OpCodes.BytesToString(bytes);
-      }
-      
-      let str = '';
+    _bytesToString(bytes) {
+      let str = "";
       for (let i = 0; i < bytes.length; i++) {
         str += String.fromCharCode(bytes[i]);
       }
       return str;
     }
-  };
-  
-  // Auto-register with compression system
-  if (global.Compression) {
-    LZ78.Init();
-    global.Compression.AddAlgorithm(LZ78);
   }
+
+  // Register the algorithm
+  RegisterAlgorithm(new LZ78Algorithm());
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = LZ78;
+    module.exports = LZ78Algorithm;
   }
-  
-  // Make globally available
-  global.LZ78 = LZ78;
   
 })(typeof global !== 'undefined' ? global : window);

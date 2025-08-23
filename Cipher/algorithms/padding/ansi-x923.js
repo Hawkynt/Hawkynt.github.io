@@ -58,8 +58,8 @@ class AnsiX923Algorithm extends PaddingAlgorithm {
       ),
       new TestCase(
         OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393"), // 14 bytes  
-        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393000000000000000000000000000000000000002"), // Padded to 32 bytes
-        "ANSI X9.23 padding with 2 bytes needed",
+        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393000000000000000000000000000000000012"), // Padded to 32 bytes (18 bytes padding = 0x12)
+        "ANSI X9.23 padding with 18 bytes needed",
         "ANSI X9.23 Standard"
       ),
       new TestCase(

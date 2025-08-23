@@ -247,10 +247,10 @@ class IDEAInstance extends AlgorithmFramework.IBlockCipherInstance {
       
       // Rotate each word left by 25 bits within the 128-bit context
       for (let i = 0; i < 8; i++) {
-        const srcIndex = (i + 7) % 8; // Previous word (25 bits = 16 + 9)
-        const nextIndex = (i + 6) % 8; // Word before that
+        const word1Index = (i + 1) % 8; // Next word (25-bit rotation)
+        const word2Index = (i + 2) % 8; // Word after that
         
-        keySchedule[i] = ((temp[srcIndex] << 9) | (temp[nextIndex] >>> 7)) & 0xFFFF;
+        keySchedule[i] = ((temp[word1Index] << 9) | (temp[word2Index] >>> 7)) & 0xFFFF;
       }
       
       // Copy up to 8 keys from this rotated schedule

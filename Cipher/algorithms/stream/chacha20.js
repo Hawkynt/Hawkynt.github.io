@@ -174,8 +174,18 @@
         origin: 'IETF RFC 7539, Section 2.1.1',
         link: 'https://tools.ietf.org/rfc/rfc7539.txt',
         standard: 'RFC 7539',
-        input: [0x11111111, 0x01020304, 0x9b8d6f43, 0x01234567],
-        output: [0xea2a92f4, 0xcb1cf8ce, 0x4581472e, 0x5881c4bb],
+        input: global.OpCodes ? [
+          global.OpCodes.Pack32BE(0x11, 0x11, 0x11, 0x11),
+          global.OpCodes.Pack32BE(0x01, 0x02, 0x03, 0x04),
+          global.OpCodes.Pack32BE(0x9b, 0x8d, 0x6f, 0x43),
+          global.OpCodes.Pack32BE(0x01, 0x23, 0x45, 0x67)
+        ] : [0x11111111, 0x01020304, 0x9b8d6f43, 0x01234567],
+        output: global.OpCodes ? [
+          global.OpCodes.Pack32BE(0xea, 0x2a, 0x92, 0xf4),
+          global.OpCodes.Pack32BE(0xcb, 0x1c, 0xf8, 0xce),
+          global.OpCodes.Pack32BE(0x45, 0x81, 0x47, 0x2e),
+          global.OpCodes.Pack32BE(0x58, 0x81, 0xc4, 0xbb)
+        ] : [0xea2a92f4, 0xcb1cf8ce, 0x4581472e, 0x5881c4bb],
         notes: 'Quarter round function test for internal ChaCha20 verification',
         category: 'internal-function'
       },
@@ -252,7 +262,12 @@
     boolIsStreamCipher: true, // Mark as stream cipher
     
     // ChaCha20 constants
-    CONSTANTS: [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574], // "expand 32-byte k"
+    CONSTANTS: global.OpCodes ? [
+      global.OpCodes.Pack32LE(0x65, 0x78, 0x70, 0x61), // "expand 32-byte k" - "expa"
+      global.OpCodes.Pack32LE(0x6e, 0x64, 0x20, 0x33), // "nd 3"
+      global.OpCodes.Pack32LE(0x32, 0x2d, 0x62, 0x79), // "2-by"  
+      global.OpCodes.Pack32LE(0x74, 0x65, 0x20, 0x6b)  // "te k"
+    ] : [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574],
     BLOCK_SIZE: 64,        // ChaCha20 generates 64-byte keystream blocks
     NONCE_SIZE: 12,        // RFC 7539 uses 12-byte nonces
     KEY_SIZE: 32,          // ChaCha20 uses 32-byte keys
@@ -272,6 +287,71 @@
       ChaCha20.instances[id] = new ChaCha20.ChaCha20Instance(key);
       global.objectInstances[id] = true;
       return id;
+    },
+    
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._key = keyData;
+          this._instance = new ChaCha20.ChaCha20Instance(keyData, this._nonce, this._counter);
+        },
+        
+        set keySize(size) {
+          // Store for later use when key is set
+          this._keySize = size;
+        },
+        
+        set nonce(nonceData) {
+          if (this._instance) {
+            this._instance.reset(nonceData, 0);
+          } else {
+            this._nonce = nonceData;
+          }
+        },
+        
+        set counter(counterValue) {
+          if (this._instance) {
+            this._instance.reset(this._instance.nonce || this._nonce, counterValue);
+          } else {
+            this._counter = counterValue;
+          }
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          // Always create fresh instance for each test to ensure proper counter/nonce state
+          if (!this._key) {
+            this._key = new Array(32).fill(0);
+          }
+          
+          const freshInstance = new ChaCha20.ChaCha20Instance(this._key, this._nonce, this._counter);
+          
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            const keystreamByte = freshInstance.getNextKeystreamByte();
+            result.push(this._inputData[i] ^ keystreamByte);
+          }
+          return result;
+        }
+      };
     },
     
     // Clear cipher data
@@ -579,8 +659,18 @@
      * @returns {boolean} True if quarter-round passes RFC test
      */
     testQuarterRound: function() {
-      const testState = [0x11111111, 0x01020304, 0x9b8d6f43, 0x01234567];
-      const expected = [0xea2a92f4, 0xcb1cf8ce, 0x4581472e, 0x5881c4bb];
+      const testState = global.OpCodes ? [
+        global.OpCodes.Pack32BE(0x11, 0x11, 0x11, 0x11),
+        global.OpCodes.Pack32BE(0x01, 0x02, 0x03, 0x04),
+        global.OpCodes.Pack32BE(0x9b, 0x8d, 0x6f, 0x43),
+        global.OpCodes.Pack32BE(0x01, 0x23, 0x45, 0x67)
+      ] : [0x11111111, 0x01020304, 0x9b8d6f43, 0x01234567];
+      const expected = global.OpCodes ? [
+        global.OpCodes.Pack32BE(0xea, 0x2a, 0x92, 0xf4),
+        global.OpCodes.Pack32BE(0xcb, 0x1c, 0xf8, 0xce),
+        global.OpCodes.Pack32BE(0x45, 0x81, 0x47, 0x2e),
+        global.OpCodes.Pack32BE(0x58, 0x81, 0xc4, 0xbb)
+      ] : [0xea2a92f4, 0xcb1cf8ce, 0x4581472e, 0x5881c4bb];
       
       // Create a temporary ChaCha20 instance to access quarterRound
       const tempInstance = new ChaCha20.ChaCha20Instance(new Array(32).fill(0));
@@ -621,6 +711,16 @@
   // Auto-register with AlgorithmFramework if available
   if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
     global.AlgorithmFramework.RegisterAlgorithm(ChaCha20);
+  }
+  
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(ChaCha20);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(ChaCha20);
   }
   
   // Export to global scope

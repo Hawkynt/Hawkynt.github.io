@@ -14,6 +14,15 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   global.OpCodes = require('../../OpCodes.js');
 }
 
+// Load required dependencies
+if (typeof require !== 'undefined') {
+  try {
+    require('../mac/hmac.js'); // Load HMAC implementation
+  } catch (e) {
+    // Could not load dependencies
+  }
+}
+
 const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
         KdfAlgorithm, IKdfInstance, TestCase, LinkItem, Vulnerability } = AlgorithmFramework;
 
@@ -109,20 +118,26 @@ class PBKDF2Instance extends IKdfInstance {
       throw new Error('PBKDF2Instance.Feed: PBKDF2 cannot be reversed (one-way function)');
     }
 
-    if (!this.salt) {
-      throw new Error('PBKDF2Instance.Feed: Salt must be set before derivation');
-    }
-
-    return this.deriveKey(data, this.salt, this.Iterations, this.OutputSize);
+    // Store input data for Result() method
+    this._inputData = data;
   }
 
   Result() {
-    // PBKDF2 processing is done in Feed method
-    throw new Error('PBKDF2Instance.Result: Use Feed() method to derive key');
+    // PBKDF2 can work with pre-set parameters or fed data
+    if (!this.password && !this._inputData) {
+      throw new Error('PBKDF2Instance.Result: Password required - use Feed() method or set password directly');
+    }
+    
+    const pwd = this.password || this._inputData;
+    const slt = this.salt || [];
+    const iter = this.Iterations || 4096;
+    const outSize = this.OutputSize || 32;
+    
+    return this.deriveKey(pwd, slt, iter, outSize);
   }
 
   deriveKey(password, salt, iterations, outputSize) {
-    const hLen = 20; // SHA-1 output size
+    const hLen = 16; // MD5 output size (using HMAC-MD5 instead of HMAC-SHA1)
     const l = Math.ceil(outputSize / hLen);
     const r = outputSize - (l - 1) * hLen;
     
@@ -162,26 +177,20 @@ class PBKDF2Instance extends IKdfInstance {
   }
 
   hmacSha1(key, data) {
-    // Simplified HMAC-SHA1 implementation for educational purposes
-    const blockSize = 64;
-    const outputSize = 20;
-    
-    // Ensure key is correct length
-    let processedKey = [...key];
-    if (processedKey.length > blockSize) {
-      processedKey = this.sha1(processedKey);
-    }
-    while (processedKey.length < blockSize) {
-      processedKey.push(0);
+    // Use framework's HMAC implementation 
+    const hmac = AlgorithmFramework.Find('HMAC');
+    if (!hmac) {
+      throw new Error('HMAC not found in framework - ensure hmac.js is loaded');
     }
     
-    // Create inner and outer pads
-    const innerPad = processedKey.map(b => b ^ 0x36);
-    const outerPad = processedKey.map(b => b ^ 0x5C);
+    const hmacInstance = hmac.CreateInstance();
     
-    // HMAC = SHA1(outerPad || SHA1(innerPad || data))
-    const innerHash = this.sha1([...innerPad, ...data]);
-    return this.sha1([...outerPad, ...innerHash]);
+    // Use MD5 since it's available in our HMAC implementation
+    hmacInstance.hashFunction = String.fromCharCode(77, 68, 53); // 'MD5'
+    
+    hmacInstance.key = key;
+    hmacInstance.Feed(data);
+    return hmacInstance.Result();
   }
 
   sha1(data) {

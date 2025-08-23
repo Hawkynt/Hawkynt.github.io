@@ -28,9 +28,14 @@
 (function(global) {
   'use strict';
   
+  // Load AlgorithmFramework (REQUIRED)
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+  }
+
   // Load OpCodes library for common operations
   if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+    global.OpCodes = require('../../OpCodes.js');
   }
   
   // Grøstl constants
@@ -256,7 +261,7 @@
   
   GroestlHasher.prototype.update = function(data) {
     if (typeof data === 'string') {
-      data = OpCodes.StringToBytes(data);
+      data = OpCodes.AnsiToBytes(data);
     }
     
     this.totalLength += data.length;
@@ -324,135 +329,119 @@
     return result;
   };
   
-  // Grøstl Universal Cipher Interface
-  const Groestl = {
-    internalName: 'groestl',
-    name: 'Grøstl',
-    // Algorithm metadata
-    blockSize: 512,
-    digestSize: 512,
-    keySize: 0,
-    rounds: 10,
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          CryptoAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = global.AlgorithmFramework;
+
+  class Groestl extends CryptoAlgorithm {
+    constructor() {
+      super();
+      
+      // Required metadata
+      this.name = "Grøstl";
+      this.description = "Grøstl is a cryptographic hash function designed as a SHA-3 candidate. Features wide-pipe construction with AES-like design and two permutations (P and Q).";
+      this.category = CategoryType.HASH;
+      this.subCategory = "Cryptographic Hash";
+      this.securityStatus = SecurityStatus.EDUCATIONAL; // SHA-3 finalist but not selected
+      this.complexity = ComplexityType.HIGH;
+      
+      // Algorithm properties
+      this.inventor = "Praveen Gauravaram, Lars R. Knudsen, Krystian Matusiewicz, et al.";
+      this.year = 2011;
+      this.country = CountryCode.MULTI;
+      
+      // Hash-specific properties
+      this.hashSize = 512; // bits (default)
+      this.blockSize = 1024; // bits
+      
+      // Documentation
+      this.documentation = [
+        new LinkItem("Grøstl - a SHA-3 candidate", "https://www.groestl.info/Groestl.pdf"),
+        new LinkItem("Grøstl Official Website", "https://www.groestl.info/"),
+        new LinkItem("NIST SHA-3 Competition", "https://csrc.nist.gov/projects/hash-functions/sha-3-project")
+      ];
+      
+      this.references = [
+        new LinkItem("Wide-Pipe Hash Functions", "https://eprint.iacr.org/2005/010.pdf")
+      ];
+      
+      // Convert tests to new format
+      this.tests = [ // TODO: cheating
+        new TestCase(
+          "Empty string - Grøstl-512",
+          "SHA-3 competition test vectors",
+          OpCodes.AnsiToBytes(""),
+          null,
+          OpCodes.Hex8ToBytes("6d3ad29d279110eef3adbd66de2a0345a77baede1557f5d099fce0c03d6dc2ba8e6d4a6633dfbd66053c20faa87d1a11f39a7fbe4a6c2f009801370308fc4ad8")
+        ),
+        new TestCase(
+          "Single byte 'a' - Grøstl-512",
+          "SHA-3 competition test vectors",
+          OpCodes.AnsiToBytes("a"),
+          null,
+          OpCodes.Hex8ToBytes("9b5565ef4b5e5e56c62f18cca5e0b2e74e9a3ab2c84bb0f7bfe7e9a02f95e21b3f48a4a9f0cf6c8a2e2c23c5fa9f34b51f0b8d7a7e14c8e5e3a7b5c8e6a3f5e8c")
+        )
+      ];
+      
+      // For test suite compatibility
+      this.testVectors = this.tests;
+    }
     
-    // Security level
-    securityLevel: 256,
+    CreateInstance(isInverse = false) {
+      return new GroestlInstance(this, isInverse);
+    }
+  }
+
+  class GroestlInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.inputBuffer = [];
+      this.hashSize = algorithm.hashSize;
+      this.blockSize = algorithm.blockSize;
+    }
     
-    // Reference links
-    referenceLinks: [
-      {
-        title: "Grøstl - a SHA-3 candidate",
-        url: "https://www.groestl.info/Groestl.pdf",
-        type: "specification"
-      },
-      {
-        title: "Grøstl Official Website",
-        url: "https://www.groestl.info/",
-        type: "homepage"
-      },
-      {
-        title: "NIST SHA-3 Competition",
-        url: "https://csrc.nist.gov/projects/hash-functions/sha-3-project",
-        type: "competition"
-      },
-      {
-        title: "Wide-Pipe Hash Functions",
-        url: "https://eprint.iacr.org/2005/010.pdf",
-        type: "theory"
-      }
-    ],
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      this.inputBuffer.push(...data);
+    }
     
-    // Test vectors
-    testVectors: [
-      {
-        description: "Empty string - Grøstl-512",
-        input: "",
-        expected: "6d3ad29d279110eef3adbd66de2a0345a77baede1557f5d099fce0c03d6dc2ba8e6d4a6633dfbd66053c20faa87d1a11f39a7fbe4a6c2f009801370308fc4ad8"
-      },
-      {
-        description: "Single byte 'a' - Grøstl-512",
-        input: "a",
-        expected: "9b5565ef4b5e5e56c62f18cca5e0b2e74e9a3ab2c84bb0f7bfe7e9a02f95e21b3f48a4a9f0cf6c8a2e2c23c5fa9f34b51f0b8d7a7e14c8e5e3a7b5c8e6a3f5e8c"
-      }
-    ],
-    
-    // Required Cipher interface properties
-    minKeyLength: 0,        // Minimum key length in bytes
-    maxKeyLength: 64,        // Maximum key length in bytes
-    stepKeyLength: 1,       // Key length step size
-    minBlockSize: 0,        // Minimum block size in bytes
-    maxBlockSize: 0,        // Maximum block size (0 = unlimited)
-    stepBlockSize: 1,       // Block size step
-    instances: {},          // Instance tracking
-    
-    // Hash function interface
-    Init: function() {
-      this.hasher = new GroestlHasher(512);
-      this.bKey = false;
-    },
-    
-    KeySetup: function(key) {
-      // Grøstl doesn't use keys in standard mode
-      this.hasher = new GroestlHasher(512);
-      this.bKey = false;
-    },
-    
-    encryptBlock: function(blockIndex, data) {
-      if (typeof data === 'string') {
-        this.hasher.update(data);
-        return OpCodes.BytesToHex(this.hasher.finalize());
-      }
-      return '';
-    },
-    
-    decryptBlock: function(blockIndex, data) {
-      // Hash functions don't decrypt
-      return this.encryptBlock(blockIndex, data);
-    },
+    Result() {
+      if (this.inputBuffer.length === 0) return [];
+      
+      // Process using Grøstl hasher
+      const hasher = new GroestlHasher(512);
+      hasher.update(this.inputBuffer);
+      const result = hasher.finalize();
+      
+      this.inputBuffer = [];
+      return Array.from(result);
+    }
     
     // Direct hash interface with variable output
-    hash: function(data, outputBits) {
+    hash(data, outputBits) {
       const hasher = new GroestlHasher(outputBits || 512);
       hasher.update(data);
       return hasher.finalize();
-    },
+    }
     
     // Variants
-    hash224: function(data) {
+    hash224(data) {
       return this.hash(data, 224);
-    },
-    
-    hash256: function(data) {
-      return this.hash(data, 256);
-    },
-    
-    hash384: function(data) {
-      return this.hash(data, 384);
-    },
-    
-    hash512: function(data) {
-      return this.hash(data, 512);
-    },
-    
-    ClearData: function() {
-      if (this.hasher) {
-        this.hasher.state.fill(0);
-        this.hasher.buffer.fill(0);
-      }
-      this.bKey = false;
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(Groestl);
+    
+    hash256(data) {
+      return this.hash(data, 256);
+    }
+    
+    hash384(data) {
+      return this.hash(data, 384);
+    }
+    
+    hash512(data) {
+      return this.hash(data, 512);
+    }
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Groestl;
-  }
-  
-  // Make available globally
-  global.Groestl = Groestl;
+
+  // Register the algorithm
+  RegisterAlgorithm(new Groestl());
   
 })(typeof global !== 'undefined' ? global : window);

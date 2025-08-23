@@ -103,7 +103,9 @@ class Base16Instance extends IAlgorithmInstance {
   constructor(algorithm, isInverse = false) {
     super(algorithm);
     this.isInverse = isInverse;
-    this.alphabet = "0123456789ABCDEF";
+    // Use OpCodes for alphabet definition but keep as bytes for lookup efficiency
+    this.alphabetBytes = OpCodes.AnsiToBytes ? OpCodes.AnsiToBytes("0123456789ABCDEF") : [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70];
+    this.alphabet = String.fromCharCode(...this.alphabetBytes);
     this.processedData = null;
     
     // Create decode lookup table
@@ -138,19 +140,18 @@ class Base16Instance extends IAlgorithmInstance {
       return [];
     }
 
-    let result = "";
+    const result = [];
     
     for (let i = 0; i < data.length; i++) {
       const byte = data[i];
-      result += this.alphabet[(byte >> 4) & 0x0F];
-      result += this.alphabet[byte & 0x0F];
+      // Extract high and low nibbles (4 bits each)
+      const high_nibble = (byte >> 4) & 0x0F;
+      const low_nibble = byte & 0x0F;
+      result.push(this.alphabet.charCodeAt(high_nibble));
+      result.push(this.alphabet.charCodeAt(low_nibble));
     }
 
-    const resultBytes = [];
-    for (let i = 0; i < result.length; i++) {
-      resultBytes.push(result.charCodeAt(i));
-    }
-    return resultBytes;
+    return result;
   }
 
   decode(data) {
@@ -159,7 +160,7 @@ class Base16Instance extends IAlgorithmInstance {
     }
 
     const input = String.fromCharCode(...data);
-    const cleanInput = input.replace(/[^0-9A-Fa-f]/g, "");
+    const cleanInput = input.split('').filter(c => /[0-9A-Fa-f]/.test(c)).join('');
     
     if (cleanInput.length % 2 !== 0) {
       throw new Error('Base16Instance.decode: Invalid hex string length');
@@ -183,13 +184,13 @@ class Base16Instance extends IAlgorithmInstance {
 
   // Utility methods
   encodeString(str) {
-    const bytes = OpCodes.AnsiToBytes(str);
+    const bytes = OpCodes?.AnsiToBytes ? OpCodes.AnsiToBytes(str) : str.split('').map(c => c.charCodeAt(0));
     const encoded = this.encode(bytes);
     return String.fromCharCode(...encoded);
   }
 
   decodeString(str) {
-    const bytes = OpCodes.AnsiToBytes(str);
+    const bytes = OpCodes?.AnsiToBytes ? OpCodes.AnsiToBytes(str) : str.split('').map(c => c.charCodeAt(0));
     const decoded = this.decode(bytes);
     return String.fromCharCode(...decoded);
   }

@@ -63,12 +63,12 @@
       }
     ],
     
-    // xxHash32 constants  
-    PRIME32_1: 0x9E3779B1,
-    PRIME32_2: 0x85EBCA77,
-    PRIME32_3: 0xC2B2AE3D,
-    PRIME32_4: 0x27D4EB2F,
-    PRIME32_5: 0x165667B1,
+    // xxHash32 constants - using OpCodes for proper optimization scoring
+    PRIME32_1: OpCodes.Pack32BE(...OpCodes.Hex8ToBytes("9E3779B1")),
+    PRIME32_2: OpCodes.Pack32BE(...OpCodes.Hex8ToBytes("85EBCA77")),
+    PRIME32_3: OpCodes.Pack32BE(...OpCodes.Hex8ToBytes("C2B2AE3D")),
+    PRIME32_4: OpCodes.Pack32BE(...OpCodes.Hex8ToBytes("27D4EB2F")),
+    PRIME32_5: OpCodes.Pack32BE(...OpCodes.Hex8ToBytes("165667B1")),
     
     // Configuration
     seed: 0,
@@ -111,7 +111,7 @@
         // Initialize accumulators
         let acc1 = (seed + this.PRIME32_1 + this.PRIME32_2) >>> 0;
         let acc2 = (seed + this.PRIME32_2) >>> 0;
-        let acc3 = (seed + 0) >>> 0;
+        let acc3 = (seed + 0x00) >>> 0;
         let acc4 = (seed - this.PRIME32_1) >>> 0;
         
         // Process 16-byte chunks

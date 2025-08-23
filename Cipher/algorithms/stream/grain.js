@@ -436,6 +436,16 @@
     global.AlgorithmFramework.RegisterAlgorithm(Grain);
   }
   
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(Grain);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(Grain);
+  }
+  
   // Export to global scope
   global.Grain = Grain;
   

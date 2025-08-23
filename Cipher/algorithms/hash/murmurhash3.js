@@ -17,6 +17,11 @@
 (function(global) {
   'use strict';
   
+  // Load AlgorithmFramework (REQUIRED)
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+  }
+
   // Load OpCodes for cryptographic operations
   if (!global.OpCodes && typeof require !== 'undefined') {
     try {
@@ -27,19 +32,21 @@
     }
   }
   
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
+  // Ensure environment dependencies are available (optional for AlgorithmFramework)
+  if (!global.Cipher && !global.AlgorithmFramework) {
     if (typeof require !== 'undefined') {
       try {
         require('../../universal-cipher-env.js');
         require('../../cipher.js');
       } catch (e) {
         console.error('Failed to load cipher dependencies:', e.message);
-        return;
+        // Don't return if AlgorithmFramework is available
+        if (!global.AlgorithmFramework) return;
       }
     } else {
       console.error('MurmurHash3 requires Cipher system to be loaded first');
-      return;
+      // Don't return if AlgorithmFramework is available
+      if (!global.AlgorithmFramework) return;
     }
   }
   
@@ -335,7 +342,7 @@
       
       let seed = MurmurHash3.DEFAULT_SEED;
       if (seedBytes && seedBytes.length >= 4) {
-        const bytes = OpCodes.StringToBytes(seedBytes);
+        const bytes = OpCodes.AnsiToBytes(seedBytes);
         seed = OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]);
       }
       
@@ -381,7 +388,7 @@
      */
     hash32: function(data, seed) {
       seed = seed || MurmurHash3.DEFAULT_SEED;
-      const bytes = OpCodes.StringToBytes(data);
+      const bytes = OpCodes.AnsiToBytes(data);
       const length = bytes.length;
       let hash = seed >>> 0;
       
@@ -431,7 +438,7 @@
      */
     hash128: function(data, seed) {
       seed = seed || MurmurHash3.DEFAULT_SEED;
-      const bytes = OpCodes.StringToBytes(data);
+      const bytes = OpCodes.AnsiToBytes(data);
       const length = bytes.length;
       
       // Initialize hash state (4 x 32-bit words = 128 bits)
@@ -679,6 +686,98 @@
     global.Cipher.AddCipher(MurmurHash3);
   }
   
+  // Register with AlgorithmFramework if available
+  if (global.AlgorithmFramework) {
+    const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+            CryptoAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = global.AlgorithmFramework;
+
+    class MurmurHash3Algorithm extends CryptoAlgorithm {
+      constructor() {
+        super();
+        
+        // Required metadata
+        this.name = "MurmurHash3";
+        this.description = "Fast non-cryptographic hash function with excellent distribution properties. Designed for hash tables, bloom filters, and general purpose hashing.";
+        this.category = CategoryType.HASH;
+        this.subCategory = "Fast Hash";
+        this.securityStatus = SecurityStatus.EDUCATIONAL; // Non-cryptographic
+        this.complexity = ComplexityType.LOW;
+        
+        // Algorithm properties
+        this.inventor = "Austin Appleby";
+        this.year = 2008;
+        this.country = CountryCode.US;
+        
+        // Hash-specific properties
+        this.hashSize = 32; // bits (default, also supports 128-bit)
+        this.blockSize = 4; // bytes
+        
+        // Documentation
+        this.documentation = [
+          new LinkItem("MurmurHash3 Original Repository", "https://github.com/aappleby/MurmurHash"),
+          new LinkItem("SMHasher Test Suite", "https://github.com/aappleby/smhasher"),
+          new LinkItem("Wikipedia MurmurHash", "https://en.wikipedia.org/wiki/MurmurHash")
+        ];
+        
+        // Convert test vectors to AlgorithmFramework format
+        this.tests = [
+          new TestCase(
+            OpCodes.AnsiToBytes(""),
+            OpCodes.Hex8ToBytes("00000000"),
+            "Empty input with seed 0",
+            "https://github.com/aappleby/smhasher"
+          ),
+          new TestCase(
+            OpCodes.AnsiToBytes("a"),
+            OpCodes.Hex8ToBytes("3c2569b2"),
+            "Single character 'a'",
+            "https://github.com/aappleby/smhasher"
+          ),
+          new TestCase(
+            OpCodes.AnsiToBytes("abc"),
+            OpCodes.Hex8ToBytes("b3dd93fa"),
+            "Short string 'abc'",
+            "https://github.com/aappleby/smhasher"
+          )
+        ];
+        
+        // For test suite compatibility
+        this.testVectors = this.tests;
+      }
+      
+      CreateInstance(isInverse = false) {
+        return new MurmurHash3Instance(this, isInverse);
+      }
+    }
+
+    class MurmurHash3Instance extends IAlgorithmInstance {
+      constructor(algorithm, isInverse = false) {
+        super(algorithm);
+        this.inputBuffer = [];
+        this.seed = 0;
+      }
+      
+      Feed(data) {
+        if (!data || data.length === 0) return;
+        this.inputBuffer.push(...data);
+      }
+      
+      Result() {
+        if (this.inputBuffer.length === 0) return OpCodes.Hex8ToBytes("00000000");
+        
+        // Convert input buffer to string for MurmurHash3 API
+        const inputString = OpCodes.BytesToAnsi(this.inputBuffer);
+        const hashHex = MurmurHash3.hash32(inputString, this.seed);
+        const result = OpCodes.Hex8ToBytes(hashHex);
+        
+        this.inputBuffer = [];
+        return result;
+      }
+    }
+
+    RegisterAlgorithm(new MurmurHash3Algorithm());
+  }
+
   // Export to global scope
   global.MurmurHash3 = MurmurHash3;
   

@@ -62,37 +62,37 @@ class DESAlgorithm extends BlockCipherAlgorithm {
       {
         text: "FIPS 46-3 Weak Key Test Vector #1",
         uri: "https://csrc.nist.gov/publications/detail/fips/46/3/archive/1999-10-25",
-        input: OpCodes.Hex8ToBytes("8000000000000000"),
-        key: OpCodes.Hex8ToBytes("0101010101010101"),
-        expected: OpCodes.Hex8ToBytes("95F8A5E5DD31D900")
+        input: [0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        key: [0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01],
+        expected: [0x95, 0xF8, 0xA5, 0xE5, 0xDD, 0x31, 0xD9, 0x00]
       },
       {
         text: "FIPS 46-3 Weak Key Test Vector #2", 
         uri: "https://csrc.nist.gov/publications/detail/fips/46/3/archive/1999-10-25",
-        input: OpCodes.Hex8ToBytes("4000000000000000"),
-        key: OpCodes.Hex8ToBytes("0101010101010101"),
-        expected: OpCodes.Hex8ToBytes("DD7F121CA5015619")
+        input: [0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        key: [0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01],
+        expected: [0xDD, 0x7F, 0x12, 0x1C, 0xA5, 0x01, 0x56, 0x19]
       },
       {
         text: "FIPS 46-3 Single Bit Key Test",
         uri: "https://csrc.nist.gov/publications/detail/fips/46/3/archive/1999-10-25",
-        input: OpCodes.Hex8ToBytes("0000000000000000"),
-        key: OpCodes.Hex8ToBytes("8001010101010101"),
-        expected: OpCodes.Hex8ToBytes("95A8D72813DAA94D")
+        input: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        key: [0x80, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01],
+        expected: [0x95, 0xA8, 0xD7, 0x28, 0x13, 0xDA, 0xA9, 0x4D]
       },
       {
-        text: "DES Standard Test Pattern",
-        uri: "https://csrc.nist.gov/publications/detail/fips/46/3/archive/1999-10-25",
-        input: OpCodes.Hex8ToBytes("4E6F772069737420"),
-        key: OpCodes.Hex8ToBytes("0123456789ABCDEF"),
-        expected: OpCodes.Hex8ToBytes("3FA40E8A984D4815")
+        text: "DES Standard Test Pattern - Handbook of Applied Cryptography",
+        uri: "https://crypto.stackexchange.com/questions/65996/64-des-full-example-with-all-the-stages",
+        input: [0x4E, 0x6F, 0x77, 0x20, 0x69, 0x73, 0x20, 0x74],
+        key: [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF],
+        expected: [0x3F, 0xA4, 0x0E, 0x8A, 0x98, 0x4D, 0x48, 0x15]
       },
       {
         text: "DES Educational Test Vector",
         uri: "https://csrc.nist.gov/publications/detail/fips/46/3/archive/1999-10-25",
-        input: OpCodes.Hex8ToBytes("0123456789ABCDEF"),
-        key: OpCodes.Hex8ToBytes("133457799BBCDFF1"),
-        expected: OpCodes.Hex8ToBytes("85E813540F0AB405")
+        input: [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF],
+        key: [0x13, 0x34, 0x57, 0x79, 0x9B, 0xBC, 0xDF, 0xF1],
+        expected: [0x85, 0xE8, 0x13, 0x54, 0x0F, 0x0A, 0xB4, 0x05]
       }
     ];
   }
@@ -257,51 +257,21 @@ class DESInstance extends IBlockCipherInstance {
   }
 
   _initSBoxes() {
-    const sboxHex = [
-      "0E040D01020F0B08030A060C05090007" +
-      "000F07040E020D010A060C0B09050308" +
-      "04010E080D06020B0F0C0907030A0500" +
-      "0F0C080204090107050B030E0A00060D",
-      
-      "0F01080E060B03040907020D0C00050A" +
-      "030D04070F02080E0C00010A06090B05" +
-      "000E070B0A040D0105080C060903020F" +
-      "0D080A01030F04020B06070C00050E09",
-      
-      "0A00090E06030F05010D0C070B040208" +
-      "0D0700090304060A0208050E0C0B0F01" +
-      "0D060409080F03000B01020C050A0E07" +
-      "010A0D0006090807040F0E030B05020C",
-      
-      "070D0E030006090A010208050B0C040F" +
-      "0D080B05060F00030407020C010A0E09" +
-      "0A0609000C0B070D0F01030E05020804" +
-      "030F00060A010D080904050B0C07020E",
-      
-      "020C0401070A0B060805030F0D000E09" +
-      "0E0B020C04070D0105000F0A03090806" +
-      "0402010B0A0D07080F090C050603000E" +
-      "0B080C07010E020D060F00090A040503",
-      
-      "0C010A0F09020608000D03040E07050B" +
-      "0A0F0402070C090506010D0E000B0308" +
-      "090E0F0502080C030700040A010D0B06" +
-      "0403020C09050F0A0B0E01070600080D",
-      
-      "040B020E0F00080D030C0907050A0601" +
-      "0D000B070409010A0E03050C020F0806" +
-      "01040B0D0C03070E0A0F060800050902" +
-      "060B0D0801040A070905000F0E02030C",
-      
-      "0D020804060F0B010A09030E05000C07" +
-      "010F0D080A0307040C05060B000E0902" +
-      "070B0401090C0E0200060A0D0F030508" +
-      "02010E07040A080D0F0C09000305060B"
+    // Pre-computed S-box data (eliminates hex string literals)
+    const SBOX_DATA = [
+      [14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7, 0, 15, 7, 4, 14, 2, 13, 1, 10, 6, 12, 11, 9, 5, 3, 8, 4, 1, 14, 8, 13, 6, 2, 11, 15, 12, 9, 7, 3, 10, 5, 0, 15, 12, 8, 2, 4, 9, 1, 7, 5, 11, 3, 14, 10, 0, 6, 13],
+      [15, 1, 8, 14, 6, 11, 3, 4, 9, 7, 2, 13, 12, 0, 5, 10, 3, 13, 4, 7, 15, 2, 8, 14, 12, 0, 1, 10, 6, 9, 11, 5, 0, 14, 7, 11, 10, 4, 13, 1, 5, 8, 12, 6, 9, 3, 2, 15, 13, 8, 10, 1, 3, 15, 4, 2, 11, 6, 7, 12, 0, 5, 14, 9],
+      [10, 0, 9, 14, 6, 3, 15, 5, 1, 13, 12, 7, 11, 4, 2, 8, 13, 7, 0, 9, 3, 4, 6, 10, 2, 8, 5, 14, 12, 11, 15, 1, 13, 6, 4, 9, 8, 15, 3, 0, 11, 1, 2, 12, 5, 10, 14, 7, 1, 10, 13, 0, 6, 9, 8, 7, 4, 15, 14, 3, 11, 5, 2, 12],
+      [7, 13, 14, 3, 0, 6, 9, 10, 1, 2, 8, 5, 11, 12, 4, 15, 13, 8, 11, 5, 6, 15, 0, 3, 4, 7, 2, 12, 1, 10, 14, 9, 10, 6, 9, 0, 12, 11, 7, 13, 15, 1, 3, 14, 5, 2, 8, 4, 3, 15, 0, 6, 10, 1, 13, 8, 9, 4, 5, 11, 12, 7, 2, 14],
+      [2, 12, 4, 1, 7, 10, 11, 6, 8, 5, 3, 15, 13, 0, 14, 9, 14, 11, 2, 12, 4, 7, 13, 1, 5, 0, 15, 10, 3, 9, 8, 6, 4, 2, 1, 11, 10, 13, 7, 8, 15, 9, 12, 5, 6, 3, 0, 14, 11, 8, 12, 7, 1, 14, 2, 13, 6, 15, 0, 9, 10, 4, 5, 3],
+      [12, 1, 10, 15, 9, 2, 6, 8, 0, 13, 3, 4, 14, 7, 5, 11, 10, 15, 4, 2, 7, 12, 9, 5, 6, 1, 13, 14, 0, 11, 3, 8, 9, 14, 15, 5, 2, 8, 12, 3, 7, 0, 4, 10, 1, 13, 11, 6, 4, 3, 2, 12, 9, 5, 15, 10, 11, 14, 1, 7, 6, 0, 8, 13],
+      [4, 11, 2, 14, 15, 0, 8, 13, 3, 12, 9, 7, 5, 10, 6, 1, 13, 0, 11, 7, 4, 9, 1, 10, 14, 3, 5, 12, 2, 15, 8, 6, 1, 4, 11, 13, 12, 3, 7, 14, 10, 15, 6, 8, 0, 5, 9, 2, 6, 11, 13, 8, 1, 4, 10, 7, 9, 5, 0, 15, 14, 2, 3, 12],
+      [13, 2, 8, 4, 6, 15, 11, 1, 10, 9, 3, 14, 5, 0, 12, 7, 1, 15, 13, 8, 10, 3, 7, 4, 12, 5, 6, 11, 0, 14, 9, 2, 7, 11, 4, 1, 9, 12, 14, 2, 0, 6, 10, 13, 15, 3, 5, 8, 2, 1, 14, 7, 4, 10, 8, 13, 15, 12, 9, 0, 3, 5, 6, 11]
     ];
 
     this.SBOX = [];
-    for (let i = 0; i < sboxHex.length; i++) {
-      const flatSbox = OpCodes.Hex8ToBytes(sboxHex[i]);
+    for (let i = 0; i < SBOX_DATA.length; i++) {
+      const flatSbox = SBOX_DATA[i];
       const sbox = [];
       for (let row = 0; row < 4; row++) {
         sbox[row] = [];

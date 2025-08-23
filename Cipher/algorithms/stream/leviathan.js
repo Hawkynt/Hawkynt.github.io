@@ -40,15 +40,6 @@
       console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  } else {
-      console.error('Leviathan cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
-  
-   catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
-    }
   }
   
   // Create Leviathan cipher object

@@ -20,11 +20,7 @@
       console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  } else {
-      console.error('SNOW3G cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
+  } 
   
   // Load OpCodes for common operations
   if (!global.OpCodes && typeof require !== 'undefined') {

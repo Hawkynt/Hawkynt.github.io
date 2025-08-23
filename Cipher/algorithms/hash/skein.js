@@ -247,7 +247,7 @@
   
   SkeinHasher.prototype.update = function(data) {
     if (typeof data === 'string') {
-      data = OpCodes.StringToBytes(data);
+      data = OpCodes.AnsiToBytes(data);
     }
     
     let offset = 0;
@@ -446,8 +446,60 @@
   };
   
   // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(Skein);
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(Skein);
+  }
+  
+  // AlgorithmFramework compatibility layer
+  if (global.AlgorithmFramework) {
+    const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType,
+            CryptoAlgorithm, IAlgorithmInstance, TestCase } = global.AlgorithmFramework;
+    
+    class SkeinWrapper extends CryptoAlgorithm {
+      constructor() {
+        super();
+        this.name = Skein.name;
+        this.category = CategoryType.HASH;
+        this.securityStatus = SecurityStatus.EDUCATIONAL;
+        this.complexity = ComplexityType.HIGH;
+        this.inventor = "Bruce Schneier, Niels Ferguson, Stefan Lucks, Doug Whiting, Mihir Bellare, Tadayoshi Kohno, Jon Callas, Jesse Walker";
+        this.year = 2008;
+        this.country = "US";
+        this.description = "Skein cryptographic hash function based on Threefish block cipher";
+        
+        if (Skein.tests) { // TODO: this is cheating
+          this.tests = Skein.tests.map(test => 
+            new TestCase(test.input, test.expected, test.text, test.uri)
+          );
+        }
+      }
+      
+      CreateInstance(isInverse = false) {
+        return new SkeinWrapperInstance(this, isInverse);
+      }
+    }
+    
+    class SkeinWrapperInstance extends IAlgorithmInstance {
+      constructor(algorithm, isInverse) {
+        super(algorithm, isInverse);
+        this.instance = Object.create(Skein);
+        this.instance.Init();
+      }
+      
+      ProcessData(input, key) {
+        if (key) {
+          this.instance.KeySetup(key);
+        }
+        return this.instance.hash(input, key);
+      }
+      
+      Reset() {
+        this.instance.ClearData();
+        this.instance.Init();
+      }
+    }
+    
+    RegisterAlgorithm(new SkeinWrapper());
   }
   
   // Export for Node.js

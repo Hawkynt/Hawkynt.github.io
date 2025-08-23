@@ -1,26 +1,16 @@
-#!/usr/bin/env node
 /*
- * xxHash32 Universal Hash Function Implementation
- * Compatible with both Browser and Node.js environments
+ * xxHash32 Hash Function - Universal AlgorithmFramework Implementation
  * (c)2006-2025 Hawkynt
- * 
- * xxHash is an extremely fast non-cryptographic hash algorithm, designed by Yann Collet.
- * xxHash32 produces 32-bit hashes and is optimized for speed on 32-bit platforms.
- * 
- * Specification: https://github.com/Cyan4973/xxHash
- * Reference: https://cyan4973.github.io/xxHash/
- * 
- * NOTE: This is an educational implementation for learning purposes only.
- * Use proven cryptographic libraries for production systems.
  */
 
-(function(global) {
-  'use strict';
-  
-  // Load OpCodes library for common operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
-  }
+if (!global.AlgorithmFramework && typeof require !== 'undefined')
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+
+if (!global.OpCodes && typeof require !== 'undefined')
+  global.OpCodes = require('../../OpCodes.js');
+
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem } = AlgorithmFramework;
   
   // xxHash32 constants
   const XXHASH32_PRIME1 = 0x9E3779B1; // 2654435761
@@ -143,7 +133,7 @@
   
   XxHash32Hasher.prototype.update = function(data) {
     if (typeof data === 'string') {
-      data = OpCodes.StringToBytes(data);
+      data = OpCodes.AnsiToBytes(data);
     }
     
     this.totalLength += data.length;
@@ -239,79 +229,159 @@
     return xxh32Avalanche(hash);
   };
   
-  // xxHash32 Universal Cipher Interface
-  const XxHash32 = {
-    internalName: 'xxhash32',
-    name: 'xxHash32',
-    // Required Cipher interface properties
-    minKeyLength: 0,        // Minimum key length in bytes
-    maxKeyLength: 64,        // Maximum key length in bytes
-    stepKeyLength: 1,       // Key length step size
-    minBlockSize: 0,        // Minimum block size in bytes
-    maxBlockSize: 0,        // Maximum block size (0 = unlimited)
-    stepBlockSize: 1,       // Block size step
-    instances: {},          // Instance tracking
+class XXHash32Algorithm extends HashFunctionAlgorithm {
+  constructor() {
+    super();
     
-    // Hash function interface
-    Init: function() {
-      this.hasher = new XxHash32Hasher();
-      this.bKey = false;
-    },
+    // Required metadata
+    this.name = "xxHash32";
+    this.description = "xxHash is an extremely fast non-cryptographic hash algorithm designed by Yann Collet. xxHash32 produces 32-bit hashes and is optimized for speed on 32-bit platforms.";
+    this.inventor = "Yann Collet";
+    this.year = 2012;
+    this.category = CategoryType.HASH;
+    this.subCategory = "Fast Hash";
+    this.securityStatus = SecurityStatus.EDUCATIONAL;
+    this.complexity = ComplexityType.LOW;
+    this.country = CountryCode.MULTI;
+
+    // Hash-specific metadata
+    this.SupportedOutputSizes = [4]; // 32 bits = 4 bytes
     
-    KeySetup: function(key) {
-      // Use key as seed if provided
-      const seed = key && key.length >= 4 ? 
-        OpCodes.Pack32LE(key[0], key[1], key[2], key[3]) : XXHASH32_SEED;
-      this.hasher = new XxHash32Hasher(seed);
-      this.bKey = key && key.length > 0;
-    },
-    
-    encryptBlock: function(blockIndex, data) {
-      if (typeof data === 'string') {
-        this.hasher.update(data);
-        const hash = this.hasher.finalize();
-        // Convert 32-bit hash to 8-character hex string
-        return ('00000000' + hash.toString(16).toUpperCase()).slice(-8);
+    // Performance and technical specifications
+    this.blockSize = 16; // 128 bits = 16 bytes
+    this.outputSize = 4; // 32 bits = 4 bytes
+
+    // Documentation and references
+    this.documentation = [
+      new LinkItem("xxHash GitHub", "https://github.com/Cyan4973/xxHash"),
+      new LinkItem("xxHash Website", "https://cyan4973.github.io/xxHash/")
+    ];
+
+    this.references = [
+      new LinkItem("SMHasher Results", "https://github.com/rurban/smhasher")
+    ];
+
+    // Test vectors
+    this.tests = [
+      {
+        text: "xxHash32 Empty String",
+        uri: "https://github.com/Cyan4973/xxHash",
+        input: [],
+        expected: OpCodes.Hex8ToBytes("02CC5D05")
+      },
+      {
+        text: "xxHash32 Test Vector 'a'",
+        uri: "https://github.com/Cyan4973/xxHash",
+        input: [97], // "a"
+        expected: OpCodes.Hex8ToBytes("550D7456")
       }
-      return '';
-    },
+    ];
+  }
+
+  CreateInstance(isInverse = false) {
+    return new XXHash32AlgorithmInstance(this, isInverse);
+  }
+}
+
+class XXHash32AlgorithmInstance extends IHashFunctionInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.OutputSize = 4; // 32 bits = 4 bytes
     
-    decryptBlock: function(blockIndex, data) {
-      // Hash functions don't decrypt
-      return this.encryptBlock(blockIndex, data);
-    },
-    
-    // Direct hash interface
-    hash: function(data, seed) {
-      if (typeof data === 'string') {
-        data = OpCodes.StringToBytes(data);
+    this.hasher = new XxHash32Hasher();
+  }
+
+  Init() {
+    this.hasher = new XxHash32Hasher();
+  }
+
+  /**
+   * Hash a complete message in one operation
+   * @param {Array} message - Message to hash as byte array
+   * @returns {Array} Hash digest as byte array
+   */
+  Hash(message) {
+    // Convert string to byte array if needed
+    if (typeof message === 'string') {
+      const bytes = [];
+      for (let i = 0; i < message.length; i++) {
+        bytes.push(message.charCodeAt(i) & 0xFF);
       }
-      return xxhash32(data, seed);
-    },
-    
-    ClearData: function() {
-      if (this.hasher) {
-        this.hasher.acc1 = 0;
-        this.hasher.acc2 = 0;
-        this.hasher.acc3 = 0;
-        this.hasher.acc4 = 0;
-        this.hasher.buffer.fill(0);
-      }
-      this.bKey = false;
+      message = bytes;
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(XxHash32);
+    
+    const hash32 = xxhash32(message, XXHASH32_SEED);
+    const result = new Array(4);
+    for (let i = 0; i < 4; i++) {
+      result[i] = (hash32 >>> (i * 8)) & 0xFF;
+    }
+    return result;
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = XxHash32;
+
+  /**
+   * Required interface methods for IAlgorithmInstance compatibility
+   */
+  KeySetup(key) {
+    // Use key as seed if provided
+    const seed = key && key.length >= 4 ? 
+      OpCodes.Pack32LE(key[0], key[1], key[2], key[3]) : XXHASH32_SEED;
+    this.hasher = new XxHash32Hasher(seed);
+    return true;
   }
+
+  EncryptBlock(blockIndex, plaintext) {
+    // Return hash of the plaintext
+    return this.Hash(plaintext);
+  }
+
+  DecryptBlock(blockIndex, ciphertext) {
+    // Hash functions are one-way
+    throw new Error('xxHash32 is a one-way hash function - decryption not possible');
+  }
+
+  ClearData() {
+    if (this.hasher) {
+      this.hasher.acc1 = 0;
+      this.hasher.acc2 = 0;
+      this.hasher.acc3 = 0;
+      this.hasher.acc4 = 0;
+      if (this.hasher.buffer) {
+        OpCodes.ClearArray(this.hasher.buffer);
+      }
+    }
+  }
+
+  /**
+   * Feed method required by test suite - processes input data
+   * @param {Array} data - Input data as byte array
+   */
+  Feed(data) {
+    this.Init();
+    this.Update(data);
+  }
+
+  /**
+   * Result method required by test suite - returns final hash
+   * @returns {Array} Hash digest as byte array
+   */
+  Result() {
+    return this.Final();
+  }
+
+  Update(data) {
+    this.hasher.update(data);
+  }
+
+  Final() {
+    const hash32 = this.hasher.finalize();
+    const result = new Array(4);
+    for (let i = 0; i < 4; i++) {
+      result[i] = (hash32 >>> (i * 8)) & 0xFF;
+    }
+    return result;
+  }
+}
   
-  // Make available globally
-  global.XxHash32 = XxHash32;
-  
-})(typeof global !== 'undefined' ? global : window);
+// Register the algorithm
+RegisterAlgorithm(new XXHash32Algorithm());

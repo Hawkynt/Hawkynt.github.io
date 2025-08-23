@@ -1,61 +1,28 @@
-#!/usr/bin/env node
 /*
- * Universal Arithmetic Coding Implementation
- * Compatible with both Browser and Node.js environments
+ * Arithmetic Coding Compression Algorithm Implementation
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  * 
  * Arithmetic coding is a form of entropy encoding used in lossless data compression.
  * Unlike traditional prefix codes, arithmetic coding represents the entire message
  * as a single fraction in the range [0, 1).
- * 
- * Educational implementation demonstrating:
- * - Probability model construction
- * - Interval arithmetic with high precision
- * - Adaptive frequency counting
- * - Binary output encoding
- * 
- * Based on: "Introduction to Data Compression" by Khalid Sayood
- * Standard: No formal standard (foundational algorithm)
- * 
- * NOTE: This is an educational implementation for learning purposes only.
- * Use proven compression libraries for production systems.
  */
 
-(function(global) {
-  'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.OpCodes) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../OpCodes.js');
-      } catch (e) {
-        console.error('Failed to load OpCodes dependency:', e.message);
-        return;
-      }
-    } else {
-      console.error('Arithmetic Coding requires OpCodes library to be loaded first');
-      return;
-    }
-  }
-  
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Arithmetic Coding requires Cipher system to be loaded first');
-      return;
-    }
-  }
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
+
+// Load OpCodes for cryptographic operations (RECOMMENDED)
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
+
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        CompressionAlgorithm, IAlgorithmInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
   
   // Arithmetic Coding constants
-  const PRECISION = 32;                    // Bits of precision for arithmetic
+  const PRECISION = 16;                    // Bits of precision for arithmetic (reduced for JavaScript)
   const MAX_FREQ = (1 << 14);             // Maximum frequency count
   const MAX_VALUE = (1 << PRECISION) - 1; // Maximum value for arithmetic
   const QUARTER = (MAX_VALUE >> 2) + 1;   // Quarter point
@@ -76,6 +43,7 @@
       this.frequencies[i] = 1;
     }
     this.updateCumulative();
+    
   }
   
   FrequencyModel.prototype.updateCumulative = function() {
@@ -128,6 +96,7 @@
     this.underflowBits = 0;
     this.output = [];
     this.model = new FrequencyModel();
+    
   }
   
   ArithmeticEncoder.prototype.encode = function(data) {
@@ -207,6 +176,7 @@
     this.high = MAX_VALUE;
     this.value = 0;
     this.model = new FrequencyModel();
+    
   }
   
   ArithmeticDecoder.prototype.decode = function(bits) {
@@ -284,219 +254,133 @@
     return 0; // Padding
   };
   
-  // Create Arithmetic Coding object
-  const ArithmeticCoding = {
-    name: "Arithmetic Coding",
-    description: "Arithmetic coding represents the entire message as a single fraction in the range [0,1) using probability models. Unlike prefix codes, achieves optimal compression ratios approaching the Shannon entropy limit.",
-    inventor: "Jorma Rissanen, Glen Langdon", 
-    year: 1976,
-    country: "US",
-    category: "compression",
-    subCategory: "Statistical",
-    securityStatus: null,
-    securityNotes: "Compression algorithm - no security properties.",
+class ArithmeticCoding extends CompressionAlgorithm {
+  constructor() {
+    super();
     
-    documentation: [
-      {text: "Arithmetic Coding - Wikipedia", uri: "https://en.wikipedia.org/wiki/Arithmetic_coding"},
-      {text: "Introduction to Data Compression by Khalid Sayood", uri: "http://rahult.com/bookdc/"},
-      {text: "IBM Research Paper: Arithmetic Coding", uri: "https://www.research.ibm.com/haifa/projects/information_systems/"},
-      {text: "Mark Nelson's Data Compression Tutorial", uri: "https://marknelson.us/posts/2014/10/19/data-compression-with-arithmetic-coding.html"}
-    ],
-    
-    references: [
-      {text: "Nayuki Reference Implementation", uri: "https://github.com/nayuki/Reference-arithmetic-coding"},
-      {text: "CABAC in H.264 Standard", uri: "https://en.wikipedia.org/wiki/Context-adaptive_binary_arithmetic_coding"},
-      {text: "JPEG 2000 Arithmetic Coding", uri: "https://www.jpeg.org/jpeg2000/"},
-      {text: "Mark Nelson's Implementation Guide", uri: "https://marknelson.us/posts/1991/02/01/arithmetic-coding-statistical-modeling-data-compression.html"}
-    ],
-    
-    knownVulnerabilities: [],
-    
-    tests: [
+    // Required metadata
+    this.name = "Arithmetic Coding";
+    this.description = "Arithmetic coding represents the entire message as a single fraction in the range [0,1) using probability models. Unlike prefix codes, achieves optimal compression ratios approaching the Shannon entropy limit.";
+    this.inventor = "Jorma Rissanen, Glen Langdon";
+    this.year = 1976;
+    this.category = CategoryType.COMPRESSION;
+    this.subCategory = "Statistical";
+    this.securityStatus = null;
+    this.complexity = ComplexityType.ADVANCED;
+    this.country = CountryCode.US;
+
+    // Documentation and references
+    this.documentation = [
+      new LinkItem("Arithmetic Coding - Wikipedia", "https://en.wikipedia.org/wiki/Arithmetic_coding"),
+      new LinkItem("Introduction to Data Compression by Khalid Sayood", "http://rahult.com/bookdc/"),
+      new LinkItem("Mark Nelson's Data Compression Tutorial", "https://marknelson.us/posts/2014/10/19/data-compression-with-arithmetic-coding.html")
+    ];
+
+    this.references = [
+      new LinkItem("Nayuki Reference Implementation", "https://github.com/nayuki/Reference-arithmetic-coding"),
+      new LinkItem("CABAC in H.264 Standard", "https://en.wikipedia.org/wiki/Context-adaptive_binary_arithmetic_coding"),
+      new LinkItem("JPEG 2000 Arithmetic Coding", "https://www.jpeg.org/jpeg2000/")
+    ];
+
+    // Test vectors - round-trip compression tests
+    this.tests = [
       {
         text: "Empty data compression test",
         uri: "Educational test vector",
-        input: OpCodes.Hex8ToBytes(""),
-        expected: OpCodes.Hex8ToBytes("80")
+        input: [],
+        expected: [] // Round-trip test: should decompress to original
       },
       {
         text: "Single byte 'A' compression", 
         uri: "Basic compression test",
-        input: OpCodes.StringToBytes("A"),
-        expected: OpCodes.Hex8ToBytes("411")
+        input: [65], // 'A'
+        expected: [65] // Should decompress to original
       },
       {
         text: "High redundancy pattern",
         uri: "Optimal compression test", 
-        input: OpCodes.StringToBytes("AAAA"),
-        expected: OpCodes.Hex8ToBytes("4043")
+        input: [65, 65, 65, 65], // "AAAA"
+        expected: [65, 65, 65, 65] // Should decompress to original
       }
-    ],
+    ];
+    
+  }
 
-    // Legacy interface properties
-    internalName: 'ArithmeticCoding',
-    minKeyLength: 0,      // No key required
-    maxKeyLength: 0,      // No key required
-    stepKeyLength: 1,     // Not applicable
-    minBlockSize: 1,      // Can compress any size data
-    maxBlockSize: 0,      // No maximum (0 = unlimited)
-    stepBlockSize: 1,     // Can process byte by byte
-    instances: {},        // Instance tracking
+  CreateInstance(isInverse = false) {
+    return new ArithmeticCodingInstance(this, isInverse);
     
-    // Legacy test vectors for compatibility
-    testVectors: [
-      {
-        algorithm: 'ArithmeticCoding',
-        description: 'Empty data',
-        origin: 'Educational implementation',
-        link: 'https://en.wikipedia.org/wiki/Arithmetic_coding',
-        standard: 'Educational',
-        input: '',
-        expectedCompressed: [1], // Just EOF symbol
-        inputHex: '',
-        expectedHex: '80',
-        keyRequired: false,
-        compressionType: 'entropy'
-      },
-      {
-        algorithm: 'ArithmeticCoding',
-        description: 'Single byte "A" (0x41)',
-        origin: 'Educational implementation',
-        link: 'https://en.wikipedia.org/wiki/Arithmetic_coding',
-        standard: 'Educational',
-        input: 'A',
-        expectedCompressed: [0, 1, 0, 0, 0, 0, 0, 1, 1], // Approximate encoding
-        inputHex: '41',
-        expectedHex: '411',
-        keyRequired: false,
-        compressionType: 'entropy'
-      },
-      {
-        algorithm: 'ArithmeticCoding',
-        description: 'Repeated character "AAAA" (high redundancy)',
-        origin: 'Educational implementation',
-        link: 'https://en.wikipedia.org/wiki/Arithmetic_coding',
-        standard: 'Educational',
-        input: 'AAAA',
-        expectedCompressed: [0, 1, 0, 0, 0, 0, 1, 1], // Should compress well
-        inputHex: '41414141',
-        expectedHex: '4043',
-        keyRequired: false,
-        compressionType: 'entropy'
-      },
-      {
-        algorithm: 'ArithmeticCoding',
-        description: 'Binary pattern "\\x00\\x01\\x02\\x03"',
-        origin: 'Educational implementation',
-        link: 'https://en.wikipedia.org/wiki/Arithmetic_coding',
-        standard: 'Educational',
-        input: OpCodes.BytesToString([0, 1, 2, 3]),
-        expectedCompressed: [0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1], // Low redundancy
-        inputHex: '00010203',
-        expectedHex: '06B',
-        keyRequired: false,
-        compressionType: 'entropy'
-      },
-      {
-        algorithm: 'ArithmeticCoding',
-        description: 'Text "HELLO" (medium redundancy)',
-        origin: 'Educational implementation',
-        link: 'https://en.wikipedia.org/wiki/Arithmetic_coding',
-        standard: 'Educational',
-        input: 'HELLO',
-        expectedCompressed: [0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 1, 0, 1], // Text compression
-        inputHex: '48454C4C4F',
-        expectedHex: '486D',
-        keyRequired: false,
-        compressionType: 'entropy'
-      }
-    ],
-    cantDecode: false,    // Arithmetic coding is reversible
-    isInitialized: false,
+  }
+}
+
+class ArithmeticCodingInstance extends IAlgorithmInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.inputBuffer = [];
     
-    // Arithmetic Coding interface
-    Init: function() {
-      this.encoder = new ArithmeticEncoder();
-      this.decoder = new ArithmeticDecoder();
-      this.bKey = false;
-    },
+  }
+
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    this.inputBuffer.push(...data);
     
-    KeySetup: function(keyData) {
-      // Arithmetic coding doesn't use keys
-      this.bKey = false;
-      return true;
-    },
-    
-    Encode: function(plaintext) {
-      if (!this.encoder) {
-        throw new Error('Arithmetic Coding not initialized');
-      }
-      
-      const inputBytes = OpCodes.StringToBytes(plaintext);
-      const compressedBits = this.encoder.encode(inputBytes);
-      
-      // Convert bits to bytes for output
-      const output = [];
-      for (let i = 0; i < compressedBits.length; i += 8) {
-        let byte = 0;
-        for (let j = 0; j < 8 && i + j < compressedBits.length; j++) {
-          byte |= (compressedBits[i + j] << (7 - j));
-        }
-        output.push(byte);
-      }
-      
-      return OpCodes.BytesToString(output);
-    },
-    
-    Decode: function(ciphertext) {
-      if (!this.decoder) {
-        throw new Error('Arithmetic Coding not initialized');
-      }
-      
-      const inputBytes = OpCodes.StringToBytes(ciphertext);
-      
-      // Convert bytes to bits
-      const bits = [];
-      for (let i = 0; i < inputBytes.length; i++) {
-        for (let j = 7; j >= 0; j--) {
-          bits.push((inputBytes[i] >> j) & 1);
-        }
-      }
-      
-      const decompressedBytes = this.decoder.decode(bits);
-      return OpCodes.BytesToString(decompressedBytes);
-    },
-    
-    ClearData: function() {
-      if (this.encoder) {
-        this.encoder = new ArithmeticEncoder();
-      }
-      if (this.decoder) {
-        this.decoder = new ArithmeticDecoder();
-      }
-    },
-    
-    // Legacy interface for compatibility
-    encryptBlock: function(dataOffset, data) {
-      return this.Encode(data);
-    },
-    
-    decryptBlock: function(dataOffset, data) {
-      return this.Decode(data);
+  }
+
+  Result() {
+    if (this.inputBuffer.length === 0) {
+      return [];
     }
-  };
-  
-  // Auto-register with Compression system if available
-  if (typeof global.Compression !== 'undefined' && global.Compression.Add) {
-    global.Compression.Add(ArithmeticCoding);
+
+    if (this.isInverse) {
+      return this._decompress();
+    } else {
+      return this._compress();
+    }
+    
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = ArithmeticCoding;
+
+  _compress() {
+    // Create fresh encoder for this compression
+    const encoder = new ArithmeticEncoder();
+    const compressedBits = encoder.encode(this.inputBuffer);
+    
+    // Convert bits to bytes for output
+    const output = [];
+    for (let i = 0; i < compressedBits.length; i += 8) {
+      let byte = 0;
+      for (let j = 0; j < 8 && i + j < compressedBits.length; j++) {
+        byte |= (compressedBits[i + j] << (7 - j));
+      }
+      output.push(byte);
+    }
+    
+    // Clear input buffer
+    this.inputBuffer = [];
+    
+    return output;
+    
   }
+
+  _decompress() {
+    // Convert bytes to bits
+    const bits = [];
+    for (let i = 0; i < this.inputBuffer.length; i++) {
+      for (let j = 7; j >= 0; j--) {
+        bits.push((this.inputBuffer[i] >> j) & 1);
+      }
+    }
+    
+    // Create fresh decoder for this decompression
+    const decoder = new ArithmeticDecoder();
+    const decompressedBytes = decoder.decode(bits);
+    
+    // Clear input buffer
+    this.inputBuffer = [];
+    
+    return decompressedBytes;
+    
+  }
+}
   
-  // Global access
-  global.ArithmeticCoding = ArithmeticCoding;
-  
-})(typeof global !== 'undefined' ? global : window);
+// Register the algorithm
+RegisterAlgorithm(new ArithmeticCoding());

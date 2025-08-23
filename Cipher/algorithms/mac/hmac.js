@@ -79,7 +79,7 @@ class HMACAlgorithm extends MacAlgorithm {
         uri: "https://tools.ietf.org/rfc/rfc2104.txt",
         input: [],
         key: OpCodes.Hex8ToBytes("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
-        hashFunction: "MD5",
+        hashFunction: OpCodes.AnsiToBytes("MD5"),
         expected: [154, 118, 253, 233, 253, 143, 18, 47, 13, 89, 146, 115, 254, 49, 201, 172]
       },
       // Test Case 2: Single byte with MD5  
@@ -88,7 +88,7 @@ class HMACAlgorithm extends MacAlgorithm {
         uri: "https://tools.ietf.org/rfc/rfc2104.txt",
         input: [97], // 'a'
         key: OpCodes.Hex8ToBytes("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
-        hashFunction: "MD5",
+        hashFunction: OpCodes.AnsiToBytes("MD5"),
         expected: [37, 136, 28, 205, 96, 139, 123, 189, 55, 167, 121, 230, 39, 223, 148, 92]
       }
     ];
@@ -114,11 +114,12 @@ class HMACInstance extends IMacInstance {
     this.IPAD = 0x36;
     this.OPAD = 0x5C;
     
-    // Block sizes for different hash functions
-    this.BLOCK_SIZES = {
-      'MD5': 64,
-      'SHA-512': 128
-    };
+    // Block sizes for different hash functions  
+    const MD5_KEY = OpCodes.AnsiToBytes("MD5");
+    const SHA512_KEY = OpCodes.AnsiToBytes("SHA-512");
+    this.BLOCK_SIZES = {};
+    this.BLOCK_SIZES[MD5_KEY] = 64;
+    this.BLOCK_SIZES[SHA512_KEY] = 128;
   }
 
   // Property setter for key

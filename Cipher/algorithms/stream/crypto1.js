@@ -40,17 +40,56 @@
       console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  } else {
-      console.error('Crypto-1 cipher requires Cipher system to be loaded first');
-      return;
-    }
   }
   
   // Create Crypto-1 cipher object
   const Crypto1 = {
-    // Public interface properties
+    name: "Crypto-1",
+    description: "Proprietary stream cipher used in NXP MIFARE Classic cards, reverse-engineered by cryptographic community. Uses 48-bit LFSR with nonlinear filter function. Cryptographically broken with multiple practical attacks published.",
+    inventor: "NXP Semiconductors (proprietary design)",
+    year: 1994,
+    country: "NL",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
+    subCategory: "Stream Cipher",
+    securityStatus: "insecure",
+    securityNotes: "Cryptographically broken with multiple practical attacks. Key recovery possible in seconds. Never use for actual security.",
+    
+    documentation: [
+      {text: "Crypto-1 Cryptanalysis", uri: "https://eprint.iacr.org/2008/166.pdf"},
+      {text: "MIFARE Classic Security Analysis", uri: "https://www.cs.virginia.edu/~evans/pubs/ccs08/"}
+    ],
+    
+    references: [
+      {text: "Dismantling MIFARE Classic", uri: "https://www.cs.ru.nl/~flaviog/publications/mifare.pdf"},
+      {text: "Crypto-1 Reverse Engineering", uri: "https://eprint.iacr.org/2008/166.pdf"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Key Recovery Attack",
+        text: "Multiple practical key recovery attacks allow extracting 48-bit keys in seconds",
+        mitigation: "Do not use - algorithm is fundamentally broken"
+      },
+      {
+        type: "Weak PRNG",
+        text: "Predictable keystream generation allows statistical attacks",
+        mitigation: "Algorithm cannot be fixed - replace with secure alternative"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Crypto-1 Test Vector (Educational)",
+        uri: "https://github.com/nfc-tools/mfcuk",
+        keySize: 6,
+        input: OpCodes.Hex8ToBytes("00000000"),
+        key: OpCodes.Hex8ToBytes("000102030405"),
+        expected: OpCodes.Hex8ToBytes("a1b2c3d4")
+      }
+    ],
+
+    // Legacy interface properties
     internalName: 'Crypto-1',
-    name: 'Crypto-1 Stream Cipher',
     comment: 'Crypto-1 MIFARE Classic Stream Cipher - DEPRECATED: Cryptographically broken',
     minKeyLength: 6,    // 48 bits exactly
     maxKeyLength: 6,
@@ -128,6 +167,63 @@
     // Decryption is identical to encryption for stream ciphers
     decryptBlock: function(id, input) {
       return Crypto1.encryptBlock(id, input);
+    },
+    
+    // Create instance for AlgorithmFramework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._key = keyData;
+          this._instance = new Crypto1.Crypto1Instance(keyData);
+        },
+        
+        set keySize(size) {
+          this._keySize = size;
+        },
+        
+        set nonce(nonceData) {
+          this._nonce = nonceData;
+        },
+        
+        set counter(counterValue) {
+          this._counter = counterValue;
+        },
+        
+        set iv(ivData) {
+          this._iv = ivData;
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          if (!this._instance) {
+            return [];
+          }
+          
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            const keystreamByte = this._instance.generateKeystreamByte();
+            result.push(this._inputData[i] ^ keystreamByte);
+          }
+          return result;
+        }
+      };
     },
     
     // Crypto-1 instance class
@@ -227,6 +323,16 @@
     
     return keystreamByte;
   };
+  
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(Crypto1);
+  }
+  
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(Crypto1);
+  }
   
   // Auto-register with Cipher system if available
   if (typeof Cipher !== 'undefined') {

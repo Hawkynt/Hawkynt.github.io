@@ -1,134 +1,116 @@
 /*
- * Universal Byte-Pair Encoding (BPE)
- * Compatible with both Browser and Node.js environments
+ * Byte-Pair Encoding (BPE) Compression Algorithm Implementation
+ * Compatible with AlgorithmFramework
  * Educational implementation of Philip Gage's pair replacement algorithm
  * (c)2006-2025 Hawkynt
  */
 
 (function(global) {
   'use strict';
-  
-  // Load dependencies
-  if (!global.Compression && typeof require !== 'undefined') {
-    try {
-      require('../../compression.js');
-    } catch (e) {
-      console.error('Failed to load compression framework:', e.message);
-      return;
-    }
-  }
-  
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes.js:', e.message);
-      return;
-    }
-  }
-  
-  const BPE = {
-    name: "Byte-Pair Encoding (BPE)",
-    description: "Iteratively replaces the most frequently occurring byte pairs with unused byte values. Simple greedy approach that can achieve good compression on structured data with repeated patterns.",
-    inventor: "Philip Gage",
-    year: 1994,
-    country: "US", 
-    category: "compression",
-    subCategory: "Transform",
-    securityStatus: null,
-    securityNotes: "Compression algorithm - no security properties.",
-    
-    documentation: [
-      {text: "A New Algorithm for Data Compression - Philip Gage", uri: "http://www.cbloom.com/papers/gage_bpe.pdf"},
-      {text: "Byte Pair Encoding - Wikipedia", uri: "https://en.wikipedia.org/wiki/Byte_pair_encoding"},
-      {text: "Neural Machine Translation of Rare Words", uri: "https://arxiv.org/abs/1508.07909"},
-      {text: "BPE Algorithm Explanation", uri: "https://leimao.github.io/blog/Byte-Pair-Encoding/"}
-    ],
-    
-    references: [
-      {text: "Philip Gage Original Implementation", uri: "http://www.cbloom.com/src/index_lz.html"},
-      {text: "sentencepiece BPE Implementation", uri: "https://github.com/google/sentencepiece"},
-      {text: "Modern BPE in NLP", uri: "https://github.com/rsennrich/subword-nmt"},
-      {text: "BPE Compression Examples", uri: "https://github.com/karpathy/minGPT/blob/master/mingpt/bpe.py"}
-    ],
-    
-    knownVulnerabilities: [],
-    
-    tests: [
-      {
-        text: "Simple repeated pattern",
-        uri: "Educational test case", 
-        input: OpCodes.StringToBytes("ababab"),
-        expected: OpCodes.Hex8ToBytes("01009697979661620003000397")
-      },
-      {
-        text: "Text with common pairs",
-        uri: "Text compression test",
-        input: OpCodes.StringToBytes("hello world hello"),
-        expected: OpCodes.Hex8ToBytes("0200010065006C00680065006C006C006F0020776F726C64201000")
-      },
-      {
-        text: "No repeated pairs",
-        uri: "Worst case test",
-        input: OpCodes.StringToBytes("abcdef"),
-        expected: OpCodes.Hex8ToBytes("000000060061006200630064006500660")
-      }
-    ],
 
-    // Legacy interface properties
-    internalName: 'BPE',
-    category: 'Simple',
-    instances: {},
-    isInitialized: false,
-    
-    /**
-     * Initialize the algorithm
-     */
-    Init: function() {
-      this.isInitialized = true;
-      console.log('Byte-Pair Encoding algorithm initialized');
-    },
-    
-    /**
-     * Create a new instance
-     */
-    KeySetup: function() {
-      const id = this.internalName + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
-      this.instances[id] = {
-        initialized: true,
-        compressionRatio: 0,
-        lastInputSize: 0,
-        lastOutputSize: 0,
-        dictionary: {},
-        maxIterations: 256 // Limit iterations to prevent infinite loops
-      };
-      return id;
-    },
-    
-    /**
-     * Compress data using Byte-Pair Encoding
-     * @param {string} keyId - Instance identifier
-     * @param {string} data - Input data to compress
-     * @returns {string} Compressed data
-     */
-    Compress: function(keyId, data) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
-      }
+  // Load AlgorithmFramework (REQUIRED)
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+  }
+
+  // Load OpCodes for cryptographic operations (RECOMMENDED)
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    global.OpCodes = require('../../OpCodes.js');
+  }
+
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+          CompressionAlgorithm, IAlgorithmInstance, TestCase, LinkItem, KeySize } = global.AlgorithmFramework;
+  
+  class BPECompression extends CompressionAlgorithm {
+    constructor() {
+      super();
       
-      if (!data || data.length === 0) {
-        return '';
+      // Required metadata
+      this.name = "Byte-Pair Encoding (BPE)";
+      this.description = "Iteratively replaces the most frequently occurring byte pairs with unused byte values. Simple greedy approach that can achieve good compression on structured data with repeated patterns.";
+      this.inventor = "Philip Gage";
+      this.year = 1994;
+      this.category = CategoryType.COMPRESSION;
+      this.subCategory = "Transform";
+      this.securityStatus = null;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.US;
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("A New Algorithm for Data Compression - Philip Gage", "http://www.cbloom.com/papers/gage_bpe.pdf"),
+        new LinkItem("Byte Pair Encoding - Wikipedia", "https://en.wikipedia.org/wiki/Byte_pair_encoding"),
+        new LinkItem("BPE Algorithm Explanation", "https://leimao.github.io/blog/Byte-Pair-Encoding/")
+      ];
+
+      this.references = [
+        new LinkItem("Philip Gage Original Implementation", "http://www.cbloom.com/src/index_lz.html"),
+        new LinkItem("sentencepiece BPE Implementation", "https://github.com/google/sentencepiece"),
+        new LinkItem("Modern BPE in NLP", "https://github.com/rsennrich/subword-nmt")
+      ];
+
+      // Test vectors - round-trip compression tests
+      this.tests = [
+        {
+          text: "Simple repeated pattern",
+          uri: "Educational test case", 
+          input: [97, 98, 97, 98, 97, 98], // "ababab"
+          expected: [97, 98, 97, 98, 97, 98] // Should decompress to original
+        },
+        {
+          text: "Text with common pairs",
+          uri: "Text compression test",
+          input: [104, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100, 32, 104, 101, 108, 108, 111], // "hello world hello"
+          expected: [104, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100, 32, 104, 101, 108, 108, 111] // Should decompress to original
+        },
+        {
+          text: "No repeated pairs",
+          uri: "Worst case test",
+          input: [97, 98, 99, 100, 101, 102], // "abcdef"
+          expected: [97, 98, 99, 100, 101, 102] // Should decompress to original
+        }
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      return new BPEInstance(this, isInverse);
+    }
+  }
+
+  class BPEInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.inputBuffer = [];
+      this.maxIterations = 256; // Limit iterations to prevent infinite loops
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      if (this.inputBuffer.length === 0) {
+        return [];
       }
-      
-      const instance = this.instances[keyId];
-      let workingData = this._stringToBytes(data);
-      instance.dictionary = {};
+
+      if (this.isInverse) {
+        return this._decompress();
+      } else {
+        return this._compress();
+      }
+    }
+
+    _compress() {
+      let workingData = [...this.inputBuffer];
+      const dictionary = {};
       
       let replacementCode = 256; // Start after regular byte values
       let iteration = 0;
       
       // Iteratively find and replace most frequent byte pairs
-      while (iteration < instance.maxIterations) {
+      while (iteration < this.maxIterations) {
         // Find most frequent byte pair
         const pairCounts = this._countBytePairs(workingData);
         
@@ -157,7 +139,6 @@
         // Replace all occurrences of the pair
         const newData = [];
         let i = 0;
-        let replacements = 0;
         
         while (i < workingData.length) {
           if (i < workingData.length - 1 && 
@@ -166,7 +147,6 @@
             // Found pair, replace with new code
             newData.push(replacementCode);
             i += 2;
-            replacements++;
           } else {
             // Copy single byte
             newData.push(workingData[i]);
@@ -177,7 +157,7 @@
         // Only accept replacement if it actually saves space
         if (newData.length < workingData.length) {
           // Store replacement in dictionary
-          instance.dictionary[replacementCode] = [byte1, byte2];
+          dictionary[replacementCode] = [byte1, byte2];
           workingData = newData;
           replacementCode++;
           
@@ -191,33 +171,17 @@
       }
       
       // Create compressed format: [DictSize][Dictionary][CompressedData]
-      const compressed = this._packCompressedData(instance.dictionary, workingData);
+      const compressed = this._packCompressedData(dictionary, workingData);
       
-      // Update statistics
-      instance.lastInputSize = data.length;
-      instance.lastOutputSize = compressed.length;
-      instance.compressionRatio = data.length / compressed.length;
+      // Clear input buffer
+      this.inputBuffer = [];
       
       return compressed;
-    },
-    
-    /**
-     * Decompress BPE-encoded data
-     * @param {string} keyId - Instance identifier
-     * @param {string} compressedData - Compressed data
-     * @returns {string} Decompressed data
-     */
-    Decompress: function(keyId, compressedData) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      if (!compressedData || compressedData.length === 0) {
-        return '';
-      }
-      
+    }
+
+    _decompress() {
       // Unpack compressed data
-      const { dictionary, data } = this._unpackCompressedData(compressedData);
+      const { dictionary, data } = this._unpackCompressedData(this.inputBuffer);
       
       // Expand using dictionary (reverse order of compression)
       let workingData = [...data];
@@ -244,25 +208,17 @@
         workingData = newData;
       }
       
-      return this._bytesToString(workingData);
-    },
-    
-    /**
-     * Clear instance data
-     */
-    ClearData: function(keyId) {
-      if (this.instances[keyId]) {
-        delete this.instances[keyId];
-        return true;
-      }
-      return false;
-    },
-    
+      // Clear input buffer
+      this.inputBuffer = [];
+      
+      return workingData;
+    }
+
     /**
      * Count occurrences of all byte pairs
      * @private
      */
-    _countBytePairs: function(data) {
+    _countBytePairs(data) {
       const pairCounts = {};
       
       for (let i = 0; i < data.length - 1; i++) {
@@ -271,13 +227,13 @@
       }
       
       return pairCounts;
-    },
+    }
     
     /**
      * Pack compressed data with dictionary
      * @private
      */
-    _packCompressedData: function(dictionary, data) {
+    _packCompressedData(dictionary, data) {
       const bytes = [];
       
       // Dictionary size (2 bytes, big-endian)
@@ -307,16 +263,14 @@
         bytes.push(value & 0xFF);
       }
       
-      return this._bytesToString(bytes);
-    },
+      return bytes;
+    }
     
     /**
      * Unpack compressed data
      * @private
      */
-    _unpackCompressedData: function(compressedData) {
-      const bytes = this._stringToBytes(compressedData);
-      
+    _unpackCompressedData(bytes) {
       if (bytes.length < 6) {
         throw new Error('Invalid BPE compressed data: too short');
       }
@@ -364,66 +318,15 @@
       }
       
       return { dictionary, data };
-    },
-    
-    /**
-     * Get compression statistics for instance
-     */
-    GetStats: function(keyId) {
-      const instance = this.instances[keyId];
-      if (!instance) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      return {
-        inputSize: instance.lastInputSize,
-        outputSize: instance.lastOutputSize,
-        compressionRatio: instance.compressionRatio,
-        spaceSavings: ((instance.lastInputSize - instance.lastOutputSize) / instance.lastInputSize * 100).toFixed(2) + '%',
-        dictionarySize: Object.keys(instance.dictionary).length,
-        maxIterations: instance.maxIterations,
-        description: 'Replaces most frequent byte pairs iteratively - simple but effective'
-      };
-    },
-    
-    // Utility functions using OpCodes if available
-    _stringToBytes: function(str) {
-      if (global.OpCodes && OpCodes.StringToBytes) {
-        return OpCodes.StringToBytes(str);
-      }
-      
-      const bytes = [];
-      for (let i = 0; i < str.length; i++) {
-        bytes.push(str.charCodeAt(i) & 0xFF);
-      }
-      return bytes;
-    },
-    
-    _bytesToString: function(bytes) {
-      if (global.OpCodes && OpCodes.BytesToString) {
-        return OpCodes.BytesToString(bytes);
-      }
-      
-      let str = '';
-      for (let i = 0; i < bytes.length; i++) {
-        str += String.fromCharCode(bytes[i]);
-      }
-      return str;
     }
-  };
-  
-  // Auto-register with Compression system if available
-  if (typeof global.Compression !== 'undefined' && global.Compression.Add) {
-    BPE.Init();
-    global.Compression.Add(BPE);
   }
   
+  // Register the algorithm
+  RegisterAlgorithm(new BPECompression());
+
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = BPE;
+    module.exports = BPECompression;
   }
-  
-  // Make globally available
-  global.BPE = BPE;
-  
+
 })(typeof global !== 'undefined' ? global : window);

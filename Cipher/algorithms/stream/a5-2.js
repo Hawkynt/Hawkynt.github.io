@@ -36,10 +36,6 @@
       console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  } else {
-      console.error('A5/2 cipher requires Cipher system to be loaded first');
-      return;
-    }
   }
   
   // Create A5/2 cipher object
@@ -84,9 +80,9 @@
         text: "A5/2 Basic Test Vector (Educational Only)",
         uri: "https://cryptome.org/a52-bk.htm",
         keySize: 8,
-        input: OpCodes.Hex8ToBytes("00000000"),
-        key: OpCodes.Hex8ToBytes("0000000000000000"),
-        expected: OpCodes.Hex8ToBytes("a3b2c1d0")
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000") : [],
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("0000000000000000") : [],
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("a3b2c1d0") : []
       }
     ],
 
@@ -274,8 +270,8 @@
       // In reality, A5/2 has additional complexity that makes it weaker
       
       // Get control bits from LFSR4
-      const c4_0 = OpCodes.GetBit(this.lfsr4, 0); // LSB of LFSR4
-      const c4_1 = OpCodes.GetBit(this.lfsr4, 1); // Bit 1 of LFSR4
+      const c4_0 = global.OpCodes.GetBit(this.lfsr4, 0); // LSB of LFSR4
+      const c4_1 = global.OpCodes.GetBit(this.lfsr4, 1); // Bit 1 of LFSR4
       
       // Clock LFSR4 first
       this.clockRegister4();
@@ -296,22 +292,22 @@
      * Clock LFSR1 (19 bits, same as A5/1)
      */
     clockRegister1: function() {
-      const feedback = OpCodes.GetBit(this.lfsr1, 13) ^
-                      OpCodes.GetBit(this.lfsr1, 16) ^
-                      OpCodes.GetBit(this.lfsr1, 17) ^
-                      OpCodes.GetBit(this.lfsr1, 18);
+      const feedback = global.OpCodes.GetBit(this.lfsr1, 13) ^
+                      global.OpCodes.GetBit(this.lfsr1, 16) ^
+                      global.OpCodes.GetBit(this.lfsr1, 17) ^
+                      global.OpCodes.GetBit(this.lfsr1, 18);
       
-      this.lfsr1 = ((this.lfsr1 << 1) | feedback) & OpCodes.BitMask(19);
+      this.lfsr1 = ((this.lfsr1 << 1) | feedback) & global.OpCodes.BitMask(19);
     },
     
     /**
      * Clock LFSR2 (22 bits, same as A5/1)
      */
     clockRegister2: function() {
-      const feedback = OpCodes.GetBit(this.lfsr2, 20) ^
-                      OpCodes.GetBit(this.lfsr2, 21);
+      const feedback = global.OpCodes.GetBit(this.lfsr2, 20) ^
+                      global.OpCodes.GetBit(this.lfsr2, 21);
       
-      this.lfsr2 = ((this.lfsr2 << 1) | feedback) & OpCodes.BitMask(22);
+      this.lfsr2 = ((this.lfsr2 << 1) | feedback) & global.OpCodes.BitMask(22);
     },
     
     /**

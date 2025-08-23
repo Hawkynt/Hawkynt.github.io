@@ -1,135 +1,205 @@
 #!/usr/bin/env node
 /*
- * FNV Hash Implementation
+ * FNV Hash Implementation - Universal AlgorithmFramework Implementation
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
-  'use strict';
-  
-  // Load OpCodes for cryptographic operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes.js:', e.message);
-      return;
-    }
-  }
+if (!global.AlgorithmFramework && typeof require !== 'undefined')
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
 
-  const FNV = {
-    name: "FNV-1a",
-    description: "Fast non-cryptographic hash function with good distribution. Simple multiply and XOR operations.",
-    inventor: "Glenn Fowler, Landon Curt Noll, Phong Vo",
-    year: 1991,
-    country: "US",
-    category: "hash",
-    subCategory: "Fast Hash",
-    securityStatus: null,
-    securityNotes: "FNV is designed for speed and good distribution, not cryptographic security. Not suitable for security-sensitive applications.",
+if (!global.OpCodes && typeof require !== 'undefined')
+  global.OpCodes = require('../../OpCodes.js');
+
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem } = AlgorithmFramework;
+
+// FNV-1a 32-bit constants
+const FNV_32_PRIME = 0x01000193;
+const FNV_32_OFFSET_BASIS = 0x811c9dc5;
+
+class FNVAlgorithm extends HashFunctionAlgorithm {
+  constructor() {
+    super();
     
-    documentation: [
-      {text: "FNV Hash Official Website", uri: "http://www.isthe.com/chongo/tech/comp/fnv/index.html"},
-      {text: "Wikipedia FNV Hash", uri: "https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function"},
-      {text: "FNV Hash Specification", uri: "http://www.isthe.com/chongo/tech/comp/fnv/"}
-    ],
+    // Required metadata
+    this.name = "FNV-1a";
+    this.description = "FNV-1a is a fast non-cryptographic hash function with good distribution properties. It uses simple multiply and XOR operations for high performance.";
+    this.inventor = "Glenn Fowler, Landon Curt Noll, Phong Vo";
+    this.year = 1991;
+    this.category = CategoryType.HASH;
+    this.subCategory = "Fast Hash";
+    this.securityStatus = SecurityStatus.EDUCATIONAL;
+    this.complexity = ComplexityType.BASIC;
+    this.country = CountryCode.US;
+
+    // Hash-specific metadata
+    this.SupportedOutputSizes = [4]; // 32 bits = 4 bytes
     
-    references: [
-      {text: "FNV Reference Implementation", uri: "http://www.isthe.com/chongo/src/fnv/"},
-      {text: "Hash Function Performance Tests", uri: "https://github.com/aappleby/smhasher"}
-    ],
-    
-    knownVulnerabilities: [
-      "Not cryptographically secure",
-      "Vulnerable to hash flooding attacks",
-      "Can be reversed with precomputed tables for small inputs"
-    ],
-    
-    tests: [
+    // Performance and technical specifications
+    this.blockSize = 1; // Processes one byte at a time
+    this.outputSize = 4; // 32 bits = 4 bytes
+
+    // Documentation and references
+    this.documentation = [
+      new LinkItem("FNV Hash Official Website", "http://www.isthe.com/chongo/tech/comp/fnv/index.html"),
+      new LinkItem("FNV Hash Specification", "http://www.isthe.com/chongo/tech/comp/fnv/"),
+      new LinkItem("Wikipedia FNV Hash", "https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function")
+    ];
+
+    this.references = [
+      new LinkItem("FNV Reference Implementation", "http://www.isthe.com/chongo/src/fnv/"),
+      new LinkItem("Hash Function Performance Tests", "https://github.com/aappleby/smhasher")
+    ];
+
+    // Test vectors from FNV specification
+    this.tests = [
       {
         text: "FNV-1a Test Vector - Empty string",
         uri: "http://www.isthe.com/chongo/tech/comp/fnv/",
-        input: OpCodes.StringToBytes(""),
-        key: null,
+        input: [],
         expected: OpCodes.Hex8ToBytes("811c9dc5")
       },
       {
         text: "FNV-1a Test Vector - 'a'",
         uri: "http://www.isthe.com/chongo/tech/comp/fnv/",
-        input: OpCodes.StringToBytes("a"),
-        key: null,
+        input: OpCodes.AnsiToBytes("a"),
         expected: OpCodes.Hex8ToBytes("e40c292c")
       },
       {
         text: "FNV-1a Test Vector - 'foobar'",
         uri: "http://www.isthe.com/chongo/tech/comp/fnv/",
-        input: OpCodes.StringToBytes("foobar"),
-        key: null,
+        input: OpCodes.AnsiToBytes("foobar"),
         expected: OpCodes.Hex8ToBytes("a9f37ed7")
       }
-    ],
-
-    Init: function() {
-      return true;
-    },
-
-    // FNV-1a 32-bit constants
-    FNV_32_PRIME: 0x01000193,
-    FNV_32_OFFSET_BASIS: 0x811c9dc5,
-
-    // Core FNV-1a computation
-    compute: function(data) {
-      const bytes = Array.isArray(data) ? data : OpCodes.StringToBytes(data);
-      let hash = this.FNV_32_OFFSET_BASIS;
-      
-      for (let i = 0; i < bytes.length; i++) {
-        // FNV-1a: XOR byte first, then multiply
-        hash = (hash ^ (bytes[i] & 0xFF)) >>> 0;
-        hash = Math.imul(hash, this.FNV_32_PRIME) >>> 0;
-      }
-      
-      // Return as 4-byte array (big-endian)
-      return [
-        (hash >>> 24) & 0xFF,
-        (hash >>> 16) & 0xFF,
-        (hash >>> 8) & 0xFF,
-        hash & 0xFF
-      ];
-    },
-
-    // FNV-1 (different from FNV-1a) - multiply first, then XOR
-    computeFNV1: function(data) {
-      const bytes = Array.isArray(data) ? data : OpCodes.StringToBytes(data);
-      let hash = this.FNV_32_OFFSET_BASIS;
-      
-      for (let i = 0; i < bytes.length; i++) {
-        // FNV-1: Multiply first, then XOR byte
-        hash = Math.imul(hash, this.FNV_32_PRIME) >>> 0;
-        hash = (hash ^ (bytes[i] & 0xFF)) >>> 0;
-      }
-      
-      // Return as 4-byte array (big-endian)
-      return [
-        (hash >>> 24) & 0xFF,
-        (hash >>> 16) & 0xFF,
-        (hash >>> 8) & 0xFF,
-        hash & 0xFF
-      ];
-    }
-  };
-
-  // Auto-register with Subsystem (according to category) if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
-    global.Cipher.Add(FNV);
-  
-
-
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = FNV;
+    ];
   }
-  
-  // Export to global scope
-  global.FNV = FNV;
 
-})(typeof global !== 'undefined' ? global : window);
+  CreateInstance(isInverse = false) {
+    return new FNVAlgorithmInstance(this, isInverse);
+  }
+}
+
+
+class FNVAlgorithmInstance extends IHashFunctionInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.OutputSize = 4; // 32 bits = 4 bytes
+    
+    // FNV state
+    this._buffer = [];
+    this._length = 0;
+  }
+
+  /**
+   * Initialize the hash state
+   */
+  Init() {
+    this._buffer = [];
+    this._length = 0;
+  }
+
+  /**
+   * Add data to the hash calculation
+   * @param {Array} data - Data to hash as byte array
+   */
+  Update(data) {
+    if (!data || data.length === 0) return;
+    
+    // Convert string to byte array if needed
+    if (typeof data === 'string') {
+      data = OpCodes.AnsiToBytes(data);
+    }
+    
+    this._buffer = this._buffer.concat(Array.from(data));
+    this._length += data.length;
+  }
+
+  /**
+   * Finalize the hash calculation and return result as byte array
+   * @returns {Array} Hash digest as byte array
+   */
+  Final() {
+    return this._computeFNV1a(this._buffer);
+  }
+
+  /**
+   * Hash a complete message in one operation
+   * @param {Array} message - Message to hash as byte array
+   * @returns {Array} Hash digest as byte array
+   */
+  Hash(message) {
+    this.Init();
+    this.Update(message);
+    return this.Final();
+  }
+
+  /**
+   * Core FNV-1a computation
+   * @param {Array} data - Input data as byte array
+   * @returns {Array} FNV-1a hash digest
+   */
+  _computeFNV1a(data) {
+    const bytes = Array.isArray(data) ? data : OpCodes.AnsiToBytes(data);
+    let hash = FNV_32_OFFSET_BASIS;
+    
+    for (let i = 0; i < bytes.length; i++) {
+      // FNV-1a: XOR byte first, then multiply
+      hash = (hash ^ (bytes[i] & 0xFF)) >>> 0;
+      hash = Math.imul(hash, FNV_32_PRIME) >>> 0;
+    }
+    
+    // Return as 4-byte array (big-endian)
+    return [
+      (hash >>> 24) & 0xFF,
+      (hash >>> 16) & 0xFF,
+      (hash >>> 8) & 0xFF,
+      hash & 0xFF
+    ];
+  }
+
+  /**
+   * Required interface methods for IAlgorithmInstance compatibility
+   */
+  KeySetup(key) {
+    // Hashes don't use keys
+    return true;
+  }
+
+  EncryptBlock(blockIndex, plaintext) {
+    // Return hash of the plaintext
+    return this.Hash(plaintext);
+  }
+
+  DecryptBlock(blockIndex, ciphertext) {
+    // Hash functions are one-way
+    throw new Error('FNV-1a is a one-way hash function - decryption not possible');
+  }
+
+  ClearData() {
+    if (this._buffer) OpCodes.ClearArray(this._buffer);
+    this._length = 0;
+  }
+
+  /**
+   * Feed method required by test suite - processes input data
+   * @param {Array} data - Input data as byte array
+   */
+  Feed(data) {
+    this.Init();
+    this.Update(data);
+  }
+
+  /**
+   * Result method required by test suite - returns final hash
+   * @returns {Array} Hash digest as byte array
+   */
+  Result() {
+    return this.Final();
+  }
+}
+
+// Register the algorithm
+if (typeof RegisterAlgorithm === 'function') {
+  RegisterAlgorithm(new FNVAlgorithm());
+}

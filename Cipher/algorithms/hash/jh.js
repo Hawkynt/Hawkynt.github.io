@@ -27,9 +27,14 @@
 (function(global) {
   'use strict';
   
+  // Load AlgorithmFramework (REQUIRED)
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+  }
+
   // Load OpCodes library for common operations
   if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+    global.OpCodes = require('../../OpCodes.js');
   }
   
   // JH constants
@@ -210,7 +215,7 @@
   
   JHHasher.prototype.update = function(data) {
     if (typeof data === 'string') {
-      data = OpCodes.StringToBytes(data);
+      data = OpCodes.AnsiToBytes(data);
     }
     
     this.totalLength += data.length;
@@ -270,135 +275,113 @@
     return result;
   };
   
-  // JH Universal Cipher Interface
-  const JH = {
-    internalName: 'jh',
-    name: 'JH',
-    // Algorithm metadata
-    blockSize: 512,
-    digestSize: 512,
-    keySize: 0,
-    rounds: 42,
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          CryptoAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = global.AlgorithmFramework;
+
+  class JH extends CryptoAlgorithm {
+    constructor() {
+      super();
+      
+      // Required metadata
+      this.name = "JH";
+      this.description = "JH is a cryptographic hash function with bit-slice design submitted to the NIST SHA-3 competition. Features variable output length and parallel processing capabilities.";
+      this.category = CategoryType.HASH;
+      this.subCategory = "Cryptographic Hash";
+      this.securityStatus = SecurityStatus.EDUCATIONAL; // SHA-3 finalist but not selected
+      this.complexity = ComplexityType.HIGH;
+      
+      // Algorithm properties
+      this.inventor = "Hongjun Wu";
+      this.year = 2011;
+      this.country = CountryCode.CN;
+      
+      // Hash-specific properties
+      this.hashSize = 512; // bits (default)
+      this.blockSize = 512; // bits
+      
+      // Documentation
+      this.documentation = [
+        new LinkItem("The Hash Function JH", "https://www3.ntu.edu.sg/home/wuhj/research/jh/jh_round3.pdf"),
+        new LinkItem("JH Homepage", "https://www3.ntu.edu.sg/home/wuhj/research/jh/index.html"),
+        new LinkItem("Cryptanalysis of JH", "https://eprint.iacr.org/2010/304.pdf")
+      ];
+      
+      // Convert tests to new format
+      this.tests = [
+        new TestCase(
+          OpCodes.AnsiToBytes(""),
+          OpCodes.Hex8ToBytes("90ecf2f76f9d2c8017d979ad5ab96b87d58fc301bb05698ebb9fd45f4e8ae793574f0c4b1f5e9b1fbafe34cb9c8bdcb1d9b25e2c6cf8f7c7e3a3c9d8e5a2f1e0"),
+          "Empty string - JH-512",
+          "https://www3.ntu.edu.sg/home/wuhj/research/jh/jh_round3.pdf"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("a"),
+          OpCodes.Hex8ToBytes("3c41e3e8e1ca5b8b5c8b3e1c1d2a5c8e7d3a5c8b5c8e1c1d2a5c8e7d3a5c8b5c8e1c1d2a5c8e7d3a5c8b5c8e1c1d2a5c8e7d3a5c8b5c8e1c1d2a5c8e7d"),
+          "Single byte 'a' - JH-512",
+          "https://www3.ntu.edu.sg/home/wuhj/research/jh/jh_round3.pdf"
+        )
+      ];
+      
+      // For test suite compatibility
+      this.testVectors = this.tests;
+    }
     
-    // Security level
-    securityLevel: 256,
+    CreateInstance(isInverse = false) {
+      return new JHInstance(this, isInverse);
+    }
+  }
+
+  class JHInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.inputBuffer = [];
+      this.hashSize = algorithm.hashSize;
+      this.blockSize = algorithm.blockSize;
+    }
     
-    // Reference links
-    referenceLinks: [
-      {
-        title: "The Hash Function JH - Specification",
-        url: "https://www3.ntu.edu.sg/home/wuhj/research/jh/jh_round3.pdf",
-        type: "specification"
-      },
-      {
-        title: "NIST SHA-3 Competition",
-        url: "https://csrc.nist.gov/projects/hash-functions/sha-3-project",
-        type: "competition"
-      },
-      {
-        title: "JH Algorithm Homepage",
-        url: "https://www3.ntu.edu.sg/home/wuhj/research/jh/index.html",
-        type: "homepage"
-      },
-      {
-        title: "Cryptanalysis of JH",
-        url: "https://eprint.iacr.org/2010/304.pdf",
-        type: "analysis"
-      }
-    ],
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      this.inputBuffer.push(...data);
+    }
     
-    // Test vectors
-    testVectors: [
-      {
-        description: "Empty string - JH-512",
-        input: "",
-        expected: "90ecf2f76f9d2c8017d979ad5ab96b87d58fc301bb05698ebb9fd45f4e8ae793574f0c4b1f5e9b1fbafe34cb9c8bdcb1d9b25e2c6cf8f7c7e3a3c9d8e5a2f1e0"
-      },
-      {
-        description: "Single byte 'a' - JH-512",
-        input: "a",
-        expected: "3c41e3e8e1ca5b8b5c8b3e1c1d2a5c8e7d3a5c8b5c8e1c1d2a5c8e7d3a5c8b5c8e1c1d2a5c8e7d3a5c8b5c8e1c1d2a5c8e7d3a5c8b5c8e1c1d2a5c8e7d"
-      }
-    ],
-    
-    // Required Cipher interface properties
-    minKeyLength: 0,        // Minimum key length in bytes
-    maxKeyLength: 64,        // Maximum key length in bytes
-    stepKeyLength: 1,       // Key length step size
-    minBlockSize: 0,        // Minimum block size in bytes
-    maxBlockSize: 0,        // Maximum block size (0 = unlimited)
-    stepBlockSize: 1,       // Block size step
-    instances: {},          // Instance tracking
-    
-    // Hash function interface
-    Init: function() {
-      this.hasher = new JHHasher(512);
-      this.bKey = false;
-    },
-    
-    KeySetup: function(key) {
-      // JH doesn't use keys in standard mode
-      this.hasher = new JHHasher(512);
-      this.bKey = false;
-    },
-    
-    encryptBlock: function(blockIndex, data) {
-      if (typeof data === 'string') {
-        this.hasher.update(data);
-        return OpCodes.BytesToHex(this.hasher.finalize());
-      }
-      return '';
-    },
-    
-    decryptBlock: function(blockIndex, data) {
-      // Hash functions don't decrypt
-      return this.encryptBlock(blockIndex, data);
-    },
+    Result() {
+      if (this.inputBuffer.length === 0) return [];
+      
+      // Process using JH hasher
+      const hasher = new JHHasher(512);
+      hasher.update(this.inputBuffer);
+      const result = hasher.finalize();
+      
+      this.inputBuffer = [];
+      return Array.from(result);
+    }
     
     // Direct hash interface with variable output
-    hash: function(data, outputBits) {
+    hash(data, outputBits) {
       const hasher = new JHHasher(outputBits || 512);
       hasher.update(data);
       return hasher.finalize();
-    },
+    }
     
     // Variants
-    hash224: function(data) {
+    hash224(data) {
       return this.hash(data, 224);
-    },
-    
-    hash256: function(data) {
-      return this.hash(data, 256);
-    },
-    
-    hash384: function(data) {
-      return this.hash(data, 384);
-    },
-    
-    hash512: function(data) {
-      return this.hash(data, 512);
-    },
-    
-    ClearData: function() {
-      if (this.hasher) {
-        this.hasher.state.fill(0);
-        this.hasher.buffer.fill(0);
-      }
-      this.bKey = false;
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(JH);
+    
+    hash256(data) {
+      return this.hash(data, 256);
+    }
+    
+    hash384(data) {
+      return this.hash(data, 384);
+    }
+    
+    hash512(data) {
+      return this.hash(data, 512);
+    }
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = JH;
-  }
-  
-  // Make available globally
-  global.JH = JH;
+
+  // Register the algorithm
+  RegisterAlgorithm(new JH());
   
 })(typeof global !== 'undefined' ? global : window);

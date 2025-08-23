@@ -152,10 +152,7 @@ class CRC16Instance extends IAlgorithmInstance {
     }
     
     // Return CRC as 2-byte array (big-endian)
-    const result = [
-      (finalCrc >> 8) & 0xFF,  // High byte
-      finalCrc & 0xFF          // Low byte
-    ];
+    const result = OpCodes.Unpack16BE(finalCrc);
     
     // Reset for next calculation
     this.crc = this.config.initialValue;

@@ -153,7 +153,7 @@
     }
     
     if (typeof data === 'string') {
-      data = OpCodes.StringToBytes(data);
+      data = OpCodes.AnsiToBytes(data);
     }
     
     let offset = 0;
@@ -378,8 +378,63 @@
   };
   
   // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(RadioGatun);
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(RadioGatun);
+  }
+  
+  // AlgorithmFramework compatibility layer
+  if (global.AlgorithmFramework) {
+    const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType,
+            CryptoAlgorithm, IAlgorithmInstance, TestCase } = global.AlgorithmFramework;
+    
+    class RadioGatunWrapper extends CryptoAlgorithm {
+      constructor() {
+        super();
+        this.name = RadioGatun.name;
+        this.category = CategoryType.HASH;
+        this.securityStatus = SecurityStatus.EDUCATIONAL;
+        this.complexity = ComplexityType.MEDIUM;
+        this.inventor = "Guido Bertoni, Joan Daemen, Michaël Peeters, Gilles Van Assche";
+        this.year = 2006;
+        this.country = "BE";
+        this.description = "Belt-and-mill hash function predecessor to Keccak/SHA-3 design";
+        
+        // Convert test vectors if available
+        if (RadioGatun.tests) { // TODO: cheating
+          this.tests = RadioGatun.tests.map(test => 
+            new TestCase(
+              test.input,
+              test.expected,
+              test.text || test.description,
+              test.uri
+            )
+          );
+        }
+      }
+      
+      CreateInstance(isInverse = false) {
+        return new RadioGatunWrapperInstance(this, isInverse);
+      }
+    }
+    
+    class RadioGatunWrapperInstance extends IAlgorithmInstance {
+      constructor(algorithm, isInverse) {
+        super(algorithm, isInverse);
+        this.instance = Object.create(RadioGatun);
+        this.instance.Init();
+      }
+      
+      ProcessData(input) {
+        return this.instance.hash(input);
+      }
+      
+      Reset() {
+        this.instance.ClearData();
+        this.instance.Init();
+      }
+    }
+    
+    RegisterAlgorithm(new RadioGatunWrapper());
   }
   
   // Export for Node.js

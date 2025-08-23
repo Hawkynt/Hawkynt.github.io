@@ -205,25 +205,318 @@ class SerpentInstance extends AlgorithmFramework.IBlockCipherInstance {
     return [e, f, g, h];
   }
 
+  // S1 transformation
+  _sb1(a, b, c, d) {
+    let t2 = ~a;
+    let t3 = b ^ t2;
+    let t4 = a | b;
+    let t7 = a ^ d;
+    let h = t3 & t7;
+    let t6 = a ^ t3;
+    let g = t4 ^ h;
+    let t9 = b | h;
+    let t11 = t4 & t7;
+    let t8 = t6 ^ t9;
+    let e = t2 ^ t11;
+    let t12 = c ^ t11;
+    let f = t9 ^ e;
+    let t14 = c & e;
+    let t13 = t8 ^ t12;
+    let t15 = t6 & t14;
+    let t16 = f ^ t15;
+    let w = t13 ^ t16;
+    return [h, w, g, f];
+  }
+
+  // Inverse S1 transformation  
+  _ib1(a, b, c, d) {
+    let t1 = a ^ d;
+    let t2 = a & b;
+    let t3 = b ^ c;
+    let t4 = a ^ t3;
+    let t5 = b | d;
+    let t7 = c | t1;
+    let t6 = t4 & t5;
+    let t8 = t2 | t7;
+    let g = t4 ^ t8;
+    let t10 = ~g;
+    let t11 = t5 & t7;
+    let t12 = t1 ^ t6;
+    let t13 = t10 | t12;
+    let t14 = t3 ^ t11;
+    let e = t13 ^ t14;
+    let h = t3 & e;
+    let t17 = t10 ^ h;
+    let f = t12 ^ t17;
+    return [f, g, h, e];
+  }
+
+  // S2 transformation
+  _sb2(a, b, c, d) {
+    let t1 = ~a;
+    let t2 = b ^ d;
+    let t3 = c & t1;
+    let e = t2 ^ t3;
+    let t5 = c ^ t1;
+    let t6 = c ^ e;
+    let t7 = b & t6;
+    let f = t5 ^ t7;
+    let g = a ^ ((d | t7) & (e | t5));
+    let h = (t2 & t5) ^ g;
+    return [e, f, g, h];
+  }
+
+  // Inverse S2 transformation
+  _ib2(a, b, c, d) {
+    let t1 = b ^ d;
+    let t2 = ~t1;
+    let t3 = a ^ c;
+    let t4 = c ^ t1;
+    let t7 = a | t2;
+    let t5 = b & t4;
+    let t8 = t3 | t5;
+    let t6 = t3 ^ t7;
+    let f = t6 ^ t8;
+    let h = ((a ^ t4) & t8) ^ t1;
+    let e = t1 ^ ((t2 | b) & t3);
+    let g = (d & f) ^ h ^ e;
+    return [e, f, g, h];
+  }
+
+  // S3 transformation
+  _sb3(a, b, c, d) {
+    let t1 = a ^ c;
+    let t2 = d ^ t1;
+    let t3 = a & t2;
+    let t4 = d ^ t3;
+    let t5 = b & t4;
+    let g = t2 ^ t5;
+    let t7 = a | g;
+    let t8 = b | d;
+    let t11 = a | d;
+    let t9 = t4 & t7;
+    let t10 = t8 ^ t9;
+    let t12 = b ^ t11;
+    let t13 = t7 ^ t10;
+    let t14 = t1 ^ t12;
+    let f = t13 ^ t14;
+    let h = ~t13;
+    let e = t14 ^ h;
+    return [e, f, g, h];
+  }
+
+  // Inverse S3 transformation
+  _ib3(a, b, c, d) {
+    let t1 = a | b;
+    let t2 = b ^ c;
+    let t3 = b & t2;
+    let t4 = a ^ t3;
+    let t5 = c ^ t4;
+    let t6 = d | t4;
+    let e = t2 ^ t6;
+    let t8 = t2 | e;
+    let t9 = d & t8;
+    let g = t5 ^ t9;
+    let t11 = t1 ^ e;
+    let t12 = g ^ t11;
+    let t13 = t5 & t11;
+    let f = e ^ t13;
+    let h = t5 ^ t12;
+    return [e, f, g, h];
+  }
+
+  // S4 transformation
+  _sb4(a, b, c, d) {
+    let t1 = a ^ d;
+    let t2 = d & t1;
+    let t3 = c ^ t2;
+    let t4 = b | t3;
+    let h = t1 ^ t4;
+    let t6 = ~b;
+    let t7 = t1 | t6;
+    let e = t3 ^ t7;
+    let t9 = a & e;
+    let t10 = t1 ^ t6;
+    let t11 = t4 & t10;
+    let g = t9 ^ t11;
+    let t13 = a ^ t3;
+    let t14 = t10 & g;
+    let f = t13 ^ t14;
+    return [e, f, g, h];
+  }
+
+  // Inverse S4 transformation
+  _ib4(a, b, c, d) {
+    let t1 = c | d;
+    let t2 = a & t1;
+    let t3 = b ^ t2;
+    let t4 = a & t3;
+    let t5 = c ^ t4;
+    let e = d ^ t5;
+    let t7 = ~a;
+    let t8 = t5 & e;
+    let t9 = t3 | t8;
+    let g = t7 ^ t9;
+    let t11 = a ^ e;
+    let t12 = e | g;
+    let t13 = t3 ^ t12;
+    let h = t11 ^ t13;
+    let t15 = t3 & h;
+    let f = e ^ t15;
+    return [e, f, g, h];
+  }
+
+  // S5 transformation
+  _sb5(a, b, c, d) {
+    let t1 = ~a;
+    let t2 = a ^ b;
+    let t3 = a ^ d;
+    let t4 = c ^ t1;
+    let t5 = t2 | t3;
+    let e = t4 ^ t5;
+    let t7 = d & e;
+    let t8 = t2 ^ e;
+    let t9 = t1 | t7;
+    let f = t8 ^ t9;
+    let t11 = t2 | t7;
+    let t12 = t3 ^ t9;
+    let t13 = f & t12;
+    let g = t11 ^ t13;
+    let t15 = t1 ^ t7;
+    let h = t12 ^ t15;
+    return [e, f, g, h];
+  }
+
+  // Inverse S5 transformation
+  _ib5(a, b, c, d) {
+    let t1 = ~c;
+    let t2 = b & t1;
+    let t3 = d ^ t2;
+    let t4 = a & t3;
+    let t5 = b ^ t1;
+    let h = t4 ^ t5;
+    let t7 = b | h;
+    let t8 = a & t7;
+    let e = t3 ^ t8;
+    let t10 = a | d;
+    let t11 = t1 ^ t7;
+    let f = t10 ^ t11;
+    let t13 = a ^ c;
+    let t14 = b & t10;
+    let t15 = t4 | t13;
+    let g = t14 ^ t15;
+    return [e, f, g, h];
+  }
+
+  // S6 transformation
+  _sb6(a, b, c, d) {
+    let t1 = ~a;
+    let t2 = a ^ d;
+    let t3 = b ^ t2;
+    let t4 = t1 | t2;
+    let t5 = c ^ t4;
+    let f = b ^ t5;
+    let t13 = ~t5;
+    let t7 = t2 | f;
+    let t8 = d ^ t7;
+    let t9 = t5 & t8;
+    let g = t3 ^ t9;
+    let t11 = t5 ^ t8;
+    let e = g ^ t11;
+    let t14 = t3 & t11;
+    let h = t13 ^ t14;
+    return [e, f, g, h];
+  }
+
+  // Inverse S6 transformation
+  _ib6(a, b, c, d) {
+    let t1 = ~a;
+    let t2 = a ^ b;
+    let t3 = c ^ t2;
+    let t4 = c | t1;
+    let t5 = d ^ t4;
+    let t13 = d & t1;
+    let f = t3 ^ t5;
+    let t7 = t3 & t5;
+    let t8 = t2 ^ t7;
+    let t9 = b | t8;
+    let h = t5 ^ t9;
+    let t11 = b | h;
+    let e = t8 ^ t11;
+    let t14 = t3 ^ t11;
+    let g = t13 ^ t14;
+    return [e, f, g, h];
+  }
+
+  // S7 transformation
+  _sb7(a, b, c, d) {
+    let t1 = ~c;
+    let t2 = b ^ c;
+    let t3 = b | t1;
+    let t4 = d ^ t3;
+    let t5 = a & t4;
+    let g = t2 ^ t5;
+    let t7 = a ^ d;
+    let t8 = b ^ t5;
+    let t9 = t2 | t8;
+    let e = t7 ^ t9;
+    let t11 = ~t4;
+    let t12 = g & e;
+    let f = t11 ^ t12;
+    let t14 = t2 ^ e;
+    let h = g ^ t14;
+    return [e, f, g, h];
+  }
+
+  // Inverse S7 transformation
+  _ib7(a, b, c, d) {
+    let t1 = a & b;
+    let t2 = a | b;
+    let t3 = c | t1;
+    let t4 = d & t2;
+    let h = t3 ^ t4;
+    let t6 = ~d;
+    let t7 = b ^ t4;
+    let t8 = h ^ t6;
+    let t11 = c ^ t7;
+    let t9 = t7 | t8;
+    let f = a ^ t9;
+    let t12 = d | f;
+    let e = t11 ^ t12;
+    let t14 = a & h;
+    let g = t8 ^ t14;
+    return [e, f, g, h];
+  }
+
   // Similar implementations for S1-S7 and their inverses would follow...
   // For brevity, implementing simplified S-box functions
   _sbox(sboxNum, x0, x1, x2, x3) {
-    // Simplified S-box implementation using lookup tables
-    // In a full implementation, all 8 S-boxes would be implemented
+    // Complete Serpent S-box implementation (all 8 S-boxes)
     switch (sboxNum) {
       case 0: return this._sb0(x0, x1, x2, x3);
-      default:
-        // Simplified placeholder for other S-boxes
-        return [x1 ^ x3, x0 ^ x2, x3 ^ x1, x2 ^ x0];
+      case 1: return this._sb1(x0, x1, x2, x3);
+      case 2: return this._sb2(x0, x1, x2, x3);
+      case 3: return this._sb3(x0, x1, x2, x3);
+      case 4: return this._sb4(x0, x1, x2, x3);
+      case 5: return this._sb5(x0, x1, x2, x3);
+      case 6: return this._sb6(x0, x1, x2, x3);
+      case 7: return this._sb7(x0, x1, x2, x3);
+      default: throw new Error(`Invalid S-box number: ${sboxNum}`);
     }
   }
 
   _sboxInv(sboxNum, x0, x1, x2, x3) {
+    // Complete Serpent inverse S-box implementation (all 8 inverse S-boxes)
     switch (sboxNum) {
       case 0: return this._ib0(x0, x1, x2, x3);
-      default:
-        // Simplified placeholder for other inverse S-boxes
-        return [x1 ^ x3, x0 ^ x2, x3 ^ x1, x2 ^ x0];
+      case 1: return this._ib1(x0, x1, x2, x3);
+      case 2: return this._ib2(x0, x1, x2, x3);
+      case 3: return this._ib3(x0, x1, x2, x3);
+      case 4: return this._ib4(x0, x1, x2, x3);
+      case 5: return this._ib5(x0, x1, x2, x3);
+      case 6: return this._ib6(x0, x1, x2, x3);
+      case 7: return this._ib7(x0, x1, x2, x3);
+      default: throw new Error(`Invalid inverse S-box number: ${sboxNum}`);
     }
   }
 

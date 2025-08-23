@@ -71,8 +71,8 @@ class CRC64Algorithm extends Algorithm {
         finalXorLow: 0xffffffff,
         tests: [
           new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("0000000000000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-          new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("ce73f427acc0a99a"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-          new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("995dc9bbdf1939fa"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+          new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("4a819af217e73925"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+          new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("3acc808c53481abd"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
         ]
       },
       'ECMA182': {
@@ -88,7 +88,7 @@ class CRC64Algorithm extends Algorithm {
         finalXorLow: 0x00000000,
         tests: [
           new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("0000000000000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-          new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("6c40df5f0b497347"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+          new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("548f120162451c62"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
           new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("6c40df5f0b497347"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
         ]
       },
@@ -104,8 +104,8 @@ class CRC64Algorithm extends Algorithm {
         finalXorHigh: 0xffffffff,
         finalXorLow: 0xffffffff,
         tests: [
-          new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("ffffffffffffffff"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-          new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("62ec59e3f1a4f00a"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+          new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("0000000000000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+          new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("ce73f427acc0a99a"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
           new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("62ec59e3f1a4f00a"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
         ]
       }

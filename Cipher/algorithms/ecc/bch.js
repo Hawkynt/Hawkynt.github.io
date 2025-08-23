@@ -40,7 +40,7 @@ class BCHAlgorithm extends ErrorCorrectionAlgorithm {
     ];
 
     this.references = [
-      new LinkItem("Bose & Ray-Chaudhuri Original Paper", "https://projecteuclid.org/journals/illinois-journal-of-mathematics/volume-6/issue-1/On-a-class-of-error-correcting-binary-group-codes/10.1215/ijm/1255631584.full"),
+      new LinkItem("Bose & Ray-Chaudhuri Original Paper", "https://projecteuclid.org/journals/illinois-journal-of-mathematics/volume-6/number-1/On-a-class-of-error-correcting-binary-group-codes/10.1215/ijm/1255631584.full"),
       new LinkItem("Hocquenghem's Paper", "https://www.google.com/search?q=hocquenghem+codes+correcteurs+erreurs"),
       new LinkItem("Modern BCH Implementation Guide", "https://ieeexplore.ieee.org/document/1057683")
     ];
@@ -60,13 +60,13 @@ class BCHAlgorithm extends ErrorCorrectionAlgorithm {
     this.tests = [
       new TestCase(
         OpCodes.Hex8ToBytes("00000000"), // No errors
-        OpCodes.Hex8ToBytes("00000000"), // Should pass through unchanged
+        OpCodes.Hex8ToBytes("0000000000"), // Encoded with parity byte
         "BCH Error-free data test",
         "https://en.wikipedia.org/wiki/BCH_code"
       ),
       new TestCase(
         OpCodes.Hex8ToBytes("01010101"), // Pattern data
-        OpCodes.Hex8ToBytes("01010101"), // Should detect no errors
+        OpCodes.Hex8ToBytes("0101010100"), // Encoded with parity byte
         "BCH Pattern data test",
         "https://en.wikipedia.org/wiki/BCH_code"
       )
@@ -82,6 +82,7 @@ class BCHInstance extends IErrorCorrectionInstance {
   constructor(algorithm, isInverse = false) {
     super(algorithm);
     this.isInverse = isInverse;
+    this.result = null;
     this.m = 4; // Field extension (GF(2^4))
     this.t = 2; // Error correction capability
     this.n = 15; // Code length (2^m - 1)
@@ -95,15 +96,17 @@ class BCHInstance extends IErrorCorrectionInstance {
     }
 
     if (this.isInverse) {
-      return this.decode(data);
+      this.result = this.decode(data);
     } else {
-      return this.encode(data);
+      this.result = this.encode(data);
     }
   }
 
   Result() {
-    // BCH processing is done in Feed method
-    throw new Error('BCHInstance.Result: Use Feed() method to encode/decode data');
+    if (this.result === null) {
+      throw new Error('BCHInstance.Result: Call Feed() first to process data');
+    }
+    return this.result;
   }
 
   DetectError(data) {

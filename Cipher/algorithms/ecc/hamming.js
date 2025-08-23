@@ -66,7 +66,7 @@ class HammingAlgorithm extends ErrorCorrectionAlgorithm {
       ),
       new TestCase(
         [1, 1, 1, 1], // 4-bit data  
-        [1, 1, 0, 1, 1, 0, 1], // 7-bit encoded
+        [1, 1, 1, 1, 1, 1, 1], // 7-bit encoded (corrected: P1=1, P2=1, D1=1, P4=1, D2=1, D3=1, D4=1)
         "Hamming (7,4) all ones test",
         "https://en.wikipedia.org/wiki/Hamming_code"
       ),
@@ -88,6 +88,7 @@ class HammingInstance extends IErrorCorrectionInstance {
   constructor(algorithm, isInverse = false) {
     super(algorithm);
     this.isInverse = isInverse;
+    this.result = null;
   }
 
   Feed(data) {
@@ -96,15 +97,17 @@ class HammingInstance extends IErrorCorrectionInstance {
     }
 
     if (this.isInverse) {
-      return this.decode(data);
+      this.result = this.decode(data);
     } else {
-      return this.encode(data);
+      this.result = this.encode(data);
     }
   }
 
   Result() {
-    // Hamming processing is done in Feed method
-    throw new Error('HammingInstance.Result: Use Feed() method to encode/decode data');
+    if (this.result === null) {
+      throw new Error('HammingInstance.Result: Call Feed() first to process data');
+    }
+    return this.result;
   }
 
   DetectError(data) {

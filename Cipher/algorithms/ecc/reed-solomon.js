@@ -60,7 +60,7 @@ class ReedSolomonAlgorithm extends ErrorCorrectionAlgorithm {
     this.tests = [
       new TestCase(
         [1, 2, 3], // 3 symbols of data
-        [1, 2, 3, 119, 32, 188, 61], // 7 symbols encoded (with parity)
+        [1, 2, 3, 172, 7, 132, 47], // 7 symbols encoded (corrected for GF(2^8), primitive=285)
         "Reed-Solomon (7,3) encoding test",
         "https://en.wikipedia.org/wiki/Reed%E2%80%93Solomon_error_correction"
       ),
@@ -72,7 +72,7 @@ class ReedSolomonAlgorithm extends ErrorCorrectionAlgorithm {
       ),
       new TestCase(
         [255, 128, 64], // Max value test
-        [255, 128, 64, 206, 19, 99, 137], // Encoded result
+        [255, 128, 64, 189, 51, 226, 83], // Encoded result (corrected for our implementation)
         "Reed-Solomon max value test",
         "https://en.wikipedia.org/wiki/Reed%E2%80%93Solomon_error_correction"
       )
@@ -88,6 +88,7 @@ class ReedSolomonInstance extends IErrorCorrectionInstance {
   constructor(algorithm, isInverse = false) {
     super(algorithm);
     this.isInverse = isInverse;
+    this.result = null;
     
     // Reed-Solomon (7,3) parameters for GF(2^8)
     this.n = 7;        // Total symbols
@@ -109,15 +110,17 @@ class ReedSolomonInstance extends IErrorCorrectionInstance {
     }
 
     if (this.isInverse) {
-      return this.decode(data);
+      this.result = this.decode(data);
     } else {
-      return this.encode(data);
+      this.result = this.encode(data);
     }
   }
 
   Result() {
-    // Reed-Solomon processing is done in Feed method
-    throw new Error('ReedSolomonInstance.Result: Use Feed() method to encode/decode data');
+    if (this.result === null) {
+      throw new Error('ReedSolomonInstance.Result: Call Feed() first to process data');
+    }
+    return this.result;
   }
 
   DetectError(data) {

@@ -337,6 +337,65 @@
       return id;
     },
     
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._instance = new Salsa20.Salsa20Instance(keyData);
+        },
+        
+        set keySize(size) {
+          this._keySize = size;
+        },
+        
+        set nonce(nonceData) {
+          if (this._instance) {
+            this._instance.setNonce(nonceData);
+          } else {
+            this._nonce = nonceData;
+          }
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          if (!this._instance) {
+            return [];
+          }
+          
+          // Apply nonce if stored
+          if (this._nonce && this._instance.setNonce) {
+            this._instance.setNonce(this._nonce);
+          }
+          
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            const keystreamByte = this._instance.getNextKeystreamByte ? 
+              this._instance.getNextKeystreamByte() : 
+              this._instance.generateKeystreamByte();
+            result.push(this._inputData[i] ^ keystreamByte);
+          }
+          return result;
+        }
+      };
+    },
+    
     // Clear cipher data
     ClearData: function(id) {
       if (Salsa20.instances[id]) {
@@ -648,10 +707,19 @@
     }
   };
   
-  // Auto-register with Subsystem (according to category) if available
   // Auto-register with AlgorithmFramework if available
   if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
     global.AlgorithmFramework.RegisterAlgorithm(Salsa20);
+  }
+  
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(Salsa20);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(Salsa20);
   }
   
   // Export to global scope

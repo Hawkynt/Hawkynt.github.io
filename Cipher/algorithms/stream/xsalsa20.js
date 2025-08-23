@@ -48,16 +48,9 @@
       console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  } else {
-      console.error('XSalsa20 cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
+  } 
   
-   catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
-    }
-  }
+  
   
   // Create XSalsa20 cipher object
   const XSalsa20 = {

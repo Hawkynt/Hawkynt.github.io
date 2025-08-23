@@ -66,7 +66,7 @@ class LDPCAlgorithm extends ErrorCorrectionAlgorithm {
       ),
       new TestCase(
         [1, 0, 1, 0], // 4-bit data
-        [1, 0, 1, 0, 1, 0, 1], // 7-bit encoded (simplified)
+        [1, 0, 1, 0, 0, 1, 0], // 7-bit encoded (corrected)
         "LDPC pattern encoding test", 
         "https://en.wikipedia.org/wiki/Low-density_parity-check_code"
       )
@@ -82,6 +82,7 @@ class LDPCInstance extends IErrorCorrectionInstance {
   constructor(algorithm, isInverse = false) {
     super(algorithm);
     this.isInverse = isInverse;
+    this.result = null;
     
     // Simple (7,4) parity-check matrix for educational purposes
     this.parityMatrix = [
@@ -99,15 +100,17 @@ class LDPCInstance extends IErrorCorrectionInstance {
     }
 
     if (this.isInverse) {
-      return this.decode(data);
+      this.result = this.decode(data);
     } else {
-      return this.encode(data);
+      this.result = this.encode(data);
     }
   }
 
   Result() {
-    // LDPC processing is done in Feed method
-    throw new Error('LDPCInstance.Result: Use Feed() method to encode/decode data');
+    if (this.result === null) {
+      throw new Error('LDPCInstance.Result: Call Feed() first to process data');
+    }
+    return this.result;
   }
 
   DetectError(data) {

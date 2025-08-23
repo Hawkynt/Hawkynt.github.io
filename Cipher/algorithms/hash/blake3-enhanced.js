@@ -7,99 +7,114 @@
 (function(global) {
   'use strict';
   
-  // Environment detection and OpCodes loading
+  // Load AlgorithmFramework (REQUIRED)
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+  }
+
+  // Load OpCodes for cryptographic operations (RECOMMENDED)
   if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+    global.OpCodes = require('../../OpCodes.js');
   }
   
-  const BLAKE3_Enhanced = {
-    name: "BLAKE3-Enhanced",
-    description: "High-performance cryptographic hash function designed as the successor to BLAKE2. Features extreme parallelism, variable output length, and multiple modes (hash, KDF, MAC, PRF).",
-    inventor: "Jack O'Connor, Jean-Philippe Aumasson, Samuel Neves, Zooko Wilcox-O'Hearn",
-    year: 2020,
-    country: "Multi-national",
-    category: "hash",
-    subCategory: "Cryptographic Hash",
-    securityStatus: "active",
-    securityNotes: "Modern cryptographic hash function designed for maximum performance and security. Extensively analyzed and widely adopted for new applications.",
-    
-    documentation: [
-      {text: "BLAKE3 Specification", uri: "https://github.com/BLAKE3-team/BLAKE3-specs/blob/master/blake3.pdf"},
-      {text: "Official Website", uri: "https://blake3.io/"},
-      {text: "Design Paper", uri: "https://eprint.iacr.org/2019/026"}
-    ],
-    
-    references: [
-      {text: "Reference Implementation", uri: "https://github.com/BLAKE3-team/BLAKE3"},
-      {text: "Performance Benchmarks", uri: "https://blake3.io/performance.html"},
-      {text: "Security Analysis", uri: "https://eprint.iacr.org/2019/026"}
-    ],
-    
-    knownVulnerabilities: [
-      {
-        type: "None Known",
-        text: "No practical attacks known against BLAKE3",
-        mitigation: "Standard implementation recommended"
-      }
-    ],
-    
-    tests: [
-      {
-        text: "BLAKE3 Test Vector 1 (Empty)",
-        uri: "Official test vectors",
-        input: OpCodes.Hex8ToBytes(""),
-        expectedOutput: OpCodes.Hex8ToBytes("AF1349B9F5F9A1A6A0404DEA36DCC9499BCB25C9ADC112B7CC9A93CAE41F3262"),
-        outputLength: 32
-      },
-      {
-        text: "BLAKE3 Test Vector 2 (abc)",
-        uri: "Official test vectors",
-        input: OpCodes.StringToBytes("abc"),
-        expectedOutput: OpCodes.Hex8ToBytes("6437B3AC38465133FFB63B75273A8DB548C558465D79DB03FD359C6CD5BD9D85"),
-        outputLength: 32
-      }
-    ],
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          CryptoAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = global.AlgorithmFramework;
 
-    // Legacy interface properties
-    internalName: 'blake3-enhanced',
-    minKeyLength: 0,
-    maxKeyLength: 32,
-    stepKeyLength: 1,
-    minBlockSize: 0,
-    maxBlockSize: 1000000,
-    stepBlockSize: 1,
-    instances: {},
-    version: '1.0.0',
-    keySize: 32,
-    blockSize: 64,
+  class BLAKE3Enhanced extends CryptoAlgorithm {
+    constructor() {
+      super();
+      
+      // Required metadata
+      this.name = "BLAKE3-Enhanced";
+      this.description = "High-performance cryptographic hash function designed as the successor to BLAKE2. Features extreme parallelism, variable output length, and multiple modes (hash, KDF, MAC, PRF).";
+      this.category = CategoryType.HASH;
+      this.subCategory = "Cryptographic Hash";
+      this.securityStatus = null; // Modern secure hash - no specific status needed
+      this.complexity = ComplexityType.MEDIUM;
+      
+      // Algorithm properties
+      this.inventor = "Jack O'Connor, Jean-Philippe Aumasson, Samuel Neves, Zooko Wilcox-O'Hearn";
+      this.year = 2020;
+      this.country = CountryCode.MULTI;
+      
+      // Hash-specific properties
+      this.hashSize = 256; // bits (32 bytes default)
+      this.blockSize = 512; // bits (64 bytes)
+      
+      // Documentation
+      this.documentation = [
+        new LinkItem("BLAKE3 Specification", "https://github.com/BLAKE3-team/BLAKE3-specs/blob/master/blake3.pdf"),
+        new LinkItem("Official Website", "https://blake3.io/"),
+        new LinkItem("Design Paper", "https://eprint.iacr.org/2019/026")
+      ];
+      
+      this.references = [
+        new LinkItem("Reference Implementation", "https://github.com/BLAKE3-team/BLAKE3"),
+        new LinkItem("Performance Benchmarks", "https://blake3.io/performance.html"),
+        new LinkItem("Security Analysis", "https://eprint.iacr.org/2019/026")
+      ];
+      
+      // Convert tests to new format
+      this.tests = [
+        new TestCase(
+          "BLAKE3 Test Vector 1 (Empty)",
+          "Official test vectors",
+          OpCodes.Hex8ToBytes(""),
+          null,
+          OpCodes.Hex8ToBytes("AF1349B9F5F9A1A6A0404DEA36DCC9499BCB25C9ADC112B7CC9A93CAE41F3262")
+        ),
+        new TestCase(
+          "BLAKE3 Test Vector 2 (abc)",
+          "Official test vectors", 
+          OpCodes.AnsiToBytes("abc"),
+          null,
+          OpCodes.Hex8ToBytes("6437B3AC38465133FFB63B75273A8DB548C558465D79DB03FD359C6CD5BD9D85")
+        )
+      ];
+      
+      // For test suite compatibility
+      this.testVectors = this.tests;
+      
+      // BLAKE3 constants
+      this.IV = [
+        0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
+        0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19
+      ];
+    }
     
-    // Algorithm metadata
-    isStreamCipher: false,
-    isBlockCipher: false,
-    isHash: true,
-    complexity: 'Medium',
-    family: 'BLAKE',
-    category: 'Cryptographic-Hash',
-    
-    // BLAKE3 constants
-    IV: [
-      0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
-      0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19
-    ],
-    
-    // Current configuration
-    key: null,
-    keyScheduled: false,
-    
-    // Initialize BLAKE3
-    Init: function() {
+    CreateInstance(isInverse = false) {
+      return new BLAKE3EnhancedInstance(this, isInverse);
+    }
+  }
+
+  class BLAKE3EnhancedInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.inputBuffer = [];
+      this.hashSize = algorithm.hashSize;
+      this.blockSize = algorithm.blockSize;
       this.key = null;
       this.keyScheduled = false;
-      return true;
-    },
+      this.IV = algorithm.IV;
+    }
     
-    // Key setup
-    KeySetup: function(key) {
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      this.inputBuffer.push(...data);
+    }
+    
+    Result() {
+      if (this.inputBuffer.length === 0) return [];
+      
+      // Process using existing hash logic
+      const result = this.hash(this.inputBuffer, 32);
+      
+      this.inputBuffer = [];
+      return result;
+    }
+    
+    // Key setup for BLAKE3 keyed mode
+    KeySetup(key) {
       if (key && key.length > 0) {
         if (key.length !== 32) {
           throw new Error('BLAKE3 key must be exactly 32 bytes');
@@ -111,10 +126,10 @@
       
       this.keyScheduled = true;
       return 'blake3-enhanced-' + Math.random().toString(36).substr(2, 9);
-    },
+    }
     
     // Simplified BLAKE3 hash (educational implementation)
-    hash: function(input, outputLen) {
+    hash(input, outputLen) {
       outputLen = outputLen || 32;
       
       // Initialize state with IV or key
@@ -132,10 +147,10 @@
       
       // Generate output
       return this.extractOutput(state, outputLen);
-    },
+    }
     
     // Convert key to words
-    wordsFromKey: function(key) {
+    wordsFromKey(key) {
       const words = [];
       for (let i = 0; i < 8; i++) {
         words.push(OpCodes.Pack32LE(
@@ -144,10 +159,10 @@
         ));
       }
       return words;
-    },
+    }
     
     // Compress block (simplified)
-    compressBlock: function(state, block, blockCounter) {
+    compressBlock(state, block, blockCounter) {
       const newState = OpCodes.CopyArray(state);
       
       // Simple compression using block data
@@ -164,10 +179,10 @@
       }
       
       return newState;
-    },
+    }
     
     // Extract output
-    extractOutput: function(state, outputLen) {
+    extractOutput(state, outputLen) {
       const output = [];
       
       for (let i = 0; i < outputLen; i += 4) {
@@ -180,85 +195,26 @@
       }
       
       return output.slice(0, outputLen);
-    },
+    }
     
     // Legacy cipher interface
-    szEncryptBlock: function(blockIndex, plaintext) {
+    szEncryptBlock(blockIndex, plaintext) {
       return this.hash(plaintext, 32);
-    },
+    }
     
-    szDecryptBlock: function(blockIndex, ciphertext) {
+    szDecryptBlock(blockIndex, ciphertext) {
       throw new Error('BLAKE3 is a one-way hash function and cannot be decrypted');
-    },
+    }
     
-    ClearData: function() {
+    ClearData() {
       if (this.key) {
         OpCodes.ClearArray(this.key);
       }
       this.keyScheduled = false;
-    },
-    
-    // Test vector runner
-    runTestVector: function() {
-      console.log('Running BLAKE3-Enhanced test vectors...');
-      
-      let allPassed = true;
-      
-      for (let i = 0; i < this.tests.length; i++) {
-        const test = this.tests[i];
-        console.log(`Running test: ${test.text}`);
-        
-        try {
-          this.Init();
-          this.KeySetup(null);
-          
-          const result = this.hash(test.input, test.outputLength);
-          console.log('Expected:', OpCodes.BytesToHex8(test.expectedOutput));
-          console.log('Actual:  ', OpCodes.BytesToHex8(result));
-          
-          // Note: This is a simplified educational implementation
-          // so test vectors may not match exactly
-          console.log(`Test ${i + 1}: Educational implementation (simplified)`);
-          
-        } catch (error) {
-          console.log(`Test ${i + 1}: ERROR - ${error.message}`);
-          allPassed = false;
-        }
-      }
-      
-      // Demonstrate functionality
-      console.log('\\nBLAKE3-Enhanced Demonstration:');
-      this.Init();
-      this.KeySetup(null);
-      
-      const data = OpCodes.StringToBytes("BLAKE3 is the next generation hash function");
-      const hash32 = this.hash(data, 32);
-      const hash64 = this.hash(data, 64);
-      
-      console.log('Input:', OpCodes.BytesToString(data));
-      console.log('32-byte hash:', OpCodes.BytesToHex8(hash32));
-      console.log('64-byte hash:', OpCodes.BytesToHex8(hash64));
-      
-      return {
-        algorithm: 'BLAKE3-Enhanced',
-        allTestsPassed: true, // Educational implementation
-        testCount: this.tests.length,
-        maxOutputLength: 'variable',
-        notes: 'Educational implementation of BLAKE3 concepts'
-      };
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
-    global.Cipher.Add(BLAKE3_Enhanced);
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = BLAKE3_Enhanced;
   }
-  
-  // Global export
-  global.BLAKE3_Enhanced = BLAKE3_Enhanced;
+
+  // Register the algorithm
+  RegisterAlgorithm(new BLAKE3Enhanced());
   
 })(typeof global !== 'undefined' ? global : window);
