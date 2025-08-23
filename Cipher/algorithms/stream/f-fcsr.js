@@ -41,10 +41,6 @@
       console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  } else {
-      console.error('F-FCSR cipher requires Cipher system to be loaded first');
-      return;
-    }
   }
   
   // Create F-FCSR cipher object
@@ -295,14 +291,22 @@
     return this.generateFilteredOutput();
   };
   
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(FFCSR);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(FFCSR);
+  }
+  
+  // Auto-register with legacy Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(FFCSR);
   }
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = FFCSR;
   }
+  
+  // Make available globally
+  global.FFCSR = FFCSR;
   
 })(typeof global !== 'undefined' ? global : window);

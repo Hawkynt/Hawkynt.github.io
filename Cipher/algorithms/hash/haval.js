@@ -28,9 +28,14 @@
 (function(global) {
   'use strict';
   
+  // Load AlgorithmFramework (REQUIRED)
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+  }
+
   // Load OpCodes library for common operations
   if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+    global.OpCodes = require('../../OpCodes.js');
   }
   
   // HAVAL constants
@@ -143,7 +148,7 @@
   
   HavalHasher.prototype.update = function(data) {
     if (typeof data === 'string') {
-      data = OpCodes.StringToBytes(data);
+      data = OpCodes.AnsiToBytes(data);
     }
     
     this.totalLength += data.length;
@@ -281,144 +286,130 @@
     return result;
   };
   
-  // HAVAL Universal Cipher Interface
-  const Haval = {
-    internalName: 'haval',
-    name: 'HAVAL',
-    // Algorithm metadata
-    blockSize: 1024,
-    digestSize: 256,
-    keySize: 0,
-    rounds: 160, // 5 passes × 32 rounds
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          CryptoAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = global.AlgorithmFramework;
+
+  class Haval extends CryptoAlgorithm {
+    constructor() {
+      super();
+      
+      // Required metadata
+      this.name = "HAVAL";
+      this.description = "HAVAL (HAsh of Variable Length) is a cryptographic hash function with variable output length (128, 160, 192, 224, 256 bits) and variable passes (3, 4, 5).";
+      this.category = CategoryType.HASH;
+      this.subCategory = "Variable Hash";
+      this.securityStatus = SecurityStatus.INSECURE; // Known vulnerabilities
+      this.complexity = ComplexityType.HIGH;
+      
+      // Algorithm properties
+      this.inventor = "Yuliang Zheng, Josef Pieprzyk, Jennifer Seberry";
+      this.year = 1992;
+      this.country = CountryCode.AU;
+      
+      // Hash-specific properties
+      this.hashSize = 256; // bits (default)
+      this.blockSize = 1024; // bits
+      
+      // Documentation
+      this.documentation = [
+        new LinkItem("HAVAL - A One-Way Hashing Algorithm with Variable Length of Output", "https://web.archive.org/web/20171129084214/http://labs.calyptix.com/haval.php"),
+        new LinkItem("US Patent 5,351,310 - HAVAL", "https://patents.google.com/patent/US5351310A/en"),
+        new LinkItem("Cryptanalysis of HAVAL", "https://link.springer.com/chapter/10.1007/3-540-48329-2_24")
+      ];
+      
+      this.references = [
+        new LinkItem("Hash Function Cryptanalysis", "https://csrc.nist.gov/projects/hash-functions")
+      ];
+      
+      // Convert tests to new format
+      this.tests = [
+        new TestCase(
+          "Empty string - HAVAL-256/5",
+          "HAVAL test vectors",
+          OpCodes.AnsiToBytes(""),
+          null,
+          OpCodes.Hex8ToBytes("be417bb4dd5cfb76c7126f4f8eeb1553a449039307b1a3cd451dbfdc0fbbe330")
+        ),
+        new TestCase(
+          "Single letter 'a' - HAVAL-256/5",
+          "HAVAL test vectors",
+          OpCodes.AnsiToBytes("a"),
+          null,
+          OpCodes.Hex8ToBytes("de8fd5ee72a5e4265af0a756f4e1a1f65c9b2b2f06c63aa04eae9914ca7e8025")
+        ),
+        new TestCase(
+          "String 'abc' - HAVAL-128/3",
+          "HAVAL test vectors",
+          OpCodes.AnsiToBytes("abc"),
+          null,
+          OpCodes.Hex8ToBytes("0cd40739683e15f01ca5dbceef4059f1")
+        )
+      ];
+      
+      // For test suite compatibility
+      this.testVectors = this.tests;
+    }
     
-    // Security level
-    securityLevel: 128,
+    CreateInstance(isInverse = false) {
+      return new HavalInstance(this, isInverse);
+    }
+  }
+
+  class HavalInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.inputBuffer = [];
+      this.hashSize = algorithm.hashSize;
+      this.blockSize = algorithm.blockSize;
+    }
     
-    // Reference links
-    referenceLinks: [
-      {
-        title: "HAVAL - A One-Way Hashing Algorithm with Variable Length of Output",
-        url: "https://web.archive.org/web/20171129084214/http://labs.calyptix.com/haval.php",
-        type: "specification"
-      },
-      {
-        title: "US Patent 5,351,310 - HAVAL",
-        url: "https://patents.google.com/patent/US5351310A/en",
-        type: "patent"
-      },
-      {
-        title: "Cryptanalysis of HAVAL",
-        url: "https://link.springer.com/chapter/10.1007/3-540-48329-2_24",
-        type: "analysis"
-      },
-      {
-        title: "Hash Function Cryptanalysis",
-        url: "https://csrc.nist.gov/projects/hash-functions",
-        type: "reference"
-      }
-    ],
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      this.inputBuffer.push(...data);
+    }
     
-    // Test vectors
-    testVectors: [
-      {
-        description: "Empty string - HAVAL-256/5",
-        input: "",
-        expected: "be417bb4dd5cfb76c7126f4f8eeb1553a449039307b1a3cd451dbfdc0fbbe330"
-      },
-      {
-        description: "Single letter 'a' - HAVAL-256/5",
-        input: "a",
-        expected: "de8fd5ee72a5e4265af0a756f4e1a1f65c9b2b2f06c63aa04eae9914ca7e8025"
-      },
-      {
-        description: "String 'abc' - HAVAL-128/3",
-        input: "abc",
-        expected: "0cd40739683e15f01ca5dbceef4059f1"
-      }
-    ],
-    
-    // Required Cipher interface properties
-    minKeyLength: 0,        // Minimum key length in bytes
-    maxKeyLength: 64,        // Maximum key length in bytes
-    stepKeyLength: 1,       // Key length step size
-    minBlockSize: 0,        // Minimum block size in bytes
-    maxBlockSize: 0,        // Maximum block size (0 = unlimited)
-    stepBlockSize: 1,       // Block size step
-    instances: {},          // Instance tracking
-    
-    // Hash function interface
-    Init: function() {
-      this.hasher = new HavalHasher(5, 256); // Default: 5 passes, 256 bits
-      this.bKey = false;
-    },
-    
-    KeySetup: function(key) {
-      // HAVAL doesn't use keys in standard mode
-      this.hasher = new HavalHasher(5, 256);
-      this.bKey = false;
-    },
-    
-    encryptBlock: function(blockIndex, data) {
-      if (typeof data === 'string') {
-        this.hasher.update(data);
-        return OpCodes.BytesToHex(this.hasher.finalize());
-      }
-      return '';
-    },
-    
-    decryptBlock: function(blockIndex, data) {
-      // Hash functions don't decrypt
-      return this.encryptBlock(blockIndex, data);
-    },
+    Result() {
+      if (this.inputBuffer.length === 0) return [];
+      
+      // Process using HAVAL hasher
+      const hasher = new HavalHasher(5, 256); // Default: 5 passes, 256 bits
+      hasher.update(this.inputBuffer);
+      const result = hasher.finalize();
+      
+      this.inputBuffer = [];
+      return Array.from(result);
+    }
     
     // Direct hash interface with configurable parameters
-    hash: function(data, passes, outputBits) {
+    hash(data, passes, outputBits) {
       const hasher = new HavalHasher(passes || 5, outputBits || 256);
       hasher.update(data);
       return hasher.finalize();
-    },
+    }
     
     // Convenient preset variants
-    hash128: function(data, passes) {
+    hash128(data, passes) {
       return this.hash(data, passes || 3, 128);
-    },
-    
-    hash160: function(data, passes) {
-      return this.hash(data, passes || 4, 160);
-    },
-    
-    hash192: function(data, passes) {
-      return this.hash(data, passes || 4, 192);
-    },
-    
-    hash224: function(data, passes) {
-      return this.hash(data, passes || 4, 224);
-    },
-    
-    hash256: function(data, passes) {
-      return this.hash(data, passes || 5, 256);
-    },
-    
-    ClearData: function() {
-      if (this.hasher) {
-        this.hasher.state.fill(0);
-        this.hasher.buffer.fill(0);
-      }
-      this.bKey = false;
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(Haval);
+    
+    hash160(data, passes) {
+      return this.hash(data, passes || 4, 160);
+    }
+    
+    hash192(data, passes) {
+      return this.hash(data, passes || 4, 192);
+    }
+    
+    hash224(data, passes) {
+      return this.hash(data, passes || 4, 224);
+    }
+    
+    hash256(data, passes) {
+      return this.hash(data, passes || 5, 256);
+    }
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Haval;
-  }
-  
-  // Make available globally
-  global.Haval = Haval;
+
+  // Register the algorithm
+  RegisterAlgorithm(new Haval());
   
 })(typeof global !== 'undefined' ? global : window);

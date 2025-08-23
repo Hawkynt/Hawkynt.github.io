@@ -68,25 +68,25 @@ class InternetChecksumAlgorithm extends Algorithm {
     this.tests = [
       new TestCase(
         [],
-        OpCodes.Hex8ToBytes("ffff"),
+        [0xFF, 0xFF],
         "Empty data",
         "RFC 1071 - empty data gives all 1s checksum"
       ),
       new TestCase(
-        OpCodes.Hex8ToBytes("4500003044224000800600008c7053548c70545f"),
-        OpCodes.Hex8ToBytes("f611"),
+        [0x45, 0x00, 0x00, 0x30, 0x44, 0x22, 0x40, 0x00, 0x80, 0x06, 0x00, 0x00, 0x8c, 0x70, 0x53, 0x54, 0x8c, 0x70, 0x54, 0x5f],
+        [0xF6, 0x11],
         "IPv4 header example",
         "RFC 1071 style IPv4 header checksum"
       ),
       new TestCase(
-        OpCodes.Hex8ToBytes("0001000200030004"),
-        OpCodes.Hex8ToBytes("fff5"),
+        [0x00, 0x01, 0x00, 0x02, 0x00, 0x03, 0x00, 0x04],
+        [0xFF, 0xF5],
         "Sequential bytes 1-4",
         "Educational test vector"
       ),
       new TestCase(
-        OpCodes.Hex8ToBytes("45000020000040004006"),
-        OpCodes.Hex8ToBytes("3ad9"),
+        [0x45, 0x00, 0x00, 0x20, 0x00, 0x00, 0x40, 0x00, 0x40, 0x06],
+        [0x3A, 0xD9],
         "Partial IPv4 header",
         "Educational test vector"
       )
@@ -131,21 +131,20 @@ class InternetChecksumInstance extends IAlgorithmInstance {
       this.sum += word;
       
       // Handle carry (convert to 1's complement arithmetic)
-      while (this.sum > 0xFFFF) {
-        this.sum = (this.sum & 0xFFFF) + (this.sum >>> 16);
+      const maxValue = OpCodes.Pack16BE(...OpCodes.Hex8ToBytes("ffff"));
+      while (this.sum > maxValue) {
+        this.sum = (this.sum & maxValue) + (this.sum >>> 16);
       }
     }
   }
 
   Result() {
     // Take 1's complement of the final sum
-    const checksum = (~this.sum) & 0xFFFF;
+    const maxValue = OpCodes.Pack16BE(...OpCodes.Hex8ToBytes("ffff"));
+    const checksum = (~this.sum) & maxValue;
     
     // Return as 2-byte array (big-endian)
-    const result = [
-      (checksum >>> 8) & 0xFF,
-      checksum & 0xFF
-    ];
+    const result = OpCodes.Unpack16BE(checksum);
     
     // Reset for next calculation
     this.sum = 0;

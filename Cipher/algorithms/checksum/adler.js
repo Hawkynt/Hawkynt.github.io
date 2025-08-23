@@ -85,19 +85,19 @@ class AdlerAlgorithm extends Algorithm {
         tests: [
           new TestCase(
             [],
-            OpCodes.Hex8ToBytes("0001"),
+            [0x00, 0x01],
             "Empty string",
             "RFC 1950 style - empty gives base value"
           ),
           new TestCase(
             OpCodes.AnsiToBytes("a"),
-            OpCodes.Hex8ToBytes("6262"),
+            [0x62, 0x62],
             "Single byte 'a'",
             "Educational test vector"
           ),
           new TestCase(
             OpCodes.AnsiToBytes("abc"),
-            OpCodes.Hex8ToBytes("572c"),
+            [0x57, 0x2C],
             "String 'abc'",
             "Educational test vector"
           )
@@ -113,31 +113,31 @@ class AdlerAlgorithm extends Algorithm {
         tests: [
           new TestCase(
             [],
-            OpCodes.Hex8ToBytes("00000001"),
+            [0x00, 0x00, 0x00, 0x01],
             "Empty string",
             "RFC 1950 - empty string gives 1"
           ),
           new TestCase(
             OpCodes.AnsiToBytes("a"),
-            OpCodes.Hex8ToBytes("00620062"),
+            [0x00, 0x62, 0x00, 0x62],
             "Single byte 'a'",
             "RFC 1950 test vector"
           ),
           new TestCase(
             OpCodes.AnsiToBytes("abc"),
-            OpCodes.Hex8ToBytes("024d0127"),
+            [0x02, 0x4D, 0x01, 0x27],
             "String 'abc'",
             "RFC 1950 test vector"
           ),
           new TestCase(
             OpCodes.AnsiToBytes("message digest"),
-            OpCodes.Hex8ToBytes("29750586"),
+            [0x29, 0x75, 0x05, 0x86],
             "String 'message digest'",
             "Educational test vector"
           ),
           new TestCase(
             OpCodes.AnsiToBytes("abcdefghijklmnopqrstuvwxyz"),
-            OpCodes.Hex8ToBytes("90860b20"),
+            [0x90, 0x86, 0x0B, 0x20],
             "Alphabet string",
             "Educational test vector"
           )
@@ -153,19 +153,19 @@ class AdlerAlgorithm extends Algorithm {
         tests: [
           new TestCase(
             [],
-            OpCodes.Hex8ToBytes("0000000000000001"),
+            [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01],
             "Empty string",
             "Educational test vector"
           ),
           new TestCase(
             OpCodes.AnsiToBytes("a"),
-            OpCodes.Hex8ToBytes("0000006200000062"),
+            [0x00, 0x00, 0x00, 0x62, 0x00, 0x00, 0x00, 0x62],
             "Single byte 'a'",
             "Educational test vector"
           ),
           new TestCase(
             OpCodes.AnsiToBytes("large data integrity verification"),
-            OpCodes.Hex8ToBytes("0000d65600000ce8"),
+            [0x00, 0x00, 0xD6, 0x56, 0x00, 0x00, 0x0C, 0xE8],
             "Large data sample",
             "Educational test vector"
           )
@@ -215,7 +215,7 @@ class AdlerInstance extends IAlgorithmInstance {
     switch (this.config.resultBytes) {
       case 2: // Adler-16
         const checksum16 = ((this.b << 8) | this.a) >>> 0;
-        result = [(checksum16 >>> 8) & 0xFF, checksum16 & 0xFF];
+        result = OpCodes.Unpack16BE(checksum16);
         break;
         
       case 4: // Adler-32  
@@ -226,10 +226,7 @@ class AdlerInstance extends IAlgorithmInstance {
         // Handle 64-bit result as two 32-bit parts
         const high = this.b >>> 0;
         const low = this.a >>> 0;
-        result = [
-          (high >>> 24) & 0xFF, (high >>> 16) & 0xFF, (high >>> 8) & 0xFF, high & 0xFF,
-          (low >>> 24) & 0xFF, (low >>> 16) & 0xFF, (low >>> 8) & 0xFF, low & 0xFF
-        ];
+        result = [...OpCodes.Unpack32BE(high), ...OpCodes.Unpack32BE(low)];
         break;
         
       default:

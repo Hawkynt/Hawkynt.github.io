@@ -23,11 +23,7 @@
       console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  } else {
-      console.error('Spritz cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
+  } 
   
   // Create Spritz cipher object
   const Spritz = {

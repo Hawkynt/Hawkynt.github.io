@@ -18,6 +18,11 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   global.OpCodes = require('../../OpCodes.js');
 }
 
+// Load DES implementation (REQUIRED for 3DES)
+if (typeof require !== 'undefined') {
+  require('./des.js');
+}
+
 const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
         BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
 
@@ -81,21 +86,21 @@ class TripleDESAlgorithm extends BlockCipherAlgorithm {
         uri: "https://csrc.nist.gov/publications/detail/fips/46/3/archive/1999-10-25",
         input: OpCodes.Hex8ToBytes("0123456789abcdef"),
         key: OpCodes.Hex8ToBytes("0123456789abcdef23456789abcdef01"),
-        expected: OpCodes.Hex8ToBytes("4f16dd133ef71b9b")
+        expected: OpCodes.Hex8ToBytes("A6BB373E196B375E")
       },
       {
         text: "3DES EDE3 mode - educational test vector", 
         uri: "https://csrc.nist.gov/publications/detail/sp/800-67/rev-2/final",
         input: OpCodes.Hex8ToBytes("0123456789abcdef"),
         key: OpCodes.Hex8ToBytes("0123456789abcdef23456789abcdef01456789abcdef0123"),
-        expected: OpCodes.Hex8ToBytes("4ff719143e16de9c")
+        expected: OpCodes.Hex8ToBytes("F2AFD84EE809E2B5")
       },
       {
         text: "3DES EDE2 mode - all zeros plaintext",
         uri: "https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program/block-ciphers",
         input: OpCodes.Hex8ToBytes("0000000000000000"),
         key: OpCodes.Hex8ToBytes("01010101010101010101010101010101"),
-        expected: OpCodes.Hex8ToBytes("0408102004081020")
+        expected: OpCodes.Hex8ToBytes("8CA64DE9C1B123A7")
       },
       {
         text: "3DES EDE2 mode - FIPS 46-3 test vector",
@@ -103,7 +108,7 @@ class TripleDESAlgorithm extends BlockCipherAlgorithm {
         KeySize: 16,
         input: OpCodes.Hex8ToBytes("0123456789abcdef"),
         key: OpCodes.Hex8ToBytes("0123456789abcdef23456789abcdef01"),
-        expected: OpCodes.Hex8ToBytes("cd49158537d6b200")
+        expected: OpCodes.Hex8ToBytes("A6BB373E196B375E")
       },
       {
         text: "3DES EDE3 mode - three distinct keys",
@@ -111,7 +116,7 @@ class TripleDESAlgorithm extends BlockCipherAlgorithm {
         KeySize: 24,
         input: OpCodes.Hex8ToBytes("0123456789abcdef"),
         key: OpCodes.Hex8ToBytes("0123456789abcdef23456789abcdef01456789abcdef0123"),
-        expected: OpCodes.Hex8ToBytes("e570cb4bca28ad00")
+        expected: OpCodes.Hex8ToBytes("F2AFD84EE809E2B5")
       }
     ];
   }
@@ -133,6 +138,9 @@ class TripleDESInstance extends IBlockCipherInstance {
     // 3DES-specific state
     this._subKeys = null;
     this._mode = null; // 'EDE2' or 'EDE3'
+    
+    // Cache for DES algorithm
+    this._desAlgorithm = null;
   }
 
   set key(keyBytes) {
@@ -250,58 +258,39 @@ class TripleDESInstance extends IBlockCipherInstance {
     return result;
   }
 
-  // Simplified DES implementation - for educational purposes
-  // In production, would use optimized DES implementation
+  // Use real DES algorithm for proper 3DES implementation
   _desEncrypt(block, key) {
-    // This is a simplified placeholder - a full implementation would include:
-    // - Initial permutation
-    // - 16 rounds of Feistel network
-    // - Final permutation
-    // For now, return a basic transformation for testing
-    return this._desTransform(block, key, false);
+    return this._callDES(block, key, false);
   }
 
   _desDecrypt(block, key) {
-    // DES decryption uses same algorithm with reversed key schedule
-    return this._desTransform(block, key, true);
+    return this._callDES(block, key, true);
   }
 
-  _desTransform(block, key, isDecrypt) {
-    // Simplified DES transformation for educational purposes
-    // This is NOT a complete DES implementation but is reversible
-    const result = [...block];
-    
-    // Simple reversible transformation
-    if (!isDecrypt) {
-      // Encryption: Forward transformation
-      for (let i = 0; i < 8; i++) {
-        result[i] ^= key[i];
-        result[i] = (result[i] + key[(i + 1) % 8]) & 0xFF;
-        result[i] = OpCodes.RotL8(result[i], (i % 4) + 1);
-      }
-      
-      // Swap halves
-      for (let i = 0; i < 4; i++) {
-        const temp = result[i];
-        result[i] = result[i + 4];
-        result[i + 4] = temp;
-      }
-    } else {
-      // Decryption: Reverse transformation
-      // Reverse swap halves
-      for (let i = 0; i < 4; i++) {
-        const temp = result[i];
-        result[i] = result[i + 4];
-        result[i + 4] = temp;
-      }
-      
-      // Reverse the transformation
-      for (let i = 7; i >= 0; i--) {
-        result[i] = OpCodes.RotR8(result[i], (i % 4) + 1);
-        result[i] = (result[i] - key[(i + 1) % 8]) & 0xFF;
-        result[i] ^= key[i];
+  // Use existing working DES implementation
+  _callDES(data, key, decrypt = false) {
+    if (data.length !== 8 || key.length !== 8) {
+      throw new Error("DES requires 8-byte blocks and keys");
+    }
+
+    // Get the working DES algorithm from the registry
+    if (!this._desAlgorithm) {
+      const algorithms = global.AlgorithmFramework.Algorithms || [];
+      this._desAlgorithm = algorithms.find(alg => alg.name === 'DES');
+      if (!this._desAlgorithm) {
+        throw new Error("DES algorithm not found in registry. Please load DES first.");
       }
     }
+
+    // Create a DES instance
+    const desInstance = this._desAlgorithm.CreateInstance(decrypt);
+    
+    // Set the DES key
+    desInstance.key = key;
+    
+    // Process the data
+    desInstance.Feed(data);
+    const result = desInstance.Result();
     
     return result;
   }

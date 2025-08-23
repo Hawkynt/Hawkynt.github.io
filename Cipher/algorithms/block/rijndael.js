@@ -139,7 +139,7 @@ class RijndaelFixedInstance extends AlgorithmFramework.IBlockCipherInstance {
       0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d
     ];
     
-    this._rcon = OpCodes.Hex8ToBytes("00010204081020408036cdab4d9a2f5f");
+    this._rcon = OpCodes.Hex8ToBytes("000102040810204080 1b36 6cd8ab4d9a2f5ebc63c6".replace(/ /g, ''));
   }
 
   set key(keyBytes) {
@@ -362,41 +362,40 @@ class RijndaelFixedInstance extends AlgorithmFramework.IBlockCipherInstance {
   }
 
   _mixColumns(state) {
+    // AES MixColumns - testing original row-major layout
     for (let c = 0; c < 4; c++) {
-      const a = [state[c], state[c+4], state[c+8], state[c+12]];
-      state[c] = this._gfMul(a[0], 2) ^ this._gfMul(a[1], 3) ^ a[2] ^ a[3];
-      state[c+4] = a[0] ^ this._gfMul(a[1], 2) ^ this._gfMul(a[2], 3) ^ a[3];
-      state[c+8] = a[0] ^ a[1] ^ this._gfMul(a[2], 2) ^ this._gfMul(a[3], 3);
-      state[c+12] = this._gfMul(a[0], 3) ^ a[1] ^ a[2] ^ this._gfMul(a[3], 2);
+      const a = [state[0*4 + c], state[1*4 + c], state[2*4 + c], state[3*4 + c]];
+      state[0*4 + c] = this._gfMul(a[0], 2) ^ this._gfMul(a[1], 3) ^ a[2] ^ a[3];
+      state[1*4 + c] = a[0] ^ this._gfMul(a[1], 2) ^ this._gfMul(a[2], 3) ^ a[3];
+      state[2*4 + c] = a[0] ^ a[1] ^ this._gfMul(a[2], 2) ^ this._gfMul(a[3], 3);
+      state[3*4 + c] = this._gfMul(a[0], 3) ^ a[1] ^ a[2] ^ this._gfMul(a[3], 2);
     }
   }
 
   _invMixColumns(state) {
+    // AES InvMixColumns - testing original row-major layout
     for (let c = 0; c < 4; c++) {
-      const a = [state[c], state[c+4], state[c+8], state[c+12]];
-      state[c] = this._gfMul(a[0], 14) ^ this._gfMul(a[1], 11) ^ this._gfMul(a[2], 13) ^ this._gfMul(a[3], 9);
-      state[c+4] = this._gfMul(a[0], 9) ^ this._gfMul(a[1], 14) ^ this._gfMul(a[2], 11) ^ this._gfMul(a[3], 13);
-      state[c+8] = this._gfMul(a[0], 13) ^ this._gfMul(a[1], 9) ^ this._gfMul(a[2], 14) ^ this._gfMul(a[3], 11);
-      state[c+12] = this._gfMul(a[0], 11) ^ this._gfMul(a[1], 13) ^ this._gfMul(a[2], 9) ^ this._gfMul(a[3], 14);
+      const a = [state[0*4 + c], state[1*4 + c], state[2*4 + c], state[3*4 + c]];
+      state[0*4 + c] = this._gfMul(a[0], 14) ^ this._gfMul(a[1], 11) ^ this._gfMul(a[2], 13) ^ this._gfMul(a[3], 9);
+      state[1*4 + c] = this._gfMul(a[0], 9) ^ this._gfMul(a[1], 14) ^ this._gfMul(a[2], 11) ^ this._gfMul(a[3], 13);
+      state[2*4 + c] = this._gfMul(a[0], 13) ^ this._gfMul(a[1], 9) ^ this._gfMul(a[2], 14) ^ this._gfMul(a[3], 11);
+      state[3*4 + c] = this._gfMul(a[0], 11) ^ this._gfMul(a[1], 13) ^ this._gfMul(a[2], 9) ^ this._gfMul(a[3], 14);
     }
   }
 
   _gfMul(a, b) {
-    // Use OpCodes GF multiplication if available, otherwise fallback
-    if (OpCodes.GFMul) {
-      return OpCodes.GFMul(a, b, 0x1b, 8);
-    }
-    
-    // Fallback implementation
+    // Use correct GF multiplication for AES field GF(2^8)
     let result = 0;
     for (let i = 0; i < 8; i++) {
       if (b & 1) result ^= a;
-      const hi_bit_set = a & 0x80;
-      a <<= 1;
-      if (hi_bit_set) a ^= 0x1b;
       b >>= 1;
+      if (a & 0x80) {
+        a = ((a << 1) ^ 0x1b) & 0xff;
+      } else {
+        a = (a << 1) & 0xff;
+      }
     }
-    return result & 0xff;
+    return result;
   }
 }
 

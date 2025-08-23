@@ -42,18 +42,18 @@
 
     _Reset() {
       // MD5 initialization values (RFC 1321)
-      this.h = new Uint32Array([
-        0x67452301,
-        0xEFCDAB89,
-        0x98BADCFE,
-        0x10325476
-      ]);
+      const initValues = global.OpCodes.Hex32ToDWords('67452301EFCDAB8998BADCFE10325476');
+      this.h = new Uint32Array(initValues);
       
       this.buffer = new Uint8Array(64);
       this.bufferLength = 0;
       this.totalLength = 0;
     }
 
+    Initialize() {
+      this._Reset();
+    }
+    
     Feed(data) {
       if (!data || data.length === 0) return;
       
@@ -92,6 +92,12 @@
     }
 
     Result() {
+      // Save current state
+      const originalH = this.h.slice();
+      const originalBuffer = this.buffer.slice();
+      const originalBufferLength = this.bufferLength;
+      const originalTotalLength = this.totalLength;
+      
       // Create padding
       const msgLength = this.totalLength;
       const padLength = (msgLength % 64 < 56) ? (56 - (msgLength % 64)) : (120 - (msgLength % 64));
@@ -102,48 +108,56 @@
       
       // Add length in bits as 64-bit little-endian
       const bitLength = msgLength * 8;
-      for (let i = 0; i < 8; i++) {
-        padding[padLength + i] = (bitLength >>> (i * 8)) & 0xFF;
-      }
+      // Pack as 64-bit little-endian (low 32 bits first, then high 32 bits)
+      padding[padLength] = bitLength & 0xFF;
+      padding[padLength + 1] = (bitLength >>> 8) & 0xFF;
+      padding[padLength + 2] = (bitLength >>> 16) & 0xFF;
+      padding[padLength + 3] = (bitLength >>> 24) & 0xFF;
+      // For practical message sizes, high 32 bits are always 0
+      padding[padLength + 4] = 0;
+      padding[padLength + 5] = 0;
+      padding[padLength + 6] = 0;
+      padding[padLength + 7] = 0;
       
       this.Feed(padding);
       
       // Convert hash to bytes (little-endian)
-      const result = new Uint8Array(16);
+      const result = [];
       for (let i = 0; i < 4; i++) {
-        result[i * 4] = this.h[i] & 0xFF;
-        result[i * 4 + 1] = (this.h[i] >>> 8) & 0xFF;
-        result[i * 4 + 2] = (this.h[i] >>> 16) & 0xFF;
-        result[i * 4 + 3] = (this.h[i] >>> 24) & 0xFF;
+        const bytes = global.OpCodes.Unpack32LE(this.h[i]);
+        result.push(...bytes);
       }
       
-      return Array.from(result);
+      // Restore original state (so Result() can be called multiple times)
+      this.h = originalH;
+      this.buffer = originalBuffer;
+      this.bufferLength = originalBufferLength;
+      this.totalLength = originalTotalLength;
+      
+      return result;
     }
 
     _ProcessBlock(block) {
       // Convert block to 32-bit words (little-endian)
-      const w = new Uint32Array(16);
+      const w = new Array(16);
       for (let i = 0; i < 16; i++) {
-        w[i] = block[i * 4] | 
-               (block[i * 4 + 1] << 8) | 
-               (block[i * 4 + 2] << 16) | 
-               (block[i * 4 + 3] << 24);
+        w[i] = global.OpCodes.Pack32LE(block[i * 4], block[i * 4 + 1], block[i * 4 + 2], block[i * 4 + 3]);
       }
       
       // Initialize working variables
       let a = this.h[0], b = this.h[1], c = this.h[2], d = this.h[3];
       
       // MD5 round constants (RFC 1321)
-      const k = [
-        0xD76AA478, 0xE8C7B756, 0x242070DB, 0xC1BDCEEE, 0xF57C0FAF, 0x4787C62A, 0xA8304613, 0xFD469501,
-        0x698098D8, 0x8B44F7AF, 0xFFFF5BB1, 0x895CD7BE, 0x6B901122, 0xFD987193, 0xA679438E, 0x49B40821,
-        0xF61E2562, 0xC040B340, 0x265E5A51, 0xE9B6C7AA, 0xD62F105D, 0x02441453, 0xD8A1E681, 0xE7D3FBC8,
-        0x21E1CDE6, 0xC33707D6, 0xF4D50D87, 0x455A14ED, 0xA9E3E905, 0xFCEFA3F8, 0x676F02D9, 0x8D2A4C8A,
-        0xFFFA3942, 0x8771F681, 0x6D9D6122, 0xFDE5380C, 0xA4BEEA44, 0x4BDECFA9, 0xF6BB4B60, 0xBEBFBC70,
-        0x289B7EC6, 0xEAA127FA, 0xD4EF3085, 0x04881D05, 0xD9D4D039, 0xE6DB99E5, 0x1FA27CF8, 0xC4AC5665,
-        0xF4292244, 0x432AFF97, 0xAB9423A7, 0xFC93A039, 0x655B59C3, 0x8F0CCC92, 0xFFEFF47D, 0x85845DD1,
-        0x6FA87E4F, 0xFE2CE6E0, 0xA3014314, 0x4E0811A1, 0xF7537E82, 0xBD3AF235, 0x2AD7D2BB, 0xEB86D391
-      ];
+      const k = global.OpCodes.Hex32ToDWords(
+        'D76AA478E8C7B756242070DBC1BDCEEEF57C0FAF4787C62AA8304613FD469501' +
+        '698098D88B44F7AFFFFF5BB1895CD7BE6B901122FD987193A679438E49B40821' +
+        'F61E2562C040B340265E5A51E9B6C7AAD62F105D02441453D8A1E681E7D3FBC8' +
+        '21E1CDE6C33707D6F4D50D87455A14EDA9E3E905FCEFA3F8676F02D98D2A4C8A' +
+        'FFFA39428771F6816D9D6122FDE5380CA4BEEA444BDECFA9F6BB4B60BEBFBC70' +
+        '289B7EC6EAA127FAD4EF308504881D05D9D4D039E6DB99E51FA27CF8C4AC5665' +
+        'F4292244432AFF97AB9423A7FC93A039655B59C38F0CCC92FFEFF47D85845DD1' +
+        '6FA87E4FFE2CE6E0A30143144E0811A1F7537E82BD3AF2352AD7D2BBEB86D391'
+      );
       
       // MD5 auxiliary functions
       const F = (x, y, z) => (x & y) | (~x & z);
@@ -151,8 +165,8 @@
       const H = (x, y, z) => x ^ y ^ z;
       const I = (x, y, z) => y ^ (x | ~z);
       
-      // Rotate left
-      const rotl = (x, n) => (x << n) | (x >>> (32 - n));
+      // Use OpCodes rotate left function
+      const rotl = (x, n) => global.OpCodes.RotL32(x, n);
       
       // MD5 shift amounts per round (RFC 1321)
       const shifts = [

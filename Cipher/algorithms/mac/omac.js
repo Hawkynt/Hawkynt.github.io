@@ -46,7 +46,7 @@ class OMACAlgorithm extends MacAlgorithm {
     
     // MAC-specific configuration
     this.SupportedMacSizes = [
-      new KeySize(16, 16, 1)  // AES-128 produces 16-byte MAC
+      new KeySize(16, 16, 0)  // AES-128 produces 16-byte MAC
     ];
     this.NeedsKey = true;
     

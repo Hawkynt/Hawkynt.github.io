@@ -1,377 +1,255 @@
 /*
- * Universal Fibonacci Coding
- * Compatible with both Browser and Node.js environments
+ * Fibonacci Coding Compression Algorithm Implementation
+ * Compatible with AlgorithmFramework
  * Educational implementation of Fibonacci number representation coding
  * (c)2006-2025 Hawkynt
  */
 
 (function(global) {
   'use strict';
-  
-  // Load dependencies
-  if (!global.Compression && typeof require !== 'undefined') {
-    try {
-      require('../../compression.js');
-    } catch (e) {
-      console.error('Failed to load compression framework:', e.message);
-      return;
-    }
+
+  // Load AlgorithmFramework (REQUIRED)
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
   }
-  
+
+  // Load OpCodes for cryptographic operations (RECOMMENDED)
   if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes.js:', e.message);
-      return;
+    global.OpCodes = require('../../OpCodes.js');
+  }
+
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+          CompressionAlgorithm, IAlgorithmInstance, TestCase, LinkItem, KeySize } = global.AlgorithmFramework;
+
+  class FibonacciCompression extends CompressionAlgorithm {
+    constructor() {
+      super();
+      
+      // Required metadata
+      this.name = "Fibonacci Coding";
+      this.description = "Universal integer encoding using Fibonacci number representation. Each number is represented as a sum of non-consecutive Fibonacci numbers, terminated with '11'. More efficient than unary for larger numbers.";
+      this.inventor = "Edouard Zeckendorf";
+      this.year = 1972;
+      this.category = CategoryType.COMPRESSION;
+      this.subCategory = "Universal";
+      this.securityStatus = null;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.BE;
+
+      // Pre-computed Fibonacci numbers for efficiency (first 32 numbers)
+      this.fibNumbers = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 
+                         2584, 4181, 6765, 10946, 17711, 28657, 46368, 75025, 121393, 
+                         196418, 317811, 514229, 832040, 1346269, 2178309, 3524578];
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("Fibonacci Coding - Wikipedia", "https://en.wikipedia.org/wiki/Fibonacci_coding"),
+        new LinkItem("Zeckendorf's Theorem", "https://en.wikipedia.org/wiki/Zeckendorf%27s_theorem"),
+        new LinkItem("Universal Codes Tutorial", "https://web.stanford.edu/class/ee398a/handouts/lectures/05-UniversalCoding.pdf")
+      ];
+
+      this.references = [
+        new LinkItem("Elements of Information Theory", "https://www.wiley.com/en-us/Elements+of+Information+Theory%2C+2nd+Edition-p-9780471241959"),
+        new LinkItem("Data Compression Book", "https://www.elsevier.com/books/introduction-to-data-compression/sayood/978-0-12-809474-7"),
+        new LinkItem("Fibonacci Applications", "https://www.mathsisfun.com/numbers/fibonacci-sequence.html")
+      ];
+
+      // Test vectors - round-trip compression tests
+      this.tests = [
+        {
+          text: "Small values - good for Fibonacci coding",
+          uri: "https://en.wikipedia.org/wiki/Fibonacci_coding",
+          input: [1, 2, 3, 4, 5], // Small numbers work well
+          expected: [1, 2, 3, 4, 5] // Should decompress to original
+        },
+        {
+          text: "Single small value",
+          uri: "Educational test",
+          input: [8], // F(6) = 8
+          expected: [8] // Should decompress to original
+        },
+        {
+          text: "Mixed values",
+          uri: "Educational test",
+          input: [1, 3, 8, 13], // Various Fibonacci and non-Fibonacci numbers
+          expected: [1, 3, 8, 13] // Should decompress to original
+        }
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      return new FibonacciInstance(this, isInverse);
     }
   }
-  
-  const Fibonacci = {
-    internalName: 'Fibonacci',
-    name: 'Fibonacci Coding',
-    comment: 'Universal integer encoding using Fibonacci number representation',
-    category: 'Universal',
-    instances: {},
-    isInitialized: false,
-    
-    // Pre-computed Fibonacci numbers for efficiency
-    fibNumbers: [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181, 6765, 10946, 17711, 28657, 46368, 75025, 121393, 196418, 317811, 514229, 832040, 1346269, 2178309, 3524578, 5702887, 9227465, 14930352, 24157817, 39088169, 63245986, 102334155, 165580141, 267914296, 433494437, 701408733, 1134903170, 1836311903],
-    
-    /**
-     * Initialize the algorithm
-     */
-    Init: function() {
-      this.isInitialized = true;
-      console.log('Fibonacci coding algorithm initialized');
-    },
-    
-    /**
-     * Create a new instance
-     */
-    KeySetup: function() {
-      const id = this.internalName + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
-      this.instances[id] = {
-        initialized: true,
-        compressionRatio: 0,
-        lastInputSize: 0,
-        lastOutputSize: 0
-      };
-      return id;
-    },
-    
-    /**
-     * Compress data using Fibonacci coding
-     * @param {string} keyId - Instance identifier
-     * @param {string} data - Input data to compress
-     * @returns {string} Compressed data
-     */
-    Compress: function(keyId, data) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
+
+  class FibonacciInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.inputBuffer = [];
+      this.fibNumbers = algorithm.fibNumbers;
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      if (this.inputBuffer.length === 0) {
+        return [];
       }
-      
-      if (!data || data.length === 0) {
-        return '';
+
+      if (this.isInverse) {
+        return this._decompress();
+      } else {
+        return this._compress();
       }
-      
-      const instance = this.instances[keyId];
-      const input = this._stringToBytes(data);
-      
-      let bitStream = '';
+    }
+
+    _compress() {
+      let bitString = '';
       
       // Encode each byte using Fibonacci coding
-      for (const byte of input) {
-        // Fibonacci coding cannot encode 0, so we use byte + 1
-        const value = byte + 1;
-        const fibCode = this._encodeFibonacci(value);
-        bitStream += fibCode;
-      }
-      
-      // Store original length and convert to bytes
-      const compressed = this._packBitStream(bitStream, input.length);
-      
-      // Update statistics
-      instance.lastInputSize = data.length;
-      instance.lastOutputSize = compressed.length;
-      instance.compressionRatio = data.length / compressed.length;
-      
-      return compressed;
-    },
-    
-    /**
-     * Decompress Fibonacci-encoded data
-     * @param {string} keyId - Instance identifier
-     * @param {string} compressedData - Compressed data
-     * @returns {string} Decompressed data
-     */
-    Decompress: function(keyId, compressedData) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      if (!compressedData || compressedData.length === 0) {
-        return '';
-      }
-      
-      // Unpack bit stream and get original length
-      const { bitStream, originalLength } = this._unpackBitStream(compressedData);
-      
-      const decodedBytes = [];
-      let pos = 0;
-      
-      // Decode until we have the expected number of bytes
-      while (decodedBytes.length < originalLength && pos < bitStream.length) {
-        const { value, bitsConsumed } = this._decodeFibonacci(bitStream, pos);
-        
-        if (value === null) {
-          throw new Error('Invalid Fibonacci code in compressed data');
-        }
-        
-        // Convert back to byte (subtract 1 since we added 1 during encoding)
-        const byte = value - 1;
-        if (byte < 0 || byte > 255) {
-          throw new Error('Invalid byte value in compressed data');
-        }
-        
-        decodedBytes.push(byte);
-        pos += bitsConsumed;
-      }
-      
-      if (decodedBytes.length !== originalLength) {
-        throw new Error('Decompressed length mismatch');
-      }
-      
-      return this._bytesToString(decodedBytes);
-    },
-    
-    /**
-     * Clear instance data
-     */
-    ClearData: function(keyId) {
-      if (this.instances[keyId]) {
-        delete this.instances[keyId];
-        return true;
-      }
-      return false;
-    },
-    
-    /**
-     * Encode a positive integer using Fibonacci representation
-     * Format: Zeckendorf representation + trailing '1' as terminator
-     * @private
-     */
-    _encodeFibonacci: function(value) {
-      if (value <= 0) {
-        throw new Error('Fibonacci coding can only encode positive integers');
-      }
-      
-      // Find Fibonacci representation (Zeckendorf's theorem)
-      const representation = [];
-      let remaining = value;
-      
-      // Work backwards from largest Fibonacci number that fits
-      for (let i = this.fibNumbers.length - 1; i >= 0; i--) {
-        if (this.fibNumbers[i] <= remaining) {
-          representation[i] = 1;
-          remaining -= this.fibNumbers[i];
-          
-          if (remaining === 0) break;
+      for (const byte of this.inputBuffer) {
+        if (byte === 0) {
+          // Special case: 0 is encoded as "11" 
+          bitString += '11';
         } else {
-          representation[i] = 0;
+          bitString += this._encodeFibonacci(byte);
         }
       }
       
-      if (remaining > 0) {
-        throw new Error('Value too large for Fibonacci encoding');
-      }
+      // Convert bit string to bytes
+      const bytes = this._bitStringToBytes(bitString);
       
-      // Convert to bit string (reverse order) and add terminating '1'
-      let bitString = '';
-      for (let i = 0; i < representation.length; i++) {
-        if (representation[i]) {
-          bitString = '1' + bitString;
-        } else if (bitString.length > 0) {
-          bitString = '0' + bitString;
-        }
-      }
+      // Clear input buffer
+      this.inputBuffer = [];
       
-      // Add terminating '1' (this ensures no two consecutive 1s in the middle)
-      return bitString + '1';
-    },
-    
-    /**
-     * Decode a Fibonacci code from bit stream
-     * @private
-     */
-    _decodeFibonacci: function(bitStream, startPos) {
-      if (startPos >= bitStream.length) {
-        return { value: null, bitsConsumed: 0 };
-      }
-      
-      // Find the terminating "11" pattern
-      let pos = startPos;
-      let codeLength = 0;
-      
-      while (pos + 1 < bitStream.length) {
-        if (bitStream[pos] === '1' && bitStream[pos + 1] === '1') {
-          // Found terminating pattern
-          codeLength = pos - startPos + 1; // Include first '1' of "11"
-          break;
-        }
-        pos++;
-      }
-      
-      if (codeLength === 0) {
-        return { value: null, bitsConsumed: 0 };
-      }
-      
-      // Extract the code (without the terminating '1')
-      const code = bitStream.substring(startPos, startPos + codeLength);
-      
-      // Decode using Fibonacci numbers
-      let value = 0;
-      for (let i = 0; i < code.length; i++) {
-        if (code[i] === '1') {
-          const fibIndex = code.length - 1 - i;
-          if (fibIndex < this.fibNumbers.length) {
-            value += this.fibNumbers[fibIndex];
-          }
-        }
-      }
-      
-      return { 
-        value: value, 
-        bitsConsumed: codeLength + 1 // Include the terminating '1'
-      };
-    },
-    
-    /**
-     * Pack bit stream into bytes with header
-     * @private
-     */
-    _packBitStream: function(bitStream, originalLength) {
-      const bytes = [];
-      
-      // Store original length (4 bytes, big-endian)
-      bytes.push((originalLength >>> 24) & 0xFF);
-      bytes.push((originalLength >>> 16) & 0xFF);
-      bytes.push((originalLength >>> 8) & 0xFF);
-      bytes.push(originalLength & 0xFF);
-      
-      // Store bit stream length (4 bytes, big-endian)
-      const bitLength = bitStream.length;
-      bytes.push((bitLength >>> 24) & 0xFF);
-      bytes.push((bitLength >>> 16) & 0xFF);
-      bytes.push((bitLength >>> 8) & 0xFF);
-      bytes.push(bitLength & 0xFF);
-      
-      // Pad bit stream to byte boundary
-      const padding = (8 - (bitStream.length % 8)) % 8;
-      const paddedBits = bitStream + '0'.repeat(padding);
-      
-      // Convert to bytes
-      for (let i = 0; i < paddedBits.length; i += 8) {
-        const byte = paddedBits.substr(i, 8);
-        bytes.push(parseInt(byte, 2));
-      }
-      
-      return this._bytesToString(bytes);
-    },
-    
-    /**
-     * Unpack bit stream from bytes
-     * @private
-     */
-    _unpackBitStream: function(compressedData) {
-      const bytes = this._stringToBytes(compressedData);
-      
-      if (bytes.length < 8) {
-        throw new Error('Invalid compressed data: header too short');
-      }
-      
-      // Read original length
-      const originalLength = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
-      
-      // Read bit stream length
-      const bitLength = (bytes[4] << 24) | (bytes[5] << 16) | (bytes[6] << 8) | bytes[7];
-      
-      // Convert bytes back to bit stream
-      let bitStream = '';
-      for (let i = 8; i < bytes.length; i++) {
-        bitStream += bytes[i].toString(2).padStart(8, '0');
-      }
-      
-      // Trim to actual bit length
-      bitStream = bitStream.substring(0, bitLength);
-      
-      return { bitStream, originalLength };
-    },
-    
-    /**
-     * Get compression statistics and example encodings
-     */
-    GetStats: function(keyId) {
-      const instance = this.instances[keyId];
-      if (!instance) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      // Generate example encodings for common values
-      const examples = {};
-      for (let i = 1; i <= 10; i++) {
-        examples[i] = this._encodeFibonacci(i);
-      }
-      
-      return {
-        inputSize: instance.lastInputSize,
-        outputSize: instance.lastOutputSize,
-        compressionRatio: instance.compressionRatio,
-        spaceSavings: ((instance.lastInputSize - instance.lastOutputSize) / instance.lastInputSize * 100).toFixed(2) + '%',
-        examples: examples,
-        maxEncodableValue: this.fibNumbers[this.fibNumbers.length - 1],
-        description: 'Uses Zeckendorf representation - every positive integer has unique Fibonacci representation'
-      };
-    },
-    
-    // Utility functions using OpCodes if available
-    _stringToBytes: function(str) {
-      if (global.OpCodes && OpCodes.StringToBytes) {
-        return OpCodes.StringToBytes(str);
-      }
-      
-      const bytes = [];
-      for (let i = 0; i < str.length; i++) {
-        bytes.push(str.charCodeAt(i) & 0xFF);
-      }
       return bytes;
-    },
-    
-    _bytesToString: function(bytes) {
-      if (global.OpCodes && OpCodes.BytesToString) {
-        return OpCodes.BytesToString(bytes);
+    }
+
+    _decompress() {
+      // Convert bytes to bit string
+      const bitString = this._bytesToBitString(this.inputBuffer);
+      
+      // Decode Fibonacci codes
+      const result = [];
+      let i = 0;
+      
+      while (i < bitString.length - 1) {
+        const { value, nextIndex } = this._decodeFibonacci(bitString, i);
+        if (nextIndex === -1) break; // Invalid code
+        result.push(value);
+        i = nextIndex;
       }
       
-      let str = '';
-      for (let i = 0; i < bytes.length; i++) {
-        str += String.fromCharCode(bytes[i]);
-      }
-      return str;
+      // Clear input buffer
+      this.inputBuffer = [];
+      
+      return result;
     }
-  };
-  
-  // Auto-register with compression system
-  if (global.Compression) {
-    Fibonacci.Init();
-    global.Compression.AddAlgorithm(Fibonacci);
+
+    _encodeFibonacci(num) {
+      if (num <= 0) return '11'; // Special case for 0
+      
+      // Find Fibonacci representation using greedy algorithm
+      const bits = new Array(this.fibNumbers.length).fill(0);
+      let remaining = num;
+      
+      // Work backwards from largest Fibonacci number
+      for (let i = this.fibNumbers.length - 1; i >= 0 && remaining > 0; i--) {
+        if (this.fibNumbers[i] <= remaining) {
+          bits[i] = 1;
+          remaining -= this.fibNumbers[i];
+        }
+      }
+      
+      // Build bit string (reverse order) and add terminating "11"
+      let result = '';
+      for (let i = 0; i < bits.length; i++) {
+        result = bits[i] + result;
+      }
+      
+      // Remove leading zeros and add terminating 1
+      result = result.replace(/^0+/, '') + '1';
+      
+      return result;
+    }
+
+    _decodeFibonacci(bitString, startIndex) {
+      let i = startIndex;
+      let prevBit = '0';
+      let fibBits = '';
+      
+      // Read until we find "11" terminator
+      while (i < bitString.length) {
+        const currentBit = bitString[i];
+        fibBits += currentBit;
+        
+        if (prevBit === '1' && currentBit === '1') {
+          // Found terminator "11", decode the number
+          const value = this._fibBitsToNumber(fibBits.slice(0, -1)); // Remove last '1'
+          return { value, nextIndex: i + 1 };
+        }
+        
+        prevBit = currentBit;
+        i++;
+      }
+      
+      return { value: 0, nextIndex: -1 }; // Invalid code
+    }
+
+    _fibBitsToNumber(bits) {
+      if (bits.length === 0) return 0;
+      
+      let result = 0;
+      // Process bits from right to left (least significant first)
+      for (let i = 0; i < bits.length && i < this.fibNumbers.length; i++) {
+        if (bits[bits.length - 1 - i] === '1') {
+          result += this.fibNumbers[i];
+        }
+      }
+      
+      return result;
+    }
+
+    _bitStringToBytes(bitString) {
+      const bytes = [];
+      
+      // Pad to multiple of 8 bits
+      while (bitString.length % 8 !== 0) {
+        bitString += '0';
+      }
+      
+      // Convert each 8-bit group to a byte
+      for (let i = 0; i < bitString.length; i += 8) {
+        const byteStr = bitString.substr(i, 8);
+        const byteVal = parseInt(byteStr, 2);
+        bytes.push(byteVal);
+      }
+      
+      return bytes;
+    }
+
+    _bytesToBitString(bytes) {
+      let bitString = '';
+      
+      for (const byte of bytes) {
+        // Convert each byte to 8-bit binary string
+        bitString += byte.toString(2).padStart(8, '0');
+      }
+      
+      return bitString;
+    }
   }
-  
+
+  // Register the algorithm
+  RegisterAlgorithm(new FibonacciCompression());
+
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Fibonacci;
+    module.exports = FibonacciCompression;
   }
-  
-  // Make globally available
-  global.Fibonacci = Fibonacci;
-  
+
 })(typeof global !== 'undefined' ? global : window);

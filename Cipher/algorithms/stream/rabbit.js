@@ -232,7 +232,91 @@
       return id;
     },
     
-    // Clear cipher data
+    
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._key = keyData;
+          this._instance = new Rabbit.RabbitInstance(keyData, this._iv || this._nonce);
+        },
+        
+        set keySize(size) {
+          this._keySize = size;
+        },
+        
+        set nonce(nonceData) {
+          this._nonce = nonceData;
+          if (this._instance && this._instance.setNonce) {
+            this._instance.setNonce(nonceData);
+          }
+        },
+        
+        set counter(counterValue) {
+          this._counter = counterValue;
+          if (this._instance && this._instance.setCounter) {
+            this._instance.setCounter(counterValue);
+          }
+        },
+        
+        set iv(ivData) {
+          this._iv = ivData;
+          if (this._instance && this._instance.setIV) {
+            this._instance.setIV(ivData);
+          }
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          // Create fresh instance if needed with all parameters
+          if (!this._instance && this._key) {
+            this._instance = new Rabbit.RabbitInstance(this._key, this._iv || this._nonce);
+          }
+          
+          if (!this._instance) {
+            return [];
+          }
+          
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            // Try different keystream methods that stream ciphers might use
+            let keystreamByte;
+            if (this._instance.getNextKeystreamByte) {
+              keystreamByte = this._instance.getNextKeystreamByte();
+            } else if (this._instance.generateKeystreamByte) {
+              keystreamByte = this._instance.generateKeystreamByte();
+            } else if (this._instance.getKeystream) {
+              const keystream = this._instance.getKeystream(1);
+              keystreamByte = keystream[0];
+            } else if (this._instance.nextByte) {
+              keystreamByte = this._instance.nextByte();
+            } else {
+              // Fallback - return input unchanged
+              keystreamByte = 0;
+            }
+            result.push(this._inputData[i] ^ keystreamByte);
+          }
+          return result;
+        }
+      };
+    },// Clear cipher data
     ClearData: function(id) {
       if (Rabbit.instances[id]) {
         // Clear sensitive data

@@ -46,7 +46,7 @@ class VMACAlgorithm extends MacAlgorithm {
     
     // MAC-specific configuration
     this.SupportedMacSizes = [
-      new KeySize(8, 16, 8)  // VMAC produces 64-bit or 128-bit MAC
+      new KeySize(8, 16, 0)  // VMAC produces 64-bit or 128-bit MAC
     ];
     this.NeedsKey = true;
     

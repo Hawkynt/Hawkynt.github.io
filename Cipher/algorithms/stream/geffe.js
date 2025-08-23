@@ -36,10 +36,6 @@
       console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  } else {
-      console.error('Geffe generator requires Cipher system to be loaded first');
-      return;
-    }
   }
   
   // Create Geffe generator cipher object
@@ -278,11 +274,11 @@
         throw new Error('Cipher not initialized');
       }
       
-      const inputBytes = OpCodes.AsciiToBytes(input);
+      const inputBytes = global.OpCodes.AsciiToBytes(input);
       const keystream = this.generateKeystream(inputBytes.length);
-      const outputBytes = OpCodes.XorArrays(inputBytes, keystream);
+      const outputBytes = global.OpCodes.XorArrays(inputBytes, keystream);
       
-      return OpCodes.BytesToString(outputBytes);
+      return global.OpCodes.BytesToString(outputBytes);
     },
     
     /**
@@ -312,24 +308,29 @@
      */
     ClearData: function() {
       if (this.lfsr1) {
-        OpCodes.ClearArray(this.lfsr1);
+        global.OpCodes.ClearArray(this.lfsr1);
         this.lfsr1 = null;
       }
       if (this.lfsr2) {
-        OpCodes.ClearArray(this.lfsr2);
+        global.OpCodes.ClearArray(this.lfsr2);
         this.lfsr2 = null;
       }
       if (this.lfsr3) {
-        OpCodes.ClearArray(this.lfsr3);
+        global.OpCodes.ClearArray(this.lfsr3);
         this.lfsr3 = null;
       }
       this.isInitialized = false;
     }
   };
   
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(Geffe);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(Geffe);
+  }
+  
+  // Auto-register with legacy Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(Geffe);
   }
   
   // Export for Node.js

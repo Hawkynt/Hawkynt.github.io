@@ -171,7 +171,7 @@
     }
     
     if (typeof data === 'string') {
-      data = OpCodes.StringToBytes(data);
+      data = OpCodes.AnsiToBytes(data);
     }
     
     let offset = 0;
@@ -327,8 +327,57 @@
   };
   
   // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(Shake128);
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(Shake128);
+  }
+  
+  // AlgorithmFramework compatibility layer
+  if (global.AlgorithmFramework) {
+    const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType,
+            CryptoAlgorithm, IAlgorithmInstance, TestCase } = global.AlgorithmFramework;
+    
+    class Shake128Wrapper extends CryptoAlgorithm {
+      constructor() {
+        super();
+        this.name = Shake128.name;
+        this.category = CategoryType.HASH;
+        this.securityStatus = SecurityStatus.ACTIVE;
+        this.complexity = ComplexityType.MEDIUM;
+        this.inventor = "Guido Bertoni, Joan Daemen, Michaël Peeters, Gilles Van Assche";
+        this.year = 2015;
+        this.country = "BE";
+        this.description = "SHAKE128 extensible-output function based on Keccak";
+        
+        if (Shake128.tests) {
+          this.tests = Shake128.tests.map(test => 
+            new TestCase(test.input, test.expected, test.text, test.uri)
+          );
+        }
+      }
+      
+      CreateInstance(isInverse = false) {
+        return new Shake128WrapperInstance(this, isInverse);
+      }
+    }
+    
+    class Shake128WrapperInstance extends IAlgorithmInstance {
+      constructor(algorithm, isInverse) {
+        super(algorithm, isInverse);
+        this.instance = Object.create(Shake128);
+        this.instance.Init();
+      }
+      
+      ProcessData(input) {
+        return this.instance.hash(input, 32);
+      }
+      
+      Reset() {
+        this.instance.ClearData();
+        this.instance.Init();
+      }
+    }
+    
+    RegisterAlgorithm(new Shake128Wrapper());
   }
   
   // Export for Node.js

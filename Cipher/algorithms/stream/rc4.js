@@ -1,6 +1,19 @@
+#!/usr/bin/env node
 /*
- * RC4 Stream Cipher Implementation
+ * Universal RC4 Stream Cipher
+ * Compatible with both Browser and Node.js environments
+ * Based on RC4 specification by Ron Rivest (1987)
  * (c)2006-2025 Hawkynt
+ * 
+ * RC4 is a variable-key-size stream cipher using:
+ * - Key Scheduling Algorithm (KSA) for S-box initialization
+ * - Pseudo-Random Generation Algorithm (PRGA) for keystream generation
+ * - 256-byte internal state (S-box)
+ * - Two index pointers (i, j)
+ * 
+ * WARNING: RC4 is cryptographically broken and deprecated (RFC 7465).
+ * Known vulnerabilities include keystream biases and related-key attacks.
+ * This implementation is for educational purposes only.
  */
 
 (function(global) {
@@ -25,203 +38,81 @@
     }
   }
   
+  // Create RC4 cipher object
   const RC4 = {
-    name: "RC4",
-    description: "Variable-key-size stream cipher using a secret internal state of 256 bytes with two index pointers. Originally a trade secret until leaked in 1994, widely used but now deprecated due to numerous vulnerabilities.",
+    // Public interface properties
+    internalName: 'RC4',
+    name: 'RC4 Stream Cipher',
+    comment: 'RC4 Stream Cipher - DEPRECATED: Cryptographically broken (RFC 7465)',
+    minKeyLength: 1,      // RC4 supports 1-256 byte keys
+    maxKeyLength: 256,
+    stepKeyLength: 1,
+    minBlockSize: 1,      // Stream cipher - processes byte by byte
+    maxBlockSize: 65536,  // Practical limit for processing
+    stepBlockSize: 1,
+    instances: {},
+    cantDecode: false,
+    isInitialized: false,
+    boolIsStreamCipher: true, // Mark as stream cipher
+    
+    // Required metadata following CONTRIBUTING.md
+    description: "Variable-key-size stream cipher using secret internal state of 256 bytes with two index pointers. Widely used but now deprecated due to numerous vulnerabilities including keystream biases and related-key attacks.",
     inventor: "Ron Rivest",
     year: 1987,
     country: "US",
     category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: "insecure",
-    securityNotes: "RC4 has numerous critical vulnerabilities including bias in keystream, weak keys, and related-key attacks. Deprecated in all major protocols. Use for educational purposes only.",
+    securityNotes: "Officially deprecated by RFC 7465 due to statistical biases, related-key attacks, and WEP vulnerabilities. Never use for secure applications.",
     
     documentation: [
-      {text: "RFC 6229 Test Vectors", uri: "https://tools.ietf.org/html/rfc6229"},
-      {text: "Wikipedia RC4", uri: "https://en.wikipedia.org/wiki/RC4"}
+      {text: "RFC 6229: Test Vectors for the Stream Cipher RC4", uri: "https://tools.ietf.org/html/rfc6229"},
+      {text: "RFC 7465: Prohibiting RC4 Cipher Suites", uri: "https://tools.ietf.org/html/rfc7465"},
+      {text: "Wikipedia: RC4", uri: "https://en.wikipedia.org/wiki/RC4"}
     ],
     
     references: [
-      {text: "Applied Cryptography RC4", uri: "https://www.schneier.com/academic/paperfiles/paper-rc4.pdf"}
+      {text: "Applied Cryptography - RC4 Analysis", uri: "https://www.schneier.com/academic/paperfiles/paper-rc4.pdf"},
+      {text: "Fluhrer-Mantin-Shamir Attack on WEP", uri: "https://www.drizzle.com/~aboba/IEEE/rc4_ksaproc.pdf"},
+      {text: "RC4 Biases and Practical Attacks", uri: "https://www.imperva.com/blog/rc4-attacks-what-you-need-to-know/"}
     ],
     
     knownVulnerabilities: [
       {
-        type: "Bias Attacks", 
-        text: "RC4 keystream has statistical biases exploitable in broadcast attacks and WEP cracking",
-        mitigation: "Algorithm completely deprecated - use ChaCha20, AES-CTR, or similar modern stream ciphers"
+        type: "Statistical Biases", 
+        text: "RC4 keystream contains detectable statistical biases exploitable in various attack scenarios",
+        mitigation: "Use approved stream ciphers like ChaCha20 or AES-GCM"
       },
       {
-        type: "Related-Key Attacks", 
-        text: "RC4 vulnerable to related-key attacks when keys share common prefixes or patterns",
-        mitigation: "Use cryptographically secure key derivation and modern stream ciphers"
+        type: "Related-Key Attacks",
+        text: "Vulnerable to attacks when keys share common prefixes or patterns (WEP vulnerability)",
+        mitigation: "Algorithm fundamentally broken - avoid all use"
+      },
+      {
+        type: "Broadcast Attacks",
+        text: "Statistical analysis of multiple ciphertexts can recover plaintext patterns",
+        mitigation: "RC4 deprecated by RFC 7465 - use modern alternatives"
       }
     ],
     
     tests: [
       {
-        text: "RFC 6229 Test Vector 1 (40-bit key)",
+        text: "RFC 6229 Test Vector (40-bit key)",
         uri: "https://tools.ietf.org/html/rfc6229#section-2",
         keySize: 5,
-        key: [0x01, 0x02, 0x03, 0x04, 0x05],
-        input: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        expected: [0xb2, 0x39, 0x63, 0x05, 0xf0, 0x3d, 0xc0, 0x27]
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("0000000000000000") : [],
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("0102030405") : [],
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("b2396305f03dc027") : []
       },
       {
-        text: "RFC 6229 Test Vector 2 (128-bit key)",
-        uri: "https://tools.ietf.org/html/rfc6229#section-2", 
+        text: "RFC 6229 Test Vector (128-bit key)",
+        uri: "https://tools.ietf.org/html/rfc6229#section-2",
         keySize: 16,
-        key: [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10],
-        input: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        expected: [0x9a, 0xc7, 0xcc, 0x9a, 0x60, 0x9d, 0x1e, 0xf7]
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("0000000000000000") : [],
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f10") : [],
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("9ac7cc9a609d1ef7") : []
       }
     ],
-
-    // Public interface properties
-    minKeyLength: 1,    // RC4 supports 1-256 byte keys
-    maxKeyLength: 256,
-    stepKeyLength: 1,
-    minBlockSize: 1,    // Stream cipher - processes byte by byte
-    maxBlockSize: 65536, // Practical limit for processing
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
-    
-
-    // Official test vectors from RFC/NIST standards and authoritative sources
-    officialTestVectors: [
-      {
-        algorithm: 'RC4',
-        description: 'RFC 6229 40-bit key test vector',
-        origin: 'IETF RFC 6229: Test Vectors for the Stream Cipher RC4',
-        link: 'https://tools.ietf.org/html/rfc6229#section-2',
-        standard: 'RFC 6229',
-        key: global.OpCodes ? global.OpCodes.Hex8ToBytes('0102030405') : [],
-        keyHex: '0102030405',
-        keyLength: 40, // bits
-        plaintextHex: '0000000000000000',
-        ciphertextHex: 'b2396305f03dc027',
-        notes: 'RFC 6229 official test vector for 40-bit key (DEPRECATED cipher)',
-        category: 'deprecated-standard'
-      },
-      // RFC 6229 Test Vector Set 2 - 64-bit key
-      {
-        algorithm: 'RC4',
-        description: 'RFC 6229 64-bit key test vector',
-        origin: 'IETF RFC 6229: Test Vectors for the Stream Cipher RC4',
-        link: 'https://tools.ietf.org/html/rfc6229#section-2',
-        standard: 'RFC 6229',
-        key: global.OpCodes ? global.OpCodes.Hex8ToBytes('0102030405060708') : [],
-        keyHex: '0102030405060708',
-        keyLength: 64, // bits
-        plaintextHex: '0000000000000000',
-        ciphertextHex: '293f02d47f37c9b6',
-        notes: 'RFC 6229 official test vector for 64-bit key (DEPRECATED cipher)',
-        category: 'deprecated-standard'
-      },
-      // RFC 6229 Test Vector Set 3 - 128-bit key
-      {
-        algorithm: 'RC4',
-        description: 'RFC 6229 128-bit key test vector',
-        origin: 'IETF RFC 6229: Test Vectors for the Stream Cipher RC4',
-        link: 'https://tools.ietf.org/html/rfc6229#section-2',
-        standard: 'RFC 6229',
-        key: global.OpCodes ? global.OpCodes.Hex8ToBytes('0102030405060708090a0b0c0d0e0f10') : [],
-        keyHex: '0102030405060708090a0b0c0d0e0f10',
-        keyLength: 128, // bits
-        plaintextHex: '00000000000000000000000000000000',
-        ciphertextHex: '9ac7cc9a609d1ef7b2932899cde41b97',
-        notes: 'RFC 6229 official test vector for 128-bit key (DEPRECATED cipher)',
-        category: 'deprecated-standard'
-      },
-      // WEP key recovery test (historical cryptanalysis)
-      {
-        algorithm: 'RC4-WEP',
-        description: 'RC4 WEP vulnerability demonstration vector',
-        origin: 'Fluhrer, Mantin, and Shamir (2001) - WEP attack research',
-        link: 'https://www.drizzle.com/~aboba/IEEE/rc4_ksaproc.pdf',
-        standard: 'Academic Research',
-        key: global.OpCodes ? global.OpCodes.Hex8ToBytes('03000000000000000000000000') : [],
-        keyHex: '03000000000000000000000000',
-        keyLength: 104, // bits (WEP weak key pattern)
-        plaintextHex: '00000000000000000000000000000000',
-        keystreamHex: 'b7e36e5272e8c6b9e7c1e7e8e9eaebed',
-        notes: 'Demonstrates WEP weak key vulnerability (IV=03:00:00) - SECURITY RESEARCH ONLY',
-        category: 'vulnerability-demonstration'
-      }
-    ],
-    
-    // Reference links to authoritative sources and security analysis
-    referenceLinks: {
-      specifications: [
-        {
-          name: 'RFC 6229 - Test Vectors for the Stream Cipher RC4',
-          url: 'https://tools.ietf.org/html/rfc6229',
-          description: 'Official IETF test vectors for RC4 (deprecated cipher)'
-        },
-        {
-          name: 'RFC 7465 - Prohibiting RC4 Cipher Suites',
-          url: 'https://tools.ietf.org/html/rfc7465',
-          description: 'IETF RFC officially deprecating RC4 due to security vulnerabilities'
-        },
-        {
-          name: 'Applied Cryptography - RC4 (Bruce Schneier)',
-          url: 'https://www.schneier.com/academic/paperfiles/paper-rc4.pdf',
-          description: 'Early description of RC4 algorithm and initial analysis'
-        }
-      ],
-      implementations: [
-        {
-          name: 'OpenSSL RC4 Implementation (deprecated)',
-          url: 'https://github.com/openssl/openssl/blob/master/crypto/rc4/',
-          description: 'Historical OpenSSL RC4 implementation (removed in newer versions)'
-        },
-        {
-          name: 'Reference RC4 Implementation',
-          url: 'https://tools.ietf.org/html/rfc6229#appendix-A',
-          description: 'Reference implementation from RFC 6229'
-        }
-      ],
-      securityAnalysis: [
-        {
-          name: 'Fluhrer-Mantin-Shamir Attack (2001)',
-          url: 'https://www.drizzle.com/~aboba/IEEE/rc4_ksaproc.pdf',
-          description: 'Seminal paper demonstrating RC4 key recovery in WEP protocol'
-        },
-        {
-          name: 'RC4 Biases and Practical Attacks',
-          url: 'https://www.imperva.com/blog/rc4-attacks-what-you-need-to-know/',
-          description: 'Comprehensive analysis of RC4 vulnerabilities and attacks'
-        },
-        {
-          name: 'BEAST and Lucky 13 Attacks',
-          url: 'https://blog.cryptographyengineering.com/2013/03/13/attack-of-week-rc4-is-kind-of-broken-in/',
-          description: 'Analysis of RC4 vulnerabilities in TLS implementations'
-        },
-        {
-          name: 'RFC 7465 Security Considerations',
-          url: 'https://tools.ietf.org/html/rfc7465#section-2',
-          description: 'Detailed security analysis leading to RC4 deprecation'
-        }
-      ],
-      validation: [
-        {
-          name: 'NIST Cryptographic Toolkit',
-          url: 'https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines',
-          description: 'NIST guidance on deprecated cryptographic algorithms'
-        },
-        {
-          name: 'Project Wycheproof Test Vectors',
-          url: 'https://github.com/google/wycheproof',
-          description: 'Google\'s cryptographic test vectors (RC4 marked as insecure)'
-        }
-      ]
-    },
-    
-    cantDecode: false,
-    isInitialized: false,
-    boolIsStreamCipher: true, // Mark as stream cipher
     
     // Initialize cipher
     Init: function() {
@@ -248,6 +139,11 @@
         
         set key(keyData) {
           this._instance = new RC4.RC4Instance(keyData);
+        },
+        
+        set keySize(size) {
+          // Store for later use when key is set
+          this._keySize = size;
         },
         
         Feed: function(data) {
@@ -284,6 +180,9 @@
         if (instance.S && global.OpCodes) {
           global.OpCodes.ClearArray(instance.S);
         }
+        if (instance.keyBytes && global.OpCodes) {
+          global.OpCodes.ClearArray(instance.keyBytes);
+        }
         delete RC4.instances[id];
         delete global.objectInstances[id];
         return true;
@@ -318,40 +217,6 @@
       // For stream ciphers, decryption is identical to encryption
       return RC4.encryptBlock(id, ciphertext);
     },
-
-    // Required interface method for stream ciphers
-    Encrypt: function(id, plaintext) {
-      // Convert byte array to string if necessary
-      if (Array.isArray(plaintext)) {
-        plaintext = String.fromCharCode.apply(null, plaintext);
-      }
-      const result = this.encryptBlock(id, plaintext);
-      // Convert result back to byte array
-      const bytes = [];
-      for (let i = 0; i < result.length; i++) {
-        bytes.push(result.charCodeAt(i));
-      }
-      return bytes;
-    },
-
-    // Required interface method for stream ciphers  
-    Decrypt: function(id, ciphertext) {
-      // Convert byte array to string if necessary
-      if (Array.isArray(ciphertext)) {
-        ciphertext = String.fromCharCode.apply(null, ciphertext);
-      }
-      const result = this.decryptBlock(id, ciphertext);
-      // Convert result back to byte array
-      const bytes = [];
-      for (let i = 0; i < result.length; i++) {
-        bytes.push(result.charCodeAt(i));
-      }
-      return bytes;
-    },
-    
-    // Legacy interface methods for backward compatibility
-    encrypt: function(id, plaintext) { return this.Encrypt(id, plaintext); },
-    decrypt: function(id, ciphertext) { return this.Decrypt(id, ciphertext); },
     
     // RC4 Instance class
     RC4Instance: function(key) {
@@ -455,6 +320,11 @@
   // Auto-register with AlgorithmFramework if available
   if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
     global.AlgorithmFramework.RegisterAlgorithm(RC4);
+  }
+  
+  // Auto-register with legacy Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(RC4);
   }
   
   // Export to global scope

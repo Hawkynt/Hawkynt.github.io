@@ -37,11 +37,7 @@
       console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  } else {
-      console.error('Shrinking Generator requires Cipher system to be loaded first');
-      return;
-    }
-  }
+  } 
   
   // Create Shrinking Generator cipher object
   const ShrinkingGenerator = {

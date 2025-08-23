@@ -17,6 +17,15 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   global.OpCodes = require('../../OpCodes.js');
 }
 
+// Load required dependencies
+if (typeof require !== 'undefined') {
+  try {
+    require('../block/rijndael.js'); // Load AES implementation
+  } catch (e) {
+    // Could not load AES dependency
+  }
+}
+
 const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
         MacAlgorithm, IMacInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
@@ -144,7 +153,7 @@ class CMACInstance extends IMacInstance {
     }
 
     this._key = [...keyBytes];
-    this.roundKeys = this._expandKey(keyBytes);
+    this.roundKeys = null; // Not needed when using framework AES
     this.subkeys = this._generateSubkeys();
   }
 
@@ -191,45 +200,57 @@ class CMACInstance extends IMacInstance {
     return result;
   }
 
-  // AES key expansion
+  // AES key expansion for AES-128
   _expandKey(key) {
     const roundKeys = [];
-    const w = new Array(176); // 11 round keys * 16 bytes
+    const Nk = 4; // Number of 32-bit words in key (128 bits / 32 = 4)
+    const Nb = 4; // Number of columns in state (always 4 for AES)
+    const Nr = 10; // Number of rounds (10 for AES-128)
     
-    // Copy original key
-    for (let i = 0; i < 16; i++) {
-      w[i] = key[i];
+    const w = new Array((Nb * (Nr + 1))); // 44 words total
+    
+    // Copy key into first Nk words
+    for (let i = 0; i < Nk; i++) {
+      w[i] = [key[4*i], key[4*i+1], key[4*i+2], key[4*i+3]];
     }
     
-    // Generate round keys
-    for (let i = 16; i < 176; i += 4) {
-      let temp = [w[i-4], w[i-3], w[i-2], w[i-1]];
+    // Generate remaining words
+    for (let i = Nk; i < Nb * (Nr + 1); i++) {
+      let temp = [...w[i-1]];
       
-      if (i % 16 === 0) {
-        // RotWord
+      if (i % Nk === 0) {
+        // RotWord: rotate left by one byte
         const t = temp[0];
         temp[0] = temp[1];
         temp[1] = temp[2];
         temp[2] = temp[3];
         temp[3] = t;
         
-        // SubWord
+        // SubWord: substitute bytes using S-box
         for (let j = 0; j < 4; j++) {
           temp[j] = this.SBOX[temp[j]];
         }
         
         // XOR with Rcon
-        temp[0] ^= this.RCON[(i / 16) - 1];
+        temp[0] ^= this.RCON[Math.floor(i/Nk) - 1];
       }
       
-      for (let j = 0; j < 4; j++) {
-        w[i + j] = w[i - 16 + j] ^ temp[j];
-      }
+      // w[i] = w[i-Nk] XOR temp
+      w[i] = [
+        w[i-Nk][0] ^ temp[0],
+        w[i-Nk][1] ^ temp[1],
+        w[i-Nk][2] ^ temp[2],
+        w[i-Nk][3] ^ temp[3]
+      ];
     }
     
-    // Split into round keys
-    for (let i = 0; i < 11; i++) {
-      roundKeys[i] = w.slice(i * 16, (i + 1) * 16);
+    // Convert word array to round key array
+    for (let round = 0; round <= Nr; round++) {
+      const roundKey = [];
+      for (let col = 0; col < Nb; col++) {
+        roundKey.push(...w[round * Nb + col]);
+      }
+      roundKeys[round] = roundKey;
     }
     
     return roundKeys;
@@ -270,14 +291,21 @@ class CMACInstance extends IMacInstance {
     return result;
   }
 
-  // AES-128 encryption
+  // AES-128 encryption - simplified implementation for CMAC
   _aesEncrypt(plaintext) {
-    const state = [...plaintext];
+    // Use simple AES implementation for educational purposes
+    // This is a minimal AES-128 implementation specifically for CMAC
     
-    // Initial round
+    if (!this.roundKeys) {
+      this.roundKeys = this._expandKey(this._key);
+    }
+    
+    let state = [...plaintext];
+    
+    // Initial AddRoundKey
     this._addRoundKey(state, this.roundKeys[0]);
     
-    // Main rounds
+    // 9 main rounds
     for (let round = 1; round < 10; round++) {
       this._subBytes(state);
       this._shiftRows(state);
@@ -285,77 +313,104 @@ class CMACInstance extends IMacInstance {
       this._addRoundKey(state, this.roundKeys[round]);
     }
     
-    // Final round
+    // Final round (no MixColumns)
     this._subBytes(state);
     this._shiftRows(state);
     this._addRoundKey(state, this.roundKeys[10]);
     
     return state;
   }
-
-  // AES SubBytes transformation
-  _subBytes(state) {
-    for (let i = 0; i < 16; i++) {
-      state[i] = this.SBOX[state[i]];
-    }
-  }
-
-  // AES ShiftRows transformation
-  _shiftRows(state) {
-    let temp;
-    
-    // Row 1: shift left by 1
-    temp = state[1];
-    state[1] = state[5];
-    state[5] = state[9];
-    state[9] = state[13];
-    state[13] = temp;
-    
-    // Row 2: shift left by 2
-    temp = state[2];
-    state[2] = state[10];
-    state[10] = temp;
-    temp = state[6];
-    state[6] = state[14];
-    state[14] = temp;
-    
-    // Row 3: shift left by 3
-    temp = state[3];
-    state[3] = state[15];
-    state[15] = state[11];
-    state[11] = state[7];
-    state[7] = temp;
-  }
-
-  // AES MixColumns transformation
-  _mixColumns(state) {
-    for (let c = 0; c < 4; c++) {
-      const s0 = state[c];
-      const s1 = state[c + 4];
-      const s2 = state[c + 8];
-      const s3 = state[c + 12];
-      
-      state[c] = OpCodes.GF256Mul(0x02, s0) ^ OpCodes.GF256Mul(0x03, s1) ^ s2 ^ s3;
-      state[c + 4] = s0 ^ OpCodes.GF256Mul(0x02, s1) ^ OpCodes.GF256Mul(0x03, s2) ^ s3;
-      state[c + 8] = s0 ^ s1 ^ OpCodes.GF256Mul(0x02, s2) ^ OpCodes.GF256Mul(0x03, s3);
-      state[c + 12] = OpCodes.GF256Mul(0x03, s0) ^ s1 ^ s2 ^ OpCodes.GF256Mul(0x02, s3);
-    }
-  }
-
-  // AES AddRoundKey transformation
+  
   _addRoundKey(state, roundKey) {
     for (let i = 0; i < 16; i++) {
       state[i] ^= roundKey[i];
     }
   }
+  
+  _subBytes(state) {
+    for (let i = 0; i < 16; i++) {
+      state[i] = this.SBOX[state[i]];
+    }
+  }
+  
+  _shiftRows(state) {
+    // Row 1: shift left by 1
+    const temp1 = state[1];
+    state[1] = state[5];
+    state[5] = state[9];
+    state[9] = state[13];
+    state[13] = temp1;
+    
+    // Row 2: shift left by 2
+    const temp2a = state[2], temp2b = state[6];
+    state[2] = state[10];
+    state[6] = state[14];
+    state[10] = temp2a;
+    state[14] = temp2b;
+    
+    // Row 3: shift left by 3 (equivalent to shift right by 1)
+    const temp3 = state[15];
+    state[15] = state[11];
+    state[11] = state[7];
+    state[7] = state[3];
+    state[3] = temp3;
+  }
+  
+  _mixColumns(state) {
+    for (let col = 0; col < 4; col++) {
+      const c0 = state[col * 4];
+      const c1 = state[col * 4 + 1];
+      const c2 = state[col * 4 + 2];
+      const c3 = state[col * 4 + 3];
+      
+      state[col * 4] = this._mul2(c0) ^ this._mul3(c1) ^ c2 ^ c3;
+      state[col * 4 + 1] = c0 ^ this._mul2(c1) ^ this._mul3(c2) ^ c3;
+      state[col * 4 + 2] = c0 ^ c1 ^ this._mul2(c2) ^ this._mul3(c3);
+      state[col * 4 + 3] = this._mul3(c0) ^ c1 ^ c2 ^ this._mul2(c3);
+    }
+  }
+  
+  _mul2(x) {
+    return ((x << 1) ^ (((x >> 7) & 1) * 0x1B)) & 0xFF;
+  }
+  
+  _mul3(x) {
+    return this._mul2(x) ^ x;
+  }
+
 
   // Core CMAC computation
   _computeCMAC() {
     let x = new Array(16).fill(0); // CBC-MAC state
+    const msgLen = this.inputBuffer.length;
     
-    // Process complete blocks
+    // Special case: empty message
+    if (msgLen === 0) {
+      const finalBlock = new Array(16).fill(0);
+      finalBlock[0] = 0x80; // Padding
+      
+      // XOR with K2 (for incomplete block)
+      for (let i = 0; i < 16; i++) {
+        finalBlock[i] ^= this.subkeys.K2[i];
+      }
+      
+      // XOR with state and encrypt
+      for (let i = 0; i < 16; i++) {
+        x[i] ^= finalBlock[i];
+      }
+      
+      return this._aesEncrypt(x);
+    }
+    
+    // Process all complete blocks except the last block
     let pos = 0;
-    while (pos + 16 <= this.inputBuffer.length) {
+    const numCompleteBlocks = Math.floor(msgLen / 16);
+    const isCompleteMessage = (msgLen % 16 === 0);
+    
+    // Process complete blocks (but not the final block if message is complete)
+    const blocksToProcess = isCompleteMessage ? numCompleteBlocks - 1 : numCompleteBlocks;
+    
+    for (let blockNum = 0; blockNum < blocksToProcess; blockNum++) {
       const block = this.inputBuffer.slice(pos, pos + 16);
       
       // XOR with previous state
@@ -369,7 +424,7 @@ class CMACInstance extends IMacInstance {
     }
     
     // Handle final block
-    const remainingBytes = this.inputBuffer.length - pos;
+    const remainingBytes = msgLen - pos;
     const finalBlock = new Array(16).fill(0);
     
     if (remainingBytes === 16) {
@@ -382,7 +437,9 @@ class CMACInstance extends IMacInstance {
       for (let i = 0; i < remainingBytes; i++) {
         finalBlock[i] = this.inputBuffer[pos + i];
       }
-      finalBlock[remainingBytes] = 0x80; // Padding
+      if (remainingBytes < 16) {
+        finalBlock[remainingBytes] = 0x80; // Padding
+      }
       
       for (let i = 0; i < 16; i++) {
         finalBlock[i] ^= this.subkeys.K2[i];

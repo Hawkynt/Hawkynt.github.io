@@ -93,7 +93,7 @@
   
   RipeMD320Hasher.prototype.update = function(data) {
     if (typeof data === 'string') {
-      data = OpCodes.StringToBytes(data);
+      data = OpCodes.AnsiToBytes(data);
     }
     
     this.totalLength += data.length;
@@ -237,19 +237,19 @@
       {
         text: "Single character 'a' test vector",
         uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
-        input: OpCodes.StringToBytes("a"),
+        input: OpCodes.AnsiToBytes("a"),
         expected: OpCodes.Hex8ToBytes("ce78850638f92658a5a585097579926dda667a5716562cfcf6fbe77f63542f99b04705d6970dff5d")
       },
       {
         text: "String 'abc' test vector",
         uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
-        input: OpCodes.StringToBytes("abc"),
+        input: OpCodes.AnsiToBytes("abc"),
         expected: OpCodes.Hex8ToBytes("de4c01b3054f8930a79d09ae738e92301e5a17085beffdc1b8d116713e74f82fa942d64cdbc4682d")
       },
       {
         text: "Alphabet test vector",
         uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
-        input: OpCodes.StringToBytes("abcdefghijklmnopqrstuvwxyz"),
+        input: OpCodes.AnsiToBytes("abcdefghijklmnopqrstuvwxyz"),
         expected: OpCodes.Hex8ToBytes("cabdb1810b92470a2093aa6bce05952c28348cf43ff60841975166bb40ed234004b8824463e6b009")
       }
     ],
@@ -306,6 +306,55 @@
   // Auto-register with Cipher system if available
   if (global.Cipher && typeof global.Cipher.Add === 'function')
     global.Cipher.Add(RipeMD320);
+  
+  // AlgorithmFramework compatibility layer
+  if (global.AlgorithmFramework) {
+    const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType,
+            CryptoAlgorithm, IAlgorithmInstance, TestCase } = global.AlgorithmFramework;
+    
+    class RipeMD320Wrapper extends CryptoAlgorithm {
+      constructor() {
+        super();
+        this.name = RipeMD320.name;
+        this.category = CategoryType.HASH;
+        this.securityStatus = SecurityStatus.EDUCATIONAL;
+        this.complexity = ComplexityType.MEDIUM;
+        this.inventor = RipeMD320.inventor;
+        this.year = RipeMD320.year;
+        this.country = RipeMD320.country;
+        this.description = RipeMD320.description;
+        
+        if (RipeMD320.tests) {
+          this.tests = RipeMD320.tests.map(test => 
+            new TestCase(test.input, test.expected, test.text, test.uri)
+          );
+        }
+      }
+      
+      CreateInstance(isInverse = false) {
+        return new RipeMD320WrapperInstance(this, isInverse);
+      }
+    }
+    
+    class RipeMD320WrapperInstance extends IAlgorithmInstance {
+      constructor(algorithm, isInverse) {
+        super(algorithm, isInverse);
+        this.instance = Object.create(RipeMD320);
+        this.instance.Init();
+      }
+      
+      ProcessData(input) {
+        return this.instance.hash(input);
+      }
+      
+      Reset() {
+        this.instance.ClearData();
+        this.instance.Init();
+      }
+    }
+    
+    RegisterAlgorithm(new RipeMD320Wrapper());
+  }
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {

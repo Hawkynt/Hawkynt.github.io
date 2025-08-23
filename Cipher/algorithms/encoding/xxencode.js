@@ -1,299 +1,200 @@
-#!/usr/bin/env node
 /*
- * Universal XXencoding Encoder/Decoder
- * Alternative to UUencoding with different character set
- * Compatible with both Browser and Node.js environments
- * 
- * XXencoding is similar to UUencoding but uses a different alphabet
- * designed to avoid characters that might be problematic in some
- * communication systems.
- * 
- * References:
- * - XXencode specification (alternative to UUencode)
- * - Compatible with various Unix mail systems
- * 
+ * XXencoding Implementation
+ * Educational implementation of XXencoding (alternative to UUencoding)
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
-  'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-      return;
-    }
-  }
-  
-  if (!global.Cipher && typeof require !== 'undefined') {
-    try {
-      require('../../universal-cipher-env.js');
-      require('../../cipher.js');
-    } catch (e) {
-      console.error('Failed to load cipher dependencies:', e.message);
-      return;
-    }
-  }
-  
-  const XXEncode = {
-    internalName: 'xxencode',
-    name: 'XXencoding',
-    version: '1.0.0',
-        comment: 'Educational implementation for learning purposes',
-    minKeyLength: 0,
-    maxKeyLength: 0,
-    stepKeyLength: 1,
-    minBlockSize: 0,
-    maxBlockSize: 0,
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
 
+// Load OpCodes for cryptographic operations (RECOMMENDED)
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
+
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        EncodingAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
+
+class XXEncodeAlgorithm extends EncodingAlgorithm {
+  constructor() {
+    super();
     
-    // XX alphabet: uses +, -, 0-9, A-Z, a-z (64 characters total)
-    alphabet: '+-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+    // Required metadata
+    this.name = "XXencoding";
+    this.description = "Binary-to-text encoding similar to UUencoding but uses a different character set designed to avoid problematic characters in some communication systems. Alternative encoding method for transmitting binary data over text-based protocols. Educational implementation for learning purposes.";
+    this.inventor = "Unix Community";
+    this.year = 1980;
+    this.category = CategoryType.ENCODING;
+    this.subCategory = "Mail Encoding";
+    this.securityStatus = SecurityStatus.EDUCATIONAL;
+    this.complexity = ComplexityType.BEGINNER;
+    this.country = CountryCode.US;
+
+    // Documentation and references
+    this.documentation = [
+      new LinkItem("XXencode Specification", "https://en.wikipedia.org/wiki/Xxencoding"),
+      new LinkItem("UUencoding Alternatives", "https://tools.ietf.org/html/rfc1341"),
+      new LinkItem("Binary Encoding History", "https://www.unix.org/what_is_unix/history_timeline.html")
+    ];
+
+    this.references = [
+      new LinkItem("Unix Mail Systems", "https://tools.ietf.org/html/rfc822"),
+      new LinkItem("Text-based Binary Transfer", "https://www.ietf.org/rfc/rfc2045.txt"),
+      new LinkItem("Character Set Standards", "https://www.ascii-code.com/")
+    ];
+
+    this.knownVulnerabilities = [];
+
+    // Test vectors for XXencoding
+    this.tests = [
+      new TestCase(
+        [],
+        [],
+        "XXencode empty data test",
+        "Educational standard"
+      ),
+      new TestCase(
+        [0, 0, 0], // Three zero bytes -> should encode to "++++", 4 chars
+        [43, 43, 43, 43], // "++++", 
+        "Basic 3-byte zero test - XXencode",
+        "Educational example"
+      ),
+      new TestCase(
+        [1, 2, 3], // Simple test bytes
+        [43, 69, 54, 49], // "+E61"
+        "Simple pattern encoding test - XXencode",
+        "Educational standard"
+      )
+    ];
+
+    // XXencode alphabet (64 characters) - different from UUencode
+    this.alphabet = "+-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     
-    // Default file parameters
-    filename: 'data.bin',
-    
-    /**
-     * Initialize the cipher
-     */
-    Init: function() {
-      this.filename = 'data.bin';
-    },
-    
-    /**
-     * Set up file parameters
-     * @param {string} key - Filename
-     */
-    KeySetup: function(key) {
-      if (typeof key === 'string') {
-        this.filename = key;
-      } else {
-        this.filename = 'data.bin';
-      }
-    },
-    
-    /**
-     * Encode binary data to XXencoded text
-     * @param {number} mode - Encoding mode (0 = encode)
-     * @param {string|Array} data - Input data to encode
-     * @returns {string} XXencoded text with headers
-     */
-    encryptBlock: function(mode, data) {
-      if (mode !== 0) {
-        throw new Error('XXencode: Invalid mode for encoding');
-      }
-      
-      // Convert input to byte array
-      let bytes;
-      if (typeof data === 'string') {
-        bytes = OpCodes.StringToBytes(data);
-      } else if (Array.isArray(data)) {
-        bytes = data.slice();
-      } else {
-        throw new Error('XXencode: Invalid input data type');
-      }
-      
-      if (bytes.length === 0) {
-        return 'begin 644 ' + this.filename + '\\n+\\nend\\n';
-      }
-      
-      let result = 'begin 644 ' + this.filename + '\\n';
-      
-      // Process data in 45-byte lines (standard XX line length)
-      for (let lineStart = 0; lineStart < bytes.length; lineStart += 45) {
-        const lineBytes = bytes.slice(lineStart, lineStart + 45);
-        const lineLength = lineBytes.length;
-        
-        // Add line length character
-        result += this.alphabet[lineLength];
-        
-        // Process line in 3-byte groups
-        for (let i = 0; i < lineBytes.length; i += 3) {
-          const group = lineBytes.slice(i, i + 3);
-          
-          // Pad group to 3 bytes if necessary
-          while (group.length < 3) {
-            group.push(0);
-          }
-          
-          // Convert 3 bytes to 24-bit value
-          const value = (group[0] << 16) | (group[1] << 8) | group[2];
-          
-          // Extract four 6-bit values
-          const c1 = (value >>> 18) & 0x3F;
-          const c2 = (value >>> 12) & 0x3F;
-          const c3 = (value >>> 6) & 0x3F;
-          const c4 = value & 0x3F;
-          
-          // Convert to characters
-          result += this.alphabet[c1];
-          result += this.alphabet[c2];
-          
-          // Only add remaining characters if we have actual data
-          const actualBytes = Math.min(3, lineBytes.length - i);
-          if (actualBytes >= 2) result += this.alphabet[c3];
-          if (actualBytes >= 3) result += this.alphabet[c4];
-        }
-        
-        result += '\\n';
-      }
-      
-      // Add end marker
-      result += '+\\nend\\n';
-      
-      return result;
-    },
-    
-    /**
-     * Decode XXencoded text to binary data
-     * @param {number} mode - Decoding mode (0 = decode)
-     * @param {string} data - XXencoded text to decode
-     * @returns {Array} Decoded byte array
-     */
-    decryptBlock: function(mode, data) {
-      if (mode !== 0) {
-        throw new Error('XXencode: Invalid mode for decoding');
-      }
-      
-      if (typeof data !== 'string' || data.length === 0) {
-        return [];
-      }
-      
-      // Split into lines and remove Windows line endings
-      const lines = data.replace(/\\r\\n/g, '\\n').split('\\n');
-      const bytes = [];
-      let foundBegin = false;
-      let foundEnd = false;
-      
-      for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-        const line = lines[lineNum].trim();
-        
-        // Skip empty lines
-        if (line.length === 0) continue;
-        
-        // Handle begin line
-        if (line.startsWith('begin ')) {
-          foundBegin = true;
-          const parts = line.split(' ');
-          if (parts.length >= 3) {
-            this.filename = parts.slice(2).join(' ');
-          }
-          continue;
-        }
-        
-        // Handle end line
-        if (line === 'end') {
-          foundEnd = true;
-          break;
-        }
-        
-        // Skip lines before begin
-        if (!foundBegin) continue;
-        
-        // Decode data line
-        if (line.length > 0) {
-          const lineLength = this.alphabet.indexOf(line[0]);
-          
-          if (lineLength === -1) {
-            throw new Error('XXencode: Invalid length character: ' + line[0]);
-          }
-          
-          // Handle empty line (length 0)
-          if (lineLength === 0) continue;
-          
-          // Decode line data
-          let lineData = line.substring(1);
-          let bytesDecoded = 0;
-          
-          // Process in 4-character groups
-          for (let i = 0; i < lineData.length && bytesDecoded < lineLength; i += 4) {
-            const group = lineData.substring(i, i + 4);
-            
-            if (group.length < 2) break;
-            
-            // Decode 4 characters to 6-bit values
-            const c1 = this.alphabet.indexOf(group[0]);
-            const c2 = this.alphabet.indexOf(group[1]);
-            const c3 = group.length > 2 ? this.alphabet.indexOf(group[2]) : 0;
-            const c4 = group.length > 3 ? this.alphabet.indexOf(group[3]) : 0;
-            
-            if (c1 === -1 || c2 === -1 || (group.length > 2 && c3 === -1) || 
-                (group.length > 3 && c4 === -1)) {
-              throw new Error('XXencode: Invalid character in line: ' + group);
-            }
-            
-            // Combine to 24-bit value
-            const value = (c1 << 18) | (c2 << 12) | (c3 << 6) | c4;
-            
-            // Extract bytes
-            if (bytesDecoded < lineLength) {
-              bytes.push((value >>> 16) & 0xFF);
-              bytesDecoded++;
-            }
-            if (bytesDecoded < lineLength) {
-              bytes.push((value >>> 8) & 0xFF);
-              bytesDecoded++;
-            }
-            if (bytesDecoded < lineLength) {
-              bytes.push(value & 0xFF);
-              bytesDecoded++;
-            }
-          }
-        }
-      }
-      
-      if (!foundBegin) {
-        throw new Error('XXencode: Missing begin line');
-      }
-      
-      return bytes;
-    },
-    
-    /**
-     * Clear sensitive data
-     */
-    ClearData: function() {
-      this.filename = 'data.bin';
-    },
-    
-    /**
-     * Get cipher information
-     * @returns {Object} Cipher information
-     */
-    GetInfo: function() {
-      return {
-        name: this.name,
-        version: this.version,
-        type: 'Encoding',
-        blockSize: '3 bytes → 4 characters',
-        keySize: 'Filename',
-        description: 'XXencoding - alternative to UUencoding with different alphabet',
-        alphabet: this.alphabet,
-        lineLength: '45 bytes (60 characters)',
-        features: ['Compatible with email', 'Avoids problematic characters', 'File metadata'],
-        applications: ['Email attachments', 'Binary file transfer', 'Newsgroup postings']
-      };
+    this.decodeTable = null;
+  }
+
+  CreateInstance(isInverse = false) {
+    return new XXEncodeInstance(this, isInverse);
+  }
+
+  init() {
+    // Build decode lookup table
+    this.decodeTable = {};
+    for (let i = 0; i < this.alphabet.length; i++) {
+      this.decodeTable[this.alphabet[i]] = i;
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(XXEncode);
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = XXEncode;
+}
+
+class XXEncodeInstance extends IAlgorithmInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.processedData = null;
+    
+    this.algorithm.init();
   }
-  
-  // Make available globally
-  global.XXEncode = XXEncode;
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  Feed(data) {
+    if (!Array.isArray(data)) {
+      throw new Error('XXEncodeInstance.Feed: Input must be byte array');
+    }
+
+    if (this.isInverse) {
+      this.processedData = this.decode(data);
+    } else {
+      this.processedData = this.encode(data);
+    }
+  }
+
+  Result() {
+    if (this.processedData === null) {
+      throw new Error('XXEncodeInstance.Result: No data processed. Call Feed() first.');
+    }
+    return this.processedData;
+  }
+
+  encode(data) {
+    if (data.length === 0) {
+      return [];
+    }
+
+    const result = [];
+    
+    // Process in groups of 3 bytes
+    for (let i = 0; i < data.length; i += 3) {
+      const byte1 = data[i];
+      const byte2 = i + 1 < data.length ? data[i + 1] : 0;
+      const byte3 = i + 2 < data.length ? data[i + 2] : 0;
+      
+      // Pack 3 bytes into 24-bit value
+      const packed = (byte1 << 16) | (byte2 << 8) | byte3;
+      
+      // Convert to 4 base-64 characters
+      const char4 = this.algorithm.alphabet[packed & 0x3F];
+      const char3 = this.algorithm.alphabet[(packed >>> 6) & 0x3F];
+      const char2 = this.algorithm.alphabet[(packed >>> 12) & 0x3F];
+      const char1 = this.algorithm.alphabet[(packed >>> 18) & 0x3F];
+      
+      result.push(char1.charCodeAt(0));
+      result.push(char2.charCodeAt(0));
+      result.push(char3.charCodeAt(0));
+      result.push(char4.charCodeAt(0));
+    }
+    
+    return result;
+  }
+
+  decode(data) {
+    if (data.length === 0) {
+      return [];
+    }
+
+    const encoded = String.fromCharCode(...data);
+    
+    // XXencode requires input length to be multiple of 4 characters
+    if (encoded.length % 4 !== 0) {
+      throw new Error('XXencode: Invalid encoded length (must be multiple of 4)');
+    }
+
+    const result = [];
+    
+    for (let i = 0; i < encoded.length; i += 4) {
+      // Convert 4 characters to values
+      const val1 = this.algorithm.decodeTable[encoded[i]];
+      const val2 = this.algorithm.decodeTable[encoded[i + 1]];
+      const val3 = this.algorithm.decodeTable[encoded[i + 2]];
+      const val4 = this.algorithm.decodeTable[encoded[i + 3]];
+      
+      if (val1 === undefined || val2 === undefined || 
+          val3 === undefined || val4 === undefined) {
+        throw new Error('XXencode: Invalid character in encoded data');
+      }
+      
+      // Reconstruct 24-bit value
+      const packed = (val1 << 18) | (val2 << 12) | (val3 << 6) | val4;
+      
+      // Unpack to 3 bytes
+      result.push((packed >>> 16) & 0xFF);
+      result.push((packed >>> 8) & 0xFF);
+      result.push(packed & 0xFF);
+    }
+    
+    // Remove trailing zeros (simple padding removal for educational purposes)
+    while (result.length > 0 && result[result.length - 1] === 0) {
+      result.pop();
+    }
+    
+    return result;
+  }
+}
+
+// Register the algorithm
+RegisterAlgorithm(new XXEncodeAlgorithm());
+
+// Export for Node.js
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { XXEncodeAlgorithm, XXEncodeInstance };
+}

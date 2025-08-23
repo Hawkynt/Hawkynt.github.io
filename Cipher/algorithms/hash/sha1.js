@@ -145,7 +145,7 @@
     Final() {
       // Add padding
       const msgLength = this.totalLength;
-      this.buffer.push(128); // Append bit '1' followed by zeros (0x80 = 128)
+      this.buffer.push(...OpCodes.Hex8ToBytes("80")); // Append bit '1' followed by zeros
       
       // Pad to 448 bits (56 bytes) mod 512 bits (64 bytes)
       while (this.buffer.length % 64 !== 56) {
@@ -155,17 +155,13 @@
       // Append original length as 64-bit big-endian
       const bitLength = msgLength * 8;
       const high32 = Math.floor(bitLength / 4294967296); // 2^32
-      const low32 = bitLength & 4294967295; // 0xFFFFFFFF = 4294967295
+      const low32 = bitLength & 0xFFFFFFFF;
       
       // High 32 bits (always 0 for practical message sizes)
       this.buffer.push(0, 0, 0, 0);
-      // Low 32 bits
-      this.buffer.push(
-        (low32 >>> 24) & 255, // 0xFF = 255
-        (low32 >>> 16) & 255, // 0xFF = 255
-        (low32 >>> 8) & 255,  // 0xFF = 255
-        low32 & 255           // 0xFF = 255
-      );
+      // Low 32 bits in big-endian format
+      const lowBytes = OpCodes.Unpack32BE(low32);
+      this.buffer.push(...lowBytes);
       
       // Process final block(s)
       while (this.buffer.length > 0) {
@@ -176,12 +172,7 @@
       // Produce final hash value as byte array
       const result = [];
       for (let i = 0; i < 5; i++) {
-        result.push(
-          (this.h[i] >>> 24) & 255, // 0xFF = 255
-          (this.h[i] >>> 16) & 255, // 0xFF = 255  
-          (this.h[i] >>> 8) & 255,  // 0xFF = 255
-          this.h[i] & 255           // 0xFF = 255
-        );
+        result.push(...OpCodes.Unpack32BE(this.h[i]));
       }
       
       this._Reset();

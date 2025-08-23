@@ -38,10 +38,6 @@
       console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  } else {
-      console.error('A5/3 cipher requires Cipher system to be loaded first');
-      return;
-    }
   }
   
   // Create A5/3 cipher object
@@ -81,9 +77,9 @@
         text: "3GPP A5/3 Test Vector (Educational)",
         uri: "https://www.3gpp.org/DynaReport/55216.htm",
         keySize: 16,
-        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-        expected: OpCodes.Hex8ToBytes("5bb0ca88d8c7a40d3d56d33a8eff3bc1")
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000000000000000") : [],
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f") : [],
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("5bb0ca88d8c7a40d3d56d33a8eff3bc1") : []
       }
     ],
 
@@ -200,8 +196,8 @@
      */
     kasumiF0: function(left, right, roundKey) {
       // Extract key material
-      const k1 = OpCodes.Pack32BE(roundKey[0], roundKey[1], roundKey[2], roundKey[3]);
-      const k2 = OpCodes.Pack32BE(roundKey[4], roundKey[5], roundKey[6], roundKey[7]);
+      const k1 = global.OpCodes.Pack32BE(roundKey[0], roundKey[1], roundKey[2], roundKey[3]);
+      const k2 = global.OpCodes.Pack32BE(roundKey[4], roundKey[5], roundKey[6], roundKey[7]);
       
       // Simplified F0 function
       let temp = left ^ k1;
@@ -215,7 +211,7 @@
       temp = ((s1 << 25) | (s2 << 16) | (s3 << 9) | s4) >>> 0;
       
       // Linear transformation
-      temp = OpCodes.RotL32(temp, 1) ^ k2;
+      temp = global.OpCodes.RotL32(temp, 1) ^ k2;
       
       return {
         left: right,
@@ -234,8 +230,8 @@
       }
       
       // Split into two 32-bit halves
-      let left = OpCodes.Pack32BE(plaintext[0], plaintext[1], plaintext[2], plaintext[3]);
-      let right = OpCodes.Pack32BE(plaintext[4], plaintext[5], plaintext[6], plaintext[7]);
+      let left = global.OpCodes.Pack32BE(plaintext[0], plaintext[1], plaintext[2], plaintext[3]);
+      let right = global.OpCodes.Pack32BE(plaintext[4], plaintext[5], plaintext[6], plaintext[7]);
       
       // Simplified 8-round Feistel network
       for (let round = 0; round < 8; round++) {
@@ -254,8 +250,8 @@
       }
       
       // Combine halves and return as bytes
-      const leftBytes = OpCodes.Unpack32BE(left);
-      const rightBytes = OpCodes.Unpack32BE(right);
+      const leftBytes = global.OpCodes.Unpack32BE(left);
+      const rightBytes = global.OpCodes.Unpack32BE(right);
       
       return [...leftBytes, ...rightBytes];
     },
@@ -328,11 +324,11 @@
       // Update count for this position (simplified)
       this.count = (position % 32);
       
-      const inputBytes = OpCodes.AsciiToBytes(input);
+      const inputBytes = global.OpCodes.AsciiToBytes(input);
       const keystream = this.getKeystream(inputBytes.length);
-      const outputBytes = OpCodes.XorArrays(inputBytes, keystream);
+      const outputBytes = global.OpCodes.XorArrays(inputBytes, keystream);
       
-      return OpCodes.BytesToString(outputBytes);
+      return global.OpCodes.BytesToString(outputBytes);
     },
     
     /**
@@ -381,11 +377,11 @@
      */
     ClearData: function() {
       if (this.key) {
-        OpCodes.ClearArray(this.key);
+        global.OpCodes.ClearArray(this.key);
         this.key = null;
       }
       if (this.keystreamBuffer) {
-        OpCodes.ClearArray(this.keystreamBuffer);
+        global.OpCodes.ClearArray(this.keystreamBuffer);
         this.keystreamBuffer = [];
       }
       this.count = 0;
@@ -399,7 +395,7 @@
   // Auto-register with Cipher system if available
   // Auto-register with AlgorithmFramework if available
   if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
-    global.AlgorithmFramework.RegisterAlgorithm(A53);
+    global.AlgorithmFramework.RegisterAlgorithm(A5_3);
   }
   
   // Export for Node.js

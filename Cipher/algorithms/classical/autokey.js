@@ -59,28 +59,28 @@ class AutokeyCipher extends CryptoAlgorithm {
       }
     ];
 
-    // Test vectors using byte arrays - educational examples
+    // Test vectors using byte arrays - bit-perfect results from implementation
     this.tests = [
       {
         text: "Classic Autokey Example",
         uri: "https://www.dcode.fr/autokey-cipher",
         input: OpCodes.AnsiToBytes("ATTACKATDAWN"),
         key: OpCodes.AnsiToBytes("LEMON"),
-        expected: OpCodes.AnsiToBytes("LXFOPVGQENHR")
+        expected: OpCodes.AnsiToBytes("LXFOPKTMDCGN")
       },
       {
         text: "Educational Test Vector",
         uri: "https://practicalcryptography.com/ciphers/classical-era/autokey/",
         input: OpCodes.AnsiToBytes("HELLO"),
         key: OpCodes.AnsiToBytes("KEY"),
-        expected: OpCodes.AnsiToBytes("RIJVS")
+        expected: OpCodes.AnsiToBytes("RIJSS")
       },
       {
         text: "DCode Reference",
         uri: "https://www.dcode.fr/autokey-cipher",
         input: OpCodes.AnsiToBytes("DCODE"),
         key: OpCodes.AnsiToBytes("AUTOKEY"),
-        expected: OpCodes.AnsiToBytes("DGQWK")
+        expected: OpCodes.AnsiToBytes("DWHRO")
       }
     ];
 

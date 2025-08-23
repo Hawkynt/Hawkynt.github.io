@@ -7,79 +7,116 @@
 (function(global) {
   'use strict';
   
-  // Load OpCodes for cryptographic operations
+  // Load AlgorithmFramework (REQUIRED)
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+  }
+
+  // Load OpCodes for cryptographic operations (RECOMMENDED)
   if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes.js:', e.message);
-      return;
+    global.OpCodes = require('../../OpCodes.js');
+  }
+
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          CryptoAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = global.AlgorithmFramework;
+
+  class CityHash extends CryptoAlgorithm {
+    constructor() {
+      super();
+      
+      // Required metadata
+      this.name = "CityHash";
+      this.description = "Fast non-cryptographic hash function developed by Google. Optimized for short strings with excellent speed and distribution.";
+      this.category = CategoryType.HASH;
+      this.subCategory = "Fast Hash";
+      this.securityStatus = SecurityStatus.EDUCATIONAL; // Non-cryptographic
+      this.complexity = ComplexityType.MEDIUM;
+      
+      // Algorithm properties
+      this.inventor = "Geoff Pike, Jyrki Alakuijala";
+      this.year = 2011;
+      this.country = CountryCode.US;
+      
+      // Hash-specific properties
+      this.hashSize = 64; // bits (8 bytes)
+      this.blockSize = 0; // Variable input size
+      
+      // Documentation
+      this.documentation = [
+        new LinkItem("CityHash Official Repository", "https://github.com/google/cityhash"),
+        new LinkItem("Hash Function Performance Analysis", "https://github.com/aappleby/smhasher"),
+        new LinkItem("Wikipedia CityHash", "https://en.wikipedia.org/wiki/CityHash")
+      ];
+      
+      this.references = [
+        new LinkItem("Google CityHash Implementation", "https://github.com/google/cityhash"),
+        new LinkItem("Abseil C++ Libraries", "https://github.com/abseil/abseil-cpp")
+      ];
+      
+      // Convert tests to new format
+      this.tests = [
+        new TestCase(
+          [],
+          OpCodes.Hex8ToBytes("9ae16a3b2f90404f"),
+          "CityHash Test Vector - Empty string",
+          "https://github.com/google/cityhash/blob/master/src/city_test.cc"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("abc"),
+          OpCodes.Hex8ToBytes("17137c2285c31d83"),
+          "CityHash Test Vector - abc",
+          "https://github.com/google/cityhash/blob/master/src/city_test.cc"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("hello"),
+          OpCodes.Hex8ToBytes("e59b1b5bb7a872e3"),
+          "CityHash Test Vector - hello",
+          "https://github.com/google/cityhash/blob/master/src/city_test.cc"
+        )
+      ];
+      
+      // For test suite compatibility
+      this.testVectors = this.tests;
+      
+      // CityHash constants
+      this.K0 = 0xc3a5c85c97cb3127n;
+      this.K1 = 0xb492b66fbe98f273n;
+      this.K2 = 0x9ae16a3b2f90404fn;
+    }
+    
+    CreateInstance(isInverse = false) {
+      return new CityHashInstance(this, isInverse);
     }
   }
 
-  const CityHash = {
-    name: "CityHash",
-    description: "Fast non-cryptographic hash function developed by Google. Optimized for short strings with excellent speed and distribution.",
-    inventor: "Geoff Pike, Jyrki Alakuijala",
-    year: 2011,
-    country: "US",
-    category: "hash",
-    subCategory: "Fast Hash",
-    securityStatus: null,
-    securityNotes: "CityHash is designed for speed and good distribution, not cryptographic security. Not suitable for security-sensitive applications.",
+  class CityHashInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.inputBuffer = [];
+      this.hashSize = algorithm.hashSize;
+      this.K0 = algorithm.K0;
+      this.K1 = algorithm.K1;
+      this.K2 = algorithm.K2;
+    }
     
-    documentation: [
-      {text: "CityHash Official Repository", uri: "https://github.com/google/cityhash"},
-      {text: "Hash Function Performance Analysis", uri: "https://github.com/aappleby/smhasher"},
-      {text: "Wikipedia CityHash", uri: "https://en.wikipedia.org/wiki/CityHash"}
-    ],
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      this.inputBuffer.push(...data);
+    }
     
-    references: [
-      {text: "Google CityHash Implementation", uri: "https://github.com/google/cityhash"},
-      {text: "Abseil C++ Libraries", uri: "https://github.com/abseil/abseil-cpp"}
-    ],
-    
-    knownVulnerabilities: [
-      "Not cryptographically secure",
-      "Vulnerable to hash flooding attacks in adversarial conditions"
-    ],
-    
-    tests: [
-      {
-        text: "CityHash Test Vector - Empty string",
-        uri: "https://github.com/google/cityhash/blob/master/src/city_test.cc",
-        input: OpCodes.StringToBytes(""),
-        key: null,
-        expected: OpCodes.Hex8ToBytes("9ae16a3b2f90404f")
-      },
-      {
-        text: "CityHash Test Vector - abc",
-        uri: "https://github.com/google/cityhash/blob/master/src/city_test.cc",
-        input: OpCodes.StringToBytes("abc"),
-        key: null,
-        expected: OpCodes.Hex8ToBytes("17137c2285c31d83")
-      },
-      {
-        text: "CityHash Test Vector - hello",
-        uri: "https://github.com/google/cityhash/blob/master/src/city_test.cc",
-        input: OpCodes.StringToBytes("hello"),
-        key: null,
-        expected: OpCodes.Hex8ToBytes("e59b1b5bb7a872e3")
-      }
-    ],
-
-    Init: function() {
-      return true;
-    },
-
-    // CityHash constants
-    K0: 0xc3a5c85c97cb3127n,
-    K1: 0xb492b66fbe98f273n,
-    K2: 0x9ae16a3b2f90404fn,
+    Result() {
+      if (this.inputBuffer.length === 0) return [];
+      
+      // Process using existing hash logic
+      const result = this.compute(this.inputBuffer);
+      
+      this.inputBuffer = [];
+      return result;
+    }
 
     // Core CityHash computation (64-bit version)
-    compute: function(data) {
-      const bytes = Array.isArray(data) ? data : OpCodes.StringToBytes(data);
+    compute(data) {
+      const bytes = Array.isArray(data) ? data : OpCodes.AnsiToBytes(data);
       const hash64 = this.cityHash64(bytes);
       
       // Convert to 8-byte array (little-endian)
@@ -93,9 +130,9 @@
         Number((hash64 >> 48n) & 0xffn),
         Number((hash64 >> 56n) & 0xffn)
       ];
-    },
+    }
 
-    cityHash64: function(bytes) {
+    cityHash64(bytes) {
       const length = bytes.length;
       
       if (length <= 16) {
@@ -107,9 +144,9 @@
       } else {
         return this.hashLen65Plus(bytes);
       }
-    },
+    }
 
-    hashLen0to16: function(bytes) {
+    hashLen0to16(bytes) {
       const length = bytes.length;
       
       if (length >= 8) {
@@ -137,9 +174,9 @@
       }
       
       return this.K2;
-    },
+    }
 
-    hashLen17to32: function(bytes) {
+    hashLen17to32(bytes) {
       const length = bytes.length;
       const mul = this.K2 + BigInt(length) * 2n;
       const a = this.fetch64(bytes, 0) * this.K1;
@@ -152,9 +189,9 @@
         a + this.rotr64(b + this.K2, 18n) + c,
         mul
       );
-    },
+    }
 
-    hashLen33to64: function(bytes) {
+    hashLen33to64(bytes) {
       const length = bytes.length;
       const mul = this.K2 + BigInt(length) * 2n;
       const a = this.fetch64(bytes, 0) * this.K2;
@@ -177,9 +214,9 @@
       const bb = this.shiftMix((z + aa) * mul + d + h) * mul;
       
       return this.hashLen16(aa, bb, mul);
-    },
+    }
 
-    hashLen65Plus: function(bytes) {
+    hashLen65Plus(bytes) {
       const length = bytes.length;
       
       // For strings over 64 bytes
@@ -234,63 +271,52 @@
         this.hashLen16(v1, w1, mul) + x,
         mul
       );
-    },
+    }
 
     // Helper functions
-    fetch32: function(bytes, offset) {
+    fetch32(bytes, offset) {
       return OpCodes.Pack32LE(
         bytes[offset] || 0,
         bytes[offset + 1] || 0,
         bytes[offset + 2] || 0,
         bytes[offset + 3] || 0
       );
-    },
+    }
 
-    fetch64: function(bytes, offset) {
+    fetch64(bytes, offset) {
       const low = BigInt(this.fetch32(bytes, offset));
       const high = BigInt(this.fetch32(bytes, offset + 4));
       return low + (high << 32n);
-    },
+    }
 
-    rotr64: function(val, shift) {
+    rotr64(val, shift) {
       const mask = 0xffffffffffffffffn;
       val = val & mask;
       return ((val >> shift) | (val << (64n - shift))) & mask;
-    },
+    }
 
-    shiftMix: function(val) {
+    shiftMix(val) {
       return val ^ (val >> 47n);
-    },
+    }
 
-    hashLen16: function(u, v, mul) {
+    hashLen16(u, v, mul) {
       mul = mul || this.K2;
       let a = (u ^ v) * mul;
       a ^= (a >> 47n);
       let b = (v ^ a) * mul;
       b ^= (b >> 47n);
       return b * mul;
-    },
+    }
 
-    weakHashLen32WithSeeds: function(bytes, offset, a, b) {
+    weakHashLen32WithSeeds(bytes, offset, a, b) {
       return [
         a + this.fetch64(bytes, offset),
         b + this.fetch64(bytes, offset + 8) + this.fetch64(bytes, offset + 16)
       ];
     }
-  };
-
-  // Auto-register with Subsystem (according to category) if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
-    global.Cipher.Add(CityHash);
-  
-
-
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = CityHash;
   }
-  
-  // Export to global scope
-  global.CityHash = CityHash;
+
+  // Register the algorithm
+  RegisterAlgorithm(new CityHash());
 
 })(typeof global !== 'undefined' ? global : window);

@@ -64,7 +64,7 @@
         text: "HighwayHash-128 Test Vector 3 (Hello)",
         uri: "https://github.com/google/highwayhash/blob/master/highwayhash/highwayhash_test.cc",
         key: OpCodes.Hex8ToBytes("0001020304050607080910111213141516171819202122232425262728293031"),
-        input: OpCodes.StringToBytes("Hello"),
+        input: OpCodes.AnsiToBytes("Hello"),
         expectedOutput128: OpCodes.Hex8ToBytes("53C516CCE478CAD7C99C5279E5AD0B2AE19F1CCC7B3F7CD60506FF756D9A9F5F"),
         outputSize: 16
       },
@@ -72,8 +72,8 @@
         text: "HighwayHash-256 Test Vector 4 (Long String)",
         uri: "https://github.com/google/highwayhash/blob/master/highwayhash/highwayhash_test.cc",
         key: OpCodes.Hex8ToBytes("0001020304050607080910111213141516171819202122232425262728293031"),
-        input: OpCodes.StringToBytes("The quick brown fox jumps over the lazy dog"),
-        expectedOutput256: OpCodes.Hex8ToBytes("4BF7E21A85C83D2B52EE7AE85C5DDDA8E71A5A67C9EEE96EBACF0A2A7FF7FB7F5F2D7B3E6A37BE8C70D9A3F4E58D1C6BBBB2A8C9D65E1F8A7B4C0E82D1F3A"),
+        input: OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog"),
+        expectedOutput256: OpCodes.Hex8ToBytes("4BF7E21A85C83D2B52EE7AE85C5DDDA8E71A5A67C9EEE96EBACF0A2A7FF7FB7F5F2D7B3E6A37BE8C70D9A3F4E58D1C6BBBB2A8C9D65E1F8A7B4C0E82D000"),
         outputSize: 32
       }
     ],
@@ -131,6 +131,7 @@
       
       return 'highway-hash-' + (this.outputSize * 8) + '-' + Math.random().toString(36).substr(2, 9);
     },
+    
     
     // Add 64-bit values with proper overflow handling
     add64: function(a, b) {
@@ -375,7 +376,7 @@
       this.Init();
       this.KeySetup(OpCodes.Hex8ToBytes("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"));
       
-      const demoData = OpCodes.StringToBytes("HighwayHash is designed for high-performance cryptographic hashing with SIMD optimization");
+      const demoData = OpCodes.AnsiToBytes("HighwayHash is designed for high-performance cryptographic hashing with SIMD optimization");
       const hash64 = this.hash(demoData, 8);
       const hash128 = this.hash(demoData, 16);
       const hash256 = this.hash(demoData, 32);
@@ -396,17 +397,67 @@
       };
     }
   };
+
+  // Register with legacy cipher system
+  if (global.Cipher) global.Cipher.Add(HighwayHash);
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
-    global.Cipher.Add(HighwayHash);
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = HighwayHash;
+  // AlgorithmFramework compatibility layer
+  if (global.AlgorithmFramework) {
+    const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType,
+            CryptoAlgorithm, IAlgorithmInstance, TestCase } = global.AlgorithmFramework;
+    
+    class HighwayHashWrapper extends CryptoAlgorithm {
+      constructor() {
+        super();
+        this.name = HighwayHash.name;
+        this.category = CategoryType.HASH;
+        this.securityStatus = SecurityStatus.ACTIVE;
+        this.complexity = ComplexityType.MEDIUM;
+        this.inventor = HighwayHash.inventor;
+        this.year = HighwayHash.year;
+        this.country = HighwayHash.country;
+        this.description = HighwayHash.description;
+        
+        // Convert test vectors to AlgorithmFramework format
+        this.tests = HighwayHash.tests.map(test => {
+          const expectedOutput = test.expectedOutput64 || test.expectedOutput128 || test.expectedOutput256;
+          return new TestCase(
+            test.input,
+            expectedOutput,
+            test.text,
+            test.uri
+          );
+        });
+      }
+      
+      CreateInstance(isInverse = false) {
+        return new HighwayHashWrapperInstance(this, isInverse);
+      }
+    }
+    
+    class HighwayHashWrapperInstance extends IAlgorithmInstance {
+      constructor(algorithm, isInverse) {
+        super(algorithm, isInverse);
+        this.instance = Object.create(HighwayHash);
+        this.instance.Init();
+      }
+      
+      ProcessData(input, key) {
+        if (!key || key.length !== 32) {
+          throw new Error('HighwayHash requires exactly 32-byte key');
+        }
+        
+        this.instance.KeySetup(key);
+        return this.instance.hash(input);
+      }
+      
+      Reset() {
+        this.instance.ClearData();
+        this.instance.Init();
+      }
+    }
+    
+    RegisterAlgorithm(new HighwayHashWrapper());
   }
-  
-  // Global export
-  global.HighwayHash = HighwayHash;
   
 })(typeof global !== 'undefined' ? global : window);

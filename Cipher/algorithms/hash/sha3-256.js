@@ -177,7 +177,7 @@
   
   Sha3256Hasher.prototype.absorb = function(data) {
     if (typeof data === 'string') {
-      data = OpCodes.StringToBytes(data);
+      data = OpCodes.AnsiToBytes(data);
     }
     
     let offset = 0;
@@ -308,8 +308,57 @@
   };
   
   // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(Sha3256);
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(Sha3256);
+  }
+  
+  // AlgorithmFramework compatibility layer
+  if (global.AlgorithmFramework) {
+    const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType,
+            CryptoAlgorithm, IAlgorithmInstance, TestCase } = global.AlgorithmFramework;
+    
+    class Sha3256Wrapper extends CryptoAlgorithm {
+      constructor() {
+        super();
+        this.name = Sha3256.name;
+        this.category = CategoryType.HASH;
+        this.securityStatus = SecurityStatus.ACTIVE;
+        this.complexity = ComplexityType.MEDIUM;
+        this.inventor = "Guido Bertoni, Joan Daemen, Michaël Peeters, Gilles Van Assche";
+        this.year = 2015;
+        this.country = "BE";
+        this.description = "SHA-3 256-bit hash function based on Keccak sponge construction";
+        
+        if (Sha3256.tests) {
+          this.tests = Sha3256.tests.map(test => 
+            new TestCase(test.input, test.expected, test.text, test.uri)
+          );
+        }
+      }
+      
+      CreateInstance(isInverse = false) {
+        return new Sha3256WrapperInstance(this, isInverse);
+      }
+    }
+    
+    class Sha3256WrapperInstance extends IAlgorithmInstance {
+      constructor(algorithm, isInverse) {
+        super(algorithm, isInverse);
+        this.instance = Object.create(Sha3256);
+        this.instance.Init();
+      }
+      
+      ProcessData(input) {
+        return this.instance.hash(input);
+      }
+      
+      Reset() {
+        this.instance.ClearData();
+        this.instance.Init();
+      }
+    }
+    
+    RegisterAlgorithm(new Sha3256Wrapper());
   }
   
   // Export for Node.js

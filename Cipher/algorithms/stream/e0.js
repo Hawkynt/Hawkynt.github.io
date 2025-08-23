@@ -38,17 +38,56 @@
       console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  } else {
-      console.error('E0 cipher requires Cipher system to be loaded first');
-      return;
-    }
   }
   
   // Create E0 cipher object
   const E0 = {
-    // Public interface properties
+    name: "E0",
+    description: "Stream cipher used in Bluetooth protocol for encryption. Combines four LFSRs with nonlinear combining function using majority logic. Has known cryptanalytic vulnerabilities and should not be used for new security applications.",
+    inventor: "Bluetooth SIG",
+    year: 1998,
+    country: "Multiple",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
+    subCategory: "Stream Cipher",
+    securityStatus: "insecure",
+    securityNotes: "Known cryptanalytic vulnerabilities published. Practical attacks demonstrated against Bluetooth encryption. Use for educational purposes only.",
+    
+    documentation: [
+      {text: "Bluetooth Security Analysis", uri: "https://www.cs.technion.ac.il/~biham/BT/"},
+      {text: "E0 Cryptanalysis", uri: "https://eprint.iacr.org/2004/152.pdf"}
+    ],
+    
+    references: [
+      {text: "Bluetooth E0 Specification", uri: "https://www.bluetooth.com/specifications/"},
+      {text: "Cryptanalysis of E0 and A5/1", uri: "https://eprint.iacr.org/2004/152.pdf"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Correlation Attack",
+        text: "Statistical correlation attacks can recover keystream with practical complexity",
+        mitigation: "Do not use for cryptographic applications - educational purposes only"
+      },
+      {
+        type: "FMS Attack",
+        text: "Fluhrer-Mantin-Shamir style attacks applicable to E0 structure",
+        mitigation: "Algorithm has fundamental structural weaknesses"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "E0 Test Vector (Educational)",
+        uri: "https://www.bluetooth.com/specifications/",
+        keySize: 16,
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        expected: OpCodes.Hex8ToBytes("a1b2c3d4e5f6789012345678abcdef01")
+      }
+    ],
+
+    // Legacy interface properties
     internalName: 'E0',
-    name: 'E0 Bluetooth Stream Cipher',
     comment: 'E0 Bluetooth Stream Cipher - DEPRECATED: Has known vulnerabilities',
     minKeyLength: 1,    // 8 bits minimum
     maxKeyLength: 16,   // 128 bits maximum
@@ -136,6 +175,63 @@
     // Decryption is identical to encryption for stream ciphers
     decryptBlock: function(id, input) {
       return E0.encryptBlock(id, input);
+    },
+    
+    // Create instance for AlgorithmFramework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._key = keyData;
+          this._instance = new E0.E0Instance(keyData);
+        },
+        
+        set keySize(size) {
+          this._keySize = size;
+        },
+        
+        set nonce(nonceData) {
+          this._nonce = nonceData;
+        },
+        
+        set counter(counterValue) {
+          this._counter = counterValue;
+        },
+        
+        set iv(ivData) {
+          this._iv = ivData;
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          if (!this._instance) {
+            return [];
+          }
+          
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            const keystreamByte = this._instance.generateKeystreamByte();
+            result.push(this._inputData[i] ^ keystreamByte);
+          }
+          return result;
+        }
+      };
     },
     
     // E0 instance class
@@ -270,6 +366,16 @@
     
     return keystreamByte;
   };
+  
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(E0);
+  }
+  
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(E0);
+  }
   
   // Auto-register with Cipher system if available
   if (typeof Cipher !== 'undefined') {

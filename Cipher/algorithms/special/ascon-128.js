@@ -186,7 +186,7 @@ class Ascon128AlgorithmInstance extends IAeadInstance {
     
     // Simple differentiation between encryption and authentication keys
     for (let i = 0; i < this.authKey.length; i++) {
-      this.authKey[i] ^= 0x22; // XOR with pattern
+      this.authKey[i] ^= OpCodes.Pack8(...OpCodes.Hex8ToBytes("22")); // XOR with pattern
     }
   }
 

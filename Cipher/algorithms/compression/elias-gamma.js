@@ -8,78 +8,101 @@
 (function(global) {
   'use strict';
   
-  // Load dependencies
-  if (!global.Compression && typeof require !== 'undefined') {
-    try {
-      require('../../compression.js');
-    } catch (e) {
-      console.error('Failed to load compression framework:', e.message);
-      return;
-    }
+  // Load AlgorithmFramework (REQUIRED)
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
   }
   
+  // Load OpCodes for cryptographic operations (RECOMMENDED)
   if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes.js:', e.message);
-      return;
+    global.OpCodes = require('../../OpCodes.js');
+  }
+  
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          CompressionAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = global.AlgorithmFramework;
+  
+  class EliasGammaAlgorithm extends CompressionAlgorithm {
+    constructor() {
+      super();
+      
+      // Required metadata
+      this.name = "Elias Gamma Coding";
+      this.description = "Peter Elias universal integer encoding optimal for geometric distributions where small values are more frequent.";
+      this.category = CategoryType.COMPRESSION;
+      this.subCategory = "Universal";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.inventor = "Peter Elias";
+      this.year = 1975;
+      this.country = CountryCode.US;
+      
+      this.documentation = [
+        new LinkItem("Universal codeword sets and representations of the integers", "https://ieeexplore.ieee.org/document/1054906"),
+        new LinkItem("Elias Gamma Coding - Wikipedia", "https://en.wikipedia.org/wiki/Elias_gamma_coding"),
+        new LinkItem("Information Theory and Coding", "https://web.stanford.edu/class/ee376a/")
+      ];
+      
+      this.references = [
+        new LinkItem("Elements of Information Theory", "https://www.wiley.com/en-us/Elements+of+Information+Theory%2C+2nd+Edition-p-9780471241959"),
+        new LinkItem("Introduction to Data Compression", "https://www.elsevier.com/books/introduction-to-data-compression/sayood/978-0-12-620862-7")
+      ];
+      
+      // Convert existing tests to new format
+      this.tests = [
+        new TestCase(
+          [0x01, 0x02, 0x03, 0x04, 0x05],
+          [0, 0, 0, 5, 0, 0, 0, 21, 76, 133, 48],
+          "Small integer sequence",
+          "Educational test case"
+        ),
+        new TestCase(
+          [0x7F, 0x80, 0x81, 0xFF],
+          [0, 0, 0, 4, 0, 0, 0, 62, 1, 0, 2, 4, 4, 16, 4, 0],
+          "Mixed small and large values",
+          "Boundary value test"
+        )
+      ];
+      
+      // For test suite compatibility
+      this.testVectors = this.tests;
+    }
+    
+    CreateInstance(isInverse = false) {
+      return new EliasGammaInstance(this, isInverse);
     }
   }
   
-  const EliasGamma = {
-    internalName: 'EliasGamma',
-    name: 'Elias Gamma Coding',
-    comment: 'Peter Elias universal integer encoding - optimal for geometric distributions',
-    category: 'Universal',
-    instances: {},
-    isInitialized: false,
+  class EliasGammaInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse; // true = decompress, false = compress
+      this.inputBuffer = [];
+    }
     
-    /**
-     * Initialize the algorithm
-     */
-    Init: function() {
-      this.isInitialized = true;
-      console.log('Elias Gamma coding algorithm initialized');
-    },
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      this.inputBuffer.push(...data);
+    }
     
-    /**
-     * Create a new instance
-     */
-    KeySetup: function() {
-      const id = this.internalName + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
-      this.instances[id] = {
-        initialized: true,
-        compressionRatio: 0,
-        lastInputSize: 0,
-        lastOutputSize: 0
-      };
-      return id;
-    },
-    
-    /**
-     * Compress data using Elias Gamma coding
-     * Treats input as sequence of integers (byte values)
-     * @param {string} keyId - Instance identifier
-     * @param {string} data - Input data to compress
-     * @returns {string} Compressed data
-     */
-    Compress: function(keyId, data) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
-      }
+    Result() {
+      if (this.inputBuffer.length === 0) return [];
       
-      if (!data || data.length === 0) {
-        return '';
-      }
+      // Process using existing compression logic
+      const result = this.isInverse ? 
+        this.decompress(this.inputBuffer) : 
+        this.compress(this.inputBuffer);
       
-      const instance = this.instances[keyId];
-      const input = this._stringToBytes(data);
+      this.inputBuffer = [];
+      return result;
+    }
+    
+    compress(data) {
+      if (!data || data.length === 0) return [];
       
       let bitStream = '';
       
       // Encode each byte using Elias Gamma
-      for (const byte of input) {
+      for (const byte of data) {
         // Elias Gamma cannot encode 0, so we use byte + 1
         const value = byte + 1;
         const gammaCode = this._encodeGamma(value);
@@ -87,33 +110,18 @@
       }
       
       // Store original length and convert to bytes
-      const compressed = this._packBitStream(bitStream, input.length);
+      const compressed = this._packBitStream(bitStream, data.length);
       
-      // Update statistics
-      instance.lastInputSize = data.length;
-      instance.lastOutputSize = compressed.length;
-      instance.compressionRatio = data.length / compressed.length;
-      
-      return compressed;
-    },
+      return this._stringToBytes(compressed);
+    }
     
-    /**
-     * Decompress Elias Gamma-encoded data
-     * @param {string} keyId - Instance identifier
-     * @param {string} compressedData - Compressed data
-     * @returns {string} Decompressed data
-     */
-    Decompress: function(keyId, compressedData) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
-      }
+    decompress(data) {
+      if (!data || data.length === 0) return [];
       
-      if (!compressedData || compressedData.length === 0) {
-        return '';
-      }
+      const compressedString = this._bytesToString(data);
       
       // Unpack bit stream and get original length
-      const { bitStream, originalLength } = this._unpackBitStream(compressedData);
+      const { bitStream, originalLength } = this._unpackBitStream(compressedString);
       
       const decodedBytes = [];
       let pos = 0;
@@ -140,26 +148,19 @@
         throw new Error('Decompressed length mismatch');
       }
       
-      return this._bytesToString(decodedBytes);
-    },
+      return decodedBytes;
+    }
     
-    /**
-     * Clear instance data
-     */
-    ClearData: function(keyId) {
-      if (this.instances[keyId]) {
-        delete this.instances[keyId];
-        return true;
-      }
-      return false;
-    },
+    
+    
+    
     
     /**
      * Encode a positive integer using Elias Gamma coding
      * Format: unary(floor(log2(n))) + binary(n - 2^floor(log2(n)))
      * @private
      */
-    _encodeGamma: function(value) {
+    _encodeGamma(value) {
       if (value <= 0) {
         throw new Error('Elias Gamma can only encode positive integers');
       }
@@ -180,13 +181,13 @@
       const binarySuffix = binaryValue.substring(1); // Remove leading '1'
       
       return unaryPrefix + binarySuffix;
-    },
+    }
     
     /**
      * Decode an Elias Gamma code from bit stream
      * @private
      */
-    _decodeGamma: function(bitStream, startPos) {
+    _decodeGamma(bitStream, startPos) {
       if (startPos >= bitStream.length) {
         return { value: null, bitsConsumed: 0 };
       }
@@ -221,13 +222,13 @@
       const value = parseInt('1' + binarySuffix, 2);
       
       return { value: value, bitsConsumed: zeros + 1 + zeros };
-    },
+    }
     
     /**
      * Pack bit stream into bytes with header
      * @private
      */
-    _packBitStream: function(bitStream, originalLength) {
+    _packBitStream(bitStream, originalLength) {
       const bytes = [];
       
       // Store original length (4 bytes, big-endian)
@@ -254,13 +255,13 @@
       }
       
       return this._bytesToString(bytes);
-    },
+    }
     
     /**
      * Unpack bit stream from bytes
      * @private
      */
-    _unpackBitStream: function(compressedData) {
+    _unpackBitStream(compressedData) {
       const bytes = this._stringToBytes(compressedData);
       
       if (bytes.length < 8) {
@@ -283,71 +284,33 @@
       bitStream = bitStream.substring(0, bitLength);
       
       return { bitStream, originalLength };
-    },
+    }
     
-    /**
-     * Get compression statistics and example encodings
-     */
-    GetStats: function(keyId) {
-      const instance = this.instances[keyId];
-      if (!instance) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      // Generate example encodings for common values
-      const examples = {};
-      for (let i = 1; i <= 10; i++) {
-        examples[i] = this._encodeGamma(i);
-      }
-      
-      return {
-        inputSize: instance.lastInputSize,
-        outputSize: instance.lastOutputSize,
-        compressionRatio: instance.compressionRatio,
-        spaceSavings: ((instance.lastInputSize - instance.lastOutputSize) / instance.lastInputSize * 100).toFixed(2) + '%',
-        examples: examples,
-        description: 'Optimal for geometric distributions where small values are more frequent'
-      };
-    },
-    
-    // Utility functions using OpCodes if available
-    _stringToBytes: function(str) {
-      if (global.OpCodes && OpCodes.StringToBytes) {
-        return OpCodes.StringToBytes(str);
-      }
-      
+    // Utility functions
+    _stringToBytes(str) {
       const bytes = [];
       for (let i = 0; i < str.length; i++) {
         bytes.push(str.charCodeAt(i) & 0xFF);
       }
       return bytes;
-    },
+    }
     
-    _bytesToString: function(bytes) {
-      if (global.OpCodes && OpCodes.BytesToString) {
-        return OpCodes.BytesToString(bytes);
-      }
-      
-      let str = '';
+    _bytesToString(bytes) {
+      let str = "";
       for (let i = 0; i < bytes.length; i++) {
         str += String.fromCharCode(bytes[i]);
       }
       return str;
     }
-  };
-  
-  // Auto-register with compression system
-  if (global.Compression) {
-    EliasGamma.Init();
-    global.Compression.AddAlgorithm(EliasGamma);
   }
+    
+  
+  // Register the algorithm
+  RegisterAlgorithm(new EliasGammaAlgorithm());
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = EliasGamma;
+    module.exports = EliasGammaAlgorithm;
   }
-  
-  // Make globally available
-  global.EliasGamma = EliasGamma;
   
 })(typeof global !== 'undefined' ? global : window);

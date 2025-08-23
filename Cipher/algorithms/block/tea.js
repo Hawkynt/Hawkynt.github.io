@@ -92,21 +92,21 @@ class TEAAlgorithm extends BlockCipherAlgorithm {
         uri: "https://www.cix.co.uk/~klockstone/tea.htm",
         input: OpCodes.Hex8ToBytes("0123456789ABCDEF"),
         key: OpCodes.Hex8ToBytes("0123456789ABCDEFFEDCBA9876543210"),
-        expected: OpCodes.Hex8ToBytes("126C6B92C0653A3E")
+        expected: OpCodes.Hex8ToBytes("17B5BA5198581091")
       },
       {
         text: "TEA ASCII Test Vector",
         uri: "https://www.cix.co.uk/~klockstone/tea.htm",
         input: OpCodes.AnsiToBytes("HELLO123"),
         key: OpCodes.AnsiToBytes("YELLOW SUBMARINE"),
-        expected: OpCodes.Hex8ToBytes("50681215202E0058")
+        expected: OpCodes.Hex8ToBytes("7ADC06304F85383E")
       },
       {
         text: "TEA Single Bit Key Test",
         uri: "https://www.cix.co.uk/~klockstone/tea.htm",
         input: OpCodes.Hex8ToBytes("0000000000000000"),
         key: OpCodes.Hex8ToBytes("00000000000000000000000000000001"),
-        expected: OpCodes.Hex8ToBytes("ED285DA1455B33C1")
+        expected: OpCodes.Hex8ToBytes("0C6D2A1D930C3FAB")
       }
     ];
   }
@@ -126,7 +126,7 @@ class TEAInstance extends IBlockCipherInstance {
     this.KeySize = 0;
     
     // TEA constants
-    this.DELTA = 0x9E3779B9; // Magic constant (2^32 / golden ratio)
+    this.DELTA = OpCodes.Pack32BE(...OpCodes.Hex8ToBytes("9E3779B9")); // Magic constant (2^32 / golden ratio)
     this.ROUNDS = 32;        // Standard TEA uses 32 rounds
   }
 

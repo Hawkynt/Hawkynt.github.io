@@ -355,7 +355,7 @@
   // Auto-register with Cipher system if available
   // Auto-register with AlgorithmFramework if available
   if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
-    global.AlgorithmFramework.RegisterAlgorithm(Zuc);
+    global.AlgorithmFramework.RegisterAlgorithm(ZUC);
   } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(ZUC);
   }

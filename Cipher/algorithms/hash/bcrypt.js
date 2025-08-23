@@ -4,38 +4,51 @@
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
-  'use strict';
+if (!global.AlgorithmFramework && typeof require !== 'undefined')
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+
+if (!global.OpCodes && typeof require !== 'undefined')
+  global.OpCodes = require('../../OpCodes.js');
+
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem } = AlgorithmFramework;
   
-  // Environment detection and OpCodes loading
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
-  }
-  
-  const bcrypt = {
-    name: "bcrypt",
-    description: "Adaptive password hashing function based on the Blowfish cipher. Designed to be slow and resistant to brute-force attacks with configurable work factor (cost parameter).",
-    inventor: "Niels Provos, David Mazières",
-    year: 1999,
-    country: "Multi-national",
-    category: "hash",
-    subCategory: "Password Hash",
-    securityStatus: "active",
-    securityNotes: "Production-ready password hashing function widely used in authentication systems. Adaptive design allows increasing computational cost as hardware improves.",
+class BcryptAlgorithm extends HashFunctionAlgorithm {
+  constructor() {
+    super();
     
-    documentation: [
-      {text: "Original Paper", uri: "https://www.usenix.org/legacy/publications/library/proceedings/usenix99/provos.html"},
-      {text: "RFC (draft)", uri: "https://tools.ietf.org/id/draft-irtf-cfrg-bcrypt-pbkdf-03.html"},
-      {text: "OpenBSD Implementation", uri: "https://github.com/openbsd/src/blob/master/lib/libc/crypt/bcrypt.c"}
-    ],
+    // Required metadata
+    this.name = "bcrypt";
+    this.description = "Adaptive password hashing function based on the Blowfish cipher. Designed to be slow and resistant to brute-force attacks with configurable work factor (cost parameter).";
+    this.inventor = "Niels Provos, David Mazières";
+    this.year = 1999;
+    this.category = CategoryType.HASH;
+    this.subCategory = "Password Hash";
+    this.securityStatus = SecurityStatus.SECURE;
+    this.complexity = ComplexityType.HIGH;
+    this.country = CountryCode.MULTI;
+
+    // Hash-specific metadata
+    this.SupportedOutputSizes = [60]; // Standard bcrypt output length
     
-    references: [
-      {text: "bcrypt.net", uri: "https://bcrypt-generator.com/"},
-      {text: "Security Analysis", uri: "https://security.stackexchange.com/questions/4781/do-any-security-experts-recommend-bcrypt-for-password-storage"},
-      {text: "OWASP Guidelines", uri: "https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html"}
-    ],
+    // Performance and technical specifications
+    this.blockSize = 8; // Blowfish block size
+    this.outputSize = 60; // Standard bcrypt output length
     
-    knownVulnerabilities: [
+    // Documentation and references
+    this.documentation = [
+      new LinkItem("Original Paper", "https://www.usenix.org/legacy/publications/library/proceedings/usenix99/provos.html"),
+      new LinkItem("RFC (draft)", "https://tools.ietf.org/id/draft-irtf-cfrg-bcrypt-pbkdf-03.html"),
+      new LinkItem("OpenBSD Implementation", "https://github.com/openbsd/src/blob/master/lib/libc/crypt/bcrypt.c")
+    ];
+
+    this.references = [
+      new LinkItem("bcrypt.net", "https://bcrypt-generator.com/"),
+      new LinkItem("Security Analysis", "https://security.stackexchange.com/questions/4781/do-any-security-experts-recommend-bcrypt-for-password-storage"),
+      new LinkItem("OWASP Guidelines", "https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html")
+    ];
+
+    this.knownVulnerabilities = [
       {
         type: "Length Limitation",
         text: "Passwords longer than 72 bytes are truncated",
@@ -46,84 +59,59 @@
         text: "Cost parameter may become insufficient as hardware improves",
         mitigation: "Regularly review and increase cost parameter as needed"
       }
-    ],
+    ];
     
-    tests: [
+    // Test vectors from OpenBSD
+    this.tests = [
       {
-        text: "bcrypt Test Vector 1 (Cost 4)",
+        text: "bcrypt Test Vector - 'password' Cost 4",
         uri: "OpenBSD test vectors",
-        password: OpCodes.StringToBytes("password"),
-        salt: OpCodes.StringToBytes("$2a$04$N9qo8uLOickgx2ZMRZoMye"),
-        cost: 4,
-        expectedHash: "$2a$04$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
-      },
-      {
-        text: "bcrypt Test Vector 2 (Empty Password)",
-        uri: "OpenBSD test vectors",
-        password: OpCodes.StringToBytes(""),
-        salt: OpCodes.StringToBytes("$2a$06$DCq7YPn5Rq63x1Lad4cll."),
-        cost: 6,
-        expectedHash: "$2a$06$DCq7YPn5Rq63x1Lad4cll.TV4S6ytwfsfvkgY8jIucDrjc8deX1s."
-      },
-      {
-        text: "bcrypt Test Vector 3 (Unicode)",
-        uri: "Modern test cases",
-        password: OpCodes.StringToBytes("Héllo Wørld"),
-        salt: OpCodes.StringToBytes("$2a$08$123456789012345678901u"),
-        cost: 8,
-        expectedLength: 60 // Standard bcrypt output length
+        input: OpCodes.AnsiToBytes("password"),
+        expected: OpCodes.AnsiToBytes("$2a$04$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")
       }
-    ],
+    ];
+  }
 
-    // Legacy interface properties
-    internalName: 'bcrypt',
-    minKeyLength: 0,
-    maxKeyLength: 72,
-    stepKeyLength: 1,
-    minBlockSize: 8,
-    maxBlockSize: 8,
-    stepBlockSize: 1,
-    instances: {},
-    version: '1.0.0',
-    keySize: 72,
-    blockSize: 8,
-    
-    // Algorithm metadata
-    isStreamCipher: false,
-    isBlockCipher: false,
-    isHash: true,
-    isPasswordHash: true,
-    complexity: 'High',
-    family: 'bcrypt',
-    category: 'Key-Derivation',
+  CreateInstance(isInverse = false) {
+    return new BcryptAlgorithmInstance(this, isInverse);
+  }
+}
+
+class BcryptAlgorithmInstance extends IHashFunctionInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.OutputSize = 60; // Standard bcrypt output length
+
     
     // bcrypt constants
-    BCRYPT_SALT_LEN: 16,
-    BCRYPT_HASH_LEN: 24,
-    BCRYPT_MIN_COST: 4,
-    BCRYPT_MAX_COST: 31,
+    this.BCRYPT_SALT_LEN = 16;
+    this.BCRYPT_HASH_LEN = 24;
+    this.BCRYPT_MIN_COST = 4;
+    this.BCRYPT_MAX_COST = 31;
     
     // Blowfish constants (subset for bcrypt)
-    BLOWFISH_ROUNDS: 16,
+    this.BLOWFISH_ROUNDS = 16;
     
     // Base64 encoding table for bcrypt (custom alphabet)
-    B64_ALPHABET: './ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
+    this.B64_ALPHABET = './ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     
     // Current configuration
-    cost: 10,
-    salt: null,
-    keyScheduled: false,
+    this.cost = 10;
+    this.salt = null;
+    this.keyScheduled = false;
+  }
     
-    // Initialize bcrypt
-    Init: function() {
+  // Initialize bcrypt
+  Init() {
       this.cost = 10;
       this.salt = null;
       this.keyScheduled = false;
       return true;
-    },
+  }
     
-    // Key setup (cost parameter and optional salt)
-    KeySetup: function(key, options) {
+  // Key setup (cost parameter and optional salt)
+  KeySetup(key, options) {
       if (typeof key === 'number') {
         this.cost = Math.max(this.BCRYPT_MIN_COST, Math.min(this.BCRYPT_MAX_COST, key));
       } else if (typeof key === 'string') {
@@ -145,8 +133,8 @@
       }
       
       this.keyScheduled = true;
-      return 'bcrypt-' + this.cost + '-' + Math.random().toString(36).substr(2, 9);
-    },
+      return true;
+  }
     
     // Generate random salt
     generateSalt: function() {
@@ -286,7 +274,7 @@
       const keySchedule = this.expensiveKeySetup(password, salt, cost);
       
       // Encrypt magic string "OrpheanBeholderScryDoubt" 64 times
-      const magic = OpCodes.StringToBytes("OrpheanBeholderScryDoubt");
+      const magic = OpCodes.AnsiToBytes("OrpheanBeholderScryDoubt");
       let ciphertext = OpCodes.CopyArray(magic);
       
       for (let i = 0; i < 64; i++) {
@@ -332,13 +320,13 @@
       const salt = this.decodeBase64(match[2]);
       
       const computedHash = this.hashPassword(password, cost, salt);
-      return OpCodes.SecureCompare(OpCodes.StringToBytes(hash), OpCodes.StringToBytes(computedHash));
+      return OpCodes.SecureCompare(OpCodes.AnsiToBytes(hash), OpCodes.AnsiToBytes(computedHash));
     },
     
     // Legacy cipher interface
     szEncryptBlock: function(blockIndex, plaintext) {
       const password = OpCodes.BytesToString(plaintext);
-      return OpCodes.StringToBytes(this.hashPassword(OpCodes.StringToBytes(password)));
+      return OpCodes.AnsiToBytes(this.hashPassword(OpCodes.AnsiToBytes(password)));
     },
     
     szDecryptBlock: function(blockIndex, ciphertext) {
@@ -409,8 +397,8 @@
       this.KeySetup(8); // Cost 8
       
       const demoPassword = "SecurePassword123!";
-      const hash1 = this.hashPassword(OpCodes.StringToBytes(demoPassword));
-      const hash2 = this.hashPassword(OpCodes.StringToBytes(demoPassword));
+      const hash1 = this.hashPassword(OpCodes.AnsiToBytes(demoPassword));
+      const hash2 = this.hashPassword(OpCodes.AnsiToBytes(demoPassword));
       
       console.log('Password:', demoPassword);
       console.log('Hash 1:', hash1);
@@ -418,7 +406,7 @@
       console.log('Hashes different (salt randomization):', hash1 !== hash2);
       
       // Test verification
-      const verified = this.verifyPassword(OpCodes.StringToBytes(demoPassword), hash1);
+      const verified = this.verifyPassword(OpCodes.AnsiToBytes(demoPassword), hash1);
       console.log('Password verification:', verified ? 'PASS' : 'FAIL');
       
       return {
@@ -433,16 +421,49 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
-    global.Cipher.Add(bcrypt);
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = bcrypt;
+  /**
+   * Required interface methods for IAlgorithmInstance compatibility
+   */
+  EncryptBlock(blockIndex, plaintext) {
+    // Return hash of the password
+    const password = OpCodes.BytesToString(plaintext);
+    return OpCodes.AnsiToBytes(this.hashPassword(OpCodes.AnsiToBytes(password)));
   }
-  
-  // Global export
-  global.bcrypt = bcrypt;
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  DecryptBlock(blockIndex, ciphertext) {
+    // Hash functions are one-way
+    throw new Error('bcrypt is a one-way password hash function - decryption not possible');
+  }
+
+  Hash(message) {
+    const password = typeof message === 'string' ? message : OpCodes.BytesToString(message);
+    return OpCodes.AnsiToBytes(this.hashPassword(OpCodes.AnsiToBytes(password)));
+  }
+
+  /**
+   * Feed method required by test suite - processes input data
+   * @param {Array} data - Input data as byte array
+   */
+  Feed(data) {
+    this._inputData = data;
+  }
+
+  /**
+   * Result method required by test suite - returns final hash
+   * @returns {Array} Hash digest as byte array
+   */
+  Result() {
+    return this.Hash(this._inputData || []);
+  }
+
+  Update(data) {
+    this._inputData = data;
+  }
+
+  Final() {
+    return this.Hash(this._inputData || []);
+  }
+}
+
+// Register the algorithm
+RegisterAlgorithm(new BcryptAlgorithm());

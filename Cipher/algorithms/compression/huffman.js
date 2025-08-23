@@ -7,231 +7,303 @@
  * Uses frequency-based optimal prefix codes
  */
 
-// Load AlgorithmFramework (REQUIRED)
-if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
-}
+(function(global) {
+  'use strict';
 
-// Load OpCodes for cryptographic operations (RECOMMENDED)
-if (!global.OpCodes && typeof require !== 'undefined') {
-  global.OpCodes = require('../../OpCodes.js');
-}
+  // Load AlgorithmFramework (REQUIRED)
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+  }
 
-const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
-        CompressionAlgorithm, IAlgorithmInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
+  // Load OpCodes for cryptographic operations (RECOMMENDED)
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    global.OpCodes = require('../../OpCodes.js');
+  }
 
-class HuffmanCompression extends CompressionAlgorithm {
-  constructor() {
-    super();
-    
-    // Required metadata
-    this.name = "Huffman";
-    this.description = "Lossless data compression using optimal prefix codes based on symbol frequencies. Developed by David Huffman in 1952 for minimum-redundancy coding.";
-    this.inventor = "David Albert Huffman";
-    this.year = 1952;
-    this.category = CategoryType.COMPRESSION;
-    this.subCategory = "Statistical";
-    this.securityStatus = null;
-    this.complexity = ComplexityType.INTERMEDIATE;
-    this.country = CountryCode.US;
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+          CompressionAlgorithm, IAlgorithmInstance, TestCase, LinkItem, KeySize } = global.AlgorithmFramework;
 
-    // Documentation and references
-    this.documentation = [
-      new LinkItem("Original Paper", "https://en.wikipedia.org/wiki/Huffman_coding"),
-      new LinkItem("Information Theory Tutorial", "https://web.stanford.edu/class/ee378a/")
-    ];
+  class HuffmanCompression extends CompressionAlgorithm {
+    constructor() {
+      super();
+      
+      // Required metadata
+      this.name = "Huffman";
+      this.description = "Lossless data compression using optimal prefix codes based on symbol frequencies. Developed by David Huffman in 1952 for minimum-redundancy coding.";
+      this.inventor = "David Albert Huffman";
+      this.year = 1952;
+      this.category = CategoryType.COMPRESSION;
+      this.subCategory = "Statistical";
+      this.securityStatus = null;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.US;
 
-    this.references = [
-      new LinkItem("Huffman's 1952 Paper", "https://ieeexplore.ieee.org/document/4051119"),
-      new LinkItem("Data Compression Book", "https://www.data-compression.com/huffman.html")
-    ];
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("Original Paper", "https://en.wikipedia.org/wiki/Huffman_coding"),
+        new LinkItem("Information Theory Tutorial", "https://web.stanford.edu/class/ee378a/")
+      ];
 
-    // Test vectors - simple examples
-    this.tests = [
-      {
-        text: "Simple repetitive text",
-        uri: "https://en.wikipedia.org/wiki/Huffman_coding",
-        input: OpCodes.AnsiToBytes("AAABBC"),
-        expected: [6, 65, 3, 66, 1, 67, 1, 7, 2, 0, 1, 1, 3] // Simplified format: [original_length, frequencies..., encoded_bits]
-      },
-      {
-        text: "Single character",
-        uri: "https://en.wikipedia.org/wiki/Huffman_coding",
-        input: OpCodes.AnsiToBytes("AAA"),
-        expected: [3, 65, 3, 3, 0] // Single char special case
-      },
-      {
-        text: "Empty input",
-        uri: "https://en.wikipedia.org/wiki/Huffman_coding",
-        input: OpCodes.AnsiToBytes(""),
-        expected: [0] // Empty input returns just length
+      this.references = [
+        new LinkItem("Huffman's 1952 Paper", "https://ieeexplore.ieee.org/document/4051119"),
+        new LinkItem("Data Compression Book", "https://www.data-compression.com/huffman.html")
+      ];
+
+      // Test vectors - round trip tests  
+      this.tests = [
+        {
+          text: "Simple repetitive text",
+          uri: "https://en.wikipedia.org/wiki/Huffman_coding",
+          input: [65, 65, 65, 66, 66, 67], // "AAABBC"
+          expected: [65, 65, 65, 66, 66, 67] // Round-trip test
+        },
+        {
+          text: "Single character repeated",
+          uri: "Educational test",
+          input: [65, 65, 65], // "AAA"
+          expected: [65, 65, 65] // Round-trip test
+        },
+        {
+          text: "All different characters",
+          uri: "Worst case test",
+          input: [65, 66, 67, 68], // "ABCD"
+          expected: [65, 66, 67, 68] // Round-trip test
+        }
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      return new HuffmanInstance(this, isInverse);
+    }
+  }
+
+  // Huffman tree node class
+  class HuffmanNode {
+    constructor(char, frequency, left = null, right = null) {
+      this.char = char;
+      this.frequency = frequency;
+      this.left = left;
+      this.right = right;
+    }
+
+    isLeaf() {
+      return this.left === null && this.right === null;
+    }
+  }
+
+  class HuffmanInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.inputBuffer = [];
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      if (this.inputBuffer.length === 0) {
+        return [];
       }
-    ];
-  }
 
-  CreateInstance(isInverse = false) {
-    return new HuffmanInstance(this, isInverse);
-  }
-}
-
-// Huffman tree node class
-class HuffmanNode {
-  constructor(char, freq, left = null, right = null) {
-    this.char = char;
-    this.freq = freq;
-    this.left = left;
-    this.right = right;
-  }
-
-  isLeaf() {
-    return this.left === null && this.right === null;
-  }
-}
-
-class HuffmanInstance extends IAlgorithmInstance {
-  constructor(algorithm, isInverse = false) {
-    super(algorithm);
-    this.isInverse = isInverse;
-    this.inputBuffer = [];
-    this.huffmanTree = null;
-    this.codes = new Map();
-  }
-
-  Feed(data) {
-    if (!data || data.length === 0) return;
-    this.inputBuffer.push(...data);
-  }
-
-  Result() {
-    if (this.inputBuffer.length === 0) {
-      return [0]; // Empty input
+      if (this.isInverse) {
+        return this._decompress();
+      } else {
+        return this._compress();
+      }
     }
 
-    if (this.isInverse) {
-      return this._decompress();
-    } else {
-      return this._compress();
-    }
-  }
+    _compress() {
+      if (this.inputBuffer.length === 0) {
+        return [0]; // Empty data marker
+      }
 
-  _compress() {
-    // Calculate frequency table
-    const frequencies = new Map();
-    for (const byte of this.inputBuffer) {
-      frequencies.set(byte, (frequencies.get(byte) || 0) + 1);
-    }
+      // Build frequency table
+      const frequencies = {};
+      for (const byte of this.inputBuffer) {
+        frequencies[byte] = (frequencies[byte] || 0) + 1;
+      }
 
-    // Handle single character case
-    if (frequencies.size === 1) {
-      const char = frequencies.keys().next().value;
-      const count = frequencies.get(char);
-      return [this.inputBuffer.length, char, count, count, 0]; // Special encoding for single char
-    }
+      // Handle special case: single unique character
+      const uniqueChars = Object.keys(frequencies);
+      if (uniqueChars.length === 1) {
+        const char = parseInt(uniqueChars[0]);
+        const count = frequencies[char];
+        this.inputBuffer = [];
+        return [1, char, count & 0xFF, (count >> 8) & 0xFF]; // Special single-char format
+      }
 
-    // Build Huffman tree
-    this.huffmanTree = this._buildHuffmanTree(frequencies);
-    
-    // Generate codes
-    this._generateCodes(this.huffmanTree, "", this.codes);
-
-    // Encode data
-    let encodedBits = "";
-    for (const byte of this.inputBuffer) {
-      encodedBits += this.codes.get(byte);
-    }
-
-    // Convert to simplified format for testing
-    // Format: [original_length, char1, freq1, char2, freq2, ..., bit_length, ...encoded_bytes]
-    const result = [this.inputBuffer.length];
-    
-    // Add frequency table
-    for (const [char, freq] of frequencies) {
-      result.push(char, freq);
-    }
-    
-    // Add encoded bit length
-    result.push(encodedBits.length);
-    
-    // Add encoded data as bytes (simplified - normally would be packed bits)
-    for (let i = 0; i < encodedBits.length; i += 8) {
-      const chunk = encodedBits.substr(i, 8).padEnd(8, '0');
-      result.push(parseInt(chunk, 2));
-    }
-
-    // Clear buffer
-    this.inputBuffer = [];
-    
-    return result;
-  }
-
-  _decompress() {
-    // This is a simplified decompression for testing
-    // In a real implementation, this would parse the encoded format
-    // and rebuild the tree to decode the data
-    
-    if (this.inputBuffer.length === 0) {
-      return [];
-    }
-
-    // For testing purposes, just return the input buffer
-    // A real implementation would parse the Huffman-encoded data
-    const result = [...this.inputBuffer];
-    this.inputBuffer = [];
-    return result;
-  }
-
-  _buildHuffmanTree(frequencies) {
-    // Create priority queue (min-heap) using array
-    const heap = [];
-    
-    // Add all characters as leaf nodes
-    for (const [char, freq] of frequencies) {
-      heap.push(new HuffmanNode(char, freq));
-    }
-
-    // Sort by frequency (min-heap)
-    heap.sort((a, b) => a.freq - b.freq);
-
-    // Build tree bottom-up
-    while (heap.length > 1) {
-      // Take two nodes with lowest frequency
-      const left = heap.shift();
-      const right = heap.shift();
+      // Build Huffman tree
+      const tree = this._buildHuffmanTree(frequencies);
       
-      // Create internal node
-      const merged = new HuffmanNode(null, left.freq + right.freq, left, right);
+      // Generate codes
+      const codes = {};
+      this._generateCodes(tree, '', codes);
+
+      // Encode data
+      let bitString = '';
+      for (const byte of this.inputBuffer) {
+        bitString += codes[byte];
+      }
+
+      // Pack the compressed data
+      const result = this._packCompressedData(frequencies, bitString);
       
-      // Insert back into heap maintaining order
-      let inserted = false;
-      for (let i = 0; i < heap.length; i++) {
-        if (merged.freq <= heap[i].freq) {
-          heap.splice(i, 0, merged);
-          inserted = true;
-          break;
+      this.inputBuffer = [];
+      return result;
+    }
+
+    _decompress() {
+      if (this.inputBuffer.length === 0 || this.inputBuffer[0] === 0) {
+        this.inputBuffer = [];
+        return []; // Empty data
+      }
+
+      // Handle special single-char case
+      if (this.inputBuffer[0] === 1) {
+        const char = this.inputBuffer[1];
+        const count = this.inputBuffer[2] | (this.inputBuffer[3] << 8);
+        this.inputBuffer = [];
+        return new Array(count).fill(char);
+      }
+
+      // Unpack compressed data
+      const { frequencies, bitString } = this._unpackCompressedData(this.inputBuffer);
+      
+      // Rebuild tree
+      const tree = this._buildHuffmanTree(frequencies);
+      
+      // Decode bit string
+      const result = [];
+      let currentNode = tree;
+      
+      for (const bit of bitString) {
+        if (bit === '0') {
+          currentNode = currentNode.left;
+        } else {
+          currentNode = currentNode.right;
+        }
+        
+        if (currentNode.isLeaf()) {
+          result.push(currentNode.char);
+          currentNode = tree;
         }
       }
-      if (!inserted) {
-        heap.push(merged);
+
+      this.inputBuffer = [];
+      return result;
+    }
+
+    _buildHuffmanTree(frequencies) {
+      // Create priority queue (min-heap) of nodes
+      const heap = [];
+      
+      for (const [char, freq] of Object.entries(frequencies)) {
+        heap.push(new HuffmanNode(parseInt(char), freq));
       }
+      
+      // Sort by frequency (min-heap behavior)
+      heap.sort((a, b) => a.frequency - b.frequency);
+      
+      // Build tree
+      while (heap.length > 1) {
+        const left = heap.shift();
+        const right = heap.shift();
+        
+        const merged = new HuffmanNode(null, left.frequency + right.frequency, left, right);
+        
+        // Insert back in sorted order
+        let insertIndex = heap.findIndex(node => node.frequency > merged.frequency);
+        if (insertIndex === -1) {
+          heap.push(merged);
+        } else {
+          heap.splice(insertIndex, 0, merged);
+        }
+      }
+      
+      return heap[0];
     }
 
-    return heap[0];
-  }
-
-  _generateCodes(node, code, codes) {
-    if (!node) return;
-
-    // If leaf node, store the code
-    if (node.isLeaf()) {
-      codes.set(node.char, code || "0"); // Single char gets "0"
-      return;
+    _generateCodes(node, code, codes) {
+      if (node.isLeaf()) {
+        codes[node.char] = code || '0'; // Handle single character case
+        return;
+      }
+      
+      this._generateCodes(node.left, code + '0', codes);
+      this._generateCodes(node.right, code + '1', codes);
     }
 
-    // Recursively generate codes
-    this._generateCodes(node.left, code + "0", codes);
-    this._generateCodes(node.right, code + "1", codes);
-  }
-}
+    _packCompressedData(frequencies, bitString) {
+      const result = [];
+      
+      // Format: [header_marker, frequency_count, frequencies..., bit_count, bits...]
+      result.push(2); // Multi-char format marker
+      
+      // Store frequency table
+      const chars = Object.keys(frequencies);
+      result.push(chars.length);
+      
+      for (const char of chars) {
+        result.push(parseInt(char));
+        const freq = frequencies[char];
+        result.push(freq & 0xFF);
+        result.push((freq >> 8) & 0xFF);
+      }
+      
+      // Store bit string length
+      const bitCount = bitString.length;
+      result.push(bitCount & 0xFF);
+      result.push((bitCount >> 8) & 0xFF);
+      result.push((bitCount >> 16) & 0xFF);
+      result.push((bitCount >> 24) & 0xFF);
+      
+      // Pack bits into bytes
+      for (let i = 0; i < bitString.length; i += 8) {
+        const byteStr = bitString.substr(i, 8).padEnd(8, '0');
+        result.push(parseInt(byteStr, 2));
+      }
+      
+      return result;
+    }
 
-// Register the algorithm
-RegisterAlgorithm(new HuffmanCompression());
+    _unpackCompressedData(data) {
+      let pos = 1; // Skip marker
+      
+      // Read frequency table
+      const charCount = data[pos++];
+      const frequencies = {};
+      
+      for (let i = 0; i < charCount; i++) {
+        const char = data[pos++];
+        const freq = data[pos++] | (data[pos++] << 8);
+        frequencies[char] = freq;
+      }
+      
+      // Read bit count
+      const bitCount = data[pos++] | (data[pos++] << 8) | (data[pos++] << 16) | (data[pos++] << 24);
+      
+      // Read and convert bytes to bit string
+      let bitString = '';
+      for (let i = pos; i < data.length; i++) {
+        bitString += data[i].toString(2).padStart(8, '0');
+      }
+      
+      // Trim to actual bit count
+      bitString = bitString.substr(0, bitCount);
+      
+      return { frequencies, bitString };
+    }
+  }
+
+  // Register the algorithm
+  RegisterAlgorithm(new HuffmanCompression());
+
+  // Export for Node.js
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = HuffmanCompression;
+  }
+
+})(typeof global !== 'undefined' ? global : window);

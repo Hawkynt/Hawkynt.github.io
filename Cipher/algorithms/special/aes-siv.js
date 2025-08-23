@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Universal AES-SIV (Synthetic Initialization Vector) Implementation
+ * AES-SIV (Synthetic Initialization Vector) Implementation
  * Compatible with both Browser and Node.js environments
  * Based on RFC 5297 - Synthetic Initialization Vector (SIV) Authenticated Encryption
  * (c)2006-2025 Hawkynt
@@ -36,29 +36,13 @@
 (function(global) {
   'use strict';
   
-  // Ensure environment dependencies are available
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-      return;
-    }
+  // Load AlgorithmFramework (REQUIRED)
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
   }
-  
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('AES-SIV cipher requires Cipher system to be loaded first');
-      return;
-    }
+
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    global.OpCodes = require('../../OpCodes.js');
   }
   
   // Load AES dependency
@@ -70,285 +54,120 @@
       return;
     }
   }
+
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          CryptoAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = global.AlgorithmFramework;
   
-  // Load metadata system
-  if (!global.CipherMetadata && typeof require !== 'undefined') {
-    try {
-      require('../../cipher-metadata.js');
-    } catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
+  class AesSiv extends CryptoAlgorithm {
+    constructor() {
+      super();
+      
+      this.name = "AES-SIV";
+      this.description = "Synthetic Initialization Vector deterministic authenticated encryption. Provides nonce misuse resistance and deterministic encryption properties for secure AEAD operations.";
+      this.inventor = "Phillip Rogaway, Thomas Shrimpton";
+      this.year = 2006;
+      this.country = CountryCode.US;
+      this.category = CategoryType.SPECIAL;
+      this.subCategory = "Deterministic AEAD";
+      this.securityStatus = SecurityStatus.SECURE;
+      this.complexity = ComplexityType.ADVANCED;
+      
+      this.documentation = [
+        new LinkItem("RFC 5297 - Synthetic Initialization Vector (SIV) Authenticated Encryption", "https://tools.ietf.org/html/rfc5297"),
+        new LinkItem("NIST SP 800-38F - Methods for Key Derivation and Data Protection", "https://csrc.nist.gov/publications/detail/sp/800-38f/final")
+      ];
+      
+      this.references = [
+        new LinkItem("Deterministic Authenticated-Encryption (DAE) Paper", "https://web.cs.ucdavis.edu/~rogaway/papers/siv.pdf"),
+        new LinkItem("SIV Mode Security Analysis", "https://eprint.iacr.org/2006/221.pdf")
+      ];
+
+      this.tests = [
+        new TestCase(
+          global.OpCodes.Hex8ToBytes(''), // empty plaintext
+          global.OpCodes.Hex8ToBytes('85632d07c6e8f37f950acd320a2ecc9340c02b9690c4dc04daef7f6afe5c'),
+          'RFC 5297 AES-SIV Test Vector 1 (empty plaintext)',
+          'https://tools.ietf.org/html/rfc5297#appendix-A'
+        ),
+        new TestCase(
+          global.OpCodes.Hex8ToBytes('112233445566778899aabbccddee'),
+          global.OpCodes.Hex8ToBytes('85632d07c6e8f37f950acd320a2ecc9340c02b9690c4dc04daef7f6afe5c317722bc40d38f1b1d82e0eb24f83e6a'),
+          'RFC 5297 AES-SIV Test Vector 2',
+          'https://tools.ietf.org/html/rfc5297#appendix-A'
+        )
+      ];
+      
+      // Add key and AAD properties to test cases  
+      this.tests[0].key = global.OpCodes.Hex8ToBytes('404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f');
+      this.tests[0].aad = [];
+      this.tests[1].key = global.OpCodes.Hex8ToBytes('404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f');
+      this.tests[1].aad = [];
+      
+      this.testVectors = this.tests;
+    }
+    
+    CreateInstance(isInverse = false) {
+      return new AesSivInstance(this, isInverse);
     }
   }
+  // SIV constants
+  const BLOCK_SIZE = 16;        // AES block size
+  const SIV_SIZE = 16;          // SIV tag size (128 bits)
   
-  // Create AES-SIV cipher object
-  const AES_SIV = {
-    // Public interface properties
-    internalName: 'AES-SIV',
-    name: 'AES-SIV Deterministic AEAD',
-    comment: 'AES-SIV: Synthetic Initialization Vector Deterministic Authenticated Encryption - RFC 5297',
-    minKeyLength: 32,   // 256-bit keys (128+128 for CMAC+CTR)
-    maxKeyLength: 64,   // 512-bit keys (256+256 for CMAC+CTR)
-    stepKeyLength: 16,  // AES key sizes
-    minBlockSize: 1,    // AEAD can handle any data size
-    maxBlockSize: 65536, // Practical limit
-    stepBlockSize: 1,
-    instances: {},
-    
-    // Comprehensive metadata
-    metadata: global.CipherMetadata ? global.CipherMetadata.createMetadata({
-      algorithm: 'AES-SIV',
-      displayName: 'AES-SIV Deterministic AEAD',
-      description: 'Deterministic authenticated encryption using Synthetic Initialization Vector (SIV) mode. Provides nonce misuse resistance and deterministic encryption properties.',
-      
-      inventor: 'Phillip Rogaway, Thomas Shrimpton',
-      year: 2006,
-      background: 'Developed to address nonce reuse vulnerabilities in traditional AEAD schemes. Standardized in RFC 5297 and used in applications requiring deterministic encryption.',
-      
-      securityStatus: global.CipherMetadata.SecurityStatus.SECURE,
-      securityNotes: 'Provably secure deterministic AEAD. Safe against nonce reuse attacks. Provides both confidentiality and authenticity guarantees.',
-      
-      category: global.CipherMetadata.Categories.AEAD,
-      subcategory: 'Deterministic/Nonce Misuse-Resistant',
-      complexity: global.CipherMetadata.ComplexityLevels.ADVANCED,
-      
-      keySize: '256, 384, or 512 bits (double AES key size)',
-      blockSize: 128, // AES block size
-      rounds: 'AES rounds (10, 12, or 14)',
-      nonceSize: 'Optional (can be empty for deterministic mode)',
-      tagSize: '128 bits (16 bytes)',
-      
-      specifications: [
-        {
-          name: 'RFC 5297 - Synthetic Initialization Vector (SIV) Authenticated Encryption',
-          url: 'https://tools.ietf.org/html/rfc5297'
-        },
-        {
-          name: 'NIST SP 800-38F - Methods for Key Derivation and Data Protection',
-          url: 'https://csrc.nist.gov/publications/detail/sp/800-38f/final'
-        }
-      ],
-      
-      testVectors: [
-        {
-          name: 'RFC 5297 Test Vectors',
-          url: 'https://tools.ietf.org/html/rfc5297#appendix-A'
-        },
-        {
-          name: 'NIST CAVP SIV Test Vectors',
-          url: 'https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program'
-        }
-      ],
-      
-      references: [
-        {
-          name: 'Deterministic Authenticated-Encryption (DAE) Paper',
-          url: 'https://web.cs.ucdavis.edu/~rogaway/papers/siv.pdf'
-        },
-        {
-          name: 'SIV Mode Security Analysis',
-          url: 'https://eprint.iacr.org/2006/221.pdf'
-        }
-      ],
-      
-      implementationNotes: 'Two-pass construction using S2V (String-to-Vector) for authentication and AES-CTR for encryption. Requires double-length keys.',
-      performanceNotes: 'Slower than single-pass AEAD due to two passes over data. Provides unique deterministic and nonce-misuse-resistant properties.',
-      
-      educationalValue: 'Excellent introduction to deterministic encryption and nonce misuse resistance. Shows advanced AEAD construction techniques.',
-      prerequisites: ['AES understanding', 'CMAC knowledge', 'CTR mode', 'AEAD concepts', 'Galois Field arithmetic'],
-      
-      tags: ['aead', 'deterministic', 'nonce-misuse-resistant', 'rfc5297', 'siv', 'aes', 'cmac'],
-      
-      version: '1.0'
-    }) : null,
-
-    // Test vectors for AES-SIV from RFC 5297
-    testVectors: [
-      {
-        algorithm: 'AES-SIV',
-        key: '404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f',
-        aad: [],
-        plaintext: '',
-        ciphertext: '85632d07c6e8f37f950acd320a2ecc9340c02b9690c4dc04daef7f6afe5c',
-        description: 'RFC 5297 AES-SIV Test Vector 1 (empty plaintext)'
-      },
-      {
-        algorithm: 'AES-SIV',
-        key: '404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f',
-        aad: [],
-        plaintext: '112233445566778899aabbccddee',
-        ciphertext: '85632d07c6e8f37f950acd320a2ecc9340c02b9690c4dc04daef7f6afe5c317722bc40d38f1b1d82e0eb24f83e6a',
-        description: 'RFC 5297 AES-SIV Test Vector 2'
-      }
-    ],
-    
-    // Official test vectors from RFC 5297
-    officialTestVectors: [
-      // RFC 5297 Appendix A.1
-      {
-        algorithm: 'AES-SIV',
-        description: 'RFC 5297 Appendix A.1 Test Vector 1',
-        origin: 'RFC 5297 - Synthetic Initialization Vector (SIV) Authenticated Encryption',
-        link: 'https://tools.ietf.org/html/rfc5297#appendix-A.1',
-        standard: 'RFC 5297',
-        key: '\x40\x41\x42\x43\x44\x45\x46\x47\x48\x49\x4a\x4b\x4c\x4d\x4e\x4f\x50\x51\x52\x53\x54\x55\x56\x57\x58\x59\x5a\x5b\x5c\x5d\x5e\x5f',
-        keyHex: '404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f',
-        aad: [],
-        aadHex: '',
-        plaintext: '',
-        plaintextHex: '',
-        ciphertext: '\x85\x63\x2d\x07\xc6\xe8\xf3\x7f\x95\x0a\xcd\x32\x0a\x2e\xcc\x93\x40\xc0\x2b\x96\x90\xc4\xdc\x04\xda\xef\x7f\x6a\xfe\x5c',
-        ciphertextHex: '85632d07c6e8f37f950acd320a2ecc9340c02b9690c4dc04daef7f6afe5c',
-        notes: 'Empty plaintext test vector for AES-SIV',
-        category: 'official-standard'
-      }
-    ],
-    
-    // Reference links to authoritative sources
-    referenceLinks: {
-      specifications: [
-        {
-          name: 'RFC 5297 - Synthetic Initialization Vector (SIV) Authenticated Encryption',
-          url: 'https://tools.ietf.org/html/rfc5297',
-          description: 'Official IETF specification for SIV mode'
-        },
-        {
-          name: 'NIST SP 800-38F - Block Cipher Modes',
-          url: 'https://csrc.nist.gov/publications/detail/sp/800-38f/final',
-          description: 'NIST guidance on advanced block cipher modes including SIV'
-        }
-      ],
-      implementations: [
-        {
-          name: 'Miscreant SIV Implementation',
-          url: 'https://github.com/miscreant/miscreant',
-          description: 'High-quality multi-language SIV implementations'
-        },
-        {
-          name: 'OpenSSL SIV Implementation',
-          url: 'https://github.com/openssl/openssl/tree/master/providers/implementations/ciphers',
-          description: 'Production SIV implementation in OpenSSL'
-        }
-      ],
-      validation: [
-        {
-          name: 'RFC 5297 Test Vectors',
-          url: 'https://tools.ietf.org/html/rfc5297#appendix-A',
-          description: 'Official test vectors from RFC 5297'
-        },
-        {
-          name: 'NIST CAVP Test Vectors',
-          url: 'https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program',
-          description: 'NIST validation test vectors for SIV mode'
-        }
-      ]
-    },
-    
-    cantDecode: false,
-    isInitialized: false,
-    boolIsStreamCipher: false, // AEAD, not stream cipher
-    boolIsAEAD: true, // Mark as AEAD cipher
-    boolIsDeterministic: true, // Mark as deterministic cipher
-    
-    // SIV constants
-    BLOCK_SIZE: 16,        // AES block size
-    SIV_SIZE: 16,          // SIV tag size (128 bits)
-    
-    // Initialize cipher
-    Init: function() {
-      AES_SIV.isInitialized = true;
-    },
-    
-    // Set up key and initialize AES-SIV state
-    KeySetup: function(key) {
-      let id;
-      do {
-        id = 'AES-SIV[' + global.generateUniqueID() + ']';
-      } while (AES_SIV.instances[id] || global.objectInstances[id]);
-      
-      AES_SIV.instances[id] = new AES_SIV.AESSIVInstance(key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear cipher data
-    ClearData: function(id) {
-      if (AES_SIV.instances[id]) {
-        const instance = AES_SIV.instances[id];
-        if (instance.key1 && global.OpCodes) {
-          global.OpCodes.ClearArray(instance.key1);
-        }
-        if (instance.key2 && global.OpCodes) {
-          global.OpCodes.ClearArray(instance.key2);
-        }
-        if (instance.aesId1 && global.Rijndael) {
-          global.Rijndael.ClearData(instance.aesId1);
-        }
-        if (instance.aesId2 && global.Rijndael) {
-          global.Rijndael.ClearData(instance.aesId2);
-        }
-        delete AES_SIV.instances[id];
-        delete global.objectInstances[id];
-        return true;
-      } else {
-        global.throwException('Unknown Object Reference Exception', id, 'AES-SIV', 'ClearData');
-        return false;
-      }
-    },
-    
-    // Encrypt and authenticate (AEAD encryption)
-    encryptBlock: function(id, plainText, associatedData) {
-      if (!AES_SIV.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'AES-SIV', 'encryptBlock');
-        return plainText;
-      }
-      
-      const instance = AES_SIV.instances[id];
-      const aadArray = Array.isArray(associatedData) ? associatedData : [associatedData || ''];
-      return instance.encrypt(plainText, aadArray);
-    },
-    
-    // Decrypt and verify (AEAD decryption)
-    decryptBlock: function(id, cipherTextWithSIV, associatedData) {
-      if (!AES_SIV.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'AES-SIV', 'decryptBlock');
-        return cipherTextWithSIV;
-      }
-      
-      const instance = AES_SIV.instances[id];
-      const aadArray = Array.isArray(associatedData) ? associatedData : [associatedData || ''];
-      return instance.decrypt(cipherTextWithSIV, aadArray);
-    },
-    
-    // AES-SIV Instance class
-    AESSIVInstance: function(key) {
+  class AesSivInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.inputBuffer = [];
       this.key1 = [];             // First half of key (for CMAC)
       this.key2 = [];             // Second half of key (for CTR)
       this.aesId1 = null;         // AES instance for CMAC
       this.aesId2 = null;         // AES instance for CTR
-      
+      this.aadArray = [];         // Associated data
+    }
+    
+    set key(keyData) {
       // Convert key to byte array
-      if (typeof key === 'string') {
-        const keyBytes = [];
-        for (let k = 0; k < key.length; k++) {
-          keyBytes.push(key.charCodeAt(k) & 0xFF);
+      let keyBytes;
+      if (typeof keyData === 'string') {
+        keyBytes = [];
+        for (let k = 0; k < keyData.length; k++) {
+          keyBytes.push(keyData.charCodeAt(k) & 0xFF);
         }
-        this.initializeKeys(keyBytes);
-      } else if (Array.isArray(key)) {
-        this.initializeKeys(key);
+      } else if (Array.isArray(keyData)) {
+        keyBytes = keyData;
       } else {
         throw new Error('AES-SIV key must be string or byte array');
       }
+      
+      this.initializeKeys(keyBytes);
     }
-  };
-  
-  // Add methods to AESSIVInstance prototype
-  AES_SIV.AESSIVInstance.prototype = {
+    
+    set aad(aadData) {
+      this.aadArray = Array.isArray(aadData) ? aadData : [aadData || ''];
+    }
+    
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      this.inputBuffer.push(...data);
+    }
+    
+    Result() {
+      if (this.inputBuffer.length === 0) return [];
+      
+      const result = this.isInverse ? 
+        this.decrypt(this.inputBuffer, this.aadArray) : 
+        this.encrypt(this.inputBuffer, this.aadArray);
+      
+      this.inputBuffer = [];
+      return result;
+    }
     
     /**
      * Initialize the two AES keys from master key
      * @param {Array} keyBytes - Master key bytes
      */
-    initializeKeys: function(keyBytes) {
+    initializeKeys(keyBytes) {
       // Validate key length (must be double AES key size)
       if (keyBytes.length !== 32 && keyBytes.length !== 48 && keyBytes.length !== 64) {
         throw new Error('AES-SIV key must be 256, 384, or 512 bits (32, 48, or 64 bytes)');
@@ -362,14 +181,14 @@
       // Initialize AES instances
       this.aesId1 = global.Rijndael.KeySetup(global.OpCodes.BytesToString(this.key1));
       this.aesId2 = global.Rijndael.KeySetup(global.OpCodes.BytesToString(this.key2));
-    },
+    }
     
     /**
      * Galois Field multiplication by 2 (used in CMAC)
      * @param {Array} block - 16-byte block
      * @returns {Array} Block multiplied by 2 in GF(2^128)
      */
-    gfMul2: function(block) {
+    gfMul2(block) {
       const result = new Array(16);
       let carry = 0;
       
@@ -385,13 +204,13 @@
       }
       
       return result;
-    },
+    }
     
     /**
      * Generate CMAC subkeys K1 and K2
      * @returns {Object} Object with k1 and k2 arrays
      */
-    generateCMACSubkeys: function() {
+    generateCMACSubkeys() {
       // L = AES_K(0^128)
       const zeroBlock = new Array(16).fill(0);
       const L = global.OpCodes.StringToBytes(
@@ -405,14 +224,14 @@
       const K2 = this.gfMul2(K1);
       
       return { k1: K1, k2: K2 };
-    },
+    }
     
     /**
      * Compute CMAC of data
      * @param {Array} data - Data to authenticate
      * @returns {Array} 16-byte CMAC
      */
-    computeCMAC: function(data) {
+    computeCMAC(data) {
       const subkeys = this.generateCMACSubkeys();
       
       // Pad data to multiple of 16 bytes
@@ -453,14 +272,14 @@
       }
       
       return mac;
-    },
+    }
     
     /**
      * S2V (String-to-Vector) function
      * @param {Array} strings - Array of strings to authenticate
      * @returns {Array} 16-byte SIV
      */
-    s2v: function(strings) {
+    s2v(strings) {
       // Start with CMAC of zero block
       const zeroBlock = new Array(16).fill(0);
       let v = this.computeCMAC(zeroBlock);
@@ -509,7 +328,7 @@
       }
       
       return v;
-    },
+    }
     
     /**
      * AES-CTR encryption/decryption
@@ -517,7 +336,7 @@
      * @param {Array} iv - 16-byte initialization vector
      * @returns {Array} Encrypted/decrypted data
      */
-    aesCTR: function(data, iv) {
+    aesCTR(data, iv) {
       const result = [];
       let counter = iv.slice(0);
       
@@ -543,45 +362,45 @@
       }
       
       return result;
-    },
+    }
     
     /**
      * Encrypt plaintext with associated data
-     * @param {string} plaintext - Data to encrypt
+     * @param {Array} plaintext - Data to encrypt as byte array
      * @param {Array} aadArray - Array of associated data strings
-     * @returns {string} SIV || Ciphertext
+     * @returns {Array} SIV || Ciphertext as byte array
      */
-    encrypt: function(plaintext, aadArray) {
+    encrypt(plaintext, aadArray = []) {
+      // Convert byte array to string for S2V
+      const plaintextStr = global.OpCodes.BytesToString(plaintext);
       // Prepare S2V input: AAD strings + plaintext
       const s2vInput = aadArray.slice(0);
-      s2vInput.push(plaintext);
+      s2vInput.push(plaintextStr);
       
       // Compute SIV using S2V
       const siv = this.s2v(s2vInput);
       
       // Encrypt plaintext using AES-CTR with SIV as IV
-      const plaintextBytes = global.OpCodes.StringToBytes(plaintext);
-      const ciphertext = this.aesCTR(plaintextBytes, siv);
+      const ciphertext = this.aesCTR(plaintext, siv);
       
-      // Return SIV || Ciphertext
-      return global.OpCodes.BytesToString(siv.concat(ciphertext));
-    },
+      // Return SIV || Ciphertext as byte array
+      return siv.concat(ciphertext);
+    }
     
     /**
      * Decrypt ciphertext and verify authenticity
-     * @param {string} ciphertextWithSIV - SIV || Ciphertext
+     * @param {Array} ciphertextWithSIV - SIV || Ciphertext as byte array
      * @param {Array} aadArray - Array of associated data strings
-     * @returns {string} Decrypted plaintext
+     * @returns {Array} Decrypted plaintext as byte array
      */
-    decrypt: function(ciphertextWithSIV, aadArray) {
-      if (ciphertextWithSIV.length < AES_SIV.SIV_SIZE) {
+    decrypt(ciphertextWithSIV, aadArray = []) {
+      if (ciphertextWithSIV.length < SIV_SIZE) {
         throw new Error('Ciphertext must include 16-byte SIV');
       }
       
       // Split SIV and ciphertext
-      const sivBytes = global.OpCodes.StringToBytes(ciphertextWithSIV.substring(0, AES_SIV.SIV_SIZE));
-      const ciphertext = ciphertextWithSIV.substring(AES_SIV.SIV_SIZE);
-      const ciphertextBytes = global.OpCodes.StringToBytes(ciphertext);
+      const sivBytes = ciphertextWithSIV.slice(0, SIV_SIZE);
+      const ciphertextBytes = ciphertextWithSIV.slice(SIV_SIZE);
       
       // Decrypt ciphertext using AES-CTR
       const plaintextBytes = this.aesCTR(ciphertextBytes, sivBytes);
@@ -597,21 +416,16 @@
         throw new Error('Authentication verification failed - message integrity compromised');
       }
       
-      return plaintext;
+      return plaintextBytes;
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(AES_SIV);
   }
   
-  // Export to global scope
-  global.AES_SIV = AES_SIV;
+  // Register algorithm with framework
+  RegisterAlgorithm(new AesSiv());
   
-  // Node.js module export
+  // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = AES_SIV;
+    module.exports = { AesSiv, AesSivInstance };
   }
   
 })(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);

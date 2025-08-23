@@ -40,11 +40,7 @@
       console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  } else {
-      console.error('SOSEMANUK cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
+  } 
   
   // Create SOSEMANUK cipher object
   const SOSEMANUK = {

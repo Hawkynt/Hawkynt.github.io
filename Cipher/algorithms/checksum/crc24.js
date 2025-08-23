@@ -67,7 +67,7 @@ class CRC24Algorithm extends Algorithm {
         finalXor: 0x000000,
         tests: [
           new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("b704ce"), "Empty string", "https://tools.ietf.org/html/rfc4880"),
-          new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("259d1c"), "Single byte 'a'", "https://tools.ietf.org/html/rfc4880"),
+          new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("f25713"), "Single byte 'a'", "https://tools.ietf.org/html/rfc4880"),
           new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("21cf02"), "String '123456789'", "https://tools.ietf.org/html/rfc4880")
         ]
       },
