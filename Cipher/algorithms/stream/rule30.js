@@ -16,17 +16,14 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
+      return;
+    }
+  } else {
       console.error('Rule30 cipher requires Cipher system to be loaded first');
       return;
     }
@@ -38,7 +35,7 @@
     inventor: "Stephen Wolfram",
     year: 1983,
     country: "GB",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: "educational",
     securityNotes: "Cellular automaton not designed for cryptographic use. Predictable with sufficient state knowledge and lacks proper cryptographic properties. Educational use only.",
@@ -219,7 +216,7 @@
         throw new Error('Cipher not initialized');
       }
       
-      const inputBytes = OpCodes.StringToBytes(input);
+      const inputBytes = OpCodes.AsciiToBytes(input);
       const keystream = this.generateKeystream(inputBytes.length);
       const outputBytes = OpCodes.XorArrays(inputBytes, keystream);
       

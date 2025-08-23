@@ -1,10 +1,10 @@
 # Algorithm Migration Guide
 
-This guide explains how to convert existing algorithms or implement algorithms from other sources to work with the AlgorithmFramework.
+This guide explains how to convert existing algorithms to production-ready implementations with bit-perfect test vector validation for professional cryptographic library use.
 
 ## 🎯 Migration Overview
 
-### What We're Building
+### Implementation Standards
 
 The AlgorithmFramework provides a **universal, composable architecture** where:
 
@@ -33,12 +33,13 @@ The AlgorithmFramework provides a **universal, composable architecture** where:
 
 ### 2. Reference Collection
 
-- [ ] **Official specification** (NIST standard, RFC, original paper)
-- [ ] **Reference implementations** (OpenSSL, Crypto++, Bouncy Castle, etc.)
-- [ ] **Test vectors with sources** (never make up test vectors)
+- [ ] **Official specifications** (NIST FIPS, RFC standards, peer-reviewed papers)
+- [ ] **Validated test vectors** (NIST CAVP, RFC test suites, original algorithm specifications)
+- [ ] **Reference implementations** (OpenSSL, Bouncy Castle, industry-standard libraries)
+- [ ] **Security analysis** (NIST evaluations, academic cryptanalysis, known vulnerabilities)
+- [ ] **Compliance requirements** (FIPS 140-2, Common Criteria, industry standards)
 - [ ] **Known vulnerabilities** and security analysis
 - [ ] **Algorithm variants** and related algorithms
-
 ### 3. Architecture Planning
 
 - [ ] **Single responsibility**: What exactly does this algorithm do?
@@ -607,7 +608,11 @@ class Sha256Instance extends IHashInstance {
 
 ## ✅ Testing & Validation
 
-### 1. Unit Testing
+### 1. Bit-Perfect Test Vector Validation
+
+**CRITICAL**: All implementations must achieve 100% accuracy against official test vectors. This is non-negotiable for production use.
+
+### 2. Unit Testing
 
 ```javascript
 // Create test script in .agent.tmp/
@@ -880,4 +885,4 @@ class NewCipher extends BlockCipherAlgorithm {
 6. **Test extensively** - official vectors, cross-references, round-trips
 7. **Follow the patterns** - look at existing implementations for guidance
 
-Remember: The goal is not just working code, but **maintainable, composable, and educationally valuable** implementations that demonstrate cryptographic principles clearly.
+Remember: The goal is **production-ready, bit-perfect implementations** suitable for professional cryptographic libraries, security products, and real-world deployment scenarios where correctness is absolutely critical.

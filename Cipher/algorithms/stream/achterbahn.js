@@ -31,17 +31,14 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
+      return;
+    }
+  } else {
       console.error('Achterbahn cipher requires Cipher system to be loaded first');
       return;
     }
@@ -54,7 +51,7 @@
     inventor: "Berndt Gammel, Rainer Göttfert, Oliver Kniffler (Infineon Technologies)",
     year: 2005,
     country: "DE",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: "educational",
     securityNotes: "eSTREAM candidate that did not advance to final portfolio. Several cryptanalytic attacks published. Use for educational purposes only.",
@@ -156,7 +153,7 @@
         throw new Error('Invalid Achterbahn instance ID');
       }
       
-      const inputBytes = global.OpCodes.StringToBytes(input);
+      const inputBytes = global.OpCodes.AsciiToBytes(input);
       const outputBytes = new Array(inputBytes.length);
       
       for (let i = 0; i < inputBytes.length; i++) {
@@ -174,7 +171,7 @@
     
     // Achterbahn instance class
     AchterbahnInstance: function(key) {
-      this.keyBytes = global.OpCodes.StringToBytes(key);
+      this.keyBytes = global.OpCodes.AsciiToBytes(key);
       this.keyLength = this.keyBytes.length;
       
       // Determine variant based on key length
@@ -318,8 +315,9 @@
   };
   
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    global.Cipher.Add(Achterbahn);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(Achterbahn);
   }
   
   // Export for Node.js

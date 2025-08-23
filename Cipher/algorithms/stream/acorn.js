@@ -18,7 +18,7 @@
     inventor: "Hongjun Wu, Tao Huang, Phuong Pham, Steven Sim",
     year: 2016,
     country: "Multi-national",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: null,
     securityNotes: "CAESAR competition winner with thorough security analysis. Designed for IoT and resource-constrained environments with authenticated encryption.",
@@ -414,8 +414,8 @@
       this.KeySetup(OpCodes.Hex8ToBytes("0123456789ABCDEF0123456789ABCDEF"));
       
       const iv = OpCodes.Hex8ToBytes("FEDCBA9876543210FEDCBA9876543210");
-      const aad = OpCodes.StringToBytes("IoT Device");
-      const plaintext = OpCodes.StringToBytes("Sensor data: 25.3°C");
+      const aad = OpCodes.AsciiToBytes("IoT Device");
+      const plaintext = OpCodes.AsciiToBytes("Sensor data: 25.3°C");
       
       const encrypted = this.encryptAEAD(this.key, iv, aad, plaintext);
       console.log('Plaintext:', OpCodes.BytesToString(plaintext));

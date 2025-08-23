@@ -34,17 +34,14 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
+      return;
+    }
+  } else {
       console.error('F-FCSR cipher requires Cipher system to be loaded first');
       return;
     }
@@ -116,7 +113,7 @@
         throw new Error('Invalid F-FCSR instance ID');
       }
       
-      const inputBytes = global.OpCodes.StringToBytes(input);
+      const inputBytes = global.OpCodes.AsciiToBytes(input);
       const outputBytes = new Array(inputBytes.length);
       
       for (let i = 0; i < inputBytes.length; i++) {
@@ -134,7 +131,7 @@
     
     // F-FCSR instance class
     FFCSRInstance: function(key) {
-      this.keyBytes = global.OpCodes.StringToBytes(key);
+      this.keyBytes = global.OpCodes.AsciiToBytes(key);
       this.keyLength = this.keyBytes.length;
       
       // Determine variant based on key length

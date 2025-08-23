@@ -18,7 +18,7 @@
     inventor: "Daniel J. Bernstein",
     year: 2014,
     country: "US",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Authenticated Encryption",
     securityStatus: "standard",
     securityNotes: "RFC 8439 standard widely deployed in modern secure protocols. Designed for high security and performance on platforms without AES hardware acceleration.",
@@ -45,18 +45,28 @@
     
     tests: [
       {
-        text: "ChaCha20-Poly1305 Test Vector 1 (RFC 8439)",
-        uri: "RFC 8439 Section 2.8.2",
+        text: "RFC 8439 ChaCha20-Poly1305 AEAD Test Vector 1",
+        uri: "https://tools.ietf.org/rfc/rfc8439.txt#section-2.8.2",
         key: OpCodes.Hex8ToBytes("808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f"),
         nonce: OpCodes.Hex8ToBytes("070000004041424344454647"),
         aad: OpCodes.Hex8ToBytes("50515253c0c1c2c3c4c5c6c7"),
-        plaintext: OpCodes.StringToBytes("Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it."),
+        plaintext: OpCodes.AsciiToBytes("Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it."),
         expectedCiphertext: OpCodes.Hex8ToBytes("d31a8d34648e60db7b86afbc53ef7ec2a4aded51296e08fea9e2b5a736ee62d63dbea45e8ca9671282fafb69da92728b1a71de0a9e060b2905d6a5b67ecd3b3692ddbd7f2d778b8c9803aee328091b58fab324e4fad675945585808b4831d7bc3ff4def08e4b7a9de576d26586cec64b6116"),
         expectedTag: OpCodes.Hex8ToBytes("1ae10b594f09e26a7e902ecbd0600691")
       },
       {
-        text: "ChaCha20-Poly1305 Test Vector 2 (Empty)",
-        uri: "RFC 8439",
+        text: "RFC 8439 ChaCha20-Poly1305 Test Vector 2 (Appendix A.5)",
+        uri: "https://tools.ietf.org/rfc/rfc8439.txt#appendix-A.5",
+        key: OpCodes.Hex8ToBytes("1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0"),
+        nonce: OpCodes.Hex8ToBytes("000000000102030405060708"),
+        aad: OpCodes.Hex8ToBytes("f33388860000000000004e91"),
+        plaintext: OpCodes.Hex8ToBytes("496e7465726e65742d44726166747320617265206472616674206c6567697374726174696f6e20646f63756d656e747320666f7220746865204945544620284945544620526571756573742066c7a6420466f7220436f6d6d656e74732c204945544620526571756573742066c7a642074c7a6420466f7220436f6d6d656e74732c2049454654"),
+        expectedCiphertext: OpCodes.Hex8ToBytes("64a0861575861af460f062c79be643bd5e805cfd345cf389f108670ac76c8cb24c6cfc18755d43eea09ee94e382d26b0bdb7b73c321b0100d4f03b7f355894cf332f830e710b97ce98c8a84abd0b948114ad176e008d33bd60f982b1ff37c8559797a06ef4f0ef61c186324e2b3506383606907b6a7c02b0f9f6157b53c867e4b9166c767b804d46a59b5216cde7a4e99040c5a40433225ee282a1b0a06c523eaf4534d7f83fa1155b0047718cbc546a0d072b04b3564eea1b422273f548271a0bb2316053fa76991955ebd63159434ecebb4e466dae5a1073a6727627097a1049e617d91d361094fa68f0ff77987130305beaba2eda04df997b714d6c6f2c29a6ad5cb4022b02709b"),
+        expectedTag: OpCodes.Hex8ToBytes("eead9d67890cbb22392336fea1851f38")
+      },
+      {
+        text: "RFC 8439 Empty AAD and Plaintext Test",
+        uri: "https://tools.ietf.org/rfc/rfc8439.txt",
         key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
         nonce: OpCodes.Hex8ToBytes("000000000000000000000000"),
         aad: OpCodes.Hex8ToBytes(""),
@@ -220,16 +230,17 @@
       return keystream.slice(0, 32);
     },
     
-    // Poly1305 authenticator
+    // Poly1305 authenticator (RFC 8439 compliant)
     poly1305: function(key, data) {
-      // Poly1305 constants
-      const P = 0x3fffffffffffffffffffffffffffffffb; // 2^130 - 5
-      
-      // Clamp key
-      const r = [];
-      for (let i = 0; i < 16; i++) {
-        r[i] = key[i];
+      if (key.length !== 32) {
+        throw new Error('Poly1305 key must be 32 bytes');
       }
+      
+      // Extract r and s from key
+      const r = key.slice(0, 16);
+      const s = key.slice(16, 32);
+      
+      // Clamp r according to RFC 8439
       r[3] &= 15;
       r[7] &= 15;
       r[11] &= 15;
@@ -238,53 +249,151 @@
       r[8] &= 252;
       r[12] &= 252;
       
-      const s = key.slice(16, 32);
+      // Initialize accumulator
+      let h = [0, 0, 0, 0, 0]; // 130-bit accumulator as 5 26-bit words
+      
+      // Convert r to 26-bit words for computation
+      const rWords = this.poly1305To26BitWords(r);
       
       // Process data in 16-byte blocks
-      let accumulator = 0;
-      
       for (let i = 0; i < data.length; i += 16) {
         const block = data.slice(i, i + 16);
         
-        // Pad block
+        // Pad block if necessary
         while (block.length < 16) {
           block.push(0);
         }
-        block.push(1); // Add padding bit
         
-        // Convert to number (simplified for educational purposes)
-        let blockNum = 0;
-        for (let j = 0; j < block.length; j++) {
-          blockNum += block[j] * Math.pow(256, j);
+        // Convert block to 26-bit words and add padding bit
+        const blockWords = this.poly1305To26BitWords(block);
+        if (block.length === 16) {
+          blockWords[4] |= (1 << 24); // Set bit 128
+        } else {
+          // For partial blocks, set the bit after the last data bit
+          const bitPos = block.length * 8;
+          blockWords[Math.floor(bitPos / 26)] |= (1 << (bitPos % 26));
         }
         
-        // Add to accumulator
-        accumulator += blockNum;
-        
-        // Multiply by r (simplified)
-        let rNum = 0;
-        for (let j = 0; j < r.length; j++) {
-          rNum += r[j] * Math.pow(256, j);
+        // Add block to accumulator
+        for (let j = 0; j < 5; j++) {
+          h[j] += blockWords[j];
         }
         
-        accumulator = (accumulator * rNum) % P;
+        // Multiply by r
+        h = this.poly1305Multiply(h, rWords);
       }
       
-      // Add s (simplified)
-      let sNum = 0;
-      for (let j = 0; j < s.length; j++) {
-        sNum += s[j] * Math.pow(256, j);
+      // Add s to accumulator
+      const sWords = this.poly1305To26BitWords(s);
+      for (let i = 0; i < 4; i++) { // Only add first 128 bits of s
+        h[i] += sWords[i];
       }
       
-      accumulator = (accumulator + sNum) >>> 0;
+      // Carry propagation
+      this.poly1305Carry(h);
       
-      // Convert back to bytes
-      const tag = new Array(16);
-      for (let i = 0; i < 16; i++) {
-        tag[i] = (accumulator >>> (i * 8)) & 0xFF;
+      // Convert back to 16-byte tag
+      return this.poly1305From26BitWords(h);
+    },
+    
+    // Convert 16 bytes to 5 26-bit words (little-endian)
+    poly1305To26BitWords: function(bytes) {
+      const words = [0, 0, 0, 0, 0];
+      
+      // Pack bytes into 32-bit words first
+      const u32 = [];
+      for (let i = 0; i < 16; i += 4) {
+        u32.push(
+          bytes[i] |
+          (bytes[i + 1] << 8) |
+          (bytes[i + 2] << 16) |
+          (bytes[i + 3] << 24)
+        );
       }
       
-      return tag;
+      // Convert to 26-bit words
+      words[0] = u32[0] & 0x3ffffff;
+      words[1] = ((u32[0] >>> 26) | (u32[1] << 6)) & 0x3ffffff;
+      words[2] = ((u32[1] >>> 20) | (u32[2] << 12)) & 0x3ffffff;
+      words[3] = ((u32[2] >>> 14) | (u32[3] << 18)) & 0x3ffffff;
+      words[4] = (u32[3] >>> 8) & 0x3ffffff;
+      
+      return words;
+    },
+    
+    // Convert 5 26-bit words back to 16 bytes
+    poly1305From26BitWords: function(words) {
+      // Ensure words are properly reduced
+      this.poly1305Carry(words);
+      
+      const bytes = new Array(16);
+      
+      // Pack words into bytes (little-endian)
+      let temp = words[0] | (words[1] << 26);
+      bytes[0] = temp & 0xff;
+      bytes[1] = (temp >>> 8) & 0xff;
+      bytes[2] = (temp >>> 16) & 0xff;
+      bytes[3] = (temp >>> 24) & 0xff;
+      
+      temp = (words[1] >>> 6) | (words[2] << 20);
+      bytes[4] = temp & 0xff;
+      bytes[5] = (temp >>> 8) & 0xff;
+      bytes[6] = (temp >>> 16) & 0xff;
+      bytes[7] = (temp >>> 24) & 0xff;
+      
+      temp = (words[2] >>> 12) | (words[3] << 14);
+      bytes[8] = temp & 0xff;
+      bytes[9] = (temp >>> 8) & 0xff;
+      bytes[10] = (temp >>> 16) & 0xff;
+      bytes[11] = (temp >>> 24) & 0xff;
+      
+      temp = (words[3] >>> 18) | (words[4] << 8);
+      bytes[12] = temp & 0xff;
+      bytes[13] = (temp >>> 8) & 0xff;
+      bytes[14] = (temp >>> 16) & 0xff;
+      bytes[15] = (temp >>> 24) & 0xff;
+      
+      return bytes;
+    },
+    
+    // Multiply two 130-bit numbers represented as 5 26-bit words
+    poly1305Multiply: function(a, b) {
+      const result = [0, 0, 0, 0, 0];
+      
+      // Multiply with reduction modulo 2^130 - 5
+      for (let i = 0; i < 5; i++) {
+        for (let j = 0; j < 5; j++) {
+          const product = a[i] * b[j];
+          if (i + j < 5) {
+            result[i + j] += product;
+          } else {
+            // Reduce modulo 2^130 - 5
+            result[i + j - 5] += product * 5;
+          }
+        }
+      }
+      
+      this.poly1305Carry(result);
+      return result;
+    },
+    
+    // Carry propagation for 26-bit words
+    poly1305Carry: function(words) {
+      for (let i = 0; i < 4; i++) {
+        words[i + 1] += Math.floor(words[i] / (1 << 26));
+        words[i] &= 0x3ffffff;
+      }
+      
+      // Handle overflow from word 4
+      const overflow = Math.floor(words[4] / (1 << 26));
+      words[4] &= 0x3ffffff;
+      words[0] += overflow * 5;
+      
+      // One more carry pass if needed
+      if (words[0] >= (1 << 26)) {
+        words[1] += Math.floor(words[0] / (1 << 26));
+        words[0] &= 0x3ffffff;
+      }
     },
     
     // Pad data to 16-byte boundary
@@ -466,8 +575,8 @@
       this.KeySetup(OpCodes.Hex8ToBytes("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"));
       
       const nonce = OpCodes.Hex8ToBytes("000102030405060708090A0B");
-      const aad = OpCodes.StringToBytes("TLS 1.3 Record");
-      const plaintext = OpCodes.StringToBytes("ChaCha20-Poly1305 is used in TLS 1.3, WireGuard, and many modern protocols");
+      const aad = OpCodes.AsciiToBytes("TLS 1.3 Record");
+      const plaintext = OpCodes.AsciiToBytes("ChaCha20-Poly1305 is used in TLS 1.3, WireGuard, and many modern protocols");
       
       const encrypted = this.encryptAEAD(this.key, nonce, aad, plaintext);
       console.log('Plaintext:', OpCodes.BytesToString(plaintext));

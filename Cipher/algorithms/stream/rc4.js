@@ -16,18 +16,11 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('RC4 cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
   }
@@ -38,7 +31,7 @@
     inventor: "Ron Rivest",
     year: 1987,
     country: "US",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: "insecure",
     securityNotes: "RC4 has numerous critical vulnerabilities including bias in keystream, weak keys, and related-key attacks. Deprecated in all major protocols. Use for educational purposes only.",
@@ -67,12 +60,20 @@
     
     tests: [
       {
-        text: "RFC 6229 Test Vector 1",
+        text: "RFC 6229 Test Vector 1 (40-bit key)",
         uri: "https://tools.ietf.org/html/rfc6229#section-2",
         keySize: 5,
-        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("0102030405") : [],
-        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000000000000000") : [],
-        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("b2396305f03dc027ccc3524a0a1118a8") : []
+        key: [0x01, 0x02, 0x03, 0x04, 0x05],
+        input: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        expected: [0xb2, 0x39, 0x63, 0x05, 0xf0, 0x3d, 0xc0, 0x27]
+      },
+      {
+        text: "RFC 6229 Test Vector 2 (128-bit key)",
+        uri: "https://tools.ietf.org/html/rfc6229#section-2", 
+        keySize: 16,
+        key: [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10],
+        input: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        expected: [0x9a, 0xc7, 0xcc, 0x9a, 0x60, 0x9d, 0x1e, 0xf7]
       }
     ],
 
@@ -96,7 +97,7 @@
         origin: 'IETF RFC 6229: Test Vectors for the Stream Cipher RC4',
         link: 'https://tools.ietf.org/html/rfc6229#section-2',
         standard: 'RFC 6229',
-        key: '\x01\x02\x03\x04\x05',
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes('0102030405') : [],
         keyHex: '0102030405',
         keyLength: 40, // bits
         plaintextHex: '0000000000000000',
@@ -111,7 +112,7 @@
         origin: 'IETF RFC 6229: Test Vectors for the Stream Cipher RC4',
         link: 'https://tools.ietf.org/html/rfc6229#section-2',
         standard: 'RFC 6229',
-        key: '\x01\x02\x03\x04\x05\x06\x07\x08',
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes('0102030405060708') : [],
         keyHex: '0102030405060708',
         keyLength: 64, // bits
         plaintextHex: '0000000000000000',
@@ -126,7 +127,7 @@
         origin: 'IETF RFC 6229: Test Vectors for the Stream Cipher RC4',
         link: 'https://tools.ietf.org/html/rfc6229#section-2',
         standard: 'RFC 6229',
-        key: '\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10',
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes('0102030405060708090a0b0c0d0e0f10') : [],
         keyHex: '0102030405060708090a0b0c0d0e0f10',
         keyLength: 128, // bits
         plaintextHex: '00000000000000000000000000000000',
@@ -141,7 +142,7 @@
         origin: 'Fluhrer, Mantin, and Shamir (2001) - WEP attack research',
         link: 'https://www.drizzle.com/~aboba/IEEE/rc4_ksaproc.pdf',
         standard: 'Academic Research',
-        key: '\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00',
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes('03000000000000000000000000') : [],
         keyHex: '03000000000000000000000000',
         keyLength: 104, // bits (WEP weak key pattern)
         plaintextHex: '00000000000000000000000000000000',
@@ -239,6 +240,42 @@
       return id;
     },
     
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._instance = new RC4.RC4Instance(keyData);
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._instance || this._inputData.length === 0) {
+            return [];
+          }
+          
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            const keystreamByte = this._instance.generateKeystreamByte();
+            result.push(this._inputData[i] ^ keystreamByte);
+          }
+          return result;
+        }
+      };
+    },
+    
     // Clear cipher data
     ClearData: function(id) {
       if (RC4.instances[id]) {
@@ -283,7 +320,7 @@
     },
 
     // Required interface method for stream ciphers
-    encrypt: function(id, plaintext) {
+    Encrypt: function(id, plaintext) {
       // Convert byte array to string if necessary
       if (Array.isArray(plaintext)) {
         plaintext = String.fromCharCode.apply(null, plaintext);
@@ -298,7 +335,7 @@
     },
 
     // Required interface method for stream ciphers  
-    decrypt: function(id, ciphertext) {
+    Decrypt: function(id, ciphertext) {
       // Convert byte array to string if necessary
       if (Array.isArray(ciphertext)) {
         ciphertext = String.fromCharCode.apply(null, ciphertext);
@@ -311,6 +348,10 @@
       }
       return bytes;
     },
+    
+    // Legacy interface methods for backward compatibility
+    encrypt: function(id, plaintext) { return this.Encrypt(id, plaintext); },
+    decrypt: function(id, ciphertext) { return this.Decrypt(id, ciphertext); },
     
     // RC4 Instance class
     RC4Instance: function(key) {
@@ -411,9 +452,10 @@
     }
   };
   
-  // Auto-register with Subsystem (according to category) if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
-    global.Cipher.Add(RC4);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(RC4);
+  }
   
   // Export to global scope
   global.RC4 = RC4;

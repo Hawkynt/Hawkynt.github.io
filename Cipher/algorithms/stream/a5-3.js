@@ -31,17 +31,14 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
+      return;
+    }
+  } else {
       console.error('A5/3 cipher requires Cipher system to be loaded first');
       return;
     }
@@ -54,7 +51,7 @@
     inventor: "3GPP (3rd Generation Partnership Project)",
     year: 1999,
     country: "INT",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: null,
     securityNotes: "Currently used in UMTS networks. No known practical attacks against properly implemented A5/3, but relies on KASUMI which has theoretical weaknesses.",
@@ -331,7 +328,7 @@
       // Update count for this position (simplified)
       this.count = (position % 32);
       
-      const inputBytes = OpCodes.StringToBytes(input);
+      const inputBytes = OpCodes.AsciiToBytes(input);
       const keystream = this.getKeystream(inputBytes.length);
       const outputBytes = OpCodes.XorArrays(inputBytes, keystream);
       
@@ -400,8 +397,9 @@
   };
   
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    global.Cipher.Add(A5_3);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(A53);
   }
   
   // Export for Node.js

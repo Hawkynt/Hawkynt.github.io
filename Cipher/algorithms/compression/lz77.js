@@ -1,562 +1,313 @@
 /*
- * Universal LZ77 Compression Algorithm
- * Compatible with both Browser and Node.js environments
- * Educational implementation of Lempel-Ziv 1977 sliding window algorithm
+ * LZ77 Sliding Window Compression Algorithm Implementation
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
+ * 
+ * LZ77 dictionary-based compression using sliding window technique.
+ * Encodes data as (distance, length, literal) tuples by finding matches in history buffer.
  */
 
-(function(global) {
-  'use strict';
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
+
+// Load OpCodes for cryptographic operations (RECOMMENDED)
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
+
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        CompressionAlgorithm, IAlgorithmInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
   
-  // Load dependencies
-  if (!global.Compression && typeof require !== 'undefined') {
-    try {
-      require('../../compression.js');
-    } catch (e) {
-      console.error('Failed to load compression framework:', e.message);
-      return;
-    }
-  }
-  
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes.js:', e.message);
-      return;
-    }
-  }
-  
-  const LZ77 = {
-    name: "LZ77 Sliding Window Compression",
-    description: "Dictionary-based compression using sliding window technique. Encodes data as (distance, length, literal) tuples by finding matches in a sliding history buffer.", 
-    inventor: "Abraham Lempel, Jacob Ziv",
-    year: 1977,
-    country: "IL",
-    category: "compression",
-    subCategory: "Dictionary", 
-    securityStatus: null,
-    securityNotes: "Compression algorithm - no security properties.",
+class LZ77Compression extends CompressionAlgorithm {
+  constructor() {
+    super();
     
-    documentation: [
-      {text: "A Universal Algorithm for Sequential Data Compression", uri: "https://ieeexplore.ieee.org/document/1055714"},
-      {text: "RFC 1951 - DEFLATE Specification", uri: "https://tools.ietf.org/html/rfc1951"},
-      {text: "LZ77 and LZ78 - Wikipedia", uri: "https://en.wikipedia.org/wiki/LZ77_and_LZ78"},
-      {text: "Data Compression: The Complete Reference", uri: "https://www.amazon.com/Data-Compression-Complete-Reference/dp/1846286026"}
-    ],
+    // Required metadata
+    this.name = "LZ77";
+    this.description = "Dictionary-based compression using sliding window technique. Encodes data as (distance, length, literal) tuples by finding matches in a sliding history buffer. Foundation for many modern compression formats like DEFLATE.";
+    this.inventor = "Abraham Lempel, Jacob Ziv";
+    this.year = 1977;
+    this.category = CategoryType.COMPRESSION;
+    this.subCategory = "Dictionary";
+    this.securityStatus = null;
+    this.complexity = ComplexityType.INTERMEDIATE;
+    this.country = CountryCode.IL;
+
+    // Configuration parameters
+    this.WINDOW_SIZE = 4096;      // Size of sliding window (search buffer)
+    this.LOOKAHEAD_SIZE = 18;     // Size of lookahead buffer
+    this.MIN_MATCH_LENGTH = 3;    // Minimum match length to encode
+    this.MAX_MATCH_LENGTH = 258;  // Maximum match length
     
-    references: [
-      {text: "Mark Nelson Implementation Guide", uri: "https://marknelson.us/posts/1989/10/01/lzw-data-compression.html"},
-      {text: "GZIP/zlib Implementation", uri: "https://github.com/madler/zlib"}, 
-      {text: "Educational LZ77 Implementation", uri: "https://www.cs.duke.edu/csed/curious/compression/lz77.html"},
-      {text: "LZSS Variant", uri: "https://web.archive.org/web/20070823091851/http://www.cs.bell-labs.com/who/sjk/data/lzss.ps"}
-    ],
+    // Documentation and references
+    this.documentation = [
+      new LinkItem("Original LZ77 Paper", "https://ieeexplore.ieee.org/document/1055714"),
+      new LinkItem("RFC 1951 - DEFLATE Specification", "https://tools.ietf.org/html/rfc1951"),
+      new LinkItem("LZ77 and LZ78 - Wikipedia", "https://en.wikipedia.org/wiki/LZ77_and_LZ78")
+    ];
+
+    this.references = [
+      new LinkItem("GZIP/zlib Implementation", "https://github.com/madler/zlib"),
+      new LinkItem("Educational Implementation", "https://www.cs.duke.edu/csed/curious/compression/lz77.html"),
+      new LinkItem("LZSS Variant Analysis", "https://web.archive.org/web/20070823091851/http://www.cs.bell-labs.com/who/sjk/data/lzss.ps")
+    ];
     
-    knownVulnerabilities: [],
-    
-    tests: [
+    // Test vectors - round-trip compression tests
+    this.tests = [
       {
         text: "Simple repetitive pattern",
-        uri: "Basic sliding window test",
-        input: OpCodes.StringToBytes("AABCAABCABC"),
-        expected: null
+        uri: "https://en.wikipedia.org/wiki/LZ77_and_LZ78",
+        input: [65, 65, 66, 67, 65, 65, 66, 67, 65, 66, 67],
+        expected: [65, 65, 66, 67, 65, 65, 66, 67, 65, 66, 67] // Round-trip test: should decompress to original
       },
       {
         text: "Long repeated substring",
-        uri: "Maximum distance test", 
-        input: OpCodes.StringToBytes("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefgh"),
-        expected: null
+        uri: "https://tools.ietf.org/html/rfc1951",
+        input: [97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 97, 98, 99, 100, 101, 102, 103, 104],
+        expected: [97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 97, 98, 99, 100, 101, 102, 103, 104] // Should decompress to original
       },
       {
-        text: "Self-overlapping pattern", 
+        text: "Self-overlapping pattern",
         uri: "https://en.wikipedia.org/wiki/LZ77_and_LZ78#Example",
-        input: OpCodes.StringToBytes("ABCABCABCABCABC"),
-        expected: null
+        input: [65, 66, 67, 65, 66, 67, 65, 66, 67, 65, 66, 67, 65, 66, 67],
+        expected: [65, 66, 67, 65, 66, 67, 65, 66, 67, 65, 66, 67, 65, 66, 67] // Should decompress to original
       }
-    ],
+    ];
+  }
 
-    // Legacy interface properties
-    internalName: 'LZ77',
-    category: 'Dictionary',
-    instances: {},
-    isInitialized: false,
-    
-    // LZ77 Configuration parameters
-    WINDOW_SIZE: 4096,      // Size of sliding window (search buffer)
-    LOOKAHEAD_SIZE: 18,     // Size of lookahead buffer
-    MIN_MATCH_LENGTH: 3,    // Minimum match length to encode
-    MAX_MATCH_LENGTH: 258,  // Maximum match length (LOOKAHEAD_SIZE + MIN_MATCH_LENGTH - 1)
-    
-    // Legacy test vectors for compatibility
-    testVectors: [
-      {
-        algorithm: 'LZ77',
-        description: 'Simple repetitive string - basic sliding window test',
-        origin: 'LZ77 educational example',
-        link: 'https://web.stanford.edu/class/cs106b/assignments/huffman/',
-        standard: 'Educational',
-        input: 'AABCAABCABC',
-        output: '', // Generated by algorithm
-        compressionRatio: 1.8, // Good compression for repetitive pattern
-        notes: 'Tests basic sliding window match detection with overlapping patterns',
-        category: 'Basic'
-      },
-      {
-        algorithm: 'LZ77',
-        description: 'Long repeated substring',
-        origin: 'LZ77 algorithm validation',
-        link: 'https://datatracker.ietf.org/doc/html/rfc1951',
-        standard: 'RFC 1951 (DEFLATE)',
-        input: 'abcdefghijklmnopqrstuvwxyz' + 'abcdefghijklmnopqrstuvwxyz' + 'abcdefgh',
-        output: '', // Algorithm dependent
-        compressionRatio: 2.5, // Excellent compression for long matches
-        notes: 'Tests maximum distance matching and long pattern recognition',
-        category: 'Long Match'
-      },
-      {
-        algorithm: 'LZ77',
-        description: 'Text with no repetition',
-        origin: 'Worst-case scenario testing',
-        link: 'https://www.cs.cmu.edu/~guyb/realworld/compression.pdf',
-        standard: 'CMU Research',
-        input: 'abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()',
-        output: '', // Minimal compression expected
-        compressionRatio: 0.9, // No compression, possible expansion
-        notes: 'Tests algorithm behavior with unique characters - should output literals',
-        category: 'Worst Case'
-      },
-      {
-        algorithm: 'LZ77',
-        description: 'Binary data with patterns',
-        origin: 'Binary compression testing',
-        link: 'https://corpus.canterbury.ac.nz/descriptions/#misc',
-        standard: 'Canterbury Corpus',
-        input: '\x00\x01\x02\x03\x00\x01\x02\x03\x00\x01\x02\x03\x04\x05',
-        output: '', // Binary pattern compression
-        compressionRatio: 2.0, // Good compression for binary patterns
-        notes: 'Tests binary data handling and byte sequence matching',
-        category: 'Binary'
-      },
-      {
-        algorithm: 'LZ77',
-        description: 'Self-overlapping pattern',
-        origin: 'LZ77 overlapping match test',
-        link: 'https://en.wikipedia.org/wiki/LZ77_and_LZ78#Example',
-        standard: 'Wikipedia Example',
-        input: 'ABCABCABCABCABC',
-        output: '', // Tests overlapping pattern compression
-        compressionRatio: 3.0, // High compression for self-referencing patterns
-        notes: 'Tests overlapping match capability - critical LZ77 feature',
-        category: 'Overlapping'
-      },
-      {
-        algorithm: 'LZ77',
-        description: 'Empty and single character edge cases',
-        origin: 'Edge case validation',
-        link: 'https://tools.ietf.org/html/rfc1951#section-3.2.5',
-        standard: 'RFC 1951',
-        input: '',
-        output: '',
-        compressionRatio: 1.0, // No change for empty input
-        notes: 'Edge case: empty input should return empty output',
-        category: 'Edge Case'
-      }
-    ],
-    
-    
-    /**
-     * Initialize the algorithm
-     */
-    Init: function() {
-      this.isInitialized = true;
-      console.log('LZ77 algorithm initialized');
-    },
-    
-    /**
-     * Create a new instance
-     */
-    KeySetup: function() {
-      const id = this.internalName + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
-      this.instances[id] = {
-        initialized: true,
-        compressionRatio: 0,
-        lastInputSize: 0,
-        lastOutputSize: 0,
-        window: '', // Sliding window (search buffer)
-        lookahead: '', // Lookahead buffer
-        position: 0 // Current position in input
-      };
-      return id;
-    },
-    
-    /**
-     * Compress data using LZ77 algorithm
-     * Output format: sequence of (distance, length, literal) tuples
-     * @param {string} keyId - Instance identifier
-     * @param {string} data - Input data to compress
-     * @returns {string} Compressed data
-     */
-    Compress: function(keyId, data) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      if (!data || data.length === 0) {
-        return '';
-      }
-      
-      const instance = this.instances[keyId];
-      const input = data;
-      const tokens = [];
-      
-      let position = 0;
-      
-      while (position < input.length) {
-        // Find the longest match in the sliding window
-        const match = this._findLongestMatch(input, position);
-        
-        if (match.length >= this.MIN_MATCH_LENGTH) {
-          // Encode as (distance, length, next character)
-          const nextChar = position + match.length < input.length ? 
-                           input.charAt(position + match.length) : '';
-          
-          tokens.push({
-            type: 'match',
-            distance: match.distance,
-            length: match.length,
-            literal: nextChar
-          });
-          
-          position += match.length + (nextChar ? 1 : 0);
-        } else {
-          // Encode as literal
-          tokens.push({
-            type: 'literal',
-            literal: input.charAt(position)
-          });
-          
-          position++;
-        }
-      }
-      
-      // Serialize tokens to compressed format
-      const compressed = this._serializeTokens(tokens);
-      
-      // Update statistics  
-      instance.lastInputSize = data.length;
-      instance.lastOutputSize = compressed.length;
-      instance.compressionRatio = data.length / compressed.length;
-      instance.tokensProcessed = tokens.length;
-      instance.matchesFound = tokens.filter(t => t.type === 'match').length;
-      const matchLengths = tokens.filter(t => t.type === 'match').map(t => t.length);
-      instance.avgMatchLength = matchLengths.length > 0 ? 
-        (matchLengths.reduce((a, b) => a + b, 0) / matchLengths.length).toFixed(2) : 0;
-      
-      return compressed;
-    },
-    
-    /**
-     * Decompress LZ77-encoded data
-     * @param {string} keyId - Instance identifier
-     * @param {string} compressedData - Compressed data
-     * @returns {string} Decompressed data
-     */
-    Decompress: function(keyId, compressedData) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      if (!compressedData || compressedData.length === 0) {
-        return '';
-      }
-      
-      // Deserialize tokens
-      const tokens = this._deserializeTokens(compressedData);
-      
-      // Reconstruct original data
-      let output = '';
-      
-      for (const token of tokens) {
-        if (token.type === 'literal') {
-          output += token.literal;
-        } else if (token.type === 'match') {
-          // Copy from previous position
-          const startPos = output.length - token.distance;
-          
-          if (startPos < 0) {
-            throw new Error('Invalid match distance in compressed data');
-          }
-          
-          // Copy characters (may overlap)
-          for (let i = 0; i < token.length; i++) {
-            if (startPos + i >= output.length) {
-              throw new Error('Invalid match in compressed data');
-            }
-            output += output.charAt(startPos + i);
-          }
-          
-          // Add literal character if present
-          if (token.literal) {
-            output += token.literal;
-          }
-        }
-      }
-      
-      return output;
-    },
-    
-    /**
-     * Clear instance data
-     */
-    ClearData: function(keyId) {
-      if (this.instances[keyId]) {
-        delete this.instances[keyId];
-        return true;
-      }
-      return false;
-    },
-    
-    /**
-     * Find the longest match in the sliding window
-     * @private
-     */
-    _findLongestMatch: function(input, position) {
-      const windowStart = Math.max(0, position - this.WINDOW_SIZE);
-      const windowEnd = position;
-      const lookaheadEnd = Math.min(input.length, position + this.LOOKAHEAD_SIZE);
-      
-      let bestMatch = { distance: 0, length: 0 };
-      
-      // Search for matches in the window
-      for (let i = windowStart; i < windowEnd; i++) {
-        let matchLength = 0;
-        
-        // Compare characters starting from position i in window
-        // with characters starting from current position
-        while (i + matchLength < windowEnd && 
-               position + matchLength < lookaheadEnd &&
-               input.charAt(i + matchLength) === input.charAt(position + matchLength) &&
-               matchLength < this.MAX_MATCH_LENGTH) {
-          matchLength++;
-        }
-        
-        // Update best match if this one is longer
-        if (matchLength > bestMatch.length) {
-          bestMatch = {
-            distance: position - i,
-            length: matchLength
-          };
-        }
-      }
-      
-      return bestMatch;
-    },
-    
-    /**
-     * Serialize tokens to compressed format
-     * Format: [TokenCount][Token1][Token2]...[TokenN]
-     * Token format: 
-     *   Literal: [0][Char]
-     *   Match: [1][Distance(2 bytes)][Length(1 byte)][Literal]
-     * @private
-     */
-    _serializeTokens: function(tokens) {
-      const bytes = [];
-      
-      // Write token count (4 bytes, big-endian)
-      const count = tokens.length;
-      bytes.push((count >>> 24) & 0xFF);
-      bytes.push((count >>> 16) & 0xFF);
-      bytes.push((count >>> 8) & 0xFF);
-      bytes.push(count & 0xFF);
-      
-      // Write tokens
-      for (const token of tokens) {
-        if (token.type === 'literal') {
-          bytes.push(0); // Literal marker
-          bytes.push(token.literal.charCodeAt(0) & 0xFF);
-        } else if (token.type === 'match') {
-          bytes.push(1); // Match marker
-          
-          // Distance (2 bytes, big-endian)
-          bytes.push((token.distance >>> 8) & 0xFF);
-          bytes.push(token.distance & 0xFF);
-          
-          // Length (1 byte)
-          bytes.push(token.length & 0xFF);
-          
-          // Literal character (may be empty)
-          if (token.literal) {
-            bytes.push(token.literal.charCodeAt(0) & 0xFF);
-          } else {
-            bytes.push(0); // No literal
-          }
-        }
-      }
-      
-      return this._bytesToString(bytes);
-    },
-    
-    /**
-     * Deserialize tokens from compressed format
-     * @private
-     */
-    _deserializeTokens: function(compressedData) {
-      const bytes = this._stringToBytes(compressedData);
-      
-      if (bytes.length < 4) {
-        throw new Error('Invalid compressed data: too short');
-      }
-      
-      // Read token count
-      const count = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
-      const tokens = [];
-      
-      let pos = 4;
-      for (let i = 0; i < count; i++) {
-        if (pos >= bytes.length) {
-          throw new Error('Invalid compressed data: unexpected end');
-        }
-        
-        const tokenType = bytes[pos++];
-        
-        if (tokenType === 0) {
-          // Literal token
-          if (pos >= bytes.length) {
-            throw new Error('Invalid compressed data: incomplete literal');
-          }
-          
-          tokens.push({
-            type: 'literal',
-            literal: String.fromCharCode(bytes[pos++])
-          });
-        } else if (tokenType === 1) {
-          // Match token
-          if (pos + 3 >= bytes.length) {
-            throw new Error('Invalid compressed data: incomplete match');
-          }
-          
-          const distance = (bytes[pos] << 8) | bytes[pos + 1];
-          const length = bytes[pos + 2];
-          const literalCode = bytes[pos + 3];
-          
-          tokens.push({
-            type: 'match',
-            distance: distance,
-            length: length,
-            literal: literalCode !== 0 ? String.fromCharCode(literalCode) : ''
-          });
-          
-          pos += 4;
-        } else {
-          throw new Error('Invalid compressed data: unknown token type');
-        }
-      }
-      
-      return tokens;
-    },
-    
-    /**
-     * Get compression statistics for instance
-     */
-    GetStats: function(keyId) {
-      const instance = this.instances[keyId];
-      if (!instance) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      return {
-        inputSize: instance.lastInputSize,
-        outputSize: instance.lastOutputSize,
-        compressionRatio: instance.compressionRatio,
-        spaceSavings: ((instance.lastInputSize - instance.lastOutputSize) / instance.lastInputSize * 100).toFixed(2) + '%',
-        windowSize: this.WINDOW_SIZE,
-        lookaheadSize: this.LOOKAHEAD_SIZE,
-        efficiency: instance.compressionRatio > 1 ? ((instance.compressionRatio - 1) / instance.compressionRatio * 100).toFixed(2) + '%' : '0%',
-        tokensProcessed: instance.tokensProcessed || 0,
-        matchesFound: instance.matchesFound || 0,
-        avgMatchLength: instance.avgMatchLength || 0
-      };
-    },
-    
-    /**
-     * Run validation tests against known test vectors
-     */
-    ValidateImplementation: function() {
-      const results = [];
-      
-      for (const testVector of this.testVectors) {
-        try {
-          const keyId = this.KeySetup();
-          const compressed = this.Compress(keyId, testVector.input);
-          const decompressed = this.Decompress(keyId, compressed);
-          
-          const passed = decompressed === testVector.input;
-          const stats = this.GetStats(keyId);
-          
-          results.push({
-            description: testVector.description,
-            category: testVector.category,
-            passed: passed,
-            compressionRatio: stats.compressionRatio,
-            expectedRatio: testVector.compressionRatio,
-            notes: testVector.notes,
-            inputSize: testVector.input.length,
-            outputSize: compressed.length
-          });
-          
-          this.ClearData(keyId);
-        } catch (error) {
-          results.push({
-            description: testVector.description,
-            category: testVector.category,
-            passed: false,
-            error: error.message
-          });
-        }
-      }
-      
-      return results;
-    },
-    
-    // Utility functions using OpCodes if available
-    _stringToBytes: function(str) {
-      if (global.OpCodes && OpCodes.StringToBytes) {
-        return OpCodes.StringToBytes(str);
-      }
-      
-      const bytes = [];
-      for (let i = 0; i < str.length; i++) {
-        bytes.push(str.charCodeAt(i) & 0xFF);
-      }
-      return bytes;
-    },
-    
-    _bytesToString: function(bytes) {
-      if (global.OpCodes && OpCodes.BytesToString) {
-        return OpCodes.BytesToString(bytes);
-      }
-      
-      let str = '';
-      for (let i = 0; i < bytes.length; i++) {
-        str += String.fromCharCode(bytes[i]);
-      }
-      return str;
+  CreateInstance(isInverse = false) {
+    return new LZ77Instance(this, isInverse);
+  }
+}
+
+class LZ77Instance extends IAlgorithmInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.inputBuffer = [];
+  }
+
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    this.inputBuffer.push(...data);
+  }
+
+  Result() {
+    if (this.inputBuffer.length === 0) {
+      return [];
     }
-  };
-  
-  // Auto-register with Compression system if available
-  if (typeof global.Compression !== 'undefined' && global.Compression.Add) {
-    LZ77.Init();
-    global.Compression.Add(LZ77);
+
+    if (this.isInverse) {
+      return this._decompress();
+    } else {
+      return this._compress();
+    }
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = LZ77;
+    
+  _compress() {
+    const input = this.inputBuffer;
+    const tokens = [];
+    
+    let position = 0;
+    
+    while (position < input.length) {
+      // Find the longest match in the sliding window
+      const match = this._findLongestMatch(input, position);
+      
+      if (match.length >= this.algorithm.MIN_MATCH_LENGTH) {
+        // Encode as (distance, length, next character)
+        const nextChar = position + match.length < input.length ? 
+                         input[position + match.length] : 0;
+        
+        tokens.push({
+          type: 'match',
+          distance: match.distance,
+          length: match.length,
+          literal: nextChar
+        });
+        
+        position += match.length + (nextChar ? 1 : 0);
+      } else {
+        // Encode as literal
+        tokens.push({
+          type: 'literal',
+          literal: input[position]
+        });
+        
+        position++;
+      }
+    }
+    
+    // Serialize tokens to compressed format
+    const compressed = this._serializeTokens(tokens);
+    
+    // Clear input buffer
+    this.inputBuffer = [];
+    
+    return compressed;
   }
+    
+  _decompress() {
+    const tokens = this._deserializeTokens(this.inputBuffer);
+    let output = [];
+    
+    for (const token of tokens) {
+      if (token.type === 'literal') {
+        output.push(token.literal);
+      } else if (token.type === 'match') {
+        // Copy from previous position
+        const startPos = output.length - token.distance;
+        
+        if (startPos < 0) {
+          throw new Error('Invalid match distance in compressed data');
+        }
+        
+        // Copy characters (may overlap)
+        for (let i = 0; i < token.length; i++) {
+          if (startPos + i >= output.length) {
+            throw new Error('Invalid match in compressed data');
+          }
+          output.push(output[startPos + i]);
+        }
+        
+        // Add literal character if present
+        if (token.literal) {
+          output.push(token.literal);
+        }
+      }
+    }
+    
+    // Clear input buffer
+    this.inputBuffer = [];
+    
+    return output;
+  }
+    
+  _findLongestMatch(input, position) {
+    const windowStart = Math.max(0, position - this.algorithm.WINDOW_SIZE);
+    const windowEnd = position;
+    const lookaheadEnd = Math.min(input.length, position + this.algorithm.LOOKAHEAD_SIZE);
+    
+    let bestMatch = { distance: 0, length: 0 };
+    
+    // Search for matches in the window
+    for (let i = windowStart; i < windowEnd; i++) {
+      let matchLength = 0;
+      
+      // Compare bytes starting from position i in window
+      // with bytes starting from current position
+      while (i + matchLength < windowEnd && 
+             position + matchLength < lookaheadEnd &&
+             input[i + matchLength] === input[position + matchLength] &&
+             matchLength < this.algorithm.MAX_MATCH_LENGTH) {
+        matchLength++;
+      }
+      
+      // Update best match if this one is longer
+      if (matchLength > bestMatch.length) {
+        bestMatch = {
+          distance: position - i,
+          length: matchLength
+        };
+      }
+    }
+    
+    return bestMatch;
+  }
+    
+  _serializeTokens(tokens) {
+    const bytes = [];
+    
+    // Write token count (4 bytes, big-endian)
+    const count = tokens.length;
+    bytes.push((count >>> 24) & 0xFF);
+    bytes.push((count >>> 16) & 0xFF);
+    bytes.push((count >>> 8) & 0xFF);
+    bytes.push(count & 0xFF);
+    
+    // Write tokens
+    for (const token of tokens) {
+      if (token.type === 'literal') {
+        bytes.push(0); // Literal marker
+        bytes.push(token.literal & 0xFF);
+      } else if (token.type === 'match') {
+        bytes.push(1); // Match marker
+        
+        // Distance (2 bytes, big-endian)
+        bytes.push((token.distance >>> 8) & 0xFF);
+        bytes.push(token.distance & 0xFF);
+        
+        // Length (1 byte)
+        bytes.push(token.length & 0xFF);
+        
+        // Literal character (may be empty)
+        if (token.literal) {
+          bytes.push(token.literal & 0xFF);
+        } else {
+          bytes.push(0); // No literal
+        }
+      }
+    }
+    
+    return bytes;
+  }
+    
+  _deserializeTokens(bytes) {
+    if (bytes.length < 4) {
+      throw new Error('Invalid compressed data: too short');
+    }
+    
+    // Read token count
+    const count = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
+    const tokens = [];
+    
+    let pos = 4;
+    for (let i = 0; i < count; i++) {
+      if (pos >= bytes.length) {
+        throw new Error('Invalid compressed data: unexpected end');
+      }
+      
+      const tokenType = bytes[pos++];
+      
+      if (tokenType === 0) {
+        // Literal token
+        if (pos >= bytes.length) {
+          throw new Error('Invalid compressed data: incomplete literal');
+        }
+        
+        tokens.push({
+          type: 'literal',
+          literal: bytes[pos++]
+        });
+      } else if (tokenType === 1) {
+        // Match token
+        if (pos + 3 >= bytes.length) {
+          throw new Error('Invalid compressed data: incomplete match');
+        }
+        
+        const distance = (bytes[pos] << 8) | bytes[pos + 1];
+        const length = bytes[pos + 2];
+        const literalCode = bytes[pos + 3];
+        
+        tokens.push({
+          type: 'match',
+          distance: distance,
+          length: length,
+          literal: literalCode !== 0 ? literalCode : null
+        });
+        
+        pos += 4;
+      } else {
+        throw new Error('Invalid compressed data: unknown token type');
+      }
+    }
+    
+    return tokens;
+  }
+}
+    
+// Register the algorithm
+RegisterAlgorithm(new LZ77Compression());
   
-  // Make globally available
-  global.LZ77 = LZ77;
-  
-})(typeof global !== 'undefined' ? global : window);

@@ -16,17 +16,14 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
+      return;
+    }
+  } else {
       console.error('PANAMA cipher requires Cipher system to be loaded first');
       return;
     }
@@ -38,7 +35,7 @@
     inventor: "Joan Daemen, Craig Clapp",
     year: 1998,
     country: "BE",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: "insecure",
     securityNotes: "Hash function mode has known collisions discovered by Vincent Rijmen and others. Stream cipher mode lacks thorough cryptanalysis. Not recommended for production use.",
@@ -233,7 +230,7 @@
         throw new Error('Cipher not initialized');
       }
       
-      const inputBytes = OpCodes.StringToBytes(input);
+      const inputBytes = OpCodes.AsciiToBytes(input);
       const keystream = this.getKeystream(inputBytes.length);
       const outputBytes = OpCodes.XorArrays(inputBytes, keystream);
       

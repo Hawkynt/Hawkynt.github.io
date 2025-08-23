@@ -31,17 +31,14 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
+      return;
+    }
+  } else {
       console.error('Grain v1 cipher requires Cipher system to be loaded first');
       return;
     }
@@ -58,7 +55,7 @@
     inventor: "Martin Hell, Thomas Johansson, and Willi Meier",
     year: 2004,
     country: "SE",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: null,
     securityNotes: "Part of eSTREAM Portfolio Profile 2. Designed for hardware efficiency with limited gate count. No known practical attacks.",
@@ -279,7 +276,7 @@
         throw new Error('Cipher not initialized');
       }
       
-      const inputBytes = OpCodes.StringToBytes(input);
+      const inputBytes = OpCodes.AsciiToBytes(input);
       const keystream = this.generateKeystream(inputBytes.length);
       const outputBytes = OpCodes.XorArrays(inputBytes, keystream);
       
@@ -313,8 +310,9 @@
   };
   
   // Auto-register with Cipher system
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    global.Cipher.Add(GrainV1);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(GrainV1);
   }
   
   // Export for Node.js

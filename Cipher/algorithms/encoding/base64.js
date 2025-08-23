@@ -105,6 +105,7 @@ class Base64Instance extends IAlgorithmInstance {
     this.isInverse = isInverse;
     this.alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     this.paddingChar = "=";
+    this.processedData = null;
     
     // Create decode lookup table
     this.decodeTable = {};
@@ -119,15 +120,17 @@ class Base64Instance extends IAlgorithmInstance {
     }
 
     if (this.isInverse) {
-      return this.decode(data);
+      this.processedData = this.decode(data);
     } else {
-      return this.encode(data);
+      this.processedData = this.encode(data);
     }
   }
 
   Result() {
-    // Base64 processing is done in Feed method
-    throw new Error('Base64Instance.Result: Use Feed() method to encode/decode data');
+    if (this.processedData === null) {
+      throw new Error('Base64Instance.Result: No data processed. Call Feed() first.');
+    }
+    return this.processedData;
   }
 
   encode(data) {
@@ -159,7 +162,11 @@ class Base64Instance extends IAlgorithmInstance {
       result = result.slice(0, -1) + this.paddingChar;
     }
 
-    return OpCodes.AnsiToBytes(result);
+    const resultBytes = [];
+    for (let i = 0; i < result.length; i++) {
+      resultBytes.push(result.charCodeAt(i));
+    }
+    return resultBytes;
   }
 
   decode(data) {
@@ -167,16 +174,21 @@ class Base64Instance extends IAlgorithmInstance {
       return [];
     }
 
-    const input = OpCodes.BytesToAnsi(data);
-    let cleanInput = input.replace(/[^A-Za-z0-9+\/]/g, "");
+    const input = String.fromCharCode(...data);
+    let cleanInput = input.replace(/[^A-Za-z0-9+\/=]/g, "");
     
-    // Remove padding
+    // Count padding characters
+    const paddingMatch = cleanInput.match(/=+$/);
+    const paddingCount = paddingMatch ? paddingMatch[0].length : 0;
+    
+    // Remove padding for processing
     cleanInput = cleanInput.replace(/=+$/, "");
 
     const result = [];
     let i = 0;
 
-    while (i < cleanInput.length) {
+    // Process in groups of 4 characters
+    while (i + 3 < cleanInput.length) {
       const a = this.decodeTable[cleanInput[i++]] || 0;
       const b = this.decodeTable[cleanInput[i++]] || 0;
       const c = this.decodeTable[cleanInput[i++]] || 0;
@@ -185,10 +197,26 @@ class Base64Instance extends IAlgorithmInstance {
       const combined = (a << 18) | (b << 12) | (c << 6) | d;
 
       result.push((combined >> 16) & 255);
-      if (i - 2 < cleanInput.length) {
+      result.push((combined >> 8) & 255);
+      result.push(combined & 255);
+    }
+
+    // Handle remaining characters (incomplete group)
+    if (i < cleanInput.length) {
+      const a = this.decodeTable[cleanInput[i++]] || 0;
+      const b = i < cleanInput.length ? (this.decodeTable[cleanInput[i++]] || 0) : 0;
+      const c = i < cleanInput.length ? (this.decodeTable[cleanInput[i++]] || 0) : 0;
+      const d = i < cleanInput.length ? (this.decodeTable[cleanInput[i++]] || 0) : 0;
+
+      const combined = (a << 18) | (b << 12) | (c << 6) | d;
+
+      result.push((combined >> 16) & 255);
+      
+      if (paddingCount < 2) {
         result.push((combined >> 8) & 255);
       }
-      if (i - 1 < cleanInput.length) {
+      
+      if (paddingCount === 0) {
         result.push(combined & 255);
       }
     }

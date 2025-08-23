@@ -18,7 +18,7 @@
     inventor: "Hongjun Wu, Tao Huang",
     year: 2014,
     country: "Singapore/China",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Authenticated Encryption",
     securityStatus: "research",
     securityNotes: "CAESAR competition finalist with excellent performance characteristics. Not standardized but represents significant cryptographic research in high-speed AEAD constructions.",
@@ -576,8 +576,8 @@
       this.KeySetup(OpCodes.Hex8ToBytes("0123456789ABCDEF0123456789ABCDEF"));
       
       const nonce = OpCodes.Hex8ToBytes("FEDCBA9876543210FEDCBA9876543210");
-      const aad = OpCodes.StringToBytes("CAESAR finalist");
-      const plaintext = OpCodes.StringToBytes("MORUS provides excellent performance on modern processors");
+      const aad = OpCodes.AsciiToBytes("CAESAR finalist");
+      const plaintext = OpCodes.AsciiToBytes("MORUS provides excellent performance on modern processors");
       
       const encrypted = this.encryptAEAD(this.key, nonce, aad, plaintext);
       console.log('Plaintext:', OpCodes.BytesToString(plaintext));

@@ -30,17 +30,14 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
+      return;
+    }
+  } else {
       console.error('Shrinking Generator requires Cipher system to be loaded first');
       return;
     }
@@ -265,7 +262,7 @@
         throw new Error('Cipher not initialized');
       }
       
-      const inputBytes = OpCodes.StringToBytes(input);
+      const inputBytes = OpCodes.AsciiToBytes(input);
       const keystream = this.generateKeystream(inputBytes.length);
       const outputBytes = OpCodes.XorArrays(inputBytes, keystream);
       
