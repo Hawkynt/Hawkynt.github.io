@@ -16,16 +16,14 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
+      return;
+    }
+  } else {
       console.error('Pomaranch cipher requires Cipher system to be loaded first');
       return;
     }
@@ -37,7 +35,7 @@
     inventor: "Carlos Cid, Gaëtan Leurent",
     year: 2005,
     country: "GB",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: "insecure",
     securityNotes: "Various cryptanalytic attacks have been published against Pomaranch. Historical interest only, not recommended for production use.",

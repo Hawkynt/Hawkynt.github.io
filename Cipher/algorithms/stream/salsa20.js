@@ -16,18 +16,11 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Salsa20 cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
   }
@@ -38,7 +31,7 @@
     inventor: "Daniel J. Bernstein",
     year: 2005,
     country: "US",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: null,
     securityNotes: "Well-analyzed eSTREAM finalist with strong security record. However, use established cryptographic libraries for production systems.",
@@ -57,13 +50,31 @@
     
     tests: [
       {
-        text: "Salsa20 Test Vector",
+        text: "eSTREAM Salsa20 Set 1, Vector 0 (128-bit key)",
+        uri: "https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/salsa20/",
+        keySize: 16,
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("80000000000000000000000000000000") : [],
+        nonce: global.OpCodes ? global.OpCodes.Hex8ToBytes("0000000000000000") : [],
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000000000000000") : [],
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("4dfa5e481da23ea09a31022050859936") : []
+      },
+      {
+        text: "eSTREAM Salsa20 Set 6, Vector 0 (256-bit key)",
+        uri: "https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/salsa20/",
+        keySize: 32,
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("8000000000000000000000000000000000000000000000000000000000000000") : [],
+        nonce: global.OpCodes ? global.OpCodes.Hex8ToBytes("0000000000000000") : [],
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000000000000000") : [],
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("e3be8fdd8beca2e3ea8ef9475b29a6e7") : []
+      },
+      {
+        text: "Salsa20 Keystream Test (Bernstein spec)",
         uri: "https://cr.yp.to/snuffle/spec.pdf",
         keySize: 32,
         key: global.OpCodes ? global.OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20") : [],
         nonce: global.OpCodes ? global.OpCodes.Hex8ToBytes("0102030405060708") : [],
-        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000000000000000") : [],
-        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("4dfa5e481da23ea09a31022050859936") : []
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000") : [],
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("b5e33b3ec95473426445e0dd89413b2b5fcff5d7738a88b5e66c3999a44b7b8dfdc61b978e59b919b42c95b4a11fdd0a41aadf8b0e90825cf9e6fb0c61a7c8b5") : []
       }
     ],
 
@@ -180,12 +191,12 @@
         link: 'https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/salsa20/',
         standard: 'eSTREAM',
         key: '\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00',
-        keyHex: '80000000000000000000000000000000',
+        keyHex: OpCodes.Hex8ToBytes('80000000000000000000000000000000'),
         nonce: '\x00\x00\x00\x00\x00\x00\x00\x00',
-        nonceHex: '0000000000000000',
+        nonceHex: OpCodes.Hex8ToBytes('0000000000000000'),
         counter: 0,
-        plaintextHex: '00000000000000000000000000000000',
-        ciphertextHex: '4dfa5e481da23ea09a31022050859936',
+        plaintextHex: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+        ciphertextHex: OpCodes.Hex8ToBytes('4dfa5e481da23ea09a31022050859936'),
         notes: 'Official eSTREAM test vector for Salsa20/20 with 128-bit key',
         category: 'official-standard'
       },
@@ -197,12 +208,12 @@
         link: 'https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/salsa20/',
         standard: 'eSTREAM',
         key: '\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00',
-        keyHex: '8000000000000000000000000000000000000000000000000000000000000000',
+        keyHex: OpCodes.Hex8ToBytes('8000000000000000000000000000000000000000000000000000000000000000'),
         nonce: '\x00\x00\x00\x00\x00\x00\x00\x00',
-        nonceHex: '0000000000000000',
+        nonceHex: OpCodes.Hex8ToBytes('0000000000000000'),
         counter: 0,
-        plaintextHex: '00000000000000000000000000000000',
-        ciphertextHex: 'e3be8fdd8beca2e3ea8ef9475b29a6e7',
+        plaintextHex: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+        ciphertextHex: OpCodes.Hex8ToBytes('e3be8fdd8beca2e3ea8ef9475b29a6e7'),
         notes: 'Official eSTREAM test vector for Salsa20/20 with 256-bit key',
         category: 'official-standard'
       },
@@ -214,13 +225,30 @@
         link: 'https://cr.yp.to/snuffle/spec.pdf',
         standard: 'Bernstein-Spec',
         key: '\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x20',
-        keyHex: '0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20',
+        keyHex: OpCodes.Hex8ToBytes('0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20'),
         nonce: '\x01\x02\x03\x04\x05\x06\x07\x08',
-        nonceHex: '0102030405060708',
+        nonceHex: OpCodes.Hex8ToBytes('0102030405060708'),
         counter: 0,
-        keystreamHex: 'b5e33b3ec95473426445e0dd89413b2b5fcff5d7738a88b5e66c3999a44b7b8dfdc61b978e59b919b42c95b4a11fdd0a41aadf8b0e90825cf9e6fb0c61a7c8b54b5bb6f8',
+        keystreamHex: OpCodes.Hex8ToBytes('b5e33b3ec95473426445e0dd89413b2b5fcff5d7738a88b5e66c3999a44b7b8dfdc61b978e59b919b42c95b4a11fdd0a41aadf8b0e90825cf9e6fb0c61a7c8b5'),
         notes: 'Salsa20 keystream generation test from original specification',
         category: 'keystream-test'
+      },
+      // Additional eSTREAM vector for robustness testing
+      {
+        algorithm: 'Salsa20',
+        description: 'eSTREAM Salsa20/20 Set 2, Vector 63 (128-bit key, high bit in nonce)',
+        origin: 'eSTREAM project submission by Daniel J. Bernstein',
+        link: 'https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/salsa20/',
+        standard: 'eSTREAM',
+        key: '\x00\x53\xa6\xf9\x4c\x9f\xf2\x45\x98\xeb\x3e\x91\xe4\x37\x8a\xdd',
+        keyHex: OpCodes.Hex8ToBytes('0053a6f94c9ff24598eb3e91e4378add'),
+        nonce: '\x0d\x74\xdb\x42\xa9\x10\x77\xde',
+        nonceHex: OpCodes.Hex8ToBytes('0d74db42a91077de'),
+        counter: 0,
+        plaintextHex: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+        ciphertextHex: OpCodes.Hex8ToBytes('05e1e7beb697d999656bf37c1b978806'),
+        notes: 'eSTREAM test vector with complex key/nonce pattern for robustness testing',
+        category: 'robustness-test'
       }
     ],
     
@@ -621,8 +649,10 @@
   };
   
   // Auto-register with Subsystem (according to category) if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
-    global.Cipher.Add(Salsa20);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(Salsa20);
+  }
   
   // Export to global scope
   global.Salsa20 = Salsa20;

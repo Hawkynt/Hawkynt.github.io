@@ -18,7 +18,7 @@
     inventor: "Jean-Philippe Aumasson, Philipp Jovanovic, Samuel Neves",
     year: 2014,
     country: "Multi-national",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: "finalist",
     securityNotes: "CAESAR competition finalist with extensive cryptanalysis. Designed for high-performance applications requiring authenticated encryption.",
@@ -503,8 +503,8 @@
       this.KeySetup(OpCodes.Hex8ToBytes("0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"));
       
       const nonce = OpCodes.Hex8ToBytes("FEDCBA9876543210FEDCBA9876543210");
-      const header = OpCodes.StringToBytes("High-Performance AEAD");
-      const plaintext = OpCodes.StringToBytes("NORX is designed for speed and security in parallel environments");
+      const header = OpCodes.AsciiToBytes("High-Performance AEAD");
+      const plaintext = OpCodes.AsciiToBytes("NORX is designed for speed and security in parallel environments");
       
       const encrypted = this.encryptAEAD(this.key, nonce, header, plaintext);
       console.log('Plaintext:', OpCodes.BytesToString(plaintext));

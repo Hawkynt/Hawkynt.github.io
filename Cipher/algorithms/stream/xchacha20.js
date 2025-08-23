@@ -49,26 +49,20 @@
     require('../../OpCodes.js');
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
+      return;
+    }
+  } else {
       console.error('XChaCha20 requires Cipher system to be loaded first');
       return;
     }
   }
   
-  // Load metadata system
-  if (!global.CipherMetadata && typeof require !== 'undefined') {
-    try {
-      require('../../cipher-metadata.js');
-    } catch (e) {
+   catch (e) {
       console.warn('Could not load cipher metadata system:', e.message);
     }
   }

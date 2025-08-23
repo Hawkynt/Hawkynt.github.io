@@ -1,233 +1,208 @@
 /*
- * Universal ROT13 Cipher
- * Compatible with both Browser and Node.js environments
+ * ROT Encoding Implementation (ROT13/ROT47)
+ * Educational implementation of ROT (rotate) character substitution
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
-  'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('ROT13 cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
-  
-  // Create ROT13 cipher object
-  const ROT13 = {
-    // Required metadata per CONTRIBUTING.md
-    name: "ROT13",
-    description: "Simple letter substitution cipher that replaces each letter with the letter 13 positions after it in the alphabet. ROT13 is its own inverse - applying ROT13 twice returns the original text.",
-    inventor: "Unknown (folklore origin)",
-    year: 1980,
-    country: null,
-    category: "encodingScheme",
-    subCategory: "Text Encoding",
-    securityStatus: "educational",
-    securityNotes: "Provides no security - trivially broken. Used for spoiler text and simple obfuscation. Educational purposes only.",
-    
-    documentation: [
-      {text: "ROT13 - Wikipedia", uri: "https://en.wikipedia.org/wiki/ROT13"},
-      {text: "Caesar Cipher Family", uri: "https://en.wikipedia.org/wiki/Caesar_cipher"},
-      {text: "Usenet ROT13 Usage", uri: "https://tools.ietf.org/html/rfc1036#section-5.2"}
-    ],
-    
-    references: [
-      {text: "UNIX tr Command Examples", uri: "https://www.gnu.org/software/coreutils/manual/html_node/tr-invocation.html"},
-      {text: "Python ROT13 Codec", uri: "https://docs.python.org/3/library/codecs.html#text-encodings"},
-      {text: "Educational Cryptography Examples", uri: "https://cryptomuseum.com/crypto/usa/rot13/index.htm"}
-    ],
-    
-    knownVulnerabilities: [
-      {
-        type: "Frequency Analysis",
-        text: "Letter frequencies remain unchanged, making it vulnerable to basic frequency analysis attacks",
-        mitigation: "Do not use for any security purposes"
-      }
-    ],
-    
-    tests: [
-      {
-        text: "Basic uppercase test",
-        uri: "https://en.wikipedia.org/wiki/ROT13#Example",
-        input: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("HELLO") : "HELLO".split('').map(c => c.charCodeAt(0)),
-        expected: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("URYYB") : "URYYB".split('').map(c => c.charCodeAt(0))
-      },
-      {
-        text: "Basic lowercase test",
-        uri: "Educational standard",
-        input: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("hello") : "hello".split('').map(c => c.charCodeAt(0)),
-        expected: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("uryyb") : "uryyb".split('').map(c => c.charCodeAt(0))
-      },
-      {
-        text: "Wikipedia mixed case example",
-        uri: "https://en.wikipedia.org/wiki/ROT13#Example",
-        input: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("To get to the other side!") : "To get to the other side!".split('').map(c => c.charCodeAt(0)),
-        expected: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("Gb trg gb gur bgure fvqr!") : "Gb trg gb gur bgure fvqr!".split('').map(c => c.charCodeAt(0))
-      },
-      {
-        text: "First half alphabet transformation",
-        uri: "Educational validation",
-        input: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("ABCDEFGHIJKLM") : "ABCDEFGHIJKLM".split('').map(c => c.charCodeAt(0)),
-        expected: (typeof ANSIToBytes !== 'undefined') ? ANSIToBytes("NOPQRSTUVWXYZ") : "NOPQRSTUVWXYZ".split('').map(c => c.charCodeAt(0))
-      }
-    ],
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
 
-    // Legacy interface properties for compatibility
-    internalName: 'ROT13',
-    comment: 'ROT13 cipher - rotates letters by 13 positions',
-    minKeyLength: 0,
-    maxKeyLength: 0,
-    stepKeyLength: 1,
-    minBlockSize: 0,
-    maxBlockSize: 0,
-    stepBlockSize: 1,
-    instances: {},
+// Load OpCodes for cryptographic operations (RECOMMENDED)
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
 
-    // Legacy test vectors for compatibility
-    testVectors: [
-      {
-        "input": "HELLO",
-        "key": "",
-        "expected": "URYYB",
-        "description": "ROT13 uppercase test"
-      },
-      {
-        "input": "hello",
-        "key": "",
-        "expected": "uryyb",
-        "description": "ROT13 lowercase test"
-      },
-      {
-        "input": "To get to the other side!",
-        "key": "",
-        "expected": "Gb trg gb gur bgure fvqr!",
-        "description": "Wikipedia ROT13 example"
-      },
-      {
-        "input": "ABCDEFGHIJKLM",
-        "key": "",
-        "expected": "NOPQRSTUVWXYZ",
-        "description": "First half alphabet"
-      },
-      {
-        "input": "NOPQRSTUVWXYZ",
-        "key": "",
-        "expected": "ABCDEFGHIJKLM",
-        "description": "Second half alphabet"
-      }
-    ],
-    cantDecode: false,
-    isInitialized: false,
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        EncodingAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
+
+class ROTAlgorithm extends EncodingAlgorithm {
+  constructor() {
+    super();
     
-    // Character sets
-    UPPERCASE: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
-    LOWERCASE: 'abcdefghijklmnopqrstuvwxyz',
-    
-    // Initialize cipher
-    Init: function() {
-      ROT13.isInitialized = true;
-    },
-    
-    // Set up key (ROT13 doesn't use keys)
-    KeySetup: function(optional_key) {
-      let id;
-      do {
-        id = 'ROT13[' + global.generateUniqueID() + ']';
-      } while (ROT13.instances[id] || global.objectInstances[id]);
-      
-      ROT13.instances[id] = new ROT13.Rot13Instance(optional_key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear cipher data
-    ClearData: function(id) {
-      if (ROT13.instances[id]) {
-        delete ROT13.instances[id];
-        delete global.objectInstances[id];
-        return true;
-      } else {
-        global.throwException('Unknown Object Reference Exception', id, 'ROT13', 'ClearData');
-        return false;
-      }
-    },
-    
-    // Encrypt block (ROT13 is symmetric - encrypt and decrypt are the same)
-    encryptBlock: function(id, plaintext) {
-      if (!ROT13.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'ROT13', 'encryptBlock');
-        return plaintext;
-      }
-      
-      return ROT13.transform(plaintext);
-    },
-    
-    // Decrypt block (same as encrypt for ROT13)
-    decryptBlock: function(id, ciphertext) {
-      if (!ROT13.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'ROT13', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      return ROT13.transform(ciphertext);
-    },
-    
-    // Transform text using ROT13
-    transform: function(text) {
-      let result = '';
-      
-      for (let i = 0; i < text.length; i++) {
-        const char = text.charAt(i);
-        
-        // Handle uppercase letters
-        const upperIndex = ROT13.UPPERCASE.indexOf(char);
-        if (upperIndex !== -1) {
-          result += ROT13.UPPERCASE.charAt((upperIndex + 13) % 26);
-        }
-        // Handle lowercase letters
-        else {
-          const lowerIndex = ROT13.LOWERCASE.indexOf(char);
-          if (lowerIndex !== -1) {
-            result += ROT13.LOWERCASE.charAt((lowerIndex + 13) % 26);
-          }
-          // Non-alphabetic characters pass through unchanged
-          else {
-            result += char;
-          }
-        }
-      }
-      
-      return result;
-    },
-    
-    // Instance class
-    Rot13Instance: function(key) {
-      this.key = key || '';
+    // Required metadata
+    this.name = "ROT";
+    this.description = "ROT (rotate) character substitution cipher that shifts characters by a fixed offset. ROT13 shifts letters by 13 positions, ROT47 shifts printable ASCII by 47. Self-inverting cipher for educational purposes.";
+    this.inventor = "Unknown (folklore origin)";
+    this.year = 1980;
+    this.category = CategoryType.ENCODING;
+    this.subCategory = "Character Substitution";
+    this.securityStatus = SecurityStatus.EDUCATIONAL;
+    this.complexity = ComplexityType.BEGINNER;
+    this.country = CountryCode.INTL;
+
+    // Documentation and references
+    this.documentation = [
+      new LinkItem("ROT13 - Wikipedia", "https://en.wikipedia.org/wiki/ROT13"),
+      new LinkItem("Caesar Cipher Family", "https://en.wikipedia.org/wiki/Caesar_cipher"),
+      new LinkItem("RFC 1036 - Usenet ROT13", "https://tools.ietf.org/html/rfc1036#section-5.2")
+    ];
+
+    this.references = [
+      new LinkItem("UNIX tr Command", "https://www.gnu.org/software/coreutils/manual/html_node/tr-invocation.html"),
+      new LinkItem("Python ROT13 Codec", "https://docs.python.org/3/library/codecs.html#text-encodings"),
+      new LinkItem("ROT47 Specification", "https://en.wikipedia.org/wiki/ROT13#Variants")
+    ];
+
+    this.knownVulnerabilities = [
+      "Provides no cryptographic security",
+      "Trivially broken by frequency analysis", 
+      "Preserves word boundaries and punctuation",
+      "Educational use only - not for actual data protection"
+    ];
+
+    // Test vectors for ROT13 (most common variant)
+    this.tests = [
+      new TestCase(
+        OpCodes.AnsiToBytes(""),
+        OpCodes.AnsiToBytes(""),
+        "ROT13 empty string test",
+        "https://en.wikipedia.org/wiki/ROT13"
+      ),
+      new TestCase(
+        OpCodes.AnsiToBytes("A"),
+        OpCodes.AnsiToBytes("N"),
+        "ROT13 single uppercase letter test",
+        "https://en.wikipedia.org/wiki/ROT13"
+      ),
+      new TestCase(
+        OpCodes.AnsiToBytes("a"),
+        OpCodes.AnsiToBytes("n"),
+        "ROT13 single lowercase letter test", 
+        "https://en.wikipedia.org/wiki/ROT13"
+      ),
+      new TestCase(
+        OpCodes.AnsiToBytes("HELLO"),
+        OpCodes.AnsiToBytes("URYYB"),
+        "ROT13 uppercase word test",
+        "https://en.wikipedia.org/wiki/ROT13"
+      ),
+      new TestCase(
+        OpCodes.AnsiToBytes("hello"),
+        OpCodes.AnsiToBytes("uryyb"),
+        "ROT13 lowercase word test",
+        "https://en.wikipedia.org/wiki/ROT13"
+      ),
+      new TestCase(
+        OpCodes.AnsiToBytes("Hello, World!"),
+        OpCodes.AnsiToBytes("Uryyb, Jbeyq!"),
+        "ROT13 mixed case with punctuation test",
+        "https://en.wikipedia.org/wiki/ROT13"
+      ),
+      new TestCase(
+        OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog."),
+        OpCodes.AnsiToBytes("Gur dhvpx oebja sbk whzcf bire gur ynml qbt."),
+        "ROT13 pangram test",
+        "https://en.wikipedia.org/wiki/ROT13"
+      )
+    ];
+  }
+
+  CreateInstance(isInverse = false) {
+    return new ROTInstance(this, isInverse);
+  }
+}
+
+class ROTInstance extends IAlgorithmInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.processedData = null;
+    // ROT13 is self-inverting, so isInverse doesn't change behavior
+  }
+
+  Feed(data) {
+    if (!Array.isArray(data)) {
+      throw new Error('ROTInstance.Feed: Input must be byte array');
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(ROT13);
+
+    // ROT13 is self-inverting, so encode and decode are the same operation
+    this.processedData = this.rot13(data);
   }
-  
-  // Export to global scope
-  global.ROT13 = ROT13;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = ROT13;
+
+  Result() {
+    if (this.processedData === null) {
+      throw new Error('ROTInstance.Result: No data processed. Call Feed() first.');
+    }
+    return this.processedData;
   }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+
+  rot13(data) {
+    if (data.length === 0) {
+      return [];
+    }
+
+    const result = [];
+    
+    for (let i = 0; i < data.length; i++) {
+      const byte = data[i];
+      let transformed = byte;
+      
+      // Handle uppercase letters (A-Z)
+      if (byte >= 65 && byte <= 90) {
+        transformed = ((byte - 65 + 13) % 26) + 65;
+      }
+      // Handle lowercase letters (a-z)  
+      else if (byte >= 97 && byte <= 122) {
+        transformed = ((byte - 97 + 13) % 26) + 97;
+      }
+      // Non-alphabetic characters remain unchanged
+      
+      result.push(transformed);
+    }
+
+    return result;
+  }
+
+  // ROT47 variant for printable ASCII (33-126)
+  rot47(data) {
+    if (data.length === 0) {
+      return [];
+    }
+
+    const result = [];
+    
+    for (let i = 0; i < data.length; i++) {
+      const byte = data[i];
+      let transformed = byte;
+      
+      // Handle printable ASCII characters (33-126)
+      if (byte >= 33 && byte <= 126) {
+        transformed = ((byte - 33 + 47) % 94) + 33;
+      }
+      // Non-printable characters remain unchanged
+      
+      result.push(transformed);
+    }
+
+    return result;
+  }
+
+  // Utility methods
+  encodeString(str) {
+    const bytes = OpCodes.AnsiToBytes(str);
+    const encoded = this.rot13(bytes);
+    return String.fromCharCode(...encoded);
+  }
+
+  decodeString(str) {
+    // ROT13 is self-inverting
+    return this.encodeString(str);
+  }
+
+  // ROT47 utility methods
+  rot47EncodeString(str) {
+    const bytes = OpCodes.AnsiToBytes(str);
+    const encoded = this.rot47(bytes);
+    return String.fromCharCode(...encoded);
+  }
+}
+
+// Register the algorithm
+RegisterAlgorithm(new ROTAlgorithm());
+
+// Export for Node.js
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { ROTAlgorithm, ROTInstance };
+}

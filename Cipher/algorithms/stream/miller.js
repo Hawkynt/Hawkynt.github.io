@@ -104,7 +104,7 @@
       let bits;
       if (typeof data === 'string') {
         // Convert string to bits
-        const bytes = OpCodes.StringToBytes(data);
+        const bytes = OpCodes.AsciiToBytes(data);
         bits = [];
         for (const byte of bytes) {
           for (let i = 7; i >= 0; i--) {

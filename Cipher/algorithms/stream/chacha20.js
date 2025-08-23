@@ -30,28 +30,12 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('ChaCha20 cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
-  
-  // Load metadata system
-  if (!global.CipherMetadata && typeof require !== 'undefined') {
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
     try {
-      require('../../cipher-metadata.js');
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
     } catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
+      console.error('Failed to load AlgorithmFramework:', e.message);
+      return;
     }
   }
   
@@ -76,7 +60,7 @@
     inventor: "Daniel J. Bernstein",
     year: 2008,
     country: "US",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: null,
     securityNotes: "Widely adopted in modern cryptographic protocols. No known practical attacks against ChaCha20 when properly implemented with unique nonces.",
@@ -97,12 +81,34 @@
     
     tests: [
       {
-        text: "RFC 7539 ChaCha20 Test Vector 1",
-        uri: "https://tools.ietf.org/html/rfc7539#section-2.4.2",
+        text: "RFC 7539 ChaCha20 Test Vector 1 - Block 0",
+        uri: "https://tools.ietf.org/rfc/rfc7539.txt#section-2.3.2",
         keySize: 32,
-        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000") : [],
         key: global.OpCodes ? global.OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f") : [],
-        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("76b8e0ada0f13d90405d6ae55386bd28bdd219b8a08ded1aa836efcc8b770dc7da41597c5157488d7724e03fb8d84a376a43b8f41518a11cc387b669b2ee6586") : []
+        nonce: global.OpCodes ? global.OpCodes.Hex8ToBytes("000000090000004a00000000") : [],
+        counter: 1,
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000") : [],
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("10f1e7e4d13b5915500fdd1fa32071c4c7d1f4c733c068030422aa9ac3d46c4ed2826446079faa0914c2d705d98b02a2b5129cd1de164eb9cbd083e8a2503c4e") : []
+      },
+      {
+        text: "RFC 7539 ChaCha20 Test Vector 2 - Block 1", 
+        uri: "https://tools.ietf.org/rfc/rfc7539.txt#section-2.3.2",
+        keySize: 32,
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f") : [],
+        nonce: global.OpCodes ? global.OpCodes.Hex8ToBytes("000000090000004a00000000") : [],
+        counter: 2,
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000") : [],
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("72d54dfbf12ec44b362692df94137f328fea8da73990265ec1bbbea1ae9af0ca13b25aa26cb4a648cb9b9d1be65b2c0924a66c54d545ec1b7374f4872e99f096") : []
+      },
+      {
+        text: "RFC 7539 ChaCha20 Encryption Test",
+        uri: "https://tools.ietf.org/rfc/rfc7539.txt#section-2.4.2", 
+        keySize: 32,
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f") : [],
+        nonce: global.OpCodes ? global.OpCodes.Hex8ToBytes("000000000000004a00000000") : [],
+        counter: 1,
+        input: global.OpCodes ? global.OpCodes.AsciiToBytes("Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.") : [],
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("6e2e359a2568f98041ba0728dd0d6981e97e7aec1d4360c20a27afccfd9fae0bf91b65c5524733ab8f593dabcd62b3571639d624e65152ab8f530c359f0861d807ca0dbf500d6a6156a38e088a22b65e52bc514d16ccf806818ce91ab77937365af90bbf74a35be6b40b8eedf2785e42874d") : []
       }
     ],
 
@@ -172,6 +178,22 @@
         output: [0xea2a92f4, 0xcb1cf8ce, 0x4581472e, 0x5881c4bb],
         notes: 'Quarter round function test for internal ChaCha20 verification',
         category: 'internal-function'
+      },
+      // RFC 7539 ChaCha20 Block Test (Section 2.3.2)
+      {
+        algorithm: 'ChaCha20-Block',
+        description: 'RFC 7539 ChaCha20 Block Function Test (Section 2.3.2)',
+        origin: 'IETF RFC 7539, Section 2.3.2',
+        link: 'https://tools.ietf.org/rfc/rfc7539.txt',
+        standard: 'RFC 7539',
+        key: '\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f',
+        keyHex: OpCodes.Hex8ToBytes('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f'),
+        nonce: '\x00\x00\x00\x09\x00\x00\x00\x4a\x00\x00\x00\x00',
+        nonceHex: OpCodes.Hex8ToBytes('000000090000004a00000000'),
+        counter: 1,
+        blockOutput: OpCodes.Hex8ToBytes('10f1e7e4d13b5915500fdd1fa32071c4c7d1f4c733c068030422aa9ac3d46c4ed2826446079faa0914c2d705d98b02a2b5129cd1de164eb9cbd083e8a2503c4e'),
+        notes: 'ChaCha20 block function test with counter=1',
+        category: 'block-function'
       }
     ],
     
@@ -550,12 +572,55 @@
      */
     setNonce: function(newNonce) {
       this.reset(newNonce, 0);
+    },
+    
+    /**
+     * Test the quarter-round function against RFC 7539 test vector
+     * @returns {boolean} True if quarter-round passes RFC test
+     */
+    testQuarterRound: function() {
+      const testState = [0x11111111, 0x01020304, 0x9b8d6f43, 0x01234567];
+      const expected = [0xea2a92f4, 0xcb1cf8ce, 0x4581472e, 0x5881c4bb];
+      
+      // Create a temporary ChaCha20 instance to access quarterRound
+      const tempInstance = new ChaCha20.ChaCha20Instance(new Array(32).fill(0));
+      tempInstance.quarterRound(testState, 0, 1, 2, 3);
+      
+      for (let i = 0; i < 4; i++) {
+        if (testState[i] !== expected[i]) {
+          return false;
+        }
+      }
+      return true;
+    },
+    
+    /**
+     * Test block function against RFC 7539 test vector
+     * @returns {boolean} True if block function passes RFC test
+     */
+    testBlockFunction: function() {
+      const key = global.OpCodes.Hex8ToBytes('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f');
+      const nonce = global.OpCodes.Hex8ToBytes('000000090000004a00000000');
+      const counter = 1;
+      const expected = global.OpCodes.Hex8ToBytes('10f1e7e4d13b5915500fdd1fa32071c4c7d1f4c733c068030422aa9ac3d46c4ed2826446079faa0914c2d705d98b02a2b5129cd1de164eb9cbd083e8a2503c4e');
+      
+      const tempInstance = new ChaCha20.ChaCha20Instance(key, nonce, counter);
+      const blockOutput = tempInstance.generateBlock();
+      
+      if (blockOutput.length !== expected.length) return false;
+      
+      for (let i = 0; i < expected.length; i++) {
+        if (blockOutput[i] !== expected[i]) {
+          return false;
+        }
+      }
+      return true;
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    global.Cipher.Add(ChaCha20);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(ChaCha20);
   }
   
   // Export to global scope

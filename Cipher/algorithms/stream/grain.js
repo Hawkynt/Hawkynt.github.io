@@ -30,27 +30,54 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Grain cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
   }
   
   // Create Grain cipher object
   const Grain = {
-    // Public interface properties
+    // Required metadata following CONTRIBUTING.md
+    name: 'Grain',
+    description: 'Hardware-oriented stream cipher using combination of LFSR and NLFSR. Part of the eSTREAM hardware portfolio and ISO/IEC 29192-3 standard. Features 80-bit keys and 64-bit IVs.',
+    inventor: 'Martin Hell, Thomas Johansson, and Willi Meier',
+    year: 2005,
+    country: 'SE',
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
+    subCategory: 'Stream Cipher',
+    securityStatus: null,
+    securityNotes: 'Part of eSTREAM hardware portfolio and ISO standard. No known practical attacks on the original version.',
+    
+    documentation: [
+      {text: 'ISO/IEC 29192-3:2012 - Grain Stream Cipher', uri: 'https://www.iso.org/standard/56426.html'},
+      {text: 'eSTREAM Grain Specification', uri: 'https://www.ecrypt.eu.org/stream/grain.html'},
+      {text: 'Grain: A Stream Cipher for Constrained Environments', uri: 'http://www.ecrypt.eu.org/stream/papersdir/2005/017.pdf'}
+    ],
+    
+    references: [
+      {text: 'eSTREAM Grain Page', uri: 'https://www.ecrypt.eu.org/stream/grain.html'},
+      {text: 'ISO/IEC 29192-3 Standard', uri: 'https://www.iso.org/standard/56426.html'}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "Grain v1 Test Vector (all-zero key and IV) - NEEDS VERIFICATION",
+        uri: "https://www.ecrypt.eu.org/stream/e2-grain.html",
+        keySize: 10,
+        input: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        key: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        expected: [0x6b, 0x15, 0x85, 0x50, 0x17, 0x68, 0x2e, 0xdc]
+      }
+    ],
+    
+    // Legacy interface properties
     internalName: 'Grain',
-    name: 'Grain Stream Cipher',
     comment: 'Grain eSTREAM Stream Cipher - Educational implementation with LFSR/NLFSR combination',
     minKeyLength: 10,   // Grain uses 80-bit keys (10 bytes)
     maxKeyLength: 10,
@@ -85,6 +112,42 @@
       Grain.instances[id] = new Grain.GrainInstance(key);
       global.objectInstances[id] = true;
       return id;
+    },
+    
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._instance = new Grain.GrainInstance(keyData);
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._instance || this._inputData.length === 0) {
+            return [];
+          }
+          
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            const keystreamByte = this._instance.generateKeystreamByte();
+            result.push(this._inputData[i] ^ keystreamByte);
+          }
+          return result;
+        }
+      };
     },
     
     // Clear cipher data
@@ -316,7 +379,7 @@
     generateKeystreamByte: function() {
       let byte = 0;
       for (let i = 0; i < 8; i++) {
-        byte = (byte << 1) | this.generateKeystreamBit();
+        byte = byte | (this.generateKeystreamBit() << i);  // LSB first
       }
       return byte;
     },
@@ -368,9 +431,9 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(Grain);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(Grain);
   }
   
   // Export to global scope

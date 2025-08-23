@@ -1,479 +1,341 @@
-#!/usr/bin/env node
 /*
- * Universal Poly1305 MAC (Message Authentication Code)
- * Compatible with both Browser and Node.js environments
- * Based on RFC 7539 - ChaCha20 and Poly1305 for IETF Protocols
+ * Poly1305 MAC (Message Authentication Code) Implementation
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  * 
- * Educational implementation of Poly1305 MAC algorithm.
- * Poly1305 is a one-time authenticator designed by D.J. Bernstein.
- * 
- * NOTE: This is an educational implementation for learning purposes only.
- * Use proven cryptographic libraries for production systems.
+ * RFC 7539 compliant Poly1305 implementation
+ * Provides one-time authentication using 130-bit field arithmetic
  */
 
-(function(global) {
-  'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.OpCodes) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../OpCodes.js');
-      } catch (e) {
-        console.error('Failed to load OpCodes dependency:', e.message);
-        return;
-      }
-    } else {
-      console.error('Poly1305 requires OpCodes library to be loaded first');
-      return;
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
+
+// Load OpCodes for cryptographic operations (RECOMMENDED)
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
+
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        MacAlgorithm, IMacInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
+
+/**
+ * Poly1305 large integer arithmetic helpers for 130-bit field operations
+ */
+const Poly1305Math = {
+  /**
+   * Add two 130-bit numbers represented as 5 26-bit limbs
+   */
+  add(a, b) {
+    const result = new Array(5);
+    let carry = 0;
+    
+    for (let i = 0; i < 5; i++) {
+      carry += a[i] + b[i];
+      result[i] = carry & 0x3ffffff; // 26-bit mask
+      carry >>>= 26;
     }
-  }
+    
+    return result;
+  },
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
+  /**
+   * Multiply two 130-bit numbers and reduce modulo 2^130-5
+   */
+  mul(a, b) {
+    // Schoolbook multiplication with reduction
+    let t = new Array(10).fill(0);
+    
+    for (let i = 0; i < 5; i++) {
+      for (let j = 0; j < 5; j++) {
+        t[i + j] += a[i] * b[j];
       }
-    } else {
-      console.error('Poly1305 requires Cipher system to be loaded first');
-      return;
     }
-  }
-  
-  // Poly1305 large integer arithmetic helpers
-  const Poly1305Math = {
-    // Prime field modulus: P = 2^130 - 5
-    // Represented as five 32-bit limbs: [low32, next32, next32, next32, high2+carry]
-    P: [0xFFFFFFFB, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0x3], // 2^130 - 5
     
-    /**
-     * Initialize a 130-bit number as 5 limbs of 26 bits each (for easier arithmetic)
-     * @returns {Array} [limb0, limb1, limb2, limb3, limb4] - five 26-bit limbs
-     */
-    create130: function() {
-      return [0, 0, 0, 0, 0];
-    },
-    
-    /**
-     * Load little-endian bytes into 130-bit representation
-     * @param {Array} bytes - Array of bytes (up to 17 bytes for 130-bit + padding)
-     * @returns {Array} 130-bit number as 5 limbs
-     */
-    load130: function(bytes) {
-      const h = [0, 0, 0, 0, 0];
-      let t0, t1, t2, t3, t4;
-      
-      if (bytes.length >= 4) {
-        t0 = (bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24)) >>> 0;
-      } else {
-        t0 = 0;
-        for (let i = 0; i < bytes.length && i < 4; i++) {
-          t0 |= (bytes[i] << (i * 8));
-        }
-        t0 >>>= 0;
-      }
-      
-      if (bytes.length >= 8) {
-        t1 = (bytes[4] | (bytes[5] << 8) | (bytes[6] << 16) | (bytes[7] << 24)) >>> 0;
-      } else {
-        t1 = 0;
-        for (let i = 4; i < bytes.length && i < 8; i++) {
-          t1 |= (bytes[i] << ((i - 4) * 8));
-        }
-        t1 >>>= 0;
-      }
-      
-      if (bytes.length >= 12) {
-        t2 = (bytes[8] | (bytes[9] << 8) | (bytes[10] << 16) | (bytes[11] << 24)) >>> 0;
-      } else {
-        t2 = 0;
-        for (let i = 8; i < bytes.length && i < 12; i++) {
-          t2 |= (bytes[i] << ((i - 8) * 8));
-        }
-        t2 >>>= 0;
-      }
-      
-      if (bytes.length >= 16) {
-        t3 = (bytes[12] | (bytes[13] << 8) | (bytes[14] << 16) | (bytes[15] << 24)) >>> 0;
-      } else {
-        t3 = 0;
-        for (let i = 12; i < bytes.length && i < 16; i++) {
-          t3 |= (bytes[i] << ((i - 12) * 8));
-        }
-        t3 >>>= 0;
-      }
-      
-      // Handle the high bit for padding (bit 128)
-      t4 = 0;
-      if (bytes.length >= 17) {
-        t4 = bytes[16] & 0x03; // Only 2 bits for 130-bit
-      }
-      
-      // Pack into 26-bit limbs for easier arithmetic
-      h[0] = t0 & 0x3ffffff;
-      h[1] = ((t0 >>> 26) | (t1 << 6)) & 0x3ffffff;
-      h[2] = ((t1 >>> 20) | (t2 << 12)) & 0x3ffffff;
-      h[3] = ((t2 >>> 14) | (t3 << 18)) & 0x3ffffff;
-      h[4] = ((t3 >>> 8) | (t4 << 24)) & 0x3ffffff;
-      
-      return h;
-    },
-    
-    /**
-     * Store 130-bit number back to little-endian bytes
-     * @param {Array} h - 130-bit number as 5 limbs
-     * @returns {Array} Byte array (16 bytes for 128-bit output)
-     */
-    store130: function(h) {
-      let t0, t1, t2, t3;
-      
-      // Unpack from 26-bit limbs
-      t0 = (h[0] | (h[1] << 26)) >>> 0;
-      t1 = ((h[1] >>> 6) | (h[2] << 20)) >>> 0;
-      t2 = ((h[2] >>> 12) | (h[3] << 14)) >>> 0;
-      t3 = ((h[3] >>> 18) | (h[4] << 8)) >>> 0;
-      
-      const bytes = [];
-      bytes[0] = t0 & 0xff;
-      bytes[1] = (t0 >>> 8) & 0xff;
-      bytes[2] = (t0 >>> 16) & 0xff;
-      bytes[3] = (t0 >>> 24) & 0xff;
-      bytes[4] = t1 & 0xff;
-      bytes[5] = (t1 >>> 8) & 0xff;
-      bytes[6] = (t1 >>> 16) & 0xff;
-      bytes[7] = (t1 >>> 24) & 0xff;
-      bytes[8] = t2 & 0xff;
-      bytes[9] = (t2 >>> 8) & 0xff;
-      bytes[10] = (t2 >>> 16) & 0xff;
-      bytes[11] = (t2 >>> 24) & 0xff;
-      bytes[12] = t3 & 0xff;
-      bytes[13] = (t3 >>> 8) & 0xff;
-      bytes[14] = (t3 >>> 16) & 0xff;
-      bytes[15] = (t3 >>> 24) & 0xff;
-      
-      return bytes;
-    },
-    
-    /**
-     * Add two 130-bit numbers: a + b
-     * @param {Array} a - First 130-bit number
-     * @param {Array} b - Second 130-bit number
-     * @returns {Array} Result a + b (may need reduction)
-     */
-    add130: function(a, b) {
-      const result = [0, 0, 0, 0, 0];
-      let carry = 0;
-      
-      for (let i = 0; i < 5; i++) {
-        const sum = a[i] + b[i] + carry;
-        result[i] = sum & 0x3ffffff;
-        carry = sum >>> 26;
-      }
-      
-      return result;
-    },
-    
-    /**
-     * Multiply 130-bit number by 32-bit number: h * r
-     * @param {Array} h - 130-bit multiplicand
-     * @param {Array} r - 130-bit multiplier (clamped r value)
-     * @returns {Array} Product h * r (before reduction)
-     */
-    mul130: function(h, r) {
-      let c = 0;
-      let d0, d1, d2, d3, d4;
-      
-      // Optimized multiplication for 26-bit limbs
-      d0 = c;
-      d0 += h[0] * r[0];
-      d0 += (h[1] * r[4]) * 5;
-      d0 += (h[2] * r[3]) * 5;
-      d0 += (h[3] * r[2]) * 5;
-      d0 += (h[4] * r[1]) * 5;
-      c = d0 >>> 26; d0 &= 0x3ffffff;
-      
-      d1 = c;
-      d1 += h[0] * r[1];
-      d1 += h[1] * r[0];
-      d1 += (h[2] * r[4]) * 5;
-      d1 += (h[3] * r[3]) * 5;
-      d1 += (h[4] * r[2]) * 5;
-      c = d1 >>> 26; d1 &= 0x3ffffff;
-      
-      d2 = c;
-      d2 += h[0] * r[2];
-      d2 += h[1] * r[1];
-      d2 += h[2] * r[0];
-      d2 += (h[3] * r[4]) * 5;
-      d2 += (h[4] * r[3]) * 5;
-      c = d2 >>> 26; d2 &= 0x3ffffff;
-      
-      d3 = c;
-      d3 += h[0] * r[3];
-      d3 += h[1] * r[2];
-      d3 += h[2] * r[1];
-      d3 += h[3] * r[0];
-      d3 += (h[4] * r[4]) * 5;
-      c = d3 >>> 26; d3 &= 0x3ffffff;
-      
-      d4 = c;
-      d4 += h[0] * r[4];
-      d4 += h[1] * r[3];
-      d4 += h[2] * r[2];
-      d4 += h[3] * r[1];
-      d4 += h[4] * r[0];
-      c = d4 >>> 26; d4 &= 0x3ffffff;
-      
-      // Reduce modulo P = 2^130 - 5
-      d0 += c * 5;
-      c = d0 >>> 26; d0 &= 0x3ffffff;
-      d1 += c;
-      
-      // Further propagate carries
-      c = d1 >>> 26; d1 &= 0x3ffffff;
-      d2 += c;
-      c = d2 >>> 26; d2 &= 0x3ffffff;
-      d3 += c;
-      c = d3 >>> 26; d3 &= 0x3ffffff;
-      d4 += c;
-      c = d4 >>> 26; d4 &= 0x3ffffff;
-      
-      // Handle any remaining overflow
-      d0 += c * 5;
-      c = d0 >>> 26; d0 &= 0x3ffffff;
-      d1 += c;
-      
-      return [d0, d1, d2, d3, d4];
-    },
-    
-    /**
-     * Final reduction modulo P = 2^130 - 5
-     * @param {Array} h - 130-bit number to reduce
-     * @returns {Array} Reduced result
-     */
-    freeze: function(h) {
-      // First normalize carries
-      let c = 0;
-      for (let i = 0; i < 4; i++) {
-        c += h[i];
-        h[i] = c & 0x3ffffff;
-        c >>>= 26;
-      }
-      c += h[4];
-      h[4] = c & 0x3ffffff;
-      c >>>= 26;
-      
-      // Reduce any overflow (c * 5 where c represents multiples of 2^130)
-      h[0] += c * 5;
-      c = h[0] >>> 26;
-      h[0] &= 0x3ffffff;
-      h[1] += c;
-      
-      // Final conditional subtraction of P = 2^130 - 5
-      // Standard approach: try to subtract P, if no underflow then use the result
-      const g = [0, 0, 0, 0, 0];
-      
-      // Compute g = h - (2^130 - 5) = h - 2^130 + 5 = h + 5 - 2^130
-      // We'll compute h + 5 and check if it overflows 130 bits
-      let carry = 5;
-      for (let i = 0; i < 5; i++) {
-        carry += h[i];
-        g[i] = carry & 0x3ffffff;
-        carry >>>= 26;
-      }
-      
-      // carry now contains the overflow bit (bit 130)
-      // If carry = 0, then h < P (no reduction needed)
-      // If carry = 1, then h >= P (use g = h + 5 - 2^130 = h - P)
-      
-      // Use conditional move: if carry=0 use h, if carry=1 use g
-      const mask = carry - 1; // carry=0 -> mask=-1, carry=1 -> mask=0
-      for (let i = 0; i < 5; i++) {
-        h[i] = (h[i] & mask) | (g[i] & ~mask);
-      }
-      
-      return h;
+    // Reduce modulo 2^130-5
+    // High limbs contribute with factor 5 to low limbs
+    for (let i = 5; i < 10; i++) {
+      t[i - 5] += t[i] * 5;
     }
-  };
-  
-  // Create Poly1305 MAC object
-  const Poly1305 = {
-    // Public interface properties (adapted for MAC algorithm)
-    internalName: 'Poly1305',
-    name: 'Poly1305 MAC',
-    comment: 'RFC 7539 Poly1305 Message Authentication Code',
-    minKeyLength: 32, // 32 bytes (256 bits) for one-time key
-    maxKeyLength: 32,
-    stepKeyLength: 1,
-    minBlockSize: 16, // 16-byte blocks
-    maxBlockSize: 16,
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: true, // MACs don't decode, they verify
-    isInitialized: false,
     
-    // Constants for RFC 7539 Poly1305
-    BLOCK_SIZE: 16,
-    KEY_SIZE: 32,
-    TAG_SIZE: 16,
-    
-    // Initialize MAC
-    Init: function() {
-      Poly1305.isInitialized = true;
-    },
-    
-    // Set up key
-    KeySetup: function(key) {
-      let id;
-      do {
-        id = 'Poly1305[' + global.generateUniqueID() + ']';
-      } while (Poly1305.instances[id] || global.objectInstances[id]);
-      
-      Poly1305.instances[id] = new Poly1305.Poly1305Instance(key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear MAC data
-    ClearData: function(id) {
-      if (Poly1305.instances[id]) {
-        delete Poly1305.instances[id];
-        delete global.objectInstances[id];
-        return true;
-      } else {
-        global.throwException('Unknown Object Reference Exception', id, 'Poly1305', 'ClearData');
-        return false;
-      }
-    },
-    
-    // Compute MAC (encrypt interface)
-    encryptBlock: function(id, message) {
-      if (!Poly1305.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'Poly1305', 'encryptBlock');
-        return '';
-      }
-      
-      const instance = Poly1305.instances[id];
-      return instance.computeMAC(message);
-    },
-    
-    // Verify MAC (decrypt interface)
-    decryptBlock: function(id, data) {
-      // For MACs, this could verify the tag
-      // Input format: message + 16-byte tag
-      if (!Poly1305.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'Poly1305', 'decryptBlock');
-        return '';
-      }
-      
-      if (data.length < Poly1305.TAG_SIZE) {
-        return ''; // Invalid: too short for tag
-      }
-      
-      const instance = Poly1305.instances[id];
-      const message = data.substring(0, data.length - Poly1305.TAG_SIZE);
-      const providedTag = data.substring(data.length - Poly1305.TAG_SIZE);
-      const computedTag = instance.computeMAC(message);
-      
-      // Constant-time comparison
-      const tagBytes1 = OpCodes.StringToBytes(providedTag);
-      const tagBytes2 = OpCodes.StringToBytes(computedTag);
-      
-      if (OpCodes.SecureCompare(tagBytes1, tagBytes2)) {
-        return message; // Verification successful
-      } else {
-        return ''; // Verification failed
-      }
-    },
-    
-    // Instance class
-    Poly1305Instance: function(key) {
-      if (!key || key.length !== Poly1305.KEY_SIZE) {
-        throw new Error('Poly1305 requires exactly 32-byte key');
-      }
-      
-      const keyBytes = OpCodes.StringToBytes(key);
-      
-      // Clamp the r value (first 16 bytes)
-      this.r = [0, 0, 0, 0, 0];
-      const rBytes = keyBytes.slice(0, 16);
-      
-      // Apply RFC 7539 clamping to r
-      rBytes[3] &= 0x0f;
-      rBytes[7] &= 0x0f;
-      rBytes[11] &= 0x0f;
-      rBytes[15] &= 0x0f;
-      rBytes[4] &= 0xfc;
-      rBytes[8] &= 0xfc;
-      rBytes[12] &= 0xfc;
-      
-      this.r = Poly1305Math.load130(rBytes);
-      
-      // Store s value (second 16 bytes)
-      this.s = Poly1305Math.load130(keyBytes.slice(16, 32));
-      
-      /**
-       * Compute Poly1305 MAC for a message
-       * @param {string} message - Message to authenticate
-       * @returns {string} 16-byte MAC tag
-       */
-      this.computeMAC = function(message) {
-        const msgBytes = OpCodes.StringToBytes(message);
-        let h = Poly1305Math.create130(); // Accumulator starts at 0
-        
-        // Process message in 16-byte blocks
-        for (let i = 0; i < msgBytes.length; i += Poly1305.BLOCK_SIZE) {
-          const blockSize = Math.min(Poly1305.BLOCK_SIZE, msgBytes.length - i);
-          const block = msgBytes.slice(i, i + blockSize);
-          
-          // Pad block according to RFC 7539 section 2.5.1
-          if (blockSize < Poly1305.BLOCK_SIZE) {
-            // For partial blocks, add 0x01 byte followed by zeros
-            block[blockSize] = 0x01;
-            while (block.length < Poly1305.BLOCK_SIZE + 1) {
-              block.push(0x00);
-            }
-          } else {
-            // For full 16-byte blocks, add 0x01 as the 17th byte
-            block.push(0x01);
-          }
-          
-          // Load block as 130-bit number
-          const blockNum = Poly1305Math.load130(block);
-          
-          // h = (h + block) * r mod P
-          h = Poly1305Math.add130(h, blockNum);
-          h = Poly1305Math.mul130(h, this.r);
-        }
-        
-        // Add s and reduce to get final tag (128 bits)
-        h = Poly1305Math.add130(h, this.s);
-        h = Poly1305Math.freeze(h);
-        
-        // Return only the low 128 bits as the tag
-        const tagBytes = Poly1305Math.store130(h);
-        return OpCodes.BytesToString(tagBytes);
-      };
+    // Carry propagation
+    let carry = 0;
+    const result = new Array(5);
+    for (let i = 0; i < 5; i++) {
+      carry += t[i];
+      result[i] = carry & 0x3ffffff;
+      carry >>>= 26;
     }
-  };
+    
+    // Final reduction
+    carry *= 5;
+    for (let i = 0; i < 5; i++) {
+      carry += result[i];
+      result[i] = carry & 0x3ffffff;
+      carry >>>= 26;
+    }
+    
+    return result;
+  },
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(Poly1305);
+  /**
+   * Convert 16-byte little-endian to 5x26-bit representation
+   */
+  fromBytes(bytes) {
+    const result = new Array(5);
+    
+    result[0] = (bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | ((bytes[3] & 0x3) << 24)) >>> 0;
+    result[1] = (((bytes[3] >>> 2) | (bytes[4] << 6) | (bytes[5] << 14) | ((bytes[6] & 0xf) << 22)) >>> 0);
+    result[2] = (((bytes[6] >>> 4) | (bytes[7] << 4) | (bytes[8] << 12) | ((bytes[9] & 0x3f) << 20)) >>> 0);
+    result[3] = (((bytes[9] >>> 6) | (bytes[10] << 2) | (bytes[11] << 10) | (bytes[12] << 18)) >>> 0);
+    result[4] = ((bytes[13] | (bytes[14] << 8) | (bytes[15] << 16)) >>> 0);
+    
+    return result;
+  },
+  
+  /**
+   * Convert 5x26-bit representation to 16-byte little-endian
+   */
+  toBytes(limbs) {
+    // Normalize limbs first
+    let carry = 0;
+    const normalized = new Array(5);
+    for (let i = 0; i < 5; i++) {
+      carry += limbs[i];
+      normalized[i] = carry & 0x3ffffff;
+      carry >>>= 26;
+    }
+    
+    const result = new Array(16);
+    
+    result[0] = normalized[0] & 0xff;
+    result[1] = (normalized[0] >>> 8) & 0xff;
+    result[2] = (normalized[0] >>> 16) & 0xff;
+    result[3] = ((normalized[0] >>> 24) | (normalized[1] << 2)) & 0xff;
+    result[4] = (normalized[1] >>> 6) & 0xff;
+    result[5] = (normalized[1] >>> 14) & 0xff;
+    result[6] = ((normalized[1] >>> 22) | (normalized[2] << 4)) & 0xff;
+    result[7] = (normalized[2] >>> 4) & 0xff;
+    result[8] = (normalized[2] >>> 12) & 0xff;
+    result[9] = ((normalized[2] >>> 20) | (normalized[3] << 6)) & 0xff;
+    result[10] = (normalized[3] >>> 2) & 0xff;
+    result[11] = (normalized[3] >>> 10) & 0xff;
+    result[12] = (normalized[3] >>> 18) & 0xff;
+    result[13] = normalized[4] & 0xff;
+    result[14] = (normalized[4] >>> 8) & 0xff;
+    result[15] = (normalized[4] >>> 16) & 0xff;
+    
+    return result;
   }
-  
-  // Export to global scope
-  global.Poly1305 = Poly1305;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Poly1305;
+};
+
+class Poly1305Algorithm extends MacAlgorithm {
+  constructor() {
+    super();
+    
+    // Required metadata
+    this.name = "Poly1305";
+    this.description = "One-time message authenticator designed by D.J. Bernstein using 130-bit field arithmetic. Provides information-theoretic security when used with unique keys.";
+    this.inventor = "Daniel J. Bernstein";
+    this.year = 2005;
+    this.category = CategoryType.MAC;
+    this.subCategory = "Universal Hashing MAC";
+    this.securityStatus = SecurityStatus.SECURE;
+    this.complexity = ComplexityType.INTERMEDIATE;
+    this.country = CountryCode.US;
+    
+    // MAC-specific configuration
+    this.SupportedMacSizes = [
+      new KeySize(16, 16, 1)  // Poly1305 produces 16-byte MAC
+    ];
+    this.NeedsKey = true;
+    
+    // Documentation links
+    this.documentation = [
+      new LinkItem("RFC 7539 - ChaCha20 and Poly1305", "https://tools.ietf.org/html/rfc7539"),
+      new LinkItem("Poly1305 Specification", "https://cr.yp.to/mac/poly1305-20050329.pdf"),
+      new LinkItem("The Poly1305-AES Message-Authentication Code", "https://www.iacr.org/archive/fse2005/33250419/33250419.pdf")
+    ];
+    
+    // Reference links
+    this.references = [
+      new LinkItem("NaCl crypto library", "https://nacl.cr.yp.to/"),
+      new LinkItem("libsodium Poly1305", "https://libsodium.gitbook.io/doc/advanced/poly1305"),
+      new LinkItem("RFC 8439 ChaCha20-Poly1305", "https://tools.ietf.org/html/rfc8439")
+    ];
+    
+    // Known vulnerabilities
+    this.knownVulnerabilities = [
+      new LinkItem("Key Reuse Attack", "Using the same key twice completely breaks security"),
+      new LinkItem("Weak Key Generation", "Keys must be cryptographically random")
+    ];
+    
+    // Test vectors from RFC 7539
+    this.tests = [
+      // Test Case 1: RFC 7539 Section 2.5.2
+      {
+        text: "RFC 7539 Section 2.5.2 - Cryptographic Forum Research Group",
+        uri: "https://tools.ietf.org/html/rfc7539",
+        input: [0x43, 0x72, 0x79, 0x70, 0x74, 0x6f, 0x67, 0x72, 0x61, 0x70, 0x68, 0x69, 0x63, 0x20, 0x46, 0x6f, 0x72, 0x75, 0x6d, 0x20, 0x52, 0x65, 0x73, 0x65, 0x61, 0x72, 0x63, 0x68, 0x20, 0x47, 0x72, 0x6f, 0x75, 0x70],
+        key: [0x85, 0xd6, 0xbe, 0x78, 0x57, 0x55, 0x6d, 0x33, 0x7f, 0x44, 0x52, 0xfe, 0x42, 0xd5, 0x06, 0xa8, 0x01, 0x03, 0x80, 0x8a, 0xfb, 0x0d, 0xb2, 0xfd, 0x4a, 0xbf, 0xf6, 0xaf, 0x41, 0x49, 0xf5, 0x1b],
+        expected: [0xa8, 0x06, 0x1d, 0xc1, 0x30, 0x51, 0x36, 0xc6, 0xc2, 0x2b, 0x8b, 0xaf, 0x0c, 0x01, 0x27, 0xa9]
+      },
+      // Test Case 2: Empty message
+      {
+        text: "RFC 7539 Empty Message Test",
+        uri: "https://tools.ietf.org/html/rfc7539", 
+        input: [],
+        key: [0x74, 0x68, 0x69, 0x73, 0x20, 0x69, 0x73, 0x20, 0x33, 0x32, 0x2d, 0x62, 0x79, 0x74, 0x65, 0x20, 0x6b, 0x65, 0x79, 0x20, 0x66, 0x6f, 0x72, 0x20, 0x50, 0x6f, 0x6c, 0x79, 0x31, 0x33, 0x30, 0x35],
+        expected: [0x49, 0xec, 0x78, 0x09, 0x0e, 0x48, 0x1e, 0xc6, 0xc2, 0x6b, 0x33, 0xb9, 0x1c, 0xcc, 0x03, 0x07]
+      }
+    ];
   }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+
+  CreateInstance(isInverse = false) {
+    if (isInverse) {
+      return null; // Poly1305 cannot be reversed
+    }
+    return new Poly1305Instance(this);
+  }
+}
+
+// Instance class - handles the actual Poly1305 computation
+class Poly1305Instance extends IMacInstance {
+  constructor(algorithm) {
+    super(algorithm);
+    this._key = null;
+    this.inputBuffer = [];
+    this.r = null;      // Secret key r (clamped)
+    this.s = null;      // Secret key s
+    this.h = null;      // Accumulator
+  }
+
+  // Property setter for key
+  set key(keyBytes) {
+    if (!keyBytes || !Array.isArray(keyBytes)) {
+      throw new Error("Invalid key - must be byte array");
+    }
+    if (keyBytes.length !== 32) {
+      throw new Error("Poly1305 requires 32-byte key");
+    }
+    this._key = [...keyBytes]; // Store copy
+    this._initializePoly1305();
+  }
+
+  get key() {
+    return this._key ? [...this._key] : null;
+  }
+
+  // Initialize Poly1305 with key setup
+  _initializePoly1305() {
+    if (!this._key) return;
+    
+    // Split key into r (first 16 bytes) and s (last 16 bytes)
+    const rBytes = this._key.slice(0, 16);
+    const sBytes = this._key.slice(16, 32);
+    
+    // Clamp r according to Poly1305 specification
+    rBytes[3] &= 15;   // Clear top 4 bits
+    rBytes[7] &= 15;
+    rBytes[11] &= 15;
+    rBytes[15] &= 15;
+    
+    rBytes[4] &= 252;  // Clear bottom 2 bits
+    rBytes[8] &= 252;
+    rBytes[12] &= 252;
+    
+    // Convert to 5x26-bit representation
+    this.r = Poly1305Math.fromBytes(rBytes);
+    this.s = Poly1305Math.fromBytes(sBytes);
+    
+    // Initialize accumulator to zero
+    this.h = [0, 0, 0, 0, 0];
+  }
+
+  // Feed data to the MAC
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    if (!Array.isArray(data)) {
+      throw new Error("Invalid input data - must be byte array");
+    }
+    this.inputBuffer.push(...data);
+  }
+
+  // Process a 16-byte block
+  _processBlock(block, isLast) {
+    // Convert block to 5x26-bit representation
+    const blockLimbs = Poly1305Math.fromBytes(block);
+    
+    // Add high bit (2^128) unless this is the last partial block
+    if (!isLast) {
+      blockLimbs[4] |= 0x1000000; // Set bit 128
+    }
+    
+    // h = (h + block) * r mod (2^130-5)
+    this.h = Poly1305Math.add(this.h, blockLimbs);
+    this.h = Poly1305Math.mul(this.h, this.r);
+  }
+
+  // Get the MAC result
+  Result() {
+    if (!this._key) {
+      throw new Error("Key not set");
+    }
+    
+    if (!this.r || !this.s || !this.h) {
+      throw new Error("Poly1305 not properly initialized");
+    }
+
+    // Process complete 16-byte blocks
+    const messageBuffer = [...this.inputBuffer];
+    
+    // Process complete blocks
+    while (messageBuffer.length >= 16) {
+      const block = messageBuffer.splice(0, 16);
+      this._processBlock(block, false);
+    }
+
+    // Process any remaining bytes in buffer
+    if (messageBuffer.length > 0) {
+      // Pad to 16 bytes and add high bit
+      const finalBlock = new Array(16).fill(0);
+      for (let i = 0; i < messageBuffer.length; i++) {
+        finalBlock[i] = messageBuffer[i];
+      }
+      finalBlock[messageBuffer.length] = 0x01; // Set high bit for padding
+      
+      this._processBlock(finalBlock, true);
+    }
+    
+    // Add s to get final result and reduce modulo 2^128
+    const finalH = Poly1305Math.add(this.h, this.s);
+    
+    // Reduce modulo 2^128 (clear bit 128 and higher)
+    finalH[4] &= 0xffffff; // Clear bits above 128
+    
+    // Convert back to bytes
+    const mac = Poly1305Math.toBytes(finalH);
+
+    // Clear buffer for next use
+    this.inputBuffer = [];
+    return mac;
+  }
+
+  // Compute MAC (IMacInstance interface)
+  ComputeMac(data) {
+    if (!this._key) {
+      throw new Error("Key not set");
+    }
+    if (!Array.isArray(data)) {
+      throw new Error("Invalid input data - must be byte array");
+    }
+    
+    // Feed data and get result
+    this.Feed(data);
+    return this.Result();
+  }
+}
+
+// Register the algorithm immediately
+RegisterAlgorithm(new Poly1305Algorithm());

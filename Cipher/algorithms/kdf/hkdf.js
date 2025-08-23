@@ -41,20 +41,9 @@
     }
   }
   
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('HKDF requires Cipher system to be loaded first');
-      return;
-    }
+  // Load AlgorithmFramework (REQUIRED)
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
   }
   
   const HKDF = {

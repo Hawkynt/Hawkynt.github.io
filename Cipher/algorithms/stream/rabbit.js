@@ -16,18 +16,11 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Rabbit cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
   }
@@ -38,7 +31,7 @@
     inventor: "Martin Boesgaard, Mette Vesterager, Thomas Pedersen, Jesper Christiansen, Ove Scavenius",
     year: 2003,
     country: "DK",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: null,
     securityNotes: "Well-analyzed eSTREAM finalist with no known practical attacks. However, use established libraries for production.",
@@ -59,9 +52,9 @@
         text: "RFC 4503 Test Vector 1",
         uri: "https://tools.ietf.org/html/rfc4503#section-A.1",
         keySize: 16,
-        key: global.OpCodes ? global.OpCodes.HexToBytes("00112233445566778899aabbccddeeff") : [],
-        input: global.OpCodes ? global.OpCodes.HexToBytes("0000000000000000000000000000000000000000000000000000000000000000") : [],
-        expected: global.OpCodes ? global.OpCodes.HexToBytes("edb70567375dcd7cd0ac834a1016ce0d859d06d08b9c4ba09fe5a07c09c9b6d4") : []
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff") : [],
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000") : [],
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("edb70567375dcd7cd0ac834a1016ce0d859d06d08b9c4ba09fe5a07c09c9b6d4") : []
       }
     ],
 
@@ -82,9 +75,9 @@
         origin: 'RFC 4503',
         link: 'https://tools.ietf.org/html/rfc4503',
         standard: 'RFC 4503',
-        key: OpCodes.HexToString('00112233445566778899aabbccddeeff'),
-        input: OpCodes.HexToString('0000000000000000000000000000000000000000000000000000000000000000'),
-        expected: OpCodes.HexToString('edb70567375dcd7cd0ac834a1016ce0d859d06d08b9c4ba09fe5a07c09c9b6d4'),
+        key: OpCodes.Hex8ToBytes('00112233445566778899aabbccddeeff'),
+        input: OpCodes.Hex8ToBytes('0000000000000000000000000000000000000000000000000000000000000000'),
+        expected: OpCodes.Hex8ToBytes('edb70567375dcd7cd0ac834a1016ce0d859d06d08b9c4ba09fe5a07c09c9b6d4'),
         keyHex: '00112233445566778899aabbccddeeff',
         inputHex: '0000000000000000000000000000000000000000000000000000000000000000',
         expectedHex: 'edb70567375dcd7cd0ac834a1016ce0d859d06d08b9c4ba09fe5a07c09c9b6d4',
@@ -98,9 +91,9 @@
         origin: 'RFC 4503',
         link: 'https://tools.ietf.org/html/rfc4503',
         standard: 'RFC 4503',
-        key: OpCodes.HexToString('c21fcf3881cd5ee8628accb70dc9e4d5'),
-        input: OpCodes.HexToString('0000000000000000000000000000000000000000000000000000000000000000'),
-        expected: OpCodes.HexToString('145ad01dbf824ec7560863dc71e3e0c0b5d8f3b8bb91f0b7f3e967b84c00b2ea'),
+        key: OpCodes.Hex8ToBytes('c21fcf3881cd5ee8628accb70dc9e4d5'),
+        input: OpCodes.Hex8ToBytes('0000000000000000000000000000000000000000000000000000000000000000'),
+        expected: OpCodes.Hex8ToBytes('145ad01dbf824ec7560863dc71e3e0c0b5d8f3b8bb91f0b7f3e967b84c00b2ea'),
         keyHex: 'c21fcf3881cd5ee8628accb70dc9e4d5',
         inputHex: '0000000000000000000000000000000000000000000000000000000000000000',
         expectedHex: '145ad01dbf824ec7560863dc71e3e0c0b5d8f3b8bb91f0b7f3e967b84c00b2ea',
@@ -114,10 +107,10 @@
         origin: 'RFC 4503',
         link: 'https://tools.ietf.org/html/rfc4503',
         standard: 'RFC 4503',
-        key: OpCodes.HexToString('1d272c6a2d8e0dbf6a56666ee488fa62'),
-        iv: OpCodes.HexToString('167de44bb21980e7'),
-        input: OpCodes.HexToString('0000000000000000000000000000000000000000000000000000000000000000'),
-        expected: OpCodes.HexToString('4d1012a17ff40c8ee9d20f5a3568e56b9c1f3b5e03b7b29ae7634b2e4a86b6c0'),
+        key: OpCodes.Hex8ToBytes('1d272c6a2d8e0dbf6a56666ee488fa62'),
+        iv: OpCodes.Hex8ToBytes('167de44bb21980e7'),
+        input: OpCodes.Hex8ToBytes('0000000000000000000000000000000000000000000000000000000000000000'),
+        expected: OpCodes.Hex8ToBytes('4d1012a17ff40c8ee9d20f5a3568e56b9c1f3b5e03b7b29ae7634b2e4a86b6c0'),
         keyHex: '1d272c6a2d8e0dbf6a56666ee488fa62',
         ivHex: '167de44bb21980e7',
         inputHex: '0000000000000000000000000000000000000000000000000000000000000000',
@@ -132,10 +125,10 @@
         origin: 'RFC 4503',
         link: 'https://tools.ietf.org/html/rfc4503',
         standard: 'RFC 4503',
-        key: OpCodes.HexToString('1d272c6a2d8e0dbf6a56666ee488fa62'),
-        iv: OpCodes.HexToString('6f2917b19c845b0a'),
-        input: OpCodes.HexToString('0000000000000000000000000000000000000000000000000000000000000000'),
-        expected: OpCodes.HexToString('6cb1e6a27d7ed824ab7cbe6c21f7e02a2d3c60bb37e39da0e3c92c9de0e7e75e'),
+        key: OpCodes.Hex8ToBytes('1d272c6a2d8e0dbf6a56666ee488fa62'),
+        iv: OpCodes.Hex8ToBytes('6f2917b19c845b0a'),
+        input: OpCodes.Hex8ToBytes('0000000000000000000000000000000000000000000000000000000000000000'),
+        expected: OpCodes.Hex8ToBytes('6cb1e6a27d7ed824ab7cbe6c21f7e02a2d3c60bb37e39da0e3c92c9de0e7e75e'),
         keyHex: '1d272c6a2d8e0dbf6a56666ee488fa62',
         ivHex: '6f2917b19c845b0a',
         inputHex: '0000000000000000000000000000000000000000000000000000000000000000',
@@ -150,9 +143,9 @@
         origin: 'eSTREAM project',
         link: 'https://www.ecrypt.eu.org/stream/',
         standard: 'eSTREAM',
-        key: OpCodes.HexToString('0123456789abcdef0123456789abcdef'),
+        key: OpCodes.Hex8ToBytes('0123456789abcdef0123456789abcdef'),
         input: 'The quick brown fox jumps over the lazy dog',
-        expected: OpCodes.HexToString('a7c083bb9a40c86e8a25a4e8c2a6c8b9e4f5a8d9c0a7c6a92b8e7a6d4c9f8a7b'),
+        expected: OpCodes.Hex8ToBytes('a7c083bb9a40c86e8a25a4e8c2a6c8b9e4f5a8d9c0a7c6a92b8e7a6d4c9f8a7b'),
         keyHex: '0123456789abcdef0123456789abcdef',
         inputHex: '54686520717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f67',
         expectedHex: 'a7c083bb9a40c86e8a25a4e8c2a6c8b9e4f5a8d9c0a7c6a92b8e7a6d4c9f8a7b',
@@ -166,9 +159,9 @@
         origin: 'Implementation validation',
         link: 'https://tools.ietf.org/html/rfc4503',
         standard: 'RFC 4503',
-        key: OpCodes.HexToString('ffeeddccbbaa99887766554433221100'),
-        input: OpCodes.HexToString('0102030405060708090a0b0c0d0e0f10'),
-        expected: OpCodes.HexToString('b8d2b5e6a23c6b4b9f4c8a7d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f'),
+        key: OpCodes.Hex8ToBytes('ffeeddccbbaa99887766554433221100'),
+        input: OpCodes.Hex8ToBytes('0102030405060708090a0b0c0d0e0f10'),
+        expected: OpCodes.Hex8ToBytes('b8d2b5e6a23c6b4b9f4c8a7d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f'),
         keyHex: 'ffeeddccbbaa99887766554433221100',
         inputHex: '0102030405060708090a0b0c0d0e0f10',
         expectedHex: 'b8d2b5e6a23c6b4b9f4c8a7d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f',
@@ -182,9 +175,9 @@
         origin: 'Extended validation',
         link: 'https://tools.ietf.org/html/rfc4503',
         standard: 'RFC 4503',
-        key: OpCodes.HexToString('a0a1a2a3a4a5a6a7a8a9aaabacadaeaf'),
+        key: OpCodes.Hex8ToBytes('a0a1a2a3a4a5a6a7a8a9aaabacadaeaf'),
         input: 'A'.repeat(64),
-        expected: OpCodes.HexToString('e0f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0'),
+        expected: OpCodes.Hex8ToBytes('e0f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0'),
         keyHex: 'a0a1a2a3a4a5a6a7a8a9aaabacadaeaf',
         inputHex: '41'.repeat(64),
         expectedHex: 'e0f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0',
@@ -198,10 +191,10 @@
         origin: 'Edge case validation',
         link: 'https://tools.ietf.org/html/rfc4503',
         standard: 'RFC 4503',
-        key: OpCodes.HexToString('deadbeefcafebabe0123456789abcdef'),
-        iv: OpCodes.HexToString('0000000000000001'),
-        input: OpCodes.BytesToString([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]),
-        expected: OpCodes.HexToString('f1e2d3c4b5a69788796a5b4c3d2e1f0e1d2c3b4a59687716253748596a7b8c9d'),
+        key: OpCodes.Hex8ToBytes('deadbeefcafebabe0123456789abcdef'),
+        iv: OpCodes.Hex8ToBytes('0000000000000001'),
+        input: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+        expected: OpCodes.Hex8ToBytes('f1e2d3c4b5a69788796a5b4c3d2e1f0e1d2c3b4a59687716253748596a7b8c9d'),
         keyHex: 'deadbeefcafebabe0123456789abcdef',
         ivHex: '0000000000000001',
         inputHex: '000102030405060708090a0b0c0d0e0f',
@@ -549,8 +542,10 @@
   };
   
   // Auto-register with Subsystem (according to category) if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
-    global.Cipher.Add(Rabbit);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(Rabbit);
+  }
   
   // Export to global scope
   global.Rabbit = Rabbit;

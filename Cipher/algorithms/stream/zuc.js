@@ -316,7 +316,7 @@
     
     encryptBlock: function(id, plaintext) {
       // ZUC is a stream cipher - process the data
-      const data = global.OpCodes ? global.OpCodes.StringToBytes(plaintext) : [];
+      const data = global.OpCodes ? global.OpCodes.AsciiToBytes(plaintext) : [];
       const keystream = this.GenerateKeystream(data.length);
       const result = [];
       
@@ -353,8 +353,9 @@
   };
   
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    global.Cipher.Add(ZUC);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(Zuc);
   } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(ZUC);
   }

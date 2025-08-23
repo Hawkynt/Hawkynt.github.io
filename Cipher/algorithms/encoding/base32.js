@@ -105,6 +105,7 @@ class Base32Instance extends IAlgorithmInstance {
     this.isInverse = isInverse;
     this.alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
     this.paddingChar = "=";
+    this.processedData = null;
     
     // Create decode lookup table
     this.decodeTable = {};
@@ -119,15 +120,17 @@ class Base32Instance extends IAlgorithmInstance {
     }
 
     if (this.isInverse) {
-      return this.decode(data);
+      this.processedData = this.decode(data);
     } else {
-      return this.encode(data);
+      this.processedData = this.encode(data);
     }
   }
 
   Result() {
-    // Base32 processing is done in Feed method
-    throw new Error('Base32Instance.Result: Use Feed() method to encode/decode data');
+    if (this.processedData === null) {
+      throw new Error('Base32Instance.Result: No data processed. Call Feed() first.');
+    }
+    return this.processedData;
   }
 
   encode(data) {
@@ -160,7 +163,11 @@ class Base32Instance extends IAlgorithmInstance {
       result += this.paddingChar;
     }
 
-    return OpCodes.AnsiToBytes(result);
+    const resultBytes = [];
+    for (let i = 0; i < result.length; i++) {
+      resultBytes.push(result.charCodeAt(i));
+    }
+    return resultBytes;
   }
 
   decode(data) {
@@ -168,7 +175,7 @@ class Base32Instance extends IAlgorithmInstance {
       return [];
     }
 
-    const input = OpCodes.BytesToAnsi(data).toUpperCase();
+    const input = String.fromCharCode(...data).toUpperCase();
     let cleanInput = input.replace(/[^A-Z2-7]/g, "");
     
     // Remove padding
@@ -200,13 +207,13 @@ class Base32Instance extends IAlgorithmInstance {
   encodeString(str) {
     const bytes = OpCodes.AnsiToBytes(str);
     const encoded = this.encode(bytes);
-    return OpCodes.BytesToAnsi(encoded);
+    return String.fromCharCode(...encoded);
   }
 
   decodeString(str) {
     const bytes = OpCodes.AnsiToBytes(str);
     const decoded = this.decode(bytes);
-    return OpCodes.BytesToAnsi(decoded);
+    return String.fromCharCode(...decoded);
   }
 }
 

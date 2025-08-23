@@ -18,7 +18,7 @@
     inventor: "Scott Arciszewski (libsodium team)",
     year: 2018,
     country: "Multi-national",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Authenticated Encryption",
     securityStatus: "active",
     securityNotes: "Modern AEAD construction extending ChaCha20-Poly1305 with larger nonces. Widely used in applications requiring nonce-misuse resistance without nonce management complexity.",
@@ -50,7 +50,7 @@
         key: OpCodes.Hex8ToBytes("808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f"),
         nonce: OpCodes.Hex8ToBytes("404142434445464748494a4b4c4d4e4f5051525354555657"),
         aad: OpCodes.Hex8ToBytes("50515253c0c1c2c3c4c5c6c7"),
-        plaintext: OpCodes.StringToBytes("Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it."),
+        plaintext: OpCodes.AsciiToBytes("Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it."),
         expectedLength: 114 // plaintext length
       },
       {
@@ -551,8 +551,8 @@
       
       // 192-bit nonce (24 bytes)
       const extendedNonce = OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617");
-      const aad = OpCodes.StringToBytes("Extended nonce AEAD");
-      const plaintext = OpCodes.StringToBytes("XChaCha20-Poly1305 extends ChaCha20-Poly1305 with 192-bit nonces for better nonce management");
+      const aad = OpCodes.AsciiToBytes("Extended nonce AEAD");
+      const plaintext = OpCodes.AsciiToBytes("XChaCha20-Poly1305 extends ChaCha20-Poly1305 with 192-bit nonces for better nonce management");
       
       const encrypted = this.encryptAEAD(this.key, extendedNonce, aad, plaintext);
       console.log('Plaintext:', OpCodes.BytesToString(plaintext));

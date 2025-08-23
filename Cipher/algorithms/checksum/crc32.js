@@ -74,7 +74,7 @@ class CRC32Algorithm extends Algorithm {
         polynomial: 0x04C11DB7,
         initialValue: 0xFFFFFFFF,
         inputReflected: true,
-        resultReflected: true,
+        resultReflected: false,
         finalXor: 0xFFFFFFFF,
         tests: [
           new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),

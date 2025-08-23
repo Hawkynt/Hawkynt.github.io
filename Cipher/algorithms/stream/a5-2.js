@@ -29,17 +29,14 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
+      return;
+    }
+  } else {
       console.error('A5/2 cipher requires Cipher system to be loaded first');
       return;
     }
@@ -52,7 +49,7 @@
     inventor: "ETSI (European Telecommunications Standards Institute)",
     year: 1989,
     country: "EU",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: "insecure",
     securityNotes: "Extremely weak cipher with intentional backdoors. Completely broken by academic cryptanalysis. Never use in any application.",
@@ -403,8 +400,9 @@
   };
   
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    global.Cipher.Add(A52);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(A52);
   }
   
   // Export to global scope

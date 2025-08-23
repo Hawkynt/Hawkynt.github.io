@@ -23,7 +23,7 @@ if (typeof require !== 'undefined') {
     require('../hash/md5.js');
     require('../hash/sha512.js');
   } catch (e) {
-    console.warn('Warning: Could not load hash dependencies for HMAC:', e.message);
+    // Could not load hash dependencies for HMAC
   }
 }
 

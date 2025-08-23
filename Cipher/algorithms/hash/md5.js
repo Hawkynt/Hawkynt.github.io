@@ -133,7 +133,7 @@
       // Initialize working variables
       let a = this.h[0], b = this.h[1], c = this.h[2], d = this.h[3];
       
-      // MD5 round constants
+      // MD5 round constants (RFC 1321)
       const k = [
         0xD76AA478, 0xE8C7B756, 0x242070DB, 0xC1BDCEEE, 0xF57C0FAF, 0x4787C62A, 0xA8304613, 0xFD469501,
         0x698098D8, 0x8B44F7AF, 0xFFFF5BB1, 0x895CD7BE, 0x6B901122, 0xFD987193, 0xA679438E, 0x49B40821,
@@ -153,6 +153,14 @@
       
       // Rotate left
       const rotl = (x, n) => (x << n) | (x >>> (32 - n));
+      
+      // MD5 shift amounts per round (RFC 1321)
+      const shifts = [
+        7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,
+        5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,
+        4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,
+        6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21
+      ];
       
       // MD5 rounds
       for (let i = 0; i < 64; i++) {
@@ -176,10 +184,7 @@
         a = d;
         d = c;
         c = b;
-        
-        const shifts = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
-        const shiftIndex = (Math.floor(i / 16) * 4) + (i % 4);
-        b = (b + rotl(f, shifts[shiftIndex])) >>> 0;
+        b = (b + rotl(f, shifts[i])) >>> 0;
       }
       
       // Add to hash

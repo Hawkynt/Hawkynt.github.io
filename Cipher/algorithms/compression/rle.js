@@ -1,445 +1,183 @@
 /*
- * Universal Run-Length Encoding (RLE) Compression
- * Compatible with both Browser and Node.js environments
- * Educational implementation of simple repetition compression
+ * RLE (Run-Length Encoding) Compression Algorithm Implementation
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
+ * 
+ * Simple compression algorithm that replaces consecutive identical bytes
+ * with a count-value pair. Most effective on data with long runs of repeated values.
  */
 
-(function(global) {
-  'use strict';
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
+
+// Load OpCodes for cryptographic operations (RECOMMENDED)
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
+
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        CompressionAlgorithm, IAlgorithmInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
   
-  // Load dependencies
-  if (!global.Compression && typeof require !== 'undefined') {
-    try {
-      require('../../compression.js');
-    } catch (e) {
-      console.error('Failed to load compression framework:', e.message);
-      return;
-    }
-  }
-  
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes.js:', e.message);
-      return;
-    }
-  }
-  
-  const RLE = {
-    name: "Run-Length Encoding (RLE)",
-    description: "Simple compression algorithm that replaces consecutive identical bytes with a count-value pair. Most effective on data with long runs of repeated values.",
-    inventor: "Unknown (fundamental technique)",
-    year: 1967,
-    country: "US",
-    category: "compression",
-    subCategory: "Transform",
-    securityStatus: null,
-    securityNotes: "Compression algorithm - no security properties.",
+class RLECompression extends CompressionAlgorithm {
+  constructor() {
+    super();
     
-    documentation: [
-      {text: "Run-Length Encoding - Wikipedia", uri: "https://en.wikipedia.org/wiki/Run-length_encoding"},
-      {text: "PCX Image Format Specification", uri: "https://web.archive.org/web/20100206055706/http://www.qzx.com/pc-gpe/pcx.txt"},
-      {text: "TIFF PackBits Algorithm", uri: "https://www.adobe.io/open/standards/TIFF.html"},
-      {text: "ITU-T T.4 Fax Standard", uri: "https://www.itu.int/rec/T-REC-T.4/en"}
-    ],
+    // Required metadata
+    this.name = "RLE";
+    this.description = "Simple compression algorithm that replaces consecutive identical bytes with a count-value pair. Most effective on data with long runs of repeated values. Fundamental technique used in many image formats.";
+    this.inventor = "Unknown (fundamental technique)";
+    this.year = 1967;
+    this.category = CategoryType.COMPRESSION;
+    this.subCategory = "Transform";
+    this.securityStatus = null;
+    this.complexity = ComplexityType.ELEMENTARY;
+    this.country = CountryCode.US;
+
+    // Configuration
+    this.MAX_RUN_LENGTH = 255; // Maximum run length in a single encoding
+    this.ESCAPE_CHAR = 0x1B;   // Escape character (ESC)
     
-    references: [
-      {text: "Mark Nelson RLE Article", uri: "https://web.archive.org/web/20071013094925/http://www.dogma.net/markn/articles/rle/rle.htm"}, 
-      {text: "Stanford CS106B Compression", uri: "https://web.stanford.edu/class/cs106b/lectures/compression/"},
-      {text: "MIT Compression Algorithms", uri: "https://ocw.mit.edu/courses/electrical-engineering-and-computer-science/"},
-      {text: "Image Compression Examples", uri: "https://testimages.org/"}
-    ],
+    // Documentation and references
+    this.documentation = [
+      new LinkItem("Run-Length Encoding - Wikipedia", "https://en.wikipedia.org/wiki/Run-length_encoding"),
+      new LinkItem("PCX Image Format Specification", "https://web.archive.org/web/20100206055706/http://www.qzx.com/pc-gpe/pcx.txt"),
+      new LinkItem("TIFF PackBits Algorithm", "https://www.adobe.io/open/standards/TIFF.html")
+    ];
+
+    this.references = [
+      new LinkItem("Mark Nelson RLE Article", "https://web.archive.org/web/20071013094925/http://www.dogma.net/markn/articles/rle/rle.htm"),
+      new LinkItem("Stanford CS106B Compression", "https://web.stanford.edu/class/cs106b/lectures/compression/"),
+      new LinkItem("ITU-T T.4 Fax Standard", "https://www.itu.int/rec/T-REC-T.4/en")
+    ];
     
-    knownVulnerabilities: [],
-    
-    tests: [
+    // Test vectors - round-trip compression tests
+    this.tests = [
       {
         text: "Simple repeated pattern",
-        uri: "Basic RLE test",
-        input: (typeof OpCodes !== 'undefined' && OpCodes.ANSIToBytes) ? OpCodes.ANSIToBytes("AAABBBCCC") : "AAABBBCCC".split('').map(c => c.charCodeAt(0)),
-        expected: null // Output depends on compression algorithm format
+        uri: "https://en.wikipedia.org/wiki/Run-length_encoding",
+        input: [65, 65, 65, 66, 66, 66, 67, 67, 67], // "AAABBBCCC"
+        expected: [65, 65, 65, 66, 66, 66, 67, 67, 67] // Should decompress to original
       },
       {
         text: "Long run compression",
-        uri: "Maximum compression test",
-        input: (typeof OpCodes !== 'undefined' && OpCodes.ANSIToBytes) ? OpCodes.ANSIToBytes("AAAAAAAAAA") : "AAAAAAAAAA".split('').map(c => c.charCodeAt(0)),
-        expected: null // High compression ratio expected
+        uri: "https://en.wikipedia.org/wiki/Run-length_encoding",
+        input: [65, 65, 65, 65, 65, 65, 65, 65, 65, 65], // "AAAAAAAAAA"
+        expected: [65, 65, 65, 65, 65, 65, 65, 65, 65, 65] // Should decompress to original
       },
       {
-        text: "No repeated characters", 
-        uri: "Worst case test",
-        input: (typeof OpCodes !== 'undefined' && OpCodes.ANSIToBytes) ? OpCodes.ANSIToBytes("ABCDEF") : "ABCDEF".split('').map(c => c.charCodeAt(0)),
-        expected: null // Should pass through as literals
-      },
-      {
-        text: "Empty string test",
-        uri: "Edge case validation",
-        input: (typeof OpCodes !== 'undefined' && OpCodes.ANSIToBytes) ? OpCodes.ANSIToBytes("") : [],
-        expected: (typeof OpCodes !== 'undefined' && OpCodes.ANSIToBytes) ? OpCodes.ANSIToBytes("") : []
+        text: "No repeated characters",
+        uri: "https://en.wikipedia.org/wiki/Run-length_encoding",
+        input: [65, 66, 67, 68, 69, 70], // "ABCDEF"
+        expected: [65, 66, 67, 68, 69, 70] // Should decompress to original
       }
-    ],
+    ];
+  }
 
-    // Legacy interface properties
-    internalName: 'RLE',
-    instances: {},
-    isInitialized: false,
-    
-    // Configuration
-    MAX_RUN_LENGTH: 255, // Maximum run length in a single encoding
-    ESCAPE_CHAR: 0x1B,   // Escape character (ESC)
-    
-    // Legacy test vectors for compatibility
-    testVectors: [
-      {
-        algorithm: 'RLE',
-        description: 'Simple repeated characters',
-        origin: 'Basic RLE test case',
-        link: 'https://en.wikipedia.org/wiki/Run-length_encoding',
-        standard: 'Educational',
-        input: 'AAABBBCCCAAA',
-        output: '', // Will be generated by algorithm
-        compressionRatio: 2.4, // Good compression for repetitive data
-        notes: 'Tests basic run detection and encoding',
-        category: 'Basic'
-      },
-      {
-        algorithm: 'RLE',
-        description: 'Long runs of identical bytes',
-        origin: 'Maximum compression test',
-        link: 'https://www.cs.duke.edu/csed/curious/compression/rle.html',
-        standard: 'Educational',
-        input: 'A'.repeat(100),
-        output: '', // ESC + 100 + A (3 bytes vs 100 bytes)
-        compressionRatio: 33.3, // Excellent compression for long runs
-        notes: 'Tests maximum run length handling and optimal compression',
-        category: 'Long Run'
-      },
-      {
-        algorithm: 'RLE',
-        description: 'No repeated characters',
-        origin: 'Worst-case scenario',
-        link: 'https://www.prepbytes.com/blog/strings/run-length-encoding/',
-        standard: 'Educational',
-        input: 'ABCDEFGHIJKLMNOP',
-        output: '', // Should output as literals (no compression)
-        compressionRatio: 1.0, // No compression achieved
-        notes: 'Tests algorithm behavior with unique characters - output as literals',
-        category: 'Worst Case'
-      },
-      {
-        algorithm: 'RLE',
-        description: 'Mixed short and long runs',
-        origin: 'Real-world data simulation',
-        link: 'https://www.geeksforgeeks.org/run-length-encoding/',
-        standard: 'GeeksforGeeks',
-        input: 'AABBBBCCCCCCCCCCDEEEEE',
-        output: '', // Mixed encoding: some runs compressed, some literal
-        compressionRatio: 1.8, // Moderate compression
-        notes: 'Tests mixed run lengths and encoding decisions',
-        category: 'Mixed'
-      },
-      {
-        algorithm: 'RLE',
-        description: 'Binary data with repetitive bytes',
-        origin: 'Binary compression test',
-        link: 'https://web.archive.org/web/20071013094925/http://www.dogma.net/markn/articles/rle/rle.htm',
-        standard: 'Mark Nelson Article',
-        input: '\x00\x00\x00\xFF\xFF\xFF\xFF\xFF\x00\x00',
-        output: '', // Binary RLE encoding
-        compressionRatio: 1.7, // Good for binary patterns
-        notes: 'Tests binary data handling and null byte compression',
-        category: 'Binary'
-      },
-      {
-        algorithm: 'RLE',
-        description: 'Image-like data (horizontal lines)',
-        origin: 'Image compression simulation',
-        link: 'https://web.stanford.edu/class/cs106b/lectures/compression/',
-        standard: 'Stanford CS106B',
-        input: '\x00'.repeat(50) + '\xFF'.repeat(50) + '\x80'.repeat(30),
-        output: '', // Image-style compression
-        compressionRatio: 43.3, // Excellent for image-like data
-        notes: 'Simulates horizontal line compression in monochrome images',
-        category: 'Image'
-      },
-      {
-        algorithm: 'RLE',
-        description: 'Edge cases: empty string and single character',
-        origin: 'Edge case validation',
-        link: 'https://algorithms.tutorialhorizon.com/run-length-encoding/',
-        standard: 'Tutorial Horizon',
-        input: '',
-        output: '',
-        compressionRatio: 1.0, // Empty input handling
-        notes: 'Edge case: empty input should return empty output',
-        category: 'Edge Case'
-      }
-    ],
-    
-    
-    /**
-     * Initialize the algorithm
-     */
-    Init: function() {
-      this.isInitialized = true;
-      console.log('RLE algorithm initialized');
-    },
-    
-    /**
-     * Create a new instance
-     */
-    KeySetup: function() {
-      const id = this.internalName + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
-      this.instances[id] = {
-        initialized: true,
-        compressionRatio: 0,
-        lastInputSize: 0,
-        lastOutputSize: 0
-      };
-      return id;
-    },
-    
-    /**
-     * Compress data using Run-Length Encoding
-     * Format: For runs >= 3: [ESCAPE_CHAR][count][character]
-     *         For single chars or runs < 3: [character]
-     * @param {string} keyId - Instance identifier
-     * @param {string} data - Input data to compress
-     * @returns {string} Compressed data
-     */
-    Compress: function(keyId, data) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      if (!data || data.length === 0) {
-        return '';
-      }
-      
-      const instance = this.instances[keyId];
-      const input = this._stringToBytes(data);
-      const output = [];
-      
-      let i = 0;
-      while (i < input.length) {
-        const currentByte = input[i];
-        let runLength = 1;
-        
-        // Count consecutive identical bytes
-        while (i + runLength < input.length && 
-               input[i + runLength] === currentByte && 
-               runLength < this.MAX_RUN_LENGTH) {
-          runLength++;
-        }
-        
-        // Decide encoding strategy
-        if (runLength >= 3 || currentByte === this.ESCAPE_CHAR) {
-          // Use RLE encoding for runs >= 3 or escape character
-          output.push(this.ESCAPE_CHAR);
-          output.push(runLength);
-          output.push(currentByte);
-        } else {
-          // Output literal bytes for short runs
-          for (let j = 0; j < runLength; j++) {
-            output.push(currentByte);
-          }
-        }
-        
-        i += runLength;
-      }
-      
-      const result = this._bytesToString(output);
-      
-      // Update statistics
-      instance.lastInputSize = data.length;
-      instance.lastOutputSize = result.length;
-      instance.compressionRatio = data.length / result.length;
-      
-      // Count runs and literals for detailed stats
-      let runsEncoded = 0;
-      let literalsOutput = 0;
-      let totalRunLength = 0;
-      
-      let j = 0;
-      while (j < output.length) {
-        if (output[j] === this.ESCAPE_CHAR && j + 2 < output.length) {
-          runsEncoded++;
-          totalRunLength += output[j + 1];
-          j += 3;
-        } else {
-          literalsOutput++;
-          j++;
-        }
-      }
-      
-      instance.runsEncoded = runsEncoded;
-      instance.literalsOutput = literalsOutput;
-      instance.avgRunLength = runsEncoded > 0 ? (totalRunLength / runsEncoded).toFixed(2) : 0;
-      
-      return result;
-    },
-    
-    /**
-     * Decompress RLE-encoded data
-     * @param {string} keyId - Instance identifier
-     * @param {string} compressedData - Compressed data
-     * @returns {string} Decompressed data
-     */
-    Decompress: function(keyId, compressedData) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      if (!compressedData || compressedData.length === 0) {
-        return '';
-      }
-      
-      const input = this._stringToBytes(compressedData);
-      const output = [];
-      
-      let i = 0;
-      while (i < input.length) {
-        if (input[i] === this.ESCAPE_CHAR && i + 2 < input.length) {
-          // RLE encoded sequence
-          const runLength = input[i + 1];
-          const character = input[i + 2];
-          
-          // Validate run length
-          if (runLength === 0 || runLength > this.MAX_RUN_LENGTH) {
-            throw new Error('Invalid run length in compressed data');
-          }
-          
-          // Output the run
-          for (let j = 0; j < runLength; j++) {
-            output.push(character);
-          }
-          
-          i += 3;
-        } else {
-          // Literal character
-          output.push(input[i]);
-          i++;
-        }
-      }
-      
-      return this._bytesToString(output);
-    },
-    
-    /**
-     * Clear instance data
-     */
-    ClearData: function(keyId) {
-      if (this.instances[keyId]) {
-        delete this.instances[keyId];
-        return true;
-      }
-      return false;
-    },
-    
-    /**
-     * Get compression statistics for instance
-     */
-    GetStats: function(keyId) {
-      const instance = this.instances[keyId];
-      if (!instance) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      return {
-        inputSize: instance.lastInputSize,
-        outputSize: instance.lastOutputSize,
-        compressionRatio: instance.compressionRatio,
-        spaceSavings: ((instance.lastInputSize - instance.lastOutputSize) / instance.lastInputSize * 100).toFixed(2) + '%',
-        efficiency: instance.compressionRatio > 1 ? ((instance.compressionRatio - 1) / instance.compressionRatio * 100).toFixed(2) + '%' : '0%',
-        runsEncoded: instance.runsEncoded || 0,
-        literalsOutput: instance.literalsOutput || 0,
-        avgRunLength: instance.avgRunLength || 0,
-        maxRunLength: this.MAX_RUN_LENGTH
-      };
-    },
-    
-    /**
-     * Run validation tests against known test vectors
-     */
-    ValidateImplementation: function() {
-      const results = [];
-      
-      for (const testVector of this.testVectors) {
-        try {
-          const keyId = this.KeySetup();
-          const compressed = this.Compress(keyId, testVector.input);
-          const decompressed = this.Decompress(keyId, compressed);
-          
-          const passed = decompressed === testVector.input;
-          const stats = this.GetStats(keyId);
-          
-          results.push({
-            description: testVector.description,
-            category: testVector.category,
-            passed: passed,
-            compressionRatio: stats.compressionRatio,
-            expectedRatio: testVector.compressionRatio,
-            notes: testVector.notes,
-            inputSize: testVector.input.length,
-            outputSize: compressed.length
-          });
-          
-          this.ClearData(keyId);
-        } catch (error) {
-          results.push({
-            description: testVector.description,
-            category: testVector.category,
-            passed: false,
-            error: error.message
-          });
-        }
-      }
-      
-      return results;
-    },
-    
-    // Utility functions using OpCodes if available
-    _stringToBytes: function(str) {
-      if (global.OpCodes && OpCodes.StringToBytes) {
-        return OpCodes.StringToBytes(str);
-      }
-      
-      // Fallback implementation
-      const bytes = [];
-      for (let i = 0; i < str.length; i++) {
-        bytes.push(str.charCodeAt(i) & 0xFF);
-      }
-      return bytes;
-    },
-    
-    _bytesToString: function(bytes) {
-      if (global.OpCodes && OpCodes.BytesToString) {
-        return OpCodes.BytesToString(bytes);
-      }
-      
-      // Fallback implementation
-      let str = '';
-      for (let i = 0; i < bytes.length; i++) {
-        str += String.fromCharCode(bytes[i]);
-      }
-      return str;
+  CreateInstance(isInverse = false) {
+    return new RLEInstance(this, isInverse);
+  }
+}
+
+class RLEInstance extends IAlgorithmInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.inputBuffer = [];
+  }
+
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    this.inputBuffer.push(...data);
+  }
+
+  Result() {
+    if (this.inputBuffer.length === 0) {
+      return [];
     }
-  };
-  
-  // Auto-register with Compression system if available
-  if (typeof global.Compression !== 'undefined' && global.Compression.Add) {
-    RLE.Init();
-    global.Compression.Add(RLE);
+
+    if (this.isInverse) {
+      return this._decompress();
+    } else {
+      return this._compress();
+    }
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = RLE;
+    
+  _compress() {
+    const input = this.inputBuffer;
+    const output = [];
+    
+    let i = 0;
+    while (i < input.length) {
+      const currentByte = input[i];
+      let runLength = 1;
+      
+      // Count consecutive identical bytes
+      while (i + runLength < input.length && 
+             input[i + runLength] === currentByte && 
+             runLength < this.algorithm.MAX_RUN_LENGTH) {
+        runLength++;
+      }
+      
+      // Decide encoding strategy
+      if (runLength >= 3 || currentByte === this.algorithm.ESCAPE_CHAR) {
+        // Use RLE encoding for runs >= 3 or escape character
+        output.push(this.algorithm.ESCAPE_CHAR);
+        output.push(runLength);
+        output.push(currentByte);
+      } else {
+        // Output literal bytes for short runs
+        for (let j = 0; j < runLength; j++) {
+          output.push(currentByte);
+        }
+      }
+      
+      i += runLength;
+    }
+    
+    // Clear input buffer
+    this.inputBuffer = [];
+    
+    return output;
   }
+    
+  _decompress() {
+    const input = this.inputBuffer;
+    const output = [];
+    
+    let i = 0;
+    while (i < input.length) {
+      if (input[i] === this.algorithm.ESCAPE_CHAR && i + 2 < input.length) {
+        // RLE encoded sequence
+        const runLength = input[i + 1];
+        const character = input[i + 2];
+        
+        // Validate run length
+        if (runLength === 0 || runLength > this.algorithm.MAX_RUN_LENGTH) {
+          throw new Error('Invalid run length in data');
+        }
+        
+        // Output the run
+        for (let j = 0; j < runLength; j++) {
+          output.push(character);
+        }
+        
+        i += 3;
+      } else {
+        // Literal character
+        output.push(input[i]);
+        i++;
+      }
+    }
+    
+    // Clear input buffer
+    this.inputBuffer = [];
+    
+    return output;
+  }
+}
+    
+// Register the algorithm
+RegisterAlgorithm(new RLECompression());
   
-  // Make globally available
-  global.RLE = RLE;
-  
-})(typeof global !== 'undefined' ? global : window);

@@ -1,218 +1,204 @@
 /*
- * Universal BASE16 (Hex) Encoding
- * Compatible with both Browser and Node.js environments
- * Based on RFC 4648 specification
+ * Base16 (Hexadecimal) Encoding Implementation
+ * Educational implementation of Base16 encoding (RFC 4648)
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
-  'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
+// Load AlgorithmFramework (REQUIRED)
+if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+}
+
+// Load OpCodes for cryptographic operations (RECOMMENDED)
+if (!global.OpCodes && typeof require !== 'undefined') {
+  global.OpCodes = require('../../OpCodes.js');
+}
+
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        EncodingAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
+
+class Base16Algorithm extends EncodingAlgorithm {
+  constructor() {
+    super();
+    
+    // Required metadata
+    this.name = "Base16";
+    this.description = "Base16 (hexadecimal) encoding using 16-character alphabet to represent binary data. Each byte is represented by two hex digits (0-9, A-F). Educational implementation following RFC 4648 standard.";
+    this.inventor = "RFC Working Group";
+    this.year = 1969;
+    this.category = CategoryType.ENCODING;
+    this.subCategory = "Base Encoding";
+    this.securityStatus = SecurityStatus.EDUCATIONAL;
+    this.complexity = ComplexityType.BEGINNER;
+    this.country = CountryCode.INTL;
+
+    // Documentation and references
+    this.documentation = [
+      new LinkItem("RFC 4648 - The Base16, Base32, and Base64 Data Encodings", "https://tools.ietf.org/html/rfc4648"),
+      new LinkItem("Wikipedia - Hexadecimal", "https://en.wikipedia.org/wiki/Hexadecimal"),
+      new LinkItem("Base16 Online Converter", "https://base64.guru/converter/encode/hex")
+    ];
+
+    this.references = [
+      new LinkItem("IEEE Standard 754", "https://ieeexplore.ieee.org/document/8766229"),
+      new LinkItem("ASCII Hex Representation", "https://www.asciitable.com/"),
+      new LinkItem("Binary to Hex Conversion", "https://www.rapidtables.com/convert/number/binary-to-hex.html")
+    ];
+
+    this.knownVulnerabilities = [];
+
+    // Test vectors from RFC 4648 Section 10
+    this.tests = [
+      new TestCase(
+        OpCodes.AnsiToBytes(""),
+        OpCodes.AnsiToBytes(""),
+        "Base16 empty string test - RFC 4648",
+        "https://tools.ietf.org/html/rfc4648#section-10"
+      ),
+      new TestCase(
+        OpCodes.AnsiToBytes("f"),
+        OpCodes.AnsiToBytes("66"),
+        "Base16 single character test - RFC 4648",
+        "https://tools.ietf.org/html/rfc4648#section-10"
+      ),
+      new TestCase(
+        OpCodes.AnsiToBytes("fo"),
+        OpCodes.AnsiToBytes("666F"),
+        "Base16 two character test - RFC 4648",
+        "https://tools.ietf.org/html/rfc4648#section-10"
+      ),
+      new TestCase(
+        OpCodes.AnsiToBytes("foo"),
+        OpCodes.AnsiToBytes("666F6F"),
+        "Base16 three character test - RFC 4648",
+        "https://tools.ietf.org/html/rfc4648#section-10"
+      ),
+      new TestCase(
+        OpCodes.AnsiToBytes("foob"),
+        OpCodes.AnsiToBytes("666F6F62"),
+        "Base16 four character test - RFC 4648",
+        "https://tools.ietf.org/html/rfc4648#section-10"
+      ),
+      new TestCase(
+        OpCodes.AnsiToBytes("fooba"),
+        OpCodes.AnsiToBytes("666F6F6261"),
+        "Base16 five character test - RFC 4648",
+        "https://tools.ietf.org/html/rfc4648#section-10"
+      ),
+      new TestCase(
+        OpCodes.AnsiToBytes("foobar"),
+        OpCodes.AnsiToBytes("666F6F626172"),
+        "Base16 six character test - RFC 4648",
+        "https://tools.ietf.org/html/rfc4648#section-10"
+      )
+    ];
+  }
+
+  CreateInstance(isInverse = false) {
+    return new Base16Instance(this, isInverse);
+  }
+}
+
+class Base16Instance extends IAlgorithmInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.alphabet = "0123456789ABCDEF";
+    this.processedData = null;
+    
+    // Create decode lookup table
+    this.decodeTable = {};
+    for (let i = 0; i < this.alphabet.length; i++) {
+      this.decodeTable[this.alphabet[i]] = i;
+      this.decodeTable[this.alphabet[i].toLowerCase()] = i;
+    }
+  }
+
+  Feed(data) {
+    if (!Array.isArray(data)) {
+      throw new Error('Base16Instance.Feed: Input must be byte array');
+    }
+
+    if (this.isInverse) {
+      this.processedData = this.decode(data);
     } else {
-      console.error('BASE16 encoder requires Cipher system to be loaded first');
-      return;
+      this.processedData = this.encode(data);
     }
   }
-  
-  // Load OpCodes for cryptographic operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-    }
-  }
-  
-  // Create BASE16 encoder object
-  const BASE16 = {
-    // Public interface properties
-    internalName: 'BASE16',
-    name: 'BASE16 (Hex)',
-    comment: 'RFC 4648 compliant hexadecimal encoding',
-    minKeyLength: 0,
-    maxKeyLength: 0,
-    stepKeyLength: 1,
-    minBlockSize: 0,
-    maxBlockSize: 0,
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
-    
-    // BASE16 alphabet from RFC 4648
-    ALPHABET: '0123456789ABCDEF',
-    
-    // Official test vectors from RFC 4648 Section 10
-    testVectors: [
-      { input: '', key: '', expected: '', description: 'RFC 4648 test vector: empty string' },
-      { input: 'f', key: '', expected: '66', description: 'RFC 4648 test vector: single f' },
-      { input: 'fo', key: '', expected: '666F', description: 'RFC 4648 test vector: fo' },
-      { input: 'foo', key: '', expected: '666F6F', description: 'RFC 4648 test vector: foo' },
-      { input: 'foob', key: '', expected: '666F6F62', description: 'RFC 4648 test vector: foob' },
-      { input: 'fooba', key: '', expected: '666F6F6261', description: 'RFC 4648 test vector: fooba' },
-      { input: 'foobar', key: '', expected: '666F6F626172', description: 'RFC 4648 test vector: foobar' }
-    ],
-    
-    // Initialize encoder
-    Init: function() {
-      BASE16.isInitialized = true;
-    },
-    
-    // Set up key (BASE16 doesn't use keys, but required by interface)
-    KeySetup: function(optional_key) {
-      let id;
-      do {
-        id = 'BASE16[' + global.generateUniqueID() + ']';
-      } while (BASE16.instances[id] || global.objectInstances[id]);
-      
-      BASE16.instances[id] = new BASE16.BASE16Instance(optional_key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear encoder data
-    ClearData: function(id) {
-      if (BASE16.instances[id]) {
-        delete BASE16.instances[id];
-        delete global.objectInstances[id];
-        return true;
-      } else {
-        global.throwException('Unknown Object Reference Exception', id, 'BASE16', 'ClearData');
-        return false;
-      }
-    },
-    
-    // Convert string to bytes array
-    stringToBytes: function(str) {
-      const bytes = [];
-      for (let i = 0; i < str.length; i++) {
-        bytes.push(str.charCodeAt(i) & 0xFF);
-      }
-      return bytes;
-    },
-    
-    // Convert bytes array to string
-    bytesToString: function(bytes) {
-      let str = '';
-      for (let i = 0; i < bytes.length; i++) {
-        str += String.fromCharCode(bytes[i]);
-      }
-      return str;
-    },
 
-    // Required interface method for encoding schemes
-    Encode: function(input) {
-      // Create temporary instance for encoding
-      const tempId = this.KeySetup();
-      try {
-        // Convert byte array to string if necessary
-        if (Array.isArray(input)) {
-          input = this.bytesToString(input);
-        }
-        return this.encryptBlock(tempId, input);
-      } finally {
-        this.ClearData(tempId);
-      }
-    },
-
-    // Required interface method for encoding schemes
-    Decode: function(input) {
-      // Create temporary instance for decoding
-      const tempId = this.KeySetup();
-      try {
-        const result = this.decryptBlock(tempId, input);
-        // Convert result to byte array
-        return this.stringToBytes(result);
-      } finally {
-        this.ClearData(tempId);
-      }
-    },
-    
-    // Encode block (encryption)
-    encryptBlock: function(id, plaintext) {
-      if (!BASE16.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'BASE16', 'encryptBlock');
-        return plaintext;
-      }
-      
-      const bytes = BASE16.stringToBytes(plaintext);
-      let encoded = '';
-      
-      for (let i = 0; i < bytes.length; i++) {
-        const byte = bytes[i];
-        const nibbles = OpCodes.SplitNibbles(byte);
-        encoded += BASE16.ALPHABET[nibbles.high] + BASE16.ALPHABET[nibbles.low];
-      }
-      
-      return encoded;
-    },
-    
-    // Decode block (decryption)
-    decryptBlock: function(id, ciphertext) {
-      if (!BASE16.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'BASE16', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      // Remove whitespace and convert to uppercase
-      const normalized = ciphertext.replace(/\s/g, '').toUpperCase();
-      
-      // Check for valid length (must be even)
-      if (normalized.length % 2 !== 0) {
-        global.throwException('Invalid BASE16 Length Exception', normalized.length, 'BASE16', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      // Check for valid characters
-      for (let i = 0; i < normalized.length; i++) {
-        if (BASE16.ALPHABET.indexOf(normalized[i]) === -1) {
-          global.throwException('Invalid BASE16 Character Exception', normalized[i], 'BASE16', 'decryptBlock');
-          return ciphertext;
-        }
-      }
-      
-      const bytes = [];
-      for (let i = 0; i < normalized.length; i += 2) {
-        const highChar = normalized[i];
-        const lowChar = normalized[i + 1];
-        const high = BASE16.ALPHABET.indexOf(highChar);
-        const low = BASE16.ALPHABET.indexOf(lowChar);
-        const byte = OpCodes.CombineNibbles(high, low);
-        bytes.push(byte);
-      }
-      
-      return BASE16.bytesToString(bytes);
-    },
-    
-    // Instance class
-    BASE16Instance: function(key) {
-      // BASE16 doesn't need key storage, but maintain interface
-      this.key = key || '';
+  Result() {
+    if (this.processedData === null) {
+      throw new Error('Base16Instance.Result: No data processed. Call Feed() first.');
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(BASE16);
+    return this.processedData;
   }
-  
-  // Export to global scope
-  global.BASE16 = BASE16;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = BASE16;
+
+  encode(data) {
+    if (data.length === 0) {
+      return [];
+    }
+
+    let result = "";
+    
+    for (let i = 0; i < data.length; i++) {
+      const byte = data[i];
+      result += this.alphabet[(byte >> 4) & 0x0F];
+      result += this.alphabet[byte & 0x0F];
+    }
+
+    const resultBytes = [];
+    for (let i = 0; i < result.length; i++) {
+      resultBytes.push(result.charCodeAt(i));
+    }
+    return resultBytes;
   }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+
+  decode(data) {
+    if (data.length === 0) {
+      return [];
+    }
+
+    const input = String.fromCharCode(...data);
+    const cleanInput = input.replace(/[^0-9A-Fa-f]/g, "");
+    
+    if (cleanInput.length % 2 !== 0) {
+      throw new Error('Base16Instance.decode: Invalid hex string length');
+    }
+
+    const result = [];
+    
+    for (let i = 0; i < cleanInput.length; i += 2) {
+      const high = this.decodeTable[cleanInput[i]];
+      const low = this.decodeTable[cleanInput[i + 1]];
+      
+      if (high === undefined || low === undefined) {
+        throw new Error('Base16Instance.decode: Invalid hex character');
+      }
+      
+      result.push((high << 4) | low);
+    }
+
+    return result;
+  }
+
+  // Utility methods
+  encodeString(str) {
+    const bytes = OpCodes.AnsiToBytes(str);
+    const encoded = this.encode(bytes);
+    return String.fromCharCode(...encoded);
+  }
+
+  decodeString(str) {
+    const bytes = OpCodes.AnsiToBytes(str);
+    const decoded = this.decode(bytes);
+    return String.fromCharCode(...decoded);
+  }
+}
+
+// Register the algorithm
+RegisterAlgorithm(new Base16Algorithm());
+
+// Export for Node.js
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { Base16Algorithm, Base16Instance };
+}
