@@ -15,7 +15,7 @@ if (!global.AlgorithmFramework && typeof require !== 'undefined') {
 
 // Load OpCodes for cryptographic operations (RECOMMENDED)
 if (!global.OpCodes && typeof require !== 'undefined') {
-  OpCodes = require('../../OpCodes.js');
+  global.OpCodes = require('../../OpCodes.js');
 }
 
 class SimonCipher extends AlgorithmFramework.BlockCipherAlgorithm {
@@ -35,10 +35,10 @@ class SimonCipher extends AlgorithmFramework.BlockCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new AlgorithmFramework.KeySize(16, 16, 1) // Simon64/128: 128-bit keys only
+      new AlgorithmFramework.KeySize(16, 16, 0) // Simon64/128: 128-bit keys only
     ];
     this.SupportedBlockSizes = [
-      new AlgorithmFramework.KeySize(8, 8, 1) // Fixed 64-bit blocks
+      new AlgorithmFramework.KeySize(8, 8, 0) // Fixed 64-bit blocks
     ];
 
     // Documentation and references
@@ -79,33 +79,19 @@ class SimonCipher extends AlgorithmFramework.BlockCipherAlgorithm {
     // Simon64/128 Constants
     this.ROUNDS = 44;       // NSA standard: 44 rounds for 64/128 variant
     this.WORD_SIZE = 32;    // 32-bit words (64-bit block = 2 words)
+    this.m = 4;            // Number of key words for Simon64/128
   }
 
   CreateInstance(isInverse = false) {
     return new SimonInstance(this, isInverse);
   }
 
-  // Generate z0 sequence using LFSR as per NSA specification
-  // LFSR for z0: feedback polynomial x^5 + x^2 + 1, initial state [0,0,0,0,1]
-  static generateZ0Sequence(length) {
-    const sequence = [];
-    let state = [0, 0, 0, 0, 1]; // Initial LFSR state
-    
-    for (let i = 0; i < length; i++) {
-      // Output the rightmost bit
-      sequence.push(state[4]);
-      
-      // Compute feedback: x^5 + x^2 + 1 = state[4] XOR state[1]
-      const feedback = state[4] ^ state[1];
-      
-      // Shift register right and insert feedback at left
-      for (let j = 4; j > 0; j--) {
-        state[j] = state[j - 1];
-      }
-      state[0] = feedback;
-    }
-    
-    return sequence;
+  // Z3 sequence for Simon64/128 (from NSA specification)
+  static getZ3Sequence() {
+    // Z3 sequence for Simon64/128 configuration  
+    // Source: C implementation 0b0011110000101100111001010001001000000111101001100011010111011011
+    const z3Binary = "0011110000101100111001010001001000000111101001100011010111011011";
+    return z3Binary.split('').map(bit => parseInt(bit, 10));
   }
 
   // Simon round function implementation
@@ -139,10 +125,10 @@ class SimonInstance extends AlgorithmFramework.IBlockCipherInstance {
       return;
     }
 
-    // Validate key size
+    // Validate key size  
     const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
       keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-      (keyBytes.length - ks.minSize) % ks.stepSize === 0
+      (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
     );
     
     if (!isValidSize) {
@@ -188,9 +174,9 @@ class SimonInstance extends AlgorithmFramework.IBlockCipherInstance {
       throw new Error('Simon: Input must be exactly 8 bytes');
     }
     
-    // Convert input to 32-bit words using OpCodes (big-endian for Simon)
-    let x = OpCodes.Pack32BE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
-    let y = OpCodes.Pack32BE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
+    // Simon uses little-endian byte ordering for 32-bit words  
+    let x = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
+    let y = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
     
     // Simon encryption: 44 rounds of Feistel-like operations
     // Round function: (x, y) -> (y ^ F(x) ^ k_i, x)
@@ -201,10 +187,10 @@ class SimonInstance extends AlgorithmFramework.IBlockCipherInstance {
       x = temp;
     }
     
-    // Convert back to bytes using OpCodes (big-endian)
-    const result0 = OpCodes.Unpack32BE(x);
-    const result1 = OpCodes.Unpack32BE(y);
-    return [...result0, ...result1];
+    // Convert back to bytes (little-endian)
+    const xBytes = OpCodes.Unpack32LE(x);
+    const yBytes = OpCodes.Unpack32LE(y);
+    return [...xBytes, ...yBytes];
   }
   
   _decryptBlock(blockBytes) {
@@ -212,9 +198,9 @@ class SimonInstance extends AlgorithmFramework.IBlockCipherInstance {
       throw new Error('Simon: Input must be exactly 8 bytes');
     }
     
-    // Convert input to 32-bit words using OpCodes (big-endian for Simon)
-    let x = OpCodes.Pack32BE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
-    let y = OpCodes.Pack32BE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
+    // Simon uses little-endian byte ordering for 32-bit words  
+    let x = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
+    let y = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
     
     // Simon decryption: reverse the encryption process
     // Inverse operations in reverse order:
@@ -225,44 +211,43 @@ class SimonInstance extends AlgorithmFramework.IBlockCipherInstance {
       y = temp ^ SimonCipher.roundFunction(x) ^ this.roundKeys[i];
     }
     
-    // Convert back to bytes using OpCodes (big-endian)
-    const result0 = OpCodes.Unpack32BE(x);
-    const result1 = OpCodes.Unpack32BE(y);
-    return [...result0, ...result1];
+    // Convert back to bytes (little-endian)
+    const xBytes = OpCodes.Unpack32LE(x);
+    const yBytes = OpCodes.Unpack32LE(y);
+    return [...xBytes, ...yBytes];
   }
   
   _expandKey(keyBytes) {
-    // Convert 128-bit key to four 32-bit words using OpCodes (big-endian)
+    // Simon64/128: Convert 128-bit key to four 32-bit words (little-endian)
     const k = [
-      OpCodes.Pack32BE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]),
-      OpCodes.Pack32BE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]),
-      OpCodes.Pack32BE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]),
-      OpCodes.Pack32BE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15])
+      OpCodes.Pack32LE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]),
+      OpCodes.Pack32LE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]),
+      OpCodes.Pack32LE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]),
+      OpCodes.Pack32LE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15])
     ];
     
     // Expand key to 44 round keys using Simon key schedule
     const roundKeys = new Array(this.algorithm.ROUNDS);
     
     // Initialize first 4 round keys directly from master key
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < this.algorithm.m; i++) {
       roundKeys[i] = k[i];
     }
     
-    // Generate remaining round keys using Simon key schedule
-    // For m=4 (128-bit key): k_i = c ^ (z_j)_i ^ k_{i-4} ^ (k_{i-1} >>> 3) ^ (k_{i-1} >>> 4)
-    // where c = 2^32 - 4 = 0xfffffffc, z_j is the appropriate constant sequence
-    const c = 0xfffffffc;
-    const z0Sequence = SimonCipher.generateZ0Sequence(this.algorithm.ROUNDS - 4);
+    // Generate remaining round keys using Simon key schedule for m=4
+    // k_i = c ^ (z3)_{i-m} ^ k_{i-m} ^ ((k_{i-1} >>> 3) ^ k_{i-3} ^ ((k_{i-1} >>> 3) ^ k_{i-3}) >>> 1)
+    const c = 0xfffffffc;  // 2^32 - 4
+    const z3Sequence = SimonCipher.getZ3Sequence();
     
-    for (let i = 4; i < this.algorithm.ROUNDS; i++) {
-      let temp = OpCodes.RotR32(roundKeys[i - 1], 3);
-      temp ^= roundKeys[i - 3];
-      temp ^= OpCodes.RotR32(temp, 1);
-      temp ^= roundKeys[i - 4];
-      temp ^= c;
-      temp ^= z0Sequence[i - 4];
+    for (let i = this.algorithm.m; i < this.algorithm.ROUNDS; i++) {
+      let tmp = OpCodes.RotR32(roundKeys[i - 1], 3);
+      tmp ^= roundKeys[i - 3];
+      tmp ^= OpCodes.RotR32(tmp, 1);
+      tmp ^= roundKeys[i - this.algorithm.m];
+      tmp ^= c;
+      tmp ^= z3Sequence[i - this.algorithm.m];
       
-      roundKeys[i] = temp >>> 0;
+      roundKeys[i] = tmp >>> 0;
     }
     
     return roundKeys;
