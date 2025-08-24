@@ -160,6 +160,30 @@
     SBOX3: [], // Will be initialized as inverse of SBOX1
     SBOX4: [], // Will be initialized as inverse of SBOX2
     
+    // Educational test vectors (expected outputs to be determined)
+    tests: [
+      {
+        text: 'TSC-4 basic test vector with 128-bit key and IV',
+        uri: 'Educational implementation test',
+        keySize: 16,
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes('545354343420746f7274757265206b65792100') : null,
+        iv: global.OpCodes ? global.OpCodes.Hex8ToBytes('545343343420746f72747572652049562100') : null,
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes('546f7274757265207465737421') : null,
+        expected: null, // To be determined through testing
+        notes: 'Basic functionality test for TSC-4 complex operations'
+      },
+      {
+        text: 'TSC-4 with high entropy key and IV',
+        uri: 'Educational implementation test',
+        keySize: 16,
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes('ffaa5533cc0ff069965aa53cc3788712') : null,
+        iv: global.OpCodes ? global.OpCodes.Hex8ToBytes('123456789abcdef00fedcba987654321') : null,
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes('4869676820656e74726f7079') : null,
+        expected: null, // To be determined through testing
+        notes: 'Testing TSC-4 with maximum entropy input'
+      }
+    ],
+    
     // Internal state
     isInitialized: false,
     
