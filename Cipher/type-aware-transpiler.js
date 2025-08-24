@@ -736,51 +736,446 @@
     }
 
     /**
-     * Tokenize the JavaScript code
+     * Modern JavaScript tokenizer with proper context-sensitive parsing
      */
     tokenize() {
-      const tokenPatterns = [
-        { type: 'SHEBANG', pattern: /^#!.*$/m },
-        { type: 'WHITESPACE', pattern: /^\s+/ },
-        { type: 'COMMENT_SINGLE', pattern: /^\/\/.*$/m },
-        { type: 'COMMENT_MULTI', pattern: /^\/\*[\s\S]*?\*\// },
-        { type: 'STRING', pattern: /^(['"])((?:\\.|(?!\1)[^\\])*)\1/ },
-        { type: 'TEMPLATE_LITERAL', pattern: /^`([^`\\]|\\.)*`/ },
-        { type: 'NUMBER', pattern: /^0[xX][0-9a-fA-F]+n?|^\d+n|^\d+(\.\d+)?([eE][+-]?\d+)?/ },
-        { type: 'KEYWORD', pattern: /^(class|function|const|let|var|if|else|for|while|return|this|new|static|get|set|async|await|export|import|default|from|as|extends|constructor|throw|typeof|undefined|null|true|false|break|continue|try|catch|finally|switch|case|do|with|in|of|instanceof|delete|void)(?![a-zA-Z0-9_$])/ },
-        { type: 'IDENTIFIER', pattern: /^[a-zA-Z_$][a-zA-Z0-9_$]*/ },
-        { type: 'ARROW', pattern: /^=>/ },
-        { type: 'OPERATOR', pattern: /^(===|!==|==|!=|<=|>=|>>>|<<|>>|&&|\|\||(\+\+)|(--)|(\+=)|(-=)|(\*=)|(\/=)|(%=)|(&=)|(\|=)|(\^=)|(>>=)|(>>>=)|(<<=)|[+\-*/%<>=!&|^~])/ },
-        { type: 'PUNCTUATION', pattern: /^[(){}[\];,.:?]/ }
-      ];
-
-      let position = 0;
-      while (position < this.code.length) {
-        let matched = false;
-        
-        for (const pattern of tokenPatterns) {
-          const match = this.code.slice(position).match(pattern.pattern);
-          if (match) {
-            if (pattern.type !== 'WHITESPACE' && pattern.type !== 'SHEBANG') { // Skip whitespace and shebang tokens
-              this.tokens.push({
-                type: pattern.type,
-                value: match[0],
-                position: position
-              });
-            }
-            position += match[0].length;
-            matched = true;
-            break;
+      this.tokens = [];
+      this.normalizedCode = this.code.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      
+      let pos = 0;
+      let line = 1;
+      let column = 1;
+      
+      while (pos < this.normalizedCode.length) {
+        // Skip whitespace but track line/column
+        if (this.isWhitespace(pos, this.normalizedCode)) {
+          if (this.normalizedCode[pos] === '\n') {
+            line++;
+            column = 1;
+          } else {
+            column++;
           }
+          pos++;
+          continue;
         }
         
-        if (!matched) {
-          console.warn(`Skipping character at position ${position}: '${this.code[position]}'`);
-          position++;
+        let token = this.scanToken(pos, line, column);
+        if (token) {
+          this.tokens.push(token);
+          pos = token.end;
+          column += token.value.length;
+          
+          // Update line/column for multi-line tokens
+          for (let i = 0; i < token.value.length; i++) {
+            if (token.value[i] === '\n') {
+              line++;
+              column = 1;
+            }
+          }
+        } else {
+          // Skip unknown character
+          console.warn(`Skipping character at position ${pos}: '${this.normalizedCode[pos]}'`);
+          pos++;
+          column++;
         }
       }
       
       return this.tokens;
+    }
+    
+    isWhitespace(pos, normalizedCode) {
+      return /\s/.test(normalizedCode[pos]);
+    }
+    
+    scanToken(pos, line, column) {
+      const char = this.normalizedCode[pos];
+      const next = this.normalizedCode[pos + 1];
+      
+      // Multi-character operators and comments
+      if (char === '/' && next === '/') {
+        return this.scanSingleLineComment(pos);
+      }
+      if (char === '/' && next === '*') {
+        return this.scanMultiLineComment(pos);
+      }
+      
+      // Shebang (only at very start)
+      if (pos === 0 && char === '#' && next === '!') {
+        return this.scanShebang(pos);
+      }
+      
+      // String literals
+      if (char === '"' || char === "'") {
+        return this.scanString(pos, char);
+      }
+      
+      // Template literals
+      if (char === '`') {
+        return this.scanTemplateLiteral(pos);
+      }
+      
+      // Regular expression literals (context-sensitive)
+      if (char === '/' && this.canStartRegex()) {
+        return this.scanRegex(pos);
+      }
+      
+      // Numbers
+      if (this.isDigit(char) || (char === '.' && this.isDigit(next))) {
+        return this.scanNumber(pos);
+      }
+      
+      // Identifiers and keywords
+      if (this.isIdentifierStart(char)) {
+        return this.scanIdentifier(pos);
+      }
+      
+      // Multi-character operators
+      const multiOp = this.scanMultiCharOperator(pos);
+      if (multiOp) return multiOp;
+      
+      // Single-character tokens
+      return this.scanSingleChar(pos);
+    }
+    
+    scanSingleLineComment(pos) {
+      let end = pos + 2;
+      while (end < this.normalizedCode.length && this.normalizedCode[end] !== '\n') {
+        end++;
+      }
+      return {
+        type: 'COMMENT_SINGLE',
+        value: this.normalizedCode.slice(pos, end),
+        position: pos,
+        end: end
+      };
+    }
+    
+    scanMultiLineComment(pos) {
+      let end = pos + 2;
+      while (end < this.normalizedCode.length - 1) {
+        if (this.normalizedCode[end] === '*' && this.normalizedCode[end + 1] === '/') {
+          end += 2;
+          break;
+        }
+        end++;
+      }
+      return {
+        type: 'COMMENT_MULTI',
+        value: this.normalizedCode.slice(pos, end),
+        position: pos,
+        end: end
+      };
+    }
+    
+    scanShebang(pos) {
+      let end = pos + 2;
+      while (end < this.normalizedCode.length && this.normalizedCode[end] !== '\n') {
+        end++;
+      }
+      return {
+        type: 'SHEBANG',
+        value: this.normalizedCode.slice(pos, end),
+        position: pos,
+        end: end
+      };
+    }
+    
+    scanString(pos, quote) {
+      let end = pos + 1;
+      while (end < this.normalizedCode.length) {
+        const char = this.normalizedCode[end];
+        if (char === quote) {
+          end++;
+          break;
+        }
+        if (char === '\\') {
+          end += 2; // Skip escaped character
+        } else {
+          end++;
+        }
+      }
+      return {
+        type: 'STRING',
+        value: this.normalizedCode.slice(pos, end),
+        position: pos,
+        end: end
+      };
+    }
+    
+    scanTemplateLiteral(pos) {
+      let end = pos + 1;
+      while (end < this.normalizedCode.length) {
+        const char = this.normalizedCode[end];
+        if (char === '`') {
+          end++;
+          break;
+        }
+        if (char === '\\') {
+          end += 2; // Skip escaped character
+        } else {
+          end++;
+        }
+      }
+      return {
+        type: 'TEMPLATE_LITERAL',
+        value: this.normalizedCode.slice(pos, end),
+        position: pos,
+        end: end
+      };
+    }
+    
+    scanRegex(pos) {
+      let end = pos + 1;
+      let inCharacterClass = false;
+      
+      while (end < this.normalizedCode.length) {
+        const char = this.normalizedCode[end];
+        
+        if (char === '\\') {
+          end += 2; // Skip escaped character
+          continue;
+        }
+        
+        if (char === '[' && !inCharacterClass) {
+          inCharacterClass = true;
+        } else if (char === ']' && inCharacterClass) {
+          inCharacterClass = false;
+        } else if (char === '/' && !inCharacterClass) {
+          // End of regex found (not inside character class)
+          end++;
+          // Scan flags
+          while (end < this.normalizedCode.length && /[gimuy]/.test(this.normalizedCode[end])) {
+            end++;
+          }
+          break;
+        } else if (char === '\n') {
+          break; // Invalid regex
+        }
+        
+        end++;
+      }
+      
+      return {
+        type: 'REGEX',
+        value: this.normalizedCode.slice(pos, end),
+        position: pos,
+        end: end
+      };
+    }
+    
+    scanNumber(pos) {
+      let end = pos;
+      
+      // Handle hex, binary, octal
+      if (this.normalizedCode[end] === '0' && end + 1 < this.normalizedCode.length) {
+        const prefix = this.normalizedCode[end + 1].toLowerCase();
+        if (prefix === 'x') {
+          end += 2;
+          while (end < this.normalizedCode.length && /[0-9a-fA-F]/.test(this.normalizedCode[end])) {
+            end++;
+          }
+          // Check for BigInt suffix 'n' for hex numbers
+          const isBigInt = (end < this.normalizedCode.length && this.normalizedCode[end] === 'n');
+          if (isBigInt) {
+            end++; // Include the 'n' in the token
+          }
+          return { 
+            type: isBigInt ? 'BIGINT' : 'NUMBER', 
+            value: this.normalizedCode.slice(pos, end), 
+            position: pos, 
+            end: end 
+          };
+        }
+        if (prefix === 'b') {
+          end += 2;
+          while (end < this.normalizedCode.length && /[01]/.test(this.normalizedCode[end])) {
+            end++;
+          }
+          // Check for BigInt suffix 'n' for binary numbers
+          const isBigInt = (end < this.normalizedCode.length && this.normalizedCode[end] === 'n');
+          if (isBigInt) {
+            end++; // Include the 'n' in the token
+          }
+          return { 
+            type: isBigInt ? 'BIGINT' : 'NUMBER', 
+            value: this.normalizedCode.slice(pos, end), 
+            position: pos, 
+            end: end 
+          };
+        }
+        if (prefix === 'o') {
+          end += 2;
+          while (end < this.normalizedCode.length && /[0-7]/.test(this.normalizedCode[end])) {
+            end++;
+          }
+          // Check for BigInt suffix 'n' for octal numbers
+          const isBigInt = (end < this.normalizedCode.length && this.normalizedCode[end] === 'n');
+          if (isBigInt) {
+            end++; // Include the 'n' in the token
+          }
+          return { 
+            type: isBigInt ? 'BIGINT' : 'NUMBER', 
+            value: this.normalizedCode.slice(pos, end), 
+            position: pos, 
+            end: end 
+          };
+        }
+      }
+      
+      // Regular decimal number
+      while (end < this.normalizedCode.length && this.isDigit(this.normalizedCode[end])) {
+        end++;
+      }
+      
+      // Decimal point
+      if (end < this.normalizedCode.length && this.normalizedCode[end] === '.') {
+        end++;
+        while (end < this.normalizedCode.length && this.isDigit(this.normalizedCode[end])) {
+          end++;
+        }
+      }
+      
+      // Exponent
+      if (end < this.normalizedCode.length && /[eE]/.test(this.normalizedCode[end])) {
+        end++;
+        if (end < this.normalizedCode.length && /[+-]/.test(this.normalizedCode[end])) {
+          end++;
+        }
+        while (end < this.normalizedCode.length && this.isDigit(this.normalizedCode[end])) {
+          end++;
+        }
+      }
+      
+      // Check for BigInt suffix 'n'
+      const isBigInt = (end < this.normalizedCode.length && this.normalizedCode[end] === 'n');
+      if (isBigInt) {
+        end++; // Include the 'n' in the token
+      }
+      
+      return {
+        type: isBigInt ? 'BIGINT' : 'NUMBER',
+        value: this.normalizedCode.slice(pos, end),
+        position: pos,
+        end: end
+      };
+    }
+    
+    scanIdentifier(pos) {
+      let end = pos;
+      while (end < this.normalizedCode.length && this.isIdentifierPart(this.normalizedCode[end])) {
+        end++;
+      }
+      
+      const value = this.normalizedCode.slice(pos, end);
+      const keywords = new Set([
+        'class', 'function', 'const', 'let', 'var', 'if', 'else', 'for', 'while',
+        'return', 'this', 'new', 'static', 'get', 'set', 'async', 'await',
+        'export', 'import', 'default', 'from', 'as', 'extends', 'constructor',
+        'throw', 'typeof', 'undefined', 'null', 'true', 'false', 'break',
+        'continue', 'try', 'catch', 'finally', 'switch', 'case', 'do', 'with',
+        'in', 'of', 'instanceof', 'delete', 'void'
+      ]);
+      
+      return {
+        type: keywords.has(value) ? 'KEYWORD' : 'IDENTIFIER',
+        value: value,
+        position: pos,
+        end: end
+      };
+    }
+    
+    scanMultiCharOperator(pos) {
+      const operators = [
+        '>>>=', '===', '!==', '>>>', '<<<', '>>=', '<<=', '&&', '||',
+        '++', '--', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=',
+        '==', '!=', '<=', '>=', '>>', '<<', '=>', '...', '?.'
+      ];
+      
+      for (const op of operators) {
+        if (this.normalizedCode.substr(pos, op.length) === op) {
+          return {
+            type: op === '=>' ? 'ARROW' : 'OPERATOR',
+            value: op,
+            position: pos,
+            end: pos + op.length
+          };
+        }
+      }
+      
+      return null;
+    }
+    
+    scanSingleChar(pos) {
+      const char = this.normalizedCode[pos];
+      
+      if ('(){}[];,.:?'.includes(char)) {
+        return {
+          type: 'PUNCTUATION',
+          value: char,
+          position: pos,
+          end: pos + 1
+        };
+      }
+      
+      if ('+-*/%<>=!&|^~'.includes(char)) {
+        return {
+          type: 'OPERATOR',
+          value: char,
+          position: pos,
+          end: pos + 1
+        };
+      }
+      
+      return null;
+    }
+    
+    canStartRegex() {
+      // Improved heuristic: regex can start after certain operators, keywords, or punctuation
+      // but not after identifiers, numbers, or closing parentheses/brackets (where it would be division)
+      if (this.tokens.length === 0) return true;
+      
+      const lastToken = this.tokens[this.tokens.length - 1];
+      
+      // Cannot be regex after identifiers or numbers (division)
+      if (lastToken.type === 'IDENTIFIER' || lastToken.type === 'NUMBER') {
+        return false;
+      }
+      
+      // Cannot be regex after closing punctuation (division)  
+      if (lastToken.type === 'PUNCTUATION' && [')', ']', '}'].includes(lastToken.value)) {
+        return false;
+      }
+      
+      // Can be regex after these operators and keywords
+      if (lastToken.type === 'OPERATOR' && ['=', '==', '===', '!=', '!==', '(', '[', '{', ',', ';', ':', '?', '!', '&', '|', '^', '~', '+', '-', '*', '%', '<', '>', '<=', '>=', '<<', '>>', '>>>', '&&', '||'].includes(lastToken.value)) {
+        return true;
+      }
+      
+      if (lastToken.type === 'KEYWORD' && ['return', 'throw', 'case', 'in', 'of', 'delete', 'void', 'typeof', 'new', 'instanceof'].includes(lastToken.value)) {
+        return true;
+      }
+      
+      if (lastToken.type === 'PUNCTUATION' && ['(', '[', '{', ',', ';', ':'].includes(lastToken.value)) {
+        return true;
+      }
+      
+      if (lastToken.type === 'ARROW') {
+        return true;
+      }
+      
+      return false;
+    }
+    
+    isDigit(char) {
+      return /[0-9]/.test(char);
+    }
+    
+    isIdentifierStart(char) {
+      return /[a-zA-Z_$]/.test(char);
+    }
+    
+    isIdentifierPart(char) {
+      return /[a-zA-Z0-9_$]/.test(char);
     }
 
     /**
@@ -802,7 +1197,16 @@
     parseProgram() {
       const statements = [];
       
+      // Skip shebang line if present
+      if (this.currentToken && this.currentToken.type === 'SHEBANG') {
+        this.nextToken();
+      }
+      
       while (this.currentToken) {
+        // Skip comments at the program level
+        this.skipComments();
+        if (!this.currentToken) break;
+        
         const stmt = this.parseStatement();
         if (stmt) {
           statements.push(stmt);
@@ -819,6 +1223,10 @@
      * Parse a statement
      */
     parseStatement() {
+      if (!this.currentToken) return null;
+      
+      // Skip comments at statement level
+      this.skipComments();
       if (!this.currentToken) return null;
       
       switch (this.currentToken.type) {
@@ -875,6 +1283,48 @@
       
       node.body = [];
       while (this.currentToken && !(this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '}')) {
+        this.skipComments(); // Skip any comments before class members
+        
+        if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '}') {
+          break; // Exit if we encounter closing brace after skipping comments
+        }
+        
+        const member = this.parseClassMember();
+        if (member) {
+          node.body.push(member);
+        }
+      }
+      
+      this.consume('PUNCTUATION', '}');
+      
+      return node;
+    }
+
+    /**
+     * Parse a class expression
+     */
+    parseClassExpression() {
+      const node = { type: 'ClassExpression' };
+      
+      this.consume('KEYWORD', 'class');
+      
+      // Class expressions can have optional names
+      if (this.currentToken && this.currentToken.type === 'IDENTIFIER') {
+        node.id = this.parseIdentifier();
+      } else {
+        node.id = null;
+      }
+      
+      if (this.currentToken && this.currentToken.type === 'KEYWORD' && this.currentToken.value === 'extends') {
+        this.advance();
+        // Parse the superclass which can be either an Identifier or MemberExpression
+        node.superClass = this.parseMemberOrIdentifier();
+      }
+      
+      this.consume('PUNCTUATION', '{');
+      
+      node.body = [];
+      while (this.currentToken && !(this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '}')) {
         const method = this.parseClassMethod();
         if (method) {
           node.body.push(method);
@@ -887,13 +1337,77 @@
     }
 
     /**
+     * Parse a class member (method or field)
+     */
+    parseClassMember() {
+      // Look ahead to determine if this is a field declaration or method
+      let lookahead = this.position;
+      
+      // Skip 'static' if present
+      if (this.tokens[lookahead] && this.tokens[lookahead].type === 'KEYWORD' && this.tokens[lookahead].value === 'static') {
+        lookahead++; // Move past 'static'
+      }
+      
+      // Look for identifier followed by = (field) or ( (method)
+      if (lookahead < this.tokens.length - 1) {
+        const identifierToken = this.tokens[lookahead];
+        const nextToken = this.tokens[lookahead + 1];
+        
+        if (identifierToken && identifierToken.type === 'IDENTIFIER' && 
+            nextToken && nextToken.type === 'OPERATOR' && nextToken.value === '=') {
+          // This is a field declaration like: static FIELD = value;
+          return this.parseClassField();
+        }
+      }
+      
+      // Otherwise, it's a method
+      return this.parseClassMethod();
+    }
+
+    /**
+     * Parse a class field declaration
+     */
+    parseClassField() {
+      const node = { 
+        type: 'FieldDefinition',
+        static: false,
+        key: null,
+        value: null
+      };
+      
+      // Handle 'static' modifier
+      if (this.currentToken && this.currentToken.type === 'KEYWORD' && this.currentToken.value === 'static') {
+        node.static = true;
+        this.advance();
+      }
+      
+      // Parse field name
+      if (this.currentToken && this.currentToken.type === 'IDENTIFIER') {
+        node.key = this.parseIdentifier();
+      } else {
+        throw new Error(`Expected field name, got: ${this.currentToken ? this.currentToken.type : 'EOF'}`);
+      }
+      
+      // Expect '=' for initialization
+      this.consume('OPERATOR', '=');
+      
+      // Parse the initial value
+      node.value = this.parseExpression();
+      
+      // Expect semicolon
+      this.expectSemicolon();
+      
+      return node;
+    }
+
+    /**
      * Parse a class method with type information
      */
     parseClassMethod() {
       const node = { type: 'MethodDefinition' };
       
-      // Handle static, get, set modifiers
-      if (this.currentToken && this.currentToken.type === 'KEYWORD') {
+      // Handle static, get, set modifiers (can be combined)
+      while (this.currentToken && this.currentToken.type === 'KEYWORD') {
         if (this.currentToken.value === 'static') {
           node.static = true;
           this.advance();
@@ -903,6 +1417,8 @@
         } else if (this.currentToken.value === 'set') {
           node.kind = 'set';
           this.advance();
+        } else {
+          break; // Exit if we encounter a keyword that's not a modifier
         }
       }
       
@@ -959,6 +1475,38 @@
     }
 
     /**
+     * Parse object pattern for destructuring {a, b, c}
+     */
+    parseObjectPattern() {
+      const node = { type: 'ObjectPattern', properties: [] };
+      
+      this.consume('PUNCTUATION', '{');
+      
+      while (this.currentToken && !(this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '}')) {
+        const property = { type: 'Property' };
+        
+        if (this.currentToken.type === 'IDENTIFIER') {
+          const id = this.parseIdentifier();
+          property.key = id;
+          property.value = id; // shorthand property
+          property.shorthand = true;
+        } else {
+          throw new Error(`Expected identifier in object pattern, got: ${this.currentToken.type}`);
+        }
+        
+        node.properties.push(property);
+        
+        if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === ',') {
+          this.advance();
+        }
+      }
+      
+      this.consume('PUNCTUATION', '}');
+      
+      return node;
+    }
+
+    /**
      * Parse variable declaration
      */
     parseVariableDeclaration(consumeSemicolon = true) {
@@ -975,7 +1523,12 @@
         // Check for array destructuring pattern [a, b] = ...
         if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '[') {
           declarator.id = this.parseArrayPattern();
-        } else {
+        } 
+        // Check for object destructuring pattern {a, b} = ...
+        else if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '{') {
+          declarator.id = this.parseObjectPattern();
+        } 
+        else {
           // Regular identifier
           declarator.id = this.parseIdentifier();
         }
@@ -1044,37 +1597,33 @@
       const params = [];
       
       this.consume('PUNCTUATION', '(');
+      this.skipComments();
       
       while (this.currentToken && !(this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === ')')) {
+        this.skipComments();
+        
         // Parse parameter name
         const param = this.parseIdentifier();
+        
+        this.skipComments();
         
         // Check for default value (e.g., param = defaultValue)
         if (this.currentToken && this.currentToken.type === 'OPERATOR' && this.currentToken.value === '=') {
           this.advance(); // consume '='
           
-          // Parse default value (could be literal, identifier, etc.)
-          let defaultValue;
-          if (this.currentToken.type === 'STRING' || this.currentToken.type === 'LITERAL') {
-            defaultValue = { type: 'Literal', value: this.currentToken.value };
-            this.advance();
-          } else if (this.currentToken.type === 'IDENTIFIER') {
-            defaultValue = this.parseIdentifier();
-          } else if (this.currentToken.type === 'NUMBER') {
-            defaultValue = this.parseNumber();
-          } else {
-            // Skip unknown default value token
-            defaultValue = { type: 'Literal', value: this.currentToken.value };
-            this.advance();
-          }
-          
+          // Parse default value as full assignment expression
+          this.skipComments();
+          const defaultValue = this.parseAssignmentExpression();
           param.defaultValue = defaultValue;
         }
         
         params.push(param);
         
+        this.skipComments();
+        
         if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === ',') {
           this.advance();
+          this.skipComments();
         }
       }
       
@@ -1092,9 +1641,15 @@
       this.consume('PUNCTUATION', '{');
       
       while (this.currentToken && !(this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '}')) {
-        const stmt = this.parseStatement();
-        if (stmt) {
-          node.body.push(stmt);
+        // Skip comments at block level
+        this.skipComments();
+        
+        // Check again after skipping comments
+        if (this.currentToken && !(this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '}')) {
+          const stmt = this.parseStatement();
+          if (stmt) {
+            node.body.push(stmt);
+          }
         }
       }
       
@@ -1118,10 +1673,25 @@
     }
 
     /**
-     * Parse expression
+     * Parse expression (handles comma/sequence operator)
      */
     parseExpression() {
-      return this.parseAssignmentExpression();
+      const expressions = [this.parseAssignmentExpression()];
+      
+      while (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === ',') {
+        this.advance(); // consume ','
+        this.skipComments();
+        expressions.push(this.parseAssignmentExpression());
+      }
+      
+      if (expressions.length === 1) {
+        return expressions[0];
+      }
+      
+      return {
+        type: 'SequenceExpression',
+        expressions: expressions
+      };
     }
 
     /**
@@ -1309,8 +1879,9 @@
     parseRelationalExpression() {
       let left = this.parseShiftExpression();
       
-      while (this.currentToken && this.currentToken.type === 'OPERATOR' && 
-             ['<', '>', '<=', '>='].includes(this.currentToken.value)) {
+      while (this.currentToken && 
+             ((this.currentToken.type === 'OPERATOR' && ['<', '>', '<=', '>='].includes(this.currentToken.value)) ||
+              (this.currentToken.type === 'KEYWORD' && ['in', 'instanceof'].includes(this.currentToken.value)))) {
         const node = { type: 'BinaryExpression' };
         node.left = left;
         node.operator = this.currentToken.value;
@@ -1433,11 +2004,34 @@
     parseCallExpression() {
       let left = this.parseMemberExpression();
       
-      while (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '(') {
-        const node = { type: 'CallExpression' };
-        node.callee = left;
-        node.arguments = this.parseArgumentList();
-        left = node;
+      while (this.currentToken && this.currentToken.type === 'PUNCTUATION' && 
+             (['(', '.', '['].includes(this.currentToken.value))) {
+        if (this.currentToken.value === '(') {
+          // Function call
+          const node = { type: 'CallExpression' };
+          node.callee = left;
+          node.arguments = this.parseArgumentList();
+          left = node;
+        } else if (this.currentToken.value === '.') {
+          // Member access
+          const node = { type: 'MemberExpression' };
+          node.object = left;
+          this.advance(); // consume '.'
+          this.skipComments(); // Skip comments after the dot
+          node.property = this.parseIdentifier();
+          node.computed = false;
+          left = node;
+        } else if (this.currentToken.value === '[') {
+          // Computed member access
+          const node = { type: 'MemberExpression' };
+          node.object = left;
+          this.advance(); // consume '['
+          this.skipComments(); // Skip comments after the bracket
+          node.property = this.parseExpression();
+          this.consume('PUNCTUATION', ']');
+          node.computed = true;
+          left = node;
+        }
       }
       
       return left;
@@ -1449,17 +2043,37 @@
     parseMemberExpression() {
       let left = this.parsePrimaryExpression();
       
-      while (this.currentToken && this.currentToken.type === 'PUNCTUATION' && 
-             ['.', '['].includes(this.currentToken.value)) {
+      while (this.currentToken && 
+             ((this.currentToken.type === 'PUNCTUATION' && ['.', '['].includes(this.currentToken.value)) ||
+              (this.currentToken.type === 'OPERATOR' && this.currentToken.value === '?.'))) {
         const node = { type: 'MemberExpression' };
         node.object = left;
         
         if (this.currentToken.value === '.') {
           this.advance();
-          node.property = this.parseIdentifier();
+          this.skipComments(); // Skip comments after the dot
+          node.property = this.parsePropertyName();
           node.computed = false;
+        } else if (this.currentToken.value === '?.') {
+          node.optional = true;
+          this.advance(); // consume '?.'
+          this.skipComments();
+          
+          // Check if this is optional computed access (?.[...]) 
+          if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '[') {
+            this.advance(); // consume '['
+            this.skipComments();
+            node.property = this.parseExpression();
+            this.consume('PUNCTUATION', ']');
+            node.computed = true;
+          } else {
+            // Optional property access (?.prop)
+            node.property = this.parsePropertyName();
+            node.computed = false;
+          }
         } else { // '['
           this.advance();
+          this.skipComments(); // Skip comments after the bracket
           node.property = this.parseExpression();
           this.consume('PUNCTUATION', ']');
           node.computed = true;
@@ -1477,21 +2091,33 @@
     parsePrimaryExpression() {
       if (!this.currentToken) return null;
       
+      // Skip any comments before parsing expressions
+      this.skipComments();
+      if (!this.currentToken) return null;
+      
       switch (this.currentToken.type) {
         case 'IDENTIFIER':
           return this.parseIdentifier();
         case 'NUMBER':
           return this.parseNumber();
+        case 'BIGINT':
+          return this.parseBigInt();
         case 'STRING':
           return this.parseString();
         case 'TEMPLATE_LITERAL':
           return this.parseTemplateLiteral();
+        case 'REGEX':
+          return this.parseRegex();
         case 'KEYWORD':
           if (this.currentToken.value === 'this') {
             this.advance();
             return { type: 'ThisExpression' };
           } else if (this.currentToken.value === 'new') {
             return this.parseNewExpression();
+          } else if (this.currentToken.value === 'function') {
+            return this.parseFunctionExpression();
+          } else if (this.currentToken.value === 'class') {
+            return this.parseClassExpression();
           } else if (this.currentToken.value === 'typeof') {
             this.advance();
             return {
@@ -1515,7 +2141,32 @@
         case 'PUNCTUATION':
           if (this.currentToken.value === '(') {
             this.advance();
-            const expr = this.parseExpression();
+            
+            // Check if parentheses are empty
+            if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === ')') {
+              this.advance();
+              return { type: 'SequenceExpression', expressions: [] };
+            }
+            
+            // Parse first expression
+            let expr = this.parseAssignmentExpression();
+            
+            // Check for comma-separated expressions (potential arrow function params)
+            if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === ',') {
+              const expressions = [expr];
+              
+              while (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === ',') {
+                this.advance(); // consume ','
+                expressions.push(this.parseAssignmentExpression());
+              }
+              
+              this.consume('PUNCTUATION', ')');
+              return {
+                type: 'SequenceExpression',
+                expressions: expressions
+              };
+            }
+            
             this.consume('PUNCTUATION', ')');
             return expr;
           } else if (this.currentToken.value === '[') {
@@ -1527,6 +2178,19 @@
       }
       
       throw new Error(`Unexpected token: ${this.currentToken.type} ${this.currentToken.value}`);
+    }
+
+    /**
+     * Parse property name (can be identifier or keyword)
+     */
+    parsePropertyName() {
+      if (!this.currentToken || (this.currentToken.type !== 'IDENTIFIER' && this.currentToken.type !== 'KEYWORD')) {
+        throw new Error(`Expected property name, got: ${this.currentToken ? this.currentToken.type : 'EOF'}`);
+      }
+      
+      const node = { type: 'Identifier', name: this.currentToken.value };
+      this.advance();
+      return node;
     }
 
     /**
@@ -1552,12 +2216,56 @@
     }
 
     /**
+     * Parse BigInt
+     */
+    parseBigInt() {
+      // Remove the 'n' suffix and convert to BigInt
+      const valueStr = this.currentToken.value.slice(0, -1); // Remove 'n'
+      const node = { 
+        type: 'Literal', 
+        value: BigInt(valueStr),
+        bigint: valueStr + 'n'
+      };
+      this.advance();
+      return node;
+    }
+
+    /**
      * Parse string
      */
     parseString() {
       const node = { type: 'Literal', value: this.currentToken.value.slice(1, -1) };
       this.advance();
       return node;
+    }
+
+    /**
+     * Parse regex literal
+     */
+    parseRegex() {
+      const regexValue = this.currentToken.value;
+      this.advance();
+      
+      // Extract pattern and flags from regex literal like /pattern/flags
+      let pattern = regexValue;
+      let flags = '';
+      
+      if (regexValue.startsWith('/')) {
+        const lastSlash = regexValue.lastIndexOf('/');
+        if (lastSlash > 0) {
+          pattern = regexValue.slice(1, lastSlash);
+          flags = regexValue.slice(lastSlash + 1);
+        }
+      }
+      
+      return { 
+        type: 'Literal', 
+        value: new RegExp(pattern, flags),
+        regex: {
+          pattern: pattern,
+          flags: flags
+        }
+      };
     }
 
     /**
@@ -1592,12 +2300,34 @@
       const node = { type: 'ArrayExpression', elements: [] };
       
       this.consume('PUNCTUATION', '[');
+      this.skipComments(); // Skip any comments after opening bracket
       
       while (this.currentToken && !(this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === ']')) {
-        node.elements.push(this.parseExpression());
+        // Skip comments before each element
+        this.skipComments();
+        
+        // Check if we hit the closing bracket after skipping comments
+        if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === ']') {
+          break;
+        }
+        
+        // Handle spread syntax (...expression)
+        if (this.currentToken && this.currentToken.type === 'OPERATOR' && this.currentToken.value === '...') {
+          this.advance(); // consume '...'
+          node.elements.push({
+            type: 'SpreadElement',
+            argument: this.parseAssignmentExpression()
+          });
+        } else {
+          node.elements.push(this.parseAssignmentExpression());
+        }
+        
+        // Skip comments after the element
+        this.skipComments();
         
         if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === ',') {
           this.advance();
+          this.skipComments(); // Skip comments after comma
         }
       }
       
@@ -1642,7 +2372,7 @@
             // Regular property: key: value
             this.expect('PUNCTUATION', ':');
             this.skipComments(); // Skip comments after colon
-            property.value = this.parseExpression();
+            property.value = this.parseAssignmentExpression();
           }
         } else if (this.currentToken.type === 'STRING') {
           property.key = { type: 'Literal', value: this.currentToken.value };
@@ -1650,27 +2380,61 @@
           this.skipComments(); // Skip comments before colon
           this.expect('PUNCTUATION', ':');
           this.skipComments(); // Skip comments after colon
-          property.value = this.parseExpression();
+          property.value = this.parseAssignmentExpression();
         } else if (this.currentToken.type === 'NUMBER') {
           property.key = { type: 'Literal', value: this.currentToken.value };
           this.advance();
           this.skipComments(); // Skip comments before colon
           this.expect('PUNCTUATION', ':');
           this.skipComments(); // Skip comments after colon
-          property.value = this.parseExpression();
+          property.value = this.parseAssignmentExpression();
         } else if (this.currentToken.type === 'KEYWORD') {
-          // Keywords can be used as object property names in JavaScript
-          property.key = { type: 'Identifier', name: this.currentToken.value };
-          this.advance();
-          this.skipComments(); // Skip comments before colon
-          this.expect('PUNCTUATION', ':');
-          this.skipComments(); // Skip comments after colon
-          property.value = this.parseExpression();
+          // Check for getter/setter syntax (get key() or set key())
+          if (this.currentToken.value === 'get' || this.currentToken.value === 'set') {
+            property.kind = this.currentToken.value;
+            this.advance(); // consume 'get' or 'set'
+            this.skipComments();
+            
+            // Parse the property name after get/set
+            if (this.currentToken.type === 'IDENTIFIER') {
+              property.key = this.parseIdentifier();
+            } else if (this.currentToken.type === 'STRING') {
+              property.key = { type: 'Literal', value: this.currentToken.value };
+              this.advance();
+            } else {
+              throw new Error(`Expected property name after ${property.kind}`);
+            }
+            
+            // Parse the function parameters and body
+            this.skipComments();
+            const params = this.parseParameterList();
+            this.skipComments();
+            const body = this.parseBlockStatement();
+            
+            property.value = {
+              type: 'FunctionExpression',
+              params,
+              body
+            };
+            property.method = true;
+          } else {
+            // Keywords can be used as object property names in JavaScript
+            property.key = { type: 'Identifier', name: this.currentToken.value };
+            this.advance();
+            this.skipComments(); // Skip comments before colon
+            this.expect('PUNCTUATION', ':');
+            this.skipComments(); // Skip comments after colon
+            property.value = this.parseExpression();
+          }
         } else {
           throw new Error(`Unexpected token in object key: ${this.currentToken.type} ${this.currentToken.value}`);
         }
-        property.method = false;
-        property.shorthand = false;
+        if (!property.hasOwnProperty('method')) {
+          property.method = false;
+        }
+        if (!property.hasOwnProperty('shorthand')) {
+          property.shorthand = false;
+        }
         property.computed = false;
         
         node.properties.push(property);
@@ -1711,7 +2475,16 @@
       this.consume('PUNCTUATION', '(');
       
       while (this.currentToken && !(this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === ')')) {
-        args.push(this.parseExpression());
+        // Handle spread syntax (...expression)
+        if (this.currentToken && this.currentToken.type === 'OPERATOR' && this.currentToken.value === '...') {
+          this.advance(); // consume '...'
+          args.push({
+            type: 'SpreadElement',
+            argument: this.parseExpression()
+          });
+        } else {
+          args.push(this.parseExpression());
+        }
         
         if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === ',') {
           this.advance();
@@ -1761,6 +2534,13 @@
     }
 
     /**
+     * Alias for advance() to match common parser patterns
+     */
+    nextToken() {
+      this.advance();
+    }
+
+    /**
      * Skip any comment tokens
      */
     skipComments() {
@@ -1774,6 +2554,9 @@
      * Consume a specific token
      */
     consume(expectedType, expectedValue = null) {
+      // Skip comments first
+      this.skipComments();
+      
       if (!this.currentToken || this.currentToken.type !== expectedType) {
         throw new Error(`Expected ${expectedType}, got: ${this.currentToken ? this.currentToken.type : 'EOF'}`);
       }
@@ -1783,6 +2566,7 @@
       }
       
       this.advance();
+      this.skipComments(); // Skip comments after advancing
     }
 
     /**
@@ -1983,14 +2767,20 @@
      */
     parseIfStatement() {
       this.advance(); // consume 'if'
+      this.skipComments();
       this.expect('PUNCTUATION', '(');
+      this.skipComments();
       const test = this.parseExpression();
+      this.skipComments();
       this.expect('PUNCTUATION', ')');
+      this.skipComments();
       const consequent = this.parseStatement();
       
       let alternate = null;
+      this.skipComments();
       if (this.currentToken && this.currentToken.type === 'KEYWORD' && this.currentToken.value === 'else') {
         this.advance(); // consume 'else'
+        this.skipComments();
         alternate = this.parseStatement();
       }
       
@@ -2007,7 +2797,15 @@
      */
     parseForStatement() {
       this.advance(); // consume 'for'
-      this.expect('PUNCTUATION', '(');
+      
+      // Skip any comments after 'for'
+      this.skipComments();
+      
+      if (!this.currentToken || this.currentToken.type !== 'PUNCTUATION' || this.currentToken.value !== '(') {
+        throw new Error(`Expected '(' after 'for', got: ${this.currentToken ? this.currentToken.type + ' ' + this.currentToken.value : 'EOF'}`);
+      }
+      
+      this.advance(); // consume '('
       
       // Parse init (can be variable declaration or expression)
       let init = null;
@@ -2272,6 +3070,9 @@
       
       const cases = [];
       while (this.currentToken && this.currentToken.value !== '}') {
+        this.skipComments(); // Skip comments at the switch case level
+        if (!this.currentToken || this.currentToken.value === '}') break;
+        
         if (this.currentToken.type === 'KEYWORD' && this.currentToken.value === 'case') {
           this.advance(); // consume 'case'
           const test = this.parseExpression();
@@ -2280,6 +3081,11 @@
           const consequent = [];
           while (this.currentToken && this.currentToken.value !== 'case' && 
                  this.currentToken.value !== 'default' && this.currentToken.value !== '}') {
+            this.skipComments();
+            if (!this.currentToken || this.currentToken.value === 'case' || 
+                this.currentToken.value === 'default' || this.currentToken.value === '}') {
+              break;
+            }
             consequent.push(this.parseStatement());
           }
           
@@ -2295,6 +3101,11 @@
           const consequent = [];
           while (this.currentToken && this.currentToken.value !== 'case' && 
                  this.currentToken.value !== 'default' && this.currentToken.value !== '}') {
+            this.skipComments();
+            if (!this.currentToken || this.currentToken.value === 'case' || 
+                this.currentToken.value === 'default' || this.currentToken.value === '}') {
+              break;
+            }
             consequent.push(this.parseStatement());
           }
           
