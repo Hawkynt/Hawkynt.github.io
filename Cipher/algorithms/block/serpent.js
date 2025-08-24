@@ -588,11 +588,10 @@ class SerpentInstance extends AlgorithmFramework.IBlockCipherInstance {
     
     // Apply S-boxes to subkeys
     const roundKeys = [];
-    const sboxOrder = [3, 2, 1, 0, 7, 6, 5, 4]; // S-box order for key schedule
     
     for (let round = 0; round < 33; round++) {
       const baseIndex = round * 4 + 8;
-      const sboxIndex = sboxOrder[round % 8];
+      const sboxIndex = (7 - (round % 8)) % 8; // Correct S-box order for key schedule
       
       const x0 = extendedKey[baseIndex];
       const x1 = extendedKey[baseIndex + 1];
@@ -686,6 +685,15 @@ class SerpentInstance extends AlgorithmFramework.IBlockCipherInstance {
 
     // 32 decryption rounds (in reverse order)
     for (let round = this.ROUNDS - 1; round >= 0; round--) {
+      // Inverse linear transformation first (except for last round which is now first)
+      if (round < this.ROUNDS - 1) {
+        const ltResult = this._linearTransformInv(x0, x1, x2, x3);
+        x0 = ltResult[0];
+        x1 = ltResult[1];
+        x2 = ltResult[2];
+        x3 = ltResult[3];
+      }
+
       // Inverse S-box substitution (undo the S-box from encryption)
       const sboxIndex = sboxOrder[round % 8];
       const sboxResult = this._sboxInv(sboxIndex, x0, x1, x2, x3);
@@ -693,15 +701,6 @@ class SerpentInstance extends AlgorithmFramework.IBlockCipherInstance {
       x1 = sboxResult[1];
       x2 = sboxResult[2];
       x3 = sboxResult[3];
-
-      // Inverse linear transformation (undo linear transform, except for first round)
-      if (round > 0) {
-        const ltResult = this._linearTransformInv(x0, x1, x2, x3);
-        x0 = ltResult[0];
-        x1 = ltResult[1];
-        x2 = ltResult[2];
-        x3 = ltResult[3];
-      }
 
       // Key mixing (undo the round key)
       x0 ^= this.roundKeys[round][0];

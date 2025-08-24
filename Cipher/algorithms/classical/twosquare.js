@@ -46,20 +46,20 @@ class TwoSquareCipher extends CryptoAlgorithm {
     this.tests = [
       (() => {
         const test = new TestCase(
-          Array.from('HELLO').map(c => c.charCodeAt(0)), 
-          Array.from('MCKMPW').map(c => c.charCodeAt(0)),
+          OpCodes.AnsiToBytes('HELLO'), 
+          OpCodes.AnsiToBytes('MCKMPW'),
           'Basic Two-Square example'
         );
-        test.key = Array.from('SECRET,CIPHER').map(c => c.charCodeAt(0));
+        test.key = OpCodes.AnsiToBytes('SECRET,CIPHER');
         return test;
       })(),
       (() => {
         const test = new TestCase(
-          Array.from('ATTACKATDAWN').map(c => c.charCodeAt(0)),
-          Array.from('EVRCLYEVCBVP').map(c => c.charCodeAt(0)),
+          OpCodes.AnsiToBytes('ATTACKATDAWN'),
+          OpCodes.AnsiToBytes('EVRCLYEVCBVP'),
           'Military message example'
         );
-        test.key = Array.from('EXAMPLE,KEYWORD').map(c => c.charCodeAt(0));
+        test.key = OpCodes.AnsiToBytes('EXAMPLE,KEYWORD');
         return test;
       })()
     ];

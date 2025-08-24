@@ -25,7 +25,7 @@ class EaxAlgorithm extends AeadAlgorithm {
     this.description = "EAX (Encrypt-then-Authenticate-then-Translate) is an authenticated encryption mode that combines CTR mode encryption with OMAC authentication. It provides both confidentiality and authenticity, supporting arbitrary-length nonces and associated authenticated data (AAD).";
     this.inventor = "Bellare, Rogaway, Wagner";
     this.year = 2003;
-    this.category = CategoryType.AEAD;
+    this.category = CategoryType.MODE;
     this.subCategory = "Authenticated Encryption";
     this.securityStatus = SecurityStatus.SECURE;
     this.complexity = ComplexityType.ADVANCED;

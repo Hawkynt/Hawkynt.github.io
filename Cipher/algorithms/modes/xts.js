@@ -34,7 +34,7 @@ class XtsAlgorithm extends CipherModeAlgorithm {
     
     this.RequiresIV = true; // XTS uses tweak value instead of traditional IV
     this.SupportedIVSizes = [
-      new KeySize(16, 16, 1) // XTS requires exactly 16-byte tweak for AES
+      new KeySize(16, 16, 0) // XTS requires exactly 16-byte tweak for AES
     ];
     
     this.documentation = [

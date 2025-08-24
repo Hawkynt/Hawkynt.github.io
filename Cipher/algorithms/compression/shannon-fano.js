@@ -54,19 +54,19 @@
       
       this.tests = [
         new TestCase(
-          Array.from("AAABBC").map(c => c.charCodeAt(0)),
+          OpCodes.AnsiToBytes("AAABBC"),
           [0, 0, 0, 6, 0, 3, 65, 1, 0, 66, 2, 128, 67, 2, 192, 7, 21, 128],
           "Basic frequency encoding",
           "Educational test case"
         ),
         new TestCase(
-          Array.from("ABCDEF").map(c => c.charCodeAt(0)),
+          OpCodes.AnsiToBytes("ABCDEF"),
           [0, 0, 0, 6, 0, 6, 65, 2, 0, 66, 3, 64, 67, 3, 96, 68, 2, 128, 69, 3, 192, 70, 3, 224, 0, 19, 183],
           "Alphabet frequency test",
           "Character distribution test"
         ),
         new TestCase(
-          Array.from("ABABAB").map(c => c.charCodeAt(0)),
+          OpCodes.AnsiToBytes("ABABAB"),
           [0, 0, 0, 6, 0, 2, 65, 1, 0, 66, 1, 128, 2, 84],
           "Repeated pattern encoding",
           "Pattern recognition test"

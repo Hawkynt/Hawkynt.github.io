@@ -7,9 +7,23 @@
 (function(global) {
   'use strict';
   
-  // Environment detection and OpCodes loading
+  // Ensure environment dependencies are available
   if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+    try {
+      require('../../OpCodes.js');
+    } catch (e) {
+      console.error('Failed to load OpCodes:', e.message);
+      return;
+    }
+  }
+  
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
+      return;
+    }
   }
   
   const ACORN = {
@@ -52,32 +66,23 @@
       {
         text: "ACORN-128 Test Vector 1 (CAESAR)",
         uri: "https://competitions.cr.yp.to/round3/acornv3.pdf",
+        input: OpCodes.Hex8ToBytes(""),
         key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-        iv: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-        aad: OpCodes.Hex8ToBytes(""),
-        plaintext: OpCodes.Hex8ToBytes(""),
-        expectedCiphertext: OpCodes.Hex8ToBytes(""),
-        expectedTag: OpCodes.Hex8ToBytes("4DB923DC793EE2B2B1B0F6207BF16B6A")
+        expected: OpCodes.Hex8ToBytes("4DB923DC793EE2B2B1B0F6207BF16B6A")
       },
       {
         text: "ACORN-128 Test Vector 2 (With Data)",
         uri: "https://competitions.cr.yp.to/round3/acornv3.pdf",
+        input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
         key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-        iv: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-        aad: OpCodes.Hex8ToBytes("0001020304050607"),
-        plaintext: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-        expectedCiphertext: OpCodes.Hex8ToBytes("486BB8E5A060F6E96FA0B3B676A7D58AA1D6EBC95B17A1DBE5C32A09A42B4CAF"),
-        expectedTag: OpCodes.Hex8ToBytes("67E804B9D5AB2E1E4B3C02A29E8FE3BC")
+        expected: OpCodes.Hex8ToBytes("486BB8E5A060F6E96FA0B3B676A7D58AA1D6EBC95B17A1DBE5C32A09A42B4CAF67E804B9D5AB2E1E4B3C02A29E8FE3BC")
       },
       {
         text: "ACORN-128 Test Vector 3 (AAD Only)",
         uri: "https://competitions.cr.yp.to/round3/acornv3.pdf",
+        input: OpCodes.Hex8ToBytes(""),
         key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-        iv: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-        aad: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-        plaintext: OpCodes.Hex8ToBytes(""),
-        expectedCiphertext: OpCodes.Hex8ToBytes(""),
-        expectedTag: OpCodes.Hex8ToBytes("7E7B35BC9476E0AEADC8C07DEE4D17E5")
+        expected: OpCodes.Hex8ToBytes("7E7B35BC9476E0AEADC8C07DEE4D17E5")
       }
     ],
 
@@ -100,7 +105,7 @@
     isAEAD: true,
     complexity: 'Medium',
     family: 'Lightweight',
-    category: 'Authenticated-Encryption',
+    // Removed duplicate category - using the correct one at line 35
     
     // ACORN state (293 bits)
     state: null,
@@ -440,16 +445,27 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
-    global.Cipher.Add(ACORN);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(ACORN);
+  }
   
-  // Export for Node.js
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(ACORN);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(ACORN);
+  }
+  
+  // Export to global scope
+  global.ACORN = ACORN;
+  
+  // Node.js module export
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = ACORN;
   }
-  
-  // Global export
-  global.ACORN = ACORN;
   
 })(typeof global !== 'undefined' ? global : window);

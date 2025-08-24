@@ -46,7 +46,7 @@ class CMACAlgorithm extends MacAlgorithm {
     
     // MAC-specific configuration
     this.SupportedMacSizes = [
-      new KeySize(16, 16, 1)  // 128-bit MAC output
+      new KeySize(16, 16, 0)  // 128-bit MAC output
     ];
     this.NeedsKey = true;
     

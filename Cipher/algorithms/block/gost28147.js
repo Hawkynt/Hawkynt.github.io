@@ -38,10 +38,10 @@ class Gost28147Algorithm extends BlockCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new KeySize(32, 32, 1)  // GOST 28147-89: 256-bit keys only
+      new KeySize(32, 32, 0)  // GOST 28147-89: 256-bit keys only
     ];
     this.SupportedBlockSizes = [
-      new KeySize(8, 8, 1)    // 64-bit blocks only
+      new KeySize(8, 8, 0)    // 64-bit blocks only
     ];
 
     // Documentation and references

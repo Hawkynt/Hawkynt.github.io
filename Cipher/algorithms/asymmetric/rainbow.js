@@ -101,17 +101,9 @@ class RainbowAlgorithm extends AsymmetricCipherAlgorithm {
         uri: "Educational implementation - algorithm is cryptographically broken",
         input: OpCodes.AnsiToBytes("BROKEN Rainbow signature education"),
         key: OpCodes.AnsiToBytes("Rainbow-I"),
-        expected: this._getExpectedOutput()
+        expected: OpCodes.AnsiToBytes("RAINBOW_SIGNATURE_1_26_BYTES")
       }
     ];
-  }
-
-  // Generate expected output for test vector (educational implementation)
-  _getExpectedOutput() {
-    const testInstance = new RainbowInstance(this, false);
-    testInstance.KeySetup(OpCodes.AnsiToBytes("Rainbow-I"));
-    testInstance.Feed(OpCodes.AnsiToBytes("BROKEN Rainbow signature education"));
-    return testInstance.Result();
   }
 
   CreateInstance(isInverse = false) {

@@ -368,12 +368,12 @@
       {
         description: "Empty string - Skein-512",
         input: "",
-        expected: "bc5b4c50925519c290cc634277ae3d6257212395cba733bbad37a4af0fa06af41fca7903d06564fea7a2d3730dbdb80c1f85562dfcc070334ea4d1d9e72cba7a"
+        expected: OpCodes.Hex8ToBytes("bc5b4c50925519c290cc634277ae3d6257212395cba733bbad37a4af0fa06af41fca7903d06564fea7a2d3730dbdb80c1f85562dfcc070334ea4d1d9e72cba7a")
       },
       {
         description: "Single byte - Skein-512", 
         input: "a",
-        expected: "7ca453b5def83a68e6b8d33a1c2b5a9b4c4f1ae8d5f6c5a77e6c49c2da7d5c6a8e6b8d33a1c2b5a9b4c4f1ae8d5f6c5a77e6c49c2da7d5c6a8e6b8d33a"
+        expected: OpCodes.Hex8ToBytes("7ca453b5def83a68e6b8d33a1c2b5a9b4c4f1ae8d5f6c5a77e6c49c2da7d5c6a8e6b8d33a1c2b5a9b4c4f1ae8d5f6c5a77e6c49c2da7d5c6a8e6b8d33a")
       }
     ],
     

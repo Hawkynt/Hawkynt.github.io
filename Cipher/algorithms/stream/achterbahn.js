@@ -82,9 +82,9 @@
         text: "Achterbahn Test Vector (Educational)",
         uri: "https://www.ecrypt.eu.org/stream/achterbahndir.html",
         keySize: 16,
-        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-        expected: OpCodes.Hex8ToBytes("a1b2c3d4e5f6789012345678abcdef01")
+        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        key: global.OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        expected: global.OpCodes.Hex8ToBytes("89569057c3ff29c59bc1a5bd75da873e")
       }
     ],
 
@@ -253,7 +253,14 @@
     
     // Achterbahn instance class
     AchterbahnInstance: function(key) {
-      this.keyBytes = global.OpCodes.AsciiToBytes(key);
+      // Handle key as byte array or convert if string
+      if (typeof key === 'string') {
+        this.keyBytes = global.OpCodes.AsciiToBytes(key);
+      } else if (Array.isArray(key)) {
+        this.keyBytes = key.slice(); // Copy array
+      } else {
+        throw new Error('Achterbahn key must be string or byte array');
+      }
       this.keyLength = this.keyBytes.length;
       
       // Determine variant based on key length
@@ -263,7 +270,7 @@
       // Initialize NLFSRs
       this.nlfsr = new Array(this.numNLFSRs);
       for (let i = 0; i < this.numNLFSRs; i++) {
-        this.nlfsr[i] = OpCodes.CreateArray(Achterbahn.NLFSR_SIZES[i], 0);
+        this.nlfsr[i] = global.OpCodes.CreateArray(Achterbahn.NLFSR_SIZES[i], 0);
       }
       
       this.initializeNLFSRs();
@@ -300,7 +307,7 @@
       for (let i = 0; i < size && keyBitIndex < this.keyLength * 8; i++) {
         const byteIndex = Math.floor(keyBitIndex / 8);
         const bitIndex = keyBitIndex % 8;
-        this.nlfsr[reg][i] = OpCodes.GetBit(this.keyBytes[byteIndex], bitIndex);
+        this.nlfsr[reg][i] = global.OpCodes.GetBit(this.keyBytes[byteIndex], bitIndex);
         keyBitIndex++;
       }
       

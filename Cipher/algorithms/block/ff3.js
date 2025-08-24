@@ -90,11 +90,11 @@ class FF3Algorithm extends BlockCipherAlgorithm {
       {
         text: "NIST FF3 Sample (DEPRECATED) - 18 digit decimal",
         uri: "https://nvlpubs.nist.gov/nistpubs/specialpublications/nist.sp.800-38g.pdf",
-        input: "890121234567890000",
+        input: OpCodes.AnsiToBytes("890121234567890000"),
         key: OpCodes.Hex8ToBytes("2DE79D232DF5585D68CE47882AE256D6"),
         tweak: OpCodes.Hex8ToBytes("CBD09280979564CB"),
         radix: 10,
-        expected: "750918814058654607"
+        expected: OpCodes.AnsiToBytes("750918814058654607")
       }
     ];
   }

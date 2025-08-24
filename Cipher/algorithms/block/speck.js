@@ -213,11 +213,12 @@ class SpeckInstance extends AlgorithmFramework.IBlockCipherInstance {
   
   _expandKey(keyBytes) {
     // Convert 128-bit key to four 32-bit words using OpCodes (little-endian)
+    // NSA Speck uses specific ordering: k3, k2, k1, k0 (reverse order)
     const k = [
-      OpCodes.Pack32LE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]),
-      OpCodes.Pack32LE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]),
-      OpCodes.Pack32LE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]),
-      OpCodes.Pack32LE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15])
+      OpCodes.Pack32LE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15]), // k3 -> k0
+      OpCodes.Pack32LE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]),   // k2 -> k1  
+      OpCodes.Pack32LE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]),     // k1 -> k2
+      OpCodes.Pack32LE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3])      // k0 -> k3
     ];
     
     // Expand key to 27 round keys using Speck key schedule
@@ -231,7 +232,7 @@ class SpeckInstance extends AlgorithmFramework.IBlockCipherInstance {
     // Key schedule uses same ARX structure as round function
     for (let i = 0; i < this.algorithm.ROUNDS - 1; i++) {
       // Apply round function to l[i % 3] and roundKeys[i]
-      // l[i % 3] = ROR(l[i % 3], 8), l[i % 3] += roundKeys[i], l[i % 3] ^= i
+      // l[i % 3] = (ROR(l[i % 3], 8) + roundKeys[i]) ^ i
       const idx = i % 3;
       l[idx] = OpCodes.RotR32(l[idx], this.algorithm.ALPHA);
       l[idx] = (l[idx] + roundKeys[i]) >>> 0;

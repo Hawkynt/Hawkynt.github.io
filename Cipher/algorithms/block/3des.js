@@ -46,7 +46,7 @@ class TripleDESAlgorithm extends BlockCipherAlgorithm {
       new KeySize(16, 24, 8)  // EDE2 (16 bytes) or EDE3 (24 bytes)
     ];
     this.SupportedBlockSizes = [
-      new KeySize(8, 8, 1)    // 64-bit blocks only
+      new KeySize(8, 8, 0)    // 64-bit blocks only
     ];
 
     // Documentation and references

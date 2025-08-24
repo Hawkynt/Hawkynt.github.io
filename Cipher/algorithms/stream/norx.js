@@ -7,9 +7,23 @@
 (function(global) {
   'use strict';
   
-  // Environment detection and OpCodes loading
+  // Ensure environment dependencies are available
   if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+    try {
+      require('../../OpCodes.js');
+    } catch (e) {
+      console.error('Failed to load OpCodes:', e.message);
+      return;
+    }
+  }
+  
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
+      return;
+    }
   }
   
   const NORX = {
@@ -52,6 +66,8 @@
       {
         text: "NORX64-4-1 Test Vector 1 (Empty)",
         uri: "https://norx.io/data/norx.pdf",
+        input: OpCodes.Hex8ToBytes(""), // payload
+        expected: OpCodes.Hex8ToBytes("E4AB1492C9F4A9A1E02654F64232BAAE58A4E6C2FC30CB6E6D43CC8CAE55C22F"), // expectedTag
         key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
         nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
         header: OpCodes.Hex8ToBytes(""),
@@ -62,6 +78,8 @@
       {
         text: "NORX64-4-1 Test Vector 2 (With Data)",
         uri: "https://norx.io/data/norx.pdf",
+        input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F"), // payload
+        expected: OpCodes.Hex8ToBytes("3C84C9AC903DCC55C1B5AAEC8EB4D50E0E51EC1A1D3C3A8CBAB06FF58F08F9A6E9F6A97C7E5A07618623C80EC80FA940"), // expectedCiphertext + tag
         key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
         nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
         header: OpCodes.Hex8ToBytes("0001020304050607"),
@@ -72,6 +90,8 @@
       {
         text: "NORX64-4-1 Test Vector 3 (Header Only)",
         uri: "https://norx.io/data/norx.pdf",
+        input: OpCodes.Hex8ToBytes(""), // payload
+        expected: OpCodes.Hex8ToBytes("88B7BE82E2FF5DB12834AD77F67BB7E04A61DBDE30F6ECFEB6F1A73A5B92A554"), // expectedTag
         key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
         nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
         header: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
@@ -100,7 +120,6 @@
     isAEAD: true,
     complexity: 'Medium',
     family: 'NORX',
-    category: 'Authenticated-Encryption',
     
     // NORX constants
     ROUNDS: 4,
@@ -439,6 +458,13 @@
       return this.decryptAEAD(this.key, nonce, null, actualCiphertext, tag);
     },
     
+    // Create algorithm instance (required by AlgorithmFramework)
+    CreateInstance: function(isInverse = false) {
+      const instance = Object.create(this);
+      instance.Init();
+      return instance;
+    },
+
     ClearData: function() {
       if (this.key) {
         OpCodes.ClearArray(this.key);
@@ -530,9 +556,14 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
-    global.Cipher.Add(NORX);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    try {
+      global.AlgorithmFramework.RegisterAlgorithm(NORX);
+    } catch (e) {
+      console.error('Failed to register NORX:', e.message);
+    }
+  }
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {

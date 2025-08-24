@@ -18,9 +18,9 @@
   }
   
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          CryptoAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = global.AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem } = global.AlgorithmFramework;
 
-  class BLAKE3Enhanced extends CryptoAlgorithm {
+  class BLAKE3Enhanced extends HashFunctionAlgorithm {
     constructor() {
       super();
       
@@ -54,22 +54,20 @@
         new LinkItem("Security Analysis", "https://eprint.iacr.org/2019/026")
       ];
       
-      // Convert tests to new format
+      // Test vectors from official BLAKE3 test suite
       this.tests = [
-        new TestCase(
-          "BLAKE3 Test Vector 1 (Empty)",
-          "Official test vectors",
-          OpCodes.Hex8ToBytes(""),
-          null,
-          OpCodes.Hex8ToBytes("AF1349B9F5F9A1A6A0404DEA36DCC9499BCB25C9ADC112B7CC9A93CAE41F3262")
-        ),
-        new TestCase(
-          "BLAKE3 Test Vector 2 (abc)",
-          "Official test vectors", 
-          OpCodes.AnsiToBytes("abc"),
-          null,
-          OpCodes.Hex8ToBytes("6437B3AC38465133FFB63B75273A8DB548C558465D79DB03FD359C6CD5BD9D85")
-        )
+        {
+          text: "BLAKE3 Test Vector 1 (Empty)",
+          uri: "Official test vectors",
+          input: [],
+          expected: OpCodes.Hex8ToBytes("AF1349B9F5F9A1A6A0404DEA36DCC9499BCB25C9ADC112B7CC9A93CAE41F3262")
+        },
+        {
+          text: "BLAKE3 Test Vector 2 (abc)",
+          uri: "Official test vectors", 
+          input: OpCodes.AnsiToBytes("abc"),
+          expected: OpCodes.Hex8ToBytes("6437B3AC38465133FFB63B75273A8DB548C558465D79DB03FD359C6CD5BD9D85")
+        }
       ];
       
       // For test suite compatibility
@@ -87,7 +85,7 @@
     }
   }
 
-  class BLAKE3EnhancedInstance extends IAlgorithmInstance {
+  class BLAKE3EnhancedInstance extends IHashFunctionInstance {
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.inputBuffer = [];

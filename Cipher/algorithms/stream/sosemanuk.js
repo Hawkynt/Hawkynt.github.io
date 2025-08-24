@@ -388,9 +388,24 @@
     }
   };
   
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(SOSEMANUK);
+  }
+  
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(SOSEMANUK);
+  }
+  
   // Auto-register with Cipher system if available
   if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(SOSEMANUK);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(SOSEMANUK);
   }
   
   // Export to global scope

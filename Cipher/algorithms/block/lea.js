@@ -41,7 +41,7 @@ class LEAAlgorithm extends BlockCipherAlgorithm {
       new KeySize(16, 32, 8) // 128, 192, 256-bit keys (16, 24, 32 bytes)
     ];
     this.SupportedBlockSizes = [
-      new KeySize(16, 16, 1) // Fixed 128-bit (16-byte) blocks
+      new KeySize(16, 16, 0) // Fixed 128-bit (16-byte) blocks
     ];
 
     // Documentation and references

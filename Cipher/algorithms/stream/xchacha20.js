@@ -742,12 +742,78 @@
       'File encryption without nonce management complexity',
       'Network protocols with simple nonce handling',
       'Applications requiring many encryptions per key'
-    ]
+    ],
+
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._key = keyData;
+        },
+        
+        set keySize(size) {
+          this._keySize = size;
+        },
+        
+        set nonce(nonceData) {
+          this._nonce = nonceData;
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          if (!this._key) {
+            this._key = new Array(32).fill(0);
+          }
+          if (!this._nonce) {
+            this._nonce = new Array(24).fill(0);
+          }
+          
+          const keyStr = String.fromCharCode.apply(null, this._key);
+          const nonceStr = String.fromCharCode.apply(null, this._nonce);
+          const inputStr = String.fromCharCode.apply(null, this._inputData);
+          
+          const result = XChaCha20.encrypt(keyStr, nonceStr, inputStr);
+          return XChaCha20.stringToBytes(result.ciphertext);
+        }
+      };
+    }
   };
+  
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(XChaCha20);
+  }
+  
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(XChaCha20);
+  }
   
   // Auto-register with universal cipher system
   if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(XChaCha20);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(XChaCha20);
   }
   
   // Export to global scope

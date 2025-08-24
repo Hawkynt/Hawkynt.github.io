@@ -41,7 +41,7 @@ class SaferAlgorithm extends BlockCipherAlgorithm {
       new KeySize(8, 16, 8)  // SAFER: 64-bit (K-64) or 128-bit (K-128) keys
     ];
     this.SupportedBlockSizes = [
-      new KeySize(8, 8, 1)    // 64-bit blocks only
+      new KeySize(8, 8, 0)    // 64-bit blocks only
     ];
 
     // Documentation and references

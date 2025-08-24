@@ -56,10 +56,10 @@ class NewDESAlgorithm extends BlockCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new KeySize(15, 15, 1) // Fixed 120-bit (15-byte) key
+      new KeySize(15, 15, 0) // Fixed 120-bit (15-byte) key
     ];
     this.SupportedBlockSizes = [
-      new KeySize(8, 8, 1) // Fixed 64-bit (8-byte) blocks
+      new KeySize(8, 8, 0) // Fixed 64-bit (8-byte) blocks
     ];
 
     // Documentation and references

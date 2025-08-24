@@ -73,23 +73,23 @@ class BifidCipher extends CryptoAlgorithm {
       {
         text: "Basic Test",
         uri: "https://en.wikipedia.org/wiki/Bifid_cipher",
-        input: global.OpCodes ? global.OpCodes.AnsiToBytes("HELLO") : [72, 69, 76, 76, 79],
-        key: global.OpCodes ? global.OpCodes.AnsiToBytes("5") : [53], // period of 5
-        expected: global.OpCodes ? global.OpCodes.AnsiToBytes("FNNVD") : [70, 78, 78, 86, 68]
+        input: global.OpCodes.AnsiToBytes("HELLO"),
+        key: global.OpCodes.AnsiToBytes("5"), // period of 5
+        expected: global.OpCodes.AnsiToBytes("FNNVD")
       },
       {
         text: "Custom Keyword Test",
         uri: "https://www.dcode.fr/bifid-cipher",
-        input: global.OpCodes ? global.OpCodes.AnsiToBytes("ATTACK") : [65, 84, 84, 65, 67, 75],
-        key: global.OpCodes ? global.OpCodes.AnsiToBytes("CIPHER,3") : [67, 73, 80, 72, 69, 82, 44, 51], // keyword CIPHER, period 3
-        expected: global.OpCodes ? global.OpCodes.AnsiToBytes("DQTRKI") : [68, 81, 84, 82, 75, 73]
+        input: global.OpCodes.AnsiToBytes("ATTACK"),
+        key: global.OpCodes.AnsiToBytes("CIPHER,3"), // keyword CIPHER, period 3
+        expected: global.OpCodes.AnsiToBytes("DQTRKI")
       },
       {
         text: "Edge Case",
         uri: "https://en.wikipedia.org/wiki/Bifid_cipher",
-        input: global.OpCodes ? global.OpCodes.AnsiToBytes("A") : [65],
-        key: global.OpCodes ? global.OpCodes.AnsiToBytes("1") : [49], // period of 1
-        expected: global.OpCodes ? global.OpCodes.AnsiToBytes("A") : [65]
+        input: global.OpCodes.AnsiToBytes("A"),
+        key: global.OpCodes.AnsiToBytes("1"), // period of 1
+        expected: global.OpCodes.AnsiToBytes("A")
       }
     ];
 
@@ -235,7 +235,7 @@ class BifidCipherInstance extends IAlgorithmInstance {
     this.inputBuffer = [];
     
     // Convert result string back to byte array
-    return [...resultString].map(c => c.charCodeAt(0));
+    return OpCodes.AnsiToBytes(resultString);
   }
 
   // Encrypt using Bifid cipher

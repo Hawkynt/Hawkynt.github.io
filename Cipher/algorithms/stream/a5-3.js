@@ -77,9 +77,9 @@
         text: "3GPP A5/3 Test Vector (Educational)",
         uri: "https://www.3gpp.org/DynaReport/55216.htm",
         keySize: 16,
-        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000000000000000") : [],
-        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f") : [],
-        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("5bb0ca88d8c7a40d3d56d33a8eff3bc1") : []
+        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        key: global.OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        expected: global.OpCodes.Hex8ToBytes("5bb0ca88d8c7a40d3d56d33a8eff3bc1")
       }
     ],
 

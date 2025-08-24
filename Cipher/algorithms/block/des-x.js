@@ -46,10 +46,10 @@ class DESXAlgorithm extends BlockCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new KeySize(23, 23, 1) // Fixed 184-bit keys (23 bytes)
+      new KeySize(23, 23, 0) // Fixed 184-bit keys (23 bytes)
     ];
     this.SupportedBlockSizes = [
-      new KeySize(8, 8, 1) // Fixed 64-bit blocks (8 bytes)
+      new KeySize(8, 8, 0) // Fixed 64-bit blocks (8 bytes)
     ];
 
     // Documentation and references

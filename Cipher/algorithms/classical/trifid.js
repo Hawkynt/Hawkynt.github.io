@@ -46,20 +46,20 @@ class TrifidCipher extends CryptoAlgorithm {
     this.tests = [
       (() => {
         const test = new TestCase(
-          Array.from('HELLO').map(c => c.charCodeAt(0)), 
-          Array.from('BOJN+').map(c => c.charCodeAt(0)),
+          OpCodes.AnsiToBytes('HELLO'), 
+          OpCodes.AnsiToBytes('BOJN+'),
           'Basic Trifid example with period 5'
         );
-        test.key = Array.from('5').map(c => c.charCodeAt(0));
+        test.key = OpCodes.AnsiToBytes('5');
         return test;
       })(),
       (() => {
         const test = new TestCase(
-          Array.from('ATTACKATDAWN').map(c => c.charCodeAt(0)),
-          Array.from('IBAAEHGHBEDE').map(c => c.charCodeAt(0)),
+          OpCodes.AnsiToBytes('ATTACKATDAWN'),
+          OpCodes.AnsiToBytes('IBAAEHGHBEDE'),
           'Military message with period 6'
         );
-        test.key = Array.from('6').map(c => c.charCodeAt(0));
+        test.key = OpCodes.AnsiToBytes('6');
         return test;
       })()
     ];

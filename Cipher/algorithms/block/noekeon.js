@@ -15,7 +15,7 @@ if (!global.AlgorithmFramework && typeof require !== 'undefined') {
 
 // Load OpCodes for cryptographic operations (RECOMMENDED)
 if (!global.OpCodes && typeof require !== 'undefined') {
-  OpCodes = require('../../OpCodes.js');
+  global.OpCodes = require('../../OpCodes.js');
 }
 
 class NOEKEONCipher extends AlgorithmFramework.BlockCipherAlgorithm {
@@ -145,6 +145,7 @@ class NOEKEONInstance extends AlgorithmFramework.IBlockCipherInstance {
   }
   
   _convertKeyToWords(keyBytes) {
+    // Direct mode NOEKEON - use cipher key directly as working key
     const keyWords = new Array(4);
     for (let i = 0; i < 4; i++) {
       const offset = i * 4;
@@ -205,8 +206,13 @@ class NOEKEONInstance extends AlgorithmFramework.IBlockCipherInstance {
       );
     }
     
-    // NOEKEON decryption
-    this._commonLoop(this.keyWords, state, 0, this.algorithm.RC1_ENCRYPT_START);
+    // NOEKEON decryption - use correct decryption constants
+    // For decryption, we need to start from the final round constant and work backwards
+    let RC1 = this.algorithm.RC1_ENCRYPT_START;
+    for (let i = 0; i < this.algorithm.ROUNDS; i++) {
+      RC1 = this._rcShiftRegFwd(RC1);
+    }
+    this._commonLoop(this.keyWords, state, 0, RC1);
     
     // Convert back to bytes using OpCodes (big-endian)
     const result = [];

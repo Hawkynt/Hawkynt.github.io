@@ -62,16 +62,16 @@
         {
           text: "Pigpen Standard Test",
           uri: "Historical Freemason lodge records",
-          input: global.OpCodes?.AnsiToBytes("HELLO") || [72, 69, 76, 76, 79], 
-          key: global.OpCodes?.AnsiToBytes("standard") || [115, 116, 97, 110, 100, 97, 114, 100],
-          expected: global.OpCodes?.AnsiToBytes("HELLO") || [72, 69, 76, 76, 79]
+          input: global.OpCodes.AnsiToBytes("HELLO"), 
+          key: global.OpCodes.AnsiToBytes("standard"),
+          expected: global.OpCodes.AnsiToBytes("HELLO")
         },
         {
           text: "Pigpen ASCII Variant",
           uri: "ASCII compatibility test",
-          input: global.OpCodes?.AnsiToBytes("SECRET") || [83, 69, 67, 82, 69, 84], 
-          key: global.OpCodes?.AnsiToBytes("ascii") || [97, 115, 99, 105, 105],
-          expected: global.OpCodes?.AnsiToBytes("SECRET") || [83, 69, 67, 82, 69, 84]
+          input: global.OpCodes.AnsiToBytes("SECRET"), 
+          key: global.OpCodes.AnsiToBytes("ascii"),
+          expected: global.OpCodes.AnsiToBytes("SECRET")
         }
       ];
 

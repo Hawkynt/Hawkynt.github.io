@@ -48,6 +48,8 @@
     // Public interface properties
     internalName: 'F-FCSR',
     name: 'F-FCSR Stream Cipher',
+    description: 'F-FCSR (Feedback with Carry Shift Register) stream cipher based on eSTREAM specification. Uses FCSR automaton with binary expansion of 2-adic numbers. SECURITY WARNING: Cryptographically broken.',
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     comment: 'F-FCSR Feedback with Carry Shift Register - DEPRECATED: Cryptographically broken',
     minKeyLength: 10,   // 80 bits for F-FCSR-H
     maxKeyLength: 16,   // 128 bits for F-FCSR-8

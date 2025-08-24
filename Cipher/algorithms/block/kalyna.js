@@ -50,7 +50,7 @@ class Kalyna extends BlockCipherAlgorithm {
       new KeySize(16, 32, 8) // 128-256 bits in 64-bit steps
     ];
     this.SupportedBlockSizes = [
-      new KeySize(16, 16, 1) // Fixed 128-bit blocks for this implementation
+      new KeySize(16, 16, 0) // Fixed 128-bit blocks for this implementation
     ];
 
     // Documentation and references

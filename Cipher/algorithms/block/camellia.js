@@ -39,12 +39,12 @@ class CamelliaAlgorithm extends BlockCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new KeySize(16, 16, 1), // Camellia-128
-      new KeySize(24, 24, 1), // Camellia-192
-      new KeySize(32, 32, 1)  // Camellia-256
+      new KeySize(16, 16, 0), // Camellia-128
+      new KeySize(24, 24, 0), // Camellia-192
+      new KeySize(32, 32, 0)  // Camellia-256
     ];
     this.SupportedBlockSizes = [
-      new KeySize(16, 16, 1) // Fixed 128-bit blocks
+      new KeySize(16, 16, 0) // Fixed 128-bit blocks
     ];
 
     // Documentation and references

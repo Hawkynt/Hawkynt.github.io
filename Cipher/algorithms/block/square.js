@@ -36,10 +36,10 @@ class SquareAlgorithm extends BlockCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new KeySize(16, 16, 1) // Fixed 128-bit key
+      new KeySize(16, 16, 0) // Fixed 128-bit key
     ];
     this.SupportedBlockSizes = [
-      new KeySize(16, 16, 1) // Fixed 128-bit blocks
+      new KeySize(16, 16, 0) // Fixed 128-bit blocks
     ];
 
     // Documentation and references

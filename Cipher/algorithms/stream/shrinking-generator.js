@@ -347,17 +347,27 @@
     }
   };
   
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(ShrinkingGenerator);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(ShrinkingGenerator);
   }
   
-  // Export for Node.js
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(ShrinkingGenerator);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(ShrinkingGenerator);
+  }
+  
+  // Export to global scope
+  global.ShrinkingGenerator = ShrinkingGenerator;
+  
+  // Node.js module export
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = ShrinkingGenerator;
   }
-  
-  // Make available globally
-  global.ShrinkingGenerator = ShrinkingGenerator;
   
 })(typeof global !== 'undefined' ? global : window);

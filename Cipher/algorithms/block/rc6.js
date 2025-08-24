@@ -44,7 +44,7 @@ class RC6Algorithm extends BlockCipherAlgorithm {
       new KeySize(16, 32, 8) // 128, 192, 256-bit keys (16, 24, 32 bytes)
     ];
     this.SupportedBlockSizes = [
-      new KeySize(16, 16, 1) // Fixed 128-bit blocks
+      new KeySize(16, 16, 0) // Fixed 128-bit blocks
     ];
 
     // Documentation and references
@@ -192,11 +192,12 @@ class RC6Instance extends IBlockCipherInstance {
     const t = c - 1;
     
     for (let k = 0; k < 132; k++) {
-      A = OpCodes.RotL32((this.keySchedule[i] + A + B) >>> 0, 3);
-      B = (B + A) >>> 0;
-      B = OpCodes.RotL32((L[j] + B) >>> 0, B); // No masking for rotation amount
-      this.keySchedule[i] = A;
-      L[j] = B;
+      // A = S[i] = (S[i] + A + B)<<<3
+      A = this.keySchedule[i] = OpCodes.RotL32((this.keySchedule[i] + A + B) >>> 0, 3);
+      
+      // B = L[j] = (L[j] + A + B)<<<(A + B)
+      B = L[j] = OpCodes.RotL32((L[j] + A + B) >>> 0, (A + B) & 31);
+      
       i = (i === 43) ? 0 : i + 1;  // i = (i + 1) % 44
       j = (j === t) ? 0 : j + 1;   // j = (j + 1) % c
     }

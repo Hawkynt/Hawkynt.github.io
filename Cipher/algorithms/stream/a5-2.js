@@ -80,9 +80,9 @@
         text: "A5/2 Basic Test Vector (Educational Only)",
         uri: "https://cryptome.org/a52-bk.htm",
         keySize: 8,
-        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000") : [],
-        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("0000000000000000") : [],
-        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("a3b2c1d0") : []
+        input: global.OpCodes.Hex8ToBytes("00000000"),
+        key: global.OpCodes.Hex8ToBytes("0000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("a3b2c1d0")
       }
     ],
 

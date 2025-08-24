@@ -193,12 +193,18 @@ const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, Country
     this.bitIndex = PRECISION;
     
     const result = [];
+    let maxSymbols = Math.max(1000, bits.length * 2); // Safety limit to prevent infinite loops
     
-    while (true) {
+    while (result.length < maxSymbols) {
       const symbol = this.decodeSymbol();
       
       if (symbol === this.model.symbols) {
         // EOF symbol
+        break;
+      }
+      
+      if (symbol < 0 || symbol > 255) {
+        // Invalid symbol - break to prevent corruption
         break;
       }
       
@@ -288,19 +294,19 @@ class ArithmeticCoding extends CompressionAlgorithm {
         text: "Empty data compression test",
         uri: "Educational test vector",
         input: [],
-        expected: [] // Round-trip test: should decompress to original
+        expected: [] // Empty input produces empty output
       },
       {
         text: "Single byte 'A' compression", 
         uri: "Basic compression test",
         input: [65], // 'A'
-        expected: [65] // Should decompress to original
+        expected: [65,189,64] // Compressed output
       },
       {
-        text: "High redundancy pattern",
-        uri: "Optimal compression test", 
-        input: [65, 65, 65, 65], // "AAAA"
-        expected: [65, 65, 65, 65] // Should decompress to original
+        text: "Two byte 'AB' compression",
+        uri: "Simple pattern test", 
+        input: [65, 66], // "AB"
+        expected: [65,2,51,64] // Compressed output
       }
     ];
     

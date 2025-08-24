@@ -26,7 +26,7 @@ class GcmAlgorithm extends AeadAlgorithm {
     this.description = "Galois/Counter Mode provides authenticated encryption by combining CTR mode encryption with GHASH authentication using GF(2^128) arithmetic. Widely used in TLS, IPsec, and other security protocols. Provides both confidentiality and authenticity but catastrophically fails if nonces are reused.";
     this.inventor = "David A. McGrew, John Viega";
     this.year = 2005;
-    this.category = CategoryType.AEAD;
+    this.category = CategoryType.MODE;
     this.subCategory = "Authenticated Encryption";
     this.securityStatus = SecurityStatus.SECURE;
     this.complexity = ComplexityType.ADVANCED;

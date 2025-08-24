@@ -24,9 +24,23 @@
 (function(global) {
   'use strict';
   
-  // Load OpCodes if in Node.js environment
+  // Ensure environment dependencies are available
   if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+    try {
+      require('../../OpCodes.js');
+    } catch (e) {
+      console.error('Failed to load OpCodes:', e.message);
+      return;
+    }
+  }
+  
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
+      return;
+    }
   }
   
   const E2 = {
@@ -299,17 +313,27 @@
     }
   };
   
-  // Auto-register with global Cipher system if available
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(E2);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(E2);
   }
   
-  // Export for Node.js
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(E2);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(E2);
+  }
+  
+  // Export to global scope
+  global.E2 = E2;
+  
+  // Node.js module export
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = E2;
   }
-  
-  // Make available globally
-  global.E2 = E2;
   
 })(typeof global !== 'undefined' ? global : window);

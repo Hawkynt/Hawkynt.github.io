@@ -47,10 +47,10 @@ class Threefish extends BlockCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new KeySize(64, 64, 1) // Fixed 512-bit keys
+      new KeySize(64, 64, 0) // Fixed 512-bit keys
     ];
     this.SupportedBlockSizes = [
-      new KeySize(64, 64, 1) // Fixed 512-bit blocks
+      new KeySize(64, 64, 0) // Fixed 512-bit blocks
     ];
 
     // Documentation and references

@@ -45,13 +45,13 @@ class SolitaireCipher extends CryptoAlgorithm {
     // Convert test vectors to new format (strings to byte arrays)
     this.tests = [
       new TestCase(
-        Array.from('HELLO').map(c => c.charCodeAt(0)), 
-        Array.from('IFMMP').map(c => c.charCodeAt(0)),
+        OpCodes.AnsiToBytes('HELLO'), 
+        OpCodes.AnsiToBytes('IFMMP'),
         'Basic Solitaire example using simplified educational implementation'
       ),
       new TestCase(
-        Array.from('WORLD').map(c => c.charCodeAt(0)),
-        Array.from('XPSME').map(c => c.charCodeAt(0)),
+        OpCodes.AnsiToBytes('WORLD'),
+        OpCodes.AnsiToBytes('XPSME'),
         'Another Solitaire example using simplified educational implementation'
       )
     ];

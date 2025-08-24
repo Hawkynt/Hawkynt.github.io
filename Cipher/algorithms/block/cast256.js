@@ -343,3 +343,8 @@ class CAST256Instance extends AlgorithmFramework.IBlockCipherInstance {
 
 // Register the algorithm
 AlgorithmFramework.RegisterAlgorithm(new CAST256Algorithm());
+
+// Node.js module export
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = CAST256Algorithm;
+}

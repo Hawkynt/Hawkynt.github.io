@@ -38,7 +38,7 @@ class GimliAlgorithm extends CryptoAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedInputSizes = [
-      new KeySize(48, 48, 1)  // 384-bit input only
+      new KeySize(48, 48, 0)  // 384-bit input only
     ];
 
     // Documentation and references

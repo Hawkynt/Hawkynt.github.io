@@ -74,9 +74,9 @@
         text: "eSTREAM Grain v1 Test Vector",
         uri: "https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/grain/",
         keySize: 10,
-        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("0000000000000000") : [],
-        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000") : [],
-        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("6b12c5c6a594a0d5") : []
+        input: global.OpCodes.Hex8ToBytes("0000000000000000"),
+        key: global.OpCodes.Hex8ToBytes("00000000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("6b12c5c6a594a0d5")
       }
     ],
     

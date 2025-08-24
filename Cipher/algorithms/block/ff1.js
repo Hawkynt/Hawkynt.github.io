@@ -82,20 +82,20 @@ class FF1Algorithm extends BlockCipherAlgorithm {
       {
         text: "NIST FF1 Sample 1 - decimal digits",
         uri: "https://nvlpubs.nist.gov/nistpubs/specialpublications/nist.sp.800-38g.pdf",
-        input: "0123456789",
+        input: OpCodes.AnsiToBytes("0123456789"),
         key: OpCodes.Hex8ToBytes("2B7E151628AED2A6ABF7158809CF4F3C"),
-        tweak: "",
+        tweak: OpCodes.AnsiToBytes(""),
         radix: 10,
-        expected: "2433477484"
+        expected: OpCodes.AnsiToBytes("2433477484")
       },
       {
         text: "NIST FF1 Sample 2 - alphanumeric with tweak", 
         uri: "https://nvlpubs.nist.gov/nistpubs/specialpublications/nist.sp.800-38g.pdf",
-        input: "0123456789abcdefghi",
+        input: OpCodes.AnsiToBytes("0123456789abcdefghi"),
         key: OpCodes.Hex8ToBytes("2B7E151628AED2A6ABF7158809CF4F3C"),
         tweak: OpCodes.Hex8ToBytes("39383736353433323130"),
         radix: 36,
-        expected: "a9tv40mll9kdu509eum"
+        expected: OpCodes.AnsiToBytes("a9tv40mll9kdu509eum")
       }
     ];
   }

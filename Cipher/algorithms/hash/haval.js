@@ -287,9 +287,9 @@
   };
   
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          CryptoAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = global.AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem } = global.AlgorithmFramework;
 
-  class Haval extends CryptoAlgorithm {
+  class Haval extends HashFunctionAlgorithm {
     constructor() {
       super();
       
@@ -321,29 +321,26 @@
         new LinkItem("Hash Function Cryptanalysis", "https://csrc.nist.gov/projects/hash-functions")
       ];
       
-      // Convert tests to new format
+      // Test vectors from HAVAL specification
       this.tests = [
-        new TestCase(
-          "Empty string - HAVAL-256/5",
-          "HAVAL test vectors",
-          OpCodes.AnsiToBytes(""),
-          null,
-          OpCodes.Hex8ToBytes("be417bb4dd5cfb76c7126f4f8eeb1553a449039307b1a3cd451dbfdc0fbbe330")
-        ),
-        new TestCase(
-          "Single letter 'a' - HAVAL-256/5",
-          "HAVAL test vectors",
-          OpCodes.AnsiToBytes("a"),
-          null,
-          OpCodes.Hex8ToBytes("de8fd5ee72a5e4265af0a756f4e1a1f65c9b2b2f06c63aa04eae9914ca7e8025")
-        ),
-        new TestCase(
-          "String 'abc' - HAVAL-128/3",
-          "HAVAL test vectors",
-          OpCodes.AnsiToBytes("abc"),
-          null,
-          OpCodes.Hex8ToBytes("0cd40739683e15f01ca5dbceef4059f1")
-        )
+        {
+          text: "Empty string - HAVAL-256/5",
+          uri: "HAVAL test vectors",
+          input: [],
+          expected: OpCodes.Hex8ToBytes("be417bb4dd5cfb76c7126f4f8eeb1553a449039307b1a3cd451dbfdc0fbbe330")
+        },
+        {
+          text: "Single letter 'a' - HAVAL-256/5",
+          uri: "HAVAL test vectors",
+          input: OpCodes.AnsiToBytes("a"),
+          expected: OpCodes.Hex8ToBytes("de8fd5ee72a5e4265af0a756f4e1a1f65c9b2b2f06c63aa04eae9914ca7e8025")
+        },
+        {
+          text: "String 'abc' - HAVAL-128/3",
+          uri: "HAVAL test vectors",
+          input: OpCodes.AnsiToBytes("abc"),
+          expected: OpCodes.Hex8ToBytes("0cd40739683e15f01ca5dbceef4059f1")
+        }
       ];
       
       // For test suite compatibility
@@ -355,7 +352,7 @@
     }
   }
 
-  class HavalInstance extends IAlgorithmInstance {
+  class HavalInstance extends IHashFunctionInstance {
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.inputBuffer = [];

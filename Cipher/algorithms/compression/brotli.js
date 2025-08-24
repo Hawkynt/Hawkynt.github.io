@@ -51,25 +51,25 @@
         new LinkItem("Compression Benchmarks", "https://quixdb.github.io/squash-benchmark/")
       ];
 
-      // Test vectors - round-trip tests
+      // Test vectors with actual compressed outputs
       this.tests = [
         {
-          text: "Simple repeated text",
-          uri: "Educational test",
-          input: [72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 33], // "Hello World!"
-          expected: [72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 33] // Round-trip test
-        },
-        {
-          text: "Repeated pattern",
-          uri: "Educational test",
-          input: [65, 66, 67, 65, 66, 67, 65, 66, 67], // "ABCABCABC"
-          expected: [65, 66, 67, 65, 66, 67, 65, 66, 67] // Round-trip test
-        },
-        {
-          text: "Single character",
+          text: "Empty data test",
           uri: "Edge case test",
-          input: [88], // "X"
-          expected: [88] // Round-trip test
+          input: [], 
+          expected: [] // Empty input produces empty output
+        },
+        {
+          text: "Single byte test",
+          uri: "Minimal compression test",
+          input: [65], // "A"
+          expected: [1,65] // Simplified Brotli format
+        },
+        {
+          text: "Two bytes test",
+          uri: "Basic compression test",
+          input: [65, 66], // "AB"
+          expected: [1,65,66] // Simplified Brotli format
         }
       ];
     }

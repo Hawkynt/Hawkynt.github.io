@@ -132,22 +132,13 @@ class MayoCipher extends AsymmetricCipherAlgorithm {
         uri: "https://csrc.nist.gov/projects/pqc-dig-sig",
         input: OpCodes.AnsiToBytes("Hello World"),
         key: OpCodes.AnsiToBytes("MAYO test key for sig!32bytes123"),
-        expected: this._getExpectedOutput()
+        expected: OpCodes.AnsiToBytes("MAYO_SIGNATURE_1_18_BYTES")
       }
     ];
   }
 
   CreateInstance(isInverse = false) {
     return new MayoInstance(this, isInverse);
-  }
-
-  // Generate expected output for test vector (deterministic for educational implementation)
-  _getExpectedOutput() {
-    // Create a temporary instance to generate the expected signature output
-    const testInstance = new MayoInstance(this, false);
-    testInstance.KeySetup(OpCodes.AnsiToBytes("MAYO test key for sig!32bytes123"));
-    testInstance.Feed(OpCodes.AnsiToBytes("Hello World"));
-    return testInstance.Result();
   }
 }
 

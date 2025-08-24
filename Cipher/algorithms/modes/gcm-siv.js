@@ -25,13 +25,13 @@ class GcmSivAlgorithm extends AeadAlgorithm {
     this.description = "GCM-SIV is a nonce-misuse resistant authenticated encryption algorithm that provides both privacy and authenticity even when nonces are repeated. It combines POLYVAL hash with AES-CTR encryption in a SIV-like construction, offering strong security guarantees and better performance than traditional SIV modes.";
     this.inventor = "Shay Gueron, Yehuda Lindell";
     this.year = 2017;
-    this.category = CategoryType.AEAD;
+    this.category = CategoryType.MODE;
     this.subCategory = "Nonce-Misuse Resistant AEAD";
     this.securityStatus = SecurityStatus.SECURE;
     this.complexity = ComplexityType.EXPERT;
     this.country = CountryCode.US;
     
-    this.SupportedTagSizes = [new KeySize(16, 16, 1)]; // Fixed 128-bit tag
+    this.SupportedTagSizes = [new KeySize(16, 16, 0)]; // Fixed 128-bit tag
     this.SupportsDetached = true;
     
     this.documentation = [

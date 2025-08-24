@@ -249,17 +249,27 @@
     }
   };
   
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(WAKE);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(WAKE);
   }
   
-  // Export for Node.js
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(WAKE);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(WAKE);
+  }
+  
+  // Export to global scope
+  global.WAKE = WAKE;
+  
+  // Node.js module export
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = WAKE;
   }
-  
-  // Make available globally
-  global.WAKE = WAKE;
   
 })(typeof global !== 'undefined' ? global : window);

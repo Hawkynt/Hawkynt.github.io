@@ -28,6 +28,8 @@
   const ZUC = {
     internalName: 'zuc',
     name: 'ZUC Stream Cipher (3GPP LTE)',
+    description: 'ZUC stream cipher used in 3GPP LTE/4G confidentiality and integrity algorithms (128-EEA3/EIA3). Word-oriented design with 16-stage LFSR over GF(2^31-1).',
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     // Required Cipher interface properties
     minKeyLength: 16,        // Minimum key length in bytes
     maxKeyLength: 32,        // Maximum key length in bytes
@@ -288,7 +290,7 @@
       if (typeof key === 'string') {
         if (key.length === 32) {
           // Hex key
-          keyBytes = global.OpCodes ? global.OpCodes.HexToBytes(key) : [];
+          keyBytes = global.OpCodes.HexToBytes(key);
         } else {
           // String key - pad or truncate to 16 bytes
           keyBytes = [];
@@ -316,7 +318,7 @@
     
     encryptBlock: function(id, plaintext) {
       // ZUC is a stream cipher - process the data
-      const data = global.OpCodes ? global.OpCodes.AsciiToBytes(plaintext) : [];
+      const data = global.OpCodes.AsciiToBytes(plaintext);
       const keystream = this.GenerateKeystream(data.length);
       const result = [];
       
@@ -324,7 +326,7 @@
         result[i] = data[i] ^ ((keystream[Math.floor(i/4)] >>> ((3 - (i % 4)) * 8)) & 0xFF);
       }
       
-      return global.OpCodes ? global.OpCodes.BytesToString(result) : '';
+      return global.OpCodes.BytesToString(result);
     },
     
     decryptBlock: function(id, ciphertext) {

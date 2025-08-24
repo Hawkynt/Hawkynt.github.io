@@ -25,13 +25,13 @@ class SivAlgorithm extends AeadAlgorithm {
     this.description = "Synthetic IV (SIV) mode provides deterministic authenticated encryption by first computing an authentication tag (synthetic IV) using S2V, then encrypting with CTR mode using the synthetic IV. This mode is nonce-misuse resistant and supports key-commitment, making it safe even when nonces are reused or generated incorrectly.";
     this.inventor = "Rogaway, Shrimpton";
     this.year = 2006;
-    this.category = CategoryType.AEAD;
+    this.category = CategoryType.MODE;
     this.subCategory = "Deterministic AEAD";
     this.securityStatus = SecurityStatus.SECURE;
     this.complexity = ComplexityType.EXPERT;
     this.country = CountryCode.US;
     
-    this.SupportedTagSizes = [new KeySize(16, 16, 1)]; // Fixed 128-bit synthetic IV
+    this.SupportedTagSizes = [new KeySize(16, 16, 0)]; // Fixed 128-bit synthetic IV
     this.SupportsDetached = true;
     
     this.documentation = [

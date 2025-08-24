@@ -38,10 +38,10 @@ class DESAlgorithm extends BlockCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new KeySize(8, 8, 1) // Fixed 8-byte (64-bit) keys
+      new KeySize(8, 8, 0) // Fixed 8-byte (64-bit) keys
     ];
     this.SupportedBlockSizes = [
-      new KeySize(8, 8, 1) // Fixed 8-byte (64-bit) blocks
+      new KeySize(8, 8, 0) // Fixed 8-byte (64-bit) blocks
     ];
 
     // Documentation and references

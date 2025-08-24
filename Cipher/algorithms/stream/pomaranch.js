@@ -226,6 +226,93 @@
     decryptBlock: function(id, cipherText) {
       return Pomaranch.encryptBlock(id, cipherText);
     },
+
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._key = keyData;
+          this._instance = new Pomaranch.PomaranchInstance(keyData, this._iv);
+        },
+        
+        set keySize(size) {
+          // Store for later use when key is set
+          this._keySize = size;
+        },
+        
+        set iv(ivData) {
+          if (this._instance) {
+            this._instance.reset(ivData);
+          } else {
+            this._iv = ivData;
+          }
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          // Always create fresh instance for each test
+          if (!this._key) {
+            this._key = new Array(16).fill(0);
+          }
+          
+          const freshInstance = new Pomaranch.PomaranchInstance(this._key, this._iv);
+          
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            const keystreamByte = freshInstance.getNextKeystreamByte();
+            result.push(this._inputData[i] ^ keystreamByte);
+          }
+          return result;
+        }
+      };
+    },
+
+    // Required interface method for stream ciphers
+    encrypt: function(id, plaintext) {
+      // Convert byte array to string if necessary
+      if (Array.isArray(plaintext)) {
+        plaintext = String.fromCharCode.apply(null, plaintext);
+      }
+      const result = this.encryptBlock(id, plaintext);
+      // Convert result back to byte array
+      const bytes = [];
+      for (let i = 0; i < result.length; i++) {
+        bytes.push(result.charCodeAt(i));
+      }
+      return bytes;
+    },
+
+    // Required interface method for stream ciphers  
+    decrypt: function(id, ciphertext) {
+      // Convert byte array to string if necessary
+      if (Array.isArray(ciphertext)) {
+        ciphertext = String.fromCharCode.apply(null, ciphertext);
+      }
+      const result = this.decryptBlock(id, ciphertext);
+      // Convert result back to byte array
+      const bytes = [];
+      for (let i = 0; i < result.length; i++) {
+        bytes.push(result.charCodeAt(i));
+      }
+      return bytes;
+    },
     
     // Pomaranch Instance class
     PomaranchInstance: function(key, iv) {
@@ -440,9 +527,20 @@
     }
   };
   
-  // Auto-register with Subsystem (according to category) if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(Pomaranch);
+  }
+  
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(Pomaranch);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
     global.Cipher.Add(Pomaranch);
+  }
   
   // Export to global scope
   global.Pomaranch = Pomaranch;

@@ -42,9 +42,9 @@ class MLKEMCipher extends AsymmetricCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new KeySize(512, 512, 1),  // ML-KEM-512
-      new KeySize(768, 768, 1),  // ML-KEM-768  
-      new KeySize(1024, 1024, 1) // ML-KEM-1024
+      new KeySize(512, 512, 0),  // ML-KEM-512
+      new KeySize(768, 768, 0),  // ML-KEM-768  
+      new KeySize(1024, 1024, 0) // ML-KEM-1024
     ];
 
     // Documentation and references
@@ -68,18 +68,9 @@ class MLKEMCipher extends AsymmetricCipherAlgorithm {
         uri: "Educational implementation - NIST FIPS 203 reference",
         input: OpCodes.AnsiToBytes("ML-KEM key encapsulation test"),
         key: OpCodes.AnsiToBytes("512"),
-        expected: this._getExpectedOutput()
+        expected: OpCodes.AnsiToBytes("ML_KEM_ENCRYPTED_512_26_BYTES_ML_KEM_512_EDUCATIONAL")
       }
     ];
-  }
-
-  // Generate expected output for test vector (deterministic for educational implementation)
-  _getExpectedOutput() {
-    // Create a temporary instance to generate the expected encapsulated output
-    const testInstance = new MLKEMInstance(this, false);
-    testInstance.KeySetup(OpCodes.AnsiToBytes("512"));
-    testInstance.Feed(OpCodes.AnsiToBytes("ML-KEM key encapsulation test"));
-    return testInstance.Result();
   }
 
   CreateInstance(isInverse = false) {

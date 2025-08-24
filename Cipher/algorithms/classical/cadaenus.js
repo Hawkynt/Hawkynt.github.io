@@ -78,23 +78,23 @@ class CadaenusCipher extends CryptoAlgorithm {
       {
         text: "Basic Test",
         uri: "https://cryptii.com/pipes/cadaenus-cipher",
-        input: global.OpCodes ? global.OpCodes.AnsiToBytes("HELLO") : [72, 69, 76, 76, 79],
-        key: global.OpCodes ? global.OpCodes.AnsiToBytes("SECRET") : [83, 69, 67, 82, 69, 84],
-        expected: global.OpCodes ? global.OpCodes.AnsiToBytes("RXGIC") : [82, 88, 71, 73, 67]
+        input: global.OpCodes.AnsiToBytes("HELLO"),
+        key: global.OpCodes.AnsiToBytes("SECRET"),
+        expected: global.OpCodes.AnsiToBytes("RXGIC")
       },
       {
         text: "Alphabet Test",
         uri: "https://www.dcode.fr/cadaenus-cipher",
-        input: global.OpCodes ? global.OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ") : [65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90],
-        key: global.OpCodes ? global.OpCodes.AnsiToBytes("KEY") : [75, 69, 89],
-        expected: global.OpCodes ? global.OpCodes.AnsiToBytes("MPSCHDCGBSVEDFNBMPECHNCGPS") : [77, 80, 83, 67, 72, 68, 67, 71, 66, 83, 86, 69, 68, 70, 78, 66, 77, 80, 69, 67, 72, 78, 67, 71, 80, 83]
+        input: global.OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+        key: global.OpCodes.AnsiToBytes("KEY"),
+        expected: global.OpCodes.AnsiToBytes("MPSCHDCGBSVEDFNBMPECHNCGPS")
       },
       {
         text: "Position Dependency Test",
         uri: "https://en.wikipedia.org/wiki/CADAENUS",
-        input: global.OpCodes ? global.OpCodes.AnsiToBytes("AAAAA") : [65, 65, 65, 65, 65],
-        key: global.OpCodes ? global.OpCodes.AnsiToBytes("CIPHER") : [67, 73, 80, 72, 69, 82],
-        expected: global.OpCodes ? global.OpCodes.AnsiToBytes("SXJMD") : [83, 88, 74, 77, 68]
+        input: global.OpCodes.AnsiToBytes("AAAAA"),
+        key: global.OpCodes.AnsiToBytes("CIPHER"),
+        expected: global.OpCodes.AnsiToBytes("SXJMD")
       }
     ];
 
@@ -164,7 +164,7 @@ class CadaenusCipherInstance extends IAlgorithmInstance {
     this.inputBuffer = [];
     
     // Convert result string back to byte array
-    return [...resultString].map(c => c.charCodeAt(0));
+    return OpCodes.AnsiToBytes(resultString);
   }
 
   // Encrypt using CADAENUS cipher

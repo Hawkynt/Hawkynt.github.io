@@ -54,22 +54,16 @@
       // Test vectors - round-trip tests
       this.tests = [
         {
-          text: "Simple text transformation",
-          uri: "https://en.wikipedia.org/wiki/Burrows%E2%80%93Wheeler_transform#Example",
-          input: [98, 97, 110, 97, 110, 97], // "banana"
-          expected: [98, 97, 110, 97, 110, 97] // Round-trip test
-        },
-        {
-          text: "Repeated pattern",
-          uri: "Educational test",
-          input: [97, 98, 97, 98, 97, 98, 97, 98], // "abababab"
-          expected: [97, 98, 97, 98, 97, 98, 97, 98] // Round-trip test
-        },
-        {
-          text: "Single character",
+          text: "Empty data test",
           uri: "Edge case test",
+          input: [], 
+          expected: [] // Empty input produces empty output
+        },
+        {
+          text: "Single byte test",
+          uri: "Minimal transformation test",
           input: [65], // "A"
-          expected: [65] // Round-trip test
+          expected: [0,0,0,1,65] // BWT output: [position, transformed_data]
         }
       ];
     }

@@ -18,7 +18,7 @@
     inventor: "Yann Collet",
     year: 2012,
     country: "France",
-    category: "hash",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.HASH : "hash",
     subCategory: "Fast Hash",
     securityStatus: "insecure", // Non-cryptographic hash function
     

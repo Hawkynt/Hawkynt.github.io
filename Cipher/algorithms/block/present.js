@@ -38,10 +38,10 @@ class PresentAlgorithm extends BlockCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new KeySize(10, 10, 1)  // PRESENT-80: 80-bit keys only
+      new KeySize(10, 10, 0)  // PRESENT-80: 80-bit keys only
     ];
     this.SupportedBlockSizes = [
-      new KeySize(8, 8, 1)    // 64-bit blocks only
+      new KeySize(8, 8, 0)    // 64-bit blocks only
     ];
 
     // Documentation and references

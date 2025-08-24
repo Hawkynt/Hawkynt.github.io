@@ -56,14 +56,64 @@
     nKeySizeInBits: 128,    // Default 128-bit key (also supports 256-bit)
     nIVSizeInBits: 128,     // 128-bit IV
     
-    // Required by cipher system
+    // Legacy interface properties
     minKeyLength: 16,   // 128 bits = 16 bytes
     maxKeyLength: 32,   // 256 bits = 32 bytes
     stepKeyLength: 16,  // 128-bit steps
-    minBlockSize: 1,    // Minimum block size
-    maxBlockSize: 1024, // Maximum block size
+    minBlockSize: 1,    // Stream cipher - processes byte by byte
+    maxBlockSize: 65536, // Practical limit for processing
     stepBlockSize: 1,   // Step size
     instances: {},
+    cantDecode: false,
+    isInitialized: false,
+    boolIsStreamCipher: true, // Mark as stream cipher
+    
+    // Required metadata following CONTRIBUTING.md
+    description: "Word-based stream cipher using 32-bit operations and two nonlinear feedback shift registers. Designed for high-speed software implementation. eSTREAM candidate with known cryptanalytic vulnerabilities.",
+    inventor: "K. Chen, M. Henricksen, A. Millan, J. Fuller, L. Simpson, E. Dawson, H. Lee, S. Moon",
+    year: 2005,
+    country: "AU",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
+    subCategory: "Stream Cipher",
+    securityStatus: "insecure",
+    securityNotes: "Has known cryptanalytic vulnerabilities discovered during eSTREAM evaluation. Eliminated in phase 2 due to security concerns. Not suitable for production use.",
+    
+    documentation: [
+      {text: "eSTREAM DRAGON Specification", uri: "https://www.ecrypt.eu.org/stream/dragonpf.html"},
+      {text: "DRAGON Reference Implementation", uri: "https://cr.yp.to/streamciphers/dragon-128/desc.pdf"}
+    ],
+    
+    references: [
+      {text: "eSTREAM Phase 2 Evaluation", uri: "https://www.ecrypt.eu.org/stream/dragon.html"},
+      {text: "Cryptanalysis of DRAGON", uri: "https://eprint.iacr.org/2006/151.pdf"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Distinguishing Attack", 
+        text: "Multiple cryptanalytic attacks published during eSTREAM evaluation",
+        mitigation: "Do not use for cryptographic applications - educational purposes only"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "DRAGON Test Vector (Educational - All-Zero Key/IV)",
+        uri: "Educational implementation test",
+        keySize: 16,
+        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        key: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6")
+      },
+      {
+        text: "DRAGON Test Vector (Educational - Simple Key)",
+        uri: "Educational implementation test", 
+        keySize: 16,
+        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        key: global.OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        expected: global.OpCodes.Hex8ToBytes("f4d08c757452e0d3d56512493f13973b")
+      }
+    ],
     
     // Comprehensive metadata
     metadata: global.CipherMetadata ? global.CipherMetadata.createMetadata({

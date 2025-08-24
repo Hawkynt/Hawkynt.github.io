@@ -44,7 +44,7 @@ class RC5Algorithm extends BlockCipherAlgorithm {
       new KeySize(0, 255, 1) // 0-255 bytes, any byte length
     ];
     this.SupportedBlockSizes = [
-      new KeySize(8, 8, 1) // Fixed 64-bit blocks for RC5-32
+      new KeySize(8, 8, 0) // Fixed 64-bit blocks for RC5-32
     ];
 
     // Documentation and references

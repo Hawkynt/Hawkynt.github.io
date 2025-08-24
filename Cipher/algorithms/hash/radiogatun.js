@@ -303,17 +303,17 @@
       {
         description: "Empty string - RadioGatún[32]",
         input: "",
-        expected: "f30028b54afab6b3e55355d277711109a19beda7091067e9a492fb5ed9f20117"
+        expected: OpCodes.Hex8ToBytes("f30028b54afab6b3e55355d277711109a19beda7091067e9a492fb5ed9f20117")
       },
       {
         description: "Single byte 0x00 - RadioGatún[32]",
         input: "\x00",
-        expected: "4bbbb51c9a2d8a72f57e3c3d4a8a0ca7e8b14f3c7d1e9a8c2e3f5a7b8c9d0e1f"
+        expected: OpCodes.Hex8ToBytes("4bbbb51c9a2d8a72f57e3c3d4a8a0ca7e8b14f3c7d1e9a8c2e3f5a7b8c9d0e1f")
       },
       {
         description: "String 'abc' - RadioGatún[32]",
         input: "abc",
-        expected: "a10c51a715aa38bb21c4e6b4ee3f6ee1d5c4b8b7c9e7c6d4f7e8a9b0c1d2e3f4"
+        expected: OpCodes.Hex8ToBytes("a10c51a715aa38bb21c4e6b4ee3f6ee1d5c4b8b7c9e7c6d4f7e8a9b0c1d2e3f4")
       }
     ],
     

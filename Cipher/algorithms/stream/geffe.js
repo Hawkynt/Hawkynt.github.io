@@ -45,6 +45,7 @@
     version: '1.0',
     author: 'Classical Design',
     description: 'Three-LFSR combining generator with known vulnerabilities',
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
 
     // Required by cipher system
     minKeyLength: 1,

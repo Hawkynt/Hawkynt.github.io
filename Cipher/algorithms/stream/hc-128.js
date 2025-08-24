@@ -45,6 +45,8 @@
     // Public interface properties
     internalName: 'HC-128',
     name: 'HC-128 Stream Cipher',
+    description: 'HC-128 eSTREAM stream cipher with table-based design using 128-bit key and IV. Part of the eSTREAM portfolio for software optimization.',
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     comment: 'HC-128 eSTREAM Stream Cipher - Table-based with 128-bit key and IV',
     minKeyLength: 16,   // HC-128 uses 128-bit keys (16 bytes)
     maxKeyLength: 16,
@@ -389,9 +391,19 @@
     }
   };
   
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(HC128);
+  }
+  
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(HC128);
+  }
+  
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(HC128);
+  if (global.Cipher) {
+    global.Cipher.Add(HC128);
   }
   
   // Export to global scope
