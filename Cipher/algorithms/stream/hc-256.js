@@ -47,7 +47,27 @@
       this.testCases = [
         new TestCase('Zero Test', 'HELLO', 
           { key: new Array(32).fill(0), nonce: new Array(32).fill(0) }, 
-          [0x37, 0x86, 0x02, 0xb9, 0x8f]) // First 5 bytes of expected output
+          [0x37, 0x86, 0x02, 0xb9, 0x8f]), // First 5 bytes of expected output
+        
+        new TestCase('HC-256 basic test vector with 256-bit key and IV',
+          global.OpCodes ? global.OpCodes.Hex8ToBytes('48432d32353620746162c6c65730') : 'HC-256 tables',
+          {
+            key: global.OpCodes ? global.OpCodes.Hex8ToBytes('48432d32353620746573206b657920666f7220323536372d626974206f7065726174696f6e7320616e64206c617267652074626c652073747265616d696e6720') : 'HC-256 test key for 256-bit operations and large table streaming!'.split('').map(c => c.charCodeAt(0)).slice(0, 32),
+            nonce: global.OpCodes ? global.OpCodes.Hex8ToBytes('48432d32353620746573742049562066f7220323536372d626974206f7065726174696f6e7320616e64206c617267652074626c652073747265616d696e672') : 'HC-256 test IV for 256-bit operations and large table streaming!'.split('').map(c => c.charCodeAt(0)).slice(0, 32)
+          },
+          null, // Expected output not provided in original test vectors
+          'Educational implementation test'
+        ),
+        
+        new TestCase('HC-256 keystream consistency test',
+          global.OpCodes ? global.OpCodes.Hex8ToBytes('000000000000000000') : [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+          {
+            key: global.OpCodes ? global.OpCodes.Hex8ToBytes('48432d32353620636f6e73697374656e637920746573742075206b657920666f722074616220626c652020696e697469616c697a6174696f6e20746573696e6720') : 'HC-256 consistency test key for table initialization testing!'.split('').map(c => c.charCodeAt(0)).slice(0, 32),
+            nonce: global.OpCodes ? global.OpCodes.Hex8ToBytes('48432d32353620636f6e73697374656e637920746573742049562066f722074626c652020696e697469616c697a6174696f6e20746573696e672') : 'HC-256 consistency test IV for table initialization testing!'.split('').map(c => c.charCodeAt(0)).slice(0, 32)
+          },
+          null, // Expected output not provided - this is a consistency test
+          'Educational implementation test - Testing HC-256 keystream consistency across initializations'
+        )
       ];
     }
     

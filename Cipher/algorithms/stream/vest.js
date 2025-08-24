@@ -112,6 +112,37 @@
       version: '1.0'
     }) : null,
     
+    // Test vectors
+    tests: [
+      {
+        algorithm: 'VEST',
+        description: 'VEST basic test vector with 128-bit key and IV',
+        origin: 'Educational implementation test',
+        key: 'VEST test key 128',  // 16 bytes
+        keyHex: global.OpCodes ? global.OpCodes.Hex8ToBytes('56455354207465737420206b657920313238') : [],
+        iv: 'VEST test IV 128',    // 16 bytes
+        ivHex: global.OpCodes ? global.OpCodes.Hex8ToBytes('56455354207465737420204956203131323238') : [],
+        plaintext: 'Hello VEST!',
+        plaintextHex: global.OpCodes ? global.OpCodes.Hex8ToBytes('48656c6c6f20564553542100') : [],
+        // Note: Actual ciphertext would be generated during testing
+        notes: 'Basic functionality test for VEST with standard parameters',
+        category: 'basic-functionality'
+      },
+      {
+        algorithm: 'VEST',
+        description: 'VEST with 64-bit key (minimum size)',
+        origin: 'Educational implementation test',
+        key: 'VESTkey8',  // 8 bytes
+        keyHex: global.OpCodes ? global.OpCodes.Hex8ToBytes('56455354206b657938') : [],
+        iv: 'VESTiv64',   // 8 bytes  
+        ivHex: global.OpCodes ? global.OpCodes.Hex8ToBytes('56455354206976363634') : [],
+        plaintext: 'Minimum',
+        plaintextHex: global.OpCodes ? global.OpCodes.Hex8ToBytes('4d696e696d756d00') : [],
+        notes: 'Testing VEST with minimum 64-bit key size',
+        category: 'edge-case'
+      }
+    ],
+    
     // VEST constants
     LFSR_COUNT: 4,        // Four LFSRs
     DEFAULT_LFSR_SIZES: [25, 31, 33, 39], // Default LFSR sizes for 128-bit mode

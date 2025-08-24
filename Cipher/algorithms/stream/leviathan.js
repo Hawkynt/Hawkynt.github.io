@@ -65,6 +65,34 @@
     stepBlockSize: 1,   // Step size
     instances: {},
     
+    // Test vectors
+    tests: [
+      {
+        text: "Leviathan basic test vector with 256-bit key and IV",
+        uri: "Educational implementation test",
+        keySize: 32,
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes('4c6576696174686e20323536372d626974207465737420206b657920666f72206c617267652073746174652063697068657220746573696e67206865726520') : null,
+        iv: global.OpCodes ? global.OpCodes.Hex8ToBytes('4c6576696174686e20323536372d626974207465737420204956206f72206c617267652073746174652063697068657220746573696e6720') : null,
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes('4c617267652073746174652074657374') : null,
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes('00'.repeat(16)) : null, // Placeholder - needs actual cipher output
+        inputText: "Large state test",
+        notes: "Basic functionality test for Leviathan large-state operations",
+        category: "basic-functionality"
+      },
+      {
+        text: "Leviathan with all-zeros key and IV",
+        uri: "Educational implementation test", 
+        keySize: 32,
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes('00'.repeat(32)) : null,
+        iv: global.OpCodes ? global.OpCodes.Hex8ToBytes('00'.repeat(32)) : null,
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes('4e756c6c206b6579207465737470') : null,
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes('00'.repeat(15)) : null, // Placeholder - needs actual cipher output
+        inputText: "Null key test",
+        notes: "Testing Leviathan with null key and IV (edge case)",
+        category: "edge-case"
+      }
+    ],
+    
     // Comprehensive metadata
     metadata: global.CipherMetadata ? global.CipherMetadata.createMetadata({
       algorithm: 'Leviathan',

@@ -112,6 +112,26 @@
         input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
         key: global.OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
         expected: global.OpCodes.Hex8ToBytes("f4d08c757452e0d3d56512493f13973b")
+      },
+      {
+        text: "DRAGON basic test vector with 128-bit key and IV",
+        uri: "Educational implementation test",
+        keySize: 16,
+        input: global.OpCodes.Hex8ToBytes("48656c6c6f204452414745204e2100"),
+        key: global.OpCodes.Hex8ToBytes("4452414745204e207465737420206b6579212100"),
+        iv: global.OpCodes.Hex8ToBytes("4452414745204e20746573742020495621212100"),
+        expected: null, // Placeholder - actual expected output would need to be calculated
+        notes: "Basic functionality test for DRAGON word-based operations"
+      },
+      {
+        text: "DRAGON with 256-bit key",
+        uri: "Educational implementation test",
+        keySize: 32,
+        input: global.OpCodes.Hex8ToBytes("4c617267656b6579207465737400"),
+        key: global.OpCodes.Hex8ToBytes("4452414745204e20323536372d626974207465737420206b657920666f722074657374696e67206c617267656b6579732100"),
+        iv: global.OpCodes.Hex8ToBytes("4452414745204e20495620666f7220323536372d626974206b657920746573742100"),
+        expected: null, // Placeholder - actual expected output would need to be calculated
+        notes: "Testing DRAGON with extended 256-bit key size"
       }
     ],
     

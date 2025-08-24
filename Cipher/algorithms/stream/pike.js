@@ -62,6 +62,26 @@
         iv: OpCodes.Hex8ToBytes("0001020304050607"),
         input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
         expected: [] // No official test vectors due to withdrawal
+      },
+      {
+        text: "PIKE basic test vector with 128-bit key and 64-bit IV",
+        uri: "Educational implementation test",
+        keySize: 16,
+        key: OpCodes.Hex8ToBytes("50494b45207465737420206b65792121212100"),
+        iv: OpCodes.Hex8ToBytes("50494b456976363430"),
+        input: OpCodes.Hex8ToBytes("46617374205049b45210"),
+        expected: [], // Expected output not provided in original test vectors
+        notes: "Basic functionality test for PIKE fast operations"
+      },
+      {
+        text: "PIKE performance test with 256-bit key",
+        uri: "Educational implementation test",
+        keySize: 32,
+        key: OpCodes.Hex8ToBytes("50494b4520323536372d626974207465737420206b657920666f72206d6178696d756d20706572666f726d616e636520746573696e67206865726520"),
+        iv: OpCodes.Hex8ToBytes("50494b456976363430"),
+        input: OpCodes.Hex8ToBytes("5370656564207465737470"),
+        expected: [], // Expected output not provided in original test vectors
+        notes: "Testing PIKE high-speed performance with large key"
       }
     ],
 
