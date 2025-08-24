@@ -62,16 +62,16 @@
         {
           text: "Jefferson Wheel Basic Test",
           uri: "Historical records and reconstructions", 
-          input: global.OpCodes?.AnsiToBytes("HELLO") || [72, 69, 76, 76, 79], 
-          key: global.OpCodes?.AnsiToBytes("10|0") || [49, 48, 124, 48],
-          expected: global.OpCodes?.AnsiToBytes("LZPQY") || [76, 90, 80, 81, 89]
+          input: global.OpCodes.AnsiToBytes("HELLO"), 
+          key: global.OpCodes.AnsiToBytes("10|0"),
+          expected: global.OpCodes.AnsiToBytes("LZPQY")
         },
         {
           text: "Educational Example",
           uri: "Modern educational reconstruction",
-          input: global.OpCodes?.AnsiToBytes("CIPHER") || [67, 73, 80, 72, 69, 82], 
-          key: global.OpCodes?.AnsiToBytes("6|5") || [54, 124, 53],
-          expected: global.OpCodes?.AnsiToBytes("LEOWNR") || [76, 69, 79, 87, 78, 82]
+          input: global.OpCodes.AnsiToBytes("CIPHER"), 
+          key: global.OpCodes.AnsiToBytes("6|5"),
+          expected: global.OpCodes.AnsiToBytes("LEOWNR")
         }
       ];
 
@@ -134,7 +134,7 @@
       
       // Set default key if none set
       if (!this.keyScheduled) {
-        this.key = global.OpCodes?.AnsiToBytes("10|0") || [49, 48, 124, 48];
+        this.key = global.OpCodes.AnsiToBytes("10|0");
       }
       
       return true;
@@ -265,7 +265,7 @@
     Process(input, isEncryption = true) {
       // Ensure key is set up (fallback to default)
       if (!this.keyScheduled) {
-        this.key = global.OpCodes?.AnsiToBytes("10|0") || [49, 48, 124, 48];
+        this.key = global.OpCodes.AnsiToBytes("10|0");
       }
       
       const result = [];
@@ -288,7 +288,7 @@
     }
     
     ClearData() {
-      if (global.OpCodes?.ClearArray) {
+      if (global.OpCodes.ClearArray) {
         global.OpCodes.ClearArray(this.wheels);
         global.OpCodes.ClearArray(this.wheelPositions);
       }

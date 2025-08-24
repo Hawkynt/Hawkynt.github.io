@@ -44,13 +44,13 @@ class PhillipsCipher extends CryptoAlgorithm {
     // Convert test vectors to new format (strings to byte arrays)
     this.tests = [
       new TestCase(
-        Array.from('HELLO').map(c => c.charCodeAt(0)), 
-        Array.from('23 15 31 31 34').map(c => c.charCodeAt(0)),
+        OpCodes.AnsiToBytes('HELLO'), 
+        OpCodes.AnsiToBytes('23 15 31 31 34'),
         'Basic Phillips example using standard Polybius square'
       ),
       new TestCase(
-        Array.from('WORLD').map(c => c.charCodeAt(0)),
-        Array.from('52 34 42 31 14').map(c => c.charCodeAt(0)),
+        OpCodes.AnsiToBytes('WORLD'),
+        OpCodes.AnsiToBytes('52 34 42 31 14'),
         'Another Phillips example using standard Polybius square'
       )
     ];

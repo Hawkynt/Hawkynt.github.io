@@ -38,10 +38,10 @@ class TEAAlgorithm extends BlockCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new KeySize(16, 16, 1) // Fixed 128-bit keys
+      new KeySize(16, 16, 0) // Fixed 128-bit keys
     ];
     this.SupportedBlockSizes = [
-      new KeySize(8, 8, 1) // Fixed 64-bit blocks
+      new KeySize(8, 8, 0) // Fixed 64-bit blocks
     ];
 
     // Documentation and references

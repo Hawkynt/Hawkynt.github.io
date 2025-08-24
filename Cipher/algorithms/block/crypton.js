@@ -39,7 +39,7 @@ class CryptonAlgorithm extends BlockCipherAlgorithm {
       new KeySize(16, 32, 4) // 128, 160, 192, 224, 256-bit keys (multiples of 32 bits)
     ];
     this.SupportedBlockSizes = [
-      new KeySize(16, 16, 1) // Fixed 128-bit blocks
+      new KeySize(16, 16, 0) // Fixed 128-bit blocks
     ];
 
     // Test vectors

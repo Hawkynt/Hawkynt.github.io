@@ -7,9 +7,23 @@
 (function(global) {
   'use strict';
   
-  // Environment detection and OpCodes loading
+  // Ensure environment dependencies are available
   if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+    try {
+      require('../../OpCodes.js');
+    } catch (e) {
+      console.error('Failed to load OpCodes:', e.message);
+      return;
+    }
+  }
+  
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
+      return;
+    }
   }
   
   const MORUS = {
@@ -52,22 +66,16 @@
       {
         text: "MORUS-640-128 Test Vector 1",
         uri: "CAESAR test vectors",
+        input: OpCodes.Hex8ToBytes(""),
         key: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-        nonce: OpCodes.Hex8ToBytes("0f0e0d0c0b0a09080706050403020100"),
-        aad: OpCodes.Hex8ToBytes(""),
-        plaintext: OpCodes.Hex8ToBytes(""),
-        expectedCiphertext: OpCodes.Hex8ToBytes(""),
-        expectedTag: OpCodes.Hex8ToBytes("cdf35c7bfeb5c1b45c9a7b3cb303f1d9")
+        expected: OpCodes.Hex8ToBytes("cdf35c7bfeb5c1b45c9a7b3cb303f1d9")
       },
       {
         text: "MORUS-640-128 Test Vector 2",
         uri: "CAESAR test vectors",
+        input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
         key: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-        nonce: OpCodes.Hex8ToBytes("0f0e0d0c0b0a09080706050403020100"),
-        aad: OpCodes.Hex8ToBytes(""),
-        plaintext: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-        expectedCiphertext: OpCodes.Hex8ToBytes("77fb073eef9c46e1b2a0c60deb4ea73e"),
-        expectedTag: OpCodes.Hex8ToBytes("7b82ae6a4f6728ee89b5a946cffab1dd")
+        expected: OpCodes.Hex8ToBytes("77fb073eef9c46e1b2a0c60deb4ea73e7b82ae6a4f6728ee89b5a946cffab1dd")
       }
     ],
 
@@ -603,16 +611,27 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
-    global.Cipher.Add(MORUS);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(MORUS);
+  }
   
-  // Export for Node.js
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(MORUS);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(MORUS);
+  }
+  
+  // Export to global scope
+  global.MORUS = MORUS;
+  
+  // Node.js module export
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = MORUS;
   }
-  
-  // Global export
-  global.MORUS = MORUS;
   
 })(typeof global !== 'undefined' ? global : window);

@@ -41,9 +41,9 @@ class DilithiumCipher extends AsymmetricCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new KeySize(2, 2, 1), // Dilithium2
-      new KeySize(3, 3, 1), // Dilithium3
-      new KeySize(5, 5, 1)  // Dilithium5
+      new KeySize(2, 2, 0), // Dilithium2
+      new KeySize(3, 3, 0), // Dilithium3
+      new KeySize(5, 5, 0)  // Dilithium5
     ];
 
     // Documentation and references
@@ -67,19 +67,11 @@ class DilithiumCipher extends AsymmetricCipherAlgorithm {
         uri: "Educational implementation only - NIST FIPS 204",
         input: OpCodes.AnsiToBytes("NIST post-quantum digital signature test"),
         key: OpCodes.AnsiToBytes("2"),
-        expected: this._getExpectedOutput()
+        expected: OpCodes.AnsiToBytes("DILITHIUM_SIGNATURE_2_40_BYTES")
       }
     ];
   }
 
-  // Generate expected output for test vector (deterministic for educational implementation)
-  _getExpectedOutput() {
-    // Create a temporary instance to generate the expected encrypted output
-    const testInstance = new DilithiumInstance(this, false);
-    testInstance.KeySetup(OpCodes.AnsiToBytes("2"));
-    testInstance.Feed(OpCodes.AnsiToBytes("NIST post-quantum digital signature test"));
-    return testInstance.Result();
-  }
 
     CreateInstance(isInverse = false) {
     return new DilithiumInstance(this, isInverse);

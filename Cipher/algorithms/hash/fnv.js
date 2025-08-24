@@ -203,3 +203,8 @@ class FNVAlgorithmInstance extends IHashFunctionInstance {
 if (typeof RegisterAlgorithm === 'function') {
   RegisterAlgorithm(new FNVAlgorithm());
 }
+
+// Export for Node.js
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = FNVAlgorithm;
+}

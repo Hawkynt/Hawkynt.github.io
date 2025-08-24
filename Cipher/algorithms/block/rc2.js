@@ -43,7 +43,7 @@ class RC2Algorithm extends BlockCipherAlgorithm {
       new KeySize(1, 128, 1) // 1-128 bytes, any byte length
     ];
     this.SupportedBlockSizes = [
-      new KeySize(8, 8, 1) // Fixed 64-bit blocks
+      new KeySize(8, 8, 0) // Fixed 64-bit blocks
     ];
 
     // Documentation and references

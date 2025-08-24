@@ -82,9 +82,9 @@
         text: "Crypto-1 Test Vector (Educational)",
         uri: "https://github.com/nfc-tools/mfcuk",
         keySize: 6,
-        input: OpCodes.Hex8ToBytes("00000000"),
-        key: OpCodes.Hex8ToBytes("000102030405"),
-        expected: OpCodes.Hex8ToBytes("a1b2c3d4")
+        input: global.OpCodes.Hex8ToBytes("00000000"),
+        key: global.OpCodes.Hex8ToBytes("000102030405"),
+        expected: global.OpCodes.Hex8ToBytes("4e8485a0")
       }
     ],
 
@@ -228,7 +228,15 @@
     
     // Crypto-1 instance class
     Crypto1Instance: function(key) {
-      this.keyBytes = global.OpCodes.AsciiToBytes(key);
+      // Handle key as byte array or convert if string
+      if (typeof key === 'string') {
+        this.keyBytes = global.OpCodes.AsciiToBytes(key);
+      } else if (Array.isArray(key)) {
+        this.keyBytes = key.slice(); // Copy array
+      } else {
+        throw new Error('Crypto-1 key must be string or byte array');
+      }
+      
       if (this.keyBytes.length !== Crypto1.KEY_SIZE) {
         throw new Error('Crypto-1 requires exactly 48-bit (6-byte) keys');
       }

@@ -52,7 +52,7 @@ class DFC extends BlockCipherAlgorithm {
       new KeySize(16, 32, 8) // 128-256 bits, 64-bit steps
     ];
     this.SupportedBlockSizes = [
-      new KeySize(16, 16, 1) // Fixed 128-bit blocks
+      new KeySize(16, 16, 0) // Fixed 128-bit blocks
     ];
 
     // Documentation and references

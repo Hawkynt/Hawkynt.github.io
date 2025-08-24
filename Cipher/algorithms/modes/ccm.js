@@ -26,7 +26,7 @@ class CcmAlgorithm extends AeadAlgorithm {
     this.description = "Counter with CBC-MAC provides authenticated encryption by combining CTR mode encryption with CBC-MAC authentication. Used in IEEE 802.11i, IPsec, and TLS. Requires pre-specifying the message length and supports variable nonce sizes. More restrictive than GCM but simpler to implement securely.";
     this.inventor = "Doug Whiting, Russ Housley, Niels Ferguson";
     this.year = 2003;
-    this.category = CategoryType.AEAD;
+    this.category = CategoryType.MODE;
     this.subCategory = "Authenticated Encryption";
     this.securityStatus = SecurityStatus.SECURE;
     this.complexity = ComplexityType.ADVANCED;

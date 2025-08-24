@@ -301,12 +301,25 @@
   SNOW3G.SNOW3GInstance.prototype.generateKeyword = SNOW3G.generateKeyword;
   SNOW3G.SNOW3GInstance.prototype.encrypt = SNOW3G.encrypt;
   
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(SNOW3G);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(SNOW3G);
   }
   
-  // Export for Node.js
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(SNOW3G);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(SNOW3G);
+  }
+  
+  // Export to global scope
+  global.SNOW3G = SNOW3G;
+  
+  // Node.js module export
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = SNOW3G;
   }

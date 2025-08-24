@@ -280,12 +280,25 @@
     return this.outputBuffer[this.outputIndex++];
   };
   
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(MUGI);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(MUGI);
   }
   
-  // Export for Node.js
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(MUGI);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(MUGI);
+  }
+  
+  // Export to global scope
+  global.MUGI = MUGI;
+  
+  // Node.js module export
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = MUGI;
   }

@@ -43,7 +43,7 @@ class CAST128Algorithm extends BlockCipherAlgorithm {
       new KeySize(5, 16, 1) // 40-128 bits (5-16 bytes)
     ];
     this.SupportedBlockSizes = [
-      new KeySize(8, 8, 1) // Fixed 64-bit blocks
+      new KeySize(8, 8, 0) // Fixed 64-bit blocks
     ];
 
     // Documentation and references

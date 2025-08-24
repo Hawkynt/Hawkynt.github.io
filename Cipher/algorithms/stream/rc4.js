@@ -100,17 +100,17 @@
         text: "RFC 6229 Test Vector (40-bit key)",
         uri: "https://tools.ietf.org/html/rfc6229#section-2",
         keySize: 5,
-        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("0000000000000000") : [],
-        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("0102030405") : [],
-        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("b2396305f03dc027") : []
+        input: global.OpCodes.Hex8ToBytes("0000000000000000"),
+        key: global.OpCodes.Hex8ToBytes("0102030405"),
+        expected: global.OpCodes.Hex8ToBytes("b2396305f03dc027")
       },
       {
         text: "RFC 6229 Test Vector (128-bit key)",
         uri: "https://tools.ietf.org/html/rfc6229#section-2",
         keySize: 16,
-        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("0000000000000000") : [],
-        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f10") : [],
-        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("9ac7cc9a609d1ef7") : []
+        input: global.OpCodes.Hex8ToBytes("0000000000000000"),
+        key: global.OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f10"),
+        expected: global.OpCodes.Hex8ToBytes("9ac7cc9a609d1ef7")
       }
     ],
     

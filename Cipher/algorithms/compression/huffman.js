@@ -49,25 +49,25 @@
         new LinkItem("Data Compression Book", "https://www.data-compression.com/huffman.html")
       ];
 
-      // Test vectors - round trip tests  
+      // Test vectors with actual compressed outputs
       this.tests = [
         {
           text: "Simple repetitive text",
           uri: "https://en.wikipedia.org/wiki/Huffman_coding",
           input: [65, 65, 65, 66, 66, 67], // "AAABBC"
-          expected: [65, 65, 65, 66, 66, 67] // Round-trip test
+          expected: [2,3,65,3,0,66,2,0,67,1,0,9,0,0,0,31,0] // Compressed output
         },
         {
           text: "Single character repeated",
           uri: "Educational test",
           input: [65, 65, 65], // "AAA"
-          expected: [65, 65, 65] // Round-trip test
+          expected: [1,65,3,0] // Compressed output (special single-char format)
         },
         {
           text: "All different characters",
           uri: "Worst case test",
           input: [65, 66, 67, 68], // "ABCD"
-          expected: [65, 66, 67, 68] // Round-trip test
+          expected: [2,4,65,1,0,66,1,0,67,1,0,68,1,0,8,0,0,0,27] // Compressed output
         }
       ];
     }

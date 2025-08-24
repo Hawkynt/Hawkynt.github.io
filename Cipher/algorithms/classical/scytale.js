@@ -46,20 +46,20 @@ class ScytaleCipher extends CryptoAlgorithm {
     this.tests = [
       (() => {
         const test = new TestCase(
-          Array.from('WEAREFOUNDOUT').map(c => c.charCodeAt(0)), 
-          Array.from('WRODTEEUOAFNU').map(c => c.charCodeAt(0)),
+          OpCodes.AnsiToBytes('WEAREFOUNDOUT'), 
+          OpCodes.AnsiToBytes('WRODTEEUOAFNU'),
           'Basic Scytale example with circumference 3'
         );
-        test.key = Array.from('3').map(c => c.charCodeAt(0));
+        test.key = OpCodes.AnsiToBytes('3');
         return test;
       })(),
       (() => {
         const test = new TestCase(
-          Array.from('ATTACKATDAWN').map(c => c.charCodeAt(0)),
-          Array.from('ACDTKATAWATN').map(c => c.charCodeAt(0)),
+          OpCodes.AnsiToBytes('ATTACKATDAWN'),
+          OpCodes.AnsiToBytes('ACDTKATAWATN'),
           'Military message with circumference 4'
         );
-        test.key = Array.from('4').map(c => c.charCodeAt(0));
+        test.key = OpCodes.AnsiToBytes('4');
         return test;
       })()
     ];

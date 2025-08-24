@@ -15,7 +15,7 @@ if (!global.AlgorithmFramework && typeof require !== 'undefined') {
 
 // Load OpCodes for cryptographic operations (RECOMMENDED)
 if (!global.OpCodes && typeof require !== 'undefined') {
-  OpCodes = require('../../OpCodes.js');
+  global.OpCodes = require('../../OpCodes.js');
 }
 
 class LOKI89Algorithm extends AlgorithmFramework.BlockCipherAlgorithm {
@@ -120,22 +120,30 @@ class LOKI89Instance extends AlgorithmFramework.IBlockCipherInstance {
     ];
   }
 
-  get Key() {
-    return this.key;
+  get key() {
+    return this._key;
   }
 
-  set Key(value) {
-    if (!value || value.length !== 8) {
+  set key(value) {
+    if (!value) {
+      this._key = null;
+      this.roundKeys = null;
+      this.KeySize = 0;
+      return;
+    }
+    
+    if (value.length !== 8) {
       throw new Error('Invalid LOKI89 key size: ' + (value ? 8 * value.length : 0) + ' bits. Required: 64 bits.');
     }
-    this.key = value;
+    
+    this._key = [...value]; // Make a copy
     this.KeySize = value.length;
     this._setupKey();
   }
 
   _setupKey() {
-    if (!this.key) return;
-    this.roundKeys = this._generateRoundKeys(this.key);
+    if (!this._key) return;
+    this.roundKeys = this._generateRoundKeys(this._key);
   }
 
   _generateRoundKeys(key) {
@@ -206,7 +214,7 @@ class LOKI89Instance extends AlgorithmFramework.IBlockCipherInstance {
   }
 
   Result() {
-    if (!this.key) {
+    if (!this._key) {
       throw new Error('Key not set');
     }
 
@@ -328,3 +336,8 @@ class LOKI89Instance extends AlgorithmFramework.IBlockCipherInstance {
 
 // Register the algorithm
 AlgorithmFramework.RegisterAlgorithm(new LOKI89Algorithm());
+
+// Node.js module export
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = LOKI89Algorithm;
+}

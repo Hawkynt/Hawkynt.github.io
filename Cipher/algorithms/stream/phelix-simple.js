@@ -245,9 +245,20 @@
     return output;
   };
   
-  // Auto-register with Subsystem (according to category) if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(PhelixSimple);
+  }
+  
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(PhelixSimple);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
     global.Cipher.Add(PhelixSimple);
+  }
   
   // Export to global scope
   global.PhelixSimple = PhelixSimple;

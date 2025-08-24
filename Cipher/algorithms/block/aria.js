@@ -39,12 +39,12 @@ class AriaAlgorithm extends BlockCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new KeySize(16, 16, 1), // ARIA-128
-      new KeySize(24, 24, 1), // ARIA-192
-      new KeySize(32, 32, 1)  // ARIA-256
+      new KeySize(16, 16, 0), // ARIA-128
+      new KeySize(24, 24, 0), // ARIA-192
+      new KeySize(32, 32, 0)  // ARIA-256
     ];
     this.SupportedBlockSizes = [
-      new KeySize(16, 16, 1) // Fixed 128-bit blocks
+      new KeySize(16, 16, 0) // Fixed 128-bit blocks
     ];
 
     // Documentation and references

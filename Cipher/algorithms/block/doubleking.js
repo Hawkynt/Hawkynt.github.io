@@ -36,10 +36,10 @@ class DoubleKingAlgorithm extends BlockCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new KeySize(48, 48, 1) // Fixed 384-bit key
+      new KeySize(48, 48, 0) // Fixed 384-bit key
     ];
     this.SupportedBlockSizes = [
-      new KeySize(48, 48, 1) // Fixed 384-bit blocks
+      new KeySize(48, 48, 0) // Fixed 384-bit blocks
     ];
 
     // Documentation and references

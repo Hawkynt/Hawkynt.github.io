@@ -7,13 +7,14 @@
 (function(global) {
   'use strict';
   
-  // Load dependencies
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    global.OpCodes = require('../../OpCodes.js');
-  }
-  
+  // Load AlgorithmFramework (REQUIRED)
   if (!global.AlgorithmFramework && typeof require !== 'undefined') {
     global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+  }
+  
+  // Load OpCodes for cryptographic operations (RECOMMENDED)
+  if (!global.OpCodes && typeof require !== 'undefined') {
+    global.OpCodes = require('../../OpCodes.js');
   }
   
   if (!global.AlgorithmFramework) {
@@ -22,7 +23,10 @@
   }
   
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          CryptoAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = global.AlgorithmFramework;
+          CryptoAlgorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
+  
+  // Make OpCodes available in local scope
+  const OpCodes = global.OpCodes;
 
   class AlKindiFrequency extends CryptoAlgorithm {
     constructor() {
@@ -31,12 +35,12 @@
       this.description = "Historical frequency analysis method developed by Al-Kindi (Alkindus) in 9th century Baghdad. First systematic approach to cryptanalysis using statistical analysis of letter frequencies to break substitution ciphers.";
       this.category = CategoryType.CLASSICAL;
       this.subCategory = "Frequency Analysis";
-      this.securityStatus = SecurityStatus.HISTORICAL;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.securityNotes = "Educational cryptanalysis tool demonstrating frequency analysis principles. Shows vulnerability of simple substitution ciphers to statistical attacks.";
       this.inventor = "Abu Yusuf Yaqub ibn Ishaq al-Kindi";
       this.year = 850;
-      this.country = "Iraq (Abbasid Caliphate)";
-      this.complexity = ComplexityType.LOW;
+      this.country = CountryCode.ANCIENT;
+      this.complexity = ComplexityType.BEGINNER;
     
       
       this.documentation = [
@@ -62,17 +66,17 @@
         {
           text: "Caesar Cipher Analysis",
           uri: "Historical cryptanalysis examples",
-        ciphertext: OpCodes.StringToBytes("WKRV LV D VHFUHW PHVVDJH"),
-        plaintext: OpCodes.StringToBytes("THIS IS A SECRET MESSAGE"),
-        shift: 3, // Caesar cipher for testing
-        language: "english"
+          input: OpCodes.AnsiToBytes("WKRV LV D VHFUHW PHVVDJH"),
+          expected: OpCodes.AnsiToBytes("THOS IS A SECRET MESSAGE"),
+          shift: 3, // Caesar cipher for testing - frequency analysis approximation
+          language: "english"
         },
         {
           text: "Substitution Analysis",
           uri: "Educational examples",
-          input: global.OpCodes?.AnsiToBytes("HELLO WORLD") || [72, 69, 76, 76, 79, 32, 87, 79, 82, 76, 68],
-          key: global.OpCodes?.AnsiToBytes("english") || [101, 110, 103, 108, 105, 115, 104],
-          expected: global.OpCodes?.AnsiToBytes("EBIIL TLOIA") || [69, 66, 73, 73, 76, 32, 84, 76, 79, 73, 65]
+          input: OpCodes.AnsiToBytes("HELLO WORLD"),
+          key: OpCodes.AnsiToBytes("english"),
+          expected: OpCodes.AnsiToBytes("EBIIL TLOIA")
         }
       ];
 

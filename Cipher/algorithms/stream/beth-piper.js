@@ -342,15 +342,26 @@
     }
   };
   
-  // Auto-register with Cipher system
-  if (global.Cipher) {
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
     global.AlgorithmFramework.RegisterAlgorithm(BethPiper);
   }
   
-  // Make available globally (using filename format for test compatibility)
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(BethPiper);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(BethPiper);
+  }
+  
+  // Export to global scope
+  global.BethPiper = BethPiper;
   global['BETH-PIPER'] = BethPiper;
   
-  // Export for Node.js
+  // Node.js module export
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = BethPiper;
   }

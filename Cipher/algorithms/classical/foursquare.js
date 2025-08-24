@@ -51,29 +51,29 @@ class FourSquareCipher extends CryptoAlgorithm {
     this.tests = [
       (() => {
         const test = new TestCase(
-          Array.from('HELP').map(c => c.charCodeAt(0)), 
-          Array.from('FYNF').map(c => c.charCodeAt(0)),
+          OpCodes.AnsiToBytes('HELP'), 
+          OpCodes.AnsiToBytes('FYNF'),
           'Basic Four-Square example with EXAMPLE and KEYWORD'
         );
-        test.key = Array.from('EXAMPLE,KEYWORD').map(c => c.charCodeAt(0));
+        test.key = OpCodes.AnsiToBytes('EXAMPLE,KEYWORD');
         return test;
       })(),
       (() => {
         const test = new TestCase(
-          Array.from('ATTACKATDAWN').map(c => c.charCodeAt(0)),
-          Array.from('TPMLIFTPFLXK').map(c => c.charCodeAt(0)),
+          OpCodes.AnsiToBytes('ATTACKATDAWN'),
+          OpCodes.AnsiToBytes('TPMLIFTPFLXK'),
           'Military example with FORTIFICATION and BATTLE keywords'
         );
-        test.key = Array.from('FORTIFICATION,BATTLE').map(c => c.charCodeAt(0));
+        test.key = OpCodes.AnsiToBytes('FORTIFICATION,BATTLE');
         return test;
       })(),
       (() => {
         const test = new TestCase(
-          Array.from('BEATLES').map(c => c.charCodeAt(0)),
-          Array.from('AANOPPSX').map(c => c.charCodeAt(0)),
+          OpCodes.AnsiToBytes('BEATLES'),
+          OpCodes.AnsiToBytes('AANOPPSX'),
           'Beatles example with JOHN and PAUL keywords'
         );
-        test.key = Array.from('JOHN,PAUL').map(c => c.charCodeAt(0));
+        test.key = OpCodes.AnsiToBytes('JOHN,PAUL');
         return test;
       })()
     ];

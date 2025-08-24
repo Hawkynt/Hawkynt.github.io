@@ -80,23 +80,23 @@ class PortaCipher extends CryptoAlgorithm {
       {
         text: "Basic Test",
         uri: "https://en.wikipedia.org/wiki/Porta_cipher",
-        input: global.OpCodes ? global.OpCodes.AnsiToBytes("HELLO") : [72, 69, 76, 76, 79],
-        key: global.OpCodes ? global.OpCodes.AnsiToBytes("KEY") : [75, 69, 89],
-        expected: global.OpCodes ? global.OpCodes.AnsiToBytes("ZTKDD") : [90, 84, 75, 68, 68]
+        input: global.OpCodes.AnsiToBytes("HELLO"),
+        key: global.OpCodes.AnsiToBytes("KEY"),
+        expected: global.OpCodes.AnsiToBytes("ZTKDD")
       },
       {
         text: "Extended Test",
         uri: "https://cryptii.com/pipes/porta-cipher",
-        input: global.OpCodes ? global.OpCodes.AnsiToBytes("ATTACKATDAWN") : [65, 84, 84, 65, 67, 75, 65, 84, 68, 65, 87, 78],
-        key: global.OpCodes ? global.OpCodes.AnsiToBytes("CIPHER") : [67, 73, 80, 72, 69, 82],
-        expected: global.OpCodes ? global.OpCodes.AnsiToBytes("OKNQRFOKXQLI") : [79, 75, 78, 81, 82, 70, 79, 75, 88, 81, 76, 73]
+        input: global.OpCodes.AnsiToBytes("ATTACKATDAWN"),
+        key: global.OpCodes.AnsiToBytes("CIPHER"),
+        expected: global.OpCodes.AnsiToBytes("OKNQRFOKXQLI")
       },
       {
         text: "Full Alphabet Test",
         uri: "https://www.dcode.fr/porta-cipher",
-        input: global.OpCodes ? global.OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ") : [65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90],
-        key: global.OpCodes ? global.OpCodes.AnsiToBytes("A") : [65],
-        expected: global.OpCodes ? global.OpCodes.AnsiToBytes("NOPQRSTUVWXYZABCDEFGHIJKLM") : [78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77]
+        input: global.OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+        key: global.OpCodes.AnsiToBytes("A"),
+        expected: global.OpCodes.AnsiToBytes("NOPQRSTUVWXYZABCDEFGHIJKLM")
       }
     ];
 

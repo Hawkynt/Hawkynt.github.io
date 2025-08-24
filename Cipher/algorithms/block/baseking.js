@@ -36,10 +36,10 @@ class BaseKingAlgorithm extends BlockCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new KeySize(24, 24, 1) // Fixed 192-bit key
+      new KeySize(24, 24, 0) // Fixed 192-bit key
     ];
     this.SupportedBlockSizes = [
-      new KeySize(24, 24, 1) // Fixed 192-bit blocks
+      new KeySize(24, 24, 0) // Fixed 192-bit blocks
     ];
 
     // Documentation and references

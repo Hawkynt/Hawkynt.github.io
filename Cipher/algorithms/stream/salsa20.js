@@ -53,28 +53,28 @@
         text: "eSTREAM Salsa20 Set 1, Vector 0 (128-bit key)",
         uri: "https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/salsa20/",
         keySize: 16,
-        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("80000000000000000000000000000000") : [],
-        nonce: global.OpCodes ? global.OpCodes.Hex8ToBytes("0000000000000000") : [],
-        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000000000000000") : [],
-        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("4dfa5e481da23ea09a31022050859936") : []
+        key: global.OpCodes.Hex8ToBytes("80000000000000000000000000000000"),
+        nonce: global.OpCodes.Hex8ToBytes("0000000000000000"),
+        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("4dfa5e481da23ea09a31022050859936")
       },
       {
         text: "eSTREAM Salsa20 Set 6, Vector 0 (256-bit key)",
         uri: "https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/salsa20/",
         keySize: 32,
-        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("8000000000000000000000000000000000000000000000000000000000000000") : [],
-        nonce: global.OpCodes ? global.OpCodes.Hex8ToBytes("0000000000000000") : [],
-        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000000000000000") : [],
-        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("e3be8fdd8beca2e3ea8ef9475b29a6e7") : []
+        key: global.OpCodes.Hex8ToBytes("8000000000000000000000000000000000000000000000000000000000000000"),
+        nonce: global.OpCodes.Hex8ToBytes("0000000000000000"),
+        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("e3be8fdd8beca2e3ea8ef9475b29a6e7")
       },
       {
         text: "Salsa20 Keystream Test (Bernstein spec)",
         uri: "https://cr.yp.to/snuffle/spec.pdf",
         keySize: 32,
-        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20") : [],
-        nonce: global.OpCodes ? global.OpCodes.Hex8ToBytes("0102030405060708") : [],
-        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000") : [],
-        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("b5e33b3ec95473426445e0dd89413b2b5fcff5d7738a88b5e66c3999a44b7b8dfdc61b978e59b919b42c95b4a11fdd0a41aadf8b0e90825cf9e6fb0c61a7c8b5") : []
+        key: global.OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
+        nonce: global.OpCodes.Hex8ToBytes("0102030405060708"),
+        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("b5e33b3ec95473426445e0dd89413b2b5fcff5d7738a88b5e66c3999a44b7b8dfdc61b978e59b919b42c95b4a11fdd0a41aadf8b0e90825cf9e6fb0c61a7c8b5")
       }
     ],
 

@@ -64,7 +64,7 @@ if (BlockCipherAlgorithm) {
       new KeySize(16, 56, 4) // 128-448 bits in 32-bit increments
     ];
     this.SupportedBlockSizes = [
-      new KeySize(16, 16, 1) // Fixed 128-bit blocks
+      new KeySize(16, 16, 0) // Fixed 128-bit blocks
     ];
 
     // Documentation

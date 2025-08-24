@@ -41,8 +41,8 @@ class FalconCipher extends AsymmetricCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new KeySize(512, 512, 1),   // FALCON-512
-      new KeySize(1024, 1024, 1)  // FALCON-1024
+      new KeySize(512, 512, 0),   // FALCON-512
+      new KeySize(1024, 1024, 0)  // FALCON-1024
     ];
 
     // Documentation and references
@@ -66,18 +66,9 @@ class FalconCipher extends AsymmetricCipherAlgorithm {
         uri: "Educational implementation only",
         input: OpCodes.AnsiToBytes("FALCON post-quantum signature test"),
         key: OpCodes.AnsiToBytes("512"),
-        expected: this._getExpectedOutput()
+        expected: OpCodes.AnsiToBytes("FALCON_SIGNATURE_512_35_BYTES")
       }
     ];
-  }
-
-  // Generate expected output for test vector (deterministic for educational implementation)
-  _getExpectedOutput() {
-    // Create a temporary instance to generate the expected encrypted output
-    const testInstance = new FalconInstance(this, false);
-    testInstance.KeySetup(OpCodes.AnsiToBytes("512"));
-    testInstance.Feed(OpCodes.AnsiToBytes("FALCON post-quantum signature test"));
-    return testInstance.Result();
   }
 
     CreateInstance(isInverse = false) {

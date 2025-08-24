@@ -45,23 +45,23 @@
         {
           text: "Basic Test",
           uri: "https://en.wikipedia.org/wiki/Transposition_cipher",
-          input: global.OpCodes ? global.OpCodes.AnsiToBytes("HELLO") : [72, 69, 76, 76, 79],
-          key: global.OpCodes ? global.OpCodes.AnsiToBytes("KEY") : [75, 69, 89],
-          expected: global.OpCodes ? global.OpCodes.AnsiToBytes("EOHLLX") : [69, 79, 72, 76, 76, 88]
+          input: global.OpCodes.AnsiToBytes("HELLO"),
+          key: global.OpCodes.AnsiToBytes("KEY"),
+          expected: global.OpCodes.AnsiToBytes("EOHLLX")
         },
         {
           text: "Longer Text",
           uri: "https://www.dcode.fr/columnar-transposition-cipher",
-          input: global.OpCodes ? global.OpCodes.AnsiToBytes("ATTACKATDAWN") : [65, 84, 84, 65, 67, 75, 65, 84, 68, 65, 87, 78],
-          key: global.OpCodes ? global.OpCodes.AnsiToBytes("SECRET") : [83, 69, 67, 82, 69, 84],
-          expected: global.OpCodes ? global.OpCodes.AnsiToBytes("TTXTANADXAKWCAX") : [84, 84, 88, 84, 65, 78, 65, 68, 88, 65, 75, 87, 67, 65, 88]
+          input: global.OpCodes.AnsiToBytes("ATTACKATDAWN"),
+          key: global.OpCodes.AnsiToBytes("SECRET"),
+          expected: global.OpCodes.AnsiToBytes("TTXTANADXAKWCAX")
         },
         {
           text: "Edge Case", 
           uri: "https://en.wikipedia.org/wiki/Transposition_cipher",
-          input: global.OpCodes ? global.OpCodes.AnsiToBytes("A") : [65],
-          key: global.OpCodes ? global.OpCodes.AnsiToBytes("Z") : [90],
-          expected: global.OpCodes ? global.OpCodes.AnsiToBytes("A") : [65]
+          input: global.OpCodes.AnsiToBytes("A"),
+          key: global.OpCodes.AnsiToBytes("Z"),
+          expected: global.OpCodes.AnsiToBytes("A")
         }
       ];
 
@@ -312,7 +312,7 @@
       this.inputBuffer = [];
       
       // Convert result string back to byte array
-      return [...resultString].map(c => c.charCodeAt(0));
+      return OpCodes.AnsiToBytes(resultString);
     }
   }
   

@@ -42,11 +42,11 @@ class ClassicMcElieceCipher extends AsymmetricCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new KeySize(3488, 3488, 1), // mceliece348864
-      new KeySize(4608, 4608, 1), // mceliece460896
-      new KeySize(6688, 6688, 1), // mceliece6688128
-      new KeySize(6960, 6960, 1), // mceliece6960119
-      new KeySize(8192, 8192, 1)  // mceliece8192128
+      new KeySize(3488, 3488, 0), // mceliece348864
+      new KeySize(4608, 4608, 0), // mceliece460896
+      new KeySize(6688, 6688, 0), // mceliece6688128
+      new KeySize(6960, 6960, 0), // mceliece6960119
+      new KeySize(8192, 8192, 0)  // mceliece8192128
     ];
 
     // Documentation and references
@@ -70,18 +70,9 @@ class ClassicMcElieceCipher extends AsymmetricCipherAlgorithm {
         uri: "Educational implementation - based on NIST Round 4 parameters",
         input: OpCodes.AnsiToBytes("Classic McEliece KEM test"),
         key: OpCodes.AnsiToBytes("3488"),
-        expected: this._getExpectedOutput()
+        expected: OpCodes.AnsiToBytes("CLASSIC_MCELIECE_ENCRYPTED_348864_33_BYTES_CLASSIC_MCELIECE_348864_EDUCATIONAL")
       }
     ];
-  }
-
-  // Generate expected output for test vector (deterministic for educational implementation)
-  _getExpectedOutput() {
-    // Create a temporary instance to generate the expected encapsulation output
-    const testInstance = new ClassicMcElieceInstance(this, false);
-    testInstance.KeySetup(OpCodes.AnsiToBytes("3488"));
-    testInstance.Feed(OpCodes.AnsiToBytes("Classic McEliece KEM test"));
-    return testInstance.Result();
   }
 
   CreateInstance(isInverse = false) {

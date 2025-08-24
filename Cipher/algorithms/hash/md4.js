@@ -162,12 +162,53 @@ class MD4AlgorithmInstance extends IHashFunctionInstance {
       // Initialize working variables
       let A = h[0], B = h[1], C = h[2], D = h[3];
       
-      // MD4 main rounds (simplified)
-      for (let i = 0; i < 16; i++) {
-        const temp = (A + MD4_F(B, C, D) + X[i]) >>> 0;
-        A = D; D = C; C = B;
-        B = OpCodes.RotL32(temp, [3, 7, 11, 19][i % 4]);
+      // MD4 complete 3-round algorithm (RFC 1320)
+      
+      // Round 1: F function, no constants
+      // [A B C D X[i] S]: A = (A + F(B,C,D) + X[i]) <<< S
+      const round1Ops = [
+        [0, 1, 2, 3,  0,  3], [3, 0, 1, 2,  1,  7], [2, 3, 0, 1,  2, 11], [1, 2, 3, 0,  3, 19],
+        [0, 1, 2, 3,  4,  3], [3, 0, 1, 2,  5,  7], [2, 3, 0, 1,  6, 11], [1, 2, 3, 0,  7, 19],
+        [0, 1, 2, 3,  8,  3], [3, 0, 1, 2,  9,  7], [2, 3, 0, 1, 10, 11], [1, 2, 3, 0, 11, 19],
+        [0, 1, 2, 3, 12,  3], [3, 0, 1, 2, 13,  7], [2, 3, 0, 1, 14, 11], [1, 2, 3, 0, 15, 19]
+      ];
+      
+      const vars = [A, B, C, D];
+      for (const [a, b, c, d, xi, s] of round1Ops) {
+        const temp = (vars[a] + MD4_F(vars[b], vars[c], vars[d]) + X[xi]) >>> 0;
+        vars[a] = OpCodes.RotL32(temp, s);
       }
+      [A, B, C, D] = vars;
+      
+      // Round 2: G function, constant 0x5A827999
+      const round2Ops = [
+        [0, 1, 2, 3,  0,  3], [3, 0, 1, 2,  4,  5], [2, 3, 0, 1,  8,  9], [1, 2, 3, 0, 12, 13],
+        [0, 1, 2, 3,  1,  3], [3, 0, 1, 2,  5,  5], [2, 3, 0, 1,  9,  9], [1, 2, 3, 0, 13, 13],
+        [0, 1, 2, 3,  2,  3], [3, 0, 1, 2,  6,  5], [2, 3, 0, 1, 10,  9], [1, 2, 3, 0, 14, 13],
+        [0, 1, 2, 3,  3,  3], [3, 0, 1, 2,  7,  5], [2, 3, 0, 1, 11,  9], [1, 2, 3, 0, 15, 13]
+      ];
+      
+      const vars2 = [A, B, C, D];
+      for (const [a, b, c, d, xi, s] of round2Ops) {
+        const temp = (vars2[a] + MD4_G(vars2[b], vars2[c], vars2[d]) + X[xi] + 0x5A827999) >>> 0;
+        vars2[a] = OpCodes.RotL32(temp, s);
+      }
+      [A, B, C, D] = vars2;
+      
+      // Round 3: H function, constant 0x6ED9EBA1
+      const round3Ops = [
+        [0, 1, 2, 3,  0,  3], [3, 0, 1, 2,  8,  9], [2, 3, 0, 1,  4, 11], [1, 2, 3, 0, 12, 15],
+        [0, 1, 2, 3,  2,  3], [3, 0, 1, 2, 10,  9], [2, 3, 0, 1,  6, 11], [1, 2, 3, 0, 14, 15],
+        [0, 1, 2, 3,  1,  3], [3, 0, 1, 2,  9,  9], [2, 3, 0, 1,  5, 11], [1, 2, 3, 0, 13, 15],
+        [0, 1, 2, 3,  3,  3], [3, 0, 1, 2, 11,  9], [2, 3, 0, 1,  7, 11], [1, 2, 3, 0, 15, 15]
+      ];
+      
+      const vars3 = [A, B, C, D];
+      for (const [a, b, c, d, xi, s] of round3Ops) {
+        const temp = (vars3[a] + MD4_AUX_H(vars3[b], vars3[c], vars3[d]) + X[xi] + 0x6ED9EBA1) >>> 0;
+        vars3[a] = OpCodes.RotL32(temp, s);
+      }
+      [A, B, C, D] = vars3;
       
       // Add this chunk's hash to result so far
       h[0] = (h[0] + A) >>> 0;

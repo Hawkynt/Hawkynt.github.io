@@ -49,6 +49,7 @@
     version: '1.0',
     author: 'David McGrew (2005)',
     description: 'Large-state stream cipher designed for high security margin',
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     
     // Cipher parameters
     nBlockSizeInBits: 32,   // 32-bit word-based operations
@@ -452,17 +453,27 @@
     }
   };
   
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(Leviathan);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(Leviathan);
   }
   
-  // Export for Node.js
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(Leviathan);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(Leviathan);
+  }
+  
+  // Export to global scope
+  global.Leviathan = Leviathan;
+  
+  // Node.js module export
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = Leviathan;
   }
-  
-  // Make available globally
-  global.Leviathan = Leviathan;
   
 })(typeof global !== 'undefined' ? global : window);

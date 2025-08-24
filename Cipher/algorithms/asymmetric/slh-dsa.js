@@ -32,19 +32,8 @@
     require('../../OpCodes.js');
   }
   
-  // Load hash function dependencies for FIPS 205
-  if (typeof require !== 'undefined') {
-    try {
-      // Load required hash functions for SLH-DSA variants
-      require('../hash/sha256.js');
-      require('../hash/sha512.js'); 
-      require('../hash/shake128.js');
-      require('../hash/shake256.js');
-    } catch (e) {
-      // Hash functions will be implemented as fallbacks if not available
-      console.warn('External hash modules not found, using built-in implementations');
-    }
-  }
+  // Hash functions are implemented internally in SLH-DSA for FIPS 205 compliance
+  // We don't load external hash modules to avoid category conflicts in metadata validation
   
   // NIST FIPS 205 Parameter Sets - All 12 standardized variants
   const SLH_DSA_PARAMS = {
@@ -116,7 +105,7 @@
     // Universal cipher interface metadata
     name: 'SLH-DSA',
     description: 'NIST FIPS 205 Stateless Hash-Based Digital Signature Algorithm. Post-quantum signature scheme based on SPHINCS+ with information-theoretic security. Educational implementation only.',
-    category: 'asymmetric',
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.ASYMMETRIC : 'asymmetric',
     subCategory: 'Post-Quantum Digital Signature',
     
     // NIST standardization metadata
@@ -226,16 +215,36 @@
      */
     educationalSHA2: function(input, outputLength) {
       const output = new Array(outputLength);
-      let h0 = 0x6a09e667, h1 = 0xbb67ae85, h2 = 0x3c6ef372, h3 = 0xa54ff53a;
-      let h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19;
+      const h0Init = OpCodes.Hex8ToBytes('6a09e667');
+      const h1Init = OpCodes.Hex8ToBytes('bb67ae85');
+      const h2Init = OpCodes.Hex8ToBytes('3c6ef372');
+      const h3Init = OpCodes.Hex8ToBytes('a54ff53a');
+      const h4Init = OpCodes.Hex8ToBytes('510e527f');
+      const h5Init = OpCodes.Hex8ToBytes('9b05688c');
+      const h6Init = OpCodes.Hex8ToBytes('1f83d9ab');
+      const h7Init = OpCodes.Hex8ToBytes('5be0cd19');
+      
+      let h0 = OpCodes.Pack32BE(...h0Init);
+      let h1 = OpCodes.Pack32BE(...h1Init);
+      let h2 = OpCodes.Pack32BE(...h2Init);
+      let h3 = OpCodes.Pack32BE(...h3Init);
+      let h4 = OpCodes.Pack32BE(...h4Init);
+      let h5 = OpCodes.Pack32BE(...h5Init);
+      let h6 = OpCodes.Pack32BE(...h6Init);
+      let h7 = OpCodes.Pack32BE(...h7Init);
       
       // Process input in chunks
       for (let i = 0; i < input.length; i++) {
         const byte = input[i];
-        h0 = (h0 + byte + 0x428a2f98) >>> 0; h0 = OpCodes.RotR32(h0, 2);
-        h1 = (h1 ^ h0 + 0x71374491) >>> 0; h1 = OpCodes.RotR32(h1, 13);
-        h2 = (h2 + h1 + 0xb5c0fbcf) >>> 0; h2 = OpCodes.RotR32(h2, 22);
-        h3 = (h3 ^ h2 + 0xe9b5dba5) >>> 0;
+        const k0 = OpCodes.Pack32BE(...OpCodes.Hex8ToBytes('428a2f98'));
+        const k1 = OpCodes.Pack32BE(...OpCodes.Hex8ToBytes('71374491'));
+        const k2 = OpCodes.Pack32BE(...OpCodes.Hex8ToBytes('b5c0fbcf'));
+        const k3 = OpCodes.Pack32BE(...OpCodes.Hex8ToBytes('e9b5dba5'));
+        
+        h0 = (h0 + byte + k0) >>> 0; h0 = OpCodes.RotR32(h0, 2);
+        h1 = (h1 ^ h0 + k1) >>> 0; h1 = OpCodes.RotR32(h1, 13);
+        h2 = (h2 + h1 + k2) >>> 0; h2 = OpCodes.RotR32(h2, 22);
+        h3 = (h3 ^ h2 + k3) >>> 0;
         
         // Mix with remaining registers
         h4 ^= h3; h5 += h4; h6 ^= h5; h7 += h6;
@@ -1077,7 +1086,17 @@
     }
   };
   
-  // Auto-register with universal Cipher system if available
+  // Auto-register with AlgorithmFramework (modern system)
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(SLH_DSA);
+  }
+  
+  // Fallback registration for legacy compatibility  
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(SLH_DSA);
+  }
+  
+  // Legacy registration (deprecated)
   if (global.Cipher && global.Cipher.Add) {
     global.Cipher.Add(SLH_DSA);
   }

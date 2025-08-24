@@ -44,7 +44,7 @@ class RHXAlgorithm extends BlockCipherAlgorithm {
       new KeySize(32, 128, 32)  // 256-bit to 1024-bit keys in 256-bit increments
     ];
     this.SupportedBlockSizes = [
-      new KeySize(16, 16, 1)    // 128-bit blocks only
+      new KeySize(16, 16, 0)    // 128-bit blocks only
     ];
     
     // Documentation links

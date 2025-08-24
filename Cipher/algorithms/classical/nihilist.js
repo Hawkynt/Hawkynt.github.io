@@ -54,29 +54,29 @@ class NihilistCipher extends CryptoAlgorithm {
     this.tests = [
       (() => {
         const test = new TestCase(
-          Array.from('ATTACKATDAWN').map(c => c.charCodeAt(0)), 
-          Array.from('44 68 67 35 44 49 54 88 47 35 75 57').map(c => c.charCodeAt(0)),
+          OpCodes.AnsiToBytes('ATTACKATDAWN'), 
+          OpCodes.AnsiToBytes('44 68 67 35 44 49 54 88 47 35 75 57'),
           'Historical example - ATTACKATDAWN with NIHILIST key'
         );
-        test.key = Array.from('NIHILIST').map(c => c.charCodeAt(0));
+        test.key = OpCodes.AnsiToBytes('NIHILIST');
         return test;
       })(),
       (() => {
         const test = new TestCase(
-          Array.from('REVOLUTION').map(c => c.charCodeAt(0)),
-          Array.from('84 60 94 77 55 56 77 66 79 76').map(c => c.charCodeAt(0)),
+          OpCodes.AnsiToBytes('REVOLUTION'),
+          OpCodes.AnsiToBytes('84 60 94 77 55 56 77 66 79 76'),
           'Revolutionary message with RUSSIAN key'
         );
-        test.key = Array.from('RUSSIAN').map(c => c.charCodeAt(0));
+        test.key = OpCodes.AnsiToBytes('RUSSIAN');
         return test;
       })(),
       (() => {
         const test = new TestCase(
-          Array.from('SECRET').map(c => c.charCodeAt(0)),
-          Array.from('56 70 24 84 28 99').map(c => c.charCodeAt(0)),
+          OpCodes.AnsiToBytes('SECRET'),
+          OpCodes.AnsiToBytes('56 70 24 84 28 99'),
           'Simple example - SECRET with CZAR key'
         );
-        test.key = Array.from('CZAR').map(c => c.charCodeAt(0));
+        test.key = OpCodes.AnsiToBytes('CZAR');
         return test;
       })()
     ];

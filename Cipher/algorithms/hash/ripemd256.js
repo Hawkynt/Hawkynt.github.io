@@ -87,30 +87,27 @@ class RIPEMD256Instance extends IHashFunctionInstance {
   }
   
   /**
-   * RIPEMD-256 auxiliary functions (same as RIPEMD-160)
+   * RIPEMD-256 auxiliary functions (same as RIPEMD-128)
    */
   _f(j, x, y, z) {
     if (j < 16) return x ^ y ^ z;
     if (j < 32) return (x & y) | (~x & z);
     if (j < 48) return (x | ~y) ^ z;
-    if (j < 64) return (x & z) | (y & ~z);
-    return x ^ (y | ~z);
+    return (x & z) | (y & ~z);
   }
   
   _K(j) {
     if (j < 16) return 0x00000000;
     if (j < 32) return 0x5A827999;
     if (j < 48) return 0x6ED9EBA1;
-    if (j < 64) return 0x8F1BBCDC;
-    return 0xA953FD4E;
+    return 0x8F1BBCDC;
   }
   
   _Kh(j) {
     if (j < 16) return 0x50A28BE6;
     if (j < 32) return 0x5C4DD124;
     if (j < 48) return 0x6D703EF3;
-    if (j < 64) return 0x7A6D76E9;
-    return 0x00000000;
+    return 0x7A6D76E9;
   }
   
   /**
@@ -128,16 +125,16 @@ class RIPEMD256Instance extends IHashFunctionInstance {
     let AL = this._h[0], BL = this._h[1], CL = this._h[2], DL = this._h[3];
     let AR = this._h[4], BR = this._h[5], CR = this._h[6], DR = this._h[7];
     
-    // Message schedule permutations
-    const r = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,7,4,13,1,10,6,15,3,12,0,9,5,2,14,11,8,3,10,14,4,9,15,8,1,2,7,0,6,13,11,5,12,1,9,11,10,0,8,12,4,13,3,7,15,14,5,6,2,4,0,5,9,7,12,2,10,14,1,3,8,11,6,15,13];
-    const rh = [5,14,7,0,9,2,11,4,13,6,15,8,1,10,3,12,6,11,3,7,0,13,5,10,14,15,8,12,4,9,1,2,15,5,1,3,7,14,6,9,11,8,12,2,10,0,4,13,8,6,4,1,3,11,15,0,5,12,2,13,9,7,10,14,12,15,10,4,1,5,8,7,6,2,13,14,0,3,9,11];
+    // Message schedule permutations for RIPEMD-256 (64 rounds, not 80)
+    const r = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,7,4,13,1,10,6,15,3,12,0,9,5,2,14,11,8,3,10,14,4,9,15,8,1,2,7,0,6,13,11,5,12,1,9,11,10,0,8,12,4,13,3,7,15,14,5,6,2];
+    const rh = [5,14,7,0,9,2,11,4,13,6,15,8,1,10,3,12,6,11,3,7,0,13,5,10,14,15,8,12,4,9,1,2,15,5,1,3,7,14,6,9,11,8,12,2,10,0,4,13,8,6,4,1,3,11,15,0,5,12,2,13,9,7,10,14];
     
-    // Rotation amounts
-    const s = [11,14,15,12,5,8,7,9,11,13,14,15,6,7,9,8,7,6,8,13,11,9,7,15,7,12,15,9,11,7,13,12,11,13,6,7,14,9,13,15,14,8,13,6,5,12,7,5,11,12,14,15,14,15,9,8,9,14,5,6,8,6,5,12,9,15,8,11,8,6,6,14,12,13,5,14,13,13,7,5,15,5,8,11,14,14,6,14,6,9,12,9,12,5,15,8,8,5,12,9,12,5,14,6,8,13,6,5,15,13,11,11];
-    const sh = [8,9,9,11,13,15,15,5,7,7,8,11,14,14,12,6,9,13,15,7,12,8,9,11,7,7,12,7,6,15,13,11,9,7,15,11,8,6,6,14,12,13,5,14,13,13,7,5,15,5,8,11,14,14,6,14,6,9,12,9,12,5,15,8,8,5,12,9,12,5,14,6,8,13,6,5,15,13,11,11];
+    // Rotation amounts for RIPEMD-256 (64 rounds)
+    const s = [11,14,15,12,5,8,7,9,11,13,14,15,6,7,9,8,7,6,8,13,11,9,7,15,7,12,15,9,11,7,13,12,11,13,6,7,14,9,13,15,14,8,13,6,5,12,7,5,11,12,14,15,14,15,9,8,9,14,5,6,8,6,5,12];
+    const sh = [8,9,9,11,13,15,15,5,7,7,8,11,14,14,12,6,9,13,15,7,12,8,9,11,7,7,12,7,6,15,13,11,9,7,15,11,8,6,6,14,12,13,5,14,13,13,7,5,15,5,8,11,14,14,6,14,6,9,12,9,12,5];
     
-    // Main computation (2 parallel lines)
-    for (let j = 0; j < 80; j++) {
+    // Main computation (2 parallel lines, 64 rounds)
+    for (let j = 0; j < 64; j++) {
       // Left line
       let T = (AL + this._f(j, BL, CL, DL) + X[r[j]] + this._K(j)) >>> 0;
       T = OpCodes.RotL32(T, s[j]);
@@ -145,24 +142,33 @@ class RIPEMD256Instance extends IHashFunctionInstance {
       AL = DL; DL = CL; CL = BL; BL = T;
       
       // Right line  
-      T = (AR + this._f(79 - j, BR, CR, DR) + X[rh[j]] + this._Kh(j)) >>> 0;
+      T = (AR + this._f(63 - j, BR, CR, DR) + X[rh[j]] + this._Kh(j)) >>> 0;
       T = OpCodes.RotL32(T, sh[j]);
       T = T >>> 0;
       AR = DR; DR = CR; CR = BR; BR = T;
+      
+      // Exchange chaining variables between parallel lines after each round (RIPEMD-256 specific)
+      if (j === 15) {
+        // Swap CL and CR
+        let temp = CL; CL = CR; CR = temp;
+      } else if (j === 31) {
+        // Swap DL and DR  
+        let temp = DL; DL = DR; DR = temp;
+      } else if (j === 47) {
+        // Swap AL and AR
+        let temp = AL; AL = AR; AR = temp;
+      }
     }
     
-    // Final addition (RIPEMD-256 specific)
-    let T = (this._h[1] + CL + DR) >>> 0;
-    this._h[1] = (this._h[2] + DL + AR) >>> 0;
-    this._h[2] = (this._h[3] + AL + BR) >>> 0;
-    this._h[3] = (this._h[0] + BL + CR) >>> 0;
-    this._h[0] = T;
-    
-    T = (this._h[5] + CR + DL) >>> 0;
-    this._h[5] = (this._h[6] + DR + AL) >>> 0;
-    this._h[6] = (this._h[7] + AR + BL) >>> 0;
-    this._h[7] = (this._h[4] + BR + CL) >>> 0;
-    this._h[4] = T;
+    // Final addition (RIPEMD-256 specific - no combination, just separate updates)
+    this._h[0] = (this._h[0] + AL) >>> 0;
+    this._h[1] = (this._h[1] + BL) >>> 0;
+    this._h[2] = (this._h[2] + CL) >>> 0;
+    this._h[3] = (this._h[3] + DL) >>> 0;
+    this._h[4] = (this._h[4] + AR) >>> 0;
+    this._h[5] = (this._h[5] + BR) >>> 0;
+    this._h[6] = (this._h[6] + CR) >>> 0;
+    this._h[7] = (this._h[7] + DR) >>> 0;
   }
   
   ProcessData(data) {
@@ -243,16 +249,16 @@ class RIPEMD256Instance extends IHashFunctionInstance {
     let AL = hashState[0], BL = hashState[1], CL = hashState[2], DL = hashState[3];
     let AR = hashState[4], BR = hashState[5], CR = hashState[6], DR = hashState[7];
     
-    // Message schedule permutations
-    const r = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,7,4,13,1,10,6,15,3,12,0,9,5,2,14,11,8,3,10,14,4,9,15,8,1,2,7,0,6,13,11,5,12,1,9,11,10,0,8,12,4,13,3,7,15,14,5,6,2,4,0,5,9,7,12,2,10,14,1,3,8,11,6,15,13];
-    const rh = [5,14,7,0,9,2,11,4,13,6,15,8,1,10,3,12,6,11,3,7,0,13,5,10,14,15,8,12,4,9,1,2,15,5,1,3,7,14,6,9,11,8,12,2,10,0,4,13,8,6,4,1,3,11,15,0,5,12,2,13,9,7,10,14,12,15,10,4,1,5,8,7,6,2,13,14,0,3,9,11];
+    // Message schedule permutations for RIPEMD-256 (64 rounds, not 80)
+    const r = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,7,4,13,1,10,6,15,3,12,0,9,5,2,14,11,8,3,10,14,4,9,15,8,1,2,7,0,6,13,11,5,12,1,9,11,10,0,8,12,4,13,3,7,15,14,5,6,2];
+    const rh = [5,14,7,0,9,2,11,4,13,6,15,8,1,10,3,12,6,11,3,7,0,13,5,10,14,15,8,12,4,9,1,2,15,5,1,3,7,14,6,9,11,8,12,2,10,0,4,13,8,6,4,1,3,11,15,0,5,12,2,13,9,7,10,14];
     
-    // Rotation amounts
-    const s = [11,14,15,12,5,8,7,9,11,13,14,15,6,7,9,8,7,6,8,13,11,9,7,15,7,12,15,9,11,7,13,12,11,13,6,7,14,9,13,15,14,8,13,6,5,12,7,5,11,12,14,15,14,15,9,8,9,14,5,6,8,6,5,12,9,15,8,11,8,6,6,14,12,13,5,14,13,13,7,5,15,5,8,11,14,14,6,14,6,9,12,9,12,5,15,8,8,5,12,9,12,5,14,6,8,13,6,5,15,13,11,11];
-    const sh = [8,9,9,11,13,15,15,5,7,7,8,11,14,14,12,6,9,13,15,7,12,8,9,11,7,7,12,7,6,15,13,11,9,7,15,11,8,6,6,14,12,13,5,14,13,13,7,5,15,5,8,11,14,14,6,14,6,9,12,9,12,5,15,8,8,5,12,9,12,5,14,6,8,13,6,5,15,13,11,11];
+    // Rotation amounts for RIPEMD-256 (64 rounds)
+    const s = [11,14,15,12,5,8,7,9,11,13,14,15,6,7,9,8,7,6,8,13,11,9,7,15,7,12,15,9,11,7,13,12,11,13,6,7,14,9,13,15,14,8,13,6,5,12,7,5,11,12,14,15,14,15,9,8,9,14,5,6,8,6,5,12];
+    const sh = [8,9,9,11,13,15,15,5,7,7,8,11,14,14,12,6,9,13,15,7,12,8,9,11,7,7,12,7,6,15,13,11,9,7,15,11,8,6,6,14,12,13,5,14,13,13,7,5,15,5,8,11,14,14,6,14,6,9,12,9,12,5];
     
-    // Main computation (2 parallel lines)
-    for (let j = 0; j < 80; j++) {
+    // Main computation (2 parallel lines, 64 rounds)
+    for (let j = 0; j < 64; j++) {
       // Left line
       let T = (AL + this._f(j, BL, CL, DL) + X[r[j]] + this._K(j)) >>> 0;
       T = OpCodes.RotL32(T, s[j]);
@@ -260,24 +266,33 @@ class RIPEMD256Instance extends IHashFunctionInstance {
       AL = DL; DL = CL; CL = BL; BL = T;
       
       // Right line  
-      T = (AR + this._f(79 - j, BR, CR, DR) + X[rh[j]] + this._Kh(j)) >>> 0;
+      T = (AR + this._f(63 - j, BR, CR, DR) + X[rh[j]] + this._Kh(j)) >>> 0;
       T = OpCodes.RotL32(T, sh[j]);
       T = T >>> 0;
       AR = DR; DR = CR; CR = BR; BR = T;
+      
+      // Exchange chaining variables between parallel lines after each round (RIPEMD-256 specific)
+      if (j === 15) {
+        // Swap CL and CR
+        let temp = CL; CL = CR; CR = temp;
+      } else if (j === 31) {
+        // Swap DL and DR  
+        let temp = DL; DL = DR; DR = temp;
+      } else if (j === 47) {
+        // Swap AL and AR
+        let temp = AL; AL = AR; AR = temp;
+      }
     }
     
-    // Final addition (RIPEMD-256 specific)
-    let T = (hashState[1] + CL + DR) >>> 0;
-    hashState[1] = (hashState[2] + DL + AR) >>> 0;
-    hashState[2] = (hashState[3] + AL + BR) >>> 0;
-    hashState[3] = (hashState[0] + BL + CR) >>> 0;
-    hashState[0] = T;
-    
-    T = (hashState[5] + CR + DL) >>> 0;
-    hashState[5] = (hashState[6] + DR + AL) >>> 0;
-    hashState[6] = (hashState[7] + AR + BL) >>> 0;
-    hashState[7] = (hashState[4] + BR + CL) >>> 0;
-    hashState[4] = T;
+    // Final addition (RIPEMD-256 specific - no combination, just separate updates)
+    hashState[0] = (hashState[0] + AL) >>> 0;
+    hashState[1] = (hashState[1] + BL) >>> 0;
+    hashState[2] = (hashState[2] + CL) >>> 0;
+    hashState[3] = (hashState[3] + DL) >>> 0;
+    hashState[4] = (hashState[4] + AR) >>> 0;
+    hashState[5] = (hashState[5] + BR) >>> 0;
+    hashState[6] = (hashState[6] + CR) >>> 0;
+    hashState[7] = (hashState[7] + DR) >>> 0;
   }
 }
 

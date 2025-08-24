@@ -42,12 +42,12 @@ class MagentaAlgorithm extends BlockCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new KeySize(16, 16, 1), // 128-bit keys
-      new KeySize(24, 24, 1), // 192-bit keys
-      new KeySize(32, 32, 1)  // 256-bit keys
+      new KeySize(16, 16, 0), // 128-bit keys
+      new KeySize(24, 24, 0), // 192-bit keys
+      new KeySize(32, 32, 0)  // 256-bit keys
     ];
     this.SupportedBlockSizes = [
-      new KeySize(16, 16, 1) // 128-bit blocks only
+      new KeySize(16, 16, 0) // 128-bit blocks only
     ];
 
     // Documentation and references

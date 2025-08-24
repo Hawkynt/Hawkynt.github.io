@@ -52,9 +52,9 @@
         text: "RFC 4503 Test Vector 1",
         uri: "https://tools.ietf.org/html/rfc4503#section-A.1",
         keySize: 16,
-        key: global.OpCodes ? global.OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff") : [],
-        input: global.OpCodes ? global.OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000") : [],
-        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes("edb70567375dcd7cd0ac834a1016ce0d859d06d08b9c4ba09fe5a07c09c9b6d4") : []
+        key: global.OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
+        input: global.OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("edb70567375dcd7cd0ac834a1016ce0d859d06d08b9c4ba09fe5a07c09c9b6d4")
       }
     ],
 

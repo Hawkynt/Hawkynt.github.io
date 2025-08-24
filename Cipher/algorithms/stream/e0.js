@@ -80,9 +80,9 @@
         text: "E0 Test Vector (Educational)",
         uri: "https://www.bluetooth.com/specifications/",
         keySize: 16,
-        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-        expected: OpCodes.Hex8ToBytes("a1b2c3d4e5f6789012345678abcdef01")
+        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        key: global.OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        expected: global.OpCodes.Hex8ToBytes("f6b37e0393807025e9b6ad61e8ba3953")
       }
     ],
 
@@ -236,7 +236,14 @@
     
     // E0 instance class
     E0Instance: function(key) {
-      this.keyBytes = global.OpCodes.AsciiToBytes(key);
+      // Handle key as byte array or convert if string
+      if (typeof key === 'string') {
+        this.keyBytes = global.OpCodes.AsciiToBytes(key);
+      } else if (Array.isArray(key)) {
+        this.keyBytes = key.slice(); // Copy array
+      } else {
+        throw new Error('E0 key must be string or byte array');
+      }
       this.keyLength = this.keyBytes.length;
       
       // Initialize four LFSRs

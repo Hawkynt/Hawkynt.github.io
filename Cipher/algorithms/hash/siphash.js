@@ -17,7 +17,7 @@
     inventor: "Jean-Philippe Aumasson, Daniel J. Bernstein", 
     year: 2012,
     country: "Switzerland/USA",
-    category: "hash",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.HASH : "hash",
     subCategory: "MAC/PRF",
     securityStatus: null, // Cryptographically secure PRF - cannot claim "secure" per guidelines
     

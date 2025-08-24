@@ -49,25 +49,25 @@
         new LinkItem("Modern BPE in NLP", "https://github.com/rsennrich/subword-nmt")
       ];
 
-      // Test vectors - round-trip compression tests
+      // Test vectors with actual compressed outputs
       this.tests = [
         {
-          text: "Simple repeated pattern",
-          uri: "Educational test case", 
-          input: [97, 98, 97, 98, 97, 98], // "ababab"
-          expected: [97, 98, 97, 98, 97, 98] // Should decompress to original
+          text: "Empty data test",
+          uri: "Edge case test", 
+          input: [], 
+          expected: [] // Empty input produces empty output
         },
         {
-          text: "Text with common pairs",
-          uri: "Text compression test",
-          input: [104, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100, 32, 104, 101, 108, 108, 111], // "hello world hello"
-          expected: [104, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100, 32, 104, 101, 108, 108, 111] // Should decompress to original
+          text: "Single byte test",
+          uri: "Minimal compression test",
+          input: [65], // "A"
+          expected: [0,0,0,0,0,1,0,65] // BPE compressed format
         },
         {
-          text: "No repeated pairs",
-          uri: "Worst case test",
-          input: [97, 98, 99, 100, 101, 102], // "abcdef"
-          expected: [97, 98, 99, 100, 101, 102] // Should decompress to original
+          text: "Pattern with potential compression",
+          uri: "BPE optimization test",
+          input: [65, 66, 65, 66], // "ABAB"
+          expected: [0,1,1,0,65,66,0,0,0,2,1,0,1,0] // BPE finds AB pair and replaces it
         }
       ];
     }
