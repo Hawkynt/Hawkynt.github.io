@@ -42,26 +42,22 @@ class TrifidCipher extends CryptoAlgorithm {
       new LinkItem('Delastelle Ciphers', 'http://practicalcryptography.com/ciphers/classical-era/trifid/')
     ];
     
-    // Convert test vectors to new format (strings to byte arrays)
+    // Test vectors in plain format (recommended)
     this.tests = [
-      (() => {
-        const test = new TestCase(
-          OpCodes.AnsiToBytes('HELLO'), 
-          OpCodes.AnsiToBytes('BOJN+'),
-          'Basic Trifid example with period 5'
-        );
-        test.key = OpCodes.AnsiToBytes('5');
-        return test;
-      })(),
-      (() => {
-        const test = new TestCase(
-          OpCodes.AnsiToBytes('ATTACKATDAWN'),
-          OpCodes.AnsiToBytes('IBAAEHGHBEDE'),
-          'Military message with period 6'
-        );
-        test.key = OpCodes.AnsiToBytes('6');
-        return test;
-      })()
+      {
+        text: 'Basic Trifid example with period 5',
+        uri: 'https://en.wikipedia.org/wiki/Trifid_cipher',
+        input: OpCodes.AnsiToBytes('HELLO'), 
+        key: OpCodes.AnsiToBytes('5'),
+        expected: OpCodes.AnsiToBytes('BOJN+')
+      },
+      {
+        text: 'Military message with period 6',
+        uri: 'https://en.wikipedia.org/wiki/Trifid_cipher',
+        input: OpCodes.AnsiToBytes('ATTACKATDAWN'),
+        key: OpCodes.AnsiToBytes('6'),
+        expected: OpCodes.AnsiToBytes('IBAAEHGHBEDE')
+      }
     ];
     
     // For test suite compatibility

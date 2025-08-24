@@ -56,38 +56,38 @@ class Base16Algorithm extends EncodingAlgorithm {
         "https://tools.ietf.org/html/rfc4648#section-10"
       ),
       new TestCase(
-        OpCodes.AnsiToBytes("f"),
-        OpCodes.AnsiToBytes("66"),
+        global.OpCodes.AnsiToBytes("f"), // "f"
+        [54, 54], // "66"
         "Base16 single character test - RFC 4648",
         "https://tools.ietf.org/html/rfc4648#section-10"
       ),
       new TestCase(
-        OpCodes.AnsiToBytes("fo"),
-        OpCodes.AnsiToBytes("666F"),
+        global.OpCodes.AnsiToBytes("fo"), // "fo"
+        [54, 54, 54, 70], // "666F"
         "Base16 two character test - RFC 4648",
         "https://tools.ietf.org/html/rfc4648#section-10"
       ),
       new TestCase(
-        OpCodes.AnsiToBytes("foo"),
-        OpCodes.AnsiToBytes("666F6F"),
+        global.OpCodes.AnsiToBytes("foo"), // "foo"
+        [54, 54, 54, 70, 54, 70], // "666F6F"
         "Base16 three character test - RFC 4648",
         "https://tools.ietf.org/html/rfc4648#section-10"
       ),
       new TestCase(
-        OpCodes.AnsiToBytes("foob"),
-        OpCodes.AnsiToBytes("666F6F62"),
+        global.OpCodes.AnsiToBytes("foob"), // "foob"
+        [54, 54, 54, 70, 54, 70, 54, 50], // "666F6F62"
         "Base16 four character test - RFC 4648",
         "https://tools.ietf.org/html/rfc4648#section-10"
       ),
       new TestCase(
-        OpCodes.AnsiToBytes("fooba"),
-        OpCodes.AnsiToBytes("666F6F6261"),
+        global.OpCodes.AnsiToBytes("fooba"), // "fooba"
+        [54, 54, 54, 70, 54, 70, 54, 50, 54, 49], // "666F6F6261"
         "Base16 five character test - RFC 4648",
         "https://tools.ietf.org/html/rfc4648#section-10"
       ),
       new TestCase(
-        OpCodes.AnsiToBytes("foobar"),
-        OpCodes.AnsiToBytes("666F6F626172"),
+        global.OpCodes.AnsiToBytes("foobar"), // "foobar"
+        [54, 54, 54, 70, 54, 70, 54, 50, 54, 49, 55, 50], // "666F6F626172"
         "Base16 six character test - RFC 4648",
         "https://tools.ietf.org/html/rfc4648#section-10"
       )
@@ -103,8 +103,8 @@ class Base16Instance extends IAlgorithmInstance {
   constructor(algorithm, isInverse = false) {
     super(algorithm);
     this.isInverse = isInverse;
-    // Use OpCodes for alphabet definition but keep as bytes for lookup efficiency
-    this.alphabetBytes = OpCodes.AnsiToBytes ? OpCodes.AnsiToBytes("0123456789ABCDEF") : [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70];
+    // Use OpCodes for alphabet definition
+    this.alphabetBytes = OpCodes.AnsiToBytes("0123456789ABCDEF");
     this.alphabet = String.fromCharCode(...this.alphabetBytes);
     this.processedData = null;
     
@@ -160,7 +160,13 @@ class Base16Instance extends IAlgorithmInstance {
     }
 
     const input = String.fromCharCode(...data);
-    const cleanInput = input.split('').filter(c => /[0-9A-Fa-f]/.test(c)).join('');
+    let cleanInput = '';
+    for (let i = 0; i < input.length; ++i) {
+      const code = input.charCodeAt(i);
+      if ((code >= 48 && code <= 57) || (code >= 65 && code <= 70) || (code >= 97 && code <= 102)) { // 0-9, A-F, a-f
+        cleanInput += input[i];
+      }
+    }
     
     if (cleanInput.length % 2 !== 0) {
       throw new Error('Base16Instance.decode: Invalid hex string length');
@@ -184,13 +190,13 @@ class Base16Instance extends IAlgorithmInstance {
 
   // Utility methods
   encodeString(str) {
-    const bytes = OpCodes?.AnsiToBytes ? OpCodes.AnsiToBytes(str) : str.split('').map(c => c.charCodeAt(0));
+    const bytes = OpCodes.AnsiToBytes(str);
     const encoded = this.encode(bytes);
     return String.fromCharCode(...encoded);
   }
 
   decodeString(str) {
-    const bytes = OpCodes?.AnsiToBytes ? OpCodes.AnsiToBytes(str) : str.split('').map(c => c.charCodeAt(0));
+    const bytes = OpCodes.AnsiToBytes(str);
     const decoded = this.decode(bytes);
     return String.fromCharCode(...decoded);
   }

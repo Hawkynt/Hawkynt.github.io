@@ -47,35 +47,29 @@ class FourSquareCipher extends CryptoAlgorithm {
       new LinkItem('Delastelle Cipher Systems', 'https://en.wikipedia.org/wiki/F%C3%A9lix_Delastelle')
     ];
 
-    // Convert test vectors to new format (strings to byte arrays)
+    // Test vectors in plain format (recommended)
     this.tests = [
-      (() => {
-        const test = new TestCase(
-          OpCodes.AnsiToBytes('HELP'), 
-          OpCodes.AnsiToBytes('FYNF'),
-          'Basic Four-Square example with EXAMPLE and KEYWORD'
-        );
-        test.key = OpCodes.AnsiToBytes('EXAMPLE,KEYWORD');
-        return test;
-      })(),
-      (() => {
-        const test = new TestCase(
-          OpCodes.AnsiToBytes('ATTACKATDAWN'),
-          OpCodes.AnsiToBytes('TPMLIFTPFLXK'),
-          'Military example with FORTIFICATION and BATTLE keywords'
-        );
-        test.key = OpCodes.AnsiToBytes('FORTIFICATION,BATTLE');
-        return test;
-      })(),
-      (() => {
-        const test = new TestCase(
-          OpCodes.AnsiToBytes('BEATLES'),
-          OpCodes.AnsiToBytes('AANOPPSX'),
-          'Beatles example with JOHN and PAUL keywords'
-        );
-        test.key = OpCodes.AnsiToBytes('JOHN,PAUL');
-        return test;
-      })()
+      {
+        text: 'Basic Four-Square example with EXAMPLE and KEYWORD',
+        uri: 'https://en.wikipedia.org/wiki/Four-square_cipher',
+        input: OpCodes.AnsiToBytes('HELP'), 
+        key: OpCodes.AnsiToBytes('EXAMPLE,KEYWORD'),
+        expected: OpCodes.AnsiToBytes('FYNF')
+      },
+      {
+        text: 'Military example with FORTIFICATION and BATTLE keywords',
+        uri: 'https://en.wikipedia.org/wiki/Four-square_cipher',
+        input: OpCodes.AnsiToBytes('ATTACKATDAWN'),
+        key: OpCodes.AnsiToBytes('FORTIFICATION,BATTLE'),
+        expected: OpCodes.AnsiToBytes('TPMLIFTPFLXK')
+      },
+      {
+        text: 'Beatles example with JOHN and PAUL keywords',
+        uri: 'https://en.wikipedia.org/wiki/Four-square_cipher',
+        input: OpCodes.AnsiToBytes('BEATLES'),
+        key: OpCodes.AnsiToBytes('JOHN,PAUL'),
+        expected: OpCodes.AnsiToBytes('AANOPPSX')
+      }
     ];
     
     // For test suite compatibility

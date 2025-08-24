@@ -54,26 +54,38 @@
         new LinkItem("Fibonacci Applications", "https://www.mathsisfun.com/numbers/fibonacci-sequence.html")
       ];
 
-      // Test vectors - round-trip compression tests
+      // Test vectors with proper Fibonacci coding representations
       this.tests = [
-        {
-          text: "Small values - good for Fibonacci coding",
-          uri: "https://en.wikipedia.org/wiki/Fibonacci_coding",
-          input: [1, 2, 3, 4, 5], // Small numbers work well
-          expected: [1, 2, 3, 4, 5] // Should decompress to original
-        },
-        {
-          text: "Single small value",
-          uri: "Educational test",
-          input: [8], // F(6) = 8
-          expected: [8] // Should decompress to original
-        },
-        {
-          text: "Mixed values",
-          uri: "Educational test",
-          input: [1, 3, 8, 13], // Various Fibonacci and non-Fibonacci numbers
-          expected: [1, 3, 8, 13] // Should decompress to original
-        }
+        new TestCase(
+          [1], // Number 1
+          [1, 1], // Fibonacci code: "11" (binary bits as array)
+          "Fibonacci coding of number 1",
+          "https://en.wikipedia.org/wiki/Fibonacci_coding"
+        ),
+        new TestCase(
+          [2], // Number 2  
+          [0, 1, 1], // Fibonacci code: "011" (binary bits as array)
+          "Fibonacci coding of number 2",
+          "https://en.wikipedia.org/wiki/Fibonacci_coding"
+        ),
+        new TestCase(
+          [6], // Number 6 = F₅ + F₂ = 5 + 1
+          [1, 0, 0, 1, 1], // Fibonacci code: "10011" (binary bits as array)
+          "Fibonacci coding of number 6 (5+1)",
+          "https://cp-algorithms.com/algebra/fibonacci-numbers.html"
+        ),
+        new TestCase(
+          [8], // Number 8 = F₆
+          [0, 0, 0, 0, 1, 1], // Fibonacci code: "000011" (binary bits as array)
+          "Fibonacci coding of number 8",
+          "https://cp-algorithms.com/algebra/fibonacci-numbers.html"
+        ),
+        new TestCase(
+          [11], // Number 11 = F₇ + F₅ = 8 + 3
+          [0, 0, 1, 0, 1, 1], // Fibonacci code: "001011" (binary bits as array)  
+          "Fibonacci coding of number 11 (8+3)",
+          "https://www.geeksforgeeks.org/fibonacci-coding/"
+        )
       ];
     }
 

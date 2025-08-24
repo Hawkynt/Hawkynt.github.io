@@ -304,7 +304,29 @@
         this.hasher.buffer.fill(0);
       }
       this.bKey = false;
-    }
+    },
+    
+    // Test vectors from NIST FIPS 202 and di-mgt.com.au comprehensive collection
+    tests: [
+      {
+        text: "SHA-3-256 Empty String Test Vector",
+        uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf",
+        input: [],
+        expected: OpCodes.Hex8ToBytes("a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a")
+      },
+      {
+        text: "SHA-3-256 'abc' Test Vector", 
+        uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf",
+        input: OpCodes.AnsiToBytes("abc"),
+        expected: OpCodes.Hex8ToBytes("3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532")
+      },
+      {
+        text: "SHA-3-256 Long String Test Vector",
+        uri: "https://www.di-mgt.com.au/sha_testvectors.html",
+        input: OpCodes.AnsiToBytes("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
+        expected: OpCodes.Hex8ToBytes("41c0dba2a9d6240849100376a8235e2c82e1b9998a999e21db32dd97496d3376")
+      }
+    ]
   };
   
   // Auto-register with Cipher system if available

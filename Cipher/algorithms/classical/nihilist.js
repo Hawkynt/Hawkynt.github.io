@@ -50,35 +50,29 @@ class NihilistCipher extends CryptoAlgorithm {
       new LinkItem('Russian Revolutionary Ciphers', 'http://www.cryptomuseum.com/crypto/nihilist.htm')
     ];
     
-    // Convert test vectors to new format (strings to byte arrays)
+    // Test vectors in plain format (recommended)
     this.tests = [
-      (() => {
-        const test = new TestCase(
-          OpCodes.AnsiToBytes('ATTACKATDAWN'), 
-          OpCodes.AnsiToBytes('44 68 67 35 44 49 54 88 47 35 75 57'),
-          'Historical example - ATTACKATDAWN with NIHILIST key'
-        );
-        test.key = OpCodes.AnsiToBytes('NIHILIST');
-        return test;
-      })(),
-      (() => {
-        const test = new TestCase(
-          OpCodes.AnsiToBytes('REVOLUTION'),
-          OpCodes.AnsiToBytes('84 60 94 77 55 56 77 66 79 76'),
-          'Revolutionary message with RUSSIAN key'
-        );
-        test.key = OpCodes.AnsiToBytes('RUSSIAN');
-        return test;
-      })(),
-      (() => {
-        const test = new TestCase(
-          OpCodes.AnsiToBytes('SECRET'),
-          OpCodes.AnsiToBytes('56 70 24 84 28 99'),
-          'Simple example - SECRET with CZAR key'
-        );
-        test.key = OpCodes.AnsiToBytes('CZAR');
-        return test;
-      })()
+      {
+        text: 'Historical example - ATTACKATDAWN with NIHILIST key',
+        uri: 'https://en.wikipedia.org/wiki/Nihilist_cipher',
+        input: OpCodes.AnsiToBytes('ATTACKATDAWN'), 
+        key: OpCodes.AnsiToBytes('NIHILIST'),
+        expected: OpCodes.AnsiToBytes('44 68 67 35 44 49 54 88 47 35 75 57')
+      },
+      {
+        text: 'Revolutionary message with RUSSIAN key',
+        uri: 'https://en.wikipedia.org/wiki/Nihilist_cipher',
+        input: OpCodes.AnsiToBytes('REVOLUTION'),
+        key: OpCodes.AnsiToBytes('RUSSIAN'),
+        expected: OpCodes.AnsiToBytes('84 60 94 77 55 56 77 66 79 76')
+      },
+      {
+        text: 'Simple example - SECRET with CZAR key',
+        uri: 'https://en.wikipedia.org/wiki/Nihilist_cipher',
+        input: OpCodes.AnsiToBytes('SECRET'),
+        key: OpCodes.AnsiToBytes('CZAR'),
+        expected: OpCodes.AnsiToBytes('56 70 24 84 28 99')
+      }
     ];
     
     // For test suite compatibility
