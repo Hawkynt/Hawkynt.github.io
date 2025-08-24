@@ -62,37 +62,31 @@ class Base91Algorithm extends EncodingAlgorithm {
         OpCodes.AnsiToBytes(""),
         OpCodes.AnsiToBytes(""),
         "Base91 empty string test",
-        "http://base91.sourceforge.net/"
+        "https://github.com/bwaldvogel/base91/blob/main/src/test/java/de/bwaldvogel/base91/Base91Test.java"
       ),
       new TestCase(
-        OpCodes.AnsiToBytes("A"),
-        OpCodes.AnsiToBytes("%A"),
-        "Base91 single character test - 'A'",
-        "http://base91.sourceforge.net/"
+        OpCodes.AnsiToBytes("a"),
+        OpCodes.AnsiToBytes("GB"),
+        "Base91 single character test - 'a'",
+        "https://github.com/bwaldvogel/base91/blob/main/src/test/java/de/bwaldvogel/base91/Base91Test.java"
       ),
       new TestCase(
-        OpCodes.AnsiToBytes("AB"),
-        OpCodes.AnsiToBytes("fGC"),
-        "Base91 two character test - 'AB'",
-        "http://base91.sourceforge.net/"
+        OpCodes.AnsiToBytes("test"),
+        OpCodes.AnsiToBytes("fPNKd"),
+        "Base91 word test - 'test'",
+        "https://github.com/bwaldvogel/base91/blob/main/src/test/java/de/bwaldvogel/base91/Base91Test.java"
       ),
       new TestCase(
-        OpCodes.AnsiToBytes("ABC"),
-        OpCodes.AnsiToBytes("fG^F"),
-        "Base91 three character test - 'ABC'",
-        "http://base91.sourceforge.net/"
+        OpCodes.AnsiToBytes("Never odd or even\n"),
+        OpCodes.AnsiToBytes("_O^gp@J`7RztjblLA#_1eHA"),
+        "Base91 palindrome test with newline",
+        "https://github.com/bwaldvogel/base91/blob/main/src/test/java/de/bwaldvogel/base91/Base91Test.java"
       ),
       new TestCase(
-        OpCodes.AnsiToBytes("Hello"),
-        OpCodes.AnsiToBytes(">OwJh>A"),
-        "Base91 greeting test - 'Hello'",
-        "http://base91.sourceforge.net/"
-      ),
-      new TestCase(
-        OpCodes.AnsiToBytes("Test"),
-        OpCodes.AnsiToBytes(" ONKd"),
-        "Base91 word test - 'Test'",
-        "http://base91.sourceforge.net/"
+        OpCodes.AnsiToBytes("May a moody baby doom a yam?\n"),
+        OpCodes.AnsiToBytes("8D9Kc)=/2$WzeFui#G9Km+<{VT2u9MZil}[A"),
+        "Base91 sentence test with newline",
+        "https://github.com/bwaldvogel/base91/blob/main/src/test/java/de/bwaldvogel/base91/Base91Test.java"
       )
     ];
   }

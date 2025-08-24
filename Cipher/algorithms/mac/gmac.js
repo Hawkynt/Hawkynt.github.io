@@ -63,7 +63,7 @@ class GMACAlgorithm extends MacAlgorithm {
         uri: "https://csrc.nist.gov/publications/detail/sp/800-38d/final",
         input: [], // No AAD
         key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        iv: OpCodes.Hex8ToBytes("000000000000000000000000"),
+        nonce: OpCodes.Hex8ToBytes("000000000000000000000000"),
         expected: OpCodes.Hex8ToBytes("58E2FCCEFA7E3061367F1D57A4E7455A")
       },
       // Test Case 2: With AAD
@@ -72,7 +72,7 @@ class GMACAlgorithm extends MacAlgorithm {
         uri: "https://csrc.nist.gov/publications/detail/sp/800-38d/final",
         input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
         key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        iv: OpCodes.Hex8ToBytes("000000000000000000000000"),
+        nonce: OpCodes.Hex8ToBytes("000000000000000000000000"),
         expected: OpCodes.Hex8ToBytes("AB6E47D42CEC13BDF53A67B21257BDDF")
       }
     ];

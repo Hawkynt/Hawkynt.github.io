@@ -56,20 +56,41 @@ class ScryptAlgorithm extends KdfAlgorithm {
       new LinkItem("Node.js crypto.scrypt", "https://nodejs.org/api/crypto.html#crypto_crypto_scrypt_password_salt_keylen_options_callback")
     ];
     
-    // Test vectors from RFC 7914
+    // Test vectors from RFC 7914 Section 12
     this.tests = [
-      new TestCase(
-        [], // Empty password
-        [119, 214, 87, 98, 56, 135, 123, 32, 59, 25, 202, 66, 193, 138, 4, 151, 241, 107, 72, 68, 227, 7, 74, 232, 223, 223, 250, 63, 237, 226, 20, 66, 252, 208, 6, 157, 208, 148, 143, 131, 38, 167, 83, 160, 252, 129, 241, 126, 216, 62, 11, 178, 224, 211, 98, 140, 243, 94, 32, 195, 141, 24, 144, 6],
-        "scrypt RFC 7914 Test Vector 1 - Empty",
-        "https://tools.ietf.org/html/rfc7914"
-      ),
-      new TestCase(
-        [112, 97, 115, 115, 119, 111, 114, 100], // "password" in bytes
-        [253, 171, 190, 28, 157, 52, 114, 0, 120, 86, 231, 25, 13, 1, 233, 254, 124, 106, 215, 203, 200, 35, 120, 48, 231, 115, 118, 99, 75, 55, 49, 22, 46, 175, 48, 217, 46, 34, 163, 136, 111, 241, 9, 39, 157, 152, 48, 218, 199, 39, 175, 185, 74, 131, 238, 109, 131, 96, 203, 223, 162, 204, 6, 64],
-        "scrypt RFC 7914 Test Vector 2 - Password",
-        "https://tools.ietf.org/html/rfc7914"
-      )
+      {
+        text: "RFC 7914 Test Vector 1 - Empty password and salt",
+        uri: "https://datatracker.ietf.org/doc/html/rfc7914#section-12",
+        input: [], // Empty password
+        salt: [], // Empty salt
+        N: 16,
+        r: 1,
+        p: 1,
+        keyLength: 64,
+        expected: OpCodes.Hex8ToBytes("77d6576238657b203b19ca42c18a04974f1b4844e3074ae8dfdffa3fede21442fcd0069ded0948f8326a753a0fc81f17e8d3e0fb2e0d3628cf35e20c38d18906")
+      },
+      {
+        text: "RFC 7914 Test Vector 2 - password/NaCl",
+        uri: "https://datatracker.ietf.org/doc/html/rfc7914#section-12",
+        input: OpCodes.AnsiToBytes("password"),
+        salt: OpCodes.AnsiToBytes("NaCl"),
+        N: 1024,
+        r: 8,
+        p: 16,
+        keyLength: 64,
+        expected: OpCodes.Hex8ToBytes("fdbabe1c9d34720078565e7190d01e9fe7c6ad7cbc8237830e77376634b3731622eaf30d92e22a3886ff10927d9830dac727afb94a83ee6d8360cbdfa2cc0640")
+      },
+      {
+        text: "RFC 7914 Test Vector 3 - pleaseletmein/SodiumChloride",
+        uri: "https://datatracker.ietf.org/doc/html/rfc7914#section-12",
+        input: OpCodes.AnsiToBytes("pleaseletmein"),
+        salt: OpCodes.AnsiToBytes("SodiumChloride"),
+        N: 16384,
+        r: 8,
+        p: 1,
+        keyLength: 64,
+        expected: OpCodes.Hex8ToBytes("7023bdcb3afd7348461c06cd81fd38ebfda8fbba904f8e3ea9b543f6545da1f2d5432955613f0fcf62d49705242a9af9e61e85dc0d651e40dfcf017b45575887")
+      }
     ];
   }
 

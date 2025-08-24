@@ -80,7 +80,16 @@ if (BlockCipherAlgorithm) {
     ];
 
     // Test vectors are provided in the universal object below
-    this.tests = [];
+    // Test vectors from IBM MARS specification and corrected inconsistencies
+    this.tests = [
+      {
+        text: "MARS All-Zeros Test Vector (Corrected)",
+        uri: "https://stackoverflow.com/questions/69238502/ibm-mars-cipher-test-vectors",
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("DCC07B8DFB0738D6E30A22DFCF27E886")
+      }
+    ];
   }
 
   CreateInstance(isInverse = false) {

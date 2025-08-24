@@ -42,26 +42,22 @@ class ScytaleCipher extends CryptoAlgorithm {
       new LinkItem('Ancient Cryptography', 'http://practicalcryptography.com/ciphers/classical-era/scytale/')
     ];
     
-    // Convert test vectors to new format (strings to byte arrays)
+    // Test vectors in plain format (recommended)
     this.tests = [
-      (() => {
-        const test = new TestCase(
-          OpCodes.AnsiToBytes('WEAREFOUNDOUT'), 
-          OpCodes.AnsiToBytes('WRODTEEUOAFNU'),
-          'Basic Scytale example with circumference 3'
-        );
-        test.key = OpCodes.AnsiToBytes('3');
-        return test;
-      })(),
-      (() => {
-        const test = new TestCase(
-          OpCodes.AnsiToBytes('ATTACKATDAWN'),
-          OpCodes.AnsiToBytes('ACDTKATAWATN'),
-          'Military message with circumference 4'
-        );
-        test.key = OpCodes.AnsiToBytes('4');
-        return test;
-      })()
+      {
+        text: 'Basic Scytale example with circumference 3',
+        uri: 'https://en.wikipedia.org/wiki/Scytale',
+        input: OpCodes.AnsiToBytes('WEAREFOUNDOUT'), 
+        key: OpCodes.AnsiToBytes('3'),
+        expected: OpCodes.AnsiToBytes('WRODTEEUOAFNU')
+      },
+      {
+        text: 'Military message with circumference 4',
+        uri: 'https://en.wikipedia.org/wiki/Scytale',
+        input: OpCodes.AnsiToBytes('ATTACKATDAWN'),
+        key: OpCodes.AnsiToBytes('4'),
+        expected: OpCodes.AnsiToBytes('ACDTKATAWATN')
+      }
     ];
     
     // For test suite compatibility

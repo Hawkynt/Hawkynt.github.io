@@ -42,26 +42,22 @@ class TwoSquareCipher extends CryptoAlgorithm {
       new LinkItem('Classical Cryptography Guide', 'http://practicalcryptography.com/ciphers/classical-era/two-square/')
     ];
     
-    // Convert test vectors to new format (strings to byte arrays)
+    // Test vectors in plain format (recommended)
     this.tests = [
-      (() => {
-        const test = new TestCase(
-          OpCodes.AnsiToBytes('HELLO'), 
-          OpCodes.AnsiToBytes('MCKMPW'),
-          'Basic Two-Square example'
-        );
-        test.key = OpCodes.AnsiToBytes('SECRET,CIPHER');
-        return test;
-      })(),
-      (() => {
-        const test = new TestCase(
-          OpCodes.AnsiToBytes('ATTACKATDAWN'),
-          OpCodes.AnsiToBytes('EVRCLYEVCBVP'),
-          'Military message example'
-        );
-        test.key = OpCodes.AnsiToBytes('EXAMPLE,KEYWORD');
-        return test;
-      })()
+      {
+        text: 'Basic Two-Square example',
+        uri: 'https://en.wikipedia.org/wiki/Two-square_cipher',
+        input: OpCodes.AnsiToBytes('HELLO'), 
+        key: OpCodes.AnsiToBytes('SECRET,CIPHER'),
+        expected: OpCodes.AnsiToBytes('MCKMPW')
+      },
+      {
+        text: 'Military message example',
+        uri: 'https://en.wikipedia.org/wiki/Two-square_cipher',
+        input: OpCodes.AnsiToBytes('ATTACKATDAWN'),
+        key: OpCodes.AnsiToBytes('EXAMPLE,KEYWORD'),
+        expected: OpCodes.AnsiToBytes('EVRCLYEVCBVP')
+      }
     ];
     
     // For test suite compatibility

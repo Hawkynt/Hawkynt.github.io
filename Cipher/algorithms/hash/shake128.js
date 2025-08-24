@@ -323,7 +323,32 @@
         this.hasher.buffer.fill(0);
       }
       this.bKey = false;
-    }
+    },
+    
+    // Test vectors from NIST FIPS 202 and asecuritysite.com
+    tests: [
+      {
+        text: "SHAKE128 Empty String - 16 bytes output",
+        uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf",
+        input: [],
+        outputLength: 16,
+        expected: OpCodes.Hex8ToBytes("7f9c2ba4e88f827d616045507605853e")
+      },
+      {
+        text: "SHAKE128 'abc' - 16 bytes output",
+        uri: "https://asecuritysite.com/hash/shake",
+        input: OpCodes.AnsiToBytes("abc"),
+        outputLength: 16,
+        expected: OpCodes.Hex8ToBytes("5881092dd818bf5cf8a3ddb793fbcba7")
+      },
+      {
+        text: "SHAKE128 'abc' - 32 bytes output", 
+        uri: "https://asecuritysite.com/hash/shake",
+        input: OpCodes.AnsiToBytes("abc"),
+        outputLength: 32,
+        expected: OpCodes.Hex8ToBytes("483366601360a8771c6863080cc4114d8db4280928e6cd5d5e38fc3f33ac24e0")
+      }
+    ]
   };
   
   // Auto-register with Cipher system if available
