@@ -97,6 +97,19 @@ class LanguagePlugin {
   }
 
   /**
+   * Map internal/JavaScript type to target language type
+   * Plugins should override this method to provide language-specific type mappings
+   * 
+   * @param {string} internalType - Internal type identifier
+   * @returns {string} Mapped type in target language
+   * @virtual
+   */
+  MapType(internalType) {
+    // Default implementation - return the type as-is
+    return internalType;
+  }
+
+  /**
    * Create a successful generation result
    * Helper method for plugins to create consistent results
    * 

@@ -45,6 +45,20 @@ class PythonPlugin extends LanguagePlugin {
       addDocstrings: true
     };
     
+    // Python-specific type mappings
+    this.typeMap = {
+      'byte': 'int',
+      'word': 'int',
+      'dword': 'int', 
+      'qword': 'int',
+      'byte[]': 'bytes',
+      'word[]': 'List[int]',
+      'dword[]': 'List[int]',
+      'qword[]': 'List[int]',
+      'string': 'str',
+      'boolean': 'bool'
+    };
+    
     // Internal state
     this.indentLevel = 0;
   }
@@ -113,14 +127,30 @@ class PythonPlugin extends LanguagePlugin {
         return this._generateExpressionStatement(node, options);
       case 'ReturnStatement':
         return this._generateReturnStatement(node, options);
+      case 'IfStatement':
+        return this._generateIfStatement(node, options);
+      case 'ForStatement':
+        return this._generateForStatement(node, options);
+      case 'WhileStatement':
+        return this._generateWhileStatement(node, options);
       case 'BinaryExpression':
         return this._generateBinaryExpression(node, options);
+      case 'LogicalExpression':
+        return this._generateLogicalExpression(node, options);
       case 'CallExpression':
         return this._generateCallExpression(node, options);
       case 'MemberExpression':
         return this._generateMemberExpression(node, options);
       case 'AssignmentExpression':
         return this._generateAssignmentExpression(node, options);
+      case 'ArrayExpression':
+        return this._generateArrayExpression(node, options);
+      case 'ObjectExpression':
+        return this._generateObjectExpression(node, options);
+      case 'NewExpression':
+        return this._generateNewExpression(node, options);
+      case 'UnaryExpression':
+        return this._generateUnaryExpression(node, options);
       case 'Identifier':
         return this._generateIdentifier(node, options);
       case 'Literal':
@@ -497,6 +527,322 @@ class PythonPlugin extends LanguagePlugin {
   _hasUnsupportedFeatures(ast) {
     // Simple check for TODO comments in generated code
     return false; // Could be enhanced with more sophisticated checking
+  }
+
+  // === Python-specific generation methods extracted from transpiler ===
+
+  /**
+   * Generate if statement
+   * @private
+   */
+  _generateIfStatement(node, options) {
+    let code = this._indent(`if ${this._generateNode(node.test, options)}:\n`);
+    
+    this.indentLevel++;
+    const consequentCode = this._generateNode(node.consequent, options);
+    code += consequentCode || this._indent('pass\n');
+    this.indentLevel--;
+    
+    if (node.alternate) {
+      if (node.alternate.type === 'IfStatement') {
+        // elif chain
+        const elseCode = this._generateIfStatement(node.alternate, options).replace(/^\s*if/, 'elif');
+        code += elseCode;
+      } else {
+        // else block
+        code += this._indent('else:\n');
+        this.indentLevel++;
+        const alternateCode = this._generateNode(node.alternate, options);
+        code += alternateCode || this._indent('pass\n');
+        this.indentLevel--;
+      }
+    }
+    
+    return code;
+  }
+
+  /**
+   * Generate for statement
+   * @private
+   */
+  _generateForStatement(node, options) {
+    // Convert JavaScript for loop to Python equivalent
+    if (node.init && node.test && node.update) {
+      const init = this._generateNode(node.init, options).replace(/let |const |var /, '').trim();
+      const test = this._generateNode(node.test, options);
+      const update = this._generateNode(node.update, options);
+      
+      // Extract variable name and initial value
+      const [varName, initialValue] = init.split('=').map(s => s.trim());
+      
+      // Simple range-based conversion (could be enhanced)
+      if (test.includes('<') && update.includes('++')) {
+        const endValue = test.replace(`${varName} < `, '').trim();
+        let code = this._indent(`for ${varName} in range(${initialValue || 0}, ${endValue}):\n`);
+        
+        this.indentLevel++;
+        const bodyCode = this._generateNode(node.body, options);
+        code += bodyCode || this._indent('pass\n');
+        this.indentLevel--;
+        
+        return code;
+      }
+    }
+    
+    // Fallback for complex for loops
+    return this._indent('# TODO: Complex for loop conversion\n');
+  }
+
+  /**
+   * Generate while statement
+   * @private
+   */
+  _generateWhileStatement(node, options) {
+    let code = this._indent(`while ${this._generateNode(node.test, options)}:\n`);
+    
+    this.indentLevel++;
+    const bodyCode = this._generateNode(node.body, options);
+    code += bodyCode || this._indent('pass\n');
+    this.indentLevel--;
+    
+    return code;
+  }
+
+  /**
+   * Generate logical expression
+   * @private
+   */
+  _generateLogicalExpression(node, options) {
+    const left = this._generateNode(node.left, options);
+    const right = this._generateNode(node.right, options);
+    const operator = this._mapPythonOperator(node.operator);
+    return `${left} ${operator} ${right}`;
+  }
+
+  /**
+   * Generate array expression
+   * @private
+   */
+  _generateArrayExpression(node, options) {
+    const elements = node.elements ? 
+      node.elements.map(elem => this._generateNode(elem, options)).join(', ') : '';
+    return `[${elements}]`;
+  }
+
+  /**
+   * Generate object expression
+   * @private
+   */
+  _generateObjectExpression(node, options) {
+    if (!node.properties || node.properties.length === 0) {
+      return '{}';
+    }
+    
+    const properties = node.properties.map(prop => {
+      const key = prop.key.type === 'Identifier' ? prop.key.name : this._generateNode(prop.key, options);
+      const value = this._generateNode(prop.value, options);
+      return `"${key}": ${value}`;
+    }).join(', ');
+    
+    return `{${properties}}`;
+  }
+
+  /**
+   * Generate new expression
+   * @private
+   */
+  _generateNewExpression(node, options) {
+    const className = this._generateNode(node.callee, options);
+    const args = node.arguments ? 
+      node.arguments.map(arg => this._generateNode(arg, options)).join(', ') : '';
+    return `${className}(${args})`;
+  }
+
+  /**
+   * Generate unary expression
+   * @private
+   */
+  _generateUnaryExpression(node, options) {
+    const operator = this._mapUnaryOperator(node.operator);
+    const argument = this._generateNode(node.argument, options);
+    
+    if (node.prefix) {
+      return `${operator}${argument}`;
+    } else {
+      return `${argument}${operator}`;
+    }
+  }
+
+  /**
+   * Generate assignment expression
+   * @private
+   */
+  _generateAssignmentExpression(node, options) {
+    const left = this._generateNode(node.left, options);
+    const right = this._generateNode(node.right, options);
+    const operator = this._mapAssignmentOperator(node.operator);
+    return `${left} ${operator} ${right}`;
+  }
+
+  /**
+   * Generate method definition
+   * @private
+   */
+  _generateMethod(node, options) {
+    const methodName = node.key ? this._toPythonName(node.key.name) : 'method';
+    let code = '';
+    
+    // Add self parameter for instance methods
+    const params = ['self'];
+    if (node.value && node.value.params) {
+      params.push(...node.value.params.map(p => p.name));
+    }
+    
+    code += this._indent(`def ${methodName}(${params.join(', ')}):\n`);
+    
+    // Method docstring
+    if (options.addDocstrings) {
+      this.indentLevel++;
+      code += this._indent(`"""${methodName} method implementation"""\n`);
+      this.indentLevel--;
+    }
+    
+    // Method body
+    this.indentLevel++;
+    if (node.value && node.value.body) {
+      const bodyCode = this._generateNode(node.value.body, options);
+      code += bodyCode || this._indent('pass\n');
+    } else {
+      code += this._indent('pass\n');
+    }
+    this.indentLevel--;
+    
+    return code;
+  }
+
+  /**
+   * Generate identifier
+   * @private
+   */
+  _generateIdentifier(node, options) {
+    return this._toPythonName(node.name);
+  }
+
+  /**
+   * Generate literal
+   * @private
+   */
+  _generateLiteral(node, options) {
+    if (typeof node.value === 'string') {
+      return `"${node.value.replace(/"/g, '\\"')}"`;
+    } else if (typeof node.value === 'number') {
+      return String(node.value);
+    } else if (typeof node.value === 'boolean') {
+      return node.value ? 'True' : 'False';
+    } else if (node.value === null) {
+      return 'None';
+    }
+    return String(node.value);
+  }
+
+  /**
+   * Generate member expression
+   * @private
+   */
+  _generateMemberExpression(node, options) {
+    const object = this._generateNode(node.object, options);
+    
+    if (node.computed) {
+      const property = this._generateNode(node.property, options);
+      return `${object}[${property}]`;
+    } else {
+      const property = node.property.name || this._generateNode(node.property, options);
+      
+      // Handle 'this' keyword mapping to 'self'
+      if (object === 'this' || object === 'self') {
+        return `self.${property}`;
+      }
+      
+      return `${object}.${property}`;
+    }
+  }
+
+  // === Helper methods ===
+
+  /**
+   * Map JavaScript operators to Python operators
+   * @private
+   */
+  _mapPythonOperator(operator) {
+    const operatorMap = {
+      '&&': 'and',
+      '||': 'or',
+      '!': 'not',
+      '===': '==',
+      '!==': '!=',
+      '>>>': '>>'  // Python doesn't have >>>, approximate with >>
+    };
+    return operatorMap[operator] || operator;
+  }
+
+  /**
+   * Map JavaScript operators to Python operators
+   * @private
+   */
+  _mapOperator(operator) {
+    // Handle unsigned right shift specially for Python
+    if (operator === '>>>') {
+      return '>>';  // Python doesn't have >>>, need special handling
+    }
+    return this._mapPythonOperator(operator);
+  }
+
+  /**
+   * Map unary operators
+   * @private
+   */
+  _mapUnaryOperator(operator) {
+    const unaryMap = {
+      '!': 'not ',
+      'typeof': 'type',
+      '++': '',  // Handle separately
+      '--': ''   // Handle separately
+    };
+    return unaryMap[operator] || operator;
+  }
+
+  /**
+   * Map assignment operators
+   * @private
+   */
+  _mapAssignmentOperator(operator) {
+    // Most assignment operators are the same in Python
+    return operator;
+  }
+
+  /**
+   * Convert JavaScript name to Python naming convention
+   * @private
+   */
+  _toPythonName(name) {
+    // Convert camelCase to snake_case
+    return name.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+  }
+
+  /**
+   * Map JavaScript/internal type to Python type
+   * @override
+   */
+  MapType(internalType) {
+    return this.typeMap[internalType] || internalType;
+  }
+
+  /**
+   * Map JavaScript/internal type to Python type (private helper)
+   * @private
+   */
+  _mapType(internalType) {
+    return this.MapType(internalType);
   }
 }
 
