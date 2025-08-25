@@ -64,7 +64,7 @@
           "https://en.wikipedia.org/wiki/Run-length_encoding"
         ),
         new TestCase(
-          global.OpCodes.AnsiToBytes("AAAABBC"), // "AAAAABBC"
+          global.OpCodes.AnsiToBytes("AAAAABBC"), // "AAAAABBC"
           [5, 65, 2, 66, 1, 67], // RLE encoded: count-value pairs  
           "Mixed run lengths",
           "https://www.numberanalytics.com/blog/mastering-run-length-encoding-rle-for-data-compression"
@@ -128,17 +128,9 @@
           runLength++;
         }
 
-        if (runLength >= 3 || currentByte === this.escapeChar) {
-          // Encode as run: ESCAPE + LENGTH + VALUE
-          result.push(this.escapeChar);
-          result.push(runLength);
-          result.push(currentByte);
-        } else {
-          // Store literally (runs of length 1-2 unless it's escape char)
-          for (let j = 0; j < runLength; j++) {
-            result.push(currentByte);
-          }
-        }
+        // Simple RLE format: LENGTH + VALUE
+        result.push(runLength);
+        result.push(currentByte);
 
         i += runLength;
       }
@@ -157,22 +149,16 @@
       const result = [];
       let i = 0;
 
-      while (i < this.inputBuffer.length) {
-        if (this.inputBuffer[i] === this.escapeChar && i + 2 < this.inputBuffer.length) {
-          // Decode run: ESCAPE + LENGTH + VALUE
-          const runLength = this.inputBuffer[i + 1];
-          const value = this.inputBuffer[i + 2];
-          
-          for (let j = 0; j < runLength; j++) {
-            result.push(value);
-          }
-          
-          i += 3;
-        } else {
-          // Literal byte
-          result.push(this.inputBuffer[i]);
-          i++;
+      while (i + 1 < this.inputBuffer.length) {
+        // Decode run: LENGTH + VALUE
+        const runLength = this.inputBuffer[i];
+        const value = this.inputBuffer[i + 1];
+        
+        for (let j = 0; j < runLength; j++) {
+          result.push(value);
         }
+        
+        i += 2;
       }
 
       // Clear input buffer

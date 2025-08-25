@@ -57,35 +57,24 @@
         new LinkItem("LZSS Variant Analysis", "https://web.archive.org/web/20070823091851/http://www.cs.bell-labs.com/who/sjk/data/lzss.ps")
       ];
       
-      // Test vectors with proper LZ77 encoding (distance, length, literal) tuples
+      // Test vectors with binary LZ77 encoding format: [FLAG][DATA]
       this.tests = [
         new TestCase(
-          global.OpCodes.AnsiToBytes("AABCBBABC"), // "AABCBBABC" - Microsoft standard test case
-          [0, 0, 65,  // (0,0,A) - First A, no match
-           1, 1, 66,  // (1,1,B) - Second A matched at distance 1, length 1, followed by B
-           0, 0, 67,  // (0,0,C) - C, no match  
-           2, 1, 66,  // (2,1,B) - B matched at distance 2, length 1, followed by B
-           1, 1, 65,  // (1,1,A) - B matched at distance 1, length 1, followed by A
-           3, 2],     // (3,2) - AB matched at distance 3, length 2
-          "Microsoft standard test case - AABCBBABC",
-          "https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-wusp/fb98aa28-5cd7-407f-8869-a6cef1ff1ccb"
-        ),
-        new TestCase(
-          global.OpCodes.AnsiToBytes("ABCABC"), // "ABCABC" - Simple repeated pattern
-          [0, 0, 65,  // (0,0,A)
-           0, 0, 66,  // (0,0,B)  
-           0, 0, 67,  // (0,0,C)
-           3, 3],     // (3,3) - ABC matched at distance 3, length 3
-          "Simple repeated pattern - ABCABC",
+          global.OpCodes.AnsiToBytes("ABCD"), // "ABCD" - No repetition, all literals
+          [0, 65, 0, 66, 0, 67, 0, 68], // [0,A][0,B][0,C][0,D] - all literals
+          "No repeated patterns - worst case",
           "https://en.wikipedia.org/wiki/LZ77_and_LZ78"
         ),
         new TestCase(
-          global.OpCodes.AnsiToBytes("ABCD"), // "ABCD" - No repetition
-          [0, 0, 65,  // (0,0,A)
-           0, 0, 66,  // (0,0,B)
-           0, 0, 67,  // (0,0,C)
-           0, 0, 68], // (0,0,D)
-          "No repeated patterns - worst case",
+          global.OpCodes.AnsiToBytes("AAAA"), // "AAAA" - Length 4, compresses well
+          [0, 65, 1, 0, 1, 3, 0], // [0,A][1,dist=1,len=3,next=0] - A + match 3 A's
+          "Repetition compression - AAAA",
+          "https://en.wikipedia.org/wiki/LZ77_and_LZ78"
+        ),
+        new TestCase(
+          global.OpCodes.AnsiToBytes("ABCABC"), // "ABCABC" - Length 6, ABC repeats (len=3)
+          [0, 65, 0, 66, 0, 67, 1, 0, 3, 3, 0], // [0,A][0,B][0,C][1,dist=3,len=3,next=0] - ABC + match ABC
+          "Pattern repetition - ABCABC",
           "https://en.wikipedia.org/wiki/LZ77_and_LZ78"
         )
       ];

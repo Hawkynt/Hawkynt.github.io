@@ -243,20 +243,30 @@
       
       // Write token count (4 bytes, big-endian)
       const count = tokens.length;
-      bytes.push((count >>> 24) & 0xFF);
-      bytes.push((count >>> 16) & 0xFF);
-      bytes.push((count >>> 8) & 0xFF);
-      bytes.push(count & 0xFF);
+      if (global.OpCodes) {
+        const packed = global.OpCodes.Pack32BE(count);
+        bytes.push(packed[0], packed[1], packed[2], packed[3]);
+      } else {
+        bytes.push((count >>> 24) & 0xFF);
+        bytes.push((count >>> 16) & 0xFF);
+        bytes.push((count >>> 8) & 0xFF);
+        bytes.push(count & 0xFF);
+      }
       
       // Write tokens
       for (const token of tokens) {
         // Index (2 bytes, big-endian)
-        bytes.push((token.index >>> 8) & 0xFF);
-        bytes.push(token.index & 0xFF);
+        if (global.OpCodes) {
+          const packed = global.OpCodes.Pack16BE(token.index);
+          bytes.push(packed[0], packed[1]);
+        } else {
+          bytes.push((token.index >>> 8) & 0xFF);
+          bytes.push(token.index & 0xFF);
+        }
         
         // Character (1 byte, 0 if empty)
         if (token.character) {
-          bytes.push(token.character.charCodeAt(0) & 0xFF);
+          bytes.push(global.OpCodes ? global.OpCodes.Byte(token.character.charCodeAt(0)) : (token.character.charCodeAt(0) & 0xFF));
         } else {
           bytes.push(0);
         }
@@ -277,7 +287,9 @@
       }
       
       // Read token count
-      const count = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
+      const count = global.OpCodes ? 
+        global.OpCodes.Unpack32BE([bytes[0], bytes[1], bytes[2], bytes[3]]) : 
+        ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]);
       const tokens = [];
       
       if (bytes.length !== 4 + count * 3) {
@@ -287,7 +299,9 @@
       let pos = 4;
       for (let i = 0; i < count; i++) {
         // Read index (2 bytes)
-        const index = (bytes[pos] << 8) | bytes[pos + 1];
+        const index = global.OpCodes ? 
+          global.OpCodes.Unpack16BE([bytes[pos], bytes[pos + 1]]) : 
+          ((bytes[pos] << 8) | bytes[pos + 1]);
         
         // Read character (1 byte)
         const charCode = bytes[pos + 2];
@@ -308,7 +322,7 @@
     _stringToBytes(str) {
       const bytes = [];
       for (let i = 0; i < str.length; i++) {
-        bytes.push(str.charCodeAt(i) & 0xFF);
+        bytes.push(global.OpCodes ? global.OpCodes.Byte(str.charCodeAt(i)) : (str.charCodeAt(i) & 0xFF));
       }
       return bytes;
     }
