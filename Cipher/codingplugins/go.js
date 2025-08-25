@@ -400,6 +400,231 @@ class GoPlugin extends LanguagePlugin {
     
     return warnings;
   }
+
+  /**
+   * Check if Go compiler is available on the system
+   * @private
+   */
+  _isGoAvailable() {
+    try {
+      const { execSync } = require('child_process');
+      execSync('go version', { 
+        stdio: 'pipe', 
+        timeout: 2000,
+        windowsHide: true  // Prevent Windows error dialogs
+      });
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Basic syntax validation for Go code
+   * @private
+   */
+  _checkBalancedSyntax(code) {
+    try {
+      let braces = 0;
+      let parentheses = 0;
+      let brackets = 0;
+      let inString = false;
+      let inRawString = false;
+      let inLineComment = false;
+      let inBlockComment = false;
+      let escaped = false;
+      
+      for (let i = 0; i < code.length; i++) {
+        const char = code[i];
+        const nextChar = i < code.length - 1 ? code[i + 1] : '';
+        
+        // Handle raw strings (`...`)
+        if (char === '`' && !inString && !inLineComment && !inBlockComment) {
+          inRawString = !inRawString;
+          continue;
+        }
+        
+        // Handle regular strings
+        if (char === '"' && !escaped && !inRawString && !inLineComment && !inBlockComment) {
+          inString = !inString;
+          continue;
+        }
+        
+        // Handle comments
+        if (!inString && !inRawString) {
+          if (char === '/' && nextChar === '/' && !inBlockComment) {
+            inLineComment = true;
+            i++; // Skip next character
+            continue;
+          }
+          if (char === '/' && nextChar === '*' && !inLineComment) {
+            inBlockComment = true;
+            i++; // Skip next character
+            continue;
+          }
+          if (char === '*' && nextChar === '/' && inBlockComment) {
+            inBlockComment = false;
+            i++; // Skip next character
+            continue;
+          }
+        }
+        
+        // Handle line endings for line comments
+        if (char === '\n') {
+          inLineComment = false;
+        }
+        
+        // Track escape sequences in regular strings
+        if (char === '\\' && inString && !inRawString) {
+          escaped = !escaped;
+          continue;
+        } else {
+          escaped = false;
+        }
+        
+        // Skip if inside string or comment
+        if (inString || inRawString || inLineComment || inBlockComment) {
+          continue;
+        }
+        
+        // Count brackets and braces
+        switch (char) {
+          case '{':
+            braces++;
+            break;
+          case '}':
+            braces--;
+            if (braces < 0) return false;
+            break;
+          case '(':
+            parentheses++;
+            break;
+          case ')':
+            parentheses--;
+            if (parentheses < 0) return false;
+            break;
+          case '[':
+            brackets++;
+            break;
+          case ']':
+            brackets--;
+            if (brackets < 0) return false;
+            break;
+        }
+      }
+      
+      return braces === 0 && parentheses === 0 && brackets === 0 && !inString && !inRawString && !inBlockComment;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Validate Go code syntax using go compiler
+   * @override
+   */
+  ValidateCodeSyntax(code) {
+    // Check if Go is available first
+    if (!this._isGoAvailable()) {
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'Go compiler not available - using basic validation'
+      };
+    }
+
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const { execSync } = require('child_process');
+      
+      // Create temporary directory and file
+      const tempDir = path.join(__dirname, '..', '.agent.tmp', `temp_go_${Date.now()}`);
+      const tempFile = path.join(tempDir, 'main.go');
+      
+      // Ensure temp directory exists
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      // Create go.mod file for proper module structure
+      const goModContent = `module tempvalidation
+
+go 1.21
+`;
+      fs.writeFileSync(path.join(tempDir, 'go.mod'), goModContent);
+      
+      // Write Go code to temp file
+      fs.writeFileSync(tempFile, code);
+      
+      try {
+        // Try to compile the Go code (build without executing)
+        // Use different output depending on platform
+        const buildOutput = process.platform === 'win32' ? 'nul' : '/dev/null';
+        execSync(`go build -o ${buildOutput} .`, { 
+          stdio: 'pipe',
+          timeout: 3000,
+          cwd: tempDir,
+          windowsHide: true  // Prevent Windows error dialogs
+        });
+        
+        // Clean up
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        
+        return {
+          success: true,
+          method: 'go',
+          error: null
+        };
+        
+      } catch (error) {
+        // Clean up on error
+        if (fs.existsSync(tempDir)) {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+        
+        return {
+          success: false,
+          method: 'go',
+          error: error.stderr?.toString() || error.message
+        };
+      }
+      
+    } catch (error) {
+      // If Go is not available or other error, fall back to basic validation
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'Go compiler not available - using basic validation'
+      };
+    }
+  }
+
+  /**
+   * Get Go compiler download information
+   * @override
+   */
+  GetCompilerInfo() {
+    return {
+      name: this.name,
+      compilerName: 'Go',
+      downloadUrl: 'https://golang.org/dl/',
+      installInstructions: [
+        'Download Go from https://golang.org/dl/',
+        'Windows: Run the MSI installer and follow the prompts',
+        'macOS: Run the PKG installer or use Homebrew: brew install go',
+        'Linux: Extract to /usr/local and add /usr/local/go/bin to PATH',
+        'Verify installation with: go version',
+        'Set GOPATH environment variable (optional for Go 1.11+)'
+      ].join('\n'),
+      verifyCommand: 'go version',
+      alternativeValidation: 'Basic syntax checking (balanced brackets/braces/parentheses)',
+      packageManager: 'go mod (built-in module system)',
+      documentation: 'https://golang.org/doc/'
+    };
+  }
 }
 
 // Register the plugin

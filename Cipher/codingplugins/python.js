@@ -844,6 +844,131 @@ class PythonPlugin extends LanguagePlugin {
   _mapType(internalType) {
     return this.MapType(internalType);
   }
+
+  /**
+   * Check if Python is available on the system
+   * @private
+   */
+  _isPythonAvailable() {
+    try {
+      const { execSync } = require('child_process');
+      execSync('python --version', { 
+        stdio: 'pipe', 
+        timeout: 1000,
+        windowsHide: true  // Prevent Windows error dialogs
+      });
+      return true;
+    } catch (error) {
+      try {
+        // Try python3 as fallback
+        execSync('python3 --version', { 
+          stdio: 'pipe', 
+          timeout: 1000,
+          windowsHide: true  // Prevent Windows error dialogs
+        });
+        return 'python3';
+      } catch (error2) {
+        return false;
+      }
+    }
+  }
+
+  /**
+   * Validate Python code syntax using native interpreter
+   * @override
+   */
+  ValidateCodeSyntax(code) {
+    // Check if Python is available first
+    const pythonCommand = this._isPythonAvailable();
+    if (!pythonCommand) {
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'Python not available - using basic validation'
+      };
+    }
+
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const { execSync } = require('child_process');
+      
+      const pythonCmd = pythonCommand === true ? 'python' : pythonCommand;
+      
+      // Create temporary file
+      const tempFile = path.join(__dirname, '..', '.agent.tmp', `temp_python_${Date.now()}.py`);
+      
+      // Ensure .agent.tmp directory exists
+      const tempDir = path.dirname(tempFile);
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      // Write code to temp file
+      fs.writeFileSync(tempFile, code);
+      
+      try {
+        // Try to compile the Python code
+        execSync(`${pythonCmd} -m py_compile "${tempFile}"`, { 
+          stdio: 'pipe',
+          timeout: 2000,
+          windowsHide: true  // Prevent Windows error dialogs
+        });
+        
+        // Clean up
+        fs.unlinkSync(tempFile);
+        
+        return {
+          success: true,
+          method: 'python',
+          error: null
+        };
+        
+      } catch (error) {
+        // Clean up on error
+        if (fs.existsSync(tempFile)) {
+          fs.unlinkSync(tempFile);
+        }
+        
+        return {
+          success: false,
+          method: 'python',
+          error: error.stderr?.toString() || error.message
+        };
+      }
+      
+    } catch (error) {
+      // If Python is not available or other error, fall back to basic validation
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'Python not available - using basic validation'
+      };
+    }
+  }
+
+  /**
+   * Get Python compiler/interpreter download information
+   * @override
+   */
+  GetCompilerInfo() {
+    return {
+      name: this.name,
+      compilerName: 'Python',
+      downloadUrl: 'https://www.python.org/downloads/',
+      installInstructions: [
+        'Download Python from https://www.python.org/downloads/',
+        'Run the installer and check "Add Python to PATH"',
+        'Verify installation with: python --version'
+      ].join('\n'),
+      verifyCommand: 'python --version',
+      alternativeValidation: 'Basic syntax checking (balanced brackets/parentheses)',
+      packageManager: 'pip',
+      documentation: 'https://docs.python.org/'
+    };
+  }
 }
 
 // Register the plugin

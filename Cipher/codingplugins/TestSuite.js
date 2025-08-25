@@ -150,7 +150,7 @@ class TestCodingPluginsSuite {
    */
   checkSyntax(filePath) {
     try {
-      execSync(`node --check "${filePath}"`, { stdio: 'pipe' });
+      execSync(`node --check "${filePath}"`, { stdio: 'pipe', windowsHide: true });
       return { valid: true, error: null };
     } catch (error) {
       return { valid: false, error: error.stderr?.toString() || error.message };
@@ -345,7 +345,7 @@ class TestCodingPluginsSuite {
       fs.writeFileSync(tempFile, code);
       
       try {
-        execSync(`node --check "${tempFile}"`, { stdio: 'pipe', timeout: 5000 });
+        execSync(`node --check "${tempFile}"`, { stdio: 'pipe', timeout: 5000, windowsHide: true });
         fs.unlinkSync(tempFile);
         return { valid: true, error: null };
       } catch (error) {
@@ -367,10 +367,10 @@ class TestCodingPluginsSuite {
       
       // Try to find python command
       try {
-        execSync('python --version', { stdio: 'pipe' });
+        execSync('python --version', { stdio: 'pipe', windowsHide: true });
       } catch {
         try {
-          execSync('python3 --version', { stdio: 'pipe' });
+          execSync('python3 --version', { stdio: 'pipe', windowsHide: true });
           pythonCmd = 'python3';
         } catch {
           return { valid: false, error: 'Python interpreter not found in PATH' };
@@ -382,7 +382,7 @@ class TestCodingPluginsSuite {
       fs.writeFileSync(tempFile, code);
       
       try {
-        execSync(`${pythonCmd} -m py_compile "${tempFile}"`, { stdio: 'pipe', timeout: 5000 });
+        execSync(`${pythonCmd} -m py_compile "${tempFile}"`, { stdio: 'pipe', timeout: 5000, windowsHide: true });
         fs.unlinkSync(tempFile);
         
         // Clean up .pyc file if created  
@@ -412,7 +412,7 @@ class TestCodingPluginsSuite {
       fs.writeFileSync(tempFile, code);
       
       try {
-        execSync(`javac "${tempFile}"`, { stdio: 'pipe' });
+        execSync(`javac "${tempFile}"`, { stdio: 'pipe', windowsHide: true });
         
         // Clean up compiled files
         fs.unlinkSync(tempFile);
@@ -444,9 +444,9 @@ class TestCodingPluginsSuite {
       try {
         // Try dotnet first, then csc
         try {
-          execSync(`dotnet build "${tempFile}"`, { stdio: 'pipe' });
+          execSync(`dotnet build "${tempFile}"`, { stdio: 'pipe', windowsHide: true });
         } catch {
-          execSync(`csc /nologo /t:library "${tempFile}"`, { stdio: 'pipe' });
+          execSync(`csc /nologo /t:library "${tempFile}"`, { stdio: 'pipe', windowsHide: true });
         }
         
         fs.unlinkSync(tempFile);
@@ -484,12 +484,12 @@ class TestCodingPluginsSuite {
         // Try g++ first, then clang++
         let compiler = 'g++';
         try {
-          execSync('g++ --version', { stdio: 'pipe' });
+          execSync('g++ --version', { stdio: 'pipe', windowsHide: true });
         } catch {
           compiler = 'clang++';
         }
         
-        execSync(`${compiler} -fsyntax-only -std=c++17 "${tempFile}"`, { stdio: 'pipe' });
+        execSync(`${compiler} -fsyntax-only -std=c++17 "${tempFile}"`, { stdio: 'pipe', windowsHide: true });
         fs.unlinkSync(tempFile);
         
         return { valid: true, error: null };
@@ -514,12 +514,12 @@ class TestCodingPluginsSuite {
         // Try gcc first, then clang
         let compiler = 'gcc';
         try {
-          execSync('gcc --version', { stdio: 'pipe' });
+          execSync('gcc --version', { stdio: 'pipe', windowsHide: true });
         } catch {
           compiler = 'clang';
         }
         
-        execSync(`${compiler} -fsyntax-only -std=c11 "${tempFile}"`, { stdio: 'pipe' });
+        execSync(`${compiler} -fsyntax-only -std=c11 "${tempFile}"`, { stdio: 'pipe', windowsHide: true });
         fs.unlinkSync(tempFile);
         
         return { valid: true, error: null };
@@ -541,7 +541,7 @@ class TestCodingPluginsSuite {
       fs.writeFileSync(tempFile, code);
       
       try {
-        execSync(`go build -o /dev/null "${tempFile}"`, { stdio: 'pipe' });
+        execSync(`go build -o /dev/null "${tempFile}"`, { stdio: 'pipe', windowsHide: true });
         fs.unlinkSync(tempFile);
         
         return { valid: true, error: null };
@@ -563,7 +563,7 @@ class TestCodingPluginsSuite {
       fs.writeFileSync(tempFile, code);
       
       try {
-        execSync(`rustc --crate-type lib "${tempFile}" -o /dev/null`, { stdio: 'pipe' });
+        execSync(`rustc --crate-type lib "${tempFile}" -o /dev/null`, { stdio: 'pipe', windowsHide: true });
         fs.unlinkSync(tempFile);
         
         return { valid: true, error: null };
@@ -585,7 +585,7 @@ class TestCodingPluginsSuite {
       fs.writeFileSync(tempFile, code);
       
       try {
-        execSync(`kotlinc "${tempFile}"`, { stdio: 'pipe' });
+        execSync(`kotlinc "${tempFile}"`, { stdio: 'pipe', windowsHide: true });
         fs.unlinkSync(tempFile);
         
         // Clean up generated class files
@@ -615,7 +615,7 @@ class TestCodingPluginsSuite {
       fs.writeFileSync(tempFile, code);
       
       try {
-        execSync(`tsc --noEmit "${tempFile}"`, { stdio: 'pipe' });
+        execSync(`tsc --noEmit "${tempFile}"`, { stdio: 'pipe', windowsHide: true });
         fs.unlinkSync(tempFile);
         
         return { valid: true, error: null };
@@ -637,7 +637,7 @@ class TestCodingPluginsSuite {
       fs.writeFileSync(tempFile, code);
       
       try {
-        execSync(`php -l "${tempFile}"`, { stdio: 'pipe' });
+        execSync(`php -l "${tempFile}"`, { stdio: 'pipe', windowsHide: true });
         fs.unlinkSync(tempFile);
         
         return { valid: true, error: null };
@@ -659,7 +659,7 @@ class TestCodingPluginsSuite {
       fs.writeFileSync(tempFile, code);
       
       try {
-        execSync(`ruby -c "${tempFile}"`, { stdio: 'pipe' });
+        execSync(`ruby -c "${tempFile}"`, { stdio: 'pipe', windowsHide: true });
         fs.unlinkSync(tempFile);
         
         return { valid: true, error: null };
@@ -681,7 +681,7 @@ class TestCodingPluginsSuite {
       fs.writeFileSync(tempFile, code);
       
       try {
-        execSync(`perl -c "${tempFile}"`, { stdio: 'pipe' });
+        execSync(`perl -c "${tempFile}"`, { stdio: 'pipe', windowsHide: true });
         fs.unlinkSync(tempFile);
         
         return { valid: true, error: null };
@@ -704,7 +704,7 @@ class TestCodingPluginsSuite {
       
       try {
         // Try Free Pascal compiler
-        execSync(`fpc -s "${tempFile}"`, { stdio: 'pipe' });
+        execSync(`fpc -s "${tempFile}"`, { stdio: 'pipe', windowsHide: true });
         fs.unlinkSync(tempFile);
         
         // Clean up generated files
@@ -736,7 +736,7 @@ class TestCodingPluginsSuite {
       
       try {
         // Try FreeBASIC compiler
-        execSync(`fbc -c "${tempFile}"`, { stdio: 'pipe' });
+        execSync(`fbc -c "${tempFile}"`, { stdio: 'pipe', windowsHide: true });
         fs.unlinkSync(tempFile);
         
         // Clean up generated files
@@ -895,14 +895,39 @@ class TestCodingPluginsSuite {
             if (result.generatedCode && result.pluginInfo && result.pluginInfo.extension) {
               this.log('  5. Validating generated code syntax...', 'blue', true);
               try {
-                const validation = this.validateGeneratedCodeSyntax(result.generatedCode, result.pluginInfo.extension);
+                let validation;
+                
+                // Use plugin-specific validation if available
+                if (plugin && typeof plugin.ValidateCodeSyntax === 'function') {
+                  const pluginValidation = plugin.ValidateCodeSyntax(result.generatedCode);
+                  validation = {
+                    valid: pluginValidation.success,
+                    method: pluginValidation.method || 'plugin',
+                    error: pluginValidation.error
+                  };
+                  
+                  // Show compiler info if validation used basic method or failed
+                  if (pluginValidation.method === 'basic' || !pluginValidation.success) {
+                    if (typeof plugin.GetCompilerInfo === 'function') {
+                      const compilerInfo = plugin.GetCompilerInfo();
+                      if (pluginValidation.method === 'basic') {
+                        this.showCompilerMissingWarning(compilerInfo);
+                      }
+                    }
+                  }
+                } else {
+                  // Fallback to old method for backwards compatibility
+                  validation = this.validateGeneratedCodeSyntax(result.generatedCode, result.pluginInfo.extension);
+                }
+                
                 result.codeValidation = validation.valid;
+                result.validationMethod = validation.method;
                 
                 if (validation.valid) {
-                  this.log(`    ✅ Generated ${result.pluginInfo.extension} code is syntactically valid`, 'green', true);
+                  this.log(`    ✅ Generated ${result.pluginInfo.extension} code is syntactically valid (${validation.method})`, 'green', true);
                 } else {
-                  this.log(`    ❌ Generated ${result.pluginInfo.extension} code has syntax errors`, 'red', true);
-                  result.errors.push(`Code validation failed: ${validation.error}`);
+                  this.log(`    ❌ Generated ${result.pluginInfo.extension} code has syntax errors (${validation.method})`, 'red', true);
+                  result.errors.push(`Code validation failed (${validation.method}): ${validation.error}`);
                 }
               } catch (error) {
                 result.codeValidation = false;
@@ -1093,6 +1118,42 @@ class TestCodingPluginsSuite {
     const exitCode = this.stats.failed > 0 ? 1 : 0;
     this.log(`\n🏁 Test suite completed with exit code: ${exitCode}`, exitCode === 0 ? 'green' : 'red');
     process.exit(exitCode);
+  }
+
+  /**
+   * Show warning about missing compiler/interpreter with download information
+   * @param {Object} compilerInfo - Compiler information from plugin
+   */
+  showCompilerMissingWarning(compilerInfo) {
+    if (!compilerInfo || this._shownWarnings?.has(compilerInfo.name)) {
+      return; // Avoid duplicate warnings
+    }
+    
+    // Initialize warning tracking
+    if (!this._shownWarnings) {
+      this._shownWarnings = new Set();
+    }
+    this._shownWarnings.add(compilerInfo.name);
+    
+    this.log(`\n⚠️ ${compilerInfo.compilerName} compiler/interpreter not available`, 'yellow');
+    this.log(`   Falling back to ${compilerInfo.alternativeValidation}`, 'yellow');
+    
+    if (compilerInfo.downloadUrl) {
+      this.log(`   📥 Download: ${compilerInfo.downloadUrl}`, 'cyan');
+    }
+    
+    if (compilerInfo.verifyCommand) {
+      this.log(`   🔍 Verify installation: ${compilerInfo.verifyCommand}`, 'cyan');
+    }
+    
+    if (compilerInfo.installInstructions) {
+      this.log(`   📋 Installation:`, 'cyan');
+      compilerInfo.installInstructions.split('\n').forEach(line => {
+        if (line.trim()) {
+          this.log(`      ${line.trim()}`, 'cyan');
+        }
+      });
+    }
   }
 }
 

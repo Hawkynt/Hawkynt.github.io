@@ -558,6 +558,259 @@ class KotlinPlugin extends LanguagePlugin {
   _hasNullableOperations(ast) {
     return false; // Could be enhanced with more sophisticated checking
   }
+
+  /**
+   * Check if Kotlin compiler is available on the system
+   * @private
+   */
+  _isKotlinAvailable() {
+    try {
+      const { execSync } = require('child_process');
+      
+      // Try kotlinc first
+      try {
+        execSync('kotlinc -version', { 
+          stdio: 'pipe', 
+          timeout: 3000,
+          windowsHide: true  // Prevent Windows error dialogs
+        });
+        return 'kotlinc';
+      } catch (error) {
+        // Try kotlin as fallback
+        try {
+          execSync('kotlin -version', { 
+            stdio: 'pipe', 
+            timeout: 3000,
+            windowsHide: true  // Prevent Windows error dialogs
+          });
+          return 'kotlin';
+        } catch (error2) {
+          return false;
+        }
+      }
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Basic syntax validation for Kotlin code
+   * @private
+   */
+  _checkBalancedSyntax(code) {
+    try {
+      let braces = 0;
+      let parentheses = 0;
+      let brackets = 0;
+      let inString = false;
+      let inTripleString = false;
+      let inLineComment = false;
+      let inBlockComment = false;
+      let escaped = false;
+      
+      for (let i = 0; i < code.length; i++) {
+        const char = code[i];
+        const nextChar = i < code.length - 1 ? code[i + 1] : '';
+        const nextNextChar = i < code.length - 2 ? code[i + 2] : '';
+        
+        // Handle triple-quoted strings (""")
+        if (char === '"' && nextChar === '"' && nextNextChar === '"' && !inString && !inLineComment && !inBlockComment) {
+          inTripleString = !inTripleString;
+          i += 2; // Skip the next two quotes
+          continue;
+        }
+        
+        // Handle regular strings
+        if (char === '"' && !escaped && !inTripleString && !inLineComment && !inBlockComment) {
+          inString = !inString;
+          continue;
+        }
+        
+        // Handle comments
+        if (!inString && !inTripleString) {
+          if (char === '/' && nextChar === '/' && !inBlockComment) {
+            inLineComment = true;
+            i++; // Skip next character
+            continue;
+          }
+          if (char === '/' && nextChar === '*' && !inLineComment) {
+            inBlockComment = true;
+            i++; // Skip next character
+            continue;
+          }
+          if (char === '*' && nextChar === '/' && inBlockComment) {
+            inBlockComment = false;
+            i++; // Skip next character
+            continue;
+          }
+        }
+        
+        // Handle line endings for line comments
+        if (char === '\n') {
+          inLineComment = false;
+        }
+        
+        // Track escape sequences in regular strings (not in triple strings)
+        if (char === '\\' && inString && !inTripleString) {
+          escaped = !escaped;
+          continue;
+        } else {
+          escaped = false;
+        }
+        
+        // Skip if inside string or comment
+        if (inString || inTripleString || inLineComment || inBlockComment) {
+          continue;
+        }
+        
+        // Count brackets and braces
+        switch (char) {
+          case '{':
+            braces++;
+            break;
+          case '}':
+            braces--;
+            if (braces < 0) return false;
+            break;
+          case '(':
+            parentheses++;
+            break;
+          case ')':
+            parentheses--;
+            if (parentheses < 0) return false;
+            break;
+          case '[':
+            brackets++;
+            break;
+          case ']':
+            brackets--;
+            if (brackets < 0) return false;
+            break;
+        }
+      }
+      
+      return braces === 0 && parentheses === 0 && brackets === 0 && !inString && !inTripleString && !inBlockComment;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Validate Kotlin code syntax using kotlinc compiler
+   * @override
+   */
+  ValidateCodeSyntax(code) {
+    // Check if Kotlin is available first
+    const compiler = this._isKotlinAvailable();
+    if (!compiler) {
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'Kotlin compiler not available - using basic validation'
+      };
+    }
+
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const { execSync } = require('child_process');
+      
+      // Create temporary file
+      const tempFile = path.join(__dirname, '..', '.agent.tmp', `temp_kotlin_${Date.now()}.kt`);
+      
+      // Ensure .agent.tmp directory exists
+      const tempDir = path.dirname(tempFile);
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      // Write Kotlin code to temp file
+      fs.writeFileSync(tempFile, code);
+      
+      try {
+        // Try to compile the Kotlin code to JVM bytecode
+        const outputDir = path.join(tempDir, 'output');
+        fs.mkdirSync(outputDir, { recursive: true });
+        
+        execSync(`kotlinc "${tempFile}" -d "${outputDir}"`, { 
+          stdio: 'pipe',
+          timeout: 5000, // Kotlin compilation can be slower
+          windowsHide: true  // Prevent Windows error dialogs
+        });
+        
+        // Clean up
+        fs.unlinkSync(tempFile);
+        if (fs.existsSync(outputDir)) {
+          fs.rmSync(outputDir, { recursive: true, force: true });
+        }
+        
+        return {
+          success: true,
+          method: 'kotlinc',
+          error: null
+        };
+        
+      } catch (error) {
+        // Clean up on error
+        if (fs.existsSync(tempFile)) {
+          fs.unlinkSync(tempFile);
+        }
+        
+        const outputDir = path.join(tempDir, 'output');
+        if (fs.existsSync(outputDir)) {
+          fs.rmSync(outputDir, { recursive: true, force: true });
+        }
+        
+        return {
+          success: false,
+          method: 'kotlinc',
+          error: error.stderr?.toString() || error.message
+        };
+      }
+      
+    } catch (error) {
+      // If Kotlin is not available or other error, fall back to basic validation
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'Kotlin compiler not available - using basic validation'
+      };
+    }
+  }
+
+  /**
+   * Get Kotlin compiler download information
+   * @override
+   */
+  GetCompilerInfo() {
+    return {
+      name: this.name,
+      compilerName: 'Kotlin/JVM (kotlinc)',
+      downloadUrl: 'https://kotlinlang.org/docs/command-line.html',
+      installInstructions: [
+        'Option 1 - Manual Installation:',
+        '  Download Kotlin from https://github.com/JetBrains/kotlin/releases',
+        '  Extract the archive and add bin/ directory to PATH',
+        '',
+        'Option 2 - Package Managers:',
+        '  macOS: brew install kotlin',
+        '  Windows: choco install kotlinc or scoop install kotlin',
+        '  Linux: snap install kotlin --classic',
+        '',
+        'Option 3 - IntelliJ IDEA (includes Kotlin):',
+        '  Download from https://www.jetbrains.com/idea/',
+        '',
+        'Prerequisites: Java 8+ must be installed',
+        'Verify installation with: kotlinc -version'
+      ].join('\n'),
+      verifyCommand: 'kotlinc -version',
+      alternativeValidation: 'Basic syntax checking (balanced brackets/braces/parentheses)',
+      packageManager: 'Gradle/Maven (for dependencies)',
+      documentation: 'https://kotlinlang.org/docs/'
+    };
+  }
 }
 
 // Register the plugin

@@ -546,6 +546,123 @@ class RubyPlugin extends LanguagePlugin {
     
     return warnings;
   }
+
+  /**
+   * Check if Ruby is available on the system
+   * @private
+   */
+  _isRubyAvailable() {
+    try {
+      const { execSync } = require('child_process');
+      execSync('ruby --version', { 
+        stdio: 'pipe', 
+        timeout: 1000,
+        windowsHide: true  // Prevent Windows error dialogs
+      });
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Validate Ruby code syntax using native interpreter
+   * @override
+   */
+  ValidateCodeSyntax(code) {
+    // Check if Ruby is available first
+    const rubyAvailable = this._isRubyAvailable();
+    if (!rubyAvailable) {
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'Ruby not available - using basic validation'
+      };
+    }
+
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const { execSync } = require('child_process');
+      
+      // Create temporary file
+      const tempFile = path.join(__dirname, '..', '.agent.tmp', `temp_ruby_${Date.now()}.rb`);
+      
+      // Ensure .agent.tmp directory exists
+      const tempDir = path.dirname(tempFile);
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      // Write code to temp file
+      fs.writeFileSync(tempFile, code);
+      
+      try {
+        // Check Ruby syntax using -c (check) flag
+        execSync(`ruby -c "${tempFile}"`, { 
+          stdio: 'pipe',
+          timeout: 3000,
+          windowsHide: true  // Prevent Windows error dialogs
+        });
+        
+        // Clean up
+        fs.unlinkSync(tempFile);
+        
+        return {
+          success: true,
+          method: 'ruby',
+          error: null
+        };
+        
+      } catch (error) {
+        // Clean up on error
+        if (fs.existsSync(tempFile)) {
+          fs.unlinkSync(tempFile);
+        }
+        
+        return {
+          success: false,
+          method: 'ruby',
+          error: error.stderr?.toString() || error.message
+        };
+      }
+      
+    } catch (error) {
+      // If Ruby is not available or other error, fall back to basic validation
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'Ruby not available - using basic validation'
+      };
+    }
+  }
+
+  /**
+   * Get Ruby interpreter download information
+   * @override
+   */
+  GetCompilerInfo() {
+    return {
+      name: this.name,
+      compilerName: 'Ruby',
+      downloadUrl: 'https://www.ruby-lang.org/en/downloads/',
+      installInstructions: [
+        'Download Ruby from https://www.ruby-lang.org/en/downloads/',
+        'For Windows: Use RubyInstaller - https://rubyinstaller.org/',
+        'For Ubuntu/Debian: sudo apt install ruby-full',
+        'For macOS: brew install ruby',
+        'For version management: rbenv or RVM',
+        'Add Ruby to your system PATH',
+        'Verify installation with: ruby --version'
+      ].join('\n'),
+      verifyCommand: 'ruby --version',
+      alternativeValidation: 'Basic syntax checking (balanced brackets/parentheses)',
+      packageManager: 'gem / bundler',
+      documentation: 'https://ruby-doc.org/'
+    };
+  }
 }
 
 // Register the plugin

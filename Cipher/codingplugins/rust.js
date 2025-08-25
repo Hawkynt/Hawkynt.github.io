@@ -548,6 +548,268 @@ class RustPlugin extends LanguagePlugin {
     
     return warnings;
   }
+
+  /**
+   * Check if Rust compiler is available on the system
+   * @private
+   */
+  _isRustAvailable() {
+    try {
+      const { execSync } = require('child_process');
+      execSync('rustc --version', { 
+        stdio: 'pipe', 
+        timeout: 2000,
+        windowsHide: true  // Prevent Windows error dialogs
+      });
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Basic syntax validation for Rust code
+   * @private
+   */
+  _checkBalancedSyntax(code) {
+    try {
+      let braces = 0;
+      let parentheses = 0;
+      let brackets = 0;
+      let inString = false;
+      let inRawString = false;
+      let inLineComment = false;
+      let inBlockComment = false;
+      let escaped = false;
+      let rawStringHashes = 0;
+      
+      for (let i = 0; i < code.length; i++) {
+        const char = code[i];
+        const nextChar = i < code.length - 1 ? code[i + 1] : '';
+        
+        // Handle raw strings (r#"..."# or r"...")
+        if (char === 'r' && nextChar === '"' && !inString && !inLineComment && !inBlockComment) {
+          inRawString = true;
+          rawStringHashes = 0;
+          i++; // Skip the quote
+          continue;
+        }
+        
+        if (char === 'r' && nextChar === '#' && !inString && !inLineComment && !inBlockComment) {
+          // Count hashes for raw string delimiter
+          let hashCount = 0;
+          let j = i + 1;
+          while (j < code.length && code[j] === '#') {
+            hashCount++;
+            j++;
+          }
+          if (j < code.length && code[j] === '"') {
+            inRawString = true;
+            rawStringHashes = hashCount;
+            i = j; // Skip to the quote
+            continue;
+          }
+        }
+        
+        // End raw strings
+        if (inRawString && char === '"') {
+          let hashCount = 0;
+          let j = i + 1;
+          while (j < code.length && code[j] === '#' && hashCount < rawStringHashes) {
+            hashCount++;
+            j++;
+          }
+          if (hashCount === rawStringHashes) {
+            inRawString = false;
+            i = j - 1; // Will be incremented by loop
+            continue;
+          }
+        }
+        
+        // Handle regular strings
+        if (char === '"' && !escaped && !inRawString && !inLineComment && !inBlockComment) {
+          inString = !inString;
+          continue;
+        }
+        
+        // Handle comments
+        if (!inString && !inRawString) {
+          if (char === '/' && nextChar === '/' && !inBlockComment) {
+            inLineComment = true;
+            i++; // Skip next character
+            continue;
+          }
+          if (char === '/' && nextChar === '*' && !inLineComment) {
+            inBlockComment = true;
+            i++; // Skip next character
+            continue;
+          }
+          if (char === '*' && nextChar === '/' && inBlockComment) {
+            inBlockComment = false;
+            i++; // Skip next character
+            continue;
+          }
+        }
+        
+        // Handle line endings for line comments
+        if (char === '\n') {
+          inLineComment = false;
+        }
+        
+        // Track escape sequences in regular strings
+        if (char === '\\' && inString && !inRawString) {
+          escaped = !escaped;
+          continue;
+        } else {
+          escaped = false;
+        }
+        
+        // Skip if inside string or comment
+        if (inString || inRawString || inLineComment || inBlockComment) {
+          continue;
+        }
+        
+        // Count brackets and braces
+        switch (char) {
+          case '{':
+            braces++;
+            break;
+          case '}':
+            braces--;
+            if (braces < 0) return false;
+            break;
+          case '(':
+            parentheses++;
+            break;
+          case ')':
+            parentheses--;
+            if (parentheses < 0) return false;
+            break;
+          case '[':
+            brackets++;
+            break;
+          case ']':
+            brackets--;
+            if (brackets < 0) return false;
+            break;
+        }
+      }
+      
+      return braces === 0 && parentheses === 0 && brackets === 0 && !inString && !inRawString && !inBlockComment;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Validate Rust code syntax using rustc compiler
+   * @override
+   */
+  ValidateCodeSyntax(code) {
+    // Check if Rust is available first
+    if (!this._isRustAvailable()) {
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'Rust compiler not available - using basic validation'
+      };
+    }
+
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const { execSync } = require('child_process');
+      
+      // Create temporary file
+      const tempFile = path.join(__dirname, '..', '.agent.tmp', `temp_rust_${Date.now()}.rs`);
+      
+      // Ensure .agent.tmp directory exists
+      const tempDir = path.dirname(tempFile);
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      // Write Rust code to temp file
+      fs.writeFileSync(tempFile, code);
+      
+      try {
+        // Try to compile the Rust code as a library crate (--crate-type=lib allows incomplete code)
+        execSync(`rustc --crate-type=lib "${tempFile}"`, { 
+          stdio: 'pipe',
+          timeout: 3000,
+          windowsHide: true  // Prevent Windows error dialogs
+        });
+        
+        // Clean up (rustc generates output files)
+        fs.unlinkSync(tempFile);
+        
+        // Clean up any generated library files
+        const libFile = tempFile.replace('.rs', '.rlib');
+        if (fs.existsSync(libFile)) {
+          fs.unlinkSync(libFile);
+        }
+        
+        return {
+          success: true,
+          method: 'rustc',
+          error: null
+        };
+        
+      } catch (error) {
+        // Clean up on error
+        if (fs.existsSync(tempFile)) {
+          fs.unlinkSync(tempFile);
+        }
+        
+        // Clean up any generated files
+        const libFile = tempFile.replace('.rs', '.rlib');
+        if (fs.existsSync(libFile)) {
+          fs.unlinkSync(libFile);
+        }
+        
+        return {
+          success: false,
+          method: 'rustc',
+          error: error.stderr?.toString() || error.message
+        };
+      }
+      
+    } catch (error) {
+      // If Rust is not available or other error, fall back to basic validation
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'Rust compiler not available - using basic validation'
+      };
+    }
+  }
+
+  /**
+   * Get Rust compiler download information
+   * @override
+   */
+  GetCompilerInfo() {
+    return {
+      name: this.name,
+      compilerName: 'Rust (rustc)',
+      downloadUrl: 'https://www.rust-lang.org/tools/install',
+      installInstructions: [
+        'Install Rust using rustup from https://rustup.rs/',
+        'Windows: Download and run rustup-init.exe',
+        'macOS/Linux: curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh',
+        'Follow the on-screen instructions to complete installation',
+        'Restart your terminal or run: source $HOME/.cargo/env',
+        'Verify installation with: rustc --version',
+        'Install additional tools: rustup component add clippy rustfmt'
+      ].join('\n'),
+      verifyCommand: 'rustc --version',
+      alternativeValidation: 'Basic syntax checking (balanced brackets/braces/parentheses)',
+      packageManager: 'Cargo (built-in package manager)',
+      documentation: 'https://doc.rust-lang.org/'
+    };
+  }
 }
 
 // Register the plugin

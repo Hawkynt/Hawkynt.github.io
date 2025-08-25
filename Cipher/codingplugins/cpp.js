@@ -707,6 +707,259 @@ class CppPlugin extends LanguagePlugin {
     
     return warnings;
   }
+
+  /**
+   * Check if C++ compiler is available on the system
+   * @private
+   */
+  _isCppCompilerAvailable() {
+    const compilers = [
+      { cmd: 'g++', name: 'gcc' },
+      { cmd: 'clang++', name: 'clang' },
+      { cmd: 'cl', name: 'msvc' }
+    ];
+
+    try {
+      const { execSync } = require('child_process');
+      
+      for (const compiler of compilers) {
+        try {
+          if (compiler.cmd === 'cl') {
+            // MSVC compiler check
+            execSync('cl 2>&1', { 
+              stdio: 'pipe', 
+              timeout: 1000,
+              windowsHide: true
+            });
+          } else {
+            // GCC/Clang compiler check
+            execSync(`${compiler.cmd} --version`, { 
+              stdio: 'pipe', 
+              timeout: 1000,
+              windowsHide: true
+            });
+          }
+          return compiler.name;
+        } catch (error) {
+          // Continue to next compiler
+          continue;
+        }
+      }
+      return false;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Basic syntax validation using bracket/parentheses matching
+   * @private
+   */
+  _checkBalancedSyntax(code) {
+    try {
+      const stack = [];
+      const pairs = { '(': ')', '[': ']', '{': '}', '<': '>' };
+      const opening = Object.keys(pairs);
+      const closing = Object.values(pairs);
+      
+      for (let i = 0; i < code.length; i++) {
+        const char = code[i];
+        
+        // Skip string literals
+        if (char === '"') {
+          i++; // Skip opening quote
+          while (i < code.length && code[i] !== '"') {
+            if (code[i] === '\\') i++; // Skip escaped characters
+            i++;
+          }
+          continue;
+        }
+        
+        // Skip character literals
+        if (char === "'") {
+          i++; // Skip opening quote
+          while (i < code.length && code[i] !== "'") {
+            if (code[i] === '\\') i++; // Skip escaped characters
+            i++;
+          }
+          continue;
+        }
+        
+        // Skip single-line comments
+        if (char === '/' && i + 1 < code.length && code[i + 1] === '/') {
+          while (i < code.length && code[i] !== '\n') i++;
+          continue;
+        }
+        
+        // Skip multi-line comments
+        if (char === '/' && i + 1 < code.length && code[i + 1] === '*') {
+          i += 2;
+          while (i < code.length - 1) {
+            if (code[i] === '*' && code[i + 1] === '/') {
+              i += 2;
+              break;
+            }
+            i++;
+          }
+          continue;
+        }
+        
+        if (opening.includes(char)) {
+          // Special handling for < in C++ - only count as opening if it looks like a template
+          if (char === '<') {
+            // Simple heuristic: check if this could be a template parameter
+            const nextChars = code.slice(i + 1, i + 10);
+            if (!/^[A-Za-z_]/.test(nextChars)) continue;
+          }
+          stack.push(char);
+        } else if (closing.includes(char)) {
+          if (char === '>') {
+            // Only match > with < if we have an unmatched <
+            if (stack.length === 0 || stack[stack.length - 1] !== '<') continue;
+          }
+          if (stack.length === 0) return false;
+          const lastOpening = stack.pop();
+          if (pairs[lastOpening] !== char) return false;
+        }
+      }
+      
+      return stack.length === 0;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Validate C++ code syntax using available compiler
+   * @override
+   */
+  ValidateCodeSyntax(code) {
+    // Check if C++ compiler is available first
+    const cppCompiler = this._isCppCompilerAvailable();
+    if (!cppCompiler) {
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'C++ compiler not available - using basic validation'
+      };
+    }
+
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const { execSync } = require('child_process');
+      
+      // Create temporary file
+      const tempFile = path.join(__dirname, '..', '.agent.tmp', `temp_cpp_${Date.now()}.cpp`);
+      
+      // Ensure .agent.tmp directory exists
+      const tempDir = path.dirname(tempFile);
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      // Wrap code in a basic program structure if needed
+      let cppCode = code;
+      if (!code.includes('#include') && !code.includes('int main')) {
+        cppCode = `#include <iostream>\n#include <string>\nusing namespace std;\n\n${code}\n\nint main() { return 0; }`;
+      }
+      
+      // Write code to temp file
+      fs.writeFileSync(tempFile, cppCode);
+      
+      try {
+        let compileCommand;
+        const objFile = tempFile.replace('.cpp', '.o');
+        const exeFile = tempFile.replace('.cpp', '.exe');
+        
+        // Choose compile command based on available compiler
+        switch (cppCompiler) {
+          case 'gcc':
+            compileCommand = `g++ -fsyntax-only -std=c++17 -Wall -Wextra -pedantic "${tempFile}"`;
+            break;
+          case 'clang':
+            compileCommand = `clang++ -fsyntax-only -std=c++17 -Wall -Wextra -pedantic "${tempFile}"`;
+            break;
+          case 'msvc':
+            compileCommand = `cl /c /EHsc /std:c++17 "${tempFile}"`;
+            break;
+          default:
+            throw new Error('Unknown compiler type');
+        }
+        
+        // Try to compile the C++ code
+        execSync(compileCommand, { 
+          stdio: 'pipe',
+          timeout: 3000,
+          cwd: path.dirname(tempFile),
+          windowsHide: true  // Prevent Windows error dialogs
+        });
+        
+        // Clean up files
+        [tempFile, objFile, exeFile].forEach(file => {
+          if (fs.existsSync(file)) {
+            try { fs.unlinkSync(file); } catch (e) { /* ignore */ }
+          }
+        });
+        
+        return {
+          success: true,
+          method: cppCompiler,
+          error: null
+        };
+        
+      } catch (error) {
+        // Clean up on error
+        const objFile = tempFile.replace('.cpp', '.o');
+        const exeFile = tempFile.replace('.cpp', '.exe');
+        [tempFile, objFile, exeFile].forEach(file => {
+          if (fs.existsSync(file)) {
+            try { fs.unlinkSync(file); } catch (e) { /* ignore */ }
+          }
+        });
+        
+        return {
+          success: false,
+          method: cppCompiler,
+          error: error.stderr?.toString() || error.message
+        };
+      }
+      
+    } catch (error) {
+      // If C++ compiler is not available or other error, fall back to basic validation
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'C++ compiler not available - using basic validation'
+      };
+    }
+  }
+
+  /**
+   * Get C++ compiler download information
+   * @override
+   */
+  GetCompilerInfo() {
+    return {
+      name: this.name,
+      compilerName: 'C++ Compiler',
+      downloadUrl: 'https://gcc.gnu.org/ or https://clang.llvm.org/',
+      installInstructions: [
+        'GCC: Download from https://gcc.gnu.org/ or use package manager',
+        'Clang: Download from https://clang.llvm.org/',
+        'Windows: Install MinGW-w64, MSYS2, or Visual Studio',
+        'Linux: sudo apt install g++ (Ubuntu) or equivalent',
+        'macOS: Install Xcode Command Line Tools',
+        'Verify installation with: g++ --version or clang++ --version'
+      ].join('\n'),
+      verifyCommand: 'g++ --version',
+      alternativeValidation: 'Basic syntax checking (balanced brackets/parentheses with C++ templates)',
+      packageManager: 'Conan/vcpkg',
+      documentation: 'https://en.cppreference.com/'
+    };
+  }
 }
 
 // Register the plugin

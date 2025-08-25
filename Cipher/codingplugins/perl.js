@@ -495,6 +495,124 @@ class PerlPlugin extends LanguagePlugin {
   _hasComplexExpressions(ast) {
     return false; // Could be enhanced with more sophisticated checking
   }
+
+  /**
+   * Check if Perl is available on the system
+   * @private
+   */
+  _isPerlAvailable() {
+    try {
+      const { execSync } = require('child_process');
+      execSync('perl --version', { 
+        stdio: 'pipe', 
+        timeout: 1000,
+        windowsHide: true  // Prevent Windows error dialogs
+      });
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Validate Perl code syntax using native interpreter
+   * @override
+   */
+  ValidateCodeSyntax(code) {
+    // Check if Perl is available first
+    const perlAvailable = this._isPerlAvailable();
+    if (!perlAvailable) {
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'Perl not available - using basic validation'
+      };
+    }
+
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const { execSync } = require('child_process');
+      
+      // Create temporary file
+      const tempFile = path.join(__dirname, '..', '.agent.tmp', `temp_perl_${Date.now()}.pl`);
+      
+      // Ensure .agent.tmp directory exists
+      const tempDir = path.dirname(tempFile);
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      // Write code to temp file
+      fs.writeFileSync(tempFile, code);
+      
+      try {
+        // Check Perl syntax using -c (compile check) flag
+        execSync(`perl -c "${tempFile}"`, { 
+          stdio: 'pipe',
+          timeout: 3000,
+          windowsHide: true  // Prevent Windows error dialogs
+        });
+        
+        // Clean up
+        fs.unlinkSync(tempFile);
+        
+        return {
+          success: true,
+          method: 'perl',
+          error: null
+        };
+        
+      } catch (error) {
+        // Clean up on error
+        if (fs.existsSync(tempFile)) {
+          fs.unlinkSync(tempFile);
+        }
+        
+        return {
+          success: false,
+          method: 'perl',
+          error: error.stderr?.toString() || error.message
+        };
+      }
+      
+    } catch (error) {
+      // If Perl is not available or other error, fall back to basic validation
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'Perl not available - using basic validation'
+      };
+    }
+  }
+
+  /**
+   * Get Perl interpreter download information
+   * @override
+   */
+  GetCompilerInfo() {
+    return {
+      name: this.name,
+      compilerName: 'Perl',
+      downloadUrl: 'https://www.perl.org/get.html',
+      installInstructions: [
+        'Download Perl from https://www.perl.org/get.html',
+        'For Windows: Strawberry Perl - https://strawberryperl.com/',
+        'For Windows: ActiveState Perl - https://www.activestate.com/products/perl/',
+        'For Ubuntu/Debian: sudo apt install perl',
+        'For macOS: brew install perl',
+        'For comprehensive installations: use perlbrew or plenv',
+        'Add Perl to your system PATH',
+        'Verify installation with: perl --version'
+      ].join('\n'),
+      verifyCommand: 'perl --version',
+      alternativeValidation: 'Basic syntax checking (balanced brackets/parentheses)',
+      packageManager: 'cpan / cpanm',
+      documentation: 'https://perldoc.perl.org/'
+    };
+  }
 }
 
 // Register the plugin
