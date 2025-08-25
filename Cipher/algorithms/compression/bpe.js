@@ -238,29 +238,51 @@
       
       // Dictionary size (2 bytes, big-endian)
       const dictSize = Object.keys(dictionary).length;
-      bytes.push((dictSize >>> 8) & 0xFF);
-      bytes.push(dictSize & 0xFF);
+      if (global.OpCodes) {
+        const packed = global.OpCodes.Pack16BE(dictSize);
+        bytes.push(packed[0], packed[1]);
+      } else {
+        bytes.push((dictSize >>> 8) & 0xFF);
+        bytes.push(dictSize & 0xFF);
+      }
       
       // Dictionary entries: [Code(2 bytes)][Byte1][Byte2]
       for (const [code, replacement] of Object.entries(dictionary)) {
         const codeNum = parseInt(code);
-        bytes.push((codeNum >>> 8) & 0xFF);
-        bytes.push(codeNum & 0xFF);
-        bytes.push(replacement[0] & 0xFF);
-        bytes.push(replacement[1] & 0xFF);
+        if (global.OpCodes) {
+          const packed = global.OpCodes.Pack16BE(codeNum);
+          bytes.push(packed[0], packed[1]);
+          bytes.push(global.OpCodes.Byte(replacement[0]));
+          bytes.push(global.OpCodes.Byte(replacement[1]));
+        } else {
+          bytes.push((codeNum >>> 8) & 0xFF);
+          bytes.push(codeNum & 0xFF);
+          bytes.push(replacement[0] & 0xFF);
+          bytes.push(replacement[1] & 0xFF);
+        }
       }
       
       // Data length (4 bytes, big-endian)
       const dataLength = data.length;
-      bytes.push((dataLength >>> 24) & 0xFF);
-      bytes.push((dataLength >>> 16) & 0xFF);
-      bytes.push((dataLength >>> 8) & 0xFF);
-      bytes.push(dataLength & 0xFF);
+      if (global.OpCodes) {
+        const packed = global.OpCodes.Pack32BE(dataLength);
+        bytes.push(packed[0], packed[1], packed[2], packed[3]);
+      } else {
+        bytes.push((dataLength >>> 24) & 0xFF);
+        bytes.push((dataLength >>> 16) & 0xFF);
+        bytes.push((dataLength >>> 8) & 0xFF);
+        bytes.push(dataLength & 0xFF);
+      }
       
       // Compressed data (may contain codes > 255, so use 2 bytes per value)
       for (const value of data) {
-        bytes.push((value >>> 8) & 0xFF);
-        bytes.push(value & 0xFF);
+        if (global.OpCodes) {
+          const packed = global.OpCodes.Pack16BE(value);
+          bytes.push(packed[0], packed[1]);
+        } else {
+          bytes.push((value >>> 8) & 0xFF);
+          bytes.push(value & 0xFF);
+        }
       }
       
       return bytes;
@@ -278,7 +300,9 @@
       let pos = 0;
       
       // Read dictionary size
-      const dictSize = (bytes[pos] << 8) | bytes[pos + 1];
+      const dictSize = global.OpCodes ? 
+        global.OpCodes.Unpack16BE([bytes[pos], bytes[pos + 1]]) : 
+        ((bytes[pos] << 8) | bytes[pos + 1]);
       pos += 2;
       
       // Read dictionary
@@ -288,7 +312,9 @@
           throw new Error('Invalid BPE compressed data: incomplete dictionary');
         }
         
-        const code = (bytes[pos] << 8) | bytes[pos + 1];
+        const code = global.OpCodes ? 
+          global.OpCodes.Unpack16BE([bytes[pos], bytes[pos + 1]]) : 
+          ((bytes[pos] << 8) | bytes[pos + 1]);
         const byte1 = bytes[pos + 2];
         const byte2 = bytes[pos + 3];
         
@@ -301,8 +327,9 @@
         throw new Error('Invalid BPE compressed data: missing data length');
       }
       
-      const dataLength = (bytes[pos] << 24) | (bytes[pos + 1] << 16) | 
-                        (bytes[pos + 2] << 8) | bytes[pos + 3];
+      const dataLength = global.OpCodes ? 
+        global.OpCodes.Unpack32BE([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]]) : 
+        ((bytes[pos] << 24) | (bytes[pos + 1] << 16) | (bytes[pos + 2] << 8) | bytes[pos + 3]);
       pos += 4;
       
       // Read compressed data
@@ -312,7 +339,9 @@
           throw new Error('Invalid BPE compressed data: incomplete data');
         }
         
-        const value = (bytes[pos] << 8) | bytes[pos + 1];
+        const value = global.OpCodes ? 
+          global.OpCodes.Unpack16BE([bytes[pos], bytes[pos + 1]]) : 
+          ((bytes[pos] << 8) | bytes[pos + 1]);
         data.push(value);
         pos += 2;
       }

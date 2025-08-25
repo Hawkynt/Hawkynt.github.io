@@ -203,7 +203,7 @@
         const output = result.join('');
         const bytes = [];
         for (let i = 0; i < output.length; i++) {
-          bytes.push(output.charCodeAt(i) & 0xFF);
+          bytes.push(global.OpCodes ? global.OpCodes.Byte(output.charCodeAt(i)) : (output.charCodeAt(i) & 0xFF));
         }
         return bytes;
       } catch (e) {
@@ -218,15 +218,25 @@
       
       // Store number of codes first (4 bytes)
       const count = codes.length;
-      bytes.push((count >>> 24) & 0xFF);
-      bytes.push((count >>> 16) & 0xFF);
-      bytes.push((count >>> 8) & 0xFF);
-      bytes.push(count & 0xFF);
+      if (global.OpCodes) {
+        const packed = global.OpCodes.Pack32BE(count);
+        bytes.push(packed[0], packed[1], packed[2], packed[3]);
+      } else {
+        bytes.push((count >>> 24) & 0xFF);
+        bytes.push((count >>> 16) & 0xFF);
+        bytes.push((count >>> 8) & 0xFF);
+        bytes.push(count & 0xFF);
+      }
       
       // Store codes as 16-bit values
       for (const code of codes) {
-        bytes.push((code >>> 8) & 0xFF);
-        bytes.push(code & 0xFF);
+        if (global.OpCodes) {
+          const packed = global.OpCodes.Pack16BE(code);
+          bytes.push(packed[0], packed[1]);
+        } else {
+          bytes.push((code >>> 8) & 0xFF);
+          bytes.push(code & 0xFF);
+        }
       }
       
       return bytes;
@@ -236,7 +246,9 @@
       if (bytes.length < 4) return [];
       
       // Read number of codes
-      const count = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
+      const count = global.OpCodes ? 
+        global.OpCodes.Unpack32BE([bytes[0], bytes[1], bytes[2], bytes[3]]) : 
+        ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]);
       
       if (bytes.length !== 4 + count * 2) return [];
       
@@ -244,7 +256,9 @@
       let pos = 4;
       
       for (let i = 0; i < count; i++) {
-        const code = (bytes[pos] << 8) | bytes[pos + 1];
+        const code = global.OpCodes ? 
+          global.OpCodes.Unpack16BE([bytes[pos], bytes[pos + 1]]) : 
+          ((bytes[pos] << 8) | bytes[pos + 1]);
         codes.push(code);
         pos += 2;
       }

@@ -53,7 +53,7 @@
           [0x01, 0x02, 0x03, 0x04, 0x05],
           [0, 0, 0, 5, 0, 0, 0, 23, 69, 99, 92],
           "Small integer sequence",
-          "Educational test case"
+          "https://en.wikipedia.org/wiki/Elias_delta_coding"
         ),
         new TestCase(
           [0x7F, 0x80, 0x81, 0xFF],

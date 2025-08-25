@@ -140,12 +140,7 @@
       }
       
       // Create output: [original_position(4 bytes), last_column]
-      const result = []; //TODO: OpCodes unpack
-      result.push((originalPosition >>> 24) & 0xFF);
-      result.push((originalPosition >>> 16) & 0xFF);
-      result.push((originalPosition >>> 8) & 0xFF);
-      result.push(originalPosition & 0xFF);
-      
+      const result = [...OpCodes.Unpack32BE(originalPosition)];
       result.push(...lastColumn.slice(0, n)); // Remove the added marker
       
       this.inputBuffer = [];
@@ -159,6 +154,7 @@
       }
 
       // Read original position
+ //TODO: OpCodes pack
       const originalPosition = (this.inputBuffer[0] << 24) | 
                               (this.inputBuffer[1] << 16) | 
                               (this.inputBuffer[2] << 8) | 

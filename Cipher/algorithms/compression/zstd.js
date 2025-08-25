@@ -51,26 +51,26 @@
         new LinkItem("Finite State Entropy", "https://github.com/Cyan4973/FiniteStateEntropy")
       ];
 
-      // Test vectors - round-trip tests  
+      // Test vectors with proper compressed output format
       this.tests = [
-        {
-          text: "Simple repeated text",
-          uri: "Educational test",
-          input: [84, 104, 105, 115, 32, 105, 115, 32, 97, 32, 116, 101, 115, 116], // "This is a test"
-          expected: [84, 104, 105, 115, 32, 105, 115, 32, 97, 32, 116, 101, 115, 116] // Round-trip test
-        },
-        {
-          text: "Repeated pattern with good compression",
-          uri: "Educational test", 
-          input: [65, 66, 67, 68, 65, 66, 67, 68, 65, 66, 67, 68, 65, 66, 67, 68], // "ABCDABCDABCDABCD"
-          expected: [65, 66, 67, 68, 65, 66, 67, 68, 65, 66, 67, 68, 65, 66, 67, 68] // Round-trip test
-        },
-        {
-          text: "Random data - worst case for Zstd",
-          uri: "Stress test",
-          input: [123, 45, 67, 89, 12, 234, 56, 78, 90, 13, 45, 67, 89, 123], 
-          expected: [123, 45, 67, 89, 12, 234, 56, 78, 90, 13, 45, 67, 89, 123] // Round-trip test
-        }
+        new TestCase(
+          global.OpCodes.AnsiToBytes("ABCD"), // Simple uncompressible data
+          [0, 0, 0, 4, 0, 65, 0, 66, 0, 67, 0, 68], // 4-byte header + compressed literals
+          "Simple data - no compression possible",
+          "Educational test"
+        ),
+        new TestCase(
+          global.OpCodes.AnsiToBytes("AAAA"), // Repeated data that compresses well
+          [0, 0, 0, 4, 0, 65, 1, 1, 3], // 4-byte header + [literal A] + [match distance=1, length=3] 
+          "Repeated data - good compression",
+          "Educational test"
+        ),
+        new TestCase(
+          global.OpCodes.AnsiToBytes("ABCABC"), // Pattern repetition
+          [0, 0, 0, 6, 0, 65, 0, 66, 0, 67, 1, 3, 3], // Header + ABC + match distance=3, length=3
+          "Pattern repetition - ABCABC",
+          "Educational test"
+        )
       ];
     }
 
@@ -111,6 +111,7 @@
 
       const result = [];
       
+      // TODO: use Opcodes for unpacking
       // Simplified Zstd frame header (4 bytes)
       const uncompressedSize = this.inputBuffer.length;
       result.push((uncompressedSize >>> 24) & 0xFF);
@@ -133,6 +134,7 @@
       }
 
       // Read uncompressed size from header
+// TODO: use OpCodes for packing
       const uncompressedSize = (this.inputBuffer[0] << 24) |
                                (this.inputBuffer[1] << 16) |
                                (this.inputBuffer[2] << 8) |
@@ -166,8 +168,7 @@
           let matchLength = 0;
           
           while (i + matchLength < data.length &&
-                 j + matchLength < i &&
-                 data[j + matchLength] === data[i + matchLength] &&
+                 data[j + (matchLength % (i - j))] === data[i + matchLength] &&
                  matchLength < 255) {
             matchLength++;
           }

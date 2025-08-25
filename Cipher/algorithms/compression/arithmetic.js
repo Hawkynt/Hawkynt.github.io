@@ -107,7 +107,7 @@ const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, Country
     
     // Encode each byte
     for (let i = 0; i < data.length; i++) {
-      const symbol = data[i] & 0xFF;
+      const symbol = global.OpCodes ? global.OpCodes.Byte(data[i]) : (data[i] & 0xFF);
       this.encodeSymbol(symbol);
     }
     
@@ -150,8 +150,8 @@ const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, Country
         break;
       }
       
-      this.low = (this.low << 1) & MAX_VALUE;
-      this.high = ((this.high << 1) | 1) & MAX_VALUE;
+      this.low = global.OpCodes ? (global.OpCodes.ShiftLeft32(this.low, 1) & MAX_VALUE) : ((this.low << 1) & MAX_VALUE);
+      this.high = global.OpCodes ? (global.OpCodes.ShiftLeft32(this.high, 1) | 1) & MAX_VALUE : (((this.high << 1) | 1) & MAX_VALUE);
     }
     
     // Update model
@@ -188,7 +188,7 @@ const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, Country
     
     // Initialize value with first PRECISION bits
     for (let i = 0; i < PRECISION && i < bits.length; i++) {
-      this.value = (this.value << 1) | bits[i];
+      this.value = global.OpCodes ? (global.OpCodes.ShiftLeft32(this.value, 1) | bits[i]) : ((this.value << 1) | bits[i]);
     }
     this.bitIndex = PRECISION;
     
@@ -242,9 +242,9 @@ const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, Country
         break;
       }
       
-      this.low = (this.low << 1) & MAX_VALUE;
-      this.high = ((this.high << 1) | 1) & MAX_VALUE;
-      this.value = ((this.value << 1) | this.inputBit()) & MAX_VALUE;
+      this.low = global.OpCodes ? (global.OpCodes.ShiftLeft32(this.low, 1) & MAX_VALUE) : ((this.low << 1) & MAX_VALUE);
+      this.high = global.OpCodes ? (global.OpCodes.ShiftLeft32(this.high, 1) | 1) & MAX_VALUE : (((this.high << 1) | 1) & MAX_VALUE);
+      this.value = global.OpCodes ? (global.OpCodes.ShiftLeft32(this.value, 1) | this.inputBit()) & MAX_VALUE : (((this.value << 1) | this.inputBit()) & MAX_VALUE);
     }
     
     // Update model
@@ -355,7 +355,7 @@ class ArithmeticCodingInstance extends IAlgorithmInstance {
     for (let i = 0; i < compressedBits.length; i += 8) {
       let byte = 0;
       for (let j = 0; j < 8 && i + j < compressedBits.length; j++) {
-        byte |= (compressedBits[i + j] << (7 - j));
+        byte |= global.OpCodes ? global.OpCodes.ShiftLeft32(compressedBits[i + j], (7 - j)) : (compressedBits[i + j] << (7 - j));
       }
       output.push(byte);
     }
@@ -372,7 +372,7 @@ class ArithmeticCodingInstance extends IAlgorithmInstance {
     const bits = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       for (let j = 7; j >= 0; j--) {
-        bits.push((this.inputBuffer[i] >> j) & 1);
+        bits.push(global.OpCodes ? (global.OpCodes.ShiftRight32(this.inputBuffer[i], j) & 1) : ((this.inputBuffer[i] >> j) & 1));
       }
     }
     

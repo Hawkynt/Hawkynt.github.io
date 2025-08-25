@@ -54,35 +54,35 @@
         new LinkItem("Fibonacci Applications", "https://www.mathsisfun.com/numbers/fibonacci-sequence.html")
       ];
 
-      // Test vectors with proper Fibonacci coding representations
+      // Test vectors with proper Fibonacci coding representations (as byte arrays)
       this.tests = [
         new TestCase(
           [1], // Number 1
-          [1, 1], // Fibonacci code: "11" (binary bits as array)
+          global.OpCodes.Hex8ToBytes("C0"), // Fibonacci code "11" padded to byte
           "Fibonacci coding of number 1",
           "https://en.wikipedia.org/wiki/Fibonacci_coding"
         ),
         new TestCase(
           [2], // Number 2  
-          [0, 1, 1], // Fibonacci code: "011" (binary bits as array)
+          global.OpCodes.Hex8ToBytes("60"), // Fibonacci code "011" padded to byte
           "Fibonacci coding of number 2",
           "https://en.wikipedia.org/wiki/Fibonacci_coding"
         ),
         new TestCase(
           [6], // Number 6 = F₅ + F₂ = 5 + 1
-          [1, 0, 0, 1, 1], // Fibonacci code: "10011" (binary bits as array)
+          global.OpCodes.Hex8ToBytes("98"), // Fibonacci code "10011" padded to byte
           "Fibonacci coding of number 6 (5+1)",
           "https://cp-algorithms.com/algebra/fibonacci-numbers.html"
         ),
         new TestCase(
           [8], // Number 8 = F₆
-          [0, 0, 0, 0, 1, 1], // Fibonacci code: "000011" (binary bits as array)
+          global.OpCodes.Hex8ToBytes("0C"), // Fibonacci code "000011" padded to byte
           "Fibonacci coding of number 8",
           "https://cp-algorithms.com/algebra/fibonacci-numbers.html"
         ),
         new TestCase(
           [11], // Number 11 = F₇ + F₅ = 8 + 3
-          [0, 0, 1, 0, 1, 1], // Fibonacci code: "001011" (binary bits as array)  
+          global.OpCodes.Hex8ToBytes("2C"), // Fibonacci code "001011" padded to byte  
           "Fibonacci coding of number 11 (8+3)",
           "https://www.geeksforgeeks.org/fibonacci-coding/"
         )
@@ -166,25 +166,35 @@
       if (num <= 0) return '11'; // Special case for 0
       
       // Find Fibonacci representation using greedy algorithm
-      const bits = new Array(this.fibNumbers.length).fill(0);
+      const bits = [];
       let remaining = num;
       
       // Work backwards from largest Fibonacci number
-      for (let i = this.fibNumbers.length - 1; i >= 0 && remaining > 0; i--) {
+      for (let i = this.fibNumbers.length - 1; i >= 0; i--) {
         if (this.fibNumbers[i] <= remaining) {
           bits[i] = 1;
           remaining -= this.fibNumbers[i];
+        } else {
+          bits[i] = 0;
         }
       }
       
-      // Build bit string (reverse order) and add terminating "11"
-      let result = '';
+      // Find the highest bit set to determine minimum length
+      let maxBitSet = -1;
       for (let i = 0; i < bits.length; i++) {
-        result = bits[i] + result;
+        if (bits[i] === 1) {
+          maxBitSet = i;
+        }
       }
       
-      // Remove leading zeros and add terminating 1
-      result = result.replace(/^0+/, '') + '1';
+      // Build bit string from least significant to most significant + terminator TODO: use bitstream from opcodes
+      let result = '';
+      for (let i = 0; i <= maxBitSet; i++) {
+        result += (bits[i] || 0).toString();
+      }
+      
+      // Add terminating 1
+      result += '1';
       
       return result;
     }
@@ -216,9 +226,9 @@
       if (bits.length === 0) return 0;
       
       let result = 0;
-      // Process bits from right to left (least significant first)
+      // Process bits from left to right (most significant first in Fibonacci coding)
       for (let i = 0; i < bits.length && i < this.fibNumbers.length; i++) {
-        if (bits[bits.length - 1 - i] === '1') {
+        if (bits[i] === '1') {
           result += this.fibNumbers[i];
         }
       }

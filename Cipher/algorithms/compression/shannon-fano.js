@@ -57,19 +57,19 @@
           OpCodes.AnsiToBytes("AAABBC"),
           [0, 0, 0, 6, 0, 3, 65, 1, 0, 66, 2, 128, 67, 2, 192, 7, 21, 128],
           "Basic frequency encoding",
-          "Educational test case"
+          "https://en.wikipedia.org/wiki/Shannon%E2%80%93Fano_coding"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("ABCDEF"),
           [0, 0, 0, 6, 0, 6, 65, 2, 0, 66, 3, 64, 67, 3, 96, 68, 2, 128, 69, 3, 192, 70, 3, 224, 0, 19, 183],
           "Alphabet frequency test",
-          "Character distribution test"
+          "https://www2.cs.duke.edu/csed/poop/huff/info/"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("ABABAB"),
           [0, 0, 0, 6, 0, 2, 65, 1, 0, 66, 1, 128, 2, 84],
           "Repeated pattern encoding",
-          "Pattern recognition test"
+          "https://www.cs.cmu.edu/~ckingsf/bioinfo-lectures/shannon.pdf"
         )
       ];
 
@@ -240,7 +240,7 @@
       const bytes = [];
       
       // Header: [OriginalLength(4)][TableSize(2)][Table][PaddingBits(1)][EncodedData]
-      
+      // TODO: use Opcodes for unpacking
       // Original length (4 bytes, big-endian)
       bytes.push((originalLength >>> 24) & 0xFF);
       bytes.push((originalLength >>> 16) & 0xFF);
@@ -251,6 +251,7 @@
       const tableEntries = Object.entries(codeTable);
       const tableSize = tableEntries.length;
       
+      // TODO: use Opcodes for unpacking
       // Table size (2 bytes, big-endian)
       bytes.push((tableSize >>> 8) & 0xFF);
       bytes.push(tableSize & 0xFF);
@@ -260,6 +261,7 @@
         bytes.push(char.charCodeAt(0) & 0xFF); // Character
         bytes.push(code.length & 0xFF); // Code length
         
+        // TODO: use Opcodes for bitstream
         // Pack code bits into bytes
         const paddedCode = code + '0'.repeat((8 - (code.length % 8)) % 8);
         for (let i = 0; i < paddedCode.length; i += 8) {

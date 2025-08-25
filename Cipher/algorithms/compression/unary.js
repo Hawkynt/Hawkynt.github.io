@@ -49,25 +49,25 @@
         new LinkItem("Coding Theory Reference", "https://www.cambridge.org/core/books/introduction-to-coding-theory/")
       ];
 
-      // Test vectors - round-trip compression tests
+      // Test vectors with expected compressed output
       this.tests = [
         {
           text: "Small values - optimal for unary",
           uri: "https://en.wikipedia.org/wiki/Unary_coding",
           input: [1, 2, 3, 4], // Small numbers
-          expected: [1, 2, 3, 4] // Should decompress to original
+          expected: global.OpCodes.Hex8ToBytes("000A5B80") // Compressed form
         },
         {
-          text: "Single small value",
+          text: "Single small value", 
           uri: "Educational test",
           input: [5], // Single number: 11110
-          expected: [5] // Should decompress to original  
+          expected: global.OpCodes.Hex8ToBytes("0005F0") // Compressed form
         },
         {
           text: "Mixed small values",
-          uri: "Educational test",
+          uri: "Educational test", 
           input: [1, 3, 2, 1], // Various small numbers
-          expected: [1, 3, 2, 1] // Should decompress to original
+          expected: global.OpCodes.Hex8ToBytes("000768") // Compressed form
         }
       ];
     }
@@ -102,31 +102,53 @@
     }
 
     _compress() {
+      
+      // TODO: use Opcodes for bitstream
       let bitString = '';
       
-      // Encode each byte using unary coding
+      // Encode each byte using unary coding (standard: n -> n-1 ones followed by zero)
       for (const byte of this.inputBuffer) {
         if (byte === 0) {
-          // Special case: 0 is encoded as single "0"
-          bitString += '0';
+          // Special case: encode 0 as "00" to distinguish from 1
+          bitString += '00';
         } else {
           // n is encoded as (n-1) ones followed by a zero
-          bitString += '1'.repeat(Math.min(byte - 1, 254)) + '0';
+          bitString += '1'.repeat(byte - 1) + '0';
         }
       }
+      
+      // Store original bit length for decompression
+      const originalBitLength = bitString.length;
       
       // Convert bit string to bytes
       const bytes = this._bitStringToBytes(bitString);
       
+      // Prepend the original bit length as two bytes (length up to 65535 bits)
+// TODO: use OpCodes for unpacking
+      const lengthBytes = [(originalBitLength >> 8) & 0xFF, originalBitLength & 0xFF];
+      
       // Clear input buffer
       this.inputBuffer = [];
       
-      return bytes;
+      return lengthBytes.concat(bytes);
     }
 
     _decompress() {
+      if (this.inputBuffer.length < 2) {
+        this.inputBuffer = [];
+        return [];
+      }
+      
+      // Read original bit length from first two bytes
+// TODO: use OpCodes for packing
+      const originalBitLength = (this.inputBuffer[0] << 8) | this.inputBuffer[1];
+      const dataBytes = this.inputBuffer.slice(2);
+      
       // Convert bytes to bit string
-      const bitString = this._bytesToBitString(this.inputBuffer);
+      const fullBitString = this._bytesToBitString(dataBytes);
+      
+      // Truncate to original length
+      const bitString = fullBitString.substring(0, originalBitLength);
       
       // Decode unary codes
       const result = [];
@@ -141,19 +163,23 @@
           i++;
         }
         
-        // Skip the terminating 0
+        // Look for terminating 0
         if (i < bitString.length && bitString[i] === '0') {
           i++;
           
-          // Unary value is count + 1 (except for single 0 which represents 0)
-          if (count === 0 && result.length === 0 && i === 1) {
-            result.push(0); // Special case: leading single 0
+          // Check if this is the special case for 0 (encoded as "00")
+          if (count === 0 && i < bitString.length && bitString[i] === '0') {
+            i++; // Skip second 0
+            result.push(0);
           } else {
+            // Standard unary: n = count + 1
             result.push(count + 1);
           }
         } else if (count > 0) {
-          // Incomplete code at end - still add it
-          result.push(count + 1);
+          // No terminating 0 found - treat as incomplete
+          break;
+        } else {
+          // All zeros at end - stop processing
           break;
         }
       }
