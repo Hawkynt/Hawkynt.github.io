@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 // Check for verbose flag
 const verbose = process.argv.includes('--verbose') || process.argv.includes('-v');
@@ -222,6 +223,18 @@ class TestJavaScriptAST {
     }
 
     /**
+     * Validate JavaScript syntax using Node.js
+     */
+    validateNodeSyntax(filePath) {
+        try {
+            execSync(`node -c "${filePath}"`, { stdio: 'pipe' });
+            return { valid: true };
+        } catch (error) {
+            return { valid: false, error: error.message };
+        }
+    }
+
+    /**
      * Test parsing a single file
      */
     testFile(filePath) {
@@ -232,6 +245,25 @@ class TestJavaScriptAST {
             // Read file content
             const code = fs.readFileSync(filePath, 'utf8');
             this.results.totalFiles++;
+            
+            // First validate that this is valid JavaScript using Node.js
+            console.log('  🔍 Validating JavaScript syntax with Node.js...');
+            const nodeValidation = this.validateNodeSyntax(filePath);
+            if (!nodeValidation.valid) {
+                console.log('  ❌ Node.js validation failed - this file has invalid JavaScript syntax');
+                console.log(`  📋 Node.js error: ${nodeValidation.error}`);
+                this.results.failedParsed++;
+                this.results.errors.push({
+                    file: path.relative(this.algorithmsPath, filePath),
+                    error: `Node.js syntax validation failed: ${nodeValidation.error}`,
+                    line: 1,
+                    context: 'File has invalid JavaScript syntax according to Node.js',
+                    stack: nodeValidation.error,
+                    category: 'syntax_error'
+                });
+                return;
+            }
+            console.log('  ✅ Node.js validation passed - file has valid JavaScript syntax');
             
             // Create parser instance
             parser = new TypeAwareJSASTTranspiler.TypeAwareJSASTParser(code);
@@ -269,7 +301,8 @@ class TestJavaScriptAST {
                 error: error.message,
                 line: errorLine,
                 context: context,
-                stack: error.stack
+                stack: error.stack,
+                category: 'parser_error'
             };
             
             this.results.errors.push(errorInfo);
@@ -369,17 +402,33 @@ class TestJavaScriptAST {
         
         if (this.results.errors.length > 0) {
             console.log('\n🔍 Error breakdown:');
-            const errorTypes = {};
-            this.results.errors.forEach(error => {
-                const errorType = error.error.split(':')[0] || 'Unknown';
-                errorTypes[errorType] = (errorTypes[errorType] || 0) + 1;
-            });
             
-            Object.entries(errorTypes)
-                .sort(([,a], [,b]) => b - a)
-                .forEach(([type, count]) => {
-                    console.log(`  • ${type}: ${count} files`);
+            // Categorize errors
+            const syntaxErrors = this.results.errors.filter(e => e.category === 'syntax_error');
+            const parserErrors = this.results.errors.filter(e => e.category === 'parser_error');
+            
+            if (syntaxErrors.length > 0) {
+                console.log(`  🚨 Node.js syntax validation failures: ${syntaxErrors.length} files`);
+                console.log('     (These files have invalid JavaScript syntax)');
+            }
+            
+            if (parserErrors.length > 0) {
+                console.log(`  🔧 Our parser failures: ${parserErrors.length} files`);
+                console.log('     (These are valid JavaScript files our parser should handle)');
+                
+                // Break down parser error types
+                const errorTypes = {};
+                parserErrors.forEach(error => {
+                    const errorType = error.error.split(':')[0] || 'Unknown';
+                    errorTypes[errorType] = (errorTypes[errorType] || 0) + 1;
                 });
+                
+                Object.entries(errorTypes)
+                    .sort(([,a], [,b]) => b - a)
+                    .forEach(([type, count]) => {
+                        console.log(`     • ${type}: ${count} files`);
+                    });
+            }
         }
     }
 
