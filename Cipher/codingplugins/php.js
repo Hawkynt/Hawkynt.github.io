@@ -612,6 +612,122 @@ class PHPPlugin extends LanguagePlugin {
   _hasArrayOperations(ast) {
     return false; // Could be enhanced with more sophisticated checking
   }
+
+  /**
+   * Check if PHP is available on the system
+   * @private
+   */
+  _isPHPAvailable() {
+    try {
+      const { execSync } = require('child_process');
+      execSync('php --version', { 
+        stdio: 'pipe', 
+        timeout: 1000,
+        windowsHide: true  // Prevent Windows error dialogs
+      });
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Validate PHP code syntax using native interpreter
+   * @override
+   */
+  ValidateCodeSyntax(code) {
+    // Check if PHP is available first
+    const phpAvailable = this._isPHPAvailable();
+    if (!phpAvailable) {
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'PHP not available - using basic validation'
+      };
+    }
+
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const { execSync } = require('child_process');
+      
+      // Create temporary file
+      const tempFile = path.join(__dirname, '..', '.agent.tmp', `temp_php_${Date.now()}.php`);
+      
+      // Ensure .agent.tmp directory exists
+      const tempDir = path.dirname(tempFile);
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      // Write code to temp file
+      fs.writeFileSync(tempFile, code);
+      
+      try {
+        // Check PHP syntax using -l (lint) flag
+        execSync(`php -l "${tempFile}"`, { 
+          stdio: 'pipe',
+          timeout: 3000,
+          windowsHide: true  // Prevent Windows error dialogs
+        });
+        
+        // Clean up
+        fs.unlinkSync(tempFile);
+        
+        return {
+          success: true,
+          method: 'php',
+          error: null
+        };
+        
+      } catch (error) {
+        // Clean up on error
+        if (fs.existsSync(tempFile)) {
+          fs.unlinkSync(tempFile);
+        }
+        
+        return {
+          success: false,
+          method: 'php',
+          error: error.stderr?.toString() || error.message
+        };
+      }
+      
+    } catch (error) {
+      // If PHP is not available or other error, fall back to basic validation
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'PHP not available - using basic validation'
+      };
+    }
+  }
+
+  /**
+   * Get PHP interpreter download information
+   * @override
+   */
+  GetCompilerInfo() {
+    return {
+      name: this.name,
+      compilerName: 'PHP',
+      downloadUrl: 'https://www.php.net/downloads',
+      installInstructions: [
+        'Download PHP from https://www.php.net/downloads',
+        'For Windows: Download from https://windows.php.net/download/',
+        'For Ubuntu/Debian: sudo apt install php-cli',
+        'For macOS: brew install php',
+        'Add PHP to your system PATH',
+        'Verify installation with: php --version'
+      ].join('\n'),
+      verifyCommand: 'php --version',
+      alternativeValidation: 'Basic syntax checking (balanced brackets/parentheses)',
+      packageManager: 'composer',
+      documentation: 'https://www.php.net/manual/'
+    };
+  }
 }
 
 // Register the plugin

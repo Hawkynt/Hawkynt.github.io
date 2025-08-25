@@ -567,6 +567,217 @@ class JavaPlugin extends LanguagePlugin {
     
     return warnings;
   }
+
+  /**
+   * Check if Java compiler is available on the system
+   * @private
+   */
+  _isJavaAvailable() {
+    try {
+      const { execSync } = require('child_process');
+      execSync('javac -version', { 
+        stdio: 'pipe', 
+        timeout: 1000,
+        windowsHide: true  // Prevent Windows error dialogs
+      });
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Basic syntax validation using bracket/parentheses matching
+   * @private
+   */
+  _checkBalancedSyntax(code) {
+    try {
+      const stack = [];
+      const pairs = { '(': ')', '[': ']', '{': '}', '<': '>' };
+      const opening = Object.keys(pairs);
+      const closing = Object.values(pairs);
+      
+      for (let i = 0; i < code.length; i++) {
+        const char = code[i];
+        
+        // Skip string literals
+        if (char === '"') {
+          i++; // Skip opening quote
+          while (i < code.length && code[i] !== '"') {
+            if (code[i] === '\\') i++; // Skip escaped characters
+            i++;
+          }
+          continue;
+        }
+        
+        // Skip character literals
+        if (char === "'") {
+          i++; // Skip opening quote
+          while (i < code.length && code[i] !== "'") {
+            if (code[i] === '\\') i++; // Skip escaped characters
+            i++;
+          }
+          continue;
+        }
+        
+        // Skip single-line comments
+        if (char === '/' && i + 1 < code.length && code[i + 1] === '/') {
+          while (i < code.length && code[i] !== '\n') i++;
+          continue;
+        }
+        
+        // Skip multi-line comments
+        if (char === '/' && i + 1 < code.length && code[i + 1] === '*') {
+          i += 2;
+          while (i < code.length - 1) {
+            if (code[i] === '*' && code[i + 1] === '/') {
+              i += 2;
+              break;
+            }
+            i++;
+          }
+          continue;
+        }
+        
+        if (opening.includes(char)) {
+          // Special handling for < in Java - only count as opening if it looks like a generic
+          if (char === '<') {
+            // Simple heuristic: check if this could be a generic type parameter
+            const nextChars = code.slice(i + 1, i + 10);
+            if (!/^[A-Za-z_]/.test(nextChars)) continue;
+          }
+          stack.push(char);
+        } else if (closing.includes(char)) {
+          if (char === '>') {
+            // Only match > with < if we have an unmatched <
+            if (stack.length === 0 || stack[stack.length - 1] !== '<') continue;
+          }
+          if (stack.length === 0) return false;
+          const lastOpening = stack.pop();
+          if (pairs[lastOpening] !== char) return false;
+        }
+      }
+      
+      return stack.length === 0;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Validate Java code syntax using javac
+   * @override
+   */
+  ValidateCodeSyntax(code) {
+    // Check if Java compiler is available first
+    const javacAvailable = this._isJavaAvailable();
+    if (!javacAvailable) {
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'Java compiler not available - using basic validation'
+      };
+    }
+
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const { execSync } = require('child_process');
+      
+      // Create temporary file
+      const tempFile = path.join(__dirname, '..', '.agent.tmp', `TempJavaClass_${Date.now()}.java`);
+      
+      // Ensure .agent.tmp directory exists
+      const tempDir = path.dirname(tempFile);
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      // Wrap code in a basic class structure if needed
+      let javaCode = code;
+      if (!code.includes('class ') && !code.includes('interface ') && !code.includes('enum ')) {
+        const className = path.basename(tempFile, '.java');
+        javaCode = `public class ${className} {\n${code}\n}`;
+      }
+      
+      // Write code to temp file
+      fs.writeFileSync(tempFile, javaCode);
+      
+      try {
+        // Try to compile the Java code
+        execSync(`javac "${tempFile}"`, { 
+          stdio: 'pipe',
+          timeout: 3000,
+          cwd: path.dirname(tempFile),
+          windowsHide: true  // Prevent Windows error dialogs
+        });
+        
+        // Clean up source file
+        fs.unlinkSync(tempFile);
+        
+        // Clean up compiled class file if it exists
+        const classFile = tempFile.replace('.java', '.class');
+        if (fs.existsSync(classFile)) {
+          fs.unlinkSync(classFile);
+        }
+        
+        return {
+          success: true,
+          method: 'javac',
+          error: null
+        };
+        
+      } catch (error) {
+        // Clean up on error
+        if (fs.existsSync(tempFile)) {
+          fs.unlinkSync(tempFile);
+        }
+        const classFile = tempFile.replace('.java', '.class');
+        if (fs.existsSync(classFile)) {
+          fs.unlinkSync(classFile);
+        }
+        
+        return {
+          success: false,
+          method: 'javac',
+          error: error.stderr?.toString() || error.message
+        };
+      }
+      
+    } catch (error) {
+      // If Java compiler is not available or other error, fall back to basic validation
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'Java compiler not available - using basic validation'
+      };
+    }
+  }
+
+  /**
+   * Get Java compiler download information
+   * @override
+   */
+  GetCompilerInfo() {
+    return {
+      name: this.name,
+      compilerName: 'Java Development Kit (JDK)',
+      downloadUrl: 'https://www.oracle.com/java/technologies/downloads/',
+      installInstructions: [
+        'Download JDK from https://www.oracle.com/java/technologies/downloads/',
+        'Or use OpenJDK from https://openjdk.org/',
+        'Install the JDK package for your operating system',
+        'Add JAVA_HOME and update PATH environment variables',
+        'Verify installation with: javac -version'
+      ].join('\n'),
+      verifyCommand: 'javac -version',
+      alternativeValidation: 'Basic syntax checking (balanced brackets/parentheses with Java generics)',
+      packageManager: 'Maven/Gradle',
+      documentation: 'https://docs.oracle.com/en/java/'
+    };
+  }
 }
 
 // Register the plugin

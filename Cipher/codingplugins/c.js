@@ -608,6 +608,238 @@ class CPlugin extends LanguagePlugin {
     
     return warnings;
   }
+
+  /**
+   * Check if C compiler is available on the system
+   * @private
+   */
+  _isCCompilerAvailable() {
+    try {
+      const { execSync } = require('child_process');
+      
+      // Try gcc first
+      try {
+        execSync('gcc --version', { 
+          stdio: 'pipe', 
+          timeout: 2000,
+          windowsHide: true  // Prevent Windows error dialogs
+        });
+        return 'gcc';
+      } catch (error) {
+        // Try clang as fallback
+        try {
+          execSync('clang --version', { 
+            stdio: 'pipe', 
+            timeout: 2000,
+            windowsHide: true  // Prevent Windows error dialogs
+          });
+          return 'clang';
+        } catch (error2) {
+          return false;
+        }
+      }
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Basic syntax validation for C code
+   * @private
+   */
+  _checkBalancedSyntax(code) {
+    try {
+      let braces = 0;
+      let parentheses = 0;
+      let brackets = 0;
+      let inString = false;
+      let inChar = false;
+      let inComment = false;
+      let inLineComment = false;
+      let escaped = false;
+      
+      for (let i = 0; i < code.length; i++) {
+        const char = code[i];
+        const nextChar = i < code.length - 1 ? code[i + 1] : '';
+        
+        // Handle string literals
+        if (char === '"' && !escaped && !inChar && !inComment && !inLineComment) {
+          inString = !inString;
+          continue;
+        }
+        
+        // Handle character literals
+        if (char === "'" && !escaped && !inString && !inComment && !inLineComment) {
+          inChar = !inChar;
+          continue;
+        }
+        
+        // Handle comments
+        if (!inString && !inChar) {
+          if (char === '/' && nextChar === '*' && !inLineComment) {
+            inComment = true;
+            i++; // Skip next character
+            continue;
+          }
+          if (char === '*' && nextChar === '/' && inComment) {
+            inComment = false;
+            i++; // Skip next character
+            continue;
+          }
+          if (char === '/' && nextChar === '/' && !inComment) {
+            inLineComment = true;
+            i++; // Skip next character
+            continue;
+          }
+        }
+        
+        // Handle line endings for line comments
+        if (char === '\n') {
+          inLineComment = false;
+        }
+        
+        // Track escape sequences
+        if (char === '\\' && (inString || inChar)) {
+          escaped = !escaped;
+          continue;
+        } else {
+          escaped = false;
+        }
+        
+        // Skip if inside string, character, or comment
+        if (inString || inChar || inComment || inLineComment) {
+          continue;
+        }
+        
+        // Count brackets and braces
+        switch (char) {
+          case '{':
+            braces++;
+            break;
+          case '}':
+            braces--;
+            if (braces < 0) return false;
+            break;
+          case '(':
+            parentheses++;
+            break;
+          case ')':
+            parentheses--;
+            if (parentheses < 0) return false;
+            break;
+          case '[':
+            brackets++;
+            break;
+          case ']':
+            brackets--;
+            if (brackets < 0) return false;
+            break;
+        }
+      }
+      
+      return braces === 0 && parentheses === 0 && brackets === 0 && !inString && !inChar && !inComment;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Validate C code syntax using native compiler
+   * @override
+   */
+  ValidateCodeSyntax(code) {
+    // Check if C compiler is available first
+    const compiler = this._isCCompilerAvailable();
+    if (!compiler) {
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'C compiler not available - using basic validation'
+      };
+    }
+
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const { execSync } = require('child_process');
+      
+      // Create temporary file
+      const tempFile = path.join(__dirname, '..', '.agent.tmp', `temp_c_${Date.now()}.c`);
+      
+      // Ensure .agent.tmp directory exists
+      const tempDir = path.dirname(tempFile);
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      // Write code to temp file
+      fs.writeFileSync(tempFile, code);
+      
+      try {
+        // Try to compile the C code (syntax check only)
+        const compilerFlags = compiler === 'gcc' ? '-fsyntax-only -std=c99' : '-fsyntax-only -std=c99';
+        execSync(`${compiler} ${compilerFlags} "${tempFile}"`, { 
+          stdio: 'pipe',
+          timeout: 3000,
+          windowsHide: true  // Prevent Windows error dialogs
+        });
+        
+        // Clean up
+        fs.unlinkSync(tempFile);
+        
+        return {
+          success: true,
+          method: compiler,
+          error: null
+        };
+        
+      } catch (error) {
+        // Clean up on error
+        if (fs.existsSync(tempFile)) {
+          fs.unlinkSync(tempFile);
+        }
+        
+        return {
+          success: false,
+          method: compiler,
+          error: error.stderr?.toString() || error.message
+        };
+      }
+      
+    } catch (error) {
+      // If compiler is not available or other error, fall back to basic validation
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'C compiler not available - using basic validation'
+      };
+    }
+  }
+
+  /**
+   * Get C compiler download information
+   * @override
+   */
+  GetCompilerInfo() {
+    return {
+      name: this.name,
+      compilerName: 'GCC/Clang',
+      downloadUrl: 'https://gcc.gnu.org/ or https://clang.llvm.org/',
+      installInstructions: [
+        'Windows: Install MinGW-w64 from https://www.mingw-w64.org/ or Visual Studio Build Tools',
+        'macOS: Install Xcode Command Line Tools with: xcode-select --install',
+        'Ubuntu/Debian: sudo apt install build-essential',
+        'CentOS/RHEL: sudo yum groupinstall "Development Tools"',
+        'Verify installation with: gcc --version or clang --version'
+      ].join('\n'),
+      verifyCommand: 'gcc --version',
+      alternativeValidation: 'Basic syntax checking (balanced brackets/braces/parentheses)',
+      packageManager: 'System package manager or manual installation',
+      documentation: 'https://gcc.gnu.org/onlinedocs/ or https://clang.llvm.org/docs/'
+    };
+  }
 }
 
 // Register the plugin

@@ -417,6 +417,147 @@ class BasicPlugin extends LanguagePlugin {
     
     return warnings;
   }
+
+  /**
+   * Check if FreeBASIC compiler is available on the system
+   * @private
+   */
+  _isFBCAvailable() {
+    try {
+      const { execSync } = require('child_process');
+      execSync('fbc -version', { 
+        stdio: 'pipe', 
+        timeout: 1000,
+        windowsHide: true  // Prevent Windows error dialogs
+      });
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Validate BASIC code syntax using FreeBASIC compiler
+   * @override
+   */
+  ValidateCodeSyntax(code) {
+    // Check if FBC is available first
+    const fbcAvailable = this._isFBCAvailable();
+    if (!fbcAvailable) {
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'FreeBASIC compiler (fbc) not available - using basic validation'
+      };
+    }
+
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const { execSync } = require('child_process');
+      
+      // Create temporary file
+      const tempFile = path.join(__dirname, '..', '.agent.tmp', `temp_basic_${Date.now()}.bas`);
+      
+      // Ensure .agent.tmp directory exists
+      const tempDir = path.dirname(tempFile);
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      // Write code to temp file
+      fs.writeFileSync(tempFile, code);
+      
+      try {
+        // Check BASIC syntax using FBC -c (compile only, no linking) flag
+        execSync(`fbc -c "${tempFile}"`, { 
+          stdio: 'pipe',
+          timeout: 3000,
+          windowsHide: true  // Prevent Windows error dialogs
+        });
+        
+        // Clean up (FBC might create additional files)
+        const baseName = path.parse(tempFile).name;
+        const baseDir = path.dirname(tempFile);
+        
+        // Remove original temp file
+        if (fs.existsSync(tempFile)) {
+          fs.unlinkSync(tempFile);
+        }
+        
+        // Clean up potential compiler outputs
+        const possibleOutputs = [
+          path.join(baseDir, baseName + '.o'),
+          path.join(baseDir, baseName),
+          path.join(baseDir, baseName + '.exe')
+        ];
+        
+        possibleOutputs.forEach(file => {
+          try {
+            if (fs.existsSync(file)) {
+              fs.unlinkSync(file);
+            }
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+        });
+        
+        return {
+          success: true,
+          method: 'fbc',
+          error: null
+        };
+        
+      } catch (error) {
+        // Clean up on error
+        if (fs.existsSync(tempFile)) {
+          fs.unlinkSync(tempFile);
+        }
+        
+        return {
+          success: false,
+          method: 'fbc',
+          error: error.stderr?.toString() || error.message
+        };
+      }
+      
+    } catch (error) {
+      // If FBC is not available or other error, fall back to basic validation
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'FreeBASIC compiler not available - using basic validation'
+      };
+    }
+  }
+
+  /**
+   * Get BASIC/FreeBASIC compiler download information
+   * @override
+   */
+  GetCompilerInfo() {
+    return {
+      name: this.name,
+      compilerName: 'FreeBASIC Compiler (FBC)',
+      downloadUrl: 'https://www.freebasic.net/wiki/CompilerInstalling',
+      installInstructions: [
+        'Download FreeBASIC from https://www.freebasic.net/wiki/CompilerInstalling',
+        'For Windows: Download and extract the ZIP file, add to PATH',
+        'For Ubuntu/Debian: sudo apt install fbc',
+        'For macOS: Use Homebrew - brew install freebasic',
+        'For source compilation: https://github.com/freebasic/fbc',
+        'Add FBC to your system PATH',
+        'Verify installation with: fbc -version',
+        'Note: Supports modern BASIC features and QB64 compatibility'
+      ].join('\n'),
+      verifyCommand: 'fbc -version',
+      alternativeValidation: 'Basic syntax checking (balanced brackets/parentheses)',
+      packageManager: 'None (standalone compiler)',
+      documentation: 'https://www.freebasic.net/wiki/DocToc'
+    };
+  }
 }
 
 // Register the plugin

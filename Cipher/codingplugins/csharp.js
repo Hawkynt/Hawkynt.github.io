@@ -590,6 +590,268 @@ class CSharpPlugin extends LanguagePlugin {
     
     return warnings;
   }
+
+  /**
+   * Check if .NET compiler is available on the system
+   * @private
+   */
+  _isDotnetAvailable() {
+    try {
+      const { execSync } = require('child_process');
+      execSync('dotnet --version', { 
+        stdio: 'pipe', 
+        timeout: 1000,
+        windowsHide: true  // Prevent Windows error dialogs
+      });
+      return true;
+    } catch (error) {
+      // Try csc as fallback (Framework compiler)
+      try {
+        execSync('csc /help', { 
+          stdio: 'pipe', 
+          timeout: 1000,
+          windowsHide: true  // Prevent Windows error dialogs
+        });
+        return 'csc';
+      } catch (error2) {
+        return false;
+      }
+    }
+  }
+
+  /**
+   * Basic syntax validation using bracket/parentheses matching
+   * @private
+   */
+  _checkBalancedSyntax(code) {
+    try {
+      const stack = [];
+      const pairs = { '(': ')', '[': ']', '{': '}', '<': '>' };
+      const opening = Object.keys(pairs);
+      const closing = Object.values(pairs);
+      
+      for (let i = 0; i < code.length; i++) {
+        const char = code[i];
+        
+        // Skip string literals
+        if (char === '"') {
+          i++; // Skip opening quote
+          while (i < code.length && code[i] !== '"') {
+            if (code[i] === '\\') i++; // Skip escaped characters
+            i++;
+          }
+          continue;
+        }
+        
+        // Skip character literals
+        if (char === "'") {
+          i++; // Skip opening quote
+          while (i < code.length && code[i] !== "'") {
+            if (code[i] === '\\') i++; // Skip escaped characters
+            i++;
+          }
+          continue;
+        }
+        
+        // Skip single-line comments
+        if (char === '/' && i + 1 < code.length && code[i + 1] === '/') {
+          while (i < code.length && code[i] !== '\n') i++;
+          continue;
+        }
+        
+        // Skip multi-line comments
+        if (char === '/' && i + 1 < code.length && code[i + 1] === '*') {
+          i += 2;
+          while (i < code.length - 1) {
+            if (code[i] === '*' && code[i + 1] === '/') {
+              i += 2;
+              break;
+            }
+            i++;
+          }
+          continue;
+        }
+        
+        if (opening.includes(char)) {
+          // Special handling for < in C# - only count as opening if it looks like a generic
+          if (char === '<') {
+            // Simple heuristic: check if this could be a generic type parameter
+            const nextChars = code.slice(i + 1, i + 10);
+            if (!/^[A-Za-z_]/.test(nextChars)) continue;
+          }
+          stack.push(char);
+        } else if (closing.includes(char)) {
+          if (char === '>') {
+            // Only match > with < if we have an unmatched <
+            if (stack.length === 0 || stack[stack.length - 1] !== '<') continue;
+          }
+          if (stack.length === 0) return false;
+          const lastOpening = stack.pop();
+          if (pairs[lastOpening] !== char) return false;
+        }
+      }
+      
+      return stack.length === 0;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Validate C# code syntax using dotnet or csc compiler
+   * @override
+   */
+  ValidateCodeSyntax(code) {
+    // Check if .NET compiler is available first
+    const dotnetAvailable = this._isDotnetAvailable();
+    if (!dotnetAvailable) {
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : '.NET compiler not available - using basic validation'
+      };
+    }
+
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const { execSync } = require('child_process');
+      
+      // Create temporary file
+      const tempFile = path.join(__dirname, '..', '.agent.tmp', `TempCSharpClass_${Date.now()}.cs`);
+      
+      // Ensure .agent.tmp directory exists
+      const tempDir = path.dirname(tempFile);
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      // Wrap code in a basic class structure if needed
+      let csharpCode = code;
+      if (!code.includes('class ') && !code.includes('interface ') && !code.includes('struct ') && !code.includes('namespace ')) {
+        const className = path.basename(tempFile, '.cs');
+        csharpCode = `using System;\n\npublic class ${className} {\n${code}\n}`;
+      }
+      
+      // Write code to temp file
+      fs.writeFileSync(tempFile, csharpCode);
+      
+      try {
+        let compileCommand;
+        if (dotnetAvailable === 'csc') {
+          // Use Framework compiler
+          compileCommand = `csc /t:library /nologo "${tempFile}"`;
+        } else {
+          // Use .NET Core/5+ compiler via dotnet build
+          // Create a minimal project file
+          const projectFile = path.join(path.dirname(tempFile), `${path.basename(tempFile, '.cs')}.csproj`);
+          const projectContent = `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+  </PropertyGroup>
+</Project>`;
+          fs.writeFileSync(projectFile, projectContent);
+          compileCommand = `dotnet build "${projectFile}" --verbosity quiet`;
+        }
+        
+        // Try to compile the C# code
+        execSync(compileCommand, { 
+          stdio: 'pipe',
+          timeout: 3000,
+          cwd: path.dirname(tempFile),
+          windowsHide: true  // Prevent Windows error dialogs
+        });
+        
+        // Clean up files
+        fs.unlinkSync(tempFile);
+        
+        // Clean up additional files created by dotnet build
+        const baseFileName = path.basename(tempFile, '.cs');
+        const tempDir = path.dirname(tempFile);
+        [
+          path.join(tempDir, `${baseFileName}.csproj`),
+          path.join(tempDir, `${baseFileName}.dll`),
+          path.join(tempDir, `${baseFileName}.exe`),
+          path.join(tempDir, `${baseFileName}.pdb`)
+        ].forEach(file => {
+          if (fs.existsSync(file)) {
+            try { fs.unlinkSync(file); } catch (e) { /* ignore */ }
+          }
+        });
+        
+        // Clean up bin/obj folders if they exist
+        ['bin', 'obj'].forEach(dir => {
+          const dirPath = path.join(tempDir, dir);
+          if (fs.existsSync(dirPath)) {
+            try { fs.rmSync(dirPath, { recursive: true }); } catch (e) { /* ignore */ }
+          }
+        });
+        
+        return {
+          success: true,
+          method: dotnetAvailable === 'csc' ? 'csc' : 'dotnet',
+          error: null
+        };
+        
+      } catch (error) {
+        // Clean up on error
+        const baseFileName = path.basename(tempFile, '.cs');
+        const tempDir = path.dirname(tempFile);
+        
+        [
+          tempFile,
+          path.join(tempDir, `${baseFileName}.csproj`),
+          path.join(tempDir, `${baseFileName}.dll`),
+          path.join(tempDir, `${baseFileName}.exe`),
+          path.join(tempDir, `${baseFileName}.pdb`)
+        ].forEach(file => {
+          if (fs.existsSync(file)) {
+            try { fs.unlinkSync(file); } catch (e) { /* ignore */ }
+          }
+        });
+        
+        return {
+          success: false,
+          method: dotnetAvailable === 'csc' ? 'csc' : 'dotnet',
+          error: error.stderr?.toString() || error.message
+        };
+      }
+      
+    } catch (error) {
+      // If .NET compiler is not available or other error, fall back to basic validation
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : '.NET compiler not available - using basic validation'
+      };
+    }
+  }
+
+  /**
+   * Get .NET compiler download information
+   * @override
+   */
+  GetCompilerInfo() {
+    return {
+      name: this.name,
+      compilerName: '.NET SDK',
+      downloadUrl: 'https://dotnet.microsoft.com/download',
+      installInstructions: [
+        'Download .NET SDK from https://dotnet.microsoft.com/download',
+        'Install the SDK package for your operating system',
+        'Verify installation with: dotnet --version',
+        'Alternative: Use Visual Studio with C# support',
+        'Legacy: .NET Framework with csc.exe compiler'
+      ].join('\n'),
+      verifyCommand: 'dotnet --version',
+      alternativeValidation: 'Basic syntax checking (balanced brackets/parentheses with C# generics)',
+      packageManager: 'NuGet',
+      documentation: 'https://docs.microsoft.com/en-us/dotnet/csharp/'
+    };
+  }
 }
 
 // Register the plugin

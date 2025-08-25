@@ -145,6 +145,59 @@ class LanguagePlugin {
       dependencies: []
     };
   }
+
+  /**
+   * Validate generated code syntax using native compiler/interpreter
+   * Plugins should override this method to provide language-specific validation
+   * 
+   * @param {string} code - Generated code to validate
+   * @returns {Object} Validation result with success flag and error details
+   * @virtual
+   */
+  ValidateCodeSyntax(code) {
+    // Default implementation - basic validation
+    return {
+      success: this._checkBalancedSyntax(code),
+      method: 'basic',
+      error: this._checkBalancedSyntax(code) ? null : 'Unbalanced brackets/parentheses'
+    };
+  }
+
+  /**
+   * Get compiler/interpreter download information
+   * Plugins should override this method to provide specific download instructions
+   * 
+   * @returns {Object} Compiler download information
+   * @virtual
+   */
+  GetCompilerInfo() {
+    return {
+      name: this.name,
+      compilerName: 'Unknown',
+      downloadUrl: null,
+      installInstructions: 'No specific instructions available',
+      verifyCommand: null,
+      alternativeValidation: 'Basic syntax checking (balanced brackets/parentheses)'
+    };
+  }
+
+  /**
+   * Basic balanced syntax check (fallback validation)
+   * @private
+   */
+  _checkBalancedSyntax(code) {
+    let braces = 0, parens = 0, brackets = 0;
+    for (const char of code) {
+      if (char === '{') braces++;
+      if (char === '}') braces--;
+      if (char === '(') parens++;
+      if (char === ')') parens--;
+      if (char === '[') brackets++;
+      if (char === ']') brackets--;
+      if (braces < 0 || parens < 0 || brackets < 0) return false;
+    }
+    return braces === 0 && parens === 0 && brackets === 0;
+  }
 }
 
 /**

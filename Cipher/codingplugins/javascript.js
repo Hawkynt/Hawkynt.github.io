@@ -514,6 +514,160 @@ class JavaScriptPlugin extends LanguagePlugin {
     
     return warnings;
   }
+
+  /**
+   * Check if Node.js is available on the system
+   * @private
+   */
+  _isNodeAvailable() {
+    try {
+      const { execSync } = require('child_process');
+      execSync('node --version', { 
+        stdio: 'pipe', 
+        timeout: 1000,
+        windowsHide: true  // Prevent Windows error dialogs
+      });
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Basic syntax validation using bracket/parentheses matching
+   * @private
+   */
+  _checkBalancedSyntax(code) {
+    try {
+      const stack = [];
+      const pairs = { '(': ')', '[': ']', '{': '}' };
+      const opening = Object.keys(pairs);
+      const closing = Object.values(pairs);
+      
+      for (let i = 0; i < code.length; i++) {
+        const char = code[i];
+        
+        // Skip string literals
+        if (char === '"' || char === "'" || char === '`') {
+          const quote = char;
+          i++; // Skip opening quote
+          while (i < code.length && code[i] !== quote) {
+            if (code[i] === '\\') i++; // Skip escaped characters
+            i++;
+          }
+          continue;
+        }
+        
+        if (opening.includes(char)) {
+          stack.push(char);
+        } else if (closing.includes(char)) {
+          if (stack.length === 0) return false;
+          const lastOpening = stack.pop();
+          if (pairs[lastOpening] !== char) return false;
+        }
+      }
+      
+      return stack.length === 0;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Validate JavaScript code syntax using Node.js
+   * @override
+   */
+  ValidateCodeSyntax(code) {
+    // Check if Node.js is available first
+    const nodeAvailable = this._isNodeAvailable();
+    if (!nodeAvailable) {
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'Node.js not available - using basic validation'
+      };
+    }
+
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const { execSync } = require('child_process');
+      
+      // Create temporary file
+      const tempFile = path.join(__dirname, '..', '.agent.tmp', `temp_js_${Date.now()}.js`);
+      
+      // Ensure .agent.tmp directory exists
+      const tempDir = path.dirname(tempFile);
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      // Write code to temp file
+      fs.writeFileSync(tempFile, code);
+      
+      try {
+        // Try to parse the JavaScript code
+        execSync(`node --check "${tempFile}"`, { 
+          stdio: 'pipe',
+          timeout: 2000,
+          windowsHide: true  // Prevent Windows error dialogs
+        });
+        
+        // Clean up
+        fs.unlinkSync(tempFile);
+        
+        return {
+          success: true,
+          method: 'node',
+          error: null
+        };
+        
+      } catch (error) {
+        // Clean up on error
+        if (fs.existsSync(tempFile)) {
+          fs.unlinkSync(tempFile);
+        }
+        
+        return {
+          success: false,
+          method: 'node',
+          error: error.stderr?.toString() || error.message
+        };
+      }
+      
+    } catch (error) {
+      // If Node.js is not available or other error, fall back to basic validation
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'Node.js not available - using basic validation'
+      };
+    }
+  }
+
+  /**
+   * Get Node.js runtime download information
+   * @override
+   */
+  GetCompilerInfo() {
+    return {
+      name: this.name,
+      compilerName: 'Node.js',
+      downloadUrl: 'https://nodejs.org/en/download/',
+      installInstructions: [
+        'Download Node.js from https://nodejs.org/en/download/',
+        'Run the installer for your operating system',
+        'Verify installation with: node --version',
+        'JavaScript can also run in any web browser'
+      ].join('\n'),
+      verifyCommand: 'node --version',
+      alternativeValidation: 'Basic syntax checking (balanced brackets/parentheses)',
+      packageManager: 'npm',
+      documentation: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript'
+    };
+  }
 }
 
 // Register the plugin

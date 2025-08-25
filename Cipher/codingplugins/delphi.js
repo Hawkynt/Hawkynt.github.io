@@ -536,6 +536,148 @@ class DelphiPlugin extends LanguagePlugin {
     
     return warnings;
   }
+
+  /**
+   * Check if Free Pascal Compiler (FPC) is available on the system
+   * @private
+   */
+  _isFPCAvailable() {
+    try {
+      const { execSync } = require('child_process');
+      execSync('fpc -h', { 
+        stdio: 'pipe', 
+        timeout: 1000,
+        windowsHide: true  // Prevent Windows error dialogs
+      });
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Validate Delphi/Pascal code syntax using Free Pascal compiler
+   * @override
+   */
+  ValidateCodeSyntax(code) {
+    // Check if FPC is available first
+    const fpcAvailable = this._isFPCAvailable();
+    if (!fpcAvailable) {
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'Free Pascal Compiler (FPC) not available - using basic validation'
+      };
+    }
+
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const { execSync } = require('child_process');
+      
+      // Create temporary file
+      const tempFile = path.join(__dirname, '..', '.agent.tmp', `temp_delphi_${Date.now()}.pas`);
+      
+      // Ensure .agent.tmp directory exists
+      const tempDir = path.dirname(tempFile);
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      // Write code to temp file
+      fs.writeFileSync(tempFile, code);
+      
+      try {
+        // Check Delphi/Pascal syntax using FPC -S (syntax check only) flag
+        execSync(`fpc -S "${tempFile}"`, { 
+          stdio: 'pipe',
+          timeout: 3000,
+          windowsHide: true  // Prevent Windows error dialogs
+        });
+        
+        // Clean up (FPC might create additional files)
+        const baseName = path.parse(tempFile).name;
+        const baseDir = path.dirname(tempFile);
+        
+        // Remove original temp file
+        if (fs.existsSync(tempFile)) {
+          fs.unlinkSync(tempFile);
+        }
+        
+        // Clean up potential compiler outputs
+        const possibleOutputs = [
+          path.join(baseDir, baseName + '.o'),
+          path.join(baseDir, baseName + '.ppu'),
+          path.join(baseDir, baseName),
+          path.join(baseDir, baseName + '.exe')
+        ];
+        
+        possibleOutputs.forEach(file => {
+          try {
+            if (fs.existsSync(file)) {
+              fs.unlinkSync(file);
+            }
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+        });
+        
+        return {
+          success: true,
+          method: 'fpc',
+          error: null
+        };
+        
+      } catch (error) {
+        // Clean up on error
+        if (fs.existsSync(tempFile)) {
+          fs.unlinkSync(tempFile);
+        }
+        
+        return {
+          success: false,
+          method: 'fpc',
+          error: error.stderr?.toString() || error.message
+        };
+      }
+      
+    } catch (error) {
+      // If FPC is not available or other error, fall back to basic validation
+      const isBasicSuccess = this._checkBalancedSyntax(code);
+      return {
+        success: isBasicSuccess,
+        method: 'basic',
+        error: isBasicSuccess ? null : 'Free Pascal Compiler not available - using basic validation'
+      };
+    }
+  }
+
+  /**
+   * Get Delphi/Free Pascal compiler download information
+   * @override
+   */
+  GetCompilerInfo() {
+    return {
+      name: this.name,
+      compilerName: 'Free Pascal Compiler (FPC)',
+      downloadUrl: 'https://www.freepascal.org/download.html',
+      installInstructions: [
+        'Download Free Pascal from https://www.freepascal.org/download.html',
+        'For Windows: Download and run the installer',
+        'For Ubuntu/Debian: sudo apt install fpc',
+        'For macOS: brew install fpc',
+        'For Lazarus IDE (includes FPC): https://www.lazarus-ide.org/',
+        'Add FPC to your system PATH',
+        'Verify installation with: fpc -h',
+        'Note: For full Delphi compatibility, consider Embarcadero Delphi Community Edition'
+      ].join('\n'),
+      verifyCommand: 'fpc -h',
+      alternativeValidation: 'Basic syntax checking (balanced brackets/parentheses)',
+      packageManager: 'fppkg / OPM (Online Package Manager)',
+      documentation: 'https://www.freepascal.org/docs.html'
+    };
+  }
 }
 
 // Register the plugin
