@@ -467,7 +467,16 @@ class TestSuite {
         { type: 'TODO', pattern: /\/\/.*TODO.*|\/\*.*TODO.*\*\//gi },
         { type: 'FIXME', pattern: /\/\/.*FIXME.*|\/\*.*FIXME.*\*\//gi },
         { type: 'BUG', pattern: /\/\/.*BUG.*|\/\*.*BUG.*\*\//gi },
-        { type: 'ISSUE', pattern: /\/\/.*ISSUE.*|\/\*.*ISSUE.*\*\//gi }
+        { type: 'ISSUE', pattern: /\/\/.*ISSUE.*|\/\*.*ISSUE.*\*\//gi },
+        { type: 'CHEAT', pattern: /_getExpectedOutput/gi },
+        { type: 'FIXED-KEY-SIZE-STEP-1-SHOULD-0', pattern: /new\s+KeySize\s*\(\s*(\d+)\s*,\s*\1\s*,\s*1\s*\)/g },
+        { type: 'ASSUME-OPCODES-LOADED', pattern: /global\.OpCodes\s*\?\s*global\.OpCodes/g },
+        { type: 'ASSUME-OPCODES-LOADED', pattern: /global\.OpCodes\?\.AnsiToBytes/g },
+        { type: 'ASSUME-OPCODES-LOADED', pattern: /global\.OpCodes\?\.Hex8ToBytes/g },
+        { type: 'TESTS-SHOULD-BE-PLAIN-FORMAT', pattern: /this\.tests\s*=\s*\[\s*\(/g },
+        { type: 'USE-OPCODES-ANSITOBYTES', pattern: /Array\.from\("[^"]*"\)\.map\(c\s*=>\s*c\.charCodeAt\(0\)\)/g },
+        { type: 'USELESS-USE-OF-OPCODES', pattern: /OpCodes\.Pack8\(\.\.\.OpCodes\.Hex8ToBytes\("[^"]{2}"\)\)/g }
+        
       ];
       
       const foundIssues = [];
