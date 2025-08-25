@@ -197,19 +197,27 @@
     // ========================[ BYTE/WORD OPERATIONS ]========================
     
     /**
-     * Pack 4 bytes into a 32-bit word (big-endian)
+     * Pack 2 bytes into a 16-bit word (big-endian)
      * @param {number} b0 - Most significant byte
      * @param {number} b1 - Second byte
-     * @param {number} b2 - Third byte
-     * @param {number} b3 - Least significant byte
-     * @returns {number} 32-bit word
+     * @returns {number} 16-bit word
      */
     Pack16BE: function(b0, b1) {
       return ((b0 & 0xFF) << 8) | (b1 & 0xFF);
     },
     
     /**
-     * Pack 4 bytes into a 32-bit word (big-endian)
+     * Pack 2 bytes into a 16-bit word (little-endian)
+     * @param {number} b0 - Most significant byte
+     * @param {number} b1 - Second byte
+     * @returns {number} 16-bit word
+     */
+    Pack16LE: function(b0, b1) {
+      return ((b1 & 0xFF) << 8) | (b0 & 0xFF);
+    },
+    
+    /**
+     * Pack 4 bytes into a 32-bit dword (big-endian)
      * @param {number} b0 - Most significant byte
      * @param {number} b1 - Second byte
      * @param {number} b2 - Third byte
@@ -221,7 +229,7 @@
     },
     
     /**
-     * Pack 4 bytes into a 32-bit word (little-endian)
+     * Pack 4 bytes into a 32-bit dword (little-endian)
      * @param {number} b0 - Least significant byte
      * @param {number} b1 - Second byte
      * @param {number} b2 - Third byte
@@ -246,8 +254,21 @@
     },
     
     /**
-     * Unpack 32-bit word to 4 bytes (big-endian)
-     * @param {number} word - 32-bit word to unpack
+     * Unpack 16-bit word to 2 bytes (little-endian)
+     * @param {number} word - 16-bit word to unpack
+     * @returns {Array} Array of 2 bytes [b0, b1]
+     */
+    Unpack16LE: function(word) {
+      word = word & 0xFFFF;
+      return [
+        word & 0xFF,
+        (word >>> 8) & 0xFF
+      ];
+    },
+    
+    /**
+     * Unpack 32-bit dword to 4 bytes (big-endian)
+     * @param {number} dword - 32-bit dword to unpack
      * @returns {Array} Array of 4 bytes [b0, b1, b2, b3]
      */
     Unpack32BE: function(word) {
@@ -261,8 +282,8 @@
     },
     
     /**
-     * Unpack 32-bit word to 4 bytes (little-endian)
-     * @param {number} word - 32-bit word to unpack
+     * Unpack 32-bit dword to 4 bytes (little-endian)
+     * @param {number} dword - 32-bit dword to unpack
      * @returns {Array} Array of 4 bytes [b0, b1, b2, b3]
      */
     Unpack32LE: function(word) {
@@ -2775,6 +2796,499 @@
         result.push([high, low]);
       }
       return result;
+    },
+
+    // ========================[ ARITHMETIC OPERATIONS ]========================
+
+    /**
+     * 32-bit unsigned multiplication ensuring proper overflow behavior
+     * @param {number} a - First operand
+     * @param {number} b - Second operand
+     * @returns {number} 32-bit unsigned multiplication result
+     */
+    Mul32: function(a, b) {
+      return Math.imul(a, b) >>> 0;
+    },
+
+    /**
+     * 32-bit unsigned addition ensuring proper overflow behavior
+     * @param {number} a - First operand
+     * @param {number} b - Second operand
+     * @returns {number} 32-bit unsigned addition result
+     */
+    Add32: function(a, b) {
+      return ((a + b) >>> 0);
+    },
+
+    /**
+     * 32-bit unsigned subtraction ensuring proper underflow behavior
+     * @param {number} a - First operand (minuend)
+     * @param {number} b - Second operand (subtrahend)
+     * @returns {number} 32-bit unsigned subtraction result
+     */
+    Sub32: function(a, b) {
+      return ((a - b) >>> 0);
+    },
+
+    // ========================[ BITSTREAM OPERATIONS ]========================
+
+    /**
+     * Create a BitStream instance for efficient bit-level operations
+     * Optimized for compression algorithms that need precise bit manipulation
+     * @param {Array} initialBytes - Optional initial byte array
+     * @returns {Object} BitStream instance
+     */
+    CreateBitStream: function(initialBytes) {
+      return new OpCodes._BitStream(initialBytes);
+    },
+
+    /**
+     * Internal BitStream class for bit-level operations
+     * Uses uint64 buffer for efficient batching before outputting bytes
+     * @private
+     */
+    _BitStream: function(initialBytes) {
+      this.buffer = 0;              // Current 64-bit buffer for operations
+      this.bufferBits = 0;          // Number of valid bits in buffer (0-63)
+      this.byteArray = [];          // Output byte array
+      this.readPosition = 0;        // Read position in bits for reading operations
+      this.totalBitsWritten = 0;    // Total number of bits written
+
+      // Initialize from byte array if provided
+      if (initialBytes && initialBytes.length > 0) {
+        this.byteArray = initialBytes.slice(); // Copy array
+        this.totalBitsWritten = initialBytes.length * 8;
+      }
+
+      /**
+       * Write bits to the stream
+       * @param {number} value - Value to write
+       * @param {number} numBits - Number of bits to write (1-32)
+       */
+      this.writeBits = function(value, numBits) {
+        if (numBits <= 0 || numBits > 32) {
+          throw new Error('BitStream.writeBits: numBits must be 1-32');
+        }
+
+        // Mask value to specified bit width
+        const mask = numBits === 32 ? 0xFFFFFFFF : (1 << numBits) - 1;
+        value = (value >>> 0) & mask;
+
+        // Add bits to buffer
+        this.buffer = (this.buffer << numBits) | value;
+        this.bufferBits += numBits;
+        this.totalBitsWritten += numBits;
+
+        // Flush complete bytes from buffer
+        while (this.bufferBits >= 8) {
+          this.bufferBits -= 8;
+          const byte = (this.buffer >>> this.bufferBits) & 0xFF;
+          this.byteArray.push(byte);
+          
+          // Clear the flushed bits from buffer
+          if (this.bufferBits > 0) {
+            const remainingMask = (1 << this.bufferBits) - 1;
+            this.buffer &= remainingMask;
+          } else {
+            this.buffer = 0;
+          }
+        }
+      };
+
+      /**
+       * Write a single bit to the stream
+       * @param {number} bit - Bit value (0 or 1)
+       */
+      this.writeBit = function(bit) {
+        this.writeBits(bit & 1, 1);
+      };
+
+      /**
+       * Write a byte to the stream
+       * @param {number} byte - Byte value (0-255)
+       */
+      this.writeByte = function(byte) {
+        this.writeBits(byte & 0xFF, 8);
+      };
+
+      /**
+       * Write multiple bytes to the stream
+       * @param {Array} bytes - Array of bytes to write
+       */
+      this.writeBytes = function(bytes) {
+        for (let i = 0; i < bytes.length; i++) {
+          this.writeByte(bytes[i]);
+        }
+      };
+
+      /**
+       * Write a 16-bit value in big-endian format
+       * @param {number} value - 16-bit value
+       */
+      this.writeUint16BE = function(value) {
+        this.writeBits((value >>> 8) & 0xFF, 8);
+        this.writeBits(value & 0xFF, 8);
+      };
+
+      /**
+       * Write a 16-bit value in little-endian format
+       * @param {number} value - 16-bit value
+       */
+      this.writeUint16LE = function(value) {
+        this.writeBits(value & 0xFF, 8);
+        this.writeBits((value >>> 8) & 0xFF, 8);
+      };
+
+      /**
+       * Write a 32-bit value in big-endian format
+       * @param {number} value - 32-bit value
+       */
+      this.writeUint32BE = function(value) {
+        value = value >>> 0; // Ensure unsigned
+        this.writeBits((value >>> 24) & 0xFF, 8);
+        this.writeBits((value >>> 16) & 0xFF, 8);
+        this.writeBits((value >>> 8) & 0xFF, 8);
+        this.writeBits(value & 0xFF, 8);
+      };
+
+      /**
+       * Write a 32-bit value in little-endian format
+       * @param {number} value - 32-bit value
+       */
+      this.writeUint32LE = function(value) {
+        value = value >>> 0; // Ensure unsigned
+        this.writeBits(value & 0xFF, 8);
+        this.writeBits((value >>> 8) & 0xFF, 8);
+        this.writeBits((value >>> 16) & 0xFF, 8);
+        this.writeBits((value >>> 24) & 0xFF, 8);
+      };
+
+      /**
+       * Read bits from the stream
+       * @param {number} numBits - Number of bits to read (1-32)
+       * @returns {number} Read value
+       */
+      this.readBits = function(numBits) {
+        if (numBits <= 0 || numBits > 32) {
+          throw new Error('BitStream.readBits: numBits must be 1-32');
+        }
+
+        let result = 0;
+        let bitsRead = 0;
+
+        while (bitsRead < numBits) {
+          const byteIndex = Math.floor(this.readPosition / 8);
+          const bitOffset = this.readPosition % 8;
+          
+          if (byteIndex >= this.byteArray.length) {
+            // No more data available - return partial result or throw error
+            if (bitsRead === 0) {
+              throw new Error('BitStream.readBits: No more data available');
+            }
+            break;
+          }
+
+          const currentByte = this.byteArray[byteIndex];
+          const availableBits = 8 - bitOffset;
+          const bitsToRead = Math.min(numBits - bitsRead, availableBits);
+          
+          // Extract bits from current byte
+          const mask = (1 << bitsToRead) - 1;
+          const extractedBits = (currentByte >>> (availableBits - bitsToRead)) & mask;
+          
+          result = (result << bitsToRead) | extractedBits;
+          bitsRead += bitsToRead;
+          this.readPosition += bitsToRead;
+        }
+
+        return result;
+      };
+
+      /**
+       * Read a single bit from the stream
+       * @returns {number} Bit value (0 or 1)
+       */
+      this.readBit = function() {
+        return this.readBits(1);
+      };
+
+      /**
+       * Read a byte from the stream
+       * @returns {number} Byte value (0-255)
+       */
+      this.readByte = function() {
+        return this.readBits(8);
+      };
+
+      /**
+       * Read multiple bytes from the stream
+       * @param {number} count - Number of bytes to read
+       * @returns {Array} Array of bytes
+       */
+      this.readBytes = function(count) {
+        const bytes = [];
+        for (let i = 0; i < count; i++) {
+          bytes.push(this.readByte());
+        }
+        return bytes;
+      };
+
+      /**
+       * Peek at bits without advancing read position
+       * @param {number} numBits - Number of bits to peek (1-32)
+       * @returns {number} Peeked value
+       */
+      this.peekBits = function(numBits) {
+        const savedPosition = this.readPosition;
+        const result = this.readBits(numBits);
+        this.readPosition = savedPosition;
+        return result;
+      };
+
+      /**
+       * Skip bits in the stream
+       * @param {number} numBits - Number of bits to skip
+       */
+      this.skipBits = function(numBits) {
+        this.readPosition += numBits;
+        // Clamp to valid range
+        const maxPosition = this.byteArray.length * 8;
+        if (this.readPosition > maxPosition) {
+          this.readPosition = maxPosition;
+        }
+      };
+
+      /**
+       * Check if more bits are available for reading
+       * @returns {boolean} True if more bits available
+       */
+      this.hasMoreBits = function() {
+        return this.readPosition < this.byteArray.length * 8;
+      };
+
+      /**
+       * Get remaining bits available for reading
+       * @returns {number} Number of bits remaining
+       */
+      this.getRemainingBits = function() {
+        return Math.max(0, this.byteArray.length * 8 - this.readPosition);
+      };
+
+      /**
+       * Reset read position to beginning
+       */
+      this.resetReadPosition = function() {
+        this.readPosition = 0;
+      };
+
+      /**
+       * Set read position to specific bit offset
+       * @param {number} bitOffset - Bit position to seek to
+       */
+      this.seekBits = function(bitOffset) {
+        this.readPosition = Math.max(0, Math.min(bitOffset, this.byteArray.length * 8));
+      };
+
+      /**
+       * Flush remaining bits in buffer and return complete byte array
+       * @param {boolean} padLastByte - Whether to pad the last byte with zeros (default: true)
+       * @returns {Array} Complete byte array with padding if needed
+       */
+      this.toArray = function(padLastByte) {
+        padLastByte = padLastByte !== false; // Default to true
+
+        if (this.bufferBits > 0 && padLastByte) {
+          // Pad remaining bits with zeros and flush
+          const paddingBits = 8 - this.bufferBits;
+          this.buffer = this.buffer << paddingBits;
+          this.byteArray.push(this.buffer & 0xFF);
+          this.buffer = 0;
+          this.bufferBits = 0;
+        }
+
+        return this.byteArray.slice(); // Return copy
+      };
+
+      /**
+       * Get length of stream in bits
+       * @returns {number} Total bits written
+       */
+      this.getBitLength = function() {
+        return this.totalBitsWritten;
+      };
+
+      /**
+       * Get length of stream in bytes (including partial bytes)
+       * @returns {number} Total bytes including incomplete last byte
+       */
+      this.getByteLength = function() {
+        const completeBytesInBuffer = Math.floor(this.bufferBits / 8);
+        const hasPartialByte = (this.bufferBits % 8) > 0 ? 1 : 0;
+        return this.byteArray.length + completeBytesInBuffer + hasPartialByte;
+      };
+
+      /**
+       * Clear the stream and reset to initial state
+       */
+      this.clear = function() {
+        this.buffer = 0;
+        this.bufferBits = 0;
+        this.byteArray = [];
+        this.readPosition = 0;
+        this.totalBitsWritten = 0;
+      };
+
+      /**
+       * Clone the current stream
+       * @returns {Object} New BitStream instance with same content
+       */
+      this.clone = function() {
+        const cloned = new OpCodes._BitStream();
+        cloned.buffer = this.buffer;
+        cloned.bufferBits = this.bufferBits;
+        cloned.byteArray = this.byteArray.slice();
+        cloned.readPosition = this.readPosition;
+        cloned.totalBitsWritten = this.totalBitsWritten;
+        return cloned;
+      };
+
+      /**
+       * Get debug information about the stream state
+       * @returns {Object} Debug information
+       */
+      this.getDebugInfo = function() {
+        return {
+          bufferBits: this.bufferBits,
+          bufferValue: '0x' + this.buffer.toString(16),
+          byteArrayLength: this.byteArray.length,
+          readPosition: this.readPosition,
+          totalBitsWritten: this.totalBitsWritten,
+          hasMoreBits: this.hasMoreBits(),
+          remainingBits: this.getRemainingBits()
+        };
+      };
+
+      /**
+       * Write variable-length integer (varint encoding)
+       * @param {number} value - Value to encode (0 to 2^32-1)
+       */
+      this.writeVarInt = function(value) {
+        value = value >>> 0; // Ensure unsigned
+        while (value >= 0x80) {
+          this.writeByte((value & 0x7F) | 0x80);
+          value >>>= 7;
+        }
+        this.writeByte(value & 0x7F);
+      };
+
+      /**
+       * Read variable-length integer (varint decoding)
+       * @returns {number} Decoded value
+       */
+      this.readVarInt = function() {
+        let result = 0;
+        let shift = 0;
+        let byte;
+        
+        do {
+          if (shift >= 32) {
+            throw new Error('BitStream.readVarInt: Integer overflow');
+          }
+          byte = this.readByte();
+          result |= ((byte & 0x7F) << shift);
+          shift += 7;
+        } while (byte & 0x80);
+        
+        return result >>> 0;
+      };
+
+      /**
+       * Write unary encoding (n ones followed by a zero)
+       * @param {number} value - Value to encode
+       */
+      this.writeUnary = function(value) {
+        for (let i = 0; i < value; i++) {
+          this.writeBit(1);
+        }
+        this.writeBit(0);
+      };
+
+      /**
+       * Read unary encoding
+       * @returns {number} Decoded value
+       */
+      this.readUnary = function() {
+        let count = 0;
+        while (this.hasMoreBits() && this.readBit() === 1) {
+          count++;
+        }
+        return count;
+      };
+
+      /**
+       * Align to byte boundary by padding with zeros
+       */
+      this.alignToByte = function() {
+        while (this.bufferBits % 8 !== 0) {
+          this.writeBit(0);
+        }
+      };
+
+      /**
+       * Check if currently aligned to byte boundary
+       * @returns {boolean} True if aligned to byte boundary
+       */
+      this.isAligned = function() {
+        return this.bufferBits % 8 === 0;
+      };
+    },
+
+    // GCM Operations
+    GHashMul: function(x, y) {
+      if (!x || x.length !== 16 || !y || y.length !== 16) {
+        throw new Error('GHashMul requires 16-byte arrays');
+      }
+      
+      const z = new Array(16).fill(0);
+      const v = [...y];
+      
+      for (let i = 0; i < 16; i++) {
+        const xi = x[i];
+        for (let j = 7; j >= 0; j--) {
+          if (xi & (1 << j)) {
+            for (let k = 0; k < 16; k++) {
+              z[k] ^= v[k];
+            }
+          }
+          
+          const lsb = v[15] & 1;
+          for (let k = 15; k >= 1; k--) {
+            v[k] = (v[k] >>> 1) | ((v[k-1] & 1) << 7);
+          }
+          v[0] >>>= 1;
+          
+          if (lsb) {
+            v[0] ^= 0xE1;
+          }
+        }
+      }
+      
+      return z;
+    },
+
+    GCMIncrement: function(counter) {
+      if (!counter || counter.length !== 16) {
+        throw new Error('GCMIncrement requires 16-byte counter');
+      }
+      
+      let carry = 1;
+      for (let i = 15; i >= 12; i--) {
+        const sum = counter[i] + carry;
+        counter[i] = sum & 0xFF;
+        carry = sum >>> 8;
+      }
+      
+      return counter;
     }
 
   };
