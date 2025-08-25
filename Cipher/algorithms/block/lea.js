@@ -68,20 +68,11 @@ class LEAAlgorithm extends BlockCipherAlgorithm {
     // Additional property for key in test vector
     this.tests[0].key = OpCodes.Hex8ToBytes("0f1e2d3c4b5a69788796a5b4c3d2e1f0");
     
-    // LEA Constants - Key schedule constants δ[i] (based on golden ratio)
+    // LEA Constants - Key schedule constants δ[i] (sqrt(766965) where 766965 = "LEA" in ASCII)
+    // These are the actual constants from the Linux kernel implementation
     this.DELTA = [
-      0xc3efe9db, 0x44626b02, 0x79e27c8a, 0x78df30ec,
-      0x715ea49e, 0xc785da0a, 0xe04ef22a, 0xe5c40957,
-      0x06fce657, 0xf3848f2f, 0xb073da8f, 0x8adb1ba5,
-      0x3a14dfe1, 0x79ddb6b7, 0xe9e91c10, 0x7c8e2e9c,
-      0xa16d8b4f, 0xd7b08ad3, 0xaafbc10f, 0x0f2e7fb5,
-      0xdea75cf4, 0x2e4f2e98, 0x3f7f1f02, 0xf5cd9e04,
-      0x01e4f2b0, 0x6e4c1ab8, 0x99fe2d05, 0x60b5f72e,
-      0x20f6d5a5, 0xe0c1a2c8, 0x5b1b1b97, 0x23d764c1,
-      0x63f5c28e, 0x2e3b0ad9, 0xa8b6c4c4, 0x3a8bd8fb,
-      0xab86c5fb, 0x2e9dc9db, 0xd70d77eb, 0x40be96b0,
-      0x7f5d7c56, 0x83f7ba2e, 0xc7ea0be3, 0xbf5f8c96,
-      0x10cf8f8d, 0x3cd777d9, 0x42bb0ada, 0xa7e9b6b7
+      0xc3efe9db, 0x88c4d604, 0xe789f229, 0xc6f98763,
+      0x15ea49e7, 0xf0bb4158, 0x13bc8ab8, 0xe204abf2
     ];
   }
 
@@ -187,7 +178,7 @@ class LEAInstance extends IBlockCipherInstance {
     // Convert key bytes to 32-bit words (little-endian)
     for (let i = 0; i < keyWords; i++) {
       const offset = i * 4;
-      K[i] = OpCodes.Pack32LE(
+      K[i] = OpCodes.Pack32BE(
         this._key[offset], 
         this._key[offset + 1], 
         this._key[offset + 2], 
@@ -201,10 +192,10 @@ class LEAInstance extends IBlockCipherInstance {
       
       if (keyWords === 4) { // 128-bit key
         const T = [
-          ((K[0] + OpCodes.RotL32(this.algorithm.DELTA[i % 4], i)) >>> 0),
-          ((K[1] + OpCodes.RotL32(this.algorithm.DELTA[i % 4], i + 1)) >>> 0),
-          ((K[2] + OpCodes.RotL32(this.algorithm.DELTA[i % 4], i + 2)) >>> 0),
-          ((K[3] + OpCodes.RotL32(this.algorithm.DELTA[i % 4], i + 3)) >>> 0)
+          ((K[0] + OpCodes.RotL32(this.algorithm.DELTA[i % 8], i)) >>> 0),
+          ((K[1] + OpCodes.RotL32(this.algorithm.DELTA[i % 8], i + 1)) >>> 0),
+          ((K[2] + OpCodes.RotL32(this.algorithm.DELTA[i % 8], i + 2)) >>> 0),
+          ((K[3] + OpCodes.RotL32(this.algorithm.DELTA[i % 8], i + 3)) >>> 0)
         ];
         
         // Update key words for next round
@@ -223,12 +214,12 @@ class LEAInstance extends IBlockCipherInstance {
         
       } else if (keyWords === 6) { // 192-bit key
         const T = [
-          ((K[0] + OpCodes.RotL32(this.algorithm.DELTA[i % 6], i)) >>> 0),
-          ((K[1] + OpCodes.RotL32(this.algorithm.DELTA[i % 6], i + 1)) >>> 0),
-          ((K[2] + OpCodes.RotL32(this.algorithm.DELTA[i % 6], i + 2)) >>> 0),
-          ((K[3] + OpCodes.RotL32(this.algorithm.DELTA[i % 6], i + 3)) >>> 0),
-          ((K[4] + OpCodes.RotL32(this.algorithm.DELTA[i % 6], i + 4)) >>> 0),
-          ((K[5] + OpCodes.RotL32(this.algorithm.DELTA[i % 6], i + 5)) >>> 0)
+          ((K[0] + OpCodes.RotL32(this.algorithm.DELTA[i % 8], i)) >>> 0),
+          ((K[1] + OpCodes.RotL32(this.algorithm.DELTA[i % 8], i + 1)) >>> 0),
+          ((K[2] + OpCodes.RotL32(this.algorithm.DELTA[i % 8], i + 2)) >>> 0),
+          ((K[3] + OpCodes.RotL32(this.algorithm.DELTA[i % 8], i + 3)) >>> 0),
+          ((K[4] + OpCodes.RotL32(this.algorithm.DELTA[i % 8], i + 4)) >>> 0),
+          ((K[5] + OpCodes.RotL32(this.algorithm.DELTA[i % 8], i + 5)) >>> 0)
         ];
         
         // Update key words for next round
@@ -276,10 +267,10 @@ class LEAInstance extends IBlockCipherInstance {
   _encryptBlock(block) {
     // Convert input to 32-bit words using OpCodes (little-endian for LEA)
     let X = [
-      OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
-      OpCodes.Pack32LE(block[4], block[5], block[6], block[7]),
-      OpCodes.Pack32LE(block[8], block[9], block[10], block[11]),
-      OpCodes.Pack32LE(block[12], block[13], block[14], block[15])
+      OpCodes.Pack32BE(block[0], block[1], block[2], block[3]),
+      OpCodes.Pack32BE(block[4], block[5], block[6], block[7]),
+      OpCodes.Pack32BE(block[8], block[9], block[10], block[11]),
+      OpCodes.Pack32BE(block[12], block[13], block[14], block[15])
     ];
     
     // LEA encryption rounds - implementing the correct round function
@@ -289,7 +280,7 @@ class LEAInstance extends IBlockCipherInstance {
       // Store original values before transformation
       const X0 = X[0], X1 = X[1], X2 = X[2], X3 = X[3];
       
-      // LEA round function (ARX operations) - correct specification
+      // LEA round function (ARX operations) - according to specification
       // X[0] = ((X[0] ^ RK[0]) + (X[1] ^ RK[1])) <<< 9
       X[0] = OpCodes.RotL32(((X0 ^ RK[0]) + (X1 ^ RK[1])) >>> 0, 9);
       
@@ -299,62 +290,64 @@ class LEAInstance extends IBlockCipherInstance {
       // X[2] = ((X[2] ^ RK[4]) + (X[3] ^ RK[5])) >>> 3
       X[2] = OpCodes.RotR32(((X2 ^ RK[4]) + (X3 ^ RK[5])) >>> 0, 3);
       
-      // X[3] = X[0] (state rotation)
-      X[3] = X0;
+      // X[3] = X[0] (circular shift of state) - this should be the NEW X[0]
+      X[3] = X[0];
     }
     
     // Convert back to byte array using OpCodes (little-endian)
     const result = [];
     for (let i = 0; i < 4; i++) {
-      const wordBytes = OpCodes.Unpack32LE(X[i]);
+      const wordBytes = OpCodes.Unpack32BE(X[i]);
       result.push(...wordBytes);
     }
     
     return result;
   }
 
-  // Decrypt 128-bit block  
+  // Decrypt 128-bit block
   _decryptBlock(block) {
-    // Convert input to 32-bit words using OpCodes (little-endian for LEA)
+    // Convert input to 32-bit words using OpCodes (big-endian for LEA)
     let X = [
-      OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
-      OpCodes.Pack32LE(block[4], block[5], block[6], block[7]),
-      OpCodes.Pack32LE(block[8], block[9], block[10], block[11]),
-      OpCodes.Pack32LE(block[12], block[13], block[14], block[15])
+      OpCodes.Pack32BE(block[0], block[1], block[2], block[3]),
+      OpCodes.Pack32BE(block[4], block[5], block[6], block[7]),
+      OpCodes.Pack32BE(block[8], block[9], block[10], block[11]),
+      OpCodes.Pack32BE(block[12], block[13], block[14], block[15])
     ];
     
     // LEA decryption rounds (reverse order and inverse operations)
     for (let i = this.rounds - 1; i >= 0; i--) {
       const RK = this.roundKeys[i];
       
-      // Reverse the state rotation: X[3] -> X[0], X[0] -> X[1], X[1] -> X[2], X[2] -> X[3]
-      const temp = X[3];
-      X[3] = X[2];
-      X[2] = X[1];
-      X[1] = X[0];
-      X[0] = temp;
+      // Store original values - in decryption, X[3] contains the old X[0]
+      const X0_orig = X[3]; // X[3] was the NEW X[0] from encryption
+      const X1_orig = X[1];
+      const X2_orig = X[2]; 
+      const X3_orig = X[0]; // X[0] is now what used to be X[3] before rotation
       
-      // Inverse LEA round function
-      // Reverse: X[2] = ((X[2] ^ RK[4]) + (X[3] ^ RK[5])) >>> 3
-      X[2] = OpCodes.RotL32(X[2], 3);
-      X[2] = (X[2] - (X[3] ^ RK[5])) >>> 0;
-      X[2] = X[2] ^ RK[4];
+      // Inverse LEA round function - reverse the arithmetic operations
+      // Reverse: X[0] = ((X[0] ^ RK[0]) + (X[1] ^ RK[1])) <<< 9
+      X[0] = OpCodes.RotR32(X0_orig, 9);
+      X[0] = (X[0] - (X1_orig ^ RK[1])) >>> 0;
+      X[0] = X[0] ^ RK[0];
       
       // Reverse: X[1] = ((X[1] ^ RK[2]) + (X[2] ^ RK[3])) >>> 5  
-      X[1] = OpCodes.RotL32(X[1], 5);
-      X[1] = (X[1] - (X[2] ^ RK[3])) >>> 0;
+      X[1] = OpCodes.RotL32(X1_orig, 5);
+      X[1] = (X[1] - (X2_orig ^ RK[3])) >>> 0;
       X[1] = X[1] ^ RK[2];
       
-      // Reverse: X[0] = ((X[0] ^ RK[0]) + (X[1] ^ RK[1])) <<< 9
-      X[0] = OpCodes.RotR32(X[0], 9);
-      X[0] = (X[0] - (X[1] ^ RK[1])) >>> 0;
-      X[0] = X[0] ^ RK[0];
+      // Reverse: X[2] = ((X[2] ^ RK[4]) + (X[3] ^ RK[5])) >>> 3
+      X[2] = OpCodes.RotL32(X2_orig, 3);
+      X[2] = (X[2] - (X3_orig ^ RK[5])) >>> 0;
+      X[2] = X[2] ^ RK[4];
+      
+      // X[3] gets the original X[0] (before transformation)
+      X[3] = X[0];
     }
     
-    // Convert back to byte array using OpCodes (little-endian)
+    // Convert back to byte array using OpCodes (big-endian)
     const result = [];
     for (let i = 0; i < 4; i++) {
-      const wordBytes = OpCodes.Unpack32LE(X[i]);
+      const wordBytes = OpCodes.Unpack32BE(X[i]);
       result.push(...wordBytes);
     }
     

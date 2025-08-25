@@ -76,7 +76,8 @@
   
   class ColumnarInstance extends IAlgorithmInstance {
     constructor(algorithm, isInverse) {
-      super(algorithm, isInverse);
+      super(algorithm);
+      this.isInverse = isInverse || false;
       this._key = '';
       this._cleanKey = '';
       this._columnOrder = [];
@@ -232,46 +233,37 @@
         grid[row] = new Array(numCols).fill('');
       }
       
-      // Calculate column lengths
-      const colLengths = new Array(numCols).fill(numRows);
+      // Calculate how many characters each column should get
+      const baseColLength = Math.floor(cleanText.length / numCols);
       const remainder = cleanText.length % numCols;
-      if (remainder > 0) {
-        for (let col = 0; col < numCols; col++) {
-          // Determine which columns get the extra character
-          let originalCol = -1;
-          for (let c = 0; c < numCols; c++) {
-            if (this._columnOrder[c] === col) {
-              originalCol = c;
-              break;
-            }
-          }
-          if (originalCol >= remainder) {
-            colLengths[col] = numRows - 1;
-          }
-        }
+      const colLengths = new Array(numCols).fill(baseColLength);
+      
+      // First 'remainder' columns in alphabetical order get an extra character
+      for (let i = 0; i < remainder; i++) {
+        colLengths[i] = baseColLength + 1;
       }
       
-      // Fill grid from ciphertext
+      // Fill grid column by column in alphabetical order
       let textPos = 0;
-      for (let sortedPos = 0; sortedPos < numCols; sortedPos++) {
-        // Find which original column has this sorted position
+      for (let alphabeticalOrder = 0; alphabeticalOrder < numCols; alphabeticalOrder++) {
+        // Find which original column position has this alphabetical order
         let originalCol = -1;
         for (let col = 0; col < numCols; col++) {
-          if (this._columnOrder[col] === sortedPos) {
+          if (this._columnOrder[col] === alphabeticalOrder) {
             originalCol = col;
             break;
           }
         }
         
-        // Fill this column
-        for (let row = 0; row < colLengths[sortedPos]; row++) {
+        // Fill this column with the appropriate number of characters
+        for (let row = 0; row < colLengths[alphabeticalOrder]; row++) {
           if (textPos < cleanText.length) {
             grid[row][originalCol] = cleanText.charAt(textPos++);
           }
         }
       }
       
-      // Read grid row by row
+      // Read grid row by row to get the original text
       let result = '';
       for (let row = 0; row < numRows; row++) {
         for (let col = 0; col < numCols; col++) {
@@ -280,6 +272,9 @@
           }
         }
       }
+      
+      // Remove padding (trailing X characters that were likely added during encryption)
+      result = result.replace(/X+$/, '');
       
       return result;
     }
@@ -316,7 +311,15 @@
     }
   }
   
+  // Create algorithm instance
+  const algorithm = new ColumnarCipher();
+  
   // Register the algorithm
-  RegisterAlgorithm(new ColumnarCipher());
+  RegisterAlgorithm(algorithm);
+  
+  // Export for Node.js compatibility
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = algorithm;
+  }
   
 })(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);

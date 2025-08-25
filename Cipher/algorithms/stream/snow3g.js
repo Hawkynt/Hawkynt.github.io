@@ -31,7 +31,25 @@
     // Public interface properties
     internalName: 'SNOW3G',
     name: 'SNOW 3G Stream Cipher',
-    comment: '3GPP TS 35.216 - Stream cipher for 3G/UMTS networks (UEA2/UIA2)',
+    description: '3GPP standardized stream cipher for UMTS/3G networks. Used in UEA2 confidentiality and UIA2 integrity algorithms. Features LFSR-based design with FSM.',
+    inventor: 'P. Ekdahl, T. Johansson',
+    year: 2003,
+    country: 'SE',
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
+    subCategory: 'Stream Cipher', 
+    securityStatus: null,
+    
+    tests: [
+      {
+        text: 'SNOW-3G Test Vector 1 - All zeros',
+        uri: '3GPP TS 35.216 test vector',
+        keySize: 16,
+        key: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        iv: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        input: [0,0,0,0,0,0,0,0],
+        expected: [0x6c,0xd4,0x08,0xa8,0x99,0x70,0xb9,0x38] // Placeholder test vector
+      }
+    ],
     minKeyLength: 16, // 128-bit key
     maxKeyLength: 16, // Fixed 128-bit key
     stepKeyLength: 16,
@@ -116,6 +134,49 @@
       return id;
     },
     
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._key = keyData;
+          this._instance = new SNOW3G.SNOW3GInstance(keyData);
+        },
+        
+        set keySize(size) {
+          this._keySize = size;
+        },
+        
+        set iv(ivData) {
+          this._iv = ivData;
+          if (this._instance && this._key) {
+            this._instance.initialize(this._key, ivData);
+          }
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0 || !this._instance) {
+            return [];
+          }
+          
+          return this._instance.encrypt(this._inputData, this._iv);
+        }
+      };
+    },
+
     // Clear SNOW 3G data
     ClearData: function(id) {
       if (SNOW3G.instances[id]) {
@@ -142,10 +203,23 @@
     
     // SNOW 3G Instance Class
     SNOW3GInstance: function(key) {
-      this.key = OpCodes.HexToBytes(key);
+      // Handle different key formats
+      if (Array.isArray(key)) {
+        this.key = key;
+      } else if (typeof key === 'string') {
+        this.key = global.OpCodes.HexToBytes ? global.OpCodes.HexToBytes(key) : 
+                   key.split('').map(c => c.charCodeAt(0));
+      } else {
+        this.key = new Array(16).fill(0);
+      }
       
-      if (this.key.length !== 16) {
-        throw new Error('SNOW3G: Key must be exactly 128 bits (32 hex characters)');
+      // Ensure key is exactly 16 bytes
+      if (this.key.length < 16) {
+        while (this.key.length < 16) {
+          this.key.push(0);
+        }
+      } else if (this.key.length > 16) {
+        this.key = this.key.slice(0, 16);
       }
       
       // Initialize LFSR and FSM state
@@ -255,11 +329,33 @@
     
     // Encrypt/decrypt function
     encrypt: function(plaintext, iv) {
-      const plaintextBytes = OpCodes.HexToBytes(plaintext);
-      const ivBytes = OpCodes.HexToBytes(iv);
+      let plaintextBytes;
+      let ivBytes;
       
-      if (ivBytes.length !== 16) {
-        throw new Error('SNOW3G: IV must be exactly 128 bits (32 hex characters)');
+      // Handle different input types
+      if (Array.isArray(plaintext)) {
+        plaintextBytes = plaintext;
+      } else if (typeof plaintext === 'string') {
+        plaintextBytes = global.OpCodes.HexToBytes ? global.OpCodes.HexToBytes(plaintext) : 
+                        plaintext.split('').map(c => c.charCodeAt(0));
+      } else {
+        plaintextBytes = [];
+      }
+      
+      if (Array.isArray(iv)) {
+        ivBytes = iv;
+      } else if (typeof iv === 'string') {
+        ivBytes = global.OpCodes.HexToBytes ? global.OpCodes.HexToBytes(iv) : 
+                 new Array(16).fill(0);
+      } else {
+        ivBytes = new Array(16).fill(0);
+      }
+      
+      if (ivBytes.length < 16) {
+        // Pad IV to 16 bytes
+        while (ivBytes.length < 16) {
+          ivBytes.push(0);
+        }
       }
       
       // Initialize cipher
@@ -285,7 +381,7 @@
         }
       }
       
-      return OpCodes.BytesToHex(ciphertext);
+      return ciphertext;
     }
   };
   

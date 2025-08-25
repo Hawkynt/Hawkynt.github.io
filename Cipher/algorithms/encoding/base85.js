@@ -125,8 +125,7 @@ class Base85Instance extends IAlgorithmInstance {
       this.decodeTable[alphabetStr[i]] = i;
     }
     
-    // Add special character for zero compression (Adobe Ascii85 style)
-    this.decodeTable['z'] = -1; // Special marker for four zero bytes
+    // Note: 'z' is handled specially for zero compression, not in regular decode table
   }
 
   Feed(data) {
@@ -219,7 +218,7 @@ class Base85Instance extends IAlgorithmInstance {
       // Convert base85 characters to number
       for (let j = 0; j < groupSize; j++) {
         const c = input[i + j];
-        if (!(c in this.decodeTable) || this.decodeTable[c] === -1) {
+        if (!(c in this.decodeTable)) {
           throw new Error(`Base85Instance.decode: Invalid character '${c}'`);
         }
         num = num * this.base + this.decodeTable[c];
@@ -264,10 +263,13 @@ class Base85Instance extends IAlgorithmInstance {
   }
 }
 
+// Create algorithm instance
+const algorithm = new Base85Algorithm();
+
 // Register the algorithm
-RegisterAlgorithm(new Base85Algorithm());
+RegisterAlgorithm(algorithm);
 
 // Export for Node.js
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { Base85Algorithm, Base85Instance };
+  module.exports = algorithm;
 }

@@ -257,5 +257,13 @@ class CadaenusCipherInstance extends IAlgorithmInstance {
   }
 }
 
+// Create algorithm instance
+const algorithm = new CadaenusCipher();
+
 // Register the algorithm immediately
-RegisterAlgorithm(new CadaenusCipher());
+RegisterAlgorithm(algorithm);
+
+// Export for Node.js compatibility
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = algorithm;
+}

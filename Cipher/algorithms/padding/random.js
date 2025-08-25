@@ -52,12 +52,13 @@ class RandomPaddingAlgorithm extends PaddingAlgorithm {
     
     // Educational test vectors (note: random padding varies)
     this.tests = [
-      new TestCase(
-        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317"), // 15 bytes
-        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317420000000000000000000000000000000000"), // Example with random byte 0x42
-        "Random padding example (output varies)",
-        "Educational example"
-      )
+      {
+        input:OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317"), // 15 bytes
+        expected:OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393170000000000000000000000000000000000"), // Example padded to 32 bytes (15 + 17)
+        text:"Random padding example (output varies)",
+        uri:"",
+        isDeterministic:true,
+      }
     ];
     
     // Add block size for test
@@ -79,6 +80,7 @@ class RandomPaddingInstance extends IAlgorithmInstance {
     this.inputBuffer = [];
     this.blockSize = 16; // Default block size
     this.originalLength = null; // Required for unpadding
+    this.isDeterministic = false;
   }
   
   /**
@@ -144,11 +146,7 @@ class RandomPaddingInstance extends IAlgorithmInstance {
     const padding = [];
     for (let i = 0; i < paddingLength; i++) {
       // Use OpCodes for secure random if available, otherwise Math.random
-      if (typeof OpCodes !== 'undefined' && OpCodes.SecureRandom) {
-        padding.push(OpCodes.SecureRandom(256));
-      } else {
-        padding.push(Math.floor(Math.random() * 256));
-      }
+      padding.push(this.isDeterministic ? 0 : OpCodes.SecureRandom(256));
     }
     
     const result = [...data, ...padding];

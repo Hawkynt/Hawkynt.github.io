@@ -227,7 +227,7 @@ class BaseKingInstance extends IBlockCipherInstance {
     // Validate key size
     const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
       keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-      (keyBytes.length - ks.minSize) % ks.stepSize === 0
+      (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
     );
     
     if (!isValidSize) {

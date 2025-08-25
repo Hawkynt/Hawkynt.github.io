@@ -19,10 +19,7 @@ const BLAKE2S_OUTBYTES = 32;
 const BLAKE2S_KEYBYTES = 32;
 
 // BLAKE2s initialization vectors - BLAKE2 RFC 7693 Section 2.6
-const BLAKE2S_IV = OpCodes.Hex32ToDWords(
-  '6a09e667' + 'bb67ae85' + '3c6ef372' + 'a54ff53a' +
-  '510e527f' + '9b05688c' + '1f83d9ab' + '5be0cd19'
-);
+const BLAKE2S_IV = OpCodes.Hex32ToDWords('6a09e667bb67ae853c6ef372a54ff53a510e527f9b05688c1f83d9ab5be0cd19');
 
 // BLAKE2s sigma permutation schedule
 const BLAKE2S_SIGMA = [
@@ -132,7 +129,7 @@ class BLAKE2sAlgorithm extends HashFunctionAlgorithm {
     v[12] ^= t0;
     v[13] ^= t1;
     if (f) {
-      v[14] = OpCodes.XorArrays([v[14]], [0xFFFFFFFF])[0];
+      v[14] = ~v[14] >>> 0;
     }
     
     // 10 rounds of mixing
@@ -266,7 +263,7 @@ class BLAKE2sAlgorithm extends HashFunctionAlgorithm {
       const wordIndex = Math.floor(i / 4);
       const byteIndex = i % 4;
       const word = this.h[wordIndex];
-      output[i] = (word >>> (byteIndex * 8)) & 0xFF;
+      output[i] = OpCodes.GetByte(word, byteIndex);
     }
     
     return output;
@@ -346,7 +343,7 @@ class BLAKE2sAlgorithmInstance extends IHashFunctionInstance {
    * @param {Array} data - Input data as byte array
    */
   Feed(data) {
-    this.Init();
+    if (!this._hasher) this.Init();
     this.Update(data);
   }
 
@@ -355,7 +352,17 @@ class BLAKE2sAlgorithmInstance extends IHashFunctionInstance {
    * @returns {Array} Hash digest as byte array
    */
   Result() {
-    return this.Final();
+    if (!this._hasher) this.Init();
+    // Create a copy of the current state to avoid modifying the original
+    const hasherCopy = new Blake2sHasher(null, BLAKE2S_OUTBYTES);
+    hasherCopy.h = new Uint32Array(this._hasher.h);
+    hasherCopy.buffer = new Uint8Array(this._hasher.buffer);
+    hasherCopy.bufferLength = this._hasher.bufferLength;
+    hasherCopy.t0 = this._hasher.t0;
+    hasherCopy.t1 = this._hasher.t1;
+    
+    const result = hasherCopy.finalize();
+    return Array.from(result);
   }
 }
 

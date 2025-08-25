@@ -14,8 +14,8 @@ const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, Country
         HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem } = AlgorithmFramework;
 
 // FNV-1a 32-bit constants
-const FNV_32_PRIME = 0x01000193;
-const FNV_32_OFFSET_BASIS = 0x811c9dc5;
+const FNV_32_PRIME = 16777619;      // 0x01000193
+const FNV_32_OFFSET_BASIS = 2166136261; // 0x811c9dc5
 
 class FNVAlgorithm extends HashFunctionAlgorithm {
   constructor() {
@@ -69,7 +69,7 @@ class FNVAlgorithm extends HashFunctionAlgorithm {
         text: "FNV-1a Test Vector - 'foobar'",
         uri: "http://www.isthe.com/chongo/tech/comp/fnv/",
         input: OpCodes.AnsiToBytes("foobar"),
-        expected: OpCodes.Hex8ToBytes("a9f37ed7")
+        expected: OpCodes.Hex8ToBytes("bf9cf968")
       }
     ];
   }
@@ -149,13 +149,8 @@ class FNVAlgorithmInstance extends IHashFunctionInstance {
       hash = Math.imul(hash, FNV_32_PRIME) >>> 0;
     }
     
-    // Return as 4-byte array (big-endian)
-    return [
-      (hash >>> 24) & 0xFF,
-      (hash >>> 16) & 0xFF,
-      (hash >>> 8) & 0xFF,
-      hash & 0xFF
-    ];
+    // Return as 4-byte array using OpCodes
+    return OpCodes.Unpack32BE(hash);
   }
 
   /**
@@ -186,7 +181,7 @@ class FNVAlgorithmInstance extends IHashFunctionInstance {
    * @param {Array} data - Input data as byte array
    */
   Feed(data) {
-    this.Init();
+    if (!this._buffer) this.Init();
     this.Update(data);
   }
 

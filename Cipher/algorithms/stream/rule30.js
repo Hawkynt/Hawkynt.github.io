@@ -55,12 +55,12 @@
     
     tests: [
       {
-        text: "Basic Rule30 Test",
-        uri: "Educational test case",
+        text: "Rule30 Deterministic Test - Simple Key",
+        uri: "Educational deterministic test case",
         keySize: 8,
-        key: OpCodes.Hex8ToBytes("0102030405060708"),
-        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: [] // No official test vectors, cellular automaton based
+        key: global.OpCodes.Hex8ToBytes("0102030405060708"),
+        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("75ba7afe575d87a4484b50e3cbb6ba7e")
       }
     ],
 
@@ -136,13 +136,18 @@
       }
       
       const instance = Rule30.instances[id];
-      let result = '';
+      const result = [];
       
       for (let n = 0; n < input.length; n++) {
         const keystreamByte = instance.generateByte();
-        const inputByte = input.charCodeAt(n) & 0xFF;
+        let inputByte;
+        if (typeof input === 'string') {
+          inputByte = input.charCodeAt(n) & 0xFF;
+        } else {
+          inputByte = input[n] & 0xFF;
+        }
         const outputByte = inputByte ^ keystreamByte;
-        result += String.fromCharCode(outputByte);
+        result.push(outputByte);
       }
       
       return result;
@@ -204,27 +209,13 @@
 
     // Required interface method for stream ciphers
     encrypt: function(id, plaintext) {
-      if (Array.isArray(plaintext)) {
-        plaintext = String.fromCharCode.apply(null, plaintext);
-      }
       const result = this.encryptBlock(id, plaintext);
-      const bytes = [];
-      for (let i = 0; i < result.length; i++) {
-        bytes.push(result.charCodeAt(i));
-      }
-      return bytes;
+      return Array.isArray(result) ? result : [];
     },
 
     decrypt: function(id, ciphertext) {
-      if (Array.isArray(ciphertext)) {
-        ciphertext = String.fromCharCode.apply(null, ciphertext);
-      }
       const result = this.decryptBlock(id, ciphertext);
-      const bytes = [];
-      for (let i = 0; i < result.length; i++) {
-        bytes.push(result.charCodeAt(i));
-      }
-      return bytes;
+      return Array.isArray(result) ? result : [];
     },
     
     /**

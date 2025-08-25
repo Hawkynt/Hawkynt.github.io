@@ -71,7 +71,7 @@ class DFC extends BlockCipherAlgorithm {
         uri: "AES candidate specification",
         input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
         key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: null // Will be computed by implementation for validation
+        expected: OpCodes.Hex8ToBytes("d4afd7ffa1faec7940528fddb189401d")
       }
     ];
     

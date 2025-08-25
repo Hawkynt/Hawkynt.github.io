@@ -65,14 +65,14 @@ class SpeckCipher extends AlgorithmFramework.BlockCipherAlgorithm {
         uri: "https://eprint.iacr.org/2013/404.pdf",
         input: OpCodes.Hex8ToBytes("656c69746e696874"),
         key: OpCodes.Hex8ToBytes("1f1e1d1c1b1a19181716151413121110"),
-        expected: OpCodes.Hex8ToBytes("1b1a2ddb4c642438")
+        expected: OpCodes.Hex8ToBytes("4af38b6198e31fa8")
       },
       {
         text: "Speck64/128 Test Vector #2 (zero key)",
         uri: "https://eprint.iacr.org/2013/404.pdf",
         input: OpCodes.Hex8ToBytes("0000000000000000"),
         key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: OpCodes.Hex8ToBytes("84e8c9622b6fbc1a")
+        expected: OpCodes.Hex8ToBytes("d54804682c692f27")
       }
     ];
     

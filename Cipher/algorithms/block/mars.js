@@ -161,17 +161,17 @@ if (IBlockCipherInstance) {
     return output;
   }
 
-  // 32-bit arithmetic helper functions
+  // 32-bit arithmetic helper functions (using OpCodes)
   _add32(a, b) {
-    return ((a + b) >>> 0);
+    return OpCodes.Add32(a, b);
   }
 
   _sub32(a, b) {
-    return ((a - b) >>> 0);
+    return OpCodes.Sub32(a, b);
   }
 
   _mul32(a, b) {
-    return (((a & 0xFFFF) * (b & 0xFFFF)) + (((a >>> 16) * (b & 0xFFFF)) << 16) + (((a & 0xFFFF) * (b >>> 16)) << 16)) >>> 0;
+    return OpCodes.Mul32(a, b);
   }
 
   _initializeSBoxes() {
@@ -362,9 +362,9 @@ if (IBlockCipherInstance) {
 
   _forwardMixing(a, b, c, d) {
     // Type-3 Feistel network (unkeyed)
-    b = OpCodes.Xor32(b, this.S0[a & 0xFF]);
-    c = OpCodes.Add32(c, this.S1[(a >>> 8) & 0xFF]);
-    d = OpCodes.Xor32(d, this.S0[(a >>> 16) & 0xFF]);
+    b = b ^ this.S0[a & 0xFF];
+    c = (c + this.S1[(a >>> 8) & 0xFF]) >>> 0;
+    d = d ^ this.S0[(a >>> 16) & 0xFF];
     
     a = OpCodes.RotL32(a, 24);
     
@@ -375,18 +375,18 @@ if (IBlockCipherInstance) {
     // Reverse Type-3 Feistel network
     d = OpCodes.RotR32(d, 24);
     
-    a = OpCodes.Xor32(a, this.S0[d & 0xFF]);
+    a = a ^ this.S0[d & 0xFF];
     b = OpCodes.Sub32(b, this.S1[(d >>> 8) & 0xFF]);
-    c = OpCodes.Xor32(c, this.S0[(d >>> 16) & 0xFF]);
+    c = c ^ this.S0[(d >>> 16) & 0xFF];
     
     return [d, a, b, c];
   }
 
   _backwardMixing(a, b, c, d) {
     // Backward mixing transformation
-    b = OpCodes.Xor32(b, this.S0[a & 0xFF]);
+    b = b ^ this.S0[a & 0xFF];
     c = OpCodes.Sub32(c, this.S1[(a >>> 8) & 0xFF]);
-    d = OpCodes.Xor32(d, this.S0[(a >>> 16) & 0xFF]);
+    d = d ^ this.S0[(a >>> 16) & 0xFF];
     
     a = OpCodes.RotR32(a, 24);
     
@@ -397,43 +397,43 @@ if (IBlockCipherInstance) {
     // Reverse backward mixing
     d = OpCodes.RotL32(d, 24);
     
-    a = OpCodes.Xor32(a, this.S0[d & 0xFF]);
-    b = OpCodes.Add32(b, this.S1[(d >>> 8) & 0xFF]);
-    c = OpCodes.Xor32(c, this.S0[(d >>> 16) & 0xFF]);
+    a = a ^ this.S0[d & 0xFF];
+    b = this._add32(b, this.S1[(d >>> 8) & 0xFF]);
+    c = c ^ this.S0[(d >>> 16) & 0xFF];
     
     return [d, a, b, c];
   }
 
   _encryptionCore(a, b, c, d, k0, k1) {
     // MARS cryptographic core with keyed operations
-    let t = OpCodes.Add32(a, k0);
+    let t = this._add32(a, k0);
     t = OpCodes.Mul32(t, a | 3); // Ensure odd multiplier
     t = OpCodes.RotL32(t, t & 31); // Data-dependent rotation
     
-    const u = OpCodes.Add32(t, k1);
+    const u = this._add32(t, k1);
     
-    b = OpCodes.Add32(b, t);
+    b = this._add32(b, t);
     b = OpCodes.RotL32(b, (t >>> 5) & 31);
     
-    c = OpCodes.Add32(c, u);
-    d = OpCodes.Xor32(d, u);
+    c = this._add32(c, u);
+    d = d ^ u;
     
     return [b, c, d, a];
   }
 
   _decryptionCore(a, b, c, d, k0, k1) {
     // Reverse MARS cryptographic core
-    let t = OpCodes.Add32(d, k0);
+    let t = this._add32(d, k0);
     t = OpCodes.Mul32(t, d | 3); // Ensure odd multiplier
     t = OpCodes.RotL32(t, t & 31); // Data-dependent rotation
     
-    const u = OpCodes.Add32(t, k1);
+    const u = this._add32(t, k1);
     
     a = OpCodes.Sub32(a, t);
     a = OpCodes.RotR32(a, (t >>> 5) & 31);
     
     b = OpCodes.Sub32(b, u);
-    c = OpCodes.Xor32(c, u);
+    c = c ^ u;
     
     return [a, b, c, d];
   }
@@ -511,18 +511,18 @@ if (IBlockCipherInstance) {
   
   // Simple mixing functions for fallback
   MARSInstance.prototype._forwardMixing = function(a, b, c, d) {
-    b = OpCodes.Xor32(b, this.S0[a & 0xFF]);
-    c = OpCodes.Add32(c, this.S1[(a >>> 8) & 0xFF]);
-    d = OpCodes.Xor32(d, this.S0[(a >>> 16) & 0xFF]);
+    b = b ^ this.S0[a & 0xFF];
+    c = (c + this.S1[(a >>> 8) & 0xFF]) >>> 0;
+    d = d ^ this.S0[(a >>> 16) & 0xFF];
     a = OpCodes.RotL32(a, 24);
     return [b, c, d, a];
   };
   
   MARSInstance.prototype._reverseBackwardMixing = function(a, b, c, d) {
     d = OpCodes.RotR32(d, 24);
-    a = OpCodes.Xor32(a, this.S0[d & 0xFF]);
+    a = a ^ this.S0[d & 0xFF];
     b = OpCodes.Sub32(b, this.S1[(d >>> 8) & 0xFF]);
-    c = OpCodes.Xor32(c, this.S0[(d >>> 16) & 0xFF]);
+    c = c ^ this.S0[(d >>> 16) & 0xFF];
     return [d, a, b, c];
   };
 }

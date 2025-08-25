@@ -49,7 +49,7 @@
       if (!global.AlgorithmFramework) return;
     }
   }
-  
+  // TODO: this is so not standard AlgorithmFramework
   const MurmurHash3 = {
     // Public interface properties
     internalName: 'MurmurHash3',
@@ -427,7 +427,7 @@
       hash ^= length;
       hash = MurmurHash3.finalMix32(hash);
       
-      return OpCodes.BytesToHex(OpCodes.Unpack32LE(hash));
+      return OpCodes.Unpack32LE(hash).map(b => b.toString(16).padStart(2, '0')).join('');
     },
     
     /**

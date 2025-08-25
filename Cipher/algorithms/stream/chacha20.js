@@ -91,11 +91,11 @@
         expected: global.OpCodes.Hex8ToBytes("10f1e7e4d13b5915500fdd1fa32071c4c7d1f4c733c068030422aa9ac3d46c4ed2826446079faa0914c2d705d98b02a2b5129cd1de164eb9cbd083e8a2503c4e")
       },
       {
-        text: "RFC 7539 ChaCha20 Test Vector 2 - Block 1", 
-        uri: "https://tools.ietf.org/rfc/rfc7539.txt#section-2.3.2",
+        text: "RFC 7539 ChaCha20 Test Vector #4 - Counter 2", 
+        uri: "https://tools.ietf.org/rfc/rfc7539.txt#appendix-A.1",
         keySize: 32,
-        key: global.OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
-        nonce: global.OpCodes.Hex8ToBytes("000000090000004a00000000"),
+        key: global.OpCodes.Hex8ToBytes("00ff000000000000000000000000000000000000000000000000000000000000"),
+        nonce: global.OpCodes.Hex8ToBytes("000000000000000000000000"),
         counter: 2,
         input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
         expected: global.OpCodes.Hex8ToBytes("72d54dfbf12ec44b362692df94137f328fea8da73990265ec1bbbea1ae9af0ca13b25aa26cb4a648cb9b9d1be65b2c0924a66c54d545ec1b7374f4872e99f096")
@@ -156,13 +156,13 @@
         origin: 'IETF RFC 7539, Section 2.3.2',
         link: 'https://tools.ietf.org/rfc/rfc7539.txt',
         standard: 'RFC 7539',
-        key: '\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f',
+        key: global.OpCodes.Hex8ToBytes('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f'),
         keyHex: OpCodes.Hex8ToBytes('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f'),
-        nonce: '\x00\x00\x00\x09\x00\x00\x00\x4a\x00\x00\x00\x00',
+        nonce: global.OpCodes.Hex8ToBytes('000000090000004a00000000'),
         nonceHex: OpCodes.Hex8ToBytes('000000090000004a00000000'),
         counter: 1,
-        plaintext: 'Ladies and Gentlemen of the class of \'99: If I could offer you only one tip for the future, sunscreen would be it.',
-        ciphertext: '\x6e\x2e\x35\x9a\x25\x68\xf9\x80\x41\xba\x07\x28\xdd\x0d\x69\x81\xe9\x7e\x7a\xec\x1d\x43\x60\xc2\x0a\x27\xaf\xcc\xfd\x9f\xae\x0b\xf9\x1b\x65\xc5\x52\x47\x33\xab\x8f\x59\x3d\xab\xcd\x62\xb3\x57\x16\x39\xd6\x24\xe6\x51\x52\xab\x8f\x53\x0c\x35\x9f\x08\x61\xd8\x07\xca\x0d\xbf\x50\x0d\x6a\x61\x56\xa3\x8e\x08\x8a\x22\xb6\x5e\x52\xbc\x51\x4d\x16\xcc\xf8\x06\x81\x8c\xe9\x1a\xb7\x79\x37\x36\x5a\xf9\x0b\xbf\x74\xa3\x5b\xe6\xb4\x0b\x8e\xed\xf2\x78\x5e\x42\x87\x4d',
+        plaintext: global.OpCodes.AsciiToBytes('Ladies and Gentlemen of the class of \'99: If I could offer you only one tip for the future, sunscreen would be it.'),
+        ciphertext: global.OpCodes.Hex8ToBytes('6e2e359a2568f98041ba0728dd0d6981e97e7aec1d4360c20a27afccfd9fae0bf91b65c5524733ab8f593dabcd62b3571639d624e65152ab8f530c359f0861d807ca0dbf500d6a6156a38e088a22b65e52bc514d16ccf806818ce91ab77937365af90bbf74a35be6b40b8eedf2785e42874d'),
         ciphertextHex: OpCodes.Hex8ToBytes('6e2e359a2568f98041ba0728dd0d6981e97e7aec1d4360c20a27afccfd9fae0bf91b65c5524733ab8f593dabcd62b3571639d624e65152ab8f530c359f0861d807ca0dbf500d6a6156a38e088a22b65e52bc514d16ccf806818ce91ab77937365af90bbf74a35be6b40b8eedf2785e42874d'),
         notes: 'Official RFC 7539 test vector demonstrating ChaCha20 encryption with full message',
         category: 'official-standard'
@@ -196,9 +196,9 @@
         origin: 'IETF RFC 7539, Section 2.3.2',
         link: 'https://tools.ietf.org/rfc/rfc7539.txt',
         standard: 'RFC 7539',
-        key: '\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f',
+        key: global.OpCodes.Hex8ToBytes('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f'),
         keyHex: OpCodes.Hex8ToBytes('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f'),
-        nonce: '\x00\x00\x00\x09\x00\x00\x00\x4a\x00\x00\x00\x00',
+        nonce: global.OpCodes.Hex8ToBytes('000000090000004a00000000'),
         nonceHex: OpCodes.Hex8ToBytes('000000090000004a00000000'),
         counter: 1,
         blockOutput: OpCodes.Hex8ToBytes('10f1e7e4d13b5915500fdd1fa32071c4c7d1f4c733c068030422aa9ac3d46c4ed2826446079faa0914c2d705d98b02a2b5129cd1de164eb9cbd083e8a2503c4e'),
@@ -294,10 +294,13 @@
       return {
         _instance: null,
         _inputData: [],
+        _key: null,
+        _nonce: null,
+        _counter: 0,
         
         set key(keyData) {
           this._key = keyData;
-          this._instance = new ChaCha20.ChaCha20Instance(keyData, this._nonce, this._counter);
+          this._createInstanceIfReady();
         },
         
         set keySize(size) {
@@ -306,18 +309,18 @@
         },
         
         set nonce(nonceData) {
-          if (this._instance) {
-            this._instance.reset(nonceData, 0);
-          } else {
-            this._nonce = nonceData;
-          }
+          this._nonce = nonceData;
+          this._createInstanceIfReady();
         },
         
         set counter(counterValue) {
-          if (this._instance) {
-            this._instance.reset(this._instance.nonce || this._nonce, counterValue);
-          } else {
-            this._counter = counterValue;
+          this._counter = counterValue;
+          this._createInstanceIfReady();
+        },
+        
+        _createInstanceIfReady: function() {
+          if (this._key) {
+            this._instance = new ChaCha20.ChaCha20Instance(this._key, this._nonce, this._counter);
           }
         },
         
@@ -337,16 +340,17 @@
             return [];
           }
           
-          // Always create fresh instance for each test to ensure proper counter/nonce state
-          if (!this._key) {
-            this._key = new Array(32).fill(0);
+          // Ensure we have a properly configured instance
+          if (!this._instance) {
+            if (!this._key) {
+              this._key = new Array(32).fill(0);
+            }
+            this._instance = new ChaCha20.ChaCha20Instance(this._key, this._nonce, this._counter);
           }
-          
-          const freshInstance = new ChaCha20.ChaCha20Instance(this._key, this._nonce, this._counter);
           
           const result = [];
           for (let i = 0; i < this._inputData.length; i++) {
-            const keystreamByte = freshInstance.getNextKeystreamByte();
+            const keystreamByte = this._instance.getNextKeystreamByte();
             result.push(this._inputData[i] ^ keystreamByte);
           }
           return result;

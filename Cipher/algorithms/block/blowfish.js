@@ -483,14 +483,19 @@ class BlowfishInstance extends IBlockCipherInstance {
     
     // 16 rounds in reverse order
     for (let i = 15; i >= 0; i--) {
+      right ^= this._f(left);
+      left ^= this.pBox[i];
+      
       // Swap left and right
       const temp = left;
       left = right;
       right = temp;
-      
-      right ^= this._f(left);
-      left ^= this.pBox[i];
     }
+    
+    // Undo last swap (just like in encryption)
+    const temp = left;
+    left = right;
+    right = temp;
     
     return { left, right };
   }

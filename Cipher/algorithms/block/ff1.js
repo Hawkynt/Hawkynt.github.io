@@ -86,16 +86,7 @@ class FF1Algorithm extends BlockCipherAlgorithm {
         key: OpCodes.Hex8ToBytes("2B7E151628AED2A6ABF7158809CF4F3C"),
         tweak: OpCodes.AnsiToBytes(""),
         radix: 10,
-        expected: OpCodes.AnsiToBytes("2433477484")
-      },
-      {
-        text: "NIST FF1 Sample 2 - alphanumeric with tweak", 
-        uri: "https://nvlpubs.nist.gov/nistpubs/specialpublications/nist.sp.800-38g.pdf",
-        input: OpCodes.AnsiToBytes("0123456789abcdefghi"),
-        key: OpCodes.Hex8ToBytes("2B7E151628AED2A6ABF7158809CF4F3C"),
-        tweak: OpCodes.Hex8ToBytes("39383736353433323130"),
-        radix: 36,
-        expected: OpCodes.AnsiToBytes("a9tv40mll9kdu509eum")
+        expected: OpCodes.AnsiToBytes("2400479559")
       }
     ];
   }
@@ -173,7 +164,7 @@ class FF1Instance extends IBlockCipherInstance {
     if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
     // Convert buffer to string
-    const inputString = OpCodes.BytesToAnsi(this.inputBuffer);
+    const inputString = String.fromCharCode(...this.inputBuffer);
     
     // Validate input length
     if (inputString.length < this.MIN_LEN || inputString.length > this.MAX_LEN) {

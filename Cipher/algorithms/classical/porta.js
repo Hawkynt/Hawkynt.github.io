@@ -197,16 +197,35 @@ class PortaCipherInstance extends IAlgorithmInstance {
     const keyCharCode = upperKeyChar.charCodeAt(0) - 65; // A=0, B=1, etc.
     const tableRow = Math.floor(keyCharCode / 2); // A,B→0, C,D→1, etc.
     
-    // Find position of character in alphabet
-    const charPos = upperChar.charCodeAt(0) - 65; // A=0, B=1, etc.
+    let substitution;
     
-    // Get substitution from tableau
-    const substitution = this.PORTA_TABLEAU[tableRow].charAt(charPos);
+    if (!this.isInverse) {
+      // ENCRYPTION: Find position of character in alphabet, get substitution from tableau
+      const charPos = upperChar.charCodeAt(0) - 65; // A=0, B=1, etc.
+      substitution = this.PORTA_TABLEAU[tableRow].charAt(charPos);
+    } else {
+      // DECRYPTION: Find position of character in tableau row, convert back to alphabet position
+      const charPosInTableau = this.PORTA_TABLEAU[tableRow].indexOf(upperChar);
+      if (charPosInTableau === -1) {
+        // Fallback if character not found (shouldn't happen with valid input)
+        substitution = upperChar;
+      } else {
+        substitution = String.fromCharCode(charPosInTableau + 65);
+      }
+    }
     
     // Preserve original case
     return isUpperCase ? substitution : substitution.toLowerCase();
   }
 }
 
+// Create algorithm instance
+const algorithm = new PortaCipher();
+
 // Register the algorithm immediately
-RegisterAlgorithm(new PortaCipher());
+RegisterAlgorithm(algorithm);
+
+// Export for Node.js compatibility
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = algorithm;
+}

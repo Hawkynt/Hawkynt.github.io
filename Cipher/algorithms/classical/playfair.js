@@ -213,36 +213,81 @@ class PlayfairCipherInstance extends IAlgorithmInstance {
     // Normalize input to uppercase letters only, replace J with I
     let normalizedInput = inputStr.toUpperCase().replace(/[^A-Z]/g, '').replace(/J/g, 'I');
     
-    // Prepare text for digraph processing (handle duplicate letters)
-    let processedText = '';
-    let i = 0;
-    while (i < normalizedInput.length) {
-      let char1 = normalizedInput[i];
-      let char2 = normalizedInput[i + 1];
-      
-      if (char2 === undefined) {
-        // Odd length - pad with X
-        processedText += char1 + 'X';
-        break;
-      } else if (char1 === char2) {
-        // Same characters - insert X between them
-        processedText += char1 + 'X';
-        i++; // Move to next character (the duplicate will be processed in next iteration)
-      } else {
-        // Different characters - process normally
-        processedText += char1 + char2;
-        i += 2; // Move to next pair
+    if (!this.isInverse) {
+      // ENCRYPTION - Prepare text for digraph processing (handle duplicate letters)
+      let processedText = '';
+      let i = 0;
+      while (i < normalizedInput.length) {
+        let char1 = normalizedInput[i];
+        let char2 = normalizedInput[i + 1];
+        
+        if (char2 === undefined) {
+          // Odd length - pad with X
+          processedText += char1 + 'X';
+          break;
+        } else if (char1 === char2) {
+          // Same characters - insert X between them
+          processedText += char1 + 'X';
+          i++; // Move to next character (the duplicate will be processed in next iteration)
+        } else {
+          // Different characters - process normally
+          processedText += char1 + char2;
+          i += 2; // Move to next pair
+        }
       }
-    }
-    
-    // Process each digraph
-    for (let i = 0; i < processedText.length; i += 2) {
-      const char1 = processedText[i];
-      const char2 = processedText[i + 1];
       
-      const result = this.processDigraph(char1, char2, matrix, !this.isInverse);
+      // Process each digraph
+      for (let i = 0; i < processedText.length; i += 2) {
+        const char1 = processedText[i];
+        const char2 = processedText[i + 1];
+        
+        const result = this.processDigraph(char1, char2, matrix, true);
+        
+        for (const char of result) {
+          output.push(char.charCodeAt(0));
+        }
+      }
+    } else {
+      // DECRYPTION - Process digraphs directly, then clean up
+      let decryptedText = '';
       
-      for (const char of result) {
+      // Process each digraph
+      for (let i = 0; i < normalizedInput.length; i += 2) {
+        const char1 = normalizedInput[i];
+        const char2 = normalizedInput[i + 1] || 'X'; // Handle odd length
+        
+        const result = this.processDigraph(char1, char2, matrix, false);
+        decryptedText += result;
+      }
+      
+      // Clean up decrypted text - remove inserted X's intelligently
+      let cleanedText = '';
+      let i = 0;
+      while (i < decryptedText.length) {
+        const char = decryptedText[i];
+        const nextChar = decryptedText[i + 1];
+        const prevChar = i > 0 ? decryptedText[i - 1] : '';
+        
+        if (char === 'X') {
+          // Check if this X was likely inserted during encryption
+          // 1. If X is at odd position and next char equals previous char
+          // 2. If X is at the end and was padding
+          if (i === decryptedText.length - 1) {
+            // X at end - likely padding, skip it
+            break;
+          } else if (i > 0 && nextChar && prevChar === nextChar) {
+            // X between duplicate letters - likely inserted, skip it
+            i++;
+            continue;
+          }
+        }
+        
+        cleanedText += char;
+        i++;
+      }
+      
+      // Convert cleaned text to byte array
+      for (const char of cleanedText) {
         output.push(char.charCodeAt(0));
       }
     }
@@ -254,5 +299,13 @@ class PlayfairCipherInstance extends IAlgorithmInstance {
   }
 }
 
+// Create algorithm instance
+const algorithm = new PlayfairCipher();
+
 // Register the algorithm immediately
-RegisterAlgorithm(new PlayfairCipher());
+RegisterAlgorithm(algorithm);
+
+// Export for Node.js compatibility
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = algorithm;
+}

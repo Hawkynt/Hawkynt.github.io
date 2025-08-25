@@ -54,12 +54,10 @@ class NewDESAlgorithm extends BlockCipherAlgorithm {
     this.ROTOR_SIZE = 256;         // S-box size
     this.ROUNDS = 8;               // Number of main rounds
 
-    // Algorithm-specific metadata
-    this.SupportedKeySizes = [
+    // Block and key specifications
+    this.blockSize = 8; // 64-bit blocks
+    this.keySizes = [
       new KeySize(15, 15, 0) // Fixed 120-bit (15-byte) key
-    ];
-    this.SupportedBlockSizes = [
-      new KeySize(8, 8, 0) // Fixed 64-bit (8-byte) blocks
     ];
 
     // Documentation and references
@@ -74,35 +72,28 @@ class NewDESAlgorithm extends BlockCipherAlgorithm {
     ];
 
     // Test vectors
-    this.tests = [
+    this.testCases = [
       new TestCase(
-        OpCodes.Hex8ToBytes("0000000000000000"), // input
-        OpCodes.Hex8ToBytes("8ca64de9c1b123a7"), // expected (example output)
         "NewDES test vector - all zeros plaintext",
-        "http://www.schneier.com/code/newdes.zip"
+        OpCodes.Hex8ToBytes("0000000000000000"),
+        OpCodes.Hex8ToBytes("0123456789abcdef0123456789abcd").slice(0, 15),
+        OpCodes.Hex8ToBytes("8ca64de9c1b123a7"),
+        [new LinkItem("Schneier NewDES code", "http://www.schneier.com/code/newdes.zip")]
       )
     ];
-    // Additional property for key in test vector (15 bytes for NewDES)
-    this.tests[0].key = OpCodes.Hex8ToBytes("0123456789abcdef0123456789abcd").slice(0, 15);
   }
 
-  // Required: Create instance for this algorithm
-  CreateInstance(isInverse = false) {
-    return new NewDESInstance(this, isInverse);
+  CreateInstance(key) {
+    return new NewDESInstance(key);
   }
 }
 
 // Instance class - handles the actual encryption/decryption
 class NewDESInstance extends IBlockCipherInstance {
-  constructor(algorithm, isInverse = false) {
-    super(algorithm);
-    this.isInverse = isInverse;
-    this.key = null;
+  constructor(key) {
+    super();
     this.encryptionKey = null;
     this.decryptionKey = null;
-    this.inputBuffer = [];
-    this.BlockSize = 8; // 64-bit blocks
-    this.KeySize = 0;   // will be set when key is assigned
     
     // NewDES S-box (rotor) - fixed substitution table
     this.rotor = [
@@ -123,71 +114,37 @@ class NewDESInstance extends IBlockCipherInstance {
      133, 174,  75,  18,  93, 209, 100, 120,  76, 213,  16,  83,   4, 107, 140,  52,
       58,  55,   3, 244,  97, 197, 238, 227, 118,  49,  79, 230, 223, 165, 153,  59
     ];
+    
+    this._setupKey(key);
   }
 
-  // Property setter for key - validates and sets up key schedule
-  set key(keyBytes) {
+  _setupKey(keyBytes) {
     if (!keyBytes) {
-      this._key = null;
-      this.encryptionKey = null;
-      this.decryptionKey = null;
-      this.KeySize = 0;
-      return;
+      throw new Error("Key is required");
     }
 
     // Validate key size
     if (keyBytes.length !== 15) {
       throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 15 bytes)`);
     }
-
-    this._key = [...keyBytes]; // Copy the key
-    this.KeySize = keyBytes.length;
     
     // Set up encryption and decryption keys
     this.encryptionKey = this._setupEncryptionKey(keyBytes);
     this.decryptionKey = this._setupDecryptionKey(keyBytes);
   }
 
-  get key() {
-    return this._key ? [...this._key] : null; // Return copy
+  EncryptBlock(blockIndex, data) {
+    if (data.length !== 8) {
+      throw new Error('NewDES requires exactly 8 bytes per block');
+    }
+    return this._encryptBlock(data);
   }
 
-  // Feed data to the cipher (accumulates until we have complete blocks)
-  Feed(data) {
-    if (!data || data.length === 0) return;
-    if (!this.key) throw new Error("Key not set");
-
-    // Add data to input buffer
-    this.inputBuffer.push(...data);
-  }
-
-  // Get the result of the transformation
-  Result() {
-    if (!this.key) throw new Error("Key not set");
-    if (this.inputBuffer.length === 0) throw new Error("No data fed");
-
-    // Process complete blocks
-    const output = [];
-    const blockSize = this.BlockSize;
-    
-    // Validate input length for block cipher
-    if (this.inputBuffer.length % blockSize !== 0) {
-      throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+  DecryptBlock(blockIndex, data) {
+    if (data.length !== 8) {
+      throw new Error('NewDES requires exactly 8 bytes per block');
     }
-
-    // Process each block
-    for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
-      const block = this.inputBuffer.slice(i, i + blockSize);
-      const processedBlock = this.isInverse 
-        ? this._decryptBlock(block) 
-        : this._encryptBlock(block);
-      output.push(...processedBlock);
-    }
-
-    // Clear input buffer for next operation
-    this.inputBuffer = [];
-    
-    return output;
+    return this._decryptBlock(data);
   }
 
   /**

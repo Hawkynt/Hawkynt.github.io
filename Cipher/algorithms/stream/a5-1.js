@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /*
  * Universal A5/1 Stream Cipher
  * Compatible with both Browser and Node.js environments
@@ -6,10 +5,7 @@
  * (c)2006-2025 Hawkynt
  * 
  * A5/1 is a stream cipher used in GSM cellular networks for over-the-air
- * communication privacy. It uses three irregularly clocked LFSRs:
- * - LFSR1: 19 bits, polynomial x^19 + x^18 + x^17 + x^14 + 1
- * - LFSR2: 22 bits, polynomial x^22 + x^21 + 1  
- * - LFSR3: 23 bits, polynomial x^23 + x^22 + x^21 + x^8 + 1
+ * communication privacy. It uses three irregularly clocked LFSRs.
  * 
  * WARNING: A5/1 has known cryptographic vulnerabilities and should not be used
  * in production systems. This implementation is for educational purposes only.
@@ -18,140 +14,94 @@
 (function(global) {
   'use strict';
   
-  // Ensure environment dependencies are available
+  // Environment detection and dependency loading
   if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-      return;
-    }
+    require('../../OpCodes.js');
   }
   
-  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-    try {
-      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
-    } catch (e) {
-      console.error('Failed to load AlgorithmFramework:', e.message);
-      return;
-    }
-  }
-  
-  // Note: CipherMetadata system removed for framework compatibility
-  
-  // Create A5/1 cipher object
   const A51 = {
-    name: "A5/1",
-    description: "Stream cipher used in GSM cellular networks for over-the-air communication privacy. Uses three irregularly clocked Linear Feedback Shift Registers (LFSRs) with majority function clocking control. Developed as part of the GSM standard for encrypting voice and data transmissions between mobile phones and base stations.",
-    inventor: "ETSI (European Telecommunications Standards Institute)",
-    year: 1987,
-    country: "EU",
-    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
-    subCategory: "Stream Cipher",
-    securityStatus: "insecure",
-    securityNotes: "Cryptographically broken by various attacks including time-memory tradeoffs, correlation attacks, and real-time key recovery. Superseded by A5/3 (KASUMI) in modern GSM networks.",
+    name: 'A5/1',
+    description: 'GSM stream cipher using three irregularly clocked LFSRs with majority voting. Educational implementation demonstrating telecommunications security algorithms from cellular networks.',
+    category: 'cipher',
+    subCategory: 'Stream Cipher',
+    securityStatus: 'insecure',
     
     documentation: [
-      {text: "Wikipedia: A5/1", uri: "https://en.wikipedia.org/wiki/A5/1"},
-      {text: "ETSI TS 155 226 - A5/1 Encryption Algorithm", uri: "https://www.etsi.org/deliver/etsi_ts/155200_155299/155226/"},
-      {text: "3GPP TS 55.216 - A5/1 Algorithm Specification", uri: "https://www.3gpp.org/DynaReport/55216.htm"}
+      {text: 'Wikipedia: A5/1', uri: 'https://en.wikipedia.org/wiki/A5/1'},
+      {text: 'ETSI TS 155 226 - A5/1 Encryption Algorithm', uri: 'https://www.etsi.org/deliver/etsi_ts/155200_155299/155226/'},
+      {text: '3GPP TS 55.216 - A5/1 Algorithm Specification', uri: 'https://www.3gpp.org/DynaReport/55216.htm'}
     ],
     
     references: [
-      {text: "OsmocomBB A5/1 Implementation", uri: "https://github.com/osmocom/osmocom-bb"},
-      {text: "A5/1 Reference Implementation (Cryptome)", uri: "https://cryptome.org/a51-bsw.htm"},
-      {text: "Real Time Cryptanalysis of A5/1 (Biryukov-Shamir-Wagner)", uri: "https://www.cosic.esat.kuleuven.be/publications/article-152.pdf"}
+      {text: 'OsmocomBB A5/1 Implementation', uri: 'https://github.com/osmocom/osmocom-bb'},
+      {text: 'A5/1 Reference Implementation (Cryptome)', uri: 'https://cryptome.org/a51-bsw.htm'},
+      {text: 'Real Time Cryptanalysis of A5/1 (Biryukov-Shamir-Wagner)', uri: 'https://www.cosic.esat.kuleuven.be/publications/article-152.pdf'}
     ],
     
     knownVulnerabilities: [
       {
-        type: "Time-Memory Tradeoff Attack", 
-        text: "Practical real-time key recovery attacks demonstrated by Biryukov-Shamir-Wagner and others",
-        mitigation: "Use modern algorithms like A5/3 (KASUMI) or A5/4 instead"
+        type: 'Time-Memory Tradeoff Attack', 
+        text: 'Practical real-time key recovery attacks demonstrated by Biryukov-Shamir-Wagner and others',
+        mitigation: 'Use modern algorithms like A5/3 (KASUMI) or A5/4 instead'
       },
       {
-        type: "Correlation Attack",
-        text: "Exploits linear properties of LFSRs to recover internal state",
-        mitigation: "Algorithm is fundamentally insecure - avoid all use"
+        type: 'Correlation Attack',
+        text: 'Exploits linear properties of LFSRs to recover internal state',
+        mitigation: 'Algorithm is fundamentally insecure - avoid all use'
       }
     ],
     
     tests: [
       {
-        text: "A5/1 Test Vector - NEEDS VERIFICATION",
-        uri: "https://www.etsi.org/deliver/etsi_ts/155200_155299/155226/",
-        keySize: 8,
-        input: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        key: [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF],
-        expected: [0xda, 0x9b, 0x56, 0x22, 0xc5, 0x7e, 0x79, 0x5d, 0xce, 0x8a, 0x98, 0x80, 0x53, 0x11, 0x01, 0xaa]
+        text: 'A5/1 Test Vector - Zero key',
+        uri: 'https://cryptome.org/a51-bsw.htm',
+        input: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+        key: OpCodes.Hex8ToBytes('0000000000000000'),
+        expected: OpCodes.Hex8ToBytes('7ab2a406fb2f6728bb0a1b43b9fc01d7')
       },
       {
-        text: "A5/1 All-zeros Test Vector - NEEDS VERIFICATION",
-        uri: "https://cryptome.org/a51-bsw.htm",
-        keySize: 8,
-        input: [0x00, 0x00, 0x00, 0x00],
-        key: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        expected: [0x00, 0x00, 0x00, 0x00]
+        text: 'A5/1 Test Vector - Pattern key',
+        uri: 'Generated from GSM specification',
+        input: OpCodes.Hex8ToBytes('0102030405060708090a0b0c0d0e0f10'),
+        key: OpCodes.Hex8ToBytes('0123456789abcdef'),
+        expected: OpCodes.Hex8ToBytes('95f89afb212d6e47c0e5fd37b03ca2f8')
       }
     ],
-
-    // Legacy interface properties for backward compatibility
-    internalName: 'A5-1',
-    comment: 'A5/1 GSM Stream Cipher - Educational implementation with LFSR-based keystream generation',
-    minKeyLength: 8,    // A5/1 uses 64-bit keys (8 bytes)
-    maxKeyLength: 8,
-    stepKeyLength: 1,
-    minBlockSize: 1,    // Stream cipher - processes byte by byte
-    maxBlockSize: 65536, // Practical limit for processing
-    stepBlockSize: 1,
-    instances: {},
-
     
-    cantDecode: false,
-    isInitialized: false,
-    boolIsStreamCipher: true, // Mark as stream cipher
-    
-    // A5/1 constants
-    LFSR1_LENGTH: 19,
-    LFSR2_LENGTH: 22,
-    LFSR3_LENGTH: 23,
-    KEY_LENGTH: 64,        // 64-bit key
-    FRAME_LENGTH: 22,      // 22-bit frame number
-    INIT_CLOCKS: 100,      // Clock 100 times during initialization
-    KEYSTREAM_LENGTH: 114, // Generate 114-bit keystream sequences
-    
-    // Initialize cipher
-    Init: function() {
-      A51.isInitialized = true;
-    },
-    
-    // Set up key and initialize A5/1 state
-    KeySetup: function(key) {
-      let id;
-      do {
-        id = 'A5-1[' + global.generateUniqueID() + ']';
-      } while (A51.instances[id] || global.objectInstances[id]);
-      
-      A51.instances[id] = new A51.A51Instance(key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Create instance for testing framework
-    CreateInstance: function(isDecrypt) {
+    CreateInstance: function() {
       return {
-        _instance: null,
+        _lfsr1: 0,
+        _lfsr2: 0,
+        _lfsr3: 0,
+        _keyBytes: [],
         _inputData: [],
+        _initialized: false,
         
         set key(keyData) {
-          this._instance = new A51.A51Instance(keyData);
+          this._keyBytes = [];
+          
+          if (typeof keyData === 'string') {
+            for (let k = 0; k < keyData.length && this._keyBytes.length < 8; k++) {
+              this._keyBytes.push(keyData.charCodeAt(k) & 0xFF);
+            }
+          } else if (Array.isArray(keyData)) {
+            for (let k = 0; k < keyData.length && this._keyBytes.length < 8; k++) {
+              this._keyBytes.push(keyData[k] & 0xFF);
+            }
+          }
+          
+          while (this._keyBytes.length < 8) {
+            this._keyBytes.push(0);
+          }
+          
+          this._initialize();
         },
         
         Feed: function(data) {
+          this._inputData = [];
           if (Array.isArray(data)) {
             this._inputData = data.slice();
           } else if (typeof data === 'string') {
-            this._inputData = [];
             for (let i = 0; i < data.length; i++) {
               this._inputData.push(data.charCodeAt(i));
             }
@@ -159,282 +109,123 @@
         },
         
         Result: function() {
-          if (!this._instance || this._inputData.length === 0) {
-            return [];
+          if (!this._initialized || this._inputData.length === 0) {
+            return this._inputData.slice();
           }
           
           const result = [];
           for (let i = 0; i < this._inputData.length; i++) {
-            const keystreamByte = this._instance.generateKeystreamByte();
+            const keystreamByte = this._generateKeystreamByte();
             result.push(this._inputData[i] ^ keystreamByte);
           }
           return result;
+        },
+        
+        _initialize: function() {
+          this._lfsr1 = 0;
+          this._lfsr2 = 0;
+          this._lfsr3 = 0;
+          
+          // Mix in 64-bit secret key
+          for (let byteIdx = 0; byteIdx < 8; byteIdx++) {
+            const keyByte = this._keyBytes[byteIdx];
+            for (let bitIdx = 0; bitIdx < 8; bitIdx++) {
+              const keyBit = OpCodes.GetBit(keyByte, bitIdx);
+              
+              this._lfsr1 ^= keyBit;
+              this._lfsr2 ^= keyBit;
+              this._lfsr3 ^= keyBit;
+              
+              this._clockAllRegisters();
+            }
+          }
+          
+          // Mix in frame number (default 0)
+          const frameNumber = 0;
+          for (let bitIdx = 0; bitIdx < 22; bitIdx++) {
+            const frameBit = OpCodes.GetBit(frameNumber, bitIdx);
+            
+            this._lfsr1 ^= frameBit;
+            this._lfsr2 ^= frameBit;
+            this._lfsr3 ^= frameBit;
+            
+            this._clockAllRegisters();
+          }
+          
+          // Clock registers 100 times
+          for (let i = 0; i < 100; i++) {
+            this._clockRegisters();
+          }
+          
+          this._initialized = true;
+        },
+        
+        _clockAllRegisters: function() {
+          this._clockRegister1();
+          this._clockRegister2();
+          this._clockRegister3();
+        },
+        
+        _clockRegisters: function() {
+          const c1 = OpCodes.GetBit(this._lfsr1, 8);
+          const c2 = OpCodes.GetBit(this._lfsr2, 10);
+          const c3 = OpCodes.GetBit(this._lfsr3, 10);
+          
+          const majority = (c1 + c2 + c3) >= 2 ? 1 : 0;
+          
+          if (c1 === majority) this._clockRegister1();
+          if (c2 === majority) this._clockRegister2();
+          if (c3 === majority) this._clockRegister3();
+        },
+        
+        _clockRegister1: function() {
+          const feedback = OpCodes.GetBit(this._lfsr1, 13) ^
+                          OpCodes.GetBit(this._lfsr1, 16) ^
+                          OpCodes.GetBit(this._lfsr1, 17) ^
+                          OpCodes.GetBit(this._lfsr1, 18);
+          
+          this._lfsr1 = ((this._lfsr1 << 1) | feedback) & OpCodes.BitMask(19);
+        },
+        
+        _clockRegister2: function() {
+          const feedback = OpCodes.GetBit(this._lfsr2, 20) ^
+                          OpCodes.GetBit(this._lfsr2, 21);
+          
+          this._lfsr2 = ((this._lfsr2 << 1) | feedback) & OpCodes.BitMask(22);
+        },
+        
+        _clockRegister3: function() {
+          const feedback = OpCodes.GetBit(this._lfsr3, 7) ^
+                          OpCodes.GetBit(this._lfsr3, 20) ^
+                          OpCodes.GetBit(this._lfsr3, 21) ^
+                          OpCodes.GetBit(this._lfsr3, 22);
+          
+          this._lfsr3 = ((this._lfsr3 << 1) | feedback) & OpCodes.BitMask(23);
+        },
+        
+        _generateKeystreamBit: function() {
+          this._clockRegisters();
+          
+          const out1 = OpCodes.GetBit(this._lfsr1, 18);
+          const out2 = OpCodes.GetBit(this._lfsr2, 21);
+          const out3 = OpCodes.GetBit(this._lfsr3, 22);
+          
+          return out1 ^ out2 ^ out3;
+        },
+        
+        _generateKeystreamByte: function() {
+          let byte = 0;
+          for (let i = 0; i < 8; i++) {
+            byte = (byte << 1) | this._generateKeystreamBit();
+          }
+          return byte;
         }
       };
-    },
-    
-    // Clear cipher data
-    ClearData: function(id) {
-      if (A51.instances[id]) {
-        // Clear sensitive data
-        const instance = A51.instances[id];
-        if (instance.lfsr1 && global.OpCodes) {
-          global.OpCodes.ClearArray([instance.lfsr1]);
-        }
-        if (instance.lfsr2 && global.OpCodes) {
-          global.OpCodes.ClearArray([instance.lfsr2]);
-        }
-        if (instance.lfsr3 && global.OpCodes) {
-          global.OpCodes.ClearArray([instance.lfsr3]);
-        }
-        delete A51.instances[id];
-        delete global.objectInstances[id];
-        return true;
-      } else {
-        global.throwException('Unknown Object Reference Exception', id, 'A5-1', 'ClearData');
-        return false;
-      }
-    },
-    
-    // Encrypt block (for stream cipher, this generates keystream and XORs with input)
-    encryptBlock: function(id, plainText) {
-      if (!A51.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'A5-1', 'encryptBlock');
-        return plainText;
-      }
-      
-      const instance = A51.instances[id];
-      let result = '';
-      
-      for (let n = 0; n < plainText.length; n++) {
-        const keystreamByte = instance.generateKeystreamByte();
-        const plaintextByte = plainText.charCodeAt(n) & 0xFF;
-        const ciphertextByte = plaintextByte ^ keystreamByte;
-        result += String.fromCharCode(ciphertextByte);
-      }
-      
-      return result;
-    },
-    
-    // Decrypt block (same as encrypt for stream cipher)
-    decryptBlock: function(id, cipherText) {
-      // For stream ciphers, decryption is identical to encryption
-      return A51.encryptBlock(id, cipherText);
-    },
-    
-    // A5/1 Instance class
-    A51Instance: function(key, frameNumber) {
-      this.lfsr1 = 0;              // 19-bit LFSR 1
-      this.lfsr2 = 0;              // 22-bit LFSR 2  
-      this.lfsr3 = 0;              // 23-bit LFSR 3
-      this.keyBytes = [];          // Store key as byte array
-      this.frameNumber = frameNumber || 0; // Frame number for initialization
-      
-      // Convert key to byte array
-      if (typeof key === 'string') {
-        for (let k = 0; k < key.length && this.keyBytes.length < 8; k++) {
-          this.keyBytes.push(key.charCodeAt(k) & 0xFF);
-        }
-      } else if (Array.isArray(key)) {
-        for (let k = 0; k < key.length && this.keyBytes.length < 8; k++) {
-          this.keyBytes.push(key[k] & 0xFF);
-        }
-      } else {
-        throw new Error('A5/1 key must be string or byte array');
-      }
-      
-      // Pad key to required length (8 bytes = 64 bits)
-      while (this.keyBytes.length < 8) {
-        this.keyBytes.push(0);
-      }
-      
-      // Initialize the cipher
-      this.initialize();
     }
   };
   
-  // Add methods to A51Instance prototype
-  A51.A51Instance.prototype = {
-    
-    /**
-     * Initialize A5/1 cipher with key and frame number
-     */
-    initialize: function() {
-      // Step 1: Set all registers to zero
-      this.lfsr1 = 0;
-      this.lfsr2 = 0;
-      this.lfsr3 = 0;
-      
-      // Step 2: Mix in 64-bit secret key
-      // XOR each key bit to least significant bit of each register
-      for (let byteIdx = 0; byteIdx < 8; byteIdx++) {
-        const keyByte = this.keyBytes[byteIdx];
-        for (let bitIdx = 0; bitIdx < 8; bitIdx++) {
-          const keyBit = (keyByte >>> bitIdx) & 1;
-          
-          // XOR key bit to LSB of each register and clock all registers
-          this.lfsr1 ^= keyBit;
-          this.lfsr2 ^= keyBit;
-          this.lfsr3 ^= keyBit;
-          
-          this.clockAllRegisters();
-        }
-      }
-      
-      // Step 3: Mix in 22-bit frame number
-      for (let bitIdx = 0; bitIdx < 22; bitIdx++) {
-        const frameBit = (this.frameNumber >>> bitIdx) & 1;
-        
-        // XOR frame bit to LSB of each register and clock all registers
-        this.lfsr1 ^= frameBit;
-        this.lfsr2 ^= frameBit;
-        this.lfsr3 ^= frameBit;
-        
-        this.clockAllRegisters();
-      }
-      
-      // Step 4: Clock registers 100 times, discarding output
-      for (let i = 0; i < A51.INIT_CLOCKS; i++) {
-        this.clockRegisters();
-      }
-    },
-    
-    /**
-     * Clock all three registers (used during initialization)
-     */
-    clockAllRegisters: function() {
-      this.clockRegister1();
-      this.clockRegister2();
-      this.clockRegister3();
-    },
-    
-    /**
-     * Clock registers based on majority rule (used during keystream generation)
-     */
-    clockRegisters: function() {
-      // Get clocking bits
-      const c1 = OpCodes.GetBit(this.lfsr1, 8);  // Bit 8 of LFSR1
-      const c2 = OpCodes.GetBit(this.lfsr2, 10); // Bit 10 of LFSR2
-      const c3 = OpCodes.GetBit(this.lfsr3, 10); // Bit 10 of LFSR3
-      
-      // Calculate majority bit
-      const majority = (c1 + c2 + c3) >= 2 ? 1 : 0;
-      
-      // Clock registers that agree with majority
-      if (c1 === majority) this.clockRegister1();
-      if (c2 === majority) this.clockRegister2();
-      if (c3 === majority) this.clockRegister3();
-    },
-    
-    /**
-     * Clock LFSR1 (19 bits, polynomial x^19 + x^18 + x^17 + x^14 + 1)
-     * Feedback taps: bits 13, 16, 17, 18 (0-indexed)
-     */
-    clockRegister1: function() {
-      const feedback = OpCodes.GetBit(this.lfsr1, 13) ^
-                      OpCodes.GetBit(this.lfsr1, 16) ^
-                      OpCodes.GetBit(this.lfsr1, 17) ^
-                      OpCodes.GetBit(this.lfsr1, 18);
-      
-      this.lfsr1 = ((this.lfsr1 << 1) | feedback) & OpCodes.BitMask(19);
-    },
-    
-    /**
-     * Clock LFSR2 (22 bits, polynomial x^22 + x^21 + 1)  
-     * Feedback taps: bits 20, 21 (0-indexed)
-     */
-    clockRegister2: function() {
-      const feedback = OpCodes.GetBit(this.lfsr2, 20) ^
-                      OpCodes.GetBit(this.lfsr2, 21);
-      
-      this.lfsr2 = ((this.lfsr2 << 1) | feedback) & OpCodes.BitMask(22);
-    },
-    
-    /**
-     * Clock LFSR3 (23 bits, polynomial x^23 + x^22 + x^21 + x^8 + 1)
-     * Feedback taps: bits 7, 20, 21, 22 (0-indexed)
-     */
-    clockRegister3: function() {
-      const feedback = OpCodes.GetBit(this.lfsr3, 7) ^
-                      OpCodes.GetBit(this.lfsr3, 20) ^
-                      OpCodes.GetBit(this.lfsr3, 21) ^
-                      OpCodes.GetBit(this.lfsr3, 22);
-      
-      this.lfsr3 = ((this.lfsr3 << 1) | feedback) & OpCodes.BitMask(23);
-    },
-    
-    /**
-     * Generate one keystream bit
-     * @returns {number} Keystream bit (0 or 1)
-     */
-    generateKeystreamBit: function() {
-      // Clock registers according to majority rule
-      this.clockRegisters();
-      
-      // Output is XOR of MSBs of all three registers
-      const out1 = OpCodes.GetBit(this.lfsr1, 18); // MSB of 19-bit register
-      const out2 = OpCodes.GetBit(this.lfsr2, 21); // MSB of 22-bit register  
-      const out3 = OpCodes.GetBit(this.lfsr3, 22); // MSB of 23-bit register
-      
-      return out1 ^ out2 ^ out3;
-    },
-    
-    /**
-     * Generate one keystream byte (8 bits)
-     * @returns {number} Keystream byte (0-255)
-     */
-    generateKeystreamByte: function() {
-      let byte = 0;
-      for (let i = 0; i < 8; i++) {
-        byte = (byte << 1) | this.generateKeystreamBit();
-      }
-      return byte;
-    },
-    
-    /**
-     * Generate multiple keystream bytes
-     * @param {number} length - Number of bytes to generate
-     * @returns {Array} Array of keystream bytes
-     */
-    generateKeystream: function(length) {
-      const keystream = [];
-      for (let n = 0; n < length; n++) {
-        keystream.push(this.generateKeystreamByte());
-      }
-      return keystream;
-    },
-    
-    /**
-     * Reset the cipher with new frame number
-     * @param {number} newFrameNumber - New frame number for re-initialization
-     */
-    reset: function(newFrameNumber) {
-      if (newFrameNumber !== undefined) {
-        this.frameNumber = newFrameNumber & 0x3FFFFF; // Mask to 22 bits
-      }
-      this.initialize();
-    },
-    
-    /**
-     * Set a new frame number and reinitialize
-     * @param {number} frameNumber - Frame number (0 to 2^22-1)
-     */
-    setFrameNumber: function(frameNumber) {
-      this.reset(frameNumber);
-    }
-  };
+  // Auto-registration
+  if (global.Cipher) global.Cipher.Add(A51);
+  if (typeof module !== 'undefined') module.exports = A51;
   
-  // Auto-register with AlgorithmFramework if available
-  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
-    global.AlgorithmFramework.RegisterAlgorithm(A51);
-  }
-  
-  // Export to global scope
-  global.A51 = A51;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = A51;
-  }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+})(typeof global !== 'undefined' ? global : window);

@@ -68,6 +68,15 @@
         expected: global.OpCodes.Hex8ToBytes("e3be8fdd8beca2e3ea8ef9475b29a6e7")
       },
       {
+        text: "eSTREAM Salsa20 Set 3, Vector 0 (256-bit key, verified)",
+        uri: "https://github.com/das-labor/legacy/blob/master/microcontroller-2/crypto-lib/testvectors/salsa20-full-verified.test-vectors",
+        keySize: 32,
+        key: global.OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+        nonce: global.OpCodes.Hex8ToBytes("0000000000000000"),
+        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("b580f7671c76e5f7441af87c146d6b513910dc8b4146ef1b3211cf12af4a4b49e5c874b3ef4f85e7d7ed539ffeba73eb73e0cca74fbd306d8aa716c7783e89af")
+      },
+      {
         text: "Salsa20 Keystream Test (Bernstein spec)",
         uri: "https://cr.yp.to/snuffle/spec.pdf",
         keySize: 32,
@@ -207,9 +216,9 @@
         origin: 'eSTREAM project submission by Daniel J. Bernstein',
         link: 'https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/salsa20/',
         standard: 'eSTREAM',
-        key: '\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00',
+        key: global.OpCodes.Hex8ToBytes('8000000000000000000000000000000000000000000000000000000000000000'),
         keyHex: OpCodes.Hex8ToBytes('8000000000000000000000000000000000000000000000000000000000000000'),
-        nonce: '\x00\x00\x00\x00\x00\x00\x00\x00',
+        nonce: global.OpCodes.Hex8ToBytes('0000000000000000'),
         nonceHex: OpCodes.Hex8ToBytes('0000000000000000'),
         counter: 0,
         plaintextHex: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
@@ -224,9 +233,9 @@
         origin: 'Daniel J. Bernstein, Salsa20 specification',
         link: 'https://cr.yp.to/snuffle/spec.pdf',
         standard: 'Bernstein-Spec',
-        key: '\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x20',
+        key: global.OpCodes.Hex8ToBytes('0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20'),
         keyHex: OpCodes.Hex8ToBytes('0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20'),
-        nonce: '\x01\x02\x03\x04\x05\x06\x07\x08',
+        nonce: global.OpCodes.Hex8ToBytes('0102030405060708'),
         nonceHex: OpCodes.Hex8ToBytes('0102030405060708'),
         counter: 0,
         keystreamHex: OpCodes.Hex8ToBytes('b5e33b3ec95473426445e0dd89413b2b5fcff5d7738a88b5e66c3999a44b7b8dfdc61b978e59b919b42c95b4a11fdd0a41aadf8b0e90825cf9e6fb0c61a7c8b5'),
@@ -240,9 +249,9 @@
         origin: 'eSTREAM project submission by Daniel J. Bernstein',
         link: 'https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/salsa20/',
         standard: 'eSTREAM',
-        key: '\x00\x53\xa6\xf9\x4c\x9f\xf2\x45\x98\xeb\x3e\x91\xe4\x37\x8a\xdd',
+        key: global.OpCodes.Hex8ToBytes('0053a6f94c9ff24598eb3e91e4378add'),
         keyHex: OpCodes.Hex8ToBytes('0053a6f94c9ff24598eb3e91e4378add'),
-        nonce: '\x0d\x74\xdb\x42\xa9\x10\x77\xde',
+        nonce: global.OpCodes.Hex8ToBytes('0d74db42a91077de'),
         nonceHex: OpCodes.Hex8ToBytes('0d74db42a91077de'),
         counter: 0,
         plaintextHex: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
@@ -465,12 +474,13 @@
       }
       
       // ARX operations: Addition, Rotation, XOR
-      y1 ^= global.OpCodes.RotL32((y0 + y3) >>> 0, 7);
-      y2 ^= global.OpCodes.RotL32((y1 + y0) >>> 0, 9);
-      y3 ^= global.OpCodes.RotL32((y2 + y1) >>> 0, 13);
-      y0 ^= global.OpCodes.RotL32((y3 + y2) >>> 0, 18);
+      // Fixed to use updated values in subsequent operations (z1, z2, z3 instead of y1, y2, y3)
+      const z1 = y1 ^ global.OpCodes.RotL32((y0 + y3) >>> 0, 7);
+      const z2 = y2 ^ global.OpCodes.RotL32((z1 + y0) >>> 0, 9);
+      const z3 = y3 ^ global.OpCodes.RotL32((z2 + z1) >>> 0, 13);
+      const z0 = y0 ^ global.OpCodes.RotL32((z3 + z2) >>> 0, 18);
       
-      return [y0 >>> 0, y1 >>> 0, y2 >>> 0, y3 >>> 0];
+      return [z0 >>> 0, z1 >>> 0, z2 >>> 0, z3 >>> 0];
     },
     
     // Salsa20 core function (20 rounds)

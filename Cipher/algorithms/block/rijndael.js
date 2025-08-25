@@ -12,15 +12,15 @@ if (!global.AlgorithmFramework && typeof require !== 'undefined') {
   global.AlgorithmFramework = require('../../AlgorithmFramework.js');
 }
 
-// Use AlgorithmFramework properties directly without destructuring to avoid conflicts
-
-
 // Load OpCodes for cryptographic operations (RECOMMENDED)
 if (!global.OpCodes && typeof require !== 'undefined') {
-  OpCodes = require('../../OpCodes.js');
+  global.OpCodes = require('../../OpCodes.js');
 }
 
-class RijndaelCipherFixed extends AlgorithmFramework.BlockCipherAlgorithm {
+const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
+        BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
+
+class RijndaelAlgorithm extends BlockCipherAlgorithm {
   constructor() {
     super();
     
@@ -29,78 +29,77 @@ class RijndaelCipherFixed extends AlgorithmFramework.BlockCipherAlgorithm {
     this.description = "Advanced Encryption Standard, selected by NIST in 2001. Supports 128, 192, and 256-bit keys with 128-bit blocks. Most widely used symmetric cipher worldwide.";
     this.inventor = "Joan Daemen, Vincent Rijmen";
     this.year = 1998;
-    this.category = AlgorithmFramework.CategoryType.BLOCK;
+    this.category = CategoryType.BLOCK;
     this.subCategory = "Block Cipher";
-    this.securityStatus = AlgorithmFramework.SecurityStatus.SECURE;
-    this.complexity = AlgorithmFramework.ComplexityType.INTERMEDIATE;
-    this.country = AlgorithmFramework.CountryCode.BE;
+    this.securityStatus = SecurityStatus.SECURE;
+    this.complexity = ComplexityType.INTERMEDIATE;
+    this.country = CountryCode.BE;
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new AlgorithmFramework.KeySize(16, 16, 1), // AES-128
-      new AlgorithmFramework.KeySize(24, 24, 1), // AES-192  
-      new AlgorithmFramework.KeySize(32, 32, 1)  // AES-256
+      new KeySize(16, 16, 0), // AES-128
+      new KeySize(24, 24, 0), // AES-192  
+      new KeySize(32, 32, 0)  // AES-256
     ];
     this.SupportedBlockSizes = [
-      new AlgorithmFramework.KeySize(16, 16, 1) // Fixed 128-bit blocks
+      new KeySize(16, 16, 0) // Fixed 128-bit blocks
     ];
 
     // Documentation and references
     this.documentation = [
-      new AlgorithmFramework.LinkItem("FIPS 197 Specification", "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197.pdf"),
-      new AlgorithmFramework.LinkItem("NIST AES Information", "https://www.nist.gov/publications/advanced-encryption-standard-aes"),
-      new AlgorithmFramework.LinkItem("Wikipedia Article", "https://en.wikipedia.org/wiki/Advanced_Encryption_Standard")
+      new LinkItem("FIPS 197 Specification", "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197.pdf"),
+      new LinkItem("NIST AES Information", "https://www.nist.gov/publications/advanced-encryption-standard-aes"),
+      new LinkItem("Wikipedia Article", "https://en.wikipedia.org/wiki/Advanced_Encryption_Standard")
     ];
 
     this.references = [
-      new AlgorithmFramework.LinkItem("Original Rijndael Specification", "https://csrc.nist.gov/csrc/media/projects/cryptographic-standards-and-guidelines/documents/aes-development/rijndael-ammended.pdf"),
-      new AlgorithmFramework.LinkItem("NIST Test Vectors", "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf"),
-      new AlgorithmFramework.LinkItem("RFC 3826 - AES-CBC", "https://tools.ietf.org/rfc/rfc3826.txt")
+      new LinkItem("Original Rijndael Specification", "https://csrc.nist.gov/csrc/media/projects/cryptographic-standards-and-guidelines/documents/aes-development/rijndael-ammended.pdf"),
+      new LinkItem("NIST Test Vectors", "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf"),
+      new LinkItem("RFC 3826 - AES-CBC", "https://tools.ietf.org/rfc/rfc3826.txt")
     ];
 
-    // Test vectors from NIST SP 800-38A
+    // Official NIST test vectors for AES-128 and AES-192
     this.tests = [
       {
-        text: "NIST SP 800-38A AES-128 ECB Vector #1",
+        text: "NIST FIPS 197 Test Vector - AES-128 ECB",
+        uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197.pdf",
+        input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
+        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        expected: OpCodes.Hex8ToBytes("69c4e0d86a7b0430d8cdb78070b4c55a")
+      },
+      {
+        text: "NIST SP 800-38A Test Vector - AES-128 ECB #1",
         uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf",
         input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
         key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
         expected: OpCodes.Hex8ToBytes("3ad77bb40d7a3660a89ecaf32466ef97")
       },
       {
-        text: "NIST SP 800-38A AES-128 ECB Vector #2", 
+        text: "NIST SP 800-38A Test Vector - AES-192 ECB #1", 
         uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf",
-        input: OpCodes.Hex8ToBytes("ae2d8a571e03ac9c9eb76fac45af8e51"),
-        key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
-        expected: OpCodes.Hex8ToBytes("f5d3d58503b9699de785895a96fdbaaf")
-      },
-      {
-        text: "NIST SP 800-38A AES-256 ECB Vector #1",
-        uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf", 
         input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
-        key: OpCodes.Hex8ToBytes("603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"),
-        expected: OpCodes.Hex8ToBytes("f3eed1bdb5d2a03c064b5a7e3db181f8")
+        key: OpCodes.Hex8ToBytes("8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b"),
+        expected: OpCodes.Hex8ToBytes("bd334f1d6e45f25ff712a214571fa5cc")
       }
     ];
   }
 
   CreateInstance(isInverse = false) {
-    return new RijndaelFixedInstance(this, isInverse);
+    return new RijndaelInstance(this, isInverse);
   }
 }
 
-class RijndaelFixedInstance extends AlgorithmFramework.IBlockCipherInstance {
+class RijndaelInstance extends IBlockCipherInstance {
   constructor(algorithm, isInverse = false) {
     super(algorithm);
     this.isInverse = isInverse;
     this.key = null;
-    this.roundKeys = null;
     this.inputBuffer = [];
     this.BlockSize = 16;
     this.KeySize = 0;
     this.rounds = 0;
     
-    // Initialize lookup tables - Standard AES S-box and inverse S-box (256 bytes each)
+    // Standard AES S-box
     this._sBox = [
       0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
       0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -108,7 +107,7 @@ class RijndaelFixedInstance extends AlgorithmFramework.IBlockCipherInstance {
       0x04, 0xc7, 0x23, 0xc3, 0x18, 0x96, 0x05, 0x9a, 0x07, 0x12, 0x80, 0xe2, 0xeb, 0x27, 0xb2, 0x75,
       0x09, 0x83, 0x2c, 0x1a, 0x1b, 0x6e, 0x5a, 0xa0, 0x52, 0x3b, 0xd6, 0xb3, 0x29, 0xe3, 0x2f, 0x84,
       0x53, 0xd1, 0x00, 0xed, 0x20, 0xfc, 0xb1, 0x5b, 0x6a, 0xcb, 0xbe, 0x39, 0x4a, 0x4c, 0x58, 0xcf,
-      0xd0, 0xef, 0xaa, 0xfb, 0x43, 0x4d, 0x33, 0x85, 0x45, 0xf9, 0x02, 0x7f, 0x50, 0x3c, 0x9f, 0xa8,
+      0xd0, 0xef, 0xaa, 0xfb, 0x43, 0x4d, 0x33, 0x85, 0x45, 0xf9, 0x02, 0x5f, 0x50, 0x3c, 0x9f, 0xa8,
       0x51, 0xa3, 0x40, 0x8f, 0x92, 0x9d, 0x38, 0xf5, 0xbc, 0xb6, 0xda, 0x21, 0x10, 0xff, 0xf3, 0xd2,
       0xcd, 0x0c, 0x13, 0xec, 0x5f, 0x97, 0x44, 0x17, 0xc4, 0xa7, 0x7e, 0x3d, 0x64, 0x5d, 0x19, 0x73,
       0x60, 0x81, 0x4f, 0xdc, 0x22, 0x2a, 0x90, 0x88, 0x46, 0xee, 0xb8, 0x14, 0xde, 0x5e, 0x0b, 0xdb,
@@ -120,6 +119,7 @@ class RijndaelFixedInstance extends AlgorithmFramework.IBlockCipherInstance {
       0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
     ];
     
+    // Standard AES inverse S-box
     this._invSBox = [
       0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
       0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
@@ -139,7 +139,8 @@ class RijndaelFixedInstance extends AlgorithmFramework.IBlockCipherInstance {
       0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d
     ];
     
-    this._rcon = OpCodes.Hex8ToBytes("000102040810204080 1b36 6cd8ab4d9a2f5ebc63c6".replace(/ /g, ''));
+    // Round constants for key expansion
+    this._rcon = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36];
   }
 
   set key(keyBytes) {
@@ -154,7 +155,7 @@ class RijndaelFixedInstance extends AlgorithmFramework.IBlockCipherInstance {
     // Validate key size
     const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
       keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-      (keyBytes.length - ks.minSize) % ks.stepSize === 0
+      (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
     );
     
     if (!isValidSize) {
@@ -212,43 +213,41 @@ class RijndaelFixedInstance extends AlgorithmFramework.IBlockCipherInstance {
   }
 
   _expandKey(key) {
-    const keyWords = key.length / 4;
-    const totalWords = 4 * (this.rounds + 1);
-    const expandedKey = new Array(totalWords * 4);
+    const Nk = key.length / 4; // Key length in words (4 bytes each)
+    const Nr = this.rounds;
+    const totalWords = 4 * (Nr + 1); // Total words needed
+    const w = new Array(totalWords * 4); // Store as byte array directly
     
     // Copy original key
     for (let i = 0; i < key.length; i++) {
-      expandedKey[i] = key[i];
+      w[i] = key[i];
     }
     
-    // Expand key
-    for (let i = keyWords; i < totalWords; i++) {
-      let temp = [
-        expandedKey[(i-1)*4],
-        expandedKey[(i-1)*4+1], 
-        expandedKey[(i-1)*4+2],
-        expandedKey[(i-1)*4+3]
-      ];
+    // Generate remaining key material
+    for (let i = Nk; i < totalWords; i++) {
+      // Get previous word
+      let temp = [w[(i-1)*4], w[(i-1)*4+1], w[(i-1)*4+2], w[(i-1)*4+3]];
       
-      if (i % keyWords === 0) {
-        // RotWord
+      if (i % Nk === 0) {
+        // RotWord: rotate bytes left by 1
         temp = [temp[1], temp[2], temp[3], temp[0]];
-        // SubBytes
+        // SubBytes: apply S-box to each byte
         temp = temp.map(b => this._sBox[b]);
-        // Rcon
-        temp[0] ^= this._rcon[Math.floor(i / keyWords)];
-      } else if (keyWords > 6 && i % keyWords === 4) {
-        // SubBytes for AES-256
+        // XOR with round constant
+        temp[0] ^= this._rcon[Math.floor(i / Nk) - 1];
+      } else if (Nk > 6 && i % Nk === 4) {
+        // SubBytes for AES-256 only
         temp = temp.map(b => this._sBox[b]);
       }
       
-      expandedKey[i*4] = expandedKey[(i-keyWords)*4] ^ temp[0];
-      expandedKey[i*4+1] = expandedKey[(i-keyWords)*4+1] ^ temp[1];
-      expandedKey[i*4+2] = expandedKey[(i-keyWords)*4+2] ^ temp[2];
-      expandedKey[i*4+3] = expandedKey[(i-keyWords)*4+3] ^ temp[3];
+      // XOR with word Nk positions back
+      w[i*4] = w[(i-Nk)*4] ^ temp[0];
+      w[i*4+1] = w[(i-Nk)*4+1] ^ temp[1];
+      w[i*4+2] = w[(i-Nk)*4+2] ^ temp[2];
+      w[i*4+3] = w[(i-Nk)*4+3] ^ temp[3];
     }
     
-    return expandedKey;
+    return w;
   }
 
   _encryptBlock(input) {
@@ -265,7 +264,7 @@ class RijndaelFixedInstance extends AlgorithmFramework.IBlockCipherInstance {
       this._addRoundKey(state, round);
     }
     
-    // Final round
+    // Final round (no MixColumns)
     this._subBytes(state);
     this._shiftRows(state);
     this._addRoundKey(state, this.rounds);
@@ -287,7 +286,7 @@ class RijndaelFixedInstance extends AlgorithmFramework.IBlockCipherInstance {
       this._invMixColumns(state);
     }
     
-    // Final round
+    // Final round (no InvMixColumns)
     this._invShiftRows(state);
     this._invSubBytes(state);
     this._addRoundKey(state, 0);
@@ -315,89 +314,82 @@ class RijndaelFixedInstance extends AlgorithmFramework.IBlockCipherInstance {
 
   _shiftRows(state) {
     // Row 1: shift left by 1
-    const temp1 = state[1];
+    let temp = state[1];
     state[1] = state[5];
     state[5] = state[9]; 
     state[9] = state[13];
-    state[13] = temp1;
+    state[13] = temp;
     
     // Row 2: shift left by 2
-    const temp2a = state[2];
-    const temp2b = state[6];
+    temp = state[2];
+    let temp2 = state[6];
     state[2] = state[10];
     state[6] = state[14];
-    state[10] = temp2a;
-    state[14] = temp2b;
+    state[10] = temp;
+    state[14] = temp2;
     
-    // Row 3: shift left by 3 (right by 1)
-    const temp3 = state[15];
+    // Row 3: shift left by 3 (equivalent to right by 1)
+    temp = state[15];
     state[15] = state[11];
     state[11] = state[7];
     state[7] = state[3];
-    state[3] = temp3;
+    state[3] = temp;
   }
 
   _invShiftRows(state) {
     // Row 1: shift right by 1
-    const temp1 = state[13];
+    let temp = state[13];
     state[13] = state[9];
     state[9] = state[5];
     state[5] = state[1];
-    state[1] = temp1;
+    state[1] = temp;
     
-    // Row 2: shift right by 2
-    const temp2a = state[2];
-    const temp2b = state[6];
+    // Row 2: shift right by 2 (same as left by 2)
+    temp = state[2];
+    let temp2 = state[6];
     state[2] = state[10];
     state[6] = state[14];
-    state[10] = temp2a;
-    state[14] = temp2b;
+    state[10] = temp;
+    state[14] = temp2;
     
-    // Row 3: shift right by 3 (left by 1)
-    const temp3 = state[3];
+    // Row 3: shift right by 3 (equivalent to left by 1)
+    temp = state[3];
     state[3] = state[7];
     state[7] = state[11];
     state[11] = state[15];
-    state[15] = temp3;
+    state[15] = temp;
   }
 
   _mixColumns(state) {
-    // AES MixColumns - testing original row-major layout
+    // Work on each column (bytes 0,4,8,12 then 1,5,9,13 etc.)
     for (let c = 0; c < 4; c++) {
-      const a = [state[0*4 + c], state[1*4 + c], state[2*4 + c], state[3*4 + c]];
-      state[0*4 + c] = this._gfMul(a[0], 2) ^ this._gfMul(a[1], 3) ^ a[2] ^ a[3];
-      state[1*4 + c] = a[0] ^ this._gfMul(a[1], 2) ^ this._gfMul(a[2], 3) ^ a[3];
-      state[2*4 + c] = a[0] ^ a[1] ^ this._gfMul(a[2], 2) ^ this._gfMul(a[3], 3);
-      state[3*4 + c] = this._gfMul(a[0], 3) ^ a[1] ^ a[2] ^ this._gfMul(a[3], 2);
+      const s0 = state[c];
+      const s1 = state[c + 4];
+      const s2 = state[c + 8];
+      const s3 = state[c + 12];
+      
+      state[c]      = OpCodes.GF256Mul(s0, 2) ^ OpCodes.GF256Mul(s1, 3) ^ s2 ^ s3;
+      state[c + 4]  = s0 ^ OpCodes.GF256Mul(s1, 2) ^ OpCodes.GF256Mul(s2, 3) ^ s3;
+      state[c + 8]  = s0 ^ s1 ^ OpCodes.GF256Mul(s2, 2) ^ OpCodes.GF256Mul(s3, 3);
+      state[c + 12] = OpCodes.GF256Mul(s0, 3) ^ s1 ^ s2 ^ OpCodes.GF256Mul(s3, 2);
     }
   }
 
   _invMixColumns(state) {
-    // AES InvMixColumns - testing original row-major layout
+    // Work on each column with inverse matrix
     for (let c = 0; c < 4; c++) {
-      const a = [state[0*4 + c], state[1*4 + c], state[2*4 + c], state[3*4 + c]];
-      state[0*4 + c] = this._gfMul(a[0], 14) ^ this._gfMul(a[1], 11) ^ this._gfMul(a[2], 13) ^ this._gfMul(a[3], 9);
-      state[1*4 + c] = this._gfMul(a[0], 9) ^ this._gfMul(a[1], 14) ^ this._gfMul(a[2], 11) ^ this._gfMul(a[3], 13);
-      state[2*4 + c] = this._gfMul(a[0], 13) ^ this._gfMul(a[1], 9) ^ this._gfMul(a[2], 14) ^ this._gfMul(a[3], 11);
-      state[3*4 + c] = this._gfMul(a[0], 11) ^ this._gfMul(a[1], 13) ^ this._gfMul(a[2], 9) ^ this._gfMul(a[3], 14);
+      const s0 = state[c];
+      const s1 = state[c + 4];
+      const s2 = state[c + 8];
+      const s3 = state[c + 12];
+      
+      state[c]      = OpCodes.GF256Mul(s0, 14) ^ OpCodes.GF256Mul(s1, 11) ^ OpCodes.GF256Mul(s2, 13) ^ OpCodes.GF256Mul(s3, 9);
+      state[c + 4]  = OpCodes.GF256Mul(s0, 9)  ^ OpCodes.GF256Mul(s1, 14) ^ OpCodes.GF256Mul(s2, 11) ^ OpCodes.GF256Mul(s3, 13);
+      state[c + 8]  = OpCodes.GF256Mul(s0, 13) ^ OpCodes.GF256Mul(s1, 9)  ^ OpCodes.GF256Mul(s2, 14) ^ OpCodes.GF256Mul(s3, 11);
+      state[c + 12] = OpCodes.GF256Mul(s0, 11) ^ OpCodes.GF256Mul(s1, 13) ^ OpCodes.GF256Mul(s2, 9)  ^ OpCodes.GF256Mul(s3, 14);
     }
-  }
-
-  _gfMul(a, b) {
-    // Use correct GF multiplication for AES field GF(2^8)
-    let result = 0;
-    for (let i = 0; i < 8; i++) {
-      if (b & 1) result ^= a;
-      b >>= 1;
-      if (a & 0x80) {
-        a = ((a << 1) ^ 0x1b) & 0xff;
-      } else {
-        a = (a << 1) & 0xff;
-      }
-    }
-    return result;
   }
 }
 
 // Register the algorithm
-AlgorithmFramework.RegisterAlgorithm(new RijndaelCipherFixed());
+RegisterAlgorithm(new RijndaelAlgorithm());

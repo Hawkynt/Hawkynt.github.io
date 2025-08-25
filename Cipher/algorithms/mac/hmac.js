@@ -78,8 +78,8 @@ class HMACAlgorithm extends MacAlgorithm {
         text: "HMAC-MD5 Empty Input Test",
         uri: "https://tools.ietf.org/rfc/rfc2104.txt",
         input: [],
-        key: OpCodes.Hex8ToBytes("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
-        hashFunction: OpCodes.AnsiToBytes("MD5"),
+        key: OpCodes.Hex8ToBytes('0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b'),
+        hashFunction: OpCodes.AnsiToBytes('MD5'),
         expected: [154, 118, 253, 233, 253, 143, 18, 47, 13, 89, 146, 115, 254, 49, 201, 172]
       },
       // Test Case 2: Single byte with MD5  
@@ -87,8 +87,8 @@ class HMACAlgorithm extends MacAlgorithm {
         text: "HMAC-MD5 Single Byte Test",
         uri: "https://tools.ietf.org/rfc/rfc2104.txt",
         input: [97], // 'a'
-        key: OpCodes.Hex8ToBytes("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
-        hashFunction: OpCodes.AnsiToBytes("MD5"),
+        key: OpCodes.Hex8ToBytes('0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b'),
+        hashFunction: OpCodes.AnsiToBytes('MD5'),
         expected: [37, 136, 28, 205, 96, 139, 123, 189, 55, 167, 121, 230, 39, 223, 148, 92]
       }
     ];
@@ -107,25 +107,25 @@ class HMACInstance extends IMacInstance {
   constructor(algorithm) {
     super(algorithm);
     this._key = null;
-    this._hashFunction = "MD5"; // Default hash function
+    this._hashFunction = OpCodes.BytesToString(OpCodes.AnsiToBytes('MD5')); // Default hash function
     this.inputBuffer = [];
     
     // HMAC constants
     this.IPAD = 0x36;
     this.OPAD = 0x5C;
     
-    // Block sizes for different hash functions  
-    const MD5_KEY = OpCodes.AnsiToBytes("MD5");
-    const SHA512_KEY = OpCodes.AnsiToBytes("SHA-512");
-    this.BLOCK_SIZES = {};
-    this.BLOCK_SIZES[MD5_KEY] = 64;
-    this.BLOCK_SIZES[SHA512_KEY] = 128;
+    // Block sizes for different hash functions (using byte arrays)
+    const MD5_KEY = OpCodes.AnsiToBytes('MD5');
+    const SHA512_KEY = OpCodes.AnsiToBytes('SHA-512');
+    this.BLOCK_SIZES = new Map();
+    this.BLOCK_SIZES.set(JSON.stringify(MD5_KEY), 64);
+    this.BLOCK_SIZES.set(JSON.stringify(SHA512_KEY), 128);
   }
 
   // Property setter for key
   set key(keyBytes) {
     if (!keyBytes || !Array.isArray(keyBytes)) {
-      throw new Error("Invalid key - must be byte array");
+      throw new Error('Invalid key - must be byte array');
     }
     this._key = [...keyBytes]; // Store copy
   }
@@ -137,11 +137,11 @@ class HMACInstance extends IMacInstance {
   // Property setter for hash function
   set hashFunction(hashFunc) {
     if (typeof hashFunc !== 'string') {
-      throw new Error("Invalid hash function - must be string");
+      throw new Error('Invalid hash function - must be string');
     }
     const upperFunc = hashFunc.toUpperCase();
     if (!this.BLOCK_SIZES[upperFunc]) {
-      throw new Error(`Unsupported hash function: ${hashFunc}`);
+      throw new Error('Unsupported hash function: ' + hashFunc);
     }
     this._hashFunction = upperFunc;
   }
@@ -154,7 +154,7 @@ class HMACInstance extends IMacInstance {
   Feed(data) {
     if (!data || data.length === 0) return;
     if (!Array.isArray(data)) {
-      throw new Error("Invalid input data - must be byte array");
+      throw new Error('Invalid input data - must be byte array');
     }
     this.inputBuffer.push(...data);
   }
@@ -162,7 +162,7 @@ class HMACInstance extends IMacInstance {
   // Get the HMAC result
   Result() {
     if (!this._key) {
-      throw new Error("Key not set");
+      throw new Error('Key not set');
     }
     // Note: Empty input is valid for HMAC
     
@@ -174,10 +174,10 @@ class HMACInstance extends IMacInstance {
   // Compute MAC (IMacInstance interface)
   ComputeMac(data) {
     if (!this._key) {
-      throw new Error("Key not set");
+      throw new Error('Key not set');
     }
     if (!Array.isArray(data)) {
-      throw new Error("Invalid input data - must be byte array");
+      throw new Error('Invalid input data - must be byte array');
     }
     return this._computeHMAC(data, this._key, this._hashFunction);
   }
@@ -186,7 +186,7 @@ class HMACInstance extends IMacInstance {
   _computeHMAC(message, key, hashFunction) {
     const blockSize = this.BLOCK_SIZES[hashFunction];
     if (!blockSize) {
-      throw new Error(`Unsupported hash function: ${hashFunction}`);
+      throw new Error('Unsupported hash function: ' + hashFunction);
     }
 
     // Prepare key (hash if too long, pad if too short)
@@ -227,13 +227,13 @@ class HMACInstance extends IMacInstance {
     // Find the hash algorithm in the framework
     const hashAlgorithm = AlgorithmFramework.Find(hashFunction);
     if (!hashAlgorithm) {
-      throw new Error(`Hash function ${hashFunction} not found in framework`);
+      throw new Error('Hash function ' + hashFunction + ' not found in framework');
     }
 
     // Create hash instance and compute hash
     const hashInstance = hashAlgorithm.CreateInstance();
     if (!hashInstance) {
-      throw new Error(`Cannot create instance for hash function ${hashFunction}`);
+      throw new Error('Cannot create instance for hash function ' + hashFunction);
     }
 
     // Feed data and get result

@@ -29,7 +29,33 @@
     internalName: 'zuc',
     name: 'ZUC Stream Cipher (3GPP LTE)',
     description: 'ZUC stream cipher used in 3GPP LTE/4G confidentiality and integrity algorithms (128-EEA3/EIA3). Word-oriented design with 16-stage LFSR over GF(2^31-1).',
+    inventor: 'DACAS (Data Assurance and Communication Security Research Center)',
+    year: 2010,
+    country: 'CN',
     category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
+    subCategory: 'Stream Cipher',
+    securityStatus: null,
+    
+    tests: [
+      {
+        text: 'ZUC Test Vector 1 - All zeros',
+        uri: '3GPP specification test',
+        keySize: 16,
+        key: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        iv: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        input: [0,0,0,0,0,0,0,0],
+        expected: [0x27,0xbe,0xde,0x74,0x01,0x80,0x82,0xda]
+      },
+      {
+        text: 'ZUC Test Vector 2 - All ones', 
+        uri: '3GPP specification test',
+        keySize: 16,
+        key: [0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff],
+        iv: [0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff],
+        input: [0,0,0,0,0,0,0,0],
+        expected: [0x06,0x57,0xcf,0xa0,0x70,0x96,0x39,0x8b]
+      }
+    ],
     // Required Cipher interface properties
     minKeyLength: 16,        // Minimum key length in bytes
     maxKeyLength: 32,        // Maximum key length in bytes
@@ -42,10 +68,13 @@
     // Constants
     MASK31: 0x7FFFFFFF, // 2^31 - 1
     
-    // S-boxes for the nonlinear function
-    S0: OpCodes.Hex8ToBytes("3e725b47cae0003304d1549809b96dcb7b1bf932af9d6aa5b82dfc1d085303904d4e8499e4ced991ddb685488b296eaccdc1f81e734369c6b5bdfd396320d438767db2a7cfed57c5f32cbb142106559be3ef5e314f7f5aa40d8251495fba581c4a16d517a892241f8cffd8ae2e01d3ad3b4bda46ebc9de9a8f87d73a806f2fc8b1b437f70a2213287ccc3c89c7c3965607bf7ef00b2b975235417961a64c10febc2695888ab0a3fbc01894f2e1e5e95dd0dc1166645cec59427512f5749caa230e86abbe2a02e767e644a26cc2939ff1f6fa36d250689e6271153dd640c4e20f8e83776b25053f0c30ea70b7a1e8a9658d271adb81b3a0f4457a19dfee783460"),
-    
-    S1: OpCodes.Hex8ToBytes("55c263713bc847869f3cda5b29aafd778cc5940ca61a1300e3a8167240f9f8424426689681d9453e1076c6a78b3943e13ab5562ac06db3052266bfdc0bfa6248dd20110636c9c1cff62752bb69f5d4877f844cd29c57a4bc4f9adffed68d7aeb2b53d85ca11417fb23d57d3067730809eeb7703f61b2198e4ee54b938f5ddba9adf1ae2ecb0dfcf42d466e1d97e8d1e94d37a5755e839eab829db91ce0cd498901b6bd5824a25f387899159050b895e4d091c7ceed0fb46fa0ccf0024a79c3dea3efea51e66b18ec1b2c80f774e7ff215a6a541e41319235c433070aba7e0e3488b1987cf33d606c7bcad31f3265042864be859b2f598ad7b025acaf1203e2f2"),
+    // Initialize S-boxes dynamically to avoid loading issues
+    _initSBoxes: function() {
+      if (!this.S0) {
+        this.S0 = global.OpCodes.Hex8ToBytes("3e725b47cae0003304d1549809b96dcb7b1bf932af9d6aa5b82dfc1d085303904d4e8499e4ced991ddb685488b296eaccdc1f81e734369c6b5bdfd396320d438767db2a7cfed57c5f32cbb142106559be3ef5e314f7f5aa40d8251495fba581c4a16d517a892241f8cffd8ae2e01d3ad3b4bda46ebc9de9a8f87d73a806f2fc8b1b437f70a2213287ccc3c89c7c3965607bf7ef00b2b975235417961a64c10febc2695888ab0a3fbc01894f2e1e5e95dd0dc1166645cec59427512f5749caa230e86abbe2a02e767e644a26cc2939ff1f6fa36d250689e6271153dd640c4e20f8e83776b25053f0c30ea70b7a1e8a9658d271adb81b3a0f4457a19dfee783460");
+        this.S1 = global.OpCodes.Hex8ToBytes("55c263713bc847869f3cda5b29aafd778cc5940ca61a1300e3a8167240f9f8424426689681d9453e1076c6a78b3943e13ab5562ac06db3052266bfdc0bfa6248dd20110636c9c1cff62752bb69f5d4877f844cd29c57a4bc4f9adffed68d7aeb2b53d85ca11417fb23d57d3067730809eeb7703f61b2198e4ee54b938f5ddba9adf1ae2ecb0dfcf42d466e1d97e8d1e94d37a5755e839eab829db91ce0cd498901b6bd5824a25f387899159050b895e4d091c7ceed0fb46fa0ccf0024a79c3dea3efea51e66b18ec1b2c80f774e7ff215a6a541e41319235c433070aba7e0e3488b1987cf33d606c7bcad31f3265042864be859b2f598ad7b025acaf1203e2f2");
+      }
+    },
     
     // D constants for LFSR operations
     D: [
@@ -157,6 +186,7 @@
      * S-box lookup (32-bit word composed of 4 bytes)
      */
     Sbox: function(x) {
+      this._initSBoxes();
       return (this.S0[(x >>> 24) & 0xFF] << 24) |
              (this.S1[(x >>> 16) & 0xFF] << 16) |
              (this.S0[(x >>> 8) & 0xFF] << 8) |
@@ -275,7 +305,7 @@
       for (let i = 0; i < wordsNeeded; i++) {
         this.BitReorganization();
         const Z = this.NonlinearFunction();
-        this.LFSRWithWorkMode();
+        this.LFSRWithoutInitialization();
         keystream.push(Z);
       }
       
@@ -351,6 +381,70 @@
     
     DecryptBlock: function(id, ciphertext) {
       return this.decryptBlock(id, ciphertext);
+    },
+    
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _key: null,
+        _iv: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._key = keyData;
+        },
+        
+        set keySize(size) {
+          this._keySize = size;
+        },
+        
+        set nonce(nonceData) {
+          this._nonce = nonceData;
+        },
+        
+        set counter(counterValue) {
+          this._counter = counterValue;
+        },
+        
+        set iv(ivData) {
+          this._iv = ivData;
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          if (!this._key || !this._iv) {
+            return [];
+          }
+          
+          // Initialize ZUC with key and IV
+          ZUC.Init(this._key, this._iv);
+          
+          // Generate keystream and XOR with input
+          const keystream = ZUC.GenerateKeystream(Math.ceil(this._inputData.length / 4));
+          const result = [];
+          
+          for (let i = 0; i < this._inputData.length; i++) {
+            const keystreamByte = (keystream[Math.floor(i/4)] >>> ((3 - (i % 4)) * 8)) & 0xFF;
+            result.push(this._inputData[i] ^ keystreamByte);
+          }
+          
+          return result;
+        }
+      };
     }
   };
   

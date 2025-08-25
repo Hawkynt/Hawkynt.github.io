@@ -172,7 +172,7 @@ class FF3Instance extends IBlockCipherInstance {
 
     // For FF3, we expect string data that represents numerals
     if (typeof data === 'string') {
-      this.inputBuffer.push(...OpCodes.AnsiToBytes(data));
+      this.inputBuffer.push(...Array.from(data, char => char.charCodeAt(0)));
     } else {
       this.inputBuffer.push(...data);
     }
@@ -183,7 +183,7 @@ class FF3Instance extends IBlockCipherInstance {
     if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
     // Convert buffer to string
-    const inputString = OpCodes.BytesToAnsi(this.inputBuffer);
+    const inputString = String.fromCharCode(...this.inputBuffer);
     
     // Validate input length
     if (inputString.length < this.MIN_LEN || inputString.length > this.MAX_LEN) {
