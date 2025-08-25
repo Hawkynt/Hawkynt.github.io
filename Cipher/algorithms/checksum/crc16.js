@@ -66,9 +66,21 @@ class CRC16Algorithm extends Algorithm {
         resultReflected: false,
         finalXor: 0x0000,
         tests: [
-          new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("0000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-          new TestCase(OpCodes.AnsiToBytes("A"), OpCodes.Hex8ToBytes("58e5"), "Single byte 'A'", "https://reveng.sourceforge.io/crc-catalogue/"),
-          new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("31c3"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+          new TestCase(OpCodes.AnsiToBytes(''), OpCodes.Hex8ToBytes('0000'), 'Empty string', 'https://reveng.sourceforge.io/crc-catalogue/'),
+          new TestCase(OpCodes.AnsiToBytes('A'), OpCodes.Hex8ToBytes('58E5'), 'Single byte A', 'https://reveng.sourceforge.io/crc-catalogue/'),
+          new TestCase(OpCodes.AnsiToBytes('123456789'), OpCodes.Hex8ToBytes('31C3'), 'String 123456789', 'https://reveng.sourceforge.io/crc-catalogue/')
+        ]
+      },
+      'ARC': {
+        description: '16-bit CRC used in ARC archiver and reflected algorithms (LSB first processing)',
+        polynomial: 0x8005,
+        initialValue: 0x0000,
+        inputReflected: true,
+        resultReflected: false,
+        finalXor: 0x0000,
+        tests: [
+          new TestCase(OpCodes.AnsiToBytes(''), OpCodes.Hex8ToBytes('0000'), 'Empty string', 'https://reveng.sourceforge.io/crc-catalogue/'),
+          new TestCase(OpCodes.AnsiToBytes('123456789'), OpCodes.Hex8ToBytes('BB3D'), 'Standard test string', 'https://reveng.sourceforge.io/crc-catalogue/')
         ]
       },
       'IBM': {
@@ -161,20 +173,13 @@ class CRC16Instance extends IAlgorithmInstance {
   }
 
   _updateCRC(crc, byte) {
-    let inputByte = byte;
-    
-    // Apply input reflection if specified
-    if (this.config.inputReflected) {
-      inputByte = this._reflect8(inputByte);
-    }
-    
     if (this.config.inputReflected) {
       // Reflected algorithm (LSB first)
-      const tblIdx = (crc ^ inputByte) & 0xFF;
+      const tblIdx = (crc ^ byte) & 0xFF;
       return ((crc >> 8) ^ this.crcTable[tblIdx]) & 0xFFFF;
     } else {
-      // Normal algorithm (MSB first)
-      const tblIdx = ((crc >> 8) ^ inputByte) & 0xFF;
+      // Normal algorithm (MSB first)  
+      const tblIdx = ((crc >> 8) ^ byte) & 0xFF;
       return ((crc << 8) ^ this.crcTable[tblIdx]) & 0xFFFF;
     }
   }
@@ -234,6 +239,7 @@ class CRC16Instance extends IAlgorithmInstance {
 
 // Register all CRC16 variants
 RegisterAlgorithm(new CRC16Algorithm('CCITT'));
+RegisterAlgorithm(new CRC16Algorithm('ARC'));
 RegisterAlgorithm(new CRC16Algorithm('IBM'));
 RegisterAlgorithm(new CRC16Algorithm('ANSI'));
 RegisterAlgorithm(new CRC16Algorithm('XMODEM'));

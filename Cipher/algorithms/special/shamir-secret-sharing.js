@@ -19,7 +19,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 }
 
 const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
-        CryptoAlgorithm, IAlgorithmInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
+        CryptoAlgorithm, IAlgorithmInstance, TestCase, LinkItem, KeySize } = global.AlgorithmFramework;
 
 class ShamirSecretSharingAlgorithm extends CryptoAlgorithm {
   constructor() {

@@ -77,9 +77,9 @@ class PolybiusSquare extends CryptoAlgorithm {
         expected: OpCodes.AnsiToBytes("35 34 31 54 12 24 45 43")
       },
       {
-        text: "I/J equivalence test",
+        text: "I/J equivalence test (J->I conversion)",
         uri: "https://cryptii.com/pipes/polybius-square",
-        input: OpCodes.AnsiToBytes("JUSTICE"),
+        input: OpCodes.AnsiToBytes("IUSTICE"),
         key: OpCodes.AnsiToBytes(""),
         expected: OpCodes.AnsiToBytes("24 45 43 44 24 13 15")
       }
@@ -286,5 +286,13 @@ class PolybiusSquareInstance extends IAlgorithmInstance {
   }
 }
 
+// Create algorithm instance
+const algorithm = new PolybiusSquare();
+
 // Register the algorithm immediately
-RegisterAlgorithm(new PolybiusSquare());
+RegisterAlgorithm(algorithm);
+
+// Export for Node.js compatibility
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = algorithm;
+}

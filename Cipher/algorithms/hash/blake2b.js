@@ -20,7 +20,7 @@ const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, Country
   const BLAKE2B_SALTBYTES = 16;      // Salt size in bytes
   const BLAKE2B_PERSONALBYTES = 16;  // Personal string size in bytes
   
-  // BLAKE2b initialization vectors (64-bit words as BigInt values)
+  // BLAKE2b initialization vectors (64-bit words as BigInt values) 
   const IV = [
     BigInt('0x6a09e667f3bcc908'), BigInt('0xbb67ae8584caa73b'),
     BigInt('0x3c6ef372fe94f82b'), BigInt('0xa54ff53a5f1d36f1'),

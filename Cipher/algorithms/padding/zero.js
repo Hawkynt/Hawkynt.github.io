@@ -53,7 +53,7 @@ class ZeroPaddingAlgorithm extends PaddingAlgorithm {
     this.tests = [
       new TestCase(
         OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317"), // 15 bytes
-        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317000000000000000000000000000000000000"), // Padded to 32 bytes
+        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393170000000000000000000000000000000000"), // Padded to 32 bytes (15 + 17 padding bytes)
         "Zero padding with 17 bytes needed",
         "Zero padding specification"
       ),

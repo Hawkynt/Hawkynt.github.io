@@ -61,19 +61,19 @@ class Argon2Algorithm extends KdfAlgorithm {
     // Test vectors from RFC 9106 (simplified for educational purposes)
     this.tests = [
       new TestCase(
-        [112, 97, 115, 115, 119, 111, 114, 100], // "password" in bytes
+        OpCodes.AnsiToBytes('password'),
         [9, 49, 97, 21, 213, 207, 36, 237, 90, 21, 163, 26, 59, 163, 38, 229, 207, 50, 237, 194, 71, 2, 152, 124, 2, 182, 86, 111, 97, 145, 60, 247],
         "Argon2d Test Vector - RFC 9106",
         "https://tools.ietf.org/rfc/rfc9106.txt"
       ),
       new TestCase(
-        [112, 97, 115, 115, 119, 111, 114, 100], // "password" in bytes
+        OpCodes.AnsiToBytes('password'),
         [120, 254, 30, 201, 31, 179, 170, 86, 87, 215, 46, 113, 8, 84, 228, 195, 217, 185, 25, 140, 116, 47, 150, 22, 194, 240, 133, 190, 217, 91, 46, 140],
         "Argon2i Test Vector - RFC 9106", 
         "https://tools.ietf.org/rfc/rfc9106.txt"
       ),
       new TestCase(
-        [112, 97, 115, 115, 119, 111, 114, 100], // "password" in bytes
+        OpCodes.AnsiToBytes('password'),
         [9, 3, 248, 78, 109, 24, 66, 255, 152, 224, 196, 8, 188, 122, 61, 46, 58, 54, 198, 216, 43, 187, 164, 163, 59, 101, 169, 219, 22, 179, 239, 221],
         "Argon2id Test Vector - RFC 9106",
         "https://tools.ietf.org/rfc/rfc9106.txt"
@@ -95,7 +95,7 @@ class Argon2Instance extends IKdfInstance {
     super(algorithm);
     this.password = null;
     this.salt = null;
-    this.variant = "argon2id";
+    this.variant = OpCodes.AnsiToBytes('argon2id');
     this.timeCost = 2;
     this.memoryCost = 256;
     this.parallelism = 1;
@@ -120,13 +120,13 @@ class Argon2Instance extends IKdfInstance {
   // Get the KDF result
   Result() {
     if (!this._password || !this._salt) {
-      throw new Error("Password and salt required for Argon2");
+      throw new Error('Password and salt required for Argon2');
     }
     
     return this._computeArgon2(
       this._password,
       this._salt,
-      this._variant || "argon2id",
+      this._variant || OpCodes.AnsiToBytes('argon2id'),
       this._timeCost || 2,
       this._memoryCost || 256,
       this._parallelism || 1,
@@ -138,10 +138,10 @@ class Argon2Instance extends IKdfInstance {
   _computeArgon2(password, salt, variant, timeCost, memoryCost, parallelism, tagLength) {
     // Convert string inputs to byte arrays if needed
     if (typeof password === 'string') {
-      password = OpCodes.StringToBytes(password);
+      password = OpCodes.AnsiToBytes(password);
     }
     if (typeof salt === 'string') {
-      salt = OpCodes.StringToBytes(salt);
+      salt = OpCodes.AnsiToBytes(salt);
     }
     
     // Educational implementation (simplified for framework compatibility)

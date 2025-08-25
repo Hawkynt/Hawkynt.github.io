@@ -43,7 +43,7 @@
     inventor: 'Thomas Beth, Fred Piper',
     year: 1984,
     country: 'DE',
-    category: 'cipher',
+    category: 'stream',
     subCategory: 'Stream Cipher',
     securityStatus: 'educational',
     securityNotes: 'Clock-controlled generators can be vulnerable to correlation attacks and algebraic attacks. Modern cryptanalysis has shown weaknesses in simple stop-and-go generators.',
@@ -339,6 +339,42 @@
         this.dataLFSR = null;
       }
       this.isInitialized = false;
+    },
+    
+    // Stream cipher interface for testing framework
+    CreateInstance: function(isDecrypt) {
+      const instance = {
+        _key: null,
+        _inputData: [],
+        _cipher: Object.create(BethPiper),
+        
+        set key(keyData) {
+          this._key = keyData;
+          this._cipher.KeySetup(keyData);
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = this._inputData.concat(data);
+          } else if (typeof data === 'string') {
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._key) {
+            this._key = OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F');
+            this._cipher.KeySetup(this._key);
+          }
+          
+          const keystream = this._cipher.generateKeystream(this._inputData.length);
+          return OpCodes.XorArrays(this._inputData, keystream);
+        }
+      };
+      
+      return instance;
     }
   };
   

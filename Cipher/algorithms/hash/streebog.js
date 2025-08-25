@@ -3,7 +3,7 @@
  * (c)2006-2025 Hawkynt
  */
 
-if (!global.AlgorithmFramework && typeof require !== 'undefined')
+if (typeof require !== 'undefined')
   global.AlgorithmFramework = require('../../AlgorithmFramework.js');
 
 if (!global.OpCodes && typeof require !== 'undefined')
@@ -75,7 +75,7 @@ class StreebogAlgorithmInstance extends IHashFunctionInstance {
     this.SBox = OpCodes.Hex8ToBytes(
       "FCEEDD11CF6E3116FBC4FADA23C5044DE977F0DB932E99BA1736F1BB14CD5FC1" +
       "F918655AE25CEF21811C3C428B018E4F058402AEE36A8FA0060BED987FD4D31F" +
-      "EB342C51EAC848ABF22A68A2FD3ACACB5700E56080C7612BF72134794B75D87" +
+      "EB342C51EAC848ABF22A68A2FD3ACACB5700E56080C7612BF72134794B75D870" +
       "15A19629107B9AC7F391786F9D9EB2B1327519DDFF358A7E6D54C680C3BD0D57" +
       "DFF524A93EA843C9D779D6F67C22B903E00FECDE7A94B0BCDCE828504E330A4A" +
       "A797607312E0062441AB8388264A2641AD4546922756552F8CA3A57D69D5953B" +
@@ -354,7 +354,7 @@ class StreebogAlgorithmInstance extends IHashFunctionInstance {
    * @param {Array} data - Input data as byte array
    */
   Feed(data) {
-    this.Init();
+    this.Init(true); // Use 256-bit mode for the test vector
     this.Update(data);
   }
 

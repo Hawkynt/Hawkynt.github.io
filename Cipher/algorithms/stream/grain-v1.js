@@ -76,7 +76,8 @@
         keySize: 10,
         input: global.OpCodes.Hex8ToBytes("0000000000000000"),
         key: global.OpCodes.Hex8ToBytes("00000000000000000000"),
-        expected: global.OpCodes.Hex8ToBytes("6b12c5c6a594a0d5")
+        iv: global.OpCodes.Hex8ToBytes("0000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("7d405a412bfa1f7b")
       }
     ],
     
@@ -272,11 +273,11 @@
         throw new Error('Cipher not initialized');
       }
       
-      const inputBytes = OpCodes.AsciiToBytes(input);
+      const inputBytes = global.OpCodes.AsciiToBytes(input);
       const keystream = this.generateKeystream(inputBytes.length);
-      const outputBytes = OpCodes.XorArrays(inputBytes, keystream);
+      const outputBytes = global.OpCodes.XorArrays(inputBytes, keystream);
       
-      return OpCodes.BytesToString(outputBytes);
+      return global.OpCodes.BytesToString(outputBytes);
     },
     
     /**
@@ -294,14 +295,70 @@
      */
     ClearData: function() {
       if (this.lfsr) {
-        OpCodes.ClearArray(this.lfsr);
+        global.OpCodes.ClearArray(this.lfsr);
         this.lfsr = null;
       }
       if (this.nfsr) {
-        OpCodes.ClearArray(this.nfsr);
+        global.OpCodes.ClearArray(this.nfsr);
         this.nfsr = null;
       }
       this.isInitialized = false;
+    },
+    
+    /**
+     * Create instance for testing framework
+     */
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        _key: null,
+        _iv: null,
+        
+        set key(keyData) {
+          this._key = keyData;
+        },
+        
+        set keySize(size) {
+          this._keySize = size;
+        },
+        
+        set iv(ivData) {
+          this._iv = ivData;
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          if (!this._key || !this._iv) {
+            throw new Error('Grain v1 requires both key and IV');
+          }
+          
+          // Create fresh Grain instance 
+          const grainInstance = Object.create(GrainV1);
+          grainInstance.KeySetup(this._key, this._iv);
+          
+          const keystream = grainInstance.generateKeystream(this._inputData.length);
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            result.push(this._inputData[i] ^ keystream[i]);
+          }
+          return result;
+        }
+      };
     }
   };
   

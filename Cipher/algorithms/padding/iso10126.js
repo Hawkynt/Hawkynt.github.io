@@ -53,15 +53,16 @@ class Iso10126Algorithm extends PaddingAlgorithm {
     this.tests = [
       new TestCase(
         OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317"), // 15 bytes
-        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317420000000000000000000000000000000001"), // Example with random byte 0x42
+        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393170000000000000000000000000000000011"), // Example: 16 zero bytes + 0x11 (17 padding bytes)
         "ISO 10126 padding example (random bytes vary)",
         "ISO/IEC 10126 (Withdrawn)"
       )
     ];
     
-    // Add block size for test
+    // Add block size and test mode for test
     this.tests.forEach(test => {
       test.blockSize = 32; // 32-byte block
+      test.testMode = true; // Enable deterministic padding for testing
     });
   }
   
@@ -76,6 +77,7 @@ class Iso10126Instance extends IAlgorithmInstance {
     this.isInverse = isInverse;
     this.inputBuffer = [];
     this.blockSize = 16; // Default block size
+    this.testMode = false; // Use deterministic padding for testing
   }
   
   /**
@@ -119,11 +121,16 @@ class Iso10126Instance extends IAlgorithmInstance {
     
     // Add random bytes (padding length - 1)
     for (let i = 0; i < paddingLength - 1; i++) {
-      // Use OpCodes for secure random if available, otherwise Math.random
-      if (typeof OpCodes !== 'undefined' && OpCodes.SecureRandom) {
-        padding.push(OpCodes.SecureRandom(256));
+      if (this.testMode) {
+        // Use zeros for deterministic testing
+        padding.push(0);
       } else {
-        padding.push(Math.floor(Math.random() * 256));
+        // Use OpCodes for secure random if available, otherwise Math.random
+        if (typeof OpCodes !== 'undefined' && OpCodes.SecureRandom) {
+          padding.push(OpCodes.SecureRandom(256));
+        } else {
+          padding.push(Math.floor(Math.random() * 256));
+        }
       }
     }
     

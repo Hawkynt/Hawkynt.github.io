@@ -18,6 +18,15 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   global.OpCodes = require('../../OpCodes.js');
 }
 
+// Load SHA-256 for HMAC (REQUIRED for scrypt)
+if (typeof require !== 'undefined') {
+  try {
+    require('../hash/sha256.js');
+  } catch (e) {
+    console.error('Failed to load SHA-256:', e.message);
+  }
+}
+
 const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
         KdfAlgorithm, IKdfInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
@@ -136,7 +145,7 @@ class ScryptInstance extends IKdfInstance {
   // Get the KDF result
   Result() {
     if (!this._password || !this._salt) {
-      throw new Error("Password and salt required for scrypt");
+      throw new Error('Password and salt required for scrypt');
     }
     
     return this._computeScrypt(
@@ -148,67 +157,97 @@ class ScryptInstance extends IKdfInstance {
       this._keyLength || 64
     );
   }
+  
+  // Method for test framework to set scrypt-specific parameters
+  SetTestParameters(testVector) {
+    if (testVector) {
+      if (testVector.N !== undefined) this._N = testVector.N;
+      if (testVector.r !== undefined) this._r = testVector.r;
+      if (testVector.p !== undefined) this._p = testVector.p;
+      if (testVector.keyLength !== undefined) {
+        this._keyLength = testVector.keyLength;
+        this.OutputSize = testVector.keyLength;
+      }
+      if (testVector.input !== undefined) this._password = testVector.input;
+      if (testVector.salt !== undefined) this._salt = testVector.salt;
+    }
+  }
 
-  // Simplified scrypt computation for educational purposes
+  // RFC 7914 compliant scrypt computation
   _computeScrypt(password, salt, N, r, p, keyLength) {
     // Convert string inputs to byte arrays if needed
     if (typeof password === 'string') {
-      password = OpCodes.StringToBytes(password);
+      password = OpCodes.AnsiToBytes(password);
     }
     if (typeof salt === 'string') {
-      salt = OpCodes.StringToBytes(salt);
+      salt = OpCodes.AnsiToBytes(salt);
     }
     
-    // Educational implementation (simplified for framework compatibility)
-    // In production, use the full RFC 7914 algorithm with PBKDF2, Salsa20/8, and ROMix
+    // Step 1: Generate initial derived key using PBKDF2-HMAC-SHA256
+    const B = this._pbkdf2(password, salt, 1, p * 128 * r);
     
-    // Step 1: Generate initial derived key using simplified PBKDF2
-    let B = this._simplePBKDF2(password, salt, 1, p * 128 * r);
-    
-    // Step 2: Apply simplified scryptROMix to each block
-    const blocks = [];
+    // Step 2: Apply scryptROMix to each block in parallel
+    const blocks = new Array(p * 128 * r);
     for (let i = 0; i < p; i++) {
-      const block = B.slice(i * 128 * r, (i + 1) * 128 * r);
-      const mixed = this._simplifiedROMix(block, N, r);
-      blocks.push(...mixed);
-    }
-    
-    // Step 3: Final PBKDF2 to produce output
-    const finalKey = this._simplePBKDF2(password, blocks, 1, keyLength);
-    
-    return finalKey.slice(0, keyLength);
-  }
-
-  // Simplified PBKDF2 for educational purposes
-  _simplePBKDF2(password, salt, iterations, keyLength) {
-    const result = new Array(keyLength);
-    const combined = [...password, ...salt];
-    
-    // Simple key stretching with iterations
-    let state = combined.slice();
-    for (let i = 0; i < iterations; i++) {
-      for (let j = 0; j < state.length; j++) {
-        state[j] = (state[j] + i + j) & 0xFF;
+      const blockStart = i * 128 * r;
+      const block = B.slice(blockStart, blockStart + 128 * r);
+      const mixed = this._scryptROMix(block, N, r);
+      for (let j = 0; j < mixed.length; j++) {
+        blocks[blockStart + j] = mixed[j];
       }
     }
     
-    // Generate output
-    for (let i = 0; i < keyLength; i++) {
-      result[i] = state[i % state.length] ^ (i * 0x5A) & 0xFF;
-    }
-    
-    return result;
+    // Step 3: Final PBKDF2-HMAC-SHA256 to produce output
+    return this._pbkdf2(password, blocks, 1, keyLength);
   }
 
-  // Simplified ROMix function
-  _simplifiedROMix(B, N, r) {
-    let X = B.slice(); // Copy input block
-    const V = []; // Memory array
+  // RFC 2898 compliant PBKDF2 with HMAC-SHA256
+  _pbkdf2(password, salt, iterations, keyLength) {
+    const hLen = 32; // SHA-256 output length
+    const dkLen = keyLength;
+    const l = Math.ceil(dkLen / hLen);
+    const r = dkLen - (l - 1) * hLen;
     
-    // Step 1: Fill memory array V (simplified)
+    let dk = [];
+    
+    for (let i = 1; i <= l; i++) {
+      const T = this._f(password, salt, iterations, i);
+      dk.push(...T);
+    }
+    
+    return dk.slice(0, dkLen);
+  }
+  
+  // PBKDF2 F function
+  _f(password, salt, iterations, i) {
+    // U1 = PRF(Password, Salt || INT_32_BE(i))
+    const iBytes = OpCodes.Unpack32BE(i);
+    const saltPlusI = [...salt, ...iBytes];
+    let U = this._hmacSha256(password, saltPlusI);
+    let T = U.slice();
+    
+    // U2 = PRF(Password, U1), T = U1 XOR U2
+    // ...
+    // Uc = PRF(Password, Uc-1), T = T XOR Uc
+    for (let j = 1; j < iterations; j++) {
+      U = this._hmacSha256(password, U);
+      for (let k = 0; k < T.length; k++) {
+        T[k] ^= U[k];
+      }
+    }
+    
+    return T;
+  }
+
+  // RFC 7914 scryptROMix function
+  _scryptROMix(B, N, r) {
+    let X = B.slice(); // Copy input block
+    const V = new Array(N); // Memory array
+    
+    // Step 1: Fill memory array V
     for (let i = 0; i < N; i++) {
-      V.push(X.slice()); // Store copy of X
-      X = this._simplifiedBlockMix(X, r);
+      V[i] = X.slice(); // Store copy of X
+      X = this._scryptBlockMix(X, r);
     }
     
     // Step 2: Use memory array to mix X
@@ -216,50 +255,172 @@ class ScryptInstance extends IKdfInstance {
       const j = this._integerify(X, r) % N;
       
       // XOR X with V[j]
-      for (let k = 0; k < X.length; k++) {
-        X[k] ^= V[j][k];
-      }
+      X = OpCodes.XorArrays(X, V[j]);
       
-      // Apply simplified BlockMix
-      X = this._simplifiedBlockMix(X, r);
+      // Apply BlockMix
+      X = this._scryptBlockMix(X, r);
     }
     
     return X;
   }
 
-  // Simplified BlockMix function
-  _simplifiedBlockMix(B, r) {
+  // RFC 7914 scryptBlockMix function
+  _scryptBlockMix(B, r) {
     const blockLen = 64;
-    const result = new Array(B.length);
+    const X = B.slice(B.length - blockLen); // X = B[2r-1]
+    const Y = new Array(B.length);
     
-    // Simple mixing (educational implementation)
-    for (let i = 0; i < B.length; i++) {
-      result[i] = (B[i] ^ B[(i + blockLen) % B.length] ^ (i * 0x3C)) & 0xFF;
-    }
-    
-    // Apply simple Salsa20-like mixing
-    this._simplifiedSalsa20(result);
-    
-    return result;
-  }
-
-  // Simplified Salsa20/8-like function
-  _simplifiedSalsa20(X) {
-    // Simple mixing rounds (educational implementation)
-    for (let round = 0; round < this.SALSA20_ROUNDS; round++) {
-      for (let i = 0; i < X.length; i++) {
-        const next = (i + 1) % X.length;
-        const prev = (i + X.length - 1) % X.length;
-        X[i] = OpCodes.RotL32((X[i] + X[next] + X[prev] + round) & 0xFFFFFF, 7) & 0xFF;
+    // Process each block
+    for (let i = 0; i < 2 * r; i++) {
+      const blockStart = i * blockLen;
+      
+      // X = Salsa20/8(X ⊕ B[i])
+      for (let j = 0; j < blockLen; j++) {
+        X[j] ^= B[blockStart + j];
+      }
+      this._salsa20_8(X);
+      
+      // Store in Y - even blocks first, then odd blocks
+      let yOffset;
+      if (i % 2 === 0) {
+        yOffset = (i / 2) * blockLen;
+      } else {
+        yOffset = (r + Math.floor(i / 2)) * blockLen;
+      }
+      
+      for (let j = 0; j < blockLen; j++) {
+        Y[yOffset + j] = X[j];
       }
     }
+    
+    return Y;
   }
 
-  // Integerify function - extract integer from block
+  // Salsa20/8 core function as specified in RFC 7914
+  _salsa20_8(B) {
+    // Convert 64-byte array to 16 32-bit words (little-endian)
+    const x = new Array(16);
+    for (let i = 0; i < 16; i++) {
+      x[i] = OpCodes.Pack32LE(B[i*4], B[i*4+1], B[i*4+2], B[i*4+3]);
+    }
+    
+    // Salsa20/8 core (8 rounds of double-round)
+    for (let round = 0; round < 4; round++) {
+      // Odd round
+      x[ 4] ^= OpCodes.RotL32((x[ 0] + x[12]) >>> 0, 7);
+      x[ 8] ^= OpCodes.RotL32((x[ 4] + x[ 0]) >>> 0, 9);
+      x[12] ^= OpCodes.RotL32((x[ 8] + x[ 4]) >>> 0, 13);
+      x[ 0] ^= OpCodes.RotL32((x[12] + x[ 8]) >>> 0, 18);
+      
+      x[ 9] ^= OpCodes.RotL32((x[ 5] + x[ 1]) >>> 0, 7);
+      x[13] ^= OpCodes.RotL32((x[ 9] + x[ 5]) >>> 0, 9);
+      x[ 1] ^= OpCodes.RotL32((x[13] + x[ 9]) >>> 0, 13);
+      x[ 5] ^= OpCodes.RotL32((x[ 1] + x[13]) >>> 0, 18);
+      
+      x[14] ^= OpCodes.RotL32((x[10] + x[ 6]) >>> 0, 7);
+      x[ 2] ^= OpCodes.RotL32((x[14] + x[10]) >>> 0, 9);
+      x[ 6] ^= OpCodes.RotL32((x[ 2] + x[14]) >>> 0, 13);
+      x[10] ^= OpCodes.RotL32((x[ 6] + x[ 2]) >>> 0, 18);
+      
+      x[ 3] ^= OpCodes.RotL32((x[15] + x[11]) >>> 0, 7);
+      x[ 7] ^= OpCodes.RotL32((x[ 3] + x[15]) >>> 0, 9);
+      x[11] ^= OpCodes.RotL32((x[ 7] + x[ 3]) >>> 0, 13);
+      x[15] ^= OpCodes.RotL32((x[11] + x[ 7]) >>> 0, 18);
+      
+      // Even round
+      x[ 1] ^= OpCodes.RotL32((x[ 0] + x[ 3]) >>> 0, 7);
+      x[ 2] ^= OpCodes.RotL32((x[ 1] + x[ 0]) >>> 0, 9);
+      x[ 3] ^= OpCodes.RotL32((x[ 2] + x[ 1]) >>> 0, 13);
+      x[ 0] ^= OpCodes.RotL32((x[ 3] + x[ 2]) >>> 0, 18);
+      
+      x[ 6] ^= OpCodes.RotL32((x[ 5] + x[ 4]) >>> 0, 7);
+      x[ 7] ^= OpCodes.RotL32((x[ 6] + x[ 5]) >>> 0, 9);
+      x[ 4] ^= OpCodes.RotL32((x[ 7] + x[ 6]) >>> 0, 13);
+      x[ 5] ^= OpCodes.RotL32((x[ 4] + x[ 7]) >>> 0, 18);
+      
+      x[11] ^= OpCodes.RotL32((x[10] + x[ 9]) >>> 0, 7);
+      x[ 8] ^= OpCodes.RotL32((x[11] + x[10]) >>> 0, 9);
+      x[ 9] ^= OpCodes.RotL32((x[ 8] + x[11]) >>> 0, 13);
+      x[10] ^= OpCodes.RotL32((x[ 9] + x[ 8]) >>> 0, 18);
+      
+      x[12] ^= OpCodes.RotL32((x[15] + x[14]) >>> 0, 7);
+      x[13] ^= OpCodes.RotL32((x[12] + x[15]) >>> 0, 9);
+      x[14] ^= OpCodes.RotL32((x[13] + x[12]) >>> 0, 13);
+      x[15] ^= OpCodes.RotL32((x[14] + x[13]) >>> 0, 18);
+    }
+    
+    // Convert back to bytes (little-endian)
+    for (let i = 0; i < 16; i++) {
+      const bytes = OpCodes.Unpack32LE(x[i]);
+      B[i*4] = bytes[0];
+      B[i*4+1] = bytes[1];
+      B[i*4+2] = bytes[2];
+      B[i*4+3] = bytes[3];
+    }
+  }
+
+  // Integerify function - extract integer from block as per RFC 7914
   _integerify(B, r) {
-    if (B.length < 4) return 0;
-    const offset = Math.max(0, B.length - 4);
-    return OpCodes.Pack32LE(B[offset], B[offset + 1], B[offset + 2], B[offset + 3]);
+    // Extract from the first 4 bytes of the last 64-byte sub-block
+    // B has length 128*r bytes, divided into 2*r blocks of 64 bytes each
+    // We want the last (2*r-th) block, which starts at offset (2*r-1)*64
+    const blockSize = 64;
+    const lastBlockOffset = (2 * r - 1) * blockSize;
+    
+    if (lastBlockOffset + 4 > B.length) return 0;
+    
+    // Read as little-endian 32-bit integer (use >>> 0 to force unsigned)
+    return (B[lastBlockOffset] | 
+           (B[lastBlockOffset + 1] << 8) | 
+           (B[lastBlockOffset + 2] << 16) | 
+           (B[lastBlockOffset + 3] << 24)) >>> 0;
+  }
+  
+  // HMAC-SHA256 implementation
+  _hmacSha256(key, message) {
+    const blockSize = 64;
+    const outputSize = 32;
+    
+    // Adjust key length
+    if (key.length > blockSize) {
+      key = this._sha256(key);
+    }
+    if (key.length < blockSize) {
+      const padded = new Array(blockSize).fill(0);
+      for (let i = 0; i < key.length; i++) {
+        padded[i] = key[i];
+      }
+      key = padded;
+    }
+    
+    // Create inner and outer padded keys
+    const ipad = new Array(blockSize);
+    const opad = new Array(blockSize);
+    const ipadByte = 0x36;
+    const opadByte = 0x5C;
+    for (let i = 0; i < blockSize; i++) {
+      ipad[i] = key[i] ^ ipadByte;
+      opad[i] = key[i] ^ opadByte;
+    }
+    
+    // HMAC = H(opad || H(ipad || message))
+    const inner = this._sha256([...ipad, ...message]);
+    return this._sha256([...opad, ...inner]);
+  }
+  
+  // SHA-256 implementation using existing algorithm
+  _sha256(data) {
+    // Use the existing SHA-256 algorithm from the framework
+    const sha256Algorithms = global.AlgorithmFramework.Algorithms.filter(alg => alg.name === 'SHA-256');
+    
+    if (sha256Algorithms.length === 0) {
+      throw new Error('SHA-256 algorithm not available - required for scrypt');
+    }
+    
+    const sha256 = sha256Algorithms[0];
+    const instance = sha256.CreateInstance();
+    instance.Feed(data);
+    return instance.Result();
   }
 }
 

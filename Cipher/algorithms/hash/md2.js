@@ -71,19 +71,19 @@ class MD2Algorithm extends HashFunctionAlgorithm {
         text: "RFC 1319 Test Vector - Empty string",
         uri: "https://tools.ietf.org/html/rfc1319",
         input: [],
-        expected: OpCodes.Hex8ToBytes("8350e5a3e24c153df2275c9f80692773")
+        expected: OpCodes.Hex8ToBytes('8350e5a3e24c153df2275c9f80692773')
       },
       {
         text: "RFC 1319 Test Vector - 'a'", 
         uri: "https://tools.ietf.org/html/rfc1319",
-        input: OpCodes.AnsiToBytes("a"),
-        expected: OpCodes.Hex8ToBytes("32ec01ec4a6dac72c0ab96fb34c0b5d1")
+        input: [0x61], // 'a'
+        expected: OpCodes.Hex8ToBytes('32ec01ec4a6dac72c0ab96fb34c0b5d1')
       },
       {
         text: "RFC 1319 Test Vector - 'abc'", 
         uri: "https://tools.ietf.org/html/rfc1319",
-        input: OpCodes.AnsiToBytes("abc"),
-        expected: OpCodes.Hex8ToBytes("da853b0d3f88d99b30283a69e6ded6bb")
+        input: [0x61, 0x62, 0x63], // 'abc'
+        expected: OpCodes.Hex8ToBytes('da853b0d3f88d99b30283a69e6ded6bb')
       }
     ];
   }
@@ -189,7 +189,7 @@ class MD2AlgorithmInstance extends IHashFunctionInstance {
           t = hash[k] ^ MD2_S[t];
           hash[k] = t;
         }
-        const mod_val = OpCodes.Pack8(...OpCodes.Hex8ToBytes("ff")) + 1;
+        const mod_val = 0xFF + 1;
         t = (t + round) % mod_val;
       }
     }

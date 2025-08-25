@@ -269,29 +269,30 @@ class Sm4Instance extends IBlockCipherInstance {
     }
     
     // Convert to 32-bit words (big-endian)
-    const x = [];
+    const X = [];
     for (let i = 0; i < 4; i++) {
-      x[i] = OpCodes.Pack32BE(plaintext[i*4], plaintext[i*4+1], plaintext[i*4+2], plaintext[i*4+3]);
+      X[i] = OpCodes.Pack32BE(plaintext[i*4], plaintext[i*4+1], plaintext[i*4+2], plaintext[i*4+3]);
     }
     
     // 32 rounds of SM4 transformation
+    // F(X0, X1, X2, X3, rk) = X0 ⊕ T(X1 ⊕ X2 ⊕ X3 ⊕ rk)
     for (let i = 0; i < 32; i++) {
-      const temp = x[1] ^ x[2] ^ x[3] ^ this.roundKeys[i];
-      x[(i+4) % 4] = x[i % 4] ^ this._T(temp);
+      const temp = X[1] ^ X[2] ^ X[3] ^ this.roundKeys[i];
+      const newX = X[0] ^ this._T(temp);
       
-      // Rotate the array
-      if (i < 31) {
-        const temp2 = x[0];
-        x[0] = x[1]; x[1] = x[2]; x[2] = x[3]; x[3] = temp2;
-      }
+      // Shift the state: X0=X1, X1=X2, X2=X3, X3=newX
+      X[0] = X[1];
+      X[1] = X[2]; 
+      X[2] = X[3];
+      X[3] = newX;
     }
     
-    // Reverse transformation (R function)
+    // Reverse transformation (swap back to get X32, X33, X34, X35)
     const result = [];
-    OpCodes.Unpack32BE(x[3]).forEach(b => result.push(b));
-    OpCodes.Unpack32BE(x[2]).forEach(b => result.push(b));
-    OpCodes.Unpack32BE(x[1]).forEach(b => result.push(b));
-    OpCodes.Unpack32BE(x[0]).forEach(b => result.push(b));
+    OpCodes.Unpack32BE(X[3]).forEach(b => result.push(b)); // X35
+    OpCodes.Unpack32BE(X[2]).forEach(b => result.push(b)); // X34
+    OpCodes.Unpack32BE(X[1]).forEach(b => result.push(b)); // X33
+    OpCodes.Unpack32BE(X[0]).forEach(b => result.push(b)); // X32
     
     return result;
   }
@@ -302,30 +303,34 @@ class Sm4Instance extends IBlockCipherInstance {
       throw new Error('Input must be exactly 16 bytes');
     }
     
-    // Convert to 32-bit words (big-endian)
-    const x = [];
+    // Convert to 32-bit words (big-endian) - same as encryption
+    const X = [];
     for (let i = 0; i < 4; i++) {
-      x[i] = OpCodes.Pack32BE(ciphertext[i*4], ciphertext[i*4+1], ciphertext[i*4+2], ciphertext[i*4+3]);
+      X[i] = OpCodes.Pack32BE(ciphertext[i*4], ciphertext[i*4+1], ciphertext[i*4+2], ciphertext[i*4+3]);
     }
     
-    // 32 rounds of SM4 transformation with reverse key order
-    for (let i = 0; i < 32; i++) {
-      const temp = x[1] ^ x[2] ^ x[3] ^ this.roundKeys[31-i];
-      x[(i+4) % 4] = x[i % 4] ^ this._T(temp);
+    // Apply reverse final transformation first (undo the byte reordering from encryption)
+    [X[0], X[1], X[2], X[3]] = [X[3], X[2], X[1], X[0]];
+    
+    // 32 rounds of SM4 transformation with reverse round keys
+    // F(X0, X1, X2, X3, rk) = X0 ⊕ T(X1 ⊕ X2 ⊕ X3 ⊕ rk)
+    for (let i = 31; i >= 0; i--) {
+      const temp = X[1] ^ X[2] ^ X[3] ^ this.roundKeys[i];
+      const newX = X[0] ^ this._T(temp);
       
-      // Rotate the array
-      if (i < 31) {
-        const temp2 = x[0];
-        x[0] = x[1]; x[1] = x[2]; x[2] = x[3]; x[3] = temp2;
-      }
+      // Shift the state: X0=X1, X1=X2, X2=X3, X3=newX
+      X[0] = X[1];
+      X[1] = X[2]; 
+      X[2] = X[3];
+      X[3] = newX;
     }
     
-    // Reverse transformation (R function)
+    // Convert back to bytes (normal order)
     const result = [];
-    OpCodes.Unpack32BE(x[3]).forEach(b => result.push(b));
-    OpCodes.Unpack32BE(x[2]).forEach(b => result.push(b));
-    OpCodes.Unpack32BE(x[1]).forEach(b => result.push(b));
-    OpCodes.Unpack32BE(x[0]).forEach(b => result.push(b));
+    OpCodes.Unpack32BE(X[0]).forEach(b => result.push(b));
+    OpCodes.Unpack32BE(X[1]).forEach(b => result.push(b));
+    OpCodes.Unpack32BE(X[2]).forEach(b => result.push(b));
+    OpCodes.Unpack32BE(X[3]).forEach(b => result.push(b));
     
     return result;
   }

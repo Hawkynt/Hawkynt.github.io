@@ -35,12 +35,10 @@ class XTEAAlgorithm extends AlgorithmFramework.BlockCipherAlgorithm {
     this.complexity = AlgorithmFramework.ComplexityType.BEGINNER;
     this.country = AlgorithmFramework.CountryCode.GB;
 
-    // Algorithm-specific metadata
-    this.SupportedKeySizes = [
+    // Block and key specifications
+    this.blockSize = 8; // 64-bit blocks
+    this.keySizes = [
       new AlgorithmFramework.KeySize(16, 16, 1) // Fixed 128-bit key
-    ];
-    this.SupportedBlockSizes = [
-      new AlgorithmFramework.KeySize(8, 8, 1) // Fixed 64-bit blocks
     ];
 
     // Documentation and references
@@ -63,104 +61,71 @@ class XTEAAlgorithm extends AlgorithmFramework.BlockCipherAlgorithm {
     ];
 
     // Test vectors from various sources
-    this.tests = [
-      {
-        text: "XTEA all-zeros test vector",
-        uri: "Educational test vector",
-        input: OpCodes.Hex8ToBytes("0000000000000000"),
-        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: OpCodes.Hex8ToBytes("dee9d4d8f7131ed9")
-      },
-      {
-        text: "XTEA pattern test vector",
-        uri: "Educational test vector",
-        input: OpCodes.Hex8ToBytes("0123456789abcdef"),
-        key: OpCodes.Hex8ToBytes("0123456789abcdef0123456789abcdef"),
-        expected: OpCodes.Hex8ToBytes("dd59ce6b8f15d1cd")
-      }
+    this.testCases = [
+      new AlgorithmFramework.TestCase(
+        "XTEA all-zeros test vector",
+        OpCodes.Hex8ToBytes("0000000000000000"),
+        OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        OpCodes.Hex8ToBytes("dee9d4d8f7131ed9"),
+        [new AlgorithmFramework.LinkItem("Educational test vector", "")]
+      ),
+      new AlgorithmFramework.TestCase(
+        "XTEA pattern test vector",
+        OpCodes.Hex8ToBytes("0123456789abcdef"),
+        OpCodes.Hex8ToBytes("0123456789abcdef0123456789abcdef"),
+        OpCodes.Hex8ToBytes("dd59ce6b8f15d1cd"),
+        [new AlgorithmFramework.LinkItem("Educational test vector", "")]
+      )
     ];
   }
 
-  CreateInstance(isInverse = false) {
-    return new XTEAInstance(this, isInverse);
+  CreateInstance(key) {
+    return new XTEAInstance(key);
   }
 }
 
 class XTEAInstance extends AlgorithmFramework.IBlockCipherInstance {
-  constructor(algorithm, isInverse = false) {
-    super(algorithm);
-    this.isInverse = isInverse;
-    this.key = null;
-    this.keyWords = null;
-    this.inputBuffer = [];
-    this.BlockSize = 8;
-    this.KeySize = 0;
+  constructor(key) {
+    super();
     
     // XTEA constants
     this.CYCLES = 32;                          // XTEA uses 32 cycles (64 rounds)
     this.DELTA = 0x9E3779B9;                   // Magic constant: 2^32 / golden ratio
+    
+    this._setupKey(key);
   }
 
-  set key(keyBytes) {
+  _setupKey(keyBytes) {
     if (!keyBytes) {
-      this._key = null;
-      this.keyWords = null;
-      this.KeySize = 0;
-      return;
+      throw new Error("Key is required");
     }
 
     // Validate key size
     if (keyBytes.length !== 16) {
       throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16)`);
     }
-
-    this._key = [...keyBytes];
-    this.KeySize = keyBytes.length;
     
     // Convert 128-bit key to four 32-bit words (big-endian)
     this.keyWords = [
-      (keyBytes[0] << 24) | (keyBytes[1] << 16) | (keyBytes[2] << 8) | keyBytes[3],
-      (keyBytes[4] << 24) | (keyBytes[5] << 16) | (keyBytes[6] << 8) | keyBytes[7],
-      (keyBytes[8] << 24) | (keyBytes[9] << 16) | (keyBytes[10] << 8) | keyBytes[11],
-      (keyBytes[12] << 24) | (keyBytes[13] << 16) | (keyBytes[14] << 8) | keyBytes[15]
+      OpCodes.Pack32BE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]),
+      OpCodes.Pack32BE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]),
+      OpCodes.Pack32BE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]),
+      OpCodes.Pack32BE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15])
     ];
   }
 
-  get key() {
-    return this._key ? [...this._key] : null;
+  EncryptBlock(blockIndex, data) {
+    if (data.length !== 8) {
+      throw new Error('XTEA requires exactly 8 bytes per block');
+    }
+    return this._encryptBlock(data);
   }
 
-  Feed(data) {
-    if (!data || data.length === 0) return;
-    if (!this.key) throw new Error("Key not set");
-
-    this.inputBuffer.push(...data);
-  }
-
-  Result() {
-    if (!this.key) throw new Error("Key not set");
-    if (this.inputBuffer.length === 0) throw new Error("No data fed");
-
-    // Validate input length
-    if (this.inputBuffer.length % this.BlockSize !== 0) {
-      throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+  DecryptBlock(blockIndex, data) {
+    if (data.length !== 8) {
+      throw new Error('XTEA requires exactly 8 bytes per block');
     }
-
-    const output = [];
-    
-    // Process each 8-byte block
-    for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
-      const block = this.inputBuffer.slice(i, i + this.BlockSize);
-      const processedBlock = this.isInverse 
-        ? this._decryptBlock(block) 
-        : this._encryptBlock(block);
-      output.push(...processedBlock);
-    }
-
-    // Clear input buffer
-    this.inputBuffer = [];
-    
-    return output;
+    return this._decryptBlock(data);
   }
 
   // Encrypt 64-bit block
@@ -170,8 +135,8 @@ class XTEAInstance extends AlgorithmFramework.IBlockCipherInstance {
     }
     
     // Pack to 32-bit words (big-endian)
-    let v0 = (block[0] << 24) | (block[1] << 16) | (block[2] << 8) | block[3];
-    let v1 = (block[4] << 24) | (block[5] << 16) | (block[6] << 8) | block[7];
+    let v0 = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
+    let v1 = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
     
     let sum = 0;
     const delta = this.DELTA;
@@ -196,8 +161,8 @@ class XTEAInstance extends AlgorithmFramework.IBlockCipherInstance {
     
     // Unpack to bytes (big-endian)
     return [
-      (v0 >>> 24) & 0xFF, (v0 >>> 16) & 0xFF, (v0 >>> 8) & 0xFF, v0 & 0xFF,
-      (v1 >>> 24) & 0xFF, (v1 >>> 16) & 0xFF, (v1 >>> 8) & 0xFF, v1 & 0xFF
+      ...OpCodes.Unpack32BE(v0),
+      ...OpCodes.Unpack32BE(v1)
     ];
   }
 
@@ -208,8 +173,8 @@ class XTEAInstance extends AlgorithmFramework.IBlockCipherInstance {
     }
     
     // Pack to 32-bit words (big-endian)
-    let v0 = (block[0] << 24) | (block[1] << 16) | (block[2] << 8) | block[3];
-    let v1 = (block[4] << 24) | (block[5] << 16) | (block[6] << 8) | block[7];
+    let v0 = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
+    let v1 = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
     
     const delta = this.DELTA;
     let sum = (delta * this.CYCLES) >>> 0;
@@ -234,8 +199,8 @@ class XTEAInstance extends AlgorithmFramework.IBlockCipherInstance {
     
     // Unpack to bytes (big-endian)
     return [
-      (v0 >>> 24) & 0xFF, (v0 >>> 16) & 0xFF, (v0 >>> 8) & 0xFF, v0 & 0xFF,
-      (v1 >>> 24) & 0xFF, (v1 >>> 16) & 0xFF, (v1 >>> 8) & 0xFF, v1 & 0xFF
+      ...OpCodes.Unpack32BE(v0),
+      ...OpCodes.Unpack32BE(v1)
     ];
   }
 }

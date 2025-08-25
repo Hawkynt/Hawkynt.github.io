@@ -339,17 +339,24 @@
     class RipeMD320WrapperInstance extends IAlgorithmInstance {
       constructor(algorithm, isInverse) {
         super(algorithm, isInverse);
-        this.instance = Object.create(RipeMD320);
-        this.instance.Init();
+        this.hasher = new RipeMD320Hasher();
       }
       
       ProcessData(input) {
-        return this.instance.hash(input);
+        const result = this.hasher.finalize();
+        return Array.from(result); // Convert Uint8Array to regular array
+      }
+      
+      Feed(data) {
+        this.hasher.update(data);
+      }
+      
+      Result() {
+        return this.ProcessData();
       }
       
       Reset() {
-        this.instance.ClearData();
-        this.instance.Init();
+        this.hasher = new RipeMD320Hasher();
       }
     }
     

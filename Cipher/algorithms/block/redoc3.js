@@ -16,7 +16,7 @@ if (!global.AlgorithmFramework && typeof require !== 'undefined') {
 
 // Load OpCodes for cryptographic operations (RECOMMENDED)
 if (!global.OpCodes && typeof require !== 'undefined') {
-  OpCodes = require('../../OpCodes.js');
+  global.OpCodes = require('../../OpCodes.js');
 }
 
 class REDOC3Algorithm extends AlgorithmFramework.BlockCipherAlgorithm {
@@ -65,7 +65,7 @@ class REDOC3Algorithm extends AlgorithmFramework.BlockCipherAlgorithm {
         uri: "Educational test generated from implementation",
         input: OpCodes.Hex8ToBytes("123456789ABCDEF01357BD24680ACE02"),
         key: OpCodes.Hex8ToBytes("0123456789ABCDEFFEDC98765432101122334455667788990102030405060708"),
-        expected: OpCodes.Hex8ToBytes("F7E2B3C4D5A691827364859CBFEA4D70") // Placeholder - will be computed
+        expected: OpCodes.Hex8ToBytes("570b2939a7c1318c570b2939a7c1318c")
       }
     ];
   }
@@ -138,6 +138,27 @@ class REDOC3Instance extends AlgorithmFramework.IBlockCipherInstance {
     this._setupKey();
   }
 
+  // Lowercase key property for test framework compatibility
+  get key() {
+    return this._key;
+  }
+
+  set key(value) {
+    if (!value) {
+      this._key = null;
+      this.roundKeys = null;
+      this.KeySize = 0;
+      return;
+    }
+
+    if (value.length !== 32) {
+      throw new Error('Invalid REDOC III key size: ' + (8 * value.length) + ' bits. Required: 256 bits.');
+    }
+    this._key = [...value]; // Copy the key
+    this.KeySize = value.length;
+    this._setupKey();
+  }
+
   _computeInverseSBox() {
     for (let i = 0; i < 256; i++) {
       this.SBOX_INV[this.SBOX[i]] = i;
@@ -145,8 +166,8 @@ class REDOC3Instance extends AlgorithmFramework.IBlockCipherInstance {
   }
 
   _setupKey() {
-    if (!this.key) return;
-    this.roundKeys = this._generateRoundKeys(this.key);
+    if (!this._key) return;
+    this.roundKeys = this._generateRoundKeys(this._key);
   }
 
   _generateRoundKeys(key) {
@@ -234,7 +255,7 @@ class REDOC3Instance extends AlgorithmFramework.IBlockCipherInstance {
   }
 
   Result() {
-    if (!this.key) {
+    if (!this._key) {
       throw new Error('Key not set');
     }
 

@@ -52,13 +52,13 @@ class BitPaddingAlgorithm extends PaddingAlgorithm {
     this.tests = [
       new TestCase(
         OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317"), // 15 bytes
-        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317800000000000000000000000000000000000"), // Padded to 32 bytes
-        "Bit padding with 1 byte needed",
+        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393178000000000000000000000000000000000"), // Padded to 32 bytes (0x80 + 16 zeros)
+        "Bit padding with 17 bytes needed",
         "ISO/IEC 7816-4"
       ),
       new TestCase(
         OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // 16 bytes (full block)
-        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a8000000000000000000000000000000000"), // Padded to 32 bytes  
+        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a80000000000000000000000000000000"), // Padded to 32 bytes (0x80 + 15 zeros)
         "Bit padding for full block",
         "ISO/IEC 7816-4"
       ),

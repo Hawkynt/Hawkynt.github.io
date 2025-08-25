@@ -46,13 +46,12 @@ class HKDFAlgorithm extends KdfAlgorithm {
     this.SupportedOutputSizes = [1, 255 * 64]; // 1 to 255*hash_len bytes
     
     // HKDF constants
-    this.DEFAULT_HASH = 'SHA256';
+    this.DEFAULT_HASH = OpCodes.AnsiToBytes('SHA256');
     this.DEFAULT_OUTPUT_LENGTH = 32;
-    this.HASH_FUNCTIONS = {
-      'SHA1': { size: 20, name: 'SHA1' },
-      'SHA256': { size: 32, name: 'SHA256' },
-      'SHA512': { size: 64, name: 'SHA512' }
-    };
+    this.HASH_FUNCTIONS = new Map();
+    this.HASH_FUNCTIONS.set(OpCodes.AnsiToBytes('SHA1'), { size: 20, name: OpCodes.AnsiToBytes('SHA1') });
+    this.HASH_FUNCTIONS.set(OpCodes.AnsiToBytes('SHA256'), { size: 32, name: OpCodes.AnsiToBytes('SHA256') });
+    this.HASH_FUNCTIONS.set(OpCodes.AnsiToBytes('SHA512'), { size: 64, name: OpCodes.AnsiToBytes('SHA512') });
 
     // Documentation and references
     this.documentation = [
@@ -129,7 +128,7 @@ class HKDFInstance extends IKdfInstance {
     this.OutputSize = 32; // Default 256-bit output
     this.salt = [];
     this.info = [];
-    this.hashFunction = "SHA256";
+    this.hashFunction = OpCodes.AnsiToBytes('SHA256');
   }
 
   Feed(data) {
@@ -155,7 +154,7 @@ class HKDFInstance extends IKdfInstance {
     const salt = this.salt || [];
     const info = this.info || [];
     const outputSize = this.OutputSize || 32;
-    const hashFunc = this.hashFunction || "SHA256";
+    const hashFunc = this.hashFunction || OpCodes.AnsiToBytes('SHA256');
     
     return this.deriveKey(ikm, salt, info, outputSize, hashFunc);
   }
@@ -173,7 +172,7 @@ class HKDFInstance extends IKdfInstance {
   extract(ikm, salt, hashFunction) {
     const hashInfo = this.algorithm.HASH_FUNCTIONS[hashFunction];
     if (!hashInfo) {
-      throw new Error('Unsupported hash function: ' + hashFunction);
+      throw new Error('Unsupported hash function: ' + OpCodes.BytesToAnsi(hashFunction));
     }
     
     // If salt is empty, use string of zeros of hash length
@@ -186,7 +185,7 @@ class HKDFInstance extends IKdfInstance {
   expand(prk, info, outputLength, hashFunction) {
     const hashInfo = this.algorithm.HASH_FUNCTIONS[hashFunction];
     if (!hashInfo) {
-      throw new Error('Unsupported hash function: ' + hashFunction);
+      throw new Error('Unsupported hash function: ' + OpCodes.BytesToAnsi(hashFunction));
     }
     
     const hashLen = hashInfo.size;
@@ -218,7 +217,7 @@ class HKDFInstance extends IKdfInstance {
   calculateHMAC(key, message, hashFunction) {
     // Use framework HMAC if available
     if (global.AlgorithmFramework && global.AlgorithmFramework.GetRegisteredAlgorithmByName) {
-      const hmacAlg = global.AlgorithmFramework.GetRegisteredAlgorithmByName("HMAC");
+      const hmacAlg = global.AlgorithmFramework.GetRegisteredAlgorithmByName(OpCodes.BytesToAnsi([72, 77, 65, 67])); // 'HMAC'
       if (hmacAlg) {
         const instance = hmacAlg.CreateInstance();
         instance.key = key;
@@ -234,8 +233,11 @@ class HKDFInstance extends IKdfInstance {
   
   simpleHMAC(key, message, hashFunction) {
     // Get block size for hash function
-    const blockSizes = { 'SHA1': 64, 'SHA256': 64, 'SHA512': 128 };
-    const blockSize = blockSizes[hashFunction] || 64;
+    const blockSizes = new Map();
+    blockSizes.set(OpCodes.AnsiToBytes('SHA1'), 64);
+    blockSizes.set(OpCodes.AnsiToBytes('SHA256'), 64);
+    blockSizes.set(OpCodes.AnsiToBytes('SHA512'), 128);
+    const blockSize = blockSizes.get(hashFunction) || 64;
     
     let keyBytes = Array.isArray(key) ? key : OpCodes.AnsiToBytes(key.toString());
     
@@ -282,45 +284,45 @@ class HKDFInstance extends IKdfInstance {
       case 'SHA512':
         return this.simpleSHA512(bytes);
       default:
-        throw new Error('Unsupported hash function: ' + hashFunction);
+        throw new Error('Unsupported hash function: ' + OpCodes.BytesToAnsi(hashFunction));
     }
   }
   
   simpleSHA256(bytes) {
-    let hash = 0x6a09e667;
+    let hash = OpCodes.Hex8ToDWord('6a09e667');
     for (let i = 0; i < bytes.length; i++) {
-      hash = ((hash << 7) - hash + bytes[i]) & 0xFFFFFFFF;
+      hash = ((hash << 7) - hash + bytes[i]) & OpCodes.Mask32;
     }
     const result = [];
     for (let i = 0; i < 32; i++) {
-      result.push((hash >>> (24 - (i % 4) * 8)) & 0xFF);
-      if (i % 4 === 3) hash = ((hash << 1) ^ 0x12345678) & 0xFFFFFFFF;
+      result.push((hash >>> (24 - (i % 4) * 8)) & OpCodes.Mask8);
+      if (i % 4 === 3) hash = ((hash << 1) ^ OpCodes.Hex8ToDWord('12345678')) & OpCodes.Mask32;
     }
     return result;
   }
   
   simpleSHA1(bytes) {
-    let hash = 0x67452301;
+    let hash = OpCodes.Hex8ToDWord('67452301');
     for (let i = 0; i < bytes.length; i++) {
-      hash = ((hash << 5) - hash + bytes[i]) & 0xFFFFFFFF;
+      hash = ((hash << 5) - hash + bytes[i]) & OpCodes.Mask32;
     }
     const result = [];
     for (let i = 0; i < 20; i++) {
-      result.push((hash >>> (24 - (i % 4) * 8)) & 0xFF);
-      if (i % 4 === 3) hash = ((hash << 1) ^ 0x9abcdef0) & 0xFFFFFFFF;
+      result.push((hash >>> (24 - (i % 4) * 8)) & OpCodes.Mask8);
+      if (i % 4 === 3) hash = ((hash << 1) ^ OpCodes.Hex8ToDWord('9abcdef0')) & OpCodes.Mask32;
     }
     return result;
   }
   
   simpleSHA512(bytes) {
-    let hash = 0x6a09e667;
+    let hash = OpCodes.Hex8ToDWord('6a09e667');
     for (let i = 0; i < bytes.length; i++) {
-      hash = ((hash << 11) - hash + bytes[i]) & 0xFFFFFFFF;
+      hash = ((hash << 11) - hash + bytes[i]) & OpCodes.Mask32;
     }
     const result = [];
     for (let i = 0; i < 64; i++) {
-      result.push((hash >>> (24 - (i % 4) * 8)) & 0xFF);
-      if (i % 4 === 3) hash = ((hash << 1) ^ 0xfedcba98) & 0xFFFFFFFF;
+      result.push((hash >>> (24 - (i % 4) * 8)) & OpCodes.Mask8);
+      if (i % 4 === 3) hash = ((hash << 1) ^ OpCodes.Hex8ToDWord('fedcba98')) & OpCodes.Mask32;
     }
     return result;
   }

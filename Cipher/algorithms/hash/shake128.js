@@ -27,14 +27,14 @@
   const SHAKE128_CAPACITY = 32;     // Capacity in bytes (256 bits)
   const KECCAK_ROUNDS = 24;         // Number of Keccak-f[1600] rounds
   
-  // Keccak round constants
+  // Keccac round constants (24 rounds, as [low32, high32] pairs)
   const RC = [
-    0x0000000000000001, 0x0000000000008082, 0x800000000000808a, 0x8000000080008000,
-    0x000000000000808b, 0x0000000080000001, 0x8000000080008081, 0x8000000000008009,
-    0x000000000000008a, 0x0000000000000088, 0x0000000080008009, 0x8000000000008003,
-    0x8000000000008002, 0x8000000000000080, 0x000000000000800a, 0x800000008000000a,
-    0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008,
-    0x0000000000008082, 0x8000000000000001, 0x0000000080008003, 0x8000000080000000
+    [0x00000001, 0x00000000], [0x00008082, 0x00000000], [0x0000808a, 0x80000000], [0x80008000, 0x80000000],
+    [0x0000808b, 0x00000000], [0x80000001, 0x00000000], [0x80008081, 0x80000000], [0x00008009, 0x80000000],
+    [0x0000008a, 0x00000000], [0x00000088, 0x00000000], [0x80008009, 0x00000000], [0x00008003, 0x80000000],
+    [0x00008002, 0x80000000], [0x00000080, 0x80000000], [0x0000800a, 0x00000000], [0x8000000a, 0x80000000],
+    [0x80008081, 0x80000000], [0x00008080, 0x80000000], [0x80000001, 0x00000000], [0x80008008, 0x80000000],
+    [0x00008082, 0x00000000], [0x00000001, 0x80000000], [0x80008003, 0x00000000], [0x80000000, 0x80000000]
   ];
   
   // Rotation offsets for rho step
@@ -44,14 +44,15 @@
   ];
   
   /**
-   * Convert 64-bit number to high/low 32-bit representation
-   * @param {number} val - 64-bit value (may lose precision)
-   * @returns {Array} [low32, high32]
+   * 64-bit XOR operation
+   * @param {Array} a - [low32, high32]
+   * @param {Array} b - [low32, high32]
+   * @returns {Array} XOR result [low32, high32]
    */
-  function to64bit(val) {
-    return [val & 0xFFFFFFFF, Math.floor(val / 0x100000000) & 0xFFFFFFFF];
+  function xor64(a, b) {
+    return [a[0] ^ b[0], a[1] ^ b[1]];
   }
-  
+
   /**
    * 64-bit left rotation (using 32-bit operations)
    * @param {Array} val - [low32, high32]
@@ -67,25 +68,15 @@
     if (positions === 32) {
       return [high, low];
     } else if (positions < 32) {
-      const newHigh = ((high << positions) | (low >>> (32 - positions))) >>> 0;
       const newLow = ((low << positions) | (high >>> (32 - positions))) >>> 0;
+      const newHigh = ((high << positions) | (low >>> (32 - positions))) >>> 0;
       return [newLow, newHigh];
     } else {
       positions -= 32;
-      const newHigh = ((low << positions) | (high >>> (32 - positions))) >>> 0;
       const newLow = ((high << positions) | (low >>> (32 - positions))) >>> 0;
+      const newHigh = ((low << positions) | (high >>> (32 - positions))) >>> 0;
       return [newLow, newHigh];
     }
-  }
-  
-  /**
-   * 64-bit XOR operation
-   * @param {Array} a - [low32, high32]
-   * @param {Array} b - [low32, high32]
-   * @returns {Array} XOR result [low32, high32]
-   */
-  function xor64(a, b) {
-    return [a[0] ^ b[0], a[1] ^ b[1]];
   }
   
   /**
@@ -127,7 +118,7 @@
       
       for (let x = 0; x < 5; x++) {
         for (let y = 0; y < 5; y++) {
-          state[x + 5 * y] = temp[((x + 3 * y) % 5) + 5 * x];
+          state[y + 5 * ((2 * x + 3 * y) % 5)] = temp[x + 5 * y];
         }
       }
       
@@ -146,8 +137,7 @@
       }
       
       // Iota step
-      const rc = to64bit(RC[round]);
-      state[0] = xor64(state[0], rc);
+      state[0] = xor64(state[0], RC[round]);
     }
   }
   
@@ -197,14 +187,27 @@
   };
   
   Shake128Hasher.prototype.absorbBlock = function() {
-    // XOR buffer into state (little-endian)
+    // XOR buffer into state (little-endian, 8 bytes per state element)
     for (let i = 0; i < SHAKE128_RATE; i += 8) {
-      const word = [
-        OpCodes.Pack32LE(this.buffer[i], this.buffer[i + 1], this.buffer[i + 2], this.buffer[i + 3]),
-        OpCodes.Pack32LE(this.buffer[i + 4], this.buffer[i + 5], this.buffer[i + 6], this.buffer[i + 7])
-      ];
       const stateIndex = Math.floor(i / 8);
-      this.state[stateIndex] = xor64(this.state[stateIndex], word);
+      
+      // Pack 8 bytes into two 32-bit words (little-endian)
+      const low = OpCodes.Pack32LE(
+        this.buffer[i] || 0,
+        this.buffer[i + 1] || 0,
+        this.buffer[i + 2] || 0,
+        this.buffer[i + 3] || 0
+      );
+      const high = OpCodes.Pack32LE(
+        this.buffer[i + 4] || 0,
+        this.buffer[i + 5] || 0,
+        this.buffer[i + 6] || 0,
+        this.buffer[i + 7] || 0
+      );
+      
+      // XOR into state
+      this.state[stateIndex][0] ^= low;
+      this.state[stateIndex][1] ^= high;
     }
     
     keccakF(this.state);
@@ -244,7 +247,7 @@
       // Generate rate bytes from current state
       const available = Math.min(SHAKE128_RATE, outputLength - outputOffset);
       
-      for (let i = 0; i < available; i += 8) {
+      for (let i = 0; i < available && i < SHAKE128_RATE; i += 8) {
         const stateIndex = Math.floor(i / 8);
         const word = this.state[stateIndex];
         

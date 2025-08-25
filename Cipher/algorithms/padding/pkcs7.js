@@ -52,13 +52,13 @@ class Pkcs7Algorithm extends PaddingAlgorithm {
     this.tests = [
       new TestCase(
         OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317"), // 15 bytes
-        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317010101010101010101010101010101010101"), // Padded to 32 bytes with 0x11
+        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393171111111111111111111111111111111111"), // Padded to 32 bytes with 17 bytes of 0x11
         "PKCS#7 padding with 17 bytes needed",
         "RFC 2315"
       ),
       new TestCase(
         OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // 16 bytes (full block)
-        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a1010101010101010101010101010101010"), // Padded to 32 bytes with 0x10
+        OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a10101010101010101010101010101010"), // Padded to 32 bytes with 16 bytes of 0x10
         "PKCS#7 padding for full block",
         "RFC 2315"
       ),

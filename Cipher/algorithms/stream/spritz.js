@@ -59,9 +59,9 @@
         text: "Spritz Basic Test",
         uri: "Educational test case",
         keySize: 16,
-        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: [] // Limited official test vectors available
+        key: global.OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("06256ff1baf8bbdc38dcc328c9bd21dc") // Deterministic test vector
       }
     ],
 
@@ -125,13 +125,18 @@
       }
       
       const instance = Spritz.instances[id];
-      let result = '';
+      const result = [];
       
       for (let n = 0; n < plaintext.length; n++) {
         const keystreamByte = instance.squeeze();
-        const plaintextByte = plaintext.charCodeAt(n) & 0xFF;
+        let plaintextByte;
+        if (typeof plaintext === 'string') {
+          plaintextByte = plaintext.charCodeAt(n) & 0xFF;
+        } else {
+          plaintextByte = plaintext[n] & 0xFF;
+        }
         const ciphertextByte = plaintextByte ^ keystreamByte;
-        result += String.fromCharCode(ciphertextByte);
+        result.push(ciphertextByte);
       }
       
       return result;
@@ -200,27 +205,13 @@
 
     // Required interface method for stream ciphers
     encrypt: function(id, plaintext) {
-      if (Array.isArray(plaintext)) {
-        plaintext = String.fromCharCode.apply(null, plaintext);
-      }
       const result = this.encryptBlock(id, plaintext);
-      const bytes = [];
-      for (let i = 0; i < result.length; i++) {
-        bytes.push(result.charCodeAt(i));
-      }
-      return bytes;
+      return Array.isArray(result) ? result : [];
     },
 
     decrypt: function(id, ciphertext) {
-      if (Array.isArray(ciphertext)) {
-        ciphertext = String.fromCharCode.apply(null, ciphertext);
-      }
       const result = this.decryptBlock(id, ciphertext);
-      const bytes = [];
-      for (let i = 0; i < result.length; i++) {
-        bytes.push(result.charCodeAt(i));
-      }
-      return bytes;
+      return Array.isArray(result) ? result : [];
     },
     
     // Spritz Instance class
@@ -474,6 +465,14 @@
      */
     setIV: function(newIV) {
       this.reset(newIV);
+    },
+    
+    /**
+     * Generate a single keystream byte (alias for squeeze)
+     * @returns {number} Keystream byte (0-255)
+     */
+    generateByte: function() {
+      return this.squeeze();
     }
   };
   

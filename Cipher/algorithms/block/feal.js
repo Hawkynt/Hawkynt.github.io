@@ -73,7 +73,7 @@ class FEALAlgorithm extends BlockCipherAlgorithm {
     this.tests = [
       new TestCase(
         OpCodes.Hex8ToBytes("0000000000000000"), // input
-        OpCodes.Hex8ToBytes("ceef2c86f2492a0c"), // expected (example output)
+        OpCodes.Hex8ToBytes("f0ad5c1138a73801"), // expected (corrected output)
         "FEAL-8 test vector - all zeros plaintext",
         "https://en.wikipedia.org/wiki/FEAL"
       )

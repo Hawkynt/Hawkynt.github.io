@@ -37,12 +37,10 @@ class SerpentAlgorithm extends AlgorithmFramework.BlockCipherAlgorithm {
 
     // Algorithm-specific metadata
     this.SupportedKeySizes = [
-      new AlgorithmFramework.KeySize(16, 16, 1), // 128-bit
-      new AlgorithmFramework.KeySize(24, 24, 1), // 192-bit
-      new AlgorithmFramework.KeySize(32, 32, 1)  // 256-bit
+      new AlgorithmFramework.KeySize(16, 32, 8) // 128/192/256-bit
     ];
     this.SupportedBlockSizes = [
-      new AlgorithmFramework.KeySize(16, 16, 1) // Fixed 128-bit blocks
+      new AlgorithmFramework.KeySize(16, 16, 0) // Fixed 128-bit blocks
     ];
 
     // Documentation and references
@@ -100,6 +98,27 @@ class SerpentInstance extends AlgorithmFramework.IBlockCipherInstance {
     // Serpent constants
     this.ROUNDS = 32;
     this.PHI = 0x9e3779b9; // Golden ratio constant for key schedule
+    
+    // Serpent S-boxes as lookup tables (0-15 input -> 0-15 output)
+    this.SBOX = [
+      [3, 8, 15, 1, 10, 6, 5, 11, 14, 13, 4, 2, 7, 0, 9, 12],  // S0
+      [15, 12, 2, 7, 9, 0, 5, 10, 1, 11, 14, 8, 6, 13, 3, 4],   // S1
+      [8, 6, 7, 9, 3, 12, 10, 15, 13, 1, 14, 4, 0, 11, 5, 2],   // S2
+      [0, 15, 11, 8, 12, 9, 6, 3, 13, 1, 2, 4, 10, 7, 5, 14],   // S3
+      [1, 15, 8, 3, 12, 0, 11, 6, 2, 5, 4, 10, 9, 14, 7, 13],   // S4
+      [15, 5, 2, 11, 4, 10, 9, 12, 0, 3, 14, 8, 13, 6, 7, 1],   // S5
+      [7, 2, 12, 5, 8, 4, 6, 11, 14, 9, 1, 15, 13, 3, 10, 0],   // S6
+      [1, 13, 15, 0, 14, 8, 2, 11, 7, 4, 12, 10, 9, 3, 5, 6]    // S7
+    ];
+    
+    // Inverse S-boxes (reverse lookup)
+    this.SBOX_INV = [];
+    for (let i = 0; i < 8; i++) {
+      this.SBOX_INV[i] = new Array(16);
+      for (let j = 0; j < 16; j++) {
+        this.SBOX_INV[i][this.SBOX[i][j]] = j;
+      }
+    }
   }
 
   set key(keyBytes) {
@@ -113,7 +132,7 @@ class SerpentInstance extends AlgorithmFramework.IBlockCipherInstance {
     // Validate key size
     const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
       keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-      (keyBytes.length - ks.minSize) % ks.stepSize === 0
+      (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
     );
     
     if (!isValidSize) {
@@ -164,360 +183,69 @@ class SerpentInstance extends AlgorithmFramework.IBlockCipherInstance {
     return output;
   }
 
-  // S-box transformations using optimized boolean functions
-  // S0 transformation (15 terms)
-  _sb0(a, b, c, d) {
-    let t1 = a ^ d;
-    let t2 = a & d;
-    let t3 = c ^ t1;
-    let t6 = b & t1;
-    let t4 = b ^ t3;
-    let t10 = ~t3;
-    let h = t2 ^ t4;
-    let t7 = a ^ t6;
-    let t14 = ~t7;
-    let t8 = c | t7;
-    let t11 = t3 ^ t7;
-    let g = t4 ^ t8;
-    let t12 = h & t11;
-    let f = t10 ^ t12;
-    let e = t12 ^ t14;
-    return [e, f, g, h];
-  }
+  // All S-box operations now use lookup tables above
 
-  // Inverse S0 transformation (15 terms)
-  _ib0(a, b, c, d) {
-    let t1 = ~a;
-    let t2 = a ^ b;
-    let t3 = t1 | t2;
-    let t4 = d ^ t3;
-    let t7 = d & t2;
-    let t5 = c ^ t4;
-    let t8 = t1 ^ t7;
-    let g = t2 ^ t5;
-    let t11 = a & t4;
-    let t9 = g & t8;
-    let t14 = t5 ^ t8;
-    let f = t4 ^ t9;
-    let t12 = t5 | f;
-    let h = t11 ^ t12;
-    let e = h ^ t14;
-    return [e, f, g, h];
-  }
-
-  // S1 transformation
-  _sb1(a, b, c, d) {
-    let t2 = ~a;
-    let t3 = b ^ t2;
-    let t4 = a | b;
-    let t7 = a ^ d;
-    let h = t3 & t7;
-    let t6 = a ^ t3;
-    let g = t4 ^ h;
-    let t9 = b | h;
-    let t11 = t4 & t7;
-    let t8 = t6 ^ t9;
-    let e = t2 ^ t11;
-    let t12 = c ^ t11;
-    let f = t9 ^ e;
-    let t14 = c & e;
-    let t13 = t8 ^ t12;
-    let t15 = t6 & t14;
-    let t16 = f ^ t15;
-    let w = t13 ^ t16;
-    return [h, w, g, f];
-  }
-
-  // Inverse S1 transformation  
-  _ib1(a, b, c, d) {
-    let t1 = a ^ d;
-    let t2 = a & b;
-    let t3 = b ^ c;
-    let t4 = a ^ t3;
-    let t5 = b | d;
-    let t7 = c | t1;
-    let t6 = t4 & t5;
-    let t8 = t2 | t7;
-    let g = t4 ^ t8;
-    let t10 = ~g;
-    let t11 = t5 & t7;
-    let t12 = t1 ^ t6;
-    let t13 = t10 | t12;
-    let t14 = t3 ^ t11;
-    let e = t13 ^ t14;
-    let h = t3 & e;
-    let t17 = t10 ^ h;
-    let f = t12 ^ t17;
-    return [f, g, h, e];
-  }
-
-  // S2 transformation
-  _sb2(a, b, c, d) {
-    let t1 = ~a;
-    let t2 = b ^ d;
-    let t3 = c & t1;
-    let e = t2 ^ t3;
-    let t5 = c ^ t1;
-    let t6 = c ^ e;
-    let t7 = b & t6;
-    let f = t5 ^ t7;
-    let g = a ^ ((d | t7) & (e | t5));
-    let h = (t2 & t5) ^ g;
-    return [e, f, g, h];
-  }
-
-  // Inverse S2 transformation
-  _ib2(a, b, c, d) {
-    let t1 = b ^ d;
-    let t2 = ~t1;
-    let t3 = a ^ c;
-    let t4 = c ^ t1;
-    let t7 = a | t2;
-    let t5 = b & t4;
-    let t8 = t3 | t5;
-    let t6 = t3 ^ t7;
-    let f = t6 ^ t8;
-    let h = ((a ^ t4) & t8) ^ t1;
-    let e = t1 ^ ((t2 | b) & t3);
-    let g = (d & f) ^ h ^ e;
-    return [e, f, g, h];
-  }
-
-  // S3 transformation
-  _sb3(a, b, c, d) {
-    let t1 = a ^ c;
-    let t2 = d ^ t1;
-    let t3 = a & t2;
-    let t4 = d ^ t3;
-    let t5 = b & t4;
-    let g = t2 ^ t5;
-    let t7 = a | g;
-    let t8 = b | d;
-    let t11 = a | d;
-    let t9 = t4 & t7;
-    let t10 = t8 ^ t9;
-    let t12 = b ^ t11;
-    let t13 = t7 ^ t10;
-    let t14 = t1 ^ t12;
-    let f = t13 ^ t14;
-    let h = ~t13;
-    let e = t14 ^ h;
-    return [e, f, g, h];
-  }
-
-  // Inverse S3 transformation
-  _ib3(a, b, c, d) {
-    let t1 = a | b;
-    let t2 = b ^ c;
-    let t3 = b & t2;
-    let t4 = a ^ t3;
-    let t5 = c ^ t4;
-    let t6 = d | t4;
-    let e = t2 ^ t6;
-    let t8 = t2 | e;
-    let t9 = d & t8;
-    let g = t5 ^ t9;
-    let t11 = t1 ^ e;
-    let t12 = g ^ t11;
-    let t13 = t5 & t11;
-    let f = e ^ t13;
-    let h = t5 ^ t12;
-    return [e, f, g, h];
-  }
-
-  // S4 transformation
-  _sb4(a, b, c, d) {
-    let t1 = a ^ d;
-    let t2 = d & t1;
-    let t3 = c ^ t2;
-    let t4 = b | t3;
-    let h = t1 ^ t4;
-    let t6 = ~b;
-    let t7 = t1 | t6;
-    let e = t3 ^ t7;
-    let t9 = a & e;
-    let t10 = t1 ^ t6;
-    let t11 = t4 & t10;
-    let g = t9 ^ t11;
-    let t13 = a ^ t3;
-    let t14 = t10 & g;
-    let f = t13 ^ t14;
-    return [e, f, g, h];
-  }
-
-  // Inverse S4 transformation
-  _ib4(a, b, c, d) {
-    let t1 = c | d;
-    let t2 = a & t1;
-    let t3 = b ^ t2;
-    let t4 = a & t3;
-    let t5 = c ^ t4;
-    let e = d ^ t5;
-    let t7 = ~a;
-    let t8 = t5 & e;
-    let t9 = t3 | t8;
-    let g = t7 ^ t9;
-    let t11 = a ^ e;
-    let t12 = e | g;
-    let t13 = t3 ^ t12;
-    let h = t11 ^ t13;
-    let t15 = t3 & h;
-    let f = e ^ t15;
-    return [e, f, g, h];
-  }
-
-  // S5 transformation
-  _sb5(a, b, c, d) {
-    let t1 = ~a;
-    let t2 = a ^ b;
-    let t3 = a ^ d;
-    let t4 = c ^ t1;
-    let t5 = t2 | t3;
-    let e = t4 ^ t5;
-    let t7 = d & e;
-    let t8 = t2 ^ e;
-    let t9 = t1 | t7;
-    let f = t8 ^ t9;
-    let t11 = t2 | t7;
-    let t12 = t3 ^ t9;
-    let t13 = f & t12;
-    let g = t11 ^ t13;
-    let t15 = t1 ^ t7;
-    let h = t12 ^ t15;
-    return [e, f, g, h];
-  }
-
-  // Inverse S5 transformation
-  _ib5(a, b, c, d) {
-    let t1 = ~c;
-    let t2 = b & t1;
-    let t3 = d ^ t2;
-    let t4 = a & t3;
-    let t5 = b ^ t1;
-    let h = t4 ^ t5;
-    let t7 = b | h;
-    let t8 = a & t7;
-    let e = t3 ^ t8;
-    let t10 = a | d;
-    let t11 = t1 ^ t7;
-    let f = t10 ^ t11;
-    let t13 = a ^ c;
-    let t14 = b & t10;
-    let t15 = t4 | t13;
-    let g = t14 ^ t15;
-    return [e, f, g, h];
-  }
-
-  // S6 transformation
-  _sb6(a, b, c, d) {
-    let t1 = ~a;
-    let t2 = a ^ d;
-    let t3 = b ^ t2;
-    let t4 = t1 | t2;
-    let t5 = c ^ t4;
-    let f = b ^ t5;
-    let t13 = ~t5;
-    let t7 = t2 | f;
-    let t8 = d ^ t7;
-    let t9 = t5 & t8;
-    let g = t3 ^ t9;
-    let t11 = t5 ^ t8;
-    let e = g ^ t11;
-    let t14 = t3 & t11;
-    let h = t13 ^ t14;
-    return [e, f, g, h];
-  }
-
-  // Inverse S6 transformation
-  _ib6(a, b, c, d) {
-    let t1 = ~a;
-    let t2 = a ^ b;
-    let t3 = c ^ t2;
-    let t4 = c | t1;
-    let t5 = d ^ t4;
-    let t13 = d & t1;
-    let f = t3 ^ t5;
-    let t7 = t3 & t5;
-    let t8 = t2 ^ t7;
-    let t9 = b | t8;
-    let h = t5 ^ t9;
-    let t11 = b | h;
-    let e = t8 ^ t11;
-    let t14 = t3 ^ t11;
-    let g = t13 ^ t14;
-    return [e, f, g, h];
-  }
-
-  // S7 transformation
-  _sb7(a, b, c, d) {
-    let t1 = ~c;
-    let t2 = b ^ c;
-    let t3 = b | t1;
-    let t4 = d ^ t3;
-    let t5 = a & t4;
-    let g = t2 ^ t5;
-    let t7 = a ^ d;
-    let t8 = b ^ t5;
-    let t9 = t2 | t8;
-    let e = t7 ^ t9;
-    let t11 = ~t4;
-    let t12 = g & e;
-    let f = t11 ^ t12;
-    let t14 = t2 ^ e;
-    let h = g ^ t14;
-    return [e, f, g, h];
-  }
-
-  // Inverse S7 transformation
-  _ib7(a, b, c, d) {
-    let t1 = a & b;
-    let t2 = a | b;
-    let t3 = c | t1;
-    let t4 = d & t2;
-    let h = t3 ^ t4;
-    let t6 = ~d;
-    let t7 = b ^ t4;
-    let t8 = h ^ t6;
-    let t11 = c ^ t7;
-    let t9 = t7 | t8;
-    let f = a ^ t9;
-    let t12 = d | f;
-    let e = t11 ^ t12;
-    let t14 = a & h;
-    let g = t8 ^ t14;
-    return [e, f, g, h];
-  }
-
-  // Similar implementations for S1-S7 and their inverses would follow...
-  // For brevity, implementing simplified S-box functions
+  // Apply S-box using lookup table (4-bit nibble parallel)
   _sbox(sboxNum, x0, x1, x2, x3) {
-    // Complete Serpent S-box implementation (all 8 S-boxes)
-    switch (sboxNum) {
-      case 0: return this._sb0(x0, x1, x2, x3);
-      case 1: return this._sb1(x0, x1, x2, x3);
-      case 2: return this._sb2(x0, x1, x2, x3);
-      case 3: return this._sb3(x0, x1, x2, x3);
-      case 4: return this._sb4(x0, x1, x2, x3);
-      case 5: return this._sb5(x0, x1, x2, x3);
-      case 6: return this._sb6(x0, x1, x2, x3);
-      case 7: return this._sb7(x0, x1, x2, x3);
-      default: throw new Error(`Invalid S-box number: ${sboxNum}`);
+    const sbox = this.SBOX[sboxNum];
+    const result = [0, 0, 0, 0];
+    
+    // Process each 4-bit nibble in parallel
+    for (let bit = 0; bit < 32; bit += 4) {
+      const mask = 0xF << bit;
+      const shift = bit;
+      
+      // Extract 4-bit nibbles
+      const n0 = (x0 & mask) >>> shift;
+      const n1 = (x1 & mask) >>> shift;
+      const n2 = (x2 & mask) >>> shift;
+      const n3 = (x3 & mask) >>> shift;
+      
+      // Apply S-box transformation
+      const s0 = sbox[n0];
+      const s1 = sbox[n1];
+      const s2 = sbox[n2];
+      const s3 = sbox[n3];
+      
+      // Put back transformed nibbles
+      result[0] |= (s0 << shift);
+      result[1] |= (s1 << shift);
+      result[2] |= (s2 << shift);
+      result[3] |= (s3 << shift);
     }
+    
+    return result;
   }
 
   _sboxInv(sboxNum, x0, x1, x2, x3) {
-    // Complete Serpent inverse S-box implementation (all 8 inverse S-boxes)
-    switch (sboxNum) {
-      case 0: return this._ib0(x0, x1, x2, x3);
-      case 1: return this._ib1(x0, x1, x2, x3);
-      case 2: return this._ib2(x0, x1, x2, x3);
-      case 3: return this._ib3(x0, x1, x2, x3);
-      case 4: return this._ib4(x0, x1, x2, x3);
-      case 5: return this._ib5(x0, x1, x2, x3);
-      case 6: return this._ib6(x0, x1, x2, x3);
-      case 7: return this._ib7(x0, x1, x2, x3);
-      default: throw new Error(`Invalid inverse S-box number: ${sboxNum}`);
+    const sboxInv = this.SBOX_INV[sboxNum];
+    const result = [0, 0, 0, 0];
+    
+    // Process each 4-bit nibble in parallel
+    for (let bit = 0; bit < 32; bit += 4) {
+      const mask = 0xF << bit;
+      const shift = bit;
+      
+      // Extract 4-bit nibbles
+      const n0 = (x0 & mask) >>> shift;
+      const n1 = (x1 & mask) >>> shift;
+      const n2 = (x2 & mask) >>> shift;
+      const n3 = (x3 & mask) >>> shift;
+      
+      // Apply inverse S-box transformation
+      const s0 = sboxInv[n0];
+      const s1 = sboxInv[n1];
+      const s2 = sboxInv[n2];
+      const s3 = sboxInv[n3];
+      
+      // Put back transformed nibbles
+      result[0] |= (s0 << shift);
+      result[1] |= (s1 << shift);
+      result[2] |= (s2 << shift);
+      result[3] |= (s3 << shift);
     }
+    
+    return result;
   }
 
   // Linear transformation function
@@ -572,8 +300,8 @@ class SerpentInstance extends AlgorithmFramework.IBlockCipherInstance {
       keyWords[wordIndex] |= (1 << (byteIndex * 8));
     }
     
-    // Generate extended key
-    const extendedKey = new Array(140);
+    // Generate extended key (132 words total)
+    const extendedKey = new Array(132);
     
     // Copy initial key words
     for (let i = 0; i < 8; i++) {
@@ -581,22 +309,22 @@ class SerpentInstance extends AlgorithmFramework.IBlockCipherInstance {
     }
     
     // Generate remaining key words
-    for (let i = 8; i < 140; i++) {
+    for (let i = 8; i < 132; i++) {
       const temp = extendedKey[i - 8] ^ extendedKey[i - 5] ^ extendedKey[i - 3] ^ extendedKey[i - 1] ^ this.PHI ^ (i - 8);
       extendedKey[i] = OpCodes.RotL32(temp, 11);
     }
     
-    // Apply S-boxes to subkeys
+    // Apply S-boxes to subkeys (libgcrypt approach)
     const roundKeys = [];
     
     for (let round = 0; round < 33; round++) {
-      const baseIndex = round * 4 + 8;
-      const sboxIndex = (7 - (round % 8)) % 8; // Correct S-box order for key schedule
+      const baseIndex = round * 4;
+      const sboxIndex = (32 + 3 - round) % 8; // Correct S-box order for key schedule
       
-      const x0 = extendedKey[baseIndex];
-      const x1 = extendedKey[baseIndex + 1];
-      const x2 = extendedKey[baseIndex + 2];
-      const x3 = extendedKey[baseIndex + 3];
+      const x0 = extendedKey[baseIndex + 8];
+      const x1 = extendedKey[baseIndex + 9];
+      const x2 = extendedKey[baseIndex + 10];
+      const x3 = extendedKey[baseIndex + 11];
       
       const transformed = this._sbox(sboxIndex, x0, x1, x2, x3);
       roundKeys.push(transformed);
@@ -617,8 +345,6 @@ class SerpentInstance extends AlgorithmFramework.IBlockCipherInstance {
     let x2 = OpCodes.Pack32LE(block[8], block[9], block[10], block[11]);
     let x3 = OpCodes.Pack32LE(block[12], block[13], block[14], block[15]);
 
-    const sboxOrder = [0, 1, 2, 3, 4, 5, 6, 7]; // S-box order for encryption
-
     // 32 encryption rounds
     for (let round = 0; round < this.ROUNDS; round++) {
       // Key mixing
@@ -627,8 +353,8 @@ class SerpentInstance extends AlgorithmFramework.IBlockCipherInstance {
       x2 ^= this.roundKeys[round][2];
       x3 ^= this.roundKeys[round][3];
 
-      // S-box substitution
-      const sboxIndex = sboxOrder[round % 8];
+      // S-box substitution (correct order for encryption)
+      const sboxIndex = round % 8;
       const sboxResult = this._sbox(sboxIndex, x0, x1, x2, x3);
       x0 = sboxResult[0];
       x1 = sboxResult[1];
@@ -675,8 +401,6 @@ class SerpentInstance extends AlgorithmFramework.IBlockCipherInstance {
     let x2 = OpCodes.Pack32LE(block[8], block[9], block[10], block[11]);
     let x3 = OpCodes.Pack32LE(block[12], block[13], block[14], block[15]);
 
-    const sboxOrder = [0, 1, 2, 3, 4, 5, 6, 7]; // Same S-box order for decryption
-
     // Initial key mixing (undo final key mixing)
     x0 ^= this.roundKeys[32][0];
     x1 ^= this.roundKeys[32][1];
@@ -694,8 +418,8 @@ class SerpentInstance extends AlgorithmFramework.IBlockCipherInstance {
         x3 = ltResult[3];
       }
 
-      // Inverse S-box substitution (undo the S-box from encryption)
-      const sboxIndex = sboxOrder[round % 8];
+      // Inverse S-box substitution (correct order for decryption)
+      const sboxIndex = round % 8;
       const sboxResult = this._sboxInv(sboxIndex, x0, x1, x2, x3);
       x0 = sboxResult[0];
       x1 = sboxResult[1];

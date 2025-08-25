@@ -304,19 +304,11 @@ class XXHash32AlgorithmInstance extends IHashFunctionInstance {
   Hash(message) {
     // Convert string to byte array if needed
     if (typeof message === 'string') {
-      const bytes = [];
-      for (let i = 0; i < message.length; i++) {
-        bytes.push(message.charCodeAt(i) & 0xFF);
-      }
-      message = bytes;
+      message = OpCodes.AnsiToBytes(message);
     }
     
     const hash32 = xxhash32(message, XXHASH32_SEED);
-    const result = new Array(4);
-    for (let i = 0; i < 4; i++) {
-      result[i] = (hash32 >>> (i * 8)) & 0xFF;
-    }
-    return result;
+    return OpCodes.Unpack32BE(hash32);
   }
 
   /**
@@ -357,7 +349,7 @@ class XXHash32AlgorithmInstance extends IHashFunctionInstance {
    * @param {Array} data - Input data as byte array
    */
   Feed(data) {
-    this.Init();
+    if (!this.hasher) this.Init();
     this.Update(data);
   }
 
@@ -375,11 +367,7 @@ class XXHash32AlgorithmInstance extends IHashFunctionInstance {
 
   Final() {
     const hash32 = this.hasher.finalize();
-    const result = new Array(4);
-    for (let i = 0; i < 4; i++) {
-      result[i] = (hash32 >>> (i * 8)) & 0xFF;
-    }
-    return result;
+    return OpCodes.Unpack32BE(hash32);
   }
 }
   

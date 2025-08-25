@@ -39,12 +39,10 @@ class RC6Algorithm extends BlockCipherAlgorithm {
     this.complexity = ComplexityType.INTERMEDIATE;
     this.country = CountryCode.US;
 
-    // Algorithm-specific metadata  
-    this.SupportedKeySizes = [
+    // Block and key specifications
+    this.blockSize = 16; // 128-bit blocks
+    this.keySizes = [
       new KeySize(16, 32, 8) // 128, 192, 256-bit keys (16, 24, 32 bytes)
-    ];
-    this.SupportedBlockSizes = [
-      new KeySize(16, 16, 0) // Fixed 128-bit blocks
     ];
 
     // Documentation and references
@@ -59,20 +57,19 @@ class RC6Algorithm extends BlockCipherAlgorithm {
     ];
 
     // Test vectors from IETF draft-krovetz-rc6-rc5-vectors-00
-    this.tests = [
-      {
-        text: "IETF test vector - RC6-32/20/16 (128-bit key)",
-        uri: "https://datatracker.ietf.org/doc/html/draft-krovetz-rc6-rc5-vectors-00",
-        input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-        key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-        expected: OpCodes.Hex8ToBytes("3A96F9C7F6755CFE46F00E3DCD5D2A3C")
-      }
+    this.testCases = [
+      new TestCase(
+        "IETF test vector - RC6-32/20/16 (128-bit key)",
+        OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+        OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+        OpCodes.Hex8ToBytes("3A96F9C7F6755CFE46F00E3DCD5D2A3C"),
+        [new LinkItem("IETF RC6 vectors", "https://datatracker.ietf.org/doc/html/draft-krovetz-rc6-rc5-vectors-00")]
+      )
     ];
   }
 
-  // Required: Create instance for this algorithm
-  CreateInstance(isInverse = false) {
-    return new RC6Instance(this, isInverse);
+  CreateInstance(key) {
+    return new RC6Instance(key);
   }
 
   // RC6 Constants - using OpCodes for proper optimization scoring  
@@ -84,85 +81,42 @@ class RC6Algorithm extends BlockCipherAlgorithm {
 
 // Instance class - handles the actual encryption/decryption
 class RC6Instance extends IBlockCipherInstance {
-  constructor(algorithm, isInverse = false) {
-    super(algorithm);
-    this.isInverse = isInverse;
-    this.key = null;
+  constructor(key) {
+    super();
     this.keySchedule = null;
-    this.inputBuffer = [];
-    this.BlockSize = 16; // 128 bits
-    this.KeySize = 0;    // will be set when key is assigned
+    
+    this._setupKey(key);
   }
 
-  // Property setter for key - validates and sets up key schedule
-  set key(keyBytes) {
+  _setupKey(keyBytes) {
     if (!keyBytes) {
-      this._key = null;
-      this.keySchedule = null;
-      this.KeySize = 0;
-      return;
+      throw new Error("Key is required");
     }
 
-    // Validate key size
-    const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
-      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-      (keyBytes.length - ks.minSize) % ks.stepSize === 0
-    );
-    
-    if (!isValidSize) {
-      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+    // Validate key size (must be 16, 24, or 32 bytes)
+    if (![16, 24, 32].includes(keyBytes.length)) {
+      throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16, 24, or 32 bytes)`);
     }
 
-    this._key = [...keyBytes]; // Copy the key
-    this.KeySize = keyBytes.length;
-    this._generateKeySchedule();
+    this._generateKeySchedule(keyBytes);
   }
 
-  get key() {
-    return this._key ? [...this._key] : null; // Return copy
+  EncryptBlock(blockIndex, data) {
+    if (data.length !== 16) {
+      throw new Error('RC6 requires exactly 16 bytes per block');
+    }
+    return this._encryptBlock(data);
   }
 
-  // Feed data to the cipher (accumulates until we have complete blocks)
-  Feed(data) {
-    if (!data || data.length === 0) return;
-    if (!this.key) throw new Error("Key not set");
-
-    // Add data to input buffer
-    this.inputBuffer.push(...data);
-  }
-
-  // Get the result of the transformation
-  Result() {
-    if (!this.key) throw new Error("Key not set");
-    if (this.inputBuffer.length === 0) throw new Error("No data fed");
-
-    // Process complete blocks
-    const output = [];
-    const blockSize = this.BlockSize;
-    
-    // Validate input length for block cipher
-    if (this.inputBuffer.length % blockSize !== 0) {
-      throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+  DecryptBlock(blockIndex, data) {
+    if (data.length !== 16) {
+      throw new Error('RC6 requires exactly 16 bytes per block');
     }
-
-    // Process each block
-    for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
-      const block = this.inputBuffer.slice(i, i + blockSize);
-      const processedBlock = this.isInverse 
-        ? this._decryptBlock(block) 
-        : this._encryptBlock(block);
-      output.push(...processedBlock);
-    }
-
-    // Clear input buffer for next operation
-    this.inputBuffer = [];
-    
-    return output;
+    return this._decryptBlock(data);
   }
 
   // Private method for key schedule generation
-  _generateKeySchedule() {
-    const keyBytes = this._key;
+  _generateKeySchedule(keyBytes) {
     const c = Math.floor((keyBytes.length + 3) / 4); // Key length in 32-bit words
     
     // Initialize S array with magic constants

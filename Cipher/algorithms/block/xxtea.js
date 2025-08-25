@@ -35,12 +35,10 @@ class XXTEAAlgorithm extends AlgorithmFramework.BlockCipherAlgorithm {
     this.complexity = AlgorithmFramework.ComplexityType.INTERMEDIATE;
     this.country = AlgorithmFramework.CountryCode.GB;
 
-    // Algorithm-specific metadata
-    this.SupportedKeySizes = [
+    // Block and key specifications
+    this.blockSize = 8; // Minimum block size (variable)
+    this.keySizes = [
       new AlgorithmFramework.KeySize(16, 16, 1) // Fixed 128-bit key
-    ];
-    this.SupportedBlockSizes = [
-      new AlgorithmFramework.KeySize(8, 1024, 4) // Variable 8-byte to 1KB blocks (multiple of 4)
     ];
 
     // Documentation and references
@@ -63,58 +61,48 @@ class XXTEAAlgorithm extends AlgorithmFramework.BlockCipherAlgorithm {
     ];
 
     // Test vectors from various sources
-    this.tests = [
-      {
-        text: "XXTEA 8-byte block test vector",
-        uri: "Educational test vector",
-        input: OpCodes.Hex8ToBytes("0000000000000000"),
-        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: OpCodes.Hex8ToBytes("0537042bab575d00")
-      },
-      {
-        text: "XXTEA 12-byte variable block test",
-        uri: "Educational test vector",
-        input: OpCodes.Hex8ToBytes("000000000000000000000000"),
-        key: OpCodes.Hex8ToBytes("123456789abcdef0123456789abcdef0"),
-        expected: OpCodes.Hex8ToBytes("e91306eadbf9a325d8181800")
-      }
+    this.testCases = [
+      new AlgorithmFramework.TestCase(
+        "XXTEA 8-byte block test vector",
+        OpCodes.Hex8ToBytes("0000000000000000"),
+        OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        OpCodes.Hex8ToBytes("0537042bab575d00"),
+        [new AlgorithmFramework.LinkItem("Educational test vector", "")]
+      ),
+      new AlgorithmFramework.TestCase(
+        "XXTEA 12-byte variable block test",
+        OpCodes.Hex8ToBytes("000000000000000000000000"),
+        OpCodes.Hex8ToBytes("123456789abcdef0123456789abcdef0"),
+        OpCodes.Hex8ToBytes("e91306eadbf9a325d8181800"),
+        [new AlgorithmFramework.LinkItem("Educational test vector", "")]
+      )
     ];
   }
 
-  CreateInstance(isInverse = false) {
-    return new XXTEAInstance(this, isInverse);
+  CreateInstance(key) {
+    return new XXTEAInstance(key);
   }
 }
 
 class XXTEAInstance extends AlgorithmFramework.IBlockCipherInstance {
-  constructor(algorithm, isInverse = false) {
-    super(algorithm);
-    this.isInverse = isInverse;
-    this.key = null;
-    this.keyWords = null;
-    this.inputBuffer = [];
-    this.BlockSize = 8; // Minimum block size
-    this.KeySize = 0;
+  constructor(key) {
+    super();
     
     // XXTEA constants
     this.DELTA = 0x9E3779B9;                   // Magic constant: 2^32 / golden ratio
+    
+    this._setupKey(key);
   }
 
-  set key(keyBytes) {
+  _setupKey(keyBytes) {
     if (!keyBytes) {
-      this._key = null;
-      this.keyWords = null;
-      this.KeySize = 0;
-      return;
+      throw new Error("Key is required");
     }
 
     // Validate key size
     if (keyBytes.length !== 16) {
       throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16)`);
     }
-
-    this._key = [...keyBytes];
-    this.KeySize = keyBytes.length;
     
     // Convert 128-bit key to four 32-bit words using OpCodes (big-endian)
     this.keyWords = [
@@ -125,34 +113,18 @@ class XXTEAInstance extends AlgorithmFramework.IBlockCipherInstance {
     ];
   }
 
-  get key() {
-    return this._key ? [...this._key] : null;
-  }
-
-  Feed(data) {
-    if (!data || data.length === 0) return;
-    if (!this.key) throw new Error("Key not set");
-
-    this.inputBuffer.push(...data);
-  }
-
-  Result() {
-    if (!this.key) throw new Error("Key not set");
-    if (this.inputBuffer.length === 0) throw new Error("No data fed");
-
-    // Validate input length
-    if (this.inputBuffer.length < 8 || this.inputBuffer.length % 4 !== 0) {
-      throw new Error(`Input must be at least 8 bytes and multiple of 4 bytes`);
+  EncryptBlock(blockIndex, data) {
+    if (data.length < 8 || data.length % 4 !== 0) {
+      throw new Error('XXTEA requires at least 8 bytes and multiple of 4 bytes per block');
     }
+    return this._encryptData(data);
+  }
 
-    const output = this.isInverse 
-      ? this._decryptData(this.inputBuffer) 
-      : this._encryptData(this.inputBuffer);
-
-    // Clear input buffer
-    this.inputBuffer = [];
-    
-    return output;
+  DecryptBlock(blockIndex, data) {
+    if (data.length < 8 || data.length % 4 !== 0) {
+      throw new Error('XXTEA requires at least 8 bytes and multiple of 4 bytes per block');
+    }
+    return this._decryptData(data);
   }
 
   // Encrypt variable-length data

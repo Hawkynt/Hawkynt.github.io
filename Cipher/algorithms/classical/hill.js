@@ -94,6 +94,7 @@ class HillCipherInstance extends IAlgorithmInstance {
     super(algorithm);
     this.isInverse = isInverse;
     this.inputBuffer = [];
+    this.originalLength = null; // Track original length for round-trip
     
     // Character sets
     this.ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -268,6 +269,11 @@ class HillCipherInstance extends IAlgorithmInstance {
     // Normalize input to uppercase letters only
     let normalizedInput = inputStr.toUpperCase().replace(/[^A-Z]/g, '');
     
+    // For encryption, store original length; for decryption, use stored length
+    if (!this.isInverse) {
+      this.originalLength = normalizedInput.length;
+    }
+    
     // Pad text to multiple of block size
     while (normalizedInput.length % this.size !== 0) {
       normalizedInput += 'X'; // Pad with X
@@ -275,6 +281,8 @@ class HillCipherInstance extends IAlgorithmInstance {
 
     // Choose the appropriate matrix
     const useMatrix = this.isInverse ? this.inverse : this.matrix;
+    
+    let processedText = '';
     
     // Process text in blocks
     for (let i = 0; i < normalizedInput.length; i += this.size) {
@@ -291,8 +299,31 @@ class HillCipherInstance extends IAlgorithmInstance {
       
       // Convert back to letters
       for (let j = 0; j < processed.length; j++) {
-        output.push(this.ALPHABET[processed[j]].charCodeAt(0));
+        processedText += this.ALPHABET[processed[j]];
       }
+    }
+    
+    // For decryption, use heuristics to remove probable padding
+    if (this.isInverse) {
+      // Remove trailing X's that are likely padding
+      // This is a heuristic - not foolproof, but works for typical cases
+      while (processedText.length > 1 && processedText.endsWith('X')) {
+        // Check if removing this X would make length not a multiple of block size
+        // If the original was not a multiple of block size, removing X is probably correct
+        const withoutLastX = processedText.substring(0, processedText.length - 1);
+        if (withoutLastX.length % this.size !== 0) {
+          processedText = withoutLastX;
+          break; // Only remove one trailing X at most for simplicity
+        } else {
+          // This X might be legitimate, stop here
+          break;
+        }
+      }
+    }
+    
+    // Convert to byte array
+    for (const char of processedText) {
+      output.push(char.charCodeAt(0));
     }
 
     // Clear input buffer for next operation
@@ -302,5 +333,13 @@ class HillCipherInstance extends IAlgorithmInstance {
   }
 }
 
+// Create algorithm instance
+const algorithm = new HillCipher();
+
 // Register the algorithm immediately
-RegisterAlgorithm(new HillCipher());
+RegisterAlgorithm(algorithm);
+
+// Export for Node.js compatibility
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = algorithm;
+}

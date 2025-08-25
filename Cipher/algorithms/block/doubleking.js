@@ -34,12 +34,10 @@ class DoubleKingAlgorithm extends BlockCipherAlgorithm {
     this.complexity = ComplexityType.ADVANCED;
     this.country = CountryCode.NL;
 
-    // Algorithm-specific metadata
-    this.SupportedKeySizes = [
-      new KeySize(48, 48, 0) // Fixed 384-bit key
-    ];
-    this.SupportedBlockSizes = [
-      new KeySize(48, 48, 0) // Fixed 384-bit blocks
+    // Block and key specifications
+    this.blockSize = 48; // 384-bit blocks
+    this.keySizes = [
+      new KeySize(48, 48, 1) // Fixed 384-bit key
     ];
 
     // Documentation and references
@@ -94,8 +92,8 @@ class DoubleKingAlgorithm extends BlockCipherAlgorithm {
     ];
   }
 
-  CreateInstance(isInverse = false) {
-    return new DoubleKingInstance(this, isInverse);
+  CreateInstance(key) {
+    return new DoubleKingInstance(key);
   }
     
   /**

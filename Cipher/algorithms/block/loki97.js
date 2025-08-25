@@ -15,7 +15,7 @@ if (!global.AlgorithmFramework && typeof require !== 'undefined') {
 
 // Load OpCodes for cryptographic operations (RECOMMENDED)
 if (!global.OpCodes && typeof require !== 'undefined') {
-  OpCodes = require('../../OpCodes.js');
+  global.OpCodes = require('../../OpCodes.js');
 }
 
 class LOKI97Algorithm extends AlgorithmFramework.BlockCipherAlgorithm {
@@ -46,7 +46,8 @@ class LOKI97Algorithm extends AlgorithmFramework.BlockCipherAlgorithm {
     // Documentation and references
     this.documentation = [
       new AlgorithmFramework.LinkItem("LOKI97 AES Submission", "https://csrc.nist.gov/csrc/media/projects/cryptographic-standards-and-guidelines/documents/aes-development/loki97.pdf"),
-      new AlgorithmFramework.LinkItem("LOKI97 Specification", "https://www.unsw.adfa.edu.au/~lpb/papers/loki97.pdf")
+      new AlgorithmFramework.LinkItem("LOKI97 Specification", "https://www.unsw.adfa.edu.au/~lpb/papers/loki97.pdf"),
+      new LinkItem("LOKI Paper","https://www.researchgate.net/publication/2331541_Introducing_the_new_LOKI97_Block_Cipher")
     ];
 
     this.references = [
@@ -73,7 +74,14 @@ class LOKI97Algorithm extends AlgorithmFramework.BlockCipherAlgorithm {
         input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
         key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
         expected: OpCodes.Hex8ToBytes("6a64edc8bde4adb5f2b8c7e1a39d1847")
-      }
+      },
+{
+text:"Appendix A - Log of Test Triple",
+uri:"https://www.researchgate.net/publication/2331541_Introducing_the_new_LOKI97_Block_Cipher",
+input:    OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+key:      OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+expected: OpCodes.Hex8ToBytes("75080E359F10FE640144B35C57128DAD")
+}
     ];
   }
 
@@ -116,6 +124,27 @@ class LOKI97Instance extends AlgorithmFramework.IBlockCipherInstance {
     this._setupKey();
   }
 
+  // Lowercase key property for test framework compatibility
+  get key() {
+    return this._key;
+  }
+
+  set key(value) {
+    if (!value) {
+      this._key = null;
+      this.roundKeys = null;
+      this.KeySize = 0;
+      return;
+    }
+
+    if (value.length !== 16 && value.length !== 24 && value.length !== 32) {
+      throw new Error('Invalid LOKI97 key size: ' + (8 * value.length) + ' bits. Required: 128, 192, or 256 bits.');
+    }
+    this._key = [...value]; // Copy the key
+    this.KeySize = value.length;
+    this._setupKey();
+  }
+
   _initializeTables() {
     if (this.isInitialized) return;
     
@@ -145,8 +174,8 @@ class LOKI97Instance extends AlgorithmFramework.IBlockCipherInstance {
   }
 
   _setupKey() {
-    if (!this.key) return;
-    this.roundKeys = this._keySchedule(this.key);
+    if (!this._key) return;
+    this.roundKeys = this._keySchedule(this._key);
   }
 
   _keySchedule(masterKey) {
@@ -196,7 +225,7 @@ class LOKI97Instance extends AlgorithmFramework.IBlockCipherInstance {
   }
 
   Result() {
-    if (!this.key) {
+    if (!this._key) {
       throw new Error('Key not set');
     }
 

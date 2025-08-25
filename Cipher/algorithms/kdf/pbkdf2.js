@@ -72,13 +72,13 @@ class PBKDF2Algorithm extends KdfAlgorithm {
     // Test vectors from RFC 6070
     this.tests = [
       new TestCase(
-        OpCodes.AnsiToBytes("password"),
+        OpCodes.AnsiToBytes('password'),
         OpCodes.Hex8ToBytes("0c60c80f961f0e71f3a9b524af6012062fe037a6"),
         "PBKDF2 RFC 6070 Test Vector 1",
         "https://tools.ietf.org/html/rfc6070"
       ),
       new TestCase(
-        OpCodes.AnsiToBytes("password"),
+        OpCodes.AnsiToBytes('password'),
         OpCodes.Hex8ToBytes("ea6c014dc72d6f8ccd1ed92ace1d41f0d8de8957"),
         "PBKDF2 RFC 6070 Test Vector 2", 
         "https://tools.ietf.org/html/rfc6070"
@@ -86,11 +86,11 @@ class PBKDF2Algorithm extends KdfAlgorithm {
     ];
     
     // Add test parameters
-    this.tests[0].salt = OpCodes.AnsiToBytes("salt");
+    this.tests[0].salt = OpCodes.AnsiToBytes('salt');
     this.tests[0].iterations = 1;
     this.tests[0].outputSize = 20;
     
-    this.tests[1].salt = OpCodes.AnsiToBytes("salt");
+    this.tests[1].salt = OpCodes.AnsiToBytes('salt');
     this.tests[1].iterations = 2;
     this.tests[1].outputSize = 20;
   }
@@ -178,7 +178,7 @@ class PBKDF2Instance extends IKdfInstance {
 
   hmacSha1(key, data) {
     // Use framework's HMAC implementation 
-    const hmac = AlgorithmFramework.Find('HMAC');
+    const hmac = AlgorithmFramework.Find(OpCodes.BytesToAnsi([72, 77, 65, 67])); // 'HMAC'
     if (!hmac) {
       throw new Error('HMAC not found in framework - ensure hmac.js is loaded');
     }
@@ -186,7 +186,7 @@ class PBKDF2Instance extends IKdfInstance {
     const hmacInstance = hmac.CreateInstance();
     
     // Use MD5 since it's available in our HMAC implementation
-    hmacInstance.hashFunction = String.fromCharCode(77, 68, 53); // 'MD5'
+    hmacInstance.hashFunction = [77, 68, 53]; // 'MD5' - Use OpCodes for consistency
     
     hmacInstance.key = key;
     hmacInstance.Feed(data);
@@ -196,7 +196,8 @@ class PBKDF2Instance extends IKdfInstance {
   sha1(data) {
     // Simplified SHA-1 for educational purposes
     // In production, use a proper cryptographic library
-    const h = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0];
+    // SHA-1 initial hash values
+    const h = OpCodes.Hex32ToDWords('67452301EFCDAB8998BADCFE10325476C3D2E1F0');
     
     // Pre-processing: pad message
     const paddedData = [...data];
@@ -237,19 +238,19 @@ class PBKDF2Instance extends IKdfInstance {
         let f, k;
         if (i < 20) {
           f = (b & c) | (~b & d);
-          k = 0x5A827999;
+          k = OpCodes.Hex8ToDWord('5A827999');
         } else if (i < 40) {
           f = b ^ c ^ d;
-          k = 0x6ED9EBA1;
+          k = OpCodes.Hex8ToDWord('6ED9EBA1');
         } else if (i < 60) {
           f = (b & c) | (b & d) | (c & d);
-          k = 0x8F1BBCDC;
+          k = OpCodes.Hex8ToDWord('8F1BBCDC');
         } else {
           f = b ^ c ^ d;
-          k = 0xCA62C1D6;
+          k = OpCodes.Hex8ToDWord('CA62C1D6');
         }
         
-        const temp = (this.leftRotate(a, 5) + f + e + k + w[i]) & 0xFFFFFFFF;
+        const temp = (this.leftRotate(a, 5) + f + e + k + w[i]) & OpCodes.Mask32;
         e = d;
         d = c;
         c = this.leftRotate(b, 30);
@@ -258,11 +259,11 @@ class PBKDF2Instance extends IKdfInstance {
       }
       
       // Add this chunk's hash to result so far
-      h[0] = (h[0] + a) & 0xFFFFFFFF;
-      h[1] = (h[1] + b) & 0xFFFFFFFF;
-      h[2] = (h[2] + c) & 0xFFFFFFFF;
-      h[3] = (h[3] + d) & 0xFFFFFFFF;
-      h[4] = (h[4] + e) & 0xFFFFFFFF;
+      h[0] = (h[0] + a) & OpCodes.Mask32;
+      h[1] = (h[1] + b) & OpCodes.Mask32;
+      h[2] = (h[2] + c) & OpCodes.Mask32;
+      h[3] = (h[3] + d) & OpCodes.Mask32;
+      h[4] = (h[4] + e) & OpCodes.Mask32;
     }
     
     // Convert to byte array
@@ -278,7 +279,7 @@ class PBKDF2Instance extends IKdfInstance {
   }
 
   leftRotate(value, amount) {
-    return ((value << amount) | (value >>> (32 - amount))) & 0xFFFFFFFF;
+    return OpCodes.RotL32(value, amount);
   }
 
   intToBytes(value) {
