@@ -1,402 +1,264 @@
 /*
- * Universal BASE32 Encoding
- * Compatible with both Browser and Node.js environments
- * Based on RFC 4648 specification
+ * Base32 Encoding Implementation
+ * Educational implementation of Base32 encoding (RFC 4648)
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
+// Load AlgorithmFramework (REQUIRED)
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('BASE32 encoder requires Cipher system to be loaded first');
-      return;
-    }
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
-  // Load OpCodes for cryptographic operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class Base32Algorithm extends EncodingAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "Base32";
+      this.description = "Base32 encoding scheme using 32-character alphabet for case-insensitive encoding. More human-readable than Base64 and commonly used in authentication systems like TOTP. Educational implementation following RFC 4648 standard.";
+      this.inventor = "Privacy-Enhanced Mail (PEM) Working Group";
+      this.year = 2006;
+      this.category = CategoryType.ENCODING;
+      this.subCategory = "Base Encoding";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.BEGINNER;
+      this.country = CountryCode.INTL;
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("RFC 4648 - The Base16, Base32, and Base64 Data Encodings", "https://tools.ietf.org/html/rfc4648"),
+        new LinkItem("Wikipedia - Base32", "https://en.wikipedia.org/wiki/Base32"),
+        new LinkItem("Base32 Crockford", "https://www.crockford.com/base32.html")
+      ];
+
+      this.references = [
+        new LinkItem("Google Authenticator", "https://github.com/google/google-authenticator"),
+        new LinkItem("TOTP Specification", "https://tools.ietf.org/html/rfc6238"),
+        new LinkItem("Base32 Online Decoder", "https://base32decode.org/")
+      ];
+
+      this.knownVulnerabilities = [];
+
+      // Test vectors from RFC 4648
+      this.tests = [
+        new TestCase(
+          OpCodes.AnsiToBytes(""),
+          OpCodes.AnsiToBytes(""),
+          "Base32 empty string test - RFC 4648",
+          "https://tools.ietf.org/html/rfc4648#section-10"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("f"),
+          OpCodes.AnsiToBytes("MY======"),
+          "Base32 single character test - RFC 4648", 
+          "https://tools.ietf.org/html/rfc4648#section-10"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("fo"),
+          OpCodes.AnsiToBytes("MZXQ===="),
+          "Base32 two character test - RFC 4648",
+          "https://tools.ietf.org/html/rfc4648#section-10"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("foo"),
+          OpCodes.AnsiToBytes("MZXW6==="),
+          "Base32 three character test - RFC 4648",
+          "https://tools.ietf.org/html/rfc4648#section-10"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("foob"),
+          OpCodes.AnsiToBytes("MZXW6YQ="),
+          "Base32 four character test - RFC 4648",
+          "https://tools.ietf.org/html/rfc4648#section-10"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("fooba"),
+          OpCodes.AnsiToBytes("MZXW6YTB"),
+          "Base32 five character test - RFC 4648",
+          "https://tools.ietf.org/html/rfc4648#section-10"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("foobar"),
+          OpCodes.AnsiToBytes("MZXW6YTBOI======"),
+          "Base32 six character test - RFC 4648",
+          "https://tools.ietf.org/html/rfc4648#section-10"
+        )
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      return new Base32Instance(this, isInverse);
     }
   }
-  
-  // Create BASE32 encoder object
-  const BASE32 = {
-    // Public interface properties
-    internalName: 'BASE32',
-    name: 'BASE32',
-    comment: 'RFC 4648 compliant BASE32 encoding',
-    minKeyLength: 0,
-    maxKeyLength: 0,
-    stepKeyLength: 1,
-    minBlockSize: 0,
-    maxBlockSize: 0,
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
-    
-    // BASE32 alphabet from RFC 4648
-    ALPHABET: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567',
-    PADDING: '=',
-    
-    // Comprehensive test vectors for BASE32 encoding
-    testVectors: [
-      {
-        algorithm: 'BASE32',
-        description: 'RFC 4648 empty string test',
-        origin: 'RFC 4648 Section 10',
-        link: 'https://tools.ietf.org/html/rfc4648#section-10',
-        standard: 'RFC 4648',
-        input: '',
-        output: '',
-        compressionRatio: 1.0, // No change for encoding
-        notes: 'Edge case: empty input should return empty output',
-        category: 'Edge Case'
-      },
-      {
-        algorithm: 'BASE32',
-        description: 'RFC 4648 single character test',
-        origin: 'RFC 4648 Section 10',
-        link: 'https://tools.ietf.org/html/rfc4648#section-10',
-        standard: 'RFC 4648',
-        input: 'f',
-        output: 'MY======',
-        compressionRatio: 0.125, // 1 byte -> 8 chars (expansion)
-        notes: 'Single character encoding with full padding',
-        category: 'Basic'
-      },
-      {
-        algorithm: 'BASE32',
-        description: 'RFC 4648 two character test',
-        origin: 'RFC 4648 Section 10',
-        link: 'https://tools.ietf.org/html/rfc4648#section-10',
-        standard: 'RFC 4648',
-        input: 'fo',
-        output: 'MZXQ====',
-        compressionRatio: 0.25, // 2 bytes -> 8 chars
-        notes: 'Two character encoding demonstrating padding rules',
-        category: 'Basic'
-      },
-      {
-        algorithm: 'BASE32',
-        description: 'RFC 4648 standard foo test',
-        origin: 'RFC 4648 Section 10',
-        link: 'https://tools.ietf.org/html/rfc4648#section-10',
-        standard: 'RFC 4648',
-        input: 'foo',
-        output: 'MZXW6===',
-        compressionRatio: 0.375, // 3 bytes -> 8 chars
-        notes: 'Three characters - common test case',
-        category: 'Basic'
-      },
-      {
-        algorithm: 'BASE32',
-        description: 'RFC 4648 extended foo test',
-        origin: 'RFC 4648 Section 10',
-        link: 'https://tools.ietf.org/html/rfc4648#section-10',
-        standard: 'RFC 4648',
-        input: 'foobar',
-        output: 'MZXW6YTBOI======',
-        compressionRatio: 0.375, // 6 bytes -> 16 chars
-        notes: 'Six characters showing typical encoding expansion',
-        category: 'Standard'
-      },
-      {
-        algorithm: 'BASE32',
-        description: 'Binary data encoding test',
-        origin: 'Base32 binary handling validation',
-        link: 'https://en.wikipedia.org/wiki/Base32',
-        standard: 'Educational',
-        input: '\x00\x01\x02\x03\x04',
-        output: '', // Will be generated
-        compressionRatio: 0.625, // 5 bytes -> 8 chars
-        notes: 'Tests handling of binary data with null bytes',
-        category: 'Binary'
-      },
-      {
-        algorithm: 'BASE32',
-        description: 'All alphabet characters test',
-        origin: 'Character set validation',
-        link: 'https://tools.ietf.org/html/rfc4648',
-        standard: 'RFC 4648',
-        input: 'The quick brown fox jumps over the lazy dog',
-        output: '', // Generated by algorithm
-        compressionRatio: 0.55, // Typical text expansion
-        notes: 'Tests full alphabet coverage and case handling',
-        category: 'Text'
-      },
-      {
-        algorithm: 'BASE32',
-        description: 'Long string boundary test',
-        origin: 'Boundary condition testing',
-        link: 'https://base32.readthedocs.io/en/latest/',
-        standard: 'Implementation Test',
-        input: 'A'.repeat(100),
-        output: '', // 100 identical characters
-        compressionRatio: 0.625, // Predictable expansion
-        notes: 'Tests algorithm with long repetitive input',
-        category: 'Boundary'
+
+  class Base32Instance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+      this.paddingChar = "=";
+      this.processedData = null;
+
+      // Create decode lookup table
+      this.decodeTable = {};
+      for (let i = 0; i < this.alphabet.length; i++) {
+        this.decodeTable[this.alphabet[i]] = i;
       }
-    ],
-    
-    // Reference links for BASE32 specifications and implementations
-    referenceLinks: {
-      specifications: [
-        {
-          name: 'RFC 4648: The Base16, Base32, and Base64 Data Encodings',
-          url: 'https://tools.ietf.org/html/rfc4648',
-          description: 'Official specification for Base32 encoding standard'
-        },
-        {
-          name: 'RFC 3548: Base64/32 Data Encodings (obsoleted by RFC 4648)',
-          url: 'https://tools.ietf.org/html/rfc3548',
-          description: 'Historical specification - superseded by RFC 4648'
-        },
-        {
-          name: 'Base32 Extended Hex Alphabet',
-          url: 'https://tools.ietf.org/html/rfc4648#section-7',
-          description: 'Alternative Base32 encoding using extended hex alphabet'
-        }
-      ],
-      implementations: [
-        {
-          name: 'Python base64 module documentation',
-          url: 'https://docs.python.org/3/library/base64.html#base64.b32encode',
-          description: 'Standard library implementation reference'
-        },
-        {
-          name: 'Base32 JavaScript Implementation Guide',
-          url: 'https://github.com/LinusU/base32-encode',
-          description: 'Popular JavaScript implementation with examples'
-        },
-        {
-          name: 'Google Authenticator Base32 Usage',
-          url: 'https://github.com/google/google-authenticator/wiki/Key-Uri-Format',
-          description: 'Real-world usage in two-factor authentication'
-        }
-      ],
-      validation: [
-        {
-          name: 'Base32 Online Encoder/Decoder',
-          url: 'https://emn178.github.io/online-tools/base32_encode.html',
-          description: 'Online tool for validating Base32 encoding results'
-        },
-        {
-          name: 'RFC 4648 Test Vectors',
-          url: 'https://tools.ietf.org/html/rfc4648#section-10',
-          description: 'Official test vectors for validation'
-        },
-        {
-          name: 'Base32 Crockford Specification',
-          url: 'https://www.crockford.com/base32.html',
-          description: 'Alternative Base32 specification with different alphabet'
-        }
-      ]
-    },
-    
-    // Initialize encoder
-    Init: function() {
-      BASE32.isInitialized = true;
-    },
-    
-    // Set up key (BASE32 doesn't use keys, but required by interface)
-    KeySetup: function(optional_key) {
-      let id;
-      do {
-        id = 'BASE32[' + global.generateUniqueID() + ']';
-      } while (BASE32.instances[id] || global.objectInstances[id]);
-      
-      BASE32.instances[id] = new BASE32.BASE32Instance(optional_key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear encoder data
-    ClearData: function(id) {
-      if (BASE32.instances[id]) {
-        delete BASE32.instances[id];
-        delete global.objectInstances[id];
-        return true;
+    }
+
+    Feed(data) {
+      if (!Array.isArray(data)) {
+        throw new Error('Base32Instance.Feed: Input must be byte array');
+      }
+
+      if (this.isInverse) {
+        this.processedData = this.decode(data);
       } else {
-        global.throwException('Unknown Object Reference Exception', id, 'BASE32', 'ClearData');
-        return false;
+        this.processedData = this.encode(data);
       }
-    },
-    
-    // Convert string to bytes array
-    stringToBytes: function(str) {
-      const bytes = [];
-      for (let i = 0; i < str.length; i++) {
-        bytes.push(str.charCodeAt(i) & 0xFF);
-      }
-      return bytes;
-    },
-    
-    // Convert bytes array to string
-    bytesToString: function(bytes) {
-      let str = '';
-      for (let i = 0; i < bytes.length; i++) {
-        str += String.fromCharCode(bytes[i]);
-      }
-      return str;
-    },
-    
-    // Encode block (encryption)
-    encryptBlock: function(id, plaintext) {
-      if (!BASE32.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'BASE32', 'encryptBlock');
-        return plaintext;
-      }
-      
-      const bytes = BASE32.stringToBytes(plaintext);
-      let encoded = '';
-      let buffer = 0;
-      let bitsLeft = 0;
-      
-      for (let i = 0; i < bytes.length; i++) {
-        buffer = (buffer << 8) | bytes[i];
-        bitsLeft += 8;
-        
-        while (bitsLeft >= 5) {
-          const index = (buffer >>> (bitsLeft - 5)) & 0x1F;
-          encoded += BASE32.ALPHABET[index];
-          bitsLeft -= 5;
-        }
-      }
-      
-      // Handle remaining bits
-      if (bitsLeft > 0) {
-        const index = (buffer << (5 - bitsLeft)) & 0x1F;
-        encoded += BASE32.ALPHABET[index];
-      }
-      
-      // Add padding
-      const paddingNeeded = (8 - (encoded.length % 8)) % 8;
-      for (let i = 0; i < paddingNeeded; i++) {
-        encoded += BASE32.PADDING;
-      }
-      
-      return encoded;
-    },
-    
-    // Decode block (decryption)
-    decryptBlock: function(id, ciphertext) {
-      if (!BASE32.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'BASE32', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      // Remove whitespace and convert to uppercase
-      let normalized = ciphertext.replace(/\s/g, '').toUpperCase();
-      
-      // Remove padding
-      let paddingCount = 0;
-      while (normalized.length > 0 && normalized[normalized.length - 1] === BASE32.PADDING) {
-        normalized = normalized.slice(0, -1);
-        paddingCount++;
-      }
-      
-      // Check for valid characters
-      for (let i = 0; i < normalized.length; i++) {
-        if (BASE32.ALPHABET.indexOf(normalized[i]) === -1) {
-          global.throwException('Invalid BASE32 Character Exception', normalized[i], 'BASE32', 'decryptBlock');
-          return ciphertext;
-        }
-      }
-      
-      const bytes = [];
-      let buffer = 0;
-      let bitsLeft = 0;
-      
-      for (let i = 0; i < normalized.length; i++) {
-        const index = BASE32.ALPHABET.indexOf(normalized[i]);
-        buffer = (buffer << 5) | index;
-        bitsLeft += 5;
-        
-        if (bitsLeft >= 8) {
-          const byte = (buffer >>> (bitsLeft - 8)) & 0xFF;
-          bytes.push(byte);
-          bitsLeft -= 8;
-        }
-      }
-      
-      return BASE32.bytesToString(bytes);
-    },
-    
-    // Instance class
-    BASE32Instance: function(key) {
-      // BASE32 doesn't need key storage, but maintain interface
-      this.key = key || '';
-    },
-    
-    /**
-     * Run validation tests against known test vectors
-     */
-    ValidateImplementation: function() {
-      const results = [];
-      
-      for (const testVector of this.testVectors) {
-        try {
-          const keyId = this.KeySetup();
-          const encoded = this.encryptBlock(keyId, testVector.input);
-          const decoded = this.decryptBlock(keyId, encoded);
-          
-          const passed = decoded === testVector.input;
-          const expansionRatio = testVector.input.length > 0 ? encoded.length / testVector.input.length : 1;
-          
-          results.push({
-            description: testVector.description,
-            category: testVector.category,
-            passed: passed,
-            expansionRatio: expansionRatio.toFixed(3),
-            expectedRatio: testVector.compressionRatio,
-            notes: testVector.notes,
-            inputSize: testVector.input.length,
-            outputSize: encoded.length,
-            output: testVector.output || encoded
-          });
-          
-          this.ClearData(keyId);
-        } catch (error) {
-          results.push({
-            description: testVector.description,
-            category: testVector.category,
-            passed: false,
-            error: error.message
-          });
-        }
-      }
-      
-      return results;
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(BASE32);
+
+    Result() {
+      if (this.processedData === null) {
+        throw new Error('Base32Instance.Result: No data processed. Call Feed() first.');
+      }
+      return this.processedData;
+    }
+
+    encode(data) {
+      if (data.length === 0) {
+        return [];
+      }
+
+      let result = "";
+      let buffer = 0;
+      let bufferBits = 0;
+
+      for (let i = 0; i < data.length; i++) {
+        buffer = (buffer << 8) | data[i];
+        bufferBits += 8;
+
+        while (bufferBits >= 5) {
+          result += this.alphabet[(buffer >>> (bufferBits - 5)) & 31];
+          bufferBits -= 5;
+        }
+      }
+
+      // Handle remaining bits
+      if (bufferBits > 0) {
+        result += this.alphabet[(buffer << (5 - bufferBits)) & 31];
+      }
+
+      // Add padding
+      const padding = (8 - (result.length % 8)) % 8;
+      for (let i = 0; i < padding; i++) {
+        result += this.paddingChar;
+      }
+
+      const resultBytes = [];
+      for (let i = 0; i < result.length; i++) {
+        resultBytes.push(result.charCodeAt(i));
+      }
+      return resultBytes;
+    }
+
+    decode(data) {
+      if (data.length === 0) {
+        return [];
+      }
+
+      const input = String.fromCharCode(...data).toUpperCase();
+      let cleanInput = input.replace(/[^A-Z2-7]/g, "");
+
+      // Remove padding
+      cleanInput = cleanInput.replace(/=+$/, "");
+
+      const result = [];
+      let buffer = 0;
+      let bufferBits = 0;
+
+      for (let i = 0; i < cleanInput.length; i++) {
+        const value = this.decodeTable[cleanInput[i]];
+        if (value === undefined) {
+          throw new Error(`Invalid Base32 character: ${cleanInput[i]}`);
+        }
+
+        buffer = (buffer << 5) | value;
+        bufferBits += 5;
+
+        if (bufferBits >= 8) {
+          result.push((buffer >>> (bufferBits - 8)) & 255);
+          bufferBits -= 8;
+        }
+      }
+
+      return result;
+    }
+
+    // Utility methods
+    encodeString(str) {
+      const bytes = OpCodes.AnsiToBytes(str);
+      const encoded = this.encode(bytes);
+      return String.fromCharCode(...encoded);
+    }
+
+    decodeString(str) {
+      const bytes = OpCodes.AnsiToBytes(str);
+      const decoded = this.decode(bytes);
+      return String.fromCharCode(...decoded);
+    }
   }
-  
-  // Export to global scope
-  global.BASE32 = BASE32;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = BASE32;
+
+  // Register the algorithm
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new Base32Algorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+
+  // ===== EXPORTS =====
+
+  return { Base32Algorithm, Base32Instance };
+}));

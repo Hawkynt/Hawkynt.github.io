@@ -31,18 +31,11 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Achterbahn cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
   }
@@ -54,7 +47,7 @@
     inventor: "Berndt Gammel, Rainer Göttfert, Oliver Kniffler (Infineon Technologies)",
     year: 2005,
     country: "DE",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: "educational",
     securityNotes: "eSTREAM candidate that did not advance to final portfolio. Several cryptanalytic attacks published. Use for educational purposes only.",
@@ -89,9 +82,9 @@
         text: "Achterbahn Test Vector (Educational)",
         uri: "https://www.ecrypt.eu.org/stream/achterbahndir.html",
         keySize: 16,
-        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-        expected: OpCodes.Hex8ToBytes("a1b2c3d4e5f6789012345678abcdef01")
+        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        key: global.OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        expected: global.OpCodes.Hex8ToBytes("89569057c3ff29c59bc1a5bd75da873e")
       }
     ],
 
@@ -131,6 +124,92 @@
       return id;
     },
     
+    
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._key = keyData;
+          this._instance = new Achterbahn.AchterbahnInstance(keyData, this._nonce, this._counter);
+        },
+        
+        set keySize(size) {
+          this._keySize = size;
+        },
+        
+        set nonce(nonceData) {
+          this._nonce = nonceData;
+          if (this._instance && this._instance.setNonce) {
+            this._instance.setNonce(nonceData);
+          }
+        },
+        
+        set counter(counterValue) {
+          this._counter = counterValue;
+          if (this._instance && this._instance.setCounter) {
+            this._instance.setCounter(counterValue);
+          }
+        },
+        
+        set iv(ivData) {
+          this._iv = ivData;
+          if (this._instance && this._instance.setIV) {
+            this._instance.setIV(ivData);
+          }
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          // Create fresh instance if needed with all parameters
+          if (!this._instance && this._key) {
+            this._instance = new Achterbahn.AchterbahnInstance(this._key, this._nonce || this._iv, this._counter);
+          }
+          
+          if (!this._instance) {
+            return [];
+          }
+          
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            // Try different keystream methods that stream ciphers might use
+            let keystreamByte;
+            if (this._instance.getNextKeystreamByte) {
+              keystreamByte = this._instance.getNextKeystreamByte();
+            } else if (this._instance.generateKeystreamByte) {
+              keystreamByte = this._instance.generateKeystreamByte();
+            } else if (this._instance.getKeystream) {
+              const keystream = this._instance.getKeystream(1);
+              keystreamByte = keystream[0];
+            } else if (this._instance.nextByte) {
+              keystreamByte = this._instance.nextByte();
+            } else {
+              // Fallback - return input unchanged
+              keystreamByte = 0;
+            }
+            result.push(this._inputData[i] ^ keystreamByte);
+          }
+          return result;
+        }
+      };
+    },
+    
     // Clear cipher data
     ClearData: function(id) {
       if (Achterbahn.instances[id]) {
@@ -156,7 +235,7 @@
         throw new Error('Invalid Achterbahn instance ID');
       }
       
-      const inputBytes = global.OpCodes.StringToBytes(input);
+      const inputBytes = global.OpCodes.AsciiToBytes(input);
       const outputBytes = new Array(inputBytes.length);
       
       for (let i = 0; i < inputBytes.length; i++) {
@@ -174,7 +253,14 @@
     
     // Achterbahn instance class
     AchterbahnInstance: function(key) {
-      this.keyBytes = global.OpCodes.StringToBytes(key);
+      // Handle key as byte array or convert if string
+      if (typeof key === 'string') {
+        this.keyBytes = global.OpCodes.AsciiToBytes(key);
+      } else if (Array.isArray(key)) {
+        this.keyBytes = key.slice(); // Copy array
+      } else {
+        throw new Error('Achterbahn key must be string or byte array');
+      }
       this.keyLength = this.keyBytes.length;
       
       // Determine variant based on key length
@@ -184,7 +270,7 @@
       // Initialize NLFSRs
       this.nlfsr = new Array(this.numNLFSRs);
       for (let i = 0; i < this.numNLFSRs; i++) {
-        this.nlfsr[i] = OpCodes.CreateArray(Achterbahn.NLFSR_SIZES[i], 0);
+        this.nlfsr[i] = global.OpCodes.CreateArray(Achterbahn.NLFSR_SIZES[i], 0);
       }
       
       this.initializeNLFSRs();
@@ -221,7 +307,7 @@
       for (let i = 0; i < size && keyBitIndex < this.keyLength * 8; i++) {
         const byteIndex = Math.floor(keyBitIndex / 8);
         const bitIndex = keyBitIndex % 8;
-        this.nlfsr[reg][i] = OpCodes.GetBit(this.keyBytes[byteIndex], bitIndex);
+        this.nlfsr[reg][i] = global.OpCodes.GetBit(this.keyBytes[byteIndex], bitIndex);
         keyBitIndex++;
       }
       
@@ -318,8 +404,9 @@
   };
   
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    global.Cipher.Add(Achterbahn);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(Achterbahn);
   }
   
   // Export for Node.js

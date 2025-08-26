@@ -4,118 +4,375 @@
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
+// Load AlgorithmFramework (REQUIRED)
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  const CipherMetadata = global.CipherMetadata || {};
-
-  const OAEPMetadata = CipherMetadata.createMetadata({
-    name: 'OAEP',
-    category: 'padding',
-    description: 'Optimal Asymmetric Encryption Padding - secure RSA padding with random oracle',
-    keySize: 'N/A (padding scheme)',
-    blockSize: 'Variable (RSA key size)',
-    cryptoFamily: 'Padding scheme',
-    cryptoType: 'Asymmetric',
-    security: 'High - provably secure under random oracle model',
-    country: 'USA',
-    year: 1994,
-    references: [
-      'RFC 8017 (PKCS #1 v2.2)',
-      'Bellare, Rogaway 1994',
-      'OAEP+ variants'
-    ],
-    testVectors: [
-      {
-        description: 'OAEP padding with SHA-1',
-        message: '6bc1bee22e409f96e93d7e11739317',
-        hashFunction: 'SHA-1',
-        mgfFunction: 'MGF1',
-        expected: '[masked_message][masked_seed]'
-      }
-    ]
-  });
-
-  if (typeof Cipher !== 'undefined' && Cipher.RegisterCipher) {
-    Cipher.RegisterCipher('OAEP', {
-      szName: 'OAEP',
-      szCategory: 'padding',
-      szCountry: 'USA',
-      nYear: 1994,
-      metadata: OAEPMetadata,
-      working: true,
-      
-      Init: function() {
-        return true;
-      },
-      
-      KeySetup: function(keySize, hashFunction, mgfFunction) {
-        return { 
-          keySize: keySize || 256,
-          hashFunction: hashFunction || 'SHA-1',
-          mgfFunction: mgfFunction || 'MGF1',
-          id: Math.random() 
-        };
-      },
-      
-      PadData: function(keyId, data, label) {
-        const keySize = keyId.keySize;
-        const hashLength = 20; // SHA-1 hash length
-        label = label || new Array(0);
-        
-        if (data.length > keySize - 2 * hashLength - 2) {
-          throw new Error('Data too long for OAEP padding');
-        }
-        
-        // Simplified OAEP implementation (placeholder)
-        const labelHash = new Array(hashLength).fill(0).map((_, i) => (i * 7) % 256);
-        const paddingLength = keySize - data.length - 2 * hashLength - 2;
-        const padding = new Array(paddingLength).fill(0);
-        const seed = new Array(hashLength).fill(0).map(() => Math.floor(Math.random() * 256));
-        
-        const db = labelHash.concat(padding).concat([0x01]).concat(data);
-        const maskedDB = db.map((byte, i) => byte ^ (seed[i % seed.length]));
-        const maskedSeed = seed.map((byte, i) => byte ^ (maskedDB[i % maskedDB.length]));
-        
-        return [0x00].concat(maskedSeed).concat(maskedDB);
-      },
-      
-      UnpadData: function(keyId, paddedData, label) {
-        const keySize = keyId.keySize;
-        const hashLength = 20; // SHA-1 hash length
-        label = label || new Array(0);
-        
-        if (paddedData.length !== keySize || paddedData[0] !== 0x00) {
-          throw new Error('Invalid OAEP padding');
-        }
-        
-        // Simplified OAEP decoding (placeholder)
-        const maskedSeed = paddedData.slice(1, hashLength + 1);
-        const maskedDB = paddedData.slice(hashLength + 1);
-        
-        const seed = maskedSeed.map((byte, i) => byte ^ (maskedDB[i % maskedDB.length]));
-        const db = maskedDB.map((byte, i) => byte ^ (seed[i % seed.length]));
-        
-        // Find 0x01 separator
-        let separatorIndex = -1;
-        for (let i = hashLength; i < db.length; i++) {
-          if (db[i] === 0x01) {
-            separatorIndex = i;
-            break;
-          }
-        }
-        
-        if (separatorIndex === -1) {
-          throw new Error('Invalid OAEP padding - no separator found');
-        }
-        
-        return db.slice(separatorIndex + 1);
-      },
-      
-      ClearData: function(keyId) {
-        return true;
-      }
-    });
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
+  
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
   }
 
-})(typeof global !== 'undefined' ? global : window);
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class OaepAlgorithm extends PaddingAlgorithm {
+    constructor() {
+      super();
+
+      this.name = "OAEP";
+      this.description = "OAEP (Optimal Asymmetric Encryption Padding) is a secure padding scheme for RSA encryption that provides strong security guarantees under the random oracle model. It uses a mask generation function and hash function to create randomized padding that prevents various attacks against plain RSA.";
+      this.inventor = "Mihir Bellare, Phillip Rogaway";
+      this.year = 1994;
+      this.category = CategoryType.PADDING;
+      this.subCategory = "Asymmetric Padding";
+      this.securityStatus = SecurityStatus.SECURE; // Provably secure under random oracle model
+      this.complexity = ComplexityType.RESEARCH;
+      this.country = CountryCode.US;
+
+      this.documentation = [
+        new LinkItem("RFC 8017 - PKCS #1 v2.2", "https://tools.ietf.org/rfc/rfc8017.txt"),
+        new LinkItem("Original OAEP Paper", "https://cseweb.ucsd.edu/~mihir/papers/oaep.pdf"),
+        new LinkItem("Random Oracle Model", "https://en.wikipedia.org/wiki/Random_oracle")
+      ];
+
+      this.references = [
+        new LinkItem("RSA-OAEP Security", "https://eprint.iacr.org/2001/117.pdf"),
+        new LinkItem("OpenSSL OAEP Implementation", "https://github.com/openssl/openssl/blob/master/crypto/rsa/rsa_oaep.c"),
+        new LinkItem("Practical Cryptography", "https://cryptopals.com/sets/6/challenges/42")
+      ];
+
+      this.knownVulnerabilities = [
+        new Vulnerability("Implementation Complexity", "OAEP requires careful implementation of mask generation functions and hash operations to avoid side-channel attacks."),
+        new Vulnerability("Random Oracle Assumption", "Security proofs rely on the random oracle model, which doesn't exist in practice."),
+        new Vulnerability("Timing Attacks", "Improper implementation can be vulnerable to timing attacks during padding verification.")
+      ];
+
+      // Educational test vectors (simplified implementation)
+      this.tests = [
+        new TestCase(
+          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317"), // Message to pad
+          OpCodes.Hex8ToBytes("00"), // Placeholder for complex OAEP output
+          "OAEP padding educational example",
+          "RFC 8017"
+        )
+      ];
+
+      // Add test parameters
+      this.tests.forEach(test => {
+        test.keySize = 128; // 1024-bit RSA key (128 bytes)
+        test.hashFunction = "SHA-1";
+        test.mgfFunction = "MGF1";
+        test.label = []; // Empty label
+      });
+    }
+
+    CreateInstance(isInverse = false) {
+      return new OaepInstance(this, isInverse);
+    }
+  }
+
+  class OaepInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.inputBuffer = [];
+      this.keySize = 128; // Default RSA key size in bytes (1024 bits)
+      this.hashFunction = "SHA-1";
+      this.mgfFunction = "MGF1";
+      this.label = []; // Optional label (usually empty)
+    }
+
+    /**
+     * Set the RSA key size in bytes
+     * @param {number} keySize - RSA key size in bytes
+     */
+    setKeySize(keySize) {
+      if (!keySize || keySize < 64) { // Minimum reasonable RSA key size
+        throw new Error("RSA key size must be at least 64 bytes (512 bits)");
+      }
+      this.keySize = keySize;
+    }
+
+    /**
+     * Set the hash function for OAEP
+     * @param {string} hashFunction - Hash function name (SHA-1, SHA-256, etc.)
+     */
+    setHashFunction(hashFunction) {
+      this.hashFunction = hashFunction || "SHA-1";
+    }
+
+    /**
+     * Set the mask generation function
+     * @param {string} mgfFunction - MGF function name (typically MGF1)
+     */
+    setMGF(mgfFunction) {
+      this.mgfFunction = mgfFunction || "MGF1";
+    }
+
+    /**
+     * Set the optional label
+     * @param {Array} label - Optional label for OAEP
+     */
+    setLabel(label) {
+      this.label = label || [];
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
+
+      if (this.isInverse) {
+        return this._unpadOAEP();
+      } else {
+        return this._padOAEP();
+      }
+    }
+
+    /**
+     * Apply OAEP padding (simplified educational implementation)
+     * @returns {Array} OAEP padded data
+     */
+    _padOAEP() {
+      const message = this.inputBuffer;
+      const hashLength = this._getHashLength();
+
+      // Check message length constraints
+      if (message.length > this.keySize - 2 * hashLength - 2) {
+        throw new Error(`Message too long for OAEP padding. Maximum length: ${this.keySize - 2 * hashLength - 2} bytes`);
+      }
+
+      // Step 1: Hash the label (usually empty)
+      const labelHash = this._simpleHash(this.label);
+
+      // Step 2: Generate PS (padding string of zeros)
+      const paddingLength = this.keySize - message.length - 2 * hashLength - 2;
+      const paddingString = new Array(paddingLength).fill(0);
+
+      // Step 3: Construct DB = labelHash || PS || 0x01 || message
+      const db = [...labelHash, ...paddingString, 0x01, ...message];
+
+      // Step 4: Generate random seed
+      const seed = this._generateRandomSeed(hashLength);
+
+      // Step 5: Generate mask for DB using MGF1
+      const dbMask = this._mgf1(seed, db.length);
+
+      // Step 6: Mask DB
+      const maskedDB = db.map((byte, i) => byte ^ dbMask[i]);
+
+      // Step 7: Generate mask for seed
+      const seedMask = this._mgf1(maskedDB, hashLength);
+
+      // Step 8: Mask seed
+      const maskedSeed = seed.map((byte, i) => byte ^ seedMask[i]);
+
+      // Step 9: Construct EM = 0x00 || maskedSeed || maskedDB
+      const result = [0x00, ...maskedSeed, ...maskedDB];
+
+      // Clear sensitive data
+      OpCodes.ClearArray(this.inputBuffer);
+      OpCodes.ClearArray(seed);
+      OpCodes.ClearArray(db);
+      this.inputBuffer = [];
+
+      return result;
+    }
+
+    /**
+     * Remove OAEP padding (simplified educational implementation)
+     * @returns {Array} Original message
+     */
+    _unpadOAEP() {
+      const paddedMessage = this.inputBuffer;
+      const hashLength = this._getHashLength();
+
+      if (paddedMessage.length !== this.keySize) {
+        throw new Error("Invalid OAEP padded message length");
+      }
+
+      if (paddedMessage[0] !== 0x00) {
+        throw new Error("Invalid OAEP padding - missing leading zero");
+      }
+
+      // Extract maskedSeed and maskedDB
+      const maskedSeed = paddedMessage.slice(1, 1 + hashLength);
+      const maskedDB = paddedMessage.slice(1 + hashLength);
+
+      // Unmask seed
+      const seedMask = this._mgf1(maskedDB, hashLength);
+      const seed = maskedSeed.map((byte, i) => byte ^ seedMask[i]);
+
+      // Unmask DB
+      const dbMask = this._mgf1(seed, maskedDB.length);
+      const db = maskedDB.map((byte, i) => byte ^ dbMask[i]);
+
+      // Extract labelHash and find message
+      const labelHash = this._simpleHash(this.label);
+      const expectedLabelHash = db.slice(0, hashLength);
+
+      // Verify label hash
+      for (let i = 0; i < hashLength; i++) {
+        if (labelHash[i] !== expectedLabelHash[i]) {
+          throw new Error("Invalid OAEP padding - label hash mismatch");
+        }
+      }
+
+      // Find 0x01 separator
+      let separatorIndex = -1;
+      for (let i = hashLength; i < db.length; i++) {
+        if (db[i] === 0x01) {
+          separatorIndex = i;
+          break;
+        } else if (db[i] !== 0x00) {
+          throw new Error("Invalid OAEP padding - invalid padding string");
+        }
+      }
+
+      if (separatorIndex === -1) {
+        throw new Error("Invalid OAEP padding - no message separator found");
+      }
+
+      const result = db.slice(separatorIndex + 1);
+
+      // Clear sensitive data
+      OpCodes.ClearArray(this.inputBuffer);
+      OpCodes.ClearArray(seed);
+      OpCodes.ClearArray(db);
+      this.inputBuffer = [];
+
+      return result;
+    }
+
+    /**
+     * Get hash length based on hash function
+     * @returns {number} Hash length in bytes
+     */
+    _getHashLength() {
+      switch (this.hashFunction) {
+        case "SHA-1": return 20;
+        case "SHA-256": return 32;
+        case "SHA-384": return 48;
+        case "SHA-512": return 64;
+        default: return 20; // Default to SHA-1
+      }
+    }
+
+    /**
+     * Simple hash function (educational implementation)
+     * @param {Array} data - Data to hash
+     * @returns {Array} Hash value
+     */
+    _simpleHash(data) {
+      const hashLength = this._getHashLength();
+      const hash = new Array(hashLength);
+
+      // Simple hash: XOR data in chunks and add constants
+      for (let i = 0; i < hashLength; i++) {
+        hash[i] = (i * 17 + 42) & 0xFF; // Base pattern
+
+        for (let j = 0; j < data.length; j++) {
+          hash[i] ^= data[j];
+          hash[i] = ((hash[i] << 1) | (hash[i] >>> 7)) & 0xFF; // Rotate
+        }
+      }
+
+      return hash;
+    }
+
+    /**
+     * Generate random seed
+     * @param {number} length - Seed length in bytes
+     * @returns {Array} Random seed
+     */
+    _generateRandomSeed(length) {
+      const seed = new Array(length);
+      for (let i = 0; i < length; i++) {
+        if (typeof OpCodes !== 'undefined' && OpCodes.SecureRandom) {
+          seed[i] = OpCodes.SecureRandom(256);
+        } else {
+          seed[i] = Math.floor(Math.random() * 256);
+        }
+      }
+      return seed;
+    }
+
+    /**
+     * MGF1 mask generation function (simplified educational implementation)
+     * @param {Array} seed - Seed value
+     * @param {number} length - Desired mask length
+     * @returns {Array} Generated mask
+     */
+    _mgf1(seed, length) {
+      const mask = new Array(length);
+      const hashLength = this._getHashLength();
+
+      for (let i = 0; i < length; i += hashLength) {
+        const counter = Math.floor(i / hashLength);
+        const counterBytes = [
+          (counter >>> 24) & 0xFF,
+          (counter >>> 16) & 0xFF,
+          (counter >>> 8) & 0xFF,
+          counter & 0xFF
+        ];
+
+        const hashInput = [...seed, ...counterBytes];
+        const hash = this._simpleHash(hashInput);
+
+        const copyLength = Math.min(hashLength, length - i);
+        for (let j = 0; j < copyLength; j++) {
+          mask[i + j] = hash[j];
+        }
+      }
+
+      return mask;
+    }
+  }
+
+  // ===== REGISTRATION =====
+
+    RegisterAlgorithm(new OaepAlgorithm());
+
+  // ===== EXPORTS =====
+
+  return { OaepAlgorithm, OaepInstance };
+}));

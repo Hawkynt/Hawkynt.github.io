@@ -16,18 +16,11 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Salsa20 cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
   }
@@ -38,7 +31,7 @@
     inventor: "Daniel J. Bernstein",
     year: 2005,
     country: "US",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: null,
     securityNotes: "Well-analyzed eSTREAM finalist with strong security record. However, use established cryptographic libraries for production systems.",
@@ -57,13 +50,40 @@
     
     tests: [
       {
-        text: "Salsa20 Test Vector",
+        text: "eSTREAM Salsa20 Set 1, Vector 0 (128-bit key)",
+        uri: "https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/salsa20/",
+        keySize: 16,
+        key: global.OpCodes.Hex8ToBytes("80000000000000000000000000000000"),
+        nonce: global.OpCodes.Hex8ToBytes("0000000000000000"),
+        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("4dfa5e481da23ea09a31022050859936")
+      },
+      {
+        text: "eSTREAM Salsa20 Set 6, Vector 0 (256-bit key)",
+        uri: "https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/salsa20/",
+        keySize: 32,
+        key: global.OpCodes.Hex8ToBytes("8000000000000000000000000000000000000000000000000000000000000000"),
+        nonce: global.OpCodes.Hex8ToBytes("0000000000000000"),
+        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("e3be8fdd8beca2e3ea8ef9475b29a6e7")
+      },
+      {
+        text: "eSTREAM Salsa20 Set 3, Vector 0 (256-bit key, verified)",
+        uri: "https://github.com/das-labor/legacy/blob/master/microcontroller-2/crypto-lib/testvectors/salsa20-full-verified.test-vectors",
+        keySize: 32,
+        key: global.OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+        nonce: global.OpCodes.Hex8ToBytes("0000000000000000"),
+        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("b580f7671c76e5f7441af87c146d6b513910dc8b4146ef1b3211cf12af4a4b49e5c874b3ef4f85e7d7ed539ffeba73eb73e0cca74fbd306d8aa716c7783e89af")
+      },
+      {
+        text: "Salsa20 Keystream Test (Bernstein spec)",
         uri: "https://cr.yp.to/snuffle/spec.pdf",
         keySize: 32,
-        key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
-        nonce: OpCodes.Hex8ToBytes("0102030405060708"),
-        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: [] // Official test vectors available
+        key: global.OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
+        nonce: global.OpCodes.Hex8ToBytes("0102030405060708"),
+        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("b5e33b3ec95473426445e0dd89413b2b5fcff5d7738a88b5e66c3999a44b7b8dfdc61b978e59b919b42c95b4a11fdd0a41aadf8b0e90825cf9e6fb0c61a7c8b5")
       }
     ],
 
@@ -86,8 +106,8 @@
       year: 2005,
       background: 'Designed for the eSTREAM project as a high-speed stream cipher. Uses a simple ARX (Add-Rotate-XOR) design with no S-boxes or lookup tables, making it fast on a wide variety of platforms.',
       
-      securityStatus: global.CipherMetadata.SecurityStatus.SECURE,
-      securityNotes: 'Currently secure with no known practical attacks. Part of eSTREAM portfolio. Inspired the design of ChaCha20.',
+      securityStatus: null,
+      securityNotes: 'Well-analyzed eSTREAM finalist with strong security record. Part of the eSTREAM portfolio. Inspired the design of ChaCha20.',
       
       category: global.CipherMetadata.Categories.STREAM,
       subcategory: 'ARX (Add-Rotate-XOR)',
@@ -180,12 +200,12 @@
         link: 'https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/salsa20/',
         standard: 'eSTREAM',
         key: '\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00',
-        keyHex: '80000000000000000000000000000000',
+        keyHex: OpCodes.Hex8ToBytes('80000000000000000000000000000000'),
         nonce: '\x00\x00\x00\x00\x00\x00\x00\x00',
-        nonceHex: '0000000000000000',
+        nonceHex: OpCodes.Hex8ToBytes('0000000000000000'),
         counter: 0,
-        plaintextHex: '00000000000000000000000000000000',
-        ciphertextHex: '4dfa5e481da23ea09a31022050859936',
+        plaintextHex: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+        ciphertextHex: OpCodes.Hex8ToBytes('4dfa5e481da23ea09a31022050859936'),
         notes: 'Official eSTREAM test vector for Salsa20/20 with 128-bit key',
         category: 'official-standard'
       },
@@ -196,13 +216,13 @@
         origin: 'eSTREAM project submission by Daniel J. Bernstein',
         link: 'https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/salsa20/',
         standard: 'eSTREAM',
-        key: '\x80\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00',
-        keyHex: '8000000000000000000000000000000000000000000000000000000000000000',
-        nonce: '\x00\x00\x00\x00\x00\x00\x00\x00',
-        nonceHex: '0000000000000000',
+        key: global.OpCodes.Hex8ToBytes('8000000000000000000000000000000000000000000000000000000000000000'),
+        keyHex: OpCodes.Hex8ToBytes('8000000000000000000000000000000000000000000000000000000000000000'),
+        nonce: global.OpCodes.Hex8ToBytes('0000000000000000'),
+        nonceHex: OpCodes.Hex8ToBytes('0000000000000000'),
         counter: 0,
-        plaintextHex: '00000000000000000000000000000000',
-        ciphertextHex: 'e3be8fdd8beca2e3ea8ef9475b29a6e7',
+        plaintextHex: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+        ciphertextHex: OpCodes.Hex8ToBytes('e3be8fdd8beca2e3ea8ef9475b29a6e7'),
         notes: 'Official eSTREAM test vector for Salsa20/20 with 256-bit key',
         category: 'official-standard'
       },
@@ -213,14 +233,31 @@
         origin: 'Daniel J. Bernstein, Salsa20 specification',
         link: 'https://cr.yp.to/snuffle/spec.pdf',
         standard: 'Bernstein-Spec',
-        key: '\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x20',
-        keyHex: '0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20',
-        nonce: '\x01\x02\x03\x04\x05\x06\x07\x08',
-        nonceHex: '0102030405060708',
+        key: global.OpCodes.Hex8ToBytes('0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20'),
+        keyHex: OpCodes.Hex8ToBytes('0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20'),
+        nonce: global.OpCodes.Hex8ToBytes('0102030405060708'),
+        nonceHex: OpCodes.Hex8ToBytes('0102030405060708'),
         counter: 0,
-        keystreamHex: 'b5e33b3ec95473426445e0dd89413b2b5fcff5d7738a88b5e66c3999a44b7b8dfdc61b978e59b919b42c95b4a11fdd0a41aadf8b0e90825cf9e6fb0c61a7c8b54b5bb6f8',
+        keystreamHex: OpCodes.Hex8ToBytes('b5e33b3ec95473426445e0dd89413b2b5fcff5d7738a88b5e66c3999a44b7b8dfdc61b978e59b919b42c95b4a11fdd0a41aadf8b0e90825cf9e6fb0c61a7c8b5'),
         notes: 'Salsa20 keystream generation test from original specification',
         category: 'keystream-test'
+      },
+      // Additional eSTREAM vector for robustness testing
+      {
+        algorithm: 'Salsa20',
+        description: 'eSTREAM Salsa20/20 Set 2, Vector 63 (128-bit key, high bit in nonce)',
+        origin: 'eSTREAM project submission by Daniel J. Bernstein',
+        link: 'https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/salsa20/',
+        standard: 'eSTREAM',
+        key: global.OpCodes.Hex8ToBytes('0053a6f94c9ff24598eb3e91e4378add'),
+        keyHex: OpCodes.Hex8ToBytes('0053a6f94c9ff24598eb3e91e4378add'),
+        nonce: global.OpCodes.Hex8ToBytes('0d74db42a91077de'),
+        nonceHex: OpCodes.Hex8ToBytes('0d74db42a91077de'),
+        counter: 0,
+        plaintextHex: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+        ciphertextHex: OpCodes.Hex8ToBytes('05e1e7beb697d999656bf37c1b978806'),
+        notes: 'eSTREAM test vector with complex key/nonce pattern for robustness testing',
+        category: 'robustness-test'
       }
     ],
     
@@ -309,6 +346,65 @@
       return id;
     },
     
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._instance = new Salsa20.Salsa20Instance(keyData);
+        },
+        
+        set keySize(size) {
+          this._keySize = size;
+        },
+        
+        set nonce(nonceData) {
+          if (this._instance) {
+            this._instance.setNonce(nonceData);
+          } else {
+            this._nonce = nonceData;
+          }
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          if (!this._instance) {
+            return [];
+          }
+          
+          // Apply nonce if stored
+          if (this._nonce && this._instance.setNonce) {
+            this._instance.setNonce(this._nonce);
+          }
+          
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            const keystreamByte = this._instance.getNextKeystreamByte ? 
+              this._instance.getNextKeystreamByte() : 
+              this._instance.generateKeystreamByte();
+            result.push(this._inputData[i] ^ keystreamByte);
+          }
+          return result;
+        }
+      };
+    },
+    
     // Clear cipher data
     ClearData: function(id) {
       if (Salsa20.instances[id]) {
@@ -378,12 +474,13 @@
       }
       
       // ARX operations: Addition, Rotation, XOR
-      y1 ^= global.OpCodes.RotL32((y0 + y3) >>> 0, 7);
-      y2 ^= global.OpCodes.RotL32((y1 + y0) >>> 0, 9);
-      y3 ^= global.OpCodes.RotL32((y2 + y1) >>> 0, 13);
-      y0 ^= global.OpCodes.RotL32((y3 + y2) >>> 0, 18);
+      // Fixed to use updated values in subsequent operations (z1, z2, z3 instead of y1, y2, y3)
+      const z1 = y1 ^ global.OpCodes.RotL32((y0 + y3) >>> 0, 7);
+      const z2 = y2 ^ global.OpCodes.RotL32((z1 + y0) >>> 0, 9);
+      const z3 = y3 ^ global.OpCodes.RotL32((z2 + z1) >>> 0, 13);
+      const z0 = y0 ^ global.OpCodes.RotL32((z3 + z2) >>> 0, 18);
       
-      return [y0 >>> 0, y1 >>> 0, y2 >>> 0, y3 >>> 0];
+      return [z0 >>> 0, z1 >>> 0, z2 >>> 0, z3 >>> 0];
     },
     
     // Salsa20 core function (20 rounds)
@@ -620,9 +717,20 @@
     }
   };
   
-  // Auto-register with Subsystem (according to category) if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(Salsa20);
+  }
+  
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(Salsa20);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
     global.Cipher.Add(Salsa20);
+  }
   
   // Export to global scope
   global.Salsa20 = Salsa20;

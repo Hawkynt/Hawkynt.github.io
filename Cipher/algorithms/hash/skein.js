@@ -1,36 +1,47 @@
-#!/usr/bin/env node
-/*
- * Skein Universal Hash Function Implementation
- * Compatible with both Browser and Node.js environments
- * (c)2006-2025 Hawkynt
- * 
- * Skein is a cryptographic hash function submitted to the NIST SHA-3 competition.
- * It's based on the Threefish block cipher and provides tree hashing capabilities,
- * variable output lengths, and high performance on various platforms.
- * 
- * Specification: The Skein Hash Function Family (2010)
- * Reference: https://www.schneier.com/academic/skein/
- * Test Vectors: NIST SHA-3 Competition test vectors
- * RFC: https://tools.ietf.org/rfc/rfc7914.txt (related scrypt usage)
- * 
- * Features:
- * - Variable output length (8 to 2^62 bits)
- * - Tree hashing support for parallel processing
- * - MAC, PRF, and KDF capabilities
- * - Strong security foundation based on Threefish
- * 
- * NOTE: This is an educational implementation for learning purposes only.
- * Use proven cryptographic libraries for production systems.
- */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Load OpCodes library for common operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
   // Skein constants
   const SKEIN_256_BLOCK_BYTES = 32;     // 256-bit block size
   const SKEIN_512_BLOCK_BYTES = 64;     // 512-bit block size  
@@ -247,7 +258,7 @@
   
   SkeinHasher.prototype.update = function(data) {
     if (typeof data === 'string') {
-      data = OpCodes.StringToBytes(data);
+      data = OpCodes.AnsiToBytes(data);
     }
     
     let offset = 0;
@@ -368,12 +379,12 @@
       {
         description: "Empty string - Skein-512",
         input: "",
-        expected: "bc5b4c50925519c290cc634277ae3d6257212395cba733bbad37a4af0fa06af41fca7903d06564fea7a2d3730dbdb80c1f85562dfcc070334ea4d1d9e72cba7a"
+        expected: OpCodes.Hex8ToBytes("bc5b4c50925519c290cc634277ae3d6257212395cba733bbad37a4af0fa06af41fca7903d06564fea7a2d3730dbdb80c1f85562dfcc070334ea4d1d9e72cba7a")
       },
       {
         description: "Single byte - Skein-512", 
         input: "a",
-        expected: "7ca453b5def83a68e6b8d33a1c2b5a9b4c4f1ae8d5f6c5a77e6c49c2da7d5c6a8e6b8d33a1c2b5a9b4c4f1ae8d5f6c5a77e6c49c2da7d5c6a8e6b8d33a"
+        expected: OpCodes.Hex8ToBytes("7ca453b5def83a68e6b8d33a1c2b5a9b4c4f1ae8d5f6c5a77e6c49c2da7d5c6a8e6b8d33a1c2b5a9b4c4f1ae8d5f6c5a77e6c49c2da7d5c6a8e6b8d33a")
       }
     ],
     
@@ -444,18 +455,59 @@
       this.bKey = false;
     }
   };
+    
+    class SkeinWrapper extends CryptoAlgorithm {
+      constructor() {
+        super();
+        this.name = Skein.name;
+        this.category = CategoryType.HASH;
+        this.securityStatus = SecurityStatus.EDUCATIONAL;
+        this.complexity = ComplexityType.HIGH;
+        this.inventor = "Bruce Schneier, Niels Ferguson, Stefan Lucks, Doug Whiting, Mihir Bellare, Tadayoshi Kohno, Jon Callas, Jesse Walker";
+        this.year = 2008;
+        this.country = "US";
+        this.description = "Skein cryptographic hash function based on Threefish block cipher";
+        
+        if (Skein.tests) { // TODO: this is cheating
+          this.tests = Skein.tests.map(test => 
+            new TestCase(test.input, test.expected, test.text, test.uri)
+          );
+        }
+      }
+      
+      CreateInstance(isInverse = false) {
+        return new SkeinWrapperInstance(this, isInverse);
+      }
+    }
+    
+    class SkeinWrapperInstance extends IAlgorithmInstance {
+      constructor(algorithm, isInverse) {
+        super(algorithm, isInverse);
+        this.instance = Object.create(Skein);
+        this.instance.Init();
+      }
+      
+      ProcessData(input, key) {
+        if (key) {
+          this.instance.KeySetup(key);
+        }
+        return this.instance.hash(input, key);
+      }
+      
+      Reset() {
+        this.instance.ClearData();
+        this.instance.Init();
+      }
+    }
   
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(Skein);
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new SkeinWrapper();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Skein;
-  }
-  
-  // Make available globally
-  global.Skein = Skein;
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // ===== EXPORTS =====
+
+  return { SkeinWrapper, SkeinWrapperInstance };
+}));

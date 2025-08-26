@@ -32,30 +32,16 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('TSC-4 cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  }
+  } 
   
-  // Load metadata system
-  if (!global.CipherMetadata && typeof require !== 'undefined') {
-    try {
-      require('../../cipher-metadata.js');
-    } catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
-    }
-  }
+  
   
   // Create TSC-4 cipher object
   const TSC4 = {
@@ -173,6 +159,30 @@
     // Additional S-boxes for increased complexity (simplified versions)
     SBOX3: [], // Will be initialized as inverse of SBOX1
     SBOX4: [], // Will be initialized as inverse of SBOX2
+    
+    // Educational test vectors (expected outputs to be determined)
+    tests: [
+      {
+        text: 'TSC-4 basic test vector with 128-bit key and IV',
+        uri: 'Educational implementation test',
+        keySize: 16,
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes('545354343420746f7274757265206b65792100') : null,
+        iv: global.OpCodes ? global.OpCodes.Hex8ToBytes('545343343420746f72747572652049562100') : null,
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes('546f7274757265207465737421') : null,
+        expected: null, // To be determined through testing
+        notes: 'Basic functionality test for TSC-4 complex operations'
+      },
+      {
+        text: 'TSC-4 with high entropy key and IV',
+        uri: 'Educational implementation test',
+        keySize: 16,
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes('ffaa5533cc0ff069965aa53cc3788712') : null,
+        iv: global.OpCodes ? global.OpCodes.Hex8ToBytes('123456789abcdef00fedcba987654321') : null,
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes('4869676820656e74726f7079') : null,
+        expected: null, // To be determined through testing
+        notes: 'Testing TSC-4 with maximum entropy input'
+      }
+    ],
     
     // Internal state
     isInitialized: false,
@@ -526,17 +536,27 @@
     }
   };
   
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(TSC4);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(TSC4);
   }
   
-  // Export for Node.js
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(TSC4);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(TSC4);
+  }
+  
+  // Export to global scope
+  global.TSC4 = TSC4;
+  
+  // Node.js module export
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = TSC4;
   }
-  
-  // Make available globally
-  global.TSC4 = TSC4;
   
 })(typeof global !== 'undefined' ? global : window);

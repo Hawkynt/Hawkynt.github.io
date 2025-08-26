@@ -1,94 +1,69 @@
 /**
  * Algorithm Models and Data Management
- * Handles algorithm metadata, test vectors, and data structures
+ * Uses AlgorithmFramework as the only algorithm registry
  * (c)2006-2025 Hawkynt
  */
 
 class AlgorithmManager {
     constructor() {
-        this.algorithms = new Map();
-        this.testVectors = new Map();
-        this.categories = new Map();
+        // Only use AlgorithmFramework as the algorithm registry
         this.testResults = new Map();
     }
     
     /**
-     * Register a new algorithm
+     * Register a new algorithm - use AlgorithmFramework.RegisterAlgorithm
      */
-    registerAlgorithm(name, metadata) {
-        const algorithm = {
-            name: metadata.name || name,
-            category: metadata.category || 'unknown',
-            description: metadata.description || '',
-            country: metadata.country || '',
-            year: metadata.year || null,
-            working: metadata.working !== false,
-            metadata: metadata,
-            testVectors: [],
-            implementation: metadata.implementation || null
-        };
-        
-        this.algorithms.set(name, algorithm);
-        this.addToCategory(algorithm.category, name);
-        
-        return algorithm;
-    }
-    
-    /**
-     * Add algorithm to category tracking
-     */
-    addToCategory(category, algorithmName) {
-        if (!this.categories.has(category)) {
-            this.categories.set(category, new Set());
-        }
-        this.categories.get(category).add(algorithmName);
+    registerAlgorithm(algorithm) {
+        AlgorithmFramework.RegisterAlgorithm(algorithm);
     }
     
     /**
      * Get algorithm by name
      */
     getAlgorithm(name) {
-        return this.algorithms.get(name);
+        return AlgorithmFramework.Find(name);
     }
     
     /**
-     * Get all algorithms
+     * Get all algorithms from AlgorithmFramework
      */
     getAllAlgorithms() {
-        return Array.from(this.algorithms.values());
+        return AlgorithmFramework.Algorithms;
     }
     
     /**
      * Get algorithms by category
      */
     getAlgorithmsByCategory(category) {
-        const algorithmNames = this.categories.get(category) || new Set();
-        return Array.from(algorithmNames).map(name => this.algorithms.get(name)).filter(Boolean);
+        const algorithms = this.getAllAlgorithms();
+        const categoryKey = this._mapCategoryStringToEnum(category);
+        
+        return algorithms.filter(algorithm => algorithm.category === categoryKey);
     }
     
     /**
-     * Get all categories
+     * Get all categories from AlgorithmFramework
      */
     getCategories() {
-        return Array.from(this.categories.keys());
+        return Object.keys(AlgorithmFramework.CategoryType).map(key => 
+            key.toLowerCase().replace(/_/g, '-')
+        );
     }
     
     /**
-     * Add test vector to algorithm
+     * Map category string to AlgorithmFramework CategoryType enum
      */
-    addTestVector(algorithmName, testVector) {
-        const algorithm = this.algorithms.get(algorithmName);
-        if (algorithm) {
-            algorithm.testVectors.push(testVector);
-        }
+    _mapCategoryStringToEnum(categoryString) {
+        const enumKey = categoryString.toUpperCase().replace(/-/g, '_');
+        return AlgorithmFramework.CategoryType[enumKey];
     }
     
     /**
      * Get test vectors for algorithm
      */
     getTestVectors(algorithmName) {
-        const algorithm = this.algorithms.get(algorithmName);
-        return algorithm ? algorithm.testVectors : [];
+        const algorithm = this.getAlgorithm(algorithmName);
+        return algorithm ? (algorithm.tests || []) : [];
     }
     
     /**
@@ -218,115 +193,46 @@ class TestVector {
 }
 
 /**
- * Algorithm Category Definitions
+ * Algorithm Category Manager - uses AlgorithmFramework CategoryType
  */
 class CategoryManager {
     constructor() {
-        this.categoryDefinitions = {
-            'block': {
-                name: 'Block Ciphers',
-                description: 'Symmetric encryption algorithms that process fixed-size blocks',
-                color: '#3182ce',
-                icon: '🔒'
-            },
-            'stream': {
-                name: 'Stream Ciphers',
-                description: 'Symmetric encryption algorithms that process data streams',
-                color: '#38b2ac',
-                icon: '🌊'
-            },
-            'hash': {
-                name: 'Hash Functions',
-                description: 'Cryptographic hash functions and message digests',
-                color: '#d69e2e',
-                icon: '#️⃣'
-            },
-            'classical': {
-                name: 'Classical Ciphers',
-                description: 'Historical encryption methods and traditional ciphers',
-                color: '#dd6b20',
-                icon: '📜'
-            },
-            'encoding': {
-                name: 'Encoding Schemes',
-                description: 'Data encoding and representation formats',
-                color: '#805ad5',
-                icon: '🔤'
-            },
-            'compression': {
-                name: 'Compression',
-                description: 'Data compression and decompression algorithms',
-                color: '#38a169',
-                icon: '🗜️'
-            },
-            'asymmetric': {
-                name: 'Asymmetric (Public Key)',
-                description: 'Public key cryptography and digital signatures',
-                color: '#e53e3e',
-                icon: '🔐'
-            },
-            'special': {
-                name: 'Special Purpose',
-                description: 'Specialized cryptographic constructions',
-                color: '#2d3748',
-                icon: '⚙️'
-            },
-            'mac': {
-                name: 'Message Authentication',
-                description: 'Message Authentication Codes and integrity protection',
-                color: '#b83280',
-                icon: '🔏'
-            },
-            'kdf': {
-                name: 'Key Derivation',
-                description: 'Key derivation functions and password-based cryptography',
-                color: '#319795',
-                icon: '🔑'
-            },
-            'mode': {
-                name: 'Mode of Operation',
-                description: 'Block cipher modes and operation methods',
-                color: '#f56565',
-                icon: '🔄'
-            },
-            'padding': {
-                name: 'Padding Schemes',
-                description: 'Data padding and block completion methods',
-                color: '#9f7aea',
-                icon: '📦'
-            },
-            'ecc': {
-                name: 'Elliptic Curve',
-                description: 'Elliptic curve cryptography and related algorithms',
-                color: '#9f7aea',
-                icon: '📈'
-            },
-            'checksum': {
-                name: 'Checksums',
-                description: 'Error detection and data integrity algorithms',
-                color: '#ed8936',
-                icon: '✅'
-            }
-        };
+        // No local storage needed - uses AlgorithmFramework directly
     }
     
     /**
-     * Get category definition
+     * Get category definition from AlgorithmFramework CategoryType
      */
     getCategoryDefinition(categoryKey) {
-        return this.categoryDefinitions[categoryKey] || {
-            name: categoryKey.charAt(0).toUpperCase() + categoryKey.slice(1),
-            description: `${categoryKey} algorithms`,
-            color: '#667eea',
-            icon: '❓'
+        // Convert categoryKey to framework enum key
+        const enumKey = categoryKey.toUpperCase().replace(/-/g, '_');
+        const frameworkCategory = AlgorithmFramework.CategoryType[enumKey];
+        
+        return {
+            name: frameworkCategory.name,
+            description: frameworkCategory.description,
+            color: frameworkCategory.color,
+            icon: frameworkCategory.icon
         };
     }
     
     /**
-     * Get all category definitions
+     * Get all category definitions from AlgorithmFramework
      */
     getAllCategories() {
-        return this.categoryDefinitions;
+        const categories = {};
+        
+        Object.entries(AlgorithmFramework.CategoryType).forEach(([key, category]) => {
+            const categoryKey = key.toLowerCase().replace(/_/g, '-');
+            categories[categoryKey] = {
+                name: category.name,
+                description: category.description,
+                color: category.color,
+                icon: category.icon
+            };
+        });
+        
+        return categories;
     }
     
     /**

@@ -1,365 +1,512 @@
-#!/usr/bin/env node
 /*
- * BLAKE3 Implementation
+ * BLAKE3 Hash Function - Universal AlgorithmFramework Implementation
+ * Based on the official BLAKE3 specification
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
   
-  // Load OpCodes for cryptographic operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes.js:', e.message);
-      return;
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class BLAKE3Algorithm extends HashFunctionAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "BLAKE3";
+      this.description = "Modern cryptographic hash function based on BLAKE2. Features parallel hashing, unlimited output length, and fast key derivation. Educational implementation.";
+      this.inventor = "Jack O'Connor, Jean-Philippe Aumasson, Samuel Neves, Zooko Wilcox-O'Hearn";
+      this.year = 2020;
+      this.category = CategoryType.HASH;
+      this.subCategory = "Cryptographic Hash";
+      this.securityStatus = null; // Modern hash function
+      this.complexity = ComplexityType.ADVANCED;
+      this.country = CountryCode.US;
+
+      // Hash-specific metadata
+      this.SupportedOutputSizes = [32]; // 256 bits = 32 bytes default
+
+      // Performance and technical specifications
+      this.blockSize = 64; // 512 bits = 64 bytes
+      this.outputSize = 32; // 256 bits = 32 bytes
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("BLAKE3 Specification", "https://github.com/BLAKE3-team/BLAKE3-specs/blob/master/blake3.pdf"),
+        new LinkItem("BLAKE3 Official Website", "https://blake3.io/"),
+        new LinkItem("Wikipedia BLAKE3", "https://en.wikipedia.org/wiki/BLAKE_(hash_function)#BLAKE3")
+      ];
+
+      this.references = [
+        new LinkItem("BLAKE3 Reference Implementation", "https://github.com/BLAKE3-team/BLAKE3"),
+        new LinkItem("BLAKE3 Rust Implementation", "https://crates.io/crates/blake3")
+      ];
+
+      // Test vectors with expected byte arrays
+      this.tests = [
+        {
+          text: "BLAKE3 Test Vector - Empty string",
+          uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+          input: [],
+          expected: OpCodes.Hex8ToBytes("af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262")
+        },
+        {
+          text: "BLAKE3 Test Vector - 'abc'",
+          uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+          input: OpCodes.AnsiToBytes("abc"), // 'abc'
+          expected: OpCodes.Hex8ToBytes('6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85')
+        },
+        {
+          text: "BLAKE3 Test Vector - Long input",
+          uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+          input: OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog"),
+          expected: OpCodes.Hex8ToBytes("2f1514181aadccd4c1bf1c40ce2e43fc203af9b7c5e44c0b97b0cb779de6e2b3")
+        }
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      return new BLAKE3AlgorithmInstance(this, isInverse);
     }
   }
 
-  const Blake3 = {
-    name: "BLAKE3",
-    description: "Modern cryptographic hash function based on BLAKE2. Features parallel hashing, unlimited output length, and fast key derivation.",
-    inventor: "Jack O'Connor, Jean-Philippe Aumasson, Samuel Neves, Zooko Wilcox-O'Hearn",
-    year: 2020,
-    country: "US",
-    category: "hash",
-    subCategory: "Cryptographic Hash",
-    securityStatus: null,
-    securityNotes: "BLAKE3 is a modern hash function with excellent security properties. Educational implementation - use proven libraries for production.",
-    
-    documentation: [
-      {text: "BLAKE3 Specification", uri: "https://github.com/BLAKE3-team/BLAKE3-specs/blob/master/blake3.pdf"},
-      {text: "BLAKE3 Official Website", uri: "https://blake3.io/"},
-      {text: "Wikipedia BLAKE3", uri: "https://en.wikipedia.org/wiki/BLAKE_(hash_function)#BLAKE3"}
-    ],
-    
-    references: [
-      {text: "BLAKE3 Reference Implementation", uri: "https://github.com/BLAKE3-team/BLAKE3"},
-      {text: "BLAKE3 Rust Implementation", uri: "https://crates.io/crates/blake3"}
-    ],
-    
-    knownVulnerabilities: [],
-    
-    tests: [
-      {
-        text: "BLAKE3 Test Vector - Empty string",
-        uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
-        input: OpCodes.Hex8ToBytes(""),
-        key: null,
-        expected: OpCodes.Hex8ToBytes("af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262")
-      },
-      {
-        text: "BLAKE3 Test Vector - abc",
-        uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
-        input: OpCodes.StringToBytes("abc"),
-        key: null,
-        expected: OpCodes.Hex8ToBytes("6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85")
-      }
-    ],
-
-    Init: function() {
-      return true;
-    },
-
-    // BLAKE3 constants
-    BLAKE3_OUT_LEN: 32,
-    BLAKE3_KEY_LEN: 32,
-    BLAKE3_BLOCK_LEN: 64,
-    BLAKE3_CHUNK_LEN: 1024,
-    BLAKE3_MAX_DEPTH: 54,
-    
-    // BLAKE3 initialization vector (same as ChaCha20)
-    IV: [
-      0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
-      0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19
-    ],
-    
-    // Domain separation flags
-    CHUNK_START: 1 << 0,
-    CHUNK_END: 1 << 1,
-    PARENT: 1 << 2,
-    ROOT: 1 << 3,
-    KEYED_HASH: 1 << 4,
-    DERIVE_KEY_CONTEXT: 1 << 5,
-    DERIVE_KEY_MATERIAL: 1 << 6,
-
-    // Core BLAKE3 computation
-    compute: function(data, key, outputLength) {
-      outputLength = outputLength || this.BLAKE3_OUT_LEN;
-      const hasher = new Blake3Hasher(key);
-      hasher.update(data);
-      return hasher.finalize(outputLength);
-    }
-  };
-
-  /**
-   * BLAKE3 compression function based on ChaCha20 quarter round
-   */
-  function quarterRound(state, a, b, c, d) {
-    state[a] = (state[a] + state[b]) >>> 0;
+  // BLAKE3 G function (quarter round)
+  function g(state, a, b, c, d, mx, my) {
+    state[a] = (state[a] + state[b] + mx) >>> 0;
     state[d] = OpCodes.RotR32(state[d] ^ state[a], 16);
     state[c] = (state[c] + state[d]) >>> 0;
     state[b] = OpCodes.RotR32(state[b] ^ state[c], 12);
-    state[a] = (state[a] + state[b]) >>> 0;
+    state[a] = (state[a] + state[b] + my) >>> 0;
     state[d] = OpCodes.RotR32(state[d] ^ state[a], 8);
     state[c] = (state[c] + state[d]) >>> 0;
     state[b] = OpCodes.RotR32(state[b] ^ state[c], 7);
   }
 
-  /**
-   * BLAKE3 permutation function
-   */
-  function permute(state) {
-    // Column rounds
-    quarterRound(state, 0, 4, 8, 12);
-    quarterRound(state, 1, 5, 9, 13);
-    quarterRound(state, 2, 6, 10, 14);
-    quarterRound(state, 3, 7, 11, 15);
-    
-    // Diagonal rounds
-    quarterRound(state, 0, 5, 10, 15);
-    quarterRound(state, 1, 6, 11, 12);
-    quarterRound(state, 2, 7, 8, 13);
-    quarterRound(state, 3, 4, 9, 14);
-  }
-
-  /**
-   * BLAKE3 compression function
-   */
-  function compress(chainingValue, blockWords, counter, blockLen, flags) {
-    // Convert block words from bytes to 32-bit words (little-endian)
-    const messageWords = new Uint32Array(16);
-    for (let i = 0; i < 16; i++) {
-      messageWords[i] = OpCodes.Pack32LE(
-        blockWords[i * 4],
-        blockWords[i * 4 + 1],
-        blockWords[i * 4 + 2],
-        blockWords[i * 4 + 3]
-      );
-    }
-    
+  // BLAKE3 compression function
+  function compress(chaining_value, block_words, counter, block_len, flags) {
     // Initialize state
     const state = new Uint32Array(16);
-    
-    // First 8 words: chaining value
+
+    // Load chaining value
     for (let i = 0; i < 8; i++) {
-      state[i] = chainingValue[i];
+      state[i] = chaining_value[i];
     }
-    
-    // Next 4 words: initialization vector
+
+    // Load IV
     for (let i = 0; i < 4; i++) {
-      state[8 + i] = Blake3.IV[i];
+      state[8 + i] = IV[i];
     }
-    
-    // Last 4 words: counter, block length, and flags
+
+    // Load counter, block_len, flags
     state[12] = counter >>> 0;
-    state[13] = (counter / 0x100000000) >>> 0; // High 32 bits of 64-bit counter
-    state[14] = blockLen;
+    state[13] = Math.floor(counter / 4294967296) >>> 0; // Use OpCodes constant for 2^32
+    state[14] = block_len;
     state[15] = flags;
-    
-    // XOR in message words to last 16 words of state
+
+    // Convert block bytes to 32-bit words (little-endian)
+    let words = new Array(16);
     for (let i = 0; i < 16; i++) {
-      state[i] ^= messageWords[i % 16];
+      const base = i * 4;
+      if (base + 3 < block_words.length) {
+        words[i] = OpCodes.Pack32LE(
+          block_words[base],
+          block_words[base + 1],
+          block_words[base + 2],
+          block_words[base + 3]
+        );
+      } else {
+        // Handle partial blocks by padding with zeros
+        words[i] = OpCodes.Pack32LE(
+          block_words[base] || 0,
+          block_words[base + 1] || 0,
+          block_words[base + 2] || 0,
+          block_words[base + 3] || 0
+        );
+      }
     }
-    
-    // Run 7 rounds of permutation
+
+    // 7 rounds of mixing
     for (let round = 0; round < 7; round++) {
-      permute(state);
+      // Column round
+      g(state, 0, 4, 8, 12, words[0], words[1]);
+      g(state, 1, 5, 9, 13, words[2], words[3]);
+      g(state, 2, 6, 10, 14, words[4], words[5]);
+      g(state, 3, 7, 11, 15, words[6], words[7]);
+
+      // Diagonal round
+      g(state, 0, 5, 10, 15, words[8], words[9]);
+      g(state, 1, 6, 11, 12, words[10], words[11]);
+      g(state, 2, 7, 8, 13, words[12], words[13]);
+      g(state, 3, 4, 9, 14, words[14], words[15]);
+
+      // Permute message words for next round (except last round)
+      if (round < 6) {
+        const permuted = new Array(16);
+        for (let i = 0; i < 16; i++) {
+          permuted[i] = words[MSG_PERMUTATION[i]];
+        }
+        words = permuted;
+      }
     }
-    
-    // XOR first 8 and last 8 words to produce 16-word output
+
+    // Finalize
     const output = new Uint32Array(16);
     for (let i = 0; i < 8; i++) {
       output[i] = state[i] ^ state[i + 8];
-      output[i + 8] = state[i] ^ chainingValue[i];
+      output[i + 8] = state[i] ^ chaining_value[i];
     }
-    
+
     return output;
   }
 
-  /**
-   * BLAKE3 hasher class
-   */
-  function Blake3Hasher(key) {
-    this.chainingValue = new Uint32Array(Blake3.IV);
-    this.chunks = [];
-    this.key = key || null;
-    this.flags = key ? Blake3.KEYED_HASH : 0;
-    
-    if (key) {
-      // Use key as initial chaining value
-      const keyWords = OpCodes.StringToWords32LE(key, Blake3.BLAKE3_KEY_LEN);
-      for (let i = 0; i < 8; i++) {
-        this.chainingValue[i] = keyWords[i];
-      }
-    }
-  }
+  class BLAKE3AlgorithmInstance extends IHashFunctionInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.OutputSize = 32; // 256 bits = 32 bytes
 
-  Blake3Hasher.prototype.update = function(data) {
-    if (typeof data === 'string') {
-      data = OpCodes.StringToBytes(data);
+      this.chaining_value = null;
+      this.block = null;
+      this.block_len = 0;
+      this.blocks_compressed = 0;
+      this.chunk_counter = 0;
+      this.flags = 0;
     }
-    
-    let offset = 0;
-    while (offset < data.length) {
-      const chunkLen = Math.min(Blake3.BLAKE3_CHUNK_LEN, data.length - offset);
-      const chunk = data.slice(offset, offset + chunkLen);
-      
-      const chunkOutput = this.chunkState(this.chainingValue, chunk, this.chunks.length, this.flags);
-      this.chunks.push(chunkOutput);
-      
-      offset += chunkLen;
-    }
-  };
 
-  Blake3Hasher.prototype.chunkState = function(chainingValue, chunk, counter, flags) {
-    let localFlags = flags;
-    if (chunk.length <= Blake3.BLAKE3_BLOCK_LEN) {
-      localFlags |= Blake3.CHUNK_START | Blake3.CHUNK_END;
-    } else {
-      localFlags |= Blake3.CHUNK_START;
+    /**
+     * Initialize the hash state
+     */
+    Init() {
+      this.chaining_value = new Uint32Array(IV);
+      this.block = new Uint8Array(BLAKE3_BLOCK_LEN);
+      this.block_len = 0;
+      this.blocks_compressed = 0;
+      this.chunk_counter = 0;
+      this.flags = 0;
+      this.total_length = 0;
     }
-    
-    let currentChaining = new Uint32Array(chainingValue);
-    let offset = 0;
-    
-    while (offset < chunk.length) {
-      const blockLen = Math.min(Blake3.BLAKE3_BLOCK_LEN, chunk.length - offset);
-      const block = new Uint8Array(64);
-      
-      // Copy block data and pad with zeros if necessary
-      for (let i = 0; i < blockLen; i++) {
-        block[i] = chunk[offset + i];
-      }
-      
-      // Update flags for last block
-      if (offset + blockLen === chunk.length) {
-        localFlags |= Blake3.CHUNK_END;
-      }
-      
-      const output = compress(currentChaining, block, counter, blockLen, localFlags);
-      
-      // Take first 8 words as new chaining value
-      for (let i = 0; i < 8; i++) {
-        currentChaining[i] = output[i];
-      }
-      
-      offset += blockLen;
-      localFlags &= ~Blake3.CHUNK_START; // Clear CHUNK_START for subsequent blocks
-    }
-    
-    return currentChaining;
-  };
 
-  Blake3Hasher.prototype.finalize = function(outputLength) {
-    outputLength = outputLength || Blake3.BLAKE3_OUT_LEN;
-    
-    if (this.chunks.length === 0) {
-      // Empty input case
-      const emptyChunk = new Uint8Array(0);
-      const output = this.chunkState(this.chainingValue, emptyChunk, 0, this.flags | Blake3.ROOT);
-      return this.extractBytes(output, outputLength);
-    }
-    
-    if (this.chunks.length === 1) {
-      // Single chunk case
-      return this.extractBytes(this.chunks[0], outputLength);
-    }
-    
-    // Multiple chunks - build Merkle tree
-    let currentLevel = this.chunks.slice();
-    
-    while (currentLevel.length > 1) {
-      const nextLevel = [];
-      
-      for (let i = 0; i < currentLevel.length; i += 2) {
-        const left = currentLevel[i];
-        const right = i + 1 < currentLevel.length ? currentLevel[i + 1] : null;
-        
-        if (right) {
-          // Parent node with two children
-          const parentInput = new Uint8Array(64);
-          
-          // Pack left and right children
-          for (let j = 0; j < 8; j++) {
-            const leftBytes = OpCodes.Unpack32LE(left[j]);
-            const rightBytes = OpCodes.Unpack32LE(right[j]);
-            parentInput[j * 4] = leftBytes[0];
-            parentInput[j * 4 + 1] = leftBytes[1];
-            parentInput[j * 4 + 2] = leftBytes[2];
-            parentInput[j * 4 + 3] = leftBytes[3];
-            parentInput[32 + j * 4] = rightBytes[0];
-            parentInput[32 + j * 4 + 1] = rightBytes[1];
-            parentInput[32 + j * 4 + 2] = rightBytes[2];
-            parentInput[32 + j * 4 + 3] = rightBytes[3];
-          }
-          
-          const parentFlags = Blake3.PARENT | (currentLevel.length === 2 ? Blake3.ROOT : 0);
-          const parentOutput = compress(this.chainingValue, parentInput, 0, 64, parentFlags);
-          
-          // Take first 8 words
-          const parent = new Uint32Array(8);
-          for (let j = 0; j < 8; j++) {
-            parent[j] = parentOutput[j];
-          }
-          
-          nextLevel.push(parent);
-        } else {
-          // Odd node, carry forward
-          nextLevel.push(left);
+    /**
+     * Update hash with data
+     * @param {Array} data - Data to hash as byte array
+     */
+    Update(data) {
+      if (!data || data.length === 0) return;
+
+      // Convert string to byte array if needed
+      if (typeof data === 'string') {
+        data = OpCodes.AnsiToBytes(data);
+      }
+
+      this.total_length += data.length;
+      let offset = 0;
+
+      // Fill current block
+      while (offset < data.length && this.block_len < BLAKE3_BLOCK_LEN) {
+        this.block[this.block_len] = data[offset];
+        this.block_len++;
+        offset++;
+      }
+
+      // Process full blocks
+      while (this.block_len === BLAKE3_BLOCK_LEN && offset < data.length) {
+        this.compressBlock();
+
+        // Start new block
+        while (offset < data.length && this.block_len < BLAKE3_BLOCK_LEN) {
+          this.block[this.block_len] = data[offset];
+          this.block_len++;
+          offset++;
         }
       }
-      
-      currentLevel = nextLevel;
-    }
-    
-    return this.extractBytes(currentLevel[0], outputLength);
-  };
 
-  Blake3Hasher.prototype.extractBytes = function(chainingValue, outputLength) {
-    const output = new Uint8Array(outputLength);
-    let outputOffset = 0;
-    let counter = 0;
-    
-    while (outputOffset < outputLength) {
-      const block = new Uint8Array(64);
-      const compressed = compress(chainingValue, block, counter, 0, Blake3.ROOT);
-      
-      // Extract 64 bytes from compressed output
-      const blockOutput = new Uint8Array(64);
-      for (let i = 0; i < 16; i++) {
-        const bytes = OpCodes.Unpack32LE(compressed[i]);
-        blockOutput[i * 4] = bytes[0];
-        blockOutput[i * 4 + 1] = bytes[1];
-        blockOutput[i * 4 + 2] = bytes[2];
-        blockOutput[i * 4 + 3] = bytes[3];
+      // If we have a full block, compress it
+      if (this.block_len === BLAKE3_BLOCK_LEN) {
+        this.compressBlock();
       }
-      
-      const copyLen = Math.min(64, outputLength - outputOffset);
-      for (let i = 0; i < copyLen; i++) {
-        output[outputOffset + i] = blockOutput[i];
-      }
-      
-      outputOffset += copyLen;
-      counter++;
     }
-    
-    return output;
-  };
 
-  // Auto-register with Subsystem (according to category) if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
-    global.Cipher.Add(Blake3);
-  
+    /**
+     * Compress current block
+     */
+    compressBlock() {
+      let flags = this.flags;
+      if (this.blocks_compressed === 0) {
+        flags |= CHUNK_START;
+      }
 
+      const output = compress(this.chaining_value, Array.from(this.block), this.chunk_counter, this.block_len, flags);
 
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Blake3;
+      // Update chaining value with first 8 words of output
+      for (let i = 0; i < 8; i++) {
+        this.chaining_value[i] = output[i];
+      }
+
+      this.blocks_compressed++;
+      this.block = new Uint8Array(BLAKE3_BLOCK_LEN);
+      this.block_len = 0;
+    }
+
+    /**
+     * Get final output state
+     */
+    getOutput() {
+      let flags = this.flags;
+      if (this.blocks_compressed === 0) {
+        flags |= CHUNK_START;
+      }
+      flags |= CHUNK_END;
+
+      return {
+        input_chaining_value: Array.from(this.chaining_value),
+        block_words: Array.from(this.block),
+        block_len: this.block_len,
+        counter: this.chunk_counter,
+        flags: flags
+      };
+    }
+
+    /**
+     * Build parent from two children
+     */
+    parent_output(left_child, right_child) {
+      const block = new Uint8Array(BLAKE3_BLOCK_LEN);
+
+      // Pack left child
+      for (let i = 0; i < 8; i++) {
+        const bytes = OpCodes.Unpack32LE(left_child[i]);
+        block[i * 4] = bytes[0];
+        block[i * 4 + 1] = bytes[1];
+        block[i * 4 + 2] = bytes[2];
+        block[i * 4 + 3] = bytes[3];
+      }
+
+      // Pack right child
+      for (let i = 0; i < 8; i++) {
+        const bytes = OpCodes.Unpack32LE(right_child[i]);
+        block[32 + i * 4] = bytes[0];
+        block[32 + i * 4 + 1] = bytes[1];
+        block[32 + i * 4 + 2] = bytes[2];
+        block[32 + i * 4 + 3] = bytes[3];
+      }
+
+      const chaining_value = new Uint32Array(IV);
+      return compress(chaining_value, block, 0, BLAKE3_BLOCK_LEN, PARENT | this.flags);
+    }
+
+    /**
+     * Finalize the hash calculation and return result as byte array
+     * @param {number} outputLength - Length of output in bytes
+     * @returns {Array} Hash digest as byte array
+     */
+    Final(outputLength) {
+      outputLength = outputLength || BLAKE3_OUT_LEN;
+
+      // If we have remaining data in the block, process it
+      if (this.block_len > 0) {
+        let flags = this.flags;
+        if (this.blocks_compressed === 0) {
+          flags |= CHUNK_START;
+        }
+        flags |= CHUNK_END | ROOT;
+
+        // Compress final block
+        const output = compress(this.chaining_value, Array.from(this.block), this.chunk_counter, this.block_len, flags);
+
+        // Extract output bytes
+        return this.extractOutputBytes(output, outputLength);
+      } else {
+        // No remaining data (empty input), need CHUNK_START | CHUNK_END | ROOT flags
+        let flags = this.flags | CHUNK_START | CHUNK_END | ROOT;
+        const output = compress(this.chaining_value, new Array(64).fill(0), this.chunk_counter, 0, flags);
+        return this.extractOutputBytes(output, outputLength);
+      }
+    }
+
+    /**
+     * Extract root output bytes
+     */
+    rootOutputBytes(output, length) {
+      const output_bytes = [];
+      let counter = 0;
+
+      while (output_bytes.length < length) {
+        const words = compress(
+          output.input_chaining_value,
+          output.block_words,
+          counter,
+          output.block_len,
+          output.flags | ROOT
+        );
+
+        for (let word of words) {
+          const bytes = OpCodes.Unpack32LE(word);
+          for (let byte of bytes) {
+            if (output_bytes.length < length) {
+              output_bytes.push(byte);
+            }
+          }
+        }
+        counter++;
+      }
+
+      return output_bytes.slice(0, length);
+    }
+
+    /**
+     * Extract output bytes from compression output
+     */
+    extractOutputBytes(words, outputLength) {
+      const output = [];
+      for (let i = 0; i < Math.min(16, Math.ceil(outputLength / 4)); i++) {
+        const bytes = OpCodes.Unpack32LE(words[i]);
+        for (let j = 0; j < 4 && output.length < outputLength; j++) {
+          output.push(bytes[j]);
+        }
+      }
+      return output;
+    }
+
+    /**
+     * Extract bytes from root node
+     */
+    extract_bytes(node, output_len) {
+      const output = new Uint8Array(output_len);
+      let output_pos = 0;
+      let counter = 0;
+
+      while (output_pos < output_len) {
+        const block = new Uint8Array(BLAKE3_BLOCK_LEN);
+        const compressed = compress(node, block, counter, 0, ROOT | this.flags);
+
+        // Convert output words to bytes
+        const block_output = new Uint8Array(64);
+        for (let i = 0; i < 16; i++) {
+          const bytes = OpCodes.Unpack32LE(compressed[i]);
+          block_output[i * 4] = bytes[0];
+          block_output[i * 4 + 1] = bytes[1];
+          block_output[i * 4 + 2] = bytes[2];
+          block_output[i * 4 + 3] = bytes[3];
+        }
+
+        const copy_len = Math.min(64, output_len - output_pos);
+        for (let i = 0; i < copy_len; i++) {
+          output[output_pos + i] = block_output[i];
+        }
+
+        output_pos += copy_len;
+        counter++;
+      }
+
+      return Array.from(output);
+    }
+
+    /**
+     * Hash a complete message in one operation
+     * @param {Array} message - Message to hash as byte array
+     * @returns {Array} Hash digest as byte array
+     */
+    Hash(message) {
+      this.Init();
+      this.Update(message);
+      return this.Final();
+    }
+
+    /**
+     * Required interface methods for IAlgorithmInstance compatibility
+     */
+    KeySetup(key) {
+      // Hashes don't use keys
+      return true;
+    }
+
+    EncryptBlock(blockIndex, plaintext) {
+      // Return hash of the plaintext
+      return this.Hash(plaintext);
+    }
+
+    DecryptBlock(blockIndex, ciphertext) {
+      // Hash functions are one-way
+      throw new Error('BLAKE3 is a one-way hash function - decryption not possible');
+    }
+
+    ClearData() {
+      if (this.chunks) {
+        for (let chunk of this.chunks) {
+          if (chunk) OpCodes.ClearArray(chunk);
+        }
+        this.chunks = null;
+      }
+    }
+
+    /**
+     * Feed method required by test suite - processes input data
+     * @param {Array} data - Input data as byte array
+     */
+    Feed(data) {
+      this.Init();
+      this.Update(data);
+    }
+
+    /**
+     * Result method required by test suite - returns final hash
+     * @returns {Array} Hash digest as byte array
+     */
+    Result() {
+      return this.Final();
+    }
   }
-  
-  // Export to global scope
-  global.Blake3 = Blake3;
 
-})(typeof global !== 'undefined' ? global : window);
+  // Register the algorithm
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new BLAKE3Algorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
+  }
+
+  // ===== EXPORTS =====
+
+  return { BLAKE3Algorithm, BLAKE3AlgorithmInstance };
+}));

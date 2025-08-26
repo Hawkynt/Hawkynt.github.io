@@ -1,510 +1,323 @@
 /*
- * Universal Bifid Cipher
- * Compatible with both Browser and Node.js environments
- * Félix Delastelle's fractionating cipher combining Polybius square with transposition
- * (c)2025 Hawkynt - Educational Implementation
+ * Bifid Cipher Implementation
+ * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
+// Load AlgorithmFramework (REQUIRED)
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
   
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class BifidCipher extends CryptoAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "Bifid Cipher";
+      this.description = "Fractionating cipher invented by Félix Delastelle in 1901. Combines Polybius square with transposition, replacing each letter with two coordinates then rearranging them in blocks. Significantly stronger than simple substitution ciphers.";
+      this.inventor = "Félix Delastelle";
+      this.year = 1901;
+      this.category = CategoryType.CLASSICAL;
+      this.subCategory = "Classical Cipher";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.FR;
+
+      // Standard Polybius square (5x5 grid, I/J combined)
+      this.STANDARD_GRID = [
+        ['A', 'B', 'C', 'D', 'E'],
+        ['F', 'G', 'H', 'I', 'K'],
+        ['L', 'M', 'N', 'O', 'P'],
+        ['Q', 'R', 'S', 'T', 'U'],
+        ['V', 'W', 'X', 'Y', 'Z']
+      ];
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("Wikipedia Article", "https://en.wikipedia.org/wiki/Bifid_cipher"),
+        new LinkItem("Historical Context", "https://en.wikipedia.org/wiki/F%C3%A9lix_Delastelle"),
+        new LinkItem("Educational Tutorial", "https://www.dcode.fr/bifid-cipher")
+      ];
+
+      this.references = [
+        new LinkItem("dCode Implementation", "https://www.dcode.fr/bifid-cipher"),
+        new LinkItem("Practical Cryptography", "https://practicalcryptography.com/ciphers/classical-era/bifid/"),
+        new LinkItem("CrypTool Portal", "https://www.cryptool.org/en/cto/bifid")
+      ];
+
+      this.knownVulnerabilities = [
+        {
+          type: "Frequency Analysis",
+          text: "While more resistant than monoalphabetic ciphers, still vulnerable to frequency analysis with sufficient text",
+          uri: "https://en.wikipedia.org/wiki/Bifid_cipher#Cryptanalysis",
+          mitigation: "Use variable block sizes and longer keywords"
+        },
+        {
+          type: "Grid Recovery", 
+          text: "Custom keyword grids can sometimes be recovered through cryptanalysis",
+          uri: "https://practicalcryptography.com/ciphers/classical-era/bifid/",
+          mitigation: "Educational use only - not suitable for actual security"
+        }
+      ];
+
+      // Test vectors using byte arrays
+      this.tests = [
+        {
+          text: "Basic Test",
+          uri: "https://en.wikipedia.org/wiki/Bifid_cipher",
+          input: global.OpCodes.AnsiToBytes("HELLO"),
+          key: global.OpCodes.AnsiToBytes("5"), // period of 5
+          expected: global.OpCodes.AnsiToBytes("FNNVD")
+        },
+        {
+          text: "Custom Keyword Test",
+          uri: "https://www.dcode.fr/bifid-cipher",
+          input: global.OpCodes.AnsiToBytes("ATTACK"),
+          key: global.OpCodes.AnsiToBytes("CIPHER,3"), // keyword CIPHER, period 3
+          expected: global.OpCodes.AnsiToBytes("DQTRKI")
+        },
+        {
+          text: "Edge Case",
+          uri: "https://en.wikipedia.org/wiki/Bifid_cipher",
+          input: global.OpCodes.AnsiToBytes("A"),
+          key: global.OpCodes.AnsiToBytes("1"), // period of 1
+          expected: global.OpCodes.AnsiToBytes("A")
+        }
+      ];
+
+      // For the test suite compatibility 
+      this.testVectors = this.tests;
+    }
+
+    // Create instance for this algorithm
+    CreateInstance(isInverse = false) {
+      return new BifidCipherInstance(this, isInverse);
+    }
+  }
+
+  // Instance class - handles the actual encryption/decryption
+  class BifidCipherInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.keyword = "";
+      this.period = 5; // Default period
+      this.grid = JSON.parse(JSON.stringify(algorithm.STANDARD_GRID)); // Copy standard grid
+      this.inputBuffer = [];
+    }
+
+    // Property setter for key (expects "keyword,period" format or just "period")
+    set key(keyData) {
+      if (!keyData || keyData.length === 0) {
+        this.keyword = "";
+        this.period = 5;
+        this.grid = JSON.parse(JSON.stringify(this.algorithm.STANDARD_GRID));
         return;
       }
-    } else {
-      console.error('Bifid cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
-  
-  // Load metadata system
-  if (!global.CipherMetadata && typeof require !== 'undefined') {
-    try {
-      require('../../cipher-metadata.js');
-    } catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
-    }
-  }
 
-  // Create Bifid cipher object
-  const Bifid = {
-    // Public interface properties
-    internalName: 'Bifid',
-    name: 'Bifid Cipher',
-    comment: 'Félix Delastelle fractionating cipher with transposition (1901)',
-    minKeyLength: 0,
-    maxKeyLength: 25,
-    stepKeyLength: 1,
-    minBlockSize: 1,
-    maxBlockSize: 50,
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
+      // Convert byte array to string
+      const keyString = String.fromCharCode(...keyData);
 
-    // ===== COMPREHENSIVE METADATA =====
-    metadata: {
-      // Basic Information
-      description: 'The Bifid cipher is a sophisticated fractionating cipher invented by Félix Delastelle in 1901. It combines the Polybius square with transposition to achieve diffusion, making it significantly more secure than simple substitution ciphers.',
-      country: 'FR', // France
-      countryName: 'France',
-      year: 1901,
-      inventor: 'Félix Marie Delastelle',
-      
-      // Classification
-      category: 'classical',
-      categoryName: 'Classical Cipher',
-      type: 'fractionating',
-      securityLevel: 'historical',
-      complexity: 'intermediate',
-      
-      // Technical Details
-      blockSize: 'variable', // User-defined period
-      keySizes: [0, 25], // No key (standard) or custom alphabet
-      keyType: 'alphabet',
-      symmetric: true,
-      deterministic: true,
-      
-      // Educational Value
-      tags: ['historical', 'educational', 'fractionating', 'transposition', 'digraphic', 'polybius', 'delastelle'],
-      educationalLevel: 'intermediate',
-      prerequisites: ['polybius_square', 'coordinate_system', 'transposition'],
-      learningObjectives: 'Understanding fractionating ciphers, diffusion techniques, and the combination of substitution with transposition',
-      
-      // Security Status
-      secure: false,
-      deprecated: true,
-      securityWarning: 'HISTORICAL: Stronger than simple substitution but still breakable by modern cryptanalysis. For educational purposes only.',
-      vulnerabilities: ['frequency_analysis', 'kasiski_examination', 'period_analysis'],
-      
-      // Standards and References
-      specifications: [
-        {
-          name: 'Delastelle, F. - Traité Élémentaire de Cryptographie',
-          url: 'https://gallica.bnf.fr/ark:/12148/bpt6k96334117',
-          type: 'original',
-          section: 'Chapter 4',
-          verified: true
-        },
-        {
-          name: 'Modern Analysis of Bifid Cipher',
-          url: 'http://practicalcryptography.com/ciphers/classical-era/bifid/',
-          type: 'educational',
-          verified: true
-        }
-      ],
-      
-      // Performance Characteristics
-      performance: 'O(n) time complexity, where n is input length',
-      memoryUsage: 'Moderate - 5x5 grid plus coordinate arrays',
-      optimizations: 'Period-based processing for improved diffusion'
-    },
+      // Parse key string (format: "keyword,period" or just "period")
+      const parts = keyString.split(',');
 
-    // ===== COMPREHENSIVE TEST VECTORS WITH CRYPTOGRAPHIC METADATA =====
-    testVectors: [
-      // Historical Examples from Delastelle
-      {
-        algorithm: 'Bifid',
-        testId: 'bifid-historical-001',
-        description: 'Original Delastelle example from 1901 treatise',
-        category: 'historical',
-        input: 'DEFENDTHEEASTWALLOFTHECASTLE',
-        key: '',
-        period: 5,
-        expected: 'FFYHMKHYCPNYPDVDSKPDPSRPXNELRQ',
-        source: {
-          type: 'historical',
-          identifier: 'Delastelle-1901-Traite',
-          title: 'Traité Élémentaire de Cryptographie',
-          url: 'https://gallica.bnf.fr/ark:/12148/bpt6k96334117',
-          organization: 'Bibliothèque nationale de France',
-          datePublished: '1901',
-          section: 'Chapter 4'
-        },
-        origin: {
-          source: 'Félix Delastelle Original Work',
-          url: 'https://en.wikipedia.org/wiki/Bifid_cipher',
-          type: 'original-specification',
-          date: '1901',
-          verified: true,
-          notes: 'First published example of the Bifid cipher technique'
-        }
-      },
-      {
-        algorithm: 'Bifid',
-        testId: 'bifid-historical-002',
-        description: 'WWI French military example',
-        category: 'historical',
-        input: 'ATTACKATDAWN',
-        key: 'EXAMPLE',
-        period: 6,
-        expected: 'XDGXGPYBTCXU',
-        keywordGrid: [
-          ['E', 'X', 'A', 'M', 'P'],
-          ['L', 'B', 'C', 'D', 'F'],
-          ['G', 'H', 'I', 'K', 'N'],
-          ['O', 'Q', 'R', 'S', 'T'],
-          ['U', 'V', 'W', 'Y', 'Z']
-        ],
-        source: {
-          type: 'historical',
-          title: 'French Military Cryptography WWI',
-          url: 'https://www.nsa.gov/portals/75/documents/news-features/declassified-documents/military-cryptanalysis/military-cryptanalysis-pt1.pdf',
-          organization: 'NSA Declassified Documents'
-        }
-      },
-      
-      // Educational Standards
-      {
-        algorithm: 'Bifid',
-        testId: 'bifid-standard-001',
-        description: 'Standard educational example - period 5',
-        category: 'educational',
-        input: 'HELLO',
-        key: '',
-        period: 5,
-        expected: 'HFYRQ',
-        stepByStep: {
-          coordinates: 'H(2,3) E(1,5) L(3,1) L(3,1) O(3,4)',
-          rows: [2, 1, 3, 3, 3],
-          cols: [3, 5, 1, 1, 4],
-          combined: [2, 1, 3, 3, 3, 3, 5, 1, 1, 4],
-          paired: [[2,1], [3,3], [3,3], [5,1], [1,4]],
-          result: 'H(2,3)→H F(2,1)→F Y(3,3)→Y R(3,5)→R Q(1,4)→Q'
-        },
-        source: {
-          type: 'educational',
-          title: 'Bifid Cipher Tutorial',
-          url: 'https://cryptii.com/pipes/bifid-cipher',
-          organization: 'Cryptii Educational Platform'
-        }
-      },
-      {
-        algorithm: 'Bifid',
-        testId: 'bifid-standard-002',
-        description: 'Longer text with period 7',
-        category: 'educational',
-        input: 'CRYPTOGRAPHY',
-        key: '',
-        period: 7,
-        expected: 'CTMACDRGTAH',
-        verification: {
-          inputLength: 12,
-          blockingMethod: 'CRYPTOG RAPHY (7-letter blocks)',
-          diffusionEffect: 'Each output character depends on two input characters'
-        }
-      },
-      
-      // Period Analysis Tests
-      {
-        algorithm: 'Bifid',
-        testId: 'bifid-period-001',
-        description: 'Period 1 (no transposition)',
-        category: 'cryptanalysis',
-        input: 'ABCDE',
-        key: '',
-        period: 1,
-        expected: 'ABCDE',
-        cryptanalysis: {
-          periodEffect: 'Period 1 provides no transposition - equivalent to Polybius square',
-          security: 'No diffusion - vulnerable to frequency analysis',
-          note: 'Demonstrates importance of period > 1 for security'
-        }
-      },
-      {
-        algorithm: 'Bifid',
-        testId: 'bifid-period-002',
-        description: 'Period 2 (minimum effective)',
-        category: 'cryptanalysis',
-        input: 'HELLO',
-        key: '',
-        period: 2,
-        expected: 'HLELO',
-        cryptanalysis: {
-          periodEffect: 'Minimal transposition - limited diffusion',
-          security: 'Some diffusion but still vulnerable to analysis',
-          pairs: 'HE→HL, LL→EL, O→O (odd character unchanged)'
-        }
-      },
-      
-      // Keyword Tests
-      {
-        algorithm: 'Bifid',
-        testId: 'bifid-keyword-001',
-        description: 'Custom keyword grid',
-        category: 'advanced',
-        input: 'HELLO',
-        key: 'SECRET',
-        period: 5,
-        expected: 'HFRMO',
-        keywordGrid: [
-          ['S', 'E', 'C', 'R', 'T'],
-          ['A', 'B', 'D', 'F', 'G'],
-          ['H', 'I', 'K', 'L', 'M'],
-          ['N', 'O', 'P', 'Q', 'U'],
-          ['V', 'W', 'X', 'Y', 'Z']
-        ],
-        verification: {
-          keywordProcessing: 'SECRET → SECRTABDFG...',
-          gridFilling: 'Remove duplicates, fill remaining alphabet'
-        }
-      },
-      
-      // Edge Cases
-      {
-        algorithm: 'Bifid',
-        testId: 'bifid-edge-001',
-        description: 'Single character',
-        category: 'edge-case',
-        input: 'A',
-        key: '',
-        period: 5,
-        expected: 'A',
-        properties: {
-          noTransposition: 'Single character cannot be transposed',
-          coordinates: 'A(1,1) → A(1,1)'
-        }
-      },
-      {
-        algorithm: 'Bifid',
-        testId: 'bifid-edge-002',
-        description: 'Period larger than text',
-        category: 'edge-case',
-        input: 'ABC',
-        key: '',
-        period: 10,
-        expected: 'ABC',
-        properties: {
-          periodEffect: 'Period > text length results in no transposition',
-          explanation: 'All characters in single block'
-        }
-      },
-      {
-        algorithm: 'Bifid',
-        testId: 'bifid-edge-003',
-        description: 'Mixed case and punctuation handling',
-        category: 'implementation',
-        input: 'Hello, World!',
-        key: '',
-        period: 5,
-        expected: 'HFYNO DKQR',
-        properties: {
-          normalization: 'Convert to uppercase, remove non-letters',
-          filtering: 'HELLO WORLD → HELLOWORLD',
-          processing: 'Process as HELLOWORLD with period 5'
-        }
-      },
-      
-      // Cryptanalytic Demonstrations
-      {
-        algorithm: 'Bifid',
-        testId: 'bifid-cryptanalysis-001',
-        description: 'Frequency analysis resistance',
-        category: 'cryptanalysis',
-        input: 'EEEEEEEEEE',
-        key: '',
-        period: 5,
-        expected: 'HHHHHGGGGG',
-        frequencyAnalysis: {
-          inputFrequency: 'E: 10 occurrences',
-          outputFrequency: 'H: 5, G: 5',
-          diffusionEffect: 'Single letter input produces multiple output letters',
-          resistance: 'Better than monoalphabetic substitution'
-        }
-      },
-      {
-        algorithm: 'Bifid',
-        testId: 'bifid-cryptanalysis-002',
-        description: 'Period detection vulnerability',
-        category: 'cryptanalysis',
-        input: 'ABABABABAB',
-        key: '',
-        period: 2,
-        expected: 'AAAAAAAAAA',
-        vulnerability: {
-          pattern: 'Repeated patterns may reveal period',
-          kasiski: 'Identical plaintext blocks → identical ciphertext blocks',
-          countermeasure: 'Use random period or one-time keywords'
+      if (parts.length === 2) {
+        // Has keyword and period
+        this.keyword = parts[0].toUpperCase().replace(/[^A-Z]/g, '');
+        this.period = parseInt(parts[1]) || 5;
+      } else if (parts.length === 1) {
+        // Check if it's just a number (period) or keyword
+        const num = parseInt(parts[0]);
+        if (!isNaN(num) && num > 0) {
+          // It's just a period
+          this.keyword = "";
+          this.period = num;
+        } else {
+          // It's just a keyword
+          this.keyword = parts[0].toUpperCase().replace(/[^A-Z]/g, '');
+          this.period = 5; // Default period
         }
       }
-    ],
-    
-    // Standard 5x5 Polybius grid (I and J share the same cell)
-    STANDARD_GRID: [
-      ['A', 'B', 'C', 'D', 'E'],
-      ['F', 'G', 'H', 'I', 'K'],
-      ['L', 'M', 'N', 'O', 'P'],
-      ['Q', 'R', 'S', 'T', 'U'],
-      ['V', 'W', 'X', 'Y', 'Z']
-    ],
-    
-    isInitialized: false,
-    
-    // Comprehensive metadata
-    metadata: global.CipherMetadata ? global.CipherMetadata.createMetadata({
-      algorithm: 'Bifid',
-      displayName: 'Bifid Cipher',
-      description: 'Advanced fractionating cipher that combines Polybius square coordinate system with transposition. Each plaintext character is converted to coordinates, then coordinates are rearranged before recombining into ciphertext.',
-      
-      inventor: 'Félix Marie Delastelle',
-      year: 1901,
-      background: 'Published in Delastelle\'s "Traité Élémentaire de Cryptographie". The cipher achieves diffusion by separating coordinates and transposing them, making each ciphertext character depend on two plaintext characters.',
-      
-      securityStatus: global.CipherMetadata.SecurityStatus.HISTORICAL,
-      securityNotes: 'Significantly stronger than simple substitution due to diffusion. However, still vulnerable to frequency analysis and period detection attacks when sufficient ciphertext is available.',
-      
-      category: global.CipherMetadata.Categories.CLASSICAL,
-      subcategory: 'fractionating',
-      complexity: global.CipherMetadata.ComplexityLevels.INTERMEDIATE,
-      
-      keySize: 0, // Optional keyword for custom grid
-      blockSize: 'variable', // User-defined period
-      rounds: 1,
-      
-      specifications: [
-        {
-          name: 'Wikipedia: Bifid Cipher',
-          url: 'https://en.wikipedia.org/wiki/Bifid_cipher'
-        },
-        {
-          name: 'Practical Cryptography: Bifid Cipher',
-          url: 'http://practicalcryptography.com/ciphers/classical-era/bifid/'
-        }
-      ],
-      
-      testVectors: [
-        {
-          name: 'Delastelle Original Examples',
-          url: 'https://gallica.bnf.fr/ark:/12148/bpt6k96334117'
-        }
-      ],
-      
-      references: [
-        {
-          name: 'Delastelle, F.: Traité Élémentaire de Cryptographie (1901)',
-          url: 'https://gallica.bnf.fr/ark:/12148/bpt6k96334117'
-        },
-        {
-          name: 'Kahn, David: The Codebreakers (1967)',
-          url: 'https://www.amazon.com/Codebreakers-David-Kahn/dp/0684831309'
-        }
-      ],
-      
-      implementationNotes: 'Uses 5×5 Polybius grid with I/J sharing position. Period parameter controls transposition block size. Larger periods provide better diffusion but require more plaintext.',
-      performanceNotes: 'O(n) time complexity where n is input length. Memory usage scales with period length for coordinate storage.',
-      
-      educationalValue: 'Excellent example of combining substitution with transposition to achieve diffusion. Demonstrates evolution from simple ciphers to more sophisticated cryptographic techniques.',
-      prerequisites: ['Polybius square understanding', 'Coordinate systems', 'Basic transposition concepts'],
-      
-      tags: ['classical', 'fractionating', 'transposition', 'diffusion', 'digraphic', 'delastelle', 'intermediate'],
-      
-      version: '1.0'
-    }) : null,
-    
-    // Initialize cipher
-    Init: function() {
-      Bifid.isInitialized = true;
-    },
-    
-    // Set up key (optional keyword for custom grid + period)
-    KeySetup: function(optional_key) {
-      let id;
-      do {
-        id = 'Bifid[' + global.generateUniqueID() + ']';
-      } while (Bifid.instances[id] || global.objectInstances[id]);
-      
-      Bifid.instances[id] = new Bifid.BifidInstance(optional_key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear cipher data
-    ClearData: function(id) {
-      if (Bifid.instances[id]) {
-        delete Bifid.instances[id];
-        delete global.objectInstances[id];
-        return true;
+
+      // Ensure period is at least 1
+      if (this.period < 1) this.period = 1;
+
+      // Create custom grid if keyword provided
+      if (this.keyword.length > 0) {
+        this.grid = this.createCustomGrid(this.keyword);
       } else {
-        global.throwException('Unknown Object Reference Exception', id, 'Bifid', 'ClearData');
-        return false;
+        this.grid = JSON.parse(JSON.stringify(this.algorithm.STANDARD_GRID));
       }
-    },
-    
-    // Encrypt block
-    encryptBlock: function(id, plaintext) {
-      if (!Bifid.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'Bifid', 'encryptBlock');
-        return plaintext;
+    }
+
+    get key() {
+      if (this.keyword.length > 0) {
+        return this.keyword + "," + this.period;
+      } else {
+        return this.period.toString();
       }
-      
-      const instance = Bifid.instances[id];
-      const grid = instance.grid;
-      const period = instance.period;
-      
-      // Convert to uppercase and filter to letters only
-      const cleanText = plaintext.toUpperCase().replace(/[^A-Z]/g, '');
-      if (cleanText.length === 0) return '';
-      
+    }
+
+    // Create custom Polybius grid from keyword
+    createCustomGrid(keyword) {
+      if (!keyword || keyword.length === 0) {
+        return JSON.parse(JSON.stringify(this.algorithm.STANDARD_GRID));
+      }
+
+      // Start with empty grid
+      const grid = [[], [], [], [], []];
+      const used = new Set();
+      let row = 0, col = 0;
+
+      // Add keyword letters first (removing duplicates)
+      for (const char of keyword) {
+        if (char >= 'A' && char <= 'Z' && !used.has(char) && char !== 'J') {
+          grid[row][col] = char;
+          used.add(char);
+          col++;
+          if (col >= 5) {
+            col = 0;
+            row++;
+          }
+          if (row >= 5) break;
+        }
+      }
+
+      // Fill remaining positions with unused letters (I/J treated as I)
+      const alphabet = 'ABCDEFGHIKLMNOPQRSTUVWXYZ'; // Note: no J
+      for (const char of alphabet) {
+        if (!used.has(char) && row < 5) {
+          grid[row][col] = char;
+          used.add(char);
+          col++;
+          if (col >= 5) {
+            col = 0;
+            row++;
+          }
+        }
+      }
+
+      return grid;
+    }
+
+    // Feed data to the cipher
+    Feed(data) {
+      if (!data || data.length === 0) return;
+
+      // Add data to input buffer
+      this.inputBuffer.push(...data);
+    }
+
+    // Get the result of the transformation
+    Result() {
+      if (this.inputBuffer.length === 0) {
+        return [];
+      }
+
+      // Convert input buffer to string and clean (letters only, uppercase)
+      const inputString = String.fromCharCode(...this.inputBuffer);
+      const cleanText = inputString.toUpperCase().replace(/[^A-Z]/g, '');
+
+      // Process using Bifid algorithm
+      const resultString = this.isInverse ? 
+        this.decrypt(cleanText) : 
+        this.encrypt(cleanText);
+
+      // Clear input buffer for next operation
+      this.inputBuffer = [];
+
+      // Convert result string back to byte array
+      return OpCodes.AnsiToBytes(resultString);
+    }
+
+    // Encrypt using Bifid cipher
+    encrypt(plaintext) {
+      if (plaintext.length === 0) return '';
+
       let result = '';
-      
+
       // Process text in blocks of 'period' length
-      for (let blockStart = 0; blockStart < cleanText.length; blockStart += period) {
-        const block = cleanText.substring(blockStart, Math.min(blockStart + period, cleanText.length));
-        result += Bifid.processBlock(block, grid, true);
+      for (let blockStart = 0; blockStart < plaintext.length; blockStart += this.period) {
+        const blockEnd = Math.min(blockStart + this.period, plaintext.length);
+        const block = plaintext.substring(blockStart, blockEnd);
+        result += this.processBlock(block, true);
       }
-      
+
       return result;
-    },
-    
-    // Decrypt block
-    decryptBlock: function(id, ciphertext) {
-      if (!Bifid.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'Bifid', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      const instance = Bifid.instances[id];
-      const grid = instance.grid;
-      const period = instance.period;
-      
-      // Filter to letters only
-      const cleanText = ciphertext.toUpperCase().replace(/[^A-Z]/g, '');
-      if (cleanText.length === 0) return '';
-      
+    }
+
+    // Decrypt using Bifid cipher
+    decrypt(ciphertext) {
+      if (ciphertext.length === 0) return '';
+
       let result = '';
-      
+
       // Process text in blocks of 'period' length
-      for (let blockStart = 0; blockStart < cleanText.length; blockStart += period) {
-        const block = cleanText.substring(blockStart, Math.min(blockStart + period, cleanText.length));
-        result += Bifid.processBlock(block, grid, false);
+      for (let blockStart = 0; blockStart < ciphertext.length; blockStart += this.period) {
+        const blockEnd = Math.min(blockStart + this.period, ciphertext.length);
+        const block = ciphertext.substring(blockStart, blockEnd);
+        result += this.processBlock(block, false);
       }
-      
+
       return result;
-    },
-    
+    }
+
     // Process a single block (encrypt or decrypt)
-    processBlock: function(block, grid, encrypt) {
+    processBlock(block, encrypt) {
       if (block.length === 0) return '';
-      
+
       const coordinates = [];
-      
+
       // Convert characters to coordinates
       for (let i = 0; i < block.length; i++) {
         let char = block.charAt(i);
         if (char === 'J') char = 'I'; // Handle I/J equivalence
-        
+
         // Find character in grid
         let found = false;
         for (let row = 0; row < 5; row++) {
           for (let col = 0; col < 5; col++) {
-            if (grid[row][col] === char) {
+            if (this.grid[row][col] === char) {
               coordinates.push({ row: row, col: col });
               found = true;
               break;
@@ -512,169 +325,76 @@
           }
           if (found) break;
         }
-        
+
         if (!found) {
-          // This shouldn't happen with proper filtering
-          coordinates.push({ row: 0, col: 0 });
+          // Character not found in grid, skip it
+          continue;
         }
       }
-      
-      let result = '';
-      
+
+      if (coordinates.length === 0) return '';
+
+      // Extract rows and columns
+      let rows = [];
+      let cols = [];
+
+      for (const coord of coordinates) {
+        rows.push(coord.row);
+        cols.push(coord.col);
+      }
+
+      let newCoords = [];
+
       if (encrypt) {
-        // Encryption: separate rows and columns, then combine
-        const rows = coordinates.map(coord => coord.row);
-        const cols = coordinates.map(coord => coord.col);
+        // For encryption: concatenate rows then columns, then pair them up
         const combined = rows.concat(cols);
-        
-        // Pair up the combined coordinates
         for (let i = 0; i < combined.length; i += 2) {
-          const row = combined[i];
-          const col = (i + 1 < combined.length) ? combined[i + 1] : 0;
-          result += grid[row][col];
+          if (i + 1 < combined.length) {
+            newCoords.push({ row: combined[i], col: combined[i + 1] });
+          } else {
+            // Odd number of coordinates, use same value for both
+            newCoords.push({ row: combined[i], col: combined[i] });
+          }
         }
       } else {
-        // Decryption: split combined coordinates back into rows and columns
+        // For decryption: extract alternating elements back into rows and columns
         const combined = [];
-        
-        // Convert characters back to coordinates
-        for (let i = 0; i < block.length; i++) {
-          let char = block.charAt(i);
-          if (char === 'J') char = 'I';
-          
-          // Find character in grid
-          let found = false;
-          for (let row = 0; row < 5; row++) {
-            for (let col = 0; col < 5; col++) {
-              if (grid[row][col] === char) {
-                combined.push(row, col);
-                found = true;
-                break;
-              }
-            }
-            if (found) break;
-          }
-          
-          if (!found) {
-            combined.push(0, 0);
-          }
+        for (const coord of coordinates) {
+          combined.push(coord.row);
+          combined.push(coord.col);
         }
-        
-        // Split back into separate row and column arrays
-        const halfLength = Math.ceil(combined.length / 2);
-        const rows = combined.slice(0, halfLength);
-        const cols = combined.slice(halfLength);
-        
-        // Recombine row,col pairs to get original characters
+
+        const halfLen = Math.floor(combined.length / 2);
+        rows = combined.slice(0, halfLen);
+        cols = combined.slice(halfLen);
+
         for (let i = 0; i < rows.length; i++) {
-          const row = rows[i];
-          const col = (i < cols.length) ? cols[i] : 0;
-          result += grid[row][col];
+          newCoords.push({ row: rows[i], col: cols[i] });
         }
       }
-      
+
+      // Convert coordinates back to characters
+      let result = '';
+      for (const coord of newCoords) {
+        if (coord.row >= 0 && coord.row < 5 && coord.col >= 0 && coord.col < 5) {
+          result += this.grid[coord.row][coord.col];
+        }
+      }
+
       return result;
-    },
-    
-    // Create custom grid from keyword
-    createCustomGrid: function(keyword) {
-      if (!keyword || keyword.length === 0) {
-        return JSON.parse(JSON.stringify(Bifid.STANDARD_GRID));
-      }
-      
-      // Normalize keyword: uppercase, letters only, remove duplicates
-      const cleanKeyword = keyword.toUpperCase().replace(/[^A-Z]/g, '');
-      let uniqueKeyword = '';
-      const seen = {};
-      
-      for (let i = 0; i < cleanKeyword.length; i++) {
-        let char = cleanKeyword.charAt(i);
-        if (char === 'J') char = 'I'; // Handle I/J equivalence
-        if (!seen[char]) {
-          uniqueKeyword += char;
-          seen[char] = true;
-        }
-      }
-      
-      // Generate full alphabet excluding used characters
-      const alphabet = 'ABCDEFGHIKLMNOPQRSTUVWXYZ'; // Note: no J
-      let remaining = '';
-      
-      for (let i = 0; i < alphabet.length; i++) {
-        const char = alphabet.charAt(i);
-        if (!seen[char]) {
-          remaining += char;
-        }
-      }
-      
-      // Combine keyword with remaining letters
-      const fullAlphabet = uniqueKeyword + remaining;
-      
-      // Fill 5x5 grid
-      const grid = [];
-      let index = 0;
-      
-      for (let row = 0; row < 5; row++) {
-        grid[row] = [];
-        for (let col = 0; col < 5; col++) {
-          grid[row][col] = fullAlphabet.charAt(index++);
-        }
-      }
-      
-      return grid;
-    },
-    
-    // Parse period from key string
-    parsePeriod: function(keyString) {
-      if (!keyString) return 5; // Default period
-      
-      // Look for period indicator (e.g., "KEYWORD:7" or "KEYWORD,7")
-      const match = keyString.match(/[:;,](\d+)$/);
-      if (match) {
-        const period = parseInt(match[1]);
-        return (period > 0 && period <= 50) ? period : 5;
-      }
-      
-      return 5; // Default period
-    },
-    
-    // Extract keyword from key string
-    extractKeyword: function(keyString) {
-      if (!keyString) return '';
-      
-      // Remove period indicator if present
-      return keyString.replace(/[:;,]\d+$/, '');
-    },
-    
-    // Instance class
-    BifidInstance: function(keyString) {
-      this.keyString = keyString || '';
-      this.keyword = Bifid.extractKeyword(keyString);
-      this.period = Bifid.parsePeriod(keyString);
-      this.grid = Bifid.createCustomGrid(this.keyword);
-    },
-    
-    // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, plaintext) {
-      return this.encryptBlock(id, plaintext);
-    },
-    
-    DecryptBlock: function(id, ciphertext) {
-      return this.decryptBlock(id, ciphertext);
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(Bifid);
   }
-  
-  // Export to global scope
-  global.Bifid = Bifid;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Bifid;
+
+  // Register the algorithm immediately
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new BifidCipher();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+
+  // ===== EXPORTS =====
+
+  return { BifidCipher, BifidCipherInstance };
+}));

@@ -1,543 +1,321 @@
-#!/usr/bin/env node
 /*
- * Universal Shamir Secret Sharing
- * Compatible with both Browser and Node.js environments
- * Based on Adi Shamir's 1979 algorithm
+ * Shamir Secret Sharing Implementation
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  * 
- * Educational implementation of Shamir's Secret Sharing scheme.
- * Demonstrates threshold cryptography where a secret is divided
- * into n shares, requiring any k shares to reconstruct the secret.
- * 
- * Uses Lagrange interpolation in finite fields (GF(p)) for security.
- * 
- * WARNING: This implementation is for educational purposes only.
- * Use cryptographically reviewed implementations for production systems.
+ * Educational implementation of Shamir's Secret Sharing scheme
+ * Allows splitting a secret into n shares where k shares are needed to reconstruct
+ * Based on polynomial interpolation over finite fields
  */
 
-(function(global) {
+// Load AlgorithmFramework (REQUIRED)
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Load OpCodes for cryptographic operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes.js:', e.message);
-      return;
-    }
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Shamir Secret Sharing requires Cipher system to be loaded first');
-      return;
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class ShamirSecretSharingAlgorithm extends CryptoAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "Shamir Secret Sharing";
+      this.description = "Secret sharing scheme that splits a secret into n shares where any k shares can reconstruct the original secret. Based on polynomial interpolation over finite fields. Provides perfect secrecy.";
+      this.inventor = "Adi Shamir";
+      this.year = 1979;
+      this.category = CategoryType.SPECIAL;
+      this.subCategory = "Secret Sharing";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.IL;
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("Original Paper", "https://web.mit.edu/6.857/OldStuff/Fall03/ref/Shamir-HowToShareASecret.pdf"),
+        new LinkItem("Wikipedia Article", "https://en.wikipedia.org/wiki/Shamir%27s_Secret_Sharing"),
+        new LinkItem("Tutorial", "https://www.cs.jhu.edu/~sdoshi/crypto/papers/shamirturing.pdf")
+      ];
+
+      this.references = [
+        new LinkItem("Implementation Guide", "https://github.com/dsprenkels/sss"),
+        new LinkItem("Mathematical Background", "https://en.wikipedia.org/wiki/Polynomial_interpolation"),
+        new LinkItem("Finite Field Arithmetic", "https://en.wikipedia.org/wiki/Finite_field_arithmetic")
+      ];
+
+      // Test vectors for secret sharing
+      this.tests = [
+        {
+          text: "Simple 3-of-5 secret sharing test",
+          uri: "https://web.mit.edu/6.857/OldStuff/Fall03/ref/Shamir-HowToShareASecret.pdf",
+          input: [123], // Secret byte value 123
+          threshold: 3,
+          shares: 5,
+          expected: "shares" // Will generate 5 shares, any 3 can reconstruct 123
+        },
+        {
+          text: "Multi-byte secret sharing test",
+          uri: "https://web.mit.edu/6.857/OldStuff/Fall03/ref/Shamir-HowToShareASecret.pdf",
+          input: [72, 101, 108, 108, 111], // "Hello"
+          threshold: 2,
+          shares: 3,
+          expected: "shares" // Will generate 3 shares, any 2 can reconstruct "Hello"
+        }
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      return new ShamirSecretSharingInstance(this, isInverse);
     }
   }
-  
-  // Secret Sharing Constants
-  const SSS_CONSTANTS = {
-    DEFAULT_PRIME: 2147483647,    // Large prime (2^31 - 1)
-    MAX_SHARES: 255,              // Maximum number of shares
-    MIN_THRESHOLD: 2,             // Minimum threshold
-    WORD_SIZE: 4,                 // Process secrets in 32-bit words
-    SAFE_PRIMES: [                // Collection of safe primes
-      2147483647,   // 2^31 - 1
-      1073741827,   // 2^30 - 5
-      536870923,    // 2^29 - 5
-      268435459,    // 2^28 - 3
-      134217757,    // 2^27 - 19
-      67108879,     // 2^26 - 15
-      33554467,     // 2^25 - 29
-      16777259      // 2^24 - 37
-    ]
-  };
-  
-  const ShamirSecretSharing = {
-    internalName: 'shamir-secret-sharing',
-    name: 'Shamir Secret Sharing',
-    
-    // Required Cipher interface properties
-    minKeyLength: 0,         // No key required
-    maxKeyLength: 0,         // No key used
-    stepKeyLength: 1,        // N/A
-    minBlockSize: 1,         // Can share single bytes
-    maxBlockSize: 0,         // No maximum limit
-    stepBlockSize: 1,        // Byte-wise processing
-    instances: {},           // Instance tracking
-    
-    // Metadata
-    version: '1.0.0',
-    date: '2025-01-17',
-    author: 'Adi Shamir (1979) - Educational Implementation',
-    description: 'Threshold Secret Sharing using Polynomial Interpolation in Finite Fields',
-    reference: 'Shamir, A. (1979). How to share a secret. Communications of the ACM',
-    
-    // Security parameters
-    maxShares: 255,
-    minThreshold: 2,
-    
-    /**
-     * Initialize Secret Sharing instance
-     */
-    Init: function() {
-      const instance = {
-        threshold: 0,           // k: minimum shares needed
-        numShares: 0,           // n: total shares to generate
-        prime: SSS_CONSTANTS.DEFAULT_PRIME,
-        polynomial: [],         // Coefficients of secret polynomial
-        shares: [],             // Generated shares
-        secretLength: 0,        // Length of original secret
-        initialized: false
-      };
-      
-      const instanceId = Math.random().toString(36).substr(2, 9);
-      this.instances[instanceId] = instance;
-      return instanceId;
-    },
-    
-    /**
-     * Setup secret sharing parameters
-     */
-    Setup: function(instanceId, threshold, numShares, prime = null) {
-      const instance = this.instances[instanceId];
-      if (!instance) {
-        throw new Error('Invalid Secret Sharing instance ID');
-      }
-      
-      if (threshold < SSS_CONSTANTS.MIN_THRESHOLD || threshold > SSS_CONSTANTS.MAX_SHARES) {
-        throw new Error('Threshold must be between ' + SSS_CONSTANTS.MIN_THRESHOLD + ' and ' + SSS_CONSTANTS.MAX_SHARES);
-      }
-      
-      if (numShares < threshold || numShares > SSS_CONSTANTS.MAX_SHARES) {
-        throw new Error('Number of shares must be between threshold and ' + SSS_CONSTANTS.MAX_SHARES);
-      }
-      
-      instance.threshold = threshold;
-      instance.numShares = numShares;
-      
-      // Select appropriate prime
-      if (prime) {
-        instance.prime = prime;
+
+  class ShamirSecretSharingInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.inputBuffer = [];
+      this.threshold = 3; // Default k=3
+      this.totalShares = 5; // Default n=5
+      this.shares = []; // For reconstruction
+
+      // Finite field parameters (GF(256) for byte operations)
+      this.PRIME = 257; // Next prime after 256 for GF(257)
+    }
+
+    SetThreshold(k) {
+      if (k < 2) throw new Error("Threshold must be at least 2");
+      this.threshold = k;
+    }
+
+    SetTotalShares(n) {
+      if (n < this.threshold) throw new Error("Total shares must be >= threshold");
+      if (n > 255) throw new Error("Maximum 255 shares supported");
+      this.totalShares = n;
+    }
+
+    SetShares(shares) {
+      // For reconstruction: shares is array of {x, y} objects
+      this.shares = shares;
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+
+      if (this.isInverse) {
+        return this._reconstructSecret();
       } else {
-        // Choose smallest safe prime larger than numShares
-        instance.prime = SSS_CONSTANTS.SAFE_PRIMES.find(p => p > numShares) || SSS_CONSTANTS.DEFAULT_PRIME;
+        return this._generateShares();
       }
-      
-      instance.initialized = true;
-      return true;
-    },
-    
-    /**
-     * Generate shares for a secret
-     */
-    ShareSecret: function(instanceId, secret) {
-      const instance = this.instances[instanceId];
-      if (!instance || !instance.initialized) {
-        throw new Error('Secret Sharing instance not properly initialized');
-      }
-      
-      if (!secret || secret.length === 0) {
-        throw new Error('Secret cannot be empty');
-      }
-      
-      // Convert secret to array if needed
-      if (!Array.isArray(secret)) {
-        secret = Array.from(secret);
-      }
-      
-      instance.secretLength = secret.length;
-      instance.shares = [];
-      
-      // Process secret in chunks that fit in the finite field
-      const chunkSize = this.getChunkSize(instance.prime);
-      const secretShares = [];
-      
-      for (let offset = 0; offset < secret.length; offset += chunkSize) {
-        const chunk = secret.slice(offset, offset + chunkSize);
-        
-        // Convert chunk to integer
-        let secretValue = 0;
-        for (let i = 0; i < chunk.length; i++) {
-          secretValue = (secretValue * 256 + chunk[i]) % instance.prime;
+    }
+
+    _generateShares() {
+      const shares = [];
+
+      // Generate shares for each byte of the secret
+      for (let byteIndex = 0; byteIndex < this.inputBuffer.length; byteIndex++) {
+        const secret = this.inputBuffer[byteIndex];
+        const byteShares = this._generateSharesForByte(secret);
+
+        for (let i = 0; i < this.totalShares; i++) {
+          if (!shares[i]) shares[i] = { x: i + 1, y: [] };
+          shares[i].y.push(byteShares[i].y);
         }
-        
-        // Generate polynomial with secret as constant term
-        instance.polynomial = [secretValue];
-        for (let i = 1; i < instance.threshold; i++) {
-          instance.polynomial.push(this.secureRandom(instance.prime));
-        }
-        
-        // Evaluate polynomial at different points to create shares
-        const chunkShares = [];
-        for (let x = 1; x <= instance.numShares; x++) {
-          const y = this.evaluatePolynomial(instance.polynomial, x, instance.prime);
-          chunkShares.push({ x: x, y: y });
-        }
-        
-        secretShares.push(chunkShares);
       }
-      
-      // Reorganize shares by participant
-      instance.shares = [];
-      for (let i = 0; i < instance.numShares; i++) {
-        const participantShares = [];
-        for (let j = 0; j < secretShares.length; j++) {
-          participantShares.push(secretShares[j][i]);
-        }
-        instance.shares.push({
-          id: i + 1,
-          chunks: participantShares,
-          metadata: {
-            threshold: instance.threshold,
-            totalShares: instance.numShares,
-            secretLength: instance.secretLength,
-            prime: instance.prime,
-            chunkSize: chunkSize
-          }
-        });
+
+      // Clear input buffer
+      this.inputBuffer = [];
+
+      // Return shares as flat byte array: [x1, y1_byte1, y1_byte2, ..., x2, y2_byte1, y2_byte2, ...]
+      const result = [];
+      for (const share of shares) {
+        result.push(share.x);
+        result.push(...share.y);
       }
-      
-      return instance.shares;
-    },
-    
-    /**
-     * Reconstruct secret from shares
-     */
-    ReconstructSecret: function(shares) {
-      if (!shares || shares.length === 0) {
-        throw new Error('No shares provided for reconstruction');
-      }
-      
-      // Extract metadata from first share
-      const metadata = shares[0].metadata;
-      if (!metadata) {
-        throw new Error('Share metadata missing - cannot reconstruct');
-      }
-      
-      if (shares.length < metadata.threshold) {
-        throw new Error('Insufficient shares: need ' + metadata.threshold + ', got ' + shares.length);
-      }
-      
-      // Use first k shares for reconstruction
-      const kShares = shares.slice(0, metadata.threshold);
-      const prime = metadata.prime;
-      const secretLength = metadata.secretLength;
-      const chunkSize = metadata.chunkSize;
-      
-      // Determine number of chunks
-      const numChunks = kShares[0].chunks.length;
-      const reconstructedSecret = [];
-      
-      // Reconstruct each chunk using Lagrange interpolation
-      for (let chunkIdx = 0; chunkIdx < numChunks; chunkIdx++) {
-        // Extract points for this chunk
-        const points = kShares.map(share => ({
-          x: share.chunks[chunkIdx].x,
-          y: share.chunks[chunkIdx].y
-        }));
-        
-        // Reconstruct using Lagrange interpolation at x=0
-        const secretValue = this.lagrangeInterpolation(points, 0, prime);
-        
-        // Convert back to bytes
-        const chunkBytes = this.integerToBytes(secretValue, chunkSize);
-        reconstructedSecret.push(...chunkBytes);
-      }
-      
-      // Trim to original secret length
-      return reconstructedSecret.slice(0, secretLength);
-    },
-    
-    /**
-     * Evaluate polynomial at point x in GF(p)
-     */
-    evaluatePolynomial: function(coefficients, x, prime) {
-      let result = 0;
-      let xPower = 1;
-      
-      for (let i = 0; i < coefficients.length; i++) {
-        result = (result + (coefficients[i] * xPower) % prime) % prime;
-        xPower = (xPower * x) % prime;
-      }
-      
+
       return result;
-    },
-    
-    /**
-     * Lagrange interpolation to find polynomial value at x=0
-     */
-    lagrangeInterpolation: function(points, x, prime) {
+    }
+
+    _generateSharesForByte(secret) {
+      // Generate random coefficients for polynomial of degree k-1
+      const coefficients = [secret]; // a0 = secret
+      for (let i = 1; i < this.threshold; i++) {
+        coefficients.push(this._randomByte());
+      }
+
+      // Evaluate polynomial at points x = 1, 2, ..., n
+      const shares = [];
+      for (let x = 1; x <= this.totalShares; x++) {
+        const y = this._evaluatePolynomial(coefficients, x);
+        shares.push({ x: x, y: y });
+      }
+
+      return shares;
+    }
+
+    _reconstructSecret() {
+      if (this.shares.length < this.threshold) {
+        throw new Error(`Need at least ${this.threshold} shares for reconstruction`);
+      }
+
+      // Use first k shares for reconstruction
+      const selectedShares = this.shares.slice(0, this.threshold);
+
+      // Reconstruct each byte
+      const secretBytes = [];
+      const bytesPerShare = selectedShares[0].y.length;
+
+      for (let byteIndex = 0; byteIndex < bytesPerShare; byteIndex++) {
+        const points = selectedShares.map(share => ({
+          x: share.x,
+          y: share.y[byteIndex]
+        }));
+
+        const secretByte = this._lagrangeInterpolation(points);
+        secretBytes.push(secretByte);
+      }
+
+      return secretBytes;
+    }
+
+    _evaluatePolynomial(coefficients, x) {
       let result = 0;
-      
+      for (let i = 0; i < coefficients.length; i++) {
+        result = this._fieldAdd(result, this._fieldMul(coefficients[i], this._fieldPow(x, i)));
+      }
+      return result;
+    }
+
+    _lagrangeInterpolation(points) {
+      let secret = 0;
+
       for (let i = 0; i < points.length; i++) {
-        let basis = points[i].y;
-        
-        // Calculate Lagrange basis polynomial
+        let numerator = 1;
+        let denominator = 1;
+
         for (let j = 0; j < points.length; j++) {
           if (i !== j) {
-            const numerator = (x - points[j].x + prime) % prime;
-            const denominator = (points[i].x - points[j].x + prime) % prime;
-            const inv = this.modInverse(denominator, prime);
-            basis = (basis * numerator % prime * inv) % prime;
+            numerator = this._fieldMul(numerator, 0 - points[j].x);
+            denominator = this._fieldMul(denominator, points[i].x - points[j].x);
           }
         }
-        
-        result = (result + basis) % prime;
+
+        const term = this._fieldMul(points[i].y, this._fieldDiv(numerator, denominator));
+        secret = this._fieldAdd(secret, term);
       }
-      
+
+      return secret;
+    }
+
+    // Finite field arithmetic over GF(257)
+    _fieldAdd(a, b) {
+      return (a + b) % this.PRIME;
+    }
+
+    _fieldSub(a, b) {
+      return (a - b + this.PRIME) % this.PRIME;
+    }
+
+    _fieldMul(a, b) {
+      return (a * b) % this.PRIME;
+    }
+
+    _fieldDiv(a, b) {
+      return this._fieldMul(a, this._fieldInverse(b));
+    }
+
+    _fieldPow(base, exp) {
+      let result = 1;
+      base = base % this.PRIME;
+      while (exp > 0) {
+        if (exp % 2 === 1) {
+          result = this._fieldMul(result, base);
+        }
+        exp = Math.floor(exp / 2);
+        base = this._fieldMul(base, base);
+      }
       return result;
-    },
-    
-    /**
-     * Modular multiplicative inverse using Extended Euclidean Algorithm
-     */
-    modInverse: function(a, m) {
-      if (this.gcd(a, m) !== 1) {
-        throw new Error('Modular inverse does not exist');
-      }
-      
-      // Extended Euclidean Algorithm
-      let m0 = m;
-      let x0 = 0, x1 = 1;
-      
-      while (a > 1) {
-        const q = Math.floor(a / m);
-        let t = m;
-        
-        m = a % m;
-        a = t;
-        t = x0;
-        
-        x0 = x1 - q * x0;
-        x1 = t;
-      }
-      
-      if (x1 < 0) {
-        x1 += m0;
-      }
-      
-      return x1;
-    },
-    
-    /**
-     * Greatest Common Divisor
-     */
-    gcd: function(a, b) {
-      while (b !== 0) {
-        const temp = b;
-        b = a % b;
-        a = temp;
-      }
-      return a;
-    },
-    
-    /**
-     * Get appropriate chunk size for prime
-     */
-    getChunkSize: function(prime) {
-      // Ensure chunks fit comfortably in the field
-      let size = 1;
-      let maxValue = 256;
-      
-      while (maxValue < prime / 256) {
-        size++;
-        maxValue *= 256;
-      }
-      
-      return Math.max(1, size - 1);
-    },
-    
-    /**
-     * Convert integer to byte array
-     */
-    integerToBytes: function(value, length) {
-      const bytes = [];
-      for (let i = 0; i < length; i++) {
-        bytes.unshift(value & 0xFF);
-        value = Math.floor(value / 256);
-      }
-      return bytes;
-    },
-    
-    /**
-     * Generate cryptographically secure random number
-     */
-    secureRandom: function(max) {
-      // Use crypto APIs if available, fallback to Math.random for educational use
-      if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-        const array = new Uint32Array(1);
-        crypto.getRandomValues(array);
-        return array[0] % max;
-      } else if (typeof require !== 'undefined') {
-        try {
-          const crypto = require('crypto');
-          return crypto.randomInt(0, max);
-        } catch (e) {
-          // Fallback to Math.random
-        }
-      }
-      
-      // Educational fallback (not cryptographically secure)
-      return Math.floor(Math.random() * max);
-    },
-    
-    /**
-     * Verify share integrity and reconstruct partial secret
-     */
-    VerifyShares: function(shares, expectedThreshold) {
-      if (!shares || shares.length === 0) {
-        return { valid: false, error: 'No shares provided' };
-      }
-      
-      // Check metadata consistency
-      const metadata = shares[0].metadata;
-      if (!metadata) {
-        return { valid: false, error: 'Missing share metadata' };
-      }
-      
-      if (metadata.threshold !== expectedThreshold) {
-        return { valid: false, error: 'Threshold mismatch' };
-      }
-      
-      // Verify all shares have consistent metadata
-      for (let i = 1; i < shares.length; i++) {
-        const meta = shares[i].metadata;
-        if (!meta || 
-            meta.threshold !== metadata.threshold ||
-            meta.totalShares !== metadata.totalShares ||
-            meta.secretLength !== metadata.secretLength ||
-            meta.prime !== metadata.prime) {
-          return { valid: false, error: 'Inconsistent share metadata' };
-        }
-      }
-      
-      return { 
-        valid: true, 
-        threshold: metadata.threshold,
-        canReconstruct: shares.length >= metadata.threshold
-      };
-    },
-    
-    /**
-     * Clear sensitive instance data
-     */
-    ClearData: function(instanceId) {
-      const instance = this.instances[instanceId];
-      if (instance) {
-        // Clear sensitive data
-        instance.polynomial.fill(0);
-        if (instance.shares) {
-          instance.shares.forEach(share => {
-            if (share.chunks) {
-              share.chunks.forEach(chunk => {
-                chunk.x = 0;
-                chunk.y = 0;
-              });
-            }
-          });
-        }
-        instance.threshold = 0;
-        instance.numShares = 0;
-        instance.secretLength = 0;
-        instance.initialized = false;
-        
-        // Remove instance
-        delete this.instances[instanceId];
-      }
-      return true;
-    },
-    
-    /**
-     * Get algorithm information
-     */
-    GetInfo: function() {
+    }
+
+    _fieldInverse(a) {
+      // Extended Euclidean algorithm for modular inverse
+      if (a === 0) throw new Error("Cannot compute inverse of 0");
+
+      let extended = this._extendedGCD(a, this.PRIME);
+      if (extended.gcd !== 1) throw new Error("Inverse does not exist");
+
+      return (extended.x % this.PRIME + this.PRIME) % this.PRIME;
+    }
+
+    _extendedGCD(a, b) {
+      if (a === 0) return { gcd: b, x: 0, y: 1 };
+
+      const gcd = this._extendedGCD(b % a, a);
       return {
-        name: this.name,
-        type: 'Secret Sharing',
-        description: 'Threshold cryptography using polynomial interpolation',
-        inventor: 'Adi Shamir (1979)',
-        security: 'Information-theoretic security in finite fields',
-        applications: 'Key escrow, distributed storage, multi-party computation',
-        threshold: 'k-out-of-n secret sharing',
-        reconstruction: 'Lagrange interpolation in GF(p)'
+        gcd: gcd.gcd,
+        x: gcd.y - Math.floor(b / a) * gcd.x,
+        y: gcd.x
       };
     }
-  };
-  
-  // Test vectors for Shamir Secret Sharing
-  ShamirSecretSharing.testVectors = [
-    {
-      algorithm: 'Shamir Secret Sharing',
-      testId: 'sss-basic-001',
-      description: 'Basic 2-out-of-3 secret sharing with ASCII message',
-      category: 'educational',
-      
-      secret: 'Hello',
-      threshold: 2,
-      numShares: 3,
-      prime: 2147483647,
-      
-      // Note: Shares will be different each time due to randomness
-      expectedReconstruction: 'Hello',
-      
-      source: {
-        type: 'educational',
-        identifier: 'Basic SSS Test',
-        title: 'Shamir Secret Sharing Educational Example',
-        url: 'https://en.wikipedia.org/wiki/Shamir%27s_Secret_Sharing',
-        organization: 'Educational',
-        section: 'Algorithm Verification',
-        datePublished: '1979-01-01',
-        dateAccessed: '2025-01-17'
-      }
-    },
-    {
-      algorithm: 'Shamir Secret Sharing',
-      testId: 'sss-crypto-002',
-      description: '3-out-of-5 sharing with cryptographic key',
-      category: 'educational',
-      
-      secretHex: '000102030405060708090A0B0C0D0E0F',
-      threshold: 3,
-      numShares: 5,
-      prime: 2147483647,
-      
-      expectedReconstructionHex: '000102030405060708090A0B0C0D0E0F',
-      
-      source: {
-        type: 'educational',
-        identifier: 'Crypto Key SSS Test',
-        title: 'Shamir Secret Sharing for Cryptographic Keys',
-        url: 'https://en.wikipedia.org/wiki/Shamir%27s_Secret_Sharing',
-        organization: 'Educational',
-        section: 'Cryptographic Applications',
-        datePublished: '1979-01-01',
-        dateAccessed: '2025-01-17'
-      }
+
+    _randomByte() {
+      // Simple PRNG for educational purposes
+      return Math.floor(Math.random() * 256);
     }
-  ];
-  
-  // Register with Cipher system if available
-  if (typeof global.Cipher !== 'undefined') {
-    global.Cipher.AddCipher(ShamirSecretSharing);
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = ShamirSecretSharing;
+
+  // Register the algorithm
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new ShamirSecretSharingAlgorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Export to global scope
-  global.ShamirSecretSharing = ShamirSecretSharing;
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // ===== EXPORTS =====
+
+  return { ShamirSecretSharingAlgorithm, ShamirSecretSharingInstance };
+}));

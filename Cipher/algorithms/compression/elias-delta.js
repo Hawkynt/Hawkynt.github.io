@@ -5,413 +5,403 @@
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Load dependencies
-  if (!global.Compression && typeof require !== 'undefined') {
-    try {
-      require('../../compression.js');
-    } catch (e) {
-      console.error('Failed to load compression framework:', e.message);
-      return;
-    }
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes.js:', e.message);
-      return;
-    }
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
   }
-  
-  const EliasDelta = {
-    internalName: 'EliasDelta',
-    name: 'Elias Delta Coding',
-    comment: 'Peter Elias improved universal integer encoding - more efficient for larger numbers',
-    category: 'Universal',
-    instances: {},
-    isInitialized: false,
-    
-    /**
-     * Initialize the algorithm
-     */
-    Init: function() {
-      this.isInitialized = true;
-      console.log('Elias Delta coding algorithm initialized');
-    },
-    
-    /**
-     * Create a new instance
-     */
-    KeySetup: function() {
-      const id = this.internalName + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
-      this.instances[id] = {
-        initialized: true,
-        compressionRatio: 0,
-        lastInputSize: 0,
-        lastOutputSize: 0
-      };
-      return id;
-    },
-    
-    /**
-     * Compress data using Elias Delta coding
-     * Treats input as sequence of integers (byte values)
-     * @param {string} keyId - Instance identifier
-     * @param {string} data - Input data to compress
-     * @returns {string} Compressed data
-     */
-    Compress: function(keyId, data) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class EliasDeltaAlgorithm extends CompressionAlgorithm {
+      constructor() {
+        super();
+
+        // Required metadata
+        this.name = "Elias Delta Coding";
+        this.description = "Peter Elias improved universal integer encoding, more efficient than Gamma for larger numbers using variable-length prefix codes.";
+        this.category = CategoryType.COMPRESSION;
+        this.subCategory = "Universal";
+        this.securityStatus = SecurityStatus.EDUCATIONAL;
+        this.complexity = ComplexityType.INTERMEDIATE;
+        this.inventor = "Peter Elias";
+        this.year = 1975;
+        this.country = CountryCode.US;
+
+        this.documentation = [
+          new LinkItem("Universal codeword sets and representations of the integers", "https://ieeexplore.ieee.org/document/1054906"),
+          new LinkItem("Elias Delta Coding - Wikipedia", "https://en.wikipedia.org/wiki/Elias_delta_coding"),
+          new LinkItem("Information Theory and Coding", "https://web.stanford.edu/class/ee376a/")
+        ];
+
+        this.references = [
+          new LinkItem("Elements of Information Theory", "https://www.wiley.com/en-us/Elements+of+Information+Theory%2C+2nd+Edition-p-9780471241959"),
+          new LinkItem("Introduction to Data Compression", "https://www.elsevier.com/books/introduction-to-data-compression/sayood/978-0-12-620862-7")
+        ];
+
+        // Convert existing tests to new format
+        this.tests = [
+          new TestCase(
+            [0x01, 0x02, 0x03, 0x04, 0x05],
+            [0, 0, 0, 5, 0, 0, 0, 23, 69, 99, 92],
+            "Small integer sequence",
+            "https://en.wikipedia.org/wiki/Elias_delta_coding"
+          ),
+          new TestCase(
+            [0x7F, 0x80, 0x81, 0xFF],
+            [0, 0, 0, 4, 0, 0, 0, 57, 16, 0, 64, 17, 0, 132, 128, 0],
+            "Mixed small and large values",
+            "Boundary value test"
+          )
+        ];
+
+        // For test suite compatibility
+        this.testVectors = this.tests;
       }
-      
-      if (!data || data.length === 0) {
-        return '';
+
+      CreateInstance(isInverse = false) {
+        return new EliasDeltaInstance(this, isInverse);
       }
-      
-      const instance = this.instances[keyId];
-      const input = this._stringToBytes(data);
-      
-      let bitStream = '';
-      
-      // Encode each byte using Elias Delta
-      for (const byte of input) {
-        // Elias Delta cannot encode 0, so we use byte + 1
-        const value = byte + 1;
-        const deltaCode = this._encodeDelta(value);
-        bitStream += deltaCode;
+    }
+
+    class EliasDeltaInstance extends IAlgorithmInstance {
+      constructor(algorithm, isInverse = false) {
+        super(algorithm);
+        this.isInverse = isInverse; // true = decompress, false = compress
+        this.inputBuffer = [];
       }
-      
-      // Store original length and convert to bytes
-      const compressed = this._packBitStream(bitStream, input.length);
-      
-      // Update statistics
-      instance.lastInputSize = data.length;
-      instance.lastOutputSize = compressed.length;
-      instance.compressionRatio = data.length / compressed.length;
-      
-      return compressed;
-    },
-    
-    /**
-     * Decompress Elias Delta-encoded data
-     * @param {string} keyId - Instance identifier
-     * @param {string} compressedData - Compressed data
-     * @returns {string} Decompressed data
-     */
-    Decompress: function(keyId, compressedData) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
+
+      Feed(data) {
+        if (!data || data.length === 0) return;
+        this.inputBuffer.push(...data);
       }
-      
-      if (!compressedData || compressedData.length === 0) {
-        return '';
+
+      Result() {
+        if (this.inputBuffer.length === 0) return [];
+
+        // Process using existing compression logic
+        const result = this.isInverse ? 
+          this.decompress(this.inputBuffer) : 
+          this.compress(this.inputBuffer);
+
+        this.inputBuffer = [];
+        return result;
       }
-      
-      // Unpack bit stream and get original length
-      const { bitStream, originalLength } = this._unpackBitStream(compressedData);
-      
-      const decodedBytes = [];
-      let pos = 0;
-      
-      // Decode until we have the expected number of bytes
-      while (decodedBytes.length < originalLength && pos < bitStream.length) {
-        const { value, bitsConsumed } = this._decodeDelta(bitStream, pos);
-        
-        if (value === null) {
-          throw new Error('Invalid Elias Delta code in compressed data');
+
+      compress(data) {
+        if (!data || data.length === 0) return [];
+
+        let bitStream = '';
+
+        // Encode each byte using Elias Delta
+        for (const byte of data) {
+          // Elias Delta cannot encode 0, so we use byte + 1
+          const value = byte + 1;
+          const deltaCode = this._encodeDelta(value);
+          bitStream += deltaCode;
         }
-        
-        // Convert back to byte (subtract 1 since we added 1 during encoding)
-        const byte = value - 1;
-        if (byte < 0 || byte > 255) {
-          throw new Error('Invalid byte value in compressed data');
+
+        // Store original length and convert to bytes
+        const compressed = this._packBitStream(bitStream, data.length);
+
+        return this._stringToBytes(compressed);
+      }
+
+      decompress(data) {
+        if (!data || data.length === 0) return [];
+
+        const compressedString = this._bytesToString(data);
+
+        // Unpack bit stream and get original length
+        const { bitStream, originalLength } = this._unpackBitStream(compressedString);
+
+        const decodedBytes = [];
+        let pos = 0;
+
+        // Decode until we have the expected number of bytes
+        while (decodedBytes.length < originalLength && pos < bitStream.length) {
+          const { value, bitsConsumed } = this._decodeDelta(bitStream, pos);
+
+          if (value === null) {
+            throw new Error('Invalid Elias Delta code in compressed data');
+          }
+
+          // Convert back to byte (subtract 1 since we added 1 during encoding)
+          const byte = value - 1;
+          if (byte < 0 || byte > 255) {
+            throw new Error('Invalid byte value in compressed data');
+          }
+
+          decodedBytes.push(byte);
+          pos += bitsConsumed;
         }
-        
-        decodedBytes.push(byte);
-        pos += bitsConsumed;
+
+        if (decodedBytes.length !== originalLength) {
+          throw new Error('Decompressed length mismatch');
+        }
+
+        return decodedBytes;
       }
-      
-      if (decodedBytes.length !== originalLength) {
-        throw new Error('Decompressed length mismatch');
+
+      /**
+       * Encode a positive integer using Elias Delta coding
+       * Format: gamma(1 + floor(log2(n))) + binary(n - 2^floor(log2(n)))
+       * @private
+       */
+      _encodeDelta(value) {
+        if (value <= 0) {
+          throw new Error('Elias Delta can only encode positive integers');
+        }
+
+        // Special case for 1
+        if (value === 1) {
+          return '1';
+        }
+
+        // Calculate number of bits needed for binary representation
+        const bitsNeeded = Math.floor(Math.log2(value));
+
+        // Encode length using Elias Gamma (length + 1)
+        const lengthCode = this._encodeGamma(bitsNeeded + 1);
+
+        // Create binary representation without leading 1
+        const binaryValue = value.toString(2);
+        const binarySuffix = binaryValue.substring(1); // Remove leading '1'
+
+        return lengthCode + binarySuffix;
       }
-      
-      return this._bytesToString(decodedBytes);
-    },
-    
-    /**
-     * Clear instance data
-     */
-    ClearData: function(keyId) {
-      if (this.instances[keyId]) {
-        delete this.instances[keyId];
-        return true;
+
+      /**
+       * Decode an Elias Delta code from bit stream
+       * @private
+       */
+      _decodeDelta(bitStream, startPos) {
+        if (startPos >= bitStream.length) {
+          return { value: null, bitsConsumed: 0 };
+        }
+
+        // First decode the length using Elias Gamma
+        const gammaResult = this._decodeGamma(bitStream, startPos);
+        if (gammaResult.value === null) {
+          return { value: null, bitsConsumed: 0 };
+        }
+
+        const length = gammaResult.value - 1; // Subtract 1 to get actual length
+        let pos = startPos + gammaResult.bitsConsumed;
+
+        // Special case for length 0 (value is 1)
+        if (length === 0) {
+          return { value: 1, bitsConsumed: gammaResult.bitsConsumed };
+        }
+
+        // Read binary suffix
+        if (pos + length > bitStream.length) {
+          return { value: null, bitsConsumed: 0 };
+        }
+
+        const binarySuffix = bitStream.substring(pos, pos + length);
+        const value = parseInt('1' + binarySuffix, 2);
+
+        return { 
+          value: value, 
+          bitsConsumed: gammaResult.bitsConsumed + length 
+        };
       }
-      return false;
-    },
-    
-    /**
-     * Encode a positive integer using Elias Delta coding
-     * Format: gamma(1 + floor(log2(n))) + binary(n - 2^floor(log2(n)))
-     * @private
-     */
-    _encodeDelta: function(value) {
-      if (value <= 0) {
-        throw new Error('Elias Delta can only encode positive integers');
+
+      /**
+       * Encode using Elias Gamma (helper function)
+       * @private
+       */
+      _encodeGamma(value) {
+        if (value <= 0) {
+          throw new Error('Elias Gamma can only encode positive integers');
+        }
+
+        // Special case for 1
+        if (value === 1) {
+          return '1';
+        }
+
+        // Calculate number of bits needed
+        const bitsNeeded = Math.floor(Math.log2(value));
+
+        // Create unary prefix (bitsNeeded zeros followed by 1)
+        const unaryPrefix = '0'.repeat(bitsNeeded) + '1';
+
+        // Create binary suffix (value without leading 1)
+        const binaryValue = value.toString(2);
+        const binarySuffix = binaryValue.substring(1); // Remove leading '1'
+
+        return unaryPrefix + binarySuffix;
       }
-      
-      // Special case for 1
-      if (value === 1) {
-        return '1';
+
+      /**
+       * Decode Elias Gamma (helper function)
+       * @private
+       */
+      _decodeGamma(bitStream, startPos) {
+        if (startPos >= bitStream.length) {
+          return { value: null, bitsConsumed: 0 };
+        }
+
+        // Count leading zeros (unary part)
+        let zeros = 0;
+        let pos = startPos;
+
+        while (pos < bitStream.length && bitStream[pos] === '0') {
+          zeros++;
+          pos++;
+        }
+
+        // Check for terminating '1'
+        if (pos >= bitStream.length || bitStream[pos] !== '1') {
+          return { value: null, bitsConsumed: 0 };
+        }
+
+        pos++; // Skip the '1'
+
+        // Read binary suffix
+        if (zeros === 0) {
+          // Special case: value is 1
+          return { value: 1, bitsConsumed: 1 };
+        }
+
+        if (pos + zeros > bitStream.length) {
+          return { value: null, bitsConsumed: 0 };
+        }
+
+        const binarySuffix = bitStream.substring(pos, pos + zeros);
+        const value = parseInt('1' + binarySuffix, 2);
+
+        return { value: value, bitsConsumed: zeros + 1 + zeros };
       }
-      
-      // Calculate number of bits needed for binary representation
-      const bitsNeeded = Math.floor(Math.log2(value));
-      
-      // Encode length using Elias Gamma (length + 1)
-      const lengthCode = this._encodeGamma(bitsNeeded + 1);
-      
-      // Create binary representation without leading 1
-      const binaryValue = value.toString(2);
-      const binarySuffix = binaryValue.substring(1); // Remove leading '1'
-      
-      return lengthCode + binarySuffix;
-    },
-    
-    /**
-     * Decode an Elias Delta code from bit stream
-     * @private
-     */
-    _decodeDelta: function(bitStream, startPos) {
-      if (startPos >= bitStream.length) {
-        return { value: null, bitsConsumed: 0 };
+
+      /**
+       * Pack bit stream into bytes with header
+       * @private
+       */
+      _packBitStream(bitStream, originalLength) {
+        const bytes = [];
+
+        // Store original length (4 bytes, big-endian)
+        bytes.push((originalLength >>> 24) & 0xFF);
+        bytes.push((originalLength >>> 16) & 0xFF);
+        bytes.push((originalLength >>> 8) & 0xFF);
+        bytes.push(originalLength & 0xFF);
+
+        // Store bit stream length (4 bytes, big-endian)
+        const bitLength = bitStream.length;
+        bytes.push((bitLength >>> 24) & 0xFF);
+        bytes.push((bitLength >>> 16) & 0xFF);
+        bytes.push((bitLength >>> 8) & 0xFF);
+        bytes.push(bitLength & 0xFF);
+
+        // Pad bit stream to byte boundary
+        const padding = (8 - (bitStream.length % 8)) % 8;
+        const paddedBits = bitStream + '0'.repeat(padding);
+
+        // Convert to bytes
+        for (let i = 0; i < paddedBits.length; i += 8) {
+          const byte = paddedBits.substr(i, 8);
+          bytes.push(parseInt(byte, 2));
+        }
+
+        return this._bytesToString(bytes);
       }
-      
-      // First decode the length using Elias Gamma
-      const gammaResult = this._decodeGamma(bitStream, startPos);
-      if (gammaResult.value === null) {
-        return { value: null, bitsConsumed: 0 };
+
+      /**
+       * Unpack bit stream from bytes
+       * @private
+       */
+      _unpackBitStream(compressedData) {
+        const bytes = this._stringToBytes(compressedData);
+
+        if (bytes.length < 8) {
+          throw new Error('Invalid compressed data: header too short');
+        }
+
+        // Read original length
+        const originalLength = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
+
+        // Read bit stream length
+        const bitLength = (bytes[4] << 24) | (bytes[5] << 16) | (bytes[6] << 8) | bytes[7];
+
+        // Convert bytes back to bit stream
+        let bitStream = '';
+        for (let i = 8; i < bytes.length; i++) {
+          bitStream += bytes[i].toString(2).padStart(8, '0');
+        }
+
+        // Trim to actual bit length
+        bitStream = bitStream.substring(0, bitLength);
+
+        return { bitStream, originalLength };
       }
-      
-      const length = gammaResult.value - 1; // Subtract 1 to get actual length
-      let pos = startPos + gammaResult.bitsConsumed;
-      
-      // Special case for length 0 (value is 1)
-      if (length === 0) {
-        return { value: 1, bitsConsumed: gammaResult.bitsConsumed };
+
+      // Utility functions
+      _stringToBytes(str) {
+        const bytes = [];
+        for (let i = 0; i < str.length; i++) {
+          bytes.push(str.charCodeAt(i) & 0xFF);
+        }
+        return bytes;
       }
-      
-      // Read binary suffix
-      if (pos + length > bitStream.length) {
-        return { value: null, bitsConsumed: 0 };
+
+      _bytesToString(bytes) {
+        let str = "";
+        for (let i = 0; i < bytes.length; i++) {
+          str += String.fromCharCode(bytes[i]);
+        }
+        return str;
       }
-      
-      const binarySuffix = bitStream.substring(pos, pos + length);
-      const value = parseInt('1' + binarySuffix, 2);
-      
-      return { 
-        value: value, 
-        bitsConsumed: gammaResult.bitsConsumed + length 
-      };
-    },
-    
-    /**
-     * Encode using Elias Gamma (helper function)
-     * @private
-     */
-    _encodeGamma: function(value) {
-      if (value <= 0) {
-        throw new Error('Elias Gamma can only encode positive integers');
-      }
-      
-      // Special case for 1
-      if (value === 1) {
-        return '1';
-      }
-      
-      // Calculate number of bits needed
-      const bitsNeeded = Math.floor(Math.log2(value));
-      
-      // Create unary prefix (bitsNeeded zeros followed by 1)
-      const unaryPrefix = '0'.repeat(bitsNeeded) + '1';
-      
-      // Create binary suffix (value without leading 1)
-      const binaryValue = value.toString(2);
-      const binarySuffix = binaryValue.substring(1); // Remove leading '1'
-      
-      return unaryPrefix + binarySuffix;
-    },
-    
-    /**
-     * Decode Elias Gamma (helper function)
-     * @private
-     */
-    _decodeGamma: function(bitStream, startPos) {
-      if (startPos >= bitStream.length) {
-        return { value: null, bitsConsumed: 0 };
-      }
-      
-      // Count leading zeros (unary part)
-      let zeros = 0;
-      let pos = startPos;
-      
-      while (pos < bitStream.length && bitStream[pos] === '0') {
-        zeros++;
-        pos++;
-      }
-      
-      // Check for terminating '1'
-      if (pos >= bitStream.length || bitStream[pos] !== '1') {
-        return { value: null, bitsConsumed: 0 };
-      }
-      
-      pos++; // Skip the '1'
-      
-      // Read binary suffix
-      if (zeros === 0) {
-        // Special case: value is 1
-        return { value: 1, bitsConsumed: 1 };
-      }
-      
-      if (pos + zeros > bitStream.length) {
-        return { value: null, bitsConsumed: 0 };
-      }
-      
-      const binarySuffix = bitStream.substring(pos, pos + zeros);
-      const value = parseInt('1' + binarySuffix, 2);
-      
-      return { value: value, bitsConsumed: zeros + 1 + zeros };
-    },
-    
-    /**
-     * Pack bit stream into bytes with header
-     * @private
-     */
-    _packBitStream: function(bitStream, originalLength) {
-      const bytes = [];
-      
-      // Store original length (4 bytes, big-endian)
-      bytes.push((originalLength >>> 24) & 0xFF);
-      bytes.push((originalLength >>> 16) & 0xFF);
-      bytes.push((originalLength >>> 8) & 0xFF);
-      bytes.push(originalLength & 0xFF);
-      
-      // Store bit stream length (4 bytes, big-endian)
-      const bitLength = bitStream.length;
-      bytes.push((bitLength >>> 24) & 0xFF);
-      bytes.push((bitLength >>> 16) & 0xFF);
-      bytes.push((bitLength >>> 8) & 0xFF);
-      bytes.push(bitLength & 0xFF);
-      
-      // Pad bit stream to byte boundary
-      const padding = (8 - (bitStream.length % 8)) % 8;
-      const paddedBits = bitStream + '0'.repeat(padding);
-      
-      // Convert to bytes
-      for (let i = 0; i < paddedBits.length; i += 8) {
-        const byte = paddedBits.substr(i, 8);
-        bytes.push(parseInt(byte, 2));
-      }
-      
-      return this._bytesToString(bytes);
-    },
-    
-    /**
-     * Unpack bit stream from bytes
-     * @private
-     */
-    _unpackBitStream: function(compressedData) {
-      const bytes = this._stringToBytes(compressedData);
-      
-      if (bytes.length < 8) {
-        throw new Error('Invalid compressed data: header too short');
-      }
-      
-      // Read original length
-      const originalLength = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
-      
-      // Read bit stream length
-      const bitLength = (bytes[4] << 24) | (bytes[5] << 16) | (bytes[6] << 8) | bytes[7];
-      
-      // Convert bytes back to bit stream
-      let bitStream = '';
-      for (let i = 8; i < bytes.length; i++) {
-        bitStream += bytes[i].toString(2).padStart(8, '0');
-      }
-      
-      // Trim to actual bit length
-      bitStream = bitStream.substring(0, bitLength);
-      
-      return { bitStream, originalLength };
-    },
-    
-    /**
-     * Get compression statistics and example encodings
-     */
-    GetStats: function(keyId) {
-      const instance = this.instances[keyId];
-      if (!instance) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      // Generate example encodings for common values
-      const examples = {};
-      for (let i = 1; i <= 10; i++) {
-        examples[i] = this._encodeDelta(i);
-      }
-      
-      return {
-        inputSize: instance.lastInputSize,
-        outputSize: instance.lastOutputSize,
-        compressionRatio: instance.compressionRatio,
-        spaceSavings: ((instance.lastInputSize - instance.lastOutputSize) / instance.lastInputSize * 100).toFixed(2) + '%',
-        examples: examples,
-        description: 'More efficient than Gamma for larger numbers - encodes length using Gamma'
-      };
-    },
-    
-    // Utility functions using OpCodes if available
-    _stringToBytes: function(str) {
-      if (global.OpCodes && OpCodes.StringToBytes) {
-        return OpCodes.StringToBytes(str);
-      }
-      
-      const bytes = [];
-      for (let i = 0; i < str.length; i++) {
-        bytes.push(str.charCodeAt(i) & 0xFF);
-      }
-      return bytes;
-    },
-    
-    _bytesToString: function(bytes) {
-      if (global.OpCodes && OpCodes.BytesToString) {
-        return OpCodes.BytesToString(bytes);
-      }
-      
-      let str = '';
-      for (let i = 0; i < bytes.length; i++) {
-        str += String.fromCharCode(bytes[i]);
-      }
-      return str;
     }
-  };
-  
-  // Auto-register with compression system
-  if (global.Compression) {
-    EliasDelta.Init();
-    global.Compression.AddAlgorithm(EliasDelta);
+
+    // Register the algorithm
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new EliasDeltaAlgorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = EliasDelta;
-  }
-  
-  // Make globally available
-  global.EliasDelta = EliasDelta;
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // ===== EXPORTS =====
+
+  return { EliasDeltaAlgorithm, EliasDeltaInstance };
+}));

@@ -31,21 +31,14 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('MUGI cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  }
+  } 
   
   // Create MUGI cipher object
   const MUGI = {
@@ -134,7 +127,7 @@
         throw new Error('Invalid MUGI instance ID');
       }
       
-      const inputBytes = global.OpCodes.StringToBytes(input);
+      const inputBytes = global.OpCodes.AsciiToBytes(input);
       const outputBytes = new Array(inputBytes.length);
       
       for (let i = 0; i < inputBytes.length; i++) {
@@ -152,7 +145,7 @@
     
     // MUGI instance class
     MUGIInstance: function(key) {
-      this.keyBytes = global.OpCodes.StringToBytes(key);
+      this.keyBytes = global.OpCodes.AsciiToBytes(key);
       if (this.keyBytes.length !== MUGI.KEY_SIZE) {
         throw new Error('MUGI requires exactly 128-bit (16-byte) keys');
       }
@@ -287,12 +280,25 @@
     return this.outputBuffer[this.outputIndex++];
   };
   
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(MUGI);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(MUGI);
   }
   
-  // Export for Node.js
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(MUGI);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(MUGI);
+  }
+  
+  // Export to global scope
+  global.MUGI = MUGI;
+  
+  // Node.js module export
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = MUGI;
   }

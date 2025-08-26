@@ -18,7 +18,7 @@
     inventor: "Hongjun Wu, Bart Preneel",
     year: 2016,
     country: "Multi-national",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: null,
     securityNotes: "CAESAR competition winner with strong security analysis. Based on AES round function security assumptions.",

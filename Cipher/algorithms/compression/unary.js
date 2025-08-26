@@ -1,328 +1,263 @@
 /*
- * Universal Unary Coding
- * Compatible with both Browser and Node.js environments
- * Educational implementation of simple unary integer representation
+ * Unary Coding Compression Algorithm Implementation
+ * Compatible with AlgorithmFramework
+ * Educational implementation of unary number representation
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
   
-  // Load dependencies
-  if (!global.Compression && typeof require !== 'undefined') {
-    try {
-      require('../../compression.js');
-    } catch (e) {
-      console.error('Failed to load compression framework:', e.message);
-      return;
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class UnaryCompression extends CompressionAlgorithm {
+      constructor() {
+        super();
+
+        // Required metadata
+        this.name = "Unary Coding";
+        this.description = "Universal integer coding where number n is represented by n-1 ones followed by a zero. Simple but inefficient for large numbers, mainly used in combination with other codes or for very small values.";
+        this.inventor = "Information Theory (fundamental)";
+        this.year = 1940;
+        this.category = CategoryType.COMPRESSION;
+        this.subCategory = "Universal";
+        this.securityStatus = null;
+        this.complexity = ComplexityType.ELEMENTARY;
+        this.country = CountryCode.UNKNOWN;
+
+        // Documentation and references
+        this.documentation = [
+          new LinkItem("Unary Coding - Wikipedia", "https://en.wikipedia.org/wiki/Unary_coding"),
+          new LinkItem("Universal Codes Tutorial", "https://web.stanford.edu/class/ee398a/handouts/lectures/05-UniversalCoding.pdf"),
+          new LinkItem("Information Theory Basics", "https://www.inference.org.uk/itprnn/book.pdf")
+        ];
+
+        this.references = [
+          new LinkItem("Elements of Information Theory", "https://www.wiley.com/en-us/Elements+of+Information+Theory%2C+2nd+Edition-p-9780471241959"),
+          new LinkItem("Data Compression Book", "https://www.data-compression.com/theory.html"),
+          new LinkItem("Coding Theory Reference", "https://www.cambridge.org/core/books/introduction-to-coding-theory/")
+        ];
+
+        // Test vectors with expected compressed output
+        this.tests = [
+          {
+            text: "Small values - optimal for unary",
+            uri: "https://en.wikipedia.org/wiki/Unary_coding",
+            input: [1, 2, 3, 4], // Small numbers
+            expected: global.OpCodes.Hex8ToBytes("000A5B80") // Compressed form
+          },
+          {
+            text: "Single small value", 
+            uri: "Educational test",
+            input: [5], // Single number: 11110
+            expected: global.OpCodes.Hex8ToBytes("0005F0") // Compressed form
+          },
+          {
+            text: "Mixed small values",
+            uri: "Educational test", 
+            input: [1, 3, 2, 1], // Various small numbers
+            expected: global.OpCodes.Hex8ToBytes("000768") // Compressed form
+          }
+        ];
+      }
+
+      CreateInstance(isInverse = false) {
+        return new UnaryInstance(this, isInverse);
+      }
     }
-  }
-  
-  const Unary = {
-    internalName: 'Unary',
-    name: 'Unary Coding',
-    comment: 'Simple unary integer representation - N zeros followed by one 1',
-    category: 'Universal',
-    instances: {},
-    isInitialized: false,
-    
-    MAX_VALUE: 1000, // Limit to prevent excessive expansion
-    
-    /**
-     * Initialize the algorithm
-     */
-    Init: function() {
-      this.isInitialized = true;
-      console.log('Unary coding algorithm initialized');
-    },
-    
-    /**
-     * Create a new instance
-     */
-    KeySetup: function() {
-      const id = this.internalName + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
-      this.instances[id] = {
-        initialized: true,
-        compressionRatio: 0,
-        lastInputSize: 0,
-        lastOutputSize: 0
-      };
-      return id;
-    },
-    
-    /**
-     * Compress data using Unary coding
-     * @param {string} keyId - Instance identifier
-     * @param {string} data - Input data to compress
-     * @returns {string} Compressed data
-     */
-    Compress: function(keyId, data) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
+
+    class UnaryInstance extends IAlgorithmInstance {
+      constructor(algorithm, isInverse = false) {
+        super(algorithm);
+        this.isInverse = isInverse;
+        this.inputBuffer = [];
       }
-      
-      if (!data || data.length === 0) {
-        return '';
+
+      Feed(data) {
+        if (!data || data.length === 0) return;
+        this.inputBuffer.push(...data);
       }
-      
-      const instance = this.instances[keyId];
-      const input = this._stringToBytes(data);
-      
-      let bitStream = '';
-      
-      // Encode each byte using Unary coding
-      for (const byte of input) {
-        if (byte > this.MAX_VALUE) {
-          throw new Error(`Value ${byte} exceeds maximum ${this.MAX_VALUE} for Unary coding`);
+
+      Result() {
+        if (this.inputBuffer.length === 0) {
+          return [];
         }
-        
-        const unaryCode = this._encodeUnary(byte);
-        bitStream += unaryCode;
-        
-        // Safety check to prevent excessive expansion
-        if (bitStream.length > input.length * 8 * 10) {
-          throw new Error('Unary encoding would cause excessive expansion');
+
+        if (this.isInverse) {
+          return this._decompress();
+        } else {
+          return this._compress();
         }
       }
-      
-      // Pack bit stream
-      const compressed = this._packBitStream(bitStream, input.length);
-      
-      // Update statistics
-      instance.lastInputSize = data.length;
-      instance.lastOutputSize = compressed.length;
-      instance.compressionRatio = data.length / compressed.length;
-      
-      return compressed;
-    },
-    
-    /**
-     * Decompress Unary-encoded data
-     * @param {string} keyId - Instance identifier
-     * @param {string} compressedData - Compressed data
-     * @returns {string} Decompressed data
-     */
-    Decompress: function(keyId, compressedData) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      if (!compressedData || compressedData.length === 0) {
-        return '';
-      }
-      
-      // Unpack bit stream
-      const { bitStream, originalLength } = this._unpackBitStream(compressedData);
-      
-      const decodedBytes = [];
-      let pos = 0;
-      
-      // Decode until we have the expected number of bytes
-      while (decodedBytes.length < originalLength && pos < bitStream.length) {
-        const { value, bitsConsumed } = this._decodeUnary(bitStream, pos);
-        
-        if (value === null) {
-          throw new Error('Invalid Unary code in compressed data');
+
+      _compress() {
+
+        // TODO: use Opcodes for bitstream
+        let bitString = '';
+
+        // Encode each byte using unary coding (standard: n -> n-1 ones followed by zero)
+        for (const byte of this.inputBuffer) {
+          if (byte === 0) {
+            // Special case: encode 0 as "00" to distinguish from 1
+            bitString += '00';
+          } else {
+            // n is encoded as (n-1) ones followed by a zero
+            bitString += '1'.repeat(byte - 1) + '0';
+          }
         }
-        
-        if (value < 0 || value > 255) {
-          throw new Error('Invalid byte value in compressed data');
+
+        // Store original bit length for decompression
+        const originalBitLength = bitString.length;
+
+        // Convert bit string to bytes
+        const bytes = this._bitStringToBytes(bitString);
+
+        // Prepend the original bit length as two bytes (length up to 65535 bits)
+  // TODO: use OpCodes for unpacking
+        const lengthBytes = [(originalBitLength >> 8) & 0xFF, originalBitLength & 0xFF];
+
+        // Clear input buffer
+        this.inputBuffer = [];
+
+        return lengthBytes.concat(bytes);
+      }
+
+      _decompress() {
+        if (this.inputBuffer.length < 2) {
+          this.inputBuffer = [];
+          return [];
         }
-        
-        decodedBytes.push(value);
-        pos += bitsConsumed;
-      }
-      
-      if (decodedBytes.length !== originalLength) {
-        throw new Error('Decompressed length mismatch');
-      }
-      
-      return this._bytesToString(decodedBytes);
-    },
-    
-    /**
-     * Clear instance data
-     */
-    ClearData: function(keyId) {
-      if (this.instances[keyId]) {
-        delete this.instances[keyId];
-        return true;
-      }
-      return false;
-    },
-    
-    /**
-     * Encode an integer using Unary coding
-     * Format: N zeros followed by one 1 (for value N)
-     * @private
-     */
-    _encodeUnary: function(value) {
-      if (value < 0) {
-        throw new Error('Unary coding can only encode non-negative integers');
-      }
-      
-      // N zeros followed by one 1
-      return '0'.repeat(value) + '1';
-    },
-    
-    /**
-     * Decode a Unary code from bit stream
-     * @private
-     */
-    _decodeUnary: function(bitStream, startPos) {
-      if (startPos >= bitStream.length) {
-        return { value: null, bitsConsumed: 0 };
-      }
-      
-      // Count zeros until we find a 1
-      let zeros = 0;
-      let pos = startPos;
-      
-      while (pos < bitStream.length && bitStream[pos] === '0') {
-        zeros++;
-        pos++;
-        
-        // Safety check
-        if (zeros > this.MAX_VALUE) {
-          return { value: null, bitsConsumed: 0 };
+
+        // Read original bit length from first two bytes
+  // TODO: use OpCodes for packing
+        const originalBitLength = (this.inputBuffer[0] << 8) | this.inputBuffer[1];
+        const dataBytes = this.inputBuffer.slice(2);
+
+        // Convert bytes to bit string
+        const fullBitString = this._bytesToBitString(dataBytes);
+
+        // Truncate to original length
+        const bitString = fullBitString.substring(0, originalBitLength);
+
+        // Decode unary codes
+        const result = [];
+        let i = 0;
+
+        while (i < bitString.length) {
+          let count = 0;
+
+          // Count consecutive 1s
+          while (i < bitString.length && bitString[i] === '1') {
+            count++;
+            i++;
+          }
+
+          // Look for terminating 0
+          if (i < bitString.length && bitString[i] === '0') {
+            i++;
+
+            // Check if this is the special case for 0 (encoded as "00")
+            if (count === 0 && i < bitString.length && bitString[i] === '0') {
+              i++; // Skip second 0
+              result.push(0);
+            } else {
+              // Standard unary: n = count + 1
+              result.push(count + 1);
+            }
+          } else if (count > 0) {
+            // No terminating 0 found - treat as incomplete
+            break;
+          } else {
+            // All zeros at end - stop processing
+            break;
+          }
         }
+
+        // Clear input buffer
+        this.inputBuffer = [];
+
+        return result;
       }
-      
-      // Check for terminating '1'
-      if (pos >= bitStream.length || bitStream[pos] !== '1') {
-        return { value: null, bitsConsumed: 0 };
+
+      _bitStringToBytes(bitString) {
+        const bytes = [];
+
+        // Pad to multiple of 8 bits
+        while (bitString.length % 8 !== 0) {
+          bitString += '0';
+        }
+
+        // Convert each 8-bit group to a byte
+        for (let i = 0; i < bitString.length; i += 8) {
+          const byteStr = bitString.substr(i, 8);
+          const byteVal = parseInt(byteStr, 2);
+          bytes.push(byteVal);
+        }
+
+        return bytes;
       }
-      
-      // Value is the number of zeros
-      return { value: zeros, bitsConsumed: zeros + 1 };
-    },
-    
-    /**
-     * Pack bit stream into bytes with header
-     * @private
-     */
-    _packBitStream: function(bitStream, originalLength) {
-      const bytes = [];
-      
-      // Store original length (4 bytes, big-endian)
-      bytes.push((originalLength >>> 24) & 0xFF);
-      bytes.push((originalLength >>> 16) & 0xFF);
-      bytes.push((originalLength >>> 8) & 0xFF);
-      bytes.push(originalLength & 0xFF);
-      
-      // Store bit stream length (4 bytes, big-endian)
-      const bitLength = bitStream.length;
-      bytes.push((bitLength >>> 24) & 0xFF);
-      bytes.push((bitLength >>> 16) & 0xFF);
-      bytes.push((bitLength >>> 8) & 0xFF);
-      bytes.push(bitLength & 0xFF);
-      
-      // Pad bit stream to byte boundary
-      const padding = (8 - (bitStream.length % 8)) % 8;
-      const paddedBits = bitStream + '0'.repeat(padding);
-      
-      // Convert to bytes
-      for (let i = 0; i < paddedBits.length; i += 8) {
-        const byte = paddedBits.substr(i, 8);
-        bytes.push(parseInt(byte, 2));
+
+      _bytesToBitString(bytes) {
+        let bitString = '';
+
+        for (const byte of bytes) {
+          // Convert each byte to 8-bit binary string
+          bitString += byte.toString(2).padStart(8, '0');
+        }
+
+        return bitString;
       }
-      
-      return this._bytesToString(bytes);
-    },
-    
-    /**
-     * Unpack bit stream from bytes
-     * @private
-     */
-    _unpackBitStream: function(compressedData) {
-      const bytes = this._stringToBytes(compressedData);
-      
-      if (bytes.length < 8) {
-        throw new Error('Invalid compressed data: header too short');
-      }
-      
-      // Read original length
-      const originalLength = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
-      
-      // Read bit stream length
-      const bitLength = (bytes[4] << 24) | (bytes[5] << 16) | (bytes[6] << 8) | bytes[7];
-      
-      // Convert bytes back to bit stream
-      let bitStream = '';
-      for (let i = 8; i < bytes.length; i++) {
-        bitStream += bytes[i].toString(2).padStart(8, '0');
-      }
-      
-      // Trim to actual bit length
-      bitStream = bitStream.substring(0, bitLength);
-      
-      return { bitStream, originalLength };
-    },
-    
-    /**
-     * Get compression statistics and example encodings
-     */
-    GetStats: function(keyId) {
-      const instance = this.instances[keyId];
-      if (!instance) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      // Generate example encodings for small values
-      const examples = {};
-      for (let i = 0; i <= 5; i++) {
-        examples[i] = this._encodeUnary(i);
-      }
-      
-      return {
-        inputSize: instance.lastInputSize,
-        outputSize: instance.lastOutputSize,
-        compressionRatio: instance.compressionRatio,
-        spaceSavings: ((instance.lastInputSize - instance.lastOutputSize) / instance.lastInputSize * 100).toFixed(2) + '%',
-        examples: examples,
-        maxValue: this.MAX_VALUE,
-        description: 'Simple but inefficient - only useful for very small values or as building block'
-      };
-    },
-    
-    // Utility functions
-    _stringToBytes: function(str) {
-      if (global.OpCodes && OpCodes.StringToBytes) {
-        return OpCodes.StringToBytes(str);
-      }
-      
-      const bytes = [];
-      for (let i = 0; i < str.length; i++) {
-        bytes.push(str.charCodeAt(i) & 0xFF);
-      }
-      return bytes;
-    },
-    
-    _bytesToString: function(bytes) {
-      if (global.OpCodes && OpCodes.BytesToString) {
-        return OpCodes.BytesToString(bytes);
-      }
-      
-      let str = '';
-      for (let i = 0; i < bytes.length; i++) {
-        str += String.fromCharCode(bytes[i]);
-      }
-      return str;
     }
-  };
-  
-  // Auto-register with compression system
-  if (global.Compression) {
-    Unary.Init();
-    global.Compression.AddAlgorithm(Unary);
+
+    // Register the algorithm
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new UnaryCompression();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Unary;
-  }
-  
-  // Make globally available
-  global.Unary = Unary;
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // ===== EXPORTS =====
+
+  return { UnaryCompression, UnaryInstance };
+}));

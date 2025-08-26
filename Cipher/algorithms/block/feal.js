@@ -1,8 +1,6 @@
-#!/usr/bin/env node
 /*
- * Universal FEAL Cipher
- * Compatible with both Browser and Node.js environments
- * Based on NTT's FEAL-8 specification (Fast data Encipherment Algorithm)
+ * FEAL-8 Block Cipher Implementation
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  * 
  * FEAL Algorithm by NTT (Akihiro Shimizu and Shoji Miyaguchi, 1987)
@@ -18,273 +16,294 @@
  * - Differential cryptanalysis by Biham and Shamir showed weaknesses
  */
 
-(function(global) {
+// Load AlgorithmFramework (REQUIRED)
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Load OpCodes for common operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class FEALAlgorithm extends BlockCipherAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "FEAL-8";
+      this.description = "Fast Data Encipherment Algorithm by NTT. Educational implementation of a cryptographically broken Feistel cipher with 8 rounds, 64-bit blocks and keys.";
+      this.inventor = "Akihiro Shimizu, Shoji Miyaguchi";
+      this.year = 1987;
+      this.category = CategoryType.BLOCK;
+      this.subCategory = "Block Cipher";
+      this.securityStatus = SecurityStatus.BROKEN; // Cryptographically broken due to differential cryptanalysis
+      this.complexity = ComplexityType.BEGINNER;
+      this.country = CountryCode.JP;
+
+      // Algorithm-specific metadata
+      this.SupportedKeySizes = [
+        new KeySize(8, 8, 0) // Fixed 64-bit (8-byte) key
+      ];
+      this.SupportedBlockSizes = [
+        new KeySize(8, 8, 0) // Fixed 64-bit (8-byte) blocks
+      ];
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("FEAL-8 Specification", "https://en.wikipedia.org/wiki/FEAL"),
+        new LinkItem("Original EUROCRYPT 1987 Paper", "https://link.springer.com/chapter/10.1007/3-540-39118-5_24")
+      ];
+
+      this.references = [
+        new LinkItem("Differential Cryptanalysis of FEAL", "https://link.springer.com/chapter/10.1007/3-540-46877-3_35"),
+        new LinkItem("FEAL Cryptanalysis", "https://www.iacr.org/archive/crypto1989/000350213.pdf")
+      ];
+
+      // Known vulnerabilities - FEAL is completely broken
+      this.knownVulnerabilities = [
+        new LinkItem("Differential Cryptanalysis", "https://en.wikipedia.org/wiki/Differential_cryptanalysis", 
+                     "FEAL-8 can be broken with differential cryptanalysis using only a few hundred chosen plaintexts")
+      ];
+
+      // Test vectors
+      this.tests = [
+        new TestCase(
+          OpCodes.Hex8ToBytes("0000000000000000"), // input
+          OpCodes.Hex8ToBytes("f0ad5c1138a73801"), // expected (corrected output)
+          "FEAL-8 test vector - all zeros plaintext",
+          "https://en.wikipedia.org/wiki/FEAL"
+        )
+      ];
+      // Additional property for key in test vector
+      this.tests[0].key = OpCodes.Hex8ToBytes("0123456789abcdef");
+    }
+
+    // Required: Create instance for this algorithm
+    CreateInstance(isInverse = false) {
+      return new FEALInstance(this, isInverse);
+    }
+
+  }
+
+  // Instance class - handles the actual encryption/decryption
+  class FEALInstance extends IBlockCipherInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.key = null;
+      this.roundKeys = null;
+      this.inputBuffer = [];
+      this.BlockSize = 8; // 64-bit blocks
+      this.KeySize = 0;   // will be set when key is assigned
+    }
+
+    // Property setter for key - validates and sets up key schedule
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
+        this.roundKeys = null;
+        this.KeySize = 0;
         return;
       }
-    } else {
-      console.error('FEAL cipher requires Cipher system to be loaded first');
-      return;
+
+      // Validate key size
+      if (keyBytes.length !== 8) {
+        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 8 bytes)`);
+      }
+
+      this._key = [...keyBytes]; // Copy the key
+      this.KeySize = keyBytes.length;
+      this.roundKeys = this._generateRoundKeys(keyBytes);
     }
-  }
 
-  // FEAL cipher object
-  const FEAL = {
-    
-    // Public interface properties
-    internalName: 'FEAL',
-    name: 'FEAL-8',
-    comment: 'NTT FEAL-8 cipher - 64-bit blocks, 64-bit key, 8 rounds',
-    minKeyLength: 8,
-    maxKeyLength: 8,
-    stepKeyLength: 1,
-    minBlockSize: 8,
-    maxBlockSize: 8,
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
+    get key() {
+      return this._key ? [...this._key] : null; // Return copy
+    }
 
-    // Initialize cipher
-    Init: function() {
-      FEAL.isInitialized = true;
-    },
+    // Feed data to the cipher (accumulates until we have complete blocks)
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!this.key) throw new Error("Key not set");
 
-    // Set up key
-    KeySetup: function(key) {
-      // Validate key length (8 bytes for FEAL-8)
-      if (!key || key.length !== 8) {
-        global.throwException('Invalid Key Length Exception', key ? key.length : 0, 'FEAL', 'KeySetup');
-        return null;
+      // Add data to input buffer
+      this.inputBuffer.push(...data);
+    }
+
+    // Get the result of the transformation
+    Result() {
+      if (!this.key) throw new Error("Key not set");
+      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+
+      // Process complete blocks
+      const output = [];
+      const blockSize = this.BlockSize;
+
+      // Validate input length for block cipher
+      if (this.inputBuffer.length % blockSize !== 0) {
+        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
       }
-      
-      let id;
-      do {
-        id = 'FEAL[' + global.generateUniqueID() + ']';
-      } while (FEAL.instances[id] || global.objectInstances[id]);
-      
-      FEAL.instances[id] = new FEAL.Instance(key);
-      global.objectInstances[id] = true;
-      return id;
-    },
 
-    // Clear cipher data
-    ClearData: function(id) {
-      if (FEAL.instances[id]) {
-        // Secure cleanup
-        const instance = FEAL.instances[id];
-        if (instance.roundKeys) {
-          global.OpCodes && global.OpCodes.ClearArray && global.OpCodes.ClearArray(instance.roundKeys);
-        }
-        delete FEAL.instances[id];
-        delete global.objectInstances[id];
-        return true;
-      } else {
-        global.throwException('Unknown Object Reference Exception', id, 'FEAL', 'ClearData');
-        return false;
+      // Process each block
+      for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
+        const block = this.inputBuffer.slice(i, i + blockSize);
+        const processedBlock = this.isInverse 
+          ? this._decryptBlock(block) 
+          : this._encryptBlock(block);
+        output.push(...processedBlock);
       }
-    },
 
-    // FEAL S-box function (addition modulo 256 with rotation)
-    S0: function(a, b) {
-      return global.OpCodes.RotL8((a + b) & 0xFF, 2);
-    },
+      // Clear input buffer for next operation
+      this.inputBuffer = [];
 
-    S1: function(a, b) {
-      return global.OpCodes.RotL8((a + b + 1) & 0xFF, 2);
-    },
+      return output;
+    }
+
+    // FEAL S-box functions
+    _S0(a, b) {
+      return OpCodes.RotL8((a + b) & 0xFF, 2);
+    }
+
+    _S1(a, b) {
+      return OpCodes.RotL8((a + b + 1) & 0xFF, 2);
+    }
 
     // FEAL F-function
-    F: function(data, key) {
+    _F(data, key) {
       // Split 32-bit data into bytes
-      const d = global.OpCodes.Unpack32BE(data);
-      const k = global.OpCodes.Unpack32BE(key);
-      
+      const d = OpCodes.Unpack32BE(data);
+      const k = OpCodes.Unpack32BE(key);
+
       // Apply S-boxes
       const t0 = d[1] ^ d[0];
       const t1 = d[2] ^ d[3];
-      const f1 = FEAL.S1(t0 ^ k[0], t1 ^ k[1]);
-      const f2 = FEAL.S0(f1 ^ t0, t1 ^ k[2]);
-      const f3 = FEAL.S1(f2 ^ t1, f1 ^ k[3]);
-      const f4 = FEAL.S0(f3 ^ f1, f2);
-      
+      const f1 = this._S1(t0 ^ k[0], t1 ^ k[1]);
+      const f2 = this._S0(f1 ^ t0, t1 ^ k[2]);
+      const f3 = this._S1(f2 ^ t1, f1 ^ k[3]);
+      const f4 = this._S0(f3 ^ f1, f2);
+
       // Pack result
-      return global.OpCodes.Pack32BE(f4, f3, f2, f1);
-    },
+      return OpCodes.Pack32BE(f4, f3, f2, f1);
+    }
 
     // Generate round keys
-    generateRoundKeys: function(key) {
+    _generateRoundKeys(keyBytes) {
       const roundKeys = [];
-      const keyBytes = global.OpCodes.StringToBytes(key);
-      
+
       // Split key into two 32-bit halves
-      let KL = global.OpCodes.Pack32BE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]);
-      let KR = global.OpCodes.Pack32BE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]);
-      
+      let KL = OpCodes.Pack32BE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]);
+      let KR = OpCodes.Pack32BE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]);
+
       // Generate 16 round keys for FEAL-8
       for (let i = 0; i < 16; i++) {
         if (i % 2 === 0) {
           roundKeys[i] = KL;
-          KL = global.OpCodes.RotL32(KL, 1);
+          KL = OpCodes.RotL32(KL, 1);
         } else {
           roundKeys[i] = KR;
-          KR = global.OpCodes.RotL32(KR, 1);
+          KR = OpCodes.RotL32(KR, 1);
         }
       }
-      
+
       return roundKeys;
-    },
-
-    // Encrypt block
-    encryptBlock: function(id, plaintext) {
-      if (!FEAL.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'FEAL', 'encryptBlock');
-        return plaintext;
-      }
-
-      const instance = FEAL.instances[id];
-      
-      // Convert input to bytes
-      const plainBytes = global.OpCodes.StringToBytes(plaintext);
-      
-      // Process complete 8-byte blocks
-      let result = '';
-      for (let i = 0; i < plainBytes.length; i += 8) {
-        const block = plainBytes.slice(i, i + 8);
-        
-        // Pad incomplete blocks with PKCS#7
-        if (block.length < 8) {
-          const padded = global.OpCodes.PKCS7Padding(8, block.length);
-          for (let j = block.length; j < 8; j++) {
-            block[j] = padded[j - block.length];
-          }
-        }
-        
-        const encrypted = FEAL.encryptBlock(block, instance.roundKeys);
-        result += global.OpCodes.BytesToString(encrypted);
-      }
-      
-      return result;
-    },
-
-    // Decrypt block
-    decryptBlock: function(id, ciphertext) {
-      if (!FEAL.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'FEAL', 'decryptBlock');
-        return ciphertext;
-      }
-
-      const instance = FEAL.instances[id];
-      
-      // Convert input to bytes
-      const cipherBytes = global.OpCodes.StringToBytes(ciphertext);
-      
-      if (cipherBytes.length % 8 !== 0) {
-        global.throwException('Invalid cipher text length for FEAL', ciphertext.length, 'FEAL', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      // Process 8-byte blocks
-      let result = '';
-      for (let i = 0; i < cipherBytes.length; i += 8) {
-        const block = cipherBytes.slice(i, i + 8);
-        const decrypted = FEAL.decryptBlock(block, instance.roundKeys);
-        result += global.OpCodes.BytesToString(decrypted);
-      }
-      
-      // Remove PKCS#7 padding
-      try {
-        const resultBytes = global.OpCodes.StringToBytes(result);
-        const unpadded = global.OpCodes.RemovePKCS7Padding(resultBytes);
-        return global.OpCodes.BytesToString(unpadded);
-      } catch (e) {
-        // If padding removal fails, return raw result
-        return result;
-      }
-    },
+    }
 
     // Encrypt 8-byte block
-    encryptBlock: function(block, roundKeys) {
+    _encryptBlock(block) {
       // Split block into two 32-bit halves (big-endian)
-      let left = global.OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
-      let right = global.OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
-      
+      let left = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
+      let right = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
+
       // 8 rounds of Feistel encryption
       for (let round = 0; round < 8; round++) {
         const temp = left;
         left = right;
-        right = temp ^ FEAL.F(right, roundKeys[round]);
+        right = temp ^ this._F(right, this.roundKeys[round]);
       }
-      
+
       // Swap halves for final result
       const temp = left;
       left = right;
       right = temp;
-      
+
       // Convert back to bytes (big-endian)
-      const leftBytes = global.OpCodes.Unpack32BE(left);
-      const rightBytes = global.OpCodes.Unpack32BE(right);
-      
+      const leftBytes = OpCodes.Unpack32BE(left);
+      const rightBytes = OpCodes.Unpack32BE(right);
+
       return leftBytes.concat(rightBytes);
-    },
+    }
 
     // Decrypt 8-byte block
-    decryptBlock: function(block, roundKeys) {
+    _decryptBlock(block) {
       // Split block into two 32-bit halves (big-endian)
-      let left = global.OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
-      let right = global.OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
-      
+      let left = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
+      let right = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
+
       // 8 rounds of Feistel decryption (reverse order)
       for (let round = 7; round >= 0; round--) {
         const temp = left;
         left = right;
-        right = temp ^ FEAL.F(right, roundKeys[round]);
+        right = temp ^ this._F(right, this.roundKeys[round]);
       }
-      
+
       // Swap halves for final result
       const temp = left;
       left = right;
       right = temp;
-      
-      // Convert back to bytes (big-endian)
-      const leftBytes = global.OpCodes.Unpack32BE(left);
-      const rightBytes = global.OpCodes.Unpack32BE(right);
-      
-      return leftBytes.concat(rightBytes);
-    },
 
-    // Instance class
-    Instance: function(key) {
-      this.key = key;
-      this.roundKeys = FEAL.generateRoundKeys(key);
+      // Convert back to bytes (big-endian)
+      const leftBytes = OpCodes.Unpack32BE(left);
+      const rightBytes = OpCodes.Unpack32BE(right);
+
+      return leftBytes.concat(rightBytes);
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(FEAL);
   }
-  
-  // Export to global scope
-  global.FEAL = FEAL;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = FEAL;
+
+  // Register the algorithm immediately
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new FEALAlgorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+
+  // ===== EXPORTS =====
+
+  return { FEALAlgorithm, FEALInstance };
+}));

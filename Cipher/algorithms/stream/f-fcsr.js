@@ -34,18 +34,11 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('F-FCSR cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
   }
@@ -55,6 +48,8 @@
     // Public interface properties
     internalName: 'F-FCSR',
     name: 'F-FCSR Stream Cipher',
+    description: 'F-FCSR (Feedback with Carry Shift Register) stream cipher based on eSTREAM specification. Uses FCSR automaton with binary expansion of 2-adic numbers. SECURITY WARNING: Cryptographically broken.',
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     comment: 'F-FCSR Feedback with Carry Shift Register - DEPRECATED: Cryptographically broken',
     minKeyLength: 10,   // 80 bits for F-FCSR-H
     maxKeyLength: 16,   // 128 bits for F-FCSR-8
@@ -116,7 +111,7 @@
         throw new Error('Invalid F-FCSR instance ID');
       }
       
-      const inputBytes = global.OpCodes.StringToBytes(input);
+      const inputBytes = global.OpCodes.AsciiToBytes(input);
       const outputBytes = new Array(inputBytes.length);
       
       for (let i = 0; i < inputBytes.length; i++) {
@@ -134,7 +129,7 @@
     
     // F-FCSR instance class
     FFCSRInstance: function(key) {
-      this.keyBytes = global.OpCodes.StringToBytes(key);
+      this.keyBytes = global.OpCodes.AsciiToBytes(key);
       this.keyLength = this.keyBytes.length;
       
       // Determine variant based on key length
@@ -298,14 +293,22 @@
     return this.generateFilteredOutput();
   };
   
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(FFCSR);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(FFCSR);
+  }
+  
+  // Auto-register with legacy Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(FFCSR);
   }
   
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = FFCSR;
   }
+  
+  // Make available globally
+  global.FFCSR = FFCSR;
   
 })(typeof global !== 'undefined' ? global : window);
