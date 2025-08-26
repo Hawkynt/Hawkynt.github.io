@@ -174,8 +174,10 @@ body {
 }
 
 .container {
-    max-width: 1200px;
-    margin: 0 auto;
+    max-width: none;
+    width: 100%;
+    margin: 0;
+    padding: 0 2rem;
 }
 
 .tab-content {
@@ -239,8 +241,8 @@ body {
 
 .algorithms-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.25rem;
     align-items: stretch;
 }
 
@@ -1897,6 +1899,7 @@ option[data-category] {
     }
     
     .algorithms-grid {
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
         justify-content: center;
         gap: 1rem;
     }
