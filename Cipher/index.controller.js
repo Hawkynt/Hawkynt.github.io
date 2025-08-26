@@ -949,7 +949,8 @@ class CipherController {
         // Setup drag and drop functionality
         this.setupDragAndDrop();
         
-        // Setup algorithm palette tabs
+        // Setup algorithm palette tabs and populate it
+        this.populateAlgorithmPalette();
         this.setupAlgorithmTabs();
         
         // Setup global functions for HTML onclick handlers
@@ -1643,37 +1644,64 @@ class CipherController {
         const algorithms = this.getAllAlgorithms();
         const algorithmsByCategory = {};
         
-        // Group algorithms by category
+        // Group algorithms by category key
         algorithms.forEach(algorithm => {
-            const category = algorithm.category || 'Other';
-            if (!algorithmsByCategory[category]) {
-                algorithmsByCategory[category] = [];
+            let categoryKey = 'other';
+            let categoryName = '❓ Other';
+            
+            if (algorithm.category) {
+                // Find the category key from AlgorithmFramework.CategoryType
+                const foundKey = Object.keys(AlgorithmFramework.CategoryType).find(key => 
+                    AlgorithmFramework.CategoryType[key] === algorithm.category
+                );
+                if (foundKey) {
+                    categoryKey = foundKey.toLowerCase();
+                    const categoryType = AlgorithmFramework.CategoryType[foundKey];
+                    categoryName = `${categoryType.icon} ${categoryType.name}`;
+                }
             }
-            algorithmsByCategory[category].push(algorithm);
+            
+            if (!algorithmsByCategory[categoryKey]) {
+                algorithmsByCategory[categoryKey] = {
+                    name: categoryName,
+                    algorithms: []
+                };
+            }
+            algorithmsByCategory[categoryKey].algorithms.push(algorithm);
         });
         
-        // Clear existing content except header
-        const existingHeader = palette.querySelector('h4');
+        // Clear existing content
         palette.innerHTML = '';
-        if (existingHeader) {
-            palette.appendChild(existingHeader);
-        }
         
         // Create draggable algorithm items by category
-        Object.keys(algorithmsByCategory).sort().forEach(category => {
+        Object.keys(algorithmsByCategory).sort().forEach(categoryKey => {
+            const categoryData = algorithmsByCategory[categoryKey];
             const categorySection = document.createElement('div');
             categorySection.className = 'palette-category';
-            categorySection.setAttribute('data-category', category.toLowerCase());
+            categorySection.setAttribute('data-category', categoryKey);
             
             const categoryHeader = document.createElement('h5');
-            categoryHeader.textContent = category;
+            categoryHeader.textContent = categoryData.name;
             categoryHeader.className = 'palette-category-header';
+            
+            // Set category color for the header and section
+            if (categoryKey !== 'other') {
+                const foundKey = Object.keys(AlgorithmFramework.CategoryType).find(key => 
+                    key.toLowerCase() === categoryKey
+                );
+                if (foundKey) {
+                    const categoryColor = AlgorithmFramework.CategoryType[foundKey].color;
+                    categoryHeader.style.setProperty('--category-color', categoryColor);
+                    categorySection.style.setProperty('--category-color', categoryColor);
+                }
+            }
+            
             categorySection.appendChild(categoryHeader);
             
             const algorithmsContainer = document.createElement('div');
             algorithmsContainer.className = 'palette-algorithms';
             
-            algorithmsByCategory[category]
+            categoryData.algorithms
                 .sort((a, b) => a.name.localeCompare(b.name))
                 .forEach(algorithm => {
                     const algorithmEl = document.createElement('div');
@@ -1682,6 +1710,20 @@ class CipherController {
                     algorithmEl.setAttribute('data-algorithm', algorithm.name);
                     algorithmEl.setAttribute('data-category', algorithm.category);
                     algorithmEl.draggable = true;
+                    
+                    // Set category color directly
+                    if (algorithm.category) {
+                        const foundKey = Object.keys(AlgorithmFramework.CategoryType).find(key => 
+                            AlgorithmFramework.CategoryType[key] === algorithm.category
+                        );
+                        if (foundKey) {
+                            const categoryColor = AlgorithmFramework.CategoryType[foundKey].color;
+                            algorithmEl.style.setProperty('--category-color', categoryColor);
+                            algorithmEl.style.backgroundColor = categoryColor;
+                            algorithmEl.style.borderColor = categoryColor;
+                            console.log(`Setting color for ${algorithm.name}: ${categoryColor}`);
+                        }
+                    }
                     
                     // Add drag functionality
                     algorithmEl.addEventListener('dragstart', (e) => {
@@ -2112,11 +2154,44 @@ class CipherController {
     }
     
     /**
-     * Setup algorithm palette tabs
+     * Setup algorithm palette tabs with dynamic category buttons
      */
     setupAlgorithmTabs() {
-        const tabs = document.querySelectorAll('.palette-tab');
+        const tabsContainer = document.querySelector('.palette-tabs');
+        if (!tabsContainer) return;
         
+        // Clear existing tabs
+        tabsContainer.innerHTML = '';
+        
+        // Create "All" tab
+        const allTab = document.createElement('button');
+        allTab.className = 'palette-tab active';
+        allTab.setAttribute('data-category', 'all');
+        allTab.innerHTML = '🌟 All Algorithms';
+        tabsContainer.appendChild(allTab);
+        
+        // Get categories from AlgorithmFramework and create tabs
+        const categories = Object.keys(AlgorithmFramework.CategoryType).sort((a, b) => {
+            const nameA = AlgorithmFramework.CategoryType[a].name;
+            const nameB = AlgorithmFramework.CategoryType[b].name;
+            return nameA.localeCompare(nameB);
+        });
+        
+        categories.forEach(categoryKey => {
+            const categoryType = AlgorithmFramework.CategoryType[categoryKey];
+            const tab = document.createElement('button');
+            tab.className = 'palette-tab';
+            tab.setAttribute('data-category', categoryKey.toLowerCase());
+            tab.innerHTML = `${categoryType.icon} ${categoryType.name}`;
+            
+            // Apply category color as CSS custom property
+            tab.style.setProperty('--category-color', categoryType.color);
+            
+            tabsContainer.appendChild(tab);
+        });
+        
+        // Setup event listeners for all tabs
+        const tabs = tabsContainer.querySelectorAll('.palette-tab');
         tabs.forEach(tab => {
             tab.addEventListener('click', () => {
                 const category = tab.getAttribute('data-category');
@@ -2128,7 +2203,10 @@ class CipherController {
             });
         });
         
-        console.log('✅ Algorithm palette tabs setup complete');
+        // Load initial category
+        this.switchAlgorithmCategory('all');
+        
+        console.log(`🎨 Created ${categories.length + 1} palette category tabs`);
     }
     
     /**
