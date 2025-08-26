@@ -94,6 +94,7 @@
       return ((value >>> positions) | (value << (32 - positions))) >>> 0;
     },
 
+    // TODO: RotL64/RotR64 for BigInt param
     
     /**
      * 64-bit left rotation (for future 64-bit ciphers)
@@ -150,6 +151,8 @@
         return {low: newLow, high: newHigh};
       }
     },
+
+    // TODO: RotL128/RotR128 for BigInt param
     
     /**
      * Rotate 128-bit value represented as 16-byte array to the left
@@ -205,41 +208,7 @@
     Pack16BE: function(b0, b1) {
       return ((b0 & 0xFF) << 8) | (b1 & 0xFF);
     },
-    
-    /**
-     * Pack 2 bytes into a 16-bit word (little-endian)
-     * @param {number} b0 - Most significant byte
-     * @param {number} b1 - Second byte
-     * @returns {number} 16-bit word
-     */
-    Pack16LE: function(b0, b1) {
-      return ((b1 & 0xFF) << 8) | (b0 & 0xFF);
-    },
-    
-    /**
-     * Pack 4 bytes into a 32-bit dword (big-endian)
-     * @param {number} b0 - Most significant byte
-     * @param {number} b1 - Second byte
-     * @param {number} b2 - Third byte
-     * @param {number} b3 - Least significant byte
-     * @returns {number} 32-bit word
-     */
-    Pack32BE: function(b0, b1, b2, b3) {
-      return (((b0 & 0xFF) << 24) | ((b1 & 0xFF) << 16) | ((b2 & 0xFF) << 8) | (b3 & 0xFF)) >>> 0;
-    },
-    
-    /**
-     * Pack 4 bytes into a 32-bit dword (little-endian)
-     * @param {number} b0 - Least significant byte
-     * @param {number} b1 - Second byte
-     * @param {number} b2 - Third byte
-     * @param {number} b3 - Most significant byte
-     * @returns {number} 32-bit word
-     */
-    Pack32LE: function(b0, b1, b2, b3) {
-      return (((b3 & 0xFF) << 24) | ((b2 & 0xFF) << 16) | ((b1 & 0xFF) << 8) | (b0 & 0xFF)) >>> 0;
-    },
-    
+      
     /**
      * Unpack 16-bit word to 2 bytes (big-endian)
      * @param {number} word - 16-bit word to unpack
@@ -254,6 +223,16 @@
     },
     
     /**
+     * Pack 2 bytes into a 16-bit word (little-endian)
+     * @param {number} b0 - Most significant byte
+     * @param {number} b1 - Second byte
+     * @returns {number} 16-bit word
+     */
+    Pack16LE: function(b0, b1) {
+      return ((b1 & 0xFF) << 8) | (b0 & 0xFF);
+    },
+  
+    /**
      * Unpack 16-bit word to 2 bytes (little-endian)
      * @param {number} word - 16-bit word to unpack
      * @returns {Array} Array of 2 bytes [b0, b1]
@@ -264,6 +243,18 @@
         word & 0xFF,
         (word >>> 8) & 0xFF
       ];
+    },
+    
+    /**
+     * Pack 4 bytes into a 32-bit dword (big-endian)
+     * @param {number} b0 - Most significant byte
+     * @param {number} b1 - Second byte
+     * @param {number} b2 - Third byte
+     * @param {number} b3 - Least significant byte
+     * @returns {number} 32-bit word
+     */
+    Pack32BE: function(b0, b1, b2, b3) {
+      return (((b0 & 0xFF) << 24) | ((b1 & 0xFF) << 16) | ((b2 & 0xFF) << 8) | (b3 & 0xFF)) >>> 0;
     },
     
     /**
@@ -282,6 +273,18 @@
     },
     
     /**
+     * Pack 4 bytes into a 32-bit dword (little-endian)
+     * @param {number} b0 - Least significant byte
+     * @param {number} b1 - Second byte
+     * @param {number} b2 - Third byte
+     * @param {number} b3 - Most significant byte
+     * @returns {number} 32-bit word
+     */
+    Pack32LE: function(b0, b1, b2, b3) {
+      return (((b3 & 0xFF) << 24) | ((b2 & 0xFF) << 16) | ((b1 & 0xFF) << 8) | (b0 & 0xFF)) >>> 0;
+    },
+        
+    /**
      * Unpack 32-bit dword to 4 bytes (little-endian)
      * @param {number} dword - 32-bit dword to unpack
      * @returns {Array} Array of 4 bytes [b0, b1, b2, b3]
@@ -296,6 +299,59 @@
       ];
     },
 
+    Pack64BE: function(b0, b1, b2, b3, b4, b5, b6, b7) {
+      return (
+        ((b0 & 0xFF) << 56n)
+        | ((b1 & 0xFF) << 48n)
+        | ((b2 & 0xFF) << 40n)
+        | ((b3 & 0xFF) << 32n)
+        | ((b4 & 0xFF) << 24n)
+        | ((b5 & 0xFF) << 16n)
+        | ((b6 & 0xFF) <<  8n)
+        | ((b7 & 0xFF))
+      );
+    },
+
+    Unpack64BE: function (qword) {
+      qword = qword >>> 0;
+      return [
+        (qword >> 56) & 0xFF,
+        (qword >> 48) & 0xFF,
+        (qword >> 40) & 0xFF,
+        (qword >> 32) & 0xFF,
+        (qword >> 24) & 0xFF,
+        (qword >> 16) & 0xFF,
+        (qword >>  8) & 0xFF,
+        qword & 0xFF
+      ];
+    },
+
+    Pack64LE: function(b0, b1, b2, b3, b4, b5, b6, b7) {
+      return (
+        ((b7 & 0xFF) << 56n)
+        | ((b6 & 0xFF) << 48n)
+        | ((b5 & 0xFF) << 40n)
+        | ((b4 & 0xFF) << 32n)
+        | ((b3 & 0xFF) << 24n)
+        | ((b2 & 0xFF) << 16n)
+        | ((b1 & 0xFF) <<  8n)
+        | ((b0 & 0xFF))
+      );
+    },
+    
+    Unpack64LE: function (qword) {
+      qword = qword >>> 0;
+      return [
+        qword & 0xFF,
+        (qword >>  8) & 0xFF,
+        (qword >> 16) & 0xFF,
+        (qword >> 24) & 0xFF,
+        (qword >> 32) & 0xFF,
+        (qword >> 40) & 0xFF,
+        (qword >> 48) & 0xFF,
+        (qword >> 56) & 0xFF
+      ];
+    },
     
     /**
      * Convert 32-bit words array to bytes array (big-endian)
