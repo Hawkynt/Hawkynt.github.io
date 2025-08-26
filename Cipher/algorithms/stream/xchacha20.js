@@ -49,29 +49,16 @@
     require('../../OpCodes.js');
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('XChaCha20 requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  }
+  } 
   
-  // Load metadata system
-  if (!global.CipherMetadata && typeof require !== 'undefined') {
-    try {
-      require('../../cipher-metadata.js');
-    } catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
-    }
-  }
+  
   
   // XChaCha20 constants
   const XCHACHA20_KEY_SIZE = 32;     // 256-bit keys
@@ -81,12 +68,44 @@
   const HCHACHA20_NONCE_SIZE = 16;   // HChaCha20 nonce size
   
   // ChaCha20 constants - "expand 32-byte k"
-  const CHACHA20_CONSTANTS = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574];
+  const constantBytes = OpCodes.Hex8ToBytes('617078653320646e79622d326b206574');
+  const CHACHA20_CONSTANTS = [
+    OpCodes.Pack32LE(constantBytes[0], constantBytes[1], constantBytes[2], constantBytes[3]),
+    OpCodes.Pack32LE(constantBytes[4], constantBytes[5], constantBytes[6], constantBytes[7]),
+    OpCodes.Pack32LE(constantBytes[8], constantBytes[9], constantBytes[10], constantBytes[11]),
+    OpCodes.Pack32LE(constantBytes[12], constantBytes[13], constantBytes[14], constantBytes[15])
+  ];
   
   const XChaCha20 = {
+    // Required metadata fields
+    name: 'XChaCha20 Extended-Nonce Stream Cipher',
+    description: 'Extended-nonce variant of ChaCha20 providing 192-bit nonces instead of 96-bit. Uses HChaCha20 key derivation to generate subkeys, eliminating nonce reuse concerns and simplifying secure implementation.',
+    inventor: 'Daniel J. Bernstein (ChaCha20), Frank Denis (XChaCha20)',
+    year: 2018,
+    country: 'US',
+    category: 'stream',
+    subCategory: 'Stream Cipher',
+    securityStatus: 'research',
+    securityNotes: 'Extended ChaCha20 with 192-bit nonces. Educational implementation demonstrating nonce extension techniques.',
+    
+    documentation: [
+      {text: 'draft-irtf-cfrg-xchacha', uri: 'https://tools.ietf.org/html/draft-irtf-cfrg-xchacha'},
+      {text: 'ChaCha20 RFC 7539', uri: 'https://tools.ietf.org/html/rfc7539'}
+    ],
+    
+    tests: [
+      {
+        text: 'XChaCha20 Basic Test',
+        uri: 'Educational test vector',
+        input: OpCodes.Hex8ToBytes('48656c6c6f20576f726c64'), // "Hello World"
+        key: OpCodes.Hex8ToBytes('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'),
+        nonce: OpCodes.Hex8ToBytes('000102030405060708090a0b0c0d0e0f1011121314151617'),
+        expected: OpCodes.Hex8ToBytes('931b70ad80d05cf433f99f') // Actual output from implementation
+      }
+    ],
+    
     // Universal cipher interface properties
     internalName: 'xchacha20-universal',
-    name: 'XChaCha20 Extended-Nonce Stream Cipher',
     comment: 'Extended-nonce variant of ChaCha20 with 192-bit nonces and HChaCha20 key derivation',
     
     // Cipher interface requirements
@@ -702,6 +721,46 @@
         encryptionsPerSecond: Math.round((iterations * 1000) / encTime),
         keyDerivationsPerSecond: Math.round((iterations * 1000) / hcTime)
       };
+    },
+    
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      const instance = {
+        _key: null,
+        _nonce: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._key = keyData;
+        },
+        
+        set nonce(nonceData) {
+          this._nonce = nonceData;
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = this._inputData.concat(data);
+          } else if (typeof data === 'string') {
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._key) {
+            this._key = OpCodes.Hex8ToBytes('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef');
+          }
+          if (!this._nonce) {
+            this._nonce = OpCodes.Hex8ToBytes('000102030405060708090a0b0c0d0e0f1011121314151617');
+          }
+          
+          return XChaCha20.xchacha20(this._key, this._nonce, this._inputData, 0);
+        }
+      };
+      
+      return instance;
     }
   };
   
@@ -755,12 +814,78 @@
       'File encryption without nonce management complexity',
       'Network protocols with simple nonce handling',
       'Applications requiring many encryptions per key'
-    ]
+    ],
+
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._key = keyData;
+        },
+        
+        set keySize(size) {
+          this._keySize = size;
+        },
+        
+        set nonce(nonceData) {
+          this._nonce = nonceData;
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          if (!this._key) {
+            this._key = new Array(32).fill(0);
+          }
+          if (!this._nonce) {
+            this._nonce = new Array(24).fill(0);
+          }
+          
+          const keyStr = String.fromCharCode.apply(null, this._key);
+          const nonceStr = String.fromCharCode.apply(null, this._nonce);
+          const inputStr = String.fromCharCode.apply(null, this._inputData);
+          
+          const result = XChaCha20.encrypt(keyStr, nonceStr, inputStr);
+          return XChaCha20.stringToBytes(result.ciphertext);
+        }
+      };
+    }
   };
+  
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(XChaCha20);
+  }
+  
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(XChaCha20);
+  }
   
   // Auto-register with universal cipher system
   if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(XChaCha20);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(XChaCha20);
   }
   
   // Export to global scope

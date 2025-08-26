@@ -31,36 +31,22 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Trivium cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
   }
   
-  // Load metadata system
-  if (!global.CipherMetadata && typeof require !== 'undefined') {
-    try {
-      require('../../cipher-metadata.js');
-    } catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
-    }
-  }
+  // Note: CipherMetadata system removed for framework compatibility
   
   // Create Trivium cipher object
   const Trivium = {
     // Public interface properties
     internalName: 'Trivium',
-    name: 'Trivium Stream Cipher',
+    name: 'Trivium',
     comment: 'Trivium eSTREAM Stream Cipher - Educational implementation with 288-bit NLFSR state',
     minKeyLength: 10,   // Trivium uses 80-bit keys (10 bytes)
     maxKeyLength: 10,
@@ -70,78 +56,49 @@
     stepBlockSize: 1,
     instances: {},
     
-    // Comprehensive metadata
-    metadata: global.CipherMetadata ? global.CipherMetadata.createMetadata({
-      algorithm: 'Trivium',
-      displayName: 'Trivium Stream Cipher',
-      description: 'Hardware-oriented stream cipher using three nonlinear feedback shift registers. Part of the eSTREAM hardware portfolio and ISO/IEC 29192-3 standard.',
-      
-      inventor: 'Christophe De Cannière and Bart Preneel',
-      year: 2005,
-      background: 'Designed for the eSTREAM project as a hardware-oriented stream cipher. Features a simple structure optimized for low-cost hardware implementations while maintaining high security.',
-      
-      securityStatus: global.CipherMetadata.SecurityStatus.SECURE,
-      securityNotes: 'Currently secure with no known practical attacks. Part of eSTREAM hardware portfolio and ISO standard. Designed to resist algebraic attacks.',
-      
-      category: global.CipherMetadata.Categories.STREAM,
-      subcategory: 'NLFSR-based (three nonlinear feedback shift registers)',
-      complexity: global.CipherMetadata.ComplexityLevels.INTERMEDIATE,
-      
-      keySize: 80, // 80-bit keys
-      blockSize: 1, // Stream cipher
-      rounds: 'continuous', // NLFSR-based
-      
-      specifications: [
-        {
-          name: 'ISO/IEC 29192-3:2012 - Trivium Stream Cipher',
-          url: 'https://www.iso.org/standard/56426.html'
-        },
-        {
-          name: 'eSTREAM Trivium Specification',
-          url: 'https://www.ecrypt.eu.org/stream/trivium.html'
-        }
-      ],
-      
-      testVectors: [
-        {
-          name: 'eSTREAM Trivium Test Vectors',
-          url: 'https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/trivium/'
-        },
-        {
-          name: 'ISO/IEC 29192-3 Test Vectors',
-          url: 'https://www.iso.org/standard/56426.html'
-        }
-      ],
-      
-      references: [
-        {
-          name: 'Wikipedia: Trivium',
-          url: 'https://en.wikipedia.org/wiki/Trivium_(cipher)'
-        },
-        {
-          name: 'Trivium: A Stream Cipher Construction (De Cannière-Preneel)',
-          url: 'https://www.esat.kuleuven.be/cosic/publications/article-1137.pdf'
-        }
-      ],
-      
-      implementationNotes: 'Three NLFSRs (93, 84, 111 bits) with nonlinear feedback and output function. 1152 initialization rounds.',
-      performanceNotes: 'Optimized for hardware implementation. Very fast in dedicated hardware, moderate performance in software.',
-      
-      educationalValue: 'Excellent example of NLFSR-based stream cipher design and hardware-oriented cryptography. Shows modern stream cipher construction.',
-      prerequisites: ['LFSR theory', 'Nonlinear feedback', 'Stream cipher concepts', 'Hardware cryptography'],
-      
-      tags: ['stream', 'modern', 'secure', 'estream', 'hardware', 'iso-standard', 'nlfsr', 'portfolio'],
-      
-      version: '2.0'
-    }) : null,
+    // Required metadata following CONTRIBUTING.md
+    description: "Hardware-oriented stream cipher using three nonlinear feedback shift registers. Part of the eSTREAM hardware portfolio and ISO/IEC 29192-3 standard. Features 288-bit state with 80-bit keys and IVs.",
+    inventor: "Christophe De Cannière and Bart Preneel",
+    year: 2005,
+    country: "BE",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
+    subCategory: "Stream Cipher",
+    securityStatus: null,
+    securityNotes: "Part of eSTREAM hardware portfolio and ISO standard. Designed to resist algebraic attacks. No known practical attacks.",
+    
+    documentation: [
+      {text: "ISO/IEC 29192-3:2012 - Trivium Stream Cipher", uri: "https://www.iso.org/standard/56426.html"},
+      {text: "eSTREAM Trivium Specification", uri: "https://www.ecrypt.eu.org/stream/trivium.html"},
+      {text: "Trivium: A Stream Cipher Construction", uri: "https://www.esat.kuleuven.be/cosic/publications/article-1137.pdf"}
+    ],
+    
+    references: [
+      {text: "eSTREAM Trivium Page", uri: "https://www.ecrypt.eu.org/stream/trivium.html"},
+      {text: "ISO/IEC 29192-3 Standard", uri: "https://www.iso.org/standard/56426.html"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "eSTREAM Trivium Test Vector 1 (all-zero key and IV)",
+        uri: "https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/trivium/",
+        keySize: 10,
+        input: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        key: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        expected: [0xFB, 0xE0, 0xBF, 0x26, 0x58, 0x59, 0x05, 0x1B]
+      }
+    ],
+    
+    // Comprehensive metadata removed for framework compatibility
 
   // Official test vectors from eSTREAM and ISO standards
   testVectors: [
     {
         "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
         "key": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "expected": "\u00fe\u00e4\u0069\u00dc\u00be\u00a7\u0014\u00c2",
-        "description": "Trivium all-zeros key and IV test vector (8 bytes keystream)"
+        "expected": "\u00FB\u00E0\u00BF\u0026\u0058\u0059\u0005\u001B",
+        "description": "Official eSTREAM Trivium test vector with all-zero key and IV (first 8 bytes keystream)"
     },
     {
         "input": "Hello",
@@ -286,6 +243,42 @@
       Trivium.instances[id] = new Trivium.TriviumInstance(key);
       global.objectInstances[id] = true;
       return id;
+    },
+    
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._instance = new Trivium.TriviumInstance(keyData);
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._instance || this._inputData.length === 0) {
+            return [];
+          }
+          
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            const keystreamByte = this._instance.generateKeystreamByte();
+            result.push(this._inputData[i] ^ keystreamByte);
+          }
+          return result;
+        }
+      };
     },
     
     // Clear cipher data
@@ -481,7 +474,7 @@
     generateKeystreamByte: function() {
       let byte = 0;
       for (let i = 0; i < 8; i++) {
-        byte = (byte << 1) | this.generateKeystreamBit();
+        byte = byte | (this.generateKeystreamBit() << i);  // LSB first
       }
       return byte;
     },
@@ -533,9 +526,19 @@
     }
   };
   
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(Trivium);
+  }
+  
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(Trivium);
+  }
+  
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(Trivium);
+  if (global.Cipher) {
+    global.Cipher.Add(Trivium);
   }
   
   // Export to global scope

@@ -1,254 +1,304 @@
-#!/usr/bin/env node
 /*
- * Universal Base91 Encoder/Decoder
- * Based on basE91 algorithm by Joachim Henke (2000-2006)
- * Compatible with both Browser and Node.js environments
- * 
- * Base91 is an advanced binary-to-text encoding that achieves
- * only 23% overhead (vs 33% for Base64) by encoding 13-bit
- * packets using a 91-character alphabet.
- * 
- * Reference: http://base91.sourceforge.net/
- * Copyright (c) 2000-2006 Joachim Henke
- * Algorithm ported under BSD license terms
- * 
+ * Base91 Encoding Implementation
+ * Educational implementation of Base91 encoding by Joachim Henke
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
-  'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-      return;
-    }
-  }
-  
-  if (!global.Cipher && typeof require !== 'undefined') {
-    try {
-      require('../../universal-cipher-env.js');
-      require('../../cipher.js');
-    } catch (e) {
-      console.error('Failed to load cipher dependencies:', e.message);
-      return;
-    }
-  }
-  
-  const Base91 = {
-    internalName: 'base91',
-    name: 'Base91 (basE91)',
-    version: '1.0.0',
-        comment: 'Educational implementation for learning purposes',
-    minKeyLength: 0,
-    maxKeyLength: 0,
-    stepKeyLength: 1,
-    minBlockSize: 0,
-    maxBlockSize: 0,
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
+// Load AlgorithmFramework (REQUIRED)
 
-    
-    // Base91 alphabet: 91 printable ASCII characters excluding: - \ '
-    alphabet: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,./:;<=>?@[]^_`{|}~',
-    
-    // Decode table for efficient lookup
-    decodeTable: null,
-    
-    /**
-     * Initialize the cipher and build decode table
-     */
-    Init: function() {
-      // Build decode table for fast character lookup
-      this.decodeTable = new Array(256).fill(-1);
-      for (let i = 0; i < this.alphabet.length; i++) {
-        this.decodeTable[this.alphabet.charCodeAt(i)] = i;
-      }
-    },
-    
-    /**
-     * Set up encoding parameters (Base91 has no key)
-     * @param {any} key - Not used for Base91
-     */
-    KeySetup: function(key) {
-      // Base91 encoding doesn't use keys
-      this.Init(); // Ensure decode table is built
-    },
-    
-    /**
-     * Encode binary data to Base91 string
-     * @param {number} mode - Encoding mode (0 = encode)
-     * @param {string|Array} data - Input data to encode
-     * @returns {string} Base91 encoded string
-     */
-    encryptBlock: function(mode, data) {
-      if (mode !== 0) {
-        throw new Error('Base91: Invalid mode for encoding');
-      }
-      
-      // Convert input to byte array
-      let bytes;
-      if (typeof data === 'string') {
-        bytes = OpCodes.StringToBytes(data);
-      } else if (Array.isArray(data)) {
-        bytes = data.slice();
-      } else {
-        throw new Error('Base91: Invalid input data type');
-      }
-      
-      if (bytes.length === 0) {
-        return '';
-      }
-      
-      // Base91 encoding state
-      let accumulator = 0;  // Bit accumulator
-      let bitsInAccumulator = 0;  // Number of bits in accumulator
-      let result = '';
-      
-      for (let i = 0; i < bytes.length; i++) {
-        // Add 8 bits to accumulator
-        accumulator |= (bytes[i] << bitsInAccumulator);
-        bitsInAccumulator += 8;
-        
-        // Extract 13-bit values when possible
-        if (bitsInAccumulator > 13) {
-          // Extract 13 bits
-          const value = accumulator & 8191; // 0x1FFF = 8191 = 2^13 - 1
-          accumulator >>>= 13;
-          bitsInAccumulator -= 13;
-          
-          // Encode 13-bit value as 2 characters
-          result += this.alphabet[value % 91];
-          result += this.alphabet[Math.floor(value / 91)];
-        }
-      }
-      
-      // Handle remaining bits
-      if (bitsInAccumulator > 0) {
-        result += this.alphabet[accumulator % 91];
-        if (bitsInAccumulator > 6 || accumulator > 90) {
-          result += this.alphabet[Math.floor(accumulator / 91)];
-        }
-      }
-      
-      return result;
-    },
-    
-    /**
-     * Decode Base91 string to binary data
-     * @param {number} mode - Decoding mode (0 = decode)
-     * @param {string} data - Base91 string to decode
-     * @returns {Array} Decoded byte array
-     */
-    decryptBlock: function(mode, data) {
-      if (mode !== 0) {
-        throw new Error('Base91: Invalid mode for decoding');
-      }
-      
-      if (typeof data !== 'string' || data.length === 0) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
+  'use strict';
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
+  
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class Base91Algorithm extends EncodingAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "Base91";
+      this.description = "Base91 (basE91) encoding using 91-character alphabet for efficient binary-to-text encoding. Achieves only 23% overhead compared to Base64's 33% by using variable-length bit packing. Developed by Joachim Henke for maximum efficiency.";
+      this.inventor = "Joachim Henke";
+      this.year = 2000;
+      this.category = CategoryType.ENCODING;
+      this.subCategory = "Base Encoding";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.ADVANCED;
+      this.country = CountryCode.DE;
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("Base91 Official Site", "http://base91.sourceforge.net/"),
+        new LinkItem("Base91 Algorithm Description", "http://base91.sourceforge.net/base91.html"),
+        new LinkItem("Base91 Wikipedia Article", "https://en.wikipedia.org/wiki/Base91")
+      ];
+
+      this.references = [
+        new LinkItem("Base91 Source Code", "http://base91.sourceforge.net/base91.c"),
+        new LinkItem("Base91 Online Encoder", "https://base91.io/"),
+        new LinkItem("Binary-to-Text Encoding Comparison", "https://en.wikipedia.org/wiki/Binary-to-text_encoding")
+      ];
+
+      this.knownVulnerabilities = [];
+
+      // Test vectors with bit-perfect accuracy
+      this.tests = this.createTestVectors();
+    }
+
+    createTestVectors() {
+      // Ensure OpCodes is available
+      if (!global.OpCodes) {
         return [];
       }
-      
-      // Ensure decode table is initialized
-      if (!this.decodeTable) {
-        this.Init();
-      }
-      
-      // Base91 decoding state
-      let accumulator = 0;  // Bit accumulator
-      let bitsInAccumulator = 0;  // Number of bits in accumulator
-      let value = -1;  // Current 13-bit value being constructed
-      const bytes = [];
-      
-      for (let i = 0; i < data.length; i++) {
-        const char = data.charCodeAt(i);
-        const digit = this.decodeTable[char];
-        
-        if (digit === -1) {
-          throw new Error('Base91: Invalid character in input: ' + data[i]);
-        }
-        
-        if (value === -1) {
-          // Start new 13-bit value
-          value = digit;
-        } else {
-          // Complete 13-bit value
-          value += digit * 91;
-          
-          // Add to accumulator
-          accumulator |= ((value & 8191) << bitsInAccumulator);
-          bitsInAccumulator += (value > 8191) ? 13 : 14;
-          value = -1;
-          
-          // Extract complete bytes
-          while (bitsInAccumulator > 7) {
-            bytes.push(accumulator & 0xFF);
-            accumulator >>>= 8;
-            bitsInAccumulator -= 8;
-          }
-        }
-      }
-      
-      // Handle final incomplete value
-      if (value !== -1) {
-        accumulator |= (value << bitsInAccumulator);
-        bitsInAccumulator += 6;
-        
-        // Extract final bytes
-        while (bitsInAccumulator > 7) {
-          bytes.push(accumulator & 0xFF);
-          accumulator >>>= 8;
-          bitsInAccumulator -= 8;
-        }
-      }
-      
-      return bytes;
-    },
-    
-    /**
-     * Clear sensitive data
-     */
-    ClearData: function() {
-      // Clear decode table
-      if (this.decodeTable) {
-        this.decodeTable.fill(-1);
-      }
-    },
-    
-    /**
-     * Get cipher information
-     * @returns {Object} Cipher information
-     */
-    GetInfo: function() {
-      return {
-        name: this.name,
-        version: this.version,
-        type: 'Encoding',
-        blockSize: 'Variable (13-bit packets)',
-        keySize: 'None',
-        description: 'Base91 encoding with 23% overhead (vs 33% for Base64)',
-        efficiency: '14-23% overhead (variable)',
-        inventor: 'Joachim Henke (2000-2006)'
-      };
+
+      return [
+        new TestCase(
+          OpCodes.AnsiToBytes(""),
+          OpCodes.AnsiToBytes(""),
+          "Base91 empty string test",
+          "https://github.com/bwaldvogel/base91/blob/main/src/test/java/de/bwaldvogel/base91/Base91Test.java"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("a"),
+          OpCodes.AnsiToBytes("GB"),
+          "Base91 single character test - 'a'",
+          "https://github.com/bwaldvogel/base91/blob/main/src/test/java/de/bwaldvogel/base91/Base91Test.java"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("test"),
+          OpCodes.AnsiToBytes("fPNKd"),
+          "Base91 word test - 'test'",
+          "https://github.com/bwaldvogel/base91/blob/main/src/test/java/de/bwaldvogel/base91/Base91Test.java"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("Never odd or even\n"),
+          OpCodes.AnsiToBytes("_O^gp@J`7RztjblLA#_1eHA"),
+          "Base91 palindrome test with newline",
+          "https://github.com/bwaldvogel/base91/blob/main/src/test/java/de/bwaldvogel/base91/Base91Test.java"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("May a moody baby doom a yam?\n"),
+          OpCodes.AnsiToBytes("8D9Kc)=/2$WzeFui#G9Km+<{VT2u9MZil}[A"),
+          "Base91 sentence test with newline",
+          "https://github.com/bwaldvogel/base91/blob/main/src/test/java/de/bwaldvogel/base91/Base91Test.java"
+        )
+      ];
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(Base91);
+
+    CreateInstance(isInverse = false) {
+      return new Base91Instance(this, isInverse);
+    }
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Base91;
+
+  class Base91Instance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+
+      // Base91 alphabet (91 printable ASCII characters excluding whitespace and quotes)
+      this.alphabet = OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,./:;<=>?@[]^_`{|}~");
+      this.base = 91;
+      this.processedData = null;
+
+      // Create decode lookup table
+      this.decodeTable = {};
+      const alphabetStr = String.fromCharCode(...this.alphabet);
+      for (let i = 0; i < alphabetStr.length; i++) {
+        this.decodeTable[alphabetStr[i]] = i;
+      }
+
+      // Initialize encoder/decoder state
+      this.resetState();
+    }
+
+    resetState() {
+      // Encoder state
+      this.ebq = 0;      // Bit queue
+      this.en = 0;       // Number of bits in queue
+
+      // Decoder state
+      this.dq = 0;       // Decode queue
+      this.dn = 0;       // Number of bits
+      this.dv = -1;      // Decode value
+    }
+
+    Feed(data) {
+      if (!Array.isArray(data)) {
+        throw new Error('Base91Instance.Feed: Input must be byte array');
+      }
+
+      this.resetState();
+
+      if (this.isInverse) {
+        this.processedData = this.decode(data);
+      } else {
+        this.processedData = this.encode(data);
+      }
+    }
+
+    Result() {
+      if (this.processedData === null) {
+        throw new Error('Base91Instance.Result: No data processed. Call Feed() first.');
+      }
+      return this.processedData;
+    }
+
+    encode(data) {
+      if (data.length === 0) {
+        return [];
+      }
+
+      const result = [];
+      const alphabetStr = String.fromCharCode(...this.alphabet);
+
+      for (let i = 0; i < data.length; i++) {
+        this.ebq |= (data[i] & 255) << this.en;
+        this.en += 8;
+
+        if (this.en > 13) {
+          let ev = this.ebq & 8191;
+
+          if (ev > 88) {
+            this.ebq >>= 13;
+            this.en -= 13;
+          } else {
+            ev = this.ebq & 16383;
+            this.ebq >>= 14;
+            this.en -= 14;
+          }
+
+          const idx1 = ev % 91;
+          const idx2 = Math.floor(ev / 91);
+          result.push(alphabetStr.charCodeAt(idx1));
+          result.push(alphabetStr.charCodeAt(idx2));
+        }
+      }
+
+      // Encode remaining bits
+      if (this.en > 0) {
+        result.push(alphabetStr.charCodeAt(this.ebq % 91));
+
+        if (this.en > 7 || this.ebq > 90) {
+          const idx = Math.floor(this.ebq / 91);
+          result.push(alphabetStr.charCodeAt(idx));
+        }
+      }
+
+      return result;
+    }
+
+    decode(data) {
+      if (data.length === 0) {
+        return [];
+      }
+
+      const input = String.fromCharCode(...data);
+      const result = [];
+
+      for (let i = 0; i < input.length; i++) {
+        const c = input[i];
+
+        if (!(c in this.decodeTable)) {
+          throw new Error(`Base91Instance.decode: Invalid character '${c}'`);
+        }
+
+        const charValue = this.decodeTable[c];
+
+        if (this.dv === -1) {
+          this.dv = charValue;
+          continue;
+        }
+
+        this.dv += charValue * 91;
+        this.dq |= (this.dv << this.dn);
+
+        if (this.dv > 88) {
+          this.dn += 13;
+        } else {
+          this.dn += 14;
+        }
+
+        this.dv = -1;
+
+        while (this.dn > 7) {
+          result.push(this.dq & 255);
+          this.dq >>= 8;
+          this.dn -= 8;
+        }
+      }
+
+      if (this.dv >= 0) {
+        this.dq |= (this.dv << this.dn);
+        if (this.dn > 0) {
+          result.push(this.dq & 255);
+        }
+      }
+
+      return result;
+    }
+
+    // Utility methods for string encoding
+    encodeString(str) {
+      const bytes = OpCodes.AnsiToBytes(str);
+      const encoded = this.encode(bytes);
+      return String.fromCharCode(...encoded);
+    }
+
+    decodeString(str) {
+      const bytes = OpCodes.AnsiToBytes(str);
+      const decoded = this.decode(bytes);
+      return String.fromCharCode(...decoded);
+    }
   }
-  
-  // Make available globally
-  global.Base91 = Base91;
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // Register the algorithm
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new Base91Algorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
+  }
+
+  // ===== EXPORTS =====
+
+  return { Base91Algorithm, Base91Instance };
+}));

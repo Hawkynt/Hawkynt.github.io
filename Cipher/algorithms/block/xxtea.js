@@ -1,454 +1,286 @@
 /*
- * Universal XXTEA (Corrected Block TEA) Cipher Implementation
- * Compatible with both Browser and Node.js environments
- * Based on Roger Needham and David Wheeler (1998) - corrected version of TEA
+ * XXTEA (Corrected Block TEA) Cipher Implementation
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  * 
- * XXTEA Algorithm by Needham and Wheeler (1998) - Enhanced version of XTEA:
+ * XXTEA Algorithm by Roger Needham and David Wheeler (1998)
  * - Variable block size cipher (minimum 8 bytes, maximum 1024 bytes)
- * - 128-bit keys with improved key schedule 
+ * - 128-bit keys with improved key schedule
  * - Better diffusion across entire variable-length blocks
- * - Addresses cryptographic weaknesses in original TEA and XTEA
  * - Uses same golden ratio constant: 0x9E3779B9
- * 
- * Key improvements over XTEA:
- * - Works on variable-length data blocks (not just 64-bit)
- * - Better cross-block diffusion for larger data sets
- * - More sophisticated round function for enhanced security
- * - Optimized for software implementation efficiency
- * 
- * Educational implementation - demonstrates block cipher design evolution
- * Not for production use - use proven cryptographic libraries instead
  */
 
-(function(global) {
+// Load AlgorithmFramework (REQUIRED)
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.OpCodes) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../OpCodes.js');
-      } catch (e) {
-        console.error('Failed to load OpCodes dependency:', e.message);
-        return;
-      }
-    } else {
-      console.error('XXTEA cipher requires OpCodes library to be loaded first');
-      return;
-    }
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('XXTEA cipher requires Cipher system to be loaded first');
-      return;
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class XXTEAAlgorithm extends AlgorithmFramework.BlockCipherAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "XXTEA";
+      this.description = "Corrected Block TEA by Needham and Wheeler with variable block sizes and enhanced security over TEA/XTEA. Supports blocks from 8 bytes to 1KB with 128-bit keys and improved diffusion.";
+      this.inventor = "Roger Needham, David Wheeler";
+      this.year = 1998;
+      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.subCategory = "Block Cipher";
+      this.securityStatus = AlgorithmFramework.SecurityStatus.EDUCATIONAL;
+      this.complexity = AlgorithmFramework.ComplexityType.INTERMEDIATE;
+      this.country = AlgorithmFramework.CountryCode.GB;
+
+      // Block and key specifications
+      this.blockSize = 8; // Minimum block size (variable)
+      this.keySizes = [
+        new AlgorithmFramework.KeySize(16, 16, 1) // Fixed 128-bit key
+      ];
+
+      // Documentation and references
+      this.documentation = [
+        new AlgorithmFramework.LinkItem("Block TEA corrections and improvements", "https://www.cix.co.uk/~klockstone/xxtea.htm"),
+        new AlgorithmFramework.LinkItem("Variable block cipher design", "https://link.springer.com/chapter/10.1007/3-540-60590-8_29"),
+        new AlgorithmFramework.LinkItem("Cambridge Cryptography Research", "https://www.cl.cam.ac.uk/research/security/")
+      ];
+
+      this.references = [
+        new AlgorithmFramework.LinkItem("Crypto++ XXTEA Implementation", "https://github.com/weidai11/cryptopp/blob/master/tea.cpp"),
+        new AlgorithmFramework.LinkItem("Node.js XXTEA Implementation", "https://www.npmjs.com/package/xxtea"),
+        new AlgorithmFramework.LinkItem("Python XXTEA Implementation", "https://pypi.org/project/xxtea/")
+      ];
+
+      // Known vulnerabilities
+      this.knownVulnerabilities = [
+        new AlgorithmFramework.Vulnerability("Limited standardization", "https://www.schneier.com/academic/", "Not widely standardized or analyzed compared to modern ciphers", "Use standardized ciphers like AES for production security applications"),
+        new AlgorithmFramework.Vulnerability("Variable block complexity", "https://eprint.iacr.org/", "Variable block sizes may introduce implementation complexities and edge cases", "Careful implementation and testing required for security-critical applications")
+      ];
+
+      // Test vectors from various sources
+      this.testCases = [
+        new AlgorithmFramework.TestCase(
+          "XXTEA 8-byte block test vector",
+          OpCodes.Hex8ToBytes("0000000000000000"),
+          OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          OpCodes.Hex8ToBytes("0537042bab575d00"),
+          [new AlgorithmFramework.LinkItem("Educational test vector", "")]
+        ),
+        new AlgorithmFramework.TestCase(
+          "XXTEA 12-byte variable block test",
+          OpCodes.Hex8ToBytes("000000000000000000000000"),
+          OpCodes.Hex8ToBytes("123456789abcdef0123456789abcdef0"),
+          OpCodes.Hex8ToBytes("e91306eadbf9a325d8181800"),
+          [new AlgorithmFramework.LinkItem("Educational test vector", "")]
+        )
+      ];
+    }
+
+    CreateInstance(key) {
+      return new XXTEAInstance(key);
     }
   }
-  
-  // Create XXTEA cipher object
-  const XXTEA = {
-    name: "XXTEA (Corrected Block TEA)",
-    description: "Variable block size cipher by Roger Needham and David Wheeler with enhanced security over TEA/XTEA. Supports blocks from 8 bytes to 1KB with 128-bit keys and improved diffusion.",
-    inventor: "Roger Needham and David Wheeler",
-    year: 1998,
-    country: "GB",
-    category: "cipher",
-    subCategory: "Block Cipher",
-    securityStatus: "educational",
-    securityNotes: "Final evolution of the TEA family with variable block sizes and enhanced security. Still considered dated compared to modern standardized ciphers.",
-    
-    documentation: [
-      {text: "Block TEA corrections and improvements", uri: "https://www.cix.co.uk/~klockstone/xxtea.htm"},
-      {text: "Variable block cipher design", uri: "https://link.springer.com/chapter/10.1007/3-540-60590-8_29"},
-      {text: "Cambridge Cryptography Research", uri: "https://www.cl.cam.ac.uk/research/security/"}
-    ],
-    
-    references: [
-      {text: "XXTEA Analysis Papers", uri: "https://eprint.iacr.org/"},
-      {text: "TEA Family Security Comparison", uri: "https://www.schneier.com/academic/"},
-      {text: "Variable Block Cipher Research", uri: "https://link.springer.com/journal/10623"}
-    ],
-    
-    knownVulnerabilities: [
-      {
-        type: "Limited standardization",
-        text: "Not widely standardized or analyzed compared to modern ciphers",
-        mitigation: "Use standardized ciphers like AES for production security applications"
-      }
-    ],
-    
-    tests: [
-      {
-        text: "XXTEA Variable Block Test Vector",
-        uri: "Block TEA corrections and improvements",
-        keySize: 16,
-        blockSize: 8,
-        input: OpCodes.Hex8ToBytes("0000000000000000"),
-        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: null // Will be computed by implementation
-      }
-    ],
-    
-    // Public interface properties
-    internalName: 'XXTEA',
-    comment: 'XXTEA cipher by Needham & Wheeler - Variable block size, 128-bit keys, enhanced TEA security',
-    minKeyLength: 16,    // 128-bit key
-    maxKeyLength: 16,
-    stepKeyLength: 1,
-    minBlockSize: 8,     // Minimum 64-bit block
-    maxBlockSize: 1024,  // Maximum 8192-bit block (1KB)
-    stepBlockSize: 4,    // Must be multiple of 4 bytes
-    instances: {},
 
-  // Legacy test vectors for compatibility
-  testVectors: [
-    {
-        "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "key": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "expected": "\u00057\u0004«W]",
-        "description": "XXTEA all-zeros 8-byte block test vector - boundary condition"
-    },
-    {
-        "input": "ÿÿÿÿÿÿÿÿ",
-        "key": "ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ",
-        "expected": "\t°=*³V\f²",
-        "description": "XXTEA all-ones 8-byte block test vector - maximum values"
-    },
-    {
-        "input": "\u0001#Eg«Íï",
-        "key": "\u0001#Eg«ÍïþÜºvT2\u0010",
-        "expected": "¨-\u0002\u000f@§+\u0016",
-        "description": "XXTEA pattern test vector - 8-byte block educational implementation"
-    },
-    {
-        "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "key": "\u00124Vx¼Þð\u00124Vx¼Þð",
-        "expected": "é\u0013\u0006êÛù£%\u0018Ø",
-        "description": "XXTEA 12-byte variable block test - demonstrates variable length capability"
-    },
-    {
-        "input": "\u0001#Eg«Íï\u0000\u0011\"3DUfw",
-        "key": "\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e\u000f",
-        "expected": "bXl`»rÓà9OM\u0004",
-        "description": "XXTEA 16-byte block test - incremental patterns for S-box validation"
-    },
-    {
-        "input": "HELLO123",
-        "key": "YELLOW SUBMARINE",
-        "expected": "¬Ó\u0004\u0002|½",
-        "description": "XXTEA ASCII plaintext and key test - educational demonstration"
-    },
-    {
-        "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "key": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "expected": "ÏÖURÝ·'|",
-        "description": "XXTEA single bit test vector - cryptographic edge case validation"
+  class XXTEAInstance extends AlgorithmFramework.IBlockCipherInstance {
+    constructor(key) {
+      super();
+
+      // XXTEA constants
+      this.DELTA = 0x9E3779B9;                   // Magic constant: 2^32 / golden ratio
+
+      this._setupKey(key);
     }
-],
 
-  // Reference links to authoritative sources and production implementations
-  referenceLinks: {
-    specifications: [
-      {
-        name: 'XXTEA: Corrected Block TEA Algorithm',
-        url: 'https://www.cix.co.uk/~klockstone/xxtea.htm',
-        description: 'Official specification of XXTEA by David Wheeler and Roger Needham'
-      },
-      {
-        name: 'XXTEA Academic Paper',
-        url: 'https://www.movable-type.co.uk/scripts/xxtea.pdf',
-        description: 'Academic presentation and analysis of the XXTEA algorithm'
-      },
-      {
-        name: 'XXTEA Security Analysis',
-        url: 'https://www.iacr.org/cryptodb/data/paper.php?pubkey=3127',
-        description: 'Cryptanalysis and security evaluation of XXTEA'
-      },
-      {
-        name: 'Block TEA Variants Comparison',
-        url: 'https://en.wikipedia.org/wiki/XXTEA',
-        description: 'Comparison of TEA, XTEA, and XXTEA algorithms and their properties'
+    _setupKey(keyBytes) {
+      if (!keyBytes) {
+        throw new Error("Key is required");
       }
-    ],
-    implementations: [
-      {
-        name: 'Crypto++ XXTEA Implementation',
-        url: 'https://github.com/weidai11/cryptopp/blob/master/tea.cpp',
-        description: 'High-performance C++ XXTEA implementation'
-      },
-      {
-        name: 'Bouncy Castle XXTEA Implementation',
-        url: 'https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/engines',
-        description: 'Java XXTEA implementation from Bouncy Castle'
-      },
-      {
-        name: 'Node.js XXTEA Implementation',
-        url: 'https://www.npmjs.com/package/xxtea',
-        description: 'JavaScript/Node.js XXTEA implementation available on NPM'
-      },
-      {
-        name: 'Python XXTEA Implementation',
-        url: 'https://pypi.org/project/xxtea/',
-        description: 'Python XXTEA implementation available on PyPI'
-      },
-      {
-        name: 'PHP XXTEA Implementation',
-        url: 'https://pecl.php.net/package/xxtea',
-        description: 'PHP XXTEA extension for high-performance encryption'
-      }
-    ],
-    validation: [
-      {
-        name: 'XXTEA Test Vectors Collection',
-        url: 'https://www.cosic.esat.kuleuven.be/nessie/testvectors/',
-        description: 'Comprehensive test vectors for XXTEA validation'
-      },
-      {
-        name: 'XXTEA Cryptanalysis Papers',
-        url: 'https://www.iacr.org/cryptodb/data/paper.php?pubkey=3127',
-        description: 'Academic cryptanalysis and security analysis of XXTEA'
-      },
-      {
-        name: 'Block Cipher Validation Guidelines',
-        url: 'https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program',
-        description: 'NIST guidelines for block cipher algorithm validation'
-      }
-    ]
-  },
 
-    cantDecode: false,
-    isInitialized: false,
-    
-    // XXTEA Constants
-    DELTA: 0x9E3779B9,                   // Magic constant: 2^32 / golden ratio
-    
-    // Initialize cipher
-    Init: function() {
-      XXTEA.isInitialized = true;
-    },
-    
-    // Set up key
-    KeySetup: function(optional_key) {
-      if (!optional_key || optional_key.length !== 16) {
-        global.throwException('XXTEA Key Exception', 'Key must be exactly 16 bytes (128 bits)', 'XXTEA', 'KeySetup');
-        return null;
+      // Validate key size
+      if (keyBytes.length !== 16) {
+        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16)`);
       }
-      
-      let id;
-      do {
-        id = 'XXTEA[' + global.generateUniqueID() + ']';
-      } while (XXTEA.instances[id] || global.objectInstances[id]);
-      
-      XXTEA.instances[id] = new XXTEA.XXTEAInstance(optional_key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear cipher data
-    ClearData: function(id) {
-      if (XXTEA.instances[id]) {
-        // Clear sensitive key data using OpCodes
-        if (XXTEA.instances[id].key) {
-          global.OpCodes.ClearArray(XXTEA.instances[id].key);
-        }
-        delete XXTEA.instances[id];
-        delete global.objectInstances[id];
-        return true;
-      } else {
-        global.throwException('Unknown Object Reference Exception', id, 'XXTEA', 'ClearData');
-        return false;
+
+      // Convert 128-bit key to four 32-bit words using OpCodes (big-endian)
+      this.keyWords = [
+        OpCodes.Pack32BE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]),
+        OpCodes.Pack32BE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]),
+        OpCodes.Pack32BE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]),
+        OpCodes.Pack32BE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15])
+      ];
+    }
+
+    EncryptBlock(blockIndex, data) {
+      if (data.length < 8 || data.length % 4 !== 0) {
+        throw new Error('XXTEA requires at least 8 bytes and multiple of 4 bytes per block');
       }
-    },
-    
-    // Encrypt variable-length block (minimum 8 bytes, multiple of 4)
-    encryptBlock: function(id, plaintext) {
-      if (!XXTEA.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'XXTEA', 'encryptBlock');
-        return plaintext;
+      return this._encryptData(data);
+    }
+
+    DecryptBlock(blockIndex, data) {
+      if (data.length < 8 || data.length % 4 !== 0) {
+        throw new Error('XXTEA requires at least 8 bytes and multiple of 4 bytes per block');
       }
-      
-      if (plaintext.length < 8 || plaintext.length % 4 !== 0) {
-        global.throwException('XXTEA Block Size Exception', 'Input must be at least 8 bytes and multiple of 4', 'XXTEA', 'encryptBlock');
-        return plaintext;
-      }
-      
-      const objXXTEA = XXTEA.instances[id];
-      
-      // Convert string to bytes using OpCodes
-      const ptBytes = global.OpCodes.StringToBytes(plaintext);
-      
+      return this._decryptData(data);
+    }
+
+    // Encrypt variable-length data
+    _encryptData(data) {
       // Convert to 32-bit words using OpCodes (big-endian)
       const words = [];
-      for (let i = 0; i < ptBytes.length; i += 4) {
-        words.push(global.OpCodes.Pack32BE(ptBytes[i], ptBytes[i+1], ptBytes[i+2], ptBytes[i+3]));
+      for (let i = 0; i < data.length; i += 4) {
+        words.push(OpCodes.Pack32BE(data[i], data[i+1], data[i+2], data[i+3]));
       }
-      
+
       // XXTEA encryption algorithm
-      const encryptedWords = XXTEA._encryptWords(words, objXXTEA.key);
-      
-      // Convert back to string using OpCodes
-      let result = '';
+      const encryptedWords = this._encryptWords(words, this.keyWords);
+
+      // Convert back to bytes using OpCodes
+      const result = [];
       for (let i = 0; i < encryptedWords.length; i++) {
-        const bytes = global.OpCodes.Unpack32BE(encryptedWords[i]);
-        result += global.OpCodes.BytesToString(bytes);
+        const bytes = OpCodes.Unpack32BE(encryptedWords[i]);
+        result.push(...bytes);
       }
-      
+
       return result;
-    },
-    
-    // Decrypt variable-length block
-    decryptBlock: function(id, ciphertext) {
-      if (!XXTEA.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'XXTEA', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      if (ciphertext.length < 8 || ciphertext.length % 4 !== 0) {
-        global.throwException('XXTEA Block Size Exception', 'Input must be at least 8 bytes and multiple of 4', 'XXTEA', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      const objXXTEA = XXTEA.instances[id];
-      
-      // Convert string to bytes using OpCodes
-      const ctBytes = global.OpCodes.StringToBytes(ciphertext);
-      
+    }
+
+    // Decrypt variable-length data
+    _decryptData(data) {
       // Convert to 32-bit words using OpCodes (big-endian)
       const words = [];
-      for (let i = 0; i < ctBytes.length; i += 4) {
-        words.push(global.OpCodes.Pack32BE(ctBytes[i], ctBytes[i+1], ctBytes[i+2], ctBytes[i+3]));
+      for (let i = 0; i < data.length; i += 4) {
+        words.push(OpCodes.Pack32BE(data[i], data[i+1], data[i+2], data[i+3]));
       }
-      
+
       // XXTEA decryption algorithm
-      const decryptedWords = XXTEA._decryptWords(words, objXXTEA.key);
-      
-      // Convert back to string using OpCodes
-      let result = '';
+      const decryptedWords = this._decryptWords(words, this.keyWords);
+
+      // Convert back to bytes using OpCodes
+      const result = [];
       for (let i = 0; i < decryptedWords.length; i++) {
-        const bytes = global.OpCodes.Unpack32BE(decryptedWords[i]);
-        result += global.OpCodes.BytesToString(bytes);
+        const bytes = OpCodes.Unpack32BE(decryptedWords[i]);
+        result.push(...bytes);
       }
-      
+
       return result;
-    },
-    
+    }
+
     // Internal XXTEA encryption algorithm
-    _encryptWords: function(v, k) {
+    _encryptWords(v, k) {
       const n = v.length;
       if (n < 2) return v; // Need at least 2 words
-      
+
       // Copy input to avoid modification
-      const words = global.OpCodes.CopyArray(v);
-      
+      const words = OpCodes.CopyArray(v);
+
       // Calculate number of rounds: 6 + 52/n (minimum 6 rounds)
       const rounds = 6 + Math.floor(52 / n);
       let sum = 0;
       let z = words[n-1];
-      
+
       for (let round = 0; round < rounds; round++) {
-        sum = (sum + XXTEA.DELTA) >>> 0;
+        sum = (sum + this.DELTA) >>> 0;
         const e = (sum >>> 2) & 3;
-        
+
         for (let p = 0; p < n; p++) {
           const y = words[(p + 1) % n];
-          const mx = XXTEA._calculateMX(z, y, sum, k[(p & 3) ^ e], p, e);
+          const mx = this._calculateMX(z, y, sum, k[(p & 3) ^ e], p, e);
           words[p] = (words[p] + mx) >>> 0;
           z = words[p];
         }
       }
-      
+
       return words;
-    },
-    
+    }
+
     // Internal XXTEA decryption algorithm
-    _decryptWords: function(v, k) {
+    _decryptWords(v, k) {
       const n = v.length;
       if (n < 2) return v; // Need at least 2 words
-      
+
       // Copy input to avoid modification
-      const words = global.OpCodes.CopyArray(v);
-      
+      const words = OpCodes.CopyArray(v);
+
       // Calculate number of rounds: 6 + 52/n (minimum 6 rounds)
       const rounds = 6 + Math.floor(52 / n);
-      let sum = (rounds * XXTEA.DELTA) >>> 0;
+      let sum = (rounds * this.DELTA) >>> 0;
       let y = words[0];
-      
+
       for (let round = 0; round < rounds; round++) {
         const e = (sum >>> 2) & 3;
-        
+
         for (let p = n - 1; p >= 0; p--) {
           const z = words[p > 0 ? p - 1 : n - 1];
-          const mx = XXTEA._calculateMX(z, y, sum, k[(p & 3) ^ e], p, e);
+          const mx = this._calculateMX(z, y, sum, k[(p & 3) ^ e], p, e);
           words[p] = (words[p] - mx) >>> 0;
           y = words[p];
         }
-        
-        sum = (sum - XXTEA.DELTA) >>> 0;
+
+        sum = (sum - this.DELTA) >>> 0;
       }
-      
+
       return words;
-    },
-    
+    }
+
     // Calculate the MX value for XXTEA round function
-    _calculateMX: function(z, y, sum, key, p, e) {
+    _calculateMX(z, y, sum, key, p, e) {
       // Original XXTEA MX calculation with improved bit operations
       const part1 = ((z >>> 5) ^ (y << 2)) >>> 0;
       const part2 = ((y >>> 3) ^ (z << 4)) >>> 0;
       const part3 = (sum ^ y) >>> 0;
       const part4 = (key ^ z) >>> 0;
-      
+
       return ((part1 + part2) ^ (part3 + part4)) >>> 0;
-    },
-    
-    // Instance class
-    XXTEAInstance: function(key) {
-      // Convert 128-bit key to four 32-bit words using OpCodes
-      const keyBytes = global.OpCodes.StringToBytes(key);
-      
-      this.key = [
-        global.OpCodes.Pack32BE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]),
-        global.OpCodes.Pack32BE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]),
-        global.OpCodes.Pack32BE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]),
-        global.OpCodes.Pack32BE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15])
-      ];
     }
-  };
-  
-  // Helper functions for metadata
-  function Hex8ToBytes(hex) {
-    if (global.OpCodes && global.OpCodes.HexToBytes) {
-      return global.OpCodes.HexToBytes(hex);
-    }
-    // Fallback implementation
-    const result = [];
-    for (let i = 0; i < hex.length; i += 2) {
-      result.push(parseInt(hex.substr(i, 2), 16));
-    }
-    return result;
   }
-  
-  // Auto-register with universal Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    global.Cipher.Add(XXTEA);
-  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(XXTEA);
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new XXTEAAlgorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Export to global scope
-  global.XXTEA = XXTEA;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = XXTEA;
-  }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+
+  // ===== EXPORTS =====
+
+  return { XXTEAAlgorithm, XXTEAInstance };
+}));

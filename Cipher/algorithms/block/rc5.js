@@ -1,419 +1,336 @@
 /*
- * Universal RC5 Cipher Implementation
- * Compatible with both Browser and Node.js environments
- * Based on Ronald Rivest's RC5 specification and reference implementation
- * Supports variable word size, rounds, and key length (RC5-w/r/b)
+ * RC5 (Rivest Cipher 5) Block Cipher Implementation
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  * 
- * RC5 is a fast symmetric block cipher designed by Ron Rivest in 1994.
- * It features data-dependent rotations and is notable for its simplicity.
- * This implementation follows RFC 2040 and the original C reference.
+ * RC5 Algorithm by Ron Rivest (RSA Data Security)
+ * Variable word size, rounds, and key length (RC5-w/r/b)
+ * This implementation defaults to RC5-32/12/16
+ * Features data-dependent rotations
  * 
- * NOTE: This is an educational implementation for learning purposes only.
- * Use proven cryptographic libraries for production systems.
+ * Based on RFC 2040 and original RC5 specification
  */
 
-(function(global) {
+// Load AlgorithmFramework (REQUIRED)
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Load OpCodes for cryptographic operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-      return;
-    }
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class RC5Algorithm extends BlockCipherAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "RC5";
+      this.description = "Variable symmetric block cipher with data-dependent rotations. Features configurable word size, rounds, and key length. This implementation uses RC5-32/12/16 (32-bit words, 12 rounds, up to 255-byte key).";
+      this.inventor = "Ronald Rivest";
+      this.year = 1994;
+      this.category = CategoryType.BLOCK;
+      this.subCategory = "Block Cipher";
+      this.securityStatus = null; // Patent expired, good security record with adequate parameters
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.US;
+
+      // Algorithm-specific metadata  
+      this.SupportedKeySizes = [
+        new KeySize(0, 255, 1) // 0-255 bytes, any byte length
+      ];
+      this.SupportedBlockSizes = [
+        new KeySize(8, 8, 0) // Fixed 64-bit blocks for RC5-32
+      ];
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("RFC 2040 - RC5 Algorithm", "https://tools.ietf.org/rfc/rfc2040.txt"),
+        new LinkItem("Original RC5 Paper", "https://people.csail.mit.edu/rivest/Rivest-rc5rev.pdf")
+      ];
+
+      this.references = [
+        new LinkItem("Rivest's RC5 Reference", "https://people.csail.mit.edu/rivest/Rivest-rc5rev.pdf"),
+        new LinkItem("RC5 Patent (Expired)", "https://patents.google.com/patent/US5724428A")
+      ];
+
+      // Test vectors from RFC 2040
+      this.tests = [
+        {
+          text: "RFC 2040 Test Vector - RC5-32/12/16",
+          uri: "https://tools.ietf.org/rfc/rfc2040.txt",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("21a5dbee154b8f6d")
+        },
+        {
+          text: "RFC 2040 Test Vector - RC5-32/12/16 pattern",
+          uri: "https://tools.ietf.org/rfc/rfc2040.txt",
+          input: OpCodes.Hex8ToBytes("0123456789abcdef"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f10"),
+          expected: OpCodes.Hex8ToBytes("b734213608254d2f")
+        },
+        {
+          text: "RFC 2040 Test Vector - RC5-32/12/16 all ones",
+          uri: "https://tools.ietf.org/rfc/rfc2040.txt",
+          input: OpCodes.Hex8ToBytes("ffffffffffffffff"),
+          key: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
+          expected: OpCodes.Hex8ToBytes("77697e629c01b737")
+        }
+      ];
+    }
+
+    // Required: Create instance for this algorithm
+    CreateInstance(isInverse = false) {
+      return new RC5Instance(this, isInverse);
+    }
+
+    // RC5 Constants
+    static get MAGIC_P() { return 0xb7e15163; } // P = Odd((e-2)*2^32)
+    static get MAGIC_Q() { return 0x9e3779b9; } // Q = Odd((φ-1)*2^32)
+    static get DEFAULT_ROUNDS() { return 12; }
+  }
+
+  // Instance class - handles the actual encryption/decryption
+  class RC5Instance extends IBlockCipherInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.key = null;
+      this.expandedKey = null; // S table
+      this.inputBuffer = [];
+      this.BlockSize = 8; // 64 bits for RC5-32
+      this.KeySize = 0;   // will be set when key is assigned
+      this.rounds = RC5Algorithm.DEFAULT_ROUNDS;
+    }
+
+    // Property setter for key - validates and sets up key schedule
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
+        this.expandedKey = null;
+        this.KeySize = 0;
         return;
       }
-    } else {
-      console.error('RC5 cipher requires Cipher system to be loaded first');
-      return;
+
+      // Validate key size
+      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
+        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+        (keyBytes.length - ks.minSize) % ks.stepSize === 0
+      );
+
+      if (!isValidSize) {
+        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      }
+
+      this._key = [...keyBytes]; // Copy the key
+      this.KeySize = keyBytes.length;
+      this._keyExpansion();
     }
-  }
-  
-  // Create RC5 cipher object
-  const RC5 = {
-    name: "RC5",
-    description: "Variable symmetric block cipher designed by Ron Rivest. Features data-dependent rotations and configurable parameters (word size, rounds, key length).",
-    inventor: "Ronald Rivest",
-    year: 1994,
-    country: "US", 
-    category: "cipher",
-    subCategory: "Block Cipher",
-    securityStatus: null,
-    securityNotes: "Patented algorithm with good security record when used with adequate parameters. Patent expired in 2015.",
-    
-    documentation: [
-      {text: "RFC 2040", uri: "https://tools.ietf.org/rfc/rfc2040.txt"},
-      {text: "RC5 Original Paper", uri: "https://people.csail.mit.edu/rivest/Rivest-rc5rev.pdf"},
-      {text: "Wikipedia Article", uri: "https://en.wikipedia.org/wiki/RC5"}
-    ],
-    
-    references: [
-      {text: "Rivest's RC5 Reference", uri: "https://people.csail.mit.edu/rivest/Rivest-rc5rev.pdf"},
-      {text: "RFC 2040 Specification", uri: "https://tools.ietf.org/rfc/rfc2040.txt"}
-    ],
-    
-    knownVulnerabilities: [],
-    
-    tests: [
-      {
-        text: "RFC 2040 Test Vector - RC5-32/12/16",
-        uri: "https://tools.ietf.org/rfc/rfc2040.txt",
-        keySize: 16,
-        blockSize: 8,
-        input: OpCodes.Hex8ToBytes("0000000000000000"),
-        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: OpCodes.Hex8ToBytes("21a5dbee154b8f6d")
-      }
-    ],
 
-    // Public interface properties
-    internalName: 'RC5',
-    comment: 'RC5 Variable Block Cipher (RC5-32/12/16 default)',
-    minKeyLength: 0,     // 0 bytes minimum
-    maxKeyLength: 255,   // 255 bytes maximum
-    stepKeyLength: 1,
-    minBlockSize: 8,     // 8 bytes for RC5-32
-    maxBlockSize: 8,     // Fixed 64-bit blocks for RC5-32
-    stepBlockSize: 1,
-    instances: {},
-
-  // Official test vectors from RFC/NIST standards and authoritative sources
-  testVectors: [
-    {
-        "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "key": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "expected": "!¥Ûî\u0015Km",
-        "description": "RC5-32/12/16 test vector 1: all zeros input and key"
-    },
-    {
-        "input": "ÿÿÿÿÿÿÿÿ",
-        "key": "ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ",
-        "expected": "wié¾\u0001g·",
-        "description": "RC5-32/12/16 test vector 2: all ones input and key"
-    },
-    {
-        "input": "\u0001#Eg«Íï",
-        "key": "\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e\u000f\u0010",
-        "expected": "·4!6\b%M/",
-        "description": "RC5-32/12/16 test vector 3: sequential pattern"
-    },
-    {
-        "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "key": "",
-        "expected": "!¥Ûî\u0015Km",
-        "description": "RC5-32/12/16 test vector 4: null key (same as zero key)"
+    get key() {
+      return this._key ? [...this._key] : null; // Return copy
     }
-],
 
-  // Reference links to authoritative sources and production implementations
-  referenceLinks: {
-    specifications: [
-      {
-        name: 'RC5 Algorithm Specification (Original Paper)',
-        url: 'https://people.csail.mit.edu/rivest/Rivest-rc5rev.pdf',
-        description: 'Original RC5 specification by Ronald Rivest at MIT'
-      },
-      {
-        name: 'RFC 2040 - RC5, RC5-CBC, RC5-CBC-Pad, and RC5-CTS Algorithms',
-        url: 'https://tools.ietf.org/rfc/rfc2040.txt',
-        description: 'IETF RFC defining RC5 algorithm and its cipher block chaining modes'
-      },
-      {
-        name: 'MIT RC5 Algorithm Page',
-        url: 'https://people.csail.mit.edu/rivest/Rivest-rc5.txt',
-        description: 'MIT computer science page for RC5 algorithm documentation'
-      },
-      {
-        name: 'RC5 Patent Information',
-        url: 'https://patents.google.com/patent/US5724428A',
-        description: 'RC5 algorithm patent (expired) - US Patent 5,724,428'
-      }
-    ],
-    implementations: [
-      {
-        name: 'OpenSSL RC5 Implementation',
-        url: 'https://github.com/openssl/openssl/blob/master/crypto/rc5/',
-        description: 'Production-quality RC5 implementation from OpenSSL'
-      },
-      {
-        name: 'Crypto++ RC5 Implementation',
-        url: 'https://github.com/weidai11/cryptopp/blob/master/rc5.cpp',
-        description: 'High-performance C++ RC5 implementation'
-      },
-      {
-        name: 'Bouncy Castle RC5 Implementation',
-        url: 'https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/engines',
-        description: 'Java RC5 implementation from Bouncy Castle'
-      },
-      {
-        name: 'libgcrypt RC5 Implementation',
-        url: 'https://github.com/gpg/libgcrypt/blob/master/cipher/',
-        description: 'GNU libgcrypt cryptographic library implementation'
-      }
-    ],
-    validation: [
-      {
-        name: 'RC5 Test Vectors',
-        url: 'https://people.csail.mit.edu/rivest/Rivest-rc5rev.pdf',
-        description: 'Official test vectors from RC5 specification document'
-      },
-      {
-        name: 'NIST Cryptographic Algorithm Validation',
-        url: 'https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program',
-        description: 'NIST guidance for cryptographic algorithm validation'
-      },
-      {
-        name: 'RC5 Cryptanalysis Research',
-        url: 'https://www.iacr.org/cryptodb/data/paper.php?pubkey=1052',
-        description: 'Academic research on RC5 security properties and cryptanalysis'
-      }
-    ]
-  },
+    // Feed data to the cipher (accumulates until we have complete blocks)
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!this.key) throw new Error("Key not set");
 
-    cantDecode: false,
-    isInitialized: false,
-    
-    // RC5 Constants and Parameters
-    DEFAULT_WORD_SIZE: 32,      // w = word size in bits
-    DEFAULT_ROUNDS: 12,         // r = number of rounds
-    DEFAULT_KEY_BYTES: 16,      // b = key length in bytes
-    MAGIC_P: 0xb7e15163,       // P = Odd((e-2)*2^32) where e is base of natural log
-    MAGIC_Q: 0x9e3779b9,       // Q = Odd((φ-1)*2^32) where φ is golden ratio
-    
-    // Initialize cipher
-    Init: function() {
-      RC5.isInitialized = true;
-    },
-    
-    // Set up key and create instance
-    KeySetup: function(optional_key) {
-      let id;
-      do {
-        id = 'RC5[' + global.generateUniqueID() + ']';
-      } while (RC5.instances[id] || global.objectInstances[id]);
-      
-      RC5.instances[id] = new RC5.RC5Instance(optional_key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear cipher data
-    ClearData: function(id) {
-      if (RC5.instances[id]) {
-        // Securely clear the key table
-        const instance = RC5.instances[id];
-        if (instance.S && global.OpCodes && global.OpCodes.ClearArray) {
-          global.OpCodes.ClearArray(instance.S);
-        }
-        delete RC5.instances[id];
-        delete global.objectInstances[id];
-        return true;
-      } else {
-        global.throwException('Unknown Object Reference Exception', id, 'RC5', 'ClearData');
-        return false;
+      // Add data to input buffer
+      this.inputBuffer.push(...data);
+    }
+
+    // Get the result of the transformation
+    Result() {
+      if (!this.key) throw new Error("Key not set");
+      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+
+      // Process complete blocks
+      const output = [];
+      const blockSize = this.BlockSize;
+
+      // Validate input length for block cipher
+      if (this.inputBuffer.length % blockSize !== 0) {
+        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
       }
-    },
-    
-    // Encrypt 8-byte block
-    encryptBlock: function(id, plaintext) {
-      if (!RC5.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'RC5', 'encryptBlock');
-        return plaintext;
+
+      // Process each block
+      for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
+        const block = this.inputBuffer.slice(i, i + blockSize);
+        const processedBlock = this.isInverse 
+          ? this._decryptBlock(block) 
+          : this._encryptBlock(block);
+        output.push(...processedBlock);
       }
-      
-      const instance = RC5.instances[id];
-      
-      // Handle string input - pad to 8 bytes if needed
-      let input = plaintext;
-      while (input.length < 8) {
-        input += '\0';
+
+      // Clear input buffer for next operation
+      this.inputBuffer = [];
+
+      return output;
+    }
+
+    // Private method for key expansion
+    _keyExpansion() {
+      const u = 4; // Bytes per word (4 for 32-bit)
+      const c = Math.max(1, Math.ceil(this.KeySize / u)); // Words in key
+      const tableSize = 2 * (this.rounds + 1); // t = 2*(r+1)
+      const L = new Array(c); // Key in word array
+
+      // Step 1: Copy key into L array (little-endian)
+      for (let i = 0; i < c; i++) {
+        L[i] = 0;
       }
-      
-      // Process in 8-byte blocks
-      let result = '';
-      for (let blockStart = 0; blockStart < input.length; blockStart += 8) {
-        const block = input.substr(blockStart, 8);
-        const encryptedBlock = RC5._encryptBlock(instance, block);
-        result += encryptedBlock;
+
+      for (let i = this.KeySize - 1; i >= 0; i--) {
+        const keyByte = this._key[i] & 0xFF;
+        L[Math.floor(i / u)] = ((L[Math.floor(i / u)] << 8) + keyByte) >>> 0;
       }
-      
-      return result;
-    },
-    
-    // Decrypt 8-byte block
-    decryptBlock: function(id, ciphertext) {
-      if (!RC5.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'RC5', 'decryptBlock');
-        return ciphertext;
+
+      // Step 2: Initialize S array with magic constants
+      this.expandedKey = new Array(tableSize);
+      this.expandedKey[0] = RC5Algorithm.MAGIC_P;
+      for (let i = 1; i < tableSize; i++) {
+        this.expandedKey[i] = (this.expandedKey[i - 1] + RC5Algorithm.MAGIC_Q) >>> 0;
       }
-      
-      const instance = RC5.instances[id];
-      
-      // Process in 8-byte blocks
-      let result = '';
-      for (let blockStart = 0; blockStart < ciphertext.length; blockStart += 8) {
-        const block = ciphertext.substr(blockStart, 8);
-        if (block.length === 8) {
-          const decryptedBlock = RC5._decryptBlock(instance, block);
-          result += decryptedBlock;
-        }
+
+      // Step 3: Mix key into S array
+      let A = 0, B = 0;
+      let i = 0, j = 0;
+      const iterations = 3 * Math.max(tableSize, c);
+
+      for (let k = 0; k < iterations; k++) {
+        // S[i] = ROL(S[i] + A + B, 3)
+        this.expandedKey[i] = (this.expandedKey[i] + A + B) >>> 0;
+        A = this.expandedKey[i] = OpCodes.RotL32(this.expandedKey[i], 3);
+
+        // L[j] = ROL(L[j] + A + B, A + B)
+        L[j] = (L[j] + A + B) >>> 0;
+        B = L[j] = OpCodes.RotL32(L[j], (A + B) & 31);
+
+        i = (i + 1) % tableSize;
+        j = (j + 1) % c;
       }
-      
-      return result;
-    },
-    
-    // RC5 encryption function (internal)
-    _encryptBlock: function(instance, blockStr) {
-      if (blockStr.length !== 8) {
-        throw new Error('RC5 block must be exactly 8 bytes');
+
+      // Clear temporary key array
+      OpCodes.ClearArray(L);
+    }
+
+    // Private method for block encryption
+    _encryptBlock(plainBytes) {
+      if (plainBytes.length !== 8) {
+        throw new Error(`Invalid block size: ${plainBytes.length} bytes`);
       }
-      
-      // Convert string to two 32-bit words (little-endian)
-      const bytes = global.OpCodes.StringToBytes(blockStr);
-      let A = global.OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]);
-      let B = global.OpCodes.Pack32LE(bytes[4], bytes[5], bytes[6], bytes[7]);
-      
+
+      // Convert to two 32-bit words (little-endian)
+      let A = OpCodes.Pack32LE(plainBytes[0], plainBytes[1], plainBytes[2], plainBytes[3]);
+      let B = OpCodes.Pack32LE(plainBytes[4], plainBytes[5], plainBytes[6], plainBytes[7]);
+
       // Add first round keys
-      A = (A + instance.S[0]) >>> 0;
-      B = (B + instance.S[1]) >>> 0;
-      
+      A = (A + this.expandedKey[0]) >>> 0;
+      B = (B + this.expandedKey[1]) >>> 0;
+
       // Perform rounds
-      for (let i = 1; i <= instance.rounds; i++) {
+      for (let i = 1; i <= this.rounds; i++) {
         // A = ROL(A XOR B, B) + S[2*i]
         A = A ^ B;
-        A = global.OpCodes.RotL32(A, B & 31);
-        A = (A + instance.S[2 * i]) >>> 0;
-        
+        A = OpCodes.RotL32(A, B & 31);
+        A = (A + this.expandedKey[2 * i]) >>> 0;
+
         // B = ROL(B XOR A, A) + S[2*i+1]
         B = B ^ A;
-        B = global.OpCodes.RotL32(B, A & 31);
-        B = (B + instance.S[2 * i + 1]) >>> 0;
+        B = OpCodes.RotL32(B, A & 31);
+        B = (B + this.expandedKey[2 * i + 1]) >>> 0;
       }
-      
-      // Convert back to string (little-endian)
-      const resultA = global.OpCodes.Unpack32LE(A);
-      const resultB = global.OpCodes.Unpack32LE(B);
-      return global.OpCodes.BytesToString(resultA.concat(resultB));
-    },
-    
-    // RC5 decryption function (internal)
-    _decryptBlock: function(instance, blockStr) {
-      if (blockStr.length !== 8) {
-        throw new Error('RC5 block must be exactly 8 bytes');
+
+      // Convert back to bytes (little-endian)
+      return [
+        ...OpCodes.Unpack32LE(A),
+        ...OpCodes.Unpack32LE(B)
+      ];
+    }
+
+    // Private method for block decryption
+    _decryptBlock(cipherBytes) {
+      if (cipherBytes.length !== 8) {
+        throw new Error(`Invalid block size: ${cipherBytes.length} bytes`);
       }
-      
-      // Convert string to two 32-bit words (little-endian)
-      const bytes = global.OpCodes.StringToBytes(blockStr);
-      let A = global.OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]);
-      let B = global.OpCodes.Pack32LE(bytes[4], bytes[5], bytes[6], bytes[7]);
-      
+
+      // Convert to two 32-bit words (little-endian)
+      let A = OpCodes.Pack32LE(cipherBytes[0], cipherBytes[1], cipherBytes[2], cipherBytes[3]);
+      let B = OpCodes.Pack32LE(cipherBytes[4], cipherBytes[5], cipherBytes[6], cipherBytes[7]);
+
       // Perform rounds in reverse
-      for (let i = instance.rounds; i >= 1; i--) {
+      for (let i = this.rounds; i >= 1; i--) {
         // B = ROR(B - S[2*i+1], A) XOR A
-        B = (B - instance.S[2 * i + 1]) >>> 0;
-        B = global.OpCodes.RotR32(B, A & 31);
+        B = (B - this.expandedKey[2 * i + 1]) >>> 0;
+        B = OpCodes.RotR32(B, A & 31);
         B = B ^ A;
-        
+
         // A = ROR(A - S[2*i], B) XOR B
-        A = (A - instance.S[2 * i]) >>> 0;
-        A = global.OpCodes.RotR32(A, B & 31);
+        A = (A - this.expandedKey[2 * i]) >>> 0;
+        A = OpCodes.RotR32(A, B & 31);
         A = A ^ B;
       }
-      
+
       // Subtract first round keys
-      A = (A - instance.S[0]) >>> 0;
-      B = (B - instance.S[1]) >>> 0;
-      
-      // Convert back to string (little-endian)
-      const resultA = global.OpCodes.Unpack32LE(A);
-      const resultB = global.OpCodes.Unpack32LE(B);
-      return global.OpCodes.BytesToString(resultA.concat(resultB));
-    },
-    
-    // RC5 Instance class
-    RC5Instance: function(key) {
-      this.wordSize = RC5.DEFAULT_WORD_SIZE;
-      this.rounds = RC5.DEFAULT_ROUNDS;
-      this.keyBytes = key ? key.length : RC5.DEFAULT_KEY_BYTES;
-      this.tableSize = 2 * (this.rounds + 1); // t = 2*(r+1)
-      this.S = new Array(this.tableSize); // Expanded key table
-      
-      // Perform key expansion
-      this._keyExpansion(key || '');
+      A = (A - this.expandedKey[0]) >>> 0;
+      B = (B - this.expandedKey[1]) >>> 0;
+
+      // Convert back to bytes (little-endian)
+      return [
+        ...OpCodes.Unpack32LE(A),
+        ...OpCodes.Unpack32LE(B)
+      ];
     }
-  };
-  
-  // Add key expansion method to RC5Instance prototype
-  RC5.RC5Instance.prototype._keyExpansion = function(key) {
-    const u = this.wordSize / 8; // Bytes per word (4 for 32-bit)
-    const c = Math.max(1, Math.ceil(this.keyBytes / u)); // Words in key
-    const L = new Array(c); // Key in word array
-    
-    // Step 1: Copy key into L array (little-endian)
-    for (let i = 0; i < c; i++) {
-      L[i] = 0;
-    }
-    
-    for (let i = this.keyBytes - 1; i >= 0; i--) {
-      const keyByte = i < key.length ? key.charCodeAt(i) & 0xFF : 0;
-      L[Math.floor(i / u)] = ((L[Math.floor(i / u)] << 8) + keyByte) >>> 0;
-    }
-    
-    // Step 2: Initialize S array with magic constants
-    this.S[0] = RC5.MAGIC_P;
-    for (let i = 1; i < this.tableSize; i++) {
-      this.S[i] = (this.S[i - 1] + RC5.MAGIC_Q) >>> 0;
-    }
-    
-    // Step 3: Mix key into S array
-    let A = 0, B = 0;
-    let i = 0, j = 0;
-    const iterations = 3 * Math.max(this.tableSize, c);
-    
-    for (let k = 0; k < iterations; k++) {
-      // S[i] = ROL(S[i] + A + B, 3)
-      this.S[i] = (this.S[i] + A + B) >>> 0;
-      A = this.S[i] = global.OpCodes.RotL32(this.S[i], 3);
-      
-      // L[j] = ROL(L[j] + A + B, A + B)
-      L[j] = (L[j] + A + B) >>> 0;
-      B = L[j] = global.OpCodes.RotL32(L[j], (A + B) & 31);
-      
-      i = (i + 1) % this.tableSize;
-      j = (j + 1) % c;
-    }
-    
-    // Clear temporary key array
-    if (global.OpCodes && global.OpCodes.ClearArray) {
-      global.OpCodes.ClearArray(L);
-    }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(RC5);
   }
-  
-  // Export to global scope
-  global.RC5 = RC5;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = RC5;
+
+  // Register the algorithm immediately
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new RC5Algorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+
+  // ===== EXPORTS =====
+
+  return { RC5Algorithm, RC5Instance };
+}));

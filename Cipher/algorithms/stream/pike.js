@@ -16,21 +16,14 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('PIKE cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  }
+  } 
   
   const PIKE = {
     name: "PIKE",
@@ -38,7 +31,7 @@
     inventor: "Ross Anderson",
     year: 2005,
     country: "GB",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: "insecure",
     securityNotes: "Withdrawn from eSTREAM competition due to discovered cryptanalytic vulnerabilities. Not suitable for production use.",
@@ -69,6 +62,26 @@
         iv: OpCodes.Hex8ToBytes("0001020304050607"),
         input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
         expected: [] // No official test vectors due to withdrawal
+      },
+      {
+        text: "PIKE basic test vector with 128-bit key and 64-bit IV",
+        uri: "Educational implementation test",
+        keySize: 16,
+        key: OpCodes.Hex8ToBytes("50494b45207465737420206b65792121212100"),
+        iv: OpCodes.Hex8ToBytes("50494b456976363430"),
+        input: OpCodes.Hex8ToBytes("46617374205049b45210"),
+        expected: [], // Expected output not provided in original test vectors
+        notes: "Basic functionality test for PIKE fast operations"
+      },
+      {
+        text: "PIKE performance test with 256-bit key",
+        uri: "Educational implementation test",
+        keySize: 32,
+        key: OpCodes.Hex8ToBytes("50494b4520323536372d626974207465737420206b657920666f72206d6178696d756d20706572666f726d616e636520746573696e67206865726520"),
+        iv: OpCodes.Hex8ToBytes("50494b456976363430"),
+        input: OpCodes.Hex8ToBytes("5370656564207465737470"),
+        expected: [], // Expected output not provided in original test vectors
+        notes: "Testing PIKE high-speed performance with large key"
       }
     ],
 
@@ -99,6 +112,8 @@
     
     // Internal state
     isInitialized: false,
+    cantDecode: false,
+    boolIsStreamCipher: true, // Mark as stream cipher
     
     /**
      * Initialize cipher with empty state
@@ -170,6 +185,93 @@
      */
     decryptBlock: function(id, input) {
       return PIKE.encryptBlock(id, input);
+    },
+
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._key = keyData;
+          this._instance = new PIKE.PIKEInstance(keyData, this._iv);
+        },
+        
+        set keySize(size) {
+          // Store for later use when key is set
+          this._keySize = size;
+        },
+        
+        set iv(ivData) {
+          if (this._instance) {
+            this._instance.reset(ivData);
+          } else {
+            this._iv = ivData;
+          }
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          // Always create fresh instance for each test
+          if (!this._key) {
+            this._key = new Array(16).fill(0);
+          }
+          
+          const freshInstance = new PIKE.PIKEInstance(this._key, this._iv);
+          
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            const keystreamByte = freshInstance.generateKeystreamByte();
+            result.push(this._inputData[i] ^ keystreamByte);
+          }
+          return result;
+        }
+      };
+    },
+
+    // Required interface method for stream ciphers
+    encrypt: function(id, plaintext) {
+      // Convert byte array to string if necessary
+      if (Array.isArray(plaintext)) {
+        plaintext = String.fromCharCode.apply(null, plaintext);
+      }
+      const result = this.encryptBlock(id, plaintext);
+      // Convert result back to byte array
+      const bytes = [];
+      for (let i = 0; i < result.length; i++) {
+        bytes.push(result.charCodeAt(i));
+      }
+      return bytes;
+    },
+
+    // Required interface method for stream ciphers  
+    decrypt: function(id, ciphertext) {
+      // Convert byte array to string if necessary
+      if (Array.isArray(ciphertext)) {
+        ciphertext = String.fromCharCode.apply(null, ciphertext);
+      }
+      const result = this.decryptBlock(id, ciphertext);
+      // Convert result back to byte array
+      const bytes = [];
+      for (let i = 0; i < result.length; i++) {
+        bytes.push(result.charCodeAt(i));
+      }
+      return bytes;
     },
     
     /**
@@ -366,16 +468,27 @@
     }
   };
   
-  // Auto-register with Subsystem (according to category) if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
-    global.Cipher.Add(PIKE);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(PIKE);
+  }
   
-  // Export for Node.js
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(PIKE);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(PIKE);
+  }
+  
+  // Export to global scope
+  global.PIKE = PIKE;
+  
+  // Node.js module export
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = PIKE;
   }
-  
-  // Make available globally
-  global.PIKE = PIKE;
   
 })(typeof global !== 'undefined' ? global : window);

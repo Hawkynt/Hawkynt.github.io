@@ -33,28 +33,12 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Leviathan cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
-  
-  // Load metadata system
-  if (!global.CipherMetadata && typeof require !== 'undefined') {
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
     try {
-      require('../../cipher-metadata.js');
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
     } catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
+      console.error('Failed to load AlgorithmFramework:', e.message);
+      return;
     }
   }
   
@@ -65,6 +49,7 @@
     version: '1.0',
     author: 'David McGrew (2005)',
     description: 'Large-state stream cipher designed for high security margin',
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     
     // Cipher parameters
     nBlockSizeInBits: 32,   // 32-bit word-based operations
@@ -79,6 +64,34 @@
     maxBlockSize: 1024, // Maximum block size
     stepBlockSize: 1,   // Step size
     instances: {},
+    
+    // Test vectors
+    tests: [
+      {
+        text: "Leviathan basic test vector with 256-bit key and IV",
+        uri: "Educational implementation test",
+        keySize: 32,
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes('4c6576696174686e20323536372d626974207465737420206b657920666f72206c617267652073746174652063697068657220746573696e67206865726520') : null,
+        iv: global.OpCodes ? global.OpCodes.Hex8ToBytes('4c6576696174686e20323536372d626974207465737420204956206f72206c617267652073746174652063697068657220746573696e6720') : null,
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes('4c617267652073746174652074657374') : null,
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes('00'.repeat(16)) : null, // Placeholder - needs actual cipher output
+        inputText: "Large state test",
+        notes: "Basic functionality test for Leviathan large-state operations",
+        category: "basic-functionality"
+      },
+      {
+        text: "Leviathan with all-zeros key and IV",
+        uri: "Educational implementation test", 
+        keySize: 32,
+        key: global.OpCodes ? global.OpCodes.Hex8ToBytes('00'.repeat(32)) : null,
+        iv: global.OpCodes ? global.OpCodes.Hex8ToBytes('00'.repeat(32)) : null,
+        input: global.OpCodes ? global.OpCodes.Hex8ToBytes('4e756c6c206b6579207465737470') : null,
+        expected: global.OpCodes ? global.OpCodes.Hex8ToBytes('00'.repeat(15)) : null, // Placeholder - needs actual cipher output
+        inputText: "Null key test",
+        notes: "Testing Leviathan with null key and IV (edge case)",
+        category: "edge-case"
+      }
+    ],
     
     // Comprehensive metadata
     metadata: global.CipherMetadata ? global.CipherMetadata.createMetadata({
@@ -468,17 +481,27 @@
     }
   };
   
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(Leviathan);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(Leviathan);
   }
   
-  // Export for Node.js
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(Leviathan);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(Leviathan);
+  }
+  
+  // Export to global scope
+  global.Leviathan = Leviathan;
+  
+  // Node.js module export
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = Leviathan;
   }
-  
-  // Make available globally
-  global.Leviathan = Leviathan;
   
 })(typeof global !== 'undefined' ? global : window);

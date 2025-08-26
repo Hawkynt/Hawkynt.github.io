@@ -1,17 +1,47 @@
-#!/usr/bin/env node
-/*
- * RIPEMD-320 Implementation
- * (c)2006-2025 Hawkynt
- */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Load OpCodes library for common operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
   // RIPEMD-320 constants
   const RIPEMD320_BLOCKSIZE = 64;    // 512 bits
   const RIPEMD320_DIGESTSIZE = 40;   // 320 bits
@@ -93,7 +123,7 @@
   
   RipeMD320Hasher.prototype.update = function(data) {
     if (typeof data === 'string') {
-      data = OpCodes.StringToBytes(data);
+      data = OpCodes.AnsiToBytes(data);
     }
     
     this.totalLength += data.length;
@@ -237,19 +267,19 @@
       {
         text: "Single character 'a' test vector",
         uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
-        input: OpCodes.StringToBytes("a"),
+        input: OpCodes.AnsiToBytes("a"),
         expected: OpCodes.Hex8ToBytes("ce78850638f92658a5a585097579926dda667a5716562cfcf6fbe77f63542f99b04705d6970dff5d")
       },
       {
         text: "String 'abc' test vector",
         uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
-        input: OpCodes.StringToBytes("abc"),
+        input: OpCodes.AnsiToBytes("abc"),
         expected: OpCodes.Hex8ToBytes("de4c01b3054f8930a79d09ae738e92301e5a17085beffdc1b8d116713e74f82fa942d64cdbc4682d")
       },
       {
         text: "Alphabet test vector",
         uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html",
-        input: OpCodes.StringToBytes("abcdefghijklmnopqrstuvwxyz"),
+        input: OpCodes.AnsiToBytes("abcdefghijklmnopqrstuvwxyz"),
         expected: OpCodes.Hex8ToBytes("cabdb1810b92470a2093aa6bce05952c28348cf43ff60841975166bb40ed234004b8824463e6b009")
       }
     ],
@@ -303,16 +333,63 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
-    global.Cipher.Add(RipeMD320);
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = RipeMD320;
+    class RipeMD320Wrapper extends CryptoAlgorithm {
+      constructor() {
+        super();
+        this.name = RipeMD320.name;
+        this.category = CategoryType.HASH;
+        this.securityStatus = SecurityStatus.EDUCATIONAL;
+        this.complexity = ComplexityType.MEDIUM;
+        this.inventor = RipeMD320.inventor;
+        this.year = RipeMD320.year;
+        this.country = RipeMD320.country;
+        this.description = RipeMD320.description;
+        
+        if (RipeMD320.tests) {
+          this.tests = RipeMD320.tests.map(test => 
+            new TestCase(test.input, test.expected, test.text, test.uri)
+          );
+        }
+      }
+      
+      CreateInstance(isInverse = false) {
+        return new RipeMD320WrapperInstance(this, isInverse);
+      }
+    }
+    
+    class RipeMD320WrapperInstance extends IAlgorithmInstance {
+      constructor(algorithm, isInverse) {
+        super(algorithm, isInverse);
+        this.hasher = new RipeMD320Hasher();
+      }
+      
+      ProcessData(input) {
+        const result = this.hasher.finalize();
+        return Array.from(result); // Convert Uint8Array to regular array
+      }
+      
+      Feed(data) {
+        this.hasher.update(data);
+      }
+      
+      Result() {
+        return this.ProcessData();
+      }
+      
+      Reset() {
+        this.hasher = new RipeMD320Hasher();
+      }
+    }
+
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new RipeMD320Wrapper();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Make available globally
-  global.RipeMD320 = RipeMD320;
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // ===== EXPORTS =====
+
+  return { RipeMD320Wrapper, RipeMD320WrapperInstance };
+}));

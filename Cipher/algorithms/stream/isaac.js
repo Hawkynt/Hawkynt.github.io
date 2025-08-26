@@ -34,28 +34,12 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('ISAAC cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
-  
-  // Load metadata system
-  if (!global.CipherMetadata && typeof require !== 'undefined') {
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
     try {
-      require('../../cipher-metadata.js');
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
     } catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
+      console.error('Failed to load AlgorithmFramework:', e.message);
+      return;
     }
   }
   
@@ -381,9 +365,19 @@
     }
   };
   
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(ISAAC);
+  }
+  
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(ISAAC);
+  }
+  
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(ISAAC);
+  if (global.Cipher) {
+    global.Cipher.Add(ISAAC);
   }
   
   // Export to global scope

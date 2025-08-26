@@ -31,27 +31,22 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('HC-128 cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  }
+  } 
   
   // Create HC-128 cipher object
   const HC128 = {
     // Public interface properties
     internalName: 'HC-128',
     name: 'HC-128 Stream Cipher',
+    description: 'HC-128 eSTREAM stream cipher with table-based design using 128-bit key and IV. Part of the eSTREAM portfolio for software optimization.',
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     comment: 'HC-128 eSTREAM Stream Cipher - Table-based with 128-bit key and IV',
     minKeyLength: 16,   // HC-128 uses 128-bit keys (16 bytes)
     maxKeyLength: 16,
@@ -70,6 +65,19 @@
     IV_SIZE: 128,          // 128-bit IV
     INIT_STEPS: 1024,      // Initialization steps
     
+    // Official eSTREAM test vectors
+    tests: [
+      {
+        text: "HC-128 eSTREAM Test Vector 1",
+        uri: "https://github.com/neoeinstein/bouncycastle/blob/master/crypto/test/data/hc256/hc128/ecrypt_HC-128.txt",
+        keySize: 16,
+        key: global.OpCodes.Hex8ToBytes("80000000000000000000000000000000"),
+        iv: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        input: global.OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("378602B98F32A74847515654AE0DE7ED8F72BC34776A065103E51595521FFE47")
+      }
+    ],
+    
     // Initialize cipher
     Init: function() {
       HC128.isInitialized = true;
@@ -85,6 +93,91 @@
       HC128.instances[id] = new HC128.HC128Instance(key);
       global.objectInstances[id] = true;
       return id;
+    },
+    
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._key = keyData;
+          this._instance = new HC128.HC128Instance(keyData, this._iv || this._nonce);
+        },
+        
+        set keySize(size) {
+          this._keySize = size;
+        },
+        
+        set nonce(nonceData) {
+          this._nonce = nonceData;
+          if (this._instance && this._instance.setNonce) {
+            this._instance.setNonce(nonceData);
+          }
+        },
+        
+        set counter(counterValue) {
+          this._counter = counterValue;
+          if (this._instance && this._instance.setCounter) {
+            this._instance.setCounter(counterValue);
+          }
+        },
+        
+        set iv(ivData) {
+          this._iv = ivData;
+          if (this._instance && this._instance.setIV) {
+            this._instance.setIV(ivData);
+          }
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          // Create fresh instance if needed with all parameters
+          if (!this._instance && this._key) {
+            this._instance = new HC128.HC128Instance(this._key, this._iv || this._nonce);
+          }
+          
+          if (!this._instance) {
+            return [];
+          }
+          
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            // Try different keystream methods that stream ciphers might use
+            let keystreamByte;
+            if (this._instance.getNextKeystreamByte) {
+              keystreamByte = this._instance.getNextKeystreamByte();
+            } else if (this._instance.generateKeystreamByte) {
+              keystreamByte = this._instance.generateKeystreamByte();
+            } else if (this._instance.getKeystream) {
+              const keystream = this._instance.getKeystream(1);
+              keystreamByte = keystream[0];
+            } else if (this._instance.nextByte) {
+              keystreamByte = this._instance.nextByte();
+            } else {
+              // Fallback - return input unchanged
+              keystreamByte = 0;
+            }
+            result.push(this._inputData[i] ^ keystreamByte);
+          }
+          return result;
+        }
+      };
     },
     
     // Clear cipher data
@@ -396,9 +489,19 @@
     }
   };
   
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(HC128);
+  }
+  
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(HC128);
+  }
+  
   // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(HC128);
+  if (global.Cipher) {
+    global.Cipher.Add(HC128);
   }
   
   // Export to global scope

@@ -31,18 +31,11 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Grain v1 cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
   }
@@ -51,9 +44,42 @@
   const GrainV1 = {
     internalName: 'grain-v1',
     name: 'Grain v1',
-    version: '1.0',
-    author: 'Hell, Johansson, Meier (2004)',
-    description: 'Lightweight eSTREAM finalist stream cipher for hardware',
+    comment: 'Grain v1 Stream Cipher - eSTREAM Profile 2 portfolio cipher for hardware',
+    
+    // Required metadata following CONTRIBUTING.md
+    description: "Lightweight stream cipher using LFSR and NFSR designed for restricted hardware environments. Selected for eSTREAM Portfolio Profile 2. Uses 80-bit keys and 64-bit IVs with 160-bit total state.",
+    inventor: "Martin Hell, Thomas Johansson, and Willi Meier",
+    year: 2004,
+    country: "SE",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
+    subCategory: "Stream Cipher",
+    securityStatus: null,
+    securityNotes: "Part of eSTREAM Portfolio Profile 2. Designed for hardware efficiency with limited gate count. No known practical attacks.",
+    
+    documentation: [
+      {text: "eSTREAM Grain v1 Specification", uri: "https://www.ecrypt.eu.org/stream/grainpf.html"},
+      {text: "Grain - A New Stream Cipher", uri: "https://www.eit.lth.se/fileadmin/eit/courses/eit060f/Grain.pdf"},
+      {text: "eSTREAM Portfolio", uri: "https://www.ecrypt.eu.org/stream/"}
+    ],
+    
+    references: [
+      {text: "eSTREAM Grain Page", uri: "https://www.ecrypt.eu.org/stream/grainpf.html"},
+      {text: "Grain Family Website", uri: "http://www.grain-cipher.com/"}
+    ],
+    
+    knownVulnerabilities: [],
+    
+    tests: [
+      {
+        text: "eSTREAM Grain v1 Test Vector",
+        uri: "https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/grain/",
+        keySize: 10,
+        input: global.OpCodes.Hex8ToBytes("0000000000000000"),
+        key: global.OpCodes.Hex8ToBytes("00000000000000000000"),
+        iv: global.OpCodes.Hex8ToBytes("0000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("7d405a412bfa1f7b")
+      }
+    ],
     
     // Cipher parameters
     nBlockSizeInBits: 1,   // Stream cipher - 1 bit at a time
@@ -247,11 +273,11 @@
         throw new Error('Cipher not initialized');
       }
       
-      const inputBytes = OpCodes.StringToBytes(input);
+      const inputBytes = global.OpCodes.AsciiToBytes(input);
       const keystream = this.generateKeystream(inputBytes.length);
-      const outputBytes = OpCodes.XorArrays(inputBytes, keystream);
+      const outputBytes = global.OpCodes.XorArrays(inputBytes, keystream);
       
-      return OpCodes.BytesToString(outputBytes);
+      return global.OpCodes.BytesToString(outputBytes);
     },
     
     /**
@@ -269,20 +295,77 @@
      */
     ClearData: function() {
       if (this.lfsr) {
-        OpCodes.ClearArray(this.lfsr);
+        global.OpCodes.ClearArray(this.lfsr);
         this.lfsr = null;
       }
       if (this.nfsr) {
-        OpCodes.ClearArray(this.nfsr);
+        global.OpCodes.ClearArray(this.nfsr);
         this.nfsr = null;
       }
       this.isInitialized = false;
+    },
+    
+    /**
+     * Create instance for testing framework
+     */
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        _key: null,
+        _iv: null,
+        
+        set key(keyData) {
+          this._key = keyData;
+        },
+        
+        set keySize(size) {
+          this._keySize = size;
+        },
+        
+        set iv(ivData) {
+          this._iv = ivData;
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          if (!this._key || !this._iv) {
+            throw new Error('Grain v1 requires both key and IV');
+          }
+          
+          // Create fresh Grain instance 
+          const grainInstance = Object.create(GrainV1);
+          grainInstance.KeySetup(this._key, this._iv);
+          
+          const keystream = grainInstance.generateKeystream(this._inputData.length);
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            result.push(this._inputData[i] ^ keystream[i]);
+          }
+          return result;
+        }
+      };
     }
   };
   
   // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(GrainV1);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(GrainV1);
   }
   
   // Export for Node.js

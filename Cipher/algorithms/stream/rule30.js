@@ -16,21 +16,14 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Rule30 cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  }
+  } 
   
   const Rule30 = {
     name: "Rule30",
@@ -38,7 +31,7 @@
     inventor: "Stephen Wolfram",
     year: 1983,
     country: "GB",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: "educational",
     securityNotes: "Cellular automaton not designed for cryptographic use. Predictable with sufficient state knowledge and lacks proper cryptographic properties. Educational use only.",
@@ -62,12 +55,12 @@
     
     tests: [
       {
-        text: "Basic Rule30 Test",
-        uri: "Educational test case",
+        text: "Rule30 Deterministic Test - Simple Key",
+        uri: "Educational deterministic test case",
         keySize: 8,
-        key: OpCodes.Hex8ToBytes("0102030405060708"),
-        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: [] // No official test vectors, cellular automaton based
+        key: global.OpCodes.Hex8ToBytes("0102030405060708"),
+        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("75ba7afe575d87a4484b50e3cbb6ba7e")
       }
     ],
 
@@ -88,35 +81,176 @@
     DEFAULT_SIZE: 127,       // CA array size (odd number for central cell)
     
     // Internal state
-    cells: null,             // Current CA state
-    size: 0,                 // Array size
-    centerIndex: 0,          // Index of center cell
     isInitialized: false,
+    cantDecode: false,
+    boolIsStreamCipher: true, // Mark as stream cipher
     
     /**
      * Initialize cipher with empty state
      */
     Init: function() {
-      this.size = this.DEFAULT_SIZE;
-      this.centerIndex = Math.floor(this.size / 2);
-      this.cells = new Array(this.size).fill(0);
-      this.isInitialized = false;
+      this.isInitialized = true;
       return true;
     },
     
     /**
      * Setup key for Rule30 stream cipher
-     * @param {Array} key - Key as byte array (32 bytes for 256-bit key)
+     * @param {Array} key - Key as byte array
      */
     KeySetup: function(key) {
-      if (!key || key.length !== 32) {
-        throw new Error('Rule30 requires 256-bit (32 byte) key');
+      let id;
+      do {
+        id = 'Rule30[' + global.generateUniqueID() + ']';
+      } while (Rule30.instances[id] || global.objectInstances[id]);
+      
+      Rule30.instances[id] = new Rule30.Rule30Instance(key);
+      global.objectInstances[id] = true;
+      return id;
+    },
+    
+    /**
+     * Clear cipher data
+     */
+    ClearData: function(id) {
+      if (Rule30.instances[id]) {
+        const instance = Rule30.instances[id];
+        if (instance.cells && global.OpCodes) {
+          global.OpCodes.ClearArray(instance.cells);
+        }
+        delete Rule30.instances[id];
+        delete global.objectInstances[id];
+        return true;
+      } else {
+        global.throwException('Unknown Object Reference Exception', id, 'Rule30', 'ClearData');
+        return false;
+      }
+    },
+    
+    /**
+     * Encrypt block using Rule30 stream cipher
+     */
+    encryptBlock: function(id, input) {
+      if (!Rule30.instances[id]) {
+        global.throwException('Unknown Object Reference Exception', id, 'Rule30', 'encryptBlock');
+        return input;
       }
       
-      // Initialize state
-      this.Init();
+      const instance = Rule30.instances[id];
+      const result = [];
+      
+      for (let n = 0; n < input.length; n++) {
+        const keystreamByte = instance.generateByte();
+        let inputByte;
+        if (typeof input === 'string') {
+          inputByte = input.charCodeAt(n) & 0xFF;
+        } else {
+          inputByte = input[n] & 0xFF;
+        }
+        const outputByte = inputByte ^ keystreamByte;
+        result.push(outputByte);
+      }
+      
+      return result;
+    },
+    
+    /**
+     * Decrypt block (same as encrypt for stream cipher)
+     */
+    decryptBlock: function(id, input) {
+      return Rule30.encryptBlock(id, input);
+    },
+
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._key = keyData;
+          this._instance = new Rule30.Rule30Instance(keyData);
+        },
+        
+        set keySize(size) {
+          this._keySize = size;
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          if (!this._key) {
+            this._key = new Array(32).fill(0);
+          }
+          
+          const freshInstance = new Rule30.Rule30Instance(this._key);
+          
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            const keystreamByte = freshInstance.generateByte();
+            result.push(this._inputData[i] ^ keystreamByte);
+          }
+          return result;
+        }
+      };
+    },
+
+    // Required interface method for stream ciphers
+    encrypt: function(id, plaintext) {
+      const result = this.encryptBlock(id, plaintext);
+      return Array.isArray(result) ? result : [];
+    },
+
+    decrypt: function(id, ciphertext) {
+      const result = this.decryptBlock(id, ciphertext);
+      return Array.isArray(result) ? result : [];
+    },
+    
+    /**
+     * Rule30 Instance class
+     */
+    Rule30Instance: function(key) {
+      this.cells = null;
+      this.size = Rule30.DEFAULT_SIZE;
+      this.centerIndex = Math.floor(this.size / 2);
       
       // Initialize CA state from key
+      this.initializeFromKey(key);
+    }
+  };
+  
+  // Add methods to Rule30Instance prototype
+  Rule30.Rule30Instance.prototype = {
+    
+    initializeFromKey: function(key) {
+      // Ensure we have a key
+      if (!key || !Array.isArray(key)) {
+        key = new Array(32).fill(0);
+      }
+      
+      // Pad or truncate key to 32 bytes
+      if (key.length < 32) {
+        while (key.length < 32) {
+          key.push(0);
+        }
+      } else if (key.length > 32) {
+        key = key.slice(0, 32);
+      }
+      
+      this.cells = new Array(this.size).fill(0);
+      
       // Use key bytes to set initial cell states
       for (let i = 0; i < this.size; i++) {
         const keyIndex = i % key.length;
@@ -124,178 +258,68 @@
         this.cells[i] = (key[keyIndex] >>> bitIndex) & 1;
       }
       
-      // Ensure at least one cell is set (to avoid all-zero state)
+      // Ensure at least one cell is set
       if (this.cells.every(cell => cell === 0)) {
         this.cells[this.centerIndex] = 1;
       }
       
-      // Perform some initial evolution steps to mix the state
+      // Perform initial evolution steps
       for (let step = 0; step < 100; step++) {
         this.evolveCA();
       }
-      
-      this.isInitialized = true;
-      return true;
     },
     
-    /**
-     * Apply Rule 30 evolution to the cellular automaton
-     * Rule 30: 00011110 (binary)
-     * Current pattern -> Next state
-     * 111 -> 0, 110 -> 0, 101 -> 0, 100 -> 1
-     * 011 -> 1, 010 -> 1, 001 -> 1, 000 -> 0
-     */
     evolveCA: function() {
       const newCells = new Array(this.size);
       
       for (let i = 0; i < this.size; i++) {
-        // Get neighbors (with wrap-around)
         const left = this.cells[(i - 1 + this.size) % this.size];
         const center = this.cells[i];
         const right = this.cells[(i + 1) % this.size];
         
-        // Apply Rule 30
-        // XOR of left neighbor and (center OR right neighbor)
+        // Apply Rule 30: XOR of left neighbor and (center OR right neighbor)
         newCells[i] = left ^ (center | right);
       }
       
       this.cells = newCells;
     },
     
-    /**
-     * Generate a single bit from the center cell
-     * @returns {number} 0 or 1
-     */
     generateBit: function() {
-      if (!this.isInitialized) {
-        throw new Error('Cipher not initialized - call KeySetup first');
-      }
-      
-      // Evolve the CA one step
       this.evolveCA();
-      
-      // Return the center cell value
       return this.cells[this.centerIndex];
     },
     
-    /**
-     * Generate a byte (8 bits) from the CA
-     * @returns {number} Byte value (0-255)
-     */
     generateByte: function() {
       let byte = 0;
-      
       for (let bit = 0; bit < 8; bit++) {
         const bitValue = this.generateBit();
         byte |= (bitValue << bit);
       }
-      
       return byte;
-    },
-    
-    /**
-     * Generate keystream bytes
-     * @param {number} length - Number of bytes to generate
-     * @returns {Array} Array of keystream bytes
-     */
-    generateKeystream: function(length) {
-      const keystream = [];
-      
-      for (let i = 0; i < length; i++) {
-        keystream.push(this.generateByte());
-      }
-      
-      return keystream;
-    },
-    
-    /**
-     * Encrypt block using Rule30 stream cipher
-     * @param {number} position - Block position (unused for stream cipher)
-     * @param {string} input - Input data as string
-     * @returns {string} Encrypted data as string
-     */
-    encryptBlock: function(position, input) {
-      if (!this.isInitialized) {
-        throw new Error('Cipher not initialized');
-      }
-      
-      const inputBytes = OpCodes.StringToBytes(input);
-      const keystream = this.generateKeystream(inputBytes.length);
-      const outputBytes = OpCodes.XorArrays(inputBytes, keystream);
-      
-      return OpCodes.BytesToString(outputBytes);
-    },
-    
-    /**
-     * Decrypt block (same as encrypt for stream cipher)
-     * @param {number} position - Block position
-     * @param {string} input - Input data as string
-     * @returns {string} Decrypted data as string
-     */
-    decryptBlock: function(position, input) {
-      return this.encryptBlock(position, input);
-    },
-    
-    /**
-     * Get current CA state for debugging
-     * @returns {Array} Current cell states
-     */
-    getState: function() {
-      return this.cells ? this.cells.slice() : null;
-    },
-    
-    /**
-     * Set CA size (must be odd number for central cell)
-     * @param {number} size - New size for the CA
-     */
-    setSize: function(size) {
-      if (size % 2 === 0) {
-        size++; // Ensure odd size
-      }
-      
-      this.size = size;
-      this.centerIndex = Math.floor(size / 2);
-      
-      if (this.cells) {
-        // Resize existing array
-        if (this.cells.length < size) {
-          // Expand array
-          const newCells = new Array(size).fill(0);
-          const offset = Math.floor((size - this.cells.length) / 2);
-          for (let i = 0; i < this.cells.length; i++) {
-            newCells[offset + i] = this.cells[i];
-          }
-          this.cells = newCells;
-        } else if (this.cells.length > size) {
-          // Shrink array (keep center portion)
-          const offset = Math.floor((this.cells.length - size) / 2);
-          this.cells = this.cells.slice(offset, offset + size);
-        }
-      }
-    },
-    
-    /**
-     * Clear sensitive data
-     */
-    ClearData: function() {
-      if (this.cells) {
-        OpCodes.ClearArray(this.cells);
-        this.cells = null;
-      }
-      this.isInitialized = false;
     }
   };
   
-  // Auto-register with Subsystem (according to category) if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
-    global.Cipher.Add(Rule30);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(Rule30);
+  }
   
-  // Export for Node.js
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(Rule30);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(Rule30);
+  }
+  
+  // Export to global scope
+  global.Rule30 = Rule30;
+  
+  // Node.js module export
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = Rule30;
   }
-  
-  // Make available globally
-  global.Rule30 = Rule30;
   
 })(typeof global !== 'undefined' ? global : window);

@@ -1,219 +1,264 @@
-#!/usr/bin/env node
 /*
- * Universal Morse Code Encoder/Decoder
- * Based on International Telegraph Alphabet No. 2 (ITA2) and ITU-R M.1677-1
- * Compatible with both Browser and Node.js environments
- * 
- * Morse code is a method of transmitting text information as a series
- * of on-off tones, lights, or clicks using standardized sequences of
- * short and long signals called "dots" and "dashes".
- * 
- * References:
- * - ITU-R M.1677-1: International Morse Code
- * - ITA2 International Telegraph Alphabet No. 2
- * 
+ * Morse Code (International) Encoding Implementation
+ * Educational implementation of International Morse Code (ITU-R M.1677-1)
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
-  'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-      return;
-    }
-  }
-  
-  if (!global.Cipher && typeof require !== 'undefined') {
-    try {
-      require('../../universal-cipher-env.js');
-      require('../../cipher.js');
-    } catch (e) {
-      console.error('Failed to load cipher dependencies:', e.message);
-      return;
-    }
-  }
-  
-  const MorseCode = {
-    internalName: 'morse',
-    name: 'Morse Code (International)',
-    version: '1.0.0',
-        comment: 'Educational implementation for learning purposes',
-    minKeyLength: 0,
-    maxKeyLength: 0,
-    stepKeyLength: 1,
-    minBlockSize: 0,
-    maxBlockSize: 0,
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
+// Load AlgorithmFramework (REQUIRED)
 
-    
-    // International Morse Code alphabet (ITU-R M.1677-1)
-    morseTable: {
-      // Letters
-      'A': '.-',    'B': '-...',  'C': '-.-.',  'D': '-..',   'E': '.',
-      'F': '..-.',  'G': '--.',   'H': '....',  'I': '..',    'J': '.---',
-      'K': '-.-',   'L': '.-..',  'M': '--',    'N': '-.',    'O': '---',
-      'P': '.--.',  'Q': '--.-',  'R': '.-.',   'S': '...',   'T': '-',
-      'U': '..-',   'V': '...-',  'W': '.--',   'X': '-..-',  'Y': '-.--',
-      'Z': '--..',
-      
-      // Numbers
-      '0': '-----', '1': '.----', '2': '..---', '3': '...--', '4': '....-',
-      '5': '.....', '6': '-....', '7': '--...', '8': '---..', '9': '----.',
-      
-      // Punctuation
-      '.': '.-.-.-',  ',': '--..--',  '?': '..--..',  '\'': '.----.',
-      '!': '-.-.--',  '/': '-..-.',   '(': '-.--.',   ')': '-.--.-',
-      '&': '.-...',   ':': '---...',  ';': '-.-.-.',  '=': '-...-',
-      '+': '.-.-.',   '-': '-....-',  '_': '..--.-',  '"': '.-..-.',
-      '$': '...-..-', '@': '.--.-.',  ' ': '/',       
-      
-      // Prosigns (procedural signals)
-      '<AR>': '.-.-.',    // End of message
-      '<AS>': '.-...',    // Wait
-      '<BT>': '-...-',    // Break
-      '<CT>': '-.-.-',    // Starting signal
-      '<KA>': '-.-.-',    // Attention
-      '<KN>': '-.--.',    // Go ahead
-      '<SK>': '...-.-',   // End of work
-      '<SN>': '...-.',    // Understood
-      '<SOS>': '...---...' // Distress signal
-    },
-    
-    // Reverse lookup table
-    reverseTable: null,
-    
-    // Timing parameters (relative units)
-    dotLength: 1,
-    dashLength: 3,
-    elementGap: 1,     // Gap between dots/dashes in same letter
-    letterGap: 3,      // Gap between letters
-    wordGap: 7,        // Gap between words
-    
-    /**
-     * Initialize the cipher and build reverse lookup table
-     */
-    Init: function() {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
+  'use strict';
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
+  
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class MorseAlgorithm extends EncodingAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "Morse Code (International)";
+      this.description = "Method of transmitting text information as a series of on-off tones, lights, or clicks using standardized sequences of short and long signals called dots and dashes. Educational implementation following ITU-R M.1677-1 standard.";
+      this.inventor = "Samuel Morse";
+      this.year = 1836;
+      this.category = CategoryType.ENCODING;
+      this.subCategory = "Telegraph Encoding";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.BEGINNER;
+      this.country = CountryCode.US;
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("ITU-R M.1677-1: International Morse Code", "https://www.itu.int/dms_pubrec/itu-r/rec/m/R-REC-M.1677-1-200910-I!!PDF-E.pdf"),
+        new LinkItem("Morse Code - Wikipedia", "https://en.wikipedia.org/wiki/Morse_code"),
+        new LinkItem("International Telegraph Alphabet", "https://en.wikipedia.org/wiki/Telegraph_code")
+      ];
+
+      this.references = [
+        new LinkItem("Ham Radio Morse Code Standards", "https://www.arrl.org/morse-code"),
+        new LinkItem("Educational Morse Code Examples", "https://morsecode.world/international/morse.html"),
+        new LinkItem("GNU Radio Morse Implementation", "https://github.com/gnuradio/gnuradio/tree/master/gr-digital/lib")
+      ];
+
+      this.knownVulnerabilities = [];
+
+      // Test vectors from ITU-R M.1677-1 standard
+      this.tests = [
+        new TestCase(
+          OpCodes.AnsiToBytes(""),
+          OpCodes.AnsiToBytes(""),
+          "Morse empty string test",
+          "https://www.itu.int/dms_pubrec/itu-r/rec/m/R-REC-M.1677-1-200910-I!!PDF-E.pdf"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("E"),
+          OpCodes.AnsiToBytes("."),
+          "Single letter E test - ITU-R M.1677-1",
+          "https://en.wikipedia.org/wiki/Morse_code#Letters"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("SOS"),
+          OpCodes.AnsiToBytes("... --- ..."),
+          "SOS distress signal test - Morse",
+          "ITU-R M.1677-1 standard"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("HELLO"),
+          OpCodes.AnsiToBytes(".... . .-.. .-.. ---"),
+          "Basic word encoding test - Morse",
+          "Educational standard"
+        )
+      ];
+
+      // International Morse Code alphabet (ITU-R M.1677-1)
+      this.morseTable = {
+        // Letters
+        'A': '.-',    'B': '-...',  'C': '-.-.',  'D': '-..',   'E': '.',
+        'F': '..-.',  'G': '--.',   'H': '....',  'I': '..',    'J': '.---',
+        'K': '-.-',   'L': '.-..',  'M': '--',    'N': '-.',    'O': '---',
+        'P': '.--.',  'Q': '--.-',  'R': '.-.',   'S': '...',   'T': '-',
+        'U': '..-',   'V': '...-',  'W': '.--',   'X': '-..-',  'Y': '-.--',
+        'Z': '--..',
+
+        // Numbers
+        '0': '-----', '1': '.----', '2': '..---', '3': '...--', '4': '....-',
+        '5': '.....', '6': '-....', '7': '--...', '8': '---..', '9': '----.',
+
+        // Punctuation
+        '.': '.-.-.-',  ',': '--..--',  '?': '..--..',  '\'': '.----.',
+        '!': '-.-.--',  '/': '-..-.',   '(': '-.--.',   ')': '-.--.-',
+        '&': '.-...',   ':': '---...',  ';': '-.-.-.',  '=': '-...-',
+        '+': '.-.-.',   '-': '-....-',  '_': '..--.-',  '"': '.-..-.',
+        '$': '...-..-', '@': '.--.-.',  ' ': '/',       
+
+        // Prosigns (procedural signals)
+        '<AR>': '.-.-.',    // End of message
+        '<AS>': '.-...',    // Wait
+        '<BT>': '-...-',    // Break
+        '<CT>': '-.-.-',    // Starting signal
+        '<KA>': '-.-.-',    // Attention
+        '<KN>': '-.--.',    // Go ahead
+        '<SK>': '...-.-',   // End of work
+        '<SN>': '...-.',    // Understood
+        '<SOS>': '...---...' // Distress signal
+      };
+
+      this.reverseTable = null;
+    }
+
+    CreateInstance(isInverse = false) {
+      return new MorseInstance(this, isInverse);
+    }
+
+    init() {
       // Build reverse lookup table
       this.reverseTable = {};
       for (const [char, morse] of Object.entries(this.morseTable)) {
         this.reverseTable[morse] = char;
       }
-    },
-    
-    /**
-     * Set up encoding parameters
-     * @param {Object} key - Configuration: {format: 'text'|'binary', timing: {...}}
-     */
-    KeySetup: function(key) {
-      this.Init(); // Ensure tables are built
-      
-      if (typeof key === 'object' && key !== null) {
-        // Update timing if provided
-        if (key.timing) {
-          this.dotLength = key.timing.dotLength || 1;
-          this.dashLength = key.timing.dashLength || 3;
-          this.elementGap = key.timing.elementGap || 1;
-          this.letterGap = key.timing.letterGap || 3;
-          this.wordGap = key.timing.wordGap || 7;
-        }
+    }
+  }
+
+  class MorseInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.processedData = null;
+
+      this.algorithm.init();
+    }
+
+    Feed(data) {
+      if (!Array.isArray(data)) {
+        throw new Error('MorseInstance.Feed: Input must be byte array');
       }
-    },
-    
-    /**
-     * Encode text to Morse code
-     * @param {number} mode - Encoding mode (0 = encode)
-     * @param {string} data - Input text to encode
-     * @returns {string} Morse code representation
-     */
-    encryptBlock: function(mode, data) {
-      if (mode !== 0) {
-        throw new Error('Morse: Invalid mode for encoding');
+
+      if (this.isInverse) {
+        this.processedData = this.decode(data);
+      } else {
+        this.processedData = this.encode(data);
       }
-      
-      if (typeof data !== 'string') {
-        throw new Error('Morse: Input must be a string');
+    }
+
+    Result() {
+      if (this.processedData === null) {
+        throw new Error('MorseInstance.Result: No data processed. Call Feed() first.');
       }
-      
+      return this.processedData;
+    }
+
+    encode(data) {
       if (data.length === 0) {
-        return '';
+        return [];
       }
-      
-      const upperData = data.toUpperCase();
+
+      const text = String.fromCharCode(...data);
+      const upperData = text.toUpperCase();
       const morseWords = [];
-      
+
       // Split into words
-      const words = upperData.split(/\\s+/);
-      
+      const words = upperData.split(/\s+/);
+
       for (const word of words) {
+        if (word.length === 0) continue;
+
         const morseLetters = [];
-        
+
         for (let i = 0; i < word.length; i++) {
           const char = word[i];
-          const morseChar = this.morseTable[char];
-          
+          const morseChar = this.algorithm.morseTable[char];
+
           if (morseChar) {
             morseLetters.push(morseChar);
           } else {
             // Unknown character - represent as question mark
-            morseLetters.push(this.morseTable['?']);
+            morseLetters.push(this.algorithm.morseTable['?']);
           }
         }
-        
+
         morseWords.push(morseLetters.join(' '));
       }
-      
-      return morseWords.join('  /  ');
-    },
-    
-    /**
-     * Decode Morse code to text
-     * @param {number} mode - Decoding mode (0 = decode)
-     * @param {string} data - Morse code to decode
-     * @returns {string} Decoded text
-     */
-    decryptBlock: function(mode, data) {
-      if (mode !== 0) {
-        throw new Error('Morse: Invalid mode for decoding');
+
+      const result = morseWords.join('  /  ');
+
+      // Convert string to byte array
+      const resultBytes = [];
+      for (let i = 0; i < result.length; i++) {
+        resultBytes.push(result.charCodeAt(i));
       }
-      
-      if (typeof data !== 'string' || data.length === 0) {
-        return '';
+      return resultBytes;
+    }
+
+    decode(data) {
+      if (data.length === 0) {
+        return [];
       }
-      
+
+      const morse = String.fromCharCode(...data);
+
       // Ensure reverse table is built
-      if (!this.reverseTable) {
-        this.Init();
+      if (!this.algorithm.reverseTable) {
+        this.algorithm.init();
       }
-      
+
       // Clean up input - normalize spaces and separators
-      let cleanData = data.trim()
+      let cleanData = morse.trim()
         .replace(/\s*\/\s*/g, ' / ')  // Normalize word separators
         .replace(/\s+/g, ' ')          // Normalize multiple spaces
         .replace(/[^.\-\s/]/g, '');     // Remove invalid characters
-      
+
       // Split by word separators
       const morseWords = cleanData.split(' / ');
       const decodedWords = [];
-      
+
       for (const morseWord of morseWords) {
         if (morseWord.trim().length === 0) continue;
-        
+
         // Split by letter separators (single space)
         const morseLetters = morseWord.trim().split(' ');
         const decodedLetters = [];
-        
+
         for (const morseLetter of morseLetters) {
           if (morseLetter.length === 0) continue;
-          
-          const decodedChar = this.reverseTable[morseLetter];
+
+          const decodedChar = this.algorithm.reverseTable[morseLetter];
           if (decodedChar) {
             decodedLetters.push(decodedChar);
           } else {
@@ -221,113 +266,31 @@
             decodedLetters.push('?');
           }
         }
-        
+
         decodedWords.push(decodedLetters.join(''));
       }
-      
-      return decodedWords.join(' ');
-    },
-    
-    /**
-     * Convert Morse to binary timing representation
-     * @param {string} morseText - Morse code text
-     * @returns {Array} Binary timing array (1 = signal, 0 = silence)
-     */
-    toBinary: function(morseText) {
-      const binary = [];
-      const words = morseText.split('  /  ');
-      
-      for (let w = 0; w < words.length; w++) {
-        const letters = words[w].split(' ');
-        
-        for (let l = 0; l < letters.length; l++) {
-          const letter = letters[l];
-          
-          for (let e = 0; e < letter.length; e++) {
-            const element = letter[e];
-            
-            if (element === '.') {
-              // Dot: signal for dot length
-              for (let i = 0; i < this.dotLength; i++) {
-                binary.push(1);
-              }
-            } else if (element === '-') {
-              // Dash: signal for dash length
-              for (let i = 0; i < this.dashLength; i++) {
-                binary.push(1);
-              }
-            }
-            
-            // Element gap (except after last element in letter)
-            if (e < letter.length - 1) {
-              for (let i = 0; i < this.elementGap; i++) {
-                binary.push(0);
-              }
-            }
-          }
-          
-          // Letter gap (except after last letter in word)
-          if (l < letters.length - 1) {
-            for (let i = 0; i < this.letterGap; i++) {
-              binary.push(0);
-            }
-          }
-        }
-        
-        // Word gap (except after last word)
-        if (w < words.length - 1) {
-          for (let i = 0; i < this.wordGap; i++) {
-            binary.push(0);
-          }
-        }
+
+      const result = decodedWords.join(' ');
+
+      // Convert string to byte array
+      const resultBytes = [];
+      for (let i = 0; i < result.length; i++) {
+        resultBytes.push(result.charCodeAt(i));
       }
-      
-      return binary;
-    },
-    
-    /**
-     * Clear sensitive data
-     */
-    ClearData: function() {
-      // Reset timing to defaults
-      this.dotLength = 1;
-      this.dashLength = 3;
-      this.elementGap = 1;
-      this.letterGap = 3;
-      this.wordGap = 7;
-    },
-    
-    /**
-     * Get cipher information
-     * @returns {Object} Cipher information
-     */
-    GetInfo: function() {
-      return {
-        name: this.name,
-        version: this.version,
-        type: 'Encoding',
-        blockSize: 'Variable',
-        keySize: 'Timing parameters',
-        description: 'International Morse Code (ITU-R M.1677-1)',
-        standard: 'ITU-R M.1677-1',
-        characters: Object.keys(this.morseTable).length,
-        inventor: 'Samuel Morse (1830s)',
-        features: ['Letters', 'Numbers', 'Punctuation', 'Prosigns', 'Binary timing']
-      };
+      return resultBytes;
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(MorseCode);
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = MorseCode;
+
+  // Register the algorithm
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new MorseAlgorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Make available globally
-  global.MorseCode = MorseCode;
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // ===== EXPORTS =====
+
+  return { MorseAlgorithm, MorseInstance };
+}));

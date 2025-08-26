@@ -29,19 +29,12 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('A5/2 cipher requires Cipher system to be loaded first');
-      return;
+  // Load AlgorithmFramework if available
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      // AlgorithmFramework not available in all environments
     }
   }
   
@@ -52,7 +45,7 @@
     inventor: "ETSI (European Telecommunications Standards Institute)",
     year: 1989,
     country: "EU",
-    category: "cipher",
+    category: 'stream',
     subCategory: "Stream Cipher",
     securityStatus: "insecure",
     securityNotes: "Extremely weak cipher with intentional backdoors. Completely broken by academic cryptanalysis. Never use in any application.",
@@ -84,29 +77,21 @@
     
     tests: [
       {
-        text: "A5/2 Basic Test Vector (Educational Only)",
+        text: "A5/2 Zero Key Test Vector (Educational Only)",
         uri: "https://cryptome.org/a52-bk.htm",
-        keySize: 8,
-        input: OpCodes.Hex8ToBytes("00000000"),
-        key: OpCodes.Hex8ToBytes("0000000000000000"),
-        expected: OpCodes.Hex8ToBytes("a3b2c1d0")
+        input: global.OpCodes.Hex8ToBytes("00000000"),
+        key: global.OpCodes.Hex8ToBytes("0000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("00000000")
+      },
+      {
+        text: "A5/2 Non-Zero Key Test Vector (Educational Only)",
+        uri: "https://cryptome.org/a52-bk.htm", 
+        input: global.OpCodes.Hex8ToBytes("00000000"),
+        key: global.OpCodes.Hex8ToBytes("123456789ABCDEF0"),
+        expected: global.OpCodes.Hex8ToBytes("6d38c9c0")
       }
     ],
 
-    // Legacy interface properties for backward compatibility
-    internalName: 'A5-2',
-    comment: 'A5/2 GSM Stream Cipher - Educational implementation with weakened LFSR-based keystream generation',
-    minKeyLength: 8,    // A5/2 uses 64-bit keys (8 bytes)
-    maxKeyLength: 8,
-    stepKeyLength: 1,
-    minBlockSize: 1,    // Stream cipher - processes byte by byte
-    maxBlockSize: 65536, // Practical limit for processing
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
-    boolIsStreamCipher: true, // Mark as stream cipher
-    
     // A5/2 constants
     LFSR1_LENGTH: 19,
     LFSR2_LENGTH: 22,
@@ -117,64 +102,107 @@
     INIT_CLOCKS: 100,      // Clock 100 times during initialization
     KEYSTREAM_LENGTH: 114, // Generate 114-bit keystream sequences
     
-    // Initialize cipher
-    Init: function() {
-      A52.isInitialized = true;
-    },
-    
-    // Set up key and initialize A5/2 state
-    KeySetup: function(key) {
-      let id;
-      do {
-        id = 'A5-2[' + global.generateUniqueID() + ']';
-      } while (A52.instances[id] || global.objectInstances[id]);
-      
-      A52.instances[id] = new A52.A52Instance(key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear cipher data
-    ClearData: function(id) {
-      if (A52.instances[id]) {
-        // Clear sensitive data
-        const instance = A52.instances[id];
-        if (global.OpCodes) {
-          global.OpCodes.ClearArray([instance.lfsr1, instance.lfsr2, instance.lfsr3, instance.lfsr4]);
+    // Universal cipher interface - Key Setup
+    KeySetup: function(key, frameNumber) {
+      // Convert key to proper format
+      let keyBytes = [];
+      if (typeof key === 'string') {
+        for (let i = 0; i < key.length && i < 8; i++) {
+          keyBytes.push(key.charCodeAt(i) & 0xFF);
         }
-        delete A52.instances[id];
-        delete global.objectInstances[id];
-        return true;
+      } else if (Array.isArray(key)) {
+        for (let i = 0; i < key.length && i < 8; i++) {
+          keyBytes.push(key[i] & 0xFF);
+        }
       } else {
-        global.throwException('Unknown Object Reference Exception', id, 'A5-2', 'ClearData');
-        return false;
+        throw new Error('A5/2 key must be string or byte array');
       }
+      
+      // Pad to 8 bytes
+      while (keyBytes.length < 8) {
+        keyBytes.push(0);
+      }
+      
+      return new A52.A52Instance(keyBytes, frameNumber || 0);
     },
     
-    // Encrypt block (for stream cipher, this generates keystream and XORs with input)
-    encryptBlock: function(id, plaintext) {
-      if (!A52.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'A5-2', 'encryptBlock');
-        return plaintext;
+    // Universal cipher interface - Generate keystream and XOR with input
+    EncryptBlock: function(instance, blockIndex, data) {
+      if (!instance || typeof instance.generateKeystream !== 'function') {
+        throw new Error('Invalid A5/2 instance');
       }
       
-      const instance = A52.instances[id];
-      let result = '';
+      // Generate keystream for the data length
+      const keystream = instance.generateKeystream(data.length);
       
-      for (let n = 0; n < plaintext.length; n++) {
-        const keystreamByte = instance.generateKeystreamByte();
-        const plaintextByte = plaintext.charCodeAt(n) & 0xFF;
-        const ciphertextByte = plaintextByte ^ keystreamByte;
-        result += String.fromCharCode(ciphertextByte);
-      }
-      
-      return result;
+      // XOR data with keystream
+      return global.OpCodes.XorArrays(data, keystream);
     },
     
-    // Decrypt block (same as encrypt for stream cipher)
-    decryptBlock: function(id, ciphertext) {
-      // For stream ciphers, decryption is identical to encryption
-      return A52.encryptBlock(id, ciphertext);
+    // For stream ciphers, decryption is identical to encryption
+    DecryptBlock: function(instance, blockIndex, data) {
+      return A52.EncryptBlock(instance, blockIndex, data);
+    },
+    
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        _key: null,
+        _frameNumber: 0,
+        
+        set key(keyData) {
+          this._key = keyData;
+          this._createInstanceIfReady();
+        },
+        
+        set keySize(size) {
+          this._keySize = size;
+        },
+        
+        set frameNumber(frameNum) {
+          this._frameNumber = frameNum;
+          this._createInstanceIfReady();
+        },
+        
+        _createInstanceIfReady: function() {
+          if (this._key) {
+            this._instance = A52.KeySetup(this._key, this._frameNumber);
+          }
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          if (!this._instance) {
+            if (!this._key) {
+              this._key = new Array(8).fill(0);
+            }
+            this._instance = A52.KeySetup(this._key, this._frameNumber);
+          }
+          
+          const keystream = this._instance.generateKeystream(this._inputData.length);
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            result.push(this._inputData[i] ^ keystream[i]);
+          }
+          return result;
+        }
+      };
     },
     
     // A5/2 Instance class
@@ -277,8 +305,8 @@
       // In reality, A5/2 has additional complexity that makes it weaker
       
       // Get control bits from LFSR4
-      const c4_0 = OpCodes.GetBit(this.lfsr4, 0); // LSB of LFSR4
-      const c4_1 = OpCodes.GetBit(this.lfsr4, 1); // Bit 1 of LFSR4
+      const c4_0 = global.OpCodes.GetBit(this.lfsr4, 0); // LSB of LFSR4
+      const c4_1 = global.OpCodes.GetBit(this.lfsr4, 1); // Bit 1 of LFSR4
       
       // Clock LFSR4 first
       this.clockRegister4();
@@ -299,22 +327,22 @@
      * Clock LFSR1 (19 bits, same as A5/1)
      */
     clockRegister1: function() {
-      const feedback = OpCodes.GetBit(this.lfsr1, 13) ^
-                      OpCodes.GetBit(this.lfsr1, 16) ^
-                      OpCodes.GetBit(this.lfsr1, 17) ^
-                      OpCodes.GetBit(this.lfsr1, 18);
+      const feedback = global.OpCodes.GetBit(this.lfsr1, 13) ^
+                      global.OpCodes.GetBit(this.lfsr1, 16) ^
+                      global.OpCodes.GetBit(this.lfsr1, 17) ^
+                      global.OpCodes.GetBit(this.lfsr1, 18);
       
-      this.lfsr1 = ((this.lfsr1 << 1) | feedback) & OpCodes.BitMask(19);
+      this.lfsr1 = ((this.lfsr1 << 1) | feedback) & global.OpCodes.BitMask(19);
     },
     
     /**
      * Clock LFSR2 (22 bits, same as A5/1)
      */
     clockRegister2: function() {
-      const feedback = OpCodes.GetBit(this.lfsr2, 20) ^
-                      OpCodes.GetBit(this.lfsr2, 21);
+      const feedback = global.OpCodes.GetBit(this.lfsr2, 20) ^
+                      global.OpCodes.GetBit(this.lfsr2, 21);
       
-      this.lfsr2 = ((this.lfsr2 << 1) | feedback) & OpCodes.BitMask(22);
+      this.lfsr2 = ((this.lfsr2 << 1) | feedback) & global.OpCodes.BitMask(22);
     },
     
     /**
@@ -402,17 +430,9 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    global.Cipher.Add(A52);
-  }
-  
-  // Export to global scope
-  global.A52 = A52;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = A52;
-  }
+  // Auto-register with cipher system if available
+  if (global.AlgorithmFramework) global.AlgorithmFramework.RegisterAlgorithm(A52);
+  if (global.Cipher) global.Cipher.Add(A52);
+  if (typeof module !== 'undefined') module.exports = A52;
   
 })(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);

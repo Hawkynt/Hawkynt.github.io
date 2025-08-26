@@ -33,30 +33,16 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('VEST cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  }
+  } 
   
-  // Load metadata system
-  if (!global.CipherMetadata && typeof require !== 'undefined') {
-    try {
-      require('../../cipher-metadata.js');
-    } catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
-    }
-  }
+  
   
   // Create VEST cipher object
   const VEST = {
@@ -80,51 +66,30 @@
     stepBlockSize: 1,   // Step size
     instances: {},
     
-    // Comprehensive metadata
-    metadata: global.CipherMetadata ? global.CipherMetadata.createMetadata({
-      algorithm: 'VEST',
-      displayName: 'VEST (Variable Encryption Standard)',
-      description: 'Software-oriented stream cipher with variable key/IV sizes and operating modes. Features word-based operations and complex nonlinear filter.',
-      
-      inventor: 'Sean O\'Neil',
-      year: 2005,
-      background: 'Submitted to eSTREAM project as a software-oriented stream cipher. Features configurable parameters for different security/performance trade-offs.',
-      
-      securityStatus: global.CipherMetadata.SecurityStatus.WEAK,
-      securityNotes: 'Had cryptanalytic concerns during eSTREAM evaluation. Not selected for final portfolio. Educational use only.',
-      
-      category: global.CipherMetadata.Categories.STREAM,
-      subcategory: 'LFSR-based with nonlinear filter',
-      complexity: global.CipherMetadata.ComplexityLevels.INTERMEDIATE,
-      
-      keySize: '64-128', // Variable key sizes
-      blockSize: 1, // Stream cipher
-      rounds: 'continuous', // LFSR-based
-      
-      specifications: [
-        {
-          name: 'eSTREAM VEST Specification',
-          url: 'https://www.ecrypt.eu.org/stream/vestpf.html'
-        }
-      ],
-      
-      references: [
-        {
-          name: 'eSTREAM Phase 2 Evaluation',
-          url: 'https://www.ecrypt.eu.org/stream/vest.html'
-        }
-      ],
-      
-      implementationNotes: 'Variable key/IV sizes (64-128 bits), multiple operating modes (4/8/16/32-bit), LFSR-based with nonlinear filter.',
-      performanceNotes: 'Designed for software efficiency with word-based operations.',
-      
-      educationalValue: 'Good example of configurable stream cipher design and eSTREAM evaluation process.',
-      prerequisites: ['LFSR theory', 'Nonlinear functions', 'Stream cipher concepts'],
-      
-      tags: ['stream', 'estream', 'software', 'lfsr', 'variable-parameters', 'weak', 'educational'],
-      
-      version: '1.0'
-    }) : null,
+    documentation: [
+      {text:"eSTREAM VEST Specification",uri:"https://www.ecrypt.eu.org/stream/vestpf.html"}
+    ],
+    
+    references: [
+      {text:"eSTREAM Phase 2 Evaluation",uri:"https://www.ecrypt.eu.org/stream/vest.html"}
+    ],
+    
+    tests: [
+      {
+        text: 'VEST basic test vector with 128-bit key and IV',
+        key: 'VEST test key 128',  // 16 bytes
+        iv: 'VEST test IV 128',    // 16 bytes
+        input: OpCodes.AnsiToBytes('Hello VEST!'),
+        expected: [],
+      },
+      {
+        text: 'VEST with 64-bit key (minimum size)',
+        key: 'VESTkey8',  // 8 bytes
+        iv: 'VESTiv64',   // 8 bytes  
+        input: OpCodes.AnsiToBytes('Minimum'),
+        expected: []
+      }
+    ],
     
     // VEST constants
     LFSR_COUNT: 4,        // Four LFSRs
@@ -489,17 +454,27 @@
     }
   };
   
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(VEST);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(VEST);
   }
   
-  // Export for Node.js
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(VEST);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(VEST);
+  }
+  
+  // Export to global scope
+  global.VEST = VEST;
+  
+  // Node.js module export
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = VEST;
   }
-  
-  // Make available globally
-  global.VEST = VEST;
   
 })(typeof global !== 'undefined' ? global : window);
