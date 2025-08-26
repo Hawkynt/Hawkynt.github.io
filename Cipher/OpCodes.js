@@ -94,7 +94,35 @@
       return ((value >>> positions) | (value << (32 - positions))) >>> 0;
     },
 
-    // TODO: RotL64/RotR64 for BigInt param
+    /**
+     * Rotate left (circular left shift) for 64-bit BigInt values
+     * @param {BigInt} value - 64-bit BigInt value to rotate
+     * @param {number} positions - Number of positions to rotate (0-63)
+     * @returns {BigInt} Rotated 64-bit BigInt value
+     */
+    RotL64n: function(value, positions) {
+      const mask64 = 0xFFFFFFFFFFFFFFFFn;
+      value = value & mask64;
+      positions = positions & 63;
+      if (positions === 0) return value;
+      
+      return ((value << BigInt(positions)) | (value >> BigInt(64 - positions))) & mask64;
+    },
+
+    /**
+     * Rotate right (circular right shift) for 64-bit BigInt values
+     * @param {BigInt} value - 64-bit BigInt value to rotate
+     * @param {number} positions - Number of positions to rotate (0-63)
+     * @returns {BigInt} Rotated 64-bit BigInt value
+     */
+    RotR64n: function(value, positions) {
+      const mask64 = 0xFFFFFFFFFFFFFFFFn;
+      value = value & mask64;
+      positions = positions & 63;
+      if (positions === 0) return value;
+      
+      return ((value >> BigInt(positions)) | (value << BigInt(64 - positions))) & mask64;
+    },
     
     /**
      * 64-bit left rotation (for future 64-bit ciphers)
@@ -152,7 +180,35 @@
       }
     },
 
-    // TODO: RotL128/RotR128 for BigInt param
+    /**
+     * Rotate left (circular left shift) for 128-bit BigInt values
+     * @param {BigInt} value - 128-bit BigInt value to rotate
+     * @param {number} positions - Number of positions to rotate (0-127)
+     * @returns {BigInt} Rotated 128-bit BigInt value
+     */
+    RotL128n: function(value, positions) {
+      const mask128 = (1n << 128n) - 1n;
+      value = value & mask128;
+      positions = positions & 127;
+      if (positions === 0) return value;
+      
+      return ((value << BigInt(positions)) | (value >> BigInt(128 - positions))) & mask128;
+    },
+
+    /**
+     * Rotate right (circular right shift) for 128-bit BigInt values
+     * @param {BigInt} value - 128-bit BigInt value to rotate
+     * @param {number} positions - Number of positions to rotate (0-127)
+     * @returns {BigInt} Rotated 128-bit BigInt value
+     */
+    RotR128n: function(value, positions) {
+      const mask128 = (1n << 128n) - 1n;
+      value = value & mask128;
+      positions = positions & 127;
+      if (positions === 0) return value;
+      
+      return ((value >> BigInt(positions)) | (value << BigInt(128 - positions))) & mask128;
+    },
     
     /**
      * Rotate 128-bit value represented as 16-byte array to the left
