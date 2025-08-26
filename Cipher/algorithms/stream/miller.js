@@ -29,12 +29,11 @@
     }
   }
   
-  if (!global.Cipher && typeof require !== 'undefined') {
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
     try {
-      require('../../universal-cipher-env.js');
-      require('../../cipher.js');
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
     } catch (e) {
-      console.error('Failed to load cipher dependencies:', e.message);
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
   }
@@ -104,7 +103,7 @@
       let bits;
       if (typeof data === 'string') {
         // Convert string to bits
-        const bytes = OpCodes.StringToBytes(data);
+        const bytes = OpCodes.AsciiToBytes(data);
         bits = [];
         for (const byte of bytes) {
           for (let i = 7; i >= 0; i--) {
@@ -316,17 +315,27 @@
     }
   };
   
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(MillerEncoding);
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(MillerEncoding);
   }
   
-  // Export for Node.js
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(MillerEncoding);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
+    global.Cipher.Add(MillerEncoding);
+  }
+  
+  // Export to global scope
+  global.MillerEncoding = MillerEncoding;
+  
+  // Node.js module export
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = MillerEncoding;
   }
-  
-  // Make available globally
-  global.MillerEncoding = MillerEncoding;
   
 })(typeof global !== 'undefined' ? global : window);

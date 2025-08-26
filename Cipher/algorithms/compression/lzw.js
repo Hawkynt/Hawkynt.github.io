@@ -1,445 +1,308 @@
 /*
- * Universal LZW (Lempel-Ziv-Welch) Compression Algorithm
- * Compatible with both Browser and Node.js environments
- * Educational implementation of Terry Welch's variant - used in GIF/TIFF
+ * LZW (Lempel-Ziv-Welch) Compression Algorithm Implementation
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
+ * 
+ * Dictionary-based compression algorithm developed by Terry Welch in 1984.
+ * Used in GIF images, TIFF files, and early Unix compress utility.
+ * Builds dictionary dynamically during compression/decompression.
  */
 
-(function(global) {
-  'use strict';
-  
-  // Load dependencies
-  if (!global.Compression && typeof require !== 'undefined') {
-    try {
-      require('../../compression.js');
-    } catch (e) {
-      console.error('Failed to load compression framework:', e.message);
-      return;
-    }
-  }
-  
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes.js:', e.message);
-      return;
-    }
-  }
-  
-  const LZW = {
-    name: "LZW (Lempel-Ziv-Welch)",
-    description: "Dictionary compression algorithm that builds a table of frequently occurring strings. Pre-initializes dictionary with all single bytes and adds new patterns dynamically during compression.",
-    inventor: "Terry Welch", 
-    year: 1984,
-    country: "US",
-    category: "compression",
-    subCategory: "Dictionary",
-    securityStatus: null,
-    securityNotes: "Compression algorithm - no security properties.",
-    
-    documentation: [
-      {text: "A Technique for High-Performance Data Compression", uri: "https://ieeexplore.ieee.org/document/1659158"},
-      {text: "LZW - Wikipedia", uri: "https://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Welch"},
-      {text: "GIF Format Specification", uri: "https://www.w3.org/Graphics/GIF/spec-gif89a.txt"},
-      {text: "TIFF LZW Compression", uri: "https://www.adobe.io/open/standards/TIFF.html"}
-    ],
-    
-    references: [
-      {text: "Original IEEE Paper by Terry Welch", uri: "https://ieeexplore.ieee.org/document/1659158"},
-      {text: "libgif LZW Implementation", uri: "https://github.com/lecram/gifenc"},
-      {text: "TIFF LZW Reference", uri: "https://github.com/vadimkantorov/pytiff"},
-      {text: "Educational LZW Implementation", uri: "https://rosettacode.org/wiki/LZW_compression"}
-    ],
-    
-    knownVulnerabilities: [],
-    
-    tests: [
-      {
-        text: "Simple repeated pattern",
-        uri: "Basic LZW test", 
-        input: OpCodes.StringToBytes("ABABABAB"),
-        expected: OpCodes.Hex8ToBytes("010041424101010258")
-      },
-      {
-        text: "Text with common substrings",
-        uri: "Text compression test",
-        input: OpCodes.StringToBytes("TOBEORNOTTOBEORTOBEORNOT"),
-        expected: null
-      },
-      {
-        text: "GIF-style compression",
-        uri: "Image data test",
-        input: OpCodes.Hex8ToBytes("474946"),
-        expected: null
-      }
-    ],
 
-    // Legacy interface properties
-    internalName: 'LZW',
-    category: 'Dictionary',
-    instances: {},
-    isInitialized: false,
-    
-    // LZW Configuration parameters
-    INITIAL_CODE_SIZE: 9,       // Starting code size in bits
-    MAX_CODE_SIZE: 12,          // Maximum code size in bits (4096 entries)
-    CLEAR_CODE: 256,            // Clear dictionary code
-    EOF_CODE: 257,              // End of file code
-    FIRST_CODE: 258,            // First available code for dictionary
-    
-    /**
-     * Initialize the algorithm
-     */
-    Init: function() {
-      this.isInitialized = true;
-      console.log('LZW algorithm initialized');
-    },
-    
-    /**
-     * Create a new instance
-     */
-    KeySetup: function() {
-      const id = this.internalName + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
-      this.instances[id] = {
-        initialized: true,
-        compressionRatio: 0,
-        lastInputSize: 0,
-        lastOutputSize: 0
-      };
-      return id;
-    },
-    
-    /**
-     * Compress data using LZW algorithm
-     * @param {string} keyId - Instance identifier
-     * @param {string} data - Input data to compress
-     * @returns {string} Compressed data
-     */
-    Compress: function(keyId, data) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
+  'use strict';
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
+  
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class LZWCompression extends CompressionAlgorithm {
+      constructor() {
+        super();
+
+        // Required metadata
+        this.name = "LZW (Lempel-Ziv-Welch)";
+        this.description = "Dictionary-based compression algorithm that builds a table of frequently occurring strings. Pre-initializes dictionary with all single bytes and adds new patterns dynamically during compression. Used in GIF/TIFF formats.";
+        this.inventor = "Terry Welch";
+        this.year = 1984;
+        this.category = CategoryType.COMPRESSION;
+        this.subCategory = "Dictionary";
+        this.securityStatus = null;
+        this.complexity = ComplexityType.ADVANCED;
+        this.country = CountryCode.US;
+
+        // Documentation and references
+        this.documentation = [
+          new LinkItem("A Technique for High-Performance Data Compression", "https://ieeexplore.ieee.org/document/1659158"),
+          new LinkItem("LZW - Wikipedia", "https://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Welch"),
+          new LinkItem("GIF Format Specification", "https://www.w3.org/Graphics/GIF/spec-gif89a.txt")
+        ];
+
+        this.references = [
+          new LinkItem("Original IEEE Paper by Terry Welch", "https://ieeexplore.ieee.org/document/1659158"),
+          new LinkItem("TIFF LZW Reference", "https://github.com/vadimkantorov/pytiff"),
+          new LinkItem("Educational LZW Implementation", "https://rosettacode.org/wiki/LZW_compression")
+        ];
+
+        // Test vectors - compression tests with expected compressed outputs
+        this.tests = [
+          new TestCase(
+            [65, 66, 65, 66, 65, 66, 65, 66], // Repeated pattern
+            [0, 0, 0, 5, 0, 65, 0, 66, 1, 2, 1, 4, 0, 66],
+            "Simple repeated pattern",
+            "Basic LZW test"
+          ),
+          new TestCase(
+            [84, 79, 66, 69, 79, 82, 78, 79, 84, 84, 79, 66, 69, 79, 82, 84, 79, 66, 69, 79, 82, 78, 79, 84], // "TOBEORNOTTOBEORTOBEORNOT"
+            [0, 0, 0, 16, 0, 84, 0, 79, 0, 66, 0, 69, 0, 79, 0, 82, 0, 78, 0, 79, 0, 84, 1, 2, 1, 4, 1, 6, 1, 11, 1, 5, 1, 7, 1, 9],
+            "Text with common substrings",
+            "Text compression test"
+          ),
+          new TestCase(
+            [0x47, 0x49, 0x46], // "GIF" header
+            [0, 0, 0, 3, 0, 71, 0, 73, 0, 70],
+            "Binary data compression",
+            "Binary data test"
+          )
+        ];
       }
-      
-      if (!data || data.length === 0) {
-        return '';
+
+      CreateInstance(isInverse = false) {
+        return new LZWCompressionInstance(this, isInverse);
       }
-      
-      const instance = this.instances[keyId];
-      const input = this._stringToBytes(data);
-      
-      // Initialize dictionary with all single bytes (0-255)
-      const dictionary = new Map();
-      for (let i = 0; i < 256; i++) {
-        dictionary.set(String.fromCharCode(i), i);
+    }
+
+    class LZWCompressionInstance extends IAlgorithmInstance {
+      constructor(algorithm, isInverse = false) {
+        super(algorithm);
+        this.isInverse = isInverse;
+        this.inputBuffer = [];
       }
-      
-      let nextCode = this.FIRST_CODE;
-      let codeSize = this.INITIAL_CODE_SIZE;
-      const codes = [];
-      
-      // Add clear code at the beginning
-      codes.push(this.CLEAR_CODE);
-      
-      let currentString = '';
-      
-      for (let i = 0; i < input.length; i++) {
-        const char = String.fromCharCode(input[i]);
-        const testString = currentString + char;
-        
-        if (dictionary.has(testString)) {
-          // String found in dictionary, continue building
-          currentString = testString;
+
+      Feed(data) {
+        if (!data || data.length === 0) return;
+        this.inputBuffer.push(...data);
+      }
+
+      Result() {
+        if (this.inputBuffer.length === 0) {
+          return [];
+        }
+
+        if (this.isInverse) {
+          return this._decompress();
         } else {
-          // String not in dictionary
-          // Output code for current string
-          codes.push(dictionary.get(currentString));
-          
-          // Add new string to dictionary if there's room
-          if (nextCode < (1 << this.MAX_CODE_SIZE)) {
-            dictionary.set(testString, nextCode);
-            nextCode++;
-            
-            // Increase code size if needed
-            if (nextCode >= (1 << codeSize) && codeSize < this.MAX_CODE_SIZE) {
-              codeSize++;
+          return this._compress();
+        }
+      }
+
+      _compress() {
+        try {
+          const input = this.inputBuffer.slice();
+          this.inputBuffer = [];
+
+          if (input.length === 0) return [];
+
+          // Initialize dictionary with all single bytes (0-255)
+          const dictionary = new Map();
+          for (let i = 0; i < 256; i++) {
+            dictionary.set(String.fromCharCode(i), i);
+          }
+
+          let nextCode = 258; // 256=CLEAR, 257=EOF in some variants
+          const codes = [];
+
+          let currentString = '';
+
+          for (let i = 0; i < input.length; i++) {
+            const char = String.fromCharCode(input[i]);
+            const testString = currentString + char;
+
+            if (dictionary.has(testString)) {
+              currentString = testString;
+            } else {
+              // Output code for current string
+              codes.push(dictionary.get(currentString));
+
+              // Add new string to dictionary if there's room
+              if (nextCode < 4096) { // 12-bit max
+                dictionary.set(testString, nextCode);
+                nextCode++;
+              }
+
+              currentString = char;
             }
           }
-          
-          // Start new string with current character
-          currentString = char;
+
+          // Output code for final string
+          if (currentString !== '') {
+            codes.push(dictionary.get(currentString));
+          }
+
+          return this._packCodes(codes);
+        } catch (e) {
+          this.inputBuffer = [];
+          return [];
         }
       }
-      
-      // Output code for final string
-      if (currentString !== '') {
-        codes.push(dictionary.get(currentString));
+
+      _decompress() {
+        try {
+          const input = this.inputBuffer.slice();
+          this.inputBuffer = [];
+
+          if (input.length === 0) return [];
+
+          const codes = this._unpackCodes(input);
+          if (codes.length === 0) return [];
+
+          // Initialize dictionary with all single bytes
+          const dictionary = new Map();
+          for (let i = 0; i < 256; i++) {
+            dictionary.set(i, String.fromCharCode(i));
+          }
+
+          let nextCode = 258;
+          const result = [];
+          let prevString = '';
+
+          for (let i = 0; i < codes.length; i++) {
+            const code = codes[i];
+            let currentString;
+
+            if (dictionary.has(code)) {
+              currentString = dictionary.get(code);
+            } else if (code === nextCode) {
+              // Special case: code not yet in dictionary
+              currentString = prevString + prevString.charAt(0);
+            } else {
+              throw new Error('Invalid LZW code sequence');
+            }
+
+            result.push(currentString);
+
+            if (prevString !== '' && nextCode < 4096) {
+              const newEntry = prevString + currentString.charAt(0);
+              dictionary.set(nextCode, newEntry);
+              nextCode++;
+            }
+
+            prevString = currentString;
+          }
+
+          const output = result.join('');
+          const bytes = [];
+          for (let i = 0; i < output.length; i++) {
+            bytes.push(global.OpCodes ? global.OpCodes.Byte(output.charCodeAt(i)) : (output.charCodeAt(i) & 0xFF));
+          }
+          return bytes;
+        } catch (e) {
+          this.inputBuffer = [];
+          return [];
+        }
       }
-      
-      // Add EOF code
-      codes.push(this.EOF_CODE);
-      
-      // Pack codes into bit stream
-      const compressed = this._packCodes(codes);
-      
-      // Update statistics
-      instance.lastInputSize = data.length;
-      instance.lastOutputSize = compressed.length;
-      instance.compressionRatio = data.length / compressed.length;
-      
-      return compressed;
-    },
-    
-    /**
-     * Decompress LZW-encoded data
-     * @param {string} keyId - Instance identifier
-     * @param {string} compressedData - Compressed data
-     * @returns {string} Decompressed data
-     */
-    Decompress: function(keyId, compressedData) {
-      if (!this.instances[keyId]) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      if (!compressedData || compressedData.length === 0) {
-        return '';
-      }
-      
-      // Unpack codes from bit stream
-      const codes = this._unpackCodes(compressedData);
-      
-      if (codes.length === 0) {
-        return '';
-      }
-      
-      // Initialize dictionary with all single bytes (0-255)
-      const dictionary = new Map();
-      for (let i = 0; i < 256; i++) {
-        dictionary.set(i, String.fromCharCode(i));
-      }
-      
-      let nextCode = this.FIRST_CODE;
-      const output = [];
-      
-      let i = 0;
-      
-      // Skip clear code if present
-      if (codes[i] === this.CLEAR_CODE) {
-        i++;
-      }
-      
-      if (i >= codes.length || codes[i] === this.EOF_CODE) {
-        return '';
-      }
-      
-      // First code must be in initial dictionary
-      let currentCode = codes[i++];
-      if (currentCode >= 256) {
-        throw new Error('Invalid first code in LZW data');
-      }
-      
-      let currentString = dictionary.get(currentCode);
-      output.push(currentString);
-      
-      while (i < codes.length && codes[i] !== this.EOF_CODE) {
-        const code = codes[i++];
-        let newString;
-        
-        if (dictionary.has(code)) {
-          // Code exists in dictionary
-          newString = dictionary.get(code);
-        } else if (code === nextCode) {
-          // Special case: code being defined
-          newString = currentString + currentString.charAt(0);
+
+      _packCodes(codes) {
+        // Simple packing: store each code as 2 bytes (16-bit)
+        const bytes = [];
+
+        // Store number of codes first (4 bytes)
+        const count = codes.length;
+        if (global.OpCodes) {
+          const packed = global.OpCodes.Pack32BE(count);
+          bytes.push(packed[0], packed[1], packed[2], packed[3]);
         } else {
-          throw new Error('Invalid code in LZW data');
+          bytes.push((count >>> 24) & 0xFF);
+          bytes.push((count >>> 16) & 0xFF);
+          bytes.push((count >>> 8) & 0xFF);
+          bytes.push(count & 0xFF);
         }
-        
-        output.push(newString);
-        
-        // Add new string to dictionary
-        if (currentString !== '' && nextCode < (1 << this.MAX_CODE_SIZE)) {
-          dictionary.set(nextCode, currentString + newString.charAt(0));
-          nextCode++;
-        }
-        
-        currentString = newString;
-      }
-      
-      const result = output.join('');
-      return result;
-    },
-    
-    /**
-     * Clear instance data
-     */
-    ClearData: function(keyId) {
-      if (this.instances[keyId]) {
-        delete this.instances[keyId];
-        return true;
-      }
-      return false;
-    },
-    
-    /**
-     * Pack codes into bit stream with variable code sizes
-     * @private
-     */
-    _packCodes: function(codes) {
-      let bitStream = '';
-      let codeSize = this.INITIAL_CODE_SIZE;
-      let nextCodeSizeIncrease = 1 << codeSize;
-      let codeCount = this.FIRST_CODE;
-      
-      for (const code of codes) {
-        // Convert code to binary with current code size
-        const binaryCode = code.toString(2).padStart(codeSize, '0');
-        bitStream += binaryCode;
-        
-        // Increase code size if needed (after adding to dictionary)
-        if (code >= this.FIRST_CODE) {
-          codeCount++;
-          if (codeCount >= nextCodeSizeIncrease && codeSize < this.MAX_CODE_SIZE) {
-            codeSize++;
-            nextCodeSizeIncrease = 1 << codeSize;
+
+        // Store codes as 16-bit values
+        for (const code of codes) {
+          if (global.OpCodes) {
+            const packed = global.OpCodes.Pack16BE(code);
+            bytes.push(packed[0], packed[1]);
+          } else {
+            bytes.push((code >>> 8) & 0xFF);
+            bytes.push(code & 0xFF);
           }
         }
+
+        return bytes;
       }
-      
-      // Pad bit stream to byte boundary
-      const padding = (8 - (bitStream.length % 8)) % 8;
-      bitStream += '0'.repeat(padding);
-      
-      // Convert bit stream to bytes
-      const bytes = [];
-      
-      // Store original bit length first (4 bytes)
-      const originalLength = bitStream.length - padding;
-      bytes.push((originalLength >>> 24) & 0xFF);
-      bytes.push((originalLength >>> 16) & 0xFF);
-      bytes.push((originalLength >>> 8) & 0xFF);
-      bytes.push(originalLength & 0xFF);
-      
-      // Convert bits to bytes
-      for (let i = 0; i < bitStream.length; i += 8) {
-        const byte = bitStream.substr(i, 8);
-        bytes.push(parseInt(byte, 2));
-      }
-      
-      return this._bytesToString(bytes);
-    },
-    
-    /**
-     * Unpack codes from bit stream
-     * @private
-     */
-    _unpackCodes: function(compressedData) {
-      const bytes = this._stringToBytes(compressedData);
-      
-      if (bytes.length < 4) {
-        throw new Error('Invalid LZW compressed data: too short');
-      }
-      
-      // Read original bit length
-      const originalLength = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
-      
-      // Convert bytes back to bit stream
-      let bitStream = '';
-      for (let i = 4; i < bytes.length; i++) {
-        bitStream += bytes[i].toString(2).padStart(8, '0');
-      }
-      
-      // Trim to original length
-      bitStream = bitStream.substr(0, originalLength);
-      
-      // Extract codes with variable lengths
-      const codes = [];
-      let codeSize = this.INITIAL_CODE_SIZE;
-      let nextCodeSizeIncrease = 1 << codeSize;
-      let codeCount = this.FIRST_CODE;
-      let pos = 0;
-      
-      while (pos + codeSize <= bitStream.length) {
-        const codeBits = bitStream.substr(pos, codeSize);
-        const code = parseInt(codeBits, 2);
-        codes.push(code);
-        pos += codeSize;
-        
-        // Increase code size if needed
-        if (code >= this.FIRST_CODE) {
-          codeCount++;
-          if (codeCount >= nextCodeSizeIncrease && codeSize < this.MAX_CODE_SIZE) {
-            codeSize++;
-            nextCodeSizeIncrease = 1 << codeSize;
-          }
+
+      _unpackCodes(bytes) {
+        if (bytes.length < 4) return [];
+
+        // Read number of codes
+        const count = global.OpCodes ? 
+          global.OpCodes.Unpack32BE([bytes[0], bytes[1], bytes[2], bytes[3]]) : 
+          ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]);
+
+        if (bytes.length !== 4 + count * 2) return [];
+
+        const codes = [];
+        let pos = 4;
+
+        for (let i = 0; i < count; i++) {
+          const code = global.OpCodes ? 
+            global.OpCodes.Unpack16BE([bytes[pos], bytes[pos + 1]]) : 
+            ((bytes[pos] << 8) | bytes[pos + 1]);
+          codes.push(code);
+          pos += 2;
         }
-        
-        // Stop at EOF code
-        if (code === this.EOF_CODE) {
-          break;
-        }
+
+        return codes;
       }
-      
-      return codes;
-    },
-    
-    /**
-     * Get compression statistics for instance
-     */
-    GetStats: function(keyId) {
-      const instance = this.instances[keyId];
-      if (!instance) {
-        throw new Error('Invalid instance ID');
-      }
-      
-      return {
-        inputSize: instance.lastInputSize,
-        outputSize: instance.lastOutputSize,
-        compressionRatio: instance.compressionRatio,
-        spaceSavings: ((instance.lastInputSize - instance.lastOutputSize) / instance.lastInputSize * 100).toFixed(2) + '%',
-        maxCodeSize: this.MAX_CODE_SIZE,
-        maxDictionarySize: 1 << this.MAX_CODE_SIZE
-      };
-    },
-    
-    // Utility functions using OpCodes if available
-    _stringToBytes: function(str) {
-      if (global.OpCodes && OpCodes.StringToBytes) {
-        return OpCodes.StringToBytes(str);
-      }
-      
-      const bytes = [];
-      for (let i = 0; i < str.length; i++) {
-        bytes.push(str.charCodeAt(i) & 0xFF);
-      }
-      return bytes;
-    },
-    
-    _bytesToString: function(bytes) {
-      if (global.OpCodes && OpCodes.BytesToString) {
-        return OpCodes.BytesToString(bytes);
-      }
-      
-      let str = '';
-      for (let i = 0; i < bytes.length; i++) {
-        str += String.fromCharCode(bytes[i]);
-      }
-      return str;
     }
-  };
-  
-  // Auto-register with Compression system if available
-  if (typeof global.Compression !== 'undefined' && global.Compression.Add) {
-    LZW.Init();
-    global.Compression.Add(LZW);
+
+    // Register the algorithm
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new LZWCompression();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = LZW;
-  }
-  
-  // Make globally available
-  global.LZW = LZW;
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // ===== EXPORTS =====
+
+  return { LZWCompression, LZWCompressionInstance };
+}));

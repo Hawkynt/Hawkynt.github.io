@@ -1,323 +1,419 @@
-#!/usr/bin/env node
 /*
- * SHA-3-256 Universal Hash Function Implementation
- * Compatible with both Browser and Node.js environments
+ * SHA-3-256 Hash Function - Universal AlgorithmFramework Implementation
  * (c)2006-2025 Hawkynt
- * 
- * SHA-3 (Secure Hash Algorithm 3) is a subset of the broader cryptographic primitive 
- * family Keccak, designed by Guido Bertoni, Joan Daemen, Michaël Peeters, and Gilles Van Assche.
- * It was standardized in NIST FIPS 202.
- * 
- * Specification: NIST FIPS 202
- * Reference: https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf
- * 
- * NOTE: This is an educational implementation for learning purposes only.
- * Use proven cryptographic libraries for production systems.
  */
 
-(function(global) {
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Load OpCodes library for common operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
-  // SHA-3-256 constants
-  const SHA3_256_RATE = 136;        // Rate in bytes (1088 bits)
-  const SHA3_256_CAPACITY = 64;     // Capacity in bytes (512 bits)
-  const SHA3_256_OUTPUT = 32;       // Output size in bytes
-  const KECCAK_ROUNDS = 24;         // Number of Keccak-f[1600] rounds
-  
-  // Keccac round constants (24 rounds, 64-bit each) - more readable as hex literals
-  const RC = [
-    0x0000000000000001, 0x0000000000008082, 0x800000000000808a, 0x8000000080008000,
-    0x000000000000808b, 0x0000000080000001, 0x8000000080008081, 0x8000000000008009,
-    0x000000000000008a, 0x0000000000000088, 0x0000000080008009, 0x8000000000008003,
-    0x8000000000008002, 0x8000000000000080, 0x000000000000800a, 0x800000008000000a,
-    0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008,
-    0x0000000000008082, 0x8000000000000001, 0x0000000080008003, 0x8000000080000000
-  ];
-  
-  // Rotation offsets for rho step
-  const RHO_OFFSETS = [
-    0, 1, 62, 28, 27, 36, 44, 6, 55, 20, 3, 10, 43, 25, 39, 41,
-    45, 15, 21, 8, 18, 2, 61, 56, 14
-  ];
-  
-  /**
-   * Convert 64-bit number to high/low 32-bit representation
-   * @param {number} val - 64-bit value (may lose precision)
-   * @returns {Array} [low32, high32]
-   */
-  function to64bit(val) {
-    return [val & 0xFFFFFFFF, Math.floor(val / 0x100000000) & 0xFFFFFFFF];
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
   }
-  
-  /**
-   * Convert high/low 32-bit to 64-bit number (approximate)
-   * @param {number} low - Low 32 bits
-   * @param {number} high - High 32 bits
-   * @returns {number} 64-bit value (may lose precision)
-   */
-  function from64bit(low, high) {
-    return (high * 0x100000000 + low);
-  }
-  
-  /**
-   * 64-bit left rotation (using 32-bit operations)
-   * @param {Array} val - [low32, high32]
-   * @param {number} positions - Rotation positions
-   * @returns {Array} Rotated [low32, high32]
-   */
-  function rotl64(val, positions) {
-    const [low, high] = val;
-    positions %= 64;
-    
-    if (positions === 0) return [low, high];
-    
-    if (positions === 32) {
-      return [high, low];
-    } else if (positions < 32) {
-      const newHigh = ((high << positions) | (low >>> (32 - positions))) >>> 0;
-      const newLow = ((low << positions) | (high >>> (32 - positions))) >>> 0;
-      return [newLow, newHigh];
-    } else {
-      positions -= 32;
-      const newHigh = ((low << positions) | (high >>> (32 - positions))) >>> 0;
-      const newLow = ((high << positions) | (low >>> (32 - positions))) >>> 0;
-      return [newLow, newHigh];
-    }
-  }
-  
-  /**
-   * 64-bit XOR operation
-   * @param {Array} a - [low32, high32]
-   * @param {Array} b - [low32, high32]
-   * @returns {Array} XOR result [low32, high32]
-   */
-  function xor64(a, b) {
-    return [a[0] ^ b[0], a[1] ^ b[1]];
-  }
-  
-  /**
-   * Keccak-f[1600] permutation
-   * @param {Array} state - 25 x [low32, high32] state array
-   */
-  function keccakF(state) {
-    for (let round = 0; round < KECCAK_ROUNDS; round++) {
-      // Theta step
-      const C = new Array(5);
-      for (let x = 0; x < 5; x++) {
-        C[x] = [0, 0];
-        for (let y = 0; y < 5; y++) {
-          C[x] = xor64(C[x], state[x + 5 * y]);
-        }
-      }
-      
-      const D = new Array(5);
-      for (let x = 0; x < 5; x++) {
-        D[x] = xor64(C[(x + 4) % 5], rotl64(C[(x + 1) % 5], 1));
-      }
-      
-      for (let x = 0; x < 5; x++) {
-        for (let y = 0; y < 5; y++) {
-          state[x + 5 * y] = xor64(state[x + 5 * y], D[x]);
-        }
-      }
-      
-      // Rho step
-      for (let i = 0; i < 25; i++) {
-        state[i] = rotl64(state[i], RHO_OFFSETS[i]);
-      }
-      
-      // Pi step
-      const temp = new Array(25);
-      for (let i = 0; i < 25; i++) {
-        temp[i] = [state[i][0], state[i][1]];
-      }
-      
-      for (let x = 0; x < 5; x++) {
-        for (let y = 0; y < 5; y++) {
-          state[x + 5 * y] = temp[((x + 3 * y) % 5) + 5 * x];
-        }
-      }
-      
-      // Chi step
-      for (let y = 0; y < 5; y++) {
-        const row = new Array(5);
-        for (let x = 0; x < 5; x++) {
-          row[x] = [state[x + 5 * y][0], state[x + 5 * y][1]];
-        }
-        
-        for (let x = 0; x < 5; x++) {
-          const notNext = [~row[(x + 1) % 5][0], ~row[(x + 1) % 5][1]];
-          const andResult = [notNext[0] & row[(x + 2) % 5][0], notNext[1] & row[(x + 2) % 5][1]];
-          state[x + 5 * y] = xor64(row[x], andResult);
-        }
-      }
-      
-      // Iota step
-      const rc = to64bit(RC[round]);
-      state[0] = xor64(state[0], rc);
-    }
-  }
-  
-  /**
-   * SHA-3-256 hasher class
-   */
-  function Sha3256Hasher() {
-    this.state = new Array(25);
-    for (let i = 0; i < 25; i++) {
-      this.state[i] = [0, 0];
-    }
-    this.buffer = new Uint8Array(SHA3_256_RATE);
-    this.bufferLength = 0;
-  }
-  
-  Sha3256Hasher.prototype.absorb = function(data) {
-    if (typeof data === 'string') {
-      data = OpCodes.StringToBytes(data);
-    }
-    
-    let offset = 0;
-    
-    while (offset < data.length) {
-      const remaining = SHA3_256_RATE - this.bufferLength;
-      const toCopy = Math.min(remaining, data.length - offset);
-      
-      // Copy data to buffer
-      for (let i = 0; i < toCopy; i++) {
-        this.buffer[this.bufferLength + i] = data[offset + i];
-      }
-      
-      this.bufferLength += toCopy;
-      offset += toCopy;
-      
-      // Process full blocks
-      if (this.bufferLength === SHA3_256_RATE) {
-        this.absorbBlock();
-        this.bufferLength = 0;
-      }
-    }
-  };
-  
-  Sha3256Hasher.prototype.absorbBlock = function() {
-    // XOR buffer into state (little-endian)
-    for (let i = 0; i < SHA3_256_RATE; i += 8) {
-      const word = [
-        OpCodes.Pack32LE(this.buffer[i], this.buffer[i + 1], this.buffer[i + 2], this.buffer[i + 3]),
-        OpCodes.Pack32LE(this.buffer[i + 4], this.buffer[i + 5], this.buffer[i + 6], this.buffer[i + 7])
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class SHA3256Algorithm extends HashFunctionAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "SHA-3-256";
+      this.description = "SHA-3-256 is a member of the Secure Hash Algorithm 3 family, standardized by NIST. Based on the Keccak sponge construction with 256-bit output.";
+      this.inventor = "Guido Bertoni, Joan Daemen, Michaël Peeters, Gilles Van Assche";
+      this.year = 2015;
+      this.category = CategoryType.HASH;
+      this.subCategory = "SHA-3 Family";
+      this.securityStatus = null;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.BE;
+
+      // Hash-specific metadata
+      this.SupportedOutputSizes = [32]; // 256 bits = 32 bytes
+
+      // Performance and technical specifications
+      this.blockSize = 136; // Rate in bytes
+      this.outputSize = 32; // 256 bits = 32 bytes
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("NIST FIPS 202", "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf"),
+        new LinkItem("Keccak Team Website", "https://keccak.team/"),
+        new LinkItem("NIST SHA-3 Standard", "https://csrc.nist.gov/publications/detail/fips/202/final")
       ];
-      const stateIndex = Math.floor(i / 8);
-      this.state[stateIndex] = xor64(this.state[stateIndex], word);
-    }
-    
-    keccakF(this.state);
-  };
-  
-  Sha3256Hasher.prototype.finalize = function() {
-    // Pad with 0x06 (SHA-3 padding)
-    this.buffer[this.bufferLength] = 0x06;
-    
-    // Fill rest with zeros except last byte
-    for (let i = this.bufferLength + 1; i < SHA3_256_RATE - 1; i++) {
-      this.buffer[i] = 0;
-    }
-    
-    // Set last bit of last byte
-    this.buffer[SHA3_256_RATE - 1] = 0x80;
-    
-    // Absorb final block
-    this.absorbBlock();
-    
-    // Squeeze output
-    const output = new Uint8Array(SHA3_256_OUTPUT);
-    for (let i = 0; i < SHA3_256_OUTPUT; i += 8) {
-      const stateIndex = Math.floor(i / 8);
-      const word = this.state[stateIndex];
-      
-      const bytes1 = OpCodes.Unpack32LE(word[0]);
-      const bytes2 = OpCodes.Unpack32LE(word[1]);
-      
-      for (let j = 0; j < 4 && i + j < SHA3_256_OUTPUT; j++) {
-        output[i + j] = bytes1[j];
-      }
-      for (let j = 0; j < 4 && i + j + 4 < SHA3_256_OUTPUT; j++) {
-        output[i + j + 4] = bytes2[j];
-      }
-    }
-    
-    return output;
-  };
-  
-  // SHA-3-256 Universal Cipher Interface
-  const Sha3256 = {
-    internalName: 'sha3-256',
-    name: 'SHA-3-256',
-    // Required Cipher interface properties
-    minKeyLength: 0,        // Minimum key length in bytes
-    maxKeyLength: 64,        // Maximum key length in bytes
-    stepKeyLength: 1,       // Key length step size
-    minBlockSize: 0,        // Minimum block size in bytes
-    maxBlockSize: 0,        // Maximum block size (0 = unlimited)
-    stepBlockSize: 1,       // Block size step
-    instances: {},          // Instance tracking
-    
-    // Hash function interface
-    Init: function() {
-      this.hasher = new Sha3256Hasher();
-      this.bKey = false;
-    },
-    
-    KeySetup: function(key) {
-      // SHA-3 doesn't use keys in standard mode
-      this.hasher = new Sha3256Hasher();
-      this.bKey = false;
-    },
-    
-    encryptBlock: function(blockIndex, data) {
-      if (typeof data === 'string') {
-        this.hasher.absorb(data);
-        return OpCodes.BytesToHex(this.hasher.finalize());
-      }
-      return '';
-    },
-    
-    decryptBlock: function(blockIndex, data) {
-      // Hash functions don't decrypt
-      return this.encryptBlock(blockIndex, data);
-    },
-    
-    // Direct hash interface
-    hash: function(data) {
-      const hasher = new Sha3256Hasher();
-      hasher.absorb(data);
-      return hasher.finalize();
-    },
-    
-    ClearData: function() {
-      if (this.hasher) {
-        for (let i = 0; i < this.hasher.state.length; i++) {
-          this.hasher.state[i] = [0, 0];
+
+      this.references = [
+        new LinkItem("Wikipedia: SHA-3", "https://en.wikipedia.org/wiki/SHA-3"),
+        new LinkItem("Keccak Specification", "https://keccak.team/files/Keccak-reference-3.0.pdf")
+      ];
+
+      // Test vectors from NIST FIPS 202 with expected byte arrays
+      this.tests = [
+        {
+          text: "NIST Test Vector - Empty String",
+          uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf",
+          input: [],
+          expected: OpCodes.Hex8ToBytes('a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a')
+        },
+        {
+          text: "NIST Test Vector - 'abc'",
+          uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf",
+          input: [0x61, 0x62, 0x63], // 'abc'
+          expected: OpCodes.Hex8ToBytes('3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532')
+        },
+        {
+          text: "NIST Test Vector - Long String",
+          uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf", 
+          input: [0x61,0x62,0x63,0x64,0x62,0x63,0x64,0x65,0x63,0x64,0x65,0x66,0x64,0x65,0x66,0x67,0x65,0x66,0x67,0x68,0x66,0x67,0x68,0x69,0x67,0x68,0x69,0x6a,0x68,0x69,0x6a,0x6b,0x69,0x6a,0x6b,0x6c,0x6a,0x6b,0x6c,0x6d,0x6b,0x6c,0x6d,0x6e,0x6c,0x6d,0x6e,0x6f,0x6d,0x6e,0x6f,0x70,0x6e,0x6f,0x70,0x71], // 'abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq'
+          expected: OpCodes.Hex8ToBytes('41c0dba2a9d6240849100376a8235e2c82e1b9998a999e21db32dd97496d3376')
         }
-        this.hasher.buffer.fill(0);
-      }
-      this.bKey = false;
+      ];
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(Sha3256);
+
+    CreateInstance(isInverse = false) {
+      return new SHA3256AlgorithmInstance(this, isInverse);
+    }
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Sha3256;
+
+  class SHA3256AlgorithmInstance extends IHashFunctionInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.OutputSize = 32; // 256 bits = 32 bytes
+
+      // SHA-3-256 state
+      this._state = null;
+      this._buffer = null;
+      this._bufferLength = 0;
+    }
+
+    /**
+     * Initialize the hash state
+     */
+    Init() {
+      // Keccak state: 25 lanes of 64 bits each (represented as pairs of 32-bit values)
+      this._state = new Array(25);
+      for (let i = 0; i < 25; i++) {
+        this._state[i] = [0, 0]; // [low32, high32]
+      }
+
+      this._buffer = new Array(SHA3_256_RATE);
+      this._bufferLength = 0;
+    }
+
+    /**
+     * Add data to the hash calculation
+     * @param {Array} data - Data to hash as byte array
+     */
+    Update(data) {
+      if (!data || data.length === 0) return;
+
+      // Convert string to byte array if needed
+      if (typeof data === 'string') {
+        data = OpCodes.AnsiToBytes(data);
+      }
+
+      let offset = 0;
+
+      // Fill current buffer
+      while (offset < data.length && this._bufferLength < SHA3_256_RATE) {
+        this._buffer[this._bufferLength] = data[offset];
+        this._bufferLength++;
+        offset++;
+      }
+
+      // Process full blocks
+      while (this._bufferLength === SHA3_256_RATE) {
+        this._absorb();
+
+        // Fill next block
+        this._bufferLength = 0;
+        while (offset < data.length && this._bufferLength < SHA3_256_RATE) {
+          this._buffer[this._bufferLength] = data[offset];
+          this._bufferLength++;
+          offset++;
+        }
+      }
+    }
+
+    /**
+     * Absorb current buffer into state
+     */
+    _absorb() {
+      // XOR buffer into state (little-endian, 8 bytes per state element)
+      for (let i = 0; i < SHA3_256_RATE; i += 8) {
+        const stateIndex = Math.floor(i / 8);
+
+        // Pack 8 bytes into two 32-bit words (little-endian)
+        const low = OpCodes.Pack32LE(
+          this._buffer[i] || 0,
+          this._buffer[i + 1] || 0,
+          this._buffer[i + 2] || 0,
+          this._buffer[i + 3] || 0
+        );
+        const high = OpCodes.Pack32LE(
+          this._buffer[i + 4] || 0,
+          this._buffer[i + 5] || 0,
+          this._buffer[i + 6] || 0,
+          this._buffer[i + 7] || 0
+        );
+
+        // XOR into state
+        this._state[stateIndex][0] ^= low;
+        this._state[stateIndex][1] ^= high;
+      }
+
+      // Apply Keccak-f[1600] permutation
+      this._keccakF();
+    }
+
+    /**
+     * Keccak-f[1600] permutation
+     */
+    _keccakF() {
+      for (let round = 0; round < KECCAK_ROUNDS; round++) {
+        // Theta step
+        const C = new Array(5);
+        for (let x = 0; x < 5; x++) {
+          C[x] = [0, 0];
+          for (let y = 0; y < 5; y++) {
+            C[x] = this._xor64(C[x], this._state[x + 5 * y]);
+          }
+        }
+
+        const D = new Array(5);
+        for (let x = 0; x < 5; x++) {
+          D[x] = this._xor64(C[(x + 4) % 5], this._rotl64(C[(x + 1) % 5], 1));
+        }
+
+        for (let x = 0; x < 5; x++) {
+          for (let y = 0; y < 5; y++) {
+            this._state[x + 5 * y] = this._xor64(this._state[x + 5 * y], D[x]);
+          }
+        }
+
+        // Rho step
+        for (let i = 0; i < 25; i++) {
+          this._state[i] = this._rotl64(this._state[i], RHO_OFFSETS[i]);
+        }
+
+        // Pi step
+        const temp = new Array(25);
+        for (let i = 0; i < 25; i++) {
+          temp[i] = [this._state[i][0], this._state[i][1]];
+        }
+
+        for (let x = 0; x < 5; x++) {
+          for (let y = 0; y < 5; y++) {
+            this._state[y + 5 * ((2 * x + 3 * y) % 5)] = temp[x + 5 * y];
+          }
+        }
+
+        // Chi step
+        for (let y = 0; y < 5; y++) {
+          const row = new Array(5);
+          for (let x = 0; x < 5; x++) {
+            row[x] = [this._state[x + 5 * y][0], this._state[x + 5 * y][1]];
+          }
+
+          for (let x = 0; x < 5; x++) {
+            const notNext = [~row[(x + 1) % 5][0], ~row[(x + 1) % 5][1]];
+            const andResult = [notNext[0] & row[(x + 2) % 5][0], notNext[1] & row[(x + 2) % 5][1]];
+            this._state[x + 5 * y] = this._xor64(row[x], andResult);
+          }
+        }
+
+        // Iota step
+        this._state[0] = this._xor64(this._state[0], RC[round]);
+      }
+    }
+
+    /**
+     * 64-bit XOR operation
+     */
+    _xor64(a, b) {
+      return [a[0] ^ b[0], a[1] ^ b[1]];
+    }
+
+    /**
+     * 64-bit left rotation
+     */
+    _rotl64(val, positions) {
+      const [low, high] = val;
+      positions %= 64;
+
+      if (positions === 0) return [low, high];
+
+      if (positions === 32) {
+        return [high, low];
+      } else if (positions < 32) {
+        const newLow = ((low << positions) | (high >>> (32 - positions))) >>> 0;
+        const newHigh = ((high << positions) | (low >>> (32 - positions))) >>> 0;
+        return [newLow, newHigh];
+      } else {
+        positions -= 32;
+        const newLow = ((high << positions) | (low >>> (32 - positions))) >>> 0;
+        const newHigh = ((low << positions) | (high >>> (32 - positions))) >>> 0;
+        return [newLow, newHigh];
+      }
+    }
+
+    /**
+     * Finalize the hash calculation and return result as byte array
+     * @returns {Array} Hash digest as byte array
+     */
+    Final() {
+      // SHA-3 padding: calculate bytes needed
+      const q = SHA3_256_RATE - (this._bufferLength % SHA3_256_RATE);
+
+      if (q === 1) {
+        // Special case: only one byte padding
+        this._buffer[this._bufferLength] = 0x86; // 0x06 | 0x80
+        this._bufferLength++;
+      } else if (q === 2) {
+        // Two bytes padding
+        this._buffer[this._bufferLength] = 0x06;
+        this._buffer[this._bufferLength + 1] = 0x80;
+        this._bufferLength += 2;
+      } else {
+        // Multi-byte padding: 0x06 + zeros + 0x80
+        this._buffer[this._bufferLength] = 0x06;
+        this._bufferLength++;
+
+        // Fill with zeros
+        for (let i = this._bufferLength; i < SHA3_256_RATE - 1; i++) {
+          this._buffer[i] = 0;
+        }
+
+        // Final 0x80 byte
+        this._buffer[SHA3_256_RATE - 1] = 0x80;
+        this._bufferLength = SHA3_256_RATE;
+      }
+
+      // Absorb final block
+      this._absorb();
+
+      // Squeeze output
+      const output = [];
+      for (let i = 0; i < SHA3_256_OUTPUT; i += 8) {
+        const stateIndex = Math.floor(i / 8);
+        const word = this._state[stateIndex];
+
+        const bytes1 = OpCodes.Unpack32LE(word[0]);
+        const bytes2 = OpCodes.Unpack32LE(word[1]);
+
+        for (let j = 0; j < 4 && output.length < SHA3_256_OUTPUT; j++) {
+          output.push(bytes1[j]);
+        }
+        for (let j = 0; j < 4 && output.length < SHA3_256_OUTPUT; j++) {
+          output.push(bytes2[j]);
+        }
+      }
+
+      return output;
+    }
+
+    /**
+     * Hash a complete message in one operation
+     * @param {Array} message - Message to hash as byte array
+     * @returns {Array} Hash digest as byte array
+     */
+    Hash(message) {
+      this.Init();
+      this.Update(message);
+      return this.Final();
+    }
+
+    /**
+     * Required interface methods for IAlgorithmInstance compatibility
+     */
+    KeySetup(key) {
+      // Hashes don't use keys
+      return true;
+    }
+
+    EncryptBlock(blockIndex, plaintext) {
+      // Return hash of the plaintext
+      return this.Hash(plaintext);
+    }
+
+    DecryptBlock(blockIndex, ciphertext) {
+      // Hash functions are one-way
+      throw new Error('SHA-3-256 is a one-way hash function - decryption not possible');
+    }
+
+    ClearData() {
+      if (this._state) {
+        for (let i = 0; i < this._state.length; i++) {
+          this._state[i] = [0, 0];
+        }
+      }
+      if (this._buffer) OpCodes.ClearArray(this._buffer);
+      this._bufferLength = 0;
+    }
+
+    /**
+     * Feed method required by test suite - processes input data
+     * @param {Array} data - Input data as byte array
+     */
+    Feed(data) {
+      this.Init();
+      this.Update(data);
+    }
+
+    /**
+     * Result method required by test suite - returns final hash
+     * @returns {Array} Hash digest as byte array
+     */
+    Result() {
+      return this.Final();
+    }
   }
-  
-  // Make available globally
-  global.Sha3256 = Sha3256;
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // Register the algorithm
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new SHA3256Algorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
+  }
+
+  // ===== EXPORTS =====
+
+  return { SHA3256Algorithm, SHA3256AlgorithmInstance };
+}));

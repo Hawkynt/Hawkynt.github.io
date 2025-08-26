@@ -1,152 +1,208 @@
 /*
- * Universal Atbash Cipher
- * Compatible with both Browser and Node.js environments
+ * Atbash Cipher Implementation
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
+// Load AlgorithmFramework (REQUIRED)
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Atbash cipher requires Cipher system to be loaded first');
-      return;
-    }
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
-  // Create Atbash cipher object
-  const Atbash = {
-    // Public interface properties
-    internalName: 'Atbash',
-    name: 'Atbash',
-    comment: 'Atbash cipher - reverses the alphabet (A=Z, B=Y, etc.)',
-    minKeyLength: 0,
-    maxKeyLength: 0,
-    stepKeyLength: 1,
-    minBlockSize: 0,
-    maxBlockSize: 0,
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
-    
-    // Character sets
-    UPPERCASE: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
-    LOWERCASE: 'abcdefghijklmnopqrstuvwxyz',
-    UPPER_REVERSE: 'ZYXWVUTSRQPONMLKJIHGFEDCBA',
-    LOWER_REVERSE: 'zyxwvutsrqponmlkjihgfedcba',
-    
-    // Official test vectors for Atbash cipher
-    testVectors: [
-      { input: 'HELLO', key: '', expected: 'SVOOL', description: 'Atbash cipher test' },
-      { input: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', key: '', expected: 'ZYXWVUTSRQPONMLKJIHGFEDCBA', description: 'Full alphabet Atbash' },
-      { input: 'atbash', key: '', expected: 'zgyzhs', description: 'Atbash lowercase test' },
-      { input: 'GEEKS FOR GEEKS', key: '', expected: 'TVVPH ULI TVVPH', description: 'Common example with spaces' }
-    ],
-    
-    // Initialize cipher
-    Init: function() {
-      Atbash.isInitialized = true;
-    },
-    
-    // Set up key (Atbash doesn't use keys)
-    KeySetup: function(optional_key) {
-      let id;
-      do {
-        id = 'Atbash[' + global.generateUniqueID() + ']';
-      } while (Atbash.instances[id] || global.objectInstances[id]);
-      
-      Atbash.instances[id] = new Atbash.AtbashInstance(optional_key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear cipher data
-    ClearData: function(id) {
-      if (Atbash.instances[id]) {
-        delete Atbash.instances[id];
-        delete global.objectInstances[id];
-        return true;
-      } else {
-        global.throwException('Unknown Object Reference Exception', id, 'Atbash', 'ClearData');
-        return false;
-      }
-    },
-    
-    // Encrypt block (Atbash is symmetric - encrypt and decrypt are the same)
-    encryptBlock: function(id, plaintext) {
-      if (!Atbash.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'Atbash', 'encryptBlock');
-        return plaintext;
-      }
-      
-      return Atbash.transform(plaintext);
-    },
-    
-    // Decrypt block (same as encrypt for Atbash)
-    decryptBlock: function(id, ciphertext) {
-      if (!Atbash.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'Atbash', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      return Atbash.transform(ciphertext);
-    },
-    
-    // Transform text using Atbash
-    transform: function(text) {
-      let result = '';
-      
-      for (let i = 0; i < text.length; i++) {
-        const char = text.charAt(i);
-        
-        // Handle uppercase letters
-        const upperIndex = Atbash.UPPERCASE.indexOf(char);
-        if (upperIndex !== -1) {
-          result += Atbash.UPPER_REVERSE.charAt(upperIndex);
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class AtbashCipher extends CryptoAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "Atbash Cipher";
+      this.description = "Ancient Hebrew substitution cipher that reverses the alphabet. Maps each letter to its opposite position (A↔Z, B↔Y, etc.). Simple monoalphabetic substitution cipher with fixed key that is its own inverse.";
+      this.inventor = "Ancient Hebrew scholars";
+      this.year = -500;
+      this.category = CategoryType.ENCODING;
+      this.subCategory = "Text Encoding";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.BEGINNER;
+      this.country = CountryCode.IL;
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("Wikipedia Article", "https://en.wikipedia.org/wiki/Atbash"),
+        new LinkItem("Biblical Usage", "https://en.wikipedia.org/wiki/Hebrew_alphabet"),
+        new LinkItem("Historical Context", "https://www.britannica.com/topic/cryptology/Early-cryptographic-systems")
+      ];
+
+      this.references = [
+        new LinkItem("DCode Implementation", "https://www.dcode.fr/atbash-cipher"),
+        new LinkItem("Educational Tutorial", "https://cryptii.com/pipes/atbash-cipher"),
+        new LinkItem("Bible Code Examples", "https://www.bible-codes.org/Atbash.htm")
+      ];
+
+      this.knownVulnerabilities = [
+        {
+          type: "Frequency Analysis",
+          text: "Simple substitution cipher vulnerable to frequency analysis - letter frequencies preserved",
+          uri: "https://en.wikipedia.org/wiki/Frequency_analysis",
+          mitigation: "Educational use only - easily broken by frequency analysis"
+        },
+        {
+          type: "Pattern Recognition",
+          text: "Fixed transformation pattern makes it vulnerable to pattern recognition attacks",
+          uri: "https://en.wikipedia.org/wiki/Substitution_cipher",
+          mitigation: "Combine with other techniques or use for educational purposes only"
         }
-        // Handle lowercase letters
-        else {
-          const lowerIndex = Atbash.LOWERCASE.indexOf(char);
+      ];
+
+      // Test vectors using byte arrays - bit-perfect results from implementation
+      this.tests = [
+        {
+          text: "Basic Atbash transformation",
+          uri: "https://www.dcode.fr/atbash-cipher",
+          input: OpCodes.AnsiToBytes("HELLO"),
+          key: OpCodes.AnsiToBytes(""),
+          expected: OpCodes.AnsiToBytes("SVOOL")
+        },
+        {
+          text: "Full alphabet test",
+          uri: "https://en.wikipedia.org/wiki/Atbash",
+          input: OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+          key: OpCodes.AnsiToBytes(""),
+          expected: OpCodes.AnsiToBytes("ZYXWVUTSRQPONMLKJIHGFEDCBA")
+        },
+        {
+          text: "Mixed case preservation",
+          uri: "https://cryptii.com/pipes/atbash-cipher",
+          input: OpCodes.AnsiToBytes("Hello World"),
+          key: OpCodes.AnsiToBytes(""),
+          expected: OpCodes.AnsiToBytes("Svool Dliow")
+        }
+      ];
+
+      // For the test suite compatibility 
+      this.testVectors = this.tests;
+    }
+
+    // Create instance for this algorithm
+    CreateInstance(isInverse = false) {
+      return new AtbashCipherInstance(this, isInverse);
+    }
+  }
+
+  // Instance class - handles the actual encoding/decoding
+  class AtbashCipherInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse; // Not used for Atbash as it's self-inverse
+      this.inputBuffer = [];
+
+      // Character sets
+      this.UPPERCASE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      this.LOWERCASE = 'abcdefghijklmnopqrstuvwxyz';
+      this.UPPER_REVERSE = 'ZYXWVUTSRQPONMLKJIHGFEDCBA';
+      this.LOWER_REVERSE = 'zyxwvutsrqponmlkjihgfedcba';
+    }
+
+    // Property setter for key (Atbash doesn't use keys)
+    set key(keyData) {
+      // Atbash doesn't use keys - ignore the key data
+    }
+
+    get key() {
+      return ""; // Atbash has no key
+    }
+
+    // Feed data to the cipher
+    Feed(data) {
+      if (!data || data.length === 0) return;
+
+      // Add data to input buffer
+      this.inputBuffer.push(...data);
+    }
+
+    // Get the result of the transformation
+    Result() {
+      if (this.inputBuffer.length === 0) {
+        return [];
+      }
+
+      const output = [];
+
+      // Process each byte
+      for (const byte of this.inputBuffer) {
+        const char = String.fromCharCode(byte);
+        let transformedChar = char; // Default: don't change non-alphabetic characters
+
+        // Handle uppercase letters
+        const upperIndex = this.UPPERCASE.indexOf(char);
+        if (upperIndex !== -1) {
+          transformedChar = this.UPPER_REVERSE.charAt(upperIndex);
+        } else {
+          // Handle lowercase letters
+          const lowerIndex = this.LOWERCASE.indexOf(char);
           if (lowerIndex !== -1) {
-            result += Atbash.LOWER_REVERSE.charAt(lowerIndex);
+            transformedChar = this.LOWER_REVERSE.charAt(lowerIndex);
           }
           // Non-alphabetic characters pass through unchanged
-          else {
-            result += char;
-          }
         }
+
+        output.push(transformedChar.charCodeAt(0));
       }
-      
-      return result;
-    },
-    
-    // Instance class
-    AtbashInstance: function(key) {
-      this.key = key || '';
+
+      // Clear input buffer for next operation
+      this.inputBuffer = [];
+
+      return output;
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(Atbash);
   }
-  
-  // Export to global scope
-  global.Atbash = Atbash;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Atbash;
+
+  // Register the algorithm immediately
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new AtbashCipher();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+
+  // ===== EXPORTS =====
+
+  return { AtbashCipher, AtbashCipherInstance };
+}));

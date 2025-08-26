@@ -1,275 +1,244 @@
-#!/usr/bin/env node
 /*
- * Scytale Transposition Cipher Universal Implementation
- * Based on the ancient Spartan military cipher (~7th century BCE)
+ * AlgorithmFramework Scytale Cipher
  * Compatible with both Browser and Node.js environments
- * (c)2006-2025 Hawkynt
- * 
- * Educational implementation - Historical cipher for learning purposes
- * The Scytale uses a transposition method with a rod of specific diameter
+ * Ancient Spartan transposition cipher using a staff
+ * (c)2025 Hawkynt - Educational Implementation
  */
 
-(function(global) {
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
   
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Scytale cipher requires Cipher system to be loaded first');
-      return;
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class ScytaleCipher extends CryptoAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "Scytale Cipher";
+      this.description = "Ancient Spartan transposition cipher using a staff for military communications in classical antiquity.";
+      this.category = CategoryType.CLASSICAL;
+      this.subCategory = "Transposition Cipher";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.BEGINNER;
+      this.inventor = "Ancient Spartans";
+      this.year = -500; // 5th century BC
+      this.country = CountryCode.ANCIENT;
+
+      // Documentation
+      this.documentation = [
+        new LinkItem('Scytale Cipher Wikipedia', 'https://en.wikipedia.org/wiki/Scytale'),
+        new LinkItem('Ancient Cryptography', 'http://practicalcryptography.com/ciphers/classical-era/scytale/')
+      ];
+
+      // Test vectors in plain format (recommended)
+      this.tests = [
+        {
+          text: 'Basic Scytale example with circumference 3',
+          uri: 'https://en.wikipedia.org/wiki/Scytale',
+          input: OpCodes.AnsiToBytes('WEAREFOUNDOUT'), 
+          key: OpCodes.AnsiToBytes('3'),
+          expected: OpCodes.AnsiToBytes('WRODTEEUOAFNU')
+        },
+        {
+          text: 'Military message with circumference 4',
+          uri: 'https://en.wikipedia.org/wiki/Scytale',
+          input: OpCodes.AnsiToBytes('ATTACKATDAWN'),
+          key: OpCodes.AnsiToBytes('4'),
+          expected: OpCodes.AnsiToBytes('ACDTKATAWATN')
+        }
+      ];
+
+      // For test suite compatibility
+      this.testVectors = this.tests;
+    }
+
+    CreateInstance(isInverse = false) {
+      return new ScytaleInstance(this, isInverse);
     }
   }
-  
-  // Load OpCodes for common operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
-  }
-  
-  const Scytale = {
-    // Public interface properties
-    internalName: 'Scytale',
-    name: 'Scytale Transposition Cipher',
-    comment: 'Ancient Spartan cipher (~7th century BCE) - columnar transposition using rod diameter',
-    minKeyLength: 1, // Number of turns/columns
-    maxKeyLength: 50, // Practical limit
-    stepKeyLength: 1,
-    minBlockSize: 1,
-    maxBlockSize: 0, // No limit
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
-    
-    // Test vectors from historical reconstructions
-    testVectors: [
-      {
-        input: 'IAMHURTVERYBADLYHELP',
-        key: '5', // 5 turns around the rod
-        expected: 'IRYYATBH MLHUPERVELD',
-        description: 'Classic Scytale example - military message'
-      },
-      {
-        input: 'ATTACKATDAWN',
-        key: '4',
-        expected: 'ACKTAWNT TAKA D',
-        description: 'Military command with 4 turns'
-      },
-      {
-        input: 'DEFENDTHEEAST',
-        key: '3',
-        expected: 'DFEEH ENTTS EDEA',
-        description: 'Defense command with 3 turns'
-      },
-      {
-        input: 'SPARTAN',
-        key: '7',
-        expected: 'SPARTAN',
-        description: 'Text length equals key - no transposition'
-      }
-    ],
-    
-    // Initialize Scytale
-    Init: function() {
-      Scytale.isInitialized = true;
-    },
-    
-    // Set up key for Scytale
-    KeySetup: function(key) {
-      let id;
-      do {
-        id = 'Scytale[' + global.generateUniqueID() + ']';
-      } while (Scytale.instances[id] || global.objectInstances[id]);
-      
-      Scytale.instances[id] = new Scytale.ScytaleInstance(key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear Scytale data
-    ClearData: function(id) {
-      if (Scytale.instances[id]) {
-        delete Scytale.instances[id];
-        delete global.objectInstances[id];
-      }
-    },
-    
-    // Encrypt using Scytale
-    encryptBlock: function(intInstanceID, input) {
-      const id = 'Scytale[' + intInstanceID + ']';
-      if (!Scytale.instances[id]) return '';
-      
-      return Scytale.instances[id].encrypt(input);
-    },
-    
-    // Decrypt using Scytale
-    decryptBlock: function(intInstanceID, input) {
-      const id = 'Scytale[' + intInstanceID + ']';
-      if (!Scytale.instances[id]) return '';
-      
-      return Scytale.instances[id].decrypt(input);
-    },
-    
-    // Scytale Instance Class
-    ScytaleInstance: function(key) {
-      // Parse the key as number of turns (columns)
-      this.turns = parseInt(key) || 3; // Default to 3 turns
-      
-      if (this.turns < 1 || this.turns > 50) {
-        throw new Error('Scytale: Number of turns must be between 1 and 50');
-      }
-    },
-    
-    // Encrypt function (write down columns, read across rows)
-    encrypt: function(plaintext) {
-      // Remove spaces for historical accuracy, preserve case
-      const text = plaintext.replace(/\s/g, '');
-      
-      if (text.length === 0) return '';
-      if (this.turns === 1) return text; // No transposition needed
-      
-      // Calculate number of rows needed
-      const rows = Math.ceil(text.length / this.turns);
-      
-      // Create grid and fill by columns
-      const grid = [];
-      for (let r = 0; r < rows; r++) {
-        grid[r] = new Array(this.turns).fill(' '); // Fill with spaces for padding
-      }
-      
-      // Fill grid column by column (writing down the scytale)
-      let textIndex = 0;
-      for (let col = 0; col < this.turns; col++) {
-        for (let row = 0; row < rows; row++) {
-          if (textIndex < text.length) {
-            grid[row][col] = text[textIndex];
-            textIndex++;
-          }
-        }
-      }
-      
-      // Read grid row by row (reading across when unwrapped)
-      let result = '';
-      for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < this.turns; col++) {
-          result += grid[row][col];
-        }
-        // Add space between rows for readability (historical texts often had word breaks)
-        if (row < rows - 1) {
-          result += ' ';
-        }
-      }
-      
-      return result;
-    },
-    
-    // Decrypt function (write down rows, read across columns)
-    decrypt: function(ciphertext) {
-      // Remove extra spaces added during encryption
-      const text = ciphertext.replace(/\s+/g, '');
-      
-      if (text.length === 0) return '';
-      if (this.turns === 1) return text;
-      
-      // Calculate dimensions
-      const rows = Math.ceil(text.length / this.turns);
-      
-      // Create grid and fill by rows
-      const grid = [];
-      for (let r = 0; r < rows; r++) {
-        grid[r] = new Array(this.turns).fill('');
-      }
-      
-      // Fill grid row by row (writing across when wrapped around scytale)
-      let textIndex = 0;
-      for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < this.turns; col++) {
-          if (textIndex < text.length) {
-            grid[row][col] = text[textIndex];
-            textIndex++;
-          }
-        }
-      }
-      
-      // Read grid column by column (reading down the scytale)
-      let result = '';
-      for (let col = 0; col < this.turns; col++) {
-        for (let row = 0; row < rows; row++) {
-          if (grid[row][col] && grid[row][col] !== ' ') {
-            result += grid[row][col];
-          }
-        }
-      }
-      
-      return result;
-    },
-    
-    // Visualize the scytale process for educational purposes
-    visualizeEncryption: function(plaintext) {
-      const text = plaintext.replace(/\s/g, '');
-      if (text.length === 0) return 'Empty input';
-      
-      const rows = Math.ceil(text.length / this.turns);
-      let visualization = `Scytale with ${this.turns} turns (${rows} rows):\n\n`;
-      
-      // Show the grid
-      const grid = [];
-      for (let r = 0; r < rows; r++) {
-        grid[r] = new Array(this.turns).fill('·'); // Use · for empty spaces
-      }
-      
-      // Fill grid column by column
-      let textIndex = 0;
-      for (let col = 0; col < this.turns; col++) {
-        for (let row = 0; row < rows; row++) {
-          if (textIndex < text.length) {
-            grid[row][col] = text[textIndex];
-            textIndex++;
-          }
-        }
-      }
-      
-      // Display grid with column headers
-      visualization += '   ';
-      for (let col = 0; col < this.turns; col++) {
-        visualization += (col + 1) + ' ';
-      }
-      visualization += '\n';
-      
-      for (let row = 0; row < rows; row++) {
-        visualization += (row + 1) + ': ';
-        for (let col = 0; col < this.turns; col++) {
-          visualization += grid[row][col] + ' ';
-        }
-        visualization += '\n';
-      }
-      
-      visualization += '\nReading across rows gives: ' + this.encrypt(plaintext);
-      
-      return visualization;
+
+  class ScytaleInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.inputBuffer = [];
+      this._key = null;
+      this.circumference = 3; // Default circumference
     }
-  };
-  
-  // Add the methods to the prototype
-  Scytale.ScytaleInstance.prototype.encrypt = Scytale.encrypt;
-  Scytale.ScytaleInstance.prototype.decrypt = Scytale.decrypt;
-  Scytale.ScytaleInstance.prototype.visualizeEncryption = Scytale.visualizeEncryption;
-  
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(Scytale);
+
+    set key(keyData) {
+      let keyString = '';
+      if (typeof keyData === 'string') {
+        keyString = keyData;
+      } else if (Array.isArray(keyData)) {
+        keyString = String.fromCharCode(...keyData);
+      }
+
+      const circumference = parseInt(keyString) || 3;
+      this.circumference = Math.max(1, circumference);
+      this._key = keyString;
+    }
+
+    get key() {
+      return this._key;
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+
+      // Convert bytes to string for classical cipher
+      let text = '';
+      if (typeof data === 'string') {
+        text = data;
+      } else {
+        text = String.fromCharCode(...data);
+      }
+
+      this.inputBuffer.push(text);
+    }
+
+    Result() {
+      if (this.inputBuffer.length === 0) return [];
+
+      const text = this.inputBuffer.join('');
+      this.inputBuffer = [];
+
+      const result = this.isInverse ? 
+        this.decryptText(text) : 
+        this.encryptText(text);
+
+      // Convert string result to bytes
+      return Array.from(result).map(c => c.charCodeAt(0));
+    }
+
+    encryptText(plaintext) {
+      const text = plaintext.toUpperCase().replace(/[^A-Z]/g, '');
+      if (text.length === 0) return '';
+
+      // Calculate rows needed
+      const rows = Math.ceil(text.length / this.circumference);
+      const grid = [];
+
+      // Fill grid row by row
+      for (let r = 0; r < rows; r++) {
+        grid[r] = [];
+        for (let c = 0; c < this.circumference; c++) {
+          const index = r * this.circumference + c;
+          grid[r][c] = index < text.length ? text[index] : '';
+        }
+      }
+
+      // Read column by column
+      let result = '';
+      for (let c = 0; c < this.circumference; c++) {
+        for (let r = 0; r < rows; r++) {
+          if (grid[r][c]) {
+            result += grid[r][c];
+          }
+        }
+      }
+
+      return result;
+    }
+
+    decryptText(ciphertext) {
+      const text = ciphertext.toUpperCase().replace(/[^A-Z]/g, '');
+      if (text.length === 0) return '';
+
+      const rows = Math.ceil(text.length / this.circumference);
+      const grid = [];
+
+      // Initialize grid
+      for (let r = 0; r < rows; r++) {
+        grid[r] = new Array(this.circumference).fill('');
+      }
+
+      // Calculate how many characters each column should have
+      // When text.length is not divisible by circumference, 
+      // some columns will have one less character
+      const charsPerColumn = [];
+      const fullRows = Math.floor(text.length / this.circumference);
+      const remainder = text.length % this.circumference;
+
+      for (let c = 0; c < this.circumference; c++) {
+        // First 'remainder' columns get an extra character
+        charsPerColumn[c] = fullRows + (c < remainder ? 1 : 0);
+      }
+
+      // Fill the grid column by column with the correct number of characters
+      let cipherIndex = 0;
+      for (let c = 0; c < this.circumference; c++) {
+        for (let r = 0; r < charsPerColumn[c]; r++) {
+          if (cipherIndex < text.length) {
+            grid[r][c] = text[cipherIndex++];
+          }
+        }
+      }
+
+      // Read row by row to get original plaintext
+      let result = '';
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < this.circumference; c++) {
+          if (grid[r][c] && grid[r][c] !== '') {
+            result += grid[r][c];
+          }
+        }
+      }
+
+      return result;
+    }
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Scytale;
+
+  // Register the algorithm
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new ScytaleCipher();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // ===== EXPORTS =====
+
+  return { ScytaleCipher, ScytaleInstance };
+}));

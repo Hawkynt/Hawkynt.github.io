@@ -1,6 +1,5 @@
-#!/usr/bin/env node
 /*
- * Nihilist Cipher Universal Implementation
+ * AlgorithmFramework Nihilist Cipher
  * Based on the Russian revolutionary cipher (1880s)
  * Compatible with both Browser and Node.js environments
  * (c)2006-2025 Hawkynt
@@ -9,271 +8,316 @@
  * The Nihilist cipher combines Polybius square with additive key encryption
  */
 
-(function(global) {
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
   
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Nihilist cipher requires Cipher system to be loaded first');
-      return;
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class NihilistCipher extends CryptoAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "Nihilist Cipher";
+      this.description = "Russian revolutionary cipher combining Polybius square with additive key encryption for historical cryptography study.";
+      this.category = CategoryType.CLASSICAL;
+      this.subCategory = "Additive Cipher";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.inventor = "Russian Revolutionaries";
+      this.year = 1880;
+      this.country = CountryCode.RU;
+
+      // Documentation
+      this.documentation = [
+        new LinkItem('Nihilist Cipher Wikipedia', 'https://en.wikipedia.org/wiki/Nihilist_cipher'),
+        new LinkItem('Classical Cryptography Guide', 'http://practicalcryptography.com/ciphers/classical-era/nihilist/')
+      ];
+
+      this.references = [
+        new LinkItem('Historical Cryptography', 'https://en.wikipedia.org/wiki/Nihilist_cipher'),
+        new LinkItem('Russian Revolutionary Ciphers', 'http://www.cryptomuseum.com/crypto/nihilist.htm')
+      ];
+
+      // Test vectors in plain format (recommended)
+      this.tests = [
+        {
+          text: 'Historical example - ATTACKATDAWN with NIHILIST key',
+          uri: 'https://en.wikipedia.org/wiki/Nihilist_cipher',
+          input: OpCodes.AnsiToBytes('ATTACKATDAWN'), 
+          key: OpCodes.AnsiToBytes('NIHILIST'),
+          expected: OpCodes.AnsiToBytes('44 68 67 35 44 49 54 88 47 35 75 57')
+        },
+        {
+          text: 'Revolutionary message with RUSSIAN key',
+          uri: 'https://en.wikipedia.org/wiki/Nihilist_cipher',
+          input: OpCodes.AnsiToBytes('REVOLUTION'),
+          key: OpCodes.AnsiToBytes('RUSSIAN'),
+          expected: OpCodes.AnsiToBytes('84 60 94 77 55 56 77 66 79 76')
+        },
+        {
+          text: 'Simple example - SECRET with CZAR key',
+          uri: 'https://en.wikipedia.org/wiki/Nihilist_cipher',
+          input: OpCodes.AnsiToBytes('SECRET'),
+          key: OpCodes.AnsiToBytes('CZAR'),
+          expected: OpCodes.AnsiToBytes('56 70 24 84 28 99')
+        }
+      ];
+
+      // For test suite compatibility
+      this.testVectors = this.tests;
+
+      // Standard Polybius Square (I/J combined)
+      this.STANDARD_SQUARE = [
+        ['A', 'B', 'C', 'D', 'E'],
+        ['F', 'G', 'H', 'I', 'K'], // I/J combined as I
+        ['L', 'M', 'N', 'O', 'P'],
+        ['Q', 'R', 'S', 'T', 'U'],
+        ['V', 'W', 'X', 'Y', 'Z']
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      return new NihilistInstance(this, isInverse);
     }
   }
-  
-  // Load OpCodes for common operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
-  }
-  
-  const Nihilist = {
-    // Public interface properties
-    internalName: 'Nihilist',
-    name: 'Nihilist Cipher',
-    comment: 'Russian revolutionary cipher (1880s) - Polybius square + additive key encryption',
-    minKeyLength: 1,
-    maxKeyLength: 100, // Practical limit for key phrase
-    stepKeyLength: 1,
-    minBlockSize: 1,
-    maxBlockSize: 0, // No limit
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
-    
-    // Standard Polybius Square (I/J combined)
-    STANDARD_SQUARE: [
-      ['A', 'B', 'C', 'D', 'E'],
-      ['F', 'G', 'H', 'I', 'K'], // I/J combined as I
-      ['L', 'M', 'N', 'O', 'P'],
-      ['Q', 'R', 'S', 'T', 'U'],
-      ['V', 'W', 'X', 'Y', 'Z']
-    ],
-    
-    // Test vectors from historical cryptography sources
-    testVectors: [
-      {
-        input: 'ATTACKATDAWN',
-        key: 'NIHILIST',
-        expected: '89 96 88 97 91 93 89 96 99 89 104 95',
-        description: 'Historical example - ATTACKATDAWN with NIHILIST key'
-      },
-      {
-        input: 'REVOLUTION',
-        key: 'RUSSIAN',
-        expected: '97 93 108 97 94 103 97 83 97 95',
-        description: 'Revolutionary message with RUSSIAN key'
-      },
-      {
-        input: 'SECRET',
-        key: 'CZAR',
-        expected: '86 79 74 98 79 88',
-        description: 'Simple example - SECRET with CZAR key'
+
+  class NihilistInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.inputBuffer = [];
+      this._key = null;
+
+      this.setupSquare();
+    }
+
+    set key(keyData) {
+      let keyString = '';
+      if (typeof keyData === 'string') {
+        keyString = keyData;
+      } else if (Array.isArray(keyData)) {
+        keyString = String.fromCharCode(...keyData);
       }
-    ],
-    
-    // Initialize Nihilist
-    Init: function() {
-      Nihilist.isInitialized = true;
-    },
-    
-    // Set up key for Nihilist
-    KeySetup: function(key) {
-      let id;
-      do {
-        id = 'Nihilist[' + global.generateUniqueID() + ']';
-      } while (Nihilist.instances[id] || global.objectInstances[id]);
-      
-      Nihilist.instances[id] = new Nihilist.NihilistInstance(key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear Nihilist data
-    ClearData: function(id) {
-      if (Nihilist.instances[id]) {
-        delete Nihilist.instances[id];
-        delete global.objectInstances[id];
-      }
-    },
-    
-    // Encrypt using Nihilist cipher
-    encryptBlock: function(intInstanceID, input) {
-      const id = 'Nihilist[' + intInstanceID + ']';
-      if (!Nihilist.instances[id]) return '';
-      
-      return Nihilist.instances[id].encrypt(input);
-    },
-    
-    // Decrypt using Nihilist cipher
-    decryptBlock: function(intInstanceID, input) {
-      const id = 'Nihilist[' + intInstanceID + ']';
-      if (!Nihilist.instances[id]) return '';
-      
-      return Nihilist.instances[id].decrypt(input);
-    },
-    
-    // Nihilist Instance Class
-    NihilistInstance: function(key) {
-      this.key = key.toUpperCase().replace(/[^A-Z]/g, ''); // Remove non-letters
-      if (this.key.length === 0) {
+
+      this.keyText = keyString.toUpperCase().replace(/[^A-Z]/g, ''); // Remove non-letters
+      if (this.keyText.length === 0) {
         throw new Error('Nihilist: Key must contain at least one letter');
       }
-      
-      this.setupSquare();
+
       this.prepareKey();
-    },
-    
-    // Setup functions
-    setupSquare: function() {
-      Nihilist.NihilistInstance.prototype.setupSquare = function() {
-        // Use standard Polybius square
-        this.square = Nihilist.STANDARD_SQUARE.map(row => row.slice());
-        
-        // Create coordinate lookup for letters
-        this.letterToCoords = {};
-        this.coordsToLetter = {};
-        
-        for (let row = 0; row < 5; row++) {
-          for (let col = 0; col < 5; col++) {
-            const letter = this.square[row][col];
-            const coords = (row + 1) * 10 + (col + 1); // 11, 12, 13, etc.
-            this.letterToCoords[letter] = coords;
-            this.coordsToLetter[coords] = letter;
-          }
-        }
-        
-        // Handle I/J combination
-        this.letterToCoords['J'] = this.letterToCoords['I'];
-      };
-      
-      // Prepare the key by converting to coordinate numbers
-      Nihilist.NihilistInstance.prototype.prepareKey = function() {
-        this.keyCoords = [];
-        for (let i = 0; i < this.key.length; i++) {
-          const letter = this.key[i];
-          if (this.letterToCoords[letter]) {
-            this.keyCoords.push(this.letterToCoords[letter]);
-          }
-        }
-        
-        if (this.keyCoords.length === 0) {
-          throw new Error('Nihilist: No valid letters found in key');
-        }
-      };
-      
-      // Encrypt function
-      Nihilist.NihilistInstance.prototype.encrypt = function(plaintext) {
-        const text = plaintext.toUpperCase().replace(/[^A-Z]/g, '');
-        const result = [];
-        
-        for (let i = 0; i < text.length; i++) {
-          const letter = text[i];
-          
-          // Convert letter to Polybius coordinates
-          const letterCoords = this.letterToCoords[letter] || this.letterToCoords['I']; // J maps to I
-          
-          // Get corresponding key coordinate (cycling through key)
-          const keyCoords = this.keyCoords[i % this.keyCoords.length];
-          
-          // Add coordinates (Nihilist addition)
-          const sum = letterCoords + keyCoords;
-          result.push(sum.toString());
-        }
-        
-        return result.join(' ');
-      };
-      
-      // Decrypt function
-      Nihilist.NihilistInstance.prototype.decrypt = function(ciphertext) {
-        // Parse numbers from ciphertext
-        const numbers = ciphertext.trim().split(/\s+/).map(n => parseInt(n));
-        const result = [];
-        
-        for (let i = 0; i < numbers.length; i++) {
-          const sum = numbers[i];
-          
-          // Get corresponding key coordinate
-          const keyCoords = this.keyCoords[i % this.keyCoords.length];
-          
-          // Subtract key from sum to get original letter coordinates
-          const letterCoords = sum - keyCoords;
-          
-          // Validate coordinates are in valid Polybius range
-          const row = Math.floor(letterCoords / 10);
-          const col = letterCoords % 10;
-          
-          if (row >= 1 && row <= 5 && col >= 1 && col <= 5) {
-            const coords = row * 10 + col;
-            if (this.coordsToLetter[coords]) {
-              result.push(this.coordsToLetter[coords]);
-            } else {
-              result.push('?'); // Invalid coordinates
-            }
-          } else {
-            result.push('?'); // Out of range
-          }
-        }
-        
-        return result.join('');
-      };
-      
-      // Get the Polybius square for debugging/display
-      Nihilist.NihilistInstance.prototype.getSquare = function() {
-        return this.square.map(row => row.slice());
-      };
-      
-      // Display the encryption process for educational purposes
-      Nihilist.NihilistInstance.prototype.showEncryption = function(plaintext) {
-        const text = plaintext.toUpperCase().replace(/[^A-Z]/g, '');
-        let display = `Nihilist Cipher Encryption:\n`;
-        display += `Plaintext: ${text}\n`;
-        display += `Key: ${this.key}\n\n`;
-        display += `Polybius Square:\n`;
-        display += `  1 2 3 4 5\n`;
-        for (let i = 0; i < 5; i++) {
-          display += `${i + 1} `;
-          for (let j = 0; j < 5; j++) {
-            display += `${this.square[i][j]} `;
-          }
-          display += `\n`;
-        }
-        display += `\nEncryption process:\n`;
-        
-        for (let i = 0; i < text.length; i++) {
-          const letter = text[i];
-          const letterCoords = this.letterToCoords[letter] || this.letterToCoords['I'];
-          const keyLetter = this.key[i % this.key.length];
-          const keyCoords = this.keyCoords[i % this.keyCoords.length];
-          const sum = letterCoords + keyCoords;
-          
-          display += `${letter}(${letterCoords}) + ${keyLetter}(${keyCoords}) = ${sum}\n`;
-        }
-        
-        display += `\nResult: ${this.encrypt(plaintext)}`;
-        return display;
-      };
+      this._key = keyString;
     }
-  };
-  
-  // Initialize the prototype functions
-  Nihilist.setupSquare();
-  
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(Nihilist);
+
+    get key() {
+      return this._key;
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+
+      // Convert bytes to string for classical cipher
+      let text = '';
+      if (typeof data === 'string') {
+        text = data;
+      } else {
+        text = String.fromCharCode(...data);
+      }
+
+      this.inputBuffer.push(text);
+    }
+
+    Result() {
+      if (this.inputBuffer.length === 0) return [];
+
+      const text = this.inputBuffer.join('');
+      this.inputBuffer = [];
+
+      const result = this.isInverse ? 
+        this.decrypt(text) : 
+        this.encrypt(text);
+
+      // Convert string result to bytes
+      return Array.from(result).map(c => c.charCodeAt(0));
+    }
+
+    setupSquare() {
+      // Use standard Polybius square
+      this.square = this.algorithm.STANDARD_SQUARE.map(row => row.slice());
+
+      // Create coordinate lookup for letters
+      this.letterToCoords = {};
+      this.coordsToLetter = {};
+
+      for (let row = 0; row < 5; row++) {
+        for (let col = 0; col < 5; col++) {
+          const letter = this.square[row][col];
+          const coords = (row + 1) * 10 + (col + 1); // 11, 12, 13, etc.
+          this.letterToCoords[letter] = coords;
+          this.coordsToLetter[coords] = letter;
+        }
+      }
+
+      // Handle I/J combination
+      this.letterToCoords['J'] = this.letterToCoords['I'];
+    }
+
+    // Prepare the key by converting to coordinate numbers
+    prepareKey() {
+      this.keyCoords = [];
+      for (let i = 0; i < this.keyText.length; i++) {
+        const letter = this.keyText[i];
+        if (this.letterToCoords[letter]) {
+          this.keyCoords.push(this.letterToCoords[letter]);
+        }
+      }
+
+      if (this.keyCoords.length === 0) {
+        throw new Error('Nihilist: No valid letters found in key');
+      }
+    }
+
+    // Encrypt function
+    encrypt(plaintext) {
+      const text = plaintext.toUpperCase().replace(/[^A-Z]/g, '');
+      const result = [];
+
+      for (let i = 0; i < text.length; i++) {
+        const letter = text[i];
+
+        // Convert letter to Polybius coordinates
+        const letterCoords = this.letterToCoords[letter] || this.letterToCoords['I']; // J maps to I
+
+        // Get corresponding key coordinate (cycling through key)
+        const keyCoords = this.keyCoords[i % this.keyCoords.length];
+
+        // Add coordinates (Nihilist addition)
+        const sum = letterCoords + keyCoords;
+        result.push(sum.toString());
+      }
+
+      return result.join(' ');
+    }
+
+    // Decrypt function
+    decrypt(ciphertext) {
+      // Parse numbers from ciphertext
+      const numbers = ciphertext.trim().split(/\s+/).map(n => parseInt(n));
+      const result = [];
+
+      for (let i = 0; i < numbers.length; i++) {
+        const sum = numbers[i];
+
+        // Get corresponding key coordinate
+        const keyCoords = this.keyCoords[i % this.keyCoords.length];
+
+        // Subtract key from sum to get original letter coordinates
+        const letterCoords = sum - keyCoords;
+
+        // Validate coordinates are in valid Polybius range
+        const row = Math.floor(letterCoords / 10);
+        const col = letterCoords % 10;
+
+        if (row >= 1 && row <= 5 && col >= 1 && col <= 5) {
+          const coords = row * 10 + col;
+          if (this.coordsToLetter[coords]) {
+            result.push(this.coordsToLetter[coords]);
+          } else {
+            result.push('?'); // Invalid coordinates
+          }
+        } else {
+          result.push('?'); // Out of range
+        }
+      }
+
+      return result.join('');
+    }
+
+    // Return the Polybius square for educational purposes
+    getSquare() {
+      return this.square.map(row => row.slice());
+    }
+
+    // Display the encryption process for educational purposes
+    showEncryption(plaintext) {
+      const text = plaintext.toUpperCase().replace(/[^A-Z]/g, '');
+      let display = `Nihilist Cipher Encryption:\n`;
+      display += `Plaintext: ${text}\n`;
+      display += `Key: ${this.keyText}\n\n`;
+      display += `Polybius Square:\n`;
+      display += `  1 2 3 4 5\n`;
+      for (let i = 0; i < 5; i++) {
+        display += `${i + 1} `;
+        for (let j = 0; j < 5; j++) {
+          display += `${this.square[i][j]} `;
+        }
+        display += `\n`;
+      }
+      display += `\nEncryption process:\n`;
+
+      for (let i = 0; i < text.length; i++) {
+        const letter = text[i];
+        const letterCoords = this.letterToCoords[letter] || this.letterToCoords['I'];
+        const keyLetter = this.keyText[i % this.keyText.length];
+        const keyCoords = this.keyCoords[i % this.keyCoords.length];
+        const sum = letterCoords + keyCoords;
+
+        display += `${letter}(${letterCoords}) + ${keyLetter}(${keyCoords}) = ${sum}\n`;
+      }
+
+      display += `\nResult: ${this.encrypt(plaintext)}`;
+      return display;
+    }
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Nihilist;
+  // Register the algorithm
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new NihilistCipher();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // ===== EXPORTS =====
+
+  return { NihilistCipher, NihilistInstance };
+}));

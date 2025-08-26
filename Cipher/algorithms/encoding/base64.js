@@ -1,273 +1,285 @@
 /*
- * Universal BASE64 Encoder/Decoder
- * Compatible with both Browser and Node.js environments
- * Based on original base64.js but modernized for cross-platform use
+ * Base64 Encoding Implementation
+ * Educational implementation of Base64 encoding (RFC 4648)
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
+// Load AlgorithmFramework (REQUIRED)
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('BASE64 cipher requires Cipher system to be loaded first');
-      return;
-    }
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
-  // Load metadata system
-  if (!global.CipherMetadata && typeof require !== 'undefined') {
-    try {
-      require('../../cipher-metadata.js');
-    } catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class Base64Algorithm extends EncodingAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "Base64";
+      this.description = "Base64 encoding scheme using 64-character alphabet to represent binary data in ASCII string format. Commonly used for email attachments, data URLs, and web APIs. Educational implementation following RFC 4648 standard.";
+      this.inventor = "Privacy-Enhanced Mail (PEM) Working Group";
+      this.year = 1993;
+      this.category = CategoryType.ENCODING;
+      this.subCategory = "Base Encoding";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.BEGINNER;
+      this.country = CountryCode.INTL;
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("RFC 4648 - The Base16, Base32, and Base64 Data Encodings", "https://tools.ietf.org/html/rfc4648"),
+        new LinkItem("Wikipedia - Base64", "https://en.wikipedia.org/wiki/Base64"),
+        new LinkItem("Mozilla Base64 Guide", "https://developer.mozilla.org/en-US/docs/Web/API/btoa")
+      ];
+
+      this.references = [
+        new LinkItem("RFC 2045 - MIME Part One", "https://tools.ietf.org/html/rfc2045"),
+        new LinkItem("Base64 Online Decoder", "https://www.base64decode.org/"),
+        new LinkItem("Data URL Specification", "https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URIs")
+      ];
+
+      this.knownVulnerabilities = [];
+
+      // Test vectors from RFC 4648
+      this.tests = [
+        new TestCase(
+          OpCodes.AnsiToBytes(""),
+          OpCodes.AnsiToBytes(""),
+          "Base64 empty string test - RFC 4648",
+          "https://tools.ietf.org/html/rfc4648#section-10"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("f"),
+          OpCodes.AnsiToBytes("Zg=="),
+          "Base64 single character test - RFC 4648", 
+          "https://tools.ietf.org/html/rfc4648#section-10"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("fo"),
+          OpCodes.AnsiToBytes("Zm8="),
+          "Base64 two character test - RFC 4648",
+          "https://tools.ietf.org/html/rfc4648#section-10"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("foo"),
+          OpCodes.AnsiToBytes("Zm9v"),
+          "Base64 three character test - RFC 4648",
+          "https://tools.ietf.org/html/rfc4648#section-10"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("foob"),
+          OpCodes.AnsiToBytes("Zm9vYg=="),
+          "Base64 four character test - RFC 4648",
+          "https://tools.ietf.org/html/rfc4648#section-10"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("fooba"),
+          OpCodes.AnsiToBytes("Zm9vYmE="),
+          "Base64 five character test - RFC 4648",
+          "https://tools.ietf.org/html/rfc4648#section-10"
+        ),
+        new TestCase(
+          OpCodes.AnsiToBytes("foobar"),
+          OpCodes.AnsiToBytes("Zm9vYmFy"),
+          "Base64 six character test - RFC 4648",
+          "https://tools.ietf.org/html/rfc4648#section-10"
+        )
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      return new Base64Instance(this, isInverse);
     }
   }
-  
-  // Create BASE64 cipher object
-  const BASE64 = {
-    // Public interface properties
-    internalName: 'BASE64',
-    name: 'BASE64',
-    comment: 'RFC 4648 compliant BASE64 encoder/decoder',
-    minKeyLength: 0,
-    maxKeyLength: 0,
-    stepKeyLength: 1,
-    minBlockSize: 0,
-    maxBlockSize: 0,
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
-    
-    // BASE64 character set (RFC 4648)
-    CHARS: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/',
-    PAD: '=',
-    
-    // Character lookup table for decoding
-    charLookup: {},
-    
-    // Comprehensive metadata
-    metadata: global.CipherMetadata ? global.CipherMetadata.createMetadata({
-      algorithm: 'BASE64',
-      displayName: 'Base64 Encoding',
-      description: 'Binary-to-text encoding scheme that represents binary data in ASCII string format using a radix-64 representation. Widely used in email, web protocols, and data serialization.',
-      
-      inventor: 'Originally in RFC 989, standardized in RFC 4648',
-      year: 1987,
-      background: 'Developed for encoding binary data in email systems that could only handle 7-bit ASCII text. The algorithm transforms every 3 bytes (24 bits) into 4 printable ASCII characters.',
-      
-      securityStatus: global.CipherMetadata.SecurityStatus.SECURE,
-      securityNotes: 'Not encryption - only encoding for safe transport. Provides no security or obfuscation, easily reversible. Used for data integrity, not confidentiality.',
-      
-      category: global.CipherMetadata.Categories.ENCODING,
-      subcategory: 'binary-to-text',
-      complexity: global.CipherMetadata.ComplexityLevels.BEGINNER,
-      
-      keySize: 0, // No key required
-      blockSize: 3, // 3 input bytes -> 4 output characters
-      rounds: 1,
-      
-      specifications: [
-        {
-          name: 'RFC 4648: The Base16, Base32, and Base64 Data Encodings',
-          url: 'https://tools.ietf.org/html/rfc4648'
-        },
-        {
-          name: 'MIME Base64 - RFC 2045',
-          url: 'https://tools.ietf.org/html/rfc2045#section-6.8'
-        }
-      ],
-      
-      testVectors: [
-        {
-          name: 'RFC 4648 Section 10 Test Vectors',
-          url: 'https://tools.ietf.org/html/rfc4648#section-10'
-        },
-        {
-          name: 'IETF Base64 Test Suite',
-          url: 'https://base64.guru/tests/compare'
-        }
-      ],
-      
-      references: [
-        {
-          name: 'Wikipedia: Base64',
-          url: 'https://en.wikipedia.org/wiki/Base64'
-        },
-        {
-          name: 'Mozilla Base64 Documentation',
-          url: 'https://developer.mozilla.org/en-US/docs/Web/API/btoa'
-        }
-      ],
-      
-      implementationNotes: 'Standard implementation with RFC 4648 alphabet (A-Z, a-z, 0-9, +, /) and = padding. Handles arbitrary length input with proper padding.',
-      performanceNotes: 'O(n) time and space complexity. Very fast due to simple bitwise operations. 33% size increase from input to output.',
-      
-      educationalValue: 'Excellent introduction to binary representations, bitwise operations, and data encoding. Shows how to safely transmit binary data over text-only channels.',
-      prerequisites: ['Binary number system', 'ASCII character encoding', 'Basic bitwise operations'],
-      
-      tags: ['encoding', 'binary-to-text', 'rfc4648', 'mime', 'data-transport', 'beginner', 'standard'],
-      
-      version: '2.0'
-    }) : null,
-    
-    // Official test vectors from RFC 4648 Section 10
-    testVectors: [
-      { input: '', key: '', expected: '', description: 'RFC 4648 test vector: empty string' },
-      { input: 'f', key: '', expected: 'Zg==', description: 'RFC 4648 test vector: single f' },
-      { input: 'fo', key: '', expected: 'Zm8=', description: 'RFC 4648 test vector: fo' },
-      { input: 'foo', key: '', expected: 'Zm9v', description: 'RFC 4648 test vector: foo' },
-      { input: 'foob', key: '', expected: 'Zm9vYg==', description: 'RFC 4648 test vector: foob' },
-      { input: 'fooba', key: '', expected: 'Zm9vYmE=', description: 'RFC 4648 test vector: fooba' },
-      { input: 'foobar', key: '', expected: 'Zm9vYmFy', description: 'RFC 4648 test vector: foobar (no padding)' }
-    ],
-    
-    // Initialize cipher
-    Init: function() {
-      // Build lookup table for decoding
-      BASE64.charLookup = {};
-      for (let i = 0; i < BASE64.CHARS.length; i++) {
-        BASE64.charLookup[BASE64.CHARS.charAt(i)] = i;
+
+  class Base64Instance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+      this.paddingChar = "=";
+      this.processedData = null;
+
+      // Create decode lookup table
+      this.decodeTable = {};
+      for (let i = 0; i < this.alphabet.length; i++) {
+        this.decodeTable[this.alphabet[i]] = i;
       }
-      BASE64.isInitialized = true;
-    },
-    
-    // Set up key (BASE64 doesn't use keys)
-    KeySetup: function(optional_key) {
-      let id;
-      do {
-        id = 'BASE64[' + global.generateUniqueID() + ']';
-      } while (BASE64.instances[id] || global.objectInstances[id]);
-      
-      BASE64.instances[id] = new BASE64.Base64Instance(optional_key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear cipher data
-    ClearData: function(id) {
-      if (BASE64.instances[id]) {
-        delete BASE64.instances[id];
-        delete global.objectInstances[id];
-        return true;
+    }
+
+    Feed(data) {
+      if (!Array.isArray(data)) {
+        throw new Error('Base64Instance.Feed: Input must be byte array');
+      }
+
+      if (this.isInverse) {
+        this.processedData = this.decode(data);
       } else {
-        global.throwException('Unknown Object Reference Exception', id, 'BASE64', 'ClearData');
-        return false;
+        this.processedData = this.encode(data);
       }
-    },
-    
-    // Encrypt block (encode to BASE64)
-    encryptBlock: function(id, plaintext) {
-      if (!BASE64.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'BASE64', 'encryptBlock');
-        return plaintext;
-      }
-      
-      return BASE64.encode(plaintext);
-    },
-    
-    // Decrypt block (decode from BASE64)
-    decryptBlock: function(id, ciphertext) {
-      if (!BASE64.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'BASE64', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      return BASE64.decode(ciphertext);
-    },
-    
-    // Encode string to BASE64
-    encode: function(input) {
-      if (!input) return '';
-      
-      let result = '';
-      
-      for (let i = 0; i < input.length; i += 3) {
-        // Get up to 3 bytes
-        const byte1 = input.charCodeAt(i);
-        const byte2 = i + 1 < input.length ? input.charCodeAt(i + 1) : 0;
-        const byte3 = i + 2 < input.length ? input.charCodeAt(i + 2) : 0;
-        
-        // Combine into 24-bit number
-        const combined = (byte1 << 16) | (byte2 << 8) | byte3;
-        
-        // Extract 4 x 6-bit groups and encode
-        result += BASE64.CHARS.charAt((combined >> 18) & 63);
-        result += BASE64.CHARS.charAt((combined >> 12) & 63);
-        result += (i + 1 < input.length) ? BASE64.CHARS.charAt((combined >> 6) & 63) : BASE64.PAD;
-        result += (i + 2 < input.length) ? BASE64.CHARS.charAt(combined & 63) : BASE64.PAD;
-      }
-      
-      return result;
-    },
-    
-    // Decode BASE64 string
-    decode: function(input) {
-      if (!input) return '';
-      
-      // Remove whitespace and padding for calculation
-      const cleanInput = input.replace(/\s/g, '');
-      const padCount = (cleanInput.match(/=/g) || []).length;
-      const dataLength = cleanInput.length - padCount;
-      
-      let result = '';
-      let i = 0;
-      
-      while (i < dataLength) {
-        // Get 4 characters (24 bits)
-        const a = BASE64.charLookup[cleanInput.charAt(i++)] || 0;
-        const b = BASE64.charLookup[cleanInput.charAt(i++)] || 0;
-        const c = i < dataLength ? (BASE64.charLookup[cleanInput.charAt(i++)] || 0) : 0;
-        const d = i < dataLength ? (BASE64.charLookup[cleanInput.charAt(i++)] || 0) : 0;
-        
-        // Combine into 24-bit number
-        const bitmap = (a << 18) | (b << 12) | (c << 6) | d;
-        
-        // Extract 3 bytes
-        result += String.fromCharCode((bitmap >> 16) & 255);
-        if (i - 2 <= dataLength) result += String.fromCharCode((bitmap >> 8) & 255);
-        if (i - 1 <= dataLength) result += String.fromCharCode(bitmap & 255);
-      }
-      
-      return result;
-    },
-    
-    // Instance class
-    Base64Instance: function(key) {
-      this.key = key || '';
-    },
-    
-    // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, plaintext) {
-      return this.encryptBlock(id, plaintext);
-    },
-    
-    DecryptBlock: function(id, ciphertext) {
-      return this.decryptBlock(id, ciphertext);
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(BASE64);
+
+    Result() {
+      if (this.processedData === null) {
+        throw new Error('Base64Instance.Result: No data processed. Call Feed() first.');
+      }
+      return this.processedData;
+    }
+
+    encode(data) {
+      if (data.length === 0) {
+        return [];
+      }
+
+      let result = "";
+      let i = 0;
+
+      while (i < data.length) {
+        const a = data[i++];
+        const b = i < data.length ? data[i++] : 0;
+        const c = i < data.length ? data[i++] : 0;
+
+        const combined = (a << 16) | (b << 8) | c;
+
+        result += this.alphabet[(combined >> 18) & 63];
+        result += this.alphabet[(combined >> 12) & 63];
+        result += this.alphabet[(combined >> 6) & 63];
+        result += this.alphabet[combined & 63];
+      }
+
+      // Add padding
+      const padding = data.length % 3;
+      if (padding === 1) {
+        result = result.slice(0, -2) + this.paddingChar + this.paddingChar;
+      } else if (padding === 2) {
+        result = result.slice(0, -1) + this.paddingChar;
+      }
+
+      const resultBytes = [];
+      for (let i = 0; i < result.length; i++) {
+        resultBytes.push(result.charCodeAt(i));
+      }
+      return resultBytes;
+    }
+
+    decode(data) {
+      if (data.length === 0) {
+        return [];
+      }
+
+      const input = String.fromCharCode(...data);
+      let cleanInput = input.replace(/[^A-Za-z0-9+\/=]/g, "");
+
+      // Count padding characters
+      const paddingMatch = cleanInput.match(/=+$/);
+      const paddingCount = paddingMatch ? paddingMatch[0].length : 0;
+
+      // Remove padding for processing
+      cleanInput = cleanInput.replace(/=+$/, "");
+
+      const result = [];
+      let i = 0;
+
+      // Process in groups of 4 characters
+      while (i + 3 < cleanInput.length) {
+        const a = this.decodeTable[cleanInput[i++]] || 0;
+        const b = this.decodeTable[cleanInput[i++]] || 0;
+        const c = this.decodeTable[cleanInput[i++]] || 0;
+        const d = this.decodeTable[cleanInput[i++]] || 0;
+
+        const combined = (a << 18) | (b << 12) | (c << 6) | d;
+
+        result.push((combined >> 16) & 255);
+        result.push((combined >> 8) & 255);
+        result.push(combined & 255);
+      }
+
+      // Handle remaining characters (incomplete group)
+      if (i < cleanInput.length) {
+        const a = this.decodeTable[cleanInput[i++]] || 0;
+        const b = i < cleanInput.length ? (this.decodeTable[cleanInput[i++]] || 0) : 0;
+        const c = i < cleanInput.length ? (this.decodeTable[cleanInput[i++]] || 0) : 0;
+        const d = i < cleanInput.length ? (this.decodeTable[cleanInput[i++]] || 0) : 0;
+
+        const combined = (a << 18) | (b << 12) | (c << 6) | d;
+
+        result.push((combined >> 16) & 255);
+
+        if (paddingCount < 2) {
+          result.push((combined >> 8) & 255);
+        }
+
+        if (paddingCount === 0) {
+          result.push(combined & 255);
+        }
+      }
+
+      return result;
+    }
+
+    // Utility methods
+    encodeString(str) {
+      const bytes = OpCodes.AnsiToBytes(str);
+      const encoded = this.encode(bytes);
+      return OpCodes.BytesToAnsi(encoded);
+    }
+
+    decodeString(str) {
+      const bytes = OpCodes.AnsiToBytes(str);
+      const decoded = this.decode(bytes);
+      return OpCodes.BytesToAnsi(decoded);
+    }
   }
-  
-  // Export to global scope
-  global.BASE64 = BASE64;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = BASE64;
+
+  // Register the algorithm
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new Base64Algorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+
+  // ===== EXPORTS =====
+
+  return { Base64Algorithm, Base64Instance };
+}));

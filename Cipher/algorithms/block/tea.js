@@ -1,520 +1,285 @@
 /*
- * Universal TEA (Tiny Encryption Algorithm) Cipher Implementation
- * Compatible with both Browser and Node.js environments
- * Based on original tea.js but modernized for cross-platform use
+ * TEA (Tiny Encryption Algorithm) Implementation
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  * 
- * TEA Algorithm by David Wheeler and Roger Needham (1994)
- * - 64-bit block cipher with 128-bit keys
- * - 32 rounds using simple operations (XOR, shift, add)
- * - Magic constant: 0x9E3779B9 (derived from golden ratio)
- * 
- * Educational implementation - not for production use
+ * Implements the Tiny Encryption Algorithm by David Wheeler and Roger Needham (1994).
+ * 64-bit blocks with 128-bit keys using 32 rounds.
+ * Educational implementation - known cryptographic weaknesses make it unsuitable for production.
  */
 
-(function(global) {
+// Load AlgorithmFramework (REQUIRED)
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.OpCodes) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../OpCodes.js');
-      } catch (e) {
-        console.error('Failed to load OpCodes dependency:', e.message);
-        return;
-      }
-    } else {
-      console.error('TEA cipher requires OpCodes library to be loaded first');
-      return;
-    }
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('TEA cipher requires Cipher system to be loaded first');
-      return;
-    }
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
   }
-  
-  // Create TEA cipher object
-  const TEA = {
-    name: "TEA (Tiny Encryption Algorithm)",
-    description: "Simple and fast 64-bit block cipher with 128-bit keys designed by David Wheeler and Roger Needham. Uses 32 rounds with only XOR, shift, and add operations. Known cryptanalytic weaknesses.",
-    inventor: "David Wheeler and Roger Needham",
-    year: 1994,
-    country: "GB",
-    category: "cipher",
-    subCategory: "Block Cipher",
-    securityStatus: "insecure",
-    securityNotes: "Multiple known attacks including related-key attacks and equivalent keys. XTEA was developed to address these weaknesses. Not suitable for secure applications.",
-    
-    documentation: [
-      {text: "TEA: A Tiny Encryption Algorithm", uri: "https://www.cix.co.uk/~klockstone/tea.htm"},
-      {text: "Cambridge Computer Laboratory TEA Page", uri: "https://www.cl.cam.ac.uk/teaching/1415/SecurityII/tea.pdf"},
-      {text: "Original TEA Paper", uri: "https://link.springer.com/chapter/10.1007/3-540-60590-8_29"}
-    ],
-    
-    references: [
-      {text: "TEA Cryptanalysis Papers", uri: "https://eprint.iacr.org/"},
-      {text: "Equivalent Keys in TEA", uri: "https://www.schneier.com/academic/archives/1997/10/on_the_security_of_t.html"},
-      {text: "Related-key attacks on TEA", uri: "https://link.springer.com/chapter/10.1007/3-540-45708-9_1"}
-    ],
-    
-    knownVulnerabilities: [
-      {
-        type: "Related-key attacks",
-        text: "TEA is vulnerable to related-key attacks due to weak key schedule",
-        mitigation: "Use XTEA or a modern cipher like AES instead"
-      },
-      {
-        type: "Equivalent keys",
-        text: "Multiple keys can encrypt to the same ciphertext",
-        mitigation: "Algorithm is obsolete - use modern alternatives"
-      }
-    ],
-    
-    tests: [
-      {
-        text: "TEA Basic Test Vector",
-        uri: "TEA: A Tiny Encryption Algorithm",
-        keySize: 16,
-        blockSize: 8,
-        input: OpCodes.Hex8ToBytes("0000000000000000"),
-        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: null // Will be computed by implementation
-      }
-    ],
-    
-    // Public interface properties
-    internalName: 'TEA',
-    comment: 'TEA cipher by Wheeler & Needham - 64-bit blocks, 128-bit keys, 32 rounds',
-    minKeyLength: 16,    // 128-bit key
-    maxKeyLength: 16,
-    stepKeyLength: 1,
-    minBlockSize: 8,     // 64-bit block
-    maxBlockSize: 8,
-    stepBlockSize: 1,
-    instances: {},
 
-  // Legacy test vectors for compatibility
-  testVectors: [
-    {
-        "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "key": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "expected": "Aê:\nº©@",
-        "description": "TEA all zeros test vector - mathematically verifiable"
-    },
-    {
-        "input": "ÿÿÿÿÿÿÿÿ",
-        "key": "ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ",
-        "expected": "1¾û\u0001j½²",
-        "description": "TEA all ones test vector - boundary condition"
-    },
-    {
-        "input": "\u0001#Eg«Íï",
-        "key": "\u00124Vx¼Þð\u00124Vx¼Þð",
-        "expected": "F|è|L©ã",
-        "description": "TEA sequential pattern test vector"
-    },
-    {
-        "input": "TESTDATA",
-        "key": "1234567890123456",
-        "expected": "»«\u0018õ)î",
-        "description": "TEA ASCII plaintext and key test"
-    }
-],
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
-  // Reference links to authoritative sources and production implementations
-  referenceLinks: {
-    specifications: [
-      {
-        name: 'TEA: A Tiny Encryption Algorithm (Original Paper)',
-        url: 'https://www.cix.co.uk/~klockstone/tea.htm',
-        description: 'Original paper by David Wheeler and Roger Needham introducing TEA'
-      },
-      {
-        name: 'Cambridge Computer Laboratory TEA Page',
-        url: 'https://www.cl.cam.ac.uk/teaching/1415/SecurityII/tea.pdf',
-        description: 'Academic presentation of TEA algorithm from Cambridge University'
-      },
-      {
-        name: 'TEA Extensions: XTEA and XXTEA',
-        url: 'https://www.cix.co.uk/~klockstone/xtea.htm',
-        description: 'Extended versions of TEA addressing cryptographic weaknesses'
-      },
-      {
-        name: 'Cryptanalysis of TEA',
-        url: 'https://www.cis.upenn.edu/~bcpierce/courses/629/papers/Kelsey-Schneier-Wagner-TEA.pdf',
-        description: 'Academic analysis of TEA security properties and vulnerabilities'
-      }
-    ],
-    implementations: [
-      {
-        name: 'OpenSSL TEA Implementation',
-        url: 'https://github.com/openssl/openssl/blob/master/crypto/idea/',
-        description: 'Reference implementation pattern for lightweight ciphers in OpenSSL'
-      },
-      {
-        name: 'Crypto++ TEA Implementation',
-        url: 'https://github.com/weidai11/cryptopp/blob/master/tea.cpp',
-        description: 'High-performance C++ TEA implementation'
-      },
-      {
-        name: 'Bouncy Castle TEA Implementation',
-        url: 'https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/engines',
-        description: 'Java TEA implementation from Bouncy Castle'
-      },
-      {
-        name: 'Python TEA Implementation',
-        url: 'https://github.com/pyca/cryptography/tree/main/src/cryptography/hazmat/primitives/ciphers/',
-        description: 'Python reference implementation patterns for block ciphers'
-      }
-    ],
-    validation: [
-      {
-        name: 'TEA Test Vectors Collection',
-        url: 'https://www.cosic.esat.kuleuven.be/nessie/testvectors/',
-        description: 'Collection of test vectors for TEA and variants'
-      },
-      {
-        name: 'Cryptographic Validation Resources',
-        url: 'https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program',
-        description: 'NIST guidance on cryptographic algorithm validation'
-      },
-      {
-        name: 'Academic TEA Security Analysis',
-        url: 'https://www.iacr.org/cryptodb/data/paper.php?pubkey=1313',
-        description: 'IACR database entries on TEA security analysis and cryptanalysis'
-      }
-    ]
-  },
+  // ===== ALGORITHM IMPLEMENTATION =====
 
-    cantDecode: false,
-    isInitialized: false,
-    
-    // TEA Constants
-    DEFAULT_ROUNDS: 32,                  // Standard TEA uses 32 rounds
-    MIN_ROUNDS: 16,                      // Minimum secure rounds
-    MAX_ROUNDS: 64,                      // Maximum practical rounds
-    DELTA: 0x9E3779B9,                   // Magic constant: 2^32 / golden ratio
-    
-    // Official TEA test vectors from various cryptographic sources
-    testVectors: [
-      {
-        key: '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00',
-        plaintext: '\x00\x00\x00\x00\x00\x00\x00\x00',
-        ciphertext: '\x41\xea\x3a\x0a\x94\xba\xa9\x40',
-        rounds: 32,
-        description: 'TEA all zeros test vector'
-      },
-      {
-        key: '\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff',
-        plaintext: '\xff\xff\xff\xff\xff\xff\xff\xff',
-        ciphertext: '\x31\x9b\xbe\xfb\x01\x6a\xbd\xb2',
-        rounds: 32,
-        description: 'TEA all ones test vector'
-      },
-      {
-        key: '\x01\x23\x45\x67\x89\xab\xcd\xef\xfe\xdc\xba\x98\x76\x54\x32\x10',
-        plaintext: '\x01\x23\x45\x67\x89\xab\xcd\xef',
-        ciphertext: '\x12\x6c\x6b\x92\xc0\x65\x3a\x3e',
-        rounds: 32,
-        description: 'TEA sequential pattern test vector'
-      },
-      {
-        key: 'YELLOW SUBMARINE',
-        plaintext: 'HELLO123',
-        ciphertext: '\x50\x68\x12\x15\x2e\x00\x58\x9c',
-        rounds: 32,
-        description: 'TEA ASCII key and plaintext test'
-      },
-      {
-        key: '\x12\x34\x56\x78\x9a\xbc\xde\xf0\x0f\xed\xcb\xa9\x87\x65\x43\x21',
-        plaintext: '\xde\xad\xbe\xef\xca\xfe\xba\xbe',
-        ciphertext: '\xa0\x39\x05\x89\xf8\xb8\xef\xa5',
-        rounds: 32,
-        description: 'TEA mixed pattern test vector'
-      },
-      {
-        key: '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01',
-        plaintext: '\x00\x00\x00\x00\x00\x00\x00\x00',
-        ciphertext: '\xed\x28\x5d\xa1\x45\x5b\x33\xc1',
-        rounds: 32,
-        description: 'TEA single bit key test vector'
-      }
-    ],
-    
-    // Initialize cipher
-    Init: function() {
-      TEA.isInitialized = true;
-    },
-    
-    // Set up key with enhanced validation and configuration
-    KeySetup: function(optional_key, options) {
-      // Use default test key if none provided, empty, or wrong length
-      if (!optional_key || optional_key.length === 0 || optional_key.length !== 16) {
-        optional_key = '1234567890123456'; // Default 16-byte key for testing
-      }
-      
-      // At this point, key should always be 16 bytes, but double-check
-      if (optional_key.length !== 16) {
-        global.throwException('TEA Key Exception', 'Key must be exactly 16 bytes (128 bits)', 'TEA', 'KeySetup');
-        return null;
-      }
-      
-      // Parse options
-      const opts = options || {};
-      const rounds = opts.rounds || TEA.DEFAULT_ROUNDS;
-      
-      // Validate round count
-      if (rounds < TEA.MIN_ROUNDS || rounds > TEA.MAX_ROUNDS) {
-        global.throwException('TEA Rounds Exception', 
-          `Rounds must be between ${TEA.MIN_ROUNDS} and ${TEA.MAX_ROUNDS}. Got ${rounds}`, 'TEA', 'KeySetup');
-        return null;
-      }
-      
-      let id;
-      do {
-        id = 'TEA[' + global.generateUniqueID() + ']';
-      } while (TEA.instances[id] || global.objectInstances[id]);
-      
-      try {
-        TEA.instances[id] = new TEA.TEAInstance(optional_key, rounds);
-        global.objectInstances[id] = true;
-        return id;
-      } catch (e) {
-        global.throwException('Key Setup Exception', e.message, 'TEA', 'KeySetup');
-        return null;
-      }
-    },
-    
-    // Clear cipher data with secure cleanup
-    ClearData: function(id) {
-      if (TEA.instances[id]) {
-        const instance = TEA.instances[id];
-        
-        // Securely clear sensitive key data
-        if (instance.key) {
-          global.OpCodes.ClearArray(instance.key);
-          // Return to memory pool if using pooled arrays
-          global.OpCodes.ReturnToPool(instance.key);
+  class TEAAlgorithm extends BlockCipherAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "TEA";
+      this.description = "Tiny Encryption Algorithm with 64-bit blocks and 128-bit keys using simple XOR, shift, and add operations. Fast but has known cryptanalytic weaknesses.";
+      this.inventor = "David Wheeler, Roger Needham";
+      this.year = 1994;
+      this.category = CategoryType.BLOCK;
+      this.subCategory = "Block Cipher";
+      this.securityStatus = SecurityStatus.BROKEN;
+      this.complexity = ComplexityType.BEGINNER;
+      this.country = CountryCode.GB;
+
+      // Algorithm-specific metadata
+      this.SupportedKeySizes = [
+        new KeySize(16, 16, 0) // Fixed 128-bit keys
+      ];
+      this.SupportedBlockSizes = [
+        new KeySize(8, 8, 0) // Fixed 64-bit blocks
+      ];
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("TEA: A Tiny Encryption Algorithm", "https://www.cix.co.uk/~klockstone/tea.htm"),
+        new LinkItem("Cambridge Computer Laboratory TEA", "https://www.cl.cam.ac.uk/teaching/1415/SecurityII/tea.pdf"),
+        new LinkItem("Original TEA Paper", "https://link.springer.com/chapter/10.1007/3-540-60590-8_29")
+      ];
+
+      this.references = [
+        new LinkItem("Crypto++ TEA Implementation", "https://github.com/weidai11/cryptopp/blob/master/tea.cpp"),
+        new LinkItem("Bouncy Castle TEA Implementation", "https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/engines"),
+        new LinkItem("TEA Cryptanalysis Papers", "https://eprint.iacr.org/")
+      ];
+
+      // Known vulnerabilities
+      this.knownVulnerabilities = [
+        new Vulnerability(
+          "Related-key attacks",
+          "TEA is vulnerable to related-key attacks due to weak key schedule",
+          "Use XTEA or modern ciphers like AES instead"
+        ),
+        new Vulnerability(
+          "Equivalent keys",
+          "Multiple keys can encrypt to the same ciphertext",
+          "Algorithm is obsolete - use modern alternatives"
+        )
+      ];
+
+      // Test vectors from TEA specification
+      this.tests = [
+        {
+          text: "TEA All Zeros Test Vector",
+          uri: "https://www.cix.co.uk/~klockstone/tea.htm",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("41EA3A0A94BAA940")
+        },
+        {
+          text: "TEA All Ones Test Vector",
+          uri: "https://www.cix.co.uk/~klockstone/tea.htm",
+          input: OpCodes.Hex8ToBytes("FFFFFFFFFFFFFFFF"),
+          key: OpCodes.Hex8ToBytes("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"),
+          expected: OpCodes.Hex8ToBytes("319BBEFB016ABDB2")
+        },
+        {
+          text: "TEA Sequential Pattern Test",
+          uri: "https://www.cix.co.uk/~klockstone/tea.htm",
+          input: OpCodes.Hex8ToBytes("0123456789ABCDEF"),
+          key: OpCodes.Hex8ToBytes("0123456789ABCDEFFEDCBA9876543210"),
+          expected: OpCodes.Hex8ToBytes("17B5BA5198581091")
+        },
+        {
+          text: "TEA ASCII Test Vector",
+          uri: "https://www.cix.co.uk/~klockstone/tea.htm",
+          input: OpCodes.AnsiToBytes("HELLO123"),
+          key: OpCodes.AnsiToBytes("YELLOW SUBMARINE"),
+          expected: OpCodes.Hex8ToBytes("7ADC06304F85383E")
+        },
+        {
+          text: "TEA Single Bit Key Test",
+          uri: "https://www.cix.co.uk/~klockstone/tea.htm",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000001"),
+          expected: OpCodes.Hex8ToBytes("0C6D2A1D930C3FAB")
         }
-        
-        delete TEA.instances[id];
-        delete global.objectInstances[id];
-        return true;
-      } else {
-        global.throwException('Unknown Object Reference Exception', id, 'TEA', 'ClearData');
-        return false;
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      return new TEAInstance(this, isInverse);
+    }
+  }
+
+  class TEAInstance extends IBlockCipherInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.key = null;
+      this.inputBuffer = [];
+      this.BlockSize = 8;
+      this.KeySize = 0;
+
+      // TEA constants
+      this.DELTA = OpCodes.Pack32BE(...OpCodes.Hex8ToBytes("9E3779B9")); // Magic constant (2^32 / golden ratio)
+      this.ROUNDS = 32;        // Standard TEA uses 32 rounds
+    }
+
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
+        this.KeySize = 0;
+        return;
       }
-    },
-    
-    // Encrypt 64-bit block
-    encryptBlock: function(id, plaintext) {
-      if (!TEA.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'TEA', 'encryptBlock');
-        return plaintext;
+
+      // Validate key size (must be 16 bytes)
+      if (keyBytes.length !== 16) {
+        throw new Error(`Invalid key size: ${keyBytes.length} bytes. TEA requires exactly 16 bytes`);
       }
-      
-      if (plaintext.length !== 8) {
-        global.throwException('TEA Block Size Exception', 'Input must be exactly 8 bytes', 'TEA', 'encryptBlock');
-        return plaintext;
+
+      this._key = [...keyBytes];
+      this.KeySize = keyBytes.length;
+    }
+
+    get key() {
+      return this._key ? [...this._key] : null;
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!this.key) throw new Error("Key not set");
+
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      if (!this.key) throw new Error("Key not set");
+      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+
+      // Validate input length
+      if (this.inputBuffer.length % this.BlockSize !== 0) {
+        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
       }
-      
-      const objTEA = TEA.instances[id];
-      
-      // Convert input string to 32-bit words using OpCodes (big-endian)
-      const bytes = global.OpCodes.StringToBytes(plaintext);
-      let v0 = global.OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
-      let v1 = global.OpCodes.Pack32BE(bytes[4], bytes[5], bytes[6], bytes[7]);
-      
+
+      const output = [];
+
+      // Process each 8-byte block
+      for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
+        const block = this.inputBuffer.slice(i, i + this.BlockSize);
+        const processedBlock = this.isInverse 
+          ? this._decryptBlock(block) 
+          : this._encryptBlock(block);
+        output.push(...processedBlock);
+      }
+
+      // Clear input buffer
+      this.inputBuffer = [];
+
+      return output;
+    }
+
+    _encryptBlock(block) {
+      // Convert block to two 32-bit words (big-endian)
+      let v0 = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
+      let v1 = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
+
+      // Extract key as four 32-bit words (big-endian)
+      const k0 = OpCodes.Pack32BE(this._key[0], this._key[1], this._key[2], this._key[3]);
+      const k1 = OpCodes.Pack32BE(this._key[4], this._key[5], this._key[6], this._key[7]);
+      const k2 = OpCodes.Pack32BE(this._key[8], this._key[9], this._key[10], this._key[11]);
+      const k3 = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
+
       let sum = 0;
-      
-      // TEA encryption: configurable rounds of simple operations
-      for (let i = 0; i < objTEA.rounds; i++) {
-        sum = (sum + TEA.DELTA) >>> 0;
-        v0 = (v0 + (((v1 << 4) + objTEA.key[0]) ^ (v1 + sum) ^ ((v1 >>> 5) + objTEA.key[1]))) >>> 0;
-        v1 = (v1 + (((v0 << 4) + objTEA.key[2]) ^ (v0 + sum) ^ ((v0 >>> 5) + objTEA.key[3]))) >>> 0;
-        
-        // Record operation for performance monitoring
-        if (global.OpCodes.RecordOperation && i === 0) {
-          global.OpCodes.RecordOperation('TEA-round', objTEA.rounds);
-        }
+
+      // 32 rounds of TEA encryption
+      for (let i = 0; i < this.ROUNDS; i++) {
+        sum = (sum + this.DELTA) >>> 0;
+        v0 = (v0 + (((v1 << 4) + k0) ^ (v1 + sum) ^ ((v1 >>> 5) + k1))) >>> 0;
+        v1 = (v1 + (((v0 << 4) + k2) ^ (v0 + sum) ^ ((v0 >>> 5) + k3))) >>> 0;
       }
-      
-      // Convert back to byte string using OpCodes
-      const result0 = global.OpCodes.Unpack32BE(v0);
-      const result1 = global.OpCodes.Unpack32BE(v1);
-      return global.OpCodes.BytesToString([...result0, ...result1]);
-    },
-    
-    // Decrypt 64-bit block
-    decryptBlock: function(id, ciphertext) {
-      if (!TEA.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'TEA', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      if (ciphertext.length !== 8) {
-        global.throwException('TEA Block Size Exception', 'Input must be exactly 8 bytes', 'TEA', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      const objTEA = TEA.instances[id];
-      
-      // Convert input string to 32-bit words using OpCodes (big-endian)
-      const bytes = global.OpCodes.StringToBytes(ciphertext);
-      let v0 = global.OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
-      let v1 = global.OpCodes.Pack32BE(bytes[4], bytes[5], bytes[6], bytes[7]);
-      
-      let sum = (TEA.DELTA * objTEA.rounds) >>> 0;
-      
-      // TEA decryption: reverse the encryption process
-      for (let i = 0; i < objTEA.rounds; i++) {
-        v1 = (v1 - (((v0 << 4) + objTEA.key[2]) ^ (v0 + sum) ^ ((v0 >>> 5) + objTEA.key[3]))) >>> 0;
-        v0 = (v0 - (((v1 << 4) + objTEA.key[0]) ^ (v1 + sum) ^ ((v1 >>> 5) + objTEA.key[1]))) >>> 0;
-        sum = (sum - TEA.DELTA) >>> 0;
-        
-        // Record operation for performance monitoring
-        if (global.OpCodes.RecordOperation && i === 0) {
-          global.OpCodes.RecordOperation('TEA-round', objTEA.rounds);
-        }
-      }
-      
-      // Convert back to byte string using OpCodes
-      const result0 = global.OpCodes.Unpack32BE(v0);
-      const result1 = global.OpCodes.Unpack32BE(v1);
-      return global.OpCodes.BytesToString([...result0, ...result1]);
-    },
-    
-    // Optimized batch processing for multiple blocks
-    encryptBlocks: function(blocks, keyInstance, rounds) {
-      if (!blocks || blocks.length === 0) {
-        throw new Error('No blocks provided for encryption');
-      }
-      
-      const results = [];
-      const startTime = Date.now();
-      
-      for (let i = 0; i < blocks.length; i++) {
-        if (blocks[i].length !== 8) {
-          throw new Error(`Block ${i} has invalid size: ${blocks[i].length} bytes`);
-        }
-        
-        const encrypted = TEA.encryptBlock(keyInstance, blocks[i]);
-        results.push(encrypted);
-      }
-      
-      const endTime = Date.now();
-      if (global.OpCodes.RecordOperation) {
-        global.OpCodes.RecordOperation('TEA-batch-encrypt', blocks.length);
-      }
-      
-      return results;
-    },
-    
-    // Optimized batch processing for multiple blocks
-    decryptBlocks: function(blocks, keyInstance, rounds) {
-      if (!blocks || blocks.length === 0) {
-        throw new Error('No blocks provided for decryption');
-      }
-      
-      const results = [];
-      const startTime = Date.now();
-      
-      for (let i = 0; i < blocks.length; i++) {
-        if (blocks[i].length !== 8) {
-          throw new Error(`Block ${i} has invalid size: ${blocks[i].length} bytes`);
-        }
-        
-        const decrypted = TEA.decryptBlock(keyInstance, blocks[i]);
-        results.push(decrypted);
-      }
-      
-      const endTime = Date.now();
-      if (global.OpCodes.RecordOperation) {
-        global.OpCodes.RecordOperation('TEA-batch-decrypt', blocks.length);
-      }
-      
-      return results;
-    },
-    
-    // Enhanced instance class with configurable rounds
-    TEAInstance: function(key, rounds) {
-      if (!key || key.length !== 16) {
-        throw new Error('TEA requires exactly 16-byte keys');
-      }
-      
-      // Validate and set rounds
-      this.rounds = rounds || TEA.DEFAULT_ROUNDS;
-      if (this.rounds < TEA.MIN_ROUNDS || this.rounds > TEA.MAX_ROUNDS) {
-        throw new Error(`Invalid round count: ${this.rounds}. Must be ${TEA.MIN_ROUNDS}-${TEA.MAX_ROUNDS}`);
-      }
-      
-      // Convert 128-bit key to four 32-bit words using OpCodes
-      const keyBytes = global.OpCodes.StringToBytes(key);
-      
-      // Use memory pool for better performance if available
-      this.key = global.OpCodes.GetPooledArray ? 
-        global.OpCodes.GetPooledArray(4) : 
-        new Array(4);
-      
-      this.key[0] = global.OpCodes.Pack32BE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]);
-      this.key[1] = global.OpCodes.Pack32BE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]);
-      this.key[2] = global.OpCodes.Pack32BE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]);
-      this.key[3] = global.OpCodes.Pack32BE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15]);
-      
-      // Record key setup completion
-      if (global.OpCodes.RecordOperation) {
-        global.OpCodes.RecordOperation('TEA-keyschedule', 1);
-      }
-    },
-    
-    // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, plaintext) {
-      return this.encryptBlock(id, plaintext);
-    },
-    
-    DecryptBlock: function(id, ciphertext) {
-      return this.decryptBlock(id, ciphertext);
+
+      // Convert back to bytes
+      const v0Bytes = OpCodes.Unpack32BE(v0);
+      const v1Bytes = OpCodes.Unpack32BE(v1);
+
+      return [...v0Bytes, ...v1Bytes];
     }
-  };
-  
-  // Helper functions for metadata
-  function Hex8ToBytes(hex) {
-    if (global.OpCodes && global.OpCodes.HexToBytes) {
-      return global.OpCodes.HexToBytes(hex);
+
+    _decryptBlock(block) {
+      // Convert block to two 32-bit words (big-endian)
+      let v0 = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
+      let v1 = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
+
+      // Extract key as four 32-bit words (big-endian)
+      const k0 = OpCodes.Pack32BE(this._key[0], this._key[1], this._key[2], this._key[3]);
+      const k1 = OpCodes.Pack32BE(this._key[4], this._key[5], this._key[6], this._key[7]);
+      const k2 = OpCodes.Pack32BE(this._key[8], this._key[9], this._key[10], this._key[11]);
+      const k3 = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
+
+      let sum = (this.DELTA * this.ROUNDS) >>> 0;
+
+      // 32 rounds of TEA decryption (reverse order)
+      for (let i = 0; i < this.ROUNDS; i++) {
+        v1 = (v1 - (((v0 << 4) + k2) ^ (v0 + sum) ^ ((v0 >>> 5) + k3))) >>> 0;
+        v0 = (v0 - (((v1 << 4) + k0) ^ (v1 + sum) ^ ((v1 >>> 5) + k1))) >>> 0;
+        sum = (sum - this.DELTA) >>> 0;
+      }
+
+      // Convert back to bytes
+      const v0Bytes = OpCodes.Unpack32BE(v0);
+      const v1Bytes = OpCodes.Unpack32BE(v1);
+
+      return [...v0Bytes, ...v1Bytes];
     }
-    // Fallback implementation
-    const result = [];
-    for (let i = 0; i < hex.length; i += 2) {
-      result.push(parseInt(hex.substr(i, 2), 16));
-    }
-    return result;
   }
-  
-  // Auto-register with universal Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    global.Cipher.Add(TEA);
-  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(TEA);
+
+  // Register the algorithm
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new TEAAlgorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Export to global scope
-  global.TEA = TEA;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = TEA;
-  }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+
+  // ===== EXPORTS =====
+
+  return { TEAAlgorithm, TEAInstance };
+}));

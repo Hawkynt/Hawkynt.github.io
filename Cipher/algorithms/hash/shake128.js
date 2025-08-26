@@ -1,40 +1,60 @@
-#!/usr/bin/env node
-/*
- * SHAKE128 Universal Extendable-Output Function Implementation
- * Compatible with both Browser and Node.js environments
- * (c)2006-2025 Hawkynt
- * 
- * SHAKE128 is an extendable-output function (XOF) based on the Keccak sponge function.
- * It can produce outputs of any desired length. Part of the SHA-3 family.
- * 
- * Specification: NIST FIPS 202
- * Reference: https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf
- * 
- * NOTE: This is an educational implementation for learning purposes only.
- * Use proven cryptographic libraries for production systems.
- */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Load OpCodes library for common operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
   // SHAKE128 constants
   const SHAKE128_RATE = 168;        // Rate in bytes (1344 bits)
   const SHAKE128_CAPACITY = 32;     // Capacity in bytes (256 bits)
   const KECCAK_ROUNDS = 24;         // Number of Keccak-f[1600] rounds
   
-  // Keccak round constants
+  // Keccac round constants (24 rounds, as [low32, high32] pairs)
   const RC = [
-    0x0000000000000001, 0x0000000000008082, 0x800000000000808a, 0x8000000080008000,
-    0x000000000000808b, 0x0000000080000001, 0x8000000080008081, 0x8000000000008009,
-    0x000000000000008a, 0x0000000000000088, 0x0000000080008009, 0x8000000000008003,
-    0x8000000000008002, 0x8000000000000080, 0x000000000000800a, 0x800000008000000a,
-    0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008,
-    0x0000000000008082, 0x8000000000000001, 0x0000000080008003, 0x8000000080000000
+    [0x00000001, 0x00000000], [0x00008082, 0x00000000], [0x0000808a, 0x80000000], [0x80008000, 0x80000000],
+    [0x0000808b, 0x00000000], [0x80000001, 0x00000000], [0x80008081, 0x80000000], [0x00008009, 0x80000000],
+    [0x0000008a, 0x00000000], [0x00000088, 0x00000000], [0x80008009, 0x00000000], [0x00008003, 0x80000000],
+    [0x00008002, 0x80000000], [0x00000080, 0x80000000], [0x0000800a, 0x00000000], [0x8000000a, 0x80000000],
+    [0x80008081, 0x80000000], [0x00008080, 0x80000000], [0x80000001, 0x00000000], [0x80008008, 0x80000000],
+    [0x00008082, 0x00000000], [0x00000001, 0x80000000], [0x80008003, 0x00000000], [0x80000000, 0x80000000]
   ];
   
   // Rotation offsets for rho step
@@ -44,14 +64,15 @@
   ];
   
   /**
-   * Convert 64-bit number to high/low 32-bit representation
-   * @param {number} val - 64-bit value (may lose precision)
-   * @returns {Array} [low32, high32]
+   * 64-bit XOR operation
+   * @param {Array} a - [low32, high32]
+   * @param {Array} b - [low32, high32]
+   * @returns {Array} XOR result [low32, high32]
    */
-  function to64bit(val) {
-    return [val & 0xFFFFFFFF, Math.floor(val / 0x100000000) & 0xFFFFFFFF];
+  function xor64(a, b) {
+    return [a[0] ^ b[0], a[1] ^ b[1]];
   }
-  
+
   /**
    * 64-bit left rotation (using 32-bit operations)
    * @param {Array} val - [low32, high32]
@@ -67,25 +88,15 @@
     if (positions === 32) {
       return [high, low];
     } else if (positions < 32) {
-      const newHigh = ((high << positions) | (low >>> (32 - positions))) >>> 0;
       const newLow = ((low << positions) | (high >>> (32 - positions))) >>> 0;
+      const newHigh = ((high << positions) | (low >>> (32 - positions))) >>> 0;
       return [newLow, newHigh];
     } else {
       positions -= 32;
-      const newHigh = ((low << positions) | (high >>> (32 - positions))) >>> 0;
       const newLow = ((high << positions) | (low >>> (32 - positions))) >>> 0;
+      const newHigh = ((low << positions) | (high >>> (32 - positions))) >>> 0;
       return [newLow, newHigh];
     }
-  }
-  
-  /**
-   * 64-bit XOR operation
-   * @param {Array} a - [low32, high32]
-   * @param {Array} b - [low32, high32]
-   * @returns {Array} XOR result [low32, high32]
-   */
-  function xor64(a, b) {
-    return [a[0] ^ b[0], a[1] ^ b[1]];
   }
   
   /**
@@ -127,7 +138,7 @@
       
       for (let x = 0; x < 5; x++) {
         for (let y = 0; y < 5; y++) {
-          state[x + 5 * y] = temp[((x + 3 * y) % 5) + 5 * x];
+          state[y + 5 * ((2 * x + 3 * y) % 5)] = temp[x + 5 * y];
         }
       }
       
@@ -146,8 +157,7 @@
       }
       
       // Iota step
-      const rc = to64bit(RC[round]);
-      state[0] = xor64(state[0], rc);
+      state[0] = xor64(state[0], RC[round]);
     }
   }
   
@@ -171,7 +181,7 @@
     }
     
     if (typeof data === 'string') {
-      data = OpCodes.StringToBytes(data);
+      data = OpCodes.AnsiToBytes(data);
     }
     
     let offset = 0;
@@ -197,14 +207,27 @@
   };
   
   Shake128Hasher.prototype.absorbBlock = function() {
-    // XOR buffer into state (little-endian)
+    // XOR buffer into state (little-endian, 8 bytes per state element)
     for (let i = 0; i < SHAKE128_RATE; i += 8) {
-      const word = [
-        OpCodes.Pack32LE(this.buffer[i], this.buffer[i + 1], this.buffer[i + 2], this.buffer[i + 3]),
-        OpCodes.Pack32LE(this.buffer[i + 4], this.buffer[i + 5], this.buffer[i + 6], this.buffer[i + 7])
-      ];
       const stateIndex = Math.floor(i / 8);
-      this.state[stateIndex] = xor64(this.state[stateIndex], word);
+      
+      // Pack 8 bytes into two 32-bit words (little-endian)
+      const low = OpCodes.Pack32LE(
+        this.buffer[i] || 0,
+        this.buffer[i + 1] || 0,
+        this.buffer[i + 2] || 0,
+        this.buffer[i + 3] || 0
+      );
+      const high = OpCodes.Pack32LE(
+        this.buffer[i + 4] || 0,
+        this.buffer[i + 5] || 0,
+        this.buffer[i + 6] || 0,
+        this.buffer[i + 7] || 0
+      );
+      
+      // XOR into state
+      this.state[stateIndex][0] ^= low;
+      this.state[stateIndex][1] ^= high;
     }
     
     keccakF(this.state);
@@ -244,7 +267,7 @@
       // Generate rate bytes from current state
       const available = Math.min(SHAKE128_RATE, outputLength - outputOffset);
       
-      for (let i = 0; i < available; i += 8) {
+      for (let i = 0; i < available && i < SHAKE128_RATE; i += 8) {
         const stateIndex = Math.floor(i / 8);
         const word = this.state[stateIndex];
         
@@ -323,20 +346,83 @@
         this.hasher.buffer.fill(0);
       }
       this.bKey = false;
-    }
+    },
+    
+    // Test vectors from NIST FIPS 202 and asecuritysite.com
+    tests: [
+      {
+        text: "SHAKE128 Empty String - 16 bytes output",
+        uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf",
+        input: [],
+        outputLength: 16,
+        expected: OpCodes.Hex8ToBytes("7f9c2ba4e88f827d616045507605853e")
+      },
+      {
+        text: "SHAKE128 'abc' - 16 bytes output",
+        uri: "https://asecuritysite.com/hash/shake",
+        input: OpCodes.AnsiToBytes("abc"),
+        outputLength: 16,
+        expected: OpCodes.Hex8ToBytes("5881092dd818bf5cf8a3ddb793fbcba7")
+      },
+      {
+        text: "SHAKE128 'abc' - 32 bytes output", 
+        uri: "https://asecuritysite.com/hash/shake",
+        input: OpCodes.AnsiToBytes("abc"),
+        outputLength: 32,
+        expected: OpCodes.Hex8ToBytes("483366601360a8771c6863080cc4114d8db4280928e6cd5d5e38fc3f33ac24e0")
+      }
+    ]
   };
-  
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(Shake128);
+   
+    class Shake128Wrapper extends CryptoAlgorithm {
+      constructor() {
+        super();
+        this.name = Shake128.name;
+        this.category = CategoryType.HASH;
+        this.securityStatus = SecurityStatus.ACTIVE;
+        this.complexity = ComplexityType.MEDIUM;
+        this.inventor = "Guido Bertoni, Joan Daemen, Michaël Peeters, Gilles Van Assche";
+        this.year = 2015;
+        this.country = "BE";
+        this.description = "SHAKE128 extensible-output function based on Keccak";
+        
+        if (Shake128.tests) {
+          this.tests = Shake128.tests.map(test => 
+            new TestCase(test.input, test.expected, test.text, test.uri)
+          );
+        }
+      }
+      
+      CreateInstance(isInverse = false) {
+        return new Shake128WrapperInstance(this, isInverse);
+      }
+    }
+    
+    class Shake128WrapperInstance extends IAlgorithmInstance {
+      constructor(algorithm, isInverse) {
+        super(algorithm, isInverse);
+        this.instance = Object.create(Shake128);
+        this.instance.Init();
+      }
+      
+      ProcessData(input) {
+        return this.instance.hash(input, 32);
+      }
+      
+      Reset() {
+        this.instance.ClearData();
+        this.instance.Init();
+      }
+    }
+   
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new Shake128Wrapper();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Shake128;
-  }
-  
-  // Make available globally
-  global.Shake128 = Shake128;
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // ===== EXPORTS =====
+
+  return { Shake128Wrapper, Shake128WrapperInstance };
+}));

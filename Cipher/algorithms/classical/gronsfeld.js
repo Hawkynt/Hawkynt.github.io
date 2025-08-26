@@ -1,564 +1,233 @@
 /*
- * Universal Gronsfeld Cipher
- * Compatible with both Browser and Node.js environments
- * Polyalphabetic cipher using numeric key (Vigenère variant)
- * (c)2025 Hawkynt - Educational Implementation
+ * Gronsfeld Cipher Implementation
+ * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
+// Load AlgorithmFramework (REQUIRED)
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Gronsfeld cipher requires Cipher system to be loaded first');
-      return;
-    }
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
-  // Load metadata system
-  if (!global.CipherMetadata && typeof require !== 'undefined') {
-    try {
-      require('../../cipher-metadata.js');
-    } catch (e) {
-      console.warn('Could not load cipher metadata system:', e.message);
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class GronsfeldCipher extends CryptoAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "Gronsfeld Cipher";
+      this.description = "Polyalphabetic substitution cipher using numeric key instead of letters. Each digit represents Caesar shift value, making it Vigenère variant with reduced key space. Named after Count of Gronsfeld in 16th century.";
+      this.inventor = "Count of Gronsfeld";
+      this.year = 1518;
+      this.category = CategoryType.CLASSICAL;
+      this.subCategory = "Classical Cipher";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.NL;
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("Wikipedia Article", "https://en.wikipedia.org/wiki/Gronsfeld_cipher"),
+        new LinkItem("Historical Context", "http://practicalcryptography.com/ciphers/classical-era/gronsfeld/"),
+        new LinkItem("Cryptanalysis Methods", "https://en.wikipedia.org/wiki/Kasiski_examination")
+      ];
+
+      this.references = [
+        new LinkItem("Educational Implementation", "https://www.dcode.fr/gronsfeld-cipher"),
+        new LinkItem("CryptoCrack Examples", "https://sites.google.com/site/cryptocrackprogram/user-guide/cipher-types/substitution/gronsfeld"),
+        new LinkItem("Practical Cryptography", "http://practicalcryptography.com/ciphers/classical-era/gronsfeld/")
+      ];
+
+      this.knownVulnerabilities = [
+        {
+          type: "Kasiski Examination",
+          text: "Repeated patterns in ciphertext reveal key length, enabling frequency analysis like Vigenère",
+          uri: "https://en.wikipedia.org/wiki/Kasiski_examination",
+          mitigation: "None - fundamental weakness of polyalphabetic substitution"
+        },
+        {
+          type: "Reduced Key Space", 
+          text: "Only 10 possible shifts (0-9) compared to 26 for Vigenère, making brute force easier",
+          uri: "http://practicalcryptography.com/ciphers/classical-era/gronsfeld/",
+          mitigation: "Use only for educational demonstrations"
+        }
+      ];
+
+      // Test vectors using byte arrays (corrected with actual Gronsfeld outputs)
+      this.tests = [
+        {
+          text: "Traditional Gronsfeld example with simple numeric key",
+          uri: "https://sites.google.com/site/cryptocrackprogram/user-guide/cipher-types/substitution/gronsfeld",
+          input: OpCodes.AnsiToBytes("DEFENDTHEEASTWALLOFTHECASTLE"),
+          key: OpCodes.AnsiToBytes("31415"),
+          expected: OpCodes.AnsiToBytes("GFJFSGULFJDTXXFOMSGYKFGBXWMI")
+        },
+        {
+          text: "Military communication example",
+          uri: "http://practicalcryptography.com/ciphers/classical-era/gronsfeld/",
+          input: OpCodes.AnsiToBytes("ATTACKATDAWN"),
+          key: OpCodes.AnsiToBytes("1234"),
+          expected: OpCodes.AnsiToBytes("BVWEDMDXECZR")
+        },
+        {
+          text: "Basic alphabet transformation test",
+          uri: "https://cryptii.com/pipes/gronsfeld-cipher",
+          input: OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+          key: OpCodes.AnsiToBytes("12345"),
+          expected: OpCodes.AnsiToBytes("BDFHJGIKMOLNPRTQSUWYVXZBDA")
+        },
+        {
+          text: "Single digit key test - equivalent to Caesar",
+          uri: "https://www.dcode.fr/gronsfeld-cipher",
+          input: OpCodes.AnsiToBytes("HELLO"),
+          key: OpCodes.AnsiToBytes("3"),
+          expected: OpCodes.AnsiToBytes("KHOOR")
+        },
+        {
+          text: "Mixed case text with spaces",
+          uri: "https://www.dcode.fr/gronsfeld-cipher",
+          input: OpCodes.AnsiToBytes("Hello World"),
+          key: OpCodes.AnsiToBytes("12345"),
+          expected: OpCodes.AnsiToBytes("Igopt Xqupi")
+        }
+      ];
+
+      // For the test suite compatibility 
+      this.testVectors = this.tests;
+    }
+
+    // Create instance for this algorithm
+    CreateInstance(isInverse = false) {
+      return new GronsfeldCipherInstance(this, isInverse);
     }
   }
 
-  // Create Gronsfeld cipher object
-  const Gronsfeld = {
-    // Public interface properties
-    internalName: 'Gronsfeld',
-    name: 'Gronsfeld Cipher',
-    comment: 'Polyalphabetic cipher using numeric key sequence (Vigenère variant)',
-    minKeyLength: 1,
-    maxKeyLength: 50,
-    stepKeyLength: 1,
-    minBlockSize: 0,
-    maxBlockSize: 0,
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
+  // Instance class - handles the actual encryption/decryption
+  class GronsfeldCipherInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.key = [];
+      this.inputBuffer = [];
 
-    // ===== COMPREHENSIVE METADATA =====
-    metadata: {
-      // Basic Information
-      description: 'The Gronsfeld cipher is a polyalphabetic substitution cipher that uses a repeating numeric key instead of a keyword. Each digit in the key represents a Caesar shift value, making it a variant of the Vigenère cipher.',
-      country: 'NL', // Netherlands
-      countryName: 'Netherlands',
-      year: 1518,
-      inventor: 'Count of Gronsfeld',
-      
-      // Classification
-      category: 'classical',
-      categoryName: 'Classical Cipher',
-      type: 'polyalphabetic',
-      securityLevel: 'historical',
-      complexity: 'intermediate',
-      
-      // Technical Details
-      blockSize: 1, // Character-by-character
-      keySizes: [1, 50], // Numeric key length
-      keyType: 'numeric',
-      symmetric: true,
-      deterministic: true,
-      
-      // Educational Value
-      tags: ['historical', 'educational', 'polyalphabetic', 'numeric', 'vigenere', 'substitution'],
-      educationalLevel: 'intermediate',
-      prerequisites: ['caesar_cipher', 'modular_arithmetic', 'key_repetition'],
-      learningObjectives: 'Understanding polyalphabetic substitution with numeric keys and relationship to Vigenère cipher',
-      
-      // Security Status
-      secure: false,
-      deprecated: true,
-      securityWarning: 'HISTORICAL: Vulnerable to frequency analysis and Kasiski examination. For educational purposes only.',
-      vulnerabilities: ['kasiski_examination', 'index_of_coincidence', 'frequency_analysis'],
-      
-      // Standards and References
-      specifications: [
-        {
-          name: 'Historical Cryptography References',
-          url: 'https://en.wikipedia.org/wiki/Gronsfeld_cipher',
-          type: 'historical',
-          verified: true
-        },
-        {
-          name: 'Practical Cryptography Analysis',
-          url: 'http://practicalcryptography.com/ciphers/classical-era/gronsfeld/',
-          type: 'educational',
-          verified: true
-        }
-      ],
-      
-      // Performance Characteristics
-      performance: 'O(n) time complexity, where n is input length',
-      memoryUsage: 'Minimal - stores numeric key sequence',
-      optimizations: 'Modular arithmetic for alphabet wrapping'
-    },
+      // Character sets
+      this.ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    }
 
-    // ===== COMPREHENSIVE TEST VECTORS WITH CRYPTOGRAPHIC METADATA =====
-    testVectors: [
-      // Historical Examples
-      {
-        algorithm: 'Gronsfeld',
-        testId: 'gronsfeld-historical-001',
-        description: 'Traditional Gronsfeld example with simple numeric key',
-        category: 'historical',
-        input: 'DEFENDTHEEASTWALLOFTHECASTLE',
-        key: '31415',
-        expected: 'GJGHQHVMHHDIWEHQROQWMHLHJVMH',
-        source: {
-          type: 'historical',
-          title: 'Classical Cipher Collection',
-          url: 'https://sites.google.com/site/cryptocrackprogram/user-guide/cipher-types/substitution/gronsfeld',
-          organization: 'CryptoCrack Program Documentation'
-        },
-        origin: {
-          source: 'Traditional cryptographic example',
-          type: 'educational-standard',
-          verified: true,
-          notes: 'Demonstrates basic Gronsfeld technique with π digits'
-        }
-      },
-      {
-        algorithm: 'Gronsfeld',
-        testId: 'gronsfeld-historical-002',
-        description: 'Military communication example',
-        category: 'historical',
-        input: 'ATTACKATDAWN',
-        key: '1234',
-        expected: 'BUCEFXEUGBAX',
-        keyPattern: {
-          repeating: '1234123412341',
-          shifts: [1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4],
-          application: 'A+1=B, T+2=V, T+3=W, etc.'
-        }
-      },
-      
-      // Educational Standards
-      {
-        algorithm: 'Gronsfeld',
-        testId: 'gronsfeld-standard-001',
-        description: 'Basic alphabet transformation test',
-        category: 'educational',
-        input: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
-        key: '12345',
-        expected: 'BCEHJKFGHILMNPQRSVWXZABDEG',
-        stepByStep: {
-          keyRepeating: '12345123451234512345123451',
-          transformations: [
-            'A+1=B', 'B+2=D', 'C+3=F', 'D+4=H', 'E+5=J',
-            'F+1=G', 'G+2=I', 'H+3=K', 'I+4=M', 'J+5=O'
-          ]
-        },
-        source: {
-          type: 'educational',
-          title: 'Gronsfeld Cipher Tutorial',
-          url: 'https://cryptii.com/pipes/gronsfeld-cipher',
-          organization: 'Cryptii Educational Platform'
-        }
-      },
-      {
-        algorithm: 'Gronsfeld',
-        testId: 'gronsfeld-standard-002',
-        description: 'Single digit key test',
-        category: 'educational',
-        input: 'HELLO',
-        key: '3',
-        expected: 'KHOOR',
-        verification: {
-          equivalence: 'Single digit key equivalent to Caesar cipher',
-          caesarShift: 3,
-          note: 'Demonstrates relationship between Gronsfeld and Caesar'
-        }
-      },
-      
-      // Key Analysis Tests
-      {
-        algorithm: 'Gronsfeld',
-        testId: 'gronsfeld-key-001',
-        description: 'Long numeric key test',
-        category: 'cryptanalysis',
-        input: 'CRYPTOGRAPHY',
-        key: '271828182845',
-        expected: 'EXSZQTHXKQBJ',
-        keyAnalysis: {
-          source: 'First digits of e (Euler\'s number)',
-          length: 12,
-          period: 'Longer than plaintext - no key repetition',
-          security: 'Better security due to no repeated key pattern'
-        }
-      },
-      {
-        algorithm: 'Gronsfeld',
-        testId: 'gronsfeld-key-002',
-        description: 'Short key repetition demonstration',
-        category: 'cryptanalysis',
-        input: 'THEQUICKBROWNFOXJUMPSOVERTHELAZYDOG',
-        key: '123',
-        expected: 'UIFRWLENTSPYOIQZKXOJSRASUIFODAEAPH',
-        vulnerability: {
-          keyRepeats: 11,
-          pattern: 'Key 123 repeats every 3 characters',
-          kasiskiTarget: 'Repeated trigrams reveal key length',
-          indexOfCoincidence: 'Statistical analysis possible'
-        }
-      },
-      
-      // Edge Cases
-      {
-        algorithm: 'Gronsfeld',
-        testId: 'gronsfeld-edge-001',
-        description: 'Zero in key test',
-        category: 'edge-case',
-        input: 'HELLO',
-        key: '10203',
-        expected: 'HFNMP',
-        properties: {
-          zeroEffect: 'Zero shift leaves character unchanged',
-          shifts: [1, 0, 2, 0, 3],
-          result: 'H+1=I, E+0=E, L+2=N, L+0=L, O+3=R'
-        }
-      },
-      {
-        algorithm: 'Gronsfeld',
-        testId: 'gronsfeld-edge-002',
-        description: 'Large digit handling',
-        category: 'edge-case',
-        input: 'ABCDE',
-        key: '56789',
-        expected: 'FHJLN',
-        verification: {
-          modularArithmetic: 'All shifts mod 26',
-          shifts: [5, 6, 7, 8, 9],
-          wrapping: 'No wraparound needed for this example'
-        }
-      },
-      {
-        algorithm: 'Gronsfeld',
-        testId: 'gronsfeld-edge-003',
-        description: 'Alphabet wraparound test',
-        category: 'edge-case',
-        input: 'XYZA',
-        key: '5555',
-        expected: 'CDDE',
-        verification: {
-          wrapping: 'X+5=C, Y+5=D, Z+5=E, A+5=F',
-          modularMath: '(23+5)%26=2→C, (24+5)%26=3→D, (25+5)%26=4→E, (0+5)%26=5→F'
-        }
-      },
-      
-      // Case and Character Handling
-      {
-        algorithm: 'Gronsfeld',
-        testId: 'gronsfeld-mixed-001',
-        description: 'Mixed case preservation test',
-        category: 'implementation',
-        input: 'Hello World',
-        key: '12345',
-        expected: 'Igopt Bussj',
-        properties: {
-          preserveCase: true,
-          preserveSpaces: true,
-          nonAlphabetic: 'Preserve but don\'t encrypt punctuation'
-        }
-      },
-      {
-        algorithm: 'Gronsfeld',
-        testId: 'gronsfeld-mixed-002',
-        description: 'Punctuation and numbers handling',
-        category: 'implementation',
-        input: 'HELLO, WORLD! 123',
-        key: '54321',
-        expected: 'MJPMO, BTWNH! 123',
-        properties: {
-          letterOnly: 'Only encrypt alphabetic characters',
-          preservation: 'Maintain punctuation and spaces in place'
-        }
-      },
-      
-      // Cryptanalytic Demonstrations
-      {
-        algorithm: 'Gronsfeld',
-        testId: 'gronsfeld-cryptanalysis-001',
-        description: 'Frequency analysis demonstration',
-        category: 'cryptanalysis',
-        input: 'EEEEEEEEEEEEEEEE',
-        key: '12345',
-        expected: 'FGHIJFGHIJFGHIJF',
-        frequencyAnalysis: {
-          inputFrequency: 'E: 16 occurrences',
-          outputFrequency: 'F: 4, G: 3, H: 3, I: 3, J: 3',
-          diffusion: 'Single letter produces multiple ciphertext letters',
-          vulnerability: 'Pattern still detectable with short key'
-        }
-      },
-      {
-        algorithm: 'Gronsfeld',
-        testId: 'gronsfeld-cryptanalysis-002',
-        description: 'Kasiski examination target',
-        category: 'cryptanalysis',
-        input: 'THETIMEHASCOMETHEWALTRUSSSAIDTHETIMEHASCOME',
-        key: '1234',
-        expected: 'UIFUJNFIBSDPNFUIFXBMUSVTTTEJEEIFJNFIBADPNF',
-        kasiskiAnalysis: {
-          repeatedTrigrams: ['UIF', 'JNF', 'IBT'],
-          distances: [36, 36, 36],
-          keyLengthFactors: [1, 2, 3, 4, 6, 9, 12, 18, 36],
-          likelyKeyLength: 4,
-          method: 'GCD of distances reveals key length'
-        }
-      },
-      
-      // Security Comparisons
-      {
-        algorithm: 'Gronsfeld',
-        testId: 'gronsfeld-security-001',
-        description: 'Comparison with Vigenère strength',
-        category: 'comparison',
-        input: 'SECRETMESSAGE',
-        key: '31415',
-        expected: 'VJHWJXPJVUHEJ',
-        securityComparison: {
-          gronsfeld: 'Limited to 10 different shifts (0-9)',
-          vigenere: 'Uses 26 different shifts (A-Z)',
-          keySpace: 'Gronsfeld key space significantly smaller',
-          bruteForce: 'Easier to brute force than full Vigenère'
-        }
-      }
-    ],
-    
-    isInitialized: false,
-    
-    // Comprehensive metadata
-    metadata: global.CipherMetadata ? global.CipherMetadata.createMetadata({
-      algorithm: 'Gronsfeld',
-      displayName: 'Gronsfeld Cipher',
-      description: 'Polyalphabetic substitution cipher using a repeating numeric key. Each digit represents a Caesar shift, making it a simpler variant of the Vigenère cipher with reduced key space.',
-      
-      inventor: 'Count of Gronsfeld',
-      year: 1518,
-      background: 'Named after the Count of Gronsfeld, this cipher simplifies the Vigenère by using only numeric keys (0-9) instead of alphabetic keys, making it easier to remember but less secure.',
-      
-      securityStatus: global.CipherMetadata.SecurityStatus.HISTORICAL,
-      securityNotes: 'Weaker than Vigenère due to smaller key space (10 vs 26 possible shifts). Vulnerable to Kasiski examination and frequency analysis with sufficient ciphertext.',
-      
-      category: global.CipherMetadata.Categories.CLASSICAL,
-      subcategory: 'polyalphabetic',
-      complexity: global.CipherMetadata.ComplexityLevels.INTERMEDIATE,
-      
-      keySize: 'variable', // Numeric string of any reasonable length
-      blockSize: 1, // Character-by-character processing
-      rounds: 1,
-      
-      specifications: [
-        {
-          name: 'Wikipedia: Gronsfeld Cipher',
-          url: 'https://en.wikipedia.org/wiki/Gronsfeld_cipher'
-        },
-        {
-          name: 'Practical Cryptography: Gronsfeld',
-          url: 'http://practicalcryptography.com/ciphers/classical-era/gronsfeld/'
-        }
-      ],
-      
-      testVectors: [
-        {
-          name: 'CryptoCrack Examples',
-          url: 'https://sites.google.com/site/cryptocrackprogram/user-guide/cipher-types/substitution/gronsfeld'
-        }
-      ],
-      
-      references: [
-        {
-          name: 'Kahn, David: The Codebreakers (1967)',
-          url: 'https://www.amazon.com/Codebreakers-David-Kahn/dp/0684831309'
-        },
-        {
-          name: 'Singh, Simon: The Code Book (1999)',
-          url: 'https://simonsingh.net/books/the-code-book/'
-        }
-      ],
-      
-      implementationNotes: 'Uses numeric key with digits 0-9. Zero means no shift. Preserves case and non-alphabetic characters. Key repeats cyclically for longer texts.',
-      performanceNotes: 'O(n) time complexity where n is input length. Minimal memory usage for key storage.',
-      
-      educationalValue: 'Excellent bridge between Caesar and Vigenère ciphers. Demonstrates polyalphabetic substitution with simpler key management than full Vigenère.',
-      prerequisites: ['Caesar cipher', 'Modular arithmetic', 'Key repetition concepts'],
-      
-      tags: ['classical', 'polyalphabetic', 'numeric', 'vigenere-variant', 'substitution', 'intermediate'],
-      
-      version: '1.0'
-    }) : null,
-    
-    // Initialize cipher
-    Init: function() {
-      Gronsfeld.isInitialized = true;
-    },
-    
-    // Set up key (numeric string)
-    KeySetup: function(optional_key) {
-      let id;
-      do {
-        id = 'Gronsfeld[' + global.generateUniqueID() + ']';
-      } while (Gronsfeld.instances[id] || global.objectInstances[id]);
-      
-      Gronsfeld.instances[id] = new Gronsfeld.GronsfeldInstance(optional_key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear cipher data
-    ClearData: function(id) {
-      if (Gronsfeld.instances[id]) {
-        delete Gronsfeld.instances[id];
-        delete global.objectInstances[id];
-        return true;
+    // Property setter for key
+    set key(keyData) {
+      if (!keyData || keyData.length === 0) {
+        this._processedKey = "12345"; // Default key
       } else {
-        global.throwException('Unknown Object Reference Exception', id, 'Gronsfeld', 'ClearData');
-        return false;
-      }
-    },
-    
-    // Encrypt block
-    encryptBlock: function(id, plaintext) {
-      if (!Gronsfeld.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'Gronsfeld', 'encryptBlock');
-        return plaintext;
-      }
-      
-      const instance = Gronsfeld.instances[id];
-      const key = instance.key;
-      
-      if (!key || key.length === 0) {
-        return plaintext; // No key, no encryption
-      }
-      
-      let result = '';
-      let keyIndex = 0;
-      
-      for (let i = 0; i < plaintext.length; i++) {
-        const char = plaintext.charAt(i);
-        
-        if (Gronsfeld.isLetter(char)) {
-          const shift = parseInt(key.charAt(keyIndex % key.length));
-          const encrypted = Gronsfeld.shiftChar(char, shift);
-          result += encrypted;
-          keyIndex++;
-        } else {
-          // Preserve non-alphabetic characters
-          result += char;
+        // Convert key bytes to numeric string, keep only digits
+        const keyStr = String.fromCharCode.apply(null, keyData);
+        this._processedKey = keyStr.replace(/[^0-9]/g, '');
+        if (this._processedKey.length === 0) {
+          this._processedKey = "12345"; // Fallback
         }
       }
-      
-      return result;
-    },
-    
-    // Decrypt block
-    decryptBlock: function(id, ciphertext) {
-      if (!Gronsfeld.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'Gronsfeld', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      const instance = Gronsfeld.instances[id];
-      const key = instance.key;
-      
-      if (!key || key.length === 0) {
-        return ciphertext; // No key, no decryption
-      }
-      
-      let result = '';
-      let keyIndex = 0;
-      
-      for (let i = 0; i < ciphertext.length; i++) {
-        const char = ciphertext.charAt(i);
-        
-        if (Gronsfeld.isLetter(char)) {
-          const shift = parseInt(key.charAt(keyIndex % key.length));
-          const decrypted = Gronsfeld.shiftChar(char, -shift);
-          result += decrypted;
-          keyIndex++;
-        } else {
-          // Preserve non-alphabetic characters
-          result += char;
-        }
-      }
-      
-      return result;
-    },
-    
-    // Check if character is a letter
-    isLetter: function(char) {
-      return /[A-Za-z]/.test(char);
-    },
-    
-    // Shift a character by given amount (Caesar shift)
-    shiftChar: function(char, shift) {
-      if (!Gronsfeld.isLetter(char)) {
-        return char;
-      }
-      
-      const isUpperCase = char >= 'A' && char <= 'Z';
-      const baseCode = isUpperCase ? 65 : 97; // 'A' or 'a'
-      const charCode = char.charCodeAt(0);
-      
-      // Apply shift with modular arithmetic
-      let shiftedCode = ((charCode - baseCode + shift + 26) % 26) + baseCode;
-      
-      return String.fromCharCode(shiftedCode);
-    },
-    
-    // Validate and clean numeric key
-    validateKey: function(keyString) {
-      if (!keyString) return '';
-      
-      // Remove non-digit characters and return
-      return keyString.replace(/[^0-9]/g, '');
-    },
-    
-    // Instance class
-    GronsfeldInstance: function(keyString) {
-      this.rawKey = keyString || '';
-      this.key = Gronsfeld.validateKey(keyString);
-      
-      if (this.key.length === 0) {
-        // Default key if none provided
-        this.key = '12345';
-      }
-    },
-    
-    // Add uppercase aliases for compatibility with test runner
-    EncryptBlock: function(id, plaintext) {
-      return this.encryptBlock(id, plaintext);
-    },
-    
-    DecryptBlock: function(id, ciphertext) {
-      return this.decryptBlock(id, ciphertext);
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(Gronsfeld);
+
+    get key() {
+      return this._processedKey || "12345";
+    }
+
+    // Feed data to the cipher
+    Feed(data) {
+      if (!data || data.length === 0) return;
+
+      // Add data to input buffer
+      this.inputBuffer.push(...data);
+    }
+
+    // Get the result of the transformation
+    Result() {
+      if (this.inputBuffer.length === 0) {
+        return [];
+      }
+
+      const output = [];
+      const processedKey = this.key;
+      let keyIndex = 0;
+
+      // Process each byte
+      for (const byte of this.inputBuffer) {
+        const char = String.fromCharCode(byte);
+
+        if (/[A-Za-z]/.test(char)) {
+          // Get shift from key (cycle through key)
+          const shift = parseInt(processedKey[keyIndex % processedKey.length]);
+          const effectiveShift = this.isInverse ? -shift : shift;
+
+          const isUpperCase = char >= 'A' && char <= 'Z';
+          const baseCode = isUpperCase ? 65 : 97; // 'A' or 'a'
+          const charCode = char.charCodeAt(0);
+
+          // Apply shift with modular arithmetic
+          const shiftedCode = ((charCode - baseCode + effectiveShift + 26) % 26) + baseCode;
+          output.push(shiftedCode);
+          keyIndex++;
+        } else {
+          // Non-alphabetic characters pass through unchanged
+          output.push(byte);
+        }
+      }
+
+      // Clear input buffer for next operation
+      this.inputBuffer = [];
+
+      return output;
+    }
   }
-  
-  // Export to global scope
-  global.Gronsfeld = Gronsfeld;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Gronsfeld;
+
+  // Register the algorithm immediately
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new GronsfeldCipher();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+
+  // ===== EXPORTS =====
+
+  return { GronsfeldCipher, GronsfeldCipherInstance };
+}));

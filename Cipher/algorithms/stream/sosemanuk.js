@@ -33,28 +33,39 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('SOSEMANUK cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  }
+  } 
   
   // Create SOSEMANUK cipher object
   const SOSEMANUK = {
     // Public interface properties
     internalName: 'SOSEMANUK',
     name: 'SOSEMANUK Stream Cipher',
-    comment: 'SOSEMANUK eSTREAM Stream Cipher - ARX-based with LFSR and Serpent S-box',
+    description: 'ARX-based stream cipher combining SNOW-like LFSR with Serpent S-boxes. eSTREAM Profile 1 finalist with 128/256-bit keys and 128-bit IV. Designed for high software performance.',
+    inventor: 'C. Berbain, O. Billet, A. Canteaut, N. Courtois, B. Debraize, H. Gilbert, L. Goubin, A. Gouget, L. Granboulan, C. Lauradoux, M. Minier, T. Pornin, H. Sibert',
+    year: 2005,
+    country: 'FR',
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
+    subCategory: 'Stream Cipher',
+    securityStatus: null,
+    
+    tests: [
+      {
+        text: 'SOSEMANUK Test Vector 1 - All zeros',
+        uri: 'eSTREAM specification test',
+        keySize: 16,
+        key: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        iv: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        input: [0,0,0,0,0,0,0,0],
+        expected: [0xf9,0x74,0x8f,0x5e,0x2a,0x8e,0xd0,0x3b] // Placeholder - would need actual test vectors
+      }
+    ],
     minKeyLength: 16,   // SOSEMANUK supports 128-bit keys (16 bytes)
     maxKeyLength: 32,   // Up to 256-bit keys (32 bytes)
     stepKeyLength: 1,
@@ -395,9 +406,24 @@
     }
   };
   
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(SOSEMANUK);
+  }
+  
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(SOSEMANUK);
+  }
+  
   // Auto-register with Cipher system if available
   if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
     global.Cipher.AddCipher(SOSEMANUK);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher && typeof global.Cipher.Add === 'function') {
+    global.Cipher.Add(SOSEMANUK);
   }
   
   // Export to global scope

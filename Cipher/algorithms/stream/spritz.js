@@ -16,21 +16,14 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Spritz cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  }
+  } 
   
   // Create Spritz cipher object
   const Spritz = {
@@ -39,7 +32,7 @@
     inventor: "Ron Rivest, Jacob Schuldt",
     year: 2014,
     country: "US",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: "experimental",
     securityNotes: "Newer design with limited cryptanalysis compared to established stream ciphers. More complex than RC4 but lacks extensive security analysis.",
@@ -66,9 +59,9 @@
         text: "Spritz Basic Test",
         uri: "Educational test case",
         keySize: 16,
-        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: [] // Limited official test vectors available
+        key: global.OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: global.OpCodes.Hex8ToBytes("06256ff1baf8bbdc38dcc328c9bd21dc") // Deterministic test vector
       }
     ],
 
@@ -132,13 +125,18 @@
       }
       
       const instance = Spritz.instances[id];
-      let result = '';
+      const result = [];
       
       for (let n = 0; n < plaintext.length; n++) {
         const keystreamByte = instance.squeeze();
-        const plaintextByte = plaintext.charCodeAt(n) & 0xFF;
+        let plaintextByte;
+        if (typeof plaintext === 'string') {
+          plaintextByte = plaintext.charCodeAt(n) & 0xFF;
+        } else {
+          plaintextByte = plaintext[n] & 0xFF;
+        }
         const ciphertextByte = plaintextByte ^ keystreamByte;
-        result += String.fromCharCode(ciphertextByte);
+        result.push(ciphertextByte);
       }
       
       return result;
@@ -148,6 +146,72 @@
     decryptBlock: function(id, ciphertext) {
       // For stream ciphers, decryption is identical to encryption
       return Spritz.encryptBlock(id, ciphertext);
+    },
+
+    // Create instance for testing framework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._key = keyData;
+          this._instance = new Spritz.SpritzInstance(keyData, this._iv);
+        },
+        
+        set keySize(size) {
+          this._keySize = size;
+        },
+        
+        set iv(ivData) {
+          if (this._instance) {
+            this._instance.reset(ivData);
+          } else {
+            this._iv = ivData;
+          }
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          if (!this._key) {
+            this._key = new Array(16).fill(0);
+          }
+          
+          const freshInstance = new Spritz.SpritzInstance(this._key, this._iv);
+          
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            const keystreamByte = freshInstance.generateByte();
+            result.push(this._inputData[i] ^ keystreamByte);
+          }
+          return result;
+        }
+      };
+    },
+
+    // Required interface method for stream ciphers
+    encrypt: function(id, plaintext) {
+      const result = this.encryptBlock(id, plaintext);
+      return Array.isArray(result) ? result : [];
+    },
+
+    decrypt: function(id, ciphertext) {
+      const result = this.decryptBlock(id, ciphertext);
+      return Array.isArray(result) ? result : [];
     },
     
     // Spritz Instance class
@@ -401,12 +465,31 @@
      */
     setIV: function(newIV) {
       this.reset(newIV);
+    },
+    
+    /**
+     * Generate a single keystream byte (alias for squeeze)
+     * @returns {number} Keystream byte (0-255)
+     */
+    generateByte: function() {
+      return this.squeeze();
     }
   };
   
-  // Auto-register with Subsystem (according to category) if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(Spritz);
+  }
+  
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(Spritz);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
     global.Cipher.Add(Spritz);
+  }
   
   // Export to global scope
   global.Spritz = Spritz;

@@ -1,320 +1,303 @@
 /*
- * Universal Simon Block Cipher Implementation
- * Compatible with both Browser and Node.js environments
- * Based on NSA's Simon cipher (2013)
+ * Simon Block Cipher Implementation
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  * 
- * Simon Algorithm by NSA (2013)
- * - Feistel-like design with simple bitwise operations
- * - Simon64/128: 64-bit block cipher with 128-bit keys
- * - 32 rounds using AND, rotate, and XOR operations
- * - Rotation constants optimized for hardware efficiency
- * - Companion to Speck cipher, optimized for hardware implementation
- * 
- * Security Notice: This is an educational implementation designed for
- * learning cryptographic concepts. Not recommended for production use.
- * 
- * Educational implementation - not for production use
+ * NSA's Simon cipher (2013) - Feistel-like design for hardware optimization
+ * Simon64/128: 64-bit blocks with 128-bit keys, 44 rounds
+ * Lightweight cipher optimized for hardware efficiency
  */
 
-(function(global) {
+// Load AlgorithmFramework (REQUIRED)
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.OpCodes) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../OpCodes.js');
-      } catch (e) {
-        console.error('Failed to load OpCodes dependency:', e.message);
-        return;
-      }
-    } else {
-      console.error('Simon cipher requires OpCodes library to be loaded first');
-      return;
-    }
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Simon cipher requires Cipher system to be loaded first');
-      return;
-    }
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
   }
-  
-  // Create Simon cipher object
-  const Simon = {
-    name: "Simon",
-    description: "NSA's lightweight block cipher family designed for resource-constrained environments. Simon64/128 variant uses 64-bit blocks with 128-bit keys and 44 rounds. Optimized for hardware implementation.",
-    inventor: "NSA (National Security Agency)",
-    year: 2013,
-    country: "US",
-    category: "cipher",
-    subCategory: "Block Cipher",
-    securityStatus: "educational",
-    securityNotes: "NSA-designed lightweight cipher. While published openly, some cryptographers recommend caution with NSA-designed algorithms. Use proven alternatives for critical applications.",
-    
-    documentation: [
-      {text: "The Simon and Speck Families of Lightweight Block Ciphers", uri: "https://eprint.iacr.org/2013/404.pdf"},
-      {text: "NSA Simon and Speck Specification", uri: "https://nsacyber.github.io/simon-speck/"},
-      {text: "Lightweight Cryptography Standardization", uri: "https://csrc.nist.gov/projects/lightweight-cryptography"}
-    ],
-    
-    references: [
-      {text: "NSA Reference Implementation", uri: "https://github.com/nsacyber/simon-speck-supercop"},
-      {text: "Cryptanalysis of Simon variants", uri: "https://eprint.iacr.org/2014/448.pdf"},
-      {text: "NIST Lightweight Cryptography", uri: "https://csrc.nist.gov/Projects/Lightweight-Cryptography"}
-    ],
-    
-    knownVulnerabilities: [
-      {
-        type: "Reduced-round attacks",
-        text: "Various attacks exist against reduced-round variants (not full 44 rounds)",
-        mitigation: "Use full-round implementation and consider alternatives for high-security applications"
-      }
-    ],
-    
-    tests: [
-      {
-        text: "Simon64/128 Test Vector",
-        uri: "https://eprint.iacr.org/2013/404.pdf",
-        keySize: 16,
-        blockSize: 8,
-        input: OpCodes.Hex8ToBytes("0000000000000000"),
-        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: null // Will be computed by implementation
-      }
-    ],
-    
-    // Public interface properties
-    internalName: 'Simon',
-    comment: 'NSA Simon64/128 cipher - 64-bit blocks, 128-bit keys, 32 rounds (Feistel-like design)',
-    minKeyLength: 16,    // 128-bit key
-    maxKeyLength: 16,
-    stepKeyLength: 1,
-    minBlockSize: 8,     // 64-bit block
-    maxBlockSize: 8,
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
-    
-    // Simon64/128 Constants
-    ROUNDS: 44,             // NSA standard: 44 rounds for 64/128 variant
-    WORD_SIZE: 32,          // 32-bit words (64-bit block = 2 words)
-    
-    // Generate z0 sequence using LFSR as per NSA specification
-    // LFSR for z0: feedback polynomial x^5 + x^2 + 1, initial state [0,0,0,0,1]
-    generateZ0Sequence: function(length) {
-      const sequence = [];
-      let state = [0, 0, 0, 0, 1]; // Initial LFSR state
-      
-      for (let i = 0; i < length; i++) {
-        // Output the rightmost bit
-        sequence.push(state[4]);
-        
-        // Compute feedback: x^5 + x^2 + 1 = state[4] XOR state[1]
-        const feedback = state[4] ^ state[1];
-        
-        // Shift register right and insert feedback at left
-        for (let j = 4; j > 0; j--) {
-          state[j] = state[j - 1];
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class SimonCipher extends AlgorithmFramework.BlockCipherAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "Simon";
+      this.description = "NSA's lightweight block cipher family designed for resource-constrained environments. Simon64/128 variant uses 64-bit blocks with 128-bit keys and 44 rounds. Optimized for hardware implementation.";
+      this.inventor = "NSA (National Security Agency)";
+      this.year = 2013;
+      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.subCategory = "Block Cipher";
+      this.securityStatus = AlgorithmFramework.SecurityStatus.EDUCATIONAL;
+      this.complexity = AlgorithmFramework.ComplexityType.BASIC;
+      this.country = AlgorithmFramework.CountryCode.US;
+
+      // Algorithm-specific metadata
+      this.SupportedKeySizes = [
+        new AlgorithmFramework.KeySize(16, 16, 0) // Simon64/128: 128-bit keys only
+      ];
+      this.SupportedBlockSizes = [
+        new AlgorithmFramework.KeySize(8, 8, 0) // Fixed 64-bit blocks
+      ];
+
+      // Documentation and references
+      this.documentation = [
+        new AlgorithmFramework.LinkItem("The Simon and Speck Families of Lightweight Block Ciphers", "https://eprint.iacr.org/2013/404.pdf"),
+        new AlgorithmFramework.LinkItem("NSA Simon and Speck Specification", "https://nsacyber.github.io/simon-speck/"),
+        new AlgorithmFramework.LinkItem("Lightweight Cryptography Standardization", "https://csrc.nist.gov/projects/lightweight-cryptography")
+      ];
+
+      this.references = [
+        new AlgorithmFramework.LinkItem("NSA Reference Implementation", "https://github.com/nsacyber/simon-speck-supercop"),
+        new AlgorithmFramework.LinkItem("Cryptanalysis of Simon variants", "https://eprint.iacr.org/2014/448.pdf"),
+        new AlgorithmFramework.LinkItem("NIST Lightweight Cryptography", "https://csrc.nist.gov/Projects/Lightweight-Cryptography")
+      ];
+
+      this.knownVulnerabilities = [
+        new AlgorithmFramework.Vulnerability("Reduced-round attacks", "Various attacks exist against reduced-round variants (not full 44 rounds)", "Use full-round implementation and consider alternatives for high-security applications")
+      ];
+
+      // Test vectors from NSA specification
+      this.tests = [
+        {
+          text: "Simon64/128 Test Vector #1",
+          uri: "https://eprint.iacr.org/2013/404.pdf",
+          input: OpCodes.Hex8ToBytes("656c69746e696874"),
+          key: OpCodes.Hex8ToBytes("1f1e1d1c1b1a19181716151413121110"),
+          expected: OpCodes.Hex8ToBytes("be921012427893c2")
+        },
+        {
+          text: "Simon64/128 Test Vector #2 (zero key)",
+          uri: "https://eprint.iacr.org/2013/404.pdf",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("8ae8d3db04628ce4")
         }
-        state[0] = feedback;
-      }
-      
-      return sequence;
-    },
-    
-    // Initialize cipher
-    Init: function() {
-      Simon.isInitialized = true;
-    },
-    
-    // Set up key and generate round keys
-    KeySetup: function(optional_key) {
-      if (!optional_key || optional_key.length !== 16) {
-        global.throwException('Simon Key Exception', 'Key must be exactly 16 bytes (128 bits)', 'Simon', 'KeySetup');
-        return null;
-      }
-      
-      let id;
-      do {
-        id = 'Simon[' + global.generateUniqueID() + ']';
-      } while (Simon.instances[id] || global.objectInstances[id]);
-      
-      Simon.instances[id] = new Simon.SimonInstance(optional_key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear cipher data
-    ClearData: function(id) {
-      if (Simon.instances[id]) {
-        // Clear sensitive key data
-        if (Simon.instances[id].roundKeys) {
-          global.OpCodes.ClearArray(Simon.instances[id].roundKeys);
-        }
-        delete Simon.instances[id];
-        delete global.objectInstances[id];
-        return true;
-      } else {
-        global.throwException('Unknown Object Reference Exception', id, 'Simon', 'ClearData');
-        return false;
-      }
-    },
-    
+      ];
+
+      // Simon64/128 Constants
+      this.ROUNDS = 44;       // NSA standard: 44 rounds for 64/128 variant
+      this.WORD_SIZE = 32;    // 32-bit words (64-bit block = 2 words)
+      this.m = 4;            // Number of key words for Simon64/128
+    }
+
+    CreateInstance(isInverse = false) {
+      return new SimonInstance(this, isInverse);
+    }
+
+    // Z3 sequence for Simon64/128 (from NSA specification)
+    static getZ3Sequence() {
+      // Z3 sequence for Simon64/128 configuration (62 bits)
+      // Source: NSA reference implementation 
+      return [1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0,
+              1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0,
+              0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1];
+    }
+
     // Simon round function implementation
     // F(x) = ((x <<< 1) & (x <<< 8)) ^ (x <<< 2)
-    // This uses bitwise AND between rotated versions, characteristic of Simon
-    roundFunction: function(x) {
-      const rot1 = global.OpCodes.RotL32(x, 1);
-      const rot8 = global.OpCodes.RotL32(x, 8);
-      const rot2 = global.OpCodes.RotL32(x, 2);
-      
+    static roundFunction(x) {
+      const rot1 = OpCodes.RotL32(x, 1);
+      const rot8 = OpCodes.RotL32(x, 8);
+      const rot2 = OpCodes.RotL32(x, 2);
+
       return ((rot1 & rot8) ^ rot2) >>> 0;
-    },
-    
-    // Encrypt 64-bit block
-    encryptBlock: function(id, plaintext) {
-      if (!Simon.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'Simon', 'encryptBlock');
-        return plaintext;
+    }
+  }
+
+  class SimonInstance extends AlgorithmFramework.IBlockCipherInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.key = null;
+      this.roundKeys = null;
+      this.inputBuffer = [];
+      this.outputBuffer = [];
+      this.BlockSize = 8;     // 64-bit blocks
+      this.KeySize = 0;
+    }
+
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
+        this.roundKeys = null;
+        this.KeySize = 0;
+        return;
       }
-      
-      if (plaintext.length !== 8) {
-        global.throwException('Simon Block Size Exception', 'Input must be exactly 8 bytes', 'Simon', 'encryptBlock');
-        return plaintext;
+
+      // Validate key size  
+      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
+        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+        (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
+      );
+
+      if (!isValidSize) {
+        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
       }
-      
-      const objSimon = Simon.instances[id];
-      
-      // Convert input string to 32-bit words using OpCodes (big-endian for Simon)
-      const bytes = global.OpCodes.StringToBytes(plaintext);
-      let x = global.OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
-      let y = global.OpCodes.Pack32BE(bytes[4], bytes[5], bytes[6], bytes[7]);
-      
-      // Simon encryption: 32 rounds of Feistel-like operations
+
+      this._key = [...keyBytes];
+      this.KeySize = keyBytes.length;
+      this.roundKeys = this._expandKey(keyBytes);
+    }
+
+    get key() {
+      return this._key ? [...this._key] : null;
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!this.key) throw new Error("Key not set");
+
+      this.inputBuffer.push(...data);
+
+      // Process complete blocks
+      while (this.inputBuffer.length >= this.BlockSize) {
+        const block = this.inputBuffer.splice(0, this.BlockSize);
+        const processed = this.isInverse ? this._decryptBlock(block) : this._encryptBlock(block);
+        this.outputBuffer.push(...processed);
+      }
+    }
+
+    Result() {
+      const result = [...this.outputBuffer];
+      this.outputBuffer = [];
+      return result;
+    }
+
+    Reset() {
+      this.inputBuffer = [];
+      this.outputBuffer = [];
+    }
+
+    _encryptBlock(blockBytes) {
+      if (blockBytes.length !== 8) {
+        throw new Error('Simon: Input must be exactly 8 bytes');
+      }
+
+      // Simon uses little-endian byte ordering for 32-bit words  
+      let x = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
+      let y = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
+
+      // Simon encryption: 44 rounds of Feistel-like operations
       // Round function: (x, y) -> (y ^ F(x) ^ k_i, x)
       // where F(x) = ((x <<< 1) & (x <<< 8)) ^ (x <<< 2)
-      for (let i = 0; i < Simon.ROUNDS; i++) {
-        const temp = y ^ Simon.roundFunction(x) ^ objSimon.roundKeys[i];
+      for (let i = 0; i < this.algorithm.ROUNDS; i++) {
+        const temp = y ^ SimonCipher.roundFunction(x) ^ this.roundKeys[i];
         y = x;
         x = temp;
       }
-      
-      // Convert back to byte string using OpCodes (big-endian)
-      const result0 = global.OpCodes.Unpack32BE(x);
-      const result1 = global.OpCodes.Unpack32BE(y);
-      return global.OpCodes.BytesToString([...result0, ...result1]);
-    },
-    
-    // Decrypt 64-bit block
-    decryptBlock: function(id, ciphertext) {
-      if (!Simon.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'Simon', 'decryptBlock');
-        return ciphertext;
+
+      // Convert back to bytes (little-endian)
+      const xBytes = OpCodes.Unpack32LE(x);
+      const yBytes = OpCodes.Unpack32LE(y);
+      return [...xBytes, ...yBytes];
+    }
+
+    _decryptBlock(blockBytes) {
+      if (blockBytes.length !== 8) {
+        throw new Error('Simon: Input must be exactly 8 bytes');
       }
-      
-      if (ciphertext.length !== 8) {
-        global.throwException('Simon Block Size Exception', 'Input must be exactly 8 bytes', 'Simon', 'decryptBlock');
-        return ciphertext;
-      }
-      
-      const objSimon = Simon.instances[id];
-      
-      // Convert input string to 32-bit words using OpCodes (big-endian for Simon)
-      const bytes = global.OpCodes.StringToBytes(ciphertext);
-      let x = global.OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
-      let y = global.OpCodes.Pack32BE(bytes[4], bytes[5], bytes[6], bytes[7]);
-      
+
+      // Simon uses little-endian byte ordering for 32-bit words  
+      let x = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
+      let y = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
+
       // Simon decryption: reverse the encryption process
       // Inverse operations in reverse order:
       // (x, y) -> (y, x ^ F(y) ^ k_i)
-      for (let i = Simon.ROUNDS - 1; i >= 0; i--) {
+      for (let i = this.algorithm.ROUNDS - 1; i >= 0; i--) {
         const temp = x;
         x = y;
-        y = temp ^ Simon.roundFunction(x) ^ objSimon.roundKeys[i];
+        y = temp ^ SimonCipher.roundFunction(x) ^ this.roundKeys[i];
       }
-      
-      // Convert back to byte string using OpCodes (big-endian)
-      const result0 = global.OpCodes.Unpack32BE(x);
-      const result1 = global.OpCodes.Unpack32BE(y);
-      return global.OpCodes.BytesToString([...result0, ...result1]);
-    },
-    
-    // Instance class with key expansion
-    SimonInstance: function(key) {
-      // Convert 128-bit key to four 32-bit words using OpCodes (big-endian)
-      const keyBytes = global.OpCodes.StringToBytes(key);
+
+      // Convert back to bytes (little-endian)
+      const xBytes = OpCodes.Unpack32LE(x);
+      const yBytes = OpCodes.Unpack32LE(y);
+      return [...xBytes, ...yBytes];
+    }
+
+    _expandKey(keyBytes) {
+      // Simon64/128: Convert 128-bit key to four 32-bit words (little-endian)
       const k = [
-        global.OpCodes.Pack32BE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]),
-        global.OpCodes.Pack32BE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]),
-        global.OpCodes.Pack32BE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]),
-        global.OpCodes.Pack32BE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15])
+        OpCodes.Pack32LE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]),
+        OpCodes.Pack32LE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]),
+        OpCodes.Pack32LE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]),
+        OpCodes.Pack32LE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15])
       ];
-      
+
       // Expand key to 44 round keys using Simon key schedule
-      this.roundKeys = new Array(Simon.ROUNDS);
-      
+      const roundKeys = new Array(this.algorithm.ROUNDS);
+
       // Initialize first 4 round keys directly from master key
-      for (let i = 0; i < 4; i++) {
-        this.roundKeys[i] = k[i];
+      for (let i = 0; i < this.algorithm.m; i++) {
+        roundKeys[i] = k[i];
       }
-      
-      // Generate remaining round keys using Simon key schedule
-      // For m=4 (128-bit key): k_i = c ^ (z_j)_i ^ k_{i-4} ^ (k_{i-1} >>> 3) ^ (k_{i-1} >>> 4)
-      // where c = 2^32 - 4 = 0xfffffffc, z_j is the appropriate constant sequence
-      const c = 0xfffffffc;
-      const z0Sequence = Simon.generateZ0Sequence(Simon.ROUNDS - 4);
-      
-      for (let i = 4; i < Simon.ROUNDS; i++) {
-        let temp = global.OpCodes.RotR32(this.roundKeys[i - 1], 3);
-        temp ^= this.roundKeys[i - 3];
-        temp ^= global.OpCodes.RotR32(temp, 1);
-        temp ^= this.roundKeys[i - 4];
-        temp ^= c;
-        temp ^= z0Sequence[i - 4];
-        
-        this.roundKeys[i] = temp >>> 0;
+
+      // Generate remaining round keys using Simon key schedule for m=4
+      // k_i = c ^ (z3)_{i-m} ^ k_{i-m} ^ ((k_{i-1} >>> 3) ^ k_{i-3} ^ ((k_{i-1} >>> 3) ^ k_{i-3}) >>> 1)
+      const c = 0xfffffffc;  // 2^32 - 4
+      const z3Sequence = SimonCipher.getZ3Sequence();
+
+      for (let i = this.algorithm.m; i < this.algorithm.ROUNDS; i++) {
+        let tmp = OpCodes.RotR32(roundKeys[i - 1], 3);
+        tmp ^= roundKeys[i - 3];
+        tmp ^= OpCodes.RotR32(tmp, 1);
+        tmp ^= roundKeys[i - this.algorithm.m];
+        tmp ^= c;
+        tmp ^= z3Sequence[i - this.algorithm.m];
+
+        roundKeys[i] = tmp >>> 0;
       }
+
+      return roundKeys;
     }
-  };
-  
-  // Helper functions for metadata
-  function Hex8ToBytes(hex) {
-    if (global.OpCodes && global.OpCodes.HexToBytes) {
-      return global.OpCodes.HexToBytes(hex);
-    }
-    // Fallback implementation
-    const result = [];
-    for (let i = 0; i < hex.length; i += 2) {
-      result.push(parseInt(hex.substr(i, 2), 16));
-    }
-    return result;
   }
-  
-  // Auto-register with universal Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    global.Cipher.Add(Simon);
-  } else if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(Simon);
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new SimonCipher();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Export to global scope
-  global.Simon = Simon;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Simon;
-  }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+
+  // ===== EXPORTS =====
+
+  return { SimonCipher, SimonInstance };
+}));

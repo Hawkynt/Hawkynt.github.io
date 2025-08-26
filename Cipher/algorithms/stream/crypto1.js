@@ -33,27 +33,63 @@
     }
   }
   
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Crypto-1 cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
   }
   
   // Create Crypto-1 cipher object
   const Crypto1 = {
-    // Public interface properties
+    name: "Crypto-1",
+    description: "Proprietary stream cipher used in NXP MIFARE Classic cards, reverse-engineered by cryptographic community. Uses 48-bit LFSR with nonlinear filter function. Cryptographically broken with multiple practical attacks published.",
+    inventor: "NXP Semiconductors (proprietary design)",
+    year: 1994,
+    country: "NL",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
+    subCategory: "Stream Cipher",
+    securityStatus: "insecure",
+    securityNotes: "Cryptographically broken with multiple practical attacks. Key recovery possible in seconds. Never use for actual security.",
+    
+    documentation: [
+      {text: "Crypto-1 Cryptanalysis", uri: "https://eprint.iacr.org/2008/166.pdf"},
+      {text: "MIFARE Classic Security Analysis", uri: "https://www.cs.virginia.edu/~evans/pubs/ccs08/"}
+    ],
+    
+    references: [
+      {text: "Dismantling MIFARE Classic", uri: "https://www.cs.ru.nl/~flaviog/publications/mifare.pdf"},
+      {text: "Crypto-1 Reverse Engineering", uri: "https://eprint.iacr.org/2008/166.pdf"}
+    ],
+    
+    knownVulnerabilities: [
+      {
+        type: "Key Recovery Attack",
+        text: "Multiple practical key recovery attacks allow extracting 48-bit keys in seconds",
+        mitigation: "Do not use - algorithm is fundamentally broken"
+      },
+      {
+        type: "Weak PRNG",
+        text: "Predictable keystream generation allows statistical attacks",
+        mitigation: "Algorithm cannot be fixed - replace with secure alternative"
+      }
+    ],
+    
+    tests: [
+      {
+        text: "Crypto-1 Test Vector (Educational)",
+        uri: "https://github.com/nfc-tools/mfcuk",
+        keySize: 6,
+        input: global.OpCodes.Hex8ToBytes("00000000"),
+        key: global.OpCodes.Hex8ToBytes("000102030405"),
+        expected: global.OpCodes.Hex8ToBytes("4e8485a0")
+      }
+    ],
+
+    // Legacy interface properties
     internalName: 'Crypto-1',
-    name: 'Crypto-1 Stream Cipher',
     comment: 'Crypto-1 MIFARE Classic Stream Cipher - DEPRECATED: Cryptographically broken',
     minKeyLength: 6,    // 48 bits exactly
     maxKeyLength: 6,
@@ -117,7 +153,7 @@
         throw new Error('Invalid Crypto-1 instance ID');
       }
       
-      const inputBytes = global.OpCodes.StringToBytes(input);
+      const inputBytes = global.OpCodes.AsciiToBytes(input);
       const outputBytes = new Array(inputBytes.length);
       
       for (let i = 0; i < inputBytes.length; i++) {
@@ -133,9 +169,74 @@
       return Crypto1.encryptBlock(id, input);
     },
     
+    // Create instance for AlgorithmFramework
+    CreateInstance: function(isDecrypt) {
+      return {
+        _instance: null,
+        _inputData: [],
+        
+        set key(keyData) {
+          this._key = keyData;
+          this._instance = new Crypto1.Crypto1Instance(keyData);
+        },
+        
+        set keySize(size) {
+          this._keySize = size;
+        },
+        
+        set nonce(nonceData) {
+          this._nonce = nonceData;
+        },
+        
+        set counter(counterValue) {
+          this._counter = counterValue;
+        },
+        
+        set iv(ivData) {
+          this._iv = ivData;
+        },
+        
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._inputData = data.slice();
+          } else if (typeof data === 'string') {
+            this._inputData = [];
+            for (let i = 0; i < data.length; i++) {
+              this._inputData.push(data.charCodeAt(i));
+            }
+          }
+        },
+        
+        Result: function() {
+          if (!this._inputData || this._inputData.length === 0) {
+            return [];
+          }
+          
+          if (!this._instance) {
+            return [];
+          }
+          
+          const result = [];
+          for (let i = 0; i < this._inputData.length; i++) {
+            const keystreamByte = this._instance.generateKeystreamByte();
+            result.push(this._inputData[i] ^ keystreamByte);
+          }
+          return result;
+        }
+      };
+    },
+    
     // Crypto-1 instance class
     Crypto1Instance: function(key) {
-      this.keyBytes = global.OpCodes.StringToBytes(key);
+      // Handle key as byte array or convert if string
+      if (typeof key === 'string') {
+        this.keyBytes = global.OpCodes.AsciiToBytes(key);
+      } else if (Array.isArray(key)) {
+        this.keyBytes = key.slice(); // Copy array
+      } else {
+        throw new Error('Crypto-1 key must be string or byte array');
+      }
+      
       if (this.keyBytes.length !== Crypto1.KEY_SIZE) {
         throw new Error('Crypto-1 requires exactly 48-bit (6-byte) keys');
       }
@@ -230,6 +331,16 @@
     
     return keystreamByte;
   };
+  
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(Crypto1);
+  }
+  
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(Crypto1);
+  }
   
   // Auto-register with Cipher system if available
   if (typeof Cipher !== 'undefined') {

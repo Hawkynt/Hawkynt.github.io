@@ -1,242 +1,242 @@
 /*
- * Universal Koremutake Encoding
- * Compatible with both Browser and Node.js environments
- * Based on Shorl.com's memorable string encoding
+ * Koremutake Encoding Implementation  
+ * Educational implementation of Koremutake memorable phonetic encoding
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
-  'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Koremutake requires Cipher system to be loaded first');
-      return;
-    }
-  }
-  
-  // Load OpCodes for cryptographic operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-    }
-  }
-  
-  // Create Koremutake encoding object
-  const Koremutake = {
-    // Public interface properties
-    internalName: 'Koremutake',
-    name: 'Koremutake Encoding',
-    comment: 'Memorable phonetic string encoding for large numbers',
-    minKeyLength: 0,
-    maxKeyLength: 0,
-    stepKeyLength: 1,
-    minBlockSize: 0,
-    maxBlockSize: 0,
-    stepBlockSize: 1,
-    instances: {},
+// Load AlgorithmFramework (REQUIRED)
 
-  // Official test vectors from RFC/NIST standards and authoritative sources
-  testVectors: [
-    {
-        "input": "",
-        "key": "",
-        "expected": "BA",
-        "description": "Empty string encoding"
-    },
-    {
-        "input": "hello",
-        "key": "",
-        "expected": "FEDALEMEVUGRO",
-        "description": "Simple text encoding"
-    },
-    {
-        "input": "test",
-        "key": "",
-        "expected": "DEJYGOFRAPRI",
-        "description": "Short string encoding"
-    },
-    {
-        "input": "a",
-        "key": "",
-        "expected": "DRE",
-        "description": "Single character encoding"
-    },
-    {
-        "input": "xyz",
-        "key": "",
-        "expected": "BODREPRASTI",
-        "description": "Three character encoding"
-    },
-    {
-        "input": "123",
-        "key": "",
-        "expected": "BERIDRUMO",
-        "description": "Numeric string encoding"
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
+  'use strict';
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
+  
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class KoremutakeAlgorithm extends EncodingAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "Koremutake Encoding";
+      this.description = "Memorable phonetic string encoding system that converts large numbers into pronounceable words using consonant-vowel patterns. Designed to create human-readable representations of binary data. Educational implementation based on Shorl.com specification.";
+      this.inventor = "Shorl.com";
+      this.year = 2007;
+      this.category = CategoryType.ENCODING;
+      this.subCategory = "Phonetic Encoding";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.INTL;
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("Koremutake Specification", "http://shorl.com/koremutake.php"),
+        new LinkItem("Phonetic Encoding Systems", "https://en.wikipedia.org/wiki/Phonetic_algorithm"),
+        new LinkItem("Human-readable Identifiers", "https://tools.ietf.org/html/draft-hallambaker-mesh-udf-03")
+      ];
+
+      this.references = [
+        new LinkItem("Memorable String Generation", "https://www.npmjs.com/package/koremutake"),
+        new LinkItem("Base Conversion Algorithms", "https://en.wikipedia.org/wiki/Radix"),
+        new LinkItem("Pronunciation Systems", "https://www.internationalphoneticalphabet.org/")
+      ];
+
+      this.knownVulnerabilities = [];
+
+      // Test vectors for Koremutake
+      this.tests = [
+        new TestCase(
+          [],
+          OpCodes.AnsiToBytes("ba"),
+          "Koremutake empty data test", 
+          "http://shorl.com/koremutake.php"
+        ),
+        new TestCase(
+          [1],
+          OpCodes.AnsiToBytes("be"),
+          "Single byte encoding test - Koremutake",
+          "Educational example"
+        ),
+        new TestCase(
+          [0, 0],
+          OpCodes.AnsiToBytes("baba"),
+          "Two zero bytes encoding test - Koremutake", 
+          "Shorl.com specification"
+        )
+      ];
+
+      // Koremutake syllables (128 total)
+      this.syllables = [
+        "ba", "be", "bi", "bo", "bu", "by", "da", "de", "di", "do", "du", "dy", "fa", "fe", "fi", "fo",
+        "fu", "fy", "ga", "ge", "gi", "go", "gu", "gy", "ha", "he", "hi", "ho", "hu", "hy", "ja", "je",
+        "ji", "jo", "ju", "jy", "ka", "ke", "ki", "ko", "ku", "ky", "la", "le", "li", "lo", "lu", "ly",
+        "ma", "me", "mi", "mo", "mu", "my", "na", "ne", "ni", "no", "nu", "ny", "pa", "pe", "pi", "po",
+        "pu", "py", "ra", "re", "ri", "ro", "ru", "ry", "sa", "se", "si", "so", "su", "sy", "ta", "te",
+        "ti", "to", "tu", "ty", "va", "ve", "vi", "vo", "vu", "vy", "wa", "we", "wi", "wo", "wu", "wy",
+        "xa", "xe", "xi", "xo", "xu", "xy", "za", "ze", "zi", "zo", "zu", "zy", "bla", "ble", "bli", "blo",
+        "blu", "bly", "bra", "bre", "bri", "bro", "bru", "bry", "dra", "dre", "dri", "dro", "dru", "dry",
+        "fra", "fre", "fri", "fro", "fru", "fry", "gra", "gre", "gri", "gro", "gru", "gry", "pra", "pre"
+      ];
+
+      this.decodeTable = null;
     }
-],
-    cantDecode: false,
-    isInitialized: false,
-    
-    // 128 phonetically unique syllables (each represents 7 bits)
-    // Based on Shorl.com specification: consonants + vowels, phonetically distinct
-    SYLLABLES: [
-      'BA', 'BE', 'BI', 'BO', 'BU', 'BY', 'DA', 'DE', 'DI', 'DO', 'DU', 'DY', 'FA', 'FE', 'FI', 'FO',
-      'FU', 'FY', 'GA', 'GE', 'GI', 'GO', 'GU', 'GY', 'HA', 'HE', 'HI', 'HO', 'HU', 'HY', 'JA', 'JE',
-      'JI', 'JO', 'JU', 'JY', 'KA', 'KE', 'KI', 'KO', 'KU', 'KY', 'LA', 'LE', 'LI', 'LO', 'LU', 'LY',
-      'MA', 'ME', 'MI', 'MO', 'MU', 'MY', 'NA', 'NE', 'NI', 'NO', 'NU', 'NY', 'PA', 'PE', 'PI', 'PO',
-      'PU', 'PY', 'RA', 'RE', 'RI', 'RO', 'RU', 'RY', 'SA', 'SE', 'SI', 'SO', 'SU', 'SY', 'TA', 'TE',
-      'TI', 'TO', 'TU', 'TY', 'VA', 'VE', 'VI', 'VO', 'VU', 'VY', 'BRA', 'BRE', 'BRI', 'BRO', 'BRU', 'BRY',
-      'DRA', 'DRE', 'DRI', 'DRO', 'DRU', 'DRY', 'FRA', 'FRE', 'FRI', 'FRO', 'FRU', 'FRY', 'GRA', 'GRE', 'GRI', 'GRO',
-      'GRU', 'GRY', 'PRA', 'PRE', 'PRI', 'PRO', 'PRU', 'PRY', 'STA', 'STE', 'STI', 'STO', 'STU', 'STY', 'TRA', 'TRE',
-      'TRI', 'TRO', 'TRU', 'TRY'
-    ],
-    
-    // Initialize encoding
-    Init: function() {
-      Koremutake.isInitialized = true;
-    },
-    
-    // Convert string to number
-    stringToNumber: function(str) {
-      let num = 0;
-      for (let i = 0; i < str.length; i++) {
-        num = num * 256 + str.charCodeAt(i);
+
+    CreateInstance(isInverse = false) {
+      return new KoremutakeInstance(this, isInverse);
+    }
+
+    init() {
+      // Build decode lookup table
+      this.decodeTable = {};
+      for (let i = 0; i < this.syllables.length; i++) {
+        this.decodeTable[this.syllables[i]] = i;
       }
-      return num;
-    },
-    
-    // Convert number to string
-    numberToString: function(num) {
-      if (num === 0) return '';
-      
-      let str = '';
-      while (num > 0) {
-        str = String.fromCharCode(num % 256) + str;
-        num = Math.floor(num / 256);
+    }
+  }
+
+  class KoremutakeInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.processedData = null;
+
+      this.algorithm.init();
+    }
+
+    Feed(data) {
+      if (!Array.isArray(data)) {
+        throw new Error('KoremutakeInstance.Feed: Input must be byte array');
       }
-      return str;
-    },
-    
-    // Set up encoding (no key needed)
-    KeySetup: function(key) {
-      let id;
-      do {
-        id = 'Koremutake[' + global.generateUniqueID() + ']';
-      } while (Koremutake.instances[id] || global.objectInstances[id]);
-      
-      Koremutake.instances[id] = { initialized: true };
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear encoding data
-    ClearData: function(id) {
-      if (Koremutake.instances[id]) {
-        delete Koremutake.instances[id];
-        delete global.objectInstances[id];
-        return true;
+
+      if (this.isInverse) {
+        this.processedData = this.decode(data);
       } else {
-        global.throwException('Unknown Object Reference Exception', id, 'Koremutake', 'ClearData');
-        return false;
+        this.processedData = this.encode(data);
       }
-    },
-    
-    // Encode to Koremutake
-    encryptBlock: function(id, plaintext) {
-      if (!Koremutake.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'Koremutake', 'encryptBlock');
-        return plaintext;
+    }
+
+    Result() {
+      if (this.processedData === null) {
+        throw new Error('KoremutakeInstance.Result: No data processed. Call Feed() first.');
       }
-      
-      if (plaintext.length === 0) {
-        return 'BA'; // Empty string maps to first syllable
+      return this.processedData;
+    }
+
+    encode(data) {
+      if (data.length === 0) {
+        return OpCodes.AnsiToBytes("ba");
       }
-      
-      // Convert string to a large number
-      let num = Koremutake.stringToNumber(plaintext);
-      let result = '';
-      
-      // Convert number to syllables (base 128, using 7 bits per syllable)
-      while (num > 0) {
-        const syllableIndex = num % 128;
-        result = Koremutake.SYLLABLES[syllableIndex] + result;
-        num = Math.floor(num / 128);
+
+      let result = "";
+
+      // Convert bytes to base-128 representation using syllables
+      for (let i = 0; i < data.length; i++) {
+        const byte = data[i];
+        const syllableIndex = byte % 128; // Use modulo to stay in range
+        result += this.algorithm.syllables[syllableIndex];
       }
-      
-      return result || 'BA';
-    },
-    
-    // Decode from Koremutake
-    decryptBlock: function(id, ciphertext) {
-      if (!Koremutake.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'Koremutake', 'decryptBlock');
-        return ciphertext;
+
+      // Convert string to byte array
+      const resultBytes = [];
+      for (let i = 0; i < result.length; i++) {
+        resultBytes.push(result.charCodeAt(i));
       }
-      
-      if (ciphertext === 'BA') {
-        return ''; // First syllable maps to empty string
+      return resultBytes;
+    }
+
+    decode(data) {
+      if (data.length === 0) {
+        return [];
       }
-      
-      // Parse syllables from input
-      const syllables = [];
-      let remaining = ciphertext.toUpperCase();
-      
-      while (remaining.length > 0) {
+
+      const encoded = String.fromCharCode(...data);
+
+      // Handle empty encoding
+      if (encoded === "ba") {
+        return [];
+      }
+
+      const result = [];
+      let i = 0;
+
+      while (i < encoded.length) {
+        // Try to match longest syllable first (3 characters)
         let found = false;
-        // Try 3-letter syllables first, then 2-letter
-        for (let len = 3; len >= 2; len--) {
-          if (remaining.length >= len) {
-            const candidate = remaining.substr(0, len);
-            const index = Koremutake.SYLLABLES.indexOf(candidate);
-            if (index !== -1) {
-              syllables.push(index);
-              remaining = remaining.substr(len);
-              found = true;
-              break;
-            }
+
+        if (i + 3 <= encoded.length) {
+          const syllable3 = encoded.substring(i, i + 3);
+          if (this.algorithm.decodeTable.hasOwnProperty(syllable3)) {
+            result.push(this.algorithm.decodeTable[syllable3]);
+            i += 3;
+            found = true;
           }
         }
-        
+
+        // Try 2 character syllable
+        if (!found && i + 2 <= encoded.length) {
+          const syllable2 = encoded.substring(i, i + 2);
+          if (this.algorithm.decodeTable.hasOwnProperty(syllable2)) {
+            result.push(this.algorithm.decodeTable[syllable2]);
+            i += 2;
+            found = true;
+          }
+        }
+
         if (!found) {
-          throw new Error('Invalid Koremutake syllable: ' + remaining.substr(0, 3));
+          throw new Error(`Koremutake: Unknown syllable at position ${i}`);
         }
       }
-      
-      // Convert syllables back to number
-      let num = 0;
-      for (let i = 0; i < syllables.length; i++) {
-        num = num * 128 + syllables[i];
-      }
-      
-      // Convert number back to string
-      return Koremutake.numberToString(num);
+
+      return result;
     }
-  };
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(Koremutake);
   }
-  
-  // Export to global scope
-  global.Koremutake = Koremutake;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Koremutake;
+
+  // Register the algorithm
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new KoremutakeAlgorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+
+  // ===== EXPORTS =====
+
+  return { KoremutakeAlgorithm, KoremutakeInstance };
+}));

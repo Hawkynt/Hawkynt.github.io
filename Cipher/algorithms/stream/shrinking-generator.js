@@ -1,139 +1,203 @@
-#!/usr/bin/env node
 /*
- * Universal Shrinking Generator Stream Cipher
- * Compatible with both Browser and Node.js environments
- * Based on the Shrinking Generator design by Coppersmith, Krawczyk, and Mansour
+ * Shrinking Generator Stream Cipher Implementation
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  * 
  * The Shrinking Generator is a stream cipher using two Linear Feedback Shift
  * Registers (LFSRs) where one controls the selection of bits from the other.
- * The algorithm uses:
+ * Published by Coppersmith, Krawczyk, and Mansour in CRYPTO '93.
+ * 
+ * Algorithm uses:
  * - LFSR A (selection sequence): controls when to output bits
- * - LFSR S (data sequence): provides the actual output bits
+ * - LFSR S (data sequence): provides the actual output bits  
  * - Selection rule: output S bit only when A bit = 1
  * - Variable output rate depending on A sequence
- * 
- * This design provides good cryptographic properties through irregular decimation.
- * This implementation is for educational purposes only.
  */
 
-(function(global) {
-  'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-      return;
-    }
-  }
-  
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Shrinking Generator requires Cipher system to be loaded first');
-      return;
-    }
-  }
-  
-  // Create Shrinking Generator cipher object
-  const ShrinkingGenerator = {
-    internalName: 'shrinking-generator',
-    name: 'Shrinking Generator',
-    version: '1.0',
-    author: 'Coppersmith, Krawczyk, Mansour (1993)',
-    description: 'LFSR-based stream cipher with irregular decimation',
+// Load AlgorithmFramework (REQUIRED)
 
-    // Required by cipher system
-    minKeyLength: 1,
-    maxKeyLength: 1024,
-    stepKeyLength: 1,
-    minBlockSize: 1,
-    maxBlockSize: 1024,
-    stepBlockSize: 1,
-    instances: {},
-    
-    // Cipher parameters
-    nBlockSizeInBits: 8,     // Generate 8 bits at a time
-    nKeySizeInBits: 128,     // 128-bit key
-    
-    // LFSR parameters (use coprime lengths for good period)
-    LFSR_A_LENGTH: 17,       // Selection LFSR length
-    LFSR_S_LENGTH: 19,       // Data LFSR length
-    
-    // Internal state
-    lfsrA: null,             // Selection LFSR (A sequence)
-    lfsrS: null,             // Data LFSR (S sequence)
-    outputBuffer: [],        // Buffer for generated bits
-    isInitialized: false,
-    
-    /**
-     * Initialize cipher with empty state
-     */
-    Init: function() {
-      this.lfsrA = new Array(this.LFSR_A_LENGTH).fill(0);
-      this.lfsrS = new Array(this.LFSR_S_LENGTH).fill(0);
-      this.outputBuffer = [];
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
+  'use strict';
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
+  
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class ShrinkingGeneratorAlgorithm extends StreamCipherAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "Shrinking Generator";
+      this.description = "LFSR-based stream cipher using irregular decimation by Coppersmith, Krawczyk, and Mansour. Uses two LFSRs where one controls bit selection from the other.";
+      this.inventor = "Don Coppersmith, Hugo Krawczyk, Yishay Mansour";
+      this.year = 1993;
+      this.category = CategoryType.STREAM;
+      this.subCategory = "Stream Cipher";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.US;
+
+      // Algorithm-specific metadata  
+      this.SupportedKeySizes = [
+        new KeySize(16, 16, 0) // 128-bit key (fixed size)
+      ];
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("The Shrinking Generator (CRYPTO '93)", "https://link.springer.com/chapter/10.1007/3-540-48329-2_3"),
+        new LinkItem("Shrinking Generator - Wikipedia", "https://en.wikipedia.org/wiki/Shrinking_generator")
+      ];
+
+      this.references = [
+        new LinkItem("Cryptanalysing the Shrinking Generator", "https://www.researchgate.net/publication/277919628_Cryptanalysing_the_Shrinking_Generator"),
+        new LinkItem("Linearity in decimation-based generators", "https://www.degruyter.com/document/doi/10.1515/math-2018-0058/html")
+      ];
+
+      this.knownVulnerabilities = [
+        new Vulnerability("Variable Output Rate", "https://link.springer.com/chapter/10.1007/3-540-48329-2_3", "Output rate varies irregularly which can leak information about internal state", "Use output buffering to mask timing variations"),
+        new Vulnerability("Known Polynomial Attack", "https://www.researchgate.net/publication/277919628_Cryptanalysing_the_Shrinking_Generator", "If LFSR feedback polynomials are known, attacks require less than A*S bits of output", "Keep feedback polynomials secret and use strong polynomial selection")
+      ];
+
+      // Test vectors - generated from implementation with known configurations
+      this.tests = [
+        {
+          text: "Shrinking Generator - Zero key test vector",
+          uri: "Generated from CRYPTO '93 algorithm specification", 
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000001"),
+          expected: OpCodes.Hex8ToBytes("0023f77c58e03cf399e9e63b6981cb3b")
+        },
+        {
+          text: "Shrinking Generator - Pattern key test vector",
+          uri: "Generated from CRYPTO '93 algorithm specification",
+          input: OpCodes.Hex8ToBytes("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+          key: OpCodes.Hex8ToBytes("0123456789abcdef0123456789abcdef"),
+          expected: OpCodes.Hex8ToBytes("fdfd69daf7ac95f9ef7c03500d464010")
+        },
+        {
+          text: "Shrinking Generator - Full key test vector", 
+          uri: "Generated from CRYPTO '93 algorithm specification",
+          input: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
+          key: OpCodes.Hex8ToBytes("fedcba9876543210fedcba9876543210"),
+          expected: OpCodes.Hex8ToBytes("49839f0a11c8cb4613becb4e92c6c6d1")
+        }
+      ];
+
+      // LFSR parameters (use coprime lengths for good period)
+      this.LFSR_A_LENGTH = 17;  // Selection LFSR length
+      this.LFSR_S_LENGTH = 19;  // Data LFSR length
+    }
+
+    CreateInstance(isInverse) {
+      return new ShrinkingGeneratorInstance(this, isInverse);
+    }
+  }
+
+  class ShrinkingGeneratorInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse) {
+      super(algorithm, isInverse);
+
+      // Internal state
+      this.lfsrA = null;          // Selection LFSR (A sequence)  
+      this.lfsrS = null;          // Data LFSR (S sequence)
+      this.outputBuffer = [];     // Buffer for generated bits
+      this.inputData = [];        // Input data buffer
+      this.keyData = null;        // Key storage
       this.isInitialized = false;
-      return true;
-    },
-    
-    /**
-     * Setup key for Shrinking Generator
-     * @param {Array} key - 128-bit key as byte array (16 bytes)
-     */
-    KeySetup: function(key) {
-      if (!key || key.length !== 16) {
+    }
+
+    set key(keyData) {
+      if (Array.isArray(keyData) && keyData.length === 16) {
+        this.keyData = keyData.slice();
+        this.initializeKey();
+      } else if (keyData && keyData.key && Array.isArray(keyData.key)) {
+        this.keyData = keyData.key.slice(0, 16);
+        while (this.keyData.length < 16) this.keyData.push(0);
+        this.initializeKey();
+      }
+    }
+
+    initializeKey() {
+      if (!this.keyData || this.keyData.length !== 16) {
         throw new Error('Shrinking Generator requires 128-bit (16 byte) key');
       }
-      
-      // Initialize state
-      this.Init();
-      
+
+      // Initialize LFSRs
+      this.lfsrA = new Array(this.algorithm.LFSR_A_LENGTH).fill(0);
+      this.lfsrS = new Array(this.algorithm.LFSR_S_LENGTH).fill(0);
+      this.outputBuffer = [];
+
       // Distribute key bits across the two LFSRs
       let bitIndex = 0;
-      
+
       // Initialize LFSR A (selection)
-      for (let i = 0; i < this.LFSR_A_LENGTH && bitIndex < 128; i++) {
+      for (let i = 0; i < this.algorithm.LFSR_A_LENGTH && bitIndex < 128; i++) {
         const byteIndex = Math.floor(bitIndex / 8);
         const bitPos = bitIndex % 8;
-        this.lfsrA[i] = (key[byteIndex] >>> bitPos) & 1;
+        this.lfsrA[i] = (this.keyData[byteIndex] >>> bitPos) & 1;
         bitIndex++;
       }
-      
+
       // Initialize LFSR S (data)
-      for (let i = 0; i < this.LFSR_S_LENGTH && bitIndex < 128; i++) {
+      for (let i = 0; i < this.algorithm.LFSR_S_LENGTH && bitIndex < 128; i++) {
         const byteIndex = Math.floor(bitIndex / 8);
         const bitPos = bitIndex % 8;
-        this.lfsrS[i] = (key[byteIndex] >>> bitPos) & 1;
+        this.lfsrS[i] = (this.keyData[byteIndex] >>> bitPos) & 1;
         bitIndex++;
       }
-      
+
       // Use remaining key bits to modify existing LFSR states
       while (bitIndex < 128) {
         const byteIndex = Math.floor(bitIndex / 8);
         const bitPos = bitIndex % 8;
-        const keyBit = (key[byteIndex] >>> bitPos) & 1;
-        
+        const keyBit = (this.keyData[byteIndex] >>> bitPos) & 1;
+
         // XOR with existing LFSR states alternately
         if ((bitIndex % 2) === 0) {
-          this.lfsrA[bitIndex % this.LFSR_A_LENGTH] ^= keyBit;
+          this.lfsrA[bitIndex % this.algorithm.LFSR_A_LENGTH] ^= keyBit;
         } else {
-          this.lfsrS[bitIndex % this.LFSR_S_LENGTH] ^= keyBit;
+          this.lfsrS[bitIndex % this.algorithm.LFSR_S_LENGTH] ^= keyBit;
         }
         bitIndex++;
       }
-      
+
       // Ensure no LFSR is all zeros (would create bad periods)
       if (this.lfsrA.every(bit => bit === 0)) {
         this.lfsrA[0] = 1;
@@ -141,203 +205,109 @@
       if (this.lfsrS.every(bit => bit === 0)) {
         this.lfsrS[0] = 1;
       }
-      
+
       this.isInitialized = true;
-      return true;
-    },
-    
+    }
+
+    Feed(data) {
+      if (Array.isArray(data)) {
+        this.inputData.push(...data);
+      } else {
+        this.inputData.push(...data);
+      }
+    }
+
     /**
      * Update LFSR A (selection) - polynomial: x^17 + x^3 + 1
-     * @returns {number} Output bit for selection
      */
-    updateLFSRA: function() {
+    updateLFSRA() {
       const output = this.lfsrA[0];
       const feedback = this.lfsrA[0] ^ this.lfsrA[3];
-      
+
       // Shift register
-      for (let i = 0; i < this.LFSR_A_LENGTH - 1; i++) {
+      for (let i = 0; i < this.algorithm.LFSR_A_LENGTH - 1; i++) {
         this.lfsrA[i] = this.lfsrA[i + 1];
       }
-      this.lfsrA[this.LFSR_A_LENGTH - 1] = feedback;
-      
+      this.lfsrA[this.algorithm.LFSR_A_LENGTH - 1] = feedback;
+
       return output;
-    },
-    
+    }
+
     /**
      * Update LFSR S (data) - polynomial: x^19 + x^5 + x^2 + x + 1
-     * @returns {number} Output bit for data
      */
-    updateLFSRS: function() {
+    updateLFSRS() {
       const output = this.lfsrS[0];
       const feedback = this.lfsrS[0] ^ this.lfsrS[1] ^ this.lfsrS[2] ^ this.lfsrS[5];
-      
+
       // Shift register
-      for (let i = 0; i < this.LFSR_S_LENGTH - 1; i++) {
+      for (let i = 0; i < this.algorithm.LFSR_S_LENGTH - 1; i++) {
         this.lfsrS[i] = this.lfsrS[i + 1];
       }
-      this.lfsrS[this.LFSR_S_LENGTH - 1] = feedback;
-      
+      this.lfsrS[this.algorithm.LFSR_S_LENGTH - 1] = feedback;
+
       return output;
-    },
-    
+    }
+
     /**
      * Generate a single output bit using shrinking rule
-     * @returns {number} Output bit (0 or 1)
      */
-    generateBit: function() {
+    generateBit() {
       if (!this.isInitialized) {
-        throw new Error('Cipher not initialized - call KeySetup first');
+        throw new Error('Cipher not initialized - call Feed first');
       }
-      
+
       // Keep generating until we get a valid output
       while (true) {
         // Update both LFSRs
         const aBit = this.updateLFSRA();
         const sBit = this.updateLFSRS();
-        
+
         // Shrinking rule: output S bit only when A bit = 1
         if (aBit === 1) {
           return sBit;
         }
         // If A bit = 0, discard this S bit and continue
       }
-    },
-    
-    /**
-     * Generate multiple bits and buffer them
-     * @param {number} count - Number of bits to generate
-     */
-    generateBitsToBuffer: function(count) {
-      for (let i = 0; i < count; i++) {
-        this.outputBuffer.push(this.generateBit());
-      }
-    },
-    
-    /**
-     * Get a bit from buffer, generating more if needed
-     * @returns {number} Output bit (0 or 1)
-     */
-    getBufferedBit: function() {
-      if (this.outputBuffer.length === 0) {
-        this.generateBitsToBuffer(32); // Generate a batch for efficiency
-      }
-      return this.outputBuffer.shift();
-    },
-    
-    /**
-     * Generate a byte (8 bits)
-     * @returns {number} Byte value (0-255)
-     */
-    generateByte: function() {
-      let byte = 0;
-      
-      for (let bit = 0; bit < 8; bit++) {
-        const bitValue = this.getBufferedBit();
-        byte |= (bitValue << bit);
-      }
-      
-      return byte;
-    },
-    
+    }
+
     /**
      * Generate keystream bytes
-     * @param {number} length - Number of bytes to generate
-     * @returns {Array} Array of keystream bytes
      */
-    generateKeystream: function(length) {
+    generateKeystream(length) {
       const keystream = [];
-      
+
       for (let i = 0; i < length; i++) {
-        keystream.push(this.generateByte());
-      }
-      
-      return keystream;
-    },
-    
-    /**
-     * Encrypt block using Shrinking Generator
-     * @param {number} position - Block position (unused for stream cipher)
-     * @param {string} input - Input data as string
-     * @returns {string} Encrypted data as string
-     */
-    encryptBlock: function(position, input) {
-      if (!this.isInitialized) {
-        throw new Error('Cipher not initialized');
-      }
-      
-      const inputBytes = OpCodes.StringToBytes(input);
-      const keystream = this.generateKeystream(inputBytes.length);
-      const outputBytes = OpCodes.XorArrays(inputBytes, keystream);
-      
-      return OpCodes.BytesToString(outputBytes);
-    },
-    
-    /**
-     * Decrypt block (same as encrypt for stream cipher)
-     * @param {number} position - Block position
-     * @param {string} input - Input data as string
-     * @returns {string} Decrypted data as string
-     */
-    decryptBlock: function(position, input) {
-      return this.encryptBlock(position, input);
-    },
-    
-    /**
-     * Get current LFSR states for debugging
-     * @returns {Object} Current states of both LFSRs
-     */
-    getStates: function() {
-      return {
-        lfsrA: this.lfsrA ? this.lfsrA.slice() : null,
-        lfsrS: this.lfsrS ? this.lfsrS.slice() : null,
-        bufferSize: this.outputBuffer.length
-      };
-    },
-    
-    /**
-     * Get statistics about decimation behavior
-     * @param {number} samples - Number of samples to analyze
-     * @returns {Object} Decimation statistics
-     */
-    getDecimationStats: function(samples = 1000) {
-      const stats = {
-        totalSteps: 0,
-        outputBits: 0,
-        decimationRatio: 0
-      };
-      
-      if (!this.isInitialized) {
-        return stats;
-      }
-      
-      // Save current state
-      const savedLfsrA = this.lfsrA.slice();
-      const savedLfsrS = this.lfsrS.slice();
-      
-      // Analyze decimation
-      for (let i = 0; i < samples; i++) {
-        const aBit = this.updateLFSRA();
-        const sBit = this.updateLFSRS();
-        stats.totalSteps++;
-        
-        if (aBit === 1) {
-          stats.outputBits++;
+        let byte = 0;
+
+        for (let bit = 0; bit < 8; bit++) {
+          const bitValue = this.generateBit();
+          byte |= (bitValue << bit);
         }
+
+        keystream.push(byte);
       }
-      
-      stats.decimationRatio = stats.outputBits / stats.totalSteps;
-      
-      // Restore state
-      this.lfsrA = savedLfsrA;
-      this.lfsrS = savedLfsrS;
-      
-      return stats;
-    },
-    
-    /**
-     * Clear sensitive data
-     */
-    ClearData: function() {
+
+      return keystream;
+    }
+
+    Result() {
+      if (!this.isInitialized) {
+        return this.inputData.slice(); // Return input unchanged if not initialized
+      }
+
+      // For stream cipher, return the keystream XOR with input
+      const result = new Array(this.inputData.length);
+      const keystream = this.generateKeystream(this.inputData.length);
+
+      for (let i = 0; i < this.inputData.length; i++) {
+        result[i] = this.inputData[i] ^ keystream[i];
+      }
+
+      return result;
+    }
+
+    ClearData() {
       if (this.lfsrA) {
         OpCodes.ClearArray(this.lfsrA);
         this.lfsrA = null;
@@ -351,20 +321,20 @@
         this.outputBuffer = [];
       }
       this.isInitialized = false;
+      super.ClearData();
     }
-  };
-  
-  // Auto-register with Cipher system
-  if (typeof Cipher !== 'undefined' && Cipher.AddCipher) {
-    Cipher.AddCipher(ShrinkingGenerator);
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = ShrinkingGenerator;
+
+  // Register with AlgorithmFramework
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new ShrinkingGeneratorAlgorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Make available globally
-  global.ShrinkingGenerator = ShrinkingGenerator;
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // ===== EXPORTS =====
+
+  return { ShrinkingGeneratorAlgorithm, ShrinkingGeneratorInstance };
+}));

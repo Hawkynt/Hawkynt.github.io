@@ -1,725 +1,404 @@
-#!/usr/bin/env node
 /*
- * Universal Serpent Cipher Implementation
- * Compatible with both Browser and Node.js environments
- * Based on the AES finalist cipher by Anderson, Biham, and Knudsen
+ * Serpent Cipher Implementation
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  * 
- * Serpent Algorithm Specifications:
- * - 128-bit block size (16 bytes)
- * - Variable key length: 128, 192, or 256 bits
+ * Serpent Algorithm by Anderson, Biham, and Knudsen
+ * - 128-bit block size, variable key length (128, 192, 256 bits)
  * - 32 rounds with 8 different 4x4 S-boxes
  * - Substitution-permutation network structure
- * - Public domain algorithm (no patents)
- * 
- * References:
- * - Original C implementation by Dr. B.R. Gladman
- * - NIST AES submission package
- * - "Serpent: A Proposal for the Advanced Encryption Standard"
- * 
- * NOTE: This is an educational implementation for learning purposes only.
- * Use proven cryptographic libraries for production systems.
+ * - AES finalist with conservative security margin
  */
 
-(function(global) {
+// Load AlgorithmFramework (REQUIRED)
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
   
-  // Load OpCodes for cryptographic operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
   }
 
-  // Ensure Cipher system is available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class SerpentAlgorithm extends AlgorithmFramework.BlockCipherAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "Serpent";
+      this.description = "AES finalist cipher by Anderson, Biham, and Knudsen with 32 rounds and 8 S-boxes. Uses substitution-permutation network with 128-bit blocks and 128/192/256-bit keys. Conservative security design.";
+      this.inventor = "Ross Anderson, Eli Biham, Lars Knudsen";
+      this.year = 1998;
+      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.subCategory = "Block Cipher";
+      this.securityStatus = null; // Conservative assessment - strong cipher but AES preferred
+      this.complexity = AlgorithmFramework.ComplexityType.ADVANCED;
+      this.country = AlgorithmFramework.CountryCode.GB;
+
+      // Algorithm-specific metadata
+      this.SupportedKeySizes = [
+        new AlgorithmFramework.KeySize(16, 32, 8) // 128/192/256-bit
+      ];
+      this.SupportedBlockSizes = [
+        new AlgorithmFramework.KeySize(16, 16, 0) // Fixed 128-bit blocks
+      ];
+
+      // Documentation and references
+      this.documentation = [
+        new AlgorithmFramework.LinkItem("Serpent Algorithm Specification", "https://www.cl.cam.ac.uk/~rja14/serpent.html"),
+        new AlgorithmFramework.LinkItem("Serpent: A New Block Cipher Proposal", "https://www.cl.cam.ac.uk/~rja14/Papers/serpent.pdf"),
+        new AlgorithmFramework.LinkItem("NIST AES Candidate Submission", "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development")
+      ];
+
+      this.references = [
+        new AlgorithmFramework.LinkItem("Crypto++ Serpent Implementation", "https://github.com/weidai11/cryptopp/blob/master/serpent.cpp"),
+        new AlgorithmFramework.LinkItem("libgcrypt Serpent Implementation", "https://github.com/gpg/libgcrypt/blob/master/cipher/serpent.c"),
+        new AlgorithmFramework.LinkItem("Bouncy Castle Serpent Implementation", "https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/engines")
+      ];
+
+      // No known practical attacks against full Serpent
+      this.knownVulnerabilities = [
+        new AlgorithmFramework.Vulnerability("Performance vs AES", "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development", "Slower than AES, which contributed to AES selection by NIST", "AES preferred for performance-critical applications, Serpent acceptable for high-security needs")
+      ];
+
+      // Test vectors from official specification
+      this.tests = [
+        {
+          text: "Serpent 128-bit key test vector",
+          uri: "https://www.cl.cam.ac.uk/~rja14/serpent.html",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("d29d576fcea3a3a7ed9099f29273d78e")
+        },
+        {
+          text: "Serpent 256-bit key test vector", 
+          uri: "https://www.cl.cam.ac.uk/~rja14/serpent.html",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("b2288b968ae8b08648d1ce9606fd992d")
+        }
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      return new SerpentInstance(this, isInverse);
+    }
+  }
+
+  class SerpentInstance extends AlgorithmFramework.IBlockCipherInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.key = null;
+      this.roundKeys = null;
+      this.inputBuffer = [];
+      this.BlockSize = 16;
+      this.KeySize = 0;
+
+      // Serpent constants
+      this.ROUNDS = 32;
+      this.PHI = 0x9e3779b9; // Golden ratio constant for key schedule
+
+      // Serpent S-boxes as lookup tables (0-15 input -> 0-15 output)
+      this.SBOX = [
+        [3, 8, 15, 1, 10, 6, 5, 11, 14, 13, 4, 2, 7, 0, 9, 12],  // S0
+        [15, 12, 2, 7, 9, 0, 5, 10, 1, 11, 14, 8, 6, 13, 3, 4],   // S1
+        [8, 6, 7, 9, 3, 12, 10, 15, 13, 1, 14, 4, 0, 11, 5, 2],   // S2
+        [0, 15, 11, 8, 12, 9, 6, 3, 13, 1, 2, 4, 10, 7, 5, 14],   // S3
+        [1, 15, 8, 3, 12, 0, 11, 6, 2, 5, 4, 10, 9, 14, 7, 13],   // S4
+        [15, 5, 2, 11, 4, 10, 9, 12, 0, 3, 14, 8, 13, 6, 7, 1],   // S5
+        [7, 2, 12, 5, 8, 4, 6, 11, 14, 9, 1, 15, 13, 3, 10, 0],   // S6
+        [1, 13, 15, 0, 14, 8, 2, 11, 7, 4, 12, 10, 9, 3, 5, 6]    // S7
+      ];
+
+      // Inverse S-boxes (reverse lookup)
+      this.SBOX_INV = [];
+      for (let i = 0; i < 8; i++) {
+        this.SBOX_INV[i] = new Array(16);
+        for (let j = 0; j < 16; j++) {
+          this.SBOX_INV[i][this.SBOX[i][j]] = j;
+        }
+      }
+    }
+
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
+        this.roundKeys = null;
+        this.KeySize = 0;
         return;
       }
-    } else {
-      console.error('Serpent cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
 
-  // Serpent Algorithm Constants
-  const SERPENT_CONSTANTS = {
-    BLOCK_SIZE: 16,           // 128 bits
-    MIN_KEY_LENGTH: 16,       // 128 bits
-    MAX_KEY_LENGTH: 32,       // 256 bits
-    ROUNDS: 32,               // Number of encryption rounds
-    PHI: 0x9e3779b9,         // Golden ratio constant for key schedule
-    SBOX_COUNT: 8            // Number of different S-boxes
-  };
+      // Validate key size
+      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
+        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+        (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
+      );
 
-  // Serpent S-box transformations using optimized boolean functions
-  // Based on the official C reference implementation by Dr. B.R. Gladman
-  
-  // S0 transformation (15 terms)
-  function sb0(a, b, c, d) {
-    let t1 = a ^ d;
-    let t2 = a & d;
-    let t3 = c ^ t1;
-    let t6 = b & t1;
-    let t4 = b ^ t3;
-    let t10 = ~t3;
-    let h = t2 ^ t4;
-    let t7 = a ^ t6;
-    let t14 = ~t7;
-    let t8 = c | t7;
-    let t11 = t3 ^ t7;
-    let g = t4 ^ t8;
-    let t12 = h & t11;
-    let f = t10 ^ t12;
-    let e = t12 ^ t14;
-    return [e, f, g, h];
-  }
-
-  // Inverse S0 transformation (15 terms)
-  function ib0(a, b, c, d) {
-    let t1 = ~a;
-    let t2 = a ^ b;
-    let t3 = t1 | t2;
-    let t4 = d ^ t3;
-    let t7 = d & t2;
-    let t5 = c ^ t4;
-    let t8 = t1 ^ t7;
-    let g = t2 ^ t5;
-    let t11 = a & t4;
-    let t9 = g & t8;
-    let t14 = t5 ^ t8;
-    let f = t4 ^ t9;
-    let t12 = t5 | f;
-    let h = t11 ^ t12;
-    let e = h ^ t14;
-    return [e, f, g, h];
-  }
-
-  // S1 transformation (14 terms)
-  function sb1(a, b, c, d) {
-    let t1 = ~a;
-    let t2 = b ^ t1;
-    let t3 = a | t2;
-    let t4 = d | t2;
-    let t5 = c ^ t3;
-    let g = d ^ t5;
-    let t7 = b ^ t4;
-    let t8 = t2 ^ g;
-    let t9 = t5 & t7;
-    let h = t8 ^ t9;
-    let t11 = t5 ^ t7;
-    let f = h ^ t11;
-    let t13 = t8 & t11;
-    let e = t5 ^ t13;
-    return [e, f, g, h];
-  }
-
-  // Inverse S1 transformation (17 terms)
-  function ib1(a, b, c, d) {
-    let t1 = a ^ d;
-    let t2 = a & b;
-    let t3 = b ^ c;
-    let t4 = a ^ t3;
-    let t5 = b | d;
-    let h = t4 ^ t5;
-    let t7 = c | t1;
-    let t8 = b ^ t7;
-    let t11 = ~t2;
-    let t9 = t4 & t8;
-    let f = t1 ^ t9;
-    let t13 = t9 ^ t11;
-    let t12 = h & f;
-    let g = t12 ^ t13;
-    let t15 = a & d;
-    let t16 = c ^ t13;
-    let e = t15 ^ t16;
-    return [e, f, g, h];
-  }
-
-  // S2 transformation (16 terms)
-  function sb2(a, b, c, d) {
-    let t1 = ~a;
-    let t2 = b ^ d;
-    let t3 = c & t1;
-    let t13 = d | t1;
-    let e = t2 ^ t3;
-    let t5 = c ^ t1;
-    let t6 = c ^ e;
-    let t7 = b & t6;
-    let t10 = e | t5;
-    let h = t5 ^ t7;
-    let t9 = d | t7;
-    let t11 = t9 & t10;
-    let t14 = t2 ^ h;
-    let g = a ^ t11;
-    let t15 = g ^ t13;
-    let f = t14 ^ t15;
-    return [e, f, g, h];
-  }
-
-  // Inverse S2 transformation (16 terms)
-  function ib2(a, b, c, d) {
-    let t1 = b ^ d;
-    let t2 = ~t1;
-    let t3 = a ^ c;
-    let t4 = c ^ t1;
-    let t7 = a | t2;
-    let t5 = b & t4;
-    let t8 = d ^ t7;
-    let t11 = ~t4;
-    let e = t3 ^ t5;
-    let t9 = t3 | t8;
-    let t14 = d & t11;
-    let h = t1 ^ t9;
-    let t12 = e | h;
-    let f = t11 ^ t12;
-    let t15 = t3 ^ t12;
-    let g = t14 ^ t15;
-    return [e, f, g, h];
-  }
-
-  // S3 transformation (17 terms)
-  function sb3(a, b, c, d) {
-    let t1 = a ^ c;
-    let t2 = d ^ t1;
-    let t3 = a & t2;
-    let t4 = d ^ t3;
-    let t5 = b & t4;
-    let g = t2 ^ t5;
-    let t7 = a | g;
-    let t8 = b | d;
-    let t11 = a | d;
-    let t9 = t4 & t7;
-    let f = t8 ^ t9;
-    let t12 = b ^ t11;
-    let t13 = g ^ t9;
-    let t15 = t3 ^ t8;
-    let h = t12 ^ t13;
-    let t16 = c & t15;
-    let e = t12 ^ t16;
-    return [e, f, g, h];
-  }
-
-  // Inverse S3 transformation (17 terms)
-  function ib3(a, b, c, d) {
-    let t1 = b ^ c;
-    let t2 = b | c;
-    let t3 = a ^ c;
-    let t7 = a ^ d;
-    let t4 = t2 ^ t3;
-    let t5 = d | t4;
-    let t9 = t2 ^ t7;
-    let e = t1 ^ t5;
-    let t8 = t1 | t5;
-    let t11 = a & t4;
-    let g = t8 ^ t9;
-    let t12 = e | t9;
-    let f = t11 ^ t12;
-    let t14 = a & g;
-    let t15 = t2 ^ t14;
-    let t16 = e & t15;
-    let h = t4 ^ t16;
-    return [e, f, g, h];
-  }
-
-  // S4 transformation (15 terms)
-  function sb4(a, b, c, d) {
-    let t1 = a ^ d;
-    let t2 = d & t1;
-    let t3 = c ^ t2;
-    let t4 = b | t3;
-    let h = t1 ^ t4;
-    let t6 = ~b;
-    let t7 = t1 | t6;
-    let e = t3 ^ t7;
-    let t9 = a & e;
-    let t10 = t1 ^ t6;
-    let t11 = t4 & t10;
-    let g = t9 ^ t11;
-    let t13 = a ^ t3;
-    let t14 = t10 & g;
-    let f = t13 ^ t14;
-    return [e, f, g, h];
-  }
-
-  // Inverse S4 transformation (17 terms)
-  function ib4(a, b, c, d) {
-    let t1 = c ^ d;
-    let t2 = c | d;
-    let t3 = b ^ t2;
-    let t4 = a & t3;
-    let f = t1 ^ t4;
-    let t6 = a ^ d;
-    let t7 = b | d;
-    let t8 = t6 & t7;
-    let h = t3 ^ t8;
-    let t10 = ~a;
-    let t11 = c ^ h;
-    let t12 = t10 | t11;
-    let e = t3 ^ t12;
-    let t14 = c | t4;
-    let t15 = t7 ^ t14;
-    let t16 = h | t10;
-    let g = t15 ^ t16;
-    return [e, f, g, h];
-  }
-
-  // S5 transformation (16 terms)
-  function sb5(a, b, c, d) {
-    let t1 = ~a;
-    let t2 = a ^ b;
-    let t3 = a ^ d;
-    let t4 = c ^ t1;
-    let t5 = t2 | t3;
-    let e = t4 ^ t5;
-    let t7 = d & e;
-    let t8 = t2 ^ e;
-    let t10 = t1 | e;
-    let f = t7 ^ t8;
-    let t11 = t2 | t7;
-    let t12 = t3 ^ t10;
-    let t14 = b ^ t7;
-    let g = t11 ^ t12;
-    let t15 = f & t12;
-    let h = t14 ^ t15;
-    return [e, f, g, h];
-  }
-
-  // Inverse S5 transformation (16 terms)
-  function ib5(a, b, c, d) {
-    let t1 = ~c;
-    let t2 = b & t1;
-    let t3 = d ^ t2;
-    let t4 = a & t3;
-    let t5 = b ^ t1;
-    let h = t4 ^ t5;
-    let t7 = b | h;
-    let t8 = a & t7;
-    let f = t3 ^ t8;
-    let t10 = a | d;
-    let t11 = t1 ^ t7;
-    let e = t10 ^ t11;
-    let t13 = a ^ c;
-    let t14 = b & t10;
-    let t15 = t4 | t13;
-    let g = t14 ^ t15;
-    return [e, f, g, h];
-  }
-
-  // S6 transformation (15 terms)
-  function sb6(a, b, c, d) {
-    let t1 = ~a;
-    let t2 = a ^ d;
-    let t3 = b ^ t2;
-    let t4 = t1 | t2;
-    let t5 = c ^ t4;
-    let f = b ^ t5;
-    let t13 = ~t5;
-    let t7 = t2 | f;
-    let t8 = d ^ t7;
-    let t9 = t5 & t8;
-    let g = t3 ^ t9;
-    let t11 = t5 ^ t8;
-    let e = g ^ t11;
-    let t14 = t3 & t11;
-    let h = t13 ^ t14;
-    return [e, f, g, h];
-  }
-
-  // Inverse S6 transformation (15 terms)
-  function ib6(a, b, c, d) {
-    let t1 = ~a;
-    let t2 = a ^ b;
-    let t3 = c ^ t2;
-    let t4 = c | t1;
-    let t5 = d ^ t4;
-    let t13 = d & t1;
-    let f = t3 ^ t5;
-    let t7 = t3 & t5;
-    let t8 = t2 ^ t7;
-    let t9 = b | t8;
-    let h = t5 ^ t9;
-    let t11 = b | h;
-    let e = t8 ^ t11;
-    let t14 = t3 ^ t11;
-    let g = t13 ^ t14;
-    return [e, f, g, h];
-  }
-
-  // S7 transformation (17 terms)
-  function sb7(a, b, c, d) {
-    let t1 = ~c;
-    let t2 = b ^ c;
-    let t3 = b | t1;
-    let t4 = d ^ t3;
-    let t5 = a & t4;
-    let t7 = a ^ d;
-    let h = t2 ^ t5;
-    let t8 = b ^ t5;
-    let t9 = t2 | t8;
-    let t11 = d & t3;
-    let f = t7 ^ t9;
-    let t12 = t5 ^ f;
-    let t15 = t1 | t4;
-    let t13 = h & t12;
-    let g = t11 ^ t13;
-    let t16 = t12 ^ g;
-    let e = t15 ^ t16;
-    return [e, f, g, h];
-  }
-
-  // Inverse S7 transformation (17 terms)
-  function ib7(a, b, c, d) {
-    let t1 = a & b;
-    let t2 = a | b;
-    let t3 = c | t1;
-    let t4 = d & t2;
-    let h = t3 ^ t4;
-    let t6 = ~d;
-    let t7 = b ^ t4;
-    let t8 = h ^ t6;
-    let t11 = c ^ t7;
-    let t9 = t7 | t8;
-    let f = a ^ t9;
-    let t12 = d | f;
-    let e = t11 ^ t12;
-    let t14 = a & h;
-    let t15 = t3 ^ f;
-    let t16 = e ^ t14;
-    let g = t15 ^ t16;
-    return [e, f, g, h];
-  }
-
-  // S-box array for encryption
-  const sboxFunctions = [sb0, sb1, sb2, sb3, sb4, sb5, sb6, sb7];
-  const sboxInvFunctions = [ib0, ib1, ib2, ib3, ib4, ib5, ib6, ib7];
-
-  // Linear transformation function
-  function linearTransform(x0, x1, x2, x3) {
-    // Apply Serpent's linear transformation (exact C reference implementation)
-    x0 = OpCodes.RotL32(x0, 13);
-    x2 = OpCodes.RotL32(x2, 3);
-    x3 ^= x2 ^ ((x0 << 3) >>> 0);
-    x1 ^= x0 ^ x2;
-    x3 = OpCodes.RotL32(x3, 7);
-    x1 = OpCodes.RotL32(x1, 1);
-    x0 ^= x1 ^ x3;
-    x2 ^= x3 ^ ((x1 << 7) >>> 0);
-    x0 = OpCodes.RotL32(x0, 5);
-    x2 = OpCodes.RotL32(x2, 22);
-    
-    return [x0, x1, x2, x3];
-  }
-
-  // Inverse linear transformation function
-  function linearTransformInv(x0, x1, x2, x3) {
-    // Apply inverse of Serpent's linear transformation (exact C reference implementation)
-    x2 = OpCodes.RotR32(x2, 22);
-    x0 = OpCodes.RotR32(x0, 5);
-    x2 ^= x3 ^ ((x1 << 7) >>> 0);
-    x0 ^= x1 ^ x3;
-    x3 = OpCodes.RotR32(x3, 7);
-    x1 = OpCodes.RotR32(x1, 1);
-    x3 ^= x2 ^ ((x0 << 3) >>> 0);
-    x1 ^= x0 ^ x2;
-    x2 = OpCodes.RotR32(x2, 3);
-    x0 = OpCodes.RotR32(x0, 13);
-    
-    return [x0, x1, x2, x3];
-  }
-
-  // Key scheduling function
-  function generateKeySchedule(key) {
-    // Pad key to 256 bits if necessary
-    const keyWords = new Array(8).fill(0);
-    const keyBytes = OpCodes.StringToBytes(key);
-    
-    // Copy key bytes into words
-    for (let i = 0; i < Math.min(keyBytes.length, 32); i++) {
-      const wordIndex = Math.floor(i / 4);
-      const byteIndex = i % 4;
-      keyWords[wordIndex] |= (keyBytes[i] << (byteIndex * 8));
-    }
-    
-    // If key is shorter than 256 bits, apply padding
-    if (keyBytes.length < 32) {
-      const padIndex = keyBytes.length;
-      const wordIndex = Math.floor(padIndex / 4);
-      const byteIndex = padIndex % 4;
-      keyWords[wordIndex] |= (1 << (byteIndex * 8));
-    }
-    
-    // Generate extended key
-    const extendedKey = new Array(140);
-    
-    // Copy initial key words
-    for (let i = 0; i < 8; i++) {
-      extendedKey[i] = keyWords[i] >>> 0; // Ensure unsigned 32-bit
-    }
-    
-    // Generate remaining key words
-    for (let i = 8; i < 140; i++) {
-      const temp = extendedKey[i - 8] ^ extendedKey[i - 5] ^ extendedKey[i - 3] ^ extendedKey[i - 1] ^ SERPENT_CONSTANTS.PHI ^ (i - 8);
-      extendedKey[i] = OpCodes.RotL32(temp, 11);
-    }
-    
-    // Apply S-boxes to subkeys
-    const roundKeys = [];
-    const sboxOrder = [3, 2, 1, 0, 7, 6, 5, 4]; // S-box order for key schedule
-    
-    for (let round = 0; round < 33; round++) {
-      const baseIndex = round * 4 + 8;
-      const sboxIndex = sboxOrder[round % 8];
-      
-      const x0 = extendedKey[baseIndex];
-      const x1 = extendedKey[baseIndex + 1];
-      const x2 = extendedKey[baseIndex + 2];
-      const x3 = extendedKey[baseIndex + 3];
-      
-      const transformed = sboxFunctions[sboxIndex](x0, x1, x2, x3);
-      roundKeys.push(transformed);
-    }
-    
-    return roundKeys;
-  }
-
-  // Create Serpent cipher object
-  const Serpent = {
-    name: "Serpent",
-    description: "AES finalist cipher by Anderson, Biham, and Knudsen with 32 rounds and 8 S-boxes. Uses substitution-permutation network with 128-bit blocks and 128/192/256-bit keys. Public domain algorithm.",
-    inventor: "Ross Anderson, Eli Biham, Lars Knudsen",
-    year: 1998,
-    country: "GB",
-    category: "cipher",
-    subCategory: "Block Cipher",
-    securityStatus: null,
-    securityNotes: "AES finalist with conservative security margin. Designed for high security with 32 rounds. No practical attacks known against full Serpent.",
-    
-    documentation: [
-      {text: "Serpent Algorithm Specification", uri: "https://www.cl.cam.ac.uk/~rja14/serpent.html"},
-      {text: "Serpent: A New Block Cipher Proposal", uri: "https://www.cl.cam.ac.uk/~rja14/Papers/serpent.pdf"},
-      {text: "NIST AES Candidate Submission", uri: "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development"}
-    ],
-    
-    references: [
-      {text: "Crypto++ Serpent Implementation", uri: "https://github.com/weidai11/cryptopp/blob/master/serpent.cpp"},
-      {text: "libgcrypt Serpent Implementation", uri: "https://github.com/gpg/libgcrypt/blob/master/cipher/serpent.c"},
-      {text: "Bouncy Castle Serpent Implementation", uri: "https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/engines"}
-    ],
-    
-    knownVulnerabilities: [],
-    
-    tests: [
-      {
-        text: "Serpent 128-bit Test Vector",
-        uri: "https://www.cl.cam.ac.uk/~rja14/serpent.html",
-        keySize: 16,
-        blockSize: 16,
-        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: null // Will be computed by implementation
-      }
-    ],
-    
-    // Public interface properties
-    internalName: 'Serpent',
-    comment: 'Serpent Block Cipher - AES Finalist by Anderson, Biham, and Knudsen',
-    minKeyLength: SERPENT_CONSTANTS.MIN_KEY_LENGTH,
-    maxKeyLength: SERPENT_CONSTANTS.MAX_KEY_LENGTH,
-    stepKeyLength: 8, // 64-bit steps
-    minBlockSize: SERPENT_CONSTANTS.BLOCK_SIZE,
-    maxBlockSize: SERPENT_CONSTANTS.BLOCK_SIZE,
-    stepBlockSize: 1,
-    instances: {},
-
-  // Legacy test vectors for compatibility
-  testVectors: [
-    {
-        "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "key": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "expected": "6 ±zæ©Ð\u0018¸vfºé",
-        "description": "Serpent 128-bit key, all zeros test vector (our implementation)"
-    },
-    {
-        "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "key": "\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017",
-        "expected": "\u0010U@Ð¶[©RGêQ&ëz",
-        "description": "Serpent 192-bit key, sequential pattern test vector (our implementation)"
-    },
-    {
-        "input": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "key": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
-        "expected": "Ig+¨ÙùP\u0019\u0018\u0004EI\u0010",
-        "description": "Serpent 256-bit key, all zeros test vector (our implementation)"
-    },
-    {
-        "input": "\u0001#Eg«Íï\u0000\u0011\"3DUfw",
-        "key": "\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\b\t\n\u000b\f\r\u000e\u000f",
-        "expected": "¤UQ£n\u0012wË\u000f]Û",
-        "description": "Serpent 128-bit key, pattern test vector (our implementation)"
-    },
-    {
-        "input": "HELLO WORLD TEST",
-        "key": "1234567890123456",
-        "expected": "a\u001e²öÌ¡F|\\¥-â³",
-        "description": "Serpent ASCII plaintext and key test (our implementation)"
-    },
-    {
-        "input": "ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ",
-        "key": "ÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿÿ",
-        "expected": "-îg[kt\u00016}¢¨\u000f´Ke",
-        "description": "Serpent 128-bit key, all ones boundary test (our implementation)"
-    }
-],
-
-  // Reference links to authoritative sources and production implementations
-  referenceLinks: {
-    specifications: [
-      {
-        name: 'Serpent Algorithm Specification',
-        url: 'https://www.cl.cam.ac.uk/~rja14/serpent.html',
-        description: 'Official Serpent specification by Anderson, Biham, and Knudsen'
-      },
-      {
-        name: 'Serpent AES Candidate Submission',
-        url: 'https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development',
-        description: 'NIST AES candidate submission documents for Serpent'
-      },
-      {
-        name: 'Serpent: A New Block Cipher Proposal (Paper)',
-        url: 'https://www.cl.cam.ac.uk/~rja14/Papers/serpent.pdf',
-        description: 'Academic paper introducing the Serpent algorithm design'
-      },
-      {
-        name: 'Fast Software Encryption - Serpent',
-        url: 'https://link.springer.com/chapter/10.1007/3-540-69710-1_14',
-        description: 'FSE conference paper on Serpent algorithm and implementation'
-      }
-    ],
-    implementations: [
-      {
-        name: 'Crypto++ Serpent Implementation',
-        url: 'https://github.com/weidai11/cryptopp/blob/master/serpent.cpp',
-        description: 'High-performance C++ Serpent implementation'
-      },
-      {
-        name: 'Bouncy Castle Serpent Implementation',
-        url: 'https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/engines',
-        description: 'Java Serpent implementation from Bouncy Castle'
-      },
-      {
-        name: 'libgcrypt Serpent Implementation',
-        url: 'https://github.com/gpg/libgcrypt/blob/master/cipher/serpent.c',
-        description: 'GNU libgcrypt Serpent implementation'
-      },
-      {
-        name: 'OpenSSL Cipher Collection',
-        url: 'https://github.com/openssl/openssl/tree/master/crypto/',
-        description: 'OpenSSL cryptographic library cipher implementations'
-      }
-    ],
-    validation: [
-      {
-        name: 'Serpent Test Vectors',
-        url: 'https://www.cl.cam.ac.uk/~rja14/serpent.html',
-        description: 'Official test vectors from Serpent algorithm creators'
-      },
-      {
-        name: 'NIST AES Finalist Evaluation',
-        url: 'https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development',
-        description: 'NIST evaluation and test vectors for AES finalist Serpent'
-      },
-      {
-        name: 'Serpent Cryptanalysis Research',
-        url: 'https://www.iacr.org/cryptodb/data/paper.php?pubkey=1523',
-        description: 'Academic research on Serpent security analysis and cryptanalysis'
-      }
-    ]
-  },
-
-    cantDecode: false,
-    isInitialized: false,
-
-    // Initialize cipher
-    Init: function() {
-      if (!global.OpCodes) {
-        throw new Error('OpCodes library is required for Serpent cipher');
-      }
-      this.isInitialized = true;
-      return true;
-    },
-
-    // Key setup
-    KeySetup: function(key) {
-      if (!this.isInitialized) {
-        this.Init();
-      }
-      
-      if (!key || key.length < this.minKeyLength || key.length > this.maxKeyLength) {
-        throw new Error('Serpent key must be between ' + this.minKeyLength + ' and ' + this.maxKeyLength + ' bytes');
+      if (!isValidSize) {
+        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
       }
 
-      // Generate unique instance ID
-      let instanceId;
-      do {
-        instanceId = 'Serpent[' + Math.random().toString(36).substr(2, 9) + ']';
-      } while (this.instances[instanceId]);
+      this._key = [...keyBytes];
+      this.KeySize = keyBytes.length;
 
       // Generate round keys
-      const roundKeys = generateKeySchedule(key);
-      
-      // Store instance
-      this.instances[instanceId] = {
-        roundKeys: roundKeys,
-        keyLength: key.length
-      };
+      this.roundKeys = this._generateKeySchedule(keyBytes);
+    }
 
-      return instanceId;
-    },
+    get key() {
+      return this._key ? [...this._key] : null;
+    }
 
-    // Encrypt a block
-    encryptBlock: function(instanceId, plaintext) {
-      const instance = this.instances[instanceId];
-      if (!instance) {
-        throw new Error('Invalid instance ID: ' + instanceId);
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!this.key) throw new Error("Key not set");
+
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      if (!this.key) throw new Error("Key not set");
+      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+
+      // Validate input length
+      if (this.inputBuffer.length % this.BlockSize !== 0) {
+        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
       }
 
-      if (plaintext.length !== SERPENT_CONSTANTS.BLOCK_SIZE) {
-        throw new Error('Serpent block size must be exactly ' + SERPENT_CONSTANTS.BLOCK_SIZE + ' bytes');
+      const output = [];
+
+      // Process each 16-byte block
+      for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
+        const block = this.inputBuffer.slice(i, i + this.BlockSize);
+        const processedBlock = this.isInverse 
+          ? this._decryptBlock(block) 
+          : this._encryptBlock(block);
+        output.push(...processedBlock);
+      }
+
+      // Clear input buffer
+      this.inputBuffer = [];
+
+      return output;
+    }
+
+    // All S-box operations now use lookup tables above
+
+    // Apply S-box using lookup table (4-bit nibble parallel)
+    _sbox(sboxNum, x0, x1, x2, x3) {
+      const sbox = this.SBOX[sboxNum];
+      const result = [0, 0, 0, 0];
+
+      // Process each 4-bit nibble in parallel
+      for (let bit = 0; bit < 32; bit += 4) {
+        const mask = 0xF << bit;
+        const shift = bit;
+
+        // Extract 4-bit nibbles
+        const n0 = (x0 & mask) >>> shift;
+        const n1 = (x1 & mask) >>> shift;
+        const n2 = (x2 & mask) >>> shift;
+        const n3 = (x3 & mask) >>> shift;
+
+        // Apply S-box transformation
+        const s0 = sbox[n0];
+        const s1 = sbox[n1];
+        const s2 = sbox[n2];
+        const s3 = sbox[n3];
+
+        // Put back transformed nibbles
+        result[0] |= (s0 << shift);
+        result[1] |= (s1 << shift);
+        result[2] |= (s2 << shift);
+        result[3] |= (s3 << shift);
+      }
+
+      return result;
+    }
+
+    _sboxInv(sboxNum, x0, x1, x2, x3) {
+      const sboxInv = this.SBOX_INV[sboxNum];
+      const result = [0, 0, 0, 0];
+
+      // Process each 4-bit nibble in parallel
+      for (let bit = 0; bit < 32; bit += 4) {
+        const mask = 0xF << bit;
+        const shift = bit;
+
+        // Extract 4-bit nibbles
+        const n0 = (x0 & mask) >>> shift;
+        const n1 = (x1 & mask) >>> shift;
+        const n2 = (x2 & mask) >>> shift;
+        const n3 = (x3 & mask) >>> shift;
+
+        // Apply inverse S-box transformation
+        const s0 = sboxInv[n0];
+        const s1 = sboxInv[n1];
+        const s2 = sboxInv[n2];
+        const s3 = sboxInv[n3];
+
+        // Put back transformed nibbles
+        result[0] |= (s0 << shift);
+        result[1] |= (s1 << shift);
+        result[2] |= (s2 << shift);
+        result[3] |= (s3 << shift);
+      }
+
+      return result;
+    }
+
+    // Linear transformation function
+    _linearTransform(x0, x1, x2, x3) {
+      x0 = OpCodes.RotL32(x0, 13);
+      x2 = OpCodes.RotL32(x2, 3);
+      x3 ^= x2 ^ ((x0 << 3) >>> 0);
+      x1 ^= x0 ^ x2;
+      x3 = OpCodes.RotL32(x3, 7);
+      x1 = OpCodes.RotL32(x1, 1);
+      x0 ^= x1 ^ x3;
+      x2 ^= x3 ^ ((x1 << 7) >>> 0);
+      x0 = OpCodes.RotL32(x0, 5);
+      x2 = OpCodes.RotL32(x2, 22);
+
+      return [x0, x1, x2, x3];
+    }
+
+    // Inverse linear transformation function
+    _linearTransformInv(x0, x1, x2, x3) {
+      x2 = OpCodes.RotR32(x2, 22);
+      x0 = OpCodes.RotR32(x0, 5);
+      x2 ^= x3 ^ ((x1 << 7) >>> 0);
+      x0 ^= x1 ^ x3;
+      x3 = OpCodes.RotR32(x3, 7);
+      x1 = OpCodes.RotR32(x1, 1);
+      x3 ^= x2 ^ ((x0 << 3) >>> 0);
+      x1 ^= x0 ^ x2;
+      x2 = OpCodes.RotR32(x2, 3);
+      x0 = OpCodes.RotR32(x0, 13);
+
+      return [x0, x1, x2, x3];
+    }
+
+    // Key scheduling function
+    _generateKeySchedule(key) {
+      // Pad key to 256 bits if necessary
+      const keyWords = new Array(8).fill(0);
+
+      // Copy key bytes into words
+      for (let i = 0; i < Math.min(key.length, 32); i++) {
+        const wordIndex = Math.floor(i / 4);
+        const byteIndex = i % 4;
+        keyWords[wordIndex] |= (key[i] << (byteIndex * 8));
+      }
+
+      // If key is shorter than 256 bits, apply padding
+      if (key.length < 32) {
+        const padIndex = key.length;
+        const wordIndex = Math.floor(padIndex / 4);
+        const byteIndex = padIndex % 4;
+        keyWords[wordIndex] |= (1 << (byteIndex * 8));
+      }
+
+      // Generate extended key (132 words total)
+      const extendedKey = new Array(132);
+
+      // Copy initial key words
+      for (let i = 0; i < 8; i++) {
+        extendedKey[i] = keyWords[i] >>> 0; // Ensure unsigned 32-bit
+      }
+
+      // Generate remaining key words
+      for (let i = 8; i < 132; i++) {
+        const temp = extendedKey[i - 8] ^ extendedKey[i - 5] ^ extendedKey[i - 3] ^ extendedKey[i - 1] ^ this.PHI ^ (i - 8);
+        extendedKey[i] = OpCodes.RotL32(temp, 11);
+      }
+
+      // Apply S-boxes to subkeys (libgcrypt approach)
+      const roundKeys = [];
+
+      for (let round = 0; round < 33; round++) {
+        const baseIndex = round * 4;
+        const sboxIndex = (32 + 3 - round) % 8; // Correct S-box order for key schedule
+
+        const x0 = extendedKey[baseIndex + 8];
+        const x1 = extendedKey[baseIndex + 9];
+        const x2 = extendedKey[baseIndex + 10];
+        const x3 = extendedKey[baseIndex + 11];
+
+        const transformed = this._sbox(sboxIndex, x0, x1, x2, x3);
+        roundKeys.push(transformed);
+      }
+
+      return roundKeys;
+    }
+
+    // Encrypt a block
+    _encryptBlock(block) {
+      if (block.length !== 16) {
+        throw new Error('Serpent block size must be exactly 16 bytes');
       }
 
       // Convert plaintext to 32-bit words (little-endian)
-      const bytes = OpCodes.StringToBytes(plaintext);
-      let x0 = OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]);
-      let x1 = OpCodes.Pack32LE(bytes[4], bytes[5], bytes[6], bytes[7]);
-      let x2 = OpCodes.Pack32LE(bytes[8], bytes[9], bytes[10], bytes[11]);
-      let x3 = OpCodes.Pack32LE(bytes[12], bytes[13], bytes[14], bytes[15]);
-
-      const roundKeys = instance.roundKeys;
-      const sboxOrder = [0, 1, 2, 3, 4, 5, 6, 7]; // S-box order for encryption
+      let x0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
+      let x1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
+      let x2 = OpCodes.Pack32LE(block[8], block[9], block[10], block[11]);
+      let x3 = OpCodes.Pack32LE(block[12], block[13], block[14], block[15]);
 
       // 32 encryption rounds
-      for (let round = 0; round < SERPENT_CONSTANTS.ROUNDS; round++) {
+      for (let round = 0; round < this.ROUNDS; round++) {
         // Key mixing
-        x0 ^= roundKeys[round][0];
-        x1 ^= roundKeys[round][1];
-        x2 ^= roundKeys[round][2];
-        x3 ^= roundKeys[round][3];
+        x0 ^= this.roundKeys[round][0];
+        x1 ^= this.roundKeys[round][1];
+        x2 ^= this.roundKeys[round][2];
+        x3 ^= this.roundKeys[round][3];
 
-        // S-box substitution
-        const sboxIndex = sboxOrder[round % 8];
-        const sboxResult = sboxFunctions[sboxIndex](x0, x1, x2, x3);
+        // S-box substitution (correct order for encryption)
+        const sboxIndex = round % 8;
+        const sboxResult = this._sbox(sboxIndex, x0, x1, x2, x3);
         x0 = sboxResult[0];
         x1 = sboxResult[1];
         x2 = sboxResult[2];
         x3 = sboxResult[3];
 
         // Linear transformation (except in the last round)
-        if (round < SERPENT_CONSTANTS.ROUNDS - 1) {
-          const ltResult = linearTransform(x0, x1, x2, x3);
+        if (round < this.ROUNDS - 1) {
+          const ltResult = this._linearTransform(x0, x1, x2, x3);
           x0 = ltResult[0];
           x1 = ltResult[1];
           x2 = ltResult[2];
@@ -728,10 +407,10 @@
       }
 
       // Final key mixing
-      x0 ^= roundKeys[32][0];
-      x1 ^= roundKeys[32][1];
-      x2 ^= roundKeys[32][2];
-      x3 ^= roundKeys[32][3];
+      x0 ^= this.roundKeys[32][0];
+      x1 ^= this.roundKeys[32][1];
+      x2 ^= this.roundKeys[32][2];
+      x3 ^= this.roundKeys[32][3];
 
       // Convert back to bytes (little-endian)
       const result = [];
@@ -741,61 +420,52 @@
       const bytes3 = OpCodes.Unpack32LE(x3);
 
       result.push(...bytes0, ...bytes1, ...bytes2, ...bytes3);
-      
-      return OpCodes.BytesToString(result);
-    },
+
+      return result;
+    }
 
     // Decrypt a block
-    decryptBlock: function(instanceId, ciphertext) {
-      const instance = this.instances[instanceId];
-      if (!instance) {
-        throw new Error('Invalid instance ID: ' + instanceId);
-      }
-
-      if (ciphertext.length !== SERPENT_CONSTANTS.BLOCK_SIZE) {
-        throw new Error('Serpent block size must be exactly ' + SERPENT_CONSTANTS.BLOCK_SIZE + ' bytes');
+    _decryptBlock(block) {
+      if (block.length !== 16) {
+        throw new Error('Serpent block size must be exactly 16 bytes');
       }
 
       // Convert ciphertext to 32-bit words (little-endian)
-      const bytes = OpCodes.StringToBytes(ciphertext);
-      let x0 = OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]);
-      let x1 = OpCodes.Pack32LE(bytes[4], bytes[5], bytes[6], bytes[7]);
-      let x2 = OpCodes.Pack32LE(bytes[8], bytes[9], bytes[10], bytes[11]);
-      let x3 = OpCodes.Pack32LE(bytes[12], bytes[13], bytes[14], bytes[15]);
-
-      const roundKeys = instance.roundKeys;
-      const sboxOrder = [0, 1, 2, 3, 4, 5, 6, 7]; // Same S-box order for decryption
+      let x0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
+      let x1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
+      let x2 = OpCodes.Pack32LE(block[8], block[9], block[10], block[11]);
+      let x3 = OpCodes.Pack32LE(block[12], block[13], block[14], block[15]);
 
       // Initial key mixing (undo final key mixing)
-      x0 ^= roundKeys[32][0];
-      x1 ^= roundKeys[32][1];
-      x2 ^= roundKeys[32][2];
-      x3 ^= roundKeys[32][3];
+      x0 ^= this.roundKeys[32][0];
+      x1 ^= this.roundKeys[32][1];
+      x2 ^= this.roundKeys[32][2];
+      x3 ^= this.roundKeys[32][3];
 
       // 32 decryption rounds (in reverse order)
-      for (let round = SERPENT_CONSTANTS.ROUNDS - 1; round >= 0; round--) {
-        // Inverse S-box substitution (undo the S-box from encryption)
-        const sboxIndex = sboxOrder[round % 8];
-        const sboxResult = sboxInvFunctions[sboxIndex](x0, x1, x2, x3);
-        x0 = sboxResult[0];
-        x1 = sboxResult[1];
-        x2 = sboxResult[2];
-        x3 = sboxResult[3];
-
-        // Inverse linear transformation (undo linear transform, except for first round)
-        if (round > 0) {
-          const ltResult = linearTransformInv(x0, x1, x2, x3);
+      for (let round = this.ROUNDS - 1; round >= 0; round--) {
+        // Inverse linear transformation first (except for last round which is now first)
+        if (round < this.ROUNDS - 1) {
+          const ltResult = this._linearTransformInv(x0, x1, x2, x3);
           x0 = ltResult[0];
           x1 = ltResult[1];
           x2 = ltResult[2];
           x3 = ltResult[3];
         }
 
+        // Inverse S-box substitution (correct order for decryption)
+        const sboxIndex = round % 8;
+        const sboxResult = this._sboxInv(sboxIndex, x0, x1, x2, x3);
+        x0 = sboxResult[0];
+        x1 = sboxResult[1];
+        x2 = sboxResult[2];
+        x3 = sboxResult[3];
+
         // Key mixing (undo the round key)
-        x0 ^= roundKeys[round][0];
-        x1 ^= roundKeys[round][1];
-        x2 ^= roundKeys[round][2];
-        x3 ^= roundKeys[round][3];
+        x0 ^= this.roundKeys[round][0];
+        x1 ^= this.roundKeys[round][1];
+        x2 ^= this.roundKeys[round][2];
+        x3 ^= this.roundKeys[round][3];
       }
 
       // Convert back to bytes (little-endian)
@@ -806,53 +476,19 @@
       const bytes3 = OpCodes.Unpack32LE(x3);
 
       result.push(...bytes0, ...bytes1, ...bytes2, ...bytes3);
-      
-      return OpCodes.BytesToString(result);
-    },
 
-    // Clear instance data
-    ClearData: function(instanceId) {
-      if (this.instances[instanceId]) {
-        // Clear sensitive data
-        const instance = this.instances[instanceId];
-        if (instance.roundKeys) {
-          for (let i = 0; i < instance.roundKeys.length; i++) {
-            OpCodes.ClearArray(instance.roundKeys[i]);
-          }
-        }
-        delete this.instances[instanceId];
-        return true;
-      }
-      return false;
+      return result;
     }
-  };
-
-  // Helper functions for metadata
-  function Hex8ToBytes(hex) {
-    if (global.OpCodes && global.OpCodes.HexToBytes) {
-      return global.OpCodes.HexToBytes(hex);
-    }
-    // Fallback implementation
-    const result = [];
-    for (let i = 0; i < hex.length; i += 2) {
-      result.push(parseInt(hex.substr(i, 2), 16));
-    }
-    return result;
-  }
-  
-  // Auto-register with universal Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    global.Cipher.Add(Serpent);
-  } else if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(Serpent);
   }
 
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Serpent;
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new SerpentAlgorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
 
-  // Export to global scope
-  global.Serpent = Serpent;
+  // ===== EXPORTS =====
 
-})(typeof global !== 'undefined' ? global : window);
+  return { SerpentAlgorithm, SerpentInstance };
+}));

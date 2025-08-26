@@ -18,7 +18,7 @@
     inventor: "Shay Gueron, Yehuda Lindell",
     year: 2017,
     country: "Multi-national",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Authenticated Encryption",
     securityStatus: "standard",
     securityNotes: "RFC 8452 standard providing nonce-misuse resistant authenticated encryption. Safer than standard GCM when nonces might be reused.",
@@ -524,9 +524,9 @@
       this.KeySetup(OpCodes.Hex8ToBytes("0123456789ABCDEF0123456789ABCDEF"));
       
       const nonce = OpCodes.Hex8ToBytes("000000000000000000000000");
-      const aad = OpCodes.StringToBytes("Nonce reuse safe");
-      const plaintext1 = OpCodes.StringToBytes("First message");
-      const plaintext2 = OpCodes.StringToBytes("Second message");
+      const aad = OpCodes.AsciiToBytes("Nonce reuse safe");
+      const plaintext1 = OpCodes.AsciiToBytes("First message");
+      const plaintext2 = OpCodes.AsciiToBytes("Second message");
       
       // Same nonce, different plaintexts
       const encrypted1 = this.encryptAEAD(this.key, nonce, aad, plaintext1);

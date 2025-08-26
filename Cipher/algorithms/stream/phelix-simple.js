@@ -14,20 +14,14 @@
   }
   
   // Ensure environment dependencies are available
-  if (!global.Cipher) {
-    if (typeof require !== 'undefined') {
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../cipher.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('Phelix Simple cipher requires Cipher system to be loaded first');
+  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
+    try {
+      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+    } catch (e) {
+      console.error('Failed to load AlgorithmFramework:', e.message);
       return;
     }
-  }
+  } 
 
   const PhelixSimple = {
     name: "Phelix Simple",
@@ -35,7 +29,7 @@
     inventor: "Doug Whiting, Bruce Schneier, Stefan Lucks, Frédéric Muller",
     year: 2004,
     country: "US",
-    category: "cipher",
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
     securityStatus: "educational",
     securityNotes: "Educational implementation with known security flaws. Original Phelix also has documented vulnerabilities. Never use for production.",
@@ -251,9 +245,20 @@
     return output;
   };
   
-  // Auto-register with Subsystem (according to category) if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function')
+  // Auto-register with AlgorithmFramework if available
+  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
+    global.AlgorithmFramework.RegisterAlgorithm(PhelixSimple);
+  }
+  
+  // Legacy registration
+  if (typeof global.RegisterAlgorithm === 'function') {
+    global.RegisterAlgorithm(PhelixSimple);
+  }
+  
+  // Auto-register with Cipher system if available
+  if (global.Cipher) {
     global.Cipher.Add(PhelixSimple);
+  }
   
   // Export to global scope
   global.PhelixSimple = PhelixSimple;
