@@ -1331,6 +1331,20 @@ class CipherController {
                     const option = document.createElement('option');
                     option.value = algorithm.name;
                     option.textContent = algorithm.name;
+                    
+                    // Apply category color styling
+                    if (algorithm.category) {
+                        const foundKey = Object.keys(AlgorithmFramework.CategoryType).find(key => 
+                            AlgorithmFramework.CategoryType[key] === algorithm.category
+                        );
+                        if (foundKey) {
+                            const categoryColor = AlgorithmFramework.CategoryType[foundKey].color;
+                            option.style.backgroundColor = categoryColor;
+                            option.style.color = 'white';
+                            option.style.setProperty('--category-color', categoryColor);
+                        }
+                    }
+                    
                     optgroup.appendChild(option);
                 });
             
