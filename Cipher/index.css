@@ -153,13 +153,13 @@ body {
     cursor: pointer;
     font-size: 0.875rem;
     font-weight: 500;
-    color: #4a5568;
+    color: rgba(255, 255, 255, 0.8);
     transition: all 0.2s;
 }
 
 .nav-tab:hover {
-    background: rgba(102, 126, 234, 0.1);
-    color: #667eea;
+    background: rgba(102, 126, 234, 0.2);
+    color: white;
 }
 
 .nav-tab.active {
@@ -2455,6 +2455,89 @@ option[data-category] {
     align-items: center;
     justify-content: center;
     line-height: 1;
+}
+
+/* ===== CIPHER INTERFACE STYLING ===== */
+
+/* Make all text in cipher interface white */
+#cipher-tab {
+    color: white;
+}
+
+#cipher-tab h1, 
+#cipher-tab h2, 
+#cipher-tab h3, 
+#cipher-tab h4, 
+#cipher-tab h5, 
+#cipher-tab h6,
+#cipher-tab p,
+#cipher-tab label,
+#cipher-tab span,
+#cipher-tab div {
+    color: white;
+}
+
+/* Keep form controls with dark text on light backgrounds */
+#cipher-tab .select,
+#cipher-tab select,
+#cipher-tab input:not([type="file"]),
+#cipher-tab textarea {
+    background: rgba(255, 255, 255, 0.95);
+    color: #2d3748 !important;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+#cipher-tab select option {
+    background: white;
+    color: #2d3748;
+}
+
+/* File input styling - keep white text */
+#cipher-tab input[type="file"] {
+    color: white !important;
+    background: transparent;
+}
+
+/* Format tabs in cipher interface */
+#cipher-tab .format-tab {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+#cipher-tab .format-tab.active {
+    color: white;
+    font-weight: 600;
+}
+
+/* Specific element overrides */
+#cipher-tab .algorithm-selector label {
+    color: white;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+    display: inline-block;
+}
+
+#cipher-tab .section-title {
+    color: white;
+}
+
+/* Algorithm dropdown with category colors */
+#selected-algorithm {
+    background: rgba(255, 255, 255, 0.95);
+    color: #2d3748;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+#selected-algorithm option {
+    padding: 0.5rem;
+    font-weight: 500;
+    color: white;
+}
+
+#selected-algorithm optgroup {
+    background: rgba(0, 0, 0, 0.8);
+    color: rgba(255, 255, 255, 0.9);
+    font-weight: 600;
+    padding: 0.25rem;
 }
 
 .node-remove:hover {
