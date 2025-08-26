@@ -232,11 +232,18 @@ body {
 
 .filter-select {
     padding: 0.5rem 1rem;
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 6px;
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
     font-size: 0.875rem;
     cursor: pointer;
+}
+
+.filter-select option {
+    background: #1a1a1a;
+    color: #ffffff;
+    padding: 0.5rem;
 }
 
 .algorithms-grid {
@@ -2477,19 +2484,12 @@ option[data-category] {
     color: white;
 }
 
-/* Keep form controls with dark text on light backgrounds */
-#cipher-tab .select,
-#cipher-tab select,
+/* Keep form controls with dark text on light backgrounds (except dropdowns which use the unified style) */
 #cipher-tab input:not([type="file"]),
 #cipher-tab textarea {
     background: rgba(255, 255, 255, 0.95);
     color: #2d3748 !important;
     border: 1px solid rgba(255, 255, 255, 0.3);
-}
-
-#cipher-tab select option {
-    background: white;
-    color: #2d3748;
 }
 
 /* File input styling - keep white text */
@@ -2520,22 +2520,43 @@ option[data-category] {
     color: white;
 }
 
-/* Algorithm dropdown with category colors */
-#selected-algorithm {
-    background: rgba(255, 255, 255, 0.95);
-    color: #2d3748;
-    border: 1px solid rgba(255, 255, 255, 0.3);
+/* Apply consistent dropdown styling to algorithms and cipher interface */
+#category-filter,
+#cipher-mode,
+#cipher-padding {
+    background: rgba(255, 255, 255, 0.1) !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    padding: 0.5rem;
 }
 
+/* Algorithm dropdown container - allow category colors to show through */
+#selected-algorithm {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 0.5rem;
+}
+
+#category-filter option,
+#cipher-mode option,
+#cipher-padding option {
+    background: #1a1a1a !important;
+    color: #ffffff !important;
+    padding: 0.5rem;
+    font-weight: 500;
+}
+
+/* Algorithm dropdown options keep their category colors */
 #selected-algorithm option {
     padding: 0.5rem;
     font-weight: 500;
-    color: white;
+    /* Category colors will be applied via JavaScript - don't override */
 }
 
 #selected-algorithm optgroup {
-    background: rgba(0, 0, 0, 0.8);
-    color: rgba(255, 255, 255, 0.9);
+    background: rgba(0, 0, 0, 0.9) !important;
+    color: rgba(255, 255, 255, 0.9) !important;
     font-weight: 600;
     padding: 0.25rem;
 }
