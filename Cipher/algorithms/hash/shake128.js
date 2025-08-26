@@ -1,27 +1,47 @@
-#!/usr/bin/env node
-/*
- * SHAKE128 Universal Extendable-Output Function Implementation
- * Compatible with both Browser and Node.js environments
- * (c)2006-2025 Hawkynt
- * 
- * SHAKE128 is an extendable-output function (XOF) based on the Keccak sponge function.
- * It can produce outputs of any desired length. Part of the SHA-3 family.
- * 
- * Specification: NIST FIPS 202
- * Reference: https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf
- * 
- * NOTE: This is an educational implementation for learning purposes only.
- * Use proven cryptographic libraries for production systems.
- */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Load OpCodes library for common operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
   // SHAKE128 constants
   const SHAKE128_RATE = 168;        // Rate in bytes (1344 bits)
   const SHAKE128_CAPACITY = 32;     // Capacity in bytes (256 bits)
@@ -353,17 +373,7 @@
       }
     ]
   };
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    global.Cipher.Add(Shake128);
-  }
-  
-  // AlgorithmFramework compatibility layer
-  if (global.AlgorithmFramework) {
-    const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType,
-            CryptoAlgorithm, IAlgorithmInstance, TestCase } = global.AlgorithmFramework;
-    
+   
     class Shake128Wrapper extends CryptoAlgorithm {
       constructor() {
         super();
@@ -404,16 +414,15 @@
         this.instance.Init();
       }
     }
-    
-    RegisterAlgorithm(new Shake128Wrapper());
+   
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new Shake128Wrapper();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Shake128;
-  }
-  
-  // Make available globally
-  global.Shake128 = Shake128;
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // ===== EXPORTS =====
+
+  return { Shake128Wrapper, Shake128WrapperInstance };
+}));

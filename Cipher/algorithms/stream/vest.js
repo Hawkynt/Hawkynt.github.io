@@ -66,80 +66,28 @@
     stepBlockSize: 1,   // Step size
     instances: {},
     
-    // Comprehensive metadata
-    metadata: global.CipherMetadata ? global.CipherMetadata.createMetadata({
-      algorithm: 'VEST',
-      displayName: 'VEST (Variable Encryption Standard)',
-      description: 'Software-oriented stream cipher with variable key/IV sizes and operating modes. Features word-based operations and complex nonlinear filter.',
-      
-      inventor: 'Sean O\'Neil',
-      year: 2005,
-      background: 'Submitted to eSTREAM project as a software-oriented stream cipher. Features configurable parameters for different security/performance trade-offs.',
-      
-      securityStatus: global.CipherMetadata.SecurityStatus.WEAK,
-      securityNotes: 'Had cryptanalytic concerns during eSTREAM evaluation. Not selected for final portfolio. Educational use only.',
-      
-      category: global.CipherMetadata.Categories.STREAM,
-      subcategory: 'LFSR-based with nonlinear filter',
-      complexity: global.CipherMetadata.ComplexityLevels.INTERMEDIATE,
-      
-      keySize: '64-128', // Variable key sizes
-      blockSize: 1, // Stream cipher
-      rounds: 'continuous', // LFSR-based
-      
-      specifications: [
-        {
-          name: 'eSTREAM VEST Specification',
-          url: 'https://www.ecrypt.eu.org/stream/vestpf.html'
-        }
-      ],
-      
-      references: [
-        {
-          name: 'eSTREAM Phase 2 Evaluation',
-          url: 'https://www.ecrypt.eu.org/stream/vest.html'
-        }
-      ],
-      
-      implementationNotes: 'Variable key/IV sizes (64-128 bits), multiple operating modes (4/8/16/32-bit), LFSR-based with nonlinear filter.',
-      performanceNotes: 'Designed for software efficiency with word-based operations.',
-      
-      educationalValue: 'Good example of configurable stream cipher design and eSTREAM evaluation process.',
-      prerequisites: ['LFSR theory', 'Nonlinear functions', 'Stream cipher concepts'],
-      
-      tags: ['stream', 'estream', 'software', 'lfsr', 'variable-parameters', 'weak', 'educational'],
-      
-      version: '1.0'
-    }) : null,
+    documentation: [
+      {text:"eSTREAM VEST Specification",uri:"https://www.ecrypt.eu.org/stream/vestpf.html"}
+    ],
     
-    // Test vectors
+    references: [
+      {text:"eSTREAM Phase 2 Evaluation",uri:"https://www.ecrypt.eu.org/stream/vest.html"}
+    ],
+    
     tests: [
       {
-        algorithm: 'VEST',
-        description: 'VEST basic test vector with 128-bit key and IV',
-        origin: 'Educational implementation test',
+        text: 'VEST basic test vector with 128-bit key and IV',
         key: 'VEST test key 128',  // 16 bytes
-        keyHex: global.OpCodes ? global.OpCodes.Hex8ToBytes('56455354207465737420206b657920313238') : [],
         iv: 'VEST test IV 128',    // 16 bytes
-        ivHex: global.OpCodes ? global.OpCodes.Hex8ToBytes('56455354207465737420204956203131323238') : [],
-        plaintext: 'Hello VEST!',
-        plaintextHex: global.OpCodes ? global.OpCodes.Hex8ToBytes('48656c6c6f20564553542100') : [],
-        // Note: Actual ciphertext would be generated during testing
-        notes: 'Basic functionality test for VEST with standard parameters',
-        category: 'basic-functionality'
+        input: OpCodes.AnsiToBytes('Hello VEST!'),
+        expected: [],
       },
       {
-        algorithm: 'VEST',
-        description: 'VEST with 64-bit key (minimum size)',
-        origin: 'Educational implementation test',
+        text: 'VEST with 64-bit key (minimum size)',
         key: 'VESTkey8',  // 8 bytes
-        keyHex: global.OpCodes ? global.OpCodes.Hex8ToBytes('56455354206b657938') : [],
         iv: 'VESTiv64',   // 8 bytes  
-        ivHex: global.OpCodes ? global.OpCodes.Hex8ToBytes('56455354206976363634') : [],
-        plaintext: 'Minimum',
-        plaintextHex: global.OpCodes ? global.OpCodes.Hex8ToBytes('4d696e696d756d00') : [],
-        notes: 'Testing VEST with minimum 64-bit key size',
-        category: 'edge-case'
+        input: OpCodes.AnsiToBytes('Minimum'),
+        expected: []
       }
     ],
     

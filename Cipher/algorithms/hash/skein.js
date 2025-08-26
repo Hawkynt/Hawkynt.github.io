@@ -1,36 +1,47 @@
-#!/usr/bin/env node
-/*
- * Skein Universal Hash Function Implementation
- * Compatible with both Browser and Node.js environments
- * (c)2006-2025 Hawkynt
- * 
- * Skein is a cryptographic hash function submitted to the NIST SHA-3 competition.
- * It's based on the Threefish block cipher and provides tree hashing capabilities,
- * variable output lengths, and high performance on various platforms.
- * 
- * Specification: The Skein Hash Function Family (2010)
- * Reference: https://www.schneier.com/academic/skein/
- * Test Vectors: NIST SHA-3 Competition test vectors
- * RFC: https://tools.ietf.org/rfc/rfc7914.txt (related scrypt usage)
- * 
- * Features:
- * - Variable output length (8 to 2^62 bits)
- * - Tree hashing support for parallel processing
- * - MAC, PRF, and KDF capabilities
- * - Strong security foundation based on Threefish
- * 
- * NOTE: This is an educational implementation for learning purposes only.
- * Use proven cryptographic libraries for production systems.
- */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Load OpCodes library for common operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
   // Skein constants
   const SKEIN_256_BLOCK_BYTES = 32;     // 256-bit block size
   const SKEIN_512_BLOCK_BYTES = 64;     // 512-bit block size  
@@ -444,16 +455,6 @@
       this.bKey = false;
     }
   };
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    global.Cipher.Add(Skein);
-  }
-  
-  // AlgorithmFramework compatibility layer
-  if (global.AlgorithmFramework) {
-    const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType,
-            CryptoAlgorithm, IAlgorithmInstance, TestCase } = global.AlgorithmFramework;
     
     class SkeinWrapper extends CryptoAlgorithm {
       constructor() {
@@ -498,16 +499,15 @@
         this.instance.Init();
       }
     }
-    
-    RegisterAlgorithm(new SkeinWrapper());
+  
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new SkeinWrapper();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Skein;
-  }
-  
-  // Make available globally
-  global.Skein = Skein;
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // ===== EXPORTS =====
+
+  return { SkeinWrapper, SkeinWrapperInstance };
+}));

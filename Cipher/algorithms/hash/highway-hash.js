@@ -4,14 +4,50 @@
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Environment detection and OpCodes loading
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
   const HighwayHash = {
     name: "HighwayHash",
     description: "Fast cryptographic hash function designed by Google for high-performance applications. Optimized for SIMD instruction sets (AVX2) with resistance to hash flooding attacks.",
@@ -398,14 +434,6 @@
     }
   };
 
-  // Register with legacy cipher system
-  if (global.Cipher) global.Cipher.Add(HighwayHash);
-  
-  // AlgorithmFramework compatibility layer
-  if (global.AlgorithmFramework) {
-    const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType,
-            CryptoAlgorithm, IAlgorithmInstance, TestCase } = global.AlgorithmFramework;
-    
     class HighwayHashWrapper extends CryptoAlgorithm {
       constructor() {
         super();
@@ -457,7 +485,14 @@
       }
     }
     
-    RegisterAlgorithm(new HighwayHashWrapper());
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new HighwayHashWrapper();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // ===== EXPORTS =====
+
+  return { HighwayHashWrapper, HighwayHashWrapperInstance };
+}));
