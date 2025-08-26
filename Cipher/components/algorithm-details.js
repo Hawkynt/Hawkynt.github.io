@@ -514,28 +514,37 @@ class AlgorithmDetails {
         html += '<h3 class="section-title">Multi-Language Code Generation</h3>';
         html += '<div class="language-selector">';
         
-        // Check if MultiLanguageGenerator is available
-        if (typeof window !== 'undefined' && window.MultiLanguageGenerator) {
-            const supportedLanguages = window.MultiLanguageGenerator.getSupportedLanguages();
+        // Check if LanguagePlugins is available
+        if (typeof window !== 'undefined' && window.LanguagePlugins) {
+            const plugins = window.LanguagePlugins.GetAll();
+            console.log(`🔌 Found ${plugins.length} language plugins for algorithm details`);
             
-            supportedLanguages.forEach((lang, index) => {
-                const isActive = index === 0; // Default to first language
-                html += `<button class="language-btn ${isActive ? 'active' : ''}" data-language="${lang.key}" onclick="window.algorithmDetailsInstance.switchLanguage('${lang.key}')">` ;
-                html += `${lang.icon} ${lang.name}`;
-                html += '</button>';
-            });
+            if (plugins.length > 0) {
+                console.log('📝 Available plugins:', plugins.map(p => `${p.name} (.${p.extension})`));
+                
+                plugins.forEach((plugin, index) => {
+                    const isActive = index === 0; // Default to first language
+                    html += `<button class="language-btn ${isActive ? 'active' : ''}" data-language="${plugin.extension}" onclick="window.algorithmDetailsInstance.switchLanguage('${plugin.extension}')">`;
+                    html += `${plugin.icon} ${plugin.name}`;
+                    html += '</button>';
+                });
+            } else {
+                console.warn('⚠️ LanguagePlugins registry is empty');
+                html += '<div class="loading-message">⚠️ No language plugins found. Please check plugin loading.</div>';
+            }
         } else {
-            // Fallback if MultiLanguageGenerator is not available
+            console.warn('❌ LanguagePlugins not available in algorithm details');
+            // Fallback languages if LanguagePlugins is not available
             const fallbackLanguages = [
-                { key: 'javascript', name: 'JavaScript', icon: '🟨' },
-                { key: 'python', name: 'Python', icon: '🐍' },
+                { key: 'js', name: 'JavaScript', icon: '�' },
+                { key: 'py', name: 'Python', icon: '🐍' },
                 { key: 'cpp', name: 'C++', icon: '⚡' },
                 { key: 'java', name: 'Java', icon: '☕' }
             ];
             
             fallbackLanguages.forEach((lang, index) => {
                 const isActive = index === 0;
-                html += `<button class="language-btn ${isActive ? 'active' : ''}" data-language="${lang.key}" onclick="window.algorithmDetailsInstance.switchLanguage('${lang.key}')">` ;
+                html += `<button class="language-btn ${isActive ? 'active' : ''}" data-language="${lang.key}" onclick="window.algorithmDetailsInstance.switchLanguage('${lang.key}')">`;
                 html += `${lang.icon} ${lang.name}`;
                 html += '</button>';
             });
@@ -1124,35 +1133,168 @@ class AlgorithmDetails {
     }
 
     /**
-     * Generate code for a specific language
+     * Generate code for a specific language using TypeAware transpiler
      */
     async generateCodeForLanguage(languageKey) {
-        const algorithm = this.currentAlgorithm;
+        console.log(`🔧 Generating code for language: ${languageKey}`);
         
+        const algorithm = this.currentAlgorithm;
         if (!algorithm) {
             throw new Error('AlgorithmDetails: No algorithm available for code generation');
         }
         
-        // For JavaScript, show the actual source code if available
-        if (languageKey === 'javascript') {
-            return await this.getActualJavaScriptSource(algorithm);
-        }
-        
-        const config = this.getCodeGenerationConfig();
-        
-        // Check if MultiLanguageGenerator is available
-        if (typeof window !== 'undefined' && window.MultiLanguageGenerator) {
-            try {
-                const generatedCode = window.MultiLanguageGenerator.convertAlgorithm(languageKey, algorithm, config);
-                return generatedCode;
-            } catch (error) {
-                console.warn('MultiLanguageGenerator failed, using AlgorithmFramework structure:', error);
-                return this.generateFallbackCode(languageKey);
+        try {
+            // Step 1: Get the JavaScript source code
+            const jsSource = await this.getJavaScriptSource();
+            if (!jsSource || jsSource.trim().length === 0) {
+                console.error('❌ No JavaScript source code available');
+                throw new Error(`No source code available for ${algorithm.name}`);
             }
-        } else {
-            // Generate AlgorithmFramework structure code
-            return this.generateFallbackCode(languageKey);
+            
+            console.log(`📄 Got JavaScript source (${jsSource.length} chars)`);
+            
+            // Debug: Log the first 500 characters of the source to see what we're parsing
+            console.log('🔍 JavaScript source preview:');
+            console.log(jsSource.substring(0, 500));
+            console.log('...');
+            
+            // For JavaScript, return the source as-is (it's the original)
+            if (languageKey === 'js' || languageKey === 'javascript') {
+                console.log('✅ Returning original JavaScript source');
+                return jsSource;
+            }
+            
+            // Step 2: Check if TypeAwareJSASTTranspiler is available
+            if (!window.TypeAwareJSASTTranspiler) {
+                console.error('❌ TypeAwareJSASTTranspiler not available');
+                throw new Error('TypeAwareJSASTTranspiler not loaded');
+            }
+            
+            // Step 3: Get the language plugin
+            const plugin = window.LanguagePlugins.GetByExtension(languageKey);
+            if (!plugin) {
+                console.error(`❌ No plugin found for language: ${languageKey}`);
+                throw new Error(`No plugin available for .${languageKey} files`);
+            }
+            
+            console.log(`📝 Using plugin: ${plugin.name} for .${plugin.extension}`);
+            
+            // Step 4: Parse JavaScript into AST using TypeAware transpiler
+            console.log('🚀 Parsing JavaScript source with TypeAware transpiler...');
+            
+            const parser = new window.TypeAwareJSASTTranspiler.TypeAwareJSASTParser(jsSource);
+            parser.tokenize();
+            console.log('✅ Tokenization completed');
+            
+            const ast = parser.parse();
+            console.log('✅ JavaScript parsed successfully into AST');
+            
+            // Apply AST transformations
+            const options = this.getCodeGenerationOptions();
+            const transformedAST = this.applyASTTransformations(ast, options);
+            
+            // Generate target language code using the plugin
+            const generationResult = plugin.GenerateFromAST(transformedAST, options);
+            
+            if (generationResult.success) {
+                console.log(`✅ Code generation successful for ${languageKey}`);
+                return generationResult.code;
+            } else {
+                console.error(`❌ Code generation failed: ${generationResult.error}`);
+                throw new Error(`Code generation failed: ${generationResult.error}`);
+            }
+            
+        } catch (error) {
+            console.error(`❌ Error in generateCodeForLanguage:`, error);
+            throw error;
         }
+    }
+
+    /**
+     * Get JavaScript source code for the current algorithm
+     */
+    async getJavaScriptSource() {
+        const algorithm = this.currentAlgorithm;
+        if (!algorithm) {
+            throw new Error('No algorithm available');
+        }
+        
+        console.log(`📄 Getting JavaScript source for ${algorithm.name}`);
+        
+        // Delegate to the existing method
+        return await this.getActualJavaScriptSource(algorithm);
+    }
+
+    /**
+     * Get code generation options from UI settings
+     */
+    getCodeGenerationOptions() {
+        return {
+            stripComments: false,
+            stripTestVectors: true,
+            stripMetadata: false,
+            removeDebugCode: true,
+            addTypeAnnotations: true,
+            addDocstrings: true
+        };
+    }
+
+    /**
+     * Apply AST transformations based on options
+     */
+    applyASTTransformations(ast, options) {
+        console.log('🔧 Applying AST transformations:', options);
+        
+        if (options.stripTestVectors) {
+            ast = this.removeTestVectorsFromAST(ast);
+        }
+        
+        if (options.removeDebugCode) {
+            ast = this.removeDebugCodeFromAST(ast);
+        }
+        
+        if (options.stripComments) {
+            ast = this.removeCommentsFromAST(ast);
+        }
+        
+        return ast;
+    }
+
+    /**
+     * Remove test vectors from AST
+     */
+    removeTestVectorsFromAST(ast) {
+        // For now, return AST as-is. Could implement test vector removal logic here
+        console.log('🧹 Removing test vectors from AST');
+        return ast;
+    }
+
+    /**
+     * Remove debug code from AST
+     */
+    removeDebugCodeFromAST(ast) {
+        // For now, return AST as-is. Could implement debug code removal logic here
+        console.log('🧹 Removing debug code from AST');
+        return ast;
+    }
+
+    /**
+     * Remove comments from AST
+     */
+    removeCommentsFromAST(ast) {
+        // For now, return AST as-is. Could implement comment removal logic here
+        console.log('🧹 Removing comments from AST');
+        return ast;
+    }
+
+    /**
+     * Get valid JavaScript class name from algorithm name
+     */
+    getValidClassName(algorithmName) {
+        return algorithmName
+            .replace(/[^a-zA-Z0-9]/g, '')
+            .replace(/^[^a-zA-Z]/, 'Algorithm')
+            .replace(/^\w/, c => c.toUpperCase());
     }
 
     /**
