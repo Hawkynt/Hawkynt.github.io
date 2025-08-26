@@ -7,23 +7,48 @@
  * Feistel cipher with 16 rounds using 3 different F-function types
  */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
   
-  // Environment detection and dependency loading
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
   }
 
-  // Load AlgorithmFramework
-  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-    try {
-      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
-    } catch (e) {
-      console.error('Failed to load AlgorithmFramework:', e.message);
-      // Continue without AlgorithmFramework
-    }
-  }
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
 
   const CAST128 = {
     name: 'CAST-128',
@@ -326,12 +351,15 @@
     }
   };
 
-  // Legacy registration
-  if (typeof global.RegisterAlgorithm === 'function') {
-    global.RegisterAlgorithm(CAST128);
+
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = CAST128;
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
 
-  // Auto-registration
-  if (global.Cipher) global.Cipher.Add(CAST128);
-  if (typeof module !== 'undefined') module.exports = CAST128;
-})(typeof global !== 'undefined' ? global : window);
+  // ===== EXPORTS =====
+
+  return { CAST128 };
+}));

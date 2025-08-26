@@ -11,42 +11,52 @@
  * - Original IBM design by Horst Feistel and Don Coppersmith
  */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Load OpCodes for cryptographic operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-      return;
-    }
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
-  // Load AlgorithmFramework
-  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-    try {
-      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
-    } catch (e) {
-      console.error('Failed to load AlgorithmFramework:', e.message);
-      // Continue without AlgorithmFramework
-    }
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
   }
 
-  // Only use AlgorithmFramework classes if available
-  let RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode;
-  let BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, KeySize;
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
-  if (global.AlgorithmFramework) {
-    ({ RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-       BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, KeySize } = global.AlgorithmFramework);
-  }
+  // ===== ALGORITHM IMPLEMENTATION =====
 
 // Define classes only if AlgorithmFramework is available
 let LuciferAlgorithm, LuciferInstance;
 
-if (BlockCipherAlgorithm) {
   LuciferAlgorithm = class extends BlockCipherAlgorithm {
   constructor() {
     super();
@@ -84,9 +94,7 @@ if (BlockCipherAlgorithm) {
     return new LuciferInstance(this, isInverse);
   }
   };
-}
 
-if (IBlockCipherInstance) {
   // Instance class for actual encryption/decryption
   LuciferInstance = class extends IBlockCipherInstance {
   constructor(algorithm, isInverse = false) {
@@ -272,131 +280,15 @@ if (IBlockCipherInstance) {
     return leftHalf.concat(rightHalf);
   }
   };
-} else {
-  // Fallback implementations when AlgorithmFramework is not available
-  LuciferAlgorithm = function() {
-    this.name = "Lucifer";
-  };
-  
-  LuciferInstance = function(algorithm, isInverse = false) {
-    this.isInverse = isInverse;
-    this._key = null;
-    this.inputBuffer = [];
-    this.BlockSize = 16;
-    this.KeySize = 0;
-    this.subKeys = null;
-    
-    // Lucifer S-boxes as specified by Sorkin (1984)
-    this.SBOX0 = [12, 15, 7, 10, 14, 13, 11, 0, 2, 6, 3, 1, 9, 4, 5, 8];
-    this.SBOX1 = [7, 2, 14, 9, 3, 11, 0, 4, 12, 13, 1, 10, 6, 15, 8, 5];
-  };
-  
-  // Basic methods for fallback implementation
-  LuciferInstance.prototype.Feed = function(data) {
-    this.inputBuffer = Array.isArray(data) ? data.slice() : Array.from(data);
-  };
-  
-  LuciferInstance.prototype.Result = function() {
-    if (this.inputBuffer.length !== 16) {
-      throw new Error('Lucifer requires 128-bit (16-byte) blocks');
-    }
-    
-    // Simple educational implementation using OpCodes
-    let result = this.inputBuffer.slice();
-    for (let i = 0; i < 16; i++) {
-      result[i] = OpCodes.Xor8(result[i], this._key ? this._key[i % this._key.length] : 0);
-    }
-    
-    return result;
-  };
-}
 
-// Universal Cipher Object for compatibility
-const Lucifer = {
-  name: "Lucifer",
-  description: "IBM's pioneering Feistel cipher (1973) that directly led to DES development. Uses 128-bit blocks and keys with 16-round structure. First practical implementation of Feistel network with S-boxes.",
-  inventor: "Horst Feistel, Don Coppersmith",
-  year: 1973,
-  country: "US",
-  category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.BLOCK : 'block',
-  subCategory: "Feistel Cipher",
-  securityStatus: "educational",
-  securityNotes: "Historical cipher from 1973. Cryptographically obsolete but significant as predecessor to DES. Educational value for understanding Feistel networks.",
-  
-  documentation: [
-    {text: "Original IBM Research Paper", uri: "https://dominoweb.draco.res.ibm.com/reports/RC3326.pdf"},
-    {text: "Sorkin 1984 Specification", uri: "https://www.tandfonline.com/doi/abs/10.1080/0161-118491858746"}
-  ],
-  
-  references: [
-    {text: "History of DES", uri: "https://en.wikipedia.org/wiki/Data_Encryption_Standard#History"},
-    {text: "Feistel Cipher Analysis", uri: "https://link.springer.com/chapter/10.1007/3-540-39799-X_1"}
-  ],
-  
-  tests: global.OpCodes ? [
-    {
-      text: "Lucifer Test Vector - Zero Key",
-      uri: "Cryptographic literature",
-      input: global.OpCodes.Hex8ToBytes("0123456789ABCDEFFEDCBA9876543210"),
-      key: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-      expected: global.OpCodes.Hex8ToBytes("9D14FE4377AA87DD07CC8A14522C21ED")
-    }
-  ] : [],
-  
-  // Block cipher interface
-  KeySetup: function(keyBytes) {
-    const instance = new LuciferInstance(new LuciferAlgorithm(), false);
-    if (instance.key !== undefined) {
-      instance.key = keyBytes;
-    } else {
-      instance._key = keyBytes;
-    }
-    return instance;
-  },
-  
-  EncryptBlock: function(instance, blockIndex, data) {
-    if (!instance || data.length !== 16) {
-      throw new Error('Invalid input for Lucifer encryption');
-    }
-    
-    instance.inputBuffer = data.slice();
-    return instance.Result();
-  },
-  
-  DecryptBlock: function(instance, blockIndex, data) {
-    if (!instance || data.length !== 16) {
-      throw new Error('Invalid input for Lucifer decryption');
-    }
-    
-    const decryptInstance = new LuciferInstance(new LuciferAlgorithm(), true);
-    if (decryptInstance.key !== undefined) {
-      decryptInstance.key = instance._key || instance.key;
-    } else {
-      decryptInstance._key = instance._key || instance.key;
-    }
-    decryptInstance.inputBuffer = data.slice();
-    return decryptInstance.Result();
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new LuciferAlgorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-};
 
-// Register with AlgorithmFramework if available  
-if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
-  global.AlgorithmFramework.RegisterAlgorithm(new LuciferAlgorithm());
-}
+  // ===== EXPORTS =====
 
-// Legacy registration
-if (typeof global.RegisterAlgorithm === 'function') {
-  global.RegisterAlgorithm(Lucifer);
-}
-
-// Auto-register with Cipher system if available
-if (global.Cipher) {
-  global.Cipher.Add(Lucifer);
-}
-
-// Export for Node.js compatibility
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = Lucifer;
-}
-
-})(typeof global !== 'undefined' ? global : window);
+  return { LuciferAlgorithm, LuciferInstance };
+}));

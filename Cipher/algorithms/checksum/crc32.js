@@ -6,238 +6,282 @@
  */
 
 // Load AlgorithmFramework (REQUIRED)
-if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
-}
 
-// Load OpCodes for cryptographic operations (RECOMMENDED)
-if (!global.OpCodes && typeof require !== 'undefined') {
-  global.OpCodes = require('../../OpCodes.js');
-}
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
+  'use strict';
 
-const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode, 
-        Algorithm, IAlgorithmInstance, TestCase, LinkItem } = AlgorithmFramework;
-
-class CRC32Algorithm extends Algorithm {
-  constructor(variant = 'IEEE') {
-    super();
-    
-    // Get configuration for this variant
-    this.config = this._getVariantConfig(variant);
-    
-    // Required metadata
-    this.name = `CRC-32-${variant}`;
-    this.description = `${this.config.description} Uses polynomial ${this.config.polynomial.toString(16).toUpperCase().padStart(8, '0')}h with initial value ${this.config.initialValue.toString(16).toUpperCase().padStart(8, '0')}h.`;
-    this.inventor = "W. Wesley Peterson";
-    this.year = 1961;
-    this.category = CategoryType.CHECKSUM;
-    this.subCategory = "Cyclic Redundancy Check";
-    this.securityStatus = SecurityStatus.EDUCATIONAL;
-    this.complexity = ComplexityType.BEGINNER;
-    this.country = CountryCode.US;
-
-    // Documentation and references
-    this.documentation = [
-      new LinkItem("IEEE 802.3 Standard", "https://standards.ieee.org/standard/802_3-2018.html"),
-      new LinkItem("Wikipedia - CRC", "https://en.wikipedia.org/wiki/Cyclic_redundancy_check"),
-      new LinkItem("RFC 3720 - Internet Small Computer Systems Interface (iSCSI)", "https://tools.ietf.org/html/rfc3720")
-    ];
-
-    this.references = [
-      new LinkItem("NIST SP 800-107 - Cryptographic Algorithms and Key Sizes", "https://csrc.nist.gov/publications/detail/sp/800-107/rev-1/final"),
-      new LinkItem("zlib CRC-32 Implementation", "https://github.com/madler/zlib/blob/master/crc32.c"),
-      new LinkItem("PNG Specification CRC", "http://www.libpng.org/pub/png/spec/1.2/PNG-Structure.html")
-    ];
-
-    // Known vulnerabilities
-    this.knownVulnerabilities = [
-      {
-        type: "Not Cryptographically Secure",
-        text: "CRC-32 is designed for error detection, not security. It can be easily manipulated by attackers who know the algorithm.",
-        mitigation: "Use cryptographic hash functions (SHA-256, SHA-3) for security purposes. Use CRC only for error detection."
-      },
-      {
-        type: "Hash Collisions",
-        text: "CRC-32 has only 32-bit output space, making collisions relatively easy to find intentionally.",
-        mitigation: "For security applications, use cryptographic hash functions with larger output sizes."
-      }
-    ];
-
-    // Test vectors specific to this variant
-    this.tests = this.config.tests;
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
+  
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
   }
 
-  _getVariantConfig(variant) {
-    const configs = {
-      'IEEE': {
-        description: 'CRC-32 (IEEE 802.3) standard used in Ethernet, zip files, and many protocols',
-        polynomial: 0x04C11DB7,
-        initialValue: 0xFFFFFFFF,
-        inputReflected: true,
-        resultReflected: false,
-        finalXor: 0xFFFFFFFF,
-        tests: [
-          new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-          new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("e8b7be43"), "Single character 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-          new TestCase(OpCodes.AnsiToBytes("abc"), OpCodes.Hex8ToBytes("352441c2"), "String 'abc'", "https://reveng.sourceforge.io/crc-catalogue/"),
-          new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("cbf43926"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
-        ]
-      },
-      'POSIX': {
-        description: 'CRC-32 used in POSIX cksum utility and other systems',
-        polynomial: 0x04C11DB7,
-        initialValue: 0x00000000,
-        inputReflected: false,
-        resultReflected: false,
-        finalXor: 0xFFFFFFFF,
-        tests: [
-          new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("ffffffff"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-          new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("bd50274c"), "Single character 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-          new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("765e7680"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
-        ]
-      },
-      'BZIP2': {
-        description: 'CRC-32 used in BZIP2 compression format',
-        polynomial: 0x04C11DB7,
-        initialValue: 0xFFFFFFFF,
-        inputReflected: false,
-        resultReflected: false,
-        finalXor: 0xFFFFFFFF,
-        tests: [
-          new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-          new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("43af2db3"), "Single character 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-          new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("9a1a017f"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
-        ]
-      }
-    };
-    
-    return configs[variant] || configs['IEEE'];
-  }
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
-  CreateInstance(isInverse = false) {
-    if (isInverse) {
-      return null; // Checksums do not support inverse operations
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class CRC32Algorithm extends Algorithm {
+    constructor(variant = 'IEEE') {
+      super();
+
+      // Get configuration for this variant
+      this.config = this._getVariantConfig(variant);
+
+      // Required metadata
+      this.name = `CRC-32-${variant}`;
+      this.description = `${this.config.description} Uses polynomial ${this.config.polynomial.toString(16).toUpperCase().padStart(8, '0')}h with initial value ${this.config.initialValue.toString(16).toUpperCase().padStart(8, '0')}h.`;
+      this.inventor = "W. Wesley Peterson";
+      this.year = 1961;
+      this.category = CategoryType.CHECKSUM;
+      this.subCategory = "Cyclic Redundancy Check";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.BEGINNER;
+      this.country = CountryCode.US;
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("IEEE 802.3 Standard", "https://standards.ieee.org/standard/802_3-2018.html"),
+        new LinkItem("Wikipedia - CRC", "https://en.wikipedia.org/wiki/Cyclic_redundancy_check"),
+        new LinkItem("RFC 3720 - Internet Small Computer Systems Interface (iSCSI)", "https://tools.ietf.org/html/rfc3720")
+      ];
+
+      this.references = [
+        new LinkItem("NIST SP 800-107 - Cryptographic Algorithms and Key Sizes", "https://csrc.nist.gov/publications/detail/sp/800-107/rev-1/final"),
+        new LinkItem("zlib CRC-32 Implementation", "https://github.com/madler/zlib/blob/master/crc32.c"),
+        new LinkItem("PNG Specification CRC", "http://www.libpng.org/pub/png/spec/1.2/PNG-Structure.html")
+      ];
+
+      // Known vulnerabilities
+      this.knownVulnerabilities = [
+        {
+          type: "Not Cryptographically Secure",
+          text: "CRC-32 is designed for error detection, not security. It can be easily manipulated by attackers who know the algorithm.",
+          mitigation: "Use cryptographic hash functions (SHA-256, SHA-3) for security purposes. Use CRC only for error detection."
+        },
+        {
+          type: "Hash Collisions",
+          text: "CRC-32 has only 32-bit output space, making collisions relatively easy to find intentionally.",
+          mitigation: "For security applications, use cryptographic hash functions with larger output sizes."
+        }
+      ];
+
+      // Test vectors specific to this variant
+      this.tests = this.config.tests;
     }
-    return new CRC32Instance(this, this.config);
-  }
-}
 
-class CRC32Instance extends IAlgorithmInstance {
-  constructor(algorithm, config) {
-    super(algorithm);
-    this.config = config;
-    this.table = this.generateTable();
-    this.crc = config.initialValue;
+    _getVariantConfig(variant) {
+      const configs = {
+        'IEEE': {
+          description: 'CRC-32 (IEEE 802.3) standard used in Ethernet, zip files, and many protocols',
+          polynomial: 0x04C11DB7,
+          initialValue: 0xFFFFFFFF,
+          inputReflected: true,
+          resultReflected: false,
+          finalXor: 0xFFFFFFFF,
+          tests: [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("e8b7be43"), "Single character 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("abc"), OpCodes.Hex8ToBytes("352441c2"), "String 'abc'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("cbf43926"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+          ]
+        },
+        'POSIX': {
+          description: 'CRC-32 used in POSIX cksum utility and other systems',
+          polynomial: 0x04C11DB7,
+          initialValue: 0x00000000,
+          inputReflected: false,
+          resultReflected: false,
+          finalXor: 0xFFFFFFFF,
+          tests: [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("ffffffff"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("bd50274c"), "Single character 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("765e7680"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+          ]
+        },
+        'BZIP2': {
+          description: 'CRC-32 used in BZIP2 compression format',
+          polynomial: 0x04C11DB7,
+          initialValue: 0xFFFFFFFF,
+          inputReflected: false,
+          resultReflected: false,
+          finalXor: 0xFFFFFFFF,
+          tests: [
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("43af2db3"), "Single character 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("9a1a017f"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+          ]
+        }
+      };
+
+      return configs[variant] || configs['IEEE'];
+    }
+
+    CreateInstance(isInverse = false) {
+      if (isInverse) {
+        return null; // Checksums do not support inverse operations
+      }
+      return new CRC32Instance(this, this.config);
+    }
   }
 
-  generateTable() {
-    const table = new Array(256);
-    
-    for (let i = 0; i < 256; i++) {
-      let crc;
-      
-      if (this.config.inputReflected) {
-        // Generate reflected table
-        crc = i;
-        for (let j = 0; j < 8; j++) {
-          if (crc & 1) {
-            crc = (crc >>> 1) ^ this._reflect32(this.config.polynomial);
-          } else {
-            crc = crc >>> 1;
+  class CRC32Instance extends IAlgorithmInstance {
+    constructor(algorithm, config) {
+      super(algorithm);
+      this.config = config;
+      this.table = this.generateTable();
+      this.crc = config.initialValue;
+    }
+
+    generateTable() {
+      const table = new Array(256);
+
+      for (let i = 0; i < 256; i++) {
+        let crc;
+
+        if (this.config.inputReflected) {
+          // Generate reflected table
+          crc = i;
+          for (let j = 0; j < 8; j++) {
+            if (crc & 1) {
+              crc = (crc >>> 1) ^ this._reflect32(this.config.polynomial);
+            } else {
+              crc = crc >>> 1;
+            }
+          }
+        } else {
+          // Generate normal table
+          crc = i << 24;
+          for (let j = 0; j < 8; j++) {
+            if (crc & 0x80000000) {
+              crc = (crc << 1) ^ this.config.polynomial;
+            } else {
+              crc = crc << 1;
+            }
           }
         }
-      } else {
-        // Generate normal table
-        crc = i << 24;
-        for (let j = 0; j < 8; j++) {
-          if (crc & 0x80000000) {
-            crc = (crc << 1) ^ this.config.polynomial;
-          } else {
-            crc = crc << 1;
-          }
+
+        table[i] = crc >>> 0; // Ensure unsigned 32-bit
+      }
+
+      return table;
+    }
+
+    Feed(data) {
+      if (!Array.isArray(data)) {
+        throw new Error('CRC32Instance.Feed: Input must be byte array');
+      }
+
+      // Process each byte
+      for (let i = 0; i < data.length; i++) {
+        let byte = data[i] & 0xFF;
+
+        if (this.config.inputReflected) {
+          // Reflected algorithm (LSB first)
+          const tableIndex = (this.crc ^ byte) & 0xFF;
+          this.crc = ((this.crc >>> 8) ^ this.table[tableIndex]) >>> 0;
+        } else {
+          // Normal algorithm (MSB first)
+          const tableIndex = ((this.crc >>> 24) ^ byte) & 0xFF;
+          this.crc = ((this.crc << 8) ^ this.table[tableIndex]) >>> 0;
         }
       }
-      
-      table[i] = crc >>> 0; // Ensure unsigned 32-bit
-    }
-    
-    return table;
-  }
-
-  Feed(data) {
-    if (!Array.isArray(data)) {
-      throw new Error('CRC32Instance.Feed: Input must be byte array');
     }
 
-    // Process each byte
-    for (let i = 0; i < data.length; i++) {
-      let byte = data[i] & 0xFF;
-      
-      if (this.config.inputReflected) {
-        // Reflected algorithm (LSB first)
-        const tableIndex = (this.crc ^ byte) & 0xFF;
-        this.crc = ((this.crc >>> 8) ^ this.table[tableIndex]) >>> 0;
-      } else {
-        // Normal algorithm (MSB first)
-        const tableIndex = ((this.crc >>> 24) ^ byte) & 0xFF;
-        this.crc = ((this.crc << 8) ^ this.table[tableIndex]) >>> 0;
+    Result() {
+      // Apply final XOR
+      let finalCrc = (this.crc ^ this.config.finalXor) >>> 0;
+
+      // Apply result reflection if specified
+      if (this.config.resultReflected) {
+        finalCrc = this._reflect32(finalCrc);
       }
+
+      // Convert to byte array (big-endian)
+      const result = OpCodes.Unpack32BE(finalCrc);
+
+      // Reset for next calculation
+      this.crc = this.config.initialValue;
+
+      return result;
+    }
+
+    _reflect32(value) {
+      let reflected = 0;
+      for (let i = 0; i < 32; i++) {
+        reflected = (reflected << 1) | (value & 1);
+        value >>>= 1;
+      }
+      return reflected >>> 0;
+    }
+
+    // Additional utility methods
+    calculateString(str) {
+      const bytes = OpCodes.AnsiToBytes(str);
+      this.Feed(bytes);
+      return this.Result();
+    }
+
+    calculateHex(hexString) {
+      const bytes = OpCodes.Hex8ToBytes(hexString);
+      this.Feed(bytes);
+      return this.Result();
+    }
+
+    verify(data, expectedCrc) {
+      this.Feed(data);
+      const calculatedCrc = this.Result();
+      return OpCodes.SecureCompare(calculatedCrc, expectedCrc);
     }
   }
 
-  Result() {
-    // Apply final XOR
-    let finalCrc = (this.crc ^ this.config.finalXor) >>> 0;
-    
-    // Apply result reflection if specified
-    if (this.config.resultReflected) {
-      finalCrc = this._reflect32(finalCrc);
-    }
-    
-    // Convert to byte array (big-endian)
-    const result = OpCodes.Unpack32BE(finalCrc);
-    
-    // Reset for next calculation
-    this.crc = this.config.initialValue;
-    
-    return result;
+  // Register all CRC32 variants
+  RegisterAlgorithm(new CRC32Algorithm('IEEE'));
+  RegisterAlgorithm(new CRC32Algorithm('POSIX'));
+  RegisterAlgorithm(new CRC32Algorithm('BZIP2'));
+
+  // Export for Node.js
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { CRC32Algorithm, CRC32Instance };
   }
 
-  _reflect32(value) {
-    let reflected = 0;
-    for (let i = 0; i < 32; i++) {
-      reflected = (reflected << 1) | (value & 1);
-      value >>>= 1;
-    }
-    return reflected >>> 0;
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new CRC32Algorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
 
-  // Additional utility methods
-  calculateString(str) {
-    const bytes = OpCodes.AnsiToBytes(str);
-    this.Feed(bytes);
-    return this.Result();
-  }
+  // ===== EXPORTS =====
 
-  calculateHex(hexString) {
-    const bytes = OpCodes.Hex8ToBytes(hexString);
-    this.Feed(bytes);
-    return this.Result();
-  }
-
-  verify(data, expectedCrc) {
-    this.Feed(data);
-    const calculatedCrc = this.Result();
-    return OpCodes.SecureCompare(calculatedCrc, expectedCrc);
-  }
-}
-
-// Register all CRC32 variants
-RegisterAlgorithm(new CRC32Algorithm('IEEE'));
-RegisterAlgorithm(new CRC32Algorithm('POSIX'));
-RegisterAlgorithm(new CRC32Algorithm('BZIP2'));
-
-// Export for Node.js
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { CRC32Algorithm, CRC32Instance };
-}
+  return { CRC32Algorithm, CRC32Instance };
+}));

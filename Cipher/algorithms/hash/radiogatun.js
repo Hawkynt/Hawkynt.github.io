@@ -1,38 +1,47 @@
-#!/usr/bin/env node
-/*
- * RadioGatún Universal Hash Function Implementation
- * Compatible with both Browser and Node.js environments
- * (c)2006-2025 Hawkynt
- * 
- * RadioGatún is a cryptographic hash function designed by Guido Bertoni,
- * Joan Daemen, Michaël Peeters, and Gilles Van Assche. It's inspired by
- * stream cipher design and features a belt-and-mill structure similar
- * to that later used in the Keccak/SHA-3 design.
- * 
- * Specification: "RadioGatún, a belt-and-mill hash function" (2006)
- * Reference: https://radiogatun.noekeon.org/radiogatun.pdf
- * Designer Website: https://keccak.team/radiogatun.html
- * Test Vectors: From original specification and reference implementations
- * 
- * Features:
- * - Belt-and-mill architecture
- * - Variable output length (unlimited)
- * - Two variants: RadioGatún[32] and RadioGatún[64]
- * - Stream-cipher inspired design
- * - Predecessor to Keccak design principles
- * 
- * NOTE: This is an educational implementation for learning purposes only.
- * Use proven cryptographic libraries for production systems.
- */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Load OpCodes library for common operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
   
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
   // RadioGatún[32] constants
   const RG32_WORD_SIZE = 32;        // Word size in bits
   const RG32_BELT_WIDTH = 3;        // Belt width in words
@@ -376,17 +385,7 @@
       this.bKey = false;
     }
   };
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    global.Cipher.Add(RadioGatun);
-  }
-  
-  // AlgorithmFramework compatibility layer
-  if (global.AlgorithmFramework) {
-    const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType,
-            CryptoAlgorithm, IAlgorithmInstance, TestCase } = global.AlgorithmFramework;
-    
+   
     class RadioGatunWrapper extends CryptoAlgorithm {
       constructor() {
         super();
@@ -434,15 +433,15 @@
       }
     }
     
-    RegisterAlgorithm(new RadioGatunWrapper());
+   
+  // ===== REGISTRATION =====
+
+    const algorithmInstance = new RadioGatunWrapper();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = RadioGatun;
-  }
-  
-  // Make available globally
-  global.RadioGatun = RadioGatun;
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // ===== EXPORTS =====
+
+  return { RadioGatunWrapper, RadioGatunWrapperInstance };
+}));
