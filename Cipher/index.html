@@ -36,6 +36,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-perl.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-pascal.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-basic.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-ruby.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prism-themes@1.9.0/themes/prism-one-dark.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css">
@@ -46,6 +47,34 @@
     <link rel="stylesheet" href="components/algorithm-details.css">
 </head>
 <body>
+
+    <script>
+        // Initialize application after all scripts have loaded
+        console.log('🔐 »SynthelicZ« Cipher Tools Loading...');
+        
+        // Wait for DOM and all scripts to be ready
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add a small delay to ensure all algorithm scripts have executed
+            setTimeout(() => {
+                console.log('🔧 Initializing application...');
+                console.log('📊 AlgorithmFramework available:', typeof AlgorithmFramework !== 'undefined');
+                
+                if (typeof AlgorithmFramework !== 'undefined') {
+                    console.log('📋 Total algorithms registered:', AlgorithmFramework.Algorithms.length);
+                    console.log('� Algorithm names:', AlgorithmFramework.Algorithms.map(a => a.name));
+                }
+                
+                // Initialize the main controller
+                if (typeof CipherController !== 'undefined') {
+                    window.cipherController = new CipherController();
+                    window.cipherController.initializeApplication();
+                } else {
+                    console.error('❌ CipherController not found');
+                }
+            }, 100); // Small delay to ensure all scripts have registered their algorithms
+        });
+    </script>
+    
     <div class="app">
         <header class="header">
             <div class="header-content">
@@ -90,20 +119,8 @@
                                 <input type="text" class="search-input" placeholder="Search algorithms..." id="search-input">
                                 <select class="filter-select" id="category-filter">
                                     <option value="">All Categories</option>
-                                    <option value="asymmetric">Asymmetric (Public Key)</option>
-                                    <option value="block">Block Ciphers</option>
-                                    <option value="stream">Stream Ciphers</option>
-                                    <option value="hash">Hash Functions</option>
-                                    <option value="classical">Classical Ciphers</option>
-                                    <option value="encoding">Encoding Schemes</option>
-                                    <option value="compression">Compression</option>
-                                    <option value="mode">Mode of Operation</option>
-                                    <option value="padding">Padding Schemes</option>
-                                    <option value="special">Special Purpose</option>
-                                    <option value="mac">Message Auth Codes</option>
-                                    <option value="kdf">Key Derivation</option>
-                                    <option value="ecc">Error Correction</option>
-                                    <option value="checksum">Checksums</option>
+                                    <!-- TODO: create the rest on the fly with the data from AlgorithmFramework -->
+                                    <option value="cipher">Other Ciphers</option>
                                 </select>
                             </div>
                         </div>
@@ -157,37 +174,11 @@
                                     </select>
                                     <label>Mode:</label>
                                     <select class="select" id="cipher-mode">
-                                        <option value="ECB">ECB (Electronic Codebook)</option>
-                                        <option value="CBC">CBC (Cipher Block Chaining)</option>
-                                        <option value="PCBC">PCBC (Propagating CBC)</option>
-                                        <option value="CFB">CFB (Cipher Feedback)</option>
-                                        <option value="OFB">OFB (Output Feedback)</option>
-                                        <option value="CTR">CTR (Counter Mode)</option>
-                                        <option value="GCM">GCM (Galois/Counter Mode)</option>
-                                        <option value="CCM">CCM (Counter with CBC-MAC)</option>
-                                        <option value="EAX">EAX (Encrypt-then-Authenticate-then-Translate)</option>
-                                        <option value="OCB">OCB (Offset Codebook)</option>
-                                        <option value="SIV">SIV (Synthetic IV)</option>
-                                        <option value="XTS">XTS (XEX-based Tweaked-Codebook)</option>
-                                        <option value="XEX">XEX (XOR-Encrypt-XOR)</option>
-                                        <option value="LRW">LRW (Liskov-Rivest-Wagner)</option>
-                                        <option value="EME">EME (ECB-Mix-ECB)</option>
-                                        <option value="CMC">CMC (CBC-Mask-CBC)</option>
-                                        <option value="CMM">CMM (CBC-Mix-MAC)</option>
-                                        <option value="ESSIV">ESSIV (Encrypted Salt-Sector IV)</option>
-                                        <option value="RAC">RAC (Random Access Counter)</option>
-                                        <option value="FFX">FFX (Format-Preserving Encryption)</option>
-                                        <option value="DFF">DFF (Disk Full Encryption)</option>
-                                        <option value="HCTR">HCTR (Hash-Counter-Hash)</option>
-                                        <option value="HCTR2">HCTR2 (Hash-Counter-Hash v2)</option>
+                                        <!-- TODO: create the rest on the fly with the data from AlgorithmFramework -->
                                     </select>
                                     <label>Padding:</label>
                                     <select class="select" id="cipher-padding">
-                                        <option value="None">No Padding</option>
-                                        <option value="PKCS7">PKCS#7</option>
-                                        <option value="ISO7816">ISO/IEC 7816-4</option>
-                                        <option value="ANSI923">ANSI X9.23</option>
-                                        <option value="Zero">Zero Padding</option>
+                                        <!-- TODO: create the rest on the fly with the data from AlgorithmFramework -->
                                     </select>
                                     <input type="text" class="search-input" placeholder="Key (optional)" id="cipher-key" style="max-width: 200px;">
                                 </div>
@@ -203,41 +194,79 @@
                 
                 <!-- Algorithm Chaining Tab -->
                 <div class="tab-content" id="chaining-tab">
-                    <div class="chaining-interface">
-                        <div class="chain-workspace">
+                    <div class="chaining-layout">
+                        <!-- Main Canvas Area -->
+                        <div class="chain-main-area">
                             <div class="chain-controls">
                                 <h3 class="section-title-small">Visual Chain Builder</h3>
-                                <div class="zoom-controls">
-                                    <button class="zoom-btn" id="zoom-out">−</button>
-                                    <div class="zoom-level" id="zoom-level">100%</div>
-                                    <button class="zoom-btn" id="zoom-in">+</button>
+                                <div class="chain-control-buttons">
+                                    <button class="btn btn-primary" id="execute-chain">▶️ Execute Chain</button>
+                                    <button class="btn btn-secondary btn-small" id="reset-chain">🔄 Clear Canvas</button>
+                                    <button class="btn btn-info btn-small" onclick="addTestNodes()">🧪 Add Test Nodes</button>
                                 </div>
-                                <button class="btn btn-secondary btn-small" id="reset-chain">🔄 Reset</button>
-                                <button class="btn btn-primary" id="execute-chain">▶️ Execute Chain</button>
                             </div>
                             
                             <div class="chain-canvas" id="chain-canvas">
-                                <div class="chain-canvas-inner" id="chain-canvas-inner">
-                                    <svg class="connection-lines" id="connection-svg">
-                                        <!-- Connection lines will be drawn here -->
-                                    </svg>
+                                <div style="padding: 40px; text-align: center; color: #888; font-size: 16px; border: 2px dashed #404463; border-radius: 8px; margin: 20px;">
+                                    <div style="margin-bottom: 10px;">🎯 Drop algorithms here to create nodes</div>
+                                    <div style="font-size: 14px;">Click on ports (green=input, red=output) to connect nodes</div>
                                 </div>
                             </div>
                         </div>
                         
-                        <div class="algorithm-palette" id="algorithm-palette">
-                            <h4 style="margin-bottom: 1rem; color: #2d3748;">Algorithm Palette</h4>
-                            <!-- Algorithm categories will be populated here -->
+                        <!-- Algorithm Palette Below Canvas -->
+                        <div class="algorithm-palette-container">
+                            <div class="palette-header">
+                                <h4>Algorithm Palette</h4>
+                                <span class="palette-instructions">Drag algorithms to canvas • Use tabs to filter by category</span>
+                            </div>
+                            
+                            <!-- Category Tabs -->
+                            <div class="palette-tabs">
+                                <button class="palette-tab active" data-category="all">All</button>
+                                <!-- TODO: create the rest on the fly with the data from AlgorithmFramework -->
+                                <button class="palette-tab" data-category="other">Other</button>
+                            </div>
+                            
+                            <!-- Algorithm Grid -->
+                            <div class="algorithm-grid" id="algorithm-palette">
+                                <div style="padding: 20px; text-align: center; color: #888;">
+                                    Loading algorithms...
+                                </div>
+                            </div>
                         </div>
                     </div>
                     
-                    <!-- Properties Panel -->
+                    <!-- Properties Panel (Right Side) -->
                     <div class="properties-panel" id="properties-panel">
-                        <div class="properties-header" id="properties-header">
-                            Select a node to see properties
+                        <div class="properties-header">
+                            <h4>Chain Properties</h4>
                         </div>
+                        
+                        <div class="status-panel" id="chain-stats">
+                            <strong>Chain Stats:</strong><br>
+                            Nodes: 0<br>
+                            Connections: 0
+                        </div>
+                        
+                        <div class="status-panel" id="expression-display">
+                            <strong>Expression:</strong><br>
+                            <code style="font-size: 11px; word-break: break-all;">data</code>
+                        </div>
+                        
+                        <div style="margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                            <h5 style="margin: 0 0 8px 0; color: #17a2b8;">Instructions:</h5>
+                            <ul style="font-size: 12px; line-height: 1.4; margin: 0; padding-left: 16px;">
+                                <li>Drag algorithms from palette to canvas</li>
+                                <li>Click on ports to connect nodes</li>
+                                <li>Green ports = inputs, Red ports = outputs</li>
+                                <li>Drag node headers to reposition</li>
+                                <li>Use "Execute Chain" to build expression</li>
+                            </ul>
+                        </div>
+                        
                         <div id="properties-content">
-                            <!-- Properties will be populated here -->
+                            <!-- Chain expression and additional properties will appear here -->
                         </div>
                     </div>
                 </div>
@@ -263,18 +292,7 @@
                                     <label>Filter by Category:</label>
                                     <select id="test-filter-category">
                                         <option value="all">All Categories</option>
-                                        <option value="block">Block Ciphers</option>
-                                        <option value="stream">Stream Ciphers</option>
-                                        <option value="hash">Hash Functions</option>
-                                        <option value="classical">Classical</option>
-                                        <option value="encoding">Encoding</option>
-                                        <option value="compression">Compression</option>
-                                        <option value="mode">Mode of Operation</option>
-                                        <option value="padding">Padding</option>
-                                        <option value="asymmetric">Asymmetric</option>
-                                        <option value="mac">MAC</option>
-                                        <option value="kdf">KDF</option>
-                                        <option value="special">Special</option>
+                                        <option value="cipher">Other Ciphers</option>
                                     </select>
                                 </div>
                                 <div class="search-group">
@@ -402,19 +420,33 @@
     <script src="./universal-cipher-env.js"></script>
     <script src="./AlgorithmFramework.js"></script>
     
-    <!-- Expose RegisterAlgorithm globally for algorithms that need it -->
-    <script>
-        if (typeof global !== 'undefined' && global.AlgorithmFramework) {
-            global.RegisterAlgorithm = global.AlgorithmFramework.RegisterAlgorithm;
-        }
-        if (typeof window !== 'undefined' && window.AlgorithmFramework) {
-            window.RegisterAlgorithm = window.AlgorithmFramework.RegisterAlgorithm;
-        }
-    </script>
+    <!-- Type-Aware Transpiler System -->
+    <script src="./type-aware-transpiler.js"></script>
     
+    <!-- Language Plugin Framework -->
+    <script src="./codingplugins/LanguagePlugin.js"></script>
+    
+    <!-- Language Plugins -->
+    <script src="./codingplugins/python.js"></script>
+    <script src="./codingplugins/perl.js"></script>
+    <script src="./codingplugins/php.js"></script>
+    <script src="./codingplugins/kotlin.js"></script>
+    <script src="./codingplugins/typescript.js"></script>
+    <script src="./codingplugins/javascript.js"></script>
+    <script src="./codingplugins/go.js"></script>
+    <script src="./codingplugins/basic.js"></script>
+    <script src="./codingplugins/delphi.js"></script>
+    <script src="./codingplugins/rust.js"></script>
+    <script src="./codingplugins/java.js"></script>
+    <script src="./codingplugins/csharp.js"></script>
+    <script src="./codingplugins/ruby.js"></script>
+    <script src="./codingplugins/freebasic.js"></script>
+    <script src="./codingplugins/c.js"></script>
+    <script src="./codingplugins/cpp.js"></script>
+        
     <!-- ============================================ -->
     <!-- COMPLETE ALGORITHM IMPLEMENTATIONS          -->
-    <!-- All 305 unique algorithm files        -->
+    <!-- All 325 unique algorithm files        -->
     <!-- Organized by category for easy maintenance  -->
     <!-- ============================================ -->
     
@@ -432,19 +464,18 @@
     <script src="./algorithms/asymmetric/hqc.js"></script>
     <script src="./algorithms/asymmetric/lwe-signature.js"></script>
     <script src="./algorithms/asymmetric/mayo.js"></script>
+    <script src="./algorithms/asymmetric/ml-dsa.js"></script>
+    <script src="./algorithms/asymmetric/ntru.js"></script>
     <script src="./algorithms/asymmetric/perk.js"></script>
     <script src="./algorithms/asymmetric/rainbow.js"></script>
+    <script src="./algorithms/asymmetric/rsa.js"></script>
     <script src="./algorithms/asymmetric/sike.js"></script>
     <script src="./algorithms/asymmetric/slh-dsa.js"></script>
-    <script src="./algorithms/asymmetric/sqisign.js"></script>
-    <script src="./algorithms/asymmetric/ml-dsa.js"></script>
-    <script src="./algorithms/asymmetric/ml-kem.js"></script>
-    <script src="./algorithms/asymmetric/ntru.js"></script>
-    <script src="./algorithms/asymmetric/rsa.js"></script>
     <script src="./algorithms/asymmetric/sphincs-plus.js"></script>
-    
+    <script src="./algorithms/asymmetric/sqisign.js"></script>
+
     <!-- =========================== -->
-    <!-- BLOCK (60) -->
+    <!-- BLOCK (59) -->
     <!-- =========================== -->
     <script src="./algorithms/block/3des.js"></script>
     <script src="./algorithms/block/anubis.js"></script>
@@ -458,15 +489,15 @@
     <script src="./algorithms/block/clefia.js"></script>
     <script src="./algorithms/block/crypton.js"></script>
     <script src="./algorithms/block/deal.js"></script>
-    <script src="./algorithms/block/des.js"></script>
     <script src="./algorithms/block/des-x.js"></script>
+    <script src="./algorithms/block/des.js"></script>
     <script src="./algorithms/block/dfc.js"></script>
     <script src="./algorithms/block/doubleking.js"></script>
     <script src="./algorithms/block/feal.js"></script>
     <script src="./algorithms/block/ff1.js"></script>
     <script src="./algorithms/block/ff3.js"></script>
-    <script src="./algorithms/block/gost28147.js"></script>
     <script src="./algorithms/block/gost-kuznyechik.js"></script>
+    <script src="./algorithms/block/gost28147.js"></script>
     <script src="./algorithms/block/idea.js"></script>
     <script src="./algorithms/block/kalyna.js"></script>
     <script src="./algorithms/block/khazad.js"></script>
@@ -489,6 +520,7 @@
     <script src="./algorithms/block/redoc2.js"></script>
     <script src="./algorithms/block/redoc3.js"></script>
     <script src="./algorithms/block/rhx.js"></script>
+    <script src="./algorithms/block/rijndael.js"></script>
     <script src="./algorithms/block/safer.js"></script>
     <script src="./algorithms/block/seed.js"></script>
     <script src="./algorithms/block/serpent.js"></script>
@@ -504,16 +536,24 @@
     <script src="./algorithms/block/twofish.js"></script>
     <script src="./algorithms/block/xtea.js"></script>
     <script src="./algorithms/block/xxtea.js"></script>
-    <script src="./algorithms/block/rijndael.js"></script>
-    <script src="./algorithms/block/rijndael-fixed.js"></script>
-    
+
     <!-- =========================== -->
-    <!-- CHECKSUM (3) -->
+    <!-- CHECKSUM (13) -->
     <!-- =========================== -->
+    <script src="./algorithms/checksum/adler.js"></script>
+    <script src="./algorithms/checksum/check-digit.js"></script>
+    <script src="./algorithms/checksum/crc128.js"></script>
     <script src="./algorithms/checksum/crc16.js"></script>
+    <script src="./algorithms/checksum/crc24.js"></script>
     <script src="./algorithms/checksum/crc32.js"></script>
-    <script src="./algorithms/checksum/fletcher32.js"></script>
-    
+    <script src="./algorithms/checksum/crc64.js"></script>
+    <script src="./algorithms/checksum/crc8.js"></script>
+    <script src="./algorithms/checksum/fletcher.js"></script>
+    <script src="./algorithms/checksum/internet-checksum.js"></script>
+    <script src="./algorithms/checksum/isbn.js"></script>
+    <script src="./algorithms/checksum/parity.js"></script>
+    <script src="./algorithms/checksum/unix-sum.js"></script>
+
     <!-- =========================== -->
     <!-- CLASSICAL (26) -->
     <!-- =========================== -->
@@ -543,30 +583,51 @@
     <script src="./algorithms/classical/trifid.js"></script>
     <script src="./algorithms/classical/twosquare.js"></script>
     <script src="./algorithms/classical/vigenere.js"></script>
-    
+
     <!-- =========================== -->
-    <!-- COMPRESSION (19) -->
+    <!-- COMPRESSION (40) -->
     <!-- =========================== -->
+    <script src="./algorithms/compression/ans.js"></script>
     <script src="./algorithms/compression/arithmetic.js"></script>
     <script src="./algorithms/compression/bpe.js"></script>
     <script src="./algorithms/compression/brotli.js"></script>
+    <script src="./algorithms/compression/bsc.js"></script>
     <script src="./algorithms/compression/bwt.js"></script>
+    <script src="./algorithms/compression/bzip2.js"></script>
+    <script src="./algorithms/compression/cmix.js"></script>
+    <script src="./algorithms/compression/ctw.js"></script>
     <script src="./algorithms/compression/deflate-simple.js"></script>
     <script src="./algorithms/compression/delta.js"></script>
     <script src="./algorithms/compression/elias-delta.js"></script>
     <script src="./algorithms/compression/elias-gamma.js"></script>
     <script src="./algorithms/compression/fibonacci.js"></script>
+    <script src="./algorithms/compression/golomb-bitstream.js"></script>
+    <script src="./algorithms/compression/golomb.js"></script>
     <script src="./algorithms/compression/huffman.js"></script>
     <script src="./algorithms/compression/lz4.js"></script>
     <script src="./algorithms/compression/lz77.js"></script>
     <script src="./algorithms/compression/lz78.js"></script>
+    <script src="./algorithms/compression/lzfse.js"></script>
+    <script src="./algorithms/compression/lzham.js"></script>
+    <script src="./algorithms/compression/lzma.js"></script>
+    <script src="./algorithms/compression/lzo.js"></script>
+    <script src="./algorithms/compression/lzss.js"></script>
+    <script src="./algorithms/compression/lzvn.js"></script>
     <script src="./algorithms/compression/lzw.js"></script>
+    <script src="./algorithms/compression/mtf.js"></script>
+    <script src="./algorithms/compression/omega.js"></script>
+    <script src="./algorithms/compression/packbits.js"></script>
+    <script src="./algorithms/compression/paq.js"></script>
     <script src="./algorithms/compression/ppm.js"></script>
+    <script src="./algorithms/compression/range-coding.js"></script>
     <script src="./algorithms/compression/rle.js"></script>
+    <script src="./algorithms/compression/rolz.js"></script>
     <script src="./algorithms/compression/shannon-fano.js"></script>
+    <script src="./algorithms/compression/snappy.js"></script>
     <script src="./algorithms/compression/unary.js"></script>
+    <script src="./algorithms/compression/xz-lzma2.js"></script>
     <script src="./algorithms/compression/zstd.js"></script>
-    
+
     <!-- =========================== -->
     <!-- ECC (4) -->
     <!-- =========================== -->
@@ -574,7 +635,7 @@
     <script src="./algorithms/ecc/hamming.js"></script>
     <script src="./algorithms/ecc/ldpc.js"></script>
     <script src="./algorithms/ecc/reed-solomon.js"></script>
-    
+
     <!-- =========================== -->
     <!-- ENCODING (20) -->
     <!-- =========================== -->
@@ -598,20 +659,17 @@
     <script src="./algorithms/encoding/xxencode.js"></script>
     <script src="./algorithms/encoding/yenc.js"></script>
     <script src="./algorithms/encoding/z85.js"></script>
-    
+
     <!-- =========================== -->
-    <!-- HASH (38) -->
+    <!-- HASH (35) -->
     <!-- =========================== -->
-    <script src="./algorithms/hash/adler32.js"></script>
     <script src="./algorithms/hash/argon2.js"></script>
     <script src="./algorithms/hash/bcrypt.js"></script>
     <script src="./algorithms/hash/blake2b.js"></script>
     <script src="./algorithms/hash/blake2s.js"></script>
-    <script src="./algorithms/hash/blake3.js"></script>
     <script src="./algorithms/hash/blake3-enhanced.js"></script>
+    <script src="./algorithms/hash/blake3.js"></script>
     <script src="./algorithms/hash/cityhash.js"></script>
-    <script src="./algorithms/hash/crc16.js"></script>
-    <script src="./algorithms/hash/crc32.js"></script>
     <script src="./algorithms/hash/fnv.js"></script>
     <script src="./algorithms/hash/groestl.js"></script>
     <script src="./algorithms/hash/haval.js"></script>
@@ -640,7 +698,7 @@
     <script src="./algorithms/hash/xxhash.js"></script>
     <script src="./algorithms/hash/xxhash3.js"></script>
     <script src="./algorithms/hash/xxhash32.js"></script>
-    
+
     <!-- =========================== -->
     <!-- KDF (4) -->
     <!-- =========================== -->
@@ -648,7 +706,7 @@
     <script src="./algorithms/kdf/hkdf.js"></script>
     <script src="./algorithms/kdf/pbkdf2.js"></script>
     <script src="./algorithms/kdf/scrypt.js"></script>
-    
+
     <!-- =========================== -->
     <!-- MAC (6) -->
     <!-- =========================== -->
@@ -658,7 +716,7 @@
     <script src="./algorithms/mac/omac.js"></script>
     <script src="./algorithms/mac/poly1305.js"></script>
     <script src="./algorithms/mac/vmac.js"></script>
-    
+
     <!-- =========================== -->
     <!-- MODES (24) -->
     <!-- =========================== -->
@@ -673,8 +731,8 @@
     <script src="./algorithms/modes/eme.js"></script>
     <script src="./algorithms/modes/ffx.js"></script>
     <script src="./algorithms/modes/fpe.js"></script>
-    <script src="./algorithms/modes/gcm.js"></script>
     <script src="./algorithms/modes/gcm-siv.js"></script>
+    <script src="./algorithms/modes/gcm.js"></script>
     <script src="./algorithms/modes/ige.js"></script>
     <script src="./algorithms/modes/kw.js"></script>
     <script src="./algorithms/modes/kwp.js"></script>
@@ -686,7 +744,7 @@
     <script src="./algorithms/modes/siv.js"></script>
     <script src="./algorithms/modes/xex.js"></script>
     <script src="./algorithms/modes/xts.js"></script>
-    
+
     <!-- =========================== -->
     <!-- PADDING (12) -->
     <!-- =========================== -->
@@ -702,34 +760,30 @@
     <script src="./algorithms/padding/pss.js"></script>
     <script src="./algorithms/padding/random.js"></script>
     <script src="./algorithms/padding/zero.js"></script>
-    
+
     <!-- =========================== -->
     <!-- PQC (1) -->
     <!-- =========================== -->
     <script src="./algorithms/pqc/ml-kem.js"></script>
-    
+
     <!-- =========================== -->
-    <!-- SPECIAL (16) -->
+    <!-- SPECIAL (12) -->
     <!-- =========================== -->
     <script src="./algorithms/special/3way.js"></script>
-    <script src="./algorithms/special/aegis-128.js"></script>
-    <script src="./algorithms/special/aes-gcm-siv.js"></script>
     <script src="./algorithms/special/aes-siv.js"></script>
     <script src="./algorithms/special/ascon.js"></script>
-    <script src="./algorithms/special/ascon-128.js"></script>
     <script src="./algorithms/special/ccm.js"></script>
     <script src="./algorithms/special/chacha20-poly1305.js"></script>
     <script src="./algorithms/special/eax.js"></script>
     <script src="./algorithms/special/fiat-shamir.js"></script>
     <script src="./algorithms/special/fish.js"></script>
     <script src="./algorithms/special/gimli.js"></script>
-    <script src="./algorithms/special/ocb.js"></script>
-    <script src="./algorithms/special/ocb3.js"></script>
     <script src="./algorithms/special/shamir-secret-sharing.js"></script>
     <script src="./algorithms/special/time-lock-puzzle.js"></script>
-    
+    <script src="./algorithms/special/xchacha20-poly1305.js"></script>
+
     <!-- =========================== -->
-    <!-- STREAM (51) -->
+    <!-- STREAM (48) -->
     <!-- =========================== -->
     <script src="./algorithms/stream/a5-1.js"></script>
     <script src="./algorithms/stream/a5-2.js"></script>
@@ -741,25 +795,23 @@
     <script src="./algorithms/stream/ascon.js"></script>
     <script src="./algorithms/stream/beth-piper.js"></script>
     <script src="./algorithms/stream/chacha20.js"></script>
-    <script src="./algorithms/stream/chacha20-poly1305.js"></script>
     <script src="./algorithms/stream/crypto1.js"></script>
     <script src="./algorithms/stream/dragon.js"></script>
     <script src="./algorithms/stream/e0.js"></script>
     <script src="./algorithms/stream/e2.js"></script>
     <script src="./algorithms/stream/f-fcsr.js"></script>
     <script src="./algorithms/stream/geffe.js"></script>
-    <script src="./algorithms/stream/grain.js"></script>
     <script src="./algorithms/stream/grain-v1.js"></script>
+    <script src="./algorithms/stream/grain.js"></script>
     <script src="./algorithms/stream/hc-128.js"></script>
     <script src="./algorithms/stream/hc-256.js"></script>
     <script src="./algorithms/stream/isaac.js"></script>
     <script src="./algorithms/stream/leviathan.js"></script>
-    <script src="./algorithms/stream/mickey.js"></script>
     <script src="./algorithms/stream/mickey-128.js"></script>
+    <script src="./algorithms/stream/mickey.js"></script>
     <script src="./algorithms/stream/miller.js"></script>
     <script src="./algorithms/stream/morus.js"></script>
     <script src="./algorithms/stream/mugi.js"></script>
-    <script src="./algorithms/stream/new-stream-cipher-test-vectors.js"></script>
     <script src="./algorithms/stream/norx.js"></script>
     <script src="./algorithms/stream/panama.js"></script>
     <script src="./algorithms/stream/phelix-simple.js"></script>
@@ -773,45 +825,14 @@
     <script src="./algorithms/stream/snow3g.js"></script>
     <script src="./algorithms/stream/sosemanuk.js"></script>
     <script src="./algorithms/stream/spritz.js"></script>
-    <script src="./algorithms/stream/test-new-stream-ciphers.js"></script>
     <script src="./algorithms/stream/trivium.js"></script>
     <script src="./algorithms/stream/tsc-4.js"></script>
     <script src="./algorithms/stream/vest.js"></script>
     <script src="./algorithms/stream/wake.js"></script>
     <script src="./algorithms/stream/xchacha20.js"></script>
-    <script src="./algorithms/stream/xchacha20-poly1305.js"></script>
     <script src="./algorithms/stream/xsalsa20.js"></script>
     <script src="./algorithms/stream/zuc.js"></script>
-    
-    <!-- ============================================ -->
-    <!-- COMPLETE ALGORITHM LIBRARY LOADED!         -->
-    <!-- ALL 305 UNIQUE .JS FILES INCLUDED          -->
-    <!--                                            -->
-    <!-- ASYMMETRIC: 21 algorithms                  -->
-    <!-- BLOCK: 60 algorithms                       -->
-    <!-- CHECKSUM: 3 algorithms                     -->
-    <!-- CLASSICAL: 26 algorithms                   -->
-    <!-- COMPRESSION: 19 algorithms                 -->
-    <!-- ECC: 4 algorithms                          -->
-    <!-- ENCODING: 20 algorithms                    -->
-    <!-- HASH: 38 algorithms                        -->
-    <!-- KDF: 4 algorithms                          -->
-    <!-- MAC: 6 algorithms                          -->
-    <!-- MODES: 24 algorithms                       -->
-    <!-- PADDING: 12 algorithms                     -->
-    <!-- PQC: 1 algorithms                          -->
-    <!-- SPECIAL: 16 algorithms                     -->
-    <!-- STREAM: 51 algorithms                      -->
-    <!--                                            -->
-    <!-- TOTAL: 305 algorithms now loading!         -->
-    <!--                                            -->
-    <!-- Features: AlgorithmFramework compliance,   -->
-    <!-- OpCodes integration, universal Feed/Result -->
-    <!-- pattern, comprehensive test vectors,       -->
-    <!-- security status classifications, and       -->
-    <!-- cross-platform Browser + Node.js support  -->
-    <!-- ============================================ -->
-    
+
     <!-- Application Models -->
     <script src="index.models.algorithms.js"></script>
     <script src="index.models.chain.js"></script>
@@ -820,39 +841,8 @@
     <script src="components/algorithm-card.js"></script>
     <script src="components/algorithm-details.js"></script>
     
-    <!-- Code Generation Interface -->
-    <script src="multi-language-generator.js"></script>
-    
-    <!-- Test Runner System (built into main controller) -->
-    
     <!-- Application Controller -->
     <script src="index.controller.js"></script>
-    
-    <script>
-        // Initialize application after all scripts have loaded
-        console.log('🔐 »SynthelicZ« Cipher Tools Loading...');
-        
-        // Wait for DOM and all scripts to be ready
-        document.addEventListener('DOMContentLoaded', function() {
-            // Add a small delay to ensure all algorithm scripts have executed
-            setTimeout(() => {
-                console.log('🔧 Initializing application...');
-                console.log('📊 AlgorithmFramework available:', typeof AlgorithmFramework !== 'undefined');
-                
-                if (typeof AlgorithmFramework !== 'undefined') {
-                    console.log('📋 Total algorithms registered:', AlgorithmFramework.Algorithms.length);
-                    console.log('� Algorithm names:', AlgorithmFramework.Algorithms.map(a => a.name));
-                }
-                
-                // Initialize the main controller
-                if (typeof CipherController !== 'undefined') {
-                    window.cipherController = new CipherController();
-                    window.cipherController.initializeApplication();
-                } else {
-                    console.error('❌ CipherController not found');
-                }
-            }, 100); // Small delay to ensure all scripts have registered their algorithms
-        });
-    </script>
+
 </body>
 </html>
