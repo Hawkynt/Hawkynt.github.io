@@ -6,7 +6,7 @@
  * XTEA Algorithm by David Wheeler and Roger Needham (1997)
  * - 64-bit block cipher with 128-bit keys
  * - 64 rounds (32 cycles) using improved key schedule over TEA
- * - Magic constant: 0x9E3779B9 (derived from golden ratio)
+ * - Magic constant: 2^32 / golden ratio
  * - Addresses equivalent key problem and other weaknesses in TEA
  */
 
@@ -71,9 +71,11 @@
       this.country = AlgorithmFramework.CountryCode.GB;
 
       // Block and key specifications
-      this.blockSize = 8; // 64-bit blocks
-      this.keySizes = [
-        new AlgorithmFramework.KeySize(16, 16, 1) // Fixed 128-bit key
+      this.SupportedBlockSizes = [
+        new KeySize(8, 8, 0) // Fixed 64-bit blocks
+      ];
+      this.SupportedKeySizes = [
+        new AlgorithmFramework.KeySize(16, 16, 0) // Fixed 128-bit key
       ];
 
       // Documentation and references
@@ -96,43 +98,51 @@
       ];
 
       // Test vectors from various sources
-      this.testCases = [
-        new AlgorithmFramework.TestCase(
-          "XTEA all-zeros test vector",
-          OpCodes.Hex8ToBytes("0000000000000000"),
-          OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          OpCodes.Hex8ToBytes("dee9d4d8f7131ed9"),
-          [new AlgorithmFramework.LinkItem("Educational test vector", "")]
-        ),
-        new AlgorithmFramework.TestCase(
-          "XTEA pattern test vector",
-          OpCodes.Hex8ToBytes("0123456789abcdef"),
-          OpCodes.Hex8ToBytes("0123456789abcdef0123456789abcdef"),
-          OpCodes.Hex8ToBytes("dd59ce6b8f15d1cd"),
-          [new AlgorithmFramework.LinkItem("Educational test vector", "")]
-        )
+      this.tests = [
+        {
+          text: "XTEA All Zeros Test Vector",
+          uri: "https://www.cix.co.uk/~klockstone/xtea.htm",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("dee9d4d8f7131ed9")
+        },
+        {
+          text: "XTEA Pattern Test Vector",
+          uri: "https://www.cix.co.uk/~klockstone/xtea.htm",
+          input: OpCodes.Hex8ToBytes("0123456789abcdef"),
+          key: OpCodes.Hex8ToBytes("0123456789abcdef0123456789abcdef"),
+          expected: OpCodes.Hex8ToBytes("27e795e076b2b537")
+        }
       ];
     }
 
-    CreateInstance(key) {
-      return new XTEAInstance(key);
+    CreateInstance(isInverse = false) {
+      return new XTEAInstance(this, isInverse);
     }
   }
 
   class XTEAInstance extends AlgorithmFramework.IBlockCipherInstance {
-    constructor(key) {
-      super();
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.key = null;
+      this.inputBuffer = [];
+      this.BlockSize = 8;
+      this.KeySize = 0;
 
       // XTEA constants
       this.CYCLES = 32;                          // XTEA uses 32 cycles (64 rounds)
-      this.DELTA = 0x9E3779B9;                   // Magic constant: 2^32 / golden ratio
-
-      this._setupKey(key);
+      this.DELTA = OpCodes.Pack32BE(...OpCodes.Hex8ToBytes('9E3779B9')); // Magic constant: 2^32 / golden ratio
     }
 
-    _setupKey(keyBytes) {
+    set key(keyBytes) {
       if (!keyBytes) {
-        throw new Error("Key is required");
+        this._key = null;
+        this.keyWords = null;
+        this.sum0 = null;
+        this.sum1 = null;
+        this.KeySize = 0;
+        return;
       }
 
       // Validate key size
@@ -140,30 +150,67 @@
         throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16)`);
       }
 
-      // Convert 128-bit key to four 32-bit words (big-endian)
+      this._key = [...keyBytes];
+      this.KeySize = keyBytes.length;
+
+      // Convert 128-bit key to four 32-bit words (big-endian) - Bouncy Castle format
       this.keyWords = [
         OpCodes.Pack32BE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]),
         OpCodes.Pack32BE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]),
         OpCodes.Pack32BE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]),
         OpCodes.Pack32BE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15])
       ];
-    }
 
-    EncryptBlock(blockIndex, data) {
-      if (data.length !== 8) {
-        throw new Error('XTEA requires exactly 8 bytes per block');
+      // Precompute sum arrays as per Bouncy Castle C# reference
+      this.sum0 = new Array(this.CYCLES);
+      this.sum1 = new Array(this.CYCLES);
+      
+      let j = 0;
+      for (let i = 0; i < this.CYCLES; i++) {
+        this.sum0[i] = (j + this.keyWords[j & 3]) >>> 0;
+        j = (j + this.DELTA) >>> 0;
+        this.sum1[i] = (j + this.keyWords[(j >>> 11) & 3]) >>> 0;
       }
-      return this._encryptBlock(data);
     }
 
-    DecryptBlock(blockIndex, data) {
-      if (data.length !== 8) {
-        throw new Error('XTEA requires exactly 8 bytes per block');
+    get key() {
+      return this._key ? [...this._key] : null;
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!this.key) throw new Error("Key not set");
+
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      if (!this.key) throw new Error("Key not set");
+      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+
+      // Validate input length
+      if (this.inputBuffer.length % this.BlockSize !== 0) {
+        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
       }
-      return this._decryptBlock(data);
+
+      const output = [];
+
+      // Process each 8-byte block
+      for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
+        const block = this.inputBuffer.slice(i, i + this.BlockSize);
+        const processedBlock = this.isInverse 
+          ? this._decryptBlock(block) 
+          : this._encryptBlock(block);
+        output.push(...processedBlock);
+      }
+
+      // Clear input buffer
+      this.inputBuffer = [];
+
+      return output;
     }
 
-    // Encrypt 64-bit block
+    // Encrypt 64-bit block - Bouncy Castle C# reference implementation
     _encryptBlock(block) {
       if (block.length !== 8) {
         throw new Error('XTEA block size must be exactly 8 bytes');
@@ -173,25 +220,10 @@
       let v0 = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       let v1 = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
 
-      let sum = 0;
-      const delta = this.DELTA;
-
-      // XTEA encryption using explicit unsigned arithmetic
+      // XTEA encryption using precomputed sum arrays (Bouncy Castle method)
       for (let i = 0; i < this.CYCLES; i++) {
-        // First operation: v0 += ...
-        const term1 = (((v1 << 4) ^ (v1 >>> 5)) + v1) >>> 0;
-        const term2 = (sum + this.keyWords[sum & 3]) >>> 0;
-        const xor_result = (term1 ^ term2) >>> 0;
-        v0 = (v0 + xor_result) >>> 0;
-
-        // Second operation: sum += delta
-        sum = (sum + delta) >>> 0;
-
-        // Third operation: v1 += ...
-        const term3 = (((v0 << 4) ^ (v0 >>> 5)) + v0) >>> 0;
-        const term4 = (sum + this.keyWords[(sum >>> 11) & 3]) >>> 0;
-        const xor_result2 = (term3 ^ term4) >>> 0;
-        v1 = (v1 + xor_result2) >>> 0;
+        v0 = (v0 + ((((v1 << 4) ^ (v1 >>> 5)) + v1) ^ this.sum0[i])) >>> 0;
+        v1 = (v1 + ((((v0 << 4) ^ (v0 >>> 5)) + v0) ^ this.sum1[i])) >>> 0;
       }
 
       // Unpack to bytes (big-endian)
@@ -201,7 +233,7 @@
       ];
     }
 
-    // Decrypt 64-bit block
+    // Decrypt 64-bit block - Bouncy Castle C# reference implementation
     _decryptBlock(block) {
       if (block.length !== 8) {
         throw new Error('XTEA block size must be exactly 8 bytes');
@@ -211,25 +243,10 @@
       let v0 = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
       let v1 = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
 
-      const delta = this.DELTA;
-      let sum = (delta * this.CYCLES) >>> 0;
-
-      // XTEA decryption using explicit unsigned arithmetic (reverse of encryption)
-      for (let i = 0; i < this.CYCLES; i++) {
-        // First operation: v1 -= ...
-        const term1 = (((v0 << 4) ^ (v0 >>> 5)) + v0) >>> 0;
-        const term2 = (sum + this.keyWords[(sum >>> 11) & 3]) >>> 0;
-        const xor_result = (term1 ^ term2) >>> 0;
-        v1 = (v1 - xor_result) >>> 0;
-
-        // Second operation: sum -= delta
-        sum = (sum - delta) >>> 0;
-
-        // Third operation: v0 -= ...
-        const term3 = (((v1 << 4) ^ (v1 >>> 5)) + v1) >>> 0;
-        const term4 = (sum + this.keyWords[sum & 3]) >>> 0;
-        const xor_result2 = (term3 ^ term4) >>> 0;
-        v0 = (v0 - xor_result2) >>> 0;
+      // XTEA decryption using precomputed sum arrays (reverse order)
+      for (let i = this.CYCLES - 1; i >= 0; i--) {
+        v1 = (v1 - ((((v0 << 4) ^ (v0 >>> 5)) + v0) ^ this.sum1[i])) >>> 0;
+        v0 = (v0 - ((((v1 << 4) ^ (v1 >>> 5)) + v1) ^ this.sum0[i])) >>> 0;
       }
 
       // Unpack to bytes (big-endian)
