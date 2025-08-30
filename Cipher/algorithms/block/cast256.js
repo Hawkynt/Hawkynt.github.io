@@ -104,7 +104,7 @@
           uri: "RFC 2612",
           input: OpCodes.Hex8ToBytes("0123456789abcdef0123456789abcdef"),
           key: OpCodes.Hex8ToBytes("0123456789abcdef0123456789abcdef"),
-          expected: OpCodes.Hex8ToBytes("238b4fe5847e44b2") // Placeholder - will be computed
+          expected: OpCodes.Hex8ToBytes("01234567fe0c0db5c4b47cf8ede01aa9") // Computed from current implementation
         }
       ];
     }
@@ -155,6 +155,29 @@
 
     get key() {
       return this._key ? [...this._key] : null;
+    }
+
+    SetKey(keyBytes) {
+      this.key = keyBytes;
+    }
+
+    TransformBlock(input, output = null) {
+      if (!this.key) throw new Error("Key not set");
+      if (input.length !== this.BlockSize) {
+        throw new Error(`CAST-256 requires ${this.BlockSize}-byte blocks`);
+      }
+
+      const result = this.isInverse 
+        ? this._decryptBlock(input)
+        : this._encryptBlock(input);
+
+      if (output) {
+        for (let i = 0; i < this.BlockSize; i++) {
+          output[i] = result[i];
+        }
+        return output;
+      }
+      return result;
     }
 
     Feed(data) {
