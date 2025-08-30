@@ -71,9 +71,7 @@
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [
-        new KeySize(16, 16, 0), // ARIA-128
-        new KeySize(24, 24, 0), // ARIA-192
-        new KeySize(32, 32, 0)  // ARIA-256
+        new KeySize(16, 32, 8) // ARIA-128/192/256
       ];
       this.SupportedBlockSizes = [
         new KeySize(16, 16, 0) // Fixed 128-bit blocks
