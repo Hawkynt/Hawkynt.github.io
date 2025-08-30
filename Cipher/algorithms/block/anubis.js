@@ -100,7 +100,7 @@
           uri: "https://www.cosic.esat.kuleuven.be/nessie/testvectors/",
           input: OpCodes.Hex8ToBytes("0123456789ABCDEF0011223344556677"),
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          expected: OpCodes.Hex8ToBytes("020AA91C3A43B34445471767436BEE2D")
+          expected: OpCodes.Hex8ToBytes("020AA91C3A43B3444547176743B6EE2D")
         },
         {
           text: "NESSIE Test Vector - 160-bit key",
