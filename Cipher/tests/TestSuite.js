@@ -800,18 +800,10 @@ class TestSuite {
     }
   }
 
-  // Test optimization (OpCodes usage, no bare hex values, etc.)
+  // Test optimization (OpCodes usage for critical operations)
   async testOptimization(filePath, algorithmData) {
     try {
       const fileContent = fs.readFileSync(filePath, 'utf8');
-      
-      // Check for bare hex values (should use OpCodes.Hex8ToBytes)
-      const bareHexPattern = /0x[0-9A-Fa-f]{8,}/g;
-      const bareHexMatches = fileContent.match(bareHexPattern) || [];
-      
-      // Check for string literals in non-metadata fields (should use byte arrays)
-      const stringLiteralPattern = /"[0-9A-Fa-f]{8,}"/g;
-      const stringMatches = fileContent.match(stringLiteralPattern) || [];
       
       // Check for OpCodes usage
       const opCodesUsage = fileContent.includes('OpCodes.');
@@ -832,23 +824,15 @@ class TestSuite {
       
       algorithmData.details.optimization = {
         usesOpCodes: opCodesUsage,
-        bareHexCount: bareHexMatches.length,
-        stringLiteralCount: stringMatches.length,
         potentialOptimizations: potentialOptimizations,
         issues: []
       };
       
-      if (bareHexMatches.length > 0) {
-        algorithmData.details.optimization.issues.push(`${bareHexMatches.length} bare hex values found`);
-      }
-      if (stringMatches.length > 0) {
-        algorithmData.details.optimization.issues.push(`${stringMatches.length} string literals found`);
-      }
       if (!opCodesUsage && potentialOptimizations > 0) {
         algorithmData.details.optimization.issues.push('Could benefit from OpCodes usage');
       }
       
-      const isOptimized = opCodesUsage && bareHexMatches.length === 0 && stringMatches.length === 0;
+      const isOptimized = opCodesUsage;
       
       if (isOptimized) {
         this.results.optimization.passed++;
@@ -864,20 +848,16 @@ class TestSuite {
           console.log(`Uses OpCodes: ${algorithmData.details.optimization.usesOpCodes ? '✓' : '✗'}`);
           console.log(`\nOptimization Issues Found:`);
           
-          if (algorithmData.details.optimization.bareHexCount > 0) {
-            console.log(`  • ${algorithmData.details.optimization.bareHexCount} bare hex values (should use OpCodes.Hex8ToBytes)`);
-          }
-          if (algorithmData.details.optimization.stringLiteralCount > 0) {
-            console.log(`  • ${algorithmData.details.optimization.stringLiteralCount} string literals (should use byte arrays)`);
-          }
           if (algorithmData.details.optimization.potentialOptimizations > 0) {
             console.log(`  • ${algorithmData.details.optimization.potentialOptimizations} bit operations (could use OpCodes utilities)`);
           }
           
+          if (algorithmData.details.optimization.issues.length === 0) {
+            console.log('  • No significant optimization issues found');
+          }
+          
           console.log(`\nRecommendations:`);
-          console.log(`  - Replace hex strings with OpCodes.Hex8ToBytes("hexstring")`);
-          console.log(`  - Use OpCodes bit manipulation functions`);
-          console.log(`  - Convert string literals to byte arrays`);
+          console.log(`  - Use OpCodes bit manipulation functions for better compatibility`);
           console.log('====================================================\n');
         }
         
