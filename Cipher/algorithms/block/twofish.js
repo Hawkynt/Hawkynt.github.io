@@ -51,6 +51,75 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
+  // ===== TWOFISH CONSTANTS =====
+
+  // Twofish S-box permutation tables from reference implementation
+  const P = [
+    // p0
+    [
+      0xA9, 0x67, 0xB3, 0xE8, 0x04, 0xFD, 0xA3, 0x76, 0x9A, 0x92, 0x80, 0x78, 0xE4, 0xDD, 0xD1, 0x38,
+      0x0D, 0xC6, 0x35, 0x98, 0x18, 0xF7, 0xEC, 0x6C, 0x43, 0x75, 0x37, 0x26, 0xFA, 0x13, 0x94, 0x48,
+      0xF2, 0xD0, 0x8B, 0x30, 0x84, 0x54, 0xDF, 0x23, 0x19, 0x5B, 0x3D, 0x59, 0xF3, 0xAE, 0xA2, 0x82,
+      0x63, 0x01, 0x83, 0x2E, 0xD9, 0x51, 0x9B, 0x7C, 0xA6, 0xEB, 0xA5, 0xBE, 0x16, 0x0C, 0xE3, 0x61,
+      0xC0, 0x8C, 0x3A, 0xF5, 0x73, 0x2C, 0x25, 0x0B, 0xBB, 0x4E, 0x89, 0x6B, 0x53, 0x6A, 0xB4, 0xF1,
+      0xE1, 0xE6, 0xBD, 0x45, 0xE2, 0xF4, 0xB6, 0x66, 0xCC, 0x95, 0x03, 0x56, 0xD4, 0x1C, 0x1E, 0xD7,
+      0xFB, 0xC3, 0x8E, 0xB5, 0xE9, 0xCF, 0xBF, 0xBA, 0xEA, 0x77, 0x39, 0xAF, 0x33, 0xC9, 0x62, 0x71,
+      0x81, 0x79, 0x09, 0xAD, 0x24, 0xCD, 0xF9, 0xD8, 0xE5, 0xC5, 0xB9, 0x4D, 0x44, 0x08, 0x86, 0xE7,
+      0xA1, 0x1D, 0xAA, 0xED, 0x06, 0x70, 0xB2, 0xD2, 0x41, 0x7B, 0xA0, 0x11, 0x31, 0xC2, 0x27, 0x90,
+      0x20, 0xF6, 0x60, 0xFF, 0x96, 0x5C, 0xB1, 0xAB, 0x9E, 0x9C, 0x52, 0x1B, 0x5F, 0x93, 0x0A, 0xEF,
+      0x91, 0x85, 0x49, 0xEE, 0x2D, 0x4F, 0x8F, 0x3B, 0x47, 0x87, 0x6D, 0x46, 0xD6, 0x3E, 0x69, 0x64,
+      0x2A, 0xCE, 0xCB, 0x2F, 0xFC, 0x97, 0x05, 0x7A, 0xAC, 0x7F, 0xD5, 0x1A, 0x4B, 0x0E, 0xA7, 0x5A,
+      0x28, 0x14, 0x3F, 0x29, 0x88, 0x3C, 0x4C, 0x02, 0xB8, 0xDA, 0xB0, 0x17, 0x55, 0x1F, 0x8A, 0x7D,
+      0x57, 0xC7, 0x8D, 0x74, 0xB7, 0xC4, 0x9F, 0x72, 0x7E, 0x15, 0x22, 0x12, 0x58, 0x07, 0x99, 0x34,
+      0x6E, 0x50, 0xDE, 0x68, 0x65, 0xBC, 0xDB, 0xF8, 0xC8, 0xA8, 0x2B, 0x40, 0xDC, 0xFE, 0x32, 0xA4,
+      0xCA, 0x10, 0x21, 0xF0, 0xD3, 0x5D, 0x0F, 0x00, 0x6F, 0x9D, 0x36, 0x42, 0x4A, 0x5E, 0xC1, 0xE0
+    ],
+    // p1
+    [
+      0x75, 0xF3, 0xC6, 0xF4, 0xDB, 0x7B, 0xFB, 0xC8, 0x4A, 0xD3, 0xE6, 0x6B, 0x45, 0x7D, 0xE8, 0x4B,
+      0xD6, 0x32, 0xD8, 0xFD, 0x37, 0x71, 0xF1, 0xE1, 0x30, 0x0F, 0xF8, 0x1B, 0x87, 0xFA, 0x06, 0x3F,
+      0x5E, 0xBA, 0xAE, 0x5B, 0x8A, 0x00, 0xBC, 0x9D, 0x6D, 0xC1, 0xB1, 0x0E, 0x80, 0x5D, 0xD2, 0xD5,
+      0xA0, 0x84, 0x07, 0x14, 0xB5, 0x90, 0x2C, 0xA3, 0xB2, 0x73, 0x4C, 0x54, 0x92, 0x74, 0x36, 0x51,
+      0x38, 0xB0, 0xBD, 0x5A, 0xFC, 0x60, 0x62, 0x96, 0x6C, 0x42, 0xF7, 0x10, 0x7C, 0x28, 0x27, 0x8C,
+      0x13, 0x95, 0x9C, 0xC7, 0x24, 0x46, 0x3B, 0x70, 0xCA, 0xE3, 0x85, 0xCB, 0x11, 0xD0, 0x93, 0xB8,
+      0xA6, 0x83, 0x20, 0xFF, 0x9F, 0x77, 0xC3, 0xCC, 0x03, 0x6F, 0x08, 0xBF, 0x40, 0xE7, 0x2B, 0xE2,
+      0x79, 0x0C, 0xAA, 0x82, 0x41, 0x3A, 0xEA, 0xB9, 0xE4, 0x9A, 0xA4, 0x97, 0x7E, 0xDA, 0x7A, 0x17,
+      0x66, 0x94, 0xA1, 0x1D, 0x3D, 0xF0, 0xDE, 0xB3, 0x0B, 0x72, 0xA7, 0x1C, 0xEF, 0xD1, 0x53, 0x3E,
+      0x8F, 0x33, 0x26, 0x5F, 0xEC, 0x76, 0x2A, 0x49, 0x81, 0x88, 0xEE, 0x21, 0xC4, 0x1A, 0xEB, 0xD9,
+      0xC5, 0x39, 0x99, 0xCD, 0xAD, 0x31, 0x8B, 0x01, 0x18, 0x23, 0xDD, 0x1F, 0x4E, 0x2D, 0xF9, 0x48,
+      0x4F, 0xF2, 0x65, 0x8E, 0x78, 0x5C, 0x58, 0x19, 0x8D, 0xE5, 0x98, 0x57, 0x67, 0x7F, 0x05, 0x64,
+      0xAF, 0x63, 0xB6, 0xFE, 0xF5, 0xB7, 0x3C, 0xA5, 0xCE, 0xE9, 0x68, 0x44, 0xE0, 0x4D, 0x43, 0x69,
+      0x29, 0x2E, 0xAC, 0x15, 0x59, 0xA8, 0x0A, 0x9E, 0x6E, 0x47, 0xDF, 0x34, 0x35, 0x6A, 0xCF, 0xDC,
+      0x22, 0xC9, 0xC0, 0x9B, 0x89, 0xD4, 0xED, 0xAB, 0x12, 0xA2, 0x0D, 0x52, 0xBB, 0x02, 0x2F, 0xA9,
+      0xD7, 0x61, 0x1E, 0xB4, 0x50, 0x04, 0xF6, 0xC2, 0x16, 0x25, 0x86, 0x56, 0x55, 0x09, 0xBE, 0x91
+    ]
+  ];
+
+  // Constants from C# reference
+  const P_00 = 1, P_01 = 0, P_02 = 0, P_03 = P_01 ^ 1, P_04 = 1;
+  const P_10 = 0, P_11 = 0, P_12 = 1, P_13 = P_11 ^ 1, P_14 = 0;
+  const P_20 = 1, P_21 = 1, P_22 = 0, P_23 = P_21 ^ 1, P_24 = 0;
+  const P_30 = 0, P_31 = 1, P_32 = 1, P_33 = P_31 ^ 1, P_34 = 1;
+
+  const GF256_FDBK = 0x169;
+  const GF256_FDBK_2 = Math.floor(GF256_FDBK / 2);
+  const GF256_FDBK_4 = Math.floor(GF256_FDBK / 4);
+  const RS_GF_FDBK = 0x14D;
+
+  const ROUNDS = 16;
+  const MAX_ROUNDS = 16;
+  const BLOCK_SIZE = 16;
+  const MAX_KEY_BITS = 256;
+
+  const INPUT_WHITEN = 0;
+  const OUTPUT_WHITEN = INPUT_WHITEN + Math.floor(BLOCK_SIZE / 4);
+  const ROUND_SUBKEYS = OUTPUT_WHITEN + Math.floor(BLOCK_SIZE / 4);
+  const TOTAL_SUBKEYS = ROUND_SUBKEYS + 2 * MAX_ROUNDS;
+
+  const SK_STEP = 0x02020202;
+  const SK_BUMP = 0x01010101;
+  const SK_ROTL = 9;
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   class TwofishAlgorithm extends BlockCipherAlgorithm {
@@ -122,6 +191,55 @@
           expected: OpCodes.Hex8ToBytes("57FF739D4DC92C1BD7FC01700CC8216F")
         }
       ];
+
+      // Initialize MDS matrices
+      this.gMDS0 = new Array(MAX_KEY_BITS);
+      this.gMDS1 = new Array(MAX_KEY_BITS);
+      this.gMDS2 = new Array(MAX_KEY_BITS);
+      this.gMDS3 = new Array(MAX_KEY_BITS);
+      this._initializeMDS();
+    }
+
+    _initializeMDS() {
+      const m1 = new Array(2);
+      const mX = new Array(2);
+      const mY = new Array(2);
+      let j;
+
+      for (let i = 0; i < MAX_KEY_BITS; i++) {
+        j = P[0][i] & 0xff;
+        m1[0] = j;
+        mX[0] = this._Mx_X(j) & 0xff;
+        mY[0] = this._Mx_Y(j) & 0xff;
+
+        j = P[1][i] & 0xff;
+        m1[1] = j;
+        mX[1] = this._Mx_X(j) & 0xff;
+        mY[1] = this._Mx_Y(j) & 0xff;
+
+        this.gMDS0[i] = m1[P_00] | (mX[P_00] << 8) | (mY[P_00] << 16) | (mY[P_00] << 24);
+        this.gMDS1[i] = mY[P_10] | (mY[P_10] << 8) | (mX[P_10] << 16) | (m1[P_10] << 24);
+        this.gMDS2[i] = mX[P_20] | (mY[P_20] << 8) | (m1[P_20] << 16) | (mY[P_20] << 24);
+        this.gMDS3[i] = mX[P_30] | (m1[P_30] << 8) | (mY[P_30] << 16) | (mX[P_30] << 24);
+      }
+    }
+
+    _LFSR1(x) {
+      return ((x >>> 1) ^ (((x & 0x01) !== 0) ? GF256_FDBK_2 : 0));
+    }
+
+    _LFSR2(x) {
+      return ((x >>> 2) ^
+              (((x & 0x02) !== 0) ? GF256_FDBK_2 : 0) ^
+              (((x & 0x01) !== 0) ? GF256_FDBK_4 : 0));
+    }
+
+    _Mx_X(x) {
+      return x ^ this._LFSR2(x);
+    }
+
+    _Mx_Y(x) {
+      return x ^ this._LFSR1(x) ^ this._LFSR2(x);
     }
 
     CreateInstance(isInverse = false) {
@@ -139,23 +257,24 @@
       this.KeySize = 0;
 
       // Twofish-specific state
-      this.subKeys = null;
-      this.sBox = null;
+      this.gSubKeys = null;
+      this.gSBox = null;
+      this.k64Cnt = 0;
+      this.workingKey = null;
     }
 
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
         this.KeySize = 0;
-        this.subKeys = null;
-        this.sBox = null;
+        this.gSubKeys = null;
+        this.gSBox = null;
         return;
       }
 
       // Validate key size (16, 24, or 32 bytes)
       const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (keyBytes.length - ks.minSize) % ks.stepSize === 0
+        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
       );
 
       if (!isValidSize) {
@@ -164,7 +283,9 @@
 
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
-      this._generateKeySchedule(keyBytes);
+      this.workingKey = [...keyBytes];
+      this.k64Cnt = Math.floor(keyBytes.length / 8);
+      this._setKey(keyBytes);
     }
 
     get key() {
@@ -193,8 +314,8 @@
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
         const processedBlock = this.isInverse 
-          ? this._decryptBlock(block) 
-          : this._encryptBlock(block);
+          ? this._decryptBlockInternal(block) 
+          : this._encryptBlockInternal(block);
         output.push(...processedBlock);
       }
 
@@ -204,310 +325,228 @@
       return output;
     }
 
-    _generateKeySchedule(key) {
-      // Twofish key schedule implementation
-      this.subKeys = [];
-      this.sBox = [[], [], [], []];
+    _setKey(key) {
+      const k32e = new Array(Math.floor(MAX_KEY_BITS / 64));
+      const k32o = new Array(Math.floor(MAX_KEY_BITS / 64));
+      const sBoxKeys = new Array(Math.floor(MAX_KEY_BITS / 64));
+      this.gSubKeys = new Array(TOTAL_SUBKEYS);
 
-      const keyLength = key.length;
-      const k = keyLength / 8; // Number of 64-bit key words
-
-      // Create Me and Mo words from key
-      const Me = [];
-      const Mo = [];
-
-      for (let i = 0; i < k; i++) {
-        Me[i] = OpCodes.Pack32LE(
-          key[8*i], key[8*i+1], key[8*i+2], key[8*i+3]
-        );
-        Mo[i] = OpCodes.Pack32LE(
-          key[8*i+4], key[8*i+5], key[8*i+6], key[8*i+7]
-        );
+      // Extract key material
+      for (let i = 0; i < this.k64Cnt; i++) {
+        const p = i * 8;
+        k32e[i] = OpCodes.Pack32LE(key[p], key[p + 1], key[p + 2], key[p + 3]);
+        k32o[i] = OpCodes.Pack32LE(key[p + 4], key[p + 5], key[p + 6], key[p + 7]);
+        sBoxKeys[this.k64Cnt - 1 - i] = this._RS_MDS_Encode(k32e[i], k32o[i]);
       }
 
-      // Generate round subkeys
-      const rho = 0x01010101;
-      for (let i = 0; i < 20; i++) {
-        const A = this._h(2*i * rho, Me, k);
-        const B = OpCodes.RotL32(this._h((2*i+1) * rho, Mo, k), 8);
-
-        this.subKeys[2*i] = (A + B) >>> 0;
-        this.subKeys[2*i+1] = OpCodes.RotL32((A + 2*B) >>> 0, 9);
+      let q, A, B;
+      for (let i = 0; i < Math.floor(TOTAL_SUBKEYS / 2); i++) {
+        q = i * SK_STEP;
+        A = this._F32(q, k32e);
+        B = this._F32(q + SK_BUMP, k32o);
+        B = OpCodes.RotL32(B, 8);
+        A = (A + B) >>> 0;
+        this.gSubKeys[i * 2] = A;
+        A = (A + B) >>> 0;
+        this.gSubKeys[i * 2 + 1] = OpCodes.RotL32(A, SK_ROTL);
       }
 
-      // Generate S-box keys
-      const S = [];
-      for (let i = 0; i < k; i++) {
-        // Create S-box key material from key bytes
-        for (let j = 0; j < 4; j++) {
-          if (!S[j]) S[j] = [];
-          S[j][i] = key[8*i + 4 + j];
+      // Fully expand the S-box table for speed
+      const k0 = sBoxKeys[0] || 0;
+      const k1 = sBoxKeys[1] || 0;
+      const k2 = sBoxKeys[2] || 0;
+      const k3 = sBoxKeys[3] || 0;
+      let b0, b1, b2, b3;
+      this.gSBox = new Array(4 * MAX_KEY_BITS);
+      
+      for (let i = 0; i < MAX_KEY_BITS; i++) {
+        b0 = b1 = b2 = b3 = i;
+        switch (this.k64Cnt & 3) {
+          case 1:
+            this.gSBox[i * 2] = this.algorithm.gMDS0[(P[P_01][b0] & 0xff) ^ this._M_b0(k0)];
+            this.gSBox[i * 2 + 1] = this.algorithm.gMDS1[(P[P_11][b1] & 0xff) ^ this._M_b1(k0)];
+            this.gSBox[i * 2 + 0x200] = this.algorithm.gMDS2[(P[P_21][b2] & 0xff) ^ this._M_b2(k0)];
+            this.gSBox[i * 2 + 0x201] = this.algorithm.gMDS3[(P[P_31][b3] & 0xff) ^ this._M_b3(k0)];
+            break;
+          case 0: // 256 bits of key
+            b0 = (P[P_04][b0] & 0xff) ^ this._M_b0(k3);
+            b1 = (P[P_14][b1] & 0xff) ^ this._M_b1(k3);
+            b2 = (P[P_24][b2] & 0xff) ^ this._M_b2(k3);
+            b3 = (P[P_34][b3] & 0xff) ^ this._M_b3(k3);
+            // fall through
+          case 3: // 192 bits of key
+            b0 = (P[P_03][b0] & 0xff) ^ this._M_b0(k2);
+            b1 = (P[P_13][b1] & 0xff) ^ this._M_b1(k2);
+            b2 = (P[P_23][b2] & 0xff) ^ this._M_b2(k2);
+            b3 = (P[P_33][b3] & 0xff) ^ this._M_b3(k2);
+            // fall through
+          case 2: // 128 bits of key
+            this.gSBox[i * 2] = this.algorithm.gMDS0[(P[P_01][(P[P_02][b0] & 0xff) ^ this._M_b0(k1)] & 0xff) ^ this._M_b0(k0)];
+            this.gSBox[i * 2 + 1] = this.algorithm.gMDS1[(P[P_11][(P[P_12][b1] & 0xff) ^ this._M_b1(k1)] & 0xff) ^ this._M_b1(k0)];
+            this.gSBox[i * 2 + 0x200] = this.algorithm.gMDS2[(P[P_21][(P[P_22][b2] & 0xff) ^ this._M_b2(k1)] & 0xff) ^ this._M_b2(k0)];
+            this.gSBox[i * 2 + 0x201] = this.algorithm.gMDS3[(P[P_31][(P[P_32][b3] & 0xff) ^ this._M_b3(k1)] & 0xff) ^ this._M_b3(k0)];
+            break;
         }
       }
-
-      // Generate key-dependent S-boxes using proper Twofish S-box construction
-      for (let i = 0; i < 256; i++) {
-        this.sBox[0][i] = this._generateSBoxEntry(i, S[0], k);
-        this.sBox[1][i] = this._generateSBoxEntry(i, S[1], k);
-        this.sBox[2][i] = this._generateSBoxEntry(i, S[2], k);
-        this.sBox[3][i] = this._generateSBoxEntry(i, S[3], k);
-      }
     }
 
-    _h(x, key, k) {
-      // Twofish h function for key schedule
-      const bytes = OpCodes.Unpack32LE(x);
+    _encryptBlockInternal(input) {
+      let x0 = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]) ^ this.gSubKeys[INPUT_WHITEN];
+      let x1 = OpCodes.Pack32LE(input[4], input[5], input[6], input[7]) ^ this.gSubKeys[INPUT_WHITEN + 1];
+      let x2 = OpCodes.Pack32LE(input[8], input[9], input[10], input[11]) ^ this.gSubKeys[INPUT_WHITEN + 2];
+      let x3 = OpCodes.Pack32LE(input[12], input[13], input[14], input[15]) ^ this.gSubKeys[INPUT_WHITEN + 3];
 
-      // Apply key-dependent transformations
-      let y0 = bytes[0], y1 = bytes[1], y2 = bytes[2], y3 = bytes[3];
+      let k = ROUND_SUBKEYS;
+      let t0, t1;
+      for (let r = 0; r < ROUNDS; r += 2) {
+        t0 = this._Fe32_0(x0);
+        t1 = this._Fe32_3(x1);
+        x2 ^= (t0 + t1 + this.gSubKeys[k++]) >>> 0;
+        x2 = OpCodes.RotR32(x2, 1);
+        x3 = OpCodes.RotL32(x3, 1) ^ ((t0 + 2 * t1 + this.gSubKeys[k++]) >>> 0);
 
-      if (k === 4) {
-        y0 = this._q1(y0) ^ OpCodes.Unpack32LE(key[3])[0];
-        y1 = this._q0(y1) ^ OpCodes.Unpack32LE(key[3])[1];
-        y2 = this._q0(y2) ^ OpCodes.Unpack32LE(key[3])[2];
-        y3 = this._q1(y3) ^ OpCodes.Unpack32LE(key[3])[3];
-      }
-      if (k >= 3) {
-        y0 = this._q1(y0) ^ OpCodes.Unpack32LE(key[2])[0];
-        y1 = this._q1(y1) ^ OpCodes.Unpack32LE(key[2])[1];
-        y2 = this._q0(y2) ^ OpCodes.Unpack32LE(key[2])[2];
-        y3 = this._q0(y3) ^ OpCodes.Unpack32LE(key[2])[3];
-      }
-      if (k >= 2) {
-        y0 = this._q1(this._q0(this._q0(y0) ^ OpCodes.Unpack32LE(key[1])[0]) ^ OpCodes.Unpack32LE(key[0])[0]);
-        y1 = this._q0(this._q0(this._q1(y1) ^ OpCodes.Unpack32LE(key[1])[1]) ^ OpCodes.Unpack32LE(key[0])[1]);
-        y2 = this._q1(this._q1(this._q0(y2) ^ OpCodes.Unpack32LE(key[1])[2]) ^ OpCodes.Unpack32LE(key[0])[2]);
-        y3 = this._q0(this._q1(this._q1(y3) ^ OpCodes.Unpack32LE(key[1])[3]) ^ OpCodes.Unpack32LE(key[0])[3]);
+        t0 = this._Fe32_0(x2);
+        t1 = this._Fe32_3(x3);
+        x0 ^= (t0 + t1 + this.gSubKeys[k++]) >>> 0;
+        x0 = OpCodes.RotR32(x0, 1);
+        x1 = OpCodes.RotL32(x1, 1) ^ ((t0 + 2 * t1 + this.gSubKeys[k++]) >>> 0);
       }
 
-      // Apply MDS matrix
-      return this._mds(OpCodes.Pack32LE(y0, y1, y2, y3));
+      const output = [];
+      const out2 = OpCodes.Unpack32LE((x2 ^ this.gSubKeys[OUTPUT_WHITEN]) >>> 0);
+      const out3 = OpCodes.Unpack32LE((x3 ^ this.gSubKeys[OUTPUT_WHITEN + 1]) >>> 0);
+      const out0 = OpCodes.Unpack32LE((x0 ^ this.gSubKeys[OUTPUT_WHITEN + 2]) >>> 0);
+      const out1 = OpCodes.Unpack32LE((x1 ^ this.gSubKeys[OUTPUT_WHITEN + 3]) >>> 0);
+      
+      output.push(...out2, ...out3, ...out0, ...out1);
+      return output;
     }
 
-    _generateSBoxEntry(input, keyBytes, k) {
-      let value = input;
+    _decryptBlockInternal(input) {
+      let x2 = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]) ^ this.gSubKeys[OUTPUT_WHITEN];
+      let x3 = OpCodes.Pack32LE(input[4], input[5], input[6], input[7]) ^ this.gSubKeys[OUTPUT_WHITEN + 1];
+      let x0 = OpCodes.Pack32LE(input[8], input[9], input[10], input[11]) ^ this.gSubKeys[OUTPUT_WHITEN + 2];
+      let x1 = OpCodes.Pack32LE(input[12], input[13], input[14], input[15]) ^ this.gSubKeys[OUTPUT_WHITEN + 3];
 
-      // Apply key-dependent S-box construction based on k
-      if (k === 4) {
-        value = this._q1(value ^ keyBytes[3]);
-      }
-      if (k >= 3) {
-        value = this._q0(value ^ keyBytes[2]);
-      }
-      if (k >= 2) {
-        value = this._q0(this._q1(value ^ keyBytes[1]) ^ keyBytes[0]);
-      }
+      let k = ROUND_SUBKEYS + 2 * ROUNDS - 1;
+      let t0, t1;
+      for (let r = 0; r < ROUNDS; r += 2) {
+        t0 = this._Fe32_0(x2);
+        t1 = this._Fe32_3(x3);
+        x1 ^= (t0 + 2 * t1 + this.gSubKeys[k--]) >>> 0;
+        x0 = OpCodes.RotL32(x0, 1) ^ ((t0 + t1 + this.gSubKeys[k--]) >>> 0);
+        x1 = OpCodes.RotR32(x1, 1);
 
-      return value & 0xFF;
-    }
-
-    _q0(x) {
-      // Official Twofish Q0 permutation table
-      const q0 = [
-        0xA9, 0x67, 0xB3, 0xE8, 0x04, 0xFD, 0xA0, 0x2C, 0x9A, 0xF4, 0x45, 0x6F, 0xBF, 0x4C, 0x69, 0x13,
-        0x78, 0x95, 0x16, 0x63, 0x21, 0x30, 0x6E, 0x8A, 0xB1, 0xC4, 0x62, 0x35, 0xC0, 0xEF, 0x81, 0x96,
-        0xE7, 0x2B, 0x27, 0xD4, 0xC2, 0xF5, 0xD1, 0x0F, 0xDA, 0x24, 0x68, 0xB6, 0x1C, 0x73, 0x90, 0xEB,
-        0x84, 0xBE, 0x5A, 0xFC, 0xA6, 0x0A, 0x44, 0x1B, 0x08, 0xA4, 0xE9, 0x4B, 0x66, 0x17, 0xDA, 0x7E,
-        0x14, 0x95, 0x80, 0x99, 0x34, 0x6F, 0x15, 0x3C, 0x42, 0x7D, 0x8C, 0xD1, 0x40, 0x4F, 0x89, 0x2F,
-        0x54, 0x85, 0xCA, 0x28, 0x2E, 0xA6, 0x30, 0x49, 0x62, 0x87, 0x05, 0x1F, 0xB9, 0xFA, 0x91, 0x18,
-        0x33, 0x82, 0x8E, 0x2B, 0xE4, 0x14, 0x54, 0x41, 0x81, 0x20, 0x43, 0x48, 0x10, 0x45, 0x93, 0x48,
-        0x65, 0x69, 0x45, 0x6A, 0xDF, 0x02, 0x05, 0xCE, 0xE9, 0x2E, 0x3A, 0x61, 0x0A, 0x57, 0x97, 0x64,
-        0xD5, 0x32, 0xBD, 0x64, 0x5D, 0x4E, 0xB6, 0xD6, 0x74, 0xA5, 0x88, 0x0A, 0x36, 0x1E, 0xD6, 0x49,
-        0x2A, 0x68, 0x40, 0x7A, 0xD1, 0x2F, 0x08, 0x87, 0x0C, 0x78, 0x3E, 0x27, 0xBE, 0x54, 0xE7, 0xF2,
-        0x5D, 0x40, 0x71, 0x0A, 0x05, 0xFE, 0x98, 0x5C, 0x80, 0x15, 0xBF, 0x14, 0xAB, 0x4C, 0x7C, 0xA7,
-        0xD3, 0x38, 0x21, 0x90, 0x9F, 0x5B, 0xE8, 0x29, 0x1E, 0x06, 0xC6, 0x52, 0x08, 0x19, 0x85, 0x1F,
-        0x22, 0xCF, 0x52, 0x83, 0x9A, 0x42, 0x69, 0x16, 0x50, 0x89, 0x9E, 0x38, 0x08, 0x3C, 0x7A, 0x6B,
-        0x4C, 0x1A, 0x29, 0xC1, 0x06, 0x65, 0x4F, 0xDD, 0xA8, 0xB8, 0xCF, 0x09, 0x08, 0x59, 0x50, 0x66,
-        0x4A, 0x02, 0xE9, 0x7C, 0x6E, 0x6B, 0x33, 0x0E, 0xA5, 0xF3, 0x2C, 0x4E, 0x81, 0x15, 0x7C, 0x53,
-        0x45, 0x9B, 0x92, 0xC2, 0x63, 0xAE, 0x53, 0x86, 0x95, 0x85, 0x79, 0xB6, 0x98, 0xFE, 0xA8, 0x90
-      ];
-      return q0[x & 0xFF];
-    }
-
-    _q1(x) {
-      // Official Twofish Q1 permutation table
-      const q1 = [
-        0x75, 0xF3, 0xC6, 0xF4, 0xDB, 0x7B, 0xFB, 0xC8, 0x4A, 0xD3, 0xE6, 0x6B, 0x45, 0x7D, 0xE8, 0x4B,
-        0xD6, 0x32, 0xD8, 0xFD, 0x37, 0x71, 0xF1, 0xE1, 0x30, 0x0F, 0xF8, 0x1B, 0x87, 0xFA, 0x06, 0x3F,
-        0x5E, 0xBA, 0xAE, 0x5B, 0x8A, 0x00, 0xBC, 0x9D, 0x6D, 0xC1, 0xB1, 0x0E, 0x80, 0x5D, 0xD2, 0xD5,
-        0xA0, 0x84, 0x07, 0x14, 0xB5, 0x90, 0x2C, 0xA3, 0xB2, 0x73, 0x4C, 0x54, 0x92, 0x74, 0x36, 0x51,
-        0x38, 0xB0, 0xBD, 0x5A, 0xFC, 0x60, 0x62, 0x96, 0x6C, 0x42, 0xF7, 0x10, 0x7C, 0x28, 0x27, 0x8C,
-        0x13, 0x95, 0x9C, 0xC7, 0x24, 0x46, 0x3B, 0x70, 0xCA, 0xE3, 0x85, 0xCB, 0x11, 0xD0, 0x93, 0xB8,
-        0xA6, 0x83, 0x20, 0xFF, 0x9F, 0x77, 0xC3, 0xCC, 0x03, 0x6F, 0x08, 0xBF, 0x40, 0xE7, 0x2B, 0xE2,
-        0x79, 0x0C, 0xAA, 0x82, 0x41, 0x3A, 0xEA, 0xB9, 0xE4, 0x9A, 0xA4, 0x97, 0x7E, 0xDA, 0x7A, 0x17,
-        0x66, 0x94, 0xA1, 0x1D, 0x3D, 0xF0, 0xDE, 0xB3, 0x0B, 0x72, 0xA7, 0x1C, 0xEF, 0xD1, 0x53, 0x3E,
-        0x8F, 0x33, 0x26, 0x5F, 0xEC, 0x76, 0x2A, 0x49, 0x81, 0x88, 0xEE, 0x21, 0xC4, 0x1A, 0xEB, 0xD9,
-        0xC5, 0x39, 0x99, 0xCD, 0xAD, 0x31, 0x8B, 0x01, 0x18, 0x23, 0xDD, 0x1F, 0x4E, 0x2D, 0xF9, 0x48,
-        0x4F, 0xF2, 0x65, 0x8E, 0x78, 0x5C, 0x58, 0x19, 0x8D, 0xE5, 0x98, 0x57, 0x67, 0x7F, 0x05, 0x64,
-        0xAF, 0x63, 0xB6, 0xFE, 0xF5, 0xB7, 0x3C, 0xA5, 0xCE, 0xE9, 0x68, 0x44, 0xE0, 0x4D, 0x43, 0x69,
-        0x29, 0x2E, 0xAC, 0x15, 0x59, 0xA8, 0x0A, 0x9E, 0x6E, 0x47, 0xDF, 0x34, 0x35, 0x6A, 0xCF, 0xDC,
-        0x22, 0xC9, 0xC0, 0x9B, 0x89, 0xD4, 0xED, 0xAB, 0x12, 0xA2, 0x0D, 0x52, 0xBB, 0x02, 0x2F, 0xA9,
-        0xD7, 0x61, 0x1E, 0xB4, 0x50, 0x04, 0xF6, 0xC2, 0x16, 0x25, 0x86, 0x56, 0x55, 0x09, 0xBE, 0x91
-      ];
-      return q1[x & 0xFF];
-    }
-
-    _mds(x) {
-      // Twofish MDS matrix multiplication
-      const bytes = OpCodes.Unpack32LE(x);
-
-      // MDS matrix coefficients in GF(2^8)
-      const mds = [
-        [0x01, 0xEF, 0x5B, 0x5B],
-        [0x5B, 0xEF, 0xEF, 0x01],
-        [0xEF, 0x5B, 0x01, 0xEF],
-        [0xEF, 0x01, 0xEF, 0x5B]
-      ];
-
-      const result = [0, 0, 0, 0];
-      for (let i = 0; i < 4; i++) {
-        for (let j = 0; j < 4; j++) {
-          result[i] ^= this._gfMultiply(mds[i][j], bytes[j]);
-        }
+        t0 = this._Fe32_0(x0);
+        t1 = this._Fe32_3(x1);
+        x3 ^= (t0 + 2 * t1 + this.gSubKeys[k--]) >>> 0;
+        x2 = OpCodes.RotL32(x2, 1) ^ ((t0 + t1 + this.gSubKeys[k--]) >>> 0);
+        x3 = OpCodes.RotR32(x3, 1);
       }
 
-      return OpCodes.Pack32LE(result[0], result[1], result[2], result[3]);
+      const output = [];
+      const out0 = OpCodes.Unpack32LE((x0 ^ this.gSubKeys[INPUT_WHITEN]) >>> 0);
+      const out1 = OpCodes.Unpack32LE((x1 ^ this.gSubKeys[INPUT_WHITEN + 1]) >>> 0);
+      const out2 = OpCodes.Unpack32LE((x2 ^ this.gSubKeys[INPUT_WHITEN + 2]) >>> 0);
+      const out3 = OpCodes.Unpack32LE((x3 ^ this.gSubKeys[INPUT_WHITEN + 3]) >>> 0);
+      
+      output.push(...out0, ...out1, ...out2, ...out3);
+      return output;
     }
 
-    _gfMultiply(a, b) {
-      // Galois Field multiplication in GF(2^8)
+    _F32(x, k32) {
+      let b0 = this._M_b0(x);
+      let b1 = this._M_b1(x);
+      let b2 = this._M_b2(x);
+      let b3 = this._M_b3(x);
+      const k0 = k32[0] || 0;
+      const k1 = k32[1] || 0;
+      const k2 = k32[2] || 0;
+      const k3 = k32[3] || 0;
+
       let result = 0;
-      for (let i = 0; i < 8; i++) {
-        if (b & 1) result ^= a;
-        const carry = a & 0x80;
-        a <<= 1;
-        if (carry) a ^= 0x169; // Twofish irreducible polynomial
-        b >>>= 1;
+      switch (this.k64Cnt & 3) {
+        case 1:
+          result = this.algorithm.gMDS0[(P[P_01][b0] & 0xff) ^ this._M_b0(k0)] ^
+                  this.algorithm.gMDS1[(P[P_11][b1] & 0xff) ^ this._M_b1(k0)] ^
+                  this.algorithm.gMDS2[(P[P_21][b2] & 0xff) ^ this._M_b2(k0)] ^
+                  this.algorithm.gMDS3[(P[P_31][b3] & 0xff) ^ this._M_b3(k0)];
+          break;
+        case 0: // 256 bits of key
+          b0 = (P[P_04][b0] & 0xff) ^ this._M_b0(k3);
+          b1 = (P[P_14][b1] & 0xff) ^ this._M_b1(k3);
+          b2 = (P[P_24][b2] & 0xff) ^ this._M_b2(k3);
+          b3 = (P[P_34][b3] & 0xff) ^ this._M_b3(k3);
+          // fall through
+        case 3: // 192 bits of key
+          b0 = (P[P_03][b0] & 0xff) ^ this._M_b0(k2);
+          b1 = (P[P_13][b1] & 0xff) ^ this._M_b1(k2);
+          b2 = (P[P_23][b2] & 0xff) ^ this._M_b2(k2);
+          b3 = (P[P_33][b3] & 0xff) ^ this._M_b3(k2);
+          // fall through
+        case 2: // 128 bits of key
+          result = this.algorithm.gMDS0[(P[P_01][(P[P_02][b0] & 0xff) ^ this._M_b0(k1)] & 0xff) ^ this._M_b0(k0)] ^
+                  this.algorithm.gMDS1[(P[P_11][(P[P_12][b1] & 0xff) ^ this._M_b1(k1)] & 0xff) ^ this._M_b1(k0)] ^
+                  this.algorithm.gMDS2[(P[P_21][(P[P_22][b2] & 0xff) ^ this._M_b2(k1)] & 0xff) ^ this._M_b2(k0)] ^
+                  this.algorithm.gMDS3[(P[P_31][(P[P_32][b3] & 0xff) ^ this._M_b3(k1)] & 0xff) ^ this._M_b3(k0)];
+          break;
       }
-      return result & 0xFF;
+      return result >>> 0;
     }
 
-    _encryptBlock(block) {
-      if (!this.subKeys) {
-        throw new Error("Subkeys not generated");
+    _RS_MDS_Encode(k0, k1) {
+      let r = k1;
+      for (let i = 0; i < 4; i++) { // shift 1 byte at a time
+        r = this._RS_rem(r);
       }
-
-      // Convert block to 32-bit words (little-endian)
-      let P0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
-      let P1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
-      let P2 = OpCodes.Pack32LE(block[8], block[9], block[10], block[11]);
-      let P3 = OpCodes.Pack32LE(block[12], block[13], block[14], block[15]);
-
-      // Input whitening
-      P0 ^= this.subKeys[0];
-      P1 ^= this.subKeys[1];
-      P2 ^= this.subKeys[2];
-      P3 ^= this.subKeys[3];
-
-      // 16 rounds of Twofish
-      for (let round = 0; round < 16; round++) {
-        const [T0, T1] = this._fFunction(P0, P1, round);
-
-        P2 = OpCodes.RotR32(P2 ^ T0, 1);
-        P3 = OpCodes.RotL32(P3, 1) ^ T1;
-
-        // Swap for next round (except last round)
-        if (round < 15) {
-          [P0, P1, P2, P3] = [P2, P3, P0, P1];
-        }
+      r ^= k0;
+      for (let i = 0; i < 4; i++) {
+        r = this._RS_rem(r);
       }
-
-      // Output whitening
-      P2 ^= this.subKeys[4];
-      P3 ^= this.subKeys[5];
-      P0 ^= this.subKeys[6];
-      P1 ^= this.subKeys[7];
-
-      // Convert back to bytes
-      const result = [];
-      result.push(...OpCodes.Unpack32LE(P2));
-      result.push(...OpCodes.Unpack32LE(P3));
-      result.push(...OpCodes.Unpack32LE(P0));
-      result.push(...OpCodes.Unpack32LE(P1));
-
-      return result;
+      return r >>> 0;
     }
 
-    _decryptBlock(block) {
-      if (!this.subKeys) {
-        throw new Error("Subkeys not generated");
-      }
-
-      // Convert block to 32-bit words (little-endian)
-      let C0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
-      let C1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
-      let C2 = OpCodes.Pack32LE(block[8], block[9], block[10], block[11]);
-      let C3 = OpCodes.Pack32LE(block[12], block[13], block[14], block[15]);
-
-      // Undo output whitening
-      C2 ^= this.subKeys[4];
-      C3 ^= this.subKeys[5];
-      C0 ^= this.subKeys[6];
-      C1 ^= this.subKeys[7];
-
-      // 16 rounds of Twofish in reverse
-      for (let round = 15; round >= 0; round--) {
-        // Undo swap from encryption (except first round)
-        if (round < 15) {
-          [C2, C3, C0, C1] = [C0, C1, C2, C3];
-        }
-
-        const [T0, T1] = this._fFunction(C0, C1, round);
-
-        C2 = OpCodes.RotL32(C2, 1) ^ T0;
-        C3 = OpCodes.RotR32(C3 ^ T1, 1);
-      }
-
-      // Undo input whitening
-      C0 ^= this.subKeys[0];
-      C1 ^= this.subKeys[1];
-      C2 ^= this.subKeys[2];
-      C3 ^= this.subKeys[3];
-
-      // Convert back to bytes
-      const result = [];
-      result.push(...OpCodes.Unpack32LE(C0));
-      result.push(...OpCodes.Unpack32LE(C1));
-      result.push(...OpCodes.Unpack32LE(C2));
-      result.push(...OpCodes.Unpack32LE(C3));
-
-      return result;
+    _RS_rem(x) {
+      const b = ((x >>> 24) & 0xff);
+      const g2 = ((b << 1) ^ ((b & 0x80) !== 0 ? RS_GF_FDBK : 0)) & 0xff;
+      const g3 = ((b >>> 1) ^ ((b & 0x01) !== 0 ? (RS_GF_FDBK >>> 1) : 0)) ^ g2;
+      return ((x << 8) ^ (g3 << 24) ^ (g2 << 16) ^ (g3 << 8) ^ b) >>> 0;
     }
 
-    _fFunction(r0, r1, round) {
-      // Twofish F-function implementation
-      const t0 = this._gFunction(r0);
-      const t1 = this._gFunction(OpCodes.RotL32(r1, 8));
-
-      // Pseudo-Hadamard Transform (PHT) with round subkeys
-      const f0 = (t0 + t1 + this.subKeys[8 + 2 * round]) >>> 0;
-      const f1 = (t0 + 2 * t1 + this.subKeys[8 + 2 * round + 1]) >>> 0;
-
-      return [f0, f1];
+    _M_b0(x) {
+      return x & 0xff;
     }
 
-    _gFunction(x) {
-      // Twofish G-function 
-      const bytes = OpCodes.Unpack32LE(x);
+    _M_b1(x) {
+      return (x >>> 8) & 0xff;
+    }
 
-      // Apply key-dependent S-boxes
-      const sBoxOutput = [
-        this.sBox[0][bytes[0]],
-        this.sBox[1][bytes[1]], 
-        this.sBox[2][bytes[2]],
-        this.sBox[3][bytes[3]]
-      ];
+    _M_b2(x) {
+      return (x >>> 16) & 0xff;
+    }
 
-      // Apply MDS matrix
-      return this._mds(OpCodes.Pack32LE(sBoxOutput[0], sBoxOutput[1], sBoxOutput[2], sBoxOutput[3]));
+    _M_b3(x) {
+      return (x >>> 24) & 0xff;
+    }
+
+    _Fe32_0(x) {
+      return this.gSBox[0x000 + 2 * (x & 0xff)] ^
+             this.gSBox[0x001 + 2 * ((x >>> 8) & 0xff)] ^
+             this.gSBox[0x200 + 2 * ((x >>> 16) & 0xff)] ^
+             this.gSBox[0x201 + 2 * ((x >>> 24) & 0xff)];
+    }
+
+    _Fe32_3(x) {
+      return this.gSBox[0x000 + 2 * ((x >>> 24) & 0xff)] ^
+             this.gSBox[0x001 + 2 * (x & 0xff)] ^
+             this.gSBox[0x200 + 2 * ((x >>> 8) & 0xff)] ^
+             this.gSBox[0x201 + 2 * ((x >>> 16) & 0xff)];
     }
   }
 
-  // Register the algorithm
-
   // ===== REGISTRATION =====
 
-    const algorithmInstance = new TwofishAlgorithm();
+  const algorithmInstance = new TwofishAlgorithm();
   if (!AlgorithmFramework.Find(algorithmInstance.name)) {
     RegisterAlgorithm(algorithmInstance);
   }

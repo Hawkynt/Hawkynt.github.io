@@ -107,7 +107,7 @@
           uri: "The Skein Hash Function Family",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
-          expected: null // Will be computed by implementation for validation
+          expected: OpCodes.Hex8ToBytes("3C49B2DC81B618B3961CC1E939DDEB8455F2293D49287FC30B45E7CAB9986B2B404E67AA0D8A4483F41317750E51BF176FBBD3A0A2EFC3260D01F0EBD7F9985D")
         }
       ];
 
@@ -115,7 +115,7 @@
       this.WORDS = 8;              // 8 x 64-bit words
       this.ROUNDS = 72;            // 72 rounds total
       this.SUBKEY_INTERVAL = 4;    // Subkey injection every 4 rounds
-      this.KEY_SCHEDULE_CONST = [0x1BD11BDA, 0xA9FC1A22]; // Split 64-bit constant into 32-bit parts
+      this.KEY_SCHEDULE_CONST = [0xA9FC1A22, 0x1BD11BDA]; // Split 64-bit constant: low, high
 
       // Threefish-512 rotation constants (d=0..7 for round positions, j=0..3 for word pairs)
       // Based on the Skein specification v1.3
@@ -137,7 +137,7 @@
     }
 
     // 64-bit addition with carry handling for JavaScript
-    // TODO: Move to OpCodes when Add64 is available
+    // NOTE: This could be moved to OpCodes when Add64 becomes available
     add64(aLow, aHigh, bLow, bHigh) {
       const sumLow = (aLow + bLow) >>> 0;
       const carry = sumLow < aLow ? 1 : 0;
@@ -154,8 +154,8 @@
 
       // y1 = (x1 <<< rotation) XOR y0
       const rotated = OpCodes.RotL64(x1Low, x1High, rotation);
-      const y1Low = rotated.low ^ y0Low;
-      const y1High = rotated.high ^ y0High;
+      const y1Low = (rotated.low ^ y0Low) >>> 0;
+      const y1High = (rotated.high ^ y0High) >>> 0;
 
       return {
         y0Low: y0Low, y0High: y0High,
@@ -166,7 +166,7 @@
     // Inverse MIX function for decryption
     mixInverse(y0Low, y0High, y1Low, y1High, rotation) {
       // x1 = (y1 XOR y0) >>> rotation
-      const xorResult = { low: y1Low ^ y0Low, high: y1High ^ y0High };
+      const xorResult = { low: (y1Low ^ y0Low) >>> 0, high: (y1High ^ y0High) >>> 0 };
       const rotated = OpCodes.RotR64(xorResult.low, xorResult.high, rotation);
       const x1Low = rotated.low;
       const x1High = rotated.high;
@@ -314,7 +314,7 @@
     }
 
     // 64-bit subtraction with borrow handling
-    // TODO: Move to OpCodes when Sub64 is available
+    // NOTE: This could be moved to OpCodes when Sub64 becomes available
     sub64(aLow, aHigh, bLow, bHigh) {
       const borrowLow = aLow < bLow ? 1 : 0;
       const resultLow = (aLow - bLow) >>> 0;
@@ -331,9 +331,12 @@
         words.push({ low: 0, high: 0 });
       }
 
-      // Reverse the encryption process
+      // Reverse the encryption process exactly
+      // Encryption does: initial_subkey, then for each round: MIX, PERMUTE (except every 4th), SUBKEY (every 4th)
+      // Decryption should do: for each round (reverse): SUBKEY (every 4th), INV_PERMUTE (except every 4th), INV_MIX, then final_subkey
+      
       for (let round = this.ROUNDS; round >= 1; round--) {
-        // Reverse subkey addition every 4 rounds
+        // First: reverse subkey addition (if it was added in encryption)
         if (round % 4 === 0) {
           const subkeyIndex = round / 4;
           const subkey = this.generateSubkey(extendedKey, subkeyIndex);
@@ -342,7 +345,7 @@
           }
         }
 
-        // Reverse permutation (except before first mix operation)
+        // Second: reverse permutation (if it was applied in encryption)
         if (round % 4 !== 0) {
           const unpermuted = this.permuteInverse(words);
           for (let i = 0; i < 8; i++) {
@@ -350,7 +353,7 @@
           }
         }
 
-        // Apply inverse MIX function to word pairs
+        // Third: apply inverse MIX function to word pairs
         const d = (round - 1) % 8; // Rotation schedule index
 
         const mix0 = this.mixInverse(words[0].low, words[0].high, words[1].low, words[1].high, this.ROTATION_512[d][0]);
@@ -368,7 +371,7 @@
         words[7] = { low: mix3.x1Low, high: mix3.x1High };
       }
 
-      // Remove initial key (subkey 0)
+      // Finally: remove initial key (subkey 0)
       const subkey0 = this.generateSubkey(extendedKey, 0);
       for (let i = 0; i < 8; i++) {
         words[i] = this.sub64(words[i].low, words[i].high, subkey0[i].low, subkey0[i].high);
@@ -395,8 +398,8 @@
       // Calculate K8 = C XOR (K0 XOR K1 XOR ... XOR K7)
       let xorResult = { low: this.KEY_SCHEDULE_CONST[0], high: this.KEY_SCHEDULE_CONST[1] };
       for (let i = 0; i < 8; i++) {
-        xorResult.low ^= keyWords[i].low;
-        xorResult.high ^= keyWords[i].high;
+        xorResult.low = (xorResult.low ^ keyWords[i].low) >>> 0;
+        xorResult.high = (xorResult.high ^ keyWords[i].high) >>> 0;
       }
       extendedKey[8] = xorResult;
 
@@ -406,8 +409,8 @@
 
       // Calculate T2 = T0 XOR T1
       extendedKey[11] = { 
-        low: tweak[0].low ^ tweak[1].low, 
-        high: tweak[0].high ^ tweak[1].high 
+        low: (tweak[0].low ^ tweak[1].low) >>> 0, 
+        high: (tweak[0].high ^ tweak[1].high) >>> 0
       };
 
       return extendedKey;
@@ -438,7 +441,7 @@
       // Validate key size
       const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
         keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (keyBytes.length - ks.minSize) % ks.stepSize === 0
+        (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
       );
 
       if (!isValidSize) {
@@ -504,5 +507,5 @@
 
   // ===== EXPORTS =====
 
-  return { Threefish, ThreefishInstance };
+  return { Threefish, ThreefishAlgorithm: Threefish, ThreefishInstance };
 }));
