@@ -4,10 +4,11 @@
  * (c)2006-2025 Hawkynt
  * 
  * RC2 Algorithm by Ron Rivest (RSA Data Security)
- * Block size: 64 bits (8 bytes), Key size: 8-128 bytes
- * Uses 16 rounds with mixing and mashing operations
+ * Block size: 64 bits (8 bytes), Key size: 1-128 bytes
+ * Uses 18 rounds with mixing and mashing operations
  * 
- * Based on RFC 2268 - A Description of the RC2(r) Encryption Algorithm
+ * Based on RFC 2268 and Bouncy Castle authoritative implementation
+ * Reference: https://www.rfc-editor.org/rfc/rfc2268.txt
  */
 
 // Load AlgorithmFramework (REQUIRED)
@@ -61,7 +62,7 @@
 
       // Required metadata
       this.name = "RC2";
-      this.description = "Ron Rivest's RC2 cipher with 64-bit blocks and variable key length. Uses mixing and mashing operations over 16 rounds. Historically important but now considered weak.";
+      this.description = "RC2 variable-key-size block cipher with 64-bit blocks. Uses mixing and mashing operations over 18 rounds. Developed by Ron Rivest at RSA Data Security in 1987. Cryptographically broken.";
       this.inventor = "Ron Rivest";
       this.year = 1987;
       this.category = CategoryType.BLOCK;
@@ -80,36 +81,126 @@
 
       // Documentation and references
       this.documentation = [
-        new LinkItem("RFC 2268 - RC2 Algorithm Description", "https://tools.ietf.org/rfc/rfc2268.txt")
+        new LinkItem("RFC 2268 - RC2 Algorithm Description", "https://www.rfc-editor.org/rfc/rfc2268.txt"),
+        new LinkItem("RSA Data Security RC2 Specification", "https://www.rsa.com/en-us/company/labs/historical-cryptanalysis/rc2")
       ];
 
       this.references = [
-        new LinkItem("RSA Data Security RC2 Specification", "https://tools.ietf.org/rfc/rfc2268.txt")
+        new LinkItem("Bouncy Castle RC2 Implementation", "https://github.com/bcgit/bc-java/blob/master/core/src/main/java/org/bouncycastle/crypto/engines/RC2Engine.java"),
+        new LinkItem("NIST Computer Security Resource Center", "https://csrc.nist.gov/projects/block-cipher-techniques"),
+        new LinkItem("Applied Cryptography by Bruce Schneier", "https://www.schneier.com/books/applied_cryptography/")
       ];
 
-      // Test vectors from RFC 2268 and authoritative sources
+      // Known vulnerabilities
+      this.knownVulnerabilities = [
+        new Vulnerability(
+          "Related-key attacks",
+          "RC2 is vulnerable to related-key attacks due to weak key schedule",
+          "Use AES or other modern ciphers instead"
+        ),
+        new Vulnerability(
+          "Linear cryptanalysis",
+          "RC2 has linear approximations that reduce effective security",
+          "Algorithm is obsolete for secure applications"
+        )
+      ];
+
+      // Official test vectors from RFC 2268
       this.tests = [
         {
-          text: "RFC 2268 test vector: 8-byte all-zero key",
-          uri: "https://tools.ietf.org/rfc/rfc2268.txt",
+          text: "RFC 2268 Test Vector #1: 8-byte all-zero key, 63-bit effective",
+          uri: "https://www.rfc-editor.org/rfc/rfc2268.txt",
           input: OpCodes.Hex8ToBytes("0000000000000000"),
           key: OpCodes.Hex8ToBytes("0000000000000000"),
-          expected: OpCodes.Hex8ToBytes("eba773f398a0960d")
+          effectiveBits: 63,
+          expected: OpCodes.Hex8ToBytes("ebb773f993278eff")
         },
         {
-          text: "RFC 2268 test vector: 8-byte all-ones key", 
-          uri: "https://tools.ietf.org/rfc/rfc2268.txt",
+          text: "RFC 2268 Test Vector #2: 8-byte all-ones key, 64-bit effective", 
+          uri: "https://www.rfc-editor.org/rfc/rfc2268.txt",
           input: OpCodes.Hex8ToBytes("ffffffffffffffff"),
           key: OpCodes.Hex8ToBytes("ffffffffffffffff"),
+          effectiveBits: 64,
           expected: OpCodes.Hex8ToBytes("278b27e42e2f0d49")
         },
         {
-          text: "RFC 2268 test vector: pattern key and plaintext",
-          uri: "https://tools.ietf.org/rfc/rfc2268.txt",
+          text: "RFC 2268 Test Vector #3: pattern key and plaintext, 64-bit effective",
+          uri: "https://www.rfc-editor.org/rfc/rfc2268.txt",
           input: OpCodes.Hex8ToBytes("1000000000000001"),
           key: OpCodes.Hex8ToBytes("3000000000000000"),
+          effectiveBits: 64,
           expected: OpCodes.Hex8ToBytes("30649edf9be7d2c2")
+        },
+        {
+          text: "RFC 2268 Test Vector #4: 1-byte key, 64-bit effective",
+          uri: "https://www.rfc-editor.org/rfc/rfc2268.txt",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("88"),
+          effectiveBits: 64,
+          expected: OpCodes.Hex8ToBytes("61a8a244adacccf0")
+        },
+        {
+          text: "RFC 2268 Test Vector #5: 7-byte key, 64-bit effective",
+          uri: "https://www.rfc-editor.org/rfc/rfc2268.txt",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("88bca90e90875a"),
+          effectiveBits: 64,
+          expected: OpCodes.Hex8ToBytes("6ccf4308974c267f")
+        },
+        {
+          text: "RFC 2268 Test Vector #6: 16-byte key, 64-bit effective",
+          uri: "https://www.rfc-editor.org/rfc/rfc2268.txt", 
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("88bca90e90875a7f0f79c384627bafb2"),
+          effectiveBits: 64,
+          expected: OpCodes.Hex8ToBytes("1a807d272bbe5db1")
+        },
+        {
+          text: "RFC 2268 Test Vector #7: 16-byte key, 128-bit effective",
+          uri: "https://www.rfc-editor.org/rfc/rfc2268.txt",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("88bca90e90875a7f0f79c384627bafb2"),
+          effectiveBits: 128,
+          expected: OpCodes.Hex8ToBytes("2269552ab0f85ca6")
         }
+      ];
+    }
+
+    // RC2 PITABLE - 256-byte permutation table from RFC 2268
+    static get PITABLE() {
+      return [
+        0xd9, 0x78, 0xf9, 0xc4, 0x19, 0xdd, 0xb5, 0xed,
+        0x28, 0xe9, 0xfd, 0x79, 0x4a, 0xa0, 0xd8, 0x9d,
+        0xc6, 0x7e, 0x37, 0x83, 0x2b, 0x76, 0x53, 0x8e,
+        0x62, 0x4c, 0x64, 0x88, 0x44, 0x8b, 0xfb, 0xa2,
+        0x17, 0x9a, 0x59, 0xf5, 0x87, 0xb3, 0x4f, 0x13,
+        0x61, 0x45, 0x6d, 0x8d, 0x09, 0x81, 0x7d, 0x32,
+        0xbd, 0x8f, 0x40, 0xeb, 0x86, 0xb7, 0x7b, 0x0b,
+        0xf0, 0x95, 0x21, 0x22, 0x5c, 0x6b, 0x4e, 0x82,
+        0x54, 0xd6, 0x65, 0x93, 0xce, 0x60, 0xb2, 0x1c,
+        0x73, 0x56, 0xc0, 0x14, 0xa7, 0x8c, 0xf1, 0xdc,
+        0x12, 0x75, 0xca, 0x1f, 0x3b, 0xbe, 0xe4, 0xd1,
+        0x42, 0x3d, 0xd4, 0x30, 0xa3, 0x3c, 0xb6, 0x26,
+        0x6f, 0xbf, 0x0e, 0xda, 0x46, 0x69, 0x07, 0x57,
+        0x27, 0xf2, 0x1d, 0x9b, 0xbc, 0x94, 0x43, 0x03,
+        0xf8, 0x11, 0xc7, 0xf6, 0x90, 0xef, 0x3e, 0xe7,
+        0x06, 0xc3, 0xd5, 0x2f, 0xc8, 0x66, 0x1e, 0xd7,
+        0x08, 0xe8, 0xea, 0xde, 0x80, 0x52, 0xee, 0xf7,
+        0x84, 0xaa, 0x72, 0xac, 0x35, 0x4d, 0x6a, 0x2a,
+        0x96, 0x1a, 0xd2, 0x71, 0x5a, 0x15, 0x49, 0x74,
+        0x4b, 0x9f, 0xd0, 0x5e, 0x04, 0x18, 0xa4, 0xec,
+        0xc2, 0xe0, 0x41, 0x6e, 0x0f, 0x51, 0xcb, 0xcc,
+        0x24, 0x91, 0xaf, 0x50, 0xa1, 0xf4, 0x70, 0x39,
+        0x99, 0x7c, 0x3a, 0x85, 0x23, 0xb8, 0xb4, 0x7a,
+        0xfc, 0x02, 0x36, 0x5b, 0x25, 0x55, 0x97, 0x31,
+        0x2d, 0x5d, 0xfa, 0x98, 0xe3, 0x8a, 0x92, 0xae,
+        0x05, 0xdf, 0x29, 0x10, 0x67, 0x6c, 0xba, 0xc9,
+        0xd3, 0x00, 0xe6, 0xcf, 0xe1, 0x9e, 0xa8, 0x2c,
+        0x63, 0x16, 0x01, 0x3f, 0x58, 0xe2, 0x89, 0xa9,
+        0x0d, 0x38, 0x34, 0x1b, 0xab, 0x33, 0xff, 0xb0,
+        0xbb, 0x48, 0x0c, 0x5f, 0xb9, 0xb1, 0xcd, 0x2e,
+        0xc5, 0xf3, 0xdb, 0x47, 0xe5, 0xa5, 0x9c, 0x77,
+        0x0a, 0xa6, 0x20, 0x68, 0xfe, 0x7f, 0xc1, 0xad
       ];
     }
 
@@ -118,26 +209,59 @@
       return new RC2Instance(this, isInverse);
     }
 
-    // RC2 PITABLE - 256-byte permutation table from RFC 2268
-    static get PITABLE() {
-      return [
-        217,120,249,196, 25,221,181,237, 40,233,253,121, 74,160,216,157,
-        198,126, 55,131, 43,118, 83,142, 98, 76,100,136, 68,139,251,162,
-         23,154, 89,245,135,179, 79, 19, 97, 69,109,141,  9,129,125, 50,
-        189,143, 64,235,134,183,123, 11,240,149, 33, 34, 92,107, 78,130,
-         84,214,101,147,206, 96,178, 28,115, 86,192, 20,167,140,241,220,
-         18,117,202, 31, 59,190,228,209, 66, 61,212, 48,163, 60,182, 38,
-        111,191, 14,218, 70,105,  7, 87, 39,242, 29,155,188,148, 67,  3,
-        248, 17,199,246,144,239, 62,231,  6,195,213, 47,200,102, 30,215,
-          8,232,234,222,128, 82,238,247,132,170,114,172, 53, 77,106, 42,
-        150, 26,210,113, 90, 21, 73,116, 75,159,208, 94,  4, 24,164,236,
-        194,224, 65,110, 15, 81,203,204, 36,145,175, 80,161,244,112, 57,
-        153,124, 58,133, 35,184,180,122,252,  2, 54, 91, 37, 85,151, 49,
-         45, 93,250,152,227,138,146,174,  5,223, 41, 16,103,108,186,201,
-        211,  0,230,207,225,158,168, 44, 99, 22,  1, 63, 88,226,137,169,
-         13, 56, 52, 27,171, 51,255,176,187, 72, 12, 95,185,177,205, 46,
-        197,243,219, 71,229,165,156,119, 10,166, 32,104,254,127,193,173
-      ];
+    // Helper function for 16-bit left rotation using OpCodes
+    static _rotateWordLeft(x, y) {
+      return OpCodes.RotL16(x, y);
+    }
+
+    // Generate expanded key following RFC 2268 specification
+    static generateWorkingKey(keyBytes, effectiveBits) {
+      if (!keyBytes || keyBytes.length === 0) {
+        throw new Error('Key is required');
+      }
+      
+      // Default effective bits to key length * 8 if not specified
+      if (typeof effectiveBits === 'undefined') {
+        effectiveBits = keyBytes.length * 8;
+      }
+      
+      // Phase 1: Expand input key to 128 bytes using PITABLE
+      const xKey = new Array(128);
+      let len = keyBytes.length;
+      
+      // Copy key bytes
+      for (let i = 0; i < len; i++) {
+        xKey[i] = keyBytes[i] & 0xFF;
+      }
+      
+      // Expand to 128 bytes if needed
+      if (len < 128) {
+        let index = 0;
+        let x = xKey[len - 1];
+        
+        do {
+          x = RC2Algorithm.PITABLE[(x + xKey[index++]) & 0xFF] & 0xFF;
+          xKey[len++] = x;
+        } while (len < 128);
+      }
+      
+      // Phase 2: Reduce effective key size to specified bit length
+      len = Math.floor((effectiveBits + 7) / 8); // effective key length in bytes
+      let x = RC2Algorithm.PITABLE[xKey[128 - len] & (0xFF >>> (7 & -effectiveBits))] & 0xFF;
+      xKey[128 - len] = x;
+      
+      for (let i = 128 - len - 1; i >= 0; i--) {
+        x = RC2Algorithm.PITABLE[x ^ xKey[i + len]] & 0xFF;
+        xKey[i] = x;
+      }
+      
+      // Phase 3: Convert to 16-bit words (little-endian)
+      const expandedKey = new Array(64);
+      for (let i = 0; i < 64; i++) {
+        expandedKey[i] = (xKey[2 * i] + (xKey[2 * i + 1] << 8)) & 0xFFFF;
+      }
+      
+      return expandedKey;
     }
   }
 
@@ -151,7 +275,20 @@
       this.inputBuffer = [];
       this.BlockSize = 8; // 64 bits
       this.KeySize = 0;   // will be set when key is assigned
-      this.effectiveBits = 1024; // Default effective key length
+      this.effectiveBits = null; // Will be set from test vector or default to key length * 8
+    }
+
+    // Property setter for effective bits
+    set effectiveBits(value) {
+      this._effectiveBits = value;
+      // If we already have a key, regenerate the expanded key with new effective bits
+      if (this._key) {
+        this._setupKey();
+      }
+    }
+
+    get effectiveBits() {
+      return this._effectiveBits;
     }
 
     // Property setter for key - validates and sets up key schedule
@@ -180,6 +317,16 @@
 
     get key() {
       return this._key ? [...this._key] : null; // Return copy
+    }
+
+    // Private method to set up the key schedule
+    _setupKey() {
+      if (!this._key) return;
+      
+      // Use effective bits if set, otherwise default to key length * 8
+      const effectiveBits = this.effectiveBits !== null ? this.effectiveBits : (this._key.length * 8);
+      
+      this.expandedKey = RC2Algorithm.generateWorkingKey(this._key, effectiveBits);
     }
 
     // Feed data to the cipher (accumulates until we have complete blocks)
@@ -214,59 +361,11 @@
         output.push(...processedBlock);
       }
 
-      // Clear input buffer for next operation
+      // Clear input buffer for next operation using secure clearing
+      OpCodes.ClearArray(this.inputBuffer);
       this.inputBuffer = [];
 
       return output;
-    }
-
-    // Private method to set up the key schedule
-    _setupKey() {
-      this.expandedKey = new Array(64);  // 64 16-bit words
-      const keyBytes = this._key;
-      const keyLength = keyBytes.length;
-
-      // RFC 2268: if effectiveBits is zero, use 1024
-      let effectiveBits = this.effectiveBits;
-      if (effectiveBits === 0) {
-        effectiveBits = 1024;
-      }
-
-      // Step 1: Initialize L with key bytes (copy directly to byte array)
-      const L = new Array(128);
-      for (let i = 0; i < keyLength; i++) {
-        L[i] = keyBytes[i];
-      }
-
-      // Step 2: Expand to 128 bytes using PITABLE (RFC 2268 algorithm)
-      if (keyLength < 128) {
-        let i = 0;
-        let x = L[keyLength - 1];
-        let len = keyLength;
-
-        while (len < 128) {
-          x = RC2Algorithm.PITABLE[(x + L[i]) & 0xFF];
-          L[len] = x;
-          i++;
-          len++;
-        }
-      }
-
-      // Step 3: Apply effective key length reduction (RFC 2268 Phase 2)
-      const len = Math.floor((effectiveBits + 7) / 8);  // effective key length in bytes
-      const i = 128 - len;
-      let x = RC2Algorithm.PITABLE[L[i] & (0xFF >>> (7 & -effectiveBits))];
-      L[i] = x;
-
-      for (let j = i - 1; j >= 0; j--) {
-        x = RC2Algorithm.PITABLE[x ^ L[j + len]];
-        L[j] = x;
-      }
-
-      // Step 4: Convert to 16-bit words (little-endian) - RFC 2268 Phase 3
-      for (let i = 0; i < 64; i++) {
-        this.expandedKey[i] = OpCodes.Pack16LE(L[2 * i], L[2 * i + 1]);
-      }
     }
 
     // Private method for block encryption
@@ -275,44 +374,58 @@
         throw new Error(`Invalid block size: ${plainBytes.length} bytes`);
       }
 
-      // Pack into 16-bit words (little-endian)
-      let R0 = OpCodes.Pack16LE(plainBytes[0], plainBytes[1]);
-      let R1 = OpCodes.Pack16LE(plainBytes[2], plainBytes[3]);
-      let R2 = OpCodes.Pack16LE(plainBytes[4], plainBytes[5]);
-      let R3 = OpCodes.Pack16LE(plainBytes[6], plainBytes[7]);
-
-      // 16 rounds of encryption
-      for (let i = 0; i < 16; i++) {
-        const j = i * 4;
-
-        // Mix operation
-        R0 = (R0 + (R1 & (~R3)) + (R2 & R3) + this.expandedKey[j]) & 0xFFFF;
-        R0 = OpCodes.RotL16(R0, 1);
-
-        R1 = (R1 + (R2 & (~R0)) + (R3 & R0) + this.expandedKey[j + 1]) & 0xFFFF;
-        R1 = OpCodes.RotL16(R1, 2);
-
-        R2 = (R2 + (R3 & (~R1)) + (R0 & R1) + this.expandedKey[j + 2]) & 0xFFFF;
-        R2 = OpCodes.RotL16(R2, 3);
-
-        R3 = (R3 + (R0 & (~R2)) + (R1 & R2) + this.expandedKey[j + 3]) & 0xFFFF;
-        R3 = OpCodes.RotL16(R3, 5);
-
-        // Mash operation after rounds 5 and 11 (i = 4 and 10)
-        if (i === 4 || i === 10) {
-          R0 = (R0 + this.expandedKey[R3 & 63]) & 0xFFFF;
-          R1 = (R1 + this.expandedKey[R0 & 63]) & 0xFFFF;
-          R2 = (R2 + this.expandedKey[R1 & 63]) & 0xFFFF;
-          R3 = (R3 + this.expandedKey[R2 & 63]) & 0xFFFF;
-        }
+      if (!this.expandedKey) {
+        throw new Error('Key not set up. Call key setter first.');
       }
 
-      // Unpack to bytes (little-endian)
+      // Pack input into 16-bit words (little-endian) using OpCodes
+      let x10 = OpCodes.Pack16LE(plainBytes[0], plainBytes[1]);
+      let x32 = OpCodes.Pack16LE(plainBytes[2], plainBytes[3]);  
+      let x54 = OpCodes.Pack16LE(plainBytes[4], plainBytes[5]);
+      let x76 = OpCodes.Pack16LE(plainBytes[6], plainBytes[7]);
+      
+      // Rounds 0-16 (5 rounds of mixing)
+      for (let i = 0; i <= 16; i += 4) {
+        x10 = RC2Algorithm._rotateWordLeft((x10 + (x32 & ~x76) + (x54 & x76) + this.expandedKey[i]) & 0xFFFF, 1);
+        x32 = RC2Algorithm._rotateWordLeft((x32 + (x54 & ~x10) + (x76 & x10) + this.expandedKey[i + 1]) & 0xFFFF, 2);
+        x54 = RC2Algorithm._rotateWordLeft((x54 + (x76 & ~x32) + (x10 & x32) + this.expandedKey[i + 2]) & 0xFFFF, 3);
+        x76 = RC2Algorithm._rotateWordLeft((x76 + (x10 & ~x54) + (x32 & x54) + this.expandedKey[i + 3]) & 0xFFFF, 5);
+      }
+      
+      // First mash operation (after round 5)
+      x10 = (x10 + this.expandedKey[x76 & 63]) & 0xFFFF;
+      x32 = (x32 + this.expandedKey[x10 & 63]) & 0xFFFF;
+      x54 = (x54 + this.expandedKey[x32 & 63]) & 0xFFFF;
+      x76 = (x76 + this.expandedKey[x54 & 63]) & 0xFFFF;
+      
+      // Rounds 20-40 (6 rounds of mixing)
+      for (let i = 20; i <= 40; i += 4) {
+        x10 = RC2Algorithm._rotateWordLeft((x10 + (x32 & ~x76) + (x54 & x76) + this.expandedKey[i]) & 0xFFFF, 1);
+        x32 = RC2Algorithm._rotateWordLeft((x32 + (x54 & ~x10) + (x76 & x10) + this.expandedKey[i + 1]) & 0xFFFF, 2);
+        x54 = RC2Algorithm._rotateWordLeft((x54 + (x76 & ~x32) + (x10 & x32) + this.expandedKey[i + 2]) & 0xFFFF, 3);
+        x76 = RC2Algorithm._rotateWordLeft((x76 + (x10 & ~x54) + (x32 & x54) + this.expandedKey[i + 3]) & 0xFFFF, 5);
+      }
+      
+      // Second mash operation (after round 11)
+      x10 = (x10 + this.expandedKey[x76 & 63]) & 0xFFFF;
+      x32 = (x32 + this.expandedKey[x10 & 63]) & 0xFFFF;
+      x54 = (x54 + this.expandedKey[x32 & 63]) & 0xFFFF;
+      x76 = (x76 + this.expandedKey[x54 & 63]) & 0xFFFF;
+      
+      // Rounds 44-60 (5 rounds of mixing)
+      for (let i = 44; i < 64; i += 4) {
+        x10 = RC2Algorithm._rotateWordLeft((x10 + (x32 & ~x76) + (x54 & x76) + this.expandedKey[i]) & 0xFFFF, 1);
+        x32 = RC2Algorithm._rotateWordLeft((x32 + (x54 & ~x10) + (x76 & x10) + this.expandedKey[i + 1]) & 0xFFFF, 2);
+        x54 = RC2Algorithm._rotateWordLeft((x54 + (x76 & ~x32) + (x10 & x32) + this.expandedKey[i + 2]) & 0xFFFF, 3);
+        x76 = RC2Algorithm._rotateWordLeft((x76 + (x10 & ~x54) + (x32 & x54) + this.expandedKey[i + 3]) & 0xFFFF, 5);
+      }
+
+      // Pack output (little-endian) using OpCodes
       return [
-        ...OpCodes.Unpack16LE(R0),
-        ...OpCodes.Unpack16LE(R1),
-        ...OpCodes.Unpack16LE(R2),
-        ...OpCodes.Unpack16LE(R3)
+        ...OpCodes.Unpack16LE(x10),
+        ...OpCodes.Unpack16LE(x32),
+        ...OpCodes.Unpack16LE(x54),
+        ...OpCodes.Unpack16LE(x76)
       ];
     }
 
@@ -322,44 +435,58 @@
         throw new Error(`Invalid block size: ${cipherBytes.length} bytes`);
       }
 
-      // Pack into 16-bit words (little-endian)
-      let R0 = OpCodes.Pack16LE(cipherBytes[0], cipherBytes[1]);
-      let R1 = OpCodes.Pack16LE(cipherBytes[2], cipherBytes[3]);
-      let R2 = OpCodes.Pack16LE(cipherBytes[4], cipherBytes[5]);
-      let R3 = OpCodes.Pack16LE(cipherBytes[6], cipherBytes[7]);
-
-      // 16 rounds of decryption (reverse order)
-      for (let i = 15; i >= 0; i--) {
-        const j = i * 4;
-
-        // Reverse mash operation after rounds 5 and 11 (i = 4 and 10)
-        if (i === 4 || i === 10) {
-          R3 = (R3 - this.expandedKey[R2 & 63]) & 0xFFFF;
-          R2 = (R2 - this.expandedKey[R1 & 63]) & 0xFFFF;
-          R1 = (R1 - this.expandedKey[R0 & 63]) & 0xFFFF;
-          R0 = (R0 - this.expandedKey[R3 & 63]) & 0xFFFF;
-        }
-
-        // Reverse mix operation
-        R3 = OpCodes.RotR16(R3, 5);
-        R3 = (R3 - (R0 & (~R2)) - (R1 & R2) - this.expandedKey[j + 3]) & 0xFFFF;
-
-        R2 = OpCodes.RotR16(R2, 3);
-        R2 = (R2 - (R3 & (~R1)) - (R0 & R1) - this.expandedKey[j + 2]) & 0xFFFF;
-
-        R1 = OpCodes.RotR16(R1, 2);
-        R1 = (R1 - (R2 & (~R0)) - (R3 & R0) - this.expandedKey[j + 1]) & 0xFFFF;
-
-        R0 = OpCodes.RotR16(R0, 1);
-        R0 = (R0 - (R1 & (~R3)) - (R2 & R3) - this.expandedKey[j]) & 0xFFFF;
+      if (!this.expandedKey) {
+        throw new Error('Key not set up. Call key setter first.');
       }
 
-      // Unpack to bytes (little-endian)
+      // Pack input into 16-bit words (little-endian) using OpCodes
+      let x10 = OpCodes.Pack16LE(cipherBytes[0], cipherBytes[1]);
+      let x32 = OpCodes.Pack16LE(cipherBytes[2], cipherBytes[3]);
+      let x54 = OpCodes.Pack16LE(cipherBytes[4], cipherBytes[5]);
+      let x76 = OpCodes.Pack16LE(cipherBytes[6], cipherBytes[7]);
+      
+      // Reverse rounds 44-60 (5 rounds of mixing) 
+      for (let i = 60; i >= 44; i -= 4) {
+        x76 = (RC2Algorithm._rotateWordLeft(x76, 11) - ((x10 & ~x54) + (x32 & x54) + this.expandedKey[i + 3])) & 0xFFFF;
+        x54 = (RC2Algorithm._rotateWordLeft(x54, 13) - ((x76 & ~x32) + (x10 & x32) + this.expandedKey[i + 2])) & 0xFFFF;
+        x32 = (RC2Algorithm._rotateWordLeft(x32, 14) - ((x54 & ~x10) + (x76 & x10) + this.expandedKey[i + 1])) & 0xFFFF;
+        x10 = (RC2Algorithm._rotateWordLeft(x10, 15) - ((x32 & ~x76) + (x54 & x76) + this.expandedKey[i])) & 0xFFFF;
+      }
+      
+      // Reverse second mash operation (after round 11)
+      x76 = (x76 - this.expandedKey[x54 & 63]) & 0xFFFF;
+      x54 = (x54 - this.expandedKey[x32 & 63]) & 0xFFFF;
+      x32 = (x32 - this.expandedKey[x10 & 63]) & 0xFFFF;
+      x10 = (x10 - this.expandedKey[x76 & 63]) & 0xFFFF;
+      
+      // Reverse rounds 20-40 (6 rounds of mixing)
+      for (let i = 40; i >= 20; i -= 4) {
+        x76 = (RC2Algorithm._rotateWordLeft(x76, 11) - ((x10 & ~x54) + (x32 & x54) + this.expandedKey[i + 3])) & 0xFFFF;
+        x54 = (RC2Algorithm._rotateWordLeft(x54, 13) - ((x76 & ~x32) + (x10 & x32) + this.expandedKey[i + 2])) & 0xFFFF;
+        x32 = (RC2Algorithm._rotateWordLeft(x32, 14) - ((x54 & ~x10) + (x76 & x10) + this.expandedKey[i + 1])) & 0xFFFF;
+        x10 = (RC2Algorithm._rotateWordLeft(x10, 15) - ((x32 & ~x76) + (x54 & x76) + this.expandedKey[i])) & 0xFFFF;
+      }
+      
+      // Reverse first mash operation (after round 5)
+      x76 = (x76 - this.expandedKey[x54 & 63]) & 0xFFFF;
+      x54 = (x54 - this.expandedKey[x32 & 63]) & 0xFFFF;
+      x32 = (x32 - this.expandedKey[x10 & 63]) & 0xFFFF;
+      x10 = (x10 - this.expandedKey[x76 & 63]) & 0xFFFF;
+      
+      // Reverse rounds 0-16 (5 rounds of mixing)
+      for (let i = 16; i >= 0; i -= 4) {
+        x76 = (RC2Algorithm._rotateWordLeft(x76, 11) - ((x10 & ~x54) + (x32 & x54) + this.expandedKey[i + 3])) & 0xFFFF;
+        x54 = (RC2Algorithm._rotateWordLeft(x54, 13) - ((x76 & ~x32) + (x10 & x32) + this.expandedKey[i + 2])) & 0xFFFF;
+        x32 = (RC2Algorithm._rotateWordLeft(x32, 14) - ((x54 & ~x10) + (x76 & x10) + this.expandedKey[i + 1])) & 0xFFFF;
+        x10 = (RC2Algorithm._rotateWordLeft(x10, 15) - ((x32 & ~x76) + (x54 & x76) + this.expandedKey[i])) & 0xFFFF;
+      }
+
+      // Pack output (little-endian) using OpCodes
       return [
-        ...OpCodes.Unpack16LE(R0),
-        ...OpCodes.Unpack16LE(R1),
-        ...OpCodes.Unpack16LE(R2),
-        ...OpCodes.Unpack16LE(R3)
+        ...OpCodes.Unpack16LE(x10),
+        ...OpCodes.Unpack16LE(x32),
+        ...OpCodes.Unpack16LE(x54),
+        ...OpCodes.Unpack16LE(x76)
       ];
     }
   }
@@ -368,7 +495,7 @@
 
   // ===== REGISTRATION =====
 
-    const algorithmInstance = new RC2Algorithm();
+  const algorithmInstance = new RC2Algorithm();
   if (!AlgorithmFramework.Find(algorithmInstance.name)) {
     RegisterAlgorithm(algorithmInstance);
   }
