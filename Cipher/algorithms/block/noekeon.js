@@ -99,13 +99,17 @@
           uri: "https://gro.noekeon.org/",
           input: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
           key: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
-          expected: OpCodes.Hex8ToBytes("2a78421bc7d04f261d1113d3496249b2")
+          expected: OpCodes.Hex8ToBytes("2a78421b87c7d0924f26113f1d1349b2")
         }
       ];
 
       // NOEKEON Constants
       this.ROUNDS = 16;                     // 16 rounds
       this.RC1_ENCRYPT_START = 0x80;        // Round constant start for encryption
+      
+      // Predefined round constants (matching C# BouncyCastle implementation)
+      this.ROUND_CONSTANTS = [0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e,
+                             0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4];
     }
 
     CreateInstance(isInverse = false) {
@@ -189,6 +193,25 @@
           keyBytes[offset + 3]
         );
       }
+
+      // For decryption, apply theta(k, {0,0,0,0}) to the key (matching C# BouncyCastle)
+      if (this.isInverse) {
+        let a0 = keyWords[0], a1 = keyWords[1], a2 = keyWords[2], a3 = keyWords[3];
+
+        let t02 = a0 ^ a2;
+        t02 ^= OpCodes.RotL32(t02, 8) ^ OpCodes.RotL32(t02, 24);
+
+        let t13 = a1 ^ a3;
+        t13 ^= OpCodes.RotL32(t13, 8) ^ OpCodes.RotL32(t13, 24);
+
+        a0 ^= t13;
+        a1 ^= t02;
+        a2 ^= t13;
+        a3 ^= t02;
+
+        keyWords[0] = a0; keyWords[1] = a1; keyWords[2] = a2; keyWords[3] = a3;
+      }
+
       return keyWords;
     }
 
@@ -198,26 +221,60 @@
       }
 
       // Convert input to 32-bit words using OpCodes (big-endian)
-      const state = new Array(4);
-      for (let i = 0; i < 4; i++) {
-        const offset = i * 4;
-        state[i] = OpCodes.Pack32BE(
-          blockBytes[offset],
-          blockBytes[offset + 1],
-          blockBytes[offset + 2],
-          blockBytes[offset + 3]
-        );
-      }
+      let a0 = OpCodes.Pack32BE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
+      let a1 = OpCodes.Pack32BE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
+      let a2 = OpCodes.Pack32BE(blockBytes[8], blockBytes[9], blockBytes[10], blockBytes[11]);
+      let a3 = OpCodes.Pack32BE(blockBytes[12], blockBytes[13], blockBytes[14], blockBytes[15]);
 
-      // NOEKEON encryption
-      this._commonLoop(this.keyWords, state, this.algorithm.RC1_ENCRYPT_START, 0);
+      const k0 = this.keyWords[0], k1 = this.keyWords[1], k2 = this.keyWords[2], k3 = this.keyWords[3];
+
+      let round = 0;
+      for (;;) {
+        a0 ^= this.algorithm.ROUND_CONSTANTS[round];
+
+        // theta(a, k);
+        let t02 = a0 ^ a2;
+        t02 ^= OpCodes.RotL32(t02, 8) ^ OpCodes.RotL32(t02, 24);
+
+        a0 ^= k0;
+        a1 ^= k1;
+        a2 ^= k2;
+        a3 ^= k3;
+
+        let t13 = a1 ^ a3;
+        t13 ^= OpCodes.RotL32(t13, 8) ^ OpCodes.RotL32(t13, 24);
+
+        a0 ^= t13;
+        a1 ^= t02;
+        a2 ^= t13;
+        a3 ^= t02;
+
+        if (++round > 16) {
+          break;
+        }
+
+        // pi1(a);
+        a1 = OpCodes.RotL32(a1, 1);
+        a2 = OpCodes.RotL32(a2, 5);
+        a3 = OpCodes.RotL32(a3, 2);
+
+        // gamma(a);
+        const state = [a0, a1, a2, a3];
+        this._gamma(state);
+        a0 = state[0]; a1 = state[1]; a2 = state[2]; a3 = state[3];
+
+        // pi2(a);
+        a1 = OpCodes.RotL32(a1, 31);
+        a2 = OpCodes.RotL32(a2, 27);
+        a3 = OpCodes.RotL32(a3, 30);
+      }
 
       // Convert back to bytes using OpCodes (big-endian)
       const result = [];
-      for (let i = 0; i < 4; i++) {
-        const wordBytes = OpCodes.Unpack32BE(state[i]);
-        result.push(...wordBytes);
-      }
+      result.push(...OpCodes.Unpack32BE(a0));
+      result.push(...OpCodes.Unpack32BE(a1));
+      result.push(...OpCodes.Unpack32BE(a2));
+      result.push(...OpCodes.Unpack32BE(a3));
 
       return result;
     }
@@ -228,121 +285,74 @@
       }
 
       // Convert input to 32-bit words using OpCodes (big-endian)
-      const state = new Array(4);
-      for (let i = 0; i < 4; i++) {
-        const offset = i * 4;
-        state[i] = OpCodes.Pack32BE(
-          blockBytes[offset],
-          blockBytes[offset + 1],
-          blockBytes[offset + 2],
-          blockBytes[offset + 3]
-        );
-      }
+      let a0 = OpCodes.Pack32BE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
+      let a1 = OpCodes.Pack32BE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
+      let a2 = OpCodes.Pack32BE(blockBytes[8], blockBytes[9], blockBytes[10], blockBytes[11]);
+      let a3 = OpCodes.Pack32BE(blockBytes[12], blockBytes[13], blockBytes[14], blockBytes[15]);
 
-      // NOEKEON decryption - use correct decryption constants
-      // For decryption, we need to start from the final round constant and work backwards
-      let RC1 = this.algorithm.RC1_ENCRYPT_START;
-      for (let i = 0; i < this.algorithm.ROUNDS; i++) {
-        RC1 = this._rcShiftRegFwd(RC1);
+      const k0 = this.keyWords[0], k1 = this.keyWords[1], k2 = this.keyWords[2], k3 = this.keyWords[3];
+
+      let round = 16;
+      for (;;) {
+        // theta(a, k);
+        let t02 = a0 ^ a2;
+        t02 ^= OpCodes.RotL32(t02, 8) ^ OpCodes.RotL32(t02, 24);
+
+        a0 ^= k0;
+        a1 ^= k1;
+        a2 ^= k2;
+        a3 ^= k3;
+
+        let t13 = a1 ^ a3;
+        t13 ^= OpCodes.RotL32(t13, 8) ^ OpCodes.RotL32(t13, 24);
+
+        a0 ^= t13;
+        a1 ^= t02;
+        a2 ^= t13;
+        a3 ^= t02;
+
+        a0 ^= this.algorithm.ROUND_CONSTANTS[round];
+
+        if (--round < 0) {
+          break;
+        }
+
+        // pi1(a);
+        a1 = OpCodes.RotL32(a1, 1);
+        a2 = OpCodes.RotL32(a2, 5);
+        a3 = OpCodes.RotL32(a3, 2);
+
+        // gamma(a);
+        const state = [a0, a1, a2, a3];
+        this._gamma(state);
+        a0 = state[0]; a1 = state[1]; a2 = state[2]; a3 = state[3];
+
+        // pi2(a);
+        a1 = OpCodes.RotL32(a1, 31);
+        a2 = OpCodes.RotL32(a2, 27);
+        a3 = OpCodes.RotL32(a3, 30);
       }
-      this._commonLoop(this.keyWords, state, 0, RC1);
 
       // Convert back to bytes using OpCodes (big-endian)
       const result = [];
-      for (let i = 0; i < 4; i++) {
-        const wordBytes = OpCodes.Unpack32BE(state[i]);
-        result.push(...wordBytes);
-      }
+      result.push(...OpCodes.Unpack32BE(a0));
+      result.push(...OpCodes.Unpack32BE(a1));
+      result.push(...OpCodes.Unpack32BE(a2));
+      result.push(...OpCodes.Unpack32BE(a3));
 
       return result;
     }
 
-    // NOEKEON Theta function
-    _theta(k, a) {
-      let tmp = a[0] ^ a[2];
-      tmp ^= OpCodes.RotL32(tmp, 8) ^ OpCodes.RotL32(tmp, 24);
-      a[1] ^= tmp;
-      a[3] ^= tmp;
-
-      for (let i = 0; i < 4; i++) {
-        a[i] ^= k[i];
-      }
-
-      tmp = a[1] ^ a[3];
-      tmp ^= OpCodes.RotL32(tmp, 8) ^ OpCodes.RotL32(tmp, 24);
-      a[0] ^= tmp;
-      a[2] ^= tmp;
-    }
-
-    // NOEKEON Pi1 function
-    _pi1(a) {
-      a[1] = OpCodes.RotL32(a[1], 1);
-      a[2] = OpCodes.RotL32(a[2], 5);
-      a[3] = OpCodes.RotL32(a[3], 2);
-    }
-
-    // NOEKEON Pi2 function  
-    _pi2(a) {
-      a[1] = OpCodes.RotR32(a[1], 1);
-      a[2] = OpCodes.RotR32(a[2], 5);
-      a[3] = OpCodes.RotR32(a[3], 2);
-    }
-
-    // NOEKEON Gamma function
+    // NOEKEON Gamma function (matching C# BouncyCastle implementation)
     _gamma(a) {
-      a[1] ^= (~a[3]) & (~a[2]);
-      a[0] ^= a[2] & a[1];
+      const t = a[3];
+      a[1] ^= a[3] | a[2];
+      a[3] = a[0] ^ (a[2] & (~a[1]));
 
-      const tmp = a[3];
-      a[3] = a[0];
-      a[0] = tmp;
+      a[2] = t ^ (~a[1]) ^ a[2] ^ a[3];
 
-      a[2] ^= a[0] ^ a[1] ^ a[3];
-
-      a[1] ^= (~a[3]) & (~a[2]);
-      a[0] ^= a[2] & a[1];
-    }
-
-    // Round function
-    _round(k, a, RC1, RC2) {
-      a[0] ^= RC1;
-      this._theta(k, a);
-      a[0] ^= RC2;
-      this._pi1(a);
-      this._gamma(a);
-      this._pi2(a);
-    }
-
-    // Round constant shift register - forward
-    _rcShiftRegFwd(RC) {
-      if ((RC & 0x80) !== 0) {
-        return ((RC << 1) ^ 0x1B) & 0xFF;
-      } else {
-        return (RC << 1) & 0xFF;
-      }
-    }
-
-    // Round constant shift register - backward
-    _rcShiftRegBwd(RC) {
-      if ((RC & 0x01) !== 0) {
-        return ((RC >>> 1) ^ 0x8D) & 0xFF;
-      } else {
-        return (RC >>> 1) & 0xFF;
-      }
-    }
-
-    // Common encryption/decryption loop
-    _commonLoop(k, a, RC1, RC2) {
-      for (let i = 0; i < this.algorithm.ROUNDS; i++) {
-        this._round(k, a, RC1, RC2);
-        RC1 = this._rcShiftRegFwd(RC1);
-        RC2 = this._rcShiftRegBwd(RC2);
-      }
-
-      // Final theta without pi1, gamma, pi2
-      a[0] ^= RC1;
-      this._theta(k, a);
-      a[0] ^= RC2;
+      a[1] ^= a[3] | a[2];
+      a[0] = t ^ (a[2] & a[1]);
     }
   }
 
