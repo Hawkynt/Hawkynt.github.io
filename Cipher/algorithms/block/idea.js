@@ -96,21 +96,21 @@
         new AlgorithmFramework.Vulnerability("Patent History", "https://patents.google.com/patent/US5214703A", "Algorithm was patented until 2011, limiting adoption. Patent-free since 2011.", "Use AES for new applications requiring standardized algorithms")
       ];
 
-      // Test vectors from various sources
+      // Test vectors from NESSIE IDEA ECB test vectors
       this.tests = [
         {
-          text: "IDEA all zeros test vector",
-          uri: "Educational test vector",
+          text: "NESSIE IDEA ECB test vector - all zeros",
+          uri: "https://raw.githubusercontent.com/pyca/cryptography/main/vectors/cryptography_vectors/ciphers/IDEA/idea-ecb.txt",
           input: OpCodes.Hex8ToBytes("0000000000000000"),
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("2542673a35551656")
+          expected: OpCodes.Hex8ToBytes("0001000100000000")
         },
         {
-          text: "IDEA incremental pattern test",
-          uri: "Educational test vector",
-          input: OpCodes.Hex8ToBytes("0001020304050607"),
-          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-          expected: OpCodes.Hex8ToBytes("42165da87a584e0f")
+          text: "NESSIE IDEA ECB test vector - high bit plaintext",
+          uri: "https://raw.githubusercontent.com/pyca/cryptography/main/vectors/cryptography_vectors/ciphers/IDEA/idea-ecb.txt",
+          input: OpCodes.Hex8ToBytes("8000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("8001000180008000")
         }
       ];
     }
@@ -155,8 +155,8 @@
       this.KeySize = keyBytes.length;
 
       // Generate encryption and decryption subkeys
-      this.encryptKeys = this._generateSubkeys(keyBytes);
-      this.decryptKeys = this._generateDecryptSubkeys(this.encryptKeys);
+      this.encryptKeys = this._expandKey(keyBytes);
+      this.decryptKeys = this._invertKey(this.encryptKeys);
     }
 
     get key() {
@@ -198,194 +198,213 @@
 
     /**
      * Multiplication modulo (2^16 + 1) - IDEA's special operation
+     * Based on Bouncy Castle implementation
      * In IDEA, 0 represents 2^16 (65536) for multiplication
      */
-    _mulMod(a, b) {
-      a &= 0xFFFF;
-      b &= 0xFFFF;
-
-      // In IDEA, 0 represents 2^16 for multiplication
-      if (a === 0) a = 0x10000;
-      if (b === 0) b = 0x10000;
-
-      // Perform multiplication modulo (2^16 + 1)
-      const result = (a * b) % this.MODULUS;
-
-      // Convert back: if result is 65536, return 0
-      return result === 0x10000 ? 0 : result;
+    _mulMod(x, y) {
+      const BASE = 0x10001;
+      const MASK = 0xFFFF;
+      
+      if (x === 0) {
+        x = BASE - y;
+      } else if (y === 0) {
+        x = BASE - x;
+      } else {
+        const p = x * y;
+        y = p & MASK;
+        x = (p >>> 16); // Use unsigned right shift
+        x = y - x + ((y < x) ? 1 : 0);
+      }
+      return x & MASK;
     }
 
     /**
      * Modular inverse for multiplication mod (2^16 + 1)
+     * Based on Bouncy Castle MulInv implementation
      */
-    _modInverse(x) {
-      x &= 0xFFFF;
-
-      // Special case: inverse of 0 (representing 2^16) is 0
-      if (x === 0) return 0;
-
-      // Extended Euclidean algorithm
-      let u1 = this.MODULUS;
-      let u2 = 0;
-      let u3 = x;
-      let v1 = 0;
-      let v2 = 1;
-      let v3 = this.MODULUS;
-
-      while (v3 !== 0) {
-        const q = Math.floor(u3 / v3);
-        const t1 = u1 - q * v1;
-        const t2 = u2 - q * v2;
-        const t3 = u3 - q * v3;
-
-        u1 = v1; u2 = v2; u3 = v3;
-        v1 = t1; v2 = t2; v3 = t3;
+    _mulInv(x) {
+      const BASE = 0x10001;
+      const MASK = 0xFFFF;
+      
+      if (x < 2) return x;
+      
+      let t0 = 1;
+      let t1 = Math.floor(BASE / x);
+      let y = BASE % x;
+      
+      while (y !== 1) {
+        const q = Math.floor(x / y);
+        x = x % y;
+        t0 = (t0 + (t1 * q)) & MASK;
+        
+        if (x === 1) return t0;
+        
+        const q2 = Math.floor(y / x);
+        y = y % x;
+        t1 = (t1 + (t0 * q2)) & MASK;
       }
-
-      let result = u1;
-      if (result < 0) result += this.MODULUS;
-
-      return result & 0xFFFF;
+      
+      return (1 - t1) & MASK;
     }
 
     /**
      * Additive inverse modulo 2^16
+     * Based on Bouncy Castle AddInv implementation
      */
-    _addInverse(x) {
-      x &= 0xFFFF;
-      return x === 0 ? 0 : (0x10000 - x) & 0xFFFF;
+    _addInv(x) {
+      const MASK = 0xFFFF;
+      return (0 - x) & MASK;
     }
 
     /**
      * Generate 52 subkeys from 128-bit master key
+     * Based on Bouncy Castle ExpandKey implementation
      */
-    _generateSubkeys(key) {
-      const subkeys = new Array(this.TOTAL_SUBKEYS);
-
-      // Convert key to 16-bit words (8 words from 16 bytes, big-endian)
-      const keyWords = [];
-      for (let i = 0; i < 8; i++) {
-        keyWords[i] = (key[i * 2] << 8) | key[i * 2 + 1];
-      }
-
-      // First 8 subkeys are the original key words
-      for (let i = 0; i < 8; i++) {
-        subkeys[i] = keyWords[i];
-      }
-
-      // Generate remaining 44 subkeys using IDEA's key schedule
-      let keySchedule = [...keyWords]; // Working copy of key words
-
-      for (let group = 1; group < 7; group++) { // 6 more groups needed
-        // Rotate 128-bit key left by 25 bits
-        const temp = [...keySchedule];
-
-        // Rotate each word left by 25 bits within the 128-bit context
-        for (let i = 0; i < 8; i++) {
-          const word1Index = (i + 1) % 8; // Next word (25-bit rotation)
-          const word2Index = (i + 2) % 8; // Word after that
-
-          keySchedule[i] = ((temp[word1Index] << 9) | (temp[word2Index] >>> 7)) & 0xFFFF;
+    _expandKey(uKey) {
+      const key = new Array(52);
+      const MASK = 0xFFFF;
+      
+      // Pad key if needed (though IDEA requires exactly 16 bytes)
+      if (uKey.length < 16) {
+        const tmp = new Array(16).fill(0);
+        for (let i = 0; i < uKey.length; i++) {
+          tmp[tmp.length - uKey.length + i] = uKey[i];
         }
-
-        // Copy up to 8 keys from this rotated schedule
-        const startIndex = group * 8;
-        for (let i = 0; i < 8 && startIndex + i < this.TOTAL_SUBKEYS; i++) {
-          subkeys[startIndex + i] = keySchedule[i];
+        uKey = tmp;
+      }
+      
+      // Extract first 8 subkeys directly from user key (big-endian)
+      for (let i = 0; i < 8; i++) {
+        key[i] = OpCodes.Pack16BE(uKey[i * 2], uKey[i * 2 + 1]);
+      }
+      
+      // Generate remaining subkeys using IDEA key schedule
+      for (let i = 8; i < 52; i++) {
+        if ((i & 7) < 6) {
+          key[i] = ((key[i - 7] & 127) << 9 | key[i - 6] >>> 7) & MASK;
+        } else if ((i & 7) === 6) {
+          key[i] = ((key[i - 7] & 127) << 9 | key[i - 14] >>> 7) & MASK;
+        } else {
+          key[i] = ((key[i - 15] & 127) << 9 | key[i - 14] >>> 7) & MASK;
         }
       }
-
-      return subkeys;
+      
+      return key;
     }
 
     /**
      * Generate decryption subkeys from encryption subkeys
+     * Based on Bouncy Castle InvertKey implementation
      */
-    _generateDecryptSubkeys(encryptKeys) {
-      const decryptKeys = new Array(this.TOTAL_SUBKEYS);
-
-      // Generate decryption keys following reference implementation pattern
-      for (let i = 0; i < 52; i += 6) {
-        // First subkey: multiplicative inverse
-        decryptKeys[i] = this._modInverse(encryptKeys[48 - i]);
-
-        // Second and third subkeys: additive inverses (swapped except for first/last)
-        if (i === 0 || i === 48) {
-          decryptKeys[i + 1] = this._addInverse(encryptKeys[49 - i]);
-          decryptKeys[i + 2] = this._addInverse(encryptKeys[50 - i]);
-        } else {
-          decryptKeys[i + 1] = this._addInverse(encryptKeys[50 - i]);
-          decryptKeys[i + 2] = this._addInverse(encryptKeys[49 - i]);
-        }
-
-        // Fourth subkey: multiplicative inverse
-        decryptKeys[i + 3] = this._modInverse(encryptKeys[51 - i]);
-
-        // Fifth and sixth subkeys: direct copy (MA-box keys)
-        if (i < 48) {
-          decryptKeys[i + 4] = encryptKeys[46 - i];
-          decryptKeys[i + 5] = encryptKeys[47 - i];
-        }
+    _invertKey(inKey) {
+      const key = new Array(52);
+      let inOff = 0;
+      let p = 52; // Work backwards
+      
+      // First round
+      let t1 = this._mulInv(inKey[inOff++]);
+      let t2 = this._addInv(inKey[inOff++]);
+      let t3 = this._addInv(inKey[inOff++]);
+      let t4 = this._mulInv(inKey[inOff++]);
+      key[--p] = t4;
+      key[--p] = t3;
+      key[--p] = t2;
+      key[--p] = t1;
+      
+      // Rounds 2-8
+      for (let round = 1; round < 8; round++) {
+        t1 = inKey[inOff++];
+        t2 = inKey[inOff++];
+        key[--p] = t2;
+        key[--p] = t1;
+        
+        t1 = this._mulInv(inKey[inOff++]);
+        t2 = this._addInv(inKey[inOff++]);
+        t3 = this._addInv(inKey[inOff++]);
+        t4 = this._mulInv(inKey[inOff++]);
+        key[--p] = t4;
+        key[--p] = t2; // NB: Order - t2 and t3 are swapped!
+        key[--p] = t3;
+        key[--p] = t1;
       }
-
-      return decryptKeys;
+      
+      // Final half-round
+      t1 = inKey[inOff++];
+      t2 = inKey[inOff++];
+      key[--p] = t2;
+      key[--p] = t1;
+      
+      t1 = this._mulInv(inKey[inOff++]);
+      t2 = this._addInv(inKey[inOff++]);
+      t3 = this._addInv(inKey[inOff++]);
+      t4 = this._mulInv(inKey[inOff]);
+      key[--p] = t4;
+      key[--p] = t3;
+      key[--p] = t2;
+      key[--p] = t1;
+      
+      return key;
     }
 
     /**
      * IDEA encryption/decryption engine
+     * Based on Bouncy Castle IdeaFunc implementation
      */
-    _processBlock(block, subkeys) {
-      // Split input into four 16-bit words
-      let X1 = (block[0] << 8) | block[1];
-      let X2 = (block[2] << 8) | block[3];
-      let X3 = (block[4] << 8) | block[5];
-      let X4 = (block[6] << 8) | block[7];
-
-      // 8 full rounds
-      for (let round = 0; round < this.ROUNDS; round++) {
-        const keyOffset = round * 6;
-
-        // Step 1: Multiply and add
-        X1 = this._mulMod(X1, subkeys[keyOffset]);
-        X2 = OpCodes.AddMod(X2, subkeys[keyOffset + 1], 0x10000);
-        X3 = OpCodes.AddMod(X3, subkeys[keyOffset + 2], 0x10000);
-        X4 = this._mulMod(X4, subkeys[keyOffset + 3]);
-
-        // Step 2: MA structure (Multiplication-Addition)
-        const T1 = X1 ^ X3;
-        const T2 = X2 ^ X4;
-        const T3 = this._mulMod(T1, subkeys[keyOffset + 4]);
-        const T4 = OpCodes.AddMod(T2, T3, 0x10000);
-        const T5 = this._mulMod(T4, subkeys[keyOffset + 5]);
-        const T6 = OpCodes.AddMod(T3, T5, 0x10000);
-
-        // Step 3: Final XOR and rearrangement
-        const Y1 = X1 ^ T5;
-        const Y2 = X3 ^ T5;
-        const Y3 = X2 ^ T6;
-        const Y4 = X4 ^ T6;
-
-        // Prepare for next round (swap middle two words)
-        X1 = Y1;
-        X2 = Y3;
-        X3 = Y2;
-        X4 = Y4;
+    _ideaFunc(workingKey, input, output) {
+      const MASK = 0xFFFF;
+      
+      // Extract four 16-bit words (big-endian)
+      let x0 = OpCodes.Pack16BE(input[0], input[1]);
+      let x1 = OpCodes.Pack16BE(input[2], input[3]);
+      let x2 = OpCodes.Pack16BE(input[4], input[5]);
+      let x3 = OpCodes.Pack16BE(input[6], input[7]);
+      
+      let keyOff = 0;
+      
+      // 8 rounds
+      for (let round = 0; round < 8; round++) {
+        x0 = this._mulMod(x0, workingKey[keyOff++]);
+        x1 += workingKey[keyOff++];
+        x1 &= MASK;
+        x2 += workingKey[keyOff++];
+        x2 &= MASK;
+        x3 = this._mulMod(x3, workingKey[keyOff++]);
+        
+        const t0 = x1;
+        const t1 = x2;
+        x2 ^= x0;
+        x1 ^= x3;
+        x2 = this._mulMod(x2, workingKey[keyOff++]);
+        x1 += x2;
+        x1 &= MASK;
+        x1 = this._mulMod(x1, workingKey[keyOff++]);
+        x2 += x1;
+        x2 &= MASK;
+        x0 ^= x1;
+        x3 ^= x2;
+        x1 ^= t1;
+        x2 ^= t0;
       }
-
-      // Final half-round (no swapping)
-      const finalOffset = this.ROUNDS * 6;
-      X1 = this._mulMod(X1, subkeys[finalOffset]);
-      X2 = OpCodes.AddMod(X2, subkeys[finalOffset + 1], 0x10000);
-      X3 = OpCodes.AddMod(X3, subkeys[finalOffset + 2], 0x10000);
-      X4 = this._mulMod(X4, subkeys[finalOffset + 3]);
-
-      // Convert back to byte array
-      return [
-        (X1 >>> 8) & 0xFF, X1 & 0xFF,
-        (X2 >>> 8) & 0xFF, X2 & 0xFF,
-        (X3 >>> 8) & 0xFF, X3 & 0xFF,
-        (X4 >>> 8) & 0xFF, X4 & 0xFF
+      
+      // Final transformation
+      const result = [
+        this._mulMod(x0, workingKey[keyOff++]) & 0xFFFF,
+        (x2 + workingKey[keyOff++]) & MASK, // NB: Order - x2 and x1 swapped
+        (x1 + workingKey[keyOff++]) & MASK,
+        this._mulMod(x3, workingKey[keyOff]) & 0xFFFF
       ];
+      
+      // Convert back to bytes (big-endian)
+      output[0] = (result[0] >>> 8) & 0xFF;
+      output[1] = result[0] & 0xFF;
+      output[2] = (result[1] >>> 8) & 0xFF;
+      output[3] = result[1] & 0xFF;
+      output[4] = (result[2] >>> 8) & 0xFF;
+      output[5] = result[2] & 0xFF;
+      output[6] = (result[3] >>> 8) & 0xFF;
+      output[7] = result[3] & 0xFF;
+      
+      return output;
     }
 
     // Encrypt a 64-bit block
@@ -394,7 +413,8 @@
         throw new Error('IDEA block size must be exactly 8 bytes');
       }
 
-      return this._processBlock(block, this.encryptKeys);
+      const output = new Array(8);
+      return this._ideaFunc(this.encryptKeys, block, output);
     }
 
     // Decrypt a 64-bit block
@@ -403,7 +423,8 @@
         throw new Error('IDEA block size must be exactly 8 bytes');
       }
 
-      return this._processBlock(block, this.decryptKeys);
+      const output = new Array(8);
+      return this._ideaFunc(this.decryptKeys, block, output);
     }
   }
 
