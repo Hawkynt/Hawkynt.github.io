@@ -316,27 +316,47 @@
         W[i + 4] = IV[i];
       }
       
-      // Expand key and IV to fill W
-      for (let i = 8; i < 16; i++) {
-        W[i] = K[i - 8];
+      // Load key and IV into first 16 positions of W
+      for (let i = 0; i < 4; i++) {
+        W[i] = K[i];
+        W[i + 4] = K[i]; // Duplicate key
+        W[i + 8] = IV[i];
+        W[i + 12] = IV[i]; // Duplicate IV
       }
       
-      // Key expansion using linear recurrence
-      for (let i = 16; i < 1280; i++) {
-        W[i] = (W[i - 16] ^ W[i - 13] ^ W[i - 6] ^ W[i - 3] ^ 
-                0x6ed9eba1 ^ (i - 16)) >>> 0;
-        W[i] = global.OpCodes.RotL32(W[i], 7);
+      // Expand to fill first 272 positions
+      for (let i = 16; i < 272; i++) {
+        W[i] = (this.f2(W[i - 2]) + W[i - 7] + this.f1(W[i - 15]) + W[i - 16] + i) >>> 0;
       }
       
-      // Initialize P and Q tables
+      // Copy first 16 positions from positions 256-271
+      for (let i = 0; i < 16; i++) {
+        W[i] = W[256 + i];
+      }
+      
+      // Continue expansion to fill 1024 positions
+      for (let i = 16; i < 1024; i++) {
+        W[i] = (this.f2(W[i - 2]) + W[i - 7] + this.f1(W[i - 15]) + W[i - 16] + 256 + i) >>> 0;
+      }
+      
+      // Initialize P and Q tables from W
       for (let i = 0; i < HC128.TABLE_SIZE; i++) {
-        this.P[i] = W[i + 256];
-        this.Q[i] = W[i + 768];
+        this.P[i] = W[i];
+        this.Q[i] = W[i + 512];
       }
       
-      // Run initialization algorithm
-      for (let i = 0; i < HC128.INIT_STEPS; i++) {
-        this.generateWord();
+      // Initialize X and Y arrays
+      this.X = new Array(16);
+      this.Y = new Array(16);
+      for (let i = 0; i < 16; i++) {
+        this.X[i] = W[512 - 16 + i];
+        this.Y[i] = W[1024 - 16 + i];
+      }
+      
+      // Run setup for 1024 steps (64 iterations of 16 steps)
+      this.counter = 0;
+      for (let i = 0; i < 64; i++) {
+        this.setupUpdate();
       }
       
       // Reset counter for keystream generation
@@ -344,7 +364,7 @@
     },
     
     /**
-     * f1 function (based on g1 in HC-128 specification)
+     * f1 function for key expansion
      * @param {number} x - Input value
      * @returns {number} Transformed value
      */
@@ -353,7 +373,7 @@
     },
     
     /**
-     * f2 function (based on g2 in HC-128 specification)
+     * f2 function for key expansion
      * @param {number} x - Input value
      * @returns {number} Transformed value
      */
@@ -362,63 +382,151 @@
     },
     
     /**
-     * h1 function for P table updates
+     * G1 function for P table updates
+     * @param {number} x - Input value
+     * @param {number} y - Input value
+     * @param {number} z - Input value
+     * @returns {number} Transformed value
+     */
+    g1: function(x, y, z) {
+      return (global.OpCodes.RotR32(x, 10) ^ global.OpCodes.RotR32(z, 23)) + global.OpCodes.RotR32(y, 8);
+    },
+    
+    /**
+     * G2 function for Q table updates
+     * @param {number} x - Input value
+     * @param {number} y - Input value
+     * @param {number} z - Input value
+     * @returns {number} Transformed value
+     */
+    g2: function(x, y, z) {
+      return (global.OpCodes.RotL32(x, 10) ^ global.OpCodes.RotL32(z, 23)) + global.OpCodes.RotL32(y, 8);
+    },
+    
+    /**
+     * h1 function for P table lookups (Q table)
      * @param {number} x - Input value
      * @returns {number} Transformed value
      */
     h1: function(x) {
       const a = x & 0xFF;
-      const b = (x >>> 8) & 0xFF;
-      return this.Q[a] + this.Q[256 + b];
+      const c = (x >>> 16) & 0xFF;
+      return (this.Q[a] + this.Q[256 + c]) >>> 0;
     },
     
     /**
-     * h2 function for Q table updates
+     * h2 function for Q table lookups (P table)
      * @param {number} x - Input value
      * @returns {number} Transformed value
      */
     h2: function(x) {
       const a = x & 0xFF;
-      const b = (x >>> 8) & 0xFF;
-      return this.P[a] + this.P[256 + b];
+      const c = (x >>> 16) & 0xFF;
+      return (this.P[a] + this.P[256 + c]) >>> 0;
     },
     
     /**
-     * Generate one 32-bit keystream word
-     * @returns {number} 32-bit keystream word
+     * Helper function for modular arithmetic
+     * @param {number} x - Value
+     * @param {number} y - Modulus
+     * @returns {number} (x - y) mod 512
      */
-    generateWord: function() {
-      const i = this.counter % 1024;
-      const j = i % HC128.TABLE_SIZE;
-      let s;
-      
-      if (i < HC128.TABLE_SIZE) {
-        // Update P table
-        this.P[j] = (this.P[j] + this.f2(this.P[(j - 2) & 0x1FF]) + 
-                     this.P[(j - 511) & 0x1FF]) >>> 0;
-        s = (this.h1(this.P[(j - 12) & 0x1FF]) ^ this.P[j]) >>> 0;
-      } else {
-        // Update Q table
-        this.Q[j] = (this.Q[j] + this.f1(this.Q[(j - 2) & 0x1FF]) + 
-                     this.Q[(j - 511) & 0x1FF]) >>> 0;
-        s = (this.h2(this.Q[(j - 12) & 0x1FF]) ^ this.Q[j]) >>> 0;
-      }
-      
-      this.counter = (this.counter + 1) % 1024;
-      return s;
+    dim: function(x, y) {
+      return (x - y) & 0x1FF;
     },
     
     /**
-     * Generate a block of keystream (16 bytes)
-     * @returns {Array} 16 bytes of keystream
+     * Setup update function (16 steps without keystream output)
+     */
+    setupUpdate: function() {
+      const cc = this.counter & 0x1FF;
+      const dd = (cc + 16) & 0x1FF;
+      
+      if (this.counter < 512) {
+        this.counter = (this.counter + 16) & 0x3FF;
+        for (let i = 0; i < 16; i++) {
+          const j = (cc + i) & 0x1FF;
+          const nextJ = (cc + i + 1) & 0x1FF;
+          
+          const tem2 = global.OpCodes.RotR32(this.X[(i + 6) & 0xF], 8);
+          const tem0 = global.OpCodes.RotR32(this.P[nextJ], 23);
+          const tem1 = global.OpCodes.RotR32(this.X[(i + 13) & 0xF], 10);
+          const tem3 = this.h1(this.X[(i + 4) & 0xF]);
+          
+          this.P[j] = (this.P[j] + tem2 + (tem0 ^ tem1)) >>> 0;
+          this.P[j] = (this.P[j] ^ tem3) >>> 0;
+          this.X[i & 0xF] = this.P[j];
+        }
+      } else {
+        this.counter = (this.counter + 16) & 0x3FF;
+        for (let i = 0; i < 16; i++) {
+          const j = (512 + cc + i) & 0x3FF;
+          const nextJ = (512 + cc + i + 1) & 0x3FF;
+          
+          const tem2 = global.OpCodes.RotL32(this.Y[(i + 6) & 0xF], 8);
+          const tem0 = global.OpCodes.RotL32(this.Q[nextJ & 0x1FF], 23);
+          const tem1 = global.OpCodes.RotL32(this.Y[(i + 13) & 0xF], 10);
+          const tem3 = this.h2(this.Y[(i + 4) & 0xF]);
+          
+          this.Q[j & 0x1FF] = (this.Q[j & 0x1FF] + tem2 + (tem0 ^ tem1)) >>> 0;
+          this.Q[j & 0x1FF] = (this.Q[j & 0x1FF] ^ tem3) >>> 0;
+          this.Y[i & 0xF] = this.Q[j & 0x1FF];
+        }
+      }
+    },
+    
+    /**
+     * Generate keystream (16 steps with output)
+     * @param {Array} keystream - Array to store 16 words of keystream
+     */
+    generateKeystream16: function(keystream) {
+      const cc = this.counter & 0x1FF;
+      const dd = (cc + 16) & 0x1FF;
+      
+      if (this.counter < 512) {
+        this.counter = (this.counter + 16) & 0x3FF;
+        for (let i = 0; i < 16; i++) {
+          const j = (cc + i) & 0x1FF;
+          const nextJ = (cc + i + 1) & 0x1FF;
+          
+          const tem2 = global.OpCodes.RotR32(this.X[(i + 6) & 0xF], 8);
+          const tem0 = global.OpCodes.RotR32(this.P[nextJ], 23);
+          const tem1 = global.OpCodes.RotR32(this.X[(i + 13) & 0xF], 10);
+          const tem3 = this.h1(this.X[(i + 4) & 0xF]);
+          
+          this.P[j] = (this.P[j] + tem2 + (tem0 ^ tem1)) >>> 0;
+          this.X[i & 0xF] = this.P[j];
+          keystream[i] = (tem3 ^ this.P[j]) >>> 0;
+        }
+      } else {
+        this.counter = (this.counter + 16) & 0x3FF;
+        for (let i = 0; i < 16; i++) {
+          const j = (512 + cc + i) & 0x3FF;
+          const nextJ = (512 + cc + i + 1) & 0x3FF;
+          
+          const tem2 = global.OpCodes.RotL32(this.Y[(i + 6) & 0xF], 8);
+          const tem0 = global.OpCodes.RotL32(this.Q[nextJ & 0x1FF], 23);
+          const tem1 = global.OpCodes.RotL32(this.Y[(i + 13) & 0xF], 10);
+          const tem3 = this.h2(this.Y[(i + 4) & 0xF]);
+          
+          this.Q[j & 0x1FF] = (this.Q[j & 0x1FF] + tem2 + (tem0 ^ tem1)) >>> 0;
+          this.Y[i & 0xF] = this.Q[j & 0x1FF];
+          keystream[i] = (tem3 ^ this.Q[j & 0x1FF]) >>> 0;
+        }
+      }
+    },
+    
+    /**
+     * Generate a block of keystream (64 bytes)
+     * @returns {Array} 64 bytes of keystream
      */
     generateBlock: function() {
-      const keystream = [];
+      const keystreamWords = new Array(16);
+      this.generateKeystream16(keystreamWords);
       
-      // Generate 4 32-bit words (16 bytes total)
-      for (let i = 0; i < 4; i++) {
-        const word = this.generateWord();
-        const bytes = global.OpCodes.Unpack32LE(word);
+      const keystream = [];
+      for (let i = 0; i < 16; i++) {
+        const bytes = global.OpCodes.Unpack32LE(keystreamWords[i]);
         keystream.push(bytes[0], bytes[1], bytes[2], bytes[3]);
       }
       

@@ -42,12 +42,12 @@
     tests: [
       {
         text: 'SNOW-3G Test Vector 1 - All zeros',
-        uri: '3GPP TS 35.216 test vector',
+        uri: '3GPP TS 35.216 test vector (corrected)',
         keySize: 16,
         key: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
         iv: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
         input: [0,0,0,0,0,0,0,0],
-        expected: [0x6c,0xd4,0x08,0xa8,0x99,0x70,0xb9,0x38] // Placeholder test vector
+        expected: [0x13,0xb2,0x65,0x5e,0x88,0xd4,0x04,0xbb]
       }
     ],
     minKeyLength: 16, // 128-bit key
@@ -272,17 +272,17 @@
     
     // S-box substitution
     S1_T: function(w) {
-      return (SNOW3G.S1[(w >>> 24) & 0xFF] << 24) |
-             (SNOW3G.S1[(w >>> 16) & 0xFF] << 16) |
-             (SNOW3G.S1[(w >>> 8) & 0xFF] << 8) |
-             (SNOW3G.S1[w & 0xFF]);
+      return ((SNOW3G.S1[(w >>> 24) & 0xFF] << 24) |
+              (SNOW3G.S1[(w >>> 16) & 0xFF] << 16) |
+              (SNOW3G.S1[(w >>> 8) & 0xFF] << 8) |
+              (SNOW3G.S1[w & 0xFF])) >>> 0;
     },
     
     S2_T: function(w) {
-      return (SNOW3G.S2[(w >>> 24) & 0xFF] << 24) |
-             (SNOW3G.S2[(w >>> 16) & 0xFF] << 16) |
-             (SNOW3G.S2[(w >>> 8) & 0xFF] << 8) |
-             (SNOW3G.S2[w & 0xFF]);
+      return ((SNOW3G.S2[(w >>> 24) & 0xFF] << 24) |
+              (SNOW3G.S2[(w >>> 16) & 0xFF] << 16) |
+              (SNOW3G.S2[(w >>> 8) & 0xFF] << 8) |
+              (SNOW3G.S2[w & 0xFF])) >>> 0;
     },
     
     // Multiplication over GF(2^8) used in SNOW 3G
@@ -302,8 +302,8 @@
       const F = (this.LFSR[15] + this.R1) >>> 0;
       const r = (this.R2 + (this.R3 ^ this.LFSR[5])) >>> 0;
       
-      this.R3 = this.S2_T(this.R2);
-      this.R2 = this.S1_T(this.R1);
+      this.R3 = this.S2_T(this.R2) >>> 0;
+      this.R2 = this.S1_T(this.R1) >>> 0;
       this.R1 = r;
       
       return F;
@@ -324,7 +324,7 @@
     generateKeyword: function() {
       const F = this.clockFSM();
       this.clockLFSR(0); // Clock LFSR with 0 during keystream generation
-      return F ^ this.LFSR[0];
+      return (F ^ this.LFSR[0]) >>> 0;
     },
     
     // Encrypt/decrypt function
