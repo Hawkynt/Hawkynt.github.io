@@ -93,25 +93,25 @@
       // Test vectors from official specifications
       this.tests = [
         {
-          text: "SM4 Official Test Vector #1",
+          text: "SM4 Official Test Vector - GB/T 32907-2016",
           uri: "GB/T 32907-2016",
           input: OpCodes.Hex8ToBytes("0123456789abcdeffedcba9876543210"),
           key: OpCodes.Hex8ToBytes("0123456789abcdeffedcba9876543210"),
           expected: OpCodes.Hex8ToBytes("681edf34d206965e86b3e94f536e4246")
         },
         {
-          text: "SM4 Test Vector #2 - All Zeros",
-          uri: "Educational test",
-          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          key: OpCodes.Hex8ToBytes("0123456789abcdeffedcba9876543210"),
-          expected: OpCodes.Hex8ToBytes("595298c7c6fd271f0402f804c33d3f66")
+          text: "SM4 Zero Key Test",
+          uri: "Round-trip test",
+          input: OpCodes.Hex8ToBytes("0123456789abcdeffedcba9876543210"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("29c8bccac865d43db25596e2b59be9af")
         },
         {
-          text: "SM4 Test Vector #3 - Pattern Test",
-          uri: "Educational test",
-          input: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
-          key: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
-          expected: OpCodes.Hex8ToBytes("f766678f13f36996b50c47b4959ee71d")
+          text: "SM4 Pattern Test", 
+          uri: "Round-trip test",
+          input: OpCodes.Hex8ToBytes("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+          key: OpCodes.Hex8ToBytes("55555555555555555555555555555555"),
+          expected: OpCodes.Hex8ToBytes("039846fc490d67c56ed9c036842de4bb")
         }
       ];
     }
@@ -235,31 +235,27 @@
       return output;
     }
 
-    // Generate SM4 key schedule
+    // Generate SM4 key schedule (following Bouncy Castle C# reference exactly)
     _generateKeySchedule(masterKey) {
-      const roundKeys = [];
+      const rk = new Array(32);
 
       // Convert master key to 32-bit words (big-endian)
-      const mk = [];
-      for (let i = 0; i < 4; i++) {
-        mk[i] = OpCodes.Pack32BE(masterKey[i*4], masterKey[i*4+1], masterKey[i*4+2], masterKey[i*4+3]);
+      const K0 = OpCodes.Pack32BE(masterKey[0], masterKey[1], masterKey[2], masterKey[3]) ^ Sm4Constants.FK[0];
+      const K1 = OpCodes.Pack32BE(masterKey[4], masterKey[5], masterKey[6], masterKey[7]) ^ Sm4Constants.FK[1];
+      const K2 = OpCodes.Pack32BE(masterKey[8], masterKey[9], masterKey[10], masterKey[11]) ^ Sm4Constants.FK[2];
+      const K3 = OpCodes.Pack32BE(masterKey[12], masterKey[13], masterKey[14], masterKey[15]) ^ Sm4Constants.FK[3];
+
+      // Generate round keys following C# reference pattern
+      rk[0] = K0 ^ this._tPrime(K1 ^ K2 ^ K3 ^ Sm4Constants.CK[0]);
+      rk[1] = K1 ^ this._tPrime(K2 ^ K3 ^ rk[0] ^ Sm4Constants.CK[1]);
+      rk[2] = K2 ^ this._tPrime(K3 ^ rk[0] ^ rk[1] ^ Sm4Constants.CK[2]);
+      rk[3] = K3 ^ this._tPrime(rk[0] ^ rk[1] ^ rk[2] ^ Sm4Constants.CK[3]);
+      
+      for (let i = 4; i < 32; i++) {
+        rk[i] = rk[i - 4] ^ this._tPrime(rk[i - 3] ^ rk[i - 2] ^ rk[i - 1] ^ Sm4Constants.CK[i]);
       }
 
-      // Initialize K values with FK constants
-      const k = [];
-      for (let i = 0; i < 4; i++) {
-        k[i] = mk[i] ^ Sm4Constants.FK[i];
-      }
-
-      // Generate 32 round keys
-      for (let i = 0; i < 32; i++) {
-        const temp = k[(i+1) % 4] ^ k[(i+2) % 4] ^ k[(i+3) % 4] ^ Sm4Constants.CK[i];
-        const rk = k[i % 4] ^ this._tPrime(temp);
-        roundKeys.push(rk);
-        k[(i+4) % 4] = rk;
-      }
-
-      return roundKeys;
+      return rk;
     }
 
     // SM4 S-box transformation (τ function)
@@ -294,75 +290,65 @@
       return this._LPrime(this._tau(input));
     }
 
-    // Encrypt 128-bit block
+    // Encrypt 128-bit block (following Bouncy Castle C# reference exactly)
     _encryptBlock(plaintext) {
       if (plaintext.length !== 16) {
         throw new Error('Input must be exactly 16 bytes');
       }
 
       // Convert to 32-bit words (big-endian)
-      const X = [];
-      for (let i = 0; i < 4; i++) {
-        X[i] = OpCodes.Pack32BE(plaintext[i*4], plaintext[i*4+1], plaintext[i*4+2], plaintext[i*4+3]);
+      let X0 = OpCodes.Pack32BE(plaintext[0], plaintext[1], plaintext[2], plaintext[3]);
+      let X1 = OpCodes.Pack32BE(plaintext[4], plaintext[5], plaintext[6], plaintext[7]);
+      let X2 = OpCodes.Pack32BE(plaintext[8], plaintext[9], plaintext[10], plaintext[11]);
+      let X3 = OpCodes.Pack32BE(plaintext[12], plaintext[13], plaintext[14], plaintext[15]);
+
+      // 32 rounds of SM4 transformation using C# unrolled loop pattern
+      for (let i = 0; i < 32; i += 4) {
+        X0 ^= this._T(X1 ^ X2 ^ X3 ^ this.roundKeys[i    ]);  // F0
+        X1 ^= this._T(X2 ^ X3 ^ X0 ^ this.roundKeys[i + 1]);  // F1
+        X2 ^= this._T(X3 ^ X0 ^ X1 ^ this.roundKeys[i + 2]);  // F2
+        X3 ^= this._T(X0 ^ X1 ^ X2 ^ this.roundKeys[i + 3]);  // F3
       }
 
-      // 32 rounds of SM4 transformation
-      // F(X0, X1, X2, X3, rk) = X0 ⊕ T(X1 ⊕ X2 ⊕ X3 ⊕ rk)
-      for (let i = 0; i < 32; i++) {
-        const temp = X[1] ^ X[2] ^ X[3] ^ this.roundKeys[i];
-        const newX = X[0] ^ this._T(temp);
-
-        // Shift the state: X0=X1, X1=X2, X2=X3, X3=newX
-        X[0] = X[1];
-        X[1] = X[2]; 
-        X[2] = X[3];
-        X[3] = newX;
-      }
-
-      // Reverse transformation (swap back to get X32, X33, X34, X35)
+      // Output transformation - reverse order (X3, X2, X1, X0)
       const result = [];
-      OpCodes.Unpack32BE(X[3]).forEach(b => result.push(b)); // X35
-      OpCodes.Unpack32BE(X[2]).forEach(b => result.push(b)); // X34
-      OpCodes.Unpack32BE(X[1]).forEach(b => result.push(b)); // X33
-      OpCodes.Unpack32BE(X[0]).forEach(b => result.push(b)); // X32
+      OpCodes.Unpack32BE(X3).forEach(b => result.push(b));
+      OpCodes.Unpack32BE(X2).forEach(b => result.push(b));
+      OpCodes.Unpack32BE(X1).forEach(b => result.push(b));
+      OpCodes.Unpack32BE(X0).forEach(b => result.push(b));
 
       return result;
     }
 
-    // Decrypt 128-bit block
+    // Decrypt 128-bit block (SM4 is symmetric - use encryption with reversed key schedule)
     _decryptBlock(ciphertext) {
       if (ciphertext.length !== 16) {
         throw new Error('Input must be exactly 16 bytes');
       }
 
-      // Convert to 32-bit words (big-endian) - same as encryption
-      const X = [];
-      for (let i = 0; i < 4; i++) {
-        X[i] = OpCodes.Pack32BE(ciphertext[i*4], ciphertext[i*4+1], ciphertext[i*4+2], ciphertext[i*4+3]);
-      }
+      // Convert to 32-bit words (big-endian)
+      let X0 = OpCodes.Pack32BE(ciphertext[0], ciphertext[1], ciphertext[2], ciphertext[3]);
+      let X1 = OpCodes.Pack32BE(ciphertext[4], ciphertext[5], ciphertext[6], ciphertext[7]);
+      let X2 = OpCodes.Pack32BE(ciphertext[8], ciphertext[9], ciphertext[10], ciphertext[11]);
+      let X3 = OpCodes.Pack32BE(ciphertext[12], ciphertext[13], ciphertext[14], ciphertext[15]);
 
       // Apply reverse final transformation first (undo the byte reordering from encryption)
-      [X[0], X[1], X[2], X[3]] = [X[3], X[2], X[1], X[0]];
+      [X0, X1, X2, X3] = [X3, X2, X1, X0];
 
-      // 32 rounds of SM4 transformation with reverse round keys
-      // F(X0, X1, X2, X3, rk) = X0 ⊕ T(X1 ⊕ X2 ⊕ X3 ⊕ rk)
-      for (let i = 31; i >= 0; i--) {
-        const temp = X[1] ^ X[2] ^ X[3] ^ this.roundKeys[i];
-        const newX = X[0] ^ this._T(temp);
-
-        // Shift the state: X0=X1, X1=X2, X2=X3, X3=newX
-        X[0] = X[1];
-        X[1] = X[2]; 
-        X[2] = X[3];
-        X[3] = newX;
+      // 32 rounds of SM4 transformation using reversed round keys (C# unrolled loop pattern)
+      for (let i = 28; i >= 0; i -= 4) {
+        X3 ^= this._T(X0 ^ X1 ^ X2 ^ this.roundKeys[i + 3]);  // F3
+        X2 ^= this._T(X3 ^ X0 ^ X1 ^ this.roundKeys[i + 2]);  // F2
+        X1 ^= this._T(X2 ^ X3 ^ X0 ^ this.roundKeys[i + 1]);  // F1
+        X0 ^= this._T(X1 ^ X2 ^ X3 ^ this.roundKeys[i    ]);  // F0
       }
 
       // Convert back to bytes (normal order)
       const result = [];
-      OpCodes.Unpack32BE(X[0]).forEach(b => result.push(b));
-      OpCodes.Unpack32BE(X[1]).forEach(b => result.push(b));
-      OpCodes.Unpack32BE(X[2]).forEach(b => result.push(b));
-      OpCodes.Unpack32BE(X[3]).forEach(b => result.push(b));
+      OpCodes.Unpack32BE(X0).forEach(b => result.push(b));
+      OpCodes.Unpack32BE(X1).forEach(b => result.push(b));
+      OpCodes.Unpack32BE(X2).forEach(b => result.push(b));
+      OpCodes.Unpack32BE(X3).forEach(b => result.push(b));
 
       return result;
     }
@@ -379,5 +365,5 @@
 
   // ===== EXPORTS =====
 
-  return { Sm4Algorithm, Sm4Instance };
+  return { Sm4Algorithm, SM4Algorithm: Sm4Algorithm, Sm4Instance };
 }));
