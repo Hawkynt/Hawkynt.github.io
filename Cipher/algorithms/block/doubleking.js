@@ -74,12 +74,12 @@
 
       // Documentation and references
       this.documentation = [
-        new LinkItem("Tim van Dijk's Bachelor Thesis", "A high-performance threshold implementation of a BaseKing variant on an ARM architecture"),
+        new LinkItem("Tim van Dijk's Bachelor Thesis", "https://www.cs.ru.nl/bachelors-theses/2017/Tim_van_Dijk___4477073___A_high-performance_threshold_implementation_of_a_BaseKing_variant_on_an_ARM_architecture.pdf"),
         new LinkItem("Radboud University Research", "https://www.cs.ru.nl/bachelors-theses/")
       ];
 
       this.references = [
-        new LinkItem("BaseKing Foundation", "Joan Daemen's BaseKing cipher as foundation algorithm"),
+        new LinkItem("BaseKing Foundation", "https://github.com/TimVanDijk/Bachelor-Thesis-Public"),
         new LinkItem("Threshold Implementation", "Side-channel attack resistance techniques")
       ];
 
