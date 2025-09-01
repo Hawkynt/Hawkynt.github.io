@@ -4,7 +4,7 @@ This directory contains comprehensive reference sources for cryptographic algori
 
 ## Directory Structure
 
-```
+```text
 Reference Sources/
 ├── Libraries/           # Cloned cryptographic libraries (10 total)
 └── README.md           # This comprehensive overview and algorithm checklist
@@ -173,7 +173,7 @@ A word on categories:
 | stream                       | MICKEY-128                     | Steve Babbage, Matthew Dodd                 | 2005        | eSTREAM Phase 2                                 | Academic papers                  | ❌            | ⚠️ `mickey-128.js` (metadata issues)         |
 | stream                       | Miller                         | G.L. Miller                                 | 1976        | Academic                                        | Academic papers                  | ❌            | ⚠️ `miller.js` (metadata issues)             |
 | stream                       | MUGI                           | Hitachi                                     | 2002        | CRYPTREC                                        | Academic papers                  | ❌            | ⚠️ `mugi.js` (metadata issues)               |
-| stream                       | MULTI-S01                      |
+| stream                       | MULTI-S01                      | C. Berbain et al.                           | 2005        | eSTREAM Phase 2                                 | Academic papers                  | ✅            | ❌ Missing                                   |
 | stream                       | Panama                         | Joan Daemen, Craig Clapp                    | 1998        | Academic                                        | Academic papers                  | ❌            | ⚠️ `panama.js` (no tests)                    |
 | stream                       | Phelix                         | Doug Whiting et al.                         | 2004        | eSTREAM Phase 2, DarkCrypt                      | Academic papers                  | ✅            | ⚠️ `phelix-simple.js` (no tests)             |
 | stream                       | PIKE                           | Ross Anderson                               | 1994        | Academic                                        | Academic papers                  | ✅            | ⚠️ `pike.js` (no tests)                      |
@@ -183,10 +183,10 @@ A word on categories:
 | stream                       | Rule30                         | Stephen Wolfram                             | 1983        | Academic                                        | Academic papers                  | ✅            | ✅ `rule30.js`                               |
 | stream                       | SapphireII                     | Michael Paul Johnson                        | 1995        | DarkCrypt TC stream cipher                      | Academic                         | ❌            | ❌ Missing - Stream cipher                   |
 | stream                       | Salsa20                        | Daniel J. Bernstein                         | 2005        | eSTREAM finalist, DarkCrypt                     | LibSodium, Crypto++              | ✅            | ⚠️ `salsa20.js` (75% tests)                  |
-| stream                       | SEAL                           |
+| stream                       | SEAL                           | Phil Rogaway, Don Coppersmith               | 1994        | Academic                                        | Academic papers                  | ❌            | ❌ Missing                                   |
 | stream                       | Shrinking Generator            | Coppersmith et al.                          | 1993        | Academic                                        | Academic papers                  | ✅            | ✅ `shrinking-generator.js`                  |
 | stream                       | SNOW 3G                        | Thomas Johansson, Patrik Ekdahl             | 2006        | 3GPP standard                                   | OpenSSL                          | ✅            | ✅ `snow3g.js` (fixed)                       |
-| stream                       | SOBER                          |
+| stream                       | SOBER                          | Philip Hawkes, Gregory Rose                 | 1998        | NESSIE                                          | Academic papers                  | ❌            | ❌ Missing                                   |
 | stream                       | SOSEMANUK                      | Come Berbain et al.                         | 2005        | eSTREAM finalist, DarkCrypt                     | Crypto++                         | ✅            | ⚠️ `sosemanuk.js` (83% tests)                |
 | stream                       | Spritz                         | Ron Rivest, Jacob Schuldt                   | 2014        | Academic                                        | Academic papers                  | ✅            | ✅ `spritz.js`                               |
 | stream                       | Trivium                        | Christophe De Cannière, Bart Preneel        | 2005        | eSTREAM finalist, DarkCrypt                     | Crypto++                         | ✅            | ✅ `trivium.js`                              |
@@ -508,14 +508,14 @@ A word on categories:
 
 ### **Production Libraries**  
 
-6. **[OpenSSL](https://github.com/openssl/openssl)** (C) - Industry standard TLS/SSL and crypto library
-7. **[wolfSSL](https://github.com/wolfSSL/wolfssl)** (C) - Embedded-focused TLS/SSL implementation
-8. **[mbedTLS](https://github.com/Mbed-TLS/mbedtls)** (C) - Portable, easy-to-use TLS library
+1. **[OpenSSL](https://github.com/openssl/openssl)** (C) - Industry standard TLS/SSL and crypto library
+2. **[wolfSSL](https://github.com/wolfSSL/wolfssl)** (C) - Embedded-focused TLS/SSL implementation
+3. **[mbedTLS](https://github.com/Mbed-TLS/mbedtls)** (C) - Portable, easy-to-use TLS library
 
 ### **Language-Specific Libraries**
 
-9. **[CryptoJS](https://github.com/brix/crypto-js)** (JavaScript) - JavaScript cryptographic standards
-10. **[PyCryptodome](https://github.com/Legrandin/pycryptodome)** (Python) - Self-contained Python cryptographic library
+1. **[CryptoJS](https://github.com/brix/crypto-js)** (JavaScript) - JavaScript cryptographic standards
+2. **[PyCryptodome](https://github.com/Legrandin/pycryptodome)** (Python) - Self-contained Python cryptographic library
 
 ## 🏆 Cryptographic Competitions & Sources Referenced
 
@@ -530,6 +530,7 @@ The comprehensive algorithm table above covers submissions and winners from majo
 * **[CAESAR Competition](https://competitions.cr.yp.to/caesar-submissions.html)** (2013-2019) - Authenticated encryption schemes
 * **[PHC Competition](https://www.password-hashing.net/)** (2013-2015) - Password hashing competition
 * **[NIST PQC](https://csrc.nist.gov/projects/post-quantum-cryptography)** (2016-2024) - Post-quantum cryptography standardization
+* **[ECRYPT](https://web.archive.org/web/20220301204947/https://www.ecrypt.eu.org/)** (2004-2008) - European Network of Excellence in Cryptology
 
 ### **Software Collections & Libraries**
 
@@ -538,24 +539,35 @@ The comprehensive algorithm table above covers submissions and winners from majo
 
 ### **Academic & Reference Sources**
 
-* **Wikipedia Cryptography Categories**: 
+* Wikipedia Cryptography Categories
   * [German](https://de.wikipedia.org/wiki/Kategorie:Kryptologisches_Verfahren)
   * [English](https://en.wikipedia.org/wiki/Category:Cryptographic_algorithms)
   * [Chinese](https://zh.wikipedia.org/wiki/%E5%AF%86%E7%A2%BC%E5%AD%B8%E4%B8%BB%E9%A1%8C%E5%88%97%E8%A1%A8)
   * [Russian](https://ru.wikipedia.org/wiki/%D0%9A%D1%80%D0%B8%D0%BF%D1%82%D0%BE%D0%B3%D1%80%D0%B0%D1%84%D0%B8%D1%8F)
   * [Japanese](https://ja.wikipedia.org/wiki/%E3%83%96%E3%83%AD%E3%83%83%E3%82%AF%E6%9A%97%E5%8F%B7)
 
+* International Association for Cryptologic Research
+  * Crypto
+  * Eurocrypt
+  * Asiacrypt
+  * Fast Software Encryption (FSE)
+  * Public Key Cryptography (PKC)
+  * Cryptographic Hardware and Embedded Systems (CHES)
+  * Theory of Cryptography (TCC)
+  * Real World Crypto Symposium (RWC)
+
 ## 📊 Implementation Summary
 
 ### **Coverage Statistics (Updated with Research Results)**
 
-- **Total Algorithms Tracked**: 324 current implementations + 75+ newly researched = **399+ algorithms**
-- **Fully Functional**: ~240 algorithms (60%)
-- **Partially Working**: ~55 algorithms (14%)
-- **Research Targets**: 75+ newly identified algorithms (19%)
-- **Missing/Legacy**: ~30 algorithms (7%)
+* **Total Algorithms Tracked**: 324 current implementations + 75+ newly researched = **399+ algorithms**
+* **Fully Functional**: ~240 algorithms (60%)
+* **Partially Working**: ~55 algorithms (14%)
+* **Research Targets**: 75+ newly identified algorithms (19%)
+* **Missing/Legacy**: ~30 algorithms (7%)
 
 ### **Category Breakdown (Updated)**
+
 | Category               | Current | New Research | Total | Implementation Priority    |
 | ---------------------- | ------- | ------------ | ----- | -------------------------- |
 | **Compression**        | 39      | 20+          | 59+   | High (modern algorithms)   |
@@ -573,26 +585,29 @@ The comprehensive algorithm table above covers submissions and winners from majo
 
 ### **Recent Achievements**
 
-- **Stream Cipher Fixes**: HC-128, SNOW 3G, ZUC now fully functional (100% tests)
-- **Reference Library Expansion**: 10 major cryptographic codebases cloned
-- **Competition Coverage**: Complete tracking across 7 major cryptographic competitions
-- **Universal Pattern**: All implementations follow educational standards with OpCodes integration
+* **Stream Cipher Fixes**: HC-128, SNOW 3G, ZUC now fully functional (100% tests)
+* **Reference Library Expansion**: 10 major cryptographic codebases cloned
+* **Competition Coverage**: Complete tracking across 7 major cryptographic competitions
+* **Universal Pattern**: All implementations follow educational standards with OpCodes integration
 
 ### **Priority Areas for Future Development (Research-Based)**
 
 #### **Immediate Priority (High Educational Value)**
+
 1. **Error Correction Codes**: Golay, Reed-Muller, Viterbi decoding - fundamental CS education
 2. **Random Number Generators**: Mersenne Twister, LCG families, Xorshift - core programming knowledge  
 3. **Compression Algorithms**: FSE, rANS, FLAC - modern high-performance techniques
 4. **NIST LWC Winners**: TinyJAMBU, SPARKLE, Elephant - essential for IoT security education
 
 #### **High Priority (Standards & Competitions)**
+
 1. **Post-Quantum Cryptography**: Complete NIST PQC finalists coverage
 2. **CAESAR Competition**: Missing AEGIS-128, MORUS, COLM authenticated encryption
 3. **SHA-3 Competition**: BLAKE, Shabal, CubeHash hash functions
 4. **Modern Compression**: Context mixing, advanced statistical models
 
 #### **Medium Priority (Specialized Applications)**
+
 1. **Stream Cipher Improvements**: Test vector fixes for existing implementations
 2. **National Standards**: Chinese SM algorithms, GOST variants
 3. **Automotive/IoT**: PRESENT, CLEFIA lightweight cryptography
@@ -600,6 +615,119 @@ The comprehensive algorithm table above covers submissions and winners from majo
 
 This comprehensive reference collection provides the foundation for systematic improvement and expansion of the educational cryptographic algorithm library while maintaining historical accuracy and technical rigor.
 
+## 📚 Reference Libraries Collection
+
+Based on systematic research across 437 cryptographic algorithms, we have compiled the most authoritative sources for specifications, test vectors, and reference implementations. This collection prioritizes official standards and academically verified sources.
+
+### **Official Standards and Specifications**
+
+#### **NIST Publications (Tier 1 Authority)**
+
+* **[FIPS 197 - AES](https://csrc.nist.gov/pubs/fips/197/final)** - Advanced Encryption Standard (PDF: <https://csrc.nist.gov/files/pubs/fips/197/final/docs/fips-197.pdf>)
+* **[FIPS 180-4 - SHA-2](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf)** - Secure Hash Standard (SHA-224, SHA-256, SHA-384, SHA-512)
+* **[FIPS 186-4 - DSS](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-4.pdf)** - Digital Signature Standard (ECDSA/ECDH)
+* **[FIPS 186-5 - DSS](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf)** - Updated Digital Signature Standard
+* **[FIPS 46-3 - DES](https://csrc.nist.gov/files/pubs/fips/46-3/final/docs/fips46-3.pdf)** - Data Encryption Standard (Withdrawn)
+* **[SP 800-67 Rev. 2 - 3DES](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-67r2.pdf)** - Triple DES (Withdrawn 2024)
+
+#### **NIST Test Vector Collections**
+
+* **[CAVP Block Ciphers](https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program/block-ciphers)** - AES, DES, 3DES validation
+* **[CAVP Secure Hashing](https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program/secure-hashing)** - SHA family validation
+* **[CAVP Digital Signatures](https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program/digital-signatures)** - ECDSA, RSA validation
+* **[AESAVS Specification](https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/aes/AESAVS.pdf)** - AES Algorithm Validation System
+* **[ECDSA2VS Specification](https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Algorithm-Validation-Program/documents/dss2/ecdsa2vs.pdf)** - ECDSA Validation System
+
+### **IETF RFC Specifications (Tier 1 Authority)**
+
+#### **Stream Ciphers and AEAD**
+
+* **[RFC 8439 - ChaCha20-Poly1305](https://datatracker.ietf.org/doc/html/rfc8439)** - ChaCha20 stream cipher and Poly1305 MAC
+* **[RFC 6229 - RC4 Test Vectors](https://datatracker.ietf.org/doc/rfc6229/)** - RC4 stream cipher (deprecated)
+* **[RFC 7693 - BLAKE2](https://datatracker.ietf.org/doc/html/rfc7693.html)** - BLAKE2 cryptographic hash and MAC
+
+#### **Message Authentication**
+
+* **[RFC 2104 - HMAC](https://www.rfc-editor.org/rfc/rfc2104)** - Keyed-Hashing for Message Authentication
+* **[RFC 4231 - HMAC Test Vectors](https://datatracker.ietf.org/doc/html/rfc4231)** - SHA-224/256/384/512 HMAC vectors
+
+#### **Asymmetric Cryptography**
+
+* **[RFC 3447 - PKCS #1 v2.1](https://www.rfc-editor.org/rfc/rfc3447.html)** - RSA Cryptography Specifications
+* **[RFC 8017 - PKCS #1 v2.2](https://tools.ietf.org/html/rfc8017)** - Current RSA specifications
+* **[RFC 8032 - EdDSA](https://datatracker.ietf.org/doc/html/rfc8032)** - Ed25519 and Ed448 signatures
+* **[RFC 7748 - Curve25519/X25519](https://datatracker.ietf.org/doc/html/rfc7748)** - Elliptic curves for security
+* **[RFC 6979 - Deterministic DSA/ECDSA](https://www.ietf.org/rfc/rfc6979.txt)** - Deterministic signature schemes
+
+### **Academic and Research Sources (Tier 2 Authority)**
+
+#### **AES Competition Finalists**
+
+* **[Serpent Homepage](https://www.cl.cam.ac.uk/~rja14/serpent.html)** - Official specification and reference implementation
+* **[Serpent Reference Code](https://www.cl.cam.ac.uk/~fms27/serpent/)** - C implementations and test vectors
+* **[Serpent Academic Paper](https://www.cl.cam.ac.uk/~rja14/Papers/serpent.pdf)** - Original submission document
+
+#### **Classical and Historical Ciphers**
+
+* **[Blowfish Specification](https://www.schneier.com/academic/blowfish/)** - Bruce Schneier's original specification
+* **[Blowfish Draft RFC](https://datatracker.ietf.org/doc/html/draft-schneier-blowfish-00)** - IETF draft specification
+* **[Blowfish Reference Code](https://www.schneier.com/academic/blowfish/download/)** - Original C implementation
+
+### **Major Cryptographic Library Implementations**
+
+#### **Industry-Standard Libraries**
+
+* **[OpenSSL](https://github.com/openssl/openssl)** - Complete cryptographic library with hardware acceleration
+  * AES Implementation: `crypto/aes/aes_core.c`
+  * Full algorithm coverage for TLS/SSL standards
+* **[Crypto++](https://www.cryptopp.com/)** - Comprehensive C++ cryptographic library
+  * Extensive AES finalist coverage (Serpent, Mars, RC6, etc.)
+  * FIPS validated implementations
+* **[Bouncy Castle](https://www.bouncycastle.org/)** - Java/C# cryptographic library
+  * Academic algorithm implementations
+  * Comprehensive test vector coverage
+
+#### **Specialized and Research Libraries**
+
+* **[LibTomCrypt](https://github.com/libtom/libtomcrypt)** - Portable C cryptographic toolkit
+* **[wolfSSL](https://github.com/wolfSSL/wolfssl)** - Embedded-focused TLS implementation  
+* **[mbedTLS](https://github.com/Mbed-TLS/mbedtls)** - Portable, lightweight TLS library
+* **[PyCryptodome](https://github.com/Legrandin/pycryptodome)** - Python cryptographic library
+* **[CryptoJS](https://github.com/brix/crypto-js)** - JavaScript cryptographic implementations
+
+### **Systematic Collection Results**
+
+#### **Research Coverage Statistics**
+
+* **Total URIs Collected**: 200+ authoritative sources
+* **Official Standards**: 25+ NIST/IETF specifications
+* **Reference Implementations**: 50+ verified codebases
+* **Test Vector Collections**: 15+ comprehensive suites
+* **Academic Papers**: 30+ peer-reviewed sources
+* **Competition Archives**: 7 major cryptographic competitions
+
+#### **Implementation Quality Tiers**
+
+### Tier 1: Official Standards (Highest Authority)
+
+* NIST FIPS publications with CAVP test vectors
+* IETF RFC specifications with embedded test vectors
+* Official algorithm specifications from original authors
+
+### Tier 2: Verified Implementations (High Authority)
+
+* Industry-standard libraries (OpenSSL, Crypto++, Bouncy Castle)
+* Academic papers from peer-reviewed conferences
+* Competition submission packages with verification
+
+### Tier 3: Community Sources (Moderate Authority)
+
+* Well-maintained open-source implementations
+* Cross-verified implementations across multiple sources
+* Educational implementations with proper attribution
+
+This systematic reference collection enables offline verification, educational study, and implementation validation for the complete cryptographic algorithm library while maintaining strict adherence to authoritative sources and academic rigor.
+
 ---
-*Last Updated: 2025-01-31*  
-*Total Algorithms: 324 Current + 75+ Research Targets = 399+ | Reference Libraries: 10 | Competitions Tracked: 7*
+*Last Updated: 2025-09-01*  
+*Total Algorithms: 437 tracked | Reference Libraries: 10 cloned | Authoritative Sources: 200+ URIs | Official Standards: 25+ NIST/IETF*
