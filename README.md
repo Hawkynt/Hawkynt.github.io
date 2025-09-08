@@ -1,5 +1,11 @@
 # »SynthelicZ« Project Collection
 
+![License](https://img.shields.io/github/license/Hawkynt/Hawkynt.github.io)
+![Language](https://img.shields.io/github/languages/top/Hawkynt/Hawkynt.github.io?color=purple)
+[![Last Commit](https://img.shields.io/github/last-commit/Hawkynt/Hawkynt.github.io?branch=main)![Activity](https://img.shields.io/github/commit-activity/y/Hawkynt/Hawkynt.github.io?branch=main)](https://github.com/Hawkynt/Hawkynt.github.io/commits/main)
+[![GitHub release](https://img.shields.io/github/v/release/Hawkynt/Hawkynt.github.io)](https://github.com/Hawkynt/Hawkynt.github.io/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/Hawkynt/Hawkynt.github.io/total)](https://github.com/Hawkynt/Hawkynt.github.io/releases)
+
 Welcome to the »SynthelicZ« repository - a comprehensive collection of educational software projects, cryptographic tools, and historical development archives.
 
 ## 🚀 Featured Projects
