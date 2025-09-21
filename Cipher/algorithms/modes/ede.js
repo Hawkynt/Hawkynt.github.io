@@ -141,6 +141,16 @@
       // Common single key sizes for block ciphers
       const commonKeySizes = [8, 16, 24, 32]; // DES, AES-128, AES-192, AES-256
 
+      // First check if it's exactly 2x or 3x a common size (prefer multi-key modes)
+      // This handles cases like 16 bytes = 2x8 (2-key DES) vs 1x16 (single AES-128)
+
+      // Check if it's exactly 3x a common size (3-key mode)
+      for (const size of commonKeySizes) {
+        if (totalKeyLength === size * 3) {
+          return size;
+        }
+      }
+
       // Check if it's exactly 2x a common size (2-key mode)
       for (const size of commonKeySizes) {
         if (totalKeyLength === size * 2) {
@@ -148,11 +158,9 @@
         }
       }
 
-      // Check if it's exactly 3x a common size (3-key mode)
-      for (const size of commonKeySizes) {
-        if (totalKeyLength === size * 3) {
-          return size;
-        }
+      // Finally, check if it IS a common single key size (1-key mode)
+      if (commonKeySizes.includes(totalKeyLength)) {
+        return totalKeyLength;
       }
 
       // Default: assume 3-key mode and divide by 3
