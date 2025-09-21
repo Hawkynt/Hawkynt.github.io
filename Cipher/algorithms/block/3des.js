@@ -300,12 +300,21 @@
         throw new Error("DES requires 8-byte blocks and keys");
       }
 
-      // Get the working DES algorithm from the registry
+      // Get the working DES algorithm from the registry (lazy loading)
       if (!this._desAlgorithm) {
-        const algorithms = global.AlgorithmFramework.Algorithms || [];
+        // Use AlgorithmFramework from the proper scope
+        const framework = (typeof AlgorithmFramework !== 'undefined') ? AlgorithmFramework :
+                         (typeof global !== 'undefined' && global.AlgorithmFramework) ? global.AlgorithmFramework :
+                         (typeof window !== 'undefined' && window.AlgorithmFramework) ? window.AlgorithmFramework : null;
+
+        if (!framework) {
+          throw new Error("AlgorithmFramework not found");
+        }
+
+        const algorithms = framework.Algorithms || [];
         this._desAlgorithm = algorithms.find(alg => alg.name === 'DES');
         if (!this._desAlgorithm) {
-          throw new Error("DES algorithm not found in registry. Please load DES first.");
+          throw new Error("DES algorithm not found in registry. Please ensure DES is loaded before using 3DES.");
         }
       }
 
