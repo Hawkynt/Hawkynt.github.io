@@ -361,6 +361,57 @@
       }
     }
 
+    /**
+     * PPM Context class for storing symbol statistics
+     */
+    class PPMContext {
+      constructor(order) {
+        this.order = order;
+        this.symbols = new Map(); // symbol -> count
+        this.totalCount = 0;
+        this.escapeCount = 1; // Start with escape probability
+      }
+
+      hasSymbol(symbol) {
+        return this.symbols.has(symbol);
+      }
+
+      addSymbol(symbol) {
+        if (this.symbols.has(symbol)) {
+          this.symbols.set(symbol, this.symbols.get(symbol) + 1);
+        } else {
+          this.symbols.set(symbol, 1);
+        }
+        this.totalCount++;
+      }
+
+      getSymbolCount(symbol) {
+        return this.symbols.get(symbol) || 0;
+      }
+
+      getEscapeCount() {
+        return this.escapeCount;
+      }
+
+      getTotalCount() {
+        return this.totalCount + this.escapeCount;
+      }
+
+      getSymbolProbability(symbol) {
+        const count = this.getSymbolCount(symbol);
+        const total = this.getTotalCount();
+        return count / total;
+      }
+
+      getEscapeProbability() {
+        return this.escapeCount / this.getTotalCount();
+      }
+
+      getAllSymbols() {
+        return Array.from(this.symbols.keys());
+      }
+    }
+
     // Register the algorithm
 
   // ===== REGISTRATION =====
