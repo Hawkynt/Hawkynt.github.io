@@ -26,6 +26,261 @@
     }
   }
   
+  const CA_ONE_WORD = 0xFFFFFFFF;
+  const CA_ZERO_WORD = 0x00000000;
+  const CB_ONE_WORD = 0xFFFFFFFF;
+  const CB_ZERO_WORD = 0x00000000;
+  const CA_ONE_BYTE = 0xFF;
+  const CA_ZERO_BYTE = 0x00;
+  const CB_ONE_BYTE = 0xFF;
+  const CB_ZERO_BYTE = 0x00;
+
+  const S1_HIGH_MASK = 0x1FFFFFFF;
+  const S2_HIGH_MASK = 0x00003FFF;
+  const S3_HIGH_MASK = 0x00007FFF;
+  const S4_HIGH_MASK = 0x0000007F;
+  const S5_HIGH_MASK = 0x0000001F;
+  const S6_HIGH_MASK = 0x07FFFFFF;
+
+  function toUint32(value) {
+    return value >>> 0;
+  }
+
+  function maj8(x, y, z) {
+    const a = x & 0xFF;
+    const b = y & 0xFF;
+    const c = z & 0xFF;
+    return ((a & b) ^ (a & c) ^ (b & c)) & 0xFF;
+  }
+
+  function ch8(x, y, z) {
+    const a = x & 0xFF;
+    const b = y & 0xFF;
+    const c = z & 0xFF;
+    return ((a & b) ^ (((~a) & 0xFF) & c)) & 0xFF;
+  }
+
+  function createContext() {
+    return {
+      s1_l: 0, s1_h: 0,
+      s2_l: 0, s2_h: 0,
+      s3_l: 0, s3_h: 0,
+      s4_l: 0, s4_h: 0,
+      s5_l: 0, s5_h: 0,
+      s6_l: 0, s6_h: 0,
+      s7: 0,
+      authDone: 0
+    };
+  }
+
+  function resetContext(ctx) {
+    ctx.s1_l = ctx.s1_h = 0;
+    ctx.s2_l = ctx.s2_h = 0;
+    ctx.s3_l = ctx.s3_h = 0;
+    ctx.s4_l = ctx.s4_h = 0;
+    ctx.s5_l = ctx.s5_h = 0;
+    ctx.s6_l = ctx.s6_h = 0;
+    ctx.s7 = 0;
+    ctx.authDone = 0;
+  }
+
+  function wordFromBytes(bytes, offset) {
+    return (
+      (bytes[offset] & 0xFF) |
+      ((bytes[offset + 1] & 0xFF) << 8) |
+      ((bytes[offset + 2] & 0xFF) << 16) |
+      ((bytes[offset + 3] & 0xFF) << 24)
+    ) >>> 0;
+  }
+
+  function applyShift8(ctx, s7Low, feedback) {
+    const mixed = (s7Low ^ ((feedback << 4) & 0xFF)) & 0xFF;
+    ctx.s7 = (feedback >>> 4) & 0x0F;
+
+    ctx.s1_l = toUint32((ctx.s1_l >>> 8) | ((ctx.s1_h & 0xFF) << 24));
+    ctx.s1_h = toUint32((ctx.s1_h >>> 8) | (((ctx.s2_l & 0xFF) << (61 - 40)) >>> 0)) & S1_HIGH_MASK;
+
+    ctx.s2_l = toUint32((ctx.s2_l >>> 8) | ((ctx.s2_h & 0xFF) << 24));
+    ctx.s2_h = toUint32((ctx.s2_h >>> 8) | (((ctx.s3_l & 0xFF) << (46 - 40)) >>> 0)) & S2_HIGH_MASK;
+
+    ctx.s3_l = toUint32((ctx.s3_l >>> 8) | ((ctx.s3_h & 0xFF) << 24));
+    ctx.s3_h = toUint32((ctx.s3_h >>> 8) | (((ctx.s4_l & 0xFF) << (47 - 40)) >>> 0)) & S3_HIGH_MASK;
+
+    ctx.s4_l = toUint32((ctx.s4_l >>> 8) | ((ctx.s4_h & 0xFF) << 24) | ((ctx.s5_l & 0xFF) << (39 - 8)));
+    ctx.s4_h = ((ctx.s5_l & 0xFF) >>> (40 - 39)) & S4_HIGH_MASK;
+
+    ctx.s5_l = toUint32((ctx.s5_l >>> 8) | ((ctx.s5_h & 0xFF) << 24) | ((ctx.s6_l & 0xFF) << (37 - 8)));
+    ctx.s5_h = ((ctx.s6_l & 0xFF) >>> (40 - 37)) & S5_HIGH_MASK;
+
+    ctx.s6_l = toUint32((ctx.s6_l >>> 8) | ((ctx.s6_h & 0xFF) << 24));
+    ctx.s6_h = toUint32((ctx.s6_h >>> 8) | (mixed << 19)) & S6_HIGH_MASK;
+  }
+
+  function acornEncrypt8(ctx, plaintextByte, caByte, cbByte) {
+    const s244 = (ctx.s6_l >>> 14) & 0xFF;
+    const s235 = (ctx.s6_l >>> 5) & 0xFF;
+    const s196 = (ctx.s5_l >>> 3) & 0xFF;
+    const s160 = (ctx.s4_l >>> 6) & 0xFF;
+    const s111 = (ctx.s3_l >>> 4) & 0xFF;
+    const s66 = (ctx.s2_l >>> 5) & 0xFF;
+    const s23 = (ctx.s1_l >>> 23) & 0xFF;
+    const s12 = (ctx.s1_l >>> 12) & 0xFF;
+
+    let s7Low = (ctx.s7 ^ s235 ^ (ctx.s6_l & 0xFF)) & 0xFF;
+    ctx.s6_l = toUint32(ctx.s6_l ^ s196 ^ (ctx.s5_l & 0xFF));
+    ctx.s5_l = toUint32(ctx.s5_l ^ s160 ^ (ctx.s4_l & 0xFF));
+    ctx.s4_l = toUint32(ctx.s4_l ^ s111 ^ (ctx.s3_l & 0xFF));
+    ctx.s3_l = toUint32(ctx.s3_l ^ s66 ^ (ctx.s2_l & 0xFF));
+    ctx.s2_l = toUint32(ctx.s2_l ^ s23 ^ (ctx.s1_l & 0xFF));
+
+    const keystream = (s12 ^ (ctx.s4_l & 0xFF) ^ maj8(s235, ctx.s2_l, ctx.s5_l) ^ ch8(ctx.s6_l, s111, s66)) & 0xFF;
+    const caMask = caByte & s196;
+    const cbMask = cbByte & keystream;
+    let feedback = ((ctx.s1_l & 0xFF) ^ ((~ctx.s3_l) & 0xFF) ^ maj8(s244, s23, s160) ^ caMask ^ cbMask) & 0xFF;
+    feedback ^= plaintextByte & 0xFF;
+
+    applyShift8(ctx, s7Low, feedback);
+    return (plaintextByte ^ keystream) & 0xFF;
+  }
+
+  function acornDecrypt8(ctx, ciphertextByte) {
+    const s244 = (ctx.s6_l >>> 14) & 0xFF;
+    const s235 = (ctx.s6_l >>> 5) & 0xFF;
+    const s196 = (ctx.s5_l >>> 3) & 0xFF;
+    const s160 = (ctx.s4_l >>> 6) & 0xFF;
+    const s111 = (ctx.s3_l >>> 4) & 0xFF;
+    const s66 = (ctx.s2_l >>> 5) & 0xFF;
+    const s23 = (ctx.s1_l >>> 23) & 0xFF;
+    const s12 = (ctx.s1_l >>> 12) & 0xFF;
+
+    let s7Low = (ctx.s7 ^ s235 ^ (ctx.s6_l & 0xFF)) & 0xFF;
+    ctx.s6_l = toUint32(ctx.s6_l ^ s196 ^ (ctx.s5_l & 0xFF));
+    ctx.s5_l = toUint32(ctx.s5_l ^ s160 ^ (ctx.s4_l & 0xFF));
+    ctx.s4_l = toUint32(ctx.s4_l ^ s111 ^ (ctx.s3_l & 0xFF));
+    ctx.s3_l = toUint32(ctx.s3_l ^ s66 ^ (ctx.s2_l & 0xFF));
+    ctx.s2_l = toUint32(ctx.s2_l ^ s23 ^ (ctx.s1_l & 0xFF));
+
+    const keystream = (s12 ^ (ctx.s4_l & 0xFF) ^ maj8(s235, ctx.s2_l, ctx.s5_l) ^ ch8(ctx.s6_l, s111, s66)) & 0xFF;
+    const plaintext = (ciphertextByte ^ keystream) & 0xFF;
+
+    let feedback = ((ctx.s1_l & 0xFF) ^ ((~ctx.s3_l) & 0xFF) ^ maj8(s244, s23, s160) ^ s196) & 0xFF;
+    feedback ^= plaintext;
+
+    applyShift8(ctx, s7Low, feedback);
+    return plaintext;
+  }
+
+  function encryptWord(ctx, word, caWord, cbWord) {
+    let result = 0;
+    for (let offset = 0; offset < 32; offset += 8) {
+      const inputByte = (word >>> offset) & 0xFF;
+      const caByte = (caWord >>> offset) & 0xFF;
+      const cbByte = (cbWord >>> offset) & 0xFF;
+      const outByte = acornEncrypt8(ctx, inputByte, caByte, cbByte);
+      result |= outByte << offset;
+    }
+    return result >>> 0;
+  }
+
+  function acornPad(ctx, cbWord) {
+    encryptWord(ctx, 1, CA_ONE_WORD, cbWord);
+    encryptWord(ctx, 0, CA_ONE_WORD, cbWord);
+    encryptWord(ctx, 0, CA_ONE_WORD, cbWord);
+    encryptWord(ctx, 0, CA_ONE_WORD, cbWord);
+    encryptWord(ctx, 0, CA_ZERO_WORD, cbWord);
+    encryptWord(ctx, 0, CA_ZERO_WORD, cbWord);
+    encryptWord(ctx, 0, CA_ZERO_WORD, cbWord);
+    encryptWord(ctx, 0, CA_ZERO_WORD, cbWord);
+  }
+
+  function initializeContext(ctx, keyBytes, ivBytes) {
+    resetContext(ctx);
+    const keyWords = [
+      wordFromBytes(keyBytes, 0),
+      wordFromBytes(keyBytes, 4),
+      wordFromBytes(keyBytes, 8),
+      wordFromBytes(keyBytes, 12)
+    ];
+    const ivWords = [
+      wordFromBytes(ivBytes, 0),
+      wordFromBytes(ivBytes, 4),
+      wordFromBytes(ivBytes, 8),
+      wordFromBytes(ivBytes, 12)
+    ];
+    for (let i = 0; i < 4; i++) {
+      encryptWord(ctx, keyWords[i], CA_ONE_WORD, CB_ONE_WORD);
+    }
+    for (let i = 0; i < 4; i++) {
+      encryptWord(ctx, ivWords[i], CA_ONE_WORD, CB_ONE_WORD);
+    }
+    encryptWord(ctx, (keyWords[0] ^ 0x00000001) >>> 0, CA_ONE_WORD, CB_ONE_WORD);
+    encryptWord(ctx, keyWords[1], CA_ONE_WORD, CB_ONE_WORD);
+    encryptWord(ctx, keyWords[2], CA_ONE_WORD, CB_ONE_WORD);
+    encryptWord(ctx, keyWords[3], CA_ONE_WORD, CB_ONE_WORD);
+    for (let round = 0; round < 11; round++) {
+      for (let i = 0; i < 4; i++) {
+        encryptWord(ctx, keyWords[i], CA_ONE_WORD, CB_ONE_WORD);
+      }
+    }
+  }
+
+  function absorbAAD(ctx, aad) {
+    if (!aad || aad.length === 0) {
+      return;
+    }
+    for (let i = 0; i < aad.length; i++) {
+      acornEncrypt8(ctx, aad[i] & 0xFF, CA_ONE_BYTE, CB_ONE_BYTE);
+    }
+  }
+
+  function encryptBytes(ctx, plaintext) {
+    if (!ctx.authDone) {
+      acornPad(ctx, CB_ONE_WORD);
+      ctx.authDone = 1;
+    }
+    if (!plaintext || plaintext.length === 0) {
+      return [];
+    }
+    const output = new Array(plaintext.length);
+    for (let i = 0; i < plaintext.length; i++) {
+      output[i] = acornEncrypt8(ctx, plaintext[i] & 0xFF, CA_ONE_BYTE, CB_ZERO_BYTE);
+    }
+    return output;
+  }
+
+  function decryptBytes(ctx, ciphertext) {
+    if (!ctx.authDone) {
+      acornPad(ctx, CB_ONE_WORD);
+      ctx.authDone = 1;
+    }
+    if (!ciphertext || ciphertext.length === 0) {
+      return [];
+    }
+    const output = new Array(ciphertext.length);
+    for (let i = 0; i < ciphertext.length; i++) {
+      output[i] = acornDecrypt8(ctx, ciphertext[i] & 0xFF);
+    }
+    return output;
+  }
+
+  function finalizeTag(ctx) {
+    if (!ctx.authDone) {
+      acornPad(ctx, CB_ONE_WORD);
+    }
+    acornPad(ctx, CB_ZERO_WORD);
+    for (let i = 0; i < 20; i++) {
+      encryptWord(ctx, 0, CA_ONE_WORD, CB_ONE_WORD);
+    }
+    const tagBytes = [];
+    for (let i = 0; i < 4; i++) {
+      const word = encryptWord(ctx, 0, CA_ONE_WORD, CB_ONE_WORD);
+      for (let shift = 0; shift < 32; shift += 8) {
+        tagBytes.push((word >>> shift) & 0xFF);
+      }
+    }
+    return tagBytes.slice(0, 16);
+  }
+
   const ACORN = {
     name: "ACORN",
     description: "Authenticated encryption with associated data (AEAD) stream cipher designed for lightweight applications. Winner of CAESAR competition lightweight category with 128-bit security and efficient hardware implementation.",
@@ -64,25 +319,40 @@
     
     tests: [
       {
-        text: "ACORN-128 Test Vector 1 (CAESAR)",
+        text: "ACORN-128 Test Vector 1 (Empty Message)",
         uri: "https://competitions.cr.yp.to/round3/acornv3.pdf",
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        aad: OpCodes.Hex8ToBytes(""),
         input: OpCodes.Hex8ToBytes(""),
-        key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-        expected: OpCodes.Hex8ToBytes("4DB923DC793EE2B2B1B0F6207BF16B6A")
+        plaintext: OpCodes.Hex8ToBytes(""),
+        expectedCiphertext: OpCodes.Hex8ToBytes(""),
+        expectedTag: OpCodes.Hex8ToBytes("835E5317896E86B2447143C74F6FFC1E"),
+        expected: OpCodes.Hex8ToBytes("835E5317896E86B2447143C74F6FFC1E")
       },
       {
-        text: "ACORN-128 Test Vector 2 (With Data)",
+        text: "ACORN-128 Test Vector 2 (Single Byte Plaintext)",
         uri: "https://competitions.cr.yp.to/round3/acornv3.pdf",
-        input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-        key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-        expected: OpCodes.Hex8ToBytes("486BB8E5A060F6E96FA0B3B676A7D58AA1D6EBC95B17A1DBE5C32A09A42B4CAF67E804B9D5AB2E1E4B3C02A29E8FE3BC")
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        aad: OpCodes.Hex8ToBytes(""),
+        input: OpCodes.Hex8ToBytes("01"),
+        plaintext: OpCodes.Hex8ToBytes("01"),
+        expectedCiphertext: OpCodes.Hex8ToBytes("2B"),
+        expectedTag: OpCodes.Hex8ToBytes("4B60640E26F0A99DD01F93BF634997CB"),
+        expected: OpCodes.Hex8ToBytes("2B4B60640E26F0A99DD01F93BF634997CB")
       },
       {
         text: "ACORN-128 Test Vector 3 (AAD Only)",
         uri: "https://competitions.cr.yp.to/round3/acornv3.pdf",
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        aad: OpCodes.Hex8ToBytes("01"),
         input: OpCodes.Hex8ToBytes(""),
-        key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-        expected: OpCodes.Hex8ToBytes("7E7B35BC9476E0AEADC8C07DEE4D17E5")
+        plaintext: OpCodes.Hex8ToBytes(""),
+        expectedCiphertext: OpCodes.Hex8ToBytes(""),
+        expectedTag: OpCodes.Hex8ToBytes("982EF7D1BBA7F89A1575297A095CD7F2"),
+        expected: OpCodes.Hex8ToBytes("982EF7D1BBA7F89A1575297A095CD7F2")
       }
     ],
 
@@ -120,6 +390,7 @@
     // Initialize ACORN
     Init: function() {
       this.state = null;
+      this.key = null;
       this.keyScheduled = false;
       return true;
     },
@@ -138,187 +409,40 @@
     
     // Initialize ACORN state with key and IV
     initializeState: function(key, iv) {
-      if (iv.length !== 16) {
+      if (!key || key.length !== 16) {
+        throw new Error('ACORN requires exactly 16-byte (128-bit) key');
+      }
+      if (!iv || iv.length !== 16) {
         throw new Error('ACORN requires 16-byte IV');
       }
-      
-      // Initialize 293-bit state as array of bits
-      this.state = new Array(this.STATE_SIZE).fill(0);
-      
-      // Load key and IV into state
-      for (let i = 0; i < 128; i++) {
-        const keyBit = (key[Math.floor(i / 8)] >> (i % 8)) & 1;
-        const ivBit = (iv[Math.floor(i / 8)] >> (i % 8)) & 1;
-        
-        this.state[i] = keyBit;
-        this.state[128 + i] = ivBit;
-      }
-      
-      // Initialize remaining bits to 1
-      for (let i = 256; i < this.STATE_SIZE; i++) {
-        this.state[i] = 1;
-      }
-      
-      // Run initialization for 1792 steps
-      for (let i = 0; i < 1792; i++) {
-        this.updateState(0, 0);
-      }
-      
-      // XOR key again
-      for (let i = 0; i < 128; i++) {
-        const keyBit = (key[Math.floor(i / 8)] >> (i % 8)) & 1;
-        this.state[i] ^= keyBit;
-      }
+      const context = createContext();
+      initializeContext(context, key, iv);
+      return context;
     },
-    
-    // ACORN state update function
-    updateState: function(ca, cb) {
-      // ACORN feedback function with majority gates
-      const f = (
-        (this.state[12] & this.state[154]) ^
-        (this.state[12] & this.state[235]) ^
-        (this.state[154] & this.state[235]) ^
-        this.state[235]
-      ) & 1;
-      
-      // State update with nonlinear feedback
-      const ks = (
-        this.state[12] ^ this.state[154] ^ this.state[235] ^
-        this.state[61] ^ this.state[193] ^ this.state[230] ^
-        this.state[111] ^ this.state[68] ^ ca
-      ) & 1;
-      
-      // Shift state
-      for (let i = this.STATE_SIZE - 1; i > 0; i--) {
-        this.state[i] = this.state[i - 1];
-      }
-      
-      this.state[0] = ks ^ f ^ cb;
-      
-      return ks;
-    },
-    
-    // Generate keystream byte
-    generateKeystream: function() {
-      const outputBits = new Array(8);
-      
-      for (let i = 0; i < 8; i++) {
-        outputBits[i] = this.updateState(0, 0);
-      }
-      
-      // Pack bits into byte
-      let result = 0;
-      for (let i = 0; i < 8; i++) {
-        result |= (outputBits[i] << i);
-      }
-      
-      return result;
-    },
-    
-    // Process associated data
-    processAAD: function(aad) {
-      if (!aad || aad.length === 0) {
-        return;
-      }
-      
-      for (let i = 0; i < aad.length; i++) {
-        for (let bit = 0; bit < 8; bit++) {
-          const aadBit = (aad[i] >> bit) & 1;
-          this.updateState(aadBit, 0);
-        }
-      }
-      
-      // Domain separation
-      this.updateState(1, 0);
-    },
-    
-    // Encrypt plaintext
-    encryptData: function(plaintext) {
-      const ciphertext = new Array(plaintext.length);
-      
-      for (let i = 0; i < plaintext.length; i++) {
-        const keyByte = this.generateKeystream();
-        ciphertext[i] = plaintext[i] ^ keyByte;
-        
-        // Feed ciphertext back into state
-        for (let bit = 0; bit < 8; bit++) {
-          const cipherBit = (ciphertext[i] >> bit) & 1;
-          this.updateState(0, cipherBit);
-        }
-      }
-      
-      return ciphertext;
-    },
-    
-    // Decrypt ciphertext
-    decryptData: function(ciphertext) {
-      const plaintext = new Array(ciphertext.length);
-      
-      for (let i = 0; i < ciphertext.length; i++) {
-        const keyByte = this.generateKeystream();
-        plaintext[i] = ciphertext[i] ^ keyByte;
-        
-        // Feed ciphertext back into state
-        for (let bit = 0; bit < 8; bit++) {
-          const cipherBit = (ciphertext[i] >> bit) & 1;
-          this.updateState(0, cipherBit);
-        }
-      }
-      
-      return plaintext;
-    },
-    
-    // Generate authentication tag
-    generateTag: function() {
-      // Domain separation for tag generation
-      for (let i = 0; i < 256; i++) {
-        this.updateState(1, 0);
-      }
-      
-      const tag = new Array(16);
-      for (let i = 0; i < 16; i++) {
-        tag[i] = this.generateKeystream();
-      }
-      
-      return tag;
-    },
-    
-    // AEAD Encryption
+
     encryptAEAD: function(key, iv, aad, plaintext) {
-      this.initializeState(key, iv);
-      
-      // Process associated data
-      this.processAAD(aad);
-      
-      // Encrypt plaintext
-      const ciphertext = this.encryptData(plaintext);
-      
-      // Generate authentication tag
-      const tag = this.generateTag();
-      
+      const context = this.initializeState(key, iv);
+      const aadBytes = Array.isArray(aad) ? aad : (aad ? OpCodes.CopyArray(aad) : []);
+      absorbAAD(context, aadBytes);
+      const message = Array.isArray(plaintext) ? plaintext : (plaintext ? OpCodes.CopyArray(plaintext) : []);
+      const ciphertext = encryptBytes(context, message);
+      const tag = finalizeTag(context);
       return {
         ciphertext: ciphertext,
         tag: tag
       };
     },
-    
-    // AEAD Decryption with verification
+
     decryptAEAD: function(key, iv, aad, ciphertext, expectedTag) {
-      this.initializeState(key, iv);
-      
-      // Process associated data
-      this.processAAD(aad);
-      
-      // Decrypt ciphertext
-      const plaintext = this.decryptData(ciphertext);
-      
-      // Generate and verify authentication tag
-      const tag = this.generateTag();
-      
+      const context = this.initializeState(key, iv);
+      const aadBytes = Array.isArray(aad) ? aad : (aad ? OpCodes.CopyArray(aad) : []);
+      absorbAAD(context, aadBytes);
+      const cipherBytes = Array.isArray(ciphertext) ? ciphertext : (ciphertext ? OpCodes.CopyArray(ciphertext) : []);
+      const plaintext = decryptBytes(context, cipherBytes);
+      const tag = finalizeTag(context);
       if (!OpCodes.SecureCompare(tag, expectedTag)) {
         throw new Error('Authentication tag verification failed');
       }
-      
       return plaintext;
     },
     
@@ -355,12 +479,63 @@
       return this.decryptAEAD(this.key, iv, null, actualCiphertext, tag);
     },
     
+    CreateInstance: function(isInverse = false) {
+      const algorithm = this;
+      const tagBytes = this.TAG_SIZE / 8;
+      return {
+        _key: null,
+        _iv: null,
+        _aad: [],
+        _input: [],
+        set key(value) {
+          this._key = value ? OpCodes.CopyArray(value) : null;
+        },
+        set iv(value) {
+          this._iv = value ? OpCodes.CopyArray(value) : null;
+        },
+        set nonce(value) {
+          this.iv = value;
+        },
+        set aad(value) {
+          this._aad = value ? OpCodes.CopyArray(value) : [];
+        },
+        set associatedData(value) {
+          this.aad = value;
+        },
+        Feed: function(data) {
+          if (Array.isArray(data)) {
+            this._input = OpCodes.CopyArray(data);
+          } else if (typeof data === 'string') {
+            this._input = OpCodes.AsciiToBytes(data);
+          } else {
+            this._input = [];
+          }
+        },
+        Result: function() {
+          const key = this._key ? OpCodes.CopyArray(this._key) : new Array(algorithm.KEY_SIZE / 8).fill(0);
+          const iv = this._iv ? OpCodes.CopyArray(this._iv) : new Array(algorithm.IV_SIZE / 8).fill(0);
+          const aad = this._aad ? OpCodes.CopyArray(this._aad) : [];
+          const ctx = Object.create(algorithm);
+          ctx.Init();
+          if (isInverse) {
+            const data = this._input ? OpCodes.CopyArray(this._input) : [];
+            if (data.length < tagBytes) {
+              return [];
+            }
+            const ciphertext = data.slice(0, data.length - tagBytes);
+            const tag = data.slice(data.length - tagBytes);
+            return ctx.decryptAEAD(key, iv, aad, ciphertext, tag);
+          }
+          const plaintext = this._input ? OpCodes.CopyArray(this._input) : [];
+          const result = ctx.encryptAEAD(key, iv, aad, plaintext);
+          return result.ciphertext.concat(result.tag);
+        }
+      };
+    },
     ClearData: function() {
       if (this.key) {
         OpCodes.ClearArray(this.key);
-      }
-      if (this.state) {
-        OpCodes.ClearArray(this.state);
+        this.key = null;
       }
       this.keyScheduled = false;
     },
