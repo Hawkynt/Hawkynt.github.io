@@ -182,44 +182,202 @@ class CipherController {
     }
     
     /**
-     * Run tests for a single algorithm
+     * Determine if algorithm requires round-trip testing
+     */
+    requiresRoundTrips(algorithm) {
+        if (!algorithm.category || !window.AlgorithmFramework?.CategoryType) {
+            return false;
+        }
+
+        const CategoryType = window.AlgorithmFramework.CategoryType;
+        const perfectRoundTripCategories = [
+            CategoryType.BLOCK,
+            CategoryType.STREAM,
+            CategoryType.ASYMMETRIC,
+            CategoryType.CLASSICAL,
+            CategoryType.SPECIAL
+        ];
+
+        return perfectRoundTripCategories.includes(algorithm.category);
+    }
+
+    /**
+     * Determine if algorithm requires encoding stability testing
+     */
+    requiresEncodingStability(algorithm) {
+        if (!algorithm.category || !window.AlgorithmFramework?.CategoryType) {
+            return false;
+        }
+
+        const CategoryType = window.AlgorithmFramework.CategoryType;
+        return algorithm.category === CategoryType.ENCODING;
+    }
+
+    /**
+     * Run tests for a single algorithm with enhanced testing modes
      */
     async runAlgorithmTests(algorithm) {
         if (!algorithm.tests || algorithm.tests.length === 0) {
             return;
         }
-        
+
         let passedTests = 0;
+        let passedRoundTrips = 0;
+        let passedStabilityTests = 0;
         const totalTests = algorithm.tests.length;
         const startTime = performance.now();
-        
+
+        const needsRoundTrips = this.requiresRoundTrips(algorithm);
+        const needsEncodingStability = this.requiresEncodingStability(algorithm);
+
         // Test each vector
         for (const test of algorithm.tests) {
             try {
                 const result = this.executeAlgorithmTest(algorithm, test);
                 if (result.success) {
                     passedTests++;
+
+                    // Test round-trips for invertible algorithms
+                    if (needsRoundTrips) {
+                        const roundTripResult = this.executeRoundTripTest(algorithm, test);
+                        if (roundTripResult.success) {
+                            passedRoundTrips++;
+                        }
+                    }
+
+                    // Test encoding stability for encoding algorithms
+                    if (needsEncodingStability) {
+                        const stabilityResult = this.executeEncodingStabilityTest(algorithm, test);
+                        if (stabilityResult.success) {
+                            passedStabilityTests++;
+                        }
+                    }
                 }
             } catch (error) {
                 console.warn(`Test failed for ${algorithm.name}:`, error.message);
             }
         }
-        
+
         const duration = performance.now() - startTime;
-        
-        // Store results on algorithm
+
+        // Store enhanced results on algorithm
         algorithm.testResults = {
             passed: passedTests,
             total: totalTests,
+            roundTrips: needsRoundTrips ? {
+                passed: passedRoundTrips,
+                total: totalTests
+            } : null,
+            encodingStability: needsEncodingStability ? {
+                passed: passedStabilityTests,
+                total: totalTests
+            } : null,
             duration: duration,
             lastUpdated: Date.now(),
-            autoRun: true
+            autoRun: true,
+            needsRoundTrips: needsRoundTrips,
+            needsEncodingStability: needsEncodingStability
         };
-        
+
         // Update the card UI
         this.updateCardTestingState(algorithm.name, false);
     }
-    
+
+    /**
+     * Execute round-trip test for invertible algorithms
+     */
+    executeRoundTripTest(algorithm, test) {
+        const startTime = performance.now();
+
+        try {
+            // First, encrypt/encode the input
+            const forwardInstance = algorithm.CreateInstance(false); // Forward direction
+            if (test.key && forwardInstance.key !== undefined) {
+                forwardInstance.key = test.key;
+            }
+            forwardInstance.Feed(test.input);
+            const encrypted = forwardInstance.Result();
+
+            // Then, decrypt/decode back to original
+            const reverseInstance = algorithm.CreateInstance(true); // Reverse direction
+            if (test.key && reverseInstance.key !== undefined) {
+                reverseInstance.key = test.key;
+            }
+            reverseInstance.Feed(encrypted);
+            const decrypted = reverseInstance.Result();
+
+            // Compare decrypted with original input
+            const success = this.compareByteArrays(decrypted, test.input);
+
+            return {
+                success: success,
+                encrypted: encrypted,
+                decrypted: decrypted,
+                originalInput: test.input,
+                duration: performance.now() - startTime
+            };
+
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message,
+                duration: performance.now() - startTime
+            };
+        }
+    }
+
+    /**
+     * Execute encoding stability test for encoding algorithms
+     * Tests that encode(data) = encode(decode(encode(data)))
+     */
+    executeEncodingStabilityTest(algorithm, test) {
+        const startTime = performance.now();
+
+        try {
+            // First encoding: encode(data)
+            const encodeInstance1 = algorithm.CreateInstance(false);
+            if (test.key && encodeInstance1.key !== undefined) {
+                encodeInstance1.key = test.key;
+            }
+            encodeInstance1.Feed(test.input);
+            const encoded1 = encodeInstance1.Result();
+
+            // Decode the encoded result
+            const decodeInstance = algorithm.CreateInstance(true);
+            if (test.key && decodeInstance.key !== undefined) {
+                decodeInstance.key = test.key;
+            }
+            decodeInstance.Feed(encoded1);
+            const decoded = decodeInstance.Result();
+
+            // Second encoding: encode(decode(encode(data)))
+            const encodeInstance2 = algorithm.CreateInstance(false);
+            if (test.key && encodeInstance2.key !== undefined) {
+                encodeInstance2.key = test.key;
+            }
+            encodeInstance2.Feed(decoded);
+            const encoded2 = encodeInstance2.Result();
+
+            // Check stability: encoded1 should equal encoded2
+            const success = this.compareByteArrays(encoded1, encoded2);
+
+            return {
+                success: success,
+                encoded1: encoded1,
+                decoded: decoded,
+                encoded2: encoded2,
+                duration: performance.now() - startTime
+            };
+
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message,
+                duration: performance.now() - startTime
+            };
+        }
+    }
+
     /**
      * Execute a single test for an algorithm
      */
@@ -333,28 +491,58 @@ class CipherController {
             testButton.style.transform = '';
             testButton.style.transition = '';
             
-            // Update status color based on results
+            // Update status color based on results including enhanced testing
             const algorithm = this.getAlgorithm(algorithmName);
             if (algorithm && algorithm.testResults) {
-                const { passed, total } = algorithm.testResults;
+                const { passed, total, roundTrips, encodingStability, needsRoundTrips, needsEncodingStability } = algorithm.testResults;
                 let status = 'untested';
-                
+
                 if (total === 0) {
                     status = 'untested';
-                } else if (passed === 0) {
-                    status = 'none';
-                } else if (passed === total) {
-                    status = 'all';
                 } else {
-                    status = 'some';
+                    // Check basic functionality first
+                    const basicTestsPass = passed === total;
+                    let enhancedTestsPass = true;
+
+                    // Check round-trips for algorithms that need them
+                    if (needsRoundTrips && roundTrips) {
+                        enhancedTestsPass = enhancedTestsPass && (roundTrips.passed === roundTrips.total);
+                    }
+
+                    // Check encoding stability for algorithms that need it
+                    if (needsEncodingStability && encodingStability) {
+                        enhancedTestsPass = enhancedTestsPass && (encodingStability.passed === encodingStability.total);
+                    }
+
+                    // Determine overall status
+                    if (passed === 0) {
+                        status = 'none';
+                    } else if (basicTestsPass && enhancedTestsPass) {
+                        status = 'all';
+                    } else {
+                        status = 'some';
+                    }
                 }
-                
+
                 // Remove old status classes
                 testButton.classList.remove('test-status-none', 'test-status-some', 'test-status-all', 'test-status-untested');
-                
+
                 // Add new status class
                 testButton.classList.add(`test-status-${status}`);
                 testButton.setAttribute('data-test-status', status);
+
+                // Update button text with enhanced test results
+                let testText = `🧪 ${passed}/${total}`;
+
+                if (needsRoundTrips && roundTrips) {
+                    testText += ` R:${roundTrips.passed}/${roundTrips.total}`;
+                }
+
+                if (needsEncodingStability && encodingStability) {
+                    testText += ` S:${encodingStability.passed}/${encodingStability.total}`;
+                }
+
+                testButton.innerHTML = testText;
             }
         }
     }
@@ -761,15 +949,30 @@ class CipherController {
         const algorithms = this.getFilteredAlgorithmsForTesting();
         const testedAlgorithms = algorithms.filter(alg => alg.testResults);
         
-        // Update summary statistics
+        // Update summary statistics with enhanced testing
         let passed = 0, partial = 0, failed = 0;
-        
+
         testedAlgorithms.forEach(alg => {
             if (alg.testResults.total === 0) return;
-            
-            if (alg.testResults.passed === 0) {
+
+            const results = alg.testResults;
+            const basicTestsPass = results.passed === results.total;
+            let enhancedTestsPass = true;
+
+            // Check round-trips for algorithms that need them
+            if (results.needsRoundTrips && results.roundTrips) {
+                enhancedTestsPass = enhancedTestsPass && (results.roundTrips.passed === results.roundTrips.total);
+            }
+
+            // Check encoding stability for algorithms that need it
+            if (results.needsEncodingStability && results.encodingStability) {
+                enhancedTestsPass = enhancedTestsPass && (results.encodingStability.passed === results.encodingStability.total);
+            }
+
+            // Classify based on all test types
+            if (results.passed === 0) {
                 failed++;
-            } else if (alg.testResults.passed === alg.testResults.total) {
+            } else if (basicTestsPass && enhancedTestsPass) {
                 passed++;
             } else {
                 partial++;
@@ -820,7 +1023,7 @@ class CipherController {
                 passed = results.passed || 0;
                 total = results.total || testCount;
                 lastTested = new Date(results.lastUpdated).toLocaleTimeString();
-                
+
                 // Format duration
                 if (results.duration !== undefined) {
                     if (results.duration < 1000) {
@@ -829,26 +1032,61 @@ class CipherController {
                         duration = `${Math.round(results.duration / 1000 * 100) / 100}s`;
                     }
                 }
-                
+
+                // Determine overall status including enhanced tests
+                const basicTestsPass = results.passed === results.total;
+                let enhancedTestsPass = true;
+
+                // Check round-trips for algorithms that need them
+                if (results.needsRoundTrips && results.roundTrips) {
+                    enhancedTestsPass = enhancedTestsPass && (results.roundTrips.passed === results.roundTrips.total);
+                }
+
+                // Check encoding stability for algorithms that need it
+                if (results.needsEncodingStability && results.encodingStability) {
+                    enhancedTestsPass = enhancedTestsPass && (results.encodingStability.passed === results.encodingStability.total);
+                }
+
                 if (total === 0) {
                     status = '⚪ No Tests';
                 } else if (passed === 0) {
                     status = '❌ Failed';
                     statusClass = 'failed';
-                } else if (passed === total) {
+                } else if (basicTestsPass && enhancedTestsPass) {
                     status = '✅ Passed';
                     statusClass = 'passed';
                 } else {
                     status = '🟡 Partial';
                     statusClass = 'partial';
                 }
-                
+
                 successRate = total > 0 ? Math.round((passed / total) * 100) : 0;
             }
             
             // Apply CSS class for row background tinting
             row.className = statusClass;
             
+            // Build enhanced test result display
+            let enhancedTestDisplay = '';
+
+            if (results && results.needsRoundTrips && results.roundTrips) {
+                const rtPassed = results.roundTrips.passed;
+                const rtTotal = results.roundTrips.total;
+                const rtRate = rtTotal > 0 ? Math.round((rtPassed / rtTotal) * 100) : 0;
+                enhancedTestDisplay += `R:${rtPassed}/${rtTotal}(${rtRate}%) `;
+            }
+
+            if (results && results.needsEncodingStability && results.encodingStability) {
+                const esPassed = results.encodingStability.passed;
+                const esTotal = results.encodingStability.total;
+                const esRate = esTotal > 0 ? Math.round((esPassed / esTotal) * 100) : 0;
+                enhancedTestDisplay += `S:${esPassed}/${esTotal}(${esRate}%)`;
+            }
+
+            if (!enhancedTestDisplay.trim()) {
+                enhancedTestDisplay = '-';
+            }
+
             row.innerHTML = `
                 <td><input type="checkbox" class="row-checkbox" data-algorithm="${algorithm.name}" /></td>
                 <td><span class="test-status ${statusClass}">${status}</span></td>
@@ -858,6 +1096,7 @@ class CipherController {
                 <td>${passed}</td>
                 <td>${total - passed}</td>
                 <td>${successRate}%</td>
+                <td>${enhancedTestDisplay}</td>
                 <td>${duration}</td>
                 <td>${lastTested}</td>
             `;
