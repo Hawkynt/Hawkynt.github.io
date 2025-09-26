@@ -22,6 +22,12 @@ class TestSuite {
     this.totalAlgorithms = 0;
     this.algorithmsPerCategory = {};
     this.verbose = false;
+
+    // Define algorithm category arrays for invertibility requirements
+    // These will be set after AlgorithmFramework is loaded
+    this.perfectRoundTripCategories = null;
+    this.encodingStabilityCategories = null;
+
     this.results = {
       compilation: { passed: 0, failed: 0, errors: [] },
       interface: { passed: 0, failed: 0, errors: [] },
@@ -82,7 +88,10 @@ class TestSuite {
       if (!global.AlgorithmFramework) {
         throw new Error('AlgorithmFramework not loaded properly');
       }
-      
+
+      // Initialize algorithm category arrays now that AlgorithmFramework is loaded
+      this.initializeCategoryArrays();
+
       console.log('✓ Dependencies loaded successfully\n');
     } catch (error) {
       throw new Error(`Failed to load dependencies: ${error.message}`);
@@ -542,6 +551,37 @@ class TestSuite {
     }
   }
 
+  // Initialize algorithm category arrays after AlgorithmFramework is loaded
+  initializeCategoryArrays() {
+    // Algorithm types that MUST support perfect round-trips: decrypt(encrypt(data)) = data
+    this.perfectRoundTripCategories = [
+      global.AlgorithmFramework.CategoryType.BLOCK,      // Block ciphers
+      global.AlgorithmFramework.CategoryType.STREAM,     // Stream ciphers
+      global.AlgorithmFramework.CategoryType.ASYMMETRIC, // Public key ciphers
+      global.AlgorithmFramework.CategoryType.CLASSICAL,  // Classical ciphers
+      global.AlgorithmFramework.CategoryType.COMPRESSION,// Compression algorithms
+      global.AlgorithmFramework.CategoryType.ECC,        // Error correction codes
+      global.AlgorithmFramework.CategoryType.AEAD        // Authenticated encryption
+    ];
+
+    // Algorithm types that MUST support encoding stability: encode(data) = encode(decode(encode(data)))
+    this.encodingStabilityCategories = [
+      global.AlgorithmFramework.CategoryType.ENCODING    // Encoding schemes
+    ];
+  }
+
+  // Helper function to determine if an algorithm type requires perfect round-trip success
+  requiresRoundTrips(algorithm) {
+    if (!algorithm.category || !this.perfectRoundTripCategories) return false;
+    return this.perfectRoundTripCategories.includes(algorithm.category);
+  }
+
+  // Helper function to determine if an algorithm requires encoding stability
+  requiresEncodingStability(algorithm) {
+    if (!algorithm.category || !this.encodingStabilityCategories) return false;
+    return this.encodingStabilityCategories.includes(algorithm.category);
+  }
+
   // Test if algorithm works with basic test vectors
   async testFunctionality(filePath, algorithmData) {
     if (algorithmData.details.interfaceError) {
@@ -627,33 +667,84 @@ class TestSuite {
               if (passed) {
                 vectorsPassed++;
                 
-                // Try round-trip test by attempting to create an inverse instance
+                // Try round-trip test or encoding stability test
                 try {
-                  // Try to create an inverse instance (decrypt mode)
-                  const inverseInstance = algorithm.CreateInstance(true); // true = inverse/decrypt mode
-                  
-                  if (inverseInstance) {
-                    // Apply same properties to inverse instance
-                    for (const [key, value] of Object.entries(vector)) {
-                      if (key !== 'text' && key !== 'uri' && key !== 'input' && key !== 'expected' && key !== 'output') {
-                        try {
-                          if (inverseInstance.hasOwnProperty(key) || key in inverseInstance) {
-                            inverseInstance[key] = value;
+                  if (this.requiresEncodingStability(algorithm)) {
+                    // For encoding schemes: test that encode(data) = encode(decode(encode(data)))
+                    // This allows for lossy encodings while ensuring stability
+
+                    // Try to create a decode instance
+                    const decodeInstance = algorithm.CreateInstance(true); // true = decode mode
+
+                    if (decodeInstance) {
+                      // Apply same properties to decode instance
+                      for (const [key, value] of Object.entries(vector)) {
+                        if (key !== 'text' && key !== 'uri' && key !== 'input' && key !== 'expected' && key !== 'output') {
+                          try {
+                            if (decodeInstance.hasOwnProperty(key) || key in decodeInstance) {
+                              decodeInstance[key] = value;
+                            }
+                          } catch (propertyError) {
+                            // Property setting failed, continue anyway
                           }
-                        } catch (propertyError) {
-                          // Property setting failed, continue anyway
                         }
                       }
+
+                      // Decode the encoded result: decode(encode(data))
+                      decodeInstance.Feed(result);
+                      const decodedResult = decodeInstance.Result();
+
+                      // Re-encode the decoded result: encode(decode(encode(data)))
+                      const reEncodeInstance = algorithm.CreateInstance(false); // false = encode mode
+                      for (const [key, value] of Object.entries(vector)) {
+                        if (key !== 'text' && key !== 'uri' && key !== 'input' && key !== 'expected' && key !== 'output') {
+                          try {
+                            if (reEncodeInstance.hasOwnProperty(key) || key in reEncodeInstance) {
+                              reEncodeInstance[key] = value;
+                            }
+                          } catch (propertyError) {
+                            // Property setting failed, continue anyway
+                          }
+                        }
+                      }
+
+                      reEncodeInstance.Feed(decodedResult);
+                      const reEncodedResult = reEncodeInstance.Result();
+
+                      // Check encoding stability: encode(data) = encode(decode(encode(data)))
+                      if (this.compareArrays(result, reEncodedResult)) {
+                        roundTripsPassed++;
+                        vectorDetails[vectorDetails.length - 1].roundTripSuccess = true;
+                      }
                     }
-                    
-                    // Feed the result (encrypted data) to decrypt it back
-                    inverseInstance.Feed(result);
-                    const decryptedResult = inverseInstance.Result();
-                    
-                    // Check if we get back the original input
-                    if (this.compareArrays(decryptedResult, vector.input)) {
-                      roundTripsPassed++;
-                      vectorDetails[vectorDetails.length - 1].roundTripSuccess = true;
+                  } else {
+                    // For ciphers and other algorithms: test perfect round-trip
+                    // Try to create an inverse instance (decrypt mode)
+                    const inverseInstance = algorithm.CreateInstance(true); // true = inverse/decrypt mode
+
+                    if (inverseInstance) {
+                      // Apply same properties to inverse instance
+                      for (const [key, value] of Object.entries(vector)) {
+                        if (key !== 'text' && key !== 'uri' && key !== 'input' && key !== 'expected' && key !== 'output') {
+                          try {
+                            if (inverseInstance.hasOwnProperty(key) || key in inverseInstance) {
+                              inverseInstance[key] = value;
+                            }
+                          } catch (propertyError) {
+                            // Property setting failed, continue anyway
+                          }
+                        }
+                      }
+
+                      // Feed the result (encrypted data) to decrypt it back
+                      inverseInstance.Feed(result);
+                      const decryptedResult = inverseInstance.Result();
+
+                      // Check if we get back the original input
+                      if (this.compareArrays(decryptedResult, vector.input)) {
+                        roundTripsPassed++;
+                        vectorDetails[vectorDetails.length - 1].roundTripSuccess = true;
+                      }
                     }
                   }
                 } catch (inverseError) {
@@ -678,16 +769,41 @@ class TestSuite {
           
           // Algorithm passes only if ALL test vectors pass
           if (vectorsPassed === vectorsToTest.length && vectorsToTest.length > 0) {
-            anySuccess = true;
-            testResults.push({
-              algorithm: algorithm.name,
-              status: 'passed',
-              vectorsPassed: vectorsPassed,
-              vectorsTotal: vectorsToTest.length,
-              roundTripsPassed: roundTripsPassed,
-              roundTripsAttempted: vectorsPassed, // Only attempt round-trip on successful vectors
-              vectorDetails: vectorDetails
-            });
+            // Check if round-trips or encoding stability are required and if they all passed
+            const requiresRoundTrips = this.requiresRoundTrips(algorithm);
+            const requiresEncodingStability = this.requiresEncodingStability(algorithm);
+            const invertibilityRequired = (requiresRoundTrips || requiresEncodingStability) && vectorsPassed > 0;
+            const invertibilitySuccess = !invertibilityRequired || (roundTripsPassed === vectorsPassed);
+
+            if (invertibilitySuccess) {
+              anySuccess = true;
+              testResults.push({
+                algorithm: algorithm.name,
+                status: 'passed',
+                vectorsPassed: vectorsPassed,
+                vectorsTotal: vectorsToTest.length,
+                roundTripsPassed: roundTripsPassed,
+                roundTripsAttempted: vectorsPassed, // Only attempt round-trip on successful vectors
+                vectorDetails: vectorDetails,
+                requiresRoundTrips: requiresRoundTrips,
+                requiresEncodingStability: requiresEncodingStability
+              });
+            } else {
+              // Algorithm failed due to invertibility failure
+              const failureType = requiresEncodingStability ? 'encoding stability' : 'round-trip decryption';
+              testResults.push({
+                algorithm: algorithm.name,
+                status: requiresEncodingStability ? 'failed-encoding-stability' : 'failed-roundtrips',
+                vectorsPassed: vectorsPassed,
+                vectorsTotal: vectorsToTest.length,
+                roundTripsPassed: roundTripsPassed,
+                roundTripsAttempted: vectorsPassed,
+                vectorDetails: vectorDetails,
+                requiresRoundTrips: requiresRoundTrips,
+                requiresEncodingStability: requiresEncodingStability,
+                message: `${failureType.charAt(0).toUpperCase() + failureType.slice(1)} failed (${roundTripsPassed}/${vectorsPassed} successful)`
+              });
+            }
           } else {
             testResults.push({
               algorithm: algorithm.name,
@@ -733,6 +849,21 @@ class TestSuite {
             if (result.status === 'passed') {
               console.log(`  Vectors Passed: ${result.vectorsPassed}/${result.vectorsTotal}`);
               console.log(`  Round-trips Passed: ${result.roundTripsPassed}/${result.roundTripsAttempted}`);
+              if (result.requiresRoundTrips) {
+                console.log(`  Invertibility Requirement: ✓ ENFORCED (perfect round-trips required)`);
+              } else if (result.requiresEncodingStability) {
+                console.log(`  Invertibility Requirement: ✓ ENFORCED (encoding stability required)`);
+              }
+            } else if (result.status === 'failed-roundtrips') {
+              console.log(`  Vectors Passed: ${result.vectorsPassed}/${result.vectorsTotal}`);
+              console.log(`  Round-trips Passed: ${result.roundTripsPassed}/${result.roundTripsAttempted} (FAILED - REQUIRED)`);
+              console.log(`  Issue: ${result.message}`);
+              console.log(`  Invertibility Requirement: ✗ FAILED (invertible algorithm must support decryption)`);
+            } else if (result.status === 'failed-encoding-stability') {
+              console.log(`  Vectors Passed: ${result.vectorsPassed}/${result.vectorsTotal}`);
+              console.log(`  Encoding Stability: ${result.roundTripsPassed}/${result.roundTripsAttempted} (FAILED - REQUIRED)`);
+              console.log(`  Issue: ${result.message}`);
+              console.log(`  Invertibility Requirement: ✗ FAILED (encode(data) ≠ encode(decode(encode(data))))`);
             } else if (result.status === 'failed') {
               console.log(`  Vectors Passed: ${result.vectorsPassed}/${result.vectorsTotal} (all failed)`);
               console.log(`  Issue: Test vectors produced wrong output`);
