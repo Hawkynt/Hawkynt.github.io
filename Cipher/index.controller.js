@@ -225,7 +225,7 @@ class CipherController {
      */
     executeAlgorithmTest(algorithm, test) {
         const startTime = performance.now();
-        
+
         try {
             // Validate test structure
             if (!test.input || !test.expected) {
@@ -235,7 +235,7 @@ class CipherController {
                     duration: performance.now() - startTime
                 };
             }
-            
+
             // Create algorithm instance
             const instance = algorithm.CreateInstance();
             if (!instance) {
@@ -245,10 +245,15 @@ class CipherController {
                     duration: performance.now() - startTime
                 };
             }
-            
+            // TODO: better copy all properties from test-vectors except uri, description and input and expected
+            // Set key if provided in test vector (required for ciphers)
+            if (test.key && instance.key !== undefined) {
+                instance.key = test.key;
+            }
+
             // Feed input data
             instance.Feed(test.input);
-            
+
             // Get output
             const output = instance.Result();
             
