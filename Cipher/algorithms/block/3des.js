@@ -294,28 +294,15 @@
       return this._callDES(block, key, true);
     }
 
-    // Use existing working DES implementation
+    // Use DES implementation with lazy loading and fallback strategies
     _callDES(data, key, decrypt = false) {
       if (data.length !== 8 || key.length !== 8) {
         throw new Error("DES requires 8-byte blocks and keys");
       }
 
-      // Get the working DES algorithm from the registry (lazy loading)
+      // Lazy load DES algorithm if not already cached
       if (!this._desAlgorithm) {
-        // Use AlgorithmFramework from the proper scope
-        const framework = (typeof AlgorithmFramework !== 'undefined') ? AlgorithmFramework :
-                         (typeof global !== 'undefined' && global.AlgorithmFramework) ? global.AlgorithmFramework :
-                         (typeof window !== 'undefined' && window.AlgorithmFramework) ? window.AlgorithmFramework : null;
-
-        if (!framework) {
-          throw new Error("AlgorithmFramework not found");
-        }
-
-        const algorithms = framework.Algorithms || [];
-        this._desAlgorithm = algorithms.find(alg => alg.name === 'DES');
-        if (!this._desAlgorithm) {
-          throw new Error("DES algorithm not found in registry. Please ensure DES is loaded before using 3DES.");
-        }
+        this._desAlgorithm = this._loadDESAlgorithm();
       }
 
       // Create a DES instance
@@ -329,6 +316,46 @@
       const result = desInstance.Result();
 
       return result;
+    }
+
+    // Load DES algorithm using multiple fallback strategies
+    _loadDESAlgorithm() {
+      // Strategy 1: Try to require DES directly (works in Node.js/TestSuite)
+      if (typeof require !== 'undefined') {
+        try {
+          // Try relative path first
+          const desPath = require.resolve('./des.js');
+          delete require.cache[desPath]; // Clear cache to ensure fresh load
+          require(desPath);
+        } catch (e1) {
+          try {
+            // Try alternative path
+            require('../../algorithms/block/des.js');
+          } catch (e2) {
+            // Require failed, will fall back to registry lookup
+          }
+        }
+      }
+
+      // Strategy 2: Look up in AlgorithmFramework registry (works in browser/web UI)
+      const framework = (typeof AlgorithmFramework !== 'undefined') ? AlgorithmFramework :
+                       (typeof global !== 'undefined' && global.AlgorithmFramework) ? global.AlgorithmFramework :
+                       (typeof window !== 'undefined' && window.AlgorithmFramework) ? window.AlgorithmFramework : null;
+
+      if (framework) {
+        const algorithms = framework.Algorithms || [];
+        const desAlgorithm = algorithms.find(alg => alg.name === 'DES');
+        if (desAlgorithm) {
+          return desAlgorithm;
+        }
+      }
+
+      // Strategy 3: Final fallback - detailed error with helpful message
+      throw new Error(
+        "DES algorithm not found. 3DES requires DES to be available. " +
+        "In Node.js environments, ensure DES is required before 3DES. " +
+        "In browser environments, ensure des.js is loaded before 3des.js in index.html."
+      );
     }
   }
 

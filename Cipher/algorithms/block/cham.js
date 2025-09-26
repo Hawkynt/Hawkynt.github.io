@@ -90,23 +90,16 @@
       // Test vectors
       this.tests = [
         {
-          text: "CHAM-128/128 Zero Test Vector",
+          text: "CHAM-128/128 (Paper Vector)",
           uri: "https://eprint.iacr.org/2017/1032.pdf",
-          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("3e0f6749aa78c96877b80413913a40ef")
-        },
-        {
-          text: "CHAM-128/128 Pattern Test Vector",
-          uri: "https://eprint.iacr.org/2017/1032.pdf",
-          input: OpCodes.Hex8ToBytes("0123456789abcdeffedcba9876543210"),
-          key: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-          expected: OpCodes.Hex8ToBytes("fddd1dbc13ec40586df16447c49f2eab")
+          input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          expected: OpCodes.Hex8ToBytes("346074c3c50057b532ec648df7329348")
         }
       ];
 
       // CHAM-128/128 Constants
-      this.ROUNDS = 112;      // 112 rounds for CHAM-128/128
+      this.ROUNDS = 80;      // 80 rounds for CHAM-128/128
       this.ROT_ALPHA = 1;     // Alpha rotation constant
       this.ROT_BETA = 8;      // Beta rotation constant
     }
@@ -185,46 +178,51 @@
         throw new Error('CHAM: Input must be exactly 16 bytes');
       }
 
+      if (!this.roundKeys) {
+        throw new Error('CHAM: Round keys not initialized');
+      }
+
+      const rk = this.roundKeys;
+
       // Convert input to 32-bit words using OpCodes (little-endian)
-      let X = [
-        OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]),
-        OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]),
-        OpCodes.Pack32LE(blockBytes[8], blockBytes[9], blockBytes[10], blockBytes[11]),
-        OpCodes.Pack32LE(blockBytes[12], blockBytes[13], blockBytes[14], blockBytes[15])
-      ];
+      let x0 = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
+      let x1 = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
+      let x2 = OpCodes.Pack32LE(blockBytes[8], blockBytes[9], blockBytes[10], blockBytes[11]);
+      let x3 = OpCodes.Pack32LE(blockBytes[12], blockBytes[13], blockBytes[14], blockBytes[15]);
 
-      // CHAM encryption: 112 rounds with 4-branch Feistel structure
-      for (let r = 0; r < this.algorithm.ROUNDS; r++) {
-        // Get round key (cycling through the 8 round keys)
-        const rk = this.roundKeys[r % 8];
+      for (let round = 0; round < this.algorithm.ROUNDS; round += 8) {
+        let temp = OpCodes.Add32((x0 ^ round) >>> 0, (OpCodes.RotL32(x1, 1) ^ rk[0]) >>> 0);
+        x0 = OpCodes.RotL32(temp, 8);
 
-        // CHAM round function with odd/even round variation (ARX operations)
-        if (r % 2 === 0) {
-          // Even rounds: X[0] = ROL((X[0] ^ r) + (ROL(X[1], ROT_ALPHA) ^ rk), ROT_BETA)
-          const temp = (OpCodes.RotL32(X[1], this.algorithm.ROT_ALPHA) ^ rk) >>> 0;
-          X[0] = ((X[0] ^ r) + temp) >>> 0;
-          X[0] = OpCodes.RotL32(X[0], this.algorithm.ROT_BETA);
-        } else {
-          // Odd rounds: X[0] = ROL((X[0] ^ r) + (ROL(X[1], ROT_BETA) ^ rk), ROT_ALPHA)
-          const temp = (OpCodes.RotL32(X[1], this.algorithm.ROT_BETA) ^ rk) >>> 0;
-          X[0] = ((X[0] ^ r) + temp) >>> 0;
-          X[0] = OpCodes.RotL32(X[0], this.algorithm.ROT_ALPHA);
-        }
+        temp = OpCodes.Add32((x1 ^ (round + 1)) >>> 0, (OpCodes.RotL32(x2, 8) ^ rk[1]) >>> 0);
+        x1 = OpCodes.RotL32(temp, 1);
 
-        // 4-branch Feistel state rotation: X = [X[1], X[2], X[3], X[0]]
-        const temp_x = X[0];
-        X[0] = X[1];
-        X[1] = X[2];
-        X[2] = X[3];
-        X[3] = temp_x;
+        temp = OpCodes.Add32((x2 ^ (round + 2)) >>> 0, (OpCodes.RotL32(x3, 1) ^ rk[2]) >>> 0);
+        x2 = OpCodes.RotL32(temp, 8);
+
+        const x0Rot8 = OpCodes.RotL32(x0, 8);
+        temp = OpCodes.Add32((x3 ^ (round + 3)) >>> 0, (x0Rot8 ^ rk[3]) >>> 0);
+        x3 = OpCodes.RotL32(temp, 1);
+
+        temp = OpCodes.Add32((x0 ^ (round + 4)) >>> 0, (OpCodes.RotL32(x1, 1) ^ rk[4]) >>> 0);
+        x0 = OpCodes.RotL32(temp, 8);
+
+        temp = OpCodes.Add32((x1 ^ (round + 5)) >>> 0, (OpCodes.RotL32(x2, 8) ^ rk[5]) >>> 0);
+        x1 = OpCodes.RotL32(temp, 1);
+
+        temp = OpCodes.Add32((x2 ^ (round + 6)) >>> 0, (OpCodes.RotL32(x3, 1) ^ rk[6]) >>> 0);
+        x2 = OpCodes.RotL32(temp, 8);
+
+        const x0Rot8Second = OpCodes.RotL32(x0, 8);
+        temp = OpCodes.Add32((x3 ^ (round + 7)) >>> 0, (x0Rot8Second ^ rk[7]) >>> 0);
+        x3 = OpCodes.RotL32(temp, 1);
       }
 
-      // Convert back to bytes using OpCodes (little-endian)
       const result = [];
-      for (let i = 0; i < 4; i++) {
-        const wordBytes = OpCodes.Unpack32LE(X[i]);
-        result.push(...wordBytes);
-      }
+      result.push(...OpCodes.Unpack32LE(x0));
+      result.push(...OpCodes.Unpack32LE(x1));
+      result.push(...OpCodes.Unpack32LE(x2));
+      result.push(...OpCodes.Unpack32LE(x3));
 
       return result;
     }
@@ -234,79 +232,87 @@
         throw new Error('CHAM: Input must be exactly 16 bytes');
       }
 
-      // Convert input to 32-bit words using OpCodes (little-endian)
-      let X = [
-        OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]),
-        OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]),
-        OpCodes.Pack32LE(blockBytes[8], blockBytes[9], blockBytes[10], blockBytes[11]),
-        OpCodes.Pack32LE(blockBytes[12], blockBytes[13], blockBytes[14], blockBytes[15])
-      ];
-
-      // CHAM decryption: reverse the encryption process (112 rounds in reverse order)
-      for (let r = this.algorithm.ROUNDS - 1; r >= 0; r--) {
-        // Reverse the 4-branch Feistel state rotation: X = [X[3], X[0], X[1], X[2]]
-        const temp_x = X[3];
-        X[3] = X[2];
-        X[2] = X[1];
-        X[1] = X[0];
-        X[0] = temp_x;
-
-        // Get round key (cycling through the 8 round keys)
-        const rk = this.roundKeys[r % 8];
-
-        // Reverse CHAM round function with odd/even round variation
-        if (r % 2 === 0) {
-          // Even rounds (reverse): X[0] = (ROR(X[0], ROT_BETA) - (ROL(X[1], ROT_ALPHA) ^ rk)) ^ r
-          const rotated = OpCodes.RotR32(X[0], this.algorithm.ROT_BETA);
-          const temp = (OpCodes.RotL32(X[1], this.algorithm.ROT_ALPHA) ^ rk) >>> 0;
-          X[0] = ((rotated - temp) >>> 0) ^ r;
-        } else {
-          // Odd rounds (reverse): X[0] = (ROR(X[0], ROT_ALPHA) - (ROL(X[1], ROT_BETA) ^ rk)) ^ r
-          const rotated = OpCodes.RotR32(X[0], this.algorithm.ROT_ALPHA);
-          const temp = (OpCodes.RotL32(X[1], this.algorithm.ROT_BETA) ^ rk) >>> 0;
-          X[0] = ((rotated - temp) >>> 0) ^ r;
-        }
+      if (!this.roundKeys) {
+        throw new Error('CHAM: Round keys not initialized');
       }
 
-      // Convert back to bytes using OpCodes (little-endian)
+      const rk = this.roundKeys;
+
+      let x0 = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
+      let x1 = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
+      let x2 = OpCodes.Pack32LE(blockBytes[8], blockBytes[9], blockBytes[10], blockBytes[11]);
+      let x3 = OpCodes.Pack32LE(blockBytes[12], blockBytes[13], blockBytes[14], blockBytes[15]);
+
+      for (let round = this.algorithm.ROUNDS - 8; round >= 0; round -= 8) {
+        const x0Rot8After5 = OpCodes.RotL32(x0, 8);
+        let tmp = OpCodes.RotR32(x3, 1);
+        tmp = OpCodes.Sub32(tmp, (x0Rot8After5 ^ rk[7]) >>> 0);
+        x3 = (tmp ^ (round + 7)) >>> 0;
+
+        tmp = OpCodes.RotR32(x2, 8);
+        tmp = OpCodes.Sub32(tmp, (OpCodes.RotL32(x3, 1) ^ rk[6]) >>> 0);
+        x2 = (tmp ^ (round + 6)) >>> 0;
+
+        tmp = OpCodes.RotR32(x1, 1);
+        tmp = OpCodes.Sub32(tmp, (OpCodes.RotL32(x2, 8) ^ rk[5]) >>> 0);
+        x1 = (tmp ^ (round + 5)) >>> 0;
+
+        tmp = OpCodes.RotR32(x0, 8);
+        tmp = OpCodes.Sub32(tmp, (OpCodes.RotL32(x1, 1) ^ rk[4]) >>> 0);
+        x0 = (tmp ^ (round + 4)) >>> 0;
+
+        const x0Rot8After1 = OpCodes.RotL32(x0, 8);
+        tmp = OpCodes.RotR32(x3, 1);
+        tmp = OpCodes.Sub32(tmp, (x0Rot8After1 ^ rk[3]) >>> 0);
+        x3 = (tmp ^ (round + 3)) >>> 0;
+
+        tmp = OpCodes.RotR32(x2, 8);
+        tmp = OpCodes.Sub32(tmp, (OpCodes.RotL32(x3, 1) ^ rk[2]) >>> 0);
+        x2 = (tmp ^ (round + 2)) >>> 0;
+
+        tmp = OpCodes.RotR32(x1, 1);
+        tmp = OpCodes.Sub32(tmp, (OpCodes.RotL32(x2, 8) ^ rk[1]) >>> 0);
+        x1 = (tmp ^ (round + 1)) >>> 0;
+
+        tmp = OpCodes.RotR32(x0, 8);
+        tmp = OpCodes.Sub32(tmp, (OpCodes.RotL32(x1, 1) ^ rk[0]) >>> 0);
+        x0 = (tmp ^ round) >>> 0;
+      }
+
       const result = [];
-      for (let i = 0; i < 4; i++) {
-        const wordBytes = OpCodes.Unpack32LE(X[i]);
-        result.push(...wordBytes);
-      }
+      result.push(...OpCodes.Unpack32LE(x0));
+      result.push(...OpCodes.Unpack32LE(x1));
+      result.push(...OpCodes.Unpack32LE(x2));
+      result.push(...OpCodes.Unpack32LE(x3));
 
       return result;
     }
 
     _expandKey(keyBytes) {
-      // Convert 128-bit key to four 32-bit words using OpCodes (little-endian)
-      const key = [
+      const words = [
         OpCodes.Pack32LE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]),
         OpCodes.Pack32LE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]),
         OpCodes.Pack32LE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]),
         OpCodes.Pack32LE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15])
       ];
 
-      // CHAM-128/128 key schedule: generate 8 round keys from the 128-bit master key
-      const roundKeys = [];
+      const rk = new Array(8);
+      rk[0] = words[0] >>> 0;
+      rk[1] = words[1] >>> 0;
+      rk[2] = words[2] >>> 0;
+      rk[3] = words[3] >>> 0;
 
-      // Generate 8 round keys using the CHAM key schedule
-      for (let i = 0; i < 8; i++) {
-        // CHAM key schedule: RK[i] = K[i mod 4] ^ ROL(K[(i+1) mod 4], 1) ^ ROL(K[(i+2) mod 4], 8) ^ ROL(K[(i+3) mod 4], 11)
-        const k0 = key[i % 4];
-        const k1 = key[(i + 1) % 4];
-        const k2 = key[(i + 2) % 4];
-        const k3 = key[(i + 3) % 4];
+      rk[4] = (rk[1] ^ OpCodes.RotL32(rk[1], 1) ^ OpCodes.RotL32(rk[1], 11)) >>> 0;
+      rk[5] = (rk[0] ^ OpCodes.RotL32(rk[0], 1) ^ OpCodes.RotL32(rk[0], 11)) >>> 0;
+      rk[6] = (rk[3] ^ OpCodes.RotL32(rk[3], 1) ^ OpCodes.RotL32(rk[3], 11)) >>> 0;
+      rk[7] = (rk[2] ^ OpCodes.RotL32(rk[2], 1) ^ OpCodes.RotL32(rk[2], 11)) >>> 0;
 
-        // Apply rotations and XOR for key mixing
-        const rot1 = OpCodes.RotL32(k1, 1);
-        const rot8 = OpCodes.RotL32(k2, 8);
-        const rot11 = OpCodes.RotL32(k3, 11);
+      rk[0] = (rk[0] ^ OpCodes.RotL32(rk[0], 1) ^ OpCodes.RotL32(rk[0], 8)) >>> 0;
+      rk[1] = (rk[1] ^ OpCodes.RotL32(rk[1], 1) ^ OpCodes.RotL32(rk[1], 8)) >>> 0;
+      rk[2] = (rk[2] ^ OpCodes.RotL32(rk[2], 1) ^ OpCodes.RotL32(rk[2], 8)) >>> 0;
+      rk[3] = (rk[3] ^ OpCodes.RotL32(rk[3], 1) ^ OpCodes.RotL32(rk[3], 8)) >>> 0;
 
-        roundKeys[i] = (k0 ^ rot1 ^ rot8 ^ rot11) >>> 0;
-      }
-
-      return roundKeys;
+      return rk;
     }
   }
 

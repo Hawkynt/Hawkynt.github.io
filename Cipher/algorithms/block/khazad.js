@@ -1,116 +1,696 @@
 /*
  * Khazad Block Cipher Implementation
- * Compatible with AlgorithmFramework
- * Based on the original NESSIE submission by Paulo Barreto and Vincent Rijmen
+ * AlgorithmFramework Format
  * (c)2006-2025 Hawkynt
- * 
- * References:
- * - P.S.L.M. Barreto, V. Rijmen, "The Khazad legacy-level block cipher",
- *   NESSIE submission, 2000.
- * - Official Java implementation version 2.0 (2001.09.24)
+ *
+ * Reference implementation aligned with LibTomCrypt tables.
  */
 
-// Load AlgorithmFramework (REQUIRED)
-
 (function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    // AMD
-    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
-  } else if (typeof module === 'object' && module.exports) {
-    // Node.js/CommonJS
+  if (typeof define === "function" && define.amd) {
+    define(["../../AlgorithmFramework", "../../OpCodes"], factory);
+  } else if (typeof module === "object" && module.exports) {
     module.exports = factory(
-      require('../../AlgorithmFramework'),
-      require('../../OpCodes')
+      require("../../AlgorithmFramework"),
+      require("../../OpCodes")
     );
   } else {
-    // Browser/Worker global
     factory(root.AlgorithmFramework, root.OpCodes);
   }
-}((function() {
-  if (typeof globalThis !== 'undefined') return globalThis;
-  if (typeof window !== 'undefined') return window;
-  if (typeof global !== 'undefined') return global;
-  if (typeof self !== 'undefined') return self;
-  throw new Error('Unable to locate global object');
+})( (function() {
+  if (typeof globalThis !== "undefined") return globalThis;
+  if (typeof window !== "undefined") return window;
+  if (typeof global !== "undefined") return global;
+  if (typeof self !== "undefined") return self;
+  throw new Error("Unable to locate global object");
 })(), function (AlgorithmFramework, OpCodes) {
-  'use strict';
+  "use strict";
 
   if (!AlgorithmFramework) {
-    throw new Error('AlgorithmFramework dependency is required');
+    throw new Error("AlgorithmFramework dependency is required");
   }
-  
+
   if (!OpCodes) {
-    throw new Error('OpCodes dependency is required');
+    throw new Error("OpCodes dependency is required");
   }
 
-  // Extract framework components
-  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
-          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
-          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
-          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
-          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
-          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
-          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+  const {
+    RegisterAlgorithm,
+    CategoryType,
+    SecurityStatus,
+    ComplexityType,
+    CountryCode,
+    BlockCipherAlgorithm,
+    IBlockCipherInstance,
+    KeySize,
+    LinkItem,
+    Vulnerability
+  } = AlgorithmFramework;
 
-  // ===== ALGORITHM IMPLEMENTATION =====
+  const ROUNDS = 8;
+// TODO: we may build these using code lazily
+  const KhazadTables = (() => {
+const rawTables = [
+  [
+    0xbad3d268bbb96a01n, 0x54fc4d19e59a66b1n, 0x2f71bc93e26514cdn, 0x749ccdb925871b51n,
+    0x53f55102f7a257a4n, 0xd3686bb8d0d6be03n, 0xd26b6fbdd6deb504n, 0x4dd72964b35285fen,
+    0x50f05d0dfdba4aadn, 0xace98a26cf09e063n, 0x8d8a0e83091c9684n, 0xbfdcc679a5914d1an,
+    0x7090ddad3da7374dn, 0x52f65507f1aa5ca3n, 0x9ab352c87ba417e1n, 0x4cd42d61b55a8ef9n,
+    0xea238f65460320acn, 0xd56273a6c4e68411n, 0x97a466f155cc68c2n, 0xd16e63b2dcc6a80dn,
+    0x3355ccffaa85d099n, 0x51f35908fbb241aan, 0x5bed712ac7e20f9cn, 0xa6f7a204f359ae55n,
+    0xde7f5f81febec120n, 0x48d83d75ad7aa2e5n, 0xa8e59a32d729cc7fn, 0x99b65ec771bc0ae8n,
+    0xdb704b90e096e63bn, 0x3256c8faac8ddb9en, 0xb7c4e65195d11522n, 0xfc19d72b32b3aacen,
+    0xe338ab48704b7393n, 0x9ebf42dc63843bfdn, 0x91ae7eef41fc52d0n, 0x9bb056cd7dac1ce6n,
+    0xe23baf4d76437894n, 0xbbd0d66dbdb16106n, 0x41c319589b32f1dan, 0x6eb2a5cb7957e517n,
+    0xa5f2ae0bf941b35cn, 0xcb400bc08016564bn, 0x6bbdb1da677fc20cn, 0x95a26efb59dc7eccn,
+    0xa1febe1fe1619f40n, 0xf308eb1810cbc3e3n, 0xb1cefe4f81e12f30n, 0x206080a0c10160en,
+    0xcc4917db922e675en, 0xc45137f3a26e3f66n, 0x1d2774694ee8cf53n, 0x143c504478a09c6cn,
+    0xc3582be8b0560e73n, 0x63a591f2573f9a34n, 0xda734f95e69eed3cn, 0x5de76934d3d2358en,
+    0x5fe1613edfc22380n, 0xdc79578bf2aed72en, 0x7d87e99413cf486en, 0xcd4a13de94266c59n,
+    0x7f81e19e1fdf5e60n, 0x5aee752fc1ea049bn, 0x6cb4adc17547f319n, 0x5ce46d31d5da3e89n,
+    0xf704fb0c08ebefffn, 0x266a98bed42d47f2n, 0xff1cdb2438abb7c7n, 0xed2a937e543b11b9n,
+    0xe825876f4a1336a2n, 0x9dba4ed3699c26f4n, 0x6fb1a1ce7f5fee10n, 0x8e8f028c03048b8dn,
+    0x192b647d56c8e34fn, 0xa0fdba1ae7699447n, 0xf00de7171ad3deean, 0x89861e97113cba98n,
+    0xf113c332278692dn, 0x7091c1b12383115n, 0xafec8629c511fd6an, 0xfb10cb30208b9bdbn,
+    0x818202830405838n, 0x153f54417ea8976bn, 0xd1734392e687f23n, 0x40c101418202c1cn,
+    0x103040506080b07n, 0x64ac8de94507ab21n, 0xdf7c5b84f8b6ca27n, 0x769ac5b329970d5fn,
+    0x798bf9800bef6472n, 0xdd7a538ef4a6dc29n, 0x3d47f4c98ef5b2b3n, 0x163a584e74b08a62n,
+    0x3f41fcc382e5a4bdn, 0x3759dcebb2a5fc85n, 0x6db7a9c4734ff81en, 0x3848e0d890dd95a8n,
+    0xb9d6de67b1a17708n, 0x7395d1a237bf2a44n, 0xe926836a4c1b3da5n, 0x355fd4e1beb5ea8bn,
+    0x55ff491ce3926db6n, 0x7193d9a83baf3c4an, 0x7b8df18a07ff727cn, 0x8c890a860f149d83n,
+    0x7296d5a731b72143n, 0x88851a921734b19fn, 0xf607ff090ee3e4f8n, 0x2a7ea882fc4d33d6n,
+    0x3e42f8c684edafban, 0x5ee2653bd9ca2887n, 0x27699cbbd2254cf5n, 0x46ca0543890ac0cfn,
+    0xc14303c28607424n, 0x65af89ec430fa026n, 0x68b8bdd56d67df05n, 0x61a399f85b2f8c3an,
+    0x3050c0f0a181d09n, 0xc15e23e2bc46187dn, 0x57f94116ef827bb8n, 0xd6677fa9cefe9918n,
+    0xd976439aec86f035n, 0x58e87d25cdfa1295n, 0xd875479fea8efb32n, 0x66aa85e34917bd2fn,
+    0xd7647bacc8f6921fn, 0x3a4ee8d29ccd83a6n, 0xc84507cf8a0e4b42n, 0x3c44f0cc88fdb9b4n,
+    0xfa13cf35268390dcn, 0x96a762f453c463c5n, 0xa7f4a601f551a552n, 0x98b55ac277b401efn,
+    0xec29977b52331aben, 0xb8d5da62b7a97c0fn, 0xc7543bfca876226fn, 0xaeef822cc319f66dn,
+    0x69bbb9d06b6fd402n, 0x4bdd317aa762bfecn, 0xabe0963ddd31d176n, 0xa9e69e37d121c778n,
+    0x67a981e64f1fb628n, 0xa1e28223c504e36n, 0x47c901468f02cbc8n, 0xf20bef1d16c3c8e4n,
+    0xb5c2ee5b99c1032cn, 0x226688aacc0d6been, 0xe532b356647b4981n, 0xee2f9f715e230cb0n,
+    0xbedfc27ca399461dn, 0x2b7dac87fa4538d1n, 0x819e3ebf217ce2a0n, 0x1236485a6c90a67en,
+    0x839836b52d6cf4aen, 0x1b2d6c775ad8f541n, 0xe1238362470622an, 0x23658cafca0560e9n,
+    0xf502f30604fbf9f1n, 0x45cf094c8312ddc6n, 0x216384a5c61576e7n, 0xce4f1fd19e3e7150n,
+    0x49db3970ab72a9e2n, 0x2c74b09ce87d09c4n, 0xf916c33a2c9b8dd5n, 0xe637bf596e635488n,
+    0xb6c7e25493d91e25n, 0x2878a088f05d25d8n, 0x17395c4b72b88165n, 0x829b32b02b64ffa9n,
+    0x1a2e68725cd0fe46n, 0x8b80169d1d2cac96n, 0xfe1fdf213ea3bcc0n, 0x8a8312981b24a791n,
+    0x91b242d3648533fn, 0xc94603ca8c064045n, 0x879426a1354cd8b2n, 0x4ed2256bb94a98f7n,
+    0xe13ea3427c5b659dn, 0x2e72b896e46d1fcan, 0xe431b75362734286n, 0xe03da7477a536e9an,
+    0xeb208b60400b2babn, 0x90ad7aea47f459d7n, 0xa4f1aa0eff49b85bn, 0x1e22786644f0d25an,
+    0x85922eab395ccebcn, 0x60a09dfd5d27873dn, 0x0n, 0x256f94b1de355afbn,
+    0xf401f70302f3f2f6n, 0xf10ee3121cdbd5edn, 0x94a16afe5fd475cbn, 0xb1d2c273a584531n,
+    0xe734bb5c686b5f8fn, 0x759fc9bc238f1056n, 0xef2c9b74582b07b7n, 0x345cd0e4b8bde18cn,
+    0x3153c4f5a695c697n, 0xd46177a3c2ee8f16n, 0xd06d67b7dacea30an, 0x869722a43344d3b5n,
+    0x7e82e59b19d75567n, 0xadea8e23c901eb64n, 0xfd1ad32e34bba1c9n, 0x297ba48df6552edfn,
+    0x3050c0f0a09dcd90n, 0x3b4decd79ac588a1n, 0x9fbc46d9658c30fan, 0xf815c73f2a9386d2n,
+    0xc6573ff9ae7e2968n, 0x13354c5f6a98ad79n, 0x60a181e14303a12n, 0x50f14111e28271bn,
+    0xc55233f6a4663461n, 0x113344556688bb77n, 0x7799c1b62f9f0658n, 0x7c84ed9115c74369n,
+    0x7a8ef58f01f7797bn, 0x7888fd850de76f75n, 0x365ad8eeb4adf782n, 0x1c24706c48e0c454n,
+    0x394be4dd96d59eafn, 0x59eb7920cbf21992n, 0x1828607850c0e848n, 0x56fa4513e98a70bfn,
+    0xb3c8f6458df1393en, 0xb0cdfa4a87e92437n, 0x246c90b4d83d51fcn, 0x206080a0c01d7de0n,
+    0xb2cbf2408bf93239n, 0x92ab72e04be44fd9n, 0xa3f8b615ed71894en, 0xc05d27e7ba4e137an,
+    0x44cc0d49851ad6c1n, 0x62a695f751379133n, 0x103040506080b070n, 0xb4c1ea5e9fc9082bn,
+    0x84912aae3f54c5bbn, 0x43c511529722e7d4n, 0x93a876e54dec44den, 0xc25b2fedb65e0574n,
+    0x4ade357fa16ab4ebn, 0xbddace73a9815b14n, 0x8f8c0689050c808an, 0x2d77b499ee7502c3n,
+    0xbcd9ca76af895013n, 0x9cb94ad66f942df3n, 0x6abeb5df6177c90bn, 0x40c01d5d9d3afaddn,
+    0xcf4c1bd498367a57n, 0xa2fbb210eb798249n, 0x809d3aba2774e9a7n, 0x4fd1216ebf4293f0n,
+    0x1f217c6342f8d95dn, 0xca430fc5861e5d4cn, 0xaae39238db39da71n, 0x42c61557912aecd3n,
+  ],
+  [
+    0xd3ba68d2b9bb016an, 0xfc54194d9ae5b166n, 0x712f93bc65e2cd14n, 0x9c74b9cd8725511bn,
+    0xf5530251a2f7a457n, 0x68d3b86bd6d003ben, 0x6bd2bd6fded604b5n, 0xd74d642952b3fe85n,
+    0xf0500d5dbafdad4an, 0xe9ac268a09cf63e0n, 0x8a8d830e1c098496n, 0xdcbf79c691a51a4dn,
+    0x9070addda73d4d37n, 0xf6520755aaf1a35cn, 0xb39ac852a47be117n, 0xd44c612d5ab5f98en,
+    0x23ea658f0346ac20n, 0x62d5a673e6c41184n, 0xa497f166cc55c268n, 0x6ed1b263c6dc0da8n,
+    0x5533ffcc85aa99d0n, 0xf3510859b2fbaa41n, 0xed5b2a71e2c79c0fn, 0xf7a604a259f355aen,
+    0x7fde815fbefe20c1n, 0xd848753d7aade5a2n, 0xe5a8329a29d77fccn, 0xb699c75ebc71e80an,
+    0x70db904b96e03be6n, 0x5632fac88dac9edbn, 0xc4b751e6d1952215n, 0x19fc2bd7b332ceaan,
+    0x38e348ab4b709373n, 0xbf9edc428463fd3bn, 0xae91ef7efc41d052n, 0xb09bcd56ac7de61cn,
+    0x3be24daf43769478n, 0xd0bb6dd6b1bd0661n, 0xc3415819329bdaf1n, 0xb26ecba5577917e5n,
+    0xf2a50bae41f95cb3n, 0x40cbc00b16804b56n, 0xbd6bdab17f670cc2n, 0xa295fb6edc59cc7en,
+    0xfea11fbe61e1409fn, 0x8f318ebcb10e3c3n, 0xceb14ffee181302fn, 0x6020a08100c0e16n,
+    0x49ccdb172e925e67n, 0x51c4f3376ea2663fn, 0x271d6974e84e53cfn, 0x3c144450a0786c9cn,
+    0x58c3e82b56b0730en, 0xa563f2913f57349an, 0x73da954f9ee63cedn, 0xe75d3469d2d38e35n,
+    0xe15f3e61c2df8023n, 0x79dc8b57aef22ed7n, 0x877d94e9cf136e48n, 0x4acdde132694596cn,
+    0x817f9ee1df1f605en, 0xee5a2f75eac19b04n, 0xb46cc1ad477519f3n, 0xe45c316ddad5893en,
+    0x4f70cfbeb08ffefn, 0x6a26be982dd4f247n, 0x1cff24dbab38c7b7n, 0x2aed7e933b54b911n,
+    0x25e86f87134aa236n, 0xba9dd34e9c69f426n, 0xb16fcea15f7f10een, 0x8f8e8c0204038d8bn,
+    0x2b197d64c8564fe3n, 0xfda01aba69e74794n, 0xdf017e7d31aeaden, 0x8689971e3c1198ban,
+    0x110f333c78222d69n, 0x9071b1c38121531n, 0xecaf298611c56afdn, 0x10fb30cb8b20db9bn,
+    0x1808282040303858n, 0x3f154154a87e6b97n, 0x170d3934682e237fn, 0xc04141020181c2cn,
+    0x30105040806070bn, 0xac64e98d074521abn, 0x7cdf845bb6f827can, 0x9a76b3c597295f0dn,
+    0x8b7980f9ef0b7264n, 0x7add8e53a6f429dcn, 0x473dc9f4f58eb3b2n, 0x3a164e58b074628an,
+    0x413fc3fce582bda4n, 0x5937ebdca5b285fcn, 0xb76dc4a94f731ef8n, 0x4838d8e0dd90a895n,
+    0xd6b967dea1b10877n, 0x9573a2d1bf37442an, 0x26e96a831b4ca53dn, 0x5f35e1d4b5be8bean,
+    0xff551c4992e3b66dn, 0x9371a8d9af3b4a3cn, 0x8d7b8af1ff077c72n, 0x898c860a140f839dn,
+    0x9672a7d5b7314321n, 0x8588921a34179fb1n, 0x7f609ffe30ef8e4n, 0x7e2a82a84dfcd633n,
+    0x423ec6f8ed84baafn, 0xe25e3b65cad98728n, 0x6927bb9c25d2f54cn, 0xca4643050a89cfc0n,
+    0x140c3c3060282474n, 0xaf65ec890f4326a0n, 0xb868d5bd676d05dfn, 0xa361f8992f5b3a8cn,
+    0x5030f0c180a091dn, 0x5ec1e22346bc7d18n, 0xf957164182efb87bn, 0x67d6a97ffece1899n,
+    0x76d99a4386ec35f0n, 0xe858257dfacd9512n, 0x75d89f478eea32fbn, 0xaa66e38517492fbdn,
+    0x64d7ac7bf6c81f92n, 0x4e3ad2e8cd9ca683n, 0x45c8cf070e8a424bn, 0x443cccf0fd88b4b9n,
+    0x13fa35cf8326dc90n, 0xa796f462c453c563n, 0xf4a701a651f552a5n, 0xb598c25ab477ef01n,
+    0x29ec7b973352be1an, 0xd5b862daa9b70f7cn, 0x54c7fc3b76a86f22n, 0xefae2c8219c36df6n,
+    0xbb69d0b96f6b02d4n, 0xdd4b7a3162a7ecbfn, 0xe0ab3d9631dd76d1n, 0xe6a9379e21d178c7n,
+    0xa967e6811f4f28b6n, 0x1e0a2228503c364en, 0xc9474601028fc8cbn, 0xbf21defc316e4c8n,
+    0xc2b55beec1992c03n, 0x6622aa880dccee6bn, 0x32e556b37b648149n, 0x2fee719f235eb00cn,
+    0xdfbe7cc299a31d46n, 0x7d2b87ac45fad138n, 0x9e81bf3e7c21a0e2n, 0x36125a48906c7ea6n,
+    0x9883b5366c2daef4n, 0x2d1b776cd85a41f5n, 0x120e363870242a62n, 0x6523af8c05cae960n,
+    0x2f506f3fb04f1f9n, 0xcf454c091283c6ddn, 0x6321a58415c6e776n, 0x4fced11f3e9e5071n,
+    0xdb49703972abe2a9n, 0x742c9cb07de8c409n, 0x16f93ac39b2cd58dn, 0x37e659bf636e8854n,
+    0xc7b654e2d993251en, 0x782888a05df0d825n, 0x39174b5cb8726581n, 0x9b82b032642ba9ffn,
+    0x2e1a7268d05c46fen, 0x808b9d162c1d96acn, 0x1ffe21dfa33ec0bcn, 0x838a9812241b91a7n,
+    0x1b092d2448363f53n, 0x46c9ca03068c4540n, 0x9487a1264c35b2d8n, 0xd24e6b254ab9f798n,
+    0x3ee142a35b7c9d65n, 0x722e96b86de4ca1fn, 0x31e453b773628642n, 0x3de047a7537a9a6en,
+    0x20eb608b0b40ab2bn, 0xad90ea7af447d759n, 0xf1a40eaa49ff5bb8n, 0x221e6678f0445ad2n,
+    0x9285ab2e5c39bccen, 0xa060fd9d275d3d87n, 0x0n, 0x6f25b19435defb5an,
+    0x1f403f7f302f6f2n, 0xef112e3db1cedd5n, 0xa194fe6ad45fcb75n, 0x1d0b272c583a3145n,
+    0x34e75cbb6b688f5fn, 0x9f75bcc98f235610n, 0x2cef749b2b58b707n, 0x5c34e4d0bdb88ce1n,
+    0x5331f5c495a697c6n, 0x61d4a377eec2168fn, 0x6dd0b767ceda0aa3n, 0x9786a4224433b5d3n,
+    0x827e9be5d7196755n, 0xeaad238e01c964ebn, 0x1afd2ed3bb34c9a1n, 0x7b298da455f6df2en,
+    0x5030f0c09da090cdn, 0x4d3bd7ecc59aa188n, 0xbc9fd9468c65fa30n, 0x15f83fc7932ad286n,
+    0x57c6f93f7eae6829n, 0x35135f4c986a79adn, 0xa061e183014123an, 0xf051114281e1b27n,
+    0x52c5f63366a46134n, 0x33115544886677bbn, 0x9977b6c19f2f5806n, 0x847c91edc7156943n,
+    0x8e7a8ff5f7017b79n, 0x887885fde70d756fn, 0x5a36eed8adb482f7n, 0x241c6c70e04854c4n,
+    0x4b39dde4d596af9en, 0xeb592079f2cb9219n, 0x28187860c05048e8n, 0xfa5613458ae9bf70n,
+    0xc8b345f6f18d3e39n, 0xcdb04afae9873724n, 0x6c24b4903dd8fc51n, 0x6020a0801dc0e07dn,
+    0xcbb240f2f98b3932n, 0xab92e072e44bd94fn, 0xf8a315b671ed4e89n, 0x5dc0e7274eba7a13n,
+    0xcc44490d1a85c1d6n, 0xa662f79537513391n, 0x30105040806070b0n, 0xc1b45eeac99f2b08n,
+    0x9184ae2a543fbbc5n, 0xc54352112297d4e7n, 0xa893e576ec4dde44n, 0x5bc2ed2f5eb67405n,
+    0xde4a7f356aa1ebb4n, 0xdabd73ce81a9145bn, 0x8c8f89060c058a80n, 0x772d99b475eec302n,
+    0xd9bc76ca89af1350n, 0xb99cd64a946ff32dn, 0xbe6adfb577610bc9n, 0xc0405d1d3a9dddfan,
+    0x4ccfd41b3698577an, 0xfba210b279eb4982n, 0x9d80ba3a7427a7e9n, 0xd14f6e2142bff093n,
+    0x211f637cf8425dd9n, 0x43cac50f1e864c5dn, 0xe3aa389239db71dan, 0xc64257152a91d3ecn,
+  ],
+  [
+    0xd268bad36a01bbb9n, 0x4d1954fc66b1e59an, 0xbc932f7114cde265n, 0xcdb9749c1b512587n,
+    0x510253f557a4f7a2n, 0x6bb8d368be03d0d6n, 0x6fbdd26bb504d6den, 0x29644dd785feb352n,
+    0x5d0d50f04aadfdban, 0x8a26ace9e063cf09n, 0xe838d8a9684091cn, 0xc679bfdc4d1aa591n,
+    0xddad7090374d3da7n, 0x550752f65ca3f1aan, 0x52c89ab317e17ba4n, 0x2d614cd48ef9b55an,
+    0x8f65ea2320ac4603n, 0x73a6d5628411c4e6n, 0x66f197a468c255ccn, 0x63b2d16ea80ddcc6n,
+    0xccff3355d099aa85n, 0x590851f341aafbb2n, 0x712a5bed0f9cc7e2n, 0xa204a6f7ae55f359n,
+    0x5f81de7fc120feben, 0x3d7548d8a2e5ad7an, 0x9a32a8e5cc7fd729n, 0x5ec799b60ae871bcn,
+    0x4b90db70e63be096n, 0xc8fa3256db9eac8dn, 0xe651b7c4152295d1n, 0xd72bfc19aace32b3n,
+    0xab48e3387393704bn, 0x42dc9ebf3bfd6384n, 0x7eef91ae52d041fcn, 0x56cd9bb01ce67dacn,
+    0xaf4de23b78947643n, 0xd66dbbd06106bdb1n, 0x195841c3f1da9b32n, 0xa5cb6eb2e5177957n,
+    0xae0ba5f2b35cf941n, 0xbc0cb40564b8016n, 0xb1da6bbdc20c677fn, 0x6efb95a27ecc59dcn,
+    0xbe1fa1fe9f40e161n, 0xeb18f308c3e310cbn, 0xfe4fb1ce2f3081e1n, 0x80a0206160e0c10n,
+    0x17dbcc49675e922en, 0x37f3c4513f66a26en, 0x74691d27cf534ee8n, 0x5044143c9c6c78a0n,
+    0x2be8c3580e73b056n, 0x91f263a59a34573fn, 0x4f95da73ed3ce69en, 0x69345de7358ed3d2n,
+    0x613e5fe12380dfc2n, 0x578bdc79d72ef2aen, 0xe9947d87486e13cfn, 0x13decd4a6c599426n,
+    0xe19e7f815e601fdfn, 0x752f5aee049bc1ean, 0xadc16cb4f3197547n, 0x6d315ce43e89d5dan,
+    0xfb0cf704efff08ebn, 0x98be266a47f2d42dn, 0xdb24ff1cb7c738abn, 0x937eed2a11b9543bn,
+    0x876fe82536a24a13n, 0x4ed39dba26f4699cn, 0xa1ce6fb1ee107f5fn, 0x28c8e8f8b8d0304n,
+    0x647d192be34f56c8n, 0xba1aa0fd9447e769n, 0xe717f00ddeea1ad3n, 0x1e978986ba98113cn,
+    0x3c330f11692d2278n, 0x1c1b070931151238n, 0x8629afecfd6ac511n, 0xcb30fb109bdb208bn,
+    0x2028081858383040n, 0x5441153f976b7ea8n, 0x34390d177f232e68n, 0x1014040c2c1c1820n,
+    0x40501030b070608n, 0x8de964acab214507n, 0x5b84df7cca27f8b6n, 0xc5b3769a0d5f2997n,
+    0xf980798b64720befn, 0x538edd7adc29f4a6n, 0xf4c93d47b2b38ef5n, 0x584e163a8a6274b0n,
+    0xfcc33f41a4bd82e5n, 0xdceb3759fc85b2a5n, 0xa9c46db7f81e734fn, 0xe0d8384895a890ddn,
+    0xde67b9d67708b1a1n, 0xd1a273952a4437bfn, 0x836ae9263da54c1bn, 0xd4e1355fea8bbeb5n,
+    0x491c55ff6db6e392n, 0xd9a871933c4a3bafn, 0xf18a7b8d727c07ffn, 0xa868c899d830f14n,
+    0xd5a77296214331b7n, 0x1a928885b19f1734n, 0xff09f607e4f80ee3n, 0xa8822a7e33d6fc4dn,
+    0xf8c63e42afba84edn, 0x653b5ee22887d9can, 0x9cbb27694cf5d225n, 0x54346cac0cf890an,
+    0x303c0c1474242860n, 0x89ec65afa026430fn, 0xbdd568b8df056d67n, 0x99f861a38c3a5b2fn,
+    0xc0f03051d090a18n, 0x23e2c15e187dbc46n, 0x411657f97bb8ef82n, 0x7fa9d6679918cefen,
+    0x439ad976f035ec86n, 0x7d2558e81295cdfan, 0x479fd875fb32ea8en, 0x85e366aabd2f4917n,
+    0x7bacd764921fc8f6n, 0xe8d23a4e83a69ccdn, 0x7cfc8454b428a0en, 0xf0cc3c44b9b488fdn,
+    0xcf35fa1390dc2683n, 0x62f496a763c553c4n, 0xa601a7f4a552f551n, 0x5ac298b501ef77b4n,
+    0x977bec291abe5233n, 0xda62b8d57c0fb7a9n, 0x3bfcc754226fa876n, 0x822caeeff66dc319n,
+    0xb9d069bbd4026b6fn, 0x317a4bddbfeca762n, 0x963dabe0d176dd31n, 0x9e37a9e6c778d121n,
+    0x81e667a9b6284f1fn, 0x28220a1e4e363c50n, 0x14647c9cbc88f02n, 0xef1df20bc8e416c3n,
+    0xee5bb5c2032c99c1n, 0x88aa22666beecc0dn, 0xb356e5324981647bn, 0x9f71ee2f0cb05e23n,
+    0xc27cbedf461da399n, 0xac872b7d38d1fa45n, 0x3ebf819ee2a0217cn, 0x485a1236a67e6c90n,
+    0x36b58398f4ae2d6cn, 0x6c771b2df5415ad8n, 0x38360e12622a2470n, 0x8caf236560e9ca05n,
+    0xf306f502f9f104fbn, 0x94c45cfddc68312n, 0x84a5216376e7c615n, 0x1fd1ce4f71509e3en,
+    0x397049dba9e2ab72n, 0xb09c2c7409c4e87dn, 0xc33af9168dd52c9bn, 0xbf59e63754886e63n,
+    0xe254b6c71e2593d9n, 0xa088287825d8f05dn, 0x5c4b1739816572b8n, 0x32b0829bffa92b64n,
+    0x68721a2efe465cd0n, 0x169d8b80ac961d2cn, 0xdf21fe1fbcc03ea3n, 0x12988a83a7911b24n,
+    0x242d091b533f3648n, 0x3cac94640458c06n, 0x26a18794d8b2354cn, 0x256b4ed298f7b94an,
+    0xa342e13e659d7c5bn, 0xb8962e721fcae46dn, 0xb753e43142866273n, 0xa747e03d6e9a7a53n,
+    0x8b60eb202bab400bn, 0x7aea90ad59d747f4n, 0xaa0ea4f1b85bff49n, 0x78661e22d25a44f0n,
+    0x2eab8592cebc395cn, 0x9dfd60a0873d5d27n, 0x0n, 0x94b1256f5afbde35n,
+    0xf703f401f2f602f3n, 0xe312f10ed5ed1cdbn, 0x6afe94a175cb5fd4n, 0x2c270b1d45313a58n,
+    0xbb5ce7345f8f686bn, 0xc9bc759f1056238fn, 0x9b74ef2c07b7582bn, 0xd0e4345ce18cb8bdn,
+    0xc4f53153c697a695n, 0x77a3d4618f16c2een, 0x67b7d06da30adacen, 0x22a48697d3b53344n,
+    0xe59b7e82556719d7n, 0x8e23adeaeb64c901n, 0xd32efd1aa1c934bbn, 0xa48d297b2edff655n,
+    0xc0f03050cd90a09dn, 0xecd73b4d88a19ac5n, 0x46d99fbc30fa658cn, 0xc73ff81586d22a93n,
+    0x3ff9c6572968ae7en, 0x4c5f1335ad796a98n, 0x181e060a3a121430n, 0x1411050f271b1e28n,
+    0x33f6c5523461a466n, 0x44551133bb776688n, 0xc1b6779906582f9fn, 0xed917c84436915c7n,
+    0xf58f7a8e797b01f7n, 0xfd8578886f750de7n, 0xd8ee365af782b4adn, 0x706c1c24c45448e0n,
+    0xe4dd394b9eaf96d5n, 0x792059eb1992cbf2n, 0x60781828e84850c0n, 0x451356fa70bfe98an,
+    0xf645b3c8393e8df1n, 0xfa4ab0cd243787e9n, 0x90b4246c51fcd83dn, 0x80a020607de0c01dn,
+    0xf240b2cb32398bf9n, 0x72e092ab4fd94be4n, 0xb615a3f8894eed71n, 0x27e7c05d137aba4en,
+    0xd4944ccd6c1851an, 0x95f762a691335137n, 0x40501030b0706080n, 0xea5eb4c1082b9fc9n,
+    0x2aae8491c5bb3f54n, 0x115243c5e7d49722n, 0x76e593a844de4decn, 0x2fedc25b0574b65en,
+    0x357f4adeb4eba16an, 0xce73bdda5b14a981n, 0x6898f8c808a050cn, 0xb4992d7702c3ee75n,
+    0xca76bcd95013af89n, 0x4ad69cb92df36f94n, 0xb5df6abec90b6177n, 0x1d5d40c0fadd9d3an,
+    0x1bd4cf4c7a579836n, 0xb210a2fb8249eb79n, 0x3aba809de9a72774n, 0x216e4fd193f0bf42n,
+    0x7c631f21d95d42f8n, 0xfc5ca435d4c861en, 0x9238aae3da71db39n, 0x155742c6ecd3912an,
+  ],
+  [
+    0x68d2d3ba016ab9bbn, 0x194dfc54b1669ae5n, 0x93bc712fcd1465e2n, 0xb9cd9c74511b8725n,
+    0x251f553a457a2f7n, 0xb86b68d303bed6d0n, 0xbd6f6bd204b5ded6n, 0x6429d74dfe8552b3n,
+    0xd5df050ad4abafdn, 0x268ae9ac63e009cfn, 0x830e8a8d84961c09n, 0x79c6dcbf1a4d91a5n,
+    0xaddd90704d37a73dn, 0x755f652a35caaf1n, 0xc852b39ae117a47bn, 0x612dd44cf98e5ab5n,
+    0x658f23eaac200346n, 0xa67362d51184e6c4n, 0xf166a497c268cc55n, 0xb2636ed10da8c6dcn,
+    0xffcc553399d085aan, 0x859f351aa41b2fbn, 0x2a71ed5b9c0fe2c7n, 0x4a2f7a655ae59f3n,
+    0x815f7fde20c1befen, 0x753dd848e5a27aadn, 0x329ae5a87fcc29d7n, 0xc75eb699e80abc71n,
+    0x904b70db3be696e0n, 0xfac856329edb8dacn, 0x51e6c4b72215d195n, 0x2bd719fcceaab332n,
+    0x48ab38e393734b70n, 0xdc42bf9efd3b8463n, 0xef7eae91d052fc41n, 0xcd56b09be61cac7dn,
+    0x4daf3be294784376n, 0x6dd6d0bb0661b1bdn, 0x5819c341daf1329bn, 0xcba5b26e17e55779n,
+    0xbaef2a55cb341f9n, 0xc00b40cb4b561680n, 0xdab1bd6b0cc27f67n, 0xfb6ea295cc7edc59n,
+    0x1fbefea1409f61e1n, 0x18eb08f3e3c3cb10n, 0x4ffeceb1302fe181n, 0xa0806020e16100cn,
+    0xdb1749cc5e672e92n, 0xf33751c4663f6ea2n, 0x6974271d53cfe84en, 0x44503c146c9ca078n,
+    0xe82b58c3730e56b0n, 0xf291a563349a3f57n, 0x954f73da3ced9ee6n, 0x3469e75d8e35d2d3n,
+    0x3e61e15f8023c2dfn, 0x8b5779dc2ed7aef2n, 0x94e9877d6e48cf13n, 0xde134acd596c2694n,
+    0x9ee1817f605edf1fn, 0x2f75ee5a9b04eac1n, 0xc1adb46c19f34775n, 0x316de45c893edad5n,
+    0xcfb04f7ffefeb08n, 0xbe986a26f2472dd4n, 0x24db1cffc7b7ab38n, 0x7e932aedb9113b54n,
+    0x6f8725e8a236134an, 0xd34eba9df4269c69n, 0xcea1b16f10ee5f7fn, 0x8c028f8e8d8b0403n,
+    0x7d642b194fe3c856n, 0x1abafda0479469e7n, 0x17e70df0eaded31an, 0x971e868998ba3c11n,
+    0x333c110f2d697822n, 0x1b1c090715313812n, 0x2986ecaf6afd11c5n, 0x30cb10fbdb9b8b20n,
+    0x2820180838584030n, 0x41543f156b97a87en, 0x3934170d237f682en, 0x14100c041c2c2018n,
+    0x5040301070b0806n, 0xe98dac6421ab0745n, 0x845b7cdf27cab6f8n, 0xb3c59a765f0d9729n,
+    0x80f98b797264ef0bn, 0x8e537add29dca6f4n, 0xc9f4473db3b2f58en, 0x4e583a16628ab074n,
+    0xc3fc413fbda4e582n, 0xebdc593785fca5b2n, 0xc4a9b76d1ef84f73n, 0xd8e04838a895dd90n,
+    0x67ded6b90877a1b1n, 0xa2d19573442abf37n, 0x6a8326e9a53d1b4cn, 0xe1d45f358beab5ben,
+    0x1c49ff55b66d92e3n, 0xa8d993714a3caf3bn, 0x8af18d7b7c72ff07n, 0x860a898c839d140fn,
+    0xa7d596724321b731n, 0x921a85889fb13417n, 0x9ff07f6f8e4e30en, 0x82a87e2ad6334dfcn,
+    0xc6f8423ebaafed84n, 0x3b65e25e8728cad9n, 0xbb9c6927f54c25d2n, 0x4305ca46cfc00a89n,
+    0x3c30140c24746028n, 0xec89af6526a00f43n, 0xd5bdb86805df676dn, 0xf899a3613a8c2f5bn,
+    0xf0c0503091d180an, 0xe2235ec17d1846bcn, 0x1641f957b87b82efn, 0xa97f67d61899fecen,
+    0x9a4376d935f086ecn, 0x257de8589512facdn, 0x9f4775d832fb8eean, 0xe385aa662fbd1749n,
+    0xac7b64d71f92f6c8n, 0xd2e84e3aa683cd9cn, 0xcf0745c8424b0e8an, 0xccf0443cb4b9fd88n,
+    0x35cf13fadc908326n, 0xf462a796c563c453n, 0x1a6f4a752a551f5n, 0xc25ab598ef01b477n,
+    0x7b9729ecbe1a3352n, 0x62dad5b80f7ca9b7n, 0xfc3b54c76f2276a8n, 0x2c82efae6df619c3n,
+    0xd0b9bb6902d46f6bn, 0x7a31dd4becbf62a7n, 0x3d96e0ab76d131ddn, 0x379ee6a978c721d1n,
+    0xe681a96728b61f4fn, 0x22281e0a364e503cn, 0x4601c947c8cb028fn, 0x1def0bf2e4c8c316n,
+    0x5beec2b52c03c199n, 0xaa886622ee6b0dccn, 0x56b332e581497b64n, 0x719f2feeb00c235en,
+    0x7cc2dfbe1d4699a3n, 0x87ac7d2bd13845fan, 0xbf3e9e81a0e27c21n, 0x5a4836127ea6906cn,
+    0xb5369883aef46c2dn, 0x776c2d1b41f5d85an, 0x3638120e2a627024n, 0xaf8c6523e96005can,
+    0x6f302f5f1f9fb04n, 0x4c09cf45c6dd1283n, 0xa5846321e77615c6n, 0xd11f4fce50713e9en,
+    0x7039db49e2a972abn, 0x9cb0742cc4097de8n, 0x3ac316f9d58d9b2cn, 0x59bf37e68854636en,
+    0x54e2c7b6251ed993n, 0x88a07828d8255df0n, 0x4b5c39176581b872n, 0xb0329b82a9ff642bn,
+    0x72682e1a46fed05cn, 0x9d16808b96ac2c1dn, 0x21df1ffec0bca33en, 0x9812838a91a7241bn,
+    0x2d241b093f534836n, 0xca0346c94540068cn, 0xa1269487b2d84c35n, 0x6b25d24ef7984ab9n,
+    0x42a33ee19d655b7cn, 0x96b8722eca1f6de4n, 0x53b731e486427362n, 0x47a73de09a6e537an,
+    0x608b20ebab2b0b40n, 0xea7aad90d759f447n, 0xeaaf1a45bb849ffn, 0x6678221e5ad2f044n,
+    0xab2e9285bcce5c39n, 0xfd9da0603d87275dn, 0x0n, 0xb1946f25fb5a35den,
+    0x3f701f4f6f2f302n, 0x12e30ef1edd5db1cn, 0xfe6aa194cb75d45fn, 0x272c1d0b3145583an,
+    0x5cbb34e78f5f6b68n, 0xbcc99f7556108f23n, 0x749b2cefb7072b58n, 0xe4d05c348ce1bdb8n,
+    0xf5c4533197c695a6n, 0xa37761d4168feec2n, 0xb7676dd00aa3cedan, 0xa4229786b5d34433n,
+    0x9be5827e6755d719n, 0x238eeaad64eb01c9n, 0x2ed31afdc9a1bb34n, 0x8da47b29df2e55f6n,
+    0xf0c0503090cd9da0n, 0xd7ec4d3ba188c59an, 0xd946bc9ffa308c65n, 0x3fc715f8d286932an,
+    0xf93f57c668297eaen, 0x5f4c351379ad986an, 0x1e180a06123a3014n, 0x11140f051b27281en,
+    0xf63352c5613466a4n, 0x5544331177bb8866n, 0xb6c1997758069f2fn, 0x91ed847c6943c715n,
+    0x8ff58e7a7b79f701n, 0x85fd8878756fe70dn, 0xeed85a3682f7adb4n, 0x6c70241c54c4e048n,
+    0xdde44b39af9ed596n, 0x2079eb599219f2cbn, 0x7860281848e8c050n, 0x1345fa56bf708ae9n,
+    0x45f6c8b33e39f18dn, 0x4afacdb03724e987n, 0xb4906c24fc513dd8n, 0xa0806020e07d1dc0n,
+    0x40f2cbb23932f98bn, 0xe072ab92d94fe44bn, 0x15b6f8a34e8971edn, 0xe7275dc07a134eban,
+    0x490dcc44c1d61a85n, 0xf795a66233913751n, 0x5040301070b08060n, 0x5eeac1b42b08c99fn,
+    0xae2a9184bbc5543fn, 0x5211c543d4e72297n, 0xe576a893de44ec4dn, 0xed2f5bc274055eb6n,
+    0x7f35de4aebb46aa1n, 0x73cedabd145b81a9n, 0x89068c8f8a800c05n, 0x99b4772dc30275een,
+    0x76cad9bc135089afn, 0xd64ab99cf32d946fn, 0xdfb5be6a0bc97761n, 0x5d1dc040ddfa3a9dn,
+    0xd41b4ccf577a3698n, 0x10b2fba2498279ebn, 0xba3a9d80a7e97427n, 0x6e21d14ff09342bfn,
+    0x637c211f5dd9f842n, 0xc50f43ca4c5d1e86n, 0x3892e3aa71da39dbn, 0x5715c642d3ec2a91n,
+  ],
+  [
+    0xbbb96a01bad3d268n, 0xe59a66b154fc4d19n, 0xe26514cd2f71bc93n, 0x25871b51749ccdb9n,
+    0xf7a257a453f55102n, 0xd0d6be03d3686bb8n, 0xd6deb504d26b6fbdn, 0xb35285fe4dd72964n,
+    0xfdba4aad50f05d0dn, 0xcf09e063ace98a26n, 0x91c96848d8a0e83n, 0xa5914d1abfdcc679n,
+    0x3da7374d7090ddadn, 0xf1aa5ca352f65507n, 0x7ba417e19ab352c8n, 0xb55a8ef94cd42d61n,
+    0x460320acea238f65n, 0xc4e68411d56273a6n, 0x55cc68c297a466f1n, 0xdcc6a80dd16e63b2n,
+    0xaa85d0993355ccffn, 0xfbb241aa51f35908n, 0xc7e20f9c5bed712an, 0xf359ae55a6f7a204n,
+    0xfebec120de7f5f81n, 0xad7aa2e548d83d75n, 0xd729cc7fa8e59a32n, 0x71bc0ae899b65ec7n,
+    0xe096e63bdb704b90n, 0xac8ddb9e3256c8fan, 0x95d11522b7c4e651n, 0x32b3aacefc19d72bn,
+    0x704b7393e338ab48n, 0x63843bfd9ebf42dcn, 0x41fc52d091ae7eefn, 0x7dac1ce69bb056cdn,
+    0x76437894e23baf4dn, 0xbdb16106bbd0d66dn, 0x9b32f1da41c31958n, 0x7957e5176eb2a5cbn,
+    0xf941b35ca5f2ae0bn, 0x8016564bcb400bc0n, 0x677fc20c6bbdb1dan, 0x59dc7ecc95a26efbn,
+    0xe1619f40a1febe1fn, 0x10cbc3e3f308eb18n, 0x81e12f30b1cefe4fn, 0xc10160e0206080an,
+    0x922e675ecc4917dbn, 0xa26e3f66c45137f3n, 0x4ee8cf531d277469n, 0x78a09c6c143c5044n,
+    0xb0560e73c3582be8n, 0x573f9a3463a591f2n, 0xe69eed3cda734f95n, 0xd3d2358e5de76934n,
+    0xdfc223805fe1613en, 0xf2aed72edc79578bn, 0x13cf486e7d87e994n, 0x94266c59cd4a13den,
+    0x1fdf5e607f81e19en, 0xc1ea049b5aee752fn, 0x7547f3196cb4adc1n, 0xd5da3e895ce46d31n,
+    0x8ebeffff704fb0cn, 0xd42d47f2266a98ben, 0x38abb7c7ff1cdb24n, 0x543b11b9ed2a937en,
+    0x4a1336a2e825876fn, 0x699c26f49dba4ed3n, 0x7f5fee106fb1a1cen, 0x3048b8d8e8f028cn,
+    0x56c8e34f192b647dn, 0xe7699447a0fdba1an, 0x1ad3deeaf00de717n, 0x113cba9889861e97n,
+    0x2278692d0f113c33n, 0x1238311507091c1bn, 0xc511fd6aafec8629n, 0x208b9bdbfb10cb30n,
+    0x3040583808182028n, 0x7ea8976b153f5441n, 0x2e687f230d173439n, 0x18202c1c040c1014n,
+    0x6080b0701030405n, 0x4507ab2164ac8de9n, 0xf8b6ca27df7c5b84n, 0x29970d5f769ac5b3n,
+    0xbef6472798bf980n, 0xf4a6dc29dd7a538en, 0x8ef5b2b33d47f4c9n, 0x74b08a62163a584en,
+    0x82e5a4bd3f41fcc3n, 0xb2a5fc853759dcebn, 0x734ff81e6db7a9c4n, 0x90dd95a83848e0d8n,
+    0xb1a17708b9d6de67n, 0x37bf2a447395d1a2n, 0x4c1b3da5e926836an, 0xbeb5ea8b355fd4e1n,
+    0xe3926db655ff491cn, 0x3baf3c4a7193d9a8n, 0x7ff727c7b8df18an, 0xf149d838c890a86n,
+    0x31b721437296d5a7n, 0x1734b19f88851a92n, 0xee3e4f8f607ff09n, 0xfc4d33d62a7ea882n,
+    0x84edafba3e42f8c6n, 0xd9ca28875ee2653bn, 0xd2254cf527699cbbn, 0x890ac0cf46ca0543n,
+    0x286074240c14303cn, 0x430fa02665af89ecn, 0x6d67df0568b8bdd5n, 0x5b2f8c3a61a399f8n,
+    0xa181d0903050c0fn, 0xbc46187dc15e23e2n, 0xef827bb857f94116n, 0xcefe9918d6677fa9n,
+    0xec86f035d976439an, 0xcdfa129558e87d25n, 0xea8efb32d875479fn, 0x4917bd2f66aa85e3n,
+    0xc8f6921fd7647bacn, 0x9ccd83a63a4ee8d2n, 0x8a0e4b42c84507cfn, 0x88fdb9b43c44f0ccn,
+    0x268390dcfa13cf35n, 0x53c463c596a762f4n, 0xf551a552a7f4a601n, 0x77b401ef98b55ac2n,
+    0x52331abeec29977bn, 0xb7a97c0fb8d5da62n, 0xa876226fc7543bfcn, 0xc319f66daeef822cn,
+    0x6b6fd40269bbb9d0n, 0xa762bfec4bdd317an, 0xdd31d176abe0963dn, 0xd121c778a9e69e37n,
+    0x4f1fb62867a981e6n, 0x3c504e360a1e2822n, 0x8f02cbc847c90146n, 0x16c3c8e4f20bef1dn,
+    0x99c1032cb5c2ee5bn, 0xcc0d6bee226688aan, 0x647b4981e532b356n, 0x5e230cb0ee2f9f71n,
+    0xa399461dbedfc27cn, 0xfa4538d12b7dac87n, 0x217ce2a0819e3ebfn, 0x6c90a67e1236485an,
+    0x2d6cf4ae839836b5n, 0x5ad8f5411b2d6c77n, 0x2470622a0e123836n, 0xca0560e923658cafn,
+    0x4fbf9f1f502f306n, 0x8312ddc645cf094cn, 0xc61576e7216384a5n, 0x9e3e7150ce4f1fd1n,
+    0xab72a9e249db3970n, 0xe87d09c42c74b09cn, 0x2c9b8dd5f916c33an, 0x6e635488e637bf59n,
+    0x93d91e25b6c7e254n, 0xf05d25d82878a088n, 0x72b8816517395c4bn, 0x2b64ffa9829b32b0n,
+    0x5cd0fe461a2e6872n, 0x1d2cac968b80169dn, 0x3ea3bcc0fe1fdf21n, 0x1b24a7918a831298n,
+    0x3648533f091b242dn, 0x8c064045c94603can, 0x354cd8b2879426a1n, 0xb94a98f74ed2256bn,
+    0x7c5b659de13ea342n, 0xe46d1fca2e72b896n, 0x62734286e431b753n, 0x7a536e9ae03da747n,
+    0x400b2babeb208b60n, 0x47f459d790ad7aean, 0xff49b85ba4f1aa0en, 0x44f0d25a1e227866n,
+    0x395ccebc85922eabn, 0x5d27873d60a09dfdn, 0x0n, 0xde355afb256f94b1n,
+    0x2f3f2f6f401f703n, 0x1cdbd5edf10ee312n, 0x5fd475cb94a16afen, 0x3a5845310b1d2c27n,
+    0x686b5f8fe734bb5cn, 0x238f1056759fc9bcn, 0x582b07b7ef2c9b74n, 0xb8bde18c345cd0e4n,
+    0xa695c6973153c4f5n, 0xc2ee8f16d46177a3n, 0xdacea30ad06d67b7n, 0x3344d3b5869722a4n,
+    0x19d755677e82e59bn, 0xc901eb64adea8e23n, 0x34bba1c9fd1ad32en, 0xf6552edf297ba48dn,
+    0xa09dcd903050c0f0n, 0x9ac588a13b4decd7n, 0x658c30fa9fbc46d9n, 0x2a9386d2f815c73fn,
+    0xae7e2968c6573ff9n, 0x6a98ad7913354c5fn, 0x14303a12060a181en, 0x1e28271b050f1411n,
+    0xa4663461c55233f6n, 0x6688bb7711334455n, 0x2f9f06587799c1b6n, 0x15c743697c84ed91n,
+    0x1f7797b7a8ef58fn, 0xde76f757888fd85n, 0xb4adf782365ad8een, 0x48e0c4541c24706cn,
+    0x96d59eaf394be4ddn, 0xcbf2199259eb7920n, 0x50c0e84818286078n, 0xe98a70bf56fa4513n,
+    0x8df1393eb3c8f645n, 0x87e92437b0cdfa4an, 0xd83d51fc246c90b4n, 0xc01d7de0206080a0n,
+    0x8bf93239b2cbf240n, 0x4be44fd992ab72e0n, 0xed71894ea3f8b615n, 0xba4e137ac05d27e7n,
+    0x851ad6c144cc0d49n, 0x5137913362a695f7n, 0x6080b07010304050n, 0x9fc9082bb4c1ea5en,
+    0x3f54c5bb84912aaen, 0x9722e7d443c51152n, 0x4dec44de93a876e5n, 0xb65e0574c25b2fedn,
+    0xa16ab4eb4ade357fn, 0xa9815b14bddace73n, 0x50c808a8f8c0689n, 0xee7502c32d77b499n,
+    0xaf895013bcd9ca76n, 0x6f942df39cb94ad6n, 0x6177c90b6abeb5dfn, 0x9d3afadd40c01d5dn,
+    0x98367a57cf4c1bd4n, 0xeb798249a2fbb210n, 0x2774e9a7809d3aban, 0xbf4293f04fd1216en,
+    0x42f8d95d1f217c63n, 0x861e5d4cca430fc5n, 0xdb39da71aae39238n, 0x912aecd342c61557n,
+  ],
+  [
+    0xb9bb016ad3ba68d2n, 0x9ae5b166fc54194dn, 0x65e2cd14712f93bcn, 0x8725511b9c74b9cdn,
+    0xa2f7a457f5530251n, 0xd6d003be68d3b86bn, 0xded604b56bd2bd6fn, 0x52b3fe85d74d6429n,
+    0xbafdad4af0500d5dn, 0x9cf63e0e9ac268an, 0x1c0984968a8d830en, 0x91a51a4ddcbf79c6n,
+    0xa73d4d379070adddn, 0xaaf1a35cf6520755n, 0xa47be117b39ac852n, 0x5ab5f98ed44c612dn,
+    0x346ac2023ea658fn, 0xe6c4118462d5a673n, 0xcc55c268a497f166n, 0xc6dc0da86ed1b263n,
+    0x85aa99d05533ffccn, 0xb2fbaa41f3510859n, 0xe2c79c0fed5b2a71n, 0x59f355aef7a604a2n,
+    0xbefe20c17fde815fn, 0x7aade5a2d848753dn, 0x29d77fcce5a8329an, 0xbc71e80ab699c75en,
+    0x96e03be670db904bn, 0x8dac9edb5632fac8n, 0xd1952215c4b751e6n, 0xb332ceaa19fc2bd7n,
+    0x4b70937338e348abn, 0x8463fd3bbf9edc42n, 0xfc41d052ae91ef7en, 0xac7de61cb09bcd56n,
+    0x437694783be24dafn, 0xb1bd0661d0bb6dd6n, 0x329bdaf1c3415819n, 0x577917e5b26ecba5n,
+    0x41f95cb3f2a50baen, 0x16804b5640cbc00bn, 0x7f670cc2bd6bdab1n, 0xdc59cc7ea295fb6en,
+    0x61e1409ffea11fben, 0xcb10e3c308f318ebn, 0xe181302fceb14ffen, 0x100c0e1606020a08n,
+    0x2e925e6749ccdb17n, 0x6ea2663f51c4f337n, 0xe84e53cf271d6974n, 0xa0786c9c3c144450n,
+    0x56b0730e58c3e82bn, 0x3f57349aa563f291n, 0x9ee63ced73da954fn, 0xd2d38e35e75d3469n,
+    0xc2df8023e15f3e61n, 0xaef22ed779dc8b57n, 0xcf136e48877d94e9n, 0x2694596c4acdde13n,
+    0xdf1f605e817f9ee1n, 0xeac19b04ee5a2f75n, 0x477519f3b46cc1adn, 0xdad5893ee45c316dn,
+    0xeb08ffef04f70cfbn, 0x2dd4f2476a26be98n, 0xab38c7b71cff24dbn, 0x3b54b9112aed7e93n,
+    0x134aa23625e86f87n, 0x9c69f426ba9dd34en, 0x5f7f10eeb16fcea1n, 0x4038d8b8f8e8c02n,
+    0xc8564fe32b197d64n, 0x69e74794fda01aban, 0xd31aeade0df017e7n, 0x3c1198ba8689971en,
+    0x78222d69110f333cn, 0x3812153109071b1cn, 0x11c56afdecaf2986n, 0x8b20db9b10fb30cbn,
+    0x4030385818082820n, 0xa87e6b973f154154n, 0x682e237f170d3934n, 0x20181c2c0c041410n,
+    0x806070b03010504n, 0x74521abac64e98dn, 0xb6f827ca7cdf845bn, 0x97295f0d9a76b3c5n,
+    0xef0b72648b7980f9n, 0xa6f429dc7add8e53n, 0xf58eb3b2473dc9f4n, 0xb074628a3a164e58n,
+    0xe582bda4413fc3fcn, 0xa5b285fc5937ebdcn, 0x4f731ef8b76dc4a9n, 0xdd90a8954838d8e0n,
+    0xa1b10877d6b967den, 0xbf37442a9573a2d1n, 0x1b4ca53d26e96a83n, 0xb5be8bea5f35e1d4n,
+    0x92e3b66dff551c49n, 0xaf3b4a3c9371a8d9n, 0xff077c728d7b8af1n, 0x140f839d898c860an,
+    0xb73143219672a7d5n, 0x34179fb18588921an, 0xe30ef8e407f609ffn, 0x4dfcd6337e2a82a8n,
+    0xed84baaf423ec6f8n, 0xcad98728e25e3b65n, 0x25d2f54c6927bb9cn, 0xa89cfc0ca464305n,
+    0x60282474140c3c30n, 0xf4326a0af65ec89n, 0x676d05dfb868d5bdn, 0x2f5b3a8ca361f899n,
+    0x180a091d05030f0cn, 0x46bc7d185ec1e223n, 0x82efb87bf9571641n, 0xfece189967d6a97fn,
+    0x86ec35f076d99a43n, 0xfacd9512e858257dn, 0x8eea32fb75d89f47n, 0x17492fbdaa66e385n,
+    0xf6c81f9264d7ac7bn, 0xcd9ca6834e3ad2e8n, 0xe8a424b45c8cf07n, 0xfd88b4b9443cccf0n,
+    0x8326dc9013fa35cfn, 0xc453c563a796f462n, 0x51f552a5f4a701a6n, 0xb477ef01b598c25an,
+    0x3352be1a29ec7b97n, 0xa9b70f7cd5b862dan, 0x76a86f2254c7fc3bn, 0x19c36df6efae2c82n,
+    0x6f6b02d4bb69d0b9n, 0x62a7ecbfdd4b7a31n, 0x31dd76d1e0ab3d96n, 0x21d178c7e6a9379en,
+    0x1f4f28b6a967e681n, 0x503c364e1e0a2228n, 0x28fc8cbc9474601n, 0xc316e4c80bf21defn,
+    0xc1992c03c2b55been, 0xdccee6b6622aa88n, 0x7b64814932e556b3n, 0x235eb00c2fee719fn,
+    0x99a31d46dfbe7cc2n, 0x45fad1387d2b87acn, 0x7c21a0e29e81bf3en, 0x906c7ea636125a48n,
+    0x6c2daef49883b536n, 0xd85a41f52d1b776cn, 0x70242a62120e3638n, 0x5cae9606523af8cn,
+    0xfb04f1f902f506f3n, 0x1283c6ddcf454c09n, 0x15c6e7766321a584n, 0x3e9e50714fced11fn,
+    0x72abe2a9db497039n, 0x7de8c409742c9cb0n, 0x9b2cd58d16f93ac3n, 0x636e885437e659bfn,
+    0xd993251ec7b654e2n, 0x5df0d825782888a0n, 0xb872658139174b5cn, 0x642ba9ff9b82b032n,
+    0xd05c46fe2e1a7268n, 0x2c1d96ac808b9d16n, 0xa33ec0bc1ffe21dfn, 0x241b91a7838a9812n,
+    0x48363f531b092d24n, 0x68c454046c9ca03n, 0x4c35b2d89487a126n, 0x4ab9f798d24e6b25n,
+    0x5b7c9d653ee142a3n, 0x6de4ca1f722e96b8n, 0x7362864231e453b7n, 0x537a9a6e3de047a7n,
+    0xb40ab2b20eb608bn, 0xf447d759ad90ea7an, 0x49ff5bb8f1a40eaan, 0xf0445ad2221e6678n,
+    0x5c39bcce9285ab2en, 0x275d3d87a060fd9dn, 0x0n, 0x35defb5a6f25b194n,
+    0xf302f6f201f403f7n, 0xdb1cedd50ef112e3n, 0xd45fcb75a194fe6an, 0x583a31451d0b272cn,
+    0x6b688f5f34e75cbbn, 0x8f2356109f75bcc9n, 0x2b58b7072cef749bn, 0xbdb88ce15c34e4d0n,
+    0x95a697c65331f5c4n, 0xeec2168f61d4a377n, 0xceda0aa36dd0b767n, 0x4433b5d39786a422n,
+    0xd7196755827e9be5n, 0x1c964ebeaad238en, 0xbb34c9a11afd2ed3n, 0x55f6df2e7b298da4n,
+    0x9da090cd5030f0c0n, 0xc59aa1884d3bd7ecn, 0x8c65fa30bc9fd946n, 0x932ad28615f83fc7n,
+    0x7eae682957c6f93fn, 0x986a79ad35135f4cn, 0x3014123a0a061e18n, 0x281e1b270f051114n,
+    0x66a4613452c5f633n, 0x886677bb33115544n, 0x9f2f58069977b6c1n, 0xc7156943847c91edn,
+    0xf7017b798e7a8ff5n, 0xe70d756f887885fdn, 0xadb482f75a36eed8n, 0xe04854c4241c6c70n,
+    0xd596af9e4b39dde4n, 0xf2cb9219eb592079n, 0xc05048e828187860n, 0x8ae9bf70fa561345n,
+    0xf18d3e39c8b345f6n, 0xe9873724cdb04afan, 0x3dd8fc516c24b490n, 0x1dc0e07d6020a080n,
+    0xf98b3932cbb240f2n, 0xe44bd94fab92e072n, 0x71ed4e89f8a315b6n, 0x4eba7a135dc0e727n,
+    0x1a85c1d6cc44490dn, 0x37513391a662f795n, 0x806070b030105040n, 0xc99f2b08c1b45eean,
+    0x543fbbc59184ae2an, 0x2297d4e7c5435211n, 0xec4dde44a893e576n, 0x5eb674055bc2ed2fn,
+    0x6aa1ebb4de4a7f35n, 0x81a9145bdabd73cen, 0xc058a808c8f8906n, 0x75eec302772d99b4n,
+    0x89af1350d9bc76can, 0x946ff32db99cd64an, 0x77610bc9be6adfb5n, 0x3a9dddfac0405d1dn,
+    0x3698577a4ccfd41bn, 0x79eb4982fba210b2n, 0x7427a7e99d80ba3an, 0x42bff093d14f6e21n,
+    0xf8425dd9211f637cn, 0x1e864c5d43cac50fn, 0x39db71dae3aa3892n, 0x2a91d3ecc6425715n,
+  ],
+  [
+    0x6a01bbb9d268bad3n, 0x66b1e59a4d1954fcn, 0x14cde265bc932f71n, 0x1b512587cdb9749cn,
+    0x57a4f7a2510253f5n, 0xbe03d0d66bb8d368n, 0xb504d6de6fbdd26bn, 0x85feb35229644dd7n,
+    0x4aadfdba5d0d50f0n, 0xe063cf098a26ace9n, 0x9684091c0e838d8an, 0x4d1aa591c679bfdcn,
+    0x374d3da7ddad7090n, 0x5ca3f1aa550752f6n, 0x17e17ba452c89ab3n, 0x8ef9b55a2d614cd4n,
+    0x20ac46038f65ea23n, 0x8411c4e673a6d562n, 0x68c255cc66f197a4n, 0xa80ddcc663b2d16en,
+    0xd099aa85ccff3355n, 0x41aafbb2590851f3n, 0xf9cc7e2712a5bedn, 0xae55f359a204a6f7n,
+    0xc120febe5f81de7fn, 0xa2e5ad7a3d7548d8n, 0xcc7fd7299a32a8e5n, 0xae871bc5ec799b6n,
+    0xe63be0964b90db70n, 0xdb9eac8dc8fa3256n, 0x152295d1e651b7c4n, 0xaace32b3d72bfc19n,
+    0x7393704bab48e338n, 0x3bfd638442dc9ebfn, 0x52d041fc7eef91aen, 0x1ce67dac56cd9bb0n,
+    0x78947643af4de23bn, 0x6106bdb1d66dbbd0n, 0xf1da9b32195841c3n, 0xe5177957a5cb6eb2n,
+    0xb35cf941ae0ba5f2n, 0x564b80160bc0cb40n, 0xc20c677fb1da6bbdn, 0x7ecc59dc6efb95a2n,
+    0x9f40e161be1fa1fen, 0xc3e310cbeb18f308n, 0x2f3081e1fe4fb1cen, 0x160e0c10080a0206n,
+    0x675e922e17dbcc49n, 0x3f66a26e37f3c451n, 0xcf534ee874691d27n, 0x9c6c78a05044143cn,
+    0xe73b0562be8c358n, 0x9a34573f91f263a5n, 0xed3ce69e4f95da73n, 0x358ed3d269345de7n,
+    0x2380dfc2613e5fe1n, 0xd72ef2ae578bdc79n, 0x486e13cfe9947d87n, 0x6c59942613decd4an,
+    0x5e601fdfe19e7f81n, 0x49bc1ea752f5aeen, 0xf3197547adc16cb4n, 0x3e89d5da6d315ce4n,
+    0xefff08ebfb0cf704n, 0x47f2d42d98be266an, 0xb7c738abdb24ff1cn, 0x11b9543b937eed2an,
+    0x36a24a13876fe825n, 0x26f4699c4ed39dban, 0xee107f5fa1ce6fb1n, 0x8b8d0304028c8e8fn,
+    0xe34f56c8647d192bn, 0x9447e769ba1aa0fdn, 0xdeea1ad3e717f00dn, 0xba98113c1e978986n,
+    0x692d22783c330f11n, 0x311512381c1b0709n, 0xfd6ac5118629afecn, 0x9bdb208bcb30fb10n,
+    0x5838304020280818n, 0x976b7ea85441153fn, 0x7f232e6834390d17n, 0x2c1c18201014040cn,
+    0xb07060804050103n, 0xab2145078de964acn, 0xca27f8b65b84df7cn, 0xd5f2997c5b3769an,
+    0x64720beff980798bn, 0xdc29f4a6538edd7an, 0xb2b38ef5f4c93d47n, 0x8a6274b0584e163an,
+    0xa4bd82e5fcc33f41n, 0xfc85b2a5dceb3759n, 0xf81e734fa9c46db7n, 0x95a890dde0d83848n,
+    0x7708b1a1de67b9d6n, 0x2a4437bfd1a27395n, 0x3da54c1b836ae926n, 0xea8bbeb5d4e1355fn,
+    0x6db6e392491c55ffn, 0x3c4a3bafd9a87193n, 0x727c07fff18a7b8dn, 0x9d830f140a868c89n,
+    0x214331b7d5a77296n, 0xb19f17341a928885n, 0xe4f80ee3ff09f607n, 0x33d6fc4da8822a7en,
+    0xafba84edf8c63e42n, 0x2887d9ca653b5ee2n, 0x4cf5d2259cbb2769n, 0xc0cf890a054346can,
+    0x74242860303c0c14n, 0xa026430f89ec65afn, 0xdf056d67bdd568b8n, 0x8c3a5b2f99f861a3n,
+    0x1d090a180c0f0305n, 0x187dbc4623e2c15en, 0x7bb8ef82411657f9n, 0x9918cefe7fa9d667n,
+    0xf035ec86439ad976n, 0x1295cdfa7d2558e8n, 0xfb32ea8e479fd875n, 0xbd2f491785e366aan,
+    0x921fc8f67bacd764n, 0x83a69ccde8d23a4en, 0x4b428a0e07cfc845n, 0xb9b488fdf0cc3c44n,
+    0x90dc2683cf35fa13n, 0x63c553c462f496a7n, 0xa552f551a601a7f4n, 0x1ef77b45ac298b5n,
+    0x1abe5233977bec29n, 0x7c0fb7a9da62b8d5n, 0x226fa8763bfcc754n, 0xf66dc319822caeefn,
+    0xd4026b6fb9d069bbn, 0xbfeca762317a4bddn, 0xd176dd31963dabe0n, 0xc778d1219e37a9e6n,
+    0xb6284f1f81e667a9n, 0x4e363c5028220a1en, 0xcbc88f02014647c9n, 0xc8e416c3ef1df20bn,
+    0x32c99c1ee5bb5c2n, 0x6beecc0d88aa2266n, 0x4981647bb356e532n, 0xcb05e239f71ee2fn,
+    0x461da399c27cbedfn, 0x38d1fa45ac872b7dn, 0xe2a0217c3ebf819en, 0xa67e6c90485a1236n,
+    0xf4ae2d6c36b58398n, 0xf5415ad86c771b2dn, 0x622a247038360e12n, 0x60e9ca058caf2365n,
+    0xf9f104fbf306f502n, 0xddc68312094c45cfn, 0x76e7c61584a52163n, 0x71509e3e1fd1ce4fn,
+    0xa9e2ab72397049dbn, 0x9c4e87db09c2c74n, 0x8dd52c9bc33af916n, 0x54886e63bf59e637n,
+    0x1e2593d9e254b6c7n, 0x25d8f05da0882878n, 0x816572b85c4b1739n, 0xffa92b6432b0829bn,
+    0xfe465cd068721a2en, 0xac961d2c169d8b80n, 0xbcc03ea3df21fe1fn, 0xa7911b2412988a83n,
+    0x533f3648242d091bn, 0x40458c0603cac946n, 0xd8b2354c26a18794n, 0x98f7b94a256b4ed2n,
+    0x659d7c5ba342e13en, 0x1fcae46db8962e72n, 0x42866273b753e431n, 0x6e9a7a53a747e03dn,
+    0x2bab400b8b60eb20n, 0x59d747f47aea90adn, 0xb85bff49aa0ea4f1n, 0xd25a44f078661e22n,
+    0xcebc395c2eab8592n, 0x873d5d279dfd60a0n, 0x0n, 0x5afbde3594b1256fn,
+    0xf2f602f3f703f401n, 0xd5ed1cdbe312f10en, 0x75cb5fd46afe94a1n, 0x45313a582c270b1dn,
+    0x5f8f686bbb5ce734n, 0x1056238fc9bc759fn, 0x7b7582b9b74ef2cn, 0xe18cb8bdd0e4345cn,
+    0xc697a695c4f53153n, 0x8f16c2ee77a3d461n, 0xa30adace67b7d06dn, 0xd3b5334422a48697n,
+    0x556719d7e59b7e82n, 0xeb64c9018e23adean, 0xa1c934bbd32efd1an, 0x2edff655a48d297bn,
+    0xcd90a09dc0f03050n, 0x88a19ac5ecd73b4dn, 0x30fa658c46d99fbcn, 0x86d22a93c73ff815n,
+    0x2968ae7e3ff9c657n, 0xad796a984c5f1335n, 0x3a121430181e060an, 0x271b1e281411050fn,
+    0x3461a46633f6c552n, 0xbb77668844551133n, 0x6582f9fc1b67799n, 0x436915c7ed917c84n,
+    0x797b01f7f58f7a8en, 0x6f750de7fd857888n, 0xf782b4add8ee365an, 0xc45448e0706c1c24n,
+    0x9eaf96d5e4dd394bn, 0x1992cbf2792059ebn, 0xe84850c060781828n, 0x70bfe98a451356fan,
+    0x393e8df1f645b3c8n, 0x243787e9fa4ab0cdn, 0x51fcd83d90b4246cn, 0x7de0c01d80a02060n,
+    0x32398bf9f240b2cbn, 0x4fd94be472e092abn, 0x894eed71b615a3f8n, 0x137aba4e27e7c05dn,
+    0xd6c1851a0d4944ccn, 0x9133513795f762a6n, 0xb070608040501030n, 0x82b9fc9ea5eb4c1n,
+    0xc5bb3f542aae8491n, 0xe7d49722115243c5n, 0x44de4dec76e593a8n, 0x574b65e2fedc25bn,
+    0xb4eba16a357f4aden, 0x5b14a981ce73bddan, 0x808a050c06898f8cn, 0x2c3ee75b4992d77n,
+    0x5013af89ca76bcd9n, 0x2df36f944ad69cb9n, 0xc90b6177b5df6aben, 0xfadd9d3a1d5d40c0n,
+    0x7a5798361bd4cf4cn, 0x8249eb79b210a2fbn, 0xe9a727743aba809dn, 0x93f0bf42216e4fd1n,
+    0xd95d42f87c631f21n, 0x5d4c861e0fc5ca43n, 0xda71db399238aae3n, 0xecd3912a155742c6n,
+  ],
+  [
+    0x16ab9bb68d2d3ban, 0xb1669ae5194dfc54n, 0xcd1465e293bc712fn, 0x511b8725b9cd9c74n,
+    0xa457a2f70251f553n, 0x3bed6d0b86b68d3n, 0x4b5ded6bd6f6bd2n, 0xfe8552b36429d74dn,
+    0xad4abafd0d5df050n, 0x63e009cf268ae9acn, 0x84961c09830e8a8dn, 0x1a4d91a579c6dcbfn,
+    0x4d37a73daddd9070n, 0xa35caaf10755f652n, 0xe117a47bc852b39an, 0xf98e5ab5612dd44cn,
+    0xac200346658f23ean, 0x1184e6c4a67362d5n, 0xc268cc55f166a497n, 0xda8c6dcb2636ed1n,
+    0x99d085aaffcc5533n, 0xaa41b2fb0859f351n, 0x9c0fe2c72a71ed5bn, 0x55ae59f304a2f7a6n,
+    0x20c1befe815f7fden, 0xe5a27aad753dd848n, 0x7fcc29d7329ae5a8n, 0xe80abc71c75eb699n,
+    0x3be696e0904b70dbn, 0x9edb8dacfac85632n, 0x2215d19551e6c4b7n, 0xceaab3322bd719fcn,
+    0x93734b7048ab38e3n, 0xfd3b8463dc42bf9en, 0xd052fc41ef7eae91n, 0xe61cac7dcd56b09bn,
+    0x947843764daf3be2n, 0x661b1bd6dd6d0bbn, 0xdaf1329b5819c341n, 0x17e55779cba5b26en,
+    0x5cb341f90baef2a5n, 0x4b561680c00b40cbn, 0xcc27f67dab1bd6bn, 0xcc7edc59fb6ea295n,
+    0x409f61e11fbefea1n, 0xe3c3cb1018eb08f3n, 0x302fe1814ffeceb1n, 0xe16100c0a080602n,
+    0x5e672e92db1749ccn, 0x663f6ea2f33751c4n, 0x53cfe84e6974271dn, 0x6c9ca07844503c14n,
+    0x730e56b0e82b58c3n, 0x349a3f57f291a563n, 0x3ced9ee6954f73dan, 0x8e35d2d33469e75dn,
+    0x8023c2df3e61e15fn, 0x2ed7aef28b5779dcn, 0x6e48cf1394e9877dn, 0x596c2694de134acdn,
+    0x605edf1f9ee1817fn, 0x9b04eac12f75ee5an, 0x19f34775c1adb46cn, 0x893edad5316de45cn,
+    0xffefeb080cfb04f7n, 0xf2472dd4be986a26n, 0xc7b7ab3824db1cffn, 0xb9113b547e932aedn,
+    0xa236134a6f8725e8n, 0xf4269c69d34eba9dn, 0x10ee5f7fcea1b16fn, 0x8d8b04038c028f8en,
+    0x4fe3c8567d642b19n, 0x479469e71abafda0n, 0xeaded31a17e70df0n, 0x98ba3c11971e8689n,
+    0x2d697822333c110fn, 0x153138121b1c0907n, 0x6afd11c52986ecafn, 0xdb9b8b2030cb10fbn,
+    0x3858403028201808n, 0x6b97a87e41543f15n, 0x237f682e3934170dn, 0x1c2c201814100c04n,
+    0x70b080605040301n, 0x21ab0745e98dac64n, 0x27cab6f8845b7cdfn, 0x5f0d9729b3c59a76n,
+    0x7264ef0b80f98b79n, 0x29dca6f48e537addn, 0xb3b2f58ec9f4473dn, 0x628ab0744e583a16n,
+    0xbda4e582c3fc413fn, 0x85fca5b2ebdc5937n, 0x1ef84f73c4a9b76dn, 0xa895dd90d8e04838n,
+    0x877a1b167ded6b9n, 0x442abf37a2d19573n, 0xa53d1b4c6a8326e9n, 0x8beab5bee1d45f35n,
+    0xb66d92e31c49ff55n, 0x4a3caf3ba8d99371n, 0x7c72ff078af18d7bn, 0x839d140f860a898cn,
+    0x4321b731a7d59672n, 0x9fb13417921a8588n, 0xf8e4e30e09ff07f6n, 0xd6334dfc82a87e2an,
+    0xbaafed84c6f8423en, 0x8728cad93b65e25en, 0xf54c25d2bb9c6927n, 0xcfc00a894305ca46n,
+    0x247460283c30140cn, 0x26a00f43ec89af65n, 0x5df676dd5bdb868n, 0x3a8c2f5bf899a361n,
+    0x91d180a0f0c0503n, 0x7d1846bce2235ec1n, 0xb87b82ef1641f957n, 0x1899fecea97f67d6n,
+    0x35f086ec9a4376d9n, 0x9512facd257de858n, 0x32fb8eea9f4775d8n, 0x2fbd1749e385aa66n,
+    0x1f92f6c8ac7b64d7n, 0xa683cd9cd2e84e3an, 0x424b0e8acf0745c8n, 0xb4b9fd88ccf0443cn,
+    0xdc90832635cf13fan, 0xc563c453f462a796n, 0x52a551f501a6f4a7n, 0xef01b477c25ab598n,
+    0xbe1a33527b9729ecn, 0xf7ca9b762dad5b8n, 0x6f2276a8fc3b54c7n, 0x6df619c32c82efaen,
+    0x2d46f6bd0b9bb69n, 0xecbf62a77a31dd4bn, 0x76d131dd3d96e0abn, 0x78c721d1379ee6a9n,
+    0x28b61f4fe681a967n, 0x364e503c22281e0an, 0xc8cb028f4601c947n, 0xe4c8c3161def0bf2n,
+    0x2c03c1995beec2b5n, 0xee6b0dccaa886622n, 0x81497b6456b332e5n, 0xb00c235e719f2feen,
+    0x1d4699a37cc2dfben, 0xd13845fa87ac7d2bn, 0xa0e27c21bf3e9e81n, 0x7ea6906c5a483612n,
+    0xaef46c2db5369883n, 0x41f5d85a776c2d1bn, 0x2a6270243638120en, 0xe96005caaf8c6523n,
+    0xf1f9fb0406f302f5n, 0xc6dd12834c09cf45n, 0xe77615c6a5846321n, 0x50713e9ed11f4fcen,
+    0xe2a972ab7039db49n, 0xc4097de89cb0742cn, 0xd58d9b2c3ac316f9n, 0x8854636e59bf37e6n,
+    0x251ed99354e2c7b6n, 0xd8255df088a07828n, 0x6581b8724b5c3917n, 0xa9ff642bb0329b82n,
+    0x46fed05c72682e1an, 0x96ac2c1d9d16808bn, 0xc0bca33e21df1ffen, 0x91a7241b9812838an,
+    0x3f5348362d241b09n, 0x4540068cca0346c9n, 0xb2d84c35a1269487n, 0xf7984ab96b25d24en,
+    0x9d655b7c42a33ee1n, 0xca1f6de496b8722en, 0x8642736253b731e4n, 0x9a6e537a47a73de0n,
+    0xab2b0b40608b20ebn, 0xd759f447ea7aad90n, 0x5bb849ff0eaaf1a4n, 0x5ad2f0446678221en,
+    0xbcce5c39ab2e9285n, 0x3d87275dfd9da060n, 0x0n, 0xfb5a35deb1946f25n,
+    0xf6f2f30203f701f4n, 0xedd5db1c12e30ef1n, 0xcb75d45ffe6aa194n, 0x3145583a272c1d0bn,
+    0x8f5f6b685cbb34e7n, 0x56108f23bcc99f75n, 0xb7072b58749b2cefn, 0x8ce1bdb8e4d05c34n,
+    0x97c695a6f5c45331n, 0x168feec2a37761d4n, 0xaa3cedab7676dd0n, 0xb5d34433a4229786n,
+    0x6755d7199be5827en, 0x64eb01c9238eeaadn, 0xc9a1bb342ed31afdn, 0xdf2e55f68da47b29n,
+    0x90cd9da0f0c05030n, 0xa188c59ad7ec4d3bn, 0xfa308c65d946bc9fn, 0xd286932a3fc715f8n,
+    0x68297eaef93f57c6n, 0x79ad986a5f4c3513n, 0x123a30141e180a06n, 0x1b27281e11140f05n,
+    0x613466a4f63352c5n, 0x77bb886655443311n, 0x58069f2fb6c19977n, 0x6943c71591ed847cn,
+    0x7b79f7018ff58e7an, 0x756fe70d85fd8878n, 0x82f7adb4eed85a36n, 0x54c4e0486c70241cn,
+    0xaf9ed596dde44b39n, 0x9219f2cb2079eb59n, 0x48e8c05078602818n, 0xbf708ae91345fa56n,
+    0x3e39f18d45f6c8b3n, 0x3724e9874afacdb0n, 0xfc513dd8b4906c24n, 0xe07d1dc0a0806020n,
+    0x3932f98b40f2cbb2n, 0xd94fe44be072ab92n, 0x4e8971ed15b6f8a3n, 0x7a134ebae7275dc0n,
+    0xc1d61a85490dcc44n, 0x33913751f795a662n, 0x70b0806050403010n, 0x2b08c99f5eeac1b4n,
+    0xbbc5543fae2a9184n, 0xd4e722975211c543n, 0xde44ec4de576a893n, 0x74055eb6ed2f5bc2n,
+    0xebb46aa17f35de4an, 0x145b81a973cedabdn, 0x8a800c0589068c8fn, 0xc30275ee99b4772dn,
+    0x135089af76cad9bcn, 0xf32d946fd64ab99cn, 0xbc97761dfb5be6an, 0xddfa3a9d5d1dc040n,
+    0x577a3698d41b4ccfn, 0x498279eb10b2fba2n, 0xa7e97427ba3a9d80n, 0xf09342bf6e21d14fn,
+    0x5dd9f842637c211fn, 0x4c5d1e86c50f43can, 0x71da39db3892e3aan, 0xd3ec2a915715c642n,
+  ]
+];
 
-  class KhazadAlgorithm extends AlgorithmFramework.BlockCipherAlgorithm {
+const rawRoundConstants = [
+  0xba542f7453d3d24dn, 0x50ac8dbf70529a4cn, 0xead597d133515ba6n, 0xde48a899db32b7fcn,
+  0xe39e919be2bb416en, 0xa5cb6b95a1f3b102n, 0xccc41d14c363da5dn, 0x5fdc7dcd7f5a6c5cn,
+  0xf726ffede89d6f8en,
+];
+
+    const tables = rawTables.map((raw) => {
+      const hi = new Uint32Array(256);
+      const lo = new Uint32Array(256);
+      for (let i = 0; i < 256; i++) {
+        const value = raw[i];
+        hi[i] = Number((value >> 32n) & 0xffffffffn) >>> 0;
+        lo[i] = Number(value & 0xffffffffn) >>> 0;
+      }
+      return { hi, lo };
+    });
+
+    const roundConstantsHi = new Uint32Array(rawRoundConstants.length);
+    const roundConstantsLo = new Uint32Array(rawRoundConstants.length);
+    for (let i = 0; i < rawRoundConstants.length; i++) {
+      const value = rawRoundConstants[i];
+      roundConstantsHi[i] = Number((value >> 32n) & 0xffffffffn) >>> 0;
+      roundConstantsLo[i] = Number(value & 0xffffffffn) >>> 0;
+    }
+
+    const sbox = new Uint8Array(256);
+    const table7 = rawTables[7];
+    for (let i = 0; i < 256; i++) {
+      sbox[i] = Number(table7[i] & 0xffn);
+    }
+
+    return {
+      tables,
+      roundConstantsHi,
+      roundConstantsLo,
+      sbox
+    };
+  })();
+
+  class KhazadAlgorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
 
-      // Required metadata
       this.name = "Khazad";
-      this.description = "NESSIE submission block cipher with 64-bit blocks and 128-bit keys. Uses substitution-permutation network with involutional components for efficient encryption and decryption.";
+      this.description = "NESSIE-era 64-bit block cipher using involutional substitution-permutation structure. Educational reference implementation.";
       this.inventor = "Paulo S.L.M. Barreto, Vincent Rijmen";
       this.year = 2000;
-      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = AlgorithmFramework.SecurityStatus.EDUCATIONAL;
-      this.complexity = AlgorithmFramework.ComplexityType.INTERMEDIATE;
-      this.country = AlgorithmFramework.CountryCode.BR;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.BR;
 
-      // Algorithm-specific metadata
       this.SupportedKeySizes = [
-        new AlgorithmFramework.KeySize(16, 16, 1) // 128-bit keys only
+        new KeySize(16, 16, 0)
       ];
       this.SupportedBlockSizes = [
-        new AlgorithmFramework.KeySize(8, 8, 1) // 64-bit blocks only
+        new KeySize(8, 8, 0)
       ];
 
-      // Documentation and references
       this.documentation = [
-        new AlgorithmFramework.LinkItem("NESSIE Submission", "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/khazad.zip"),
-        new AlgorithmFramework.LinkItem("Khazad Specification", "https://www.cosic.esat.kuleuven.be/nessie/reports/phase1/khaWP1-008.pdf"),
-        new AlgorithmFramework.LinkItem("Wikipedia Article", "https://en.wikipedia.org/wiki/Khazad")
+        new LinkItem("NESSIE Submission", "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/khazad.zip"),
+        new LinkItem("Khazad Specification", "https://www.cosic.esat.kuleuven.be/nessie/reports/phase1/khaWP1-008.pdf")
       ];
 
       this.references = [
-        new AlgorithmFramework.LinkItem("Original Java Reference", "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/khazad.zip"),
-        new AlgorithmFramework.LinkItem("NESSIE Portfolio", "https://www.cosic.esat.kuleuven.be/nessie/")
+        new LinkItem("Original Java Reference", "https://www.cosic.esat.kuleuven.be/nessie/workshop/submissions/khazad.zip"),
+        new LinkItem("LibTomCrypt Reference", "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/khazad.c")
       ];
 
       this.knownVulnerabilities = [
-        new AlgorithmFramework.Vulnerability("Weak Key Schedule", "https://www.cosic.esat.kuleuven.be/nessie/", "Some weak key properties identified during NESSIE evaluation process", "Use only for educational purposes, not for production systems")
+        new Vulnerability("Reduced-round cryptanalysis", "https://www.cosic.esat.kuleuven.be/nessie/", "Known attacks on reduced rounds highlight limited security margin.", "Use only for educational purposes.")
       ];
 
-      // Test vectors from NESSIE
       this.tests = [
         {
-          text: "NESSIE Test Vector - All zeros",
-          uri: "https://www.cosic.esat.kuleuven.be/nessie/testvectors/",
+          text: "LibTomCrypt Test 0",
+          uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/khazad.c",
           input: OpCodes.Hex8ToBytes("0000000000000000"),
-          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("49a4ce32ac6f2d2d")
+          key: OpCodes.Hex8ToBytes("80000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("49a4ce32ac190e3f")
         },
         {
-          text: "NESSIE Test Vector - Test pattern",
-          uri: "https://www.cosic.esat.kuleuven.be/nessie/testvectors/",
-          input: OpCodes.Hex8ToBytes("0123456789abcdef"),
-          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-          expected: OpCodes.Hex8ToBytes("ba3d6b277a201412")
+          text: "LibTomCrypt Test 1",
+          uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/khazad.c",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000001"),
+          expected: OpCodes.Hex8ToBytes("645d773e40abdd53")
+        },
+        {
+          text: "LibTomCrypt Test 2",
+          uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/khazad.c",
+          input: OpCodes.Hex8ToBytes("8000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("9e399864f78eca02")
+        },
+        {
+          text: "LibTomCrypt Test 3",
+          uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/khazad.c",
+          input: OpCodes.Hex8ToBytes("0000000000000001"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("a9df3d2c64d3ea28")
         }
       ];
+
+      this.tables = KhazadTables.tables;
+      this.roundConstantsHi = KhazadTables.roundConstantsHi;
+      this.roundConstantsLo = KhazadTables.roundConstantsLo;
+      this.sbox = KhazadTables.sbox;
+      this.R = ROUNDS;
     }
 
     CreateInstance(isInverse = false) {
@@ -118,342 +698,213 @@
     }
   }
 
-  class KhazadInstance extends AlgorithmFramework.IBlockCipherInstance {
+  class KhazadInstance extends IBlockCipherInstance {
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
-      this.key = null;
-      this.roundKeyEnc = null;
-      this.roundKeyDec = null;
-      this.inputBuffer = [];
       this.BlockSize = 8;
-      this.KeySize = 16;
-
-      // Initialize cipher constants and tables
-      this.R = 8; // Number of rounds
-      this.isInitialized = false;
-
-      // S-box from original Java reference - exact same string
-      this.Sbox = "\uba54\u2f74\u53d3\ud24d\u50ac\u8dbf\u7052\u9a4c" +
-                  "\uead5\u97d1\u3351\u5ba6\ude48\ua899\udb32\ub7fc" +
-                  "\ue39e\u919b\ue2bb\u416e\ua5cb\u6b95\ua1f3\ub102" +
-                  "\uccc4\u1d14\uc363\uda5d\u5fdc\u7dcd\u7f5a\u6c5c" +
-                  "\uf726\uffed\ue89d\u6f8e\u19a0\uf089\u0f07\uaffb" +
-                  "\u0815\u0d04\u0164\udf76\u79dd\u3d16\u3f37\u6d38" +
-                  "\ub973\ue935\u5571\u7b8c\u7288\uf62a\u3e5e\u2746" +
-                  "\u0c65\u6861\u03c1\u57d6\ud958\ud866\ud73a\uc83c" +
-                  "\ufa96\ua798\uecb8\uc7ae\u694b\uaba9\u670a\u47f2" +
-                  "\ub522\ue5ee\ube2b\u8112\u831b\u0e23\uf545\u21ce" +
-                  "\u492c\uf9e6\ub628\u1782\u1a8b\ufe8a\u09c9\u874e" +
-                  "\ue12e\ue4e0\ueb90\ua41e\u8560\u0025\uf4f1\u940b" +
-                  "\ue775\uef34\u31d4\ud086\u7ead\ufd29\u303b\u9ff8" +
-                  "\uc613\u0605\uc511\u777c\u7a78\u361c\u3959\u1856" +
-                  "\ub3b0\u2420\ub292\ua3c0\u4462\u10b4\u8443\u93c2" +
-                  "\u4abd\u8f2d\ubc9c\u6a40\ucfa2\u804f\u1fca\uaa42";
-
-      // Lookup tables - T[8][256] as 64-bit values split into [high32, low32]
-      this.T = [];
-      this.S = [];
-      this.c = [];
-
-      this._initializeTables();
+      this._keySize = 16;
+      this._key = null;
+      this.inputBuffer = [];
+      this.roundKeyEncHi = new Uint32Array(ROUNDS + 1);
+      this.roundKeyEncLo = new Uint32Array(ROUNDS + 1);
+      this.roundKeyDecHi = new Uint32Array(ROUNDS + 1);
+      this.roundKeyDecLo = new Uint32Array(ROUNDS + 1);
     }
 
-    get Key() {
-      return this.key;
+    get key() {
+      return this._key ? OpCodes.CopyArray(this._key) : null;
     }
 
-    set Key(value) {
-      if (!value || value.length !== 16) {
-        throw new Error('Invalid Khazad key size: ' + (value ? 8 * value.length : 0) + ' bits. Required: 128 bits.');
+    set key(value) {
+      if (value === null || value === undefined) {
+        this._key = null;
+        this._clearRoundKeys();
+        return;
       }
-      this.key = value;
-      this.KeySize = value.length;
-      this._setupKey();
+
+      let keyBytes;
+      if (Array.isArray(value)) {
+        keyBytes = Array.from(value, (byte) => byte & 0xff);
+      } else if (typeof value === "string") {
+        keyBytes = OpCodes.AsciiToBytes(value);
+      } else if (ArrayBuffer.isView(value)) {
+        keyBytes = Array.from(value, (byte) => byte & 0xff);
+      } else {
+        throw new Error("Khazad key must be array-like or string");
+      }
+
+      if (keyBytes.length !== this._keySize) {
+        throw new Error("Invalid Khazad key size: " + (keyBytes.length * 8) + " bits. Required: 128 bits.");
+      }
+
+      this._key = keyBytes.slice();
+      this._generateKeySchedule(this._key);
     }
 
-    _initializeTables() {
-      if (this.isInitialized) return;
-
-      // Initialize lookup tables
-      for (let t = 0; t < 8; t++) {
-        this.T[t] = [];
-      }
-
-      // Build S-box and transformation tables exactly like Java reference
-      for (let x = 0; x < 256; x++) {
-        // Extract S-box value exactly like Java: Sbox.charAt(x/2) & 0xffffL
-        const c = this.Sbox.charCodeAt(Math.floor(x/2)) & 0xFFFF;
-        const s1 = ((x & 1) === 0) ? (c >>> 8) : (c & 0xFF);
-
-        // Galois field operations exactly like Java reference implementation
-        let s2 = s1 << 1;
-        if (s2 >= 0x100) s2 ^= 0x11d;
-
-        const s3 = s2 ^ s1;
-
-        let s4 = s2 << 1;
-        if (s4 >= 0x100) s4 ^= 0x11d;
-
-        const s5 = s4 ^ s1;
-        const s6 = s4 ^ s2;
-        const s7 = s6 ^ s1;
-
-        let s8 = s4 << 1;
-        if (s8 >= 0x100) s8 ^= 0x11d;
-
-        const sb = s8 ^ s2 ^ s1;
-
-        // Build transformation tables exactly like Java reference
-        // Java: T[0][x] = (s1 << 56) | (s3 << 48) | (s4 << 40) | (s5 << 32) | (s6 << 24) | (s8 << 16) | (sb << 8) | s7;
-        // Convert to [high32, low32]: high32 = bits 63-32, low32 = bits 31-0
-        this.T[0][x] = [((s1 << 24) | (s3 << 16) | (s4 << 8) | s5) >>> 0, ((s6 << 24) | (s8 << 16) | (sb << 8) | s7) >>> 0];
-        this.T[1][x] = [((s3 << 24) | (s1 << 16) | (s5 << 8) | s4) >>> 0, ((s8 << 24) | (s6 << 16) | (s7 << 8) | sb) >>> 0];
-        this.T[2][x] = [((s4 << 24) | (s5 << 16) | (s1 << 8) | s3) >>> 0, ((sb << 24) | (s7 << 16) | (s6 << 8) | s8) >>> 0];
-        this.T[3][x] = [((s5 << 24) | (s4 << 16) | (s3 << 8) | s1) >>> 0, ((s7 << 24) | (sb << 16) | (s8 << 8) | s6) >>> 0];
-        this.T[4][x] = [((s6 << 24) | (s8 << 16) | (sb << 8) | s7) >>> 0, ((s1 << 24) | (s3 << 16) | (s4 << 8) | s5) >>> 0];
-        this.T[5][x] = [((s8 << 24) | (s6 << 16) | (s7 << 8) | sb) >>> 0, ((s3 << 24) | (s1 << 16) | (s5 << 8) | s4) >>> 0];
-        this.T[6][x] = [((sb << 24) | (s7 << 16) | (s6 << 8) | s8) >>> 0, ((s4 << 24) | (s5 << 16) | (s1 << 8) | s3) >>> 0];
-        this.T[7][x] = [((s7 << 24) | (sb << 16) | (s8 << 8) | s6) >>> 0, ((s5 << 24) | (s4 << 16) | (s3 << 8) | s1) >>> 0];
-
-        this.S[x] = s1;
-      }
-
-      // Initialize round constants exactly like Java reference
-      for (let r = 0; r <= this.R; r++) {
-        // Java: c[r] = ((Sbox.charAt(4*r + 0) & 0xffffL) << 48) | 
-        //              ((Sbox.charAt(4*r + 1) & 0xffffL) << 32) |
-        //              ((Sbox.charAt(4*r + 2) & 0xffffL) << 16) |
-        //              ((Sbox.charAt(4*r + 3) & 0xffffL)      );
-        const c0 = (this.Sbox.charCodeAt(4*r + 0) & 0xFFFF);
-        const c1 = (this.Sbox.charCodeAt(4*r + 1) & 0xFFFF);
-        const c2 = (this.Sbox.charCodeAt(4*r + 2) & 0xFFFF);
-        const c3 = (this.Sbox.charCodeAt(4*r + 3) & 0xFFFF);
-
-        // Java bit layout: c0<<48 | c1<<32 | c2<<16 | c3<<0
-        // Split into [high32, low32]: [c0<<16|c1, c2<<16|c3]
-        this.c[r] = [((c0 << 16) | c1) >>> 0, ((c2 << 16) | c3) >>> 0];
-      }
-
-      this.isInitialized = true;
+    KeySetup(key) {
+      this.key = key;
     }
 
-    _setupKey() {
-      if (!this.key) return;
+    EncryptBlock(blockIndex, block) {
+      return this._crypt(block, this.roundKeyEncHi, this.roundKeyEncLo);
+    }
 
-      // Map byte array cipher key to initial key state (mu) exactly like Java
-      // Java assigns key[0..7] to K2 and key[8..15] to K1  
-      let K2 = this._bytesToLong(this.key, 0);
-      let K1 = this._bytesToLong(this.key, 8);
-
-      this.roundKeyEnc = [];
-      this.roundKeyDec = [];
-
-      // Compute the round keys exactly like Java reference
-      for (let r = 0; r <= this.R; r++) {
-        // Java: K[r] = rho(c[r], K1) ^ K2
-        // rho = T[0][K1>>>56] ^ T[1][(K1>>>48)&0xff] ^ ... ^ c[r]
-        const b0 = (K1[0] >>> 24) & 0xFF;
-        const b1 = (K1[0] >>> 16) & 0xFF;
-        const b2 = (K1[0] >>> 8) & 0xFF;
-        const b3 = K1[0] & 0xFF;
-        const b4 = (K1[1] >>> 24) & 0xFF;
-        const b5 = (K1[1] >>> 16) & 0xFF;
-        const b6 = (K1[1] >>> 8) & 0xFF;
-        const b7 = K1[1] & 0xFF;
-
-        let rhoResult = [0, 0];
-        rhoResult = this._xor64(rhoResult, this.T[0][b0]);
-        rhoResult = this._xor64(rhoResult, this.T[1][b1]);
-        rhoResult = this._xor64(rhoResult, this.T[2][b2]);
-        rhoResult = this._xor64(rhoResult, this.T[3][b3]);
-        rhoResult = this._xor64(rhoResult, this.T[4][b4]);
-        rhoResult = this._xor64(rhoResult, this.T[5][b5]);
-        rhoResult = this._xor64(rhoResult, this.T[6][b6]);
-        rhoResult = this._xor64(rhoResult, this.T[7][b7]);
-        rhoResult = this._xor64(rhoResult, this.c[r]);
-
-        this.roundKeyEnc[r] = this._xor64(rhoResult, K2);
-        K2 = K1;
-        K1 = this.roundKeyEnc[r];
-      }
-
-      // Compute the inverse key schedule exactly like Java reference
-      // K'^0 = K^R, K'^R = K^0, K'^r = theta(K^{R-r})
-      this.roundKeyDec[0] = this.roundKeyEnc[this.R];
-      for (let r = 1; r < this.R; r++) {
-        const K1 = this.roundKeyEnc[this.R - r];
-
-        // theta(K1) = T[0][S[K1>>>56]] ^ T[1][S[(K1>>>48)&0xff]] ^ ...
-        const b0 = this.S[(K1[0] >>> 24) & 0xFF];
-        const b1 = this.S[(K1[0] >>> 16) & 0xFF];
-        const b2 = this.S[(K1[0] >>> 8) & 0xFF];
-        const b3 = this.S[K1[0] & 0xFF];
-        const b4 = this.S[(K1[1] >>> 24) & 0xFF];
-        const b5 = this.S[(K1[1] >>> 16) & 0xFF];
-        const b6 = this.S[(K1[1] >>> 8) & 0xFF];
-        const b7 = this.S[K1[1] & 0xFF];
-
-        let thetaResult = [0, 0];
-        thetaResult = this._xor64(thetaResult, this.T[0][b0]);
-        thetaResult = this._xor64(thetaResult, this.T[1][b1]);
-        thetaResult = this._xor64(thetaResult, this.T[2][b2]);
-        thetaResult = this._xor64(thetaResult, this.T[3][b3]);
-        thetaResult = this._xor64(thetaResult, this.T[4][b4]);
-        thetaResult = this._xor64(thetaResult, this.T[5][b5]);
-        thetaResult = this._xor64(thetaResult, this.T[6][b6]);
-        thetaResult = this._xor64(thetaResult, this.T[7][b7]);
-
-        this.roundKeyDec[r] = thetaResult;
-      }
-      this.roundKeyDec[this.R] = this.roundKeyEnc[0];
+    DecryptBlock(blockIndex, block) {
+      return this._crypt(block, this.roundKeyDecHi, this.roundKeyDecLo);
     }
 
     Feed(data) {
-      if (!Array.isArray(data)) {
-        throw new Error('Feed expects byte array');
+      if (data === null || data === undefined) {
+        return;
       }
-      this.inputBuffer.push(...data);
+
+      let bytes;
+      if (Array.isArray(data)) {
+        bytes = data;
+      } else if (typeof data === "string") {
+        bytes = OpCodes.AsciiToBytes(data);
+      } else if (ArrayBuffer.isView(data)) {
+        bytes = Array.from(data);
+      } else {
+        throw new Error("Feed expects array-like or string data");
+      }
+
+      this.inputBuffer.push(...bytes.map((b) => b & 0xff));
     }
 
     Result() {
-      if (!this.key) {
-        throw new Error('Key not set');
+      if (!this._key) {
+        throw new Error("Key not set");
+      }
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
+      if (this.inputBuffer.length % this.BlockSize !== 0) {
+        throw new Error("Input length must be multiple of " + this.BlockSize + " bytes");
       }
 
       const output = [];
-      while (this.inputBuffer.length >= this.BlockSize) {
-        const block = this.inputBuffer.splice(0, this.BlockSize);
-        const processed = this.isInverse ? this._decryptBlock(block) : this._encryptBlock(block);
+      const roundKeyHi = this.isInverse ? this.roundKeyDecHi : this.roundKeyEncHi;
+      const roundKeyLo = this.isInverse ? this.roundKeyDecLo : this.roundKeyEncLo;
+
+      for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
+        const block = this.inputBuffer.slice(i, i + this.BlockSize);
+        const processed = this._crypt(block, roundKeyHi, roundKeyLo);
         output.push(...processed);
       }
+
+      this.inputBuffer = [];
       return output;
     }
 
-    _encryptBlock(block) {
-      if (block.length !== 8) {
-        throw new Error('Khazad requires 8-byte blocks');
-      }
-      return this._crypt(block, this.roundKeyEnc);
+    _clearRoundKeys() {
+      this.roundKeyEncHi.fill(0);
+      this.roundKeyEncLo.fill(0);
+      this.roundKeyDecHi.fill(0);
+      this.roundKeyDecLo.fill(0);
     }
 
-    _decryptBlock(block) {
-      if (block.length !== 8) {
-        throw new Error('Khazad requires 8-byte blocks');
-      }
-      return this._crypt(block, this.roundKeyDec);
-    }
+    _generateKeySchedule(keyBytes) {
+      const tables = this.algorithm.tables;
+      const rcHi = this.algorithm.roundConstantsHi;
+      const rcLo = this.algorithm.roundConstantsLo;
+      const sbox = this.algorithm.sbox;
 
-    _crypt(block, roundKey) {
-      // Map byte array block to cipher state (mu) and add initial round key (sigma[K^0])
-      let state = this._bytesToLong(block, 0);
-      state = this._xor64(state, roundKey[0]);
+      let k2Hi = OpCodes.Pack32BE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]) >>> 0;
+      let k2Lo = OpCodes.Pack32BE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]) >>> 0;
+      let k1Hi = OpCodes.Pack32BE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]) >>> 0;
+      let k1Lo = OpCodes.Pack32BE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15]) >>> 0;
 
-      // R - 1 full rounds
-      for (let r = 1; r < this.R; r++) {
-        const b0 = (state[0] >>> 24) & 0xFF;
-        const b1 = (state[0] >>> 16) & 0xFF;
-        const b2 = (state[0] >>> 8) & 0xFF;
-        const b3 = state[0] & 0xFF;
-        const b4 = (state[1] >>> 24) & 0xFF;
-        const b5 = (state[1] >>> 16) & 0xFF;
-        const b6 = (state[1] >>> 8) & 0xFF;
-        const b7 = state[1] & 0xFF;
+      for (let r = 0; r <= ROUNDS; r++) {
+        const bytes = this._extractBytes(k1Hi, k1Lo);
+        let rhoHi = tables[0].hi[bytes[0]] ^ tables[1].hi[bytes[1]] ^ tables[2].hi[bytes[2]] ^ tables[3].hi[bytes[3]] ^
+                    tables[4].hi[bytes[4]] ^ tables[5].hi[bytes[5]] ^ tables[6].hi[bytes[6]] ^ tables[7].hi[bytes[7]];
+        let rhoLo = tables[0].lo[bytes[0]] ^ tables[1].lo[bytes[1]] ^ tables[2].lo[bytes[2]] ^ tables[3].lo[bytes[3]] ^
+                    tables[4].lo[bytes[4]] ^ tables[5].lo[bytes[5]] ^ tables[6].lo[bytes[6]] ^ tables[7].lo[bytes[7]];
 
-        let newState = [0, 0];
-        newState = this._xor64(newState, this.T[0][b0]);
-        newState = this._xor64(newState, this.T[1][b1]);
-        newState = this._xor64(newState, this.T[2][b2]);
-        newState = this._xor64(newState, this.T[3][b3]);
-        newState = this._xor64(newState, this.T[4][b4]);
-        newState = this._xor64(newState, this.T[5][b5]);
-        newState = this._xor64(newState, this.T[6][b6]);
-        newState = this._xor64(newState, this.T[7][b7]);
-        newState = this._xor64(newState, roundKey[r]);
+        rhoHi = (rhoHi ^ rcHi[r] ^ k2Hi) >>> 0;
+        rhoLo = (rhoLo ^ rcLo[r] ^ k2Lo) >>> 0;
 
-        state = newState;
+        this.roundKeyEncHi[r] = rhoHi;
+        this.roundKeyEncLo[r] = rhoLo;
+
+        k2Hi = k1Hi;
+        k2Lo = k1Lo;
+        k1Hi = rhoHi;
+        k1Lo = rhoLo;
       }
 
-      // Last round: selective byte masking exactly like Java
-      const b0 = (state[0] >>> 24) & 0xFF;
-      const b1 = (state[0] >>> 16) & 0xFF;
-      const b2 = (state[0] >>> 8) & 0xFF;
-      const b3 = state[0] & 0xFF;
-      const b4 = (state[1] >>> 24) & 0xFF;
-      const b5 = (state[1] >>> 16) & 0xFF;
-      const b6 = (state[1] >>> 8) & 0xFF;
-      const b7 = state[1] & 0xFF;
+      this.roundKeyDecHi[0] = this.roundKeyEncHi[ROUNDS];
+      this.roundKeyDecLo[0] = this.roundKeyEncLo[ROUNDS];
 
-      const t0 = this.T[0][b0];
-      const t1 = this.T[1][b1];
-      const t2 = this.T[2][b2];
-      const t3 = this.T[3][b3];
-      const t4 = this.T[4][b4];
-      const t5 = this.T[5][b5];
-      const t6 = this.T[6][b6];
-      const t7 = this.T[7][b7];
+      for (let r = 1; r < ROUNDS; r++) {
+        const idx = ROUNDS - r;
+        const keyHi = this.roundKeyEncHi[idx];
+        const keyLo = this.roundKeyEncLo[idx];
+        const bytes = this._extractBytes(keyHi, keyLo);
+        const mapped = bytes.map((b) => sbox[b]);
 
-      // Final round: mask specific byte from each T-table lookup exactly like Java
-      // Extract the required bytes from each T-table entry exactly as Java does
-      const byte7 = (t0[0] >>> 24) & 0xFF;  // T[0] byte 7 → high32[31:24]
-      const byte6 = (t1[0] >>> 16) & 0xFF;  // T[1] byte 6 → high32[23:16]
-      const byte5 = (t2[0] >>> 8) & 0xFF;   // T[2] byte 5 → high32[15:8]
-      const byte4 = t3[0] & 0xFF;           // T[3] byte 4 → high32[7:0]
-      const byte3 = (t4[1] >>> 24) & 0xFF;  // T[4] byte 3 → low32[31:24]
-      const byte2 = (t5[1] >>> 16) & 0xFF;  // T[5] byte 2 → low32[23:16]
-      const byte1 = (t6[1] >>> 8) & 0xFF;   // T[6] byte 1 → low32[15:8]
-      const byte0 = t7[1] & 0xFF;           // T[7] byte 0 → low32[7:0]
+        const thetaHi = (tables[0].hi[mapped[0]] ^ tables[1].hi[mapped[1]] ^ tables[2].hi[mapped[2]] ^ tables[3].hi[mapped[3]] ^
+                         tables[4].hi[mapped[4]] ^ tables[5].hi[mapped[5]] ^ tables[6].hi[mapped[6]] ^ tables[7].hi[mapped[7]]) >>> 0;
+        const thetaLo = (tables[0].lo[mapped[0]] ^ tables[1].lo[mapped[1]] ^ tables[2].lo[mapped[2]] ^ tables[3].lo[mapped[3]] ^
+                         tables[4].lo[mapped[4]] ^ tables[5].lo[mapped[5]] ^ tables[6].lo[mapped[6]] ^ tables[7].lo[mapped[7]]) >>> 0;
 
-      // Combine bytes into 64-bit value [high32, low32]
-      const finalState = [
-        ((byte7 << 24) | (byte6 << 16) | (byte5 << 8) | byte4) >>> 0,
-        ((byte3 << 24) | (byte2 << 16) | (byte1 << 8) | byte0) >>> 0
-      ];
+        this.roundKeyDecHi[r] = thetaHi;
+        this.roundKeyDecLo[r] = thetaLo;
+      }
 
-      const result = this._xor64(finalState, roundKey[this.R]);
-      return this._longToBytes(result);
+      this.roundKeyDecHi[ROUNDS] = this.roundKeyEncHi[0];
+      this.roundKeyDecLo[ROUNDS] = this.roundKeyEncLo[0];
     }
 
-    // Utility methods
-    _xor64(a, b) {
-      return [(a[0] ^ b[0]) >>> 0, (a[1] ^ b[1]) >>> 0];
+    _crypt(bytes, roundKeyHi, roundKeyLo) {
+      const block = Array.isArray(bytes) ? bytes.slice() : Array.from(bytes);
+      if (block.length !== this.BlockSize) {
+        throw new Error("Khazad requires exactly 8-byte blocks");
+      }
+
+      const tables = this.algorithm.tables;
+      let hi = (OpCodes.Pack32BE(block[0], block[1], block[2], block[3]) ^ roundKeyHi[0]) >>> 0;
+      let lo = (OpCodes.Pack32BE(block[4], block[5], block[6], block[7]) ^ roundKeyLo[0]) >>> 0;
+
+      for (let r = 1; r < ROUNDS; r++) {
+        const bytes = this._extractBytes(hi, lo);
+        const nextHi = (tables[0].hi[bytes[0]] ^ tables[1].hi[bytes[1]] ^ tables[2].hi[bytes[2]] ^ tables[3].hi[bytes[3]] ^
+                        tables[4].hi[bytes[4]] ^ tables[5].hi[bytes[5]] ^ tables[6].hi[bytes[6]] ^ tables[7].hi[bytes[7]] ^ roundKeyHi[r]) >>> 0;
+        const nextLo = (tables[0].lo[bytes[0]] ^ tables[1].lo[bytes[1]] ^ tables[2].lo[bytes[2]] ^ tables[3].lo[bytes[3]] ^
+                        tables[4].lo[bytes[4]] ^ tables[5].lo[bytes[5]] ^ tables[6].lo[bytes[6]] ^ tables[7].lo[bytes[7]] ^ roundKeyLo[r]) >>> 0;
+        hi = nextHi;
+        lo = nextLo;
+      }
+
+      const finalBytes = this._extractBytes(hi, lo);
+      const finalHi = ((tables[0].hi[finalBytes[0]] & 0xff000000) ^ (tables[1].hi[finalBytes[1]] & 0x00ff0000) ^ (tables[2].hi[finalBytes[2]] & 0x0000ff00) ^
+                       (tables[3].hi[finalBytes[3]] & 0x000000ff) ^ roundKeyHi[ROUNDS]) >>> 0;
+      const finalLo = ((tables[4].lo[finalBytes[4]] & 0xff000000) ^ (tables[5].lo[finalBytes[5]] & 0x00ff0000) ^ (tables[6].lo[finalBytes[6]] & 0x0000ff00) ^
+                       (tables[7].lo[finalBytes[7]] & 0x000000ff) ^ roundKeyLo[ROUNDS]) >>> 0;
+
+      return OpCodes.Unpack32BE(finalHi).concat(OpCodes.Unpack32BE(finalLo));
     }
 
-    _bytesToLong(bytes, offset) {
-      // Convert 8 bytes to 64-bit [high32, low32] format exactly like Java
-      const high = ((bytes[offset] & 0xFF) << 24) |
-                   ((bytes[offset + 1] & 0xFF) << 16) |
-                   ((bytes[offset + 2] & 0xFF) << 8) |
-                   (bytes[offset + 3] & 0xFF);
-      const low = ((bytes[offset + 4] & 0xFF) << 24) |
-                  ((bytes[offset + 5] & 0xFF) << 16) |
-                  ((bytes[offset + 6] & 0xFF) << 8) |
-                  (bytes[offset + 7] & 0xFF);
-      return [high >>> 0, low >>> 0];
-    }
-
-    _longToBytes(value) {
+    _extractBytes(hi, lo) {
       return [
-        (value[0] >>> 24) & 0xFF,
-        (value[0] >>> 16) & 0xFF,
-        (value[0] >>> 8) & 0xFF,
-        value[0] & 0xFF,
-        (value[1] >>> 24) & 0xFF,
-        (value[1] >>> 16) & 0xFF,
-        (value[1] >>> 8) & 0xFF,
-        value[1] & 0xFF
+        (hi >>> 24) & 0xff,
+        (hi >>> 16) & 0xff,
+        (hi >>> 8) & 0xff,
+        hi & 0xff,
+        (lo >>> 24) & 0xff,
+        (lo >>> 16) & 0xff,
+        (lo >>> 8) & 0xff,
+        lo & 0xff
       ];
     }
   }
 
-  // ===== REGISTRATION =====
-
-    const algorithmInstance = new KhazadAlgorithm();
-  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+  const algorithmInstance = new KhazadAlgorithm();
+  if (!AlgorithmFramework.Find || !AlgorithmFramework.Find(algorithmInstance.name)) {
     RegisterAlgorithm(algorithmInstance);
   }
 
-  // ===== EXPORTS =====
-
   return { KhazadAlgorithm, KhazadInstance };
-}));
+});

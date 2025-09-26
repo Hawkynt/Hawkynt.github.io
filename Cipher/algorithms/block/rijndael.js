@@ -1,118 +1,180 @@
 /*
- * Rijndael (AES) Cipher Implementation - FIXED VERSION
- * Compatible with AlgorithmFramework
+ * Rijndael (AES) Block Cipher
+ * AlgorithmFramework Format
  * (c)2006-2025 Hawkynt
- * 
- * Industrial-grade production-ready AES implementation
- * Supports AES-128, AES-192, and AES-256 encryption/decryption
- * Follows FIPS 197 specification exactly
  */
 
 (function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    // AMD
-    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
-  } else if (typeof module === 'object' && module.exports) {
-    // Node.js/CommonJS
+  if (typeof define === "function" && define.amd) {
+    define(["../../AlgorithmFramework", "../../OpCodes"], factory);
+  } else if (typeof module === "object" && module.exports) {
     module.exports = factory(
-      require('../../AlgorithmFramework'),
-      require('../../OpCodes')
+      require("../../AlgorithmFramework"),
+      require("../../OpCodes")
     );
   } else {
-    // Browser/Worker global
     factory(root.AlgorithmFramework, root.OpCodes);
   }
-}((function() {
-  if (typeof globalThis !== 'undefined') return globalThis;
-  if (typeof window !== 'undefined') return window;
-  if (typeof global !== 'undefined') return global;
-  if (typeof self !== 'undefined') return self;
-  throw new Error('Unable to locate global object');
+})((function () {
+  if (typeof globalThis !== "undefined") return globalThis;
+  if (typeof window !== "undefined") return window;
+  if (typeof global !== "undefined") return global;
+  if (typeof self !== "undefined") return self;
+  throw new Error("Unable to locate global object");
 })(), function (AlgorithmFramework, OpCodes) {
-  'use strict';
+  "use strict";
 
   if (!AlgorithmFramework) {
-    throw new Error('AlgorithmFramework dependency is required');
+    throw new Error("AlgorithmFramework dependency is required");
   }
-  
+
   if (!OpCodes) {
-    throw new Error('OpCodes dependency is required');
+    throw new Error("OpCodes dependency is required");
   }
 
-  // Extract framework components
-  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
-          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
-          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
-          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
-          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
-          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
-          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+  const {
+    RegisterAlgorithm,
+    CategoryType,
+    SecurityStatus,
+    ComplexityType,
+    CountryCode,
+    BlockCipherAlgorithm,
+    IBlockCipherInstance,
+    KeySize,
+    LinkItem,
+    Vulnerability
+  } = AlgorithmFramework;
 
-  // ===== ALGORITHM IMPLEMENTATION =====
+  const NB = 4;
+  const BLOCK_SIZE = 16;
+  const KEY_SIZES = Object.freeze([16, 24, 32]);
+
+  const RijndaelTables = (() => {
+    const SBOX = new Uint8Array([
+      0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
+      0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
+      0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
+      0x04, 0xc7, 0x23, 0xc3, 0x18, 0x96, 0x05, 0x9a, 0x07, 0x12, 0x80, 0xe2, 0xeb, 0x27, 0xb2, 0x75,
+      0x09, 0x83, 0x2c, 0x1a, 0x1b, 0x6e, 0x5a, 0xa0, 0x52, 0x3b, 0xd6, 0xb3, 0x29, 0xe3, 0x2f, 0x84,
+      0x53, 0xd1, 0x00, 0xed, 0x20, 0xfc, 0xb1, 0x5b, 0x6a, 0xcb, 0xbe, 0x39, 0x4a, 0x4c, 0x58, 0xcf,
+      0xd0, 0xef, 0xaa, 0xfb, 0x43, 0x4d, 0x33, 0x85, 0x45, 0xf9, 0x02, 0x7f, 0x50, 0x3c, 0x9f, 0xa8,
+      0x51, 0xa3, 0x40, 0x8f, 0x92, 0x9d, 0x38, 0xf5, 0xbc, 0xb6, 0xda, 0x21, 0x10, 0xff, 0xf3, 0xd2,
+      0xcd, 0x0c, 0x13, 0xec, 0x5f, 0x97, 0x44, 0x17, 0xc4, 0xa7, 0x7e, 0x3d, 0x64, 0x5d, 0x19, 0x73,
+      0x60, 0x81, 0x4f, 0xdc, 0x22, 0x2a, 0x90, 0x88, 0x46, 0xee, 0xb8, 0x14, 0xde, 0x5e, 0x0b, 0xdb,
+      0xe0, 0x32, 0x3a, 0x0a, 0x49, 0x06, 0x24, 0x5c, 0xc2, 0xd3, 0xac, 0x62, 0x91, 0x95, 0xe4, 0x79,
+      0xe7, 0xc8, 0x37, 0x6d, 0x8d, 0xd5, 0x4e, 0xa9, 0x6c, 0x56, 0xf4, 0xea, 0x65, 0x7a, 0xae, 0x08,
+      0xba, 0x78, 0x25, 0x2e, 0x1c, 0xa6, 0xb4, 0xc6, 0xe8, 0xdd, 0x74, 0x1f, 0x4b, 0xbd, 0x8b, 0x8a,
+      0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e,
+      0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
+      0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
+    ]);
+
+    const INV_SBOX = new Uint8Array([
+      0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
+      0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
+      0x54, 0x7b, 0x94, 0x32, 0xa6, 0xc2, 0x23, 0x3d, 0xee, 0x4c, 0x95, 0x0b, 0x42, 0xfa, 0xc3, 0x4e,
+      0x08, 0x2e, 0xa1, 0x66, 0x28, 0xd9, 0x24, 0xb2, 0x76, 0x5b, 0xa2, 0x49, 0x6d, 0x8b, 0xd1, 0x25,
+      0x72, 0xf8, 0xf6, 0x64, 0x86, 0x68, 0x98, 0x16, 0xd4, 0xa4, 0x5c, 0xcc, 0x5d, 0x65, 0xb6, 0x92,
+      0x6c, 0x70, 0x48, 0x50, 0xfd, 0xed, 0xb9, 0xda, 0x5e, 0x15, 0x46, 0x57, 0xa7, 0x8d, 0x9d, 0x84,
+      0x90, 0xd8, 0xab, 0x00, 0x8c, 0xbc, 0xd3, 0x0a, 0xf7, 0xe4, 0x58, 0x05, 0xb8, 0xb3, 0x45, 0x06,
+      0xd0, 0x2c, 0x1e, 0x8f, 0xca, 0x3f, 0x0f, 0x02, 0xc1, 0xaf, 0xbd, 0x03, 0x01, 0x13, 0x8a, 0x6b,
+      0x3a, 0x91, 0x11, 0x41, 0x4f, 0x67, 0xdc, 0xea, 0x97, 0xf2, 0xcf, 0xce, 0xf0, 0xb4, 0xe6, 0x73,
+      0x96, 0xac, 0x74, 0x22, 0xe7, 0xad, 0x35, 0x85, 0xe2, 0xf9, 0x37, 0xe8, 0x1c, 0x75, 0xdf, 0x6e,
+      0x47, 0xf1, 0x1a, 0x71, 0x1d, 0x29, 0xc5, 0x89, 0x6f, 0xb7, 0x62, 0x0e, 0xaa, 0x18, 0xbe, 0x1b,
+      0xfc, 0x56, 0x3e, 0x4b, 0xc6, 0xd2, 0x79, 0x20, 0x9a, 0xdb, 0xc0, 0xfe, 0x78, 0xcd, 0x5a, 0xf4,
+      0x1f, 0xdd, 0xa8, 0x33, 0x88, 0x07, 0xc7, 0x31, 0xb1, 0x12, 0x10, 0x59, 0x27, 0x80, 0xec, 0x5f,
+      0x60, 0x51, 0x7f, 0xa9, 0x19, 0xb5, 0x4a, 0x0d, 0x2d, 0xe5, 0x7a, 0x9f, 0x93, 0xc9, 0x9c, 0xef,
+      0xa0, 0xe0, 0x3b, 0x4d, 0xae, 0x2a, 0xf5, 0xb0, 0xc8, 0xeb, 0xbb, 0x3c, 0x83, 0x53, 0x99, 0x61,
+      0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d
+    ]);
+
+    const RCON = new Uint8Array([
+      0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36,
+      0x6c, 0xd8, 0xab, 0x4d, 0x9a, 0x2f, 0x5e, 0xbc, 0x63, 0xc6,
+      0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91
+    ]);
+
+    return Object.freeze({ SBOX, INV_SBOX, RCON });
+  })();
+
+  function rotWord(word) {
+    return ((word << 8) | (word >>> 24)) >>> 0;
+  }
+
+  function subWord(word, tables) {
+    const sbox = tables.SBOX;
+    return ((sbox[(word >>> 24) & 0xff] << 24) |
+            (sbox[(word >>> 16) & 0xff] << 16) |
+            (sbox[(word >>> 8) & 0xff] << 8) |
+            sbox[word & 0xff]) >>> 0;
+  }
 
   class RijndaelAlgorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
 
-      // Required metadata
       this.name = "Rijndael (AES)";
-      this.description = "Advanced Encryption Standard, selected by NIST in 2001. Supports 128, 192, and 256-bit keys with 128-bit blocks. Most widely used symmetric cipher worldwide.";
+      this.description = "Educational AES implementation with 128-bit blocks and 128/192/256-bit keys, aligned with NIST FIPS 197.";
       this.inventor = "Joan Daemen, Vincent Rijmen";
       this.year = 1998;
       this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = null; // Production-ready but don't claim "secure"
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.BE;
 
-      // Algorithm-specific metadata
-      this.SupportedKeySizes = [
-        new KeySize(16, 16, 0), // AES-128
-        new KeySize(24, 24, 0), // AES-192  
-        new KeySize(32, 32, 0)  // AES-256
-      ];
-      this.SupportedBlockSizes = [
-        new KeySize(16, 16, 0) // Fixed 128-bit blocks
-      ];
+      this.SupportedKeySizes = KEY_SIZES.map(length => new KeySize(length, length, 0));
+      this.SupportedBlockSizes = [new KeySize(BLOCK_SIZE, BLOCK_SIZE, 0)];
 
-      // Documentation and references
       this.documentation = [
-        new LinkItem("FIPS 197 Specification", "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197.pdf"),
-        new LinkItem("NIST AES Information", "https://www.nist.gov/publications/advanced-encryption-standard-aes"),
-        new LinkItem("Wikipedia Article", "https://en.wikipedia.org/wiki/Advanced_Encryption_Standard")
+        new LinkItem("FIPS 197: Advanced Encryption Standard (AES)", "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197.pdf"),
+        new LinkItem("NIST SP 800-38A: Recommendation for Block Cipher Modes", "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf"),
+        new LinkItem("AES overview (Wikipedia)", "https://en.wikipedia.org/wiki/Advanced_Encryption_Standard")
       ];
 
       this.references = [
-        new LinkItem("Original Rijndael Specification", "https://csrc.nist.gov/csrc/media/projects/cryptographic-standards-and-guidelines/documents/aes-development/rijndael-ammended.pdf"),
-        new LinkItem("NIST Test Vectors", "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf"),
-        new LinkItem("RFC 3826 - AES-CBC", "https://tools.ietf.org/rfc/rfc3826.txt")
+        new LinkItem("Rijndael submission to the AES competition", "https://csrc.nist.gov/projects/block-cipher-techniques/aes-development"),
+        new LinkItem("Crypto++ AES reference", "https://github.com/weidai11/cryptopp/blob/master/cpp/rijndael.cpp")
       ];
 
-      // Official NIST test vectors
+      this.knownVulnerabilities = [
+        new Vulnerability(
+          "Side-channel leakage",
+          "Table-based AES leaks key-dependent timing information on shared hardware.",
+          "Use constant-time primitives or dedicated CPU instructions when side-channels matter."
+        ),
+        new Vulnerability(
+          "Mode misuse",
+          "Reusing IVs or operating without authentication enables practical attacks despite strong core primitive.",
+          "Pair AES with authenticated modes (GCM, CCM) and fresh IVs for each message."
+        )
+      ];
+
       this.tests = [
         {
-          text: "NIST FIPS 197 Test Vector - AES-128 ECB",
+          text: "FIPS 197 C.1 AES-128 ECB",
           uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197.pdf",
           input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           expected: OpCodes.Hex8ToBytes("69c4e0d86a7b0430d8cdb78070b4c55a")
         },
         {
-          text: "NIST SP 800-38A Test Vector - AES-128 ECB #1",
-          uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf",
-          input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
-          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
-          expected: OpCodes.Hex8ToBytes("3ad77bb40d7a3660a89ecaf32466ef97")
-        },
-        {
-          text: "NIST SP 800-38A Test Vector - AES-192 ECB #1", 
+          text: "NIST SP 800-38A F.2 AES-192 ECB #1",
           uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf",
           input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
           key: OpCodes.Hex8ToBytes("8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b"),
           expected: OpCodes.Hex8ToBytes("bd334f1d6e45f25ff712a214571fa5cc")
+        },
+        {
+          text: "NIST SP 800-38A F.2 AES-256 ECB #1",
+          uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf",
+          input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
+          key: OpCodes.Hex8ToBytes("603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"),
+          expected: OpCodes.Hex8ToBytes("f3eed1bdb5d2a03c064b5a7e3db181f8")
         }
       ];
+
+      this.tables = RijndaelTables;
     }
 
     CreateInstance(isInverse = false) {
@@ -121,443 +183,338 @@
   }
 
   class RijndaelInstance extends IBlockCipherInstance {
-    constructor(algorithm, isInverse = false) {
+    constructor(algorithm, isInverse) {
       super(algorithm);
-      this.isInverse = isInverse;
-      this.key = null;
-      this.inputBuffer = [];
-      this.BlockSize = 16;
+      this.isInverse = !!isInverse;
+      this.BlockSize = BLOCK_SIZE;
       this.KeySize = 0;
       this.rounds = 0;
       this.roundKeys = null;
-
-      // AES S-box (forward)
-      this.sbox = [
-        0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
-        0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
-        0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
-        0x04, 0xc7, 0x23, 0xc3, 0x18, 0x96, 0x05, 0x9a, 0x07, 0x12, 0x80, 0xe2, 0xeb, 0x27, 0xb2, 0x75,
-        0x09, 0x83, 0x2c, 0x1a, 0x1b, 0x6e, 0x5a, 0xa0, 0x52, 0x3b, 0xd6, 0xb3, 0x29, 0xe3, 0x2f, 0x84,
-        0x53, 0xd1, 0x00, 0xed, 0x20, 0xfc, 0xb1, 0x5b, 0x6a, 0xcb, 0xbe, 0x39, 0x4a, 0x4c, 0x58, 0xcf,
-        0xd0, 0xef, 0xaa, 0xfb, 0x43, 0x4d, 0x33, 0x85, 0x45, 0xf9, 0x02, 0x5f, 0x50, 0x3c, 0x9f, 0xa8,
-        0x51, 0xa3, 0x40, 0x8f, 0x92, 0x9d, 0x38, 0xf5, 0xbc, 0xb6, 0xda, 0x21, 0x10, 0xff, 0xf3, 0xd2,
-        0xcd, 0x0c, 0x13, 0xec, 0x5f, 0x97, 0x44, 0x17, 0xc4, 0xa7, 0x7e, 0x3d, 0x64, 0x5d, 0x19, 0x73,
-        0x60, 0x81, 0x4f, 0xdc, 0x22, 0x2a, 0x90, 0x88, 0x46, 0xee, 0xb8, 0x14, 0xde, 0x5e, 0x0b, 0xdb,
-        0xe0, 0x32, 0x3a, 0x0a, 0x49, 0x06, 0x24, 0x5c, 0xc2, 0xd3, 0xac, 0x62, 0x91, 0x95, 0xe4, 0x79,
-        0xe7, 0xc8, 0x37, 0x6d, 0x8d, 0xd5, 0x4e, 0xa9, 0x6c, 0x56, 0xf4, 0xea, 0x65, 0x7a, 0xae, 0x08,
-        0xba, 0x78, 0x25, 0x2e, 0x1c, 0xa6, 0xb4, 0xc6, 0xe8, 0xdd, 0x74, 0x1f, 0x4b, 0xbd, 0x8b, 0x8a,
-        0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e,
-        0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
-        0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
-      ];
-
-      // AES inverse S-box
-      this.invSbox = [
-        0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
-        0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
-        0x54, 0x7b, 0x94, 0x32, 0xa6, 0xc2, 0x23, 0x3d, 0xee, 0x4c, 0x95, 0x0b, 0x42, 0xfa, 0xc3, 0x4e,
-        0x08, 0x2e, 0xa1, 0x66, 0x28, 0xd9, 0x24, 0xb2, 0x76, 0x5b, 0xa2, 0x49, 0x6d, 0x8b, 0xd1, 0x25,
-        0x72, 0xf8, 0xf6, 0x64, 0x86, 0x68, 0x98, 0x16, 0xd4, 0xa4, 0x5c, 0xcc, 0x5d, 0x65, 0xb6, 0x92,
-        0x6c, 0x70, 0x48, 0x50, 0xfd, 0xed, 0xb9, 0xda, 0x5e, 0x15, 0x46, 0x57, 0xa7, 0x8d, 0x9d, 0x84,
-        0x90, 0xd8, 0xab, 0x00, 0x8c, 0xbc, 0xd3, 0x0a, 0xf7, 0xe4, 0x58, 0x05, 0xb8, 0xb3, 0x45, 0x06,
-        0xd0, 0x2c, 0x1e, 0x8f, 0xca, 0x3f, 0x0f, 0x02, 0xc1, 0xaf, 0xbd, 0x03, 0x01, 0x13, 0x8a, 0x6b,
-        0x3a, 0x91, 0x11, 0x41, 0x4f, 0x67, 0xdc, 0xea, 0x97, 0xf2, 0xcf, 0xce, 0xf0, 0xb4, 0xe6, 0x73,
-        0x96, 0xac, 0x74, 0x22, 0xe7, 0xad, 0x35, 0x85, 0xe2, 0xf9, 0x37, 0xe8, 0x1c, 0x75, 0xdf, 0x6e,
-        0x47, 0xf1, 0x1a, 0x71, 0x1d, 0x29, 0xc5, 0x89, 0x6f, 0xb7, 0x62, 0x0e, 0xaa, 0x18, 0xbe, 0x1b,
-        0xfc, 0x56, 0x3e, 0x4b, 0xc6, 0xd2, 0x79, 0x20, 0x9a, 0xdb, 0xc0, 0xfe, 0x78, 0xcd, 0x5a, 0xf4,
-        0x1f, 0xdd, 0xa8, 0x33, 0x88, 0x07, 0xc7, 0x31, 0xb1, 0x12, 0x10, 0x59, 0x27, 0x80, 0xec, 0x5f,
-        0x60, 0x51, 0x7f, 0xa9, 0x19, 0xb5, 0x4a, 0x0d, 0x2d, 0xe5, 0x7a, 0x9f, 0x93, 0xc9, 0x9c, 0xef,
-        0xa0, 0xe0, 0x3b, 0x4d, 0xae, 0x2a, 0xf5, 0xb0, 0xc8, 0xeb, 0xbb, 0x3c, 0x83, 0x53, 0x99, 0x61,
-        0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d
-      ];
-
-      // Round constants
-      this.rcon = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36];
-      
-      // Precomputed T0 table for encryption (from C# AES implementation)
-      this.T0 = [
-        0xa56363c6, 0x847c7cf8, 0x997777ee, 0x8d7b7bf6, 0x0df2f2ff, 0xbd6b6bd6, 0xb16f6fde, 0x54c5c591,
-        0x50303060, 0x03010102, 0xa96767ce, 0x7d2b2b56, 0x19fefee7, 0x62d7d7b5, 0xe6abab4d, 0x9a7676ec,
-        0x45caca8f, 0x9d82821f, 0x40c9c989, 0x877d7dfa, 0x15fafaef, 0xeb5959b2, 0xc947478e, 0x0bf0f0fb,
-        0xecadad41, 0x67d4d4b3, 0xfda2a25f, 0xeaafaf45, 0xbf9c9c23, 0xf7a4a453, 0x967272e4, 0x5bc0c09b,
-        0xc2b7b775, 0x1cfdfde1, 0xae93933d, 0x6a26264c, 0x5a36366c, 0x413f3f7e, 0x02f7f7f5, 0x4fcccc83,
-        0x5c343468, 0xf4a5a551, 0x34e5e5d1, 0x08f1f1f9, 0x937171e2, 0x73d8d8ab, 0x53313162, 0x3f15152a,
-        0x0c040408, 0x52c7c795, 0x65232346, 0x5ec3c39d, 0x28181830, 0xa1969637, 0x0f05050a, 0xb59a9a2f,
-        0x0907070e, 0x36121224, 0x9b80801b, 0x3de2e2df, 0x26ebebcd, 0x6927274e, 0xcdb2b27f, 0x9f7575ea,
-        0x1b090912, 0x9e83831d, 0x742c2c58, 0x2e1a1a34, 0x2d1b1b36, 0xb26e6edc, 0xee5a5ab4, 0xfba0a05b,
-        0xf65252a4, 0x4d3b3b76, 0x61d6d6b7, 0xceb3b37d, 0x7b292952, 0x3ee3e3dd, 0x712f2f5e, 0x97848413,
-        0xf55353a6, 0x68d1d1b9, 0x00000000, 0x2cededc1, 0x60202040, 0x1ffcfce3, 0xc8b1b179, 0xed5b5bb6,
-        0xbe6a6ad4, 0x46cbcb8d, 0xd9bebe67, 0x4b393972, 0xde4a4a94, 0xd44c4c98, 0xe85858b0, 0x4acfcf85,
-        0x6bd0d0bb, 0x2aefefc5, 0xe5aaaa4f, 0x16fbfbed, 0xc5434386, 0xd74d4d9a, 0x55333366, 0x94858511,
-        0xcf45458a, 0x10f9f9e9, 0x06020204, 0x817f7ffe, 0xf05050a0, 0x443c3c78, 0xba9f9f25, 0xe3a8a84b,
-        0xf35151a2, 0xfea3a35d, 0xc0404080, 0x8a8f8f05, 0xad92923f, 0xbc9d9d21, 0x48383870, 0x04f5f5f1,
-        0xdfbcbc63, 0xc1b6b677, 0x75dadaaf, 0x63212142, 0x30101020, 0x1affffe5, 0x0ef3f3fd, 0x6dd2d2bf,
-        0x4ccdcd81, 0x140c0c18, 0x35131326, 0x2fececc3, 0xe15f5fbe, 0xa2979735, 0xcc444488, 0x3917172e,
-        0x57c4c493, 0xf2a7a755, 0x827e7efc, 0x473d3d7a, 0xac6464c8, 0xe75d5dba, 0x2b191932, 0x957373e6,
-        0xa06060c0, 0x98818119, 0xd14f4f9e, 0x7fdcdca3, 0x66222244, 0x7e2a2a54, 0xab90903b, 0x8388880b,
-        0xca46468c, 0x29eeeec7, 0xd3b8b86b, 0x3c141428, 0x79dedea7, 0xe25e5ebc, 0x1d0b0b16, 0x76dbdbad,
-        0x3be0e0db, 0x56323264, 0x4e3a3a74, 0x1e0a0a14, 0xdb494992, 0x0a06060c, 0x6c242448, 0xe45c5cb8,
-        0x5dc2c29f, 0x6ed3d3bd, 0xefacac43, 0xa66262c4, 0xa8919139, 0xa4959531, 0x37e4e4d3, 0x8b7979f2,
-        0x32e7e7d5, 0x43c8c88b, 0x5937376e, 0xb76d6dda, 0x8c8d8d01, 0x64d5d5b1, 0xd24e4e9c, 0xe0a9a949,
-        0xb46c6cd8, 0xfa5656ac, 0x07f4f4f3, 0x25eaeacf, 0xaf6565ca, 0x8e7a7af4, 0xe9aeae47, 0x18080810,
-        0xd5baba6f, 0x887878f0, 0x6f25254a, 0x722e2e5c, 0x241c1c38, 0xf1a6a657, 0xc7b4b473, 0x51c6c697,
-        0x23e8e8cb, 0x7cdddda1, 0x9c7474e8, 0x211f1f3e, 0xdd4b4b96, 0xdcbdbd61, 0x868b8b0d, 0x858a8a0f,
-        0x907070e0, 0x423e3e7c, 0xc4b5b571, 0xaa6666cc, 0xd8484890, 0x05030306, 0x01f6f6f7, 0x120e0e1c,
-        0xa36161c2, 0x5f35356a, 0xf95757ae, 0xd0b9b969, 0x91868617, 0x58c1c199, 0x271d1d3a, 0xb99e9e27,
-        0x38e1e1d9, 0x13f8f8eb, 0xb398982b, 0x33111122, 0xbb6969d2, 0x70d9d9a9, 0x898e8e07, 0xa7949433,
-        0xb69b9b2d, 0x221e1e3c, 0x92878715, 0x20e9e9c9, 0x49cece87, 0xff5555aa, 0x78282850, 0x7adfdfa5,
-        0x8f8c8c03, 0xf8a1a159, 0x80898909, 0x170d0d1a, 0xdabfbf65, 0x31e6e6d7, 0xc6424284, 0xb86868d0,
-        0xc3414182, 0xb0999929, 0x772d2d5a, 0x110f0f1e, 0xcbb0b07b, 0xfc5454a8, 0xd6bbbb6d, 0x3a16162c
-      ];
+      this._key = null;
+      this.inputBuffer = [];
+      this.tables = algorithm.tables;
     }
 
     set key(keyBytes) {
-      if (!keyBytes) {
+      if (!keyBytes || keyBytes.length === 0) {
+        if (this._key) {
+          OpCodes.ClearArray(this._key);
+        }
+        if (this.roundKeys) {
+          OpCodes.ClearArray(this.roundKeys);
+        }
         this._key = null;
         this.roundKeys = null;
-        this.KeySize = 0;
         this.rounds = 0;
+        this.KeySize = 0;
         return;
       }
 
-      // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
-      );
-
-      if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      const length = keyBytes.length;
+      if (KEY_SIZES.indexOf(length) === -1) {
+        throw new Error("Invalid key size: " + length + " bytes. Rijndael supports 16, 24, or 32 byte keys.");
       }
 
-      this._key = [...keyBytes];
-      this.KeySize = keyBytes.length;
-
-      // Set number of rounds based on key size
-      switch (keyBytes.length) {
-        case 16: this.rounds = 10; break; // AES-128
-        case 24: this.rounds = 12; break; // AES-192
-        case 32: this.rounds = 14; break; // AES-256
+      if (this._key) {
+        OpCodes.ClearArray(this._key);
+      }
+      if (this.roundKeys) {
+        OpCodes.ClearArray(this.roundKeys);
       }
 
-      this.roundKeys = this._keyExpansion(keyBytes);
+      const expanded = this._expandKey(keyBytes);
+      this._key = expanded.keyCopy;
+      this.roundKeys = expanded.roundKeys;
+      this.rounds = expanded.rounds;
+      this.KeySize = this._key.length;
     }
 
     get key() {
-      return this._key ? [...this._key] : null;
+      return this._key ? Array.from(this._key) : null;
     }
 
     Feed(data) {
-      if (!data || data.length === 0) return;
-      if (!this.key) throw new Error("Key not set");
-
-      this.inputBuffer.push(...data);
+      if (!data || data.length === 0) {
+        return;
+      }
+      if (!this._key) {
+        throw new Error("Key not set");
+      }
+      for (let i = 0; i < data.length; i++) {
+        this.inputBuffer.push(data[i] & 0xff);
+      }
     }
 
     Result() {
-      if (!this.key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
-
-      // Validate input length
-      if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+      if (!this._key) {
+        throw new Error("Key not set");
+      }
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
+      if (this.inputBuffer.length % BLOCK_SIZE !== 0) {
+        throw new Error("Input length must be multiple of " + BLOCK_SIZE + " bytes");
       }
 
       const output = [];
-
-      // Process each 16-byte block
-      for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
-        const block = this.inputBuffer.slice(i, i + this.BlockSize);
-        const processedBlock = this.isInverse 
-          ? this._decrypt(block) 
-          : this._encrypt(block);
-        output.push(...processedBlock);
+      for (let offset = 0; offset < this.inputBuffer.length; offset += BLOCK_SIZE) {
+        const block = this.inputBuffer.slice(offset, offset + BLOCK_SIZE);
+        const processed = this.isInverse ? this._decryptBlock(block) : this._encryptBlock(block);
+        output.push.apply(output, processed);
+        OpCodes.ClearArray(block);
       }
 
-      // Clear input buffer
-      this.inputBuffer = [];
-
+      OpCodes.ClearArray(this.inputBuffer);
+      this.inputBuffer.length = 0;
       return output;
     }
 
-    // Fixed key expansion (FIPS 197) - using direct byte access
-    _keyExpansion(key) {
-      const keyLen = key.length;
-      const nk = keyLen / 4; // Number of 32-bit words in key
-      const nr = this.rounds; // Number of rounds
-      const expandedSize = 16 * (nr + 1); // Total bytes needed
-      const expandedKey = new Array(expandedSize);
+    EncryptBlock(block) {
+      return this._encryptBlock(block);
+    }
 
-      // Copy original key
-      for (let i = 0; i < keyLen; i++) {
-        expandedKey[i] = key[i];
+    DecryptBlock(block) {
+      return this._decryptBlock(block);
+    }
+
+    Dispose() {
+      this.key = null;
+      OpCodes.ClearArray(this.inputBuffer);
+      this.inputBuffer.length = 0;
+    }
+
+    _expandKey(keyBytes) {
+      const tables = this.tables;
+      const keyCopy = Uint8Array.from(keyBytes, value => value & 0xff);
+      const nk = keyCopy.length / 4;
+      const nr = nk + 6;
+      const totalWords = NB * (nr + 1);
+      const words = new Uint32Array(totalWords);
+
+      for (let i = 0; i < nk; i++) {
+        const offset = i * 4;
+        words[i] = OpCodes.Pack32BE(
+          keyCopy[offset],
+          keyCopy[offset + 1],
+          keyCopy[offset + 2],
+          keyCopy[offset + 3]
+        ) >>> 0;
       }
 
       let rconIndex = 0;
-      for (let i = keyLen; i < expandedSize; i += 4) {
-        // Take last 4 bytes of the generated key
-        let temp = [expandedKey[i-4], expandedKey[i-3], expandedKey[i-2], expandedKey[i-1]];
-        
-        if ((i / 4) % nk === 0) {
-          // RotWord
-          const t = temp[0];
-          temp[0] = temp[1];
-          temp[1] = temp[2];
-          temp[2] = temp[3];
-          temp[3] = t;
-          
-          // SubWord
-          temp[0] = this.sbox[temp[0]];
-          temp[1] = this.sbox[temp[1]];
-          temp[2] = this.sbox[temp[2]];
-          temp[3] = this.sbox[temp[3]];
-          
-          // XOR with Rcon
-          temp[0] = temp[0] ^ this.rcon[rconIndex];
+      for (let i = nk; i < totalWords; i++) {
+        let temp = words[i - 1];
+        if (i % nk === 0) {
+          temp = (subWord(rotWord(temp), tables) ^ (tables.RCON[rconIndex] << 24)) >>> 0;
           rconIndex++;
-        } else if (nk > 6 && (i / 4) % nk === 4) {
-          // For AES-256 only: SubWord
-          temp[0] = this.sbox[temp[0]];
-          temp[1] = this.sbox[temp[1]];
-          temp[2] = this.sbox[temp[2]];
-          temp[3] = this.sbox[temp[3]];
+        } else if (nk > 6 && (i % nk) === 4) {
+          temp = subWord(temp, tables);
         }
-        
-        // XOR with appropriate earlier key bytes
-        expandedKey[i] = expandedKey[i - 4*nk] ^ temp[0];
-        expandedKey[i+1] = expandedKey[i+1 - 4*nk] ^ temp[1];
-        expandedKey[i+2] = expandedKey[i+2 - 4*nk] ^ temp[2];
-        expandedKey[i+3] = expandedKey[i+3 - 4*nk] ^ temp[3];
+        words[i] = (words[i - nk] ^ temp) >>> 0;
       }
 
-      return expandedKey;
-    }
-
-    _rotWord(word) {
-      return ((word << 8) | (word >>> 24)) >>> 0;
-    }
-
-    _subWord(word) {
-      return ((this.sbox[(word >>> 24) & 0xff] << 24) |
-              (this.sbox[(word >>> 16) & 0xff] << 16) |
-              (this.sbox[(word >>> 8) & 0xff] << 8) |
-              this.sbox[word & 0xff]) >>> 0;
-    }
-    
-    // Helper function for encryption rounds using T0 table
-    _encrypt_t0(b0, b1, b2, b3) {
-      return this.T0[b0] ^ 
-             OpCodes.RotL32(this.T0[b1], 24) ^ 
-             OpCodes.RotL32(this.T0[b2], 16) ^ 
-             OpCodes.RotL32(this.T0[b3], 8);
-    }
-    
-    // 32-bit rotation helper
-    _shift(r, shift) {
-      return ((r >>> shift) | (r << (32 - shift))) >>> 0;
-    }
-
-    // Working AES encryption implementation
-    _encrypt(input) {
-      // Copy input to state array  
-      const state = new Array(16);
-      for (let i = 0; i < 16; i++) {
-        state[i] = input[i];
+      const roundKeys = new Uint8Array(totalWords * 4);
+      for (let i = 0; i < totalWords; i++) {
+        const offset = i * 4;
+        const unpacked = OpCodes.Unpack32BE(words[i]);
+        roundKeys[offset] = unpacked[0];
+        roundKeys[offset + 1] = unpacked[1];
+        roundKeys[offset + 2] = unpacked[2];
+        roundKeys[offset + 3] = unpacked[3];
+        OpCodes.ClearArray(unpacked);
       }
-      
-      // Add round key
-      this._addRoundKeyLinear(state, 0);
-      
-      // Main rounds
+
+      OpCodes.ClearArray(words);
+
+      return {
+        keyCopy,
+        roundKeys,
+        rounds: nr
+      };
+    }
+
+    _encryptBlock(block) {
+      if (!this.roundKeys) {
+        throw new Error("Key not set");
+      }
+      if (!block || block.length !== BLOCK_SIZE) {
+        throw new Error("Rijndael requires exactly " + BLOCK_SIZE + " bytes per block");
+      }
+
+      const state = new Uint8Array(BLOCK_SIZE);
+      for (let i = 0; i < BLOCK_SIZE; i++) {
+        state[i] = block[i] & 0xff;
+      }
+
+      this._addRoundKey(state, 0);
+
       for (let round = 1; round < this.rounds; round++) {
-        this._subBytesLinear(state);
-        this._shiftRowsLinear(state);
-        this._mixColumnsLinear(state);
-        this._addRoundKeyLinear(state, round);
+        this._subBytes(state);
+        this._shiftRows(state);
+        this._mixColumns(state);
+        this._addRoundKey(state, round);
       }
-      
-      // Final round (no MixColumns)
-      this._subBytesLinear(state);
-      this._shiftRowsLinear(state);
-      this._addRoundKeyLinear(state, this.rounds);
-      
-      return state;
+
+      this._subBytes(state);
+      this._shiftRows(state);
+      this._addRoundKey(state, this.rounds);
+
+      const result = new Array(BLOCK_SIZE);
+      for (let i = 0; i < BLOCK_SIZE; i++) {
+        result[i] = state[i];
+      }
+      OpCodes.ClearArray(state);
+      return result;
     }
 
-    // Main decryption function
-    _decrypt(input) {
-      // Create 4x4 state matrix: state[row][col]
-      const state = [
-        [input[0], input[4], input[8], input[12]],
-        [input[1], input[5], input[9], input[13]],
-        [input[2], input[6], input[10], input[14]],
-        [input[3], input[7], input[11], input[15]]
-      ];
-      
+    _decryptBlock(block) {
+      if (!this.roundKeys) {
+        throw new Error("Key not set");
+      }
+      if (!block || block.length !== BLOCK_SIZE) {
+        throw new Error("Rijndael requires exactly " + BLOCK_SIZE + " bytes per block");
+      }
+
+      const state = new Uint8Array(BLOCK_SIZE);
+      for (let i = 0; i < BLOCK_SIZE; i++) {
+        state[i] = block[i] & 0xff;
+      }
+
       this._addRoundKey(state, this.rounds);
-      
+
       for (let round = this.rounds - 1; round > 0; round--) {
         this._invShiftRows(state);
         this._invSubBytes(state);
         this._addRoundKey(state, round);
         this._invMixColumns(state);
       }
-      
+
       this._invShiftRows(state);
       this._invSubBytes(state);
       this._addRoundKey(state, 0);
-      
-      // Convert back to linear array (column-major)
-      return [
-        state[0][0], state[1][0], state[2][0], state[3][0],
-        state[0][1], state[1][1], state[2][1], state[3][1],
-        state[0][2], state[1][2], state[2][2], state[3][2],
-        state[0][3], state[1][3], state[2][3], state[3][3]
-      ];
+
+      const result = new Array(BLOCK_SIZE);
+      for (let i = 0; i < BLOCK_SIZE; i++) {
+        result[i] = state[i];
+      }
+      OpCodes.ClearArray(state);
+      return result;
     }
 
-    _addRoundKeyLinear(state, round) {
-      const offset = round * 16;
-      for (let i = 0; i < 16; i++) {
-        state[i] ^= this.roundKeys[offset + i];
-      }
-    }
-    
-    _subBytesLinear(state) {
-      for (let i = 0; i < 16; i++) {
-        state[i] = this.sbox[state[i]];
-      }
-    }
-    
-    _shiftRowsLinear(state) {
-      // Row 1: shift left by 1
-      let temp = state[1];
-      state[1] = state[5];
-      state[5] = state[9]; 
-      state[9] = state[13];
-      state[13] = temp;
-      
-      // Row 2: shift left by 2  
-      temp = state[2];
-      state[2] = state[10];
-      state[10] = temp;
-      temp = state[6];
-      state[6] = state[14];
-      state[14] = temp;
-      
-      // Row 3: shift left by 3 (right by 1)
-      temp = state[15];
-      state[15] = state[11];
-      state[11] = state[7];
-      state[7] = state[3];
-      state[3] = temp;
-    }
-    
-    _mixColumnsLinear(state) {
-      for (let c = 0; c < 4; c++) {
-        const s0 = state[c*4];
-        const s1 = state[c*4 + 1];
-        const s2 = state[c*4 + 2];
-        const s3 = state[c*4 + 3];
-        
-        state[c*4]     = OpCodes.GF256Mul(s0, 2) ^ OpCodes.GF256Mul(s1, 3) ^ s2 ^ s3;
-        state[c*4 + 1] = s0 ^ OpCodes.GF256Mul(s1, 2) ^ OpCodes.GF256Mul(s2, 3) ^ s3;
-        state[c*4 + 2] = s0 ^ s1 ^ OpCodes.GF256Mul(s2, 2) ^ OpCodes.GF256Mul(s3, 3);
-        state[c*4 + 3] = OpCodes.GF256Mul(s0, 3) ^ s1 ^ s2 ^ OpCodes.GF256Mul(s3, 2);
+    _addRoundKey(state, round) {
+      const offset = round * BLOCK_SIZE;
+      for (let i = 0; i < BLOCK_SIZE; i++) {
+        state[i] = (state[i] ^ this.roundKeys[offset + i]) & 0xff;
       }
     }
 
     _subBytes(state) {
-      for (let r = 0; r < 4; r++) {
-        for (let c = 0; c < 4; c++) {
-          state[r][c] = this.sbox[state[r][c]];
-        }
+      const sbox = this.tables.SBOX;
+      for (let i = 0; i < BLOCK_SIZE; i++) {
+        state[i] = sbox[state[i]];
       }
     }
 
     _invSubBytes(state) {
-      for (let r = 0; r < 4; r++) {
-        for (let c = 0; c < 4; c++) {
-          state[r][c] = this.invSbox[state[r][c]];
-        }
+      const invSbox = this.tables.INV_SBOX;
+      for (let i = 0; i < BLOCK_SIZE; i++) {
+        state[i] = invSbox[state[i]];
       }
     }
 
     _shiftRows(state) {
-      // Row 1: shift left by 1
-      let temp = state[1][0];
-      state[1][0] = state[1][1];
-      state[1][1] = state[1][2];
-      state[1][2] = state[1][3];
-      state[1][3] = temp;
-      
-      // Row 2: shift left by 2
-      temp = state[2][0];
-      state[2][0] = state[2][2];
-      state[2][2] = temp;
-      temp = state[2][1];
-      state[2][1] = state[2][3];
-      state[2][3] = temp;
-      
-      // Row 3: shift left by 3 (right by 1)
-      temp = state[3][3];
-      state[3][3] = state[3][2];
-      state[3][2] = state[3][1];
-      state[3][1] = state[3][0];
-      state[3][0] = temp;
+      let temp = state[1];
+      state[1] = state[5];
+      state[5] = state[9];
+      state[9] = state[13];
+      state[13] = temp;
+
+      temp = state[2];
+      let temp2 = state[6];
+      state[2] = state[10];
+      state[6] = state[14];
+      state[10] = temp;
+      state[14] = temp2;
+
+      temp = state[3];
+      state[3] = state[15];
+      state[15] = state[11];
+      state[11] = state[7];
+      state[7] = temp;
     }
 
     _invShiftRows(state) {
-      // Row 1: shift right by 1
-      let temp = state[1][3];
-      state[1][3] = state[1][2];
-      state[1][2] = state[1][1];
-      state[1][1] = state[1][0];
-      state[1][0] = temp;
-      
-      // Row 2: shift right by 2
-      temp = state[2][0];
-      state[2][0] = state[2][2];
-      state[2][2] = temp;
-      temp = state[2][1];
-      state[2][1] = state[2][3];
-      state[2][3] = temp;
-      
-      // Row 3: shift right by 3 (left by 1)
-      temp = state[3][0];
-      state[3][0] = state[3][1];
-      state[3][1] = state[3][2];
-      state[3][2] = state[3][3];
-      state[3][3] = temp;
+      let temp = state[13];
+      state[13] = state[9];
+      state[9] = state[5];
+      state[5] = state[1];
+      state[1] = temp;
+
+      temp = state[2];
+      let temp2 = state[6];
+      state[2] = state[10];
+      state[6] = state[14];
+      state[10] = temp;
+      state[14] = temp2;
+
+      temp = state[3];
+      state[3] = state[7];
+      state[7] = state[11];
+      state[11] = state[15];
+      state[15] = temp;
     }
 
     _mixColumns(state) {
-      for (let c = 0; c < 4; c++) {
-        const a = [state[0][c], state[1][c], state[2][c], state[3][c]];
-        state[0][c] = OpCodes.GF256Mul(a[0], 2) ^ OpCodes.GF256Mul(a[1], 3) ^ a[2] ^ a[3];
-        state[1][c] = a[0] ^ OpCodes.GF256Mul(a[1], 2) ^ OpCodes.GF256Mul(a[2], 3) ^ a[3];
-        state[2][c] = a[0] ^ a[1] ^ OpCodes.GF256Mul(a[2], 2) ^ OpCodes.GF256Mul(a[3], 3);
-        state[3][c] = OpCodes.GF256Mul(a[0], 3) ^ a[1] ^ a[2] ^ OpCodes.GF256Mul(a[3], 2);
+      for (let col = 0; col < 4; col++) {
+        const base = col * 4;
+        const s0 = state[base];
+        const s1 = state[base + 1];
+        const s2 = state[base + 2];
+        const s3 = state[base + 3];
+
+        state[base] = (
+          OpCodes.GF256Mul(s0, 2) ^ OpCodes.GF256Mul(s1, 3) ^ s2 ^ s3
+        ) & 0xff;
+        state[base + 1] = (
+          s0 ^ OpCodes.GF256Mul(s1, 2) ^ OpCodes.GF256Mul(s2, 3) ^ s3
+        ) & 0xff;
+        state[base + 2] = (
+          s0 ^ s1 ^ OpCodes.GF256Mul(s2, 2) ^ OpCodes.GF256Mul(s3, 3)
+        ) & 0xff;
+        state[base + 3] = (
+          OpCodes.GF256Mul(s0, 3) ^ s1 ^ s2 ^ OpCodes.GF256Mul(s3, 2)
+        ) & 0xff;
       }
     }
 
     _invMixColumns(state) {
-      for (let c = 0; c < 4; c++) {
-        const a = [state[0][c], state[1][c], state[2][c], state[3][c]];
-        state[0][c] = OpCodes.GF256Mul(a[0], 14) ^ OpCodes.GF256Mul(a[1], 11) ^ OpCodes.GF256Mul(a[2], 13) ^ OpCodes.GF256Mul(a[3], 9);
-        state[1][c] = OpCodes.GF256Mul(a[0], 9) ^ OpCodes.GF256Mul(a[1], 14) ^ OpCodes.GF256Mul(a[2], 11) ^ OpCodes.GF256Mul(a[3], 13);
-        state[2][c] = OpCodes.GF256Mul(a[0], 13) ^ OpCodes.GF256Mul(a[1], 9) ^ OpCodes.GF256Mul(a[2], 14) ^ OpCodes.GF256Mul(a[3], 11);
-        state[3][c] = OpCodes.GF256Mul(a[0], 11) ^ OpCodes.GF256Mul(a[1], 13) ^ OpCodes.GF256Mul(a[2], 9) ^ OpCodes.GF256Mul(a[3], 14);
+      for (let col = 0; col < 4; col++) {
+        const base = col * 4;
+        const s0 = state[base];
+        const s1 = state[base + 1];
+        const s2 = state[base + 2];
+        const s3 = state[base + 3];
+
+        state[base] = (
+          OpCodes.GF256Mul(s0, 14) ^ OpCodes.GF256Mul(s1, 11) ^ OpCodes.GF256Mul(s2, 13) ^ OpCodes.GF256Mul(s3, 9)
+        ) & 0xff;
+        state[base + 1] = (
+          OpCodes.GF256Mul(s0, 9) ^ OpCodes.GF256Mul(s1, 14) ^ OpCodes.GF256Mul(s2, 11) ^ OpCodes.GF256Mul(s3, 13)
+        ) & 0xff;
+        state[base + 2] = (
+          OpCodes.GF256Mul(s0, 13) ^ OpCodes.GF256Mul(s1, 9) ^ OpCodes.GF256Mul(s2, 14) ^ OpCodes.GF256Mul(s3, 11)
+        ) & 0xff;
+        state[base + 3] = (
+          OpCodes.GF256Mul(s0, 11) ^ OpCodes.GF256Mul(s1, 13) ^ OpCodes.GF256Mul(s2, 9) ^ OpCodes.GF256Mul(s3, 14)
+        ) & 0xff;
       }
     }
   }
 
-  // ===== REGISTRATION =====
   const algorithmInstance = new RijndaelAlgorithm();
   if (!AlgorithmFramework.Find(algorithmInstance.name)) {
     RegisterAlgorithm(algorithmInstance);
   }
 
-  // ===== EXPORTS =====
   return { RijndaelAlgorithm, RijndaelInstance };
-}));
+});
