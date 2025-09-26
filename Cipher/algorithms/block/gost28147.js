@@ -1,65 +1,116 @@
 /*
  * GOST 28147-89 Block Cipher Implementation
- * Compatible with AlgorithmFramework
+ * AlgorithmFramework Format
  * (c)2006-2025 Hawkynt
- * 
- * GOST 28147-89 - Russian Federal Standard block cipher
- * 64-bit blocks with 256-bit keys, 32 rounds Feistel network
- * Uses 8 S-boxes with 4-bit to 4-bit substitution
+ *
+ * Reference-aligned with Crypto++ TestParam S-box tables.
  */
 
-// Load AlgorithmFramework (REQUIRED)
-
 (function (root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    // AMD
-    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
-  } else if (typeof module === 'object' && module.exports) {
-    // Node.js/CommonJS
+  if (typeof define === "function" && define.amd) {
+    define(["../../AlgorithmFramework", "../../OpCodes"], factory);
+  } else if (typeof module === "object" && module.exports) {
     module.exports = factory(
-      require('../../AlgorithmFramework'),
-      require('../../OpCodes')
+      require("../../AlgorithmFramework"),
+      require("../../OpCodes")
     );
   } else {
-    // Browser/Worker global
     factory(root.AlgorithmFramework, root.OpCodes);
   }
-}((function() {
-  if (typeof globalThis !== 'undefined') return globalThis;
-  if (typeof window !== 'undefined') return window;
-  if (typeof global !== 'undefined') return global;
-  if (typeof self !== 'undefined') return self;
-  throw new Error('Unable to locate global object');
+})((function () {
+  if (typeof globalThis !== "undefined") return globalThis;
+  if (typeof window !== "undefined") return window;
+  if (typeof global !== "undefined") return global;
+  if (typeof self !== "undefined") return self;
+  throw new Error("Unable to locate global object");
 })(), function (AlgorithmFramework, OpCodes) {
-  'use strict';
+  "use strict";
 
   if (!AlgorithmFramework) {
-    throw new Error('AlgorithmFramework dependency is required');
+    throw new Error("AlgorithmFramework dependency is required");
   }
-  
+
   if (!OpCodes) {
-    throw new Error('OpCodes dependency is required');
+    throw new Error("OpCodes dependency is required");
   }
 
-  // Extract framework components
-  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
-          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
-          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
-          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
-          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
-          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
-          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+  const {
+    RegisterAlgorithm,
+    CategoryType,
+    SecurityStatus,
+    ComplexityType,
+    CountryCode,
+    BlockCipherAlgorithm,
+    IBlockCipherInstance,
+    KeySize,
+    LinkItem,
+    Vulnerability
+  } = AlgorithmFramework;
 
-  // ===== ALGORITHM IMPLEMENTATION =====
+  const BLOCK_SIZE = 8;
+  const KEY_BYTES = 32;
+
+  // Precompute round tables using Crypto++ TestParam S-box rotations
+  const Gost28147Tables = (() => {
+    const baseSBoxes = [
+      [4, 10, 9, 2, 13, 8, 0, 14, 6, 11, 1, 12, 7, 15, 5, 3],
+      [14, 11, 4, 12, 6, 13, 15, 10, 2, 3, 8, 1, 0, 7, 5, 9],
+      [5, 8, 1, 13, 10, 3, 4, 2, 14, 15, 12, 7, 6, 0, 9, 11],
+      [7, 13, 10, 1, 0, 8, 9, 15, 14, 4, 6, 12, 11, 2, 5, 3],
+      [6, 12, 7, 1, 5, 15, 13, 8, 4, 10, 9, 14, 0, 3, 11, 2],
+      [4, 11, 10, 0, 7, 2, 1, 13, 3, 6, 8, 5, 9, 12, 15, 14],
+      [13, 11, 4, 1, 3, 15, 5, 9, 0, 10, 14, 7, 6, 8, 2, 12],
+      [1, 15, 13, 0, 5, 7, 10, 4, 9, 2, 3, 14, 6, 11, 8, 12]
+    ];
+
+    const rotation = [11, 19, 27, 3];
+    const tables = [
+      new Uint32Array(256),
+      new Uint32Array(256),
+      new Uint32Array(256),
+      new Uint32Array(256)
+    ];
+
+    for (let i = 0; i < 4; i++) {
+      const lowRow = baseSBoxes[2 * i];
+      const highRow = baseSBoxes[(2 * i) + 1];
+      const table = tables[i];
+      for (let j = 0; j < 256; j++) {
+        const combined = lowRow[j & 0x0f] | (highRow[j >>> 4] << 4);
+        table[j] = OpCodes.RotL32(combined, rotation[i]);
+      }
+    }
+
+    const exportedSBoxes = baseSBoxes.map(row => Object.freeze(row.slice()));
+    return {
+      sBoxes: Object.freeze(exportedSBoxes),
+      T0: tables[0],
+      T1: tables[1],
+      T2: tables[2],
+      T3: tables[3]
+    };
+  })();
+
+  function gostRound(word, keyWord) {
+    const sum = OpCodes.Add32(word, keyWord);
+    const b0 = sum & 0xFF;
+    const b1 = (sum >>> 8) & 0xFF;
+    const b2 = (sum >>> 16) & 0xFF;
+    const b3 = (sum >>> 24) & 0xFF;
+    return (
+      Gost28147Tables.T0[b0] ^
+      Gost28147Tables.T1[b1] ^
+      Gost28147Tables.T2[b2] ^
+      Gost28147Tables.T3[b3]
+    ) >>> 0;
+  }
 
   class Gost28147Algorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
 
-      // Required metadata
       this.name = "GOST 28147-89";
-      this.description = "Russian Federal Standard GOST 28147-89 block cipher. Feistel cipher with 64-bit blocks, 256-bit keys, and 32 rounds. Uses 8 S-boxes for 4-bit substitution. Educational implementation of the Soviet/Russian encryption standard.";
+      this.description = "Educational implementation of the Soviet/Russian GOST 28147-89 block cipher (Magma). 64-bit Feistel network with 256-bit keys using the TestParam S-box set.";
       this.inventor = "Soviet Union cryptographers";
       this.year = 1989;
       this.category = CategoryType.BLOCK;
@@ -68,86 +119,64 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.RU;
 
-      // Algorithm-specific metadata
       this.SupportedKeySizes = [
-        new KeySize(32, 32, 0)  // GOST 28147-89: 256-bit keys only
+        new KeySize(KEY_BYTES, KEY_BYTES, 0)
       ];
       this.SupportedBlockSizes = [
-        new KeySize(8, 8, 0)    // 64-bit blocks only
+        new KeySize(BLOCK_SIZE, BLOCK_SIZE, 0)
       ];
 
-      // Documentation and references
       this.documentation = [
-        new LinkItem("RFC 4357 - Additional Cryptographic Algorithms for GOST 28147-89", "https://tools.ietf.org/rfc/rfc4357.txt"),
-        new LinkItem("GOST 28147-89 Standard", "https://www.tc26.ru/en/standard/gost/"),
+        new LinkItem("GOST 28147-89 Standard (TC26)", "https://www.tc26.ru/en/standard/gost/"),
+        new LinkItem("RFC 5830 - GOST 28147-89 Cipher Suites for TLS", "https://www.rfc-editor.org/rfc/rfc5830"),
         new LinkItem("Wikipedia - GOST block cipher", "https://en.wikipedia.org/wiki/GOST_(block_cipher)")
       ];
 
       this.references = [
-        new LinkItem("RFC 4357 Specification", "https://tools.ietf.org/rfc/rfc4357.txt"),
-        new LinkItem("Applied Cryptography - GOST", "https://www.schneier.com/academic/archives/1996/09/description_of_a_new.html"),
+        new LinkItem("RFC 4357 - Additional Cryptographic Algorithms for GOST 28147-89", "https://www.rfc-editor.org/rfc/rfc4357"),
         new LinkItem("Crypto++ GOST Implementation", "https://github.com/weidai11/cryptopp/blob/master/gost.cpp"),
-        new LinkItem("OpenSSL GOST Implementation", "https://github.com/openssl/openssl/tree/master/engines/e_gost.c")
+        new LinkItem("Crypto++ GOST validation vectors", "https://github.com/weidai11/cryptopp/blob/master/TestData/gostval.dat"),
+        new LinkItem("OpenSSL GOST Engine", "https://github.com/openssl/openssl/tree/master/engines/e_gost.c")
       ];
 
-      // Known vulnerabilities
       this.knownVulnerabilities = [
         new Vulnerability(
           "Weak key classes",
-          "Some keys may exhibit weak cryptographic properties",
-          "Use random keys and avoid pattern-based key generation"
+          "Some keys may exhibit weak differential properties and reduced cycle lengths.",
+          "Use uniformly random keys and avoid structured key material."
         ),
         new Vulnerability(
           "S-box dependency",
-          "Security depends heavily on the choice of S-boxes",
-          "Use standardized S-box sets from RFC 4357"
+          "Security depends heavily on the selected S-box set.",
+          "Use standardized or audited S-box collections (e.g., TestParam, CryptoPro)."
         )
       ];
 
-      // Test vectors using OpCodes byte arrays
       this.tests = [
         {
-          text: "GOST 28147-89 all zeros plaintext - educational test vector",
-          uri: "https://tools.ietf.org/rfc/rfc4357.txt",
-          input: OpCodes.Hex8ToBytes("0000000000000000"),
-          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
-          expected: OpCodes.Hex8ToBytes("66aa28cf3b24ddb9")
+          text: "Crypto++ validation vector 1 (TestParam S-box)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/gostval.dat",
+          input: OpCodes.Hex8ToBytes("0DF82802B741A292"),
+          key: OpCodes.Hex8ToBytes("BE5EC2006CFF9DCF52354959F1FF0CBFE95061B5A648C10387069C25997C0672"),
+          expected: OpCodes.Hex8ToBytes("07F9027DF7F7DF89")
         },
         {
-          text: "GOST 28147-89 pattern test vector - educational",
-          uri: "https://tools.ietf.org/rfc/rfc4357.txt",
-          input: OpCodes.Hex8ToBytes("0123456789abcdef"),
-          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
-          expected: OpCodes.Hex8ToBytes("619a8ed3209c803a")
+          text: "Crypto++ validation vector 4 (TestParam S-box)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/gostval.dat",
+          input: OpCodes.Hex8ToBytes("D4C05323A4F7A7B5"),
+          key: OpCodes.Hex8ToBytes("728FEE32F04B4C654AD7F607D71C660C2C2670D7C999713233149A1C0C17A1F0"),
+          expected: OpCodes.Hex8ToBytes("4D1F2E6B0D9DE2CE")
         },
         {
-          text: "GOST 28147-89 all ones boundary test vector - educational",
-          uri: "https://tools.ietf.org/rfc/rfc4357.txt",
-          input: OpCodes.Hex8ToBytes("ffffffffffffffff"),
-          key: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
-          expected: OpCodes.Hex8ToBytes("06bc291b78160478")
+          text: "Crypto++ validation vector 9 (TestParam S-box)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/gostval.dat",
+          input: OpCodes.Hex8ToBytes("40140A581D78BB49"),
+          key: OpCodes.Hex8ToBytes("620153EE18096E622B6BFE4FF26BD6C4A3C8F4ED705FEB5943CC3B5AB93FC11C"),
+          expected: OpCodes.Hex8ToBytes("D48ADCE9AE2DF9A7")
         }
       ];
 
-      // GOST 28147-89 S-boxes (Default S-box from Applied Cryptography)
-      this.GOST_SBOXES = [
-        // S0
-        [4, 10, 9, 2, 13, 8, 0, 14, 6, 11, 1, 12, 7, 15, 5, 3],
-        // S1
-        [14, 11, 4, 12, 6, 13, 15, 10, 2, 3, 8, 1, 0, 7, 5, 9],
-        // S2
-        [5, 8, 1, 13, 10, 3, 4, 2, 14, 15, 12, 7, 6, 0, 9, 11],
-        // S3
-        [7, 13, 10, 1, 0, 8, 9, 15, 14, 4, 6, 12, 11, 2, 5, 3],
-        // S4
-        [6, 12, 7, 1, 5, 15, 13, 8, 4, 10, 9, 14, 0, 3, 11, 2],
-        // S5
-        [4, 11, 10, 0, 7, 2, 1, 13, 3, 6, 8, 5, 9, 12, 15, 14],
-        // S6
-        [13, 11, 4, 1, 3, 15, 5, 9, 0, 10, 14, 7, 6, 8, 2, 12],
-        // S7
-        [1, 15, 13, 0, 5, 7, 10, 4, 9, 2, 3, 14, 6, 11, 8, 12]
-      ];
+      this.GOST_SBOXES = Gost28147Tables.sBoxes;
     }
 
     CreateInstance(isInverse = false) {
@@ -156,196 +185,179 @@
   }
 
   class Gost28147Instance extends IBlockCipherInstance {
-    constructor(algorithm, isInverse = false) {
+    constructor(algorithm, isInverse) {
       super(algorithm);
-      this.isInverse = isInverse;
-      this.key = null;
+      this.isInverse = !!isInverse;
+      this._key = null;
       this.subkeys = null;
       this.inputBuffer = [];
-      this.BlockSize = 8;     // 64-bit blocks
+      this.BlockSize = BLOCK_SIZE;
       this.KeySize = 0;
     }
 
     set key(keyBytes) {
-      if (!keyBytes) {
+      if (!keyBytes || keyBytes.length === 0) {
+        if (this._key) {
+          OpCodes.ClearArray(this._key);
+        }
+        if (this.subkeys) {
+          OpCodes.ClearArray(this.subkeys);
+        }
         this._key = null;
         this.subkeys = null;
         this.KeySize = 0;
         return;
       }
 
-      // Validate key size (256 bits / 32 bytes)
-      if (keyBytes.length !== 32) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. GOST 28147-89 requires 32 bytes (256 bits)`);
+      if (keyBytes.length !== KEY_BYTES) {
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. GOST 28147-89 requires 32 bytes (256 bits).");
       }
 
-      this._key = [...keyBytes];
-      this.KeySize = keyBytes.length;
-      this.subkeys = this._expandKey(keyBytes);
+      if (this._key) {
+        OpCodes.ClearArray(this._key);
+      }
+      if (this.subkeys) {
+        OpCodes.ClearArray(this.subkeys);
+      }
+
+      const keyCopy = Uint8Array.from(keyBytes);
+      this._key = keyCopy;
+      this.subkeys = this._expandKey(keyCopy);
+      this.KeySize = keyCopy.length;
     }
 
     get key() {
-      return this._key ? [...this._key] : null;
+      return this._key ? Array.from(this._key) : null;
     }
 
     Feed(data) {
-      if (!data || data.length === 0) return;
-      if (!this.key) throw new Error("Key not set");
-
-      this.inputBuffer.push(...data);
+      if (!data || data.length === 0) {
+        return;
+      }
+      if (!this._key) {
+        throw new Error("Key not set");
+      }
+      for (let i = 0; i < data.length; i++) {
+        this.inputBuffer.push(data[i] & 0xFF);
+      }
     }
 
     Result() {
-      if (!this.key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
-
-      // Validate input length for block cipher
-      if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+      if (!this._key) {
+        throw new Error("Key not set");
+      }
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data fed");
+      }
+      if (this.inputBuffer.length % BLOCK_SIZE !== 0) {
+        throw new Error("Input length must be multiple of " + BLOCK_SIZE + " bytes");
       }
 
       const output = [];
-      const blockSize = this.BlockSize;
-
-      // Process each block
-      for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
-        const block = this.inputBuffer.slice(i, i + blockSize);
-        const processedBlock = this.isInverse 
-          ? this._decryptBlock(block) 
-          : this._encryptBlock(block);
-        output.push(...processedBlock);
+      for (let offset = 0; offset < this.inputBuffer.length; offset += BLOCK_SIZE) {
+        const block = this.inputBuffer.slice(offset, offset + BLOCK_SIZE);
+        const processed = this.isInverse ? this._decryptBlock(block) : this._encryptBlock(block);
+        output.push.apply(output, processed);
+        OpCodes.ClearArray(block);
       }
 
-      // Clear input buffer for next operation
-      this.inputBuffer = [];
+      OpCodes.ClearArray(this.inputBuffer);
+      this.inputBuffer.length = 0;
 
       return output;
     }
 
+    Dispose() {
+      this.key = null;
+      OpCodes.ClearArray(this.inputBuffer);
+      this.inputBuffer.length = 0;
+    }
+
     _encryptBlock(block) {
-      if (block.length !== 8) {
+      if (!block || block.length !== BLOCK_SIZE) {
         throw new Error("GOST 28147-89 requires exactly 8 bytes per block");
       }
 
-      // Split into 32-bit halves (little-endian)
-      let left = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
-      let right = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
+      let n1 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
+      let n2 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
+      const k = this.subkeys;
 
-      // 32 rounds of Feistel network following C# Bouncy Castle structure exactly
+      const applyPair = (firstKey, secondKey) => {
+        n2 = (n2 ^ gostRound(n1, firstKey)) >>> 0;
+        n1 = (n1 ^ gostRound(n2, secondKey)) >>> 0;
+      };
 
-      // Rounds 1-24: forward key order (3 x 8 keys)
-      for (let k = 0; k < 3; k++) {
-        for (let j = 0; j < 8; j++) {
-          const temp = left;
-          left = right ^ this._fFunction(left, this.subkeys[j]);
-          right = temp;
-        }
+      for (let cycle = 0; cycle < 3; cycle++) {
+        applyPair(k[0], k[1]);
+        applyPair(k[2], k[3]);
+        applyPair(k[4], k[5]);
+        applyPair(k[6], k[7]);
       }
 
-      // Rounds 25-31: reverse key order (7 keys)
-      for (let j = 7; j > 0; j--) {
-        const temp = left;
-        left = right ^ this._fFunction(left, this.subkeys[j]);
-        right = temp;
-      }
+      n2 = (n2 ^ gostRound(n1, k[7])) >>> 0;
+      n1 = (n1 ^ gostRound(n2, k[6])) >>> 0;
+      n2 = (n2 ^ gostRound(n1, k[5])) >>> 0;
+      n1 = (n1 ^ gostRound(n2, k[4])) >>> 0;
+      n2 = (n2 ^ gostRound(n1, k[3])) >>> 0;
+      n1 = (n1 ^ gostRound(n2, k[2])) >>> 0;
+      n2 = (n2 ^ gostRound(n1, k[1])) >>> 0;
+      n1 = (n1 ^ gostRound(n2, k[0])) >>> 0;
 
-      // Round 32: special (key[0], no swap)
-      right = right ^ this._fFunction(left, this.subkeys[0]);
-
-      // Convert back to bytes (little-endian)
-      const leftBytes = OpCodes.Unpack32LE(left);
-      const rightBytes = OpCodes.Unpack32LE(right);
-
-      return [...leftBytes, ...rightBytes];
+      const leftBytes = OpCodes.Unpack32LE(n2);
+      const rightBytes = OpCodes.Unpack32LE(n1);
+      return leftBytes.concat(rightBytes);
     }
 
     _decryptBlock(block) {
-      if (block.length !== 8) {
+      if (!block || block.length !== BLOCK_SIZE) {
         throw new Error("GOST 28147-89 requires exactly 8 bytes per block");
       }
 
-      // Split into 32-bit halves (little-endian)
-      let left = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
-      let right = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
+      let n1 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
+      let n2 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
+      const k = this.subkeys;
 
-      // 32 rounds of Feistel network (reverse of encryption for decryption)
-      // Following C# Bouncy Castle structure exactly
+      const applyPair = (firstKey, secondKey) => {
+        n2 = (n2 ^ gostRound(n1, firstKey)) >>> 0;
+        n1 = (n1 ^ gostRound(n2, secondKey)) >>> 0;
+      };
 
-      // Rounds 1-8: forward key order (0 to 7)
-      for (let j = 0; j < 8; j++) {
-        const temp = left;
-        left = right ^ this._fFunction(left, this.subkeys[j]);
-        right = temp;
+      applyPair(k[0], k[1]);
+      applyPair(k[2], k[3]);
+      applyPair(k[4], k[5]);
+      applyPair(k[6], k[7]);
+
+      for (let cycle = 0; cycle < 3; cycle++) {
+        applyPair(k[7], k[6]);
+        applyPair(k[5], k[4]);
+        applyPair(k[3], k[2]);
+        applyPair(k[1], k[0]);
       }
 
-      // Rounds 9-31: reverse key order repeated 3 times (3 x 7 down to 0)
-      for (let k = 0; k < 3; k++) {
-        for (let j = 7; j >= 0; j--) {
-          if (k === 2 && j === 0) {
-            break; // Break before the 32nd step
-          }
-          const temp = left;
-          left = right ^ this._fFunction(left, this.subkeys[j]);
-          right = temp;
-        }
-      }
-
-      // Round 32: special (key[0], no swap)
-      right = right ^ this._fFunction(left, this.subkeys[0]);
-
-      // Convert back to bytes (little-endian)
-      const leftBytes = OpCodes.Unpack32LE(left);
-      const rightBytes = OpCodes.Unpack32LE(right);
-
-      return [...leftBytes, ...rightBytes];
-    }
-
-    // F-function: F(R, K) = S(R + K) <<< 11
-    _fFunction(right, subkey) {
-      // Add subkey modulo 2^32
-      const sum = (right + subkey) >>> 0;
-
-      // Apply S-boxes (8 x 4-bit substitutions)
-      let result = 0;
-      for (let i = 0; i < 8; i++) {
-        const nibble = (sum >>> (i * 4)) & 0xF;
-        const sboxValue = this.algorithm.GOST_SBOXES[i][nibble];
-        result |= (sboxValue << (i * 4));
-      }
-
-      // Rotate left by 11 positions
-      return OpCodes.RotL32(result, 11);
+      const leftBytes = OpCodes.Unpack32LE(n2);
+      const rightBytes = OpCodes.Unpack32LE(n1);
+      return leftBytes.concat(rightBytes);
     }
 
     _expandKey(keyBytes) {
-      // Generate 8 x 32-bit subkeys from 256-bit key
-      const subkeys = new Array(8);
-
-      for (let i = 0; i < 8; i++) {
+      const subkeys = new Uint32Array(KEY_BYTES / 4);
+      for (let i = 0; i < subkeys.length; i++) {
         const offset = i * 4;
-        // Pack as little-endian 32-bit word
         subkeys[i] = OpCodes.Pack32LE(
           keyBytes[offset],
           keyBytes[offset + 1],
           keyBytes[offset + 2],
           keyBytes[offset + 3]
-        );
+        ) >>> 0;
       }
-
       return subkeys;
     }
   }
 
-  // Register the algorithm
-
-  // ===== REGISTRATION =====
-
-    const algorithmInstance = new Gost28147Algorithm();
+  const algorithmInstance = new Gost28147Algorithm();
   if (!AlgorithmFramework.Find(algorithmInstance.name)) {
     RegisterAlgorithm(algorithmInstance);
   }
 
-  // ===== EXPORTS =====
-
   return { Gost28147Algorithm, Gost28147Instance };
-}));
+});
