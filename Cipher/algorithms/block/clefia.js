@@ -1,6 +1,6 @@
 /*
- * CLEFIA Block Cipher Implementation
- * Based on RFC 6114 and reference implementations
+ * CLEFIA Block Cipher Implementation - Fixed Version
+ * Based on Sony's reference implementation architecture
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  *
@@ -14,7 +14,7 @@
  * References:
  * - RFC 6114: The 128-Bit Blockcipher CLEFIA
  * - CLEFIA: A New 128-bit Block Cipher (FSE 2007)
- * - ISO/IEC 29192-2:2012 Lightweight Cryptography
+ * - Sony's reference implementation architecture
  */
 
 (function (root, factory) {
@@ -100,79 +100,15 @@
     0xf7, 0xe4, 0x79, 0x96, 0xa2, 0xfc, 0x6d, 0xb2, 0x6b, 0x03, 0xe1, 0x2e, 0x7d, 0x14, 0x95, 0x1d
   ];
 
-  // RFC 6114 CON constants generation parameters
-  const GF16_PRIMITIVE_POLY = 0x1002b; // z^16 + z^15 + z^13 + z^11 + z^5 + z^4 + 1
-  const P_CONST = 0xb7e1;
-  const Q_CONST = 0x243f;
-
-  // Initial values for CON generation
-  const IV_128 = 0x428a;
-  const IV_192 = 0x7137;
-  const IV_256 = 0xb5c0;
-
-  // GF(2^16) multiplication with primitive polynomial
-  function gf16Mult(a, b) {
-    let result = 0;
-    while (b > 0) {
-      if (b & 1) {
-        result ^= a;
-      }
-      a <<= 1;
-      if (a & 0x10000) {
-        a ^= GF16_PRIMITIVE_POLY;
-      }
-      b >>= 1;
-    }
-    return result & 0xFFFF;
-  }
-
-  // Generate CON constants according to RFC 6114
-  function generateCON(keySize) {
-    let iv, numConstants;
-    if (keySize === 16) {
-      iv = IV_128;
-      numConstants = 60;
-    } else if (keySize === 24) {
-      iv = IV_192;
-      numConstants = 84;
-    } else {
-      iv = IV_256;
-      numConstants = 108;
-    }
-
-    const con = [];
-    let t = iv;
-
-    for (let i = 0; i < numConstants / 2; i++) {
-      // CON[2i] = (t XOR P) | ((~t) <<< 1)
-      const con0_high = (t ^ P_CONST) & 0xFFFF;
-      const not_t_rot = ((~t) << 1) & 0xFFFF;
-      const con0 = (con0_high << 16) | not_t_rot;
-      con.push(con0);
-
-      // CON[2i+1] = ((~t) XOR Q) | (t <<< 8)
-      const con1_high = ((~t) ^ Q_CONST) & 0xFFFF;
-      const t_rot8 = ((t << 8) | (t >>> 8)) & 0xFFFF;
-      const con1 = (con1_high << 16) | t_rot8;
-      con.push(con1);
-
-      // t = t * (0x0002^-1) in GF(2^16)
-      // 0x0002^-1 in GF(2^16) with the primitive polynomial is 0x8001
-      t = gf16Mult(t, 0x8001);
-    }
-
-    return con;
-  }
-
   // ===== ALGORITHM IMPLEMENTATION =====
 
-  class CLEFIAAlgorithm extends BlockCipherAlgorithm {
+  class CLEFIAFixedAlgorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
 
       // Required metadata
-      this.name = "CLEFIA";
-      this.description = "Sony's CLEFIA block cipher with 128-bit blocks and 128/192/256-bit keys. Uses Generalized Feistel Network with F-functions for lightweight cryptography applications.";
+      this.name = "CLEFIA-Fixed";
+      this.description = "Sony's CLEFIA block cipher with corrected F-function architecture matching Sony's reference implementation. Uses Generalized Feistel Network with proper F-function XOR handling.";
       this.inventor = "Sony Corporation";
       this.year = 2007;
       this.category = CategoryType.BLOCK;
@@ -218,55 +154,50 @@
 
     // Required: Create instance for this algorithm
     CreateInstance(isInverse = false) {
-      return new CLEFIAInstance(this, isInverse);
+      return new CLEFIAFixedInstance(this, isInverse);
     }
 
-    // Galois Field multiplication using OpCodes
-    _gfMul(a, b) {
-      return OpCodes.GF256Mul(a, b);
-    }
-
-    // Apply M0 diffusion matrix
+    // Apply M0 diffusion matrix using OpCodes for GF multiplications
     _applyM0(input) {
       const output = new Array(4);
-      // M0 matrix:
-      // result[0] = input[0] ^ (2 * input[1]) ^ (4 * input[2]) ^ (6 * input[3])
-      // result[1] = (2 * input[0]) ^ input[1] ^ (6 * input[2]) ^ (4 * input[3])
-      // result[2] = (4 * input[0]) ^ (6 * input[1]) ^ input[2] ^ (2 * input[3])
-      // result[3] = (6 * input[0]) ^ (4 * input[1]) ^ (2 * input[2]) ^ input[3]
+      // M0 matrix from RFC 6114:
+      // [1 2 4 6]
+      // [2 1 6 4]
+      // [4 6 1 2]
+      // [6 4 2 1]
 
-      output[0] = input[0] ^ this._gfMul(input[1], 0x02) ^ this._gfMul(input[2], 0x04) ^ this._gfMul(input[3], 0x06);
-      output[1] = this._gfMul(input[0], 0x02) ^ input[1] ^ this._gfMul(input[2], 0x06) ^ this._gfMul(input[3], 0x04);
-      output[2] = this._gfMul(input[0], 0x04) ^ this._gfMul(input[1], 0x06) ^ input[2] ^ this._gfMul(input[3], 0x02);
-      output[3] = this._gfMul(input[0], 0x06) ^ this._gfMul(input[1], 0x04) ^ this._gfMul(input[2], 0x02) ^ input[3];
+      output[0] = input[0] ^ OpCodes.GF256Mul(input[1], 0x02) ^ OpCodes.GF256Mul(input[2], 0x04) ^ OpCodes.GF256Mul(input[3], 0x06);
+      output[1] = OpCodes.GF256Mul(input[0], 0x02) ^ input[1] ^ OpCodes.GF256Mul(input[2], 0x06) ^ OpCodes.GF256Mul(input[3], 0x04);
+      output[2] = OpCodes.GF256Mul(input[0], 0x04) ^ OpCodes.GF256Mul(input[1], 0x06) ^ input[2] ^ OpCodes.GF256Mul(input[3], 0x02);
+      output[3] = OpCodes.GF256Mul(input[0], 0x06) ^ OpCodes.GF256Mul(input[1], 0x04) ^ OpCodes.GF256Mul(input[2], 0x02) ^ input[3];
 
       return output;
     }
 
-    // Apply M1 diffusion matrix
+    // Apply M1 diffusion matrix using OpCodes for GF multiplications
     _applyM1(input) {
       const output = new Array(4);
-      // M1 matrix:
-      // result[0] = input[0] ^ (8 * input[1]) ^ (2 * input[2]) ^ (10 * input[3])
-      // result[1] = (8 * input[0]) ^ input[1] ^ (10 * input[2]) ^ (2 * input[3])
-      // result[2] = (2 * input[0]) ^ (10 * input[1]) ^ input[2] ^ (8 * input[3])
-      // result[3] = (10 * input[0]) ^ (2 * input[1]) ^ (8 * input[2]) ^ input[3]
+      // M1 matrix from RFC 6114:
+      // [1 8  2 10]
+      // [8 1 10  2]
+      // [2 10 1  8]
+      // [10 2 8  1]
 
-      output[0] = input[0] ^ this._gfMul(input[1], 0x08) ^ this._gfMul(input[2], 0x02) ^ this._gfMul(input[3], 0x0a);
-      output[1] = this._gfMul(input[0], 0x08) ^ input[1] ^ this._gfMul(input[2], 0x0a) ^ this._gfMul(input[3], 0x02);
-      output[2] = this._gfMul(input[0], 0x02) ^ this._gfMul(input[1], 0x0a) ^ input[2] ^ this._gfMul(input[3], 0x08);
-      output[3] = this._gfMul(input[0], 0x0a) ^ this._gfMul(input[1], 0x02) ^ this._gfMul(input[2], 0x08) ^ input[3];
+      output[0] = input[0] ^ OpCodes.GF256Mul(input[1], 0x08) ^ OpCodes.GF256Mul(input[2], 0x02) ^ OpCodes.GF256Mul(input[3], 0x0a);
+      output[1] = OpCodes.GF256Mul(input[0], 0x08) ^ input[1] ^ OpCodes.GF256Mul(input[2], 0x0a) ^ OpCodes.GF256Mul(input[3], 0x02);
+      output[2] = OpCodes.GF256Mul(input[0], 0x02) ^ OpCodes.GF256Mul(input[1], 0x0a) ^ input[2] ^ OpCodes.GF256Mul(input[3], 0x08);
+      output[3] = OpCodes.GF256Mul(input[0], 0x0a) ^ OpCodes.GF256Mul(input[1], 0x02) ^ OpCodes.GF256Mul(input[2], 0x08) ^ input[3];
 
       return output;
     }
 
-    // F-function F0 using S0/S1 and M0
-    _F0(input, rk) {
+    // F0 function - basic F0 operation without XOR
+    _clefiaF0(src, rk) {
       const y = new Array(4);
 
       // XOR with round key
       for (let i = 0; i < 4; i++) {
-        y[i] = input[i] ^ rk[i];
+        y[i] = src[i] ^ rk[i];
       }
 
       // S-box substitution: F0 uses S0, S1, S0, S1
@@ -279,13 +210,13 @@
       return this._applyM0(y);
     }
 
-    // F-function F1 using S1/S0 and M1
-    _F1(input, rk) {
+    // F1 function - basic F1 operation without XOR
+    _clefiaF1(src, rk) {
       const y = new Array(4);
 
       // XOR with round key
       for (let i = 0; i < 4; i++) {
-        y[i] = input[i] ^ rk[i];
+        y[i] = src[i] ^ rk[i];
       }
 
       // S-box substitution: F1 uses S1, S0, S1, S0
@@ -297,10 +228,28 @@
       // Apply M1 diffusion matrix
       return this._applyM1(y);
     }
+
+    // F0 function with XOR - matches Sony's ClefiaF0Xor architecture
+    _clefiaF0Xor(dst, src, rk) {
+      const f0_result = this._clefiaF0(src, rk);
+      // XOR F0 result with destination (this is Sony's architecture!)
+      for (let i = 0; i < 4; i++) {
+        dst[i] ^= f0_result[i];
+      }
+    }
+
+    // F1 function with XOR - matches Sony's ClefiaF1Xor architecture
+    _clefiaF1Xor(dst, src, rk) {
+      const f1_result = this._clefiaF1(src, rk);
+      // XOR F1 result with destination (this is Sony's architecture!)
+      for (let i = 0; i < 4; i++) {
+        dst[i] ^= f1_result[i];
+      }
+    }
   }
 
   // Instance class - handles the actual encryption/decryption
-  class CLEFIAInstance extends IBlockCipherInstance {
+  class CLEFIAFixedInstance extends IBlockCipherInstance {
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -389,183 +338,57 @@
       return output;
     }
 
-    // RFC 6114 compliant key schedule implementation based on Sony's reference
-    _generateKeys() {
-      this.roundKeys = [];
-      this.whiteningKeys = [];
-
-      if (this.KeySize === 16) {
-        this._generateKeys128();
-      } else if (this.KeySize === 24) {
-        this._generateKeys192();
-      } else {
-        this._generateKeys256();
-      }
-    }
-
-    // 128-bit key schedule following Sony's ClefiaKeySet128 exactly
-    _generateKeys128() {
-      const IV = [0x42, 0x8a]; // cubic root of 2
-      const con128 = this._clefiaConSet(IV, 30); // generates 4*60 = 240 bytes
-
-      // GFN_{4,12} (generating L from K)
-      const L = this._clefiaGfn4([...this._key], con128, 12);
-
-      // Initial whitening keys (WK0, WK1) - first 8 bytes of K
-      this.whiteningKeys = [];
-      this.whiteningKeys[0] = this._key.slice(0, 4);
-      this.whiteningKeys[1] = this._key.slice(4, 8);
-
-      // Generate 18 round keys (36 total for pairs)
-      this.roundKeys = [];
-      let currentL = [...L];
-
-      for (let i = 0; i < 18; i++) {
-        // Round key = L XOR CON[i*16 + 96..i*16 + 111]
-        const rk = [];
-        for (let j = 0; j < 16; j++) {
-          rk[j] = currentL[j] ^ con128[i * 16 + 96 + j];
-        }
-
-        // On odd rounds, XOR with K
-        if (i % 2 === 1) {
-          for (let j = 0; j < 16; j++) {
-            rk[j] ^= this._key[j];
-          }
-        }
-
-        // Split into two 4-byte round keys for F0 and F1
-        this.roundKeys[i * 2] = rk.slice(0, 4);     // RK for F0
-        this.roundKeys[i * 2 + 1] = rk.slice(8, 12); // RK for F1
-
-        // Update L using DoubleSwap
-        currentL = this._clefiaDoubleSwap(currentL);
-      }
-
-      // Final whitening keys (WK2, WK3) - last 8 bytes of K
-      this.whiteningKeys[2] = this._key.slice(8, 12);
-      this.whiteningKeys[3] = this._key.slice(12, 16);
-
-    }
-
-    // Placeholder for 192/256-bit keys
-    _generateKeys192() {
-      // For now, use simplified approach
-      this.whiteningKeys = [];
-      for (let i = 0; i < 4; i++) {
-        this.whiteningKeys[i] = [];
-        for (let j = 0; j < 4; j++) {
-          this.whiteningKeys[i][j] = this._key[(i * 4 + j) % this.KeySize];
-        }
-      }
-
-      this.roundKeys = [];
-      for (let round = 0; round < this.rounds * 2; round++) {
-        this.roundKeys[round] = [];
-        for (let i = 0; i < 4; i++) {
-          this.roundKeys[round][i] = this._key[(round * 4 + i) % this.KeySize] ^ (round & 0xFF);
-        }
-      }
-    }
-
-    _generateKeys256() {
-      // For now, use simplified approach
-      this.whiteningKeys = [];
-      for (let i = 0; i < 4; i++) {
-        this.whiteningKeys[i] = [];
-        for (let j = 0; j < 4; j++) {
-          this.whiteningKeys[i][j] = this._key[(i * 4 + j) % this.KeySize];
-        }
-      }
-
-      this.roundKeys = [];
-      for (let round = 0; round < this.rounds * 2; round++) {
-        this.roundKeys[round] = [];
-        for (let i = 0; i < 4; i++) {
-          this.roundKeys[round][i] = this._key[(round * 4 + i) % this.KeySize] ^ (round & 0xFF);
-        }
-      }
-    }
-
-    // CON constants generation following Sony's ClefiaConSet
-    _clefiaConSet(iv, lk) {
+    // Sony's CON constants generation - matches ClefiaConSet exactly
+    _clefiaConSet(lk) {
       const con = [];
-      let t = [...iv];
+
+      // Initial value for 128-bit keys (cubic root of 2): 0x428a
+      let t = [0x42, 0x8a]; // Split into two bytes as Sony's reference does
 
       for (let i = 0; i < lk; i++) {
-        // Generate 8 bytes per iteration
+        // Generate 8 bytes per iteration exactly as Sony's ClefiaConSet
         con.push(t[0] ^ 0xb7);
         con.push(t[1] ^ 0xe1);
-        con.push(~((t[0] << 1) | (t[1] >>> 7)) & 0xFF);
-        con.push(~((t[1] << 1) | (t[0] >>> 7)) & 0xFF);
+        con.push((~((t[0] << 1) | (t[1] >>> 7))) & 0xFF);
+        con.push((~((t[1] << 1) | (t[0] >>> 7))) & 0xFF);
         con.push((~t[0] ^ 0x24) & 0xFF);
         con.push((~t[1] ^ 0x3f) & 0xFF);
         con.push(t[1]);
         con.push(t[0]);
 
-        // Update t for next iteration
+        // Update t exactly as Sony's reference
         if (t[1] & 0x01) {
           t[0] ^= 0xa8;
           t[1] ^= 0x30;
         }
-        const tmp = t[0] << 7;
-        t[0] = (t[0] >>> 1) | (t[1] << 7) & 0xFF;
+        const tmp = (t[0] << 7) & 0xFF;
+        t[0] = ((t[0] >>> 1) | (t[1] << 7)) & 0xFF;
         t[1] = ((t[1] >>> 1) | tmp) & 0xFF;
       }
 
       return con;
     }
 
-    // GFN4 function following Sony's ClefiaGfn4
-    _clefiaGfn4(x, rk, r) {
-      let fin = [...x];
-      let fout = new Array(16);
+    // GF(2^16) multiplication with primitive polynomial z^16 + z^15 + z^13 + z^11 + z^5 + z^4 + 1
+    _gf16Mult(a, b) {
+      let result = 0;
+      const poly = 0xa831; // RFC 6114 primitive polynomial: z^15 + z^13 + z^11 + z^5 + z^4 + 1 (implicit z^16)
 
-      for (let round = 0; round < r; round++) {
-        // F0 and F1 functions
-        const f0_out = this._clefiaF0Xor(fin.slice(0, 4), rk.slice(round * 8, round * 8 + 4));
-        const f1_out = this._clefiaF1Xor(fin.slice(8, 12), rk.slice(round * 8 + 4, round * 8 + 8));
-
-        for (let i = 0; i < 4; i++) {
-          fout[i] = f0_out[i];
-          fout[i + 4] = fin[i + 4];
-          fout[i + 8] = f1_out[i];
-          fout[i + 12] = fin[i + 12];
+      while (b > 0) {
+        if (b & 1) {
+          result ^= a;
         }
-
-        if (round < r - 1) {
-          // Swapping for next round
-          for (let i = 0; i < 4; i++) {
-            fin[i] = fout[i + 4];
-            fin[i + 4] = fout[i + 8];
-            fin[i + 8] = fout[i + 12];
-            fin[i + 12] = fout[i];
-          }
+        a <<= 1;
+        if (a & 0x10000) {
+          a ^= poly;
         }
+        b >>>= 1;
       }
 
-      return fout;
+      return result & 0xFFFF;
     }
 
-    // F0 function with XOR
-    _clefiaF0Xor(x, rk) {
-      const result = this.algorithm._F0(x, rk);
-      for (let i = 0; i < 4; i++) {
-        result[i] ^= x[i];
-      }
-      return result;
-    }
-
-    // F1 function with XOR
-    _clefiaF1Xor(x, rk) {
-      const result = this.algorithm._F1(x, rk);
-      for (let i = 0; i < 4; i++) {
-        result[i] ^= x[i];
-      }
-      return result;
-    }
-
-    // DoubleSwap function following Sony's ClefiaDoubleSwap
+    // DoubleSwap operation from Sony's reference
     _clefiaDoubleSwap(lk) {
       const t = new Array(16);
 
@@ -595,8 +418,148 @@
       return t;
     }
 
+    // GFN4 network from Sony's reference
+    _clefiaGfn4(x, rk, r) {
+      let fin = [...x];
+      let fout = new Array(16);
 
-    // Encrypt 16-byte block
+      for (let round = 0; round < r; round++) {
+        // Apply F0 to fin[0:7] -> fout[0:7] (matches Sony's ClefiaF0Xor)
+        this._clefiaGfnF0Xor(fout, 0, fin, 0, rk, round * 8);
+
+        // Apply F1 to fin[8:15] -> fout[8:15] (matches Sony's ClefiaF1Xor)
+        this._clefiaGfnF1Xor(fout, 8, fin, 8, rk, round * 8 + 4);
+
+        if (round < r - 1) {
+          // Sony's swapping: fin[0:11] = fout[4:15], fin[12:15] = fout[0:3]
+          for (let i = 0; i < 12; i++) {
+            fin[i] = fout[i + 4];
+          }
+          for (let i = 0; i < 4; i++) {
+            fin[i + 12] = fout[i];
+          }
+        }
+      }
+
+      return fout;
+    }
+
+    // GFN F0 function that matches Sony's ClefiaF0Xor behavior
+    _clefiaGfnF0Xor(dst, dstOffset, src, srcOffset, rk, rkOffset) {
+      // Apply F0 to src[srcOffset:srcOffset+3]
+      const f0Input = [];
+      for (let i = 0; i < 4; i++) {
+        f0Input[i] = src[srcOffset + i];
+      }
+      const f0RoundKey = [];
+      for (let i = 0; i < 4; i++) {
+        f0RoundKey[i] = rk[rkOffset + i];
+      }
+      const f0Result = this.algorithm._clefiaF0(f0Input, f0RoundKey);
+
+      // Sony's ClefiaF0Xor pattern:
+      // dst[0:3] = src[0:3] (copy unchanged part)
+      // dst[4:7] = src[4:7] XOR F0(src[0:3])
+      for (let i = 0; i < 4; i++) {
+        dst[dstOffset + i] = src[srcOffset + i];
+        dst[dstOffset + i + 4] = src[srcOffset + i + 4] ^ f0Result[i];
+      }
+    }
+
+    // GFN F1 function that matches Sony's ClefiaF1Xor behavior
+    _clefiaGfnF1Xor(dst, dstOffset, src, srcOffset, rk, rkOffset) {
+      // Apply F1 to src[srcOffset:srcOffset+3]
+      const f1Input = [];
+      for (let i = 0; i < 4; i++) {
+        f1Input[i] = src[srcOffset + i];
+      }
+      const f1RoundKey = [];
+      for (let i = 0; i < 4; i++) {
+        f1RoundKey[i] = rk[rkOffset + i];
+      }
+      const f1Result = this.algorithm._clefiaF1(f1Input, f1RoundKey);
+
+      // Sony's ClefiaF1Xor pattern:
+      // dst[0:3] = src[0:3] (copy unchanged part)
+      // dst[4:7] = src[4:7] XOR F1(src[0:3])
+      for (let i = 0; i < 4; i++) {
+        dst[dstOffset + i] = src[srcOffset + i];
+        dst[dstOffset + i + 4] = src[srcOffset + i + 4] ^ f1Result[i];
+      }
+    }
+
+    // 128-bit key schedule following Sony's ClefiaKeySet128 exactly
+    _generateKeys() {
+      if (this.KeySize === 16) {
+        this._generateKeys128();
+      } else {
+        // Placeholder for 192/256-bit keys
+        this._generateKeysSimple();
+      }
+    }
+
+    _generateKeys128() {
+      // Generate CON constants exactly as Sony's ClefiaConSet128
+      const con128 = this._clefiaConSet(30);
+
+      // GFN_{4,12} to generate L from K using first 96 bytes of CON
+      const L = this._clefiaGfn4([...this._key], con128.slice(0, 96), 12);
+
+      // Whitening keys from K exactly as Sony's implementation
+      this.whiteningKeys = [];
+      this.whiteningKeys[0] = this._key.slice(0, 4);   // WK0 = K[0:3]
+      this.whiteningKeys[1] = this._key.slice(4, 8);   // WK1 = K[4:7]
+      this.whiteningKeys[2] = this._key.slice(8, 12);  // WK2 = K[8:11]
+      this.whiteningKeys[3] = this._key.slice(12, 16); // WK3 = K[12:15]
+
+      // Generate 36 round keys (18 rounds × 2 keys per round)
+      this.roundKeys = [];
+      let currentL = [...L];
+
+      for (let i = 0; i < 18; i++) {
+        // Round key = L XOR CON[i*16 + 96..i*16 + 111] (use CON from offset 96)
+        const rk = [];
+        for (let j = 0; j < 16; j++) {
+          rk[j] = currentL[j] ^ con128[96 + i * 16 + j];
+        }
+
+        // On odd rounds (1, 3, 5, ...), XOR with K
+        if (i % 2 === 1) {
+          for (let j = 0; j < 16; j++) {
+            rk[j] ^= this._key[j];
+          }
+        }
+
+        // Split into two 4-byte round keys as per Sony's structure
+        // For CLEFIA, F0 uses bytes [0:3] and F1 uses bytes [4:7] from the 16-byte round key
+        this.roundKeys[i * 2] = rk.slice(0, 4);      // RK2i for F0 (bytes 0-3)
+        this.roundKeys[i * 2 + 1] = rk.slice(4, 8);  // RK2i+1 for F1 (bytes 4-7, not 8-11!)
+
+        // Update L using DoubleSwap for next iteration
+        currentL = this._clefiaDoubleSwap(currentL);
+      }
+    }
+
+    // Placeholder key generation for 192/256-bit keys
+    _generateKeysSimple() {
+      this.whiteningKeys = [];
+      for (let i = 0; i < 4; i++) {
+        this.whiteningKeys[i] = [];
+        for (let j = 0; j < 4; j++) {
+          this.whiteningKeys[i][j] = this._key[(i * 4 + j) % this.KeySize];
+        }
+      }
+
+      this.roundKeys = [];
+      for (let round = 0; round < this.rounds * 2; round++) {
+        this.roundKeys[round] = [];
+        for (let i = 0; i < 4; i++) {
+          this.roundKeys[round][i] = this._key[(round * 4 + i) % this.KeySize] ^ (round & 0xFF);
+        }
+      }
+    }
+
+    // Encrypt 16-byte block using Sony's structure
     _encryptBlock(block) {
       // Split block into four 32-bit words (P0, P1, P2, P3)
       let P = [];
@@ -607,22 +570,19 @@
         }
       }
 
-      // Pre-whitening: P0 ^= WK0, P1 ^= WK1
+      // Pre-whitening: P1 ^= WK0, P3 ^= WK1
       for (let i = 0; i < 4; i++) {
-        P[0][i] ^= this.whiteningKeys[0][i];
-        P[1][i] ^= this.whiteningKeys[1][i];
+        P[1][i] ^= this.whiteningKeys[0][i];
+        P[3][i] ^= this.whiteningKeys[1][i];
       }
 
-      // Main rounds
+      // Main rounds - using Sony's F-function architecture
       for (let round = 0; round < this.rounds; round++) {
-        const T0 = this.algorithm._F0(P[1], this.roundKeys[round * 2]);
-        const T1 = this.algorithm._F1(P[3], this.roundKeys[round * 2 + 1]);
-
-        // XOR results: P0 ^= T0, P2 ^= T1
-        for (let i = 0; i < 4; i++) {
-          P[0][i] ^= T0[i];
-          P[2][i] ^= T1[i];
-        }
+        // Apply F0 and F1 with XOR directly (matches Sony's ClefiaF0Xor/ClefiaF1Xor)
+        // F0 modifies P[1] by XORing with result of F0(P[0])
+        this.algorithm._clefiaF0Xor(P[1], P[0], this.roundKeys[round * 2]);
+        // F1 modifies P[3] by XORing with result of F1(P[2])
+        this.algorithm._clefiaF1Xor(P[3], P[2], this.roundKeys[round * 2 + 1]);
 
         // Rotate state: (P0, P1, P2, P3) -> (P1, P2, P3, P0)
         const temp = P[0];
@@ -632,9 +592,9 @@
         P[3] = temp;
       }
 
-      // Post-whitening: P2 ^= WK2, P3 ^= WK3
+      // Post-whitening: P1 ^= WK2, P3 ^= WK3
       for (let i = 0; i < 4; i++) {
-        P[2][i] ^= this.whiteningKeys[2][i];
+        P[1][i] ^= this.whiteningKeys[2][i];
         P[3][i] ^= this.whiteningKeys[3][i];
       }
 
@@ -649,7 +609,7 @@
       return result;
     }
 
-    // Decrypt 16-byte block
+    // Decrypt 16-byte block using Sony's structure
     _decryptBlock(block) {
       // Split block into four 32-bit words (C0, C1, C2, C3)
       let C = [];
@@ -660,9 +620,9 @@
         }
       }
 
-      // Pre-whitening (inverse): C2 ^= WK2, C3 ^= WK3
+      // Pre-whitening (inverse): C1 ^= WK2, C3 ^= WK3
       for (let i = 0; i < 4; i++) {
-        C[2][i] ^= this.whiteningKeys[2][i];
+        C[1][i] ^= this.whiteningKeys[2][i];
         C[3][i] ^= this.whiteningKeys[3][i];
       }
 
@@ -675,20 +635,17 @@
         C[1] = C[0];
         C[0] = temp;
 
-        const T0 = this.algorithm._F0(C[1], this.roundKeys[round * 2]);
-        const T1 = this.algorithm._F1(C[3], this.roundKeys[round * 2 + 1]);
-
-        // XOR results: C0 ^= T0, C2 ^= T1
-        for (let i = 0; i < 4; i++) {
-          C[0][i] ^= T0[i];
-          C[2][i] ^= T1[i];
-        }
+        // Apply F0 and F1 with XOR directly (matches Sony's ClefiaF0Xor/ClefiaF1Xor)
+        // F0 modifies C[1] by XORing with result of F0(C[0])
+        this.algorithm._clefiaF0Xor(C[1], C[0], this.roundKeys[round * 2]);
+        // F1 modifies C[3] by XORing with result of F1(C[2])
+        this.algorithm._clefiaF1Xor(C[3], C[2], this.roundKeys[round * 2 + 1]);
       }
 
-      // Post-whitening (inverse): C0 ^= WK0, C1 ^= WK1
+      // Post-whitening (inverse): C1 ^= WK0, C3 ^= WK1
       for (let i = 0; i < 4; i++) {
-        C[0][i] ^= this.whiteningKeys[0][i];
-        C[1][i] ^= this.whiteningKeys[1][i];
+        C[1][i] ^= this.whiteningKeys[0][i];
+        C[3][i] ^= this.whiteningKeys[1][i];
       }
 
       // Flatten to byte array
@@ -705,8 +662,8 @@
 
   // Register the algorithm immediately
   if (AlgorithmFramework && AlgorithmFramework.RegisterAlgorithm) {
-    AlgorithmFramework.RegisterAlgorithm(new CLEFIAAlgorithm());
+    AlgorithmFramework.RegisterAlgorithm(new CLEFIAFixedAlgorithm());
   }
 
-  return CLEFIAAlgorithm;
+  return CLEFIAFixedAlgorithm;
 }));
