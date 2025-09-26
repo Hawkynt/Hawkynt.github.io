@@ -107,25 +107,25 @@
       // Test vectors using OpCodes byte arrays
       this.tests = [
         {
-          text: "SAFER K-64 all zeros plaintext - educational test vector",
-          uri: "https://web.archive.org/web/20060926072149/http://www.isi.ee.ethz.ch/~moliner/safer.c",
+          text: "Crypto++ SAFER K-64 test 1 (zeros)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/saferval.dat",
           input: OpCodes.Hex8ToBytes("0000000000000000"),
-          key: OpCodes.Hex8ToBytes("3132333435363738"),
-          expected: OpCodes.Hex8ToBytes("e519c009a424e4a3")
+          key: OpCodes.Hex8ToBytes("0000000000000000"),
+          expected: OpCodes.Hex8ToBytes("032808C90EE7AB7F")
         },
         {
-          text: "SAFER K-64 ASCII test - educational",
-          uri: "https://web.archive.org/web/20060926072149/http://www.isi.ee.ethz.ch/~moliner/safer.c",
-          input: OpCodes.Hex8ToBytes("4142434445464748"),
-          key: OpCodes.Hex8ToBytes("3132333435363738"),
-          expected: OpCodes.Hex8ToBytes("1520040d0b094476")
+          text: "Crypto++ SAFER K-64 test 2 (sequential plaintext)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/saferval.dat",
+          input: OpCodes.Hex8ToBytes("0102030405060708"),
+          key: OpCodes.Hex8ToBytes("0000000000000000"),
+          expected: OpCodes.Hex8ToBytes("7D28038633B92EB4")
         },
         {
-          text: "SAFER K-64 binary test - educational",
-          uri: "https://web.archive.org/web/20060926072149/http://www.isi.ee.ethz.ch/~moliner/safer.c",
-          input: OpCodes.Hex8ToBytes("0123456789abcdef"),
-          key: OpCodes.Hex8ToBytes("0123456789abcdef"),
-          expected: OpCodes.Hex8ToBytes("1beb104970df4e30")
+          text: "Crypto++ SAFER K-64 test 3 (incrementing key/plaintext)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/saferval.dat",
+          input: OpCodes.Hex8ToBytes("1011121314151617"),
+          key: OpCodes.Hex8ToBytes("0102030405060708"),
+          expected: OpCodes.Hex8ToBytes("71E5CF7F083A59C5")
         }
       ];
 
@@ -168,6 +168,7 @@
       this.inputBuffer = [];
       this.BlockSize = 8;     // 64-bit blocks
       this.KeySize = 0;
+      this.isStrengthened = false;
     }
 
     set key(keyBytes) {
@@ -187,14 +188,15 @@
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
 
-      // Set rounds based on key size
+      // Set rounds and variant based on key size
       if (keyBytes.length === 8) {
         this.nofRounds = this.algorithm.K64_DEFAULT_ROUNDS;
+        this.isStrengthened = false;
       } else {
         this.nofRounds = this.algorithm.K128_DEFAULT_ROUNDS;
+        this.isStrengthened = true;
       }
-
-      this.expandedKey = this._expandKey(keyBytes);
+      this.expandedKey = this._expandKey(keyBytes, this.isStrengthened);
     }
 
     get key() {
