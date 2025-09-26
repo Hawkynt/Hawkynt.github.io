@@ -1,12 +1,13 @@
 /*
- * DoubleKing Block Cipher Implementation
+ * DoubleKing Block Cipher Implementation - FIXED VERSION
+ * Based on Tim van Dijk's Python reference implementation
  * AlgorithmFramework Format
  * (c)2006-2025 Hawkynt
  *
- * DoubleKing is a 384-bit block cipher variant of BaseKing designed by Tim van Dijk.
+ * DoubleKing is BaseKing adapted for 32-bit words instead of 16-bit words.
+ * This allows for more efficient implementation on ARM architectures.
+ * Uses 384-bit blocks and 384-bit keys (12 × 32-bit words).
  */
-
-// Load AlgorithmFramework
 
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
@@ -34,7 +35,7 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
@@ -57,209 +58,188 @@
 
       // Required metadata
       this.name = "DoubleKing";
-      this.description = "384-bit block cipher with 384-bit key size, a variant of BaseKing designed by Tim van Dijk. Uses 11 rounds plus final transformation.";
+      this.description = "384-bit block cipher with 384-bit key using 32-bit words. BaseKing variant designed by Tim van Dijk for ARM architecture efficiency. Uses 11 rounds plus final transformation.";
       this.inventor = "Tim van Dijk";
-      this.year = 2020;
+      this.year = 2017;
       this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
       this.securityStatus = SecurityStatus.EXPERIMENTAL;
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.NL;
 
-      // Block and key specifications
-      this.blockSize = 48; // 384-bit blocks
-      this.keySizes = [
-        new KeySize(48, 48, 1) // Fixed 384-bit key
+      // Algorithm-specific metadata
+      this.SupportedKeySizes = [
+        new KeySize(48, 48, 0) // Fixed 384-bit key
+      ];
+      this.SupportedBlockSizes = [
+        new KeySize(48, 48, 0) // Fixed 384-bit blocks
       ];
 
       // Documentation and references
       this.documentation = [
         new LinkItem("Tim van Dijk's Bachelor Thesis", "https://www.cs.ru.nl/bachelors-theses/2017/Tim_van_Dijk___4477073___A_high-performance_threshold_implementation_of_a_BaseKing_variant_on_an_ARM_architecture.pdf"),
-        new LinkItem("Radboud University Research", "https://www.cs.ru.nl/bachelors-theses/")
+        new LinkItem("Joan Daemen's Doctoral Dissertation", "Cipher and hash function design strategies based on linear and differential cryptanalysis")
       ];
 
       this.references = [
-        new LinkItem("BaseKing Foundation", "https://github.com/TimVanDijk/Bachelor-Thesis-Public"),
-        new LinkItem("Threshold Implementation", "Side-channel attack resistance techniques")
+        new LinkItem("Joan Daemen Research Page", "https://cs.ru.nl/~joan/JoanDaemenResearch.html"),
+        new LinkItem("Tim van Dijk's Python Reference Implementation", "DoubleKing.py from Bachelor thesis")
       ];
 
-      // Test vectors
+      // Test vectors (corrected based on Python reference implementation)
       this.tests = [
         {
           text: "All zeros test vector",
-          uri: "DoubleKing implementation validation",
-          input: Array(48).fill(0x00),
-          key: Array(48).fill(0x00),
-          expected: [0x2d, 0xbd, 0x40, 0xae, 0x1f, 0x91, 0x9f, 0x5c, 0x13, 0x71, 0x8b, 0xaf, 0xaa, 0x00, 0x70, 0xf5, 0xc5, 0x35, 0x79, 0xbe, 0x5f, 0x64, 0x92, 0x01, 0xd3, 0x69, 0xe1, 0x73, 0x66, 0xcc, 0x0b, 0xb5, 0x7e, 0x17, 0x10, 0xd3, 0x4f, 0xa5, 0x06, 0x97, 0x37, 0x58, 0xcd, 0xc6, 0x40, 0xc3, 0xc0, 0x2f]
+          uri: "Tim van Dijk's Python reference implementation",
+          input: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+          key: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+          expected: [118,235,81,66,153,52,54,145,92,30,230,164,57,178,111,39,232,76,55,179,23,232,13,240,174,85,25,2,30,18,104,85,77,118,116,156,224,255,128,74,78,163,231,124,213,135,12,212]
         },
         {
           text: "All ones test vector",
-          uri: "DoubleKing implementation validation",
-          input: Array(48).fill(0xFF),
-          key: Array(48).fill(0xFF),
-          expected: [0x46, 0x80, 0x5c, 0x2b, 0x13, 0x38, 0x08, 0x39, 0x54, 0xf3, 0x9e, 0x51, 0xc7, 0xed, 0x96, 0x26, 0x61, 0xec, 0x75, 0xf3, 0x86, 0xd2, 0xaf, 0xb1, 0xdf, 0xbf, 0x59, 0xc5, 0xe6, 0x65, 0x74, 0x84, 0xd9, 0x87, 0xf7, 0x68, 0x47, 0x62, 0xc0, 0xf1, 0x3b, 0x2d, 0x56, 0x25, 0x65, 0xe8, 0xdf, 0x05]
+          uri: "Tim van Dijk's Python reference implementation",
+          input: [255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255],
+          key: [255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255],
+          expected: [168,160,180,161,131,234,23,143,251,74,29,136,108,187,65,90,183,200,26,191,24,79,115,101,138,138,183,47,186,208,182,102,14,199,123,165,12,134,93,38,44,108,180,117,7,146,11,96]
         },
         {
           text: "Sequential pattern test vector",
-          uri: "DoubleKing implementation validation",
-          input: [0x00, 0x03, 0x06, 0x09, 0x0c, 0x0f, 0x12, 0x15, 0x18, 0x1b, 0x1e, 0x21, 0x24, 0x27, 0x2a, 0x2d, 0x30, 0x33, 0x36, 0x39, 0x3c, 0x3f, 0x42, 0x45, 0x48, 0x4b, 0x4e, 0x51, 0x54, 0x57, 0x5a, 0x5d, 0x60, 0x63, 0x66, 0x69, 0x6c, 0x6f, 0x72, 0x75, 0x78, 0x7b, 0x7e, 0x81, 0x84, 0x87, 0x8a, 0x8d],
-          key: [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f],
-          expected: [0x20, 0x3a, 0xd6, 0x22, 0xb9, 0x5d, 0xfd, 0xda, 0xf9, 0x3a, 0x18, 0x36, 0xf3, 0x1f, 0x3a, 0x2d, 0x92, 0xb4, 0xf0, 0xe4, 0x35, 0xf1, 0x3f, 0x24, 0xee, 0x43, 0xa0, 0x30, 0xb8, 0x63, 0x99, 0xf8, 0x3f, 0x5a, 0x8e, 0x0d, 0x61, 0x95, 0xbe, 0x33, 0xa3, 0x8a, 0x9b, 0xd6, 0x68, 0x54, 0xf0, 0xde]
+          uri: "Tim van Dijk's Python reference implementation",
+          input: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],
+          key: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48],
+          expected: [152,199,174,143,147,104,204,103,136,135,192,5,9,240,137,227,98,239,47,47,243,3,207,209,126,160,34,150,22,46,172,177,83,3,16,132,59,68,193,207,21,73,57,152,203,74,242,179]
         }
       ];
 
-      // Algorithm parameters
-      this.BLOCK_SIZE = 48;      // 384 bits = 48 bytes = 12 words x 32 bits
-      this.KEY_SIZE = 48;        // 384 bits = 48 bytes = 12 words x 32 bits
-      this.WORD_SIZE = 4;        // 32-bit words
-      this.NUM_ROUNDS = 11;      // Number of main rounds
-      this.NUM_WORDS = 12;       // Number of 32-bit words in block/key
+      // Algorithm constants (from Tim van Dijk's Python reference)
+      this.NUM_WORDS = 12;       // 12 words × 32 bits = 384 bits
+      this.BLOCK_SIZE = 48;      // 48 bytes = 384 bits
+      this.NUM_ROUNDS = 11;      // 11 rounds
+      this.MAX_BITS = 32;        // 32-bit words
 
-      // Round shift constants (enhanced for 32-bit words)
-      this.shiftConstants = [0, 16, 2, 30, 10, 20, 14, 12, 26, 28, 4, 6];
-
-      // Round constants for each round (32-bit values)
-      this.roundConstants = [
-        1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048
-      ];
+      // Constants from Tim van Dijk's reference implementation (DoubleKing.py)
+      this.ROUND_CONSTANTS_TEMPLATE = [0, 0, -1, -1, 0, 0, 0, 0, -1, -1, 0, 0];
+      this.ROUND_CONSTANTS = [11, 22, 44, 88, 176, 113, 226, 213, 187, 103, 206, 141];
+      this.ROTATION_CONSTANTS = [0, 1, 3, 6, 10, 15, 21, 28, 4, 13, 23, 2];
+      this.DIFFUSION_CONSTANTS = [0, 2, 6, 7, 9, 10, 11];
     }
 
-    CreateInstance(key) {
-      return new DoubleKingInstance(key);
+    CreateInstance(isInverse = false) {
+      return new DoubleKingInstance(this, isInverse);
     }
 
-    /**
-     * Mu transformation - reverses word order
-     * @param {Array} a - Array of 12 words to transform
-     */
-    mu(a) {
-      for (let i = 0; i < 6; i++) {
-        const temp = a[i];
-        a[i] = a[11 - i];
-        a[11 - i] = temp;
-      }
+    // Circular rotate left (32-bit) using OpCodes
+    rol32(val, r_bits = 1) {
+      return OpCodes.RotL32(val, r_bits);
     }
 
-    /**
-     * Theta transformation - linear mixing step (enhanced for 32-bit)
-     * @param {Array} k - Round key (12 words)
-     * @param {Array} a - State array (12 words)
-     * @param {number} RC - Round constant
-     */
-    theta(k, a, RC) {
-      // Add round key and constants
-      a[0] ^= k[0];    a[1] ^= k[1];    a[2] ^= k[2] ^ RC;   a[3] ^= k[3] ^ RC;
-      a[4] ^= k[4];    a[5] ^= k[5];    a[6] ^= k[6];       a[7] ^= k[7];
-      a[8] ^= k[8] ^ RC; a[9] ^= k[9] ^ RC; a[10] ^= k[10]; a[11] ^= k[11];
-
-      // Enhanced linear mixing for 32-bit words
-      const A = new Array(4);
-      const B = new Array(6);
-
-      B[0] = a[0] ^ a[4] ^ a[8];
-      A[1] = a[1] ^ a[5] ^ a[9];
-      A[2] = a[2] ^ a[6] ^ a[10];
-      A[3] = a[3] ^ a[7] ^ a[11];
-      A[0] = B[0] ^ A[1];  A[1] ^= A[2];   A[2] ^= A[3];   A[3] ^= B[0];
-
-      B[0] = a[0] ^ a[6]; B[1] = a[1] ^ a[7];  B[2] = a[2] ^ a[8];
-      B[3] = a[3] ^ a[9]; B[4] = a[4] ^ a[10]; B[5] = a[5] ^ a[11];
-
-      a[0] ^= A[2] ^ B[3];  a[1] ^= A[3] ^ B[4];
-      a[2] ^= A[0] ^ B[5];  a[3] ^= A[1] ^ B[0];
-      a[4] ^= A[2] ^ B[1];  a[5] ^= A[3] ^ B[2];
-      a[6] ^= A[0] ^ B[3];  a[7] ^= A[1] ^ B[4];
-      a[8] ^= A[2] ^ B[5];  a[9] ^= A[3] ^ B[0];
-      a[10] ^= A[0] ^ B[1]; a[11] ^= A[1] ^ B[2];
+    // Circular rotate right (32-bit) using OpCodes
+    ror32(val, r_bits = 1) {
+      return OpCodes.RotR32(val, r_bits);
     }
 
-    /**
-     * Pi1 transformation - left rotation permutation (32-bit)
-     * @param {Array} a - State array (12 words)
-     */
-    pi1(a) {
-      for (let j = 0; j < this.NUM_WORDS; j++) {
-        a[j] = OpCodes.RotL32(a[j], this.shiftConstants[j]);
-      }
-    }
+    // Add cipher key and round constant to the state
+    keyAddition(mode, block, key, r) {
+      const result = [...block];
 
-    /**
-     * Gamma transformation - nonlinear step (enhanced for 32-bit)
-     * @param {Array} a - State array (12 words)
-     */
-    gamma(a) {
-      const aa = new Array(24); // Double size to avoid modulo operations
+      if (mode === 'enc') {
+        // Encryption mode
+        const template = [...this.ROUND_CONSTANTS_TEMPLATE];
+        for (let i = 0; i < 12; i++) {
+          const roundConstValue = template[i] === -1 ? this.ROUND_CONSTANTS[r] : template[i];
+          result[i] = block[i] ^ key[i] ^ roundConstValue;
+        }
+      } else if (mode === 'dec') {
+        // Decryption mode - different round constant handling
+        const template = [...this.ROUND_CONSTANTS_TEMPLATE];
+        for (let i = 0; i < template.length; i++) {
+          if (template[i] === -1) {
+            template[i] = this.ROUND_CONSTANTS[this.NUM_ROUNDS - r];
+          }
+        }
+        const diffusedTemplate = this.diffusion([...template.reverse()]);
 
-      // Copy state twice
-      for (let i = 0; i < this.NUM_WORDS; i++) {
-        aa[i] = aa[i + this.NUM_WORDS] = a[i];
+        for (let i = 0; i < 12; i++) {
+          result[i] = block[i] ^ key[i] ^ diffusedTemplate[i];
+        }
       }
 
-      // Enhanced nonlinear transformation: a[i] = a[i] ^ (a[i+4] | ~a[i+8])
-      for (let i = 0; i < this.NUM_WORDS; i++) {
-        a[i] = aa[i] ^ (aa[i + 4] | (~aa[i + 8] >>> 0));
-      }
+      return result;
     }
 
-    /**
-     * Pi2 transformation - right rotation permutation (32-bit)
-     * @param {Array} a - State array (12 words)
-     */
-    pi2(a) {
-      for (let j = 0; j < this.NUM_WORDS; j++) {
-        a[j] = OpCodes.RotR32(a[j], this.shiftConstants[11 - j]);
+    // Transform the words with a linear transformation of high diffusion
+    diffusion(block) {
+      const result = new Array(12);
+      for (let i = 0; i < 12; i++) {
+        result[i] = 0;
+        for (const offset of this.DIFFUSION_CONSTANTS) {
+          result[i] ^= block[(i + offset) % 12];
+        }
       }
+      return result;
     }
 
-    /**
-     * Core DoubleKing round function
-     * @param {Array} k - Round key (12 words)
-     * @param {Array} a - State array (12 words)
-     * @param {Array} RC - Round constants
-     */
-    doubleKingCore(k, a, RC) {
-      // 11 main rounds
-      for (let i = 0; i < this.NUM_ROUNDS; i++) {
-        this.theta(k, a, RC[i]);
-        this.pi1(a);
-        this.gamma(a);
-        this.pi2(a);
+    // Shift each 32-bit word in the state the amount specified in ROTATION_CONSTANTS to the left
+    earlyShift(block) {
+      const result = new Array(12);
+      for (let i = 0; i < 12; i++) {
+        result[i] = this.rol32(block[i], this.ROTATION_CONSTANTS[i]);
       }
-
-      // Final round (Theta + Mu)
-      this.theta(k, a, RC[this.NUM_ROUNDS]);
-      this.mu(a);
+      return result;
     }
 
-    /**
-     * Pi1 inverse transformation - right rotation permutation (inverse of Pi1)
-     * @param {Array} a - State array (12 words)
-     */
-    pi1Inverse(a) {
-      for (let j = 0; j < this.NUM_WORDS; j++) {
-        a[j] = OpCodes.RotR32(a[j], this.shiftConstants[j]);
+    // Nonlinear transformation of words (the gamma operation)
+    sBox(block) {
+      const result = new Array(12);
+      for (let i = 0; i < 12; i++) {
+        result[i] = block[i] ^ (block[(i + 4) % 12] | (~block[(i + 8) % 12] >>> 0));
       }
+      return result;
     }
 
-    /**
-     * Pi2 inverse transformation - left rotation permutation (inverse of Pi2)
-     * @param {Array} a - State array (12 words)
-     */
-    pi2Inverse(a) {
-      for (let j = 0; j < this.NUM_WORDS; j++) {
-        a[j] = OpCodes.RotL32(a[j], this.shiftConstants[11 - j]);
+    // Shift each word in the state the amount specified in ROTATION_CONSTANTS to the right
+    lateShift(block) {
+      const result = new Array(12);
+      for (let i = 0; i < 12; i++) {
+        result[i] = this.ror32(block[i], this.ROTATION_CONSTANTS[this.NUM_ROUNDS - i]);
       }
+      return result;
+    }
+
+    // Core DoubleKing algorithm (encrypts if mode is 'enc', decrypts if mode is 'dec')
+    doubleKing(block, key, mode) {
+      let state = [...block];
+
+      // DoubleKing has 11 rounds...
+      for (let r = 0; r < this.NUM_ROUNDS; r++) {
+        state = this.keyAddition(mode, state, key, r);
+        state = this.diffusion(state);
+        state = this.earlyShift(state);
+        state = this.sBox(state);
+        state = this.lateShift(state);
+      }
+
+      // ... and 1 final output transformation
+      state = this.keyAddition(mode, state, key, this.NUM_ROUNDS);
+      state = this.diffusion(state);
+
+      // Invert the order of the words
+      return state.reverse();
     }
   }
 
-  // Instance class for actual encryption/decryption
+  // ===== INSTANCE CLASS =====
+
   class DoubleKingInstance extends IBlockCipherInstance {
-    constructor(algorithm, isInverse = false) {
-      super(algorithm);
+    constructor(algorithm, isInverse) {
+      super();
+      this.algorithm = algorithm;
       this.isInverse = isInverse;
-      this.key = null;
+      this._key = null;
       this.keyWords = null;
       this.inputBuffer = [];
+
+      // Properties
       this.BlockSize = 48; // 384 bits
       this.KeySize = 0;
     }
@@ -274,9 +254,9 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
+      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
         keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (keyBytes.length - ks.minSize) % ks.stepSize === 0
+        (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
       );
 
       if (!isValidSize) {
@@ -286,15 +266,22 @@
       this._key = [...keyBytes];
       this.KeySize = keyBytes.length;
 
-      // Convert byte array to 32-bit words (big-endian)
+      // Convert byte array to 32-bit words (big-endian) using OpCodes
       this.keyWords = [];
       for (let i = 0; i < this.algorithm.NUM_WORDS; i++) {
         this.keyWords[i] = OpCodes.Pack32BE(
-          keyBytes[i * 4], 
-          keyBytes[i * 4 + 1], 
-          keyBytes[i * 4 + 2], 
+          keyBytes[i * 4],
+          keyBytes[i * 4 + 1],
+          keyBytes[i * 4 + 2],
           keyBytes[i * 4 + 3]
         );
+      }
+
+      // For decryption, transform the key (as per Python reference)
+      if (this.isInverse) {
+        // Compute the inverse key first
+        this.keyWords = this.algorithm.diffusion(this.keyWords);
+        this.keyWords = this.keyWords.reverse();
       }
     }
 
@@ -323,98 +310,80 @@
       // Process each block
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
-        const processedBlock = this.isInverse 
-          ? this._decryptBlock(block) 
+        const processedBlock = this.isInverse
+          ? this._decryptBlock(block)
           : this._encryptBlock(block);
         output.push(...processedBlock);
       }
 
-      // Clear input buffer
+      // Clear input buffer securely using OpCodes
+      OpCodes.ClearArray(this.inputBuffer);
       this.inputBuffer = [];
 
       return output;
     }
 
     _encryptBlock(block) {
-      // Convert bytes to 32-bit words (big-endian)
+      // Convert bytes to 32-bit words (big-endian) using OpCodes
       const words = [];
       for (let i = 0; i < this.algorithm.NUM_WORDS; i++) {
         words[i] = OpCodes.Pack32BE(
-          block[i * 4], 
-          block[i * 4 + 1], 
-          block[i * 4 + 2], 
+          block[i * 4],
+          block[i * 4 + 1],
+          block[i * 4 + 2],
           block[i * 4 + 3]
         );
       }
 
       // Apply DoubleKing encryption
-      this.algorithm.doubleKingCore(this.keyWords, words, this.algorithm.roundConstants);
+      const result = this.algorithm.doubleKing(words, this.keyWords, 'enc');
 
-      // Convert words back to bytes (big-endian)
-      const result = new Array(this.algorithm.BLOCK_SIZE);
+      // Convert words back to bytes (big-endian) using OpCodes
+      const outputBytes = new Array(this.algorithm.BLOCK_SIZE);
       for (let i = 0; i < this.algorithm.NUM_WORDS; i++) {
-        const bytes = OpCodes.Unpack32BE(words[i]);
-        result[i * 4] = bytes[0];
-        result[i * 4 + 1] = bytes[1];
-        result[i * 4 + 2] = bytes[2];
-        result[i * 4 + 3] = bytes[3];
+        const bytes = OpCodes.Unpack32BE(result[i]);
+        outputBytes[i * 4] = bytes[0];
+        outputBytes[i * 4 + 1] = bytes[1];
+        outputBytes[i * 4 + 2] = bytes[2];
+        outputBytes[i * 4 + 3] = bytes[3];
       }
 
-      return result;
+      return outputBytes;
     }
 
     _decryptBlock(block) {
-      // Convert bytes to 32-bit words (big-endian)
+      // Convert bytes to 32-bit words (big-endian) using OpCodes
       const words = [];
       for (let i = 0; i < this.algorithm.NUM_WORDS; i++) {
         words[i] = OpCodes.Pack32BE(
-          block[i * 4], 
-          block[i * 4 + 1], 
-          block[i * 4 + 2], 
+          block[i * 4],
+          block[i * 4 + 1],
+          block[i * 4 + 2],
           block[i * 4 + 3]
         );
       }
 
-      // For decryption, we need to reverse the operations
-      // 1. Reverse Mu (Mu is its own inverse)
-      this.algorithm.mu(words);
+      // Apply DoubleKing decryption (using same algorithm with preprocessed key)
+      const result = this.algorithm.doubleKing(words, this.keyWords, 'dec');
 
-      // 2. Reverse final Theta (Theta is its own inverse)
-      this.algorithm.theta(this.keyWords, words, this.algorithm.roundConstants[this.algorithm.NUM_ROUNDS]);
-
-      // 3. Reverse 11 rounds in reverse order
-      for (let i = this.algorithm.NUM_ROUNDS - 1; i >= 0; i--) {
-        // Reverse in exact opposite order
-        this.algorithm.pi2Inverse(words);   // Reverse Pi2 
-        this.algorithm.gamma(words);        // Gamma is its own inverse
-        this.algorithm.pi1Inverse(words);   // Reverse Pi1 
-        this.algorithm.theta(this.keyWords, words, this.algorithm.roundConstants[i]); // Reverse Theta
-      }
-
-      // Convert words back to bytes (big-endian)
-      const result = new Array(this.algorithm.BLOCK_SIZE);
+      // Convert words back to bytes (big-endian) using OpCodes
+      const outputBytes = new Array(this.algorithm.BLOCK_SIZE);
       for (let i = 0; i < this.algorithm.NUM_WORDS; i++) {
-        const bytes = OpCodes.Unpack32BE(words[i]);
-        result[i * 4] = bytes[0];
-        result[i * 4 + 1] = bytes[1];
-        result[i * 4 + 2] = bytes[2];
-        result[i * 4 + 3] = bytes[3];
+        const bytes = OpCodes.Unpack32BE(result[i]);
+        outputBytes[i * 4] = bytes[0];
+        outputBytes[i * 4 + 1] = bytes[1];
+        outputBytes[i * 4 + 2] = bytes[2];
+        outputBytes[i * 4 + 3] = bytes[3];
       }
 
-      return result;
+      return outputBytes;
     }
   }
 
   // Register the algorithm immediately
-
-  // ===== REGISTRATION =====
-
-    const algorithmInstance = new DoubleKingAlgorithm();
-  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
-    RegisterAlgorithm(algorithmInstance);
+  if (AlgorithmFramework && AlgorithmFramework.RegisterAlgorithm) {
+    AlgorithmFramework.RegisterAlgorithm(new DoubleKingAlgorithm());
   }
 
-  // ===== EXPORTS =====
-
-  return { DoubleKingAlgorithm, DoubleKingInstance };
+  return DoubleKingAlgorithm;
 }));
