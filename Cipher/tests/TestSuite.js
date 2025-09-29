@@ -887,11 +887,16 @@ class TestSuite {
                     // Helper function to format byte arrays as hex
                     const formatBytes = (bytes) => {
                       if (!bytes) return 'null';
+                      const formatByte = (b) => {
+                        if (b == null || b === undefined) return 'XX';
+                        if (typeof b !== 'number') return 'XX';
+                        return b.toString(16).padStart(2, '0');
+                      };
                       if (bytes.length <= 16) {
-                        return bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+                        return bytes.map(formatByte).join('');
                       } else {
-                        const start = bytes.slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('');
-                        const end = bytes.slice(-8).map(b => b.toString(16).padStart(2, '0')).join('');
+                        const start = bytes.slice(0, 8).map(formatByte).join('');
+                        const end = bytes.slice(-8).map(formatByte).join('');
                         return `${start}...${end} (${bytes.length} bytes)`;
                       }
                     };
