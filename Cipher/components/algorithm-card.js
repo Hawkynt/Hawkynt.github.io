@@ -138,10 +138,15 @@ class AlgorithmCard {
     static createCards(algorithms, container, options = {}) {
         const cards = [];
         algorithms.forEach(algorithm => {
-            const card = new AlgorithmCard(algorithm, options);
-            const element = card.createElement();
-            container.appendChild(element);
-            cards.push(card);
+            try {
+                const card = new AlgorithmCard(algorithm, options);
+                const element = card.createElement();
+                container.appendChild(element);
+                cards.push(card);
+            } catch (error) {
+                console.warn('AlgorithmCard: Failed to create card for algorithm:', algorithm.name || 'unknown', error);
+                // Continue with next algorithm rather than breaking entire UI
+            }
         });
         return cards;
     }
