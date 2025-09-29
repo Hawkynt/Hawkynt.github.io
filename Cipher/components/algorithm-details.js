@@ -223,19 +223,50 @@ class AlgorithmDetails {
 
         // Update title (remove "- Details" suffix)
         const titleEl = this.element.querySelector('.algorithm-details-title');
-        titleEl.textContent = this.currentAlgorithm.name;
+        if (titleEl) {
+            titleEl.textContent = this.currentAlgorithm.name;
+        } else {
+            console.warn('AlgorithmDetails: Title element not found for algorithm:', this.currentAlgorithm.name);
+        }
 
         // Set category attribute for styling
-        this.element.setAttribute('data-category', this.getCategoryKey());
+        try {
+            this.element.setAttribute('data-category', this.getCategoryKey());
+        } catch (error) {
+            console.warn('AlgorithmDetails: Failed to set category attribute:', error);
+        }
 
         // Apply category color tinting to header background
-        this.applyCategoryTinting();
+        try {
+            this.applyCategoryTinting();
+        } catch (error) {
+            console.warn('AlgorithmDetails: Failed to apply category tinting:', error);
+        }
 
-        // Populate each tab
-        this.populateInfoTab();
-        this.populateReferencesTab();
-        this.populateTestVectorsTab();
-        this.populateCodeTab();
+        // Populate each tab with individual error handling
+        try {
+            this.populateInfoTab();
+        } catch (error) {
+            console.warn('AlgorithmDetails: Failed to populate info tab:', error);
+        }
+
+        try {
+            this.populateReferencesTab();
+        } catch (error) {
+            console.warn('AlgorithmDetails: Failed to populate references tab:', error);
+        }
+
+        try {
+            this.populateTestVectorsTab();
+        } catch (error) {
+            console.warn('AlgorithmDetails: Failed to populate test vectors tab:', error);
+        }
+
+        try {
+            this.populateCodeTab();
+        } catch (error) {
+            console.warn('AlgorithmDetails: Failed to populate code tab:', error);
+        }
     }
 
     /**
