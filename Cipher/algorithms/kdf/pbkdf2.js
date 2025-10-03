@@ -92,30 +92,27 @@
         )
       ];
 
-      // Test vectors from RFC 6070
+      // Test vectors from RFC 6070 (PBKDF2-HMAC-SHA1)
       this.tests = [
-        new TestCase(
-          OpCodes.AnsiToBytes('password'),
-          OpCodes.Hex8ToBytes("0c60c80f961f0e71f3a9b524af6012062fe037a6"),
-          "PBKDF2 RFC 6070 Test Vector 1",
-          "https://tools.ietf.org/html/rfc6070"
-        ),
-        new TestCase(
-          OpCodes.AnsiToBytes('password'),
-          OpCodes.Hex8ToBytes("ea6c014dc72d6f8ccd1ed92ace1d41f0d8de8957"),
-          "PBKDF2 RFC 6070 Test Vector 2", 
-          "https://tools.ietf.org/html/rfc6070"
-        )
+        {
+          text: "RFC 6070 Test Vector 1: password/salt, 1 iteration",
+          uri: "https://tools.ietf.org/html/rfc6070",
+          input: OpCodes.AnsiToBytes('password'),
+          salt: OpCodes.AnsiToBytes('salt'),
+          iterations: 1,
+          outputSize: 20,
+          expected: OpCodes.Hex8ToBytes("0c60c80f961f0e71f3a9b524af6012062fe037a6")
+        },
+        {
+          text: "RFC 6070 Test Vector 2: password/salt, 2 iterations",
+          uri: "https://tools.ietf.org/html/rfc6070",
+          input: OpCodes.AnsiToBytes('password'),
+          salt: OpCodes.AnsiToBytes('salt'),
+          iterations: 2,
+          outputSize: 20,
+          expected: OpCodes.Hex8ToBytes("ea6c014dc72d6f8ccd1ed92ace1d41f0d8de8957")
+        }
       ];
-
-      // Add test parameters
-      this.tests[0].salt = OpCodes.AnsiToBytes('salt');
-      this.tests[0].iterations = 1;
-      this.tests[0].outputSize = 20;
-
-      this.tests[1].salt = OpCodes.AnsiToBytes('salt');
-      this.tests[1].iterations = 2;
-      this.tests[1].outputSize = 20;
     }
 
     CreateInstance(isInverse = false) {
@@ -131,6 +128,13 @@
       this.Iterations = 100000; // Default secure iteration count
       this.salt = null;
     }
+
+    // Property aliases for test vector compatibility
+    get outputSize() { return this.OutputSize; }
+    set outputSize(value) { this.OutputSize = value; }
+
+    get iterations() { return this.Iterations; }
+    set iterations(value) { this.Iterations = value; }
 
     Feed(data) {
       if (!Array.isArray(data)) {
@@ -160,7 +164,7 @@
     }
 
     deriveKey(password, salt, iterations, outputSize) {
-      const hLen = 16; // MD5 output size (using HMAC-MD5 instead of HMAC-SHA1)
+      const hLen = 20; // SHA1 output size (using HMAC-SHA1 per RFC 6070)
       const l = Math.ceil(outputSize / hLen);
       const r = outputSize - (l - 1) * hLen;
 
@@ -191,34 +195,71 @@
       // U_2 through U_c
       for (let j = 2; j <= iterations; j++) {
         U = this.hmacSha1(password, U);
-        for (let k = 0; k < result.length; k++) {
-          result[k] ^= U[k];
-        }
+        result = OpCodes.XorArrays(result, U);
       }
 
       return result;
     }
 
     hmacSha1(key, data) {
-      // Use framework's HMAC implementation 
-      const hmac = AlgorithmFramework.Find(OpCodes.BytesToAnsi([72, 77, 65, 67])); // 'HMAC'
-      if (!hmac) {
-        throw new Error('HMAC not found in framework - ensure hmac.js is loaded');
+      // Self-contained HMAC-SHA1 implementation for PBKDF2
+      // HMAC(K, M) = H((K ⊕ opad) || H((K ⊕ ipad) || M))
+
+      const blockSize = 64; // SHA-1 block size
+      const opad = 0x5C;
+      const ipad = 0x36;
+
+      // If key is longer than block size, hash it
+      let keyBytes = Array.isArray(key) ? [...key] : OpCodes.AnsiToBytes(key.toString());
+      if (keyBytes.length > blockSize) {
+        keyBytes = this.sha1(keyBytes);
       }
 
-      const hmacInstance = hmac.CreateInstance();
+      // Pad key to block size
+      while (keyBytes.length < blockSize) {
+        keyBytes.push(0);
+      }
 
-      // Use MD5 since it's available in our HMAC implementation
-      hmacInstance.hashFunction = [77, 68, 53]; // 'MD5' - Use OpCodes for consistency
+      // Create inner and outer padded keys
+      const innerKey = keyBytes.map(b => b ^ ipad);
+      const outerKey = keyBytes.map(b => b ^ opad);
 
-      hmacInstance.key = key;
-      hmacInstance.Feed(data);
-      return hmacInstance.Result();
+      // HMAC = H(outer_key || H(inner_key || data))
+      const innerHash = this.sha1([...innerKey, ...data]);
+      return this.sha1([...outerKey, ...innerHash]);
     }
 
     sha1(data) {
-      // Simplified SHA-1 for educational purposes
-      // In production, use a proper cryptographic library
+      // Try to use framework SHA-1 algorithm first
+      const sha1Alg = AlgorithmFramework.Find('SHA-1');
+      if (sha1Alg) {
+        const sha1Instance = sha1Alg.CreateInstance();
+        sha1Instance.Feed(data);
+        return sha1Instance.Result();
+      }
+
+      // If SHA-1 not available, try to load it dynamically
+      try {
+        if (typeof require !== 'undefined') {
+          // Try to load SHA-1 algorithm
+          require('../hash/sha1.js');
+          const sha1AlgNow = AlgorithmFramework.Find('SHA-1');
+          if (sha1AlgNow) {
+            const sha1Instance = sha1AlgNow.CreateInstance();
+            sha1Instance.Feed(data);
+            return sha1Instance.Result();
+          }
+        }
+      } catch (e) {
+        // Ignore loading errors and fall back
+      }
+
+      // Self-contained SHA-1 implementation for PBKDF2 as last resort
+      // This ensures the algorithm works independently of other framework components
+
+      // Define masks since they're not in OpCodes
+      const MASK32 = 0xFFFFFFFF;
+
       // SHA-1 initial hash values
       const h = OpCodes.Hex32ToDWords('67452301EFCDAB8998BADCFE10325476C3D2E1F0');
 
@@ -242,10 +283,12 @@
 
         // Break chunk into sixteen 32-bit big-endian words
         for (let i = 0; i < 16; i++) {
-          w[i] = (paddedData[chunkStart + i * 4] << 24) |
-                 (paddedData[chunkStart + i * 4 + 1] << 16) |
-                 (paddedData[chunkStart + i * 4 + 2] << 8) |
-                  paddedData[chunkStart + i * 4 + 3];
+          w[i] = OpCodes.Pack32BE(
+            paddedData[chunkStart + i * 4],
+            paddedData[chunkStart + i * 4 + 1],
+            paddedData[chunkStart + i * 4 + 2],
+            paddedData[chunkStart + i * 4 + 3]
+          );
         }
 
         // Extend the sixteen 32-bit words into eighty 32-bit words
@@ -261,19 +304,19 @@
           let f, k;
           if (i < 20) {
             f = (b & c) | (~b & d);
-            k = OpCodes.Hex8ToDWord('5A827999');
+            k = OpCodes.Hex32ToDWords('5A827999')[0];
           } else if (i < 40) {
             f = b ^ c ^ d;
-            k = OpCodes.Hex8ToDWord('6ED9EBA1');
+            k = OpCodes.Hex32ToDWords('6ED9EBA1')[0];
           } else if (i < 60) {
             f = (b & c) | (b & d) | (c & d);
-            k = OpCodes.Hex8ToDWord('8F1BBCDC');
+            k = OpCodes.Hex32ToDWords('8F1BBCDC')[0];
           } else {
             f = b ^ c ^ d;
-            k = OpCodes.Hex8ToDWord('CA62C1D6');
+            k = OpCodes.Hex32ToDWords('CA62C1D6')[0];
           }
 
-          const temp = (this.leftRotate(a, 5) + f + e + k + w[i]) & OpCodes.Mask32;
+          const temp = (this.leftRotate(a, 5) + f + e + k + w[i]) & MASK32;
           e = d;
           d = c;
           c = this.leftRotate(b, 30);
@@ -282,20 +325,18 @@
         }
 
         // Add this chunk's hash to result so far
-        h[0] = (h[0] + a) & OpCodes.Mask32;
-        h[1] = (h[1] + b) & OpCodes.Mask32;
-        h[2] = (h[2] + c) & OpCodes.Mask32;
-        h[3] = (h[3] + d) & OpCodes.Mask32;
-        h[4] = (h[4] + e) & OpCodes.Mask32;
+        h[0] = (h[0] + a) & MASK32;
+        h[1] = (h[1] + b) & MASK32;
+        h[2] = (h[2] + c) & MASK32;
+        h[3] = (h[3] + d) & MASK32;
+        h[4] = (h[4] + e) & MASK32;
       }
 
       // Convert to byte array
       const result = [];
       for (let i = 0; i < 5; i++) {
-        result.push((h[i] >>> 24) & 0xFF);
-        result.push((h[i] >>> 16) & 0xFF);
-        result.push((h[i] >>> 8) & 0xFF);
-        result.push(h[i] & 0xFF);
+        const bytes = OpCodes.Unpack32BE(h[i]);
+        result.push(...bytes);
       }
 
       return result;
@@ -306,12 +347,7 @@
     }
 
     intToBytes(value) {
-      return [
-        (value >>> 24) & 0xFF,
-        (value >>> 16) & 0xFF,
-        (value >>> 8) & 0xFF,
-        value & 0xFF
-      ];
+      return OpCodes.Unpack32BE(value);
     }
 
     // Configuration methods

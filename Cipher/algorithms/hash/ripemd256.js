@@ -3,7 +3,6 @@
  * (c)2006-2025 Hawkynt
  */
 
-
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     // AMD
@@ -30,7 +29,7 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
@@ -47,13 +46,303 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  class RIPEMD256Instance extends IHashFunctionInstance {
+    constructor(algorithm) {
+      super(algorithm);
+      this.OutputSize = 32; // 256 bits
+      this._Reset();
+    }
+
+    _Reset() {
+      // RIPEMD-256 initialization values (8 x 32-bit words)
+      // Two separate 128-bit initialization vectors
+      this.h = new Uint32Array([
+        0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476,  // First line
+        0x76543210, 0xFEDCBA98, 0x89ABCDEF, 0x01234567   // Second line
+      ]);
+
+      this.buffer = new Uint8Array(64);
+      this.bufferLength = 0;
+      this.totalLength = 0;
+    }
+
+    Initialize() {
+      this._Reset();
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+
+      const input = new Uint8Array(data);
+      this.totalLength += input.length;
+
+      let offset = 0;
+
+      // Process any remaining bytes in buffer
+      if (this.bufferLength > 0) {
+        const needed = 64 - this.bufferLength;
+        const available = Math.min(needed, input.length);
+
+        this.buffer.set(input.slice(0, available), this.bufferLength);
+        this.bufferLength += available;
+        offset = available;
+
+        if (this.bufferLength === 64) {
+          this._ProcessBlock(this.buffer);
+          this.bufferLength = 0;
+        }
+      }
+
+      // Process complete 64-byte blocks
+      while (offset + 64 <= input.length) {
+        this._ProcessBlock(input.slice(offset, offset + 64));
+        offset += 64;
+      }
+
+      // Store remaining bytes in buffer
+      if (offset < input.length) {
+        const remaining = input.slice(offset);
+        this.buffer.set(remaining, 0);
+        this.bufferLength = remaining.length;
+      }
+    }
+
+    Result() {
+      // Save current state
+      const originalH = this.h.slice();
+      const originalBuffer = this.buffer.slice();
+      const originalBufferLength = this.bufferLength;
+      const originalTotalLength = this.totalLength;
+
+      // Create padding
+      const msgLength = this.totalLength;
+      const padLength = (msgLength % 64 < 56) ? (56 - (msgLength % 64)) : (120 - (msgLength % 64));
+
+      // Add padding
+      const padding = new Uint8Array(padLength + 8);
+      padding[0] = 0x80; // First padding bit is 1
+
+      // Add length in bits as 64-bit little-endian
+      const bitLength = msgLength * 8;
+      const lengthBytes = OpCodes.Unpack32LE(bitLength);
+      padding[padLength] = lengthBytes[0];
+      padding[padLength + 1] = lengthBytes[1];
+      padding[padLength + 2] = lengthBytes[2];
+      padding[padLength + 3] = lengthBytes[3];
+      // For practical message sizes, high 32 bits are always 0
+      padding[padLength + 4] = 0;
+      padding[padLength + 5] = 0;
+      padding[padLength + 6] = 0;
+      padding[padLength + 7] = 0;
+
+      this.Feed(padding);
+
+      // Convert hash to bytes (little-endian)
+      const result = [];
+      for (let i = 0; i < 8; i++) {
+        const bytes = OpCodes.Unpack32LE(this.h[i]);
+        result.push(...bytes);
+      }
+
+      // Restore original state (so Result() can be called multiple times)
+      this.h = originalH;
+      this.buffer = originalBuffer;
+      this.bufferLength = originalBufferLength;
+      this.totalLength = originalTotalLength;
+
+      return result;
+    }
+
+    _ProcessBlock(block) {
+      // Convert block to 16 32-bit words (little-endian)
+      const X = new Array(16);
+      for (let i = 0; i < 16; i++) {
+        X[i] = OpCodes.Pack32LE(block[i * 4], block[i * 4 + 1], block[i * 4 + 2], block[i * 4 + 3]);
+      }
+
+      // Initialize working variables for both chains
+      let a = this.h[0], b = this.h[1], c = this.h[2], d = this.h[3];
+      let aa = this.h[4], bb = this.h[5], cc = this.h[6], dd = this.h[7];
+
+      // Round 1: Left chain uses f1 (x^y^z), Right chain uses f4 ((x&z)|(y&~z))
+      // Left chain - sequential order, no constant
+      a = OpCodes.RotL32((a + (b ^ c ^ d) + X[0]) >>> 0, 11);
+      d = OpCodes.RotL32((d + (a ^ b ^ c) + X[1]) >>> 0, 14);
+      c = OpCodes.RotL32((c + (d ^ a ^ b) + X[2]) >>> 0, 15);
+      b = OpCodes.RotL32((b + (c ^ d ^ a) + X[3]) >>> 0, 12);
+      a = OpCodes.RotL32((a + (b ^ c ^ d) + X[4]) >>> 0, 5);
+      d = OpCodes.RotL32((d + (a ^ b ^ c) + X[5]) >>> 0, 8);
+      c = OpCodes.RotL32((c + (d ^ a ^ b) + X[6]) >>> 0, 7);
+      b = OpCodes.RotL32((b + (c ^ d ^ a) + X[7]) >>> 0, 9);
+      a = OpCodes.RotL32((a + (b ^ c ^ d) + X[8]) >>> 0, 11);
+      d = OpCodes.RotL32((d + (a ^ b ^ c) + X[9]) >>> 0, 13);
+      c = OpCodes.RotL32((c + (d ^ a ^ b) + X[10]) >>> 0, 14);
+      b = OpCodes.RotL32((b + (c ^ d ^ a) + X[11]) >>> 0, 15);
+      a = OpCodes.RotL32((a + (b ^ c ^ d) + X[12]) >>> 0, 6);
+      d = OpCodes.RotL32((d + (a ^ b ^ c) + X[13]) >>> 0, 7);
+      c = OpCodes.RotL32((c + (d ^ a ^ b) + X[14]) >>> 0, 9);
+      b = OpCodes.RotL32((b + (c ^ d ^ a) + X[15]) >>> 0, 8);
+
+      // Right chain - permuted order, constant 0x50A28BE6
+      aa = OpCodes.RotL32((aa + ((bb & dd) | (cc & ~dd)) + X[5] + 0x50A28BE6) >>> 0, 8);
+      dd = OpCodes.RotL32((dd + ((aa & cc) | (bb & ~cc)) + X[14] + 0x50A28BE6) >>> 0, 9);
+      cc = OpCodes.RotL32((cc + ((dd & bb) | (aa & ~bb)) + X[7] + 0x50A28BE6) >>> 0, 9);
+      bb = OpCodes.RotL32((bb + ((cc & aa) | (dd & ~aa)) + X[0] + 0x50A28BE6) >>> 0, 11);
+      aa = OpCodes.RotL32((aa + ((bb & dd) | (cc & ~dd)) + X[9] + 0x50A28BE6) >>> 0, 13);
+      dd = OpCodes.RotL32((dd + ((aa & cc) | (bb & ~cc)) + X[2] + 0x50A28BE6) >>> 0, 15);
+      cc = OpCodes.RotL32((cc + ((dd & bb) | (aa & ~bb)) + X[11] + 0x50A28BE6) >>> 0, 15);
+      bb = OpCodes.RotL32((bb + ((cc & aa) | (dd & ~aa)) + X[4] + 0x50A28BE6) >>> 0, 5);
+      aa = OpCodes.RotL32((aa + ((bb & dd) | (cc & ~dd)) + X[13] + 0x50A28BE6) >>> 0, 7);
+      dd = OpCodes.RotL32((dd + ((aa & cc) | (bb & ~cc)) + X[6] + 0x50A28BE6) >>> 0, 7);
+      cc = OpCodes.RotL32((cc + ((dd & bb) | (aa & ~bb)) + X[15] + 0x50A28BE6) >>> 0, 8);
+      bb = OpCodes.RotL32((bb + ((cc & aa) | (dd & ~aa)) + X[8] + 0x50A28BE6) >>> 0, 11);
+      aa = OpCodes.RotL32((aa + ((bb & dd) | (cc & ~dd)) + X[1] + 0x50A28BE6) >>> 0, 14);
+      dd = OpCodes.RotL32((dd + ((aa & cc) | (bb & ~cc)) + X[10] + 0x50A28BE6) >>> 0, 14);
+      cc = OpCodes.RotL32((cc + ((dd & bb) | (aa & ~bb)) + X[3] + 0x50A28BE6) >>> 0, 12);
+      bb = OpCodes.RotL32((bb + ((cc & aa) | (dd & ~aa)) + X[12] + 0x50A28BE6) >>> 0, 6);
+
+      // Swap a and aa
+      let t = a; a = aa; aa = t;
+
+      // Round 2: Left chain uses f2 ((x&y)|(~x&z)), Right chain uses f3 ((x|~y)^z)
+      // Left chain - permuted order, constant 0x5A827999
+      a = OpCodes.RotL32((a + ((b & c) | (~b & d)) + X[7] + 0x5A827999) >>> 0, 7);
+      d = OpCodes.RotL32((d + ((a & b) | (~a & c)) + X[4] + 0x5A827999) >>> 0, 6);
+      c = OpCodes.RotL32((c + ((d & a) | (~d & b)) + X[13] + 0x5A827999) >>> 0, 8);
+      b = OpCodes.RotL32((b + ((c & d) | (~c & a)) + X[1] + 0x5A827999) >>> 0, 13);
+      a = OpCodes.RotL32((a + ((b & c) | (~b & d)) + X[10] + 0x5A827999) >>> 0, 11);
+      d = OpCodes.RotL32((d + ((a & b) | (~a & c)) + X[6] + 0x5A827999) >>> 0, 9);
+      c = OpCodes.RotL32((c + ((d & a) | (~d & b)) + X[15] + 0x5A827999) >>> 0, 7);
+      b = OpCodes.RotL32((b + ((c & d) | (~c & a)) + X[3] + 0x5A827999) >>> 0, 15);
+      a = OpCodes.RotL32((a + ((b & c) | (~b & d)) + X[12] + 0x5A827999) >>> 0, 7);
+      d = OpCodes.RotL32((d + ((a & b) | (~a & c)) + X[0] + 0x5A827999) >>> 0, 12);
+      c = OpCodes.RotL32((c + ((d & a) | (~d & b)) + X[9] + 0x5A827999) >>> 0, 15);
+      b = OpCodes.RotL32((b + ((c & d) | (~c & a)) + X[5] + 0x5A827999) >>> 0, 9);
+      a = OpCodes.RotL32((a + ((b & c) | (~b & d)) + X[2] + 0x5A827999) >>> 0, 11);
+      d = OpCodes.RotL32((d + ((a & b) | (~a & c)) + X[14] + 0x5A827999) >>> 0, 7);
+      c = OpCodes.RotL32((c + ((d & a) | (~d & b)) + X[11] + 0x5A827999) >>> 0, 13);
+      b = OpCodes.RotL32((b + ((c & d) | (~c & a)) + X[8] + 0x5A827999) >>> 0, 12);
+
+      // Right chain - permuted order, constant 0x5C4DD124
+      aa = OpCodes.RotL32((aa + ((bb | ~cc) ^ dd) + X[6] + 0x5C4DD124) >>> 0, 9);
+      dd = OpCodes.RotL32((dd + ((aa | ~bb) ^ cc) + X[11] + 0x5C4DD124) >>> 0, 13);
+      cc = OpCodes.RotL32((cc + ((dd | ~aa) ^ bb) + X[3] + 0x5C4DD124) >>> 0, 15);
+      bb = OpCodes.RotL32((bb + ((cc | ~dd) ^ aa) + X[7] + 0x5C4DD124) >>> 0, 7);
+      aa = OpCodes.RotL32((aa + ((bb | ~cc) ^ dd) + X[0] + 0x5C4DD124) >>> 0, 12);
+      dd = OpCodes.RotL32((dd + ((aa | ~bb) ^ cc) + X[13] + 0x5C4DD124) >>> 0, 8);
+      cc = OpCodes.RotL32((cc + ((dd | ~aa) ^ bb) + X[5] + 0x5C4DD124) >>> 0, 9);
+      bb = OpCodes.RotL32((bb + ((cc | ~dd) ^ aa) + X[10] + 0x5C4DD124) >>> 0, 11);
+      aa = OpCodes.RotL32((aa + ((bb | ~cc) ^ dd) + X[14] + 0x5C4DD124) >>> 0, 7);
+      dd = OpCodes.RotL32((dd + ((aa | ~bb) ^ cc) + X[15] + 0x5C4DD124) >>> 0, 7);
+      cc = OpCodes.RotL32((cc + ((dd | ~aa) ^ bb) + X[8] + 0x5C4DD124) >>> 0, 12);
+      bb = OpCodes.RotL32((bb + ((cc | ~dd) ^ aa) + X[12] + 0x5C4DD124) >>> 0, 7);
+      aa = OpCodes.RotL32((aa + ((bb | ~cc) ^ dd) + X[4] + 0x5C4DD124) >>> 0, 6);
+      dd = OpCodes.RotL32((dd + ((aa | ~bb) ^ cc) + X[9] + 0x5C4DD124) >>> 0, 15);
+      cc = OpCodes.RotL32((cc + ((dd | ~aa) ^ bb) + X[1] + 0x5C4DD124) >>> 0, 13);
+      bb = OpCodes.RotL32((bb + ((cc | ~dd) ^ aa) + X[2] + 0x5C4DD124) >>> 0, 11);
+
+      // Swap b and bb
+      t = b; b = bb; bb = t;
+
+      // Round 3: Left chain uses f3 ((x|~y)^z), Right chain uses f2 ((x&y)|(~x&z))
+      // Left chain - permuted order, constant 0x6ED9EBA1
+      a = OpCodes.RotL32((a + ((b | ~c) ^ d) + X[3] + 0x6ED9EBA1) >>> 0, 11);
+      d = OpCodes.RotL32((d + ((a | ~b) ^ c) + X[10] + 0x6ED9EBA1) >>> 0, 13);
+      c = OpCodes.RotL32((c + ((d | ~a) ^ b) + X[14] + 0x6ED9EBA1) >>> 0, 6);
+      b = OpCodes.RotL32((b + ((c | ~d) ^ a) + X[4] + 0x6ED9EBA1) >>> 0, 7);
+      a = OpCodes.RotL32((a + ((b | ~c) ^ d) + X[9] + 0x6ED9EBA1) >>> 0, 14);
+      d = OpCodes.RotL32((d + ((a | ~b) ^ c) + X[15] + 0x6ED9EBA1) >>> 0, 9);
+      c = OpCodes.RotL32((c + ((d | ~a) ^ b) + X[8] + 0x6ED9EBA1) >>> 0, 13);
+      b = OpCodes.RotL32((b + ((c | ~d) ^ a) + X[1] + 0x6ED9EBA1) >>> 0, 15);
+      a = OpCodes.RotL32((a + ((b | ~c) ^ d) + X[2] + 0x6ED9EBA1) >>> 0, 14);
+      d = OpCodes.RotL32((d + ((a | ~b) ^ c) + X[7] + 0x6ED9EBA1) >>> 0, 8);
+      c = OpCodes.RotL32((c + ((d | ~a) ^ b) + X[0] + 0x6ED9EBA1) >>> 0, 13);
+      b = OpCodes.RotL32((b + ((c | ~d) ^ a) + X[6] + 0x6ED9EBA1) >>> 0, 6);
+      a = OpCodes.RotL32((a + ((b | ~c) ^ d) + X[13] + 0x6ED9EBA1) >>> 0, 5);
+      d = OpCodes.RotL32((d + ((a | ~b) ^ c) + X[11] + 0x6ED9EBA1) >>> 0, 12);
+      c = OpCodes.RotL32((c + ((d | ~a) ^ b) + X[5] + 0x6ED9EBA1) >>> 0, 7);
+      b = OpCodes.RotL32((b + ((c | ~d) ^ a) + X[12] + 0x6ED9EBA1) >>> 0, 5);
+
+      // Right chain - permuted order, constant 0x6D703EF3
+      aa = OpCodes.RotL32((aa + ((bb & cc) | (~bb & dd)) + X[15] + 0x6D703EF3) >>> 0, 9);
+      dd = OpCodes.RotL32((dd + ((aa & bb) | (~aa & cc)) + X[5] + 0x6D703EF3) >>> 0, 7);
+      cc = OpCodes.RotL32((cc + ((dd & aa) | (~dd & bb)) + X[1] + 0x6D703EF3) >>> 0, 15);
+      bb = OpCodes.RotL32((bb + ((cc & dd) | (~cc & aa)) + X[3] + 0x6D703EF3) >>> 0, 11);
+      aa = OpCodes.RotL32((aa + ((bb & cc) | (~bb & dd)) + X[7] + 0x6D703EF3) >>> 0, 8);
+      dd = OpCodes.RotL32((dd + ((aa & bb) | (~aa & cc)) + X[14] + 0x6D703EF3) >>> 0, 6);
+      cc = OpCodes.RotL32((cc + ((dd & aa) | (~dd & bb)) + X[6] + 0x6D703EF3) >>> 0, 6);
+      bb = OpCodes.RotL32((bb + ((cc & dd) | (~cc & aa)) + X[9] + 0x6D703EF3) >>> 0, 14);
+      aa = OpCodes.RotL32((aa + ((bb & cc) | (~bb & dd)) + X[11] + 0x6D703EF3) >>> 0, 12);
+      dd = OpCodes.RotL32((dd + ((aa & bb) | (~aa & cc)) + X[8] + 0x6D703EF3) >>> 0, 13);
+      cc = OpCodes.RotL32((cc + ((dd & aa) | (~dd & bb)) + X[12] + 0x6D703EF3) >>> 0, 5);
+      bb = OpCodes.RotL32((bb + ((cc & dd) | (~cc & aa)) + X[2] + 0x6D703EF3) >>> 0, 14);
+      aa = OpCodes.RotL32((aa + ((bb & cc) | (~bb & dd)) + X[10] + 0x6D703EF3) >>> 0, 13);
+      dd = OpCodes.RotL32((dd + ((aa & bb) | (~aa & cc)) + X[0] + 0x6D703EF3) >>> 0, 13);
+      cc = OpCodes.RotL32((cc + ((dd & aa) | (~dd & bb)) + X[4] + 0x6D703EF3) >>> 0, 7);
+      bb = OpCodes.RotL32((bb + ((cc & dd) | (~cc & aa)) + X[13] + 0x6D703EF3) >>> 0, 5);
+
+      // Swap c and cc
+      t = c; c = cc; cc = t;
+
+      // Round 4: Left chain uses f4 ((x&z)|(y&~z)), Right chain uses f1 (x^y^z)
+      // Left chain - permuted order, constant 0x8F1BBCDC
+      a = OpCodes.RotL32((a + ((b & d) | (c & ~d)) + X[1] + 0x8F1BBCDC) >>> 0, 11);
+      d = OpCodes.RotL32((d + ((a & c) | (b & ~c)) + X[9] + 0x8F1BBCDC) >>> 0, 12);
+      c = OpCodes.RotL32((c + ((d & b) | (a & ~b)) + X[11] + 0x8F1BBCDC) >>> 0, 14);
+      b = OpCodes.RotL32((b + ((c & a) | (d & ~a)) + X[10] + 0x8F1BBCDC) >>> 0, 15);
+      a = OpCodes.RotL32((a + ((b & d) | (c & ~d)) + X[0] + 0x8F1BBCDC) >>> 0, 14);
+      d = OpCodes.RotL32((d + ((a & c) | (b & ~c)) + X[8] + 0x8F1BBCDC) >>> 0, 15);
+      c = OpCodes.RotL32((c + ((d & b) | (a & ~b)) + X[12] + 0x8F1BBCDC) >>> 0, 9);
+      b = OpCodes.RotL32((b + ((c & a) | (d & ~a)) + X[4] + 0x8F1BBCDC) >>> 0, 8);
+      a = OpCodes.RotL32((a + ((b & d) | (c & ~d)) + X[13] + 0x8F1BBCDC) >>> 0, 9);
+      d = OpCodes.RotL32((d + ((a & c) | (b & ~c)) + X[3] + 0x8F1BBCDC) >>> 0, 14);
+      c = OpCodes.RotL32((c + ((d & b) | (a & ~b)) + X[7] + 0x8F1BBCDC) >>> 0, 5);
+      b = OpCodes.RotL32((b + ((c & a) | (d & ~a)) + X[15] + 0x8F1BBCDC) >>> 0, 6);
+      a = OpCodes.RotL32((a + ((b & d) | (c & ~d)) + X[14] + 0x8F1BBCDC) >>> 0, 8);
+      d = OpCodes.RotL32((d + ((a & c) | (b & ~c)) + X[5] + 0x8F1BBCDC) >>> 0, 6);
+      c = OpCodes.RotL32((c + ((d & b) | (a & ~b)) + X[6] + 0x8F1BBCDC) >>> 0, 5);
+      b = OpCodes.RotL32((b + ((c & a) | (d & ~a)) + X[2] + 0x8F1BBCDC) >>> 0, 12);
+
+      // Right chain - permuted order, no constant
+      aa = OpCodes.RotL32((aa + (bb ^ cc ^ dd) + X[8]) >>> 0, 15);
+      dd = OpCodes.RotL32((dd + (aa ^ bb ^ cc) + X[6]) >>> 0, 5);
+      cc = OpCodes.RotL32((cc + (dd ^ aa ^ bb) + X[4]) >>> 0, 8);
+      bb = OpCodes.RotL32((bb + (cc ^ dd ^ aa) + X[1]) >>> 0, 11);
+      aa = OpCodes.RotL32((aa + (bb ^ cc ^ dd) + X[3]) >>> 0, 14);
+      dd = OpCodes.RotL32((dd + (aa ^ bb ^ cc) + X[11]) >>> 0, 14);
+      cc = OpCodes.RotL32((cc + (dd ^ aa ^ bb) + X[15]) >>> 0, 6);
+      bb = OpCodes.RotL32((bb + (cc ^ dd ^ aa) + X[0]) >>> 0, 14);
+      aa = OpCodes.RotL32((aa + (bb ^ cc ^ dd) + X[5]) >>> 0, 6);
+      dd = OpCodes.RotL32((dd + (aa ^ bb ^ cc) + X[12]) >>> 0, 9);
+      cc = OpCodes.RotL32((cc + (dd ^ aa ^ bb) + X[2]) >>> 0, 12);
+      bb = OpCodes.RotL32((bb + (cc ^ dd ^ aa) + X[13]) >>> 0, 9);
+      aa = OpCodes.RotL32((aa + (bb ^ cc ^ dd) + X[9]) >>> 0, 12);
+      dd = OpCodes.RotL32((dd + (aa ^ bb ^ cc) + X[7]) >>> 0, 5);
+      cc = OpCodes.RotL32((cc + (dd ^ aa ^ bb) + X[10]) >>> 0, 15);
+      bb = OpCodes.RotL32((bb + (cc ^ dd ^ aa) + X[14]) >>> 0, 8);
+
+      // Swap d and dd
+      t = d; d = dd; dd = t;
+
+      // Update hash values - SEPARATE updates (not combined like RIPEMD-160)
+      this.h[0] = (this.h[0] + a) >>> 0;
+      this.h[1] = (this.h[1] + b) >>> 0;
+      this.h[2] = (this.h[2] + c) >>> 0;
+      this.h[3] = (this.h[3] + d) >>> 0;
+      this.h[4] = (this.h[4] + aa) >>> 0;
+      this.h[5] = (this.h[5] + bb) >>> 0;
+      this.h[6] = (this.h[6] + cc) >>> 0;
+      this.h[7] = (this.h[7] + dd) >>> 0;
+    }
+  }
+
   class RIPEMD256Algorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
 
       // Required metadata
       this.name = "RIPEMD-256";
-      this.description = "RIPEMD-256 is an extension of RIPEMD-160 with 256-bit output. Part of the RIPEMD family designed as European alternatives to SHA algorithms.";
+      this.description = "RIPEMD-256 is an extension of RIPEMD-128 with 256-bit output. Uses two parallel computation lines with different initial values and no final combination. Part of the RIPEMD family designed as European alternatives to SHA algorithms.";
       this.inventor = "Hans Dobbertin, Antoon Bosselaers, Bart Preneel";
       this.year = 1996;
       this.category = CategoryType.HASH;
@@ -72,270 +361,41 @@
         new LinkItem("Bouncy Castle Implementation", "https://github.com/bcgit/bc-java/blob/master/core/src/main/java/org/bouncycastle/crypto/digests/RIPEMD256Digest.java")
       ];
 
-      // Test vectors (basic set)
+      // Test vectors from official RIPEMD specification
       this.tests = [
-        new TestCase(
-          [], 
-          OpCodes.Hex8ToBytes("02ba4c4e5f8ecd1877fc52d64d30e37a2d9774fb1e5d026380ae0168e3c5522d"),
-          "Empty string test vector",
-          "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html"
-        ),
-        new TestCase(
-          OpCodes.AnsiToBytes("a"), 
-          OpCodes.Hex8ToBytes("f9333e45d857f5d90a91bab70a1eba0cfb1be4b0783c9acfcd883a9134692925"),
-          "Single character 'a' test vector",
-          "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html"
-        ),
-        new TestCase(
-          OpCodes.AnsiToBytes("abc"), 
-          OpCodes.Hex8ToBytes("afbd6e228b9d8cbbcef5ca2d03e6dba10ac0bc7dcbe4680e1e42d2e975459b65"),
-          "String 'abc' test vector",
-          "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html"
-        )
+        {
+          input: [],
+          expected: OpCodes.Hex8ToBytes("02ba4c4e5f8ecd1877fc52d64d30e37a2d9774fb1e5d026380ae0168e3c5522d"),
+          text: "Empty string test vector",
+          uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html"
+        },
+        {
+          input: OpCodes.AnsiToBytes("a"),
+          expected: OpCodes.Hex8ToBytes("f9333e45d857f5d90a91bab70a1eba0cfb1be4b0783c9acfcd883a9134692925"),
+          text: "Single character 'a' test vector",
+          uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html"
+        },
+        {
+          input: OpCodes.AnsiToBytes("abc"),
+          expected: OpCodes.Hex8ToBytes("afbd6e228b9d8cbbcef5ca2d03e6dba10ac0bc7dcbe4680e1e42d2e975459b65"),
+          text: "String 'abc' test vector",
+          uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html"
+        }
       ];
     }
 
-    CreateInstance() {
+    CreateInstance(isInverse = false) {
+      // Hash functions don't have an inverse operation
+      if (isInverse) {
+        return null;
+      }
       return new RIPEMD256Instance(this);
     }
   }
 
-  class RIPEMD256Instance extends IHashFunctionInstance {
-    constructor(algorithm) {
-      super(algorithm);
-      this.Reset();
-    }
-
-    Reset() {
-      // Initial hash values for RIPEMD-256 (8 x 32-bit words)
-      this._h = [
-        0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476,
-        0x76543210, 0xFEDCBA98, 0x89ABCDEF, 0x01234567
-      ];
-
-      this._buffer = new Array(64);
-      this._length = 0;
-      this._bufferLength = 0;
-
-      // Clear buffer
-      OpCodes.ClearArray(this._buffer);
-    }
-
-    /**
-     * RIPEMD-256 auxiliary functions (same as RIPEMD-128)
-     */
-    _f(j, x, y, z) {
-      if (j < 16) return x ^ y ^ z;
-      if (j < 32) return (x & y) | (~x & z);
-      if (j < 48) return (x | ~y) ^ z;
-      return (x & z) | (y & ~z);
-    }
-
-    _K(j) {
-      if (j < 16) return 0x00000000;
-      if (j < 32) return 0x5A827999;
-      if (j < 48) return 0x6ED9EBA1;
-      return 0x8F1BBCDC;
-    }
-
-    _Kh(j) {
-      if (j < 16) return 0x50A28BE6;
-      if (j < 32) return 0x5C4DD124;
-      if (j < 48) return 0x6D703EF3;
-      return 0x7A6D76E9;
-    }
-
-    /**
-     * Process a single 512-bit (64-byte) message block
-     * @param {Array} block - 64-byte message block
-     */
-    _processBlock(block) {
-      // Convert block to 16 32-bit words (little-endian)
-      const X = new Array(16);
-      for (let i = 0; i < 16; i++) {
-        X[i] = OpCodes.Pack32LE(block[i * 4], block[i * 4 + 1], block[i * 4 + 2], block[i * 4 + 3]);
-      }
-
-      // Initialize working variables (left and right lines)
-      let AL = this._h[0], BL = this._h[1], CL = this._h[2], DL = this._h[3];
-      let AR = this._h[4], BR = this._h[5], CR = this._h[6], DR = this._h[7];
-
-      // Message schedule permutations for RIPEMD-256 (64 rounds, not 80)
-      const r = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,7,4,13,1,10,6,15,3,12,0,9,5,2,14,11,8,3,10,14,4,9,15,8,1,2,7,0,6,13,11,5,12,1,9,11,10,0,8,12,4,13,3,7,15,14,5,6,2];
-      const rh = [5,14,7,0,9,2,11,4,13,6,15,8,1,10,3,12,6,11,3,7,0,13,5,10,14,15,8,12,4,9,1,2,15,5,1,3,7,14,6,9,11,8,12,2,10,0,4,13,8,6,4,1,3,11,15,0,5,12,2,13,9,7,10,14];
-
-      // Rotation amounts for RIPEMD-256 (64 rounds)
-      const s = [11,14,15,12,5,8,7,9,11,13,14,15,6,7,9,8,7,6,8,13,11,9,7,15,7,12,15,9,11,7,13,12,11,13,6,7,14,9,13,15,14,8,13,6,5,12,7,5,11,12,14,15,14,15,9,8,9,14,5,6,8,6,5,12];
-      const sh = [8,9,9,11,13,15,15,5,7,7,8,11,14,14,12,6,9,13,15,7,12,8,9,11,7,7,12,7,6,15,13,11,9,7,15,11,8,6,6,14,12,13,5,14,13,13,7,5,15,5,8,11,14,14,6,14,6,9,12,9,12,5];
-
-      // Main computation (2 parallel lines, 64 rounds)
-      for (let j = 0; j < 64; j++) {
-        // Left line
-        let T = (AL + this._f(j, BL, CL, DL) + X[r[j]] + this._K(j)) >>> 0;
-        T = OpCodes.RotL32(T, s[j]);
-        T = T >>> 0;
-        AL = DL; DL = CL; CL = BL; BL = T;
-
-        // Right line  
-        T = (AR + this._f(63 - j, BR, CR, DR) + X[rh[j]] + this._Kh(j)) >>> 0;
-        T = OpCodes.RotL32(T, sh[j]);
-        T = T >>> 0;
-        AR = DR; DR = CR; CR = BR; BR = T;
-
-        // Exchange chaining variables between parallel lines after each round (RIPEMD-256 specific)
-        if (j === 15) {
-          // Swap CL and CR
-          let temp = CL; CL = CR; CR = temp;
-        } else if (j === 31) {
-          // Swap DL and DR  
-          let temp = DL; DL = DR; DR = temp;
-        } else if (j === 47) {
-          // Swap AL and AR
-          let temp = AL; AL = AR; AR = temp;
-        }
-      }
-
-      // Final addition (RIPEMD-256 specific - no combination, just separate updates)
-      this._h[0] = (this._h[0] + AL) >>> 0;
-      this._h[1] = (this._h[1] + BL) >>> 0;
-      this._h[2] = (this._h[2] + CL) >>> 0;
-      this._h[3] = (this._h[3] + DL) >>> 0;
-      this._h[4] = (this._h[4] + AR) >>> 0;
-      this._h[5] = (this._h[5] + BR) >>> 0;
-      this._h[6] = (this._h[6] + CR) >>> 0;
-      this._h[7] = (this._h[7] + DR) >>> 0;
-    }
-
-    ProcessData(data) {
-      // Convert input to byte array
-      const bytes = (typeof data === 'string') ? OpCodes.AnsiToBytes(data) : data;
-
-      for (let i = 0; i < bytes.length; i++) {
-        this._buffer[this._bufferLength++] = bytes[i] & 0xFF;
-        this._length++;
-
-        // Process complete 64-byte blocks
-        if (this._bufferLength === 64) {
-          this._processBlock(this._buffer);
-          this._bufferLength = 0;
-        }
-      }
-    }
-
-    GetResult() {
-      // Create a copy of the current state for finalization
-      const tempH = [...this._h];
-      const tempBuffer = [...this._buffer];
-      const tempLength = this._length;
-      const tempBufferLength = this._bufferLength;
-
-      // Add padding bit
-      tempBuffer[tempBufferLength] = 0x80;
-      let finalBufferLength = tempBufferLength + 1;
-
-      // Check if we need an additional block for length
-      if (finalBufferLength > 56) {
-        // Pad current block and process
-        while (finalBufferLength < 64) {
-          tempBuffer[finalBufferLength++] = 0x00;
-        }
-        this._processBlockTemp(tempBuffer, tempH);
-        finalBufferLength = 0;
-      }
-
-      // Pad to 56 bytes
-      while (finalBufferLength < 56) {
-        tempBuffer[finalBufferLength++] = 0x00;
-      }
-
-      // Append length in bits as 64-bit little-endian
-      const lengthBits = tempLength * 8;
-      // Low 32 bits first (little-endian)
-      tempBuffer[56] = lengthBits & 0xFF;
-      tempBuffer[57] = (lengthBits >>> 8) & 0xFF;
-      tempBuffer[58] = (lengthBits >>> 16) & 0xFF;
-      tempBuffer[59] = (lengthBits >>> 24) & 0xFF;
-      // High 32 bits (for messages under 2^32 bits, this is 0)
-      tempBuffer[60] = 0; tempBuffer[61] = 0; tempBuffer[62] = 0; tempBuffer[63] = 0;
-
-      // Process final block
-      this._processBlockTemp(tempBuffer, tempH);
-
-      // Convert hash to byte array (little-endian output)
-      const result = new Array(32); // 256 bits = 32 bytes
-      for (let i = 0; i < 8; i++) {
-        const bytes = OpCodes.Unpack32LE(tempH[i]);
-        for (let j = 0; j < 4; j++) {
-          result[i * 4 + j] = bytes[j];
-        }
-      }
-
-      return result;
-    }
-
-    _processBlockTemp(block, hashState) {
-      // Convert block to 16 32-bit words (little-endian)
-      const X = new Array(16);
-      for (let i = 0; i < 16; i++) {
-        X[i] = OpCodes.Pack32LE(block[i * 4], block[i * 4 + 1], block[i * 4 + 2], block[i * 4 + 3]);
-      }
-
-      // Initialize working variables (left and right lines)
-      let AL = hashState[0], BL = hashState[1], CL = hashState[2], DL = hashState[3];
-      let AR = hashState[4], BR = hashState[5], CR = hashState[6], DR = hashState[7];
-
-      // Message schedule permutations for RIPEMD-256 (64 rounds, not 80)
-      const r = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,7,4,13,1,10,6,15,3,12,0,9,5,2,14,11,8,3,10,14,4,9,15,8,1,2,7,0,6,13,11,5,12,1,9,11,10,0,8,12,4,13,3,7,15,14,5,6,2];
-      const rh = [5,14,7,0,9,2,11,4,13,6,15,8,1,10,3,12,6,11,3,7,0,13,5,10,14,15,8,12,4,9,1,2,15,5,1,3,7,14,6,9,11,8,12,2,10,0,4,13,8,6,4,1,3,11,15,0,5,12,2,13,9,7,10,14];
-
-      // Rotation amounts for RIPEMD-256 (64 rounds)
-      const s = [11,14,15,12,5,8,7,9,11,13,14,15,6,7,9,8,7,6,8,13,11,9,7,15,7,12,15,9,11,7,13,12,11,13,6,7,14,9,13,15,14,8,13,6,5,12,7,5,11,12,14,15,14,15,9,8,9,14,5,6,8,6,5,12];
-      const sh = [8,9,9,11,13,15,15,5,7,7,8,11,14,14,12,6,9,13,15,7,12,8,9,11,7,7,12,7,6,15,13,11,9,7,15,11,8,6,6,14,12,13,5,14,13,13,7,5,15,5,8,11,14,14,6,14,6,9,12,9,12,5];
-
-      // Main computation (2 parallel lines, 64 rounds)
-      for (let j = 0; j < 64; j++) {
-        // Left line
-        let T = (AL + this._f(j, BL, CL, DL) + X[r[j]] + this._K(j)) >>> 0;
-        T = OpCodes.RotL32(T, s[j]);
-        T = T >>> 0;
-        AL = DL; DL = CL; CL = BL; BL = T;
-
-        // Right line  
-        T = (AR + this._f(63 - j, BR, CR, DR) + X[rh[j]] + this._Kh(j)) >>> 0;
-        T = OpCodes.RotL32(T, sh[j]);
-        T = T >>> 0;
-        AR = DR; DR = CR; CR = BR; BR = T;
-
-        // Exchange chaining variables between parallel lines after each round (RIPEMD-256 specific)
-        if (j === 15) {
-          // Swap CL and CR
-          let temp = CL; CL = CR; CR = temp;
-        } else if (j === 31) {
-          // Swap DL and DR  
-          let temp = DL; DL = DR; DR = temp;
-        } else if (j === 47) {
-          // Swap AL and AR
-          let temp = AL; AL = AR; AR = temp;
-        }
-      }
-
-      // Final addition (RIPEMD-256 specific - no combination, just separate updates)
-      hashState[0] = (hashState[0] + AL) >>> 0;
-      hashState[1] = (hashState[1] + BL) >>> 0;
-      hashState[2] = (hashState[2] + CL) >>> 0;
-      hashState[3] = (hashState[3] + DL) >>> 0;
-      hashState[4] = (hashState[4] + AR) >>> 0;
-      hashState[5] = (hashState[5] + BR) >>> 0;
-      hashState[6] = (hashState[6] + CR) >>> 0;
-      hashState[7] = (hashState[7] + DR) >>> 0;
-    }
-  }
-
-  // Register the algorithm
-
   // ===== REGISTRATION =====
 
-    const algorithmInstance = new RIPEMD256Algorithm();
+  const algorithmInstance = new RIPEMD256Algorithm();
   if (!AlgorithmFramework.Find(algorithmInstance.name)) {
     RegisterAlgorithm(algorithmInstance);
   }

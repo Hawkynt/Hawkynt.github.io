@@ -190,7 +190,7 @@
         // Store bit count in second byte, then encoded bits
         const bits = bitBuffer.getBytes();
         if (bits.length > 0) {
-          output.push(global.OpCodes ? global.OpCodes.Byte(bitBuffer.getBitCount()) : (bitBuffer.getBitCount() & 0xFF)); // Lower 8 bits of bit count
+          output.push(OpCodes.GetByte(bitBuffer.getBitCount(), 0)); // Lower 8 bits of bit count
           output.push(...bits);
         } else {
           output.push(0); // No bits encoded
@@ -285,13 +285,13 @@
         if (value < u) {
           // Use k bits
           for (let i = k - 1; i >= 0; i--) {
-            bitBuffer.addBit(global.OpCodes ? (global.OpCodes.ShiftRight32(value, i) & 1) : ((value >> i) & 1));
+            bitBuffer.addBit((value >> i) & 1);
           }
         } else {
           // Use k+1 bits
           const adjusted = value + u;
           for (let i = k; i >= 0; i--) {
-            bitBuffer.addBit(global.OpCodes ? (global.OpCodes.ShiftRight32(adjusted, i) & 1) : ((adjusted >> i) & 1));
+            bitBuffer.addBit((adjusted >> i) & 1);
           }
         }
       }
@@ -308,7 +308,7 @@
         let value = 0;
         for (let i = 0; i < k; i++) {
           if (!bitBuffer.hasMoreBits()) return null;
-          value = global.OpCodes ? (global.OpCodes.ShiftLeft32(value, 1) | bitBuffer.readBit()) : ((value << 1) | bitBuffer.readBit());
+          value = (value << 1) | bitBuffer.readBit();
         }
 
         if (value < u) {
@@ -316,7 +316,7 @@
         } else {
           // Read one more bit
           if (!bitBuffer.hasMoreBits()) return null;
-          value = global.OpCodes ? (global.OpCodes.ShiftLeft32(value, 1) | bitBuffer.readBit()) : ((value << 1) | bitBuffer.readBit());
+          value = (value << 1) | bitBuffer.readBit();
           return value - u;
         }
       }
@@ -340,7 +340,7 @@
 
       addByte(byte) {
         for (let i = 7; i >= 0; i--) {
-          this.addBit(global.OpCodes ? (global.OpCodes.ShiftRight32(byte, i) & 1) : ((byte >> i) & 1));
+          this.addBit((byte >> i) & 1);
         }
       }
 
@@ -381,7 +381,7 @@
         for (let i = 0; i < bitsCopy.length; i += 8) {
           let byte = 0;
           for (let j = 0; j < 8; j++) {
-            byte |= global.OpCodes ? global.OpCodes.ShiftLeft32(bitsCopy[i + j], (7 - j)) : (bitsCopy[i + j] << (7 - j));
+            byte |= (bitsCopy[i + j] << (7 - j));
           }
           bytes.push(byte);
         }

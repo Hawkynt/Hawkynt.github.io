@@ -33,6 +33,7 @@
       this.level = level;
       this.params = BIKE_PARAMS[level];
       this.input = null;
+      this._keyData = null; // Initialize to null so UI condition passes
     }
     
     Feed(data) {
@@ -74,7 +75,7 @@
       this.year = 2017;
       this.category = global.AlgorithmFramework.CategoryType.ASYMMETRIC;
       this.subCategory = 'Key Encapsulation';
-      this.securityStatus = global.AlgorithmFramework.SecurityStatus.EXPERIMENTAL;
+      this.securityStatus = global.AlgorithmFramework.SecurityStatus.EDUCATIONAL;
       this.complexity = global.AlgorithmFramework.ComplexityType.EXPERT;
       this.country = global.AlgorithmFramework.CountryCode.INTL;
       

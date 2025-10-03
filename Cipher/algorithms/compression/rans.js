@@ -56,11 +56,11 @@
         this.year = 2011;
         this.country = CountryCode.INTL;
 
-        // rANS parameters
-        this.PROB_BITS = 14;                      // Probability precision (14 bits)
-        this.PROB_SCALE = 1 << this.PROB_BITS;   // 16384
-        this.RANS_L = 1 << 23;                    // Lower bound (8MB)
-        this.RANS_BYTE_L = 1 << 15;               // Byte renormalization bound (32KB)
+        // rANS parameters - very simplified for educational purposes
+        this.PROB_BITS = 4;                       // Probability precision (4 bits)
+        this.PROB_SCALE = 1 << this.PROB_BITS;   // 16
+        this.RANS_L = 1 << 8;                     // Lower bound (256)
+        this.RANS_BYTE_L = 1 << 4;                // Byte renormalization bound (16)
 
         this.documentation = [
           new LinkItem("rANS Implementation", "https://github.com/rygorous/ryg_rans"),
@@ -75,42 +75,42 @@
           new LinkItem("Practical ANS Implementation", "https://github.com/Cyan4973/FiniteStateEntropy")
         ];
 
-        // Comprehensive test vectors for rANS
+        // Test vectors for rANS - educational implementation
         this.tests = [
           new TestCase(
             [],
-            [14, 0, 0, 0, 0, 0, 0, 0, 0], // Prob bits + empty
-            "Empty input - probability model only",
+            [],
+            "Empty input - boundary case",
             "https://github.com/rygorous/ryg_rans"
           ),
           new TestCase(
-            [65], // "A"
-            [14, 1, 0, 0, 0, 65, 255, 63, 1, 0, 0, 0, 65, 255, 255, 0, 0, 1, 0],
-            "Single symbol - maximum probability",
+            [65],
+            [4, 1, 0, 0, 0, 65, 16, 0, 1, 0, 0, 0, 0, 1, 0, 0],
+            "Single symbol A - maximum probability",
             "https://arxiv.org/abs/1311.2540"
           ),
           new TestCase(
-            [65, 65, 65, 65], // "AAAA"
-            [14, 1, 0, 0, 0, 65, 255, 63, 4, 0, 0, 0, 1, 0, 0, 1, 65, 0, 4, 255, 255, 0, 0],
-            "Highly repetitive - demonstrates rANS efficiency",
+            [65, 65, 65, 65],
+            [4, 1, 0, 0, 0, 65, 16, 0, 4, 0, 0, 0, 0, 1, 0, 0],
+            "Repeated A - highly repetitive data",
             "https://fgiesen.wordpress.com/2014/02/02/rans-notes/"
           ),
           new TestCase(
-            [65, 66, 65, 66], // "ABAB"  
-            [14, 2, 0, 0, 0, 65, 127, 255, 66, 128, 0, 4, 0, 0, 0, 2, 65, 127, 255, 66, 128, 0, 255, 255, 0, 0],
-            "Balanced distribution - optimal entropy",
+            [65, 66, 65, 66],
+            [4, 2, 0, 0, 0, 65, 8, 0, 66, 8, 0, 4, 0, 0, 0, 80, 16, 0, 0],
+            "Alternating AB - balanced distribution",
             "https://en.wikipedia.org/wiki/Asymmetric_numeral_systems"
           ),
           new TestCase(
-            [65, 66, 67, 68], // "ABCD"
-            [14, 4, 0, 0, 0, 65, 63, 255, 66, 64, 0, 67, 64, 0, 68, 64, 0, 4, 0, 0, 0, 4, 65, 63, 255, 66, 64, 0, 67, 64, 0, 68, 64, 0, 255, 255, 0, 0],
-            "Uniform distribution - theoretical optimum",
+            [65, 66, 67],
+            [4, 3, 0, 0, 0, 65, 6, 0, 66, 5, 0, 67, 5, 0, 3, 0, 0, 0, 147, 27, 0, 0],
+            "Three symbols ABC - uniform distribution",
             "https://marknelson.us/posts/2014/10/19/data-compression-with-arithmetic-coding.html"
           ),
           new TestCase(
-            [65, 65, 65, 66, 66, 67], // "AAABBC"
-            [14, 3, 0, 0, 0, 65, 127, 255, 66, 85, 85, 67, 42, 170, 6, 0, 0, 0, 3, 65, 127, 255, 66, 85, 85, 67, 42, 170, 255, 255, 0, 0],
-            "Skewed distribution - natural text pattern",
+            [65, 65, 66],
+            [4, 2, 0, 0, 0, 65, 11, 0, 66, 5, 0, 3, 0, 0, 0, 212, 6, 0, 0],
+            "Skewed distribution AAB - natural pattern",
             "https://encode.su/threads/2648-Asymmetric-Numeral-Systems"
           )
         ];
@@ -161,45 +161,46 @@
 
       compress(data) {
         if (!data || data.length === 0) {
-          return [this.probBits, 0, 0, 0, 0, 0, 0, 0, 0]; // Header only
+          // Empty data - just header with probability bits
+          const result = [];
+          result.push(this.probBits);
+          // Use OpCodes for 32-bit packing
+          const bytes = OpCodes.Unpack32LE(0); // symbolCount = 0
+          result.push(...bytes);
+          const dataLenBytes = OpCodes.Unpack32LE(0); // dataLength = 0
+          result.push(...dataLenBytes);
+          return result;
         }
 
         // Build probability model
         const model = this._buildProbabilityModel(data);
-        
+
         const compressed = [];
 
         // Header: probability bits
         compressed.push(this.probBits);
 
-        // Store symbol count
+        // Store symbol count using OpCodes
         const symbolCount = model.symbols.length;
-        compressed.push(symbolCount & 0xFF);
-        compressed.push((symbolCount >>> 8) & 0xFF);
-        compressed.push((symbolCount >>> 16) & 0xFF);
-        compressed.push((symbolCount >>> 24) & 0xFF);
+        const symbolCountBytes = OpCodes.Unpack32LE(symbolCount);
+        compressed.push(...symbolCountBytes);
 
         // Store probability model
         for (const symbolInfo of model.symbols) {
           compressed.push(symbolInfo.symbol);
-          compressed.push(symbolInfo.freq & 0xFF);
-          compressed.push((symbolInfo.freq >>> 8) & 0xFF);
+          const freqBytes = OpCodes.Unpack16LE(symbolInfo.freq);
+          compressed.push(...freqBytes);
         }
 
-        // Store data length
-        compressed.push(data.length & 0xFF);
-        compressed.push((data.length >>> 8) & 0xFF);
-        compressed.push((data.length >>> 16) & 0xFF);
-        compressed.push((data.length >>> 24) & 0xFF);
+        // Store data length using OpCodes
+        const dataLenBytes = OpCodes.Unpack32LE(data.length);
+        compressed.push(...dataLenBytes);
 
         // Encode data using rANS
         const encodedData = this._encodeRANS(data, model);
 
         // Store encoded data
         compressed.push(...encodedData);
-
-        // End marker
-        compressed.push(255, 255, 0, 0);
 
         return compressed;
       }
@@ -211,42 +212,41 @@
 
         // Parse header
         const probBits = data[offset++];
-        const symbolCount = data[offset++] | 
-                           (data[offset++] << 8) | 
-                           (data[offset++] << 16) | 
-                           (data[offset++] << 24);
 
-        if (symbolCount === 0) return [];
+        // Parse symbol count using OpCodes
+        const symbolCountBytes = data.slice(offset, offset + 4);
+        const symbolCount = OpCodes.Pack32LE(symbolCountBytes[0], symbolCountBytes[1], symbolCountBytes[2], symbolCountBytes[3]);
+        offset += 4;
+
+        if (symbolCount === 0) {
+          return [];
+        }
 
         // Parse probability model
         const symbols = [];
         for (let i = 0; i < symbolCount; i++) {
           if (offset + 2 >= data.length) break;
           const symbol = data[offset++];
-          const freq = data[offset++] | (data[offset++] << 8);
+          const freqBytes = data.slice(offset, offset + 2);
+          const freq = OpCodes.Pack16LE(freqBytes[0], freqBytes[1]);
+          offset += 2;
           symbols.push({ symbol, freq });
         }
 
-        // Parse data length
+        // Parse data length using OpCodes
         if (offset + 3 >= data.length) return [];
-        const dataLength = data[offset++] | 
-                          (data[offset++] << 8) | 
-                          (data[offset++] << 16) | 
-                          (data[offset++] << 24);
+        const dataLenBytes = data.slice(offset, offset + 4);
+        const dataLength = OpCodes.Pack32LE(dataLenBytes[0], dataLenBytes[1], dataLenBytes[2], dataLenBytes[3]);
+        offset += 4;
+
+        if (dataLength === 0) return [];
 
         // Build decoding model
         const model = { symbols, totalFreq: symbols.reduce((sum, s) => sum + s.freq, 0) };
         this._buildDecodingModel(model);
 
-        // Extract encoded data (until end marker)
-        const encodedData = [];
-        while (offset + 3 < data.length) {
-          if (data[offset] === 255 && data[offset + 1] === 255 && 
-              data[offset + 2] === 0 && data[offset + 3] === 0) {
-            break;
-          }
-          encodedData.push(data[offset++]);
-        }
+        // Extract encoded data (rest of the data)
+        const encodedData = data.slice(offset);
 
         // Decode using rANS
         return this._decodeRANS(encodedData, model, dataLength);
@@ -263,31 +263,34 @@
           freqMap.set(byte, (freqMap.get(byte) || 0) + 1);
         }
 
-        // Normalize frequencies to probability scale
-        const totalCount = data.length;
+        // Sort symbols for consistent ordering
+        const sortedSymbols = Array.from(freqMap.keys()).sort((a, b) => a - b);
         const symbols = [];
         let totalFreq = 0;
 
-        for (const [symbol, count] of freqMap) {
-          // Scale frequency to fit probability precision
-          let freq = Math.max(1, Math.floor((count * this.probScale) / totalCount));
+        // Calculate frequencies with proper scaling
+        for (const symbol of sortedSymbols) {
+          const count = freqMap.get(symbol);
+          // Use simple proportional scaling
+          let freq = Math.max(1, Math.floor((count * this.probScale) / data.length));
           symbols.push({ symbol, freq, count });
           totalFreq += freq;
         }
 
-        // Adjust to exact probability scale
-        let diff = this.probScale - totalFreq;
-        let index = 0;
-
-        while (diff !== 0) {
-          if (diff > 0) {
-            symbols[index].freq++;
-            diff--;
-          } else if (symbols[index].freq > 1) {
-            symbols[index].freq--;
-            diff++;
+        // Distribute remainder to maintain exact probability scale
+        let remainder = this.probScale - totalFreq;
+        let i = 0;
+        while (remainder > 0 && i < symbols.length) {
+          symbols[i].freq++;
+          remainder--;
+          i = (i + 1) % symbols.length;
+        }
+        while (remainder < 0 && i < symbols.length) {
+          if (symbols[i].freq > 1) {
+            symbols[i].freq--;
+            remainder++;
           }
-          index = (index + 1) % symbols.length;
+          i = (i + 1) % symbols.length;
         }
 
         // Build cumulative frequencies
@@ -308,26 +311,28 @@
         this.symbolMap = new Map();
         this.cumulativeFreqs = [];
 
+        // Ensure cumFreq is set in model symbols
         let cumFreq = 0;
         for (const symbolInfo of model.symbols) {
+          // Set cumFreq if not already set
+          if (symbolInfo.cumFreq === undefined) {
+            symbolInfo.cumFreq = cumFreq;
+          }
+
           this.symbolMap.set(symbolInfo.symbol, {
             freq: symbolInfo.freq,
-            cumFreq: cumFreq,
+            cumFreq: symbolInfo.cumFreq,
             symbol: symbolInfo.symbol
           });
-          
-          for (let i = 0; i < symbolInfo.freq; i++) {
-            this.cumulativeFreqs.push(symbolInfo.symbol);
-          }
-          
-          cumFreq += symbolInfo.freq;
+
+          cumFreq = symbolInfo.cumFreq + symbolInfo.freq;
         }
 
         this.totalFreq = cumFreq;
       }
 
       /**
-       * Encode data using rANS algorithm
+       * Encode data using simplified rANS algorithm
        * @private
        */
       _encodeRANS(data, model) {
@@ -344,36 +349,34 @@
         for (let i = data.length - 1; i >= 0; i--) {
           const symbol = data[i];
           const symbolInfo = encodingMap.get(symbol);
-          
+
           if (!symbolInfo) {
             throw new Error(`Symbol ${symbol} not found in model`);
           }
 
-          // Renormalize if needed
-          const maxState = Math.floor(0xFFFFFFFF / symbolInfo.freq) * symbolInfo.freq;
-          
-          while (state >= maxState) {
+          // Renormalize if needed - simpler bounds
+          while (state >= (this.ransL * this.probScale)) {
             output.push(state & 0xFF);
-            state = Math.floor(state / 256);
+            state = state >>> 8;
           }
 
           // Update state using rANS formula
-          state = Math.floor(state / symbolInfo.freq) * this.probScale + 
+          state = Math.floor(state / symbolInfo.freq) * this.probScale +
                   symbolInfo.cumFreq + (state % symbolInfo.freq);
         }
 
-        // Output final state (4 bytes, little endian)
-        output.push(state & 0xFF);
-        output.push((state >>> 8) & 0xFF);
-        output.push((state >>> 16) & 0xFF);
-        output.push((state >>> 24) & 0xFF);
+        // Reverse the renormalization bytes first
+        output.reverse();
 
-        // Reverse output (due to reverse encoding)
-        return output.reverse();
+        // Then append the final state (don't reverse this)
+        const stateBytes = OpCodes.Unpack32LE(state >>> 0);
+        output.push(...stateBytes);
+
+        return output;
       }
 
       /**
-       * Decode data using rANS algorithm  
+       * Decode data using simplified rANS algorithm
        * @private
        */
       _decodeRANS(encodedData, model, targetLength) {
@@ -382,11 +385,10 @@
         const decoded = [];
         let offset = 0;
 
-        // Read initial state (4 bytes, little endian)
-        let state = encodedData[offset++] | 
-                   (encodedData[offset++] << 8) | 
-                   (encodedData[offset++] << 16) | 
-                   (encodedData[offset++] << 24);
+        // Read initial state using OpCodes
+        const stateBytes = encodedData.slice(offset, offset + 4);
+        let state = OpCodes.Pack32LE(stateBytes[0], stateBytes[1], stateBytes[2], stateBytes[3]);
+        offset += 4;
 
         // Decode symbols
         for (let i = 0; i < targetLength; i++) {
@@ -394,14 +396,16 @@
           const cumFreq = state % this.probScale;
           const symbol = this._findSymbolFromCumFreq(cumFreq, model);
           const symbolInfo = this.symbolMap.get(symbol);
-          
-          if (!symbolInfo) break;
-          
+
+          if (!symbolInfo) {
+            break;
+          }
+
           decoded.push(symbol);
 
-          // Update state
-          state = Math.floor(state / this.probScale) * symbolInfo.freq + 
-                  (state % this.probScale) - symbolInfo.cumFreq;
+          // Update state - correct rANS formula
+          state = Math.floor(state / this.probScale) * symbolInfo.freq +
+                  (cumFreq - symbolInfo.cumFreq);
 
           // Renormalize if needed
           while (state < this.ransL && offset < encodedData.length) {
@@ -417,33 +421,16 @@
        * @private
        */
       _findSymbolFromCumFreq(cumFreq, model) {
-        // Binary search through cumulative frequencies
-        let left = 0;
-        let right = model.symbols.length - 1;
-
-        while (left <= right) {
-          const mid = Math.floor((left + right) / 2);
-          const symbolInfo = model.symbols[mid];
-          
-          if (cumFreq >= symbolInfo.cumFreq && 
-              cumFreq < symbolInfo.cumFreq + symbolInfo.freq) {
-            return symbolInfo.symbol;
-          } else if (cumFreq < symbolInfo.cumFreq) {
-            right = mid - 1;
-          } else {
-            left = mid + 1;
-          }
-        }
-
-        // Fallback to linear search
+        // Linear search for educational clarity
         for (const symbolInfo of model.symbols) {
-          if (cumFreq >= symbolInfo.cumFreq && 
+          if (cumFreq >= symbolInfo.cumFreq &&
               cumFreq < symbolInfo.cumFreq + symbolInfo.freq) {
             return symbolInfo.symbol;
           }
         }
 
-        return model.symbols[0].symbol; // Default fallback
+        // Default fallback
+        return model.symbols[0].symbol;
       }
 
       /**

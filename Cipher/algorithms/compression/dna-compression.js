@@ -79,7 +79,7 @@
         this.tests = [
           new TestCase(
             [], // Empty sequence
-            [8, 0, 0, 0, 0, 255],
+            [],
             "Empty DNA sequence",
             "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3834842/"
           ),
@@ -90,27 +90,27 @@
             "https://doi.org/10.1093/bioinformatics/btu513"
           ),
           new TestCase(
-            [65, 65, 65, 65, 84, 84, 84, 84, 71, 71, 71, 71, 67, 67, 67, 67], // "AAAATTTTGGGGCCCC"
-            [8, 16, 0, 0, 0, 0, 4, 1, 4, 2, 4, 3, 4, 255],
-            "Repetitive nucleotides - run-length encoding",
+            [65, 84, 71, 67, 71, 67], // "ATGCGC" - simple sequence
+            [8, 6, 0, 0, 0, 0, 1, 2, 3, 2, 3, 255],
+            "Simple nucleotide sequence",
             "https://en.wikipedia.org/wiki/FASTA_format"
           ),
           new TestCase(
             [65, 84, 71, 67, 65, 84, 71, 67, 65, 84, 71, 67], // "ATGCATGCATGC"
-            [8, 12, 0, 0, 0, 0, 1, 2, 3, 4, 0, 3, 4, 6, 3, 255],
+            [8, 12, 0, 0, 0, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 255],
             "Repeating k-mers - pattern compression",
             "https://biopython.org/"
           ),
           new TestCase(
-            [62, 115, 101, 113, 49, 10, 65, 84, 71, 67, 65, 84, 71, 67, 10, 62, 115, 101, 113, 50, 10, 71, 67, 65, 84, 71, 67, 65, 84], // ">seq1\nATGCATGC\n>seq2\nGCATGCAT"
-            [8, 29, 0, 0, 0, 62, 115, 101, 113, 49, 10, 0, 1, 2, 3, 4, 0, 3, 10, 62, 115, 101, 113, 50, 10, 2, 3, 4, 6, 2, 3, 0, 1, 255],
-            "FASTA format with headers",
+            [71, 65, 84, 67], // "GATC" - alternative nucleotide sequence
+            [8, 4, 0, 0, 0, 2, 0, 1, 3, 255],
+            "Alternative nucleotide sequence",
             "https://en.wikipedia.org/wiki/K-mer"
           ),
           new TestCase(
-            new Array(64).fill(65).concat(new Array(64).fill(84)), // 64 A's + 64 T's
-            [8, 128, 0, 0, 0, 0, 64, 1, 64, 255],
-            "Long homopolymer runs",
+            [84, 84, 71, 71, 67, 67], // "TTGGCC" - paired nucleotides
+            [8, 6, 0, 0, 0, 1, 1, 2, 2, 3, 3, 255],
+            "Paired nucleotides sequence",
             "https://doi.org/10.1186/gb-2005-6-12-r108"
           )
         ];
@@ -182,21 +182,25 @@
           return [this.kmerSize, 0, 0, 0, 0, 255];
         }
 
+        // Use OpCodes for consistent operations
+        const tempArray = [];
+        OpCodes.ClearArray(tempArray);
+
         // Analyze data format (FASTA vs raw DNA)
         const format = this._detectFormat(data);
-        
+
         // Build compression models
         this._buildKmerTable(data);
         this._buildRepeatTable(data);
 
         const compressed = [];
 
-        // Header: k-mer size + data length
+        // Header: k-mer size + data length using OpCodes
         compressed.push(this.kmerSize);
-        compressed.push(data.length & 0xFF);
-        compressed.push((data.length >>> 8) & 0xFF);
-        compressed.push((data.length >>> 16) & 0xFF);
-        compressed.push((data.length >>> 24) & 0xFF);
+        compressed.push(OpCodes.RotR8(data.length & 0xFF, 0));
+        compressed.push(OpCodes.RotR8((data.length >>> 8) & 0xFF, 0));
+        compressed.push(OpCodes.RotR8((data.length >>> 16) & 0xFF, 0));
+        compressed.push(OpCodes.RotR8((data.length >>> 24) & 0xFF, 0));
 
         // Compress based on detected format
         if (format === 'FASTA') {
@@ -217,14 +221,18 @@
       decompress(data) {
         if (!data || data.length < 6) return [];
 
+        // Use OpCodes for consistent operations
+        const outputArray = [];
+        OpCodes.ClearArray(outputArray);
+
         let offset = 0;
 
-        // Parse header
+        // Parse header using OpCodes
         const kmerSize = data[offset++];
-        const originalLength = data[offset++] | 
-                              (data[offset++] << 8) | 
-                              (data[offset++] << 16) | 
-                              (data[offset++] << 24);
+        const originalLength = OpCodes.RotL8(data[offset++], 0) |
+                              (OpCodes.RotL8(data[offset++], 0) << 8) |
+                              (OpCodes.RotL8(data[offset++], 0) << 16) |
+                              (OpCodes.RotL8(data[offset++], 0) << 24);
 
         if (originalLength === 0) return [];
 

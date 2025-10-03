@@ -48,7 +48,7 @@
   } = AlgorithmFramework;
 
   const ROUNDS = 8;
-// TODO: we may build these using code lazily
+// Pre-computed S-boxes for optimal performance
   const KhazadTables = (() => {
 const rawTables = [
   [

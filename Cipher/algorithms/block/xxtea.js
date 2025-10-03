@@ -95,88 +95,114 @@
         new AlgorithmFramework.Vulnerability("Variable block complexity", "https://eprint.iacr.org/", "Variable block sizes may introduce implementation complexities and edge cases", "Careful implementation and testing required for security-critical applications")
       ];
 
-      // Test vectors from various sources
-      this.testCases = [
-        new AlgorithmFramework.TestCase(
-          "XXTEA 8-byte block test vector",
-          OpCodes.Hex8ToBytes("0000000000000000"),
-          OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          OpCodes.Hex8ToBytes("0537042bab575d00"),
-          [new AlgorithmFramework.LinkItem("Educational test vector", "")]
-        ),
-        new AlgorithmFramework.TestCase(
-          "XXTEA 12-byte variable block test",
-          OpCodes.Hex8ToBytes("000000000000000000000000"),
-          OpCodes.Hex8ToBytes("123456789abcdef0123456789abcdef0"),
-          OpCodes.Hex8ToBytes("e91306eadbf9a325d8181800"),
-          [new AlgorithmFramework.LinkItem("Educational test vector", "")]
-        )
+      // Test vectors from verified Crypt-XXTEA implementation
+      this.tests = [
+        {
+          text: "XXTEA 8-byte block - all zeros",
+          uri: "https://github.com/an0maly/Crypt-XXTEA/blob/master/t/test-vectors.t",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("ab043705808c5d57")
+        },
+        {
+          text: "XXTEA 8-byte block - mixed key",
+          uri: "https://github.com/an0maly/Crypt-XXTEA/blob/master/t/test-vectors.t",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("0102040810204080fffefcf8f0e0c080"),
+          expected: OpCodes.Hex8ToBytes("d1e78be2c746728a")
+        },
+        {
+          text: "XXTEA 8-byte block - all ones plaintext",
+          uri: "https://github.com/an0maly/Crypt-XXTEA/blob/master/t/test-vectors.t",
+          input: OpCodes.Hex8ToBytes("ffffffffffffffff"),
+          key: OpCodes.Hex8ToBytes("9e3779b99b9773e9b979379e6b695156"),
+          expected: OpCodes.Hex8ToBytes("67ed0ea8e8973fc5")
+        }
       ];
     }
 
-    CreateInstance(key) {
-      return new XXTEAInstance(key);
+    CreateInstance(isInverse = false) {
+      return new XXTEAInstance(this, isInverse);
     }
   }
 
-  class XXTEAInstance extends AlgorithmFramework.IBlockCipherInstance {
-    constructor(key) {
-      super();
+  class XXTEAInstance extends IBlockCipherInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this._key = null;
+      this.inputBuffer = [];
+      this.BlockSize = 8; // Minimum block size
+      this.KeySize = 0;
 
       // XXTEA constants
-      this.DELTA = 0x9E3779B9;                   // Magic constant: 2^32 / golden ratio
-
-      this._setupKey(key);
+      this.DELTA = 0x9E3779B9; // Magic constant: 2^32 / golden ratio
     }
 
-    _setupKey(keyBytes) {
+    set key(keyBytes) {
       if (!keyBytes) {
-        throw new Error("Key is required");
+        this._key = null;
+        this.KeySize = 0;
+        return;
       }
 
-      // Validate key size
+      // Validate key size (must be 16 bytes)
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16)`);
+        throw new Error(`Invalid key size: ${keyBytes.length} bytes. XXTEA requires exactly 16 bytes`);
       }
 
-      // Convert 128-bit key to four 32-bit words using OpCodes (big-endian)
-      this.keyWords = [
-        OpCodes.Pack32BE(keyBytes[0], keyBytes[1], keyBytes[2], keyBytes[3]),
-        OpCodes.Pack32BE(keyBytes[4], keyBytes[5], keyBytes[6], keyBytes[7]),
-        OpCodes.Pack32BE(keyBytes[8], keyBytes[9], keyBytes[10], keyBytes[11]),
-        OpCodes.Pack32BE(keyBytes[12], keyBytes[13], keyBytes[14], keyBytes[15])
-      ];
+      this._key = [...keyBytes];
+      this.KeySize = keyBytes.length;
     }
 
-    EncryptBlock(blockIndex, data) {
-      if (data.length < 8 || data.length % 4 !== 0) {
-        throw new Error('XXTEA requires at least 8 bytes and multiple of 4 bytes per block');
-      }
-      return this._encryptData(data);
+    get key() {
+      return this._key ? [...this._key] : null;
     }
 
-    DecryptBlock(blockIndex, data) {
-      if (data.length < 8 || data.length % 4 !== 0) {
-        throw new Error('XXTEA requires at least 8 bytes and multiple of 4 bytes per block');
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!this.key) throw new Error("Key not set");
+
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      if (!this.key) throw new Error("Key not set");
+      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+
+      // Validate input length (must be multiple of 4 bytes and at least 8 bytes)
+      if (this.inputBuffer.length < 8 || this.inputBuffer.length % 4 !== 0) {
+        throw new Error(`Input length must be at least 8 bytes and multiple of 4 bytes. Got ${this.inputBuffer.length} bytes`);
       }
-      return this._decryptData(data);
+
+      const output = this.isInverse
+        ? this._decryptData(this.inputBuffer)
+        : this._encryptData(this.inputBuffer);
+
+      // Clear input buffer
+      this.inputBuffer = [];
+
+      return output;
     }
 
     // Encrypt variable-length data
     _encryptData(data) {
-      // Convert to 32-bit words using OpCodes (big-endian)
+      // Convert key to 32-bit words (little-endian for XXTEA)
+      const keyWords = this._getKeyWords();
+
+      // Convert to 32-bit words using OpCodes (little-endian for XXTEA)
       const words = [];
       for (let i = 0; i < data.length; i += 4) {
-        words.push(OpCodes.Pack32BE(data[i], data[i+1], data[i+2], data[i+3]));
+        words.push(OpCodes.Pack32LE(data[i], data[i+1], data[i+2], data[i+3]));
       }
 
       // XXTEA encryption algorithm
-      const encryptedWords = this._encryptWords(words, this.keyWords);
+      const encryptedWords = this._encryptWords(words, keyWords);
 
-      // Convert back to bytes using OpCodes
+      // Convert back to bytes using OpCodes (little-endian)
       const result = [];
       for (let i = 0; i < encryptedWords.length; i++) {
-        const bytes = OpCodes.Unpack32BE(encryptedWords[i]);
+        const bytes = OpCodes.Unpack32LE(encryptedWords[i]);
         result.push(...bytes);
       }
 
@@ -185,23 +211,36 @@
 
     // Decrypt variable-length data
     _decryptData(data) {
-      // Convert to 32-bit words using OpCodes (big-endian)
+      // Convert key to 32-bit words (little-endian for XXTEA)
+      const keyWords = this._getKeyWords();
+
+      // Convert to 32-bit words using OpCodes (little-endian for XXTEA)
       const words = [];
       for (let i = 0; i < data.length; i += 4) {
-        words.push(OpCodes.Pack32BE(data[i], data[i+1], data[i+2], data[i+3]));
+        words.push(OpCodes.Pack32LE(data[i], data[i+1], data[i+2], data[i+3]));
       }
 
       // XXTEA decryption algorithm
-      const decryptedWords = this._decryptWords(words, this.keyWords);
+      const decryptedWords = this._decryptWords(words, keyWords);
 
-      // Convert back to bytes using OpCodes
+      // Convert back to bytes using OpCodes (little-endian)
       const result = [];
       for (let i = 0; i < decryptedWords.length; i++) {
-        const bytes = OpCodes.Unpack32BE(decryptedWords[i]);
+        const bytes = OpCodes.Unpack32LE(decryptedWords[i]);
         result.push(...bytes);
       }
 
       return result;
+    }
+
+    // Get key as 32-bit words
+    _getKeyWords() {
+      return [
+        OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]),
+        OpCodes.Pack32LE(this._key[4], this._key[5], this._key[6], this._key[7]),
+        OpCodes.Pack32LE(this._key[8], this._key[9], this._key[10], this._key[11]),
+        OpCodes.Pack32LE(this._key[12], this._key[13], this._key[14], this._key[15])
+      ];
     }
 
     // Internal XXTEA encryption algorithm

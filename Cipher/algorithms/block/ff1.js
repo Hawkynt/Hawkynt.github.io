@@ -69,7 +69,7 @@
       if (bytes.length === 0) return 0n;
       let result = 0n;
       for (let i = 0; i < bytes.length; i++) {
-        result = (result << 8n) + BigInt(bytes[i] & 0xFF);
+        result = OpCodes.ShiftLn(result, 8) + BigInt(bytes[i] & 0xFF);
       }
       return result;
     }
@@ -84,7 +84,7 @@
 
       while (value > 0n) {
         bytes.unshift(Number(value & 0xFFn));
-        value = value >> 8n;
+        value = OpCodes.ShiftRn(value, 8);
       }
 
       while (bytes.length < minLength) {
@@ -194,11 +194,11 @@
 
     // Radix (3 bytes, big-endian)
     P[3] = 0;
-    P[4] = (radix >> 8) & 0xFF;
-    P[5] = radix & 0xFF;
+    P[4] = OpCodes.GetByte(radix, 1);
+    P[5] = OpCodes.GetByte(radix, 0);
 
     P[6] = 10;  // Number of rounds
-    P[7] = u & 0xFF;  // Split parameter
+    P[7] = OpCodes.GetByte(u, 0);  // Split parameter
 
     // n (4 bytes, big-endian)
     OpCodes.Pack32BE(P, 8, n);

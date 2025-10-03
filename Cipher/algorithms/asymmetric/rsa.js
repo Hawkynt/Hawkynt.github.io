@@ -61,7 +61,7 @@
       this.year = 1977;
       this.category = CategoryType.ASYMMETRIC;
       this.subCategory = "Public Key Cryptosystem";
-      this.securityStatus = SecurityStatus.INSECURE;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.US;
 
@@ -110,10 +110,11 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.keySize = 2048;
-      this.publicKey = null;
-      this.privateKey = null;
+      this._publicKey = null;
+      this._privateKey = null;
       this.inputBuffer = [];
       this.currentParams = null;
+      this._keyData = null; // Initialize to null so UI condition passes
 
       // RSA parameter sets with NIST-recommended key sizes
       this.RSA_PARAMS = {
@@ -162,6 +163,31 @@
 
     get key() {
       return this._keyData;
+    }
+
+    // Property setters/getters for UI compatibility
+    set publicKey(keyData) {
+      if (keyData) {
+        this._publicKey = keyData;
+      } else {
+        this._publicKey = null;
+      }
+    }
+
+    get publicKey() {
+      return this._publicKey;
+    }
+
+    set privateKey(keyData) {
+      if (keyData) {
+        this._privateKey = keyData;
+      } else {
+        this._privateKey = null;
+      }
+    }
+
+    get privateKey() {
+      return this._privateKey;
     }
 
     // Initialize RSA with specified key size
@@ -245,8 +271,8 @@
 
       // Generate educational keys
       const keyPair = this._generateEducationalKeys();
-      this.publicKey = keyPair.publicKey;
-      this.privateKey = keyPair.privateKey;
+      this._publicKey = keyPair.publicKey;
+      this._privateKey = keyPair.privateKey;
     }
 
     // Generate educational keys (not cryptographically secure)
@@ -274,20 +300,20 @@
 
     // Educational encryption (simplified)
     _encrypt(message) {
-      if (!this.publicKey) {
+      if (!this._publicKey) {
         throw new Error('RSA public key not set. Generate keys first.');
       }
 
       // Educational stub - returns deterministic "encryption"
       const messageStr = String.fromCharCode(...message);
-      const signature = 'RSA_ENCRYPTED_' + this.keySize + '_' + message.length + '_BYTES_' + this.publicKey.keyId;
+      const signature = 'RSA_ENCRYPTED_' + this.keySize + '_' + message.length + '_BYTES_' + this._publicKey.keyId;
 
       return OpCodes.AnsiToBytes(signature);
     }
 
     // Educational decryption (simplified)
     _decrypt(data) {
-      if (!this.privateKey) {
+      if (!this._privateKey) {
         throw new Error('RSA private key not set. Generate keys first.');
       }
 
@@ -328,11 +354,11 @@
 
     // Clear sensitive data
     ClearData() {
-      if (this.privateKey) {
-        this.privateKey.d = 0n;
-        this.privateKey = null;
+      if (this._privateKey) {
+        this._privateKey.d = 0n;
+        this._privateKey = null;
       }
-      this.publicKey = null;
+      this._publicKey = null;
       OpCodes.ClearArray(this.inputBuffer);
       this.inputBuffer = [];
     }

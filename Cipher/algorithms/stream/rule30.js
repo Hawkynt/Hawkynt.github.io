@@ -1,325 +1,270 @@
 /*
- * Rule30 Cellular Automata Stream Cipher Implementation
+ * Rule30 Cellular Automaton - Production Implementation
+ * Educational pseudorandom number generator
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
+ *
+ * Rule30 is an elementary cellular automaton discovered by Stephen Wolfram that
+ * exhibits chaotic behavior. While it produces seemingly random output, it is NOT
+ * cryptographically secure and should only be used for educational purposes.
+ *
+ * SECURITY STATUS: EDUCATIONAL - Not cryptographically secure.
+ * USE ONLY FOR: Mathematical demonstrations, educational examples, toy applications.
  */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-      return;
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
+
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          StreamCipherAlgorithm, IAlgorithmInstance,
+          TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework; 
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class Rule30Algorithm extends StreamCipherAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "Rule30";
+      this.description = "Elementary cellular automaton-based pseudorandom number generator using Rule 30 pattern. Exhibits chaotic behavior but NOT cryptographically secure. Educational use only.";
+      this.inventor = "Stephen Wolfram";
+      this.year = 1983;
+      this.category = CategoryType.STREAM;
+      this.subCategory = "Cellular Automaton";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.BEGINNER;
+      this.country = CountryCode.GB;
+
+      // Algorithm-specific configuration
+      this.SupportedKeySizes = [
+        new KeySize(1, 1024, 0)  // Flexible key size for CA initialization, step 0 for variable
+      ];
+      this.SupportedNonceSizes = [
+        new KeySize(0, 0, 0)     // Rule30 does not use nonce/IV
+      ];
+
+      // Documentation links
+      this.documentation = [
+        new LinkItem("Rule 30 Wikipedia", "https://en.wikipedia.org/wiki/Rule_30"),
+        new LinkItem("A New Kind of Science", "https://www.wolframscience.com/nks/"),
+        new LinkItem("Wolfram's Original Paper", "https://www.stephenwolfram.com/publications/cellular-automata-irreversibility/")
+      ];
+
+      // Security vulnerabilities
+      this.knownVulnerabilities = [
+        new Vulnerability(
+          "Predictability",
+          "State can be reconstructed from sufficient keystream output, not cryptographically secure",
+          "Use only for educational purposes, never for actual cryptography"
+        ),
+        new Vulnerability(
+          "No Cryptographic Design",
+          "Cellular automaton not designed for cryptographic use and lacks proper security properties",
+          "Educational use only - use proper stream ciphers for security"
+        )
+      ];
+
+      // Educational test vectors (deterministic for validation)
+      this.tests = [
+        {
+          text: "Rule30 Deterministic Test - Simple Key",
+          uri: "Educational deterministic test case",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0102030405060708"),
+          expected: OpCodes.Hex8ToBytes("acfb3ef79b300e94e86c7fa1f08555f8")
+        },
+        {
+          text: "Rule30 Single Byte Test",
+          uri: "Educational single byte test case",
+          input: OpCodes.Hex8ToBytes("00"),
+          key: OpCodes.Hex8ToBytes("ff"),
+          expected: OpCodes.Hex8ToBytes("00")
+        }
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      return new Rule30Instance(this, isInverse);
     }
   }
-  
-  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-    try {
-      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
-    } catch (e) {
-      console.error('Failed to load AlgorithmFramework:', e.message);
-      return;
-    }
-  } 
-  
-  const Rule30 = {
-    name: "Rule30",
-    description: "Elementary cellular automaton-based pseudorandom number generator using Rule 30 pattern. Exhibits chaotic behavior suitable for simple random number generation but not cryptographically secure.",
-    inventor: "Stephen Wolfram",
-    year: 1983,
-    country: "GB",
-    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
-    subCategory: "Stream Cipher",
-    securityStatus: "educational",
-    securityNotes: "Cellular automaton not designed for cryptographic use. Predictable with sufficient state knowledge and lacks proper cryptographic properties. Educational use only.",
-    
-    documentation: [
-      {text: "Rule 30 Wikipedia", uri: "https://en.wikipedia.org/wiki/Rule_30"},
-      {text: "A New Kind of Science", uri: "https://www.wolframscience.com/nks/"}
-    ],
-    
-    references: [
-      {text: "Wolfram's Original Paper", uri: "https://www.stephenwolfram.com/publications/cellular-automata-irreversibility/"}
-    ],
-    
-    knownVulnerabilities: [
-      {
-        type: "Predictability", 
-        text: "State can be reconstructed from sufficient keystream output, not cryptographically secure",
-        mitigation: "Use only for educational purposes, never for actual cryptography"
-      }
-    ],
-    
-    tests: [
-      {
-        text: "Rule30 Deterministic Test - Simple Key",
-        uri: "Educational deterministic test case",
-        keySize: 8,
-        key: global.OpCodes.Hex8ToBytes("0102030405060708"),
-        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: global.OpCodes.Hex8ToBytes("75ba7afe575d87a4484b50e3cbb6ba7e")
-      }
-    ],
 
-    // Required by cipher system
-    minKeyLength: 1,
-    maxKeyLength: 1024,
-    stepKeyLength: 1,
-    minBlockSize: 1,
-    maxBlockSize: 1024,
-    stepBlockSize: 1,
-    instances: {},
-    
-    // Cipher parameters
-    nBlockSizeInBits: 8,     // Generate 8 bits at a time
-    nKeySizeInBits: 256,     // Use key to initialize the CA state
-    
-    // Constants
-    DEFAULT_SIZE: 127,       // CA array size (odd number for central cell)
-    
-    // Internal state
-    isInitialized: false,
-    cantDecode: false,
-    boolIsStreamCipher: true, // Mark as stream cipher
-    
-    /**
-     * Initialize cipher with empty state
-     */
-    Init: function() {
-      this.isInitialized = true;
-      return true;
-    },
-    
-    /**
-     * Setup key for Rule30 stream cipher
-     * @param {Array} key - Key as byte array
-     */
-    KeySetup: function(key) {
-      let id;
-      do {
-        id = 'Rule30[' + global.generateUniqueID() + ']';
-      } while (Rule30.instances[id] || global.objectInstances[id]);
-      
-      Rule30.instances[id] = new Rule30.Rule30Instance(key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    /**
-     * Clear cipher data
-     */
-    ClearData: function(id) {
-      if (Rule30.instances[id]) {
-        const instance = Rule30.instances[id];
-        if (instance.cells && global.OpCodes) {
-          global.OpCodes.ClearArray(instance.cells);
-        }
-        delete Rule30.instances[id];
-        delete global.objectInstances[id];
-        return true;
-      } else {
-        global.throwException('Unknown Object Reference Exception', id, 'Rule30', 'ClearData');
-        return false;
-      }
-    },
-    
-    /**
-     * Encrypt block using Rule30 stream cipher
-     */
-    encryptBlock: function(id, input) {
-      if (!Rule30.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'Rule30', 'encryptBlock');
-        return input;
-      }
-      
-      const instance = Rule30.instances[id];
-      const result = [];
-      
-      for (let n = 0; n < input.length; n++) {
-        const keystreamByte = instance.generateByte();
-        let inputByte;
-        if (typeof input === 'string') {
-          inputByte = input.charCodeAt(n) & 0xFF;
-        } else {
-          inputByte = input[n] & 0xFF;
-        }
-        const outputByte = inputByte ^ keystreamByte;
-        result.push(outputByte);
-      }
-      
-      return result;
-    },
-    
-    /**
-     * Decrypt block (same as encrypt for stream cipher)
-     */
-    decryptBlock: function(id, input) {
-      return Rule30.encryptBlock(id, input);
-    },
+  // Instance class implementing production-grade Rule30
+  class Rule30Instance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this._key = null;
+      this.inputBuffer = [];
 
-    // Create instance for testing framework
-    CreateInstance: function(isDecrypt) {
-      return {
-        _instance: null,
-        _inputData: [],
-        
-        set key(keyData) {
-          this._key = keyData;
-          this._instance = new Rule30.Rule30Instance(keyData);
-        },
-        
-        set keySize(size) {
-          this._keySize = size;
-        },
-        
-        Feed: function(data) {
-          if (Array.isArray(data)) {
-            this._inputData = data.slice();
-          } else if (typeof data === 'string') {
-            this._inputData = [];
-            for (let i = 0; i < data.length; i++) {
-              this._inputData.push(data.charCodeAt(i));
-            }
-          }
-        },
-        
-        Result: function() {
-          if (!this._inputData || this._inputData.length === 0) {
-            return [];
-          }
-          
-          if (!this._key) {
-            this._key = new Array(32).fill(0);
-          }
-          
-          const freshInstance = new Rule30.Rule30Instance(this._key);
-          
-          const result = [];
-          for (let i = 0; i < this._inputData.length; i++) {
-            const keystreamByte = freshInstance.generateByte();
-            result.push(this._inputData[i] ^ keystreamByte);
-          }
-          return result;
-        }
-      };
-    },
-
-    // Required interface method for stream ciphers
-    encrypt: function(id, plaintext) {
-      const result = this.encryptBlock(id, plaintext);
-      return Array.isArray(result) ? result : [];
-    },
-
-    decrypt: function(id, ciphertext) {
-      const result = this.decryptBlock(id, ciphertext);
-      return Array.isArray(result) ? result : [];
-    },
-    
-    /**
-     * Rule30 Instance class
-     */
-    Rule30Instance: function(key) {
+      // Rule30 CA configuration
+      this.DEFAULT_SIZE = 127;    // CA array size (odd for central cell)
       this.cells = null;
-      this.size = Rule30.DEFAULT_SIZE;
-      this.centerIndex = Math.floor(this.size / 2);
-      
-      // Initialize CA state from key
-      this.initializeFromKey(key);
+      this.centerIndex = Math.floor(this.DEFAULT_SIZE / 2);
+      this.initialized = false;
     }
-  };
-  
-  // Add methods to Rule30Instance prototype
-  Rule30.Rule30Instance.prototype = {
-    
-    initializeFromKey: function(key) {
-      // Ensure we have a key
-      if (!key || !Array.isArray(key)) {
-        key = new Array(32).fill(0);
+
+    // Property setter for key
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
+        this.initialized = false;
+        return;
       }
-      
-      // Pad or truncate key to 32 bytes
-      if (key.length < 32) {
-        while (key.length < 32) {
-          key.push(0);
-        }
-      } else if (key.length > 32) {
-        key = key.slice(0, 32);
+
+      if (!Array.isArray(keyBytes)) {
+        throw new Error("Invalid key - must be byte array");
       }
-      
-      this.cells = new Array(this.size).fill(0);
-      
+
+      const keyLength = keyBytes.length;
+      if (keyLength < 1 || keyLength > 1024) {
+        throw new Error(`Invalid Rule30 key size: ${keyLength} bytes. Requires 1-1024 bytes`);
+      }
+
+      this._key = [...keyBytes];
+      this._initializeCA();
+    }
+
+    get key() {
+      return this._key ? [...this._key] : null;
+    }
+
+    // Feed data to the cipher
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!Array.isArray(data)) {
+        throw new Error("Invalid input data - must be byte array");
+      }
+      if (!this._key) {
+        throw new Error("Key not set");
+      }
+
+      this.inputBuffer.push(...data);
+    }
+
+    // Get the cipher result
+    Result() {
+      if (!this._key) {
+        throw new Error("Key not set");
+      }
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data to process");
+      }
+      if (!this.initialized) {
+        throw new Error("Rule30 not properly initialized");
+      }
+
+      const output = [];
+
+      // Process input data byte by byte (stream cipher)
+      for (let i = 0; i < this.inputBuffer.length; i++) {
+        const keystreamByte = this._generateByte();
+        output.push(this.inputBuffer[i] ^ keystreamByte);
+      }
+
+      // Clear input buffer for next operation
+      this.inputBuffer = [];
+
+      return output;
+    }
+
+    // Initialize cellular automaton from key
+    _initializeCA() {
+      if (!this._key) return;
+
+      // Initialize CA cells array
+      this.cells = new Array(this.DEFAULT_SIZE).fill(0);
+
       // Use key bytes to set initial cell states
-      for (let i = 0; i < this.size; i++) {
-        const keyIndex = i % key.length;
+      for (let i = 0; i < this.DEFAULT_SIZE; i++) {
+        const keyIndex = i % this._key.length;
         const bitIndex = i % 8;
-        this.cells[i] = (key[keyIndex] >>> bitIndex) & 1;
+        this.cells[i] = OpCodes.GetBit(this._key[keyIndex], bitIndex);
       }
-      
-      // Ensure at least one cell is set
-      if (this.cells.every(cell => cell === 0)) {
+
+      // Ensure at least one cell is set (avoid all-zero state)
+      let hasActiveCell = false;
+      for (let i = 0; i < this.DEFAULT_SIZE; i++) {
+        if (this.cells[i] !== 0) {
+          hasActiveCell = true;
+          break;
+        }
+      }
+      if (!hasActiveCell) {
         this.cells[this.centerIndex] = 1;
       }
-      
-      // Perform initial evolution steps
+
+      // Perform initial evolution steps for mixing
       for (let step = 0; step < 100; step++) {
-        this.evolveCA();
+        this._evolveCA();
       }
-    },
-    
-    evolveCA: function() {
-      const newCells = new Array(this.size);
-      
-      for (let i = 0; i < this.size; i++) {
-        const left = this.cells[(i - 1 + this.size) % this.size];
+
+      this.initialized = true;
+    }
+
+    // Evolve cellular automaton one step using Rule 30
+    _evolveCA() {
+      const newCells = new Array(this.DEFAULT_SIZE);
+
+      for (let i = 0; i < this.DEFAULT_SIZE; i++) {
+        const left = this.cells[(i - 1 + this.DEFAULT_SIZE) % this.DEFAULT_SIZE];
         const center = this.cells[i];
-        const right = this.cells[(i + 1) % this.size];
-        
+        const right = this.cells[(i + 1) % this.DEFAULT_SIZE];
+
         // Apply Rule 30: XOR of left neighbor and (center OR right neighbor)
         newCells[i] = left ^ (center | right);
       }
-      
+
       this.cells = newCells;
-    },
-    
-    generateBit: function() {
-      this.evolveCA();
+    }
+
+    // Generate single bit from CA center cell
+    _generateBit() {
+      this._evolveCA();
       return this.cells[this.centerIndex];
-    },
-    
-    generateByte: function() {
+    }
+
+    // Generate full byte from 8 CA evolution steps
+    _generateByte() {
       let byte = 0;
       for (let bit = 0; bit < 8; bit++) {
-        const bitValue = this.generateBit();
+        const bitValue = this._generateBit();
         byte |= (bitValue << bit);
       }
-      return byte;
+      return byte & 0xFF;
     }
-  };
-  
-  // Auto-register with AlgorithmFramework if available
-  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
-    global.AlgorithmFramework.RegisterAlgorithm(Rule30);
   }
-  
-  // Legacy registration
-  if (typeof global.RegisterAlgorithm === 'function') {
-    global.RegisterAlgorithm(Rule30);
-  }
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher) {
-    global.Cipher.Add(Rule30);
-  }
-  
-  // Export to global scope
-  global.Rule30 = Rule30;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Rule30;
-  }
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // Register the algorithm
+  const algorithmInstance = new Rule30Algorithm();
+  RegisterAlgorithm(algorithmInstance);
+
+  // Return for module systems
+  return { Rule30Algorithm, Rule30Instance };
+}));

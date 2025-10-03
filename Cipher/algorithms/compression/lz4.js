@@ -89,19 +89,19 @@
         // Test vectors - proper compression test vectors
         this.tests = [
           new TestCase(
-            global.OpCodes.AnsiToBytes("AAABBBCCCDDD"), // Simple repeated data
+            OpCodes.AnsiToBytes("AAABBBCCCDDD"), // Simple repeated data
             [255, 3, 65, 255, 3, 66, 255, 3, 67, 255, 3, 68], // RLE compressed format  
             "Simple repeated data - good for LZ4",
             "https://github.com/lz4/lz4/tree/dev/examples"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("ABCD"), // No repetition
+            OpCodes.AnsiToBytes("ABCD"), // No repetition
             [65, 66, 67, 68], // No compression possible, literal copy
             "Random data - worst case for LZ4",
             "Stress test"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("AAAAA"), // Long run  
+            OpCodes.AnsiToBytes("AAAAA"), // Long run  
             [255, 5, 65], // RLE: run of 5 A's
             "Long run of identical bytes",
             "https://github.com/lz4/lz4/tree/dev/examples"

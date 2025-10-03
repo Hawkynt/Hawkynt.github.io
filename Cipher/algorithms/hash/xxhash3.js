@@ -103,7 +103,7 @@
           text: "xxHash3-64 Test Vector 'a'",
           uri: "https://github.com/Cyan4973/xxHash/blob/dev/tests/",
           input: [97], // "a"
-          expected: OpCodes.Hex8ToBytes("D24EC4F1A98C6E5B")
+          expected: OpCodes.Hex8ToBytes("E6C632B61E964E1F")
         }
       ];
     }
@@ -119,20 +119,18 @@
       this.isInverse = isInverse;
       this.OutputSize = 8; // Default to 64-bit
 
-      // xxHash3 constants
-      this.PRIME32_1 = 0x9E3779B1;
-      this.PRIME32_2 = 0x85EBCA77;
-      this.PRIME32_3 = 0xC2B2AE3D;
-      this.PRIME32_4 = 0x27D4EB2F;
-      this.PRIME32_5 = 0x165667B1;
-
+      // xxHash3 constants (official values)
       this.PRIME64_1 = 0x9E3779B185EBCA87n;
       this.PRIME64_2 = 0xC2B2AE3D27D4EB4Fn;
       this.PRIME64_3 = 0x165667B19E3779F9n;
       this.PRIME64_4 = 0x85EBCA77C2B2AE63n;
       this.PRIME64_5 = 0x27D4EB2F165667C5n;
 
-      // xxHash3 secret (simplified)
+      // xxHash3 specific constants
+      this.PRIME_MX1 = 0x165667919E3779F9n;
+      this.PRIME_MX2 = 0x9FB21C651E98DF25n;
+
+      // xxHash3 official secret (first 192 bytes)
       this.SECRET = new Uint8Array([
         0xb8, 0xfe, 0x6c, 0x39, 0x23, 0xa4, 0x4b, 0xbe, 0x7c, 0x01, 0x81, 0x2c, 0xf7, 0x21, 0xad, 0x1c,
         0xde, 0xd4, 0x6d, 0xe9, 0x83, 0x90, 0x97, 0xdb, 0x72, 0x40, 0xa4, 0xa4, 0xb7, 0xb3, 0x67, 0x1f,
@@ -203,55 +201,125 @@
               (data[offset + 3] << 24)) >>> 0;
     }
 
-    // Read 64-bit little endian (as BigInt)
+    // Read 64-bit little endian (as BigInt) - manual implementation
     readLE64(data, offset) {
       offset = offset || 0;
-      if (offset + 8 > data.length) return 0n;
-
       let result = 0n;
+
       for (let i = 0; i < 8; i++) {
-        result |= BigInt(data[offset + i] || 0) << (BigInt(i) * 8n);
+        const byte = BigInt(data[offset + i] || 0);
+        result |= byte << (BigInt(i) * 8n);
       }
-      return result;
+
+      return result & 0xFFFFFFFFFFFFFFFFn;
     }
 
-    // Avalanche function
+    // xxHash3 avalanche function (for PRIME_MX1 based mixing)
     avalanche(h64) {
+      h64 = h64 & 0xFFFFFFFFFFFFFFFFn; // Ensure 64-bit
       h64 ^= h64 >> 37n;
-      h64 *= 0x165667919E3779F9n;
+      h64 *= this.PRIME_MX1;
+      h64 = h64 & 0xFFFFFFFFFFFFFFFFn; // Mask to 64-bit
       h64 ^= h64 >> 32n;
-      return h64;
+      return h64 & 0xFFFFFFFFFFFFFFFFn;
     }
 
-    // Simplified xxHash3-64 implementation (educational version)
+    // xxHash3 avalanche_XXH64 function (official XXH64-style avalanche)
+    avalanche_XXH64(h64) {
+      h64 = h64 & 0xFFFFFFFFFFFFFFFFn; // Ensure 64-bit
+      h64 ^= h64 >> 33n;
+      h64 *= this.PRIME64_2;
+      h64 = h64 & 0xFFFFFFFFFFFFFFFFn; // Mask to 64-bit
+      h64 ^= h64 >> 29n;
+      h64 *= this.PRIME64_3;
+      h64 = h64 & 0xFFFFFFFFFFFFFFFFn; // Mask to 64-bit
+      h64 ^= h64 >> 32n;
+      return h64 & 0xFFFFFFFFFFFFFFFFn;
+    }
+
+    // Mix two 64-bit values
+    mix64(low, high) {
+      const result = (low ^ high) * this.PRIME64_1;
+      return result & 0xFFFFFFFFFFFFFFFFn;
+    }
+
+    // xxHash3-64 implementation following official specification
     hash64(input, seed) {
-      seed = seed || this.seed;
+      seed = BigInt(seed || this.seed);
       const len = input.length;
 
+      // Handle empty input (official specification)
       if (len === 0) {
-        return this.avalanche(BigInt(seed) ^ this.PRIME64_1);
+        // Read secret[56:72] as two 64-bit values
+        const secretWord0 = this.readLE64(this.SECRET, 56);
+        const secretWord1 = this.readLE64(this.SECRET, 64);
+        return this.avalanche_XXH64(seed ^ secretWord0 ^ secretWord1);
       }
 
-      // Simplified hash computation
-      let acc = BigInt(len) * this.PRIME64_1;
-      acc ^= BigInt(seed);
+      // Handle small inputs (1-3 bytes) - official specification
+      if (len <= 3) {
+        // Combine input bytes according to official algorithm
+        let combined = BigInt(input[len - 1] || 0); // last byte (LSB)
+        combined |= (BigInt(len) << 8n); // length
+        combined |= (BigInt(input[0] || 0) << 16n); // first byte
+        combined |= (BigInt(input[len >> 1] || 0) << 24n); // middle-or-last byte (MSB)
 
-      // Process data in chunks
+        // Read secret[0:8] as two 32-bit values
+        const secretWord0 = BigInt(OpCodes.Pack32LE(this.SECRET[0], this.SECRET[1], this.SECRET[2], this.SECRET[3]));
+        const secretWord1 = BigInt(OpCodes.Pack32LE(this.SECRET[4], this.SECRET[5], this.SECRET[6], this.SECRET[7]));
+
+        const value = ((secretWord0 ^ secretWord1) + seed) ^ combined;
+        return this.avalanche_XXH64(value);
+      }
+
+      // Handle medium inputs (4-8 bytes) - will implement later
+      if (len <= 8) {
+        // For now, use simplified approach
+        // Simplified implementation for 4-8 byte algorithm
+        seed ^= OpCodes.Pack64LE(0x3c, 0x28, 0x52, 0xbb, 0x91, 0xc3, 0x00, 0xcb);
+        let input1 = this.readLE64(input, 0);
+        let input2 = this.readLE64(input, len - 8);
+        let bitflip = OpCodes.Pack64LE(0x88, 0xd0, 0x65, 0x8b, 0x1b, 0x53, 0x2e, 0xa3) ^
+                     OpCodes.Pack64LE(0x71, 0x64, 0x48, 0x97, 0xa2, 0x0d, 0xf9, 0x4e);
+        let keyed = input1 ^ input2 ^ bitflip;
+        return this.avalanche_XXH64(keyed);
+      }
+
+      // Handle larger inputs (9-16 bytes) - will implement later
+      if (len <= 16) {
+        // For now, use simplified approach
+        // Simplified implementation for 9-16 byte algorithm
+        let input_lo = this.readLE64(input, 0);
+        let input_hi = this.readLE64(input, len - 8);
+        let secret_lo = OpCodes.Pack64LE(0x38, 0x19, 0xef, 0x46, 0xa9, 0xde, 0xac, 0xd8);
+        let secret_hi = OpCodes.Pack64LE(0xa8, 0xfa, 0x76, 0x3f, 0xe3, 0x9c, 0x34, 0x3f);
+        let acc = BigInt(len) * this.PRIME64_1;
+        acc += this.mix64(input_lo ^ secret_lo, input_hi ^ secret_hi);
+        return this.avalanche_XXH64(acc);
+      }
+
+      // For larger inputs, use simplified approach
+      let acc = BigInt(len) * this.PRIME64_1;
+      acc ^= seed;
+
+      // Process 16-byte chunks
       let offset = 0;
-      while (offset + 8 <= len) {
-        const chunk = this.readLE64(input, offset);
-        const secret = this.readLE64(this.SECRET, (offset % 192));
-        acc += chunk ^ secret;
-        acc *= this.PRIME64_2;
-        offset += 8;
+      while (offset + 16 <= len) {
+        let data_val = this.readLE64(input, offset);
+        let data_val2 = this.readLE64(input, offset + 8);
+        let secret_val = this.readLE64(this.SECRET, (offset % 192));
+        let secret_val2 = this.readLE64(this.SECRET, ((offset + 8) % 192));
+        acc += this.mix64(data_val ^ secret_val, data_val2 ^ secret_val2);
+        offset += 16;
       }
 
       // Process remaining bytes
-      while (offset < len) {
-        acc += BigInt(input[offset]) * this.PRIME64_5;
-        acc = OpCodes.RotL64(acc, 11);
-        acc *= this.PRIME64_1;
-        offset++;
+      if (offset < len) {
+        let remaining_lo = this.readLE64(input, len - 16);
+        let remaining_hi = this.readLE64(input, len - 8);
+        let secret_lo = this.readLE64(this.SECRET, 119); // Use specific secret offset
+        let secret_hi = this.readLE64(this.SECRET, 127);
+        acc += this.mix64(remaining_lo ^ secret_lo, remaining_hi ^ secret_hi);
       }
 
       return this.avalanche(acc);
@@ -263,15 +331,17 @@
 
       if (outputSize === 8) {
         const hash64 = this.hash64(input);
+        // Convert BigInt to big-endian byte array manually (to match test vectors)
         const result = new Array(8);
         for (let i = 0; i < 8; i++) {
-          result[i] = Number((hash64 >> (BigInt(i) * 8n)) & 0xFFn);
+          result[7-i] = Number((hash64 >> (BigInt(i) * 8n)) & 0xFFn);
         }
         return result;
       } else if (outputSize === 16) {
-        // Simplified 128-bit version
+        // 128-bit version: compute two separate hashes
         const hash1 = this.hash64(input);
-        const hash2 = this.hash64(input, Number(BigInt(this.seed) ^ 0xAAAAAAAAAAAAAAAAn));
+        const seed2 = Number(BigInt(this.seed) ^ 0xAAAAAAAAAAAAAAAAn);
+        const hash2 = this.hash64(input, seed2);
 
         const result = new Array(16);
         for (let i = 0; i < 8; i++) {
