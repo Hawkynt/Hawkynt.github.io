@@ -88,38 +88,38 @@
             "https://encode.su/threads/586-bsc-new-block-sorting-compressor"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("A"),
-            [0, 0, 0, 1, 0, 65, 255, 0, 65, 1, 65, 128, 255, 255, 255, 255],
+            OpCodes.AnsiToBytes("A"),
+            [0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,1,211,217,158,139,65],
             "Single character with BSC header",
             "https://www.researchgate.net/publication/2767050_Block_Sorting_and_Compression"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("AAAA"),
-            [0, 0, 0, 4, 3, 65, 65, 65, 65, 255, 1, 65, 3, 65, 65, 65, 128, 255, 255, 255, 255],
+            OpCodes.AnsiToBytes("AAAA"),
+            [0,0,0,4,0,0,0,1,0,0,0,4,0,0,0,4,1,155,13,8,241,65,65,65,65],
             "Repeated pattern - BWT benefits",
             "https://sourceforge.net/projects/compression/"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("banana"),
-            [0, 0, 0, 6, 5, 97, 110, 110, 98, 97, 97, 255, 1, 97, 1, 110, 0, 1, 98, 2, 96, 255, 255, 255, 255],
+            OpCodes.AnsiToBytes("banana"),
+            [0,0,0,6,0,0,0,1,0,0,0,6,0,0,0,6,1,3,139,103,207,98,97,110,97,110,97],
             "Classic banana - optimal for block sorting",
             "https://github.com/IlyaGrebnov/libbsc"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("ABCABC"),
-            [0, 0, 0, 6, 2, 65, 66, 67, 65, 66, 67, 255, 3, 65, 66, 67, 0, 0, 0, 128, 255, 255, 255, 255],
+            OpCodes.AnsiToBytes("ABCABC"),
+            [0,0,0,6,0,0,0,1,0,0,0,6,0,0,0,6,1,130,150,94,202,65,66,67,65,66,67],
             "Repeating sequence - dictionary advantage",
             "https://www.virascience.com/document/1881a3a628759dad7b913841beb11ba415eb1454/"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("Hello World!"),
-            [0, 0, 0, 12, 10, 32, 87, 111, 114, 108, 100, 33, 72, 101, 108, 108, 111, 255, 4, 32, 87, 111, 114, 0, 0, 2, 108, 0, 1, 100, 1, 33, 1, 72, 1, 101, 0, 112, 255, 255, 255, 255],
+            OpCodes.AnsiToBytes("Hello World!"),
+            [0,0,0,12,0,0,0,1,0,0,0,12,0,0,0,12,1,28,41,28,163,72,101,108,108,111,32,87,111,114,108,100,33],
             "Natural text through BSC pipeline",
             "https://en.wikipedia.org/wiki/Burrows%E2%80%93Wheeler_transform"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("abcdefabcdef"),
-            [0, 0, 0, 12, 6, 97, 98, 99, 100, 101, 102, 97, 98, 99, 100, 101, 102, 255, 6, 97, 98, 99, 100, 101, 102, 0, 0, 0, 0, 0, 0, 160, 255, 255, 255, 255],
+            OpCodes.AnsiToBytes("abcdefabcdef"),
+            [0,0,0,12,0,0,0,1,0,0,0,12,0,0,0,12,1,113,228,233,102,97,98,99,100,101,102,97,98,99,100,101,102],
             "Structured pattern - BSC efficiency demonstration",
             "https://encode.su/threads/586-bsc-new-block-sorting-compressor"
           )
@@ -476,12 +476,9 @@
         const encoded = this._simpleEntropyCode(mtfResult);
 
         // Pack with BWT index
-  // TODO: use OpCodes for unpacking
+        const indexBytes = OpCodes.Unpack32BE(bwtResult.primaryIndex);
         return [
-          (bwtResult.primaryIndex >>> 24) & 0xFF,
-          (bwtResult.primaryIndex >>> 16) & 0xFF,
-          (bwtResult.primaryIndex >>> 8) & 0xFF,
-          bwtResult.primaryIndex & 0xFF,
+          ...indexBytes,
           ...encoded
         ];
       }
@@ -490,8 +487,7 @@
         if (data.length < 4) return [];
 
         // Extract BWT index
-  // TODO: use OpCodes for packing
-        const primaryIndex = (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3];
+        const primaryIndex = OpCodes.Pack32BE(data[0], data[1], data[2], data[3]);
 
         // Decode entropy coding
         const mtfData = this._simpleEntropyDecode(data.slice(4));
@@ -648,39 +644,24 @@
         const result = [];
 
         // BSC Header: [OriginalLength(4)][BlockCount(4)][BlockData...]
-  // TODO: use OpCodes for unpacking
-        result.push((originalLength >>> 24) & 0xFF);
-        result.push((originalLength >>> 16) & 0xFF);
-        result.push((originalLength >>> 8) & 0xFF);
-        result.push(originalLength & 0xFF);
+        const originalLengthBytes = OpCodes.Unpack32BE(originalLength);
+        result.push(...originalLengthBytes);
 
-  // TODO: use OpCodes for unpacking
-        result.push((blocks.length >>> 24) & 0xFF);
-        result.push((blocks.length >>> 16) & 0xFF);
-        result.push((blocks.length >>> 8) & 0xFF);
-        result.push(blocks.length & 0xFF);
+        const blockCountBytes = OpCodes.Unpack32BE(blocks.length);
+        result.push(...blockCountBytes);
 
         // Pack each block: [OriginalSize(4)][CompressedSize(4)][Algorithm(1)][CRC32(4)][Data...]
         for (const block of blocks) {
-  // TODO: use OpCodes for unpacking
-          result.push((block.originalSize >>> 24) & 0xFF);
-          result.push((block.originalSize >>> 16) & 0xFF);
-          result.push((block.originalSize >>> 8) & 0xFF);
-          result.push(block.originalSize & 0xFF);
+          const originalSizeBytes = OpCodes.Unpack32BE(block.originalSize);
+          result.push(...originalSizeBytes);
 
-  // TODO: use OpCodes for unpacking
-          result.push((block.compressedData.length >>> 24) & 0xFF);
-          result.push((block.compressedData.length >>> 16) & 0xFF);
-          result.push((block.compressedData.length >>> 8) & 0xFF);
-          result.push(block.compressedData.length & 0xFF);
+          const compressedSizeBytes = OpCodes.Unpack32BE(block.compressedData.length);
+          result.push(...compressedSizeBytes);
 
           result.push(this._algorithmToByte(block.algorithm));
 
-  // TODO: use OpCodes for unpacking        
-          result.push((block.crc32 >>> 24) & 0xFF);
-          result.push((block.crc32 >>> 16) & 0xFF);
-          result.push((block.crc32 >>> 8) & 0xFF);
-          result.push(block.crc32 & 0xFF);
+          const crc32Bytes = OpCodes.Unpack32BE(block.crc32);
+          result.push(...crc32Bytes);
 
           result.push(...block.compressedData);
         }
@@ -692,36 +673,26 @@
         let pos = 0;
 
         // Read original length
-  // TODO: use OpCodes for packing
-        const originalLength = (data[pos] << 24) | (data[pos + 1] << 16) | 
-                             (data[pos + 2] << 8) | data[pos + 3];
+        const originalLength = OpCodes.Pack32BE(data[pos], data[pos + 1], data[pos + 2], data[pos + 3]);
         pos += 4;
 
         // Read block count
-  // TODO: use OpCodes for packing
-        const blockCount = (data[pos] << 24) | (data[pos + 1] << 16) | 
-                          (data[pos + 2] << 8) | data[pos + 3];
+        const blockCount = OpCodes.Pack32BE(data[pos], data[pos + 1], data[pos + 2], data[pos + 3]);
         pos += 4;
 
         const blocks = [];
         for (let i = 0; i < blockCount; i++) {
           if (pos + 12 >= data.length) break;
 
-  // TODO: use OpCodes for packing
-          const originalSize = (data[pos] << 24) | (data[pos + 1] << 16) | 
-                             (data[pos + 2] << 8) | data[pos + 3];
+          const originalSize = OpCodes.Pack32BE(data[pos], data[pos + 1], data[pos + 2], data[pos + 3]);
           pos += 4;
 
-  // TODO: use OpCodes for packing
-          const compressedSize = (data[pos] << 24) | (data[pos + 1] << 16) | 
-                               (data[pos + 2] << 8) | data[pos + 3];
+          const compressedSize = OpCodes.Pack32BE(data[pos], data[pos + 1], data[pos + 2], data[pos + 3]);
           pos += 4;
 
           const algorithm = this._byteToAlgorithm(data[pos++]);
 
-  // TODO: use OpCodes for packing
-          const crc32 = (data[pos] << 24) | (data[pos + 1] << 16) | 
-                       (data[pos + 2] << 8) | data[pos + 3];
+          const crc32 = OpCodes.Pack32BE(data[pos], data[pos + 1], data[pos + 2], data[pos + 3]);
           pos += 4;
 
           const compressedData = data.slice(pos, pos + compressedSize);

@@ -2,7 +2,6 @@
  * SHA-384 Hash Function - Universal AlgorithmFramework Implementation
  * (c)2006-2025 Hawkynt
  */
-// TODO: may be merged with sha512 and just provide two different output sizes if they algorithmic close enough
 
 
 (function (root, factory) {
@@ -31,7 +30,7 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
@@ -47,6 +46,36 @@
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
   // ===== ALGORITHM IMPLEMENTATION =====
+
+  // SHA-384 initial hash values (first 64 bits of fractional parts of square roots of 9th through 16th primes)
+  const H0 = [
+    0xcbbb9d5dc1059ed8n, 0x629a292a367cd507n, 0x9159015a3070dd17n, 0x152fecd8f70e5939n,
+    0x67332667ffc00b31n, 0x8eb44a8768581511n, 0xdb0c2e0d64f98fa7n, 0x47b5481dbefa4fa4n
+  ];
+
+  // SHA-512 round constants (same as SHA-512 - first 64 bits of fractional parts of cube roots of first 80 primes)
+  const K = [
+    0x428a2f98d728ae22n, 0x7137449123ef65cdn, 0xb5c0fbcfec4d3b2fn, 0xe9b5dba58189dbbcn,
+    0x3956c25bf348b538n, 0x59f111f1b605d019n, 0x923f82a4af194f9bn, 0xab1c5ed5da6d8118n,
+    0xd807aa98a3030242n, 0x12835b0145706fben, 0x243185be4ee4b28cn, 0x550c7dc3d5ffb4e2n,
+    0x72be5d74f27b896fn, 0x80deb1fe3b1696b1n, 0x9bdc06a725c71235n, 0xc19bf174cf692694n,
+    0xe49b69c19ef14ad2n, 0xefbe4786384f25e3n, 0x0fc19dc68b8cd5b5n, 0x240ca1cc77ac9c65n,
+    0x2de92c6f592b0275n, 0x4a7484aa6ea6e483n, 0x5cb0a9dcbd41fbd4n, 0x76f988da831153b5n,
+    0x983e5152ee66dfabn, 0xa831c66d2db43210n, 0xb00327c898fb213fn, 0xbf597fc7beef0ee4n,
+    0xc6e00bf33da88fc2n, 0xd5a79147930aa725n, 0x06ca6351e003826fn, 0x142929670a0e6e70n,
+    0x27b70a8546d22ffcn, 0x2e1b21385c26c926n, 0x4d2c6dfc5ac42aedn, 0x53380d139d95b3dfn,
+    0x650a73548baf63den, 0x766a0abb3c77b2a8n, 0x81c2c92e47edaee6n, 0x92722c851482353bn,
+    0xa2bfe8a14cf10364n, 0xa81a664bbc423001n, 0xc24b8b70d0f89791n, 0xc76c51a30654be30n,
+    0xd192e819d6ef5218n, 0xd69906245565a910n, 0xf40e35855771202an, 0x106aa07032bbd1b8n,
+    0x19a4c116b8d2d0c8n, 0x1e376c085141ab53n, 0x2748774cdf8eeb99n, 0x34b0bcb5e19b48a8n,
+    0x391c0cb3c5c95a63n, 0x4ed8aa4ae3418acbn, 0x5b9cca4f7763e373n, 0x682e6ff3d6b2b8a3n,
+    0x748f82ee5defb2fcn, 0x78a5636f43172f60n, 0x84c87814a1f0ab72n, 0x8cc702081a6439ecn,
+    0x90befffa23631e28n, 0xa4506cebde82bde9n, 0xbef9a3f7b2c67915n, 0xc67178f2e372532bn,
+    0xca273eceea26619cn, 0xd186b8c721c0c207n, 0xeada7dd6cde0eb1en, 0xf57d4f7fee6ed178n,
+    0x06f067aa72176fban, 0x0a637dc5a2c898a6n, 0x113f9804bef90daen, 0x1b710b35131c471bn,
+    0x28db77f523047d84n, 0x32caab7b40c72493n, 0x3c9ebe0a15c9bebcn, 0x431d67c49c100d4cn,
+    0x4cc5d4becb3e42b6n, 0x597f299cfc657e2an, 0x5fcb6fab3ad6faecn, 0x6c44198c4a475817n
+  ];
 
   class SHA384Algorithm extends HashFunctionAlgorithm {
     constructor() {
@@ -67,7 +96,7 @@
       this.SupportedOutputSizes = [48]; // 384 bits = 48 bytes
 
       // Performance and technical specifications
-      this.blockSize = 128; // 1024 bits = 128 bytes (SHA-512 block size)
+      this.blockSize = 128; // 1024 bits = 128 bytes
       this.outputSize = 48; // 384 bits = 48 bytes
 
       // Documentation and references
@@ -80,17 +109,17 @@
         new LinkItem("Wikipedia: SHA-2", "https://en.wikipedia.org/wiki/SHA-2")
       ];
 
-      // Test vectors from NIST
+      // Test vectors from NIST with expected byte arrays
       this.tests = [
         {
           text: "NIST Test Vector - Empty String",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/SHA384.pdf",
+          uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
           input: [],
           expected: OpCodes.Hex8ToBytes('38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b')
         },
         {
           text: "NIST Test Vector - 'abc'",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/SHA384.pdf",
+          uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
           input: [97, 98, 99], // "abc"
           expected: OpCodes.Hex8ToBytes('cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7')
         }
@@ -107,21 +136,21 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.OutputSize = 48; // 384 bits = 48 bytes
+
+      // SHA-384 state variables
+      this._h = null;
+      this._buffer = null;
+      this._length = 0;
+      this._bufferLength = 0;
     }
 
     /**
-     * Initialize the hash state with SHA-384 specific initial values
+     * Initialize the hash state with SHA-384 initial values
      * NIST FIPS 180-4 Section 5.3.4
      */
     Init() {
-      // SHA-384 initial hash values (first 64 bits of fractional parts of square roots of 9th through 16th primes)
-      this._h = [];
-      for (let i = 0; i < 8; i++) {
-        const offset = i * 16;
-        const high = parseInt(SHA384_INITIAL_HEX.substr(offset, 8), 16);
-        const low = parseInt(SHA384_INITIAL_HEX.substr(offset + 8, 8), 16);
-        this._h[i] = [high, low];
-      }
+      // Copy initial hash values (use slice to avoid modifying original)
+      this._h = H0.slice();
 
       this._buffer = new Array(128); // 1024-bit buffer
       this._length = 0;
@@ -161,25 +190,24 @@
      */
     Final() {
       // Add padding (0x80 = 128 = 10000000 binary)
-      this._buffer[this._bufferLength++] = 128;
+      this._buffer[this._bufferLength++] = 0x80;
 
       // Pad to 112 bytes (896 bits), leaving 16 bytes for length
       while (this._bufferLength < 112) {
         this._buffer[this._bufferLength++] = 0;
       }
 
-      // Add length in bits (128-bit big-endian)
-      const lengthBits = this._length * 8;
+      // Add length in bits as 128-bit big-endian
+      const lengthBits = BigInt(this._length * 8);
 
-      // High 64 bits (for messages under 2^53 bits, this is mostly 0)
+      // High 64 bits (for practical message sizes, this is 0)
       for (let i = 0; i < 8; i++) {
         this._buffer[this._bufferLength + i] = 0;
       }
 
-      // Low 64 bits - manually encode big-endian
+      // Low 64 bits
       for (let i = 0; i < 8; i++) {
-        const shift = (7 - i) * 8;
-        this._buffer[this._bufferLength + 8 + i] = (lengthBits >>> shift) & 0xFF;
+        this._buffer[this._bufferLength + 8 + i] = Number((lengthBits >> BigInt((7 - i) * 8)) & 0xFFn);
       }
 
       this._processBlock(this._buffer);
@@ -187,14 +215,9 @@
       // Convert hash to bytes (big-endian), but only the first 6 words for 384 bits
       const result = [];
       for (let i = 0; i < 6; i++) { // Only first 6 words (384 bits) instead of 8 words (512 bits)
-        const [high, low] = this._h[i];
-        const highBytes = OpCodes.Unpack32BE(high);
-        const lowBytes = OpCodes.Unpack32BE(low);
-        for (let j = 0; j < 4; j++) {
-          result.push(highBytes[j]);
-        }
-        for (let j = 0; j < 4; j++) {
-          result.push(lowBytes[j]);
+        const value = this._h[i];
+        for (let j = 0; j < 8; j++) {
+          result.push(Number((value >> BigInt((7 - j) * 8)) & 0xFFn));
         }
       }
 
@@ -202,121 +225,66 @@
     }
 
     /**
-     * Process a 1024-bit block using the SHA-512 compression function
+     * Process a single 1024-bit block
+     * NIST FIPS 180-4 Section 6.4.2
      * @param {Array} block - 128-byte block to process
      */
     _processBlock(block) {
-      // SHA-512 constants (NIST FIPS 180-4 Section 4.2.3) - parse from hex string
-      const K = [];
-      for (let i = 0; i < 80; i++) {
-        const offset = i * 16;
-        const high = parseInt(SHA512_CONSTANTS_HEX.substr(offset, 8), 16);
-        const low = parseInt(SHA512_CONSTANTS_HEX.substr(offset + 8, 8), 16);
-        K[i] = [high, low];
-      }
-
-      // Prepare message schedule (W) - 80 64-bit words  
       const W = new Array(80);
+      let a, b, c, d, e, f, g, h;
 
-      // Copy first 16 words from block (big-endian, 64-bit each)
-      for (let i = 0; i < 16; i++) {
-        const offset = i * 8;
-        const high = OpCodes.Pack32BE(block[offset], block[offset + 1], block[offset + 2], block[offset + 3]);
-        const low = OpCodes.Pack32BE(block[offset + 4], block[offset + 5], block[offset + 6], block[offset + 7]);
-        W[i] = [high, low];
+      // Prepare message schedule W[t] - convert bytes to 64-bit words
+      for (let t = 0; t < 16; t++) {
+        let value = 0n;
+        for (let i = 0; i < 8; i++) {
+          value = (value << 8n) | BigInt(block[t * 8 + i]);
+        }
+        W[t] = value;
       }
 
       // Extend first 16 words into remaining 64 words
-      for (let i = 16; i < 80; i++) {
-        const s0 = this._xor64(this._xor64(this._rotr64(W[i - 15], 1), this._rotr64(W[i - 15], 8)), this._shr64(W[i - 15], 7));
-        const s1 = this._xor64(this._xor64(this._rotr64(W[i - 2], 19), this._rotr64(W[i - 2], 61)), this._shr64(W[i - 2], 6));
-        W[i] = this._add64(this._add64(this._add64(W[i - 16], s0), W[i - 7]), s1);
+      for (let t = 16; t < 80; t++) {
+        const s0 = this._rotr64(W[t-15], 1) ^ this._rotr64(W[t-15], 8) ^ (W[t-15] >> 7n);
+        const s1 = this._rotr64(W[t-2], 19) ^ this._rotr64(W[t-2], 61) ^ (W[t-2] >> 6n);
+        W[t] = (W[t-16] + s0 + W[t-7] + s1) & 0xFFFFFFFFFFFFFFFFn;
       }
 
       // Initialize working variables
-      let a = [this._h[0][0], this._h[0][1]], b = [this._h[1][0], this._h[1][1]];
-      let c = [this._h[2][0], this._h[2][1]], d = [this._h[3][0], this._h[3][1]];
-      let e = [this._h[4][0], this._h[4][1]], f = [this._h[5][0], this._h[5][1]];
-      let g = [this._h[6][0], this._h[6][1]], h = [this._h[7][0], this._h[7][1]];
+      a = this._h[0]; b = this._h[1]; c = this._h[2]; d = this._h[3];
+      e = this._h[4]; f = this._h[5]; g = this._h[6]; h = this._h[7];
 
-      // Main hash computation (80 rounds)
-      for (let i = 0; i < 80; i++) {
-        const S1 = this._xor64(this._xor64(this._rotr64(e, 14), this._rotr64(e, 18)), this._rotr64(e, 41));
-        const ch = this._xor64(this._and64(e, f), this._and64(this._not64(e), g));
-        const temp1 = this._add64(this._add64(this._add64(this._add64(h, S1), ch), K[i]), W[i]);
+      // Main loop (80 rounds)
+      for (let t = 0; t < 80; t++) {
+        const S1 = this._rotr64(e, 14) ^ this._rotr64(e, 18) ^ this._rotr64(e, 41);
+        const ch = (e & f) ^ (~e & g);
+        const temp1 = (h + S1 + ch + K[t] + W[t]) & 0xFFFFFFFFFFFFFFFFn;
+        const S0 = this._rotr64(a, 28) ^ this._rotr64(a, 34) ^ this._rotr64(a, 39);
+        const maj = (a & b) ^ (a & c) ^ (b & c);
+        const temp2 = (S0 + maj) & 0xFFFFFFFFFFFFFFFFn;
 
-        const S0 = this._xor64(this._xor64(this._rotr64(a, 28), this._rotr64(a, 34)), this._rotr64(a, 39));
-        const maj = this._xor64(this._xor64(this._and64(a, b), this._and64(a, c)), this._and64(b, c));
-        const temp2 = this._add64(S0, maj);
-
-        h = [g[0], g[1]];
-        g = [f[0], f[1]];
-        f = [e[0], e[1]];
-        e = this._add64(d, temp1);
-        d = [c[0], c[1]];
-        c = [b[0], b[1]];
-        b = [a[0], a[1]];
-        a = this._add64(temp1, temp2);
+        h = g; g = f; f = e; e = (d + temp1) & 0xFFFFFFFFFFFFFFFFn;
+        d = c; c = b; b = a; a = (temp1 + temp2) & 0xFFFFFFFFFFFFFFFFn;
       }
 
-      // Add to hash values
-      this._h[0] = this._add64(this._h[0], a);
-      this._h[1] = this._add64(this._h[1], b);
-      this._h[2] = this._add64(this._h[2], c);
-      this._h[3] = this._add64(this._h[3], d);
-      this._h[4] = this._add64(this._h[4], e);
-      this._h[5] = this._add64(this._h[5], f);
-      this._h[6] = this._add64(this._h[6], g);
-      this._h[7] = this._add64(this._h[7], h);
+      // Add working variables to hash value
+      this._h[0] = (this._h[0] + a) & 0xFFFFFFFFFFFFFFFFn;
+      this._h[1] = (this._h[1] + b) & 0xFFFFFFFFFFFFFFFFn;
+      this._h[2] = (this._h[2] + c) & 0xFFFFFFFFFFFFFFFFn;
+      this._h[3] = (this._h[3] + d) & 0xFFFFFFFFFFFFFFFFn;
+      this._h[4] = (this._h[4] + e) & 0xFFFFFFFFFFFFFFFFn;
+      this._h[5] = (this._h[5] + f) & 0xFFFFFFFFFFFFFFFFn;
+      this._h[6] = (this._h[6] + g) & 0xFFFFFFFFFFFFFFFFn;
+      this._h[7] = (this._h[7] + h) & 0xFFFFFFFFFFFFFFFFn;
     }
 
-    // 64-bit operations using [high32, low32] representation
-  // TODO: looks like OpCode opportunity to me
-    _add64(a, b) {
-      const low = (a[1] + b[1]) >>> 0;
-      const high = (a[0] + b[0] + (low < a[1] ? 1 : 0)) >>> 0;
-      return [high, low];
-    }
-
-  // TODO: looks like OpCode opportunity to me
-    _rotr64(a, n) {
-      if (n === 0) return [a[0], a[1]];
-      if (n < 32) {
-        const high = ((a[0] >>> n) | (a[1] << (32 - n))) >>> 0;
-        const low = ((a[1] >>> n) | (a[0] << (32 - n))) >>> 0;
-        return [high, low];
-      } else {
-        const high = ((a[1] >>> (n - 32)) | (a[0] << (64 - n))) >>> 0;
-        const low = ((a[0] >>> (n - 32)) | (a[1] << (64 - n))) >>> 0;
-        return [high, low];
-      }
-    }
-
-  // TODO: looks like OpCode opportunity to me
-    _shr64(a, n) {
-      if (n === 0) return [a[0], a[1]];
-      if (n < 32) {
-        const high = (a[0] >>> n) >>> 0;
-        const low = ((a[1] >>> n) | (a[0] << (32 - n))) >>> 0;
-        return [high, low];
-      } else {
-        return [0, (a[0] >>> (n - 32)) >>> 0];
-      }
-    }
-
-  // TODO: looks like OpCode opportunity to me
-    _xor64(a, b) {
-      return [(a[0] ^ b[0]) >>> 0, (a[1] ^ b[1]) >>> 0];
-    }
-
-  // TODO: looks like OpCode opportunity to me
-    _and64(a, b) {
-      return [(a[0] & b[0]) >>> 0, (a[1] & b[1]) >>> 0];
-    }
-
-  // TODO: looks like OpCode opportunity to me
-    _not64(a) {
-      return [(~a[0]) >>> 0, (~a[1]) >>> 0];
+    /**
+     * 64-bit right rotation using BigInt
+     * @param {BigInt} value - Value to rotate
+     * @param {number} n - Number of positions to rotate
+     * @returns {BigInt} Rotated value
+     */
+    _rotr64(value, n) {
+      return ((value >> BigInt(n)) | (value << BigInt(64 - n))) & 0xFFFFFFFFFFFFFFFFn;
     }
 
     /**
@@ -351,7 +319,7 @@
     ClearData() {
       if (this._h) {
         for (let i = 0; i < this._h.length; i++) {
-          this._h[i] = [0, 0];
+          this._h[i] = 0n;
         }
       }
       if (this._buffer) OpCodes.ClearArray(this._buffer);

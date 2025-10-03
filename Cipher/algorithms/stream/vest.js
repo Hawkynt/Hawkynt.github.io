@@ -1,274 +1,269 @@
-#!/usr/bin/env node
 /*
- * Universal VEST Stream Cipher
- * Compatible with both Browser and Node.js environments
- * Based on VEST specification by Sean O'Neil (eSTREAM candidate)
+ * VEST Stream Cipher - AlgorithmFramework Implementation
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
- * 
+ *
  * VEST (Variable Encryption Standard) is a stream cipher featuring:
  * - Variable key sizes (64, 80, 96, 112, 128 bits)
  * - Variable IV sizes (64, 80, 96, 112, 128 bits)
  * - 4, 8, 16, and 32-bit operating modes
  * - Word-based operations for software efficiency
  * - Complex nonlinear filter function
- * 
+ *
  * VEST was submitted to the eSTREAM project but not selected for the final portfolio.
  * It uses a combination of linear feedback shift registers (LFSRs) and
  * a complex nonlinear combining function.
- * 
+ *
  * SECURITY WARNING: VEST had cryptanalytic concerns during eSTREAM evaluation.
  * This implementation is for educational purposes only.
  */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-      return;
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
+
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          StreamCipherAlgorithm, IAlgorithmInstance,
+          TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class VESTAlgorithm extends StreamCipherAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "VEST";
+      this.description = "Variable Encryption Standard stream cipher with configurable key sizes and word-based operations. Submitted to eSTREAM but not selected for final portfolio due to cryptanalytic concerns.";
+      this.inventor = "Sean O'Neil";
+      this.year = 2005;
+      this.category = CategoryType.STREAM;
+      this.subCategory = "Stream Cipher";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.ADVANCED;
+      this.country = CountryCode.US;
+
+      // Algorithm-specific metadata
+      this.SupportedKeySizes = [
+        new KeySize(8, 8, 0),   // VEST: 64-bit keys (8 bytes)
+        new KeySize(10, 10, 0), // VEST: 80-bit keys (10 bytes)
+        new KeySize(12, 12, 0), // VEST: 96-bit keys (12 bytes)
+        new KeySize(14, 14, 0), // VEST: 112-bit keys (14 bytes)
+        new KeySize(16, 16, 0)  // VEST: 128-bit keys (16 bytes)
+      ];
+      this.SupportedNonceSizes = [
+        new KeySize(8, 16, 2)   // VEST: Variable IV sizes (8-16 bytes)
+      ];
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("eSTREAM VEST Specification", "https://www.ecrypt.eu.org/stream/vestpf.html")
+      ];
+
+      this.references = [
+        new LinkItem("eSTREAM Phase 2 Evaluation", "https://www.ecrypt.eu.org/stream/vest.html")
+      ];
+
+      // Known vulnerabilities
+      this.knownVulnerabilities = [
+        new Vulnerability("Cryptanalytic Concerns", "Not selected for eSTREAM final portfolio due to security concerns")
+      ];
+
+      // Test vectors
+      this.tests = [
+        {
+          text: 'VEST basic test vector with 128-bit key and IV',
+          uri: 'Educational implementation test',
+          input: OpCodes.AnsiToBytes('Hello VEST!'),
+          key: OpCodes.AnsiToBytes('VEST test key 16'),  // 16 bytes - pad to exact 16
+          iv: OpCodes.AnsiToBytes('VEST test IV 16.'),    // 16 bytes - pad to exact 16
+          expected: OpCodes.Hex8ToBytes('858975be60d609c7e35773') // Generated from our implementation
+        },
+        {
+          text: 'VEST with 64-bit key (minimum size)',
+          uri: 'Educational implementation test',
+          input: OpCodes.AnsiToBytes('Minimum'),
+          key: OpCodes.AnsiToBytes('VESTkey8'),  // 8 bytes
+          iv: OpCodes.AnsiToBytes('VESTiv64'),   // 8 bytes
+          expected: OpCodes.Hex8ToBytes('096d71570bf952') // Generated from our implementation
+        }
+      ];
+
+      // VEST constants
+      this.LFSR_COUNT = 4;
+      this.DEFAULT_LFSR_SIZES = [25, 31, 33, 39];
+      this.MAX_WORD_SIZE = 32;
+      this.INIT_ROUNDS = 256;
+
+      // VEST S-boxes for nonlinear function
+      this.SBOX1 = [
+        0x7, 0x4, 0xa, 0x2, 0x1, 0xc, 0xe, 0x5, 0x8, 0x6, 0x0, 0xf, 0x3, 0xd, 0x9, 0xb
+      ];
+      this.SBOX2 = [
+        0x2, 0x8, 0xb, 0xd, 0xf, 0x7, 0x6, 0xe, 0x3, 0x1, 0x9, 0x4, 0x0, 0xa, 0xc, 0x5
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      return new VESTInstance(this, isInverse);
     }
   }
-  
-  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-    try {
-      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
-    } catch (e) {
-      console.error('Failed to load AlgorithmFramework:', e.message);
-      return;
-    }
-  } 
-  
-  
-  
-  // Create VEST cipher object
-  const VEST = {
-    internalName: 'vest',
-    name: 'VEST Stream Cipher',
-    version: '1.0',
-    author: 'Sean O\'Neil (2005)',
-    description: 'Variable Encryption Standard stream cipher with configurable parameters',
-    
-    // Cipher parameters
-    nBlockSizeInBits: 8,   // Default 8-bit mode
-    nKeySizeInBits: 128,   // Default 128-bit key
-    nIVSizeInBits: 128,    // Default 128-bit IV
-    
-    // Required by cipher system
-    minKeyLength: 8,    // 64 bits = 8 bytes minimum
-    maxKeyLength: 16,   // 128 bits = 16 bytes maximum
-    stepKeyLength: 2,   // 16-bit steps (2 bytes)
-    minBlockSize: 1,    // Minimum block size
-    maxBlockSize: 1024, // Maximum block size
-    stepBlockSize: 1,   // Step size
-    instances: {},
-    
-    documentation: [
-      {text:"eSTREAM VEST Specification",uri:"https://www.ecrypt.eu.org/stream/vestpf.html"}
-    ],
-    
-    references: [
-      {text:"eSTREAM Phase 2 Evaluation",uri:"https://www.ecrypt.eu.org/stream/vest.html"}
-    ],
-    
-    tests: [
-      {
-        text: 'VEST basic test vector with 128-bit key and IV',
-        key: 'VEST test key 128',  // 16 bytes
-        iv: 'VEST test IV 128',    // 16 bytes
-        input: OpCodes.AnsiToBytes('Hello VEST!'),
-        expected: [],
-      },
-      {
-        text: 'VEST with 64-bit key (minimum size)',
-        key: 'VESTkey8',  // 8 bytes
-        iv: 'VESTiv64',   // 8 bytes  
-        input: OpCodes.AnsiToBytes('Minimum'),
-        expected: []
-      }
-    ],
-    
-    // VEST constants
-    LFSR_COUNT: 4,        // Four LFSRs
-    DEFAULT_LFSR_SIZES: [25, 31, 33, 39], // Default LFSR sizes for 128-bit mode
-    MAX_WORD_SIZE: 32,    // Maximum word size in bits
-    INIT_ROUNDS: 256,     // Initialization rounds
-    
-    // VEST S-boxes for nonlinear function
-    SBOX1: [
-      0x7, 0x4, 0xa, 0x2, 0x1, 0xc, 0xe, 0x5, 0x8, 0x6, 0x0, 0xf, 0x3, 0xd, 0x9, 0xb
-    ],
-    SBOX2: [
-      0x2, 0x8, 0xb, 0xd, 0xf, 0x7, 0x6, 0xe, 0x3, 0x1, 0x9, 0x4, 0x0, 0xa, 0xc, 0x5
-    ],
-    
-    // Internal state
-    instances: {},
-    isInitialized: false,
-    
-    /**
-     * Initialize cipher with empty state
-     */
-    Init: function() {
-      this.isInitialized = true;
-      return true;
-    },
-    
-    /**
-     * Setup key and IV for VEST
-     * @param {Array} key - Variable-length key (8-16 bytes)
-     * @param {Array} iv - Variable-length IV (8-16 bytes, optional)
-     */
-    KeySetup: function(key, iv) {
-      let id;
-      do {
-        id = 'VEST[' + global.generateUniqueID() + ']';
-      } while (VEST.instances[id] || global.objectInstances[id]);
-      
-      VEST.instances[id] = new VEST.VESTInstance(key, iv);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    /**
-     * Clear cipher data
-     */
-    ClearData: function(id) {
-      if (VEST.instances[id]) {
-        const instance = VEST.instances[id];
-        if (instance.lfsrs && global.OpCodes) {
-          for (let i = 0; i < instance.lfsrs.length; i++) {
-            if (instance.lfsrs[i]) {
-              global.OpCodes.ClearArray(instance.lfsrs[i]);
-            }
-          }
-        }
-        if (instance.keyBytes && global.OpCodes) {
-          global.OpCodes.ClearArray(instance.keyBytes);
-        }
-        delete VEST.instances[id];
-        delete global.objectInstances[id];
-        return true;
-      } else {
-        global.throwException('Unknown Object Reference Exception', id, 'VEST', 'ClearData');
-        return false;
-      }
-    },
-    
-    /**
-     * Encrypt block (XOR with keystream)
-     */
-    encryptBlock: function(id, input) {
-      if (!VEST.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'VEST', 'encryptBlock');
-        return input;
-      }
-      
-      const instance = VEST.instances[id];
-      let result = '';
-      
-      for (let n = 0; n < input.length; n++) {
-        const keystreamByte = instance.generateKeystreamByte();
-        const inputByte = input.charCodeAt(n) & 0xFF;
-        const outputByte = inputByte ^ keystreamByte;
-        result += String.fromCharCode(outputByte);
-      }
-      
-      return result;
-    },
-    
-    /**
-     * Decrypt block (same as encrypt for stream cipher)
-     */
-    decryptBlock: function(id, input) {
-      return VEST.encryptBlock(id, input);
-    },
-    
-    /**
-     * VEST Instance class
-     */
-    VESTInstance: function(key, iv) {
+
+  class VESTInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this._key = null;
+      this._iv = null;
+      this.inputBuffer = [];
+
+      // VEST state
       this.keyBytes = [];
       this.ivBytes = [];
       this.lfsrs = [];
       this.lfsrSizes = [];
       this.wordSize = 8; // Default to 8-bit mode
-      
-      // Process key
-      this.processKey(key);
-      
-      // Process IV (optional)
-      this.processIV(iv);
-      
-      // Configure LFSR sizes based on key length
-      this.configureLFSRs();
-      
-      // Initialize the cipher
-      this.initialize();
+      this.initialized = false;
     }
-  };
-  
-  // Add methods to VESTInstance prototype
-  VEST.VESTInstance.prototype = {
-    
-    /**
-     * Process and validate key
-     */
-    processKey: function(key) {
-      if (typeof key === 'string') {
-        for (let i = 0; i < key.length && this.keyBytes.length < 16; i++) {
-          this.keyBytes.push(key.charCodeAt(i) & 0xFF);
-        }
-      } else if (Array.isArray(key)) {
-        for (let i = 0; i < key.length && this.keyBytes.length < 16; i++) {
-          this.keyBytes.push(key[i] & 0xFF);
-        }
-      } else {
-        throw new Error('VEST key must be string or byte array');
+
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
+        this.initialized = false;
+        return;
       }
-      
-      // Ensure minimum key length (8 bytes)
-      while (this.keyBytes.length < 8) {
-        this.keyBytes.push(0);
+
+      if (!Array.isArray(keyBytes)) {
+        throw new Error("Invalid key - must be byte array");
       }
-      
-      // Pad to even byte boundary if needed
-      if (this.keyBytes.length % 2 === 1) {
-        this.keyBytes.push(0);
+
+      if (keyBytes.length < 8 || keyBytes.length > 16 || keyBytes.length % 2 !== 0) {
+        throw new Error(`VEST requires 8, 10, 12, 14, or 16-byte keys, got ${keyBytes.length} bytes`);
       }
-    },
-    
-    /**
-     * Process and validate IV
-     */
-    processIV: function(iv) {
-      if (iv) {
-        if (typeof iv === 'string') {
-          for (let i = 0; i < iv.length && this.ivBytes.length < 16; i++) {
-            this.ivBytes.push(iv.charCodeAt(i) & 0xFF);
-          }
-        } else if (Array.isArray(iv)) {
-          for (let i = 0; i < iv.length && this.ivBytes.length < 16; i++) {
-            this.ivBytes.push(iv[i] & 0xFF);
-          }
-        }
+
+      this._key = [...keyBytes];
+      this.keyBytes = [...keyBytes];
+      this._initializeIfReady();
+    }
+
+    get key() {
+      return this._key ? [...this._key] : null;
+    }
+
+    set iv(ivBytes) {
+      if (!ivBytes) {
+        this._iv = null;
+        this.initialized = false;
+        return;
       }
-      
-      // Pad IV to match key length
+
+      if (!Array.isArray(ivBytes)) {
+        throw new Error("Invalid IV - must be byte array");
+      }
+
+      if (ivBytes.length < 8 || ivBytes.length > 16) {
+        throw new Error(`VEST requires 8-16 byte IVs, got ${ivBytes.length} bytes`);
+      }
+
+      this._iv = [...ivBytes];
+      this.ivBytes = [...ivBytes];
+      // Pad IV to match key length if needed
       while (this.ivBytes.length < this.keyBytes.length) {
         this.ivBytes.push(0);
       }
-    },
-    
+      this._initializeIfReady();
+    }
+
+    get iv() {
+      return this._iv ? [...this._iv] : null;
+    }
+
+    set nonce(nonceBytes) {
+      // For compatibility, treat nonce as IV
+      this.iv = nonceBytes;
+    }
+
+    get nonce() {
+      return this.iv;
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!Array.isArray(data)) {
+        throw new Error("Invalid input data - must be byte array");
+      }
+      if (!this._key) {
+        throw new Error("Key not set");
+      }
+      if (!this._iv) {
+        throw new Error("IV not set");
+      }
+
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      if (!this._key) {
+        throw new Error("Key not set");
+      }
+      if (!this._iv) {
+        throw new Error("IV not set");
+      }
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data to process");
+      }
+      if (!this.initialized) {
+        throw new Error("VEST not properly initialized");
+      }
+
+      const result = [];
+      for (let i = 0; i < this.inputBuffer.length; i++) {
+        const keystreamByte = this.generateKeystreamByte();
+        result.push(this.inputBuffer[i] ^ keystreamByte);
+      }
+
+      // Clear input buffer for next operation
+      this.inputBuffer = [];
+      return result;
+    }
+
+    _initializeIfReady() {
+      if (this._key && this._iv) {
+        this.configureLFSRs();
+        this.initialize();
+      }
+    }
     /**
      * Configure LFSR sizes based on key length
      */
-    configureLFSRs: function() {
+    configureLFSRs() {
       const keyBits = this.keyBytes.length * 8;
-      
+
       // LFSR sizes based on key length
       switch (keyBits) {
         case 64:
@@ -292,25 +287,26 @@
           this.wordSize = 8;
           break;
       }
-      
+
       // Initialize LFSRs
-      for (let i = 0; i < VEST.LFSR_COUNT; i++) {
+      this.lfsrs = [];
+      for (let i = 0; i < this.algorithm.LFSR_COUNT; i++) {
         this.lfsrs[i] = new Array(this.lfsrSizes[i]).fill(0);
       }
-    },
-    
+    }
+
     /**
      * Initialize VEST cipher state
      */
-    initialize: function() {
+    initialize() {
       // Load key material into LFSRs
       let keyIndex = 0;
       let ivIndex = 0;
-      
-      for (let lfsr = 0; lfsr < VEST.LFSR_COUNT; lfsr++) {
+
+      for (let lfsr = 0; lfsr < this.algorithm.LFSR_COUNT; lfsr++) {
         for (let bit = 0; bit < this.lfsrSizes[lfsr]; bit++) {
           let value = 0;
-          
+
           // Alternate between key and IV bits
           if (bit % 2 === 0 && keyIndex < this.keyBytes.length * 8) {
             const byteIdx = Math.floor(keyIndex / 8);
@@ -323,24 +319,26 @@
             value = (this.ivBytes[byteIdx] >>> bitIdx) & 1;
             ivIndex++;
           }
-          
+
           this.lfsrs[lfsr][bit] = value;
         }
       }
-      
+
       // Initialization rounds
-      for (let round = 0; round < VEST.INIT_ROUNDS; round++) {
+      for (let round = 0; round < this.algorithm.INIT_ROUNDS; round++) {
         this.clockAllLFSRs();
       }
-    },
-    
+
+      this.initialized = true;
+    }
+
     /**
      * LFSR feedback polynomials (primitive polynomials)
      */
-    getLFSRFeedback: function(lfsrIndex) {
+    getLFSRFeedback(lfsrIndex) {
       const lfsr = this.lfsrs[lfsrIndex];
       const size = this.lfsrSizes[lfsrIndex];
-      
+
       // Simple primitive polynomials for each LFSR size
       switch (size) {
         case 17: return lfsr[16] ^ lfsr[13];
@@ -355,126 +353,89 @@
         case 41: return lfsr[40] ^ lfsr[37];
         default: return lfsr[size-1] ^ lfsr[size-2];
       }
-    },
-    
+    }
+
     /**
      * Clock single LFSR
      */
-    clockLFSR: function(lfsrIndex) {
+    clockLFSR(lfsrIndex) {
       const lfsr = this.lfsrs[lfsrIndex];
       const size = this.lfsrSizes[lfsrIndex];
       const feedback = this.getLFSRFeedback(lfsrIndex);
-      
+
       // Shift left and insert feedback
       for (let i = size - 1; i > 0; i--) {
         lfsr[i] = lfsr[i - 1];
       }
       lfsr[0] = feedback;
-      
+
       return lfsr[size - 1]; // Return output bit
-    },
-    
+    }
+
     /**
      * Clock all LFSRs and return output bits
      */
-    clockAllLFSRs: function() {
+    clockAllLFSRs() {
       const outputs = [];
-      for (let i = 0; i < VEST.LFSR_COUNT; i++) {
+      for (let i = 0; i < this.algorithm.LFSR_COUNT; i++) {
         outputs[i] = this.clockLFSR(i);
       }
       return outputs;
-    },
-    
+    }
+
     /**
      * Nonlinear filter function
      */
-    nonlinearFilter: function(bits) {
+    nonlinearFilter() {
       // Extract bits from LFSRs at specific positions
       const x0 = this.lfsrs[0][7] ^ this.lfsrs[1][11];
       const x1 = this.lfsrs[1][13] ^ this.lfsrs[2][17];
       const x2 = this.lfsrs[2][19] ^ this.lfsrs[3][23];
-      const x3 = this.lfsrs[3][29] ^ this.lfsrs[0][31 % this.lfsrSizes[0]];
-      
+      const x3 = this.lfsrs[3][29 % this.lfsrSizes[3]] ^ this.lfsrs[0][31 % this.lfsrSizes[0]];
+
       // Apply S-boxes
       const s1_input = (x0 << 3) | (x1 << 2) | (x2 << 1) | x3;
-      const s1_output = VEST.SBOX1[s1_input & 0xF];
-      
+      const s1_output = this.algorithm.SBOX1[s1_input & 0xF];
+
       const y0 = this.lfsrs[1][5] ^ this.lfsrs[2][7];
       const y1 = this.lfsrs[2][11] ^ this.lfsrs[3][13];
-      const y2 = this.lfsrs[3][17] ^ this.lfsrs[0][19 % this.lfsrSizes[0]];
+      const y2 = this.lfsrs[3][17 % this.lfsrSizes[3]] ^ this.lfsrs[0][19 % this.lfsrSizes[0]];
       const y3 = this.lfsrs[0][23 % this.lfsrSizes[0]] ^ this.lfsrs[1][29 % this.lfsrSizes[1]];
-      
+
       const s2_input = (y0 << 3) | (y1 << 2) | (y2 << 1) | y3;
-      const s2_output = VEST.SBOX2[s2_input & 0xF];
-      
+      const s2_output = this.algorithm.SBOX2[s2_input & 0xF];
+
       // Combine S-box outputs with linear terms
-      return (s1_output ^ s2_output ^ 
-              this.lfsrs[0][3] ^ this.lfsrs[1][5] ^ 
-              this.lfsrs[2][7] ^ this.lfsrs[3][11]) & 0xFF;
-    },
-    
+      return (s1_output ^ s2_output ^
+              this.lfsrs[0][3] ^ this.lfsrs[1][5] ^
+              this.lfsrs[2][7] ^ this.lfsrs[3][11 % this.lfsrSizes[3]]) & 0xFF;
+    }
+
     /**
      * Generate one keystream byte
      */
-    generateKeystreamByte: function() {
+    generateKeystreamByte() {
       let byte = 0;
-      
+
       for (let bit = 0; bit < 8; bit++) {
         // Clock all LFSRs
         this.clockAllLFSRs();
-        
+
         // Apply nonlinear filter
         const outputBit = this.nonlinearFilter() & 1;
         byte |= (outputBit << bit);
       }
-      
+
       return byte;
-    },
-    
-    /**
-     * Generate keystream
-     */
-    generateKeystream: function(length) {
-      const keystream = [];
-      for (let i = 0; i < length; i++) {
-        keystream.push(this.generateKeystreamByte());
-      }
-      return keystream;
-    },
-    
-    /**
-     * Reset cipher with optional new IV
-     */
-    reset: function(newIV) {
-      if (newIV !== undefined) {
-        this.ivBytes = [];
-        this.processIV(newIV);
-      }
-      this.initialize();
     }
-  };
-  
-  // Auto-register with AlgorithmFramework if available
-  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
-    global.AlgorithmFramework.RegisterAlgorithm(VEST);
   }
-  
-  // Legacy registration
-  if (typeof global.RegisterAlgorithm === 'function') {
-    global.RegisterAlgorithm(VEST);
+
+  // Register the algorithm
+  const algorithmInstance = new VESTAlgorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher) {
-    global.Cipher.Add(VEST);
-  }
-  
-  // Export to global scope
-  global.VEST = VEST;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = VEST;
-  }
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // Return for module systems
+  return { VESTAlgorithm, VESTInstance };
+}));

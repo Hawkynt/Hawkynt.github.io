@@ -434,13 +434,30 @@
     // SHA-256 implementation using existing algorithm
     _sha256(data) {
       // Use the existing SHA-256 algorithm from the framework
-      const sha256Algorithms = global.AlgorithmFramework.Algorithms.filter(alg => alg.name === 'SHA-256');
+      // Try to find SHA-256 algorithm
+      let sha256 = AlgorithmFramework.Find('SHA-256');
 
-      if (sha256Algorithms.length === 0) {
-        throw new Error('SHA-256 algorithm not available - required for scrypt');
+      // If SHA-256 not available, try to load it dynamically
+      if (!sha256) {
+        try {
+          if (typeof require !== 'undefined') {
+            // Try to load SHA-256 algorithm
+            require('../hash/sha256.js');
+            sha256 = AlgorithmFramework.Find('SHA-256');
+          }
+        } catch (e) {
+          // Ignore loading errors and try alternative names
+        }
       }
 
-      const sha256 = sha256Algorithms[0];
+      // Try alternative names if still not found
+      if (!sha256) {
+        sha256 = AlgorithmFramework.Find('SHA256') || AlgorithmFramework.Find('sha256');
+      }
+
+      if (!sha256) {
+        throw new Error('SHA-256 algorithm not available - required for scrypt. Ensure sha256.js is loaded.');
+      }
       const instance = sha256.CreateInstance();
       instance.Feed(data);
       return instance.Result();

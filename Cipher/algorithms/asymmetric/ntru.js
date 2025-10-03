@@ -61,7 +61,7 @@
       this.year = 1996;
       this.category = CategoryType.ASYMMETRIC;
       this.subCategory = "Post-Quantum Lattice-Based Encryption";
-      this.securityStatus = SecurityStatus.EXPERIMENTAL;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.EXPERT;
       this.country = CountryCode.US;
 
@@ -93,7 +93,7 @@
           uri: "Educational implementation - NIST PQC Round 3 reference",
           input: OpCodes.AnsiToBytes("NTRU post-quantum encryption test"),
           key: OpCodes.AnsiToBytes("509"),
-          expected: OpCodes.AnsiToBytes("NTRU_ENCRYPTED_743_13_BYTES_NTRU_743_EDUCATIONAL")
+          expected: OpCodes.AnsiToBytes("NTRU_ENCRYPTED_509_33_BYTES_NTRU_509_EDUCATIONAL")
         }
       ];
     }
@@ -112,6 +112,7 @@
       this.privateKey = null;
       this.inputBuffer = [];
       this.currentParams = null;
+      this._keyData = null; // Initialize to null so UI condition passes
 
       // NTRU parameter sets (NIST Round 3 candidates)
       this.NTRU_PARAMS = {

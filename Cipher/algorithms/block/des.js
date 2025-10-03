@@ -395,15 +395,15 @@
         const block = input.slice(i * 6, (i + 1) * 6);
 
         // Calculate row (outer bits) and column (middle 4 bits)
-        const row = (block[0] << 1) | block[5];
-        const col = (block[1] << 3) | (block[2] << 2) | (block[3] << 1) | block[4];
+        const row = OpCodes.SetBit(OpCodes.SetBit(0, 1, block[0]), 0, block[5]);
+        const col = OpCodes.SetBit(OpCodes.SetBit(OpCodes.SetBit(OpCodes.SetBit(0, 3, block[1]), 2, block[2]), 1, block[3]), 0, block[4]);
 
         // Get value from S-box
         const val = this.SBOX[i][row][col];
 
         // Convert to 4-bit binary and add to output
         for (let j = 3; j >= 0; j--) {
-          output.push((val >> j) & 1);
+          output.push(OpCodes.GetBit(val, j));
         }
       }
 
@@ -419,11 +419,7 @@
     }
 
     _xorBits(a, b) {
-      const result = new Array(a.length);
-      for (let i = 0; i < a.length; i++) {
-        result[i] = a[i] ^ b[i];
-      }
-      return result;
+      return OpCodes.XorArrays(a, b);
     }
 
     _leftShift(input, n) {
@@ -434,7 +430,7 @@
       const bits = new Array(bytes.length * 8);
       for (let i = 0; i < bytes.length; i++) {
         for (let j = 0; j < 8; j++) {
-          bits[i * 8 + j] = (bytes[i] >> (7 - j)) & 1;
+          bits[i * 8 + j] = OpCodes.GetBit(bytes[i], 7 - j);
         }
       }
       return bits;
@@ -445,7 +441,7 @@
       for (let i = 0; i < bytes.length; i++) {
         let val = 0;
         for (let j = 0; j < 8; j++) {
-          val = (val << 1) | bits[i * 8 + j];
+          val = OpCodes.SetBit(val, 7 - j, bits[i * 8 + j]);
         }
         bytes[i] = val;
       }

@@ -30,7 +30,7 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
@@ -46,6 +46,125 @@
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
   // ===== ALGORITHM IMPLEMENTATION =====
+
+  // SHA3-256 constants
+  const SHA3_256_RATE = 136;        // Rate in bytes (1088 bits)
+  const SHA3_256_OUTPUT = 32;       // Output in bytes (256 bits)
+  const KECCAK_ROUNDS = 24;         // Number of Keccak-f[1600] rounds
+
+  // Keccac round constants (24 rounds, as [low32, high32] pairs) - FIPS 202 compliant
+  const RC = [
+    [0x00000001, 0x00000000], [0x00008082, 0x00000000], [0x0000808a, 0x80000000], [0x80008000, 0x80000000],
+    [0x0000808b, 0x00000000], [0x80000001, 0x00000000], [0x80008081, 0x80000000], [0x00008009, 0x80000000],
+    [0x0000008a, 0x00000000], [0x00000088, 0x00000000], [0x80008009, 0x00000000], [0x8000000a, 0x00000000],
+    [0x8000808b, 0x00000000], [0x0000008b, 0x80000000], [0x00008089, 0x80000000], [0x00008003, 0x80000000],
+    [0x00008002, 0x80000000], [0x00000080, 0x80000000], [0x0000800a, 0x00000000], [0x8000000a, 0x80000000],
+    [0x80008081, 0x80000000], [0x00008080, 0x80000000], [0x80000001, 0x00000000], [0x80008008, 0x80000000]
+  ];
+
+  // Rotation offsets for rho step
+  const RHO_OFFSETS = [
+    0, 1, 62, 28, 27, 36, 44, 6, 55, 20, 3, 10, 43, 25, 39, 41,
+    45, 15, 21, 8, 18, 2, 61, 56, 14
+  ];
+
+  /**
+   * 64-bit XOR operation
+   * @param {Array} a - [low32, high32]
+   * @param {Array} b - [low32, high32]
+   * @returns {Array} XOR result [low32, high32]
+   */
+  function xor64(a, b) {
+    return [a[0] ^ b[0], a[1] ^ b[1]];
+  }
+
+  /**
+   * 64-bit left rotation (using 32-bit operations)
+   * @param {Array} val - [low32, high32]
+   * @param {number} positions - Rotation positions
+   * @returns {Array} Rotated [low32, high32]
+   */
+  function rotl64(val, positions) {
+    const [low, high] = val;
+    positions %= 64;
+
+    if (positions === 0) return [low, high];
+
+    if (positions === 32) {
+      return [high, low];
+    } else if (positions < 32) {
+      const newLow = ((low << positions) | (high >>> (32 - positions))) >>> 0;
+      const newHigh = ((high << positions) | (low >>> (32 - positions))) >>> 0;
+      return [newLow, newHigh];
+    } else {
+      positions -= 32;
+      const newLow = ((high << positions) | (low >>> (32 - positions))) >>> 0;
+      const newHigh = ((low << positions) | (high >>> (32 - positions))) >>> 0;
+      return [newLow, newHigh];
+    }
+  }
+
+  /**
+   * Keccak-f[1600] permutation
+   * @param {Array} state - 25 x [low32, high32] state array
+   */
+  function keccakF(state) {
+    for (let round = 0; round < KECCAK_ROUNDS; round++) {
+      // Theta step
+      const C = new Array(5);
+      for (let x = 0; x < 5; x++) {
+        C[x] = [0, 0];
+        for (let y = 0; y < 5; y++) {
+          C[x] = xor64(C[x], state[x + 5 * y]);
+        }
+      }
+
+      const D = new Array(5);
+      for (let x = 0; x < 5; x++) {
+        D[x] = xor64(C[(x + 4) % 5], rotl64(C[(x + 1) % 5], 1));
+      }
+
+      for (let x = 0; x < 5; x++) {
+        for (let y = 0; y < 5; y++) {
+          state[x + 5 * y] = xor64(state[x + 5 * y], D[x]);
+        }
+      }
+
+      // Rho step
+      for (let i = 0; i < 25; i++) {
+        state[i] = rotl64(state[i], RHO_OFFSETS[i]);
+      }
+
+      // Pi step
+      const temp = new Array(25);
+      for (let i = 0; i < 25; i++) {
+        temp[i] = [state[i][0], state[i][1]];
+      }
+
+      for (let x = 0; x < 5; x++) {
+        for (let y = 0; y < 5; y++) {
+          state[y + 5 * ((2 * x + 3 * y) % 5)] = temp[x + 5 * y];
+        }
+      }
+
+      // Chi step
+      for (let y = 0; y < 5; y++) {
+        const row = new Array(5);
+        for (let x = 0; x < 5; x++) {
+          row[x] = [state[x + 5 * y][0], state[x + 5 * y][1]];
+        }
+
+        for (let x = 0; x < 5; x++) {
+          const notNext = [~row[(x + 1) % 5][0], ~row[(x + 1) % 5][1]];
+          const andResult = [notNext[0] & row[(x + 2) % 5][0], notNext[1] & row[(x + 2) % 5][1]];
+          state[x + 5 * y] = xor64(row[x], andResult);
+        }
+      }
+
+      // Iota step
+      state[0] = xor64(state[0], RC[round]);
+    }
+  }
 
   class SHA3256Algorithm extends HashFunctionAlgorithm {
     constructor() {
@@ -131,7 +250,7 @@
         this._state[i] = [0, 0]; // [low32, high32]
       }
 
-      this._buffer = new Array(SHA3_256_RATE);
+      this._buffer = new Uint8Array(SHA3_256_RATE);
       this._bufferLength = 0;
     }
 
@@ -198,153 +317,49 @@
       }
 
       // Apply Keccak-f[1600] permutation
-      this._keccakF();
+      keccakF(this._state);
     }
 
-    /**
-     * Keccak-f[1600] permutation
-     */
-    _keccakF() {
-      for (let round = 0; round < KECCAK_ROUNDS; round++) {
-        // Theta step
-        const C = new Array(5);
-        for (let x = 0; x < 5; x++) {
-          C[x] = [0, 0];
-          for (let y = 0; y < 5; y++) {
-            C[x] = this._xor64(C[x], this._state[x + 5 * y]);
-          }
-        }
-
-        const D = new Array(5);
-        for (let x = 0; x < 5; x++) {
-          D[x] = this._xor64(C[(x + 4) % 5], this._rotl64(C[(x + 1) % 5], 1));
-        }
-
-        for (let x = 0; x < 5; x++) {
-          for (let y = 0; y < 5; y++) {
-            this._state[x + 5 * y] = this._xor64(this._state[x + 5 * y], D[x]);
-          }
-        }
-
-        // Rho step
-        for (let i = 0; i < 25; i++) {
-          this._state[i] = this._rotl64(this._state[i], RHO_OFFSETS[i]);
-        }
-
-        // Pi step
-        const temp = new Array(25);
-        for (let i = 0; i < 25; i++) {
-          temp[i] = [this._state[i][0], this._state[i][1]];
-        }
-
-        for (let x = 0; x < 5; x++) {
-          for (let y = 0; y < 5; y++) {
-            this._state[y + 5 * ((2 * x + 3 * y) % 5)] = temp[x + 5 * y];
-          }
-        }
-
-        // Chi step
-        for (let y = 0; y < 5; y++) {
-          const row = new Array(5);
-          for (let x = 0; x < 5; x++) {
-            row[x] = [this._state[x + 5 * y][0], this._state[x + 5 * y][1]];
-          }
-
-          for (let x = 0; x < 5; x++) {
-            const notNext = [~row[(x + 1) % 5][0], ~row[(x + 1) % 5][1]];
-            const andResult = [notNext[0] & row[(x + 2) % 5][0], notNext[1] & row[(x + 2) % 5][1]];
-            this._state[x + 5 * y] = this._xor64(row[x], andResult);
-          }
-        }
-
-        // Iota step
-        this._state[0] = this._xor64(this._state[0], RC[round]);
-      }
-    }
-
-    /**
-     * 64-bit XOR operation
-     */
-    _xor64(a, b) {
-      return [a[0] ^ b[0], a[1] ^ b[1]];
-    }
-
-    /**
-     * 64-bit left rotation
-     */
-    _rotl64(val, positions) {
-      const [low, high] = val;
-      positions %= 64;
-
-      if (positions === 0) return [low, high];
-
-      if (positions === 32) {
-        return [high, low];
-      } else if (positions < 32) {
-        const newLow = ((low << positions) | (high >>> (32 - positions))) >>> 0;
-        const newHigh = ((high << positions) | (low >>> (32 - positions))) >>> 0;
-        return [newLow, newHigh];
-      } else {
-        positions -= 32;
-        const newLow = ((high << positions) | (low >>> (32 - positions))) >>> 0;
-        const newHigh = ((low << positions) | (high >>> (32 - positions))) >>> 0;
-        return [newLow, newHigh];
-      }
-    }
 
     /**
      * Finalize the hash calculation and return result as byte array
      * @returns {Array} Hash digest as byte array
      */
     Final() {
-      // SHA-3 padding: calculate bytes needed
-      const q = SHA3_256_RATE - (this._bufferLength % SHA3_256_RATE);
+      // SHA-3 padding with domain separator 0x06
+      this._buffer[this._bufferLength] = 0x06;
 
-      if (q === 1) {
-        // Special case: only one byte padding
-        this._buffer[this._bufferLength] = 0x86; // 0x06 | 0x80
-        this._bufferLength++;
-      } else if (q === 2) {
-        // Two bytes padding
-        this._buffer[this._bufferLength] = 0x06;
-        this._buffer[this._bufferLength + 1] = 0x80;
-        this._bufferLength += 2;
-      } else {
-        // Multi-byte padding: 0x06 + zeros + 0x80
-        this._buffer[this._bufferLength] = 0x06;
-        this._bufferLength++;
-
-        // Fill with zeros
-        for (let i = this._bufferLength; i < SHA3_256_RATE - 1; i++) {
-          this._buffer[i] = 0;
-        }
-
-        // Final 0x80 byte
-        this._buffer[SHA3_256_RATE - 1] = 0x80;
-        this._bufferLength = SHA3_256_RATE;
+      // Fill rest with zeros except last byte
+      for (let i = this._bufferLength + 1; i < SHA3_256_RATE - 1; i++) {
+        this._buffer[i] = 0;
       }
+
+      // Set last bit of last byte
+      this._buffer[SHA3_256_RATE - 1] = 0x80;
 
       // Absorb final block
       this._absorb();
 
-      // Squeeze output
-      const output = [];
-      for (let i = 0; i < SHA3_256_OUTPUT; i += 8) {
+      // Squeeze exactly 256 bits (32 bytes) output
+      const output = new Uint8Array(SHA3_256_OUTPUT);
+      let outputOffset = 0;
+
+      for (let i = 0; i < SHA3_256_OUTPUT && i < SHA3_256_RATE; i += 8) {
         const stateIndex = Math.floor(i / 8);
         const word = this._state[stateIndex];
 
         const bytes1 = OpCodes.Unpack32LE(word[0]);
         const bytes2 = OpCodes.Unpack32LE(word[1]);
 
-        for (let j = 0; j < 4 && output.length < SHA3_256_OUTPUT; j++) {
-          output.push(bytes1[j]);
+        for (let j = 0; j < 4 && outputOffset < SHA3_256_OUTPUT; j++) {
+          output[outputOffset++] = bytes1[j];
         }
-        for (let j = 0; j < 4 && output.length < SHA3_256_OUTPUT; j++) {
-          output.push(bytes2[j]);
+        for (let j = 0; j < 4 && outputOffset < SHA3_256_OUTPUT; j++) {
+          output[outputOffset++] = bytes2[j];
         }
       }
 
-      return output;
+      return Array.from(output);
     }
 
     /**
@@ -382,7 +397,7 @@
           this._state[i] = [0, 0];
         }
       }
-      if (this._buffer) OpCodes.ClearArray(this._buffer);
+      if (this._buffer) this._buffer.fill(0);
       this._bufferLength = 0;
     }
 

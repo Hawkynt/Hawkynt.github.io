@@ -112,6 +112,7 @@
       this.privateKey = null;
       this.inputBuffer = [];
       this.currentParams = null;
+      this._keyData = null; // Initialize to null so UI condition passes
 
       // NIST FIPS 204 ML-DSA Parameter Sets
       this.ML_DSA_PARAMS = {
@@ -315,7 +316,7 @@
 
       // Initialize state with seed and padding
       for (let i = 0; i < 32; i++) {
-        state[i] = i < seed.length ? seed[i] : (i * 0x67 + 0x91) & 0xFF;
+        state[i] = i < seed.length ? seed[i] : (i * 0x67 + 0x91) & OpCodes.BitMask(8);
       }
 
       // Keccak-like permutation (very simplified)
@@ -325,7 +326,7 @@
           const a = state[j];
           const b = state[(j + 1) % state.length];
           const c = state[(j + 7) % state.length];
-          state[j] = OpCodes.RotL8(a ^ b ^ c, (j + i) & 7);
+          state[j] = OpCodes.RotL8(a ^ b ^ c, (j + i) & OpCodes.BitMask(3));
         }
 
         // Extract byte
@@ -452,20 +453,20 @@
       const mu = this._educationalHash([...this.privateKey.skSeed, ...message], this.CRHBYTES);
 
       // Generate commitment (simplified) - use OpCodes for string generation
-      const commitmentBytes = [...OpCodes.AnsiToBytes('ML_DSA_COMMITMENT_'), this.parameterSet & 0xFF, ...OpCodes.AnsiToBytes('_'), ...OpCodes.AnsiToBytes(this.privateKey.keyId)];
+      const commitmentBytes = [...OpCodes.AnsiToBytes('ML_DSA_COMMITMENT_'), this.parameterSet & OpCodes.BitMask(8), ...OpCodes.AnsiToBytes('_'), ...OpCodes.AnsiToBytes(this.privateKey.keyId)];
 
       // Generate challenge c (simplified Fiat-Shamir)
       const challenge = ((message.length * 37 + params.tau) % 256);
 
       // Generate response z (simplified) - use OpCodes for string generation
       const gamma1Str = String(params.gamma1);
-      const responseBytes = [...OpCodes.AnsiToBytes('ML_DSA_RESPONSE_'), challenge & 0xFF, ...OpCodes.AnsiToBytes('_GAMMA1_'), ...gamma1Str.split('').map(c => c.charCodeAt(0))];
+      const responseBytes = [...OpCodes.AnsiToBytes('ML_DSA_RESPONSE_'), challenge & OpCodes.BitMask(8), ...OpCodes.AnsiToBytes('_GAMMA1_'), ...gamma1Str.split('').map(c => c.charCodeAt(0))];
 
       // Pack signature (c, z, h) - use OpCodes for delimiter
       const delimiter = OpCodes.AnsiToBytes('||');
       const hintBytes = OpCodes.AnsiToBytes('HINT');
 
-      return [...commitmentBytes, ...delimiter, challenge & 0xFF, ...delimiter, ...responseBytes, ...delimiter, ...hintBytes];
+      return [...commitmentBytes, ...delimiter, challenge & OpCodes.BitMask(8), ...delimiter, ...responseBytes, ...delimiter, ...hintBytes];
     }
 
     // Educational signature verification (simplified ML-DSA-like)
@@ -476,7 +477,7 @@
 
       // For educational purposes, verify signature format
       const signature = String.fromCharCode(...signatureData);
-      const expectedPrefixBytes = [...OpCodes.AnsiToBytes('ML_DSA_COMMITMENT_'), this.parameterSet & 0xFF];
+      const expectedPrefixBytes = [...OpCodes.AnsiToBytes('ML_DSA_COMMITMENT_'), this.parameterSet & OpCodes.BitMask(8)];
       const expectedPrefix = String.fromCharCode(...expectedPrefixBytes);
 
       if (signature.includes(expectedPrefix)) {
@@ -490,7 +491,7 @@
           const hint = parts[3];
 
           // Educational verification (always accept properly formatted signatures)
-          const validMessage = [...OpCodes.AnsiToBytes('VALID_ML_DSA_SIGNATURE_'), this.parameterSet & 0xFF];
+          const validMessage = [...OpCodes.AnsiToBytes('VALID_ML_DSA_SIGNATURE_'), this.parameterSet & OpCodes.BitMask(8)];
           return validMessage;
         }
       }
@@ -505,15 +506,15 @@
 
       // Simplified sponge construction
       for (let i = 0; i < input.length; i++) {
-        state = (state * 1103515245 + 12345 + input[i]) & OpCodes.Mask32;
+        state = (state * 1103515245 + 12345 + input[i]) & OpCodes.BitMask(32);
         state = OpCodes.RotL32(state, 7) ^ 1779033703; // SHA-256 initial hash value
       }
 
       // Generate output
       for (let i = 0; i < outputLength; i++) {
-        state = (state * 1664525 + 1013904223) & OpCodes.Mask32;
+        state = (state * 1664525 + 1013904223) & OpCodes.BitMask(32);
         state = OpCodes.RotL32(state, 13);
-        output[i] = (state >>> 24) & OpCodes.Mask8;
+        output[i] = OpCodes.GetByte(state, 3);
       }
 
       return output;

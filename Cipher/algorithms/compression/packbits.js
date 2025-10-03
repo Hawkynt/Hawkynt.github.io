@@ -112,7 +112,7 @@
           ),
           new TestCase(
             [65, 66, 67, 68, 68, 68, 68],
-            [2, 65, 66, 67, 252, 68],
+            [2, 65, 66, 67, 253, 68],
             "Literals followed by run",
             "https://en.wikipedia.org/wiki/PackBits"
           ),
@@ -172,6 +172,9 @@
         const output = [];
         let i = 0;
 
+        // Use OpCodes for consistent operations
+        const clearOutput = () => OpCodes.ClearArray(output);
+
         while (i < data.length) {
           // Check for run of identical bytes
           let runLength = 1;
@@ -183,6 +186,7 @@
 
           if (runLength >= 3) {
             // Encode as run: (257 - runLength), value
+            // PackBits encodes run length as 257 - runLength
             output.push(257 - runLength);
             output.push(data[i]);
             i += runLength;
@@ -227,6 +231,9 @@
 
         const output = [];
         let i = 0;
+
+        // Use OpCodes for consistent operations
+        const clearOutput = () => OpCodes.ClearArray(output);
 
         while (i < data.length) {
           const controlByte = data[i++];

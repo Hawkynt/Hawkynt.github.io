@@ -88,38 +88,38 @@
             "https://en.wikipedia.org/wiki/Move-to-front_transform"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("A"),
+            OpCodes.AnsiToBytes("A"),
             [65],
             "Single character - position 65 in initial alphabet",
             "https://sites.google.com/view/datacompressionguide/data-transformation-methods/move-to-front-coding-mtf"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("AA"),
+            OpCodes.AnsiToBytes("AA"),
             [65, 0],
             "Repeated character - second occurrence becomes 0",
             "https://www.cs.cmu.edu/~sleator/papers/self-organizing-lists.pdf"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("AB"),
+            OpCodes.AnsiToBytes("AB"),
             [65, 66],
             "Two different characters - both at original positions",
             "https://www.geeksforgeeks.org/dsa/move-front-data-transform-algorithm/"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("ABA"),
+            OpCodes.AnsiToBytes("ABA"),
             [65, 66, 1],
             "Pattern ABA - A moves to front after first occurrence",
             "https://michaeldipperstein.github.io/mtf.html"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("ABACA"),
-            [65, 66, 2, 67, 3],
+            OpCodes.AnsiToBytes("ABACA"),
+            [65, 66, 1, 67, 1],
             "ABACA pattern - shows MTF ordering dynamics",
             "https://en.wikipedia.org/wiki/Bzip2"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("banana"),
-            [98, 97, 1, 2, 1, 2],
+            OpCodes.AnsiToBytes("banana"),
+            [98, 98, 110, 1, 1, 1],
             "Classic banana example - demonstrates compression potential",
             "https://sites.google.com/view/datacompressionguide/data-transformation-methods/move-to-front-coding-mtf"
           )

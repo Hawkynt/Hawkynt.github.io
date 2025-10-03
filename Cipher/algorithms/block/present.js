@@ -123,7 +123,7 @@
       ];
 
       // PRESENT Constants
-      this.ROUNDS = 31;
+      this.ROUNDS = 32;      // 32 total rounds (31 full + 1 final)
       this.BLOCK_SIZE = 8;   // 64 bits
       this.KEY_SIZE = 10;    // 80 bits
 
@@ -220,22 +220,20 @@
       // Convert input to 64-bit state (as two 32-bit words)
       let state = this._bytesToState(block);
 
-      // Apply 31 rounds
-      for (let round = 0; round < this.algorithm.ROUNDS; round++) {
+      // Apply 31 full rounds + 1 final round
+      for (let round = 0; round < this.algorithm.ROUNDS - 1; round++) {
         // Add round key
         state = this._addRoundKey(state, this.roundKeys[round]);
 
         // Apply S-box layer
         state = this._sBoxLayer(state);
 
-        // Apply permutation layer (skip on last round)
-        if (round < this.algorithm.ROUNDS - 1) {
-          state = this._permutationLayer(state);
-        }
+        // Apply permutation layer
+        state = this._permutationLayer(state);
       }
 
-      // Add final round key
-      state = this._addRoundKey(state, this.roundKeys[this.algorithm.ROUNDS]);
+      // Final round (only add round key)
+      state = this._addRoundKey(state, this.roundKeys[this.algorithm.ROUNDS - 1]);
 
       return this._stateToBytes(state);
     }
@@ -249,14 +247,12 @@
       let state = this._bytesToState(block);
 
       // Remove final round key
-      state = this._addRoundKey(state, this.roundKeys[this.algorithm.ROUNDS]);
+      state = this._addRoundKey(state, this.roundKeys[this.algorithm.ROUNDS - 1]);
 
       // Apply 31 rounds in reverse
-      for (let round = this.algorithm.ROUNDS - 1; round >= 0; round--) {
-        // Apply inverse permutation layer (skip on first iteration)
-        if (round < this.algorithm.ROUNDS - 1) {
-          state = this._invPermutationLayer(state);
-        }
+      for (let round = this.algorithm.ROUNDS - 2; round >= 0; round--) {
+        // Apply inverse permutation layer
+        state = this._invPermutationLayer(state);
 
         // Apply inverse S-box layer
         state = this._invSBoxLayer(state);
@@ -332,9 +328,16 @@
       return { high: result.high >>> 0, low: result.low >>> 0 };
     }
 
-    // Apply bit permutation layer following ISO/IEC 29192-2 specification
+    // Apply bit permutation layer following PRESENT specification
     _permutationLayer(state) {
-      // PRESENT permutation formula: P(i) = (4 * i) mod 63 for i = 0..62, P(63) = 63
+      // PRESENT permutation table (official specification)
+      const P = [
+        0,16,32,48,1,17,33,49,2,18,34,50,3,19,35,51,4,
+        20,36,52,5,21,37,53,6,22,38,54,7,23,39,55,8,24,
+        40,56,9,25,41,57,10,26,42,58,11,27,43,59,12,28,
+        44,60,13,29,45,61,14,30,46,62,15,31,47,63
+      ];
+
       let result = { high: 0, low: 0 };
 
       // Extract all 64 bits into array for permutation
@@ -344,14 +347,10 @@
         bits[i + 32] = (state.low >>> (31 - i)) & 1;
       }
 
-      // Apply PRESENT permutation
+      // Apply PRESENT permutation using lookup table
       const permutedBits = new Array(64);
       for (let i = 0; i < 64; i++) {
-        if (i === 63) {
-          permutedBits[63] = bits[63]; // Special case: bit 63 stays at position 63
-        } else {
-          permutedBits[(4 * i) % 63] = bits[i];
-        }
+        permutedBits[P[i]] = bits[i];
       }
 
       // Reconstruct the 64-bit state from permuted bits
@@ -369,7 +368,20 @@
 
     // Apply inverse bit permutation layer
     _invPermutationLayer(state) {
-      // Inverse PRESENT permutation
+      // PRESENT permutation table (official specification)
+      const P = [
+        0,16,32,48,1,17,33,49,2,18,34,50,3,19,35,51,4,
+        20,36,52,5,21,37,53,6,22,38,54,7,23,39,55,8,24,
+        40,56,9,25,41,57,10,26,42,58,11,27,43,59,12,28,
+        44,60,13,29,45,61,14,30,46,62,15,31,47,63
+      ];
+
+      // Build inverse permutation table
+      const P_inv = new Array(64);
+      for (let i = 0; i < 64; i++) {
+        P_inv[P[i]] = i;
+      }
+
       let result = { high: 0, low: 0 };
 
       // Extract all 64 bits into array for inverse permutation
@@ -379,17 +391,10 @@
         bits[i + 32] = (state.low >>> (31 - i)) & 1;
       }
 
-      // Apply inverse PRESENT permutation
+      // Apply inverse PRESENT permutation using inverse lookup table
       const permutedBits = new Array(64);
       for (let i = 0; i < 64; i++) {
-        if (i === 63) {
-          permutedBits[63] = bits[63]; // Special case: bit 63 stays at position 63
-        } else {
-          // Find source position j where (4 * j) mod 63 = i
-          // This is equivalent to j = (16 * i) mod 63 (since 4 * 16 = 64 ≡ 1 mod 63)
-          const sourcePos = (16 * i) % 63;
-          permutedBits[sourcePos] = bits[i];
-        }
+        permutedBits[P_inv[i]] = bits[i];
       }
 
       // Reconstruct the 64-bit state from inverse permuted bits
@@ -416,8 +421,8 @@
         key = key * BigInt(256) + byteValue; // Build big-endian integer
       }
 
-      // Generate 32 round keys (rounds 0-31 + final key)
-      for (let round = 0; round <= this.algorithm.ROUNDS; round++) {
+      // Generate 32 round keys (rounds 1-32)
+      for (let round = 1; round <= this.algorithm.ROUNDS; round++) {
         // Extract 64-bit round key from leftmost bits (bits 79-16)
         const roundKey64 = key >> BigInt(16); // Shift right by 16 to get top 64 bits
 
@@ -425,7 +430,7 @@
         const roundKeyHigh = Number((roundKey64 >> BigInt(32)) & BigInt(0xFFFFFFFF));
         const roundKeyLow = Number(roundKey64 & BigInt(0xFFFFFFFF));
 
-        roundKeys[round] = {
+        roundKeys[round - 1] = {
           high: roundKeyHigh >>> 0,
           low: roundKeyLow >>> 0
         };
@@ -447,7 +452,7 @@
           key = (sboxValue << BigInt(76)) + bottomPart;
 
           // Step 3: XOR bits with round counter at position 15
-          const counterValue = BigInt(round + 1) << BigInt(15);
+          const counterValue = BigInt(round) << BigInt(15);
           key = key ^ counterValue;
 
           // Ensure key stays within 80-bit range
