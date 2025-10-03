@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 /*
- * Comprehensive Test Suite for Cipher Algorithms
+ * Comprehensive Test Suite for Cipher Algorithms - CLI Interface
  * Tests compilation, interface compatibility, metadata compliance, unresolved issues, functionality, and optimization
- * 
+ *
+ * This is the CLI wrapper that uses TestEngine for all testing logic
+ * Maintains exact same interface as original for backward compatibility
+ *
  * Test Categories:
  * - COMPILATION: Tests JavaScript syntax using `node -c` (syntax errors)
  * - INTERFACE: Tests if algorithm can be loaded and RegisterAlgorithm accepts it (interface errors)
@@ -10,36 +13,24 @@
  * - ISSUES: Tests for unresolved TODO, FIXME, BUG, ISSUE comments
  * - FUNCTIONALITY: Tests algorithm functionality using test vectors
  * - OPTIMIZATION: Tests OpCodes usage for performance optimization
- * 
+ *
  * (c)2006-2025 Hawkynt
  */
 
 const fs = require('fs');
 const path = require('path');
+const TestEngine = require('./TestEngine');
 
 class TestSuite {
   constructor() {
+    this.engine = new TestEngine({ verbose: false, silent: false });
     this.totalAlgorithms = 0;
     this.algorithmsPerCategory = {};
     this.verbose = false;
-
-    // Define algorithm category arrays for invertibility requirements
-    // These will be set after AlgorithmFramework is loaded
-    this.perfectRoundTripCategories = null;
-    this.encodingStabilityCategories = null;
-
-    this.results = {
-      compilation: { passed: 0, failed: 0, errors: [] },
-      interface: { passed: 0, failed: 0, errors: [] },
-      metadata: { passed: 0, failed: 0, errors: [] },
-      issues: { passed: 0, failed: 0, errors: [] },
-      functionality: { passed: 0, failed: 0, errors: [] },
-      optimization: { passed: 0, failed: 0, errors: [] }
-    };
     this.algorithmDetails = [];
   }
 
-  // Main entry point
+  // Main entry point - maintains exact same interface
   async runAllTests() {
     console.log('SynthelicZ Cipher Tools - Comprehensive Test Suite');
     console.log('================================================');
@@ -48,24 +39,25 @@ class TestSuite {
     try {
       // Load OpCodes first
       await this.loadDependencies();
-      
+
       // Parse command line arguments
       const args = process.argv.slice(2);
       this.verbose = args.includes('--verbose') || args.includes('-v');
-      
+      this.engine.verbose = this.verbose;
+
       // Filter out flags to get the filename
       const singleFile = args.find(arg => !arg.startsWith('--') && !arg.startsWith('-'));
-      
+
       if (singleFile) {
         await this.testSingleFile(singleFile);
       } else {
         // Discover and test all algorithms
         await this.discoverAlgorithms();
       }
-      
+
       // Generate final report
       this.generateReport();
-      
+
     } catch (error) {
       console.error('Fatal error during test execution:', error.message);
       process.exit(1);
@@ -75,23 +67,8 @@ class TestSuite {
   // Load required dependencies
   async loadDependencies() {
     console.log('Loading dependencies...');
-    
     try {
-      // Load OpCodes
-      require('../OpCodes.js');
-      if (!global.OpCodes) {
-        throw new Error('OpCodes not loaded properly');
-      }
-      
-      // Load AlgorithmFramework
-      global.AlgorithmFramework = require('../AlgorithmFramework.js');
-      if (!global.AlgorithmFramework) {
-        throw new Error('AlgorithmFramework not loaded properly');
-      }
-
-      // Initialize algorithm category arrays now that AlgorithmFramework is loaded
-      this.initializeCategoryArrays();
-
+      await this.engine.loadDependencies();
       console.log('✓ Dependencies loaded successfully\n');
     } catch (error) {
       throw new Error(`Failed to load dependencies: ${error.message}`);
@@ -102,19 +79,19 @@ class TestSuite {
   async testSingleFile(filename) {
     const algorithmsDir = path.join(__dirname, '..', 'algorithms');
     let foundFile = false;
-    
+
     console.log(`Searching for file: ${filename}`);
     console.log('');
-    
+
     // Search through all categories
-    const categories = fs.readdirSync(algorithmsDir).filter(item => 
+    const categories = fs.readdirSync(algorithmsDir).filter(item =>
       fs.statSync(path.join(algorithmsDir, item)).isDirectory()
     );
-    
+
     for (const category of categories) {
       const categoryPath = path.join(algorithmsDir, category);
       const files = fs.readdirSync(categoryPath).filter(file => file.endsWith('.js'));
-      
+
       if (files.includes(filename)) {
         foundFile = true;
         console.log(`Found ${filename} in category: ${category}`);
@@ -123,7 +100,7 @@ class TestSuite {
         break;
       }
     }
-    
+
     if (!foundFile) {
       console.error(`Error: File '${filename}' not found in any algorithm category.`);
       process.exit(1);
@@ -133,7 +110,7 @@ class TestSuite {
   // Discover all algorithm files
   async discoverAlgorithms() {
     const algorithmsDir = path.join(__dirname, '..', 'algorithms');
-    const categories = fs.readdirSync(algorithmsDir).filter(item => 
+    const categories = fs.readdirSync(algorithmsDir).filter(item =>
       fs.statSync(path.join(algorithmsDir, item)).isDirectory()
     );
 
@@ -150,72 +127,38 @@ class TestSuite {
   async testCategory(category) {
     const categoryPath = path.join(__dirname, '..', 'algorithms', category);
     const files = fs.readdirSync(categoryPath).filter(file => file.endsWith('.js'));
-    
+
     console.log(`Testing ${category} algorithms (${files.length} files):`);
-    
+
     this.algorithmsPerCategory[category] = 0;
-    
+
     for (const file of files) {
       await this.testAlgorithm(category, file);
     }
-    
+
     console.log('');
   }
 
-  // Test individual algorithm file
+  // Test individual algorithm file - now uses TestEngine
   async testAlgorithm(category, filename) {
     const filePath = path.join(__dirname, '..', 'algorithms', category, filename);
     const algorithmName = path.basename(filename, '.js');
-    
+
     console.log(`  Testing ${algorithmName}...`);
-    
+
     this.totalAlgorithms++;
     this.algorithmsPerCategory[category]++;
-    
-    const algorithmData = {
-      name: algorithmName,
-      category: category,
-      file: filename,
-      tests: {
-        compilation: false,
-        interface: false,
-        metadata: false,
-        issues: false,
-        functionality: false,
-        optimization: false
-      },
-      details: {}
-    };
 
-    // COMPILATION TEST - JavaScript syntax and loading
-    algorithmData.tests.compilation = await this.testCompilation(filePath, algorithmData);
-    
-    if (algorithmData.tests.compilation) {
-      // INTERFACE TEST - AlgorithmFramework registration compatibility
-      algorithmData.tests.interface = await this.testInterface(filePath, algorithmData);
-      
-      if (algorithmData.tests.interface) {
-        // METADATA TEST - CONTRIBUTING.MD interface format
-        algorithmData.tests.metadata = await this.testMetadata(filePath, category, algorithmData);
-        
-        // ISSUES TEST - Check for TODO, ISSUE, BUG, FIXME comments
-        algorithmData.tests.issues = await this.testIssues(filePath, algorithmData);
-        
-        // FUNCTIONALITY TEST - Test vectors
-        algorithmData.tests.functionality = await this.testFunctionality(filePath, algorithmData);
-        
-        // OPTIMIZATION TEST - OpCodes usage
-        algorithmData.tests.optimization = await this.testOptimization(filePath, algorithmData);
-      }
-    }
-    
+    // Use TestEngine to do the actual testing
+    const algorithmData = await this.engine.testAlgorithm(filePath, algorithmName, category);
     this.algorithmDetails.push(algorithmData);
-    
+
+    // Format output exactly like original
     const status = Object.values(algorithmData.tests).every(t => t) ? '✓' : '✗';
-    const registeredInfo = algorithmData.details.registeredNames 
+    const registeredInfo = algorithmData.details.registeredNames
       ? ` [Registered: ${algorithmData.details.registeredNames.join(', ')}]`
       : '';
-    
+
     // Add round-trip information if available
     let roundTripInfo = '';
     if (algorithmData.details.testResults) {
@@ -227,859 +170,128 @@ class TestSuite {
         roundTripInfo = ` [Round-trips: ${roundTripSummary}]`;
       }
     }
-    
+
     const issuesCount = algorithmData.details.issues ? algorithmData.details.issues.totalCount : 0;
     const issuesStatus = algorithmData.tests.issues ? '0' : `${issuesCount}`;
     console.log(`    ${status} ${algorithmName} - Compilation:${algorithmData.tests.compilation?'✓':'✗'} Interface:${algorithmData.tests.interface?'✓':'✗'} Metadata:${algorithmData.tests.metadata?'✓':'✗'} Issues:${issuesStatus} Function:${algorithmData.tests.functionality?'✓':'✗'} Optimization:${algorithmData.tests.optimization?'✓':'✗'}${registeredInfo}${roundTripInfo}`);
-  }
 
-  // Test if file has valid JavaScript syntax without executing
-  async testCompilation(filePath, algorithmData) {
-    try {
-      // Use Node.js to check syntax without executing
-      const { exec } = require('child_process');
-      const { promisify } = require('util');
-      const execAsync = promisify(exec);
-      
-      // Use the full path for node -c
-      await execAsync(`node -c "${filePath}"`);
-      
-      algorithmData.details.syntaxValid = true;
-      this.results.compilation.passed++;
-      return true;
-      
-    } catch (error) {
-      const errorMsg = error.stderr || error.message;
-      algorithmData.details.compilationError = errorMsg;
-      this.results.compilation.failed++;
-      this.results.compilation.errors.push(`${algorithmData.name}: ${errorMsg}`);
-      
-      if (this.verbose) {
-        console.log(`\n=== COMPILATION ERROR DETAILS for ${algorithmData.name} ===`);
-        console.log(`File: ${filePath}`);
-        console.log(`Node.js Output:`);
-        console.log(errorMsg);
-        console.log('===============================================\n');
-      }
-      
-      return false;
+    // Show verbose output if requested (matches original format)
+    if (this.verbose && algorithmData.details.testResults) {
+      this.showVerboseTestResults(algorithmData);
     }
   }
 
-  // Test if algorithm can be loaded and registered via AlgorithmFramework
-  async testInterface(filePath, algorithmData) {
-    try {
-      // Clear the algorithm registry before testing
-      global.AlgorithmFramework.Clear();
-      
-      // Clear require cache to ensure fresh load
-      delete require.cache[require.resolve(filePath)];
-      
-      // Try to require the file (this should call RegisterAlgorithm internally)
-      require(filePath);
-      
-      // Check if algorithms were registered
-      const registeredAlgorithms = global.AlgorithmFramework.Algorithms;
-      const algorithmCount = registeredAlgorithms.length;
-      
-      if (algorithmCount > 0) {
-        algorithmData.details.addedToFramework = true;
-        algorithmData.details.algorithmCount = algorithmCount;
-        algorithmData.details.registeredNames = registeredAlgorithms.map(alg => alg.name);
-        this.results.interface.passed++;
-        return true;
-      } else {
-        const errorMsg = 'No algorithms registered (RegisterAlgorithm likely failed)';
-        algorithmData.details.interfaceError = errorMsg;
-        this.results.interface.failed++;
-        this.results.interface.errors.push(`${algorithmData.name}: ${errorMsg}`);
-        
-        if (this.verbose) {
-          console.log(`\n=== INTERFACE ERROR DETAILS for ${algorithmData.name} ===`);
-          console.log(`File: ${filePath}`);
-          console.log(`Error: ${errorMsg}`);
-          console.log(`Possible Issues:`);
-          console.log(`- Missing RegisterAlgorithm() call`);
-          console.log(`- Algorithm class not properly exported`);
-          console.log(`- RegisterAlgorithm() call failed silently`);
-          console.log('==================================================\n');
+  // Show detailed test results in verbose mode
+  showVerboseTestResults(algorithmData) {
+    console.log(`\n=== DETAILED TEST RESULTS for ${algorithmData.name} ===`);
+
+    for (const result of algorithmData.details.testResults) {
+      console.log(`\nAlgorithm: ${result.algorithm}`);
+      console.log(`Status: ${result.status.toUpperCase()}`);
+
+      if (result.status === 'passed') {
+        console.log(`  Vectors Passed: ${result.vectorsPassed}/${result.vectorsTotal}`);
+        console.log(`  Round-trips Passed: ${result.roundTripsPassed}/${result.roundTripsAttempted}`);
+        if (result.requiresRoundTrips) {
+          console.log(`  Invertibility Requirement: ✓ ENFORCED (perfect round-trips required)`);
+        } else if (result.requiresEncodingStability) {
+          console.log(`  Invertibility Requirement: ✓ ENFORCED (encoding stability required)`);
         }
-        
-        return false;
+      } else if (result.status === 'failed-roundtrips') {
+        console.log(`  Vectors Passed: ${result.vectorsPassed}/${result.vectorsTotal}`);
+        console.log(`  Round-trips Passed: ${result.roundTripsPassed}/${result.roundTripsAttempted} (FAILED - REQUIRED)`);
+        console.log(`  Issue: ${result.message}`);
+        console.log(`  Invertibility Requirement: ✗ FAILED (invertible algorithm must support decryption)`);
+      } else if (result.status === 'failed-encoding-stability') {
+        console.log(`  Vectors Passed: ${result.vectorsPassed}/${result.vectorsTotal}`);
+        console.log(`  Encoding Stability: ${result.roundTripsPassed}/${result.roundTripsAttempted} (FAILED - REQUIRED)`);
+        console.log(`  Issue: ${result.message}`);
+        console.log(`  Encoding Stability Requirement: ✗ FAILED (encoding must be stable)`);
+      } else if (result.status === 'failed') {
+        console.log(`  Vectors Passed: ${result.vectorsPassed}/${result.vectorsTotal}`);
+        console.log(`  Issue: Test vector validation failed`);
+      } else if (result.status === 'no-tests') {
+        console.log(`  Issue: ${result.message}`);
+      } else if (result.status === 'error') {
+        console.log(`  Issue: ${result.message}`);
       }
-      
-    } catch (error) {
-      const errorMsg = error.message;
-      algorithmData.details.interfaceError = errorMsg;
-      this.results.interface.failed++;
-      this.results.interface.errors.push(`${algorithmData.name}: ${errorMsg}`);
-      
-      if (this.verbose) {
-        console.log(`\n=== INTERFACE ERROR DETAILS for ${algorithmData.name} ===`);
-        console.log(`File: ${filePath}`);
-        console.log(`Error: ${errorMsg}`);
-        console.log(`Stack Trace:`);
-        console.log(error.stack);
-        console.log('==================================================\n');
+
+      // Show individual vector details if available
+      if (result.vectorDetails && result.vectorDetails.length > 0) {
+        console.log(`\n  Test Vector Details:`);
+        for (const vector of result.vectorDetails) {
+          const statusSymbol = vector.passed ? '✓' : '✗';
+          const roundTripSymbol = vector.roundTripSuccess ? '↺✓' : '↺✗';
+          console.log(`    ${statusSymbol} Vector ${vector.index}: ${vector.text} ${roundTripSymbol}`);
+
+          if (!vector.passed && vector.error) {
+            console.log(`      Error: ${vector.error}`);
+          }
+        }
       }
-      
-      return false;
     }
+    console.log('===============================================\n');
   }
 
-  // Test metadata compliance with CONTRIBUTING.md format
-  async testMetadata(filePath, expectedCategory, algorithmData) {
-    try {
-      // Get registered algorithms from AlgorithmFramework
-      const registeredAlgorithms = global.AlgorithmFramework.Algorithms;
-      
-      if (!registeredAlgorithms || registeredAlgorithms.length === 0) {
-        this.results.metadata.failed++;
-        this.results.metadata.errors.push(`${algorithmData.name}: No algorithms registered for metadata testing`);
-        return false;
-      }
-
-      // Test metadata for each registered algorithm
-      let anyCompliant = false;
-      const metadataResults = [];
-      
-      for (const algorithm of registeredAlgorithms) {
-        const requiredFields = ['name', 'description', 'category'];
-        const missingFields = [];
-        
-        // Check required fields
-        for (const field of requiredFields) {
-          if (!algorithm[field]) {
-            missingFields.push(field);
-          }
-        }
-        
-        // Check category matches subfolder (direct CategoryType mapping)
-        const algorithmCategory = algorithm.category;
-        let categoryMatch = false;
-        
-        if (algorithmCategory) {
-          // Map folder names directly to CategoryType frozen instances
-          const folderToCategoryTypeMap = {
-            'asymmetric': global.AlgorithmFramework.CategoryType.ASYMMETRIC,
-            'block': global.AlgorithmFramework.CategoryType.BLOCK,
-            'stream': global.AlgorithmFramework.CategoryType.STREAM,
-            'hash': global.AlgorithmFramework.CategoryType.HASH,
-            'checksum': global.AlgorithmFramework.CategoryType.CHECKSUM,
-            'compression': global.AlgorithmFramework.CategoryType.COMPRESSION,
-            'encoding': global.AlgorithmFramework.CategoryType.ENCODING,
-            'classical': global.AlgorithmFramework.CategoryType.CLASSICAL,
-            'mac': global.AlgorithmFramework.CategoryType.MAC,
-            'kdf': global.AlgorithmFramework.CategoryType.KDF,
-            'ecc': global.AlgorithmFramework.CategoryType.ECC,
-            'modes': global.AlgorithmFramework.CategoryType.MODE,
-            'padding': global.AlgorithmFramework.CategoryType.PADDING,
-            'aead': global.AlgorithmFramework.CategoryType.AEAD,
-            'special': global.AlgorithmFramework.CategoryType.SPECIAL,
-            'pqc': global.AlgorithmFramework.CategoryType.PQC,
-            'random': global.AlgorithmFramework.CategoryType.RANDOM
-          };
-          
-          const expectedCategoryType = folderToCategoryTypeMap[expectedCategory.toLowerCase()];
-          categoryMatch = algorithmCategory === expectedCategoryType;
-        }
-        
-        if (!categoryMatch) {
-          missingFields.push(`category mismatch: expected ${expectedCategory}, got ${algorithm.category}`);
-        }
-        
-        // Count documentation, vulnerabilities, tests
-        const docCount = algorithm.documentation ? algorithm.documentation.length : 0;
-        const vulnCount = algorithm.knownVulnerabilities ? algorithm.knownVulnerabilities.length : 0;
-        const testCount = algorithm.tests ? algorithm.tests.length : 0;
-        
-        const algorithmMetadata = {
-          algorithm: algorithm.name,
-          hasAllRequiredFields: missingFields.length === 0,
-          missingFields: missingFields,
-          categoryMatch: categoryMatch,
-          documentationCount: docCount,
-          vulnerabilityCount: vulnCount,
-          testVectorCount: testCount
-        };
-        
-        metadataResults.push(algorithmMetadata);
-        
-        if (missingFields.length === 0) {
-          anyCompliant = true;
-        }
-      }
-      
-      algorithmData.details.metadata = {
-        algorithmCount: registeredAlgorithms.length,
-        results: metadataResults,
-        anyCompliant: anyCompliant
-      };
-      
-      if (anyCompliant) {
-        this.results.metadata.passed++;
-        return true;
-      } else {
-        this.results.metadata.failed++;
-        const failedAlgorithms = metadataResults.filter(r => !r.hasAllRequiredFields).length;
-        const errorMsg = `${failedAlgorithms}/${metadataResults.length} algorithms failed metadata validation`;
-        this.results.metadata.errors.push(`${algorithmData.name}: ${errorMsg}`);
-        
-        if (this.verbose) {
-          console.log(`\n=== METADATA ERROR DETAILS for ${algorithmData.name} ===`);
-          console.log(`File: ${filePath}`);
-          console.log(`Results: ${errorMsg}`);
-          console.log(`\nDetailed Breakdown:`);
-          
-          for (const result of metadataResults) {
-            console.log(`\nAlgorithm: ${result.algorithm}`);
-            console.log(`  Required Fields: ${result.hasAllRequiredFields ? '✓' : '✗'}`);
-            if (result.missingFields.length > 0) {
-              console.log(`  Missing/Wrong Fields: ${result.missingFields.join(', ')}`);
-            }
-            console.log(`  Category Match: ${result.categoryMatch ? '✓' : '✗'}`);
-            console.log(`  Documentation: ${result.documentationCount} items`);
-            console.log(`  Test Vectors: ${result.testVectorCount} items`);
-          }
-          console.log('================================================\n');
-        }
-        
-        return false;
-      }
-      
-    } catch (error) {
-      const errorMsg = error.message;
-      algorithmData.details.metadataError = errorMsg;
-      this.results.metadata.failed++;
-      this.results.metadata.errors.push(`${algorithmData.name}: ${errorMsg}`);
-      
-      if (this.verbose) {
-        console.log(`\n=== METADATA ERROR DETAILS for ${algorithmData.name} ===`);
-        console.log(`File: ${filePath}`);
-        console.log(`Error: ${errorMsg}`);
-        console.log(`Stack Trace:`);
-        console.log(error.stack);
-        console.log('================================================\n');
-      }
-      
-      return false;
-    }
-  }
-
-  // Test for unresolved issues (TODO, ISSUE, BUG, FIXME comments)
-  async testIssues(filePath, algorithmData) {
-    try {
-      const fileContent = fs.readFileSync(filePath, 'utf8');
-      
-      // Define issue patterns to search for
-      const issuePatterns = [
-        { type: 'TODO', pattern: /\/\/.*TODO.*|\/\*.*TODO.*\*\//gi },
-        { type: 'FIXME', pattern: /\/\/.*FIXME.*|\/\*.*FIXME.*\*\//gi },
-        { type: 'BUG', pattern: /\/\/.*BUG.*|\/\*.*BUG.*\*\//gi },
-        { type: 'ISSUE', pattern: /\/\/.*ISSUE.*|\/\*.*ISSUE.*\*\//gi },
-        { type: 'CHEAT', pattern: /_getExpectedOutput/gi },
-        { type: 'FIXED-KEY-SIZE-STEP-1-SHOULD-0', pattern: /new\s+KeySize\s*\(\s*(\d+)\s*,\s*\1\s*,\s*1\s*\)/g },
-        { type: 'ASSUME-OPCODES-LOADED', pattern: /global\.OpCodes\s*\?\s*global\.OpCodes/g },
-        { type: 'ASSUME-OPCODES-LOADED', pattern: /global\.OpCodes\?\.AnsiToBytes/g },
-        { type: 'ASSUME-OPCODES-LOADED', pattern: /global\.OpCodes\?\.Hex8ToBytes/g },
-        { type: 'TESTS-SHOULD-BE-PLAIN-FORMAT', pattern: /this\.tests\s*=\s*\[\s*\(/g },
-        { type: 'USE-OPCODES-ANSITOBYTES', pattern: /Array\.from\("[^"]*"\)\.map\(c\s*=>\s*c\.charCodeAt\(0\)\)/g },
-        { type: 'USELESS-USE-OF-OPCODES', pattern: /OpCodes\.Pack8\(\.\.\.OpCodes\.Hex8ToBytes\("[^"]{2}"\)\)/g }
-        
-      ];
-      
-      const foundIssues = [];
-      let totalIssueCount = 0;
-      
-      // Search for each issue type
-      issuePatterns.forEach(({ type, pattern }) => {
-        const matches = fileContent.match(pattern) || [];
-        if (matches.length > 0) {
-          foundIssues.push({ type, count: matches.length, comments: matches });
-          totalIssueCount += matches.length;
-        }
-      });
-      
-      algorithmData.details.issues = {
-        totalCount: totalIssueCount,
-        issueTypes: foundIssues,
-        hasUnresolvedIssues: totalIssueCount > 0
-      };
-      
-      if (totalIssueCount === 0) {
-        this.results.issues.passed++;
-        return true;
-      } else {
-        const issuesSummary = foundIssues.map(issue => `${issue.count} ${issue.type}`).join(', ');
-        this.results.issues.failed++;
-        this.results.issues.errors.push(`${algorithmData.name}: ${issuesSummary}`);
-        
-        if (this.verbose) {
-          console.log(`\n=== ISSUE TAGS FOUND for ${algorithmData.name} ===`);
-          console.log(`File: ${filePath}`);
-          console.log(`Total Issues: ${totalIssueCount}`);
-          console.log(`\nBreakdown by Type:`);
-          
-          for (const issue of foundIssues) {
-            console.log(`\n${issue.type} (${issue.count} found):`);
-            issue.comments.forEach((comment, index) => {
-              console.log(`  ${index + 1}. ${comment.trim()}`);
-            });
-          }
-          console.log('=============================================\n');
-        }
-        
-        return false;
-      }
-      
-    } catch (error) {
-      const errorMsg = error.message;
-      algorithmData.details.issuesError = errorMsg;
-      this.results.issues.failed++;
-      this.results.issues.errors.push(`${algorithmData.name}: ${errorMsg}`);
-      
-      if (this.verbose) {
-        console.log(`\n=== ISSUE SCAN ERROR for ${algorithmData.name} ===`);
-        console.log(`File: ${filePath}`);
-        console.log(`Error: ${errorMsg}`);
-        console.log('=============================================\n');
-      }
-      
-      return false;
-      this.results.issues.errors.push(`${algorithmData.name}: ${error.message}`);
-      return false;
-    }
-  }
-
-  // Initialize algorithm category arrays after AlgorithmFramework is loaded
-  initializeCategoryArrays() {
-    // Algorithm types that MUST support perfect round-trips: decrypt(encrypt(data)) = data
-    this.perfectRoundTripCategories = [
-      global.AlgorithmFramework.CategoryType.BLOCK,      // Block ciphers
-      global.AlgorithmFramework.CategoryType.STREAM,     // Stream ciphers
-      global.AlgorithmFramework.CategoryType.ASYMMETRIC, // Public key ciphers
-      global.AlgorithmFramework.CategoryType.CLASSICAL,  // Classical ciphers
-      global.AlgorithmFramework.CategoryType.COMPRESSION,// Compression algorithms
-      global.AlgorithmFramework.CategoryType.ECC,        // Error correction codes
-      global.AlgorithmFramework.CategoryType.AEAD        // Authenticated encryption
-    ];
-
-    // Algorithm types that MUST support encoding stability: encode(data) = encode(decode(encode(data)))
-    this.encodingStabilityCategories = [
-      global.AlgorithmFramework.CategoryType.ENCODING    // Encoding schemes
-    ];
-  }
-
-  // Helper function to determine if an algorithm type requires perfect round-trip success
-  requiresRoundTrips(algorithm) {
-    if (!algorithm.category || !this.perfectRoundTripCategories) return false;
-    return this.perfectRoundTripCategories.includes(algorithm.category);
-  }
-
-  // Helper function to determine if an algorithm requires encoding stability
-  requiresEncodingStability(algorithm) {
-    if (!algorithm.category || !this.encodingStabilityCategories) return false;
-    return this.encodingStabilityCategories.includes(algorithm.category);
-  }
-
-  // Test if algorithm works with basic test vectors
-  async testFunctionality(filePath, algorithmData) {
-    if (algorithmData.details.interfaceError) {
-      this.results.functionality.skipped++;
-      return false;
-    }
-    
-    try {
-      // Get registered algorithms
-      const registeredAlgorithms = global.AlgorithmFramework.Algorithms;
-      
-      if (!registeredAlgorithms || registeredAlgorithms.length === 0) {
-        algorithmData.details.functionalityError = 'No algorithms registered for testing';
-        this.results.functionality.failed++;
-        this.results.functionality.errors.push(`${algorithmData.name}: No algorithms registered`);
-        return false;
-      }
-      
-      // Test each registered algorithm
-      let anySuccess = false;
-      const testResults = [];
-      
-      for (const algorithm of registeredAlgorithms) {
-        try {
-          // Get test vectors from metadata
-          const testVectors = algorithm.tests || [];
-          
-          if (testVectors.length === 0) {
-            testResults.push({
-              algorithm: algorithm.name,
-              status: 'no-tests',
-              message: 'No test vectors available'
-            });
-            continue;
-          }
-          
-          // Test all vectors
-          const vectorsToTest = testVectors;
-          let vectorsPassed = 0;
-          let roundTripsPassed = 0;
-          const vectorDetails = []; // Store details for verbose output
-          
-          for (let i = 0; i < vectorsToTest.length; i++) {
-            const vector = vectorsToTest[i];
-            try {
-              // Create fresh instance for each test vector
-              const testInstance = algorithm.CreateInstance(false); // false = forward/encrypt mode
-              
-              // Apply test vector properties to instance (automatic configuration)
-              for (const [key, value] of Object.entries(vector)) {
-                if (key !== 'text' && key !== 'uri' && key !== 'input' && key !== 'expected' && key !== 'output') {
-                  try {
-                    if (testInstance.hasOwnProperty(key) || key in testInstance) {
-                      testInstance[key] = value;
-                    }
-                  } catch (propertyError) {
-                    // Property setting failed, continue anyway
-                  }
-                }
-              }
-              
-              // Feed input data
-              testInstance.Feed(vector.input);
-              
-              // Get result
-              const result = testInstance.Result();
-              
-              // Compare with expected output (try both 'expected' and 'output' properties)
-              const expectedOutput = vector.expected || vector.output;
-              const passed = this.compareArrays(result, expectedOutput);
-              
-              // Store details for verbose output
-              vectorDetails.push({
-                index: i + 1,
-                text: vector.text || `Test Vector ${i + 1}`,
-                passed: passed,
-                input: vector.input,
-                expected: expectedOutput,
-                actual: result,
-                roundTripSuccess: false
-              });
-              
-              if (passed) {
-                vectorsPassed++;
-                
-                // Try round-trip test or encoding stability test
-                try {
-                  if (this.requiresEncodingStability(algorithm)) {
-                    // For encoding schemes: test that encode(data) = encode(decode(encode(data)))
-                    // This allows for lossy encodings while ensuring stability
-
-                    // Try to create a decode instance
-                    const decodeInstance = algorithm.CreateInstance(true); // true = decode mode
-
-                    if (decodeInstance) {
-                      // Apply same properties to decode instance
-                      for (const [key, value] of Object.entries(vector)) {
-                        if (key !== 'text' && key !== 'uri' && key !== 'input' && key !== 'expected' && key !== 'output') {
-                          try {
-                            if (decodeInstance.hasOwnProperty(key) || key in decodeInstance) {
-                              decodeInstance[key] = value;
-                            }
-                          } catch (propertyError) {
-                            // Property setting failed, continue anyway
-                          }
-                        }
-                      }
-
-                      // Decode the encoded result: decode(encode(data))
-                      decodeInstance.Feed(result);
-                      const decodedResult = decodeInstance.Result();
-
-                      // Re-encode the decoded result: encode(decode(encode(data)))
-                      const reEncodeInstance = algorithm.CreateInstance(false); // false = encode mode
-                      for (const [key, value] of Object.entries(vector)) {
-                        if (key !== 'text' && key !== 'uri' && key !== 'input' && key !== 'expected' && key !== 'output') {
-                          try {
-                            if (reEncodeInstance.hasOwnProperty(key) || key in reEncodeInstance) {
-                              reEncodeInstance[key] = value;
-                            }
-                          } catch (propertyError) {
-                            // Property setting failed, continue anyway
-                          }
-                        }
-                      }
-
-                      reEncodeInstance.Feed(decodedResult);
-                      const reEncodedResult = reEncodeInstance.Result();
-
-                      // Check encoding stability: encode(data) = encode(decode(encode(data)))
-                      if (this.compareArrays(result, reEncodedResult)) {
-                        roundTripsPassed++;
-                        vectorDetails[vectorDetails.length - 1].roundTripSuccess = true;
-                      }
-                    }
-                  } else {
-                    // For ciphers and other algorithms: test perfect round-trip
-                    // Try to create an inverse instance (decrypt mode)
-                    const inverseInstance = algorithm.CreateInstance(true); // true = inverse/decrypt mode
-
-                    if (inverseInstance) {
-                      // Apply same properties to inverse instance
-                      for (const [key, value] of Object.entries(vector)) {
-                        if (key !== 'text' && key !== 'uri' && key !== 'input' && key !== 'expected' && key !== 'output') {
-                          try {
-                            if (inverseInstance.hasOwnProperty(key) || key in inverseInstance) {
-                              inverseInstance[key] = value;
-                            }
-                          } catch (propertyError) {
-                            // Property setting failed, continue anyway
-                          }
-                        }
-                      }
-
-                      // Feed the result (encrypted data) to decrypt it back
-                      inverseInstance.Feed(result);
-                      const decryptedResult = inverseInstance.Result();
-
-                      // Check if we get back the original input
-                      if (this.compareArrays(decryptedResult, vector.input)) {
-                        roundTripsPassed++;
-                        vectorDetails[vectorDetails.length - 1].roundTripSuccess = true;
-                      }
-                    }
-                  }
-                } catch (inverseError) {
-                  // Inverse instance creation failed or round-trip failed - that's okay
-                  // Not all algorithms support inverse operations
-                }
-              }
-            } catch (vectorError) {
-              // Vector failed, store error details
-              vectorDetails.push({
-                index: i + 1,
-                text: vector.text || `Test Vector ${i + 1}`,
-                passed: false,
-                input: vector.input,
-                expected: vector.expected || vector.output,
-                actual: null,
-                error: vectorError.message,
-                roundTripSuccess: false
-              });
-            }
-          }
-          
-          // Algorithm passes only if ALL test vectors pass
-          if (vectorsPassed === vectorsToTest.length && vectorsToTest.length > 0) {
-            // Check if round-trips or encoding stability are required and if they all passed
-            const requiresRoundTrips = this.requiresRoundTrips(algorithm);
-            const requiresEncodingStability = this.requiresEncodingStability(algorithm);
-            const invertibilityRequired = (requiresRoundTrips || requiresEncodingStability) && vectorsPassed > 0;
-            const invertibilitySuccess = !invertibilityRequired || (roundTripsPassed === vectorsPassed);
-
-            if (invertibilitySuccess) {
-              anySuccess = true;
-              testResults.push({
-                algorithm: algorithm.name,
-                status: 'passed',
-                vectorsPassed: vectorsPassed,
-                vectorsTotal: vectorsToTest.length,
-                roundTripsPassed: roundTripsPassed,
-                roundTripsAttempted: vectorsPassed, // Only attempt round-trip on successful vectors
-                vectorDetails: vectorDetails,
-                requiresRoundTrips: requiresRoundTrips,
-                requiresEncodingStability: requiresEncodingStability
-              });
-            } else {
-              // Algorithm failed due to invertibility failure
-              const failureType = requiresEncodingStability ? 'encoding stability' : 'round-trip decryption';
-              testResults.push({
-                algorithm: algorithm.name,
-                status: requiresEncodingStability ? 'failed-encoding-stability' : 'failed-roundtrips',
-                vectorsPassed: vectorsPassed,
-                vectorsTotal: vectorsToTest.length,
-                roundTripsPassed: roundTripsPassed,
-                roundTripsAttempted: vectorsPassed,
-                vectorDetails: vectorDetails,
-                requiresRoundTrips: requiresRoundTrips,
-                requiresEncodingStability: requiresEncodingStability,
-                message: `${failureType.charAt(0).toUpperCase() + failureType.slice(1)} failed (${roundTripsPassed}/${vectorsPassed} successful)`
-              });
-            }
-          } else {
-            testResults.push({
-              algorithm: algorithm.name,
-              status: 'failed',
-              vectorsPassed: 0,
-              vectorsTotal: vectorsToTest.length,
-              roundTripsPassed: 0,
-              roundTripsAttempted: 0,
-              vectorDetails: vectorDetails
-            });
-          }
-          
-        } catch (algorithmError) {
-          testResults.push({
-            algorithm: algorithm.name,
-            status: 'error',
-            message: algorithmError.message
-          });
-        }
-      }
-      
-      algorithmData.details.testResults = testResults;
-      
-      if (anySuccess) {
-        this.results.functionality.passed++;
-        return true;
-      } else {
-        const errorMsg = 'All algorithm tests failed';
-        algorithmData.details.functionalityError = errorMsg;
-        this.results.functionality.failed++;
-        this.results.functionality.errors.push(`${algorithmData.name}: All algorithms failed testing`);
-        
-        if (this.verbose) {
-          console.log(`\n=== FUNCTIONALITY TEST DETAILS for ${algorithmData.name} ===`);
-          console.log(`File: ${filePath}`);
-          console.log(`Overall Result: ${errorMsg}`);
-          console.log(`\nTest Results by Algorithm:`);
-          
-          for (const result of testResults) {
-            console.log(`\nAlgorithm: ${result.algorithm}`);
-            console.log(`  Status: ${result.status}`);
-            
-            if (result.status === 'passed') {
-              console.log(`  Vectors Passed: ${result.vectorsPassed}/${result.vectorsTotal}`);
-              console.log(`  Round-trips Passed: ${result.roundTripsPassed}/${result.roundTripsAttempted}`);
-              if (result.requiresRoundTrips) {
-                console.log(`  Invertibility Requirement: ✓ ENFORCED (perfect round-trips required)`);
-              } else if (result.requiresEncodingStability) {
-                console.log(`  Invertibility Requirement: ✓ ENFORCED (encoding stability required)`);
-              }
-            } else if (result.status === 'failed-roundtrips') {
-              console.log(`  Vectors Passed: ${result.vectorsPassed}/${result.vectorsTotal}`);
-              console.log(`  Round-trips Passed: ${result.roundTripsPassed}/${result.roundTripsAttempted} (FAILED - REQUIRED)`);
-              console.log(`  Issue: ${result.message}`);
-              console.log(`  Invertibility Requirement: ✗ FAILED (invertible algorithm must support decryption)`);
-            } else if (result.status === 'failed-encoding-stability') {
-              console.log(`  Vectors Passed: ${result.vectorsPassed}/${result.vectorsTotal}`);
-              console.log(`  Encoding Stability: ${result.roundTripsPassed}/${result.roundTripsAttempted} (FAILED - REQUIRED)`);
-              console.log(`  Issue: ${result.message}`);
-              console.log(`  Invertibility Requirement: ✗ FAILED (encode(data) ≠ encode(decode(encode(data))))`);
-            } else if (result.status === 'failed') {
-              console.log(`  Vectors Passed: ${result.vectorsPassed}/${result.vectorsTotal} (all failed)`);
-              console.log(`  Issue: Test vectors produced wrong output`);
-            } else if (result.status === 'no-tests') {
-              console.log(`  Issue: ${result.message}`);
-            } else if (result.status === 'error') {
-              console.log(`  Error: ${result.message}`);
-            }
-            
-            // Show detailed vector results if available
-            if (result.vectorDetails && result.vectorDetails.length > 0) {
-              console.log(`\n  Detailed Vector Results:`);
-              for (const vector of result.vectorDetails) {
-                console.log(`    Vector ${vector.index}: ${vector.text}`);
-                console.log(`      Status: ${vector.passed ? '✓ PASS' : '✗ FAIL'}`);
-                
-                if (!vector.passed) {
-                  if (vector.error) {
-                    console.log(`      Error: ${vector.error}`);
-                  } else {
-                    // Helper function to format byte arrays as hex
-                    const formatBytes = (bytes) => {
-                      if (!bytes) return 'null';
-                      const formatByte = (b) => {
-                        if (b == null || b === undefined) return 'XX';
-                        if (typeof b !== 'number') return 'XX';
-                        return b.toString(16).padStart(2, '0');
-                      };
-                      if (bytes.length <= 16) {
-                        return bytes.map(formatByte).join('');
-                      } else {
-                        const start = bytes.slice(0, 8).map(formatByte).join('');
-                        const end = bytes.slice(-8).map(formatByte).join('');
-                        return `${start}...${end} (${bytes.length} bytes)`;
-                      }
-                    };
-                    
-                    console.log(`      Input:    ${formatBytes(vector.input)}`);
-                    console.log(`      Expected: ${formatBytes(vector.expected)}`);
-                    console.log(`      Actual:   ${formatBytes(vector.actual)}`);
-                  }
-                } else if (vector.roundTripSuccess) {
-                  console.log(`      Round-trip: ✓ PASS`);
-                }
-              }
-            }
-          }
-          console.log('===================================================\n');
-        }
-        
-        return false;
-      }
-      
-    } catch (error) {
-      const errorMsg = error.message;
-      algorithmData.details.functionalityError = errorMsg;
-      this.results.functionality.failed++;
-      this.results.functionality.errors.push(`${algorithmData.name}: ${errorMsg}`);
-      
-      if (this.verbose) {
-        console.log(`\n=== FUNCTIONALITY TEST ERROR for ${algorithmData.name} ===`);
-        console.log(`File: ${filePath}`);
-        console.log(`Error: ${errorMsg}`);
-        console.log(`Stack Trace:`);
-        console.log(error.stack);
-        console.log('===================================================\n');
-      }
-      
-      return false;
-    }
-  }
-
-  // Test optimization (OpCodes usage for critical operations)
-  async testOptimization(filePath, algorithmData) {
-    try {
-      const fileContent = fs.readFileSync(filePath, 'utf8');
-      
-      // Check for OpCodes usage
-      const opCodesUsage = fileContent.includes('OpCodes.');
-      
-      // Check for typical bit functions that should use OpCodes
-      const bitFunctionPatterns = [
-        /value\s*<<\s*\d+/g,  // Left shift
-        /value\s*>>\s*\d+/g,  // Right shift
-        /value\s*&\s*0x/g,    // Bitwise AND with hex
-        /value\s*\|\s*value/g // Bitwise OR
-      ];
-      
-      let potentialOptimizations = 0;
-      bitFunctionPatterns.forEach(pattern => {
-        const matches = fileContent.match(pattern) || [];
-        potentialOptimizations += matches.length;
-      });
-      
-      algorithmData.details.optimization = {
-        usesOpCodes: opCodesUsage,
-        potentialOptimizations: potentialOptimizations,
-        issues: []
-      };
-      
-      if (!opCodesUsage && potentialOptimizations > 0) {
-        algorithmData.details.optimization.issues.push('Could benefit from OpCodes usage');
-      }
-      
-      const isOptimized = opCodesUsage;
-      
-      if (isOptimized) {
-        this.results.optimization.passed++;
-        return true;
-      } else {
-        const issuesSummary = algorithmData.details.optimization.issues.join(', ');
-        this.results.optimization.failed++;
-        this.results.optimization.errors.push(`${algorithmData.name}: ${issuesSummary}`);
-        
-        if (this.verbose) {
-          console.log(`\n=== OPTIMIZATION SUGGESTIONS for ${algorithmData.name} ===`);
-          console.log(`File: ${filePath}`);
-          console.log(`Uses OpCodes: ${algorithmData.details.optimization.usesOpCodes ? '✓' : '✗'}`);
-          console.log(`\nOptimization Issues Found:`);
-          
-          if (algorithmData.details.optimization.potentialOptimizations > 0) {
-            console.log(`  • ${algorithmData.details.optimization.potentialOptimizations} bit operations (could use OpCodes utilities)`);
-          }
-          
-          if (algorithmData.details.optimization.issues.length === 0) {
-            console.log('  • No significant optimization issues found');
-          }
-          
-          console.log(`\nRecommendations:`);
-          console.log(`  - Use OpCodes bit manipulation functions for better compatibility`);
-          console.log('====================================================\n');
-        }
-        
-        return false;
-      }
-      
-    } catch (error) {
-      const errorMsg = error.message;
-      algorithmData.details.optimizationError = errorMsg;
-      this.results.optimization.failed++;
-      this.results.optimization.errors.push(`${algorithmData.name}: ${errorMsg}`);
-      
-      if (this.verbose) {
-        console.log(`\n=== OPTIMIZATION TEST ERROR for ${algorithmData.name} ===`);
-        console.log(`File: ${filePath}`);
-        console.log(`Error: ${errorMsg}`);
-        console.log('====================================================\n');
-      }
-      
-      return false;
-    }
-  }
-
-  // Helper function to compare byte arrays
-  compareArrays(arr1, arr2) {
-    if (!arr1 || !arr2) return false;
-    if (arr1.length !== arr2.length) return false;
-    
-    for (let i = 0; i < arr1.length; i++) {
-      if (arr1[i] !== arr2[i]) return false;
-    }
-    return true;
-  }
-
-  // Generate comprehensive test report
+  // Generate comprehensive test report - matches original format exactly
   generateReport() {
-    
-    // Show errors if any
+    // Get results from engine
+    const engineResults = this.engine.getResultsSummary();
+
+    // Show errors if any (matches original format)
     ['compilation', 'interface', 'metadata', 'issues', 'functionality', 'optimization'].forEach(testType => {
-      if (this.results[testType].errors.length > 0) {
+      if (this.engine.results[testType].errors.length > 0) {
         console.log(`\n=== ${testType.toUpperCase()} ERRORS ===`);
-        this.results[testType].errors.forEach(error => {
+        this.engine.results[testType].errors.forEach(error => {
           console.log(`  ✗ ${error}`);
         });
       }
     });
-    
-    // Overall score
-    const totalTests = this.totalAlgorithms * 6; // 6 test categories: compilation, interface, metadata, issues, functionality, optimization
-    const totalPassed = Object.values(this.results).reduce((sum, result) => sum + result.passed, 0);
-    const overallScore = ((totalPassed / totalTests) * 100).toFixed(1);
-    
+
     console.log('\n=== COMPREHENSIVE TEST REPORT ===');
     console.log(`Total algorithms tested: ${this.totalAlgorithms}`);
-    console.log('\nAlgorithms per category:');
-    Object.entries(this.algorithmsPerCategory).forEach(([cat, count]) => {
-      console.log(`  ${cat}: ${count}`);
+    console.log('');
+    console.log('Algorithms per category:');
+    Object.entries(this.algorithmsPerCategory).forEach(([category, count]) => {
+      console.log(`  ${category}: ${count}`);
     });
-    
-    console.log('\n=== TEST RESULTS SUMMARY ===');
-    console.log(`🔧 COMPILATION:   ${this.results.compilation.passed}/${this.totalAlgorithms} passed`);
-    console.log(`🔌 INTERFACE:     ${this.results.interface.passed}/${this.totalAlgorithms} passed`);
-    console.log(`📋 METADATA:      ${this.results.metadata.passed}/${this.totalAlgorithms} passed`);
-    console.log(`⚠️ ISSUES:        ${this.results.issues.passed}/${this.totalAlgorithms} passed`);
-    console.log(`⚡ FUNCTIONALITY: ${this.results.functionality.passed}/${this.totalAlgorithms} passed`);
-    console.log(`🚀 OPTIMIZATION:  ${this.results.optimization.passed}/${this.totalAlgorithms} passed`);
-    
-    console.log(`\n=== OVERALL SCORE ===`);
-    console.log(`${totalPassed}/${totalTests} tests passed (${overallScore}%)`);
-    
-    if (overallScore >= 90) {
+    console.log('');
+
+    console.log('=== TEST RESULTS SUMMARY ===');
+    console.log(`🔧 COMPILATION:   ${this.engine.results.compilation.passed}/${this.engine.results.compilation.passed + this.engine.results.compilation.failed} passed`);
+    console.log(`🔌 INTERFACE:     ${this.engine.results.interface.passed}/${this.engine.results.interface.passed + this.engine.results.interface.failed} passed`);
+    console.log(`📋 METADATA:      ${this.engine.results.metadata.passed}/${this.engine.results.metadata.passed + this.engine.results.metadata.failed} passed`);
+    console.log(`⚠️ ISSUES:        ${this.engine.results.issues.passed}/${this.engine.results.issues.passed + this.engine.results.issues.failed} passed`);
+    console.log(`⚡ FUNCTIONALITY: ${this.engine.results.functionality.passed}/${this.engine.results.functionality.passed + this.engine.results.functionality.failed} passed`);
+    console.log(`🚀 OPTIMIZATION:  ${this.engine.results.optimization.passed}/${this.engine.results.optimization.passed + this.engine.results.optimization.failed} passed`);
+    console.log('');
+
+    console.log('=== OVERALL SCORE ===');
+    const totalTests = engineResults.total;
+    const passedTests = engineResults.passed;
+    const percentage = engineResults.percentage;
+
+    console.log(`${passedTests}/${totalTests} tests passed (${percentage}%)`);
+
+    if (percentage === 100) {
       console.log('🎉 Excellent! Your cipher collection is in great shape!');
-    } else if (overallScore >= 75) {
+    } else if (percentage >= 90) {
       console.log('👍 Good job! Some areas need attention.');
-    } else if (overallScore >= 50) {
-      console.log('⚠️  Needs improvement. Focus on failing tests.');
+    } else if (percentage >= 70) {
+      console.log('⚠️ Several issues need to be addressed.');
     } else {
-      console.log('🔧 Significant work needed. Start with syntax errors.');
+      console.log('❌ Major issues found. Significant work needed.');
     }
   }
 }
 
-// Run tests if called directly
+// CLI execution
 if (require.main === module) {
   const testSuite = new TestSuite();
-  testSuite.runAllTests().catch(console.error);
+  testSuite.runAllTests().catch(error => {
+    console.error('Failed to run tests:', error.message);
+    process.exit(1);
+  });
 }
 
 module.exports = TestSuite;

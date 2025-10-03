@@ -120,10 +120,30 @@
       value = value & mask64;
       positions = positions & 63;
       if (positions === 0) return value;
-      
+
       return ((value >> BigInt(positions)) | (value << BigInt(64 - positions))) & mask64;
     },
-    
+
+    /**
+     * Left shift for BigInt values (arithmetic/logical shift)
+     * @param {BigInt} value - BigInt value to shift
+     * @param {number} positions - Number of positions to shift
+     * @returns {BigInt} Shifted BigInt value
+     */
+    ShiftLn: function(value, positions) {
+      return value << BigInt(positions);
+    },
+
+    /**
+     * Right shift for BigInt values (arithmetic/logical shift)
+     * @param {BigInt} value - BigInt value to shift
+     * @param {number} positions - Number of positions to shift
+     * @returns {BigInt} Shifted BigInt value
+     */
+    ShiftRn: function(value, positions) {
+      return value >> BigInt(positions);
+    },
+
     /**
      * 64-bit left rotation (for future 64-bit ciphers)
      * @param {number} low - Low 32 bits
