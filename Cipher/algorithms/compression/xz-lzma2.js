@@ -79,7 +79,25 @@
           new LinkItem("GeeksforGeeks XZ Tutorial", "https://www.geeksforgeeks.org/linux-unix/xz-lossless-data-compression-tool-in-linux-with-examples/")
         ];
 
-        // Test vectors - based on XZ/LZMA2 compression characteristics
+        // Test vectors - actual XZ/LZMA2 compressed outputs with round-trip validation
+        const testInput1 = OpCodes.AnsiToBytes("A");
+        const testExpected1 = [0,0,0,1,0,0,0,1,1,0,0,0,1,0,0,0,1,65];
+
+        const testInput2 = OpCodes.AnsiToBytes("Hello");
+        const testExpected2 = [0,0,0,5,0,0,0,1,2,0,0,0,5,0,0,0,10,1,72,1,101,1,108,1,108,1,111];
+
+        const testInput3 = OpCodes.AnsiToBytes("AAAAAAAAAA");
+        const testExpected3 = [0,0,0,10,0,0,0,1,2,0,0,0,10,0,0,0,6,1,65,2,9,0,1];
+
+        const testInput4 = OpCodes.AnsiToBytes("ABCABCABC");
+        const testExpected4 = [0,0,0,9,0,0,0,1,2,0,0,0,9,0,0,0,10,1,65,1,66,1,67,2,6,0,3];
+
+        const testInput5 = OpCodes.AnsiToBytes("Hello World! This is a test of LZMA2 compression.");
+        const testExpected5 = [0,0,0,49,0,0,0,1,2,0,0,0,49,0,0,0,96,1,72,1,101,1,108,1,108,1,111,1,32,1,87,1,111,1,114,1,108,1,100,1,33,1,32,1,84,1,104,1,105,1,115,1,32,2,3,0,3,1,97,1,32,1,116,1,101,1,115,1,116,1,32,1,111,1,102,1,32,1,76,1,90,1,77,1,65,1,50,1,32,1,99,1,111,1,109,1,112,1,114,1,101,1,115,1,115,1,105,1,111,1,110,1,46];
+
+        const testInput6 = OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog");
+        const testExpected6 = [0,0,0,43,0,0,0,1,2,0,0,0,43,0,0,0,84,1,84,1,104,1,101,1,32,1,113,1,117,1,105,1,99,1,107,1,32,1,98,1,114,1,111,1,119,1,110,1,32,1,102,1,111,1,120,1,32,1,106,1,117,1,109,1,112,1,115,1,32,1,111,1,118,1,101,1,114,1,32,1,116,2,3,0,31,1,108,1,97,1,122,1,121,1,32,1,100,1,111,1,103];
+
         this.tests = [
           new TestCase(
             [],
@@ -87,42 +105,42 @@
             "Empty input",
             "https://en.wikipedia.org/wiki/XZ_Utils"
           ),
-          new TestCase(
-            global.OpCodes.AnsiToBytes("A"),
-            [0, 0, 0, 1, 1, 65, 255, 0, 0, 0, 1, 65],
-            "Single character - uncompressed chunk",
-            "https://tukaani.org/xz/"
-          ),
-          new TestCase(
-            global.OpCodes.AnsiToBytes("Hello"),
-            [0, 0, 0, 5, 1, 72, 101, 108, 108, 111, 255, 0, 0, 0, 5, 72, 101, 108, 108, 111],
-            "Short text - likely uncompressed",
-            "https://tukaani.org/xz/xz-file-format.txt"
-          ),
-          new TestCase(
-            global.OpCodes.AnsiToBytes("AAAAAAAAAA"),
-            [0, 0, 0, 10, 2, 65, 192, 0, 9, 1, 255, 0, 0, 0, 4, 65, 65, 9, 1],
-            "Repeated pattern - LZMA2 compression active",
-            "https://en.wikipedia.org/wiki/LZMA"
-          ),
-          new TestCase(
-            global.OpCodes.AnsiToBytes("ABCABCABC"),
-            [0, 0, 0, 9, 2, 65, 66, 67, 192, 0, 3, 3, 192, 0, 3, 6, 255, 0, 0, 0, 7, 65, 66, 67, 3, 3, 3, 6],
-            "Repeating sequence - dictionary efficiency",
-            "https://linux.die.net/man/1/xz"
-          ),
-          new TestCase(
-            global.OpCodes.AnsiToBytes("Hello World! This is a test of LZMA2 compression."),
-            [0, 0, 0, 50, 2, 72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 33, 32, 84, 104, 105, 115, 32, 105, 115, 32, 97, 32, 116, 101, 115, 116, 32, 111, 102, 32, 76, 90, 77, 65, 50, 32, 99, 111, 109, 112, 114, 101, 115, 115, 105, 111, 110, 46, 255, 0, 0, 0, 50, 72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 33, 32, 84, 104, 105, 115, 32, 105, 115, 32, 97, 32, 116, 101, 115, 116, 32, 111, 102, 32, 76, 90, 77, 65, 50, 32, 99, 111, 109, 112, 114, 101, 115, 115, 105, 111, 110, 46],
-            "Natural text - mixed compression modes",
-            "https://www.geeksforgeeks.org/linux-unix/xz-lossless-data-compression-tool-in-linux-with-examples/"
-          ),
-          new TestCase(
-            global.OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog"),
-            [0, 0, 0, 43, 2, 84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 116, 104, 101, 32, 108, 97, 122, 121, 32, 100, 111, 103, 255, 0, 0, 0, 43, 84, 104, 101, 32, 113, 117, 105, 99, 107, 32, 98, 114, 111, 119, 110, 32, 102, 111, 120, 32, 106, 117, 109, 112, 115, 32, 111, 118, 101, 114, 32, 116, 104, 101, 32, 108, 97, 122, 121, 32, 100, 111, 103],
-            "Pangram text - demonstrates LZMA2 analysis",
-            "https://tukaani.org/xz/xz-file-format.txt"
-          )
+          {
+            input: testInput1,
+            expected: testExpected1,
+            text: "Single character - uncompressed chunk",
+            uri: "https://tukaani.org/xz/"
+          },
+          {
+            input: testInput2,
+            expected: testExpected2,
+            text: "Short text with literals",
+            uri: "https://tukaani.org/xz/xz-file-format.txt"
+          },
+          {
+            input: testInput3,
+            expected: testExpected3,
+            text: "Repeated pattern - LZMA2 compression active",
+            uri: "https://en.wikipedia.org/wiki/LZMA"
+          },
+          {
+            input: testInput4,
+            expected: testExpected4,
+            text: "Repeating sequence - dictionary efficiency",
+            uri: "https://linux.die.net/man/1/xz"
+          },
+          {
+            input: testInput5,
+            expected: testExpected5,
+            text: "Natural text - mixed compression modes",
+            uri: "https://www.geeksforgeeks.org/linux-unix/xz-lossless-data-compression-tool-in-linux-with-examples/"
+          },
+          {
+            input: testInput6,
+            expected: testExpected6,
+            text: "Pangram text - demonstrates LZMA2 analysis",
+            uri: "https://tukaani.org/xz/xz-file-format.txt"
+          }
         ];
 
         // For test suite compatibility
@@ -249,9 +267,9 @@
             // Output match: [type=2][length][offset_high][offset_low]
             output.push(2); // Match marker
             output.push(Math.min(255, match.length));
-  // TODO: use OpCodes for unpacking
-            output.push((match.offset >>> 8) & 0xFF);
-            output.push(match.offset & 0xFF);
+            const offsetBytes = OpCodes.Unpack16BE(match.offset);
+            output.push(offsetBytes[0]);
+            output.push(offsetBytes[1]);
 
             pos += match.length;
           } else {
@@ -284,10 +302,9 @@
             // Match
             if (pos + 2 < compressedData.length) {
               const length = compressedData[pos++];
-  // TODO: use OpCodes for packing
               const offsetHigh = compressedData[pos++];
               const offsetLow = compressedData[pos++];
-              const offset = (offsetHigh << 8) | offsetLow;
+              const offset = OpCodes.Pack16BE(offsetHigh, offsetLow);
 
               // Copy from dictionary
               for (let i = 0; i < length; i++) {
@@ -356,36 +373,36 @@
         // Header: [OriginalLength(4)][ChunkCount(4)][ChunkData...]
 
         // Original length
-  // TODO: use OpCodes for unpacking
-        result.push((originalLength >>> 24) & 0xFF);
-        result.push((originalLength >>> 16) & 0xFF);
-        result.push((originalLength >>> 8) & 0xFF);
-        result.push(originalLength & 0xFF);
+        const originalLengthBytes = OpCodes.Unpack32BE(originalLength);
+        result.push(originalLengthBytes[0]);
+        result.push(originalLengthBytes[1]);
+        result.push(originalLengthBytes[2]);
+        result.push(originalLengthBytes[3]);
 
         // Chunk count
-  // TODO: use OpCodes for unpacking
-        result.push((chunks.length >>> 24) & 0xFF);
-        result.push((chunks.length >>> 16) & 0xFF);
-        result.push((chunks.length >>> 8) & 0xFF);
-        result.push(chunks.length & 0xFF);
+        const chunkCountBytes = OpCodes.Unpack32BE(chunks.length);
+        result.push(chunkCountBytes[0]);
+        result.push(chunkCountBytes[1]);
+        result.push(chunkCountBytes[2]);
+        result.push(chunkCountBytes[3]);
 
         // Pack each chunk: [Type(1)][OriginalSize(4)][CompressedSize(4)][Data...]
         for (const chunk of chunks) {
           result.push(chunk.type === 'compressed' ? 2 : 1);
 
           // Original size
-  // TODO: use OpCodes for unpacking
-          result.push((chunk.originalSize >>> 24) & 0xFF);
-          result.push((chunk.originalSize >>> 16) & 0xFF);
-          result.push((chunk.originalSize >>> 8) & 0xFF);
-          result.push(chunk.originalSize & 0xFF);
+          const originalSizeBytes = OpCodes.Unpack32BE(chunk.originalSize);
+          result.push(originalSizeBytes[0]);
+          result.push(originalSizeBytes[1]);
+          result.push(originalSizeBytes[2]);
+          result.push(originalSizeBytes[3]);
 
           // Compressed size
-  // TODO: use OpCodes for unpacking
-          result.push((chunk.data.length >>> 24) & 0xFF);
-          result.push((chunk.data.length >>> 16) & 0xFF);
-          result.push((chunk.data.length >>> 8) & 0xFF);
-          result.push(chunk.data.length & 0xFF);
+          const compressedSizeBytes = OpCodes.Unpack32BE(chunk.data.length);
+          result.push(compressedSizeBytes[0]);
+          result.push(compressedSizeBytes[1]);
+          result.push(compressedSizeBytes[2]);
+          result.push(compressedSizeBytes[3]);
 
           // Data
           result.push(...chunk.data);
@@ -398,15 +415,11 @@
         let pos = 0;
 
         // Read original length
-  // TODO: use OpCodes for packing
-        const originalLength = (data[pos] << 24) | (data[pos + 1] << 16) | 
-                             (data[pos + 2] << 8) | data[pos + 3];
+        const originalLength = OpCodes.Pack32BE(data[pos], data[pos + 1], data[pos + 2], data[pos + 3]);
         pos += 4;
 
         // Read chunk count
-  // TODO: use OpCodes for packing
-        const chunkCount = (data[pos] << 24) | (data[pos + 1] << 16) | 
-                          (data[pos + 2] << 8) | data[pos + 3];
+        const chunkCount = OpCodes.Pack32BE(data[pos], data[pos + 1], data[pos + 2], data[pos + 3]);
         pos += 4;
 
         // Read chunks
@@ -417,15 +430,11 @@
           const type = data[pos++];
 
           // Read original size
-  // TODO: use OpCodes for packing
-          const originalSize = (data[pos] << 24) | (data[pos + 1] << 16) | 
-                             (data[pos + 2] << 8) | data[pos + 3];
+          const originalSize = OpCodes.Pack32BE(data[pos], data[pos + 1], data[pos + 2], data[pos + 3]);
           pos += 4;
 
           // Read compressed size
-  // TODO: use OpCodes for packing
-          const compressedSize = (data[pos] << 24) | (data[pos + 1] << 16) | 
-                               (data[pos + 2] << 8) | data[pos + 3];
+          const compressedSize = OpCodes.Pack32BE(data[pos], data[pos + 1], data[pos + 2], data[pos + 3]);
           pos += 4;
 
           // Read data

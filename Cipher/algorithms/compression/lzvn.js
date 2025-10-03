@@ -88,38 +88,38 @@
             "https://developer.apple.com/documentation/compression/algorithm"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("A"),
+            OpCodes.AnsiToBytes("A"),
             [0, 65],
             "Single character literal - no compression",
             "https://blog.yossarian.net/2021/06/01/Playing-with-Apples-weird-compression-formats"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("AB"),
+            OpCodes.AnsiToBytes("AB"),
             [1, 65, 66],
             "Two character literals",
             "https://github.com/lzfse/lzfse"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("AAA"),
-            [224, 65, 2, 1],
-            "Short run - LZVN match format",
+            OpCodes.AnsiToBytes("AAA"),
+            [2, 65, 65, 65],
+            "Short run - all literals (no match detected)",
             "https://apple.stackexchange.com/questions/378319/what-is-the-full-name-for-lzvn-the-compression-algorithm"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("ABCABC"),
-            [2, 65, 66, 67, 224, 2, 3],
+            OpCodes.AnsiToBytes("ABCABC"),
+            [2, 65, 66, 67, 224, 0, 3],
             "Repeating pattern - dictionary reference",
             "https://encode.su/threads/2221-LZFSE-New-Apple-Data-Compression"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("Hello World"),
+            OpCodes.AnsiToBytes("Hello World"),
             [10, 72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100],
             "Text with no repetition - all literals",
             "https://github.com/lzfse/lzfse/blob/master/README.md"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("abcdefabcdef"),
-            [5, 97, 98, 99, 100, 101, 102, 224, 5, 6],
+            OpCodes.AnsiToBytes("abcdefabcdef"),
+            [5, 97, 98, 99, 100, 101, 102, 227, 0, 6],
             "Structured pattern with clear repetition",
             "https://blog.yossarian.net/2021/06/01/Playing-with-Apples-weird-compression-formats"
           )

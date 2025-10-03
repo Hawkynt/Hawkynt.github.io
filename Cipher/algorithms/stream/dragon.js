@@ -75,7 +75,7 @@
     country: "AU",
     category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: "Stream Cipher",
-    securityStatus: "insecure",
+    securityStatus: global.AlgorithmFramework ? global.AlgorithmFramework.SecurityStatus.INSECURE : null,
     securityNotes: "Has known cryptanalytic vulnerabilities discovered during eSTREAM evaluation. Eliminated in phase 2 due to security concerns. Not suitable for production use.",
     
     documentation: [

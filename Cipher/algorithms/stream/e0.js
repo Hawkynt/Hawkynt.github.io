@@ -1,397 +1,360 @@
-#!/usr/bin/env node
 /*
- * Universal E0 Bluetooth Stream Cipher
- * Compatible with both Browser and Node.js environments
- * Based on Bluetooth SIG specification
+ * E0 Bluetooth Stream Cipher - AlgorithmFramework Implementation
+ * INSECURE: Has known vulnerabilities - for educational purposes only
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
- * 
+ *
  * E0 is the stream cipher used in the Bluetooth protocol for encryption.
  * It combines four LFSRs of different lengths with a nonlinear combining function.
- * 
+ *
  * Key characteristics:
  * - Key lengths: 8-128 bits (typically 128 bits)
  * - Four LFSRs of lengths: 25, 31, 33, 39 bits
  * - Two 2-bit memory elements
  * - Nonlinear combining function based on majority logic
- * 
+ *
  * SECURITY WARNING: E0 has known cryptanalytic vulnerabilities and should not
  * be used for new security applications. Implemented for educational purposes.
  */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-      return;
-    }
-  }
-  
-  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-    try {
-      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
-    } catch (e) {
-      console.error('Failed to load AlgorithmFramework:', e.message);
-      return;
-    }
-  }
-  
-  // Create E0 cipher object
-  const E0 = {
-    name: "E0",
-    description: "Stream cipher used in Bluetooth protocol for encryption. Combines four LFSRs with nonlinear combining function using majority logic. Has known cryptanalytic vulnerabilities and should not be used for new security applications.",
-    inventor: "Bluetooth SIG",
-    year: 1998,
-    country: "Multiple",
-    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
-    subCategory: "Stream Cipher",
-    securityStatus: "insecure",
-    securityNotes: "Known cryptanalytic vulnerabilities published. Practical attacks demonstrated against Bluetooth encryption. Use for educational purposes only.",
-    
-    documentation: [
-      {text: "Bluetooth Security Analysis", uri: "https://www.cs.technion.ac.il/~biham/BT/"},
-      {text: "E0 Cryptanalysis", uri: "https://eprint.iacr.org/2004/152.pdf"}
-    ],
-    
-    references: [
-      {text: "Bluetooth E0 Specification", uri: "https://www.bluetooth.com/specifications/"},
-      {text: "Cryptanalysis of E0 and A5/1", uri: "https://eprint.iacr.org/2004/152.pdf"}
-    ],
-    
-    knownVulnerabilities: [
-      {
-        type: "Correlation Attack",
-        text: "Statistical correlation attacks can recover keystream with practical complexity",
-        mitigation: "Do not use for cryptographic applications - educational purposes only"
-      },
-      {
-        type: "FMS Attack",
-        text: "Fluhrer-Mantin-Shamir style attacks applicable to E0 structure",
-        mitigation: "Algorithm has fundamental structural weaknesses"
-      }
-    ],
-    
-    tests: [
-      {
-        text: "E0 Test Vector (Educational)",
-        uri: "https://www.bluetooth.com/specifications/",
-        keySize: 16,
-        input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        key: global.OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-        expected: global.OpCodes.Hex8ToBytes("f6b37e0393807025e9b6ad61e8ba3953")
-      }
-    ],
 
-    // Legacy interface properties
-    internalName: 'E0',
-    comment: 'E0 Bluetooth Stream Cipher - DEPRECATED: Has known vulnerabilities',
-    minKeyLength: 1,    // 8 bits minimum
-    maxKeyLength: 16,   // 128 bits maximum
-    stepKeyLength: 1,
-    minBlockSize: 1,    // Stream cipher - processes byte by byte
-    maxBlockSize: 65536, // Practical limit for processing
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
-    boolIsStreamCipher: true, // Mark as stream cipher
-    
-    // E0 constants
-    LFSR_LENGTHS: [25, 31, 33, 39],  // Four LFSR lengths
-    TOTAL_STATE_BITS: 132,           // 25+31+33+39 + 4 memory bits
-    
-    // Primitive feedback polynomials for each LFSR (from Bluetooth spec)
-    FEEDBACK_POLYNOMIALS: [
-      // LFSR 0 (25 bits): x^25 + x^20 + x^12 + x^8 + 1
-      [0, 8, 12, 20, 24],
-      // LFSR 1 (31 bits): x^31 + x^24 + x^16 + x^12 + 1  
-      [0, 12, 16, 24, 30],
-      // LFSR 2 (33 bits): x^33 + x^28 + x^24 + x^4 + 1
-      [0, 4, 24, 28, 32],
-      // LFSR 3 (39 bits): x^39 + x^36 + x^28 + x^4 + 1
-      [0, 4, 28, 36, 38]
-    ],
-    
-    // Output tap positions for each LFSR
-    OUTPUT_TAPS: [24, 30, 32, 38], // MSB positions for each LFSR
-    
-    // Initialize cipher
-    Init: function() {
-      E0.isInitialized = true;
-    },
-    
-    // Set up key and initialize E0 state
-    KeySetup: function(key) {
-      let id;
-      do {
-        id = 'E0[' + global.generateUniqueID() + ']';
-      } while (E0.instances[id] || global.objectInstances[id]);
-      
-      E0.instances[id] = new E0.E0Instance(key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear cipher data
-    ClearData: function(id) {
-      if (E0.instances[id]) {
-        // Clear sensitive data
-        const instance = E0.instances[id];
-        if (instance.lfsr && global.OpCodes) {
-          for (let i = 0; i < instance.lfsr.length; i++) {
-            global.OpCodes.ClearArray(instance.lfsr[i]);
-          }
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
+
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          StreamCipherAlgorithm, IAlgorithmInstance,
+          TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class E0Algorithm extends StreamCipherAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "E0";
+      this.description = "Stream cipher used in Bluetooth protocol for encryption. Combines four LFSRs with nonlinear combining function using majority logic. Has known cryptanalytic vulnerabilities and should not be used for new security applications.";
+      this.inventor = "Bluetooth SIG";
+      this.year = 1998;
+      this.category = CategoryType.STREAM;
+      this.subCategory = "Stream Cipher";
+      this.securityStatus = SecurityStatus.BROKEN;
+      this.complexity = ComplexityType.ADVANCED;
+      this.country = CountryCode.MULTI;
+
+      // Algorithm-specific metadata
+      this.SupportedKeySizes = [
+        new KeySize(1, 16, 0)  // E0: 8-128 bit keys (1-16 bytes)
+      ];
+      this.SupportedNonceSizes = [
+        new KeySize(0, 0, 0)  // E0 does not use nonce/IV
+      ];
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("Bluetooth Security Analysis", "https://www.cs.technion.ac.il/~biham/BT/"),
+        new LinkItem("E0 Cryptanalysis", "https://eprint.iacr.org/2004/152.pdf"),
+        new LinkItem("Bluetooth E0 Specification", "https://www.bluetooth.com/specifications/")
+      ];
+
+      // Known vulnerabilities
+      this.knownVulnerabilities = [
+        new Vulnerability(
+          "Correlation Attack",
+          "Statistical correlation attacks can recover keystream with practical complexity",
+          "Do not use for cryptographic applications - educational purposes only"
+        ),
+        new Vulnerability(
+          "FMS Attack",
+          "Fluhrer-Mantin-Shamir style attacks applicable to E0 structure",
+          "Algorithm has fundamental structural weaknesses"
+        ),
+        new Vulnerability(
+          "Algebraic Attack",
+          "Recent 2022 algebraic attacks using Gröbner bases with complexity 2^79",
+          "Modern attacks demonstrate practical vulnerability"
+        )
+      ];
+
+      // Test vectors
+      this.tests = [
+        {
+          text: "E0 Test Vector (Educational)",
+          uri: "https://www.bluetooth.com/specifications/",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
+          expected: OpCodes.Hex8ToBytes("f6b37e0393807025e9b6ad61e8ba3953")
         }
-        if (instance.keyBytes && global.OpCodes) {
-          global.OpCodes.ClearArray(instance.keyBytes);
-        }
-        delete E0.instances[id];
-        delete global.objectInstances[id];
-      }
-    },
-    
-    // Generate keystream and XOR with input (encryption/decryption)
-    encryptBlock: function(id, input) {
-      const instance = E0.instances[id];
-      if (!instance) {
-        throw new Error('Invalid E0 instance ID');
-      }
-      
-      const inputBytes = global.OpCodes.AsciiToBytes(input);
-      const outputBytes = new Array(inputBytes.length);
-      
-      for (let i = 0; i < inputBytes.length; i++) {
-        const keystreamByte = instance.generateKeystreamByte();
-        outputBytes[i] = inputBytes[i] ^ keystreamByte;
-      }
-      
-      return global.OpCodes.BytesToString(outputBytes);
-    },
-    
-    // Decryption is identical to encryption for stream ciphers
-    decryptBlock: function(id, input) {
-      return E0.encryptBlock(id, input);
-    },
-    
-    // Create instance for AlgorithmFramework
-    CreateInstance: function(isDecrypt) {
-      return {
-        _instance: null,
-        _inputData: [],
-        
-        set key(keyData) {
-          this._key = keyData;
-          this._instance = new E0.E0Instance(keyData);
-        },
-        
-        set keySize(size) {
-          this._keySize = size;
-        },
-        
-        set nonce(nonceData) {
-          this._nonce = nonceData;
-        },
-        
-        set counter(counterValue) {
-          this._counter = counterValue;
-        },
-        
-        set iv(ivData) {
-          this._iv = ivData;
-        },
-        
-        Feed: function(data) {
-          if (Array.isArray(data)) {
-            this._inputData = data.slice();
-          } else if (typeof data === 'string') {
-            this._inputData = [];
-            for (let i = 0; i < data.length; i++) {
-              this._inputData.push(data.charCodeAt(i));
-            }
-          }
-        },
-        
-        Result: function() {
-          if (!this._inputData || this._inputData.length === 0) {
-            return [];
-          }
-          
-          if (!this._instance) {
-            return [];
-          }
-          
-          const result = [];
-          for (let i = 0; i < this._inputData.length; i++) {
-            const keystreamByte = this._instance.generateKeystreamByte();
-            result.push(this._inputData[i] ^ keystreamByte);
-          }
-          return result;
-        }
-      };
-    },
-    
-    // E0 instance class
-    E0Instance: function(key) {
-      // Handle key as byte array or convert if string
-      if (typeof key === 'string') {
-        this.keyBytes = global.OpCodes.AsciiToBytes(key);
-      } else if (Array.isArray(key)) {
-        this.keyBytes = key.slice(); // Copy array
-      } else {
-        throw new Error('E0 key must be string or byte array');
-      }
-      this.keyLength = this.keyBytes.length;
-      
-      // Initialize four LFSRs
+      ];
+
+      // E0 constants
+      this.LFSR_LENGTHS = [25, 31, 33, 39];  // Four LFSR lengths
+      this.TOTAL_STATE_BITS = 132;           // 25+31+33+39 + 4 memory bits
+
+      // Primitive feedback polynomials for each LFSR (from Bluetooth spec)
+      this.FEEDBACK_POLYNOMIALS = [
+        // LFSR 0 (25 bits): x^25 + x^20 + x^12 + x^8 + 1
+        [0, 8, 12, 20, 24],
+        // LFSR 1 (31 bits): x^31 + x^24 + x^16 + x^12 + 1
+        [0, 12, 16, 24, 30],
+        // LFSR 2 (33 bits): x^33 + x^28 + x^24 + x^4 + 1
+        [0, 4, 24, 28, 32],
+        // LFSR 3 (39 bits): x^39 + x^36 + x^28 + x^4 + 1
+        [0, 4, 28, 36, 38]
+      ];
+
+      // Output tap positions for each LFSR
+      this.OUTPUT_TAPS = [24, 30, 32, 38]; // MSB positions for each LFSR
+    }
+
+    CreateInstance(isInverse = false) {
+      return new E0Instance(this, isInverse);
+    }
+  }
+
+  class E0Instance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this._key = null;
+      this._iv = null;
+      this.inputBuffer = [];
+
+      // E0 state
       this.lfsr = new Array(4);
-      for (let i = 0; i < 4; i++) {
-        this.lfsr[i] = new Array(E0.LFSR_LENGTHS[i]).fill(0);
-      }
-      
-      // Initialize 2-bit memory elements (c0, c-1)
       this.c0 = 0;
       this.c_minus_1 = 0;
-      
-      this.initializeLFSRs();
+      this.initialized = false;
     }
-  };
-  
-  // Add methods to the instance prototype
-  E0.E0Instance.prototype.initializeLFSRs = function() {
-    // Load key material into LFSRs
-    let keyBitIndex = 0;
-    const totalKeyBits = this.keyLength * 8;
-    
-    // Distribute key bits across all four LFSRs
-    for (let reg = 0; reg < 4; reg++) {
-      const length = E0.LFSR_LENGTHS[reg];
-      
-      for (let i = 0; i < length; i++) {
-        if (keyBitIndex < totalKeyBits) {
-          const byteIndex = Math.floor(keyBitIndex / 8);
-          const bitIndex = keyBitIndex % 8;
-          this.lfsr[reg][i] = (this.keyBytes[byteIndex] >> bitIndex) & 1;
-          keyBitIndex++;
-        } else {
-          // Repeat key pattern if key is shorter than total LFSR space
-          const repeatIndex = keyBitIndex % totalKeyBits;
-          const byteIndex = Math.floor(repeatIndex / 8);
-          const bitIndex = repeatIndex % 8;
-          this.lfsr[reg][i] = (this.keyBytes[byteIndex] >> bitIndex) & 1;
-          keyBitIndex++;
+
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
+        this.initialized = false;
+        return;
+      }
+
+      if (!Array.isArray(keyBytes)) {
+        throw new Error("Invalid key - must be byte array");
+      }
+
+      const keyLength = keyBytes.length;
+      if (keyLength < 1 || keyLength > 16) {
+        throw new Error(`Invalid E0 key size: ${keyLength} bytes. Requires 1-16 bytes`);
+      }
+
+      this._key = [...keyBytes];
+      this._initializeE0();
+    }
+
+    get key() {
+      return this._key ? [...this._key] : null;
+    }
+
+    set iv(ivData) {
+      // E0 doesn't traditionally use IV, but store for compatibility
+      this._iv = ivData;
+    }
+
+    get iv() {
+      return this._iv ? [...this._iv] : null;
+    }
+
+    set nonce(nonceData) {
+      this.iv = nonceData;
+    }
+
+    get nonce() {
+      return this.iv;
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!Array.isArray(data)) {
+        throw new Error("Invalid input data - must be byte array");
+      }
+      if (!this._key) {
+        throw new Error("Key not set");
+      }
+
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      if (!this._key) {
+        throw new Error("Key not set");
+      }
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data to process");
+      }
+      if (!this.initialized) {
+        throw new Error("E0 not properly initialized");
+      }
+
+      const result = [];
+      for (let i = 0; i < this.inputBuffer.length; i++) {
+        const keystreamByte = this._generateKeystreamByte();
+        result.push(this.inputBuffer[i] ^ keystreamByte);
+      }
+
+      // Clear input buffer for next operation
+      this.inputBuffer = [];
+      return result;
+    }
+
+    _initializeE0() {
+      // Initialize four LFSRs
+      for (let i = 0; i < 4; i++) {
+        this.lfsr[i] = new Array(this.algorithm.LFSR_LENGTHS[i]).fill(0);
+      }
+
+      // Load key material into LFSRs
+      let keyBitIndex = 0;
+      const totalKeyBits = this._key.length * 8;
+
+      // Distribute key bits across all four LFSRs
+      for (let reg = 0; reg < 4; reg++) {
+        const length = this.algorithm.LFSR_LENGTHS[reg];
+
+        for (let i = 0; i < length; i++) {
+          if (keyBitIndex < totalKeyBits) {
+            const byteIndex = Math.floor(keyBitIndex / 8);
+            const bitIndex = keyBitIndex % 8;
+            this.lfsr[reg][i] = (this._key[byteIndex] >> bitIndex) & 1;
+            keyBitIndex++;
+          } else {
+            // Repeat key pattern if key is shorter than total LFSR space
+            const repeatIndex = keyBitIndex % totalKeyBits;
+            const byteIndex = Math.floor(repeatIndex / 8);
+            const bitIndex = repeatIndex % 8;
+            this.lfsr[reg][i] = (this._key[byteIndex] >> bitIndex) & 1;
+            keyBitIndex++;
+          }
         }
       }
-    }
-    
-    // Ensure no LFSR is all zeros
-    for (let reg = 0; reg < 4; reg++) {
-      let allZero = true;
-      for (let i = 0; i < E0.LFSR_LENGTHS[reg]; i++) {
-        if (this.lfsr[reg][i] !== 0) {
-          allZero = false;
-          break;
+
+      // Ensure no LFSR is all zeros
+      for (let reg = 0; reg < 4; reg++) {
+        let allZero = true;
+        for (let i = 0; i < this.algorithm.LFSR_LENGTHS[reg]; i++) {
+          if (this.lfsr[reg][i] !== 0) {
+            allZero = false;
+            break;
+          }
+        }
+        if (allZero) {
+          this.lfsr[reg][0] = 1;  // Set LSB to prevent all-zero state
         }
       }
-      if (allZero) {
-        this.lfsr[reg][0] = 1;  // Set LSB to prevent all-zero state
+
+      // Initialize memory elements with some key-derived values
+      const keyLength = this._key.length;
+      this.c0 = (this._key[0] ^ this._key[1 % keyLength]) & 3;
+      this.c_minus_1 = (this._key[2 % keyLength] ^ this._key[3 % keyLength]) & 3;
+
+      this.initialized = true;
+    }
+
+    _clockLFSR(regIndex) {
+      const reg = this.lfsr[regIndex];
+      const length = this.algorithm.LFSR_LENGTHS[regIndex];
+      const taps = this.algorithm.FEEDBACK_POLYNOMIALS[regIndex];
+
+      // Calculate feedback using primitive polynomial
+      let feedback = 0;
+      for (let i = 0; i < taps.length; i++) {
+        feedback ^= reg[taps[i]];
       }
+
+      // Get output bit before shifting
+      const output = reg[length - 1];
+
+      // Shift register
+      for (let i = length - 1; i > 0; i--) {
+        reg[i] = reg[i - 1];
+      }
+      reg[0] = feedback;
+
+      return output;
     }
-    
-    // Initialize memory elements with some key-derived values
-    this.c0 = (this.keyBytes[0] ^ this.keyBytes[1 % this.keyLength]) & 3;
-    this.c_minus_1 = (this.keyBytes[2 % this.keyLength] ^ this.keyBytes[3 % this.keyLength]) & 3;
-  };
-  
-  E0.E0Instance.prototype.clockLFSR = function(regIndex) {
-    const reg = this.lfsr[regIndex];
-    const length = E0.LFSR_LENGTHS[regIndex];
-    const taps = E0.FEEDBACK_POLYNOMIALS[regIndex];
-    
-    // Calculate feedback using primitive polynomial
-    let feedback = 0;
-    for (let i = 0; i < taps.length; i++) {
-      feedback ^= reg[taps[i]];
+
+    _combiningFunction(outputs) {
+      // E0 combining function using majority logic and memory elements
+
+      // Sum the four LFSR outputs
+      let sum = 0;
+      for (let i = 0; i < 4; i++) {
+        sum += outputs[i];
+      }
+
+      // Add memory elements
+      sum += this.c0 + this.c_minus_1;
+
+      // Extract output bit and carry bits
+      const outputBit = sum & 1;
+      const carry = sum >> 1;
+
+      // Update memory elements (simplified E0 state update)
+      this.c_minus_1 = this.c0;
+      this.c0 = carry & 3;  // Keep only 2 bits
+
+      return outputBit;
     }
-    
-    // Get output bit before shifting
-    const output = reg[length - 1];
-    
-    // Shift register
-    for (let i = length - 1; i > 0; i--) {
-      reg[i] = reg[i - 1];
+
+    _generateKeystreamBit() {
+      // Clock all four LFSRs and get output bits
+      const outputs = new Array(4);
+      for (let i = 0; i < 4; i++) {
+        outputs[i] = this._clockLFSR(i);
+      }
+
+      // Apply combining function
+      return this._combiningFunction(outputs);
     }
-    reg[0] = feedback;
-    
-    return output;
-  };
-  
-  E0.E0Instance.prototype.combiningFunction = function(outputs) {
-    // E0 combining function using majority logic and memory elements
-    
-    // Sum the four LFSR outputs
-    let sum = 0;
-    for (let i = 0; i < 4; i++) {
-      sum += outputs[i];
+
+    _generateKeystreamByte() {
+      let keystreamByte = 0;
+
+      for (let bit = 0; bit < 8; bit++) {
+        const keystreamBit = this._generateKeystreamBit();
+        keystreamByte |= (keystreamBit << bit);
+      }
+
+      return keystreamByte;
     }
-    
-    // Add memory elements
-    sum += this.c0 + this.c_minus_1;
-    
-    // Extract output bit and carry bits
-    const outputBit = sum & 1;
-    const carry = sum >> 1;
-    
-    // Update memory elements (simplified E0 state update)
-    this.c_minus_1 = this.c0;
-    this.c0 = carry & 3;  // Keep only 2 bits
-    
-    return outputBit;
-  };
-  
-  E0.E0Instance.prototype.generateKeystreamBit = function() {
-    // Clock all four LFSRs and get output bits
-    const outputs = new Array(4);
-    for (let i = 0; i < 4; i++) {
-      outputs[i] = this.clockLFSR(i);
-    }
-    
-    // Apply combining function
-    return this.combiningFunction(outputs);
-  };
-  
-  E0.E0Instance.prototype.generateKeystreamByte = function() {
-    let keystreamByte = 0;
-    
-    for (let bit = 0; bit < 8; bit++) {
-      const keystreamBit = this.generateKeystreamBit();
-      keystreamByte |= (keystreamBit << bit);
-    }
-    
-    return keystreamByte;
-  };
-  
-  // Auto-register with AlgorithmFramework if available
-  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
-    global.AlgorithmFramework.RegisterAlgorithm(E0);
   }
-  
-  // Legacy registration
-  if (typeof global.RegisterAlgorithm === 'function') {
-    global.RegisterAlgorithm(E0);
+
+  // Register the algorithm
+  const algorithmInstance = new E0Algorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Auto-register with Cipher system if available
-  if (typeof Cipher !== 'undefined') {
-    Cipher.AddCipher(E0);
-  }
-  
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = E0;
-  }
-  
-})(typeof global !== 'undefined' ? global : window);
+
+  // Return for module systems
+  return { E0Algorithm, E0Instance };
+}));

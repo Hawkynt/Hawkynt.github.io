@@ -1,457 +1,368 @@
-#!/usr/bin/env node
 /*
- * Universal Grain Stream Cipher
- * Compatible with both Browser and Node.js environments
- * Based on eSTREAM Grain specification 
+ * Grain Stream Cipher - AlgorithmFramework Implementation
+ * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
- * 
+ *
  * Grain is a stream cipher designed by Hell, Johansson, and Meier.
  * It combines an 80-bit LFSR with an 80-bit NLFSR:
  * - LFSR: 80 bits with primitive polynomial
  * - NLFSR: 80 bits with nonlinear feedback function
  * - Output: combines LFSR and NLFSR bits with nonlinear filter
- * 
+ *
  * Key size: 80 bits, IV size: 64 bits
  * Initialization: 160 clock cycles
- * 
+ *
  * This implementation is for educational purposes only.
  */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-      return;
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
+
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          StreamCipherAlgorithm, IAlgorithmInstance,
+          TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  class GrainAlgorithm extends StreamCipherAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "Grain";
+      this.description = "Hardware-oriented stream cipher using combination of LFSR and NLFSR. Part of the eSTREAM hardware portfolio and ISO/IEC 29192-3 standard. Features 80-bit keys and 64-bit IVs.";
+      this.inventor = "Martin Hell, Thomas Johansson, and Willi Meier";
+      this.year = 2005;
+      this.category = CategoryType.STREAM;
+      this.subCategory = "Stream Cipher";
+      this.securityStatus = SecurityStatus.SECURE;
+      this.complexity = ComplexityType.ADVANCED;
+      this.country = CountryCode.SE;
+
+      // Algorithm-specific metadata
+      this.SupportedKeySizes = [
+        new KeySize(10, 10, 0)  // Grain: 80-bit keys only (10 bytes)
+      ];
+      this.SupportedNonceSizes = [
+        new KeySize(8, 8, 0)    // Grain: 64-bit IVs (8 bytes)
+      ];
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("ISO/IEC 29192-3:2012 - Grain Stream Cipher", "https://www.iso.org/standard/56426.html"),
+        new LinkItem("eSTREAM Grain Specification", "https://www.ecrypt.eu.org/stream/grain.html"),
+        new LinkItem("Grain: A Stream Cipher for Constrained Environments", "http://www.ecrypt.eu.org/stream/papersdir/2005/017.pdf")
+      ];
+
+      // Known vulnerabilities
+      this.knownVulnerabilities = [];
+
+      // Test vectors
+      this.tests = [
+        {
+          text: "Grain Test Vector (all-zero key and IV)",
+          uri: "https://www.ecrypt.eu.org/stream/e2-grain.html",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000"),
+          iv: OpCodes.Hex8ToBytes("0000000000000000"),
+          expected: OpCodes.Hex8ToBytes("6b15855017682edc")
+        }
+      ];
+
+      // Grain constants
+      this.LFSR_SIZE = 80;
+      this.NLFSR_SIZE = 80;
+      this.KEY_SIZE = 80;          // 80-bit key
+      this.IV_SIZE = 64;           // 64-bit IV
+      this.INIT_ROUNDS = 160;      // Initialization rounds (2 * 80)
+    }
+
+    CreateInstance(isInverse = false) {
+      return new GrainInstance(this, isInverse);
     }
   }
-  
-  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-    try {
-      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
-    } catch (e) {
-      console.error('Failed to load AlgorithmFramework:', e.message);
-      return;
+
+  class GrainInstance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this._key = null;
+      this._iv = null;
+      this.inputBuffer = [];
+
+      // Grain state
+      this.lfsr = new Array(this.algorithm.LFSR_SIZE);   // 80-bit LFSR
+      this.nlfsr = new Array(this.algorithm.NLFSR_SIZE); // 80-bit NLFSR
+      this.initialized = false;
     }
-  }
-  
-  // Create Grain cipher object
-  const Grain = {
-    // Required metadata following CONTRIBUTING.md
-    name: 'Grain',
-    description: 'Hardware-oriented stream cipher using combination of LFSR and NLFSR. Part of the eSTREAM hardware portfolio and ISO/IEC 29192-3 standard. Features 80-bit keys and 64-bit IVs.',
-    inventor: 'Martin Hell, Thomas Johansson, and Willi Meier',
-    year: 2005,
-    country: 'SE',
-    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
-    subCategory: 'Stream Cipher',
-    securityStatus: null,
-    securityNotes: 'Part of eSTREAM hardware portfolio and ISO standard. No known practical attacks on the original version.',
-    
-    documentation: [
-      {text: 'ISO/IEC 29192-3:2012 - Grain Stream Cipher', uri: 'https://www.iso.org/standard/56426.html'},
-      {text: 'eSTREAM Grain Specification', uri: 'https://www.ecrypt.eu.org/stream/grain.html'},
-      {text: 'Grain: A Stream Cipher for Constrained Environments', uri: 'http://www.ecrypt.eu.org/stream/papersdir/2005/017.pdf'}
-    ],
-    
-    references: [
-      {text: 'eSTREAM Grain Page', uri: 'https://www.ecrypt.eu.org/stream/grain.html'},
-      {text: 'ISO/IEC 29192-3 Standard', uri: 'https://www.iso.org/standard/56426.html'}
-    ],
-    
-    knownVulnerabilities: [],
-    
-    tests: [
-      {
-        text: "Grain v1 Test Vector (all-zero key and IV) - NEEDS VERIFICATION",
-        uri: "https://www.ecrypt.eu.org/stream/e2-grain.html",
-        keySize: 10,
-        input: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        key: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        expected: [0x6b, 0x15, 0x85, 0x50, 0x17, 0x68, 0x2e, 0xdc]
+
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
+        this.initialized = false;
+        return;
       }
-    ],
-    
-    // Legacy interface properties
-    internalName: 'Grain',
-    comment: 'Grain eSTREAM Stream Cipher - Educational implementation with LFSR/NLFSR combination',
-    minKeyLength: 10,   // Grain uses 80-bit keys (10 bytes)
-    maxKeyLength: 10,
-    stepKeyLength: 1,
-    minBlockSize: 1,    // Stream cipher - processes byte by byte
-    maxBlockSize: 65536, // Practical limit for processing
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
-    boolIsStreamCipher: true, // Mark as stream cipher
-    
-    // Grain constants
-    LFSR_SIZE: 80,
-    NLFSR_SIZE: 80,
-    KEY_SIZE: 80,          // 80-bit key
-    IV_SIZE: 64,           // 64-bit IV
-    INIT_ROUNDS: 160,      // Initialization rounds (2 * 80)
-    
-    // Initialize cipher
-    Init: function() {
-      Grain.isInitialized = true;
-    },
-    
-    // Set up key and initialize Grain state
-    KeySetup: function(key) {
-      let id;
-      do {
-        id = 'Grain[' + global.generateUniqueID() + ']';
-      } while (Grain.instances[id] || global.objectInstances[id]);
-      
-      Grain.instances[id] = new Grain.GrainInstance(key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Create instance for testing framework
-    CreateInstance: function(isDecrypt) {
-      return {
-        _instance: null,
-        _inputData: [],
-        
-        set key(keyData) {
-          this._instance = new Grain.GrainInstance(keyData);
-        },
-        
-        Feed: function(data) {
-          if (Array.isArray(data)) {
-            this._inputData = data.slice();
-          } else if (typeof data === 'string') {
-            this._inputData = [];
-            for (let i = 0; i < data.length; i++) {
-              this._inputData.push(data.charCodeAt(i));
-            }
-          }
-        },
-        
-        Result: function() {
-          if (!this._instance || this._inputData.length === 0) {
-            return [];
-          }
-          
-          const result = [];
-          for (let i = 0; i < this._inputData.length; i++) {
-            const keystreamByte = this._instance.generateKeystreamByte();
-            result.push(this._inputData[i] ^ keystreamByte);
-          }
-          return result;
-        }
-      };
-    },
-    
-    // Clear cipher data
-    ClearData: function(id) {
-      if (Grain.instances[id]) {
-        // Clear sensitive data
-        const instance = Grain.instances[id];
-        if (instance.lfsr && global.OpCodes) {
-          global.OpCodes.ClearArray(instance.lfsr);
-        }
-        if (instance.nlfsr && global.OpCodes) {
-          global.OpCodes.ClearArray(instance.nlfsr);
-        }
-        if (instance.keyBytes && global.OpCodes) {
-          global.OpCodes.ClearArray(instance.keyBytes);
-        }
-        delete Grain.instances[id];
-        delete global.objectInstances[id];
-        return true;
-      } else {
-        global.throwException('Unknown Object Reference Exception', id, 'Grain', 'ClearData');
-        return false;
+
+      if (!Array.isArray(keyBytes)) {
+        throw new Error("Invalid key - must be byte array");
       }
-    },
-    
-    // Encrypt block (for stream cipher, this generates keystream and XORs with input)
-    encryptBlock: function(id, plaintext) {
-      if (!Grain.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'Grain', 'encryptBlock');
-        return plaintext;
+
+      if (keyBytes.length !== 10) {
+        throw new Error(`Grain requires exactly 80-bit (10-byte) keys, got ${keyBytes.length} bytes`);
       }
-      
-      const instance = Grain.instances[id];
-      let result = '';
-      
-      for (let n = 0; n < plaintext.length; n++) {
-        const keystreamByte = instance.generateKeystreamByte();
-        const plaintextByte = plaintext.charCodeAt(n) & 0xFF;
-        const ciphertextByte = plaintextByte ^ keystreamByte;
-        result += String.fromCharCode(ciphertextByte);
+
+      this._key = [...keyBytes];
+      this._initializeIfReady();
+    }
+
+    get key() {
+      return this._key ? [...this._key] : null;
+    }
+
+    set iv(ivBytes) {
+      if (!ivBytes) {
+        this._iv = null;
+        this.initialized = false;
+        return;
       }
-      
+
+      if (!Array.isArray(ivBytes)) {
+        throw new Error("Invalid IV - must be byte array");
+      }
+
+      if (ivBytes.length !== 8) {
+        throw new Error(`Grain requires exactly 64-bit (8-byte) IVs, got ${ivBytes.length} bytes`);
+      }
+
+      this._iv = [...ivBytes];
+      this._initializeIfReady();
+    }
+
+    get iv() {
+      return this._iv ? [...this._iv] : null;
+    }
+
+    set nonce(nonceBytes) {
+      // For compatibility, treat nonce as IV
+      this.iv = nonceBytes;
+    }
+
+    get nonce() {
+      return this.iv;
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!Array.isArray(data)) {
+        throw new Error("Invalid input data - must be byte array");
+      }
+      if (!this._key) {
+        throw new Error("Key not set");
+      }
+      if (!this._iv) {
+        throw new Error("IV not set");
+      }
+
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      if (!this._key) {
+        throw new Error("Key not set");
+      }
+      if (!this._iv) {
+        throw new Error("IV not set");
+      }
+      if (this.inputBuffer.length === 0) {
+        throw new Error("No data to process");
+      }
+      if (!this.initialized) {
+        throw new Error("Grain not properly initialized");
+      }
+
+      const result = [];
+      for (let i = 0; i < this.inputBuffer.length; i++) {
+        const keystreamByte = this._generateKeystreamByte();
+        result.push(this.inputBuffer[i] ^ keystreamByte);
+      }
+
+      // Clear input buffer for next operation
+      this.inputBuffer = [];
       return result;
-    },
-    
-    // Decrypt block (same as encrypt for stream cipher)
-    decryptBlock: function(id, ciphertext) {
-      // For stream ciphers, decryption is identical to encryption
-      return Grain.encryptBlock(id, ciphertext);
-    },
-    
-    // Grain Instance class
-    GrainInstance: function(key, iv) {
-      this.lfsr = new Array(Grain.LFSR_SIZE);   // 80-bit LFSR
-      this.nlfsr = new Array(Grain.NLFSR_SIZE); // 80-bit NLFSR
-      this.keyBytes = [];          // Store key as byte array
-      this.ivBytes = [];           // Store IV as byte array
-      
-      // Convert key to byte array
-      if (typeof key === 'string') {
-        for (let k = 0; k < key.length && this.keyBytes.length < 10; k++) {
-          this.keyBytes.push(key.charCodeAt(k) & 0xFF);
-        }
-      } else if (Array.isArray(key)) {
-        for (let k = 0; k < key.length && this.keyBytes.length < 10; k++) {
-          this.keyBytes.push(key[k] & 0xFF);
-        }
-      } else {
-        throw new Error('Grain key must be string or byte array');
-      }
-      
-      // Pad key to required length (10 bytes = 80 bits)
-      while (this.keyBytes.length < 10) {
-        this.keyBytes.push(0);
-      }
-      
-      // Process IV (default to zero IV if not provided)
-      if (iv) {
-        if (typeof iv === 'string') {
-          for (let n = 0; n < iv.length && this.ivBytes.length < 8; n++) {
-            this.ivBytes.push(iv.charCodeAt(n) & 0xFF);
-          }
-        } else if (Array.isArray(iv)) {
-          for (let n = 0; n < iv.length && this.ivBytes.length < 8; n++) {
-            this.ivBytes.push(iv[n] & 0xFF);
-          }
-        }
-      }
-      
-      // Pad IV to required length (8 bytes = 64 bits)
-      while (this.ivBytes.length < 8) {
-        this.ivBytes.push(0);
-      }
-      
-      // Initialize the cipher
-      this.initialize();
     }
-  };
-  
-  // Add methods to GrainInstance prototype
-  Grain.GrainInstance.prototype = {
-    
-    /**
-     * Initialize Grain cipher state
-     */
-    initialize: function() {
+
+    _initializeIfReady() {
+      if (this._key && this._iv) {
+        this._initializeGrain();
+      }
+    }
+
+    _initializeGrain() {
       // Load NLFSR with 80-bit key
       for (let i = 0; i < 80; i++) {
         const byteIndex = Math.floor(i / 8);
         const bitIndex = i % 8;
-        this.nlfsr[i] = (this.keyBytes[byteIndex] >>> bitIndex) & 1;
+        this.nlfsr[i] = (this._key[byteIndex] >>> bitIndex) & 1;
       }
-      
+
       // Load LFSR with 64-bit IV followed by 16 ones
       for (let i = 0; i < 64; i++) {
         const byteIndex = Math.floor(i / 8);
         const bitIndex = i % 8;
-        this.lfsr[i] = (this.ivBytes[byteIndex] >>> bitIndex) & 1;
+        this.lfsr[i] = (this._iv[byteIndex] >>> bitIndex) & 1;
       }
-      
+
       // Set remaining 16 bits of LFSR to 1
       for (let i = 64; i < 80; i++) {
         this.lfsr[i] = 1;
       }
-      
+
       // Run initialization for 160 rounds
-      for (let i = 0; i < Grain.INIT_ROUNDS; i++) {
-        const output = this.clockCipher();
+      for (let i = 0; i < this.algorithm.INIT_ROUNDS; i++) {
+        const output = this._clockCipher();
         // During initialization, feedback output to both registers
         this.lfsr[0] ^= output;
         this.nlfsr[0] ^= output;
       }
-    },
-    
+
+      this.initialized = true;
+    }
+
     /**
      * LFSR feedback function
      * Primitive polynomial: x^80 + x^43 + x^42 + x^38 + x^33 + x^28 + x^21 + x^14 + x^9 + x^8 + x^6 + x^5 + 1
      * @returns {number} Feedback bit (0 or 1)
      */
-    lfsrFeedback: function() {
-      return this.lfsr[79] ^ this.lfsr[42] ^ this.lfsr[41] ^ this.lfsr[37] ^ 
-             this.lfsr[32] ^ this.lfsr[27] ^ this.lfsr[20] ^ this.lfsr[13] ^ 
+    _lfsrFeedback() {
+      return this.lfsr[79] ^ this.lfsr[42] ^ this.lfsr[41] ^ this.lfsr[37] ^
+             this.lfsr[32] ^ this.lfsr[27] ^ this.lfsr[20] ^ this.lfsr[13] ^
              this.lfsr[8] ^ this.lfsr[7] ^ this.lfsr[5] ^ this.lfsr[4];
-    },
-    
+    }
+
     /**
      * NLFSR feedback function
      * g(x) = x0 + x13 + x23 + x38 + x51 + x62 + x0x1 + x17x20 + x43x47 + x65x68 + x70x78
      * @returns {number} Feedback bit (0 or 1)
      */
-    nlfsrFeedback: function() {
-      const linear = this.nlfsr[79] ^ this.nlfsr[66] ^ this.nlfsr[56] ^ this.nlfsr[41] ^ 
+    _nlfsrFeedback() {
+      const linear = this.nlfsr[79] ^ this.nlfsr[66] ^ this.nlfsr[56] ^ this.nlfsr[41] ^
                      this.nlfsr[28] ^ this.nlfsr[17];
-      
-      const nonlinear = (this.nlfsr[79] & this.nlfsr[78]) ^ 
-                        (this.nlfsr[62] & this.nlfsr[59]) ^ 
-                        (this.nlfsr[36] & this.nlfsr[32]) ^ 
-                        (this.nlfsr[14] & this.nlfsr[11]) ^ 
+
+      const nonlinear = (this.nlfsr[79] & this.nlfsr[78]) ^
+                        (this.nlfsr[62] & this.nlfsr[59]) ^
+                        (this.nlfsr[36] & this.nlfsr[32]) ^
+                        (this.nlfsr[14] & this.nlfsr[11]) ^
                         (this.nlfsr[9] & this.nlfsr[1]);
-      
+
       return linear ^ nonlinear;
-    },
-    
+    }
+
     /**
      * Output filter function
      * h(x) = x1 + x4 + x0x3 + x2x3 + x3x4 + x0x1x2 + x0x2x3 + x0x2x4 + x1x2x4 + x2x3x4
      * @param {Array} x - Array of 5 LFSR bits
      * @returns {number} Filter output (0 or 1)
      */
-    outputFilter: function(x) {
+    _outputFilter(x) {
       return x[1] ^ x[4] ^ (x[0] & x[3]) ^ (x[2] & x[3]) ^ (x[3] & x[4]) ^
              (x[0] & x[1] & x[2]) ^ (x[0] & x[2] & x[3]) ^ (x[0] & x[2] & x[4]) ^
              (x[1] & x[2] & x[4]) ^ (x[2] & x[3] & x[4]);
-    },
-    
+    }
+
     /**
      * Clock the Grain cipher one step
      * @returns {number} Output bit (0 or 1)
      */
-    clockCipher: function() {
+    _clockCipher() {
       // Get output bit before shifting
-      const lfsrOut = this.lfsrFeedback();
-      const nlfsrOut = this.nlfsrFeedback();
-      
+      const lfsrOut = this._lfsrFeedback();
+      const nlfsrOut = this._nlfsrFeedback();
+
       // Get bits for output filter (specific positions from LFSR)
       const filterBits = [
         this.lfsr[2],   // x0
-        this.lfsr[15],  // x1  
+        this.lfsr[15],  // x1
         this.lfsr[36],  // x2
         this.lfsr[45],  // x3
         this.lfsr[64]   // x4
       ];
-      
+
       // Calculate output
-      const output = this.outputFilter(filterBits) ^ 
+      const output = this._outputFilter(filterBits) ^
                      this.lfsr[1] ^ this.lfsr[2] ^ this.lfsr[4] ^ this.lfsr[10] ^
                      this.lfsr[31] ^ this.lfsr[43] ^ this.lfsr[56] ^
                      this.nlfsr[9] ^ this.nlfsr[20] ^ this.nlfsr[29] ^ this.nlfsr[38] ^
                      this.nlfsr[47] ^ this.nlfsr[56] ^ this.nlfsr[59] ^ this.nlfsr[61] ^
                      this.nlfsr[65] ^ this.nlfsr[68] ^ this.nlfsr[70];
-      
+
       // Shift LFSR
       for (let i = 79; i > 0; i--) {
         this.lfsr[i] = this.lfsr[i - 1];
       }
       this.lfsr[0] = lfsrOut;
-      
-      // Shift NLFSR  
+
+      // Shift NLFSR
       for (let i = 79; i > 0; i--) {
         this.nlfsr[i] = this.nlfsr[i - 1];
       }
       this.nlfsr[0] = nlfsrOut ^ this.lfsr[0]; // NLFSR input includes LFSR output
-      
+
       return output;
-    },
-    
+    }
+
     /**
      * Generate one keystream bit
      * @returns {number} Keystream bit (0 or 1)
      */
-    generateKeystreamBit: function() {
-      return this.clockCipher();
-    },
-    
+    _generateKeystreamBit() {
+      return this._clockCipher();
+    }
+
     /**
      * Generate one keystream byte (8 bits)
      * @returns {number} Keystream byte (0-255)
      */
-    generateKeystreamByte: function() {
+    _generateKeystreamByte() {
       let byte = 0;
       for (let i = 0; i < 8; i++) {
-        byte = byte | (this.generateKeystreamBit() << i);  // LSB first
+        byte = byte | (this._generateKeystreamBit() << i);  // LSB first
       }
       return byte;
-    },
-    
-    /**
-     * Generate multiple keystream bytes
-     * @param {number} length - Number of bytes to generate
-     * @returns {Array} Array of keystream bytes
-     */
-    generateKeystream: function(length) {
-      const keystream = [];
-      for (let n = 0; n < length; n++) {
-        keystream.push(this.generateKeystreamByte());
-      }
-      return keystream;
-    },
-    
-    /**
-     * Reset the cipher to initial state with optional new IV
-     * @param {Array|string} newIV - Optional new IV
-     */
-    reset: function(newIV) {
-      if (newIV !== undefined) {
-        this.ivBytes = [];
-        if (typeof newIV === 'string') {
-          for (let n = 0; n < newIV.length && this.ivBytes.length < 8; n++) {
-            this.ivBytes.push(newIV.charCodeAt(n) & 0xFF);
-          }
-        } else if (Array.isArray(newIV)) {
-          for (let n = 0; n < newIV.length && this.ivBytes.length < 8; n++) {
-            this.ivBytes.push(newIV[n] & 0xFF);
-          }
-        }
-        // Pad IV to required length
-        while (this.ivBytes.length < 8) {
-          this.ivBytes.push(0);
-        }
-      }
-      
-      this.initialize();
-    },
-    
-    /**
-     * Set a new IV and reinitialize
-     * @param {Array|string} newIV - New IV value
-     */
-    setIV: function(newIV) {
-      this.reset(newIV);
     }
-  };
-  
-  // Auto-register with AlgorithmFramework if available
-  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
-    global.AlgorithmFramework.RegisterAlgorithm(Grain);
   }
-  
-  // Legacy registration
-  if (typeof global.RegisterAlgorithm === 'function') {
-    global.RegisterAlgorithm(Grain);
+
+  // Register the algorithm
+  const algorithmInstance = new GrainAlgorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher) {
-    global.Cipher.Add(Grain);
-  }
-  
-  // Export to global scope
-  global.Grain = Grain;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Grain;
-  }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+
+  // Return for module systems
+  return { GrainAlgorithm, GrainInstance };
+}));

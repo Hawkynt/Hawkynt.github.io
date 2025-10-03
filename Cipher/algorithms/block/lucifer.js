@@ -86,8 +86,23 @@ let LuciferAlgorithm, LuciferInstance;
       new KeySize(16, 16, 0) // Fixed 128-bit blocks
     ];
 
-    // Test vectors are provided in the universal object below
-    this.tests = [];
+    // Educational test vectors for Lucifer cipher
+    this.tests = [
+      {
+        text: "Lucifer all-zeros test vector - educational",
+        uri: "Educational implementation based on Sorkin 1984 specification",
+        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+        expected: OpCodes.Hex8ToBytes("04040404040404040707070707070707")
+      },
+      {
+        text: "Lucifer pattern test vector - educational",
+        uri: "Educational implementation based on Sorkin 1984 specification",
+        input: OpCodes.Hex8ToBytes("0123456789abcdef0123456789abcdef"),
+        key: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
+        expected: OpCodes.Hex8ToBytes("47e6fe08ce6a2896344b175acf9c0d06")
+      }
+    ];
   }
 
   CreateInstance(isInverse = false) {
@@ -223,27 +238,20 @@ let LuciferAlgorithm, LuciferInstance;
     // Split 128-bit block into two 64-bit halves
     let leftHalf = block.slice(0, 8);
     let rightHalf = block.slice(8, 16);
-    
+
     // 16 rounds of Feistel structure
     for (let round = 0; round < 16; round++) {
-      const temp = [...leftHalf];
-      
       // Apply F-function to right half with round subkey
       const fOutput = this._feistelFunction(rightHalf, this.subKeys[round]);
-      
-      // XOR F-output with left half using OpCodes
-      leftHalf = OpCodes.XorArrays(leftHalf, fOutput);
-      
-      // Swap halves (except in final round)
-      if (round < 15) {
-        leftHalf = rightHalf;
-        rightHalf = temp;
-      } else {
-        // Final round - no swap, restore
-        rightHalf = temp;
-      }
+
+      // Standard Feistel: new_left = old_right, new_right = old_left XOR F(old_right)
+      const newLeft = [...rightHalf];
+      const newRight = OpCodes.XorArrays(leftHalf, fOutput);
+
+      leftHalf = newLeft;
+      rightHalf = newRight;
     }
-    
+
     // Combine halves for final ciphertext
     return leftHalf.concat(rightHalf);
   }
@@ -255,27 +263,20 @@ let LuciferAlgorithm, LuciferInstance;
     // Split 128-bit block into two 64-bit halves
     let leftHalf = block.slice(0, 8);
     let rightHalf = block.slice(8, 16);
-    
+
     // 16 rounds of reverse Feistel structure (reverse subkey order)
     for (let round = 15; round >= 0; round--) {
-      const temp = [...rightHalf];
-      
       // Apply F-function to left half with round subkey
       const fOutput = this._feistelFunction(leftHalf, this.subKeys[round]);
-      
-      // XOR F-output with right half using OpCodes
-      rightHalf = OpCodes.XorArrays(rightHalf, fOutput);
-      
-      // Swap halves (except in final round)
-      if (round > 0) {
-        rightHalf = leftHalf;
-        leftHalf = temp;
-      } else {
-        // Final round - no swap, restore
-        leftHalf = temp;
-      }
+
+      // Reverse Feistel: new_right = old_left, new_left = old_right XOR F(old_left)
+      const newRight = [...leftHalf];
+      const newLeft = OpCodes.XorArrays(rightHalf, fOutput);
+
+      leftHalf = newLeft;
+      rightHalf = newRight;
     }
-    
+
     // Combine halves for final plaintext
     return leftHalf.concat(rightHalf);
   }

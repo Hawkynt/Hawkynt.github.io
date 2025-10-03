@@ -42,6 +42,13 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  // SHA-1 constants - RFC 3174 Section 5
+  // K[0] = 0x5A827999 (rounds 0-19)
+  // K[1] = 0x6ED9EBA1 (rounds 20-39)
+  // K[2] = 0x8F1BBCDC (rounds 40-59)
+  // K[3] = 0xCA62C1D6 (rounds 60-79)
+  const K = [0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xCA62C1D6];
+
   class SHA1Algorithm extends HashFunctionAlgorithm {
       constructor() {
         super();
@@ -115,111 +122,148 @@
         ];
       }
 
-      CreateInstance() {
-        return new SHA1Instance(this);
+      CreateInstance(isInverse = false) {
+        return new SHA1Instance(this, isInverse);
       }
     }
 
     class SHA1Instance extends IHashFunctionInstance {
-      constructor(algorithm) {
+      constructor(algorithm, isInverse = false) {
         super(algorithm);
+        this.isInverse = isInverse;
         this.OutputSize = 20; // 160 bits
-        this._Reset();
+
+        // SHA-1 state variables
+        this._h = null;
+        this._buffer = null;
+        this._length = 0;
+        this._bufferLength = 0;
+      }
+
+      /**
+       * Initialize the hash state with standard SHA-1 initial values
+       * RFC 3174 Section 6.1
+       */
+      Init() {
+        // Initial hash values (RFC 3174 Section 6.1)
+        this._h = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0];
+        this._buffer = new Array(64);
+        this._length = 0;
+        this._bufferLength = 0;
       }
 
       _Reset() {
-        // SHA-1 initial hash values (RFC 3174)
-        this.h = new Uint32Array(OpCodes.Hex32ToDWords('67452301EFCDAB8998BADCFE10325476C3D2E1F0'));
-        this.buffer = [];
-        this.totalLength = 0;
+        this.Init();
       }
 
+      /**
+       * Add data to the hash calculation
+       * @param {Array} data - Data to hash as byte array
+       */
       Update(data) {
         if (!data || data.length === 0) return;
 
-        this.buffer.push(...data);
-        this.totalLength += data.length;
-
-        // Process complete 64-byte blocks
-        while (this.buffer.length >= 64) {
-          const block = this.buffer.splice(0, 64);
-          this._ProcessBlock(block);
+        // Convert string to byte array if needed
+        if (typeof data === 'string') {
+          const bytes = [];
+          for (let i = 0; i < data.length; i++) {
+            bytes.push(data.charCodeAt(i) & 0xFF);
+          }
+          data = bytes;
         }
+
+        for (let i = 0; i < data.length; i++) {
+          this._buffer[this._bufferLength++] = data[i];
+
+          if (this._bufferLength === 64) {
+            this._processBlock(this._buffer);
+            this._bufferLength = 0;
+          }
+        }
+
+        this._length += data.length;
       }
 
+      /**
+       * Finalize the hash calculation and return result as byte array
+       * @returns {Array} Hash digest as byte array
+       */
       Final() {
-        // Add padding
-        const msgLength = this.totalLength;
-        this.buffer.push(...OpCodes.Hex8ToBytes("80")); // Append bit '1' followed by zeros
+        // Add padding bit
+        this._buffer[this._bufferLength++] = 0x80;
 
-        // Pad to 448 bits (56 bytes) mod 512 bits (64 bytes)
-        while (this.buffer.length % 64 !== 56) {
-          this.buffer.push(0); // Zero padding
+        // If not enough space for length, pad and process block
+        if (this._bufferLength > 56) {
+          while (this._bufferLength < 64) {
+            this._buffer[this._bufferLength++] = 0x00;
+          }
+          this._processBlock(this._buffer);
+          this._bufferLength = 0;
         }
 
-        // Append original length as 64-bit big-endian
-        const bitLength = msgLength * 8;
-        const high32 = Math.floor(bitLength / 4294967296); // 2^32
-        const low32 = bitLength & 0xFFFFFFFF;
-
-        // High 32 bits (always 0 for practical message sizes)
-        this.buffer.push(0, 0, 0, 0);
-        // Low 32 bits in big-endian format
-        const lowBytes = OpCodes.Unpack32BE(low32);
-        this.buffer.push(...lowBytes);
-
-        // Process final block(s)
-        while (this.buffer.length > 0) {
-          const block = this.buffer.splice(0, 64);
-          this._ProcessBlock(block);
+        // Pad to 56 bytes
+        while (this._bufferLength < 56) {
+          this._buffer[this._bufferLength++] = 0x00;
         }
 
-        // Produce final hash value as byte array
+        // Append length in bits as 64-bit big-endian
+        const lengthBits = this._length * 8;
+        // High 32 bits (for messages under 2^32 bits, this is 0)
+        this._buffer[56] = 0; this._buffer[57] = 0; this._buffer[58] = 0; this._buffer[59] = 0;
+        // Low 32 bits
+        this._buffer[60] = (lengthBits >>> 24) & 0xFF;
+        this._buffer[61] = (lengthBits >>> 16) & 0xFF;
+        this._buffer[62] = (lengthBits >>> 8) & 0xFF;
+        this._buffer[63] = lengthBits & 0xFF;
+
+        // Process final block
+        this._processBlock(this._buffer);
+
+        // Convert hash to byte array
         const result = [];
         for (let i = 0; i < 5; i++) {
-          result.push(...OpCodes.Unpack32BE(this.h[i]));
+          const bytes = OpCodes.Unpack32BE(this._h[i]);
+          for (let j = 0; j < 4; j++) {
+            result.push(bytes[j]);
+          }
         }
 
-        this._Reset();
         return result;
       }
 
-      _ProcessBlock(block) {
-        // Break chunk into sixteen 32-bit big-endian words
-        const w = new Array(80);
-        for (let i = 0; i < 16; i++) {
-          const offset = i * 4;
-          w[i] = OpCodes.Pack32BE(
-            block[offset], 
-            block[offset + 1], 
-            block[offset + 2], 
-            block[offset + 3]
-          );
+      /**
+       * Process a single 512-bit block
+       * RFC 3174 Section 6.1
+       * @param {Array} block - 64-byte block to process
+       */
+      _processBlock(block) {
+        const W = new Array(80);
+        let a, b, c, d, e;
+
+        // Prepare message schedule W[t]
+        for (let t = 0; t < 16; t++) {
+          W[t] = OpCodes.Pack32BE(block[t*4], block[t*4+1], block[t*4+2], block[t*4+3]);
         }
 
         // Extend the sixteen 32-bit words into eighty 32-bit words
-        for (let i = 16; i < 80; i++) {
-          w[i] = OpCodes.RotL32(w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16], 1);
+        for (let t = 16; t < 80; t++) {
+          W[t] = OpCodes.RotL32(W[t-3] ^ W[t-8] ^ W[t-14] ^ W[t-16], 1);
         }
 
-        // Initialize hash value for this chunk
-        let a = this.h[0];
-        let b = this.h[1];
-        let c = this.h[2];
-        let d = this.h[3];
-        let e = this.h[4];
+        // Initialize working variables
+        a = this._h[0]; b = this._h[1]; c = this._h[2]; d = this._h[3]; e = this._h[4];
 
         // Main loop (80 rounds)
-        for (let i = 0; i < 80; i++) {
+        for (let t = 0; t < 80; t++) {
           let f, k;
 
-          if (i < 20) {
+          if (t < 20) {
             f = (b & c) | ((~b) & d);
             k = K[0];
-          } else if (i < 40) {
+          } else if (t < 40) {
             f = b ^ c ^ d;
             k = K[1];
-          } else if (i < 60) {
+          } else if (t < 60) {
             f = (b & c) | (b & d) | (c & d);
             k = K[2];
           } else {
@@ -227,7 +271,7 @@
             k = K[3];
           }
 
-          const temp = ((OpCodes.RotL32(a, 5) + f + e + k + w[i]) >>> 0);
+          const temp = (OpCodes.RotL32(a, 5) + f + e + k + W[t]) >>> 0;
           e = d;
           d = c;
           c = OpCodes.RotL32(b, 30);
@@ -235,24 +279,63 @@
           a = temp;
         }
 
-        // Add this chunk's hash to result so far
-        this.h[0] = (this.h[0] + a) >>> 0;
-        this.h[1] = (this.h[1] + b) >>> 0;
-        this.h[2] = (this.h[2] + c) >>> 0;
-        this.h[3] = (this.h[3] + d) >>> 0;
-        this.h[4] = (this.h[4] + e) >>> 0;
+        // Add working variables to hash value
+        this._h[0] = (this._h[0] + a) >>> 0;
+        this._h[1] = (this._h[1] + b) >>> 0;
+        this._h[2] = (this._h[2] + c) >>> 0;
+        this._h[3] = (this._h[3] + d) >>> 0;
+        this._h[4] = (this._h[4] + e) >>> 0;
       }
 
-      Hash(data) {
-        this._Reset();
-        this.Update(data);
+      /**
+       * Hash a complete message in one operation
+       * @param {Array} message - Message to hash as byte array
+       * @returns {Array} Hash digest as byte array
+       */
+      Hash(message) {
+        this.Init();
+        this.Update(message);
         return this.Final();
       }
 
+      /**
+       * Required interface methods for IAlgorithmInstance compatibility
+       */
+      KeySetup(key) {
+        // Hashes don't use keys
+        return true;
+      }
+
+      EncryptBlock(blockIndex, plaintext) {
+        // Return hash of the plaintext
+        return this.Hash(plaintext);
+      }
+
+      DecryptBlock(blockIndex, ciphertext) {
+        // Hash functions are one-way
+        throw new Error('SHA-1 is a one-way hash function - decryption not possible');
+      }
+
+      ClearData() {
+        if (this._h) OpCodes.ClearArray(this._h);
+        if (this._buffer) OpCodes.ClearArray(this._buffer);
+        this._length = 0;
+        this._bufferLength = 0;
+      }
+
+      /**
+       * Feed method required by test suite - processes input data
+       * @param {Array} data - Input data as byte array
+       */
       Feed(data) {
+        this.Init();
         this.Update(data);
       }
 
+      /**
+       * Result method required by test suite - returns final hash
+       * @returns {Array} Hash digest as byte array
+       */
       Result() {
         return this.Final();
       }

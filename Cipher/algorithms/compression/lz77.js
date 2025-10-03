@@ -88,20 +88,20 @@
         // Test vectors with binary LZ77 encoding format: [FLAG][DATA]
         this.tests = [
           new TestCase(
-            global.OpCodes.AnsiToBytes("ABCD"), // "ABCD" - No repetition, all literals
+            OpCodes.AnsiToBytes("ABCD"), // "ABCD" - No repetition, all literals
             [0, 65, 0, 66, 0, 67, 0, 68], // [0,A][0,B][0,C][0,D] - all literals
             "No repeated patterns - worst case",
             "https://en.wikipedia.org/wiki/LZ77_and_LZ78"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("AAAA"), // "AAAA" - Length 4, compresses well
-            [0, 65, 1, 0, 1, 3, 0], // [0,A][1,dist=1,len=3,next=0] - A + match 3 A's
+            OpCodes.AnsiToBytes("AAAA"), // "AAAA" - Length 4, compresses well
+            [0, 65, 2, 0, 1, 3], // [0,A][2,dist=1,len=3] - A + end match 3 A's
             "Repetition compression - AAAA",
             "https://en.wikipedia.org/wiki/LZ77_and_LZ78"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("ABCABC"), // "ABCABC" - Length 6, ABC repeats (len=3)
-            [0, 65, 0, 66, 0, 67, 1, 0, 3, 3, 0], // [0,A][0,B][0,C][1,dist=3,len=3,next=0] - ABC + match ABC
+            OpCodes.AnsiToBytes("ABCABC"), // "ABCABC" - Length 6, ABC repeats (len=3)
+            [0, 65, 0, 66, 0, 67, 2, 0, 3, 3], // [0,A][0,B][0,C][2,dist=3,len=3] - ABC + end match ABC
             "Pattern repetition - ABCABC",
             "https://en.wikipedia.org/wiki/LZ77_and_LZ78"
           )
@@ -150,18 +150,30 @@
           const match = this._findLongestMatch(pos);
 
           if (match.length >= this.minMatchLength) {
-            // Encode as (distance, length, next_literal)
-            const nextLiteral = pos + match.length < this.inputBuffer.length ? 
-                                this.inputBuffer[pos + match.length] : 0;
+            // Check if match extends to end of input
+            const nextLiteralPos = pos + match.length;
 
-            // Format: [FLAG=1][DISTANCE_HIGH][DISTANCE_LOW][LENGTH][LITERAL]
-            result.push(1); // Match flag
-            result.push((match.distance >> 8) & 0xFF);
-            result.push(match.distance & 0xFF);
-            result.push(match.length);
-            result.push(nextLiteral);
+            if (nextLiteralPos >= this.inputBuffer.length) {
+              // Match extends to end - encode without next literal
+              // Format: [FLAG=2][DISTANCE_HIGH][DISTANCE_LOW][LENGTH] (no literal)
+              result.push(2); // End-match flag
+              result.push((match.distance >> 8) & 0xFF);
+              result.push(match.distance & 0xFF);
+              result.push(match.length);
+              pos = nextLiteralPos;
+            } else {
+              // Normal match with next literal
+              const nextLiteral = this.inputBuffer[nextLiteralPos];
 
-            pos += match.length + 1; // Skip matched bytes + literal
+              // Format: [FLAG=1][DISTANCE_HIGH][DISTANCE_LOW][LENGTH][LITERAL]
+              result.push(1); // Match flag
+              result.push((match.distance >> 8) & 0xFF);
+              result.push(match.distance & 0xFF);
+              result.push(match.length);
+              result.push(nextLiteral);
+
+              pos = nextLiteralPos + 1; // Skip the literal we just encoded
+            }
           } else {
             // Encode as literal
             // Format: [FLAG=0][LITERAL]
@@ -182,8 +194,8 @@
         while (i < this.inputBuffer.length) {
           const flag = this.inputBuffer[i++];
 
-          if (flag === 1 && i + 4 < this.inputBuffer.length) {
-            // Match: (distance, length, literal)
+          if (flag === 1 && i + 4 <= this.inputBuffer.length) {
+            // Match with literal: (distance, length, literal)
             const distance = (this.inputBuffer[i++] << 8) | this.inputBuffer[i++];
             const length = this.inputBuffer[i++];
             const literal = this.inputBuffer[i++];
@@ -200,6 +212,21 @@
 
             // Add literal
             result.push(literal);
+          } else if (flag === 2 && i + 3 <= this.inputBuffer.length) {
+            // End match: (distance, length) - no literal
+            const distance = (this.inputBuffer[i++] << 8) | this.inputBuffer[i++];
+            const length = this.inputBuffer[i++];
+
+            // Copy from history
+            for (let j = 0; j < length; j++) {
+              const copyPos = result.length - distance;
+              if (copyPos >= 0 && copyPos < result.length) {
+                result.push(result[copyPos]);
+              } else {
+                result.push(0); // Fallback for invalid references
+              }
+            }
+            // No literal to add
           } else if (flag === 0 && i < this.inputBuffer.length) {
             // Literal byte
             result.push(this.inputBuffer[i++]);

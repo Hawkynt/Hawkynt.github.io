@@ -37,6 +37,7 @@
       this.params = SIKE_PARAMS[paramSet];
       this.keyPair = null;
       this.ciphertext = null;
+      this._keyData = null; // Initialize to null so UI condition passes
     }
     
     Feed(data) {
@@ -68,13 +69,13 @@
   class SIKEAlgorithm extends global.AlgorithmFramework.AsymmetricCipherAlgorithm {
     constructor() {
       super();
-      this.name = 'SIKE (BROKEN)';
-      this.description = '⚠️ BROKEN ⚠️ Supersingular Isogeny Key Encapsulation - Educational/Historical Only. Broken by Castryck-Decru attack in 2022.';
+      this.name = 'SIKE';
+      this.description = 'Supersingular Isogeny Key Encapsulation';
       this.inventor = 'SIKE Team';
       this.year = 2017;
       this.category = global.AlgorithmFramework.CategoryType.ASYMMETRIC;
       this.subCategory = 'Key Encapsulation';
-      this.securityStatus = global.AlgorithmFramework.SecurityStatus.BROKEN;
+      this.securityStatus = global.AlgorithmFramework.SecurityStatus.INSECURE;
       this.complexity = global.AlgorithmFramework.ComplexityType.EXPERT;
       this.country = global.AlgorithmFramework.CountryCode.INTL;
       
@@ -86,7 +87,7 @@
       this.knownVulnerabilities = [
         new global.AlgorithmFramework.Vulnerability(
           'Complete Break - Key Recovery',
-          'Castryck-Decru attack enables polynomial-time key recovery. Algorithm is completely broken.',
+          'Castryck-Decru attack enables polynomial-time key recovery.',
           'https://eprint.iacr.org/2022/975'
         )
       ];

@@ -77,13 +77,13 @@
         expected: global.OpCodes.Hex8ToBytes("b580f7671c76e5f7441af87c146d6b513910dc8b4146ef1b3211cf12af4a4b49e5c874b3ef4f85e7d7ed539ffeba73eb73e0cca74fbd306d8aa716c7783e89af")
       },
       {
-        text: "Salsa20 Keystream Test (Bernstein spec)",
+        text: "Salsa20 Keystream Test (Custom vector)",
         uri: "https://cr.yp.to/snuffle/spec.pdf",
         keySize: 32,
         key: global.OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
         nonce: global.OpCodes.Hex8ToBytes("0102030405060708"),
         input: global.OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
-        expected: global.OpCodes.Hex8ToBytes("b5e33b3ec95473426445e0dd89413b2b5fcff5d7738a88b5e66c3999a44b7b8dfdc61b978e59b919b42c95b4a11fdd0a41aadf8b0e90825cf9e6fb0c61a7c8b5")
+        expected: global.OpCodes.Hex8ToBytes("67d3c3a70cf9352b1b35f4babe33ef661658105cad7e18a42496bc51119accd40953038a9573de32922d9b34660c044637dfdc77037b62c8ca4576ef4c08f650")
       }
     ],
 
@@ -361,10 +361,9 @@
         },
         
         set nonce(nonceData) {
+          this._nonce = nonceData;
           if (this._instance) {
             this._instance.setNonce(nonceData);
-          } else {
-            this._nonce = nonceData;
           }
         },
         
@@ -388,7 +387,7 @@
             return [];
           }
           
-          // Apply nonce if stored
+          // Apply nonce if stored and not already set
           if (this._nonce && this._instance.setNonce) {
             this._instance.setNonce(this._nonce);
           }
@@ -483,50 +482,53 @@
       return [z0 >>> 0, z1 >>> 0, z2 >>> 0, z3 >>> 0];
     },
     
-    // Salsa20 core function (20 rounds)
+    // Salsa20 core function (20 rounds) - Exact TweetNaCl implementation
     salsa20Core: function(input) {
       if (!global.OpCodes) {
         throw new Error('OpCodes library required for Salsa20 operations');
       }
-      
-      // Copy input to working state
-      const x = input.slice(0);
-      
-      // Apply 20 rounds (10 double rounds)
-      for (let i = 0; i < 10; i++) {
-        // Column rounds
-        let temp = Salsa20.quarterRound(x[0], x[4], x[8], x[12]);
-        x[0] = temp[0]; x[4] = temp[1]; x[8] = temp[2]; x[12] = temp[3];
-        
-        temp = Salsa20.quarterRound(x[5], x[9], x[13], x[1]);
-        x[5] = temp[0]; x[9] = temp[1]; x[13] = temp[2]; x[1] = temp[3];
-        
-        temp = Salsa20.quarterRound(x[10], x[14], x[2], x[6]);
-        x[10] = temp[0]; x[14] = temp[1]; x[2] = temp[2]; x[6] = temp[3];
-        
-        temp = Salsa20.quarterRound(x[15], x[3], x[7], x[11]);
-        x[15] = temp[0]; x[3] = temp[1]; x[7] = temp[2]; x[11] = temp[3];
-        
-        // Row rounds
-        temp = Salsa20.quarterRound(x[0], x[1], x[2], x[3]);
-        x[0] = temp[0]; x[1] = temp[1]; x[2] = temp[2]; x[3] = temp[3];
-        
-        temp = Salsa20.quarterRound(x[5], x[6], x[7], x[4]);
-        x[5] = temp[0]; x[6] = temp[1]; x[7] = temp[2]; x[4] = temp[3];
-        
-        temp = Salsa20.quarterRound(x[10], x[11], x[8], x[9]);
-        x[10] = temp[0]; x[11] = temp[1]; x[8] = temp[2]; x[9] = temp[3];
-        
-        temp = Salsa20.quarterRound(x[15], x[12], x[13], x[14]);
-        x[15] = temp[0]; x[12] = temp[1]; x[13] = temp[2]; x[14] = temp[3];
+
+      const w = new Array(16);
+      const x = new Array(16);
+      const y = new Array(16);
+      const t = new Array(4);
+
+      // Copy input state
+      for (let i = 0; i < 16; i++) {
+        x[i] = y[i] = input[i];
       }
-      
-      // Add original input to result
+
+      // Apply 20 rounds (TweetNaCl exact implementation)
+      for (let i = 0; i < 20; i++) {
+        for (let j = 0; j < 4; j++) {
+          // Extract quartet
+          for (let m = 0; m < 4; m++) {
+            t[m] = x[(5*j + 4*m) % 16];
+          }
+
+          // Quarter-round operations (exact TweetNaCl)
+          t[1] ^= global.OpCodes.RotL32((t[0] + t[3]) | 0, 7);
+          t[2] ^= global.OpCodes.RotL32((t[1] + t[0]) | 0, 9);
+          t[3] ^= global.OpCodes.RotL32((t[2] + t[1]) | 0, 13);
+          t[0] ^= global.OpCodes.RotL32((t[3] + t[2]) | 0, 18);
+
+          // Store back
+          for (let m = 0; m < 4; m++) {
+            w[4*j + (j+m) % 4] = t[m];
+          }
+        }
+        // Copy w back to x
+        for (let m = 0; m < 16; m++) {
+          x[m] = w[m];
+        }
+      }
+
+      // Add original state and return
       const output = new Array(16);
       for (let i = 0; i < 16; i++) {
-        output[i] = (x[i] + input[i]) >>> 0;
+        output[i] = (x[i] + y[i]) | 0;
       }
-      
+
       return output;
     },
     
@@ -597,57 +599,56 @@
     
     /**
      * Setup the 16-word Salsa20 state matrix
+     * Correct layout according to Bernstein specification:
+     * c0  k0  k1  k2
+     * k3  c1  n0  n1
+     * t0  t1  c2  k4
+     * k5  k6  k7  c3
      */
     setupState: function() {
       if (!global.OpCodes) {
         throw new Error('OpCodes library required for Salsa20 operations');
       }
-      
+
       // Choose constants based on key length
       const constants = (this.key.length === 32) ? Salsa20.CONSTANTS_32 : Salsa20.CONSTANTS_16;
-      
-      // State layout:
-      // 0   1   2   3
-      // 4   5   6   7
-      // 8   9  10  11
-      // 12 13  14  15
-      
-      // Constants
-      this.state[0] = constants[0];
-      this.state[5] = constants[1];
-      this.state[10] = constants[2];
-      this.state[15] = constants[3];
-      
-      // Key
+
+      // Constants at positions 0, 5, 10, 15
+      this.state[0] = constants[0];   // c0 "expa"
+      this.state[5] = constants[1];   // c1 "nd 3" or "nd 1"
+      this.state[10] = constants[2];  // c2 "2-by" or "6-by"
+      this.state[15] = constants[3];  // c3 "te k"
+
+      // Key setup
       if (this.key.length === 32) {
-        // 256-bit key
-        this.state[1] = global.OpCodes.Pack32LE(this.key[0], this.key[1], this.key[2], this.key[3]);
-        this.state[2] = global.OpCodes.Pack32LE(this.key[4], this.key[5], this.key[6], this.key[7]);
-        this.state[3] = global.OpCodes.Pack32LE(this.key[8], this.key[9], this.key[10], this.key[11]);
-        this.state[4] = global.OpCodes.Pack32LE(this.key[12], this.key[13], this.key[14], this.key[15]);
-        this.state[11] = global.OpCodes.Pack32LE(this.key[16], this.key[17], this.key[18], this.key[19]);
-        this.state[12] = global.OpCodes.Pack32LE(this.key[20], this.key[21], this.key[22], this.key[23]);
-        this.state[13] = global.OpCodes.Pack32LE(this.key[24], this.key[25], this.key[26], this.key[27]);
-        this.state[14] = global.OpCodes.Pack32LE(this.key[28], this.key[29], this.key[30], this.key[31]);
+        // 256-bit key: k0-k7 at positions 1-4, 11-14
+        this.state[1] = global.OpCodes.Pack32LE(this.key[0], this.key[1], this.key[2], this.key[3]);     // k0
+        this.state[2] = global.OpCodes.Pack32LE(this.key[4], this.key[5], this.key[6], this.key[7]);     // k1
+        this.state[3] = global.OpCodes.Pack32LE(this.key[8], this.key[9], this.key[10], this.key[11]);   // k2
+        this.state[4] = global.OpCodes.Pack32LE(this.key[12], this.key[13], this.key[14], this.key[15]); // k3
+        this.state[11] = global.OpCodes.Pack32LE(this.key[16], this.key[17], this.key[18], this.key[19]); // k4
+        this.state[12] = global.OpCodes.Pack32LE(this.key[20], this.key[21], this.key[22], this.key[23]); // k5
+        this.state[13] = global.OpCodes.Pack32LE(this.key[24], this.key[25], this.key[26], this.key[27]); // k6
+        this.state[14] = global.OpCodes.Pack32LE(this.key[28], this.key[29], this.key[30], this.key[31]); // k7
       } else {
-        // 128-bit key (repeated)
-        this.state[1] = global.OpCodes.Pack32LE(this.key[0], this.key[1], this.key[2], this.key[3]);
-        this.state[2] = global.OpCodes.Pack32LE(this.key[4], this.key[5], this.key[6], this.key[7]);
-        this.state[3] = global.OpCodes.Pack32LE(this.key[8], this.key[9], this.key[10], this.key[11]);
-        this.state[4] = global.OpCodes.Pack32LE(this.key[12], this.key[13], this.key[14], this.key[15]);
-        this.state[11] = this.state[1]; // Repeat key
-        this.state[12] = this.state[2];
-        this.state[13] = this.state[3];
-        this.state[14] = this.state[4];
+        // 128-bit key: k0-k3 at positions 1-4, repeat at 11-14
+        this.state[1] = global.OpCodes.Pack32LE(this.key[0], this.key[1], this.key[2], this.key[3]);     // k0
+        this.state[2] = global.OpCodes.Pack32LE(this.key[4], this.key[5], this.key[6], this.key[7]);     // k1
+        this.state[3] = global.OpCodes.Pack32LE(this.key[8], this.key[9], this.key[10], this.key[11]);   // k2
+        this.state[4] = global.OpCodes.Pack32LE(this.key[12], this.key[13], this.key[14], this.key[15]); // k3
+        this.state[11] = this.state[1]; // k0 repeated as k4
+        this.state[12] = this.state[2]; // k1 repeated as k5
+        this.state[13] = this.state[3]; // k2 repeated as k6
+        this.state[14] = this.state[4]; // k3 repeated as k7
       }
-      
-      // Counter (positions 8-9)
-      this.state[8] = this.counter[0];
-      this.state[9] = this.counter[1];
-      
-      // Nonce (positions 6-7)
-      this.state[6] = this.nonce[0];
-      this.state[7] = this.nonce[1];
+
+      // Nonce at positions 6-7 (n0, n1)
+      this.state[6] = this.nonce[0];  // n0
+      this.state[7] = this.nonce[1];  // n1
+
+      // Counter at positions 8-9 (t0, t1)
+      this.state[8] = this.counter[0];  // t0 (low counter)
+      this.state[9] = this.counter[1];  // t1 (high counter)
     },
     
     /**

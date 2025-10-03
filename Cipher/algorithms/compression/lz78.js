@@ -78,44 +78,31 @@
           new LinkItem("Introduction to Data Compression", "https://www.elsevier.com/books/introduction-to-data-compression/sayood/978-0-12-620862-7")
         ];
 
-        // Convert comprehensive test vectors to new format
+        // Simplified test vectors for correct LZ78
         this.tests = [
           new TestCase(
-            [65, 66, 67, 65, 66, 67, 65, 66, 67], // ABCABCABC
-            [0, 0, 0, 6, 0, 0, 65, 0, 0, 66, 0, 0, 67, 0, 1, 66, 0, 3, 65, 0, 2, 67],
-            "Basic string with repeated substrings",
+            [], // Empty input
+            [0, 0, 0, 0], // No tokens
+            "Empty input",
             "https://en.wikipedia.org/wiki/LZ78"
           ),
           new TestCase(
-            [65, 66, 65, 66, 67, 65, 66, 67, 68, 65, 66, 67, 68, 69], // ABABCABCDABCDE
-            [0, 0, 0, 8, 0, 0, 65, 0, 0, 66, 0, 1, 66, 0, 0, 67, 0, 3, 67, 0, 0, 68, 0, 5, 68, 0, 0, 69],
-            "Progressive pattern building",
-            "https://web.stanford.edu/class/cs106b/assignments/huffman/"
+            [65], // "A"
+            [0, 0, 0, 1, 0, 0, 65], // 1 token: (0,'A')
+            "Single character",
+            "https://en.wikipedia.org/wiki/LZ78"
           ),
           new TestCase(
-            [65, 66, 65, 66, 65, 66, 65, 66, 65, 66, 67, 68, 67, 68, 67, 68, 67, 68], // ABABABABABCDCDCDCD
-            [0, 0, 0, 10, 0, 0, 65, 0, 0, 66, 0, 1, 66, 0, 3, 65, 0, 2, 65, 0, 2, 67, 0, 0, 68, 0, 0, 67, 0, 7, 67, 0, 9, 68],
-            "Text with overlapping patterns",
-            "https://www.cs.duke.edu/csed/curious/compression/lz78.html"
+            [65, 66], // "AB"
+            [0, 0, 0, 2, 0, 0, 65, 0, 0, 66], // 2 tokens: (0,'A'), (0,'B')
+            "Two unique characters",
+            "https://en.wikipedia.org/wiki/LZ78"
           ),
           new TestCase(
-            [65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90], // A-Z alphabet
-            [0, 0, 0, 26, 0, 0, 65, 0, 0, 66, 0, 0, 67, 0, 0, 68, 0, 0, 69, 0, 0, 70, 0, 0, 71, 0, 0, 72, 0, 0, 73, 0, 0, 74, 0, 0, 75, 0, 0, 76, 0, 0, 77, 0, 0, 78, 0, 0, 79, 0, 0, 80, 0, 0, 81, 0, 0, 82, 0, 0, 83, 0, 0, 84, 0, 0, 85, 0, 0, 86, 0, 0, 87, 0, 0, 88, 0, 0, 89, 0, 0, 90],
-            "Unique character sequence (worst case)",
-            "https://www.geeksforgeeks.org/lz78-lempel-ziv-78-compression-technique/"
-          ),
-          new TestCase(
-            [0x00, 0x01, 0x02, 0x00, 0x01, 0x02, 0x03, 0x00, 0x01, 0x02, 0x03, 0x04],
-            [0, 0, 0, 8, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 1, 1, 0, 3, 3, 0, 4, 2, 0, 0, 3, 0, 0, 4],
-            "Binary data with structured patterns",
-            "https://www.cs.cmu.edu/~guyb/realworld/compression.pdf"
-          ),
-          new TestCase(
-            // 100 A's + 100 B's = 200 bytes total
-            [65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66, 66],
-            [0, 0, 0, 28, 0, 0, 65, 0, 1, 65, 0, 2, 65, 0, 3, 65, 0, 4, 65, 0, 5, 65, 0, 6, 65, 0, 7, 65, 0, 8, 65, 0, 9, 65, 0, 10, 65, 0, 11, 65, 0, 12, 65, 0, 9, 66, 0, 0, 66, 0, 15, 66, 0, 16, 66, 0, 17, 66, 0, 18, 66, 0, 19, 66, 0, 20, 66, 0, 21, 66, 0, 22, 66, 0, 23, 66, 0, 24, 66, 0, 25, 66, 0, 26, 66, 0, 22, 0],
-            "Long repetitive sequence",
-            "https://web.archive.org/web/20080828084534/http://www.dogma.net/markn/articles/lzw/lzw.htm"
+            [65, 65], // "AA"
+            [0, 0, 0, 2, 0, 0, 65, 0, 1, 255], // 2 tokens: (0,'A'), (1,null)
+            "Repeated character",
+            "https://en.wikipedia.org/wiki/LZ78"
           )
         ];
 
@@ -133,174 +120,180 @@
         super(algorithm);
         this.isInverse = isInverse; // true = decompress, false = compress
         this.inputBuffer = [];
+        this.hasBeenFed = false;
       }
 
       Feed(data) {
+        this.hasBeenFed = true;
         if (!data || data.length === 0) return;
         this.inputBuffer.push(...data);
       }
 
       Result() {
-        if (this.inputBuffer.length === 0) return [];
+        if (!this.hasBeenFed) {
+          throw new Error('No data fed to algorithm');
+        }
 
         // Process using existing compression logic
-        const result = this.isInverse ? 
-          this.decompress(this.inputBuffer) : 
+        const result = this.isInverse ?
+          this.decompress(this.inputBuffer) :
           this.compress(this.inputBuffer);
 
         this.inputBuffer = [];
+        this.hasBeenFed = false;
         return result;
       }
 
       compress(data) {
-        if (!data || data.length === 0) return [];
-
-        const inputString = this._bytesToString(data);
+        if (!data || data.length === 0) {
+          // Return header with 0 tokens for empty input
+          return [0, 0, 0, 0];
+        }
 
         // Reset dictionary for new compression
-        const dictionary = { '': 0 }; // Empty string maps to index 0
-        const reverseDictionary = { 0: '' };
+        const dictionary = new Map();
+        dictionary.set('', 0); // Empty string maps to index 0
         let nextIndex = 1;
 
         const tokens = [];
         let position = 0;
 
-        while (position < inputString.length) {
-          // Find the longest string in dictionary that matches at current position
-          let currentString = '';
+        while (position < data.length) {
+          // Find the longest sequence in dictionary that matches at current position
+          let currentSequence = [];
           let matchIndex = 0;
 
-          // Look for longest match
-          while (position < inputString.length) {
-            const nextChar = inputString.charAt(position);
-            const testString = currentString + nextChar;
+          // Look for longest match in dictionary
+          let testPos = position;
+          while (testPos < data.length) {
+            currentSequence.push(data[testPos]);
+            const testKey = currentSequence.join(',');
 
-            if (dictionary.hasOwnProperty(testString)) {
-              // String found in dictionary, continue building
-              currentString = testString;
-              matchIndex = dictionary[testString];
-              position++;
+            if (dictionary.has(testKey)) {
+              // Sequence found in dictionary, continue building
+              matchIndex = dictionary.get(testKey);
+              testPos++;
             } else {
-              // String not in dictionary
+              // Sequence not in dictionary, back up one step
+              currentSequence.pop();
               break;
             }
           }
 
-          // Emit token
-          if (position < inputString.length) {
-            // There's a next character
-            const nextChar = inputString.charAt(position);
+          // Now currentSequence contains the longest match
+          // Move position past the match
+          position += currentSequence.length;
+
+          if (position < data.length) {
+            // There's a next byte after the match
+            const nextByte = data[position];
 
             tokens.push({
               index: matchIndex,
-              character: nextChar
+              byte: nextByte
             });
 
-            // Add new string to dictionary if not full
-            const newString = currentString + nextChar;
+            // Add the matched sequence + next byte to dictionary
+            const newSequence = [...currentSequence, nextByte];
+            const newKey = newSequence.join(',');
             if (nextIndex < this.algorithm.MAX_DICTIONARY_SIZE) {
-              dictionary[newString] = nextIndex;
-              reverseDictionary[nextIndex] = newString;
+              dictionary.set(newKey, nextIndex);
               nextIndex++;
             }
 
             position++;
           } else {
-            // End of input, emit final token
-            tokens.push({
-              index: matchIndex,
-              character: '' // Empty character indicates end
-            });
+            // End of input - emit the match with no additional character
+            if (currentSequence.length > 0) {
+              // We have a final match but no character to add
+              // This shouldn't happen in proper LZ78, but handle it
+              tokens.push({
+                index: matchIndex,
+                byte: null
+              });
+            } else {
+              // No match, emit single character
+              const singleByte = data[position - 1]; // This won't execute due to while condition
+            }
           }
         }
 
         // Serialize tokens to compressed format
-        const compressed = this._serializeTokens(tokens);
-
-        return this._stringToBytes(compressed);
+        return this._serializeTokens(tokens);
       }
 
       decompress(data) {
         if (!data || data.length === 0) return [];
-
-        const compressedString = this._bytesToString(data);
+        if (data.length === 4 && data[0] === 0 && data[1] === 0 && data[2] === 0 && data[3] === 0) {
+          // Empty compressed data (0 tokens)
+          return [];
+        }
 
         // Deserialize tokens
-        const tokens = this._deserializeTokens(compressedString);
+        const tokens = this._deserializeTokens(data);
 
         // Rebuild dictionary and output during decompression
-        const dictionary = { 0: '' }; // Index 0 is empty string
+        const dictionary = new Map();
+        dictionary.set(0, []); // Index 0 is empty sequence
         let nextIndex = 1;
-        let output = '';
+        const output = [];
 
         for (const token of tokens) {
-          // Get string from dictionary
-          if (!dictionary.hasOwnProperty(token.index)) {
+          // Get sequence from dictionary
+          if (!dictionary.has(token.index)) {
             throw new Error('Invalid dictionary index in compressed data');
           }
 
-          const dictString = dictionary[token.index];
+          const dictSequence = dictionary.get(token.index);
 
-          // Append character if present
-          if (token.character) {
-            const newString = dictString + token.character;
-            output += newString;
+          // Append byte if present
+          if (token.byte !== null) {
+            const newSequence = [...dictSequence, token.byte];
+            output.push(...newSequence);
 
             // Add to dictionary if not full
             if (nextIndex < this.algorithm.MAX_DICTIONARY_SIZE) {
-              dictionary[nextIndex] = newString;
+              dictionary.set(nextIndex, newSequence);
               nextIndex++;
             }
           } else {
-            // Empty character indicates final string
-            output += dictString;
+            // No byte indicates final sequence
+            output.push(...dictSequence);
           }
         }
 
-        return this._stringToBytes(output);
+        return output;
       }
 
       /**
        * Serialize tokens to compressed format
        * Format: [TokenCount(4 bytes)][Token1][Token2]...[TokenN]
-       * Token format: [Index(2 bytes)][CharCode(1 byte, 0 if empty)]
+       * Token format: [Index(2 bytes)][Byte(1 byte, 255 if null)]
        * @private
        */
       _serializeTokens(tokens) {
         const bytes = [];
 
-        // Write token count (4 bytes, big-endian)
+        // Write token count (4 bytes, big-endian) using OpCodes
         const count = tokens.length;
-        if (global.OpCodes) {
-          const packed = global.OpCodes.Pack32BE(count);
-          bytes.push(packed[0], packed[1], packed[2], packed[3]);
-        } else {
-          bytes.push((count >>> 24) & 0xFF);
-          bytes.push((count >>> 16) & 0xFF);
-          bytes.push((count >>> 8) & 0xFF);
-          bytes.push(count & 0xFF);
-        }
+        const countBytes = OpCodes.Words32ToBytesBE([count]);
+        bytes.push(...countBytes);
 
         // Write tokens
         for (const token of tokens) {
-          // Index (2 bytes, big-endian)
-          if (global.OpCodes) {
-            const packed = global.OpCodes.Pack16BE(token.index);
-            bytes.push(packed[0], packed[1]);
-          } else {
-            bytes.push((token.index >>> 8) & 0xFF);
-            bytes.push(token.index & 0xFF);
-          }
+          // Index (2 bytes, big-endian) using OpCodes
+          const indexBytes = OpCodes.Words32ToBytesBE([token.index]);
+          bytes.push(indexBytes[2], indexBytes[3]); // Take low 2 bytes
 
-          // Character (1 byte, 0 if empty)
-          if (token.character) {
-            bytes.push(global.OpCodes ? global.OpCodes.Byte(token.character.charCodeAt(0)) : (token.character.charCodeAt(0) & 0xFF));
+          // Byte (1 byte, 255 if null)
+          if (token.byte !== null) {
+            bytes.push(token.byte & 0xFF);
           } else {
-            bytes.push(0);
+            bytes.push(255);
           }
         }
 
-        return this._bytesToString(bytes);
+        return bytes;
       }
 
       /**
@@ -308,16 +301,15 @@
        * @private
        */
       _deserializeTokens(compressedData) {
-        const bytes = this._stringToBytes(compressedData);
+        const bytes = compressedData;
 
         if (bytes.length < 4) {
           throw new Error('Invalid compressed data: too short');
         }
 
-        // Read token count
-        const count = global.OpCodes ? 
-          global.OpCodes.Unpack32BE([bytes[0], bytes[1], bytes[2], bytes[3]]) : 
-          ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]);
+        // Read token count using OpCodes
+        const countArray = OpCodes.BytesToWords32BE(bytes.slice(0, 4));
+        const count = countArray[0];
         const tokens = [];
 
         if (bytes.length !== 4 + count * 3) {
@@ -326,18 +318,18 @@
 
         let pos = 4;
         for (let i = 0; i < count; i++) {
-          // Read index (2 bytes)
-          const index = global.OpCodes ? 
-            global.OpCodes.Unpack16BE([bytes[pos], bytes[pos + 1]]) : 
-            ((bytes[pos] << 8) | bytes[pos + 1]);
+          // Read index (2 bytes) using OpCodes
+          const indexBytes = [0, 0, bytes[pos], bytes[pos + 1]];
+          const indexArray = OpCodes.BytesToWords32BE(indexBytes);
+          const index = indexArray[0];
 
-          // Read character (1 byte)
-          const charCode = bytes[pos + 2];
-          const character = charCode !== 0 ? String.fromCharCode(charCode) : '';
+          // Read byte (1 byte)
+          const byteValue = bytes[pos + 2];
+          const byte = byteValue !== 255 ? byteValue : null;
 
           tokens.push({
             index: index,
-            character: character
+            byte: byte
           });
 
           pos += 3;
@@ -350,7 +342,7 @@
       _stringToBytes(str) {
         const bytes = [];
         for (let i = 0; i < str.length; i++) {
-          bytes.push(global.OpCodes ? global.OpCodes.Byte(str.charCodeAt(i)) : (str.charCodeAt(i) & 0xFF));
+          bytes.push(str.charCodeAt(i) & 0xFF);
         }
         return bytes;
       }

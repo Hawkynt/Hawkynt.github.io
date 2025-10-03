@@ -48,26 +48,53 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  // BLAKE3 constants - matching official specification
+  const IV = new Uint32Array([
+    0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
+    0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19
+  ]);
+
+  // Message permutation for rounds - BLAKE3 specification
+  const MSG_PERMUTATION = [
+    2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8
+  ];
+
+  // Flag constants - BLAKE3 specification Section 2.3
+  const CHUNK_START = 1;
+  const CHUNK_END = 2;
+  const PARENT = 4;
+  const ROOT = 8;
+  const KEYED_HASH = 16;
+  const DERIVE_KEY_CONTEXT = 32;
+  const DERIVE_KEY_MATERIAL = 64;
+
+  // Block and output lengths
+  const BLAKE3_BLOCK_LEN = 64;
+  const BLAKE3_OUT_LEN = 32;
+  const BLAKE3_KEY_LEN = 32;
+  const BLAKE3_CHUNK_LEN = 1024;
+
   class BLAKE3Enhanced extends HashFunctionAlgorithm {
       constructor() {
         super();
 
         // Required metadata
         this.name = "BLAKE3-Enhanced";
-        this.description = "High-performance cryptographic hash function designed as the successor to BLAKE2. Features extreme parallelism, variable output length, and multiple modes (hash, KDF, MAC, PRF).";
+        this.description = "Enhanced educational implementation of BLAKE3 cryptographic hash function. Features the same core algorithm as BLAKE3 with extended output capability and educational clarity.";
         this.category = CategoryType.HASH;
         this.subCategory = "Cryptographic Hash";
         this.securityStatus = null; // Modern secure hash - no specific status needed
-        this.complexity = ComplexityType.MEDIUM;
+        this.complexity = ComplexityType.ADVANCED;
 
         // Algorithm properties
         this.inventor = "Jack O'Connor, Jean-Philippe Aumasson, Samuel Neves, Zooko Wilcox-O'Hearn";
         this.year = 2020;
-        this.country = CountryCode.MULTI;
+        this.country = CountryCode.US;
 
         // Hash-specific properties
-        this.hashSize = 256; // bits (32 bytes default)
-        this.blockSize = 512; // bits (64 bytes)
+        this.SupportedOutputSizes = [32]; // 256 bits = 32 bytes default
+        this.blockSize = 64; // 512 bits = 64 bytes
+        this.outputSize = 32; // 256 bits = 32 bytes
 
         // Documentation
         this.documentation = [
@@ -85,26 +112,17 @@
         // Test vectors from official BLAKE3 test suite
         this.tests = [
           {
-            text: "BLAKE3 Test Vector 1 (Empty)",
-            uri: "Official test vectors",
+            text: "BLAKE3 Official Test Vector - Empty string (0 bytes)",
+            uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
             input: [],
-            expected: OpCodes.Hex8ToBytes("AF1349B9F5F9A1A6A0404DEA36DCC9499BCB25C9ADC112B7CC9A93CAE41F3262")
+            expected: OpCodes.Hex8ToBytes("af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262")
           },
           {
-            text: "BLAKE3 Test Vector 2 (abc)",
-            uri: "Official test vectors", 
-            input: OpCodes.AnsiToBytes("abc"),
-            expected: OpCodes.Hex8ToBytes("6437B3AC38465133FFB63B75273A8DB548C558465D79DB03FD359C6CD5BD9D85")
+            text: "BLAKE3 Official Test Vector - 3 bytes [0,1,2]",
+            uri: "https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json",
+            input: [0, 1, 2], // Official test pattern: repeating sequence
+            expected: OpCodes.Hex8ToBytes('e1be4d7a8ab5560aa4199eea339849ba8e293d55ca0a81006726d184519e647f')
           }
-        ];
-
-        // For test suite compatibility
-        this.testVectors = this.tests;
-
-        // BLAKE3 constants
-        this.IV = [
-          0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
-          0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19
         ];
       }
 
@@ -113,132 +131,269 @@
       }
     }
 
-    class BLAKE3EnhancedInstance extends IHashFunctionInstance {
-      constructor(algorithm, isInverse = false) {
-        super(algorithm);
-        this.inputBuffer = [];
-        this.hashSize = algorithm.hashSize;
-        this.blockSize = algorithm.blockSize;
-        this.key = null;
-        this.keyScheduled = false;
-        this.IV = algorithm.IV;
-      }
+  // BLAKE3 G function (quarter round) - BLAKE3 specification Section 2.2
+  function g(state, a, b, c, d, mx, my) {
+    state[a] = OpCodes.Add32(state[a], OpCodes.Add32(state[b], mx));
+    state[d] = OpCodes.RotR32(state[d] ^ state[a], 16);
+    state[c] = OpCodes.Add32(state[c], state[d]);
+    state[b] = OpCodes.RotR32(state[b] ^ state[c], 12);
+    state[a] = OpCodes.Add32(state[a], OpCodes.Add32(state[b], my));
+    state[d] = OpCodes.RotR32(state[d] ^ state[a], 8);
+    state[c] = OpCodes.Add32(state[c], state[d]);
+    state[b] = OpCodes.RotR32(state[b] ^ state[c], 7);
+  }
 
-      Feed(data) {
-        if (!data || data.length === 0) return;
-        this.inputBuffer.push(...data);
-      }
+  // BLAKE3 compression function - BLAKE3 specification Section 2.2
+  function compress(chaining_value, block_words, counter, block_len, flags) {
+    // Initialize state
+    const state = new Uint32Array(16);
 
-      Result() {
-        if (this.inputBuffer.length === 0) return [];
+    // Load chaining value
+    for (let i = 0; i < 8; i++) {
+      state[i] = chaining_value[i];
+    }
 
-        // Process using existing hash logic
-        const result = this.hash(this.inputBuffer, 32);
+    // Load IV
+    for (let i = 0; i < 4; i++) {
+      state[8 + i] = IV[i];
+    }
 
-        this.inputBuffer = [];
-        return result;
-      }
+    // Load counter (64-bit), block_len, flags
+    state[12] = counter & 0xFFFFFFFF;
+    state[13] = (counter / 0x100000000) & 0xFFFFFFFF;
+    state[14] = block_len;
+    state[15] = flags;
 
-      // Key setup for BLAKE3 keyed mode
-      KeySetup(key) {
-        if (key && key.length > 0) {
-          if (key.length !== 32) {
-            throw new Error('BLAKE3 key must be exactly 32 bytes');
-          }
-          this.key = OpCodes.CopyArray(key);
-        } else {
-          this.key = null;
-        }
-
-        this.keyScheduled = true;
-        return 'blake3-enhanced-' + Math.random().toString(36).substr(2, 9);
-      }
-
-      // Simplified BLAKE3 hash (educational implementation)
-      hash(input, outputLen) {
-        outputLen = outputLen || 32;
-
-        // Initialize state with IV or key
-        let state = this.key ? this.wordsFromKey(this.key) : OpCodes.CopyArray(this.IV);
-
-        // Process input in 64-byte blocks
-        for (let i = 0; i < input.length; i += 64) {
-          const block = input.slice(i, i + 64);
-          while (block.length < 64) {
-            block.push(0);
-          }
-
-          state = this.compressBlock(state, block, i / 64);
-        }
-
-        // Generate output
-        return this.extractOutput(state, outputLen);
-      }
-
-      // Convert key to words
-      wordsFromKey(key) {
-        const words = [];
-        for (let i = 0; i < 8; i++) {
-          words.push(OpCodes.Pack32LE(
-            key[i * 4] || 0, key[i * 4 + 1] || 0,
-            key[i * 4 + 2] || 0, key[i * 4 + 3] || 0
-          ));
-        }
-        return words;
-      }
-
-      // Compress block (simplified)
-      compressBlock(state, block, blockCounter) {
-        const newState = OpCodes.CopyArray(state);
-
-        // Simple compression using block data
-        for (let i = 0; i < 8; i++) {
-          const blockWord = OpCodes.Pack32LE(
-            block[i * 8] || 0, block[i * 8 + 1] || 0,
-            block[i * 8 + 2] || 0, block[i * 8 + 3] || 0
-          );
-
-          newState[i] ^= blockWord;
-          newState[i] = OpCodes.RotL32(newState[i], 7 + i);
-          newState[i] += blockCounter;
-          newState[i] >>>= 0;
-        }
-
-        return newState;
-      }
-
-      // Extract output
-      extractOutput(state, outputLen) {
-        const output = [];
-
-        for (let i = 0; i < outputLen; i += 4) {
-          const wordIndex = Math.floor(i / 4) % 8;
-          const bytes = OpCodes.Unpack32LE(state[wordIndex]);
-
-          for (let j = 0; j < 4 && output.length < outputLen; j++) {
-            output.push(bytes[j]);
-          }
-        }
-
-        return output.slice(0, outputLen);
-      }
-
-      // Legacy cipher interface
-      szEncryptBlock(blockIndex, plaintext) {
-        return this.hash(plaintext, 32);
-      }
-
-      szDecryptBlock(blockIndex, ciphertext) {
-        throw new Error('BLAKE3 is a one-way hash function and cannot be decrypted');
-      }
-
-      ClearData() {
-        if (this.key) {
-          OpCodes.ClearArray(this.key);
-        }
-        this.keyScheduled = false;
+    // Convert block bytes to 32-bit words (little-endian)
+    let words = new Array(16);
+    for (let i = 0; i < 16; i++) {
+      const base = i * 4;
+      if (Array.isArray(block_words)) {
+        // Input is byte array
+        words[i] = OpCodes.Pack32LE(
+          block_words[base] || 0,
+          block_words[base + 1] || 0,
+          block_words[base + 2] || 0,
+          block_words[base + 3] || 0
+        );
+      } else {
+        // Input is Uint8Array
+        words[i] = OpCodes.Pack32LE(
+          block_words[base] || 0,
+          block_words[base + 1] || 0,
+          block_words[base + 2] || 0,
+          block_words[base + 3] || 0
+        );
       }
     }
+
+    // 7 rounds of mixing
+    for (let round = 0; round < 7; round++) {
+      // Column round
+      g(state, 0, 4, 8, 12, words[0], words[1]);
+      g(state, 1, 5, 9, 13, words[2], words[3]);
+      g(state, 2, 6, 10, 14, words[4], words[5]);
+      g(state, 3, 7, 11, 15, words[6], words[7]);
+
+      // Diagonal round
+      g(state, 0, 5, 10, 15, words[8], words[9]);
+      g(state, 1, 6, 11, 12, words[10], words[11]);
+      g(state, 2, 7, 8, 13, words[12], words[13]);
+      g(state, 3, 4, 9, 14, words[14], words[15]);
+
+      // Permute message words for next round (except last round)
+      if (round < 6) {
+        const permuted = new Array(16);
+        for (let i = 0; i < 16; i++) {
+          permuted[i] = words[MSG_PERMUTATION[i]];
+        }
+        words = permuted;
+      }
+    }
+
+    // Finalize - XOR state with IV and chaining value
+    const output = new Uint32Array(16);
+    for (let i = 0; i < 8; i++) {
+      output[i] = state[i] ^ state[i + 8];
+      output[i + 8] = state[i] ^ chaining_value[i];
+    }
+
+    return output;
+  }
+
+  class BLAKE3EnhancedInstance extends IHashFunctionInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.OutputSize = 32; // 256 bits = 32 bytes
+
+      this.chaining_value = null;
+      this.block = null;
+      this.block_len = 0;
+      this.blocks_compressed = 0;
+      this.chunk_counter = 0;
+      this.flags = 0;
+    }
+
+    /**
+     * Initialize the hash state
+     */
+    Init() {
+      this.chaining_value = new Uint32Array(IV);
+      this.block = new Uint8Array(BLAKE3_BLOCK_LEN);
+      this.block_len = 0;
+      this.blocks_compressed = 0;
+      this.chunk_counter = 0;
+      this.flags = 0;
+      this.total_length = 0;
+    }
+
+    /**
+     * Update hash with data
+     * @param {Array} data - Data to hash as byte array
+     */
+    Update(data) {
+      if (!data || data.length === 0) return;
+
+      // Convert string to byte array if needed
+      if (typeof data === 'string') {
+        data = OpCodes.AnsiToBytes(data);
+      }
+
+      this.total_length += data.length;
+      let offset = 0;
+
+      // Process data in chunks
+      while (offset < data.length) {
+        // Fill current block
+        while (offset < data.length && this.block_len < BLAKE3_BLOCK_LEN) {
+          this.block[this.block_len] = data[offset];
+          this.block_len++;
+          offset++;
+        }
+
+        // If block is full, compress it
+        if (this.block_len === BLAKE3_BLOCK_LEN) {
+          this.compressBlock();
+        }
+      }
+    }
+
+    /**
+     * Compress current block
+     */
+    compressBlock() {
+      let flags = this.flags;
+      if (this.blocks_compressed === 0) {
+        flags |= CHUNK_START;
+      }
+
+      const output = compress(this.chaining_value, Array.from(this.block), this.chunk_counter, this.block_len, flags);
+
+      // Update chaining value with first 8 words of output
+      for (let i = 0; i < 8; i++) {
+        this.chaining_value[i] = output[i];
+      }
+
+      this.blocks_compressed++;
+
+      // Reset block for next data
+      this.block = new Uint8Array(BLAKE3_BLOCK_LEN);
+      this.block_len = 0;
+    }
+
+    /**
+     * Finalize the hash calculation and return result as byte array
+     * @param {number} outputLength - Length of output in bytes
+     * @returns {Array} Hash digest as byte array
+     */
+    Final(outputLength) {
+      outputLength = outputLength || BLAKE3_OUT_LEN;
+
+      // For simple single-chunk case (most common)
+      let flags = this.flags;
+      if (this.blocks_compressed === 0) {
+        flags |= CHUNK_START;
+      }
+      flags |= CHUNK_END | ROOT;
+
+      // Compress the final block
+      const block_data = Array.from(this.block).concat(new Array(Math.max(0, 64 - this.block_len)).fill(0));
+      const output = compress(this.chaining_value, block_data, 0, this.block_len, flags);
+
+      // Extract output bytes directly from compression result
+      return this.extractOutputBytes(output, outputLength);
+    }
+
+    /**
+     * Extract output bytes from compression output
+     */
+    extractOutputBytes(words, outputLength) {
+      const output = [];
+      for (let i = 0; i < Math.min(16, Math.ceil(outputLength / 4)); i++) {
+        const bytes = OpCodes.Unpack32LE(words[i]);
+        for (let j = 0; j < 4 && output.length < outputLength; j++) {
+          output.push(bytes[j]);
+        }
+      }
+      return output;
+    }
+
+    /**
+     * Hash a complete message in one operation
+     * @param {Array} message - Message to hash as byte array
+     * @returns {Array} Hash digest as byte array
+     */
+    Hash(message) {
+      this.Init();
+      this.Update(message);
+      return this.Final();
+    }
+
+    /**
+     * Required interface methods for IAlgorithmInstance compatibility
+     */
+    KeySetup(key) {
+      // Hashes don't use keys
+      return true;
+    }
+
+    EncryptBlock(blockIndex, plaintext) {
+      // Return hash of the plaintext
+      return this.Hash(plaintext);
+    }
+
+    DecryptBlock(blockIndex, ciphertext) {
+      // Hash functions are one-way
+      throw new Error('BLAKE3-Enhanced is a one-way hash function - decryption not possible');
+    }
+
+    ClearData() {
+      if (this.chaining_value) {
+        OpCodes.ClearArray(this.chaining_value);
+      }
+      if (this.block) {
+        OpCodes.ClearArray(this.block);
+      }
+    }
+
+    /**
+     * Feed method required by test suite - processes input data
+     * @param {Array} data - Input data as byte array
+     */
+    Feed(data) {
+      this.Init();
+      this.Update(data);
+    }
+
+    /**
+     * Result method required by test suite - returns final hash
+     * @returns {Array} Hash digest as byte array
+     */
+    Result() {
+      return this.Final();
+    }
+  }
 
     // Register the algorithm
 

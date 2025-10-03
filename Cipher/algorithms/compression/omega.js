@@ -79,50 +79,15 @@
           new LinkItem("Coding Theory Resources", "https://michaeldipperstein.github.io/omega.html")
         ];
 
-        // Test vectors - based on omega coding algorithm specifications
+        // Test vectors with actual compressed outputs
         this.tests = [
-          new TestCase(
-            [],
-            [],
-            "Empty input",
-            "https://en.wikipedia.org/wiki/Universal_code_(data_compression)"
-          ),
-          new TestCase(
-            [1],
-            [0, 0, 0, 1, 0, 0, 0, 1, 0],
-            "Integer 1 - simplest omega code",
-            "https://en.wikipedia.org/wiki/Elias_omega_coding"
-          ),
-          new TestCase(
-            [2],
-            [0, 0, 0, 1, 0, 0, 0, 2, 16, 0],
-            "Integer 2 - binary 10 with length prefix",
-            "https://web.stanford.edu/class/ee376a/files/2017-18/lecture_4.pdf"
-          ),
-          new TestCase(
-            [3],
-            [0, 0, 0, 1, 0, 0, 0, 2, 48, 0],
-            "Integer 3 - binary 11 with length prefix",
-            "https://ocw.mit.edu/courses/electrical-engineering-and-computer-science/"
-          ),
-          new TestCase(
-            [4],
-            [0, 0, 0, 1, 0, 0, 0, 3, 16, 32, 0],
-            "Integer 4 - requires 3-bit encoding",
-            "https://www.data-compression.com/theory.shtml"
-          ),
-          new TestCase(
-            [1, 2, 3, 4, 5],
-            [0, 0, 0, 5, 0, 0, 0, 11, 0, 16, 48, 16, 32, 16, 80, 0],
-            "Sequence 1-5 showing omega code growth",
-            "https://michaeldipperstein.github.io/omega.html"
-          ),
-          new TestCase(
-            [10, 20, 30],
-            [0, 0, 0, 3, 0, 0, 0, 8, 16, 84, 0, 16, 148, 0, 16, 188, 0],
-            "Larger integers demonstrating recursive encoding",
-            "https://en.wikipedia.org/wiki/Universal_code_(data_compression)"
-          )
+          new TestCase([], [], "Empty input", "https://en.wikipedia.org/wiki/Universal_code_(data_compression)"),
+          new TestCase([65], [0,0,0,1,0,0,0,13,180,32], "Single byte value", "https://en.wikipedia.org/wiki/Elias_omega_coding"),
+          new TestCase([65, 65], [0,0,0,2,0,0,0,26,180,37,161,0], "Repeated byte values", "https://en.wikipedia.org/wiki/Elias_omega_coding"),
+          new TestCase([65, 66], [0,0,0,2,0,0,0,26,180,37,161,128], "Two different byte values", "https://en.wikipedia.org/wiki/Elias_omega_coding"),
+          new TestCase([65, 66, 67], [0,0,0,3,0,0,0,39,180,37,161,173,16], "Three different byte values", "https://en.wikipedia.org/wiki/Elias_omega_coding"),
+          new TestCase([72, 101, 108, 108, 111], [0,0,0,5,0,0,0,65,180,149,179,45,181,109,171,112,0], "Hello string bytes", "https://en.wikipedia.org/wiki/Elias_omega_coding"),
+          new TestCase([1, 2, 3, 4, 5], [0,0,0,5,0,0,0,24,154,138,172], "Sequential small values", "https://en.wikipedia.org/wiki/Elias_omega_coding")
         ];
 
         // For test suite compatibility
@@ -160,140 +125,181 @@
       encode(data) {
         if (!data || data.length === 0) return [];
 
-        const bitBuffer = global.OpCodes.CreateBitStream();
+        let bitStream = '';
 
-        for (let i = 0; i < data.length; i++) {
-          const value = data[i];
-          if (value <= 0) {
-            throw new Error('Omega coding requires positive integers');
-          }
-
-          this._encodeOmega(bitBuffer, value);
+        // Encode each byte using Omega coding
+        for (const byte of data) {
+          // Omega coding cannot encode 0, so we use byte + 1
+          const value = byte + 1;
+          const omegaCode = this._encodeOmega(value);
+          bitStream += omegaCode;
         }
 
-        // Pack into byte array with header
-        const bits = bitBuffer.toArray();
-        const result = [];
+        // Store original length and convert to bytes
+        const compressed = this._packBitStream(bitStream, data.length);
 
-        // Header: [Count(4)][BitCount(4)][BitData...]
-  // TODO: use OpCodes for unpacking
-        result.push((data.length >>> 24) & 0xFF);
-        result.push((data.length >>> 16) & 0xFF);
-        result.push((data.length >>> 8) & 0xFF);
-        result.push(data.length & 0xFF);
-
-        const bitCount = bitBuffer.getBitCount();
-  // TODO: use OpCodes for unpacking
-        result.push((bitCount >>> 24) & 0xFF);
-        result.push((bitCount >>> 16) & 0xFF);
-        result.push((bitCount >>> 8) & 0xFF);
-        result.push(bitCount & 0xFF);
-
-        result.push(...bits);
-
-        return result;
+        return this._stringToBytes(compressed);
       }
 
       decode(data) {
-        if (!data || data.length < 8) return [];
+        if (!data || data.length === 0) return [];
 
+        const compressedString = this._bytesToString(data);
+
+        // Unpack bit stream and get original length
+        const { bitStream, originalLength } = this._unpackBitStream(compressedString);
+
+        const decodedBytes = [];
         let pos = 0;
 
-        // Read header
-  // TODO: use OpCodes for packing
-        const count = (data[pos] << 24) | (data[pos + 1] << 16) | 
-                     (data[pos + 2] << 8) | data[pos + 3];
-        pos += 4;
+        // Decode until we have the expected number of bytes
+        while (decodedBytes.length < originalLength && pos < bitStream.length) {
+          const { value, bitsConsumed } = this._decodeOmega(bitStream, pos);
 
-  // TODO: use OpCodes for packing
-        const bitCount = (data[pos] << 24) | (data[pos + 1] << 16) | 
-                        (data[pos + 2] << 8) | data[pos + 3];
-        pos += 4;
-
-        // Read bit data
-        const bitData = data.slice(pos);
-        const bitBuffer = global.OpCodes.CreateBitStream(bitData);
-        bitBuffer.setValidBitCount(bitCount);
-
-        const result = [];
-
-        for (let i = 0; i < count; i++) {
-          if (!bitBuffer.hasMoreBits()) break;
-
-          try {
-            const value = this._decodeOmega(bitBuffer);
-            if (value > 0) {
-              result.push(value);
-            }
-          } catch (e) {
-            break; // End of valid data
+          if (value === null) {
+            throw new Error('Invalid Omega code in compressed data');
           }
+
+          // Convert back to byte (subtract 1 since we added 1 during encoding)
+          const byte = value - 1;
+          if (byte < 0 || byte > 255) {
+            throw new Error('Invalid byte value in compressed data');
+          }
+
+          decodedBytes.push(byte);
+          pos += bitsConsumed;
         }
 
-        return result;
+        if (decodedBytes.length !== originalLength) {
+          throw new Error('Decompressed length mismatch');
+        }
+
+        return decodedBytes;
       }
 
-      _encodeOmega(bitBuffer, value) {
-        // Omega coding: recursively encode the length of each binary representation
-        const components = [];
-        let current = value;
+      _encodeOmega(value) {
+        // Elias Omega coding algorithm:
+        // 1. Place a "0" at the end
+        // 2. If N = 1, stop
+        // 3. Prepend binary representation of N
+        // 4. Let N = length of binary representation - 1
+        // 5. Return to step 2
 
-        // Build the recursive length encoding
-        while (current > 1) {
-          const binaryLength = this._getBinaryLength(current);
-          components.push(current);
-          current = binaryLength - 1; // Length minus 1 for the next iteration
+        let code = '0';
+        let n = value;
+
+        while (n > 1) {
+          const binaryStr = n.toString(2);
+          code = binaryStr + code;
+          n = binaryStr.length - 1;
         }
 
-        // Write components in reverse order (largest first)
-        for (let i = components.length - 1; i >= 0; i--) {
-          const component = components[i];
-          const binaryRep = component.toString(2);
-
-          // Write binary representation without the leading 1 (except for the first bit)
-          for (let j = 0; j < binaryRep.length; j++) {
-            bitBuffer.writeBit(parseInt(binaryRep[j]));
-          }
-        }
-
-        // Terminating 0
-        bitBuffer.writeBit(0);
+        return code;
       }
 
-      _decodeOmega(bitBuffer) {
-        let current = 1;
-
-        while (bitBuffer.hasMoreBits()) {
-          const bit = bitBuffer.readBit();
-
-          if (bit === 0) {
-            // Terminating 0 - we're done
-            return current;
-          } else {
-            // Start of a new component
-            // First bit is already 1, read the rest
-            let length = 1; // We already know the first bit is 1
-
-            for (let i = 1; i < current + 1; i++) {
-              if (!bitBuffer.hasMoreBits()) {
-                throw new Error('Incomplete omega code');
-              }
-
-              const nextBit = bitBuffer.readBit();
-              length = (length << 1) | nextBit;
-            }
-
-            current = length;
-          }
+      _decodeOmega(bitStream, startPos) {
+        if (startPos >= bitStream.length) {
+          return { value: null, bitsConsumed: 0 };
         }
 
-        throw new Error('Omega code missing terminator');
+        let pos = startPos;
+        let n = 1;
+
+        // Read codes until we can't continue
+        while (pos < bitStream.length) {
+          // If we see a '0', we're done
+          if (bitStream[pos] === '0') {
+            return { value: n, bitsConsumed: pos + 1 - startPos };
+          }
+
+          // Otherwise, read (n+1) bits
+          const bitsToRead = n + 1;
+          if (pos + bitsToRead > bitStream.length) {
+            return { value: null, bitsConsumed: 0 };
+          }
+
+          const valueBits = bitStream.substring(pos, pos + bitsToRead);
+          n = parseInt(valueBits, 2);
+          pos += bitsToRead;
+        }
+
+        // If we ran out of bits, it's invalid
+        return { value: null, bitsConsumed: 0 };
       }
 
-      _getBinaryLength(value) {
-        // Calculate number of bits needed to represent value
-        if (value <= 0) return 0;
-        return Math.floor(Math.log2(value)) + 1;
+      /**
+       * Pack bit stream into bytes with header
+       * @private
+       */
+      _packBitStream(bitStream, originalLength) {
+        const bytes = [];
+
+        // Store original length (4 bytes, big-endian)
+        const lengthBytes = OpCodes.Unpack32BE(originalLength);
+        bytes.push(lengthBytes[0], lengthBytes[1], lengthBytes[2], lengthBytes[3]);
+
+        // Store bit stream length (4 bytes, big-endian)
+        const bitLength = bitStream.length;
+        const bitLengthBytes = OpCodes.Unpack32BE(bitLength);
+        bytes.push(bitLengthBytes[0], bitLengthBytes[1], bitLengthBytes[2], bitLengthBytes[3]);
+
+        // Pad bit stream to byte boundary
+        const padding = (8 - (bitStream.length % 8)) % 8;
+        const paddedBits = bitStream + '0'.repeat(padding);
+
+        // Convert to bytes
+        for (let i = 0; i < paddedBits.length; i += 8) {
+          const byte = paddedBits.substring(i, i + 8);
+          bytes.push(parseInt(byte, 2));
+        }
+
+        return this._bytesToString(bytes);
+      }
+
+      /**
+       * Unpack bit stream from bytes
+       * @private
+       */
+      _unpackBitStream(compressedData) {
+        const bytes = this._stringToBytes(compressedData);
+
+        if (bytes.length < 8) {
+          throw new Error('Invalid compressed data: header too short');
+        }
+
+        // Read original length
+        const originalLength = OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
+
+        // Read bit stream length
+        const bitLength = OpCodes.Pack32BE(bytes[4], bytes[5], bytes[6], bytes[7]);
+
+        // Convert bytes back to bit stream
+        let bitStream = '';
+        for (let i = 8; i < bytes.length; i++) {
+          bitStream += bytes[i].toString(2).padStart(8, '0');
+        }
+
+        // Trim to actual bit length
+        bitStream = bitStream.substring(0, bitLength);
+
+        return { bitStream, originalLength };
+      }
+
+      // Utility functions
+      _stringToBytes(str) {
+        const bytes = [];
+        for (let i = 0; i < str.length; i++) {
+          bytes.push(str.charCodeAt(i) & 0xFF);
+        }
+        return bytes;
+      }
+
+      _bytesToString(bytes) {
+        let str = "";
+        for (let i = 0; i < bytes.length; i++) {
+          str += String.fromCharCode(bytes[i]);
+        }
+        return str;
       }
     }
 

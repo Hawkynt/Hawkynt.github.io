@@ -47,14 +47,14 @@
   const SHAKE128_CAPACITY = 32;     // Capacity in bytes (256 bits)
   const KECCAK_ROUNDS = 24;         // Number of Keccak-f[1600] rounds
   
-  // Keccac round constants (24 rounds, as [low32, high32] pairs)
+  // Keccac round constants (24 rounds, as [low32, high32] pairs) - FIPS 202 compliant
   const RC = [
     [0x00000001, 0x00000000], [0x00008082, 0x00000000], [0x0000808a, 0x80000000], [0x80008000, 0x80000000],
     [0x0000808b, 0x00000000], [0x80000001, 0x00000000], [0x80008081, 0x80000000], [0x00008009, 0x80000000],
-    [0x0000008a, 0x00000000], [0x00000088, 0x00000000], [0x80008009, 0x00000000], [0x00008003, 0x80000000],
+    [0x0000008a, 0x00000000], [0x00000088, 0x00000000], [0x80008009, 0x00000000], [0x8000000a, 0x00000000],
+    [0x8000808b, 0x00000000], [0x0000008b, 0x80000000], [0x00008089, 0x80000000], [0x00008003, 0x80000000],
     [0x00008002, 0x80000000], [0x00000080, 0x80000000], [0x0000800a, 0x00000000], [0x8000000a, 0x80000000],
-    [0x80008081, 0x80000000], [0x00008080, 0x80000000], [0x80000001, 0x00000000], [0x80008008, 0x80000000],
-    [0x00008082, 0x00000000], [0x00000001, 0x80000000], [0x80008003, 0x00000000], [0x80000000, 0x80000000]
+    [0x80008081, 0x80000000], [0x00008080, 0x80000000], [0x80000001, 0x00000000], [0x80008008, 0x80000000]
   ];
   
   // Rotation offsets for rho step
@@ -291,138 +291,151 @@
     return output;
   };
   
-  // SHAKE128 Universal Cipher Interface
-  const Shake128 = {
-    internalName: 'shake128',
-    name: 'SHAKE128',
-    // Required Cipher interface properties
-    minKeyLength: 0,        // Minimum key length in bytes
-    maxKeyLength: 64,        // Maximum key length in bytes
-    stepKeyLength: 1,       // Key length step size
-    minBlockSize: 0,        // Minimum block size in bytes
-    maxBlockSize: 0,        // Maximum block size (0 = unlimited)
-    stepBlockSize: 1,       // Block size step
-    instances: {},          // Instance tracking
-    
-    // XOF interface
-    Init: function() {
+   
+  class SHAKE128Algorithm extends HashFunctionAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "SHAKE128";
+      this.description = "SHAKE128 is an extendable-output function (XOF) from the SHA-3 family based on Keccak sponge construction. Provides variable-length output with 128-bit security level.";
+      this.inventor = "Guido Bertoni, Joan Daemen, Michaël Peeters, Gilles Van Assche";
+      this.year = 2015;
+      this.category = CategoryType.HASH;
+      this.subCategory = "SHA-3 Family (XOF)";
+      this.country = CountryCode.BE;
+      this.securityStatus = SecurityStatus.ACTIVE;
+      this.complexity = ComplexityType.MEDIUM;
+
+      // Test vectors from NIST FIPS 202 and verification sources
+      this.tests = [
+        {
+          text: "SHAKE128 Empty String - 16 bytes output",
+          uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf",
+          input: [],
+          outputLength: 16,
+          expected: OpCodes.Hex8ToBytes("7f9c2ba4e88f827d616045507605853e")
+        },
+        {
+          text: "SHAKE128 'abc' - 16 bytes output",
+          uri: "https://asecuritysite.com/hash/shake",
+          input: OpCodes.AnsiToBytes("abc"),
+          outputLength: 16,
+          expected: OpCodes.Hex8ToBytes("5881092dd818bf5cf8a3ddb793fbcba7")
+        },
+        {
+          text: "SHAKE128 'abc' - 32 bytes output",
+          uri: "https://asecuritysite.com/hash/shake",
+          input: OpCodes.AnsiToBytes("abc"),
+          outputLength: 32,
+          expected: OpCodes.Hex8ToBytes("5881092dd818bf5cf8a3ddb793fbcba74097d5c526a6d35f97b83351940f2cc8")
+        }
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      return new SHAKE128AlgorithmInstance(this, isInverse);
+    }
+  }
+
+  class SHAKE128AlgorithmInstance extends IHashFunctionInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.OutputSize = 32; // Default output size (can be changed)
+      this.outputLength = 32; // XOF property for variable length
+
+      // Initialize SHAKE128 hasher
       this.hasher = new Shake128Hasher();
-      this.bKey = false;
-    },
-    
-    KeySetup: function(key) {
-      // SHAKE128 doesn't use keys in standard mode
+    }
+
+    /**
+     * Initialize the hash function
+     */
+    Init() {
       this.hasher = new Shake128Hasher();
-      this.bKey = false;
-    },
-    
-    encryptBlock: function(blockIndex, data) {
-      if (typeof data === 'string') {
-        this.hasher.absorb(data);
-        // Default output length of 32 bytes for compatibility
-        return OpCodes.BytesToHex(this.hasher.squeeze(32));
-      }
-      return '';
-    },
-    
-    decryptBlock: function(blockIndex, data) {
-      // XOF functions don't decrypt
-      return this.encryptBlock(blockIndex, data);
-    },
-    
-    // Direct XOF interface
-    hash: function(data, outputLength) {
-      outputLength = outputLength || 32; // Default to 32 bytes
-      const hasher = new Shake128Hasher();
-      hasher.absorb(data);
-      return hasher.squeeze(outputLength);
-    },
-    
-    ClearData: function() {
+    }
+
+    /**
+     * Update hash with new data
+     * @param {Array} data - Input data as byte array
+     */
+    Update(data) {
+      this.hasher.absorb(data);
+    }
+
+    /**
+     * Finalize and return hash
+     * @returns {Array} Hash digest as byte array
+     */
+    Final() {
+      return this.hasher.squeeze(this.outputLength || this.OutputSize);
+    }
+
+    /**
+     * Hash a complete message in one operation
+     * @param {Array} message - Message to hash as byte array
+     * @returns {Array} Hash digest as byte array
+     */
+    Hash(message) {
+      this.Init();
+      this.Update(message);
+      return this.Final();
+    }
+
+    /**
+     * Required interface methods for IAlgorithmInstance compatibility
+     */
+    KeySetup(key) {
+      // Hashes don't use keys
+      return true;
+    }
+
+    EncryptBlock(blockIndex, plaintext) {
+      // Return hash of the plaintext
+      return this.Hash(plaintext);
+    }
+
+    DecryptBlock(blockIndex, ciphertext) {
+      // Hash functions are one-way
+      throw new Error('SHAKE128 is a one-way hash function - decryption not possible');
+    }
+
+    ClearData() {
       if (this.hasher) {
         for (let i = 0; i < this.hasher.state.length; i++) {
           this.hasher.state[i] = [0, 0];
         }
         this.hasher.buffer.fill(0);
       }
-      this.bKey = false;
-    },
-    
-    // Test vectors from NIST FIPS 202 and asecuritysite.com
-    tests: [
-      {
-        text: "SHAKE128 Empty String - 16 bytes output",
-        uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf",
-        input: [],
-        outputLength: 16,
-        expected: OpCodes.Hex8ToBytes("7f9c2ba4e88f827d616045507605853e")
-      },
-      {
-        text: "SHAKE128 'abc' - 16 bytes output",
-        uri: "https://asecuritysite.com/hash/shake",
-        input: OpCodes.AnsiToBytes("abc"),
-        outputLength: 16,
-        expected: OpCodes.Hex8ToBytes("5881092dd818bf5cf8a3ddb793fbcba7")
-      },
-      {
-        text: "SHAKE128 'abc' - 32 bytes output", 
-        uri: "https://asecuritysite.com/hash/shake",
-        input: OpCodes.AnsiToBytes("abc"),
-        outputLength: 32,
-        expected: OpCodes.Hex8ToBytes("483366601360a8771c6863080cc4114d8db4280928e6cd5d5e38fc3f33ac24e0")
-      }
-    ]
-  };
-   
-    class Shake128Wrapper extends CryptoAlgorithm {
-      constructor() {
-        super();
-        this.name = Shake128.name;
-        this.category = CategoryType.HASH;
-        this.securityStatus = SecurityStatus.ACTIVE;
-        this.complexity = ComplexityType.MEDIUM;
-        this.inventor = "Guido Bertoni, Joan Daemen, Michaël Peeters, Gilles Van Assche";
-        this.year = 2015;
-        this.country = "BE";
-        this.description = "SHAKE128 extensible-output function based on Keccak";
-        
-        if (Shake128.tests) {
-          this.tests = Shake128.tests.map(test => 
-            new TestCase(test.input, test.expected, test.text, test.uri)
-          );
-        }
-      }
-      
-      CreateInstance(isInverse = false) {
-        return new Shake128WrapperInstance(this, isInverse);
-      }
     }
-    
-    class Shake128WrapperInstance extends IAlgorithmInstance {
-      constructor(algorithm, isInverse) {
-        super(algorithm, isInverse);
-        this.instance = Object.create(Shake128);
-        this.instance.Init();
-      }
-      
-      ProcessData(input) {
-        return this.instance.hash(input, 32);
-      }
-      
-      Reset() {
-        this.instance.ClearData();
-        this.instance.Init();
-      }
+
+    /**
+     * Feed method required by test suite - processes input data
+     * @param {Array} data - Input data as byte array
+     */
+    Feed(data) {
+      this.Init();
+      this.Update(data);
     }
+
+    /**
+     * Result method required by test suite - returns final hash
+     * @returns {Array} Hash digest as byte array
+     */
+    Result() {
+      return this.Final();
+    }
+  }
    
   // ===== REGISTRATION =====
 
-    const algorithmInstance = new Shake128Wrapper();
+  const algorithmInstance = new SHAKE128Algorithm();
   if (!AlgorithmFramework.Find(algorithmInstance.name)) {
     RegisterAlgorithm(algorithmInstance);
   }
 
   // ===== EXPORTS =====
 
-  return { Shake128Wrapper, Shake128WrapperInstance };
+  return { SHAKE128Algorithm, SHAKE128AlgorithmInstance };
 }));

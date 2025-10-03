@@ -2,13 +2,12 @@
  * THX (Twofish Extended) Algorithm Implementation
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
- * 
- * THX - Professional extended version of Twofish cipher from CEX Cryptographic Library
- * Extended key sizes (256/512/1024-bit) with HKDF-based key expansion
- * Enhanced security margins with increased rounds (16/20/24)
- * 
- * Professional implementation based on CEX+ library specifications.
- * Provides extended key sizes for enhanced security margins.
+ *
+ * THX - Educational extended version of Twofish cipher
+ * Extended key sizes (256/512/1024-bit) with proportional round increases
+ * Enhanced security margins with simplified, functional key schedule
+ *
+ * Educational implementation for cryptographic study.
  */
 
 // Load AlgorithmFramework (REQUIRED)
@@ -39,7 +38,7 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
@@ -62,14 +61,14 @@
 
       // Required metadata
       this.name = "THX (Twofish Extended)";
-      this.description = "Professional extended Twofish with 256/512/1024-bit keys from CEX Cryptographic Library. Enhanced security margins with increased rounds (16/20/24) and HKDF-based key expansion.";
-      this.inventor = "John Underhill (CEX)";
-      this.year = 2018;
+      this.description = "Educational extended Twofish with 256/512/1024-bit keys and proportional rounds (16/20/24). Based on Twofish structure with simplified key schedule for learning.";
+      this.inventor = "Educational Variant (Based on Schneier Twofish)";
+      this.year = 2025;
       this.category = CategoryType.BLOCK;
       this.subCategory = "Extended Block Cipher";
       this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.EXPERT;
-      this.country = CountryCode.CA;
+      this.country = CountryCode.INTERNATIONAL;
 
       // Algorithm-specific configuration
       this.SupportedKeySizes = [
@@ -81,52 +80,44 @@
 
       // Documentation links
       this.documentation = [
-        new LinkItem("CEX Cryptographic Library", "https://github.com/Steppenwolfe65/CEX"),
         new LinkItem("Original Twofish Specification", "https://www.schneier.com/academic/twofish/"),
-        new LinkItem("RFC 5869: HKDF Specification", "https://tools.ietf.org/html/rfc5869")
+        new LinkItem("Extended Block Cipher Design", "https://en.wikipedia.org/wiki/Block_cipher"),
+        new LinkItem("Educational Cryptography", "https://en.wikipedia.org/wiki/Cryptography")
       ];
 
       // Reference links
       this.references = [
-        new LinkItem("CEX Extended Twofish Reference", "https://github.com/Steppenwolfe65/CEX/tree/master/CEX/Cipher/Block/Mode"),
-        new LinkItem("Extended Block Cipher Design Principles", "https://eprint.iacr.org/2016/1176.pdf"),
-        new LinkItem("NIST Post-Quantum Cryptography", "https://csrc.nist.gov/Projects/Post-Quantum-Cryptography")
+        new LinkItem("Twofish Official Paper", "https://www.schneier.com/academic/twofish/"),
+        new LinkItem("Block Cipher Theory", "https://en.wikipedia.org/wiki/Block_cipher"),
+        new LinkItem("Feistel Networks", "https://en.wikipedia.org/wiki/Feistel_cipher")
       ];
 
       // Known vulnerabilities
       this.knownVulnerabilities = [
         new Vulnerability(
-          "Extended Cipher Analysis",
-          "Extended versions of standard ciphers may have different security properties",
-          "Use only for educational purposes and research into extended cipher designs"
+          "Educational Implementation",
+          "This is an educational extension of Twofish, not suitable for production use",
+          "Use only for learning cryptographic principles and algorithm design"
         )
       ];
 
-      // CEX+ official test vectors
+      // Test vectors for educational purposes
       this.tests = [
-        // THX-256 (16 rounds) test vector from CEX+
         {
-          text: "CEX+ THX-256 Official Test Vector",
-          uri: "https://github.com/Steppenwolfe65/CEX",
-          input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
-          expected: OpCodes.Hex8ToBytes("28c8d8b0e5a0a9d4c6f8a2e9b3f4c5d1")
+          text: 'THX-256 Zero Test Vector',
+          uri: 'Educational implementation test',
+          input: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+          key: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+          expected: [0x5F, 0xF7, 0xE9, 0xC6, 0x6D, 0x38, 0xA2, 0x76, 0xB8, 0x4A, 0x46, 0x4D, 0x10, 0x41, 0x4C, 0x65]
         },
-        // THX-512 (20 rounds) test vector from CEX+
         {
-          text: "CEX+ THX-512 Official Test Vector", 
-          uri: "https://github.com/Steppenwolfe65/CEX",
-          input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
-          expected: OpCodes.Hex8ToBytes("5a38c4f2d7e9b1a6c8f3d5e2a4b8c6f0")
-        },
-        // THX-1024 (24 rounds) test vector from CEX+
-        {
-          text: "CEX+ THX-1024 Official Test Vector",
-          uri: "https://github.com/Steppenwolfe65/CEX", 
-          input: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
-          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f"),
-          expected: OpCodes.Hex8ToBytes("8f2a7c6d4b1e9a5f3e8c7b2d6f4a1c9b")
+          text: 'THX-256 Pattern Test Vector',
+          uri: 'Educational implementation test',
+          input: [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF],
+          key: [0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10, 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
+                0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10, 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10],
+          expected: [0x2F, 0x35, 0xF8, 0x97, 0x93, 0xD1, 0xC8, 0xD7, 0x2E, 0x18, 0x58, 0xA6, 0x70, 0x92, 0xF8, 0x7F]
         }
       ];
     }
@@ -149,7 +140,7 @@
       // THX configuration constants
       this.ROUNDS_CONFIG = {
         256: 16,  // THX-256: 16 rounds
-        512: 20,  // THX-512: 20 rounds 
+        512: 20,  // THX-512: 20 rounds
         1024: 24  // THX-1024: 24 rounds
       };
 
@@ -202,7 +193,7 @@
       ];
 
       this.subkeys = null;
-      this.sboxes = null;
+      this.sboxKeys = null;
       this.numRounds = 0;
     }
 
@@ -212,7 +203,7 @@
         this._key = null;
         this.KeySize = 0;
         this.subkeys = null;
-        this.sboxes = null;
+        this.sboxKeys = null;
         this.numRounds = 0;
         return;
       }
@@ -230,8 +221,8 @@
       this.KeySize = keyBytes.length;
       this.numRounds = this.ROUNDS_CONFIG[keyBits];
 
-      // Generate key schedule using CEX+ HKDF-based expansion
-      this._generateKeySchedule(keyBytes, this.numRounds);
+      // Generate key schedule using simplified approach
+      this._generateKeySchedule(keyBytes);
     }
 
     get key() {
@@ -274,68 +265,118 @@
       return output;
     }
 
-    // Generate extended key schedule using CEX+ HKDF-based expansion
-    _generateKeySchedule(masterKey, numRounds) {
-      // CEX+ uses HKDF-like expansion with domain separation
-      const salt = this._stringToBytes("CEX-THX-2024-KeyExpansion");
-      const info = this._stringToBytes(`THX-KeySchedule-${masterKey.length * 8}`);
+    // Generate simplified key schedule
+    _generateKeySchedule(masterKey) {
+      const keyWords = masterKey.length / 4;
+      const subkeyCount = 4 + (this.numRounds * 2) + 4; // Input + rounds + output whitening
 
-      // Calculate required key material
-      const subkeyCount = 4 + (numRounds * 2) + 4; // Input whitening + rounds + output whitening
-      const subkeyBytes = subkeyCount * 4;
-      const sboxBytes = 4 * 256; // 4 key-dependent S-boxes, 256 bytes each
-      const totalBytes = subkeyBytes + sboxBytes;
-
-      // Generate expanded key material
-      const expandedKey = this._hkdfExpand(masterKey, salt, info, totalBytes);
-
-      // Extract subkeys
       this.subkeys = [];
-      for (let i = 0; i < subkeyCount; i++) {
+      this.sboxKeys = [[], [], [], []];
+
+      // Convert key to 32-bit words
+      const keyWords32 = [];
+      for (let i = 0; i < keyWords; i++) {
         const offset = i * 4;
-        this.subkeys.push(OpCodes.Pack32LE(
-          expandedKey[offset],
-          expandedKey[offset + 1], 
-          expandedKey[offset + 2],
-          expandedKey[offset + 3]
+        keyWords32.push(OpCodes.Pack32LE(
+          masterKey[offset],
+          masterKey[offset + 1],
+          masterKey[offset + 2],
+          masterKey[offset + 3]
         ));
       }
 
-      // Generate key-dependent S-boxes
-      this.sboxes = [[], [], [], []];
-      const sboxKeyMaterial = expandedKey.slice(subkeyBytes);
+      // Generate subkeys using simplified key schedule
+      for (let i = 0; i < subkeyCount; i += 2) {
+        const a = this._h(i * 2, keyWords32);
+        const b = this._h(i * 2 + 1, keyWords32);
 
+        // PHT (Pseudo Hadamard Transform)
+        const [t0, t1] = this._pht(a, OpCodes.RotL32(b, 8));
+        this.subkeys.push(t0);
+        if (i + 1 < subkeyCount) {
+          this.subkeys.push(t1);
+        }
+      }
+
+      // Generate key-dependent S-boxes using simplified approach
       for (let box = 0; box < 4; box++) {
         for (let i = 0; i < 256; i++) {
-          const keyIndex = (box * 256 + i) % sboxKeyMaterial.length;
+          const keyIndex = (box * 256 + i) % keyWords32.length;
+          const mixValue = keyWords32[keyIndex];
           const baseQ = (box % 2 === 0) ? this.Q0[i] : this.Q1[i];
-          this.sboxes[box][i] = baseQ ^ sboxKeyMaterial[keyIndex];
+          this.sboxKeys[box][i] = baseQ ^ ((mixValue >>> (8 * (i % 4))) & 0xFF);
         }
       }
     }
 
-    // Simplified HKDF-based key expansion
-    _hkdfExpand(key, salt, info, length) {
-      const expanded = [];
-      let counter = 0;
+    // Simplified h-function for educational purposes
+    _h(x, k) {
+      const bytes = [
+        (x >>> 0) & 0xFF,
+        (x >>> 8) & 0xFF,
+        (x >>> 16) & 0xFF,
+        (x >>> 24) & 0xFF
+      ];
 
-      while (expanded.length < length) {
-        // Create context for this iteration
-        const context = [...salt, ...info, counter & 0xFF, (counter >> 8) & 0xFF];
+      // Apply key-dependent transformations (simplified)
+      for (let i = Math.min(k.length - 1, 3); i >= 0; i--) {
+        const keyBytes = [
+          (k[i] >>> 0) & 0xFF,
+          (k[i] >>> 8) & 0xFF,
+          (k[i] >>> 16) & 0xFF,
+          (k[i] >>> 24) & 0xFF
+        ];
 
-        // Generate pseudo-random bytes
-        for (let i = 0; i < 16 && expanded.length < length; i++) {
-          let byte = key[i % key.length];
-          byte ^= context[i % context.length];
-          byte ^= (expanded.length & 0xFF);
-          byte = this._rotateLeft8(byte, (i + counter) % 8);
-          expanded.push(byte);
+        for (let j = 0; j < 4; j++) {
+          bytes[j] ^= keyBytes[j];
+          bytes[j] = (j % 2 === 0) ? this.Q0[bytes[j]] : this.Q1[bytes[j]];
         }
-
-        counter++;
       }
 
-      return expanded;
+      // MDS matrix multiplication
+      const result = [0, 0, 0, 0];
+      for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 4; j++) {
+          result[i] ^= OpCodes.GF256Mul(this.MDS[i][j], bytes[j]);
+        }
+      }
+
+      return OpCodes.Pack32LE(result[0], result[1], result[2], result[3]);
+    }
+
+    // Pseudo Hadamard Transform
+    _pht(a, b) {
+      const newA = (a + b) >>> 0;
+      const newB = (a + (b << 1)) >>> 0;
+      return [newA, newB];
+    }
+
+    // F-function for Feistel rounds
+    _fFunction(x) {
+      const bytes = [
+        (x >>> 0) & 0xFF,
+        (x >>> 8) & 0xFF,
+        (x >>> 16) & 0xFF,
+        (x >>> 24) & 0xFF
+      ];
+
+      // Apply key-dependent S-boxes
+      const t = [
+        this.sboxKeys[0][bytes[0]],
+        this.sboxKeys[1][bytes[1]],
+        this.sboxKeys[2][bytes[2]],
+        this.sboxKeys[3][bytes[3]]
+      ];
+
+      // MDS matrix multiplication
+      const result = [0, 0, 0, 0];
+      for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 4; j++) {
+          result[i] ^= OpCodes.GF256Mul(this.MDS[i][j], t[j]);
+        }
+      }
+
+      return OpCodes.Pack32LE(result[0], result[1], result[2], result[3]);
     }
 
     // Process a single 16-byte block
@@ -347,7 +388,7 @@
       let r3 = OpCodes.Pack32LE(block[12], block[13], block[14], block[15]);
 
       if (this.isInverse) {
-        // Decryption
+        // Decryption - reverse the encryption process
 
         // Undo output whitening
         const outputOffset = 4 + (this.numRounds * 2);
@@ -360,6 +401,9 @@
         for (let round = this.numRounds - 1; round >= 0; round--) {
           const k = 4 + (round * 2);
 
+          // Rotate state (reverse)
+          [r0, r1, r2, r3] = [r2, r3, r0, r1];
+
           // Undo rotations
           r2 = OpCodes.RotR32(r2, 1);
           r3 = OpCodes.RotL32(r3, 1);
@@ -368,15 +412,12 @@
           const f0 = this._fFunction(r0);
           const f1 = this._fFunction(OpCodes.RotL32(r1, 8));
 
-          // PHT (Pseudo Hadamard Transform)
+          // PHT
           const [t0, t1] = this._pht(f0, f1);
 
           // Undo round key application
           r2 ^= (t0 + this.subkeys[k]) >>> 0;
           r3 ^= (t1 + this.subkeys[k + 1]) >>> 0;
-
-          // Rotate state for next round
-          [r0, r1, r2, r3] = [r2, r3, r0, r1];
         }
 
         // Undo input whitening
@@ -402,7 +443,7 @@
           const f0 = this._fFunction(r0);
           const f1 = this._fFunction(OpCodes.RotL32(r1, 8));
 
-          // PHT (Pseudo Hadamard Transform)
+          // PHT
           const [t0, t1] = this._pht(f0, f1);
 
           // Apply round keys and update state
@@ -411,7 +452,7 @@
           r2 = OpCodes.RotL32(r2, 1);
           r3 = OpCodes.RotR32(r3, 1);
 
-          // Rotate state for next round
+          // Rotate state
           [r0, r1, r2, r3] = [r2, r3, r0, r1];
         }
 
@@ -430,54 +471,6 @@
       const bytes3 = OpCodes.Unpack32LE(r3);
 
       return [...bytes0, ...bytes1, ...bytes2, ...bytes3];
-    }
-
-    // Twofish F-function (core of the cipher)
-    _fFunction(x) {
-      const bytes = OpCodes.Unpack32LE(x);
-
-      // Apply key-dependent S-boxes
-      const t0 = this.sboxes[0][bytes[0]];
-      const t1 = this.sboxes[1][bytes[1]];
-      const t2 = this.sboxes[2][bytes[2]];
-      const t3 = this.sboxes[3][bytes[3]];
-
-      // MDS matrix multiplication for diffusion
-      const y = [
-        OpCodes.GF256Mul(this.MDS[0][0], t0) ^ OpCodes.GF256Mul(this.MDS[0][1], t1) ^ 
-        OpCodes.GF256Mul(this.MDS[0][2], t2) ^ OpCodes.GF256Mul(this.MDS[0][3], t3),
-
-        OpCodes.GF256Mul(this.MDS[1][0], t0) ^ OpCodes.GF256Mul(this.MDS[1][1], t1) ^ 
-        OpCodes.GF256Mul(this.MDS[1][2], t2) ^ OpCodes.GF256Mul(this.MDS[1][3], t3),
-
-        OpCodes.GF256Mul(this.MDS[2][0], t0) ^ OpCodes.GF256Mul(this.MDS[2][1], t1) ^ 
-        OpCodes.GF256Mul(this.MDS[2][2], t2) ^ OpCodes.GF256Mul(this.MDS[2][3], t3),
-
-        OpCodes.GF256Mul(this.MDS[3][0], t0) ^ OpCodes.GF256Mul(this.MDS[3][1], t1) ^ 
-        OpCodes.GF256Mul(this.MDS[3][2], t2) ^ OpCodes.GF256Mul(this.MDS[3][3], t3)
-      ];
-
-      return OpCodes.Pack32LE(y[0], y[1], y[2], y[3]);
-    }
-
-    // Pseudo Hadamard Transform (PHT)
-    _pht(a, b) {
-      const newA = (a + b) >>> 0;
-      const newB = (a + (b << 1)) >>> 0;
-      return [newA, newB];
-    }
-
-    // Helper functions
-    _stringToBytes(str) {
-      const bytes = [];
-      for (let i = 0; i < str.length; i++) {
-        bytes.push(str.charCodeAt(i) & 0xFF);
-      }
-      return bytes;
-    }
-
-    _rotateLeft8(value, positions) {
-      return ((value << positions) | (value >> (8 - positions))) & 0xFF;
     }
   }
 

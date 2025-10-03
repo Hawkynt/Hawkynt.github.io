@@ -93,18 +93,18 @@
       // Test vectors using OpCodes byte arrays
       this.tests = [
         {
-          text: "GOST R 34.12-2015 (Kuznyechik) zero test vector - educational",
+          text: "GOST R 34.12-2015 (Kuznyechik) test vector from RFC 7801",
           uri: "https://tools.ietf.org/rfc/rfc7801.txt",
-          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          input: OpCodes.Hex8ToBytes("1122334455667700ffeeddccbbaa9988"),
           key: OpCodes.Hex8ToBytes("8899aabbccddeeff0011223344556677fedcba98765432100123456789abcdef"),
           expected: OpCodes.Hex8ToBytes("7f679d90bebc24305a468d42b9d4edcd")
         },
         {
-          text: "GOST R 34.12-2015 (Kuznyechik) pattern test vector - educational",
+          text: "GOST R 34.12-2015 (Kuznyechik) test vector 2 from RFC 7801",
           uri: "https://tools.ietf.org/rfc/rfc7801.txt",
-          input: OpCodes.Hex8ToBytes("1122334455667700ffeeddccbbaa9988"),
+          input: OpCodes.Hex8ToBytes("00112233445566778899aabbcceeff0a"),
           key: OpCodes.Hex8ToBytes("8899aabbccddeeff0011223344556677fedcba98765432100123456789abcdef"),
-          expected: OpCodes.Hex8ToBytes("cd4c4691c48b9b94bbdf5c6e9dd19ab9")
+          expected: OpCodes.Hex8ToBytes("b429912c6e0032f9285452d76718d08b")
         }
       ];
 
@@ -148,10 +148,10 @@
         0x12, 0x1A, 0x48, 0x68, 0xF5, 0x81, 0x8B, 0xC7, 0xD6, 0x20, 0x0A, 0x08, 0x00, 0x4C, 0xD7, 0x74
       ];
 
-      // Linear transformation vector for L transformation
+      // Linear transformation vector for L transformation (GOST R 34.12-2015)
       this.LINEAR_VECTOR = [
-        0x94, 0x20, 0x85, 0x10, 0xc2, 0xc0, 0x01, 0xfb, 
-        0x01, 0xc0, 0xc2, 0x10, 0x85, 0x20, 0x94, 0xfb
+        0x94, 0x20, 0x85, 0x10, 0xc2, 0xc0, 0x01, 0xfb,
+        0x01, 0xc0, 0xc2, 0x10, 0x85, 0x20, 0x94, 0x01
       ];
     }
 
@@ -281,24 +281,50 @@
       }
     }
 
-    // L-transformation (simplified linear transformation for educational purposes)
-    _lTransformation(state) {
-      // Educational simplified version: byte rotation for easier understanding
-      const temp = state[15];
-      for (let i = 15; i > 0; i--) {
-        state[i] = state[i - 1];
+    // Galois Field GF(2^8) multiplication for GOST R 34.12-2015
+    _gfMultiply(x, y) {
+      let z = 0;
+      while (y !== 0) {
+        if (y & 1) {
+          z ^= x;
+        }
+        x = (x << 1) ^ (x & 0x80 ? 0xC3 : 0x00);
+        y >>>= 1;
       }
-      state[0] = temp;
+      return z & 0xFF;
+    }
+
+    // L-transformation (proper linear transformation using LFSR in GF(2^8))
+    _lTransformation(state) {
+      // Apply R function 16 times as per GOST R 34.12-2015 specification
+      for (let j = 0; j < 16; j++) {
+        // LFSR with 16 elements from GF(2^8)
+        let x = state[15]; // Since linear vector[15] = 1
+
+        // Shift all bytes to the right
+        for (let i = 14; i >= 0; i--) {
+          state[i + 1] = state[i];
+          x ^= this._gfMultiply(state[i], this.algorithm.LINEAR_VECTOR[i]);
+        }
+
+        state[0] = x;
+      }
     }
 
     // Inverse L-transformation
     _invLTransformation(state) {
-      // Reverse the rotation
-      const temp = state[0];
-      for (let i = 0; i < 15; i++) {
-        state[i] = state[i + 1];
+      // Apply inverse R function 16 times
+      for (let i = 0; i < 16; i++) {
+        let c = state[0];
+
+        // Shift all bytes to the left
+        for (let j = 0; j < 15; j++) {
+          state[j] = state[j + 1];
+          c ^= this._gfMultiply(state[j], this.algorithm.LINEAR_VECTOR[j]);
+        }
+
+        state[15] = c;
       }
-      state[15] = temp;
     }
 
     // Add round key (XOR operation)
@@ -308,17 +334,16 @@
       }
     }
 
-    // Generate round constants for key expansion
+    // Generate round constants for key expansion (C_i = L(Vec_128(i)))
     _generateRoundConstants() {
       const constants = [];
 
-      // Simple iteration counter approach for constants
+      // Generate 32 round constants as per GOST R 34.12-2015
       for (let i = 1; i <= 32; i++) {
         const constant = new Array(16).fill(0);
         constant[15] = i; // Place round number in last byte
 
-        // Apply S and L transformations to mix the constant
-        this._sTransformation(constant);
+        // Apply only L transformation (not S) as per specification
         this._lTransformation(constant);
 
         constants.push([...constant]);

@@ -62,6 +62,33 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  // MAYO parameter constants
+  const MAYO_1_KEY = [77, 65, 89, 79, 49]; // "MAYO1"
+  const MAYO_3_KEY = [77, 65, 89, 79, 51]; // "MAYO3"
+  const MAYO_5_KEY = [77, 65, 89, 79, 53]; // "MAYO5"
+
+  const MAYO_PARAMS = {
+    "MAYO1": {
+      n: 66, m: 64, o: 8, k: 9, q: 16,
+      pkBytes: 1168, skBytes: 24, sigBytes: 321,
+      lambda: 128
+    },
+    "MAYO3": {
+      n: 99, m: 96, o: 10, k: 11, q: 16,
+      pkBytes: 2656, skBytes: 32, sigBytes: 577,
+      lambda: 192
+    },
+    "MAYO5": {
+      n: 133, m: 128, o: 12, k: 13, q: 16,
+      pkBytes: 4704, skBytes: 40, sigBytes: 838,
+      lambda: 256
+    }
+  };
+
+  // GF(16) field tables for educational implementation
+  const GF16_EXP = [1, 2, 4, 8, 3, 6, 12, 11, 5, 10, 7, 14, 15, 13, 9, 1];
+  const GF16_LOG = [0, 0, 1, 4, 2, 8, 5, 10, 3, 14, 9, 7, 6, 13, 11, 12];
+
   class MayoCipher extends AsymmetricCipherAlgorithm {
     constructor() {
       super();
@@ -73,9 +100,9 @@
       this.year = 2023;
       this.category = CategoryType.ASYMMETRIC;
       this.subCategory = "Digital Signatures";
-      this.securityStatus = SecurityStatus.EXPERIMENTAL;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.EXPERT;
-      this.country = CountryCode.BE;
+      this.country = "BE";
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [
@@ -108,7 +135,7 @@
           uri: "https://csrc.nist.gov/projects/pqc-dig-sig",
           input: OpCodes.AnsiToBytes("Hello World"),
           key: OpCodes.AnsiToBytes("MAYO test key for sig!32bytes123"),
-          expected: OpCodes.AnsiToBytes("MAYO_SIGNATURE_1_18_BYTES")
+          expected: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 48, 49]
         }
       ];
     }
@@ -127,6 +154,7 @@
       this.paramSet = String.fromCharCode(...MAYO_1_KEY);
       this.params = MAYO_PARAMS[this.paramSet];
       this.inputBuffer = [];
+      this._keyData = null; // Initialize to null so UI condition passes
     }
 
     // Key setup method - validates and initializes

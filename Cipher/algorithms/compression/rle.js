@@ -86,19 +86,19 @@
         // Test vectors with proper RLE encoding
         this.tests = [
           new TestCase(
-            global.OpCodes.AnsiToBytes("AAABBBCCC"), // "AAABBBCCC" 
+            OpCodes.AnsiToBytes("AAABBBCCC"), // "AAABBBCCC" 
             [3, 65, 3, 66, 3, 67], // RLE encoded: count-value pairs
             "Simple repeated pattern - AAABBBCCC",
             "https://en.wikipedia.org/wiki/Run-length_encoding"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("AAAAABBC"), // "AAAAABBC"
+            OpCodes.AnsiToBytes("AAAAABBC"), // "AAAAABBC"
             [5, 65, 2, 66, 1, 67], // RLE encoded: count-value pairs  
             "Mixed run lengths",
             "https://www.numberanalytics.com/blog/mastering-run-length-encoding-rle-for-data-compression"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("ABCDEF"), // "ABCDEF" - no repetition
+            OpCodes.AnsiToBytes("ABCDEF"), // "ABCDEF" - no repetition
             [1, 65, 1, 66, 1, 67, 1, 68, 1, 69, 1, 70], // Each character appears once
             "No repeated characters",
             "https://en.wikipedia.org/wiki/Run-length_encoding"

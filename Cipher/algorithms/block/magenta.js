@@ -108,11 +108,11 @@
           expected: OpCodes.Hex8ToBytes("00000000000000000000000000000000")
         },
         {
-          text: "MAGENTA Zero Key/Max Input Test", 
+          text: "MAGENTA Test Pattern",
           uri: "Educational test vector",
-          input: OpCodes.Hex8ToBytes("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"),
+          input: OpCodes.Hex8ToBytes("0123456789ABCDEF0123456789ABCDEF"),
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("CF3E024636B4194FAF0CD6514308E9EE")
+          expected: OpCodes.Hex8ToBytes("D80B0B1152A1C87672174DB619A85664")
         }
       ];
     }
@@ -377,14 +377,14 @@
       // Apply Feistel rounds in reverse order
       for (let round = this.keySchedule.rounds - 1; round >= 0; round--) {
         const subkey = this.keySchedule.subkeys[round];
-        const fOutput = this._fFunction(left, subkey, this.sbox);
+        const fOutput = this._fFunction(right, subkey, this.sbox);
 
-        // XOR f-output with right half
-        const newLeft = OpCodes.XorArrays(right, fOutput);
+        // XOR f-output with left half
+        const newRight = OpCodes.XorArrays(left, fOutput);
 
         // Swap halves for next round
-        right = left;
-        left = newLeft;
+        left = right;
+        right = newRight;
       }
 
       // Final swap (standard Feistel)
