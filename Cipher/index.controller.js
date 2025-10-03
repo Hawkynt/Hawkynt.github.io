@@ -8,38 +8,53 @@ class CipherController {
     constructor() {
         // Only use AlgorithmFramework - no local storage
         this.testResults = null;
-        
+        this.testAPI = null; // TestAPI instance
+
         // Don't auto-initialize - wait for manual call
     }
     
     async initializeApplication() {
         console.log('🔐 Initializing Cipher Tools Application...');
-        
+
         // Verify AlgorithmFramework is available
         if (typeof AlgorithmFramework === 'undefined') {
             console.error('❌ AlgorithmFramework not available');
             return;
         }
-        
+
         console.log('✅ AlgorithmFramework available');
         console.log('📊 Algorithms registered:', AlgorithmFramework.Algorithms.length);
-        
-        // Setup UI systems 
+
+        // Initialize TestAPI
+        try {
+            if (typeof TestAPI === 'undefined') {
+                throw new Error('TestAPI not available. Please ensure tests/TestAPI.js is loaded.');
+            }
+            this.testAPI = new TestAPI();
+            await this.testAPI.initialize();
+            console.log('✅ TestAPI initialized successfully');
+        } catch (error) {
+            console.error('❌ TestAPI initialization failed:', error.message);
+            alert('Testing framework failed to load: ' + error.message);
+            return;
+        }
+
+        // Setup UI systems
         this.setupEventListeners();
         this.setupTabNavigation();
-        
+
         this.setupAlgorithmsInterface();
         this.setupCipherInterface();
         this.setupChainingInterface();
         this.setupTestingInterface();
-      
+
         this.updateStats();
         this.updateTestingTabResults();
-        
+
         console.log('✅ Application initialized successfully');
         console.log('📊 Loaded algorithms:', this.getAllAlgorithms().length);
         console.log('📋 Algorithm names:', this.getAllAlgorithms().map(a => a.name));
-        
+
         // Auto-run tests for all algorithms
         setTimeout(() => this.autoRunAllTests(), 1000);
     }
@@ -122,334 +137,177 @@ class CipherController {
     }
     
     /**
-     * Auto-run tests for all algorithms after page load
+     * Auto-run tests for all algorithms using TestAPI
      */
     async autoRunAllTests() {
-        console.log('🧪 Starting auto-test for all algorithms...');
-        
+        console.log('🧪 Starting auto-test for all algorithms using TestAPI...');
+
+        if (!this.testAPI) {
+            throw new Error('TestAPI not initialized');
+        }
+
         const algorithms = this.getAllAlgorithms().filter(alg => alg.tests && alg.tests.length > 0);
         console.log(`📊 Found ${algorithms.length} algorithms with test vectors`);
-        
+
         // Show global testing indicator
-        this.updateGlobalTestingProgress(0, algorithms.length, `Starting tests...`);
-        
-        // Process algorithms one by one with delay
+        this.updateGlobalTestingProgress(0, algorithms.length, 'Starting tests...');
+
+        // Set up progress callback for TestAPI
+        this.testAPI.setProgressCallback((progress) => {
+            this.updateGlobalTestingProgress(progress.current, progress.total, `Testing ${progress.algorithm}...`);
+        });
+
+        // Process algorithms one by one
         for (let i = 0; i < algorithms.length; i++) {
             const algorithm = algorithms[i];
-            
+
             try {
-                // Update global progress
+                // Update global progress BEFORE starting test
                 this.updateGlobalTestingProgress(i, algorithms.length, `Testing ${algorithm.name}...`);
-                
+
                 // Update card to show testing state (hourglass)
                 this.updateCardTestingState(algorithm.name, true);
-                
+
                 // Give visual time to see hourglass
                 await new Promise(resolve => setTimeout(resolve, 300));
-                
-                // Run tests for this algorithm
-                await this.runAlgorithmTests(algorithm);
-                
+
+                // Run tests using TestAPI with algorithm name
+                const result = await this.testAPI.testAlgorithm(algorithm.name);
+
+                if (result.success) {
+                    // Extract test vector counts from functionality results (not test category counts)
+                    let vectorsPassed = 0;
+                    let vectorsTotal = 0;
+
+                    if (result.algorithm.details.testResults && result.algorithm.details.testResults.length > 0) {
+                        const funcResult = result.algorithm.details.testResults[0];
+                        vectorsPassed = funcResult.vectorsPassed || 0;
+                        vectorsTotal = funcResult.vectorsTotal || 0;
+                    }
+
+                    // Store TestAPI results on algorithm
+                    algorithm.testResults = {
+                        passed: vectorsPassed,        // Test vectors passed, not categories
+                        total: vectorsTotal,          // Test vectors total, not categories
+                        percentage: vectorsTotal > 0 ? Math.round((vectorsPassed / vectorsTotal) * 100) : 0,
+                        categoryPercentage: result.summary.percentage, // Keep category percentage for reference
+                        lastUpdated: Date.now(),
+                        autoRun: true,
+                        testAPIResult: result.algorithm,
+                        functionalityResults: result.algorithm.details.testResults
+                    };
+                } else {
+                    throw new Error(result.error || 'TestAPI test failed');
+                }
+
+                // Update card to show results
+                this.updateCardTestingState(algorithm.name, false);
+
                 // Update testing tab with results
                 this.updateTestingTabResults();
-                
+
+                // Update progress AFTER completing test
+                this.updateGlobalTestingProgress(i + 1, algorithms.length, `Completed ${algorithm.name}`);
+
                 // Small delay between algorithms
                 await new Promise(resolve => setTimeout(resolve, 200));
-                
+
             } catch (error) {
                 console.error(`❌ Auto-test failed for ${algorithm.name}:`, error);
-                
+
                 // Store failed result
                 algorithm.testResults = {
                     passed: 0,
                     total: algorithm.tests?.length || 0,
                     lastUpdated: Date.now(),
-                    autoRun: true
+                    autoRun: true,
+                    error: error.message
                 };
-                
+
                 // Update card to show failure
                 this.updateCardTestingState(algorithm.name, false);
+
+                // Update progress even on failure
+                this.updateGlobalTestingProgress(i + 1, algorithms.length, `Failed ${algorithm.name}`);
             }
         }
-        
+
         // Complete global testing
         this.updateGlobalTestingProgress(algorithms.length, algorithms.length, `Completed testing ${algorithms.length} algorithms`);
-        
+
         // Final update to testing tab
         this.updateTestingTabResults();
-        
+
         console.log('✅ Auto-test completed for all algorithms');
     }
     
-    /**
-     * Determine if algorithm requires round-trip testing
-     */
-    requiresRoundTrips(algorithm) {
-        if (!algorithm.category || !window.AlgorithmFramework?.CategoryType) {
-            return false;
-        }
-
-        const CategoryType = window.AlgorithmFramework.CategoryType;
-        const perfectRoundTripCategories = [
-            CategoryType.BLOCK,
-            CategoryType.STREAM,
-            CategoryType.ASYMMETRIC,
-            CategoryType.CLASSICAL,
-            CategoryType.SPECIAL
-        ];
-
-        return perfectRoundTripCategories.includes(algorithm.category);
-    }
 
     /**
-     * Determine if algorithm requires encoding stability testing
-     */
-    requiresEncodingStability(algorithm) {
-        if (!algorithm.category || !window.AlgorithmFramework?.CategoryType) {
-            return false;
-        }
-
-        const CategoryType = window.AlgorithmFramework.CategoryType;
-        return algorithm.category === CategoryType.ENCODING;
-    }
-
-    /**
-     * Run tests for a single algorithm with enhanced testing modes
+     * Run tests for a single algorithm using TestAPI
      */
     async runAlgorithmTests(algorithm) {
+        if (!this.testAPI) {
+            throw new Error('TestAPI not initialized');
+        }
+
         if (!algorithm.tests || algorithm.tests.length === 0) {
             return;
         }
 
-        let passedTests = 0;
-        let passedRoundTrips = 0;
-        let passedStabilityTests = 0;
-        const totalTests = algorithm.tests.length;
-        const startTime = performance.now();
+        try {
+            const result = await this.testAPI.testAlgorithm(algorithm.name);
 
-        const needsRoundTrips = this.requiresRoundTrips(algorithm);
-        const needsEncodingStability = this.requiresEncodingStability(algorithm);
+            if (result.success) {
+                // Extract test vector counts from functionality results (not test category counts)
+                let vectorsPassed = 0;
+                let vectorsTotal = 0;
 
-        // Test each vector
-        for (const test of algorithm.tests) {
-            try {
-                const result = this.executeAlgorithmTest(algorithm, test);
-                if (result.success) {
-                    passedTests++;
-
-                    // Test round-trips for invertible algorithms
-                    if (needsRoundTrips) {
-                        const roundTripResult = this.executeRoundTripTest(algorithm, test);
-                        if (roundTripResult.success) {
-                            passedRoundTrips++;
-                        }
-                    }
-
-                    // Test encoding stability for encoding algorithms
-                    if (needsEncodingStability) {
-                        const stabilityResult = this.executeEncodingStabilityTest(algorithm, test);
-                        if (stabilityResult.success) {
-                            passedStabilityTests++;
-                        }
-                    }
+                if (result.algorithm.details.testResults && result.algorithm.details.testResults.length > 0) {
+                    const funcResult = result.algorithm.details.testResults[0];
+                    vectorsPassed = funcResult.vectorsPassed || 0;
+                    vectorsTotal = funcResult.vectorsTotal || 0;
                 }
-            } catch (error) {
-                console.warn(`Test failed for ${algorithm.name}:`, error.message);
-            }
-        }
 
-        const duration = performance.now() - startTime;
-
-        // Store enhanced results on algorithm
-        algorithm.testResults = {
-            passed: passedTests,
-            total: totalTests,
-            roundTrips: needsRoundTrips ? {
-                passed: passedRoundTrips,
-                total: totalTests
-            } : null,
-            encodingStability: needsEncodingStability ? {
-                passed: passedStabilityTests,
-                total: totalTests
-            } : null,
-            duration: duration,
-            lastUpdated: Date.now(),
-            autoRun: true,
-            needsRoundTrips: needsRoundTrips,
-            needsEncodingStability: needsEncodingStability
-        };
-
-        // Update the card UI
-        this.updateCardTestingState(algorithm.name, false);
-    }
-
-    /**
-     * Execute round-trip test for invertible algorithms
-     */
-    executeRoundTripTest(algorithm, test) {
-        const startTime = performance.now();
-
-        try {
-            // First, encrypt/encode the input
-            const forwardInstance = algorithm.CreateInstance(false); // Forward direction
-            if (test.key && forwardInstance.key !== undefined) {
-                forwardInstance.key = test.key;
-            }
-            forwardInstance.Feed(test.input);
-            const encrypted = forwardInstance.Result();
-
-            // Then, decrypt/decode back to original
-            const reverseInstance = algorithm.CreateInstance(true); // Reverse direction
-            if (test.key && reverseInstance.key !== undefined) {
-                reverseInstance.key = test.key;
-            }
-            reverseInstance.Feed(encrypted);
-            const decrypted = reverseInstance.Result();
-
-            // Compare decrypted with original input
-            const success = this.compareByteArrays(decrypted, test.input);
-
-            return {
-                success: success,
-                encrypted: encrypted,
-                decrypted: decrypted,
-                originalInput: test.input,
-                duration: performance.now() - startTime
-            };
-
-        } catch (error) {
-            return {
-                success: false,
-                error: error.message,
-                duration: performance.now() - startTime
-            };
-        }
-    }
-
-    /**
-     * Execute encoding stability test for encoding algorithms
-     * Tests that encode(data) = encode(decode(encode(data)))
-     */
-    executeEncodingStabilityTest(algorithm, test) {
-        const startTime = performance.now();
-
-        try {
-            // First encoding: encode(data)
-            const encodeInstance1 = algorithm.CreateInstance(false);
-            if (test.key && encodeInstance1.key !== undefined) {
-                encodeInstance1.key = test.key;
-            }
-            encodeInstance1.Feed(test.input);
-            const encoded1 = encodeInstance1.Result();
-
-            // Decode the encoded result
-            const decodeInstance = algorithm.CreateInstance(true);
-            if (test.key && decodeInstance.key !== undefined) {
-                decodeInstance.key = test.key;
-            }
-            decodeInstance.Feed(encoded1);
-            const decoded = decodeInstance.Result();
-
-            // Second encoding: encode(decode(encode(data)))
-            const encodeInstance2 = algorithm.CreateInstance(false);
-            if (test.key && encodeInstance2.key !== undefined) {
-                encodeInstance2.key = test.key;
-            }
-            encodeInstance2.Feed(decoded);
-            const encoded2 = encodeInstance2.Result();
-
-            // Check stability: encoded1 should equal encoded2
-            const success = this.compareByteArrays(encoded1, encoded2);
-
-            return {
-                success: success,
-                encoded1: encoded1,
-                decoded: decoded,
-                encoded2: encoded2,
-                duration: performance.now() - startTime
-            };
-
-        } catch (error) {
-            return {
-                success: false,
-                error: error.message,
-                duration: performance.now() - startTime
-            };
-        }
-    }
-
-    /**
-     * Execute a single test for an algorithm
-     */
-    executeAlgorithmTest(algorithm, test) {
-        const startTime = performance.now();
-
-        try {
-            // Validate test structure
-            if (!test.input || !test.expected) {
-                return {
-                    success: false,
-                    error: 'Test vector missing required input or expected output',
-                    duration: performance.now() - startTime
+                // Store TestAPI results on algorithm
+                algorithm.testResults = {
+                    passed: vectorsPassed,        // Test vectors passed, not categories
+                    total: vectorsTotal,          // Test vectors total, not categories
+                    percentage: vectorsTotal > 0 ? Math.round((vectorsPassed / vectorsTotal) * 100) : 0,
+                    categoryPercentage: result.summary.percentage, // Keep category percentage for reference
+                    lastUpdated: Date.now(),
+                    autoRun: true,
+                    testAPIResult: result.algorithm,
+                    functionalityResults: result.algorithm.details.testResults
                 };
+            } else {
+                throw new Error(result.error || 'TestAPI test failed');
             }
 
-            // Create algorithm instance
-            const instance = algorithm.CreateInstance();
-            if (!instance) {
-                return {
-                    success: false,
-                    error: 'Failed to create algorithm instance',
-                    duration: performance.now() - startTime
-                };
-            }
-            // TODO: better copy all properties from test-vectors except uri, description and input and expected
-            // Set key if provided in test vector (required for ciphers)
-            if (test.key && instance.key !== undefined) {
-                instance.key = test.key;
-            }
+            // Update the card UI
+            this.updateCardTestingState(algorithm.name, false);
 
-            // Feed input data
-            instance.Feed(test.input);
-
-            // Get output
-            const output = instance.Result();
-            
-            // Compare with expected
-            const success = this.compareByteArrays(output, test.expected);
-            
-            return {
-                success: success,
-                output: output,
-                expected: test.expected,
-                duration: performance.now() - startTime
-            };
-            
         } catch (error) {
-            return {
-                success: false,
-                error: error.message,
-                duration: performance.now() - startTime
+            console.error(`Test failed for ${algorithm.name}:`, error);
+
+            // Store failed result
+            algorithm.testResults = {
+                passed: 0,
+                total: algorithm.tests?.length || 0,
+                lastUpdated: Date.now(),
+                autoRun: true,
+                error: error.message
             };
+
+            // Update card to show failure
+            this.updateCardTestingState(algorithm.name, false);
+            throw error;
         }
     }
+
+    
     
     /**
-     * Compare two byte arrays for equality
-     */
-    compareByteArrays(arr1, arr2) {
-        if (!arr1 || !arr2) return false;
-        if (arr1.length !== arr2.length) return false;
-        
-        for (let i = 0; i < arr1.length; i++) {
-            if (arr1[i] !== arr2[i]) return false;
-        }
-        
-        return true;
-    }
-    
-    /**
-     * Update algorithm card testing state (show hourglass during testing)
+     * Update algorithm card testing state using TestAPI results
      */
     updateCardTestingState(algorithmName, isTesting) {
         const algorithmCard = document.querySelector(`[data-name="${algorithmName}"]`);
@@ -457,19 +315,19 @@ class CipherController {
             console.warn(`⚠️ Card not found for algorithm: ${algorithmName}`);
             return;
         }
-        
+
         const testButton = algorithmCard.querySelector('.card-test-btn');
         if (!testButton) {
             console.warn(`⚠️ Test button not found for algorithm: ${algorithmName}`);
             return;
         }
-        
+
         if (isTesting) {
             // Store original content and show hourglass
             const originalText = testButton.innerHTML;
             console.log(`⏳ Starting test for ${algorithmName}, original text: "${originalText}"`);
             testButton.setAttribute('data-original-text', originalText);
-            // Replace the test tube emoji with hourglass, handling any additional content like badges
+            // Replace the test tube emoji with hourglass
             const updatedText = originalText.replace('🧪', '⏳');
             console.log(`⏳ Updated text: "${updatedText}"`);
             testButton.innerHTML = updatedText;
@@ -490,38 +348,23 @@ class CipherController {
             testButton.style.backgroundColor = '';
             testButton.style.transform = '';
             testButton.style.transition = '';
-            
-            // Update status color based on results including enhanced testing
+
+            // Update status based on TestAPI results
             const algorithm = this.getAlgorithm(algorithmName);
             if (algorithm && algorithm.testResults) {
-                const { passed, total, roundTrips, encodingStability, needsRoundTrips, needsEncodingStability } = algorithm.testResults;
+                const { passed, total, percentage, error, testAPIResult } = algorithm.testResults;
                 let status = 'untested';
 
-                if (total === 0) {
+                if (error) {
+                    status = 'none';
+                } else if (total === 0) {
                     status = 'untested';
+                } else if (percentage === 100) {
+                    status = 'all';
+                } else if (passed > 0) {
+                    status = 'some';
                 } else {
-                    // Check basic functionality first
-                    const basicTestsPass = passed === total;
-                    let enhancedTestsPass = true;
-
-                    // Check round-trips for algorithms that need them
-                    if (needsRoundTrips && roundTrips) {
-                        enhancedTestsPass = enhancedTestsPass && (roundTrips.passed === roundTrips.total);
-                    }
-
-                    // Check encoding stability for algorithms that need it
-                    if (needsEncodingStability && encodingStability) {
-                        enhancedTestsPass = enhancedTestsPass && (encodingStability.passed === encodingStability.total);
-                    }
-
-                    // Determine overall status
-                    if (passed === 0) {
-                        status = 'none';
-                    } else if (basicTestsPass && enhancedTestsPass) {
-                        status = 'all';
-                    } else {
-                        status = 'some';
-                    }
+                    status = 'none';
                 }
 
                 // Remove old status classes
@@ -531,15 +374,23 @@ class CipherController {
                 testButton.classList.add(`test-status-${status}`);
                 testButton.setAttribute('data-test-status', status);
 
-                // Update button text with enhanced test results
+                // Update button text with test results
                 let testText = `🧪 ${passed}/${total}`;
 
-                if (needsRoundTrips && roundTrips) {
-                    testText += ` R:${roundTrips.passed}/${roundTrips.total}`;
+                // Add functionality results if available from TestAPI
+                if (testAPIResult && testAPIResult.details.testResults) {
+                    const funcResults = testAPIResult.details.testResults;
+                    const roundTripInfo = funcResults
+                        .filter(r => r.roundTripsAttempted > 0)
+                        .map(r => `${r.roundTripsPassed}/${r.roundTripsAttempted}`)
+                        .join(',');
+                    if (roundTripInfo) {
+                        testText += ` RT:${roundTripInfo}`;
+                    }
                 }
 
-                if (needsEncodingStability && encodingStability) {
-                    testText += ` S:${encodingStability.passed}/${encodingStability.total}`;
+                if (error) {
+                    testText = `❌ Error`;
                 }
 
                 testButton.innerHTML = testText;
@@ -943,48 +794,37 @@ class CipherController {
     }
 
     /**
-     * Update the Testing tab with current test results
+     * Update the Testing tab with TestAPI results
      */
     updateTestingTabResults() {
         const algorithms = this.getFilteredAlgorithmsForTesting();
         const testedAlgorithms = algorithms.filter(alg => alg.testResults);
-        
-        // Update summary statistics with enhanced testing
+
+        // Update summary statistics using TestAPI results
         let passed = 0, partial = 0, failed = 0;
 
         testedAlgorithms.forEach(alg => {
             if (alg.testResults.total === 0) return;
 
             const results = alg.testResults;
-            const basicTestsPass = results.passed === results.total;
-            let enhancedTestsPass = true;
 
-            // Check round-trips for algorithms that need them
-            if (results.needsRoundTrips && results.roundTrips) {
-                enhancedTestsPass = enhancedTestsPass && (results.roundTrips.passed === results.roundTrips.total);
-            }
-
-            // Check encoding stability for algorithms that need it
-            if (results.needsEncodingStability && results.encodingStability) {
-                enhancedTestsPass = enhancedTestsPass && (results.encodingStability.passed === results.encodingStability.total);
-            }
-
-            // Classify based on all test types
-            if (results.passed === 0) {
+            if (results.error) {
                 failed++;
-            } else if (basicTestsPass && enhancedTestsPass) {
+            } else if (results.percentage === 100) {
                 passed++;
-            } else {
+            } else if (results.passed > 0) {
                 partial++;
+            } else {
+                failed++;
             }
         });
-        
+
         // Update summary UI
         const passedEl = document.getElementById('passed-algorithms');
         const partialEl = document.getElementById('partial-algorithms');
         const failedEl = document.getElementById('failed-algorithms');
         const successRateEl = document.getElementById('success-rate');
-        
+
         if (passedEl) passedEl.textContent = passed;
         if (partialEl) partialEl.textContent = partial;
         if (failedEl) failedEl.textContent = failed;
@@ -993,98 +833,75 @@ class CipherController {
             const rate = total > 0 ? Math.round((passed / total) * 100) : 0;
             successRateEl.textContent = `${rate}%`;
         }
-        
+
         // Update test grid
         this.populateTestGrid(algorithms);
     }
     
     /**
-     * Populate the test grid with algorithm results
+     * Populate the test grid with TestAPI results
      */
     populateTestGrid(algorithms) {
         const tbody = document.getElementById('test-grid-body');
         if (!tbody) return;
-        
+
         tbody.innerHTML = '';
-        
+
         algorithms.forEach(algorithm => {
             const row = document.createElement('tr');
             const testCount = algorithm.tests ? algorithm.tests.length : 0;
             const results = algorithm.testResults;
-            
+
             let status = '⚪ Not Tested';
             let statusClass = 'untested';
             let passed = 0, total = testCount;
             let successRate = 0;
             let duration = '-';
             let lastTested = '-';
-            
+
             if (results) {
                 passed = results.passed || 0;
                 total = results.total || testCount;
                 lastTested = new Date(results.lastUpdated).toLocaleTimeString();
 
-                // Format duration
-                if (results.duration !== undefined) {
-                    if (results.duration < 1000) {
-                        duration = `${Math.round(results.duration)}ms`;
-                    } else {
-                        duration = `${Math.round(results.duration / 1000 * 100) / 100}s`;
-                    }
-                }
+                // Format duration (TestAPI doesn't provide duration, use placeholder)
+                duration = '-';
 
-                // Determine overall status including enhanced tests
-                const basicTestsPass = results.passed === results.total;
-                let enhancedTestsPass = true;
-
-                // Check round-trips for algorithms that need them
-                if (results.needsRoundTrips && results.roundTrips) {
-                    enhancedTestsPass = enhancedTestsPass && (results.roundTrips.passed === results.roundTrips.total);
-                }
-
-                // Check encoding stability for algorithms that need it
-                if (results.needsEncodingStability && results.encodingStability) {
-                    enhancedTestsPass = enhancedTestsPass && (results.encodingStability.passed === results.encodingStability.total);
-                }
-
-                if (total === 0) {
-                    status = '⚪ No Tests';
-                } else if (passed === 0) {
-                    status = '❌ Failed';
+                // Determine status using TestAPI results
+                if (results.error) {
+                    status = '❌ Error';
                     statusClass = 'failed';
-                } else if (basicTestsPass && enhancedTestsPass) {
+                } else if (total === 0) {
+                    status = '⚪ No Tests';
+                    statusClass = 'untested';
+                } else if (results.percentage === 100) {
                     status = '✅ Passed';
                     statusClass = 'passed';
-                } else {
+                } else if (passed > 0) {
                     status = '🟡 Partial';
                     statusClass = 'partial';
+                } else {
+                    status = '❌ Failed';
+                    statusClass = 'failed';
                 }
 
-                successRate = total > 0 ? Math.round((passed / total) * 100) : 0;
+                successRate = results.percentage || 0;
             }
-            
+
             // Apply CSS class for row background tinting
             row.className = statusClass;
-            
-            // Build enhanced test result display
-            let enhancedTestDisplay = '';
 
-            if (results && results.needsRoundTrips && results.roundTrips) {
-                const rtPassed = results.roundTrips.passed;
-                const rtTotal = results.roundTrips.total;
-                const rtRate = rtTotal > 0 ? Math.round((rtPassed / rtTotal) * 100) : 0;
-                enhancedTestDisplay += `R:${rtPassed}/${rtTotal}(${rtRate}%) `;
-            }
-
-            if (results && results.needsEncodingStability && results.encodingStability) {
-                const esPassed = results.encodingStability.passed;
-                const esTotal = results.encodingStability.total;
-                const esRate = esTotal > 0 ? Math.round((esPassed / esTotal) * 100) : 0;
-                enhancedTestDisplay += `S:${esPassed}/${esTotal}(${esRate}%)`;
-            }
-
-            if (!enhancedTestDisplay.trim()) {
-                enhancedTestDisplay = '-';
+            // Build enhanced test result display from TestAPI results
+            let enhancedTestDisplay = '-';
+            if (results && results.functionalityResults) {
+                const funcResults = results.functionalityResults;
+                const roundTripInfo = funcResults
+                    .filter(r => r.roundTripsAttempted > 0)
+                    .map(r => `RT:${r.roundTripsPassed}/${r.roundTripsAttempted}`)
+                    .join(' ');
+                if (roundTripInfo) {
+                    enhancedTestDisplay = roundTripInfo;
+                }
             }
 
             row.innerHTML = `
@@ -1100,7 +917,7 @@ class CipherController {
                 <td>${duration}</td>
                 <td>${lastTested}</td>
             `;
-            
+
             // Add checkbox event listener for row selection
             const checkbox = row.querySelector('.row-checkbox');
             checkbox.addEventListener('change', (e) => {
@@ -1110,7 +927,7 @@ class CipherController {
                     row.classList.remove('selected');
                 }
             });
-            
+
             tbody.appendChild(row);
         });
     }
@@ -1214,6 +1031,7 @@ class CipherController {
     setupTestingInterface() {
         this.populateTestingCategoriesDropdown();
         this.setupTestingFilters();
+        this.setupTestingActions();
     }
     
     /**
@@ -1222,20 +1040,192 @@ class CipherController {
     setupTestingFilters() {
         const statusFilter = document.getElementById('test-filter-status');
         const categoryFilter = document.getElementById('test-filter-category');
-        
+
         if (statusFilter) {
             statusFilter.addEventListener('change', () => {
                 this.updateTestingTabResults();
             });
         }
-        
+
         if (categoryFilter) {
             categoryFilter.addEventListener('change', () => {
                 this.updateTestingTabResults();
             });
         }
-        
+
         console.log('✅ Testing filters setup complete');
+    }
+
+    /**
+     * Setup testing action buttons
+     */
+    setupTestingActions() {
+        const runAllBtn = document.getElementById('run-all-tests');
+        const runSelectedBtn = document.getElementById('run-selected-tests');
+        const stopTestingBtn = document.getElementById('stop-testing');
+        const exportResultsBtn = document.getElementById('export-test-results');
+
+        if (runAllBtn) {
+            runAllBtn.addEventListener('click', () => this.runAllTestsManually());
+        }
+
+        if (runSelectedBtn) {
+            runSelectedBtn.addEventListener('click', () => this.runSelectedTests());
+        }
+
+        if (stopTestingBtn) {
+            stopTestingBtn.addEventListener('click', () => this.stopTesting());
+        }
+
+        if (exportResultsBtn) {
+            exportResultsBtn.addEventListener('click', () => this.exportTestResults());
+        }
+
+        console.log('✅ Testing actions setup complete');
+    }
+
+    /**
+     * Manually run all tests
+     */
+    async runAllTestsManually() {
+        if (!this.testAPI) {
+            alert('Testing framework not initialized. Please reload the page.');
+            return;
+        }
+
+        try {
+            await this.autoRunAllTests();
+        } catch (error) {
+            console.error('Manual test run failed:', error);
+            alert('Test execution failed: ' + error.message);
+        }
+    }
+
+    /**
+     * Run tests for selected algorithms
+     */
+    async runSelectedTests() {
+        if (!this.testAPI) {
+            alert('Testing framework not initialized. Please reload the page.');
+            return;
+        }
+
+        const checkboxes = document.querySelectorAll('.row-checkbox:checked');
+        if (checkboxes.length === 0) {
+            alert('Please select algorithms to test.');
+            return;
+        }
+
+        const algorithmNames = Array.from(checkboxes).map(cb => cb.getAttribute('data-algorithm'));
+        console.log('Running tests for selected algorithms:', algorithmNames);
+
+        try {
+            // Use batch testing with TestAPI
+            const results = await this.testAPI.testBatch(algorithmNames);
+
+            // Update algorithm results
+            results.forEach((result, index) => {
+                const algorithmName = algorithmNames[index];
+                const algorithm = this.getAlgorithm(algorithmName);
+                if (algorithm && result.success) {
+                    // Extract test vector counts from functionality results (not test category counts)
+                    let vectorsPassed = 0;
+                    let vectorsTotal = 0;
+
+                    if (result.algorithm.details.testResults && result.algorithm.details.testResults.length > 0) {
+                        const funcResult = result.algorithm.details.testResults[0];
+                        vectorsPassed = funcResult.vectorsPassed || 0;
+                        vectorsTotal = funcResult.vectorsTotal || 0;
+                    }
+
+                    algorithm.testResults = {
+                        passed: vectorsPassed,        // Test vectors passed, not categories
+                        total: vectorsTotal,          // Test vectors total, not categories
+                        percentage: vectorsTotal > 0 ? Math.round((vectorsPassed / vectorsTotal) * 100) : 0,
+                        categoryPercentage: result.summary.percentage, // Keep category percentage for reference
+                        lastUpdated: Date.now(),
+                        testAPIResult: result.algorithm,
+                        functionalityResults: result.algorithm.details.testResults
+                    };
+                } else if (algorithm) {
+                    algorithm.testResults = {
+                        passed: 0,
+                        total: algorithm.tests?.length || 0,
+                        error: result.error,
+                        lastUpdated: Date.now()
+                    };
+                }
+            });
+
+            this.updateTestingTabResults();
+        } catch (error) {
+            console.error('Selected tests failed:', error);
+            alert('Test execution failed: ' + error.message);
+        }
+    }
+
+    /**
+     * Stop testing (placeholder)
+     */
+    stopTesting() {
+        console.log('Stop testing requested - not implemented');
+        alert('Stop testing not yet implemented');
+    }
+
+    /**
+     * Export test results
+     */
+    exportTestResults() {
+        try {
+            const algorithms = this.getAllAlgorithms().filter(alg => alg.testResults);
+            const results = algorithms.map(alg => ({
+                name: alg.name,
+                category: this.getCategoryDisplayName(alg.category),
+                passed: alg.testResults.passed,
+                total: alg.testResults.total,
+                percentage: alg.testResults.percentage,
+                lastTested: new Date(alg.testResults.lastUpdated).toISOString(),
+                error: alg.testResults.error || null
+            }));
+
+            const csvContent = this.convertToCSV(results);
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `cipher-test-results-${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+        } catch (error) {
+            console.error('Export failed:', error);
+            alert('Export failed: ' + error.message);
+        }
+    }
+
+    /**
+     * Convert test results to CSV format
+     */
+    convertToCSV(data) {
+        if (!data.length) return '';
+
+        const headers = Object.keys(data[0]);
+        const csvContent = [
+            headers.join(','),
+            ...data.map(row => headers.map(header => {
+                const value = row[header];
+                if (value === null || value === undefined) return '';
+                if (typeof value === 'string' && value.includes(',')) {
+                    return `"${value}"`;
+                }
+                return value;
+            }).join(','))
+        ].join('\n');
+
+        return csvContent;
     }
     
     /**
@@ -2634,21 +2624,40 @@ class CipherController {
     }
 
     /**
-     * Run tests and switch to test vectors tab - called from card test button  
+     * Run tests and switch to test vectors tab using TestAPI
      */
     async runTestAndSwitchToTestVectors(algorithmName) {
         console.log(`Running tests and switching to test vectors for ${algorithmName}`);
-        
-        // Switch to metadata modal and show test vectors tab
-        this.showMetadata(algorithmName);
-        
-        // Wait a moment for modal to open, then switch to test vectors tab
-        setTimeout(() => {
-            if (this.algorithmDetails) {
-                this.algorithmDetails.switchTab('test-vectors');
-                // Auto-run all test vectors could be implemented here
+
+        if (!this.testAPI) {
+            alert('Testing framework not initialized. Please reload the page.');
+            return;
+        }
+
+        try {
+            // Get the algorithm
+            const algorithm = this.getAlgorithm(algorithmName);
+            if (!algorithm) {
+                throw new Error(`Algorithm not found: ${algorithmName}`);
             }
-        }, 100);
+
+            // Run test using TestAPI
+            await this.runAlgorithmTests(algorithm);
+
+            // Switch to metadata modal and show test vectors tab
+            this.showMetadata(algorithmName);
+
+            // Wait a moment for modal to open, then switch to test vectors tab
+            setTimeout(() => {
+                if (this.algorithmDetails) {
+                    this.algorithmDetails.switchTab('test-vectors');
+                }
+            }, 100);
+
+        } catch (error) {
+            console.error(`Test execution failed for ${algorithmName}:`, error);
+            alert(`Test failed: ${error.message}`);
+        }
     }
 
 }
