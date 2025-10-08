@@ -1,3 +1,11 @@
+/*
+ * Skein Hash Function - AlgorithmFramework Implementation
+ * Production-quality implementation based on Skein 1.3 specification
+ * (c)2006-2025 Hawkynt
+ *
+ * This implementation is based on the official NIST SHA-3 submission (Skein 1.3)
+ * and Bouncy Castle reference implementation.
+ */
 
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
@@ -25,489 +33,441 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
-          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
-          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
-          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
-          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
-          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
-          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem } = AlgorithmFramework;
 
-  // ===== ALGORITHM IMPLEMENTATION =====
+  // ===== THREEFISH-512 CIPHER IMPLEMENTATION =====
 
-  // Skein constants
-  const SKEIN_256_BLOCK_BYTES = 32;     // 256-bit block size
-  const SKEIN_512_BLOCK_BYTES = 64;     // 512-bit block size  
-  const SKEIN_1024_BLOCK_BYTES = 128;   // 1024-bit block size
-  
-  // Type field values for Threefish tweak
-  const T_KEY = 0;        // Key
-  const T_CFG = 4;        // Configuration block
-  const T_PRS = 8;        // Personalization string
-  const T_KEY_DERIV = 16; // Key derivation
-  const T_NONCE = 20;     // Nonce
-  const T_MSG = 48;       // Message
-  const T_OUT = 63;       // Output
-  
-  // First and final bit flags
-  const FLAG_FIRST = 1 << 62;
-  const FLAG_FINAL = 1 << 63;
-  
-  // Skein-512 constants (using Threefish-512) - converted to hex bytes for clarity
-  const SKEIN512_IV = OpCodes.Hex8ToBytes(
-    "4903ADFF749C51CE0D95DE399703F9DF8D9F8C66539A4C17FE3FE1B5468B0A95" +
-    "1E83F43F90A91A1A5BADE6E47FCA5D2CC4138FF8A8E4E10E4E8BDDBB6AE54C2A"
-  );
-  
-  /**
-   * 64-bit operations using 32-bit arithmetic
-   */
-  
-  // Add two 64-bit numbers represented as [low32, high32]
-  function add64(a, b) {
-    const low = (a[0] + b[0]) >>> 0;
-    const high = (a[1] + b[1] + (low < a[0] ? 1 : 0)) >>> 0;
-    return [low, high];
+  // Threefish-512 rotation constants (from Skein 1.3 spec)
+  const ROTATION_0_0 = 46, ROTATION_0_1 = 36, ROTATION_0_2 = 19, ROTATION_0_3 = 37;
+  const ROTATION_1_0 = 33, ROTATION_1_1 = 27, ROTATION_1_2 = 14, ROTATION_1_3 = 42;
+  const ROTATION_2_0 = 17, ROTATION_2_1 = 49, ROTATION_2_2 = 36, ROTATION_2_3 = 39;
+  const ROTATION_3_0 = 44, ROTATION_3_1 = 9, ROTATION_3_2 = 54, ROTATION_3_3 = 56;
+  const ROTATION_4_0 = 39, ROTATION_4_1 = 30, ROTATION_4_2 = 34, ROTATION_4_3 = 24;
+  const ROTATION_5_0 = 13, ROTATION_5_1 = 50, ROTATION_5_2 = 10, ROTATION_5_3 = 17;
+  const ROTATION_6_0 = 25, ROTATION_6_1 = 29, ROTATION_6_2 = 39, ROTATION_6_3 = 43;
+  const ROTATION_7_0 = 8, ROTATION_7_1 = 35, ROTATION_7_2 = 56, ROTATION_7_3 = 22;
+
+  const ROUNDS_512 = 72;
+  const C_240 = 0x1BD11BDAA9FC1A22n; // Key schedule parity constant
+
+  // Rotate left and XOR for mixing
+  function rotlXor64(x, n, xor) {
+    const mask = 0xFFFFFFFFFFFFFFFFn;
+    x = BigInt(x) & mask;
+    xor = BigInt(xor) & mask;
+    n = Number(n) & 63;
+    return (((x << BigInt(n)) | (x >> BigInt(64 - n))) ^ xor) & mask;
   }
-  
-  // XOR two 64-bit numbers
-  function xor64(a, b) {
-    return [a[0] ^ b[0], a[1] ^ b[1]];
+
+  // XOR and rotate right for unmixing
+  function xorRotr64(x, n, xor) {
+    const mask = 0xFFFFFFFFFFFFFFFFn;
+    x = BigInt(x) & mask;
+    xor = BigInt(xor) & mask;
+    const xored = x ^ xor;
+    n = Number(n) & 63;
+    return ((xored >> BigInt(n)) | (xored << BigInt(64 - n))) & mask;
   }
-  
-  // 64-bit left rotation
-  function rotl64(val, positions) {
-    const [low, high] = val;
-    positions &= 63;
-    
-    if (positions === 0) return [low, high];
-    if (positions === 32) return [high, low];
-    
-    if (positions < 32) {
-      const newHigh = ((high << positions) | (low >>> (32 - positions))) >>> 0;
-      const newLow = ((low << positions) | (high >>> (32 - positions))) >>> 0;
-      return [newLow, newHigh];
-    } else {
-      positions -= 32;
-      const newHigh = ((low << positions) | (high >>> (32 - positions))) >>> 0;
-      const newLow = ((high << positions) | (low >>> (32 - positions))) >>> 0;
-      return [newLow, newHigh];
-    }
-  }
-  
-  // Convert bytes to 64-bit words (little-endian)
-  function bytesToWords64LE(bytes) {
-    const words = [];
-    for (let i = 0; i < bytes.length; i += 8) {
-      const low = OpCodes.Pack32LE(
-        bytes[i] || 0, bytes[i + 1] || 0, bytes[i + 2] || 0, bytes[i + 3] || 0
-      );
-      const high = OpCodes.Pack32LE(
-        bytes[i + 4] || 0, bytes[i + 5] || 0, bytes[i + 6] || 0, bytes[i + 7] || 0
-      );
-      words.push([low, high]);
-    }
-    return words;
-  }
-  
-  // Convert 64-bit words to bytes (little-endian)
-  function words64ToBytes(words, length) {
-    const bytes = new Uint8Array(length);
-    let byteIndex = 0;
-    
-    for (let i = 0; i < words.length && byteIndex < length; i++) {
-      const [low, high] = words[i];
-      const lowBytes = OpCodes.Unpack32LE(low);
-      const highBytes = OpCodes.Unpack32LE(high);
-      
-      for (let j = 0; j < 4 && byteIndex < length; j++) {
-        bytes[byteIndex++] = lowBytes[j];
-      }
-      for (let j = 0; j < 4 && byteIndex < length; j++) {
-        bytes[byteIndex++] = highBytes[j];
-      }
-    }
-    
-    return bytes;
-  }
-  
-  /**
-   * Threefish-512 block cipher (simplified implementation)
-   * Used as the core of Skein-512
-   */
-  function threefishEncrypt(plaintext, key, tweak) {
-    // Threefish-512 uses 8 words of 64 bits each
-    const state = plaintext.slice();
-    const expandedKey = key.slice();
-    
-    // Add tweak to expanded key (simplified)
-    expandedKey[5] = xor64(expandedKey[5], tweak[0]);
-    expandedKey[6] = xor64(expandedKey[6], tweak[1]);
-    
-    // Simplified Threefish rounds (reduced for educational purposes)
-    const rotations = [14, 16, 52, 57, 23, 40, 5, 37];
-    
-    for (let round = 0; round < 18; round++) { // Reduced from 72 rounds
-      // Add round key every 4 rounds
-      if (round % 4 === 0) {
-        for (let i = 0; i < 8; i++) {
-          state[i] = add64(state[i], expandedKey[i % expandedKey.length]);
-        }
-      }
-      
-      // MIX operations
-      for (let i = 0; i < 4; i++) {
-        const d0 = add64(state[i * 2], state[i * 2 + 1]);
-        const d1 = xor64(state[i * 2 + 1], rotl64(d0, rotations[i % 8]));
-        state[i * 2] = d0;
-        state[i * 2 + 1] = d1;
-      }
-      
-      // PERMUTE (simplified)
-      if (round % 2 === 1) {
-        const temp = [state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7]];
-        state[0] = temp[0]; state[1] = temp[3]; state[2] = temp[2]; state[3] = temp[1];
-        state[4] = temp[6]; state[5] = temp[5]; state[6] = temp[4]; state[7] = temp[7];
-      }
-    }
-    
-    // Final key addition
+
+  // Threefish-512 encryption
+  function threefish512Encrypt(key, tweak, block) {
+    const mask = 0xFFFFFFFFFFFFFFFFn;
+
+    // Key schedule (extended key with parity)
+    const kw = new Array(17);
+    let knw = C_240;
     for (let i = 0; i < 8; i++) {
-      state[i] = add64(state[i], expandedKey[i % expandedKey.length]);
+      kw[i] = BigInt(key[i]) & mask;
+      knw ^= kw[i];
     }
-    
-    return state;
-  }
-  
-  /**
-   * Skein-512 hasher class
-   */
-  function SkeinHasher(outputBits) {
-    this.outputBits = outputBits || 512;
-    this.blockSize = SKEIN_512_BLOCK_BYTES;
-    
-    // Initialize state with Skein-512 IV (converted to 64-bit words)
-    this.state = [];
+    kw[8] = knw;
     for (let i = 0; i < 8; i++) {
-      this.state.push([SKEIN512_IV[i * 2], SKEIN512_IV[i * 2 + 1]]);
+      kw[9 + i] = kw[i];
     }
-    
-    this.buffer = new Uint8Array(this.blockSize);
-    this.bufferLength = 0;
-    this.totalBytes = 0;
-    this.firstBlock = true;
-    
-    // Process configuration block
-    this.processConfigBlock();
-  }
-  
-  SkeinHasher.prototype.processConfigBlock = function() {
-    // Create configuration block
-    const config = new Uint8Array(32);
-    
-    // Schema identifier: "SHA3" in ASCII
-    config[0] = 0x53; config[1] = 0x48; config[2] = 0x41; config[3] = 0x33;
-    
-    // Version: 1
-    config[4] = 0x01; config[5] = 0x00; config[6] = 0x00; config[7] = 0x00;
-    
-    // Output length in bits (little-endian)
-    for (let i = 0; i < 8; i++) {
-      config[8 + i] = (this.outputBits >>> (i * 8)) & 0xFF;
+
+    // Tweak schedule
+    const t = new Array(5);
+    t[0] = BigInt(tweak[0]) & mask;
+    t[1] = BigInt(tweak[1]) & mask;
+    t[2] = t[0] ^ t[1];
+    t[3] = t[0];
+    t[4] = t[1];
+
+    // Load block into state
+    let b0 = BigInt(block[0]) & mask;
+    let b1 = BigInt(block[1]) & mask;
+    let b2 = BigInt(block[2]) & mask;
+    let b3 = BigInt(block[3]) & mask;
+    let b4 = BigInt(block[4]) & mask;
+    let b5 = BigInt(block[5]) & mask;
+    let b6 = BigInt(block[6]) & mask;
+    let b7 = BigInt(block[7]) & mask;
+
+    // Initial subkey injection
+    b0 += kw[0];
+    b1 += kw[1];
+    b2 += kw[2];
+    b3 += kw[3];
+    b4 += kw[4];
+    b5 += kw[5] + t[0];
+    b6 += kw[6] + t[1];
+    b7 += kw[7];
+
+    // 72 rounds (18 iterations of 4 rounds each)
+    for (let d = 1; d < (ROUNDS_512 / 4); d += 2) {
+      const dm9 = d % 9;
+      const dm3 = d % 3;
+
+      // 4 rounds of mix and permute
+      b1 = rotlXor64(b1, ROTATION_0_0, b0 += b1);
+      b3 = rotlXor64(b3, ROTATION_0_1, b2 += b3);
+      b5 = rotlXor64(b5, ROTATION_0_2, b4 += b5);
+      b7 = rotlXor64(b7, ROTATION_0_3, b6 += b7);
+
+      b1 = rotlXor64(b1, ROTATION_1_0, b2 += b1);
+      b7 = rotlXor64(b7, ROTATION_1_1, b4 += b7);
+      b5 = rotlXor64(b5, ROTATION_1_2, b6 += b5);
+      b3 = rotlXor64(b3, ROTATION_1_3, b0 += b3);
+
+      b1 = rotlXor64(b1, ROTATION_2_0, b4 += b1);
+      b3 = rotlXor64(b3, ROTATION_2_1, b6 += b3);
+      b5 = rotlXor64(b5, ROTATION_2_2, b0 += b5);
+      b7 = rotlXor64(b7, ROTATION_2_3, b2 += b7);
+
+      b1 = rotlXor64(b1, ROTATION_3_0, b6 += b1);
+      b7 = rotlXor64(b7, ROTATION_3_1, b0 += b7);
+      b5 = rotlXor64(b5, ROTATION_3_2, b2 += b5);
+      b3 = rotlXor64(b3, ROTATION_3_3, b4 += b3);
+
+      // Subkey injection
+      b0 += kw[dm9];
+      b1 += kw[dm9 + 1];
+      b2 += kw[dm9 + 2];
+      b3 += kw[dm9 + 3];
+      b4 += kw[dm9 + 4];
+      b5 += kw[dm9 + 5] + t[dm3];
+      b6 += kw[dm9 + 6] + t[dm3 + 1];
+      b7 += kw[dm9 + 7] + BigInt(d);
+
+      // 4 more rounds
+      b1 = rotlXor64(b1, ROTATION_4_0, b0 += b1);
+      b3 = rotlXor64(b3, ROTATION_4_1, b2 += b3);
+      b5 = rotlXor64(b5, ROTATION_4_2, b4 += b5);
+      b7 = rotlXor64(b7, ROTATION_4_3, b6 += b7);
+
+      b1 = rotlXor64(b1, ROTATION_5_0, b2 += b1);
+      b7 = rotlXor64(b7, ROTATION_5_1, b4 += b7);
+      b5 = rotlXor64(b5, ROTATION_5_2, b6 += b5);
+      b3 = rotlXor64(b3, ROTATION_5_3, b0 += b3);
+
+      b1 = rotlXor64(b1, ROTATION_6_0, b4 += b1);
+      b3 = rotlXor64(b3, ROTATION_6_1, b6 += b3);
+      b5 = rotlXor64(b5, ROTATION_6_2, b0 += b5);
+      b7 = rotlXor64(b7, ROTATION_6_3, b2 += b7);
+
+      b1 = rotlXor64(b1, ROTATION_7_0, b6 += b1);
+      b7 = rotlXor64(b7, ROTATION_7_1, b0 += b7);
+      b5 = rotlXor64(b5, ROTATION_7_2, b2 += b5);
+      b3 = rotlXor64(b3, ROTATION_7_3, b4 += b3);
+
+      // Subkey injection
+      b0 += kw[dm9 + 1];
+      b1 += kw[dm9 + 2];
+      b2 += kw[dm9 + 3];
+      b3 += kw[dm9 + 4];
+      b4 += kw[dm9 + 5];
+      b5 += kw[dm9 + 6] + t[dm3 + 1];
+      b6 += kw[dm9 + 7] + t[dm3 + 2];
+      b7 += kw[dm9 + 8] + BigInt(d + 1);
     }
-    
-    // Tree parameters (simple sequential hashing)
-    config[16] = 0x00; // Tree leaf size
-    config[17] = 0x00; // Tree fan-out
-    config[18] = 0x00; // Max tree height
-    
-    this.processBlock(config, T_CFG, true, true);
-  };
-  
-  SkeinHasher.prototype.processBlock = function(block, type, first, final) {
-    // Create tweak value
-    const bytesProcessed = this.totalBytes;
-    const tweak = [
-      [bytesProcessed >>> 0, (bytesProcessed / 0x100000000) >>> 0],
-      [type | (first ? FLAG_FIRST : 0) | (final ? FLAG_FINAL : 0), 0]
+
+    // Mask all to 64-bit before returning
+    return [
+      b0 & mask, b1 & mask, b2 & mask, b3 & mask,
+      b4 & mask, b5 & mask, b6 & mask, b7 & mask
     ];
-    
-    // Convert block to 64-bit words
-    const blockWords = bytesToWords64LE(block);
-    
-    // Ensure we have 8 words (pad with zeros if needed)
-    while (blockWords.length < 8) {
-      blockWords.push([0, 0]);
+  }
+
+  // ===== SKEIN-512 UBI MODE =====
+
+  const PARAM_TYPE_CONFIG = 4;
+  const PARAM_TYPE_MESSAGE = 48;
+  const PARAM_TYPE_OUTPUT = 63;
+
+  // UBI tweak structure
+  const T1_FINAL = 1n << 63n;
+  const T1_FIRST = 1n << 62n;
+
+  class SkeinUBI {
+    constructor(blockSize) {
+      this.blockSize = blockSize; // 64 bytes for Skein-512
+      this.currentBlock = new Uint8Array(blockSize);
+      this.currentOffset = 0;
+      this.tweak = [0n, 0n]; // [T0, T1]
+      this.message = new Array(8); // 8 x 64-bit words
     }
-    
-    // Encrypt using Threefish with current state as key
-    const encrypted = threefishEncrypt(blockWords, this.state, tweak);
-    
-    // XOR result with input (feed-forward)
-    for (let i = 0; i < 8; i++) {
-      this.state[i] = xor64(encrypted[i], blockWords[i]);
+
+    reset(type) {
+      this.tweak[0] = 0n;
+      this.tweak[1] = BigInt(type) << 56n; // Type in bits 120-125
+      this.tweak[1] |= T1_FIRST; // Set first flag
+      this.currentOffset = 0;
     }
-  };
-  
-  SkeinHasher.prototype.update = function(data) {
-    if (typeof data === 'string') {
-      data = OpCodes.AnsiToBytes(data);
+
+    update(data, offset, length, chain) {
+      let copied = 0;
+      while (copied < length) {
+        if (this.currentOffset === this.blockSize) {
+          this.processBlock(chain);
+          this.tweak[1] &= ~T1_FIRST; // Clear first flag
+          this.currentOffset = 0;
+        }
+
+        const toCopy = Math.min(length - copied, this.blockSize - this.currentOffset);
+        for (let i = 0; i < toCopy; i++) {
+          this.currentBlock[this.currentOffset + i] = data[offset + copied + i];
+        }
+        copied += toCopy;
+        this.currentOffset += toCopy;
+        this.tweak[0] += BigInt(toCopy); // Advance position
+      }
     }
-    
-    let offset = 0;
-    
-    // Fill buffer first
-    while (offset < data.length && this.bufferLength < this.blockSize) {
-      this.buffer[this.bufferLength++] = data[offset++];
-    }
-    
-    // Process full buffer
-    if (this.bufferLength === this.blockSize) {
-      this.processBlock(this.buffer, T_MSG, this.firstBlock, false);
-      this.totalBytes += this.blockSize;
-      this.bufferLength = 0;
-      this.firstBlock = false;
-    }
-    
-    // Process remaining full blocks
-    while (offset + this.blockSize <= data.length) {
-      const block = data.slice(offset, offset + this.blockSize);
-      this.processBlock(block, T_MSG, this.firstBlock, false);
-      this.totalBytes += this.blockSize;
-      offset += this.blockSize;
-      this.firstBlock = false;
-    }
-    
-    // Store remaining bytes in buffer
-    while (offset < data.length) {
-      this.buffer[this.bufferLength++] = data[offset++];
-    }
-  };
-  
-  SkeinHasher.prototype.finalize = function() {
-    // Pad final block with zeros
-    while (this.bufferLength < this.blockSize) {
-      this.buffer[this.bufferLength++] = 0;
-    }
-    
-    // Process final message block
-    this.processBlock(this.buffer, T_MSG, this.firstBlock, true);
-    this.totalBytes += this.bufferLength;
-    
-    // Generate output using Skein's output function
-    const outputBytes = Math.ceil(this.outputBits / 8);
-    const output = new Uint8Array(outputBytes);
-    let outputOffset = 0;
-    let counter = 0;
-    
-    while (outputOffset < outputBytes) {
-      // Create counter block
-      const counterBlock = new Uint8Array(this.blockSize);
+
+    processBlock(chain) {
+      // Convert current block to 64-bit words (little-endian)
       for (let i = 0; i < 8; i++) {
-        counterBlock[i] = (counter >>> (i * 8)) & 0xFF;
+        const offset = i * 8;
+        this.message[i] = BigInt(this.currentBlock[offset]) |
+                         (BigInt(this.currentBlock[offset + 1]) << 8n) |
+                         (BigInt(this.currentBlock[offset + 2]) << 16n) |
+                         (BigInt(this.currentBlock[offset + 3]) << 24n) |
+                         (BigInt(this.currentBlock[offset + 4]) << 32n) |
+                         (BigInt(this.currentBlock[offset + 5]) << 40n) |
+                         (BigInt(this.currentBlock[offset + 6]) << 48n) |
+                         (BigInt(this.currentBlock[offset + 7]) << 56n);
       }
-      
-      // Reset state for output generation
-      const outputState = this.state.slice();
-      this.processBlock(counterBlock, T_OUT, true, true);
-      
-      // Convert state to bytes
-      const stateBytes = words64ToBytes(this.state, this.blockSize);
-      
-      // Copy output bytes
-      const copyLen = Math.min(this.blockSize, outputBytes - outputOffset);
-      for (let i = 0; i < copyLen; i++) {
-        output[outputOffset + i] = stateBytes[i];
+
+      // Encrypt message with Threefish using current chain as key
+      const output = threefish512Encrypt(chain, this.tweak, this.message);
+
+      // XOR with message (Davies-Meyer construction)
+      for (let i = 0; i < 8; i++) {
+        chain[i] = (output[i] ^ this.message[i]) & 0xFFFFFFFFFFFFFFFFn;
       }
-      
-      outputOffset += copyLen;
-      counter++;
-      
-      // Restore state for next iteration
-      this.state = outputState;
     }
-    
-    return output.slice(0, Math.ceil(this.outputBits / 8));
-  };
-  
-  // Skein Universal Cipher Interface
-  const Skein = {
-    internalName: 'skein',
-    name: 'Skein',
-    // Algorithm metadata
-    blockSize: 512,
-    digestSize: 512,
-    keySize: 0,
-    rounds: 72,
-    
-    // Security level
-    securityLevel: 256,
-    
-    // Reference links
-    referenceLinks: [
-      {
-        title: "The Skein Hash Function Family",
-        url: "https://www.schneier.com/academic/skein/",
-        type: "specification"
-      },
-      {
-        title: "Skein 1.3 Specification",
-        url: "https://www.schneier.com/academic/skein/skein1.3.pdf",
-        type: "specification"
-      },
-      {
-        title: "NIST SHA-3 Competition",
-        url: "https://csrc.nist.gov/projects/hash-functions/sha-3-project",
-        type: "competition"
-      },
-      {
-        title: "Threefish Block Cipher",
-        url: "https://www.schneier.com/academic/threefish/",
-        type: "foundation"
+
+    doFinal(chain) {
+      // Pad remaining block with zeros
+      for (let i = this.currentOffset; i < this.blockSize; i++) {
+        this.currentBlock[i] = 0;
       }
-    ],
-    
-    // Test vectors
-    testVectors: [
-      {
-        description: "Empty string - Skein-512",
-        input: "",
-        expected: OpCodes.Hex8ToBytes("bc5b4c50925519c290cc634277ae3d6257212395cba733bbad37a4af0fa06af41fca7903d06564fea7a2d3730dbdb80c1f85562dfcc070334ea4d1d9e72cba7a")
-      },
-      {
-        description: "Single byte - Skein-512", 
-        input: "a",
-        expected: OpCodes.Hex8ToBytes("7ca453b5def83a68e6b8d33a1c2b5a9b4c4f1ae8d5f6c5a77e6c49c2da7d5c6a8e6b8d33a1c2b5a9b4c4f1ae8d5f6c5a77e6c49c2da7d5c6a8e6b8d33a")
-      }
-    ],
-    
-    // Required Cipher interface properties
-    minKeyLength: 0,        // Minimum key length in bytes
-    maxKeyLength: 64,        // Maximum key length in bytes
-    stepKeyLength: 1,       // Key length step size
-    minBlockSize: 0,        // Minimum block size in bytes
-    maxBlockSize: 0,        // Maximum block size (0 = unlimited)
-    stepBlockSize: 1,       // Block size step
-    instances: {},          // Instance tracking
-    
-    // Hash function interface
-    Init: function() {
-      this.hasher = new SkeinHasher(512);
-      this.bKey = false;
-    },
-    
-    KeySetup: function(key) {
-      // Skein can be used as MAC with a key
-      this.hasher = new SkeinHasher(512);
-      if (key && key.length > 0) {
-        // In keyed mode, process key as first block with type T_KEY
-        this.hasher.processBlock(key.slice(0, 64), T_KEY, true, true);
-        this.bKey = true;
+
+      // Set final flag
+      this.tweak[1] |= T1_FINAL;
+      this.processBlock(chain);
+    }
+  }
+
+  // ===== SKEIN HASH FUNCTION =====
+
+  // Precalculated initial state for Skein-512-512 (from Skein 1.3 spec Appendix C)
+  const INITIAL_STATE_512_512 = [
+    0x4903ADFF749C51CEn, 0x0D95DE399746DF03n, 0x8FD1934127C79BCEn, 0x9A255629FF352CB1n,
+    0x5DB62599DF6CA7B0n, 0xEABE394CA9D5C3F4n, 0x991112C71A75B523n, 0xAE18A40B660FCC33n
+  ];
+
+  class SkeinHasher {
+    constructor(outputBits) {
+      this.outputBits = outputBits;
+      this.blockSize = 64; // Skein-512 uses 64-byte blocks
+      this.chain = new Array(8); // 8 x 64-bit state
+      this.ubi = new SkeinUBI(this.blockSize);
+
+      // Initialize chain with precalculated initial state for 512-512
+      if (outputBits === 512) {
+        for (let i = 0; i < 8; i++) {
+          this.chain[i] = INITIAL_STATE_512_512[i];
+        }
       } else {
-        this.bKey = false;
+        // For other output sizes, compute UBI(CFG) from zero state
+        for (let i = 0; i < 8; i++) {
+          this.chain[i] = 0n;
+        }
+        this.processConfig();
       }
-    },
-    
-    encryptBlock: function(blockIndex, data) {
+
+      // Save initial state for reset
+      this.initialState = [...this.chain];
+    }
+
+    processConfig() {
+      // Configuration block: "SHA3" (4 bytes) + version (2 bytes) + reserved (2 bytes) + output length (8 bytes)
+      const config = new Uint8Array(32);
+      config[0] = 0x53; // 'S'
+      config[1] = 0x48; // 'H'
+      config[2] = 0x41; // 'A'
+      config[3] = 0x33; // '3'
+      config[4] = 1;    // Version 1
+      config[5] = 0;    // Version (MSB)
+
+      // Output length in bits (little-endian 64-bit)
+      const outBits = BigInt(this.outputBits);
+      for (let i = 0; i < 8; i++) {
+        config[8 + i] = Number((outBits >> BigInt(i * 8)) & 0xFFn);
+      }
+
+      this.ubi.reset(PARAM_TYPE_CONFIG);
+      this.ubi.update(config, 0, 32, this.chain);
+      this.ubi.doFinal(this.chain);
+    }
+
+    update(data) {
       if (typeof data === 'string') {
-        this.hasher.update(data);
-        return OpCodes.BytesToHex(this.hasher.finalize());
+        data = OpCodes.AnsiToBytes(data);
       }
-      return '';
-    },
-    
-    decryptBlock: function(blockIndex, data) {
-      // Hash functions don't decrypt
-      return this.encryptBlock(blockIndex, data);
-    },
-    
-    // Direct hash interface
-    hash: function(data, outputBits) {
-      const hasher = new SkeinHasher(outputBits || 512);
-      hasher.update(data);
-      return hasher.finalize();
-    },
-    
-    // Keyed hash interface (MAC)
-    keyedHash: function(key, data, outputBits) {
-      const hasher = new SkeinHasher(outputBits || 512);
-      if (key && key.length > 0) {
-        hasher.processBlock(key.slice(0, 64), T_KEY, true, true);
-      }
-      hasher.update(data);
-      return hasher.finalize();
-    },
-    
-    ClearData: function() {
-      if (this.hasher) {
-        for (let i = 0; i < this.hasher.state.length; i++) {
-          this.hasher.state[i] = [0, 0];
-        }
-        this.hasher.buffer.fill(0);
-      }
-      this.bKey = false;
+      this.ubi.update(data, 0, data.length, this.chain);
     }
-  };
-    
-    class SkeinWrapper extends CryptoAlgorithm {
-      constructor() {
-        super();
-        this.name = Skein.name;
-        this.category = CategoryType.HASH;
-        this.securityStatus = SecurityStatus.EDUCATIONAL;
-        this.complexity = ComplexityType.HIGH;
-        this.inventor = "Bruce Schneier, Niels Ferguson, Stefan Lucks, Doug Whiting, Mihir Bellare, Tadayoshi Kohno, Jon Callas, Jesse Walker";
-        this.year = 2008;
-        this.country = "US";
-        this.description = "Skein cryptographic hash function based on Threefish block cipher";
-        
-        if (Skein.tests) { // TODO: this is cheating
-          this.tests = Skein.tests.map(test => 
-            new TestCase(test.input, test.expected, test.text, test.uri)
-          );
+
+    finalize() {
+      // Finalize message block
+      this.ubi.doFinal(this.chain);
+
+      // Output transformation
+      const outputBytes = this.outputBits / 8;
+      const result = new Uint8Array(outputBytes);
+
+      const counter = new Uint8Array(8);
+      counter[0] = 0; // Output counter starts at 0
+
+      this.ubi.reset(PARAM_TYPE_OUTPUT);
+      this.ubi.update(counter, 0, 8, this.chain);
+
+      const outputWords = [...this.chain]; // Copy chain before final
+      this.ubi.doFinal(outputWords);
+
+      // Convert 64-bit words to bytes (little-endian)
+      const wordsNeeded = Math.ceil(outputBytes / 8);
+      for (let i = 0; i < wordsNeeded; i++) {
+        const word = outputWords[i];
+        const bytesToWrite = Math.min(8, outputBytes - i * 8);
+        for (let j = 0; j < bytesToWrite; j++) {
+          result[i * 8 + j] = Number((word >> BigInt(j * 8)) & 0xFFn);
         }
       }
-      
-      CreateInstance(isInverse = false) {
-        return new SkeinWrapperInstance(this, isInverse);
-      }
+
+      return result;
     }
-    
-    class SkeinWrapperInstance extends IAlgorithmInstance {
-      constructor(algorithm, isInverse) {
-        super(algorithm, isInverse);
-        this.instance = Object.create(Skein);
-        this.instance.Init();
+
+    reset() {
+      for (let i = 0; i < 8; i++) {
+        this.chain[i] = this.initialState[i];
       }
-      
-      ProcessData(input, key) {
-        if (key) {
-          this.instance.KeySetup(key);
-        }
-        return this.instance.hash(input, key);
-      }
-      
-      Reset() {
-        this.instance.ClearData();
-        this.instance.Init();
-      }
+      this.ubi.reset(PARAM_TYPE_MESSAGE);
     }
-  
+  }
+
+  // ===== ALGORITHM REGISTRATION =====
+
+  class SkeinAlgorithm extends HashFunctionAlgorithm {
+    constructor() {
+      super();
+
+      this.name = "Skein";
+      this.description = "Skein-512 hash function from NIST SHA-3 competition. Built on Threefish-512 tweakable block cipher using UBI mode. Finalist in SHA-3 competition (lost to Keccak).";
+      this.inventor = "Bruce Schneier, Niels Ferguson, Stefan Lucks, Doug Whiting, Mihir Bellare, Tadayoshi Kohno, Jon Callas, Jesse Walker";
+      this.year = 2008;
+      this.category = CategoryType.HASH;
+      this.subCategory = "SHA-3 Competition Finalist";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.ADVANCED;
+      this.country = CountryCode.US;
+
+      this.SupportedOutputSizes = [64]; // 512 bits
+      this.blockSize = 64;
+      this.outputSize = 64;
+
+      this.documentation = [
+        new LinkItem("Skein 1.3 Specification", "https://www.schneier.com/academic/skein/skein1.3.pdf"),
+        new LinkItem("NIST SHA-3 Competition", "https://csrc.nist.gov/projects/hash-functions/sha-3-project"),
+        new LinkItem("Threefish Cipher", "https://www.schneier.com/academic/threefish/")
+      ];
+
+      this.references = [
+        new LinkItem("Bouncy Castle Implementation", "https://github.com/bcgit/bc-csharp"),
+        new LinkItem("SHA-3 Zoo", "https://keccak.team/obsolete_SHA3_zoo/Skein.html")
+      ];
+
+      // Official test vectors from NIST Skein 1.3 submission
+      this.tests = [
+        new TestCase(
+          OpCodes.Hex8ToBytes(""), // empty string
+          OpCodes.Hex8ToBytes("bc5b4c50925519c290cc634277ae3d6257212395cba733bbad37a4af0fa06af41fca7903d06564fea7a2d3730dbdb80c1f85562dfcc070334ea4d1d9e72cba7a"),
+          "Skein-512-512 empty string",
+          "https://www.schneier.com/academic/skein/skein1.3.pdf"
+        ),
+        new TestCase(
+          OpCodes.Hex8ToBytes("fb"), // single byte 0xFB
+          OpCodes.Hex8ToBytes("c49e03d50b4b2cc46bd3b7ef7014c8a45b016399fd1714467b7596c86de98240e35bf7f9772b7d65465cd4cffab14e6bc154c54fc67b8bc340abf08eff572b9e"),
+          "Skein-512-512 single byte 0xFB",
+          "https://www.schneier.com/academic/skein/skein1.3.pdf"
+        ),
+        new TestCase(
+          OpCodes.Hex8ToBytes("fbd17c26b61a82e12e125f0d459b96c91ab4837dff22b39b78439430cdfc5dc8"),
+          OpCodes.Hex8ToBytes("abefb179d52f68f86941acbbe014cc67ec66ad78b7ba9508eb1400ee2cbdb06f9fe7c2a260a0272d0d80e8ef5e8737c0c6a5f1c02ceb00fb2746f664b85fcef5"),
+          "Skein-512-512 32-byte message (Bouncy Castle test vector)",
+          "https://github.com/bcgit/bc-csharp"
+        )
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      if (isInverse) return null; // Hash functions have no inverse
+      return new SkeinInstance(this);
+    }
+  }
+
+  class SkeinInstance extends IHashFunctionInstance {
+    constructor(algorithm) {
+      super(algorithm);
+      this.hasher = new SkeinHasher(512);
+      this.hasher.ubi.reset(PARAM_TYPE_MESSAGE);
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      this.hasher.update(data);
+    }
+
+    Result() {
+      return this.hasher.finalize();
+    }
+
+    ProcessData(input, key) {
+      this.hasher.reset();
+      this.hasher.ubi.reset(PARAM_TYPE_MESSAGE);
+      this.hasher.update(input);
+      return this.hasher.finalize();
+    }
+
+    Reset() {
+      this.hasher = new SkeinHasher(512);
+      this.hasher.ubi.reset(PARAM_TYPE_MESSAGE);
+    }
+  }
+
   // ===== REGISTRATION =====
 
-    const algorithmInstance = new SkeinWrapper();
+  const algorithmInstance = new SkeinAlgorithm();
   if (!AlgorithmFramework.Find(algorithmInstance.name)) {
     RegisterAlgorithm(algorithmInstance);
   }
 
-  // ===== EXPORTS =====
-
-  return { SkeinWrapper, SkeinWrapperInstance };
+  return { SkeinAlgorithm, SkeinInstance };
 }));

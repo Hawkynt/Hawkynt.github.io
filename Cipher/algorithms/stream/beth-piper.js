@@ -43,9 +43,9 @@
     inventor: 'Thomas Beth, Fred Piper',
     year: 1984,
     country: 'DE',
-    category: 'stream',
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: 'Stream Cipher',
-    securityStatus: 'educational',
+    securityStatus: global.AlgorithmFramework ? global.AlgorithmFramework.SecurityStatus.EDUCATIONAL : 'educational',
     securityNotes: 'Clock-controlled generators can be vulnerable to correlation attacks and algebraic attacks. Modern cryptanalysis has shown weaknesses in simple stop-and-go generators.',
     
     documentation: [

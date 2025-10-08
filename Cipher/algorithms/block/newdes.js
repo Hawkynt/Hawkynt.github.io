@@ -116,18 +116,18 @@
     }
 
     CreateInstance(isDecryptMode) {
-      return new NewDESInstance(isDecryptMode);
+      return new NewDESInstance(this, isDecryptMode);
     }
   }
 
   // Instance class - handles the actual encryption/decryption
   class NewDESInstance extends IBlockCipherInstance {
-    constructor(isDecryptMode) {
-      super();
+    constructor(algorithm, isDecryptMode) {
+      super(algorithm);
       this.isDecryptMode = isDecryptMode || false;
       this.encryptionKey = null;
       this.decryptionKey = null;
-      this.key = null;
+      this._key = null;
       this.buffer = [];
 
       // NewDES S-box (rotor) - fixed substitution table

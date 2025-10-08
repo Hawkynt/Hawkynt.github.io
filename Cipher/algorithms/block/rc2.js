@@ -227,31 +227,27 @@
       
       // Phase 1: Expand input key to 128 bytes using PITABLE
       const xKey = new Array(128);
-      let len = keyBytes.length;
-      
+      const keyLen = keyBytes.length;
+
       // Copy key bytes
-      for (let i = 0; i < len; i++) {
+      for (let i = 0; i < keyLen; i++) {
         xKey[i] = keyBytes[i] & 0xFF;
       }
-      
-      // Expand to 128 bytes if needed
-      if (len < 128) {
-        let index = 0;
-        let x = xKey[len - 1];
-        
-        do {
-          x = RC2Algorithm.PITABLE[(x + xKey[index++]) & 0xFF] & 0xFF;
-          xKey[len++] = x;
-        } while (len < 128);
+
+      // Expand to 128 bytes if needed (RFC 2268 section 2)
+      // xKey[i] = PITABLE[xKey[i-1] + xKey[i-keyLen]]
+      for (let i = keyLen; i < 128; i++) {
+        xKey[i] = RC2Algorithm.PITABLE[(xKey[i - 1] + xKey[i - keyLen]) & 0xFF] & 0xFF;
       }
       
-      // Phase 2: Reduce effective key size to specified bit length
-      len = Math.floor((effectiveBits + 7) / 8); // effective key length in bytes
-      let x = RC2Algorithm.PITABLE[xKey[128 - len] & (0xFF >>> (7 & -effectiveBits))] & 0xFF;
-      xKey[128 - len] = x;
-      
-      for (let i = 128 - len - 1; i >= 0; i--) {
-        x = RC2Algorithm.PITABLE[x ^ xKey[i + len]] & 0xFF;
+      // Phase 2: Reduce effective key size to specified bit length (RFC 2268 section 2)
+      const T8 = Math.floor((effectiveBits + 7) / 8); // effective key length in bytes
+      const TM = 0xFF >>> (7 & -effectiveBits); // bit mask for effective bits
+      let x = RC2Algorithm.PITABLE[xKey[128 - T8] & TM] & 0xFF;
+      xKey[128 - T8] = x;
+
+      for (let i = 128 - T8 - 1; i >= 0; i--) {
+        x = RC2Algorithm.PITABLE[x ^ xKey[i + T8]] & 0xFF;
         xKey[i] = x;
       }
       
@@ -270,25 +266,30 @@
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
-      this.key = null;
+      this._key = null;
       this.expandedKey = null;
       this.inputBuffer = [];
       this.BlockSize = 8; // 64 bits
       this.KeySize = 0;   // will be set when key is assigned
-      this.effectiveBits = null; // Will be set from test vector or default to key length * 8
-    }
 
-    // Property setter for effective bits
-    set effectiveBits(value) {
-      this._effectiveBits = value;
-      // If we already have a key, regenerate the expanded key with new effective bits
-      if (this._key) {
-        this._setupKey();
-      }
-    }
+      // Initialize effectiveBits (test framework needs to detect this with hasOwnProperty)
+      this._effectiveBits = null;
 
-    get effectiveBits() {
-      return this._effectiveBits;
+      // Define effectiveBits as a property with getter/setter
+      Object.defineProperty(this, 'effectiveBits', {
+        get: () => this._effectiveBits,
+        set: (value) => {
+          const oldValue = this._effectiveBits;
+          this._effectiveBits = value;
+
+          // If effectiveBits changed and we already have a key, regenerate key schedule
+          if (oldValue !== value && this._key) {
+            this._setupKey();
+          }
+        },
+        enumerable: true,
+        configurable: true
+      });
     }
 
     // Property setter for key - validates and sets up key schedule
