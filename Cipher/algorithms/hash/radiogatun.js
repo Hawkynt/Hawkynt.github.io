@@ -1,3 +1,8 @@
+/*
+ * RadioGatún[32] Hash Function - Correct Implementation
+ * Based on the reference implementation by Sam Trenholme
+ * (c)2006-2025 Hawkynt
+ */
 
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
@@ -25,7 +30,7 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
@@ -42,234 +47,152 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
-  // RadioGatún[32] constants
-  const RG32_WORD_SIZE = 32;        // Word size in bits
-  const RG32_BELT_WIDTH = 3;        // Belt width in words
-  const RG32_BELT_LENGTH = 13;      // Belt length
-  const RG32_MILL_SIZE = 19;        // Mill size in words
-  const RG32_INPUT_BLOCK_SIZE = 12; // Input block size in bytes (3 words)
-  const RG32_OUTPUT_SIZE = 32;      // Default output size in bytes
-  
-  // Mill transformation indices for RadioGatún[32]
-  const MILL_A_INDICES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18];
-  const MILL_B_INDICES = [0, 7, 14];
-  
   /**
-   * RadioGatún[32] Belt function
-   * Advances the belt and performs belt operations
+   * RadioGatún[32] implementation based on the correct reference
    */
-  function beltFunction(belt) {
-    // Rotate belt (shift right)
-    const temp = belt[RG32_BELT_LENGTH - 1].slice();
-    for (let i = RG32_BELT_LENGTH - 1; i > 0; i--) {
-      belt[i] = belt[i - 1].slice();
-    }
-    belt[0] = temp;
-    
-    // Belt feedback: belt[1] ^= belt[2]
-    for (let i = 0; i < RG32_BELT_WIDTH; i++) {
-      belt[1][i] ^= belt[2][i];
-    }
+  function RadioGatunHasher() {
+    // RadioGatún[32] state arrays - exact C reference sizes
+    this.e = new Uint32Array(42); // mill array
+    this.f = new Uint32Array(42); // belt array
+    this.n = new Uint32Array(45); // temp array for mill transformation
+    this.g = 19; // mill size
+    this.h = 13; // belt width
+
+    // Arrays are initialized to zero by Uint32Array constructor
+
+    this.buffer = [];
+    this.inputPhase = true;
   }
-  
-  /**
-   * RadioGatún[32] Mill function
-   * Performs mill transformation
-   */
-  function millFunction(mill) {
-    // Save mill state
-    const originalMill = mill.slice();
-    
-    // Phase 1: A[i] = A[i+1] + (A[i+2] | ~A[i+3])
-    for (let i = 0; i < MILL_A_INDICES.length; i++) {
-      const idx = MILL_A_INDICES[i];
-      const i1 = (idx + 1) % RG32_MILL_SIZE;
-      const i2 = (idx + 2) % RG32_MILL_SIZE;
-      const i3 = (idx + 3) % RG32_MILL_SIZE;
-      
-      mill[idx] = (originalMill[i1] + (originalMill[i2] | (~originalMill[i3] >>> 0))) >>> 0;
+
+  RadioGatunHasher.prototype.beltmill = function() {
+    // Exact translation of C nanorg32.c beltmill function m()
+    let j = 0;
+
+    // Mill-to-belt feedforward: b(12)f[c+c%3*h]^=e[c+1]
+    for (let c = 0; c < 12; c++) {
+      this.f[c + (c % 3) * this.h] = (this.f[c + (c % 3) * this.h] ^ this.e[c + 1]) >>> 0;
     }
-    
-    // Phase 2: Rotate specific mill words
-    mill[13] = OpCodes.RotL32(originalMill[13], 1);
-    mill[14] = OpCodes.RotL32(originalMill[14], 3);
-    mill[15] = OpCodes.RotL32(originalMill[15], 6);
-    
-    // Phase 3: B transformation
-    for (let i = 0; i < MILL_B_INDICES.length; i++) {
-      const idx = MILL_B_INDICES[i];
-      mill[idx] = originalMill[idx];
+
+    // Mill transformation: b(g){i=c*7%g;k=e[i++];k^=e[i%g]|~e[(i+1)%g];j+=c;n[c]=n[c+g]=k>>j%32|k<<-j%32;}
+    for (let c = 0; c < this.g; c++) {
+      let i = (c * 7) % this.g;
+      let k = this.e[i++];
+      k = (k ^ (this.e[i % this.g] | (~this.e[(i + 1) % this.g] >>> 0))) >>> 0;
+      j += c;
+      const rot = j % 32;
+      // Use OpCodes for rotation: k>>j%32|k<<-j%32 means rotate right by j%32
+      this.n[c] = this.n[c + this.g] = OpCodes.RotR32(k, rot);
     }
-  }
-  
-  /**
-   * RadioGatún mill-to-belt feedback
-   */
-  function millToBelt(mill, belt) {
-    // Add mill[1], mill[2] to belt[0]
-    belt[0][0] ^= mill[1];
-    belt[0][1] ^= mill[2];
-    belt[0][2] ^= mill[3];
-  }
-  
-  /**
-   * RadioGatún belt-to-mill feedback  
-   */
-  function beltToMill(belt, mill) {
-    // XOR belt[12] into mill[13], mill[14], mill[15]
-    mill[13] ^= belt[12][0];
-    mill[14] ^= belt[12][1];
-    mill[15] ^= belt[12][2];
-  }
-  
-  /**
-   * RadioGatún round function
-   */
-  function radioGatunRound(belt, mill) {
-    beltFunction(belt);
-    millFunction(mill);
-    millToBelt(mill, belt);
-    beltToMill(belt, mill);
-  }
-  
-  /**
-   * RadioGatún hasher class
-   */
-  function RadioGatunHasher(wordSize) {
-    this.wordSize = wordSize || 32;
-    
-    if (this.wordSize !== 32) {
-      throw new Error('Only RadioGatún[32] is implemented in this educational version');
+
+    // Combined belt rotation and theta: for(i=39;i--;f[i+1]=f[i])e[i]=n[i]^n[i+1]^n[i+4]
+    // C loop semantics: init i=39, then loop with i--, check i!=0, body e[i]=..., increment f[i+1]=f[i]
+    // So it processes i=38,37,...,1,0
+    for (let i = 39; i > 0; i--) {
+      const idx = i - 1; // After decrement
+      this.e[idx] = (this.n[idx] ^ this.n[idx + 1] ^ this.n[idx + 4]) >>> 0;
+      this.f[i] = this.f[idx]; // f[i+1] = f[i] where i is the decremented value
     }
-    
-    // Initialize belt (13 positions × 3 words each)
-    this.belt = new Array(RG32_BELT_LENGTH);
-    for (let i = 0; i < RG32_BELT_LENGTH; i++) {
-      this.belt[i] = new Array(RG32_BELT_WIDTH).fill(0);
+
+    // Belt-to-mill feedforward: b(3)e[c+h]^=f[c*h]=f[c*h+h]
+    for (let c = 0; c < 3; c++) {
+      this.f[c * this.h] = this.f[c * this.h + this.h];
+      this.e[c + this.h] = (this.e[c + this.h] ^ this.f[c * this.h]) >>> 0;
     }
-    
-    // Initialize mill (19 words)
-    this.mill = new Array(RG32_MILL_SIZE).fill(0);
-    
-    this.buffer = new Uint8Array(RG32_INPUT_BLOCK_SIZE);
-    this.bufferLength = 0;
-    this.inputPhase = true; // true during input, false during output
-  }
-  
+
+    // Iota: *e^=1
+    this.e[0] = (this.e[0] ^ 1) >>> 0;
+  };
+
   RadioGatunHasher.prototype.update = function(data) {
     if (!this.inputPhase) {
       throw new Error('Cannot update after finalization has begun');
     }
-    
+
     if (typeof data === 'string') {
       data = OpCodes.AnsiToBytes(data);
     }
-    
-    let offset = 0;
-    
-    // Fill buffer first
-    while (offset < data.length && this.bufferLength < RG32_INPUT_BLOCK_SIZE) {
-      this.buffer[this.bufferLength++] = data[offset++];
-    }
-    
-    // Process full buffer
-    if (this.bufferLength === RG32_INPUT_BLOCK_SIZE) {
-      this.processInputBlock(this.buffer);
-      this.bufferLength = 0;
-    }
-    
-    // Process remaining full blocks
-    while (offset + RG32_INPUT_BLOCK_SIZE <= data.length) {
-      const block = data.slice(offset, offset + RG32_INPUT_BLOCK_SIZE);
-      this.processInputBlock(block);
-      offset += RG32_INPUT_BLOCK_SIZE;
-    }
-    
-    // Store remaining bytes in buffer
-    while (offset < data.length) {
-      this.buffer[this.bufferLength++] = data[offset++];
+
+    // Add data to buffer
+    for (let i = 0; i < data.length; i++) {
+      this.buffer.push(data[i]);
     }
   };
-  
-  RadioGatunHasher.prototype.processInputBlock = function(block) {
-    // Convert block to 3 words (little-endian)
-    const words = new Array(3);
-    for (let i = 0; i < 3; i++) {
-      if (i * 4 < block.length) {
-        words[i] = OpCodes.Pack32LE(
-          block[i * 4] || 0,
-          block[i * 4 + 1] || 0,
-          block[i * 4 + 2] || 0,
-          block[i * 4 + 3] || 0
-        );
-      } else {
-        words[i] = 0;
-      }
-    }
-    
-    // Add words to belt[0] and mill
-    for (let i = 0; i < 3; i++) {
-      this.belt[0][i] ^= words[i];
-      this.mill[16 + i] ^= words[i];
-    }
-    
-    // Perform round
-    radioGatunRound(this.belt, this.mill);
-  };
-  
+
   RadioGatunHasher.prototype.finalize = function(outputBytes) {
-    outputBytes = outputBytes || RG32_OUTPUT_SIZE;
-    
+    outputBytes = outputBytes || 32; // Default 256 bits
+
     if (this.inputPhase) {
-      // Process final block with padding
-      this.finalizeInput();
+      this.processAllInput();
       this.inputPhase = false;
     }
-    
-    // Generate output
+
+    // Generate output exactly like C reference: b(8){j=c;b(4)printf("%02x",(e[1+j%2]>>8*c)&255);c=j;if(c%2)m();}
     const output = new Uint8Array(outputBytes);
     let outputOffset = 0;
-    
-    while (outputOffset < outputBytes) {
-      // Extract 8 bytes from mill[1] and mill[2]
-      const word1Bytes = OpCodes.Unpack32LE(this.mill[1]);
-      const word2Bytes = OpCodes.Unpack32LE(this.mill[2]);
-      
-      // Copy available bytes
-      for (let i = 0; i < 4 && outputOffset < outputBytes; i++) {
-        output[outputOffset++] = word1Bytes[i];
+
+    // Output generation loop
+    for (let outer = 0; outer < 8 && outputOffset < outputBytes; outer++) {
+      const wordSelect = outer; // saves in j
+      // Extract 4 bytes from alternating words
+      for (let bytePos = 0; bytePos < 4 && outputOffset < outputBytes; bytePos++) {
+        const wordIndex = 1 + (wordSelect % 2); // alternates between e[1] and e[2]
+        const byte = (this.e[wordIndex] >>> (8 * bytePos)) & 255;
+        output[outputOffset++] = byte;
       }
-      for (let i = 0; i < 4 && outputOffset < outputBytes; i++) {
-        output[outputOffset++] = word2Bytes[i];
-      }
-      
-      // Perform round for next output block
-      if (outputOffset < outputBytes) {
-        radioGatunRound(this.belt, this.mill);
+      // After odd iterations (wordSelect % 2 == 1), run mill
+      if ((wordSelect % 2) === 1) {
+        this.beltmill();
       }
     }
-    
+
     return output;
   };
-  
-  RadioGatunHasher.prototype.finalizeInput = function() {
-    // Pad the final block
-    this.buffer[this.bufferLength++] = 0x01; // RadioGatún padding
-    
-    // Pad with zeros to fill block
-    while (this.bufferLength < RG32_INPUT_BLOCK_SIZE) {
-      this.buffer[this.bufferLength++] = 0x00;
-    }
-    
-    // Process final block
-    this.processInputBlock(this.buffer);
-    
-    // Perform blank rounds (18 rounds for RadioGatún[32])
-    for (let i = 0; i < 18; i++) {
-      radioGatunRound(this.belt, this.mill);
+
+  RadioGatunHasher.prototype.processAllInput = function() {
+    // C: for(;;m()){b(3){for(j=0;j<4;){f[c*h]^=k=(*q?255&*q:1)<<8*j++;e[c+16]^=k;if(!*q++){b(18)m();return;}}}}
+    // CRITICAL: for(;;m()) means m() is in INCREMENT section - runs AFTER body, not before!
+
+    let inputPos = 0;
+
+    while (true) {
+      // Process 3 words (12 bytes total)
+      for (let c = 0; c < 3; c++) {
+        // Process 4 bytes per word
+        for (let j = 0; j < 4; j++) {
+          let byte;
+          let hitEnd = false;
+
+          if (inputPos < this.buffer.length) {
+            byte = this.buffer[inputPos] & 0xFF;
+          } else {
+            byte = 1; // Padding
+            hitEnd = true;
+          }
+
+          // k = byte << (8*j)
+          let k = (byte << (8 * j)) >>> 0;
+
+          // f[c*h]^=k; e[c+16]^=k;
+          this.f[c * this.h] = (this.f[c * this.h] ^ k) >>> 0;
+          this.e[c + 16] = (this.e[c + 16] ^ k) >>> 0;
+
+          // if(!*q++) - if we just read end, do blank rounds and return
+          if (hitEnd) {
+            for (let i = 0; i < 18; i++) {
+              this.beltmill();
+            }
+            return;
+          }
+
+          inputPos++; // Increment after checking end
+        }
+      }
+
+      // Call m() at END of iteration (C for loop increment section)
+      this.beltmill();
     }
   };
-  
+
   // RadioGatún Universal Cipher Interface
   const RadioGatun = {
     internalName: 'radiogatun',
@@ -279,10 +202,10 @@
     digestSize: 256,        // Default 32 bytes output
     keySize: 0,
     rounds: 18,             // Blank rounds
-    
+
     // Security level
     securityLevel: 128,
-    
+
     // Reference links
     referenceLinks: [
       {
@@ -296,36 +219,12 @@
         type: "homepage"
       },
       {
-        title: "Stream Cipher Design Principles",
-        url: "https://link.springer.com/chapter/10.1007/3-540-36552-4_5",
-        type: "theory"
-      },
-      {
-        title: "Keccak Team Publications",
-        url: "https://keccak.team/publications.html",
-        type: "reference"
+        title: "GitHub Reference Implementation",
+        url: "https://github.com/samboy/rg32hash",
+        type: "implementation"
       }
     ],
-    
-    // Test vectors
-    testVectors: [
-      {
-        description: "Empty string - RadioGatún[32]",
-        input: "",
-        expected: OpCodes.Hex8ToBytes("f30028b54afab6b3e55355d277711109a19beda7091067e9a492fb5ed9f20117")
-      },
-      {
-        description: "Single byte 0x00 - RadioGatún[32]",
-        input: "\x00",
-        expected: OpCodes.Hex8ToBytes("4bbbb51c9a2d8a72f57e3c3d4a8a0ca7e8b14f3c7d1e9a8c2e3f5a7b8c9d0e1f")
-      },
-      {
-        description: "String 'abc' - RadioGatún[32]",
-        input: "abc",
-        expected: OpCodes.Hex8ToBytes("a10c51a715aa38bb21c4e6b4ee3f6ee1d5c4b8b7c9e7c6d4f7e8a9b0c1d2e3f4")
-      }
-    ],
-    
+
     // Required Cipher interface properties
     minKeyLength: 0,        // Minimum key length in bytes
     maxKeyLength: 64,        // Maximum key length in bytes
@@ -334,114 +233,140 @@
     maxBlockSize: 0,        // Maximum block size (0 = unlimited)
     stepBlockSize: 1,       // Block size step
     instances: {},          // Instance tracking
-    
+
     // Hash function interface
     Init: function() {
-      this.hasher = new RadioGatunHasher(32);
+      this.hasher = new RadioGatunHasher();
       this.bKey = false;
     },
-    
+
     KeySetup: function(key) {
       // RadioGatún doesn't use keys in standard mode
-      this.hasher = new RadioGatunHasher(32);
+      this.hasher = new RadioGatunHasher();
       this.bKey = false;
     },
-    
+
     encryptBlock: function(blockIndex, data) {
       if (typeof data === 'string') {
         this.hasher.update(data);
-        return OpCodes.BytesToHex(this.hasher.finalize());
+        return this.hasher.finalize();
       }
-      return '';
+      return new Uint8Array(0);
     },
-    
+
     decryptBlock: function(blockIndex, data) {
       // Hash functions don't decrypt
       return this.encryptBlock(blockIndex, data);
     },
-    
+
     // Direct hash interface with variable output
     hash: function(data, outputBytes) {
-      const hasher = new RadioGatunHasher(32);
+      const hasher = new RadioGatunHasher();
       hasher.update(data);
       return hasher.finalize(outputBytes || 32);
     },
-    
+
     // Stream interface (unlimited output)
     stream: function(data, outputBytes) {
       return this.hash(data, outputBytes);
     },
-    
+
     ClearData: function() {
       if (this.hasher) {
-        // Clear belt
-        for (let i = 0; i < this.hasher.belt.length; i++) {
-          this.hasher.belt[i].fill(0);
+        // Clear state
+        for (let i = 0; i < 39; i++) {
+          this.hasher.belt[i] = 0;
         }
-        // Clear mill
-        this.hasher.mill.fill(0);
-        this.hasher.buffer.fill(0);
+        for (let i = 0; i < this.hasher.mill.length; i++) {
+          this.hasher.mill[i] = 0;
+        }
+        this.hasher.buffer = [];
       }
       this.bKey = false;
     }
   };
-   
-    class RadioGatunWrapper extends CryptoAlgorithm {
-      constructor() {
-        super();
-        this.name = RadioGatun.name;
-        this.category = CategoryType.HASH;
-        this.securityStatus = SecurityStatus.EDUCATIONAL;
-        this.complexity = ComplexityType.MEDIUM;
-        this.inventor = "Guido Bertoni, Joan Daemen, Michaël Peeters, Gilles Van Assche";
-        this.year = 2006;
-        this.country = "BE";
-        this.description = "Belt-and-mill hash function predecessor to Keccak/SHA-3 design";
-        
-        // Convert test vectors if available
-        if (RadioGatun.tests) { // TODO: cheating
-          this.tests = RadioGatun.tests.map(test => 
-            new TestCase(
-              test.input,
-              test.expected,
-              test.text || test.description,
-              test.uri
-            )
-          );
+
+  class RadioGatunAlgorithm extends HashFunctionAlgorithm {
+    constructor() {
+      super();
+      this.name = "RadioGatún";
+      this.category = CategoryType.HASH;
+      this.subCategory = "Belt-and-Mill Hash";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.inventor = "Guido Bertoni, Joan Daemen, Michaël Peeters, Gilles Van Assche";
+      this.year = 2006;
+      this.country = CountryCode.BE;
+      this.description = "RadioGatún is a belt-and-mill hash function that served as a predecessor to Keccak/SHA-3 design. Uses 19-word mill and 39-word belt with 32-bit words.";
+
+      this.documentation = [
+        new LinkItem("RadioGatún Official Specification", "https://radiogatun.noekeon.org/radiogatun.pdf"),
+        new LinkItem("RadioGatún Homepage", "https://keccak.team/radiogatun.html")
+      ];
+
+      // Test vectors from official RadioGatún specification and implementations
+      this.tests = [
+        {
+          text: 'RadioGatún[32] - Empty string test vector',
+          uri: 'https://radiogatun.noekeon.org/',
+          input: [],
+          expected: OpCodes.Hex8ToBytes('F30028B54AFAB6B3E55355D277711109A19BEDA7091067E9A492FB5ED9F20117')
+        },
+        {
+          text: 'RadioGatún[32] - Single character "0"',
+          uri: 'https://github.com/coruus/sphlib/blob/master/src/c/test_radiogatun.c',
+          input: [48],
+          expected: OpCodes.Hex8ToBytes('AF0D3F51B98E90EEEBAE86DD0B304A4003AC5F755FA2CAC2B6866A0A91C5C752')
+        },
+        {
+          text: 'RadioGatún[32] - "The quick brown fox jumps over the lazy dog"',
+          uri: 'https://en.wikipedia.org/wiki/RadioGatún',
+          input: OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog"),
+          expected: OpCodes.Hex8ToBytes('191589005FEC1F2A248F96A16E9553BF38D0AEE1648FFA036655CE29C2E229AE')
         }
-      }
-      
-      CreateInstance(isInverse = false) {
-        return new RadioGatunWrapperInstance(this, isInverse);
-      }
+      ];
     }
-    
-    class RadioGatunWrapperInstance extends IAlgorithmInstance {
-      constructor(algorithm, isInverse) {
-        super(algorithm, isInverse);
-        this.instance = Object.create(RadioGatun);
-        this.instance.Init();
-      }
-      
-      ProcessData(input) {
-        return this.instance.hash(input);
-      }
-      
-      Reset() {
-        this.instance.ClearData();
-        this.instance.Init();
-      }
+
+    CreateInstance(isInverse = false) {
+      if (isInverse) return null; // Hash functions have no inverse
+      return new RadioGatunInstance(this);
     }
-    
-   
+  }
+
+  class RadioGatunInstance extends IHashFunctionInstance {
+    constructor(algorithm) {
+      super(algorithm);
+      this.hasher = new RadioGatunHasher();
+      this.inputBuffer = [];
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      // Process accumulated input
+      this.hasher.update(this.inputBuffer);
+      const result = this.hasher.finalize(32); // Default 256-bit output
+
+      // Reset for next use
+      this.hasher = new RadioGatunHasher();
+      this.inputBuffer = [];
+
+      return Array.from(result);
+    }
+  }
+
+
   // ===== REGISTRATION =====
 
-    const algorithmInstance = new RadioGatunWrapper();
+  const algorithmInstance = new RadioGatunAlgorithm();
   if (!AlgorithmFramework.Find(algorithmInstance.name)) {
     RegisterAlgorithm(algorithmInstance);
   }
 
   // ===== EXPORTS =====
 
-  return { RadioGatunWrapper, RadioGatunWrapperInstance };
+  return { RadioGatunAlgorithm, RadioGatunInstance, RadioGatunHasher };
 }));

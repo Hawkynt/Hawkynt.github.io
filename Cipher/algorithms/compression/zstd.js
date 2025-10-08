@@ -82,19 +82,19 @@
         // Test vectors with proper compressed output format
         this.tests = [
           new TestCase(
-            global.OpCodes.AnsiToBytes("ABCD"), // Simple uncompressible data
+            OpCodes.AnsiToBytes("ABCD"), // Simple uncompressible data
             [0, 0, 0, 4, 0, 65, 0, 66, 0, 67, 0, 68], // 4-byte header + compressed literals
             "Simple data - no compression possible",
             "Educational test"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("AAAA"), // Repeated data that compresses well
+            OpCodes.AnsiToBytes("AAAA"), // Repeated data that compresses well
             [0, 0, 0, 4, 0, 65, 1, 1, 3], // 4-byte header + [literal A] + [match distance=1, length=3] 
             "Repeated data - good compression",
             "Educational test"
           ),
           new TestCase(
-            global.OpCodes.AnsiToBytes("ABCABC"), // Pattern repetition
+            OpCodes.AnsiToBytes("ABCABC"), // Pattern repetition
             [0, 0, 0, 6, 0, 65, 0, 66, 0, 67, 1, 3, 3], // Header + ABC + match distance=3, length=3
             "Pattern repetition - ABCABC",
             "Educational test"

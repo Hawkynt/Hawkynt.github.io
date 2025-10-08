@@ -83,9 +83,9 @@
     inventor: 'Daniel J. Bernstein (ChaCha20), Frank Denis (XChaCha20)',
     year: 2018,
     country: 'US',
-    category: 'stream',
+    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
     subCategory: 'Stream Cipher',
-    securityStatus: 'research',
+    securityStatus: global.AlgorithmFramework ? global.AlgorithmFramework.SecurityStatus.EXPERIMENTAL : 'research',
     securityNotes: 'Extended ChaCha20 with 192-bit nonces. Educational implementation demonstrating nonce extension techniques.',
     
     documentation: [
