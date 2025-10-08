@@ -1999,8 +1999,21 @@
       const bytes = [];
       for (let i = 0; i < str.length; ++i)
         bytes.push(str.charCodeAt(i) & 0x7F);
-      
+
       return bytes;
+    },
+
+    /**
+     * Convert byte array to ANSI string
+     * @param {Array} bytes - Input byte array
+     * @returns {string} ANSI string
+     */
+    BytesToAnsi: function(bytes) {
+      let str = '';
+      for (let i = 0; i < bytes.length; ++i)
+        str += String.fromCharCode(bytes[i] & 0x7F);
+
+      return str;
     },
      
     /**
