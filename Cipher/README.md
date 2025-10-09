@@ -1,14 +1,11 @@
-# 🔐 SynthelicZ Cipher Tools - Professional-Grade Cryptographic Implementation Library
+# 🔐 Cipher Tools - Professional-Grade Cryptographic Implementation Library
 
 *Production-ready cryptographic algorithms with bit-perfect test vector validation*
 
-[![Algorithms](https://img.shields.io/badge/Algorithms-248+-blue.svg)](https://hawkynt.github.io/Cipher/)
-[![Identified for Implementation](https://img.shields.io/badge/New%20Algorithms%20Identified-80+-orange.svg)](https://hawkynt.github.io/Cipher/)
-[![Working](https://img.shields.io/badge/Working-157%20(63%25)-brightgreen.svg)](https://hawkynt.github.io/Cipher/)
-[![Categories](https://img.shields.io/badge/Categories-12-green.svg)](https://hawkynt.github.io/Cipher/)
-[![Languages](https://img.shields.io/badge/Languages-9+-green.svg)](https://hawkynt.github.io/Cipher/)
-[![Standards](https://img.shields.io/badge/Standards-NIST%20%7C%20RFC%20%7C%20ISO-yellow.svg)](https://hawkynt.github.io/Cipher/)
-[![License](https://img.shields.io/badge/License-Educational-red.svg)](https://hawkynt.github.io/Cipher/)
+[![Algorithms](https://img.shields.io/badge/Algorithms-355-blue.svg)](https://hawkynt.github.io/Cipher/)
+[![Working](https://img.shields.io/badge/Working-290%20(82%25)-brightgreen.svg)](https://hawkynt.github.io/Cipher/)
+[![Categories](https://img.shields.io/badge/Categories-15-green.svg)](https://hawkynt.github.io/Cipher/)
+![License](https://img.shields.io/github/license/Hawkynt/Hawkynt.github.io/Cipher/)
 
 ---
 
@@ -35,11 +32,11 @@
 
 ## 🎯 Project Overview
 
-»SynthelicZ« Cipher Tools is a **professional-grade cryptographic implementation library** featuring **production-ready algorithm implementations** with **bit-perfect test vector validation**. The platform provides verified, real-world cryptographic implementations suitable for professional encryption libraries, security analysis, and production use cases. This project serves as the premier hands-on learning environment for exploring cryptography from ancient techniques to cutting-edge post-quantum algorithms.
+Cipher Tools is a **professional-grade cryptographic implementation library** featuring **production-ready algorithm implementations** with **bit-perfect test vector validation**. The platform provides verified, real-world cryptographic implementations suitable for professional encryption libraries, security analysis, and production use cases. This project serves as the premier hands-on learning environment for exploring cryptography from ancient techniques to cutting-edge post-quantum algorithms.
 
 ### 🌟 What Makes This Special
 
-- **248+ Production Implementations** - Professional-grade cryptographic library (targeting 100% bit-perfect accuracy)
+- **339+ Production Implementations** - Professional-grade cryptographic library (targeting 100% bit-perfect accuracy)
 - **Bit-Perfect Test Vector Validation** - Every algorithm verified against official NIST, RFC, and academic test vectors
 - **Professional Code Quality** - Production-ready implementations suitable for real-world encryption libraries
 - **Algorithm Chaining System** - Upload → Compress → Cipher → Cipher → Download workflows
@@ -73,19 +70,6 @@
 9. **Defensive Security** - All implementations for learning and analysis, never malicious purposes
 10. **Research Ready** - Academic-grade metadata and test vector validation
 
-### 🆕 Recently Implemented Algorithms (Latest Session)
-
-**High-Priority Implementations Completed:**
-
-- **NORX** - CAESAR competition finalist for high-performance authenticated encryption
-- **AEGIS-128** - CAESAR competition winner with AES-based security
-- **ACORN** - CAESAR lightweight category winner for IoT applications
-- **xxHash3** - Ultra-fast non-cryptographic hash function with improved distribution
-- **HighwayHash** - Google's fast cryptographic hash optimized for SIMD
-- **bcrypt** - Adaptive password hashing based on Blowfish with configurable work factor
-- **Jefferson Wheel** - Historical polyalphabetic cipher from Thomas Jefferson (1795)
-- **Pigpen Cipher** - Freemason geometric substitution cipher with multiple variants
-
 **Implementation Status:** Most algorithms include comprehensive test vectors, have cross-platform compatibility (Browser/Node.js), and educational metadata with security analysis.
 
 ---
@@ -103,18 +87,27 @@
 
 ### 📊 Algorithm Categories & Color Coding
 
-| Category | Color | Implemented | Identified | Total Target | Examples |
-|----------|-------|-------------|------------|--------------|----------|
-| 🔴 **Asymmetric Ciphers** | Red | 16 | 15 | 31 | RSA, NTRU, Post-Quantum (ML-KEM, Dilithium), LESS, QR-UOV |
-| 🔵 **Symmetric Block** | Blue | 58 | 10 | 68 | AES, DES, Blowfish, Serpent, GIFT, Kalyna |
-| 🔷 **Symmetric Stream** | Light Blue | 42 | 6 | 48 | ChaCha20, RC4, Salsa20, SOSEMANUK, ACORN |
-| 🟡 **Hash Functions** | Yellow | 33 | 17 | 50 | SHA-256, BLAKE3, xxHash3, HighwayHash, K12 |
-| 🟢 **Compression** | Green | 19 | 4 | 23 | Brotli, LZ4, LZMA2, PAQ8, ZPAQ |
-| 🟣 **Encoding** | Violet | 21 | 6 | 27 | Base64, PEM, Base58Check, Z85, Intel HEX |
-| 🟠 **Classical** | Orange | 23 | 12 | 35 | Caesar, Vigenère, Jefferson Wheel, Pigpen |
-| ⚫ **Special** | Black | 31 | 10 | 41 | MACs, KDFs, AES-KW, FF1, Error Correction |
+| Category | Color | Implemented | Examples |
+|----------|-------|-------------|----------|
+| 🔵 **Block Ciphers** | Blue | 64 | AES, DES, Blowfish, Serpent, GIFT, Kalyna |
+| 🗜️ **Compression** | Green | 49 | Brotli, LZ4, LZMA2, Huffman, RLE, Snappy |
+| 🌊 **Stream Ciphers** | Light Blue | 47 | ChaCha20, RC4, Salsa20, SOSEMANUK, ACORN |
+| #️⃣ **Hash Functions** | Yellow | 35 | SHA-256, BLAKE3, xxHash3, HighwayHash, MD5 |
+| 📜 **Classical Ciphers** | Orange | 26 | Caesar, Vigenère, Jefferson Wheel, Enigma |
+| 🔐 **Cipher Modes** | Dark Blue | 26 | ECB, CBC, CTR, GCM, CCM, XTS, OFB |
+| 🔴 **Asymmetric** | Red | 20 | RSA, NTRU, ECC, Post-Quantum (Kyber) |
+| 📝 **Encoding** | Violet | 20 | Base64, PEM, Base58, Z85, Morse, Hex |
+| ✔️ **Checksums** | Teal | 13 | CRC32, CRC64, Adler32, Fletcher, Parity |
+| 📋 **Padding** | Gray | 12 | PKCS#7, ISO/IEC 7816-4, ANSI X9.23, Zero |
+| 🎯 **Special Purpose** | Black | 12 | Format-Preserving, Key Wrapping, Homomorphic |
+| ✅ **MAC** | Pink | 6 | HMAC, CMAC, Poly1305, VMAC, GMAC |
+| 🔑 **Key Derivation** | Dark Gray | 4 | PBKDF2, HKDF, Argon2, Scrypt |
+| 🔧 **Error Correction** | Info Blue | 4 | Reed-Solomon, BCH, LDPC, Hamming |
+| 🛡️ **Post-Quantum** | Purple | 1 | Kyber, Dilithium (NIST PQC candidates) |
 
 ### 🔧 Cipher Mode Support
+
+TODO: modes missing
 
 **Block Cipher Modes** (Default: ECB/No Padding):
 - **ECB** (Electronic Codebook) - Simple, parallel
@@ -189,82 +182,7 @@
 
 ## 🔐 Supported Algorithms
 
-### 🆕 Recently Identified Algorithms (40+ New Implementations)
-
-Through comprehensive research across cryptographic competitions, standards organizations, and academic sources, **40+ new algorithms** have been identified for implementation:
-
-#### 🔴 **Post-Quantum Cryptography (15 algorithms)**
-- **NIST Round 2 Candidates**: LESS, QR-UOV, SNOVA, RYDE, SDitH, MQOM
-- **Hash-Based Signatures**: XMSS, LMS (RFC standards)
-- **Alternative Approaches**: HuFu, RACCOON, AIMer, Mirath
-- **Research Interest**: ALTEQ, Biscuit, Wave
-
-#### 🟠 **Classical & Historical (12 algorithms)**
-- **Historical Machines**: Jefferson Wheel, Mexican Army Cipher Wheel
-- **Secret Society**: Pigpen/Freemason Cipher
-- **Early Steganography**: Baconian Cipher, Cardan Grille
-- **Famous Unsolved**: Beale Cipher, Zodiac Cipher, Great Cipher
-- **Ancient Non-European**: Kama Sutra Cipher
-- **Scientific**: Döbereiner Cipher
-- **Advanced Professional**: Straddling Checkerboard
-- **Literature-Based**: Book Cipher, Running Key Cipher
-
-#### 🔵 **Modern Competition Algorithms (10 algorithms)**
-- **CAESAR Winners**: ACORN, COLM, MORUS
-- **eSTREAM Portfolio**: SOSEMANUK, F-FCSR-H v2
-- **SHA-3 Finalists**: BLAKE (original), Grøstl, JH
-- **Recent Proposals**: NORX, Ketje/Keyak
-
-#### 🟡 **Hash Functions & Checksums (17 algorithms)**
-- **Fast Hashes**: xxHash3, HighwayHash, MetroHash, FarmHash
-- **Password Hashing**: bcrypt, Balloon Hash, yescrypt
-- **NIST Derived Functions**: SHAKE256, cSHAKE, KMAC, ParallelHash, TupleHash
-- **Research Hashes**: K12 (KangarooTwelve), ASCON-Hash
-- **Checksums**: CRC-64 ECMA, CRC-8 variants, Fletcher-16
-
-#### 🟣 **Encoding & Specialized (10 algorithms)**
-- **Modern Encodings**: Base58Check, Z85, Base32 (RFC 4648), Base36
-- **Hardware Formats**: Intel HEX, S-record (Motorola)
-- **Compression**: LZMA2, PAQ8, ZPAQ, DEFLATE64
-- **Key Management**: AES-KW (Key Wrapping), FF1 (Format-Preserving)
-- **Advanced KDFs**: bcrypt, PBKDF1, Balloon Hash
-
-### 🌍 International Standards Coverage
-
-**🇺🇸 United States (NIST/FIPS)**
-- AES/Rijndael (FIPS 197), SHA family (FIPS 180), DES (FIPS 46)
-
-**🇷🇺 Russia (GOST Standards)**  
-- Streebog (GOST R 34.11-2012), Kuznyechik
-
-**🇨🇳 China (National Standards)**
-- ZUC (3GPP), SM3, SM4
-
-**🇺🇦 Ukraine (DSTU Standards)**
-- Kalyna (DSTU 7624:2014)
-
-**🇰🇷 South Korea**
-- ARIA, SEED
-
-**🇪🇺 European Standards**
-- Various ETSI and academic algorithms
-
-**🌐 International (ISO/RFC)**
-- ChaCha20 (RFC 7539), Brotli (RFC 7932), Argon2 (RFC 9106)
-
-### 📚 Historical & Educational Coverage
-
-**Ancient Ciphers** (700 BCE - 1900 CE)
-- Scytale, Caesar, Atbash, Vigenère, Playfair
-
-**Modern Classical** (1900-1970)
-- Enigma, One-Time Pad, Hill Cipher
-
-**Computer Age** (1970-2000)  
-- DES, RSA, Blowfish, IDEA
-
-**Modern Era** (2000-Present)
-- AES, ChaCha20, BLAKE3, Post-Quantum
+TODO: huge table
 
 ---
 
@@ -284,6 +202,8 @@ Each algorithm is evaluated for metadata completeness across five key areas:
 
 ### 📊 Current Compliance Status
 
+TODO: wrong numbers
+
 **Overall Statistics:** 7 of 200 algorithms (4%) meet the 70% compliance threshold.
 
 | **Compliance Level** | **Range** | **Count** | **Examples** |
@@ -292,31 +212,11 @@ Each algorithm is evaluated for metadata completeness across five key areas:
 | 🟡 **Good** | 70-89% | 5 | A5-1, Salsa20, Trivium, Caesar, ChaCha20 |
 | 🔴 **Needs Work** | <70% | 193 | Most algorithms require metadata improvements |
 
-### 🏆 Top Performing Algorithms
-
-| Algorithm | Category | Compliance | Status | Key Strengths |
-|-----------|----------|------------|--------|---------------|
-| **SHA256** | Hash | 🟢 94% | Complete | Full NIST documentation, official test vectors |
-| **RC4** | Stream | 🟢 90% | Complete | Comprehensive historical context and references |
-| **A5-1** | Stream | 🟡 86% | Good | GSM standard documentation |
-| **Salsa20** | Stream | 🟡 86% | Good | Bernstein papers and specifications |
-| **Trivium** | Stream | 🟡 86% | Good | eSTREAM competition documentation |
-| **Caesar** | Classical | 🟡 79% | Good | Historical sources and educational materials |
-| **ChaCha20** | Stream | 🟡 77% | Good | RFC 7539 compliance and test vectors |
-
-### 🔧 Priority Improvement Areas
-
-Based on validation results, algorithms most need:
-
-1. **Country of Origin** (196/200 missing) - Add 2-letter ISO codes (US, DE, JP, etc.)
-2. **Reference URLs** (184/200 missing) - Links to specifications or academic papers  
-3. **Algorithm Descriptions** (183/200 missing) - Detailed explanations (≥50 characters)
-4. **Publication Years** (198/200 missing) - When algorithm was invented/published
-5. **Test Vector Attribution** (Most lacking) - Source URLs for test cases
-
 ### 🌍 Geographic Representation
 
 Current coverage by country of origin:
+
+TODO: wrong numbers
 
 | Region | Count | Examples |
 |--------|-------|----------|
@@ -326,34 +226,6 @@ Current coverage by country of origin:
 | **Other Countries** | 3 | ChaCha20, Salsa20, Trivium |
 | **Unknown/Missing** | 193 | *Needs geographic metadata* |
 
-### 📈 Compliance Improvement Plan
-
-**Phase 1 (Immediate):** Add basic metadata to top 50 algorithms
-- Focus on widely-used algorithms (AES, DES, Blowfish, etc.)
-- Add Wikipedia URLs as minimum reference documentation
-- Include basic country codes and years
-
-**Phase 2 (Short-term):** Enhance test vector attribution
-- Add source URLs to existing test vectors
-- Include NIST, RFC, and academic paper references
-- Validate test vector accuracy against official sources
-
-**Phase 3 (Long-term):** Comprehensive documentation
-- Add detailed algorithm descriptions with educational context
-- Include historical background and cryptographic significance
-- Expand reference lists with multiple authoritative sources
-
-### 🔍 Validation Tool
-
-Run the metadata compliance checker:
-
-```bash
-cd Cipher/
-node test-metadata-requirements.js
-```
-
-This generates detailed compliance reports and actionable recommendations for improvement.
-
 ---
 
 ## 🏗️ Architecture
@@ -361,6 +233,8 @@ This generates detailed compliance reports and actionable recommendations for im
 ### Universal Pattern Structure
 
 Every algorithm follows the universal pattern for maximum compatibility:
+
+TODO: AlgorithmFramework pattern needed
 
 ```javascript
 (function(global) {
@@ -415,6 +289,8 @@ Every algorithm follows the universal pattern for maximum compatibility:
 ### 🧱 OpCodes Building Blocks
 
 The OpCodes library provides 32+ language-agnostic operations:
+
+TODO: complete reference
 
 **Core Operations:**
 - `RotL32(value, positions)` - 32-bit left rotation
@@ -491,36 +367,7 @@ Each algorithm displays as an interactive card with:
 
 ### Universal Algorithm Tester
 
-**🚀 New Universal Test Runner System:**
-
-The collection now features an advanced universal test runner that automatically validates test vectors for any algorithm, regardless of category:
-
-**📊 Auto-Detection Features:**
-- **Algorithm Type Detection** - Automatically identifies ciphers, hashes, encodings, compression, MACs, KDFs, checksums
-- **Smart Parameter Detection** - Extracts keys, IVs, nonces, salts, and other parameters from test vectors
-- **Category-Specific Testing** - Uses appropriate test logic for each algorithm type
-- **Comprehensive Reporting** - Detailed pass/fail status with diagnostic information
-
-**🔧 Usage Examples:**
-```bash
-# Test all algorithms
-node universal-algorithm-tester.js
-
-# Test specific category
-node universal-algorithm-tester.js category hash
-
-# Full compliance validation
-node run-compliance-validation.js
-```
-
-**📋 Supported Algorithm Categories:**
-- **Ciphers** - Block/Stream/Classical/Asymmetric (encrypt/decrypt testing)
-- **Hash Functions** - Cryptographic/Fast/Specialized (hash verification)  
-- **Encoding Schemes** - Base/Text/Binary (encode/decode testing)
-- **Compression** - Dictionary/Statistical/Transform (compress/decompress)
-- **MAC Functions** - HMAC/CMAC/Universal Hash (authentication testing)
-- **KDF Functions** - Password/Key/Function-based (key derivation)
-- **Checksums** - CRC/Simple/Network (checksum verification)
+TODO: cli version description of the testsuite
 
 ### Test Vector Management
 
@@ -539,7 +386,7 @@ tests: [{
 
 **🧪 Advanced Testing Capabilities:**
 - **Individual test execution** with detailed error reporting
-- **Batch testing** across all 276+ algorithm files
+- **Batch testing** across all algorithm files
 - **Performance benchmarking** with operation timing
 - **Cross-platform validation** (Browser + Node.js)
 - **Metadata compliance checking** against CONTRIBUTING.md guidelines  
@@ -547,6 +394,8 @@ tests: [{
 - **Category-based filtering** and testing
 
 ### Validation Sources
+
+TODO: match readme.md in reference sources
 
 **🏛️ Official Standards:**
 - **NIST FIPS** publications (197, 180, 46, etc.)
@@ -609,71 +458,14 @@ public static int rotateLeft32(int value, int positions) {
 
 ---
 
-## 🚀 Getting Started
-
-### Quick Start (Browser)
-
-1. **Open the tool:** Navigate to [hawkynt.github.io/Cipher](https://hawkynt.github.io/Cipher)
-2. **Select algorithm:** Click on any algorithm card or use the dropdown
-3. **Choose mode:** Select cipher mode and padding (for block ciphers)
-4. **Input data:** Type text, upload file, or enter hex
-5. **Encrypt/Decrypt:** Click the operation button
-6. **View results:** Download or copy results in multiple formats
-
-### Development Setup (Node.js)
-
-```bash
-# Clone the repository
-git clone https://github.com/Hawkynt/hawkynt.github.io.git
-cd hawkynt.github.io/Cipher
-
-# Run tests
-node universal-test-runner.js
-
-# Test specific algorithm
-node -e "require('./caesar-universal.js'); console.log('Caesar cipher loaded');"
-
-# Test OpCodes library
-node test-opcodes.js
-```
-
-### File Structure
-
-```
-Cipher/
-├── index.html                 # Main interface
-├── OpCodes.js                 # Core cryptographic operations
-├── cipher-universal.js        # Universal cipher system
-├── universal-test-runner.js   # Testing framework
-├── 
-├── Algorithm Files (162+):
-├── caesar-universal.js        # Classical ciphers
-├── aes-universal.js          # Modern block ciphers  
-├── chacha20-universal.js     # Stream ciphers
-├── sha256-universal.js       # Hash functions
-├── brotli-universal.js       # Compression algorithms
-├── base64-universal.js       # Encoding schemes
-└── [... 156 more algorithms]
-├──
-├── UI Enhancement Files:
-├── ui-enhancements.js        # Advanced interface
-├── cipher-file-handler.js    # File processing
-├── hex-editor.js            # Hex editing
-├── download-manager.js      # Multi-format export
-├── OpCodes-CodeGen.js       # Multi-language generation
-└── styles/                  # CSS files
-```
-
----
-
 ## 🛠️ Development
 
 ### Adding New Algorithms
 
-1. **Create algorithm file** following universal pattern
+1. **Create algorithm file** following pattern
 2. **Add comprehensive metadata** including country, year, category
 3. **Include official test vectors** with origin metadata and working links
-4. **Implement core interface** (Init, KeySetup, Encrypt/Decrypt, ClearData)
+4. **Implement core interface**
 5. **Use OpCodes operations** for all cryptographic primitives
 6. **Test thoroughly** with official test vectors
 7. **Update documentation** and README
@@ -703,68 +495,6 @@ Cipher/
 - Handle edge cases gracefully
 - Provide clear error messages
 - Support the universal testing framework
-
----
-
-## 📈 Implementation Status
-
-### Current Statistics (2025)
-
-- **✅ 243 Universal Algorithms** implemented and tested
-- **🆕 40+ New Algorithms** identified through systematic research
-- **🌐 9 Programming Languages** supported for code conversion  
-- **🏛️ 25+ Official Standards** represented (NIST, RFC, ISO, National)
-- **🎯 100% Test Pass Rate** across all implementations
-- **🌍 15+ Countries** represented in algorithm origins
-- **📱 100% Browser Compatibility** from IE5 to modern browsers
-
-### Algorithm Distribution (Updated 2025)
-
-| Category | Implemented | Identified | Research Priority | Total Target |
-|----------|-------------|------------|------------------|-------------|
-| **Post-Quantum** | 16 | 15 | High | 31 |
-| **Block Ciphers** | 58 | 10 | Medium | 68 |
-| **Stream Ciphers** | 42 | 6 | Medium | 48 |
-| **Hash Functions** | 33 | 17 | High | 50 |
-| **Classical** | 23 | 12 | Educational | 35 |
-| **Encoding** | 21 | 6 | Practical | 27 |
-| **Compression** | 19 | 4 | Advanced | 23 |
-| **Special Purpose** | 31 | 10 | Specialized | 41 |
-| **Total** | **243** | **80+** | **Mixed** | **323+** |
-
-### Implementation Priority Framework
-
-**🔥 High Priority** (Standards & Education):
-1. **NIST Round 2 Post-Quantum** (LESS, QR-UOV, SNOVA) - Current standardization
-2. **RFC Standards** (XMSS, LMS, bcrypt) - Already standardized
-3. **Competition Winners** (ACORN, COLM, SOSEMANUK) - Proven algorithms
-4. **Modern Fast Hashes** (xxHash3, HighwayHash) - Industry adoption
-
-**🔶 Medium Priority** (Educational Value):
-5. **Historical Ciphers** (Jefferson Wheel, Pigpen) - Teaching value
-6. **SHA-3 Finalists** (BLAKE, Grøstl, JH) - Cryptographic diversity
-7. **Modern Encodings** (Base58Check, Z85) - Practical applications
-
-**🔷 Research Priority** (Advanced/Specialized):
-8. **MPC-in-the-Head** (RYDE, SDitH, MQOM) - Cutting-edge techniques
-9. **Memory-Hard Functions** (Balloon Hash, yescrypt) - Specialized security
-10. **Compression Research** (PAQ8, ZPAQ) - Academic interest
-
-### Recent Additions (2024)
-
-**🆕 New Algorithms:**
-- Streebog (Russian GOST R 34.11-2012)
-- Kalyna (Ukrainian DSTU 7624:2014)  
-- ZUC (Chinese 3GPP stream cipher)
-- Argon2 (Password hashing standard)
-- Brotli (Google compression algorithm)
-
-**🔧 New Features:**
-- Multi-language code conversion
-- Interactive algorithm cards with country flags
-- Advanced file processing with hex editor
-- Test vector management with origin tracking
-- SEO optimization for educational discovery
 
 ---
 
@@ -801,6 +531,8 @@ Cipher/
 ### 🏷️ Metadata Requirements
 
 **⚠️ CRITICAL: All contributors MUST follow the metadata template structure:**
+
+TODO: doesnt match contributing.md hints
 
 ```javascript
 const AlgorithmName = {
@@ -841,100 +573,44 @@ const AlgorithmName = {
 
 ---
 
-## 📊 Implementation Status
-
-### Algorithm Loading Statistics (Current)
-- **Total Algorithms**: 243 universal implementations
-- **Successfully Loading**: 152 algorithms (62.6%)
-- **In Progress**: 91 algorithms (metadata fixes needed)
-- **Test Coverage**: 100% with official test vectors
-
-### Directory Structure (Organized 2025-01-17)
-```
-algorithms/
-├── block/          58 algorithms  (Block ciphers)
-├── stream/         42 algorithms  (Stream ciphers)  
-├── hash/           33 algorithms  (Hash functions)
-├── classical/      23 algorithms  (Historical ciphers)
-├── encoding/       21 algorithms  (Encoding schemes)
-├── compression/    19 algorithms  (Compression algorithms)
-├── asymmetric/     16 algorithms  (Public key crypto)
-├── special/        16 algorithms  (Special purpose)
-├── mac/             6 algorithms  (Message authentication)
-├── kdf/             4 algorithms  (Key derivation)
-├── ecc/             4 algorithms  (Elliptic curve crypto)
-└── checksum/        1 algorithm   (Checksum functions)
-```
-
-### Recent Improvements (2025-01-17)
-- ✅ **Directory Restructuring**: Organized 163 algorithms into logical categories
-- ✅ **Copyright Update**: All files updated to "(c)2006-2025 Hawkynt"  
-- ✅ **Algorithm Chaining**: Complete upload → process → download workflow
-- ✅ **Multi-Language Code Generation**: 9 languages with instant download
-- ✅ **Legacy Cleanup**: Removed duplicate and outdated files
-- ✅ **Path Resolution**: Fixed all relative imports for new structure
-- ✅ **Auto-Discovery**: Test runner automatically finds all algorithms
-
-### Pending Work
-- 🔄 **Metadata Completion**: Fix remaining 27 algorithms (missing properties)
-- 🔄 **Reference Integration**: Make C/C++/Java reference code UI-accessible
-- 🔄 **Universal Suffix Removal**: When legacy conversion complete
-- 🔄 **Wikipedia Research**: Additional algorithms for implementation
-- 🔄 **Test Vector Expansion**: More comprehensive official test coverage
-
----
-
 ## ⚠️ Security Notice
 
 ### Educational Purpose Only
 
 **🎓 This collection is designed for educational and research purposes:**
+
 - **Learning cryptographic concepts** and algorithm implementation
 - **Academic research** and algorithm analysis
 - **Defensive security analysis** and vulnerability assessment
 - **Historical preservation** of cryptographic techniques
+- **Production** cryptographic applications
 
 **🚫 NOT intended for:**
-- Production cryptographic applications
-- Securing sensitive or valuable data
+
 - Commercial cryptographic products
 - Military or governmental security applications
 
 ### Security Warnings
 
 **⚠️ Implementation Limitations:**
+
 - Educational implementations may have timing vulnerabilities
 - Not optimized for side-channel attack resistance
 - May contain intentional simplifications for learning
 - Performance optimizations may introduce security issues
 
 **🔒 Best Practices:**
-- Use established cryptographic libraries for production
+
 - Never implement custom cryptography without expert review
 - Understand the difference between educational and production crypto
 - Follow current NIST and industry security guidelines
 
 ### Responsible Use
 
-This toolkit is provided to advance cryptographic education and research. Users are responsible for:
-- Following local laws and regulations
-- Using only for authorized educational and research purposes
-- Respecting intellectual property and patent rights
+- Follow local laws and regulations
+- Respect intellectual property and patent rights
 - Contributing improvements back to the educational community
-
----
-
-## 📄 License
-
-**Educational License** - See full license for details
-
-**Summary:**
-- ✅ Educational and research use permitted
-- ✅ Academic course integration allowed  
-- ✅ Non-commercial analysis and study permitted
-- ❌ Commercial use prohibited
-- ❌ Military/governmental use prohibited
-- ❌ Malicious use strictly forbidden
+- Do not utilize for military or terrorist usage
 
 ---
 
@@ -949,8 +625,4 @@ This toolkit is provided to advance cryptographic education and research. Users 
 
 ---
 
-**📞 Contact:** [Hawkynt](https://github.com/Hawkynt) | **🌐 Website:** [hawkynt.github.io](https://hawkynt.github.io) | **📧 Issues:** [GitHub Issues](https://github.com/Hawkynt/hawkynt.github.io/issues)
-
----
-
-*"Understanding cryptography through hands-on implementation and analysis."*
+**✉️ Contact:** [Hawkynt](https://github.com/Hawkynt) | **🌐 Website:** [hawkynt.github.io](https://hawkynt.github.io) | **📧 Issues:** [GitHub Issues](https://github.com/Hawkynt/hawkynt.github.io/issues)
