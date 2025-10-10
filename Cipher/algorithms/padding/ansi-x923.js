@@ -84,20 +84,20 @@
       this.tests = [
         new TestCase(
           OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317"), // 15 bytes
-          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317000000000000000000000000000000000001"), // Padded to 32 bytes
-          "ANSI X9.23 padding with 1 byte needed",
+          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393170000000000000000000000000000000011"), // Padded to 32 bytes (15 + 17, last byte is 0x11 = 17)
+          "ANSI X9.23 padding with 17 bytes needed",
           "ANSI X9.23 Standard"
         ),
         new TestCase(
-          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393"), // 14 bytes  
-          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393000000000000000000000000000000000012"), // Padded to 32 bytes (18 bytes padding = 0x12)
+          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393"), // 14 bytes
+          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393000000000000000000000000000000000012"), // Padded to 32 bytes (14 + 18, last byte is 0x12 = 18)
           "ANSI X9.23 padding with 18 bytes needed",
           "ANSI X9.23 Standard"
         ),
         new TestCase(
           OpCodes.Hex8ToBytes("6bc1bee22e"), // 5 bytes
-          OpCodes.Hex8ToBytes("6bc1bee22e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000b"), // Padded to 64 bytes
-          "ANSI X9.23 padding with 11 bytes needed",  
+          OpCodes.Hex8ToBytes("6bc1bee22e000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003b"), // Padded to 64 bytes (5 + 59, last byte is 0x3B = 59)
+          "ANSI X9.23 padding with 59 bytes needed",
           "ANSI X9.23 Standard"
         )
       ];
@@ -122,18 +122,16 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.inputBuffer = [];
-      this.blockSize = 16; // Default block size
+      this._blockSize = 16; // Default block size
     }
 
-    /**
-     * Set the block size for padding
-     * @param {number} blockSize - Block size in bytes (1-255)
-     */
-    setBlockSize(blockSize) {
-      if (!blockSize || blockSize < 1 || blockSize > 255) {
+    // Property getter and setter for test framework
+    get blockSize() { return this._blockSize; }
+    set blockSize(value) {
+      if (!value || value < 1 || value > 255) {
         throw new Error("Block size must be between 1 and 255 bytes");
       }
-      this.blockSize = blockSize;
+      this._blockSize = value;
     }
 
     Feed(data) {
@@ -159,7 +157,7 @@
      */
     _addPadding() {
       const data = this.inputBuffer;
-      const paddingLength = this.blockSize - (data.length % this.blockSize);
+      const paddingLength = this._blockSize - (data.length % this._blockSize);
 
       // Create padding: zeros followed by length byte
       const padding = new Array(paddingLength - 1).fill(0);
@@ -185,14 +183,14 @@
         return paddedData;
       }
 
-      if (paddedData.length % this.blockSize !== 0) {
+      if (paddedData.length % this._blockSize !== 0) {
         throw new Error("Padded data length must be multiple of block size");
       }
 
       const paddingLength = paddedData[paddedData.length - 1];
 
       // Validate padding length
-      if (paddingLength < 1 || paddingLength > this.blockSize) {
+      if (paddingLength < 1 || paddingLength > this._blockSize) {
         throw new Error("Invalid ANSI X9.23 padding length");
       }
 
