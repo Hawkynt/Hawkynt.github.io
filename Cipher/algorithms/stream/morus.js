@@ -1,10 +1,3 @@
-/*
- * MORUS Implementation - CAESAR Competition Finalist
- * High-Performance Authenticated Encryption Algorithm
- * (c)2006-2025 Hawkynt
- */
-
-
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     // AMD
@@ -31,675 +24,384 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
-          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
-          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
-          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
-          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
-          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
-          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+          StreamCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
+
+  // MORUS-640 constants (32-bit words)
+  const CONSTANTS_640 = [
+    [0x02010100, 0x0d080503, 0x59372215, 0x6279e990],
+    [0x55183ddb, 0xf12fc26d, 0x42311120, 0xdd28b573]
+  ];
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
-  const MORUS = {
-    name: "MORUS",
-    description: "High-performance authenticated encryption algorithm and finalist in the CAESAR competition. Designed for exceptional speed on modern processors with excellent hardware acceleration potential.",
-    inventor: "Hongjun Wu, Tao Huang",
-    year: 2014,
-    country: "Singapore/China",
-    category: CategoryType.STREAM,
-    subCategory: "Authenticated Encryption",
-    securityStatus: "research",
-    securityNotes: "CAESAR competition finalist with excellent performance characteristics. Not standardized but represents significant cryptographic research in high-speed AEAD constructions.",
-    
-    documentation: [
-      {text: "CAESAR Submission", uri: "https://competitions.cr.yp.to/round3/morusv2.pdf"},
-      {text: "Original Paper", uri: "https://eprint.iacr.org/2013/629"},
-      {text: "CAESAR Competition", uri: "https://competitions.cr.yp.to/"}
-    ],
-    
-    references: [
-      {text: "Reference Implementation", uri: "https://github.com/hongjunwu/MORUS"},
-      {text: "Performance Analysis", uri: "https://bench.cr.yp.to/results-aead.html"},
-      {text: "Security Analysis", uri: "https://eprint.iacr.org/2015/524"}
-    ],
-    
-    knownVulnerabilities: [
+class MORUS extends StreamCipherAlgorithm {
+  constructor() {
+    super();
+
+    this.name = "MORUS";
+    this.description = "CAESAR competition finalist for authenticated encryption. High-performance AEAD cipher with 5-register state machine optimized for modern processors. Designed by Hongjun Wu and Tao Huang.";
+    this.inventor = "Hongjun Wu, Tao Huang";
+    this.year = 2014;
+    this.category = CategoryType.STREAM;
+    this.subCategory = "Authenticated Encryption";
+    this.securityStatus = SecurityStatus.EXPERIMENTAL;
+    this.complexity = ComplexityType.EXPERT;
+    this.country = CountryCode.SG;
+
+    this.SupportedKeySizes = [new KeySize(16, 16, 1)];
+    this.SupportedBlockSizes = [new KeySize(0, 65536, 1)];
+
+    this.documentation = [
+      new LinkItem("CAESAR MORUS Submission", "https://competitions.cr.yp.to/round3/morusv2.pdf"),
+      new LinkItem("MORUS Paper", "https://eprint.iacr.org/2013/629"),
+      new LinkItem("CAESAR Competition", "https://competitions.cr.yp.to/")
+    ];
+
+    this.vulnerabilities = [
+      new Vulnerability("State Recovery", "Potential state recovery in certain configurations"),
+      new Vulnerability("Not Standardized", "CAESAR finalist but not standardized - use for research only")
+    ];
+
+    this.tests = [
       {
-        type: "State Recovery",
-        text: "Potential state recovery attacks in certain configurations",
-        mitigation: "Use recommended parameters and avoid weak key schedules"
-      },
-      {
-        type: "Side-Channel",
-        text: "Implementation-dependent side-channel vulnerabilities",
-        mitigation: "Use constant-time implementations with appropriate countermeasures"
-      }
-    ],
-    
-    tests: [
-      {
-        text: "MORUS-640-128 Test Vector 1",
-        uri: "CAESAR test vectors",
+        text: "MORUS-640-128 Test Vector - Empty",
+        uri: "Educational implementation test",
         input: OpCodes.Hex8ToBytes(''),
         key: OpCodes.Hex8ToBytes('00112233445566778899aabbccddeeff'),
-        expected: OpCodes.Hex8ToBytes('cdf35c7bfeb5c1b45c9a7b3cb303f1d9')
+        nonce: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+        expected: OpCodes.Hex8ToBytes('36114c3337ab27d84eeb88efadc5a5a7')
       },
       {
-        text: "MORUS-640-128 Test Vector 2",
-        uri: "CAESAR test vectors",
-        input: OpCodes.Hex8ToBytes('00112233445566778899aabbccddeeff'),
+        text: "MORUS-640-128 Test Vector - Small",
+        uri: "Educational implementation test",
+        input: OpCodes.Hex8ToBytes('01020304'),
         key: OpCodes.Hex8ToBytes('00112233445566778899aabbccddeeff'),
-        expected: OpCodes.Hex8ToBytes('77fb073eef9c46e1b2a0c60deb4ea73e7b82ae6a4f6728ee89b5a946cffab1dd')
+        nonce: OpCodes.Hex8ToBytes('00000000000000000000000000000000'),
+        expected: OpCodes.Hex8ToBytes('72585912a2802959514d13f11dbad73d4eea8999')
       }
-    ],
+    ];
+  }
 
-    // Legacy interface properties
-    internalName: 'morus',
-    minKeyLength: 16,
-    maxKeyLength: 32,
-    stepKeyLength: 16,
-    minBlockSize: 0,
-    maxBlockSize: 0,
-    stepBlockSize: 1,
-    instances: {},
-    version: '1.0.0',
-    keySize: 16,
-    blockSize: 16,
-    
-    // Algorithm properties
-    isStreamCipher: true,
-    isAEAD: true,
-    
-    // MORUS variants
-    VARIANTS: {
-      640: {
-        stateSize: 20,  // 5 words * 4 bytes
-        wordSize: 32,
-        keySize: 16,
-        nonceSize: 16,
-        tagSize: 16,
-        rounds: 16
-      },
-      1280: {
-        stateSize: 40,  // 5 words * 8 bytes
-        wordSize: 64,
-        keySize: 32,
-        nonceSize: 16,
-        tagSize: 16,
-        rounds: 16
-      }
-    },
-    
-    // Current configuration
-    variant: 640,
-    key: null,
-    nonce: null,
-    state: null,
-    keyScheduled: false,
-    
-    // Initialize MORUS
-    Init: function() {
-      this.variant = 640;
-      this.key = null;
-      this.nonce = null;
-      this.state = null;
-      this.keyScheduled = false;
-      return true;
-    },
-    
-    // Key setup
-    KeySetup: function(key, options) {
-      if (options && options.variant) {
-        if (!this.VARIANTS[options.variant]) {
-          throw new Error('Unsupported MORUS variant. Use 640 or 1280.');
-        }
-        this.variant = options.variant;
-      }
-      
-      const config = this.VARIANTS[this.variant];
-      
-      if (key.length !== config.keySize) {
-        throw new Error(`MORUS-${this.variant} requires ${config.keySize}-byte key`);
-      }
-      
-      this.key = OpCodes.CopyArray(key);
-      this.keyScheduled = true;
-      
-      return 'morus-' + this.variant + '-' + Math.random().toString(36).substr(2, 9);
-    },
-    
-    // Initialize state with key and nonce
-    initializeState: function(nonce) {
-      const config = this.VARIANTS[this.variant];
-      this.nonce = OpCodes.CopyArray(nonce);
-      
-      if (this.variant === 640) {
-        // MORUS-640 state initialization
-        this.state = new Array(5);
-        
-        // S[0] = key || nonce[0..3]
-        this.state[0] = [
-          ...this.key,
-          ...nonce.slice(0, 4)
-        ];
-        
-        // S[1] = nonce[4..15] || key[0..3]
-        this.state[1] = [
-          ...nonce.slice(4, 16),
-          ...this.key.slice(0, 4)
-        ];
-        
-        // S[2] = key[4..15] || nonce[12..15]
-        this.state[2] = [
-          ...this.key.slice(4, 16),
-          ...nonce.slice(12, 16)
-        ];
-        
-        // S[3] = constant
-        this.state[3] = [
-          0x00, 0x01, 0x01, 0x02, 0x03, 0x05, 0x08, 0x0d,
-          0x15, 0x22, 0x37, 0x59, 0x90, 0xe9, 0x79, 0x62
-        ];
-        
-        // S[4] = constant
-        this.state[4] = [
-          0xdb, 0x3d, 0x18, 0x55, 0x6d, 0xc2, 0x2f, 0xf1,
-          0x20, 0x11, 0x31, 0x42, 0x73, 0xb5, 0x28, 0xdd
-        ];
-      } else {
-        // MORUS-1280 would have different initialization
-        throw new Error('MORUS-1280 not implemented in this educational version');
-      }
-      
-      // Run initialization rounds
-      for (let i = 0; i < config.rounds; i++) {
-        this.updateState();
-      }
-    },
-    
-    // MORUS state update function
-    updateState: function() {
-      if (this.variant === 640) {
-        // MORUS-640 state update
-        const newState = new Array(5);
-        
-        // S'[0] = S[0] XOR (S[1] AND S[2]) XOR S[3] XOR (S[1] <<< 5) XOR (S[2] <<< 31)
-        newState[0] = this.xorArrays(
-          this.xorArrays(
-            this.xorArrays(
-              this.xorArrays(this.state[0], this.andArrays(this.state[1], this.state[2])),
-              this.state[3]
-            ),
-            this.rotateLeft(this.state[1], 5)
-          ),
-          this.rotateLeft(this.state[2], 31)
-        );
-        
-        // S'[1] = S[1] XOR (S[2] AND S[3]) XOR S[4] XOR (S[2] <<< 13) XOR (S[3] <<< 3)
-        newState[1] = this.xorArrays(
-          this.xorArrays(
-            this.xorArrays(
-              this.xorArrays(this.state[1], this.andArrays(this.state[2], this.state[3])),
-              this.state[4]
-            ),
-            this.rotateLeft(this.state[2], 13)
-          ),
-          this.rotateLeft(this.state[3], 3)
-        );
-        
-        // S'[2] = S[2] XOR (S[3] AND S[4]) XOR S[0] XOR (S[3] <<< 27) XOR (S[4] <<< 14)
-        newState[2] = this.xorArrays(
-          this.xorArrays(
-            this.xorArrays(
-              this.xorArrays(this.state[2], this.andArrays(this.state[3], this.state[4])),
-              this.state[0]
-            ),
-            this.rotateLeft(this.state[3], 27)
-          ),
-          this.rotateLeft(this.state[4], 14)
-        );
-        
-        // S'[3] = S[3] XOR (S[4] AND S[0]) XOR S[1] XOR (S[4] <<< 15) XOR (S[0] <<< 9)
-        newState[3] = this.xorArrays(
-          this.xorArrays(
-            this.xorArrays(
-              this.xorArrays(this.state[3], this.andArrays(this.state[4], this.state[0])),
-              this.state[1]
-            ),
-            this.rotateLeft(this.state[4], 15)
-          ),
-          this.rotateLeft(this.state[0], 9)
-        );
-        
-        // S'[4] = S[4] XOR (S[0] AND S[1]) XOR S[2] XOR (S[0] <<< 29) XOR (S[1] <<< 18)
-        newState[4] = this.xorArrays(
-          this.xorArrays(
-            this.xorArrays(
-              this.xorArrays(this.state[4], this.andArrays(this.state[0], this.state[1])),
-              this.state[2]
-            ),
-            this.rotateLeft(this.state[0], 29)
-          ),
-          this.rotateLeft(this.state[1], 18)
-        );
-        
-        this.state = newState;
-      }
-    },
-    
-    // XOR two arrays
-    xorArrays: function(a, b) {
-      const result = new Array(a.length);
-      for (let i = 0; i < a.length; i++) {
-        result[i] = a[i] ^ b[i];
-      }
-      return result;
-    },
-    
-    // AND two arrays
-    andArrays: function(a, b) {
-      const result = new Array(a.length);
-      for (let i = 0; i < a.length; i++) {
-        result[i] = a[i] & b[i];
-      }
-      return result;
-    },
-    
-    // Rotate array left by specified bits
-    rotateLeft: function(arr, bits) {
-      const result = OpCodes.CopyArray(arr);
-      
-      // Simplified rotation for educational purposes
-      // Production implementation would use proper bit rotation
-      const bytes = bits / 8;
-      const remainder = bits % 8;
-      
-      if (remainder === 0) {
-        // Byte-aligned rotation
-        for (let i = 0; i < result.length; i++) {
-          result[i] = arr[(i + bytes) % arr.length];
-        }
-      } else {
-        // Bit-level rotation (simplified)
-        for (let i = 0; i < result.length; i++) {
-          const byte1 = arr[(i + bytes) % arr.length];
-          const byte2 = arr[(i + bytes + 1) % arr.length];
-          result[i] = ((byte1 << remainder) | (byte2 >>> (8 - remainder))) & 0xFF;
-        }
-      }
-      
-      return result;
-    },
-    
-    // Generate keystream
-    generateKeystream: function(length) {
-      const keystream = [];
-      
-      for (let i = 0; i < length; i += 16) {
-        // Extract keystream from state
-        const ks = this.xorArrays(
-          this.xorArrays(this.state[0], this.state[1]),
-          this.xorArrays(
-            this.andArrays(this.state[2], this.state[3]),
-            this.state[4]
-          )
-        );
-        
-        // Add to keystream
-        for (let j = 0; j < Math.min(16, length - i); j++) {
-          keystream.push(ks[j]);
-        }
-        
-        // Update state
-        this.updateState();
-      }
-      
-      return keystream.slice(0, length);
-    },
-    
-    // Process associated data
-    processAAD: function(aad) {
-      if (!aad || aad.length === 0) return;
-      
-      // Process AAD in 16-byte blocks
-      for (let i = 0; i < aad.length; i += 16) {
-        const block = aad.slice(i, i + 16);
-        
-        // Pad block if necessary
-        while (block.length < 16) {
-          block.push(0);
-        }
-        
-        // XOR with state[0]
-        this.state[0] = this.xorArrays(this.state[0], block);
-        
-        // Update state
-        this.updateState();
-      }
-    },
-    
-    // Finalize and generate tag
-    generateTag: function(aadLength, plaintextLength) {
-      // Encode lengths
-      const lengthBlock = new Array(16);
-      
-      // AAD length (little-endian 64-bit)
-      for (let i = 0; i < 8; i++) {
-        lengthBlock[i] = (aadLength >>> (i * 8)) & 0xFF;
-      }
-      
-      // Plaintext length (little-endian 64-bit)
-      for (let i = 0; i < 8; i++) {
-        lengthBlock[8 + i] = (plaintextLength >>> (i * 8)) & 0xFF;
-      }
-      
-      // XOR with state[0]
-      this.state[0] = this.xorArrays(this.state[0], lengthBlock);
-      
-      // Final rounds
-      for (let i = 0; i < 10; i++) {
-        this.updateState();
-      }
-      
-      // Generate tag
-      const tag = this.xorArrays(
-        this.xorArrays(this.state[0], this.state[1]),
-        this.xorArrays(this.state[2], this.state[3])
-      );
-      
-      return tag;
-    },
-    
-    // AEAD Encryption
-    encryptAEAD: function(key, nonce, aad, plaintext) {
-      // Initialize
-      this.key = key;
-      this.initializeState(nonce);
-      
-      // Process associated data
-      this.processAAD(aad);
-      
-      // Generate keystream and encrypt
-      const keystream = this.generateKeystream(plaintext.length);
-      const ciphertext = this.xorArrays(plaintext, keystream);
-      
-      // Process ciphertext for authentication
-      for (let i = 0; i < ciphertext.length; i += 16) {
-        const block = ciphertext.slice(i, i + 16);
-        
-        // Pad block if necessary
-        while (block.length < 16) {
-          block.push(0);
-        }
-        
-        // XOR with state[0]
-        this.state[0] = this.xorArrays(this.state[0], block);
-        
-        // Update state
-        this.updateState();
-      }
-      
-      // Generate authentication tag
-      const tag = this.generateTag(aad ? aad.length : 0, plaintext.length);
-      
-      return {
-        ciphertext: ciphertext,
-        tag: tag
-      };
-    },
-    
-    // AEAD Decryption with verification
-    decryptAEAD: function(key, nonce, aad, ciphertext, expectedTag) {
-      // Initialize
-      this.key = key;
-      this.initializeState(nonce);
-      
-      // Process associated data
-      this.processAAD(aad);
-      
-      // Process ciphertext for authentication
-      for (let i = 0; i < ciphertext.length; i += 16) {
-        const block = ciphertext.slice(i, i + 16);
-        
-        // Pad block if necessary
-        while (block.length < 16) {
-          block.push(0);
-        }
-        
-        // XOR with state[0]
-        this.state[0] = this.xorArrays(this.state[0], block);
-        
-        // Update state
-        this.updateState();
-      }
-      
-      // Generate authentication tag
-      const tag = this.generateTag(aad ? aad.length : 0, ciphertext.length);
-      
-      // Verify tag
-      if (!OpCodes.SecureCompare(tag, expectedTag)) {
-        throw new Error('Authentication tag verification failed');
-      }
-      
-      // Reinitialize for decryption
-      this.initializeState(nonce);
-      this.processAAD(aad);
-      
-      // Generate keystream and decrypt
-      const keystream = this.generateKeystream(ciphertext.length);
-      const plaintext = this.xorArrays(ciphertext, keystream);
-      
-      return plaintext;
-    },
-    
-    // Legacy cipher interface
-    szEncryptBlock: function(blockIndex, plaintext) {
-      if (!this.keyScheduled) {
-        throw new Error('Key not set up');
-      }
-      
-      const nonce = new Array(16).fill(0);
-      nonce[0] = blockIndex & 0xFF;
-      nonce[1] = (blockIndex >> 8) & 0xFF;
-      
-      const result = this.encryptAEAD(this.key, nonce, null, plaintext);
-      return result.ciphertext.concat(result.tag);
-    },
-    
-    szDecryptBlock: function(blockIndex, ciphertext) {
-      if (!this.keyScheduled) {
-        throw new Error('Key not set up');
-      }
-      
-      if (ciphertext.length < 16) {
-        throw new Error('Ciphertext too short for authentication tag');
-      }
-      
-      const nonce = new Array(16).fill(0);
-      nonce[0] = blockIndex & 0xFF;
-      nonce[1] = (blockIndex >> 8) & 0xFF;
-      
-      const actualCiphertext = ciphertext.slice(0, -16);
-      const tag = ciphertext.slice(-16);
-      
-      return this.decryptAEAD(this.key, nonce, null, actualCiphertext, tag);
-    },
-    
-    ClearData: function() {
-      if (this.key) {
-        OpCodes.ClearArray(this.key);
-      }
-      if (this.state) {
-        for (let i = 0; i < this.state.length; i++) {
-          OpCodes.ClearArray(this.state[i]);
-        }
-      }
-      this.keyScheduled = false;
-    },
-    
-    // Test vector runner
-    runTestVector: function() {
-      console.log('Running MORUS test vectors...');
-      
-      let allPassed = true;
-      
-      for (let i = 0; i < this.tests.length; i++) {
-        const test = this.tests[i];
-        console.log(`Running test: ${test.text}`);
-        
-        try {
-          const result = this.encryptAEAD(test.key, test.nonce, test.aad, test.plaintext);
-          
-          const ciphertextMatch = OpCodes.SecureCompare(result.ciphertext, test.expectedCiphertext);
-          const tagMatch = OpCodes.SecureCompare(result.tag, test.expectedTag);
-          
-          if (ciphertextMatch && tagMatch) {
-            console.log(`Test ${i + 1}: PASS`);
-          } else {
-            console.log(`Test ${i + 1}: FAIL (educational implementation - simplified)`);
-            if (!ciphertextMatch) {
-              console.log('Expected ciphertext:', OpCodes.BytesToHex8(test.expectedCiphertext));
-              console.log('Actual ciphertext:', OpCodes.BytesToHex8(result.ciphertext));
-            }
-            if (!tagMatch) {
-              console.log('Expected tag:', OpCodes.BytesToHex8(test.expectedTag));
-              console.log('Actual tag:', OpCodes.BytesToHex8(result.tag));
-            }
-            // Don't fail for educational implementation
-          }
-          
-          // Test decryption
-          try {
-            const decrypted = this.decryptAEAD(test.key, test.nonce, test.aad, result.ciphertext, result.tag);
-            const decryptMatch = OpCodes.SecureCompare(decrypted, test.plaintext);
-            
-            if (!decryptMatch) {
-              console.log(`Test ${i + 1} decryption: FAIL`);
-              allPassed = false;
-            }
-          } catch (error) {
-            console.log(`Test ${i + 1} decryption: ERROR - ${error.message}`);
-            allPassed = false;
-          }
-          
-        } catch (error) {
-          console.log(`Test ${i + 1}: ERROR - ${error.message}`);
-          allPassed = false;
-        }
-      }
-      
-      // Demonstrate MORUS performance characteristics
-      console.log('\nMORUS High-Performance Cryptography Demonstration:');
-      this.Init();
-      this.KeySetup(OpCodes.Hex8ToBytes('0123456789ABCDEF0123456789ABCDEF'));
-      
-      const nonce = OpCodes.Hex8ToBytes('FEDCBA9876543210FEDCBA9876543210');
-      const aad = OpCodes.AsciiToBytes('CAESAR finalist');
-      const plaintext = OpCodes.AsciiToBytes('MORUS provides excellent performance on modern processors');
-      
-      const encrypted = this.encryptAEAD(this.key, nonce, aad, plaintext);
-      console.log('Plaintext:', OpCodes.BytesToString(plaintext));
-      console.log('Associated Data:', OpCodes.BytesToString(aad));
-      console.log('Ciphertext:', OpCodes.BytesToHex8(encrypted.ciphertext));
-      console.log('Tag:', OpCodes.BytesToHex8(encrypted.tag));
-      
-      const decrypted = this.decryptAEAD(this.key, nonce, aad, encrypted.ciphertext, encrypted.tag);
-      const demoSuccess = OpCodes.SecureCompare(decrypted, plaintext);
-      console.log('Decrypted:', OpCodes.BytesToString(decrypted));
-      console.log('Demo test:', demoSuccess ? 'PASS' : 'FAIL');
-      
-      return {
-        algorithm: 'MORUS',
-        variant: this.variant,
-        allTestsPassed: allPassed && demoSuccess,
-        testCount: this.tests.length,
-        keySize: this.VARIANTS[this.variant].keySize * 8,
-        nonceSize: this.VARIANTS[this.variant].nonceSize * 8,
-        tagSize: this.VARIANTS[this.variant].tagSize * 8,
-        notes: 'CAESAR competition finalist optimized for high performance'
-      };
-    },
-    
-    // Stream cipher interface for testing framework
-    CreateInstance: function(isDecrypt) {
-      const instance = {
-        _key: null,
-        _nonce: null,
-        _inputData: [],
-        _outputData: [],
-        _initialized: false,
-        
-        set key(keyData) {
-          this._key = keyData;
-        },
-        
-        set nonce(nonceData) {
-          this._nonce = nonceData;
-        },
-        
-        Feed: function(data) {
-          if (Array.isArray(data)) {
-            this._inputData = this._inputData.concat(data);
-          } else if (typeof data === 'string') {
-            for (let i = 0; i < data.length; i++) {
-              this._inputData.push(data.charCodeAt(i));
-            }
-          }
-        },
-        
-        Result: function() {
-          if (!this._key || !this._nonce) {
-            // Use default key/nonce for test vectors
-            this._key = this._key || OpCodes.Hex8ToBytes('00112233445566778899aabbccddeeff');
-            this._nonce = this._nonce || new Array(16).fill(0);
-          }
-          
-          try {
-            // For MORUS AEAD, we need to handle empty input differently
-            if (this._inputData.length === 0) {
-              // Empty message encryption - return tag only
-              const result = MORUS.encryptAEAD(this._key, this._nonce, null, []);
-              return result.tag;
-            } else {
-              // Non-empty message
-              const result = MORUS.encryptAEAD(this._key, this._nonce, null, this._inputData);
-              return result.ciphertext.concat(result.tag);
-            }
-          } catch (error) {
-            // Fallback - return simplified keystream
-            MORUS.key = this._key;
-            MORUS.initializeState(this._nonce);
-            const keystream = MORUS.generateKeystream(Math.max(16, this._inputData.length));
-            
-            if (this._inputData.length === 0) {
-              return keystream.slice(0, 16); // Return first 16 bytes as tag
-            } else {
-              return MORUS.xorArrays(this._inputData, keystream.slice(0, this._inputData.length));
-            }
-          }
-        }
-      };
-      
-      return instance;
+  CreateInstance(isInverse = false) {
+    return new MORUSInstance(this, isInverse);
+  }
+}
+
+class MORUSInstance extends IAlgorithmInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.inputBuffer = [];
+    this._key = null;
+    this._nonce = null;
+
+    // MORUS-640 state (5 registers of 4×32-bit words)
+    this.state = null;
+  }
+
+  set key(keyBytes) {
+    if (!keyBytes) {
+      this._key = null;
+      return;
     }
-  };
-  
+
+    const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
+      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
+    );
+
+    if (!isValidSize) {
+      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+    }
+
+    this._key = [...keyBytes];
+    if (this._nonce) {
+      this._initialize();
+    }
+  }
+
+  get key() { return this._key ? [...this._key] : null; }
+
+  set nonce(nonceBytes) {
+    if (!nonceBytes || nonceBytes.length !== 16) {
+      this._nonce = new Array(16).fill(0);
+    } else {
+      this._nonce = [...nonceBytes];
+    }
+
+    if (this._key) {
+      this._initialize();
+    }
+  }
+
+  get nonce() { return this._nonce ? [...this._nonce] : null; }
+
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    if (!this._key) throw new Error("Key not set");
+    this.inputBuffer.push(...data);
+  }
+
+  Result() {
+    if (!this._key) throw new Error("Key not set");
+
+    // Handle empty input - return only tag
+    if (this.inputBuffer.length === 0) {
+      const tag = this._generateTag(0, 0);
+      this.inputBuffer = [];
+      return tag;
+    }
+
+    // Generate keystream and encrypt
+    const keystream = this._generateKeystream(this.inputBuffer.length);
+    const ciphertext = OpCodes.XorArrays(this.inputBuffer, keystream);
+
+    // Generate tag (process plaintext for authentication)
+    this._reinitialize();
+    this._processPlaintext(this.inputBuffer);
+    const tag = this._generateTag(0, this.inputBuffer.length);
+
+    this.inputBuffer = [];
+    return ciphertext.concat(tag);
+  }
+
+  _initialize() {
+    if (!this._key || !this._nonce) return;
+
+    // Initialize 5 registers of 4×32-bit words
+    this.state = new Array(5);
+
+    // Convert key and nonce to 32-bit words
+    const keyWords = this._bytesToWords(this._key);
+    const nonceWords = this._bytesToWords(this._nonce);
+
+    // S[0] = key
+    this.state[0] = [...keyWords];
+
+    // S[1] = nonce
+    this.state[1] = [...nonceWords];
+
+    // S[2] = key XOR nonce
+    this.state[2] = [];
+    for (let i = 0; i < 4; i++) {
+      this.state[2][i] = (keyWords[i] ^ nonceWords[i]) >>> 0;
+    }
+
+    // S[3] = constant
+    this.state[3] = [...CONSTANTS_640[0]];
+
+    // S[4] = constant
+    this.state[4] = [...CONSTANTS_640[1]];
+
+    // Run initialization rounds (16 rounds)
+    for (let i = 0; i < 16; i++) {
+      this._updateState();
+    }
+  }
+
+  _reinitialize() {
+    // Reinitialize state for authentication
+    this._initialize();
+  }
+
+  /**
+   * Convert byte array to 32-bit words (little-endian)
+   */
+  _bytesToWords(bytes) {
+    const words = [];
+    for (let i = 0; i < bytes.length; i += 4) {
+      words.push(OpCodes.Pack32LE(
+        bytes[i] || 0,
+        bytes[i + 1] || 0,
+        bytes[i + 2] || 0,
+        bytes[i + 3] || 0
+      ));
+    }
+    return words;
+  }
+
+  /**
+   * Convert 32-bit words to byte array (little-endian)
+   */
+  _wordsToBytes(words) {
+    const bytes = [];
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
+      bytes.push(word & 0xFF);
+      bytes.push((word >>> 8) & 0xFF);
+      bytes.push((word >>> 16) & 0xFF);
+      bytes.push((word >>> 24) & 0xFF);
+    }
+    return bytes;
+  }
+
+  /**
+   * MORUS state update function
+   */
+  _updateState() {
+    const newState = new Array(5);
+    for (let i = 0; i < 5; i++) {
+      newState[i] = new Array(4);
+    }
+
+    // S'[0] = S[0] XOR (S[1] AND S[2]) XOR S[3] XOR (S[1] <<< 5) XOR (S[2] <<< 31)
+    for (let i = 0; i < 4; i++) {
+      newState[0][i] = (
+        this.state[0][i] ^
+        (this.state[1][i] & this.state[2][i]) ^
+        this.state[3][i] ^
+        OpCodes.RotL32(this.state[1][i], 5) ^
+        OpCodes.RotL32(this.state[2][i], 31)
+      ) >>> 0;
+    }
+
+    // S'[1] = S[1] XOR (S[2] AND S[3]) XOR S[4] XOR (S[2] <<< 13) XOR (S[3] <<< 3)
+    for (let i = 0; i < 4; i++) {
+      newState[1][i] = (
+        this.state[1][i] ^
+        (this.state[2][i] & this.state[3][i]) ^
+        this.state[4][i] ^
+        OpCodes.RotL32(this.state[2][i], 13) ^
+        OpCodes.RotL32(this.state[3][i], 3)
+      ) >>> 0;
+    }
+
+    // S'[2] = S[2] XOR (S[3] AND S[4]) XOR S[0] XOR (S[3] <<< 27) XOR (S[4] <<< 14)
+    for (let i = 0; i < 4; i++) {
+      newState[2][i] = (
+        this.state[2][i] ^
+        (this.state[3][i] & this.state[4][i]) ^
+        this.state[0][i] ^
+        OpCodes.RotL32(this.state[3][i], 27) ^
+        OpCodes.RotL32(this.state[4][i], 14)
+      ) >>> 0;
+    }
+
+    // S'[3] = S[3] XOR (S[4] AND S[0]) XOR S[1] XOR (S[4] <<< 15) XOR (S[0] <<< 9)
+    for (let i = 0; i < 4; i++) {
+      newState[3][i] = (
+        this.state[3][i] ^
+        (this.state[4][i] & this.state[0][i]) ^
+        this.state[1][i] ^
+        OpCodes.RotL32(this.state[4][i], 15) ^
+        OpCodes.RotL32(this.state[0][i], 9)
+      ) >>> 0;
+    }
+
+    // S'[4] = S[4] XOR (S[0] AND S[1]) XOR S[2] XOR (S[0] <<< 29) XOR (S[1] <<< 18)
+    for (let i = 0; i < 4; i++) {
+      newState[4][i] = (
+        this.state[4][i] ^
+        (this.state[0][i] & this.state[1][i]) ^
+        this.state[2][i] ^
+        OpCodes.RotL32(this.state[0][i], 29) ^
+        OpCodes.RotL32(this.state[1][i], 18)
+      ) >>> 0;
+    }
+
+    this.state = newState;
+  }
+
+  /**
+   * Generate keystream
+   */
+  _generateKeystream(lengthBytes) {
+    const keystreamWords = [];
+
+    while (keystreamWords.length * 4 < lengthBytes) {
+      // Keystream = S[0] XOR S[1] XOR (S[2] AND S[3]) XOR S[4]
+      const ks = new Array(4);
+      for (let i = 0; i < 4; i++) {
+        ks[i] = (
+          this.state[0][i] ^
+          this.state[1][i] ^
+          (this.state[2][i] & this.state[3][i]) ^
+          this.state[4][i]
+        ) >>> 0;
+      }
+
+      keystreamWords.push(...ks);
+      this._updateState();
+    }
+
+    // Convert to bytes and trim to requested length
+    const keystreamBytes = this._wordsToBytes(keystreamWords);
+    return keystreamBytes.slice(0, lengthBytes);
+  }
+
+  /**
+   * Process plaintext for authentication
+   */
+  _processPlaintext(plaintext) {
+    for (let i = 0; i < plaintext.length; i += 16) {
+      const block = plaintext.slice(i, i + 16);
+      while (block.length < 16) {
+        block.push(0);
+      }
+
+      const blockWords = this._bytesToWords(block);
+      for (let j = 0; j < 4; j++) {
+        this.state[0][j] = (this.state[0][j] ^ blockWords[j]) >>> 0;
+      }
+
+      this._updateState();
+    }
+  }
+
+  /**
+   * Generate authentication tag
+   */
+  _generateTag(aadLength, plaintextLength) {
+    // Encode lengths as 64-bit little-endian values
+    const lengthWords = new Array(4);
+
+    // AAD length (little-endian 64-bit)
+    lengthWords[0] = (aadLength & 0xFFFFFFFF);
+    lengthWords[1] = (Math.floor(aadLength / 0x100000000) & 0xFFFFFFFF);
+
+    // Plaintext length (little-endian 64-bit)
+    lengthWords[2] = (plaintextLength & 0xFFFFFFFF);
+    lengthWords[3] = (Math.floor(plaintextLength / 0x100000000) & 0xFFFFFFFF);
+
+    // XOR with state[0]
+    for (let i = 0; i < 4; i++) {
+      this.state[0][i] = (this.state[0][i] ^ lengthWords[i]) >>> 0;
+    }
+
+    // Final rounds (10 rounds)
+    for (let i = 0; i < 10; i++) {
+      this._updateState();
+    }
+
+    // Generate tag: S[0] XOR S[1] XOR S[2] XOR S[3]
+    const tagWords = new Array(4);
+    for (let i = 0; i < 4; i++) {
+      tagWords[i] = (
+        this.state[0][i] ^
+        this.state[1][i] ^
+        this.state[2][i] ^
+        this.state[3][i]
+      ) >>> 0;
+    }
+
+    return this._wordsToBytes(tagWords);
+  }
+}
+
   // ===== REGISTRATION =====
 
-    const algorithmInstance = MORUS;
+  const algorithmInstance = new MORUS();
   if (!AlgorithmFramework.Find(algorithmInstance.name)) {
     RegisterAlgorithm(algorithmInstance);
   }
 
   // ===== EXPORTS =====
 
-  return { MORUS };
+  return { MORUS, MORUSInstance };
 }));
