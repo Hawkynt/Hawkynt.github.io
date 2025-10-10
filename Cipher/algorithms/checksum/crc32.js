@@ -116,16 +116,15 @@
           ]
         },
         'POSIX': {
-          description: 'CRC-32 used in POSIX cksum utility and other systems',
+          description: 'CRC-32/POSIX (also known as CKSUM) - base algorithm without length appending',
           polynomial: 0x04C11DB7,
           initialValue: 0x00000000,
           inputReflected: false,
           resultReflected: false,
           finalXor: 0xFFFFFFFF,
           tests: [
-            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("ffffffff"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("bd50274c"), "Single character 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("765e7680"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+            new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("ffffffff"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-32-cksum"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("765e7680"), "Check value '123456789'", "https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-32-cksum")
           ]
         },
         'BZIP2': {
@@ -137,8 +136,8 @@
           finalXor: 0xFFFFFFFF,
           tests: [
             new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("43af2db3"), "Single character 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("9a1a017f"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("19939b6b"), "Single character 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("fc891918"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
           ]
         }
       };
@@ -218,13 +217,17 @@
     }
 
     Result() {
-      // Apply final XOR
-      let finalCrc = (this.crc ^ this.config.finalXor) >>> 0;
+      let finalCrc = this.crc;
 
-      // Apply result reflection if specified
-      if (this.config.resultReflected) {
+      // Apply result reflection if specified and differs from input reflection
+      // When both inputReflected and resultReflected are the same, no reflection is needed
+      // When they differ, we need to reflect the output
+      if (this.config.inputReflected !== this.config.resultReflected) {
         finalCrc = this._reflect32(finalCrc);
       }
+
+      // Apply final XOR
+      finalCrc = (finalCrc ^ this.config.finalXor) >>> 0;
 
       // Convert to byte array (big-endian)
       const result = OpCodes.Unpack32BE(finalCrc);
@@ -272,13 +275,6 @@
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { CRC32Algorithm, CRC32Instance };
-  }
-
-  // ===== REGISTRATION =====
-
-    const algorithmInstance = new CRC32Algorithm();
-  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
-    RegisterAlgorithm(algorithmInstance);
   }
 
   // ===== EXPORTS =====

@@ -19,6 +19,9 @@
     if (!global.OpCodes) require('../../OpCodes.js');
     if (!global.AlgorithmFramework) require('../../AlgorithmFramework.js');
   }
+
+  // Import required enums from AlgorithmFramework
+  const { CategoryType, SecurityStatus, ComplexityType } = global.AlgorithmFramework;
   
   // Educational FAEST parameter sets
   const FAEST_PARAMS = {
@@ -34,6 +37,7 @@
       this.variant = variant;
       this.params = FAEST_PARAMS[variant];
       this.input = null;
+      this._keyData = null; // Initialize to null so UI condition passes
     }
     
     Feed(data) {
@@ -74,11 +78,11 @@
       this.description = 'Fast AES Tree digital signature scheme based on AES in the MPC-in-the-head paradigm. Offers fast verification with moderate signature sizes.';
       this.inventor = 'FAEST Team';
       this.year = 2022;
-      this.category = global.AlgorithmFramework.CategoryType.ASYMMETRIC;
+      this.category = CategoryType.ASYMMETRIC;
       this.subCategory = 'Digital Signature';
-      this.securityStatus = global.AlgorithmFramework.SecurityStatus.EXPERIMENTAL;
-      this.complexity = global.AlgorithmFramework.ComplexityType.EXPERT;
-      this.country = global.AlgorithmFramework.CountryCode.INTL;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.EXPERT;
+      this.country = "INTL";
       
       this.documentation = [
         new global.AlgorithmFramework.LinkItem('FAEST Official Site', 'https://faest.info/'),

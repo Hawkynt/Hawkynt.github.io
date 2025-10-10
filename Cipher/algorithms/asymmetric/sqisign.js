@@ -19,6 +19,9 @@
     if (!global.OpCodes) require('../../OpCodes.js');
     if (!global.AlgorithmFramework) require('../../AlgorithmFramework.js');
   }
+
+  // Import required enums from AlgorithmFramework
+  const { CategoryType, SecurityStatus, ComplexityType } = global.AlgorithmFramework;
   
   // Educational SQIsign parameter sets
   const SQISIGN_PARAMS = {
@@ -33,6 +36,7 @@
       this.variant = variant;
       this.params = SQISIGN_PARAMS[variant];
       this.input = null;
+      this._keyData = null; // Initialize to null so UI condition passes
     }
     
     Feed(data) {
@@ -69,11 +73,11 @@
       this.description = 'Supersingular Isogeny digital signature scheme with exceptionally compact signatures and keys. Based on quaternions and elliptic curve isogenies.';
       this.inventor = 'De Feo, Kohel, Leroux, Petit, Wesolowski';
       this.year = 2020;
-      this.category = global.AlgorithmFramework.CategoryType.ASYMMETRIC;
+      this.category = CategoryType.ASYMMETRIC;
       this.subCategory = 'Digital Signature';
-      this.securityStatus = global.AlgorithmFramework.SecurityStatus.EXPERIMENTAL;
-      this.complexity = global.AlgorithmFramework.ComplexityType.EXPERT;
-      this.country = global.AlgorithmFramework.CountryCode.INTL;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.EXPERT;
+      this.country = "INTL";
       
       this.documentation = [
         new global.AlgorithmFramework.LinkItem('Original SQIsign Paper', 'https://eprint.iacr.org/2020/1240'),
