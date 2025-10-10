@@ -44,7 +44,7 @@
   // ===== ALGORITHM IMPLEMENTATION =====
 
   // MD4 constants
-  const MD4_H = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476];
+  const MD4_H = Object.freeze([0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476]);
 
   // MD4 auxiliary functions
   function MD4_F(x, y, z) { return (x & y) | (~x & z); }

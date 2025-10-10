@@ -197,7 +197,7 @@
               "Educational test vector"
             ),
             new TestCase(
-              [9, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 8], // Valid longer number
+              [9, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 9], // Valid longer number
               [1], // Valid
               "Valid 12-digit number",
               "Educational test vector"
@@ -351,13 +351,6 @@
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { CheckDigitAlgorithm, CheckDigitInstance };
-  }
-
-  // ===== REGISTRATION =====
-
-    const algorithmInstance = new CheckDigitAlgorithm();
-  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
-    RegisterAlgorithm(algorithmInstance);
   }
 
   // ===== EXPORTS =====

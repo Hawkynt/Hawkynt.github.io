@@ -175,8 +175,8 @@ class HC256Instance extends IAlgorithmInstance {
     this.Q = new Array(this.TABLE_SIZE);
 
     // Convert key and IV to 32-bit words (little-endian)
-    const K = [];
-    const IV = [];
+    const K = new Array(8);
+    const IV = new Array(8);
 
     for (let i = 0; i < 8; i++) {
       K[i] = OpCodes.Pack32LE(
@@ -230,14 +230,14 @@ class HC256Instance extends IAlgorithmInstance {
    * f1 function for key expansion
    */
   _f1(x) {
-    return OpCodes.RotR32(x, 7) ^ OpCodes.RotR32(x, 18) ^ (x >>> 3);
+    return (OpCodes.RotR32(x, 7) ^ OpCodes.RotR32(x, 18) ^ (x >>> 3)) >>> 0;
   }
 
   /**
    * f2 function for key expansion
    */
   _f2(x) {
-    return OpCodes.RotR32(x, 17) ^ OpCodes.RotR32(x, 19) ^ (x >>> 10);
+    return (OpCodes.RotR32(x, 17) ^ OpCodes.RotR32(x, 19) ^ (x >>> 10)) >>> 0;
   }
 
   /**

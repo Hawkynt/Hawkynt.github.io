@@ -50,16 +50,16 @@
     const BLAKE2B_SALTBYTES = 16;      // Salt size in bytes
     const BLAKE2B_PERSONALBYTES = 16;  // Personal string size in bytes
 
-    // BLAKE2b initialization vectors (64-bit words as BigInt values) 
-    const IV = [
+    // BLAKE2b initialization vectors (64-bit words as BigInt values)
+    const IV = Object.freeze([
       BigInt('0x6a09e667f3bcc908'), BigInt('0xbb67ae8584caa73b'),
       BigInt('0x3c6ef372fe94f82b'), BigInt('0xa54ff53a5f1d36f1'),
       BigInt('0x510e527fade682d1'), BigInt('0x9b05688c2b3e6c1f'),
       BigInt('0x1f83d9abfb41bd6b'), BigInt('0x5be0cd19137e2179')
-    ];
+    ]);
 
     // BLAKE2b sigma permutation schedule
-    const SIGMA = [
+    const SIGMA = Object.freeze([
       [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
       [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
       [11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4],
@@ -70,7 +70,7 @@
       [13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10],
       [6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5],
       [10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0]
-    ];
+    ]);
 
     /**
      * 64-bit right rotation for BigInt values

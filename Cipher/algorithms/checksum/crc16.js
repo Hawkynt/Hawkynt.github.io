@@ -107,7 +107,7 @@
           polynomial: 0x8005,
           initialValue: 0x0000,
           inputReflected: true,
-          resultReflected: false,
+          resultReflected: true,
           finalXor: 0x0000,
           tests: [
             new TestCase(OpCodes.AnsiToBytes(''), OpCodes.Hex8ToBytes('0000'), 'Empty string', 'https://reveng.sourceforge.io/crc-catalogue/'),
@@ -186,13 +186,17 @@
     }
 
     Result() {
-      // Apply final XOR if specified
-      let finalCrc = this.crc ^ this.config.finalXor;
+      let finalCrc = this.crc;
 
-      // Apply result reflection if specified
-      if (this.config.resultReflected) {
+      // Apply result reflection if specified and differs from input reflection
+      // When both inputReflected and resultReflected are the same, no reflection is needed
+      // When they differ, we need to reflect the output
+      if (this.config.inputReflected !== this.config.resultReflected) {
         finalCrc = this._reflect16(finalCrc);
       }
+
+      // Apply final XOR
+      finalCrc = finalCrc ^ this.config.finalXor;
 
       // Return CRC as 2-byte array (big-endian)
       const result = OpCodes.Unpack16BE(finalCrc);
@@ -278,13 +282,6 @@
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { CRC16Algorithm, CRC16Instance };
-  }
-
-  // ===== REGISTRATION =====
-
-    const algorithmInstance = new CRC16Algorithm();
-  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
-    RegisterAlgorithm(algorithmInstance);
   }
 
   // ===== EXPORTS =====
