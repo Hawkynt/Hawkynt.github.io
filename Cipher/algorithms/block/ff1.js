@@ -177,11 +177,28 @@
   // ===== NIST SP 800-38G PARAMETER CALCULATIONS =====
 
   // Calculate b parameter: ceiling(log_2(radix^v)) / 8
+  // Following BouncyCastle SP80038G.java implementation for accuracy
+  // NOTE: Uses direct bit operations (not OpCodes) as this is integer factorization logic
   function calculateB_FF1(radix, v) {
-    // Use exact calculation to avoid floating point errors
-    const radixPower = BigIntegerUtils.pow(radix, v);
-    const bitLength = radixPower.toString(2).length - 1; // -1 because toString includes leading 1
-    return Math.ceil((bitLength + 1) / 8);
+    // Count trailing zeros (powers of 2 in radix factorization)
+    let powersOfTwo = 0;
+    let temp = radix;
+    while ((temp & 1) === 0) {  // Direct bit test for LSB
+      powersOfTwo++;
+      temp >>>= 1;  // Unsigned right shift
+    }
+
+    // Calculate total bits needed
+    let bits = powersOfTwo * v;
+    const oddPart = radix >>> powersOfTwo;  // Unsigned right shift
+
+    if (oddPart !== 1) {
+      // Add bits from odd part: ceil(log2(oddPart^v))
+      const oddPowerBits = BigIntegerUtils.pow(oddPart, v).toString(2).length;
+      bits += oddPowerBits;
+    }
+
+    return Math.floor((bits + 7) / 8);
   }
 
   // Calculate P parameter block according to NIST SP 800-38G
@@ -201,10 +218,16 @@
     P[7] = OpCodes.GetByte(u, 0);  // Split parameter
 
     // n (4 bytes, big-endian)
-    OpCodes.Pack32BE(P, 8, n);
+    P[8] = OpCodes.GetByte(n, 3);
+    P[9] = OpCodes.GetByte(n, 2);
+    P[10] = OpCodes.GetByte(n, 1);
+    P[11] = OpCodes.GetByte(n, 0);
 
     // t (4 bytes, big-endian)
-    OpCodes.Pack32BE(P, 12, t);
+    P[12] = OpCodes.GetByte(t, 3);
+    P[13] = OpCodes.GetByte(t, 2);
+    P[14] = OpCodes.GetByte(t, 1);
+    P[15] = OpCodes.GetByte(t, 0);
 
     return P;
   }
@@ -257,7 +280,7 @@
       // Known vulnerabilities - none for production implementation
       this.knownVulnerabilities = [];
 
-      // Comprehensive NIST test vectors from BouncyCastle
+      // Comprehensive NIST test vectors from BouncyCastle SP80038GTest.java
       this.tests = [
         {
           text: 'NIST FF1-AES128 Sample 1 - decimal digits, no tweak',
@@ -269,26 +292,8 @@
           expected: OpCodes.AnsiToBytes('2433477484')
         },
         {
-          text: 'NIST FF1-AES192 Sample 2 - decimal digits, no tweak',
-          uri: 'https://github.com/bcgit/bc-csharp/blob/master/crypto/test/src/crypto/test/SP80038GTest.cs',
-          input: OpCodes.AnsiToBytes('0123456789'),
-          key: OpCodes.Hex8ToBytes('2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F7F'),
-          tweak: new Uint8Array(0),
-          radix: 10,
-          expected: OpCodes.AnsiToBytes('2830668132')
-        },
-        {
-          text: 'NIST FF1-AES256 Sample 3 - decimal digits, no tweak',
-          uri: 'https://github.com/bcgit/bc-csharp/blob/master/crypto/test/src/crypto/test/SP80038GTest.cs',
-          input: OpCodes.AnsiToBytes('0123456789'),
-          key: OpCodes.Hex8ToBytes('2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F7F036D6F04FC6A94'),
-          tweak: new Uint8Array(0),
-          radix: 10,
-          expected: OpCodes.AnsiToBytes('6657667009')
-        },
-        {
-          text: 'NIST FF1-AES128 Sample 4 - decimal digits with tweak',
-          uri: 'https://github.com/bcgit/bc-csharp/blob/master/crypto/test/src/crypto/test/SP80038GTest.cs',
+          text: 'NIST FF1-AES128 Sample 2 - decimal digits with tweak',
+          uri: 'https://github.com/bcgit/bc-java/blob/master/core/src/test/java/org/bouncycastle/crypto/test/SP80038GTest.java',
           input: OpCodes.AnsiToBytes('0123456789'),
           key: OpCodes.Hex8ToBytes('2B7E151628AED2A6ABF7158809CF4F3C'),
           tweak: OpCodes.Hex8ToBytes('39383736353433323130'),
@@ -296,13 +301,49 @@
           expected: OpCodes.AnsiToBytes('6124200773')
         },
         {
-          text: 'NIST FF1-AES128 Sample 5 - alphabetic string, no tweak',
-          uri: 'https://github.com/bcgit/bc-csharp/blob/master/crypto/test/src/crypto/test/SP80038GTest.cs',
+          text: 'NIST FF1-AES128 Sample 3 - alphanumeric with tweak',
+          uri: 'https://github.com/bcgit/bc-java/blob/master/core/src/test/java/org/bouncycastle/crypto/test/SP80038GTest.java',
           input: OpCodes.AnsiToBytes('0123456789abcdefghi'),
           key: OpCodes.Hex8ToBytes('2B7E151628AED2A6ABF7158809CF4F3C'),
-          tweak: new Uint8Array(0),
+          tweak: OpCodes.Hex8ToBytes('3737373770717273373737'),
           radix: 36,
-          expected: OpCodes.AnsiToBytes('a9tv40ub9r1aqrqzd')
+          expected: OpCodes.AnsiToBytes('a9tv40mll9kdu509eum')
+        },
+        {
+          text: 'NIST FF1-AES192 Sample 4 - decimal digits, no tweak',
+          uri: 'https://github.com/bcgit/bc-java/blob/master/core/src/test/java/org/bouncycastle/crypto/test/SP80038GTest.java',
+          input: OpCodes.AnsiToBytes('0123456789'),
+          key: OpCodes.Hex8ToBytes('2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F'),
+          tweak: new Uint8Array(0),
+          radix: 10,
+          expected: OpCodes.AnsiToBytes('2830668132')
+        },
+        {
+          text: 'NIST FF1-AES192 Sample 5 - decimal digits with tweak',
+          uri: 'https://github.com/bcgit/bc-java/blob/master/core/src/test/java/org/bouncycastle/crypto/test/SP80038GTest.java',
+          input: OpCodes.AnsiToBytes('0123456789'),
+          key: OpCodes.Hex8ToBytes('2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F'),
+          tweak: OpCodes.Hex8ToBytes('39383736353433323130'),
+          radix: 10,
+          expected: OpCodes.AnsiToBytes('2496655549')
+        },
+        {
+          text: 'NIST FF1-AES256 Sample 6 - decimal digits, no tweak',
+          uri: 'https://github.com/bcgit/bc-java/blob/master/core/src/test/java/org/bouncycastle/crypto/test/SP80038GTest.java',
+          input: OpCodes.AnsiToBytes('0123456789'),
+          key: OpCodes.Hex8ToBytes('2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F7F036D6F04FC6A94'),
+          tweak: new Uint8Array(0),
+          radix: 10,
+          expected: OpCodes.AnsiToBytes('6657667009')
+        },
+        {
+          text: 'NIST FF1-AES256 Sample 7 - decimal digits with tweak',
+          uri: 'https://github.com/bcgit/bc-java/blob/master/core/src/test/java/org/bouncycastle/crypto/test/SP80038GTest.java',
+          input: OpCodes.AnsiToBytes('0123456789'),
+          key: OpCodes.Hex8ToBytes('2B7E151628AED2A6ABF7158809CF4F3CEF4359D8D580AA4F7F036D6F04FC6A94'),
+          tweak: OpCodes.Hex8ToBytes('39383736353433323130'),
+          radix: 10,
+          expected: OpCodes.AnsiToBytes('1001623463')
         }
       ];
     }
@@ -560,7 +601,12 @@
         sBlocks.set(R, 0);
 
         // Extract J from R (last 4 bytes as big-endian int)
-        const j0 = OpCodes.Unpack32BE(R, FF1_CONSTANTS.BLOCK_SIZE - 4);
+        const j0 = OpCodes.Pack32BE(
+          R[FF1_CONSTANTS.BLOCK_SIZE - 4],
+          R[FF1_CONSTANTS.BLOCK_SIZE - 3],
+          R[FF1_CONSTANTS.BLOCK_SIZE - 2],
+          R[FF1_CONSTANTS.BLOCK_SIZE - 1]
+        );
 
         // Generate additional blocks
         for (let j = 1; j < sBlocksLen; j++) {
@@ -568,7 +614,13 @@
 
           // Copy R[0..11] and set R[12..15] = J XOR j
           sBlocks.set(R.slice(0, FF1_CONSTANTS.BLOCK_SIZE - 4), sOff);
-          OpCodes.Pack32BE(sBlocks, sOff + FF1_CONSTANTS.BLOCK_SIZE - 4, j0 ^ j);
+
+          // Write (j0 XOR j) as 4 bytes big-endian using OpCodes
+          const xorResult = OpCodes.XOR32(j0, j);
+          sBlocks[sOff + FF1_CONSTANTS.BLOCK_SIZE - 4] = OpCodes.GetByte(xorResult, 3);
+          sBlocks[sOff + FF1_CONSTANTS.BLOCK_SIZE - 3] = OpCodes.GetByte(xorResult, 2);
+          sBlocks[sOff + FF1_CONSTANTS.BLOCK_SIZE - 2] = OpCodes.GetByte(xorResult, 1);
+          sBlocks[sOff + FF1_CONSTANTS.BLOCK_SIZE - 1] = OpCodes.GetByte(xorResult, 0);
 
           // Encrypt this block
           const block = sBlocks.slice(sOff, sOff + FF1_CONSTANTS.BLOCK_SIZE);

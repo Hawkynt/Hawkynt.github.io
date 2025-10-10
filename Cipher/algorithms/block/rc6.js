@@ -77,6 +77,10 @@
         new KeySize(16, 32, 8) // 128, 192, 256-bit keys (16, 24, 32 bytes)
       ];
 
+      // AlgorithmFramework compatibility
+      this.SupportedKeySizes = [new KeySize(16, 32, 8)]; // 128, 192, 256-bit keys (16, 24, 32 bytes)
+      this.SupportedBlockSizes = [new KeySize(16, 16, 1)]; // Fixed 128-bit (16-byte) blocks
+
       // Documentation and references
       this.documentation = [
         new LinkItem("RC6 Algorithm Specification", "https://people.csail.mit.edu/rivest/Rivest-rc6.pdf"),
