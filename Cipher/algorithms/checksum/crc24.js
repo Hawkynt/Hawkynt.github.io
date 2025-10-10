@@ -111,8 +111,8 @@
           finalXor: 0x000000,
           tests: [
             new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("fedcba"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("4c6c6a"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
-            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("b4f3e6"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("8fe324"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("7979bd"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
           ]
         },
         'INTERLAKEN': {
@@ -124,7 +124,7 @@
           finalXor: 0xFFFFFF,
           tests: [
             new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),
-            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("ba4170"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
+            new TestCase(OpCodes.AnsiToBytes("a"), OpCodes.Hex8ToBytes("d80156"), "Single byte 'a'", "https://reveng.sourceforge.io/crc-catalogue/"),
             new TestCase(OpCodes.AnsiToBytes("123456789"), OpCodes.Hex8ToBytes("b4f3e6"), "String '123456789'", "https://reveng.sourceforge.io/crc-catalogue/")
           ]
         }
@@ -161,13 +161,17 @@
     }
 
     Result() {
-      // Apply final XOR if specified
-      let finalCrc = this.crc ^ this.config.finalXor;
+      let finalCrc = this.crc;
 
-      // Apply result reflection if specified
-      if (this.config.resultReflected) {
+      // Apply result reflection if specified and differs from input reflection
+      // When both inputReflected and resultReflected are the same, no reflection is needed
+      // When they differ, we need to reflect the output
+      if (this.config.inputReflected !== this.config.resultReflected) {
         finalCrc = this._reflect24(finalCrc);
       }
+
+      // Apply final XOR
+      finalCrc = finalCrc ^ this.config.finalXor;
 
       // Return CRC as 3-byte array (big-endian)
       const result = [
@@ -262,13 +266,6 @@
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { CRC24Algorithm, CRC24Instance };
-  }
-
-  // ===== REGISTRATION =====
-
-    const algorithmInstance = new CRC24Algorithm();
-  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
-    RegisterAlgorithm(algorithmInstance);
   }
 
   // ===== EXPORTS =====

@@ -52,7 +52,7 @@
   const WHIRLPOOL_ROUNDS = 10;       // Number of rounds
 
   // Round constants from RHash reference implementation
-  const RC = [
+  const RC = Object.freeze([
     0x1823c6e887b8014fn,
     0x36a6d2f5796f9152n,
     0x60bc9b8ea30c7b35n,
@@ -63,10 +63,10 @@
     0xe427418ba77d95d8n,
     0xfbee7c66dd17479en,
     0xca2dbf07ad5a8333n
-  ];
+  ]);
 
   // Whirlpool S-box lookup table (SB0 - first of 8 tables from libtomcrypt/RHash)
-  const SB0 = [
+  const SB0 = Object.freeze([
     0x18186018c07830d8n, 0x23238c2305af4626n, 0xc6c63fc67ef991b8n, 0xe8e887e8136fcdfbn,
     0x878726874ca113cbn, 0xb8b8dab8a9626d11n, 0x0101040108050209n, 0x4f4f214f426e9e0dn,
     0x3636d836adee6c9bn, 0xa6a6a2a6590451ffn, 0xd2d26fd2debdb90cn, 0xf5f5f3f5fb06f70en,
@@ -131,7 +131,7 @@
     0x7070dd70a7ade0d7n, 0xb6b6e2b6d954716fn, 0xd0d067d0ceb7bd1en, 0xeded93ed3b7ec7d6n,
     0xcccc17cc2edb85e2n, 0x424215422a578468n, 0x98985a98b4c22d2cn, 0xa4a4aaa4490e55edn,
     0x2828a0285d885075n, 0x5c5c6d5cda31b886n, 0xf8f8c7f8933fed6bn, 0x8686228644a411c2n
-  ];
+  ]);
 
   // Extract byte from 64-bit word at position (0-7)
   // pos 0 = MSB (bits 56-63), pos 7 = LSB (bits 0-7)

@@ -47,7 +47,7 @@
   // K[1] = 0x6ED9EBA1 (rounds 20-39)
   // K[2] = 0x8F1BBCDC (rounds 40-59)
   // K[3] = 0xCA62C1D6 (rounds 60-79)
-  const K = [0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xCA62C1D6];
+  const K = Object.freeze([0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xCA62C1D6]);
 
   class SHA1Algorithm extends HashFunctionAlgorithm {
       constructor() {

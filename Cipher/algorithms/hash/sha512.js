@@ -48,13 +48,13 @@
   // ===== ALGORITHM IMPLEMENTATION =====
 
   // SHA-512 initial hash values (first 64 bits of fractional parts of square roots of first 8 primes)
-  const H0 = [
+  const H0 = Object.freeze([
     0x6a09e667f3bcc908n, 0xbb67ae8584caa73bn, 0x3c6ef372fe94f82bn, 0xa54ff53a5f1d36f1n,
     0x510e527fade682d1n, 0x9b05688c2b3e6c1fn, 0x1f83d9abfb41bd6bn, 0x5be0cd19137e2179n
-  ];
+  ]);
 
   // SHA-512 round constants (first 64 bits of fractional parts of cube roots of first 80 primes)
-  const K = [
+  const K = Object.freeze([
     0x428a2f98d728ae22n, 0x7137449123ef65cdn, 0xb5c0fbcfec4d3b2fn, 0xe9b5dba58189dbbcn,
     0x3956c25bf348b538n, 0x59f111f1b605d019n, 0x923f82a4af194f9bn, 0xab1c5ed5da6d8118n,
     0xd807aa98a3030242n, 0x12835b0145706fben, 0x243185be4ee4b28cn, 0x550c7dc3d5ffb4e2n,
@@ -75,7 +75,7 @@
     0x06f067aa72176fban, 0x0a637dc5a2c898a6n, 0x113f9804bef90daen, 0x1b710b35131c471bn,
     0x28db77f523047d84n, 0x32caab7b40c72493n, 0x3c9ebe0a15c9bebcn, 0x431d67c49c100d4cn,
     0x4cc5d4becb3e42b6n, 0x597f299cfc657e2an, 0x5fcb6fab3ad6faecn, 0x6c44198c4a475817n
-  ];
+  ]);
 
   class SHA512Algorithm extends HashFunctionAlgorithm {
     constructor() {

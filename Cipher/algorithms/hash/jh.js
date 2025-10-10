@@ -47,7 +47,7 @@
   // ===== ALGORITHM IMPLEMENTATION =====
 
   // JH Initial Values (simplified for educational purposes)
-  const JH_IV = [
+  const JH_IV = Object.freeze([
     0x17AA003E, 0x10E8B833, 0x6B8A92DD, 0xBB4F5D87,
     0x6E1E0A6F, 0x8F647871, 0x65F0B83F, 0xA3277999,
     0x07D3B531, 0x63D98F2A, 0x88B273E3, 0x98C93BB0,
@@ -56,7 +56,7 @@
     0x8C8F7F0B, 0x7729F33F, 0x0965DD0C, 0x3E4A6ECF,
     0x9AAE8B6E, 0x7F5C89CD, 0x69C99F91, 0x8F1C2F1B,
     0x5F6DAAD6, 0x3DBEAEB8, 0x68DB8BC8, 0x3A9D3C9F
-  ];
+  ]);
 
   class JHAlgorithm extends HashFunctionAlgorithm {
     constructor() {
