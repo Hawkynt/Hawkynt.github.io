@@ -76,6 +76,10 @@
         new AlgorithmFramework.KeySize(16, 16, 1) // Fixed 128-bit key
       ];
 
+      // AlgorithmFramework compatibility
+      this.SupportedKeySizes = [new AlgorithmFramework.KeySize(16, 16, 1)]; // Fixed 128-bit key
+      this.SupportedBlockSizes = [new AlgorithmFramework.KeySize(8, 1024, 4)]; // Variable block size (8 bytes to 1KB, 4-byte steps)
+
       // Documentation and references
       this.documentation = [
         new AlgorithmFramework.LinkItem("Block TEA corrections and improvements", "https://www.cix.co.uk/~klockstone/xxtea.htm"),
