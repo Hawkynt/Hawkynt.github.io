@@ -69,12 +69,12 @@
   
   // ChaCha20 constants - "expand 32-byte k"
   const constantBytes = OpCodes.Hex8ToBytes('617078653320646e79622d326b206574');
-  const CHACHA20_CONSTANTS = [
+  const CHACHA20_CONSTANTS = Object.freeze([
     OpCodes.Pack32LE(constantBytes[0], constantBytes[1], constantBytes[2], constantBytes[3]),
     OpCodes.Pack32LE(constantBytes[4], constantBytes[5], constantBytes[6], constantBytes[7]),
     OpCodes.Pack32LE(constantBytes[8], constantBytes[9], constantBytes[10], constantBytes[11]),
     OpCodes.Pack32LE(constantBytes[12], constantBytes[13], constantBytes[14], constantBytes[15])
-  ];
+  ]);
   
   const XChaCha20 = {
     // Required metadata fields

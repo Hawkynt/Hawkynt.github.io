@@ -56,9 +56,9 @@
   ]);
 
   // Message permutation for rounds - BLAKE3 specification
-  const MSG_PERMUTATION = [
+  const MSG_PERMUTATION = Object.freeze([
     2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8
-  ];
+  ]);
 
   // Flag constants - BLAKE3 specification Section 2.3
   const CHUNK_START = 1;

@@ -278,10 +278,10 @@
   // ===== SKEIN HASH FUNCTION =====
 
   // Precalculated initial state for Skein-512-512 (from Skein 1.3 spec Appendix C)
-  const INITIAL_STATE_512_512 = [
+  const INITIAL_STATE_512_512 = Object.freeze([
     0x4903ADFF749C51CEn, 0x0D95DE399746DF03n, 0x8FD1934127C79BCEn, 0x9A255629FF352CB1n,
     0x5DB62599DF6CA7B0n, 0xEABE394CA9D5C3F4n, 0x991112C71A75B523n, 0xAE18A40B660FCC33n
-  ];
+  ]);
 
   class SkeinHasher {
     constructor(outputBits) {

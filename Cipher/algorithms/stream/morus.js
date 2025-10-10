@@ -34,10 +34,10 @@
           StreamCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
 
   // MORUS-640 constants (32-bit words)
-  const CONSTANTS_640 = [
+  const CONSTANTS_640 = Object.freeze([
     [0x02010100, 0x0d080503, 0x59372215, 0x6279e990],
     [0x55183ddb, 0xf12fc26d, 0x42311120, 0xdd28b573]
-  ];
+  ]);
 
   // ===== ALGORITHM IMPLEMENTATION =====
 

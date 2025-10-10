@@ -118,9 +118,13 @@ class RabbitInstance extends IAlgorithmInstance {
     }
   }
 
+  get iv() { return this._iv ? [...this._iv] : null; }
+
   set nonce(nonceBytes) {
     this.iv = nonceBytes;
   }
+
+  get nonce() { return this.iv; }
 
   Feed(data) {
     if (!data || data.length === 0) return;
@@ -145,7 +149,7 @@ class RabbitInstance extends IAlgorithmInstance {
   _initialize() {
     if (!this._key) return;
 
-    const K = [];
+    const K = new Array(8);
     for (let i = 0; i < 8; i++) {
       K[i] = this._key[i*2] | (this._key[i*2+1] << 8);
     }
@@ -184,10 +188,10 @@ class RabbitInstance extends IAlgorithmInstance {
     const IV_0 = OpCodes.Pack32LE(this._iv[0], this._iv[1], this._iv[2], this._iv[3]);
     const IV_1 = OpCodes.Pack32LE(this._iv[4], this._iv[5], this._iv[6], this._iv[7]);
 
-    const i0 = (((IV_0 << 8) | (IV_0 >>> 24)) & 0x00ff00ff) | (((IV_0 << 24) | (IV_0 >>> 8)) & 0xff00ff00);
-    const i2 = (((IV_1 << 8) | (IV_1 >>> 24)) & 0x00ff00ff) | (((IV_1 << 24) | (IV_1 >>> 8)) & 0xff00ff00);
+    const i0 = (OpCodes.RotL32(IV_0, 8) & 0x00ff00ff) | (OpCodes.RotL32(IV_0, 24) & 0xff00ff00);
+    const i2 = (OpCodes.RotL32(IV_1, 8) & 0x00ff00ff) | (OpCodes.RotL32(IV_1, 24) & 0xff00ff00);
     const i1 = (i0 >>> 16) | (i2 & 0xffff0000);
-    const i3 = (i2 << 16)  | (i0 & 0x0000ffff);
+    const i3 = (i2 << 16) | (i0 & 0x0000ffff);
 
     this.C[0] = (this.C[0] ^ i0) >>> 0;
     this.C[1] = (this.C[1] ^ i1) >>> 0;
@@ -213,7 +217,7 @@ class RabbitInstance extends IAlgorithmInstance {
   }
 
   _nextState() {
-    const C_ = [];
+    const C_ = new Array(8);
     for (let i = 0; i < 8; i++) {
       C_[i] = this.C[i];
     }
@@ -228,25 +232,25 @@ class RabbitInstance extends IAlgorithmInstance {
     this.C[7] = (this.C[7] + 0xd34d34d3 + ((this.C[6] >>> 0) < (C_[6] >>> 0) ? 1 : 0)) | 0;
     this.b = (this.C[7] >>> 0) < (C_[7] >>> 0) ? 1 : 0;
 
-    const G = [];
+    const G = new Array(8);
     for (let i = 0; i < 8; i++) {
       G[i] = this._gFunction(this.X[i], this.C[i]);
     }
 
-    this.X[0] = (G[0] + ((G[7] << 16) | (G[7] >>> 16)) + ((G[6] << 16) | (G[6] >>> 16))) | 0;
-    this.X[1] = (G[1] + ((G[0] << 8)  | (G[0] >>> 24)) + G[7]) | 0;
-    this.X[2] = (G[2] + ((G[1] << 16) | (G[1] >>> 16)) + ((G[0] << 16) | (G[0] >>> 16))) | 0;
-    this.X[3] = (G[3] + ((G[2] << 8)  | (G[2] >>> 24)) + G[1]) | 0;
-    this.X[4] = (G[4] + ((G[3] << 16) | (G[3] >>> 16)) + ((G[2] << 16) | (G[2] >>> 16))) | 0;
-    this.X[5] = (G[5] + ((G[4] << 8)  | (G[4] >>> 24)) + G[3]) | 0;
-    this.X[6] = (G[6] + ((G[5] << 16) | (G[5] >>> 16)) + ((G[4] << 16) | (G[4] >>> 16))) | 0;
-    this.X[7] = (G[7] + ((G[6] << 8)  | (G[6] >>> 24)) + G[5]) | 0;
+    this.X[0] = (G[0] + OpCodes.RotL32(G[7], 16) + OpCodes.RotL32(G[6], 16)) | 0;
+    this.X[1] = (G[1] + OpCodes.RotL32(G[0], 8) + G[7]) | 0;
+    this.X[2] = (G[2] + OpCodes.RotL32(G[1], 16) + OpCodes.RotL32(G[0], 16)) | 0;
+    this.X[3] = (G[3] + OpCodes.RotL32(G[2], 8) + G[1]) | 0;
+    this.X[4] = (G[4] + OpCodes.RotL32(G[3], 16) + OpCodes.RotL32(G[2], 16)) | 0;
+    this.X[5] = (G[5] + OpCodes.RotL32(G[4], 8) + G[3]) | 0;
+    this.X[6] = (G[6] + OpCodes.RotL32(G[5], 16) + OpCodes.RotL32(G[4], 16)) | 0;
+    this.X[7] = (G[7] + OpCodes.RotL32(G[6], 8) + G[5]) | 0;
   }
 
   _generateBlock() {
     this._nextState();
 
-    const S = [];
+    const S = new Array(4);
     S[0] = this.X[0] ^ (this.X[5] >>> 16) ^ (this.X[3] << 16);
     S[1] = this.X[2] ^ (this.X[7] >>> 16) ^ (this.X[5] << 16);
     S[2] = this.X[4] ^ (this.X[1] >>> 16) ^ (this.X[7] << 16);
@@ -255,8 +259,7 @@ class RabbitInstance extends IAlgorithmInstance {
     const keystream = [];
 
     for (let i = 0; i < 4; i++) {
-      S[i] = (((S[i] << 8)  | (S[i] >>> 24)) & 0x00ff00ff) |
-             (((S[i] << 24) | (S[i] >>> 8))  & 0xff00ff00);
+      S[i] = (OpCodes.RotL32(S[i], 8) & 0x00ff00ff) | (OpCodes.RotL32(S[i], 24) & 0xff00ff00);
     }
 
     for (let i = 3; i >= 0; i--) {

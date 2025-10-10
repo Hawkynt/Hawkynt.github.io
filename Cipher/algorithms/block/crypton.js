@@ -48,11 +48,11 @@
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
   const CryptonTables = (() => {
-    const PBOX = [
+    const PBOX = Object.freeze([
       new Uint8Array([15, 9, 6, 8, 9, 9, 4, 12, 6, 2, 6, 10, 1, 3, 5, 15]),
       new Uint8Array([10, 15, 4, 7, 5, 2, 14, 6, 9, 3, 12, 8, 13, 1, 11, 0]),
       new Uint8Array([0, 4, 8, 4, 2, 15, 8, 13, 1, 1, 15, 7, 2, 11, 14, 15])
-    ];
+    ]);
 
     const MA = new Uint32Array([0x3fcff3fc, 0xfc3fcff3, 0xf3fc3fcf, 0xcff3fc3f]);
     const MB = new Uint32Array([0xcffccffc, 0xf33ff33f, 0xfccffccf, 0x3ff33ff3]);

@@ -63,9 +63,9 @@
   // ===== ALGORITHM IMPLEMENTATION =====
 
   // MAYO parameter constants
-  const MAYO_1_KEY = [77, 65, 89, 79, 49]; // "MAYO1"
-  const MAYO_3_KEY = [77, 65, 89, 79, 51]; // "MAYO3"
-  const MAYO_5_KEY = [77, 65, 89, 79, 53]; // "MAYO5"
+  const MAYO_1_KEY = Object.freeze([77, 65, 89, 79, 49]); // "MAYO1"
+  const MAYO_3_KEY = Object.freeze([77, 65, 89, 79, 51]); // "MAYO3"
+  const MAYO_5_KEY = Object.freeze([77, 65, 89, 79, 53]); // "MAYO5"
 
   const MAYO_PARAMS = {
     "MAYO1": {
@@ -86,8 +86,8 @@
   };
 
   // GF(16) field tables for educational implementation
-  const GF16_EXP = [1, 2, 4, 8, 3, 6, 12, 11, 5, 10, 7, 14, 15, 13, 9, 1];
-  const GF16_LOG = [0, 0, 1, 4, 2, 8, 5, 10, 3, 14, 9, 7, 6, 13, 11, 12];
+  const GF16_EXP = Object.freeze([1, 2, 4, 8, 3, 6, 12, 11, 5, 10, 7, 14, 15, 13, 9, 1]);
+  const GF16_LOG = Object.freeze([0, 0, 1, 4, 2, 8, 5, 10, 3, 14, 9, 7, 6, 13, 11, 12]);
 
   class MayoCipher extends AsymmetricCipherAlgorithm {
     constructor() {
