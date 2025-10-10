@@ -99,7 +99,7 @@
           r: 1,
           p: 1,
           keyLength: 64,
-          expected: OpCodes.Hex8ToBytes("77d6576238657b203b19ca42c18a04974f1b4844e3074ae8dfdffa3fede21442fcd0069ded0948f8326a753a0fc81f17e8d3e0fb2e0d3628cf35e20c38d18906")
+          expected: OpCodes.Hex8ToBytes("77d6576238657b203b19ca42c18a0497f16b4844e3074ae8dfdffa3fede21442fcd0069ded0948f8326a753a0fc81f17e8d3e0fb2e0d3628cf35e20c38d18906")
         },
         {
           text: "RFC 7914 Test Vector 2 - password/NaCl",
@@ -110,7 +110,7 @@
           r: 8,
           p: 16,
           keyLength: 64,
-          expected: OpCodes.Hex8ToBytes("fdbabe1c9d34720078565e7190d01e9fe7c6ad7cbc8237830e77376634b3731622eaf30d92e22a3886ff10927d9830dac727afb94a83ee6d8360cbdfa2cc0640")
+          expected: OpCodes.Hex8ToBytes("fdbabe1c9d3472007856e7190d01e9fe7c6ad7cbc8237830e77376634b3731622eaf30d92e22a3886ff109279d9830dac727afb94a83ee6d8360cbdfa2cc0640")
         },
         {
           text: "RFC 7914 Test Vector 3 - pleaseletmein/SodiumChloride",
@@ -138,12 +138,12 @@
   class ScryptInstance extends IKdfInstance {
     constructor(algorithm) {
       super(algorithm);
-      this.password = null;
-      this.salt = null;
-      this.N = 16; // Memory/time cost parameter (reduced for educational testing)
-      this.r = 1;  // Block size parameter
-      this.p = 1;  // Parallelization parameter
-      this.keyLength = 64;
+      this._password = null;
+      this._salt = null;
+      this._N = 16; // Memory/time cost parameter (reduced for educational testing)
+      this._r = 1;  // Block size parameter
+      this._p = 1;  // Parallelization parameter
+      this._keyLength = 64;
       this.OutputSize = 64;
       this.Iterations = 1; // scrypt doesn't use traditional iterations
 
@@ -152,13 +152,30 @@
       this.BLOCK_SIZE = 64;
     }
 
-    // Property setters
+    // Property getters and setters
+    get password() { return this._password; }
     set password(pwd) { this._password = pwd; }
+
+    get salt() { return this._salt; }
     set salt(saltData) { this._salt = saltData; }
+
+    get N() { return this._N; }
     set N(n) { this._N = n; }
+
+    get r() { return this._r; }
     set r(r) { this._r = r; }
+
+    get p() { return this._p; }
     set p(p) { this._p = p; }
+
+    get keyLength() { return this._keyLength; }
     set keyLength(len) { this._keyLength = len; this.OutputSize = len; }
+
+    get outputSize() { return this.OutputSize; }
+    set outputSize(value) { this.OutputSize = value; this._keyLength = value; }
+
+    get iterations() { return this.Iterations; }
+    set iterations(value) { this.Iterations = value; }
 
     // Feed data (not typically used for KDFs, but for framework compatibility)
     Feed(data) {
@@ -275,7 +292,7 @@
 
       // Step 2: Use memory array to mix X
       for (let i = 0; i < N; i++) {
-        const j = this._integerify(X, r) % N;
+        const j = this._integerify(X, r) & (N - 1);
 
         // XOR X with V[j]
         X = OpCodes.XorArrays(X, V[j]);
@@ -293,7 +310,7 @@
       const X = B.slice(B.length - blockLen); // X = B[2r-1]
       const Y = new Array(B.length);
 
-      // Process each block
+      // Process each block and store in Y sequentially
       for (let i = 0; i < 2 * r; i++) {
         const blockStart = i * blockLen;
 
@@ -303,33 +320,43 @@
         }
         this._salsa20_8(X);
 
-        // Store in Y - even blocks first, then odd blocks
-        let yOffset;
-        if (i % 2 === 0) {
-          yOffset = (i / 2) * blockLen;
-        } else {
-          yOffset = (r + Math.floor(i / 2)) * blockLen;
-        }
-
+        // Store X in Y[i]
         for (let j = 0; j < blockLen; j++) {
-          Y[yOffset + j] = X[j];
+          Y[i * blockLen + j] = X[j];
         }
       }
 
-      return Y;
+      // Rearrange: B' <-- (Y_0, Y_2, ..., Y_{2r-2}, Y_1, Y_3, ..., Y_{2r-1})
+      const result = new Array(B.length);
+      for (let i = 0; i < r; i++) {
+        // Copy even blocks to first half
+        for (let j = 0; j < blockLen; j++) {
+          result[i * blockLen + j] = Y[(i * 2) * blockLen + j];
+        }
+      }
+      for (let i = 0; i < r; i++) {
+        // Copy odd blocks to second half
+        for (let j = 0; j < blockLen; j++) {
+          result[(i + r) * blockLen + j] = Y[(i * 2 + 1) * blockLen + j];
+        }
+      }
+
+      return result;
     }
 
     // Salsa20/8 core function as specified in RFC 7914
     _salsa20_8(B) {
       // Convert 64-byte array to 16 32-bit words (little-endian)
+      const B32 = new Array(16);
       const x = new Array(16);
       for (let i = 0; i < 16; i++) {
-        x[i] = OpCodes.Pack32LE(B[i*4], B[i*4+1], B[i*4+2], B[i*4+3]);
+        B32[i] = OpCodes.Pack32LE(B[i*4], B[i*4+1], B[i*4+2], B[i*4+3]);
+        x[i] = B32[i];
       }
 
-      // Salsa20/8 core (8 rounds of double-round)
-      for (let round = 0; round < 4; round++) {
-        // Odd round
+      // Salsa20/8 core (8 rounds of double-round = 4 iterations)
+      for (let i = 0; i < 4; i++) {
+        // Odd round (operate on columns)
         x[ 4] ^= OpCodes.RotL32((x[ 0] + x[12]) >>> 0, 7);
         x[ 8] ^= OpCodes.RotL32((x[ 4] + x[ 0]) >>> 0, 9);
         x[12] ^= OpCodes.RotL32((x[ 8] + x[ 4]) >>> 0, 13);
@@ -350,7 +377,7 @@
         x[11] ^= OpCodes.RotL32((x[ 7] + x[ 3]) >>> 0, 13);
         x[15] ^= OpCodes.RotL32((x[11] + x[ 7]) >>> 0, 18);
 
-        // Even round
+        // Even round (operate on rows)
         x[ 1] ^= OpCodes.RotL32((x[ 0] + x[ 3]) >>> 0, 7);
         x[ 2] ^= OpCodes.RotL32((x[ 1] + x[ 0]) >>> 0, 9);
         x[ 3] ^= OpCodes.RotL32((x[ 2] + x[ 1]) >>> 0, 13);
@@ -372,9 +399,14 @@
         x[15] ^= OpCodes.RotL32((x[14] + x[13]) >>> 0, 18);
       }
 
+      // Add original B32 to x (B32 = B32 + x)
+      for (let i = 0; i < 16; i++) {
+        B32[i] = (B32[i] + x[i]) >>> 0;
+      }
+
       // Convert back to bytes (little-endian)
       for (let i = 0; i < 16; i++) {
-        const bytes = OpCodes.Unpack32LE(x[i]);
+        const bytes = OpCodes.Unpack32LE(B32[i]);
         B[i*4] = bytes[0];
         B[i*4+1] = bytes[1];
         B[i*4+2] = bytes[2];
@@ -393,9 +425,9 @@
       if (lastBlockOffset + 4 > B.length) return 0;
 
       // Read as little-endian 32-bit integer (use >>> 0 to force unsigned)
-      return (B[lastBlockOffset] | 
-             (B[lastBlockOffset + 1] << 8) | 
-             (B[lastBlockOffset + 2] << 16) | 
+      return (B[lastBlockOffset] |
+             (B[lastBlockOffset + 1] << 8) |
+             (B[lastBlockOffset + 2] << 16) |
              (B[lastBlockOffset + 3] << 24)) >>> 0;
     }
 
