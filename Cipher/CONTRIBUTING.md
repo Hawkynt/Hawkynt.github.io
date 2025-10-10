@@ -335,6 +335,8 @@ Always use direct enum object assignment for metadata properties:
 
 ## 🎯 Coding Standards
 
+- `freeze` lookup tables and make `const` what you can
+
 ### Naming Conventions
 - **PascalCase** for methods: `EncryptBlock()`, `DecryptBlock()`, `ComputeHash()`
 - **camelCase** for fields: `blockSize`, `keySize`, `roundCount`  

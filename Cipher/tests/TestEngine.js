@@ -17,11 +17,18 @@
 const fs = require('fs');
 const path = require('path');
 
+// Load TestCore for unified testing logic
+const { TestCore } = require('./TestCore.js');
+
 class TestEngine {
   constructor(options = {}) {
     this.verbose = options.verbose || false;
     this.silent = options.silent || false;
     this.dependenciesLoaded = false;
+
+    // Create TestCore instance
+    this.testCore = new TestCore();
+    this.testCore.verbose = this.verbose;
 
     // Define algorithm category arrays for invertibility requirements
     // These will be set after AlgorithmFramework is loaded
@@ -511,48 +518,37 @@ class TestEngine {
     }
   }
 
-  // Test a single test vector - Core vector testing logic
+  // Test a single test vector using TestCore with CLI-specific enhancements
   async testSingleVector(algorithm, vector, index) {
     try {
-      // Create fresh instance for each test vector
-      const testInstance = algorithm.CreateInstance(false); // false = forward/encrypt mode
+      // Use TestCore for basic vector testing
+      const coreResult = await this.testCore.testSingleVector(algorithm, vector, index);
 
-      // Apply test vector properties to instance (automatic configuration)
-      for (const [key, value] of Object.entries(vector)) {
-        if (key !== 'text' && key !== 'uri' && key !== 'input' && key !== 'expected' && key !== 'output') {
-          try {
-            if (testInstance.hasOwnProperty(key) || key in testInstance) {
-              testInstance[key] = value;
-            }
-          } catch (propertyError) {
-            // Property setting failed, continue anyway
-          }
-        }
+      if (!coreResult.success) {
+        return {
+          index: index + 1,
+          text: vector.text || `Test Vector ${index + 1}`,
+          passed: false,
+          input: vector.input,
+          expected: vector.expected || vector.output,
+          actual: null,
+          error: coreResult.result.error,
+          roundTripSuccess: false
+        };
       }
 
-      // Feed input data
-      testInstance.Feed(vector.input);
+      const result = coreResult.result;
+      let roundTripSuccess = result.roundTripSuccess;
 
-      // Get result
-      const result = testInstance.Result();
-
-      // Compare with expected output (try both 'expected' and 'output' properties)
-      const expectedOutput = vector.expected || vector.output;
-      const passed = this.compareArrays(result, expectedOutput);
-
-      let roundTripSuccess = false;
-
-      if (passed) {
-        // Try round-trip test or encoding stability test
+      // Enhanced CLI-specific round-trip testing
+      if (result.passed && roundTripSuccess === null) {
         try {
           if (this.requiresEncodingStability(algorithm)) {
-            roundTripSuccess = await this.testEncodingStability(algorithm, vector, result);
+            roundTripSuccess = await this.testEncodingStability(algorithm, vector, result.output);
           } else {
-            roundTripSuccess = await this.testRoundTrip(algorithm, vector, result);
+            roundTripSuccess = await this.testRoundTrip(algorithm, vector, result.output);
           }
         } catch (inverseError) {
-          // Inverse instance creation failed or round-trip failed - that's okay
-          // Not all algorithms support inverse operations
           roundTripSuccess = false;
         }
       }
@@ -560,11 +556,11 @@ class TestEngine {
       return {
         index: index + 1,
         text: vector.text || `Test Vector ${index + 1}`,
-        passed: passed,
+        passed: result.passed,
         input: vector.input,
-        expected: expectedOutput,
-        actual: result,
-        roundTripSuccess: roundTripSuccess
+        expected: result.expected,
+        actual: result.output,
+        roundTripSuccess: roundTripSuccess || false
       };
 
     } catch (vectorError) {
@@ -724,15 +720,9 @@ class TestEngine {
     }
   }
 
-  // Utility function to compare arrays
+  // Delegate to TestCore for array comparison
   compareArrays(arr1, arr2) {
-    if (!arr1 || !arr2) return false;
-    if (arr1.length !== arr2.length) return false;
-
-    for (let i = 0; i < arr1.length; i++) {
-      if (arr1[i] !== arr2[i]) return false;
-    }
-    return true;
+    return this.testCore.compareArrays(arr1, arr2);
   }
 
   // Reset results counters
@@ -759,6 +749,15 @@ class TestEngine {
       percentage: total > 0 ? Math.round((passed / total) * 100) : 0,
       details: this.results
     };
+  }
+
+  // Delegate to TestCore for block cipher mode operations
+  isBlockCipherMode(algorithm) {
+    return this.testCore.isBlockCipherMode(algorithm);
+  }
+
+  setupBlockCipherMode(instance, vector) {
+    return this.testCore.setupBlockCipherMode(instance, vector);
   }
 }
 
