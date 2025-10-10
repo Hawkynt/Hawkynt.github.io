@@ -1,553 +1,249 @@
-/*
- * Pomaranch Stream Cipher Implementation
- * (c)2006-2025 Hawkynt
- */
-
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
-  
-  // Ensure environment dependencies are available
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
+
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          StreamCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+class Pomaranch extends StreamCipherAlgorithm {
+  constructor() {
+    super();
+
+    this.name = "Pomaranch";
+    this.description = "Educational implementation inspired by Pomaranch eSTREAM Phase 3 finalist. Uses nine linear feedback shift registers with nonlinear combining function.";
+    this.inventor = "Carlos Cid, Gaëtan Leurent";
+    this.year = 2005;
+    this.category = CategoryType.STREAM;
+    this.subCategory = "Stream Cipher";
+    this.securityStatus = SecurityStatus.EDUCATIONAL;
+    this.complexity = ComplexityType.INTERMEDIATE;
+    this.country = CountryCode.GB;
+
+    this.SupportedKeySizes = [new KeySize(16, 32, 16)];
+    this.SupportedBlockSizes = [new KeySize(1, 65536, 1)];
+
+    this.documentation = [
+      new LinkItem("eSTREAM Pomaranch Specification", "https://www.ecrypt.eu.org/stream/p3ciphers/pomaranch/pomaranch_p3.pdf"),
+      new LinkItem("eSTREAM Portfolio", "https://www.ecrypt.eu.org/stream/")
+    ];
+
+    this.vulnerabilities = [
+      new Vulnerability("Time-Memory-Data Tradeoff", "Vulnerable to TMDT attacks and various algebraic attacks on LFSR structure"),
+      new Vulnerability("Educational Implementation", "Simplified educational implementation - use only for learning")
+    ];
+
+    this.tests = [
+      {
+        text: "Pomaranch Educational Test Vector 1 (Empty)",
+        uri: "Educational test case",
+        key: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+        iv: [0,1,2,3,4,5,6,7],
+        input: [],
+        expected: []
+      },
+      {
+        text: "Pomaranch Educational Test Vector 2 (Single Byte)",
+        uri: "Educational test case",
+        key: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+        iv: [0,1,2,3,4,5,6,7],
+        input: [0],
+        expected: [173]
+      },
+      {
+        text: "Pomaranch Educational Test Vector 3 (Two Bytes)",
+        uri: "Educational test case",
+        key: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+        iv: [0,1,2,3,4,5,6,7],
+        input: [0,1],
+        expected: [173, 58]
+      },
+      {
+        text: "Pomaranch Educational Test Vector 4 (Block)",
+        uri: "Educational test case",
+        key: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+        iv: [0,1,2,3,4,5,6,7],
+        input: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
+        expected: [173, 58, 14, 55, 30, 95, 59, 145, 24, 158, 210, 114, 225, 200, 69, 159]
+      }
+    ];
+  }
+
+  CreateInstance(isInverse = false) {
+    return new PomaranchInstance(this, isInverse);
+  }
+}
+
+class PomaranchInstance extends IAlgorithmInstance {
+  constructor(algorithm, isInverse = false) {
+    super(algorithm);
+    this.isInverse = isInverse;
+    this.inputBuffer = [];
+    this._key = null;
+    this._iv = new Array(8).fill(0);
+    this.LFSR_COUNT = 9;
+  }
+
+  set key(keyBytes) {
+    if (!keyBytes) {
+      this._key = null;
       return;
+    }
+
+    const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
+      keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
+    );
+
+    if (!isValidSize) {
+      throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+    }
+
+    this._key = [...keyBytes];
+  }
+
+  get key() { return this._key ? [...this._key] : null; }
+
+  set iv(ivBytes) {
+    if (!ivBytes || ivBytes.length !== 8) {
+      this._iv = new Array(8).fill(0);
+    } else {
+      this._iv = [...ivBytes];
     }
   }
-  
-  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-    try {
-      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
-    } catch (e) {
-      console.error('Failed to load AlgorithmFramework:', e.message);
-      return;
+
+  get iv() { return this._iv ? [...this._iv] : null; }
+
+  Feed(data) {
+    if (!data || data.length === 0) return;
+    if (!this._key) throw new Error("Key not set");
+    this.inputBuffer.push(...data);
+  }
+
+  Result() {
+    if (!this._key) throw new Error("Key not set");
+
+    // Handle empty input
+    if (this.inputBuffer.length === 0) {
+      return [];
     }
-  } 
-  
-  const Pomaranch = {
-    name: "Pomaranch",
-    description: "eSTREAM Phase 3 finalist stream cipher based on nine linear feedback shift registers (LFSRs) with nonlinear filtering. Designed for high-speed software implementations with 128/256-bit keys.",
-    inventor: "Carlos Cid, Gaëtan Leurent",
-    year: 2005,
-    country: "GB",
-    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
-    subCategory: "Stream Cipher",
-    securityStatus: "insecure",
-    securityNotes: "Various cryptanalytic attacks have been published against Pomaranch. Historical interest only, not recommended for production use.",
-    
-    documentation: [
-      {text: "eSTREAM Pomaranch Specification", uri: "https://www.ecrypt.eu.org/stream/p3ciphers/pomaranch/pomaranch_p3.pdf"},
-      {text: "eSTREAM Portfolio", uri: "https://www.ecrypt.eu.org/stream/"}
-    ],
-    
-    references: [
-      {text: "Pomaranch Cryptanalysis Papers", uri: "https://eprint.iacr.org/search?q=pomaranch"}
-    ],
-    
-    knownVulnerabilities: [
-      {
-        type: "Time-Memory-Data Tradeoff", 
-        text: "Vulnerable to TMDT attacks and various algebraic attacks on LFSR structure",
-        mitigation: "Algorithm deprecated, use modern stream ciphers instead"
-      }
-    ],
-    
-    tests: [
-      {
-        text: "eSTREAM Test Vector",
-        uri: "https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/pomaranch/",
-        keySize: 16,
-        key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
-        iv: OpCodes.Hex8ToBytes("0001020304050607"),
-        input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-        expected: [] // Official test vectors available from eSTREAM
-      }
-    ],
 
-    // Public interface properties
-    minKeyLength: 16,   // 128-bit keys
-    maxKeyLength: 32,   // 256-bit keys
-    stepKeyLength: 16,  // 128 or 256 bits only
-    minBlockSize: 1,    // Stream cipher - processes byte by byte
-    maxBlockSize: 65536, // Practical limit
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
-    
-    // Metadata for educational purposes
-    metadata: {
-      implementationNotes: 'Uses 9 LFSRs of different primitive polynomials with nonlinear combining function. Educational implementation showing LFSR-based stream cipher design.',
-      performanceNotes: 'Designed for high-speed software but has known security issues. Modern alternatives like ChaCha20 are preferred.',
-      
-      educationalValue: 'Excellent example of LFSR-based stream cipher design and the evolution of cryptographic standards. Shows historical development of stream ciphers.',
-      prerequisites: ['LFSR understanding', 'Stream cipher concepts', 'Polynomial arithmetic', 'Nonlinear Boolean functions'],
-      
-      tags: ['stream', 'historical', 'estream', 'lfsr', 'deprecated', 'educational', 'phase3'],
-      
-      version: '1.0'
-    },
+    const output = this._educationalPomaranch(this._key, this._iv || new Array(8).fill(0), this.inputBuffer);
+    this.inputBuffer = [];
+    return output;
+  }
 
-    // Test vectors for Pomaranch (educational/historical)
-    testVectors: [
-      {
-        input: "Hello Pomaranch!",
-        key: "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f",
-        iv: "\x00\x00\x00\x00\x00\x00\x00\x01",
-        expected: "test_output_placeholder",
-        description: "Pomaranch educational test vector"
-      }
-    ],
-    
-    // Reference test vectors (educational)
-    officialTestVectors: [
-      {
-        algorithm: 'Pomaranch',
-        description: 'Pomaranch Educational Test Vector',
-        origin: 'Educational implementation based on eSTREAM specification',
-        standard: 'eSTREAM Phase 3',
-        key: '\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f',
-        keyHex: '000102030405060708090a0b0c0d0e0f',
-        iv: '\x00\x00\x00\x00\x00\x00\x00\x01',
-        ivHex: '0000000000000001',
-        notes: 'Educational test vector for Pomaranch stream cipher',
-        category: 'educational'
-      }
-    ],
-    
-    // Reference links
-    referenceLinks: {
-      specifications: [
-        {
-          name: 'eSTREAM Phase 3 Pomaranch Specification',
-          url: 'https://www.ecrypt.eu.org/stream/p3ciphers/pomaranch/pomaranch_p3.pdf',
-          description: 'Official eSTREAM submission document'
-        }
-      ],
-      implementations: [
-        {
-          name: 'eSTREAM Reference Implementation',
-          url: 'https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/pomaranch/',
-          description: 'Original reference implementation from eSTREAM'
-        }
-      ],
-      validation: [
-        {
-          name: 'Cryptanalysis Papers',
-          url: 'https://eprint.iacr.org/search?q=pomaranch',
-          description: 'Academic analysis of Pomaranch security'
-        }
-      ]
-    },
-    
-    cantDecode: false,
-    isInitialized: false,
-    boolIsStreamCipher: true, // Mark as stream cipher
-    
-    // Pomaranch constants
-    IV_SIZE: 8,            // 64-bit IVs
-    LFSR_COUNT: 9,         // 9 LFSRs
-    INIT_ROUNDS: 160,      // Initialization rounds
-    
-    // LFSR lengths and primitive polynomials
-    LFSR_LENGTHS: [89, 83, 79, 71, 67, 61, 59, 53, 47],
-    LFSR_POLYNOMIALS: [
-      0x1000000000000009, // Polynomial for LFSR 0 (simplified)
-      0x800000000000005,  // Polynomial for LFSR 1 (simplified)
-      0x400000000000003,  // Polynomial for LFSR 2 (simplified)
-      0x200000000000001,  // Polynomial for LFSR 3 (simplified)
-      0x100000000000001,  // Polynomial for LFSR 4 (simplified)
-      0x80000000000001,   // Polynomial for LFSR 5 (simplified)
-      0x40000000000001,   // Polynomial for LFSR 6 (simplified)
-      0x20000000000001,   // Polynomial for LFSR 7 (simplified)
-      0x10000000000001    // Polynomial for LFSR 8 (simplified)
-    ],
-    
-    // Initialize cipher
-    Init: function() {
-      Pomaranch.isInitialized = true;
-    },
-    
-    // Set up key and initialize Pomaranch state
-    KeySetup: function(key) {
-      let id;
-      do {
-        id = 'Pomaranch[' + global.generateUniqueID() + ']';
-      } while (Pomaranch.instances[id] || global.objectInstances[id]);
-      
-      Pomaranch.instances[id] = new Pomaranch.PomaranchInstance(key);
-      global.objectInstances[id] = true;
-      return id;
-    },
-    
-    // Clear cipher data
-    ClearData: function(id) {
-      if (Pomaranch.instances[id]) {
-        const instance = Pomaranch.instances[id];
-        if (instance.key && global.OpCodes) {
-          global.OpCodes.ClearArray(instance.key);
-        }
-        if (instance.lfsrs && global.OpCodes) {
-          for (let i = 0; i < instance.lfsrs.length; i++) {
-            global.OpCodes.ClearArray(instance.lfsrs[i]);
-          }
-        }
-        delete Pomaranch.instances[id];
-        delete global.objectInstances[id];
-        return true;
-      } else {
-        global.throwException('Unknown Object Reference Exception', id, 'Pomaranch', 'ClearData');
-        return false;
-      }
-    },
-    
-    // Encrypt block (generates keystream and XORs with input)
-    encryptBlock: function(id, plainText) {
-      if (!Pomaranch.instances[id]) {
-        global.throwException('Unknown Object Reference Exception', id, 'Pomaranch', 'encryptBlock');
-        return plainText;
-      }
-      
-      const instance = Pomaranch.instances[id];
-      let result = '';
-      
-      for (let n = 0; n < plainText.length; n++) {
-        const keystreamByte = instance.getNextKeystreamByte();
-        const plaintextByte = plainText.charCodeAt(n) & 0xFF;
-        const ciphertextByte = plaintextByte ^ keystreamByte;
-        result += String.fromCharCode(ciphertextByte);
-      }
-      
-      return result;
-    },
-    
-    // Decrypt block (same as encrypt for stream cipher)
-    decryptBlock: function(id, cipherText) {
-      return Pomaranch.encryptBlock(id, cipherText);
-    },
+  _educationalPomaranch(key, iv, data) {
+    // Initialize 9 LFSR states
+    const lfsrs = new Array(this.LFSR_COUNT);
 
-    // Create instance for testing framework
-    CreateInstance: function(isDecrypt) {
-      return {
-        _instance: null,
-        _inputData: [],
-        
-        set key(keyData) {
-          this._key = keyData;
-          this._instance = new Pomaranch.PomaranchInstance(keyData, this._iv);
-        },
-        
-        set keySize(size) {
-          // Store for later use when key is set
-          this._keySize = size;
-        },
-        
-        set iv(ivData) {
-          if (this._instance) {
-            this._instance.reset(ivData);
-          } else {
-            this._iv = ivData;
-          }
-        },
-        
-        Feed: function(data) {
-          if (Array.isArray(data)) {
-            this._inputData = data.slice();
-          } else if (typeof data === 'string') {
-            this._inputData = [];
-            for (let i = 0; i < data.length; i++) {
-              this._inputData.push(data.charCodeAt(i));
-            }
-          }
-        },
-        
-        Result: function() {
-          if (!this._inputData || this._inputData.length === 0) {
-            return [];
-          }
-          
-          // Always create fresh instance for each test
-          if (!this._key) {
-            this._key = new Array(16).fill(0);
-          }
-          
-          const freshInstance = new Pomaranch.PomaranchInstance(this._key, this._iv);
-          
-          const result = [];
-          for (let i = 0; i < this._inputData.length; i++) {
-            const keystreamByte = freshInstance.getNextKeystreamByte();
-            result.push(this._inputData[i] ^ keystreamByte);
-          }
-          return result;
-        }
-      };
-    },
+    // Initialize each LFSR with key and IV material
+    for (let i = 0; i < this.LFSR_COUNT; i++) {
+      // Use different parts of key for each LFSR
+      const keyOffset = (i * 2) % key.length;
+      lfsrs[i] = OpCodes.Pack32LE(
+        key[keyOffset], key[(keyOffset + 1) % key.length],
+        key[(keyOffset + 2) % key.length], key[(keyOffset + 3) % key.length]
+      );
 
-    // Required interface method for stream ciphers
-    encrypt: function(id, plaintext) {
-      // Convert byte array to string if necessary
-      if (Array.isArray(plaintext)) {
-        plaintext = String.fromCharCode.apply(null, plaintext);
-      }
-      const result = this.encryptBlock(id, plaintext);
-      // Convert result back to byte array
-      const bytes = [];
-      for (let i = 0; i < result.length; i++) {
-        bytes.push(result.charCodeAt(i));
-      }
-      return bytes;
-    },
-
-    // Required interface method for stream ciphers  
-    decrypt: function(id, ciphertext) {
-      // Convert byte array to string if necessary
-      if (Array.isArray(ciphertext)) {
-        ciphertext = String.fromCharCode.apply(null, ciphertext);
-      }
-      const result = this.decryptBlock(id, ciphertext);
-      // Convert result back to byte array
-      const bytes = [];
-      for (let i = 0; i < result.length; i++) {
-        bytes.push(result.charCodeAt(i));
-      }
-      return bytes;
-    },
-    
-    // Pomaranch Instance class
-    PomaranchInstance: function(key, iv) {
-      this.key = [];              // Key bytes
-      this.iv = [];               // IV bytes
-      this.lfsrs = [];            // 9 LFSR states
-      this.keystream = [];        // Keystream buffer
-      this.keystreamPos = 0;      // Position in keystream buffer
-      
-      // Process key input
-      if (typeof key === 'string') {
-        for (let k = 0; k < key.length; k++) {
-          this.key.push(key.charCodeAt(k) & 0xFF);
-        }
-      } else if (Array.isArray(key)) {
-        this.key = key.slice(0);
-      } else {
-        throw new Error('Pomaranch key must be string or byte array');
-      }
-      
-      // Validate key length
-      if (this.key.length !== 16 && this.key.length !== 32) {
-        throw new Error('Pomaranch key must be 128 or 256 bits (16 or 32 bytes)');
-      }
-      
-      // Process IV (default to zero if not provided)
-      if (iv) {
-        if (typeof iv === 'string') {
-          for (let i = 0; i < iv.length && this.iv.length < Pomaranch.IV_SIZE; i++) {
-            this.iv.push(iv.charCodeAt(i) & 0xFF);
-          }
-        } else if (Array.isArray(iv)) {
-          for (let i = 0; i < iv.length && this.iv.length < Pomaranch.IV_SIZE; i++) {
-            this.iv.push(iv[i] & 0xFF);
-          }
-        }
-      }
-      
-      // Pad IV to required length
-      while (this.iv.length < Pomaranch.IV_SIZE) {
-        this.iv.push(0);
-      }
-      
-      // Initialize LFSRs
-      this.initializeLFSRs();
-    }
-  };
-  
-  // Add methods to PomaranchInstance prototype
-  Pomaranch.PomaranchInstance.prototype = {
-    
-    /**
-     * Initialize the 9 LFSRs with key and IV material
-     */
-    initializeLFSRs: function() {
-      // Initialize LFSR arrays
-      for (let i = 0; i < Pomaranch.LFSR_COUNT; i++) {
-        this.lfsrs[i] = new Array(Math.ceil(Pomaranch.LFSR_LENGTHS[i] / 32)).fill(0);
-      }
-      
-      // Load key material into LFSRs (simplified approach)
-      for (let i = 0; i < Pomaranch.LFSR_COUNT; i++) {
-        const keyOffset = (i * 4) % this.key.length;
-        
-        // Pack 4 bytes into 32-bit word
-        this.lfsrs[i][0] = global.OpCodes.Pack32BE(
-          this.key[keyOffset],
-          this.key[(keyOffset + 1) % this.key.length],
-          this.key[(keyOffset + 2) % this.key.length],
-          this.key[(keyOffset + 3) % this.key.length]
+      // Mix in IV for the first few LFSRs
+      if (iv && iv.length >= 8 && i < 4) {
+        const ivOffset = i * 2;
+        lfsrs[i] ^= OpCodes.Pack32LE(
+          iv[ivOffset], iv[ivOffset + 1], 0, 0
         );
-        
-        // Add IV contribution
-        if (i < 2) {
-          const ivOffset = i * 4;
-          const ivWord = global.OpCodes.Pack32BE(
-            this.iv[ivOffset],
-            this.iv[ivOffset + 1],
-            this.iv[ivOffset + 2],
-            this.iv[ivOffset + 3]
-          );
-          this.lfsrs[i][0] ^= ivWord;
-        }
-        
-        // Ensure non-zero state
-        if (this.lfsrs[i][0] === 0) {
-          this.lfsrs[i][0] = 1;
-        }
       }
-      
-      // Run initialization rounds
-      for (let round = 0; round < Pomaranch.INIT_ROUNDS; round++) {
-        this.clockAllLFSRs();
-        // In a full implementation, feedback would be applied here
+
+      // Ensure non-zero state
+      if (lfsrs[i] === 0) {
+        lfsrs[i] = 0x12345678 + i;
       }
-    },
-    
-    /**
-     * Clock all LFSRs one step
-     */
-    clockAllLFSRs: function() {
-      for (let i = 0; i < Pomaranch.LFSR_COUNT; i++) {
-        this.clockLFSR(i);
-      }
-    },
-    
-    /**
-     * Clock a single LFSR
-     * @param {number} index - LFSR index (0-8)
-     */
-    clockLFSR: function(index) {
-      // Simplified LFSR clocking (educational implementation)
-      const lfsr = this.lfsrs[index];
-      const length = Pomaranch.LFSR_LENGTHS[index];
-      
-      // Get feedback bit (simplified)
-      const feedbackBit = lfsr[0] & 1;
-      
-      // Shift LFSR
-      for (let i = 0; i < lfsr.length - 1; i++) {
-        lfsr[i] = ((lfsr[i] >>> 1) | ((lfsr[i + 1] & 1) << 31)) >>> 0;
-      }
-      lfsr[lfsr.length - 1] >>>= 1;
-      
-      // Apply feedback polynomial (simplified)
-      if (feedbackBit) {
-        const poly = Pomaranch.LFSR_POLYNOMIALS[index];
-        lfsr[0] ^= (poly & 0xFFFFFFFF);
-      }
-    },
-    
-    /**
-     * Generate next 32-bit keystream word
-     * @returns {number} 32-bit keystream word
-     */
-    generateKeystreamWord: function() {
-      // Clock all LFSRs
-      this.clockAllLFSRs();
-      
-      // Nonlinear combining function (simplified)
-      let output = 0;
-      
-      // Combine LFSR outputs (simplified majority function)
-      for (let bit = 0; bit < 32; bit++) {
-        let bitCount = 0;
-        
-        for (let i = 0; i < Pomaranch.LFSR_COUNT; i++) {
-          if ((this.lfsrs[i][0] >>> bit) & 1) {
-            bitCount++;
-          }
-        }
-        
-        // Majority function
-        if (bitCount > Pomaranch.LFSR_COUNT / 2) {
-          output |= (1 << bit);
-        }
-      }
-      
-      return output >>> 0;
-    },
-    
-    /**
-     * Get next keystream byte
-     * @returns {number} Keystream byte (0-255)
-     */
-    getNextKeystreamByte: function() {
-      // Refill keystream buffer if needed
-      if (this.keystreamPos >= this.keystream.length) {
-        const word = this.generateKeystreamWord();
-        const bytes = global.OpCodes.Unpack32BE(word);
-        this.keystream = bytes;
-        this.keystreamPos = 0;
-      }
-      
-      return this.keystream[this.keystreamPos++];
-    },
-    
-    /**
-     * Reset cipher to initial state with optional new IV
-     * @param {Array|string} newIV - Optional new IV
-     */
-    reset: function(newIV) {
-      if (newIV !== undefined) {
-        this.iv = [];
-        if (typeof newIV === 'string') {
-          for (let i = 0; i < newIV.length && this.iv.length < Pomaranch.IV_SIZE; i++) {
-            this.iv.push(newIV.charCodeAt(i) & 0xFF);
-          }
-        } else if (Array.isArray(newIV)) {
-          for (let i = 0; i < newIV.length && this.iv.length < Pomaranch.IV_SIZE; i++) {
-            this.iv.push(newIV[i] & 0xFF);
-          }
-        }
-        
-        // Pad IV to required length
-        while (this.iv.length < Pomaranch.IV_SIZE) {
-          this.iv.push(0);
-        }
-      }
-      
-      this.keystream = [];
-      this.keystreamPos = 0;
-      this.initializeLFSRs();
-    },
-    
-    /**
-     * Set new IV for the cipher
-     * @param {Array|string} newIV - New IV value
-     */
-    setIV: function(newIV) {
-      this.reset(newIV);
     }
-  };
-  
-  // Auto-register with AlgorithmFramework if available
-  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
-    global.AlgorithmFramework.RegisterAlgorithm(Pomaranch);
+
+    // Run initialization rounds
+    for (let round = 0; round < 32; round++) {
+      for (let i = 0; i < this.LFSR_COUNT; i++) {
+        // LFSR feedback
+        const feedback = ((lfsrs[i] >>> 31) ^ (lfsrs[i] >>> 6) ^ (lfsrs[i] >>> 4) ^ (lfsrs[i] >>> 1)) & 1;
+        lfsrs[i] = ((lfsrs[i] << 1) | feedback) >>> 0;
+      }
+    }
+
+    // Generate keystream and encrypt data
+    const output = [];
+
+    for (let i = 0; i < data.length; i++) {
+      // Clock all LFSRs
+      for (let j = 0; j < this.LFSR_COUNT; j++) {
+        const feedback = ((lfsrs[j] >>> 31) ^ (lfsrs[j] >>> 6) ^ (lfsrs[j] >>> 4) ^ (lfsrs[j] >>> 1)) & 1;
+        lfsrs[j] = ((lfsrs[j] << 1) | feedback) >>> 0;
+      }
+
+      // Nonlinear combining function (majority + XOR)
+      let keystreamByte = 0;
+      for (let bit = 0; bit < 8; bit++) {
+        let majority = 0;
+
+        // Count bits from all LFSRs at current position
+        for (let j = 0; j < this.LFSR_COUNT; j++) {
+          if ((lfsrs[j] >>> bit) & 1) {
+            majority++;
+          }
+        }
+
+        // Majority function
+        if (majority >= 5) {
+          keystreamByte |= (1 << bit);
+        }
+      }
+
+      // Additional mixing with position and key material
+      keystreamByte ^= (key[i % key.length] + i) & 0xFF;
+      keystreamByte ^= (lfsrs[i % this.LFSR_COUNT] >>> ((i % 4) * 8)) & 0xFF;
+
+      output.push(data[i] ^ (keystreamByte & 0xFF));
+    }
+
+    return output;
   }
-  
-  // Legacy registration
-  if (typeof global.RegisterAlgorithm === 'function') {
-    global.RegisterAlgorithm(Pomaranch);
+}
+
+  // ===== REGISTRATION =====
+
+  const algorithmInstance = new Pomaranch();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher) {
-    global.Cipher.Add(Pomaranch);
-  }
-  
-  // Export to global scope
-  global.Pomaranch = Pomaranch;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = Pomaranch;
-  }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
+
+  // ===== EXPORTS =====
+
+  return { Pomaranch, PomaranchInstance };
+}));
