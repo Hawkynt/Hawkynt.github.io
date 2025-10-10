@@ -84,19 +84,19 @@
       this.tests = [
         new TestCase(
           OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317"), // 15 bytes
-          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e11739317800000000000000000000000000000000000"), // Padded to 32 bytes
-          "ISO 7816-4 padding with 1 byte needed",
+          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393178000000000000000000000000000000000"), // Padded to 32 bytes (15 + 17)
+          "ISO 7816-4 padding with 17 bytes needed",
           "ISO/IEC 7816-4"
         ),
         new TestCase(
-          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // 16 bytes (full block)
-          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a8000000000000000000000000000000000"), // Padded to 32 bytes
-          "ISO 7816-4 padding for full block",
+          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // 16 bytes (half block)
+          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a80000000000000000000000000000000"), // Padded to 32 bytes (16 + 16)
+          "ISO 7816-4 padding for half block",
           "ISO/IEC 7816-4"
         ),
         new TestCase(
           OpCodes.Hex8ToBytes("6bc1bee22e"), // 5 bytes
-          OpCodes.Hex8ToBytes("6bc1bee22e800000"), // Padded to 8 bytes
+          OpCodes.Hex8ToBytes("6bc1bee22e800000"), // Padded to 8 bytes (5 + 3)
           "ISO 7816-4 padding with 3 bytes needed",
           "ISO/IEC 7816-4"
         )
@@ -122,18 +122,16 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.inputBuffer = [];
-      this.blockSize = 16; // Default block size
+      this._blockSize = 16; // Default block size
     }
 
-    /**
-     * Set the block size for padding
-     * @param {number} blockSize - Block size in bytes (1-255)
-     */
-    setBlockSize(blockSize) {
-      if (!blockSize || blockSize < 1 || blockSize > 255) {
+    // Property getter and setter for test framework
+    get blockSize() { return this._blockSize; }
+    set blockSize(value) {
+      if (!value || value < 1 || value > 255) {
         throw new Error("Block size must be between 1 and 255 bytes");
       }
-      this.blockSize = blockSize;
+      this._blockSize = value;
     }
 
     Feed(data) {
@@ -159,7 +157,7 @@
      */
     _addPadding() {
       const data = this.inputBuffer;
-      const paddingLength = this.blockSize - (data.length % this.blockSize);
+      const paddingLength = this._blockSize - (data.length % this._blockSize);
 
       // Always add padding: 0x80 followed by zeros
       const padding = [0x80];
@@ -168,10 +166,10 @@
       }
 
       // If no padding needed (data is exact multiple), add full block
-      if (paddingLength === this.blockSize) {
+      if (paddingLength === this._blockSize) {
         padding.length = 0;
         padding.push(0x80);
-        for (let i = 1; i < this.blockSize; i++) {
+        for (let i = 1; i < this._blockSize; i++) {
           padding.push(0x00);
         }
       }
@@ -196,7 +194,7 @@
         return paddedData;
       }
 
-      if (paddedData.length % this.blockSize !== 0) {
+      if (paddedData.length % this._blockSize !== 0) {
         throw new Error("Padded data length must be multiple of block size");
       }
 
