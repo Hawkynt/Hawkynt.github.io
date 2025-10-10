@@ -45,7 +45,7 @@
   // ===== S-BOXES FROM DSTU 7624:2014 =====
   // 4 S-boxes cycling through byte positions
 
-  const S = [
+  const S = Object.freeze([
     // S-box 0
     new Uint8Array([
       0xa8, 0x43, 0x5f, 0x06, 0x6b, 0x75, 0x6c, 0x59, 0x71, 0xdf, 0x87, 0x95, 0x17, 0xf0, 0xd8, 0x09,
@@ -122,17 +122,18 @@
       0xcb, 0xbb, 0x6b, 0x76, 0xba, 0x5a, 0x7d, 0x78, 0x0b, 0x95, 0xe3, 0xad, 0x74, 0x98, 0x3b, 0x36,
       0x64, 0x6d, 0xdc, 0xf0, 0x59, 0xa9, 0x4c, 0x17, 0x7f, 0x91, 0xb8, 0xc9, 0x57, 0x1b, 0xe0, 0x61
     ])
-  ];
+  ]);
 
   // Inverse S-boxes (computed on demand)
   let IS = null;
 
   // T-tables and IT-tables (generated from S-boxes and MDS matrix)
+  // Note: These are dynamically initialized at runtime, not frozen
   const T = [];
   const IT = [];
 
   // MDS matrix for diffusion (8x8 circulant matrix from DSTU 7624:2014)
-  const MDS = [
+  const MDS = Object.freeze([
     [0x01, 0x01, 0x05, 0x01, 0x08, 0x06, 0x07, 0x04],
     [0x04, 0x01, 0x01, 0x05, 0x01, 0x08, 0x06, 0x07],
     [0x07, 0x04, 0x01, 0x01, 0x05, 0x01, 0x08, 0x06],
@@ -141,10 +142,10 @@
     [0x01, 0x08, 0x06, 0x07, 0x04, 0x01, 0x01, 0x05],
     [0x05, 0x01, 0x08, 0x06, 0x07, 0x04, 0x01, 0x01],
     [0x01, 0x05, 0x01, 0x08, 0x06, 0x07, 0x04, 0x01]
-  ];
+  ]);
 
   // Inverse MDS matrix
-  const IMDS = [
+  const IMDS = Object.freeze([
     [0xad, 0x95, 0x76, 0xa8, 0x2f, 0x49, 0xd7, 0xca],
     [0xca, 0xad, 0x95, 0x76, 0xa8, 0x2f, 0x49, 0xd7],
     [0xd7, 0xca, 0xad, 0x95, 0x76, 0xa8, 0x2f, 0x49],
@@ -153,7 +154,7 @@
     [0xa8, 0x2f, 0x49, 0xd7, 0xca, 0xad, 0x95, 0x76],
     [0x76, 0xa8, 0x2f, 0x49, 0xd7, 0xca, 0xad, 0x95],
     [0x95, 0x76, 0xa8, 0x2f, 0x49, 0xd7, 0xca, 0xad]
-  ];
+  ]);
 
   // GF(2^8) multiplication using polynomial 0x11d (Kalyna-specific)
   function KalynaGF256Mul(a, b) {
@@ -202,7 +203,7 @@
     for (let i = 0; i < 8; i++) IT[i] = new Array(256);
 
     // IT[0]
-    const IT0 = [
+    const IT0 = Object.freeze([
       0x7826942b9f5f8a9an, 0x210f43c934970c53n, 0x5f028fdd9d0551b8n, 0x14facd82b494c83bn,
       0x2b72ab886edd68c0n, 0xa6a87e5bff19d9b4n, 0xa29ae571db6443ean, 0x039b2c911be8e5b6n,
       0xd9275dcb5fd32cc6n, 0x10c856a890e95265n, 0x7d96e085b27ab85dn, 0x31c71561a47e5e36n,
@@ -267,11 +268,11 @@
       0x2ec2df2643f85a07n, 0x22946f582f7fe9e5n, 0x366ea2da9beb21den, 0x4a7aaddb20c9311an,
       0xb1c99f485065f439n, 0xb04b70cc593d5ca0n, 0xab7c21a19ac6c2cfn, 0x33ded674b6ce1319n,
       0xce46bcd8f0af014bn, 0xdb3e9ede4d6361e9n, 0x7669e740e1687457n, 0x514dfcb6e332af75n
-    ];
+    ]);
     for (let i = 0; i < 256; i++) IT[0][i] = IT0[i];
 
     // IT[1]
-    const IT1 = [
+    const IT1 = Object.freeze([
       0x1f4f6fa8bfbefae3n, 0xf0440c6785c0592an, 0x1dc0b235baef42bcn, 0x22978cb85528f7c6n,
       0xcedad22ae6a1b0f1n, 0x180af5d23ceb73a3n, 0x946f582f7fe9e522n, 0xe44b0ddca7d09d56n,
       0x906cff08754b889cn, 0x9f2f363ce247dbbdn, 0xa1b1e87181263266n, 0x21d1b1e5dcdf1338n,
@@ -336,11 +337,11 @@
       0xd5961aa553bd27acn, 0x61e113af7c2d8d17n, 0x100ca69c28b2a9c2n, 0xcf1332ea6a07ec50n,
       0xc856a890e9526510n, 0x2b583f36cdd77106n, 0x932ac255fcbc6c62n, 0x0b406e139dae3e9fn,
       0x832664c9d40ec5a0n, 0x3014f7b978cbe65bn, 0x2c1da54c4e82f846n, 0x986aac46611252fdn
-    ];
+    ]);
     for (let i = 0; i < 256; i++) IT[1][i] = IT1[i];
 
     // IT[2]
-    const IT2 = [
+    const IT2 = Object.freeze([
       0x679cc74f352b557fn, 0x376719b23e9424bfn, 0xcc14a9925deb7e0dn, 0xb07e6c87b3e20c56n,
       0xa17dbce183b3886an, 0xee12145e3d496b75n, 0x406e139dae3e9f0bn, 0x942b9f5f8a9a7826n,
       0xb24f568b845fd8a5n, 0xdf2643f85a072ec2n, 0x8c7aba0ff3d5e106n, 0x0b63cf3a7ea3c9efn,
@@ -405,11 +406,11 @@
       0x6059945df9215e80n, 0x05f4691efbb7df0cn, 0x5b9811c7751cb82fn, 0x2b5448fa29bc0864n,
       0xba8bbebb5891af4en, 0xf4720b0273bb26a6n, 0xdd1779f46dbafa31n, 0x6ece32797c354863n,
       0x7fcde21f4c64cc5fn, 0x2206bdcc60a21578n, 0x75383023a7176f47n, 0xf3b75810bfb12d59n
-    ];
+    ]);
     for (let i = 0; i < 256; i++) IT[2][i] = IT2[i];
 
     // IT[3]
-    const IT3 = [
+    const IT3 = Object.freeze([
       0x03d0663051843c11n, 0xbfe91d3fdfeaf98bn, 0xf80e9b3beef5fc41n, 0xe5ad26f6af3045fan,
       0x5a443bc970dabc71n, 0x7b012de3119d1283n, 0x82b494c83b14facdn, 0x750dec03dd4fcad9n,
       0x090a2f90aabbb477n, 0xb6e332af75514dfcn, 0xadfd430296818c65n, 0xfd63316b1d64b872n,
@@ -474,11 +475,11 @@
       0x9cc74f352b557f67n, 0x4d3dcfa4ca208dacn, 0x2b9f5f8a9a782694n, 0xaafbad72f0e8e048n,
       0xc934970c53210f43n, 0xed1c2b76c1f7e582n, 0x01bb2210c47c140fn, 0x0ddca7d09d56e44bn,
       0x2d2293ea386d5eb6n, 0xf7b978cbe65b3014n, 0x6719b23e9424bf37n, 0x2295701a30c392e3n
-    ];
+    ]);
     for (let i = 0; i < 256; i++) IT[3][i] = IT3[i];
 
     // IT[4]
-    const IT4 = [
+    const IT4 = Object.freeze([
       0x9f5f8a9a7826942bn, 0x34970c53210f43c9n, 0x9d0551b85f028fddn, 0xb494c83b14facd82n,
       0x6edd68c02b72ab88n, 0xff19d9b4a6a87e5bn, 0xdb6443eaa29ae571n, 0x1be8e5b6039b2c91n,
       0x5fd32cc6d9275dcbn, 0x90e9526510c856a8n, 0xb27ab85d7d96e085n, 0xa47e5e3631c71561n,
@@ -543,11 +544,11 @@
       0x43f85a072ec2df26n, 0x2f7fe9e522946f58n, 0x9beb21de366ea2dan, 0x20c9311a4a7aaddbn,
       0x5065f439b1c99f48n, 0x593d5ca0b04b70ccn, 0x9ac6c2cfab7c21a1n, 0xb6ce131933ded674n,
       0xf0af014bce46bcd8n, 0x4d6361e9db3e9eden, 0xe16874577669e740n, 0xe332af75514dfcb6n
-    ];
+    ]);
     for (let i = 0; i < 256; i++) IT[4][i] = IT4[i];
 
     // IT[5]
-    const IT5 = [
+    const IT5 = Object.freeze([
       0xbfbefae31f4f6fa8n, 0x85c0592af0440c67n, 0xbaef42bc1dc0b235n, 0x5528f7c622978cb8n,
       0xe6a1b0f1cedad22an, 0x3ceb73a3180af5d2n, 0x7fe9e522946f582fn, 0xa7d09d56e44b0ddcn,
       0x754b889c906cff08n, 0xe247dbbd9f2f363cn, 0x81263266a1b1e871n, 0xdcdf133821d1b1e5n,
@@ -612,11 +613,11 @@
       0x53bd27acd5961aa5n, 0x7c2d8d1761e113afn, 0x28b2a9c2100ca69cn, 0x6a07ec50cf1332ean,
       0xe9526510c856a890n, 0xcdd771062b583f36n, 0xfcbc6c62932ac255n, 0x9dae3e9f0b406e13n,
       0xd40ec5a0832664c9n, 0x78cbe65b3014f7b9n, 0x4e82f8462c1da54cn, 0x611252fd986aac46n
-    ];
+    ]);
     for (let i = 0; i < 256; i++) IT[5][i] = IT5[i];
 
     // IT[6]
-    const IT6 = [
+    const IT6 = Object.freeze([
       0x352b557f679cc74fn, 0x3e9424bf376719b2n, 0x5deb7e0dcc14a992n, 0xb3e20c56b07e6c87n,
       0x83b3886aa17dbce1n, 0x3d496b75ee12145en, 0xae3e9f0b406e139dn, 0x8a9a7826942b9f5fn,
       0x845fd8a5b24f568bn, 0x5a072ec2df2643f8n, 0xf3d5e1068c7aba0fn, 0x7ea3c9ef0b63cf3an,
@@ -681,11 +682,11 @@
       0xf9215e806059945dn, 0xfbb7df0c05f4691en, 0x751cb82f5b9811c7n, 0x29bc08642b5448fan,
       0x5891af4eba8bbebbn, 0x73bb26a6f4720b02n, 0x6dbafa31dd1779f4n, 0x7c3548636ece3279n,
       0x4c64cc5f7fcde21fn, 0x60a215782206bdccn, 0xa7176f4775383023n, 0xbfb12d59f3b75810n
-    ];
+    ]);
     for (let i = 0; i < 256; i++) IT[6][i] = IT6[i];
 
     // IT[7]
-    const IT7 = [
+    const IT7 = Object.freeze([
       0x51843c1103d06630n, 0xdfeaf98bbfe91d3fn, 0xeef5fc41f80e9b3bn, 0xaf3045fae5ad26f6n,
       0x70dabc715a443bc9n, 0x119d12837b012de3n, 0x3b14facd82b494c8n, 0xdd4fcad9750dec03n,
       0xaabbb477090a2f90n, 0x75514dfcb6e332afn, 0x96818c65adfd4302n, 0x1d64b872fd63316bn,
@@ -750,7 +751,7 @@
       0x2b557f679cc74f35n, 0xca208dac4d3dcfa4n, 0x9a7826942b9f5f8an, 0xf0e8e048aafbad72n,
       0x53210f43c934970cn, 0xc1f7e582ed1c2b76n, 0xc47c140f01bb2210n, 0x9d56e44b0ddca7d0n,
       0x386d5eb62d2293ean, 0xe65b3014f7b978cbn, 0x9424bf376719b23en, 0x30c392e32295701an
-    ];
+    ]);
     for (let i = 0; i < 256; i++) IT[7][i] = IT7[i];
   }
 
