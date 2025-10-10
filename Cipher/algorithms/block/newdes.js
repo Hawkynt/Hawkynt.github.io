@@ -92,6 +92,10 @@
         new KeySize(15, 15, 0) // Fixed 120-bit (15-byte) key
       ];
 
+      // AlgorithmFramework compatibility
+      this.SupportedKeySizes = [new KeySize(15, 15, 0)]; // Fixed 120-bit (15-byte) key
+      this.SupportedBlockSizes = [new KeySize(8, 8, 1)]; // Fixed 64-bit (8-byte) blocks
+
       // Documentation and references
       this.documentation = [
         new LinkItem("NewDES Original Paper", "https://www.tandfonline.com/doi/abs/10.1080/0161-118591857944"),

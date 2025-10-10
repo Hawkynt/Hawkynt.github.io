@@ -94,6 +94,10 @@
     maxBlockSize: 16,   // Fixed 128-bit blocks
     stepBlockSize: 1,
 
+    // AlgorithmFramework compatibility
+    SupportedKeySizes: global.AlgorithmFramework ? [new global.AlgorithmFramework.KeySize(16, 32, 8)] : null,
+    SupportedBlockSizes: global.AlgorithmFramework ? [new global.AlgorithmFramework.KeySize(16, 16, 1)] : null,
+
     // Algorithm state
     roundKeys: null,
     rounds: 6,
