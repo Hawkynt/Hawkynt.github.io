@@ -51,33 +51,33 @@ A word on categories:
 | block                        | DES                            | IBM                                         | 1977        | NIST FIPS 46, DarkCrypt                         | All libraries                    | ✅            | ✅ `des.js`                                  |
 | block                        | DES-X                          | Ron Rivest                                  | 1984        | DarkCrypt                                       | Crypto++                         | ✅            | ✅ `des-x.js`                                |
 | block                        | DFC                            | CNRS                                        | 1998        | AES candidate, DarkCrypt                        | Academic papers                  | ✅            | ✅ `dfc.js`                                  |
-| block                        | Diamond II                     | Michael Johnson                             | 1998        | DarkCrypt                                       | -                                | ❌            | ❌ Missing                                   |
+| block                        | Diamond II                     | Michael Paul Johnson                        | 1998        | DarkCrypt, DLOCK2                               | cryptography.org/mpj             | ✅            | ✅ `diamond2.js`                             |
 | block                        | E2                             | NTT                                         | 1998        | AES candidate, DarkCrypt                        | Academic papers                  | ❌            | ⚠️ `e2.js` (in stream/)                      |
 | block                        | FEAL                           | NTT                                         | 1987        | Academic, DarkCrypt                             | Academic papers                  | ✅            | ✅ `feal.js`                                 |
 | block                        | FROG                           | TecApro                                     | 1998        | AES candidate, DarkCrypt                        | Academic papers, EmbeddedSW.net  | ✅            | ✅ `frog.js`                                 |
 | block                        | GOST 28147-89                  | USSR/Russia                                 | 1989        | Russian standard, DarkCrypt                     | OpenSSL, Crypto++                | ✅            | ✅ `gost28147.js`                            |
 | block                        | GOST R 34.12-2015 (Kuznyechik) | Russia                                      | 2015        | Russian standard                                | OpenSSL                          | ✅            | ✅ `gost-kuznyechik.js`                      |
-| block                        | Grand Cru                      | Johan Borst                                 | 2000        | NESSIE                                          | Academic papers                  | ❌            | ❌ Missing                                   |
+| block                        | Grand Cru                      | Johan Borst                                 | 2000        | NESSIE                                          | Academic papers                  | ✅            | ✅ `grand-cru.js`                            |
 | block                        | Hierocrypt-3                   | Toshiba                                     | 2000        | NESSIE, DarkCrypt                               | Academic papers, EmbeddedSW.net  | ✅            | ✅ `hierocrypt3.js`                          |
-| block                        | Hierocrypt-L1                  | Toshiba                                     | 2000        | NESSIE, DarkCrypt                               | Academic papers                  | ❌            | ❌ Missing                                   |
-| block                        | HPC                            | Rich Schroeppel                             | 1998        | AES candidate, DarkCrypt                        | Academic papers                  | ❌            | ❌ Missing                                   |
-| block                        | Hurricane                      | -                                           | -           | DarkCrypt                                       | -                                | ❌            | ❌ Missing                                   |
-| block                        | Ice                            | Matthew Kwan                                | 1997        | DarkCrypt                                       | Academic papers                  | ❌            | ❌ Missing                                   |
-| block                        | Ice2                           | Matthew Kwan                                | 1997        | DarkCrypt                                       | Academic papers                  | ❌            | ❌ Missing                                   |
+| block                        | Hierocrypt-L1                  | Toshiba                                     | 2000        | NESSIE, DarkCrypt                               | Academic papers                  | ✅            | ✅ `hierocrypt-l1.js`                        |
+| block                        | HPC                            | Rich Schroeppel                             | 1998        | AES candidate, DarkCrypt                        | Academic papers                  | ❌            | ❌ Missing (specs/vectors inaccessible)      |
+| block                        | Hurricane                      | Roman Ganin                                 | 2005        | DarkCrypt, GitHub                               | GitHub rganin/hurricane          | ✅            | ✅ `hurricane.js`                            |
+| block                        | Ice                            | Matthew Kwan                                | 1997        | DarkCrypt                                       | darkside.com.au                  | ✅            | ✅ `ice.js`                                  |
+| block                        | Ice2                           | Matthew Kwan                                | 1997        | DarkCrypt                                       | darkside.com.au                  | ✅            | ✅ `ice2.js`                                 |
 | block                        | IDEA                           | Xuejia Lai, James Massey                    | 1991        | PGP, DarkCrypt                                  | OpenSSL, Crypto++                | ✅            | ✅ `idea.js`                                 |
 | block                        | IDEA-NXT (FOX)                 | MediaCrypt                                  | 2003        | DarkCrypt                                       | Academic papers                  | ❌            | ❌ Missing                                   |
 | block                        | Iraqi                          | -                                           | -           | DarkCrypt                                       | -                                | ❌            | ❌ Missing                                   |
 | block                        | Kalyna                         | Ukraine                                     | 2014        | Ukrainian standard                              | Reference implementation         | ✅            | ✅ `kalyna.js`                               |
-| block                        | Kasumi                         | 3GPP                                        | 1999        | 3GPP, DarkCrypt                                 | OpenSSL                          | ❌            | ❌ Missing                                   |
+| block                        | Kasumi                         | 3GPP                                        | 1999        | 3GPP, DarkCrypt                                 | OpenSSL                          | ✅            | ✅ `kasumi.js`                               |
 | block                        | Keeloq                         | Nanoteq                                     | 1985        | DarkCrypt                                       | Academic papers, GitHub          | ✅            | ✅ `keeloq.js`                               |
 | block                        | Khazad                         | Paulo Barreto, Vincent Rijmen               | 2000        | NESSIE, DarkCrypt                               | Bouncy Castle                    | ✅            | ✅ `khazad.js`                               |
-| block                        | Khufu                          | Ralph Merkle                                | 1990        | DarkCrypt                                       | Academic papers                  | ❌            | ❌ Missing                                   |
+| block                        | Khufu                          | Ralph Merkle                                | 1990        | DarkCrypt                                       | Academic papers                  | ✅            | ✅ `khufu.js`                                |
 | block                        | LEA                            | KISA (South Korea)                          | 2013        | ISO/IEC 29192-2                                 | Reference implementation         | ✅            | ✅ `lea.js`                                  |
 | block                        | LOKI89                         | ADFA                                        | 1989        | Academic                                        | Academic papers                  | ✅            | ✅ `loki89.js`                               |
 | block                        | LOKI91                         | ADFA                                        | 1991        | Academic                                        | Academic papers                  | ✅            | ✅ `loki91.js`                               |
 | block                        | LOKI97                         | ADFA                                        | 1997        | AES candidate, DarkCrypt                        | Academic papers                  | ✅            | ✅ `loki97.js`                               |
 | block                        | Lucifer                        | Horst Feistel (IBM)                         | 1971        | Historical, DarkCrypt                           | Academic papers                  | ✅            | ✅ `lucifer.js`                              |
-| block                        | MacGuffin                      | Bruce Schneier, Matt Blaze                  | 1994        | DarkCrypt                                       | Academic papers                  | ❌            | ❌ Missing                                   |
+| block                        | MacGuffin                      | Bruce Schneier, Matt Blaze                  | 1994        | DarkCrypt                                       | Academic papers                  | ⚠️            | ⚠️ `macguffin.js` (decryption incomplete)   |
 | block                        | Magenta                        | Deutsche Telekom                            | 1998        | AES candidate, DarkCrypt                        | Academic papers                  | ✅            | ✅ `magenta.js`                              |
 | block                        | Mars                           | IBM                                         | 1998        | AES finalist, DarkCrypt                         | Crypto++                         | ✅            | ✅ `mars.js`                                 |
 | block                        | Mercy                          | Paul Crowley                                | 2000        | DarkCrypt                                       | Academic papers                  | ❌            | ❌ Missing                                   |
@@ -126,14 +126,9 @@ A word on categories:
 | block                        | RHX                            | -                                           | -           | CEX                                             | Academic                         | ✅            | ✅ `rhx.js`                                  |
 | block                        | SHX                            | -                                           | -           | CEX                                             | Academic                         | ✅            | ✅ `shx.js`                                  |
 | block                        | THX                            | -                                           | -           | CEX                                             | Academic                         | ✅            | ✅ `thx.js`                                  |
-| block                        | FROG                           | Georgi et al.                               | 1998        | DarkCrypt TC                                    |                                  | ❌            | ❌ Missing                                   |
 | block                        | SCOP                           | -                                           | -           | DarkCrypt TC                                    |                                  | ❌            | ❌ Missing                                   |
 | block                        | Q128                           | -                                           | -           | DarkCrypt TC                                    |                                  | ❌            | ❌ Missing                                   |
-| block                        | Shark                          | Rijmen et al.                               | 1996        | DarkCrypt TC, AES precursor                     |                                  | ❌            | ❌ Missing                                   |
-| block                        | Square                         | Daemen et al.                               | 1997        | DarkCrypt TC, AES precursor                     |                                  | ❌            | ❌ Missing                                   |
-| block                        | Diamond II                     | -                                           | -           | DarkCrypt TC                                    |                                  | ❌            | ❌ Missing                                   |
-| block                        | Diamond II Lite                | -                                           | -           | DarkCrypt TC                                    |                                  | ❌            | ❌ Missing                                   |
-| block                        | NewDES                         | Scott                                       | 1985        | DarkCrypt TC, DES variant                       |                                  | ❌            | ❌ Missing                                   |
+| block                        | Diamond II Lite                | Michael Paul Johnson                        | 1998        | DarkCrypt TC (64-bit variant)                   | cryptography.org/mpj             | ⚠️            | ⚠️ Related: `diamond2.js` (128-bit version)  |
 | block                        | Bassomatic                     | -                                           | -           | DarkCrypt TC                                    |                                  | ❌            | ❌ Missing                                   |
 | block                        | Bassomatic-89                  | -                                           | -           | DarkCrypt TC                                    |                                  | ❌            | ❌ Missing                                   |
 | block                        | Noekeon Indirect               | -                                           | -           | DarkCrypt TC                                    |                                  | ❌            | ❌ Missing                                   |
@@ -563,10 +558,10 @@ The comprehensive algorithm table above covers submissions and winners from majo
 
 ### **Coverage Statistics (Updated with Research Results)**
 
-* **Total Algorithms Tracked**: 324 current implementations + 75+ newly researched = **399+ algorithms**
-* **Fully Functional**: ~240 algorithms (60%)
-* **Partially Working**: ~55 algorithms (14%)
-* **Research Targets**: 75+ newly identified algorithms (19%)
+* **Total Algorithms Tracked**: 332 current implementations + 70+ newly researched = **402+ algorithms**
+* **Fully Functional**: ~247 algorithms (61%)
+* **Partially Working**: ~56 algorithms (14%)
+* **Research Targets**: 70+ newly identified algorithms (18%)
 * **Missing/Legacy**: ~30 algorithms (7%)
 
 ### **Category Breakdown (Updated)**
@@ -574,7 +569,7 @@ The comprehensive algorithm table above covers submissions and winners from majo
 | Category               | Current | New Research | Total | Implementation Priority    |
 | ---------------------- | ------- | ------------ | ----- | -------------------------- |
 | **Compression**        | 39      | 20+          | 59+   | High (modern algorithms)   |
-| **Block Ciphers**      | 82      | 12+          | 94+   | Medium (missing finalists) |
+| **Block Ciphers**      | 90      | 7+           | 97+   | Medium (missing finalists) |
 | **Stream Ciphers**     | 44      | 8+           | 52+   | Medium (eSTREAM missing)   |
 | **Error Correction**   | 4       | 25+          | 29+   | High (educational value)   |
 | **Random Generators**  | 1       | 35+          | 36+   | High (fundamental CS)      |
@@ -733,5 +728,5 @@ Based on systematic research across 437 cryptographic algorithms, we have compil
 This systematic reference collection enables offline verification, educational study, and implementation validation for the complete cryptographic algorithm library while maintaining strict adherence to authoritative sources and academic rigor.
 
 ---
-*Last Updated: 2025-09-01*  
-*Total Algorithms: 437 tracked | Reference Libraries: 10 cloned | Authoritative Sources: 200+ URIs | Official Standards: 25+ NIST/IETF*
+*Last Updated: 2025-10-10*
+*Total Algorithms: 402+ tracked | Reference Libraries: 10 cloned | Authoritative Sources: 200+ URIs | Official Standards: 25+ NIST/IETF*
