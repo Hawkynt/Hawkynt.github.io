@@ -2,8 +2,8 @@
 
 *Production-ready cryptographic algorithms with bit-perfect test vector validation*
 
-[![Algorithms](https://img.shields.io/badge/Algorithms-353-blue.svg)](https://hawkynt.github.io/Cipher/)
-[![Working](https://img.shields.io/badge/Working-353%20(100%25)-brightgreen.svg)](https://hawkynt.github.io/Cipher/)
+[![Algorithms](https://img.shields.io/badge/Algorithms-358-blue.svg)](https://hawkynt.github.io/Cipher/)
+[![Working](https://img.shields.io/badge/Working-358%20(100%25)-brightgreen.svg)](https://hawkynt.github.io/Cipher/)
 [![Categories](https://img.shields.io/badge/Categories-15-green.svg)](https://hawkynt.github.io/Cipher/)
 ![License](https://img.shields.io/github/license/Hawkynt/Hawkynt.github.io/Cipher/)
 
@@ -36,7 +36,7 @@ Cipher Tools is a **professional-grade cryptographic implementation library** fe
 
 ### 🌟 What Makes This Special
 
-- **353 Production Implementations** - Professional-grade cryptographic library with 100% test vector validation
+- **358 Production Implementations** - Professional-grade cryptographic library with 100% test vector validation
 - **Bit-Perfect Test Vector Validation** - Every algorithm verified against official NIST, RFC, and academic test vectors
 - **Professional Code Quality** - Production-ready implementations suitable for real-world encryption libraries
 - **Algorithm Chaining System** - Upload → Compress → Cipher → Cipher → Download workflows
@@ -89,9 +89,9 @@ Cipher Tools is a **professional-grade cryptographic implementation library** fe
 
 | Category | Color | Implemented | Examples |
 |----------|-------|-------------|----------|
-| 🔵 **Block Ciphers** | Blue | 64 | AES, DES, Blowfish, Serpent, GIFT, Kalyna |
+| 🔵 **Block Ciphers** | Blue | 68 | AES, DES, Blowfish, Serpent, GIFT, Kalyna, SIMECK, HIGHT, Shark, Tnepres |
 | 🗜️ **Compression** | Green | 49 | Brotli, LZ4, LZMA2, Huffman, RLE, Snappy |
-| 🌊 **Stream Ciphers** | Light Blue | 47 | ChaCha20, RC4, Salsa20, SOSEMANUK, ACORN |
+| 🌊 **Stream Ciphers** | Light Blue | 48 | ChaCha20, RC4, Salsa20, SOSEMANUK, ACORN, SEAL |
 | #️⃣ **Hash Functions** | Yellow | 35 | SHA-256, BLAKE3, xxHash3, HighwayHash, MD5 |
 | 📜 **Classical Ciphers** | Orange | 26 | Caesar, Vigenère, Jefferson Wheel, Enigma |
 | 🔐 **Cipher Modes** | Dark Blue | 26 | ECB, CBC, CTR, GCM, CCM, XTS, OFB |
@@ -229,12 +229,12 @@ Cipher Tools is a **professional-grade cryptographic implementation library** fe
 
 ### Complete Algorithm Coverage
 
-The library includes **355 fully-implemented cryptographic algorithms** across 15 categories. For the complete breakdown by category, see the [Algorithm Categories & Color Coding](#-algorithm-categories--color-coding) section above and the [Directory Structure](#directory-structure-updated-2025) section below.
+The library includes **358 fully-implemented cryptographic algorithms** across 15 categories. For the complete breakdown by category, see the [Algorithm Categories & Color Coding](#-algorithm-categories--color-coding) section above and the [Directory Structure](#directory-structure-updated-2025) section below.
 
 **Key Highlights:**
-- **64 Block Ciphers** including AES, DES, 3DES, Blowfish, Twofish, Serpent, ARIA, Camellia, CAST, IDEA, RC5, RC6, SEED, TEA, XTEA, Threefish, SM4, and many more
+- **68 Block Ciphers** including AES, DES, 3DES, Blowfish, Twofish, Serpent, Tnepres, ARIA, Camellia, CAST, IDEA, RC5, RC6, SEED, TEA, XTEA, Threefish, SM4, SIMECK, HIGHT, Shark, and many more
 - **49 Compression Algorithms** including Huffman, LZ77, LZ78, LZW, LZSS, LZO, LZMA, Brotli, Snappy, RLE, BWT, and arithmetic coding variants
-- **47 Stream Ciphers** including ChaCha20, Salsa20, RC4, A5/1, A5/2, Grain, Trivium, SOSEMANUK, ZUC, MICKEY, Rabbit, HC-128, and others
+- **48 Stream Ciphers** including ChaCha20, Salsa20, RC4, SEAL, A5/1, A5/2, Grain, Trivium, SOSEMANUK, ZUC, MICKEY, Rabbit, HC-128, and others
 - **35 Hash Functions** including SHA-1, SHA-2 family, SHA-3/Keccak, BLAKE2/BLAKE3, MD5, MD4, MD2, RIPEMD variants, Whirlpool, Tiger, xxHash, CityHash, SipHash, and more
 - **26 Cipher Modes** including ECB, CBC, CTR, GCM, CCM, XTS, OCB, EAX, and other standard and authenticated modes
 - **26 Classical Ciphers** including Caesar, Vigenère, Playfair, Enigma, Hill, Rail Fence, and historical substitution/transposition ciphers
@@ -273,7 +273,7 @@ Each algorithm is evaluated for metadata completeness across five key areas:
 
 ### 📊 Current Compliance Status
 
-The project maintains comprehensive metadata for all 355 algorithms. Each algorithm includes:
+The project maintains comprehensive metadata for all 358 algorithms. Each algorithm includes:
 
 **Core Metadata** (100% coverage):
 - Algorithm name and description
