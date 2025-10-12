@@ -86,33 +86,38 @@
         new LinkItem("Cryptographic Constructions", "https://github.com/jedisct1/gimli-constructions")
       ];
 
-      // Test vectors from reference implementation
+      // Test vectors from official C reference implementation
+      // Source: https://gimli.cr.yp.to/impl.html (lightweight-crypto repository)
       this.tests = [
         {
-          text: "Gimli zero input test vector",
-          uri: "https://gimli.cr.yp.to/",
-          input: new Array(48).fill(0), // All zeros 384-bit input
+          text: "Gimli permutation test vector from C reference",
+          uri: "https://github.com/rweather/lightweight-crypto/blob/master/test/unit/test-gimli24.c",
+          input: [
+            0x00, 0x00, 0x00, 0x00, 0xba, 0x79, 0x37, 0x9e,
+            0x7a, 0xf3, 0x6e, 0x3c, 0x46, 0x6d, 0xa6, 0xda,
+            0x24, 0xe7, 0xdd, 0x78, 0x1a, 0x61, 0x15, 0x17,
+            0x2e, 0xdb, 0x4c, 0xb5, 0x66, 0x55, 0x84, 0x53,
+            0xc8, 0xcf, 0xbb, 0xf1, 0x5a, 0x4a, 0xf3, 0x8f,
+            0x22, 0xc5, 0x2a, 0x2e, 0x26, 0x40, 0x62, 0xcc
+          ],
           expected: [
-            26, 36, 157, 231, 86, 112, 48, 138, 132, 240, 10, 0,
-            141, 40, 200, 167, 123, 46, 46, 115, 61, 195, 239, 40,
-            118, 47, 25, 229, 108, 161, 50, 86, 198, 38, 212, 241,
-            172, 158, 17, 0, 179, 60, 8, 18, 162, 190, 194, 175
+            0x5a, 0xc8, 0x11, 0xba, 0x19, 0xd1, 0xba, 0x91,
+            0x80, 0xe8, 0x0c, 0x38, 0x68, 0x2c, 0x4c, 0xd2,
+            0xea, 0xff, 0xce, 0x3e, 0x1c, 0x92, 0x7a, 0x27,
+            0xbd, 0xa0, 0x73, 0x4f, 0xd8, 0x9c, 0x5a, 0xda,
+            0xf0, 0x73, 0xb6, 0x84, 0xf7, 0x2f, 0xe5, 0x34,
+            0x49, 0xef, 0x2b, 0x9e, 0xd6, 0xb8, 0x1b, 0xf4
           ]
         },
         {
-          text: "Gimli test vector from specification",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/Lightweight-Cryptography/documents/round-2/spec-doc-rnd2/gimli-spec-round2.pdf",
-          input: [
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0  // Single bit set
-          ],
+          text: "Gimli all-zeros input test vector",
+          uri: "https://gimli.cr.yp.to/",
+          input: new Array(48).fill(0),
           expected: [
-            157, 152, 248, 4, 10, 89, 41, 86, 202, 130, 98, 54,
-            199, 46, 243, 48, 199, 145, 120, 83, 22, 109, 188, 35,
-            95, 240, 17, 237, 23, 182, 177, 252, 159, 102, 73, 207,
-            12, 113, 103, 241, 168, 220, 157, 100, 140, 128, 215, 235
+            196, 216, 103, 100, 59, 248, 220, 7, 212, 176, 11, 59,
+            76, 54, 33, 27, 220, 49, 52, 8, 142, 190, 251, 14,
+            132, 232, 84, 0, 85, 217, 139, 100, 46, 180, 93, 74,
+            203, 65, 6, 202, 194, 210, 115, 134, 9, 216, 48, 46
           ]
         }
       ];
@@ -158,9 +163,10 @@
 
     _gimliPermutation(state) {
       // Convert bytes to 32-bit words (little-endian)
-      const words = new Array(12);
+      // State is organized as flat array: s0, s1, s2, s3 (column 0), s4, s5, s6, s7 (column 1), s8, s9, s10, s11 (column 2)
+      const s = new Array(12);
       for (let i = 0; i < 12; i++) {
-        words[i] = OpCodes.Pack32LE(
+        s[i] = OpCodes.Pack32LE(
           state[i * 4],
           state[i * 4 + 1],
           state[i * 4 + 2],
@@ -168,60 +174,70 @@
         );
       }
 
-      // Gimli state is organized as 3x4 matrix
-      const s = [
-        [words[0], words[1], words[2], words[3]],
-        [words[4], words[5], words[6], words[7]],
-        [words[8], words[9], words[10], words[11]]
-      ];
+      // Apply 24 rounds in groups of 4
+      for (let round = 24; round > 0; round -= 4) {
+        // Round 0: SP-box, small swap, add round constant
+        this._gimliSPBox(s, 0, 4, 8);
+        this._gimliSPBox(s, 1, 5, 9);
+        this._gimliSPBox(s, 2, 6, 10);
+        this._gimliSPBox(s, 3, 7, 11);
 
-      // Apply 24 rounds
-      for (let round = 24; round >= 1; round--) {
-        // SP-box (non-linear layer)
-        for (let col = 0; col < 4; col++) {
-          const x = OpCodes.RotL32(s[0][col], 24);
-          const y = OpCodes.RotL32(s[1][col], 9);
-          const z = s[2][col];
+        // Small swap - exactly as in C reference
+        let x = s[0];
+        let y = s[2];
+        s[0] = (s[1] ^ 0x9e377900 ^ round) >>> 0;
+        s[1] = x;
+        s[2] = s[3];
+        s[3] = y;
 
-          s[2][col] = x ^ (z << 1) ^ ((y & z) << 2);
-          s[1][col] = y ^ x ^ ((x | z) << 1);
-          s[0][col] = z ^ y ^ ((x & y) << 3);
-        }
+        // Round 1: SP-box only
+        this._gimliSPBox(s, 0, 4, 8);
+        this._gimliSPBox(s, 1, 5, 9);
+        this._gimliSPBox(s, 2, 6, 10);
+        this._gimliSPBox(s, 3, 7, 11);
 
-        // Linear layer - Small-Swap (every 4 rounds starting from round 24)
-        if (round % 4 === 0) {
-          [s[0][0], s[0][1]] = [s[0][1], s[0][0]];
-          [s[0][2], s[0][3]] = [s[0][3], s[0][2]];
+        // Round 2: SP-box, big swap
+        this._gimliSPBox(s, 0, 4, 8);
+        this._gimliSPBox(s, 1, 5, 9);
+        this._gimliSPBox(s, 2, 6, 10);
+        this._gimliSPBox(s, 3, 7, 11);
 
-          [s[1][0], s[1][1]] = [s[1][1], s[1][0]];
-          [s[1][2], s[1][3]] = [s[1][3], s[1][2]];
-        }
+        // Big swap - exactly as in C reference
+        x = s[0];
+        y = s[1];
+        s[0] = s[2];
+        s[1] = s[3];
+        s[2] = x;
+        s[3] = y;
 
-        // Linear layer - Big-Swap (every 4 rounds starting from round 22)
-        if (round % 4 === 2) {
-          [s[0][0], s[0][2]] = [s[0][2], s[0][0]];
-          [s[0][1], s[0][3]] = [s[0][3], s[0][1]];
-
-          [s[1][0], s[1][2]] = [s[1][2], s[1][0]];
-          [s[1][1], s[1][3]] = [s[1][3], s[1][1]];
-        }
-
-        // Add round constant to first word of first column
-        if (round % 4 === 0) {
-          s[0][0] ^= (2654943488 | round); // Round constant
-        }
+        // Round 3: SP-box only
+        this._gimliSPBox(s, 0, 4, 8);
+        this._gimliSPBox(s, 1, 5, 9);
+        this._gimliSPBox(s, 2, 6, 10);
+        this._gimliSPBox(s, 3, 7, 11);
       }
 
       // Convert back to bytes (little-endian)
       const result = [];
-      for (let row = 0; row < 3; row++) {
-        for (let col = 0; col < 4; col++) {
-          const bytes = OpCodes.Unpack32LE(s[row][col]);
-          result.push(...bytes);
-        }
+      for (let i = 0; i < 12; i++) {
+        const bytes = OpCodes.Unpack32LE(s[i]);
+        result.push(...bytes);
       }
 
       return result;
+    }
+
+    // Gimli SP-box for a column
+    // Reference: https://gimli.cr.yp.to/ Section 2.2
+    _gimliSPBox(s, i0, i1, i2) {
+      const x = OpCodes.RotL32(s[i0], 24);
+      const y = OpCodes.RotL32(s[i1], 9);
+      const z = s[i2];
+
+      // Apply SP-box transformations with proper 32-bit masking
+      s[i1] = (y ^ x ^ (((x | z) << 1) >>> 0)) >>> 0;
+      s[i0] = (z ^ y ^ (((x & y) << 3) >>> 0)) >>> 0;
+      s[i2] = (x ^ ((z << 1) >>> 0) ^ (((y & z) << 2) >>> 0)) >>> 0;
     }
   }
 
