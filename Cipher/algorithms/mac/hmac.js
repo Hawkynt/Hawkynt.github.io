@@ -93,25 +93,25 @@
         new LinkItem("Key Reuse", "Use unique keys for different applications and contexts")
       ];
 
-      // Test vectors - compatible with our MD5 implementation
+      // Test vectors from Botan test suite
       this.tests = [
-        // Test Case 1: Empty input with MD5
+        // Test Case 1: "Hi There" with MD5 (Botan vector)
         {
-          text: "HMAC-MD5 Empty Input Test",
-          uri: "https://tools.ietf.org/rfc/rfc2104.txt",
-          input: [],
+          text: "HMAC-MD5 Botan Vector 1 - 'Hi There'",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/mac/hmac.vec",
+          input: OpCodes.Hex8ToBytes('4869205468657265'), // "Hi There"
           key: OpCodes.Hex8ToBytes('0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b'),
           hashFunction: OpCodes.AnsiToBytes('MD5'),
-          expected: [154, 118, 253, 233, 253, 143, 18, 47, 13, 89, 146, 115, 254, 49, 201, 172]
+          expected: OpCodes.Hex8ToBytes('9294727A3638BB1C13F48EF8158BFC9D')
         },
-        // Test Case 2: Single byte with MD5  
+        // Test Case 2: "Test With Truncation" with MD5 (Botan vector)
         {
-          text: "HMAC-MD5 Single Byte Test",
-          uri: "https://tools.ietf.org/rfc/rfc2104.txt",
-          input: [97], // 'a'
-          key: OpCodes.Hex8ToBytes('0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b'),
+          text: "HMAC-MD5 Botan Vector 2 - 'Test With Truncation'",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/mac/hmac.vec",
+          input: OpCodes.Hex8ToBytes('546573742057697468205472756E636174696F6E'), // "Test With Truncation"
+          key: OpCodes.Hex8ToBytes('0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c'),
           hashFunction: OpCodes.AnsiToBytes('MD5'),
-          expected: [37, 136, 28, 205, 96, 139, 123, 189, 55, 167, 121, 230, 39, 223, 148, 92]
+          expected: OpCodes.Hex8ToBytes('56461EF2342EDC00F9BAB995690EFD4C')
         }
       ];
     }
@@ -129,19 +129,20 @@
     constructor(algorithm) {
       super(algorithm);
       this._key = null;
-      this._hashFunction = OpCodes.BytesToString(OpCodes.AnsiToBytes('MD5')); // Default hash function
+      this._hashFunction = 'MD5'; // Default hash function
       this.inputBuffer = [];
 
       // HMAC constants
       this.IPAD = 0x36;
       this.OPAD = 0x5C;
 
-      // Block sizes for different hash functions (using byte arrays)
-      const MD5_KEY = OpCodes.AnsiToBytes('MD5');
-      const SHA512_KEY = OpCodes.AnsiToBytes('SHA-512');
-      this.BLOCK_SIZES = new Map();
-      this.BLOCK_SIZES.set(JSON.stringify(MD5_KEY), 64);
-      this.BLOCK_SIZES.set(JSON.stringify(SHA512_KEY), 128);
+      // Block sizes for different hash functions
+      this.BLOCK_SIZES = {
+        'MD5': 64,
+        'SHA-1': 64,
+        'SHA-256': 64,
+        'SHA-512': 128
+      };
     }
 
     // Property setter for key
@@ -158,12 +159,19 @@
 
     // Property setter for hash function
     set hashFunction(hashFunc) {
-      if (typeof hashFunc !== 'string') {
-        throw new Error('Invalid hash function - must be string');
+      // Convert byte array to string if needed (from test vectors)
+      let funcName = hashFunc;
+      if (Array.isArray(hashFunc)) {
+        funcName = OpCodes.BytesToAnsi(hashFunc);
       }
-      const upperFunc = hashFunc.toUpperCase();
+
+      if (typeof funcName !== 'string') {
+        throw new Error('Invalid hash function - must be string or byte array');
+      }
+
+      const upperFunc = funcName.toUpperCase();
       if (!this.BLOCK_SIZES[upperFunc]) {
-        throw new Error('Unsupported hash function: ' + hashFunc);
+        throw new Error('Unsupported hash function: ' + funcName);
       }
       this._hashFunction = upperFunc;
     }
@@ -247,7 +255,19 @@
     // Helper to hash byte arrays using specified hash function
     _hashBytes(data, hashFunction) {
       // Find the hash algorithm in the framework
-      const hashAlgorithm = AlgorithmFramework.Find(hashFunction);
+      let hashAlgorithm = AlgorithmFramework.Find(hashFunction);
+
+      // If not found, try to load it dynamically (for testing environments)
+      if (!hashAlgorithm && typeof require !== 'undefined') {
+        try {
+          const hashFileName = hashFunction.toLowerCase().replace(/-/g, '');
+          require(`../hash/${hashFileName}.js`);
+          hashAlgorithm = AlgorithmFramework.Find(hashFunction);
+        } catch (loadError) {
+          // Ignore load errors, will throw below if still not found
+        }
+      }
+
       if (!hashAlgorithm) {
         throw new Error('Hash function ' + hashFunction + ' not found in framework');
       }

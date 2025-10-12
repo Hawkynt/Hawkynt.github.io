@@ -43,11 +43,12 @@
           BlockCipherAlgorithm, IBlockCipherInstance, KeySize, LinkItem, Vulnerability } = AlgorithmFramework;
 
   // Load Rijndael/AES dependency for PRF
+  let RijndaelModule = null;
   if (typeof require !== 'undefined') {
     try {
-      require('./rijndael.js');
+      RijndaelModule = require('./rijndael.js');
     } catch (e) {
-      // Rijndael may already be loaded
+      // Rijndael may already be loaded, will try AlgorithmFramework.Find() as fallback
     }
   }
 
@@ -390,19 +391,9 @@
       this._key = new Uint8Array(keyBytes);
       this.KeySize = keyBytes.length;
 
-      // Initialize AES instance for PRF
-      try {
-        const RijndaelAlgorithm = AlgorithmFramework.Find('Rijndael (AES)');
-        if (!RijndaelAlgorithm) {
-          throw new Error('FF1: Rijndael/AES algorithm not found. Required for PRF function.');
-        }
-
-        this.aesInstance = RijndaelAlgorithm.CreateInstance(false); // Encryption mode
-        this.aesInstance.key = keyBytes;
-        this.aesPrf = new AESPRF(this.aesInstance);
-      } catch (error) {
-        throw new Error(`FF1: Failed to initialize AES for PRF: ${error.message}`);
-      }
+      // Reset AES instance (will be lazily initialized when needed)
+      this.aesInstance = null;
+      this.aesPrf = null;
     }
 
     get key() {
@@ -445,7 +436,40 @@
     Result() {
       if (!this._key) throw new Error("FF1: Key not set");
       if (this.inputBuffer.length === 0) throw new Error("FF1: No data fed");
-      if (!this.aesPrf) throw new Error("FF1: AES PRF not initialized");
+
+      // Lazy initialization of AES for PRF (ensures Rijndael is loaded)
+      if (!this.aesPrf) {
+        try {
+          let RijndaelAlgorithm = null;
+
+          // First try to use directly imported module (bypasses AlgorithmFramework registry)
+          if (RijndaelModule && RijndaelModule.RijndaelAlgorithm) {
+            RijndaelAlgorithm = new RijndaelModule.RijndaelAlgorithm();
+          }
+
+          // Fallback to AlgorithmFramework.Find() if module import failed
+          if (!RijndaelAlgorithm) {
+            RijndaelAlgorithm = AlgorithmFramework.Find('Rijndael (AES)');
+            if (!RijndaelAlgorithm) {
+              RijndaelAlgorithm = AlgorithmFramework.Find('Rijndael');
+            }
+            if (!RijndaelAlgorithm) {
+              RijndaelAlgorithm = AlgorithmFramework.Find('AES');
+            }
+          }
+
+          if (!RijndaelAlgorithm) {
+            throw new Error('Rijndael/AES algorithm not found. Ensure rijndael.js is loaded.');
+          }
+
+          this.aesInstance = RijndaelAlgorithm.CreateInstance(false); // Encryption mode
+          this.aesInstance.key = this._key;
+          this.aesPrf = new AESPRF(this.aesInstance);
+        } catch (error) {
+          throw new Error(`FF1: Failed to initialize AES for PRF: ${error.message}`);
+        }
+      }
+
       if (!this.radixConverter) {
         this.radixConverter = new RadixConverter(this._radix);
       }
