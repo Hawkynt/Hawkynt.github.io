@@ -151,6 +151,62 @@ class PythonPlugin extends LanguagePlugin {
         return this._generateNewExpression(node, options);
       case 'UnaryExpression':
         return this._generateUnaryExpression(node, options);
+      case 'UpdateExpression':
+        return this._generateUpdateExpression(node, options);
+      case 'ConditionalExpression':
+        return this._generateConditionalExpression(node, options);
+      case 'TemplateLiteral':
+        return this._generateTemplateLiteral(node, options);
+      case 'TaggedTemplateExpression':
+        return this._generateTaggedTemplateExpression(node, options);
+      case 'ArrowFunctionExpression':
+        return this._generateArrowFunctionExpression(node, options);
+      case 'FunctionExpression':
+        return this._generateFunctionExpression(node, options);
+      case 'Property':
+        return this._generateProperty(node, options);
+      case 'SequenceExpression':
+        return this._generateSequenceExpression(node, options);
+      case 'RestElement':
+        return this._generateRestElement(node, options);
+      case 'SpreadElement':
+        return this._generateSpreadElement(node, options);
+      case 'AssignmentPattern':
+        return this._generateAssignmentPattern(node, options);
+      case 'ObjectPattern':
+        return this._generateObjectPattern(node, options);
+      case 'ArrayPattern':
+        return this._generateArrayPattern(node, options);
+      case 'VariableDeclarator':
+        return this._generateVariableDeclarator(node, options);
+      case 'ForInStatement':
+        return this._generateForInStatement(node, options);
+      case 'ForOfStatement':
+        return this._generateForOfStatement(node, options);
+      case 'DoWhileStatement':
+        return this._generateDoWhileStatement(node, options);
+      case 'SwitchStatement':
+        return this._generateSwitchStatement(node, options);
+      case 'SwitchCase':
+        return this._generateSwitchCase(node, options);
+      case 'BreakStatement':
+        return this._generateBreakStatement(node, options);
+      case 'ContinueStatement':
+        return this._generateContinueStatement(node, options);
+      case 'TryStatement':
+        return this._generateTryStatement(node, options);
+      case 'CatchClause':
+        return this._generateCatchClause(node, options);
+      case 'ThrowStatement':
+        return this._generateThrowStatement(node, options);
+      case 'EmptyStatement':
+        return this._generateEmptyStatement(node, options);
+      case 'DebuggerStatement':
+        return this._generateDebuggerStatement(node, options);
+      case 'WithStatement':
+        return this._generateWithStatement(node, options);
+      case 'LabeledStatement':
+        return this._generateLabeledStatement(node, options);
       case 'Identifier':
         return this._generateIdentifier(node, options);
       case 'Literal':
@@ -809,6 +865,467 @@ class PythonPlugin extends LanguagePlugin {
       '--': ''   // Handle separately
     };
     return unaryMap[operator] || operator;
+  }
+
+  /**
+   * Generate update expression (++/--)
+   * @private
+   */
+  _generateUpdateExpression(node, options) {
+    const argument = this._generateNode(node.argument, options);
+    const operator = node.operator;
+
+    if (node.prefix) {
+      if (operator === '++') {
+        return `(${argument} := ${argument} + 1)`;  // Walrus operator for inline increment
+      } else if (operator === '--') {
+        return `(${argument} := ${argument} - 1)`;  // Walrus operator for inline decrement
+      }
+    } else {
+      // Postfix operators need special handling in Python
+      return `# ${argument}${operator}  # Python doesn't support postfix increment/decrement`;
+    }
+
+    return argument + operator;
+  }
+
+  /**
+   * Generate conditional expression (ternary operator)
+   * @private
+   */
+  _generateConditionalExpression(node, options) {
+    const test = this._generateNode(node.test, options);
+    const consequent = this._generateNode(node.consequent, options);
+    const alternate = this._generateNode(node.alternate, options);
+
+    return `${consequent} if ${test} else ${alternate}`;
+  }
+
+  /**
+   * Generate template literal (f-strings)
+   * @private
+   */
+  _generateTemplateLiteral(node, options) {
+    if (!node.quasis || node.quasis.length === 0) {
+      return '""';
+    }
+
+    let result = 'f"';
+    for (let i = 0; i < node.quasis.length; i++) {
+      const quasi = node.quasis[i];
+      result += quasi.value ? quasi.value.raw || quasi.value.cooked || '' : '';
+
+      if (i < node.expressions.length) {
+        const expr = this._generateNode(node.expressions[i], options);
+        result += '{' + expr + '}';
+      }
+    }
+    result += '"';
+    return result;
+  }
+
+  /**
+   * Generate tagged template expression
+   * @private
+   */
+  _generateTaggedTemplateExpression(node, options) {
+    const tag = this._generateNode(node.tag, options);
+    const quasi = this._generateNode(node.quasi, options);
+    return `${tag}(${quasi})`;
+  }
+
+  /**
+   * Generate arrow function expression (lambda)
+   * @private
+   */
+  _generateArrowFunctionExpression(node, options) {
+    const params = node.params ?
+      node.params.map(param => this._toPythonName(param.name || 'param')).join(', ') : '';
+
+    if (node.body.type === 'BlockStatement') {
+      // Multi-line lambda (not directly supported, convert to def)
+      return `# lambda ${params}: ... # Multi-line lambda not supported, use def`;
+    } else {
+      const body = this._generateNode(node.body, options);
+      return `lambda ${params}: ${body}`;
+    }
+  }
+
+  /**
+   * Generate function expression
+   * @private
+   */
+  _generateFunctionExpression(node, options) {
+    const functionName = node.id ? this._toPythonName(node.id.name) : 'anonymous_function';
+    let code = '';
+
+    // Function signature
+    code += `def ${functionName}(`;
+
+    // Parameters
+    if (node.params && node.params.length > 0) {
+      const params = node.params.map(param => {
+        const paramName = param.name || 'param';
+        return this._toPythonName(paramName);
+      });
+      code += params.join(', ');
+    }
+
+    code += '):\n';
+
+    // Function body
+    this.indentLevel++;
+    if (node.body) {
+      const bodyCode = this._generateNode(node.body, options);
+      code += bodyCode || this._indent('pass\n');
+    } else {
+      code += this._indent('pass\n');
+    }
+    this.indentLevel--;
+
+    return code;
+  }
+
+  /**
+   * Generate property
+   * @private
+   */
+  _generateProperty(node, options) {
+    const key = node.key ? this._generateNode(node.key, options) : '"unknown"';
+    const value = node.value ? this._generateNode(node.value, options) : 'None';
+
+    if (node.computed) {
+      return `[${key}]: ${value}`;
+    } else {
+      return `"${key}": ${value}`;
+    }
+  }
+
+  /**
+   * Generate sequence expression
+   * @private
+   */
+  _generateSequenceExpression(node, options) {
+    if (!node.expressions || node.expressions.length === 0) {
+      return '';
+    }
+
+    // Python doesn't have comma operators like JavaScript
+    // Convert to tuple
+    const expressions = node.expressions.map(expr => this._generateNode(expr, options));
+    return `(${expressions.join(', ')})`;
+  }
+
+  /**
+   * Generate rest element (*args)
+   * @private
+   */
+  _generateRestElement(node, options) {
+    const argument = this._generateNode(node.argument, options);
+    return `*${argument}`;
+  }
+
+  /**
+   * Generate spread element
+   * @private
+   */
+  _generateSpreadElement(node, options) {
+    const argument = this._generateNode(node.argument, options);
+    return `*${argument}`;
+  }
+
+  /**
+   * Generate assignment pattern (default parameters)
+   * @private
+   */
+  _generateAssignmentPattern(node, options) {
+    const left = this._generateNode(node.left, options);
+    const right = this._generateNode(node.right, options);
+    return `${left}=${right}`;
+  }
+
+  /**
+   * Generate object pattern (destructuring)
+   * @private
+   */
+  _generateObjectPattern(node, options) {
+    if (!node.properties || node.properties.length === 0) {
+      return '# Empty object destructuring';
+    }
+
+    const properties = node.properties.map(prop => this._generateNode(prop, options));
+    return `# Object destructuring: {${properties.join(', ')}}`;
+  }
+
+  /**
+   * Generate array pattern (destructuring)
+   * @private
+   */
+  _generateArrayPattern(node, options) {
+    if (!node.elements || node.elements.length === 0) {
+      return '# Empty array destructuring';
+    }
+
+    const elements = node.elements.map(elem => elem ? this._generateNode(elem, options) : 'None');
+    return `${elements.join(', ')}`;  // Python tuple unpacking
+  }
+
+  /**
+   * Generate variable declarator
+   * @private
+   */
+  _generateVariableDeclarator(node, options) {
+    const id = node.id ? this._generateNode(node.id, options) : 'variable';
+
+    if (node.init) {
+      const init = this._generateNode(node.init, options);
+      return `${id} = ${init}`;
+    } else {
+      return `${id} = None`;
+    }
+  }
+
+  /**
+   * Generate for-in statement
+   * @private
+   */
+  _generateForInStatement(node, options) {
+    const left = this._generateNode(node.left, options);
+    const right = this._generateNode(node.right, options);
+
+    let code = this._indent(`for ${left.replace(/var\s+/, '')} in ${right}:\n`);
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('pass\n');
+    }
+
+    this.indentLevel--;
+    return code;
+  }
+
+  /**
+   * Generate for-of statement (same as for-in in Python)
+   * @private
+   */
+  _generateForOfStatement(node, options) {
+    const left = this._generateNode(node.left, options);
+    const right = this._generateNode(node.right, options);
+
+    let code = this._indent(`for ${left.replace(/var\s+/, '')} in ${right}:\n`);
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('pass\n');
+    }
+
+    this.indentLevel--;
+    return code;
+  }
+
+  /**
+   * Generate do-while statement
+   * @private
+   */
+  _generateDoWhileStatement(node, options) {
+    // Python doesn't have do-while, convert to while True with break
+    let code = this._indent('while True:\n');
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('pass\n');
+    }
+
+    const test = this._generateNode(node.test, options);
+    code += this._indent(`if not (${test}):\n`);
+    this.indentLevel++;
+    code += this._indent('break\n');
+    this.indentLevel--;
+
+    this.indentLevel--;
+    return code;
+  }
+
+  /**
+   * Generate switch statement
+   * @private
+   */
+  _generateSwitchStatement(node, options) {
+    const discriminant = this._generateNode(node.discriminant, options);
+
+    // Python 3.10+ has match-case, but for compatibility use if-elif
+    let code = `# Switch statement converted to if-elif\\n`;
+    let isFirst = true;
+
+    if (node.cases) {
+      for (const caseNode of node.cases) {
+        if (caseNode.test) {
+          const test = this._generateNode(caseNode.test, options);
+          const keyword = isFirst ? 'if' : 'elif';
+          code += this._indent(`${keyword} ${discriminant} == ${test}:\n`);
+          isFirst = false;
+        } else {
+          // Default case
+          code += this._indent('else:\n');
+        }
+
+        this.indentLevel++;
+        if (caseNode.consequent && caseNode.consequent.length > 0) {
+          for (const stmt of caseNode.consequent) {
+            if (stmt.type !== 'BreakStatement') {
+              code += this._generateNode(stmt, options);
+            }
+          }
+        } else {
+          code += this._indent('pass\n');
+        }
+        this.indentLevel--;
+      }
+    }
+
+    return code;
+  }
+
+  /**
+   * Generate switch case
+   * @private
+   */
+  _generateSwitchCase(node, options) {
+    // This is handled by _generateSwitchStatement
+    return '';
+  }
+
+  /**
+   * Generate break statement
+   * @private
+   */
+  _generateBreakStatement(node, options) {
+    return this._indent('break\n');
+  }
+
+  /**
+   * Generate continue statement
+   * @private
+   */
+  _generateContinueStatement(node, options) {
+    return this._indent('continue\n');
+  }
+
+  /**
+   * Generate try statement
+   * @private
+   */
+  _generateTryStatement(node, options) {
+    let code = this._indent('try:\n');
+    this.indentLevel++;
+
+    if (node.block) {
+      const block = this._generateNode(node.block, options);
+      code += block || this._indent('pass\n');
+    }
+
+    this.indentLevel--;
+
+    if (node.handler) {
+      code += this._generateNode(node.handler, options);
+    }
+
+    if (node.finalizer) {
+      code += this._indent('finally:\n');
+      this.indentLevel++;
+      const finalizer = this._generateNode(node.finalizer, options);
+      code += finalizer || this._indent('pass\n');
+      this.indentLevel--;
+    }
+
+    return code;
+  }
+
+  /**
+   * Generate catch clause
+   * @private
+   */
+  _generateCatchClause(node, options) {
+    let code = this._indent('except');
+
+    if (node.param) {
+      const param = this._generateNode(node.param, options);
+      code += ` Exception as ${param}`;
+    } else {
+      code += ' Exception';
+    }
+
+    code += ':\n';
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('pass\n');
+    }
+
+    this.indentLevel--;
+    return code;
+  }
+
+  /**
+   * Generate throw statement
+   * @private
+   */
+  _generateThrowStatement(node, options) {
+    if (node.argument) {
+      const argument = this._generateNode(node.argument, options);
+      return this._indent(`raise ${argument}\n`);
+    } else {
+      return this._indent('raise\n');
+    }
+  }
+
+  /**
+   * Generate empty statement
+   * @private
+   */
+  _generateEmptyStatement(node, options) {
+    return this._indent('pass\n');
+  }
+
+  /**
+   * Generate debugger statement
+   * @private
+   */
+  _generateDebuggerStatement(node, options) {
+    return this._indent('import pdb; pdb.set_trace()\n');
+  }
+
+  /**
+   * Generate with statement
+   * @private
+   */
+  _generateWithStatement(node, options) {
+    const object = this._generateNode(node.object, options);
+    let code = this._indent(`with ${object}:\n`);
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('pass\n');
+    }
+
+    this.indentLevel--;
+    return code;
+  }
+
+  /**
+   * Generate labeled statement
+   * @private
+   */
+  _generateLabeledStatement(node, options) {
+    const label = node.label ? this._generateNode(node.label, options) : 'label';
+    const body = node.body ? this._generateNode(node.body, options) : '';
+
+    return this._indent(`# Label: ${label}\n`) + body;
   }
 
   /**

@@ -125,6 +125,78 @@ class JavaPlugin extends LanguagePlugin {
         return this._generateMemberExpression(node, options);
       case 'AssignmentExpression':
         return this._generateAssignmentExpression(node, options);
+      case 'IfStatement':
+        return this._generateIfStatement(node, options);
+      case 'WhileStatement':
+        return this._generateWhileStatement(node, options);
+      case 'ForStatement':
+        return this._generateForStatement(node, options);
+      case 'ForInStatement':
+        return this._generateForInStatement(node, options);
+      case 'ForOfStatement':
+        return this._generateForOfStatement(node, options);
+      case 'DoWhileStatement':
+        return this._generateDoWhileStatement(node, options);
+      case 'SwitchStatement':
+        return this._generateSwitchStatement(node, options);
+      case 'SwitchCase':
+        return this._generateSwitchCase(node, options);
+      case 'BreakStatement':
+        return this._generateBreakStatement(node, options);
+      case 'ContinueStatement':
+        return this._generateContinueStatement(node, options);
+      case 'TryStatement':
+        return this._generateTryStatement(node, options);
+      case 'CatchClause':
+        return this._generateCatchClause(node, options);
+      case 'ThrowStatement':
+        return this._generateThrowStatement(node, options);
+      case 'UnaryExpression':
+        return this._generateUnaryExpression(node, options);
+      case 'UpdateExpression':
+        return this._generateUpdateExpression(node, options);
+      case 'LogicalExpression':
+        return this._generateLogicalExpression(node, options);
+      case 'ConditionalExpression':
+        return this._generateConditionalExpression(node, options);
+      case 'ArrayExpression':
+        return this._generateArrayExpression(node, options);
+      case 'ObjectExpression':
+        return this._generateObjectExpression(node, options);
+      case 'Property':
+        return this._generateProperty(node, options);
+      case 'FunctionExpression':
+        return this._generateFunctionExpression(node, options);
+      case 'ArrowFunctionExpression':
+        return this._generateArrowFunctionExpression(node, options);
+      case 'NewExpression':
+        return this._generateNewExpression(node, options);
+      case 'SequenceExpression':
+        return this._generateSequenceExpression(node, options);
+      case 'TemplateLiteral':
+        return this._generateTemplateLiteral(node, options);
+      case 'TaggedTemplateExpression':
+        return this._generateTaggedTemplateExpression(node, options);
+      case 'RestElement':
+        return this._generateRestElement(node, options);
+      case 'SpreadElement':
+        return this._generateSpreadElement(node, options);
+      case 'AssignmentPattern':
+        return this._generateAssignmentPattern(node, options);
+      case 'ObjectPattern':
+        return this._generateObjectPattern(node, options);
+      case 'ArrayPattern':
+        return this._generateArrayPattern(node, options);
+      case 'VariableDeclarator':
+        return this._generateVariableDeclarator(node, options);
+      case 'EmptyStatement':
+        return this._generateEmptyStatement(node, options);
+      case 'DebuggerStatement':
+        return this._generateDebuggerStatement(node, options);
+      case 'WithStatement':
+        return this._generateWithStatement(node, options);
+      case 'LabeledStatement':
+        return this._generateLabeledStatement(node, options);
       case 'Identifier':
         return this._generateIdentifier(node, options);
       case 'Literal':
@@ -454,6 +526,637 @@ class JavaPlugin extends LanguagePlugin {
     } else {
       return String(node.value);
     }
+  }
+
+  /**
+   * Generate if statement
+   * @private
+   */
+  _generateIfStatement(node, options) {
+    let code = '';
+    const test = this._generateNode(node.test, options);
+
+    code += this._indent('if (' + test + ') {\n');
+    this.indentLevel++;
+
+    if (node.consequent) {
+      const consequent = this._generateNode(node.consequent, options);
+      code += consequent || this._indent('// Empty if body\n');
+    }
+
+    this.indentLevel--;
+    code += this._indent('}\n');
+
+    if (node.alternate) {
+      if (node.alternate.type === 'IfStatement') {
+        code += this._indent('else ');
+        code += this._generateIfStatement(node.alternate, options).replace(/^\s+/, '');
+      } else {
+        code += this._indent('else {\n');
+        this.indentLevel++;
+        const alternate = this._generateNode(node.alternate, options);
+        code += alternate || this._indent('// Empty else body\n');
+        this.indentLevel--;
+        code += this._indent('}\n');
+      }
+    }
+
+    return code;
+  }
+
+  /**
+   * Generate while statement
+   * @private
+   */
+  _generateWhileStatement(node, options) {
+    const test = this._generateNode(node.test, options);
+    let code = this._indent('while (' + test + ') {\n');
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('// Empty while body\n');
+    }
+
+    this.indentLevel--;
+    code += this._indent('}\n');
+    return code;
+  }
+
+  /**
+   * Generate for statement
+   * @private
+   */
+  _generateForStatement(node, options) {
+    const init = node.init ? this._generateNode(node.init, options).replace(/;\n$/, '') : '';
+    const test = node.test ? this._generateNode(node.test, options) : '';
+    const update = node.update ? this._generateNode(node.update, options) : '';
+
+    let code = this._indent('for (' + init + '; ' + test + '; ' + update + ') {\n');
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('// Empty for body\n');
+    }
+
+    this.indentLevel--;
+    code += this._indent('}\n');
+    return code;
+  }
+
+  /**
+   * Generate for-in statement (enhanced for loop)
+   * @private
+   */
+  _generateForInStatement(node, options) {
+    const left = this._generateNode(node.left, options);
+    const right = this._generateNode(node.right, options);
+
+    let code = this._indent('for (Object ' + left.replace(/var\s+/, '') + ' : ' + right + '.keySet()) {\n');
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('// Empty for-in body\n');
+    }
+
+    this.indentLevel--;
+    code += this._indent('}\n');
+    return code;
+  }
+
+  /**
+   * Generate for-of statement (enhanced for loop)
+   * @private
+   */
+  _generateForOfStatement(node, options) {
+    const left = this._generateNode(node.left, options);
+    const right = this._generateNode(node.right, options);
+
+    let code = this._indent('for (Object ' + left.replace(/var\s+/, '') + ' : ' + right + ') {\n');
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('// Empty for-of body\n');
+    }
+
+    this.indentLevel--;
+    code += this._indent('}\n');
+    return code;
+  }
+
+  /**
+   * Generate do-while statement
+   * @private
+   */
+  _generateDoWhileStatement(node, options) {
+    let code = this._indent('do {\n');
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('// Empty do body\n');
+    }
+
+    this.indentLevel--;
+    const test = this._generateNode(node.test, options);
+    code += this._indent('} while (' + test + ');\n');
+    return code;
+  }
+
+  /**
+   * Generate switch statement
+   * @private
+   */
+  _generateSwitchStatement(node, options) {
+    const discriminant = this._generateNode(node.discriminant, options);
+    let code = this._indent('switch (' + discriminant + ') {\n');
+    this.indentLevel++;
+
+    if (node.cases) {
+      for (const caseNode of node.cases) {
+        code += this._generateNode(caseNode, options);
+      }
+    }
+
+    this.indentLevel--;
+    code += this._indent('}\n');
+    return code;
+  }
+
+  /**
+   * Generate switch case
+   * @private
+   */
+  _generateSwitchCase(node, options) {
+    let code = '';
+
+    if (node.test) {
+      const test = this._generateNode(node.test, options);
+      code += this._indent('case ' + test + ':\n');
+    } else {
+      code += this._indent('default:\n');
+    }
+
+    this.indentLevel++;
+    if (node.consequent) {
+      for (const stmt of node.consequent) {
+        code += this._generateNode(stmt, options);
+      }
+    }
+
+    // Add break if not already present
+    if (!code.includes('break;') && !code.includes('return;')) {
+      code += this._indent('break;\n');
+    }
+
+    this.indentLevel--;
+    return code;
+  }
+
+  /**
+   * Generate break statement
+   * @private
+   */
+  _generateBreakStatement(node, options) {
+    return this._indent('break;\n');
+  }
+
+  /**
+   * Generate continue statement
+   * @private
+   */
+  _generateContinueStatement(node, options) {
+    return this._indent('continue;\n');
+  }
+
+  /**
+   * Generate try statement
+   * @private
+   */
+  _generateTryStatement(node, options) {
+    let code = this._indent('try {\n');
+    this.indentLevel++;
+
+    if (node.block) {
+      const block = this._generateNode(node.block, options);
+      code += block || this._indent('// Empty try block\n');
+    }
+
+    this.indentLevel--;
+    code += this._indent('}\n');
+
+    if (node.handler) {
+      code += this._generateNode(node.handler, options);
+    }
+
+    if (node.finalizer) {
+      code += this._indent('finally {\n');
+      this.indentLevel++;
+      const finalizer = this._generateNode(node.finalizer, options);
+      code += finalizer || this._indent('// Empty finally block\n');
+      this.indentLevel--;
+      code += this._indent('}\n');
+    }
+
+    return code;
+  }
+
+  /**
+   * Generate catch clause
+   * @private
+   */
+  _generateCatchClause(node, options) {
+    let code = this._indent('catch');
+
+    if (node.param) {
+      const param = this._generateNode(node.param, options);
+      code += ' (Exception ' + param + ')';
+    } else {
+      code += ' (Exception e)';
+    }
+
+    code += ' {\n';
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('// Empty catch block\n');
+    }
+
+    this.indentLevel--;
+    code += this._indent('}\n');
+    return code;
+  }
+
+  /**
+   * Generate throw statement
+   * @private
+   */
+  _generateThrowStatement(node, options) {
+    if (node.argument) {
+      const argument = this._generateNode(node.argument, options);
+      return this._indent('throw ' + argument + ';\n');
+    } else {
+      return this._indent('throw new RuntimeException();\n');
+    }
+  }
+
+  /**
+   * Generate unary expression
+   * @private
+   */
+  _generateUnaryExpression(node, options) {
+    const argument = this._generateNode(node.argument, options);
+    const operator = node.operator;
+
+    switch (operator) {
+      case 'typeof':
+        return argument + '.getClass().getSimpleName()';
+      case 'delete':
+        return '/* delete not supported in Java */ ' + argument;
+      case 'void':
+        return '/* void */ ' + argument;
+      case '!':
+        return '!' + argument;
+      default:
+        return operator + argument;
+    }
+  }
+
+  /**
+   * Generate update expression (++/--)
+   * @private
+   */
+  _generateUpdateExpression(node, options) {
+    const argument = this._generateNode(node.argument, options);
+    const operator = node.operator;
+
+    if (node.prefix) {
+      return operator + argument;
+    } else {
+      return argument + operator;
+    }
+  }
+
+  /**
+   * Generate logical expression
+   * @private
+   */
+  _generateLogicalExpression(node, options) {
+    const left = this._generateNode(node.left, options);
+    const right = this._generateNode(node.right, options);
+    let operator = node.operator;
+
+    switch (operator) {
+      case '||':
+        operator = '||';
+        break;
+      case '&&':
+        operator = '&&';
+        break;
+      case '??':
+        // Java doesn't have null-coalescing operator
+        return '(' + left + ' != null ? ' + left + ' : ' + right + ')';
+    }
+
+    return left + ' ' + operator + ' ' + right;
+  }
+
+  /**
+   * Generate conditional expression (ternary operator)
+   * @private
+   */
+  _generateConditionalExpression(node, options) {
+    const test = this._generateNode(node.test, options);
+    const consequent = this._generateNode(node.consequent, options);
+    const alternate = this._generateNode(node.alternate, options);
+
+    return test + ' ? ' + consequent + ' : ' + alternate;
+  }
+
+  /**
+   * Generate array expression
+   * @private
+   */
+  _generateArrayExpression(node, options) {
+    if (!node.elements || node.elements.length === 0) {
+      return 'new Object[0]';
+    }
+
+    const elements = node.elements
+      .map(element => element ? this._generateNode(element, options) : 'null')
+      .join(', ');
+
+    return 'new Object[] { ' + elements + ' }';
+  }
+
+  /**
+   * Generate object expression
+   * @private
+   */
+  _generateObjectExpression(node, options) {
+    if (!node.properties || node.properties.length === 0) {
+      return 'new HashMap<String, Object>()';
+    }
+
+    let code = 'new HashMap<String, Object>() {{\n';
+    this.indentLevel++;
+
+    const properties = node.properties.map(prop => {
+      const key = prop.key ? this._generateNode(prop.key, options) : '"unknown"';
+      const value = prop.value ? this._generateNode(prop.value, options) : 'null';
+      return this._indent('put(' + key + ', ' + value + ');');
+    });
+
+    code += properties.join('\n') + '\n';
+    this.indentLevel--;
+    code += this._indent('}}');
+
+    return code;
+  }
+
+  /**
+   * Generate property
+   * @private
+   */
+  _generateProperty(node, options) {
+    const key = node.key ? this._generateNode(node.key, options) : '"unknown"';
+    const value = node.value ? this._generateNode(node.value, options) : 'null';
+    return 'put(' + key + ', ' + value + ')';
+  }
+
+  /**
+   * Generate function expression
+   * @private
+   */
+  _generateFunctionExpression(node, options) {
+    const params = node.params ?
+      node.params.map(param => 'Object ' + this._toCamelCase(param.name || 'param')).join(', ') : '';
+
+    let code = '/* function expression */ new Function<Object>() {\n';
+    this.indentLevel++;
+    code += this._indent('public Object apply(' + params + ') {\n');
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('return null;\n');
+    } else {
+      code += this._indent('return null;\n');
+    }
+
+    this.indentLevel--;
+    code += this._indent('}\n');
+    this.indentLevel--;
+    code += this._indent('}');
+    return code;
+  }
+
+  /**
+   * Generate arrow function expression
+   * @private
+   */
+  _generateArrowFunctionExpression(node, options) {
+    const params = node.params ?
+      node.params.map(param => this._toCamelCase(param.name || 'param')).join(', ') : '';
+
+    if (node.body.type === 'BlockStatement') {
+      let code = '(' + params + ') -> {\n';
+      this.indentLevel++;
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('return null;\n');
+      this.indentLevel--;
+      code += this._indent('}');
+      return code;
+    } else {
+      const body = this._generateNode(node.body, options);
+      return '(' + params + ') -> ' + body;
+    }
+  }
+
+  /**
+   * Generate new expression
+   * @private
+   */
+  _generateNewExpression(node, options) {
+    const callee = this._generateNode(node.callee, options);
+    const args = node.arguments ?
+      node.arguments.map(arg => this._generateNode(arg, options)).join(', ') : '';
+
+    return 'new ' + this._toPascalCase(callee) + '(' + args + ')';
+  }
+
+  /**
+   * Generate sequence expression
+   * @private
+   */
+  _generateSequenceExpression(node, options) {
+    if (!node.expressions || node.expressions.length === 0) {
+      return '';
+    }
+
+    // Java doesn't have comma operators like JavaScript
+    const expressions = node.expressions.map(expr => this._generateNode(expr, options));
+    return '/* sequence: */ (' + expressions.join(', ') + ')';
+  }
+
+  /**
+   * Generate template literal
+   * @private
+   */
+  _generateTemplateLiteral(node, options) {
+    if (!node.quasis || node.quasis.length === 0) {
+      return '""';
+    }
+
+    let result = 'String.format("';
+    const args = [];
+
+    for (let i = 0; i < node.quasis.length; i++) {
+      const quasi = node.quasis[i];
+      result += quasi.value ? quasi.value.raw || quasi.value.cooked || '' : '';
+
+      if (i < node.expressions.length) {
+        result += '%s';
+        const expr = this._generateNode(node.expressions[i], options);
+        args.push(expr);
+      }
+    }
+    result += '"';
+
+    if (args.length > 0) {
+      result += ', ' + args.join(', ');
+    }
+    result += ')';
+    return result;
+  }
+
+  /**
+   * Generate tagged template expression
+   * @private
+   */
+  _generateTaggedTemplateExpression(node, options) {
+    const tag = this._generateNode(node.tag, options);
+    const quasi = this._generateNode(node.quasi, options);
+    return tag + '(' + quasi + ')';
+  }
+
+  /**
+   * Generate rest element
+   * @private
+   */
+  _generateRestElement(node, options) {
+    const argument = this._generateNode(node.argument, options);
+    return '/* ...rest */ Object... ' + argument;
+  }
+
+  /**
+   * Generate spread element
+   * @private
+   */
+  _generateSpreadElement(node, options) {
+    const argument = this._generateNode(node.argument, options);
+    return '/* ...spread */ ' + argument;
+  }
+
+  /**
+   * Generate assignment pattern
+   * @private
+   */
+  _generateAssignmentPattern(node, options) {
+    const left = this._generateNode(node.left, options);
+    const right = this._generateNode(node.right, options);
+    return left + ' = ' + right;
+  }
+
+  /**
+   * Generate object pattern
+   * @private
+   */
+  _generateObjectPattern(node, options) {
+    if (!node.properties || node.properties.length === 0) {
+      return '/* empty object pattern */';
+    }
+
+    const properties = node.properties.map(prop => this._generateNode(prop, options));
+    return '/* object destructuring: */ { ' + properties.join(', ') + ' }';
+  }
+
+  /**
+   * Generate array pattern
+   * @private
+   */
+  _generateArrayPattern(node, options) {
+    if (!node.elements || node.elements.length === 0) {
+      return '/* empty array pattern */';
+    }
+
+    const elements = node.elements.map(elem => elem ? this._generateNode(elem, options) : 'null');
+    return '/* array destructuring: */ [' + elements.join(', ') + ']';
+  }
+
+  /**
+   * Generate variable declarator
+   * @private
+   */
+  _generateVariableDeclarator(node, options) {
+    const id = node.id ? this._generateNode(node.id, options) : 'variable';
+
+    if (node.init) {
+      const init = this._generateNode(node.init, options);
+      return id + ' = ' + init;
+    } else {
+      return id;
+    }
+  }
+
+  /**
+   * Generate empty statement
+   * @private
+   */
+  _generateEmptyStatement(node, options) {
+    return this._indent(';\n');
+  }
+
+  /**
+   * Generate debugger statement
+   * @private
+   */
+  _generateDebuggerStatement(node, options) {
+    return this._indent('// Debugger statement (Java equivalent: set breakpoint here)\n');
+  }
+
+  /**
+   * Generate with statement
+   * @private
+   */
+  _generateWithStatement(node, options) {
+    const object = this._generateNode(node.object, options);
+    let code = this._indent('try (var resource = ' + object + ') {\n');
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('// Empty with body\n');
+    }
+
+    this.indentLevel--;
+    code += this._indent('}\n');
+    return code;
+  }
+
+  /**
+   * Generate labeled statement
+   * @private
+   */
+  _generateLabeledStatement(node, options) {
+    const label = node.label ? this._generateNode(node.label, options) : 'label';
+    const body = node.body ? this._generateNode(node.body, options) : '';
+
+    return this._indent(label + ':\n') + body;
   }
 
   /**
