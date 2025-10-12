@@ -8,13 +8,13 @@
 (function(global) {
     'use strict';
 
+    // DON'T load AlgorithmFramework here - use the one from TestEngine/TestSuite
+    // This avoids module instance duplication issues
+
     // Load dependencies if available
     if (typeof require !== 'undefined') {
-        if (!global.AlgorithmFramework) {
-            try {
-                global.AlgorithmFramework = require('../AlgorithmFramework.js');
-            } catch(e) { /* ignore */ }
-        }
+        // Only load OpCodes and DummyBlockCipher if not already present
+        // AlgorithmFramework should already be loaded by TestEngine
         if (!global.OpCodes) {
             try {
                 global.OpCodes = require('../OpCodes.js');
@@ -42,8 +42,8 @@
                 }
 
                 // Check CategoryType enum (preferred method)
-                if (typeof AlgorithmFramework !== 'undefined' && AlgorithmFramework.CategoryType) {
-                    return algorithm.category === AlgorithmFramework.CategoryType.MODE;
+                if (typeof global.AlgorithmFramework !== 'undefined' && global.AlgorithmFramework.CategoryType) {
+                    return algorithm.category === global.AlgorithmFramework.CategoryType.MODE;
                 }
 
                 // Fallback: check if instance has mode-specific methods
@@ -155,9 +155,49 @@
 
                 // Step 1: Try to use the cipher that test vectors were designed for
                 const intendedCipher = this._detectIntendedCipher(vector);
-                if (intendedCipher && typeof AlgorithmFramework !== 'undefined') {
+
+                // Try loading cipher directly by file for common ciphers
+                if (intendedCipher && typeof require !== 'undefined') {
+                    const cipherFiles = {
+                        'Rijndael (AES)': '../algorithms/block/rijndael.js',
+                        'DES': '../algorithms/block/des.js',
+                        'Serpent': '../algorithms/block/serpent.js',
+                        'Twofish': '../algorithms/block/twofish.js'
+                    };
+
+                    if (cipherFiles[intendedCipher]) {
+                        try {
+                            // Load the cipher file - it will self-register
+                            require(cipherFiles[intendedCipher]);
+
+                            // Now try to find it
+                            if (global.AlgorithmFramework && typeof global.AlgorithmFramework.Find === 'function') {
+                                const cipherAlgorithm = global.AlgorithmFramework.Find(intendedCipher);
+                                if (cipherAlgorithm) {
+                                    const instance = cipherAlgorithm.CreateInstance();
+                                    if (instance && vector.key) {
+                                        instance.key = vector.key;
+                                        // Ensure algorithm property is set for modes like EEE/EDE
+                                        instance.algorithm = cipherAlgorithm;
+                                    }
+                                    if (this.verbose) {
+                                        console.log(`Using intended cipher: ${intendedCipher} for test vector validation`);
+                                    }
+                                    return instance;
+                                }
+                            }
+                        } catch (error) {
+                            if (this.verbose) {
+                                console.warn(`Could not load ${intendedCipher}: ${error.message}`);
+                            }
+                        }
+                    }
+                }
+
+                // Fallback: try using AlgorithmFramework.Find
+                if (intendedCipher && typeof global.AlgorithmFramework !== 'undefined') {
                     try {
-                        const cipherAlgorithm = AlgorithmFramework.Find(intendedCipher);
+                        const cipherAlgorithm = global.AlgorithmFramework.Find(intendedCipher);
                         if (cipherAlgorithm) {
                             const instance = cipherAlgorithm.CreateInstance();
                             if (instance && vector.key) {

@@ -22,13 +22,13 @@ const { TestCore } = require('./TestCore.js');
 
 class TestEngine {
   constructor(options = {}) {
-    this.verbose = options.verbose || false;
+    this._verbose = options.verbose || false;
     this.silent = options.silent || false;
     this.dependenciesLoaded = false;
 
     // Create TestCore instance
     this.testCore = new TestCore();
-    this.testCore.verbose = this.verbose;
+    this.testCore.verbose = this._verbose;
 
     // Define algorithm category arrays for invertibility requirements
     // These will be set after AlgorithmFramework is loaded
@@ -45,6 +45,18 @@ class TestEngine {
     };
   }
 
+  // Getter and setter for verbose to propagate to TestCore
+  get verbose() {
+    return this._verbose;
+  }
+
+  set verbose(value) {
+    this._verbose = value;
+    if (this.testCore) {
+      this.testCore.verbose = value;
+    }
+  }
+
   // Load required dependencies
   async loadDependencies() {
     if (this.dependenciesLoaded) return;
@@ -56,18 +68,76 @@ class TestEngine {
         throw new Error('OpCodes not loaded properly');
       }
 
-      // Load AlgorithmFramework
-      global.AlgorithmFramework = require('../AlgorithmFramework.js');
+      // Load AlgorithmFramework and ensure it's cached for all possible require paths
+      if (!global.AlgorithmFramework) {
+        const AlgorithmFrameworkPath = path.resolve(__dirname, '..', 'AlgorithmFramework.js');
+        global.AlgorithmFramework = require(AlgorithmFrameworkPath);
+
+        // CRITICAL: Pre-cache AlgorithmFramework for paths that algorithms will use
+        // This ensures all algorithms use the SAME instance
+        const basePath = path.resolve(__dirname, '..');
+        const cacheKey1 = path.resolve(basePath, 'AlgorithmFramework.js');
+        const cacheKey2 = path.resolve(basePath, 'AlgorithmFramework');  // without .js
+
+        if (require.cache[cacheKey1]) {
+          require.cache[cacheKey1].exports = global.AlgorithmFramework;
+        }
+        if (cacheKey2 !== cacheKey1 && require.cache[cacheKey2]) {
+          require.cache[cacheKey2].exports = global.AlgorithmFramework;
+        }
+      }
       if (!global.AlgorithmFramework) {
         throw new Error('AlgorithmFramework not loaded properly');
       }
 
       // Initialize algorithm category arrays now that AlgorithmFramework is loaded
       this.initializeCategoryArrays();
+
+      // Load common block ciphers for mode testing
+      this.loadCommonBlockCiphers();
+
       this.dependenciesLoaded = true;
 
     } catch (error) {
       throw new Error(`Failed to load dependencies: ${error.message}`);
+    }
+  }
+
+  // Load common block ciphers needed for cipher mode testing
+  loadCommonBlockCiphers() {
+    try {
+      const algorithmsDir = path.join(__dirname, '..', 'algorithms', 'block');
+      const commonCiphers = ['rijndael.js', 'des.js', 'serpent.js', 'twofish.js'];
+
+      if (!this.silent) {
+        console.log('Loading block ciphers for mode testing...');
+      }
+
+      for (const cipherFile of commonCiphers) {
+        const cipherPath = path.join(algorithmsDir, cipherFile);
+        if (fs.existsSync(cipherPath)) {
+          try {
+            require(cipherPath);
+            if (!this.silent) {
+              console.log(`  ✓ Loaded ${cipherFile}`);
+            }
+          } catch (error) {
+            // Silently ignore individual cipher loading failures
+            if (this.verbose) {
+              console.warn(`  ✗ Could not load ${cipherFile}: ${error.message}`);
+            }
+          }
+        } else {
+          if (this.verbose) {
+            console.warn(`  - ${cipherFile} not found`);
+          }
+        }
+      }
+    } catch (error) {
+      // Don't fail if we can't load block ciphers - modes will use fallback Oracle cipher
+      if (this.verbose) {
+        console.warn(`Could not load block ciphers: ${error.message}`);
+      }
     }
   }
 
