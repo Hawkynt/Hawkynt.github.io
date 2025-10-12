@@ -81,19 +81,21 @@
         new Vulnerability("Salt Reuse", "Using the same salt for multiple signatures can reveal information.")
       ];
 
-      // Test vectors for PSS padding (simplified educational version)
+      // Test vectors for PSS padding (educational implementation)
+      // Note: Generated from educational implementation with deterministic salt
+      // PSS typically takes a hash as input (20 bytes for SHA-1)
       this.tests = [
         new TestCase(
-          OpCodes.Hex8ToBytes("48656c6c6f20576f726c64"), // "Hello World"
-          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393170a" + "00".repeat(20) + "01" + "ff".repeat(202) + "bc"), // Simplified PSS format
-          "PSS padding - Hello World message",
-          "RFC 8017"
+          OpCodes.Hex8ToBytes("48656c6c6f20576f726c64"), // "Hello World" - 11 bytes
+          OpCodes.Hex8ToBytes("4c7e44412ff1f63ebb446bc23e89347c50f4120b4c7e44432ff1f63ebb446bc23e89347c50f4120b4c7e44452ff1f63ebb446bc23e89347c50f4120b4c7e44472ff1f63ebb446bc23e89347c50f4120b4c7e44492ff1f63ebb446bc23e89347c50f4120b4c7e444b2ff1f63ebb446bc23e89347c50f4120b4c7e444d2ff1f63ebb446bc23e89347c50f4120b4c7e444f2ff1f63ebb446bc23e89347c50f4120b4c7e44512ff1f63ebb446bc23e89347c50f4120b4c7e44532ff1f63ebb446bc23e89347c50f4120b4c7e44552ff1f63ebb446bc23e8935561f808bb5af766905586d37d8b0743eb8a14dddc5844ef358a09b762c58376a8cd8be139d44cfcabc"),
+          "PSS padding with 11-byte input",
+          "Educational implementation"
         ),
         new TestCase(
-          OpCodes.Hex8ToBytes("546865207175696367206272"), // "The quick br"
-          OpCodes.Hex8ToBytes("abc123def456789012345678" + "00".repeat(20) + "01" + "ff".repeat(199) + "bc"), // Simplified PSS format
-          "PSS padding - Test message",
-          "RFC 8017"
+          OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f10111213"), // 20-byte hash (SHA-1 size)
+          OpCodes.Hex8ToBytes("c155e9eec927c1488c28ce44b3efcb62b411b4fcc155e9ecc927c1488c28ce44b3efcb62b411b4fcc155e9eac927c1488c28ce44b3efcb62b411b4fcc155e9e8c927c1488c28ce44b3efcb62b411b4fcc155e9e6c927c1488c28ce44b3efcb62b411b4fcc155e9e4c927c1488c28ce44b3efcb62b411b4fcc155e9e2c927c1488c28ce44b3efcb62b411b4fcc155e9e0c927c1488c28ce44b3efcb62b411b4fcc155e9fec927c1488c28ce44b3efcb62b411b4fcc155e9fcc927c1488c28ce44b3efcb62b411b4fcc155e9fac927c1488c28ce44b3efca48fb652d42225dc4aabebb00ae87189b3e2c2b22a64e25182bcb004db76ee5294aeb411cefb69c31bc"),
+          "PSS padding with 20-byte SHA-1 hash",
+          "Educational implementation"
         )
       ];
 
@@ -115,39 +117,31 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.inputBuffer = [];
-      this.keySize = 2048; // RSA key size in bits
-      this.saltLength = 20; // Default salt length (SHA-1 hash size)
-      this.hashFunction = 'SHA-1'; // Hash function name
+      this._keySize = 2048; // RSA key size in bits
+      this._saltLength = 20; // Default salt length (SHA-1 hash size)
+      this._hashFunction = 'SHA-1'; // Hash function name
     }
 
-    /**
-     * Set RSA key size
-     * @param {number} keySize - RSA key size in bits
-     */
-    setKeySize(keySize) {
-      if (keySize < 1024 || keySize > 8192 || keySize % 8 !== 0) {
+    // Property getters and setters for test framework
+    get keySize() { return this._keySize; }
+    set keySize(value) {
+      if (value < 1024 || value > 8192 || value % 8 !== 0) {
         throw new Error("Key size must be between 1024-8192 bits and divisible by 8");
       }
-      this.keySize = keySize;
+      this._keySize = value;
     }
 
-    /**
-     * Set salt length
-     * @param {number} saltLength - Salt length in bytes
-     */
-    setSaltLength(saltLength) {
-      if (saltLength < 0 || saltLength > 255) {
+    get saltLength() { return this._saltLength; }
+    set saltLength(value) {
+      if (value < 0 || value > 255) {
         throw new Error("Salt length must be between 0-255 bytes");
       }
-      this.saltLength = saltLength;
+      this._saltLength = value;
     }
 
-    /**
-     * Set hash function
-     * @param {string} hashFunction - Hash function name (e.g., 'SHA-256')
-     */
-    setHashFunction(hashFunction) {
-      this.hashFunction = hashFunction;
+    get hashFunction() { return this._hashFunction; }
+    set hashFunction(value) {
+      this._hashFunction = value;
     }
 
     Feed(data) {
@@ -173,11 +167,11 @@
      */
     _addPadding() {
       const messageHash = this.inputBuffer;
-      const keyBytes = this.keySize / 8;
-      const hashLength = messageHash.length;
+      const keyBytes = this._keySize / 8;
+      const hashLength = this._getHashLength(); // Use fixed hash length, not input length
 
       // Generate salt (simplified: use deterministic salt for test vectors)
-      const salt = new Array(this.saltLength).fill(0).map((_, i) => (i * 37 + 42) & 0xFF);
+      const salt = new Array(this._saltLength).fill(0).map((_, i) => (i * 37 + 42) & 0xFF);
 
       // Create M' = 0x00 00 00 00 00 00 00 00 || messageHash || salt
       const mPrime = [0, 0, 0, 0, 0, 0, 0, 0, ...messageHash, ...salt];
@@ -186,7 +180,7 @@
       const hash = this._simpleHash(mPrime);
 
       // Create DB = PS || 0x01 || salt
-      const psLength = keyBytes - this.saltLength - hashLength - 2;
+      const psLength = keyBytes - this._saltLength - hashLength - 2;
       const db = [...new Array(psLength).fill(0), 0x01, ...salt];
 
       // Generate mask using MGF1 (simplified)
@@ -196,7 +190,7 @@
       const maskedDB = db.map((byte, i) => byte ^ dbMask[i]);
 
       // Set leftmost bits to zero (for key size modulo 8)
-      const leftmostBits = 8 * keyBytes - this.keySize;
+      const leftmostBits = 8 * keyBytes - this._keySize;
       if (leftmostBits > 0) {
         maskedDB[0] &= (0xFF >> leftmostBits);
       }
@@ -217,8 +211,8 @@
      */
     _verifyPadding() {
       const encodedMessage = this.inputBuffer;
-      const keyBytes = this.keySize / 8;
-      const hashLength = 20; // Assume SHA-1 for simplicity
+      const keyBytes = this._keySize / 8;
+      const hashLength = this._getHashLength();
 
       if (encodedMessage.length !== keyBytes) {
         throw new Error("Invalid encoded message length");
@@ -234,7 +228,7 @@
       const hash = encodedMessage.slice(keyBytes - hashLength - 1, keyBytes - 1);
 
       // Check leftmost bits are zero
-      const leftmostBits = 8 * keyBytes - this.keySize;
+      const leftmostBits = 8 * keyBytes - this._keySize;
       if (leftmostBits > 0 && (maskedDB[0] & (0xFF << (8 - leftmostBits))) !== 0) {
         throw new Error("Invalid PSS padding - leftmost bits not zero");
       }
@@ -265,7 +259,7 @@
 
       // Extract salt
       const salt = db.slice(separatorIndex + 1);
-      if (salt.length !== this.saltLength) {
+      if (salt.length !== this._saltLength) {
         throw new Error("Invalid PSS padding - wrong salt length");
       }
 
@@ -281,18 +275,33 @@
     }
 
     /**
+     * Get hash length based on hash function
+     * @returns {number} Hash length in bytes
+     */
+    _getHashLength() {
+      switch (this._hashFunction) {
+        case 'SHA-1': return 20;
+        case 'SHA-256': return 32;
+        case 'SHA-384': return 48;
+        case 'SHA-512': return 64;
+        default: return 20; // Default to SHA-1
+      }
+    }
+
+    /**
      * Simplified hash function (for educational purposes only)
      * @param {Array} data - Data to hash
      * @returns {Array} Hash value
      */
     _simpleHash(data) {
-      const hash = new Array(20).fill(0); // 20-byte hash (SHA-1 size)
+      const hashLength = this._getHashLength();
+      const hash = new Array(hashLength).fill(0);
 
       // Simple hash: XOR all bytes with position-dependent transforms
       for (let i = 0; i < data.length; i++) {
         const pos = i % hash.length;
         hash[pos] ^= data[i];
-        hash[pos] = ((hash[pos] << 1) | (hash[pos] >> 7)) & 0xFF; // Rotate left
+        hash[pos] = OpCodes.RotL8(hash[pos], 1); // Rotate left 1 bit
       }
 
       // Final mixing
@@ -311,11 +320,13 @@
      */
     _mgf1(seed, length) {
       const mask = [];
-      const iterations = Math.ceil(length / 20); // 20 bytes per hash iteration
+      const hashLength = this._getHashLength();
+      const iterations = Math.ceil(length / hashLength);
 
       for (let i = 0; i < iterations; i++) {
         // Create input: seed || I2OSP(i, 4)
-        const input = [...seed, (i >> 24) & 0xFF, (i >> 16) & 0xFF, (i >> 8) & 0xFF, i & 0xFF];
+        const counterBytes = OpCodes.Unpack32BE(i);
+        const input = [...seed, ...counterBytes];
         const hashOutput = this._simpleHash(input);
         mask.push(...hashOutput);
       }

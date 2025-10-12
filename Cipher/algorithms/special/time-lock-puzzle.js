@@ -40,6 +40,15 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
+  // ===== CONSTANTS =====
+
+  const TLP_CONSTANTS = {
+    DEFAULT_MODULUS_BITS: 1024,
+    SMALL_PRIMES: [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
+                   73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151,
+                   157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229]
+  };
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   class TimeLockPuzzle extends CryptoAlgorithm {
@@ -61,12 +70,13 @@
         ];
 
         this.tests = [
-          new TestCase(
-            global.OpCodes.AsciiToBytes('Secret'),
-            global.OpCodes.AsciiToBytes('Secret'),
-            'Educational Time-Lock Puzzle with short delay',
-            'https://people.csail.mit.edu/rivest/pubs/RSW96.pdf'
-          )
+          {
+            text: 'Educational Time-Lock Puzzle with short delay',
+            uri: 'https://people.csail.mit.edu/rivest/pubs/RSW96.pdf',
+            input: OpCodes.AsciiToBytes('Secret'),
+            expected: OpCodes.AsciiToBytes('Secret'),
+            timeSteps: 10000
+          }
         ];
 
         this.testVectors = this.tests;
@@ -87,7 +97,7 @@
         this.q = null;                // Second prime
         this.n = null;                // Modulus n = p * q
         this.phi = null;              // Euler's totient φ(n) = (p-1)(q-1)
-        this.timeSteps = 0;           // Number of squaring operations
+        this._timeSteps = 10000;      // Number of squaring operations
         this.puzzle = null;           // Puzzle value
         this.solution = null;         // Solution to puzzle
         this.encryptedMessage = null; // XOR encrypted message
@@ -100,6 +110,20 @@
         // Parameters are generated dynamically
       }
 
+      get key() {
+        return null;
+      }
+
+      set timeSteps(value) {
+        if (typeof value === 'number' && value > 0) {
+          this._timeSteps = value;
+        }
+      }
+
+      get timeSteps() {
+        return this._timeSteps;
+      }
+
       Feed(data) {
         if (!data || data.length === 0) return;
         this.inputBuffer.push(...data);
@@ -108,9 +132,10 @@
       Result() {
         if (this.inputBuffer.length === 0) return [];
 
+       
         const result = this.isInverse ? 
           this.solvePuzzle(this.puzzle) : 
-          this.createPuzzle(this.inputBuffer, 10000); // Simple test with 10K steps
+          this.createPuzzle(this.inputBuffer,  this._timeSteps); // Simple test with 10K steps
 
         this.inputBuffer = [];
         return result;

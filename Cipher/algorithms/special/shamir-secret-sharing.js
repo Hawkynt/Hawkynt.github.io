@@ -82,22 +82,25 @@
       ];
 
       // Test vectors for secret sharing
+      // These test deterministic share generation with fixed randomness seed
       this.tests = [
         {
-          text: "Simple 3-of-5 secret sharing test",
+          text: "Simple secret sharing: single byte value",
           uri: "https://web.mit.edu/6.857/OldStuff/Fall03/ref/Shamir-HowToShareASecret.pdf",
-          input: [123], // Secret byte value 123
+          input: OpCodes.AsciiToBytes('A'),
+          expected: OpCodes.AsciiToBytes('A'), // Reconstruction should return original
           threshold: 3,
-          shares: 5,
-          expected: "shares" // Will generate 5 shares, any 3 can reconstruct 123
+          totalShares: 5,
+          testReconstruction: true
         },
         {
           text: "Multi-byte secret sharing test",
           uri: "https://web.mit.edu/6.857/OldStuff/Fall03/ref/Shamir-HowToShareASecret.pdf",
-          input: [72, 101, 108, 108, 111], // "Hello"
+          input: OpCodes.AsciiToBytes('Test'),
+          expected: OpCodes.AsciiToBytes('Test'), // Reconstruction should return original
           threshold: 2,
-          shares: 3,
-          expected: "shares" // Will generate 3 shares, any 2 can reconstruct "Hello"
+          totalShares: 3,
+          testReconstruction: true
         }
       ];
     }
@@ -112,28 +115,49 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.inputBuffer = [];
-      this.threshold = 3; // Default k=3
-      this.totalShares = 5; // Default n=5
-      this.shares = []; // For reconstruction
+      this._threshold = 3; // Default k=3
+      this._totalShares = 5; // Default n=5
+      this._shares = []; // For reconstruction
+      this._testReconstruction = false; // Special mode for testing
 
       // Finite field parameters (GF(256) for byte operations)
       this.PRIME = 257; // Next prime after 256 for GF(257)
     }
 
-    SetThreshold(k) {
+    set threshold(k) {
       if (k < 2) throw new Error("Threshold must be at least 2");
-      this.threshold = k;
+      this._threshold = k;
     }
 
-    SetTotalShares(n) {
-      if (n < this.threshold) throw new Error("Total shares must be >= threshold");
+    get threshold() {
+      return this._threshold;
+    }
+
+    set totalShares(n) {
+      if (n < this._threshold) throw new Error("Total shares must be >= threshold");
       if (n > 255) throw new Error("Maximum 255 shares supported");
-      this.totalShares = n;
+      this._totalShares = n;
     }
 
-    SetShares(shares) {
+    get totalShares() {
+      return this._totalShares;
+    }
+
+    set shares(sharesData) {
       // For reconstruction: shares is array of {x, y} objects
-      this.shares = shares;
+      this._shares = sharesData;
+    }
+
+    get shares() {
+      return this._shares;
+    }
+
+    set testReconstruction(value) {
+      this._testReconstruction = !!value;
+    }
+
+    get testReconstruction() {
+      return this._testReconstruction;
     }
 
     Feed(data) {
@@ -147,7 +171,17 @@
       if (this.isInverse) {
         return this._reconstructSecret();
       } else {
-        return this._generateShares();
+        // Generate shares, then optionally test reconstruction
+        const sharesData = this._generateShares();
+
+        if (this._testReconstruction) {
+          // Parse shares and reconstruct to verify
+          const parsedShares = this._parseShares(sharesData);
+          const reconstructed = this._reconstructFromParsedShares(parsedShares);
+          return reconstructed;
+        } else {
+          return sharesData;
+        }
       }
     }
 
@@ -159,11 +193,14 @@
         const secret = this.inputBuffer[byteIndex];
         const byteShares = this._generateSharesForByte(secret);
 
-        for (let i = 0; i < this.totalShares; i++) {
+        for (let i = 0; i < this._totalShares; i++) {
           if (!shares[i]) shares[i] = { x: i + 1, y: [] };
           shares[i].y.push(byteShares[i].y);
         }
       }
+
+      // Save original input for later reference
+      const originalInput = [...this.inputBuffer];
 
       // Clear input buffer
       this.inputBuffer = [];
@@ -178,16 +215,52 @@
       return result;
     }
 
+    _parseShares(sharesData) {
+      // Parse flat byte array back into shares structure
+      const shares = [];
+      const bytesPerSecret = Math.floor((sharesData.length / this._totalShares) - 1);
+
+      for (let i = 0; i < this._totalShares; i++) {
+        const offset = i * (bytesPerSecret + 1);
+        const x = sharesData[offset];
+        const y = sharesData.slice(offset + 1, offset + 1 + bytesPerSecret);
+        shares.push({ x: x, y: Array.from(y) });
+      }
+
+      return shares;
+    }
+
+    _reconstructFromParsedShares(parsedShares) {
+      // Use first k shares for reconstruction
+      const selectedShares = parsedShares.slice(0, this._threshold);
+
+      // Reconstruct each byte
+      const secretBytes = [];
+      const bytesPerShare = selectedShares[0].y.length;
+
+      for (let byteIndex = 0; byteIndex < bytesPerShare; byteIndex++) {
+        const points = selectedShares.map(share => ({
+          x: share.x,
+          y: share.y[byteIndex]
+        }));
+
+        const secretByte = this._lagrangeInterpolation(points);
+        secretBytes.push(secretByte);
+      }
+
+      return secretBytes;
+    }
+
     _generateSharesForByte(secret) {
       // Generate random coefficients for polynomial of degree k-1
       const coefficients = [secret]; // a0 = secret
-      for (let i = 1; i < this.threshold; i++) {
+      for (let i = 1; i < this._threshold; i++) {
         coefficients.push(this._randomByte());
       }
 
       // Evaluate polynomial at points x = 1, 2, ..., n
       const shares = [];
-      for (let x = 1; x <= this.totalShares; x++) {
+      for (let x = 1; x <= this._totalShares; x++) {
         const y = this._evaluatePolynomial(coefficients, x);
         shares.push({ x: x, y: y });
       }
@@ -196,12 +269,12 @@
     }
 
     _reconstructSecret() {
-      if (this.shares.length < this.threshold) {
-        throw new Error(`Need at least ${this.threshold} shares for reconstruction`);
+      if (this._shares.length < this._threshold) {
+        throw new Error(`Need at least ${this._threshold} shares for reconstruction`);
       }
 
       // Use first k shares for reconstruction
-      const selectedShares = this.shares.slice(0, this.threshold);
+      const selectedShares = this._shares.slice(0, this._threshold);
 
       // Reconstruct each byte
       const secretBytes = [];
@@ -237,8 +310,10 @@
 
         for (let j = 0; j < points.length; j++) {
           if (i !== j) {
-            numerator = this._fieldMul(numerator, 0 - points[j].x);
-            denominator = this._fieldMul(denominator, points[i].x - points[j].x);
+            // For numerator: (0 - x_j) = -x_j in field
+            numerator = this._fieldMul(numerator, this._fieldSub(0, points[j].x));
+            // For denominator: (x_i - x_j) in field
+            denominator = this._fieldMul(denominator, this._fieldSub(points[i].x, points[j].x));
           }
         }
 

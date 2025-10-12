@@ -81,19 +81,20 @@
         new Vulnerability("Side Channel Attacks", "Timing attacks may be possible if padding validation is not implemented in constant time.")
       ];
 
-      // Test vectors for PKCS#1 v1.5 padding (simplified for educational purposes)
+      // Test vectors for PKCS#1 v1.5 padding (educational implementation)
+      // Note: Uses deterministic 0xFF padding for test repeatability
       this.tests = [
         new TestCase(
           OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393170a"), // 16 bytes message
-          OpCodes.Hex8ToBytes("0002" + "ff".repeat(235) + "00" + "6bc1bee22e409f96e93d7e117393170a"), // 256-byte padded (RSA-2048)
+          OpCodes.Hex8ToBytes("0002" + "ff".repeat(237) + "00" + "6bc1bee22e409f96e93d7e117393170a"), // 256-byte padded (RSA-2048)
           "PKCS#1 v1.5 encryption padding - 16-byte message",
-          "RFC 8017"
+          "Educational implementation"
         ),
         new TestCase(
-          OpCodes.Hex8ToBytes("48656c6c6f20576f726c64"), // "Hello World" in hex
-          OpCodes.Hex8ToBytes("0002" + "ff".repeat(244) + "00" + "48656c6c6f20576f726c64"), // 256-byte padded
+          OpCodes.Hex8ToBytes("48656c6c6f20576f726c64"), // "Hello World" - 11 bytes
+          OpCodes.Hex8ToBytes("0002" + "ff".repeat(242) + "00" + "48656c6c6f20576f726c64"), // 256-byte padded
           "PKCS#1 v1.5 encryption padding - Hello World",
-          "RFC 8017"
+          "Educational implementation"
         )
       ];
 
@@ -114,30 +115,25 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.inputBuffer = [];
-      this.keySize = 2048; // Default RSA key size in bits
-      this.paddingType = 'encryption'; // 'encryption' or 'signature'
+      this._keySize = 2048; // Default RSA key size in bits
+      this._paddingType = 'encryption'; // 'encryption' or 'signature'
     }
 
-    /**
-     * Set RSA key size for padding calculation
-     * @param {number} keySize - RSA key size in bits (e.g., 2048, 4096)
-     */
-    setKeySize(keySize) {
-      if (keySize < 512 || keySize > 8192 || keySize % 8 !== 0) {
+    // Property getters and setters for test framework
+    get keySize() { return this._keySize; }
+    set keySize(value) {
+      if (value < 512 || value > 8192 || value % 8 !== 0) {
         throw new Error("Key size must be between 512-8192 bits and divisible by 8");
       }
-      this.keySize = keySize;
+      this._keySize = value;
     }
 
-    /**
-     * Set padding type
-     * @param {string} type - 'encryption' or 'signature'
-     */
-    setPaddingType(type) {
-      if (type !== 'encryption' && type !== 'signature') {
+    get paddingType() { return this._paddingType; }
+    set paddingType(value) {
+      if (value !== 'encryption' && value !== 'signature') {
         throw new Error("Padding type must be 'encryption' or 'signature'");
       }
-      this.paddingType = type;
+      this._paddingType = value;
     }
 
     Feed(data) {
@@ -163,7 +159,7 @@
      */
     _addPadding() {
       const message = this.inputBuffer;
-      const keyBytes = this.keySize / 8;
+      const keyBytes = this._keySize / 8;
 
       // Check message length
       const maxMessageLength = keyBytes - 11; // Minimum 11 bytes overhead
@@ -173,7 +169,7 @@
 
       // PKCS#1 v1.5 padding format: 0x00 || BT || PS || 0x00 || M
       // BT = 0x02 for encryption, 0x01 for signature
-      const blockType = this.paddingType === 'encryption' ? 0x02 : 0x01;
+      const blockType = this._paddingType === 'encryption' ? 0x02 : 0x01;
       const paddingLength = keyBytes - message.length - 3;
 
       const result = [];
@@ -181,7 +177,7 @@
       result.push(blockType); // Block type
 
       // Padding string (PS)
-      if (this.paddingType === 'encryption') {
+      if (this._paddingType === 'encryption') {
         // For encryption: random non-zero bytes
         for (let i = 0; i < paddingLength; i++) {
           // Use deterministic pseudo-random for test vectors
@@ -210,7 +206,7 @@
      */
     _removePadding() {
       const paddedData = this.inputBuffer;
-      const keyBytes = this.keySize / 8;
+      const keyBytes = this._keySize / 8;
 
       if (paddedData.length !== keyBytes) {
         throw new Error(`Invalid padded data length. Expected: ${keyBytes} bytes`);
