@@ -123,6 +123,78 @@ class TypeScriptPlugin extends LanguagePlugin {
         return this._generateMemberExpression(node, options);
       case 'AssignmentExpression':
         return this._generateAssignmentExpression(node, options);
+      case 'ArrayExpression':
+        return this._generateArrayExpression(node, options);
+      case 'ObjectExpression':
+        return this._generateObjectExpression(node, options);
+      case 'Property':
+        return this._generateProperty(node, options);
+      case 'FunctionExpression':
+        return this._generateFunctionExpression(node, options);
+      case 'ArrowFunctionExpression':
+        return this._generateArrowFunctionExpression(node, options);
+      case 'NewExpression':
+        return this._generateNewExpression(node, options);
+      case 'UnaryExpression':
+        return this._generateUnaryExpression(node, options);
+      case 'UpdateExpression':
+        return this._generateUpdateExpression(node, options);
+      case 'LogicalExpression':
+        return this._generateLogicalExpression(node, options);
+      case 'ConditionalExpression':
+        return this._generateConditionalExpression(node, options);
+      case 'SequenceExpression':
+        return this._generateSequenceExpression(node, options);
+      case 'TemplateLiteral':
+        return this._generateTemplateLiteral(node, options);
+      case 'TaggedTemplateExpression':
+        return this._generateTaggedTemplateExpression(node, options);
+      case 'RestElement':
+        return this._generateRestElement(node, options);
+      case 'SpreadElement':
+        return this._generateSpreadElement(node, options);
+      case 'AssignmentPattern':
+        return this._generateAssignmentPattern(node, options);
+      case 'ObjectPattern':
+        return this._generateObjectPattern(node, options);
+      case 'ArrayPattern':
+        return this._generateArrayPattern(node, options);
+      case 'VariableDeclarator':
+        return this._generateVariableDeclarator(node, options);
+      case 'IfStatement':
+        return this._generateIfStatement(node, options);
+      case 'WhileStatement':
+        return this._generateWhileStatement(node, options);
+      case 'ForStatement':
+        return this._generateForStatement(node, options);
+      case 'ForInStatement':
+        return this._generateForInStatement(node, options);
+      case 'ForOfStatement':
+        return this._generateForOfStatement(node, options);
+      case 'DoWhileStatement':
+        return this._generateDoWhileStatement(node, options);
+      case 'SwitchStatement':
+        return this._generateSwitchStatement(node, options);
+      case 'SwitchCase':
+        return this._generateSwitchCase(node, options);
+      case 'BreakStatement':
+        return this._generateBreakStatement(node, options);
+      case 'ContinueStatement':
+        return this._generateContinueStatement(node, options);
+      case 'TryStatement':
+        return this._generateTryStatement(node, options);
+      case 'CatchClause':
+        return this._generateCatchClause(node, options);
+      case 'ThrowStatement':
+        return this._generateThrowStatement(node, options);
+      case 'EmptyStatement':
+        return this._generateEmptyStatement(node, options);
+      case 'DebuggerStatement':
+        return this._generateDebuggerStatement(node, options);
+      case 'WithStatement':
+        return this._generateWithStatement(node, options);
+      case 'LabeledStatement':
+        return this._generateLabeledStatement(node, options);
       case 'Identifier':
         return this._generateIdentifier(node, options);
       case 'Literal':
@@ -442,6 +514,612 @@ class TypeScriptPlugin extends LanguagePlugin {
     } else {
       return String(node.value);
     }
+  }
+
+  /**
+   * Generate array expression
+   * @private
+   */
+  _generateArrayExpression(node, options) {
+    if (!node.elements || node.elements.length === 0) {
+      return options.useTypeScript ? '[] as any[]' : '[]';
+    }
+
+    const elements = node.elements
+      .map(element => element ? this._generateNode(element, options) : 'undefined')
+      .join(', ');
+
+    return options.useTypeScript ? `[${elements}] as any[]` : `[${elements}]`;
+  }
+
+  /**
+   * Generate object expression
+   * @private
+   */
+  _generateObjectExpression(node, options) {
+    if (!node.properties || node.properties.length === 0) {
+      return options.useTypeScript ? '{} as Record<string, any>' : '{}';
+    }
+
+    const properties = node.properties.map(prop => this._generateNode(prop, options));
+    return `{ ${properties.join(', ')} }`;
+  }
+
+  /**
+   * Generate property
+   * @private
+   */
+  _generateProperty(node, options) {
+    const key = node.computed ?
+      `[${this._generateNode(node.key, options)}]` :
+      this._generateNode(node.key, options);
+    const value = this._generateNode(node.value, options);
+
+    return `${key}: ${value}`;
+  }
+
+  /**
+   * Generate function expression
+   * @private
+   */
+  _generateFunctionExpression(node, options) {
+    const name = node.id ? node.id.name : '';
+    const params = this._generateParameters(node.params, options);
+    const returnType = options.useTypeScript ? ': any' : '';
+
+    let code = `function ${name}(${params})${returnType} {\n`;
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('// Empty function body\n');
+    }
+
+    this.indentLevel--;
+    code += this._indent('}');
+    return code;
+  }
+
+  /**
+   * Generate arrow function expression
+   * @private
+   */
+  _generateArrowFunctionExpression(node, options) {
+    const params = this._generateParameters(node.params, options);
+    const returnType = options.useTypeScript ? ': any' : '';
+
+    if (node.body.type === 'BlockStatement') {
+      let code = `(${params})${returnType} => {\n`;
+      this.indentLevel++;
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('// Empty arrow function body\n');
+      this.indentLevel--;
+      code += this._indent('}');
+      return code;
+    } else {
+      const body = this._generateNode(node.body, options);
+      return `(${params})${returnType} => ${body}`;
+    }
+  }
+
+  /**
+   * Generate new expression
+   * @private
+   */
+  _generateNewExpression(node, options) {
+    const callee = this._generateNode(node.callee, options);
+    const args = node.arguments ?
+      node.arguments.map(arg => this._generateNode(arg, options)).join(', ') : '';
+
+    return `new ${callee}(${args})`;
+  }
+
+  /**
+   * Generate unary expression
+   * @private
+   */
+  _generateUnaryExpression(node, options) {
+    const argument = this._generateNode(node.argument, options);
+    const operator = node.operator;
+
+    switch (operator) {
+      case 'typeof':
+        return `typeof ${argument}`;
+      case 'delete':
+        return `delete ${argument}`;
+      case 'void':
+        return `void ${argument}`;
+      default:
+        return `${operator}${argument}`;
+    }
+  }
+
+  /**
+   * Generate update expression (++/--)
+   * @private
+   */
+  _generateUpdateExpression(node, options) {
+    const argument = this._generateNode(node.argument, options);
+    const operator = node.operator;
+
+    if (node.prefix) {
+      return `${operator}${argument}`;
+    } else {
+      return `${argument}${operator}`;
+    }
+  }
+
+  /**
+   * Generate logical expression
+   * @private
+   */
+  _generateLogicalExpression(node, options) {
+    const left = this._generateNode(node.left, options);
+    const right = this._generateNode(node.right, options);
+    const operator = node.operator;
+
+    return `${left} ${operator} ${right}`;
+  }
+
+  /**
+   * Generate conditional expression (ternary)
+   * @private
+   */
+  _generateConditionalExpression(node, options) {
+    const test = this._generateNode(node.test, options);
+    const consequent = this._generateNode(node.consequent, options);
+    const alternate = this._generateNode(node.alternate, options);
+
+    return `${test} ? ${consequent} : ${alternate}`;
+  }
+
+  /**
+   * Generate sequence expression
+   * @private
+   */
+  _generateSequenceExpression(node, options) {
+    if (!node.expressions || node.expressions.length === 0) {
+      return '';
+    }
+
+    const expressions = node.expressions.map(expr => this._generateNode(expr, options));
+    return `(${expressions.join(', ')})`;
+  }
+
+  /**
+   * Generate template literal
+   * @private
+   */
+  _generateTemplateLiteral(node, options) {
+    if (!node.quasis || node.quasis.length === 0) {
+      return '``';
+    }
+
+    let result = '`';
+    for (let i = 0; i < node.quasis.length; i++) {
+      const quasi = node.quasis[i];
+      result += quasi.value ? quasi.value.raw || quasi.value.cooked || '' : '';
+
+      if (i < node.expressions.length) {
+        const expr = this._generateNode(node.expressions[i], options);
+        result += '${' + expr + '}';
+      }
+    }
+    result += '`';
+    return result;
+  }
+
+  /**
+   * Generate tagged template expression
+   * @private
+   */
+  _generateTaggedTemplateExpression(node, options) {
+    const tag = this._generateNode(node.tag, options);
+    const quasi = this._generateNode(node.quasi, options);
+    return `${tag}${quasi}`;
+  }
+
+  /**
+   * Generate rest element
+   * @private
+   */
+  _generateRestElement(node, options) {
+    const argument = this._generateNode(node.argument, options);
+    const type = options.useTypeScript ? ': any[]' : '';
+    return `...${argument}${type}`;
+  }
+
+  /**
+   * Generate spread element
+   * @private
+   */
+  _generateSpreadElement(node, options) {
+    const argument = this._generateNode(node.argument, options);
+    return `...${argument}`;
+  }
+
+  /**
+   * Generate assignment pattern (default parameters)
+   * @private
+   */
+  _generateAssignmentPattern(node, options) {
+    const left = this._generateNode(node.left, options);
+    const right = this._generateNode(node.right, options);
+    return `${left} = ${right}`;
+  }
+
+  /**
+   * Generate object pattern (destructuring)
+   * @private
+   */
+  _generateObjectPattern(node, options) {
+    if (!node.properties || node.properties.length === 0) {
+      return '{}';
+    }
+
+    const properties = node.properties.map(prop => this._generateNode(prop, options));
+    return `{ ${properties.join(', ')} }`;
+  }
+
+  /**
+   * Generate array pattern (destructuring)
+   * @private
+   */
+  _generateArrayPattern(node, options) {
+    if (!node.elements || node.elements.length === 0) {
+      return '[]';
+    }
+
+    const elements = node.elements.map(elem =>
+      elem ? this._generateNode(elem, options) : ''
+    );
+    return `[${elements.join(', ')}]`;
+  }
+
+  /**
+   * Generate variable declarator
+   * @private
+   */
+  _generateVariableDeclarator(node, options) {
+    const id = node.id ? this._generateNode(node.id, options) : 'variable';
+    const type = options.useTypeScript ? ': any' : '';
+
+    if (node.init) {
+      const init = this._generateNode(node.init, options);
+      return `${id}${type} = ${init}`;
+    } else {
+      return `${id}${type}`;
+    }
+  }
+
+  /**
+   * Generate if statement
+   * @private
+   */
+  _generateIfStatement(node, options) {
+    const test = this._generateNode(node.test, options);
+    let code = this._indent(`if (${test}) {\n`);
+
+    this.indentLevel++;
+    if (node.consequent) {
+      const consequent = this._generateNode(node.consequent, options);
+      code += consequent || this._indent('// Empty if body\n');
+    }
+    this.indentLevel--;
+
+    code += this._indent('}\n');
+
+    if (node.alternate) {
+      if (node.alternate.type === 'IfStatement') {
+        code += this._indent('else ');
+        code += this._generateIfStatement(node.alternate, options).replace(/^\s+/, '');
+      } else {
+        code += this._indent('else {\n');
+        this.indentLevel++;
+        const alternate = this._generateNode(node.alternate, options);
+        code += alternate || this._indent('// Empty else body\n');
+        this.indentLevel--;
+        code += this._indent('}\n');
+      }
+    }
+
+    return code;
+  }
+
+  /**
+   * Generate while statement
+   * @private
+   */
+  _generateWhileStatement(node, options) {
+    const test = this._generateNode(node.test, options);
+    let code = this._indent(`while (${test}) {\n`);
+
+    this.indentLevel++;
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('// Empty while body\n');
+    }
+    this.indentLevel--;
+
+    code += this._indent('}\n');
+    return code;
+  }
+
+  /**
+   * Generate for statement
+   * @private
+   */
+  _generateForStatement(node, options) {
+    const init = node.init ? this._generateNode(node.init, options).replace(/;\n$/, '') : '';
+    const test = node.test ? this._generateNode(node.test, options) : '';
+    const update = node.update ? this._generateNode(node.update, options) : '';
+
+    let code = this._indent(`for (${init}; ${test}; ${update}) {\n`);
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('// Empty for body\n');
+    }
+
+    this.indentLevel--;
+    code += this._indent('}\n');
+    return code;
+  }
+
+  /**
+   * Generate for-in statement
+   * @private
+   */
+  _generateForInStatement(node, options) {
+    const left = this._generateNode(node.left, options);
+    const right = this._generateNode(node.right, options);
+
+    let code = this._indent(`for (${left} in ${right}) {\n`);
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('// Empty for-in body\n');
+    }
+
+    this.indentLevel--;
+    code += this._indent('}\n');
+    return code;
+  }
+
+  /**
+   * Generate for-of statement
+   * @private
+   */
+  _generateForOfStatement(node, options) {
+    const left = this._generateNode(node.left, options);
+    const right = this._generateNode(node.right, options);
+
+    let code = this._indent(`for (${left} of ${right}) {\n`);
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('// Empty for-of body\n');
+    }
+
+    this.indentLevel--;
+    code += this._indent('}\n');
+    return code;
+  }
+
+  /**
+   * Generate do-while statement
+   * @private
+   */
+  _generateDoWhileStatement(node, options) {
+    let code = this._indent('do {\n');
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('// Empty do body\n');
+    }
+
+    this.indentLevel--;
+    const test = this._generateNode(node.test, options);
+    code += this._indent(`} while (${test});\n`);
+    return code;
+  }
+
+  /**
+   * Generate switch statement
+   * @private
+   */
+  _generateSwitchStatement(node, options) {
+    const discriminant = this._generateNode(node.discriminant, options);
+    let code = this._indent(`switch (${discriminant}) {\n`);
+
+    this.indentLevel++;
+    if (node.cases) {
+      for (const caseNode of node.cases) {
+        code += this._generateNode(caseNode, options);
+      }
+    }
+    this.indentLevel--;
+
+    code += this._indent('}\n');
+    return code;
+  }
+
+  /**
+   * Generate switch case
+   * @private
+   */
+  _generateSwitchCase(node, options) {
+    let code = '';
+
+    if (node.test) {
+      const test = this._generateNode(node.test, options);
+      code += this._indent(`case ${test}:\n`);
+    } else {
+      code += this._indent('default:\n');
+    }
+
+    this.indentLevel++;
+    if (node.consequent) {
+      for (const stmt of node.consequent) {
+        code += this._generateNode(stmt, options);
+      }
+    }
+    this.indentLevel--;
+
+    return code;
+  }
+
+  /**
+   * Generate break statement
+   * @private
+   */
+  _generateBreakStatement(node, options) {
+    return this._indent('break;\n');
+  }
+
+  /**
+   * Generate continue statement
+   * @private
+   */
+  _generateContinueStatement(node, options) {
+    return this._indent('continue;\n');
+  }
+
+  /**
+   * Generate try statement
+   * @private
+   */
+  _generateTryStatement(node, options) {
+    let code = this._indent('try {\n');
+    this.indentLevel++;
+
+    if (node.block) {
+      const block = this._generateNode(node.block, options);
+      code += block || this._indent('// Empty try block\n');
+    }
+
+    this.indentLevel--;
+    code += this._indent('}\n');
+
+    if (node.handler) {
+      code += this._generateNode(node.handler, options);
+    }
+
+    if (node.finalizer) {
+      code += this._indent('finally {\n');
+      this.indentLevel++;
+      const finalizer = this._generateNode(node.finalizer, options);
+      code += finalizer || this._indent('// Empty finally block\n');
+      this.indentLevel--;
+      code += this._indent('}\n');
+    }
+
+    return code;
+  }
+
+  /**
+   * Generate catch clause
+   * @private
+   */
+  _generateCatchClause(node, options) {
+    let code = this._indent('catch');
+
+    if (node.param) {
+      const param = this._generateNode(node.param, options);
+      const type = options.useTypeScript ? ': any' : '';
+      code += ` (${param}${type})`;
+    }
+
+    code += ' {\n';
+    this.indentLevel++;
+
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('// Empty catch block\n');
+    }
+
+    this.indentLevel--;
+    code += this._indent('}\n');
+    return code;
+  }
+
+  /**
+   * Generate throw statement
+   * @private
+   */
+  _generateThrowStatement(node, options) {
+    if (node.argument) {
+      const argument = this._generateNode(node.argument, options);
+      return this._indent(`throw ${argument};\n`);
+    } else {
+      return this._indent('throw new Error();\n');
+    }
+  }
+
+  /**
+   * Generate empty statement
+   * @private
+   */
+  _generateEmptyStatement(node, options) {
+    return this._indent(';\n');
+  }
+
+  /**
+   * Generate debugger statement
+   * @private
+   */
+  _generateDebuggerStatement(node, options) {
+    return this._indent('debugger;\n');
+  }
+
+  /**
+   * Generate with statement
+   * @private
+   */
+  _generateWithStatement(node, options) {
+    const object = this._generateNode(node.object, options);
+    let code = this._indent(`with (${object}) {\n`);
+
+    this.indentLevel++;
+    if (node.body) {
+      const body = this._generateNode(node.body, options);
+      code += body || this._indent('// Empty with body\n');
+    }
+    this.indentLevel--;
+
+    code += this._indent('}\n');
+    return code;
+  }
+
+  /**
+   * Generate labeled statement
+   * @private
+   */
+  _generateLabeledStatement(node, options) {
+    const label = node.label ? this._generateNode(node.label, options) : 'label';
+    const body = node.body ? this._generateNode(node.body, options) : '';
+
+    return this._indent(`${label}:\n`) + body;
+  }
+
+  /**
+   * Generate parameters with TypeScript type annotations
+   * @private
+   */
+  _generateParameters(params, options) {
+    if (!params || params.length === 0) {
+      return '';
+    }
+
+    return params.map(param => {
+      const name = this._generateNode(param, options);
+      const type = options.useTypeScript ? ': any' : '';
+      return `${name}${type}`;
+    }).join(', ');
   }
 
   /**
