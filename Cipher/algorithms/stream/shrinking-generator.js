@@ -154,6 +154,10 @@
       }
     }
 
+    get key() {
+      return this.keyData ? this.keyData.slice() : null;
+    }
+
     initializeKey() {
       if (!this.keyData || this.keyData.length !== 16) {
         throw new Error('Shrinking Generator requires 128-bit (16 byte) key');

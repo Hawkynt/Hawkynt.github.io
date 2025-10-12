@@ -154,8 +154,16 @@
       this._nonce = nonceBytes ? [...nonceBytes] : null;
     }
 
+    get nonce() {
+      return this._nonce ? [...this._nonce] : null;
+    }
+
     set aad(aadBytes) {
       this._aad = aadBytes ? [...aadBytes] : null;
+    }
+
+    get aad() {
+      return this._aad ? [...this._aad] : null;
     }
 
     // Feed data for processing

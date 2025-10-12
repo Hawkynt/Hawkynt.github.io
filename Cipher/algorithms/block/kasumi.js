@@ -46,13 +46,13 @@
       super();
 
       // Required metadata
-      this.name = "Kasumi";
-      this.description = "3GPP confidentiality and integrity algorithm based on MISTY1 structure. 64-bit block cipher with 128-bit key used in UMTS/LTE mobile networks for encryption and authentication.";
-      this.inventor = "3GPP Task Force (based on MISTY1 by Mitsubishi)";
+      this.name = "KASUMI";
+      this.description = "3GPP block cipher for 3G mobile telecommunications security. Based on MISTY1 with 64-bit blocks and 128-bit keys. Uses 8-round Feistel structure with FO and FL functions. Employed in A5/3, f8, and f9 algorithms.";
+      this.inventor = "3GPP (3rd Generation Partnership Project)";
       this.year = 1999;
       this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = SecurityStatus.DEPRECATED;
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.INTL;
 
@@ -62,30 +62,54 @@
 
       // Documentation
       this.documentation = [
-        new LinkItem("3GPP TS 35.202 - KASUMI Specification", "https://www.tech-invite.com/3m35/tinv-3gpp-35-202.html"),
-        new LinkItem("3GPP Security Algorithms", "https://www.arib.or.jp/english/html/overview/doc/STD-T63V9_21/5_Appendix/Rel4/35/35201-410.pdf")
+        new LinkItem("3GPP TS 35.202 - KASUMI Specification", "https://www.3gpp.org/ftp/Specs/archive/35_series/35.202/"),
+        new LinkItem("Wikipedia: KASUMI", "https://en.wikipedia.org/wiki/KASUMI"),
+        new LinkItem("LibTomCrypt Implementation", "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/kasumi.c")
       ];
 
-      this.references = [
-        new LinkItem("LibTomCrypt Implementation", "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/kasumi.c"),
-        new LinkItem("Crypto++ Implementation", "https://www.cryptopp.com/")
-      ];
-
-      // Test vectors from LibTomCrypt and crypto3 library
+      // Test vectors from LibTomCrypt (official reference implementation)
       this.tests = [
         {
-          text: "Crypto3 Library Test Vector",
-          uri: "https://github.com/NilFoundation/crypto3/blob/master/libs/block/test/kasumi.cpp",
-          input: OpCodes.Hex8ToBytes("ea024714ad5c4d84"),
-          key: OpCodes.Hex8ToBytes("2bd6459f82c5b300952c49104881ff48"),
-          expected: OpCodes.Hex8ToBytes("df1f9b251c0bf45f")
-        },
-        {
-          text: "LibTomCrypt Test Vector #1 - Single bit set in key (MSB)",
+          text: "LibTomCrypt Vector #1: Single bit key (bit 0)",
           uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/kasumi.c",
           input: OpCodes.Hex8ToBytes("0000000000000000"),
           key: OpCodes.Hex8ToBytes("80000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("4b58a771afc7e5e8")
+          expected: OpCodes.Hex8ToBytes("4B58A771AFC7E5E8")
+        },
+        {
+          text: "LibTomCrypt Vector #2: Single bit key (bit 8)",
+          uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/kasumi.c",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00800000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("7EEF113C95BB5A77")
+        },
+        {
+          text: "LibTomCrypt Vector #3: Single bit key (bit 16)",
+          uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/kasumi.c",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00008000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("5F140686D7AD5A39")
+        },
+        {
+          text: "LibTomCrypt Vector #4: Single bit key (bit 120)",
+          uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/kasumi.c",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000001"),
+          expected: OpCodes.Hex8ToBytes("2E1491CF70AA465D")
+        },
+        {
+          text: "LibTomCrypt Vector #5: Single bit key (bit 112)",
+          uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/kasumi.c",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000100"),
+          expected: OpCodes.Hex8ToBytes("B54586F4AB9AE546")
+        },
+        {
+          text: "Crypto3 Vector: Realistic key/plaintext",
+          uri: "https://github.com/nilfoundation/crypto3/blob/master/libs/block/test/kasumi.cpp",
+          input: OpCodes.Hex8ToBytes("EA024714AD5C4D84"),
+          key: OpCodes.Hex8ToBytes("2BD6459F82C5B300952C49104881FF48"),
+          expected: OpCodes.Hex8ToBytes("DF1F9B251C0BF45F")
         }
       ];
     }
