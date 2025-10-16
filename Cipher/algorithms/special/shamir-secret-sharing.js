@@ -119,6 +119,8 @@
       this._totalShares = 5; // Default n=5
       this._shares = []; // For reconstruction
       this._testReconstruction = false; // Special mode for testing
+      this._seed = null; // Seed for deterministic RNG
+      this._rngState = 0; // RNG state
 
       // Finite field parameters (GF(256) for byte operations)
       this.PRIME = 257; // Next prime after 256 for GF(257)
@@ -158,6 +160,31 @@
 
     get testReconstruction() {
       return this._testReconstruction;
+    }
+
+    /**
+     * Set seed for deterministic random number generation
+     * Used for testing purposes to make share generation reproducible
+     * @param {Array} seedBytes - Seed bytes for PRNG initialization
+     */
+    set seed(seedBytes) {
+      if (!seedBytes) {
+        this._seed = null;
+        this._rngState = 0;
+        return;
+      }
+      this._seed = [...seedBytes];
+      // Initialize RNG state from seed using simple hash
+      this._rngState = 0;
+      for (let i = 0; i < this._seed.length; i++) {
+        this._rngState = ((this._rngState * 31) + this._seed[i]) >>> 0;
+      }
+      // Ensure non-zero state
+      if (this._rngState === 0) this._rngState = 1;
+    }
+
+    get seed() {
+      return this._seed ? [...this._seed] : null;
     }
 
     Feed(data) {
@@ -375,9 +402,24 @@
       };
     }
 
+    /**
+     * Generate deterministic or secure random byte
+     * @returns {number} Random byte (0-255)
+     */
     _randomByte() {
-      // Simple PRNG for educational purposes
-      return Math.floor(Math.random() * 256);
+      if (this._seed) {
+        // Deterministic: Linear Congruential Generator
+        // Using MINSTD parameters (a=48271, c=0, m=2^31-1)
+        this._rngState = (this._rngState * 48271) % 0x7FFFFFFF;
+        return this._rngState & 0xFF;
+      } else {
+        // Non-deterministic: Use Math.random (or OpCodes.SecureRandom if available)
+        if (typeof OpCodes !== 'undefined' && OpCodes.SecureRandom) {
+          return OpCodes.SecureRandom(256);
+        } else {
+          return Math.floor(Math.random() * 256);
+        }
+      }
     }
   }
 
