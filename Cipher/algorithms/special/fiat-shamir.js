@@ -118,6 +118,8 @@
         this.initialized = false;
         this.isProver = false;
         this.isVerifier = false;
+        this._seed = null;            // Seed for deterministic RNG
+        this._rngState = 0;           // RNG state
       }
 
       set key(keyData) {
@@ -137,6 +139,48 @@
 
       get timeSteps() {
         return this._timeSteps;
+      }
+
+      /**
+       * Set seed for deterministic random number generation
+       * Used for testing purposes to make prime generation reproducible
+       * @param {Array} seedBytes - Seed bytes for PRNG initialization
+       */
+      set seed(seedBytes) {
+        if (!seedBytes) {
+          this._seed = null;
+          this._rngState = 0;
+          return;
+        }
+        this._seed = [...seedBytes];
+        // Initialize RNG state from seed using simple hash
+        this._rngState = 0;
+        for (let i = 0; i < this._seed.length; i++) {
+          this._rngState = ((this._rngState * 31) + this._seed[i]) >>> 0;
+        }
+        // Ensure non-zero state
+        if (this._rngState === 0) this._rngState = 1;
+      }
+
+      get seed() {
+        return this._seed ? [...this._seed] : null;
+      }
+
+      /**
+       * Generate deterministic or secure random number
+       * @param {number} max - Maximum value (exclusive)
+       * @returns {number} Random number (0 to max-1)
+       */
+      _random(max) {
+        if (this._seed) {
+          // Deterministic: Linear Congruential Generator
+          // Using MINSTD parameters (a=48271, c=0, m=2^31-1)
+          this._rngState = (this._rngState * 48271) % 0x7FFFFFFF;
+          return this._rngState % max;
+        } else {
+          // Non-deterministic: Use Math.random
+          return Math.floor(Math.random() * max);
+        }
       }
 
       Feed(data) {
@@ -238,7 +282,7 @@
         const max = Math.pow(2, bits) - 1;
 
         for (let attempt = 0; attempt < 1000; attempt++) {
-          let candidate = min + Math.floor(Math.random() * (max - min));
+          let candidate = min + this._random(max - min);
 
           // Ensure candidate ≡ 3 mod 4
           if (candidate % 4 !== 3) {
@@ -298,14 +342,7 @@
       }
 
       secureRandomRange(min, max) {
-        if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-          const range = max - min;
-          const array = new Uint32Array(1);
-          crypto.getRandomValues(array);
-          return min + (array[0] % range);
-        } else {
-          return min + Math.floor(Math.random() * (max - min));
-        }
+        return min + this._random(max - min);
       }
 
       /**
