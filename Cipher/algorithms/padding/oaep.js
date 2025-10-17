@@ -116,6 +116,7 @@
       this._hashFunction = "SHA-1";
       this._mgfFunction = "MGF1";
       this._label = []; // Optional label (usually empty)
+      this._seed = null; // Explicit seed for deterministic testing
     }
 
     // Property getters and setters for test framework
@@ -140,6 +141,23 @@
     get label() { return this._label; }
     set label(value) {
       this._label = value || [];
+    }
+
+    /**
+     * Set explicit seed for deterministic OAEP padding
+     * When set, this seed is used instead of generating one
+     * @param {Array} seedBytes - Seed bytes for deterministic padding
+     */
+    set seed(seedBytes) {
+      if (!seedBytes) {
+        this._seed = null;
+        return;
+      }
+      this._seed = [...seedBytes];
+    }
+
+    get seed() {
+      return this._seed ? [...this._seed] : null;
     }
 
     Feed(data) {
@@ -182,8 +200,8 @@
       // Step 3: Construct DB = labelHash || PS || 0x01 || message
       const db = [...labelHash, ...paddingString, 0x01, ...message];
 
-      // Step 4: Generate seed (deterministic for educational/testing purposes)
-      const seed = this._generateDeterministicSeed(hashLength, message);
+      // Step 4: Generate seed (use explicit seed if provided, otherwise deterministic)
+      const seed = this._seed ? [...this._seed] : this._generateDeterministicSeed(hashLength, message);
 
       // Step 5: Generate mask for DB using MGF1
       const dbMask = this._mgf1(seed, db.length);
