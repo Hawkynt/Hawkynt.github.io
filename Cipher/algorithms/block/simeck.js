@@ -210,18 +210,18 @@
       const state = new Array(2);
 
       if (this.isInverse) {
-        // Decryption: load in reverse order (right, left)
-        state[0] = OpCodes.Pack16BE(block[2], block[3]);
-        state[1] = OpCodes.Pack16BE(block[0], block[1]);
+        // Decryption: load with swapped indices (Crypto++ simeck.cpp line 86)
+        state[0] = OpCodes.Pack16BE(block[0], block[1]);
+        state[1] = OpCodes.Pack16BE(block[2], block[3]);
 
-        // Apply rounds in reverse
+        // Apply rounds in reverse with swapped left/right indices
         for (let i = 31; i >= 0; i--) {
           this._simeckRound16(this.roundKeys[i], state, 1, 0);
         }
 
-        // Output in reverse order
-        const bytes0 = OpCodes.Unpack16BE(state[1]);
-        const bytes1 = OpCodes.Unpack16BE(state[0]);
+        // Output with swapped order (Crypto++ simeck.cpp line 91)
+        const bytes0 = OpCodes.Unpack16BE(state[0]);
+        const bytes1 = OpCodes.Unpack16BE(state[1]);
         return [bytes0[0], bytes0[1], bytes1[0], bytes1[1]];
       } else {
         // Encryption: load normally (left, right)
@@ -339,8 +339,8 @@
       // Key schedule constants (note: JavaScript can't handle 44-bit integers directly)
       // sequence = 0x938BCA3083F, we'll process bit by bit
       const sequenceBits = [
-        1,1,1,1,1,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,1,
-        1,1,0,1,0,0,1,0,1,0,0,1,1,1,1,0,0,1,0,0,1
+        1,1,1,1,1,1,0,0,0,0,0,1,0,0,0,0,1,1,0,0,0,
+        1,0,1,0,0,1,1,1,1,0,1,0,0,0,1,1,1,0,0,1,0,0,1
       ]; // 44 bits of 0x938BCA3083F (LSB first)
 
       // Generate 44 round keys
@@ -404,18 +404,18 @@
       const state = new Array(2);
 
       if (this.isInverse) {
-        // Decryption: load in reverse order (right, left)
-        state[0] = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
-        state[1] = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
+        // Decryption: load with swapped indices (Crypto++ simeck.cpp line 145)
+        state[0] = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
+        state[1] = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
 
-        // Apply rounds in reverse
+        // Apply rounds in reverse with swapped left/right indices
         for (let i = 43; i >= 0; i--) {
           this._simeckRound32(this.roundKeys[i], state, 1, 0);
         }
 
-        // Output in reverse order
-        const bytes0 = OpCodes.Unpack32BE(state[1]);
-        const bytes1 = OpCodes.Unpack32BE(state[0]);
+        // Output with swapped order (Crypto++ simeck.cpp line 150)
+        const bytes0 = OpCodes.Unpack32BE(state[0]);
+        const bytes1 = OpCodes.Unpack32BE(state[1]);
         return [bytes0[0], bytes0[1], bytes0[2], bytes0[3],
                 bytes1[0], bytes1[1], bytes1[2], bytes1[3]];
       } else {
