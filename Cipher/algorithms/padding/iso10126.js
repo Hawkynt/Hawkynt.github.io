@@ -110,6 +110,52 @@
       this.inputBuffer = [];
       this.blockSize = 16; // Default block size
       this.testMode = false; // Use deterministic padding for testing
+      this._seed = null;
+      this._rngState = 0;
+    }
+
+    /**
+     * Set seed for deterministic random number generation
+     * Used for testing purposes to make padding reproducible
+     * @param {Array} seedBytes - Seed bytes for PRNG initialization
+     */
+    set seed(seedBytes) {
+      if (!seedBytes) {
+        this._seed = null;
+        this._rngState = 0;
+        return;
+      }
+      this._seed = [...seedBytes];
+      // Initialize RNG state from seed using simple hash
+      this._rngState = 0;
+      for (let i = 0; i < this._seed.length; i++) {
+        this._rngState = ((this._rngState * 31) + this._seed[i]) >>> 0;
+      }
+      // Ensure non-zero state
+      if (this._rngState === 0) this._rngState = 1;
+    }
+
+    get seed() {
+      return this._seed ? [...this._seed] : null;
+    }
+
+    /**
+     * Generate deterministic or secure random byte
+     * @returns {number} Random byte (0-255)
+     */
+    _getRandomByte() {
+      if (this.testMode) {
+        // Test mode: Use zeros for deterministic testing
+        return 0x00;
+      } else if (this._seed) {
+        // Deterministic: Linear Congruential Generator
+        // Using MINSTD parameters (a=48271, c=0, m=2^31-1)
+        this._rngState = (this._rngState * 48271) % 0x7FFFFFFF;
+        return this._rngState & 0xFF;
+      } else {
+        // Non-deterministic: Use secure random
+        return OpCodes.SecureRandom(256);
+      }
     }
 
     /**
@@ -129,13 +175,15 @@
     }
 
     Result() {
-      if (this.inputBuffer.length === 0) {
-        throw new Error("No data fed");
-      }
-
+      // Allow empty input buffer - padding can pad zero-length data to a full block
       if (this.isInverse) {
+        // For unpadding, we need data
+        if (this.inputBuffer.length === 0) {
+          return []; // Return empty array for empty input
+        }
         return this._removePadding();
       } else {
+        // For padding, empty input is fine - it will be padded to a full block
         return this._addPadding();
       }
     }
@@ -153,17 +201,8 @@
 
       // Add random bytes (padding length - 1)
       for (let i = 0; i < paddingLength - 1; i++) {
-        if (this.testMode) {
-          // Use zeros for deterministic testing
-          padding.push(0);
-        } else {
-          // Use OpCodes for secure random if available, otherwise Math.random
-          if (typeof OpCodes !== 'undefined' && OpCodes.SecureRandom) {
-            padding.push(OpCodes.SecureRandom(256));
-          } else {
-            padding.push(Math.floor(Math.random() * 256));
-          }
-        }
+        // Use seeded PRNG if seed set, otherwise secure random
+        padding.push(this._getRandomByte());
       }
 
       // Add length byte
