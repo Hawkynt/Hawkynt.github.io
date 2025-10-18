@@ -140,13 +140,15 @@
     }
 
     Result() {
-      if (this.inputBuffer.length === 0) {
-        throw new Error("No data fed");
-      }
-
+      // Allow empty input buffer - padding can pad zero-length data to a full block
       if (this.isInverse) {
+        // For unpadding, we need data
+        if (this.inputBuffer.length === 0) {
+          return []; // Return empty array for empty input
+        }
         return this._removePadding();
       } else {
+        // For padding, empty input is fine - it will be padded to a full block
         return this._addPadding();
       }
     }
