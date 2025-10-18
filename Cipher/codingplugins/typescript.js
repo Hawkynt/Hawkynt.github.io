@@ -446,12 +446,35 @@ class TypeScriptPlugin extends LanguagePlugin {
   }
 
   /**
-   * Generate binary expression
+   * Generate binary expression with TypeScript cryptographic patterns
    * @private
    */
   _generateBinaryExpression(node, options) {
     const left = this._generateNode(node.left, options);
     const right = this._generateNode(node.right, options);
+
+    // Handle cryptographic-specific bitwise operations before mapping
+    if (node.operator === '>>>') {
+      // Unsigned right shift - TypeScript supports this natively
+      return `(${left} >>> ${right})`;
+    }
+    if (node.operator === '<<') {
+      // Left shift with overflow protection for 32-bit
+      return `((${left} << ${right}) >>> 0)`;
+    }
+    if (node.operator === '^') {
+      // XOR - common in crypto
+      return `(${left} ^ ${right})`;
+    }
+    if (node.operator === '&') {
+      // Bitwise AND
+      return `(${left} & ${right})`;
+    }
+    if (node.operator === '|') {
+      // Bitwise OR
+      return `(${left} | ${right})`;
+    }
+
     const operator = this._mapOperator(node.operator);
     return `${left} ${operator} ${right}`;
   }
@@ -1438,6 +1461,187 @@ class TypeScriptPlugin extends LanguagePlugin {
       packageManager: 'npm',
       documentation: 'https://www.typescriptlang.org/docs/'
     };
+  }
+
+  /**
+   * Generate OpCodes method call with TypeScript types
+   * @private
+   */
+  _generateOpCodesCall(methodName, args) {
+    // Map OpCodes methods to TypeScript equivalents with proper typing
+    switch (methodName) {
+      case 'Pack32LE':
+        return `OpCodes.pack32LE(${args})`;
+      case 'Pack32BE':
+        return `OpCodes.pack32BE(${args})`;
+      case 'Unpack32LE':
+        return `OpCodes.unpack32LE(${args})`;
+      case 'Unpack32BE':
+        return `OpCodes.unpack32BE(${args})`;
+      case 'RotL32':
+        return `OpCodes.rotL32(${args})`;
+      case 'RotR32':
+        return `OpCodes.rotR32(${args})`;
+      case 'XorArrays':
+        return `OpCodes.xorArrays(${args})`;
+      case 'ClearArray':
+        return `OpCodes.clearArray(${args})`;
+      case 'Hex8ToBytes':
+        return `OpCodes.hexToBytes(${args})`;
+      case 'BytesToHex8':
+        return `OpCodes.bytesToHex(${args})`;
+      default:
+        return `OpCodes.${methodName}(${args})`;
+    }
+  }
+
+  /**
+   * Generate Array constructor call with TypeScript types
+   * @private
+   */
+  _generateArrayConstructorCall(args) {
+    if (!args) {
+      return 'new Array<number>()';
+    }
+    // Handle new Array(size) pattern
+    if (!args.includes(',')) {
+      return `new Array<number>(${args}).fill(0)`;
+    }
+    // Handle new Array(element1, element2, ...) pattern
+    return `[${args}] as number[]`;
+  }
+
+  /**
+   * Check if a value is likely a byte value for crypto contexts
+   * @private
+   */
+  _isLikelyByteValue(node) {
+    if (node.type === 'Literal' && typeof node.value === 'number') {
+      return node.value >= 0 && node.value <= 255;
+    }
+    return false;
+  }
+
+  /**
+   * Infer TypeScript type from JavaScript AST value with crypto context
+   * @private
+   */
+  _inferTypeScriptType(node, context = {}) {
+    if (!node) return 'unknown';
+
+    switch (node.type) {
+      case 'Literal':
+        if (typeof node.value === 'string') return 'string';
+        if (typeof node.value === 'number') {
+          return Number.isInteger(node.value) ? 'number' : 'number';
+        }
+        if (typeof node.value === 'boolean') return 'boolean';
+        if (node.value === null) return 'null';
+        break;
+      case 'ArrayExpression':
+        if (node.elements && node.elements.length > 0) {
+          const firstElement = node.elements.find(el => el !== null);
+          if (firstElement && this._isLikelyByteValue(firstElement)) {
+            return 'Uint8Array';
+          }
+        }
+        return 'number[]';
+      case 'ObjectExpression':
+        return 'Record<string, unknown>';
+      case 'FunctionExpression':
+      case 'ArrowFunctionExpression':
+        return '(...args: any[]) => any';
+    }
+
+    return context.isCryptographic ? 'number' : 'unknown';
+  }
+
+  /**
+   * Generate missing AST node types for modern TypeScript
+   * @private
+   */
+  _generateMetaProperty(node, options) {
+    return `// MetaProperty: ${node.meta?.name || 'unknown'}.${node.property?.name || 'unknown'}`;
+  }
+
+  _generateAwaitExpression(node, options) {
+    const argument = this._generateNode(node.argument, options);
+    return `await ${argument}`;
+  }
+
+  _generateYieldExpression(node, options) {
+    const argument = node.argument ? this._generateNode(node.argument, options) : '';
+    return node.delegate ? `yield* ${argument}` : `yield ${argument}`;
+  }
+
+  _generateImportDeclaration(node, options) {
+    const source = this._generateNode(node.source, options);
+    if (node.specifiers && node.specifiers.length > 0) {
+      const imports = node.specifiers.map(spec => {
+        if (spec.type === 'ImportDefaultSpecifier') {
+          return spec.local.name;
+        }
+        return spec.imported?.name || spec.local.name;
+      }).join(', ');
+      return this._indent(`import { ${imports} } from ${source};\n`);
+    }
+    return this._indent(`import ${source};\n`);
+  }
+
+  _generateExportDeclaration(node, options) {
+    return this._indent(`export ${this._generateNode(node.declaration, options)};\n`);
+  }
+
+  _generateClassExpression(node, options) {
+    return this._generateClass(node, options);
+  }
+
+  _generatePropertyDefinition(node, options) {
+    const key = this._generateNode(node.key, options);
+    const value = node.value ? this._generateNode(node.value, options) : 'undefined';
+    const type = options.strictTypes ? ': any' : '';
+    return this._indent(`${key}${type} = ${value};\n`);
+  }
+
+  _generatePrivateIdentifier(node, options) {
+    return `#${node.name}`; // TypeScript private fields
+  }
+
+  _generateStaticBlock(node, options) {
+    return this._indent('static {\n') + this._generateNode(node.body, options) + this._indent('}\n');
+  }
+
+  _generateChainExpression(node, options) {
+    return this._generateNode(node.expression, options);
+  }
+
+  _generateImportExpression(node, options) {
+    const source = this._generateNode(node.source, options);
+    return `import(${source})`;
+  }
+
+  _generateTSTypeAnnotation(node, options) {
+    return `: ${this._generateNode(node.typeAnnotation, options)}`;
+  }
+
+  _generateTSInterfaceDeclaration(node, options) {
+    const name = node.id ? node.id.name : 'UnknownInterface';
+    let code = this._indent(`interface ${name} {\n`);
+    this.indentLevel++;
+    if (node.body && node.body.body) {
+      for (const member of node.body.body) {
+        code += this._generateNode(member, options);
+      }
+    }
+    this.indentLevel--;
+    code += this._indent('}\n');
+    return code;
+  }
+
+  _generateTSTypeAliasDeclaration(node, options) {
+    const name = node.id ? node.id.name : 'UnknownType';
+    const type = node.typeAnnotation ? this._generateNode(node.typeAnnotation, options) : 'unknown';
+    return this._indent(`type ${name} = ${type};\n`);
   }
 }
 
