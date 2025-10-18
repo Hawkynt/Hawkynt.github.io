@@ -132,8 +132,9 @@
     }
 
     Result() {
+      // Allow empty input buffer - no padding returns empty for empty input
       if (this.inputBuffer.length === 0) {
-        throw new Error("No data fed");
+        return []; // Return empty array for empty input
       }
 
       // Validate that data length is multiple of block size
