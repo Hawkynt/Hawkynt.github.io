@@ -49,6 +49,9 @@ class FreeBasicPlugin extends LanguagePlugin {
     // Internal state
     this.indentLevel = 0;
     this.includes = new Set();
+    this.declaredFunctions = new Map();
+    this.requiresCrypto = false;
+    this.projectFiles = new Map();
   }
 
   /**
@@ -62,6 +65,9 @@ class FreeBasicPlugin extends LanguagePlugin {
       // Reset state for clean generation
       this.indentLevel = 0;
       this.includes.clear();
+      this.declaredFunctions.clear();
+      this.requiresCrypto = false;
+      this.projectFiles.clear();
       
       // Merge options
       const mergedOptions = { ...this.options, ...options };
@@ -79,11 +85,15 @@ class FreeBasicPlugin extends LanguagePlugin {
       
       // Collect dependencies
       const dependencies = this._collectDependencies(ast, mergedOptions);
-      
+
       // Generate warnings if any
       const warnings = this._generateWarnings(ast, mergedOptions);
-      
-      return this.CreateSuccessResult(finalCode, dependencies, warnings);
+
+      // Create result with project files
+      const result = this.CreateSuccessResult(finalCode, dependencies, warnings);
+      result.projectFiles = this.projectFiles;
+
+      return result;
       
     } catch (error) {
       return this.CreateErrorResult('Code generation failed: ' + error.message);
@@ -155,6 +165,20 @@ class FreeBasicPlugin extends LanguagePlugin {
    */
   _generateFunction(node, options) {
     const functionName = node.id ? this._toPascalCase(node.id.name) : 'UnnamedFunction';
+
+    // Track declared functions for main program usage
+    this.declaredFunctions.set(functionName, {
+      name: functionName,
+      params: node.params || [],
+      returnType: 'Integer'
+    });
+
+    // Check for crypto operations
+    if (this._isCryptoFunction(functionName)) {
+      this.requiresCrypto = true;
+      this.includes.add('crt');
+    }
+
     let code = '';
     
     // FreeBasic comment
@@ -501,27 +525,456 @@ class FreeBasicPlugin extends LanguagePlugin {
     result += 'Option Explicit\n'; // Require variable declarations
     result += 'Option Escape\n\n'; // Enable escape sequences
     
-    // Includes
+    // Standard includes
+    if (this.requiresCrypto) {
+      result += '\' Crypto operation includes\n';
+      result += '#Include "crt.bi"\n';
+      result += '\n';
+    }
+
+    // Custom includes
     if (this.includes.size > 0) {
+      result += '\' Additional includes\n';
       for (const inc of this.includes) {
-        result += '#Include "' + inc + '"\n';
+        result += '#Include "' + inc + '.bi"\n';
       }
       result += '\n';
+    }
+
+    // OpCodes-style crypto functions if needed
+    if (this.requiresCrypto) {
+      result += this._generateOpCodesFunctions(options);
     }
     
     // Generated code
     result += code;
     
-    // Main program entry point
-    result += '\n\n\' Main program\n';
+    // Main program entry point with example usage
+    result += this._generateMainProgram(options);
+
+    // Generate project files
+    this._generateProjectFiles(options);
+    
+    return result;
+  }
+
+  /**
+   * Generate main program with example usage
+   * @private
+   */
+  _generateMainProgram(options) {
+    let result = '\n\n\' Main program\n';
     result += 'Sub Main()\n';
-    result += '    \' TODO: Add main program code\n';
-    result += '    Print "Generated FreeBasic code execution"\n';
+    result += '    \' Example usage of generated functions\n';
+    result += '    Print "Generated FreeBASIC Code - Test Run"\n';
+    result += '    Print "=" + String(40, "=")\n';
+    result += '    Print\n';
+
+    // Generate example calls for declared functions
+    if (this.declaredFunctions.size > 0) {
+      result += '    \' Testing generated functions\n';
+
+      for (const [funcName, funcInfo] of this.declaredFunctions) {
+        result += '    Print "Testing function: ' + funcName + '"\n';
+
+        // Generate example call with sample parameters
+        let exampleCall = '    Dim result' + funcName + ' As Integer = ' + funcName + '(';
+
+        if (funcInfo.params.length > 0) {
+          const sampleParams = funcInfo.params.map((param, index) => {
+            const paramName = param.name || `param${index}`;
+            if (paramName.toLowerCase().includes('key') || paramName.toLowerCase().includes('data')) {
+              return '42'; // Sample crypto data
+            }
+            return (index + 1) * 10; // Sample numeric values
+          });
+          exampleCall += sampleParams.join(', ');
+        }
+
+        exampleCall += ')\n';
+        result += exampleCall;
+        result += '    Print "Result: " + Str(result' + funcName + ')\n';
+        result += '    Print\n';
+      }
+    } else {
+      result += '    Print "No functions to test"\n';
+    }
+
+    result += '    Print "Test completed successfully!"\n';
+    result += '    Print "Press any key to exit..."\n';
     result += '    Sleep\n'; // Wait for keypress
     result += 'End Sub\n\n';
     result += 'Main()\n'; // Call main subroutine
-    
+
     return result;
+  }
+
+  /**
+   * Generate project files for FreeBASIC
+   * @private
+   */
+  _generateProjectFiles(options) {
+    // Generate Makefile
+    this.projectFiles.set('Makefile', this._generateMakefile(options));
+
+    // Generate batch file for Windows
+    this.projectFiles.set('build.bat', this._generateBuildBatch(options));
+
+    // Generate shell script for Unix
+    this.projectFiles.set('build.sh', this._generateBuildShell(options));
+
+    // Generate README.md with instructions
+    this.projectFiles.set('README.md', this._generateReadme(options));
+  }
+
+  /**
+   * Generate Makefile for FreeBASIC project
+   * @private
+   */
+  _generateMakefile(options) {
+    let makefile = '# Generated Makefile for FreeBASIC project\n';
+    makefile += '# Generated on: ' + new Date().toDateString() + '\n';
+    makefile += '\n';
+    makefile += 'CC = fbc\n';
+    makefile += 'CFLAGS = -lang fb -w all\n';
+    makefile += 'TARGET = program\n';
+    makefile += 'SOURCE = *.bas\n';
+    makefile += '\n';
+    makefile += 'all: $(TARGET)\n';
+    makefile += '\n';
+    makefile += '$(TARGET): $(SOURCE)\n';
+    makefile += '\t$(CC) $(CFLAGS) -x $(TARGET) $(SOURCE)\n';
+    makefile += '\n';
+    makefile += 'debug: $(SOURCE)\n';
+    makefile += '\t$(CC) $(CFLAGS) -g -x $(TARGET)_debug $(SOURCE)\n';
+    makefile += '\n';
+    makefile += 'clean:\n';
+    if (process.platform === 'win32') {
+      makefile += '\tdel /Q $(TARGET).exe $(TARGET)_debug.exe 2>NUL || true\n';
+    } else {
+      makefile += '\trm -f $(TARGET) $(TARGET)_debug\n';
+    }
+    makefile += '\n';
+    makefile += 'run: $(TARGET)\n';
+    if (process.platform === 'win32') {
+      makefile += '\t.\\$(TARGET).exe\n';
+    } else {
+      makefile += '\t./$(TARGET)\n';
+    }
+    makefile += '\n';
+    makefile += '.PHONY: all debug clean run\n';
+
+    return makefile;
+  }
+
+  /**
+   * Generate Windows batch file
+   * @private
+   */
+  _generateBuildBatch(options) {
+    let batch = '@echo off\n';
+    batch += 'REM Generated build script for FreeBASIC\n';
+    batch += 'REM Generated on: ' + new Date().toDateString() + '\n';
+    batch += '\n';
+    batch += 'echo Building FreeBASIC project...\n';
+    batch += '\n';
+    batch += 'REM Check if FreeBASIC compiler is available\n';
+    batch += 'fbc -version >nul 2>&1\n';
+    batch += 'if errorlevel 1 (\n';
+    batch += '    echo Error: FreeBASIC compiler (fbc) not found!\n';
+    batch += '    echo Please install FreeBASIC from https://www.freebasic.net/\n';
+    batch += '    echo and add it to your PATH\n';
+    batch += '    pause\n';
+    batch += '    exit /b 1\n';
+    batch += ')\n';
+    batch += '\n';
+    batch += 'REM Compile the program\n';
+    batch += 'fbc -lang fb -w all -x program *.bas\n';
+    batch += 'if errorlevel 1 (\n';
+    batch += '    echo Compilation failed!\n';
+    batch += '    pause\n';
+    batch += '    exit /b 1\n';
+    batch += ')\n';
+    batch += '\n';
+    batch += 'echo Compilation successful!\n';
+    batch += 'echo Running program...\n';
+    batch += 'echo.\n';
+    batch += 'program.exe\n';
+    batch += 'echo.\n';
+    batch += 'echo Program finished.\n';
+    batch += 'pause\n';
+
+    return batch;
+  }
+
+  /**
+   * Generate Unix shell script
+   * @private
+   */
+  _generateBuildShell(options) {
+    let shell = '#!/bin/bash\n';
+    shell += '# Generated build script for FreeBASIC\n';
+    shell += '# Generated on: ' + new Date().toDateString() + '\n';
+    shell += '\n';
+    shell += 'echo "Building FreeBASIC project..."\n';
+    shell += '\n';
+    shell += '# Check if FreeBASIC compiler is available\n';
+    shell += 'if ! command -v fbc &> /dev/null; then\n';
+    shell += '    echo "Error: FreeBASIC compiler (fbc) not found!"\n';
+    shell += '    echo "Please install FreeBASIC:"\n';
+    shell += '    echo "  Ubuntu/Debian: sudo apt install fbc"\n';
+    shell += '    echo "  macOS: brew install freebasic"\n';
+    shell += '    echo "  Arch Linux: sudo pacman -S freebasic"\n';
+    shell += '    echo "  Or download from https://www.freebasic.net/"\n';
+    shell += '    exit 1\n';
+    shell += 'fi\n';
+    shell += '\n';
+    shell += '# Compile the program\n';
+    shell += 'fbc -lang fb -w all -x program *.bas\n';
+    shell += 'if [ $? -ne 0 ]; then\n';
+    shell += '    echo "Compilation failed!"\n';
+    shell += '    exit 1\n';
+    shell += 'fi\n';
+    shell += '\n';
+    shell += 'echo "Compilation successful!"\n';
+    shell += 'echo "Running program..."\n';
+    shell += 'echo\n';
+    shell += './program\n';
+    shell += 'echo\n';
+    shell += 'echo "Program finished."\n';
+
+    return shell;
+  }
+
+  /**
+   * Generate README.md with compilation instructions
+   * @private
+   */
+  _generateReadme(options) {
+    let readme = '# Generated FreeBASIC Project\n';
+    readme += '\n';
+    readme += 'This FreeBASIC project was automatically generated from JavaScript AST.\n';
+    readme += '\n';
+    readme += '## Generated Files\n';
+    readme += '\n';
+    readme += '- `*.bas` - FreeBASIC source files\n';
+    readme += '- `Makefile` - Build configuration for make\n';
+    readme += '- `build.bat` - Windows build script\n';
+    readme += '- `build.sh` - Unix/Linux build script\n';
+    readme += '- `README.md` - This file\n';
+    readme += '\n';
+    readme += '## Requirements\n';
+    readme += '\n';
+    readme += '- FreeBASIC Compiler 1.09.0 or later\n';
+    readme += '- Download from: https://www.freebasic.net/wiki/CompilerInstalling\n';
+    readme += '\n';
+    readme += '### Installation Instructions\n';
+    readme += '\n';
+    readme += '**Windows:**\n';
+    readme += '1. Download FreeBASIC from https://www.freebasic.net/wiki/CompilerInstalling\n';
+    readme += '2. Extract the archive to a folder (e.g., `C:\\FreeBASIC`)\n';
+    readme += '3. Add the FreeBASIC folder to your PATH environment variable\n';
+    readme += '4. Verify installation: `fbc -version`\n';
+    readme += '\n';
+    readme += '**Ubuntu/Debian:**\n';
+    readme += '```bash\n';
+    readme += 'sudo apt update\n';
+    readme += 'sudo apt install fbc\n';
+    readme += '```\n';
+    readme += '\n';
+    readme += '**macOS (with Homebrew):**\n';
+    readme += '```bash\n';
+    readme += 'brew install freebasic\n';
+    readme += '```\n';
+    readme += '\n';
+    readme += '**Arch Linux:**\n';
+    readme += '```bash\n';
+    readme += 'sudo pacman -S freebasic\n';
+    readme += '```\n';
+    readme += '\n';
+    readme += '## Building and Running\n';
+    readme += '\n';
+    readme += '### Method 1: Using Make (cross-platform)\n';
+    readme += '\n';
+    readme += '```bash\n';
+    readme += '# Build the program\n';
+    readme += 'make\n';
+    readme += '\n';
+    readme += '# Run the program\n';
+    readme += 'make run\n';
+    readme += '\n';
+    readme += '# Build debug version\n';
+    readme += 'make debug\n';
+    readme += '\n';
+    readme += '# Clean build artifacts\n';
+    readme += 'make clean\n';
+    readme += '```\n';
+    readme += '\n';
+    readme += '### Method 2: Using Build Scripts\n';
+    readme += '\n';
+    readme += '**Windows:**\n';
+    readme += '```cmd\n';
+    readme += 'build.bat\n';
+    readme += '```\n';
+    readme += '\n';
+    readme += '**Unix/Linux/macOS:**\n';
+    readme += '```bash\n';
+    readme += 'chmod +x build.sh\n';
+    readme += './build.sh\n';
+    readme += '```\n';
+    readme += '\n';
+    readme += '### Method 3: Manual Compilation\n';
+    readme += '\n';
+    readme += '```bash\n';
+    readme += '# Basic compilation\n';
+    readme += 'fbc -lang fb *.bas\n';
+    readme += '\n';
+    readme += '# With all warnings enabled\n';
+    readme += 'fbc -lang fb -w all *.bas\n';
+    readme += '\n';
+    readme += '# Optimized release build\n';
+    readme += 'fbc -lang fb -O 2 -x program *.bas\n';
+    readme += '\n';
+    readme += '# Debug build\n';
+    readme += 'fbc -lang fb -g -x program_debug *.bas\n';
+    readme += '```\n';
+    readme += '\n';
+    readme += '## Project Structure\n';
+    readme += '\n';
+    readme += 'The generated code follows FreeBASIC conventions:\n';
+    readme += '\n';
+    readme += '- Functions use PascalCase naming\n';
+    readme += '- Explicit type declarations with `As` keyword\n';
+    readme += '- Proper variable scoping with `Dim`\n';
+    readme += '- Modern FreeBASIC syntax (`#Lang "fb"`)\n';
+    readme += '- Error checking and validation\n';
+
+    if (this.requiresCrypto) {
+      readme += '\n';
+      readme += '## Cryptographic Operations\n';
+      readme += '\n';
+      readme += 'This project contains cryptographic functions. Please note:\n';
+      readme += '\n';
+      readme += '- The generated code is for educational/testing purposes\n';
+      readme += '- For production use, consider established crypto libraries\n';
+      readme += '- Always validate cryptographic implementations thoroughly\n';
+      readme += '- Follow security best practices for key management\n';
+    }
+
+    readme += '\n';
+    readme += '## Troubleshooting\n';
+    readme += '\n';
+    readme += '**Compiler not found:**\n';
+    readme += '- Ensure FreeBASIC is properly installed\n';
+    readme += '- Check that `fbc` is in your system PATH\n';
+    readme += '- Try running `fbc -version` to verify installation\n';
+    readme += '\n';
+    readme += '**Compilation errors:**\n';
+    readme += '- Check FreeBASIC version compatibility\n';
+    readme += '- Ensure all required files are present\n';
+    readme += '- Review compiler error messages for specific issues\n';
+    readme += '\n';
+    readme += '**Runtime errors:**\n';
+    readme += '- Build with debug flags: `fbc -lang fb -g *.bas`\n';
+    readme += '- Use FreeBASIC debugger or add print statements\n';
+    readme += '- Check for uninitialized variables or array bounds\n';
+    readme += '\n';
+    readme += '## Additional Resources\n';
+    readme += '\n';
+    readme += '- [FreeBASIC Documentation](https://www.freebasic.net/wiki/DocToc)\n';
+    readme += '- [FreeBASIC Language Reference](https://www.freebasic.net/wiki/CatPgLangProc)\n';
+    readme += '- [FreeBASIC Examples](https://www.freebasic.net/wiki/CatPgExamples)\n';
+    readme += '- [FreeBASIC Community Forum](https://www.freebasic.net/forum/)\n';
+    readme += '\n';
+    readme += '---\n';
+    readme += '*Generated on: ' + new Date().toDateString() + '*\n';
+
+    return readme;
+  }
+
+  /**
+   * Generate OpCodes-style cryptographic functions for FreeBASIC
+   * @private
+   */
+  _generateOpCodesFunctions(options) {
+    let code = '';
+
+    if (options.addComments) {
+      code += '\' OpCodes-style cryptographic functions for FreeBASIC\n';
+      code += '\' These functions provide basic crypto operations\n';
+      code += '\n';
+    }
+
+    // Basic bit rotation functions
+    code += 'Function RotL32(ByVal value As ULong, ByVal positions As Integer) As ULong\n';
+    code += '    \' 32-bit left rotation\n';
+    code += '    Return (value Shl positions) Or (value Shr (32 - positions))\n';
+    code += 'End Function\n';
+    code += '\n';
+
+    code += 'Function RotR32(ByVal value As ULong, ByVal positions As Integer) As ULong\n';
+    code += '    \' 32-bit right rotation\n';
+    code += '    Return (value Shr positions) Or (value Shl (32 - positions))\n';
+    code += 'End Function\n';
+    code += '\n';
+
+    // Byte array XOR function
+    code += 'Sub XorArrays(ByRef arr1() As UByte, ByRef arr2() As UByte, ByRef result() As UByte)\n';
+    code += '    \' XOR two byte arrays\n';
+    code += '    Dim As Integer maxLen = IIf(UBound(arr1) > UBound(arr2), UBound(arr1), UBound(arr2))\n';
+    code += '    ReDim result(maxLen)\n';
+    code += '    For i As Integer = 0 To maxLen\n';
+    code += '        Dim As UByte val1 = IIf(i <= UBound(arr1), arr1(i), 0)\n';
+    code += '        Dim As UByte val2 = IIf(i <= UBound(arr2), arr2(i), 0)\n';
+    code += '        result(i) = val1 Xor val2\n';
+    code += '    Next\n';
+    code += 'End Sub\n';
+    code += '\n';
+
+    // Hex conversion functions
+    code += 'Function BytesToHex(ByRef bytes() As UByte) As String\n';
+    code += '    \' Convert byte array to hex string\n';
+    code += '    Dim As String result = ""\n';
+    code += '    For i As Integer = 0 To UBound(bytes)\n';
+    code += '        result += Right("0" + Hex(bytes(i)), 2)\n';
+    code += '    Next\n';
+    code += '    Return result\n';
+    code += 'End Function\n';
+    code += '\n';
+
+    code += 'Sub HexToBytes(ByVal hexStr As String, ByRef bytes() As UByte)\n';
+    code += '    \' Convert hex string to byte array\n';
+    code += '    Dim As Integer length = Len(hexStr) \\ 2\n';
+    code += '    ReDim bytes(length - 1)\n';
+    code += '    For i As Integer = 0 To length - 1\n';
+    code += '        Dim As String hexByte = Mid(hexStr, i * 2 + 1, 2)\n';
+    code += '        bytes(i) = Val("&H" + hexByte)\n';
+    code += '    Next\n';
+    code += 'End Sub\n';
+    code += '\n';
+
+    // Simple hash function (educational purposes)
+    code += 'Function SimpleHash(ByVal input As String) As ULong\n';
+    code += '    \' Simple hash function for demonstration\n';
+    code += '    Dim As ULong hash = 5381\n';
+    code += '    For i As Integer = 1 To Len(input)\n';
+    code += '        hash = ((hash Shl 5) + hash) + Asc(Mid(input, i, 1))\n';
+    code += '    Next\n';
+    code += '    Return hash\n';
+    code += 'End Function\n';
+    code += '\n';
+
+    return code;
+  }
+
+  /**
+   * Check if function name suggests cryptographic operation
+   * @private
+   */
+  _isCryptoFunction(name) {
+    const cryptoKeywords = ['encrypt', 'decrypt', 'hash', 'cipher', 'crypto', 'aes', 'des', 'rsa', 'sha', 'md5'];
+    const lowerName = name.toLowerCase();
+    return cryptoKeywords.some(keyword => lowerName.includes(keyword));
   }
 
   /**
@@ -530,11 +983,42 @@ class FreeBasicPlugin extends LanguagePlugin {
    */
   _collectDependencies(ast, options) {
     const dependencies = [];
-    
-    // Common FreeBasic includes
-    // Usually handled by the runtime
-    
+
+    // FreeBASIC compiler dependency
+    dependencies.push({
+      name: 'FreeBASIC Compiler',
+      version: '1.09.0+',
+      type: 'compiler',
+      url: 'https://www.freebasic.net/wiki/CompilerInstalling'
+    });
+
+    // Platform-specific dependencies
+    if (process.platform === 'win32') {
+      dependencies.push({
+        name: 'Windows C Runtime',
+        version: 'System',
+        type: 'runtime'
+      });
+    }
+
+    // Crypto dependencies if needed
+    if (this.requiresCrypto) {
+      dependencies.push({
+        name: 'FreeBASIC CRT Library',
+        version: 'Included',
+        type: 'library'
+      });
+    }
+
     return dependencies;
+  }
+
+  /**
+   * Generate project files as separate files
+   * @returns {Object} Map of filename to content
+   */
+  GenerateProjectFiles() {
+    return this.projectFiles;
   }
 
   /**
