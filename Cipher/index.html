@@ -116,7 +116,10 @@
                         <div class="section-header">
                             <h2 class="section-title">Cryptographic Algorithms</h2>
                             <div class="search-filter">
-                                <input type="text" class="search-input" placeholder="Search algorithms..." id="search-input">
+                                <div class="search-input-wrapper">
+                                    <input type="text" class="search-input" placeholder="Search algorithms..." id="search-input">
+                                    <button class="search-clear-btn" id="search-clear-btn" title="Clear search" style="display: none;">✕</button>
+                                </div>
                                 <select class="filter-select" id="category-filter">
                                     <option value="">All Categories</option>
                                     <!-- TODO: create the rest on the fly with the data from AlgorithmFramework -->
@@ -174,13 +177,25 @@
                                     </select>
                                     <label>Mode:</label>
                                     <select class="select" id="cipher-mode">
-                                        <!-- TODO: create the rest on the fly with the data from AlgorithmFramework -->
+                                        <option value="">None (Direct)</option>
+                                        <!-- Populated dynamically -->
                                     </select>
                                     <label>Padding:</label>
                                     <select class="select" id="cipher-padding">
-                                        <!-- TODO: create the rest on the fly with the data from AlgorithmFramework -->
+                                        <option value="">None</option>
+                                        <!-- Populated dynamically -->
                                     </select>
-                                    <input type="text" class="search-input" placeholder="Key (optional)" id="cipher-key" style="max-width: 200px;">
+                                    <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
+                                        <label>Key (optional):</label>
+                                        <div class="key-format-tabs" style="display: flex; gap: 0.25rem; margin-bottom: 0.25rem;">
+                                            <button class="format-tab format-tab-small active" data-format="text">Text</button>
+                                            <button class="format-tab format-tab-small" data-format="hex">Hex</button>
+                                            <button class="format-tab format-tab-small" data-format="base64">Base64</button>
+                                            <button class="btn btn-secondary btn-small" id="key-file-btn" style="margin-left: auto;">📁 Load from File</button>
+                                        </div>
+                                        <input type="file" id="key-file-input" style="display: none;">
+                                        <textarea class="search-input" placeholder="Enter key..." id="cipher-key" rows="2" style="max-width: 100%; resize: vertical;"></textarea>
+                                    </div>
                                 </div>
                                 <div class="action-buttons">
                                     <button class="btn btn-primary" id="encrypt-btn">🔒 Encrypt</button>

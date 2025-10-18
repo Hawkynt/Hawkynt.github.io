@@ -62,16 +62,40 @@ class CipherController {
     setupEventListeners() {
         // Search functionality
         const searchInput = document.getElementById('search-input');
+        const searchClearBtn = document.getElementById('search-clear-btn');
+
         if (searchInput) {
-            searchInput.addEventListener('input', (e) => this.filterAlgorithms(e.target.value));
+            searchInput.addEventListener('input', (e) => {
+                this.filterAlgorithms(e.target.value);
+                // Show/hide clear button
+                if (searchClearBtn) {
+                    searchClearBtn.style.display = e.target.value ? 'flex' : 'none';
+                }
+            });
         }
-        
+
+        // Clear button functionality
+        if (searchClearBtn) {
+            searchClearBtn.addEventListener('click', () => {
+                if (searchInput) {
+                    searchInput.value = '';
+                    searchClearBtn.style.display = 'none';
+                    // Re-apply filters with empty search (will respect category)
+                    this.filterAlgorithms('');
+                }
+            });
+        }
+
         // Category filter
         const categoryFilter = document.getElementById('category-filter');
         if (categoryFilter) {
-            categoryFilter.addEventListener('change', (e) => this.filterByCategory(e.target.value));
+            categoryFilter.addEventListener('change', (e) => {
+                // Apply both category and current search term
+                const searchTerm = searchInput ? searchInput.value : '';
+                this.filterAlgorithms(searchTerm);
+            });
         }
-        
+
         // Global progress bar click to navigate to Testing tab
         const globalProgressContainer = document.getElementById('global-progress-container');
         if (globalProgressContainer) {
@@ -79,10 +103,10 @@ class CipherController {
                 this.switchTab('testing');
             });
         }
-        
+
         // Test grid functionality
         this.setupTestGridEventListeners();
-        
+
         // Metadata modal
         this.setupMetadataModal();
     }
@@ -507,7 +531,10 @@ class CipherController {
     createAlgorithmCard(algorithm) {
         const card = document.createElement('div');
         card.className = 'algorithm-card';
-        card.setAttribute('data-category', algorithm.category);
+
+        // Convert CategoryType object to string key for filtering
+        const categoryKey = this.getCategoryString(algorithm.category);
+        card.setAttribute('data-category', categoryKey);
         card.setAttribute('data-name', algorithm.name);
         
         const statusIcon = this.getAlgorithmStatusIcon(algorithm.name, algorithm);
@@ -607,32 +634,83 @@ class CipherController {
     
     /**
      * Get CategoryType object from category input
+     * Category should always be a CategoryType object from AlgorithmFramework
+     * This method is mainly for validation and fallback handling
      */
     getCategoryType(category) {
-        let categoryKey = category;
-        
+        if (!category) return null;
+
+        // Category should already be a CategoryType object
         if (typeof category === 'object' && category.name) {
-            // Find the CategoryType key for this category object
-            categoryKey = Object.keys(AlgorithmFramework.CategoryType).find(
-                key => AlgorithmFramework.CategoryType[key].name === category.name
+            // Validate it's actually in AlgorithmFramework.CategoryType
+            const isValid = Object.keys(AlgorithmFramework.CategoryType).some(
+                key => AlgorithmFramework.CategoryType[key] === category
             );
-        } else if (typeof category === 'string') {
-            categoryKey = category.toUpperCase();
+            if (isValid) {
+                return category;
+            }
+            console.warn('getCategoryType received an invalid CategoryType object:', category);
+            return null;
         }
-        
-        return AlgorithmFramework.CategoryType[categoryKey] || null;
+
+        // String input is a bug - warn about it
+        if (typeof category === 'string') {
+            console.warn('getCategoryType received a string instead of CategoryType object:', category);
+            const categoryKey = category.toUpperCase();
+            return AlgorithmFramework.CategoryType[categoryKey] || null;
+        }
+
+        console.warn('getCategoryType received unexpected input:', category);
+        return null;
     }
-    
+
+    /**
+     * Get category string key from CategoryType object
+     * Returns lowercase category key for use in filtering (e.g., "hash", "special")
+     * Category must always be a CategoryType object from AlgorithmFramework
+     */
+    getCategoryString(category) {
+        if (!category) return null;
+
+        // Category should always be a CategoryType object from AlgorithmFramework
+        if (typeof category === 'string') {
+            console.warn('getCategoryString received a string instead of CategoryType object:', category);
+            return category.toLowerCase();
+        }
+
+        // Find the CategoryType key for this category object
+        const categoryKey = Object.keys(AlgorithmFramework.CategoryType).find(
+            key => AlgorithmFramework.CategoryType[key] === category
+        );
+
+        if (!categoryKey) {
+            console.warn('getCategoryString could not find CategoryType key for:', category);
+            return null;
+        }
+
+        return categoryKey.toLowerCase();
+    }
+
     filterAlgorithms(searchTerm) {
         const cards = document.querySelectorAll('.algorithm-card');
         const sections = document.querySelectorAll('.palette-section');
-        
+        const categoryFilter = document.getElementById('category-filter');
+        const selectedCategory = categoryFilter ? categoryFilter.value : '';
+
         cards.forEach(card => {
             const name = card.getAttribute('data-name').toLowerCase();
-            const matches = name.includes(searchTerm.toLowerCase());
-            card.style.display = matches ? 'block' : 'none';
+            const cardCategory = card.getAttribute('data-category');
+
+            // Check if name matches search term
+            const nameMatches = name.includes(searchTerm.toLowerCase());
+
+            // Check if category matches (if category filter is active)
+            const categoryMatches = !selectedCategory || cardCategory === selectedCategory;
+
+            // Show card only if both conditions are met
+            card.style.display = (nameMatches && categoryMatches) ? 'block' : 'none';
         });
-        
+
         // Hide sections with no visible cards
         sections.forEach(section => {
             const visibleCards = section.querySelectorAll('.algorithm-card[style*="block"], .algorithm-card:not([style*="none"])');
@@ -984,7 +1062,10 @@ class CipherController {
         
         // Setup copy and download buttons
         this.setupOutputActions();
-        
+
+        // Setup key file upload
+        this.setupKeyFileUpload();
+
         console.log('✅ Cipher interface setup complete');
     }
     
@@ -1592,23 +1673,131 @@ class CipherController {
      * Setup format tab switching for input/output
      */
     setupFormatTabs() {
-        // Input format tabs
+        // Input format tabs with auto-conversion
         const inputFormatTabs = document.querySelectorAll('.input-section .format-tab');
+        const inputText = document.getElementById('input-text');
         inputFormatTabs.forEach(tab => {
             tab.addEventListener('click', (e) => {
+                const oldFormat = document.querySelector('.input-section .format-tab.active')?.getAttribute('data-format') || 'text';
+                const newFormat = e.target.getAttribute('data-format');
+
+                if (oldFormat === newFormat) return; // No change
+
                 inputFormatTabs.forEach(t => t.classList.remove('active'));
                 e.target.classList.add('active');
+
+                // Convert existing content
+                this.convertTextAreaFormat(inputText, oldFormat, newFormat);
             });
         });
-        
-        // Output format tabs
+
+        // Output format tabs with auto-conversion
         const outputFormatTabs = document.querySelectorAll('.output-section .format-tab');
+        const outputText = document.getElementById('output-text');
         outputFormatTabs.forEach(tab => {
             tab.addEventListener('click', (e) => {
+                const oldFormat = document.querySelector('.output-section .format-tab.active')?.getAttribute('data-format') || 'text';
+                const newFormat = e.target.getAttribute('data-format');
+
+                if (oldFormat === newFormat) return; // No change
+
                 outputFormatTabs.forEach(t => t.classList.remove('active'));
                 e.target.classList.add('active');
+
+                // Convert existing content
+                this.convertTextAreaFormat(outputText, oldFormat, newFormat);
             });
         });
+
+        // Key format tabs with auto-conversion
+        const keyFormatTabs = document.querySelectorAll('.key-format-tabs .format-tab');
+        const keyText = document.getElementById('cipher-key');
+        keyFormatTabs.forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                const oldFormat = document.querySelector('.key-format-tabs .format-tab.active')?.getAttribute('data-format') || 'text';
+                const newFormat = e.target.getAttribute('data-format');
+
+                if (oldFormat === newFormat) return; // No change
+
+                keyFormatTabs.forEach(t => t.classList.remove('active'));
+                e.target.classList.add('active');
+
+                // Convert existing content
+                this.convertTextAreaFormat(keyText, oldFormat, newFormat);
+            });
+        });
+    }
+
+    /**
+     * Convert textarea content between formats
+     * @param {HTMLTextAreaElement} textarea - The textarea element to convert
+     * @param {string} fromFormat - Current format (text/hex/base64)
+     * @param {string} toFormat - Target format (text/hex/base64)
+     */
+    convertTextAreaFormat(textarea, fromFormat, toFormat) {
+        if (!textarea || !textarea.value) return;
+
+        const currentValue = textarea.value;
+
+        try {
+            // First, convert from current format to bytes
+            let bytes;
+            switch (fromFormat) {
+                case 'text':
+                    bytes = Array.from(new TextEncoder().encode(currentValue));
+                    break;
+                case 'hex':
+                    bytes = this.hexToBytes(currentValue);
+                    break;
+                case 'base64':
+                    bytes = Array.from(atob(currentValue)).map(c => c.charCodeAt(0));
+                    break;
+                default:
+                    return; // Unknown format, don't convert
+            }
+
+            // Then, convert from bytes to target format
+            let newValue;
+            switch (toFormat) {
+                case 'text':
+                    // Try to decode as UTF-8
+                    try {
+                        newValue = new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(bytes));
+                    } catch (e) {
+                        // If not valid UTF-8, show a warning and don't convert
+                        alert(`⚠️ Cannot convert to text: data contains non-UTF-8 bytes.\n\nStaying in ${fromFormat} format.`);
+                        // Revert tab selection
+                        document.querySelectorAll(`.format-tab[data-format="${fromFormat}"]`).forEach(t => {
+                            if (t.closest('.input-section, .output-section, .key-format-tabs') === textarea.closest('.input-section, .output-section, .controls-section')) {
+                                t.click();
+                            }
+                        });
+                        return;
+                    }
+                    break;
+                case 'hex':
+                    newValue = this.bytesToHex(bytes);
+                    break;
+                case 'base64':
+                    newValue = btoa(String.fromCharCode(...bytes));
+                    break;
+                default:
+                    return; // Unknown format, don't convert
+            }
+
+            textarea.value = newValue;
+        } catch (error) {
+            console.error('Format conversion error:', error);
+            alert(`⚠️ Conversion failed: ${error.message}\n\nThe current content may not be valid ${fromFormat} format.`);
+
+            // Revert tab selection
+            const container = textarea.closest('.input-section, .output-section, .controls-section');
+            if (container) {
+                container.querySelectorAll(`.format-tab[data-format="${fromFormat}"]`).forEach(t => {
+                    t.click();
+                });
+            }
+        }
     }
     
     /**
@@ -1653,24 +1842,133 @@ class CipherController {
      */
     async handleFileUpload(files) {
         if (!files || files.length === 0) return;
-        
+
         const file = files[0];
         const inputText = document.getElementById('input-text');
-        
+
         if (file.size > 50 * 1024 * 1024) { // 50MB limit
             alert('File size exceeds 50MB limit');
             return;
         }
-        
+
         try {
-            const text = await file.text();
-            inputText.value = text;
+            // Read file as binary
+            const arrayBuffer = await file.arrayBuffer();
+            const bytes = new Uint8Array(arrayBuffer);
+
+            // Get current input format
+            const inputFormat = document.querySelector('.input-section .format-tab.active')?.getAttribute('data-format') || 'text';
+
+            // Convert to appropriate format
+            let displayText;
+            switch (inputFormat) {
+                case 'text':
+                    // Try to decode as UTF-8 text
+                    try {
+                        displayText = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+                    } catch (e) {
+                        // If not valid UTF-8, switch to hex format
+                        alert('File contains binary data. Switching to Hex format.');
+                        document.querySelector('.input-section .format-tab[data-format="hex"]')?.click();
+                        displayText = this.bytesToHex(Array.from(bytes));
+                    }
+                    break;
+                case 'hex':
+                    displayText = this.bytesToHex(Array.from(bytes));
+                    break;
+                case 'base64':
+                    displayText = btoa(String.fromCharCode(...bytes));
+                    break;
+                default:
+                    displayText = new TextDecoder().decode(bytes);
+            }
+
+            inputText.value = displayText;
         } catch (error) {
             console.error('Error reading file:', error);
-            alert('Error reading file');
+            alert('Error reading file: ' + error.message);
         }
     }
     
+    /**
+     * Setup key file upload functionality
+     */
+    setupKeyFileUpload() {
+        const keyFileBtn = document.getElementById('key-file-btn');
+        const keyFileInput = document.getElementById('key-file-input');
+
+        if (!keyFileBtn || !keyFileInput) return;
+
+        // Click button to open file picker
+        keyFileBtn.addEventListener('click', () => {
+            keyFileInput.click();
+        });
+
+        // Handle file selection
+        keyFileInput.addEventListener('change', (e) => {
+            this.handleKeyFileUpload(e.target.files);
+        });
+    }
+
+    /**
+     * Handle key file upload and populate key textarea
+     */
+    async handleKeyFileUpload(files) {
+        if (!files || files.length === 0) return;
+
+        const file = files[0];
+        const keyText = document.getElementById('cipher-key');
+
+        if (file.size > 10 * 1024 * 1024) { // 10MB limit for key files
+            alert('Key file size exceeds 10MB limit');
+            return;
+        }
+
+        try {
+            // Read file as binary
+            const arrayBuffer = await file.arrayBuffer();
+            const bytes = new Uint8Array(arrayBuffer);
+
+            // Get current key format
+            const keyFormat = document.querySelector('.key-format-tabs .format-tab.active')?.getAttribute('data-format') || 'text';
+
+            // Convert to appropriate format
+            let displayText;
+            switch (keyFormat) {
+                case 'text':
+                    // Try to decode as UTF-8 text
+                    try {
+                        displayText = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+                    } catch (e) {
+                        // If not valid UTF-8, switch to hex format
+                        alert('Key file contains binary data. Switching to Hex format.');
+                        document.querySelector('.key-format-tabs .format-tab[data-format="hex"]')?.click();
+                        displayText = this.bytesToHex(Array.from(bytes));
+                    }
+                    break;
+                case 'hex':
+                    displayText = this.bytesToHex(Array.from(bytes));
+                    break;
+                case 'base64':
+                    displayText = btoa(String.fromCharCode(...bytes));
+                    break;
+                default:
+                    displayText = new TextDecoder().decode(bytes);
+            }
+
+            keyText.value = displayText;
+
+            // Clear the file input so the same file can be selected again
+            const keyFileInput = document.getElementById('key-file-input');
+            if (keyFileInput) {
+                keyFileInput.value = '';
+            }
+        } catch (error) {
+            console.error('Error reading key file:', error);
+            alert('Error reading key file: ' + error.message);
+        }
+    }
+
     /**
      * Setup copy and download output actions
      */
@@ -1771,61 +2069,217 @@ class CipherController {
      * Perform cipher operation (encrypt or decrypt)
      */
     async performCipherOperation(operation) {
-        // Get input values
-        const algorithmName = document.getElementById('selected-algorithm').value;
-        const inputText = document.getElementById('input-text').value;
-        const cipherKey = document.getElementById('cipher-key').value;
-        
-        if (!algorithmName) {
-            throw new Error('Please select an algorithm');
+        try {
+            // Get input values
+            const algorithmName = document.getElementById('selected-algorithm').value;
+            const inputText = document.getElementById('input-text').value;
+            const cipherKey = document.getElementById('cipher-key').value;
+            const modeName = document.getElementById('cipher-mode').value;
+            const paddingName = document.getElementById('cipher-padding').value;
+
+            // Validation
+            if (!algorithmName) {
+                throw new Error('❌ Please select an algorithm from the dropdown.\n\n💡 Tip: Choose a cipher like "Rijndael (AES)" or "ChaCha20"');
+            }
+
+            // Allow empty input if padding is selected (padding will handle it)
+            if (!inputText && !paddingName) {
+                throw new Error(`❌ Please enter ${operation === 'encrypt' ? 'plaintext' : 'ciphertext'} to ${operation}.\n\n💡 Tip: You can type text, paste hex, or drag & drop a file. Or select padding to encrypt empty data.`);
+            }
+
+            // Find algorithm
+            const algorithm = AlgorithmFramework.Algorithms.find(a => a.name === algorithmName);
+            if (!algorithm) {
+                throw new Error(`❌ Algorithm "${algorithmName}" not found.\n\n💡 Tip: Try reloading the page if algorithms aren't loading.`);
+            }
+
+            // Convert input based on current format
+            const inputFormat = document.querySelector('.input-section .format-tab.active')?.getAttribute('data-format') || 'text';
+            let inputBytes;
+
+            try {
+                // Handle empty input (will be padded if padding is selected)
+                if (!inputText || inputText.trim() === '') {
+                    inputBytes = [];
+                } else {
+                    switch (inputFormat) {
+                        case 'text':
+                            inputBytes = Array.from(new TextEncoder().encode(inputText));
+                            break;
+                        case 'hex':
+                            inputBytes = this.hexToBytes(inputText);
+                            break;
+                        case 'base64':
+                            inputBytes = Array.from(atob(inputText)).map(c => c.charCodeAt(0));
+                            break;
+                        default:
+                            inputBytes = Array.from(new TextEncoder().encode(inputText));
+                    }
+                }
+            } catch (error) {
+                throw new Error(`❌ Invalid ${inputFormat} format in input.\n\n💡 Tip: Make sure your input matches the selected format (Text/Hex/Base64).`);
+            }
+
+            // Get key bytes if provided
+            let keyBytes = null;
+            if (cipherKey) {
+                const keyFormat = document.querySelector('.key-format-tabs .format-tab.active')?.getAttribute('data-format') || 'text';
+                try {
+                    switch (keyFormat) {
+                        case 'text':
+                            keyBytes = Array.from(new TextEncoder().encode(cipherKey));
+                            break;
+                        case 'hex':
+                            keyBytes = this.hexToBytes(cipherKey);
+                            break;
+                        case 'base64':
+                            keyBytes = Array.from(atob(cipherKey)).map(c => c.charCodeAt(0));
+                            break;
+                    }
+                } catch (error) {
+                    throw new Error(`❌ Invalid ${keyFormat} format in key.\n\n💡 Tip: Switch key format to match your key data (Text/Hex/Base64).`);
+                }
+            }
+
+            // Create algorithm instance
+            let instance = algorithm.CreateInstance(operation === 'decrypt');
+            if (!instance) {
+                throw new Error(`❌ Cannot create ${operation === 'decrypt' ? 'decryption' : 'encryption'} instance for ${algorithmName}.\n\n💡 Tip: This algorithm may not support ${operation === 'decrypt' ? 'decryption' : 'encryption'}.`);
+            }
+
+            // Apply mode if selected
+            if (modeName && modeName !== '') {
+                const modeAlgorithm = AlgorithmFramework.Algorithms.find(a => a.name === modeName);
+                if (modeAlgorithm) {
+                    const modeInstance = modeAlgorithm.CreateInstance(operation === 'decrypt');
+                    if (modeInstance && modeInstance.setCipher) {
+                        modeInstance.setCipher(instance);
+                        instance = modeInstance; // Use mode instance instead
+                    }
+                }
+            }
+
+            // Apply padding if selected and encrypting
+            let paddingInstance = null;
+            if (paddingName && paddingName !== '' && operation === 'encrypt') {
+                const paddingAlgorithm = AlgorithmFramework.Algorithms.find(a => a.name === paddingName);
+                if (paddingAlgorithm) {
+                    paddingInstance = paddingAlgorithm.CreateInstance(false);
+                    if (paddingInstance && paddingInstance.setBlockSize && algorithm.SupportedBlockSizes && algorithm.SupportedBlockSizes.length > 0) {
+                        const blockSize = algorithm.SupportedBlockSizes[0].minSize;
+                        paddingInstance.setBlockSize(blockSize);
+                    }
+                }
+            }
+
+            // Set key if provided and supported
+            if (keyBytes && instance.key !== undefined) {
+                try {
+                    instance.key = keyBytes;
+                } catch (error) {
+                    // Extract supported key sizes for helpful error message
+                    let helpMessage = '';
+                    if (algorithm.SupportedKeySizes && algorithm.SupportedKeySizes.length > 0) {
+                        const keySizes = algorithm.SupportedKeySizes.map(ks => {
+                            if (ks.minSize === ks.maxSize) {
+                                return `${ks.minSize} bytes`;
+                            } else {
+                                return `${ks.minSize}-${ks.maxSize} bytes`;
+                            }
+                        }).join(', ');
+                        helpMessage = `\n\n✅ Supported key sizes for ${algorithmName}: ${keySizes}\n📏 Your key size: ${keyBytes.length} bytes\n\n💡 Tip: Adjust your key to match one of the supported sizes, or switch the key format (Text/Hex/Base64).`;
+                    }
+                    throw new Error(`❌ Invalid key size for ${algorithmName}.${helpMessage}`);
+                }
+            } else if (!keyBytes && instance.key !== undefined && algorithm.SupportedKeySizes && algorithm.SupportedKeySizes.length > 0) {
+                // Algorithm requires a key but none was provided
+                const keySizes = algorithm.SupportedKeySizes.map(ks => {
+                    if (ks.minSize === ks.maxSize) {
+                        return `${ks.minSize} bytes`;
+                    } else {
+                        return `${ks.minSize}-${ks.maxSize} bytes`;
+                    }
+                }).join(', ');
+                throw new Error(`❌ ${algorithmName} requires a key.\n\n✅ Supported key sizes: ${keySizes}\n\n💡 Tip: Enter a key in the "Key" field and select the appropriate format.`);
+            }
+
+            // Apply padding to input if encrypting
+            if (paddingInstance && operation === 'encrypt') {
+                try {
+                    paddingInstance.Feed(inputBytes);
+                    inputBytes = paddingInstance.Result();
+
+                    // Validate padding produced output
+                    if (!inputBytes || inputBytes.length === 0) {
+                        throw new Error(`❌ Padding "${paddingName}" failed to produce output.\n\n💡 Tip: Try a different padding scheme like "PKCS#7" or ensure input data is valid.`);
+                    }
+                } catch (error) {
+                    if (error.message.includes('❌')) {
+                        throw error; // Re-throw our formatted error
+                    }
+                    throw new Error(`❌ Padding "${paddingName}" failed: ${error.message}\n\n💡 Tip: Check that the selected padding is compatible with ${algorithmName}.`);
+                }
+            }
+
+            // For algorithms that require data, ensure we have some
+            // Some ciphers accept zero-length input, but many require at least one block
+            if ((!inputBytes || inputBytes.length === 0) && !paddingInstance) {
+                // No padding and no input - try to encrypt anyway (algorithm will decide if it's valid)
+                inputBytes = [];
+            }
+
+            // Perform operation
+            let outputBytes;
+            try {
+                instance.Feed(inputBytes);
+                outputBytes = instance.Result();
+
+                // Validate we got output
+                if (!outputBytes) {
+                    outputBytes = [];
+                }
+            } catch (error) {
+                if (error.message.includes('❌')) {
+                    throw error; // Re-throw our formatted error
+                }
+
+                // Check if it's a "no data fed" error
+                if (error.message.toLowerCase().includes('no data') || error.message.toLowerCase().includes('not fed')) {
+                    if (inputBytes && inputBytes.length > 0) {
+                        throw new Error(`❌ ${algorithmName} rejected the input data.\n\n💡 Tip: Some algorithms require specific block sizes. Try selecting a padding scheme like "PKCS#7".`);
+                    } else {
+                        throw new Error(`❌ ${algorithmName} requires input data.\n\n💡 Tip: Enter some text to encrypt, or select a padding scheme to encrypt zero-length data.`);
+                    }
+                }
+
+                throw new Error(`❌ ${operation === 'encrypt' ? 'Encryption' : 'Decryption'} failed: ${error.message}\n\n💡 Tip: Check your input data and algorithm settings.`);
+            }
+
+            // Remove padding if decrypting
+            if (paddingName && paddingName !== '' && operation === 'decrypt') {
+                const paddingAlgorithm = AlgorithmFramework.Algorithms.find(a => a.name === paddingName);
+                if (paddingAlgorithm) {
+                    const unpaddingInstance = paddingAlgorithm.CreateInstance(true);
+                    if (unpaddingInstance && unpaddingInstance.setBlockSize && algorithm.SupportedBlockSizes && algorithm.SupportedBlockSizes.length > 0) {
+                        const blockSize = algorithm.SupportedBlockSizes[0].minSize;
+                        unpaddingInstance.setBlockSize(blockSize);
+                    }
+                    if (unpaddingInstance) {
+                        unpaddingInstance.Feed(outputBytes);
+                        outputBytes = unpaddingInstance.Result();
+                    }
+                }
+            }
+
+            return {
+                bytes: outputBytes,
+                operation: operation,
+                algorithm: algorithmName
+            };
+        } catch (error) {
+            // Re-throw with stack trace preserved
+            throw error;
         }
-        
-        if (!inputText) {
-            throw new Error('Please enter text to ' + operation);
-        }
-        
-        // Find algorithm
-        const algorithm = AlgorithmFramework.Algorithms.find(a => a.name === algorithmName);
-        if (!algorithm) {
-            throw new Error('Algorithm not found: ' + algorithmName);
-        }
-        
-        // Convert input based on current format
-        const inputFormat = document.querySelector('.input-section .format-tab.active').getAttribute('data-format');
-        let inputBytes;
-        
-        switch (inputFormat) {
-            case 'text':
-                inputBytes = Array.from(new TextEncoder().encode(inputText));
-                break;
-            case 'hex':
-                inputBytes = this.hexToBytes(inputText);
-                break;
-            case 'base64':
-                inputBytes = Array.from(atob(inputText)).map(c => c.charCodeAt(0));
-                break;
-            default:
-                inputBytes = Array.from(new TextEncoder().encode(inputText));
-        }
-        
-        // Create algorithm instance
-        const instance = algorithm.CreateInstance(operation === 'decrypt');
-        
-        // Set key if provided and supported
-        if (cipherKey && instance.key !== undefined) {
-            const keyBytes = Array.from(new TextEncoder().encode(cipherKey));
-            instance.key = keyBytes;
-        }
-        
-        // Perform operation
-        instance.Feed(inputBytes);
-        const outputBytes = instance.Result();
-        
-        return {
-            bytes: outputBytes,
-            operation: operation,
-            algorithm: algorithmName
-        };
     }
     
     /**
@@ -1862,6 +2316,8 @@ class CipherController {
         document.getElementById('output-text').value = '';
         document.getElementById('selected-algorithm').value = '';
         document.getElementById('cipher-key').value = '';
+        document.getElementById('cipher-mode').value = '';
+        document.getElementById('cipher-padding').value = '';
     }
     
     /**
@@ -2378,26 +2834,29 @@ class CipherController {
     
     /**
      * Get algorithm parameters for node setup
+     * Category should always be a CategoryType object from AlgorithmFramework
      */
     getAlgorithmParameters(algorithm) {
         // Basic parameter detection - could be enhanced
         const parameters = [];
-        
+
+        if (!algorithm.category) return parameters;
+
         // Most block ciphers need a key
-        if (algorithm.category === 'cipher' && algorithm.subCategory?.includes('Block')) {
+        if (algorithm.category === AlgorithmFramework.CategoryType.BLOCK) {
             parameters.push('key');
         }
-        
+
         // Stream ciphers often need a key and nonce/IV
-        if (algorithm.category === 'cipher' && algorithm.subCategory?.includes('Stream')) {
+        if (algorithm.category === AlgorithmFramework.CategoryType.STREAM) {
             parameters.push('key', 'nonce');
         }
-        
+
         // Hash functions typically don't need parameters
-        if (algorithm.category === 'hash') {
+        if (algorithm.category === AlgorithmFramework.CategoryType.HASH) {
             // No parameters needed
         }
-        
+
         return parameters;
     }
     
