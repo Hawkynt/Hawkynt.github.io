@@ -3,20 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Educational cryptographic toolkit with 353 cipher implementations including AES, ChaCha20, Salsa20. Interactive learning platform with algorithm chaining, file processing, and test vectors.">
-    <meta name="keywords" content="cryptography education, cipher algorithms, AES, ChaCha20, encryption learning, educational, cryptography">
+    <meta name="description" content="Educational cryptographic toolkit with 450+ cipher implementations including AES, ChaCha20, ZUC-256, ParallelHash, KangarooTwelve. Interactive learning platform with algorithm chaining, file processing, and test vectors.">
+    <meta name="keywords" content="cryptography education, cipher algorithms, AES, ChaCha20, ZUC-256, encryption learning, educational, cryptography, hash functions, MACs, stream ciphers">
     <meta name="author" content="Hawkynt">
-    
+
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:title" content="»SynthelicZ« Cipher Tools - Interactive Cryptography Education">
-    <meta property="og:description" content="Learn cryptography with 353 cipher implementations. Educational toolkit with algorithm chaining and interactive visualization.">
+    <meta property="og:description" content="Learn cryptography with 450+ cipher implementations. Educational toolkit with algorithm chaining and interactive visualization. 98% BouncyCastle coverage.">
     <meta property="og:url" content="https://hawkynt.github.io/Cipher/">
-    
+
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="»SynthelicZ« Cipher Tools">
-    <meta name="twitter:description" content="Educational cryptographic toolkit with 353 algorithms">
+    <meta name="twitter:description" content="Educational cryptographic toolkit with 450+ algorithms - 98% BouncyCastle coverage">
     
     <title>»SynthelicZ« Cipher Tools - Interactive Cryptography Education</title>
     <link rel="shortcut icon" href="../favicon.ico">
@@ -51,27 +51,25 @@
     <script>
         // Initialize application after all scripts have loaded
         console.log('🔐 »SynthelicZ« Cipher Tools Loading...');
-        
-        // Wait for DOM and all scripts to be ready
-        document.addEventListener('DOMContentLoaded', function() {
-            // Add a small delay to ensure all algorithm scripts have executed
-            setTimeout(() => {
-                console.log('🔧 Initializing application...');
-                console.log('📊 AlgorithmFramework available:', typeof AlgorithmFramework !== 'undefined');
-                
-                if (typeof AlgorithmFramework !== 'undefined') {
-                    console.log('📋 Total algorithms registered:', AlgorithmFramework.Algorithms.length);
-                    console.log('  Algorithm names:', AlgorithmFramework.Algorithms.map(a => a.name));
-                }
-                
-                // Initialize the main controller
-                if (typeof CipherController !== 'undefined') {
-                    window.cipherController = new CipherController();
-                    window.cipherController.initializeApplication();
-                } else {
-                    console.error('❌ CipherController not found');
-                }
-            }, 100); // Small delay to ensure all scripts have registered their algorithms
+
+        // Wait for ALL resources (including all script tags) to fully load
+        // 'load' event fires after ALL resources are loaded, not just DOM parsing
+        window.addEventListener('load', function() {
+            console.log('🔧 Initializing application...');
+            console.log('📊 AlgorithmFramework available:', typeof AlgorithmFramework !== 'undefined');
+
+            if (typeof AlgorithmFramework !== 'undefined') {
+                console.log('📋 Total algorithms registered:', AlgorithmFramework.Algorithms.length);
+                console.log('  Algorithm names:', AlgorithmFramework.Algorithms.map(a => a.name));
+            }
+
+            // Initialize the main controller
+            if (typeof CipherController !== 'undefined') {
+                window.cipherController = new CipherController();
+                window.cipherController.initializeApplication();
+            } else {
+                console.error('❌ CipherController not found');
+            }
         });
     </script>
     
@@ -337,13 +335,48 @@
                                 <div class="test-stat-number" id="success-rate">0%</div>
                                 <div class="test-stat-label">Success Rate</div>
                             </div>
+                            <div class="test-stat" id="parallel-status-stat" style="display: none;">
+                                <div class="test-stat-number" id="parallel-throughput">0.0</div>
+                                <div class="test-stat-label">modes/sec</div>
+                            </div>
+                        </div>
+
+                        <!-- Parallel Testing Progress -->
+                        <div class="parallel-progress-section" id="parallel-progress-section" style="display: none;">
+                            <div class="parallel-progress-header">
+                                <h4>🚀 Parallel Testing Progress</h4>
+                                <div class="parallel-stats">
+                                    <span id="parallel-completed">0</span>/<span id="parallel-total">0</span> completed
+                                    (<span id="parallel-percentage">0</span>%)
+                                    • <span id="parallel-workers-active">0</span> workers active
+                                    • ETA: <span id="parallel-eta">--:--</span>
+                                </div>
+                            </div>
+                            <div class="parallel-progress-bar">
+                                <div class="parallel-progress-fill" id="parallel-progress-fill"></div>
+                            </div>
                         </div>
                         
                         <div class="test-actions">
-                            <button class="btn btn-primary" id="run-all-tests">🚀 Test All Algorithms</button>
-                            <button class="btn btn-secondary" id="run-selected-tests">▶️ Test Selected</button>
-                            <button class="btn btn-secondary" id="stop-testing">⏹️ Stop Testing</button>
-                            <button class="btn btn-secondary" id="export-test-results">📊 Export Results</button>
+                            <div class="test-action-group">
+                                <button class="btn btn-primary" id="run-all-tests">🚀 Test All Algorithms</button>
+                                <button class="btn btn-secondary" id="run-selected-tests">▶️ Test Selected</button>
+                                <button class="btn btn-secondary" id="stop-testing">⏹️ Stop Testing</button>
+                                <button class="btn btn-secondary" id="export-test-results">📊 Export Results</button>
+                            </div>
+                            <div class="test-parallel-controls">
+                                <div class="parallel-toggle">
+                                    <label>
+                                        <input type="checkbox" id="enable-parallel-testing" checked>
+                                        <span>🚀 Parallel Testing (Async)</span>
+                                    </label>
+                                </div>
+                                <div class="worker-count-control">
+                                    <label for="worker-count">Workers:</label>
+                                    <input type="number" id="worker-count" min="1" max="16" value="4" style="width: 60px;">
+                                    <span id="cpu-cores-info" style="color: #888; font-size: 0.9em;"></span>
+                                </div>
+                            </div>
                         </div>
                         
                         <div class="test-grid-container">
@@ -438,8 +471,7 @@
 
     <!-- Test Framework (Browser-Compatible) -->
     <script src="./tests/DummyBlockCipher.js"></script>
-    <script src="./tests/TestCore.js"></script>
-    <script src="./tests/TestAPI.browser.js"></script>
+    <script src="./tests/TestEngine.js"></script>
     
     <!-- Type-Aware Transpiler System -->
     <script src="./type-aware-transpiler.js"></script>
@@ -465,44 +497,37 @@
     <script src="./codingplugins/c.js"></script>
     <script src="./codingplugins/cpp.js"></script>
         
-    <!-- ============================================ -->
-    <!-- COMPLETE ALGORITHM IMPLEMENTATIONS          -->
-    <!-- All 334 unique algorithm files        -->
-    <!-- Organized by category for easy maintenance  -->
-    <!-- ============================================ -->
-    
-    <!-- =========================== -->
-    <!-- ASYMMETRIC (21) -->
-    <!-- =========================== -->
     <script src="./algorithms/asymmetric/bike.js"></script>
     <script src="./algorithms/asymmetric/classic-mceliece.js"></script>
     <script src="./algorithms/asymmetric/cross.js"></script>
+    <script src="./algorithms/asymmetric/diffie-hellman.js"></script>
     <script src="./algorithms/asymmetric/dilithium.js"></script>
+    <script src="./algorithms/asymmetric/dsa.js"></script>
+    <script src="./algorithms/asymmetric/ecdsa.js"></script>
+    <script src="./algorithms/asymmetric/elgamal.js"></script>
+    <script src="./algorithms/asymmetric/esign.js"></script>
     <script src="./algorithms/asymmetric/faest.js"></script>
     <script src="./algorithms/asymmetric/falcon.js"></script>
     <script src="./algorithms/asymmetric/frodokem.js"></script>
     <script src="./algorithms/asymmetric/hawk.js"></script>
     <script src="./algorithms/asymmetric/hqc.js"></script>
+    <script src="./algorithms/asymmetric/luc.js"></script>
     <script src="./algorithms/asymmetric/lwe-signature.js"></script>
     <script src="./algorithms/asymmetric/mayo.js"></script>
     <script src="./algorithms/asymmetric/ml-dsa.js"></script>
     <script src="./algorithms/asymmetric/ntru.js"></script>
     <script src="./algorithms/asymmetric/perk.js"></script>
+    <script src="./algorithms/asymmetric/rabin.js"></script>
+    <script src="./algorithms/asymmetric/rabin-williams.js"></script>
     <script src="./algorithms/asymmetric/rainbow.js"></script>
     <script src="./algorithms/asymmetric/rsa.js"></script>
     <script src="./algorithms/asymmetric/sike.js"></script>
     <script src="./algorithms/asymmetric/slh-dsa.js"></script>
     <script src="./algorithms/asymmetric/sphincs-plus.js"></script>
     <script src="./algorithms/asymmetric/sqisign.js"></script>
-
-    <!-- =========================== -->
-    <!-- AEAD (1) -->
-    <!-- =========================== -->
+    <script src="./algorithms/asymmetric/x25519.js"></script>
+    <script src="./algorithms/aead/grain128aead.js"></script>
     <script src="./algorithms/aead/saturnin.js"></script>
-
-    <!-- =========================== -->
-    <!-- BLOCK (85) -->
-    <!-- =========================== -->
     <script src="./algorithms/block/anubis.js"></script>
     <script src="./algorithms/block/aria.js"></script>
     <script src="./algorithms/block/baseking.js"></script>
@@ -554,6 +579,7 @@
     <script src="./algorithms/block/mercy.js"></script>
     <script src="./algorithms/block/misty1.js"></script>
     <script src="./algorithms/block/misty2.js"></script>
+    <script src="./algorithms/block/multi2.js"></script>
     <script src="./algorithms/block/newdes.js"></script>
     <script src="./algorithms/block/noekeon.js"></script>
     <script src="./algorithms/block/present.js"></script>
@@ -566,6 +592,7 @@
     <script src="./algorithms/block/rhx.js"></script>
     <script src="./algorithms/block/rijndael.js"></script>
     <script src="./algorithms/block/safer.js"></script>
+    <script src="./algorithms/block/saferp.js"></script>
     <script src="./algorithms/block/sc2000.js"></script>
     <script src="./algorithms/block/seed.js"></script>
     <script src="./algorithms/block/serpent.js"></script>
@@ -588,10 +615,6 @@
     <script src="./algorithms/block/unicorn-a.js"></script>
     <script src="./algorithms/block/xtea.js"></script>
     <script src="./algorithms/block/xxtea.js"></script>
-
-    <!-- =========================== -->
-    <!-- CHECKSUM (13) -->
-    <!-- =========================== -->
     <script src="./algorithms/checksum/adler.js"></script>
     <script src="./algorithms/checksum/check-digit.js"></script>
     <script src="./algorithms/checksum/crc128.js"></script>
@@ -605,10 +628,6 @@
     <script src="./algorithms/checksum/isbn.js"></script>
     <script src="./algorithms/checksum/parity.js"></script>
     <script src="./algorithms/checksum/unix-sum.js"></script>
-
-    <!-- =========================== -->
-    <!-- CLASSICAL (26) -->
-    <!-- =========================== -->
     <script src="./algorithms/classical/affine.js"></script>
     <script src="./algorithms/classical/al-kindi-frequency.js"></script>
     <script src="./algorithms/classical/autokey.js"></script>
@@ -635,10 +654,6 @@
     <script src="./algorithms/classical/trifid.js"></script>
     <script src="./algorithms/classical/twosquare.js"></script>
     <script src="./algorithms/classical/vigenere.js"></script>
-
-    <!-- =========================== -->
-    <!-- COMPRESSION (50) -->
-    <!-- =========================== -->
     <script src="./algorithms/compression/ans.js"></script>
     <script src="./algorithms/compression/arithmetic.js"></script>
     <script src="./algorithms/compression/bpe.js"></script>
@@ -688,10 +703,19 @@
     <script src="./algorithms/compression/xz-lzma2.js"></script>
     <script src="./algorithms/compression/zstd.js"></script>
     <script src="./algorithms/compression/zpaq.js"></script>
-
-    <!-- =========================== -->
-    <!-- ECC (8) -->
-    <!-- =========================== -->
+    <script src="./algorithms/crypto/aeswrap.js"></script>
+    <script src="./algorithms/crypto/aeswrappad.js"></script>
+    <script src="./algorithms/crypto/ariawrap.js"></script>
+    <script src="./algorithms/crypto/ariawrappad.js"></script>
+    <script src="./algorithms/crypto/camelliawrap.js"></script>
+    <script src="./algorithms/crypto/camelliawrappad.js"></script>
+    <script src="./algorithms/crypto/cryptoprowrap.js"></script>
+    <script src="./algorithms/crypto/desedewrap.js"></script>
+    <script src="./algorithms/crypto/gost28147wrap.js"></script>
+    <script src="./algorithms/crypto/kalynawrap.js"></script>
+    <script src="./algorithms/crypto/rfc3211wrap.js"></script>
+    <script src="./algorithms/crypto/seedwrap.js"></script>
+    <script src="./algorithms/crypto/seedwrappad.js"></script>
     <script src="./algorithms/ecc/bch.js"></script>
     <script src="./algorithms/ecc/fountain-foundation.js"></script>
     <script src="./algorithms/ecc/hamming.js"></script>
@@ -700,10 +724,6 @@
     <script src="./algorithms/ecc/raptor-codes.js"></script>
     <script src="./algorithms/ecc/raptorq-codes.js"></script>
     <script src="./algorithms/ecc/reed-solomon.js"></script>
-
-    <!-- =========================== -->
-    <!-- ENCODING (20) -->
-    <!-- =========================== -->
     <script src="./algorithms/encoding/atbash.js"></script>
     <script src="./algorithms/encoding/base16.js"></script>
     <script src="./algorithms/encoding/base32.js"></script>
@@ -724,10 +744,6 @@
     <script src="./algorithms/encoding/xxencode.js"></script>
     <script src="./algorithms/encoding/yenc.js"></script>
     <script src="./algorithms/encoding/z85.js"></script>
-
-    <!-- =========================== -->
-    <!-- HASH (37) -->
-    <!-- =========================== -->
     <script src="./algorithms/hash/argon2.js"></script>
     <script src="./algorithms/hash/bcrypt.js"></script>
     <script src="./algorithms/hash/blake.js"></script>
@@ -765,18 +781,39 @@
     <script src="./algorithms/hash/xxhash.js"></script>
     <script src="./algorithms/hash/xxhash3.js"></script>
     <script src="./algorithms/hash/xxhash32.js"></script>
-
-    <!-- =========================== -->
-    <!-- KDF (4) -->
-    <!-- =========================== -->
+    <script src="./algorithms/hash/blake2xs.js"></script>
+    <script src="./algorithms/hash/chc.js"></script>
+    <script src="./algorithms/hash/cshake128.js"></script>
+    <script src="./algorithms/hash/cshake256.js"></script>
+    <script src="./algorithms/hash/dstu7564.js"></script>
+    <script src="./algorithms/hash/gost3411.js"></script>
+    <script src="./algorithms/hash/kangaroo.js"></script>
+    <script src="./algorithms/hash/keccak-224.js"></script>
+    <script src="./algorithms/hash/keccak-256.js"></script>
+    <script src="./algorithms/hash/keccak-384.js"></script>
+    <script src="./algorithms/hash/keccak-512.js"></script>
+    <script src="./algorithms/hash/kupyna256.js"></script>
+    <script src="./algorithms/hash/kupyna512.js"></script>
+    <script src="./algorithms/hash/lsh-224.js"></script>
+    <script src="./algorithms/hash/lsh-256.js"></script>
+    <script src="./algorithms/hash/lsh-384.js"></script>
+    <script src="./algorithms/hash/lsh-512-256.js"></script>
+    <script src="./algorithms/hash/lsh-512.js"></script>
+    <script src="./algorithms/hash/panama-be.js"></script>
+    <script src="./algorithms/hash/panama-le.js"></script>
+    <script src="./algorithms/hash/parallelhash.js"></script>
+    <script src="./algorithms/hash/ripemd128.js"></script>
+    <script src="./algorithms/hash/sha3-224.js"></script>
+    <script src="./algorithms/hash/sha3-384.js"></script>
+    <script src="./algorithms/hash/sha3-512.js"></script>
+    <script src="./algorithms/hash/sha512-224.js"></script>
+    <script src="./algorithms/hash/sha512-256.js"></script>
+    <script src="./algorithms/hash/shake256.js"></script>
+    <script src="./algorithms/hash/sm3.js"></script>
     <script src="./algorithms/kdf/argon2.js"></script>
     <script src="./algorithms/kdf/hkdf.js"></script>
     <script src="./algorithms/kdf/pbkdf2.js"></script>
     <script src="./algorithms/kdf/scrypt.js"></script>
-
-    <!-- =========================== -->
-    <!-- MAC (7) -->
-    <!-- =========================== -->
     <script src="./algorithms/mac/cmac.js"></script>
     <script src="./algorithms/mac/gmac.js"></script>
     <script src="./algorithms/mac/hmac.js"></script>
@@ -784,10 +821,22 @@
     <script src="./algorithms/mac/omac.js"></script>
     <script src="./algorithms/mac/poly1305.js"></script>
     <script src="./algorithms/mac/vmac.js"></script>
-
-    <!-- =========================== -->
-    <!-- MODES (26) -->
-    <!-- =========================== -->
+    <script src="./algorithms/mac/blake3mac.js"></script>
+    <script src="./algorithms/mac/cbcmac.js"></script>
+    <script src="./algorithms/mac/cfbmac.js"></script>
+    <script src="./algorithms/mac/dmac.js"></script>
+    <script src="./algorithms/mac/dstu7624mac.js"></script>
+    <script src="./algorithms/mac/f9.js"></script>
+    <script src="./algorithms/mac/gost28147mac.js"></script>
+    <script src="./algorithms/mac/iso9797alg3.js"></script>
+    <script src="./algorithms/mac/pelican.js"></script>
+    <script src="./algorithms/mac/pmac.js"></script>
+    <script src="./algorithms/mac/siphash128.js"></script>
+    <script src="./algorithms/mac/skeinmac512.js"></script>
+    <script src="./algorithms/mac/ttmac.js"></script>
+    <script src="./algorithms/mac/vmpcmac.js"></script>
+    <script src="./algorithms/mac/xcbc.js"></script>
+    <script src="./algorithms/mac/zuc128mac.js"></script>
     <script src="./algorithms/modes/cbc.js"></script>
     <script src="./algorithms/modes/ccm.js"></script>
     <script src="./algorithms/modes/cfb.js"></script>
@@ -814,10 +863,7 @@
     <script src="./algorithms/modes/siv.js"></script>
     <script src="./algorithms/modes/xex.js"></script>
     <script src="./algorithms/modes/xts.js"></script>
-
-    <!-- =========================== -->
-    <!-- PADDING (12) -->
-    <!-- =========================== -->
+    <script src="./algorithms/modes/f8.js"></script>
     <script src="./algorithms/padding/ansi-x923.js"></script>
     <script src="./algorithms/padding/bit-padding.js"></script>
     <script src="./algorithms/padding/iso10126.js"></script>
@@ -830,20 +876,11 @@
     <script src="./algorithms/padding/pss.js"></script>
     <script src="./algorithms/padding/random.js"></script>
     <script src="./algorithms/padding/zero.js"></script>
-
-    <!-- =========================== -->
-    <!-- PERMUTATION (1) -->
-    <!-- =========================== -->
     <script src="./algorithms/permutation/simpira-v2.js"></script>
-
-    <!-- =========================== -->
-    <!-- PQC (1) -->
-    <!-- =========================== -->
     <script src="./algorithms/pqc/ml-kem.js"></script>
-
-    <!-- =========================== -->
-    <!-- SPECIAL (14) -->
-    <!-- =========================== -->
+    <script src="./algorithms/random/fortuna.js"></script>
+    <script src="./algorithms/random/yarrow-demo.js"></script>
+    <script src="./algorithms/random/yarrow.js"></script>
     <script src="./algorithms/special/3way.js"></script>
     <script src="./algorithms/special/aes-siv.js"></script>
     <script src="./algorithms/special/ascon.js"></script>
@@ -858,10 +895,8 @@
     <script src="./algorithms/special/time-lock-puzzle.js"></script>
     <script src="./algorithms/special/tinyjambu.js"></script>
     <script src="./algorithms/special/xchacha20-poly1305.js"></script>
+    <script src="./algorithms/special/rc2wrap.js"></script>
 
-    <!-- =========================== -->
-    <!-- STREAM (49) -->
-    <!-- =========================== -->
     <script src="./algorithms/stream/a5-1.js"></script>
     <script src="./algorithms/stream/a5-2.js"></script>
     <script src="./algorithms/stream/a5-3.js"></script>
@@ -911,6 +946,11 @@
     <script src="./algorithms/stream/xchacha20.js"></script>
     <script src="./algorithms/stream/xsalsa20.js"></script>
     <script src="./algorithms/stream/zuc.js"></script>
+    <script src="./algorithms/stream/zuc256.js"></script>
+    <script src="./algorithms/stream/grain128.js"></script>
+    <script src="./algorithms/stream/sober128.js"></script>
+    <script src="./algorithms/stream/vmpc.js"></script>
+    <script src="./algorithms/stream/vmpcksa3.js"></script>
 
     <!-- Application Models -->
     <script src="index.models.algorithms.js"></script>

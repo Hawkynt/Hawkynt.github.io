@@ -19,15 +19,23 @@
 
 const fs = require('fs');
 const path = require('path');
-const TestEngine = require('./TestEngine');
+const { TestFile, TestAlgorithm, TestVector } = require('./TestEngine');
 
 class TestSuite {
   constructor() {
-    this.engine = new TestEngine({ verbose: false, silent: false });
     this.totalAlgorithms = 0;
     this.algorithmsPerCategory = {};
     this.verbose = false;
     this.algorithmDetails = [];
+    this.engine = null; // Will be initialized in loadDependencies
+    this.results = {
+      compilation: { passed: 0, failed: 0, errors: [] },
+      interface: { passed: 0, failed: 0, errors: [] },
+      metadata: { passed: 0, failed: 0, errors: [] },
+      issues: { passed: 0, failed: 0, errors: [] },
+      functionality: { passed: 0, failed: 0, errors: [] },
+      optimization: { passed: 0, failed: 0, errors: [] }
+    };
   }
 
   // Main entry point - maintains exact same interface
@@ -43,7 +51,6 @@ class TestSuite {
       // Parse command line arguments
       const args = process.argv.slice(2);
       this.verbose = args.includes('--verbose') || args.includes('-v');
-      this.engine.verbose = this.verbose;
 
       // Filter out flags to get the filename
       const singleFile = args.find(arg => !arg.startsWith('--') && !arg.startsWith('-'));
@@ -68,7 +75,13 @@ class TestSuite {
   async loadDependencies() {
     console.log('Loading dependencies...');
     try {
-      await this.engine.loadDependencies();
+      // Load AlgorithmFramework and OpCodes
+      const frameworkPath = path.join(__dirname, '..', 'AlgorithmFramework.js');
+      const opCodesPath = path.join(__dirname, '..', 'OpCodes.js');
+
+      global.AlgorithmFramework = require(frameworkPath);
+      global.OpCodes = require(opCodesPath);
+
       console.log('✓ Dependencies loaded successfully\n');
     } catch (error) {
       throw new Error(`Failed to load dependencies: ${error.message}`);
@@ -139,7 +152,7 @@ class TestSuite {
     console.log('');
   }
 
-  // Test individual algorithm file - now uses TestEngine
+  // Test individual algorithm file - uses new simplified TestEngine
   async testAlgorithm(category, filename) {
     const filePath = path.join(__dirname, '..', 'algorithms', category, filename);
     const algorithmName = path.basename(filename, '.js');
@@ -149,9 +162,32 @@ class TestSuite {
     this.totalAlgorithms++;
     this.algorithmsPerCategory[category]++;
 
-    // Use TestEngine to do the actual testing
-    const algorithmData = await this.engine.testAlgorithm(filePath, algorithmName, category);
+    // Use TestFile from new TestEngine
+    const result = await TestFile(filePath, { verbose: this.verbose, silent: false });
+
+    // Convert to old format for compatibility
+    const algorithmData = {
+      name: algorithmName,
+      filePath: filePath,
+      tests: {
+        compilation: result.compilation.passed,
+        interface: result.interface.passed,
+        metadata: result.metadata.passed,
+        issues: result.issues.passed,
+        functionality: result.functionality.passed,
+        optimization: result.optimization.passed
+      },
+      details: {
+        registeredNames: result.interface.algorithms,
+        testResults: result.functionality.testResults,
+        issues: result.issues.errors.length > 0 ? { totalCount: result.issues.errors.length } : null
+      }
+    };
+
     this.algorithmDetails.push(algorithmData);
+
+    // Update accumulated results
+    this.updateResults(result);
 
     // Format output exactly like original
     const status = Object.values(algorithmData.tests).every(t => t) ? '✓' : '✗';
@@ -233,16 +269,41 @@ class TestSuite {
     console.log('===============================================\n');
   }
 
+  // Update accumulated test results
+  updateResults(result) {
+    const testTypes = ['compilation', 'interface', 'metadata', 'issues', 'functionality', 'optimization'];
+
+    testTypes.forEach(type => {
+      if (result[type].passed) {
+        this.results[type].passed++;
+      } else {
+        this.results[type].failed++;
+        if (result[type].error) {
+          this.results[type].errors.push(result[type].error);
+        }
+        if (result[type].errors && Array.isArray(result[type].errors)) {
+          this.results[type].errors.push(...result[type].errors.map(e => typeof e === 'string' ? e : e.content || JSON.stringify(e)));
+        }
+      }
+    });
+  }
+
   // Generate comprehensive test report - matches original format exactly
   generateReport() {
-    // Get results from engine
-    const engineResults = this.engine.getResultsSummary();
+    // Calculate summary
+    const engineResults = {
+      passed: Object.values(this.results).reduce((sum, r) => sum + r.passed, 0),
+      total: Object.values(this.results).reduce((sum, r) => sum + r.passed + r.failed, 0)
+    };
+    engineResults.percentage = engineResults.total > 0
+      ? Math.round((engineResults.passed / engineResults.total) * 100)
+      : 0;
 
     // Show errors if any (matches original format)
     ['compilation', 'interface', 'metadata', 'issues', 'functionality', 'optimization'].forEach(testType => {
-      if (this.engine.results[testType].errors.length > 0) {
+      if (this.results[testType].errors.length > 0) {
         console.log(`\n=== ${testType.toUpperCase()} ERRORS ===`);
-        this.engine.results[testType].errors.forEach(error => {
+        this.results[testType].errors.forEach(error => {
           console.log(`  ✗ ${error}`);
         });
       }
@@ -258,12 +319,12 @@ class TestSuite {
     console.log('');
 
     console.log('=== TEST RESULTS SUMMARY ===');
-    console.log(`🔧 COMPILATION:   ${this.engine.results.compilation.passed}/${this.engine.results.compilation.passed + this.engine.results.compilation.failed} passed`);
-    console.log(`🔌 INTERFACE:     ${this.engine.results.interface.passed}/${this.engine.results.interface.passed + this.engine.results.interface.failed} passed`);
-    console.log(`📋 METADATA:      ${this.engine.results.metadata.passed}/${this.engine.results.metadata.passed + this.engine.results.metadata.failed} passed`);
-    console.log(`⚠️ ISSUES:        ${this.engine.results.issues.passed}/${this.engine.results.issues.passed + this.engine.results.issues.failed} passed`);
-    console.log(`⚡ FUNCTIONALITY: ${this.engine.results.functionality.passed}/${this.engine.results.functionality.passed + this.engine.results.functionality.failed} passed`);
-    console.log(`🚀 OPTIMIZATION:  ${this.engine.results.optimization.passed}/${this.engine.results.optimization.passed + this.engine.results.optimization.failed} passed`);
+    console.log(`🔧 COMPILATION:   ${this.results.compilation.passed}/${this.results.compilation.passed + this.results.compilation.failed} passed`);
+    console.log(`🔌 INTERFACE:     ${this.results.interface.passed}/${this.results.interface.passed + this.results.interface.failed} passed`);
+    console.log(`📋 METADATA:      ${this.results.metadata.passed}/${this.results.metadata.passed + this.results.metadata.failed} passed`);
+    console.log(`⚠️ ISSUES:        ${this.results.issues.passed}/${this.results.issues.passed + this.results.issues.failed} passed`);
+    console.log(`⚡ FUNCTIONALITY: ${this.results.functionality.passed}/${this.results.functionality.passed + this.results.functionality.failed} passed`);
+    console.log(`🚀 OPTIMIZATION:  ${this.results.optimization.passed}/${this.results.optimization.passed + this.results.optimization.failed} passed`);
     console.log('');
 
     console.log('=== OVERALL SCORE ===');
