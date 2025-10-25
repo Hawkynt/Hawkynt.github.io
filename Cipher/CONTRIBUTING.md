@@ -1101,33 +1101,208 @@ RegisterAlgorithm(new YourStreamCipher());
 - Keep descriptions concise but informative
 - Include inventor attribution when known
 
-## Helper Functions Available
+## OpCodes: Hardware Abstraction Layer
 
-The OpCodes library provides essential helper functions for algorithm implementations:
+### Philosophy
+
+**OpCodes is the ONLY place where hardware/language-specific operations should exist.** Every bit operation, shift, rotation, type conversion, and byte manipulation MUST go through OpCodes. This enables:
+
+1. **True Cross-Platform Portability** - Algorithm code structure remains identical across all languages
+2. **Single Translation Point** - Only OpCodes needs language-specific implementation
+3. **Clear Intent** - Function names explicitly state what operation is being performed
+4. **Easy Maintenance** - Language idioms isolated to one module
+
+### Critical Rule
+
+❌ **NEVER use language-specific operations directly in algorithm code:**
+```javascript
+// ❌ WRONG - JavaScript-specific idiom
+const result = (a + b) >>> 0;
+const shifted = value << 4;
+const byte = value & 0xFF;
+```
+
+✅ **ALWAYS use OpCodes functions:**
+```javascript
+// ✅ CORRECT - Platform-agnostic
+const result = OpCodes.ToDWord(a + b);
+const shifted = OpCodes.Shl32(value, 4);
+const byte = OpCodes.ToByte(value);
+```
+
+### Complete OpCodes Reference
+
+#### Type Conversions
+
+Replace ALL language-specific type coercion with these functions:
+
+| Function | Replaces | Description | Range |
+|----------|----------|-------------|-------|
+| `ToByte(value)` | `value & 0xFF` | Unsigned 8-bit | 0 to 255 |
+| `ToSByte(value)` | Manual two's complement | Signed 8-bit | -128 to 127 |
+| `ToWord(value)` | `value & 0xFFFF` | Unsigned 16-bit | 0 to 65535 |
+| `ToShort(value)` | Manual two's complement | Signed 16-bit | -32768 to 32767 |
+| `ToDWord(value)` | `value >>> 0` | **Unsigned 32-bit** | 0 to 2³²-1 |
+| `ToInt(value)` | `value \| 0` | **Signed 32-bit** | -2³¹ to 2³¹-1 |
+| `ToQWord(value)` | `BigInt(value) & 0xFFFF...FFFFn` | Unsigned 64-bit | 0 to 2⁶⁴-1 |
+| `ToLong(value)` | Manual BigInt conversion | Signed 64-bit | -2⁶³ to 2⁶³-1 |
+
+**Example - SHA-256 portable additions:**
+```javascript
+// ❌ WRONG - JavaScript-specific
+W[t] = (W[t-16] + s0 + W[t-7] + s1) >>> 0;
+const temp1 = (h + S1 + ch + K[t] + W[t]) >>> 0;
+
+// ✅ CORRECT - Works in any language
+W[t] = OpCodes.ToDWord(W[t-16] + s0 + W[t-7] + s1);
+const temp1 = OpCodes.ToDWord(h + S1 + ch + K[t] + W[t]);
+```
+
+#### Bit Rotations
+
+| Function | Description |
+|----------|-------------|
+| `RotL8(value, positions)` | Rotate left 8-bit |
+| `RotR8(value, positions)` | Rotate right 8-bit |
+| `RotL16(value, positions)` | Rotate left 16-bit |
+| `RotR16(value, positions)` | Rotate right 16-bit |
+| `RotL32(value, positions)` | Rotate left 32-bit |
+| `RotR32(value, positions)` | Rotate right 32-bit |
+| `RotL64n(value, positions)` | Rotate left 64-bit BigInt |
+| `RotR64n(value, positions)` | Rotate right 64-bit BigInt |
+
+**Example:**
+```javascript
+// SHA-256 Σ functions
+const S0 = OpCodes.RotR32(a, 2) ^ OpCodes.RotR32(a, 13) ^ OpCodes.RotR32(a, 22);
+const S1 = OpCodes.RotR32(e, 6) ^ OpCodes.RotR32(e, 11) ^ OpCodes.RotR32(e, 25);
+```
+
+#### Bit Shifts
+
+| Function | Description |
+|----------|-------------|
+| `Shl8(value, positions)` | Logical left shift 8-bit |
+| `Shr8(value, positions)` | Logical right shift 8-bit |
+| `Shl16(value, positions)` | Logical left shift 16-bit |
+| `Shr16(value, positions)` | Logical right shift 16-bit |
+| `Shl32(value, positions)` | Logical left shift 32-bit |
+| `Shr32(value, positions)` | Logical right shift 32-bit |
+| `ShiftLn(value, positions)` | BigInt left shift |
+| `ShiftRn(value, positions)` | BigInt right shift |
+
+**Example:**
+```javascript
+// SHA-256 σ functions
+const s0 = OpCodes.RotR32(W[t-15], 7) ^ OpCodes.RotR32(W[t-15], 18) ^ OpCodes.Shr32(W[t-15], 3);
+const s1 = OpCodes.RotR32(W[t-2], 17) ^ OpCodes.RotR32(W[t-2], 19) ^ OpCodes.Shr32(W[t-2], 10);
+```
+
+#### Byte Packing/Unpacking
+
+| Function | Description |
+|----------|-------------|
+| `Pack16BE(b0, b1)` | Pack bytes to 16-bit big-endian |
+| `Pack16LE(b0, b1)` | Pack bytes to 16-bit little-endian |
+| `Pack32BE(b0, b1, b2, b3)` | Pack bytes to 32-bit big-endian |
+| `Pack32LE(b0, b1, b2, b3)` | Pack bytes to 32-bit little-endian |
+| `Unpack16BE(word)` | Unpack 16-bit big-endian to bytes |
+| `Unpack16LE(word)` | Unpack 16-bit little-endian to bytes |
+| `Unpack32BE(dword)` | Unpack 32-bit big-endian to bytes |
+| `Unpack32LE(dword)` | Unpack 32-bit little-endian to bytes |
+
+**Example:**
+```javascript
+// Read 32-bit big-endian word from block
+const word = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
+
+// Write 32-bit big-endian word to output
+const bytes = OpCodes.Unpack32BE(word);
+output.push(...bytes);
+```
+
+#### String/Array Conversions
 
 ```javascript
 // Convert hex string to byte array
 OpCodes.Hex8ToBytes("deadbeef") // → [0xde, 0xad, 0xbe, 0xef]
 
-// Convert ASCII string to byte array  
+// Convert ASCII string to byte array
 OpCodes.AnsiToBytes("ABC") // → [0x41, 0x42, 0x43]
 
 // Convert byte array to hex string
 OpCodes.BytesToHex8([0xde, 0xad, 0xbe, 0xef]) // → "deadbeef"
 
-// XOR byte arrays
-OpCodes.XorBytes([0x01, 0x02], [0x03, 0x04]) // → [0x02, 0x06]
+// XOR byte arrays element-wise
+OpCodes.XorArrays([0x01, 0x02], [0x03, 0x04]) // → [0x02, 0x06]
 
-// Rotate operations (useful for many ciphers)
-OpCodes.RotL32(0x12345678, 8) // Rotate left 32-bit
-OpCodes.RotR32(0x12345678, 8) // Rotate right 32-bit
-
-// Pack/unpack operations (endianness conversion)
-OpCodes.PackBytes32BE([0x12, 0x34, 0x56, 0x78]) // → 0x12345678 (big-endian)
-OpCodes.UnpackBytes32LE(0x12345678) // → [0x78, 0x56, 0x34, 0x12] (little-endian)
+// Secure memory clearing
+OpCodes.ClearArray(sensitiveData);
 ```
 
 **Note:** Always use `OpCodes.Hex8ToBytes()` and `OpCodes.AnsiToBytes()` in test vectors, never hardcode byte arrays.
+
+### Portability Example
+
+**JavaScript (Original):**
+```javascript
+// SHA-256 compression function
+W[t] = OpCodes.ToDWord(W[t-16] + s0 + W[t-7] + s1);
+const temp1 = OpCodes.ToDWord(h + S1 + ch + K[t] + W[t]);
+e = OpCodes.ToDWord(d + temp1);
+a = OpCodes.ToDWord(temp1 + temp2);
+```
+
+**C++ (Direct Translation):**
+```cpp
+// OpCodes.hpp
+namespace OpCodes {
+    inline uint32_t ToDWord(int64_t value) {
+        return static_cast<uint32_t>(value);
+    }
+}
+
+// SHA-256 compression function - IDENTICAL STRUCTURE
+W[t] = OpCodes::ToDWord(W[t-16] + s0 + W[t-7] + s1);
+const temp1 = OpCodes::ToDWord(h + S1 + ch + K[t] + W[t]);
+e = OpCodes::ToDWord(d + temp1);
+a = OpCodes::ToDWord(temp1 + temp2);
+```
+
+**Rust (Direct Translation):**
+```rust
+// opcodes.rs
+pub fn to_dword(value: i64) -> u32 {
+    value as u32
+}
+
+// SHA-256 compression function - IDENTICAL STRUCTURE
+W[t] = to_dword(W[t-16] + s0 + W[t-7] + s1);
+let temp1 = to_dword(h + S1 + ch + K[t] + W[t]);
+e = to_dword(d + temp1);
+a = to_dword(temp1 + temp2);
+```
+
+**Python (Direct Translation):**
+```python
+# opcodes.py
+def to_dword(value):
+    return value & 0xFFFFFFFF
+
+# SHA-256 compression function - IDENTICAL STRUCTURE
+W[t] = to_dword(W[t-16] + s0 + W[t-7] + s1)
+temp1 = to_dword(h + S1 + ch + K[t] + W[t])
+e = to_dword(d + temp1)
+a = to_dword(temp1 + temp2)
+```
+
+### Benefits Summary
+
+✅ **Algorithm code is language-agnostic** - Same logical structure everywhere
+✅ **Only ~60 OpCodes functions need porting** - Not thousands of lines of algorithm code
+✅ **Type safety in compiled languages** - Compiler catches type errors
+✅ **Clear documentation** - Function names self-document intent
+✅ **Easy code review** - No hunting for obscure language idioms
 
 ## Testing Troubleshooting
 
