@@ -484,13 +484,14 @@ A word on categories:
 | special                      | Fiat-Shamir                    | Fiat, Shamir                                | 1986        | Academic                                        | Academic                         | ✅            | ✅ `fiat-shamir.js`                          |
 | special                      | Shamir Secret Sharing          | Adi Shamir                                  | 1979        | Academic                                        | Academic                         | ✅            | ✅ `shamir-secret-sharing.js`                |
 | special                      | Time-Lock Puzzle               | Rivest, Shamir, Wagner                      | 1996        | Academic                                        | Academic                         | ✅            | ✅ `time-lock-puzzle.js`                     |
+
 **Legend:**
 
 * ✅ Fully working implementation with passing tests
 * ⚠️ Partially working (interface issues, test failures, or metadata problems)
 * ❌ Not implemented / Missing
 
-## 📚 Reference Libraries (9 total)
+## 📚 Reference Libraries (13 total)
 
 ### **Core Academic References**
 
@@ -727,5 +728,5 @@ Based on systematic research across 437 cryptographic algorithms, we have compil
 This systematic reference collection enables offline verification, educational study, and implementation validation for the complete cryptographic algorithm library while maintaining strict adherence to authoritative sources and academic rigor.
 
 ---
-*Last Updated: 2025-10-10*
+*Last Updated: 2025-10-18*
 *Total Algorithms: 403+ tracked | Reference Libraries: 10 cloned | Authoritative Sources: 200+ URIs | Official Standards: 25+ NIST/IETF*

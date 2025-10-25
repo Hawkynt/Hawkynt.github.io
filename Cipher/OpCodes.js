@@ -95,6 +95,66 @@
     },
 
     /**
+     * Logical left shift for 8-bit values
+     * @param {number} value - 8-bit value to shift
+     * @param {number} positions - Number of positions to shift
+     * @returns {number} Shifted 8-bit value
+     */
+    Shl8: function(value, positions) {
+      return (value << positions) & 0xFF;
+    },
+
+    /**
+     * Logical right shift for 8-bit values
+     * @param {number} value - 8-bit value to shift
+     * @param {number} positions - Number of positions to shift
+     * @returns {number} Shifted 8-bit value
+     */
+    Shr8: function(value, positions) {
+      return (value >>> positions) & 0xFF;
+    },
+
+    /**
+     * Logical left shift for 16-bit values
+     * @param {number} value - 16-bit value to shift
+     * @param {number} positions - Number of positions to shift
+     * @returns {number} Shifted 16-bit value
+     */
+    Shl16: function(value, positions) {
+      return (value << positions) & 0xFFFF;
+    },
+
+    /**
+     * Logical right shift for 16-bit values
+     * @param {number} value - 16-bit value to shift
+     * @param {number} positions - Number of positions to shift
+     * @returns {number} Shifted 16-bit value
+     */
+    Shr16: function(value, positions) {
+      return (value >>> positions) & 0xFFFF;
+    },
+
+    /**
+     * Logical left shift for 32-bit values
+     * @param {number} value - 32-bit value to shift
+     * @param {number} positions - Number of positions to shift
+     * @returns {number} Shifted 32-bit value (unsigned)
+     */
+    Shl32: function(value, positions) {
+      return (value << positions) >>> 0;
+    },
+
+    /**
+     * Logical right shift for 32-bit values
+     * @param {number} value - 32-bit value to shift
+     * @param {number} positions - Number of positions to shift
+     * @returns {number} Shifted 32-bit value (unsigned)
+     */
+    Shr32: function(value, positions) {
+      return (value >>> positions) >>> 0;
+    },
+
+    /**
      * Rotate left (circular left shift) for 64-bit BigInt values
      * @param {BigInt} value - 64-bit BigInt value to rotate
      * @param {number} positions - Number of positions to rotate (0-63)
@@ -105,7 +165,7 @@
       value = value & mask64;
       positions = positions & 63;
       if (positions === 0) return value;
-      
+
       return ((value << BigInt(positions)) | (value >> BigInt(64 - positions))) & mask64;
     },
 
@@ -142,6 +202,84 @@
      */
     ShiftRn: function(value, positions) {
       return value >> BigInt(positions);
+    },
+
+    // ========================[ TYPE CONVERSIONS ]========================
+
+    /**
+     * Convert to unsigned 8-bit integer (byte)
+     * @param {number} value - Value to convert
+     * @returns {number} Unsigned 8-bit value (0-255)
+     */
+    ToByte: function(value) {
+      return value & 0xFF;
+    },
+
+    /**
+     * Convert to signed 8-bit integer
+     * @param {number} value - Value to convert
+     * @returns {number} Signed 8-bit value (-128 to 127)
+     */
+    ToSByte: function(value) {
+      value = value & 0xFF;
+      return value > 127 ? value - 256 : value;
+    },
+
+    /**
+     * Convert to unsigned 16-bit integer (word)
+     * @param {number} value - Value to convert
+     * @returns {number} Unsigned 16-bit value (0-65535)
+     */
+    ToWord: function(value) {
+      return value & 0xFFFF;
+    },
+
+    /**
+     * Convert to signed 16-bit integer (short)
+     * @param {number} value - Value to convert
+     * @returns {number} Signed 16-bit value (-32768 to 32767)
+     */
+    ToShort: function(value) {
+      value = value & 0xFFFF;
+      return value > 32767 ? value - 65536 : value;
+    },
+
+    /**
+     * Convert to unsigned 32-bit integer (dword)
+     * Replaces JavaScript's >>> 0 idiom
+     * @param {number} value - Value to convert
+     * @returns {number} Unsigned 32-bit value
+     */
+    ToDWord: function(value) {
+      return value >>> 0;
+    },
+
+    /**
+     * Convert to signed 32-bit integer (int)
+     * @param {number} value - Value to convert
+     * @returns {number} Signed 32-bit value
+     */
+    ToInt: function(value) {
+      return value | 0;
+    },
+
+    /**
+     * Convert to unsigned 64-bit BigInt (qword)
+     * @param {BigInt|number} value - Value to convert
+     * @returns {BigInt} Unsigned 64-bit value
+     */
+    ToQWord: function(value) {
+      return BigInt(value) & 0xFFFFFFFFFFFFFFFFn;
+    },
+
+    /**
+     * Convert to signed 64-bit BigInt (long)
+     * @param {BigInt|number} value - Value to convert
+     * @returns {BigInt} Signed 64-bit value
+     */
+    ToLong: function(value) {
+      const val = BigInt(value) & 0xFFFFFFFFFFFFFFFFn;
+      return val > 0x7FFFFFFFFFFFFFFFn ? val - 0x10000000000000000n : val;
     },
 
     /**
@@ -3425,15 +3563,217 @@
       if (!counter || counter.length !== 16) {
         throw new Error('GCMIncrement requires 16-byte counter');
       }
-      
+
       let carry = 1;
       for (let i = 15; i >= 12; i--) {
         const sum = counter[i] + carry;
         counter[i] = sum & 0xFF;
         carry = sum >>> 8;
       }
-      
+
       return counter;
+    },
+
+    // ========================[ 64-BIT EMULATION OPERATIONS ]========================
+    // Operations for 64-bit arithmetic using [HIGH, LOW] pair representation
+    // Used by hash functions like BLAKE-384/512, SHA-512, etc.
+
+    /**
+     * Add two 64-bit values represented as [HIGH, LOW] pairs
+     * @param {number} ah - High 32 bits of first operand
+     * @param {number} al - Low 32 bits of first operand
+     * @param {number} bh - High 32 bits of second operand
+     * @param {number} bl - Low 32 bits of second operand
+     * @returns {Object} {h, l} - Result as HIGH and LOW 32-bit words
+     */
+    Add64_HL: function(ah, al, bh, bl) {
+      const l = (al >>> 0) + (bl >>> 0);
+      const h = (ah + bh + ((l / 0x100000000) | 0)) | 0;
+      return { h: h >>> 0, l: l >>> 0 };
+    },
+
+    /**
+     * Add three 32-bit low words (used for 64-bit 3-operand addition)
+     * @param {number} al - Low word of first operand
+     * @param {number} bl - Low word of second operand
+     * @param {number} cl - Low word of third operand
+     * @returns {number} Sum of low words (may overflow 32 bits)
+     */
+    Add3L64: function(al, bl, cl) {
+      return (al >>> 0) + (bl >>> 0) + (cl >>> 0);
+    },
+
+    /**
+     * Add three 32-bit high words with carry from low word sum
+     * @param {number} lowSum - Sum of low words (may be > 32 bits)
+     * @param {number} ah - High word of first operand
+     * @param {number} bh - High word of second operand
+     * @param {number} ch - High word of third operand
+     * @returns {number} Sum of high words plus carry
+     */
+    Add3H64: function(lowSum, ah, bh, ch) {
+      return (ah + bh + ch + ((lowSum / 0x100000000) | 0)) | 0;
+    },
+
+    /**
+     * Rotate right a 64-bit value represented as [HIGH, LOW] pair
+     * Optimized for common rotation amounts used in hash functions
+     * @param {number} high - High 32 bits
+     * @param {number} low - Low 32 bits
+     * @param {number} n - Number of bits to rotate (0-63)
+     * @returns {Object} {h, l} - Rotated HIGH and LOW words
+     */
+    RotR64_HL: function(high, low, n) {
+      n &= 63;
+      if (n === 0) {
+        return { h: high >>> 0, l: low >>> 0 };
+      } else if (n === 32) {
+        // Special case: 32-bit rotation = swap
+        return { h: low >>> 0, l: high >>> 0 };
+      } else if (n < 32) {
+        // Rotation < 32 bits
+        const h = ((high >>> n) | (low << (32 - n))) >>> 0;
+        const l = ((low >>> n) | (high << (32 - n))) >>> 0;
+        return { h: h, l: l };
+      } else {
+        // Rotation >= 32 bits (swap then rotate)
+        n -= 32;
+        const h = ((low >>> n) | (high << (32 - n))) >>> 0;
+        const l = ((high >>> n) | (low << (32 - n))) >>> 0;
+        return { h: h, l: l };
+      }
+    },
+
+    /**
+     * Rotate left a 64-bit value represented as [HIGH, LOW] pair
+     * @param {number} high - High 32 bits
+     * @param {number} low - Low 32 bits
+     * @param {number} n - Number of bits to rotate (0-63)
+     * @returns {Object} {h, l} - Rotated HIGH and LOW words
+     */
+    RotL64_HL: function(high, low, n) {
+      n &= 63;
+      if (n === 0) {
+        return { h: high >>> 0, l: low >>> 0 };
+      } else if (n === 32) {
+        // Special case: 32-bit rotation = swap
+        return { h: low >>> 0, l: high >>> 0 };
+      } else if (n < 32) {
+        // Rotation < 32 bits
+        const h = ((high << n) | (low >>> (32 - n))) >>> 0;
+        const l = ((low << n) | (high >>> (32 - n))) >>> 0;
+        return { h: h, l: l };
+      } else {
+        // Rotation >= 32 bits (swap then rotate)
+        n -= 32;
+        const h = ((low << n) | (high >>> (32 - n))) >>> 0;
+        const l = ((high << n) | (low >>> (32 - n))) >>> 0;
+        return { h: h, l: l };
+      }
+    },
+
+    /**
+     * Swap HIGH and LOW words of a 64-bit value (equivalent to 32-bit rotation)
+     * @param {number} high - High 32 bits
+     * @param {number} low - Low 32 bits
+     * @returns {Object} {h, l} - Swapped words
+     */
+    Swap64_HL: function(high, low) {
+      return { h: low >>> 0, l: high >>> 0 };
+    },
+
+    /**
+     * XOR two 64-bit values represented as [HIGH, LOW] pairs
+     * @param {number} ah - First value high 32 bits
+     * @param {number} al - First value low 32 bits
+     * @param {number} bh - Second value high 32 bits
+     * @param {number} bl - Second value low 32 bits
+     * @returns {Object} {h, l} - XOR result
+     */
+    Xor64_HL: function(ah, al, bh, bl) {
+      return { h: (ah ^ bh) >>> 0, l: (al ^ bl) >>> 0 };
+    },
+
+    /**
+     * Convert a value to unsigned 32-bit integer
+     * @param {number} value - Value to convert
+     * @returns {number} Unsigned 32-bit integer
+     */
+    ToUint32: function(value) {
+      return value >>> 0;
+    },
+
+    /**
+     * Constant-time array equality comparison
+     * @param {Array} arr1 - First array
+     * @param {Array} arr2 - Second array
+     * @returns {boolean} True if arrays are equal, false otherwise
+     */
+    ArraysEqual: function(arr1, arr2) {
+      if (arr1.length !== arr2.length) {
+        return false;
+      }
+
+      let result = 0;
+      for (let i = 0; i < arr1.length; ++i) {
+        result |= arr1[i] ^ arr2[i];
+      }
+
+      return result === 0;
+    },
+
+    // ========================[ BIGINT OPERATIONS ]========================
+
+    /**
+     * Bitwise AND for BigInt values
+     * @param {BigInt} a - First operand
+     * @param {BigInt} b - Second operand
+     * @returns {BigInt} a & b
+     */
+    AndN: function(a, b) {
+      return a & b;
+    },
+
+    /**
+     * Bitwise OR for BigInt values
+     * @param {BigInt} a - First operand
+     * @param {BigInt} b - Second operand
+     * @returns {BigInt} a | b
+     */
+    OrN: function(a, b) {
+      return a | b;
+    },
+
+    /**
+     * Bitwise XOR for BigInt values
+     * @param {BigInt} a - First operand
+     * @param {BigInt} b - Second operand
+     * @returns {BigInt} a ^ b
+     */
+    XorN: function(a, b) {
+      return a ^ b;
+    },
+
+    /**
+     * Extract specific bit from BigInt value
+     * @param {BigInt} value - Source value
+     * @param {number} bitIndex - Bit position (0 = LSB)
+     * @returns {BigInt} Bit value (0n or 1n)
+     */
+    GetBitN: function(value, bitIndex) {
+      return (value >> BigInt(bitIndex)) & 1n;
+    },
+
+    /**
+     * Set specific bit in BigInt value
+     * @param {BigInt} value - Source value
+     * @param {number} bitIndex - Bit position (0 = LSB)
+     * @param {BigInt} bitValue - New bit value (0n or 1n)
+     * @returns {BigInt} Modified value
+     */
+    SetBitN: function(value, bitIndex, bitValue) {
+      const mask = 1n << BigInt(bitIndex);
+      return (bitValue & 1n) ? value | mask : value & ~mask;
     }
 
   };
