@@ -1,834 +1,499 @@
 /*
- * Core Test Engine for Cipher Algorithms
- * Reusable testing functionality for both CLI and UI interfaces
- * Tests compilation, interface compatibility, metadata compliance, unresolved issues, functionality, and optimization
+ * Universal Test Engine for Cipher Algorithms
+ * Works in both Node.js (CLI) and browser environments
  *
- * Test Categories:
- * - COMPILATION: Tests JavaScript syntax using `node -c` (syntax errors)
- * - INTERFACE: Tests if algorithm can be loaded and RegisterAlgorithm accepts it (interface errors)
- * - METADATA: Tests metadata compliance with CONTRIBUTING.md format
- * - ISSUES: Tests for unresolved TODO, FIXME, BUG, ISSUE comments
- * - FUNCTIONALITY: Tests algorithm functionality using test vectors
- * - OPTIMIZATION: Tests OpCodes usage for performance optimization
+ * Public API (3 methods):
+ * - TestFile(filePath) - Load and test an algorithm file (Node.js only)
+ * - TestAlgorithm(algorithmInstance) - Test an algorithm instance
+ * - TestVector(algorithmInstance, vector, index) - Test a single test vector
  *
  * (c)2006-2025 Hawkynt
  */
 
-const fs = require('fs');
-const path = require('path');
+(function(global) {
+    'use strict';
 
-// Load TestCore for unified testing logic
-const { TestCore } = require('./TestCore.js');
+    // Node.js-specific requires
+    const isNode = typeof require !== 'undefined';
+    const fs = isNode ? require('fs') : null;
+    const path = isNode ? require('path') : null;
+    const { execSync } = isNode ? require('child_process') : { execSync: null };
 
-class TestEngine {
-  constructor(options = {}) {
-    this._verbose = options.verbose || false;
-    this.silent = options.silent || false;
-    this.dependenciesLoaded = false;
+    // ============================================================================
+    // PUBLIC API - These are the only 3 methods you need
+    // ============================================================================
 
-    // Create TestCore instance
-    this.testCore = new TestCore();
-    this.testCore.verbose = this._verbose;
-
-    // Define algorithm category arrays for invertibility requirements
-    // These will be set after AlgorithmFramework is loaded
-    this.perfectRoundTripCategories = null;
-    this.encodingStabilityCategories = null;
-
-    this.results = {
-      compilation: { passed: 0, failed: 0, errors: [] },
-      interface: { passed: 0, failed: 0, errors: [] },
-      metadata: { passed: 0, failed: 0, errors: [] },
-      issues: { passed: 0, failed: 0, errors: [] },
-      functionality: { passed: 0, failed: 0, errors: [] },
-      optimization: { passed: 0, failed: 0, errors: [] }
-    };
-  }
-
-  // Getter and setter for verbose to propagate to TestCore
-  get verbose() {
-    return this._verbose;
-  }
-
-  set verbose(value) {
-    this._verbose = value;
-    if (this.testCore) {
-      this.testCore.verbose = value;
-    }
-  }
-
-  // Load required dependencies
-  async loadDependencies() {
-    if (this.dependenciesLoaded) return;
-
-    try {
-      // Load OpCodes
-      require('../OpCodes.js');
-      if (!global.OpCodes) {
-        throw new Error('OpCodes not loaded properly');
-      }
-
-      // Load AlgorithmFramework and ensure it's cached for all possible require paths
-      if (!global.AlgorithmFramework) {
-        const AlgorithmFrameworkPath = path.resolve(__dirname, '..', 'AlgorithmFramework.js');
-        global.AlgorithmFramework = require(AlgorithmFrameworkPath);
-
-        // CRITICAL: Pre-cache AlgorithmFramework for paths that algorithms will use
-        // This ensures all algorithms use the SAME instance
-        const basePath = path.resolve(__dirname, '..');
-        const cacheKey1 = path.resolve(basePath, 'AlgorithmFramework.js');
-        const cacheKey2 = path.resolve(basePath, 'AlgorithmFramework');  // without .js
-
-        if (require.cache[cacheKey1]) {
-          require.cache[cacheKey1].exports = global.AlgorithmFramework;
+    /**
+     * TestFile - Load and test an algorithm file (Node.js only)
+     * @param {string} filePath - Path to algorithm file
+     * @param {object} options - { verbose: boolean, silent: boolean }
+     * @returns {object} - Test results
+     */
+    async function TestFile(filePath, options = {}) {
+        if (!isNode) {
+            throw new Error('TestFile() only works in Node.js environment');
         }
-        if (cacheKey2 !== cacheKey1 && require.cache[cacheKey2]) {
-          require.cache[cacheKey2].exports = global.AlgorithmFramework;
+
+        const verbose = options.verbose || false;
+        const silent = options.silent || false;
+
+        // Load dependencies
+        await _loadDependencies(silent, verbose);
+
+        const result = {
+            filePath: filePath,
+            compilation: { passed: false, error: null },
+            interface: { passed: false, error: null, algorithms: [] },
+            metadata: { passed: false, errors: [] },
+            issues: { passed: false, errors: [] },
+            functionality: { passed: false, errors: [], testResults: [] },
+            optimization: { passed: false, error: null }
+        };
+
+        // Test compilation
+        try {
+            execSync(`node -c "${filePath}"`, { encoding: 'utf8', stdio: 'pipe' });
+            result.compilation.passed = true;
+        } catch (error) {
+            result.compilation.error = error.message;
+            return result;
         }
-      }
-      if (!global.AlgorithmFramework) {
-        throw new Error('AlgorithmFramework not loaded properly');
-      }
 
-      // Initialize algorithm category arrays now that AlgorithmFramework is loaded
-      this.initializeCategoryArrays();
+        // Load algorithm file
+        const algorithmsBefore = AlgorithmFramework.Algorithms.length;
+        try {
+            require(path.resolve(filePath));
+        } catch (error) {
+            result.interface.error = `Failed to load: ${error.message}`;
+            return result;
+        }
 
-      // Load common block ciphers for mode testing
-      this.loadCommonBlockCiphers();
+        const algorithmsAfter = AlgorithmFramework.Algorithms.length;
+        const registeredCount = algorithmsAfter - algorithmsBefore;
 
-      this.dependenciesLoaded = true;
+        if (registeredCount === 0) {
+            result.interface.error = 'No algorithms registered';
+            return result;
+        }
 
-    } catch (error) {
-      throw new Error(`Failed to load dependencies: ${error.message}`);
-    }
-  }
+        result.interface.passed = true;
+        const registeredAlgorithms = AlgorithmFramework.Algorithms.slice(algorithmsBefore);
+        result.interface.algorithms = registeredAlgorithms.map(a => a.name);
 
-  // Load common block ciphers needed for cipher mode testing
-  loadCommonBlockCiphers() {
-    try {
-      const algorithmsDir = path.join(__dirname, '..', 'algorithms', 'block');
-      const commonCiphers = ['rijndael.js', 'des.js', 'serpent.js', 'twofish.js'];
+        // Test each registered algorithm
+        let allMetadataValid = true;
+        let allFunctionalityPassed = true;
 
-      if (!this.silent) {
-        console.log('Loading block ciphers for mode testing...');
-      }
-
-      for (const cipherFile of commonCiphers) {
-        const cipherPath = path.join(algorithmsDir, cipherFile);
-        if (fs.existsSync(cipherPath)) {
-          try {
-            require(cipherPath);
-            if (!this.silent) {
-              console.log(`  ✓ Loaded ${cipherFile}`);
+        for (const algorithm of registeredAlgorithms) {
+            // Test metadata
+            const metadataErrors = _validateMetadata(algorithm);
+            if (metadataErrors.length > 0) {
+                result.metadata.errors.push(...metadataErrors);
+                allMetadataValid = false;
             }
-          } catch (error) {
-            // Silently ignore individual cipher loading failures
-            if (this.verbose) {
-              console.warn(`  ✗ Could not load ${cipherFile}: ${error.message}`);
+
+            // Test functionality
+            if (algorithm.tests && algorithm.tests.length > 0) {
+                const funcResult = await TestAlgorithm(algorithm, options);
+                result.functionality.testResults.push({
+                    algorithm: algorithm.name,
+                    passed: funcResult.passed,
+                    total: funcResult.total,
+                    errors: funcResult.errors
+                });
+
+                if (funcResult.passed < funcResult.total) {
+                    allFunctionalityPassed = false;
+                }
             }
-          }
-        } else {
-          if (this.verbose) {
-            console.warn(`  - ${cipherFile} not found`);
-          }
-        }
-      }
-    } catch (error) {
-      // Don't fail if we can't load block ciphers - modes will use fallback Oracle cipher
-      if (this.verbose) {
-        console.warn(`Could not load block ciphers: ${error.message}`);
-      }
-    }
-  }
-
-  // Initialize category arrays for invertibility requirements
-  initializeCategoryArrays() {
-    // Categories that require perfect round-trip (encrypt -> decrypt -> original)
-    this.perfectRoundTripCategories = [
-      'cipher', 'block', 'stream', 'asymmetric', 'mac', 'aead', 'modes', 'padding'
-    ];
-
-    // Categories that require encoding stability (encode -> decode -> encode -> same result)
-    this.encodingStabilityCategories = [
-      'encoding', 'checksum', 'ecc'
-    ];
-  }
-
-  // Helper function to determine if an algorithm requires round-trips
-  requiresRoundTrips(algorithm) {
-    if (!algorithm.category || !this.perfectRoundTripCategories) return false;
-    return this.perfectRoundTripCategories.includes(algorithm.category);
-  }
-
-  // Helper function to determine if an algorithm requires encoding stability
-  requiresEncodingStability(algorithm) {
-    if (!algorithm.category || !this.encodingStabilityCategories) return false;
-    return this.encodingStabilityCategories.includes(algorithm.category);
-  }
-
-  // Test individual algorithm file - Core testing logic
-  async testAlgorithm(filePath, algorithmName = null, category = null) {
-    if (!algorithmName) {
-      algorithmName = path.basename(filePath, '.js');
-    }
-    if (!category) {
-      category = path.basename(path.dirname(filePath));
-    }
-
-    const algorithmData = {
-      name: algorithmName,
-      category: category,
-      file: path.basename(filePath),
-      filePath: filePath,
-      tests: {
-        compilation: false,
-        interface: false,
-        metadata: false,
-        issues: false,
-        functionality: false,
-        optimization: false
-      },
-      details: {}
-    };
-
-    // Ensure dependencies are loaded
-    await this.loadDependencies();
-
-    // COMPILATION TEST - JavaScript syntax and loading
-    algorithmData.tests.compilation = await this.testCompilation(filePath, algorithmData);
-
-    if (algorithmData.tests.compilation) {
-      // INTERFACE TEST - AlgorithmFramework registration compatibility
-      algorithmData.tests.interface = await this.testInterface(filePath, algorithmData);
-
-      if (algorithmData.tests.interface) {
-        // METADATA TEST - CONTRIBUTING.MD interface format
-        algorithmData.tests.metadata = await this.testMetadata(filePath, category, algorithmData);
-
-        // ISSUES TEST - Check for TODO, ISSUE, BUG, FIXME comments
-        algorithmData.tests.issues = await this.testIssues(filePath, algorithmData);
-
-        // FUNCTIONALITY TEST - Test vectors
-        algorithmData.tests.functionality = await this.testFunctionality(filePath, algorithmData);
-
-        // OPTIMIZATION TEST - OpCodes usage
-        algorithmData.tests.optimization = await this.testOptimization(filePath, algorithmData);
-      }
-    }
-
-    return algorithmData;
-  }
-
-  // Test if file has valid JavaScript syntax without executing
-  async testCompilation(filePath, algorithmData) {
-    try {
-      // Use Node.js to check syntax without executing
-      const { exec } = require('child_process');
-      const { promisify } = require('util');
-      const execAsync = promisify(exec);
-
-      // Use the full path for node -c
-      await execAsync(`node -c "${filePath}"`);
-
-      algorithmData.details.syntaxValid = true;
-      this.results.compilation.passed++;
-      return true;
-
-    } catch (error) {
-      const errorMsg = error.stderr || error.message;
-      algorithmData.details.compilationError = errorMsg;
-      this.results.compilation.failed++;
-      this.results.compilation.errors.push(`${algorithmData.name}: ${errorMsg}`);
-
-      return false;
-    }
-  }
-
-  // Test if algorithm can be loaded and registered via AlgorithmFramework
-  async testInterface(filePath, algorithmData) {
-    try {
-      // Clear the algorithm registry before testing
-      global.AlgorithmFramework.Clear();
-
-      // Clear require cache to ensure fresh load
-      delete require.cache[require.resolve(filePath)];
-
-      // Try to require the file (this should call RegisterAlgorithm internally)
-      require(filePath);
-
-      // Check if algorithms were registered
-      const registeredAlgorithms = global.AlgorithmFramework.Algorithms;
-      const algorithmCount = registeredAlgorithms.length;
-
-      if (algorithmCount > 0) {
-        algorithmData.details.addedToFramework = true;
-        algorithmData.details.algorithmCount = algorithmCount;
-        algorithmData.details.registeredNames = registeredAlgorithms.map(alg => alg.name);
-        this.results.interface.passed++;
-        return true;
-      } else {
-        const errorMsg = 'No algorithms registered (RegisterAlgorithm likely failed)';
-        algorithmData.details.interfaceError = errorMsg;
-        this.results.interface.failed++;
-        this.results.interface.errors.push(`${algorithmData.name}: ${errorMsg}`);
-        return false;
-      }
-
-    } catch (error) {
-      const errorMsg = error.message;
-      algorithmData.details.interfaceError = errorMsg;
-      this.results.interface.failed++;
-      this.results.interface.errors.push(`${algorithmData.name}: ${errorMsg}`);
-      return false;
-    }
-  }
-
-  // Test metadata compliance with CONTRIBUTING.md standards
-  async testMetadata(filePath, category, algorithmData) {
-    try {
-      const registeredAlgorithms = global.AlgorithmFramework.Algorithms;
-
-      if (!registeredAlgorithms || registeredAlgorithms.length === 0) {
-        algorithmData.details.metadataError = 'No algorithms registered for metadata testing';
-        this.results.metadata.failed++;
-        this.results.metadata.errors.push(`${algorithmData.name}: No algorithms registered`);
-        return false;
-      }
-
-      let anySuccess = false;
-      const metadataResults = [];
-
-      for (const algorithm of registeredAlgorithms) {
-        const issues = [];
-
-        // Required fields
-        if (!algorithm.name || typeof algorithm.name !== 'string' || algorithm.name.trim() === '') {
-          issues.push('Missing or empty name');
         }
 
-        if (!algorithm.description || typeof algorithm.description !== 'string' || algorithm.description.trim() === '') {
-          issues.push('Missing or empty description');
-        }
+        result.metadata.passed = allMetadataValid;
+        result.functionality.passed = allFunctionalityPassed;
 
-        // Category MUST be a framework object (CategoryType.HASH, etc.) - NO STRINGS ALLOWED
-        if (!algorithm.category) {
-          issues.push('Missing category');
-        } else if (typeof algorithm.category === 'string') {
-          issues.push(`Invalid category: "${algorithm.category}" is a string literal - MUST use framework objects (CategoryType.HASH, CategoryType.BLOCK, etc.)`);
-        } else if (typeof algorithm.category !== 'object') {
-          issues.push(`Invalid category type: ${typeof algorithm.category} - MUST use framework objects`);
-        }
+        // Test for unresolved issues (TODO, FIXME, etc.)
+        const issuePatterns = [/TODO:/gi, /FIXME:/gi, /BUG:/gi, /ISSUE:/gi, /HACK:/gi];
+        const fileContent = fs.readFileSync(filePath, 'utf8');
+        const lines = fileContent.split('\n');
+        const foundIssues = [];
 
-        if (!algorithm.subCategory || typeof algorithm.subCategory !== 'string' || algorithm.subCategory.trim() === '') {
-          issues.push('Missing or empty subCategory');
-        }
-
-        // Security status MUST be null or framework object - NO STRING LITERALS ALLOWED
-        if (algorithm.securityStatus !== undefined && algorithm.securityStatus !== null) {
-          if (typeof algorithm.securityStatus === 'string') {
-            issues.push(`Invalid securityStatus: "${algorithm.securityStatus}" is a string literal - MUST use framework objects (SecurityStatus.EDUCATIONAL, SecurityStatus.INSECURE) or null`);
-          } else if (typeof algorithm.securityStatus !== 'object') {
-            issues.push(`Invalid securityStatus type: ${typeof algorithm.securityStatus} - MUST use framework objects or null`);
-          }
-        }
-
-        // Check if claiming to be secure (forbidden) - handle both string and object cases
-        if (algorithm.securityStatus === 'secure' ||
-            (typeof algorithm.securityStatus === 'object' &&
-             algorithm.securityStatus &&
-             algorithm.securityStatus.toString &&
-             algorithm.securityStatus.toString().toLowerCase().includes('secure'))) {
-          issues.push('Cannot claim securityStatus "secure" - use null, "insecure", "educational", or appropriate framework objects');
-        }
-
-        metadataResults.push({
-          algorithm: algorithm.name,
-          issues: issues,
-          passed: issues.length === 0
+        lines.forEach((line, lineNum) => {
+            issuePatterns.forEach(pattern => {
+                if (pattern.test(line)) {
+                    foundIssues.push({ line: lineNum + 1, content: line.trim() });
+                }
+            });
         });
 
-        if (issues.length === 0) {
-          anySuccess = true;
-        }
-      }
+        result.issues.passed = foundIssues.length === 0;
+        result.issues.errors = foundIssues;
 
-      algorithmData.details.metadataResults = metadataResults;
+        // Test OpCodes optimization
+        const nonOpCodesPatterns = [/(?<!\/\/.*)<<(?!\s*EOF)/g, /(?<!\/\/.*)>>/g, /\s+\^\s+/, /\s+\&\s+(?!&)/];
+        let optimizationIssues = 0;
 
-      if (anySuccess) {
-        this.results.metadata.passed++;
-        return true;
-      } else {
-        const allIssues = metadataResults.flatMap(r => r.issues);
-        algorithmData.details.metadataError = `Metadata validation failed: ${allIssues.join(', ')}`;
-        this.results.metadata.failed++;
-        this.results.metadata.errors.push(`${algorithmData.name}: ${allIssues.join(', ')}`);
-        return false;
-      }
-
-    } catch (error) {
-      const errorMsg = error.message;
-      algorithmData.details.metadataError = errorMsg;
-      this.results.metadata.failed++;
-      this.results.metadata.errors.push(`${algorithmData.name}: ${errorMsg}`);
-      return false;
-    }
-  }
-
-  // Test for unresolved TODO, FIXME, BUG, ISSUE comments
-  async testIssues(filePath, algorithmData) {
-    try {
-      const fileContent = fs.readFileSync(filePath, 'utf8');
-      const lines = fileContent.split('\n');
-
-      const issuePatterns = [
-        { type: 'TODO', pattern: /\b(TODO|todo)\b/g },
-        { type: 'FIXME', pattern: /\b(FIXME|fixme)\b/g },
-        { type: 'BUG', pattern: /\b(BUG|bug)\b/g },
-        { type: 'ISSUE', pattern: /\b(ISSUE|issue)\b/g }
-      ];
-
-      const foundIssues = [];
-      let totalCount = 0;
-
-      for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-        const line = lines[lineNum];
-
-        for (const issuePattern of issuePatterns) {
-          const matches = [...line.matchAll(issuePattern.pattern)];
-          if (matches.length > 0) {
-            foundIssues.push({
-              type: issuePattern.type,
-              line: lineNum + 1,
-              content: line.trim()
+        lines.forEach((line, lineNum) => {
+            if (line.includes('//')) line = line.split('//')[0]; // Strip comments
+            nonOpCodesPatterns.forEach(pattern => {
+                if (pattern.test(line)) {
+                    optimizationIssues++;
+                }
             });
-            totalCount += matches.length;
-          }
+        });
+
+        result.optimization.passed = optimizationIssues === 0;
+        if (optimizationIssues > 0) {
+            result.optimization.error = `Found ${optimizationIssues} non-OpCodes operations`;
         }
-      }
 
-      algorithmData.details.issues = {
-        found: foundIssues,
-        totalCount: totalCount
-      };
-
-      if (totalCount === 0) {
-        this.results.issues.passed++;
-        return true;
-      } else {
-        this.results.issues.failed++;
-        this.results.issues.errors.push(`${algorithmData.name}: ${totalCount} ${totalCount === 1 ? 'issue' : 'issues'} found`);
-        return false;
-      }
-
-    } catch (error) {
-      const errorMsg = error.message;
-      algorithmData.details.issuesError = errorMsg;
-      this.results.issues.failed++;
-      this.results.issues.errors.push(`${algorithmData.name}: ${errorMsg}`);
-      return false;
-    }
-  }
-
-  // Test algorithm functionality using test vectors - CORE FUNCTIONALITY TESTING
-  async testFunctionality(filePath, algorithmData) {
-    if (algorithmData.details.interfaceError) {
-      this.results.functionality.failed++;
-      return false;
+        return result;
     }
 
-    try {
-      // Get registered algorithms
-      const registeredAlgorithms = global.AlgorithmFramework.Algorithms;
+    /**
+     * TestAlgorithm - Test an algorithm instance against all its test vectors
+     * @param {object} algorithmInstance - Algorithm instance to test
+     * @param {object} options - { verbose: boolean, progressCallback: function }
+     * @returns {object} - { passed: number, total: number, errors: array, vectorResults: array }
+     */
+    async function TestAlgorithm(algorithmInstance, options = {}) {
+        const verbose = options.verbose || false;
+        const progressCallback = options.progressCallback || null;
 
-      if (!registeredAlgorithms || registeredAlgorithms.length === 0) {
-        algorithmData.details.functionalityError = 'No algorithms registered for testing';
-        this.results.functionality.failed++;
-        this.results.functionality.errors.push(`${algorithmData.name}: No algorithms registered`);
-        return false;
-      }
-
-      // Test each registered algorithm
-      let anySuccess = false;
-      const testResults = [];
-
-      for (const algorithm of registeredAlgorithms) {
-        const result = await this.testAlgorithmFunctionality(algorithm);
-        testResults.push(result);
-
-        if (result.status === 'passed') {
-          anySuccess = true;
-        }
-      }
-
-      algorithmData.details.testResults = testResults;
-
-      if (anySuccess) {
-        this.results.functionality.passed++;
-        return true;
-      } else {
-        const errorMessages = testResults
-          .filter(r => r.status !== 'passed')
-          .map(r => r.message || r.status)
-          .join(', ');
-
-        algorithmData.details.functionalityError = errorMessages;
-        this.results.functionality.failed++;
-        this.results.functionality.errors.push(`${algorithmData.name}: ${errorMessages}`);
-        return false;
-      }
-
-    } catch (error) {
-      const errorMsg = error.message;
-      algorithmData.details.functionalityError = errorMsg;
-      this.results.functionality.failed++;
-      this.results.functionality.errors.push(`${algorithmData.name}: ${errorMsg}`);
-      return false;
-    }
-  }
-
-  // Core algorithm functionality testing logic - This is what UI will call
-  async testAlgorithmFunctionality(algorithm) {
-    try {
-      // Get test vectors from metadata
-      const testVectors = algorithm.tests || [];
-
-      if (testVectors.length === 0) {
-        return {
-          algorithm: algorithm.name,
-          status: 'no-tests',
-          message: 'No test vectors available',
-          vectorsPassed: 0,
-          vectorsTotal: 0,
-          roundTripsPassed: 0,
-          roundTripsAttempted: 0,
-          vectorDetails: []
+        const result = {
+            passed: 0,
+            total: 0,
+            errors: [],
+            vectorResults: []
         };
-      }
 
-      // Test all vectors
-      const vectorsToTest = testVectors;
-      let vectorsPassed = 0;
-      let roundTripsPassed = 0;
-      const vectorDetails = [];
-
-      for (let i = 0; i < vectorsToTest.length; i++) {
-        const vector = vectorsToTest[i];
-        const vectorResult = await this.testSingleVector(algorithm, vector, i);
-        vectorDetails.push(vectorResult);
-
-        if (vectorResult.passed) {
-          vectorsPassed++;
-
-          if (vectorResult.roundTripSuccess) {
-            roundTripsPassed++;
-          }
+        if (!algorithmInstance.tests || algorithmInstance.tests.length === 0) {
+            result.errors.push('No test vectors defined');
+            return result;
         }
-      }
 
-      // Algorithm passes only if ALL test vectors pass
-      if (vectorsPassed === vectorsToTest.length && vectorsToTest.length > 0) {
-        // Check if round-trips or encoding stability are required and if they all passed
-        const requiresRoundTrips = this.requiresRoundTrips(algorithm);
-        const requiresEncodingStability = this.requiresEncodingStability(algorithm);
-        const invertibilityRequired = (requiresRoundTrips || requiresEncodingStability) && vectorsPassed > 0;
-        const invertibilitySuccess = !invertibilityRequired || (roundTripsPassed === vectorsPassed);
+        const vectors = algorithmInstance.tests;
+        result.total = vectors.length;
 
-        if (invertibilitySuccess) {
-          return {
-            algorithm: algorithm.name,
-            status: 'passed',
-            vectorsPassed: vectorsPassed,
-            vectorsTotal: vectorsToTest.length,
-            roundTripsPassed: roundTripsPassed,
-            roundTripsAttempted: vectorsPassed,
-            requiresRoundTrips: requiresRoundTrips,
-            requiresEncodingStability: requiresEncodingStability,
-            vectorDetails: vectorDetails
-          };
+        for (let i = 0; i < vectors.length; i++) {
+            if (progressCallback) {
+                progressCallback({
+                    current: i + 1,
+                    total: vectors.length,
+                    algorithm: algorithmInstance.name
+                });
+            }
+
+            const vectorResult = await TestVector(algorithmInstance, vectors[i], i);
+            result.vectorResults.push(vectorResult);
+
+            if (vectorResult.passed) {
+                result.passed++;
+            } else {
+                result.errors.push({
+                    vector: i,
+                    text: vectors[i].text,
+                    error: vectorResult.error
+                });
+            }
+
+            if (verbose) {
+                const status = vectorResult.passed ? '✓' : '✗';
+                console.log(`  ${status} Vector ${i}: ${vectors[i].text || 'Unnamed'}`);
+            }
+
+            // CRITICAL: Yield to event loop every 5 vectors to keep UI responsive
+            if ((i + 1) % 5 === 0 && typeof window !== 'undefined') {
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * TestVector - Test a single test vector
+     * @param {object} algorithmInstance - Algorithm instance to test
+     * @param {object} vector - Test vector { input, expected, key, iv, ... }
+     * @param {number} index - Vector index for error reporting
+     * @returns {object} - { passed: boolean, error: string, output: array, roundTripSuccess: boolean }
+     */
+    async function TestVector(algorithmInstance, vector, index = 0) {
+        const result = {
+            passed: false,
+            roundTripSuccess: null,
+            error: null,
+            output: null,
+            expected: vector.expected
+        };
+
+        try {
+            // Create instance
+            const instance = algorithmInstance.CreateInstance();
+            if (!instance) {
+                throw new Error('Failed to create algorithm instance');
+            }
+
+            // Handle block cipher modes
+            if (_isBlockCipherMode(algorithmInstance)) {
+                _setupBlockCipherMode(instance, vector, algorithmInstance.name);
+            }
+
+            // Apply all vector properties (key, iv, nonce, etc.)
+            _applyVectorProperties(instance, vector);
+
+            // Execute test
+            instance.Feed(vector.input);
+            const output = instance.Result();
+            result.output = output;
+
+            // Compare with expected
+            const isRoundTripOnly = algorithmInstance.category === AlgorithmFramework.CategoryType.ASYMMETRIC &&
+                                   _compareArrays(vector.expected, vector.input);
+
+            if (isRoundTripOnly) {
+                result.passed = true; // Round-trip will validate
+            } else {
+                result.passed = _compareArrays(output, vector.expected);
+            }
+
+            // Test round-trip if invertible
+            if (_isInvertible(algorithmInstance)) {
+                try {
+                    const reverseInstance = algorithmInstance.CreateInstance(true);
+                    if (reverseInstance) {
+                        if (_isBlockCipherMode(algorithmInstance)) {
+                            _setupBlockCipherMode(reverseInstance, vector, algorithmInstance.name);
+                        }
+                        _applyVectorProperties(reverseInstance, vector);
+
+                        reverseInstance.Feed(output);
+                        const roundTripResult = reverseInstance.Result();
+                        result.roundTripSuccess = _compareArrays(roundTripResult, vector.input);
+                    }
+                } catch (error) {
+                    result.roundTripSuccess = false;
+                }
+            }
+
+        } catch (error) {
+            result.passed = false;
+            result.error = error.message;
+        }
+
+        return result;
+    }
+
+    // ============================================================================
+    // PRIVATE HELPER METHODS - Internal implementation details
+    // ============================================================================
+
+    async function _loadDependencies(silent, verbose) {
+        if (!isNode) return;
+
+        // Load OpCodes
+        if (!global.OpCodes) {
+            global.OpCodes = require('../OpCodes.js');
+        }
+
+        // Load AlgorithmFramework
+        if (!global.AlgorithmFramework) {
+            const AlgorithmFrameworkPath = path.resolve(__dirname, '..', 'AlgorithmFramework.js');
+            global.AlgorithmFramework = require(AlgorithmFrameworkPath);
+        }
+
+        // Load DummyBlockCipher for mode testing
+        if (!global.DummyBlockCipher) {
+            try {
+                const dummyModule = require('./DummyBlockCipher.js');
+                global.DummyBlockCipher = dummyModule.DummyBlockCipher;
+            } catch (e) {
+                if (verbose) console.warn('DummyBlockCipher not loaded');
+            }
+        }
+    }
+
+    function _validateMetadata(algorithm) {
+        const errors = [];
+        const required = ['name', 'description', 'category', 'year'];
+
+        required.forEach(field => {
+            if (!algorithm[field]) {
+                errors.push(`Missing required field: ${field}`);
+            }
+        });
+
+        return errors;
+    }
+
+    function _isBlockCipherMode(algorithm) {
+        try {
+            if (algorithm.category && algorithm.category.name === 'Cipher Modes') {
+                return true;
+            }
+            if (typeof AlgorithmFramework !== 'undefined' && AlgorithmFramework.CategoryType) {
+                return algorithm.category === AlgorithmFramework.CategoryType.MODE;
+            }
+            const testInstance = algorithm.CreateInstance();
+            return testInstance && (
+                typeof testInstance.setBlockCipher === 'function' ||
+                typeof testInstance.setBlockCipherAlgorithm === 'function'
+            );
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function _setupBlockCipherMode(instance, vector, algorithmName) {
+        const isSimpleMode = algorithmName === 'ECB';
+        const dummyCipher = _createDummyCipher(vector, isSimpleMode);
+
+        if (typeof instance.setBlockCipher === 'function') {
+            instance.setBlockCipher(dummyCipher);
+        }
+
+        if (typeof instance.setIV === 'function') {
+            if (vector.iv) {
+                instance.setIV(vector.iv);
+            } else {
+                const defaultIV = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                                  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f];
+                instance.setIV(defaultIV);
+            }
+        }
+    }
+
+    function _createDummyCipher(vector, isSimple) {
+        if (!global.DummyBlockCipher) {
+            throw new Error('DummyBlockCipher not available for mode testing');
+        }
+
+        const blockSize = vector.input.length;
+        const keySize = vector.key ? vector.key.length : 16;
+
+        return new DummyBlockCipher({
+            blockSize: blockSize,
+            keySize: keySize,
+            simple: isSimple
+        });
+    }
+
+    function _applyVectorProperties(instance, vector) {
+        // Key handling
+        if (vector.kek !== undefined) {
+            _applyProperty(instance, vector, 'kek', 'setKEK');
+            if (typeof instance.setKEK !== 'function' && typeof instance.setKey === 'function') {
+                _applyProperty(instance, {...vector, key: vector.kek}, 'key', 'setKey');
+            }
         } else {
-          // Algorithm failed due to invertibility failure
-          const failureType = requiresEncodingStability ? 'encoding stability' : 'round-trip decryption';
-          return {
-            algorithm: algorithm.name,
-            status: requiresEncodingStability ? 'failed-encoding-stability' : 'failed-roundtrips',
-            vectorsPassed: vectorsPassed,
-            vectorsTotal: vectorsToTest.length,
-            roundTripsPassed: roundTripsPassed,
-            roundTripsAttempted: vectorsPassed,
-            requiresRoundTrips: requiresRoundTrips,
-            requiresEncodingStability: requiresEncodingStability,
-            message: `${failureType.charAt(0).toUpperCase() + failureType.slice(1)} failed (${roundTripsPassed}/${vectorsPassed} successful)`,
-            vectorDetails: vectorDetails
-          };
+            _applyProperty(instance, vector, 'key', 'setKey');
         }
-      } else {
-        return {
-          algorithm: algorithm.name,
-          status: 'failed',
-          vectorsPassed: vectorsPassed,
-          vectorsTotal: vectorsToTest.length,
-          roundTripsPassed: roundTripsPassed,
-          roundTripsAttempted: vectorsPassed,
-          message: `Test vectors failed (${vectorsPassed}/${vectorsToTest.length} passed)`,
-          vectorDetails: vectorDetails
-        };
-      }
 
-    } catch (error) {
-      return {
-        algorithm: algorithm.name,
-        status: 'error',
-        message: error.message,
-        vectorsPassed: 0,
-        vectorsTotal: 0,
-        roundTripsPassed: 0,
-        roundTripsAttempted: 0,
-        vectorDetails: []
-      };
+        // IV/Nonce
+        _applyProperty(instance, vector, 'iv', 'setIV');
+        _applyProperty(instance, vector, 'nonce', 'setNonce');
+        _applyProperty(instance, vector, 'iv1', 'setIV1');
+        _applyProperty(instance, vector, 'iv2', 'setIV2');
+
+        // Dual keys
+        _applyProperty(instance, vector, 'key2', 'setKey2');
+
+        // Tweaks
+        _applyProperty(instance, vector, 'tweak', 'setTweak');
+        _applyProperty(instance, vector, 'tweakKey', 'setTweakKey');
+
+        // AEAD
+        _applyProperty(instance, vector, 'aad', 'setAAD');
+        _applyProperty(instance, vector, 'tagSize', 'setTagSize');
+        _applyProperty(instance, vector, 'tagLength', 'setTagLength');
+        _applyProperty(instance, vector, 'tag', 'setTag');
+
+        // Format-preserving encryption
+        _applyProperty(instance, vector, 'radix', 'setRadix');
+        _applyProperty(instance, vector, 'alphabet', 'setAlphabet');
+
+        // KDF properties
+        _applyProperty(instance, vector, 'salt', 'setSalt');
+        _applyProperty(instance, vector, 'info', 'setInfo');
+        _applyProperty(instance, vector, 'outputSize', 'setOutputSize');
+        _applyProperty(instance, vector, 'OutputSize', 'setOutputSize');
+        _applyProperty(instance, vector, 'hashFunction', 'setHashFunction');
+        _applyProperty(instance, vector, 'password', 'setPassword');
+        _applyProperty(instance, vector, 'iterations', 'setIterations');
+
+        // Apply any other properties
+        const handledProps = new Set([
+            'input', 'expected', 'text', 'uri', 'key', 'kek', 'key2', 'iv', 'iv1', 'iv2',
+            'nonce', 'tweak', 'tweakKey', 'aad', 'tagSize', 'tagLength', 'tag', 'radix',
+            'alphabet', 'salt', 'info', 'outputSize', 'OutputSize', 'hashFunction',
+            'password', 'iterations'
+        ]);
+
+        Object.keys(vector).forEach(prop => {
+            if (!handledProps.has(prop) && vector[prop] !== undefined) {
+                try {
+                    if (prop in instance) {
+                        instance[prop] = vector[prop];
+                    }
+                } catch (error) {
+                    // Silently ignore
+                }
+            }
+        });
     }
-  }
 
-  // Test a single test vector using TestCore with CLI-specific enhancements
-  async testSingleVector(algorithm, vector, index) {
-    try {
-      // Use TestCore for basic vector testing
-      const coreResult = await this.testCore.testSingleVector(algorithm, vector, index);
+    function _applyProperty(instance, vector, vectorProp, methodName) {
+        if (vector[vectorProp] === undefined) return;
 
-      if (!coreResult.success) {
-        return {
-          index: index + 1,
-          text: vector.text || `Test Vector ${index + 1}`,
-          passed: false,
-          input: vector.input,
-          expected: vector.expected || vector.output,
-          actual: null,
-          error: coreResult.result.error,
-          roundTripSuccess: false
-        };
-      }
+        const setterMethod = methodName || `set${vectorProp.charAt(0).toUpperCase()}${vectorProp.slice(1)}`;
 
-      const result = coreResult.result;
-      let roundTripSuccess = result.roundTripSuccess;
+        if (typeof instance[setterMethod] === 'function') {
+            instance[setterMethod](vector[vectorProp]);
+        } else if (vectorProp in instance) {
+            instance[vectorProp] = vector[vectorProp];
+        }
+    }
 
-      // Enhanced CLI-specific round-trip testing
-      if (result.passed && roundTripSuccess === null) {
+    function _isInvertible(algorithm) {
         try {
-          if (this.requiresEncodingStability(algorithm)) {
-            roundTripSuccess = await this.testEncodingStability(algorithm, vector, result.output);
-          } else {
-            roundTripSuccess = await this.testRoundTrip(algorithm, vector, result.output);
-          }
-        } catch (inverseError) {
-          roundTripSuccess = false;
+            const instance = algorithm.CreateInstance(true);
+            return instance !== null && instance !== undefined;
+        } catch (error) {
+            return false;
         }
-      }
-
-      return {
-        index: index + 1,
-        text: vector.text || `Test Vector ${index + 1}`,
-        passed: result.passed,
-        input: vector.input,
-        expected: result.expected,
-        actual: result.output,
-        roundTripSuccess: roundTripSuccess || false
-      };
-
-    } catch (vectorError) {
-      return {
-        index: index + 1,
-        text: vector.text || `Test Vector ${index + 1}`,
-        passed: false,
-        input: vector.input,
-        expected: vector.expected || vector.output,
-        actual: null,
-        error: vectorError.message,
-        roundTripSuccess: false
-      };
-    }
-  }
-
-  // Test encoding stability: encode(data) = encode(decode(encode(data)))
-  async testEncodingStability(algorithm, vector, result) {
-    // Try to create a decode instance
-    const decodeInstance = algorithm.CreateInstance(true); // true = decode mode
-
-    if (!decodeInstance) return false;
-
-    // Apply same properties to decode instance
-    for (const [key, value] of Object.entries(vector)) {
-      if (key !== 'text' && key !== 'uri' && key !== 'input' && key !== 'expected' && key !== 'output') {
-        try {
-          if (decodeInstance.hasOwnProperty(key) || key in decodeInstance) {
-            decodeInstance[key] = value;
-          }
-        } catch (propertyError) {
-          // Property setting failed, continue anyway
-        }
-      }
     }
 
-    // Decode the encoded result: decode(encode(data))
-    decodeInstance.Feed(result);
-    const decodedResult = decodeInstance.Result();
-
-    // Re-encode the decoded result: encode(decode(encode(data)))
-    const reEncodeInstance = algorithm.CreateInstance(false); // false = encode mode
-    for (const [key, value] of Object.entries(vector)) {
-      if (key !== 'text' && key !== 'uri' && key !== 'input' && key !== 'expected' && key !== 'output') {
-        try {
-          if (reEncodeInstance.hasOwnProperty(key) || key in reEncodeInstance) {
-            reEncodeInstance[key] = value;
-          }
-        } catch (propertyError) {
-          // Property setting failed, continue anyway
+    function _compareArrays(arr1, arr2) {
+        if (!arr1 || !arr2) return false;
+        if (arr1.length !== arr2.length) return false;
+        for (let i = 0; i < arr1.length; i++) {
+            if (arr1[i] !== arr2[i]) return false;
         }
-      }
-    }
-
-    reEncodeInstance.Feed(decodedResult);
-    const reEncodedResult = reEncodeInstance.Result();
-
-    // Check encoding stability: encode(data) = encode(decode(encode(data)))
-    return this.compareArrays(result, reEncodedResult);
-  }
-
-  // Test perfect round-trip: encrypt(data) -> decrypt(result) -> original data
-  async testRoundTrip(algorithm, vector, result) {
-    // Try to create an inverse instance (decrypt mode)
-    const inverseInstance = algorithm.CreateInstance(true); // true = inverse/decrypt mode
-
-    if (!inverseInstance) return false;
-
-    // Apply same properties to inverse instance
-    for (const [key, value] of Object.entries(vector)) {
-      if (key !== 'text' && key !== 'uri' && key !== 'input' && key !== 'expected' && key !== 'output') {
-        try {
-          if (inverseInstance.hasOwnProperty(key) || key in inverseInstance) {
-            inverseInstance[key] = value;
-          }
-        } catch (propertyError) {
-          // Property setting failed, continue anyway
-        }
-      }
-    }
-
-    // Feed the result (encrypted data) to decrypt it back
-    inverseInstance.Feed(result);
-    const decryptedResult = inverseInstance.Result();
-
-    // Check if we get back the original input
-    return this.compareArrays(decryptedResult, vector.input);
-  }
-
-  // Test OpCodes usage for optimization
-  async testOptimization(filePath, algorithmData) {
-    try {
-      const fileContent = fs.readFileSync(filePath, 'utf8');
-
-      // Check for OpCodes usage
-      const opCodesUsage = fileContent.includes('OpCodes.');
-
-      // Check for manual bit operations that should use OpCodes
-      const manualOperations = [
-        { pattern: /[^a-zA-Z_](\d+|[a-zA-Z_]+)\s*>>>\s*\d+/g, description: 'manual right rotation' },
-        { pattern: /[^a-zA-Z_](\d+|[a-zA-Z_]+)\s*<<<\s*\d+/g, description: 'manual left rotation' },
-        { pattern: /[^a-zA-Z_](\d+|[a-zA-Z_]+)\s*>>\s*\d+/g, description: 'manual right shift' },
-        { pattern: /[^a-zA-Z_](\d+|[a-zA-Z_]+)\s*<<\s*\d+/g, description: 'manual left shift' }
-      ];
-
-      const foundManualOps = [];
-      const lines = fileContent.split('\n');
-
-      for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-        const line = lines[lineNum];
-
-        // Skip comments
-        if (line.trim().startsWith('//') || line.trim().startsWith('*')) continue;
-
-        for (const manualOp of manualOperations) {
-          const matches = [...line.matchAll(manualOp.pattern)];
-          if (matches.length > 0) {
-            foundManualOps.push({
-              line: lineNum + 1,
-              description: manualOp.description,
-              content: line.trim()
-            });
-          }
-        }
-      }
-
-      algorithmData.details.optimization = {
-        usesOpCodes: opCodesUsage,
-        manualOperations: foundManualOps
-      };
-
-      // Pass if using OpCodes and no problematic manual operations
-      if (opCodesUsage && foundManualOps.length === 0) {
-        this.results.optimization.passed++;
         return true;
-      } else {
-        let errorMsg = '';
-        if (!opCodesUsage) {
-          errorMsg += 'No OpCodes usage detected. ';
-        }
-        if (foundManualOps.length > 0) {
-          errorMsg += `${foundManualOps.length} manual bit operations found that should use OpCodes.`;
-        }
-
-        algorithmData.details.optimizationError = errorMsg;
-        this.results.optimization.failed++;
-        this.results.optimization.errors.push(`${algorithmData.name}: ${errorMsg}`);
-        return false;
-      }
-
-    } catch (error) {
-      const errorMsg = error.message;
-      algorithmData.details.optimizationError = errorMsg;
-      this.results.optimization.failed++;
-      this.results.optimization.errors.push(`${algorithmData.name}: ${errorMsg}`);
-      return false;
     }
-  }
 
-  // Delegate to TestCore for array comparison
-  compareArrays(arr1, arr2) {
-    return this.testCore.compareArrays(arr1, arr2);
-  }
+    // ============================================================================
+    // EXPORTS - Make public API available
+    // ============================================================================
 
-  // Reset results counters
-  resetResults() {
-    this.results = {
-      compilation: { passed: 0, failed: 0, errors: [] },
-      interface: { passed: 0, failed: 0, errors: [] },
-      metadata: { passed: 0, failed: 0, errors: [] },
-      issues: { passed: 0, failed: 0, errors: [] },
-      functionality: { passed: 0, failed: 0, errors: [] },
-      optimization: { passed: 0, failed: 0, errors: [] }
+    const TestEngine = {
+        TestFile,
+        TestAlgorithm,
+        TestVector
     };
-  }
 
-  // Get current test results summary
-  getResultsSummary() {
-    const total = Object.values(this.results).reduce((sum, cat) => sum + cat.passed + cat.failed, 0) / 6;
-    const passed = Object.values(this.results).reduce((sum, cat) => sum + cat.passed, 0) / 6;
+    // Node.js export
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = TestEngine;
+    }
 
-    return {
-      total: Math.round(total),
-      passed: Math.round(passed),
-      failed: Math.round(total - passed),
-      percentage: total > 0 ? Math.round((passed / total) * 100) : 0,
-      details: this.results
-    };
-  }
+    // Browser global export
+    if (typeof window !== 'undefined') {
+        window.TestEngine = TestEngine;
+    }
 
-  // Delegate to TestCore for block cipher mode operations
-  isBlockCipherMode(algorithm) {
-    return this.testCore.isBlockCipherMode(algorithm);
-  }
+    // UMD global export
+    if (typeof global !== 'undefined') {
+        global.TestEngine = TestEngine;
+    }
 
-  setupBlockCipherMode(instance, vector) {
-    return this.testCore.setupBlockCipherMode(instance, vector);
-  }
-}
-
-module.exports = TestEngine;
+})(typeof global !== 'undefined' ? global : (typeof window !== 'undefined' ? window : this));

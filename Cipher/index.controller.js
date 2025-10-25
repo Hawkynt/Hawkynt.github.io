@@ -8,7 +8,11 @@ class CipherController {
     constructor() {
         // Only use AlgorithmFramework - no local storage
         this.testResults = null;
-        this.testAPI = null; // TestAPI instance
+
+        this.isParallelTestingEnabled = true;
+        this.workerCount = Math.max(2, (navigator.hardwareConcurrency || 4) - 1); // Optimal default
+        this.isTesting = false;
+        this.cancelled = false;
 
         // Don't auto-initialize - wait for manual call
     }
@@ -25,19 +29,13 @@ class CipherController {
         console.log('✅ AlgorithmFramework available');
         console.log('📊 Algorithms registered:', AlgorithmFramework.Algorithms.length);
 
-        // Initialize TestAPI
-        try {
-            if (typeof TestAPI === 'undefined') {
-                throw new Error('TestAPI not available. Please ensure tests/TestAPI.js is loaded.');
-            }
-            this.testAPI = new TestAPI();
-            await this.testAPI.initialize();
-            console.log('✅ TestAPI initialized successfully');
-        } catch (error) {
-            console.error('❌ TestAPI initialization failed:', error.message);
-            alert('Testing framework failed to load: ' + error.message);
+        // Verify TestEngine is available
+        if (typeof TestEngine === 'undefined') {
+            console.error('❌ TestEngine not available');
+            alert('Testing framework failed to load. Please ensure tests/TestEngine.js is loaded.');
             return;
         }
+        console.log('✅ TestEngine available');
 
         // Setup UI systems
         this.setupEventListeners();
@@ -52,11 +50,9 @@ class CipherController {
         this.updateTestingTabResults();
 
         console.log('✅ Application initialized successfully');
-        console.log('📊 Loaded algorithms:', this.getAllAlgorithms().length);
-        console.log('📋 Algorithm names:', this.getAllAlgorithms().map(a => a.name));
 
-        // Auto-run tests for all algorithms
-        setTimeout(() => this.autoRunAllTests(), 1000);
+        // Wait for all algorithms to register, then auto-run tests
+        this.waitForAlgorithmsAndAutoTest();
     }
     
     setupEventListeners() {
@@ -147,6 +143,54 @@ class CipherController {
     }
         
     /**
+     * Wait for all algorithms to finish registering, then auto-test
+     */
+    async waitForAlgorithmsAndAutoTest() {
+        console.log('⏳ Waiting for all algorithms to register...');
+
+        let previousCount = 0;
+        let stableCount = 0;
+        const maxWaitTime = 5000; // Maximum 5 seconds
+        const checkInterval = 100; // Check every 100ms
+        const requiredStableChecks = 3; // Must be stable for 3 checks
+        const startTime = Date.now();
+
+        // Poll until algorithm count stabilizes
+        while (Date.now() - startTime < maxWaitTime) {
+            const currentCount = this.getAllAlgorithms().length;
+
+            if (currentCount === previousCount) {
+                stableCount++;
+                if (stableCount >= requiredStableChecks) {
+                    // Count has been stable for required checks
+                    break;
+                }
+            } else {
+                // Count changed, reset stability counter
+                stableCount = 0;
+                previousCount = currentCount;
+            }
+
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+        }
+
+        const finalCount = this.getAllAlgorithms().length;
+        const waitTime = Date.now() - startTime;
+
+        console.log('✅ Algorithm registration complete');
+        console.log(`📊 Total algorithms registered: ${finalCount}`);
+        console.log(`⏱️ Wait time: ${waitTime}ms`);
+        console.log('📋 Algorithm names:', this.getAllAlgorithms().map(a => a.name).slice(0, 10).join(', ') + '...');
+
+        // Additional small delay for UI rendering
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Now run tests
+        console.log('🚀 Starting auto-test with all algorithms loaded');
+        this.runAllTestsManually();
+    }
+
+    /**
      * Get all algorithms from AlgorithmFramework
      */
     getAllAlgorithms() {
@@ -161,28 +205,32 @@ class CipherController {
     }
     
     /**
-     * Auto-run tests for all algorithms using TestAPI
+     * Auto-run tests for all algorithms using TestEngine
      */
     async autoRunAllTests() {
-        console.log('🧪 Starting auto-test for all algorithms using TestAPI...');
+        console.log('🧪 Starting sequential test for all algorithms using TestEngine...');
 
-        if (!this.testAPI) {
-            throw new Error('TestAPI not initialized');
+        if (typeof TestEngine === 'undefined') {
+            throw new Error('TestEngine not available');
         }
 
-        const algorithms = this.getAllAlgorithms().filter(alg => alg.tests && alg.tests.length > 0);
-        console.log(`📊 Found ${algorithms.length} algorithms with test vectors`);
+        const allAlgorithms = this.getAllAlgorithms();
+        const algorithms = allAlgorithms.filter(alg => alg.tests && alg.tests.length > 0);
+        console.log(`📊 Total algorithms in registry: ${allAlgorithms.length}`);
+        console.log(`📊 Algorithms with test vectors: ${algorithms.length}`);
+        console.log(`📊 Algorithms without test vectors: ${allAlgorithms.length - algorithms.length}`);
 
         // Show global testing indicator
         this.updateGlobalTestingProgress(0, algorithms.length, 'Starting tests...');
 
-        // Set up progress callback for TestAPI
-        this.testAPI.setProgressCallback((progress) => {
-            this.updateGlobalTestingProgress(progress.current, progress.total, `Testing ${progress.algorithm}...`);
-        });
-
         // Process algorithms one by one
         for (let i = 0; i < algorithms.length; i++) {
+            // Check if testing was stopped
+            if (!this.isTesting) {
+                console.log('⏹️ Testing stopped by user');
+                break;
+            }
+
             const algorithm = algorithms[i];
 
             try {
@@ -195,34 +243,18 @@ class CipherController {
                 // Give visual time to see hourglass
                 await new Promise(resolve => setTimeout(resolve, 300));
 
-                // Run tests using TestAPI with algorithm name
-                const result = await this.testAPI.testAlgorithm(algorithm.name);
+                const result = await TestEngine.TestAlgorithm(algorithm);
 
-                if (result.success) {
-                    // Extract test vector counts from functionality results (not test category counts)
-                    let vectorsPassed = 0;
-                    let vectorsTotal = 0;
-
-                    if (result.algorithm.details.testResults && result.algorithm.details.testResults.length > 0) {
-                        const funcResult = result.algorithm.details.testResults[0];
-                        vectorsPassed = funcResult.vectorsPassed || 0;
-                        vectorsTotal = funcResult.vectorsTotal || 0;
-                    }
-
-                    // Store TestAPI results on algorithm
-                    algorithm.testResults = {
-                        passed: vectorsPassed,        // Test vectors passed, not categories
-                        total: vectorsTotal,          // Test vectors total, not categories
-                        percentage: vectorsTotal > 0 ? Math.round((vectorsPassed / vectorsTotal) * 100) : 0,
-                        categoryPercentage: result.summary.percentage, // Keep category percentage for reference
-                        lastUpdated: Date.now(),
-                        autoRun: true,
-                        testAPIResult: result.algorithm,
-                        functionalityResults: result.algorithm.details.testResults
-                    };
-                } else {
-                    throw new Error(result.error || 'TestAPI test failed');
-                }
+                // Store test results
+                algorithm.testResults = {
+                    passed: result.passed,
+                    total: result.total,
+                    percentage: result.total > 0 ? Math.round((result.passed / result.total) * 100) : 0,
+                    lastUpdated: Date.now(),
+                    autoRun: true,
+                    success: result.passed === result.total,
+                    errors: result.errors
+                };
 
                 // Update card to show results
                 this.updateCardTestingState(algorithm.name, false);
@@ -264,14 +296,231 @@ class CipherController {
 
         console.log('✅ Auto-test completed for all algorithms');
     }
+
+    async runParallelTests() {
+        console.log('🚀 Starting parallel algorithm testing...');
+
+        if (typeof TestEngine === 'undefined') {
+            throw new Error('TestEngine not available');
+        }
+
+        // Get algorithms to test
+        const allAlgorithms = this.getAllAlgorithms();
+        const algorithms = allAlgorithms.filter(alg => alg.tests && alg.tests.length > 0);
+        console.log(`📊 Testing ${algorithms.length} algorithms with ${this.workerCount} parallel tasks`);
+
+        if (algorithms.length === 0) {
+            console.log('⚠️ No algorithms with test vectors found');
+            return;
+        }
+
+        // Clear old results
+        console.log('🧹 Clearing previous test results...');
+        algorithms.forEach(alg => delete alg.testResults);
+        this.updateTestingTabResults();
+
+        // Create shared queue
+        const queue = [...algorithms];
+        let completedCount = 0;
+        const totalCount = algorithms.length;
+        const startTime = Date.now();
+        this.cancelled = false;
+
+        // Simple async worker that pulls from queue
+        const worker = async (workerId) => {
+            while (queue.length > 0 && !this.cancelled) {
+                const algorithm = queue.shift();
+                if (!algorithm) break;
+
+                try {
+                    console.log(`📤 Worker ${workerId} testing: ${algorithm.name}`);
+
+                    // Update card to show testing in progress (hourglass)
+                    this.updateCardTestingState(algorithm.name, true);
+
+                    // Test using TestEngine.TestAlgorithm (same as sequential)
+                    const result = await TestEngine.TestAlgorithm(algorithm);
+
+                    // Store results
+                    algorithm.testResults = {
+                        passed: result.passed,
+                        total: result.total,
+                        percentage: result.total > 0 ? Math.round((result.passed / result.total) * 100) : 0,
+                        lastUpdated: Date.now(),
+                        success: result.passed === result.total,
+                        errors: result.errors
+                    };
+
+                    // Update card to show results
+                    this.updateCardTestingState(algorithm.name, false);
+
+                    // Update progress
+                    completedCount++;
+                    const progress = ((completedCount / totalCount) * 100).toFixed(1);
+                    console.log(`📥 ✅ ${algorithm.name} completed [${progress}%] - ${algorithm.testResults.success ? 'PASSED' : 'FAILED'}`);
+
+                    // Update UI in real-time
+                    this.updateTestingTabResults();
+                    this.updateGlobalTestingProgress(completedCount, totalCount,
+                        `Parallel testing: ${completedCount}/${totalCount} algorithms (${progress}%)`);
+
+                } catch (error) {
+                    console.error(`❌ Worker ${workerId} failed on ${algorithm.name}:`, error);
+                    algorithm.testResults = {
+                        passed: 0,
+                        total: algorithm.tests?.length || 0,
+                        percentage: 0,
+                        lastUpdated: Date.now(),
+                        success: false,
+                        error: error.message
+                    };
+
+                    // Update card to show failure
+                    this.updateCardTestingState(algorithm.name, false);
+
+                    completedCount++;
+                }
+
+                // CRITICAL: Yield to event loop to keep UI responsive
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+
+            console.log(`✅ Worker ${workerId} finished`);
+        };
+
+        // Spawn multiple async workers
+        const workers = [];
+        for (let i = 0; i < this.workerCount; i++) {
+            workers.push(worker(i));
+        }
+
+        // Wait for all to complete
+        await Promise.all(workers);
+
+        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+        const passedCount = algorithms.filter(alg => alg.testResults?.success).length;
+        const failedCount = algorithms.length - passedCount;
+
+        console.log(`\n🎯 Parallel testing completed in ${duration}s`);
+        console.log(`  ✅ Passed: ${passedCount}/${algorithms.length}`);
+        console.log(`  ❌ Failed: ${failedCount}/${algorithms.length}`);
+        console.log(`  📊 Success Rate: ${((passedCount / algorithms.length) * 100).toFixed(1)}%`);
+
+        // Final UI update
+        this.updateTestingTabResults();
+        this.updateGlobalTestingProgress(totalCount, totalCount, `Completed testing ${totalCount} algorithms`);
+    }
+
+    /**
+     * Update parallel testing progress UI
+     */
+    updateParallelProgressUI(progress) {
+        // Update progress bar
+        const progressFill = document.getElementById('parallel-progress-fill');
+        if (progressFill) {
+            progressFill.style.width = `${progress.percentage}%`;
+        }
+
+        // Update stats
+        const elements = {
+            'parallel-completed': progress.completed,
+            'parallel-total': progress.total,
+            'parallel-percentage': Math.round(progress.percentage),
+            'parallel-workers-active': progress.workersActive,
+            'parallel-throughput': progress.throughput.toFixed(1),
+            'parallel-eta': progress.eta > 0 ? this.formatDuration(progress.eta) : '--:--'
+        };
+
+        Object.entries(elements).forEach(([id, value]) => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.textContent = value;
+            }
+        });
+    }
+
+    /**
+     * Process individual generic parallel test result
+     */
+    processGenericParallelResult(result) {
+        // Find corresponding algorithm and update its test results
+        const algorithms = this.getAllAlgorithms();
+        const algorithm = algorithms.find(alg => alg.name === result.algorithmName);
+
+        if (algorithm) {
+            // Convert parallel result to format expected by UI (same as sequential)
+            algorithm.testResults = {
+                passed: result.vectorsPassed || 0,
+                total: result.vectorsTotal || 0,
+                percentage: result.vectorsTotal > 0 ? Math.round((result.vectorsPassed / result.vectorsTotal) * 100) : 0,
+                lastUpdated: Date.now(),
+                autoRun: true,
+                parallelResult: result,
+                success: result.success,
+                error: result.error || null
+            };
+
+            // Update card state
+            this.updateCardTestingState(algorithm.name, false);
+
+            // CRITICAL: Update testing tab IMMEDIATELY for real-time results
+            this.updateTestingTabResults();
+
+            console.log(`✅ Processed parallel result for ${result.algorithmName}: ${result.success ? 'PASSED' : 'FAILED'}${result.error ? ' - ' + result.error : ''}`);
+        }
+    }
+
+    /**
+     * Process all generic parallel test results
+     */
+    processAllGenericParallelResults(results, algorithms) {
+        const summary = {
+            passed: results.filter(r => r.success).length,
+            failed: results.filter(r => !r.success).length,
+            total: results.length
+        };
+
+        console.log('🎯 Parallel Test Summary:');
+        console.log(`  ✅ Passed: ${summary.passed}/${summary.total}`);
+        console.log(`  ❌ Failed: ${summary.failed}/${summary.total}`);
+        console.log(`  📊 Success Rate: ${((summary.passed / summary.total) * 100).toFixed(1)}%`);
+        console.log(`  ⚡ Parallel Speedup: ~${this.workerCount}x faster than sequential`);
+    }
+
+    /**
+     * Update test button states during testing
+     */
+    updateTestButtonStates(isTesting) {
+        const buttons = {
+            'run-all-tests': !isTesting,
+            'run-selected-tests': !isTesting,
+            'stop-testing': isTesting
+        };
+
+        Object.entries(buttons).forEach(([id, enabled]) => {
+            const button = document.getElementById(id);
+            if (button) {
+                button.disabled = !enabled;
+            }
+        });
+    }
+
+    /**
+     * Format duration in seconds to MM:SS
+     */
+    formatDuration(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
     
 
     /**
-     * Run tests for a single algorithm using TestAPI
+     * Run tests for a single algorithm using TestEngine
      */
     async runAlgorithmTests(algorithm) {
-        if (!this.testAPI) {
-            throw new Error('TestAPI not initialized');
+        if (typeof TestEngine === 'undefined') {
+            throw new Error('TestEngine not available');
         }
 
         if (!algorithm.tests || algorithm.tests.length === 0) {
@@ -279,33 +528,18 @@ class CipherController {
         }
 
         try {
-            const result = await this.testAPI.testAlgorithm(algorithm.name);
+            const result = await TestEngine.TestAlgorithm(algorithm);
 
-            if (result.success) {
-                // Extract test vector counts from functionality results (not test category counts)
-                let vectorsPassed = 0;
-                let vectorsTotal = 0;
-
-                if (result.algorithm.details.testResults && result.algorithm.details.testResults.length > 0) {
-                    const funcResult = result.algorithm.details.testResults[0];
-                    vectorsPassed = funcResult.vectorsPassed || 0;
-                    vectorsTotal = funcResult.vectorsTotal || 0;
-                }
-
-                // Store TestAPI results on algorithm
-                algorithm.testResults = {
-                    passed: vectorsPassed,        // Test vectors passed, not categories
-                    total: vectorsTotal,          // Test vectors total, not categories
-                    percentage: vectorsTotal > 0 ? Math.round((vectorsPassed / vectorsTotal) * 100) : 0,
-                    categoryPercentage: result.summary.percentage, // Keep category percentage for reference
-                    lastUpdated: Date.now(),
-                    autoRun: true,
-                    testAPIResult: result.algorithm,
-                    functionalityResults: result.algorithm.details.testResults
-                };
-            } else {
-                throw new Error(result.error || 'TestAPI test failed');
-            }
+            // Store test results
+            algorithm.testResults = {
+                passed: result.passed,
+                total: result.total,
+                percentage: result.total > 0 ? Math.round((result.passed / result.total) * 100) : 0,
+                lastUpdated: Date.now(),
+                autoRun: true,
+                success: result.passed === result.total,
+                errors: result.errors
+            };
 
             // Update the card UI
             this.updateCardTestingState(algorithm.name, false);
@@ -373,13 +607,13 @@ class CipherController {
             testButton.style.transform = '';
             testButton.style.transition = '';
 
-            // Update status based on TestAPI results
+            // Update status based on test results
             const algorithm = this.getAlgorithm(algorithmName);
             if (algorithm && algorithm.testResults) {
-                const { passed, total, percentage, error, testAPIResult } = algorithm.testResults;
+                const { passed, total, percentage, error, errors } = algorithm.testResults;
                 let status = 'untested';
 
-                if (error) {
+                if (error || (errors && errors.length > 0)) {
                     status = 'none';
                 } else if (total === 0) {
                     status = 'untested';
@@ -401,20 +635,10 @@ class CipherController {
                 // Update button text with test results
                 let testText = `🧪 ${passed}/${total}`;
 
-                // Add functionality results if available from TestAPI
-                if (testAPIResult && testAPIResult.details.testResults) {
-                    const funcResults = testAPIResult.details.testResults;
-                    const roundTripInfo = funcResults
-                        .filter(r => r.roundTripsAttempted > 0)
-                        .map(r => `${r.roundTripsPassed}/${r.roundTripsAttempted}`)
-                        .join(',');
-                    if (roundTripInfo) {
-                        testText += ` RT:${roundTripInfo}`;
-                    }
-                }
-
                 if (error) {
                     testText = `❌ Error`;
+                } else if (errors && errors.length > 0) {
+                    testText = `❌ ${errors.length} errors`;
                 }
 
                 testButton.innerHTML = testText;
@@ -1113,6 +1337,7 @@ class CipherController {
         this.populateTestingCategoriesDropdown();
         this.setupTestingFilters();
         this.setupTestingActions();
+        this.setupParallelTestingControls();
     }
     
     /**
@@ -1166,19 +1391,81 @@ class CipherController {
     }
 
     /**
-     * Manually run all tests
+     * Setup parallel testing controls and CPU detection
+     */
+    setupParallelTestingControls() {
+        // Detect CPU cores and set up worker count
+        const cpuCores = navigator.hardwareConcurrency || 4;
+        const cpuInfo = document.getElementById('cpu-cores-info');
+        const workerCountInput = document.getElementById('worker-count');
+        const parallelToggle = document.getElementById('enable-parallel-testing');
+
+        if (cpuInfo) {
+            cpuInfo.textContent = `(${cpuCores} CPU cores detected)`;
+        }
+
+        if (workerCountInput) {
+            this.workerCount = Math.max(1, cpuCores - 1); // Leave one core for main thread
+            workerCountInput.value = this.workerCount;
+            workerCountInput.max = cpuCores;
+
+            workerCountInput.addEventListener('change', (e) => {
+                this.workerCount = Math.max(1, Math.min(parseInt(e.target.value) || 4, cpuCores));
+                e.target.value = this.workerCount; // Clamp the displayed value
+                console.log(`🔧 Worker count set to: ${this.workerCount}`);
+            });
+        }
+
+        if (parallelToggle) {
+            this.isParallelTestingEnabled = parallelToggle.checked;
+
+            parallelToggle.addEventListener('change', (e) => {
+                this.isParallelTestingEnabled = e.target.checked;
+                console.log(`🚀 Parallel testing ${this.isParallelTestingEnabled ? 'enabled' : 'disabled'}`);
+            });
+        }
+
+        console.log(`✅ Parallel testing controls initialized - ${cpuCores} cores, ${this.workerCount} workers (max(1, cores-1) formula)`);
+    }
+
+    /**
+     * Manually run all tests (Enhanced with parallel testing support)
      */
     async runAllTestsManually() {
-        if (!this.testAPI) {
+        console.log('🔧 runAllTestsManually called');
+        console.log('  TestEngine available:', typeof TestEngine !== 'undefined');
+        console.log('  Parallel enabled:', this.isParallelTestingEnabled);
+        console.log('  Already testing:', this.isTesting);
+
+        if (typeof TestEngine === 'undefined') {
+            console.error('❌ Testing framework not initialized');
             alert('Testing framework not initialized. Please reload the page.');
             return;
         }
 
+        if (this.isTesting) {
+            console.log('🚫 Testing already in progress');
+            return;
+        }
+
         try {
-            await this.autoRunAllTests();
+            this.isTesting = true;
+            this.updateTestButtonStates(true);
+
+            if (this.isParallelTestingEnabled) {
+                console.log('🚀 Starting MEGATHINK parallel testing...');
+                await this.runParallelTests();
+            } else {
+                console.log('🐌 Starting sequential testing...');
+                await this.autoRunAllTests();
+            }
         } catch (error) {
-            console.error('Manual test run failed:', error);
+            console.error('❌ Manual test run failed:', error);
+            console.error('Error stack:', error.stack);
             alert('Test execution failed: ' + error.message);
+        } finally {
+            this.isTesting = false;
+            this.updateTestButtonStates(false);
         }
     }
 
@@ -1186,7 +1473,7 @@ class CipherController {
      * Run tests for selected algorithms
      */
     async runSelectedTests() {
-        if (!this.testAPI) {
+        if (typeof TestEngine === 'undefined') {
             alert('Testing framework not initialized. Please reload the page.');
             return;
         }
@@ -1201,42 +1488,29 @@ class CipherController {
         console.log('Running tests for selected algorithms:', algorithmNames);
 
         try {
-            // Use batch testing with TestAPI
-            const results = await this.testAPI.testBatch(algorithmNames);
-
-            // Update algorithm results
-            results.forEach((result, index) => {
-                const algorithmName = algorithmNames[index];
+            // Test each algorithm sequentially
+            for (const algorithmName of algorithmNames) {
                 const algorithm = this.getAlgorithm(algorithmName);
-                if (algorithm && result.success) {
-                    // Extract test vector counts from functionality results (not test category counts)
-                    let vectorsPassed = 0;
-                    let vectorsTotal = 0;
-
-                    if (result.algorithm.details.testResults && result.algorithm.details.testResults.length > 0) {
-                        const funcResult = result.algorithm.details.testResults[0];
-                        vectorsPassed = funcResult.vectorsPassed || 0;
-                        vectorsTotal = funcResult.vectorsTotal || 0;
-                    }
+                if (algorithm && algorithm.tests && algorithm.tests.length > 0) {
+                    const result = await TestEngine.TestAlgorithm(algorithm);
 
                     algorithm.testResults = {
-                        passed: vectorsPassed,        // Test vectors passed, not categories
-                        total: vectorsTotal,          // Test vectors total, not categories
-                        percentage: vectorsTotal > 0 ? Math.round((vectorsPassed / vectorsTotal) * 100) : 0,
-                        categoryPercentage: result.summary.percentage, // Keep category percentage for reference
+                        passed: result.passed,
+                        total: result.total,
+                        percentage: result.total > 0 ? Math.round((result.passed / result.total) * 100) : 0,
                         lastUpdated: Date.now(),
-                        testAPIResult: result.algorithm,
-                        functionalityResults: result.algorithm.details.testResults
+                        success: result.passed === result.total,
+                        errors: result.errors
                     };
                 } else if (algorithm) {
                     algorithm.testResults = {
                         passed: 0,
                         total: algorithm.tests?.length || 0,
-                        error: result.error,
+                        error: 'No test vectors',
                         lastUpdated: Date.now()
                     };
                 }
-            });
+            }
 
             this.updateTestingTabResults();
         } catch (error) {
@@ -1246,11 +1520,33 @@ class CipherController {
     }
 
     /**
-     * Stop testing (placeholder)
+     * Stop testing (works for both sequential and parallel)
      */
     stopTesting() {
-        console.log('Stop testing requested - not implemented');
-        alert('Stop testing not yet implemented');
+        console.log('⏹️ Stop button clicked - stopping tests...');
+
+        // Set flags to stop both modes
+        this.isTesting = false;
+        this.cancelled = true;
+
+        // Update UI state
+        this.updateTestButtonStates(false);
+
+        // Update global progress to show stopped state
+        const progressText = document.getElementById('global-progress-text');
+        if (progressText) {
+            progressText.textContent = 'Testing stopped by user';
+        }
+
+        // Hide progress container after a short delay
+        const progressContainer = document.getElementById('global-progress-container');
+        setTimeout(() => {
+            if (progressContainer) {
+                progressContainer.style.display = 'none';
+            }
+        }, 2000);
+
+        console.log('✅ Testing stopped');
     }
 
     /**
@@ -3083,12 +3379,12 @@ class CipherController {
     }
 
     /**
-     * Run tests and switch to test vectors tab using TestAPI
+     * Run tests and switch to test vectors tab using TestEngine
      */
     async runTestAndSwitchToTestVectors(algorithmName) {
         console.log(`Running tests and switching to test vectors for ${algorithmName}`);
 
-        if (!this.testAPI) {
+        if (typeof TestEngine === 'undefined') {
             alert('Testing framework not initialized. Please reload the page.');
             return;
         }
@@ -3100,7 +3396,7 @@ class CipherController {
                 throw new Error(`Algorithm not found: ${algorithmName}`);
             }
 
-            // Run test using TestAPI
+            // Run test using TestEngine
             await this.runAlgorithmTests(algorithm);
 
             // Switch to metadata modal and show test vectors tab
