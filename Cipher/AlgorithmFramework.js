@@ -393,38 +393,43 @@
       // Ensure test is a TestCase object or convert it
       if (!(test instanceof TestCase)) {
         // Convert plain object to TestCase
-        if (test && typeof test === 'object' && test.input !== undefined && test.expected !== undefined) {
+        if (test && typeof test === 'object' && test.input !== undefined) {
           const description = test.text  || `Test vector #${index + 1}`;
           const uri = test.uri || '';
-          const result = new TestCase(test.input, test.expected, description, uri);
-          
+
+          // Allow test vectors without 'expected' for round-trip testing
+          // If no expected value, use empty array to signal round-trip mode
+          const expected = test.expected !== undefined ? test.expected : [];
+          const result = new TestCase(test.input, expected, description, uri);
+
           // Copy any additional properties (key, iv, outputSize, etc.)
           Object.keys(test).forEach(key => {
             if (!['input', 'expected', 'text', 'uri'].includes(key))
               result[key] = test[key];
 
           });
-          
+
           return result;
         } else {
-          throw new Error(`RegisterAlgorithm: Invalid test vector #${index + 1} in algorithm '${algorithmName}'`);
+          throw new Error(`RegisterAlgorithm: Invalid test vector #${index + 1} in algorithm '${algorithmName}' - must have at least 'input' field`);
         }
       }
-      
-      // Validate required properties
-      if (test.input === undefined || test.expected === undefined) {
-        throw new Error(`RegisterAlgorithm: Test vector #${index + 1} in algorithm '${algorithmName}' missing input or expected`);
+
+      // Validate that test is a TestCase with at least input
+      if (test.input === undefined) {
+        throw new Error(`RegisterAlgorithm: Test vector #${index + 1} in algorithm '${algorithmName}' missing input`);
       }
-      
-      // Validate that input and expected are byte arrays
+
+      // Validate that input is byte array or null
       if (!Array.isArray(test.input) && test.input !== null) {
         throw new Error(`RegisterAlgorithm: Test vector #${index + 1} in algorithm '${algorithmName}' has invalid input (must be byte array or null)`);
       }
-      
-      if (!Array.isArray(test.expected)) {
+
+      // Validate that expected is byte array if provided (allow empty for round-trip)
+      if (test.expected !== undefined && !Array.isArray(test.expected)) {
         throw new Error(`RegisterAlgorithm: Test vector #${index + 1} in algorithm '${algorithmName}' has invalid expected (must be byte array)`);
       }
-      
+
       return test;
     }
     
