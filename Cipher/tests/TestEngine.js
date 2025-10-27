@@ -19,6 +19,33 @@
     const path = isNode ? require('path') : null;
     const { execSync } = isNode ? require('child_process') : { execSync: null };
 
+    // Load DebugConfig (works in both Node.js and browser)
+    const DebugConfig = (function() {
+        if (isNode && !global.DebugConfig) {
+            try {
+                return require('../DebugConfig.js');
+            } catch (e) {
+                // Fallback to console if DebugConfig not available
+                return {
+                    log: console.log.bind(console),
+                    warn: console.warn.bind(console),
+                    error: console.error.bind(console),
+                    info: console.info.bind(console),
+                    always: console.log.bind(console),
+                    isEnabled: () => false
+                };
+            }
+        }
+        return global.DebugConfig || {
+            log: console.log.bind(console),
+            warn: console.warn.bind(console),
+            error: console.error.bind(console),
+            info: console.info.bind(console),
+            always: console.log.bind(console),
+            isEnabled: () => false
+        };
+    })();
+
     // ============================================================================
     // PUBLIC API - These are the only 3 methods you need
     // ============================================================================
@@ -40,6 +67,11 @@
         // Load dependencies
         await _loadDependencies(silent, verbose);
 
+        // Verify dependencies are available
+        if (typeof global.AlgorithmFramework === 'undefined') {
+            throw new Error('AlgorithmFramework not available');
+        }
+
         const result = {
             filePath: filePath,
             compilation: { passed: false, error: null },
@@ -60,6 +92,7 @@
         }
 
         // Load algorithm file
+        const AlgorithmFramework = global.AlgorithmFramework;
         const algorithmsBefore = AlgorithmFramework.Algorithms.length;
         try {
             require(path.resolve(filePath));
@@ -68,6 +101,7 @@
             return result;
         }
 
+        // AlgorithmFramework already declared above
         const algorithmsAfter = AlgorithmFramework.Algorithms.length;
         const registeredCount = algorithmsAfter - algorithmsBefore;
 
@@ -97,9 +131,15 @@
                 const funcResult = await TestAlgorithm(algorithm, options);
                 result.functionality.testResults.push({
                     algorithm: algorithm.name,
+                    status: funcResult.status,
                     passed: funcResult.passed,
                     total: funcResult.total,
-                    errors: funcResult.errors
+                    vectorsPassed: funcResult.passed,
+                    vectorsTotal: funcResult.total,
+                    roundTripsPassed: funcResult.roundTripsPassed,
+                    roundTripsAttempted: funcResult.roundTripsAttempted,
+                    errors: funcResult.errors,
+                    vectorDetails: funcResult.vectorResults
                 });
 
                 if (funcResult.passed < funcResult.total) {
@@ -153,26 +193,40 @@
      * TestAlgorithm - Test an algorithm instance against all its test vectors
      * @param {object} algorithmInstance - Algorithm instance to test
      * @param {object} options - { verbose: boolean, progressCallback: function }
-     * @returns {object} - { passed: number, total: number, errors: array, vectorResults: array }
+     * @returns {object} - { passed: number, total: number, errors: array, vectorResults: array, roundTripsPassed: number, status: string }
      */
     async function TestAlgorithm(algorithmInstance, options = {}) {
         const verbose = options.verbose || false;
         const progressCallback = options.progressCallback || null;
 
+        // Verify dependencies are available
+        const AlgorithmFramework = typeof window !== 'undefined' ? window.AlgorithmFramework : global.AlgorithmFramework;
+        if (typeof AlgorithmFramework === 'undefined') {
+            throw new Error('AlgorithmFramework not available - ensure it is loaded before testing');
+        }
+
         const result = {
             passed: 0,
             total: 0,
             errors: [],
-            vectorResults: []
+            vectorResults: [],
+            roundTripsPassed: 0,
+            roundTripsAttempted: 0,
+            status: 'passed'
         };
 
         if (!algorithmInstance.tests || algorithmInstance.tests.length === 0) {
             result.errors.push('No test vectors defined');
+            result.status = 'no-tests';
             return result;
         }
 
         const vectors = algorithmInstance.tests;
         result.total = vectors.length;
+
+        // Determine requirements based on category
+        const requiresRoundTrips = _requiresRoundTrips(algorithmInstance);
+        const requiresEncodingStability = _requiresEncodingStability(algorithmInstance);
 
         for (let i = 0; i < vectors.length; i++) {
             if (progressCallback) {
@@ -188,6 +242,14 @@
 
             if (vectorResult.passed) {
                 result.passed++;
+
+                // Track round trips
+                if (vectorResult.roundTripSuccess === true) {
+                    result.roundTripsPassed++;
+                    result.roundTripsAttempted++;
+                } else if (vectorResult.roundTripSuccess === false) {
+                    result.roundTripsAttempted++;
+                }
             } else {
                 result.errors.push({
                     vector: i,
@@ -198,13 +260,41 @@
 
             if (verbose) {
                 const status = vectorResult.passed ? '✓' : '✗';
-                console.log(`  ${status} Vector ${i}: ${vectors[i].text || 'Unnamed'}`);
+                const roundTrip = vectorResult.roundTripSuccess ? '↺✓' : (vectorResult.roundTripSuccess === false ? '↺✗' : '');
+                DebugConfig.log(`  ${status} Vector ${i}: ${vectors[i].text || 'Unnamed'} ${roundTrip}`);
             }
 
             // CRITICAL: Yield to event loop every 5 vectors to keep UI responsive
             if ((i + 1) % 5 === 0 && typeof window !== 'undefined') {
                 await new Promise(resolve => setTimeout(resolve, 0));
             }
+        }
+
+        // Determine final status
+        if (result.passed === result.total && result.total > 0) {
+            // All vectors passed - check round trip requirements
+            const invertibilityRequired = (requiresRoundTrips || requiresEncodingStability) && result.passed > 0;
+            const invertibilitySuccess = !invertibilityRequired || (result.roundTripsPassed === result.roundTripsAttempted && result.roundTripsAttempted > 0);
+
+            if (invertibilitySuccess) {
+                result.status = 'passed';
+            } else if (requiresEncodingStability) {
+                result.status = 'failed-encoding-stability';
+                result.errors.push({
+                    type: 'encoding-stability',
+                    message: `Encoding stability failed (${result.roundTripsPassed}/${result.roundTripsAttempted} successful)`
+                });
+            } else {
+                result.status = 'failed-roundtrips';
+                result.errors.push({
+                    type: 'roundtrips',
+                    message: `Round-trip failed (${result.roundTripsPassed}/${result.roundTripsAttempted} successful)`
+                });
+            }
+        } else if (result.passed > 0) {
+            result.status = 'partial';
+        } else {
+            result.status = 'failed';
         }
 
         return result;
@@ -246,29 +336,43 @@
             const output = instance.Result();
             result.output = output;
 
-            // Compare with expected
-            const isRoundTripOnly = algorithmInstance.category === AlgorithmFramework.CategoryType.ASYMMETRIC &&
-                                   _compareArrays(vector.expected, vector.input);
+            // Compare with expected if provided
+            const AlgorithmFramework = typeof window !== 'undefined' ? window.AlgorithmFramework : global.AlgorithmFramework;
+
+            // Check if this is a round-trip only test (no expected value or expected equals input)
+            const hasExpected = vector.expected && vector.expected.length > 0;
+            const isRoundTripOnly = !hasExpected ||
+                                   (AlgorithmFramework && AlgorithmFramework.CategoryType &&
+                                    algorithmInstance.category === AlgorithmFramework.CategoryType.ASYMMETRIC &&
+                                    _compareArrays(vector.expected, vector.input));
 
             if (isRoundTripOnly) {
-                result.passed = true; // Round-trip will validate
+                // No expected value - mark as passed, round-trip will validate
+                result.passed = true;
             } else {
+                // Compare output with expected value
                 result.passed = _compareArrays(output, vector.expected);
             }
 
-            // Test round-trip if invertible
+            // Test round-trip or encoding stability if invertible
             if (_isInvertible(algorithmInstance)) {
                 try {
-                    const reverseInstance = algorithmInstance.CreateInstance(true);
-                    if (reverseInstance) {
-                        if (_isBlockCipherMode(algorithmInstance)) {
-                            _setupBlockCipherMode(reverseInstance, vector, algorithmInstance.name);
-                        }
-                        _applyVectorProperties(reverseInstance, vector);
+                    if (_requiresEncodingStability(algorithmInstance)) {
+                        // Test encoding stability: encode(data) == encode(decode(encode(data)))
+                        result.roundTripSuccess = await _testEncodingStability(algorithmInstance, vector, output);
+                    } else {
+                        // Test normal round-trip: decrypt(encrypt(data)) == data
+                        const reverseInstance = algorithmInstance.CreateInstance(true);
+                        if (reverseInstance) {
+                            if (_isBlockCipherMode(algorithmInstance)) {
+                                _setupBlockCipherMode(reverseInstance, vector, algorithmInstance.name);
+                            }
+                            _applyVectorProperties(reverseInstance, vector);
 
-                        reverseInstance.Feed(output);
-                        const roundTripResult = reverseInstance.Result();
-                        result.roundTripSuccess = _compareArrays(roundTripResult, vector.input);
+                            reverseInstance.Feed(output);
+                            const roundTripResult = reverseInstance.Result();
+                            result.roundTripSuccess = _compareArrays(roundTripResult, vector.input);
+                        }
                     }
                 } catch (error) {
                     result.roundTripSuccess = false;
@@ -307,7 +411,7 @@
                 const dummyModule = require('./DummyBlockCipher.js');
                 global.DummyBlockCipher = dummyModule.DummyBlockCipher;
             } catch (e) {
-                if (verbose) console.warn('DummyBlockCipher not loaded');
+                if (verbose) DebugConfig.warn('DummyBlockCipher not loaded');
             }
         }
     }
@@ -345,7 +449,9 @@
 
     function _setupBlockCipherMode(instance, vector, algorithmName) {
         const isSimpleMode = algorithmName === 'ECB';
-        const dummyCipher = _createDummyCipher(vector, isSimpleMode);
+        // Modes that handle their own key splitting/management shouldn't have keys set on cipher
+        const isMultiKeyMode = ['EDE', 'EEE'].includes(algorithmName);
+        const dummyCipher = _createDummyCipher(vector, isSimpleMode, isMultiKeyMode);
 
         if (typeof instance.setBlockCipher === 'function') {
             instance.setBlockCipher(dummyCipher);
@@ -362,19 +468,81 @@
         }
     }
 
-    function _createDummyCipher(vector, isSimple) {
-        if (!global.DummyBlockCipher) {
-            throw new Error('DummyBlockCipher not available for mode testing');
+    function _createDummyCipher(vector, isSimple, skipKeySet) {
+        let algorithm = null;
+        let instance = null;
+
+        // Check if a specific cipher is requested in the test vector
+        if (vector.cipher) {
+            // Try to find the real cipher algorithm by name
+            const AlgorithmFramework = typeof window !== 'undefined' ? window.AlgorithmFramework : global.AlgorithmFramework;
+
+            if (AlgorithmFramework && AlgorithmFramework.Algorithms) {
+                // Map common cipher names to their actual registered names and file paths
+                const cipherNameMap = {
+                    'AES': { name: 'Rijndael (AES)', file: 'block/rijndael.js' },
+                    'Rijndael': { name: 'Rijndael (AES)', file: 'block/rijndael.js' },
+                    'DES': { name: 'DES', file: 'block/des.js' },
+                    '3DES': { name: '3DES (Triple DES)', file: 'block/3des.js' },
+                    'Blowfish': { name: 'Blowfish', file: 'block/blowfish.js' },
+                    'Camellia': { name: 'Camellia', file: 'block/camellia.js' },
+                    'ARIA': { name: 'ARIA', file: 'block/aria.js' }
+                };
+
+                const cipherInfo = cipherNameMap[vector.cipher] || { name: vector.cipher, file: null };
+                let foundAlgorithm = AlgorithmFramework.Algorithms.find(alg =>
+                    alg.name === cipherInfo.name || alg.name === vector.cipher
+                );
+
+                // If not found and we're in Node.js, try to load the cipher file
+                if (!foundAlgorithm && cipherInfo.file && isNode) {
+                    try {
+                        const cipherPath = path.join(__dirname, '..', 'algorithms', cipherInfo.file);
+                        require(cipherPath);
+                        // Try finding again after loading
+                        foundAlgorithm = AlgorithmFramework.Algorithms.find(alg =>
+                            alg.name === cipherInfo.name || alg.name === vector.cipher
+                        );
+                    } catch (error) {
+                        // Silently fail - will fall back to DummyBlockCipher
+                    }
+                }
+
+                if (foundAlgorithm) {
+                    try {
+                        algorithm = foundAlgorithm;
+                        instance = algorithm.CreateInstance(false);
+                    } catch (error) {
+                        DebugConfig.warn(`Failed to create instance of ${vector.cipher}, falling back to DummyBlockCipher:`, error.message);
+                    }
+                }
+            }
         }
 
-        const blockSize = vector.input.length;
-        const keySize = vector.key ? vector.key.length : 16;
+        // Fall back to DummyBlockCipher if no specific cipher requested or cipher not found
+        if (!instance) {
+            const DummyBlockCipher = typeof window !== 'undefined' ? window.DummyBlockCipher : global.DummyBlockCipher;
 
-        return new DummyBlockCipher({
-            blockSize: blockSize,
-            keySize: keySize,
-            simple: isSimple
-        });
+            if (!DummyBlockCipher) {
+                throw new Error('DummyBlockCipher not available for mode testing');
+            }
+
+            algorithm = new DummyBlockCipher();
+            instance = algorithm.CreateInstance(false);
+        }
+
+        // Set key if provided in vector (skip for multi-key modes like EDE/EEE)
+        if (!skipKeySet) {
+            if (vector.key) {
+                instance.key = vector.key;
+            } else {
+                // Default key
+                instance.key = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                               0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f];
+            }
+        }
+
+        return instance;
     }
 
     function _applyVectorProperties(instance, vector) {
@@ -420,12 +588,18 @@
         _applyProperty(instance, vector, 'password', 'setPassword');
         _applyProperty(instance, vector, 'iterations', 'setIterations');
 
+        // Block size (for Kalyna and other variable block size algorithms)
+        // Use property setter, not method call
+        if (vector.blockSize !== undefined && 'blockSize' in instance) {
+            instance.blockSize = vector.blockSize;
+        }
+
         // Apply any other properties
         const handledProps = new Set([
             'input', 'expected', 'text', 'uri', 'key', 'kek', 'key2', 'iv', 'iv1', 'iv2',
             'nonce', 'tweak', 'tweakKey', 'aad', 'tagSize', 'tagLength', 'tag', 'radix',
             'alphabet', 'salt', 'info', 'outputSize', 'OutputSize', 'hashFunction',
-            'password', 'iterations'
+            'password', 'iterations', 'blockSize'
         ]);
 
         Object.keys(vector).forEach(prop => {
@@ -469,6 +643,71 @@
             if (arr1[i] !== arr2[i]) return false;
         }
         return true;
+    }
+
+    // Determine if algorithm category requires perfect round-trips (encrypt -> decrypt -> original)
+    function _requiresRoundTrips(algorithm) {
+        if (!algorithm.category) return false;
+
+        // Categories that require perfect round-trip
+        const perfectRoundTripCategories = [
+            'Cipher', 'Block Cipher', 'Stream Cipher', 'Asymmetric', 'MAC', 'AEAD', 'Cipher Modes', 'Padding'
+        ];
+
+        // Check if category name matches (handle both string and object categories)
+        const categoryName = typeof algorithm.category === 'string'
+            ? algorithm.category
+            : (algorithm.category.name || algorithm.category.toString());
+
+        return perfectRoundTripCategories.some(cat =>
+            categoryName && categoryName.toLowerCase().includes(cat.toLowerCase())
+        );
+    }
+
+    // Determine if algorithm category requires encoding stability (encode -> decode -> encode -> same)
+    function _requiresEncodingStability(algorithm) {
+        if (!algorithm.category) return false;
+
+        // Categories that require encoding stability
+        const encodingStabilityCategories = [
+            'Encoding', 'Checksum', 'Error Correction'
+        ];
+
+        // Check if category name matches
+        const categoryName = typeof algorithm.category === 'string'
+            ? algorithm.category
+            : (algorithm.category.name || algorithm.category.toString());
+
+        return encodingStabilityCategories.some(cat =>
+            categoryName && categoryName.toLowerCase().includes(cat.toLowerCase())
+        );
+    }
+
+    // Test encoding stability: encode(data) == encode(decode(encode(data)))
+    async function _testEncodingStability(algorithm, vector, encodedOutput) {
+        try {
+            // Step 1: decode the encoded result: decode(encode(data))
+            const decodeInstance = algorithm.CreateInstance(true); // true = decode mode
+            if (!decodeInstance) return false;
+
+            _applyVectorProperties(decodeInstance, vector);
+            decodeInstance.Feed(encodedOutput);
+            const decodedResult = decodeInstance.Result();
+
+            // Step 2: re-encode the decoded result: encode(decode(encode(data)))
+            const reEncodeInstance = algorithm.CreateInstance(false); // false = encode mode
+            if (!reEncodeInstance) return false;
+
+            _applyVectorProperties(reEncodeInstance, vector);
+            reEncodeInstance.Feed(decodedResult);
+            const reEncodedResult = reEncodeInstance.Result();
+
+            // Step 3: verify encoding stability: encode(data) == encode(decode(encode(data)))
+            return _compareArrays(encodedOutput, reEncodedResult);
+
+        } catch (error) {
+            return false;
+        }
     }
 
     // ============================================================================
