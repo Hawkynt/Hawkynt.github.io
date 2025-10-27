@@ -427,11 +427,17 @@
       // XOR P-box with key
       let keyIndex = 0;
       for (let i = 0; i < 18; i++) {
-        let keyWord = 0;
-        for (let j = 0; j < 4; j++) {
-          keyWord = (keyWord << 8) | key[keyIndex];
-          keyIndex = (keyIndex + 1) % key.length;
-        }
+        // Pack 4 key bytes into a 32-bit word (big-endian)
+        const b0 = key[keyIndex];
+        keyIndex = (keyIndex + 1) % key.length;
+        const b1 = key[keyIndex];
+        keyIndex = (keyIndex + 1) % key.length;
+        const b2 = key[keyIndex];
+        keyIndex = (keyIndex + 1) % key.length;
+        const b3 = key[keyIndex];
+        keyIndex = (keyIndex + 1) % key.length;
+
+        const keyWord = OpCodes.Pack32BE(b0, b1, b2, b3);
         this.pBox[i] ^= keyWord;
       }
 
@@ -534,10 +540,7 @@
 
     _f(x) {
       // Blowfish F-function: F(x) = ((S1[a] + S2[b] mod 2^32) XOR S3[c]) + S4[d] mod 2^32
-      const a = (x >>> 24) & 0xFF;
-      const b = (x >>> 16) & 0xFF;
-      const c = (x >>> 8) & 0xFF;
-      const d = x & 0xFF;
+      const [a, b, c, d] = OpCodes.Unpack32BE(x);
 
       // Step 1: S1[a] + S2[b] mod 2^32
       const temp1 = (this.sBox1[a] + this.sBox2[b]) >>> 0;

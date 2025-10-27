@@ -279,6 +279,8 @@
       }
       
       // Generate remaining subkeys using IDEA key schedule
+      // Note: These bit operations are part of IDEA's key schedule algorithm
+      // and combine bits from different key values - not suitable for OpCodes replacement
       for (let i = 8; i < 52; i++) {
         if ((i & 7) < 6) {
           key[i] = ((key[i - 7] & 127) << 9 | key[i - 6] >>> 7) & MASK;
@@ -395,14 +397,19 @@
       ];
       
       // Convert back to bytes (big-endian)
-      output[0] = (result[0] >>> 8) & 0xFF;
-      output[1] = result[0] & 0xFF;
-      output[2] = (result[1] >>> 8) & 0xFF;
-      output[3] = result[1] & 0xFF;
-      output[4] = (result[2] >>> 8) & 0xFF;
-      output[5] = result[2] & 0xFF;
-      output[6] = (result[3] >>> 8) & 0xFF;
-      output[7] = result[3] & 0xFF;
+      const bytes0 = OpCodes.Unpack16BE(result[0]);
+      const bytes1 = OpCodes.Unpack16BE(result[1]);
+      const bytes2 = OpCodes.Unpack16BE(result[2]);
+      const bytes3 = OpCodes.Unpack16BE(result[3]);
+
+      output[0] = bytes0[0];
+      output[1] = bytes0[1];
+      output[2] = bytes1[0];
+      output[3] = bytes1[1];
+      output[4] = bytes2[0];
+      output[5] = bytes2[1];
+      output[6] = bytes3[0];
+      output[7] = bytes3[1];
       
       return output;
     }

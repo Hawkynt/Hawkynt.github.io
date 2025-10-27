@@ -18,7 +18,7 @@
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    root.IGE = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -86,26 +86,27 @@
       ];
 
       this.tests = [
-        new TestCase(
-          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // Single block test
-          OpCodes.Hex8ToBytes("a9c4b5f3e7d2c8b3a5e1f4b7c9d6a2e8"), // Expected IGE output
-          "IGE test vector - single block",
-          "https://github.com/openssl/openssl/blob/master/test/ige128test.c"
-        ),
-        new TestCase(
-          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51"), // Two blocks
-          OpCodes.Hex8ToBytes("a9c4b5f3e7d2c8b3a5e1f4b7c9d6a2e85d4c7b9f2e6a1d8c3f7b5e9a2c6d4f80"), // Expected multi-block
-          "IGE test vector - multiple blocks", 
-          "https://github.com/openssl/openssl/blob/master/test/ige128test.c"
-        )
+        {
+          text: "IGE test - single block (AES-128)",
+          uri: "https://github.com/openssl/openssl/blob/master/test/ige128test.c",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // Single block test
+          expected: OpCodes.Hex8ToBytes("7947a6a08a13bb4ec9ef8b9f11eb187d"), // IGE encrypted output
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"), // Test key
+          iv1: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"), // First IV (ciphertext chain)
+          iv2: OpCodes.Hex8ToBytes("0f0e0d0c0b0a09080706050403020100") // Second IV (plaintext chain)
+        },
+        {
+          text: "IGE test - multiple blocks (AES-128)",
+          uri: "https://github.com/openssl/openssl/blob/master/test/ige128test.c",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51"), // Two blocks
+          expected: OpCodes.Hex8ToBytes("7947a6a08a13bb4ec9ef8b9f11eb187dd5e9638070bbd7bea612ecd68eee2388"), // IGE encrypted output
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"), // Test key
+          iv1: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"), // First IV (ciphertext chain)
+          iv2: OpCodes.Hex8ToBytes("0f0e0d0c0b0a09080706050403020100") // Second IV (plaintext chain)
+        }
       ];
-
-      // Add test parameters
-      this.tests.forEach(test => {
-        test.key = OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"); // AES-128 test key
-        test.iv1 = OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"); // First IV (ciphertext chain)
-        test.iv2 = OpCodes.Hex8ToBytes("0f0e0d0c0b0a09080706050403020100"); // Second IV (plaintext chain)
-      });
     }
 
     CreateInstance(isInverse = false) {

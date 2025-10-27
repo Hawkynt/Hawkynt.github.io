@@ -117,19 +117,13 @@
 
   // Custom 32-bit rotation functions for RC6 (matches C# behavior)
   function rotLeft32Signed(value, positions) {
-    // Convert to unsigned, rotate, convert back to signed (matching C#)
-    const uValue = value >>> 0;
-    positions &= 31;
-    if (positions === 0) return value | 0;
-    return ((uValue << positions) | (uValue >>> (32 - positions))) | 0;
+    // Use OpCodes for rotation, convert back to signed to match C#
+    return OpCodes.RotL32(value >>> 0, positions) | 0;
   }
-  
+
   function rotRight32Signed(value, positions) {
-    // Convert to unsigned, rotate, convert back to signed (matching C#)
-    const uValue = value >>> 0;
-    positions &= 31;
-    if (positions === 0) return value | 0;
-    return ((uValue >>> positions) | (uValue << (32 - positions))) | 0;
+    // Use OpCodes for rotation, convert back to signed to match C#
+    return OpCodes.RotR32(value >>> 0, positions) | 0;
   }
 
   // Instance class - handles the actual encryption/decryption

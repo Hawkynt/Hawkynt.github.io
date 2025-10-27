@@ -118,11 +118,12 @@
 
         // Add length in bits as 64-bit little-endian
         const bitLength = msgLength * 8;
-        // Pack as 64-bit little-endian (low 32 bits first, then high 32 bits)
-        padding[padLength] = bitLength & 0xFF;
-        padding[padLength + 1] = (bitLength >>> 8) & 0xFF;
-        padding[padLength + 2] = (bitLength >>> 16) & 0xFF;
-        padding[padLength + 3] = (bitLength >>> 24) & 0xFF;
+        // Pack as 64-bit little-endian (low 32 bits first, then high 32 bits) - use OpCodes
+        const lengthBytes = OpCodes.Unpack32LE(bitLength);
+        padding[padLength] = lengthBytes[0];
+        padding[padLength + 1] = lengthBytes[1];
+        padding[padLength + 2] = lengthBytes[2];
+        padding[padLength + 3] = lengthBytes[3];
         // For practical message sizes, high 32 bits are always 0
         padding[padLength + 4] = 0;
         padding[padLength + 5] = 0;

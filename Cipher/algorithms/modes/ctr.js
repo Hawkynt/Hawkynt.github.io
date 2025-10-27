@@ -19,7 +19,7 @@
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    root.CTR = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -103,6 +103,7 @@
 
       // Add common test parameters
       this.tests.forEach(test => {
+        test.cipher = "AES";  // Use AES cipher for NIST test vectors
         test.key = OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"); // AES-128 test key
         test.iv = OpCodes.Hex8ToBytes("f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"); // Test nonce/IV
       });

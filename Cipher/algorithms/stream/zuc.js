@@ -27,7 +27,8 @@
       require('../../OpCodes')
     );
   } else {
-    factory(root.AlgorithmFramework, root.OpCodes);
+    // Browser/Worker global - assign as ZUC for consistency
+    root.ZUC = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;

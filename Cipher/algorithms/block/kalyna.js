@@ -20,7 +20,7 @@
       require('../../OpCodes')
     );
   } else {
-    factory(root.AlgorithmFramework, root.OpCodes);
+    root.Kalyna = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;

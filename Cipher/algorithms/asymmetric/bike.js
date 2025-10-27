@@ -13,12 +13,14 @@
 
 (function(global) {
   'use strict';
-  
+
   // Environment detection and dependency loading
   if (typeof require !== 'undefined') {
-    if (!global.OpCodes) require('../../OpCodes.js');
-    if (!global.AlgorithmFramework) require('../../AlgorithmFramework.js');
+    if (!global.OpCodes) global.OpCodes = require('../../OpCodes.js');
+    if (!global.AlgorithmFramework) global.AlgorithmFramework = require('../../AlgorithmFramework.js');
   }
+
+  const OpCodes = global.OpCodes;
   
   // Educational BIKE parameter sets
   const BIKE_PARAMS = {
@@ -54,7 +56,7 @@
         for (let j = 0; j < this.input.length; j++) {
           // Simulate bit-flipping operations characteristic of BIKE
           value ^= OpCodes.RotL8(this.input[j], (i + j + 2) % 8);
-          value = (value + ((this.input[j] >> (j % 4)) & 0xF)) & 0xFF;
+          value = (value + (OpCodes.Shr8(this.input[j], j % 4) & 0xF)) & 0xFF;
         }
         // Mix with BIKE-style constants
         value ^= (i * 91 + 137) % 256;
@@ -99,18 +101,18 @@
       
       // Educational test vectors
       this.tests = [
-        new global.AlgorithmFramework.TestCase(
-          OpCodes.Hex8ToBytes('0123456789abcdef'),
-          OpCodes.Hex8ToBytes('d9657015be58f3f9'),
-          'BIKE educational test vector 1',
-          'https://bikesuite.org/'
-        ),
-        new global.AlgorithmFramework.TestCase(
-          OpCodes.Hex8ToBytes('fedcba9876543210'),
-          OpCodes.Hex8ToBytes('f9266809aab89a2a'),
-          'BIKE educational test vector 2',
-          'Educational implementation'
-        )
+        {
+          text: 'BIKE educational test vector 1',
+          uri: 'https://bikesuite.org/',
+          input: OpCodes.Hex8ToBytes('0123456789abcdef'),
+          expected: OpCodes.Hex8ToBytes('d9657015be58f3f9')
+        },
+        {
+          text: 'BIKE educational test vector 2',
+          uri: 'Educational implementation',
+          input: OpCodes.Hex8ToBytes('fedcba9876543210'),
+          expected: OpCodes.Hex8ToBytes('f9266809aab89a2a')
+        }
       ];
     }
     

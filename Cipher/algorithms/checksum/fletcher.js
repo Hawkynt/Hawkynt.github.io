@@ -275,9 +275,9 @@
           result = [(this.sum2 << 4) | this.sum1];
           break;
 
-        case 2: // Fletcher-16
+        case 2: // Fletcher-16 - use OpCodes for byte extraction
           const checksum16 = ((this.sum2 << 8) | this.sum1) >>> 0;
-          result = [(checksum16 >>> 8) & 0xFF, checksum16 & 0xFF];
+          result = OpCodes.Unpack16BE(checksum16);
           break;
 
         case 4: // Fletcher-32  
@@ -285,13 +285,10 @@
           break;
 
         case 8: // Fletcher-64
-          // Handle 64-bit result as two 32-bit parts
-          const high = this.sum2 >>> 0;
-          const low = this.sum1 >>> 0;
-          result = [
-            (high >>> 24) & 0xFF, (high >>> 16) & 0xFF, (high >>> 8) & 0xFF, high & 0xFF,
-            (low >>> 24) & 0xFF, (low >>> 16) & 0xFF, (low >>> 8) & 0xFF, low & 0xFF
-          ];
+          // Handle 64-bit result as two 32-bit parts - use OpCodes
+          const highBytes = OpCodes.Unpack32BE(this.sum2 >>> 0);
+          const lowBytes = OpCodes.Unpack32BE(this.sum1 >>> 0);
+          result = [...highBytes, ...lowBytes];
           break;
 
         default:

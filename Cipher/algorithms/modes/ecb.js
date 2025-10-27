@@ -19,7 +19,7 @@
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    root.ECB = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -84,24 +84,23 @@
       ];
 
       this.tests = [
-        new TestCase(
-          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // Plain block
-          OpCodes.Hex8ToBytes("3ad77bb40d7a3660a89ecaf32466ef97"), // Expected with AES-128
-          "AES-128 ECB test vector",
-          "NIST SP 800-38A"
-        ),
-        new TestCase(
-          OpCodes.Hex8ToBytes("ae2d8a571e03ac9c9eb76fac45af8e51"), // Second block
-          OpCodes.Hex8ToBytes("f5d3d58503b9699de785895a96fdbaaf"), // Expected with same key
-          "AES-128 ECB second block",
-          "NIST SP 800-38A"
-        )
+        {
+          text: "AES-128 ECB test vector",
+          uri: "NIST SP 800-38A",
+          input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+          cipher: "AES",
+          expected: OpCodes.Hex8ToBytes("3ad77bb40d7a3660a89ecaf32466ef97")
+        },
+        {
+          text: "AES-128 ECB second block",
+          uri: "NIST SP 800-38A",
+          input: OpCodes.Hex8ToBytes("ae2d8a571e03ac9c9eb76fac45af8e51"),
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+          cipher: "AES",
+          expected: OpCodes.Hex8ToBytes("f5d3d58503b9699de785895a96fdbaaf")
+        }
       ];
-
-      // Add key parameter for tests
-      this.tests.forEach(test => {
-        test.key = OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"); // AES-128 test key
-      });
     }
 
     CreateInstance(isInverse = false) {
@@ -152,23 +151,14 @@
       const output = [];
 
       // Process each block independently
+      // ECB applies the block cipher to each block separately
       for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
         const block = this.inputBuffer.slice(i, i + blockSize);
 
-        let processedBlock;
-        if (this.isInverse) {
-          // Decrypt: Apply block cipher decryption
-          const decryptCipher = this.blockCipher.algorithm.CreateInstance(true);
-          decryptCipher.key = this.blockCipher.key;
-          decryptCipher.Feed(block);
-          processedBlock = decryptCipher.Result();
-        } else {
-          // Encrypt: Apply block cipher encryption
-          const encryptCipher = this.blockCipher.algorithm.CreateInstance(false);
-          encryptCipher.key = this.blockCipher.key;
-          encryptCipher.Feed(block);
-          processedBlock = encryptCipher.Result();
-        }
+        // Use the provided block cipher directly
+        // The cipher should already be configured for encryption or decryption
+        this.blockCipher.Feed(block);
+        const processedBlock = this.blockCipher.Result();
 
         output.push(...processedBlock);
       }

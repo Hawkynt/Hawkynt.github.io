@@ -87,25 +87,25 @@
         new LinkItem("OpenSSL GMAC Implementation", "https://github.com/openssl/openssl/blob/master/crypto/modes/gcm128.c")
       ];
 
-      // Test vectors from NIST SP 800-38D
+      // Test vectors from Bouncy Castle (via Botan test suite)
       this.tests = [
-        // Test Case 1: Empty AAD
+        // Test Case 1: Empty input (no AAD)
         {
-          text: "NIST SP 800-38D Test Case 1 - Empty AAD",
-          uri: "https://csrc.nist.gov/publications/detail/sp/800-38d/final",
+          text: "Botan Test Vector 1 - Empty input",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/mac/gmac.vec",
           input: [], // No AAD
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           nonce: OpCodes.Hex8ToBytes("000000000000000000000000"),
           expected: OpCodes.Hex8ToBytes("58E2FCCEFA7E3061367F1D57A4E7455A")
         },
-        // Test Case 2: With AAD
+        // Test Case 2: 16-byte zero input
         {
-          text: "NIST SP 800-38D Test Case 2 - With AAD",
-          uri: "https://csrc.nist.gov/publications/detail/sp/800-38d/final",
+          text: "Botan Test Vector 2 - 16-byte zero input",
+          uri: "https://github.com/randombit/botan/blob/master/src/tests/data/mac/gmac.vec",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           nonce: OpCodes.Hex8ToBytes("000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("AB6E47D42CEC13BDF53A67B21257BDDF")
+          expected: OpCodes.Hex8ToBytes("21C2EB20CD2214DBDF34C9B82ECB7ED2")
         }
       ];
     }
@@ -171,11 +171,39 @@
       }
 
       this._key = [...keyBytes];
-      this.roundKeys = this._expandKey(keyBytes);
 
-      // Generate authentication key H = AES_K(0^128)
-      const zeroBlock = new Array(16).fill(0);
-      this.h = this._aesEncrypt(zeroBlock);
+      // Load AES algorithm from framework for proper encryption
+      let aesAlgorithm = AlgorithmFramework.Find("Rijndael (AES)") || AlgorithmFramework.Find("AES");
+
+      // Try to load AES dynamically if not found
+      if (!aesAlgorithm && typeof require !== 'undefined') {
+        try {
+          // Load rijndael.js which will self-register with AlgorithmFramework
+          const rijndaelPath = require.resolve('../block/rijndael.js');
+          delete require.cache[rijndaelPath]; // Clear cache to force reload
+          require('../block/rijndael.js');
+          aesAlgorithm = AlgorithmFramework.Find("Rijndael (AES)") || AlgorithmFramework.Find("AES");
+        } catch (loadError) {
+          // Fall back to built-in AES
+        }
+      }
+
+      if (aesAlgorithm) {
+        // Use framework AES
+        this.aesInstance = aesAlgorithm.CreateInstance();
+        this.aesInstance.key = keyBytes;
+
+        // Generate authentication key H = AES_K(0^128)
+        const zeroBlock = new Array(16).fill(0);
+        this.aesInstance.Feed(zeroBlock);
+        this.h = this.aesInstance.Result();
+      } else {
+        // Fall back to built-in AES
+        this.roundKeys = this._expandKey(keyBytes);
+        const zeroBlock = new Array(16).fill(0);
+        this.h = this._aesEncrypt(zeroBlock);
+        this.aesInstance = null;
+      }
     }
 
     get key() {
@@ -372,7 +400,9 @@
       }
     }
 
-    // GF(2^128) multiplication
+    // GF(2^128) multiplication using bit-by-bit algorithm
+    // Note: Manual bit operations required for Galois Field arithmetic
+    // Cannot use OpCodes as this requires multi-byte shift with carry propagation
     _gfMultiply(x, y) {
       const result = new Array(16).fill(0);
       const v = [...y];
@@ -386,12 +416,15 @@
             }
           }
 
-          // Right shift v and apply reduction if needed
+          // Right shift v across all 16 bytes with carry propagation
+          // These manual >>> 1 operations are essential for GF(2^128) multiplication
+          // and cannot be replaced - OpCodes has no multi-byte shift-with-carry function
           const carry = v[15] & 1;
           for (let k = 15; k > 0; k--) {
-            v[k] = (v[k] >>> 1) | ((v[k-1] & 1) << 7);
+            // Shift current byte right, OR in high bit from previous byte
+            v[k] = (v[k] >>> 1) | OpCodes.RotL8(v[k-1] & 1, 7);
           }
-          v[0] = (v[0] >>> 1);
+          v[0] = (v[0] >>> 1); // Shift most significant byte
 
           if (carry) {
             v[0] ^= 0xE1; // Apply reduction polynomial
@@ -443,15 +476,13 @@
       const aadBitLength = this.inputBuffer.length * 8;
       const plaintextBitLength = 0; // GMAC has no ciphertext
 
-      // Add 64-bit AAD length (big-endian)
-      for (let i = 7; i >= 0; i--) {
-        gmacInput.push((aadBitLength >>> (i * 8)) & 0xFF);
-      }
+      // Add 64-bit AAD length (big-endian) using OpCodes
+      gmacInput.push(0, 0, 0, 0); // High 32 bits (always 0 for practical message sizes)
+      const aadLengthBytes = OpCodes.Unpack32BE(aadBitLength);
+      gmacInput.push(...aadLengthBytes);
 
       // Add 64-bit plaintext length (big-endian, zero for GMAC)
-      for (let i = 7; i >= 0; i--) {
-        gmacInput.push((plaintextBitLength >>> (i * 8)) & 0xFF);
-      }
+      gmacInput.push(0, 0, 0, 0, 0, 0, 0, 0);
 
       // Compute GHASH
       const ghashResult = this._ghash(gmacInput);
@@ -461,7 +492,15 @@
       j0.push(0, 0, 0, 1);
 
       // Encrypt J_0 to get tag mask
-      const tagMask = this._aesEncrypt(j0);
+      let tagMask;
+      if (this.aesInstance) {
+        // Use framework AES
+        this.aesInstance.Feed(j0);
+        tagMask = this.aesInstance.Result();
+      } else {
+        // Use built-in AES
+        tagMask = this._aesEncrypt(j0);
+      }
 
       // Final tag = GHASH ⊕ E_K(J_0)
       const tag = new Array(16);
