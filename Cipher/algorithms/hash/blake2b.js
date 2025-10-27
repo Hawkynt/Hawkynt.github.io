@@ -435,5 +435,5 @@
 
   // ===== EXPORTS =====
 
-  return { BLAKE2bAlgorithm, BLAKE2bAlgorithmInstance };
+  return { BLAKE2bAlgorithm, BLAKE2bAlgorithmInstance, Blake2bHasher };
 }));

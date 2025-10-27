@@ -511,17 +511,15 @@
 
       // Helper functions
       const IntsTo32bits = (b, offset) => {
-        return ((b[offset] & 0xFF) << 24) | 
-               ((b[offset + 1] & 0xFF) << 16) | 
-               ((b[offset + 2] & 0xFF) << 8) | 
-               (b[offset + 3] & 0xFF);
+        return OpCodes.Pack32BE(b[offset], b[offset + 1], b[offset + 2], b[offset + 3]);
       };
 
       const Bits32ToInts = (inData, b, offset) => {
-        b[offset + 3] = inData & 0xFF;
-        b[offset + 2] = (inData >>> 8) & 0xFF;
-        b[offset + 1] = (inData >>> 16) & 0xFF;
-        b[offset] = (inData >>> 24) & 0xFF;
+        const bytes = OpCodes.Unpack32BE(inData);
+        b[offset] = bytes[0];
+        b[offset + 1] = bytes[1];
+        b[offset + 2] = bytes[2];
+        b[offset + 3] = bytes[3];
       };
 
       // Key schedule algorithm from Bouncy Castle

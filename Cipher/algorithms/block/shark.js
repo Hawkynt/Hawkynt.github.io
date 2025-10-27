@@ -18,7 +18,7 @@
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    root.SHARK = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -113,7 +113,7 @@
       this.subCategory = "Block Cipher";
       this.securityStatus = SecurityStatus.EXPERIMENTAL; // Historical cipher, limited analysis
       this.complexity = ComplexityType.ADVANCED;
-      this.country = CountryCode.BELGIUM;
+      this.country = CountryCode.BE;
 
       this.SupportedKeySizes = [new KeySize(16, 16, 1)]; // 128-bit key only
       this.SupportedBlockSizes = [new KeySize(8, 8, 1)]; // 64-bit block only
@@ -136,9 +136,36 @@
         new Vulnerability("Historical Design", "SHARK predates AES and has received less cryptanalysis than modern standards.")
       ];
 
-      // No official test vectors available from NIST or ISO
+      // Test vectors from Crypto++ TestData/sharkval.dat
       this.tests = [
-        // Would include test vectors if available
+        {
+          text: "Crypto++ Test Vector #1 (Zero Key/Plaintext)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/sharkval.dat",
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          expected: OpCodes.Hex8ToBytes("214BCF4E7716420A")
+        },
+        {
+          text: "Crypto++ Test Vector #2 (Sequential Key)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/sharkval.dat",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          expected: OpCodes.Hex8ToBytes("C76C696289898137")
+        },
+        {
+          text: "Crypto++ Test Vector #3 (Round-trip)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/sharkval.dat",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          input: OpCodes.Hex8ToBytes("C76C696289898137"),
+          expected: OpCodes.Hex8ToBytes("077A4A59FAEEEA4D")
+        },
+        {
+          text: "Crypto++ Test Vector #4",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/sharkval.dat",
+          key: OpCodes.Hex8ToBytes("915F4619BE41B2516355A50110A9CE91"),
+          input: OpCodes.Hex8ToBytes("21A5DBEE154B8F6D"),
+          expected: OpCodes.Hex8ToBytes("6FF33B98F448E95A")
+        }
       ];
     }
 
@@ -230,37 +257,85 @@
     }
 
     /**
-     * SHARK round function (simplified)
-     * Full implementation would use precomputed cbox tables for efficiency
+     * GF(2^8) multiplication using polynomial 0xf5
+     * @param {number} a - First operand
+     * @param {number} b - Second operand
+     * @returns {number} Product in GF(2^8)
+     */
+    _gf256Multiply(a, b) {
+      let result = 0;
+      let temp = a;
+
+      for (let i = 0; i < 8; ++i) {
+        if ((b & 1) !== 0) {
+          result ^= temp;
+        }
+
+        const carry = temp & 0x80;
+        temp = OpCodes.ToByte(OpCodes.Shl8(temp, 1));
+
+        if (carry !== 0) {
+          temp ^= 0xf5; // Irreducible polynomial
+        }
+
+        b = OpCodes.Shr8(b, 1);
+      }
+
+      return OpCodes.ToByte(result);
+    }
+
+    /**
+     * SHARK Transform - MDS matrix multiplication over GF(2^8)
+     * Uses the inverse of matrix G from SHARK specification
+     * @param {Array} block - 8-byte block
+     * @returns {Array} Transformed block
+     */
+    _sharkTransform(block) {
+      // Inverse of matrix G (iG) from SHARK specification
+      const iG = [
+        [0xe7, 0x30, 0x90, 0x85, 0xd0, 0x4b, 0x91, 0x41],
+        [0x53, 0x95, 0x9b, 0xa5, 0x96, 0xbc, 0xa1, 0x68],
+        [0x02, 0x45, 0xf7, 0x65, 0x5c, 0x1f, 0xb6, 0x52],
+        [0xa2, 0xca, 0x22, 0x94, 0x44, 0x63, 0x2a, 0xa2],
+        [0xfc, 0x67, 0x8e, 0x10, 0x29, 0x75, 0x85, 0x71],
+        [0x24, 0x45, 0xa2, 0xcf, 0x2f, 0x22, 0xc1, 0x0e],
+        [0xa1, 0xf1, 0x71, 0x40, 0x91, 0x27, 0x18, 0xa5],
+        [0x56, 0xf4, 0xaf, 0x32, 0xd2, 0xa4, 0xdc, 0x71]
+      ];
+
+      const result = new Array(8).fill(0);
+
+      // Matrix multiplication over GF(2^8)
+      for (let i = 0; i < 8; ++i) {
+        for (let j = 0; j < 8; ++j) {
+          result[i] ^= this._gf256Multiply(iG[i][j], block[j]);
+        }
+      }
+
+      return result;
+    }
+
+    /**
+     * SHARK round function
      * @param {Array} block - 8-byte block
      * @param {Array} roundKey - 8-byte round key
      */
     _sharkRound(block, roundKey) {
       // XOR with round key
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 8; ++i) {
         block[i] ^= roundKey[i];
       }
 
       // Apply S-box
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 8; ++i) {
         block[i] = SBOX_ENC[block[i]];
       }
 
       // MDS matrix multiplication over GF(2^8)
-      // Simplified version using XOR combinations
-      // Full implementation would use precomputed cbox[8][256] tables
-      const temp = [...block];
-
-      // MDS matrix multiplication (simplified approximation)
-      // This is NOT the full SHARK MDS - just a placeholder
-      block[0] = temp[0] ^ temp[1] ^ temp[2] ^ temp[3];
-      block[1] = temp[1] ^ temp[2] ^ temp[3] ^ temp[4];
-      block[2] = temp[2] ^ temp[3] ^ temp[4] ^ temp[5];
-      block[3] = temp[3] ^ temp[4] ^ temp[5] ^ temp[6];
-      block[4] = temp[4] ^ temp[5] ^ temp[6] ^ temp[7];
-      block[5] = temp[5] ^ temp[6] ^ temp[7] ^ temp[0];
-      block[6] = temp[6] ^ temp[7] ^ temp[0] ^ temp[1];
-      block[7] = temp[7] ^ temp[0] ^ temp[1] ^ temp[2];
+      const transformed = this._sharkTransform(block);
+      for (let i = 0; i < 8; ++i) {
+        block[i] = transformed[i];
+      }
     }
 
     /**
@@ -270,26 +345,18 @@
      */
     _sharkRoundInv(block, roundKey) {
       // Inverse MDS matrix multiplication
-      const temp = [...block];
-
-      // This should be the inverse of the MDS matrix
-      // Simplified placeholder - NOT cryptographically accurate
-      block[0] = temp[0] ^ temp[5] ^ temp[6] ^ temp[7];
-      block[1] = temp[1] ^ temp[6] ^ temp[7] ^ temp[0];
-      block[2] = temp[2] ^ temp[7] ^ temp[0] ^ temp[1];
-      block[3] = temp[3] ^ temp[0] ^ temp[1] ^ temp[2];
-      block[4] = temp[4] ^ temp[1] ^ temp[2] ^ temp[3];
-      block[5] = temp[5] ^ temp[2] ^ temp[3] ^ temp[4];
-      block[6] = temp[6] ^ temp[3] ^ temp[4] ^ temp[5];
-      block[7] = temp[7] ^ temp[4] ^ temp[5] ^ temp[6];
+      const transformed = this._sharkTransform(block);
+      for (let i = 0; i < 8; ++i) {
+        block[i] = transformed[i];
+      }
 
       // Apply inverse S-box
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 8; ++i) {
         block[i] = SBOX_DEC[block[i]];
       }
 
       // XOR with round key
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 8; ++i) {
         block[i] ^= roundKey[i];
       }
     }

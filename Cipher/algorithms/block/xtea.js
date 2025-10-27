@@ -169,7 +169,7 @@
       for (let i = 0; i < this.CYCLES; i++) {
         this.sum0[i] = (j + this.keyWords[j & 3]) >>> 0;
         j = (j + this.DELTA) >>> 0;
-        this.sum1[i] = (j + this.keyWords[(j >>> 11) & 3]) >>> 0;
+        this.sum1[i] = (j + this.keyWords[OpCodes.Shr32(j, 11) & 3]) >>> 0;
       }
     }
 
@@ -222,8 +222,8 @@
 
       // XTEA encryption using precomputed sum arrays (Bouncy Castle method)
       for (let i = 0; i < this.CYCLES; i++) {
-        v0 = (v0 + ((((v1 << 4) ^ (v1 >>> 5)) + v1) ^ this.sum0[i])) >>> 0;
-        v1 = (v1 + ((((v0 << 4) ^ (v0 >>> 5)) + v0) ^ this.sum1[i])) >>> 0;
+        v0 = (v0 + (((OpCodes.Shl32(v1, 4) ^ OpCodes.Shr32(v1, 5)) + v1) ^ this.sum0[i])) >>> 0;
+        v1 = (v1 + (((OpCodes.Shl32(v0, 4) ^ OpCodes.Shr32(v0, 5)) + v0) ^ this.sum1[i])) >>> 0;
       }
 
       // Unpack to bytes (big-endian)
@@ -245,8 +245,8 @@
 
       // XTEA decryption using precomputed sum arrays (reverse order)
       for (let i = this.CYCLES - 1; i >= 0; i--) {
-        v1 = (v1 - ((((v0 << 4) ^ (v0 >>> 5)) + v0) ^ this.sum1[i])) >>> 0;
-        v0 = (v0 - ((((v1 << 4) ^ (v1 >>> 5)) + v1) ^ this.sum0[i])) >>> 0;
+        v1 = (v1 - (((OpCodes.Shl32(v0, 4) ^ OpCodes.Shr32(v0, 5)) + v0) ^ this.sum1[i])) >>> 0;
+        v0 = (v0 - (((OpCodes.Shl32(v1, 4) ^ OpCodes.Shr32(v1, 5)) + v1) ^ this.sum0[i])) >>> 0;
       }
 
       // Unpack to bytes (big-endian)

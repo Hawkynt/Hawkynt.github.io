@@ -16,7 +16,7 @@
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    root.SHA256 = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -171,9 +171,9 @@
       }
 
       for (let t = 16; t < 64; t++) {
-        const s0 = OpCodes.RotR32(W[t-15], 7) ^ OpCodes.RotR32(W[t-15], 18) ^ (W[t-15] >>> 3);
-        const s1 = OpCodes.RotR32(W[t-2], 17) ^ OpCodes.RotR32(W[t-2], 19) ^ (W[t-2] >>> 10);
-        W[t] = (W[t-16] + s0 + W[t-7] + s1) >>> 0; // >>> 0 ensures 32-bit unsigned
+        const s0 = OpCodes.RotR32(W[t-15], 7) ^ OpCodes.RotR32(W[t-15], 18) ^ OpCodes.Shr32(W[t-15], 3);
+        const s1 = OpCodes.RotR32(W[t-2], 17) ^ OpCodes.RotR32(W[t-2], 19) ^ OpCodes.Shr32(W[t-2], 10);
+        W[t] = OpCodes.ToDWord(W[t-16] + s0 + W[t-7] + s1);
       }
 
       // Initialize working variables
@@ -184,24 +184,24 @@
       for (let t = 0; t < 64; t++) {
         const S1 = OpCodes.RotR32(e, 6) ^ OpCodes.RotR32(e, 11) ^ OpCodes.RotR32(e, 25);
         const ch = (e & f) ^ (~e & g);
-        const temp1 = (h + S1 + ch + K[t] + W[t]) >>> 0;
+        const temp1 = OpCodes.ToDWord(h + S1 + ch + K[t] + W[t]);
         const S0 = OpCodes.RotR32(a, 2) ^ OpCodes.RotR32(a, 13) ^ OpCodes.RotR32(a, 22);
         const maj = (a & b) ^ (a & c) ^ (b & c);
-        const temp2 = (S0 + maj) >>> 0;
+        const temp2 = OpCodes.ToDWord(S0 + maj);
 
-        h = g; g = f; f = e; e = (d + temp1) >>> 0;
-        d = c; c = b; b = a; a = (temp1 + temp2) >>> 0;
+        h = g; g = f; f = e; e = OpCodes.ToDWord(d + temp1);
+        d = c; c = b; b = a; a = OpCodes.ToDWord(temp1 + temp2);
       }
 
       // Add working variables to hash value
-      this._h[0] = (this._h[0] + a) >>> 0;
-      this._h[1] = (this._h[1] + b) >>> 0;
-      this._h[2] = (this._h[2] + c) >>> 0;
-      this._h[3] = (this._h[3] + d) >>> 0;
-      this._h[4] = (this._h[4] + e) >>> 0;
-      this._h[5] = (this._h[5] + f) >>> 0;
-      this._h[6] = (this._h[6] + g) >>> 0;
-      this._h[7] = (this._h[7] + h) >>> 0;
+      this._h[0] = OpCodes.ToDWord(this._h[0] + a);
+      this._h[1] = OpCodes.ToDWord(this._h[1] + b);
+      this._h[2] = OpCodes.ToDWord(this._h[2] + c);
+      this._h[3] = OpCodes.ToDWord(this._h[3] + d);
+      this._h[4] = OpCodes.ToDWord(this._h[4] + e);
+      this._h[5] = OpCodes.ToDWord(this._h[5] + f);
+      this._h[6] = OpCodes.ToDWord(this._h[6] + g);
+      this._h[7] = OpCodes.ToDWord(this._h[7] + h);
     }
 
     /**
@@ -258,11 +258,12 @@
       const lengthBits = this._length * 8;
       // High 32 bits (for messages under 2^32 bits, this is 0)
       this._buffer[56] = 0; this._buffer[57] = 0; this._buffer[58] = 0; this._buffer[59] = 0;
-      // Low 32 bits
-      this._buffer[60] = (lengthBits >>> 24) & 0xFF;
-      this._buffer[61] = (lengthBits >>> 16) & 0xFF;
-      this._buffer[62] = (lengthBits >>> 8) & 0xFF;
-      this._buffer[63] = lengthBits & 0xFF;
+      // Low 32 bits - use OpCodes for byte extraction
+      const lengthBytes = OpCodes.Unpack32BE(lengthBits);
+      this._buffer[60] = lengthBytes[0];
+      this._buffer[61] = lengthBytes[1];
+      this._buffer[62] = lengthBytes[2];
+      this._buffer[63] = lengthBytes[3];
 
       // Process final block
       this._processBlock(this._buffer);

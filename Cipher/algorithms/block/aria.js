@@ -9,8 +9,9 @@
       require('../../OpCodes')
     );
   } else {
-    // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    // Browser/Worker global - assign exports to global scope
+    const exports = factory(root.AlgorithmFramework, root.OpCodes);
+    if (exports) Object.assign(root, exports);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;

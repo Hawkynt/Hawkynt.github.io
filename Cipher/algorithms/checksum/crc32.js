@@ -19,7 +19,7 @@
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    root.CRC32 = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -106,7 +106,7 @@
           polynomial: 0x04C11DB7,
           initialValue: 0xFFFFFFFF,
           inputReflected: true,
-          resultReflected: false,
+          resultReflected: true,
           finalXor: 0xFFFFFFFF,
           tests: [
             new TestCase(OpCodes.AnsiToBytes(""), OpCodes.Hex8ToBytes("00000000"), "Empty string", "https://reveng.sourceforge.io/crc-catalogue/"),

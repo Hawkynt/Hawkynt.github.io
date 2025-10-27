@@ -7,18 +7,31 @@
  * (c)2006-2025 Hawkynt
  */
 
-// Load AlgorithmFramework (REQUIRED)
-if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
-}
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
+  'use strict';
 
-// Load OpCodes for cryptographic operations (REQUIRED)
-if (!global.OpCodes && typeof require !== 'undefined') {
-  global.OpCodes = require('../../OpCodes.js');
-}
+  if (!AlgorithmFramework) throw new Error('AlgorithmFramework dependency is required');
+  if (!OpCodes) throw new Error('OpCodes dependency is required');
 
-const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-        AeadAlgorithm, IAeadInstance, LinkItem } = AlgorithmFramework;
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          AeadAlgorithm, IAeadInstance, LinkItem } = AlgorithmFramework;
 
 // Saturnin Round Constants for different domain separators
 const SATURNIN_RC = Object.freeze([
@@ -886,6 +899,13 @@ class SaturninShortInstance extends IAeadInstance {
   }
 }
 
-// Register algorithms
-RegisterAlgorithm(new SaturninCTRCascadeAlgorithm());
-RegisterAlgorithm(new SaturninShortAlgorithm());
+  // Register algorithms
+  RegisterAlgorithm(new SaturninCTRCascadeAlgorithm());
+  RegisterAlgorithm(new SaturninShortAlgorithm());
+
+  // Return both algorithm classes
+  return {
+    SaturninCTRCascadeAlgorithm,
+    SaturninShortAlgorithm
+  };
+}));

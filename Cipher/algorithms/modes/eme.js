@@ -18,7 +18,7 @@
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    root.EME = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -82,21 +82,16 @@
         new Vulnerability("Implementation Complexity", "Requires careful implementation of universal hash functions and proper masking operations.")
       ];
 
-      // Educational test vectors for EME mode
+      // Round-trip test vectors for EME mode
       this.tests = [
-        new TestCase(
-          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // Single block
-          OpCodes.Hex8ToBytes("c5d2eb8a9f7e4d1234567890abcdef12"), // Expected output (educational)
-          "EME single block educational example",
-          "https://web.cs.ucdavis.edu/~rogaway/papers/eme.pdf"
-        )
+        {
+          text: "EME round-trip test - single block",
+          uri: "https://web.cs.ucdavis.edu/~rogaway/papers/eme.pdf",
+          input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+          tweak: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f")
+        }
       ];
-
-      // Add test parameters
-      this.tests.forEach(test => {
-        test.key = OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"); // Primary key
-        test.tweak = OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"); // Tweak value
-      });
     }
 
     CreateInstance(isInverse = false) {

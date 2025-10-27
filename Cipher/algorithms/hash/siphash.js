@@ -14,12 +14,12 @@
   const SipHash = {
     name: "SipHash-2-4",
     description: "Fast cryptographically secure pseudorandom function designed for hash tables and data structures requiring collision resistance.",
-    inventor: "Jean-Philippe Aumasson, Daniel J. Bernstein", 
+    inventor: "Jean-Philippe Aumasson, Daniel J. Bernstein",
     year: 2012,
-    country: "Switzerland/USA",
+    country: global.AlgorithmFramework ? global.AlgorithmFramework.CountryCode.INTL : "Switzerland/USA",
     category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.HASH : "hash",
     subCategory: "MAC/PRF",
-    securityStatus: null, // Cryptographically secure PRF - cannot claim "secure" per guidelines
+    securityStatus: global.AlgorithmFramework ? global.AlgorithmFramework.SecurityStatus.EDUCATIONAL : null, // Cryptographically secure PRF
     
     documentation: [
       {text: "SipHash Paper", uri: "https://cr.yp.to/siphash/siphash-20120918.pdf"},
@@ -90,8 +90,8 @@
     
     // 64-bit operations using 32-bit arithmetic
     add64: function(a, b) {
-      const low = (a[0] + b[0]) >>> 0;
-      const high = (a[1] + b[1] + (low < a[0] ? 1 : 0)) >>> 0;
+      const low = OpCodes.ToDWord(a[0] + b[0]);
+      const high = OpCodes.ToDWord(a[1] + b[1] + (low < a[0] ? 1 : 0));
       return [low, high];
     },
     
@@ -102,18 +102,18 @@
     rotl64: function(val, positions) {
       const [low, high] = val;
       positions %= 64;
-      
+
       if (positions === 0) return [low, high];
       if (positions === 32) return [high, low];
-      
+
       if (positions < 32) {
-        const newHigh = ((high << positions) | (low >>> (32 - positions))) >>> 0;
-        const newLow = ((low << positions) | (high >>> (32 - positions))) >>> 0;
+        const newHigh = OpCodes.ToDWord((high << positions) | OpCodes.Shr32(low, 32 - positions));
+        const newLow = OpCodes.ToDWord((low << positions) | OpCodes.Shr32(high, 32 - positions));
         return [newLow, newHigh];
       } else {
         positions -= 32;
-        const newHigh = ((low << positions) | (high >>> (32 - positions))) >>> 0;
-        const newLow = ((high << positions) | (low >>> (32 - positions))) >>> 0;
+        const newHigh = OpCodes.ToDWord((low << positions) | OpCodes.Shr32(high, 32 - positions));
+        const newLow = OpCodes.ToDWord((high << positions) | OpCodes.Shr32(low, 32 - positions));
         return [newLow, newHigh];
       }
     },

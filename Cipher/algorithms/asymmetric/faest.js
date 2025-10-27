@@ -13,15 +13,17 @@
 
 (function(global) {
   'use strict';
-  
+
   // Environment detection and dependency loading
   if (typeof require !== 'undefined') {
-    if (!global.OpCodes) require('../../OpCodes.js');
-    if (!global.AlgorithmFramework) require('../../AlgorithmFramework.js');
+    if (!global.OpCodes) global.OpCodes = require('../../OpCodes.js');
+    if (!global.AlgorithmFramework) global.AlgorithmFramework = require('../../AlgorithmFramework.js');
   }
 
+  const OpCodes = global.OpCodes;
+
   // Import required enums from AlgorithmFramework
-  const { CategoryType, SecurityStatus, ComplexityType } = global.AlgorithmFramework;
+  const { CategoryType, SecurityStatus, ComplexityType, CountryCode } = global.AlgorithmFramework;
   
   // Educational FAEST parameter sets
   const FAEST_PARAMS = {
@@ -58,8 +60,8 @@
         for (let j = 0; j < this.input.length; j++) {
           // Simulate AES-like operations
           value ^= OpCodes.RotL8(this.input[j], (i + j + 3) % 8);
-          value = (value + ((this.input[j] << (j % 3)) & 0xFF)) & 0xFF;
-          value ^= ((this.input[j] >> (j % 5)) & 0x1F);
+          value = (value + (OpCodes.Shl8(this.input[j], j % 3) & 0xFF)) & 0xFF;
+          value ^= (OpCodes.Shr8(this.input[j], j % 5) & 0x1F);
         }
         // Mix with FAEST-style constants
         value ^= (i * 113 + 157) % 256;
@@ -82,7 +84,7 @@
       this.subCategory = 'Digital Signature';
       this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.EXPERT;
-      this.country = "INTL";
+      this.country = CountryCode.INTL;
       
       this.documentation = [
         new global.AlgorithmFramework.LinkItem('FAEST Official Site', 'https://faest.info/'),
@@ -99,18 +101,18 @@
       
       // Educational test vectors
       this.tests = [
-        new global.AlgorithmFramework.TestCase(
-          OpCodes.Hex8ToBytes('000102030405060708090a0b0c0d0e0f'),
-          OpCodes.Hex8ToBytes('457584cd2a930aca'),
-          'FAEST educational test vector 1',
-          'https://faest.info/'
-        ),
-        new global.AlgorithmFramework.TestCase(
-          OpCodes.Hex8ToBytes('ffeeddccbbaa99887766554433221100'),
-          OpCodes.Hex8ToBytes('a2a80c86d633304a'),
-          'FAEST educational test vector 2',
-          'Educational implementation'
-        )
+        {
+          text: 'FAEST educational test vector 1',
+          uri: 'https://faest.info/',
+          input: OpCodes.Hex8ToBytes('000102030405060708090a0b0c0d0e0f'),
+          expected: OpCodes.Hex8ToBytes('457584cd2a930aca')
+        },
+        {
+          text: 'FAEST educational test vector 2',
+          uri: 'Educational implementation',
+          input: OpCodes.Hex8ToBytes('ffeeddccbbaa99887766554433221100'),
+          expected: OpCodes.Hex8ToBytes('a2a80c86d633304a')
+        }
       ];
     }
     

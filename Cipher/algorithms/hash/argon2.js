@@ -9,9 +9,11 @@
   
   // Environment detection and dependency loading
   if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+    global.OpCodes = require('../../OpCodes.js');
   }
-  
+
+  const OpCodes = global.OpCodes;
+
   const Argon2 = {
     name: "Argon2",
     description: "Memory-hard password hashing function and winner of the Password Hashing Competition. Designed to resist GPU and ASIC attacks through high memory usage.",

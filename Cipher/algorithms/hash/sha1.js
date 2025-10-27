@@ -210,11 +210,12 @@
         const lengthBits = this._length * 8;
         // High 32 bits (for messages under 2^32 bits, this is 0)
         this._buffer[56] = 0; this._buffer[57] = 0; this._buffer[58] = 0; this._buffer[59] = 0;
-        // Low 32 bits
-        this._buffer[60] = (lengthBits >>> 24) & 0xFF;
-        this._buffer[61] = (lengthBits >>> 16) & 0xFF;
-        this._buffer[62] = (lengthBits >>> 8) & 0xFF;
-        this._buffer[63] = lengthBits & 0xFF;
+        // Low 32 bits - use OpCodes for byte extraction
+        const lengthBytes = OpCodes.Unpack32BE(lengthBits);
+        this._buffer[60] = lengthBytes[0];
+        this._buffer[61] = lengthBytes[1];
+        this._buffer[62] = lengthBytes[2];
+        this._buffer[63] = lengthBytes[3];
 
         // Process final block
         this._processBlock(this._buffer);

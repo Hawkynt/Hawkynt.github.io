@@ -73,6 +73,13 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   ]);
 
   // BLAKE constants (derived from fractional parts of pi)
+  // For 32-bit BLAKE
+  const B32C = new Uint32Array([
+    0x243f6a88, 0x85a308d3, 0x13198a2e, 0x03707344, 0xa4093822, 0x299f31d0, 0x082efa98, 0xec4e6c89,
+    0x452821e6, 0x38d01377, 0xbe5466cf, 0x34e90c6c, 0xc0ac29b7, 0xc97c50dd, 0x3f84d5b5, 0xb5470917
+  ]);
+
+  // For 64-bit BLAKE (stored as [HIGH, LOW] pairs matching noble-hashes B64C format)
   const B64C = new Uint32Array([
     0x243f6a88, 0x85a308d3, 0x13198a2e, 0x03707344, 0xa4093822, 0x299f31d0, 0x082efa98, 0xec4e6c89,
     0x452821e6, 0x38d01377, 0xbe5466cf, 0x34e90c6c, 0xc0ac29b7, 0xc97c50dd, 0x3f84d5b5, 0xb5470917,
@@ -80,11 +87,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     0xba7c9045, 0xf12c7f99, 0x24a19947, 0xb3916cf7, 0x0801f2e2, 0x858efc16, 0x636920d8, 0x71574e69
   ]);
 
-  const B32C = B64C.slice(0, 16); // First half for 32-bit variants
-
   // Initial values (borrowed from SHA-2)
   const SHA224_IV = new Uint32Array([0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939, 0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4]);
   const SHA256_IV = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
+  // SHA-2 IVs for BLAKE-384 and BLAKE-512
+  // CRITICAL: Stored as [HIGH, LOW] pairs matching noble-hashes format!
+  // noble-hashes uses BACKWARD variable naming: v0l=IV[0] (HIGH), v0h=IV[1] (LOW)
   const SHA384_IV = new Uint32Array([
     0xcbbb9d5d, 0xc1059ed8, 0x629a292a, 0x367cd507, 0x9159015a, 0x3070dd17, 0x152fecd8, 0xf70e5939,
     0x67332667, 0xffc00b31, 0x8eb44a87, 0x68581511, 0xdb0c2e0d, 0x64f98fa7, 0x47b5481d, 0xbefa4fa4
@@ -111,29 +119,124 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     return { a, b, c, d };
   }
 
-  // 64-bit arithmetic helpers
-  function add64(ah, al, bh, bl) {
-    const l = (al + bl) >>> 0;
-    const h = (ah + bh + (l < al ? 1 : 0)) >>> 0;
-    return { h, l };
+  // G1b function matching noble-hashes (first half of mixing function)
+  // CRITICAL: noble-hashes uses BACKWARD variable naming!
+  //   Variables ending in 'l' actually contain HIGH 32 bits
+  //   Variables ending in 'h' actually contain LOW 32 bits
+  // Storage: v[i*2] = HIGH, v[i*2+1] = LOW
+  // So: Al = v[2*a+1] = LOW word, Ah = v[2*a] = HIGH word
+  function G1b_64(v, a, b, c, d, msg, k, TBL) {
+    const Xpos = 2 * BSIGMA[k];
+    const Xl = msg[Xpos + 1] ^ TBL[k * 2 + 1];  // LOW ^ LOW
+    const Xh = msg[Xpos] ^ TBL[k * 2];          // HIGH ^ HIGH
+
+    // Load values: Al gets v[2*a+1] (LOW), Ah gets v[2*a] (HIGH)
+    let Al = v[2 * a + 1], Ah = v[2 * a];
+    let Bl = v[2 * b + 1], Bh = v[2 * b];
+    let Cl = v[2 * c + 1], Ch = v[2 * c];
+    let Dl = v[2 * d + 1], Dh = v[2 * d];
+
+    // v[a] = v[a] + v[b] + x
+    let ll = OpCodes.Add3L64(Al, Bl, Xl);
+    Ah = OpCodes.Add3H64(ll, Ah, Bh, Xh) >>> 0;
+    Al = (ll | 0) >>> 0;
+
+    // v[d] = rotr(v[d] ^ v[a], 32) - swaps high/low
+    const xorD1 = OpCodes.Xor64_HL(Dh, Dl, Ah, Al);
+    Dh = xorD1.h;
+    Dl = xorD1.l;
+    const swap = OpCodes.Swap64_HL(Dh, Dl);
+    Dh = swap.h;
+    Dl = swap.l;
+
+    // v[c] = v[c] + v[d]
+    const addCD = OpCodes.Add64_HL(Ch, Cl, Dh, Dl);
+    Ch = addCD.h;
+    Cl = addCD.l;
+
+    // v[b] = rotr(v[b] ^ v[c], 25)
+    const xorB1 = OpCodes.Xor64_HL(Bh, Bl, Ch, Cl);
+    Bh = xorB1.h;
+    Bl = xorB1.l;
+    const rotB = OpCodes.RotR64_HL(Bh, Bl, 25);
+    Bh = rotB.h;
+    Bl = rotB.l;
+
+    // Write back
+    v[2 * a] = Ah;
+    v[2 * a + 1] = Al;
+    v[2 * b] = Bh;
+    v[2 * b + 1] = Bl;
+    v[2 * c] = Ch;
+    v[2 * c + 1] = Cl;
+    v[2 * d] = Dh;
+    v[2 * d + 1] = Dl;
   }
 
-  function rotr64(ah, al, n) {
-    if (n === 32) {
-      return { h: al, l: ah };
-    } else if (n < 32) {
-      return {
-        h: (ah >>> n) | (al << (32 - n)),
-        l: (al >>> n) | (ah << (32 - n))
-      };
-    } else {
-      n -= 32;
-      return {
-        h: (al >>> n) | (ah << (32 - n)),
-        l: (ah >>> n) | (al << (32 - n))
-      };
-    }
+  // G2b function matching noble-hashes (second half of mixing function)
+  function G2b_64(v, a, b, c, d, msg, k, TBL) {
+    const Xpos = 2 * BSIGMA[k];
+    const Xl = msg[Xpos + 1] ^ TBL[k * 2 + 1];  // LOW ^ LOW
+    const Xh = msg[Xpos] ^ TBL[k * 2];          // HIGH ^ HIGH
+
+    // Load values: Al=LOW, Ah=HIGH (backwards naming!)
+    let Al = v[2 * a + 1], Ah = v[2 * a];
+    let Bl = v[2 * b + 1], Bh = v[2 * b];
+    let Cl = v[2 * c + 1], Ch = v[2 * c];
+    let Dl = v[2 * d + 1], Dh = v[2 * d];
+
+    // v[a] = v[a] + v[b] + x
+    let ll = OpCodes.Add3L64(Al, Bl, Xl);
+    Ah = OpCodes.Add3H64(ll, Ah, Bh, Xh) >>> 0;
+    Al = (ll | 0) >>> 0;
+
+    // v[d] = rotr(v[d] ^ v[a], 16)
+    const xorD2 = OpCodes.Xor64_HL(Dh, Dl, Ah, Al);
+    Dh = xorD2.h;
+    Dl = xorD2.l;
+    const rotD = OpCodes.RotR64_HL(Dh, Dl, 16);
+    Dh = rotD.h;
+    Dl = rotD.l;
+
+    // v[c] = v[c] + v[d]
+    const addCD = OpCodes.Add64_HL(Ch, Cl, Dh, Dl);
+    Ch = addCD.h;
+    Cl = addCD.l;
+
+    // v[b] = rotr(v[b] ^ v[c], 11)
+    const xorB2 = OpCodes.Xor64_HL(Bh, Bl, Ch, Cl);
+    Bh = xorB2.h;
+    Bl = xorB2.l;
+    const rotB = OpCodes.RotR64_HL(Bh, Bl, 11);
+    Bh = rotB.h;
+    Bl = rotB.l;
+
+    // Write back
+    v[2 * a] = Ah;
+    v[2 * a + 1] = Al;
+    v[2 * b] = Bh;
+    v[2 * b + 1] = Bl;
+    v[2 * c] = Ch;
+    v[2 * c + 1] = Cl;
+    v[2 * d] = Dh;
+    v[2 * d + 1] = Dl;
   }
+
+  // Generate TBL512 matching noble-hashes pattern
+  function generateTBL512() {
+    const TBL = [];
+    for (let r = 0, k = 0; r < 16; r++, k += 16) {
+      for (let offset = 1; offset < 16; offset += 2) {
+        TBL.push(B64C[BSIGMA[k + offset] * 2 + 0]);      // HIGH of odd index
+        TBL.push(B64C[BSIGMA[k + offset] * 2 + 1]);      // LOW of odd index
+        TBL.push(B64C[BSIGMA[k + offset - 1] * 2 + 0]);  // HIGH of even index
+        TBL.push(B64C[BSIGMA[k + offset - 1] * 2 + 1]);  // LOW of even index
+      }
+    }
+    return TBL;
+  }
+
+  const TBL512 = generateTBL512();
 
   // Base BLAKE instance for all variants
   class BlakeInstance extends IHashFunctionInstance {
@@ -147,8 +250,9 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       this.buffer = new Array(blockSize).fill(0);
       this.bufferLength = 0;
       this.length = 0;
+      // Salt: 4 32-bit words for 32-bit, 8 32-bit words for 64-bit (representing 4 64-bit values)
       this.salt = new Array(is64bit ? 8 : 4).fill(0);
-      this.constants = (is64bit ? B64C : B32C).slice();
+      this.constants = (is64bit ? B64C.slice() : B32C.slice());
 
       // Initialize state with IV
       if (is64bit) {
@@ -180,7 +284,9 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     Result() {
       // Padding
       const totalLength = this.length + this.bufferLength;
-      const paddingLength = this.blockSize - 8 - 1; // Space for length flag and 8-byte length
+      // Length encoding size: 8 bytes for 32-bit variants, 16 bytes for 64-bit variants
+      const lengthFieldSize = this.is64bit ? 16 : 8;
+      const paddingLength = this.blockSize - lengthFieldSize - 1; // Space for length flag and length
 
       // Add end bit
       this.buffer[this.bufferLength] = 0x80;
@@ -204,29 +310,71 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       // Add length flag
       this.buffer[paddingLength] = this.lengthFlag;
 
-      // Add total length in bits (big-endian 64-bit)
+      // Add total length in bits (big-endian)
       const totalBits = totalLength * 8;
-      const view = new DataView(new ArrayBuffer(8));
-      // For JavaScript, we simulate 64-bit by splitting into high/low 32-bit parts
-      view.setUint32(0, Math.floor(totalBits / 0x100000000), false); // High 32 bits
-      view.setUint32(4, totalBits >>> 0, false); // Low 32 bits
 
-      for (let i = 0; i < 8; i++) {
-        this.buffer[this.blockSize - 8 + i] = view.getUint8(i);
+      if (this.is64bit) {
+        // 128-bit length encoding for BLAKE-384/512
+        const view = new DataView(new ArrayBuffer(16));
+        // For JavaScript, we can only handle up to 53-bit integers safely
+        // Store as 128-bit: [0, 0, 0, 0, high32, low32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        // Actually: upper 64 bits are 0, lower 64 bits contain the actual length
+        view.setUint32(8, Math.floor(totalBits / 0x100000000), false);  // High 32 bits of lower 64-bit
+        view.setUint32(12, OpCodes.ToUint32(totalBits), false);                      // Low 32 bits of lower 64-bit
+
+        for (let i = 0; i < 16; i++) {
+          this.buffer[this.blockSize - 16 + i] = view.getUint8(i);
+        }
+      } else {
+        // 64-bit length encoding for BLAKE-224/256
+        const view = new DataView(new ArrayBuffer(8));
+        view.setUint32(0, Math.floor(totalBits / 0x100000000), false); // High 32 bits
+        view.setUint32(4, OpCodes.ToUint32(totalBits), false);                      // Low 32 bits
+
+        for (let i = 0; i < 8; i++) {
+          this.buffer[this.blockSize - 8 + i] = view.getUint8(i);
+        }
       }
 
+      // Noble-hashes pattern: withLength is based on bufferLength BEFORE adding to length
+      const withLength = this.bufferLength !== 0;
       this.length += this.bufferLength;
-      this.compress(true);
+      this.compress(withLength);
 
       // Extract output
       const output = new Array(this.outputSize);
-      const outputWords = this.outputSize / 4;
-      for (let i = 0; i < outputWords; i++) {
-        const word = this.state[i];
-        output[i * 4] = (word >>> 24) & 0xff;
-        output[i * 4 + 1] = (word >>> 16) & 0xff;
-        output[i * 4 + 2] = (word >>> 8) & 0xff;
-        output[i * 4 + 3] = word & 0xff;
+
+      if (this.is64bit) {
+        // For 64-bit: state is stored as [HIGH, LOW] pairs
+        // Output in big-endian order: HIGH word first, then LOW word
+        const num64BitWords = this.outputSize / 8;
+        for (let i = 0; i < num64BitWords; i++) {
+          const high = this.state[i * 2];      // HIGH word at even index
+          const low = this.state[i * 2 + 1];   // LOW word at odd index
+          // Write HIGH word first (big-endian)
+          const highBytes = OpCodes.Unpack32BE(high);
+          output[i * 8] = highBytes[0];
+          output[i * 8 + 1] = highBytes[1];
+          output[i * 8 + 2] = highBytes[2];
+          output[i * 8 + 3] = highBytes[3];
+          // Write LOW word
+          const lowBytes = OpCodes.Unpack32BE(low);
+          output[i * 8 + 4] = lowBytes[0];
+          output[i * 8 + 5] = lowBytes[1];
+          output[i * 8 + 6] = lowBytes[2];
+          output[i * 8 + 7] = lowBytes[3];
+        }
+      } else {
+        // For 32-bit: state is directly 32-bit words
+        const outputWords = this.outputSize / 4;
+        for (let i = 0; i < outputWords; i++) {
+          const word = this.state[i];
+          const bytes = OpCodes.Unpack32BE(word);
+          output[i * 4] = bytes[0];
+          output[i * 4 + 1] = bytes[1];
+          output[i * 4 + 2] = bytes[2];
+          output[i * 4 + 3] = bytes[3];
+        }
       }
 
       return output;
@@ -244,10 +392,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       // Prepare message schedule
       const W = new Array(16);
       for (let i = 0; i < 16; i++) {
-        W[i] = (this.buffer[i * 4] << 24) |
-               (this.buffer[i * 4 + 1] << 16) |
-               (this.buffer[i * 4 + 2] << 8) |
-               this.buffer[i * 4 + 3];
+        W[i] = OpCodes.Pack32BE(
+          this.buffer[i * 4],
+          this.buffer[i * 4 + 1],
+          this.buffer[i * 4 + 2],
+          this.buffer[i * 4 + 3]
+        );
       }
 
       // Initialize working variables
@@ -262,7 +412,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       // Add length counter to v[12..15] for BLAKE1
       if (withLength) {
         const lengthBits = this.length * 8;
-        const lengthLow = lengthBits >>> 0;
+        const lengthLow = OpCodes.ToUint32(lengthBits);
         const lengthHigh = Math.floor(lengthBits / 0x100000000) >>> 0;
         v[12] = (this.constants[4] ^ lengthLow ^ this.salt[0]) >>> 0;
         v[13] = (this.constants[5] ^ lengthLow ^ this.salt[1]) >>> 0;
@@ -320,28 +470,103 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     }
 
     compress64(withLength = true) {
-      // 64-bit compression is significantly more complex
-      // For now, we'll implement a simplified version
-      // In a production version, this would need full 64-bit arithmetic
-
-      // Prepare message schedule (32 32-bit words for 64-bit version)
-      const W = new Array(32);
-      for (let i = 0; i < 32; i++) {
-        W[i] = (this.buffer[i * 4] << 24) |
-               (this.buffer[i * 4 + 1] << 16) |
-               (this.buffer[i * 4 + 2] << 8) |
-               this.buffer[i * 4 + 3];
+      // Prepare message schedule (16 64-bit words as 32 32-bit words)
+      // CRITICAL: Storage format [HIGH, LOW] matching noble-hashes!
+      // M[i*2] = HIGH word (bytes 0-3), M[i*2+1] = LOW word (bytes 4-7)
+      const M = new Array(32);
+      for (let i = 0; i < 16; i++) {
+        // Big-endian reading
+        const high = OpCodes.Pack32BE(
+          this.buffer[i * 8],
+          this.buffer[i * 8 + 1],
+          this.buffer[i * 8 + 2],
+          this.buffer[i * 8 + 3]
+        );
+        const low = OpCodes.Pack32BE(
+          this.buffer[i * 8 + 4],
+          this.buffer[i * 8 + 5],
+          this.buffer[i * 8 + 6],
+          this.buffer[i * 8 + 7]
+        );
+        M[i * 2] = high;      // Store HIGH first (matching line 447 of noble-hashes)
+        M[i * 2 + 1] = low;   // Store LOW second
       }
 
-      // Simplified 64-bit compression using 32-bit operations
-      // Note: This is a simplified implementation for demonstration
-      // A full implementation would need proper 64-bit arithmetic
-
-      // For now, treat as 32-bit values for basic functionality
-      for (let i = 0; i < 16; i += 2) {
-        this.state[i] = (this.state[i] ^ W[i] ^ this.salt[i % 8]) >>> 0;
-        this.state[i + 1] = (this.state[i + 1] ^ W[i + 1] ^ this.salt[(i + 1) % 8]) >>> 0;
+      // Initialize working variables BBUF (16 64-bit as 32 32-bit)
+      // CRITICAL: BBUF[i*2] = HIGH, BBUF[i*2+1] = LOW (matching noble-hashes line 449)
+      const v = new Array(32);
+      // Copy state (first 8 64-bit values = 16 32-bit words)
+      for (let i = 0; i < 16; i++) {
+        v[i] = this.state[i];
       }
+
+      // v[8..15] = first 8 constants (16 words from constants array)
+      for (let i = 0; i < 16; i++) {
+        v[16 + i] = this.constants[i];
+      }
+
+      // XOR salt into v[8..11] (indices 16..23 in flat array)
+      for (let i = 0; i < 8; i++) {
+        v[16 + i] ^= this.salt[i];
+      }
+
+      // XOR length counter into v[12..13] if withLength (noble-hashes line 451-457)
+      // BBUF naming: v12l is stored at BBUF[24] and contains HIGH word
+      //              v12h is stored at BBUF[25] and contains LOW word
+      if (withLength) {
+        const lengthBits = this.length * 8;
+        const lengthHigh = Math.floor(lengthBits / 0x100000000) >>> 0;
+        const lengthLow = OpCodes.ToUint32(lengthBits);
+
+        // v[24] = v12l (contains HIGH word), v[25] = v12h (contains LOW word)
+        v[24] = (v[24] ^ lengthHigh) >>> 0;  // HIGH word ^= HIGH bits
+        v[25] = (v[25] ^ lengthLow) >>> 0;   // LOW word ^= LOW bits
+        // v[26] = v13l (contains HIGH word), v[27] = v13h (contains LOW word)
+        v[26] = (v[26] ^ lengthHigh) >>> 0;  // HIGH word ^= HIGH bits
+        v[27] = (v[27] ^ lengthLow) >>> 0;   // LOW word ^= LOW bits
+      }
+
+      // 16 rounds of compression (matching noble-hashes lines 458-476)
+      for (let i = 0, k = 0; i < this.rounds; i++) {
+        // Column step
+        G1b_64(v, 0, 4, 8, 12, M, k++, TBL512);
+        G2b_64(v, 0, 4, 8, 12, M, k++, TBL512);
+        G1b_64(v, 1, 5, 9, 13, M, k++, TBL512);
+        G2b_64(v, 1, 5, 9, 13, M, k++, TBL512);
+        G1b_64(v, 2, 6, 10, 14, M, k++, TBL512);
+        G2b_64(v, 2, 6, 10, 14, M, k++, TBL512);
+        G1b_64(v, 3, 7, 11, 15, M, k++, TBL512);
+        G2b_64(v, 3, 7, 11, 15, M, k++, TBL512);
+
+        // Diagonal step
+        G1b_64(v, 0, 5, 10, 15, M, k++, TBL512);
+        G2b_64(v, 0, 5, 10, 15, M, k++, TBL512);
+        G1b_64(v, 1, 6, 11, 12, M, k++, TBL512);
+        G2b_64(v, 1, 6, 11, 12, M, k++, TBL512);
+        G1b_64(v, 2, 7, 8, 13, M, k++, TBL512);
+        G2b_64(v, 2, 7, 8, 13, M, k++, TBL512);
+        G1b_64(v, 3, 4, 9, 14, M, k++, TBL512);
+        G2b_64(v, 3, 4, 9, 14, M, k++, TBL512);
+      }
+
+      // Finalize state (matching noble-hashes lines 477-492)
+      // Pattern: this.v0l ^= BBUF[0] ^ BBUF[16] ^ this.salt[0]
+      this.state[0] ^= v[0] ^ v[16] ^ this.salt[0];   // v0l
+      this.state[1] ^= v[1] ^ v[17] ^ this.salt[1];   // v0h
+      this.state[2] ^= v[2] ^ v[18] ^ this.salt[2];   // v1l
+      this.state[3] ^= v[3] ^ v[19] ^ this.salt[3];   // v1h
+      this.state[4] ^= v[4] ^ v[20] ^ this.salt[4];   // v2l
+      this.state[5] ^= v[5] ^ v[21] ^ this.salt[5];   // v2h
+      this.state[6] ^= v[6] ^ v[22] ^ this.salt[6];   // v3l
+      this.state[7] ^= v[7] ^ v[23] ^ this.salt[7];   // v3h
+      this.state[8] ^= v[8] ^ v[24] ^ this.salt[0];   // v4l (salt repeats)
+      this.state[9] ^= v[9] ^ v[25] ^ this.salt[1];   // v4h
+      this.state[10] ^= v[10] ^ v[26] ^ this.salt[2]; // v5l
+      this.state[11] ^= v[11] ^ v[27] ^ this.salt[3]; // v5h
+      this.state[12] ^= v[12] ^ v[28] ^ this.salt[4]; // v6l
+      this.state[13] ^= v[13] ^ v[29] ^ this.salt[5]; // v6h
+      this.state[14] ^= v[14] ^ v[30] ^ this.salt[6]; // v7l
+      this.state[15] ^= v[15] ^ v[31] ^ this.salt[7]; // v7h
     }
   }
 
@@ -366,19 +591,21 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       ];
 
       this.tests = [
-        new TestCase(
-          [], // input
-          OpCodes.Hex8ToBytes("7dc5313b1c04512a174bd6503b89607aecbee0903d40a8a569c94eed"), // expected
-          "Empty string vector", // description
-          "https://github.com/paulmillr/noble-hashes/blob/main/test/blake.test.ts" // uri
-        ),
-        new TestCase(
-          OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog"), // input
-          OpCodes.Hex8ToBytes("c8e92d7088ef87c1530aee2ad44dc720cc10589cc2ec58f95a15e51b"), // expected
-          "Quick brown fox", // description
-          "https://github.com/paulmillr/noble-hashes/blob/main/test/blake.test.ts" // uri
-        )
+        {
+          text: "Empty string vector",
+          uri: "https://github.com/paulmillr/noble-hashes/blob/main/test/blake.test.ts",
+          input: [],
+          expected: OpCodes.Hex8ToBytes("7dc5313b1c04512a174bd6503b89607aecbee0903d40a8a569c94eed")
+        },
+        {
+          text: "Quick brown fox",
+          uri: "https://github.com/paulmillr/noble-hashes/blob/main/test/blake.test.ts",
+          input: OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog"),
+          expected: OpCodes.Hex8ToBytes("c8e92d7088ef87c1530aee2ad44dc720cc10589cc2ec58f95a15e51b")
+        }
       ];
+
+      this.testVectors = this.tests;
     }
 
     CreateInstance(isInverse = false) {
@@ -408,25 +635,27 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       ];
 
       this.tests = [
-        new TestCase(
-          [], // input
-          OpCodes.Hex8ToBytes("716f6e863f744b9ac22c97ec7b76ea5f5908bc5b2f67c61510bfc4751384ea7a"), // expected
-          "Empty string vector", // description
-          "https://github.com/paulmillr/noble-hashes/blob/main/test/blake.test.ts" // uri
-        ),
-        new TestCase(
-          OpCodes.AnsiToBytes("BLAKE"), // input
-          OpCodes.Hex8ToBytes("07663e00cf96fbc136cf7b1ee099c95346ba3920893d18cc8851f22ee2e36aa6"), // expected
-          "BLAKE test vector", // description
-          "https://github.com/paulmillr/noble-hashes/blob/main/test/blake.test.ts" // uri
-        ),
-        new TestCase(
-          OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog"), // input
-          OpCodes.Hex8ToBytes("7576698ee9cad30173080678e5965916adbb11cb5245d386bf1ffda1cb26c9d7"), // expected
-          "Quick brown fox", // description
-          "https://github.com/paulmillr/noble-hashes/blob/main/test/blake.test.ts" // uri
-        )
+        {
+          text: "Empty string vector",
+          uri: "https://github.com/paulmillr/noble-hashes/blob/main/test/blake.test.ts",
+          input: [],
+          expected: OpCodes.Hex8ToBytes("716f6e863f744b9ac22c97ec7b76ea5f5908bc5b2f67c61510bfc4751384ea7a")
+        },
+        {
+          text: "BLAKE test vector",
+          uri: "https://github.com/paulmillr/noble-hashes/blob/main/test/blake.test.ts",
+          input: OpCodes.AnsiToBytes("BLAKE"),
+          expected: OpCodes.Hex8ToBytes("07663e00cf96fbc136cf7b1ee099c95346ba3920893d18cc8851f22ee2e36aa6")
+        },
+        {
+          text: "Quick brown fox",
+          uri: "https://github.com/paulmillr/noble-hashes/blob/main/test/blake.test.ts",
+          input: OpCodes.AnsiToBytes("The quick brown fox jumps over the lazy dog"),
+          expected: OpCodes.Hex8ToBytes("7576698ee9cad30173080678e5965916adbb11cb5245d386bf1ffda1cb26c9d7")
+        }
       ];
+
+      this.testVectors = this.tests;
     }
 
     CreateInstance(isInverse = false) {
@@ -456,13 +685,15 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       ];
 
       this.tests = [
-        new TestCase(
-          [], // input
-          OpCodes.Hex8ToBytes("c6cbd89c926ab525c242e6621f2f5fa73aa4afe3d9e24aed727faaadd6af38b620bdb623dd2b4788b1c8086984af8706"), // expected
-          "Empty string vector", // description
-          "https://github.com/paulmillr/noble-hashes/blob/main/test/blake.test.ts" // uri
-        )
+        {
+          text: "Empty string vector",
+          uri: "https://github.com/paulmillr/noble-hashes/blob/main/test/blake.test.ts",
+          input: [],
+          expected: OpCodes.Hex8ToBytes("c6cbd89c926ab525c242e6621f2f5fa73aa4afe3d9e24aed727faaadd6af38b620bdb623dd2b4788b1c8086984af8706")
+        }
       ];
+
+      this.testVectors = this.tests;
     }
 
     CreateInstance(isInverse = false) {
@@ -492,13 +723,15 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       ];
 
       this.tests = [
-        new TestCase(
-          [], // input
-          OpCodes.Hex8ToBytes("a8cfbbd73726062df0c6864dda65defe58ef0cc52a5625090fa17601e1eecd1b628e94f396ae402a00acc9eab77b4d4c2e852aaaa25a636d80af3fc7913ef5b8"), // expected
-          "Empty string vector", // description
-          "https://github.com/paulmillr/noble-hashes/blob/main/test/blake.test.ts" // uri
-        )
+        {
+          text: "Empty string vector",
+          uri: "https://github.com/paulmillr/noble-hashes/blob/main/test/blake.test.ts",
+          input: [],
+          expected: OpCodes.Hex8ToBytes("a8cfbbd73726062df0c6864dda65defe58ef0cc52a5625090fa17601e1eecd1b628e94f396ae402a00acc9eab77b4d4c2e852aaaa25a636d80af3fc7913ef5b8")
+        }
       ];
+
+      this.testVectors = this.tests;
     }
 
     CreateInstance(isInverse = false) {

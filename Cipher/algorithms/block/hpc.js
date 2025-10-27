@@ -39,6 +39,9 @@
     global.OpCodes = require('../../OpCodes.js');
   }
 
+  const OpCodes = global.OpCodes;
+  const AlgorithmFramework = global.AlgorithmFramework;
+
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 

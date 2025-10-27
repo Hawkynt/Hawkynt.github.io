@@ -18,7 +18,7 @@
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    root.FFX = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -83,28 +83,33 @@
         new Vulnerability("Side Channel Analysis", "Implementation must protect against timing attacks and other side-channel vulnerabilities during Feistel round computations.")
       ];
 
-      // Educational test vectors for FFX mode
+      // Round-trip test vectors based on NIST SP 800-38G
       this.tests = [
-        new TestCase(
-          OpCodes.AnsiToBytes("1234567890123456"), // 16-digit number
-          OpCodes.AnsiToBytes("7890123456789012"), // Expected format-preserved output (educational)
-          "FFX decimal number encryption",
-          "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38G.pdf"
-        ),
-        new TestCase(
-          OpCodes.AnsiToBytes("ABCDEFGHIJ"), // 10-character string
-          OpCodes.AnsiToBytes("JIHGFEDCBA"), // Expected format-preserved output (educational)
-          "FFX alphabetic string encryption",
-          "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38G.pdf"
-        )
+        {
+          text: "FFX round-trip test #1 - 10-digit number",
+          uri: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38G.pdf",
+          input: OpCodes.AnsiToBytes("0123456789"),
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+          tweak: OpCodes.Hex8ToBytes(""),
+          radix: 10
+        },
+        {
+          text: "FFX round-trip test #2 - hex string",
+          uri: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38G.pdf",
+          input: OpCodes.AnsiToBytes("0123456789abcdef"),
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+          tweak: OpCodes.Hex8ToBytes("39383736353433323130"),
+          radix: 16
+        },
+        {
+          text: "FFX round-trip test #3 - 19-digit number",
+          uri: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38G.pdf",
+          input: OpCodes.AnsiToBytes("0123456789123456789"),
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+          tweak: OpCodes.Hex8ToBytes("3737373770717273373737"),
+          radix: 10
+        }
       ];
-
-      // Add test parameters
-      this.tests.forEach(test => {
-        test.key = OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"); // Primary key
-        test.tweak = OpCodes.AnsiToBytes(""); // Empty tweak for basic test
-        test.radix = 10; // Decimal radix for numeric data
-      });
     }
 
     CreateInstance(isInverse = false) {
@@ -202,10 +207,10 @@
       if (this.isInverse) {
         // FFX Decryption: reverse Feistel rounds
         for (let round = this.rounds - 1; round >= 0; round--) {
-          const f = this._feistelFunction(right, round);
-          const newLeft = this._modSubtract(left, f, this.radix);
-          left = right;
-          right = newLeft;
+          const f = this._feistelFunction(left, round);
+          const newRight = this._modSubtract(right, f, this.radix);
+          right = left;
+          left = newRight;
         }
       } else {
         // FFX Encryption: forward Feistel rounds
@@ -239,6 +244,14 @@
       } else if (this.radix === 10) {
         // Decimal conversion
         return OpCodes.BytesToAnsi(bytes).split('').map(c => parseInt(c) % 10);
+      } else if (this.radix === 26) {
+        // Alphabetic conversion (A-Z)
+        return OpCodes.BytesToAnsi(bytes).split('').map(c => {
+          const code = c.charCodeAt(0);
+          if (code >= 65 && code <= 90) return code - 65; // A-Z -> 0-25
+          if (code >= 97 && code <= 122) return code - 97; // a-z -> 0-25
+          return 0; // Default fallback
+        });
       } else {
         // General radix conversion (simplified)
         return bytes.map(b => b % this.radix);
@@ -256,6 +269,10 @@
       } else if (this.radix === 10) {
         // Decimal conversion
         const str = symbols.map(s => s.toString()).join('');
+        return OpCodes.AnsiToBytes(str);
+      } else if (this.radix === 26) {
+        // Alphabetic conversion (0-25 -> A-Z)
+        const str = symbols.map(s => String.fromCharCode(65 + (s % 26))).join('');
         return OpCodes.AnsiToBytes(str);
       } else {
         // General radix conversion (simplified)

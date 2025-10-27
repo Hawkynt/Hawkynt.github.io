@@ -17,10 +17,10 @@
     description: "Extremely fast non-cryptographic hash function designed for high performance applications like databases and compression systems.",
     inventor: "Yann Collet",
     year: 2012,
-    country: "France",
+    country: global.AlgorithmFramework ? global.AlgorithmFramework.CountryCode.FR : "France",
     category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.HASH : "hash",
     subCategory: "Fast Hash",
-    securityStatus: "insecure", // Non-cryptographic hash function
+    securityStatus: global.AlgorithmFramework ? global.AlgorithmFramework.SecurityStatus.EDUCATIONAL : "insecure", // Non-cryptographic hash function
     
     documentation: [
       {text: "xxHash Official Repository", uri: "https://github.com/Cyan4973/xxHash"},
@@ -109,10 +109,10 @@
       
       if (length >= 16) {
         // Initialize accumulators
-        let acc1 = (seed + this.PRIME32_1 + this.PRIME32_2) >>> 0;
-        let acc2 = (seed + this.PRIME32_2) >>> 0;
-        let acc3 = (seed + 0x00) >>> 0;
-        let acc4 = (seed - this.PRIME32_1) >>> 0;
+        let acc1 = OpCodes.ToDWord(seed + this.PRIME32_1 + this.PRIME32_2);
+        let acc2 = OpCodes.ToDWord(seed + this.PRIME32_2);
+        let acc3 = OpCodes.ToDWord(seed + 0x00);
+        let acc4 = OpCodes.ToDWord(seed - this.PRIME32_1);
         
         // Process 16-byte chunks
         while (offset + 16 <= length) {
@@ -138,33 +138,33 @@
         }
         
         // Merge accumulators
-        hash = OpCodes.RotL32(acc1, 1) + OpCodes.RotL32(acc2, 7) + 
+        hash = OpCodes.RotL32(acc1, 1) + OpCodes.RotL32(acc2, 7) +
                OpCodes.RotL32(acc3, 12) + OpCodes.RotL32(acc4, 18);
-        hash = hash >>> 0;
+        hash = OpCodes.ToDWord(hash);
       } else {
         // Short input
-        hash = (seed + this.PRIME32_5) >>> 0;
+        hash = OpCodes.ToDWord(seed + this.PRIME32_5);
       }
-      
+
       // Add length
-      hash = (hash + length) >>> 0;
+      hash = OpCodes.ToDWord(hash + length);
       
       // Process remaining bytes
       while (offset + 4 <= length) {
         const lane = OpCodes.Pack32LE(
           data[offset], data[offset + 1], data[offset + 2], data[offset + 3]
         );
-        hash = (hash + (lane * this.PRIME32_3)) >>> 0;
+        hash = OpCodes.ToDWord(hash + (lane * this.PRIME32_3));
         hash = OpCodes.RotL32(hash, 17);
-        hash = (hash * this.PRIME32_4) >>> 0;
+        hash = OpCodes.ToDWord(hash * this.PRIME32_4);
         offset += 4;
       }
-      
+
       while (offset < length) {
         const lane = data[offset];
-        hash = (hash + (lane * this.PRIME32_5)) >>> 0;
+        hash = OpCodes.ToDWord(hash + (lane * this.PRIME32_5));
         hash = OpCodes.RotL32(hash, 11);
-        hash = (hash * this.PRIME32_1) >>> 0;
+        hash = OpCodes.ToDWord(hash * this.PRIME32_1);
         offset++;
       }
       
@@ -176,20 +176,20 @@
     
     // 32-bit round function
     round32: function(acc, input) {
-      acc = (acc + (input * this.PRIME32_2)) >>> 0;
+      acc = OpCodes.ToDWord(acc + (input * this.PRIME32_2));
       acc = OpCodes.RotL32(acc, 13);
-      acc = (acc * this.PRIME32_1) >>> 0;
+      acc = OpCodes.ToDWord(acc * this.PRIME32_1);
       return acc;
     },
     
     // 32-bit avalanche function
     avalanche32: function(hash) {
-      hash ^= hash >>> 15;
-      hash = (hash * this.PRIME32_2) >>> 0;
-      hash ^= hash >>> 13;
-      hash = (hash * this.PRIME32_3) >>> 0;
-      hash ^= hash >>> 16;
-      return hash >>> 0;
+      hash ^= OpCodes.Shr32(hash, 15);
+      hash = OpCodes.ToDWord(hash * this.PRIME32_2);
+      hash ^= OpCodes.Shr32(hash, 13);
+      hash = OpCodes.ToDWord(hash * this.PRIME32_3);
+      hash ^= OpCodes.Shr32(hash, 16);
+      return OpCodes.ToDWord(hash);
     },
     
     // Process input for universal interface

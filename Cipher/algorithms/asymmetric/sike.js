@@ -15,12 +15,14 @@
 
 (function(global) {
   'use strict';
-  
+
   // Environment detection and dependency loading
   if (typeof require !== 'undefined') {
-    if (!global.OpCodes) require('../../OpCodes.js');
-    if (!global.AlgorithmFramework) require('../../AlgorithmFramework.js');
+    if (!global.OpCodes) global.OpCodes = require('../../OpCodes.js');
+    if (!global.AlgorithmFramework) global.AlgorithmFramework = require('../../AlgorithmFramework.js');
   }
+
+  const OpCodes = global.OpCodes;
   
   // Educational SIKE parameters (BROKEN)
   const SIKE_PARAMS = {
@@ -75,7 +77,7 @@
       this.year = 2017;
       this.category = global.AlgorithmFramework.CategoryType.ASYMMETRIC;
       this.subCategory = 'Key Encapsulation';
-      this.securityStatus = global.AlgorithmFramework.SecurityStatus.INSECURE;
+      this.securityStatus = global.AlgorithmFramework.SecurityStatus.BROKEN;
       this.complexity = global.AlgorithmFramework.ComplexityType.EXPERT;
       this.country = global.AlgorithmFramework.CountryCode.INTL;
       
@@ -94,18 +96,18 @@
       
       // Educational test vectors
       this.tests = [
-        new global.AlgorithmFramework.TestCase(
-          OpCodes.Hex8ToBytes('1122334455667788'),
-          OpCodes.Hex8ToBytes('c0d22124983a997c'),
-          'Educational SIKE test vector (broken algorithm)',
-          'https://sike.org/'
-        ),
-        new global.AlgorithmFramework.TestCase(
-          OpCodes.Hex8ToBytes('aabbccddeeff0011'),
-          OpCodes.Hex8ToBytes('e296a935ba7e116d'),
-          'SIKE educational test - deterministic for learning',
-          'Educational implementation'
-        )
+        {
+          text: 'Educational SIKE test vector (broken algorithm)',
+          uri: 'https://sike.org/',
+          input: OpCodes.Hex8ToBytes('1122334455667788'),
+          expected: OpCodes.Hex8ToBytes('c0d22124983a997c')
+        },
+        {
+          text: 'SIKE educational test - deterministic for learning',
+          uri: 'Educational implementation',
+          input: OpCodes.Hex8ToBytes('aabbccddeeff0011'),
+          expected: OpCodes.Hex8ToBytes('e296a935ba7e116d')
+        }
       ];
     }
     

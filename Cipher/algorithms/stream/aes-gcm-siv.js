@@ -14,12 +14,14 @@
   // Ensure environment dependencies are available
   if (!global.OpCodes && typeof require !== 'undefined') {
     try {
-      require('../../OpCodes.js');
+      global.OpCodes = require('../../OpCodes.js');
     } catch (e) {
       console.error('Failed to load OpCodes:', e.message);
       return;
     }
   }
+
+  const OpCodes = global.OpCodes;
 
   if (!global.AlgorithmFramework) {
     if (typeof require !== 'undefined') {

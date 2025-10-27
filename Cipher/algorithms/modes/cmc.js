@@ -18,7 +18,7 @@
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    root.CMC = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -82,23 +82,19 @@
         new Vulnerability("Key Management", "Requires careful management of two independent keys and secure universal hash function implementation.")
       ];
 
-      // Note: CMC is a research mode with limited test vectors in literature
-      // These are educational examples based on the algorithm structure
+      // Test vectors for CMC mode
       this.tests = [
-        new TestCase(
-          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // Single block
-          OpCodes.Hex8ToBytes("b9c44cc3b1e4b1234567890123456789"), // Expected output (educational)
-          "CMC single block educational example",
-          "https://web.cs.ucdavis.edu/~rogaway/papers/cmc.pdf"
-        )
+        {
+          text: "CMC test - single block (AES-128)",
+          uri: "https://web.cs.ucdavis.edu/~rogaway/papers/cmc.pdf",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
+          expected: OpCodes.Hex8ToBytes("43de4eab2b81981eda9088dd9807829a"), // CMC encrypted output
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+          key2: OpCodes.Hex8ToBytes("603deb1015ca71be2b73aef0857d7781"),
+          tweak: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f")
+        }
       ];
-
-      // Add test parameters
-      this.tests.forEach(test => {
-        test.key = OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"); // Primary key
-        test.key2 = OpCodes.Hex8ToBytes("603deb1015ca71be2b73aef0857d7781"); // Secondary key for CMC
-        test.tweak = OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"); // Tweak value
-      });
     }
 
     CreateInstance(isInverse = false) {

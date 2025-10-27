@@ -13,15 +13,17 @@
 
 (function(global) {
   'use strict';
-  
+
   // Environment detection and dependency loading
   if (typeof require !== 'undefined') {
-    if (!global.OpCodes) require('../../OpCodes.js');
-    if (!global.AlgorithmFramework) require('../../AlgorithmFramework.js');
+    if (!global.OpCodes) global.OpCodes = require('../../OpCodes.js');
+    if (!global.AlgorithmFramework) global.AlgorithmFramework = require('../../AlgorithmFramework.js');
   }
 
+  const OpCodes = global.OpCodes;
+
   // Import required enums from AlgorithmFramework
-  const { CategoryType, SecurityStatus, ComplexityType } = global.AlgorithmFramework;
+  const { CategoryType, SecurityStatus, ComplexityType, CountryCode } = global.AlgorithmFramework;
   
   // Educational SQIsign parameter sets
   const SQISIGN_PARAMS = {
@@ -77,7 +79,7 @@
       this.subCategory = 'Digital Signature';
       this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.EXPERT;
-      this.country = "INTL";
+      this.country = CountryCode.INTL;
       
       this.documentation = [
         new global.AlgorithmFramework.LinkItem('Original SQIsign Paper', 'https://eprint.iacr.org/2020/1240'),
@@ -99,18 +101,18 @@
       
       // Educational test vectors
       this.tests = [
-        new global.AlgorithmFramework.TestCase(
-          OpCodes.Hex8ToBytes('48656c6c6f20576f726c64'),
-          OpCodes.Hex8ToBytes('498ac52057fa793d'),
-          'SQIsign educational test vector 1',
-          'https://eprint.iacr.org/2020/1240'
-        ),
-        new global.AlgorithmFramework.TestCase(
-          OpCodes.Hex8ToBytes('54657374696e67'),
-          OpCodes.Hex8ToBytes('2e11a7b121435f24'),
-          'SQIsign educational test vector 2',
-          'Educational implementation'
-        )
+        {
+          text: 'SQIsign educational test vector 1',
+          uri: 'https://eprint.iacr.org/2020/1240',
+          input: OpCodes.Hex8ToBytes('48656c6c6f20576f726c64'),
+          expected: OpCodes.Hex8ToBytes('498ac52057fa793d')
+        },
+        {
+          text: 'SQIsign educational test vector 2',
+          uri: 'Educational implementation',
+          input: OpCodes.Hex8ToBytes('54657374696e67'),
+          expected: OpCodes.Hex8ToBytes('2e11a7b121435f24')
+        }
       ];
     }
     

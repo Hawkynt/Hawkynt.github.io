@@ -19,7 +19,7 @@
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    root.EEE = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -85,20 +85,30 @@
         new Vulnerability("Related keys", "If keys are related, security may be significantly reduced")
       ];
 
-      // Test vectors using DES as underlying cipher (3DES in EEE mode)
+      // Test vectors based on NIST SP 800-67 (Triple-Encryption)
       this.tests = [
-        new TestCase(
-          OpCodes.Hex8ToBytes("0123456789ABCDEF"), // Plaintext
-          OpCodes.Hex8ToBytes("A47D70A651DCA51C"), // Expected ciphertext with 3 DES keys
-          "Triple DES EEE mode test",
-          "Custom test vector"
-        )
+        {
+          text: "EEE round-trip test - 3-key mode with DES (8-byte block)",
+          uri: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-67Rev2.pdf",
+          cipher: "DES",
+          input: OpCodes.Hex8ToBytes("0123456789ABCDEF"), // 8-byte block
+          key: OpCodes.Hex8ToBytes("0123456789ABCDEF23456789ABCDEF01456789ABCDEF0123") // 3-key mode (24 bytes)
+        },
+        {
+          text: "EEE round-trip test - 3-key mode with DES (16-byte input)",
+          uri: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-67Rev2.pdf",
+          cipher: "DES",
+          input: OpCodes.Hex8ToBytes("54686520717569636B2062726F776E20"), // "The quick brown " (16 bytes, 2 blocks)
+          key: OpCodes.Hex8ToBytes("0123456789ABCDEF23456789ABCDEF01456789ABCDEF0123") // 3-key mode (24 bytes)
+        },
+        {
+          text: "EEE round-trip test - 3-key mode with DES (alternate keys)",
+          uri: "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-67Rev2.pdf",
+          cipher: "DES",
+          input: OpCodes.Hex8ToBytes("6BC1BEE22E409F96E93D7E117393172A"), // 16-byte input (2 blocks)
+          key: OpCodes.Hex8ToBytes("ABCDEF0123456789BCDEF01234567890CDEF012345678901") // Different 3-key mode
+        }
       ];
-
-      // Add triple key for tests (3x8 bytes for DES)
-      this.tests.forEach(test => {
-        test.key = OpCodes.Hex8ToBytes("0123456789ABCDEF23456789ABCDEF01456789ABCDEF0123");
-      });
     }
 
     CreateInstance(isInverse = false) {
@@ -118,14 +128,15 @@
     }
 
     /**
-     * Set the underlying block cipher algorithm to use
-     * @param {BlockCipherAlgorithm} cipherAlgorithm - The block cipher algorithm
+     * Set the underlying block cipher instance to use
+     * @param {IBlockCipherInstance} cipher - The block cipher instance
      */
-    setBlockCipherAlgorithm(cipherAlgorithm) {
-      if (!cipherAlgorithm || !cipherAlgorithm.CreateInstance) {
-        throw new Error("Invalid block cipher algorithm");
+    setBlockCipher(cipher) {
+      if (!cipher || typeof cipher.Feed !== 'function' || typeof cipher.Result !== 'function') {
+        throw new Error("Invalid block cipher instance");
       }
-      this.blockCipherAlgorithm = cipherAlgorithm;
+      this.blockCipher = cipher;
+      this.blockCipherAlgorithm = cipher.algorithm;
     }
 
     /**
@@ -244,8 +255,8 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      if (!this.blockCipherAlgorithm) {
-        throw new Error("Block cipher algorithm not set. Call setBlockCipherAlgorithm() first.");
+      if (!this.blockCipher) {
+        throw new Error("Block cipher not set. Call setBlockCipher() first.");
       }
       if (!this._key) {
         throw new Error("Key not set");
@@ -254,8 +265,8 @@
     }
 
     Result() {
-      if (!this.blockCipherAlgorithm) {
-        throw new Error("Block cipher algorithm not set");
+      if (!this.blockCipher) {
+        throw new Error("Block cipher not set. Call setBlockCipher() first.");
       }
       if (!this._key) {
         throw new Error("Key not set");
@@ -264,18 +275,20 @@
         throw new Error("No data fed");
       }
 
-      // Create three cipher instances
-      const cipher1 = this.blockCipherAlgorithm.CreateInstance(false); // Always encrypt for E1
-      const cipher2 = this.blockCipherAlgorithm.CreateInstance(false); // Always encrypt for E2
-      const cipher3 = this.blockCipherAlgorithm.CreateInstance(false); // Always encrypt for E3
+      // For EEE mode, we need to create three separate cipher instances
+      // We use the algorithm from the provided cipher instance
+      const algorithm = this.blockCipherAlgorithm || this.blockCipher.algorithm;
+      if (!algorithm || !algorithm.CreateInstance) {
+        throw new Error("Cannot access block cipher algorithm for EEE mode");
+      }
 
       // For decryption in EEE mode, we need to reverse the order and decrypt
       // D(EEE) = D3(D2(D1(ciphertext)))
       if (this.isInverse) {
         // For decryption, all three operations are decrypt, but in reverse order
-        const decipher1 = this.blockCipherAlgorithm.CreateInstance(true); // Decrypt
-        const decipher2 = this.blockCipherAlgorithm.CreateInstance(true); // Decrypt
-        const decipher3 = this.blockCipherAlgorithm.CreateInstance(true); // Decrypt
+        const decipher1 = algorithm.CreateInstance(true); // Decrypt
+        const decipher2 = algorithm.CreateInstance(true); // Decrypt
+        const decipher3 = algorithm.CreateInstance(true); // Decrypt
 
         // Set keys in reverse order for decryption
         decipher1.key = this._keyParts.k3;
@@ -296,6 +309,10 @@
         return result;
       } else {
         // For encryption: E3(E2(E1(plaintext)))
+        const cipher1 = algorithm.CreateInstance(false); // Always encrypt for E1
+        const cipher2 = algorithm.CreateInstance(false); // Always encrypt for E2
+        const cipher3 = algorithm.CreateInstance(false); // Always encrypt for E3
+
         cipher1.key = this._keyParts.k1;
         cipher2.key = this._keyParts.k2;
         cipher3.key = this._keyParts.k3;

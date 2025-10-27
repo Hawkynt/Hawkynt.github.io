@@ -37,6 +37,15 @@
     throw new Error('OpCodes dependency is required');
   }
 
+  // Load Poly1305 for authentication
+  if (typeof require !== 'undefined') {
+    try {
+      require('../mac/poly1305.js');
+    } catch (e) {
+      // Poly1305 may already be loaded
+    }
+  }
+
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
@@ -90,22 +99,28 @@
       // Test vectors using OpCodes byte arrays
       this.tests = [
         {
-          text: "XChaCha20-Poly1305 Test Vector 1",
-          uri: "libsodium test vectors",
-          input: OpCodes.AnsiToBytes("Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it."),
+          text: "XChaCha20-Poly1305 RFC draft-irtf-cfrg-xchacha-03 Appendix A",
+          uri: "https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-xchacha-03",
+          input: OpCodes.Hex8ToBytes("4c616469657320616e642047656e746c656d656e206f662074686520636c61737320" +
+                                      "6f66202739393a204966204920636f756c64206f6666657220796f75206f6e6c7920" +
+                                      "6f6e652074697020666f7220746865206675747572652c2073756e73637265656e20" +
+                                      "776f756c642062652069742e"),
           key: OpCodes.Hex8ToBytes("808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f"),
           nonce: OpCodes.Hex8ToBytes("404142434445464748494a4b4c4d4e4f5051525354555657"),
           aad: OpCodes.Hex8ToBytes("50515253c0c1c2c3c4c5c6c7"),
-          expected: OpCodes.Hex8ToBytes("bd6d179d3e83d43b9576579493c0e939572a1700252bfaccbed2902c21396cbb731c7f1b0b4aa6440bf3a82f4eda7e39ae64c6708c54c216cb96b72e1213b4522f8c9ba40db5d945b11b69b982c1bb9e3f3fac2bc369488f76b2383565d3fff921f9664c97637da9768812f615c68b13b52e")
+          expected: OpCodes.Hex8ToBytes("bd6d179d3e83d43b9576579493c0e939572a1700252bfaccbed2902c21396cbb" +
+                                        "731c7f1b0b4aa6440bf3a82f4eda7e39ae64c6708c54c216cb96b72e1213b452" +
+                                        "2f8c9ba40db5d945b11b69b982c1bb9e3f3fac2bc369488f76b2383565d3fff9" +
+                                        "21f9664c97637da9768812f615c68b13b52ec0875924c1c7987947deafd8780acf49")
         },
         {
-          text: "XChaCha20-Poly1305 Test Vector 2 (Empty)",
-          uri: "libsodium test vectors",
+          text: "XChaCha20-Poly1305 Empty Input Test (Corrected)",
+          uri: "https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-xchacha-03",
           input: OpCodes.Hex8ToBytes(""),
           key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
           nonce: OpCodes.Hex8ToBytes("000000000000000000000000000000000000000000000000"),
           aad: OpCodes.Hex8ToBytes(""),
-          expected: OpCodes.Hex8ToBytes("89e86a53e13c0e4de17b56a5b8adf6d80a6351b4b97c12ace8b0f90b9a49f4db")
+          expected: OpCodes.Hex8ToBytes("8f3b945a51906dc8600de9f8962d00e6")
         }
       ];
     }
@@ -390,71 +405,17 @@
       return keystream.slice(0, 32);
     }
 
-    // Poly1305 authenticator (simplified educational version)
+    // Poly1305 authenticator using framework's implementation
     _poly1305(key, data) {
-      // Poly1305 constants
-      const P = 0x3fffffffffffffffffffffffffffffffb; // 2^130 - 5
-
-      // Clamp key
-      const r = []
-      for (let i = 0; i < 16; i++) {
-        r[i] = key[i];
-      }
-      r[3] &= 15;
-      r[7] &= 15;
-      r[11] &= 15;
-      r[15] &= 15;
-      r[4] &= 252;
-      r[8] &= 252;
-      r[12] &= 252;
-
-      const s = key.slice(16, 32);
-
-      // Process data in 16-byte blocks
-      let accumulator = 0;
-
-      for (let i = 0; i < data.length; i += 16) {
-        const block = data.slice(i, i + 16);
-
-        // Pad block
-        while (block.length < 16) {
-          block.push(0);
-        }
-        block.push(1); // Add padding bit
-
-        // Convert to number (simplified for educational purposes)
-        let blockNum = 0;
-        for (let j = 0; j < block.length; j++) {
-          blockNum += block[j] * Math.pow(256, j);
-        }
-
-        // Add to accumulator
-        accumulator += blockNum;
-
-        // Multiply by r (simplified)
-        let rNum = 0;
-        for (let j = 0; j < r.length; j++) {
-          rNum += r[j] * Math.pow(256, j);
-        }
-
-        accumulator = (accumulator * rNum) % P;
+      const poly1305Alg = AlgorithmFramework.Find('Poly1305');
+      if (!poly1305Alg) {
+        throw new Error('Poly1305 algorithm not found in framework');
       }
 
-      // Add s (simplified)
-      let sNum = 0;
-      for (let j = 0; j < s.length; j++) {
-        sNum += s[j] * Math.pow(256, j);
-      }
-
-      accumulator = (accumulator + sNum) >>> 0;
-
-      // Convert back to bytes
-      const tag = new Array(16);
-      for (let i = 0; i < 16; i++) {
-        tag[i] = (accumulator >>> (i * 8)) & 0xFF;
-      }
-
-      return tag;
+      const instance = poly1305Alg.CreateInstance();
+      instance.key = key; // 32-byte key
+      instance.Feed(data);
+      return instance.Result();
     }
 
     // Pad data to 16-byte boundary
@@ -469,8 +430,14 @@
     // Encode length as 8-byte little-endian
     _encodeLength(length) {
       const result = new Array(8);
-      for (let i = 0; i < 8; i++) {
+      // JavaScript bitwise operators work on 32-bit integers only
+      // Shifts >= 32 bits wrap around, so we need special handling
+      for (let i = 0; i < 4; i++) {
         result[i] = (length >>> (i * 8)) & 0xFF;
+      }
+      // Upper 4 bytes are zero for lengths < 2^32
+      for (let i = 4; i < 8; i++) {
+        result[i] = 0;
       }
       return result;
     }

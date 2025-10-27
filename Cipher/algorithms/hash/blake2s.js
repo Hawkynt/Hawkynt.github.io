@@ -11,8 +11,8 @@
       require('../../OpCodes')
     );
   } else {
-    // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    // Browser/Worker global - assign as BLAKE2sModule for consistency
+    root.BLAKE2sModule = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -187,8 +187,14 @@
 
     /**
      * BLAKE2s hasher class
+     * @param {Array|null} key - Optional key (up to 32 bytes)
+     * @param {number} outputLength - Digest length in bytes (1-32)
+     * @param {Array|null} salt - Optional 8-byte salt
+     * @param {Array|null} personalization - Optional 8-byte personalization
+     * @param {number} nodeOffset - Node offset for tree hashing / XOF
+     * @param {Object} xofParams - Optional XOF-specific parameters
      */
-    function Blake2sHasher(key, outputLength) {
+    function Blake2sHasher(key, outputLength, salt, personalization, nodeOffset, xofParams) {
       this.outputLength = outputLength || BLAKE2S_OUTBYTES;
       this.key = key || null;
       this.h = new Uint32Array(8);
@@ -197,16 +203,50 @@
       this.t0 = 0; // Low 32 bits of counter
       this.t1 = 0; // High 32 bits of counter
 
+      // Tree hashing / XOF parameters
+      const fanout = (xofParams && xofParams.fanout !== undefined) ? xofParams.fanout : 1;
+      const depth = (xofParams && xofParams.depth !== undefined) ? xofParams.depth : 1;
+      const leafLength = (xofParams && xofParams.leafLength) || 0;
+      const innerHashLength = (xofParams && xofParams.innerHashLength) || 0;
+      const nodeDepth = (xofParams && xofParams.nodeDepth) || 0;
+      const xofLength = (xofParams && xofParams.xofLength) || 0;
+      const nOffset = nodeOffset || 0;
+
       // Initialize hash state
       for (let i = 0; i < 8; i++) {
         this.h[i] = BLAKE2S_IV[i];
       }
 
-      // Set parameter block in h[0]
+      // Set parameter block
+      // h[0]: digest_length | key_length | fanout | depth
       this.h[0] ^= this.outputLength |
                    ((key ? key.length : 0) << 8) |
-                   (1 << 16) |  // fanout = 1
-                   (1 << 24);   // depth = 1
+                   (fanout << 16) |
+                   (depth << 24);
+
+      // h[1]: leaf_length
+      this.h[1] ^= leafLength;
+
+      // h[2] and h[3]: node_offset (64-bit value split into two 32-bit parts)
+      const nodeOffsetLo = nOffset >>> 0; // Low 32 bits
+      const nodeOffsetHi = Math.floor(nOffset / 0x100000000); // High 32 bits
+      this.h[2] ^= nodeOffsetLo;
+      // h[3]: node_offset_hi (bits 0-15) | xof_length (bits 0-15) | node_depth (bits 16-23) | inner_length (bits 24-31)
+      // Note: For BLAKE2s, the layout is: bytes 12-13 are high 16 bits of node_offset, bytes 14-15 are xof_length
+      // When packed as little-endian 32-bit: xof_length | node_depth | inner_length
+      this.h[3] ^= ((xofLength & 0xFFFF) | (nodeDepth << 16) | (innerHashLength << 24));
+
+      // h[4] and h[5]: salt (if provided)
+      if (salt && salt.length === 8) {
+        this.h[4] ^= OpCodes.Pack32LE(salt[0], salt[1], salt[2], salt[3]);
+        this.h[5] ^= OpCodes.Pack32LE(salt[4], salt[5], salt[6], salt[7]);
+      }
+
+      // h[6] and h[7]: personalization (if provided)
+      if (personalization && personalization.length === 8) {
+        this.h[6] ^= OpCodes.Pack32LE(personalization[0], personalization[1], personalization[2], personalization[3]);
+        this.h[7] ^= OpCodes.Pack32LE(personalization[4], personalization[5], personalization[6], personalization[7]);
+      }
 
       // Process key if provided
       if (key && key.length > 0) {
@@ -237,8 +277,9 @@
         this.bufferLength += toCopy;
         offset += toCopy;
 
-        // Process full blocks
-        if (this.bufferLength === BLAKE2S_BLOCKBYTES) {
+        // Process full blocks ONLY if there's more data to come
+        // If this is the last chunk, leave it for finalize()
+        if (this.bufferLength === BLAKE2S_BLOCKBYTES && offset < data.length) {
           // Increment counter (64-bit addition)
           this.t0 += BLAKE2S_BLOCKBYTES;
           if (this.t0 < BLAKE2S_BLOCKBYTES) {
@@ -258,6 +299,10 @@
 
           compress(this.h, m, this.t0, this.t1, false);
           this.bufferLength = 0;
+          // Clear buffer after processing
+          for (let i = 0; i < BLAKE2S_BLOCKBYTES; i++) {
+            this.buffer[i] = 0;
+          }
         }
       }
     };
@@ -405,5 +450,5 @@
 
   // ===== EXPORTS =====
 
-  return { BLAKE2sAlgorithm, BLAKE2sAlgorithmInstance };
+  return { BLAKE2sAlgorithm, BLAKE2sAlgorithmInstance, Blake2sHasher };
 }));
