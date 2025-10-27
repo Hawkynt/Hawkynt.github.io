@@ -48,6 +48,9 @@
 </head>
 <body>
 
+    <!-- Load DebugConfig FIRST (zero dependencies) -->
+    <script src="./DebugConfig.js"></script>
+
     <script>
         // Initialize application after all scripts have loaded
         console.log('🔐 »SynthelicZ« Cipher Tools Loading...');
@@ -55,12 +58,12 @@
         // Wait for ALL resources (including all script tags) to fully load
         // 'load' event fires after ALL resources are loaded, not just DOM parsing
         window.addEventListener('load', function() {
-            console.log('🔧 Initializing application...');
-            console.log('📊 AlgorithmFramework available:', typeof AlgorithmFramework !== 'undefined');
+            DebugConfig.log('🔧 Initializing application...');
+            DebugConfig.log('📊 AlgorithmFramework available:', typeof AlgorithmFramework !== 'undefined');
 
             if (typeof AlgorithmFramework !== 'undefined') {
-                console.log('📋 Total algorithms registered:', AlgorithmFramework.Algorithms.length);
-                console.log('  Algorithm names:', AlgorithmFramework.Algorithms.map(a => a.name));
+                DebugConfig.log('📋 Total algorithms registered:', AlgorithmFramework.Algorithms.length);
+                DebugConfig.log('  Algorithm names:', AlgorithmFramework.Algorithms.map(a => a.name));
             }
 
             // Initialize the main controller
@@ -745,6 +748,7 @@
     <script src="./algorithms/encoding/yenc.js"></script>
     <script src="./algorithms/encoding/z85.js"></script>
     <script src="./algorithms/hash/argon2.js"></script>
+    <script src="./algorithms/hash/ascon-hash256.js"></script>
     <script src="./algorithms/hash/bcrypt.js"></script>
     <script src="./algorithms/hash/blake.js"></script>
     <script src="./algorithms/hash/blake2b.js"></script>
@@ -787,6 +791,7 @@
     <script src="./algorithms/hash/cshake256.js"></script>
     <script src="./algorithms/hash/dstu7564.js"></script>
     <script src="./algorithms/hash/gost3411.js"></script>
+    <script src="./algorithms/hash/isap-hash.js"></script>
     <script src="./algorithms/hash/kangaroo.js"></script>
     <script src="./algorithms/hash/keccak-224.js"></script>
     <script src="./algorithms/hash/keccak-256.js"></script>
@@ -802,6 +807,7 @@
     <script src="./algorithms/hash/panama-be.js"></script>
     <script src="./algorithms/hash/panama-le.js"></script>
     <script src="./algorithms/hash/parallelhash.js"></script>
+    <script src="./algorithms/hash/photon-beetle-hash.js"></script>
     <script src="./algorithms/hash/ripemd128.js"></script>
     <script src="./algorithms/hash/sha3-224.js"></script>
     <script src="./algorithms/hash/sha3-384.js"></script>
@@ -810,7 +816,10 @@
     <script src="./algorithms/hash/sha512-256.js"></script>
     <script src="./algorithms/hash/shake256.js"></script>
     <script src="./algorithms/hash/sm3.js"></script>
-    <script src="./algorithms/kdf/argon2.js"></script>
+    <script src="./algorithms/hash/sparkle-hash.js"></script>
+    <script src="./algorithms/hash/tuplehash128.js"></script>
+    <script src="./algorithms/hash/tuplehash256.js"></script>
+    <script src="./algorithms/hash/xoodyak-hash.js"></script>
     <script src="./algorithms/kdf/hkdf.js"></script>
     <script src="./algorithms/kdf/pbkdf2.js"></script>
     <script src="./algorithms/kdf/scrypt.js"></script>
@@ -836,7 +845,8 @@
     <script src="./algorithms/mac/ttmac.js"></script>
     <script src="./algorithms/mac/vmpcmac.js"></script>
     <script src="./algorithms/mac/xcbc.js"></script>
-    <script src="./algorithms/mac/zuc128mac.js"></script>
+    <!-- ZUC must be loaded before zuc128mac - moved to stream section -->
+    <!-- <script src="./algorithms/mac/zuc128mac.js"></script> -->
     <script src="./algorithms/modes/cbc.js"></script>
     <script src="./algorithms/modes/ccm.js"></script>
     <script src="./algorithms/modes/cfb.js"></script>
@@ -879,14 +889,12 @@
     <script src="./algorithms/permutation/simpira-v2.js"></script>
     <script src="./algorithms/pqc/ml-kem.js"></script>
     <script src="./algorithms/random/fortuna.js"></script>
-    <script src="./algorithms/random/yarrow-demo.js"></script>
+    <!-- yarrow-demo.js is a CLI demonstration script - use: node algorithms/random/yarrow-demo.js -->
     <script src="./algorithms/random/yarrow.js"></script>
     <script src="./algorithms/special/3way.js"></script>
     <script src="./algorithms/special/aes-siv.js"></script>
-    <script src="./algorithms/special/ascon.js"></script>
-    <script src="./algorithms/special/ccm.js"></script>
+    <!-- ascon.js moved to stream category to avoid duplicate registration -->
     <script src="./algorithms/special/chacha20-poly1305.js"></script>
-    <script src="./algorithms/special/eax.js"></script>
     <script src="./algorithms/special/elephant.js"></script>
     <script src="./algorithms/special/fiat-shamir.js"></script>
     <script src="./algorithms/special/fish.js"></script>
@@ -926,7 +934,8 @@
     <script src="./algorithms/stream/morus.js"></script>
     <script src="./algorithms/stream/mugi.js"></script>
     <script src="./algorithms/stream/norx.js"></script>
-    <script src="./algorithms/stream/panama.js"></script>
+    <!-- panama.js commented out - using hash/panama-le.js and hash/panama-be.js instead to avoid duplicate registration -->
+    <!-- <script src="./algorithms/stream/panama.js"></script> -->
     <script src="./algorithms/stream/phelix-simple.js"></script>
     <script src="./algorithms/stream/pike.js"></script>
     <script src="./algorithms/stream/pomaranch.js"></script>
@@ -947,6 +956,8 @@
     <script src="./algorithms/stream/xsalsa20.js"></script>
     <script src="./algorithms/stream/zuc.js"></script>
     <script src="./algorithms/stream/zuc256.js"></script>
+    <!-- zuc128mac moved here to load after its dependency (zuc.js) -->
+    <script src="./algorithms/mac/zuc128mac.js"></script>
     <script src="./algorithms/stream/grain128.js"></script>
     <script src="./algorithms/stream/sober128.js"></script>
     <script src="./algorithms/stream/vmpc.js"></script>
