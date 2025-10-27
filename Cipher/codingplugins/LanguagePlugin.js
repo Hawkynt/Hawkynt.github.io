@@ -230,7 +230,7 @@ class LanguagePlugins {
     // Register the plugin by name
     this.plugins.set(plugin.name, plugin);
 
-    console.log(`✅ Registered language plugin: ${plugin.name} (.${plugin.extension})`);
+    DebugConfig.log(`✅ Registered language plugin: ${plugin.name} (.${plugin.extension})`);
   }
 
   /**
@@ -351,7 +351,7 @@ class LanguagePlugins {
     // Remove from name map
     this.plugins.delete(name);
     
-    console.log(`🗑️ Removed language plugin: ${name}`);
+    DebugConfig.log(`🗑️ Removed language plugin: ${name}`);
     return true;
   }
 
@@ -362,7 +362,7 @@ class LanguagePlugins {
   static Clear() {
     const count = this.plugins.size;
     this.plugins.clear();
-    console.log(`🧹 Cleared ${count} language plugins`);
+    DebugConfig.log(`🧹 Cleared ${count} language plugins`);
   }
 
   /**
