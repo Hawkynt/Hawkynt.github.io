@@ -407,7 +407,9 @@
         // Debug
         if (typeof process !== 'undefined' && process.env.DEBUG_SPARKLE) {
           const toHex = (w) => w.toString(16).padStart(8,'0').toUpperCase();
+          const toHexByte = (b) => b.toString(16).padStart(2,'0').toUpperCase();
           console.log('\nAAD block processing, useSLIM=', useSLIM);
+          console.log('Block bytes:', block.map(toHexByte).join(' '));
           console.log('State before AAD rho:', this.state.map(toHex).join(' '));
         }
 

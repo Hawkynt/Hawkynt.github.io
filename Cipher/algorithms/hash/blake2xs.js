@@ -143,21 +143,21 @@
           uri: "https://github.com/BLAKE2/BLAKE2/blob/master/testvectors/blake2-kat.json",
           input: input256,
           outputSize: 64,
-          expected: OpCodes.Hex8ToBytes("91cab802b466092897c7639a02acf529ca61864e5e8c8e422b3a9381a95154d10253f5487d927a5d35d0089ad9cab2d7515b65d332e870c78d1229d1c584bec3d5")
+          expected: OpCodes.Hex8ToBytes("57aa5c761e7cfa573c48785109ad76445441de0ee0f9fe9dd4abb920b7cb5f608fc9a029f85ec478a130f194372b6112f5f2d10408e0d23f696cc9e313b7f1d3")
         },
         {
           text: "BLAKE2xs XOF - 256 byte input, 128 byte output",
           uri: "https://github.com/BLAKE2/BLAKE2/blob/master/testvectors/blake2-kat.json",
           input: input256,
           outputSize: 128,
-          expected: OpCodes.Hex8ToBytes("91cab802b466092897c7639a02acf529ca61864e5e8c8e422b3a9381a95154d10253f5487d927a5d35d0089ad9cab2d7515b65d332e870c78d1229d1c584bec3d538524415a7ecc9d09128cbd0999bb76847fc812148b5a432548e4e500720b356c8034607a9e4ac70b3b61c47c44f9e5d05450bc356f2a323a9d2d213525ef2ad2905f82f79")
+          expected: OpCodes.Hex8ToBytes("4d1f33edc0d969128edb16e0756c5b1ef45caa7c23a2f3724dab70c8d068cfbfc4ee15ca2fa799b1eb286c2298036faec73d3cac41b950083e17ef20ddff9d55aa8b4d0365c6dd38d5ddea19ebfa2cb009dd5961320c547af20f96044f7a82a0919126466bad6f88f49b0342fd40f5c7b85206e77d26256c8b7ff4fedf36119b")
         },
         {
           text: "BLAKE2xs XOF - 256 byte input, 256 byte output",
           uri: "https://github.com/BLAKE2/BLAKE2/blob/master/testvectors/blake2-kat.json",
           input: input256,
           outputSize: 256,
-          expected: OpCodes.Hex8ToBytes("91cab802b466092897c7639a02acf529ca61864e5e8c8e422b3a9381a95154d10253f5487d927a5d35d0089ad9cab2d7515b65d332e870c78d1229d1c584bec3d538524415a7ecc9d09128cbd0999bb76847fc812148b5a432548e4e500720b356c8034607a9e4ac70b3b61c47c44f9e5d05450bc356f2a323a9d2d213525ef2ad2905f82f79c8ab4ac86f91ab339c79bec70920cdf382f7cffa279a80687a5c27cf691cc92777120c3ede63da44e818a837a9ccb7d339ae9e68bb4632eb34ad5dcc2223de7b8c1dca50a3739ff8eaad5a3ff34c717f1ea06334e074e30b4c57053501566d4889beb32933bc6dabd01f74d17fd3ec845a8fcb16cc5459868f5200a811f511c84caf7fd7f6de2010c162c1eaeca1f3f135b14c4de356")
+          expected: OpCodes.Hex8ToBytes("d4a23a17b657fa3ddc2df61eefce362f048b9dd156809062997ab9d5b1fb26b8542b1a638f517fcbad72a6fb23de0754db7bb488b75c12ac826dcced9806d7873e6b31922097ef7b42506275ccc54caf86918f9d1c6cdb9bad2bacf123c0380b2e5dc3e98de83a159ee9e10a8444832c371e5b72039b31c38621261aa04d8271598b17dba0d28c20d1858d879038485ab069bdb58733b5495f934889658ae81b7536bcf601cfcc572060863c1ff2202d2ea84c800482dbe777335002204b7c1f70133e4d8a6b7516c66bb433ad31030a7a9a9a6b9ea69890aa40662d908a5acfe8328802595f0284c51a000ce274a985823de9ee74250063a879a3787fca23a6")
         }
       ];
     }
