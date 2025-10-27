@@ -38,8 +38,8 @@ class AlgorithmDetails {
             // Focus management for accessibility
             this.element.focus();
         } catch (error) {
-            console.error('Error showing algorithm details modal:', error);
-            console.error('Algorithm:', algorithm ? algorithm.name : 'undefined');
+            DebugConfig.error('Error showing algorithm details modal:', error);
+            DebugConfig.error('Algorithm:', algorithm ? algorithm.name : 'undefined');
             
             // Try to show a fallback error modal
             try {
@@ -65,7 +65,7 @@ class AlgorithmDetails {
                 window.algorithmDetailsInstance = this;
                 this.element.focus();
             } catch (fallbackError) {
-                console.error('Even the fallback modal failed:', fallbackError);
+                DebugConfig.error('Even the fallback modal failed:', fallbackError);
                 alert('Error loading algorithm details: ' + error.message);
             }
         }
@@ -226,46 +226,46 @@ class AlgorithmDetails {
         if (titleEl) {
             titleEl.textContent = this.currentAlgorithm.name;
         } else {
-            console.warn('AlgorithmDetails: Title element not found for algorithm:', this.currentAlgorithm.name);
+            DebugConfig.warn('AlgorithmDetails: Title element not found for algorithm:', this.currentAlgorithm.name);
         }
 
         // Set category attribute for styling
         try {
             this.element.setAttribute('data-category', this.getCategoryKey());
         } catch (error) {
-            console.warn('AlgorithmDetails: Failed to set category attribute:', error);
+            DebugConfig.warn('AlgorithmDetails: Failed to set category attribute:', error);
         }
 
         // Apply category color tinting to header background
         try {
             this.applyCategoryTinting();
         } catch (error) {
-            console.warn('AlgorithmDetails: Failed to apply category tinting:', error);
+            DebugConfig.warn('AlgorithmDetails: Failed to apply category tinting:', error);
         }
 
         // Populate each tab with individual error handling
         try {
             this.populateInfoTab();
         } catch (error) {
-            console.warn('AlgorithmDetails: Failed to populate info tab:', error);
+            DebugConfig.warn('AlgorithmDetails: Failed to populate info tab:', error);
         }
 
         try {
             this.populateReferencesTab();
         } catch (error) {
-            console.warn('AlgorithmDetails: Failed to populate references tab:', error);
+            DebugConfig.warn('AlgorithmDetails: Failed to populate references tab:', error);
         }
 
         try {
             this.populateTestVectorsTab();
         } catch (error) {
-            console.warn('AlgorithmDetails: Failed to populate test vectors tab:', error);
+            DebugConfig.warn('AlgorithmDetails: Failed to populate test vectors tab:', error);
         }
 
         try {
             this.populateCodeTab();
         } catch (error) {
-            console.warn('AlgorithmDetails: Failed to populate code tab:', error);
+            DebugConfig.warn('AlgorithmDetails: Failed to populate code tab:', error);
         }
     }
 
@@ -548,10 +548,10 @@ class AlgorithmDetails {
         // Check if LanguagePlugins is available
         if (typeof window !== 'undefined' && window.LanguagePlugins) {
             const plugins = window.LanguagePlugins.GetAll();
-            console.log(`🔌 Found ${plugins.length} language plugins for algorithm details`);
+            DebugConfig.log(`🔌 Found ${plugins.length} language plugins for algorithm details`);
             
             if (plugins.length > 0) {
-                console.log('📝 Available plugins:', plugins.map(p => `${p.name} (.${p.extension})`));
+                DebugConfig.log('📝 Available plugins:', plugins.map(p => `${p.name} (.${p.extension})`));
                 
                 plugins.forEach((plugin, index) => {
                     const isActive = index === 0; // Default to first language
@@ -560,11 +560,11 @@ class AlgorithmDetails {
                     html += '</button>';
                 });
             } else {
-                console.warn('⚠️ LanguagePlugins registry is empty');
+                DebugConfig.warn('⚠️ LanguagePlugins registry is empty');
                 html += '<div class="loading-message">⚠️ No language plugins found. Please check plugin loading.</div>';
             }
         } else {
-            console.warn('❌ LanguagePlugins not available in algorithm details');
+            DebugConfig.warn('❌ LanguagePlugins not available in algorithm details');
             // Fallback languages if LanguagePlugins is not available
             const fallbackLanguages = [
                 { key: 'js', name: 'JavaScript', icon: '�' },
@@ -936,7 +936,7 @@ class AlgorithmDetails {
             
         } catch (error) {
             resultsContainer.innerHTML = `<div class="test-status failure">❌ FAILED</div><div class="test-error">Error: ${error.message}</div>`;
-            console.error('Test execution failed:', error);
+            DebugConfig.error('Test execution failed:', error);
             
             // Update the algorithm's test results and refresh the card
             this.updateAlgorithmTestResults();
@@ -1167,7 +1167,7 @@ class AlgorithmDetails {
      * Generate code for a specific language using TypeAware transpiler
      */
     async generateCodeForLanguage(languageKey) {
-        console.log(`🔧 Generating code for language: ${languageKey}`);
+        DebugConfig.log(`🔧 Generating code for language: ${languageKey}`);
         
         const algorithm = this.currentAlgorithm;
         if (!algorithm) {
@@ -1178,47 +1178,47 @@ class AlgorithmDetails {
             // Step 1: Get the JavaScript source code
             const jsSource = await this.getJavaScriptSource();
             if (!jsSource || jsSource.trim().length === 0) {
-                console.error('❌ No JavaScript source code available');
+                DebugConfig.error('❌ No JavaScript source code available');
                 throw new Error(`No source code available for ${algorithm.name}`);
             }
             
-            console.log(`📄 Got JavaScript source (${jsSource.length} chars)`);
+            DebugConfig.log(`📄 Got JavaScript source (${jsSource.length} chars)`);
             
             // Debug: Log the first 500 characters of the source to see what we're parsing
-            console.log('🔍 JavaScript source preview:');
-            console.log(jsSource.substring(0, 500));
-            console.log('...');
+            DebugConfig.log('🔍 JavaScript source preview:');
+            DebugConfig.log(jsSource.substring(0, 500));
+            DebugConfig.log('...');
             
             // For JavaScript, return the source as-is (it's the original)
             if (languageKey === 'js' || languageKey === 'javascript') {
-                console.log('✅ Returning original JavaScript source');
+                DebugConfig.log('✅ Returning original JavaScript source');
                 return jsSource;
             }
             
             // Step 2: Check if TypeAwareJSASTTranspiler is available
             if (!window.TypeAwareJSASTTranspiler) {
-                console.error('❌ TypeAwareJSASTTranspiler not available');
+                DebugConfig.error('❌ TypeAwareJSASTTranspiler not available');
                 throw new Error('TypeAwareJSASTTranspiler not loaded');
             }
             
             // Step 3: Get the language plugin
             const plugin = window.LanguagePlugins.GetByExtension(languageKey);
             if (!plugin) {
-                console.error(`❌ No plugin found for language: ${languageKey}`);
+                DebugConfig.error(`❌ No plugin found for language: ${languageKey}`);
                 throw new Error(`No plugin available for .${languageKey} files`);
             }
             
-            console.log(`📝 Using plugin: ${plugin.name} for .${plugin.extension}`);
+            DebugConfig.log(`📝 Using plugin: ${plugin.name} for .${plugin.extension}`);
             
             // Step 4: Parse JavaScript into AST using TypeAware transpiler
-            console.log('🚀 Parsing JavaScript source with TypeAware transpiler...');
+            DebugConfig.log('🚀 Parsing JavaScript source with TypeAware transpiler...');
             
             const parser = new window.TypeAwareJSASTTranspiler.TypeAwareJSASTParser(jsSource);
             parser.tokenize();
-            console.log('✅ Tokenization completed');
+            DebugConfig.log('✅ Tokenization completed');
             
             const ast = parser.parse();
-            console.log('✅ JavaScript parsed successfully into AST');
+            DebugConfig.log('✅ JavaScript parsed successfully into AST');
             
             // Apply AST transformations
             const options = this.getCodeGenerationOptions();
@@ -1228,15 +1228,15 @@ class AlgorithmDetails {
             const generationResult = plugin.GenerateFromAST(transformedAST, options);
             
             if (generationResult.success) {
-                console.log(`✅ Code generation successful for ${languageKey}`);
+                DebugConfig.log(`✅ Code generation successful for ${languageKey}`);
                 return generationResult.code;
             } else {
-                console.error(`❌ Code generation failed: ${generationResult.error}`);
+                DebugConfig.error(`❌ Code generation failed: ${generationResult.error}`);
                 throw new Error(`Code generation failed: ${generationResult.error}`);
             }
             
         } catch (error) {
-            console.error(`❌ Error in generateCodeForLanguage:`, error);
+            DebugConfig.error(`❌ Error in generateCodeForLanguage:`, error);
             throw error;
         }
     }
@@ -1250,7 +1250,7 @@ class AlgorithmDetails {
             throw new Error('No algorithm available');
         }
         
-        console.log(`📄 Getting JavaScript source for ${algorithm.name}`);
+        DebugConfig.log(`📄 Getting JavaScript source for ${algorithm.name}`);
         
         // Delegate to the existing method
         return await this.getActualJavaScriptSource(algorithm);
@@ -1274,7 +1274,7 @@ class AlgorithmDetails {
      * Apply AST transformations based on options
      */
     applyASTTransformations(ast, options) {
-        console.log('🔧 Applying AST transformations:', options);
+        DebugConfig.log('🔧 Applying AST transformations:', options);
         
         if (options.stripTestVectors) {
             ast = this.removeTestVectorsFromAST(ast);
@@ -1296,7 +1296,7 @@ class AlgorithmDetails {
      */
     removeTestVectorsFromAST(ast) {
         // For now, return AST as-is. Could implement test vector removal logic here
-        console.log('🧹 Removing test vectors from AST');
+        DebugConfig.log('🧹 Removing test vectors from AST');
         return ast;
     }
 
@@ -1305,7 +1305,7 @@ class AlgorithmDetails {
      */
     removeDebugCodeFromAST(ast) {
         // For now, return AST as-is. Could implement debug code removal logic here
-        console.log('🧹 Removing debug code from AST');
+        DebugConfig.log('🧹 Removing debug code from AST');
         return ast;
     }
 
@@ -1314,7 +1314,7 @@ class AlgorithmDetails {
      */
     removeCommentsFromAST(ast) {
         // For now, return AST as-is. Could implement comment removal logic here
-        console.log('🧹 Removing comments from AST');
+        DebugConfig.log('🧹 Removing comments from AST');
         return ast;
     }
 
@@ -1332,55 +1332,55 @@ class AlgorithmDetails {
      * Get the actual JavaScript source code for the algorithm
      */
     async getActualJavaScriptSource(algorithm) {
-        console.log(`🚀 === STARTING JAVASCRIPT SOURCE EXTRACTION FOR "${algorithm.name}" ===`);
+        DebugConfig.log(`🚀 === STARTING JAVASCRIPT SOURCE EXTRACTION FOR "${algorithm.name}" ===`);
         
         // Try to get the source from the algorithm's file
         if (algorithm.sourceCode) {
-            console.log(`✅ Found algorithm.sourceCode property`);
+            DebugConfig.log(`✅ Found algorithm.sourceCode property`);
             return algorithm.sourceCode;
         }
-        console.log(`❌ No algorithm.sourceCode property found`);
+        DebugConfig.log(`❌ No algorithm.sourceCode property found`);
         
         // Try to read the original file directly
-        console.log(`🔍 Attempting to load original file...`);
+        DebugConfig.log(`🔍 Attempting to load original file...`);
         const sourceFromFile = await this.loadOriginalJavaScriptFile(algorithm);
         if (sourceFromFile) {
-            console.log(`✅ Successfully loaded source from file (${sourceFromFile.length} chars)`);
+            DebugConfig.log(`✅ Successfully loaded source from file (${sourceFromFile.length} chars)`);
             return sourceFromFile;
         }
-        console.log(`❌ Failed to load source from file`);
+        DebugConfig.log(`❌ Failed to load source from file`);
         
         // Try to get source from the constructor if available
-        console.log(`🔍 Checking algorithm constructor...`);
+        DebugConfig.log(`🔍 Checking algorithm constructor...`);
         if (algorithm.constructor && algorithm.constructor.toString) {
             const constructorSource = algorithm.constructor.toString();
-            console.log(`📋 Constructor source: "${constructorSource.substring(0, 100)}..."`);
+            DebugConfig.log(`📋 Constructor source: "${constructorSource.substring(0, 100)}..."`);
             if (constructorSource !== '[native code]') {
-                console.log(`✅ Found constructor source (${constructorSource.length} chars)`);
-                console.log(`🔄 But let's also try to extract instance classes...`);
+                DebugConfig.log(`✅ Found constructor source (${constructorSource.length} chars)`);
+                DebugConfig.log(`🔄 But let's also try to extract instance classes...`);
                 
                 // Try to get instance source as well and combine them
                 const instanceExtraction = this.extractInstanceSources(algorithm);
                 if (instanceExtraction && instanceExtraction.length > 0) {
-                    console.log(`✅ Also extracted instance sources (${instanceExtraction.length} chars)`);
+                    DebugConfig.log(`✅ Also extracted instance sources (${instanceExtraction.length} chars)`);
                     const combinedSource = constructorSource + '\n\n' + instanceExtraction;
-                    console.log(`📊 Combined source: ${constructorSource.length} + ${instanceExtraction.length} = ${combinedSource.length} chars`);
+                    DebugConfig.log(`📊 Combined source: ${constructorSource.length} + ${instanceExtraction.length} = ${combinedSource.length} chars`);
                     return combinedSource;
                 } else {
-                    console.log(`❌ No additional instance sources found, using constructor only`);
+                    DebugConfig.log(`❌ No additional instance sources found, using constructor only`);
                     return constructorSource;
                 }
             } else {
-                console.log(`❌ Constructor is native code`);
+                DebugConfig.log(`❌ Constructor is native code`);
             }
         } else {
-            console.log(`❌ No valid constructor found`);
+            DebugConfig.log(`❌ No valid constructor found`);
         }
         
         // Try to reconstruct source from algorithm properties and methods
-        console.log(`🔄 Falling back to source reconstruction...`);
+        DebugConfig.log(`🔄 Falling back to source reconstruction...`);
         let source = this.reconstructJavaScriptSource(algorithm);
-        console.log(`📊 Final reconstructed source length: ${source.length} characters`);
+        DebugConfig.log(`📊 Final reconstructed source length: ${source.length} characters`);
         return source;
     }
 
@@ -1392,64 +1392,64 @@ class AlgorithmDetails {
         
         try {
             if (algorithm.CreateInstance && typeof algorithm.CreateInstance === 'function') {
-                console.log(`🔄 Extracting instance sources for ${algorithm.name}...`);
+                DebugConfig.log(`🔄 Extracting instance sources for ${algorithm.name}...`);
                 
                 const encryptInstance = algorithm.CreateInstance(false);
-                console.log(`📥 Encryption instance:`, encryptInstance);
-                console.log(`📥 Encryption constructor:`, encryptInstance?.constructor);
-                console.log(`📥 Encryption constructor name:`, encryptInstance?.constructor?.name);
+                DebugConfig.log(`📥 Encryption instance:`, encryptInstance);
+                DebugConfig.log(`📥 Encryption constructor:`, encryptInstance?.constructor);
+                DebugConfig.log(`📥 Encryption constructor name:`, encryptInstance?.constructor?.name);
                 
                 const decryptInstance = algorithm.CreateInstance(true);
-                console.log(`📤 Decryption instance:`, decryptInstance);
-                console.log(`📤 Decryption constructor:`, decryptInstance?.constructor);
-                console.log(`📤 Decryption constructor name:`, decryptInstance?.constructor?.name);
+                DebugConfig.log(`📤 Decryption instance:`, decryptInstance);
+                DebugConfig.log(`📤 Decryption constructor:`, decryptInstance?.constructor);
+                DebugConfig.log(`📤 Decryption constructor name:`, decryptInstance?.constructor?.name);
                 
                 // Extract encryption instance class
                 if (encryptInstance && encryptInstance.constructor && encryptInstance.constructor.toString) {
                     const encryptClassSource = encryptInstance.constructor.toString();
-                    console.log(`🔍 Encryption class source length:`, encryptClassSource?.length);
-                    console.log(`🔍 Encryption class source preview:`, encryptClassSource?.substring(0, 200));
+                    DebugConfig.log(`🔍 Encryption class source length:`, encryptClassSource?.length);
+                    DebugConfig.log(`🔍 Encryption class source preview:`, encryptClassSource?.substring(0, 200));
                     
                     if (encryptClassSource && encryptClassSource !== '[native code]' && 
                         !encryptClassSource.includes('function Object()')) {
                         instanceSource += '// Encryption Instance Class\n';
                         instanceSource += encryptClassSource + '\n\n';
-                        console.log(`✅ Added encryption instance class (${encryptClassSource.length} chars) - contains all methods`);
+                        DebugConfig.log(`✅ Added encryption instance class (${encryptClassSource.length} chars) - contains all methods`);
                     } else {
-                        console.log(`❌ Encryption class source rejected: native/Object/empty`);
+                        DebugConfig.log(`❌ Encryption class source rejected: native/Object/empty`);
                     }
                 } else {
-                    console.log(`❌ No valid encryption instance constructor found`);
+                    DebugConfig.log(`❌ No valid encryption instance constructor found`);
                 }
                 
                 // Extract decryption instance class if different
                 if (decryptInstance && decryptInstance.constructor && 
                     decryptInstance.constructor !== encryptInstance?.constructor) {
                     const decryptClassSource = decryptInstance.constructor.toString();
-                    console.log(`🔍 Decryption class source length:`, decryptClassSource?.length);
-                    console.log(`🔍 Decryption class source preview:`, decryptClassSource?.substring(0, 200));
+                    DebugConfig.log(`🔍 Decryption class source length:`, decryptClassSource?.length);
+                    DebugConfig.log(`🔍 Decryption class source preview:`, decryptClassSource?.substring(0, 200));
                     
                     if (decryptClassSource && decryptClassSource !== '[native code]' && 
                         !decryptClassSource.includes('function Object()')) {
                         instanceSource += '// Decryption Instance Class\n';
                         instanceSource += decryptClassSource + '\n\n';
-                        console.log(`✅ Added decryption instance class (${decryptClassSource.length} chars) - contains all methods`);
+                        DebugConfig.log(`✅ Added decryption instance class (${decryptClassSource.length} chars) - contains all methods`);
                     } else {
-                        console.log(`❌ Decryption class source rejected: native/Object/empty`);
+                        DebugConfig.log(`❌ Decryption class source rejected: native/Object/empty`);
                     }
                 } else {
-                    console.log(`⚠️ Decryption instance same as encryption or invalid`);
+                    DebugConfig.log(`⚠️ Decryption instance same as encryption or invalid`);
                 }
                 
                 // Note: We don't extract methods separately since they're already in the class source
-                console.log(`ℹ️ Instance classes already contain all methods and fields - no separate extraction needed`);
+                DebugConfig.log(`ℹ️ Instance classes already contain all methods and fields - no separate extraction needed`);
                 
-                console.log(`📊 Total extracted instance source length: ${instanceSource.length} characters`);
+                DebugConfig.log(`📊 Total extracted instance source length: ${instanceSource.length} characters`);
             } else {
-                console.log(`❌ No CreateInstance method available`);
+                DebugConfig.log(`❌ No CreateInstance method available`);
             }
         } catch (e) {
-            console.warn('Could not extract instance sources:', e);
+            DebugConfig.warn('Could not extract instance sources:', e);
         }
         
         return instanceSource;
@@ -1475,7 +1475,7 @@ class AlgorithmDetails {
             }, 100);
             
         } catch (error) {
-            console.error('Failed to load code:', error);
+            DebugConfig.error('Failed to load code:', error);
             codeElement.textContent = `// Error loading source code: ${error.message}`;
         }
     }
@@ -1489,8 +1489,8 @@ class AlgorithmDetails {
             const isFileProtocol = window.location.protocol === 'file:';
             
             if (isFileProtocol) {
-                console.log(`⚠️ File protocol detected - CORS will block fetch requests`);
-                console.log(`� Falling back to source reconstruction...`);
+                DebugConfig.log(`⚠️ File protocol detected - CORS will block fetch requests`);
+                DebugConfig.log(`� Falling back to source reconstruction...`);
                 
                 // Return null to trigger fallback to reconstruction
                 return null;
@@ -1502,30 +1502,30 @@ class AlgorithmDetails {
             // Try each matched path
             for (const filePath of smartMatchedPaths) {
                 try {
-                    console.log(`Attempting to load source from: ${filePath}`);
+                    DebugConfig.log(`Attempting to load source from: ${filePath}`);
                     
                     const response = await fetch(filePath);
                     if (response.ok) {
                         const sourceCode = await response.text();
-                        console.log(`✅ Successfully loaded ${sourceCode.length} characters from ${filePath}`);
+                        DebugConfig.log(`✅ Successfully loaded ${sourceCode.length} characters from ${filePath}`);
                         
                         // TODO: Clean up the source code to remove everything outside class/function/fields
                         return this.cleanupSourceCode(sourceCode, algorithm);
                     } else {
-                        console.log(`Failed to load ${filePath}: ${response.status}`);
+                        DebugConfig.log(`Failed to load ${filePath}: ${response.status}`);
                     }
                 } catch (fetchError) {
-                    console.log(`❌ Fetch failed for ${filePath}: ${fetchError.message}`);
-                    console.log(`🔄 CORS detected - falling back to reconstruction...`);
+                    DebugConfig.log(`❌ Fetch failed for ${filePath}: ${fetchError.message}`);
+                    DebugConfig.log(`🔄 CORS detected - falling back to reconstruction...`);
                 }
             }
             
-            console.warn(`No source file found for ${algorithm.name} - falling back to reconstruction`);
+            DebugConfig.warn(`No source file found for ${algorithm.name} - falling back to reconstruction`);
             return null;
             
         } catch (error) {
-            console.warn('Failed to load original JavaScript file:', error);
-            console.log(`🔄 Falling back to source reconstruction...`);
+            DebugConfig.warn('Failed to load original JavaScript file:', error);
+            DebugConfig.log(`🔄 Falling back to source reconstruction...`);
             return null;
         }
     }
@@ -1536,7 +1536,7 @@ class AlgorithmDetails {
      */
     cleanupSourceCode(sourceCode, algorithm) {
         try {
-            console.log(`🧹 Cleaning up source code for ${algorithm.name}...`);
+            DebugConfig.log(`🧹 Cleaning up source code for ${algorithm.name}...`);
             
             let cleanedCode = sourceCode;
             
@@ -1585,11 +1585,11 @@ class AlgorithmDetails {
             cleanedCode = cleanedCode.replace(/\n{3,}/g, '\n\n');
             cleanedCode = cleanedCode.trim();
             
-            console.log(`✅ Cleaned up source: ${sourceCode.length} → ${cleanedCode.length} characters`);
+            DebugConfig.log(`✅ Cleaned up source: ${sourceCode.length} → ${cleanedCode.length} characters`);
             return cleanedCode;
             
         } catch (error) {
-            console.warn('Error cleaning up source code:', error);
+            DebugConfig.warn('Error cleaning up source code:', error);
             return sourceCode; // Return original if cleanup fails
         }
     }
@@ -1601,7 +1601,7 @@ class AlgorithmDetails {
         const matches = [];
         
         try {
-            console.log(`🔍 === SMART MATCHING DEBUG FOR "${algorithm.name}" ===`);
+            DebugConfig.log(`🔍 === SMART MATCHING DEBUG FOR "${algorithm.name}" ===`);
             
             // Get all script elements in the document and extract their actual paths
             const scripts = document.querySelectorAll('script[src]');
@@ -1620,17 +1620,17 @@ class AlgorithmDetails {
                 }
             });
             
-            console.log(`📁 Found ${loadedFiles.length} loaded algorithm files with paths:`, loadedFiles);
+            DebugConfig.log(`📁 Found ${loadedFiles.length} loaded algorithm files with paths:`, loadedFiles);
             
             // Normalize algorithm name for comparison
             const normalizedAlgorithmName = this.normalizeForComparison(algorithm.name);
-            console.log(`🎯 Algorithm "${algorithm.name}" → normalized: "${normalizedAlgorithmName}"`);
+            DebugConfig.log(`🎯 Algorithm "${algorithm.name}" → normalized: "${normalizedAlgorithmName}"`);
             
             // Create detailed normalized list with actual paths
-            console.log(`📋 NORMALIZED FILE LIST (${loadedFiles.length} files):`);
+            DebugConfig.log(`📋 NORMALIZED FILE LIST (${loadedFiles.length} files):`);
             loadedFiles.forEach((item, index) => {
                 const normalizedFileName = this.normalizeForComparison(item.fileName);
-                console.log(`  ${index + 1}. "${item.fileName}" → "${normalizedFileName}" [${item.category}] → ${item.fullPath}`);
+                DebugConfig.log(`  ${index + 1}. "${item.fileName}" → "${normalizedFileName}" [${item.category}] → ${item.fullPath}`);
             });
             
             // Find best matches with detailed scoring using actual paths
@@ -1651,29 +1651,29 @@ class AlgorithmDetails {
             // Sort all results for debugging
             const allSorted = scored.sort((a, b) => b.score - a.score);
             
-            console.log(`🏆 ALL SCORING RESULTS (sorted by score):`);
+            DebugConfig.log(`🏆 ALL SCORING RESULTS (sorted by score):`);
             allSorted.forEach((item, index) => {
                 const emoji = item.score > 0.8 ? '🟢' : item.score > 0.5 ? '🟡' : '🔴';
-                console.log(`  ${index + 1}. ${emoji} ${item.comparison} → Score: ${item.score.toFixed(3)} → [${item.category}] ${item.fileName}`);
+                DebugConfig.log(`  ${index + 1}. ${emoji} ${item.comparison} → Score: ${item.score.toFixed(3)} → [${item.category}] ${item.fileName}`);
             });
             
             // Filter for good matches
             const goodMatches = allSorted.filter(item => item.score > 0.5);
             
-            console.log(`✅ GOOD MATCHES (score > 0.5): ${goodMatches.length} found`);
+            DebugConfig.log(`✅ GOOD MATCHES (score > 0.5): ${goodMatches.length} found`);
             
             // Take the best matches and use their actual paths
             goodMatches.slice(0, 3).forEach((item, index) => {
                 matches.push(item.filePath); // This is now the real path from script src
-                console.log(`  ${index + 1}. ✅ Selected: "${item.fileName}" → ${item.filePath} (score: ${item.score.toFixed(3)})`);
+                DebugConfig.log(`  ${index + 1}. ✅ Selected: "${item.fileName}" → ${item.filePath} (score: ${item.score.toFixed(3)})`);
             });
             
             if (goodMatches.length === 0) {
-                console.log(`❌ NO GOOD MATCHES FOUND for "${algorithm.name}" (normalized: "${normalizedAlgorithmName}")`);
+                DebugConfig.log(`❌ NO GOOD MATCHES FOUND for "${algorithm.name}" (normalized: "${normalizedAlgorithmName}")`);
             }
             
         } catch (error) {
-            console.warn('Smart matching failed:', error);
+            DebugConfig.warn('Smart matching failed:', error);
         }
         
         return matches;
@@ -1803,7 +1803,7 @@ class AlgorithmDetails {
      * Reconstruct JavaScript source from algorithm object
      */
     reconstructJavaScriptSource(algorithm) {
-        console.log(`🔧 === RECONSTRUCTING JAVASCRIPT SOURCE FOR "${algorithm.name}" ===`);
+        DebugConfig.log(`🔧 === RECONSTRUCTING JAVASCRIPT SOURCE FOR "${algorithm.name}" ===`);
         
         try {
             let source = '';
@@ -1817,93 +1817,93 @@ class AlgorithmDetails {
             
             // Add the actual algorithm class if we can access it
             const className = algorithm.constructor.name || algorithm.name.replace(/[^a-zA-Z0-9]/g, '');
-            console.log(`🏷️ Using class name: ${className}`);
+            DebugConfig.log(`🏷️ Using class name: ${className}`);
             
             // Try to get the actual class source
             if (algorithm.constructor && algorithm.constructor.toString) {
                 const classSource = algorithm.constructor.toString();
-                console.log(`📋 Algorithm constructor toString: "${classSource.substring(0, 100)}..."`);
+                DebugConfig.log(`📋 Algorithm constructor toString: "${classSource.substring(0, 100)}..."`);
                 if (classSource && classSource !== '[native code]' && !classSource.includes('function Object()')) {
                     source += '// Algorithm Class\n';
                     source += classSource + '\n\n';
-                    console.log(`✅ Added algorithm class source (${classSource.length} chars)`);
+                    DebugConfig.log(`✅ Added algorithm class source (${classSource.length} chars)`);
                 } else {
-                    console.log(`❌ Algorithm class source rejected: native/Object/empty`);
+                    DebugConfig.log(`❌ Algorithm class source rejected: native/Object/empty`);
                 }
             } else {
-                console.log(`❌ No algorithm constructor.toString available`);
+                DebugConfig.log(`❌ No algorithm constructor.toString available`);
             }
             
             // Try to get instance class source by checking if CreateInstance returns an object with a constructor
             let instanceSource = '';
             try {
                 if (algorithm.CreateInstance && typeof algorithm.CreateInstance === 'function') {
-                    console.log(`🔄 Extracting both encryption and decryption instances for ${algorithm.name}...`);
+                    DebugConfig.log(`🔄 Extracting both encryption and decryption instances for ${algorithm.name}...`);
                     
                     // TODO ADDRESSED: Get both directions since they may refer to different types
                     const encryptInstance = algorithm.CreateInstance(false); // Encryption instance
-                    console.log(`📥 Encryption instance:`, encryptInstance);
-                    console.log(`📥 Encryption constructor:`, encryptInstance?.constructor);
-                    console.log(`📥 Encryption constructor name:`, encryptInstance?.constructor?.name);
+                    DebugConfig.log(`📥 Encryption instance:`, encryptInstance);
+                    DebugConfig.log(`📥 Encryption constructor:`, encryptInstance?.constructor);
+                    DebugConfig.log(`📥 Encryption constructor name:`, encryptInstance?.constructor?.name);
                     
                     const decryptInstance = algorithm.CreateInstance(true);  // Decryption instance
-                    console.log(`📤 Decryption instance:`, decryptInstance);
-                    console.log(`📤 Decryption constructor:`, decryptInstance?.constructor);
-                    console.log(`📤 Decryption constructor name:`, decryptInstance?.constructor?.name);
+                    DebugConfig.log(`📤 Decryption instance:`, decryptInstance);
+                    DebugConfig.log(`📤 Decryption constructor:`, decryptInstance?.constructor);
+                    DebugConfig.log(`📤 Decryption constructor name:`, decryptInstance?.constructor?.name);
                     
                     // Extract from encryption instance
                     if (encryptInstance && encryptInstance.constructor && encryptInstance.constructor.toString) {
                         const encryptClassSource = encryptInstance.constructor.toString();
-                        console.log(`🔍 Encryption class source length:`, encryptClassSource?.length);
-                        console.log(`🔍 Encryption class source preview:`, encryptClassSource?.substring(0, 200));
+                        DebugConfig.log(`🔍 Encryption class source length:`, encryptClassSource?.length);
+                        DebugConfig.log(`🔍 Encryption class source preview:`, encryptClassSource?.substring(0, 200));
                         
                         if (encryptClassSource && encryptClassSource !== '[native code]' && 
                             !encryptClassSource.includes('function Object()')) {
                             instanceSource += '// Encryption Instance Class\n';
                             instanceSource += encryptClassSource + '\n\n';
-                            console.log(`✅ Added encryption instance class (${encryptClassSource.length} chars)`);
+                            DebugConfig.log(`✅ Added encryption instance class (${encryptClassSource.length} chars)`);
                         } else {
-                            console.log(`❌ Encryption class source rejected: native/Object/empty`);
+                            DebugConfig.log(`❌ Encryption class source rejected: native/Object/empty`);
                         }
                     } else {
-                        console.log(`❌ No valid encryption instance constructor found`);
+                        DebugConfig.log(`❌ No valid encryption instance constructor found`);
                     }
                     
                     // Extract from decryption instance if different
                     if (decryptInstance && decryptInstance.constructor && 
                         decryptInstance.constructor !== encryptInstance?.constructor) {
                         const decryptClassSource = decryptInstance.constructor.toString();
-                        console.log(`🔍 Decryption class source length:`, decryptClassSource?.length);
-                        console.log(`🔍 Decryption class source preview:`, decryptClassSource?.substring(0, 200));
+                        DebugConfig.log(`🔍 Decryption class source length:`, decryptClassSource?.length);
+                        DebugConfig.log(`🔍 Decryption class source preview:`, decryptClassSource?.substring(0, 200));
                         
                         if (decryptClassSource && decryptClassSource !== '[native code]' && 
                             !decryptClassSource.includes('function Object()')) {
                             instanceSource += '// Decryption Instance Class\n';
                             instanceSource += decryptClassSource + '\n\n';
-                            console.log(`✅ Added decryption instance class (${decryptClassSource.length} chars)`);
+                            DebugConfig.log(`✅ Added decryption instance class (${decryptClassSource.length} chars)`);
                         } else {
-                            console.log(`❌ Decryption class source rejected: native/Object/empty`);
+                            DebugConfig.log(`❌ Decryption class source rejected: native/Object/empty`);
                         }
                     } else {
-                        console.log(`⚠️ Decryption instance same as encryption or invalid`);
+                        DebugConfig.log(`⚠️ Decryption instance same as encryption or invalid`);
                     }
                                         
-                    console.log(`📊 Total instance source length: ${instanceSource.length} characters`);
+                    DebugConfig.log(`📊 Total instance source length: ${instanceSource.length} characters`);
                 }
             } catch (e) {
-                console.warn('Could not extract instance source:', e);
+                DebugConfig.warn('Could not extract instance source:', e);
             }
             
             // If we have actual source, use it
-            console.log(`📊 Final source analysis:`);
-            console.log(`📊 - Base source length: ${source.length}`);
-            console.log(`📊 - Instance source length: ${instanceSource.length}`);
-            console.log(`📊 - Condition: source.length (${source.length}) > 200 || instanceSource.length (${instanceSource.length}) > 100`);
-            console.log(`📊 - Result: ${source.length > 200 || instanceSource.length > 100}`);
+            DebugConfig.log(`📊 Final source analysis:`);
+            DebugConfig.log(`📊 - Base source length: ${source.length}`);
+            DebugConfig.log(`📊 - Instance source length: ${instanceSource.length}`);
+            DebugConfig.log(`📊 - Condition: source.length (${source.length}) > 200 || instanceSource.length (${instanceSource.length}) > 100`);
+            DebugConfig.log(`📊 - Result: ${source.length > 200 || instanceSource.length > 100}`);
             
             if (source.length > 200 || instanceSource.length > 100) {
                 source += instanceSource;
-                console.log(`✅ Using extracted source (${source.length} total chars)`);
+                DebugConfig.log(`✅ Using extracted source (${source.length} total chars)`);
                 
                 // Add registration if not present
                 if (!source.includes('RegisterAlgorithm')) {
@@ -1915,11 +1915,11 @@ class AlgorithmDetails {
             }
             
             // Fallback to reconstructed source
-            console.log(`⚠️ Falling back to comprehensive reconstruction`);
+            DebugConfig.log(`⚠️ Falling back to comprehensive reconstruction`);
             return this.buildComprehensiveJavaScriptSource(algorithm);
             
         } catch (error) {
-            console.warn('Failed to reconstruct JavaScript source:', error);
+            DebugConfig.warn('Failed to reconstruct JavaScript source:', error);
             return this.buildComprehensiveJavaScriptSource(algorithm);
         }
     }
@@ -1931,7 +1931,7 @@ class AlgorithmDetails {
         let methods = '';
         
         try {
-            console.log(`🔍 Extracting ${direction} instance methods...`);
+            DebugConfig.log(`🔍 Extracting ${direction} instance methods...`);
             
             // Get all methods from the instance prototype
             const prototype = Object.getPrototypeOf(instance);
@@ -1971,7 +1971,7 @@ class AlgorithmDetails {
             }
             
         } catch (error) {
-            console.warn(`Could not extract ${direction} instance methods:`, error);
+            DebugConfig.warn(`Could not extract ${direction} instance methods:`, error);
         }
         
         return '';
@@ -1985,7 +1985,7 @@ class AlgorithmDetails {
         let fields = '';
         
         try {
-            console.log(`🔍 Extracting ${direction} instance fields...`);
+            DebugConfig.log(`🔍 Extracting ${direction} instance fields...`);
             
             const fieldEntries = [];
             
@@ -2037,7 +2037,7 @@ class AlgorithmDetails {
             }
             
         } catch (error) {
-            console.warn(`Could not extract ${direction} instance fields:`, error);
+            DebugConfig.warn(`Could not extract ${direction} instance fields:`, error);
         }
         
         return fields;
@@ -2344,7 +2344,7 @@ class AlgorithmDetails {
             code += 'const instance = cipher.CreateInstance();\n';
             code += 'instance.Feed(OpCodes.AnsiToBytes("Hello World"));\n';
             code += 'const result = instance.Result();\n';
-            code += 'console.log(OpCodes.BytesToAnsi(result));';
+            code += 'DebugConfig.log(OpCodes.BytesToAnsi(result));';
         }
         
         return code;
@@ -2486,7 +2486,7 @@ class AlgorithmDetails {
             code += 'const instance = cipher.CreateInstance();\n';
             code += 'instance.Feed(OpCodes.AnsiToBytes("Hello World"));\n';
             code += 'const result = instance.Result();\n';
-            code += 'console.log(OpCodes.BytesToAnsi(result));';
+            code += 'DebugConfig.log(OpCodes.BytesToAnsi(result));';
         }
         
         return code;
@@ -2772,7 +2772,7 @@ class AlgorithmDetails {
                     copyBtn.textContent = originalText;
                 }, 2000);
             }).catch(err => {
-                console.error('Failed to copy code:', err);
+                DebugConfig.error('Failed to copy code:', err);
             });
         } else {
             // Fallback for older browsers
@@ -2833,7 +2833,7 @@ class AlgorithmDetails {
      */
     applySyntaxHighlighting(codeElement, languageKey) {
         if (!window.Prism || !codeElement) {
-            console.warn('Prism not available or no code element');
+            DebugConfig.warn('Prism not available or no code element');
             return;
         }
         
@@ -2884,14 +2884,14 @@ class AlgorithmDetails {
                 Prism.highlightElement(codeElement);
             }
         } catch (error) {
-            console.warn('Syntax highlighting failed:', error);
+            DebugConfig.warn('Syntax highlighting failed:', error);
             // Fallback - just add a basic language class
             codeElement.classList.add('language-javascript');
             codeElement.removeAttribute('data-highlighted');
             try {
                 Prism.highlightElement(codeElement);
             } catch (fallbackError) {
-                console.warn('Fallback highlighting also failed:', fallbackError);
+                DebugConfig.warn('Fallback highlighting also failed:', fallbackError);
             }
         }
     }
