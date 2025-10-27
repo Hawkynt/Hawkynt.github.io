@@ -18,24 +18,24 @@ class CipherController {
     }
     
     async initializeApplication() {
-        console.log('🔐 Initializing Cipher Tools Application...');
+        DebugConfig.log('🔐 Initializing Cipher Tools Application...');
 
         // Verify AlgorithmFramework is available
         if (typeof AlgorithmFramework === 'undefined') {
-            console.error('❌ AlgorithmFramework not available');
+            DebugConfig.error('❌ AlgorithmFramework not available');
             return;
         }
 
-        console.log('✅ AlgorithmFramework available');
-        console.log('📊 Algorithms registered:', AlgorithmFramework.Algorithms.length);
+        DebugConfig.log('✅ AlgorithmFramework available');
+        DebugConfig.log('📊 Algorithms registered:', AlgorithmFramework.Algorithms.length);
 
         // Verify TestEngine is available
         if (typeof TestEngine === 'undefined') {
-            console.error('❌ TestEngine not available');
+            DebugConfig.error('❌ TestEngine not available');
             alert('Testing framework failed to load. Please ensure tests/TestEngine.js is loaded.');
             return;
         }
-        console.log('✅ TestEngine available');
+        DebugConfig.log('✅ TestEngine available');
 
         // Setup UI systems
         this.setupEventListeners();
@@ -49,7 +49,7 @@ class CipherController {
         this.updateStats();
         this.updateTestingTabResults();
 
-        console.log('✅ Application initialized successfully');
+        DebugConfig.log('✅ Application initialized successfully');
 
         // Wait for all algorithms to register, then auto-run tests
         this.waitForAlgorithmsAndAutoTest();
@@ -146,7 +146,7 @@ class CipherController {
      * Wait for all algorithms to finish registering, then auto-test
      */
     async waitForAlgorithmsAndAutoTest() {
-        console.log('⏳ Waiting for all algorithms to register...');
+        DebugConfig.log('⏳ Waiting for all algorithms to register...');
 
         let previousCount = 0;
         let stableCount = 0;
@@ -177,16 +177,16 @@ class CipherController {
         const finalCount = this.getAllAlgorithms().length;
         const waitTime = Date.now() - startTime;
 
-        console.log('✅ Algorithm registration complete');
-        console.log(`📊 Total algorithms registered: ${finalCount}`);
-        console.log(`⏱️ Wait time: ${waitTime}ms`);
-        console.log('📋 Algorithm names:', this.getAllAlgorithms().map(a => a.name).slice(0, 10).join(', ') + '...');
+        DebugConfig.log('✅ Algorithm registration complete');
+        DebugConfig.log(`📊 Total algorithms registered: ${finalCount}`);
+        DebugConfig.log(`⏱️ Wait time: ${waitTime}ms`);
+        DebugConfig.log('📋 Algorithm names:', this.getAllAlgorithms().map(a => a.name).slice(0, 10).join(', ') + '...');
 
         // Additional small delay for UI rendering
         await new Promise(resolve => setTimeout(resolve, 100));
 
         // Now run tests
-        console.log('🚀 Starting auto-test with all algorithms loaded');
+        DebugConfig.log('🚀 Starting auto-test with all algorithms loaded');
         this.runAllTestsManually();
     }
 
@@ -208,7 +208,7 @@ class CipherController {
      * Auto-run tests for all algorithms using TestEngine
      */
     async autoRunAllTests() {
-        console.log('🧪 Starting sequential test for all algorithms using TestEngine...');
+        DebugConfig.log('🧪 Starting sequential test for all algorithms using TestEngine...');
 
         if (typeof TestEngine === 'undefined') {
             throw new Error('TestEngine not available');
@@ -216,9 +216,9 @@ class CipherController {
 
         const allAlgorithms = this.getAllAlgorithms();
         const algorithms = allAlgorithms.filter(alg => alg.tests && alg.tests.length > 0);
-        console.log(`📊 Total algorithms in registry: ${allAlgorithms.length}`);
-        console.log(`📊 Algorithms with test vectors: ${algorithms.length}`);
-        console.log(`📊 Algorithms without test vectors: ${allAlgorithms.length - algorithms.length}`);
+        DebugConfig.log(`📊 Total algorithms in registry: ${allAlgorithms.length}`);
+        DebugConfig.log(`📊 Algorithms with test vectors: ${algorithms.length}`);
+        DebugConfig.log(`📊 Algorithms without test vectors: ${allAlgorithms.length - algorithms.length}`);
 
         // Show global testing indicator
         this.updateGlobalTestingProgress(0, algorithms.length, 'Starting tests...');
@@ -227,7 +227,7 @@ class CipherController {
         for (let i = 0; i < algorithms.length; i++) {
             // Check if testing was stopped
             if (!this.isTesting) {
-                console.log('⏹️ Testing stopped by user');
+                DebugConfig.log('⏹️ Testing stopped by user');
                 break;
             }
 
@@ -269,7 +269,7 @@ class CipherController {
                 await new Promise(resolve => setTimeout(resolve, 200));
 
             } catch (error) {
-                console.error(`❌ Auto-test failed for ${algorithm.name}:`, error);
+                DebugConfig.error(`❌ Auto-test failed for ${algorithm.name}:`, error);
 
                 // Store failed result
                 algorithm.testResults = {
@@ -294,11 +294,77 @@ class CipherController {
         // Final update to testing tab
         this.updateTestingTabResults();
 
-        console.log('✅ Auto-test completed for all algorithms');
+        // Generate failure report for bug reporting
+        this.generateFailureReport(algorithms);
+
+        DebugConfig.log('✅ Auto-test completed for all algorithms');
+    }
+
+    /**
+     * Generate comprehensive failure report for bug reporting
+     * ALWAYS outputs to console (not gated by debug mode) for error reporting
+     */
+    generateFailureReport(algorithms) {
+        const failedAlgorithms = algorithms.filter(alg =>
+            alg.testResults && !alg.testResults.success
+        );
+
+        if (failedAlgorithms.length === 0) {
+            DebugConfig.always('\n✅ ALL TESTS PASSED - No failures to report!');
+            return;
+        }
+
+        // Accumulate entire report as a single string to avoid console clobbering
+        let report = [];
+        report.push('\n' + '='.repeat(80));
+        report.push('❌ FAILURE REPORT - Copy this for bug reporting');
+        report.push('='.repeat(80));
+        report.push(`\nTotal Failed: ${failedAlgorithms.length}/${algorithms.length} algorithms\n`);
+
+        failedAlgorithms.forEach((alg, index) => {
+            const { passed, total, errors, error, status } = alg.testResults;
+
+            report.push(`${index + 1}. ${alg.name}`);
+            report.push(`   Category: ${alg.category?.name || 'Unknown'}`);
+            report.push(`   Passed: ${passed}/${total} vectors`);
+
+            if (status) {
+                report.push(`   Status: ${status}`);
+            }
+
+            if (error) {
+                report.push(`   Error: ${error}`);
+            }
+
+            if (errors && errors.length > 0) {
+                report.push(`   Failures:`);
+                errors.forEach((err, errIdx) => {
+                    if (typeof err === 'string') {
+                        report.push(`     - ${err}`);
+                    } else if (err.vector !== undefined) {
+                        report.push(`     - Vector ${err.vector}: ${err.text || 'Unnamed'}`);
+                        if (err.error) {
+                            report.push(`       ${err.error}`);
+                        }
+                    } else if (err.type) {
+                        report.push(`     - ${err.type}: ${err.message}`);
+                    } else {
+                        report.push(`     - ${JSON.stringify(err)}`);
+                    }
+                });
+            }
+
+            report.push('');
+        });
+
+        report.push('='.repeat(80));
+
+        // Output entire report in a single console call to avoid clobbering
+        DebugConfig.always(report.join('\n'));
     }
 
     async runParallelTests() {
-        console.log('🚀 Starting parallel algorithm testing...');
+        DebugConfig.log('🚀 Starting parallel algorithm testing...');
 
         if (typeof TestEngine === 'undefined') {
             throw new Error('TestEngine not available');
@@ -307,15 +373,15 @@ class CipherController {
         // Get algorithms to test
         const allAlgorithms = this.getAllAlgorithms();
         const algorithms = allAlgorithms.filter(alg => alg.tests && alg.tests.length > 0);
-        console.log(`📊 Testing ${algorithms.length} algorithms with ${this.workerCount} parallel tasks`);
+        DebugConfig.log(`📊 Testing ${algorithms.length} algorithms with ${this.workerCount} parallel tasks`);
 
         if (algorithms.length === 0) {
-            console.log('⚠️ No algorithms with test vectors found');
+            DebugConfig.log('⚠️ No algorithms with test vectors found');
             return;
         }
 
         // Clear old results
-        console.log('🧹 Clearing previous test results...');
+        DebugConfig.log('🧹 Clearing previous test results...');
         algorithms.forEach(alg => delete alg.testResults);
         this.updateTestingTabResults();
 
@@ -333,7 +399,7 @@ class CipherController {
                 if (!algorithm) break;
 
                 try {
-                    console.log(`📤 Worker ${workerId} testing: ${algorithm.name}`);
+                    DebugConfig.log(`📤 Worker ${workerId} testing: ${algorithm.name}`);
 
                     // Update card to show testing in progress (hourglass)
                     this.updateCardTestingState(algorithm.name, true);
@@ -357,7 +423,7 @@ class CipherController {
                     // Update progress
                     completedCount++;
                     const progress = ((completedCount / totalCount) * 100).toFixed(1);
-                    console.log(`📥 ✅ ${algorithm.name} completed [${progress}%] - ${algorithm.testResults.success ? 'PASSED' : 'FAILED'}`);
+                    DebugConfig.log(`📥 ✅ ${algorithm.name} completed [${progress}%] - ${algorithm.testResults.success ? 'PASSED' : 'FAILED'}`);
 
                     // Update UI in real-time
                     this.updateTestingTabResults();
@@ -365,7 +431,7 @@ class CipherController {
                         `Parallel testing: ${completedCount}/${totalCount} algorithms (${progress}%)`);
 
                 } catch (error) {
-                    console.error(`❌ Worker ${workerId} failed on ${algorithm.name}:`, error);
+                    DebugConfig.error(`❌ Worker ${workerId} failed on ${algorithm.name}:`, error);
                     algorithm.testResults = {
                         passed: 0,
                         total: algorithm.tests?.length || 0,
@@ -385,7 +451,7 @@ class CipherController {
                 await new Promise(resolve => setTimeout(resolve, 0));
             }
 
-            console.log(`✅ Worker ${workerId} finished`);
+            DebugConfig.log(`✅ Worker ${workerId} finished`);
         };
 
         // Spawn multiple async workers
@@ -401,10 +467,13 @@ class CipherController {
         const passedCount = algorithms.filter(alg => alg.testResults?.success).length;
         const failedCount = algorithms.length - passedCount;
 
-        console.log(`\n🎯 Parallel testing completed in ${duration}s`);
-        console.log(`  ✅ Passed: ${passedCount}/${algorithms.length}`);
-        console.log(`  ❌ Failed: ${failedCount}/${algorithms.length}`);
-        console.log(`  📊 Success Rate: ${((passedCount / algorithms.length) * 100).toFixed(1)}%`);
+        DebugConfig.log(`\n🎯 Parallel testing completed in ${duration}s`);
+        DebugConfig.log(`  ✅ Passed: ${passedCount}/${algorithms.length}`);
+        DebugConfig.log(`  ❌ Failed: ${failedCount}/${algorithms.length}`);
+        DebugConfig.log(`  📊 Success Rate: ${((passedCount / algorithms.length) * 100).toFixed(1)}%`);
+
+        // Generate failure report
+        this.generateFailureReport(algorithms);
 
         // Final UI update
         this.updateTestingTabResults();
@@ -466,7 +535,7 @@ class CipherController {
             // CRITICAL: Update testing tab IMMEDIATELY for real-time results
             this.updateTestingTabResults();
 
-            console.log(`✅ Processed parallel result for ${result.algorithmName}: ${result.success ? 'PASSED' : 'FAILED'}${result.error ? ' - ' + result.error : ''}`);
+            DebugConfig.log(`✅ Processed parallel result for ${result.algorithmName}: ${result.success ? 'PASSED' : 'FAILED'}${result.error ? ' - ' + result.error : ''}`);
         }
     }
 
@@ -480,11 +549,11 @@ class CipherController {
             total: results.length
         };
 
-        console.log('🎯 Parallel Test Summary:');
-        console.log(`  ✅ Passed: ${summary.passed}/${summary.total}`);
-        console.log(`  ❌ Failed: ${summary.failed}/${summary.total}`);
-        console.log(`  📊 Success Rate: ${((summary.passed / summary.total) * 100).toFixed(1)}%`);
-        console.log(`  ⚡ Parallel Speedup: ~${this.workerCount}x faster than sequential`);
+        DebugConfig.log('🎯 Parallel Test Summary:');
+        DebugConfig.log(`  ✅ Passed: ${summary.passed}/${summary.total}`);
+        DebugConfig.log(`  ❌ Failed: ${summary.failed}/${summary.total}`);
+        DebugConfig.log(`  📊 Success Rate: ${((summary.passed / summary.total) * 100).toFixed(1)}%`);
+        DebugConfig.log(`  ⚡ Parallel Speedup: ~${this.workerCount}x faster than sequential`);
     }
 
     /**
@@ -545,7 +614,7 @@ class CipherController {
             this.updateCardTestingState(algorithm.name, false);
 
         } catch (error) {
-            console.error(`Test failed for ${algorithm.name}:`, error);
+            DebugConfig.error(`Test failed for ${algorithm.name}:`, error);
 
             // Store failed result
             algorithm.testResults = {
@@ -570,24 +639,24 @@ class CipherController {
     updateCardTestingState(algorithmName, isTesting) {
         const algorithmCard = document.querySelector(`[data-name="${algorithmName}"]`);
         if (!algorithmCard) {
-            console.warn(`⚠️ Card not found for algorithm: ${algorithmName}`);
+            DebugConfig.warn(`⚠️ Card not found for algorithm: ${algorithmName}`);
             return;
         }
 
         const testButton = algorithmCard.querySelector('.card-test-btn');
         if (!testButton) {
-            console.warn(`⚠️ Test button not found for algorithm: ${algorithmName}`);
+            DebugConfig.warn(`⚠️ Test button not found for algorithm: ${algorithmName}`);
             return;
         }
 
         if (isTesting) {
             // Store original content and show hourglass
             const originalText = testButton.innerHTML;
-            console.log(`⏳ Starting test for ${algorithmName}, original text: "${originalText}"`);
+            DebugConfig.log(`⏳ Starting test for ${algorithmName}, original text: "${originalText}"`);
             testButton.setAttribute('data-original-text', originalText);
             // Replace the test tube emoji with hourglass
             const updatedText = originalText.replace('🧪', '⏳');
-            console.log(`⏳ Updated text: "${updatedText}"`);
+            DebugConfig.log(`⏳ Updated text: "${updatedText}"`);
             testButton.innerHTML = updatedText;
             testButton.disabled = true;
             testButton.style.opacity = '0.8';
@@ -610,14 +679,15 @@ class CipherController {
             // Update status based on test results
             const algorithm = this.getAlgorithm(algorithmName);
             if (algorithm && algorithm.testResults) {
-                const { passed, total, percentage, error, errors } = algorithm.testResults;
+                const { passed, total, percentage, error, errors, success } = algorithm.testResults;
                 let status = 'untested';
 
-                if (error || (errors && errors.length > 0)) {
-                    status = 'none';
-                } else if (total === 0) {
+                // Use success flag if available, otherwise fall back to percentage
+                const testPassed = success !== undefined ? success : (percentage === 100);
+
+                if (total === 0) {
                     status = 'untested';
-                } else if (percentage === 100) {
+                } else if (testPassed && percentage === 100) {
                     status = 'all';
                 } else if (passed > 0) {
                     status = 'some';
@@ -635,9 +705,10 @@ class CipherController {
                 // Update button text with test results
                 let testText = `🧪 ${passed}/${total}`;
 
-                if (error) {
+                // Only show error if test actually failed
+                if (error && !testPassed) {
                     testText = `❌ Error`;
-                } else if (errors && errors.length > 0) {
+                } else if (!testPassed && errors && errors.length > 0) {
                     testText = `❌ ${errors.length} errors`;
                 }
 
@@ -873,18 +944,18 @@ class CipherController {
             if (isValid) {
                 return category;
             }
-            console.warn('getCategoryType received an invalid CategoryType object:', category);
+            DebugConfig.warn('getCategoryType received an invalid CategoryType object:', category);
             return null;
         }
 
         // String input is a bug - warn about it
         if (typeof category === 'string') {
-            console.warn('getCategoryType received a string instead of CategoryType object:', category);
+            DebugConfig.warn('getCategoryType received a string instead of CategoryType object:', category);
             const categoryKey = category.toUpperCase();
             return AlgorithmFramework.CategoryType[categoryKey] || null;
         }
 
-        console.warn('getCategoryType received unexpected input:', category);
+        DebugConfig.warn('getCategoryType received unexpected input:', category);
         return null;
     }
 
@@ -898,7 +969,7 @@ class CipherController {
 
         // Category should always be a CategoryType object from AlgorithmFramework
         if (typeof category === 'string') {
-            console.warn('getCategoryString received a string instead of CategoryType object:', category);
+            DebugConfig.warn('getCategoryString received a string instead of CategoryType object:', category);
             return category.toLowerCase();
         }
 
@@ -908,7 +979,7 @@ class CipherController {
         );
 
         if (!categoryKey) {
-            console.warn('getCategoryString could not find CategoryType key for:', category);
+            DebugConfig.warn('getCategoryString could not find CategoryType key for:', category);
             return null;
         }
 
@@ -979,11 +1050,11 @@ class CipherController {
     }
     
     showMetadata(algorithmName) {
-        console.log(`Showing metadata for: ${algorithmName}`);
+        DebugConfig.log(`Showing metadata for: ${algorithmName}`);
         
         const frameworkAlgorithm = this.getAlgorithm(algorithmName);
         if (!frameworkAlgorithm) {
-            console.error(`Algorithm not found: ${algorithmName}`);
+            DebugConfig.error(`Algorithm not found: ${algorithmName}`);
             return;
         }
         
@@ -991,7 +1062,7 @@ class CipherController {
         if (!this.algorithmDetails) {
             this.algorithmDetails = new AlgorithmDetails({
                 onClose: () => {
-                    console.log('Algorithm details modal closed');
+                    DebugConfig.log('Algorithm details modal closed');
                 }
             });
         }
@@ -999,7 +1070,37 @@ class CipherController {
         // Show the modal with algorithm data
         this.algorithmDetails.show(frameworkAlgorithm);
     }
-    
+
+    /**
+     * Show algorithm details modal, switch to test vectors tab, and run all tests
+     * Used when clicking on test results table rows
+     */
+    showAlgorithmDetailsWithTests(algorithm) {
+        // Create algorithm details component if not exists
+        if (!this.algorithmDetails) {
+            this.algorithmDetails = new AlgorithmDetails({
+                onClose: () => {
+                    DebugConfig.log('Algorithm details modal closed');
+                }
+            });
+        }
+
+        // Show the modal with algorithm data
+        this.algorithmDetails.show(algorithm);
+
+        // Switch to test vectors tab
+        this.algorithmDetails.switchTab('test-vectors');
+
+        // Small delay to ensure tab content is rendered, then run all tests
+        setTimeout(() => {
+            try {
+                this.algorithmDetails.runAllTests();
+            } catch (error) {
+                DebugConfig.error('Error running tests:', error);
+            }
+        }, 100);
+    }
+
     // Modal methods removed - now using AlgorithmDetails component
     
     
@@ -1048,7 +1149,7 @@ class CipherController {
         }
         
         
-        console.log(`📊 Testing progress: ${current}/${total} - ${message}`);
+        DebugConfig.log(`📊 Testing progress: ${current}/${total} - ${message}`);
     }
     
     /**
@@ -1230,20 +1331,34 @@ class CipherController {
                 }
             });
 
+            // Add click event listener for row - navigate to algorithm details
+            row.addEventListener('click', (e) => {
+                // Don't trigger if clicking on checkbox
+                if (e.target.type === 'checkbox' || e.target.closest('.row-checkbox')) {
+                    return;
+                }
+
+                // Navigate to algorithm details > test vectors tab and run tests
+                this.showAlgorithmDetailsWithTests(algorithm);
+            });
+
+            // Add hover cursor styling
+            row.style.cursor = 'pointer';
+
             tbody.appendChild(row);
         });
     }
 
     setupTestGridEventListeners() {
         // Implementation for test grid sorting and functionality
-        console.log('Setting up test grid event listeners...');
+        DebugConfig.log('Setting up test grid event listeners...');
         
         // Test grid functionality will be implemented here
     }
 
     setupMetadataModal() {
         // Implementation for metadata modal functionality
-        console.log('Setting up metadata modal...');
+        DebugConfig.log('Setting up metadata modal...');
     }
     
     setupAlgorithmsInterface() {
@@ -1255,7 +1370,7 @@ class CipherController {
      * Setup cipher interface with algorithm dropdown and encryption/decryption
      */
     setupCipherInterface() {
-        console.log('🔐 Setting up cipher interface...');
+        DebugConfig.log('🔐 Setting up cipher interface...');
         
         this.populateAlgorithmDropdown();
         this.populateModeDropdown();
@@ -1290,14 +1405,14 @@ class CipherController {
         // Setup key file upload
         this.setupKeyFileUpload();
 
-        console.log('✅ Cipher interface setup complete');
+        DebugConfig.log('✅ Cipher interface setup complete');
     }
     
     /**
      * Setup algorithm chaining interface
      */
     setupChainingInterface() {
-        console.log('🔗 Setting up chaining interface...');
+        DebugConfig.log('🔗 Setting up chaining interface...');
         
         const executeBtn = document.getElementById('execute-chain');
         if (executeBtn) {
@@ -1330,7 +1445,7 @@ class CipherController {
             }, 2000);
         }
         
-        console.log('✅ Chaining interface setup complete');
+        DebugConfig.log('✅ Chaining interface setup complete');
     }
     
     setupTestingInterface() {
@@ -1359,7 +1474,7 @@ class CipherController {
             });
         }
 
-        console.log('✅ Testing filters setup complete');
+        DebugConfig.log('✅ Testing filters setup complete');
     }
 
     /**
@@ -1387,7 +1502,7 @@ class CipherController {
             exportResultsBtn.addEventListener('click', () => this.exportTestResults());
         }
 
-        console.log('✅ Testing actions setup complete');
+        DebugConfig.log('✅ Testing actions setup complete');
     }
 
     /**
@@ -1412,7 +1527,7 @@ class CipherController {
             workerCountInput.addEventListener('change', (e) => {
                 this.workerCount = Math.max(1, Math.min(parseInt(e.target.value) || 4, cpuCores));
                 e.target.value = this.workerCount; // Clamp the displayed value
-                console.log(`🔧 Worker count set to: ${this.workerCount}`);
+                DebugConfig.log(`🔧 Worker count set to: ${this.workerCount}`);
             });
         }
 
@@ -1421,30 +1536,30 @@ class CipherController {
 
             parallelToggle.addEventListener('change', (e) => {
                 this.isParallelTestingEnabled = e.target.checked;
-                console.log(`🚀 Parallel testing ${this.isParallelTestingEnabled ? 'enabled' : 'disabled'}`);
+                DebugConfig.log(`🚀 Parallel testing ${this.isParallelTestingEnabled ? 'enabled' : 'disabled'}`);
             });
         }
 
-        console.log(`✅ Parallel testing controls initialized - ${cpuCores} cores, ${this.workerCount} workers (max(1, cores-1) formula)`);
+        DebugConfig.log(`✅ Parallel testing controls initialized - ${cpuCores} cores, ${this.workerCount} workers (max(1, cores-1) formula)`);
     }
 
     /**
      * Manually run all tests (Enhanced with parallel testing support)
      */
     async runAllTestsManually() {
-        console.log('🔧 runAllTestsManually called');
-        console.log('  TestEngine available:', typeof TestEngine !== 'undefined');
-        console.log('  Parallel enabled:', this.isParallelTestingEnabled);
-        console.log('  Already testing:', this.isTesting);
+        DebugConfig.log('🔧 runAllTestsManually called');
+        DebugConfig.log('  TestEngine available:', typeof TestEngine !== 'undefined');
+        DebugConfig.log('  Parallel enabled:', this.isParallelTestingEnabled);
+        DebugConfig.log('  Already testing:', this.isTesting);
 
         if (typeof TestEngine === 'undefined') {
-            console.error('❌ Testing framework not initialized');
+            DebugConfig.error('❌ Testing framework not initialized');
             alert('Testing framework not initialized. Please reload the page.');
             return;
         }
 
         if (this.isTesting) {
-            console.log('🚫 Testing already in progress');
+            DebugConfig.log('🚫 Testing already in progress');
             return;
         }
 
@@ -1453,15 +1568,15 @@ class CipherController {
             this.updateTestButtonStates(true);
 
             if (this.isParallelTestingEnabled) {
-                console.log('🚀 Starting MEGATHINK parallel testing...');
+                DebugConfig.log('🚀 Starting MEGATHINK parallel testing...');
                 await this.runParallelTests();
             } else {
-                console.log('🐌 Starting sequential testing...');
+                DebugConfig.log('🐌 Starting sequential testing...');
                 await this.autoRunAllTests();
             }
         } catch (error) {
-            console.error('❌ Manual test run failed:', error);
-            console.error('Error stack:', error.stack);
+            DebugConfig.error('❌ Manual test run failed:', error);
+            DebugConfig.error('Error stack:', error.stack);
             alert('Test execution failed: ' + error.message);
         } finally {
             this.isTesting = false;
@@ -1485,7 +1600,7 @@ class CipherController {
         }
 
         const algorithmNames = Array.from(checkboxes).map(cb => cb.getAttribute('data-algorithm'));
-        console.log('Running tests for selected algorithms:', algorithmNames);
+        DebugConfig.log('Running tests for selected algorithms:', algorithmNames);
 
         try {
             // Test each algorithm sequentially
@@ -1514,7 +1629,7 @@ class CipherController {
 
             this.updateTestingTabResults();
         } catch (error) {
-            console.error('Selected tests failed:', error);
+            DebugConfig.error('Selected tests failed:', error);
             alert('Test execution failed: ' + error.message);
         }
     }
@@ -1523,7 +1638,7 @@ class CipherController {
      * Stop testing (works for both sequential and parallel)
      */
     stopTesting() {
-        console.log('⏹️ Stop button clicked - stopping tests...');
+        DebugConfig.log('⏹️ Stop button clicked - stopping tests...');
 
         // Set flags to stop both modes
         this.isTesting = false;
@@ -1546,7 +1661,7 @@ class CipherController {
             }
         }, 2000);
 
-        console.log('✅ Testing stopped');
+        DebugConfig.log('✅ Testing stopped');
     }
 
     /**
@@ -1578,7 +1693,7 @@ class CipherController {
             URL.revokeObjectURL(url);
 
         } catch (error) {
-            console.error('Export failed:', error);
+            DebugConfig.error('Export failed:', error);
             alert('Export failed: ' + error.message);
         }
     }
@@ -1611,11 +1726,11 @@ class CipherController {
     initializeChainBuilder() {
         // Check if ChainBuilder class is available
         if (typeof ChainBuilder !== 'undefined') {
-            console.log('🔗 ChainBuilder class found, initializing...');
+            DebugConfig.log('🔗 ChainBuilder class found, initializing...');
             this.chainBuilder = new ChainBuilder();
             this.populateAlgorithmPalette();
         } else {
-            console.log('⚠️ ChainBuilder class not found, creating minimal implementation...');
+            DebugConfig.log('⚠️ ChainBuilder class not found, creating minimal implementation...');
             this.createMinimalChainBuilder();
         }
     }
@@ -1670,7 +1785,7 @@ class CipherController {
         // Create a demo chain to show expected functionality
         this.createDemoChain();
         
-        console.log('✅ Minimal chain builder created');
+        DebugConfig.log('✅ Minimal chain builder created');
     }
     
     /**
@@ -1783,7 +1898,7 @@ class CipherController {
             });
         }
         
-        console.log('🏗️ Demo chain created with', this.chainBuilder.nodes.size, 'nodes');
+        DebugConfig.log('🏗️ Demo chain created with', this.chainBuilder.nodes.size, 'nodes');
     }
     
     /**
@@ -1812,7 +1927,7 @@ class CipherController {
             categoryFilter.appendChild(option);
         });
         
-        console.log(`📋 Populated category filter with ${categories.length} categories`);
+        DebugConfig.log(`📋 Populated category filter with ${categories.length} categories`);
     }
     
     /**
@@ -1838,7 +1953,7 @@ class CipherController {
             modeSelect.appendChild(option);
         });
         
-        console.log(`📋 Populated mode dropdown with ${modeAlgorithms.length} mode algorithms`);
+        DebugConfig.log(`📋 Populated mode dropdown with ${modeAlgorithms.length} mode algorithms`);
     }
     
     /**
@@ -1864,7 +1979,7 @@ class CipherController {
             paddingSelect.appendChild(option);
         });
         
-        console.log(`📋 Populated padding dropdown with ${paddingAlgorithms.length} padding algorithms`);
+        DebugConfig.log(`📋 Populated padding dropdown with ${paddingAlgorithms.length} padding algorithms`);
     }
     
     /**
@@ -1890,7 +2005,7 @@ class CipherController {
             testCategoryFilter.appendChild(option);
         });
         
-        console.log(`📋 Populated testing category filter with ${categories.length} categories`);
+        DebugConfig.log(`📋 Populated testing category filter with ${categories.length} categories`);
     }
 
     populateAlgorithmDropdown() {
@@ -1914,7 +2029,7 @@ class CipherController {
                     const categoryIcon = this.getCategoryIcon(algorithm.category);
                     categoryLabel = `${categoryIcon} ${categoryName}`;
                 } catch (e) {
-                    console.warn('Failed to get category display name:', e.message);
+                    DebugConfig.warn('Failed to get category display name:', e.message);
                     categoryLabel = '❓ Other';
                 }
             }
@@ -1962,7 +2077,7 @@ class CipherController {
             algorithmSelect.appendChild(optgroup);
         });
         
-        console.log(`📋 Populated algorithm dropdown with ${algorithms.length} algorithms`);
+        DebugConfig.log(`📋 Populated algorithm dropdown with ${algorithms.length} algorithms`);
     }
     
     /**
@@ -2083,7 +2198,7 @@ class CipherController {
 
             textarea.value = newValue;
         } catch (error) {
-            console.error('Format conversion error:', error);
+            DebugConfig.error('Format conversion error:', error);
             alert(`⚠️ Conversion failed: ${error.message}\n\nThe current content may not be valid ${fromFormat} format.`);
 
             // Revert tab selection
@@ -2181,7 +2296,7 @@ class CipherController {
 
             inputText.value = displayText;
         } catch (error) {
-            console.error('Error reading file:', error);
+            DebugConfig.error('Error reading file:', error);
             alert('Error reading file: ' + error.message);
         }
     }
@@ -2260,7 +2375,7 @@ class CipherController {
                 keyFileInput.value = '';
             }
         } catch (error) {
-            console.error('Error reading key file:', error);
+            DebugConfig.error('Error reading key file:', error);
             alert('Error reading key file: ' + error.message);
         }
     }
@@ -2301,7 +2416,7 @@ class CipherController {
                 copyBtn.textContent = originalText;
             }, 2000);
         } catch (error) {
-            console.error('Copy failed:', error);
+            DebugConfig.error('Copy failed:', error);
             // Fallback for older browsers
             outputText.select();
             document.execCommand('copy');
@@ -2343,7 +2458,7 @@ class CipherController {
             const result = await this.performCipherOperation('encrypt');
             this.displayCipherResult(result);
         } catch (error) {
-            console.error('Encryption error:', error);
+            DebugConfig.error('Encryption error:', error);
             alert('Encryption failed: ' + error.message);
         }
     }
@@ -2356,7 +2471,7 @@ class CipherController {
             const result = await this.performCipherOperation('decrypt');
             this.displayCipherResult(result);
         } catch (error) {
-            console.error('Decryption error:', error);
+            DebugConfig.error('Decryption error:', error);
             alert('Decryption failed: ' + error.message);
         }
     }
@@ -2721,7 +2836,7 @@ class CipherController {
                             algorithmEl.style.setProperty('--category-color', categoryColor);
                             algorithmEl.style.backgroundColor = categoryColor;
                             algorithmEl.style.borderColor = categoryColor;
-                            console.log(`Setting color for ${algorithm.name}: ${categoryColor}`);
+                            DebugConfig.log(`Setting color for ${algorithm.name}: ${categoryColor}`);
                         }
                     }
                     
@@ -2741,7 +2856,7 @@ class CipherController {
             palette.appendChild(categorySection);
         });
         
-        console.log('📋 Populated algorithm palette with', algorithms.length, 'algorithms');
+        DebugConfig.log('📋 Populated algorithm palette with', algorithms.length, 'algorithms');
     }
     
     /**
@@ -2777,11 +2892,11 @@ class CipherController {
                     this.createNodeOnCanvas(data, e.offsetX, e.offsetY);
                 }
             } catch (error) {
-                console.error('Drop data parsing error:', error);
+                DebugConfig.error('Drop data parsing error:', error);
             }
         });
         
-        console.log('✅ Drag and drop setup complete');
+        DebugConfig.log('✅ Drag and drop setup complete');
     }
     
     /**
@@ -2798,7 +2913,7 @@ class CipherController {
         const algorithm = algorithms.find(a => a.name === algorithmData.algorithm);
         
         if (!algorithm) {
-            console.error('Algorithm not found:', algorithmData.algorithm);
+            DebugConfig.error('Algorithm not found:', algorithmData.algorithm);
             return;
         }
         
@@ -2824,7 +2939,7 @@ class CipherController {
         // Update statistics
         this.updateChainStats();
         
-        console.log('Created node:', nodeId, nodeData);
+        DebugConfig.log('Created node:', nodeId, nodeData);
     }
     
     /**
@@ -2949,7 +3064,7 @@ class CipherController {
                 element: port
             };
             port.classList.add('connecting');
-            console.log('Started connection from:', nodeId, portType, portIndex);
+            DebugConfig.log('Started connection from:', nodeId, portType, portIndex);
         } else {
             // Complete the connection
             const toNode = nodeId;
@@ -3004,7 +3119,7 @@ class CipherController {
         // Update statistics
         this.updateChainStats();
         
-        console.log('Created connection:', connectionId, connectionData);
+        DebugConfig.log('Created connection:', connectionId, connectionData);
     }
     
     /**
@@ -3013,7 +3128,7 @@ class CipherController {
     drawConnection(connectionData) {
         // This would typically use SVG or Canvas for drawing lines
         // For now, we'll log that the connection was made
-        console.log('Drawing connection line between:', connectionData.from, 'and', connectionData.to);
+        DebugConfig.log('Drawing connection line between:', connectionData.from, 'and', connectionData.to);
         
         // In a full implementation, we would:
         // 1. Get the positions of the from and to ports
@@ -3046,7 +3161,7 @@ class CipherController {
         // Update statistics
         this.updateChainStats();
         
-        console.log('Removed node:', nodeId);
+        DebugConfig.log('Removed node:', nodeId);
     }
     
     /**
@@ -3099,7 +3214,7 @@ class CipherController {
         }
         
         this.updateChainStats();
-        console.log('✅ Canvas cleared');
+        DebugConfig.log('✅ Canvas cleared');
     }
     
     /**
@@ -3125,7 +3240,7 @@ class CipherController {
         this.createNodeOnCanvas(shaData, 400, 150);
         
         this.updateChainStats();
-        console.log('✅ Test nodes added');
+        DebugConfig.log('✅ Test nodes added');
     }
     
     /**
@@ -3209,7 +3324,7 @@ class CipherController {
         // Load initial category
         this.switchAlgorithmCategory('all');
         
-        console.log(`🎨 Created ${categories.length + 1} palette category tabs`);
+        DebugConfig.log(`🎨 Created ${categories.length + 1} palette category tabs`);
     }
     
     /**
@@ -3231,14 +3346,14 @@ class CipherController {
             }
         });
         
-        console.log('Switched to algorithm category:', category);
+        DebugConfig.log('Switched to algorithm category:', category);
     }
     
     /**
      * Execute the current algorithm chain
      */
     executeChain() {
-        console.log('🚀 Executing algorithm chain...');
+        DebugConfig.log('🚀 Executing algorithm chain...');
         
         if (!this.chainBuilder) {
             alert('Chain builder not initialized');
@@ -3248,7 +3363,7 @@ class CipherController {
         try {
             // Get chain expression
             const chainExpression = this.buildChainExpression();
-            console.log('Chain expression:', chainExpression);
+            DebugConfig.log('Chain expression:', chainExpression);
             
             // Display chain expression
             this.displayChainExpression(chainExpression);
@@ -3256,11 +3371,11 @@ class CipherController {
             // Execute if we have valid chain
             if (chainExpression && chainExpression !== 'data') {
                 const result = this.executeChainExpression(chainExpression);
-                console.log('Chain execution result:', result);
+                DebugConfig.log('Chain execution result:', result);
             }
             
         } catch (error) {
-            console.error('Chain execution error:', error);
+            DebugConfig.error('Chain execution error:', error);
             alert('Chain execution failed: ' + error.message);
         }
     }
@@ -3368,7 +3483,7 @@ class CipherController {
     executeChainExpression(expression) {
         // This is a simplified execution - in a full implementation,
         // we'd parse the expression and execute the actual algorithms
-        console.log('Executing chain:', expression);
+        DebugConfig.log('Executing chain:', expression);
         
         // For now, just return the expression as a demonstration
         return {
@@ -3382,7 +3497,7 @@ class CipherController {
      * Run tests and switch to test vectors tab using TestEngine
      */
     async runTestAndSwitchToTestVectors(algorithmName) {
-        console.log(`Running tests and switching to test vectors for ${algorithmName}`);
+        DebugConfig.log(`Running tests and switching to test vectors for ${algorithmName}`);
 
         if (typeof TestEngine === 'undefined') {
             alert('Testing framework not initialized. Please reload the page.');
@@ -3410,7 +3525,7 @@ class CipherController {
             }, 100);
 
         } catch (error) {
-            console.error(`Test execution failed for ${algorithmName}:`, error);
+            DebugConfig.error(`Test execution failed for ${algorithmName}:`, error);
             alert(`Test failed: ${error.message}`);
         }
     }
@@ -3419,18 +3534,18 @@ class CipherController {
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('🔗 Window loaded, checking AlgorithmFramework...');
+    DebugConfig.log('🔗 Window loaded, checking AlgorithmFramework...');
     
     if (typeof AlgorithmFramework !== 'undefined') {
-        console.log('AlgorithmFramework available:', !!AlgorithmFramework);
-        console.log('🔢 Initial algorithm count:', AlgorithmFramework.Algorithms.length);
+        DebugConfig.log('AlgorithmFramework available:', !!AlgorithmFramework);
+        DebugConfig.log('🔢 Initial algorithm count:', AlgorithmFramework.Algorithms.length);
     }
     
     // Add a small delay to ensure all cipher registrations are complete
     setTimeout(() => {
-        console.log('⏰ Starting controller initialization...');
+        DebugConfig.log('⏰ Starting controller initialization...');
         if (typeof AlgorithmFramework !== 'undefined') {
-            console.log('🔢 Algorithm count after delay:', AlgorithmFramework.Algorithms.length);
+            DebugConfig.log('🔢 Algorithm count after delay:', AlgorithmFramework.Algorithms.length);
         }
         window.cipherController = new CipherController();
     }, 500); // Increased delay to allow more algorithms to register
