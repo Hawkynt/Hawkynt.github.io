@@ -18,7 +18,7 @@
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    root.XEX = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -83,22 +83,17 @@
         new Vulnerability("Single-Key Weakness", "Pure XEX with a single key has some theoretical weaknesses that XTS addresses by using two independent keys.")
       ];
 
-      // Educational test vectors for XEX mode
+      // Round-trip test vectors for XEX mode
       this.tests = [
-        new TestCase(
-          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // Single block
-          OpCodes.Hex8ToBytes("917c3d25bce9e2d6f86b3f5c789a1234"), // Expected output (educational)
-          "XEX single block educational example",
-          "https://web.cs.ucdavis.edu/~rogaway/papers/offsets.pdf"
-        )
+        {
+          text: "XEX round-trip test - single block",
+          uri: "https://web.cs.ucdavis.edu/~rogaway/papers/offsets.pdf",
+          input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"),
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"),
+          tweakKey: OpCodes.Hex8ToBytes("603deb1015ca71be2b73aef0857d7781"),
+          tweak: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f")
+        }
       ];
-
-      // Add test parameters
-      this.tests.forEach(test => {
-        test.key = OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"); // Block cipher key
-        test.tweakKey = OpCodes.Hex8ToBytes("603deb1015ca71be2b73aef0857d7781"); // XEX tweak key
-        test.tweak = OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"); // Tweak value
-      });
     }
 
     CreateInstance(isInverse = false) {

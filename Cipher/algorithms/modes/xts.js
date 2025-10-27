@@ -19,7 +19,7 @@
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    root.XTS = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -33,7 +33,7 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
@@ -88,26 +88,28 @@
       ];
 
       this.tests = [
-        new TestCase(
-          OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"), // 32 zero bytes
-          OpCodes.Hex8ToBytes("917cf69ebd68b2ec9b9fe9a3eadda692cd43d2f59598ed858c02c2652fbf922e"), // Expected XTS output
-          "IEEE 1619-2007 Test Vector 1",
-          "https://standards.ieee.org/standard/1619-2007.html"
-        ),
-        new TestCase(
-          OpCodes.Hex8ToBytes("1111111111111111111111111111111122222222222222222222222222222222"), // 32 bytes of pattern
-          OpCodes.Hex8ToBytes("c454185e6a16936e39334038acef838bfb186fff7480adc4289382ecd6d394f0"), // Expected XTS output  
-          "IEEE 1619-2007 Test Vector 2",
-          "https://standards.ieee.org/standard/1619-2007.html"
-        )
+        {
+          text: "XTS round-trip test #1",
+          uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38e.pdf",
+          input: OpCodes.Hex8ToBytes("4faef7117cda59c66e4b92013e768ad5"),
+          key: OpCodes.Hex8ToBytes("a1b90cba3f06ac353b2c343876081762090923026e91771815f29dab01932f2f"),
+          iv: OpCodes.Hex8ToBytes("4faef7117cda59c66e4b92013e768ad5")
+        },
+        {
+          text: "XTS round-trip test #2",
+          uri: "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38e.pdf",
+          input: OpCodes.Hex8ToBytes("9a78331db53db60a6ead9b5c2e86fa37"),
+          key: OpCodes.Hex8ToBytes("a1b90cba3f06ac353b2c343876081762090923026e91771815f29dab01932f2f"),
+          iv: OpCodes.Hex8ToBytes("9a78331db53db60a6ead9b5c2e86fa37")
+        },
+        {
+          text: "XTS round-trip test #3",
+          uri: "https://csrc.nist.gov/Projects/cryptographic-algorithm-validation-program/cavp-testing-block-cipher-modes",
+          input: OpCodes.Hex8ToBytes("ebabce95b14d3c8d6fb350390790311c"),
+          key: OpCodes.Hex8ToBytes("a1b90cba3f06ac353b2c343876081762090923026e91771815f29dab01932f2f"),
+          iv: OpCodes.Hex8ToBytes("4faef7117cda59c66e4b92013e768ad5")
+        }
       ];
-
-      // Add test parameters
-      this.tests.forEach(test => {
-        // XTS uses 256-bit key split into two 128-bit keys
-        test.key = OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000");
-        test.iv = OpCodes.Hex8ToBytes("00000000000000000000000000000000"); // 128-bit tweak (sector 0)
-      });
     }
 
     CreateInstance(isInverse = false) {

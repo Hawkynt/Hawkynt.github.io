@@ -136,20 +136,20 @@
 
     // xxHash32 round function
     xxh32Round(acc, input) {
-      acc = (acc + (input * this.PRIME32_2)) >>> 0;
+      acc = OpCodes.ToDWord(acc + (input * this.PRIME32_2));
       acc = this.rotl32(acc, 13);
-      acc = (acc * this.PRIME32_1) >>> 0;
-      return acc >>> 0;
+      acc = OpCodes.ToDWord(acc * this.PRIME32_1);
+      return OpCodes.ToDWord(acc);
     }
 
     // xxHash32 avalanche function
     xxh32Avalanche(h32) {
-      h32 ^= h32 >>> 15;
-      h32 = (h32 * this.PRIME32_2) >>> 0;
-      h32 ^= h32 >>> 13;
-      h32 = (h32 * this.PRIME32_3) >>> 0;
-      h32 ^= h32 >>> 16;
-      return h32 >>> 0;
+      h32 ^= OpCodes.Shr32(h32, 15);
+      h32 = OpCodes.ToDWord(h32 * this.PRIME32_2);
+      h32 ^= OpCodes.Shr32(h32, 13);
+      h32 = OpCodes.ToDWord(h32 * this.PRIME32_3);
+      h32 ^= OpCodes.Shr32(h32, 16);
+      return OpCodes.ToDWord(h32);
     }
 
     // xxHash32 main algorithm (official specification)
@@ -161,15 +161,15 @@
 
       // Handle empty input exactly as official specification
       if (len === 0) {
-        return this.xxh32Avalanche((seed + this.PRIME32_5) >>> 0);
+        return this.xxh32Avalanche(OpCodes.ToDWord(seed + this.PRIME32_5));
       }
 
       if (len >= 16) {
         // Initialize accumulators with proper seed values
-        let v1 = (seed + this.PRIME32_1 + this.PRIME32_2) >>> 0;
-        let v2 = (seed + this.PRIME32_2) >>> 0;
-        let v3 = (seed + 0) >>> 0;
-        let v4 = (seed - this.PRIME32_1) >>> 0;
+        let v1 = OpCodes.ToDWord(seed + this.PRIME32_1 + this.PRIME32_2);
+        let v2 = OpCodes.ToDWord(seed + this.PRIME32_2);
+        let v3 = OpCodes.ToDWord(seed + 0);
+        let v4 = OpCodes.ToDWord(seed - this.PRIME32_1);
 
         // Process 16-byte blocks
         while (offset + 16 <= len) {
@@ -181,26 +181,26 @@
         }
 
         // Converge accumulators (official formula)
-        h32 = ((this.rotl32(v1, 1) + this.rotl32(v2, 7) + this.rotl32(v3, 12) + this.rotl32(v4, 18)) >>> 0);
+        h32 = OpCodes.ToDWord(this.rotl32(v1, 1) + this.rotl32(v2, 7) + this.rotl32(v3, 12) + this.rotl32(v4, 18));
       } else {
         // Small input initialization
-        h32 = (seed + this.PRIME32_5) >>> 0;
+        h32 = OpCodes.ToDWord(seed + this.PRIME32_5);
       }
 
       // Add length
-      h32 = (h32 + len) >>> 0;
+      h32 = OpCodes.ToDWord(h32 + len);
 
       // Process remaining 4-byte chunks
       while (offset + 4 <= len) {
-        h32 = (h32 + (this.readLE32(input, offset) * this.PRIME32_3)) >>> 0;
-        h32 = (this.rotl32(h32, 17) * this.PRIME32_4) >>> 0;
+        h32 = OpCodes.ToDWord(h32 + (this.readLE32(input, offset) * this.PRIME32_3));
+        h32 = OpCodes.ToDWord(this.rotl32(h32, 17) * this.PRIME32_4);
         offset += 4;
       }
 
       // Process remaining bytes (less than 4)
       while (offset < len) {
-        h32 = (h32 + (input[offset] * this.PRIME32_5)) >>> 0;
-        h32 = (this.rotl32(h32, 11) * this.PRIME32_1) >>> 0;
+        h32 = OpCodes.ToDWord(h32 + (input[offset] * this.PRIME32_5));
+        h32 = OpCodes.ToDWord(this.rotl32(h32, 11) * this.PRIME32_1);
         offset++;
       }
 
@@ -251,7 +251,7 @@
       for (let i = 0; i < str.length; i++) {
         hash = ((hash << 5) - hash + str.charCodeAt(i)) & 0xFFFFFFFF;
       }
-      return hash >>> 0;
+      return OpCodes.ToDWord(hash);
     }
 
     EncryptBlock(blockIndex, plaintext) {

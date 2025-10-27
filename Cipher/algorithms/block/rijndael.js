@@ -13,7 +13,7 @@
       require("../../OpCodes")
     );
   } else {
-    factory(root.AlgorithmFramework, root.OpCodes);
+    root.Rijndael = factory(root.AlgorithmFramework, root.OpCodes);
   }
 })((function () {
   if (typeof globalThis !== "undefined") return globalThis;
@@ -98,15 +98,15 @@
   })();
 
   function rotWord(word) {
-    return ((word << 8) | (word >>> 24)) >>> 0;
+    return OpCodes.RotL32(word, 8);
   }
 
   function subWord(word, tables) {
     const sbox = tables.SBOX;
-    return ((sbox[(word >>> 24) & 0xff] << 24) |
-            (sbox[(word >>> 16) & 0xff] << 16) |
-            (sbox[(word >>> 8) & 0xff] << 8) |
-            sbox[word & 0xff]) >>> 0;
+    // Unpack word to 4 bytes (big-endian)
+    const [b0, b1, b2, b3] = OpCodes.Unpack32BE(word);
+    // Apply S-box to each byte and pack back
+    return OpCodes.Pack32BE(sbox[b0], sbox[b1], sbox[b2], sbox[b3]);
   }
 
   class RijndaelAlgorithm extends BlockCipherAlgorithm {
@@ -305,7 +305,7 @@
       for (let i = nk; i < totalWords; i++) {
         let temp = words[i - 1];
         if (i % nk === 0) {
-          temp = (subWord(rotWord(temp), tables) ^ (tables.RCON[rconIndex] << 24)) >>> 0;
+          temp = (subWord(rotWord(temp), tables) ^ OpCodes.Pack32BE(tables.RCON[rconIndex], 0, 0, 0)) >>> 0;
           rconIndex++;
         } else if (nk > 6 && (i % nk) === 4) {
           temp = subWord(temp, tables);

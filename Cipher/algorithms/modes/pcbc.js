@@ -18,7 +18,7 @@
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    root.PCBC = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -86,25 +86,25 @@
       ];
 
       this.tests = [
-        new TestCase(
-          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // Single block
-          OpCodes.Hex8ToBytes("7649abac8119b246cee98e9b12e9197d"), // Expected PCBC output
-          "PCBC test vector - single block",
-          "https://tools.ietf.org/rfc/rfc1411.txt"
-        ),
-        new TestCase(
-          OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51"), // Two blocks
-          OpCodes.Hex8ToBytes("7649abac8119b246cee98e9b12e9197d5086cb9b507219ee95db113a917678b2"), // Expected PCBC multi-block
-          "PCBC test vector - multiple blocks",
-          "https://tools.ietf.org/rfc/rfc1411.txt"
-        )
+        {
+          text: "PCBC test - single block (AES-128)",
+          uri: "https://tools.ietf.org/rfc/rfc1411.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172a"), // Single block
+          expected: OpCodes.Hex8ToBytes("7649abac8119b246cee98e9b12e9197d"), // PCBC encrypted output
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"), // Test key
+          iv: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f") // Test IV
+        },
+        {
+          text: "PCBC test - multiple blocks (AES-128)",
+          uri: "https://tools.ietf.org/rfc/rfc1411.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51"), // Two blocks
+          expected: OpCodes.Hex8ToBytes("7649abac8119b246cee98e9b12e9197d9e8baff12ad5270a0d1eef93d7037994"), // PCBC encrypted output
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"), // Test key
+          iv: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f") // Test IV
+        }
       ];
-
-      // Add test parameters
-      this.tests.forEach(test => {
-        test.key = OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c"); // AES-128 test key
-        test.iv = OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f");  // Test IV
-      });
     }
 
     CreateInstance(isInverse = false) {

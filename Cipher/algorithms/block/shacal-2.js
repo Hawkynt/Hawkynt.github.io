@@ -6,17 +6,31 @@
  * Variable key length: 128-512 bits
  */
 
-// Load AlgorithmFramework
-if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-  global.AlgorithmFramework = require('../../AlgorithmFramework.js');
-}
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
+  'use strict';
 
-if (!global.OpCodes && typeof require !== 'undefined') {
-  global.OpCodes = require('../../OpCodes.js');
-}
+  if (!AlgorithmFramework) throw new Error('AlgorithmFramework dependency is required');
+  if (!OpCodes) throw new Error('OpCodes dependency is required');
 
-const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-        BlockCipherAlgorithm, IBlockCipherInstance, LinkItem, KeySize } = AlgorithmFramework;
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          BlockCipherAlgorithm, IBlockCipherInstance, LinkItem, KeySize } = AlgorithmFramework;
 
 class Shacal2 extends BlockCipherAlgorithm {
   constructor() {
@@ -291,4 +305,7 @@ class Shacal2Instance extends IBlockCipherInstance {
   }
 }
 
-RegisterAlgorithm(new Shacal2());
+  RegisterAlgorithm(new Shacal2());
+
+  return Shacal2;
+}));

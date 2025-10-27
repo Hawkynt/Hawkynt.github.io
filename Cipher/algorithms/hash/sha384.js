@@ -207,7 +207,7 @@
 
       // Low 64 bits
       for (let i = 0; i < 8; i++) {
-        this._buffer[this._bufferLength + 8 + i] = Number((lengthBits >> BigInt((7 - i) * 8)) & 0xFFn);
+        this._buffer[this._bufferLength + 8 + i] = Number(OpCodes.ShiftRn(lengthBits, (7 - i) * 8) & 0xFFn);
       }
 
       this._processBlock(this._buffer);
@@ -217,7 +217,7 @@
       for (let i = 0; i < 6; i++) { // Only first 6 words (384 bits) instead of 8 words (512 bits)
         const value = this._h[i];
         for (let j = 0; j < 8; j++) {
-          result.push(Number((value >> BigInt((7 - j) * 8)) & 0xFFn));
+          result.push(Number(OpCodes.ShiftRn(value, (7 - j) * 8) & 0xFFn));
         }
       }
 
@@ -237,15 +237,15 @@
       for (let t = 0; t < 16; t++) {
         let value = 0n;
         for (let i = 0; i < 8; i++) {
-          value = (value << 8n) | BigInt(block[t * 8 + i]);
+          value = OpCodes.ShiftLn(value, 8) | BigInt(block[t * 8 + i]);
         }
         W[t] = value;
       }
 
       // Extend first 16 words into remaining 64 words
       for (let t = 16; t < 80; t++) {
-        const s0 = this._rotr64(W[t-15], 1) ^ this._rotr64(W[t-15], 8) ^ (W[t-15] >> 7n);
-        const s1 = this._rotr64(W[t-2], 19) ^ this._rotr64(W[t-2], 61) ^ (W[t-2] >> 6n);
+        const s0 = this._rotr64(W[t-15], 1) ^ this._rotr64(W[t-15], 8) ^ OpCodes.ShiftRn(W[t-15], 7);
+        const s1 = this._rotr64(W[t-2], 19) ^ this._rotr64(W[t-2], 61) ^ OpCodes.ShiftRn(W[t-2], 6);
         W[t] = (W[t-16] + s0 + W[t-7] + s1) & 0xFFFFFFFFFFFFFFFFn;
       }
 
@@ -284,7 +284,7 @@
      * @returns {BigInt} Rotated value
      */
     _rotr64(value, n) {
-      return ((value >> BigInt(n)) | (value << BigInt(64 - n))) & 0xFFFFFFFFFFFFFFFFn;
+      return OpCodes.RotR64n(value, n);
     }
 
     /**
