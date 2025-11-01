@@ -287,7 +287,7 @@
 
           const plainBlock = [];
           for (let j = 0; j < remainingBytes; j++) {
-            plainBlock[j] = cipherBlock[j] ^ keystream[j];
+            plainBlock[j] = OpCodes.XorArrays([cipherBlock[j]], [keystream[j]])[0];
           }
           output.push(...plainBlock);
         }
@@ -317,7 +317,7 @@
 
           const cipherBlock = [];
           for (let j = 0; j < remainingBytes; j++) {
-            cipherBlock[j] = plainBlock[j] ^ keystream[j];
+            cipherBlock[j] = OpCodes.XorArrays([plainBlock[j]], [keystream[j]])[0];
           }
           output.push(...cipherBlock);
         }

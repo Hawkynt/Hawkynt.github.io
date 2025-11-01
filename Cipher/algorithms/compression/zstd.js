@@ -62,7 +62,7 @@
         this.year = 2016;
         this.category = CategoryType.COMPRESSION;
         this.subCategory = "Dictionary";
-        this.securityStatus = null;
+        this.securityStatus = SecurityStatus.EDUCATIONAL; // Simplified version for learning
         this.complexity = ComplexityType.ADVANCED;
         this.country = CountryCode.US;
 
@@ -139,13 +139,10 @@
 
         const result = [];
 
-        // TODO: use Opcodes for unpacking
         // Simplified Zstd frame header (4 bytes)
         const uncompressedSize = this.inputBuffer.length;
-        result.push((uncompressedSize >>> 24) & 0xFF);
-        result.push((uncompressedSize >>> 16) & 0xFF);
-        result.push((uncompressedSize >>> 8) & 0xFF);
-        result.push(uncompressedSize & 0xFF);
+        const [b0, b1, b2, b3] = OpCodes.Unpack32BE(uncompressedSize);
+        result.push(b0, b1, b2, b3);
 
         // Simple block compression using LZ77-style matching
         const compressed = this._simpleBlockCompress(this.inputBuffer);
@@ -162,11 +159,12 @@
         }
 
         // Read uncompressed size from header
-  // TODO: use OpCodes for packing
-        const uncompressedSize = (this.inputBuffer[0] << 24) |
-                                 (this.inputBuffer[1] << 16) |
-                                 (this.inputBuffer[2] << 8) |
-                                 this.inputBuffer[3];
+        const uncompressedSize = OpCodes.Pack32BE(
+          this.inputBuffer[0],
+          this.inputBuffer[1],
+          this.inputBuffer[2],
+          this.inputBuffer[3]
+        );
 
         if (uncompressedSize === 0) {
           this.inputBuffer = [];

@@ -215,45 +215,45 @@
       let mac = 0;
       const keyStream = [0, 0];
 
-      // Generate initial keystream word at position 0
+      // Generate initial keystream word at position 0 (BC: lines 100-103)
       keyStream[0] = this._generateKeyStreamWord();
 
-      // Initialize indices (BC: theWordIndex = theKeyStream.length - 1)
-      let wordIndex = 1;
-      let byteIndex = 3;
+      // Initialize indices (BC: lines 104-105)
+      let wordIndex = 1;  // theWordIndex = theKeyStream.length - 1 = 2 - 1 = 1
+      let byteIndex = 3;  // theByteIndex = Integer.BYTES - 1 = 4 - 1 = 3
 
-      // Process each byte
+      // Process each byte (BC: update() lines 113-129)
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const inputByte = this.inputBuffer[i];
 
-        // Shift for next byte BEFORE processing (BC: shift4NextByte() before loop)
+        // Shift for next byte FIRST (BC: shift4NextByte() at line 116)
         byteIndex = (byteIndex + 1) % 4;
         if (byteIndex === 0) {
           keyStream[wordIndex] = this._generateKeyStreamWord();
           wordIndex = (wordIndex + 1) % 2;
         }
 
-        // Process bits of the byte
+        // Process bits of the byte (BC: lines 118-128)
         const bitBase = byteIndex * 8;
-        for (let bitMask = 0x80, bitNo = 0; bitMask > 0; bitMask >>>= 1, bitNo++) {
-          if ((inputByte & bitMask) !== 0) {
+        for (let bitMask = 0x80, bitNo = 0; bitMask > 0; bitMask = OpCodes.Shr8(bitMask, 1), bitNo++) {
+          if (OpCodes.ToByte(inputByte&bitMask) !== 0) {
             mac ^= this._getKeyStreamWord(keyStream, wordIndex, bitBase + bitNo);
           }
         }
       }
 
-      // Final processing (BC: doFinal logic)
-      // Shift for final byte
+      // Final processing (BC: doFinal lines 215-226)
+      // Shift for final position (BC: line 218)
       byteIndex = (byteIndex + 1) % 4;
       if (byteIndex === 0) {
         keyStream[wordIndex] = this._generateKeyStreamWord();
         wordIndex = (wordIndex + 1) % 2;
       }
 
-      // XOR with keystream at final position
+      // XOR with keystream at final position (BC: line 219)
       mac ^= this._getKeyStreamWord(keyStream, wordIndex, byteIndex * 8);
 
-      // Get and XOR final word (BC: getFinalWord logic)
+      // Get and XOR final word (BC: getFinalWord() lines 198-206, then line 220)
       let finalWord;
       if (byteIndex !== 0) {
         finalWord = this._generateKeyStreamWord();
@@ -267,11 +267,13 @@
       this.inputBuffer = [];
 
       // Return MAC as 4 bytes (big-endian)
-      return OpCodes.Unpack32BE(mac >>> 0);
+      return OpCodes.Unpack32BE(OpCodes.ToDWord(mac));
     }
 
     _generateKeyStreamWord() {
-      // Generate 4 bytes of keystream and pack as big-endian 32-bit word
+      // Generate raw keystream word from ZUC (NOT XORed with input)
+      // We need to call the ZUC internal keystream generation directly
+      // Since ZUC XORs keystream with input, feeding zeros gives us the raw keystream
       this.zucEngine.Feed(new Array(4).fill(0));
       const bytes = this.zucEngine.Result();
       return OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
@@ -283,7 +285,9 @@
         return first;
       }
       const second = keyStream[(wordIndex + 1) % 2];
-      return ((first << bitNo) | (second >>> (32 - bitNo))) >>> 0;
+      const leftPart = OpCodes.Shl32(first, bitNo);
+      const rightPart = OpCodes.Shr32(second, 32 - bitNo);
+      return OpCodes.ToDWord(leftPart | rightPart);
     }
 
     ComputeMac(data) {

@@ -453,10 +453,8 @@
 
   // ===== REGISTRATION =====
 
-    const algorithmInstance = new DESAlgorithm();
-  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
-    RegisterAlgorithm(algorithmInstance);
-  }
+  const algorithmInstance = new DESAlgorithm();
+  RegisterAlgorithm(algorithmInstance);
 
   // ===== EXPORTS =====
 

@@ -374,6 +374,7 @@
     }
   }
 
+  // Register the algorithm
   const algorithmInstance = new GOST28147MACAlgorithm();
   if (!AlgorithmFramework.Find(algorithmInstance.name)) {
     RegisterAlgorithm(algorithmInstance);

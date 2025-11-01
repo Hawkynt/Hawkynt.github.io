@@ -130,8 +130,6 @@
       }
 
       _compress() {
-
-        // TODO: use Opcodes for bitstream
         let bitString = '';
 
         // Encode each byte using unary coding (standard: n -> n-1 ones followed by zero)
@@ -152,13 +150,12 @@
         const bytes = this._bitStringToBytes(bitString);
 
         // Prepend the original bit length as two bytes (length up to 65535 bits)
-  // TODO: use OpCodes for unpacking
-        const lengthBytes = [(originalBitLength >> 8) & 0xFF, originalBitLength & 0xFF];
+        const [high, low] = OpCodes.Unpack16BE(originalBitLength);
 
         // Clear input buffer
         this.inputBuffer = [];
 
-        return lengthBytes.concat(bytes);
+        return [high, low].concat(bytes);
       }
 
       _decompress() {
@@ -168,8 +165,7 @@
         }
 
         // Read original bit length from first two bytes
-  // TODO: use OpCodes for packing
-        const originalBitLength = (this.inputBuffer[0] << 8) | this.inputBuffer[1];
+        const originalBitLength = OpCodes.Pack16BE(this.inputBuffer[0], this.inputBuffer[1]);
         const dataBytes = this.inputBuffer.slice(2);
 
         // Convert bytes to bit string

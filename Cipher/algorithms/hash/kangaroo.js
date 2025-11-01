@@ -54,14 +54,14 @@
     0x000000000000808bn, 0x0000000080000001n, 0x8000000080008081n, 0x8000000000008009n,
     0x000000000000008an, 0x0000000000000088n, 0x0000000080008009n, 0x000000008000000an,
     0x000000008000808bn, 0x800000000000008bn, 0x8000000000008089n, 0x8000000000008003n,
-    0x8000000000008002n, 0x8000000080000000n, 0x000000000000800an, 0x800000008000000an,
+    0x8000000000008002n, 0x8000000000000080n, 0x000000000000800an, 0x800000008000000an,
     0x8000000080008081n, 0x8000000000008080n, 0x0000000080000001n, 0x8000000080008008n
   ]);
 
-  // Domain separation bytes
-  const SINGLE = [7];                      // Single node marker
-  const INTERMEDIATE = [0x0b];             // Intermediate node marker
-  const FINAL = [0xff, 0xff, 6];           // Final marker
+  // Domain separation bytes and markers
+  const SINGLE = [0x07];                   // Single node marker
+  const INTERMEDIATE = [0x0B];             // Intermediate leaf marker
+  const FINAL = [0xFF, 0xFF, 0x06];        // Final marker (includes domain)
   const FIRST = [3, 0, 0, 0, 0, 0, 0, 0];  // First node marker
 
   // ===== HELPER FUNCTIONS =====
@@ -191,12 +191,17 @@
     }
 
     padAndSwitchToSqueezingPhase() {
+      // Keccak padding: 10*1
+      // Fill any remaining space with zeros and XOR 0x80 at the last position
+
       // Fill remaining queue with zeros
       for (let i = this.bytesInQueue; i < this.rateBytes; i++) {
         this.queue[i] = 0;
       }
-      // Add padding
+
+      // XOR 0x80 at the last position for padding
       this.queue[this.rateBytes - 1] ^= 0x80;
+
       this.absorbBlock(this.queue, 0);
 
       this.extract();
@@ -206,6 +211,7 @@
 
     squeeze(output, offset, outputLength) {
       if (!this.squeezing) {
+        // Pad and switch to squeezing if not already done
         this.padAndSwitchToSqueezingPhase();
       }
 
@@ -247,17 +253,17 @@
         const c3 = A[3] ^ A[8] ^ A[13] ^ A[18] ^ A[23];
         const c4 = A[4] ^ A[9] ^ A[14] ^ A[19] ^ A[24];
 
-        const d1 = OpCodes.RotL64n(c1, 1) ^ c4;
-        const d2 = OpCodes.RotL64n(c2, 1) ^ c0;
-        const d3 = OpCodes.RotL64n(c3, 1) ^ c1;
-        const d4 = OpCodes.RotL64n(c4, 1) ^ c2;
-        const d0 = OpCodes.RotL64n(c0, 1) ^ c3;
+        const d0 = OpCodes.RotL64n(c1, 1) ^ c4;
+        const d1 = OpCodes.RotL64n(c2, 1) ^ c0;
+        const d2 = OpCodes.RotL64n(c3, 1) ^ c1;
+        const d3 = OpCodes.RotL64n(c4, 1) ^ c2;
+        const d4 = OpCodes.RotL64n(c0, 1) ^ c3;
 
-        A[0] ^= d1; A[5] ^= d1; A[10] ^= d1; A[15] ^= d1; A[20] ^= d1;
-        A[1] ^= d2; A[6] ^= d2; A[11] ^= d2; A[16] ^= d2; A[21] ^= d2;
-        A[2] ^= d3; A[7] ^= d3; A[12] ^= d3; A[17] ^= d3; A[22] ^= d3;
-        A[3] ^= d4; A[8] ^= d4; A[13] ^= d4; A[18] ^= d4; A[23] ^= d4;
-        A[4] ^= d0; A[9] ^= d0; A[14] ^= d0; A[19] ^= d0; A[24] ^= d0;
+        A[0] ^= d0; A[5] ^= d0; A[10] ^= d0; A[15] ^= d0; A[20] ^= d0;
+        A[1] ^= d1; A[6] ^= d1; A[11] ^= d1; A[16] ^= d1; A[21] ^= d1;
+        A[2] ^= d2; A[7] ^= d2; A[12] ^= d2; A[17] ^= d2; A[22] ^= d2;
+        A[3] ^= d3; A[8] ^= d3; A[13] ^= d3; A[18] ^= d3; A[23] ^= d3;
+        A[4] ^= d4; A[9] ^= d4; A[14] ^= d4; A[19] ^= d4; A[24] ^= d4;
 
         // Rho and Pi combined
         const c1_temp = OpCodes.RotL64n(A[1], 1);
@@ -305,6 +311,21 @@
         A[0] ^= KECCAK_RC[myBase + round];
       }
     }
+  }
+
+  // ===== HELPER FUNCTIONS FOR TEST VECTORS =====
+
+  /**
+   * Build standard test buffer (pattern of 00-FA repeating, i % 251)
+   * @param {number} length - Buffer length
+   * @returns {Array} Test buffer
+   */
+  function buildStandardBuffer(length) {
+    const result = new Array(length);
+    for (let i = 0; i < length; i++) {
+      result[i] = i % 251;
+    }
+    return result;
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -461,27 +482,6 @@
   }
 
   /**
-   * Build standard test buffer (pattern of 00-FF repeating every 251 bytes)
-   * @param {number} length - Buffer length
-   * @returns {Array} Test buffer
-   */
-  function buildStandardBuffer(length) {
-    const pattern = new Array(256);
-    for (let i = 0; i < 256; i++) {
-      pattern[i] = i;
-    }
-
-    const result = new Array(length);
-    for (let i = 0; i < length; i += 251) {
-      const copyLen = Math.min(251, length - i);
-      for (let j = 0; j < copyLen; j++) {
-        result[i + j] = pattern[j];
-      }
-    }
-    return result;
-  }
-
-  /**
    * KangarooTwelve Instance
    */
   class KangarooTwelveInstance extends IHashFunctionInstance {
@@ -599,8 +599,9 @@
         // First node - absorb FIRST marker
         this.treeSponge.absorb(FIRST, 0, FIRST.length);
       } else {
-        // Intermediate node - complete leaf and absorb into tree
+        // Intermediate node - absorb INTERMEDIATE marker (0x0B), pad, then squeeze
         this.leafSponge.absorb(INTERMEDIATE, 0, INTERMEDIATE.length);
+        this.leafSponge.padAndSwitchToSqueezingPhase();
         const hash = new Array(this.chainLen);
         this.leafSponge.squeeze(hash, 0, this.chainLen);
         this.treeSponge.absorb(hash, 0, this.chainLen);
@@ -618,18 +619,18 @@
       this.processData(this.personalBytes, 0, this.personalBytes.length);
 
       if (this.currNode === 0) {
-        // Single node mode
-        this.treeSponge.absorb(SINGLE, 0, SINGLE.length);
+        // Single node mode - absorb SINGLE marker (0x07), then pad
+        this.treeSponge.absorb(SINGLE, 0, 1);
         this.treeSponge.padAndSwitchToSqueezingPhase();
       } else {
-        // Multi-node mode
+        // Multi-node mode - complete final leaf, then finalize tree
         this.switchLeaf(false);
 
         // Encode and absorb node count
         const lengthEnc = rightEncode(this.currNode);
         this.treeSponge.absorb(lengthEnc, 0, lengthEnc.length);
 
-        // Absorb FINAL marker
+        // Absorb FINAL marker (0xFF 0xFF 0x06), then pad
         this.treeSponge.absorb(FINAL, 0, FINAL.length);
         this.treeSponge.padAndSwitchToSqueezingPhase();
       }

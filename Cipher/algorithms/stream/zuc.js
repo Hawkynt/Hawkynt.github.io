@@ -15,7 +15,13 @@
  * - 32-bit word-oriented keystream output
  * - 3GPP standard for mobile communications
  *
- * SECURITY STATUS: SECURE - 3GPP standard, extensively analyzed for mobile security.
+ * SECURITY STATUS: SECURE - 3GPP LTE/4G standard, extensively analyzed for mobile security.
+ *
+ * IMPLEMENTATION NOTES:
+ * - Based on BouncyCastle reference implementation (eea3eia3zucv16.pdf)
+ * - Uses AddM modular addition mod (2^31-1) for LFSR operations
+ * - Requires final initialization steps after 32 rounds: BR(), F(), LFSR()
+ * - Keystream generation: Z = F() ^ BRC[3]
  */
 
 (function (root, factory) {
@@ -87,23 +93,24 @@
       // Security status notes
       this.knownVulnerabilities = [];
 
-      // Official 3GPP test vectors
+      // Official test vectors from GSMA document eea3eia3zucv16.pdf
+      // https://www.gsma.com/aboutus/wp-content/uploads/2014/12/eea3eia3zucv16.pdf
       this.tests = [
         {
-          text: "3GPP ZUC Test Vector 1 - All zeros",
-          uri: "3GPP TS 35.221 specification",
-          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          text: "GSMA ZUC Test Vector 1 - All zeros key and IV",
+          uri: "https://www.gsma.com/aboutus/wp-content/uploads/2014/12/eea3eia3zucv16.pdf",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
           key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("EA7F4035A8243E2C")
+          expected: OpCodes.Hex8ToBytes("27bede74018082da87d4e5b69f18bf6632070e0f39b7b692b4673edc3184a48e27636f4414510d62cc15cfe194ec4f6d4b8c8fcc630648badf41b6f9d16a36ca")
         },
         {
-          text: "3GPP ZUC Test Vector 2 - All ones",
-          uri: "3GPP TS 35.221 specification",
-          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          text: "GSMA ZUC Test Vector 2 - All ones key and IV",
+          uri: "https://www.gsma.com/aboutus/wp-content/uploads/2014/12/eea3eia3zucv16.pdf",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
           key: OpCodes.Hex8ToBytes("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"),
           iv: OpCodes.Hex8ToBytes("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"),
-          expected: OpCodes.Hex8ToBytes("753CDFDC38A46460")
+          expected: OpCodes.Hex8ToBytes("0657cfa07096398b734b6cb4883eedf4257a76eb97595208d884adcdb1cbffb8e0f9d15846a0eed015328503351138f740d079af17296c232c4f022d6e4acac6")
         }
       ];
 
@@ -303,51 +310,63 @@
         this._LFSRWithInitialization((W >>> 1) & 0x7FFFFFFF);
       }
 
+      // Final initialization steps (from BouncyCastle line 519-521)
+      this._bitReorganization();
+      this._nonlinearFunction();  // Discard the output
+      this._LFSRWithoutInitialization();
+
       this.initialized = true;
     }
 
     // LFSR step with initialization feedback
     _LFSRWithInitialization(u) {
-      const v = this._mulByPow2(this.LFSR[0], 8);
-
-      // Calculate new LFSR value with proper modular arithmetic
-      let s16 = (this._mulByPow2(this.LFSR[15], 15) +
-                 this._mulByPow2(this.LFSR[13], 17) +
-                 this._mulByPow2(this.LFSR[10], 21) +
-                 this._mulByPow2(this.LFSR[4], 20) +
-                 v + u);
-
-      // Proper modulo operation for 2^31-1
-      s16 = s16 % 0x7FFFFFFF;
-      if (s16 === 0) s16 = 0x7FFFFFFF;
+      // BUG FIX: Must use AddM (modular addition mod 2^31-1) for all additions
+      let f = this.LFSR[0];
+      let v = this._mulByPow2(this.LFSR[0], 8);
+      f = this._AddM(f, v);
+      v = this._mulByPow2(this.LFSR[4], 20);
+      f = this._AddM(f, v);
+      v = this._mulByPow2(this.LFSR[10], 21);
+      f = this._AddM(f, v);
+      v = this._mulByPow2(this.LFSR[13], 17);
+      f = this._AddM(f, v);
+      v = this._mulByPow2(this.LFSR[15], 15);
+      f = this._AddM(f, v);
+      f = this._AddM(f, u);
 
       // Shift LFSR
       for (let i = 0; i < 15; i++) {
         this.LFSR[i] = this.LFSR[i + 1];
       }
-      this.LFSR[15] = s16;
+      this.LFSR[15] = f;
     }
 
     // LFSR step without initialization feedback (working mode)
     _LFSRWithoutInitialization() {
-      const v = this._mulByPow2(this.LFSR[0], 8);
-
-      // Calculate new LFSR value with proper modular arithmetic
-      let s16 = (this._mulByPow2(this.LFSR[15], 15) +
-                 this._mulByPow2(this.LFSR[13], 17) +
-                 this._mulByPow2(this.LFSR[10], 21) +
-                 this._mulByPow2(this.LFSR[4], 20) +
-                 v);
-
-      // Proper modulo operation for 2^31-1
-      s16 = s16 % 0x7FFFFFFF;
-      if (s16 === 0) s16 = 0x7FFFFFFF;
+      // BUG FIX: Must use AddM (modular addition mod 2^31-1) for all additions
+      let f = this.LFSR[0];
+      let v = this._mulByPow2(this.LFSR[0], 8);
+      f = this._AddM(f, v);
+      v = this._mulByPow2(this.LFSR[4], 20);
+      f = this._AddM(f, v);
+      v = this._mulByPow2(this.LFSR[10], 21);
+      f = this._AddM(f, v);
+      v = this._mulByPow2(this.LFSR[13], 17);
+      f = this._AddM(f, v);
+      v = this._mulByPow2(this.LFSR[15], 15);
+      f = this._AddM(f, v);
 
       // Shift LFSR
       for (let i = 0; i < 15; i++) {
         this.LFSR[i] = this.LFSR[i + 1];
       }
-      this.LFSR[15] = s16;
+      this.LFSR[15] = f;
+    }
+
+    // Modular addition mod (2^31 - 1) - from BouncyCastle
+    _AddM(a, b) {
+      const c = a + b;
+      return (c & 0x7FFFFFFF) + (c >>> 31);
     }
 
     // Multiplication by 2^k modulo (2^31 - 1)
@@ -386,21 +405,24 @@
 
     // Nonlinear function F
     _nonlinearFunction() {
-      const W1 = (this.X[0] ^ this.R1) >>> 0;
-      const W2 = (this.X[1] ^ this.R2) >>> 0;
+      // BUG FIX: The return value should be W, not (X[0] ^ R1)
+      // W is calculated from BRC[0], F[0] (R1), and F[1] (R2)
+      const W = ((this.X[0] ^ this.R1) + this.R2) >>> 0;
+      const W1 = (this.R1 + this.X[1]) >>> 0;
+      const W2 = (this.R2 ^ this.X[2]) >>> 0;
       const u = this._L1(((W1 << 16) | (W2 >>> 16)) >>> 0);
       const v = this._L2(((W2 << 16) | (W1 >>> 16)) >>> 0);
 
-      this.R1 = this._sbox(this._L1((u + this.X[2]) >>> 0));
-      this.R2 = this._sbox(this._L2((v + this.X[3]) >>> 0));
+      this.R1 = this._sbox(u);
+      this.R2 = this._sbox(v);
 
-      return (this.X[0] ^ this.R1) >>> 0;
+      return W;
     }
 
     // Generate keystream word
     _generateKeystreamWord() {
       this._bitReorganization();
-      const Z = this._nonlinearFunction();
+      const Z = this._nonlinearFunction() ^ this.X[3];  // BUG FIX: Must XOR with BRC[3] (which is X[3])
       this._LFSRWithoutInitialization();
       return Z;
     }

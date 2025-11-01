@@ -61,7 +61,7 @@
       this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.INTERMEDIATE;
       this.inventor = "Unknown";
-      this.year = null;
+      this.year = 1850;
       this.country = CountryCode.UNKNOWN;
 
       // Documentation

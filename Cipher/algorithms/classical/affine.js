@@ -56,12 +56,12 @@
       this.name = "Affine Cipher";
       this.description = "Classical mathematical cipher using linear transformation f(x) = (ax + b) mod 26. Requires coefficient 'a' to be coprime with 26 for reversibility. One of the oldest mathematical ciphers based on modular arithmetic.";
       this.inventor = "Unknown (Ancient)";
-      this.year = null;
+      this.year = 1929;
       this.category = CategoryType.CLASSICAL;
       this.subCategory = "Classical Cipher";
       this.securityStatus = SecurityStatus.EDUCATIONAL;
       this.complexity = ComplexityType.BEGINNER;
-      this.country = null;
+      this.country = CountryCode.ANCIENT;
 
       // Documentation and references
       this.documentation = [
