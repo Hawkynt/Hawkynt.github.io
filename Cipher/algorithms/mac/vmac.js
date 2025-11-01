@@ -43,51 +43,111 @@
           MacAlgorithm, IMacInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   // ===== CONSTANTS =====
+  // CRITICAL PRECISION FIX: Use BigInt for all 64-bit constants to avoid precision loss
+  // JavaScript Number has only 53-bit precision, but VMAC requires full 64-bit arithmetic
 
-  const P64 = 0xfffffffffffffeff; // 2^64 - 257 (prime for L3 hash)
-  const M62 = 0x3fffffffffffffff; // 62-bit mask
-  const M63 = 0x7fffffffffffffff; // 63-bit mask
-  const MPOLY = 0x1fffffff1fffffff; // Polynomial key mask
+  const P64 = 0xfffffffffffffeffn; // 2^64 - 257 (prime for L3 hash)
+  const M62 = 0x3fffffffffffffffn; // 62-bit mask
+  const M63 = 0x7fffffffffffffffn; // 63-bit mask
+  const M64 = 0xffffffffffffffffn; // 64-bit mask
+  const MPOLY = 0x1fffffff1fffffffn; // Polynomial key mask
 
   // ===== 64-BIT ARITHMETIC HELPERS =====
 
-  // NOTE: The following 64-bit and 128-bit arithmetic operations use manual bit operations
-  // because there are no OpCodes equivalents for multi-precision arithmetic required by VMAC.
-  // JavaScript's Number type has only 53-bit precision, requiring decomposition into 32-bit parts.
-  // These operations implement the complex polynomial and modular arithmetic from the VMAC specification.
+  // NOTE: The following 64-bit and 128-bit arithmetic operations use BigInt
+  // because JavaScript's Number type has only 53-bit precision, insufficient for VMAC's
+  // 64-bit arithmetic requirements. These operations implement the complex polynomial
+  // and modular arithmetic from the VMAC specification with bit-perfect accuracy.
 
-  // Multiply two 64-bit values represented as [high32, low32] pairs
-  function mul64(a, b) {
-    // Split into 32-bit parts for JavaScript number precision handling
-    const a0 = a & 0xFFFFFFFF;
-    const a1 = OpCodes.ToDWord(a / 0x100000000);
-    const b0 = b & 0xFFFFFFFF;
-    const b1 = OpCodes.ToDWord(b / 0x100000000);
-
-    // Perform multiplication
-    const c0 = a0 * b0;
-    const c1 = a0 * b1;
-    const c2 = a1 * b0;
-    const c3 = a1 * b1;
-
-    // Combine results
-    const low = c0;
-    const mid = c1 + c2;
-    const high = c3 + Math.floor(mid / 0x100000000);
-
+  // Convert 64-bit BigInt to {high32, low32} (both as regular Numbers)
+  function split64(value) {
+    const bigValue = BigInt(value);
     return {
-      high: OpCodes.ToDWord(high + Math.floor((low + (mid % 0x100000000) * 0x100000000) / 0x1000000000000)),
-      low: OpCodes.ToDWord(OpCodes.ToDWord(low) + OpCodes.ToDWord((mid & 0xFFFFFFFF) * 0x100000000))
+      high: Number((bigValue >> 32n) & 0xffffffffn),
+      low: Number(bigValue & 0xffffffffn)
     };
   }
 
-  // Add two 128-bit values: [ah, al] + [bh, bl]
-  function add128(ah, al, bh, bl) {
-    const low = OpCodes.ToDWord(al) + OpCodes.ToDWord(bl);
-    const high = OpCodes.ToDWord(ah) + OpCodes.ToDWord(bh) + (low >= 0x100000000 ? 1 : 0);
+  // Convert {high32, low32} to 64-bit BigInt (PRECISION-CRITICAL)
+  function join64(high, low) {
+    return (BigInt(high >>> 0) << 32n) | BigInt(low >>> 0);
+  }
+
+  // Convert 8-byte array (big-endian) to {high32, low32} representation
+  function bytes8ToWords(bytes) {
     return {
-      high: OpCodes.ToDWord(high),
-      low: OpCodes.ToDWord(low)
+      high: OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]),
+      low: OpCodes.Pack32BE(bytes[4], bytes[5], bytes[6], bytes[7])
+    };
+  }
+
+  // Convert {high32, low32} to 8-byte array (big-endian)
+  function wordsToBytes8(high, low) {
+    return [
+      ...OpCodes.Unpack32BE(high),
+      ...OpCodes.Unpack32BE(low)
+    ];
+  }
+
+  // Multiply two 64-bit values (as {h,l} pairs) and return 128-bit result
+  // PRECISION-CRITICAL: Uses BigInt to avoid precision loss in 64x64 multiplication
+  function mul64x64to128(a_h, a_l, b_h, b_l) {
+    // Convert inputs to 64-bit BigInts
+    const a = join64(a_h, a_l);
+    const b = join64(b_h, b_l);
+
+    // Perform 128-bit multiplication
+    const product = a * b;
+
+    // Split result into four 32-bit parts
+    const low64 = product & M64;
+    const high64 = product >> 64n;
+
+    const low = split64(low64);
+    const high = split64(high64);
+
+    return {
+      high_h: high.high,
+      high_l: high.low,
+      low_h: low.high,
+      low_l: low.low
+    };
+  }
+
+  // Add two 64-bit values (as {h,l} pairs)
+  // PRECISION-CRITICAL: Uses BigInt to handle carries correctly
+  function add64(a_h, a_l, b_h, b_l) {
+    const a = join64(a_h, a_l);
+    const b = join64(b_h, b_l);
+    const sum = a + b;
+    return split64(sum);
+  }
+
+  // Add 128-bit values: [ah_h, ah_l, al_h, al_l] + [bh_h, bh_l, bl_h, bl_l]
+  // PRECISION-CRITICAL: Uses BigInt for 128-bit arithmetic
+  function add128(ah_h, ah_l, al_h, al_l, bh_h, bh_l, bl_h, bl_l) {
+    const a_low = join64(al_h, al_l);
+    const a_high = join64(ah_h, ah_l);
+    const b_low = join64(bl_h, bl_l);
+    const b_high = join64(bh_h, bh_l);
+
+    // Build 128-bit values
+    const a = (a_high << 64n) | a_low;
+    const b = (b_high << 64n) | b_low;
+    const sum = a + b;
+
+    // Split back into 32-bit parts
+    const low64 = sum & M64;
+    const high64 = (sum >> 64n) & M64;
+
+    const low = split64(low64);
+    const high = split64(high64);
+
+    return {
+      high_h: high.high,
+      high_l: high.low,
+      low_h: low.high,
+      low_l: low.low
     };
   }
 
@@ -215,11 +275,11 @@
       this.initialized = false;
 
       // VMAC state
-      this.L1KeyLength = 128; // Default L1 key length in bytes
-      this.nhKey = null;
-      this.polyState = null;
-      this.l3Key = null;
-      this.pad = null;
+      this.L1KeyLength = 128; // Default L1 key length in bytes (16 64-bit words)
+      this.nhKey = [];        // NH key array stored as byte arrays (8 bytes each)
+      this.polyState = [];    // Polynomial accumulator state stored as byte arrays
+      this.l3Key = [];        // L3/IP keys stored as byte arrays
+      this.pad = null;        // AES-encrypted nonce (16 bytes)
       this.isFirstBlock = true;
       this.is128 = false;
     }
@@ -249,14 +309,26 @@
         throw new Error("VMAC requires 1-16 byte nonce");
       }
 
-      // Pad nonce to 16 bytes (AES block size)
+      // Pad nonce to 16 bytes (AES block size), right-aligned
       const paddedNonce = new Array(16).fill(0);
       const offset = 16 - nonceBytes.length;
       for (let i = 0; i < nonceBytes.length; ++i) {
         paddedNonce[offset + i] = nonceBytes[i];
       }
 
-      this._nonce = paddedNonce;
+      // For 64-bit mode, mask off last bit for pad generation (caching optimization)
+      if (this.is128) {
+        this._nonce = paddedNonce;
+      } else {
+        // Store nonce with last bit intact
+        this._nonce = paddedNonce;
+        // Use masked nonce for pad generation (bit 0 of last byte cleared)
+        this._padNonce = [...paddedNonce];
+        this._padNonce[15] = paddedNonce[15] & 0xFE;
+      }
+
+      // Reset first block flag when nonce changes
+      this.isFirstBlock = true;
 
       // Generate pad by encrypting nonce if key is set
       if (this._key && this.initialized) {
@@ -308,8 +380,8 @@
       const aes = aesAlgorithm.CreateInstance();
       aes.key = this._key;
 
-      // Derive NH key (L1 key derivation)
-      const nhKeyBlocks = this.L1KeyLength / 16; // Number of AES blocks
+      // Derive NH key (L1 key derivation) - tag 0x80
+      const nhKeyBlocks = this.L1KeyLength / 16; // Number of AES blocks (8 for default 128 bytes)
       const extraBlocks = this.is128 ? 2 : 0; // Extra blocks for 128-bit mode
       this.nhKey = [];
 
@@ -317,7 +389,7 @@
       counter[0] = 0x80; // NH key derivation tag
 
       for (let i = 0; i < nhKeyBlocks + extraBlocks; ++i) {
-        // Encode counter in big-endian at the end
+        // Encode counter in big-endian at bytes 12-15
         const counterBytes = OpCodes.Unpack32BE(i);
         counter[12] = counterBytes[0];
         counter[13] = counterBytes[1];
@@ -327,17 +399,12 @@
         aes.Feed(counter);
         const block = aes.Result();
 
-        // Convert to 64-bit words in little-endian
-        for (let j = 0; j < 16; j += 8) {
-          const low = OpCodes.Pack32LE(block[j], block[j+1], block[j+2], block[j+3]);
-          const high = OpCodes.Pack32LE(block[j+4], block[j+5], block[j+6], block[j+7]);
-          // Store as single number (JavaScript can handle up to 53 bits precisely)
-          // For full 64-bit, we'd need to keep as [high, low] pairs
-          this.nhKey.push(low + high * 0x100000000);
-        }
+        // Store as raw bytes to avoid precision loss (2 x 8-byte words per block)
+        this.nhKey.push(block.slice(0, 8), block.slice(8, 16));
       }
 
-      // Derive polynomial keys
+      // Derive polynomial keys - tag 0xC0
+      // PRECISION-CRITICAL: Store as BigInt to preserve full 64-bit values
       this.polyState = [];
       counter[0] = 0xC0; // Poly key derivation tag
       counter[15] = 0;
@@ -348,22 +415,28 @@
         aes.Feed(counter);
         const block = aes.Result();
 
-        // Extract two 64-bit values and mask with mpoly
-        const k0_low = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
-        const k0_high = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
-        const k1_low = OpCodes.Pack32BE(block[12], block[13], block[14], block[15]);
-        const k1_high = OpCodes.Pack32BE(block[8], block[9], block[10], block[11]);
+        // Pack bytes and apply MPOLY mask to complete 64-bit words
+        // CRITICAL: Mask must be applied AFTER packing, not before
+        const kh_high = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
+        const kh_low = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
+        const kh = join64(kh_high, kh_low) & MPOLY;
 
-        // Apply polynomial mask (MPOLY = 0x1fffffff1fffffff) as per VMAC spec
-        // NOTE: This masking is specific to VMAC's polynomial evaluation and has no OpCodes equivalent
-        const k0 = (k0_low & 0x1fffffff) + ((k0_high & 0x1fffffff) * 0x100000000);
-        const k1 = (k1_low & 0x1fffffff) + ((k1_high & 0x1fffffff) * 0x100000000);
+        const kl_high = OpCodes.Pack32BE(block[8], block[9], block[10], block[11]);
+        const kl_low = OpCodes.Pack32BE(block[12], block[13], block[14], block[15]);
+        const kl = join64(kl_high, kl_low) & MPOLY;
 
-        // polyState stores: [accumulator_high, accumulator_low, key_high, key_low]
-        this.polyState.push(0, 0, k0_high & 0x1fffffff, k0_low & 0x1fffffff);
+        // polyState stores: [ah, al, kh, kl] as BigInt values
+        // Initialize accumulator to 0
+        this.polyState.push(
+          0n,  // ah
+          0n,  // al
+          kh,  // kh
+          kl   // kl
+        );
       }
 
-      // Derive L3 keys (IP keys)
+      // Derive L3 keys (IP keys) - tag 0xE0
+      // PRECISION-CRITICAL: Store as BigInt for modular arithmetic
       this.l3Key = [];
       counter[0] = 0xE0; // L3 key derivation tag
       counter[15] = 0;
@@ -375,14 +448,18 @@
           aes.Feed(counter);
           const block = aes.Result();
 
-          const k0_low = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
+          // Convert to 64-bit BigInt
           const k0_high = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
-          const k1_low = OpCodes.Pack32BE(block[12], block[13], block[14], block[15]);
-          const k1_high = OpCodes.Pack32BE(block[8], block[9], block[10], block[11]);
+          const k0_low = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
+          k0 = join64(k0_high, k0_low);
 
-          k0 = k0_low + k0_high * 0x100000000;
-          k1 = k1_low + k1_high * 0x100000000;
-        } while (k0 >= P64 || k1 >= P64); // Reject if >= p64
+          const k1_high = OpCodes.Pack32BE(block[8], block[9], block[10], block[11]);
+          const k1_low = OpCodes.Pack32BE(block[12], block[13], block[14], block[15]);
+          k1 = join64(k1_high, k1_low);
+
+          // Check if < p64 = 2^64 - 257
+          if (k0 < P64 && k1 < P64) break;
+        } while (true);
 
         this.l3Key.push(k0, k1);
       }
@@ -406,7 +483,12 @@
 
       const aes = aesAlgorithm.CreateInstance();
       aes.key = this._key;
-      aes.Feed(this._nonce);
+
+      // For 64-bit mode, use masked nonce (last bit cleared)
+      // This allows pad reuse for nonces differing only in last bit
+      const nonceToEncrypt = this.is128 ? this._nonce : this._padNonce;
+
+      aes.Feed(nonceToEncrypt);
       this.pad = aes.Result();
     }
 
@@ -420,87 +502,181 @@
     }
 
     // NH hash function - core of VMAC
-    _nhHash(message, nhKey, startOffset) {
-      let nhAccum = 0;
+    // Processes message in 16-byte chunks, returns 128-bit result as {high, low}
+    _nhHash(message, nhKeyOffset, tagIndex) {
+      // Track 128-bit accumulator as high and low 64-bit parts
+      let nh_high_h = 0, nh_high_l = 0;
+      let nh_low_h = 0, nh_low_l = 0;
 
-      // Process message in 16-byte blocks
-      for (let i = 0; i < message.length; i += 16) {
-        // Load 8 bytes as 64-bit little-endian
-        const m0 = i + 7 < message.length ?
-          OpCodes.Pack32LE(message[i], message[i+1], message[i+2], message[i+3]) +
-          OpCodes.Pack32LE(message[i+4], message[i+5], message[i+6], message[i+7]) * 0x100000000 : 0;
+      // Process message in 16-byte blocks (two 64-bit words)
+      const numBlocks = Math.floor(message.length / 16);
 
-        const m1 = i + 15 < message.length ?
-          OpCodes.Pack32LE(message[i+8], message[i+9], message[i+10], message[i+11]) +
-          OpCodes.Pack32LE(message[i+12], message[i+13], message[i+14], message[i+15]) * 0x100000000 : 0;
+      for (let block = 0; block < numBlocks; ++block) {
+        const msgOffset = block * 16;
+        const keyOffset = nhKeyOffset + block * 2;
 
-        const keyIdx = startOffset + (i / 8);
-        const k0 = nhKey[keyIdx] || 0;
-        const k1 = nhKey[keyIdx + 1] || 0;
+        // Load two 64-bit message words in LITTLE-endian
+        const m0_low = OpCodes.Pack32LE(message[msgOffset], message[msgOffset+1], message[msgOffset+2], message[msgOffset+3]);
+        const m0_high = OpCodes.Pack32LE(message[msgOffset+4], message[msgOffset+5], message[msgOffset+6], message[msgOffset+7]);
 
-        // NH: (m0 + k0) * (m1 + k1) mod 2^64 (lower 64 bits contribute to hash)
-        // Simplified for JavaScript number precision
-        const sum0 = OpCodes.ToDWord(m0 + k0);
-        const sum1 = OpCodes.ToDWord(m1 + k1);
+        const m1_low = OpCodes.Pack32LE(message[msgOffset+8], message[msgOffset+9], message[msgOffset+10], message[msgOffset+11]);
+        const m1_high = OpCodes.Pack32LE(message[msgOffset+12], message[msgOffset+13], message[msgOffset+14], message[msgOffset+15]);
 
-        // Multiply and accumulate (we only care about lower bits for simplicity)
-        nhAccum += sum0 * sum1;
+        // Get NH keys
+        // For 64-bit mode (tagIndex=0): use consecutive keys
+        // For 128-bit mode (tagIndex=1): offset by +2 to use next pair
+        const k0Bytes = this.nhKey[keyOffset + tagIndex * 2];
+        const k1Bytes = this.nhKey[keyOffset + tagIndex * 2 + 1];
+
+        // Convert NH keys from byte arrays to 32-bit parts (BIG-endian to match Crypto++)
+        const k0_high = OpCodes.Pack32BE(k0Bytes[0], k0Bytes[1], k0Bytes[2], k0Bytes[3]);
+        const k0_low = OpCodes.Pack32BE(k0Bytes[4], k0Bytes[5], k0Bytes[6], k0Bytes[7]);
+
+        const k1_high = OpCodes.Pack32BE(k1Bytes[0], k1Bytes[1], k1Bytes[2], k1Bytes[3]);
+        const k1_low = OpCodes.Pack32BE(k1Bytes[4], k1Bytes[5], k1Bytes[6], k1Bytes[7]);
+
+        // NH: Accumulate (m0 + k0) * (m1 + k1) as 128-bit
+        const sum0 = add64(m0_high, m0_low, k0_high, k0_low);
+        const sum1 = add64(m1_high, m1_low, k1_high, k1_low);
+
+        const prod = mul64x64to128(sum0.high, sum0.low, sum1.high, sum1.low);
+        const added = add128(nh_high_h, nh_high_l, nh_low_h, nh_low_l,
+                            prod.high_h, prod.high_l, prod.low_h, prod.low_l);
+        nh_high_h = added.high_h;
+        nh_high_l = added.high_l;
+        nh_low_h = added.low_h;
+        nh_low_l = added.low_l;
       }
 
-      return nhAccum & M62; // Mask to 62 bits
+      // Convert back to 64-bit BigInts and mask to 126 bits (high is 62 bits max)
+      // PRECISION-CRITICAL: Must use BigInt to preserve all bits
+      const nhHigh = join64(nh_high_h, nh_high_l) & M62;
+      const nhLow = join64(nh_low_h, nh_low_l);
+
+      return { high: nhHigh, low: nhLow };
     }
 
-    // L3 hash function - final mixing
-    // NOTE: Uses manual bit operations for modular reduction over prime field p64 = 2^64-257
-    // and p127 = 2^127-1. These multi-precision modular arithmetic operations have no OpCodes
-    // equivalents as they require field-specific reduction algorithms from the VMAC spec.
-    _l3Hash(polyHigh, polyLow, l3Key0, l3Key1, msgLen) {
-      // Reduce (polyHigh, polyLow) + (msgLen, 0) mod p127
-      let p1 = polyHigh;
-      let p2 = polyLow;
+    // Polynomial evaluation step - multiply accumulator by key and add message
+    // PRECISION-CRITICAL: Implements Crypto++ poly_step algorithm using BigInt
+    // Reference: vmac.cpp lines 708-721 (word128 version)
+    _polyStep(ah, al, kh, kl, mh, ml) {
+      // Build 127-bit accumulator from high/low parts
+      const a = (BigInt(ah) << 64n) | BigInt(al);
+      const k_high = BigInt(kh);
+      const k_low = BigInt(kl);
+      const a_high = BigInt(ah);
+      const a_low = BigInt(al);
 
-      const t = p1 >>> 63;
+      // Crypto++ poly_step algorithm:
+      // t2 = (a>>64) * kl
+      // t3 = a * kh
+      // t1 = a * kl
+      // t4 = (a>>64) * (2*kh)
+      // t2 += t3
+      // t4 += t1
+      // t2 += (t4>>64)
+      // a = ((t2 & m63) << 64) | (t4 & m64)
+      // a += m & m126
+
+      const t1 = a * k_low;                    // a * kl
+      const t2_init = a_high * k_low;          // (a>>64) * kl
+      const t3 = a * k_high;                   // a * kh
+      const t4_init = a_high * (k_high << 1n); // (a>>64) * (2*kh)
+
+      let t2 = t2_init + t3;                   // ah*kl + a*kh
+      let t4 = t4_init + t1;                   // ah*2kh + a*kl
+      t2 += (t4 >> 64n);                       // Add carry from t4
+
+      // Build result: high 63 bits from t2, low 64 bits from t4
+      const result_high = t2 & M63;
+      const result_low = t4 & M64;
+      let result = (result_high << 64n) | result_low;
+
+      // Add message (masked to 126 bits)
+      const m_high = BigInt(mh);
+      const m_low = BigInt(ml);
+      const m = ((m_high & M62) << 64n) | m_low;  // m126 mask
+      result += m;
+
+      // Return as high/low parts
+      return {
+        high: (result >> 64n) & M63,
+        low: result & M64
+      };
+    }
+
+    // L3 hash function - final mixing with modular arithmetic
+    // PRECISION-CRITICAL: Implements Crypto++ L3Hash algorithm using BigInt
+    // Reference: vmac.cpp lines 798-837
+    _l3Hash(polyHigh, polyLow, l3Key0, l3Key1, msgLenBits) {
+      let p1 = BigInt(polyHigh);
+      let p2 = BigInt(polyLow);
+      const k1 = BigInt(l3Key0);
+      const k2 = BigInt(l3Key1);
+      const len = BigInt(msgLenBits); // Length in BITS (Crypto++ line 849 converts to bits before calling)
+
+      const z = 0n;
+
+      // Fully reduce (p1,p2)+(len,0) mod p127
+      let t = p1 >> 63n;
+      p1 &= M63;
+      // ADD128(p1, p2, len, t)
+      p2 += t;
+      p1 += len + (p2 >> 64n);
+      p2 &= M64;
+
+      // At this point, (p1,p2) is at most 2^127+(len<<64)
+      t = ((p1 > M63) ? 1n : 0n) + (((p1 === M63) && (p2 === M64)) ? 1n : 0n);
+      // ADD128(p1, p2, z, t)
+      p2 += t;
+      p1 += (p2 >> 64n);
+      p2 &= M64;
       p1 &= M63;
 
-      // Add message length in bits
-      const lenBits = msgLen * 8;
-      p2 += lenBits;
-      if (p2 >= 0x10000000000000000) {
-        p1 += 1;
-        p2 = p2 % 0x10000000000000000;
-      }
-      p1 += t;
+      // Compute (p1,p2)/(2^64-2^32) and (p1,p2)%(2^64-2^32)
+      t = p1 + (p2 >> 32n);
+      t += (t >> 32n);
+      t += ((t & 0xffffffffn) > 0xfffffffen) ? 1n : 0n;
+      p1 += (t >> 32n);
+      p2 += (p1 << 32n);
+      p2 &= M64; // Keep p2 in 64-bit range
 
-      // Reduce mod p127
-      const needReduce = (p1 > M63) || (p1 === M63 && p2 === 0xFFFFFFFFFFFFFFFF);
-      if (needReduce) {
-        p2 += 1;
-        if (p2 >= 0x10000000000000000) {
-          p1 += 1;
-          p2 = p2 % 0x10000000000000000;
-        }
-      }
-      p1 &= M63;
+      // Compute (p1+k1)%p64 and (p2+k2)%p64
+      // Crypto++ vmac.cpp line 821-824
+      const p1_before = p1;
+      const p2_before = p2;
+      p1 += k1;
+      p1 += (p1 < p1_before) ? 257n : 0n; // Add 257 if wrapped (p1 < original value)
+      p2 += k2;
+      p2 += (p2 < p2_before) ? 257n : 0n; // Add 257 if wrapped
 
-      // Compute mod (2^64 - 2^32)
-      let t2 = p1 + (p2 / 0x100000000);
-      t2 += (t2 / 0x100000000);
-      t2 += ((t2 & 0xFFFFFFFF) > 0xFFFFFFFE) ? 1 : 0;
-      p1 += (t2 / 0x100000000);
-      p2 += (p1 * 0x100000000);
-
-      // Add L3 keys mod p64
-      p1 = OpCodes.ToDWord(p1 + l3Key0);
-      if (p1 < l3Key0) p1 = OpCodes.ToDWord(p1 + 257);
-
-      p2 = OpCodes.ToDWord(p2 + l3Key1);
-      if (p2 < l3Key1) p2 = OpCodes.ToDWord(p2 + 257);
-
-      // Multiply mod p64 (simplified)
+      // Compute (p1+k1)*(p2+k2)%p64
       const prod = p1 * p2;
-      let result = prod % P64;
+      let rh = prod >> 64n;
+      let rl = prod & M64;
 
-      return OpCodes.ToDWord(result);
+      // Reduction mod p64:
+      t = rh >> 56n;
+      // ADD128(t, rl, z, rh)
+      rl += rh;
+      t += (rl >> 64n);
+      rl &= M64;
+
+      rh = (rh << 8n) & M64;
+      // ADD128(t, rl, z, rh)
+      rl += rh;
+      t += (rl >> 64n);
+      rl &= M64;
+
+      t += (t << 8n);
+      rl += t;
+      const rl_wrapped = (rl < t);
+      rl &= M64;
+      rl += (rl_wrapped ? 257n : 0n);
+      rl += ((rl > (P64 - 1n)) ? 257n : 0n);
+      rl &= M64; // Final mask
+
+      return rl;
     }
 
     // Get the MAC result
@@ -518,72 +694,120 @@
       }
 
       const msgLen = this.inputBuffer.length;
+      const msgLenBits = msgLen * 8;
 
-      // For empty message, use special case
-      if (msgLen === 0) {
-        // Return pad directly for empty message (simplified)
-        const result = [];
-        for (let i = 0; i < this._outputSize; ++i) {
-          result.push(this.pad[i]);
-        }
-        return result;
-      }
-
-      // Pad message to 16-byte boundary
+      // Pad message to 16-byte boundary with zeros
       const paddedMsg = [...this.inputBuffer];
       while (paddedMsg.length % 16 !== 0) {
         paddedMsg.push(0);
       }
 
-      // Process with NH hash
-      const nhResult = this._nhHash(paddedMsg, this.nhKey, 0);
-
-      // Polynomial evaluation (simplified - full version requires extensive 127-bit arithmetic)
-      const polyHigh = Math.floor(nhResult / 0x100000000);
-      const polyLow = nhResult & 0xFFFFFFFF;
-
-      // L3 hash
-      const tagParts = [];
       const numParts = this.is128 ? 2 : 1;
+      const tagParts = [];
 
-      for (let i = 0; i < numParts; ++i) {
+      // Process each tag part (1 for 64-bit, 2 for 128-bit)
+      for (let tagIndex = 0; tagIndex < numParts; ++tagIndex) {
+        const polyOffset = tagIndex * 4; // Each poly state is [ah, al, kh, kl]
+
+        let polyHigh, polyLow;
+
+        if (msgLen === 0 && this.isFirstBlock) {
+          // Special case for empty message (Crypto++ vmac.cpp line 851-861)
+          // For empty string, polynomial state = polynomial keys
+          polyHigh = this.polyState[polyOffset + 2]; // ah = kh
+          polyLow = this.polyState[polyOffset + 3];  // al = kl
+
+          // Update state for consistency (though not used again for empty messages)
+          this.polyState[polyOffset] = polyHigh;
+          this.polyState[polyOffset + 1] = polyLow;
+        } else {
+          // Process message with NH hash
+          const nhResult = this._nhHash(paddedMsg, 0, tagIndex);
+
+          if (this.isFirstBlock) {
+            // First block: first_poly_step (Crypto++ vmac.cpp line 672)
+            // a = (NH_result & m126) + polynomial_key
+            // This is a simple 128-bit addition with 126-bit masking
+            const kh = this.polyState[polyOffset + 2];
+            const kl = this.polyState[polyOffset + 3];
+
+            // Mask NH result to 126 bits (high part to 62 bits)
+            const nhHigh = nhResult.high & M62;
+            const nhLow = nhResult.low;
+
+            // Add to polynomial key: simple 128-bit addition
+            const nhValue = (nhHigh << 64n) | nhLow;
+            const kValue = (kh << 64n) | kl;
+            const sum = nhValue + kValue;
+
+            // Extract high and low parts (no additional masking needed here)
+            polyHigh = (sum >> 64n);
+            polyLow = sum & M64;
+          } else {
+            // Subsequent blocks: polynomial step
+            const ah = this.polyState[polyOffset];
+            const al = this.polyState[polyOffset + 1];
+            const kh = this.polyState[polyOffset + 2];
+            const kl = this.polyState[polyOffset + 3];
+            const result = this._polyStep(ah, al, kh, kl, nhResult.high, nhResult.low);
+            polyHigh = result.high;
+            polyLow = result.low;
+          }
+
+          // Update polynomial state for next call
+          this.polyState[polyOffset] = polyHigh;
+          this.polyState[polyOffset + 1] = polyLow;
+        }
+
+        // L3 hash
         const l3Result = this._l3Hash(
           polyHigh,
           polyLow,
-          this.l3Key[i * 2],
-          this.l3Key[i * 2 + 1],
-          msgLen
+          this.l3Key[tagIndex * 2],
+          this.l3Key[tagIndex * 2 + 1],
+          msgLenBits
         );
 
-        // Add pad
-        const padOffset = i * 8;
-        const padValue = OpCodes.Pack32BE(
+        // Add pad (encrypted nonce)
+        // For 64-bit mode, use nonce's last bit to select pad offset
+        let padOffset = tagIndex * 8;
+        if (!this.is128) {
+          // 64-bit mode: use bit 0 of last nonce byte
+          const nonceBit = this._nonce[15] & 1;
+          padOffset = nonceBit * 8;
+        }
+
+        const padHigh = OpCodes.Pack32BE(
           this.pad[padOffset],
           this.pad[padOffset + 1],
           this.pad[padOffset + 2],
           this.pad[padOffset + 3]
-        ) * 0x100000000 + OpCodes.Pack32BE(
+        );
+        const padLow = OpCodes.Pack32BE(
           this.pad[padOffset + 4],
           this.pad[padOffset + 5],
           this.pad[padOffset + 6],
           this.pad[padOffset + 7]
         );
+        const padValue = join64(padHigh, padLow);
 
-        const finalTag = OpCodes.ToDWord(l3Result + padValue);
+        // Add pad to L3 result (both are BigInt)
+        // PRECISION-CRITICAL: Final tag assembly
+        const finalTag = (l3Result + padValue) & M64;
 
         // Convert to bytes (big-endian)
-        const high32 = Math.floor(finalTag / 0x100000000);
-        const low32 = finalTag & 0xFFFFFFFF;
+        const finalSplit = split64(finalTag);
         const tagBytes = [
-          ...OpCodes.Unpack32BE(high32),
-          ...OpCodes.Unpack32BE(low32)
+          ...OpCodes.Unpack32BE(finalSplit.high),
+          ...OpCodes.Unpack32BE(finalSplit.low)
         ];
 
         tagParts.push(...tagBytes);
       }
 
-      // Clear buffer for next use
+      // Clear state for next message
       this.inputBuffer = [];
+      this.isFirstBlock = false;
 
       return tagParts.slice(0, this._outputSize);
     }

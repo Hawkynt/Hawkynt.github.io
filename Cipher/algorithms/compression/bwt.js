@@ -182,11 +182,12 @@
         }
 
         // Read original position
-   //TODO: OpCodes pack
-        const originalPosition = (this.inputBuffer[0] << 24) | 
-                                (this.inputBuffer[1] << 16) | 
-                                (this.inputBuffer[2] << 8) | 
-                                this.inputBuffer[3];
+        const originalPosition = OpCodes.Pack32BE(
+          this.inputBuffer[0],
+          this.inputBuffer[1],
+          this.inputBuffer[2],
+          this.inputBuffer[3]
+        );
 
         const lastColumn = this.inputBuffer.slice(4);
         const n = lastColumn.length;

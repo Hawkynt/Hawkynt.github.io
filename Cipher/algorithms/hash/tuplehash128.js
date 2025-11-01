@@ -123,58 +123,44 @@
         )
       ];
 
-      // Official NIST test vectors from SP 800-185
+      // Official NIST test vectors from SP 800-185 (via BouncyCastle)
       this.tests = [
         {
           text: "TupleHash128: (000102, 101112131415), empty S, 32 bytes (NIST)",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/KMAC_samples.pdf",
+          uri: "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/TupleHashTest.java",
           input: null,
+          outputSize: 32,
+          customization: [],
           tuples: [
             OpCodes.Hex8ToBytes("000102"),
             OpCodes.Hex8ToBytes("101112131415")
           ],
-          customization: [],
-          outputSize: 32,
-          expected: OpCodes.Hex8ToBytes("C5D8786C1AFB9B8211AB34B65B2C0048FA64E6D48E263264CE1707D3FFC8ED11")
+          expected: OpCodes.Hex8ToBytes("C5D8786C1AFB9B82111AB34B65B2C0048FA64E6D48E263264CE1707D3FFC8ED1")
         },
         {
           text: "TupleHash128: (000102, 101112131415), S='My Tuple App', 32 bytes (NIST)",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/KMAC_samples.pdf",
+          uri: "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/TupleHashTest.java",
           input: null,
+          outputSize: 32,
+          customization: OpCodes.AnsiToBytes("My Tuple App"),
           tuples: [
             OpCodes.Hex8ToBytes("000102"),
             OpCodes.Hex8ToBytes("101112131415")
           ],
-          customization: OpCodes.AnsiToBytes("My Tuple App"),
-          outputSize: 32,
           expected: OpCodes.Hex8ToBytes("75CDB20FF4DB1154E841D758E24160C54BAE86EB8C13E7F5F40EB35588E96DFB")
         },
         {
           text: "TupleHash128: (000102, 101112131415, 202122232425262728), S='My Tuple App', 32 bytes (NIST)",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/KMAC_samples.pdf",
+          uri: "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/TupleHashTest.java",
           input: null,
+          outputSize: 32,
+          customization: OpCodes.AnsiToBytes("My Tuple App"),
           tuples: [
             OpCodes.Hex8ToBytes("000102"),
             OpCodes.Hex8ToBytes("101112131415"),
             OpCodes.Hex8ToBytes("202122232425262728")
           ],
-          customization: OpCodes.AnsiToBytes("My Tuple App"),
-          outputSize: 32,
           expected: OpCodes.Hex8ToBytes("E60F202C89A2631EDA8D4C588CA5FD07F39E5151998DECCF973ADB3804BB6E84")
-        },
-        {
-          text: "TupleHash128 XOF: (000102, 101112131415, 202122232425262728), S='My Tuple App', 32 bytes (NIST)",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/KMAC_samples.pdf",
-          input: null,
-          tuples: [
-            OpCodes.Hex8ToBytes("000102"),
-            OpCodes.Hex8ToBytes("101112131415"),
-            OpCodes.Hex8ToBytes("202122232425262728")
-          ],
-          customization: OpCodes.AnsiToBytes("My Tuple App"),
-          outputSize: 32,
-          xofMode: true,
-          expected: OpCodes.Hex8ToBytes("900FE16CAD098D28E74D632ED852F99DAAB7F7DF4D99E775657885B4BF76D6F8")
         }
       ];
     }

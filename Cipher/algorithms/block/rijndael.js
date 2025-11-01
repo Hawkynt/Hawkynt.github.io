@@ -511,10 +511,8 @@
     }
   }
 
-  const algorithmInstance = new RijndaelAlgorithm();
-  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
-    RegisterAlgorithm(algorithmInstance);
-  }
+  // Register algorithm immediately
+  RegisterAlgorithm(new RijndaelAlgorithm());
 
   return { RijndaelAlgorithm, RijndaelInstance };
 });

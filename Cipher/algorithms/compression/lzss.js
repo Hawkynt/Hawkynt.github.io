@@ -162,10 +162,10 @@
           if (match.length >= this.MIN_MATCH_LENGTH) {
             // Encode match as reference (flag=1, offset, length)
             output.push(0x01); // Flag byte indicating match
-  // TODO: use OpCodes for unpacking
-            output.push((match.offset >> 8) & 0xFF); // High byte of offset
-            output.push(match.offset & 0xFF);        // Low byte of offset  
-            output.push(match.length);               // Match length
+            const [high, low] = OpCodes.Unpack16BE(match.offset);
+            output.push(high); // High byte of offset
+            output.push(low);  // Low byte of offset
+            output.push(match.length); // Match length
 
             // Add matched characters to window
             for (let i = 0; i < match.length; i++) {
@@ -210,8 +210,7 @@
             // Match reference
             if (pos + 2 >= compressedBytes.length) break;
 
-  // TODO: use OpCodes for packing
-            const offset = (compressedBytes[pos] << 8) | compressedBytes[pos + 1];
+            const offset = OpCodes.Pack16BE(compressedBytes[pos], compressedBytes[pos + 1]);
             const length = compressedBytes[pos + 2];
             pos += 3;
 

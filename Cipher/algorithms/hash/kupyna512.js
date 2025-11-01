@@ -258,16 +258,15 @@
       }
     }
 
-    // ShiftRows transformation (optimized bit-manipulation version for 1024-bit state)
+    // ShiftRows transformation (using BigInt for proper 64-bit operations)
     shiftRows(s) {
-      // Convert to 64-bit representation for efficient shifting
+      // Convert to 64-bit BigInt representation
       const words = new Array(this.NB_1024);
       for (let i = 0; i < this.NB_1024; ++i) {
-        words[i] = 0;
+        words[i] = 0n;
         for (let j = 0; j < 8; ++j) {
-          words[i] |= (s[i][j] & 0xFF) << (j * 8);
+          words[i] |= BigInt(s[i][j] & 0xFF) << BigInt(j * 8);
         }
-        words[i] = words[i] >>> 0; // Ensure unsigned
       }
 
       let c00 = words[0], c01 = words[1], c02 = words[2], c03 = words[3];
@@ -278,41 +277,41 @@
 
       // Bit-parallel permutation for 1024-bit state
       // Row 7 is shifted by 11 (special case)
-      d = (c00 ^ c08) & 0xFF00000000000000; c00 ^= d; c08 ^= d;
-      d = (c01 ^ c09) & 0xFF00000000000000; c01 ^= d; c09 ^= d;
-      d = (c02 ^ c10) & 0xFFFF000000000000; c02 ^= d; c10 ^= d;
-      d = (c03 ^ c11) & 0xFFFFFF0000000000; c03 ^= d; c11 ^= d;
-      d = (c04 ^ c12) & 0xFFFFFFFF00000000; c04 ^= d; c12 ^= d;
-      d = (c05 ^ c13) & 0x00FFFFFFFF000000; c05 ^= d; c13 ^= d;
-      d = (c06 ^ c14) & 0x00FFFFFFFFFF0000; c06 ^= d; c14 ^= d;
-      d = (c07 ^ c15) & 0x00FFFFFFFFFFFF00; c07 ^= d; c15 ^= d;
+      d = (c00 ^ c08) & 0xFF00000000000000n; c00 ^= d; c08 ^= d;
+      d = (c01 ^ c09) & 0xFF00000000000000n; c01 ^= d; c09 ^= d;
+      d = (c02 ^ c10) & 0xFFFF000000000000n; c02 ^= d; c10 ^= d;
+      d = (c03 ^ c11) & 0xFFFFFF0000000000n; c03 ^= d; c11 ^= d;
+      d = (c04 ^ c12) & 0xFFFFFFFF00000000n; c04 ^= d; c12 ^= d;
+      d = (c05 ^ c13) & 0x00FFFFFFFF000000n; c05 ^= d; c13 ^= d;
+      d = (c06 ^ c14) & 0x00FFFFFFFFFF0000n; c06 ^= d; c14 ^= d;
+      d = (c07 ^ c15) & 0x00FFFFFFFFFFFF00n; c07 ^= d; c15 ^= d;
 
-      d = (c00 ^ c04) & 0x00FFFFFF00000000; c00 ^= d; c04 ^= d;
-      d = (c01 ^ c05) & 0xFFFFFFFFFF000000; c01 ^= d; c05 ^= d;
-      d = (c02 ^ c06) & 0xFF00FFFFFFFF0000; c02 ^= d; c06 ^= d;
-      d = (c03 ^ c07) & 0xFF0000FFFFFFFF00; c03 ^= d; c07 ^= d;
-      d = (c08 ^ c12) & 0x00FFFFFF00000000; c08 ^= d; c12 ^= d;
-      d = (c09 ^ c13) & 0xFFFFFFFFFF000000; c09 ^= d; c13 ^= d;
-      d = (c10 ^ c14) & 0xFF00FFFFFFFF0000; c10 ^= d; c14 ^= d;
-      d = (c11 ^ c15) & 0xFF0000FFFFFFFF00; c11 ^= d; c15 ^= d;
+      d = (c00 ^ c04) & 0x00FFFFFF00000000n; c00 ^= d; c04 ^= d;
+      d = (c01 ^ c05) & 0xFFFFFFFFFF000000n; c01 ^= d; c05 ^= d;
+      d = (c02 ^ c06) & 0xFF00FFFFFFFF0000n; c02 ^= d; c06 ^= d;
+      d = (c03 ^ c07) & 0xFF0000FFFFFFFF00n; c03 ^= d; c07 ^= d;
+      d = (c08 ^ c12) & 0x00FFFFFF00000000n; c08 ^= d; c12 ^= d;
+      d = (c09 ^ c13) & 0xFFFFFFFFFF000000n; c09 ^= d; c13 ^= d;
+      d = (c10 ^ c14) & 0xFF00FFFFFFFF0000n; c10 ^= d; c14 ^= d;
+      d = (c11 ^ c15) & 0xFF0000FFFFFFFF00n; c11 ^= d; c15 ^= d;
 
-      d = (c00 ^ c02) & 0xFFFF0000FFFF0000; c00 ^= d; c02 ^= d;
-      d = (c01 ^ c03) & 0x00FFFF0000FFFF00; c01 ^= d; c03 ^= d;
-      d = (c04 ^ c06) & 0xFFFF0000FFFF0000; c04 ^= d; c06 ^= d;
-      d = (c05 ^ c07) & 0x00FFFF0000FFFF00; c05 ^= d; c07 ^= d;
-      d = (c08 ^ c10) & 0xFFFF0000FFFF0000; c08 ^= d; c10 ^= d;
-      d = (c09 ^ c11) & 0x00FFFF0000FFFF00; c09 ^= d; c11 ^= d;
-      d = (c12 ^ c14) & 0xFFFF0000FFFF0000; c12 ^= d; c14 ^= d;
-      d = (c13 ^ c15) & 0x00FFFF0000FFFF00; c13 ^= d; c15 ^= d;
+      d = (c00 ^ c02) & 0xFFFF0000FFFF0000n; c00 ^= d; c02 ^= d;
+      d = (c01 ^ c03) & 0x00FFFF0000FFFF00n; c01 ^= d; c03 ^= d;
+      d = (c04 ^ c06) & 0xFFFF0000FFFF0000n; c04 ^= d; c06 ^= d;
+      d = (c05 ^ c07) & 0x00FFFF0000FFFF00n; c05 ^= d; c07 ^= d;
+      d = (c08 ^ c10) & 0xFFFF0000FFFF0000n; c08 ^= d; c10 ^= d;
+      d = (c09 ^ c11) & 0x00FFFF0000FFFF00n; c09 ^= d; c11 ^= d;
+      d = (c12 ^ c14) & 0xFFFF0000FFFF0000n; c12 ^= d; c14 ^= d;
+      d = (c13 ^ c15) & 0x00FFFF0000FFFF00n; c13 ^= d; c15 ^= d;
 
-      d = (c00 ^ c01) & 0xFF00FF00FF00FF00; c00 ^= d; c01 ^= d;
-      d = (c02 ^ c03) & 0xFF00FF00FF00FF00; c02 ^= d; c03 ^= d;
-      d = (c04 ^ c05) & 0xFF00FF00FF00FF00; c04 ^= d; c05 ^= d;
-      d = (c06 ^ c07) & 0xFF00FF00FF00FF00; c06 ^= d; c07 ^= d;
-      d = (c08 ^ c09) & 0xFF00FF00FF00FF00; c08 ^= d; c09 ^= d;
-      d = (c10 ^ c11) & 0xFF00FF00FF00FF00; c10 ^= d; c11 ^= d;
-      d = (c12 ^ c13) & 0xFF00FF00FF00FF00; c12 ^= d; c13 ^= d;
-      d = (c14 ^ c15) & 0xFF00FF00FF00FF00; c14 ^= d; c15 ^= d;
+      d = (c00 ^ c01) & 0xFF00FF00FF00FF00n; c00 ^= d; c01 ^= d;
+      d = (c02 ^ c03) & 0xFF00FF00FF00FF00n; c02 ^= d; c03 ^= d;
+      d = (c04 ^ c05) & 0xFF00FF00FF00FF00n; c04 ^= d; c05 ^= d;
+      d = (c06 ^ c07) & 0xFF00FF00FF00FF00n; c06 ^= d; c07 ^= d;
+      d = (c08 ^ c09) & 0xFF00FF00FF00FF00n; c08 ^= d; c09 ^= d;
+      d = (c10 ^ c11) & 0xFF00FF00FF00FF00n; c10 ^= d; c11 ^= d;
+      d = (c12 ^ c13) & 0xFF00FF00FF00FF00n; c12 ^= d; c13 ^= d;
+      d = (c14 ^ c15) & 0xFF00FF00FF00FF00n; c14 ^= d; c15 ^= d;
 
       words[0] = c00; words[1] = c01; words[2] = c02; words[3] = c03;
       words[4] = c04; words[5] = c05; words[6] = c06; words[7] = c07;
@@ -322,7 +321,7 @@
       // Convert back to byte representation
       for (let i = 0; i < this.NB_1024; ++i) {
         for (let j = 0; j < 8; ++j) {
-          s[i][j] = (words[i] >>> (j * 8)) & 0xFF;
+          s[i][j] = Number((words[i] >> BigInt(j * 8)) & 0xFFn);
         }
       }
     }
@@ -330,46 +329,46 @@
     // MixColumns transformation (Galois Field multiplication)
     mixColumns(s) {
       for (let col = 0; col < this.NB_1024; ++col) {
-        // Pack column into 64-bit word (little-endian)
-        let c = 0;
+        // Pack column into 64-bit BigInt word (little-endian)
+        let c = 0n;
         for (let i = 0; i < 8; ++i) {
-          c |= (s[col][i] & 0xFF) << (i * 8);
+          c |= BigInt(s[col][i] & 0xFF) << BigInt(i * 8);
         }
-        c = c >>> 0;
 
         // MixColumn operation (circulant matrix in GF(2^8))
         const mixed = this.mixColumn(c);
 
         // Unpack back to bytes
         for (let i = 0; i < 8; ++i) {
-          s[col][i] = (mixed >>> (i * 8)) & 0xFF;
+          s[col][i] = Number((mixed >> BigInt(i * 8)) & 0xFFn);
         }
       }
     }
 
-    // Single column mixing (optimized from Bouncy Castle)
+    // Single column mixing (optimized from Bouncy Castle, using BigInt)
+// TODO: use opcodes for rotation
+    // Java rotate(n, x) = (x >>> n) | (x << -n) which is RIGHT rotation
+    rotate(n, x) {
+      return ((x >> n) | (x << (64n - n))) & 0xFFFFFFFFFFFFFFFFn;
+    }
+
     mixColumn(c) {
       // Multiply elements by 'x' in GF(2^8) with polynomial 0x1D
-      const x1 = ((c & 0x7F7F7F7F7F7F7F7F) << 1) ^ (((c & 0x8080808080808080) >>> 7) * 0x1D);
+      const x1 = ((c & 0x7F7F7F7F7F7F7F7Fn) << 1n) ^ (((c & 0x8080808080808080n) >> 7n) * 0x1Dn);
 
-      let u = c;
-      u ^= ((c << 8) | (c >>> 56)) >>> 0; // Rotate by 1 byte
-      u ^= ((u << 16) | (u >>> 48)) >>> 0; // Rotate by 2 bytes
-      u ^= ((c << 48) | (c >>> 16)) >>> 0; // Rotate by 6 bytes
+      // Use rotate helper function
+      let u = this.rotate(8n, c) ^ c;
+      u ^= this.rotate(16n, u);
+      u ^= this.rotate(48n, c);
 
       let v = u ^ c ^ x1;
 
       // Multiply by 'x^2'
-      v = ((v & 0x3F3F3F3F3F3F3F3F) << 2) ^
-          (((v & 0x8080808080808080) >>> 6) * 0x1D) ^
-          (((v & 0x4040404040404040) >>> 6) * 0x1D);
+      v = ((v & 0x3F3F3F3F3F3F3F3Fn) << 2n) ^
+          (((v & 0x8080808080808080n) >> 6n) * 0x1Dn) ^
+          (((v & 0x4040404040404040n) >> 6n) * 0x1Dn);
 
-      const result = u ^
-                     ((v << 32) | (v >>> 32)) ^
-                     ((x1 << 40) | (x1 >>> 24)) ^
-                     ((x1 << 48) | (x1 >>> 16));
-
-      return result >>> 0;
+      return (u ^ this.rotate(32n, v) ^ this.rotate(40n, x1) ^ this.rotate(48n, x1)) & 0xFFFFFFFFFFFFFFFFn;
     }
 
     // P permutation (encryption-like transformation)
@@ -391,26 +390,26 @@
     // Q permutation (decryption-like transformation)
     Q(s) {
       for (let round = 0; round < this.NR_1024; ++round) {
-        // AddRoundConstantsQ
-        let rc = (((this.NB_1024 - 1) << 4) ^ round) & 0xFF;
-        const rcBase = 0xF3;
+        // AddRoundConstantsQ - matches Bouncy Castle exactly
+        let rc = (BigInt(((this.NB_1024 - 1) << 4) ^ round) << 56n) | 0x00F0F0F0F0F0F0F3n;
 
         for (let col = 0; col < this.NB_1024; ++col) {
-          s[col][7] += (rc << 4) | ((rcBase >>> 4) & 0x0F);
-          s[col][6] += rcBase & 0xFF;
-          s[col][5] += rcBase & 0xFF;
-          s[col][4] += rcBase & 0xFF;
-          s[col][3] += rcBase & 0xFF;
-          s[col][2] += rcBase & 0xFF;
-          s[col][1] += rcBase & 0xFF;
-          s[col][0] += rcBase & 0xFF;
-
-          // Ensure bytes stay in range
+          // Convert column to 64-bit BigInt
+          let word = 0n;
           for (let i = 0; i < 8; ++i) {
-            s[col][i] &= 0xFF;
+            word |= BigInt(s[col][i] & 0xFF) << BigInt(i * 8);
           }
 
-          rc = (rc - 0x10) & 0xFF;
+          // Add constant
+          word = (word + rc) & 0xFFFFFFFFFFFFFFFFn;
+
+          // Convert back to bytes
+          for (let i = 0; i < 8; ++i) {
+            s[col][i] = Number((word >> BigInt(i * 8)) & 0xFFn);
+          }
+
+          // Decrement constant
+          rc = (rc - 0x1000000000000000n) & 0xFFFFFFFFFFFFFFFFn;
         }
 
         this.shiftRows(s);

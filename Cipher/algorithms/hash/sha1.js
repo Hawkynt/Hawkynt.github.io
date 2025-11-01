@@ -342,14 +342,10 @@
       }
     }
 
-    // Register the algorithm
+    // ===== REGISTRATION =====
 
-  // ===== REGISTRATION =====
-
-    const algorithmInstance = new SHA1Algorithm();
-  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
-    RegisterAlgorithm(algorithmInstance);
-  }
+  const algorithmInstance = new SHA1Algorithm();
+  RegisterAlgorithm(algorithmInstance);
 
   // ===== EXPORTS =====
 

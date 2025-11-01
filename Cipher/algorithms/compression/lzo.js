@@ -312,9 +312,9 @@
       _encodeMatch(output, offset, length) {
         if (length >= 3 && length <= 18 && offset <= 0xFFFF) {
           output.push(0x10 | (length - 3));
-  // TODO: use OpCodes for unpacking
-          output.push((offset >> 8) & 0xFF);
-          output.push(offset & 0xFF);
+          const [high, low] = OpCodes.Unpack16BE(offset);
+          output.push(high);
+          output.push(low);
         }
       }
 

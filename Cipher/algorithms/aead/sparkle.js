@@ -504,7 +504,7 @@
       // Known vulnerabilities
       this.knownVulnerabilities = [];
 
-      // Test vectors from NIST LWC_AEAD_KAT_128_256.txt
+      // Test vectors from official NIST LWC KAT file
       this.tests = [
         {
           text: "NIST LWC KAT Count=1 (empty PT, empty AD)",
@@ -513,7 +513,7 @@
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
           associatedData: [],
           input: [],
-          expected: OpCodes.Hex8ToBytes("2C5138C506BC537BCE8529C6827D8BBC")
+          expected: OpCodes.Hex8ToBytes("9E3F9F2E8E26E7D00A9EB92730717A51")
         },
         {
           text: "NIST LWC KAT Count=2 (empty PT, 1-byte AD)",
@@ -522,34 +522,34 @@
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
           associatedData: OpCodes.Hex8ToBytes("00"),
           input: [],
-          expected: OpCodes.Hex8ToBytes("E76ECBE4706AF3BE086CB2F7B57603E9")
+          expected: OpCodes.Hex8ToBytes("57F83C3E696AE65582DD27FE6FC2F239")
         },
         {
-          text: "NIST LWC KAT Count=18 (1-byte PT, empty AD)",
+          text: "NIST LWC KAT Count=34 (1-byte PT, empty AD)",
           uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
           associatedData: [],
           input: OpCodes.Hex8ToBytes("00"),
-          expected: OpCodes.Hex8ToBytes("BBA2F68AA6AA63E08F85B16E65F5C36D46")
+          expected: OpCodes.Hex8ToBytes("9B6F7DB3323C0B372A4584082E5AB4265C")
         },
         {
-          text: "NIST LWC KAT Count=33 (16-byte PT, empty AD)",
+          text: "NIST LWC KAT Count=529 (16-byte PT, empty AD)",
           uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
           associatedData: [],
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          expected: OpCodes.Hex8ToBytes("74D71BC3B474C2A5B63866AD97330D1F4B3CC7D0F1CEAF47BD5B89B2F3D231AA")
+          expected: OpCodes.Hex8ToBytes("9BAC759DB8D6D0C50EA19385A3456BA7BFAE89698782544828F11895D2EE85E9")
         },
         {
-          text: "NIST LWC KAT Count=49 (32-byte PT, empty AD)",
+          text: "NIST LWC KAT Count=1057 (32-byte PT, empty AD)",
           uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
           associatedData: [],
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-          expected: OpCodes.Hex8ToBytes("74D71BC3B474C2A5B63866AD97330D1FAC31E6EF7AB7C0C6AF7E9CA83689A5EF44831DDADB3FCDEE")
+          expected: OpCodes.Hex8ToBytes("9BAC759DB8D6D0C50EA19385A3456BA7E061097CCB2683B3F4253C36569A3D15A3A5E0AFDFE60754EB50684FE945AA6A")
         }
       ];
     }
@@ -595,7 +595,7 @@
       // Known vulnerabilities
       this.knownVulnerabilities = [];
 
-      // Test vectors from NIST LWC_AEAD_KAT_192_192.txt
+      // Test vectors from official NIST LWC KAT file
       this.tests = [
         {
           text: "NIST LWC KAT Count=1 (empty PT, empty AD)",
@@ -604,7 +604,7 @@
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
           associatedData: [],
           input: [],
-          expected: OpCodes.Hex8ToBytes("D3F1A7426DDDA0C2AC570031C85BCF79F7B27C68A0846BB5")
+          expected: OpCodes.Hex8ToBytes("94FABEF076B80FA4CAE902DC5630A2B7B8A72282A560212C")
         },
         {
           text: "NIST LWC KAT Count=2 (empty PT, 1-byte AD)",
@@ -613,25 +613,25 @@
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
           associatedData: OpCodes.Hex8ToBytes("00"),
           input: [],
-          expected: OpCodes.Hex8ToBytes("1B1BD18102E37E1D0F2E32B3992C1C3CBF4CEF3D7B93C851")
+          expected: OpCodes.Hex8ToBytes("8939014B970696487EA3642E508A3620B9919155197EB622")
         },
         {
-          text: "NIST LWC KAT Count=18 (1-byte PT, empty AD)",
+          text: "NIST LWC KAT Count=34 (1-byte PT, empty AD)",
           uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
           associatedData: [],
           input: OpCodes.Hex8ToBytes("00"),
-          expected: OpCodes.Hex8ToBytes("EBF8002FC08D9BDD15BB7F69F0E69BAEF7B38F5C0F35D45E6F")
+          expected: OpCodes.Hex8ToBytes("5B3FF82215AAA826BE2456B0741301105FE9FB87A3308C5826")
         },
         {
-          text: "NIST LWC KAT Count=33 (24-byte PT, empty AD)",
+          text: "NIST LWC KAT Count=826 (25-byte PT, empty AD)",
           uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
           associatedData: [],
-          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718"),
-          expected: OpCodes.Hex8ToBytes("5DEF3EBA6DD8A0CF2D1E7CAA07B8EBBB26D7E50A5D87B8EC69CAA15C47BBF93B30F2EF97B5609D1A7B")
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617" + "18"),
+          expected: OpCodes.Hex8ToBytes("5B64B794B118330EAE30497A35DF53C12C4097F75FADE23CEFB8F522A8CB42F649BE16D7CF2E756CEAD63214597893E1C1")
         }
       ];
     }
@@ -677,7 +677,7 @@
       // Known vulnerabilities
       this.knownVulnerabilities = [];
 
-      // Test vectors from NIST LWC_AEAD_KAT_256_256.txt
+      // Test vectors from official NIST LWC KAT file
       this.tests = [
         {
           text: "NIST LWC KAT Count=1 (empty PT, empty AD)",
@@ -698,22 +698,22 @@
           expected: OpCodes.Hex8ToBytes("6AF0F211BC7FF4186EEA03D37025F294036BE6E90970713E5B5A630FFF07DCBE")
         },
         {
-          text: "NIST LWC KAT Count=18 (1-byte PT, empty AD)",
+          text: "NIST LWC KAT Count=34 (1-byte PT, empty AD)",
           uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
           associatedData: [],
           input: OpCodes.Hex8ToBytes("00"),
-          expected: OpCodes.Hex8ToBytes("0C7D0162FFB5A1C850F5471EF2E5C2C43DEB73D29C0E4FA59663F28E7AEA7CF81F")
+          expected: OpCodes.Hex8ToBytes("BBE3CED9AB9967846E9F39911BEBA2FFC4585C560043E4381E5FDAF8789265D791")
         },
         {
-          text: "NIST LWC KAT Count=33 (32-byte PT, empty AD)",
+          text: "NIST LWC KAT Count=1057 (32-byte PT, empty AD)",
           uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
           associatedData: [],
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-          expected: OpCodes.Hex8ToBytes("3C81E2B3450F48F1C5A4ED3F76B4906E42DDC5084DE3B4C8530DD43C34B04AFE71CAF562CBEFF82D9D3E0CD5DCE4A7EB9F0AF5BDB0056DD40BA0D62E0F7E61C9")
+          expected: OpCodes.Hex8ToBytes("BB5918195DC5D4D944594A7B63D6460140BE022EFB65D13C16FB50A48F224B697E6B81DCA1366D43EE20B152AD39CEFCB6103D3EC26A1DC5277B117ADA1ED1BB")
         }
       ];
     }
@@ -1136,34 +1136,42 @@
           }
         } else if (mlen > 0) {
           // Partial final block
-          const stateBytes = [];
-          for (let i = 0; i < this.RATE_WORDS; ++i) {
-            const unpacked = OpCodes.Unpack32LE(this.state[i]);
-            stateBytes.push(unpacked[0], unpacked[1], unpacked[2], unpacked[3]);
-          }
-
-          const block = [];
-          for (let i = 0; i < mlen; ++i) {
-            block.push(this.inputBuffer[pos + i] ^ stateBytes[i]);
-          }
-          output.push(...block);
-
           this.state[this.STATE_WORDS - 1] ^= this._M2;
-          this._rho();
 
-          // XOR plaintext into state with padding
+          // Pack ciphertext with state-derived padding into word buffer
+          const buffer = new Array(this.RATE_WORDS).fill(0);
           for (let i = 0; i < mlen; ++i) {
-            stateBytes[i] = block[i];
+            buffer[i >> 2] |= (this.inputBuffer[pos + i] & 0xFF) << ((i & 3) << 3);
           }
-          stateBytes[mlen] ^= 0x80;
 
-          for (let i = 0; i < this.RATE_WORDS; ++i) {
-            this.state[i] ^= OpCodes.Pack32LE(
-              stateBytes[i * 4],
-              stateBytes[i * 4 + 1],
-              stateBytes[i * 4 + 2],
-              stateBytes[i * 4 + 3]
-            );
+          // For decryption partial block, copy remaining state into buffer
+          if (mlen < this.RATE_BYTES) {
+            const tmp = (mlen & 3) << 3;
+            buffer[mlen >> 2] |= (this.state[mlen >> 2] >>> tmp) << tmp;
+            const startWord = (mlen >> 2) + 1;
+            for (let i = startWord; i < this.RATE_WORDS; ++i) {
+              buffer[i] = this.state[i];
+            }
+          }
+
+          buffer[mlen >> 2] ^= 0x80 << ((mlen & 3) << 3);
+
+          // Combined rho+whitening (decryption mode)
+          for (let i = 0; i < this.RATE_WORDS / 2; ++i) {
+            const j = i + (this.RATE_WORDS / 2);
+            const s_i = this.state[i];
+            const s_j = this.state[j];
+
+            this.state[i] = s_i ^ s_j ^ buffer[i] ^ this.state[this.RATE_WORDS + i];
+            this.state[j] = s_i ^ buffer[j] ^ this.state[this.RATE_WORDS + (j & this.CAP_MASK)];
+
+            buffer[i] ^= s_i;
+            buffer[j] ^= s_j;
+          }
+
+          // Extract plaintext from buffer
+          for (let i = 0; i < mlen; ++i) {
+            output.push((buffer[i >> 2] >> ((i & 3) << 3)) & 0xFF);
           }
         }
 

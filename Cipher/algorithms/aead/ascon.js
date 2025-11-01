@@ -462,10 +462,11 @@
         const k2Low = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
         this.perm.S[2] = [k2Low, k2High];
       } else {
-        // Ascon-80pq: 20-byte key
-        // First 4 bytes of key go into IV
+        // Ascon-80pq: state.B layout is [IV 4 bytes][key 20 bytes][nonce 16 bytes]
+        // S[0] = [IV][key[0-3]]
         const k0 = OpCodes.Pack32BE(this._key[0], this._key[1], this._key[2], this._key[3]);
-        this.perm.S[0][1] ^= k0;
+        this.perm.S[0][0] = k0;  // S[0] low = key[0-3]
+        // S[0][1] already set to IV
 
         // S[1] = key[4-11]
         const k1High = OpCodes.Pack32BE(this._key[4], this._key[5], this._key[6], this._key[7]);
@@ -503,18 +504,19 @@
         this.perm.S[4][0] ^= k2Low;
         this.perm.S[4][1] ^= k2High;
       } else {
-        // Ascon-80pq
+        // Ascon-80pq: XOR key at byte position 20 (state.B + 20)
+        // state.B[20-39] maps to S[2] low, S[3], S[4]
         const k0 = OpCodes.Pack32BE(this._key[0], this._key[1], this._key[2], this._key[3]);
         const k1High = OpCodes.Pack32BE(this._key[4], this._key[5], this._key[6], this._key[7]);
         const k1Low = OpCodes.Pack32BE(this._key[8], this._key[9], this._key[10], this._key[11]);
         const k2High = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
         const k2Low = OpCodes.Pack32BE(this._key[16], this._key[17], this._key[18], this._key[19]);
 
-        this.perm.S[2][1] ^= k0;
-        this.perm.S[3][0] ^= k1Low;
-        this.perm.S[3][1] ^= k1High;
-        this.perm.S[4][0] ^= k2Low;
-        this.perm.S[4][1] ^= k2High;
+        this.perm.S[2][0] ^= k0;      // S[2] low  XOR key[0-3]
+        this.perm.S[3][1] ^= k1High;  // S[3] high XOR key[4-7]
+        this.perm.S[3][0] ^= k1Low;   // S[3] low  XOR key[8-11]
+        this.perm.S[4][1] ^= k2High;  // S[4] high XOR key[12-15]
+        this.perm.S[4][0] ^= k2Low;   // S[4] low  XOR key[16-19]
       }
 
       // Process AAD
@@ -557,8 +559,9 @@
         const k2Low = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
         this.perm.S[2] = [k2Low, k2High];
       } else {
+        // Ascon-80pq: state.B layout is [IV 4 bytes][key 20 bytes][nonce 16 bytes]
         const k0 = OpCodes.Pack32BE(this._key[0], this._key[1], this._key[2], this._key[3]);
-        this.perm.S[0][1] ^= k0;
+        this.perm.S[0][0] = k0;
 
         const k1High = OpCodes.Pack32BE(this._key[4], this._key[5], this._key[6], this._key[7]);
         const k1Low = OpCodes.Pack32BE(this._key[8], this._key[9], this._key[10], this._key[11]);
@@ -590,17 +593,18 @@
         this.perm.S[4][0] ^= k2Low;
         this.perm.S[4][1] ^= k2High;
       } else {
+        // Ascon-80pq: XOR key at byte position 20
         const k0 = OpCodes.Pack32BE(this._key[0], this._key[1], this._key[2], this._key[3]);
         const k1High = OpCodes.Pack32BE(this._key[4], this._key[5], this._key[6], this._key[7]);
         const k1Low = OpCodes.Pack32BE(this._key[8], this._key[9], this._key[10], this._key[11]);
         const k2High = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
         const k2Low = OpCodes.Pack32BE(this._key[16], this._key[17], this._key[18], this._key[19]);
 
-        this.perm.S[2][1] ^= k0;
-        this.perm.S[3][0] ^= k1Low;
+        this.perm.S[2][0] ^= k0;
         this.perm.S[3][1] ^= k1High;
-        this.perm.S[4][0] ^= k2Low;
+        this.perm.S[3][0] ^= k1Low;
         this.perm.S[4][1] ^= k2High;
+        this.perm.S[4][0] ^= k2Low;
       }
 
       // Process AAD
@@ -905,17 +909,19 @@
           this.perm.S[2][1] ^= k2High;
         }
       } else {
-        // Ascon-80pq: XOR at S[1-3]
+        // Ascon-80pq: XOR full 20-byte key at byte position 8 (state.B + 8)
+        // state.B[8-27] maps to: S[1] high, S[1] low, S[2] high, S[2] low, S[3] high
+        const k0 = OpCodes.Pack32BE(this._key[0], this._key[1], this._key[2], this._key[3]);
         const k1High = OpCodes.Pack32BE(this._key[4], this._key[5], this._key[6], this._key[7]);
         const k1Low = OpCodes.Pack32BE(this._key[8], this._key[9], this._key[10], this._key[11]);
         const k2High = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
         const k2Low = OpCodes.Pack32BE(this._key[16], this._key[17], this._key[18], this._key[19]);
 
-        // state.B[8-27] = S[1-3] + 4 bytes
-        this.perm.S[1][0] ^= k1Low;
-        this.perm.S[1][1] ^= k1High;
-        this.perm.S[2][0] ^= k2Low;
-        this.perm.S[2][1] ^= k2High;
+        this.perm.S[1][1] ^= k0;      // S[1] high XOR key[0-3]
+        this.perm.S[1][0] ^= k1High;  // S[1] low  XOR key[4-7]
+        this.perm.S[2][1] ^= k1Low;   // S[2] high XOR key[8-11]
+        this.perm.S[2][0] ^= k2High;  // S[2] low  XOR key[12-15]
+        this.perm.S[3][1] ^= k2Low;   // S[3] high XOR key[16-19]
       }
 
       // Final permutation
@@ -943,7 +949,11 @@
 
         tag.push(...tag3HighBytes, ...tag3LowBytes, ...tag4HighBytes, ...tag4LowBytes);
       } else {
-        // Ascon-80pq: XOR with key[4-19]
+        // Ascon-80pq: Tag = S[3-4] XOR key[4-19]
+        // key[4-7] XOR S[3] high
+        // key[8-11] XOR S[3] low
+        // key[12-15] XOR S[4] high
+        // key[16-19] XOR S[4] low
         const k1High = OpCodes.Pack32BE(this._key[4], this._key[5], this._key[6], this._key[7]);
         const k1Low = OpCodes.Pack32BE(this._key[8], this._key[9], this._key[10], this._key[11]);
         const k2High = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);

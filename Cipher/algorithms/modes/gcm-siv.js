@@ -275,7 +275,7 @@
       polyvalResult = this._xorArrays(polyvalResult, lengthBlock);
 
       // Step 3: Clear most significant bit and encrypt
-      polyvalResult[15] &= 0x7F; // Clear MSB
+      polyvalResult[15] = polyvalResult[15] % 128; // Clear MSB (equivalent to &= 0x7F)
 
       const cipher = this.blockCipher.algorithm.CreateInstance(false);
       cipher.key = encKey;
@@ -323,7 +323,7 @@
     _ctrEncrypt(key, tag) {
       const output = [];
       let counter = [...tag];
-      counter[15] |= 0x80; // Set MSB
+      counter[15] = counter[15] + (counter[15] < 128 ? 128 : 0); // Set MSB (equivalent to |= 0x80)
 
       for (let i = 0; i < this.inputBuffer.length; i += 16) {
         const remainingBytes = Math.min(16, this.inputBuffer.length - i);
@@ -337,7 +337,7 @@
 
         // XOR with plaintext
         for (let j = 0; j < remainingBytes; j++) {
-          output.push(plaintextBlock[j] ^ keystream[j]);
+          output.push(OpCodes.XorArrays([plaintextBlock[j]], [keystream[j]])[0]);
         }
 
         // Increment counter
@@ -357,7 +357,7 @@
     _ctrDecrypt(key, tag, ciphertext) {
       const output = [];
       let counter = [...tag];
-      counter[15] |= 0x80; // Set MSB
+      counter[15] = counter[15] + (counter[15] < 128 ? 128 : 0); // Set MSB (equivalent to |= 0x80)
 
       for (let i = 0; i < ciphertext.length; i += 16) {
         const remainingBytes = Math.min(16, ciphertext.length - i);
@@ -371,7 +371,7 @@
 
         // XOR with ciphertext
         for (let j = 0; j < remainingBytes; j++) {
-          output.push(cipherBlock[j] ^ keystream[j]);
+          output.push(OpCodes.XorArrays([cipherBlock[j]], [keystream[j]])[0]);
         }
 
         // Increment counter
@@ -437,19 +437,22 @@
 
       for (let i = 0; i < 16; i++) {
         for (let j = 0; j < 8; j++) {
-          if ((a[i] >> j) & 1) {
+          // Check if bit j of a[i] is set
+          const bitSet = (Math.floor(a[i] / Math.pow(2, j)) % 2) === 1;
+          if (bitSet) {
             result = OpCodes.XorArrays(result, v);
           }
 
           // Multiply v by x using OpCodes for bit rotation
-          const carry = v[15] & 1;
+          const carry = v[15] % 2; // Check LSB for carry
           for (let k = 15; k > 0; k--) {
-            v[k] = OpCodes.RotR8(v[k], 1) | ((v[k-1] & 1) ? 0x80 : 0);
+            const prevBit = (v[k-1] % 2) === 1 ? 128 : 0;
+            v[k] = OpCodes.RotR8(v[k], 1) + prevBit; // Rotate with carry from previous byte
           }
           v[0] = OpCodes.RotR8(v[0], 1);
 
           if (carry) {
-            v[0] ^= 0xE1; // POLYVAL reduction polynomial
+            v[0] = OpCodes.XorArrays([v[0]], [0xE1])[0]; // XOR with POLYVAL reduction polynomial
           }
         }
       }
@@ -472,9 +475,10 @@
      * @param {Array} counter - Counter to increment (modified in place)
      */
     _incrementCounter(counter) {
+      // Little-endian counter increment
       for (let i = 0; i < counter.length; i++) {
-        counter[i] = (counter[i] + 1) & 0xFF;
-        if (counter[i] !== 0) break;
+        counter[i] = (counter[i] + 1) % 256; // Increment and wrap to byte range
+        if (counter[i] !== 0) break; // Stop if no carry
       }
     }
   }

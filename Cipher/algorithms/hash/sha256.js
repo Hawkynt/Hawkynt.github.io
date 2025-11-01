@@ -334,14 +334,10 @@
     }
   }
 
-  // Register the algorithm
-
   // ===== REGISTRATION =====
 
-    const algorithmInstance = new SHA256Algorithm();
-  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
-    RegisterAlgorithm(algorithmInstance);
-  }
+  const algorithmInstance = new SHA256Algorithm();
+  RegisterAlgorithm(algorithmInstance);
 
   // ===== EXPORTS =====
 

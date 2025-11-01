@@ -62,7 +62,7 @@
         this.year = 2011;
         this.category = CategoryType.COMPRESSION;
         this.subCategory = "Dictionary-based";
-        this.securityStatus = null;
+        this.securityStatus = SecurityStatus.EDUCATIONAL; // Simplified educational version
         this.complexity = ComplexityType.INTERMEDIATE;
         this.country = CountryCode.US; // United States
 
@@ -266,9 +266,12 @@
               // 4-byte offset copy (simplified)
               length = (tag >> 2) + 1;
               if (inputPos + 3 >= input.length) break;
-  // TODO: use OpCodes for packing
-              offset = input[inputPos++] | (input[inputPos++] << 8) | 
-                      (input[inputPos++] << 16) | (input[inputPos++] << 24);
+              offset = OpCodes.Pack32LE(
+                input[inputPos++],
+                input[inputPos++],
+                input[inputPos++],
+                input[inputPos++]
+              );
             }
 
             // Copy from history
@@ -381,17 +384,13 @@
         } else if (offset <= 65535) {
           // 2-byte offset copy
           output.push(((length - 1) << 2) | 0x02);
-  // TODO: use OpCodes for unpacking
-          output.push(offset & 0xFF);
-          output.push((offset >> 8) & 0xFF);
+          const [low, high] = OpCodes.Unpack16LE(offset);
+          output.push(low, high);
         } else {
           // 4-byte offset copy (simplified)
           output.push(((length - 1) << 2) | 0x03);
-  // TODO: use OpCodes for unpacking
-          output.push(offset & 0xFF);
-          output.push((offset >> 8) & 0xFF);
-          output.push((offset >> 16) & 0xFF);
-          output.push((offset >> 24) & 0xFF);
+          const [b0, b1, b2, b3] = OpCodes.Unpack32LE(offset);
+          output.push(b0, b1, b2, b3);
         }
       }
     }

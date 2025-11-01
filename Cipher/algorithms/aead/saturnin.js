@@ -698,7 +698,8 @@ class SaturninCTRCascadeInstance extends IAeadInstance {
     for (let i = 0; i < 16; i++) {
       block[i] = this._nonce[i];
     }
-    for (let i = 16; i < 32; i++) {
+    block[16] = 0x80;
+    for (let i = 17; i < 32; i++) {
       block[i] = 0;
     }
 

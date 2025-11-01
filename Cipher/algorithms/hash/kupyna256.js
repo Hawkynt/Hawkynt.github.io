@@ -320,15 +320,20 @@
     }
 
     // Single column mixing (optimized from Bouncy Castle, using BigInt)
+// TODO: use OpCodes for rotation
+    // Java rotate(n, x) = (x >>> n) | (x << -n) which is RIGHT rotation
+    rotate(n, x) {
+      return ((x >> n) | (x << (64n - n))) & 0xFFFFFFFFFFFFFFFFn;
+    }
+
     mixColumn(c) {
       // Multiply elements by 'x' in GF(2^8) with polynomial 0x1D
       const x1 = ((c & 0x7F7F7F7F7F7F7F7Fn) << 1n) ^ (((c & 0x8080808080808080n) >> 7n) * 0x1Dn);
 
-      // Use RIGHT rotation to match Bouncy Castle's rotate() function
-      let u = c;
-      u ^= (c >> 8n) | (c << 56n); // Rotate RIGHT by 8 bits (1 byte)
-      u ^= (u >> 16n) | (u << 48n); // Rotate RIGHT by 16 bits (2 bytes)
-      u ^= (c >> 48n) | (c << 16n); // Rotate RIGHT by 48 bits (6 bytes)
+      // Use rotate helper function
+      let u = this.rotate(8n, c) ^ c;
+      u ^= this.rotate(16n, u);
+      u ^= this.rotate(48n, c);
 
       let v = u ^ c ^ x1;
 
@@ -337,12 +342,7 @@
           (((v & 0x8080808080808080n) >> 6n) * 0x1Dn) ^
           (((v & 0x4040404040404040n) >> 6n) * 0x1Dn);
 
-      const result = u ^
-                     ((v >> 32n) | (v << 32n)) ^  // Rotate RIGHT by 32 bits
-                     ((x1 >> 40n) | (x1 << 24n)) ^  // Rotate RIGHT by 40 bits
-                     ((x1 >> 48n) | (x1 << 16n));   // Rotate RIGHT by 48 bits
-
-      return result & 0xFFFFFFFFFFFFFFFFn;
+      return (u ^ this.rotate(32n, v) ^ this.rotate(40n, x1) ^ this.rotate(48n, x1)) & 0xFFFFFFFFFFFFFFFFn;
     }
 
     // P permutation (encryption-like transformation)

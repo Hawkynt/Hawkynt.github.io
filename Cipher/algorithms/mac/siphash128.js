@@ -262,29 +262,65 @@
         throw new Error("Key not set");
       }
 
-      // Process accumulated input
+      // Process accumulated input using BouncyCastle byte-by-byte logic
       const message = this.inputBuffer;
       const messageLen = message.length;
-      let offset = 0;
+      let i = 0;
+      const fullWords = messageLen & ~7; // Round down to multiple of 8
 
       // Process complete 8-byte blocks
-      while (offset + 8 <= messageLen) {
-        const m = this._bytesToWord64LE(message, offset);
-        this._processMessageWord(m);
-        offset += 8;
+      if (this.wordPos === 0) {
+        // Fast path: no partial word pending
+        for (; i < fullWords; i += 8) {
+          this.m = this._bytesToWord64LE(message, i);
+          this._processMessageWord();
+        }
+        // Process remaining bytes into m (shift register style, MSB first)
+        for (; i < messageLen; i++) {
+          this.m = this._shr64(this.m, 8);
+          // Place byte at position 56 (bits 56-63): high32[24-31]
+          this.m = this._or64(this.m, [0, ((message[i] & 0xFF) << 24) >>> 0]);
+        }
+        this.wordPos = messageLen - fullWords;
+      } else {
+        // Slow path: partial word pending
+        const bits = this.wordPos << 3;
+        for (; i < fullWords; i += 8) {
+          const n = this._bytesToWord64LE(message, i);
+          this.m = this._or64(this._shl64(n, bits), this._shr64(this.m, -bits));
+          this._processMessageWord();
+          this.m = n;
+        }
+        // Process remaining bytes
+        for (; i < messageLen; i++) {
+          this.m = this._shr64(this.m, 8);
+          this.m = this._or64(this.m, [0, ((message[i] & 0xFF) << 24) >>> 0]);
+
+          if (++this.wordPos === 8) {
+            this._processMessageWord();
+            this.wordPos = 0;
+          }
+        }
       }
 
-      // Process final partial block with padding
-      this._processFinalBlock(message, offset, messageLen);
+      // Finalization padding (BouncyCastle doFinal logic)
+      // Shift m to align partial word
+      this.m = this._shr64(this.m, ((7 - this.wordPos) << 3));
+      this.m = this._shr64(this.m, 8);
+      // Add message length byte at position 7 (bits 56-63): high32[24-31]
+      const lenByte = ((this.wordCount << 3) + this.wordPos) & 0xFF;
+      this.m = this._or64(this.m, [0, ((lenByte << 24) >>> 0)]);
+
+      this._processMessageWord();
 
       // Compute first 64-bit half of MAC
       this.v2 = this._xor64(this.v2, [0xee, 0]); // First finalization XOR (0xee)
-      this._applySipRounds(this.dRounds);
+      this._applySipRounds(this._dRounds);
       const r0 = this._xor64(this._xor64(this.v0, this.v1), this._xor64(this.v2, this.v3));
 
       // Compute second 64-bit half of MAC
       this.v1 = this._xor64(this.v1, [0xdd, 0]); // Second finalization XOR (0xdd)
-      this._applySipRounds(this.dRounds);
+      this._applySipRounds(this._dRounds);
       const r1 = this._xor64(this._xor64(this.v0, this.v1), this._xor64(this.v2, this.v3));
 
       // Convert to bytes (little-endian) and concatenate
@@ -307,52 +343,20 @@
     }
 
     /**
-     * Process final message block with padding
-     * Following BouncyCastle implementation logic
-     */
-    _processFinalBlock(message, offset, messageLen) {
-      const remaining = messageLen - offset;
-
-      // Build final 64-bit word with padding
-      // Start with accumulated partial word from m (if any)
-      let finalWord = [...this.m];
-
-      // Add remaining bytes to the word
-      for (let i = 0; i < remaining; i++) {
-        const b = message[offset + i] & 0xFF;
-        const pos = this.wordPos + i;
-
-        if (pos < 4) {
-          finalWord[0] |= (b << (pos * 8));
-        } else {
-          finalWord[1] |= (b << ((pos - 4) * 8));
-        }
-      }
-
-      // Pad with message length in byte position 7 (bits 56-63)
-      // Java: m |= (((wordCount << 3) + wordPos) & 0xffL) << 56
-      // This puts the total message length in bytes in the last byte
-      const totalBytes = messageLen & 0xFF;
-      finalWord[1] |= (totalBytes << 24); // Byte 7 is at bits 56-63 (high[24-31])
-
-      this._processMessageWord(finalWord);
-    }
-
-    /**
      * Process single 64-bit message word
      * Applies c rounds of SipRound with message mixing
      */
-    _processMessageWord(m) {
+    _processMessageWord() {
       this.wordCount++;
 
       // v3 ^= m
-      this.v3 = this._xor64(this.v3, m);
+      this.v3 = this._xor64(this.v3, this.m);
 
       // Apply c rounds
-      this._applySipRounds(this.cRounds);
+      this._applySipRounds(this._cRounds);
 
       // v0 ^= m
-      this.v0 = this._xor64(this.v0, m);
+      this.v0 = this._xor64(this.v0, this.m);
     }
 
     /**
@@ -409,12 +413,68 @@
      * Returns [low32, high32]
      */
     _xor64(a, b) {
-      return [a[0] ^ b[0], a[1] ^ b[1]];
+      return [(a[0] ^ b[0]) >>> 0, (a[1] ^ b[1]) >>> 0];
+    }
+
+    /**
+     * 64-bit OR operation
+     * Returns [low32, high32]
+     */
+    _or64(a, b) {
+      return [(a[0] | b[0]) >>> 0, (a[1] | b[1]) >>> 0];
+    }
+
+    /**
+     * 64-bit right shift (logical)
+     * Returns [low32, high32]
+     */
+    _shr64(val, positions) {
+      if (positions === 0) return val;
+
+      // Handle negative positions as left shift (for -bits in Java)
+      if (positions < 0) return this._shl64(val, -positions);
+
+      const low = val[0];
+      const high = val[1];
+      positions = positions % 64;
+
+      if (positions === 0) return [low, high];
+      if (positions >= 32) {
+        const newLow = (high >>> (positions - 32)) >>> 0;
+        return [newLow, 0];
+      } else {
+        const newLow = ((low >>> positions) | (high << (32 - positions))) >>> 0;
+        const newHigh = (high >>> positions) >>> 0;
+        return [newLow, newHigh];
+      }
+    }
+
+    /**
+     * 64-bit left shift
+     * Returns [low32, high32]
+     */
+    _shl64(val, positions) {
+      if (positions === 0) return val;
+
+      const low = val[0];
+      const high = val[1];
+      positions = positions % 64;
+
+      if (positions === 0) return [low, high];
+      if (positions >= 32) {
+        const newHigh = (low << (positions - 32)) >>> 0;
+        return [0, newHigh];
+      } else {
+        const newHigh = ((high << positions) | (low >>> (32 - positions))) >>> 0;
+        const newLow = (low << positions) >>> 0;
+        return [newLow, newHigh];
+      }
     }
 
     /**
      * 64-bit left rotation
      * Uses 32-bit operations for cross-platform compatibility
+     * Value is stored as [low32, high32] representing bits 0-31 and 32-63
      */
     _rotl64(val, positions) {
       const low = val[0];
@@ -425,13 +485,17 @@
       if (positions === 32) return [high, low];
 
       if (positions < 32) {
-        const newHigh = ((high << positions) | (low >>> (32 - positions))) >>> 0;
+        // Rotate left within 64-bit word
+        // New low bits = old low << n | old high >> (32-n)
+        // New high bits = old high << n | old low >> (32-n)
         const newLow = ((low << positions) | (high >>> (32 - positions))) >>> 0;
+        const newHigh = ((high << positions) | (low >>> (32 - positions))) >>> 0;
         return [newLow, newHigh];
       } else {
+        // Rotate more than 32 bits = swap + rotate remainder
         positions -= 32;
-        const newHigh = ((low << positions) | (high >>> (32 - positions))) >>> 0;
         const newLow = ((high << positions) | (low >>> (32 - positions))) >>> 0;
+        const newHigh = ((low << positions) | (high >>> (32 - positions))) >>> 0;
         return [newLow, newHigh];
       }
     }

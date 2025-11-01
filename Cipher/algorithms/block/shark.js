@@ -9,16 +9,17 @@
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     // AMD
-    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+    define(['../../AlgorithmFramework', '../../OpCodes', './shark-cboxes.data'], factory);
   } else if (typeof module === 'object' && module.exports) {
     // Node.js/CommonJS
     module.exports = factory(
       require('../../AlgorithmFramework'),
-      require('../../OpCodes')
+      require('../../OpCodes'),
+      require('./shark-cboxes.data')
     );
   } else {
     // Browser/Worker global
-    root.SHARK = factory(root.AlgorithmFramework, root.OpCodes);
+    root.SHARK = factory(root.AlgorithmFramework, root.OpCodes, root.SharkCBoxes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -26,7 +27,7 @@
   if (typeof global !== 'undefined') return global;
   if (typeof self !== 'undefined') return self;
   throw new Error('Unable to locate global object');
-})(), function (AlgorithmFramework, OpCodes) {
+})(), function (AlgorithmFramework, OpCodes, SharkCBoxes) {
   'use strict';
 
   if (!AlgorithmFramework) {
@@ -35,6 +36,10 @@
 
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
+  }
+
+  if (!SharkCBoxes) {
+    throw new Error('SharkCBoxes dependency is required');
   }
 
   // Extract framework components
@@ -46,6 +51,9 @@
           IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // Extract C-boxes for optimized transformations
+  const { CBOX_ENC, CBOX_DEC } = SharkCBoxes;
 
   // ===== S-BOXES AND C-BOXES =====
 
@@ -89,15 +97,9 @@
      24,  94, 106, 213, 166,  33, 222, 254,  42,  28, 243,  10,  26,  25,  39,  45
   ]);
 
-  // Due to file size limitations, C-boxes are loaded from a helper function
-  // These are precomputed tables for fast GF(2^8) operations
-  function getCBox() {
-    // Note: In a production implementation, these tables would be loaded from
-    // the full sharkbox.cpp file. For now, we use a simplified implementation
-    // that computes values on the fly using GF(2^8) arithmetic.
-    // This is less efficient but doesn't require 121KB of table data.
-    return null; // Signals to use fallback implementation
-  }
+  // C-boxes are now loaded from shark-cboxes.js
+  // CBOX_ENC and CBOX_DEC contain precomputed S-box + MDS transform tables
+  // Each C-box has 8 arrays of 256 entries, where each entry is [high32, low32]
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -181,7 +183,7 @@
       this.inputBuffer = [];
       this._key = null;
       this._rounds = 6; // Default rounds
-      this.roundKeys = null;
+      this.roundKeys = null; // Array of 64-bit words (as 2-element [high, low] arrays)
     }
 
     /**
@@ -222,36 +224,106 @@
     }
 
     /**
-     * Generate round keys using CFB-like key schedule
+     * Pack 8 bytes into a 64-bit word (big-endian)
+     * Returns [high32, low32]
+     */
+    _pack64BE(bytes, offset) {
+      const high = OpCodes.Pack32BE(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]);
+      const low = OpCodes.Pack32BE(bytes[offset + 4], bytes[offset + 5], bytes[offset + 6], bytes[offset + 7]);
+      return [high, low];
+    }
+
+    /**
+     * Unpack 64-bit word to 8 bytes (big-endian)
+     */
+    _unpack64BE(word64) {
+      const highBytes = OpCodes.Unpack32BE(word64[0]);
+      const lowBytes = OpCodes.Unpack32BE(word64[1]);
+      return [...highBytes, ...lowBytes];
+    }
+
+    /**
+     * Get byte from 64-bit word at position (0 = MSB)
+     */
+    _getByte(word64, pos) {
+      if (pos < 4) {
+        return OpCodes.Shr32(word64[0], (3 - pos) * 8) & 0xFF;
+      } else {
+        return OpCodes.Shr32(word64[1], (7 - pos) * 8) & 0xFF;
+      }
+    }
+
+    /**
+     * Generate round keys using CFB-based key schedule
      * Based on Crypto++ implementation in shark.cpp
      */
     _keySetup() {
+      // Fixed initialization keys for CFB (from cbox[0][0..6])
+      // These are the first 7 entries of SHARK::Enc::cbox[0]
+      const initKeysRaw = [
+        [0x060d838f, 0x16f3a365], // cbox[0][0]
+        [0xa68857ee, 0x5cae56f6], // cbox[0][1]
+        [0xebf51635, 0x3c2c4d89], // cbox[0][2]
+        [0x652174be, 0x88e85bdc], // cbox[0][3]
+        [0x0d4e9a80, 0x86c17921], // cbox[0][4]
+        [0x27ba7d33, 0xcffa58a1], // cbox[0][5]
+        [0x88d9e104, 0xa237b530]  // cbox[0][6]
+      ];
+
+      const initKeys = [...initKeysRaw];
+      // Transform the last round key as per Crypto++ InitForKeySetup()
+      initKeys[6] = this._sharkTransformWord(initKeysRaw[6]);
+
+      // Step 1: Concatenate key enough times to fill round key buffer
+      const keyBuffer = new Array((this._rounds + 1) * 8);
+      for (let i = 0; i < keyBuffer.length; i++) {
+        keyBuffer[i] = this._key[i % this._key.length];
+      }
+
+      // Step 2: Apply CFB encryption to the key buffer
+      // CFB: C[i] = P[i] XOR E(IV or C[i-1])
+      let feedback = [0, 0]; // IV = 0
+
+      for (let block = 0; block < this._rounds + 1; block++) {
+        const offset = block * 8;
+
+        // Encrypt feedback using SHARK with init keys (6 rounds)
+        const encrypted = this._sharkEncryptBlock(feedback, initKeys, 6);
+
+        // XOR with plaintext (key material)
+        const plain = this._pack64BE(keyBuffer, offset);
+        const cipher = [plain[0] ^ encrypted[0], plain[1] ^ encrypted[1]];
+
+        // Store back to key buffer and use as next feedback
+        const cipherBytes = this._unpack64BE(cipher);
+        for (let i = 0; i < 8; i++) {
+          keyBuffer[offset + i] = cipherBytes[i];
+        }
+        feedback = cipher;
+      }
+
+      // Step 3: Convert to 64-bit words (big-endian) and store as round keys
       this.roundKeys = [];
-
-      // Initial round key is the master key
-      const keyState = [...this._key];
-
-      // Generate round keys using SHARK transform
       for (let i = 0; i <= this._rounds; i++) {
-        // Store current round key (8 bytes for block, 8 bytes unused)
-        this.roundKeys.push([...keyState.slice(0, 8)]);
+        const word = this._pack64BE(keyBuffer, i * 8);
+        this.roundKeys.push(word);
+      }
 
-        if (i < this._rounds) {
-          // Apply S-box to first 8 bytes
-          for (let j = 0; j < 8; j++) {
-            keyState[j] = SBOX_ENC[keyState[j]];
-          }
+      // Step 4: Transform the last round key
+      this.roundKeys[this._rounds] = this._sharkTransformWord(this.roundKeys[this._rounds]);
 
-          // Simple key schedule: rotate and XOR
-          // This is a simplified version; full implementation would use SHARKTransform
-          const temp = keyState[0];
-          for (let j = 0; j < 7; j++) {
-            keyState[j] = keyState[j + 1];
-          }
-          keyState[7] = temp;
+      // Step 5: For decryption, modify round keys
+      if (this.isInverse) {
+        // Reverse the order of round keys
+        const temp = [];
+        for (let i = 0; i <= this._rounds; i++) {
+          temp.push(this.roundKeys[this._rounds - i]);
+        }
+        this.roundKeys = temp;
 
-          // XOR with round constant
-          keyState[0] ^= (i + 1);
+        // Transform middle round keys (not first and last)
+        for (let i = 1; i < this._rounds; i++) {
+          this.roundKeys[i] = this._sharkTransformWord(this.roundKeys[i]);
         }
       }
     }
@@ -286,11 +358,11 @@
 
     /**
      * SHARK Transform - MDS matrix multiplication over GF(2^8)
-     * Uses the inverse of matrix G from SHARK specification
-     * @param {Array} block - 8-byte block
-     * @returns {Array} Transformed block
+     * Operates on 64-bit word, returns transformed 64-bit word
+     * @param {Array} word64 - [high32, low32]
+     * @returns {Array} Transformed [high32, low32]
      */
-    _sharkTransform(block) {
+    _sharkTransformWord(word64) {
       // Inverse of matrix G (iG) from SHARK specification
       const iG = [
         [0xe7, 0x30, 0x90, 0x85, 0xd0, 0x4b, 0x91, 0x41],
@@ -303,62 +375,114 @@
         [0x56, 0xf4, 0xaf, 0x32, 0xd2, 0xa4, 0xdc, 0x71]
       ];
 
-      const result = new Array(8).fill(0);
+      // Extract bytes from word (big-endian)
+      const inputBytes = new Array(8);
+      for (let i = 0; i < 8; i++) {
+        inputBytes[i] = this._getByte(word64, i);
+      }
 
       // Matrix multiplication over GF(2^8)
-      for (let i = 0; i < 8; ++i) {
-        for (let j = 0; j < 8; ++j) {
-          result[i] ^= this._gf256Multiply(iG[i][j], block[j]);
+      const resultBytes = new Array(8).fill(0);
+      for (let i = 0; i < 8; i++) {
+        for (let j = 0; j < 8; j++) {
+          resultBytes[i] ^= this._gf256Multiply(iG[i][j], inputBytes[j]);
         }
+      }
+
+      // Pack result back to 64-bit word
+      return this._pack64BE(resultBytes, 0);
+    }
+
+    /**
+     * Optimized SHARK round using C-boxes (combines S-box + Transform)
+     * This is much faster than separate S-box and transform operations
+     * @param {Array} word64 - Input [high32, low32]
+     * @param {Array} cboxes - CBOX_ENC or CBOX_DEC
+     * @returns {Array} Transformed [high32, low32]
+     */
+    _sharkRoundCBox(word64, cboxes) {
+      // Extract 8 bytes from the 64-bit word
+      const bytes = new Array(8);
+      for (let i = 0; i < 8; i++) {
+        bytes[i] = this._getByte(word64, i);
+      }
+
+      // XOR all 8 C-box lookups (each byte uses its corresponding C-box)
+      let result = [0, 0];
+      for (let i = 0; i < 8; i++) {
+        const cboxEntry = cboxes[i][bytes[i]];
+        result[0] ^= cboxEntry[0];
+        result[1] ^= cboxEntry[1];
       }
 
       return result;
     }
 
     /**
-     * SHARK round function
-     * @param {Array} block - 8-byte block
-     * @param {Array} roundKey - 8-byte round key
+     * Encrypt a single block using SHARK
+     * @param {Array} input64 - Input as [high32, low32]
+     * @param {Array} roundKeys - Array of round keys (64-bit words)
+     * @param {number} numRounds - Number of rounds to use
+     * @returns {Array} Encrypted [high32, low32]
      */
-    _sharkRound(block, roundKey) {
-      // XOR with round key
-      for (let i = 0; i < 8; ++i) {
-        block[i] ^= roundKey[i];
+    _sharkEncryptBlock(input64, roundKeys, numRounds = null) {
+      const rounds = numRounds !== null ? numRounds : this._rounds;
+
+      // XOR with first round key
+      let tmp = [input64[0] ^ roundKeys[0][0], input64[1] ^ roundKeys[0][1]];
+
+      // Middle rounds (use C-boxes for optimized S-box + Transform)
+      for (let round = 1; round < rounds; round++) {
+        // C-box lookup combines S-box substitution and MDS transform
+        tmp = this._sharkRoundCBox(tmp, CBOX_ENC);
+
+        // XOR with round key
+        tmp = [tmp[0] ^ roundKeys[round][0], tmp[1] ^ roundKeys[round][1]];
       }
 
-      // Apply S-box
-      for (let i = 0; i < 8; ++i) {
-        block[i] = SBOX_ENC[block[i]];
+      // Final round (S-box only, no transform)
+      const finalBytes = new Array(8);
+      for (let i = 0; i < 8; i++) {
+        finalBytes[i] = SBOX_ENC[this._getByte(tmp, i)];
       }
+      tmp = this._pack64BE(finalBytes, 0);
 
-      // MDS matrix multiplication over GF(2^8)
-      const transformed = this._sharkTransform(block);
-      for (let i = 0; i < 8; ++i) {
-        block[i] = transformed[i];
-      }
+      // XOR with last round key
+      tmp = [tmp[0] ^ roundKeys[rounds][0], tmp[1] ^ roundKeys[rounds][1]];
+
+      return tmp;
     }
 
     /**
-     * SHARK inverse round function
-     * @param {Array} block - 8-byte block
-     * @param {Array} roundKey - 8-byte round key
+     * Decrypt a single block using SHARK
+     * @param {Array} input64 - Input as [high32, low32]
+     * @param {Array} roundKeys - Array of decryption round keys (already reversed/transformed)
+     * @returns {Array} Decrypted [high32, low32]
      */
-    _sharkRoundInv(block, roundKey) {
-      // Inverse MDS matrix multiplication
-      const transformed = this._sharkTransform(block);
-      for (let i = 0; i < 8; ++i) {
-        block[i] = transformed[i];
+    _sharkDecryptBlock(input64, roundKeys) {
+      // XOR with first round key (which is the last encryption round key)
+      let tmp = [input64[0] ^ roundKeys[0][0], input64[1] ^ roundKeys[0][1]];
+
+      // Middle rounds (use C-boxes for optimized inverse S-box + Transform)
+      for (let round = 1; round < this._rounds; round++) {
+        // C-box lookup combines inverse S-box substitution and MDS transform
+        tmp = this._sharkRoundCBox(tmp, CBOX_DEC);
+
+        // XOR with round key
+        tmp = [tmp[0] ^ roundKeys[round][0], tmp[1] ^ roundKeys[round][1]];
       }
 
-      // Apply inverse S-box
-      for (let i = 0; i < 8; ++i) {
-        block[i] = SBOX_DEC[block[i]];
+      // Final round (inverse S-box only, no transform)
+      const finalBytes = new Array(8);
+      for (let i = 0; i < 8; i++) {
+        finalBytes[i] = SBOX_DEC[this._getByte(tmp, i)];
       }
+      tmp = this._pack64BE(finalBytes, 0);
 
-      // XOR with round key
-      for (let i = 0; i < 8; ++i) {
-        block[i] ^= roundKey[i];
-      }
+      // XOR with last round key (which is the first encryption round key)
+      tmp = [tmp[0] ^ roundKeys[this._rounds][0], tmp[1] ^ roundKeys[this._rounds][1]];
+
+      return tmp;
     }
 
     Feed(data) {
@@ -383,36 +507,21 @@
 
       // Process each 8-byte block
       for (let blockStart = 0; blockStart < this.inputBuffer.length; blockStart += 8) {
-        const block = this.inputBuffer.slice(blockStart, blockStart + 8);
+        // Pack block to 64-bit word
+        const input64 = this._pack64BE(this.inputBuffer, blockStart);
 
+        let result64;
         if (this.isInverse) {
           // Decryption
-          // Last round key first
-          for (let round = this._rounds; round >= 0; round--) {
-            if (round === this._rounds) {
-              // Final round: just XOR with round key
-              for (let i = 0; i < 8; i++) {
-                block[i] ^= this.roundKeys[round][i];
-              }
-            } else {
-              this._sharkRoundInv(block, this.roundKeys[round]);
-            }
-          }
+          result64 = this._sharkDecryptBlock(input64, this.roundKeys);
         } else {
           // Encryption
-          for (let round = 0; round <= this._rounds; round++) {
-            if (round === this._rounds) {
-              // Final round: just XOR with round key
-              for (let i = 0; i < 8; i++) {
-                block[i] ^= this.roundKeys[round][i];
-              }
-            } else {
-              this._sharkRound(block, this.roundKeys[round]);
-            }
-          }
+          result64 = this._sharkEncryptBlock(input64, this.roundKeys, null);
         }
 
-        output.push(...block);
+        // Unpack result back to bytes
+        const resultBytes = this._unpack64BE(result64);
+        output.push(...resultBytes);
       }
 
       // Clear input buffer

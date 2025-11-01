@@ -60,307 +60,99 @@
   // ===== PERMUTATION PRIMITIVES =====
 
   /**
-   * Spongent S-box (4-bit to 4-bit non-linear transformation)
-   * Applied to 8 nibbles in parallel across a 32-bit word
+   * Spongent S-box lookup table (4-bit to 4-bit non-linear transformation)
+   * Applied byte-wise for efficient implementation
    */
-  function spongentSbox(x3) {
-    var x2 = (x3 >>> 1) >>> 0;
-    var x1 = (x2 >>> 1) >>> 0;
-    var x0 = (x1 >>> 1) >>> 0;
-
-    var q0 = (x0 ^ x2) >>> 0;
-    var q1 = (x1 ^ x2) >>> 0;
-    var t0 = (q0 & q1) >>> 0;
-    var q2 = (~(x0 ^ x1 ^ x3 ^ t0)) >>> 0;
-    var t1 = (q2 & ~x0) >>> 0;
-    var q3 = (x1 ^ t1) >>> 0;
-    var t2 = (q3 & (q3 ^ x2 ^ x3 ^ t0)) >>> 0;
-    var t3 = ((x2 ^ t0) & ~(x1 ^ t0)) >>> 0;
-
-    q0 = (x1 ^ x2 ^ x3 ^ t2) >>> 0;
-    q1 = (x0 ^ x2 ^ x3 ^ t0 ^ t1) >>> 0;
-    q2 = (x0 ^ x1 ^ x2 ^ t1) >>> 0;
-    q3 = (x0 ^ x3 ^ t0 ^ t3) >>> 0;
-
-    return (((q0 << 3) & 0x88888888) | ((q1 << 2) & 0x44444444) |
-            ((q2 << 1) & 0x22222222) | (q3 & 0x11111111)) >>> 0;
-  }
+  var SPONGENT_SBOX = [
+    0xee, 0xed, 0xeb, 0xe0, 0xe2, 0xe1, 0xe4, 0xef, 0xe7, 0xea, 0xe8, 0xe5, 0xe9, 0xec, 0xe3, 0xe6,
+    0xde, 0xdd, 0xdb, 0xd0, 0xd2, 0xd1, 0xd4, 0xdf, 0xd7, 0xda, 0xd8, 0xd5, 0xd9, 0xdc, 0xd3, 0xd6,
+    0xbe, 0xbd, 0xbb, 0xb0, 0xb2, 0xb1, 0xb4, 0xbf, 0xb7, 0xba, 0xb8, 0xb5, 0xb9, 0xbc, 0xb3, 0xb6,
+    0x0e, 0x0d, 0x0b, 0x00, 0x02, 0x01, 0x04, 0x0f, 0x07, 0x0a, 0x08, 0x05, 0x09, 0x0c, 0x03, 0x06,
+    0x2e, 0x2d, 0x2b, 0x20, 0x22, 0x21, 0x24, 0x2f, 0x27, 0x2a, 0x28, 0x25, 0x29, 0x2c, 0x23, 0x26,
+    0x1e, 0x1d, 0x1b, 0x10, 0x12, 0x11, 0x14, 0x1f, 0x17, 0x1a, 0x18, 0x15, 0x19, 0x1c, 0x13, 0x16,
+    0x4e, 0x4d, 0x4b, 0x40, 0x42, 0x41, 0x44, 0x4f, 0x47, 0x4a, 0x48, 0x45, 0x49, 0x4c, 0x43, 0x46,
+    0xfe, 0xfd, 0xfb, 0xf0, 0xf2, 0xf1, 0xf4, 0xff, 0xf7, 0xfa, 0xf8, 0xf5, 0xf9, 0xfc, 0xf3, 0xf6,
+    0x7e, 0x7d, 0x7b, 0x70, 0x72, 0x71, 0x74, 0x7f, 0x77, 0x7a, 0x78, 0x75, 0x79, 0x7c, 0x73, 0x76,
+    0xae, 0xad, 0xab, 0xa0, 0xa2, 0xa1, 0xa4, 0xaf, 0xa7, 0xaa, 0xa8, 0xa5, 0xa9, 0xac, 0xa3, 0xa6,
+    0x8e, 0x8d, 0x8b, 0x80, 0x82, 0x81, 0x84, 0x8f, 0x87, 0x8a, 0x88, 0x85, 0x89, 0x8c, 0x83, 0x86,
+    0x5e, 0x5d, 0x5b, 0x50, 0x52, 0x51, 0x54, 0x5f, 0x57, 0x5a, 0x58, 0x55, 0x59, 0x5c, 0x53, 0x56,
+    0x9e, 0x9d, 0x9b, 0x90, 0x92, 0x91, 0x94, 0x9f, 0x97, 0x9a, 0x98, 0x95, 0x99, 0x9c, 0x93, 0x96,
+    0xce, 0xcd, 0xcb, 0xc0, 0xc2, 0xc1, 0xc4, 0xcf, 0xc7, 0xca, 0xc8, 0xc5, 0xc9, 0xcc, 0xc3, 0xc6,
+    0x3e, 0x3d, 0x3b, 0x30, 0x32, 0x31, 0x34, 0x3f, 0x37, 0x3a, 0x38, 0x35, 0x39, 0x3c, 0x33, 0x36,
+    0x6e, 0x6d, 0x6b, 0x60, 0x62, 0x61, 0x64, 0x6f, 0x67, 0x6a, 0x68, 0x65, 0x69, 0x6c, 0x63, 0x66
+  ];
 
   /**
-   * Spongent-π[160] permutation
-   * 160-bit state, 80 rounds
+   * Generic Spongent permutation based on Bouncy Castle reference implementation
+   * Supports both 160-bit (Dumbo) and 176-bit (Jumbo) variants
+   * @param {Array} state - byte array of state (20 or 22 bytes)
+   * @param {number} nBits - state size in bits (160 or 176)
+   * @param {number} nRounds - number of rounds (80 or 90)
+   * @param {number} lfsrIV - initial value for round constant LFSR (0x75 or 0x45)
    */
-  function spongent160Permute(state) {
-    var RC = [
-      0x75, 0xae, 0x6a, 0x56, 0x54, 0x2a, 0x29, 0x94,
-      0x53, 0xca, 0x27, 0xe4, 0x4f, 0xf2, 0x1f, 0xf8,
-      0x3e, 0x7c, 0x7d, 0xbe, 0x7a, 0x5e, 0x74, 0x2e,
-      0x68, 0x16, 0x50, 0x0a, 0x21, 0x84, 0x43, 0xc2,
-      0x07, 0xe0, 0x0e, 0x70, 0x1c, 0x38, 0x38, 0x1c,
-      0x71, 0x8e, 0x62, 0x46, 0x44, 0x22, 0x09, 0x90,
-      0x12, 0x48, 0x24, 0x24, 0x49, 0x92, 0x13, 0xc8,
-      0x26, 0x64, 0x4d, 0xb2, 0x1b, 0xd8, 0x36, 0x6c,
-      0x6d, 0xb6, 0x5a, 0x5a, 0x35, 0xac, 0x6b, 0xd6,
-      0x56, 0x6a, 0x2d, 0xb4, 0x5b, 0xda, 0x37, 0xec,
-      0x6f, 0xf6, 0x5e, 0x7a, 0x3d, 0xbc, 0x7b, 0xde,
-      0x76, 0x6e, 0x6c, 0x36, 0x58, 0x1a, 0x31, 0x8c,
-      0x63, 0xc6, 0x46, 0x62, 0x0d, 0xb0, 0x1a, 0x58,
-      0x34, 0x2c, 0x69, 0x96, 0x52, 0x4a, 0x25, 0xa4,
-      0x4b, 0xd2, 0x17, 0xe8, 0x2e, 0x74, 0x5d, 0xba,
-      0x3b, 0xdc, 0x77, 0xee, 0x6e, 0x76, 0x5c, 0x3a,
-      0x39, 0x9c, 0x73, 0xce, 0x66, 0x66, 0x4c, 0x32,
-      0x19, 0x98, 0x32, 0x4c, 0x65, 0xa6, 0x4a, 0x52,
-      0x15, 0xa8, 0x2a, 0x54, 0x55, 0xaa, 0x2b, 0xd4,
-      0x57, 0xea, 0x2f, 0xf4, 0x5f, 0xfa, 0x3f, 0xfc
-    ];
+  function spongentPermute(state, nBits, nRounds, lfsrIV) {
+    var nSBox = nBits >>> 3;  // Number of bytes
+    var IV = lfsrIV;
+    var tmp = new Array(nSBox);
 
-    // Load state as little-endian 32-bit words
-    var x0 = OpCodes.Pack32LE(state[0], state[1], state[2], state[3]);
-    var x1 = OpCodes.Pack32LE(state[4], state[5], state[6], state[7]);
-    var x2 = OpCodes.Pack32LE(state[8], state[9], state[10], state[11]);
-    var x3 = OpCodes.Pack32LE(state[12], state[13], state[14], state[15]);
-    var x4 = OpCodes.Pack32LE(state[16], state[17], state[18], state[19]);
-
-    var t0, t1, t2, t3, t4;
-    var BCP = function(x, bit) { return (x & (1 << bit)) >>> 0; };
-    var BUP = function(x, from, to) { return ((x << (to - from)) & (1 << to)) >>> 0; };
-    var BDN = function(x, from, to) { return ((x >>> (from - to)) & (1 << to)) >>> 0; };
-
-    // 80 rounds
-    for (var round = 0; round < 80; ++round) {
+    for (var round = 0; round < nRounds; ++round) {
       // Add round constants
-      x0 ^= RC[round * 2];
-      x4 ^= (RC[round * 2 + 1] << 24) >>> 0;
+      state[0] ^= IV;
+      var reversedIV = ((IV & 0x01) << 7) | ((IV & 0x02) << 5) | ((IV & 0x04) << 3) | ((IV & 0x08) << 1) |
+                       ((IV & 0x10) >>> 1) | ((IV & 0x20) >>> 3) | ((IV & 0x40) >>> 5) | ((IV & 0x80) >>> 7);
+      state[nSBox - 1] ^= reversedIV;
 
-      // Apply S-box
-      t0 = spongentSbox(x0);
-      t1 = spongentSbox(x1);
-      t2 = spongentSbox(x2);
-      t3 = spongentSbox(x3);
-      t4 = spongentSbox(x4);
+      // Step LFSR for next round constant
+      IV = (((IV << 1) | (((0x40 & IV) >>> 6) ^ ((0x20 & IV) >>> 5))) & 0x7f);
+
+      // S-box layer
+      for (var j = 0; j < nSBox; ++j) {
+        state[j] = SPONGENT_SBOX[state[j] & 0xFF];
+      }
 
       // Bit permutation layer
-      x0 = (BCP(t0, 0) ^ BDN(t0, 4, 1) ^ BDN(t0, 8, 2) ^
-            BDN(t0, 12, 3) ^ BDN(t0, 16, 4) ^ BDN(t0, 20, 5) ^
-            BDN(t0, 24, 6) ^ BDN(t0, 28, 7) ^ BUP(t1, 0, 8) ^
-            BUP(t1, 4, 9) ^ BUP(t1, 8, 10) ^ BDN(t1, 12, 11) ^
-            BDN(t1, 16, 12) ^ BDN(t1, 20, 13) ^ BDN(t1, 24, 14) ^
-            BDN(t1, 28, 15) ^ BUP(t2, 0, 16) ^ BUP(t2, 4, 17) ^
-            BUP(t2, 8, 18) ^ BUP(t2, 12, 19) ^ BUP(t2, 16, 20) ^
-            BUP(t2, 20, 21) ^ BDN(t2, 24, 22) ^ BDN(t2, 28, 23) ^
-            BUP(t3, 0, 24) ^ BUP(t3, 4, 25) ^ BUP(t3, 8, 26) ^
-            BUP(t3, 12, 27) ^ BUP(t3, 16, 28) ^ BUP(t3, 20, 29) ^
-            BUP(t3, 24, 30) ^ BUP(t3, 28, 31)) >>> 0;
+      for (var j = 0; j < nSBox; ++j) {
+        tmp[j] = 0;
+      }
 
-      x1 = (BUP(t0, 1, 8) ^ BUP(t0, 5, 9) ^ BUP(t0, 9, 10) ^
-            BDN(t0, 13, 11) ^ BDN(t0, 17, 12) ^ BDN(t0, 21, 13) ^
-            BDN(t0, 25, 14) ^ BDN(t0, 29, 15) ^ BUP(t1, 1, 16) ^
-            BUP(t1, 5, 17) ^ BUP(t1, 9, 18) ^ BUP(t1, 13, 19) ^
-            BUP(t1, 17, 20) ^ BCP(t1, 21) ^ BDN(t1, 25, 22) ^
-            BDN(t1, 29, 23) ^ BUP(t2, 1, 24) ^ BUP(t2, 5, 25) ^
-            BUP(t2, 9, 26) ^ BUP(t2, 13, 27) ^ BUP(t2, 17, 28) ^
-            BUP(t2, 21, 29) ^ BUP(t2, 25, 30) ^ BUP(t2, 29, 31) ^
-            BCP(t4, 0) ^ BDN(t4, 4, 1) ^ BDN(t4, 8, 2) ^
-            BDN(t4, 12, 3) ^ BDN(t4, 16, 4) ^ BDN(t4, 20, 5) ^
-            BDN(t4, 24, 6) ^ BDN(t4, 28, 7)) >>> 0;
+      for (var j = 0; j < nSBox; ++j) {
+        for (var k = 0; k < 8; ++k) {
+          var bitNo = (j << 3) + k;
+          var permutedBitNo = bitNo;
 
-      x2 = (BUP(t0, 2, 16) ^ BUP(t0, 6, 17) ^ BUP(t0, 10, 18) ^
-            BUP(t0, 14, 19) ^ BUP(t0, 18, 20) ^ BDN(t0, 22, 21) ^
-            BDN(t0, 26, 22) ^ BDN(t0, 30, 23) ^ BUP(t1, 2, 24) ^
-            BUP(t1, 6, 25) ^ BUP(t1, 10, 26) ^ BUP(t1, 14, 27) ^
-            BUP(t1, 18, 28) ^ BUP(t1, 22, 29) ^ BUP(t1, 26, 30) ^
-            BUP(t1, 30, 31) ^ BDN(t3, 1, 0) ^ BDN(t3, 5, 1) ^
-            BDN(t3, 9, 2) ^ BDN(t3, 13, 3) ^ BDN(t3, 17, 4) ^
-            BDN(t3, 21, 5) ^ BDN(t3, 25, 6) ^ BDN(t3, 29, 7) ^
-            BUP(t4, 1, 8) ^ BUP(t4, 5, 9) ^ BUP(t4, 9, 10) ^
-            BDN(t4, 13, 11) ^ BDN(t4, 17, 12) ^ BDN(t4, 21, 13) ^
-            BDN(t4, 25, 14) ^ BDN(t4, 29, 15)) >>> 0;
+          // Apply permutation formula: bit i -> ((i * nBits) / 4) % (nBits - 1)
+          // except for last bit which stays in place
+          if (permutedBitNo !== nBits - 1) {
+            permutedBitNo = ((permutedBitNo * nBits) >>> 2) % (nBits - 1);
+          }
 
-      x3 = (BUP(t0, 3, 24) ^ BUP(t0, 7, 25) ^ BUP(t0, 11, 26) ^
-            BUP(t0, 15, 27) ^ BUP(t0, 19, 28) ^ BUP(t0, 23, 29) ^
-            BUP(t0, 27, 30) ^ BCP(t0, 31) ^ BDN(t2, 2, 0) ^
-            BDN(t2, 6, 1) ^ BDN(t2, 10, 2) ^ BDN(t2, 14, 3) ^
-            BDN(t2, 18, 4) ^ BDN(t2, 22, 5) ^ BDN(t2, 26, 6) ^
-            BDN(t2, 30, 7) ^ BUP(t3, 2, 8) ^ BUP(t3, 6, 9) ^
-            BCP(t3, 10) ^ BDN(t3, 14, 11) ^ BDN(t3, 18, 12) ^
-            BDN(t3, 22, 13) ^ BDN(t3, 26, 14) ^ BDN(t3, 30, 15) ^
-            BUP(t4, 2, 16) ^ BUP(t4, 6, 17) ^ BUP(t4, 10, 18) ^
-            BUP(t4, 14, 19) ^ BUP(t4, 18, 20) ^ BDN(t4, 22, 21) ^
-            BDN(t4, 26, 22) ^ BDN(t4, 30, 23)) >>> 0;
+          // Extract bit from state and place in permuted position
+          var bit = ((state[j] & 0xFF) >>> k) & 0x1;
+          tmp[permutedBitNo >>> 3] ^= bit << (permutedBitNo & 7);
+        }
+      }
 
-      x4 = (BDN(t1, 3, 0) ^ BDN(t1, 7, 1) ^ BDN(t1, 11, 2) ^
-            BDN(t1, 15, 3) ^ BDN(t1, 19, 4) ^ BDN(t1, 23, 5) ^
-            BDN(t1, 27, 6) ^ BDN(t1, 31, 7) ^ BUP(t2, 3, 8) ^
-            BUP(t2, 7, 9) ^ BDN(t2, 11, 10) ^ BDN(t2, 15, 11) ^
-            BDN(t2, 19, 12) ^ BDN(t2, 23, 13) ^ BDN(t2, 27, 14) ^
-            BDN(t2, 31, 15) ^ BUP(t3, 3, 16) ^ BUP(t3, 7, 17) ^
-            BUP(t3, 11, 18) ^ BUP(t3, 15, 19) ^ BUP(t3, 19, 20) ^
-            BDN(t3, 23, 21) ^ BDN(t3, 27, 22) ^ BDN(t3, 31, 23) ^
-            BUP(t4, 3, 24) ^ BUP(t4, 7, 25) ^ BUP(t4, 11, 26) ^
-            BUP(t4, 15, 27) ^ BUP(t4, 19, 28) ^ BUP(t4, 23, 29) ^
-            BUP(t4, 27, 30) ^ BCP(t4, 31)) >>> 0;
-    }
-
-    // Store back to state as little-endian bytes
-    var bytes0 = OpCodes.Unpack32LE(x0);
-    var bytes1 = OpCodes.Unpack32LE(x1);
-    var bytes2 = OpCodes.Unpack32LE(x2);
-    var bytes3 = OpCodes.Unpack32LE(x3);
-    var bytes4 = OpCodes.Unpack32LE(x4);
-
-    for (var i = 0; i < 4; ++i) {
-      state[i] = bytes0[i];
-      state[4 + i] = bytes1[i];
-      state[8 + i] = bytes2[i];
-      state[12 + i] = bytes3[i];
-      state[16 + i] = bytes4[i];
+      // Copy permuted state back
+      for (var j = 0; j < nSBox; ++j) {
+        state[j] = tmp[j];
+      }
     }
   }
 
   /**
-   * Spongent-π[176] permutation
-   * 176-bit state (22 bytes), 90 rounds
+   * Spongent-π[160] permutation wrapper
+   * 160-bit state, 80 rounds, LFSR IV = 0x75
+   */
+  function spongent160Permute(state) {
+    spongentPermute(state, 160, 80, 0x75);
+  }
+
+  /**
+   * Spongent-π[176] permutation wrapper
+   * 176-bit state (22 bytes), 90 rounds, LFSR IV = 0x45
    */
   function spongent176Permute(state) {
-    var RC = [
-      0x45, 0xa2, 0x0b, 0xd0, 0x16, 0x68, 0x2c, 0x34,
-      0x59, 0x9a, 0x33, 0xcc, 0x67, 0xe6, 0x4e, 0x72,
-      0x1d, 0xb8, 0x3a, 0x5c, 0x75, 0xae, 0x6a, 0x56,
-      0x54, 0x2a, 0x29, 0x94, 0x53, 0xca, 0x27, 0xe4,
-      0x4f, 0xf2, 0x1f, 0xf8, 0x3e, 0x7c, 0x7d, 0xbe,
-      0x7a, 0x5e, 0x74, 0x2e, 0x68, 0x16, 0x50, 0x0a,
-      0x21, 0x84, 0x43, 0xc2, 0x07, 0xe0, 0x0e, 0x70,
-      0x1c, 0x38, 0x38, 0x1c, 0x71, 0x8e, 0x62, 0x46,
-      0x44, 0x22, 0x09, 0x90, 0x12, 0x48, 0x24, 0x24,
-      0x49, 0x92, 0x13, 0xc8, 0x26, 0x64, 0x4d, 0xb2,
-      0x1b, 0xd8, 0x36, 0x6c, 0x6d, 0xb6, 0x5a, 0x5a,
-      0x35, 0xac, 0x6b, 0xd6, 0x56, 0x6a, 0x2d, 0xb4,
-      0x5b, 0xda, 0x37, 0xec, 0x6f, 0xf6, 0x5e, 0x7a,
-      0x3d, 0xbc, 0x7b, 0xde, 0x76, 0x6e, 0x6c, 0x36,
-      0x58, 0x1a, 0x31, 0x8c, 0x63, 0xc6, 0x46, 0x62,
-      0x0d, 0xb0, 0x1a, 0x58, 0x34, 0x2c, 0x69, 0x96,
-      0x52, 0x4a, 0x25, 0xa4, 0x4b, 0xd2, 0x17, 0xe8,
-      0x2e, 0x74, 0x5d, 0xba, 0x3b, 0xdc, 0x77, 0xee,
-      0x6e, 0x76, 0x5c, 0x3a, 0x39, 0x9c, 0x73, 0xce,
-      0x66, 0x66, 0x4c, 0x32, 0x19, 0x98, 0x32, 0x4c,
-      0x65, 0xa6, 0x4a, 0x52, 0x15, 0xa8, 0x2a, 0x54,
-      0x55, 0xaa, 0x2b, 0xd4, 0x57, 0xea, 0x2f, 0xf4,
-      0x5f, 0xfa, 0x3f, 0xfc
-    ];
-
-    // Load state (last word is 16-bit only)
-    var x0 = OpCodes.Pack32LE(state[0], state[1], state[2], state[3]);
-    var x1 = OpCodes.Pack32LE(state[4], state[5], state[6], state[7]);
-    var x2 = OpCodes.Pack32LE(state[8], state[9], state[10], state[11]);
-    var x3 = OpCodes.Pack32LE(state[12], state[13], state[14], state[15]);
-    var x4 = OpCodes.Pack32LE(state[16], state[17], state[18], state[19]);
-    var x5 = OpCodes.Pack16LE(state[20], state[21]);
-
-    var t0, t1, t2, t3, t4, t5;
-    var BCP = function(x, bit) { return (x & (1 << bit)) >>> 0; };
-    var BUP = function(x, from, to) { return ((x << (to - from)) & (1 << to)) >>> 0; };
-    var BDN = function(x, from, to) { return ((x >>> (from - to)) & (1 << to)) >>> 0; };
-
-    // 90 rounds
-    for (var round = 0; round < 90; ++round) {
-      // Add round constants
-      x0 ^= RC[round * 2];
-      x5 ^= (RC[round * 2 + 1] << 8) >>> 0;
-
-      // Apply S-box
-      t0 = spongentSbox(x0);
-      t1 = spongentSbox(x1);
-      t2 = spongentSbox(x2);
-      t3 = spongentSbox(x3);
-      t4 = spongentSbox(x4);
-      t5 = spongentSbox(x5);
-
-      // Bit permutation (bit i → (44 * i) % 175, except last bit)
-      x0 = (BCP(t0, 0) ^ BDN(t0, 4, 1) ^ BDN(t0, 8, 2) ^
-            BDN(t0, 12, 3) ^ BDN(t0, 16, 4) ^ BDN(t0, 20, 5) ^
-            BDN(t0, 24, 6) ^ BDN(t0, 28, 7) ^ BUP(t1, 0, 8) ^
-            BUP(t1, 4, 9) ^ BUP(t1, 8, 10) ^ BDN(t1, 12, 11) ^
-            BDN(t1, 16, 12) ^ BDN(t1, 20, 13) ^ BDN(t1, 24, 14) ^
-            BDN(t1, 28, 15) ^ BUP(t2, 0, 16) ^ BUP(t2, 4, 17) ^
-            BUP(t2, 8, 18) ^ BUP(t2, 12, 19) ^ BUP(t2, 16, 20) ^
-            BUP(t2, 20, 21) ^ BDN(t2, 24, 22) ^ BDN(t2, 28, 23) ^
-            BUP(t3, 0, 24) ^ BUP(t3, 4, 25) ^ BUP(t3, 8, 26) ^
-            BUP(t3, 12, 27) ^ BUP(t3, 16, 28) ^ BUP(t3, 20, 29) ^
-            BUP(t3, 24, 30) ^ BUP(t3, 28, 31)) >>> 0;
-
-      x1 = (BUP(t0, 1, 12) ^ BUP(t0, 5, 13) ^ BUP(t0, 9, 14) ^
-            BUP(t0, 13, 15) ^ BDN(t0, 17, 16) ^ BDN(t0, 21, 17) ^
-            BDN(t0, 25, 18) ^ BDN(t0, 29, 19) ^ BUP(t1, 1, 20) ^
-            BUP(t1, 5, 21) ^ BUP(t1, 9, 22) ^ BUP(t1, 13, 23) ^
-            BUP(t1, 17, 24) ^ BUP(t1, 21, 25) ^ BUP(t1, 25, 26) ^
-            BDN(t1, 29, 27) ^ BUP(t2, 1, 28) ^ BUP(t2, 5, 29) ^
-            BUP(t2, 9, 30) ^ BUP(t2, 13, 31) ^ BCP(t4, 0) ^
-            BDN(t4, 4, 1) ^ BDN(t4, 8, 2) ^ BDN(t4, 12, 3) ^
-            BDN(t4, 16, 4) ^ BDN(t4, 20, 5) ^ BDN(t4, 24, 6) ^
-            BDN(t4, 28, 7) ^ BUP(t5, 0, 8) ^ BUP(t5, 4, 9) ^
-            BUP(t5, 8, 10) ^ BDN(t5, 12, 11)) >>> 0;
-
-      x2 = (BUP(t0, 2, 24) ^ BUP(t0, 6, 25) ^ BUP(t0, 10, 26) ^
-            BUP(t0, 14, 27) ^ BUP(t0, 18, 28) ^ BUP(t0, 22, 29) ^
-            BUP(t0, 26, 30) ^ BUP(t0, 30, 31) ^ BDN(t2, 17, 0) ^
-            BDN(t2, 21, 1) ^ BDN(t2, 25, 2) ^ BDN(t2, 29, 3) ^
-            BUP(t3, 1, 4) ^ BCP(t3, 5) ^ BDN(t3, 9, 6) ^
-            BDN(t3, 13, 7) ^ BDN(t3, 17, 8) ^ BDN(t3, 21, 9) ^
-            BDN(t3, 25, 10) ^ BDN(t3, 29, 11) ^ BUP(t4, 1, 12) ^
-            BUP(t4, 5, 13) ^ BUP(t4, 9, 14) ^ BUP(t4, 13, 15) ^
-            BDN(t4, 17, 16) ^ BDN(t4, 21, 17) ^ BDN(t4, 25, 18) ^
-            BDN(t4, 29, 19) ^ BUP(t5, 1, 20) ^ BUP(t5, 5, 21) ^
-            BUP(t5, 9, 22) ^ BUP(t5, 13, 23)) >>> 0;
-
-      x3 = (BDN(t1, 2, 0) ^ BDN(t1, 6, 1) ^ BDN(t1, 10, 2) ^
-            BDN(t1, 14, 3) ^ BDN(t1, 18, 4) ^ BDN(t1, 22, 5) ^
-            BDN(t1, 26, 6) ^ BDN(t1, 30, 7) ^ BUP(t2, 2, 8) ^
-            BUP(t2, 6, 9) ^ BCP(t2, 10) ^ BDN(t2, 14, 11) ^
-            BDN(t2, 18, 12) ^ BDN(t2, 22, 13) ^ BDN(t2, 26, 14) ^
-            BDN(t2, 30, 15) ^ BUP(t3, 2, 16) ^ BUP(t3, 6, 17) ^
-            BUP(t3, 10, 18) ^ BUP(t3, 14, 19) ^ BUP(t3, 18, 20) ^
-            BDN(t3, 22, 21) ^ BDN(t3, 26, 22) ^ BDN(t3, 30, 23) ^
-            BUP(t4, 2, 24) ^ BUP(t4, 6, 25) ^ BUP(t4, 10, 26) ^
-            BUP(t4, 14, 27) ^ BUP(t4, 18, 28) ^ BUP(t4, 22, 29) ^
-            BUP(t4, 26, 30) ^ BUP(t4, 30, 31)) >>> 0;
-
-      x4 = (BUP(t0, 3, 4) ^ BDN(t0, 7, 5) ^ BDN(t0, 11, 6) ^
-            BDN(t0, 15, 7) ^ BDN(t0, 19, 8) ^ BDN(t0, 23, 9) ^
-            BDN(t0, 27, 10) ^ BDN(t0, 31, 11) ^ BUP(t1, 3, 12) ^
-            BUP(t1, 7, 13) ^ BUP(t1, 11, 14) ^ BCP(t1, 15) ^
-            BDN(t1, 19, 16) ^ BDN(t1, 23, 17) ^ BDN(t1, 27, 18) ^
-            BDN(t1, 31, 19) ^ BUP(t2, 3, 20) ^ BUP(t2, 7, 21) ^
-            BUP(t2, 11, 22) ^ BUP(t2, 15, 23) ^ BUP(t2, 19, 24) ^
-            BUP(t2, 23, 25) ^ BDN(t2, 27, 26) ^ BDN(t2, 31, 27) ^
-            BUP(t3, 3, 28) ^ BUP(t3, 7, 29) ^ BUP(t3, 11, 30) ^
-            BUP(t3, 15, 31) ^ BDN(t5, 2, 0) ^ BDN(t5, 6, 1) ^
-            BDN(t5, 10, 2) ^ BDN(t5, 14, 3)) >>> 0;
-
-      x5 = (BDN(t3, 19, 0) ^ BDN(t3, 23, 1) ^ BDN(t3, 27, 2) ^
-            BDN(t3, 31, 3) ^ BUP(t4, 3, 4) ^ BDN(t4, 7, 5) ^
-            BDN(t4, 11, 6) ^ BDN(t4, 15, 7) ^ BDN(t4, 19, 8) ^
-            BDN(t4, 23, 9) ^ BDN(t4, 27, 10) ^ BDN(t4, 31, 11) ^
-            BUP(t5, 3, 12) ^ BUP(t5, 7, 13) ^ BUP(t5, 11, 14) ^
-            BCP(t5, 15)) >>> 0;
-    }
-
-    // Store back to state
-    var bytes0 = OpCodes.Unpack32LE(x0);
-    var bytes1 = OpCodes.Unpack32LE(x1);
-    var bytes2 = OpCodes.Unpack32LE(x2);
-    var bytes3 = OpCodes.Unpack32LE(x3);
-    var bytes4 = OpCodes.Unpack32LE(x4);
-    var bytes5 = OpCodes.Unpack16LE(x5);
-
-    for (var i = 0; i < 4; ++i) {
-      state[i] = bytes0[i];
-      state[4 + i] = bytes1[i];
-      state[8 + i] = bytes2[i];
-      state[12 + i] = bytes3[i];
-      state[16 + i] = bytes4[i];
-    }
-    state[20] = bytes5[0];
-    state[21] = bytes5[1];
+    spongentPermute(state, 176, 90, 0x45);
   }
 
   /**
@@ -944,16 +736,16 @@
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
           associatedData: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           input: [],
-          expected: OpCodes.Hex8ToBytes("2BAAC762EF2C63E7")
+          expected: OpCodes.Hex8ToBytes("19361BF080366F41")
         },
         {
-          text: "NIST LWC KAT Vector #33 (16-byte PT, empty AD)",
+          text: "NIST LWC KAT Vector #529 (16-byte PT, empty AD)",
           uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
           associatedData: [],
           input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          expected: OpCodes.Hex8ToBytes("22877528B93B5B1F8AFEE1957227F87A65C46F73A9FDC4F4")
+          expected: OpCodes.Hex8ToBytes("0867290AD29D219C4BF3BF0BD652099BA0E7FCE07C71C3EB")
         }
       ];
     }
@@ -997,7 +789,7 @@
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
           associatedData: [],
           input: [],
-          expected: OpCodes.Hex8ToBytes("71D6733193DFF6DA")
+          expected: OpCodes.Hex8ToBytes("1407EF22639E4AE1")
         },
         {
           text: "NIST LWC KAT Vector #2 (empty PT, 1-byte AD)",
@@ -1006,7 +798,7 @@
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
           associatedData: OpCodes.Hex8ToBytes("00"),
           input: [],
-          expected: OpCodes.Hex8ToBytes("E8B4846473BD4F9D")
+          expected: OpCodes.Hex8ToBytes("BA8C57132B2035BE")
         }
       ];
     }
@@ -1050,7 +842,7 @@
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
           associatedData: [],
           input: [],
-          expected: OpCodes.Hex8ToBytes("26249B5BB264DEF8EA1F17937D6B7847")
+          expected: OpCodes.Hex8ToBytes("48BF257607D09EBE1C0E108B91058877")
         },
         {
           text: "NIST LWC KAT Vector #2 (empty PT, 1-byte AD)",
@@ -1059,7 +851,7 @@
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
           associatedData: OpCodes.Hex8ToBytes("00"),
           input: [],
-          expected: OpCodes.Hex8ToBytes("D3CF5762E5F852DEFF9DE450FA7EB970")
+          expected: OpCodes.Hex8ToBytes("6E3705ABDC45250CEEB36E4D991B741D")
         }
       ];
     }

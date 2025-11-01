@@ -84,30 +84,58 @@
 
       this.tests = [
         {
-          text: "EAX round-trip test #1 - empty plaintext",
-          uri: "https://web.cs.ucdavis.edu/~rogaway/papers/eax.html",
-          input: OpCodes.Hex8ToBytes("00"), // Use 1 byte instead of empty
-          key: OpCodes.Hex8ToBytes("233952dee4d5ed5f9b9c6d6ff80ff478"),
-          nonce: OpCodes.Hex8ToBytes("62ec67f9c3a4a407fcb2a8c49031a8b3"),
-          aad: OpCodes.Hex8ToBytes("6bfb914fd07eae6b"),
-          tagSize: 16
-        },
-        {
-          text: "EAX round-trip test #2 - 2-byte plaintext",
-          uri: "https://web.cs.ucdavis.edu/~rogaway/papers/eax.html",
-          input: OpCodes.Hex8ToBytes("f7fb"),
-          key: OpCodes.Hex8ToBytes("91945d3f4dcbee0bf45ef52255f095a4"),
-          nonce: OpCodes.Hex8ToBytes("becaf043b0a23d843194ba972c66debd"),
-          aad: OpCodes.Hex8ToBytes("fa3bfd4806eb53fa"),
-          tagSize: 16
-        },
-        {
-          text: "EAX round-trip test #3 - 5-byte plaintext",
+          text: "Crypto++ Test Vector #1 - Empty plaintext",
           uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/eax.txt",
-          input: OpCodes.Hex8ToBytes("1a47cb4933"),
-          key: OpCodes.Hex8ToBytes("233952dee4d5ed5f9b9c6d6ff80ff478"),
-          nonce: OpCodes.Hex8ToBytes("62ec67f9c3a4a407fcb2a8c49031a8b3"),
-          aad: OpCodes.Hex8ToBytes("6bfb914fd07eae6b"),
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes(""),
+          key: OpCodes.Hex8ToBytes("233952DEE4D5ED5F9B9C6D6FF80FF478"),
+          nonce: OpCodes.Hex8ToBytes("62EC67F9C3A4A407FCB2A8C49031A8B3"),
+          aad: OpCodes.Hex8ToBytes("6BFB914FD07EAE6B"),
+          expected: OpCodes.Hex8ToBytes("E037830E8389F27B025A2D6527E79D01"),
+          tagSize: 16
+        },
+        {
+          text: "Crypto++ Test Vector #2 - 2-byte plaintext",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/eax.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("F7FB"),
+          key: OpCodes.Hex8ToBytes("91945D3F4DCBEE0BF45EF52255F095A4"),
+          nonce: OpCodes.Hex8ToBytes("BECAF043B0A23D843194BA972C66DEBD"),
+          aad: OpCodes.Hex8ToBytes("FA3BFD4806EB53FA"),
+          expected: OpCodes.Hex8ToBytes("19DD5C4C9331049D0BDAB0277408F67967E5"),
+          tagSize: 16
+        },
+        {
+          text: "Crypto++ Test Vector #3 - 5-byte plaintext",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/eax.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("1A47CB4933"),
+          key: OpCodes.Hex8ToBytes("01F74AD64077F2E704C0F60ADA3DD523"),
+          nonce: OpCodes.Hex8ToBytes("70C3DB4F0D26368400A10ED05D2BFF5E"),
+          aad: OpCodes.Hex8ToBytes("234A3463C1264AC6"),
+          expected: OpCodes.Hex8ToBytes("D851D5BAE03A59F238A23E39199DC9266626C40F80"),
+          tagSize: 16
+        },
+        {
+          text: "Crypto++ Test Vector #4 - 5-byte plaintext",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/eax.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("481C9E39B1"),
+          key: OpCodes.Hex8ToBytes("D07CF6CBB7F313BDDE66B727AFD3C5E8"),
+          nonce: OpCodes.Hex8ToBytes("8408DFFF3C1A2B1292DC199E46B7D617"),
+          aad: OpCodes.Hex8ToBytes("33CCE2EABFF5A79D"),
+          expected: OpCodes.Hex8ToBytes("632A9D131AD4C168A4225D8E1FF755939974A7BEDE"),
+          tagSize: 16
+        },
+        {
+          text: "Crypto++ Test Vector #5 - 6-byte plaintext",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/eax.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("40D0C07DA5E4"),
+          key: OpCodes.Hex8ToBytes("35B6D0580005BBC12B0587124557D2C2"),
+          nonce: OpCodes.Hex8ToBytes("FDB6B06676EEDC5C61D74276E1F8E816"),
+          aad: OpCodes.Hex8ToBytes("AEB96EAEBE2970E9"),
+          expected: OpCodes.Hex8ToBytes("071DFE16C675CB0677E536F73AFE6A14B74EE49844DD"),
           tagSize: 16
         }
       ];
@@ -190,14 +218,12 @@
       if (!this.nonce) {
         throw new Error("Nonce not set. Call setNonce() first.");
       }
-      if (this.inputBuffer.length === 0) {
-        throw new Error("No data fed");
-      }
 
       const blockSize = this.blockCipher.BlockSize;
 
       if (!this.isInverse) {
         // Encryption mode - return concatenated ciphertext+tag for test compatibility
+        // Note: Empty plaintext is allowed in EAX
         const result = this._encrypt();
         return [...result.ciphertext, ...result.tag];
       } else {
@@ -225,7 +251,7 @@
       const CPrime = this._omac(2, ciphertext);
 
       // Step 5: Compute tag = N XOR H XOR C'
-      const tag = [];
+      const tag = new Array(this.tagSize);
       for (let i = 0; i < this.tagSize; i++) {
         tag[i] = N[i] ^ H[i] ^ CPrime[i];
       }
@@ -257,7 +283,7 @@
       const CPrime = this._omac(2, ciphertext);
 
       // Step 4: Compute expected tag = N XOR H XOR C'
-      const expectedTag = [];
+      const expectedTag = new Array(this.tagSize);
       for (let i = 0; i < this.tagSize; i++) {
         expectedTag[i] = N[i] ^ H[i] ^ CPrime[i];
       }
@@ -282,59 +308,104 @@
     }
 
     /**
-     * OMAC (One-Key CBC-MAC) implementation
-     * @param {number} tag - Tag byte (0, 1, or 2)
+     * CMAC computation for EAX (as per specification)
+     * EAX uses CMAC with prefix: (blockSize-1) zeros || tag || data
+     * @param {number} tag - Tag byte (0 for nonce, 1 for header, 2 for ciphertext)
      * @param {Array} data - Data to authenticate
-     * @returns {Array} OMAC output
+     * @returns {Array} CMAC output (blockSize bytes)
      */
     _omac(tag, data) {
       const blockSize = this.blockCipher.BlockSize;
 
-      // Prefix with tag byte
-      const taggedData = [tag, ...data];
+      // Build message: (blockSize-1) zero bytes || tag byte || data
+      const message = [];
+      for (let i = 0; i < blockSize - 1; i++) {
+        message.push(0);
+      }
+      message.push(tag);
+      message.push(...data);
 
-      // OMAC = CBC-MAC with final block handling
+      // Compute CMAC subkeys (K1 and K2)
+      const L = this._aesEncrypt(new Array(blockSize).fill(0));
+      const K1 = this._leftShift(L);
+      if (L[0] & 0x80) {
+        K1[blockSize - 1] ^= blockSize === 16 ? 0x87 : 0x1B; // Rb constant
+      }
+
+      const K2 = this._leftShift(K1);
+      if (K1[0] & 0x80) {
+        K2[blockSize - 1] ^= blockSize === 16 ? 0x87 : 0x1B;
+      }
+
+      // CMAC computation
       let mac = new Array(blockSize).fill(0);
+      const numBlocks = Math.ceil(message.length / blockSize);
 
-      // Process complete blocks
-      for (let i = 0; i < Math.floor(taggedData.length / blockSize) * blockSize; i += blockSize) {
-        const block = taggedData.slice(i, i + blockSize);
+      if (numBlocks === 0) {
+        // Empty message case
+        const finalBlock = [...K2];
+        finalBlock[0] ^= 0x80; // Padding
+        mac = this._aesEncrypt(finalBlock);
+        return mac;
+      }
 
-        // XOR with previous MAC
+      // Process all but last block
+      for (let i = 0; i < numBlocks - 1; i++) {
+        const block = message.slice(i * blockSize, (i + 1) * blockSize);
         for (let j = 0; j < blockSize; j++) {
           mac[j] ^= block[j];
         }
-
-        // Encrypt
-        const cipher = this.blockCipher.algorithm.CreateInstance(false);
-        cipher.key = this.key;
-        cipher.Feed(mac);
-        mac = cipher.Result();
+        mac = this._aesEncrypt(mac);
       }
 
-      // Handle final partial block if any
-      const remaining = taggedData.length % blockSize;
-      if (remaining > 0) {
-        const finalBlock = taggedData.slice(-remaining);
+      // Process last block
+      const lastBlockStart = (numBlocks - 1) * blockSize;
+      const lastBlock = message.slice(lastBlockStart);
 
-        // Pad with 10* padding
-        const paddedBlock = [...finalBlock, 0x80];
+      if (lastBlock.length === blockSize) {
+        // Complete final block - use K1
+        for (let j = 0; j < blockSize; j++) {
+          mac[j] ^= lastBlock[j] ^ K1[j];
+        }
+      } else {
+        // Incomplete final block - use K2 and padding
+        const paddedBlock = [...lastBlock, 0x80];
         while (paddedBlock.length < blockSize) {
           paddedBlock.push(0x00);
         }
-
-        // XOR with MAC and encrypt
         for (let j = 0; j < blockSize; j++) {
-          mac[j] ^= paddedBlock[j];
+          mac[j] ^= paddedBlock[j] ^ K2[j];
         }
-
-        const cipher = this.blockCipher.algorithm.CreateInstance(false);
-        cipher.key = this.key;
-        cipher.Feed(mac);
-        mac = cipher.Result();
       }
 
+      mac = this._aesEncrypt(mac);
       return mac;
+    }
+
+    /**
+     * Left shift for CMAC subkey generation
+     */
+    _leftShift(data) {
+      const result = new Array(data.length);
+      let carry = 0;
+
+      for (let i = data.length - 1; i >= 0; i--) {
+        const newCarry = (data[i] & 0x80) ? 1 : 0;
+        result[i] = ((data[i] << 1) | carry) & 0xFF;
+        carry = newCarry;
+      }
+
+      return result;
+    }
+
+    /**
+     * AES encryption helper using the block cipher instance
+     */
+    _aesEncrypt(block) {
+      const cipher = this.blockCipher.algorithm.CreateInstance(false);
+      cipher.key = this.key;
+      cipher.Feed(block);
+      return cipher.Result();
     }
 
     /**
