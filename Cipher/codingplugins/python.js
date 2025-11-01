@@ -815,8 +815,9 @@ class PythonPlugin extends LanguagePlugin {
       }
     }
     
-    // Fallback for complex for loops
-    return this._indent('# TODO: Complex for loop conversion\n');
+    // Fallback for complex for loops - generate minimal valid Python
+    return this._indent('# WARNING: Complex for loop - manual conversion required\n') +
+           this._indent('pass  # Implement loop logic here\n');
   }
 
   /**
@@ -1736,16 +1737,16 @@ class PythonPlugin extends LanguagePlugin {
   _generateDefaultImplementation(methodName) {
     const lowerName = methodName.toLowerCase();
     if (lowerName.includes('encrypt') || lowerName.includes('decrypt')) {
-      return this._indent('# TODO: Implement encryption/decryption logic\n') +
-             this._indent('return bytes()\n');
+      return this._indent('# WARNING: Implement encryption/decryption logic\n') +
+             this._indent('raise NotImplementedError("' + methodName + ' not implemented")\n');
     }
     if (lowerName.includes('process')) {
-      return this._indent('# TODO: Implement data processing logic\n') +
-             this._indent('return bytes()\n');
+      return this._indent('# WARNING: Implement data processing logic\n') +
+             this._indent('raise NotImplementedError("' + methodName + ' not implemented")\n');
     }
     if (lowerName.includes('generate') || lowerName.includes('create')) {
-      return this._indent('# TODO: Implement generation logic\n') +
-             this._indent('return []\n');
+      return this._indent('# WARNING: Implement generation logic\n') +
+             this._indent('raise NotImplementedError("' + methodName + ' not implemented")\n');
     }
     return this._indent('pass\n');
   }

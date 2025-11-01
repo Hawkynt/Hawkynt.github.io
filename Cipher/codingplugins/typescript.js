@@ -202,7 +202,8 @@ class TypeScriptPlugin extends LanguagePlugin {
       case 'ThisExpression':
         return 'this';
       default:
-        return `// TODO: Implement ${node.type}`;
+        // Generate minimal valid TypeScript code stub with warning
+        return `{\n${this._indent('// WARNING: Unhandled AST node type: ' + node.type + '\n')}${this._indent('throw new Error("Not implemented: ' + node.type + '");\n')}}`;
     }
   }
 
