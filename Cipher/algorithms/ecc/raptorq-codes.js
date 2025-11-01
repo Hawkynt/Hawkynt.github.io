@@ -10,13 +10,13 @@
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     // AMD
-    define(['../../AlgorithmFramework', '../../OpCodes', './fountain-foundation'], factory);
+    define(['../../AlgorithmFramework', '../../OpCodes', './fountain-foundation.data'], factory);
   } else if (typeof module === 'object' && module.exports) {
     // Node.js/CommonJS
     module.exports = factory(
       require('../../AlgorithmFramework'),
       require('../../OpCodes'),
-      require('./fountain-foundation')
+      require('./fountain-foundation.data')
     );
   } else {
     // Browser/Worker global
