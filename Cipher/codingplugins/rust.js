@@ -1508,7 +1508,8 @@ class RustPlugin extends LanguagePlugin {
       return `${left} ${node.operator} ${right}`;
     }
 
-    return `/* Unhandled AST node: ${node.type} */`;
+    // Generate minimal valid Rust code with warning
+    return `{\n${this._indent('// WARNING: Unhandled AST node type: ' + node.type + '\n')}${this._indent('panic!("Not implemented: ' + node.type + '");\n')}}`;
   }
 
   /**
