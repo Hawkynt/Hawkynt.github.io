@@ -62,7 +62,7 @@
         this.year = 2009;
         this.category = CategoryType.COMPRESSION;
         this.subCategory = "Dictionary";
-        this.securityStatus = null;
+        this.securityStatus = SecurityStatus.EDUCATIONAL; // Educational version for learning
         this.complexity = ComplexityType.ADVANCED;
         this.country = CountryCode.FI; // Finland (XZ Utils) / RU (LZMA2)
 

@@ -62,7 +62,7 @@
         this.year = 2013;
         this.category = CategoryType.COMPRESSION;
         this.subCategory = "Dictionary";
-        this.securityStatus = null;
+        this.securityStatus = SecurityStatus.EDUCATIONAL; // Simplified version for learning
         this.complexity = ComplexityType.ADVANCED;
         this.country = CountryCode.US;
 

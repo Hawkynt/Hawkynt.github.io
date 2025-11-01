@@ -682,10 +682,11 @@ class CPlugin extends LanguagePlugin {
     } else {
       if (node.value.body) {
         const bodyCode = this._generateNode(node.value.body, options);
-        code += bodyCode || this._indent('/* Not implemented */\n' + this._indent('return -1;\n'));
+        // Empty body is valid in C (for void functions)
+        code += bodyCode;
       } else {
-        code += this._indent('/* Not implemented */\n');
-        code += this._indent('return -1;\n');
+        // No body - empty is valid
+        code += '';
       }
     }
     this.indentLevel--;

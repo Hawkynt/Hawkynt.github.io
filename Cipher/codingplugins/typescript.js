@@ -269,12 +269,14 @@ class TypeScriptPlugin extends LanguagePlugin {
     this.indentLevel++;
     if (node.body) {
       const bodyCode = this._generateNode(node.body, options);
-      code += bodyCode || this._indent("throw new Error('Not implemented');\n");
+      // Empty body is valid in TypeScript
+      code += bodyCode;
     } else {
-      code += this._indent("throw new Error('Not implemented');\n");
+      // No body - empty is valid
+      code += '';
     }
     this.indentLevel--;
-    
+
     code += this._indent('}\n');
     
     return code;
@@ -373,11 +375,11 @@ class TypeScriptPlugin extends LanguagePlugin {
     this.indentLevel++;
     if (node.value.body) {
       const bodyCode = this._generateNode(node.value.body, options);
-      code += bodyCode || (isConstructor ? '' : this._indent("throw new Error('Not implemented');\n"));
+      // Empty body is valid in TypeScript
+      code += bodyCode;
     } else {
-      if (!isConstructor) {
-        code += this._indent("throw new Error('Not implemented');\n");
-      }
+      // No body - empty is valid
+      code += '';
     }
     this.indentLevel--;
     
