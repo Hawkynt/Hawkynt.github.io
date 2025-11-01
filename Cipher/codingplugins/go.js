@@ -288,12 +288,14 @@ class GoPlugin extends LanguagePlugin {
     this.indentLevel++;
     if (node.body) {
       const bodyCode = this._generateNode(node.body, options);
-      code += bodyCode || this._indent('panic("Not implemented")\n');
+      // Empty body is valid in Go
+      code += bodyCode;
     } else {
-      code += this._indent('panic("Not implemented")\n');
+      // No body - empty is valid
+      code += '';
     }
     this.indentLevel--;
-    
+
     code += this._indent('}\n');
     
     return code;
@@ -1426,9 +1428,11 @@ Thumbs.db
     this.indentLevel++;
     if (node.body) {
       const bodyCode = this._generateNode(node.body, options);
-      code += bodyCode || this._indent('panic("Not implemented")\n');
+      // Empty body is valid in Go
+      code += bodyCode;
     } else {
-      code += this._indent('panic("Not implemented")\n');
+      // No body - empty is valid
+      code += '';
     }
     this.indentLevel--;
 

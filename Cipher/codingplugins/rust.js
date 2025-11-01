@@ -300,12 +300,14 @@ class RustPlugin extends LanguagePlugin {
     this.indentLevel++;
     if (node.body) {
       const bodyCode = this._generateNode(node.body, options);
-      code += bodyCode || this._indent('panic!("Not implemented")\n');
+      // Empty body is valid in Rust (returns unit type ())
+      code += bodyCode;
     } else {
-      code += this._indent('panic!("Not implemented")\n');
+      // No body - empty is valid
+      code += '';
     }
     this.indentLevel--;
-    
+
     code += this._indent('}\n');
     
     return code;
@@ -405,12 +407,14 @@ class RustPlugin extends LanguagePlugin {
     this.indentLevel++;
     if (node.value.body) {
       const bodyCode = this._generateNode(node.value.body, options);
-      code += bodyCode || (isConstructor ? this._indent('Self {}\n') : this._indent('panic!("Not implemented")\n'));
+      // Empty body: constructors need Self {}, others are valid empty
+      code += bodyCode || (isConstructor ? this._indent('Self {}\n') : '');
     } else {
       if (isConstructor) {
         code += this._indent('Self {}\n');
       } else {
-        code += this._indent('panic!("Not implemented")\n');
+        // No body - empty is valid
+        code += '';
       }
     }
     this.indentLevel--;

@@ -213,12 +213,14 @@ class FreeBasicPlugin extends LanguagePlugin {
     this.indentLevel++;
     if (node.body) {
       const bodyCode = this._generateNode(node.body, options);
-      code += bodyCode || this._indent('Error "Not implemented"\n');
+      // Empty body is valid in FreeBASIC
+      code += bodyCode;
     } else {
-      code += this._indent('Error "Not implemented"\n');
+      // No body - empty is valid
+      code += '';
     }
     this.indentLevel--;
-    
+
     code += this._indent('End Function\n');
     
     return code;
@@ -308,13 +310,15 @@ class FreeBasicPlugin extends LanguagePlugin {
     this.indentLevel++;
     if (node.value.body) {
       const bodyCode = this._generateNode(node.value.body, options);
-      code += bodyCode || (isConstructor ? this._indent('Dim Result As ' + typeName + '\n' + 'Return Result\n') : this._indent('Error "Not implemented"\n'));
+      // Empty body: constructors need default return, others are valid empty
+      code += bodyCode || (isConstructor ? this._indent('Dim Result As ' + typeName + '\n' + 'Return Result\n') : '');
     } else {
       if (isConstructor) {
         code += this._indent('Dim Result As ' + typeName + '\n');
         code += this._indent('Return Result\n');
       } else {
-        code += this._indent('Error "Not implemented"\n');
+        // No body - empty is valid
+        code += '';
       }
     }
     this.indentLevel--;

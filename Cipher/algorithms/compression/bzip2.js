@@ -62,7 +62,7 @@
         this.year = 1996;
         this.category = CategoryType.COMPRESSION;
         this.subCategory = "Block Sorting";
-        this.securityStatus = null;
+        this.securityStatus = SecurityStatus.EDUCATIONAL; // Educational version for learning
         this.complexity = ComplexityType.ADVANCED;
         this.country = CountryCode.GB; // Great Britain
 

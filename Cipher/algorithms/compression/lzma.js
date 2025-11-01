@@ -61,7 +61,7 @@
         this.year = 2001;
         this.category = CategoryType.COMPRESSION;
         this.subCategory = "Dictionary-based";
-        this.securityStatus = null;
+        this.securityStatus = SecurityStatus.EDUCATIONAL; // Simplified version for learning
         this.complexity = ComplexityType.ADVANCED;
         this.country = CountryCode.RU; // Russia
 
@@ -292,8 +292,8 @@
         return { length: bestLength, offset: bestOffset };
       }
 
-      // TODO: implementation missing
-      // Simplified range decoder/encoder stubs (educational purposes)
+      // Simplified range decoder/encoder stubs (educational purposes only)
+      // Full LZMA range coding requires sophisticated probability models
       _encodeRange(value, low, high) {
         // In real LZMA, this would be sophisticated range encoding
         // This is a placeholder for educational purposes

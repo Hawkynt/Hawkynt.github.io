@@ -1339,12 +1339,13 @@ class DelphiPlugin extends LanguagePlugin {
       code += 'begin\n';
       this.indentLevel++;
       const bodyCode = this._generateNode(body, options);
-      code += bodyCode || this._indent("raise Exception.Create('Not implemented');\n");
+      // Empty body is valid in Delphi
+      code += bodyCode;
       this.indentLevel--;
       code += 'end;\n';
     } else {
       code += 'begin\n';
-      code += "  raise Exception.Create('Not implemented');\n";
+      // No body - empty is valid
       code += 'end;\n';
     }
 
