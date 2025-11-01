@@ -268,28 +268,23 @@
         const bytes = [];
 
         // Header: [OriginalLength(4)][TableSize(2)][Table][PaddingBits(1)][EncodedData]
-        // TODO: use Opcodes for unpacking
         // Original length (4 bytes, big-endian)
-        bytes.push((originalLength >>> 24) & 0xFF);
-        bytes.push((originalLength >>> 16) & 0xFF);
-        bytes.push((originalLength >>> 8) & 0xFF);
-        bytes.push(originalLength & 0xFF);
+        const [b0, b1, b2, b3] = OpCodes.Unpack32BE(originalLength);
+        bytes.push(b0, b1, b2, b3);
 
         // Serialize code table
         const tableEntries = Object.entries(codeTable);
         const tableSize = tableEntries.length;
 
-        // TODO: use Opcodes for unpacking
         // Table size (2 bytes, big-endian)
-        bytes.push((tableSize >>> 8) & 0xFF);
-        bytes.push(tableSize & 0xFF);
+        const [high, low] = OpCodes.Unpack16BE(tableSize);
+        bytes.push(high, low);
 
         // Table entries: [CharCode(1)][CodeLength(1)][CodeBits(variable)]
         for (const [char, code] of tableEntries) {
           bytes.push(char.charCodeAt(0) & 0xFF); // Character
           bytes.push(code.length & 0xFF); // Code length
 
-          // TODO: use Opcodes for bitstream
           // Pack code bits into bytes
           const paddedCode = code + '0'.repeat((8 - (code.length % 8)) % 8);
           for (let i = 0; i < paddedCode.length; i += 8) {

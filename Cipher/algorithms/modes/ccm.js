@@ -88,22 +88,37 @@
 
       this.tests = [
         {
-          text: "CCM round-trip test #1",
-          uri: "https://tools.ietf.org/rfc/rfc3610.txt",
+          text: "RFC 3610 Vector #1 (M=8, L=2)",
+          uri: "https://www.rfc-editor.org/rfc/rfc3610.txt",
+          cipher: "AES",
           input: OpCodes.Hex8ToBytes("08090A0B0C0D0E0F101112131415161718191A1B1C1D1E"),
           key: OpCodes.Hex8ToBytes("C0C1C2C3C4C5C6C7C8C9CACBCCCDCECF"),
           iv: OpCodes.Hex8ToBytes("00000003020100A0A1A2A3A4A5"),
           aad: OpCodes.Hex8ToBytes("0001020304050607"),
-          tagSize: 8
+          tagSize: 8,
+          expected: OpCodes.Hex8ToBytes("588C979A61C663D2F066D0C2C0F989806D5F6B61DAC38417E8D12CFDF926E0")
         },
         {
-          text: "CCM round-trip test #2",
-          uri: "https://tools.ietf.org/rfc/rfc3610.txt",
+          text: "RFC 3610 Vector #7 (M=10, L=2)",
+          uri: "https://www.rfc-editor.org/rfc/rfc3610.txt",
+          cipher: "AES",
           input: OpCodes.Hex8ToBytes("08090A0B0C0D0E0F101112131415161718191A1B1C1D1E"),
           key: OpCodes.Hex8ToBytes("C0C1C2C3C4C5C6C7C8C9CACBCCCDCECF"),
           iv: OpCodes.Hex8ToBytes("00000009080706A0A1A2A3A4A5"),
           aad: OpCodes.Hex8ToBytes("0001020304050607"),
-          tagSize: 10
+          tagSize: 10,
+          expected: OpCodes.Hex8ToBytes("0135D1B2C95F41D5D1D4FEC185D166B8094E999DFED96C048C56602C97ACBB7490")
+        },
+        {
+          text: "RFC 3610 Vector #13 (M=8, L=2)",
+          uri: "https://www.rfc-editor.org/rfc/rfc3610.txt",
+          cipher: "AES",
+          input: OpCodes.Hex8ToBytes("08E8CF97D820EA258460E96AD9CF5289054D895CEAC47C"),
+          key: OpCodes.Hex8ToBytes("D7828D13B2B0BDC325A76236DF93CC6B"),
+          iv: OpCodes.Hex8ToBytes("00412B4EA9CDBE3C9696766CFA"),
+          aad: OpCodes.Hex8ToBytes("0BE1A88BACE018B1"),
+          tagSize: 8,
+          expected: OpCodes.Hex8ToBytes("4CB97F86A2A4689A877947AB8091EF5386A6FFBDD080F8E78CF7CB0CDDD7B3")
         }
       ];
     }
@@ -200,10 +215,11 @@
       const b0 = new Array(16).fill(0);
 
       // Flags byte: Adata || (M-2)/2 || L-1
-      let flags = 0;
-      if (associatedData && associatedData.length > 0) flags |= 0x40;
-      flags |= ((M - 2) / 2) << 3;
-      flags |= L - 1;
+      // Construct flags byte using arithmetic instead of bitwise operations
+      const adataFlag = (associatedData && associatedData.length > 0) ? 0x40 : 0;
+      const mField = ((M - 2) / 2) * 8;  // Shift left 3 is multiply by 8
+      const lField = L - 1;
+      const flags = adataFlag + mField + lField;
 
       b0[0] = flags;
 
@@ -214,7 +230,7 @@
 
       // Encode message length in L bytes (big-endian)
       for (let i = 0; i < L && i < 4; i++) {
-        b0[15 - i] = (messageLength >>> (i * 8)) & 0xFF;
+        b0[15 - i] = OpCodes.GetByte(messageLength, i);
       }
 
       blocks.push(b0);
@@ -239,10 +255,15 @@
 
       // Encode length according to CCM specification
       if (aadLen < 0xFF00) {
-        const lengthWord = OpCodes.Pack16BE((aadLen >>> 8) & 0xFF, aadLen & 0xFF);
+        const lengthWord = OpCodes.Pack16BE(OpCodes.GetByte(aadLen, 1), OpCodes.GetByte(aadLen, 0));
         encodedLength = OpCodes.Unpack16BE(lengthWord);
       } else if (aadLen < 0x100000000) {
-        const lengthWord = OpCodes.Pack32BE((aadLen >>> 24) & 0xFF, (aadLen >>> 16) & 0xFF, (aadLen >>> 8) & 0xFF, aadLen & 0xFF);
+        const lengthWord = OpCodes.Pack32BE(
+          OpCodes.GetByte(aadLen, 3),
+          OpCodes.GetByte(aadLen, 2),
+          OpCodes.GetByte(aadLen, 1),
+          OpCodes.GetByte(aadLen, 0)
+        );
         const lengthBytes = OpCodes.Unpack32BE(lengthWord);
         encodedLength = [0xFF, 0xFE, lengthBytes[0], lengthBytes[1], lengthBytes[2], lengthBytes[3]];
       } else {
@@ -302,7 +323,7 @@
 
       // Encode counter in L bytes (big-endian)
       for (let i = 0; i < L && i < 4; i++) {
-        block[15 - i] = (counter >>> (i * 8)) & 0xFF;
+        block[15 - i] = OpCodes.GetByte(counter, i);
       }
 
       return block;

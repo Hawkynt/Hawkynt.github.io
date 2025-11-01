@@ -282,7 +282,7 @@
       const s60 = (this.lfsr[1] >>> 28) | (this.lfsr[2] << 4);
       const s79 = (this.lfsr[2] >>> 15) | (this.lfsr[3] << 17);
       const s93 = (this.lfsr[2] >>> 29) | (this.lfsr[3] << 3);
-      const s94 = (this.lfsr[2] >>> 30) | (this.lfsr[3] << 2);
+      const s94 = (this.lfsr[2] >>> 31) | (this.lfsr[3] << 1);
 
       // h(x) = b12s8 + s13s20 + b95s42 + s60s79 + b12b95s94 + s93
       //        + b2 + b15 + b36 + b45 + b64 + b73 + b89
@@ -310,8 +310,10 @@
       this.out[3] = (output >>> 24) & 0xFF;
 
       // Update registers (after initialization, no output feedback)
-      this.nfsr = this._shift(this.nfsr, this._getOutputNFSR() ^ this.lfsr[0]);
-      this.lfsr = this._shift(this.lfsr, this._getOutputLFSR());
+      const nfsrFeedback = this._getOutputNFSR() ^ this.lfsr[0];
+      const lfsrFeedback = this._getOutputLFSR();
+      this.nfsr = this._shift(this.nfsr, nfsrFeedback);
+      this.lfsr = this._shift(this.lfsr, lfsrFeedback);
     }
 
     // Get next keystream byte

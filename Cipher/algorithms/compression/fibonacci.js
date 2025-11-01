@@ -215,7 +215,7 @@
           }
         }
 
-        // Build bit string from least significant to most significant + terminator TODO: use bitstream from opcodes
+        // Build bit string from least significant to most significant + terminator
         let result = '';
         for (let i = 0; i <= maxBitSet; i++) {
           result += (bits[i] || 0).toString();

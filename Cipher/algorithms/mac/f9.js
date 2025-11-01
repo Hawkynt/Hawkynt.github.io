@@ -93,12 +93,24 @@
     constructor(algorithm) {
       super(algorithm);
       this._key = null;
+      this._tagSize = 4; // Default tag size (4 bytes as per 3GPP spec)
       this.blockCipher = null;
       this.modifiedKey = null;
       this.IV = null;
       this.ACC = null;
       this.buflen = 0;
       this.blockSize = 8; // KASUMI block size
+    }
+
+    set tagSize(size) {
+      if (size < 4 || size > 8) {
+        throw new Error(`Invalid tag size: ${size} bytes (expected 4-8)`);
+      }
+      this._tagSize = size;
+    }
+
+    get tagSize() {
+      return this._tagSize;
     }
 
     set key(keyBytes) {
@@ -126,10 +138,7 @@
       this.blockCipher.key = this._key;
 
       // Create modified key (key XOR 0xAA)
-      this.modifiedKey = new Array(16);
-      for (let i = 0; i < 16; ++i) {
-        this.modifiedKey[i] = this._key[i] ^ 0xAA;
-      }
+      this.modifiedKey = OpCodes.XorArrayWithByte(this._key, 0xAA);
 
       // Initialize state
       this.IV = new Uint8Array(this.blockSize);
@@ -207,15 +216,15 @@
 
       // Encrypt accumulator to get final MAC
       finalCipher.Feed(Array.from(this.ACC));
-      const tag = finalCipher.Result();
+      const fullTag = finalCipher.Result();
 
       // Reset for next operation
       this.IV.fill(0);
       this.ACC.fill(0);
       this.buflen = 0;
 
-      // Return tag (typically first 4 bytes for F9)
-      return tag;
+      // Return only the requested tag size (default 4 bytes as per 3GPP spec)
+      return fullTag.slice(0, this._tagSize);
     }
   }
 

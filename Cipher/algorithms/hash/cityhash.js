@@ -142,7 +142,7 @@
         const hash64 = this.cityHash64(bytes);
 
         // Convert to 8-byte array (little-endian byte order for test vector compatibility)
-  //TODO: use OpCodes to unpack
+        // Note: OpCodes 64-bit functions use high/low 32-bit split, not BigInt
         return [
           Number((hash64 >> 56n) & 0xffn),
           Number((hash64 >> 48n) & 0xffn),
@@ -307,7 +307,7 @@
       }
 
       fetch64(bytes, offset) {
-  //TODO: use OpCodes to pack
+        // Note: OpCodes Pack64LE works with separate bytes, not pre-packed 32-bit values
         const low = BigInt(this.fetch32(bytes, offset));
         const high = BigInt(this.fetch32(bytes, offset + 4));
         return low + (high << 32n);

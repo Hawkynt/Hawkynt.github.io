@@ -440,24 +440,32 @@
 
       const adLen = this._associatedData.length;
       const mLen = this.inputBuffer.length;
+
+      // Determine actual message length (plaintext for encrypt, plaintext for decrypt)
+      let actualMsgLen = mLen;
+      if (this.isInverse && mLen > 0) {
+        // During decryption, the input includes the tag, so subtract it
+        if (mLen < 16) {
+          throw new Error("Ciphertext too short - must include 16-byte tag");
+        }
+        actualMsgLen = mLen - 16;
+      }
+
       const output = new Array(mLen + 16);  // Message + Tag
 
       // Process associated data
       if (adLen > 0) {
-        this._processAssociatedData(mLen === 0);
-      } else if (mLen === 0) {
+        this._processAssociatedData(actualMsgLen === 0);
+      } else if (actualMsgLen === 0) {
         // Empty AD and empty message
         this.state[STATE_INBYTES - 1] ^= (1 << this.algorithm.LAST_THREE_BITS_OFFSET);
       }
 
       // Encrypt/decrypt the message
-      if (mLen > 0) {
+      if (actualMsgLen > 0) {
         if (this.isInverse) {
           // Decryption: extract tag first
-          if (mLen < 16) {
-            throw new Error("Ciphertext too short - must include 16-byte tag");
-          }
-          const ctLen = mLen - 16;
+          const ctLen = actualMsgLen;
           const ciphertext = this.inputBuffer.slice(0, ctLen);
           const receivedTag = this.inputBuffer.slice(ctLen, mLen);
 
@@ -502,12 +510,35 @@
           return output.slice(0, ciphertext.length + 16);
         }
       } else {
-        // No message, just generate tag
-        PHOTON_Permutation(this.state, this.state_2d);
-        const tag = this.state.slice(0, 16);
+        // Empty plaintext case
+        if (this.isInverse) {
+          // Decryption with empty plaintext: verify tag and return empty
+          const receivedTag = this.inputBuffer.slice(0, 16);
 
-        this.inputBuffer = [];
-        return tag;
+          // Generate expected tag
+          PHOTON_Permutation(this.state, this.state_2d);
+          const computedTag = this.state.slice(0, 16);
+
+          // Constant-time tag comparison
+          let tagMatch = 0xFF;
+          for (let i = 0; i < 16; ++i) {
+            tagMatch &= (computedTag[i] ^ receivedTag[i]) - 1;
+          }
+
+          if (tagMatch !== 0xFF) {
+            throw new Error("Authentication tag verification failed");
+          }
+
+          this.inputBuffer = [];
+          return [];  // Return empty plaintext
+        } else {
+          // Encryption with empty plaintext: just generate tag
+          PHOTON_Permutation(this.state, this.state_2d);
+          const tag = this.state.slice(0, 16);
+
+          this.inputBuffer = [];
+          return tag;
+        }
       }
     }
 
