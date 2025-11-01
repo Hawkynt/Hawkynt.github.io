@@ -1204,10 +1204,13 @@ class CipherController {
         const testedAlgorithms = algorithms.filter(alg => alg.testResults);
 
         // Update summary statistics using TestAPI results
-        let passed = 0, partial = 0, failed = 0;
+        let passed = 0, partial = 0, failed = 0, skipped = 0;
 
         testedAlgorithms.forEach(alg => {
-            if (alg.testResults.total === 0) return;
+            if (alg.testResults.total === 0) {
+                skipped++;
+                return;
+            }
 
             const results = alg.testResults;
 
@@ -1222,15 +1225,20 @@ class CipherController {
             }
         });
 
+        // Count algorithms without test results as skipped
+        skipped += algorithms.length - testedAlgorithms.length;
+
         // Update summary UI
         const passedEl = document.getElementById('passed-algorithms');
         const partialEl = document.getElementById('partial-algorithms');
         const failedEl = document.getElementById('failed-algorithms');
+        const skippedEl = document.getElementById('skipped-algorithms');
         const successRateEl = document.getElementById('success-rate');
 
         if (passedEl) passedEl.textContent = passed;
         if (partialEl) partialEl.textContent = partial;
         if (failedEl) failedEl.textContent = failed;
+        if (skippedEl) skippedEl.textContent = skipped;
         if (successRateEl) {
             const total = passed + partial + failed;
             const rate = total > 0 ? Math.round((passed / total) * 100) : 0;
