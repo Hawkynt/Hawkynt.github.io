@@ -3,40 +3,24 @@
  * Mathematical utilities and data structures for fountain codes
  * Includes: Degree distributions, Bipartite graphs, Sparse matrices
  * (c)2006-2025 Hawkynt
+ *
+ * This is a utility library, NOT an algorithm implementation.
+ * Used by: LT Codes, Raptor Codes, RaptorQ
  */
-
-// Load AlgorithmFramework (REQUIRED)
 
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     // AMD
-    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+    define([], factory);
   } else if (typeof module === 'object' && module.exports) {
     // Node.js/CommonJS
-    module.exports = factory(
-      require('../../AlgorithmFramework'),
-      require('../../OpCodes')
-    );
+    module.exports = factory();
   } else {
-    // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    // Browser global
+    root.FountainFoundation = factory();
   }
-}((function() {
-  if (typeof globalThis !== 'undefined') return globalThis;
-  if (typeof window !== 'undefined') return window;
-  if (typeof global !== 'undefined') return global;
-  if (typeof self !== 'undefined') return self;
-  throw new Error('Unable to locate global object');
-})(), function (AlgorithmFramework, OpCodes) {
+}(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-
-  if (!AlgorithmFramework) {
-    throw new Error('AlgorithmFramework dependency is required');
-  }
-
-  if (!OpCodes) {
-    throw new Error('OpCodes dependency is required');
-  }
 
   // ===== MATHEMATICAL FOUNDATIONS =====
 
@@ -434,29 +418,19 @@
 
   // ===== EXPORTS =====
 
-  // Make utilities globally available for fountain code implementations
-  if (typeof window !== 'undefined') {
-    window.FountainFoundation = {
-      GaloisField,
-      SparseMatrix,
-      BipartiteGraph,
-      DegreeDistribution,
-      SeededRandom,
-      PerformanceProfiler
-    };
-  }
-
-  if (typeof global !== 'undefined') {
-    global.FountainFoundation = {
-      GaloisField,
-      SparseMatrix,
-      BipartiteGraph,
-      DegreeDistribution,
-      SeededRandom,
-      PerformanceProfiler
-    };
-  }
-
+  /**
+   * Fountain Foundation Library
+   *
+   * Utility library providing mathematical foundations for fountain codes:
+   * - GaloisField: Galois Field GF(2^8) arithmetic
+   * - SparseMatrix: Efficient sparse matrix operations
+   * - BipartiteGraph: Bipartite graph for encoding/decoding
+   * - DegreeDistribution: Degree distribution generators (Robust Soliton, etc.)
+   * - SeededRandom: Deterministic seeded random number generator
+   * - PerformanceProfiler: Performance measurement utilities
+   *
+   * Used by: LT Codes, Raptor Codes, RaptorQ
+   */
   return {
     GaloisField,
     SparseMatrix,
