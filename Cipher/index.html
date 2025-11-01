@@ -335,6 +335,10 @@
                                 <div class="test-stat-label">❌ Failed</div>
                             </div>
                             <div class="test-stat">
+                                <div class="test-stat-number" id="skipped-algorithms" style="color: #718096;">0</div>
+                                <div class="test-stat-label">⊘ Skipped</div>
+                            </div>
+                            <div class="test-stat">
                                 <div class="test-stat-number" id="success-rate">0%</div>
                                 <div class="test-stat-label">Success Rate</div>
                             </div>
@@ -600,6 +604,7 @@
     <script src="./algorithms/block/seed.js"></script>
     <script src="./algorithms/block/serpent.js"></script>
     <script src="./algorithms/block/shacal-2.js"></script>
+    <script src="./algorithms/block/shark-cboxes.data.js"></script>
     <script src="./algorithms/block/shark.js"></script>
     <script src="./algorithms/block/shx.js"></script>
     <script src="./algorithms/block/simon.js"></script>
@@ -797,8 +802,9 @@
     <script src="./algorithms/hash/keccak-256.js"></script>
     <script src="./algorithms/hash/keccak-384.js"></script>
     <script src="./algorithms/hash/keccak-512.js"></script>
-    <script src="./algorithms/hash/kupyna256.js"></script>
-    <script src="./algorithms/hash/kupyna512.js"></script>
+    <!-- Educational byte-array implementations - disabled (main DSTU7564 supports all output sizes) -->
+    <!-- <script src="./algorithms/hash/kupyna256.js"></script> -->
+    <!-- <script src="./algorithms/hash/kupyna512.js"></script> -->
     <script src="./algorithms/hash/lsh-224.js"></script>
     <script src="./algorithms/hash/lsh-256.js"></script>
     <script src="./algorithms/hash/lsh-384.js"></script>
@@ -894,7 +900,7 @@
     <script src="./algorithms/special/3way.js"></script>
     <script src="./algorithms/special/aes-siv.js"></script>
     <!-- ascon.js moved to stream category to avoid duplicate registration -->
-    <script src="./algorithms/special/chacha20-poly1305.js"></script>
+    <script src="./algorithms/aead/chacha20-poly1305.js"></script>
     <script src="./algorithms/special/elephant.js"></script>
     <script src="./algorithms/special/fiat-shamir.js"></script>
     <script src="./algorithms/special/fish.js"></script>
@@ -912,7 +918,7 @@
     <script src="./algorithms/stream/acorn.js"></script>
     <script src="./algorithms/stream/aegis-128.js"></script>
     <script src="./algorithms/stream/aes-gcm-siv.js"></script>
-    <script src="./algorithms/stream/ascon.js"></script>
+    <script src="./algorithms/aead/ascon.js"></script>
     <script src="./algorithms/stream/beth-piper.js"></script>
     <script src="./algorithms/stream/caracachs.js"></script>
     <script src="./algorithms/stream/chacha20.js"></script>
