@@ -3212,7 +3212,9 @@ class RubyPlugin extends LanguagePlugin {
   }
 
   _generateFallbackNode(node, options) {
-    return this._indent(`# TODO: Implement ${node.type}\n`);
+    // Generate minimal valid Ruby code with warning comment
+    return this._indent(`# WARNING: Unhandled AST node type: ${node.type}\n`) +
+           this._indent(`raise NotImplementedError, "Not implemented: ${node.type}"\n`);
   }
 
   _mapClassToRuby(className) {

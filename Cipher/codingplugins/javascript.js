@@ -130,8 +130,34 @@ class JavaScriptPlugin extends LanguagePlugin {
         return this._generateLiteral(node, options);
       case 'ThisExpression':
         return 'this';
+      case 'EmptyStatement':
+        return this._generateEmptyStatement(node, options);
+      case 'UnaryExpression':
+        return this._generateUnaryExpression(node, options);
+      case 'UpdateExpression':
+        return this._generateUpdateExpression(node, options);
+      case 'IfStatement':
+        return this._generateIfStatement(node, options);
+      case 'ForStatement':
+        return this._generateForStatement(node, options);
+      case 'WhileStatement':
+        return this._generateWhileStatement(node, options);
+      case 'SwitchStatement':
+        return this._generateSwitchStatement(node, options);
+      case 'ArrayExpression':
+        return this._generateArrayExpression(node, options);
+      case 'ObjectExpression':
+        return this._generateObjectExpression(node, options);
+      case 'FunctionExpression':
+        return this._generateFunctionExpression(node, options);
+      case 'ArrowFunctionExpression':
+        return this._generateArrowFunctionExpression(node, options);
       default:
-        return `// TODO: Implement ${node.type}`;
+        // Better fallback: try to extract basic structure
+        if (node.body && Array.isArray(node.body)) {
+          return this._generateProgram(node, options);
+        }
+        return `/* Unimplemented AST node: ${node.type} */`;
     }
   }
 
@@ -379,10 +405,21 @@ class JavaScriptPlugin extends LanguagePlugin {
    * @private
    */
   _generateCallExpression(node, options) {
-    const callee = this._generateNode(node.callee, options);
-    const args = node.arguments ? 
+    const args = node.arguments ?
       node.arguments.map(arg => this._generateNode(arg, options)).join(', ') : '';
-    
+
+    // Handle member expressions with method calls
+    if (node.callee.type === 'MemberExpression') {
+      const object = this._generateNode(node.callee.object, options);
+      const propertyName = node.callee.property.name || node.callee.property;
+
+      // Handle OpCodes method calls
+      if (object === 'OpCodes') {
+        return this._generateOpCodesCall(propertyName, args);
+      }
+    }
+
+    const callee = this._generateNode(node.callee, options);
     return `${callee}(${args})`;
   }
 
@@ -436,6 +473,358 @@ class JavaScriptPlugin extends LanguagePlugin {
     } else {
       return String(node.value);
     }
+  }
+
+  /**
+   * Generate empty statement
+   * @private
+   */
+  _generateEmptyStatement(node, options) {
+    return this._indent(';\n');
+  }
+
+  /**
+   * Generate unary expression
+   * @private
+   */
+  _generateUnaryExpression(node, options) {
+    const argument = this._generateNode(node.argument, options);
+    const operator = node.operator;
+
+    // Operators like typeof, void, delete need space
+    const needsSpace = ['typeof', 'void', 'delete'].includes(operator);
+
+    if (node.prefix) {
+      return needsSpace ? `${operator} ${argument}` : `${operator}${argument}`;
+    } else {
+      // Postfix (rare, usually handled by UpdateExpression)
+      return `${argument}${operator}`;
+    }
+  }
+
+  /**
+   * Generate update expression (++/--)
+   * @private
+   */
+  _generateUpdateExpression(node, options) {
+    const argument = this._generateNode(node.argument, options);
+    const operator = node.operator;
+
+    if (node.prefix) {
+      return `${operator}${argument}`;
+    } else {
+      return `${argument}${operator}`;
+    }
+  }
+
+  /**
+   * Generate if statement
+   * @private
+   */
+  _generateIfStatement(node, options) {
+    let code = '';
+
+    code += this._indent('if (');
+    code += this._generateNode(node.test, options);
+    code += ') ';
+
+    // Handle consequent (if branch)
+    if (node.consequent.type === 'BlockStatement') {
+      code += '{\n';
+      this.indentLevel++;
+      code += this._generateNode(node.consequent, options);
+      this.indentLevel--;
+      code += this._indent('}');
+    } else {
+      code += '\n';
+      this.indentLevel++;
+      code += this._generateNode(node.consequent, options);
+      this.indentLevel--;
+    }
+
+    // Handle alternate (else branch)
+    if (node.alternate) {
+      code += ' else ';
+
+      if (node.alternate.type === 'IfStatement') {
+        // else if
+        code += this._generateNode(node.alternate, options).trim();
+      } else if (node.alternate.type === 'BlockStatement') {
+        code += '{\n';
+        this.indentLevel++;
+        code += this._generateNode(node.alternate, options);
+        this.indentLevel--;
+        code += this._indent('}');
+      } else {
+        code += '\n';
+        this.indentLevel++;
+        code += this._generateNode(node.alternate, options);
+        this.indentLevel--;
+      }
+    }
+
+    code += '\n';
+    return code;
+  }
+
+  /**
+   * Generate for statement
+   * @private
+   */
+  _generateForStatement(node, options) {
+    let code = this._indent('for (');
+
+    // Init
+    if (node.init) {
+      const initCode = this._generateNode(node.init, options);
+      code += initCode.trim().replace(/;\s*$/, '');
+    }
+    code += '; ';
+
+    // Test
+    if (node.test) {
+      code += this._generateNode(node.test, options);
+    }
+    code += '; ';
+
+    // Update
+    if (node.update) {
+      code += this._generateNode(node.update, options);
+    }
+
+    code += ') ';
+
+    // Body
+    if (node.body.type === 'BlockStatement') {
+      code += '{\n';
+      this.indentLevel++;
+      code += this._generateNode(node.body, options);
+      this.indentLevel--;
+      code += this._indent('}\n');
+    } else {
+      code += '\n';
+      this.indentLevel++;
+      code += this._generateNode(node.body, options);
+      this.indentLevel--;
+    }
+
+    return code;
+  }
+
+  /**
+   * Generate while statement
+   * @private
+   */
+  _generateWhileStatement(node, options) {
+    let code = this._indent('while (');
+    code += this._generateNode(node.test, options);
+    code += ') ';
+
+    // Body
+    if (node.body.type === 'BlockStatement') {
+      code += '{\n';
+      this.indentLevel++;
+      code += this._generateNode(node.body, options);
+      this.indentLevel--;
+      code += this._indent('}\n');
+    } else {
+      code += '\n';
+      this.indentLevel++;
+      code += this._generateNode(node.body, options);
+      this.indentLevel--;
+    }
+
+    return code;
+  }
+
+  /**
+   * Generate switch statement
+   * @private
+   */
+  _generateSwitchStatement(node, options) {
+    let code = this._indent('switch (');
+    code += this._generateNode(node.discriminant, options);
+    code += ') {\n';
+
+    this.indentLevel++;
+
+    // Generate cases
+    if (node.cases && node.cases.length > 0) {
+      node.cases.forEach(caseNode => {
+        if (caseNode.test) {
+          // Regular case
+          code += this._indent(`case ${this._generateNode(caseNode.test, options)}:\n`);
+        } else {
+          // Default case
+          code += this._indent('default:\n');
+        }
+
+        // Case body
+        this.indentLevel++;
+        if (caseNode.consequent && caseNode.consequent.length > 0) {
+          caseNode.consequent.forEach(stmt => {
+            code += this._generateNode(stmt, options);
+          });
+        }
+        this.indentLevel--;
+      });
+    }
+
+    this.indentLevel--;
+    code += this._indent('}\n');
+
+    return code;
+  }
+
+  /**
+   * Generate array expression
+   * @private
+   */
+  _generateArrayExpression(node, options) {
+    if (!node.elements || node.elements.length === 0) {
+      return '[]';
+    }
+
+    const elements = node.elements.map(elem => {
+      if (elem === null) {
+        return ''; // Sparse array
+      }
+      return this._generateNode(elem, options);
+    });
+
+    // Simple inline for short arrays
+    if (elements.length <= 5 && elements.every(e => e.length < 20)) {
+      return `[${elements.join(', ')}]`;
+    }
+
+    // Multi-line for longer arrays
+    let code = '[\n';
+    this.indentLevel++;
+    elements.forEach((elem, idx) => {
+      code += this._indent(elem);
+      if (idx < elements.length - 1) {
+        code += ',';
+      }
+      code += '\n';
+    });
+    this.indentLevel--;
+    code += this._indent(']');
+
+    return code;
+  }
+
+  /**
+   * Generate object expression
+   * @private
+   */
+  _generateObjectExpression(node, options) {
+    if (!node.properties || node.properties.length === 0) {
+      return '{}';
+    }
+
+    // Simple inline for small objects
+    if (node.properties.length === 1) {
+      const prop = node.properties[0];
+      const key = prop.key.name || this._generateNode(prop.key, options);
+      const value = this._generateNode(prop.value, options);
+      return `{ ${key}: ${value} }`;
+    }
+
+    // Multi-line for larger objects
+    let code = '{\n';
+    this.indentLevel++;
+
+    node.properties.forEach((prop, idx) => {
+      let key;
+      if (prop.computed) {
+        key = `[${this._generateNode(prop.key, options)}]`;
+      } else if (prop.key.type === 'Identifier') {
+        key = prop.key.name;
+      } else {
+        key = this._generateNode(prop.key, options);
+      }
+
+      const value = this._generateNode(prop.value, options);
+      code += this._indent(`${key}: ${value}`);
+
+      if (idx < node.properties.length - 1) {
+        code += ',';
+      }
+      code += '\n';
+    });
+
+    this.indentLevel--;
+    code += this._indent('}');
+
+    return code;
+  }
+
+  /**
+   * Generate function expression
+   * @private
+   */
+  _generateFunctionExpression(node, options) {
+    let code = 'function';
+
+    // Named function expression
+    if (node.id) {
+      code += ` ${node.id.name}`;
+    }
+
+    code += '(';
+
+    // Parameters
+    if (node.params && node.params.length > 0) {
+      const params = node.params.map(param => param.name || 'param');
+      code += params.join(', ');
+    }
+
+    code += ') {\n';
+
+    // Function body
+    this.indentLevel++;
+    if (node.body) {
+      const bodyCode = this._generateNode(node.body, options);
+      code += bodyCode || this._indent("throw new Error('Not implemented');\n");
+    } else {
+      code += this._indent("throw new Error('Not implemented');\n");
+    }
+    this.indentLevel--;
+
+    code += this._indent('}');
+
+    return code;
+  }
+
+  /**
+   * Generate arrow function expression
+   * @private
+   */
+  _generateArrowFunctionExpression(node, options) {
+    let code = '(';
+
+    // Parameters
+    if (node.params && node.params.length > 0) {
+      const params = node.params.map(param => param.name || 'param');
+      code += params.join(', ');
+    }
+
+    code += ') => ';
+
+    // Body
+    if (node.body.type === 'BlockStatement') {
+      code += '{\n';
+      this.indentLevel++;
+      const bodyCode = this._generateNode(node.body, options);
+      code += bodyCode || this._indent("throw new Error('Not implemented');\n");
+      this.indentLevel--;
+      code += this._indent('}');
+    } else {
+      // Expression body (implicit return)
+      code += this._generateNode(node.body, options);
+    }
+
+    return code;
   }
 
   /**
@@ -667,6 +1056,17 @@ class JavaScriptPlugin extends LanguagePlugin {
       packageManager: 'npm',
       documentation: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript'
     };
+  }
+
+  /**
+   * Generate OpCodes method call - JavaScript keeps OpCodes as-is
+   * since it's the source language
+   * @private
+   */
+  _generateOpCodesCall(methodName, args) {
+    // JavaScript is the source language, so OpCodes calls stay the same
+    // Just ensure proper formatting
+    return `OpCodes.${methodName}(${args})`;
   }
 }
 

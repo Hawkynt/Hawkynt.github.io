@@ -139,7 +139,8 @@ class FreeBasicPlugin extends LanguagePlugin {
       case 'Literal':
         return this._generateLiteral(node, options);
       default:
-        return "' TODO: Implement " + node.type;
+        // Generate minimal valid BASIC code with warning comment
+        return "' WARNING: Unhandled AST node type: " + node.type + "\nError 1, \"Not implemented: " + node.type + "\"";
     }
   }
 

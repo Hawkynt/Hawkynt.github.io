@@ -1661,7 +1661,8 @@ class CppPlugin extends LanguagePlugin {
       return `${left} ${node.operator} ${right}`;
     }
 
-    return `/* Unhandled AST node: ${node.type} */`;
+    // Generate minimal valid C++ stub with warning
+    return `{\n${this._indent('// WARNING: Unhandled AST node type: ' + node.type + '\n')}${this._indent('throw std::runtime_error("Not implemented: ' + node.type + '");\n')}}`;
   }
 
   /**

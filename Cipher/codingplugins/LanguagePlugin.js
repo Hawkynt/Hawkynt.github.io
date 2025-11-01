@@ -1,10 +1,34 @@
 /**
  * 🚀 Cipher Coding Plugins - Language Plugin Framework
  * Universal Language Plugin Interface and Registry System
- * 
+ *
  * This file provides the base classes and interfaces needed to implement
  * language plugins for the multi-language code generation engine.
  */
+
+(function(root, factory) {
+  'use strict';
+
+  // UMD pattern for browser and Node.js compatibility
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../DebugConfig'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    const DebugConfig = require('../DebugConfig.js');
+    module.exports = factory(DebugConfig);
+  } else {
+    // Browser globals - DebugConfig should already be loaded
+    factory(root.DebugConfig);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function(DebugConfig) {
+  'use strict';
 
 /**
  * Result of code generation process
@@ -411,16 +435,24 @@ class LanguagePlugins {
   }
 }
 
-// Export for use in other modules
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    LanguagePlugin,
-    LanguagePlugins
-  };
-}
+// Export for use in other modules and browser
+const exports = {
+  LanguagePlugin,
+  LanguagePlugins
+};
 
-// Global registration for browser environment
+// Browser global registration
 if (typeof window !== 'undefined') {
   window.LanguagePlugin = LanguagePlugin;
   window.LanguagePlugins = LanguagePlugins;
 }
+
+// Also set on global object if available
+if (typeof globalThis !== 'undefined') {
+  globalThis.LanguagePlugin = LanguagePlugin;
+  globalThis.LanguagePlugins = LanguagePlugins;
+}
+
+return exports;
+
+})); // End of UMD wrapper

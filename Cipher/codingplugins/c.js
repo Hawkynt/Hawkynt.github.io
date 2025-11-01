@@ -436,15 +436,22 @@ class CPlugin extends LanguagePlugin {
     // Function body implementation
     if (node.body) {
       const bodyCode = this._generateNode(node.body, options);
-      code += bodyCode || this._indent('/* Function body not implemented */\n');
-    } else {
-      code += this._indent('/* Function body not implemented */\n');
-      if (isCryptoFunction) {
-        code += this._indent('return CRYPTO_ERROR_NOT_IMPLEMENTED;\n');
+
+      // Check if body is effectively empty (no statements, just braces or whitespace)
+      const isEmptyBody = !bodyCode ||
+                         bodyCode.trim() === '' ||
+                         bodyCode.replace(/[\s\{\}]/g, '') === '' ||
+                         (node.body.type === 'BlockStatement' && (!node.body.body || node.body.body.length === 0));
+
+      if (isEmptyBody) {
+        // Empty body - generate type-aware fallback
+        code += this._generateFunctionBodyFallback(returnType, isCryptoFunction, parameters, options);
       } else {
-        code += this._indent('fprintf(stderr, "Function not implemented: %s\\n", __func__);\n');
-        code += this._indent('return -1;\n');
+        code += bodyCode;
       }
+    } else {
+      // No body provided - generate type-aware fallback
+      code += this._generateFunctionBodyFallback(returnType, isCryptoFunction, parameters, options);
     }
 
     // Add cleanup section for crypto functions
@@ -481,6 +488,71 @@ class CPlugin extends LanguagePlugin {
     return cryptoKeywords.some(keyword =>
       functionName.toLowerCase().includes(keyword)
     );
+  }
+
+  /**
+   * Generate type-aware fallback implementation for empty/unimplemented function bodies
+   * @private
+   */
+  _generateFunctionBodyFallback(returnType, isCryptoFunction, parameters, options) {
+    let code = '';
+
+    // Add unused parameter attributes to avoid warnings
+    if (parameters.length > 0) {
+      code += this._indent('/* Mark parameters as unused to avoid compiler warnings */\n');
+      parameters.forEach(param => {
+        // Extract parameter name from "type name" format
+        const paramName = param.split(' ').pop().replace(/[^a-zA-Z0-9_]/g, '');
+        code += this._indent(`(void)${paramName};\n`);
+      });
+      code += this._indent('\n');
+    }
+
+    code += this._indent('/* Fallback implementation - function body not provided */\n');
+
+    // Crypto functions have special error codes
+    if (isCryptoFunction) {
+      code += this._indent('fprintf(stderr, "Cryptographic function not implemented: %s\\n", __func__);\n');
+      code += this._indent('return CRYPTO_ERROR_NOT_IMPLEMENTED;\n');
+      return code;
+    }
+
+    // Type-aware return value based on return type
+    if (returnType === 'void') {
+      // Void functions: just return
+      code += this._indent('/* Empty function body - void return type */\n');
+      code += this._indent('return;\n');
+    } else if (returnType.includes('*')) {
+      // Pointer return types: return NULL
+      code += this._indent('/* Function not implemented - returning NULL for safety */\n');
+      code += this._indent('fprintf(stderr, "Function not implemented: %s\\n", __func__);\n');
+      code += this._indent('return NULL;\n');
+    } else if (returnType === 'bool' || returnType === '_Bool') {
+      // Boolean return types: return false
+      code += this._indent('/* Function not implemented - returning false */\n');
+      code += this._indent('fprintf(stderr, "Function not implemented: %s\\n", __func__);\n');
+      code += this._indent('return false;\n');
+    } else if (returnType.includes('int') || returnType === 'long' || returnType === 'short' ||
+               returnType === 'size_t' || returnType === 'ssize_t') {
+      // Integer/size return types: return -1 or 0 depending on signed/unsigned
+      const isUnsigned = returnType.includes('unsigned') || returnType.includes('uint') ||
+                        returnType === 'size_t';
+      code += this._indent(`/* Function not implemented - returning ${isUnsigned ? '0' : '-1'} */\n`);
+      code += this._indent('fprintf(stderr, "Function not implemented: %s\\n", __func__);\n');
+      code += this._indent(`return ${isUnsigned ? '0' : '-1'};\n`);
+    } else if (returnType === 'float' || returnType === 'double') {
+      // Floating point: return 0.0
+      code += this._indent('/* Function not implemented - returning 0.0 */\n');
+      code += this._indent('fprintf(stderr, "Function not implemented: %s\\n", __func__);\n');
+      code += this._indent('return 0.0;\n');
+    } else {
+      // Default fallback: try to return 0 with cast
+      code += this._indent('/* Function not implemented - returning default value */\n');
+      code += this._indent('fprintf(stderr, "Function not implemented: %s\\n", __func__);\n');
+      code += this._indent(`return (${returnType})0;\n`);
+    }
+
+    return code;
   }
 
   /**
@@ -2484,7 +2556,26 @@ class CPlugin extends LanguagePlugin {
     }
 
     console.warn(`Unknown AST node type: ${node.type}`);
-    return `/* TODO: Implement ${node.type} */`;
+
+    // Generate a minimal valid C code stub instead of just a comment
+    let fallback = '';
+    fallback += `/* WARNING: Unhandled AST node type: ${node.type} */\n`;
+    fallback += `/* This is a fallback stub - proper implementation needed */\n`;
+
+    // Try to provide useful context if available
+    if (node.raw) {
+      fallback += `/* Original: ${node.raw} */\n`;
+    } else if (node.value !== undefined) {
+      fallback += `/* Value: ${JSON.stringify(node.value)} */\n`;
+    } else if (node.name) {
+      fallback += `/* Name: ${node.name} */\n`;
+    }
+
+    // Return a safe default value that will compile
+    // For expressions, return 0 (most generic fallback)
+    fallback += '0 /* fallback value */';
+
+    return fallback;
   }
 
   // ===== HELPER METHODS =====

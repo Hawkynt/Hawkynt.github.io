@@ -293,7 +293,8 @@ class PerlPlugin extends LanguagePlugin {
 
       default:
         this._addWarning(`Unsupported AST node type: ${node.type}`);
-        return `# TODO: Implement ${node.type}`;
+        // Generate minimal valid Perl code with warning comment
+        return '{\n' + this._indent('# WARNING: Unhandled AST node type: ' + node.type + '\n') + this._indent('die "Not implemented: ' + node.type + '";\n') + '}';
     }
   }
 
@@ -1855,7 +1856,7 @@ class PerlPlugin extends LanguagePlugin {
     }
 
     if (this.usedModules.has('Scalar::Util') || options.useCPANModules) {
-      coreModules.push('Scalar::Util qw(blessed defined looks_like_number)');
+      coreModules.push('Scalar::Util qw(blessed looks_like_number)');
     }
 
     if (coreModules.length > 0) {

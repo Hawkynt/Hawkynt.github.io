@@ -311,9 +311,15 @@ class KotlinPlugin extends LanguagePlugin {
     this.indentLevel++;
     if (node.body) {
       const bodyCode = this._generateNode(node.body, options);
-      code += bodyCode || this._indent("return TODO(\"Not implemented\")\n");
+      if (bodyCode && bodyCode.trim()) {
+        code += bodyCode;
+      } else {
+        // Empty function body - return sensible default based on return type
+        code += this._indent(this._getDefaultReturn(returnType) + '\n');
+      }
     } else {
-      code += this._indent("return TODO(\"Not implemented\")\n");
+      // No body provided - return sensible default based on return type
+      code += this._indent(this._getDefaultReturn(returnType) + '\n');
     }
     this.indentLevel--;
     
@@ -411,9 +417,15 @@ class KotlinPlugin extends LanguagePlugin {
     this.indentLevel++;
     if (node.value.body) {
       const bodyCode = this._generateNode(node.value.body, options);
-      code += bodyCode || this._indent("return TODO(\"Not implemented\")\n");
+      if (bodyCode && bodyCode.trim()) {
+        code += bodyCode;
+      } else {
+        // Empty method body - return sensible default based on return type
+        code += this._indent(this._getDefaultReturn(returnType) + '\n');
+      }
     } else {
-      code += this._indent("return TODO(\"Not implemented\")\n");
+      // No body provided - return sensible default based on return type
+      code += this._indent(this._getDefaultReturn(returnType) + '\n');
     }
     this.indentLevel--;
     
@@ -428,9 +440,10 @@ class KotlinPlugin extends LanguagePlugin {
    */
   _generateBlock(node, options) {
     if (!node.body || node.body.length === 0) {
-      return this._indent("return TODO(\"Empty block\")\n");
+      // Empty block - just return empty string, parent will handle defaults
+      return '';
     }
-    
+
     return node.body
       .map(stmt => this._generateNode(stmt, options))
       .filter(line => line.trim())
@@ -674,6 +687,34 @@ class KotlinPlugin extends LanguagePlugin {
   }
 
   /**
+   * Get default return value for a given return type
+   * @private
+   */
+  _getDefaultReturn(returnType) {
+    // Map Kotlin types to appropriate default values
+    const defaultMap = {
+      'Unit': 'return',
+      'Int': 'return 0',
+      'Long': 'return 0L',
+      'Short': 'return 0',
+      'Byte': 'return 0',
+      'Double': 'return 0.0',
+      'Float': 'return 0.0f',
+      'Boolean': 'return false',
+      'String': 'return ""',
+      'ByteArray': 'return byteArrayOf()',
+      'IntArray': 'return intArrayOf()',
+      'Array<Any>': 'return arrayOf()',
+      'List<Any>': 'return emptyList()',
+      'Map<String, Any>': 'return emptyMap()',
+      'Any': 'throw NotImplementedError("Implementation pending")',
+      'Any?': 'return null'
+    };
+
+    return defaultMap[returnType] || 'throw NotImplementedError("Implementation pending")';
+  }
+
+  /**
    * Add proper indentation
    * @private
    */
@@ -767,7 +808,8 @@ class KotlinPlugin extends LanguagePlugin {
     if (functionCalls.length > 0) {
       result += '            ' + functionCalls.join('\n            ') + '\n';
     } else {
-      result += '            // TODO: Add test calls for generated functions\n';
+      result += '            // No functions detected - add test calls manually\n';
+      result += '            println("No functions found for automatic test generation")\n';
     }
 
     result += '        } catch (e: Exception) {\n';
@@ -1110,7 +1152,13 @@ The generated Kotlin code follows modern Kotlin conventions:
   _generateFunctionExpression(node, options) {
     const params = node.params ?
       node.params.map(param => param.name || 'param').join(', ') : '';
-    const body = node.body ? this._generateNode(node.body, options) : 'TODO()';
+    const body = node.body ? this._generateNode(node.body, options) : '';
+
+    // If no body, create empty lambda with Unit return
+    if (!body || !body.trim()) {
+      return params ? `{ ${params} -> }` : `{ }`;
+    }
+
     return `{ ${params} -> ${body} }`;
   }
 

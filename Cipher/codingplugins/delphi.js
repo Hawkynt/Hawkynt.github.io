@@ -2005,7 +2005,8 @@ class DelphiPlugin extends LanguagePlugin {
 
   // Generate remaining AST node types (implementing all 75+ types)
   _generateUnknownNode(node, options) {
-    return `{ TODO: Implement ${node.type} }`;
+    // Generate minimal valid Pascal code with warning comment
+    return `begin\n${this._indent('{ WARNING: Unhandled AST node type: ' + node.type + ' }\n')}${this._indent("raise Exception.Create('Not implemented: " + node.type + "');\n")}end`;
   }
 
   _generateLiteral(node, options) {
