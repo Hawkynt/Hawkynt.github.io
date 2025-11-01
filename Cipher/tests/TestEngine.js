@@ -94,25 +94,50 @@
         // Load algorithm file
         const AlgorithmFramework = global.AlgorithmFramework;
         const algorithmsBefore = AlgorithmFramework.Algorithms.length;
-        try {
-            require(path.resolve(filePath));
-        } catch (error) {
-            result.interface.error = `Failed to load: ${error.message}`;
-            return result;
+
+        // Get expected algorithm name from filename
+        const expectedName = _getExpectedAlgorithmName(filePath);
+
+        // Check if algorithm is already registered (loaded as dependency by another file)
+        const alreadyRegistered = AlgorithmFramework.Algorithms.filter(a =>
+            a.name && expectedName &&
+            (a.name.toLowerCase() === expectedName.toLowerCase() ||
+             a.name.toLowerCase().replace(/[-_\s]/g, '') === expectedName.toLowerCase().replace(/[-_\s]/g, ''))
+        );
+
+        const resolvedPath = path.resolve(filePath);
+
+        // Only try to load if not already registered
+        if (alreadyRegistered.length === 0) {
+            try {
+                require(resolvedPath);
+            } catch (error) {
+                result.interface.error = `Failed to load: ${error.message}`;
+                return result;
+            }
         }
 
-        // AlgorithmFramework already declared above
+        // Check for newly registered algorithms
         const algorithmsAfter = AlgorithmFramework.Algorithms.length;
         const registeredCount = algorithmsAfter - algorithmsBefore;
 
-        if (registeredCount === 0) {
+        let registeredAlgorithms;
+
+        if (registeredCount === 0 && alreadyRegistered.length > 0) {
+            // Algorithm was already registered from previous load (dependency)
+            result.interface.passed = true;
+            registeredAlgorithms = alreadyRegistered;
+            result.interface.algorithms = registeredAlgorithms.map(a => a.name);
+        } else if (registeredCount > 0) {
+            // New algorithm(s) registered
+            result.interface.passed = true;
+            registeredAlgorithms = AlgorithmFramework.Algorithms.slice(algorithmsBefore);
+            result.interface.algorithms = registeredAlgorithms.map(a => a.name);
+        } else {
+            // No registrations and not already registered
             result.interface.error = 'No algorithms registered';
             return result;
         }
-
-        result.interface.passed = true;
-        const registeredAlgorithms = AlgorithmFramework.Algorithms.slice(algorithmsBefore);
-        result.interface.algorithms = registeredAlgorithms.map(a => a.name);
 
         // Test each registered algorithm
         let allMetadataValid = true;
@@ -414,6 +439,41 @@
                 if (verbose) DebugConfig.warn('DummyBlockCipher not loaded');
             }
         }
+    }
+
+    /**
+     * Extract expected algorithm name from filename
+     * Maps common filename patterns to likely algorithm names
+     */
+    function _getExpectedAlgorithmName(filePath) {
+        if (!filePath || !isNode) return null;
+
+        const filename = path.basename(filePath, '.js');
+
+        // Map filename patterns to expected algorithm names
+        const nameMap = {
+            'sha1': 'SHA-1',
+            'sha256': 'SHA-256',
+            'sha224': 'SHA-224',
+            'sha384': 'SHA-384',
+            'sha512': 'SHA-512',
+            'sha3': 'SHA-3',
+            'md5': 'MD5',
+            'aes': 'Rijndael (AES)',
+            'rijndael': 'Rijndael (AES)',
+            '3des': '3DES (Triple DES)',
+            'des': 'DES',
+            'rc4': 'RC4',
+            'rc2': 'RC2',
+            'blowfish': 'Blowfish',
+            'twofish': 'Twofish',
+            'serpent': 'Serpent',
+            'gost28147mac': 'GOST 28147-89 MAC',
+            'cbcmac': 'CBC-MAC',
+            'dmac': 'DMAC'
+        };
+
+        return nameMap[filename.toLowerCase()] || filename;
     }
 
     function _validateMetadata(algorithm) {

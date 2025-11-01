@@ -139,7 +139,9 @@ class TestSuite {
   // Test all algorithms in a category
   async testCategory(category) {
     const categoryPath = path.join(__dirname, '..', 'algorithms', category);
-    const files = fs.readdirSync(categoryPath).filter(file => file.endsWith('.js'));
+    const files = fs.readdirSync(categoryPath).filter(file =>
+      file.endsWith('.js') && !file.endsWith('.data.js')
+    );
 
     console.log(`Testing ${category} algorithms (${files.length} files):`);
 
