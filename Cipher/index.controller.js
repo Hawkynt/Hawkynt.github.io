@@ -1409,6 +1409,7 @@ class CipherController {
         this.populateAlgorithmDropdown();
         this.populateModeDropdown();
         this.populatePaddingDropdown();
+        this.populateKdfDropdown();
         
         // Setup encrypt/decrypt buttons
         const encryptBtn = document.getElementById('encrypt-btn');
@@ -1432,22 +1433,139 @@ class CipherController {
         
         // Setup file upload
         this.setupFileUpload();
-        
-        // Setup copy and download buttons
-        this.setupOutputActions();
 
-        // Setup key file upload
-        this.setupKeyFileUpload();
-
-        // Setup IV file upload
-        this.setupIVFileUpload();
+        // Setup KDF controls
+        this.setupKdfControls();
 
         // Setup input validation and salmon tinting
         this.setupInputValidation();
 
+        // Setup algorithm selection change event for dynamic block visibility
+        const algorithmSelect = document.getElementById('selected-algorithm');
+        if (algorithmSelect) {
+            algorithmSelect.addEventListener('change', () => {
+                this.updateBlockVisibility();
+                this.updateActionButtons();
+            });
+        }
+
+        // Initialize block visibility and action buttons
+        this.updateBlockVisibility();
+        this.updateActionButtons();
+
+        // Setup drag-and-drop for all text input areas
+        this.setupDragAndDrop();
+
         DebugConfig.log('✅ Cipher interface setup complete');
     }
-    
+
+    /**
+     * Setup drag-and-drop file loading for input and all data parameter fields
+     */
+    setupDragAndDrop() {
+        // Apply to input text
+        const inputText = document.getElementById('input-text');
+        if (inputText) {
+            this.addDragAndDropToElement(inputText, 'input');
+        }
+
+        // Apply to all data parameters
+        const parameterTypes = ['key', 'iv', 'salt', 'nonce', 'pepper'];
+        parameterTypes.forEach(paramType => {
+            const paramInput = document.getElementById(`cipher-${paramType}`);
+            if (paramInput) {
+                this.addDragAndDropToElement(paramInput, paramType);
+            }
+        });
+
+        DebugConfig.log('📥 Drag-and-drop file loading enabled for all text areas');
+    }
+
+    /**
+     * Add drag-and-drop handlers to a textarea element
+     */
+    addDragAndDropToElement(element, fieldName) {
+        // Get the container (parent element) for overlay activation
+        const container = element.parentElement;
+
+        // Prevent default drag behaviors
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            element.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            }, false);
+        });
+
+        // Activate overlay on drag over
+        ['dragenter', 'dragover'].forEach(eventName => {
+            element.addEventListener(eventName, () => {
+                if (container && container.classList.contains('textarea-container')) {
+                    container.classList.add('drag-active');
+                }
+            }, false);
+        });
+
+        // Deactivate overlay on drag leave or drop
+        ['dragleave', 'drop'].forEach(eventName => {
+            element.addEventListener(eventName, () => {
+                if (container && container.classList.contains('textarea-container')) {
+                    container.classList.remove('drag-active');
+                }
+            }, false);
+        });
+
+        // Handle file drop
+        element.addEventListener('drop', (e) => {
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                this.handleFileForTextarea(files[0], element, fieldName);
+            }
+        }, false);
+    }
+
+    /**
+     * Handle file dropped onto textarea
+     */
+    handleFileForTextarea(file, textarea, fieldName) {
+        const reader = new FileReader();
+
+        reader.onload = (e) => {
+            const arrayBuffer = e.target.result;
+            const bytes = new Uint8Array(arrayBuffer);
+
+            // Determine active format using unified data-toolbar structure
+            let format = 'text';
+
+            // Find the toolbar associated with this textarea
+            // The toolbar is the previous sibling of the textarea
+            const toolbar = textarea.previousElementSibling;
+            if (toolbar && toolbar.classList.contains('data-toolbar')) {
+                const activeTab = toolbar.querySelector('.format-tab.active');
+                format = activeTab?.getAttribute('data-format') || 'text';
+            }
+
+            // Convert bytes to appropriate format
+            let text;
+            if (format === 'hex') {
+                text = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+            } else if (format === 'base64') {
+                text = btoa(String.fromCharCode.apply(null, bytes));
+            } else {
+                // Text format
+                text = new TextDecoder().decode(bytes);
+            }
+
+            textarea.value = text;
+
+            // Trigger validation
+            this.validateInputs();
+
+            DebugConfig.log(`📁 File loaded into ${fieldName} field (${bytes.length} bytes, ${format} format)`);
+        };
+
+        reader.readAsArrayBuffer(file);
+    }
+
     /**
      * Setup algorithm chaining interface
      */
@@ -2066,24 +2184,61 @@ class CipherController {
     populatePaddingDropdown() {
         const paddingSelect = document.getElementById('cipher-padding');
         if (!paddingSelect) return;
-        
+
         // Get algorithms from PADDING category
         const algorithms = this.getAllAlgorithms();
-        const paddingAlgorithms = algorithms.filter(algorithm => 
+        const paddingAlgorithms = algorithms.filter(algorithm =>
             algorithm.category === AlgorithmFramework.CategoryType.PADDING
         );
-        
+
         // Sort alphabetically
         paddingAlgorithms.sort((a, b) => a.name.localeCompare(b.name));
-        
+
         paddingAlgorithms.forEach(algorithm => {
             const option = document.createElement('option');
             option.value = algorithm.name;
             option.textContent = algorithm.name;
             paddingSelect.appendChild(option);
         });
-        
+
         DebugConfig.log(`📋 Populated padding dropdown with ${paddingAlgorithms.length} padding algorithms`);
+    }
+
+    /**
+     * Populate KDF dropdown from KDF category algorithms
+     */
+    populateKdfDropdown() {
+        // Get algorithms from KDF category
+        const algorithms = this.getAllAlgorithms();
+        const kdfAlgorithms = algorithms.filter(algorithm =>
+            algorithm.category === AlgorithmFramework.CategoryType.KDF
+        );
+
+        // Sort alphabetically
+        kdfAlgorithms.sort((a, b) => a.name.localeCompare(b.name));
+
+        // Populate all KDF selectors (key, iv, salt, nonce, pepper)
+        const parameterTypes = ['key', 'iv', 'salt', 'nonce', 'pepper'];
+
+        parameterTypes.forEach(paramType => {
+            const kdfSelect = document.getElementById(`${paramType}-kdf`);
+            if (!kdfSelect) return;
+
+            // Clear existing options except the first "None" option
+            while (kdfSelect.options.length > 1) {
+                kdfSelect.remove(1);
+            }
+
+            // Add KDF options
+            kdfAlgorithms.forEach(algorithm => {
+                const option = document.createElement('option');
+                option.value = algorithm.name;
+                option.textContent = algorithm.name;
+                kdfSelect.appendChild(option);
+            });
+        });
+
+        DebugConfig.log(`📋 Populated KDF dropdowns for all parameters with ${kdfAlgorithms.length} KDF algorithms`);
     }
     
     /**
@@ -2185,82 +2340,40 @@ class CipherController {
     }
     
     /**
-     * Setup format tab switching for input/output
+     * Setup format tab switching for all textareas using unified toolbar
      */
     setupFormatTabs() {
-        // Input format tabs with auto-conversion
-        const inputFormatTabs = document.querySelectorAll('.input-section .format-tab');
-        const inputText = document.getElementById('input-text');
-        inputFormatTabs.forEach(tab => {
+        // UNIFIED: All format tabs now use data-toolbar structure with data-target
+        // This handles input, output, and all data parameters (key, iv, salt, nonce, pepper)
+        const allFormatTabs = document.querySelectorAll('.data-toolbar .format-tab');
+        allFormatTabs.forEach(tab => {
             tab.addEventListener('click', (e) => {
-                const oldFormat = document.querySelector('.input-section .format-tab.active')?.getAttribute('data-format') || 'text';
-                const newFormat = e.target.getAttribute('data-format');
+                const targetId = tab.getAttribute('data-target');
+                const newFormat = tab.getAttribute('data-format');
+
+                if (!targetId || !newFormat) return;
+
+                // Find the toolbar containing this tab
+                const toolbar = tab.closest('.data-toolbar');
+                if (!toolbar) return;
+
+                // Find the active tab in this toolbar
+                const activeTab = toolbar.querySelector('.format-tab.active');
+                const oldFormat = activeTab?.getAttribute('data-format') || 'text';
 
                 if (oldFormat === newFormat) return; // No change
 
-                inputFormatTabs.forEach(t => t.classList.remove('active'));
-                e.target.classList.add('active');
+                // Update active state within this toolbar only
+                toolbar.querySelectorAll('.format-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
 
-                // Convert existing content
-                this.convertTextAreaFormat(inputText, oldFormat, newFormat);
+                // Get the textarea and convert content
+                const textarea = document.getElementById(targetId);
+                if (textarea && textarea.value) {
+                    this.convertTextAreaFormat(textarea, oldFormat, newFormat);
+                }
             });
         });
-
-        // Output format tabs with auto-conversion
-        const outputFormatTabs = document.querySelectorAll('.output-section .format-tab');
-        const outputText = document.getElementById('output-text');
-        outputFormatTabs.forEach(tab => {
-            tab.addEventListener('click', (e) => {
-                const oldFormat = document.querySelector('.output-section .format-tab.active')?.getAttribute('data-format') || 'text';
-                const newFormat = e.target.getAttribute('data-format');
-
-                if (oldFormat === newFormat) return; // No change
-
-                outputFormatTabs.forEach(t => t.classList.remove('active'));
-                e.target.classList.add('active');
-
-                // Convert existing content
-                this.convertTextAreaFormat(outputText, oldFormat, newFormat);
-            });
-        });
-
-        // Key format tabs with auto-conversion
-        const keyFormatTabs = document.querySelectorAll('.key-format-tabs .format-tab');
-        const keyText = document.getElementById('cipher-key');
-        keyFormatTabs.forEach(tab => {
-            tab.addEventListener('click', (e) => {
-                const oldFormat = document.querySelector('.key-format-tabs .format-tab.active')?.getAttribute('data-format') || 'text';
-                const newFormat = e.target.getAttribute('data-format');
-
-                if (oldFormat === newFormat) return; // No change
-
-                keyFormatTabs.forEach(t => t.classList.remove('active'));
-                e.target.classList.add('active');
-
-                // Convert existing content
-                this.convertTextAreaFormat(keyText, oldFormat, newFormat);
-            });
-        });
-
-        // IV format tabs with auto-conversion
-        const ivFormatTabs = document.querySelectorAll('.iv-format-tabs .format-tab');
-        const ivText = document.getElementById('cipher-iv');
-        if (ivFormatTabs && ivText) {
-            ivFormatTabs.forEach(tab => {
-                tab.addEventListener('click', (e) => {
-                    const oldFormat = document.querySelector('.iv-format-tabs .format-tab.active')?.getAttribute('data-format') || 'text';
-                    const newFormat = e.target.getAttribute('data-format');
-
-                    if (oldFormat === newFormat) return; // No change
-
-                    ivFormatTabs.forEach(t => t.classList.remove('active'));
-                    e.target.classList.add('active');
-
-                    // Convert existing content
-                    this.convertTextAreaFormat(ivText, oldFormat, newFormat);
-                });
-            });
-        }
     }
 
     /**
@@ -2336,44 +2449,244 @@ class CipherController {
     }
     
     /**
-     * Setup file upload functionality
+     * Setup unified toolbar for all textboxes
      */
     setupFileUpload() {
-        const fileUploadArea = document.getElementById('file-upload-area');
-        const fileInput = document.getElementById('file-input');
-        const inputText = document.getElementById('input-text');
-        
-        if (!fileUploadArea || !fileInput || !inputText) return;
-        
-        // Click to browse
-        fileUploadArea.addEventListener('click', () => {
-            fileInput.click();
+        // Setup unified toolbar event handlers
+        document.querySelectorAll('.toolbar-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const action = btn.getAttribute('data-action');
+                const targetId = btn.getAttribute('data-target');
+                const textarea = document.getElementById(targetId);
+
+                if (!textarea) return;
+
+                switch (action) {
+                    case 'copy':
+                        this.handleCopy(textarea);
+                        break;
+                    case 'paste':
+                        this.handlePaste(textarea);
+                        break;
+                    case 'download':
+                        this.handleDownload(textarea, targetId);
+                        break;
+                    case 'upload':
+                        this.handleUploadClick(targetId);
+                        break;
+                }
+            });
         });
-        
-        // Drag and drop
-        fileUploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            fileUploadArea.classList.add('drag-over');
+
+        // Setup file input change handlers
+        document.querySelectorAll('input[type="file"]').forEach(fileInput => {
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                    const targetId = fileInput.id.replace('-file-input', '');
+                    const textarea = document.getElementById(targetId);
+                    if (textarea) {
+                        this.handleFileUploadForTextarea(e.target.files[0], textarea);
+                    }
+                }
+            });
         });
-        
-        fileUploadArea.addEventListener('dragleave', () => {
-            fileUploadArea.classList.remove('drag-over');
-        });
-        
-        fileUploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            fileUploadArea.classList.remove('drag-over');
-            this.handleFileUpload(e.dataTransfer.files);
-        });
-        
-        // File input change
-        fileInput.addEventListener('change', (e) => {
-            this.handleFileUpload(e.target.files);
+
+        // Setup tooltip removal on focus for all textareas
+        this.setupTooltipBehavior();
+    }
+
+    /**
+     * Setup tooltip behavior - remove title on focus, restore on blur
+     */
+    setupTooltipBehavior() {
+        const textareas = [
+            document.getElementById('input-text'),
+            document.getElementById('cipher-key'),
+            document.getElementById('cipher-iv'),
+            document.getElementById('cipher-salt'),
+            document.getElementById('cipher-nonce'),
+            document.getElementById('cipher-pepper')
+        ].filter(el => el !== null);
+
+        textareas.forEach(textarea => {
+            const originalTitle = textarea.getAttribute('title');
+
+            textarea.addEventListener('focus', () => {
+                textarea.removeAttribute('title');
+            });
+
+            textarea.addEventListener('blur', () => {
+                if (originalTitle && textarea.value === '') {
+                    textarea.setAttribute('title', originalTitle);
+                }
+            });
         });
     }
-    
+
     /**
-     * Handle file upload and populate input textarea
+     * Handle copy action
+     */
+    async handleCopy(textarea) {
+        if (!textarea || !textarea.value) {
+            alert('No content to copy');
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(textarea.value);
+            // Visual feedback - briefly change button appearance
+            const copyBtn = document.querySelector(`.toolbar-btn[data-target="${textarea.id}"][data-action="copy"]`);
+            if (copyBtn) {
+                const originalText = copyBtn.textContent;
+                copyBtn.textContent = '✓';
+                setTimeout(() => {
+                    copyBtn.textContent = originalText;
+                }, 1000);
+            }
+        } catch (error) {
+            DebugConfig.error('Error copying to clipboard:', error);
+            alert('Error copying to clipboard: ' + error.message);
+        }
+    }
+
+    /**
+     * Handle paste action
+     */
+    async handlePaste(textarea) {
+        try {
+            const text = await navigator.clipboard.readText();
+            if (text) {
+                textarea.value = text;
+                this.validateInputs();
+            }
+        } catch (error) {
+            DebugConfig.error('Error pasting from clipboard:', error);
+            alert('Error pasting from clipboard: ' + error.message);
+        }
+    }
+
+    /**
+     * Handle upload click - trigger file input
+     */
+    handleUploadClick(textareaId) {
+        const fileInput = document.getElementById(`${textareaId}-file-input`);
+        if (fileInput) {
+            fileInput.click();
+        }
+    }
+
+    /**
+     * Handle download action
+     */
+    handleDownload(textarea, textareaId) {
+        if (!textarea || !textarea.value) {
+            alert('No content to download');
+            return;
+        }
+
+        try {
+            // Get current format by finding active format tab for this textarea
+            const toolbar = textarea.previousElementSibling;
+            const formatTab = toolbar?.querySelector('.format-tab.active, .format-tab-small.active');
+            const currentFormat = formatTab?.getAttribute('data-format') || 'text';
+
+            // Convert content to bytes
+            let bytes;
+            switch (currentFormat) {
+                case 'text':
+                    bytes = new TextEncoder().encode(textarea.value);
+                    break;
+                case 'hex':
+                    bytes = new Uint8Array(this.hexToBytes(textarea.value));
+                    break;
+                case 'base64':
+                    const binaryString = atob(textarea.value);
+                    bytes = new Uint8Array(binaryString.length);
+                    for (let i = 0; i < binaryString.length; i++) {
+                        bytes[i] = binaryString.charCodeAt(i);
+                    }
+                    break;
+                default:
+                    bytes = new TextEncoder().encode(textarea.value);
+            }
+
+            // Create blob and download
+            const blob = new Blob([bytes], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+
+            // Generate filename based on textarea ID and format
+            const baseName = textareaId.replace('cipher-', '').replace('-text', '').replace('-', '_');
+            const extension = currentFormat === 'text' ? 'txt' : currentFormat;
+            link.download = `${baseName}.${extension}`;
+
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            DebugConfig.error('Error downloading file:', error);
+            alert('Error downloading file: ' + error.message);
+        }
+    }
+
+    /**
+     * Handle file upload for a specific textarea
+     */
+    async handleFileUploadForTextarea(file, textarea) {
+        if (!file || !textarea) return;
+
+        if (file.size > 50 * 1024 * 1024) { // 50MB limit
+            alert('File size exceeds 50MB limit');
+            return;
+        }
+
+        try {
+            // Read file as binary
+            const arrayBuffer = await file.arrayBuffer();
+            const bytes = new Uint8Array(arrayBuffer);
+
+            // Get current format by finding active format tab for this textarea
+            const toolbar = textarea.previousElementSibling;
+            const formatTab = toolbar?.querySelector('.format-tab.active, .format-tab-small.active');
+            const currentFormat = formatTab?.getAttribute('data-format') || 'text';
+
+            // Convert to appropriate format
+            let displayText;
+            switch (currentFormat) {
+                case 'text':
+                    // Try to decode as UTF-8 text
+                    try {
+                        displayText = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+                    } catch (e) {
+                        // If not valid UTF-8, switch to hex format
+                        alert('File contains binary data. Switching to Hex format.');
+                        const hexTab = toolbar?.querySelector('.format-tab[data-format="hex"], .format-tab-small[data-format="hex"]');
+                        hexTab?.click();
+                        displayText = this.bytesToHex(Array.from(bytes));
+                    }
+                    break;
+                case 'hex':
+                    displayText = this.bytesToHex(Array.from(bytes));
+                    break;
+                case 'base64':
+                    displayText = btoa(String.fromCharCode(...bytes));
+                    break;
+                default:
+                    displayText = new TextDecoder().decode(bytes);
+            }
+
+            textarea.value = displayText;
+            this.validateInputs();
+        } catch (error) {
+            DebugConfig.error('Error reading file:', error);
+            alert('Error reading file: ' + error.message);
+        }
+    }
+
+    /**
+     * Handle file upload and populate input textarea (LEGACY - keeping for compatibility)
      */
     async handleFileUpload(files) {
         if (!files || files.length === 0) return;
@@ -2426,161 +2739,173 @@ class CipherController {
     }
     
     /**
-     * Setup key file upload functionality
+     * Setup KDF (Key Derivation Function) controls
      */
-    setupKeyFileUpload() {
-        const keyFileBtn = document.getElementById('key-file-btn');
-        const keyFileInput = document.getElementById('key-file-input');
+    setupKdfControls() {
+        // Setup KDF controls for all parameter types
+        const parameterTypes = ['key', 'iv', 'salt', 'nonce', 'pepper'];
 
-        if (!keyFileBtn || !keyFileInput) return;
-
-        // Click button to open file picker
-        keyFileBtn.addEventListener('click', () => {
-            keyFileInput.click();
+        parameterTypes.forEach(paramType => {
+            this.setupKdfControlsForParameter(paramType);
         });
 
-        // Handle file selection
-        keyFileInput.addEventListener('change', (e) => {
-            this.handleKeyFileUpload(e.target.files);
-        });
+        DebugConfig.log('🔑 KDF controls setup complete for all parameters');
     }
 
     /**
-     * Handle key file upload and populate key textarea
+     * Setup KDF controls for a specific parameter type
+     * @param {string} parameterType - 'key', 'iv', 'salt', 'nonce', or 'pepper'
      */
-    async handleKeyFileUpload(files) {
-        if (!files || files.length === 0) return;
+    setupKdfControlsForParameter(parameterType) {
+        const kdfSelect = document.getElementById(`${parameterType}-kdf`);
+        if (!kdfSelect) return;
 
-        const file = files[0];
-        const keyText = document.getElementById('cipher-key');
+        // Add event listener for KDF selection change
+        kdfSelect.addEventListener('change', () => {
+            this.updateKdfParameterVisibility(parameterType);
+        });
 
-        if (file.size > 10 * 1024 * 1024) { // 10MB limit for key files
-            alert('Key file size exceeds 10MB limit');
+        // Initialize visibility on page load
+        this.updateKdfParameterVisibility(parameterType);
+    }
+
+    /**
+     * Update KDF parameter visibility based on selected KDF algorithm for a specific parameter type
+     * @param {string} parameterType - 'key', 'iv', 'salt', 'nonce', or 'pepper'
+     */
+    updateKdfParameterVisibility(parameterType) {
+        const kdfSelect = document.getElementById(`${parameterType}-kdf`);
+        const kdfParameters = document.getElementById(`${parameterType}-kdf-parameters`);
+
+        if (!kdfSelect || !kdfParameters) return;
+
+        const selectedKdf = kdfSelect.value;
+
+        // Show/hide the entire parameters container
+        if (selectedKdf) {
+            kdfParameters.style.display = 'flex';
+        } else {
+            kdfParameters.style.display = 'none';
             return;
         }
 
-        try {
-            // Read file as binary
-            const arrayBuffer = await file.arrayBuffer();
-            const bytes = new Uint8Array(arrayBuffer);
+        // Get parameter containers (using parameterType prefix)
+        const iterationsContainer = document.getElementById(`${parameterType}-kdf-iterations-container`);
+        const infoContainer = document.getElementById(`${parameterType}-kdf-info-container`);
+        const hashContainer = document.getElementById(`${parameterType}-kdf-hash-container`);
+        const nContainer = document.getElementById(`${parameterType}-kdf-n-container`);
+        const rContainer = document.getElementById(`${parameterType}-kdf-r-container`);
+        const pContainer = document.getElementById(`${parameterType}-kdf-p-container`);
 
-            // Get current key format
-            const keyFormat = document.querySelector('.key-format-tabs .format-tab.active')?.getAttribute('data-format') || 'text';
+        // Hide all optional parameters initially
+        if (iterationsContainer) iterationsContainer.style.display = 'none';
+        if (infoContainer) infoContainer.style.display = 'none';
+        if (hashContainer) hashContainer.style.display = 'none';
+        if (nContainer) nContainer.style.display = 'none';
+        if (rContainer) rContainer.style.display = 'none';
+        if (pContainer) pContainer.style.display = 'none';
 
-            // Convert to appropriate format
-            let displayText;
-            switch (keyFormat) {
-                case 'text':
-                    // Try to decode as UTF-8 text
-                    try {
-                        displayText = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-                    } catch (e) {
-                        // If not valid UTF-8, switch to hex format
-                        alert('Key file contains binary data. Switching to Hex format.');
-                        document.querySelector('.key-format-tabs .format-tab[data-format="hex"]')?.click();
-                        displayText = this.bytesToHex(Array.from(bytes));
-                    }
-                    break;
-                case 'hex':
-                    displayText = this.bytesToHex(Array.from(bytes));
-                    break;
-                case 'base64':
-                    displayText = btoa(String.fromCharCode(...bytes));
-                    break;
-                default:
-                    displayText = new TextDecoder().decode(bytes);
-            }
+        // Show parameters based on selected KDF
+        switch (selectedKdf) {
+            case 'PBKDF2':
+                // PBKDF2: salt, iterations, outputSize
+                if (iterationsContainer) iterationsContainer.style.display = 'block';
+                break;
 
-            keyText.value = displayText;
+            case 'HKDF':
+                // HKDF: salt, info, hashFunction, outputSize
+                if (infoContainer) infoContainer.style.display = 'block';
+                if (hashContainer) hashContainer.style.display = 'block';
+                break;
 
-            // Clear the file input so the same file can be selected again
-            const keyFileInput = document.getElementById('key-file-input');
-            if (keyFileInput) {
-                keyFileInput.value = '';
-            }
-        } catch (error) {
-            DebugConfig.error('Error reading key file:', error);
-            alert('Error reading key file: ' + error.message);
+            case 'scrypt':
+                // scrypt: salt, N, r, p, outputSize (keyLength)
+                if (nContainer) nContainer.style.display = 'block';
+                if (rContainer) rContainer.style.display = 'block';
+                if (pContainer) pContainer.style.display = 'block';
+                break;
+
+            default:
+                DebugConfig.log(`⚠️ Unknown KDF selected: ${selectedKdf}`);
+                break;
         }
     }
 
     /**
-     * Setup IV file upload functionality
+     * Derive data using selected KDF algorithm for any parameter type
+     * @param {Array} dataBytes - The data input as byte array
+     * @param {string} parameterType - Type of parameter: 'key', 'iv', 'salt', 'nonce', 'pepper'
+     * @returns {Array} - Derived data bytes
      */
-    setupIVFileUpload() {
-        const ivFileBtn = document.getElementById('iv-file-btn');
-        const ivFileInput = document.getElementById('iv-file-input');
+    async deriveDataWithKdf(dataBytes, parameterType) {
+        const kdfSelect = document.getElementById(`${parameterType}-kdf`);
+        const kdfName = kdfSelect?.value;
 
-        if (!ivFileBtn || !ivFileInput) return;
-
-        // Click button to open file picker
-        ivFileBtn.addEventListener('click', () => {
-            ivFileInput.click();
-        });
-
-        // Handle file selection
-        ivFileInput.addEventListener('change', (e) => {
-            this.handleIVFileUpload(e.target.files);
-        });
-    }
-
-    /**
-     * Handle IV file upload and populate IV textarea
-     */
-    async handleIVFileUpload(files) {
-        if (!files || files.length === 0) return;
-
-        const file = files[0];
-        const ivText = document.getElementById('cipher-iv');
-
-        if (file.size > 10 * 1024 * 1024) { // 10MB limit for IV files
-            alert('IV file size exceeds 10MB limit');
-            return;
+        if (!kdfName) {
+            // No KDF selected, return original data
+            return dataBytes;
         }
 
-        try {
-            // Read file as binary
-            const arrayBuffer = await file.arrayBuffer();
-            const bytes = new Uint8Array(arrayBuffer);
-
-            // Get current IV format
-            const ivFormat = document.querySelector('.iv-format-tabs .format-tab.active')?.getAttribute('data-format') || 'text';
-
-            // Convert to appropriate format
-            let displayText;
-            switch (ivFormat) {
-                case 'text':
-                    // Try to decode as UTF-8 text
-                    try {
-                        displayText = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-                    } catch (e) {
-                        // If not valid UTF-8, switch to hex format
-                        alert('IV file contains binary data. Switching to Hex format.');
-                        document.querySelector('.iv-format-tabs .format-tab[data-format="hex"]')?.click();
-                        displayText = this.bytesToHex(Array.from(bytes));
-                    }
-                    break;
-                case 'hex':
-                    displayText = this.bytesToHex(Array.from(bytes));
-                    break;
-                case 'base64':
-                    displayText = btoa(String.fromCharCode(...bytes));
-                    break;
-                default:
-                    displayText = new TextDecoder().decode(bytes);
-            }
-
-            ivText.value = displayText;
-
-            // Clear the file input so the same file can be selected again
-            const ivFileInput = document.getElementById('iv-file-input');
-            if (ivFileInput) {
-                ivFileInput.value = '';
-            }
-        } catch (error) {
-            DebugConfig.error('Error reading IV file:', error);
-            alert('Error reading IV file: ' + error.message);
+        // Find KDF algorithm
+        const kdfAlgorithm = AlgorithmFramework.Algorithms.find(a => a.name === kdfName);
+        if (!kdfAlgorithm) {
+            throw new Error(`KDF algorithm "${kdfName}" not found`);
         }
+
+        // Create KDF instance
+        const kdfInstance = kdfAlgorithm.CreateInstance();
+        if (!kdfInstance) {
+            throw new Error(`Failed to create instance of ${kdfName}`);
+        }
+
+        // Get KDF parameters from UI (using parameterType prefix)
+        const saltHex = document.getElementById(`${parameterType}-kdf-salt`)?.value || '';
+        const outputSize = parseInt(document.getElementById(`${parameterType}-kdf-output-size`)?.value) || 32;
+
+        // Convert salt from hex to bytes
+        const saltBytes = saltHex.trim() ? this.hexToBytes(saltHex) : [];
+
+        // Set common parameters
+        kdfInstance.salt = saltBytes;
+        kdfInstance.outputSize = outputSize;
+
+        // Set algorithm-specific parameters
+        switch (kdfName) {
+            case 'PBKDF2':
+                const iterations = parseInt(document.getElementById(`${parameterType}-kdf-iterations`)?.value) || 10000;
+                kdfInstance.iterations = iterations;
+                break;
+
+            case 'HKDF':
+                const infoHex = document.getElementById(`${parameterType}-kdf-info`)?.value || '';
+                const infoBytes = infoHex.trim() ? this.hexToBytes(infoHex) : [];
+                const hashFunction = document.getElementById(`${parameterType}-kdf-hash`)?.value || 'SHA256';
+                kdfInstance.info = infoBytes;
+                kdfInstance.hashFunction = hashFunction;
+                break;
+
+            case 'scrypt':
+                const N = parseInt(document.getElementById(`${parameterType}-kdf-n`)?.value) || 16;
+                const r = parseInt(document.getElementById(`${parameterType}-kdf-r`)?.value) || 1;
+                const p = parseInt(document.getElementById(`${parameterType}-kdf-p`)?.value) || 1;
+                kdfInstance.N = N;
+                kdfInstance.r = r;
+                kdfInstance.p = p;
+                kdfInstance.password = dataBytes;
+                break;
+
+            default:
+                DebugConfig.log(`⚠️ Unknown KDF: ${kdfName}`);
+                break;
+        }
+
+        // Derive data
+        kdfInstance.Feed(dataBytes);
+        const derivedData = kdfInstance.Result();
+
+        DebugConfig.log(`🔑 Derived ${derivedData.length}-byte ${parameterType} using ${kdfName}`);
+
+        return derivedData;
     }
 
     /**
@@ -2588,25 +2913,35 @@ class CipherController {
      */
     setupInputValidation() {
         const inputText = document.getElementById('input-text');
-        const keyInput = document.getElementById('cipher-key');
-        const ivInput = document.getElementById('cipher-iv');
         const algorithmSelect = document.getElementById('selected-algorithm');
         const modeSelect = document.getElementById('cipher-mode');
         const paddingSelect = document.getElementById('cipher-padding');
 
-        if (!inputText || !keyInput || !ivInput || !algorithmSelect) return;
+        if (!inputText || !algorithmSelect) return;
 
-        // Validate on input change, algorithm change, mode change, and padding change
+        // GENERALIZED: Validate on input change for ALL data parameters
+        const parameterTypes = ['key', 'iv', 'salt', 'nonce', 'pepper'];
+
         inputText.addEventListener('input', () => this.validateInputs());
-        keyInput.addEventListener('input', () => this.validateInputs());
-        ivInput.addEventListener('input', () => this.validateInputs());
         algorithmSelect.addEventListener('change', () => this.validateInputs());
+
         if (modeSelect) {
-            modeSelect.addEventListener('change', () => this.validateInputs());
+            modeSelect.addEventListener('change', () => {
+                this.updateBlockVisibility();
+                this.validateInputs();
+            });
         }
         if (paddingSelect) {
             paddingSelect.addEventListener('change', () => this.validateInputs());
         }
+
+        // Add input listeners for all data parameter fields
+        parameterTypes.forEach(paramType => {
+            const paramInput = document.getElementById(`cipher-${paramType}`);
+            if (paramInput) {
+                paramInput.addEventListener('input', () => this.validateInputs());
+            }
+        });
 
         // Also validate when format tabs are clicked (text/hex/base64)
         const formatTabs = document.querySelectorAll('.format-tab, .format-tab-small');
@@ -2622,33 +2957,36 @@ class CipherController {
     }
 
     /**
-     * Validate input, key, and IV field sizes and apply CSS classes for visual feedback
+     * GENERALIZED: Validate all data parameter field sizes and apply CSS classes for visual feedback
+     * Handles: input, key, iv, salt, nonce, pepper
      */
     validateInputs() {
         const inputText = document.getElementById('input-text');
-        const keyInput = document.getElementById('cipher-key');
-        const ivInput = document.getElementById('cipher-iv');
-        const ivContainer = document.getElementById('iv-container');
         const algorithmSelect = document.getElementById('selected-algorithm');
         const modeSelect = document.getElementById('cipher-mode');
         const paddingSelect = document.getElementById('cipher-padding');
 
-        if (!inputText || !keyInput || !ivInput || !algorithmSelect || !ivContainer) return;
+        if (!inputText || !algorithmSelect) return;
 
         const algorithmName = algorithmSelect.value;
         const modeName = modeSelect ? modeSelect.value : '';
 
         // Helper function to remove all validation classes
         const clearValidation = (element) => {
-            element.classList.remove('input-invalid', 'input-disabled');
+            if (element) {
+                element.classList.remove('input-invalid', 'input-disabled');
+            }
         };
+
+        // All data parameter types to validate
+        const parameterTypes = ['key', 'iv', 'salt', 'nonce', 'pepper'];
 
         if (!algorithmName) {
             // No algorithm selected - clear all validation states
             clearValidation(inputText);
-            clearValidation(keyInput);
-            clearValidation(ivInput);
-            ivContainer.classList.remove('hidden');
+            parameterTypes.forEach(paramType => {
+                clearValidation(document.getElementById(`cipher-${paramType}`));
+            });
             return;
         }
 
@@ -2656,80 +2994,53 @@ class CipherController {
         const algorithm = AlgorithmFramework.Algorithms.find(a => a.name === algorithmName);
         if (!algorithm) {
             clearValidation(inputText);
-            clearValidation(keyInput);
-            clearValidation(ivInput);
-            ivContainer.classList.remove('hidden');
+            parameterTypes.forEach(paramType => {
+                clearValidation(document.getElementById(`cipher-${paramType}`));
+            });
             return;
         }
 
-        // Determine if key is needed based on algorithm category
-        const needsKey = this.algorithmNeedsKey(algorithm);
+        // GENERALIZED: Validate each data parameter based on algorithm requirements
+        parameterTypes.forEach(paramType => {
+            const paramInput = document.getElementById(`cipher-${paramType}`);
+            if (!paramInput) return; // Parameter not in HTML (skip silently)
 
-        // Determine if IV is needed based on algorithm and mode
-        const needsIV = this.algorithmNeedsIV(algorithm, modeName);
+            // Determine if this parameter is needed for the selected algorithm
+            const isNeeded = this.algorithmNeedsParameter(algorithm, paramType, modeName);
 
-        // Show/hide IV container
-        if (needsIV) {
-            ivContainer.classList.remove('hidden');
-        } else {
-            ivContainer.classList.add('hidden');
-        }
+            // Check if KDF is active for this parameter
+            const kdfSelect = document.getElementById(`${paramType}-kdf`);
+            const hasKdfActive = kdfSelect && kdfSelect.value && kdfSelect.value !== '';
 
-        // Validate KEY field
-        if (!needsKey) {
-            // Key not needed - disable the field
-            clearValidation(keyInput);
-            keyInput.classList.add('input-disabled');
-        } else if (keyInput.value) {
-            // Key is needed and has content - validate size
-            const keyFormat = document.querySelector('.key-format-tabs .format-tab-small.active')?.getAttribute('data-format') || 'text';
-            let keyBytes;
+            if (!isNeeded) {
+                // Parameter not needed - disable the field
+                clearValidation(paramInput);
+                paramInput.classList.add('input-disabled');
+            } else if (hasKdfActive) {
+                // KDF is active - size validation doesn't apply (password can be any length)
+                clearValidation(paramInput);
+            } else if (paramInput.value) {
+                // Parameter is needed and has content - validate format and size
+                const paramFormat = this.getActiveFormatForParameter(paramInput);
 
-            try {
-                keyBytes = this.parseInputByFormat(keyInput.value, keyFormat);
-                const isValidKeySize = this.isValidKeySize(algorithm, keyBytes.length);
+                try {
+                    const paramBytes = this.parseInputByFormat(paramInput.value, paramFormat);
+                    const isValidSize = this.isValidParameterSize(algorithm, paramType, paramBytes.length);
 
-                clearValidation(keyInput);
-                if (!isValidKeySize) {
-                    keyInput.classList.add('input-invalid');
+                    clearValidation(paramInput);
+                    if (!isValidSize) {
+                        paramInput.classList.add('input-invalid');
+                    }
+                } catch (e) {
+                    // Invalid format - show as invalid
+                    clearValidation(paramInput);
+                    paramInput.classList.add('input-invalid');
                 }
-            } catch (e) {
-                // Invalid format - show as invalid
-                clearValidation(keyInput);
-                keyInput.classList.add('input-invalid');
+            } else {
+                // Parameter needed but empty - clear validation (don't mark as invalid when empty)
+                clearValidation(paramInput);
             }
-        } else {
-            // Key needed but empty - just clear validation (don't mark as invalid when empty)
-            clearValidation(keyInput);
-        }
-
-        // Validate IV field
-        if (!needsIV) {
-            // IV not needed - disable the field
-            clearValidation(ivInput);
-            ivInput.classList.add('input-disabled');
-        } else if (ivInput.value) {
-            // IV is needed and has content - validate size
-            const ivFormat = document.querySelector('.iv-format-tabs .format-tab-small.active')?.getAttribute('data-format') || 'text';
-            let ivBytes;
-
-            try {
-                ivBytes = this.parseInputByFormat(ivInput.value, ivFormat);
-                const isValidIVSize = this.isValidIVSize(algorithm, ivBytes.length);
-
-                clearValidation(ivInput);
-                if (!isValidIVSize) {
-                    ivInput.classList.add('input-invalid');
-                }
-            } catch (e) {
-                // Invalid format - show as invalid
-                clearValidation(ivInput);
-                ivInput.classList.add('input-invalid');
-            }
-        } else {
-            // IV needed but empty - just clear validation
-            clearValidation(ivInput);
-        }
+        });
 
         // Validate INPUT field (only if no padding is selected)
         const paddingValue = paddingSelect ? paddingSelect.value : '';
@@ -2753,6 +3064,208 @@ class CipherController {
         } else {
             clearValidation(inputText);
         }
+    }
+
+    /**
+     * GENERALIZED: Get the active format for a data parameter field
+     * Uses the data-control structure to find the active tab
+     */
+    getActiveFormatForParameter(textarea) {
+        const dataControl = textarea.closest('.data-control, .controls-section');
+        if (!dataControl) return 'text';
+
+        const activeTab = dataControl.querySelector('.data-control-tabs .format-tab.active, .format-tab-small.active');
+        return activeTab?.getAttribute('data-format') || 'text';
+    }
+
+    /**
+     * GENERALIZED: Check if algorithm needs a specific parameter
+     * @param {Algorithm} algorithm - The algorithm object
+     * @param {string} parameterType - The parameter type (key, iv, salt, nonce, pepper)
+     * @param {string} modeName - The cipher mode name (for block ciphers)
+     * @returns {boolean} - True if the parameter is required
+     */
+    algorithmNeedsParameter(algorithm, parameterType, modeName = '') {
+        const category = algorithm.category;
+
+        switch (parameterType) {
+            case 'key':
+                return this.algorithmNeedsKey(algorithm);
+            case 'iv':
+                return this.algorithmNeedsIV(algorithm, modeName);
+            case 'salt':
+                // Salt is used by hash functions and KDFs
+                return category === AlgorithmFramework.CategoryType.HASH ||
+                       category === AlgorithmFramework.CategoryType.KDF;
+            case 'nonce':
+                // Nonce is used by stream ciphers and AEAD
+                return category === AlgorithmFramework.CategoryType.STREAM ||
+                       category === AlgorithmFramework.CategoryType.AEAD;
+            case 'pepper':
+                // Pepper is optional for password hashing (KDF)
+                return category === AlgorithmFramework.CategoryType.KDF;
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * GENERALIZED: Validate parameter size against algorithm requirements
+     * @param {Algorithm} algorithm - The algorithm object
+     * @param {string} parameterType - The parameter type
+     * @param {number} size - The byte size to validate
+     * @returns {boolean} - True if size is valid
+     */
+    isValidParameterSize(algorithm, parameterType, size) {
+        switch (parameterType) {
+            case 'key':
+                return this.isValidKeySize(algorithm, size);
+            case 'iv':
+                return this.isValidIVSize(algorithm, size);
+            case 'salt':
+            case 'nonce':
+            case 'pepper':
+                // For salt/nonce/pepper, any reasonable size is acceptable (1-256 bytes)
+                return size >= 1 && size <= 256;
+            default:
+                return true;
+        }
+    }
+
+    /**
+     * Update block visibility based on selected algorithm
+     * Shows/hides Mode, Padding, Key, IV, Salt, Nonce, Pepper blocks dynamically
+     */
+    updateBlockVisibility() {
+        const algorithmSelect = document.getElementById('selected-algorithm');
+        const algorithmName = algorithmSelect?.value;
+        const modeSelect = document.getElementById('cipher-mode');
+        const modeName = modeSelect?.value || '';
+
+        // Get all block elements
+        const modeBlock = document.getElementById('mode-block');
+        const paddingBlock = document.getElementById('padding-block');
+        const keyBlock = document.getElementById('key-block');
+        const ivBlock = document.getElementById('iv-block');
+        const saltBlock = document.getElementById('salt-block');
+        const nonceBlock = document.getElementById('nonce-block');
+        const pepperBlock = document.getElementById('pepper-block');
+
+        // If no algorithm selected, hide all optional blocks
+        if (!algorithmName) {
+            if (modeBlock) modeBlock.style.display = 'none';
+            if (paddingBlock) paddingBlock.style.display = 'none';
+            if (keyBlock) keyBlock.style.display = 'none';
+            if (ivBlock) ivBlock.style.display = 'none';
+            if (saltBlock) saltBlock.style.display = 'none';
+            if (nonceBlock) nonceBlock.style.display = 'none';
+            if (pepperBlock) pepperBlock.style.display = 'none';
+            return;
+        }
+
+        // Find algorithm
+        const algorithm = AlgorithmFramework.Algorithms.find(a => a.name === algorithmName);
+        if (!algorithm) {
+            // Hide all if algorithm not found
+            if (modeBlock) modeBlock.style.display = 'none';
+            if (paddingBlock) paddingBlock.style.display = 'none';
+            if (keyBlock) keyBlock.style.display = 'none';
+            if (ivBlock) ivBlock.style.display = 'none';
+            if (saltBlock) saltBlock.style.display = 'none';
+            if (nonceBlock) nonceBlock.style.display = 'none';
+            if (pepperBlock) pepperBlock.style.display = 'none';
+            return;
+        }
+
+        const category = algorithm.category;
+
+        // Determine visibility based on category and actual needs
+        const showMode = category === AlgorithmFramework.CategoryType.BLOCK;
+        const showPadding = category === AlgorithmFramework.CategoryType.BLOCK;
+        const showKey = this.algorithmNeedsKey(algorithm);
+        const showIV = this.algorithmNeedsIV(algorithm, modeName);
+        const showSalt = category === AlgorithmFramework.CategoryType.HASH || category === AlgorithmFramework.CategoryType.KDF;
+        const showNonce = category === AlgorithmFramework.CategoryType.STREAM || category === AlgorithmFramework.CategoryType.AEAD;
+        const showPepper = category === AlgorithmFramework.CategoryType.KDF;
+
+        // Apply visibility
+        if (modeBlock) modeBlock.style.display = showMode ? '' : 'none';
+        if (paddingBlock) paddingBlock.style.display = showPadding ? '' : 'none';
+        if (keyBlock) keyBlock.style.display = showKey ? '' : 'none';
+        if (ivBlock) ivBlock.style.display = showIV ? '' : 'none';
+        if (saltBlock) saltBlock.style.display = showSalt ? '' : 'none';
+        if (nonceBlock) nonceBlock.style.display = showNonce ? '' : 'none';
+        if (pepperBlock) pepperBlock.style.display = showPepper ? '' : 'none';
+
+        DebugConfig.log(`🔍 Block visibility updated for ${algorithmName} (${category.name}): Mode=${showMode}, Padding=${showPadding}, Key=${showKey}, IV=${showIV}, Salt=${showSalt}, Nonce=${showNonce}, Pepper=${showPepper}`);
+    }
+
+    /**
+     * Update action buttons (encrypt/decrypt) based on algorithm type
+     * Hides decrypt for one-way algorithms, relabels for non-ciphers
+     */
+    updateActionButtons() {
+        const algorithmSelect = document.getElementById('selected-algorithm');
+        const algorithmName = algorithmSelect?.value;
+        const encryptBtn = document.getElementById('encrypt-btn');
+        const decryptBtn = document.getElementById('decrypt-btn');
+
+        if (!encryptBtn || !decryptBtn) return;
+
+        // Default state
+        if (!algorithmName) {
+            encryptBtn.innerHTML = '🔒 Encrypt';
+            encryptBtn.style.display = '';
+            decryptBtn.style.display = '';
+            return;
+        }
+
+        // Find algorithm
+        const algorithm = AlgorithmFramework.Algorithms.find(a => a.name === algorithmName);
+        if (!algorithm) {
+            encryptBtn.innerHTML = '🔒 Encrypt';
+            encryptBtn.style.display = '';
+            decryptBtn.style.display = '';
+            return;
+        }
+
+        const category = algorithm.category;
+
+        // Determine button state based on category
+        const isCipher = category === AlgorithmFramework.CategoryType.BLOCK ||
+                         category === AlgorithmFramework.CategoryType.STREAM ||
+                         category === AlgorithmFramework.CategoryType.ASYMMETRIC ||
+                         category === AlgorithmFramework.CategoryType.AEAD;
+
+        if (isCipher) {
+            // Two-way ciphers: show both encrypt and decrypt
+            encryptBtn.innerHTML = '🔒 Encrypt';
+            decryptBtn.style.display = '';
+        } else {
+            // One-way algorithms: hide decrypt, relabel encrypt
+            decryptBtn.style.display = 'none';
+
+            // Choose appropriate label based on category
+            if (category === AlgorithmFramework.CategoryType.HASH) {
+                encryptBtn.innerHTML = '#️⃣ Hash';
+            } else if (category === AlgorithmFramework.CategoryType.MAC) {
+                encryptBtn.innerHTML = '✅ Compute MAC';
+            } else if (category === AlgorithmFramework.CategoryType.KDF) {
+                encryptBtn.innerHTML = '🔑 Derive Key';
+            } else if (category === AlgorithmFramework.CategoryType.CHECKSUM) {
+                encryptBtn.innerHTML = '✔️ Checksum';
+            } else if (category === AlgorithmFramework.CategoryType.ENCODING) {
+                encryptBtn.innerHTML = '📝 Encode';
+            } else if (category === AlgorithmFramework.CategoryType.COMPRESSION) {
+                encryptBtn.innerHTML = '🗜️ Compress';
+            } else if (category === AlgorithmFramework.CategoryType.ECC) {
+                encryptBtn.innerHTML = '🔧 Encode';
+            } else {
+                encryptBtn.innerHTML = '⚡ Transform';
+            }
+        }
+
+        DebugConfig.log(`🔘 Action buttons updated for ${algorithmName}: ${encryptBtn.innerHTML}, decrypt=${decryptBtn.style.display !== 'none'}`);
     }
 
     /**
@@ -2885,77 +3398,6 @@ class CipherController {
 
         return false;
     }
-
-    /**
-     * Setup copy and download output actions
-     */
-    setupOutputActions() {
-        const copyBtn = document.getElementById('copy-output');
-        const downloadBtn = document.getElementById('download-output');
-        
-        if (copyBtn) {
-            copyBtn.addEventListener('click', () => this.copyOutput());
-        }
-        
-        if (downloadBtn) {
-            downloadBtn.addEventListener('click', () => this.downloadOutput());
-        }
-    }
-    
-    /**
-     * Copy output to clipboard
-     */
-    async copyOutput() {
-        const outputText = document.getElementById('output-text');
-        if (!outputText.value) {
-            alert('No output to copy');
-            return;
-        }
-        
-        try {
-            await navigator.clipboard.writeText(outputText.value);
-            // Temporary feedback
-            const copyBtn = document.getElementById('copy-output');
-            const originalText = copyBtn.textContent;
-            copyBtn.textContent = '✅ Copied!';
-            setTimeout(() => {
-                copyBtn.textContent = originalText;
-            }, 2000);
-        } catch (error) {
-            DebugConfig.error('Copy failed:', error);
-            // Fallback for older browsers
-            outputText.select();
-            document.execCommand('copy');
-        }
-    }
-    
-    /**
-     * Download output as file
-     */
-    downloadOutput() {
-        const outputText = document.getElementById('output-text');
-        if (!outputText.value) {
-            alert('No output to download');
-            return;
-        }
-        
-        const algorithm = document.getElementById('selected-algorithm').value || 'cipher';
-        const outputFormat = document.querySelector('.output-section .format-tab.active').getAttribute('data-format');
-        
-        // Create blob and download
-        const blob = new Blob([outputText.value], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${algorithm}_output.${outputFormat === 'hex' ? 'hex' : 'txt'}`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        
-        URL.revokeObjectURL(url);
-    }
-    
     /**
      * Perform encryption operation
      */
@@ -3056,6 +3498,9 @@ class CipherController {
                 } catch (error) {
                     throw new Error(`❌ Invalid ${keyFormat} format in key.\n\n💡 Tip: Switch key format to match your key data (Text/Hex/Base64).`);
                 }
+
+                // Apply KDF if selected
+                keyBytes = await this.deriveDataWithKdf(keyBytes, 'key');
             }
 
             // Create algorithm instance
@@ -3229,12 +3674,54 @@ class CipherController {
      * Clear cipher interface
      */
     clearCipherInterface() {
+        // Clear basic fields
         document.getElementById('input-text').value = '';
         document.getElementById('output-text').value = '';
         document.getElementById('selected-algorithm').value = '';
-        document.getElementById('cipher-key').value = '';
         document.getElementById('cipher-mode').value = '';
         document.getElementById('cipher-padding').value = '';
+
+        // Clear all data parameter fields (key, iv, salt, nonce, pepper)
+        const parameterTypes = ['key', 'iv', 'salt', 'nonce', 'pepper'];
+
+        parameterTypes.forEach(paramType => {
+            // Clear data input
+            const dataField = document.getElementById(`cipher-${paramType}`);
+            if (dataField) dataField.value = '';
+
+            // Clear KDF selector
+            const kdfSelect = document.getElementById(`${paramType}-kdf`);
+            if (kdfSelect) kdfSelect.value = '';
+
+            // Clear KDF parameters for this parameter type
+            const kdfSalt = document.getElementById(`${paramType}-kdf-salt`);
+            const kdfIterations = document.getElementById(`${paramType}-kdf-iterations`);
+            const kdfInfo = document.getElementById(`${paramType}-kdf-info`);
+            const kdfHash = document.getElementById(`${paramType}-kdf-hash`);
+            const kdfN = document.getElementById(`${paramType}-kdf-n`);
+            const kdfR = document.getElementById(`${paramType}-kdf-r`);
+            const kdfP = document.getElementById(`${paramType}-kdf-p`);
+            const kdfOutputSize = document.getElementById(`${paramType}-kdf-output-size`);
+
+            if (kdfSalt) kdfSalt.value = '';
+            if (kdfIterations) kdfIterations.value = '10000';
+            if (kdfInfo) kdfInfo.value = '';
+            if (kdfHash) kdfHash.value = 'SHA256';
+            if (kdfN) kdfN.value = '16';
+            if (kdfR) kdfR.value = '1';
+            if (kdfP) kdfP.value = '1';
+
+            // Set default output sizes based on parameter type
+            if (kdfOutputSize) {
+                if (paramType === 'key') kdfOutputSize.value = '32';
+                else if (paramType === 'iv') kdfOutputSize.value = '16';
+                else if (paramType === 'nonce') kdfOutputSize.value = '12';
+                else kdfOutputSize.value = '16';
+            }
+
+            // Hide KDF parameters for this parameter type
+            this.updateKdfParameterVisibility(paramType);
+        });
     }
     
     /**
