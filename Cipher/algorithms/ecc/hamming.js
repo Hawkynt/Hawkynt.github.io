@@ -1,6 +1,6 @@
 /*
- * Hamming Code Implementation
- * Educational implementation of Hamming error correction codes
+ * Hamming Code Implementation (Parametrized)
+ * Supports standard, extended (SECDED), and shortened Hamming codes
  * (c)2006-2025 Hawkynt
  */
 
@@ -32,20 +32,15 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
-          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
-          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
-          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
-          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
-          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
-          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+          ErrorCorrectionAlgorithm, IErrorCorrectionInstance,
+          TestCase, LinkItem, Vulnerability } = AlgorithmFramework;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -54,8 +49,8 @@
       super();
 
       // Required metadata
-      this.name = "Hamming";
-      this.description = "Hamming (7,4) error correction code that can detect and correct single-bit errors. Uses parity bits at power-of-2 positions to encode redundancy. Educational implementation demonstrating linear error correction principles.";
+      this.name = "Hamming Code";
+      this.description = "Parametrized Hamming error correction codes supporting standard (7,4), (15,11), (31,26) variants, extended SECDED variants with overall parity, and shortened versions. Single-bit error correction using parity bits at power-of-2 positions.";
       this.inventor = "Richard Hamming";
       this.year = 1950;
       this.category = CategoryType.ECC;
@@ -68,46 +63,81 @@
       this.documentation = [
         new LinkItem("Wikipedia - Hamming Code", "https://en.wikipedia.org/wiki/Hamming_code"),
         new LinkItem("Hamming Code Tutorial", "https://www.tutorialspoint.com/hamming-code"),
-        new LinkItem("Error Detection and Correction", "https://www.geeksforgeeks.org/error-detection-in-computer-networks/")
+        new LinkItem("Error Correction Zoo", "https://errorcorrectionzoo.org/c/hamming")
       ];
 
       this.references = [
         new LinkItem("Hamming's Original Paper", "https://ieeexplore.ieee.org/document/6772729"),
         new LinkItem("Bell Labs Technical Journal", "https://archive.org/details/bstj29-2-147"),
-        new LinkItem("Information Theory Foundation", "https://en.wikipedia.org/wiki/Information_theory")
+        new LinkItem("Shortened Hamming Optimization", "https://www.researchgate.net/publication/262562757_Optimization_of_shortened_Hamming_codes")
       ];
 
       this.knownVulnerabilities = [
         new Vulnerability(
           "Single Error Correction Only",
-          "Standard Hamming codes can only correct single-bit errors. Multiple errors will be detected but incorrectly corrected"
+          "Standard Hamming codes can only correct single-bit errors. Extended versions (SECDED) can detect double errors."
         ),
         new Vulnerability(
           "Limited Error Detection",
-          "Cannot reliably detect burst errors or certain patterns of multiple errors"
+          "Cannot reliably detect burst errors or certain patterns of multiple errors."
         )
       ];
 
-      // Test vectors for Hamming (7,4) code
+      // Test vectors for various Hamming configurations
       this.tests = [
+        // Standard Hamming (7,4)
         new TestCase(
-          [0, 0, 0, 0], // 4-bit data
-          [0, 0, 0, 0, 0, 0, 0], // 7-bit encoded
-          "Hamming (7,4) all zeros test",
+          [0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0],
+          "Hamming (7,4) all zeros",
           "https://en.wikipedia.org/wiki/Hamming_code"
         ),
         new TestCase(
-          [1, 1, 1, 1], // 4-bit data  
-          [1, 1, 1, 1, 1, 1, 1], // 7-bit encoded (corrected: P1=1, P2=1, D1=1, P4=1, D2=1, D3=1, D4=1)
-          "Hamming (7,4) all ones test",
+          [1, 1, 1, 1],
+          [1, 1, 1, 1, 1, 1, 1],
+          "Hamming (7,4) all ones",
           "https://en.wikipedia.org/wiki/Hamming_code"
         ),
         new TestCase(
-          [1, 0, 1, 0], // 4-bit data
-          [1, 0, 1, 1, 0, 1, 0], // 7-bit encoded
-          "Hamming (7,4) pattern test",
+          [1, 0, 1, 0],
+          [1, 0, 1, 1, 0, 1, 0],
+          "Hamming (7,4) pattern",
           "https://en.wikipedia.org/wiki/Hamming_code"
-        )
+        ),
+        // Extended Hamming (8,4) - SECDED
+        {
+          text: "Extended Hamming (8,4) SECDED zeros",
+          uri: "https://en.wikipedia.org/wiki/Hamming_code",
+          parityBits: 3,
+          extended: true,
+          input: [0, 0, 0, 0],
+          expected: [0, 0, 0, 0, 0, 0, 0, 0]
+        },
+        {
+          text: "Extended Hamming (8,4) SECDED ones",
+          uri: "https://en.wikipedia.org/wiki/Hamming_code",
+          parityBits: 3,
+          extended: true,
+          input: [1, 1, 1, 1],
+          expected: [1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        // Shortened Hamming (6,3)
+        {
+          text: "Shortened Hamming (6,3) zeros",
+          uri: "https://www.researchgate.net/publication/262562757_Optimization_of_shortened_Hamming_codes",
+          parityBits: 3,
+          shortened: 1,
+          input: [0, 0, 0],
+          expected: [0, 0, 0, 0, 0, 0]
+        },
+        {
+          text: "Shortened Hamming (6,3) pattern",
+          uri: "https://www.researchgate.net/publication/262562757_Optimization_of_shortened_Hamming_codes",
+          parityBits: 3,
+          shortened: 1,
+          input: [1, 0, 1],
+          expected: [1, 0, 1, 1, 0, 1]
+        }
       ];
     }
 
@@ -121,6 +151,42 @@
       super(algorithm);
       this.isInverse = isInverse;
       this.result = null;
+
+      // Default configuration: Hamming (7,4)
+      this._parityBits = 3; // r=3 gives (7,4)
+      this._extended = false; // SECDED adds overall parity
+      this._shortened = 0; // Number of bits to remove
+    }
+
+    // Configuration properties
+    set parityBits(r) {
+      if (r < 2 || r > 5) {
+        throw new Error('HammingInstance.parityBits: Must be between 2 and 5');
+      }
+      this._parityBits = r;
+    }
+
+    get parityBits() {
+      return this._parityBits;
+    }
+
+    set extended(value) {
+      this._extended = !!value;
+    }
+
+    get extended() {
+      return this._extended;
+    }
+
+    set shortened(value) {
+      if (value < 0 || value > 4) {
+        throw new Error('HammingInstance.shortened: Must be between 0 and 4');
+      }
+      this._shortened = value;
+    }
+
+    get shortened() {
+      return this._shortened;
     }
 
     Feed(data) {
@@ -142,89 +208,194 @@
       return this.result;
     }
 
-    DetectError(data) {
-      if (!Array.isArray(data) || data.length !== 7) {
-        throw new Error('HammingInstance.DetectError: Input must be 7-bit array');
-      }
-
-      const syndrome = this.calculateSyndrome(data);
-      return syndrome !== 0;
-    }
-
     encode(data) {
-      // Hamming (7,4) encoding - input 4 bits, output 7 bits
-      if (data.length !== 4) {
-        throw new Error('Hamming encode: Input must be exactly 4 bits');
+      const r = this._parityBits;
+      const n = (1 << r) - 1 - this._shortened; // Total bits after shortening
+      const k = n - r; // Data bits (extended parity is added after, doesn't affect k)
+
+      if (data.length !== k) {
+        throw new Error(`Hamming encode: Input must be exactly ${k} bits for this configuration`);
       }
 
-      const [d1, d2, d3, d4] = data;
-      const encoded = new Array(7);
+      // Standard Hamming encoding
+      const fullN = (1 << r) - 1;
+      const encoded = new Array(fullN).fill(0);
 
-      // Data bits go to positions 3, 5, 6, 7 (1-indexed)
-      encoded[2] = d1; // position 3
-      encoded[4] = d2; // position 5  
-      encoded[5] = d3; // position 6
-      encoded[6] = d4; // position 7
+      // Place data bits (skipping power-of-2 positions)
+      let dataIdx = 0;
+      for (let i = 1; i <= fullN; ++i) {
+        if ((i & (i - 1)) !== 0) { // Not a power of 2
+          if (dataIdx < data.length) {
+            encoded[i - 1] = data[dataIdx++];
+          }
+        }
+      }
 
-      // Parity bits at positions 1, 2, 4 (1-indexed) = 0, 1, 3 (0-indexed)
-      encoded[0] = d1 ^ d2 ^ d4; // p1 checks positions 1,3,5,7
-      encoded[1] = d1 ^ d3 ^ d4; // p2 checks positions 2,3,6,7  
-      encoded[3] = d2 ^ d3 ^ d4; // p4 checks positions 4,5,6,7
+      // Calculate parity bits
+      for (let p = 0; p < r; ++p) {
+        const pos = 1 << p;
+        let parity = 0;
+        for (let i = 1; i <= fullN; ++i) {
+          if ((i & pos) !== 0) {
+            parity ^= encoded[i - 1];
+          }
+        }
+        encoded[pos - 1] = parity;
+      }
 
-      return encoded;
+      // Apply shortening (remove last bits)
+      let result = encoded.slice(0, n);
+
+      // Add overall parity for extended (SECDED)
+      if (this._extended) {
+        const overallParity = result.reduce((p, bit) => p ^ bit, 0);
+        result.push(overallParity);
+      }
+
+      return result;
     }
 
     decode(data) {
-      // Hamming (7,4) decoding - input 7 bits, output 4 bits with error correction
-      if (data.length !== 7) {
-        throw new Error('Hamming decode: Input must be exactly 7 bits');
+      const r = this._parityBits;
+      const expectedLen = (1 << r) - 1 - this._shortened + (this._extended ? 1 : 0);
+
+      if (data.length !== expectedLen) {
+        throw new Error(`Hamming decode: Input must be exactly ${expectedLen} bits for this configuration`);
       }
 
-      const received = [...data]; // Copy input
-      const syndrome = this.calculateSyndrome(received);
+      let received = [...data];
+      let overallParity = 0;
 
-      if (syndrome !== 0) {
-        console.log(`Hamming: Error detected at position ${syndrome}, correcting...`);
-        // Correct the error (flip bit at error position, 1-indexed)
-        if (syndrome > 0 && syndrome <= 7) {
-          received[syndrome - 1] = received[syndrome - 1] ^ 1;
+      // Check overall parity for extended codes
+      if (this._extended) {
+        overallParity = received.reduce((p, bit) => p ^ bit, 0);
+        received = received.slice(0, -1); // Remove overall parity bit
+      }
+
+      // Pad if shortened
+      if (this._shortened > 0) {
+        received = [...received, ...new Array(this._shortened).fill(0)];
+      }
+
+      // Calculate syndrome
+      let syndrome = 0;
+      for (let p = 0; p < r; ++p) {
+        const pos = 1 << p;
+        let parity = 0;
+        const fullN = (1 << r) - 1;
+        for (let i = 1; i <= fullN; ++i) {
+          if ((i & pos) !== 0) {
+            parity ^= received[i - 1];
+          }
+        }
+        if (parity !== 0) {
+          syndrome |= pos;
         }
       }
 
-      // Extract data bits from positions 3, 5, 6, 7 (1-indexed)
-      return [received[2], received[4], received[5], received[6]];
-    }
-
-    calculateSyndrome(data) {
-      // Calculate syndrome to find error position
-      const s1 = data[0] ^ data[2] ^ data[4] ^ data[6]; // p1 XOR positions 1,3,5,7
-      const s2 = data[1] ^ data[2] ^ data[5] ^ data[6]; // p2 XOR positions 2,3,6,7
-      const s4 = data[3] ^ data[4] ^ data[5] ^ data[6]; // p4 XOR positions 4,5,6,7
-
-      // Syndrome indicates error position (0 = no error)
-      return s1 + (s2 << 1) + (s4 << 2);
-    }
-
-    // Convert byte data to bit arrays for testing
-    bytesToBits(bytes) {
-      const bits = [];
-      for (let byte of bytes) {
-        for (let i = 7; i >= 0; i--) {
-          bits.push((byte >> i) & 1);
+      // Error correction
+      if (this._extended) {
+        // SECDED logic
+        if (syndrome === 0 && overallParity === 0) {
+          // No error
+        } else if (syndrome === 0 && overallParity !== 0) {
+          // Error in overall parity only
+          console.log('Hamming SECDED: Overall parity error detected');
+        } else if (syndrome !== 0 && overallParity !== 0) {
+          // Single bit error (correctable)
+          console.log(`Hamming SECDED: Single error at position ${syndrome}, correcting...`);
+          if (syndrome > 0 && syndrome <= received.length) {
+            received[syndrome - 1] ^= 1;
+          }
+        } else {
+          // Double bit error (detectable, not correctable)
+          throw new Error('Hamming SECDED: Double bit error detected - cannot correct');
+        }
+      } else {
+        // Standard Hamming correction
+        if (syndrome !== 0) {
+          console.log(`Hamming: Error at position ${syndrome}, correcting...`);
+          if (syndrome > 0 && syndrome <= received.length) {
+            received[syndrome - 1] ^= 1;
+          }
         }
       }
-      return bits;
+
+      // Remove padding
+      if (this._shortened > 0) {
+        received = received.slice(0, -this._shortened);
+      }
+
+      // Extract data bits (skip power-of-2 positions)
+      const result = [];
+      const fullN = (1 << r) - 1;
+      for (let i = 1; i <= fullN && result.length < data.length - (this._extended ? 1 : 0) - r; ++i) {
+        if ((i & (i - 1)) !== 0) { // Not a power of 2
+          if (i - 1 < received.length) {
+            result.push(received[i - 1]);
+          }
+        }
+      }
+
+      return result;
     }
 
-    bitsToByte(bits) {
-      if (bits.length !== 8) {
-        throw new Error('bitsToByte: Input must be exactly 8 bits');
+    DetectError(data) {
+      const r = this._parityBits;
+      const expectedLen = (1 << r) - 1 - this._shortened + (this._extended ? 1 : 0);
+
+      if (data.length !== expectedLen) return true;
+
+      let received = [...data];
+
+      if (this._extended) {
+        const overallParity = received.reduce((p, bit) => p ^ bit, 0);
+        received = received.slice(0, -1);
+
+        // Pad if shortened
+        if (this._shortened > 0) {
+          received = [...received, ...new Array(this._shortened).fill(0)];
+        }
+
+        let syndrome = 0;
+        const fullN = (1 << r) - 1;
+        for (let p = 0; p < r; ++p) {
+          const pos = 1 << p;
+          let parity = 0;
+          for (let i = 1; i <= fullN; ++i) {
+            if ((i & pos) !== 0) {
+              parity ^= received[i - 1];
+            }
+          }
+          if (parity !== 0) {
+            syndrome |= pos;
+          }
+        }
+
+        return syndrome !== 0 || overallParity !== 0;
+      } else {
+        // Pad if shortened
+        if (this._shortened > 0) {
+          received = [...received, ...new Array(this._shortened).fill(0)];
+        }
+
+        let syndrome = 0;
+        const fullN = (1 << r) - 1;
+        for (let p = 0; p < r; ++p) {
+          const pos = 1 << p;
+          let parity = 0;
+          for (let i = 1; i <= fullN; ++i) {
+            if ((i & pos) !== 0) {
+              parity ^= received[i - 1];
+            }
+          }
+          if (parity !== 0) {
+            syndrome |= pos;
+          }
+        }
+
+        return syndrome !== 0;
       }
-      let byte = 0;
-      for (let i = 0; i < 8; i++) {
-        byte |= (bits[i] << (7 - i));
-      }
-      return byte;
     }
   }
 
@@ -232,7 +403,7 @@
 
   // ===== REGISTRATION =====
 
-    const algorithmInstance = new HammingAlgorithm();
+  const algorithmInstance = new HammingAlgorithm();
   if (!AlgorithmFramework.Find(algorithmInstance.name)) {
     RegisterAlgorithm(algorithmInstance);
   }

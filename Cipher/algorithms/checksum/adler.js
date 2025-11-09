@@ -208,6 +208,7 @@
     }
 
     CreateInstance(isInverse = false) {
+      if (isInverse) return null; // Checksums have no inverse
       if (isInverse) {
         return null; // Checksums do not support inverse operations
       }

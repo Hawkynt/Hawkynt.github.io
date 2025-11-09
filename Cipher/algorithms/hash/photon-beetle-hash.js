@@ -87,9 +87,9 @@
       this.year = 2019;
       this.category = CategoryType.HASH;
       this.subCategory = "Lightweight Hash";
-      this.securityStatus = SecurityStatus.SECURE;
-      this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = CountryCode.INTERNATIONAL;
+      this.securityStatus = SecurityStatus.EXPERIMENTAL;
+      this.complexity = ComplexityType.ADVANCED;
+      this.country = CountryCode.INTL;
 
       this.SupportedOutputSizes = [{ minSize: 32, maxSize: 32, stepSize: 1 }];
 

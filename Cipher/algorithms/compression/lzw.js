@@ -80,25 +80,45 @@
           new LinkItem("Educational LZW Implementation", "https://rosettacode.org/wiki/LZW_compression")
         ];
 
-        // Test vectors - compression tests with expected compressed outputs
+        // Test vectors with expected compressed output
+        // Format: 4-byte count (big-endian) + 16-bit codes (big-endian)
+        // Dictionary starts with bytes 0-255, new sequences start at code 256
         this.tests = [
           new TestCase(
-            [65, 66, 65, 66, 65, 66, 65, 66], // Repeated pattern
-            [0, 0, 0, 5, 0, 65, 0, 66, 1, 2, 1, 4, 0, 66],
-            "Simple repeated pattern",
-            "Basic LZW test"
+            OpCodes.AsciiToBytes("ABABABABAB"),
+            [0,0,0,6,0,65,0,66,1,2,1,4,1,3,0,66],
+            "Repeated two-character pattern - Wikipedia example",
+            "https://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Welch"
           ),
           new TestCase(
-            [84, 79, 66, 69, 79, 82, 78, 79, 84, 84, 79, 66, 69, 79, 82, 84, 79, 66, 69, 79, 82, 78, 79, 84], // "TOBEORNOTTOBEORTOBEORNOT"
-            [0, 0, 0, 16, 0, 84, 0, 79, 0, 66, 0, 69, 0, 79, 0, 82, 0, 78, 0, 79, 0, 84, 1, 2, 1, 4, 1, 6, 1, 11, 1, 5, 1, 7, 1, 9],
-            "Text with common substrings",
-            "Text compression test"
+            OpCodes.AsciiToBytes("TOBEORNOTTOBEORTOBEORNOT"),
+            [0,0,0,16,0,84,0,79,0,66,0,69,0,79,0,82,0,78,0,79,0,84,1,2,1,4,1,6,1,11,1,5,1,7,1,9],
+            "Classic Shakespeare-inspired LZW test string - Wikipedia",
+            "https://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Welch"
           ),
           new TestCase(
-            [0x47, 0x49, 0x46], // "GIF" header
-            [0, 0, 0, 3, 0, 71, 0, 73, 0, 70],
-            "Binary data compression",
-            "Binary data test"
+            OpCodes.AsciiToBytes("BABAABAAA"),
+            [0,0,0,6,0,66,0,65,1,2,1,3,0,65,1,6],
+            "Educational example showing dictionary building - GeeksforGeeks",
+            "https://www.geeksforgeeks.org/lzw-lempel-ziv-welch-compression-technique/"
+          ),
+          new TestCase(
+            OpCodes.AsciiToBytes("WYS*WYGWYS*WYSWYSG"),
+            [0,0,0,11,0,87,0,89,0,83,0,42,1,2,0,71,1,2,1,4,1,8,1,8,0,71],
+            "Pattern with repeated substrings - GeeksforGeeks C++ example",
+            "https://www.geeksforgeeks.org/lzw-lempel-ziv-welch-compression-technique/"
+          ),
+          new TestCase(
+            OpCodes.AsciiToBytes("AAAAAAAAAA"),
+            [0,0,0,4,0,65,1,2,1,3,1,4],
+            "Maximum redundancy test (all identical characters)",
+            "Edge case - maximum compression ratio"
+          ),
+          new TestCase(
+            OpCodes.AsciiToBytes("ABCDEFGHIJ"),
+            [0,0,0,10,0,65,0,66,0,67,0,68,0,69,0,70,0,71,0,72,0,73,0,74],
+            "No repetition test (worst case for LZW)",
+            "Edge case - minimal compression benefit"
           )
         ];
       }
@@ -227,11 +247,7 @@
           }
 
           const output = result.join('');
-          const bytes = [];
-          for (let i = 0; i < output.length; i++) {
-            bytes.push(output.charCodeAt(i) & 0xFF);
-          }
-          return bytes;
+          return OpCodes.AsciiToBytes(output);
         } catch (e) {
           this.inputBuffer = [];
           return [];
