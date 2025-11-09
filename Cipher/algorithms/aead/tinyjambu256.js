@@ -131,22 +131,22 @@
           expected: OpCodes.Hex8ToBytes("20BB303279C2739CE5")
         },
         {
-          text: "TinyJAMBU-256: 4-byte message with 4-byte AAD (Count 73)",
+          text: "TinyJAMBU-256: 4-byte message with 4-byte AAD (Count 137)",
           uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
           aad: OpCodes.Hex8ToBytes("00010203"),
           input: OpCodes.Hex8ToBytes("00010203"),
-          expected: OpCodes.Hex8ToBytes("CC6B5CA35BDA464156734BD7")
+          expected: OpCodes.Hex8ToBytes("0243655595B82F3B398F3D96")
         },
         {
-          text: "TinyJAMBU-256: 8-byte message with 8-byte AAD (Count 297)",
+          text: "TinyJAMBU-256: 8-byte message with 32-byte AAD (Count 297)",
           uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-          aad: OpCodes.Hex8ToBytes("0001020304050607"),
+          aad: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
           input: OpCodes.Hex8ToBytes("0001020304050607"),
-          expected: OpCodes.Hex8ToBytes("0F4D89A3C399BF2895FBEEFD60B8F9D9")
+          expected: OpCodes.Hex8ToBytes("A5628DF713D4316218A127FC09046F81")
         }
       ];
     }
@@ -236,11 +236,26 @@
       }
     }
 
+    // Helper: Perform 32 TinyJAMBU steps (one step per bit)
+    // This is the core nonlinear feedback function
+    // The feedback taps combine bits from different state words via shifts
+    _steps32(s0, s1, s2, s3, kword) {
+      // Compute feedback taps using bitwise shift operations
+      // Note: These combine two words via shifts, NOT rotations of a single word
+      // Example: t1 = bits[15..31] of s1 | bits[0..14] of s2 shifted to bits[17..31]
+      const t1 = (s1 >>> 15) | (s2 << 17);
+      const t2 = (s2 >>> 6) | (s3 << 26);
+      const t3 = (s2 >>> 21) | (s3 << 11);
+      const t4 = (s2 >>> 27) | (s3 << 5);
+
+      // Nonlinear feedback: XOR(t1, NAND(t2,t3), t4, key)
+      // NAND(t2,t3) = NOT(AND(t2,t3))
+      return (s0 ^ t1 ^ (~(t2 & t3)) ^ t4 ^ kword) >>> 0;
+    }
+
     // TinyJAMBU keyed permutation for 256-bit key
     // Direct translation from internal-tinyjambu.c lines 131-167
     _permutation256(state, key, rounds) {
-      let t1, t2, t3, t4;
-
       // Load state into local variables
       let s0 = state[0];
       let s1 = state[1];
@@ -250,73 +265,19 @@
       // Perform all permutation rounds 128 at a time
       for (; rounds > 0; --rounds) {
         // Perform the first set of 128 steps (key[0..3])
-        // Inline macro expansion: tiny_jambu_steps_32(s0, s1, s2, s3, key[0])
-        t1 = (s1 >>> 15) | (s2 << 17);
-        t2 = (s2 >>> 6) | (s3 << 26);
-        t3 = (s2 >>> 21) | (s3 << 11);
-        t4 = (s2 >>> 27) | (s3 << 5);
-        s0 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[0];
-        s0 >>>= 0;
-
-        // tiny_jambu_steps_32(s1, s2, s3, s0, key[1])
-        t1 = (s2 >>> 15) | (s3 << 17);
-        t2 = (s3 >>> 6) | (s0 << 26);
-        t3 = (s3 >>> 21) | (s0 << 11);
-        t4 = (s3 >>> 27) | (s0 << 5);
-        s1 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[1];
-        s1 >>>= 0;
-
-        // tiny_jambu_steps_32(s2, s3, s0, s1, key[2])
-        t1 = (s3 >>> 15) | (s0 << 17);
-        t2 = (s0 >>> 6) | (s1 << 26);
-        t3 = (s0 >>> 21) | (s1 << 11);
-        t4 = (s0 >>> 27) | (s1 << 5);
-        s2 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[2];
-        s2 >>>= 0;
-
-        // tiny_jambu_steps_32(s3, s0, s1, s2, key[3])
-        t1 = (s0 >>> 15) | (s1 << 17);
-        t2 = (s1 >>> 6) | (s2 << 26);
-        t3 = (s1 >>> 21) | (s2 << 11);
-        t4 = (s1 >>> 27) | (s2 << 5);
-        s3 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[3];
-        s3 >>>= 0;
+        s0 = this._steps32(s0, s1, s2, s3, key[0]);
+        s1 = this._steps32(s1, s2, s3, s0, key[1]);
+        s2 = this._steps32(s2, s3, s0, s1, key[2]);
+        s3 = this._steps32(s3, s0, s1, s2, key[3]);
 
         // Bail out if this is the last round
         if ((--rounds) === 0) break;
 
         // Perform the second set of 128 steps (key[4..7])
-        // tiny_jambu_steps_32(s0, s1, s2, s3, key[4])
-        t1 = (s1 >>> 15) | (s2 << 17);
-        t2 = (s2 >>> 6) | (s3 << 26);
-        t3 = (s2 >>> 21) | (s3 << 11);
-        t4 = (s2 >>> 27) | (s3 << 5);
-        s0 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[4];
-        s0 >>>= 0;
-
-        // tiny_jambu_steps_32(s1, s2, s3, s0, key[5])
-        t1 = (s2 >>> 15) | (s3 << 17);
-        t2 = (s3 >>> 6) | (s0 << 26);
-        t3 = (s3 >>> 21) | (s0 << 11);
-        t4 = (s3 >>> 27) | (s0 << 5);
-        s1 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[5];
-        s1 >>>= 0;
-
-        // tiny_jambu_steps_32(s2, s3, s0, s1, key[6])
-        t1 = (s3 >>> 15) | (s0 << 17);
-        t2 = (s0 >>> 6) | (s1 << 26);
-        t3 = (s0 >>> 21) | (s1 << 11);
-        t4 = (s0 >>> 27) | (s1 << 5);
-        s2 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[6];
-        s2 >>>= 0;
-
-        // tiny_jambu_steps_32(s3, s0, s1, s2, key[7])
-        t1 = (s0 >>> 15) | (s1 << 17);
-        t2 = (s1 >>> 6) | (s2 << 26);
-        t3 = (s1 >>> 21) | (s2 << 11);
-        t4 = (s1 >>> 27) | (s2 << 5);
-        s3 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[7];
-        s3 >>>= 0;
+        s0 = this._steps32(s0, s1, s2, s3, key[4]);
+        s1 = this._steps32(s1, s2, s3, s0, key[5]);
+        s2 = this._steps32(s2, s3, s0, s1, key[6]);
+        s3 = this._steps32(s3, s0, s1, s2, key[7]);
       }
 
       // Store local variables back to state
@@ -324,17 +285,6 @@
       state[1] = s1;
       state[2] = s2;
       state[3] = s3;
-    }
-
-    // Macro equivalent: tiny_jambu_steps_32(s0, s1, s2, s3, kword)
-    // From internal-tinyjambu.c lines 36-42
-    // Returns the new value for the first parameter
-    _steps32Rotated(s0, s1, s2, s3, kword) {
-      let t1 = (s1 >>> 15) | (s2 << 17);
-      let t2 = (s2 >>> 6) | (s3 << 26);
-      let t3 = (s2 >>> 21) | (s3 << 11);
-      let t4 = (s2 >>> 27) | (s3 << 5);
-      return (s0 ^ t1 ^ (~(t2 & t3)) ^ t4 ^ kword) >>> 0;
     }
 
     // Setup TinyJAMBU state with key, nonce, and associated data
@@ -385,6 +335,7 @@
       } else if (adlen === 3) {
         state[1] = (state[1] ^ 0x30) >>> 0;
         this._permutation256(state, key, 3);
+        // Pack 3 bytes: 2 via Pack16LE, third byte shifted to bits 16-23
         const word = OpCodes.Pack16LE(ad[adPos], ad[adPos + 1]) | (ad[adPos + 2] << 16);
         state[3] = (state[3] ^ word) >>> 0;
         state[1] = (state[1] ^ 0x03) >>> 0;
@@ -464,15 +415,20 @@
         state[3] = (state[3] ^ data) >>> 0;
         state[1] = (state[1] ^ 0x02) >>> 0;
         const ctWord = (data ^ state[2]) >>> 0;
-        output.push(ctWord & 0xFF, (ctWord >>> 8) & 0xFF);
+        // Extract 2 bytes from ctWord
+        const ctBytes = OpCodes.Unpack32LE(ctWord);
+        output.push(ctBytes[0], ctBytes[1]);
       } else if (mlen === 3) {
         state[1] = (state[1] ^ 0x50) >>> 0;
         this._permutation256(state, key, 10);
+        // Pack 3 bytes: 2 via Pack16LE, third byte shifted to bits 16-23
         const data = OpCodes.Pack16LE(plaintext[mPos], plaintext[mPos + 1]) | (plaintext[mPos + 2] << 16);
         state[3] = (state[3] ^ data) >>> 0;
         state[1] = (state[1] ^ 0x03) >>> 0;
         const ctWord = (data ^ state[2]) >>> 0;
-        output.push(ctWord & 0xFF, (ctWord >>> 8) & 0xFF, (ctWord >>> 16) & 0xFF);
+        // Extract 3 bytes from ctWord
+        const ctBytes = OpCodes.Unpack32LE(ctWord);
+        output.push(ctBytes[0], ctBytes[1], ctBytes[2]);
       }
 
       // Generate authentication tag
@@ -539,15 +495,20 @@
         const data = ((ctWord ^ state[2]) & 0xFFFF) >>> 0;
         state[3] = (state[3] ^ data) >>> 0;
         state[1] = (state[1] ^ 0x02) >>> 0;
-        output.push(data & 0xFF, (data >>> 8) & 0xFF);
+        // Extract 2 bytes from data
+        const ptBytes = OpCodes.Unpack32LE(data);
+        output.push(ptBytes[0], ptBytes[1]);
       } else if (clen === 3) {
         state[1] = (state[1] ^ 0x50) >>> 0;
         this._permutation256(state, key, 10);
+        // Pack 3 bytes: 2 via Pack16LE, third byte shifted to bits 16-23
         const ctWord = OpCodes.Pack16LE(ciphertext[cPos], ciphertext[cPos + 1]) | (ciphertext[cPos + 2] << 16);
         const data = ((ctWord ^ state[2]) & 0xFFFFFF) >>> 0;
         state[3] = (state[3] ^ data) >>> 0;
         state[1] = (state[1] ^ 0x03) >>> 0;
-        output.push(data & 0xFF, (data >>> 8) & 0xFF, (data >>> 16) & 0xFF);
+        // Extract 3 bytes from data
+        const ptBytes = OpCodes.Unpack32LE(data);
+        output.push(ptBytes[0], ptBytes[1], ptBytes[2]);
       }
 
       // Generate expected tag

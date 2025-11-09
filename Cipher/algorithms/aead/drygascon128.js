@@ -563,59 +563,70 @@
     }
 
     _setup(state, finalBlock) {
-      // Initialize state with 16-byte key
-      // Fill GASCON-128 state (40 bytes) with repeated key
-      for (let i = 0; i < 40; i += 16) {
-        const copyLen = Math.min(16, 40 - i);
-        for (let j = 0; j < copyLen; ++j) {
-          const stateIdx = Math.floor((i + j) / 8);
-          const wordOffset = (i + j) % 8;
-          if (wordOffset < 4) {
-            // Low word
-            const bytePos = wordOffset;
-            const keyByte = j < 16 ? this._key[j] : 0;
-            if (bytePos === 0) state.c.S[stateIdx][0] = keyByte;
-            else if (bytePos === 1) state.c.S[stateIdx][0] |= (keyByte << 8);
-            else if (bytePos === 2) state.c.S[stateIdx][0] |= (keyByte << 16);
-            else if (bytePos === 3) state.c.S[stateIdx][0] |= (keyByte << 24);
-            state.c.S[stateIdx][0] = state.c.S[stateIdx][0] >>> 0;
-          } else {
-            // High word
-            const bytePos = wordOffset - 4;
-            const keyByte = j < 16 ? this._key[j] : 0;
-            if (bytePos === 0) state.c.S[stateIdx][1] = keyByte;
-            else if (bytePos === 1) state.c.S[stateIdx][1] |= (keyByte << 8);
-            else if (bytePos === 2) state.c.S[stateIdx][1] |= (keyByte << 16);
-            else if (bytePos === 3) state.c.S[stateIdx][1] |= (keyByte << 24);
-            state.c.S[stateIdx][1] = state.c.S[stateIdx][1] >>> 0;
-          }
-        }
-      }
+      // Initialize GASCON-128 state (40 bytes) with repeated key
+      // Bytes 0-15: key[0-15]
+      // Bytes 16-31: key[0-15]
+      // Bytes 32-39: key[0-7]
+
+      // Fill bytes 0-15 with key
+      state.c.S[0][0] = OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]);
+      state.c.S[0][1] = OpCodes.Pack32LE(this._key[4], this._key[5], this._key[6], this._key[7]);
+      state.c.S[1][0] = OpCodes.Pack32LE(this._key[8], this._key[9], this._key[10], this._key[11]);
+      state.c.S[1][1] = OpCodes.Pack32LE(this._key[12], this._key[13], this._key[14], this._key[15]);
+
+      // Fill bytes 16-31 with key (repeat)
+      state.c.S[2][0] = OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]);
+      state.c.S[2][1] = OpCodes.Pack32LE(this._key[4], this._key[5], this._key[6], this._key[7]);
+      state.c.S[3][0] = OpCodes.Pack32LE(this._key[8], this._key[9], this._key[10], this._key[11]);
+      state.c.S[3][1] = OpCodes.Pack32LE(this._key[12], this._key[13], this._key[14], this._key[15]);
+
+      // Fill bytes 32-39 with key[0-7]
+      state.c.S[4][0] = OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]);
+      state.c.S[4][1] = OpCodes.Pack32LE(this._key[4], this._key[5], this._key[6], this._key[7]);
 
       // Generate x value by running core rounds until all words are unique
-      // Safety limit: max 1000 rounds to prevent infinite loops
+      // Check the first 4 x 32-bit words of state.c (in bit-interleaved format)
+      // These are: S[0][0], S[0][1], S[1][0], S[1][1]
       let roundCount = 0;
       const MAX_ROUNDS = 1000;
+      let cWordsAreSame = false;
       do {
         state.c.coreRound(0);
         roundCount++;
         if (roundCount >= MAX_ROUNDS) {
           throw new Error(`DryGASCON128: Failed to generate unique X words after ${MAX_ROUNDS} rounds`);
         }
-      } while (state.xWordsAreSame());
+
+        // Check if the 4 x 32-bit words from state.c are all different
+        const cWords = [
+          state.c.S[0][0],  // Word 0
+          state.c.S[0][1],  // Word 1
+          state.c.S[1][0],  // Word 2
+          state.c.S[1][1]   // Word 3
+        ];
+
+        cWordsAreSame = false;
+        for (let i = 0; i < 3; ++i) {
+          for (let j = i + 1; j < 4; ++j) {
+            if (cWords[i] === cWords[j]) {
+              cWordsAreSame = true;
+              break;
+            }
+          }
+          if (cWordsAreSame) break;
+        }
+      } while (cWordsAreSame);
 
       // Copy first 16 bytes of state.c to x
-      const xBytes = new Array(16);
       for (let i = 0; i < 16; ++i) {
         const stateIdx = Math.floor(i / 8);
         const wordOffset = i % 8;
         if (wordOffset < 4) {
-          xBytes[i] = (state.c.S[stateIdx][0] >>> (wordOffset * 8)) & 0xFF;
+          state.x[i] = (state.c.S[stateIdx][0] >>> (wordOffset * 8)) & 0xFF;
         } else {
-          xBytes[i] = (state.c.S[stateIdx][1] >>> ((wordOffset - 4) * 8)) & 0xFF;
+          state.x[i] = (state.c.S[stateIdx][1] >>> ((wordOffset - 4) * 8)) & 0xFF;
         }
       }
-      for (let i = 0; i < 16; ++i) state.x[i] = xBytes[i];
 
       // Replace first 16 bytes of state with key
       for (let i = 0; i < 16; ++i) {
