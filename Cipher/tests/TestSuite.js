@@ -164,8 +164,40 @@ class TestSuite {
     this.totalAlgorithms++;
     this.algorithmsPerCategory[category]++;
 
-    // Use TestFile from new TestEngine
-    const result = await TestFile(filePath, { verbose: this.verbose, silent: false });
+    // Use TestFile from new TestEngine with timing and 5-second timeout
+    const startTime = process.hrtime.bigint();
+    const timeoutMs = 5000;
+
+    let result;
+    let timedOut = false;
+
+    try {
+      // Race between test execution and timeout
+      result = await Promise.race([
+        TestFile(filePath, { verbose: this.verbose, silent: false }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('TIMEOUT')), timeoutMs)
+        )
+      ]);
+    } catch (error) {
+      if (error.message === 'TIMEOUT') {
+        timedOut = true;
+        // Create failed result for timeout
+        result = {
+          compilation: { passed: true, error: null },
+          interface: { passed: true, error: null },
+          metadata: { passed: true, error: null },
+          issues: { passed: true, errors: [] },
+          functionality: { passed: false, error: `Test execution exceeded ${timeoutMs}ms timeout` },
+          optimization: { passed: false, error: 'Not tested due to timeout' }
+        };
+      } else {
+        throw error;
+      }
+    }
+
+    const endTime = process.hrtime.bigint();
+    const elapsedMs = Number(endTime - startTime) / 1_000_000;
 
     // Convert to old format for compatibility
     const algorithmData = {
@@ -211,7 +243,8 @@ class TestSuite {
 
     const issuesCount = algorithmData.details.issues ? algorithmData.details.issues.totalCount : 0;
     const issuesStatus = algorithmData.tests.issues ? '0' : `${issuesCount}`;
-    console.log(`    ${status} ${algorithmName} - Compilation:${algorithmData.tests.compilation?'✓':'✗'} Interface:${algorithmData.tests.interface?'✓':'✗'} Metadata:${algorithmData.tests.metadata?'✓':'✗'} Issues:${issuesStatus} Function:${algorithmData.tests.functionality?'✓':'✗'} Optimization:${algorithmData.tests.optimization?'✓':'✗'}${registeredInfo}${roundTripInfo}`);
+    const timingInfo = timedOut ? ` (TIMEOUT after ${elapsedMs.toFixed(2)}ms)` : ` (${elapsedMs.toFixed(2)}ms)`;
+    console.log(`    ${status} ${algorithmName} - Compilation:${algorithmData.tests.compilation?'✓':'✗'} Interface:${algorithmData.tests.interface?'✓':'✗'} Metadata:${algorithmData.tests.metadata?'✓':'✗'} Issues:${issuesStatus} Function:${algorithmData.tests.functionality?'✓':'✗'} Optimization:${algorithmData.tests.optimization?'✓':'✗'}${registeredInfo}${roundTripInfo}${timingInfo}`);
 
     // Show verbose output if requested (matches original format)
     if (this.verbose && algorithmData.details.testResults) {
