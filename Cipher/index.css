@@ -489,9 +489,11 @@ body {
 }
 
 .interface-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    flex-direction: column;
     gap: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
 .input-section, .output-section {
@@ -553,7 +555,8 @@ body {
 
 /* Invalid state - Salmon background when size is wrong */
 .textarea.input-invalid,
-.search-input.input-invalid {
+.search-input.input-invalid,
+.data-input.input-invalid {
     background: #fa8072 !important;
     color: #2d3748 !important;
     border: 1px solid #e07060 !important;
@@ -563,7 +566,8 @@ body {
 
 /* Disabled state - Grayed out when not needed */
 .textarea.input-disabled,
-.search-input.input-disabled {
+.search-input.input-disabled,
+.data-input.input-disabled {
     background: #e8e8e8 !important;
     color: #9ca3af !important;
     border: 1px solid #d1d5db !important;
@@ -571,6 +575,84 @@ body {
     opacity: 0.7;
     pointer-events: none;
     transition: all 0.3s ease;
+}
+
+/* Drag-over state - Highlight when dragging file over textarea */
+.textarea.drag-over,
+.data-input.drag-over {
+    background: rgba(99, 102, 241, 0.1) !important;
+    border: 2px dashed rgba(99, 102, 241, 0.6) !important;
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15) !important;
+    transition: all 0.2s ease;
+}
+
+/* Textarea container for drop overlay */
+.textarea-container {
+    position: relative;
+    width: 100%;
+}
+
+/* Drop overlay - hidden by default */
+.drop-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.95);
+    border: 2px dashed rgba(99, 102, 241, 0.8);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 10;
+}
+
+/* Show overlay on hover or drag */
+.textarea-container:hover .drop-overlay,
+.textarea-container.drag-active .drop-overlay {
+    opacity: 1;
+}
+
+/* Overlay content */
+.drop-overlay-content {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.drop-overlay-icon {
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
+    animation: bounce 1s ease-in-out infinite;
+}
+
+.drop-overlay-text {
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* Smaller overlay for data inputs */
+.drop-overlay-small .drop-overlay-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.drop-overlay-small .drop-overlay-text {
+    font-size: 0.85rem;
+}
+
+/* Bounce animation for icon */
+@keyframes bounce {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-10px);
+    }
 }
 
 /* Container hidden state */
@@ -609,6 +691,55 @@ body {
 .format-tab-small.active {
     background: rgba(102, 126, 234, 0.2);
     border-color: #667eea;
+}
+
+/* Unified Toolbar Component */
+.data-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.data-toolbar-small {
+    margin-bottom: 0.375rem;
+}
+
+.data-toolbar .format-tabs {
+    display: flex;
+    gap: 0.25rem;
+    margin: 0;
+    border: none;
+}
+
+.toolbar-actions {
+    display: flex;
+    gap: 0.25rem;
+    margin-left: auto;
+}
+
+.toolbar-btn {
+    padding: 0.5rem 0.75rem;
+    border: none;
+    background: rgba(102, 126, 234, 0.1);
+    cursor: pointer;
+    font-size: 1rem;
+    color: rgba(255, 255, 255, 0.7);
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.toolbar-btn:hover {
+    background: rgba(102, 126, 234, 0.2);
+    color: white;
+}
+
+.toolbar-btn-small {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
 }
 
 .controls-section {
@@ -1999,7 +2130,6 @@ option[data-category] {
     }
     
     .interface-grid {
-        grid-template-columns: 1fr;
         gap: 1rem;
     }
     
@@ -3022,5 +3152,231 @@ option[data-category] {
     .parallel-stats {
         font-size: 0.8rem;
         gap: 0.5rem;
+    }
+}
+/* ===== CIPHER BLOCK-BASED LAYOUT STYLES ===== */
+
+/* Section Header (for grouping related blocks) */
+.section-header-block {
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.section-header-block:first-child {
+    margin-top: 0;
+}
+
+.section-header-title {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: #cbd5e0;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.section-header-icon {
+    font-size: 1.125rem;
+    opacity: 0.8;
+}
+
+/* Major Separator (between sections) */
+.section-separator {
+    height: 2px;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(99, 102, 241, 0.4) 10%,
+        rgba(99, 102, 241, 0.6) 50%,
+        rgba(99, 102, 241, 0.4) 90%,
+        transparent 100%
+    );
+    margin: 1.5rem 0 1rem 0;
+    box-shadow: 0 0 8px rgba(99, 102, 241, 0.2);
+}
+
+/* Cipher Block Container */
+.cipher-block {
+    margin-bottom: 0.75rem;
+}
+
+/* Block Title */
+.block-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #a0aec0;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.block-title-icon {
+    font-size: 1rem;
+    opacity: 0.7;
+}
+
+/* Block Separator (minor - within sections) */
+.block-separator {
+    height: 1px;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(160, 174, 192, 0.25) 20%,
+        rgba(160, 174, 192, 0.25) 80%,
+        transparent 100%
+    );
+    margin: 1rem 0 0.75rem 0;
+}
+
+/* Unified Data Control Component */
+.data-control {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.data-control-tabs {
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+}
+
+.data-input {
+    width: 100%;
+    padding: 0.5rem;
+    background: rgba(26, 32, 44, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    color: white;
+    font-family: 'Courier New', monospace;
+    font-size: 0.875rem;
+    resize: vertical;
+    min-height: 60px;
+    transition: all 0.2s ease;
+}
+
+.data-input:focus {
+    outline: none;
+    border-color: rgba(99, 102, 241, 0.5);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.data-input::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+/* KDF Sub-block */
+.kdf-subblock {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 0.75rem;
+}
+
+.kdf-subblock label {
+    font-size: 0.875rem;
+    color: #a0aec0;
+    margin-bottom: 0.25rem;
+    display: block;
+}
+
+/* KDF Parameter Rows */
+.kdf-param-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto auto;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    align-items: end;
+}
+
+.kdf-param-row:last-child {
+    margin-bottom: 0;
+}
+
+.kdf-param-field {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.kdf-param-field label {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 0.25rem;
+    font-weight: 500;
+}
+
+.kdf-param-field input,
+.kdf-param-field select {
+    padding: 0.375rem 0.5rem;
+    background: rgba(26, 32, 44, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    color: white;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+}
+
+.kdf-param-field input:focus,
+.kdf-param-field select:focus {
+    outline: none;
+    border-color: rgba(99, 102, 241, 0.5);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+
+/* Salmon Tinting for Validation */
+.salmon-tint {
+    background-color: rgba(250, 128, 114, 0.2) !important;
+    border-color: rgba(250, 128, 114, 0.5) !important;
+}
+
+.salmon-tint:focus {
+    box-shadow: 0 0 0 3px rgba(250, 128, 114, 0.15) !important;
+}
+
+/* Responsive Design for Cipher Blocks */
+@media (max-width: 768px) {
+    .cipher-block {
+        margin-bottom: 1rem;
+    }
+
+    .kdf-param-row {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+
+    .kdf-param-field {
+        width: 100%;
+    }
+
+    .data-control-tabs {
+        flex-wrap: wrap;
+    }
+}
+
+/* Enhanced format tab small styles for data controls */
+.format-tab-small {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.8125rem;
+}
+
+/* Action buttons spacing enhancement */
+.action-buttons {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+@media (max-width: 640px) {
+    .action-buttons {
+        flex-direction: column;
+    }
+
+    .action-buttons .btn {
+        width: 100%;
     }
 }
