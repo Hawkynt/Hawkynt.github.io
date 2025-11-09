@@ -1,5 +1,6 @@
 /*
- * SHA-512 Hash Function - Universal AlgorithmFramework Implementation
+ * SHA-2 512-bit Family Hash Functions - Universal AlgorithmFramework Implementation
+ * Supports: SHA-512, SHA-384, SHA-512/224, SHA-512/256
  * (c)2006-2025 Hawkynt
  */
 
@@ -47,13 +48,8 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
-  // SHA-512 initial hash values (first 64 bits of fractional parts of square roots of first 8 primes)
-  const H0 = Object.freeze([
-    0x6a09e667f3bcc908n, 0xbb67ae8584caa73bn, 0x3c6ef372fe94f82bn, 0xa54ff53a5f1d36f1n,
-    0x510e527fade682d1n, 0x9b05688c2b3e6c1fn, 0x1f83d9abfb41bd6bn, 0x5be0cd19137e2179n
-  ]);
-
   // SHA-512 round constants (first 64 bits of fractional parts of cube roots of first 80 primes)
+  // Shared by all SHA-512 family variants
   const K = Object.freeze([
     0x428a2f98d728ae22n, 0x7137449123ef65cdn, 0xb5c0fbcfec4d3b2fn, 0xe9b5dba58189dbbcn,
     0x3956c25bf348b538n, 0x59f111f1b605d019n, 0x923f82a4af194f9bn, 0xab1c5ed5da6d8118n,
@@ -77,15 +73,18 @@
     0x4cc5d4becb3e42b6n, 0x597f299cfc657e2an, 0x5fcb6fab3ad6faecn, 0x6c44198c4a475817n
   ]);
 
-  class SHA512Algorithm extends HashFunctionAlgorithm {
-    constructor() {
+  class SHA2_512Algorithm extends HashFunctionAlgorithm {
+    constructor(variant = '512') {
       super();
 
+      // Get variant-specific configuration
+      const config = this._getVariantConfig(variant);
+
       // Required metadata
-      this.name = "SHA-512";
-      this.description = "SHA-512 (Secure Hash Algorithm 512-bit) is a cryptographic hash function from the SHA-2 family designed by NIST. Produces 512-bit (64-byte) hash values from arbitrary input data.";
+      this.name = config.name;
+      this.description = config.description;
       this.inventor = "NIST";
-      this.year = 2001;
+      this.year = config.year;
       this.category = CategoryType.HASH;
       this.subCategory = "SHA-2 Family";
       this.securityStatus = SecurityStatus.SECURE;
@@ -93,11 +92,15 @@
       this.country = CountryCode.US;
 
       // Hash-specific metadata
-      this.SupportedOutputSizes = [64]; // 512 bits = 64 bytes
+      this.SupportedOutputSizes = [config.outputSize];
 
       // Performance and technical specifications
       this.blockSize = 128; // 1024 bits = 128 bytes
-      this.outputSize = 64; // 512 bits = 64 bytes
+      this.outputSize = config.outputSize;
+
+      // Store variant-specific data
+      this.INITIAL_HASH = config.initialHash;
+      this.variant = variant;
 
       // Documentation and references
       this.documentation = [
@@ -109,35 +112,149 @@
         new LinkItem("Wikipedia: SHA-2", "https://en.wikipedia.org/wiki/SHA-2")
       ];
 
-      // Test vectors from NIST with expected byte arrays
-      this.tests = [
-        {
-          text: "NIST Test Vector - Empty String",
-          uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
-          input: [],
-          expected: OpCodes.Hex8ToBytes('cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e')
+      // Variant-specific test vectors
+      this.tests = config.tests;
+    }
+
+    _getVariantConfig(variant) {
+      const configs = {
+        '512': {
+          name: 'SHA-512',
+          description: 'SHA-512 (Secure Hash Algorithm 512-bit) is a cryptographic hash function from the SHA-2 family designed by NIST. Produces 512-bit (64-byte) hash values from arbitrary input data.',
+          year: 2001,
+          outputSize: 64, // 512 bits / 8
+          initialHash: Object.freeze([
+            0x6a09e667f3bcc908n, 0xbb67ae8584caa73bn, 0x3c6ef372fe94f82bn, 0xa54ff53a5f1d36f1n,
+            0x510e527fade682d1n, 0x9b05688c2b3e6c1fn, 0x1f83d9abfb41bd6bn, 0x5be0cd19137e2179n
+          ]),
+          tests: [
+            {
+              text: "NIST Test Vector - Empty String",
+              uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+              input: [],
+              expected: OpCodes.Hex8ToBytes('cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e')
+            },
+            {
+              text: "NIST Test Vector - 'abc'",
+              uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+              input: [97, 98, 99], // "abc"
+              expected: OpCodes.Hex8ToBytes('ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f')
+            }
+          ]
         },
-        {
-          text: "NIST Test Vector - 'abc'",
-          uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
-          input: [97, 98, 99], // "abc"
-          expected: OpCodes.Hex8ToBytes('ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f')
+        '384': {
+          name: 'SHA-384',
+          description: 'SHA-384 (Secure Hash Algorithm 384-bit) is a cryptographic hash function from the SHA-2 family. Uses SHA-512 algorithm with different initial values and truncated output.',
+          year: 2001,
+          outputSize: 48, // 384 bits / 8
+          initialHash: Object.freeze([
+            0xcbbb9d5dc1059ed8n, 0x629a292a367cd507n, 0x9159015a3070dd17n, 0x152fecd8f70e5939n,
+            0x67332667ffc00b31n, 0x8eb44a8768581511n, 0xdb0c2e0d64f98fa7n, 0x47b5481dbefa4fa4n
+          ]),
+          tests: [
+            {
+              text: "NIST Test Vector - Empty String",
+              uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+              input: [],
+              expected: OpCodes.Hex8ToBytes('38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b')
+            },
+            {
+              text: "NIST Test Vector - 'abc'",
+              uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+              input: [97, 98, 99], // "abc"
+              expected: OpCodes.Hex8ToBytes('cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7')
+            }
+          ]
+        },
+        '512/224': {
+          name: 'SHA-512/224',
+          description: 'SHA-512/224 is a truncated variant of SHA-512 with a modified initialization vector, producing 224-bit hash values. Defined in FIPS 180-4 for applications requiring smaller output than SHA-512.',
+          year: 2012,
+          outputSize: 28, // 224 bits / 8
+          initialHash: Object.freeze([
+            0x8C3D37C819544DA2n, 0x73E1996689DCD4D6n, 0x1DFAB7AE32FF9C82n, 0x679DD514582F9FCFn,
+            0x0F6D2B697BD44DA8n, 0x77E36F7304C48942n, 0x3F9D85A86A1D36C8n, 0x1112E6AD91D692A1n
+          ]),
+          tests: [
+            {
+              text: "FIPS 180-4 Test Vector - Empty String",
+              uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+              input: [],
+              expected: OpCodes.Hex8ToBytes('6ed0dd02806fa89e25de060c19d3ac86cabb87d6a0ddd05c333b84f4')
+            },
+            {
+              text: "FIPS 180-4 Test Vector - Single 'a'",
+              uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+              input: OpCodes.AnsiToBytes('a'),
+              expected: OpCodes.Hex8ToBytes('d5cdb9ccc769a5121d4175f2bfdd13d6310e0d3d361ea75d82108327')
+            },
+            {
+              text: "FIPS 180-4 Test Vector - 'abc'",
+              uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+              input: OpCodes.AnsiToBytes('abc'),
+              expected: OpCodes.Hex8ToBytes('4634270f707b6a54daae7530460842e20e37ed265ceee9a43e8924aa')
+            },
+            {
+              text: "FIPS 180-4 Test Vector - Long String",
+              uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+              input: OpCodes.AnsiToBytes('abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu'),
+              expected: OpCodes.Hex8ToBytes('23fec5bb94d60b23308192640b0c453335d664734fe40e7268674af9')
+            }
+          ]
+        },
+        '512/256': {
+          name: 'SHA-512/256',
+          description: 'SHA-512/256 is a truncated variant of SHA-512 with a modified initialization vector, producing 256-bit hash values. Defined in FIPS 180-4 for applications requiring 256-bit security with SHA-512 performance characteristics.',
+          year: 2012,
+          outputSize: 32, // 256 bits / 8
+          initialHash: Object.freeze([
+            0x22312194FC2BF72Cn, 0x9F555FA3C84C64C2n, 0x2393B86B6F53B151n, 0x963877195940EABDn,
+            0x96283EE2A88EFFE3n, 0xBE5E1E2553863992n, 0x2B0199FC2C85B8AAn, 0x0EB72DDC81C52CA2n
+          ]),
+          tests: [
+            {
+              text: "FIPS 180-4 Test Vector - Empty String",
+              uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+              input: [],
+              expected: OpCodes.Hex8ToBytes('c672b8d1ef56ed28ab87c3622c5114069bdd3ad7b8f9737498d0c01ecef0967a')
+            },
+            {
+              text: "FIPS 180-4 Test Vector - Single 'a'",
+              uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+              input: OpCodes.AnsiToBytes('a'),
+              expected: OpCodes.Hex8ToBytes('455e518824bc0601f9fb858ff5c37d417d67c2f8e0df2babe4808858aea830f8')
+            },
+            {
+              text: "FIPS 180-4 Test Vector - 'abc'",
+              uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+              input: OpCodes.AnsiToBytes('abc'),
+              expected: OpCodes.Hex8ToBytes('53048e2681941ef99b2e29b76b4c7dabe4c2d0c634fc6d46e0e2f13107e7af23')
+            },
+            {
+              text: "FIPS 180-4 Test Vector - Long String",
+              uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+              input: OpCodes.AnsiToBytes('abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu'),
+              expected: OpCodes.Hex8ToBytes('3928e184fb8690f840da3988121d31be65cb9d3ef83ee6146feac861e19b563a')
+            }
+          ]
         }
-      ];
+      };
+
+      return configs[variant] || configs['512'];
     }
 
     CreateInstance(isInverse = false) {
-      return new SHA512AlgorithmInstance(this, isInverse);
+      return new SHA2_512AlgorithmInstance(this, isInverse);
     }
   }
 
-  class SHA512AlgorithmInstance extends IHashFunctionInstance {
+  class SHA2_512AlgorithmInstance extends IHashFunctionInstance {
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
-      this.OutputSize = 64; // 512 bits = 64 bytes
+      this.OutputSize = algorithm.outputSize;
 
-      // SHA-512 state variables
+      // SHA-512 family state variables
       this._h = null;
       this._buffer = null;
       this._length = 0;
@@ -145,12 +262,12 @@
     }
 
     /**
-     * Initialize the hash state with SHA-512 initial values
-     * NIST FIPS 180-4 Section 5.3.5
+     * Initialize the hash state with variant-specific initial values
+     * NIST FIPS 180-4 Section 5.3.4, 5.3.5, 5.3.6
      */
     Init() {
       // Copy initial hash values (use slice to avoid modifying original)
-      this._h = H0.slice();
+      this._h = this.algorithm.INITIAL_HASH.slice();
 
       this._buffer = new Array(128); // 1024-bit buffer
       this._length = 0;
@@ -165,7 +282,7 @@
       // Convert string to byte array if needed
       if (typeof data === 'string') {
         const bytes = [];
-        for (let i = 0; i < data.length; i++) {
+        for (let i = 0; i < data.length; ++i) {
           bytes.push(data.charCodeAt(i) & 0xFF);
         }
         data = bytes;
@@ -174,7 +291,7 @@
       this._length += data.length;
 
       // Process data
-      for (let i = 0; i < data.length; i++) {
+      for (let i = 0; i < data.length; ++i) {
         this._buffer[this._bufferLength++] = data[i];
 
         if (this._bufferLength === 128) {
@@ -186,13 +303,23 @@
 
     /**
      * Finalize hash computation and return digest
-     * @returns {Array} Hash digest as byte array (512 bits = 64 bytes)
+     * @returns {Array} Hash digest as byte array
      */
     Final() {
       // Add padding (0x80 = 128 = 10000000 binary)
       this._buffer[this._bufferLength++] = 0x80;
 
       // Pad to 112 bytes (896 bits), leaving 16 bytes for length
+      if (this._bufferLength > 112) {
+        // Need another block
+        while (this._bufferLength < 128) {
+          this._buffer[this._bufferLength++] = 0;
+        }
+        this._processBlock(this._buffer);
+        this._bufferLength = 0;
+      }
+
+      // Pad to 112 bytes
       while (this._bufferLength < 112) {
         this._buffer[this._bufferLength++] = 0;
       }
@@ -201,24 +328,29 @@
       const lengthBits = BigInt(this._length * 8);
 
       // High 64 bits (for practical message sizes, this is 0)
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 8; ++i) {
         this._buffer[this._bufferLength + i] = 0;
       }
 
       // Low 64 bits
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 8; ++i) {
         this._buffer[this._bufferLength + 8 + i] = Number(OpCodes.ShiftRn(lengthBits, (7 - i) * 8) & 0xFFn);
       }
 
       this._processBlock(this._buffer);
 
-      // Convert hash to bytes (big-endian)
+      // Convert hash to bytes (big-endian) and truncate based on outputSize
       const result = [];
-      for (let i = 0; i < 8; i++) {
+      const outputBytes = this.algorithm.outputSize;
+
+      let bytesWritten = 0;
+      for (let i = 0; i < 8 && bytesWritten < outputBytes; ++i) {
         const value = this._h[i];
-        for (let j = 0; j < 8; j++) {
+        const bytesToWrite = Math.min(8, outputBytes - bytesWritten);
+        for (let j = 0; j < bytesToWrite; ++j) {
           result.push(Number(OpCodes.ShiftRn(value, (7 - j) * 8) & 0xFFn));
         }
+        bytesWritten += bytesToWrite;
       }
 
       return result;
@@ -234,18 +366,18 @@
       let a, b, c, d, e, f, g, h;
 
       // Prepare message schedule W[t] - convert bytes to 64-bit words
-      for (let t = 0; t < 16; t++) {
+      for (let t = 0; t < 16; ++t) {
         let value = 0n;
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < 8; ++i) {
           value = OpCodes.ShiftLn(value, 8) | BigInt(block[t * 8 + i]);
         }
         W[t] = value;
       }
 
       // Extend first 16 words into remaining 64 words
-      for (let t = 16; t < 80; t++) {
-        const s0 = this._rotr64(W[t-15], 1) ^ this._rotr64(W[t-15], 8) ^ OpCodes.ShiftRn(W[t-15], 7);
-        const s1 = this._rotr64(W[t-2], 19) ^ this._rotr64(W[t-2], 61) ^ OpCodes.ShiftRn(W[t-2], 6);
+      for (let t = 16; t < 80; ++t) {
+        const s0 = OpCodes.RotR64n(W[t-15], 1) ^ OpCodes.RotR64n(W[t-15], 8) ^ OpCodes.ShiftRn(W[t-15], 7);
+        const s1 = OpCodes.RotR64n(W[t-2], 19) ^ OpCodes.RotR64n(W[t-2], 61) ^ OpCodes.ShiftRn(W[t-2], 6);
         W[t] = (W[t-16] + s0 + W[t-7] + s1) & 0xFFFFFFFFFFFFFFFFn;
       }
 
@@ -254,11 +386,11 @@
       e = this._h[4]; f = this._h[5]; g = this._h[6]; h = this._h[7];
 
       // Main loop (80 rounds)
-      for (let t = 0; t < 80; t++) {
-        const S1 = this._rotr64(e, 14) ^ this._rotr64(e, 18) ^ this._rotr64(e, 41);
+      for (let t = 0; t < 80; ++t) {
+        const S1 = OpCodes.RotR64n(e, 14) ^ OpCodes.RotR64n(e, 18) ^ OpCodes.RotR64n(e, 41);
         const ch = (e & f) ^ (~e & g);
         const temp1 = (h + S1 + ch + K[t] + W[t]) & 0xFFFFFFFFFFFFFFFFn;
-        const S0 = this._rotr64(a, 28) ^ this._rotr64(a, 34) ^ this._rotr64(a, 39);
+        const S0 = OpCodes.RotR64n(a, 28) ^ OpCodes.RotR64n(a, 34) ^ OpCodes.RotR64n(a, 39);
         const maj = (a & b) ^ (a & c) ^ (b & c);
         const temp2 = (S0 + maj) & 0xFFFFFFFFFFFFFFFFn;
 
@@ -275,16 +407,6 @@
       this._h[5] = (this._h[5] + f) & 0xFFFFFFFFFFFFFFFFn;
       this._h[6] = (this._h[6] + g) & 0xFFFFFFFFFFFFFFFFn;
       this._h[7] = (this._h[7] + h) & 0xFFFFFFFFFFFFFFFFn;
-    }
-
-    /**
-     * 64-bit right rotation using BigInt
-     * @param {BigInt} value - Value to rotate
-     * @param {number} n - Number of positions to rotate
-     * @returns {BigInt} Rotated value
-     */
-    _rotr64(value, n) {
-      return OpCodes.RotR64n(value, n);
     }
 
     /**
@@ -313,12 +435,12 @@
 
     DecryptBlock(blockIndex, ciphertext) {
       // Hash functions are one-way
-      throw new Error('SHA-512 is a one-way hash function - decryption not possible');
+      throw new Error(`${this.algorithm.name} is a one-way hash function - decryption not possible`);
     }
 
     ClearData() {
       if (this._h) {
-        for (let i = 0; i < this._h.length; i++) {
+        for (let i = 0; i < this._h.length; ++i) {
           this._h[i] = 0n;
         }
       }
@@ -345,16 +467,21 @@
     }
   }
 
-  // Register the algorithm
-
   // ===== REGISTRATION =====
 
-    const algorithmInstance = new SHA512Algorithm();
-  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
-    RegisterAlgorithm(algorithmInstance);
+  // Register all 4 variants
+  const variants = ['512', '384', '512/224', '512/256'];
+  const instances = [];
+
+  for (const variant of variants) {
+    const instance = new SHA2_512Algorithm(variant);
+    if (!AlgorithmFramework.Find(instance.name)) {
+      RegisterAlgorithm(instance);
+      instances.push(instance);
+    }
   }
 
   // ===== EXPORTS =====
 
-  return { SHA512Algorithm, SHA512AlgorithmInstance };
+  return { SHA2_512Algorithm, SHA2_512AlgorithmInstance };
 }));

@@ -54,12 +54,15 @@
   // ===== ALGORITHM IMPLEMENTATION =====
 
   class PresentAlgorithm extends BlockCipherAlgorithm {
-    constructor() {
+    constructor(variant = '80') {
       super();
 
+      // Get variant-specific configuration
+      const config = this._getVariantConfig(variant);
+
       // Required metadata
-      this.name = "PRESENT";
-      this.description = "PRESENT-80 lightweight block cipher designed for constrained environments. Substitution-Permutation Network with 64-bit blocks, 80-bit keys, and 31 rounds. Educational implementation following ISO/IEC 29192-2 specification.";
+      this.name = `PRESENT-${variant}`;
+      this.description = config.description;
       this.inventor = "Andrey Bogdanov, Lars R. Knudsen, Gregor Leander, Christof Paar, Axel Poschmann, Matthew J.B. Robshaw, Yannick Seurin, C. Vikkelsoe";
       this.year = 2007;
       this.category = CategoryType.BLOCK;
@@ -68,20 +71,14 @@
       this.complexity = ComplexityType.BASIC;
       this.country = CountryCode.DE;
 
-      // Algorithm-specific metadata
-      this.SupportedKeySizes = [
-        new KeySize(10, 10, 0)  // PRESENT-80: 80-bit keys only
-      ];
+      // Algorithm-specific metadata (variant-dependent)
+      this.SupportedKeySizes = config.keySizes;
       this.SupportedBlockSizes = [
         new KeySize(8, 8, 0)    // 64-bit blocks only
       ];
 
       // Documentation and references
-      this.documentation = [
-        new LinkItem("ISO/IEC 29192-2:2019 - PRESENT", "https://www.iso.org/standard/56425.html"),
-        new LinkItem("PRESENT Specification", "https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31"),
-        new LinkItem("Wikipedia - PRESENT", "https://en.wikipedia.org/wiki/PRESENT")
-      ];
+      this.documentation = config.documentation;
 
       this.references = [
         new LinkItem("Original PRESENT Paper", "https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31"),
@@ -104,28 +101,14 @@
         )
       ];
 
-      // Test vectors using OpCodes byte arrays
-      this.tests = [
-        {
-          text: "PRESENT-80 all zeros test vector - educational",
-          uri: "https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31",
-          input: OpCodes.Hex8ToBytes("0000000000000000"),
-          key: OpCodes.Hex8ToBytes("00000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("5579c1387b228445")
-        },
-        {
-          text: "PRESENT-80 pattern test vector - educational",
-          uri: "https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31",
-          input: OpCodes.Hex8ToBytes("0000000000000000"),
-          key: OpCodes.Hex8ToBytes("ffffffffffffffffffff"),
-          expected: OpCodes.Hex8ToBytes("e72c46c0f5945049")
-        }
-      ];
+      // Test vectors using OpCodes byte arrays (variant-dependent)
+      this.tests = config.tests;
 
       // PRESENT Constants
       this.ROUNDS = 32;      // 32 total rounds (31 full + 1 final)
       this.BLOCK_SIZE = 8;   // 64 bits
-      this.KEY_SIZE = 10;    // 80 bits
+      this.KEY_SIZE = config.keySize;         // bytes
+      this.KEY_SIZE_BITS = config.keySizeBits; // bits
 
       // PRESENT S-Box (4-bit substitution)
       this.SBOX = [
@@ -138,6 +121,66 @@
         0x5, 0xE, 0xF, 0x8, 0xC, 0x1, 0x2, 0xD,
         0xB, 0x4, 0x6, 0x3, 0x0, 0x7, 0x9, 0xA
       ];
+    }
+
+    _getVariantConfig(variant) {
+      const configs = {
+        '80': {
+          description: "PRESENT-80 lightweight block cipher designed for constrained environments. Substitution-Permutation Network with 64-bit blocks, 80-bit keys, and 31 rounds. Educational implementation following ISO/IEC 29192-2 specification.",
+          keySize: 10,  // bytes
+          keySizeBits: 80,
+          keySizes: [new KeySize(10, 10, 0)],
+          documentation: [
+            new LinkItem("ISO/IEC 29192-2:2019 - PRESENT", "https://www.iso.org/standard/56425.html"),
+            new LinkItem("PRESENT Specification", "https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31"),
+            new LinkItem("Wikipedia - PRESENT", "https://en.wikipedia.org/wiki/PRESENT")
+          ],
+          tests: [
+            {
+              text: "PRESENT-80 all zeros test vector - educational",
+              uri: "https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31",
+              input: OpCodes.Hex8ToBytes("0000000000000000"),
+              key: OpCodes.Hex8ToBytes("00000000000000000000"),
+              expected: OpCodes.Hex8ToBytes("5579c1387b228445")
+            },
+            {
+              text: "PRESENT-80 pattern test vector - educational",
+              uri: "https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31",
+              input: OpCodes.Hex8ToBytes("0000000000000000"),
+              key: OpCodes.Hex8ToBytes("ffffffffffffffffffff"),
+              expected: OpCodes.Hex8ToBytes("e72c46c0f5945049")
+            }
+          ]
+        },
+        '128': {
+          description: "PRESENT-128 variant of the lightweight block cipher with extended 128-bit key size. Substitution-Permutation Network with 64-bit blocks, 128-bit keys, and 31 rounds. Educational implementation extending the ISO/IEC 29192-2 specification.",
+          keySize: 16,  // bytes
+          keySizeBits: 128,
+          keySizes: [new KeySize(16, 16, 0)],
+          documentation: [
+            new LinkItem("PRESENT-128 Extension", "https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31"),
+            new LinkItem("PRESENT Specification", "https://link.springer.com/chapter/10.1007/978-3-540-74735-2_31"),
+            new LinkItem("Wikipedia - PRESENT", "https://en.wikipedia.org/wiki/PRESENT")
+          ],
+          tests: [
+            {
+              text: "PRESENT-128 all zeros test vector - educational",
+              uri: "https://crypto.stackexchange.com/questions/70906/where-can-i-find-test-vectors-for-the-present-cipher-with-a-128-bit-key",
+              input: OpCodes.Hex8ToBytes("0000000000000000"),
+              key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+              expected: OpCodes.Hex8ToBytes("96db702a2e6900af")
+            },
+            {
+              text: "PRESENT-128 pattern test vector - educational",
+              uri: "https://crypto.stackexchange.com/questions/70906/where-can-i-find-test-vectors-for-the-present-cipher-with-a-128-bit-key",
+              input: OpCodes.Hex8ToBytes("0000000000000000"),
+              key: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
+              expected: OpCodes.Hex8ToBytes("13238c710272a5d8")
+            }
+          ]
+        }
+      };
+      return configs[variant] || configs['80'];
     }
 
     CreateInstance(isInverse = false) {
@@ -164,9 +207,9 @@
         return;
       }
 
-      // Validate key size (80 bits / 10 bytes)
-      if (keyBytes.length !== 10) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. PRESENT requires 10 bytes (80 bits)`);
+      // Validate key size (variant-specific)
+      if (keyBytes.length !== this.algorithm.KEY_SIZE) {
+        throw new Error(`Invalid key size: ${keyBytes.length} bytes. PRESENT-${this.algorithm.KEY_SIZE_BITS} requires ${this.algorithm.KEY_SIZE} bytes (${this.algorithm.KEY_SIZE_BITS} bits)`);
       }
 
       this._key = [...keyBytes];
@@ -410,8 +453,17 @@
       return { high: result.high >>> 0, low: result.low >>> 0 };
     }
 
-    // Generate round keys using PRESENT key schedule
+    // Generate round keys using PRESENT key schedule (variant-specific)
     _generateRoundKeys(keyBytes) {
+      if (this.algorithm.KEY_SIZE_BITS === 80) {
+        return this._generateRoundKeys80(keyBytes);
+      } else {
+        return this._generateRoundKeys128(keyBytes);
+      }
+    }
+
+    // Generate round keys for PRESENT-80
+    _generateRoundKeys80(keyBytes) {
       const roundKeys = [];
 
       // Convert key to 80-bit BigInt (big-endian)
@@ -462,15 +514,66 @@
 
       return roundKeys;
     }
+
+    // Generate round keys for PRESENT-128
+    _generateRoundKeys128(keyBytes) {
+      const roundKeys = [];
+
+      // Convert 128-bit key to BigInt for proper bit manipulation
+      let keyState = 0n;
+      for (let i = 0; i < 16; i++) {
+        keyState = (keyState << 8n) | BigInt(keyBytes[i]);
+      }
+
+      // Generate 32 round keys (0-indexed for consistency with encryption loop)
+      for (let round = 0; round < this.algorithm.ROUNDS; round++) {
+        // Extract leftmost 64 bits as round key
+        const roundKey = keyState >> 64n;
+
+        // Convert BigInt round key to high/low 32-bit words
+        const high = Number((roundKey >> 32n) & 0xFFFFFFFFn);
+        const low = Number(roundKey & 0xFFFFFFFFn);
+
+        roundKeys[round] = { high: high >>> 0, low: low >>> 0 };
+
+        // Update key state for next round (if not last round)
+        if (round < this.algorithm.ROUNDS - 1) {
+          // Step 1: Rotate key left by 61 positions
+          keyState = ((keyState << 61n) | (keyState >> 67n)) & ((1n << 128n) - 1n);
+
+          // Step 2: Apply S-box to bits 127-124 (leftmost 4 bits)
+          const leftmost4 = Number(keyState >> 124n) & 0xF;
+          const sboxed1 = BigInt(this.algorithm.SBOX[leftmost4]);
+          keyState = (keyState & ((1n << 124n) - 1n)) | (sboxed1 << 124n);
+
+          // Step 3: Apply S-box to bits 123-120
+          const bits123_120 = Number((keyState >> 120n) & 0xFn);
+          const sboxed2 = BigInt(this.algorithm.SBOX[bits123_120]);
+          keyState = (keyState & ~(0xFn << 120n)) | (sboxed2 << 120n);
+
+          // Step 4: XOR round counter with bits 66-62 (use 1-indexed round counter)
+          const roundCounter = BigInt(round + 1) & 0x1Fn;
+          keyState = keyState ^ (roundCounter << 62n);
+        }
+      }
+
+      return roundKeys;
+    }
   }
 
   // Register the algorithm
 
   // ===== REGISTRATION =====
 
-    const algorithmInstance = new PresentAlgorithm();
-  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
-    RegisterAlgorithm(algorithmInstance);
+  // Register both PRESENT-80 and PRESENT-128 variants
+  const present80 = new PresentAlgorithm('80');
+  if (!AlgorithmFramework.Find(present80.name)) {
+    RegisterAlgorithm(present80);
+  }
+
+  const present128 = new PresentAlgorithm('128');
+  if (!AlgorithmFramework.Find(present128.name)) {
+    RegisterAlgorithm(present128);
   }
 
   // ===== EXPORTS =====

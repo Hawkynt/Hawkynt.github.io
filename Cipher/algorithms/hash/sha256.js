@@ -16,7 +16,7 @@
     );
   } else {
     // Browser/Worker global
-    root.SHA256 = factory(root.AlgorithmFramework, root.OpCodes);
+    root.SHA2_256 = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -68,15 +68,18 @@
     '90befffa' + 'a4506ceb' + 'bef9a3f7' + 'c67178f2'
   );
 
-  class SHA256Algorithm extends HashFunctionAlgorithm {
-    constructor() {
+  class SHA2_256Algorithm extends HashFunctionAlgorithm {
+    constructor(variant = '256') {
       super();
 
+      // Get variant-specific configuration
+      const config = this._getVariantConfig(variant);
+
       // Required metadata
-      this.name = "SHA-256";
-      this.description = "SHA-256 (Secure Hash Algorithm 256-bit) is a cryptographic hash function from the SHA-2 family designed by NIST. Produces 256-bit (32-byte) hash values from arbitrary input data.";
+      this.name = `SHA-${variant}`;
+      this.description = config.description;
       this.inventor = "NIST";
-      this.year = 2001;
+      this.year = config.year;
       this.category = CategoryType.HASH;
       this.subCategory = "SHA-2 Family";
       this.securityStatus = SecurityStatus.SECURE;
@@ -84,59 +87,114 @@
       this.country = CountryCode.US;
 
       // Hash-specific metadata
-      this.SupportedOutputSizes = [32]; // 256 bits = 32 bytes
+      this.SupportedOutputSizes = [config.outputSize];
 
       // Performance and technical specifications
       this.blockSize = 64; // 512 bits = 64 bytes
-      this.outputSize = 32; // 256 bits = 32 bytes
+      this.outputSize = config.outputSize;
+
+      // Store initial hash values for this variant
+      this.INITIAL_HASH = config.initialHash;
 
       // Documentation and references
       this.documentation = [
-        new LinkItem("NIST FIPS 180-4", "https://csrc.nist.gov/publications/detail/fips/180/4/final"),
-        new LinkItem("NIST SHA Examples", "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/SHA256.pdf"),
-        new LinkItem("RFC 6234 - US Secure Hash Algorithms", "https://tools.ietf.org/html/rfc6234")
+        new LinkItem("NIST FIPS 180-4: Secure Hash Standard", "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf"),
+        new LinkItem("RFC 6234: US Secure Hash Algorithms", "https://tools.ietf.org/html/rfc6234"),
+        new LinkItem("Wikipedia: SHA-2", "https://en.wikipedia.org/wiki/SHA-2")
       ];
 
       this.references = [
-        new LinkItem("Wikipedia: SHA-2", "https://en.wikipedia.org/wiki/SHA-2"),
-        new LinkItem("NIST Hash Competition", "https://csrc.nist.gov/projects/hash-functions")
+        new LinkItem("OpenSSL Implementation", "https://github.com/openssl/openssl/blob/master/crypto/sha/sha256.c"),
+        new LinkItem("NIST CAVP Test Vectors", "https://csrc.nist.gov/Projects/Cryptographic-Algorithm-Validation-Program/Secure-Hashing")
       ];
 
-      // Test vectors from NIST with expected byte arrays
-      this.tests = [
-        {
-          text: "NIST Test Vector - Empty String",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/SHA256.pdf",
-          input: [],
-          expected: OpCodes.Hex8ToBytes('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+      // Test vectors from NIST
+      this.tests = config.tests;
+    }
+
+    /**
+     * Get variant-specific configuration
+     * @param {string} variant - '224' or '256'
+     * @returns {object} Configuration object with variant-specific settings
+     */
+    _getVariantConfig(variant) {
+      const configs = {
+        '224': {
+          description: "SHA-224 is a truncated version of SHA-256 producing a 224-bit digest. It is part of the SHA-2 family with identical security properties to SHA-256 but with shorter output.",
+          outputSize: 28,  // 224 bits / 8
+          year: 2004,
+          // SHA-224 initial hash values (first 32 bits of fractional parts of square roots of 9th through 16th primes)
+          // NIST FIPS 180-4 Section 5.3.2
+          initialHash: [
+            0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939,
+            0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4
+          ],
+          tests: [
+            {
+              text: "NIST Test Vector - Empty String",
+              uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+              input: [],
+              expected: OpCodes.Hex8ToBytes("d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f")
+            },
+            {
+              text: "NIST Test Vector - 'abc'",
+              uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+              input: OpCodes.AnsiToBytes("abc"),
+              expected: OpCodes.Hex8ToBytes("23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7")
+            },
+            {
+              text: "NIST Test Vector - Alphabet",
+              uri: "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+              input: OpCodes.AnsiToBytes("abcdefghijklmnopqrstuvwxyz"),
+              expected: OpCodes.Hex8ToBytes("45a5f72c39c5cff2522eb3429799e49e5f44b356ef926bcf390dccc2")
+            }
+          ]
         },
-        {
-          text: "NIST Test Vector - 'abc'",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/SHA256.pdf",
-          input: [97, 98, 99], // "abc"
-          expected: OpCodes.Hex8ToBytes('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')
-        },
-        {
-          text: "NIST Test Vector - Long String",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/SHA256.pdf",
-          input: [97,98,99,100,98,99,100,101,99,100,101,102,100,101,102,103,101,102,103,104,102,103,104,105,103,104,105,106,104,105,106,107,105,106,107,108,106,107,108,109,107,108,109,110,108,109,110,111,109,110,111,112,110,111,112,113], // "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
-          expected: OpCodes.Hex8ToBytes('248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1')
+        '256': {
+          description: "SHA-256 (Secure Hash Algorithm 256-bit) is a cryptographic hash function from the SHA-2 family designed by NIST. Produces 256-bit (32-byte) hash values from arbitrary input data.",
+          outputSize: 32,  // 256 bits / 8
+          year: 2001,
+          // SHA-256 initial hash values (first 32 bits of fractional parts of square roots of first 8 primes)
+          // NIST FIPS 180-4 Section 5.3.3
+          initialHash: OpCodes.Hex32ToDWords('6a09e667bb67ae853c6ef372a54ff53a510e527f9b05688c1f83d9ab5be0cd19'),
+          tests: [
+            {
+              text: "NIST Test Vector - Empty String",
+              uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/SHA256.pdf",
+              input: [],
+              expected: OpCodes.Hex8ToBytes('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855')
+            },
+            {
+              text: "NIST Test Vector - 'abc'",
+              uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/SHA256.pdf",
+              input: [97, 98, 99], // "abc"
+              expected: OpCodes.Hex8ToBytes('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')
+            },
+            {
+              text: "NIST Test Vector - Long String",
+              uri: "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/SHA256.pdf",
+              input: [97,98,99,100,98,99,100,101,99,100,101,102,100,101,102,103,101,102,103,104,102,103,104,105,103,104,105,106,104,105,106,107,105,106,107,108,106,107,108,109,107,108,109,110,108,109,110,111,109,110,111,112,110,111,112,113], // "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
+              expected: OpCodes.Hex8ToBytes('248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1')
+            }
+          ]
         }
-      ];
+      };
+
+      return configs[variant] || configs['256'];
     }
 
     CreateInstance(isInverse = false) {
-      return new SHA256AlgorithmInstance(this, isInverse);
+      return new SHA2_256AlgorithmInstance(this, isInverse);
     }
   }
 
-  class SHA256AlgorithmInstance extends IHashFunctionInstance {
+  class SHA2_256AlgorithmInstance extends IHashFunctionInstance {
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
-      this.OutputSize = 32; // 256 bits = 32 bytes
+      this.OutputSize = algorithm.outputSize;
 
-      // SHA-256 state variables
+      // SHA-2-256 state variables
       this._h = null;
       this._buffer = null;
       this._length = 0;
@@ -144,12 +202,12 @@
     }
 
     /**
-     * Initialize the hash state with standard SHA-256 initial values
-     * NIST FIPS 180-4 Section 5.3.3
+     * Initialize the hash state with variant-specific initial values
+     * NIST FIPS 180-4 Section 5.3.2 (SHA-224) / Section 5.3.3 (SHA-256)
      */
     Init() {
-      // Initial hash values (first 32 bits of fractional parts of square roots of first 8 primes)
-      this._h = OpCodes.Hex32ToDWords('6a09e667bb67ae853c6ef372a54ff53a510e527f9b05688c1f83d9ab5be0cd19');
+      // Use initial hash values from algorithm (variant-specific)
+      this._h = [...this.algorithm.INITIAL_HASH];
 
       this._buffer = new Array(64);
       this._length = 0;
@@ -234,7 +292,7 @@
 
     /**
      * Finalize the hash calculation and return result as byte array
-     * @returns {Array} Hash digest as byte array
+     * @returns {Array} Hash digest as byte array (truncated for SHA-224)
      */
     Final() {
       // Add padding bit
@@ -268,9 +326,11 @@
       // Process final block
       this._processBlock(this._buffer);
 
-      // Convert hash to byte array
+      // Convert hash to byte array, truncated based on variant
+      // SHA-224: 7 words (28 bytes), SHA-256: 8 words (32 bytes)
       const result = [];
-      for (let i = 0; i < 8; i++) {
+      const outputWords = this.algorithm.outputSize / 4;
+      for (let i = 0; i < outputWords; i++) {
         const bytes = OpCodes.Unpack32BE(this._h[i]);
         for (let j = 0; j < 4; j++) {
           result.push(bytes[j]);
@@ -306,7 +366,7 @@
 
     DecryptBlock(blockIndex, ciphertext) {
       // Hash functions are one-way
-      throw new Error('SHA-256 is a one-way hash function - decryption not possible');
+      throw new Error(`${this.algorithm.name} is a one-way hash function - decryption not possible`);
     }
 
     ClearData() {
@@ -336,10 +396,11 @@
 
   // ===== REGISTRATION =====
 
-  const algorithmInstance = new SHA256Algorithm();
-  RegisterAlgorithm(algorithmInstance);
+  // Register both SHA-224 and SHA-256 variants
+  RegisterAlgorithm(new SHA2_256Algorithm('224'));
+  RegisterAlgorithm(new SHA2_256Algorithm('256'));
 
   // ===== EXPORTS =====
 
-  return { SHA256Algorithm, SHA256AlgorithmInstance };
+  return { SHA2_256Algorithm, SHA2_256AlgorithmInstance };
 }));
