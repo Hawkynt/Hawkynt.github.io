@@ -338,7 +338,9 @@
             roundTripSuccess: null,
             error: null,
             output: null,
-            expected: vector.expected
+            expected: vector.expected,
+            index: index,
+            text: vector.text
         };
 
         try {
@@ -356,9 +358,15 @@
             // Apply all vector properties (key, iv, nonce, etc.)
             _applyVectorProperties(instance, vector);
 
-            // Execute test
-            instance.Feed(vector.input);
-            const output = instance.Result();
+            // Execute test with timeout protection (5 seconds max per test vector)
+            const output = await _executeWithTimeout(
+                () => {
+                    instance.Feed(vector.input);
+                    return instance.Result();
+                },
+                5000,
+                `Test vector ${index} exceeded 5 second timeout`
+            );
             result.output = output;
 
             // Compare with expected if provided
@@ -386,18 +394,24 @@
                         // Test encoding stability: encode(data) == encode(decode(encode(data)))
                         result.roundTripSuccess = await _testEncodingStability(algorithmInstance, vector, output);
                     } else {
-                        // Test normal round-trip: decrypt(encrypt(data)) == data
-                        const reverseInstance = algorithmInstance.CreateInstance(true);
-                        if (reverseInstance) {
-                            if (_isBlockCipherMode(algorithmInstance)) {
-                                _setupBlockCipherMode(reverseInstance, vector, algorithmInstance.name);
-                            }
-                            _applyVectorProperties(reverseInstance, vector);
+                        // Test normal round-trip with timeout protection: decrypt(encrypt(data)) == data
+                        const roundTripResult = await _executeWithTimeout(
+                            () => {
+                                const reverseInstance = algorithmInstance.CreateInstance(true);
+                                if (!reverseInstance) return null;
 
-                            reverseInstance.Feed(output);
-                            const roundTripResult = reverseInstance.Result();
-                            result.roundTripSuccess = _compareArrays(roundTripResult, vector.input);
-                        }
+                                if (_isBlockCipherMode(algorithmInstance)) {
+                                    _setupBlockCipherMode(reverseInstance, vector, algorithmInstance.name);
+                                }
+                                _applyVectorProperties(reverseInstance, vector);
+
+                                reverseInstance.Feed(output);
+                                return reverseInstance.Result();
+                            },
+                            5000,
+                            `Round-trip test exceeded 5 second timeout`
+                        );
+                        result.roundTripSuccess = roundTripResult ? _compareArrays(roundTripResult, vector.input) : false;
                     }
                 } catch (error) {
                     result.roundTripSuccess = false;
@@ -439,6 +453,34 @@
                 if (verbose) DebugConfig.warn('DummyBlockCipher not loaded');
             }
         }
+    }
+
+    /**
+     * Execute a function with timeout protection
+     * Prevents infinite loops from blocking the browser or test suite
+     * @param {function} fn - Function to execute
+     * @param {number} timeoutMs - Timeout in milliseconds
+     * @param {string} timeoutMessage - Error message if timeout occurs
+     * @returns {Promise} - Promise that resolves with function result or rejects on timeout
+     */
+    async function _executeWithTimeout(fn, timeoutMs, timeoutMessage) {
+        return new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+                reject(new Error(timeoutMessage || `Operation exceeded ${timeoutMs}ms timeout`));
+            }, timeoutMs);
+
+            try {
+                // Execute the function
+                const result = fn();
+
+                // Clear timeout and resolve
+                clearTimeout(timeoutId);
+                resolve(result);
+            } catch (error) {
+                clearTimeout(timeoutId);
+                reject(error);
+            }
+        });
     }
 
     /**
