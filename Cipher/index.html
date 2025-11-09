@@ -140,80 +140,535 @@
                         <div class="interface-grid">
                             <div class="input-section">
                                 <h3 class="section-title-small">Input</h3>
-                                <div class="file-upload-area" id="file-upload-area">
-                                    <div class="file-upload-icon">📁</div>
-                                    <div class="file-upload-text">
-                                        Drop files here or <strong>click to browse</strong><br>
-                                        <small>Supports text files, images, and binary data up to 50MB</small>
+                                <div class="data-toolbar">
+                                    <div class="format-tabs">
+                                        <button class="format-tab format-tab-small active" data-target="input-text" data-format="text">📝 Text</button>
+                                        <button class="format-tab format-tab-small" data-target="input-text" data-format="hex">#️⃣ Hex</button>
+                                        <button class="format-tab format-tab-small" data-target="input-text" data-format="base64">🔤 Base64</button>
                                     </div>
-                                    <input type="file" class="file-upload-input" id="file-input" multiple>
+                                    <div class="toolbar-actions">
+                                        <button class="toolbar-btn toolbar-btn-small" data-target="input-text" data-action="copy" title="Copy to clipboard">📄</button>
+                                        <button class="toolbar-btn toolbar-btn-small" data-target="input-text" data-action="paste" title="Paste from clipboard">📋</button>
+                                        <button class="toolbar-btn toolbar-btn-small" data-target="input-text" data-action="download" title="Download as file">📥</button>
+                                        <button class="toolbar-btn toolbar-btn-small" data-target="input-text" data-action="upload" title="Upload file">📁</button>
+                                    </div>
                                 </div>
-                                <div class="format-tabs">
-                                    <button class="format-tab active" data-format="text">Text</button>
-                                    <button class="format-tab" data-format="hex">Hex</button>
-                                    <button class="format-tab" data-format="base64">Base64</button>
+                                <div class="textarea-container">
+                                    <textarea class="textarea" id="input-text" placeholder="Enter your text..."></textarea>
+                                    <div class="drop-overlay">
+                                        <div class="drop-overlay-content">
+                                            <div class="drop-overlay-icon">📁</div>
+                                            <div class="drop-overlay-text">Drop files here...</div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <textarea class="textarea" id="input-text" placeholder="Enter your text or drop a file above..."></textarea>
+                                <input type="file" style="display: none;" id="input-text-file-input">
                             </div>
-                            
-                            <div class="output-section">
-                                <h3 class="section-title-small">Output</h3>
-                                <div class="format-tabs">
-                                    <button class="format-tab active" data-format="text">Text</button>
-                                    <button class="format-tab" data-format="hex">Hex</button>
-                                    <button class="format-tab" data-format="base64">Base64</button>
-                                </div>
-                                <textarea class="textarea" id="output-text" readonly placeholder="Encrypted/decrypted text will appear here..."></textarea>
-                                <div class="card-actions">
-                                    <button class="btn btn-secondary btn-small" id="copy-output">📋 Copy</button>
-                                    <button class="btn btn-secondary btn-small" id="download-output">💾 Download</button>
-                                </div>
-                            </div>
-                            
+
                             <div class="controls-section">
-                                <div class="algorithm-selector">
-                                    <label>Algorithm:</label>
+                                <!-- ===== CONFIGURATION SECTION ===== -->
+                                <div class="section-header-block">
+                                    <h3 class="section-header-title">
+                                        <span class="section-header-icon">⚙️</span>
+                                        Configuration
+                                    </h3>
+                                </div>
+
+                                <!-- Algorithm Block (Always Visible) -->
+                                <div class="cipher-block" id="algorithm-block">
+                                    <h4 class="block-title">
+                                        <span class="block-title-icon">🔧</span>
+                                        Algorithm
+                                    </h4>
                                     <select class="select" id="selected-algorithm">
                                         <option value="">Select an algorithm...</option>
                                     </select>
-                                    <label>Mode:</label>
+                                </div>
+
+                                <!-- Mode Block (Conditional) -->
+                                <div class="cipher-block" id="mode-block" style="display: none;">
+                                    <div class="block-separator"></div>
+                                    <h4 class="block-title">
+                                        <span class="block-title-icon">🔄</span>
+                                        Mode
+                                    </h4>
                                     <select class="select" id="cipher-mode">
                                         <option value="">None (Direct)</option>
-                                        <!-- Populated dynamically -->
                                     </select>
-                                    <label>Padding:</label>
+                                </div>
+
+                                <!-- Padding Block (Conditional) -->
+                                <div class="cipher-block" id="padding-block" style="display: none;">
+                                    <div class="block-separator"></div>
+                                    <h4 class="block-title">
+                                        <span class="block-title-icon">📦</span>
+                                        Padding
+                                    </h4>
                                     <select class="select" id="cipher-padding">
                                         <option value="">None</option>
-                                        <!-- Populated dynamically -->
                                     </select>
-                                    <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
-                                        <label>Key (optional):</label>
-                                        <div class="key-format-tabs" style="display: flex; gap: 0.25rem; margin-bottom: 0.25rem;">
-                                            <button class="format-tab format-tab-small active" data-format="text">Text</button>
-                                            <button class="format-tab format-tab-small" data-format="hex">Hex</button>
-                                            <button class="format-tab format-tab-small" data-format="base64">Base64</button>
-                                            <button class="btn btn-secondary btn-small" id="key-file-btn" style="margin-left: auto;">📁 Load from File</button>
+                                </div>
+
+                                <!-- ===== DATA PARAMETERS SECTION ===== -->
+                                <div class="section-separator"></div>
+                                <div class="section-header-block">
+                                    <h3 class="section-header-title">
+                                        <span class="section-header-icon">🔐</span>
+                                        Data Parameters
+                                    </h3>
+                                </div>
+
+                                <!-- Key Block (Conditional) -->
+                                <div class="cipher-block" id="key-block" style="display: none;">
+                                    <h4 class="block-title">
+                                        <span class="block-title-icon">🔑</span>
+                                        Key
+                                    </h4>
+                                    <div class="data-control">
+                                        <div class="data-toolbar data-toolbar-small">
+                                            <div class="format-tabs">
+                                                <button class="format-tab format-tab-small active" data-target="cipher-key" data-format="text">📝 Text</button>
+                                                <button class="format-tab format-tab-small" data-target="cipher-key" data-format="hex">#️⃣ Hex</button>
+                                                <button class="format-tab format-tab-small" data-target="cipher-key" data-format="base64">🔤 Base64</button>
+                                            </div>
+                                            <div class="toolbar-actions">
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-key" data-action="copy" title="Copy">📄</button>
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-key" data-action="paste" title="Paste">📋</button>
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-key" data-action="download" title="Download">📥</button>
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-key" data-action="upload" title="Upload">📁</button>
+                                            </div>
                                         </div>
-                                        <input type="file" id="key-file-input" style="display: none;">
-                                        <textarea class="search-input" placeholder="Enter key..." id="cipher-key" rows="2" style="max-width: 100%; resize: vertical;"></textarea>
+                                        <div class="textarea-container">
+                                            <textarea class="data-input" id="cipher-key" placeholder="Enter key..." rows="2"></textarea>
+                                            <div class="drop-overlay drop-overlay-small">
+                                                <div class="drop-overlay-content">
+                                                    <div class="drop-overlay-icon">📁</div>
+                                                    <div class="drop-overlay-text">Drop files here...</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <input type="file" style="display: none;" id="cipher-key-file-input">
                                     </div>
-                                    <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;" id="iv-container">
-                                        <label>IV / Nonce (optional):</label>
-                                        <div class="iv-format-tabs" style="display: flex; gap: 0.25rem; margin-bottom: 0.25rem;">
-                                            <button class="format-tab format-tab-small active" data-format="text">Text</button>
-                                            <button class="format-tab format-tab-small" data-format="hex">Hex</button>
-                                            <button class="format-tab format-tab-small" data-format="base64">Base64</button>
-                                            <button class="btn btn-secondary btn-small" id="iv-file-btn" style="margin-left: auto;">📁 Load from File</button>
+
+                                    <!-- KDF Sub-block for Key -->
+                                    <div class="kdf-subblock" id="key-kdf-block" style="margin-top: 0.75rem;">
+                                        <label style="font-size: 0.875rem; font-weight: 600; color: #a0aec0; display: block; margin-bottom: 0.5rem;">Key Derivation Function</label>
+                                        <select class="select" id="key-kdf" style="margin-bottom: 0.75rem;">
+                                            <option value="">None (Direct Key)</option>
+                                        </select>
+                                        <div id="key-kdf-parameters" style="display: none;">
+                                            <div class="kdf-param-row">
+                                                <div class="kdf-param-field" style="flex: 1;">
+                                                    <label>Salt (hex):</label>
+                                                    <input type="text" class="search-input" id="key-kdf-salt" placeholder="Optional">
+                                                </div>
+                                                <div class="kdf-param-field" id="key-kdf-iterations-container" style="width: 140px; display: none;">
+                                                    <label>Iterations:</label>
+                                                    <input type="number" class="search-input" id="key-kdf-iterations" value="10000" min="1">
+                                                </div>
+                                                <div class="kdf-param-field" id="key-kdf-n-container" style="width: 100px; display: none;">
+                                                    <label>N:</label>
+                                                    <input type="number" class="search-input" id="key-kdf-n" value="16" min="2">
+                                                </div>
+                                            </div>
+                                            <div class="kdf-param-row">
+                                                <div class="kdf-param-field" id="key-kdf-info-container" style="flex: 1; display: none;">
+                                                    <label>Info (hex):</label>
+                                                    <input type="text" class="search-input" id="key-kdf-info" placeholder="Optional">
+                                                </div>
+                                                <div class="kdf-param-field" id="key-kdf-hash-container" style="width: 140px; display: none;">
+                                                    <label>Hash:</label>
+                                                    <select class="select" id="key-kdf-hash">
+                                                        <option value="SHA256">SHA-256</option>
+                                                        <option value="SHA1">SHA-1</option>
+                                                        <option value="SHA512">SHA-512</option>
+                                                    </select>
+                                                </div>
+                                                <div class="kdf-param-field" id="key-kdf-r-container" style="width: 80px; display: none;">
+                                                    <label>r:</label>
+                                                    <input type="number" class="search-input" id="key-kdf-r" value="1" min="1">
+                                                </div>
+                                                <div class="kdf-param-field" id="key-kdf-p-container" style="width: 80px; display: none;">
+                                                    <label>p:</label>
+                                                    <input type="number" class="search-input" id="key-kdf-p" value="1" min="1">
+                                                </div>
+                                                <div class="kdf-param-field" style="width: 110px;">
+                                                    <label>Output:</label>
+                                                    <input type="number" class="search-input" id="key-kdf-output-size" value="32" min="1" max="128">
+                                                </div>
+                                            </div>
                                         </div>
-                                        <input type="file" id="iv-file-input" style="display: none;">
-                                        <textarea class="search-input" placeholder="Enter IV..." id="cipher-iv" rows="2" style="max-width: 100%; resize: vertical;"></textarea>
                                     </div>
                                 </div>
+
+                                <!-- IV Block (Conditional) -->
+                                <div class="cipher-block" id="iv-block" style="display: none;">
+                                    <div class="block-separator"></div>
+                                    <h4 class="block-title">
+                                        <span class="block-title-icon">🔢</span>
+                                        IV
+                                    </h4>
+                                    <div class="data-control">
+                                        <div class="data-toolbar data-toolbar-small">
+                                            <div class="format-tabs">
+                                                <button class="format-tab format-tab-small active" data-target="cipher-iv" data-format="text">📝 Text</button>
+                                                <button class="format-tab format-tab-small" data-target="cipher-iv" data-format="hex">#️⃣ Hex</button>
+                                                <button class="format-tab format-tab-small" data-target="cipher-iv" data-format="base64">🔤 Base64</button>
+                                            </div>
+                                            <div class="toolbar-actions">
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-iv" data-action="copy" title="Copy">📄</button>
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-iv" data-action="paste" title="Paste">📋</button>
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-iv" data-action="download" title="Download">📥</button>
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-iv" data-action="upload" title="Upload">📁</button>
+                                            </div>
+                                        </div>
+                                        <div class="textarea-container">
+                                            <textarea class="data-input" id="cipher-iv" placeholder="Enter IV..." rows="2"></textarea>
+                                            <div class="drop-overlay drop-overlay-small">
+                                                <div class="drop-overlay-content">
+                                                    <div class="drop-overlay-icon">📁</div>
+                                                    <div class="drop-overlay-text">Drop files here...</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <input type="file" style="display: none;" id="cipher-iv-file-input">
+                                    </div>
+
+                                    <!-- KDF Sub-block for IV -->
+                                    <div class="kdf-subblock" id="iv-kdf-block" style="margin-top: 0.75rem;">
+                                        <label style="font-size: 0.875rem; font-weight: 600; color: #a0aec0; display: block; margin-bottom: 0.5rem;">Key Derivation Function</label>
+                                        <select class="select" id="iv-kdf" style="margin-bottom: 0.75rem;">
+                                            <option value="">None (Direct IV)</option>
+                                        </select>
+                                        <div id="iv-kdf-parameters" style="display: none;">
+                                            <div class="kdf-param-row">
+                                                <div class="kdf-param-field" style="flex: 1;">
+                                                    <label>Salt (hex):</label>
+                                                    <input type="text" class="search-input" id="iv-kdf-salt" placeholder="Optional">
+                                                </div>
+                                                <div class="kdf-param-field" id="iv-kdf-iterations-container" style="width: 140px; display: none;">
+                                                    <label>Iterations:</label>
+                                                    <input type="number" class="search-input" id="iv-kdf-iterations" value="10000" min="1">
+                                                </div>
+                                                <div class="kdf-param-field" id="iv-kdf-n-container" style="width: 100px; display: none;">
+                                                    <label>N:</label>
+                                                    <input type="number" class="search-input" id="iv-kdf-n" value="16" min="2">
+                                                </div>
+                                            </div>
+                                            <div class="kdf-param-row">
+                                                <div class="kdf-param-field" id="iv-kdf-info-container" style="flex: 1; display: none;">
+                                                    <label>Info (hex):</label>
+                                                    <input type="text" class="search-input" id="iv-kdf-info" placeholder="Optional">
+                                                </div>
+                                                <div class="kdf-param-field" id="iv-kdf-hash-container" style="width: 140px; display: none;">
+                                                    <label>Hash:</label>
+                                                    <select class="select" id="iv-kdf-hash">
+                                                        <option value="SHA256">SHA-256</option>
+                                                        <option value="SHA1">SHA-1</option>
+                                                        <option value="SHA512">SHA-512</option>
+                                                    </select>
+                                                </div>
+                                                <div class="kdf-param-field" id="iv-kdf-r-container" style="width: 80px; display: none;">
+                                                    <label>r:</label>
+                                                    <input type="number" class="search-input" id="iv-kdf-r" value="1" min="1">
+                                                </div>
+                                                <div class="kdf-param-field" id="iv-kdf-p-container" style="width: 80px; display: none;">
+                                                    <label>p:</label>
+                                                    <input type="number" class="search-input" id="iv-kdf-p" value="1" min="1">
+                                                </div>
+                                                <div class="kdf-param-field" style="width: 110px;">
+                                                    <label>Output:</label>
+                                                    <input type="number" class="search-input" id="iv-kdf-output-size" value="16" min="1" max="128">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Salt Block (Conditional) -->
+                                <div class="cipher-block" id="salt-block" style="display: none;">
+                                    <div class="block-separator"></div>
+                                    <h4 class="block-title">
+                                        <span class="block-title-icon">🧂</span>
+                                        Salt
+                                    </h4>
+                                    <div class="data-control">
+                                        <div class="data-toolbar data-toolbar-small">
+                                            <div class="format-tabs">
+                                                <button class="format-tab format-tab-small active" data-target="cipher-salt" data-format="text">📝 Text</button>
+                                                <button class="format-tab format-tab-small" data-target="cipher-salt" data-format="hex">#️⃣ Hex</button>
+                                                <button class="format-tab format-tab-small" data-target="cipher-salt" data-format="base64">🔤 Base64</button>
+                                            </div>
+                                            <div class="toolbar-actions">
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-salt" data-action="copy" title="Copy">📄</button>
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-salt" data-action="paste" title="Paste">📋</button>
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-salt" data-action="download" title="Download">📥</button>
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-salt" data-action="upload" title="Upload">📁</button>
+                                            </div>
+                                        </div>
+                                        <div class="textarea-container">
+                                            <textarea class="data-input" id="cipher-salt" placeholder="Enter salt..." rows="2"></textarea>
+                                            <div class="drop-overlay drop-overlay-small">
+                                                <div class="drop-overlay-content">
+                                                    <div class="drop-overlay-icon">📁</div>
+                                                    <div class="drop-overlay-text">Drop files here...</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <input type="file" style="display: none;" id="cipher-salt-file-input">
+                                    </div>
+
+                                    <!-- KDF Sub-block for Salt -->
+                                    <div class="kdf-subblock" id="salt-kdf-block" style="margin-top: 0.75rem;">
+                                        <label style="font-size: 0.875rem; font-weight: 600; color: #a0aec0; display: block; margin-bottom: 0.5rem;">Key Derivation Function</label>
+                                        <select class="select" id="salt-kdf" style="margin-bottom: 0.75rem;">
+                                            <option value="">None (Direct Salt)</option>
+                                        </select>
+                                        <div id="salt-kdf-parameters" style="display: none;">
+                                            <div class="kdf-param-row">
+                                                <div class="kdf-param-field" style="flex: 1;">
+                                                    <label>Salt (hex):</label>
+                                                    <input type="text" class="search-input" id="salt-kdf-salt" placeholder="Optional">
+                                                </div>
+                                                <div class="kdf-param-field" id="salt-kdf-iterations-container" style="width: 140px; display: none;">
+                                                    <label>Iterations:</label>
+                                                    <input type="number" class="search-input" id="salt-kdf-iterations" value="10000" min="1">
+                                                </div>
+                                                <div class="kdf-param-field" id="salt-kdf-n-container" style="width: 100px; display: none;">
+                                                    <label>N:</label>
+                                                    <input type="number" class="search-input" id="salt-kdf-n" value="16" min="2">
+                                                </div>
+                                            </div>
+                                            <div class="kdf-param-row">
+                                                <div class="kdf-param-field" id="salt-kdf-info-container" style="flex: 1; display: none;">
+                                                    <label>Info (hex):</label>
+                                                    <input type="text" class="search-input" id="salt-kdf-info" placeholder="Optional">
+                                                </div>
+                                                <div class="kdf-param-field" id="salt-kdf-hash-container" style="width: 140px; display: none;">
+                                                    <label>Hash:</label>
+                                                    <select class="select" id="salt-kdf-hash">
+                                                        <option value="SHA256">SHA-256</option>
+                                                        <option value="SHA1">SHA-1</option>
+                                                        <option value="SHA512">SHA-512</option>
+                                                    </select>
+                                                </div>
+                                                <div class="kdf-param-field" id="salt-kdf-r-container" style="width: 80px; display: none;">
+                                                    <label>r:</label>
+                                                    <input type="number" class="search-input" id="salt-kdf-r" value="1" min="1">
+                                                </div>
+                                                <div class="kdf-param-field" id="salt-kdf-p-container" style="width: 80px; display: none;">
+                                                    <label>p:</label>
+                                                    <input type="number" class="search-input" id="salt-kdf-p" value="1" min="1">
+                                                </div>
+                                                <div class="kdf-param-field" style="width: 110px;">
+                                                    <label>Output:</label>
+                                                    <input type="number" class="search-input" id="salt-kdf-output-size" value="16" min="1" max="128">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Nonce Block (Conditional) -->
+                                <div class="cipher-block" id="nonce-block" style="display: none;">
+                                    <div class="block-separator"></div>
+                                    <h4 class="block-title">
+                                        <span class="block-title-icon">🎲</span>
+                                        Nonce
+                                    </h4>
+                                    <div class="data-control">
+                                        <div class="data-toolbar data-toolbar-small">
+                                            <div class="format-tabs">
+                                                <button class="format-tab format-tab-small active" data-target="cipher-nonce" data-format="text">📝 Text</button>
+                                                <button class="format-tab format-tab-small" data-target="cipher-nonce" data-format="hex">#️⃣ Hex</button>
+                                                <button class="format-tab format-tab-small" data-target="cipher-nonce" data-format="base64">🔤 Base64</button>
+                                            </div>
+                                            <div class="toolbar-actions">
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-nonce" data-action="copy" title="Copy">📄</button>
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-nonce" data-action="paste" title="Paste">📋</button>
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-nonce" data-action="download" title="Download">📥</button>
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-nonce" data-action="upload" title="Upload">📁</button>
+                                            </div>
+                                        </div>
+                                        <div class="textarea-container">
+                                            <textarea class="data-input" id="cipher-nonce" placeholder="Enter nonce..." rows="2"></textarea>
+                                            <div class="drop-overlay drop-overlay-small">
+                                                <div class="drop-overlay-content">
+                                                    <div class="drop-overlay-icon">📁</div>
+                                                    <div class="drop-overlay-text">Drop files here...</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <input type="file" style="display: none;" id="cipher-nonce-file-input">
+                                    </div>
+
+                                    <!-- KDF Sub-block for Nonce -->
+                                    <div class="kdf-subblock" id="nonce-kdf-block" style="margin-top: 0.75rem;">
+                                        <label style="font-size: 0.875rem; font-weight: 600; color: #a0aec0; display: block; margin-bottom: 0.5rem;">Key Derivation Function</label>
+                                        <select class="select" id="nonce-kdf" style="margin-bottom: 0.75rem;">
+                                            <option value="">None (Direct Nonce)</option>
+                                        </select>
+                                        <div id="nonce-kdf-parameters" style="display: none;">
+                                            <div class="kdf-param-row">
+                                                <div class="kdf-param-field" style="flex: 1;">
+                                                    <label>Salt (hex):</label>
+                                                    <input type="text" class="search-input" id="nonce-kdf-salt" placeholder="Optional">
+                                                </div>
+                                                <div class="kdf-param-field" id="nonce-kdf-iterations-container" style="width: 140px; display: none;">
+                                                    <label>Iterations:</label>
+                                                    <input type="number" class="search-input" id="nonce-kdf-iterations" value="10000" min="1">
+                                                </div>
+                                                <div class="kdf-param-field" id="nonce-kdf-n-container" style="width: 100px; display: none;">
+                                                    <label>N:</label>
+                                                    <input type="number" class="search-input" id="nonce-kdf-n" value="16" min="2">
+                                                </div>
+                                            </div>
+                                            <div class="kdf-param-row">
+                                                <div class="kdf-param-field" id="nonce-kdf-info-container" style="flex: 1; display: none;">
+                                                    <label>Info (hex):</label>
+                                                    <input type="text" class="search-input" id="nonce-kdf-info" placeholder="Optional">
+                                                </div>
+                                                <div class="kdf-param-field" id="nonce-kdf-hash-container" style="width: 140px; display: none;">
+                                                    <label>Hash:</label>
+                                                    <select class="select" id="nonce-kdf-hash">
+                                                        <option value="SHA256">SHA-256</option>
+                                                        <option value="SHA1">SHA-1</option>
+                                                        <option value="SHA512">SHA-512</option>
+                                                    </select>
+                                                </div>
+                                                <div class="kdf-param-field" id="nonce-kdf-r-container" style="width: 80px; display: none;">
+                                                    <label>r:</label>
+                                                    <input type="number" class="search-input" id="nonce-kdf-r" value="1" min="1">
+                                                </div>
+                                                <div class="kdf-param-field" id="nonce-kdf-p-container" style="width: 80px; display: none;">
+                                                    <label>p:</label>
+                                                    <input type="number" class="search-input" id="nonce-kdf-p" value="1" min="1">
+                                                </div>
+                                                <div class="kdf-param-field" style="width: 110px;">
+                                                    <label>Output:</label>
+                                                    <input type="number" class="search-input" id="nonce-kdf-output-size" value="12" min="1" max="128">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Pepper Block (Conditional) -->
+                                <div class="cipher-block" id="pepper-block" style="display: none;">
+                                    <div class="block-separator"></div>
+                                    <h4 class="block-title">
+                                        <span class="block-title-icon">🌶️</span>
+                                        Pepper
+                                    </h4>
+                                    <div class="data-control">
+                                        <div class="data-toolbar data-toolbar-small">
+                                            <div class="format-tabs">
+                                                <button class="format-tab format-tab-small active" data-target="cipher-pepper" data-format="text">📝 Text</button>
+                                                <button class="format-tab format-tab-small" data-target="cipher-pepper" data-format="hex">#️⃣ Hex</button>
+                                                <button class="format-tab format-tab-small" data-target="cipher-pepper" data-format="base64">🔤 Base64</button>
+                                            </div>
+                                            <div class="toolbar-actions">
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-pepper" data-action="copy" title="Copy">📄</button>
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-pepper" data-action="paste" title="Paste">📋</button>
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-pepper" data-action="download" title="Download">📥</button>
+                                                <button class="toolbar-btn toolbar-btn-small" data-target="cipher-pepper" data-action="upload" title="Upload">📁</button>
+                                            </div>
+                                        </div>
+                                        <div class="textarea-container">
+                                            <textarea class="data-input" id="cipher-pepper" placeholder="Enter pepper..." rows="2"></textarea>
+                                            <div class="drop-overlay drop-overlay-small">
+                                                <div class="drop-overlay-content">
+                                                    <div class="drop-overlay-icon">📁</div>
+                                                    <div class="drop-overlay-text">Drop files here...</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <input type="file" style="display: none;" id="cipher-pepper-file-input">
+                                    </div>
+
+                                    <!-- KDF Sub-block for Pepper -->
+                                    <div class="kdf-subblock" id="pepper-kdf-block" style="margin-top: 0.75rem;">
+                                        <label style="font-size: 0.875rem; font-weight: 600; color: #a0aec0; display: block; margin-bottom: 0.5rem;">Key Derivation Function</label>
+                                        <select class="select" id="pepper-kdf" style="margin-bottom: 0.75rem;">
+                                            <option value="">None (Direct Pepper)</option>
+                                        </select>
+                                        <div id="pepper-kdf-parameters" style="display: none;">
+                                            <div class="kdf-param-row">
+                                                <div class="kdf-param-field" style="flex: 1;">
+                                                    <label>Salt (hex):</label>
+                                                    <input type="text" class="search-input" id="pepper-kdf-salt" placeholder="Optional">
+                                                </div>
+                                                <div class="kdf-param-field" id="pepper-kdf-iterations-container" style="width: 140px; display: none;">
+                                                    <label>Iterations:</label>
+                                                    <input type="number" class="search-input" id="pepper-kdf-iterations" value="10000" min="1">
+                                                </div>
+                                                <div class="kdf-param-field" id="pepper-kdf-n-container" style="width: 100px; display: none;">
+                                                    <label>N:</label>
+                                                    <input type="number" class="search-input" id="pepper-kdf-n" value="16" min="2">
+                                                </div>
+                                            </div>
+                                            <div class="kdf-param-row">
+                                                <div class="kdf-param-field" id="pepper-kdf-info-container" style="flex: 1; display: none;">
+                                                    <label>Info (hex):</label>
+                                                    <input type="text" class="search-input" id="pepper-kdf-info" placeholder="Optional">
+                                                </div>
+                                                <div class="kdf-param-field" id="pepper-kdf-hash-container" style="width: 140px; display: none;">
+                                                    <label>Hash:</label>
+                                                    <select class="select" id="pepper-kdf-hash">
+                                                        <option value="SHA256">SHA-256</option>
+                                                        <option value="SHA1">SHA-1</option>
+                                                        <option value="SHA512">SHA-512</option>
+                                                    </select>
+                                                </div>
+                                                <div class="kdf-param-field" id="pepper-kdf-r-container" style="width: 80px; display: none;">
+                                                    <label>r:</label>
+                                                    <input type="number" class="search-input" id="pepper-kdf-r" value="1" min="1">
+                                                </div>
+                                                <div class="kdf-param-field" id="pepper-kdf-p-container" style="width: 80px; display: none;">
+                                                    <label>p:</label>
+                                                    <input type="number" class="search-input" id="pepper-kdf-p" value="1" min="1">
+                                                </div>
+                                                <div class="kdf-param-field" style="width: 110px;">
+                                                    <label>Output:</label>
+                                                    <input type="number" class="search-input" id="pepper-kdf-output-size" value="16" min="1" max="128">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- ===== ACTIONS SECTION ===== -->
+                                <div class="section-separator"></div>
+                                <div class="section-header-block">
+                                    <h3 class="section-header-title">
+                                        <span class="section-header-icon">⚡</span>
+                                        Actions
+                                    </h3>
+                                </div>
+
+                                <!-- Action Buttons -->
                                 <div class="action-buttons">
                                     <button class="btn btn-primary" id="encrypt-btn">🔒 Encrypt</button>
                                     <button class="btn btn-primary" id="decrypt-btn">🔓 Decrypt</button>
                                     <button class="btn btn-secondary" id="clear-btn">🗑️ Clear</button>
                                 </div>
+                            </div>
+
+                            <!-- Output Section (Bottom) -->
+                            <div class="output-section">
+                                <h3 class="section-title-small">Output</h3>
+                                <div class="data-toolbar">
+                                    <div class="format-tabs">
+                                        <button class="format-tab format-tab-small active" data-target="output-text" data-format="text">📝 Text</button>
+                                        <button class="format-tab format-tab-small" data-target="output-text" data-format="hex">#️⃣ Hex</button>
+                                        <button class="format-tab format-tab-small" data-target="output-text" data-format="base64">🔤 Base64</button>
+                                    </div>
+                                    <div class="toolbar-actions">
+                                        <button class="toolbar-btn toolbar-btn-small" data-target="output-text" data-action="copy" title="Copy to clipboard">📄</button>
+                                        <button class="toolbar-btn toolbar-btn-small" data-target="output-text" data-action="download" title="Download as file">📥</button>
+                                    </div>
+                                </div>
+                                <textarea class="textarea" id="output-text" readonly placeholder="Encrypted/decrypted text will appear here..."></textarea>
                             </div>
                         </div>
                     </div>
@@ -574,10 +1029,9 @@
     <script src="./algorithms/aead/pyjamask96.js"></script>
     <script src="./algorithms/aead/ascon128.js"></script>
     <script src="./algorithms/aead/ascon128a.js"></script>
-    <script src="./algorithms/aead/schwaemm256-128.js"></script>
+    <script src="./algorithms/aead/ascon80pq.js"></script>
     <script src="./algorithms/aead/tinyjambu192.js"></script>
     <script src="./algorithms/aead/tinyjambu256.js"></script>
-    <script src="./algorithms/aead/romulus-n1.js"></script>
     <script src="./algorithms/block/anubis.js"></script>
     <script src="./algorithms/block/aria.js"></script>
     <script src="./algorithms/block/baseking.js"></script>
@@ -831,10 +1285,11 @@
     <script src="./algorithms/ecc/alamouti-code.js"></script>
     <script src="./algorithms/ecc/algebraic-geometry-code.js"></script>
     <script src="./algorithms/ecc/bacon-shor-code.js"></script>
+    <!-- Fountain Foundation must be loaded before fountain code algorithms -->
+    <script src="./algorithms/ecc/fountain-foundation.data.js"></script>
     <script src="./algorithms/ecc/batched-sparse-code.js"></script>
     <script src="./algorithms/ecc/bch.js"></script>
     <script src="./algorithms/ecc/bch-code.js"></script>
-    <script src="./algorithms/ecc/berger-code.js"></script>
     <script src="./algorithms/ecc/bicycle-code.js"></script>
     <script src="./algorithms/ecc/biorthogonal-code.js"></script>
     <script src="./algorithms/ecc/cat-code.js"></script>
@@ -851,7 +1306,6 @@
     <script src="./algorithms/ecc/extended-self-dual.js"></script>
     <script src="./algorithms/ecc/fire-code.js"></script>
     <script src="./algorithms/ecc/folded-reed-solomon.js"></script>
-    <script src="./algorithms/ecc/fountain-foundation.data.js"></script>
     <script src="./algorithms/ecc/gabidulin-code.js"></script>
     <script src="./algorithms/ecc/gkp-code.js"></script>
     <script src="./algorithms/ecc/golay.js"></script>
@@ -925,6 +1379,7 @@
     <script src="./algorithms/hash/argon2.js"></script>
     <script src="./algorithms/hash/ascon-hash.js"></script>
     <script src="./algorithms/hash/ascon-hash256.js"></script>
+    <script src="./algorithms/hash/ascon-xof.js"></script>
     <script src="./algorithms/hash/bcrypt.js"></script>
     <script src="./algorithms/hash/blake.js"></script>
     <script src="./algorithms/hash/blake2b.js"></script>
@@ -990,7 +1445,6 @@
     <script src="./algorithms/hash/sparkle-hash.js"></script>
     <script src="./algorithms/hash/tuplehash128.js"></script>
     <script src="./algorithms/hash/tuplehash256.js"></script>
-    <script src="./algorithms/hash/xoodyak-hash.js"></script>
     <script src="./algorithms/kdf/hkdf.js"></script>
     <script src="./algorithms/kdf/pbkdf2.js"></script>
     <script src="./algorithms/kdf/scrypt.js"></script>
