@@ -836,8 +836,8 @@ class CPlugin extends LanguagePlugin {
       const object = this._generateNode(node.callee.object, options);
       const propertyName = node.callee.property.name || node.callee.property;
 
-      // Handle OpCodes method calls
-      if (object === 'OpCodes') {
+      // Handle OpCodes method calls (check all name variants)
+      if (object === 'OpCodes' || object === 'op_codes') {
         return this._generateOpCodesCall(propertyName, args, options);
       }
 
@@ -925,8 +925,8 @@ class CPlugin extends LanguagePlugin {
       return `strlen(${object})`; // For strings, use sizeof for arrays
     }
 
-    // Handle OpCodes method calls
-    if (object === 'OpCodes') {
+    // Handle OpCodes method calls (check all name variants)
+    if (object === 'OpCodes' || object === 'op_codes') {
       const args = ''; // Args will be added by call expression
       return this._generateOpCodesCall(propertyName, args, options);
     }
@@ -3288,6 +3288,16 @@ class CPlugin extends LanguagePlugin {
         error: isBasicSuccess ? null : 'C compiler not available - using basic validation'
       };
     }
+  }
+
+  /**
+   * Generate OpCodes method call with C equivalents
+   * @private
+   */
+  _generateOpCodesCall(methodName, args, options) {
+    // For now, pass through to OpCodes library calls
+    // TODO: Implement C-specific OpCodes transformations
+    return `OpCodes_${methodName}(${args})`;
   }
 
   /**

@@ -534,8 +534,8 @@ class PerlPlugin extends LanguagePlugin {
    * @private
    */
   _generateCallExpression(node, options) {
-    // OpCodes integration for crypto operations
-    if (options.useCryptoExtensions && this._isOpCodesCall(node)) {
+    // OpCodes integration for crypto operations (always check, regardless of options)
+    if (this._isOpCodesCall(node)) {
       return this._generateOpCodesCall(node, options);
     }
 

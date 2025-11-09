@@ -487,10 +487,19 @@ class TypeScriptPlugin extends LanguagePlugin {
    * @private
    */
   _generateCallExpression(node, options) {
+    // Handle OpCodes method calls
+    if (node.callee && node.callee.type === 'MemberExpression' &&
+        node.callee.object.name === 'OpCodes') {
+      const methodName = node.callee.property.name;
+      const args = node.arguments ?
+        node.arguments.map(arg => this._generateNode(arg, options)).join(', ') : '';
+      return this._generateOpCodesCall(methodName, args);
+    }
+
     const callee = this._generateNode(node.callee, options);
-    const args = node.arguments ? 
+    const args = node.arguments ?
       node.arguments.map(arg => this._generateNode(arg, options)).join(', ') : '';
-    
+
     return `${callee}(${args})`;
   }
 
