@@ -14,6 +14,9 @@ class CipherController {
         this.isTesting = false;
         this.cancelled = false;
 
+        // Testing tab filter state
+        this.currentTestFilter = 'all'; // all, passed, partial, failed, skipped
+
         // Don't auto-initialize - wait for manual call
     }
     
@@ -1375,6 +1378,9 @@ class CipherController {
 
             tbody.appendChild(row);
         });
+
+        // Apply the current filter after populating the grid
+        this.applyTestFilter();
     }
 
     setupTestGridEventListeners() {
@@ -1487,6 +1493,7 @@ class CipherController {
         this.setupTestingFilters();
         this.setupTestingActions();
         this.setupParallelTestingControls();
+        this.setupTestStatusFilters();
     }
     
     /**
@@ -1575,6 +1582,68 @@ class CipherController {
         }
 
         DebugConfig.log(`✅ Parallel testing controls initialized - ${cpuCores} cores, ${this.workerCount} workers (max(1, cores-1) formula)`);
+    }
+
+    /**
+     * Setup click handlers for test status filtering badges
+     */
+    setupTestStatusFilters() {
+        // Find the testing tab stat elements (not the header ones)
+        const testingTab = document.querySelector('#testing-tab');
+        if (!testingTab) return;
+
+        const filterElements = {
+            'all': testingTab.querySelector('#total-algorithms')?.closest('.test-stat'),
+            'passed': testingTab.querySelector('#passed-algorithms')?.closest('.test-stat'),
+            'partial': testingTab.querySelector('#partial-algorithms')?.closest('.test-stat'),
+            'failed': testingTab.querySelector('#failed-algorithms')?.closest('.test-stat'),
+            'skipped': testingTab.querySelector('#skipped-algorithms')?.closest('.test-stat')
+        };
+
+        Object.entries(filterElements).forEach(([filterType, element]) => {
+            if (element) {
+                element.style.cursor = 'pointer';
+                element.addEventListener('click', () => {
+                    this.currentTestFilter = filterType;
+                    this.applyTestFilter();
+
+                    // Visual feedback: highlight active filter
+                    Object.values(filterElements).forEach(el => {
+                        if (el) el.style.opacity = '0.6';
+                    });
+                    element.style.opacity = '1.0';
+                });
+            }
+        });
+
+        DebugConfig.log('✅ Test status filters initialized');
+    }
+
+    /**
+     * Apply the current filter to the test grid
+     */
+    applyTestFilter() {
+        const tbody = document.getElementById('test-grid-body');
+        if (!tbody) return;
+
+        const rows = tbody.querySelectorAll('tr');
+        rows.forEach(row => {
+            const statusClass = row.className;
+
+            if (this.currentTestFilter === 'all') {
+                row.style.display = '';
+            } else if (this.currentTestFilter === 'passed' && statusClass === 'passed') {
+                row.style.display = '';
+            } else if (this.currentTestFilter === 'partial' && statusClass === 'partial') {
+                row.style.display = '';
+            } else if (this.currentTestFilter === 'failed' && statusClass === 'failed') {
+                row.style.display = '';
+            } else if (this.currentTestFilter === 'skipped' && statusClass === 'untested') {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
     }
 
     /**
