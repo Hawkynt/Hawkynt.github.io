@@ -512,18 +512,28 @@ class PythonPlugin extends LanguagePlugin {
 
       // Handle array methods
       if (propertyName === 'push') {
+        // Check if any argument is a spread element: push(...array) -> extend(array)
+        const hasSpread = node.arguments && node.arguments.some(arg => arg.type === 'SpreadElement');
+        if (hasSpread && node.arguments.length === 1) {
+          // push(...arr) becomes extend(arr) - remove the * prefix
+          const arrayArg = this._generateNode(node.arguments[0].argument, options);
+          return `${object}.extend(${arrayArg})`;
+        }
         return `${object}.append(${args})`;
       }
       if (propertyName === 'slice') {
-        return `${object}[${args}]`; // Python slice notation
+        // Convert array.slice(start, end) to array[start:end] Python syntax
+        const sliceArgs = args.replace(',', ':');
+        return `${object}[${sliceArgs}]`;
       }
       if (propertyName === 'length') {
         return `len(${object})`;
       }
 
-      // Handle OpCodes method calls
-      if (object === 'OpCodes') {
-        return this._generateOpCodesCall(propertyName, args);
+      // Handle OpCodes method calls (check original and all Python-converted name variants)
+      if (object === 'OpCodes' || object === 'op_codes' || object === '_op_codes') {
+        const result = this._generateOpCodesCall(propertyName, args);
+        return result;
       }
 
       // Handle console.log -> print
@@ -803,24 +813,39 @@ class PythonPlugin extends LanguagePlugin {
       const init = this._generateNode(node.init, options).replace(/let |const |var /, '').trim();
       const test = this._generateNode(node.test, options);
       const update = this._generateNode(node.update, options);
-      
+
       // Extract variable name and initial value
       const [varName, initialValue] = init.split('=').map(s => s.trim());
-      
-      // Simple range-based conversion (could be enhanced)
+
+      // Handle simple i++ increment: for (let i = 0; i < end; i++)
       if (test.includes('<') && update.includes('++')) {
         const endValue = test.replace(`${varName} < `, '').trim();
         let code = this._indent(`for ${varName} in range(${initialValue || 0}, ${endValue}):\n`);
-        
+
         this.indentLevel++;
         const bodyCode = this._generateNode(node.body, options);
         code += bodyCode || this._indent('pass\n');
         this.indentLevel--;
-        
+
+        return code;
+      }
+
+      // Handle i += step increment: for (let i = 0; i < end; i += step)
+      if (test.includes('<') && update.includes('+=')) {
+        const endValue = test.replace(`${varName} < `, '').replace(`${varName}<`, '').trim();
+        // Extract step value from "i += step"
+        const stepValue = update.replace(`${varName} += `, '').replace(`${varName}+=`, '').trim();
+        let code = this._indent(`for ${varName} in range(${initialValue || 0}, ${endValue}, ${stepValue}):\n`);
+
+        this.indentLevel++;
+        const bodyCode = this._generateNode(node.body, options);
+        code += bodyCode || this._indent('pass\n');
+        this.indentLevel--;
+
         return code;
       }
     }
-    
+
     // Fallback for complex for loops that can't be automatically converted
     // Generate a valid Python for loop with pass
     return this._indent('# Complex for loop - may require manual review\n') +
@@ -1550,9 +1575,17 @@ class PythonPlugin extends LanguagePlugin {
       case 'Unpack32BE':
         return `struct.unpack('>L', ${args})[0]`;
       case 'RotL32':
-        return `((${args}) << n | (${args}) >> (32 - n)) & 0xFFFFFFFF`;
-      case 'RotR32':
-        return `((${args}) >> n | (${args}) << (32 - n)) & 0xFFFFFFFF`;
+      case 'RotR32': {
+        // Parse args like "value, positions" into components
+        const argList = args.split(',').map(a => a.trim());
+        const value = argList[0] || 'value';
+        const positions = argList[1] || 'n';
+        if (methodName === 'RotL32') {
+          return `((${value}) << ${positions} | (${value}) >> (32 - ${positions})) & 0xFFFFFFFF`;
+        } else {
+          return `((${value}) >> ${positions} | (${value}) << (32 - ${positions})) & 0xFFFFFFFF`;
+        }
+      }
       case 'XorArrays':
         return `bytes(a ^ b for a, b in zip(${args}))`;
       case 'ClearArray':

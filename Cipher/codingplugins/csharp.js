@@ -1160,8 +1160,8 @@ class CSharpPlugin extends LanguagePlugin {
         return `Console.WriteLine(${args})`;
       }
 
-      // Handle OpCodes method calls with special formatting and type-specific handling
-      if (object === 'OpCodes') {
+      // Handle OpCodes method calls with special formatting and type-specific handling (check all name variants)
+      if (object === 'OpCodes' || object === 'opCodes') {
         return this._generateOpCodesCall(propertyName, args);
       }
 
@@ -2692,6 +2692,16 @@ class CSharpPlugin extends LanguagePlugin {
         error: isBasicSuccess ? null : '.NET compiler not available - using basic validation'
       };
     }
+  }
+
+  /**
+   * Generate OpCodes method call with C# equivalents
+   * @private
+   */
+  _generateOpCodesCall(methodName, args) {
+    // For now, pass through to OpCodes library calls
+    // TODO: Implement C#-specific OpCodes transformations
+    return `OpCodes.${methodName}(${args})`;
   }
 
   /**

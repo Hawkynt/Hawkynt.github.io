@@ -522,8 +522,8 @@ class KotlinPlugin extends LanguagePlugin {
     const args = node.arguments ?
       node.arguments.map(arg => this._generateNode(arg, options)).join(', ') : '';
 
-    // OpCodes integration for crypto operations
-    if (options.useCryptoExtensions && this._isOpCodesCall(node)) {
+    // OpCodes integration for crypto operations (always check, regardless of options)
+    if (this._isOpCodesCall(node)) {
       return this._generateOpCodesCall(node, options);
     }
 
