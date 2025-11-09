@@ -178,9 +178,9 @@
       this.year = 2019;
       this.category = CategoryType.HASH;
       this.subCategory = "Lightweight Cryptography";
-      this.securityStatus = SecurityStatus.SECURE;
-      this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = CountryCode.BE;
+      this.securityStatus = SecurityStatus.EXPERIMENTAL;
+      this.complexity = ComplexityType.ADVANCED;
+      this.country = CountryCode.INTL;
 
       this.SupportedOutputSizes = [{ minSize: 32, maxSize: 32, stepSize: 1 }];
 
@@ -274,107 +274,95 @@
     constructor(algorithm) {
       super(algorithm);
 
-      // Initialize state: 48 bytes, last byte set to 0x01
+      // Initialize state: 48 bytes, all zeros
       this.state = new Array(STATE_SIZE).fill(0);
-      this.state[STATE_SIZE - 1] = 0x01;
 
-      // Input buffer for absorption
-      this.buffer = new Array(RABSORB).fill(0);
-      this.bufferPos = 0;
-      this.updated = false;
+      // Mode tracking: 0=INIT_ABSORB, 1=ABSORB, 2=SQUEEZE
+      this.mode = 0; // INIT_ABSORB
+      this.count = 0; // Position in current block
     }
 
     /**
-     * Down function: Absorb data into state
-     * @param {Array<number>} data - Data to absorb
+     * Absorb data into the hash state
      */
-    _down(data) {
-      // XOR data into state
-      for (let i = 0; i < data.length; i++) {
-        this.state[i] ^= data[i];
-      }
-      // Append domain separation bit
-      this.state[data.length] ^= 0x01;
-    }
-
-    /**
-     * Up function: Apply Xoodoo permutation
-     */
-    _up() {
-      xoodooPermutation(this.state);
-    }
-
     Feed(data) {
       if (!data || data.length === 0) return;
 
       let inPos = 0;
+      let inlen = data.length;
 
-      // Handle buffered data first
-      if (this.bufferPos > 0) {
-        const available = RABSORB - this.bufferPos;
-        if (data.length < available) {
-          // Not enough to fill buffer
-          for (let i = 0; i < data.length; i++) {
-            this.buffer[this.bufferPos++] = data[i];
-          }
-          return;
-        }
-
-        // Fill buffer and process
-        for (let i = 0; i < available; i++) {
-          this.buffer[this.bufferPos++] = data[inPos++];
-        }
-
-        this._down(this.buffer);
-        this._up();
-        this.updated = true;
-        this.bufferPos = 0;
+      // If we were squeezing, restart absorb phase
+      if (this.mode === 2) { // SQUEEZE
+        xoodooPermutation(this.state);
+        this.mode = 0; // INIT_ABSORB
+        this.count = 0;
       }
 
-      // Process complete blocks
-      while (inPos + RABSORB <= data.length) {
-        const block = data.slice(inPos, inPos + RABSORB);
-        this._down(block);
-        this._up();
-        this.updated = true;
-        inPos += RABSORB;
-      }
+      // First block gets domain 0x01, subsequent blocks get 0x00
+      let domain = (this.mode === 0) ? 0x01 : 0x00; // INIT_ABSORB : ABSORB
 
-      // Buffer remaining data
-      while (inPos < data.length) {
-        this.buffer[this.bufferPos++] = data[inPos++];
+      // Absorb input data into state
+      while (inlen > 0) {
+        if (this.count >= RABSORB) {
+          // Block is full - apply padding and domain separation
+          this.state[RABSORB] ^= 0x01;          // Padding at rate position
+          this.state[STATE_SIZE - 1] ^= domain;  // Domain at last byte
+          xoodooPermutation(this.state);
+          this.mode = 1; // ABSORB
+          this.count = 0;
+          domain = 0x00;
+        }
+
+        // Absorb as much as possible into current block
+        const temp = Math.min(RABSORB - this.count, inlen);
+        for (let i = 0; i < temp; i++) {
+          this.state[this.count + i] ^= data[inPos + i];
+        }
+        this.count += temp;
+        inPos += temp;
+        inlen -= temp;
       }
     }
 
+    /**
+     * Finalize and produce hash output
+     */
     Result() {
-      // Process remaining buffered data
-      if (this.bufferPos > 0 || !this.updated) {
-        const finalBlock = this.buffer.slice(0, this.bufferPos);
-        this._down(finalBlock);
-        this._up();
+      // If we were absorbing, terminate the absorb phase
+      if (this.mode !== 2) { // Not SQUEEZE
+        const domain = (this.mode === 0) ? 0x01 : 0x00; // INIT_ABSORB : ABSORB
+        this.state[this.count] ^= 0x01;          // Padding at current position
+        this.state[STATE_SIZE - 1] ^= domain;     // Domain at last byte
+        xoodooPermutation(this.state);
+        this.mode = 2; // SQUEEZE
+        this.count = 0;
       }
 
-      // First squeeze: extract TAGLEN bytes
-      const output = new Array(32);
-      for (let i = 0; i < TAGLEN; i++) {
-        output[i] = this.state[i];
-      }
+      // Squeeze out 32 bytes (256 bits)
+      const output = [];
+      let outlen = 32;
 
-      // XOR domain separation for second squeeze
-      this.state[0] ^= 0x01;
-      this._up();
+      while (outlen > 0) {
+        if (this.count >= RABSORB) {
+          // Need more data - apply padding and permute
+          // Padding at index 0 for subsequent squeeze blocks
+          this.state[0] ^= 0x01;
+          xoodooPermutation(this.state);
+          this.count = 0;
+        }
 
-      // Second squeeze: extract remaining TAGLEN bytes
-      for (let i = 0; i < TAGLEN; i++) {
-        output[TAGLEN + i] = this.state[i];
+        const temp = Math.min(RABSORB - this.count, outlen);
+        for (let i = 0; i < temp; i++) {
+          output.push(this.state[this.count + i]);
+        }
+        this.count += temp;
+        outlen -= temp;
       }
 
       // Reset for next operation
       this.state = new Array(STATE_SIZE).fill(0);
-      this.state[STATE_SIZE - 1] = 0x01;
-      this.buffer = new Array(RABSORB).fill(0);
-      this.bufferPos = 0;
-      this.updated = false;
+      this.mode = 0; // INIT_ABSORB
+      this.count = 0;
 
       return output;
     }

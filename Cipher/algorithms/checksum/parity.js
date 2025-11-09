@@ -202,6 +202,7 @@
     }
 
     CreateInstance(isInverse = false) {
+      if (isInverse) return null; // Checksums have no inverse
       if (isInverse) {
         return null; // Parity checks do not support inverse operations
       }

@@ -64,7 +64,7 @@
         this.subCategory = "Dictionary";
         this.securityStatus = SecurityStatus.EDUCATIONAL; // Educational version for learning
         this.complexity = ComplexityType.ADVANCED;
-        this.country = CountryCode.FI; // Finland (XZ Utils) / RU (LZMA2)
+        this.country = CountryCode.INTL; // Finland (XZ Utils) / Russia (LZMA) - International collaboration
 
         // Documentation and references
         this.documentation = [

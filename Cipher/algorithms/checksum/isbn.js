@@ -158,6 +158,7 @@
     }
 
     CreateInstance(isInverse = false) {
+      if (isInverse) return null; // Checksums have no inverse
       if (isInverse) {
         return null; // ISBN checksums do not support inverse operations
       }
@@ -288,13 +289,6 @@
   // Export for Node.js
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { ISBNAlgorithm, ISBNInstance };
-  }
-
-  // ===== REGISTRATION =====
-
-    const algorithmInstance = new ISBNAlgorithm();
-  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
-    RegisterAlgorithm(algorithmInstance);
   }
 
   // ===== EXPORTS =====

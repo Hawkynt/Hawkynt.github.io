@@ -210,6 +210,7 @@
     }
 
     CreateInstance(isInverse = false) {
+      if (isInverse) return null; // Checksums have no inverse
       if (isInverse) {
         return null; // Check digit algorithms do not support inverse operations
       }
