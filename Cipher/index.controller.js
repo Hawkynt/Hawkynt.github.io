@@ -262,6 +262,9 @@ class CipherController {
                 // Update testing tab with results
                 this.updateTestingTabResults();
 
+                // Update header stats with live pass count
+                this.updateStats();
+
                 // Update progress AFTER completing test
                 this.updateGlobalTestingProgress(i + 1, algorithms.length, `Completed ${algorithm.name}`);
 
@@ -534,6 +537,9 @@ class CipherController {
 
             // CRITICAL: Update testing tab IMMEDIATELY for real-time results
             this.updateTestingTabResults();
+
+            // Update header stats with live pass count
+            this.updateStats();
 
             DebugConfig.log(`✅ Processed parallel result for ${result.algorithmName}: ${result.success ? 'PASSED' : 'FAILED'}${result.error ? ' - ' + result.error : ''}`);
         }
@@ -1108,16 +1114,28 @@ class CipherController {
         const totalElement = document.getElementById('total-algorithms');
         const workingElement = document.getElementById('working-algorithms');
         const categoriesElement = document.getElementById('categories');
-        
+
         const algorithms = this.getAllAlgorithms();
-        
-        if (totalElement) totalElement.textContent = algorithms.length;
-        
-        if (workingElement) {
-            // All AlgorithmFramework algorithms are considered working
-            workingElement.textContent = algorithms.length;
+
+        if (totalElement) {
+            totalElement.textContent = algorithms.length;
         }
-        
+
+        if (workingElement) {
+            // Count algorithms that passed tests (success === true OR passed === total)
+            const passedCount = algorithms.filter(algo => {
+                if (!algo.testResults) return false;
+                // Check success flag if available, otherwise compare passed to total
+                if (algo.testResults.success !== undefined) {
+                    return algo.testResults.success === true;
+                }
+                return algo.testResults.passed === algo.testResults.total && algo.testResults.total > 0;
+            }).length;
+
+            // Just show the number (HTML has "Working" after the span)
+            workingElement.textContent = passedCount;
+        }
+
         if (categoriesElement) {
             const categories = new Set(
                 algorithms.map(a => this.getCategoryDisplayName(a.category))
@@ -1234,11 +1252,13 @@ class CipherController {
         const failedEl = document.getElementById('failed-algorithms');
         const skippedEl = document.getElementById('skipped-algorithms');
         const successRateEl = document.getElementById('success-rate');
+        const workingEl = document.getElementById('working-algorithms');
 
         if (passedEl) passedEl.textContent = passed;
         if (partialEl) partialEl.textContent = partial;
         if (failedEl) failedEl.textContent = failed;
         if (skippedEl) skippedEl.textContent = skipped;
+        if (workingEl) workingEl.textContent = passed; // Update header "Working" badge
         if (successRateEl) {
             const total = passed + partial + failed;
             const rate = total > 0 ? Math.round((passed / total) * 100) : 0;
@@ -1412,6 +1432,12 @@ class CipherController {
 
         // Setup key file upload
         this.setupKeyFileUpload();
+
+        // Setup IV file upload
+        this.setupIVFileUpload();
+
+        // Setup input validation and salmon tinting
+        this.setupInputValidation();
 
         DebugConfig.log('✅ Cipher interface setup complete');
     }
@@ -1636,6 +1662,7 @@ class CipherController {
             }
 
             this.updateTestingTabResults();
+            this.updateStats();
         } catch (error) {
             DebugConfig.error('Selected tests failed:', error);
             alert('Test execution failed: ' + error.message);
@@ -2145,6 +2172,26 @@ class CipherController {
                 this.convertTextAreaFormat(keyText, oldFormat, newFormat);
             });
         });
+
+        // IV format tabs with auto-conversion
+        const ivFormatTabs = document.querySelectorAll('.iv-format-tabs .format-tab');
+        const ivText = document.getElementById('cipher-iv');
+        if (ivFormatTabs && ivText) {
+            ivFormatTabs.forEach(tab => {
+                tab.addEventListener('click', (e) => {
+                    const oldFormat = document.querySelector('.iv-format-tabs .format-tab.active')?.getAttribute('data-format') || 'text';
+                    const newFormat = e.target.getAttribute('data-format');
+
+                    if (oldFormat === newFormat) return; // No change
+
+                    ivFormatTabs.forEach(t => t.classList.remove('active'));
+                    e.target.classList.add('active');
+
+                    // Convert existing content
+                    this.convertTextAreaFormat(ivText, oldFormat, newFormat);
+                });
+            });
+        }
     }
 
     /**
@@ -2386,6 +2433,388 @@ class CipherController {
             DebugConfig.error('Error reading key file:', error);
             alert('Error reading key file: ' + error.message);
         }
+    }
+
+    /**
+     * Setup IV file upload functionality
+     */
+    setupIVFileUpload() {
+        const ivFileBtn = document.getElementById('iv-file-btn');
+        const ivFileInput = document.getElementById('iv-file-input');
+
+        if (!ivFileBtn || !ivFileInput) return;
+
+        // Click button to open file picker
+        ivFileBtn.addEventListener('click', () => {
+            ivFileInput.click();
+        });
+
+        // Handle file selection
+        ivFileInput.addEventListener('change', (e) => {
+            this.handleIVFileUpload(e.target.files);
+        });
+    }
+
+    /**
+     * Handle IV file upload and populate IV textarea
+     */
+    async handleIVFileUpload(files) {
+        if (!files || files.length === 0) return;
+
+        const file = files[0];
+        const ivText = document.getElementById('cipher-iv');
+
+        if (file.size > 10 * 1024 * 1024) { // 10MB limit for IV files
+            alert('IV file size exceeds 10MB limit');
+            return;
+        }
+
+        try {
+            // Read file as binary
+            const arrayBuffer = await file.arrayBuffer();
+            const bytes = new Uint8Array(arrayBuffer);
+
+            // Get current IV format
+            const ivFormat = document.querySelector('.iv-format-tabs .format-tab.active')?.getAttribute('data-format') || 'text';
+
+            // Convert to appropriate format
+            let displayText;
+            switch (ivFormat) {
+                case 'text':
+                    // Try to decode as UTF-8 text
+                    try {
+                        displayText = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+                    } catch (e) {
+                        // If not valid UTF-8, switch to hex format
+                        alert('IV file contains binary data. Switching to Hex format.');
+                        document.querySelector('.iv-format-tabs .format-tab[data-format="hex"]')?.click();
+                        displayText = this.bytesToHex(Array.from(bytes));
+                    }
+                    break;
+                case 'hex':
+                    displayText = this.bytesToHex(Array.from(bytes));
+                    break;
+                case 'base64':
+                    displayText = btoa(String.fromCharCode(...bytes));
+                    break;
+                default:
+                    displayText = new TextDecoder().decode(bytes);
+            }
+
+            ivText.value = displayText;
+
+            // Clear the file input so the same file can be selected again
+            const ivFileInput = document.getElementById('iv-file-input');
+            if (ivFileInput) {
+                ivFileInput.value = '';
+            }
+        } catch (error) {
+            DebugConfig.error('Error reading IV file:', error);
+            alert('Error reading IV file: ' + error.message);
+        }
+    }
+
+    /**
+     * Setup input validation with salmon tinting for invalid key/input sizes
+     */
+    setupInputValidation() {
+        const inputText = document.getElementById('input-text');
+        const keyInput = document.getElementById('cipher-key');
+        const ivInput = document.getElementById('cipher-iv');
+        const algorithmSelect = document.getElementById('selected-algorithm');
+        const modeSelect = document.getElementById('cipher-mode');
+        const paddingSelect = document.getElementById('cipher-padding');
+
+        if (!inputText || !keyInput || !ivInput || !algorithmSelect) return;
+
+        // Validate on input change, algorithm change, mode change, and padding change
+        inputText.addEventListener('input', () => this.validateInputs());
+        keyInput.addEventListener('input', () => this.validateInputs());
+        ivInput.addEventListener('input', () => this.validateInputs());
+        algorithmSelect.addEventListener('change', () => this.validateInputs());
+        if (modeSelect) {
+            modeSelect.addEventListener('change', () => this.validateInputs());
+        }
+        if (paddingSelect) {
+            paddingSelect.addEventListener('change', () => this.validateInputs());
+        }
+
+        // Also validate when format tabs are clicked (text/hex/base64)
+        const formatTabs = document.querySelectorAll('.format-tab, .format-tab-small');
+        formatTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Delay validation to allow format switch to complete
+                setTimeout(() => this.validateInputs(), 50);
+            });
+        });
+
+        // Initial validation
+        this.validateInputs();
+    }
+
+    /**
+     * Validate input, key, and IV field sizes and apply CSS classes for visual feedback
+     */
+    validateInputs() {
+        const inputText = document.getElementById('input-text');
+        const keyInput = document.getElementById('cipher-key');
+        const ivInput = document.getElementById('cipher-iv');
+        const ivContainer = document.getElementById('iv-container');
+        const algorithmSelect = document.getElementById('selected-algorithm');
+        const modeSelect = document.getElementById('cipher-mode');
+        const paddingSelect = document.getElementById('cipher-padding');
+
+        if (!inputText || !keyInput || !ivInput || !algorithmSelect || !ivContainer) return;
+
+        const algorithmName = algorithmSelect.value;
+        const modeName = modeSelect ? modeSelect.value : '';
+
+        // Helper function to remove all validation classes
+        const clearValidation = (element) => {
+            element.classList.remove('input-invalid', 'input-disabled');
+        };
+
+        if (!algorithmName) {
+            // No algorithm selected - clear all validation states
+            clearValidation(inputText);
+            clearValidation(keyInput);
+            clearValidation(ivInput);
+            ivContainer.classList.remove('hidden');
+            return;
+        }
+
+        // Get the selected algorithm
+        const algorithm = AlgorithmFramework.Algorithms.find(a => a.name === algorithmName);
+        if (!algorithm) {
+            clearValidation(inputText);
+            clearValidation(keyInput);
+            clearValidation(ivInput);
+            ivContainer.classList.remove('hidden');
+            return;
+        }
+
+        // Determine if key is needed based on algorithm category
+        const needsKey = this.algorithmNeedsKey(algorithm);
+
+        // Determine if IV is needed based on algorithm and mode
+        const needsIV = this.algorithmNeedsIV(algorithm, modeName);
+
+        // Show/hide IV container
+        if (needsIV) {
+            ivContainer.classList.remove('hidden');
+        } else {
+            ivContainer.classList.add('hidden');
+        }
+
+        // Validate KEY field
+        if (!needsKey) {
+            // Key not needed - disable the field
+            clearValidation(keyInput);
+            keyInput.classList.add('input-disabled');
+        } else if (keyInput.value) {
+            // Key is needed and has content - validate size
+            const keyFormat = document.querySelector('.key-format-tabs .format-tab-small.active')?.getAttribute('data-format') || 'text';
+            let keyBytes;
+
+            try {
+                keyBytes = this.parseInputByFormat(keyInput.value, keyFormat);
+                const isValidKeySize = this.isValidKeySize(algorithm, keyBytes.length);
+
+                clearValidation(keyInput);
+                if (!isValidKeySize) {
+                    keyInput.classList.add('input-invalid');
+                }
+            } catch (e) {
+                // Invalid format - show as invalid
+                clearValidation(keyInput);
+                keyInput.classList.add('input-invalid');
+            }
+        } else {
+            // Key needed but empty - just clear validation (don't mark as invalid when empty)
+            clearValidation(keyInput);
+        }
+
+        // Validate IV field
+        if (!needsIV) {
+            // IV not needed - disable the field
+            clearValidation(ivInput);
+            ivInput.classList.add('input-disabled');
+        } else if (ivInput.value) {
+            // IV is needed and has content - validate size
+            const ivFormat = document.querySelector('.iv-format-tabs .format-tab-small.active')?.getAttribute('data-format') || 'text';
+            let ivBytes;
+
+            try {
+                ivBytes = this.parseInputByFormat(ivInput.value, ivFormat);
+                const isValidIVSize = this.isValidIVSize(algorithm, ivBytes.length);
+
+                clearValidation(ivInput);
+                if (!isValidIVSize) {
+                    ivInput.classList.add('input-invalid');
+                }
+            } catch (e) {
+                // Invalid format - show as invalid
+                clearValidation(ivInput);
+                ivInput.classList.add('input-invalid');
+            }
+        } else {
+            // IV needed but empty - just clear validation
+            clearValidation(ivInput);
+        }
+
+        // Validate INPUT field (only if no padding is selected)
+        const paddingValue = paddingSelect ? paddingSelect.value : '';
+        if (!paddingValue && inputText.value) {
+            const inputFormat = document.querySelector('.input-section .format-tab.active')?.getAttribute('data-format') || 'text';
+            let inputBytes;
+
+            try {
+                inputBytes = this.parseInputByFormat(inputText.value, inputFormat);
+                const isValidInputSize = this.isValidInputSize(algorithm, inputBytes.length);
+
+                clearValidation(inputText);
+                if (!isValidInputSize) {
+                    inputText.classList.add('input-invalid');
+                }
+            } catch (e) {
+                // Invalid format - show as invalid
+                clearValidation(inputText);
+                inputText.classList.add('input-invalid');
+            }
+        } else {
+            clearValidation(inputText);
+        }
+    }
+
+    /**
+     * Helper: Parse input string by format (text/hex/base64)
+     */
+    parseInputByFormat(value, format) {
+        switch (format) {
+            case 'text':
+                return Array.from(new TextEncoder().encode(value));
+            case 'hex':
+                return this.hexToBytes(value);
+            case 'base64':
+                return Array.from(atob(value)).map(c => c.charCodeAt(0));
+            default:
+                return Array.from(new TextEncoder().encode(value));
+        }
+    }
+
+    /**
+     * Determine if algorithm needs a key based on its category
+     */
+    algorithmNeedsKey(algorithm) {
+        if (!algorithm || !algorithm.category) return false;
+
+        // Categories that don't need keys
+        const noKeyCategories = [
+            'HASH',
+            'CHECKSUM',
+            'ENCODING'
+        ];
+
+        return !noKeyCategories.includes(algorithm.category);
+    }
+
+    /**
+     * Determine if algorithm needs an IV based on category and cipher mode
+     */
+    algorithmNeedsIV(algorithm, modeName) {
+        if (!algorithm || !algorithm.category) return false;
+
+        // Categories that might need IV
+        const ivCategories = ['BLOCK', 'STREAM', 'AEAD'];
+
+        if (!ivCategories.includes(algorithm.category)) {
+            return false; // Other categories don't use IV
+        }
+
+        // Modes that require IV
+        const ivModes = ['CBC', 'CFB', 'OFB', 'CTR', 'GCM', 'EAX', 'CCM', 'SIV', 'IGE'];
+
+        // Stream ciphers typically need IV/nonce
+        if (algorithm.category === 'STREAM') {
+            return true;
+        }
+
+        // AEAD ciphers need IV/nonce
+        if (algorithm.category === 'AEAD') {
+            return true;
+        }
+
+        // Block ciphers need IV only in certain modes
+        if (algorithm.category === 'BLOCK') {
+            return modeName && ivModes.includes(modeName);
+        }
+
+        return false;
+    }
+
+    /**
+     * Validate IV size for the selected algorithm
+     */
+    isValidIVSize(algorithm, ivSize) {
+        // Check if algorithm has SupportedBlockSizes (IV usually matches block size)
+        if (algorithm.SupportedBlockSizes && algorithm.SupportedBlockSizes.length > 0) {
+            for (const blockSize of algorithm.SupportedBlockSizes) {
+                if (ivSize >= blockSize.minSize && ivSize <= blockSize.maxSize) {
+                    // Check if size matches step requirement
+                    if (blockSize.step) {
+                        return (ivSize - blockSize.minSize) % blockSize.step === 0;
+                    }
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // If no specific IV size requirements, allow any size
+        return true;
+    }
+
+    /**
+     * Check if key size is valid for the selected algorithm
+     */
+    isValidKeySize(algorithm, keySize) {
+        if (!algorithm.SupportedKeySizes || algorithm.SupportedKeySizes.length === 0) {
+            return true; // Algorithm doesn't specify key size restrictions
+        }
+
+        // Check against all supported key sizes
+        for (const keyRange of algorithm.SupportedKeySizes) {
+            if (keySize >= keyRange.minSize && keySize <= keyRange.maxSize) {
+                // Check step/increment
+                if (keyRange.stepSize) {
+                    if ((keySize - keyRange.minSize) % keyRange.stepSize === 0) {
+                        return true;
+                    }
+                } else {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if input size is valid for the selected algorithm (when no padding)
+     */
+    isValidInputSize(algorithm, inputSize) {
+        if (!algorithm.SupportedBlockSizes || algorithm.SupportedBlockSizes.length === 0) {
+            return true; // Algorithm doesn't specify block size restrictions
+        }
+
+        // For block ciphers, input must be a multiple of block size when no padding
+        for (const blockRange of algorithm.SupportedBlockSizes) {
+            if (blockRange.minSize > 0 && inputSize % blockRange.minSize === 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -549,6 +549,35 @@ body {
     resize: vertical;
 }
 
+/* ===== INPUT FIELD VALIDATION STYLES ===== */
+
+/* Invalid state - Salmon background when size is wrong */
+.textarea.input-invalid,
+.search-input.input-invalid {
+    background: #fa8072 !important;
+    color: #2d3748 !important;
+    border: 1px solid #e07060 !important;
+    box-shadow: 0 0 0 3px rgba(250, 128, 114, 0.2) !important;
+    transition: all 0.3s ease;
+}
+
+/* Disabled state - Grayed out when not needed */
+.textarea.input-disabled,
+.search-input.input-disabled {
+    background: #e8e8e8 !important;
+    color: #9ca3af !important;
+    border: 1px solid #d1d5db !important;
+    cursor: not-allowed !important;
+    opacity: 0.7;
+    pointer-events: none;
+    transition: all 0.3s ease;
+}
+
+/* Container hidden state */
+#iv-container.hidden {
+    display: none !important;
+}
+
 .format-tabs {
     display: flex;
     border-bottom: 1px solid #e2e8f0;
