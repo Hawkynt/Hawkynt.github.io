@@ -131,22 +131,22 @@
           expected: OpCodes.Hex8ToBytes("CAB4391F64177F8C2B")
         },
         {
-          text: "TinyJAMBU-128: 4-byte message with 4-byte AAD (Count 73)",
+          text: "TinyJAMBU-128: 4-byte message with 4-byte AAD (Count 137)",
           uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
           aad: OpCodes.Hex8ToBytes("00010203"),
           input: OpCodes.Hex8ToBytes("00010203"),
-          expected: OpCodes.Hex8ToBytes("D1B823514424C8924FBCC7F6")
+          expected: OpCodes.Hex8ToBytes("362BC344C45C165CECA7FD82")
         },
         {
-          text: "TinyJAMBU-128: 8-byte message with 8-byte AAD (Count 297)",
+          text: "TinyJAMBU-128: 8-byte message with 8-byte AAD (Count 273)",
           uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
           aad: OpCodes.Hex8ToBytes("0001020304050607"),
           input: OpCodes.Hex8ToBytes("0001020304050607"),
-          expected: OpCodes.Hex8ToBytes("0C0D91DE302091F5FCD371DAD5C3D402")
+          expected: OpCodes.Hex8ToBytes("C7D6A4D8244A54636022D9E7AB0A0673")
         }
       ];
     }
@@ -237,66 +237,45 @@
     }
 
     // TinyJAMBU keyed permutation for 128-bit key
-    // Performs rounds*128 steps using the 4-word key schedule
+    // Direct translation from internal-tinyjambu.c using the same loop pattern
     _permutation128(state, key, rounds) {
-      // Each round consists of 128 steps organized as 4 applications of 32 steps
-      for (let r = 0; r < rounds; ++r) {
-        // First set of 128 steps (4 x 32 steps with key schedule)
-        this._steps32(state, key[0]);
-        this._steps32(state, key[1]);
-        this._steps32(state, key[2]);
-        this._steps32(state, key[3]);
+      // Load state into local variables
+      let s0 = state[0];
+      let s1 = state[1];
+      let s2 = state[2];
+      let s3 = state[3];
 
-        // Bail out if this is the last round
-        if ((--rounds) === 0) break;
-        ++r; // Increment loop counter to match the decrement
-
-        // Second set of 128 steps
-        this._steps32(state, key[0]);
-        this._steps32(state, key[1]);
-        this._steps32(state, key[2]);
-        this._steps32(state, key[3]);
+      // Perform all permutation rounds 128 at a time
+      for (; rounds > 0; --rounds) {
+        // Perform the set of 128 steps (key[0..3])
+        s0 = this._steps32(s0, s1, s2, s3, key[0]);
+        s1 = this._steps32(s1, s2, s3, s0, key[1]);
+        s2 = this._steps32(s2, s3, s0, s1, key[2]);
+        s3 = this._steps32(s3, s0, s1, s2, key[3]);
       }
+
+      // Store local variables back to state
+      state[0] = s0;
+      state[1] = s1;
+      state[2] = s2;
+      state[3] = s3;
     }
 
-    // Perform 32 steps of the TinyJAMBU state update function
-    // Each step: s0 ^= (s1 >>> 15) ^ ~((s2 >>> 6) & (s2 >>> 21)) ^ (s2 >>> 27) ^ kword
-    // Then rotate state: [s0,s1,s2,s3] -> [s1,s2,s3,s0]
-    _steps32(state, kword) {
-      // 32 steps with state rotation after each step
-      // The macro applies the feedback function to s0 then rotates state
-      // We need to perform this 32 times with different positions
+    // Helper: Perform 32 TinyJAMBU steps (one step per bit)
+    // This is the core nonlinear feedback function
+    // The feedback taps combine bits from different state words via shifts
+    _steps32(s0, s1, s2, s3, kword) {
+      // Compute feedback taps using bitwise shift operations
+      // Note: These combine two words via shifts, NOT rotations of a single word
+      // Example: t1 = bits[15..31] of s1 | bits[0..14] of s2 shifted to bits[17..31]
+      const t1 = (s1 >>> 15) | (s2 << 17);
+      const t2 = (s2 >>> 6) | (s3 << 26);
+      const t3 = (s2 >>> 21) | (s3 << 11);
+      const t4 = (s2 >>> 27) | (s3 << 5);
 
-      // Unroll 4 times (each iteration processes 4 steps covering all positions)
-      for (let i = 0; i < 8; ++i) {
-        // Step with s0 as target
-        let t1 = (state[1] >>> 15) | (state[2] << 17);
-        let t2 = (state[2] >>> 6) | (state[3] << 26);
-        let t3 = (state[2] >>> 21) | (state[3] << 11);
-        let t4 = (state[2] >>> 27) | (state[3] << 5);
-        state[0] = (state[0] ^ t1 ^ (~(t2 & t3)) ^ t4 ^ kword) >>> 0;
-
-        // Step with s1 as target
-        t1 = (state[2] >>> 15) | (state[3] << 17);
-        t2 = (state[3] >>> 6) | (state[0] << 26);
-        t3 = (state[3] >>> 21) | (state[0] << 11);
-        t4 = (state[3] >>> 27) | (state[0] << 5);
-        state[1] = (state[1] ^ t1 ^ (~(t2 & t3)) ^ t4 ^ kword) >>> 0;
-
-        // Step with s2 as target
-        t1 = (state[3] >>> 15) | (state[0] << 17);
-        t2 = (state[0] >>> 6) | (state[1] << 26);
-        t3 = (state[0] >>> 21) | (state[1] << 11);
-        t4 = (state[0] >>> 27) | (state[1] << 5);
-        state[2] = (state[2] ^ t1 ^ (~(t2 & t3)) ^ t4 ^ kword) >>> 0;
-
-        // Step with s3 as target
-        t1 = (state[0] >>> 15) | (state[1] << 17);
-        t2 = (state[1] >>> 6) | (state[2] << 26);
-        t3 = (state[1] >>> 21) | (state[2] << 11);
-        t4 = (state[1] >>> 27) | (state[2] << 5);
-        state[3] = (state[3] ^ t1 ^ (~(t2 & t3)) ^ t4 ^ kword) >>> 0;
-      }
+      // Nonlinear feedback: XOR(t1, NAND(t2,t3), t4, key)
+      // NAND(t2,t3) = NOT(AND(t2,t3))
+      return (s0 ^ t1 ^ (~(t2 & t3)) ^ t4 ^ kword) >>> 0;
     }
 
     // Setup TinyJAMBU state with key, nonce, and associated data

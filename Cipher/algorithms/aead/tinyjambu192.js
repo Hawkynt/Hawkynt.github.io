@@ -248,33 +248,31 @@
       let t1, t2, t3, t4;
 
       // Perform all permutation rounds 128 at a time
-      for (; rounds > 0; ) {
+      for (; rounds > 0; --rounds) {
         // First set of 128 steps (key[0,1,2,3])
-        // The C code calls tiny_jambu_steps_32 32 times per key word
-        // Each call updates one state element once, rotating through all 4 elements
-        for (let r = 0; r < 32; ++r) {
-          // Update s0 using s1,s2,s3 and key[0]
+        // tiny_jambu_steps_32 processes 32 steps, updating each state word 32 times
+        for (let i = 0; i < 32; ++i) {
           t1 = (s1 >>> 15) | (s2 << 17);
           t2 = (s2 >>> 6) | (s3 << 26);
           t3 = (s2 >>> 21) | (s3 << 11);
           t4 = (s2 >>> 27) | (s3 << 5);
           s0 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[0];
-
-          // Update s1 using s2,s3,s0 and key[1]
+        }
+        for (let i = 0; i < 32; ++i) {
           t1 = (s2 >>> 15) | (s3 << 17);
           t2 = (s3 >>> 6) | (s0 << 26);
           t3 = (s3 >>> 21) | (s0 << 11);
           t4 = (s3 >>> 27) | (s0 << 5);
           s1 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[1];
-
-          // Update s2 using s3,s0,s1 and key[2]
+        }
+        for (let i = 0; i < 32; ++i) {
           t1 = (s3 >>> 15) | (s0 << 17);
           t2 = (s0 >>> 6) | (s1 << 26);
           t3 = (s0 >>> 21) | (s1 << 11);
           t4 = (s0 >>> 27) | (s1 << 5);
           s2 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[2];
-
-          // Update s3 using s0,s1,s2 and key[3]
+        }
+        for (let i = 0; i < 32; ++i) {
           t1 = (s0 >>> 15) | (s1 << 17);
           t2 = (s1 >>> 6) | (s2 << 26);
           t3 = (s1 >>> 21) | (s2 << 11);
@@ -286,25 +284,28 @@
         if ((--rounds) === 0) break;
 
         // Second set of 128 steps (key[4,5,0,1])
-        for (let r = 0; r < 32; ++r) {
+        for (let i = 0; i < 32; ++i) {
           t1 = (s1 >>> 15) | (s2 << 17);
           t2 = (s2 >>> 6) | (s3 << 26);
           t3 = (s2 >>> 21) | (s3 << 11);
           t4 = (s2 >>> 27) | (s3 << 5);
           s0 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[4];
-
+        }
+        for (let i = 0; i < 32; ++i) {
           t1 = (s2 >>> 15) | (s3 << 17);
           t2 = (s3 >>> 6) | (s0 << 26);
           t3 = (s3 >>> 21) | (s0 << 11);
           t4 = (s3 >>> 27) | (s0 << 5);
           s1 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[5];
-
+        }
+        for (let i = 0; i < 32; ++i) {
           t1 = (s3 >>> 15) | (s0 << 17);
           t2 = (s0 >>> 6) | (s1 << 26);
           t3 = (s0 >>> 21) | (s1 << 11);
           t4 = (s0 >>> 27) | (s1 << 5);
           s2 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[0];
-
+        }
+        for (let i = 0; i < 32; ++i) {
           t1 = (s0 >>> 15) | (s1 << 17);
           t2 = (s1 >>> 6) | (s2 << 26);
           t3 = (s1 >>> 21) | (s2 << 11);
@@ -316,34 +317,34 @@
         if ((--rounds) === 0) break;
 
         // Third set of 128 steps (key[2,3,4,5])
-        for (let r = 0; r < 32; ++r) {
+        for (let i = 0; i < 32; ++i) {
           t1 = (s1 >>> 15) | (s2 << 17);
           t2 = (s2 >>> 6) | (s3 << 26);
           t3 = (s2 >>> 21) | (s3 << 11);
           t4 = (s2 >>> 27) | (s3 << 5);
           s0 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[2];
-
+        }
+        for (let i = 0; i < 32; ++i) {
           t1 = (s2 >>> 15) | (s3 << 17);
           t2 = (s3 >>> 6) | (s0 << 26);
           t3 = (s3 >>> 21) | (s0 << 11);
           t4 = (s3 >>> 27) | (s0 << 5);
           s1 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[3];
-
+        }
+        for (let i = 0; i < 32; ++i) {
           t1 = (s3 >>> 15) | (s0 << 17);
           t2 = (s0 >>> 6) | (s1 << 26);
           t3 = (s0 >>> 21) | (s1 << 11);
           t4 = (s0 >>> 27) | (s1 << 5);
           s2 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[4];
-
+        }
+        for (let i = 0; i < 32; ++i) {
           t1 = (s0 >>> 15) | (s1 << 17);
           t2 = (s1 >>> 6) | (s2 << 26);
           t3 = (s1 >>> 21) | (s2 << 11);
           t4 = (s1 >>> 27) | (s2 << 5);
           s3 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[5];
         }
-
-        // Decrement for next iteration
-        --rounds;
       }
 
       // Store local variables back to state
