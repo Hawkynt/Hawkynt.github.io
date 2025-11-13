@@ -1,4 +1,19 @@
-
+/*
+ * MD2 (Message-Digest Algorithm 2) - RFC 1319
+ *
+ * Implementation based on:
+ * - RFC 1319: The MD2 Message-Digest Algorithm
+ * - Crypto++ md2.cpp reference implementation
+ * - NIST test vectors
+ *
+ * MD2 is a cryptographic hash function designed by Ronald Rivest in 1989.
+ * It produces a 128-bit (16-byte) hash value and is cryptographically broken
+ * with known collision and preimage attacks discovered in 2004-2009.
+ *
+ * This implementation is for educational purposes only.
+ *
+ * (c)2006-2025 Hawkynt
+ */
 
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
@@ -26,24 +41,17 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
-          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
-          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
-          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
-          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
-          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
-          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+          HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
-  // ===== ALGORITHM IMPLEMENTATION =====
-
-  // MD2 S-box (RFC 1319 Appendix A) - Complete 256-byte table
+  // ===== MD2 S-BOX (RFC 1319) =====
+  // This is a permutation of 0-255 based on the digits of π
   const MD2_S = Object.freeze([
     0x29, 0x2E, 0x43, 0xC9, 0xA2, 0xD8, 0x7C, 0x01, 0x3D, 0x36, 0x54, 0xA1, 0xEC, 0xF0, 0x06, 0x13,
     0x62, 0xA7, 0x05, 0xF3, 0xC0, 0xC7, 0x73, 0x8C, 0x98, 0x93, 0x2B, 0xD9, 0xBC, 0x4C, 0x82, 0xCA,
@@ -63,219 +71,212 @@
     0x31, 0x44, 0x50, 0xB4, 0x8F, 0xED, 0x1F, 0x1A, 0xDB, 0x99, 0x8D, 0x33, 0x9F, 0x11, 0x83, 0x14
   ]);
 
-  class MD2Algorithm extends HashFunctionAlgorithm {
+  // ===== MD2 ALGORITHM CLASS =====
+
+  class MD2 extends HashFunctionAlgorithm {
     constructor() {
       super();
 
       // Required metadata
       this.name = "MD2";
-      this.description = "MD2 is a 128-bit cryptographic hash function and predecessor to MD4 and MD5. It is extremely slow and cryptographically broken with known collision and preimage attacks.";
+      this.description = "MD2 is a 128-bit cryptographic hash function designed by Ronald Rivest. It uses a unique S-box based on π and processes 16-byte blocks. Cryptographically broken with known collision and preimage attacks since 2004.";
       this.inventor = "Ronald Rivest";
       this.year = 1989;
       this.category = CategoryType.HASH;
-      this.subCategory = "MD Family";
-      this.securityStatus = SecurityStatus.INSECURE;
-      this.complexity = ComplexityType.BASIC;
+      this.subCategory = "Cryptographic Hash";
+      this.securityStatus = SecurityStatus.BROKEN;
+      this.complexity = ComplexityType.BEGINNER;
       this.country = CountryCode.US;
 
       // Hash-specific metadata
-      this.SupportedOutputSizes = [16]; // 128 bits = 16 bytes
-
-      // Performance and technical specifications
-      this.blockSize = 16; // 128 bits = 16 bytes
-      this.outputSize = 16; // 128 bits = 16 bytes
+      this.SupportedOutputSizes = [new KeySize(16, 16, 1)]; // Fixed 128 bits
 
       // Documentation and references
       this.documentation = [
-        new LinkItem("RFC 1319 - MD2 Message-Digest Algorithm", "https://tools.ietf.org/html/rfc1319"),
-        new LinkItem("Wikipedia MD2", "https://en.wikipedia.org/wiki/MD2_(cryptography)")
+        new LinkItem("RFC 1319 - The MD2 Message-Digest Algorithm", "https://tools.ietf.org/html/rfc1319"),
+        new LinkItem("Wikipedia - MD2 (hash function)", "https://en.wikipedia.org/wiki/MD2_(hash_function)")
       ];
 
       this.references = [
-        new LinkItem("MD2 Cryptanalysis Papers", "https://link.springer.com/chapter/10.1007/978-3-540-45146-4_3")
+        new LinkItem("Crypto++ MD2 Implementation", "https://github.com/weidai11/cryptopp/blob/master/md2.cpp"),
+        new LinkItem("MD2 Cryptanalysis (2004)", "https://link.springer.com/chapter/10.1007/978-3-540-45146-4_3"),
+        new LinkItem("Preimage Attacks on MD2 (2009)", "https://eprint.iacr.org/2008/089.pdf")
       ];
 
-      // Test vectors from RFC 1319 with expected byte arrays
+      // Test vectors from RFC 1319 - OFFICIAL SOURCES ONLY
       this.tests = [
         {
-          text: "RFC 1319 Test Vector - Empty string",
+          text: "RFC 1319 Test Vector #1 - Empty string",
           uri: "https://tools.ietf.org/html/rfc1319",
           input: [],
           expected: OpCodes.Hex8ToBytes('8350e5a3e24c153df2275c9f80692773')
         },
         {
-          text: "RFC 1319 Test Vector - 'a'", 
+          text: "RFC 1319 Test Vector #2 - Single byte 'a'",
           uri: "https://tools.ietf.org/html/rfc1319",
-          input: [0x61], // 'a'
+          input: OpCodes.AnsiToBytes('a'),
           expected: OpCodes.Hex8ToBytes('32ec01ec4a6dac72c0ab96fb34c0b5d1')
         },
         {
-          text: "RFC 1319 Test Vector - 'abc'", 
+          text: "RFC 1319 Test Vector #3 - 'abc'",
           uri: "https://tools.ietf.org/html/rfc1319",
-          input: [0x61, 0x62, 0x63], // 'abc'
+          input: OpCodes.AnsiToBytes('abc'),
           expected: OpCodes.Hex8ToBytes('da853b0d3f88d99b30283a69e6ded6bb')
+        },
+        {
+          text: "RFC 1319 Test Vector #4 - 'message digest'",
+          uri: "https://tools.ietf.org/html/rfc1319",
+          input: OpCodes.AnsiToBytes('message digest'),
+          expected: OpCodes.Hex8ToBytes('ab4f496bfb2a530b219ff33031fe06b0')
+        },
+        {
+          text: "RFC 1319 Test Vector #5 - alphabet lowercase",
+          uri: "https://tools.ietf.org/html/rfc1319",
+          input: OpCodes.AnsiToBytes('abcdefghijklmnopqrstuvwxyz'),
+          expected: OpCodes.Hex8ToBytes('4e8ddff3650292ab5a4108c3aa47940b')
+        },
+        {
+          text: "RFC 1319 Test Vector #6 - alphanumeric",
+          uri: "https://tools.ietf.org/html/rfc1319",
+          input: OpCodes.AnsiToBytes('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'),
+          expected: OpCodes.Hex8ToBytes('da33def2a42df13975352846c30338cd')
+        },
+        {
+          text: "RFC 1319 Test Vector #7 - numeric sequence",
+          uri: "https://tools.ietf.org/html/rfc1319",
+          input: OpCodes.AnsiToBytes('12345678901234567890123456789012345678901234567890123456789012345678901234567890'),
+          expected: OpCodes.Hex8ToBytes('d5976f79d83d3a0dc9806c3c66f3efd8')
         }
       ];
     }
 
     CreateInstance(isInverse = false) {
-      return new MD2AlgorithmInstance(this, isInverse);
+      // Hash functions have no inverse
+      if (isInverse) {
+        return null;
+      }
+      return new MD2Instance(this);
     }
   }
 
-  class MD2AlgorithmInstance extends IHashFunctionInstance {
-    constructor(algorithm, isInverse = false) {
+  // ===== MD2 INSTANCE CLASS =====
+
+  class MD2Instance extends IHashFunctionInstance {
+    constructor(algorithm) {
       super(algorithm);
-      this.isInverse = isInverse;
-      this.OutputSize = 16; // 128 bits = 16 bytes
-
-      // MD2 state
+      this.outputSize = 16; // 128 bits = 16 bytes (property with lowercase 'o')
+      this.OutputSize = 16; // 128 bits = 16 bytes (property with uppercase 'O' for compatibility)
       this._buffer = [];
-      this._length = 0;
     }
 
-    /**
-     * Initialize the hash state
-     */
-    Init() {
-      this._buffer = [];
-      this._length = 0;
-    }
-
-    /**
-     * Add data to the hash calculation
-     * @param {Array} data - Data to hash as byte array
-     */
-    Update(data) {
+    // Feed/Result pattern implementation
+    Feed(data) {
       if (!data || data.length === 0) return;
 
-      // Convert string to byte array if needed
+      // Convert string to bytes if needed
       if (typeof data === 'string') {
         data = OpCodes.AnsiToBytes(data);
       }
 
-      this._buffer = this._buffer.concat(Array.from(data));
-      this._length += data.length;
+      // Accumulate data
+      this._buffer.push(...data);
     }
 
-    /**
-     * Finalize the hash calculation and return result as byte array
-     * @returns {Array} Hash digest as byte array
-     */
-    Final() {
-      return this._computeMD2(this._buffer);
+    Result() {
+      // Compute MD2 hash and return result
+      const hash = this._computeMD2(this._buffer);
+
+      // Clear buffer for next operation
+      OpCodes.ClearArray(this._buffer);
+      this._buffer = [];
+
+      return hash;
     }
 
-    /**
-     * Hash a complete message in one operation
-     * @param {Array} message - Message to hash as byte array
-     * @returns {Array} Hash digest as byte array
-     */
-    Hash(message) {
-      this.Init();
-      this.Update(message);
-      return this.Final();
-    }
+    // ===== MD2 CORE ALGORITHM (RFC 1319) =====
 
-    /**
-     * Core MD2 computation following RFC 1319
-     * @param {Array} data - Input data as byte array
-     * @returns {Array} MD2 hash digest
-     */
-    _computeMD2(data) {
-      // Step 1: Padding
-      const padLength = 16 - (data.length % 16);
-      const paddedData = data.concat(new Array(padLength).fill(padLength));
+    _computeMD2(message) {
+      // Step 1: Append Padding Bytes (RFC 1319 Section 3.1)
+      // Padding is always performed, even if message length is multiple of 16
+      const padLength = 16 - (message.length % 16);
+      const paddedMessage = message.slice(); // Copy message
 
-      // Step 2: Checksum computation
-      const checksum = new Array(16).fill(0);
+      // Append padLength bytes, each with value padLength
+      for (let i = 0; i < padLength; ++i) {
+        paddedMessage.push(padLength);
+      }
+
+      // Step 2: Append Checksum (RFC 1319 Section 3.2)
+      const checksum = new Array(16);
+      for (let i = 0; i < 16; ++i) {
+        checksum[i] = 0;
+      }
+
       let L = 0;
-
-      for (let i = 0; i < paddedData.length; i += 16) {
-        for (let j = 0; j < 16; j++) {
-          const c = paddedData[i + j];
-          checksum[j] ^= MD2_S[c ^ L];
+      // Process each 16-byte block to compute checksum
+      for (let i = 0; i < paddedMessage.length; i += 16) {
+        for (let j = 0; j < 16; ++j) {
+          const c = paddedMessage[i + j];
+          const xorValue = OpCodes.ToByte(c ^ L);
+          const sBoxValue = MD2_S[xorValue];
+          checksum[j] = OpCodes.ToByte(checksum[j] ^ sBoxValue);
           L = checksum[j];
         }
       }
 
-      // Step 3: Hash computation
-      const finalData = paddedData.concat(checksum);
-      const hash = new Array(48).fill(0); // MD2 uses 48-byte state
+      // Append checksum to padded message
+      const messageWithChecksum = paddedMessage.concat(checksum);
 
-      // Process each 16-byte block
-      for (let i = 0; i < finalData.length; i += 16) {
+      // Step 3: Initialize MD Buffer (RFC 1319 Section 3.3)
+      const X = new Array(48);
+      for (let i = 0; i < 48; ++i) {
+        X[i] = 0;
+      }
+
+      // Step 4: Process Message in 16-Byte Blocks (RFC 1319 Section 3.4)
+      for (let i = 0; i < messageWithChecksum.length; i += 16) {
         // Copy block into X[16..31]
-        for (let j = 0; j < 16; j++) {
-          hash[16 + j] = finalData[i + j];
-          hash[32 + j] = hash[16 + j] ^ hash[j];
+        for (let j = 0; j < 16; ++j) {
+          X[16 + j] = messageWithChecksum[i + j];
+          // Set X[32..47] to XOR of X[0..15] and X[16..31]
+          X[32 + j] = OpCodes.ToByte(X[16 + j] ^ X[j]);
         }
 
-        // 18 rounds of transformation
+        // Do 18 rounds of hashing
         let t = 0;
-        for (let round = 0; round < 18; round++) {
-          for (let k = 0; k < 48; k++) {
-            t = hash[k] ^ MD2_S[t];
-            hash[k] = t;
+        for (let round = 0; round < 18; ++round) {
+          for (let k = 0; k < 48; ++k) {
+            const xorValue = OpCodes.ToByte(t);
+            t = OpCodes.ToByte(X[k] ^ MD2_S[xorValue]);
+            X[k] = t;
           }
-          const mod_val = 0xFF + 1;
-          t = (t + round) % mod_val;
+          // Add round number to t (mod 256)
+          t = OpCodes.ToByte(t + round);
         }
       }
 
-      // Return first 16 bytes as hash
-      return hash.slice(0, 16);
-    }
+      // Step 5: Output (RFC 1319 Section 3.5)
+      // The message digest is X[0..15]
+      const hash = new Array(16);
+      for (let i = 0; i < 16; ++i) {
+        hash[i] = X[i];
+      }
 
-    /**
-     * Required interface methods for IAlgorithmInstance compatibility
-     */
-    KeySetup(key) {
-      // Hashes don't use keys
-      return true;
-    }
+      // Clear sensitive data
+      OpCodes.ClearArray(X);
 
-    EncryptBlock(blockIndex, plaintext) {
-      // Return hash of the plaintext
-      return this.Hash(plaintext);
-    }
-
-    DecryptBlock(blockIndex, ciphertext) {
-      // Hash functions are one-way
-      throw new Error('MD2 is a one-way hash function - decryption not possible');
-    }
-
-    ClearData() {
-      if (this._buffer) OpCodes.ClearArray(this._buffer);
-      this._length = 0;
-    }
-
-    /**
-     * Feed method required by test suite - processes input data
-     * @param {Array} data - Input data as byte array
-     */
-    Feed(data) {
-      this.Init();
-      this.Update(data);
-    }
-
-    /**
-     * Result method required by test suite - returns final hash
-     * @returns {Array} Hash digest as byte array
-     */
-    Result() {
-      return this.Final();
+      return hash;
     }
   }
 
   // ===== REGISTRATION =====
 
-    const algorithmInstance = new MD2Algorithm();
-  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
-    RegisterAlgorithm(algorithmInstance);
-  }
+  RegisterAlgorithm(new MD2());
 
   // ===== EXPORTS =====
 
-  return { MD2Algorithm, MD2AlgorithmInstance };
+  return {
+    MD2,
+    MD2Instance
+  };
 }));

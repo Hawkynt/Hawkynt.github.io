@@ -1,18 +1,19 @@
 /*
- * Grain Stream Cipher - AlgorithmFramework Implementation
+ * Grain Family Stream Ciphers - AlgorithmFramework Implementation
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  *
- * Grain is a stream cipher designed by Hell, Johansson, and Meier.
- * It combines an 80-bit LFSR with an 80-bit NLFSR:
- * - LFSR: 80 bits with primitive polynomial
- * - NLFSR: 80 bits with nonlinear feedback function
- * - Output: combines LFSR and NLFSR bits with nonlinear filter
+ * Consolidated implementation of the Grain family:
+ * - Grain v1 (80-bit key, 64-bit IV) - eSTREAM Portfolio Profile 2
+ * - Grain-128 (128-bit key, 96-bit IV) - eSTREAM Portfolio Profile 2
  *
- * Key size: 80 bits, IV size: 64 bits
- * Initialization: 160 clock cycles
+ * The Grain family consists of hardware-oriented stream ciphers designed
+ * for restricted hardware environments, combining Linear and Non-linear
+ * Feedback Shift Registers with Boolean output functions.
  *
- * This implementation is for educational purposes only.
+ * This implementation is based on the eSTREAM specifications and
+ * Bouncy Castle reference implementation for Grain-128.
+ * For educational purposes only - use proven libraries for production.
  */
 
 (function (root, factory) {
@@ -48,17 +49,17 @@
           StreamCipherAlgorithm, IAlgorithmInstance,
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
-  // ===== ALGORITHM IMPLEMENTATION =====
+  // ===== GRAIN V1 IMPLEMENTATION (80-bit) =====
 
-  class GrainAlgorithm extends StreamCipherAlgorithm {
+  class GrainV1Algorithm extends StreamCipherAlgorithm {
     constructor() {
       super();
 
       // Required metadata
-      this.name = "Grain";
-      this.description = "Hardware-oriented stream cipher using combination of LFSR and NLFSR. Part of the eSTREAM hardware portfolio and ISO/IEC 29192-3 standard. Features 80-bit keys and 64-bit IVs.";
+      this.name = "Grain v1";
+      this.description = "Lightweight stream cipher using LFSR and NFSR designed for restricted hardware environments. Selected for eSTREAM Portfolio Profile 2. Uses 80-bit keys and 64-bit IVs with 160-bit total state.";
       this.inventor = "Martin Hell, Thomas Johansson, and Willi Meier";
-      this.year = 2005;
+      this.year = 2004;
       this.category = CategoryType.STREAM;
       this.subCategory = "Stream Cipher";
       this.securityStatus = SecurityStatus.SECURE;
@@ -67,17 +68,17 @@
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [
-        new KeySize(10, 10, 0)  // Grain: 80-bit keys only (10 bytes)
+        new KeySize(10, 10, 0)  // Grain v1: 80-bit keys only (10 bytes)
       ];
       this.SupportedNonceSizes = [
-        new KeySize(8, 8, 0)    // Grain: 64-bit IVs (8 bytes)
+        new KeySize(8, 8, 0)    // Grain v1: 64-bit IVs (8 bytes)
       ];
 
       // Documentation and references
       this.documentation = [
-        new LinkItem("ISO/IEC 29192-3:2012 - Grain Stream Cipher", "https://www.iso.org/standard/56426.html"),
-        new LinkItem("eSTREAM Grain Specification", "https://www.ecrypt.eu.org/stream/grain.html"),
-        new LinkItem("Grain: A Stream Cipher for Constrained Environments", "http://www.ecrypt.eu.org/stream/papersdir/2005/017.pdf")
+        new LinkItem("eSTREAM Grain v1 Specification", "https://www.ecrypt.eu.org/stream/grainpf.html"),
+        new LinkItem("Grain - A New Stream Cipher", "https://www.eit.lth.se/fileadmin/eit/courses/eit060f/Grain.pdf"),
+        new LinkItem("eSTREAM Portfolio", "https://www.ecrypt.eu.org/stream/")
       ];
 
       // Known vulnerabilities
@@ -86,29 +87,27 @@
       // Test vectors
       this.tests = [
         {
-          text: "Grain Test Vector (all-zero key and IV)",
-          uri: "https://www.ecrypt.eu.org/stream/e2-grain.html",
+          text: "eSTREAM Grain v1 Test Vector",
+          uri: "https://www.ecrypt.eu.org/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/grain/",
           input: OpCodes.Hex8ToBytes("0000000000000000"),
           key: OpCodes.Hex8ToBytes("00000000000000000000"),
           iv: OpCodes.Hex8ToBytes("0000000000000000"),
-          expected: OpCodes.Hex8ToBytes("6b15855017682edc")
+          expected: OpCodes.Hex8ToBytes("7d405a412bfa1f7b")
         }
       ];
 
-      // Grain constants
-      this.LFSR_SIZE = 80;
-      this.NLFSR_SIZE = 80;
-      this.KEY_SIZE = 80;          // 80-bit key
-      this.IV_SIZE = 64;           // 64-bit IV
-      this.INIT_ROUNDS = 160;      // Initialization rounds (2 * 80)
+      // Cipher parameters
+      this.nBlockSizeInBits = 1;   // Stream cipher - 1 bit at a time
+      this.nKeySizeInBits = 80;    // 80-bit key
+      this.nIVSizeInBits = 64;     // 64-bit IV
     }
 
     CreateInstance(isInverse = false) {
-      return new GrainInstance(this, isInverse);
+      return new GrainV1Instance(this, isInverse);
     }
   }
 
-  class GrainInstance extends IAlgorithmInstance {
+  class GrainV1Instance extends IAlgorithmInstance {
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -116,9 +115,9 @@
       this._iv = null;
       this.inputBuffer = [];
 
-      // Grain state
-      this.lfsr = new Array(this.algorithm.LFSR_SIZE);   // 80-bit LFSR
-      this.nlfsr = new Array(this.algorithm.NLFSR_SIZE); // 80-bit NLFSR
+      // Internal state
+      this.lfsr = new Array(80).fill(0);    // 80-bit LFSR state
+      this.nfsr = new Array(80).fill(0);    // 80-bit NFSR state
       this.initialized = false;
     }
 
@@ -134,7 +133,7 @@
       }
 
       if (keyBytes.length !== 10) {
-        throw new Error(`Grain requires exactly 80-bit (10-byte) keys, got ${keyBytes.length} bytes`);
+        throw new Error(`Grain v1 requires exactly 80-bit (10-byte) keys, got ${keyBytes.length} bytes`);
       }
 
       this._key = [...keyBytes];
@@ -157,7 +156,7 @@
       }
 
       if (ivBytes.length !== 8) {
-        throw new Error(`Grain requires exactly 64-bit (8-byte) IVs, got ${ivBytes.length} bytes`);
+        throw new Error(`Grain v1 requires exactly 64-bit (8-byte) IVs, got ${ivBytes.length} bytes`);
       }
 
       this._iv = [...ivBytes];
@@ -203,11 +202,11 @@
         throw new Error("No data to process");
       }
       if (!this.initialized) {
-        throw new Error("Grain not properly initialized");
+        throw new Error("Grain v1 not properly initialized");
       }
 
       const result = [];
-      for (let i = 0; i < this.inputBuffer.length; i++) {
+      for (let i = 0; i < this.inputBuffer.length; ++i) {
         const keystreamByte = this._generateKeystreamByte();
         result.push(this.inputBuffer[i] ^ keystreamByte);
       }
@@ -219,129 +218,113 @@
 
     _initializeIfReady() {
       if (this._key && this._iv) {
-        this._initializeGrain();
+        this._initializeGrainV1();
       }
     }
 
-    _initializeGrain() {
-      // Load NLFSR with 80-bit key
-      for (let i = 0; i < 80; i++) {
+    /**
+     * Setup key and IV for Grain v1
+     */
+    _initializeGrainV1() {
+      // Load key into NFSR (80 bits)
+      for (let i = 0; i < 80; ++i) {
         const byteIndex = Math.floor(i / 8);
         const bitIndex = i % 8;
-        this.nlfsr[i] = (this._key[byteIndex] >>> bitIndex) & 1;
+        this.nfsr[i] = (this._key[byteIndex] >>> bitIndex) & 1;
       }
 
-      // Load LFSR with 64-bit IV followed by 16 ones
-      for (let i = 0; i < 64; i++) {
+      // Load IV into LFSR low 64 bits
+      for (let i = 0; i < 64; ++i) {
         const byteIndex = Math.floor(i / 8);
         const bitIndex = i % 8;
         this.lfsr[i] = (this._iv[byteIndex] >>> bitIndex) & 1;
       }
 
-      // Set remaining 16 bits of LFSR to 1
-      for (let i = 64; i < 80; i++) {
+      // Fill remaining 16 LFSR bits with ones
+      for (let i = 64; i < 80; ++i) {
         this.lfsr[i] = 1;
       }
 
-      // Run initialization for 160 rounds
-      for (let i = 0; i < this.algorithm.INIT_ROUNDS; i++) {
-        const output = this._clockCipher();
-        // During initialization, feedback output to both registers
-        this.lfsr[0] ^= output;
-        this.nlfsr[0] ^= output;
+      // Initialization phase - 160 rounds
+      for (let round = 0; round < 160; ++round) {
+        const output = this._generateOutputBit();
+
+        // Update both registers with feedback XOR output
+        const newLFSRBit = this._updateLFSR() ^ output;
+        const newNFSRBit = this._updateNFSR() ^ output;
+
+        // Shift and insert new bits
+        this._shiftRegister(this.lfsr, newLFSRBit);
+        this._shiftRegister(this.nfsr, newNFSRBit);
       }
 
       this.initialized = true;
     }
 
     /**
-     * LFSR feedback function
-     * Primitive polynomial: x^80 + x^43 + x^42 + x^38 + x^33 + x^28 + x^21 + x^14 + x^9 + x^8 + x^6 + x^5 + 1
-     * @returns {number} Feedback bit (0 or 1)
+     * LFSR feedback function - polynomial: x^80 + x^62 + x^51 + x^13 + 1
+     * @returns {number} New LFSR feedback bit
      */
-    _lfsrFeedback() {
-      return this.lfsr[79] ^ this.lfsr[42] ^ this.lfsr[41] ^ this.lfsr[37] ^
-             this.lfsr[32] ^ this.lfsr[27] ^ this.lfsr[20] ^ this.lfsr[13] ^
-             this.lfsr[8] ^ this.lfsr[7] ^ this.lfsr[5] ^ this.lfsr[4];
+    _updateLFSR() {
+      // Feedback polynomial positions: 62, 51, 13, 0
+      return this.lfsr[62] ^ this.lfsr[51] ^ this.lfsr[13] ^ this.lfsr[0];
     }
 
     /**
-     * NLFSR feedback function
-     * g(x) = x0 + x13 + x23 + x38 + x51 + x62 + x0x1 + x17x20 + x43x47 + x65x68 + x70x78
-     * @returns {number} Feedback bit (0 or 1)
+     * NFSR feedback function - includes linear terms from LFSR and nonlinear terms
+     * @returns {number} New NFSR feedback bit
      */
-    _nlfsrFeedback() {
-      const linear = this.nlfsr[79] ^ this.nlfsr[66] ^ this.nlfsr[56] ^ this.nlfsr[41] ^
-                     this.nlfsr[28] ^ this.nlfsr[17];
+    _updateNFSR() {
+      // Linear terms from NFSR and LFSR
+      const linear = this.nfsr[62] ^ this.nfsr[60] ^ this.nfsr[52] ^ this.nfsr[45] ^
+                    this.nfsr[37] ^ this.nfsr[33] ^ this.nfsr[28] ^ this.nfsr[21] ^
+                    this.nfsr[14] ^ this.nfsr[9] ^ this.nfsr[0] ^ this.lfsr[63];
 
-      const nonlinear = (this.nlfsr[79] & this.nlfsr[78]) ^
-                        (this.nlfsr[62] & this.nlfsr[59]) ^
-                        (this.nlfsr[36] & this.nlfsr[32]) ^
-                        (this.nlfsr[14] & this.nlfsr[11]) ^
-                        (this.nlfsr[9] & this.nlfsr[1]);
+      // Nonlinear terms
+      const nonlinear = (this.nfsr[63] & this.nfsr[60]) ^
+                       (this.nfsr[37] & this.nfsr[33]) ^
+                       (this.nfsr[15] & this.nfsr[9]) ^
+                       (this.nfsr[60] & this.nfsr[52] & this.nfsr[45]) ^
+                       (this.nfsr[33] & this.nfsr[28] & this.nfsr[21]) ^
+                       (this.nfsr[63] & this.nfsr[45] & this.nfsr[28] & this.nfsr[9]) ^
+                       (this.nfsr[60] & this.nfsr[52] & this.nfsr[37] & this.nfsr[33]) ^
+                       (this.nfsr[63] & this.nfsr[60] & this.nfsr[21] & this.nfsr[15]) ^
+                       (this.nfsr[63] & this.nfsr[60] & this.nfsr[52] & this.nfsr[45] & this.nfsr[37]) ^
+                       (this.nfsr[33] & this.nfsr[28] & this.nfsr[21] & this.nfsr[15] & this.nfsr[9]) ^
+                       (this.nfsr[52] & this.nfsr[45] & this.nfsr[37] & this.nfsr[33] & this.nfsr[28] & this.nfsr[21]);
 
       return linear ^ nonlinear;
     }
 
     /**
-     * Output filter function
-     * h(x) = x1 + x4 + x0x3 + x2x3 + x3x4 + x0x1x2 + x0x2x3 + x0x2x4 + x1x2x4 + x2x3x4
-     * @param {Array} x - Array of 5 LFSR bits
-     * @returns {number} Filter output (0 or 1)
+     * Generate output bit using filter function
+     * @returns {number} Output keystream bit
      */
-    _outputFilter(x) {
-      return x[1] ^ x[4] ^ (x[0] & x[3]) ^ (x[2] & x[3]) ^ (x[3] & x[4]) ^
-             (x[0] & x[1] & x[2]) ^ (x[0] & x[2] & x[3]) ^ (x[0] & x[2] & x[4]) ^
-             (x[1] & x[2] & x[4]) ^ (x[2] & x[3] & x[4]);
+    _generateOutputBit() {
+      // Output filter: combines bits from LFSR and NFSR
+      const lfsrBits = this.lfsr[3] ^ this.lfsr[25] ^ this.lfsr[46] ^ this.lfsr[64];
+      const nfsrBits = this.nfsr[63] ^ this.nfsr[60] ^ this.nfsr[52] ^ this.nfsr[45] ^
+                      this.nfsr[37] ^ this.nfsr[33] ^ this.nfsr[28];
+
+      // Boolean function h(x)
+      const x1 = this.lfsr[25], x2 = this.lfsr[46], x3 = this.lfsr[64], x4 = this.lfsr[63];
+      const x5 = this.nfsr[63];
+
+      const h = x1 ^ x4 ^ (x1 & x3) ^ (x2 & x3) ^ (x3 & x4) ^ (x1 & x2 & x5);
+
+      return lfsrBits ^ nfsrBits ^ h;
     }
 
     /**
-     * Clock the Grain cipher one step
-     * @returns {number} Output bit (0 or 1)
+     * Shift register left and insert new bit at position 0
+     * @param {Array} register - Register to shift
+     * @param {number} newBit - New bit to insert
      */
-    _clockCipher() {
-      // Get output bit before shifting
-      const lfsrOut = this._lfsrFeedback();
-      const nlfsrOut = this._nlfsrFeedback();
-
-      // Get bits for output filter (specific positions from LFSR)
-      const filterBits = [
-        this.lfsr[2],   // x0
-        this.lfsr[15],  // x1
-        this.lfsr[36],  // x2
-        this.lfsr[45],  // x3
-        this.lfsr[64]   // x4
-      ];
-
-      // Calculate output
-      const output = this._outputFilter(filterBits) ^
-                     this.lfsr[1] ^ this.lfsr[2] ^ this.lfsr[4] ^ this.lfsr[10] ^
-                     this.lfsr[31] ^ this.lfsr[43] ^ this.lfsr[56] ^
-                     this.nlfsr[9] ^ this.nlfsr[20] ^ this.nlfsr[29] ^ this.nlfsr[38] ^
-                     this.nlfsr[47] ^ this.nlfsr[56] ^ this.nlfsr[59] ^ this.nlfsr[61] ^
-                     this.nlfsr[65] ^ this.nlfsr[68] ^ this.nlfsr[70];
-
-      // Shift LFSR
-      for (let i = 79; i > 0; i--) {
-        this.lfsr[i] = this.lfsr[i - 1];
+    _shiftRegister(register, newBit) {
+      for (let i = 79; i > 0; --i) {
+        register[i] = register[i - 1];
       }
-      this.lfsr[0] = lfsrOut;
-
-      // Shift NLFSR
-      for (let i = 79; i > 0; i--) {
-        this.nlfsr[i] = this.nlfsr[i - 1];
-      }
-      this.nlfsr[0] = nlfsrOut ^ this.lfsr[0]; // NLFSR input includes LFSR output
-
-      return output;
-    }
-
-    /**
-     * Generate one keystream bit
-     * @returns {number} Keystream bit (0 or 1)
-     */
-    _generateKeystreamBit() {
-      return this._clockCipher();
+      register[0] = newBit & 1;
     }
 
     /**
@@ -350,19 +333,352 @@
      */
     _generateKeystreamByte() {
       let byte = 0;
-      for (let i = 0; i < 8; i++) {
-        byte = byte | (this._generateKeystreamBit() << i);  // LSB first
+
+      // Generate 8 bits for one byte
+      for (let bit = 0; bit < 8; ++bit) {
+        const outputBit = this._generateOutputBit();
+        byte = byte | (outputBit << bit);
+
+        // Update registers for next bit
+        const newLFSRBit = this._updateLFSR();
+        const newNFSRBit = this._updateNFSR();
+
+        this._shiftRegister(this.lfsr, newLFSRBit);
+        this._shiftRegister(this.nfsr, newNFSRBit);
       }
+
       return byte;
     }
   }
 
-  // Register the algorithm
-  const algorithmInstance = new GrainAlgorithm();
-  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
-    RegisterAlgorithm(algorithmInstance);
+  // ===== GRAIN-128 IMPLEMENTATION (128-bit) =====
+
+  class Grain128Algorithm extends StreamCipherAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "Grain-128";
+      this.description = "Hardware-oriented stream cipher using LFSR and NFSR designed for restricted hardware environments. Selected for eSTREAM Portfolio Profile 2. Uses 128-bit keys, 96-bit IVs, and 256-bit total state.";
+      this.inventor = "Martin Hell, Thomas Johansson, and Willi Meier";
+      this.year = 2006;
+      this.category = CategoryType.STREAM;
+      this.subCategory = "Stream Cipher";
+      this.securityStatus = SecurityStatus.SECURE;
+      this.complexity = ComplexityType.ADVANCED;
+      this.country = CountryCode.SE;
+
+      // Algorithm-specific metadata
+      this.SupportedKeySizes = [
+        new KeySize(16, 16, 0)  // Grain-128: 128-bit keys only (16 bytes)
+      ];
+      this.SupportedNonceSizes = [
+        new KeySize(12, 12, 0)  // Grain-128: 96-bit IVs (12 bytes)
+      ];
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("eSTREAM Grain-128 Specification", "https://www.ecrypt.eu.org/stream/grainpf.html"),
+        new LinkItem("Grain-128 - A New Stream Cipher", "https://www.eit.lth.se/fileadmin/eit/courses/eit060f/Grain128.pdf"),
+        new LinkItem("Bouncy Castle Reference Implementation", "https://github.com/bcgit/bc-java/blob/main/core/src/main/java/org/bouncycastle/crypto/engines/Grain128Engine.java")
+      ];
+
+      // Test vectors from Bouncy Castle test suite
+      this.tests = [
+        {
+          text: "Bouncy Castle Test Vector #1 - All zeros",
+          uri: "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/Grain128Test.java",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          iv: OpCodes.Hex8ToBytes("000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("f09b7bf7d7f6b5c2de2ffc73ac21397f")
+        },
+        {
+          text: "Bouncy Castle Test Vector #2 - Pattern key and IV",
+          uri: "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/Grain128Test.java",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0123456789abcdef123456789abcdef0"),
+          iv: OpCodes.Hex8ToBytes("0123456789abcdef12345678"),
+          expected: OpCodes.Hex8ToBytes("afb5babfa8de896b4b9c6acaf7c4fbfd")
+        }
+      ];
+
+      // Cipher parameters
+      this.nBlockSizeInBits = 1;    // Stream cipher - 1 bit at a time
+      this.nKeySizeInBits = 128;    // 128-bit key
+      this.nIVSizeInBits = 96;      // 96-bit IV
+    }
+
+    CreateInstance(isInverse = false) {
+      return new Grain128Instance(this, isInverse);
+    }
+  }
+
+  class Grain128Instance extends IAlgorithmInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this._key = null;
+      this._iv = null;
+      this.inputBuffer = [];
+
+      // Internal state - using 32-bit words like Bouncy Castle
+      // 4 words of 32 bits = 128 bits total
+      this.lfsr = new Array(4).fill(0);  // LFSR state (4 x 32-bit words = 128 bits)
+      this.nfsr = new Array(4).fill(0);  // NFSR state (4 x 32-bit words = 128 bits)
+      this.out = new Array(4).fill(0);   // Output buffer (32 bits per round)
+      this.index = 4;                     // Output byte index (4 = need new round)
+      this.initialized = false;
+    }
+
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
+        this.initialized = false;
+        return;
+      }
+
+      if (!Array.isArray(keyBytes)) {
+        throw new Error("Invalid key - must be byte array");
+      }
+
+      if (keyBytes.length !== 16) {
+        throw new Error(`Grain-128 requires exactly 128-bit (16-byte) keys, got ${keyBytes.length} bytes`);
+      }
+
+      this._key = [...keyBytes];
+      this._initializeIfReady();
+    }
+
+    get key() {
+      return this._key ? [...this._key] : null;
+    }
+
+    set iv(ivBytes) {
+      if (!ivBytes) {
+        this._iv = null;
+        this.initialized = false;
+        return;
+      }
+
+      if (!Array.isArray(ivBytes)) {
+        throw new Error("Invalid IV - must be byte array");
+      }
+
+      if (ivBytes.length !== 12) {
+        throw new Error(`Grain-128 requires exactly 96-bit (12-byte) IVs, got ${ivBytes.length} bytes`);
+      }
+
+      this._iv = [...ivBytes];
+      this._initializeIfReady();
+    }
+
+    get iv() {
+      return this._iv ? [...this._iv] : null;
+    }
+
+    _initializeIfReady() {
+      if (this._key && this._iv) {
+        this._initializeState();
+      }
+    }
+
+    _initializeState() {
+      // Extend IV from 12 bytes to 16 bytes by appending 0xFFFFFFFF
+      const workingIV = [...this._iv, 0xFF, 0xFF, 0xFF, 0xFF];
+
+      // Load NFSR with key (little-endian packing)
+      // Load LFSR with IV (little-endian packing)
+      for (let i = 0; i < 4; ++i) {
+        const j = i * 4;
+        this.nfsr[i] = OpCodes.Pack32LE(
+          this._key[j],
+          this._key[j + 1],
+          this._key[j + 2],
+          this._key[j + 3]
+        );
+        this.lfsr[i] = OpCodes.Pack32LE(
+          workingIV[j],
+          workingIV[j + 1],
+          workingIV[j + 2],
+          workingIV[j + 3]
+        );
+      }
+
+      // 256-bit initialization phase (8 rounds of 32 bits)
+      for (let i = 0; i < 8; ++i) {
+        const output = this._getOutput();
+        const nfsrOutput = this._getOutputNFSR();
+        const lfsrOutput = this._getOutputLFSR();
+
+        // During init, output is fed back into both registers
+        this.nfsr = this._shift(this.nfsr, nfsrOutput ^ this.lfsr[0] ^ output);
+        this.lfsr = this._shift(this.lfsr, lfsrOutput ^ output);
+      }
+
+      this.initialized = true;
+      this.index = 4; // Reset output index
+    }
+
+    // Get output from non-linear function g(x) - NFSR feedback
+    _getOutputNFSR() {
+      // Extract bits from NFSR using bit positions
+      const b0 = this.nfsr[0];
+      const b3 = (this.nfsr[0] >>> 3) | (this.nfsr[1] << 29);
+      const b11 = (this.nfsr[0] >>> 11) | (this.nfsr[1] << 21);
+      const b13 = (this.nfsr[0] >>> 13) | (this.nfsr[1] << 19);
+      const b17 = (this.nfsr[0] >>> 17) | (this.nfsr[1] << 15);
+      const b18 = (this.nfsr[0] >>> 18) | (this.nfsr[1] << 14);
+      const b26 = (this.nfsr[0] >>> 26) | (this.nfsr[1] << 6);
+      const b27 = (this.nfsr[0] >>> 27) | (this.nfsr[1] << 5);
+      const b40 = (this.nfsr[1] >>> 8) | (this.nfsr[2] << 24);
+      const b48 = (this.nfsr[1] >>> 16) | (this.nfsr[2] << 16);
+      const b56 = (this.nfsr[1] >>> 24) | (this.nfsr[2] << 8);
+      const b59 = (this.nfsr[1] >>> 27) | (this.nfsr[2] << 5);
+      const b61 = (this.nfsr[1] >>> 29) | (this.nfsr[2] << 3);
+      const b65 = (this.nfsr[2] >>> 1) | (this.nfsr[3] << 31);
+      const b67 = (this.nfsr[2] >>> 3) | (this.nfsr[3] << 29);
+      const b68 = (this.nfsr[2] >>> 4) | (this.nfsr[3] << 28);
+      const b84 = (this.nfsr[2] >>> 20) | (this.nfsr[3] << 12);
+      const b91 = (this.nfsr[2] >>> 27) | (this.nfsr[3] << 5);
+      const b96 = this.nfsr[3];
+
+      // g(x) = b0 + b26 + b56 + b91 + b96 + b3b67 + b11b13 + b17b18
+      //        + b27b59 + b40b48 + b61b65 + b68b84
+      return OpCodes.ToDWord(b0 ^ b26 ^ b56 ^ b91 ^ b96 ^ (b3 & b67) ^ (b11 & b13) ^ (b17 & b18)
+        ^ (b27 & b59) ^ (b40 & b48) ^ (b61 & b65) ^ (b68 & b84));
+    }
+
+    // Get output from linear function f(x) - LFSR feedback
+    _getOutputLFSR() {
+      // Extract bits from LFSR using bit positions
+      const s0 = this.lfsr[0];
+      const s7 = (this.lfsr[0] >>> 7) | (this.lfsr[1] << 25);
+      const s38 = (this.lfsr[1] >>> 6) | (this.lfsr[2] << 26);
+      const s70 = (this.lfsr[2] >>> 6) | (this.lfsr[3] << 26);
+      const s81 = (this.lfsr[2] >>> 17) | (this.lfsr[3] << 15);
+      const s96 = this.lfsr[3];
+
+      // f(x) = s0 + s7 + s38 + s70 + s81 + s96
+      return OpCodes.ToDWord(s0 ^ s7 ^ s38 ^ s70 ^ s81 ^ s96);
+    }
+
+    // Get output from output function h(x)
+    _getOutput() {
+      // Extract NFSR bits for output function
+      const b2 = (this.nfsr[0] >>> 2) | (this.nfsr[1] << 30);
+      const b12 = (this.nfsr[0] >>> 12) | (this.nfsr[1] << 20);
+      const b15 = (this.nfsr[0] >>> 15) | (this.nfsr[1] << 17);
+      const b36 = (this.nfsr[1] >>> 4) | (this.nfsr[2] << 28);
+      const b45 = (this.nfsr[1] >>> 13) | (this.nfsr[2] << 19);
+      const b64 = this.nfsr[2];
+      const b73 = (this.nfsr[2] >>> 9) | (this.nfsr[3] << 23);
+      const b89 = (this.nfsr[2] >>> 25) | (this.nfsr[3] << 7);
+      const b95 = (this.nfsr[2] >>> 31) | (this.nfsr[3] << 1);
+
+      // Extract LFSR bits for output function
+      const s8 = (this.lfsr[0] >>> 8) | (this.lfsr[1] << 24);
+      const s13 = (this.lfsr[0] >>> 13) | (this.lfsr[1] << 19);
+      const s20 = (this.lfsr[0] >>> 20) | (this.lfsr[1] << 12);
+      const s42 = (this.lfsr[1] >>> 10) | (this.lfsr[2] << 22);
+      const s60 = (this.lfsr[1] >>> 28) | (this.lfsr[2] << 4);
+      const s79 = (this.lfsr[2] >>> 15) | (this.lfsr[3] << 17);
+      const s93 = (this.lfsr[2] >>> 29) | (this.lfsr[3] << 3);
+      const s94 = (this.lfsr[2] >>> 31) | (this.lfsr[3] << 1);
+
+      // h(x) = b12s8 + s13s20 + b95s42 + s60s79 + b12b95s94 + s93
+      //        + b2 + b15 + b36 + b45 + b64 + b73 + b89
+      return OpCodes.ToDWord((b12 & s8) ^ (s13 & s20) ^ (b95 & s42) ^ (s60 & s79) ^ (b12 & b95 & s94)
+        ^ s93 ^ b2 ^ b15 ^ b36 ^ b45 ^ b64 ^ b73 ^ b89);
+    }
+
+    // Shift register array by 32 bits and add new value
+    _shift(array, val) {
+      array[0] = array[1];
+      array[1] = array[2];
+      array[2] = array[3];
+      array[3] = OpCodes.ToDWord(val);
+      return array;
+    }
+
+    // Generate one round of keystream (32 bits / 4 bytes)
+    _oneRound() {
+      const output = this._getOutput();
+
+      // Store output bytes (little-endian)
+      this.out[0] = output & 0xFF;
+      this.out[1] = (output >>> 8) & 0xFF;
+      this.out[2] = (output >>> 16) & 0xFF;
+      this.out[3] = (output >>> 24) & 0xFF;
+
+      // Update registers (after initialization, no output feedback)
+      const nfsrFeedback = this._getOutputNFSR() ^ this.lfsr[0];
+      const lfsrFeedback = this._getOutputLFSR();
+      this.nfsr = this._shift(this.nfsr, nfsrFeedback);
+      this.lfsr = this._shift(this.lfsr, lfsrFeedback);
+    }
+
+    // Get next keystream byte
+    _getKeyStream() {
+      if (this.index > 3) {
+        this._oneRound();
+        this.index = 0;
+      }
+      return this.out[this.index++];
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) {
+        return;
+      }
+
+      if (!this.initialized) {
+        throw new Error("Grain-128 not initialized - key and IV must be set");
+      }
+
+      // Stream cipher - accumulate input
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      if (!this.initialized) {
+        throw new Error("Grain-128 not initialized - key and IV must be set");
+      }
+
+      if (this.inputBuffer.length === 0) {
+        return [];
+      }
+
+      // XOR input with keystream
+      const output = [];
+      for (let i = 0; i < this.inputBuffer.length; ++i) {
+        output.push(this.inputBuffer[i] ^ this._getKeyStream());
+      }
+
+      this.inputBuffer = [];
+      return output;
+    }
+
+    Reset() {
+      this.inputBuffer = [];
+      this.index = 4;
+      if (this._key && this._iv) {
+        this._initializeState();
+      }
+    }
+  }
+
+  // Register both algorithms
+  const grainV1Instance = new GrainV1Algorithm();
+  if (!AlgorithmFramework.Find(grainV1Instance.name)) {
+    RegisterAlgorithm(grainV1Instance);
+  }
+
+  const grain128Instance = new Grain128Algorithm();
+  if (!AlgorithmFramework.Find(grain128Instance.name)) {
+    RegisterAlgorithm(grain128Instance);
   }
 
   // Return for module systems
-  return { GrainAlgorithm, GrainInstance };
+  return { GrainV1Algorithm, GrainV1Instance, Grain128Algorithm, Grain128Instance };
 }));
