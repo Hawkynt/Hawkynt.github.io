@@ -1,0 +1,981 @@
+/*
+ * RC (Rivest Cipher) Family Block Cipher Implementations
+ * Compatible with AlgorithmFramework
+ * (c)2006-2025 Hawkynt
+ *
+ * RC2 (1987): 64-bit block, variable key (1-128 bytes), mixing/mashing operations
+ * RC5 (1994): Variable block/rounds/key, data-dependent rotations
+ * RC6 (1998): 128-bit block, AES finalist, quadratic nonlinearity
+ *
+ * All algorithms by Ron Rivest (and collaborators for RC6)
+ * Based on RFC 2268, RFC 2040, and official specifications
+ */
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
+  'use strict';
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
+
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  // Extract framework components
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
+          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
+          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
+          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
+          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
+          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
+          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+
+  // ===== SHARED UTILITIES =====
+
+  // RC5/RC6 Magic Constants
+  const RC_MAGIC_P = 0xb7e15163; // P = Odd((e-2)*2^32)
+  const RC_MAGIC_Q = 0x9e3779b9; // Q = Odd((φ-1)*2^32)
+
+  // Signed 32-bit rotation helpers for RC6 (matches C# behavior)
+  function rotLeft32Signed(value, positions) {
+    return OpCodes.RotL32(value >>> 0, positions) | 0;
+  }
+
+  function rotRight32Signed(value, positions) {
+    return OpCodes.RotR32(value >>> 0, positions) | 0;
+  }
+
+  // ===== RC2 ALGORITHM =====
+
+  class RC2Algorithm extends BlockCipherAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "RC2";
+      this.description = "RC2 variable-key-size block cipher with 64-bit blocks. Uses mixing and mashing operations over 18 rounds. Developed by Ron Rivest at RSA Data Security in 1987. Cryptographically broken.";
+      this.inventor = "Ron Rivest";
+      this.year = 1987;
+      this.category = CategoryType.BLOCK;
+      this.subCategory = "Block Cipher";
+      this.securityStatus = SecurityStatus.BROKEN; // RC2 has known weaknesses
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.US;
+
+      // Algorithm-specific metadata
+      this.SupportedKeySizes = [
+        new KeySize(1, 128, 1) // 1-128 bytes, any byte length
+      ];
+      this.SupportedBlockSizes = [
+        new KeySize(8, 8, 0) // Fixed 64-bit blocks
+      ];
+
+      // Documentation and references
+      this.documentation = [
+        new LinkItem("RFC 2268 - RC2 Algorithm Description", "https://www.rfc-editor.org/rfc/rfc2268.txt"),
+        new LinkItem("RSA Data Security RC2 Specification", "https://www.rsa.com/en-us/company/labs/historical-cryptanalysis/rc2")
+      ];
+
+      this.references = [
+        new LinkItem("Bouncy Castle RC2 Implementation", "https://github.com/bcgit/bc-java/blob/master/core/src/main/java/org/bouncycastle/crypto/engines/RC2Engine.java"),
+        new LinkItem("NIST Computer Security Resource Center", "https://csrc.nist.gov/projects/block-cipher-techniques"),
+        new LinkItem("Applied Cryptography by Bruce Schneier", "https://www.schneier.com/books/applied_cryptography/")
+      ];
+
+      // Known vulnerabilities
+      this.knownVulnerabilities = [
+        new Vulnerability(
+          "Related-key attacks",
+          "RC2 is vulnerable to related-key attacks due to weak key schedule",
+          "Use AES or other modern ciphers instead"
+        ),
+        new Vulnerability(
+          "Linear cryptanalysis",
+          "RC2 has linear approximations that reduce effective security",
+          "Algorithm is obsolete for secure applications"
+        )
+      ];
+
+      // Official test vectors from RFC 2268
+      this.tests = [
+        {
+          text: "RFC 2268 Test Vector #1: 8-byte all-zero key, 63-bit effective",
+          uri: "https://www.rfc-editor.org/rfc/rfc2268.txt",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000"),
+          effectiveBits: 63,
+          expected: OpCodes.Hex8ToBytes("ebb773f993278eff")
+        },
+        {
+          text: "RFC 2268 Test Vector #2: 8-byte all-ones key, 64-bit effective",
+          uri: "https://www.rfc-editor.org/rfc/rfc2268.txt",
+          input: OpCodes.Hex8ToBytes("ffffffffffffffff"),
+          key: OpCodes.Hex8ToBytes("ffffffffffffffff"),
+          effectiveBits: 64,
+          expected: OpCodes.Hex8ToBytes("278b27e42e2f0d49")
+        },
+        {
+          text: "RFC 2268 Test Vector #3: pattern key and plaintext, 64-bit effective",
+          uri: "https://www.rfc-editor.org/rfc/rfc2268.txt",
+          input: OpCodes.Hex8ToBytes("1000000000000001"),
+          key: OpCodes.Hex8ToBytes("3000000000000000"),
+          effectiveBits: 64,
+          expected: OpCodes.Hex8ToBytes("30649edf9be7d2c2")
+        },
+        {
+          text: "RFC 2268 Test Vector #4: 1-byte key, 64-bit effective",
+          uri: "https://www.rfc-editor.org/rfc/rfc2268.txt",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("88"),
+          effectiveBits: 64,
+          expected: OpCodes.Hex8ToBytes("61a8a244adacccf0")
+        },
+        {
+          text: "RFC 2268 Test Vector #5: 7-byte key, 64-bit effective",
+          uri: "https://www.rfc-editor.org/rfc/rfc2268.txt",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("88bca90e90875a"),
+          effectiveBits: 64,
+          expected: OpCodes.Hex8ToBytes("6ccf4308974c267f")
+        },
+        {
+          text: "RFC 2268 Test Vector #6: 16-byte key, 64-bit effective",
+          uri: "https://www.rfc-editor.org/rfc/rfc2268.txt",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("88bca90e90875a7f0f79c384627bafb2"),
+          effectiveBits: 64,
+          expected: OpCodes.Hex8ToBytes("1a807d272bbe5db1")
+        },
+        {
+          text: "RFC 2268 Test Vector #7: 16-byte key, 128-bit effective",
+          uri: "https://www.rfc-editor.org/rfc/rfc2268.txt",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("88bca90e90875a7f0f79c384627bafb2"),
+          effectiveBits: 128,
+          expected: OpCodes.Hex8ToBytes("2269552ab0f85ca6")
+        }
+      ];
+    }
+
+    // RC2 PITABLE - 256-byte permutation table from RFC 2268
+    static get PITABLE() {
+      return [
+        0xd9, 0x78, 0xf9, 0xc4, 0x19, 0xdd, 0xb5, 0xed,
+        0x28, 0xe9, 0xfd, 0x79, 0x4a, 0xa0, 0xd8, 0x9d,
+        0xc6, 0x7e, 0x37, 0x83, 0x2b, 0x76, 0x53, 0x8e,
+        0x62, 0x4c, 0x64, 0x88, 0x44, 0x8b, 0xfb, 0xa2,
+        0x17, 0x9a, 0x59, 0xf5, 0x87, 0xb3, 0x4f, 0x13,
+        0x61, 0x45, 0x6d, 0x8d, 0x09, 0x81, 0x7d, 0x32,
+        0xbd, 0x8f, 0x40, 0xeb, 0x86, 0xb7, 0x7b, 0x0b,
+        0xf0, 0x95, 0x21, 0x22, 0x5c, 0x6b, 0x4e, 0x82,
+        0x54, 0xd6, 0x65, 0x93, 0xce, 0x60, 0xb2, 0x1c,
+        0x73, 0x56, 0xc0, 0x14, 0xa7, 0x8c, 0xf1, 0xdc,
+        0x12, 0x75, 0xca, 0x1f, 0x3b, 0xbe, 0xe4, 0xd1,
+        0x42, 0x3d, 0xd4, 0x30, 0xa3, 0x3c, 0xb6, 0x26,
+        0x6f, 0xbf, 0x0e, 0xda, 0x46, 0x69, 0x07, 0x57,
+        0x27, 0xf2, 0x1d, 0x9b, 0xbc, 0x94, 0x43, 0x03,
+        0xf8, 0x11, 0xc7, 0xf6, 0x90, 0xef, 0x3e, 0xe7,
+        0x06, 0xc3, 0xd5, 0x2f, 0xc8, 0x66, 0x1e, 0xd7,
+        0x08, 0xe8, 0xea, 0xde, 0x80, 0x52, 0xee, 0xf7,
+        0x84, 0xaa, 0x72, 0xac, 0x35, 0x4d, 0x6a, 0x2a,
+        0x96, 0x1a, 0xd2, 0x71, 0x5a, 0x15, 0x49, 0x74,
+        0x4b, 0x9f, 0xd0, 0x5e, 0x04, 0x18, 0xa4, 0xec,
+        0xc2, 0xe0, 0x41, 0x6e, 0x0f, 0x51, 0xcb, 0xcc,
+        0x24, 0x91, 0xaf, 0x50, 0xa1, 0xf4, 0x70, 0x39,
+        0x99, 0x7c, 0x3a, 0x85, 0x23, 0xb8, 0xb4, 0x7a,
+        0xfc, 0x02, 0x36, 0x5b, 0x25, 0x55, 0x97, 0x31,
+        0x2d, 0x5d, 0xfa, 0x98, 0xe3, 0x8a, 0x92, 0xae,
+        0x05, 0xdf, 0x29, 0x10, 0x67, 0x6c, 0xba, 0xc9,
+        0xd3, 0x00, 0xe6, 0xcf, 0xe1, 0x9e, 0xa8, 0x2c,
+        0x63, 0x16, 0x01, 0x3f, 0x58, 0xe2, 0x89, 0xa9,
+        0x0d, 0x38, 0x34, 0x1b, 0xab, 0x33, 0xff, 0xb0,
+        0xbb, 0x48, 0x0c, 0x5f, 0xb9, 0xb1, 0xcd, 0x2e,
+        0xc5, 0xf3, 0xdb, 0x47, 0xe5, 0xa5, 0x9c, 0x77,
+        0x0a, 0xa6, 0x20, 0x68, 0xfe, 0x7f, 0xc1, 0xad
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      return new RC2Instance(this, isInverse);
+    }
+
+    // Generate expanded key following RFC 2268 specification
+    static generateWorkingKey(keyBytes, effectiveBits) {
+      if (!keyBytes || keyBytes.length === 0) {
+        throw new Error('Key is required');
+      }
+
+      // Default effective bits to key length * 8 if not specified
+      if (typeof effectiveBits === 'undefined') {
+        effectiveBits = keyBytes.length * 8;
+      }
+
+      // Phase 1: Expand input key to 128 bytes using PITABLE
+      const xKey = new Array(128);
+      const keyLen = keyBytes.length;
+
+      // Copy key bytes
+      for (let i = 0; i < keyLen; i++) {
+        xKey[i] = keyBytes[i] & 0xFF;
+      }
+
+      // Expand to 128 bytes if needed (RFC 2268 section 2)
+      for (let i = keyLen; i < 128; i++) {
+        xKey[i] = RC2Algorithm.PITABLE[(xKey[i - 1] + xKey[i - keyLen]) & 0xFF] & 0xFF;
+      }
+
+      // Phase 2: Reduce effective key size to specified bit length
+      const T8 = Math.floor((effectiveBits + 7) / 8);
+      const TM = 0xFF >>> (7 & -effectiveBits);
+      let x = RC2Algorithm.PITABLE[xKey[128 - T8] & TM] & 0xFF;
+      xKey[128 - T8] = x;
+
+      for (let i = 128 - T8 - 1; i >= 0; i--) {
+        x = RC2Algorithm.PITABLE[x ^ xKey[i + T8]] & 0xFF;
+        xKey[i] = x;
+      }
+
+      // Phase 3: Convert to 16-bit words (little-endian)
+      const expandedKey = new Array(64);
+      for (let i = 0; i < 64; i++) {
+        expandedKey[i] = (xKey[2 * i] + (xKey[2 * i + 1] << 8)) & 0xFFFF;
+      }
+
+      return expandedKey;
+    }
+  }
+
+  // RC2 Instance
+  class RC2Instance extends IBlockCipherInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this._key = null;
+      this.expandedKey = null;
+      this.inputBuffer = [];
+      this.BlockSize = 8;
+      this.KeySize = 0;
+      this._effectiveBits = null;
+
+      Object.defineProperty(this, 'effectiveBits', {
+        get: () => this._effectiveBits,
+        set: (value) => {
+          const oldValue = this._effectiveBits;
+          this._effectiveBits = value;
+          if (oldValue !== value && this._key) {
+            this._setupKey();
+          }
+        },
+        enumerable: true,
+        configurable: true
+      });
+    }
+
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
+        this.expandedKey = null;
+        this.KeySize = 0;
+        return;
+      }
+
+      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
+        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+        (keyBytes.length - ks.minSize) % ks.stepSize === 0
+      );
+
+      if (!isValidSize) {
+        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      }
+
+      this._key = [...keyBytes];
+      this.KeySize = keyBytes.length;
+      this._setupKey();
+    }
+
+    get key() {
+      return this._key ? [...this._key] : null;
+    }
+
+    _setupKey() {
+      if (!this._key) return;
+      const effectiveBits = this.effectiveBits !== null ? this.effectiveBits : (this._key.length * 8);
+      this.expandedKey = RC2Algorithm.generateWorkingKey(this._key, effectiveBits);
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!this.key) throw new Error("Key not set");
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      if (!this.key) throw new Error("Key not set");
+      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+
+      const output = [];
+      const blockSize = this.BlockSize;
+
+      if (this.inputBuffer.length % blockSize !== 0) {
+        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+      }
+
+      for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
+        const block = this.inputBuffer.slice(i, i + blockSize);
+        const processedBlock = this.isInverse
+          ? this._decryptBlock(block)
+          : this._encryptBlock(block);
+        output.push(...processedBlock);
+      }
+
+      OpCodes.ClearArray(this.inputBuffer);
+      this.inputBuffer = [];
+
+      return output;
+    }
+
+    _encryptBlock(plainBytes) {
+      if (plainBytes.length !== 8) {
+        throw new Error(`Invalid block size: ${plainBytes.length} bytes`);
+      }
+
+      if (!this.expandedKey) {
+        throw new Error('Key not set up. Call key setter first.');
+      }
+
+      let x10 = OpCodes.Pack16LE(plainBytes[0], plainBytes[1]);
+      let x32 = OpCodes.Pack16LE(plainBytes[2], plainBytes[3]);
+      let x54 = OpCodes.Pack16LE(plainBytes[4], plainBytes[5]);
+      let x76 = OpCodes.Pack16LE(plainBytes[6], plainBytes[7]);
+
+      // Rounds 0-16 (5 rounds of mixing)
+      for (let i = 0; i <= 16; i += 4) {
+        x10 = OpCodes.RotL16((x10 + (x32 & ~x76) + (x54 & x76) + this.expandedKey[i]) & 0xFFFF, 1);
+        x32 = OpCodes.RotL16((x32 + (x54 & ~x10) + (x76 & x10) + this.expandedKey[i + 1]) & 0xFFFF, 2);
+        x54 = OpCodes.RotL16((x54 + (x76 & ~x32) + (x10 & x32) + this.expandedKey[i + 2]) & 0xFFFF, 3);
+        x76 = OpCodes.RotL16((x76 + (x10 & ~x54) + (x32 & x54) + this.expandedKey[i + 3]) & 0xFFFF, 5);
+      }
+
+      // First mash operation
+      x10 = (x10 + this.expandedKey[x76 & 63]) & 0xFFFF;
+      x32 = (x32 + this.expandedKey[x10 & 63]) & 0xFFFF;
+      x54 = (x54 + this.expandedKey[x32 & 63]) & 0xFFFF;
+      x76 = (x76 + this.expandedKey[x54 & 63]) & 0xFFFF;
+
+      // Rounds 20-40 (6 rounds of mixing)
+      for (let i = 20; i <= 40; i += 4) {
+        x10 = OpCodes.RotL16((x10 + (x32 & ~x76) + (x54 & x76) + this.expandedKey[i]) & 0xFFFF, 1);
+        x32 = OpCodes.RotL16((x32 + (x54 & ~x10) + (x76 & x10) + this.expandedKey[i + 1]) & 0xFFFF, 2);
+        x54 = OpCodes.RotL16((x54 + (x76 & ~x32) + (x10 & x32) + this.expandedKey[i + 2]) & 0xFFFF, 3);
+        x76 = OpCodes.RotL16((x76 + (x10 & ~x54) + (x32 & x54) + this.expandedKey[i + 3]) & 0xFFFF, 5);
+      }
+
+      // Second mash operation
+      x10 = (x10 + this.expandedKey[x76 & 63]) & 0xFFFF;
+      x32 = (x32 + this.expandedKey[x10 & 63]) & 0xFFFF;
+      x54 = (x54 + this.expandedKey[x32 & 63]) & 0xFFFF;
+      x76 = (x76 + this.expandedKey[x54 & 63]) & 0xFFFF;
+
+      // Rounds 44-60 (5 rounds of mixing)
+      for (let i = 44; i < 64; i += 4) {
+        x10 = OpCodes.RotL16((x10 + (x32 & ~x76) + (x54 & x76) + this.expandedKey[i]) & 0xFFFF, 1);
+        x32 = OpCodes.RotL16((x32 + (x54 & ~x10) + (x76 & x10) + this.expandedKey[i + 1]) & 0xFFFF, 2);
+        x54 = OpCodes.RotL16((x54 + (x76 & ~x32) + (x10 & x32) + this.expandedKey[i + 2]) & 0xFFFF, 3);
+        x76 = OpCodes.RotL16((x76 + (x10 & ~x54) + (x32 & x54) + this.expandedKey[i + 3]) & 0xFFFF, 5);
+      }
+
+      return [
+        ...OpCodes.Unpack16LE(x10),
+        ...OpCodes.Unpack16LE(x32),
+        ...OpCodes.Unpack16LE(x54),
+        ...OpCodes.Unpack16LE(x76)
+      ];
+    }
+
+    _decryptBlock(cipherBytes) {
+      if (cipherBytes.length !== 8) {
+        throw new Error(`Invalid block size: ${cipherBytes.length} bytes`);
+      }
+
+      if (!this.expandedKey) {
+        throw new Error('Key not set up. Call key setter first.');
+      }
+
+      let x10 = OpCodes.Pack16LE(cipherBytes[0], cipherBytes[1]);
+      let x32 = OpCodes.Pack16LE(cipherBytes[2], cipherBytes[3]);
+      let x54 = OpCodes.Pack16LE(cipherBytes[4], cipherBytes[5]);
+      let x76 = OpCodes.Pack16LE(cipherBytes[6], cipherBytes[7]);
+
+      // Reverse rounds 44-60
+      for (let i = 60; i >= 44; i -= 4) {
+        x76 = (OpCodes.RotL16(x76, 11) - ((x10 & ~x54) + (x32 & x54) + this.expandedKey[i + 3])) & 0xFFFF;
+        x54 = (OpCodes.RotL16(x54, 13) - ((x76 & ~x32) + (x10 & x32) + this.expandedKey[i + 2])) & 0xFFFF;
+        x32 = (OpCodes.RotL16(x32, 14) - ((x54 & ~x10) + (x76 & x10) + this.expandedKey[i + 1])) & 0xFFFF;
+        x10 = (OpCodes.RotL16(x10, 15) - ((x32 & ~x76) + (x54 & x76) + this.expandedKey[i])) & 0xFFFF;
+      }
+
+      // Reverse second mash
+      x76 = (x76 - this.expandedKey[x54 & 63]) & 0xFFFF;
+      x54 = (x54 - this.expandedKey[x32 & 63]) & 0xFFFF;
+      x32 = (x32 - this.expandedKey[x10 & 63]) & 0xFFFF;
+      x10 = (x10 - this.expandedKey[x76 & 63]) & 0xFFFF;
+
+      // Reverse rounds 20-40
+      for (let i = 40; i >= 20; i -= 4) {
+        x76 = (OpCodes.RotL16(x76, 11) - ((x10 & ~x54) + (x32 & x54) + this.expandedKey[i + 3])) & 0xFFFF;
+        x54 = (OpCodes.RotL16(x54, 13) - ((x76 & ~x32) + (x10 & x32) + this.expandedKey[i + 2])) & 0xFFFF;
+        x32 = (OpCodes.RotL16(x32, 14) - ((x54 & ~x10) + (x76 & x10) + this.expandedKey[i + 1])) & 0xFFFF;
+        x10 = (OpCodes.RotL16(x10, 15) - ((x32 & ~x76) + (x54 & x76) + this.expandedKey[i])) & 0xFFFF;
+      }
+
+      // Reverse first mash
+      x76 = (x76 - this.expandedKey[x54 & 63]) & 0xFFFF;
+      x54 = (x54 - this.expandedKey[x32 & 63]) & 0xFFFF;
+      x32 = (x32 - this.expandedKey[x10 & 63]) & 0xFFFF;
+      x10 = (x10 - this.expandedKey[x76 & 63]) & 0xFFFF;
+
+      // Reverse rounds 0-16
+      for (let i = 16; i >= 0; i -= 4) {
+        x76 = (OpCodes.RotL16(x76, 11) - ((x10 & ~x54) + (x32 & x54) + this.expandedKey[i + 3])) & 0xFFFF;
+        x54 = (OpCodes.RotL16(x54, 13) - ((x76 & ~x32) + (x10 & x32) + this.expandedKey[i + 2])) & 0xFFFF;
+        x32 = (OpCodes.RotL16(x32, 14) - ((x54 & ~x10) + (x76 & x10) + this.expandedKey[i + 1])) & 0xFFFF;
+        x10 = (OpCodes.RotL16(x10, 15) - ((x32 & ~x76) + (x54 & x76) + this.expandedKey[i])) & 0xFFFF;
+      }
+
+      return [
+        ...OpCodes.Unpack16LE(x10),
+        ...OpCodes.Unpack16LE(x32),
+        ...OpCodes.Unpack16LE(x54),
+        ...OpCodes.Unpack16LE(x76)
+      ];
+    }
+  }
+
+  // ===== RC5 ALGORITHM =====
+
+  class RC5Algorithm extends BlockCipherAlgorithm {
+    constructor() {
+      super();
+
+      this.name = "RC5";
+      this.description = "Variable symmetric block cipher with data-dependent rotations. Features configurable word size, rounds, and key length. This implementation uses RC5-32/12/16 (32-bit words, 12 rounds, up to 255-byte key).";
+      this.inventor = "Ronald Rivest";
+      this.year = 1994;
+      this.category = CategoryType.BLOCK;
+      this.subCategory = "Block Cipher";
+      this.securityStatus = null;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.US;
+
+      this.SupportedKeySizes = [
+        new KeySize(0, 255, 1)
+      ];
+      this.SupportedBlockSizes = [
+        new KeySize(8, 8, 0)
+      ];
+
+      this.documentation = [
+        new LinkItem("RFC 2040 - RC5 Algorithm", "https://tools.ietf.org/rfc/rfc2040.txt"),
+        new LinkItem("Original RC5 Paper", "https://people.csail.mit.edu/rivest/Rivest-rc5rev.pdf")
+      ];
+
+      this.references = [
+        new LinkItem("Rivest's RC5 Reference", "https://people.csail.mit.edu/rivest/Rivest-rc5rev.pdf"),
+        new LinkItem("RC5 Patent (Expired)", "https://patents.google.com/patent/US5724428A")
+      ];
+
+      this.tests = [
+        {
+          text: "RC5-32/12/16 zero key, zero plaintext",
+          uri: "https://github.com/cantora/avr-crypto-lib/blob/master/testvectors/Rc5-128-64.verified.test-vectors",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("21a5dbee154b8f6d")
+        },
+        {
+          text: "RC5-32/12/16 pattern key and plaintext",
+          uri: "https://tools.ietf.org/rfc/rfc2040.txt",
+          input: OpCodes.Hex8ToBytes("0123456789abcdef"),
+          key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f10"),
+          expected: OpCodes.Hex8ToBytes("b734213608254d2f")
+        },
+        {
+          text: "RC5-32/12/16 all ones key and plaintext",
+          uri: "https://tools.ietf.org/rfc/rfc2040.txt",
+          input: OpCodes.Hex8ToBytes("ffffffffffffffff"),
+          key: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffff"),
+          expected: OpCodes.Hex8ToBytes("778769e9be0167b7")
+        }
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      return new RC5Instance(this, isInverse);
+    }
+
+    static get DEFAULT_ROUNDS() { return 12; }
+  }
+
+  // RC5 Instance
+  class RC5Instance extends IBlockCipherInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this._key = null;
+      this.expandedKey = null;
+      this.inputBuffer = [];
+      this.BlockSize = 8;
+      this.KeySize = 0;
+      this.rounds = RC5Algorithm.DEFAULT_ROUNDS;
+    }
+
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
+        this.expandedKey = null;
+        this.KeySize = 0;
+        return;
+      }
+
+      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
+        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+        (keyBytes.length - ks.minSize) % ks.stepSize === 0
+      );
+
+      if (!isValidSize) {
+        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      }
+
+      this._key = [...keyBytes];
+      this.KeySize = keyBytes.length;
+      this._keyExpansion();
+    }
+
+    get key() {
+      return this._key ? [...this._key] : null;
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!this.key) throw new Error("Key not set");
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      if (!this.key) throw new Error("Key not set");
+      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+
+      const output = [];
+      const blockSize = this.BlockSize;
+
+      if (this.inputBuffer.length % blockSize !== 0) {
+        throw new Error(`Input length must be multiple of ${blockSize} bytes`);
+      }
+
+      for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
+        const block = this.inputBuffer.slice(i, i + blockSize);
+        const processedBlock = this.isInverse
+          ? this._decryptBlock(block)
+          : this._encryptBlock(block);
+        output.push(...processedBlock);
+      }
+
+      this.inputBuffer = [];
+
+      return output;
+    }
+
+    _keyExpansion() {
+      const u = 4;
+      const c = Math.max(1, Math.ceil(this.KeySize / u));
+      const tableSize = 2 * (this.rounds + 1);
+      const L = new Array(c);
+
+      for (let i = 0; i < c; i++) {
+        L[i] = 0;
+      }
+
+      for (let i = 0; i < this.KeySize; i++) {
+        const keyByte = this._key[i] & 0xFF;
+        const shift = 8 * (i % u);
+        L[Math.floor(i / u)] = (L[Math.floor(i / u)] + (keyByte << shift)) >>> 0;
+      }
+
+      this.expandedKey = new Array(tableSize);
+      this.expandedKey[0] = RC_MAGIC_P;
+      for (let i = 1; i < tableSize; i++) {
+        this.expandedKey[i] = (this.expandedKey[i - 1] + RC_MAGIC_Q) >>> 0;
+      }
+
+      let A = 0, B = 0;
+      let i = 0, j = 0;
+      const iterations = 3 * Math.max(tableSize, c);
+
+      for (let k = 0; k < iterations; k++) {
+        this.expandedKey[i] = (this.expandedKey[i] + A + B) >>> 0;
+        A = this.expandedKey[i] = OpCodes.RotL32(this.expandedKey[i], 3);
+
+        L[j] = (L[j] + A + B) >>> 0;
+        B = L[j] = OpCodes.RotL32(L[j], (A + B) & 31);
+
+        i = (i + 1) % tableSize;
+        j = (j + 1) % c;
+      }
+
+      OpCodes.ClearArray(L);
+    }
+
+    _encryptBlock(plainBytes) {
+      if (plainBytes.length !== 8) {
+        throw new Error(`Invalid block size: ${plainBytes.length} bytes`);
+      }
+
+      let A = OpCodes.Pack32LE(plainBytes[0], plainBytes[1], plainBytes[2], plainBytes[3]);
+      let B = OpCodes.Pack32LE(plainBytes[4], plainBytes[5], plainBytes[6], plainBytes[7]);
+
+      A = (A + this.expandedKey[0]) >>> 0;
+      B = (B + this.expandedKey[1]) >>> 0;
+
+      for (let i = 1; i <= this.rounds; i++) {
+        A = A ^ B;
+        A = OpCodes.RotL32(A, B & 31);
+        A = (A + this.expandedKey[2 * i]) >>> 0;
+
+        B = B ^ A;
+        B = OpCodes.RotL32(B, A & 31);
+        B = (B + this.expandedKey[2 * i + 1]) >>> 0;
+      }
+
+      return [
+        ...OpCodes.Unpack32LE(A),
+        ...OpCodes.Unpack32LE(B)
+      ];
+    }
+
+    _decryptBlock(cipherBytes) {
+      if (cipherBytes.length !== 8) {
+        throw new Error(`Invalid block size: ${cipherBytes.length} bytes`);
+      }
+
+      let A = OpCodes.Pack32LE(cipherBytes[0], cipherBytes[1], cipherBytes[2], cipherBytes[3]);
+      let B = OpCodes.Pack32LE(cipherBytes[4], cipherBytes[5], cipherBytes[6], cipherBytes[7]);
+
+      for (let i = this.rounds; i >= 1; i--) {
+        B = (B - this.expandedKey[2 * i + 1]) >>> 0;
+        B = OpCodes.RotR32(B, A & 31);
+        B = B ^ A;
+
+        A = (A - this.expandedKey[2 * i]) >>> 0;
+        A = OpCodes.RotR32(A, B & 31);
+        A = A ^ B;
+      }
+
+      A = (A - this.expandedKey[0]) >>> 0;
+      B = (B - this.expandedKey[1]) >>> 0;
+
+      return [
+        ...OpCodes.Unpack32LE(A),
+        ...OpCodes.Unpack32LE(B)
+      ];
+    }
+  }
+
+  // ===== RC6 ALGORITHM =====
+
+  class RC6Algorithm extends BlockCipherAlgorithm {
+    constructor() {
+      super();
+
+      this.name = "RC6";
+      this.description = "AES finalist designed as evolution of RC5. Features 128-bit blocks, variable key sizes, and data-dependent rotations with quadratic nonlinearity. Patented algorithm with strong security properties.";
+      this.inventor = "Ron Rivest, Matt Robshaw, Ray Sidney, Yiqun Lisa Yin";
+      this.year = 1998;
+      this.category = CategoryType.BLOCK;
+      this.subCategory = "Block Cipher";
+      this.securityStatus = null;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.US;
+
+      this.blockSize = 16;
+      this.keySizes = [
+        new KeySize(16, 32, 8)
+      ];
+
+      this.SupportedKeySizes = [new KeySize(16, 32, 8)];
+      this.SupportedBlockSizes = [new KeySize(16, 16, 1)];
+
+      this.documentation = [
+        new LinkItem("RC6 Algorithm Specification", "https://people.csail.mit.edu/rivest/Rivest-rc6.pdf"),
+        new LinkItem("AES Candidate Submission", "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development")
+      ];
+
+      this.references = [
+        new LinkItem("RC6 Technical Report", "https://people.csail.mit.edu/rivest/pubs/RRSY98.pdf"),
+        new LinkItem("RC6 Patent Information", "https://patents.google.com/patent/US6269163B1")
+      ];
+
+      this.tests = [
+        {
+          text: "IETF test vector - RC6-32/20/16 (128-bit key)",
+          uri: "https://datatracker.ietf.org/doc/html/draft-krovetz-rc6-rc5-vectors-00",
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          expected: OpCodes.Hex8ToBytes("3A96F9C7F6755CFE46F00E3DCD5D2A3C")
+        }
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      return new RC6Instance(this, isInverse);
+    }
+
+    static get ROUNDS() { return 20; }
+    static get KEY_SCHEDULE_SIZE() { return 44; }
+  }
+
+  // RC6 Instance
+  class RC6Instance extends IBlockCipherInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this._key = null;
+      this.keySchedule = null;
+      this.inputBuffer = [];
+      this.BlockSize = 16;
+      this.KeySize = 0;
+    }
+
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
+        this.keySchedule = null;
+        this.KeySize = 0;
+        return;
+      }
+
+      if (![16, 24, 32].includes(keyBytes.length)) {
+        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16, 24, or 32 bytes)`);
+      }
+
+      this._key = [...keyBytes];
+      this.KeySize = keyBytes.length;
+      this._generateKeySchedule(keyBytes);
+    }
+
+    get key() {
+      return this._key ? [...this._key] : null;
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!this.key) throw new Error("Key not set");
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      if (!this.key) throw new Error("Key not set");
+      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+
+      if (this.inputBuffer.length % this.BlockSize !== 0) {
+        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+      }
+
+      const output = [];
+
+      for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
+        const block = this.inputBuffer.slice(i, i + this.BlockSize);
+        const processedBlock = this.isInverse
+          ? this._decryptBlock(block)
+          : this._encryptBlock(block);
+        output.push(...processedBlock);
+      }
+
+      this.inputBuffer = [];
+
+      return output;
+    }
+
+    _generateKeySchedule(keyBytes) {
+      const c = Math.floor((keyBytes.length + 3) / 4);
+
+      this.keySchedule = new Array(RC6Algorithm.KEY_SCHEDULE_SIZE);
+      this.keySchedule[0] = RC_MAGIC_P | 0;
+      for (let k = 1; k < RC6Algorithm.KEY_SCHEDULE_SIZE; k++) {
+        this.keySchedule[k] = (this.keySchedule[k - 1] + RC_MAGIC_Q) | 0;
+      }
+
+      const L = new Array(Math.max(c, 1));
+      for (let i = 0; i < L.length; i++) {
+        L[i] = 0;
+      }
+
+      for (let i = keyBytes.length - 1; i >= 0; i--) {
+        const wordIndex = Math.floor(i / 4);
+        L[wordIndex] = ((L[wordIndex] << 8) + (keyBytes[i] & 0xff)) | 0;
+      }
+
+      let iter;
+      if (L.length > this.keySchedule.length) {
+        iter = 3 * L.length;
+      } else {
+        iter = 3 * this.keySchedule.length;
+      }
+
+      let A = 0, B = 0;
+      let ii = 0, jj = 0;
+
+      for (let k = 0; k < iter; k++) {
+        A = this.keySchedule[ii] = rotLeft32Signed((this.keySchedule[ii] + A + B) | 0, 3);
+        B = L[jj] = rotLeft32Signed((L[jj] + A + B) | 0, (A + B) & 31);
+
+        ii = (ii + 1) % this.keySchedule.length;
+        jj = (jj + 1) % L.length;
+      }
+
+      OpCodes.ClearArray(L);
+    }
+
+    _encryptBlock(plainBytes) {
+      if (plainBytes.length !== 16) {
+        throw new Error(`Invalid block size: ${plainBytes.length} bytes`);
+      }
+
+      let A = OpCodes.Pack32LE(plainBytes[0], plainBytes[1], plainBytes[2], plainBytes[3]);
+      let B = OpCodes.Pack32LE(plainBytes[4], plainBytes[5], plainBytes[6], plainBytes[7]);
+      let C = OpCodes.Pack32LE(plainBytes[8], plainBytes[9], plainBytes[10], plainBytes[11]);
+      let D = OpCodes.Pack32LE(plainBytes[12], plainBytes[13], plainBytes[14], plainBytes[15]);
+
+      B = (B + this.keySchedule[0]) | 0;
+      D = (D + this.keySchedule[1]) | 0;
+
+      for (let i = 1; i <= RC6Algorithm.ROUNDS; i++) {
+        let t = 0, u = 0;
+
+        t = Math.imul(B, (2 * B + 1) | 0);
+        t = rotLeft32Signed(t, 5);
+
+        u = Math.imul(D, (2 * D + 1) | 0);
+        u = rotLeft32Signed(u, 5);
+
+        A = (A ^ t) | 0;
+        A = rotLeft32Signed(A, u & 31);
+        A = (A + this.keySchedule[2 * i]) | 0;
+
+        C = (C ^ u) | 0;
+        C = rotLeft32Signed(C, t & 31);
+        C = (C + this.keySchedule[2 * i + 1]) | 0;
+
+        const temp = A;
+        A = B;
+        B = C;
+        C = D;
+        D = temp;
+      }
+
+      A = (A + this.keySchedule[2 * RC6Algorithm.ROUNDS + 2]) | 0;
+      C = (C + this.keySchedule[2 * RC6Algorithm.ROUNDS + 3]) | 0;
+
+      return [
+        ...OpCodes.Unpack32LE(A),
+        ...OpCodes.Unpack32LE(B),
+        ...OpCodes.Unpack32LE(C),
+        ...OpCodes.Unpack32LE(D)
+      ];
+    }
+
+    _decryptBlock(cipherBytes) {
+      if (cipherBytes.length !== 16) {
+        throw new Error(`Invalid block size: ${cipherBytes.length} bytes`);
+      }
+
+      let A = OpCodes.Pack32LE(cipherBytes[0], cipherBytes[1], cipherBytes[2], cipherBytes[3]);
+      let B = OpCodes.Pack32LE(cipherBytes[4], cipherBytes[5], cipherBytes[6], cipherBytes[7]);
+      let C = OpCodes.Pack32LE(cipherBytes[8], cipherBytes[9], cipherBytes[10], cipherBytes[11]);
+      let D = OpCodes.Pack32LE(cipherBytes[12], cipherBytes[13], cipherBytes[14], cipherBytes[15]);
+
+      C = (C - this.keySchedule[2 * RC6Algorithm.ROUNDS + 3]) | 0;
+      A = (A - this.keySchedule[2 * RC6Algorithm.ROUNDS + 2]) | 0;
+
+      for (let i = RC6Algorithm.ROUNDS; i >= 1; i--) {
+        let t = 0, u = 0;
+
+        const temp = D;
+        D = C;
+        C = B;
+        B = A;
+        A = temp;
+
+        t = Math.imul(B, (2 * B + 1) | 0);
+        t = rotLeft32Signed(t, 5);
+
+        u = Math.imul(D, (2 * D + 1) | 0);
+        u = rotLeft32Signed(u, 5);
+
+        C = (C - this.keySchedule[2 * i + 1]) | 0;
+        C = rotRight32Signed(C, t & 31);
+        C = (C ^ u) | 0;
+
+        A = (A - this.keySchedule[2 * i]) | 0;
+        A = rotRight32Signed(A, u & 31);
+        A = (A ^ t) | 0;
+      }
+
+      D = (D - this.keySchedule[1]) | 0;
+      B = (B - this.keySchedule[0]) | 0;
+
+      return [
+        ...OpCodes.Unpack32LE(A),
+        ...OpCodes.Unpack32LE(B),
+        ...OpCodes.Unpack32LE(C),
+        ...OpCodes.Unpack32LE(D)
+      ];
+    }
+  }
+
+  // ===== REGISTRATION =====
+
+  const rc2Instance = new RC2Algorithm();
+  if (!AlgorithmFramework.Find(rc2Instance.name)) {
+    RegisterAlgorithm(rc2Instance);
+  }
+
+  const rc5Instance = new RC5Algorithm();
+  if (!AlgorithmFramework.Find(rc5Instance.name)) {
+    RegisterAlgorithm(rc5Instance);
+  }
+
+  const rc6Instance = new RC6Algorithm();
+  if (!AlgorithmFramework.Find(rc6Instance.name)) {
+    RegisterAlgorithm(rc6Instance);
+  }
+
+  // ===== EXPORTS =====
+
+  return {
+    RC2Algorithm, RC2Instance,
+    RC5Algorithm, RC5Instance,
+    RC6Algorithm, RC6Instance
+  };
+}));

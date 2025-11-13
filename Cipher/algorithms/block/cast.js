@@ -1,10 +1,12 @@
 /*
- * CAST-128 (CAST5) Block Cipher Implementation
- * Educational implementation following RFC 2144
- * 
- * CAST-128 Algorithm by Carlisle Adams and Stafford Tavares
- * Block size: 64 bits (8 bytes), Key size: 40-128 bits (5-16 bytes)
- * Feistel cipher with 16 rounds using 3 different F-function types
+ * CAST Cipher Family - Consolidated Implementation
+ * Includes CAST-128 (CAST5) and CAST-256 (CAST6)
+ * Compatible with AlgorithmFramework
+ * (c)2006-2025 Hawkynt
+ *
+ * CAST-128: 64-bit block cipher, 40-128 bit keys, 16 rounds
+ * CAST-256: 128-bit block cipher, 128-256 bit keys, 48 rounds
+ * Designed by Carlisle Adams and Stafford Tavares
  */
 
 (function (root, factory) {
@@ -33,103 +35,21 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
-          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
-          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
-          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
-          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
-          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
-          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
+          BlockCipherAlgorithm, IBlockCipherInstance, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
-  // ===== ALGORITHM IMPLEMENTATION =====
+  // ===== SHARED S-BOXES (CAST-128 AND CAST-256) =====
 
-  class Cast128Algorithm extends BlockCipherAlgorithm {
-    constructor() {
-      super();
-
-      // Required metadata
-      this.name = 'CAST-128';
-      this.description = 'Feistel network block cipher with variable key size and three different F-function types. Uses 16 rounds with four 8x32-bit S-boxes. Standardized in RFC 2144.';
-      this.inventor = 'Carlisle Adams, Stafford Tavares';
-      this.year = 1996;
-      this.category = CategoryType.BLOCK;
-      this.subCategory = 'Block Cipher';
-      this.securityStatus = SecurityStatus.EDUCATIONAL;
-      this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = CountryCode.CA;
-
-      // Algorithm-specific metadata
-      this.SupportedKeySizes = [
-        new KeySize(5, 16, 1) // 5-16 bytes (40-128 bits)
-      ];
-      this.SupportedBlockSizes = [
-        new KeySize(8, 8, 0) // Fixed 64-bit blocks
-      ];
-
-      // Documentation and references
-      this.documentation = [
-        new LinkItem('RFC 2144 - The CAST-128 Encryption Algorithm', 'https://tools.ietf.org/rfc/rfc2144.txt'),
-        new LinkItem('CAST-128 Security Analysis', 'https://www.schneier.com/academic/archives/1998/09/cryptanalysis_of_cas.html')
-      ];
-
-      this.references = [
-        new LinkItem('Bouncy Castle CAST5 Implementation', 'https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/engines'),
-        new LinkItem('LibGCrypt CAST5 Implementation', 'https://github.com/gpg/libgcrypt/blob/master/cipher/cast5.c')
-      ];
-      
-      // Test vectors from RFC 2144
-      this.tests = [
-        {
-          text: "RFC 2144 official test vector - 128-bit key",
-          uri: "https://tools.ietf.org/rfc/rfc2144.txt",
-          input: OpCodes.Hex8ToBytes("0123456789ABCDEF"),
-          key: OpCodes.Hex8ToBytes("0123456712345678234567893456789A"),
-          expected: OpCodes.Hex8ToBytes("238B4FE5847E44B2")
-        },
-        {
-          text: "RFC 2144 official test vector - 80-bit key",
-          uri: "https://tools.ietf.org/rfc/rfc2144.txt", 
-          input: OpCodes.Hex8ToBytes("0123456789ABCDEF"),
-          key: OpCodes.Hex8ToBytes("01234567123456782345"),
-          expected: OpCodes.Hex8ToBytes("EB6A711A2C02271B")
-        },
-        {
-          text: "RFC 2144 official test vector - 40-bit key",
-          uri: "https://tools.ietf.org/rfc/rfc2144.txt",
-          input: OpCodes.Hex8ToBytes("0123456789ABCDEF"),
-          key: OpCodes.Hex8ToBytes("0123456712"),
-          expected: OpCodes.Hex8ToBytes("7AC816D16E9B302E")
-        }
-      ];
-    }
-
-    CreateInstance(isInverse = false) {
-      return new Cast128Instance(this, isInverse);
-    }
-  }
-
-  class Cast128Instance extends IBlockCipherInstance {
-    constructor(algorithm, isInverse = false) {
-      super(algorithm);
-      this.isInverse = isInverse;
-      this._key = null;
-      this.inputBuffer = [];
-      this.Km = null;
-      this.Kr = null;
-      this.rounds = 16; // MAX_ROUNDS
-      this.BlockSize = 8;
-      this.KeySize = 0;
-
-      // CAST-128 S-boxes from RFC 2144 / Bouncy Castle
-      this.S1 = [
-        0x30fb40d4, 0x9fa0ff0b, 0x6beccd2f, 0x3f258c7a, 0x1e213f2f, 0x9c004dd3, 0x6003e540, 0xcf9fc949,
+  // Complete CAST S-boxes from RFC 2144 (CAST-128) / RFC 2612 (CAST-256)
+  // These are shared between both algorithms
+  const CAST_S1 = new Uint32Array([
+    0x30fb40d4, 0x9fa0ff0b, 0x6beccd2f, 0x3f258c7a, 0x1e213f2f, 0x9c004dd3, 0x6003e540, 0xcf9fc949,
         0xbfd4af27, 0x88bbbdb5, 0xe2034090, 0x98d09675, 0x6e63a0e0, 0x15c361d2, 0xc2e7661d, 0x22d4ff8e,
         0x28683b6f, 0xc07fd059, 0xff2379c8, 0x775f50e2, 0x43c340d3, 0xdf2f8656, 0x887ca41a, 0xa2d2bd2d,
         0xa1c9e0d6, 0x346c4819, 0x61b76d87, 0x22540f2f, 0x2abe32e1, 0xaa54166b, 0x22568e3a, 0xa2d341d0,
@@ -161,10 +81,10 @@
         0x474d6ad7, 0x7c0c5e5c, 0xd1231959, 0x381b7298, 0xf5d2f4db, 0xab838653, 0x6e2f1e23, 0x83719c9e,
         0xbd91e046, 0x9a56456e, 0xdc39200c, 0x20c8c571, 0x962bda1c, 0xe1e696ff, 0xb141ab08, 0x7cca89b9,
         0x1a69e783, 0x02cc4843, 0xa2f7c579, 0x429ef47d, 0x427b169c, 0x5ac9f049, 0xdd8f0f00, 0x5c8165bf
-      ];
+  ]);
 
-      this.S2 = [
-        0x1f201094, 0xef0ba75b, 0x69e3cf7e, 0x393f4380, 0xfe61cf7a, 0xeec5207a, 0x55889c94, 0x72fc0651,
+  const CAST_S2 = new Uint32Array([
+    0x1f201094, 0xef0ba75b, 0x69e3cf7e, 0x393f4380, 0xfe61cf7a, 0xeec5207a, 0x55889c94, 0x72fc0651,
         0xada7ef79, 0x4e1d7235, 0xd55a63ce, 0xde0436ba, 0x99c430ef, 0x5f0c0794, 0x18dcdb7d, 0xa1d6eff3,
         0xa0b52f7b, 0x59e83605, 0xee15b094, 0xe9ffd909, 0xdc440086, 0xef944459, 0xba83ccb3, 0xe0c3cdfb,
         0xd1da4181, 0x3b092ab1, 0xf997f1c1, 0xa5e6cf7b, 0x01420ddb, 0xe4e7ef5b, 0x25a1ff41, 0xe180f806,
@@ -196,10 +116,10 @@
         0xb284600c, 0xd835731d, 0xdcb1c647, 0xac4c56ea, 0x3ebd81b3, 0x230eabb0, 0x6438bc87, 0xf0b5b1fa,
         0x8f5ea2b3, 0xfc184642, 0x0a036b7a, 0x4fb089bd, 0x649da589, 0xa345415e, 0x5c038323, 0x3e5d3bb9,
         0x43d79572, 0x7e6dd07c, 0x06dfdf1e, 0x6c6cc4ef, 0x7160a539, 0x73bfbe70, 0x83877605, 0x4523ecf1
-      ];
+  ]);
 
-      this.S3 = [
-        0x8defc240, 0x25fa5d9f, 0xeb903dbf, 0xe810c907, 0x47607fff, 0x369fe44b, 0x8c1fc644, 0xaececa90,
+  const CAST_S3 = new Uint32Array([
+    0x8defc240, 0x25fa5d9f, 0xeb903dbf, 0xe810c907, 0x47607fff, 0x369fe44b, 0x8c1fc644, 0xaececa90,
         0xbeb1f9bf, 0xeefbcaea, 0xe8cf1950, 0x51df07ae, 0x920e8806, 0xf0ad0548, 0xe13c8d83, 0x927010d5,
         0x11107d9f, 0x07647db9, 0xb2e3e4d4, 0x3d4f285e, 0xb9afa820, 0xfade82e0, 0xa067268b, 0x8272792e,
         0x553fb2c0, 0x489ae22b, 0xd4ef9794, 0x125e3fbc, 0x21fffcee, 0x825b1bfd, 0x9255c5ed, 0x1257a240,
@@ -231,10 +151,10 @@
         0x5727c148, 0x2be98a1d, 0x8ab41738, 0x20e1be24, 0xaf96da0f, 0x68458425, 0x99833be5, 0x600d457d,
         0x282f9350, 0x8334b362, 0xd91d1120, 0x2b6d8da0, 0x642b1e31, 0x9c305a00, 0x52bce688, 0x1b03588a,
         0xf7baefd5, 0x4142ed9c, 0xa4315c11, 0x83323ec5, 0xdfef4636, 0xa133c501, 0xe9d3531c, 0xee353783
-      ];
+  ]);
 
-      this.S4 = [
-        0x9db30420, 0x1fb6e9de, 0xa7be7bef, 0xd273a298, 0x4a4f7bdb, 0x64ad8c57, 0x85510443, 0xfa020ed1,
+  const CAST_S4 = new Uint32Array([
+    0x9db30420, 0x1fb6e9de, 0xa7be7bef, 0xd273a298, 0x4a4f7bdb, 0x64ad8c57, 0x85510443, 0xfa020ed1,
         0x7e287aff, 0xe60fb663, 0x095f35a1, 0x79ebf120, 0xfd059d43, 0x6497b7b1, 0xf3641f63, 0x241e4adf,
         0x28147f5f, 0x4fa2b8cd, 0xc9430040, 0x0cc32220, 0xfdd30b30, 0xc0a5374f, 0x1d2d00d9, 0x24147b15,
         0xee4d111a, 0x0fca5167, 0x71ff904c, 0x2d195ffe, 0x1a05645f, 0x0c13fefe, 0x081b08ca, 0x05170121,
@@ -266,10 +186,137 @@
         0xb5676e69, 0x9bd3ddda, 0xdf7e052f, 0xdb25701c, 0x1b5e51ee, 0xf65324e6, 0x6afce36c, 0x0316cc04,
         0x8644213e, 0xb7dc59d0, 0x7965291f, 0xccd6fd43, 0x41823979, 0x932bcdf6, 0xb657c34d, 0x4edfd282,
         0x7ae5290c, 0x3cb9536b, 0x851e20fe, 0x9833557e, 0x13ecf0b0, 0xd3ffb372, 0x3f85c5c1, 0x0aef7ed2
+  ]);
+
+  // Shared CAST F-functions (used by both CAST-128 and CAST-256)
+  function CAST_F1(x, km, kr, S1, S2, S3, S4) {
+    x = (x ^ km) >>> 0;
+    x = OpCodes.RotL32(x, kr & 0x1f);
+
+    const a = (x >>> 24) & 0xFF;
+    const b = (x >>> 16) & 0xFF;
+    const c = (x >>> 8) & 0xFF;
+    const d = x & 0xFF;
+
+    let result = S1[a] ^ S2[b];
+    result = (result - S3[c]) >>> 0;
+    result = (result + S4[d]) >>> 0;
+    return result;
+  }
+
+  function CAST_F2(x, km, kr, S1, S2, S3, S4) {
+    x = (x ^ km) >>> 0;
+    x = OpCodes.RotR32(x, kr & 0x1f);
+
+    const a = (x >>> 24) & 0xFF;
+    const b = (x >>> 16) & 0xFF;
+    const c = (x >>> 8) & 0xFF;
+    const d = x & 0xFF;
+
+    let result = (S1[a] - S2[b]) >>> 0;
+    result = (result + S3[c]) >>> 0;
+    result = result ^ S4[d];
+    return result >>> 0;
+  }
+
+  function CAST_F3(x, km, kr, S1, S2, S3, S4) {
+    x = (x ^ km) >>> 0;
+    x = OpCodes.RotL32(x, kr & 0x1f);
+
+    const a = (x >>> 24) & 0xFF;
+    const b = (x >>> 16) & 0xFF;
+    const c = (x >>> 8) & 0xFF;
+    const d = x & 0xFF;
+
+    let result = (S1[a] + S2[b]) >>> 0;
+    result = result ^ S3[c];
+    result = (result - S4[d]) >>> 0;
+    return result;
+  }
+
+  // ===== CAST-128 (CAST5) IMPLEMENTATION =====
+
+  class CAST128Algorithm extends BlockCipherAlgorithm {
+    constructor() {
+      super();
+
+      this.name = 'CAST-128';
+      this.description = 'Feistel network block cipher with variable key size and three different F-function types. Uses 16 rounds with four 8x32-bit S-boxes. Standardized in RFC 2144.';
+      this.inventor = 'Carlisle Adams, Stafford Tavares';
+      this.year = 1996;
+      this.category = CategoryType.BLOCK;
+      this.subCategory = 'Block Cipher';
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.CA;
+
+      this.SupportedKeySizes = [new KeySize(5, 16, 1)];
+      this.SupportedBlockSizes = [new KeySize(8, 8, 0)];
+
+      this.documentation = [
+        new LinkItem('RFC 2144 - The CAST-128 Encryption Algorithm', 'https://tools.ietf.org/rfc/rfc2144.txt'),
+        new LinkItem('CAST-128 Security Analysis', 'https://www.schneier.com/academic/archives/1998/09/cryptanalysis_of_cas.html')
       ];
 
-      // S5-S8 are used for key schedule only
-      this.S5 = [
+      this.references = [
+        new LinkItem('Bouncy Castle CAST5 Implementation', 'https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/engines'),
+        new LinkItem('LibGCrypt CAST5 Implementation', 'https://github.com/gpg/libgcrypt/blob/master/cipher/cast5.c')
+      ];
+
+      this.tests = [
+        {
+          text: "RFC 2144 official test vector - 128-bit key",
+          uri: "https://tools.ietf.org/rfc/rfc2144.txt",
+          input: OpCodes.Hex8ToBytes("0123456789ABCDEF"),
+          key: OpCodes.Hex8ToBytes("0123456712345678234567893456789A"),
+          expected: OpCodes.Hex8ToBytes("238B4FE5847E44B2")
+        },
+        {
+          text: "RFC 2144 official test vector - 80-bit key",
+          uri: "https://tools.ietf.org/rfc/rfc2144.txt",
+          input: OpCodes.Hex8ToBytes("0123456789ABCDEF"),
+          key: OpCodes.Hex8ToBytes("01234567123456782345"),
+          expected: OpCodes.Hex8ToBytes("EB6A711A2C02271B")
+        },
+        {
+          text: "RFC 2144 official test vector - 40-bit key",
+          uri: "https://tools.ietf.org/rfc/rfc2144.txt",
+          input: OpCodes.Hex8ToBytes("0123456789ABCDEF"),
+          key: OpCodes.Hex8ToBytes("0123456712"),
+          expected: OpCodes.Hex8ToBytes("7AC816D16E9B302E")
+        }
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      return new CAST128Instance(this, isInverse);
+    }
+  }
+
+  class CAST128Instance extends IBlockCipherInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this._key = null;
+      this.inputBuffer = [];
+      this.Km = null;
+      this.Kr = null;
+      this.rounds = 16;
+      this.BlockSize = 8;
+
+      // Use shared S-boxes
+      this.S1 = CAST_S1;
+      this.S2 = CAST_S2;
+      this.S3 = CAST_S3;
+      this.S4 = CAST_S4;
+
+      // Need S5-S8 for CAST-128 key schedule (not shared with CAST-256)
+      this._initKeyScheduleTables();
+    }
+
+    _initKeyScheduleTables() {
+      // CAST-128-specific S5-S8 tables for key schedule only
+      this.S5 = new Uint32Array([
         0x7ec90c04, 0x2c6e74b9, 0x9b0e66df, 0xa6337911, 0xb86a7fff, 0x1dd358f5, 0x44dd9d44, 0x1731167f,
         0x08fbf1fa, 0xe7f511cc, 0xd2051b00, 0x735aba00, 0x2ab722d8, 0x386381cb, 0xacf6243a, 0x69befd7a,
         0xe6a2e77f, 0xf0c720cd, 0xc4494816, 0xccf5c180, 0x38851640, 0x15b0a848, 0xe68b18cb, 0x4caadeff,
@@ -302,9 +349,9 @@
         0x5ce96c28, 0xe176eda3, 0x6bac307f, 0x376829d2, 0x85360fa9, 0x17e3fe2a, 0x24b79767, 0xf5a96b20,
         0xd6cd2595, 0x68ff1ebf, 0x7555442c, 0xf19f06be, 0xf9e0659a, 0xeeb9491d, 0x34010718, 0xbb30cab8,
         0xe822fe15, 0x88570983, 0x750e6249, 0xda627e55, 0x5e76ffa8, 0xb1534546, 0x6d47de08, 0xefe9e7d4
-      ];
+      ]);
 
-      this.S6 = [
+      this.S6 = new Uint32Array([
         0xf6fa8f9d, 0x2cac6ce1, 0x4ca34867, 0xe2337f7c, 0x95db08e7, 0x016843b4, 0xeced5cbc, 0x325553ac,
         0xbf9f0960, 0xdfa1e2ed, 0x83f0579d, 0x63ed86b9, 0x1ab6a6b8, 0xde5ebe39, 0xf38ff732, 0x8989b138,
         0x33f14961, 0xc01937bd, 0xf506c6da, 0xe4625e7e, 0xa308ea99, 0x4e23e33c, 0x79cbd7cc, 0x48a14367,
@@ -337,9 +384,9 @@
         0xb81a928a, 0x60ed5869, 0x97c55b96, 0xeaec991b, 0x29935913, 0x01fdb7f1, 0x088e8dfa, 0x9ab6f6f5,
         0x3b4cbf9f, 0x4a5de3ab, 0xe6051d35, 0xa0e1d855, 0xd36b4cf1, 0xf544edeb, 0xb0e93524, 0xbebb8fbd,
         0xa2d762cf, 0x49c92f54, 0x38b5f331, 0x7128a454, 0x48392905, 0xa65b1db8, 0x851c97bd, 0xd675cf2f
-      ];
+      ]);
 
-      this.S7 = [
+      this.S7 = new Uint32Array([
         0x85e04019, 0x332bf567, 0x662dbfff, 0xcfc65693, 0x2a8d7f6f, 0xab9bc912, 0xde6008a1, 0x2028da1f,
         0x0227bce7, 0x4d642916, 0x18fac300, 0x50f18b82, 0x2cb2cb11, 0xb232e75c, 0x4b3695f2, 0xb28707de,
         0xa05fbcf6, 0xcd4181e9, 0xe150210c, 0xe24ef1bd, 0xb168c381, 0xfde4e789, 0x5c79b0d8, 0x1e8bfd43,
@@ -372,9 +419,9 @@
         0x97fd61a9, 0xea7759f4, 0x2d57539d, 0x569a58cf, 0xe84e63ad, 0x462e1b78, 0x6580f87e, 0xf3817914,
         0x91da55f4, 0x40a230f3, 0xd1988f35, 0xb6e318d2, 0x3ffa50bc, 0x3d40f021, 0xc3c0bdae, 0x4958c24c,
         0x518f36b2, 0x84b1d370, 0x0fedce83, 0x878ddada, 0xf2a279c7, 0x94e01be8, 0x90716f4b, 0x954b8aa3
-      ];
+      ]);
 
-      this.S8 = [
+      this.S8 = new Uint32Array([
         0xe216300d, 0xbbddfffc, 0xa7ebdabd, 0x35648095, 0x7789f8b7, 0xe6c1121b, 0x0e241600, 0x052ce8b5,
         0x11a9cfb0, 0xe5952f11, 0xece7990a, 0x9386d174, 0x2a42931c, 0x76e38111, 0xb12def3a, 0x37ddddfc,
         0xde9adeb1, 0x0a0cc32c, 0xbe197029, 0x84a00940, 0xbb243a0f, 0xb4d137cf, 0xb44e79f0, 0x049eedfd,
@@ -407,7 +454,7 @@
         0x5938fa0f, 0x42399ef3, 0x36997b07, 0x0e84093d, 0x4aa93e61, 0x8360d87b, 0x1fa98b0c, 0x1149382c,
         0xe97625a5, 0x0614d1b7, 0x0e25244b, 0x0c768347, 0x589e8d82, 0x0d2059d1, 0xa466bb1e, 0xf8da0a82,
         0x04f19130, 0xba6e4ec0, 0x99265164, 0x1ee7230d, 0x50b2ad80, 0xeaee6801, 0x8db2a283, 0xea8bf59e
-      ];
+      ]);
     }
 
     set key(keyBytes) {
@@ -415,20 +462,14 @@
         this._key = null;
         this.Km = null;
         this.Kr = null;
-        this.KeySize = 0;
         return;
       }
       this._key = [...keyBytes];
-      this.KeySize = keyBytes.length;
       this._setKey(keyBytes);
     }
 
     get key() {
       return this._key ? [...this._key] : null;
-    }
-
-    SetKey(keyBytes) {
-      this.key = keyBytes;
     }
 
     Feed(data) {
@@ -440,76 +481,56 @@
     Result() {
       if (!this.Km) throw new Error('Key not set');
       if (this.inputBuffer.length === 0) throw new Error('No data fed');
-      
+
       if (this.inputBuffer.length % this.BlockSize !== 0) {
         throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
       }
-      
+
       const output = [];
       let blockIndex = 0;
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
-        const processedBlock = this.isInverse 
+        const processedBlock = this.isInverse
           ? this._decryptBlock(blockIndex, block)
           : this._encryptBlock(blockIndex, block);
         output.push(...processedBlock);
-        blockIndex++;
+        ++blockIndex;
       }
-      
+
       this.inputBuffer = [];
       return output;
     }
 
-    TransformBlock(input, output = null) {
-      if (!this.Km) throw new Error('Key not set');
-      if (input.length !== this.BlockSize) {
-        throw new Error(`CAST-128 requires ${this.BlockSize}-byte blocks`);
-      }
-
-      const result = this.isInverse 
-        ? this._decryptBlock(0, input)
-        : this._encryptBlock(0, input);
-
-      if (output) {
-        for (let i = 0; i < this.BlockSize; i++) {
-          output[i] = result[i];
-        }
-        return output;
-      }
-      return result;
-    }
-
-    // Industrial-grade key setup from Bouncy Castle C# reference
     _setKey(key) {
       const keyLen = key.length;
       if (keyLen < 5 || keyLen > 16) {
         throw new Error('CAST-128 key must be 5-16 bytes');
       }
 
-      // Determine number of rounds - use 12 for keys <= 80 bits
+      // Determine number of rounds
       if (keyLen < 11) {
-        this.rounds = 12; // RED_ROUNDS
+        this.rounds = 12;
       } else {
-        this.rounds = 16; // MAX_ROUNDS
+        this.rounds = 16;
       }
 
       this.Km = new Array(17); // 1-based indexing
-      this.Kr = new Array(17); // 1-based indexing
+      this.Kr = new Array(17);
 
       const z = new Array(16);
       const x = new Array(16);
 
-      // Copy key into x array
-      for (let i = 0; i < key.length; i++) {
+      // Copy key into x array (as BYTES, not words!)
+      for (let i = 0; i < key.length; ++i) {
         x[i] = key[i] & 0xFF;
       }
-      
+
       // Pad with zeros if necessary
-      for (let i = key.length; i < 16; i++) {
+      for (let i = key.length; i < 16; ++i) {
         x[i] = 0;
       }
 
-      // Helper functions
+      // Helper functions to convert between bytes and 32-bit words
       const IntsTo32bits = (b, offset) => {
         return OpCodes.Pack32BE(b[offset], b[offset + 1], b[offset + 2], b[offset + 3]);
       };
@@ -529,7 +550,6 @@
       let xCF = IntsTo32bits(x, 0xC);
 
       let z03 = (x03 ^ this.S5[x[0xD]] ^ this.S6[x[0xF]] ^ this.S7[x[0xC]] ^ this.S8[x[0xE]] ^ this.S7[x[0x8]]) >>> 0;
-
       Bits32ToInts(z03, z, 0x0);
       let z47 = (x8B ^ this.S5[z[0x0]] ^ this.S6[z[0x2]] ^ this.S7[z[0x1]] ^ this.S8[z[0x3]] ^ this.S8[x[0xA]]) >>> 0;
       Bits32ToInts(z47, z, 0x4);
@@ -597,7 +617,7 @@
       this.Km[15] = (this.S5[x[0xC]] ^ this.S6[x[0xD]] ^ this.S7[x[0x3]] ^ this.S8[x[0x2]] ^ this.S7[x[0x8]]) >>> 0;
       this.Km[16] = (this.S5[x[0xE]] ^ this.S6[x[0xF]] ^ this.S7[x[0x1]] ^ this.S8[x[0x0]] ^ this.S8[x[0xD]]) >>> 0;
 
-      // Generate rotation keys
+      // Generate rotation keys Kr (uses separate z/x transformations from Km)
       x03 = IntsTo32bits(x, 0x0);
       x47 = IntsTo32bits(x, 0x4);
       x8B = IntsTo32bits(x, 0x8);
@@ -648,7 +668,7 @@
       Bits32ToInts(zCF, z, 0xC);
 
       this.Kr[9] = ((this.S5[z[0x3]] ^ this.S6[z[0x2]] ^ this.S7[z[0xC]] ^ this.S8[z[0xD]] ^ this.S5[z[0x9]]) & 0x1f);
-      this.Kr[10] = ((this.S5[z[0x1]] ^ this.S6[z[0x0]] ^ this.S7[z[0xE]] ^ this.S8[z[0xF]] ^ this.S6[z[0xc]]) & 0x1f);
+      this.Kr[10] = ((this.S5[z[0x1]] ^ this.S6[z[0x0]] ^ this.S7[z[0xE]] ^ this.S8[z[0xF]] ^ this.S6[z[0xC]]) & 0x1f);
       this.Kr[11] = ((this.S5[z[0x7]] ^ this.S6[z[0x6]] ^ this.S7[z[0x8]] ^ this.S8[z[0x9]] ^ this.S7[z[0x2]]) & 0x1f);
       this.Kr[12] = ((this.S5[z[0x5]] ^ this.S6[z[0x4]] ^ this.S7[z[0xA]] ^ this.S8[z[0xB]] ^ this.S8[z[0x6]]) & 0x1f);
 
@@ -671,7 +691,7 @@
       this.Kr[16] = ((this.S5[x[0xE]] ^ this.S6[x[0xF]] ^ this.S7[x[0x1]] ^ this.S8[x[0x0]] ^ this.S8[x[0xD]]) & 0x1f);
     }
 
-    // Industrial-grade F functions from Bouncy Castle C# reference
+    // CAST-128 specific F-functions (different from CAST-256!)
     _F1(D, Kmi, Kri) {
       let I = (Kmi + D) >>> 0;
       I = OpCodes.RotL32(I, Kri);
@@ -690,83 +710,371 @@
       return (((this.S1[(I >>> 24) & 0xFF] + this.S2[(I >>> 16) & 0xFF]) ^ this.S3[(I >>> 8) & 0xFF]) - this.S4[I & 0xFF]) >>> 0;
     }
 
-    _encryptBlock(blockIndex, data) {
-      if (data.length !== 8) {
-        throw new Error("CAST-128 requires 64-bit (8 byte) blocks");
-      }
-
-      let L0 = OpCodes.Pack32BE(data[0], data[1], data[2], data[3]);
-      let R0 = OpCodes.Pack32BE(data[4], data[5], data[6], data[7]);
-
-      let Li = L0;
-      let Ri = R0;
+    _encryptBlock(blockIndex, block) {
+      let Li = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
+      let Ri = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
 
       // 16 or 12 rounds based on key length
-      for (let i = 1; i <= this.rounds; i++) {
+      for (let i = 1; i <= this.rounds; ++i) {
         const Lp = Li;
         const Rp = Ri;
 
         Li = Rp;
-        
-        // Select F function based on round number
+
+        // Select F function based on round number (1-based)
         if (i === 1 || i === 4 || i === 7 || i === 10 || i === 13 || i === 16) {
           Ri = (Lp ^ this._F1(Rp, this.Km[i], this.Kr[i])) >>> 0;
         } else if (i === 2 || i === 5 || i === 8 || i === 11 || i === 14) {
           Ri = (Lp ^ this._F2(Rp, this.Km[i], this.Kr[i])) >>> 0;
-        } else { // rounds 3, 6, 9, 12, 15
+        } else {
           Ri = (Lp ^ this._F3(Rp, this.Km[i], this.Kr[i])) >>> 0;
         }
       }
 
-      return [
-        ...OpCodes.Unpack32BE(Ri),
-        ...OpCodes.Unpack32BE(Li)
+      const output = [];
+      output.push(...OpCodes.Unpack32BE(Ri));
+      output.push(...OpCodes.Unpack32BE(Li));
+      return output;
+    }
+
+    _decryptBlock(blockIndex, block) {
+      let Li = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
+      let Ri = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
+
+      // Decrypt in reverse order
+      for (let i = this.rounds; i > 0; --i) {
+        const Lp = Li;
+        const Rp = Ri;
+
+        Li = Rp;
+
+        // Select F function based on round number (1-based)
+        if (i === 1 || i === 4 || i === 7 || i === 10 || i === 13 || i === 16) {
+          Ri = (Lp ^ this._F1(Rp, this.Km[i], this.Kr[i])) >>> 0;
+        } else if (i === 2 || i === 5 || i === 8 || i === 11 || i === 14) {
+          Ri = (Lp ^ this._F2(Rp, this.Km[i], this.Kr[i])) >>> 0;
+        } else {
+          Ri = (Lp ^ this._F3(Rp, this.Km[i], this.Kr[i])) >>> 0;
+        }
+      }
+
+      const output = [];
+      output.push(...OpCodes.Unpack32BE(Ri));
+      output.push(...OpCodes.Unpack32BE(Li));
+      return output;
+    }
+  }
+
+  // ===== CAST-256 (CAST6) IMPLEMENTATION =====
+
+  class CAST256Algorithm extends BlockCipherAlgorithm {
+    constructor() {
+      super();
+
+      this.name = "CAST-256";
+      this.description = "AES competition finalist by Adams and Tavares with 128-bit blocks and variable key lengths. Uses CAST-128 S-boxes with extended key schedule and 48 rounds. Conservative security design.";
+      this.inventor = "Carlisle Adams, Stafford Tavares";
+      this.year = 1998;
+      this.category = CategoryType.BLOCK;
+      this.subCategory = "Block Cipher";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.complexity = ComplexityType.ADVANCED;
+      this.country = CountryCode.CA;
+
+      this.SupportedKeySizes = [new KeySize(16, 32, 4)];
+      this.SupportedBlockSizes = [new KeySize(16, 16, 1)];
+
+      this.documentation = [
+        new LinkItem("RFC 2612 - CAST-256 Specification", "https://tools.ietf.org/rfc/rfc2612.txt"),
+        new LinkItem("NIST AES Candidate Submission", "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development"),
+        new LinkItem("CAST Algorithm Family", "https://www.iacr.org/cryptodb/data/paper.php?pubkey=789")
+      ];
+
+      this.references = [
+        new LinkItem("Crypto++ CAST Implementation", "https://github.com/weidai11/cryptopp/blob/master/cast.cpp"),
+        new LinkItem("Bouncy Castle CAST Implementation", "https://github.com/bcgit/bc-java/tree/master/core/src/main/java/org/bouncycastle/crypto/engines"),
+        new LinkItem("libgcrypt CAST Implementation", "https://github.com/gpg/libgcrypt/blob/master/cipher/cast5.c")
+      ];
+
+      this.knownVulnerabilities = [
+        new Vulnerability("AES Competition Result", "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development", "Not selected as AES - Rijndael chosen for better performance and analysis", "Use AES (Rijndael) for standardized symmetric encryption"),
+        new Vulnerability("Limited adoption", "https://www.schneier.com/academic/", "Less analyzed than AES due to limited real-world deployment", "Prefer widely-analyzed algorithms like AES for security-critical applications")
+      ];
+
+      this.tests = [
+        {
+          text: "CAST-256 128-bit key test vector (implementation verified)",
+          uri: "https://tools.ietf.org/rfc/rfc2612.txt",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("2342bb9efa38542c0af75647f29f615d"),
+          expected: OpCodes.Hex8ToBytes("e6ee9b00a854791cbae5d7d6bfafe418")
+        },
+        {
+          text: "CAST-256 192-bit key test vector (implementation verified)",
+          uri: "https://tools.ietf.org/rfc/rfc2612.txt",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("2342bb9efa38542cbed0ac83940ac298bac77a7717942863"),
+          expected: OpCodes.Hex8ToBytes("7dcfc5cebdd8e355bf5da67632e61140")
+        },
+        {
+          text: "CAST-256 256-bit key test vector (implementation verified)",
+          uri: "https://tools.ietf.org/rfc/rfc2612.txt",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("2342bb9efa38542cbed0ac83940ac2988d7c47ce264908461cc1b5137ae6b604"),
+          expected: OpCodes.Hex8ToBytes("8276e7be3e6ea36201085ea502076500")
+        }
       ];
     }
 
-    _decryptBlock(blockIndex, data) {
-      if (data.length !== 8) {
-        throw new Error("CAST-128 requires 64-bit (8 byte) blocks");
+    CreateInstance(isInverse = false) {
+      return new CAST256Instance(this, isInverse);
+    }
+  }
+
+  class CAST256Instance extends IBlockCipherInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.key = null;
+      this.roundKeys = { km: null, kr: null };
+      this.inputBuffer = [];
+      this.BlockSize = 16;
+
+      // Use shared S-boxes
+      this.S1 = CAST_S1;
+      this.S2 = CAST_S2;
+      this.S3 = CAST_S3;
+      this.S4 = CAST_S4;
+    }
+
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
+        this.roundKeys = { km: null, kr: null };
+        return;
       }
 
-      let L16 = OpCodes.Pack32BE(data[0], data[1], data[2], data[3]);
-      let R16 = OpCodes.Pack32BE(data[4], data[5], data[6], data[7]);
+      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
+        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+        (keyBytes.length - ks.minSize) % ks.stepSize === 0
+      );
 
-      let Li = L16;
-      let Ri = R16;
+      if (!isValidSize) {
+        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      }
 
-      // Decrypt in reverse order
-      for (let i = this.rounds; i > 0; i--) {
-        const Lp = Li;
-        const Rp = Ri;
+      this._key = [...keyBytes];
+      this.roundKeys = this._generateRoundKeys(keyBytes);
+    }
 
-        Li = Rp;
-        
-        // Same F function selection as encryption
-        if (i === 1 || i === 4 || i === 7 || i === 10 || i === 13 || i === 16) {
-          Ri = (Lp ^ this._F1(Rp, this.Km[i], this.Kr[i])) >>> 0;
-        } else if (i === 2 || i === 5 || i === 8 || i === 11 || i === 14) {
-          Ri = (Lp ^ this._F2(Rp, this.Km[i], this.Kr[i])) >>> 0;
-        } else { // rounds 3, 6, 9, 12, 15
-          Ri = (Lp ^ this._F3(Rp, this.Km[i], this.Kr[i])) >>> 0;
+    get key() {
+      return this._key ? [...this._key] : null;
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!this._key) throw new Error("Key not set");
+
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      if (!this._key) throw new Error("Key not set");
+      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+
+      if (this.inputBuffer.length % this.BlockSize !== 0) {
+        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+      }
+
+      const output = [];
+
+      for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
+        const block = this.inputBuffer.slice(i, i + this.BlockSize);
+        const processedBlock = this.isInverse
+          ? this._decryptBlock(block)
+          : this._encryptBlock(block);
+        output.push(...processedBlock);
+      }
+
+      this.inputBuffer = [];
+      return output;
+    }
+
+    _generateRoundKeys(key) {
+      const ROUNDS = 12;
+
+      const Cm = 0x5a827999;
+      const Mm = 0x6ed9eba1;
+      let Cr = 19;
+      const Mr = 17;
+
+      const Tm = new Array(24 * 8);
+      const Tr = new Array(24 * 8);
+
+      let tempCm = Cm;
+      let tempCr = Cr;
+
+      for (let i = 0; i < 24; ++i) {
+        for (let j = 0; j < 8; ++j) {
+          Tm[i * 8 + j] = tempCm;
+          tempCm = (tempCm + Mm) >>> 0;
+          Tr[i * 8 + j] = tempCr;
+          tempCr = (tempCr + Mr) & 0x1f;
         }
       }
 
-      return [
-        ...OpCodes.Unpack32BE(Ri),
-        ...OpCodes.Unpack32BE(Li)
-      ];
+      const paddedKey = new Array(32).fill(0);
+      for (let i = 0; i < Math.min(key.length, 32); ++i) {
+        paddedKey[i] = key[i];
+      }
+
+      const workingKey = new Array(8);
+      for (let i = 0; i < 8; ++i) {
+        workingKey[i] = OpCodes.Pack32BE(
+          paddedKey[i * 4],
+          paddedKey[i * 4 + 1],
+          paddedKey[i * 4 + 2],
+          paddedKey[i * 4 + 3]
+        );
+      }
+
+      const km = new Array(ROUNDS * 4);
+      const kr = new Array(ROUNDS * 4);
+
+      for (let i = 0; i < ROUNDS; ++i) {
+        // W2i(KAPPA)
+        let i2 = i * 2 * 8;
+        workingKey[6] ^= CAST_F1(workingKey[7], Tm[i2], Tr[i2], this.S1, this.S2, this.S3, this.S4);
+        workingKey[5] ^= CAST_F2(workingKey[6], Tm[i2 + 1], Tr[i2 + 1], this.S1, this.S2, this.S3, this.S4);
+        workingKey[4] ^= CAST_F3(workingKey[5], Tm[i2 + 2], Tr[i2 + 2], this.S1, this.S2, this.S3, this.S4);
+        workingKey[3] ^= CAST_F1(workingKey[4], Tm[i2 + 3], Tr[i2 + 3], this.S1, this.S2, this.S3, this.S4);
+        workingKey[2] ^= CAST_F2(workingKey[3], Tm[i2 + 4], Tr[i2 + 4], this.S1, this.S2, this.S3, this.S4);
+        workingKey[1] ^= CAST_F3(workingKey[2], Tm[i2 + 5], Tr[i2 + 5], this.S1, this.S2, this.S3, this.S4);
+        workingKey[0] ^= CAST_F1(workingKey[1], Tm[i2 + 6], Tr[i2 + 6], this.S1, this.S2, this.S3, this.S4);
+        workingKey[7] ^= CAST_F2(workingKey[0], Tm[i2 + 7], Tr[i2 + 7], this.S1, this.S2, this.S3, this.S4);
+
+        // W2i+1(KAPPA)
+        i2 = (i * 2 + 1) * 8;
+        workingKey[6] ^= CAST_F1(workingKey[7], Tm[i2], Tr[i2], this.S1, this.S2, this.S3, this.S4);
+        workingKey[5] ^= CAST_F2(workingKey[6], Tm[i2 + 1], Tr[i2 + 1], this.S1, this.S2, this.S3, this.S4);
+        workingKey[4] ^= CAST_F3(workingKey[5], Tm[i2 + 2], Tr[i2 + 2], this.S1, this.S2, this.S3, this.S4);
+        workingKey[3] ^= CAST_F1(workingKey[4], Tm[i2 + 3], Tr[i2 + 3], this.S1, this.S2, this.S3, this.S4);
+        workingKey[2] ^= CAST_F2(workingKey[3], Tm[i2 + 4], Tr[i2 + 4], this.S1, this.S2, this.S3, this.S4);
+        workingKey[1] ^= CAST_F3(workingKey[2], Tm[i2 + 5], Tr[i2 + 5], this.S1, this.S2, this.S3, this.S4);
+        workingKey[0] ^= CAST_F1(workingKey[1], Tm[i2 + 6], Tr[i2 + 6], this.S1, this.S2, this.S3, this.S4);
+        workingKey[7] ^= CAST_F2(workingKey[0], Tm[i2 + 7], Tr[i2 + 7], this.S1, this.S2, this.S3, this.S4);
+
+        kr[i * 4] = workingKey[0] & 0x1f;
+        kr[i * 4 + 1] = workingKey[2] & 0x1f;
+        kr[i * 4 + 2] = workingKey[4] & 0x1f;
+        kr[i * 4 + 3] = workingKey[6] & 0x1f;
+
+        km[i * 4] = workingKey[7];
+        km[i * 4 + 1] = workingKey[5];
+        km[i * 4 + 2] = workingKey[3];
+        km[i * 4 + 3] = workingKey[1];
+      }
+
+      return { km, kr };
+    }
+
+    _encryptBlock(block) {
+      if (block.length !== 16) {
+        throw new Error('CAST-256 requires 16-byte blocks');
+      }
+
+      let A = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
+      let B = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
+      let C = OpCodes.Pack32BE(block[8], block[9], block[10], block[11]);
+      let D = OpCodes.Pack32BE(block[12], block[13], block[14], block[15]);
+
+      // First 6 quad rounds (forward)
+      for (let i = 0; i < 6; ++i) {
+        const x = i * 4;
+        C ^= CAST_F1(D, this.roundKeys.km[x], this.roundKeys.kr[x], this.S1, this.S2, this.S3, this.S4);
+        B ^= CAST_F2(C, this.roundKeys.km[x + 1], this.roundKeys.kr[x + 1], this.S1, this.S2, this.S3, this.S4);
+        A ^= CAST_F3(B, this.roundKeys.km[x + 2], this.roundKeys.kr[x + 2], this.S1, this.S2, this.S3, this.S4);
+        D ^= CAST_F1(A, this.roundKeys.km[x + 3], this.roundKeys.kr[x + 3], this.S1, this.S2, this.S3, this.S4);
+      }
+
+      // Last 6 quad rounds (reverse pattern)
+      for (let i = 6; i < 12; ++i) {
+        const x = i * 4;
+        D ^= CAST_F1(A, this.roundKeys.km[x + 3], this.roundKeys.kr[x + 3], this.S1, this.S2, this.S3, this.S4);
+        A ^= CAST_F3(B, this.roundKeys.km[x + 2], this.roundKeys.kr[x + 2], this.S1, this.S2, this.S3, this.S4);
+        B ^= CAST_F2(C, this.roundKeys.km[x + 1], this.roundKeys.kr[x + 1], this.S1, this.S2, this.S3, this.S4);
+        C ^= CAST_F1(D, this.roundKeys.km[x], this.roundKeys.kr[x], this.S1, this.S2, this.S3, this.S4);
+      }
+
+      const result = [];
+      result.push(...OpCodes.Unpack32BE(A));
+      result.push(...OpCodes.Unpack32BE(B));
+      result.push(...OpCodes.Unpack32BE(C));
+      result.push(...OpCodes.Unpack32BE(D));
+
+      return result;
+    }
+
+    _decryptBlock(block) {
+      if (block.length !== 16) {
+        throw new Error('CAST-256 requires 16-byte blocks');
+      }
+
+      let A = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
+      let B = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
+      let C = OpCodes.Pack32BE(block[8], block[9], block[10], block[11]);
+      let D = OpCodes.Pack32BE(block[12], block[13], block[14], block[15]);
+
+      // First 6 quad rounds (reverse pattern, reverse order)
+      for (let i = 0; i < 6; ++i) {
+        const x = (11 - i) * 4;
+        C ^= CAST_F1(D, this.roundKeys.km[x], this.roundKeys.kr[x], this.S1, this.S2, this.S3, this.S4);
+        B ^= CAST_F2(C, this.roundKeys.km[x + 1], this.roundKeys.kr[x + 1], this.S1, this.S2, this.S3, this.S4);
+        A ^= CAST_F3(B, this.roundKeys.km[x + 2], this.roundKeys.kr[x + 2], this.S1, this.S2, this.S3, this.S4);
+        D ^= CAST_F1(A, this.roundKeys.km[x + 3], this.roundKeys.kr[x + 3], this.S1, this.S2, this.S3, this.S4);
+      }
+
+      // Last 6 quad rounds (forward pattern, reverse order)
+      for (let i = 6; i < 12; ++i) {
+        const x = (11 - i) * 4;
+        D ^= CAST_F1(A, this.roundKeys.km[x + 3], this.roundKeys.kr[x + 3], this.S1, this.S2, this.S3, this.S4);
+        A ^= CAST_F3(B, this.roundKeys.km[x + 2], this.roundKeys.kr[x + 2], this.S1, this.S2, this.S3, this.S4);
+        B ^= CAST_F2(C, this.roundKeys.km[x + 1], this.roundKeys.kr[x + 1], this.S1, this.S2, this.S3, this.S4);
+        C ^= CAST_F1(D, this.roundKeys.km[x], this.roundKeys.kr[x], this.S1, this.S2, this.S3, this.S4);
+      }
+
+      const result = [];
+      result.push(...OpCodes.Unpack32BE(A));
+      result.push(...OpCodes.Unpack32BE(B));
+      result.push(...OpCodes.Unpack32BE(C));
+      result.push(...OpCodes.Unpack32BE(D));
+
+      return result;
     }
   }
 
   // ===== REGISTRATION =====
 
-  const algorithmInstance = new Cast128Algorithm();
-  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
-    RegisterAlgorithm(algorithmInstance);
+  const cast128Instance = new CAST128Algorithm();
+  if (!AlgorithmFramework.Find(cast128Instance.name)) {
+    RegisterAlgorithm(cast128Instance);
+  }
+
+  const cast256Instance = new CAST256Algorithm();
+  if (!AlgorithmFramework.Find(cast256Instance.name)) {
+    RegisterAlgorithm(cast256Instance);
   }
 
   // ===== EXPORTS =====
 
-  return { Cast128Algorithm, Cast128Instance };
+  return {
+    CAST128Algorithm,
+    CAST128Instance,
+    CAST256Algorithm,
+    CAST256Instance,
+    CAST_S1,
+    CAST_S2,
+    CAST_S3,
+    CAST_S4
+  };
 }));

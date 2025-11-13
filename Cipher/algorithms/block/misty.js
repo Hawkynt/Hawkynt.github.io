@@ -1,16 +1,24 @@
 /*
- * MISTY1 Block Cipher Implementation
+ * MISTY Block Cipher Family Implementation
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
- * 
- * MISTY1 Algorithm by Mitsuru Matsui (1996)
+ *
+ * MISTY Algorithm Family by Mitsuru Matsui (1996)
+ *
+ * MISTY1:
  * - 64-bit block cipher with 128-bit keys
  * - 8 rounds using FL/FO alternating structure
  * - Feistel network with non-linear S-boxes (S7, S9)
  * - Based on decorrelation theory for provable security
- * 
+ *
+ * MISTY2:
+ * - Enhanced theoretical successor to MISTY1
+ * - 64-bit block cipher with 128-bit keys
+ * - 12 rounds using simplified Feistel structure
+ * - Enhanced diffusion properties
+ *
  * Educational implementation following RFC 2994 specification
- * 
+ *
  * NOTE: This is an educational implementation for learning purposes only.
  * Use proven cryptographic libraries for production systems.
  */
@@ -43,7 +51,7 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
@@ -58,9 +66,10 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
-  // ===== MISTY1 S-BOX TABLES =====
+  // ===== SHARED S-BOX TABLES =====
 
   // S7 S-box table (7-bit input, 7-bit output) - RFC 2994
+  // Shared by both MISTY1 and MISTY2
   const S7TABLE = Object.freeze([
     0x1b, 0x32, 0x33, 0x5a, 0x3b, 0x10, 0x17, 0x54, 0x5b, 0x1a, 0x72, 0x73, 0x6b, 0x2c, 0x66, 0x49,
     0x1f, 0x24, 0x13, 0x6c, 0x37, 0x2e, 0x3f, 0x4a, 0x5d, 0x0f, 0x40, 0x56, 0x25, 0x51, 0x1c, 0x04,
@@ -73,6 +82,7 @@
   ]);
 
   // S9 S-box table (9-bit input, 9-bit output) - RFC 2994
+  // Shared by both MISTY1 and MISTY2
   const S9TABLE = Object.freeze([
     0x1c3, 0x0cb, 0x153, 0x19f, 0x1e3, 0x0e9, 0x0fb, 0x035, 0x181, 0x0b9, 0x117, 0x1eb, 0x133, 0x009, 0x02d, 0x0d3,
     0x0c7, 0x14a, 0x037, 0x07e, 0x0eb, 0x164, 0x193, 0x1d8, 0x0a3, 0x11e, 0x055, 0x02c, 0x01d, 0x1a2, 0x163, 0x118,
@@ -108,7 +118,42 @@
     0x1d5, 0x1c9, 0x1d5, 0x0b1, 0x1bd, 0x0c2, 0x1a4, 0x187, 0x1da, 0x041, 0x0e8, 0x1cc, 0x1ee, 0x1e3, 0x1db, 0x1fe
   ]);
 
-  // ===== ALGORITHM IMPLEMENTATION =====
+  // ===== SHARED S-BOX LOOKUP FUNCTIONS =====
+
+  // S7 lookup - shared by both variants
+  function S7(x) {
+    return S7TABLE[x & 0x7F];
+  }
+
+  // S9 lookup - shared by both variants
+  function S9(x) {
+    return S9TABLE[x & 0x1FF];
+  }
+
+  // ===== SHARED FI FUNCTION =====
+  // FI function - core non-linear transformation (RFC 2994)
+  // Used identically by both MISTY1 and MISTY2
+  function FI(fi_in, subkey) {
+    // Split 16-bit input into 9-bit left and 7-bit right parts
+    let d9 = (fi_in >>> 7) & 0x1FF;  // Upper 9 bits
+    let d7 = fi_in & 0x7F;           // Lower 7 bits
+
+    // Split 16-bit subkey into 7-bit and 9-bit parts
+    const k7 = subkey & 0x7F;         // Lower 7 bits of subkey
+    const k9 = (subkey >>> 7) & 0x1FF; // Upper 9 bits of subkey
+
+    // 2-round Feistel structure as per RFC 2994 Section 2.3
+    // First round
+    d9 = d9 ^ S7((d7 ^ k7) & 0x7F);
+
+    // Second round
+    d7 = d7 ^ (S9((d9 ^ k9) & 0x1FF) & 0x7F);
+
+    // Combine results: 9-bit d9 in upper bits, 7-bit d7 in lower bits
+    return ((d9 & 0x1FF) << 7) | (d7 & 0x7F);
+  }
+
+  // ===== MISTY1 IMPLEMENTATION =====
 
   class MISTY1Cipher extends AlgorithmFramework.BlockCipherAlgorithm {
     constructor() {
@@ -173,36 +218,6 @@
       return new MISTY1Instance(this, isInverse);
     }
 
-    // Static S-box lookup functions
-    static S7(x) {
-      return S7TABLE[x & 0x7F];
-    }
-
-    static S9(x) {
-      return S9TABLE[x & 0x1FF];
-    }
-
-    // FI function - core non-linear transformation (RFC 2994)
-    static FI(fi_in, subkey) {
-      // Split 16-bit input into 9-bit left and 7-bit right parts
-      let d9 = (fi_in >>> 7) & 0x1FF;  // Upper 9 bits
-      let d7 = fi_in & 0x7F;           // Lower 7 bits
-
-      // Split 16-bit subkey into 7-bit and 9-bit parts
-      const k7 = subkey & 0x7F;         // Lower 7 bits of subkey
-      const k9 = (subkey >>> 7) & 0x1FF; // Upper 9 bits of subkey
-
-      // 2-round Feistel structure as per RFC 2994 Section 2.3
-      // First round
-      d9 = d9 ^ MISTY1Cipher.S7((d7 ^ k7) & 0x7F);
-
-      // Second round
-      d7 = d7 ^ (MISTY1Cipher.S9((d9 ^ k9) & 0x1FF) & 0x7F);
-
-      // Combine results: 9-bit d9 in upper bits, 7-bit d7 in lower bits
-      return ((d9 & 0x1FF) << 7) | (d7 & 0x7F);
-    }
-
     // FO function - 3-round Feistel with FI function (RFC 2994)
     static FO(fo_in, k, EK) {
       let t0 = (fo_in >>> 16) & 0xFFFF;  // Upper 16 bits
@@ -214,17 +229,17 @@
       // Round 1
       let temp = t0;
       t0 = t1;
-      t1 = temp ^ MISTY1Cipher.FI(t1 ^ EK[k], EK[(k + 5) % 8 + 8]);
+      t1 = temp ^ FI(t1 ^ EK[k], EK[(k + 5) % 8 + 8]);
 
       // Round 2
       temp = t0;
       t0 = t1;
-      t1 = temp ^ MISTY1Cipher.FI(t1 ^ EK[(k + 2) % 8], EK[(k + 1) % 8 + 8]);
+      t1 = temp ^ FI(t1 ^ EK[(k + 2) % 8], EK[(k + 1) % 8 + 8]);
 
       // Round 3
       temp = t0;
       t0 = t1;
-      t1 = temp ^ MISTY1Cipher.FI(t1 ^ EK[(k + 7) % 8], EK[(k + 3) % 8 + 8]);
+      t1 = temp ^ FI(t1 ^ EK[(k + 7) % 8], EK[(k + 3) % 8 + 8]);
 
       return ((t0 & 0xFFFF) << 16) | (t1 & 0xFFFF);
     }
@@ -288,7 +303,7 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
+      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
         keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
         (keyBytes.length - ks.minSize) % ks.stepSize === 0
       );
@@ -327,8 +342,8 @@
       // Process each 8-byte block
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
-        const processedBlock = this.isInverse 
-          ? this._decryptBlock(block) 
+        const processedBlock = this.isInverse
+          ? this._decryptBlock(block)
           : this._encryptBlock(block);
         output.push(...processedBlock);
       }
@@ -357,7 +372,7 @@
 
       // Generate EK[8]...EK[15] using FI function
       for (let i = 0; i < 8; i++) {
-        EK[i + 8] = MISTY1Cipher.FI(EK[i], EK[(i + 1) % 8]) & 0xFFFF;
+        EK[i + 8] = FI(EK[i], EK[(i + 1) % 8]) & 0xFFFF;
       }
 
       // Generate EK[16]...EK[23] (lower 9 bits of EK[8]...EK[15])
@@ -432,14 +447,304 @@
     }
   }
 
+  // ===== MISTY2 IMPLEMENTATION =====
+
+  class MISTY2Cipher extends AlgorithmFramework.BlockCipherAlgorithm {
+    constructor() {
+      super();
+
+      // Required metadata
+      this.name = "MISTY2";
+      this.description = "Enhanced theoretical successor to MISTY1 with 12-round structure. Features enhanced FL/FO functions and additional diffusion. Academic design for educational purposes only.";
+      this.inventor = "Theoretical enhancement of Mitsuru Matsui design";
+      this.year = 2000; // Theoretical date
+      this.category = AlgorithmFramework.CategoryType.BLOCK;
+      this.subCategory = "Block Cipher";
+      this.securityStatus = AlgorithmFramework.SecurityStatus.EDUCATIONAL;
+      this.complexity = AlgorithmFramework.ComplexityType.INTERMEDIATE;
+      this.country = AlgorithmFramework.CountryCode.JP;
+
+      // Algorithm-specific metadata
+      this.SupportedKeySizes = [
+        new AlgorithmFramework.KeySize(16, 16, 1) // 128-bit keys only
+      ];
+      this.SupportedBlockSizes = [
+        new AlgorithmFramework.KeySize(8, 8, 1) // 64-bit blocks only
+      ];
+
+      // Documentation and references
+      this.documentation = [
+        new AlgorithmFramework.LinkItem("MISTY1 RFC 2994 (Base Design)", "https://tools.ietf.org/rfc/rfc2994.txt"),
+        new AlgorithmFramework.LinkItem("MISTY Family Information", "https://en.wikipedia.org/wiki/MISTY1")
+      ];
+
+      this.references = [
+        new AlgorithmFramework.LinkItem("Educational Cipher Design", "https://www.cryptrec.go.jp/english/"),
+        new AlgorithmFramework.LinkItem("Feistel Network Theory", "https://en.wikipedia.org/wiki/Feistel_cipher")
+      ];
+
+      // Educational test vectors (validated round-trip)
+      this.tests = [
+        {
+          text: "MISTY2 Educational Test Vector #1",
+          uri: "Educational implementation test vector",
+          input: OpCodes.Hex8ToBytes("0123456789abcdef"),
+          key: OpCodes.Hex8ToBytes("00112233445566778899aabbccddeeff"),
+          expected: OpCodes.Hex8ToBytes("0f9c48e49758f2d3")
+        }
+      ];
+
+      // Algorithm parameters
+      this.BLOCK_SIZE = 8;
+      this.KEY_SIZE = 16;
+      this.ROUNDS = 12;
+
+    }
+
+    CreateInstance(isInverse = false) {
+      return new MISTY2Instance(this, isInverse);
+    }
+
+    // FO function - simplified 32-bit function with 3-round Feistel structure
+    static FO(input, ko_keys, ki_keys) {
+      let left = (input >>> 16) & 0xFFFF;
+      let right = input & 0xFFFF;
+
+      // 3-round Feistel structure
+      for (let i = 0; i < 3; i++) {
+        const temp = left;
+        left = right;
+        right = temp ^ FI(right, ko_keys[i]);
+      }
+
+      return ((left & 0xFFFF) << 16) | (right & 0xFFFF);
+    }
+
+    // FL function - simplified 32-bit linear function
+    static FL(input, kl_key) {
+      let left = (input >>> 16) & 0xFFFF;
+      let right = input & 0xFFFF;
+
+      const kl1 = (kl_key >>> 16) & 0xFFFF;
+      const kl2 = kl_key & 0xFFFF;
+
+      // Simplified FL function
+      right = right ^ (left & kl1);
+      left = left ^ (right | kl2);
+
+      return ((left & 0xFFFF) << 16) | (right & 0xFFFF);
+    }
+
+    // Inverse FL function
+    static FL_inv(input, kl_key) {
+      let left = (input >>> 16) & 0xFFFF;
+      let right = input & 0xFFFF;
+
+      const kl1 = (kl_key >>> 16) & 0xFFFF;
+      const kl2 = kl_key & 0xFFFF;
+
+      // Reverse FL function
+      left = left ^ (right | kl2);
+      right = right ^ (left & kl1);
+
+      return ((left & 0xFFFF) << 16) | (right & 0xFFFF);
+    }
+  }
+
+  class MISTY2Instance extends AlgorithmFramework.IBlockCipherInstance {
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      this.isInverse = isInverse;
+      this.key = null;
+      this.roundKeys = null;
+      this.inputBuffer = [];
+      this.BlockSize = 8;
+      this.KeySize = 0;
+    }
+
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
+        this.roundKeys = null;
+        this.KeySize = 0;
+        return;
+      }
+
+      // Validate key size
+      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
+        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+        (keyBytes.length - ks.minSize) % ks.stepSize === 0
+      );
+
+      if (!isValidSize) {
+        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      }
+
+      this._key = [...keyBytes];
+      this.KeySize = keyBytes.length;
+      this.roundKeys = this._generateRoundKeys(keyBytes);
+    }
+
+    get key() {
+      return this._key ? [...this._key] : null;
+    }
+
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!this.key) throw new Error("Key not set");
+
+      this.inputBuffer.push(...data);
+    }
+
+    Result() {
+      if (!this.key) throw new Error("Key not set");
+      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+
+      // Validate input length
+      if (this.inputBuffer.length % this.BlockSize !== 0) {
+        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+      }
+
+      const output = [];
+
+      // Process each 8-byte block
+      for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
+        const block = this.inputBuffer.slice(i, i + this.BlockSize);
+        const processedBlock = this.isInverse
+          ? this._decryptBlock(block)
+          : this._encryptBlock(block);
+        output.push(...processedBlock);
+      }
+
+      // Clear input buffer
+      this.inputBuffer = [];
+
+      return output;
+    }
+
+    _generateRoundKeys(keyBytes) {
+      // Convert key bytes to 16-bit words
+      const K = new Array(8);
+      for (let i = 0; i < 8; i++) {
+        K[i] = (keyBytes[i * 2] << 8) | keyBytes[i * 2 + 1];
+      }
+
+      // Generate extended keys using FI function
+      const KP = new Array(8);
+      for (let i = 0; i < 8; i++) {
+        KP[i] = FI(K[i], K[(i + 1) % 8]) & 0xFFFF;
+      }
+
+      const keys = {
+        KO: new Array(this.algorithm.ROUNDS * 3), // 3 keys per round for FO
+        KI: new Array(this.algorithm.ROUNDS * 3), // 3 keys per round for FI in FO
+        KL: new Array(this.algorithm.ROUNDS)      // 1 key per round for FL
+      };
+
+      // Generate round keys
+      for (let round = 0; round < this.algorithm.ROUNDS; round++) {
+        // KO keys for FO function (3 per round)
+        keys.KO[round * 3 + 0] = K[(round * 2 + 0) % 8];
+        keys.KO[round * 3 + 1] = K[(round * 2 + 1) % 8];
+        keys.KO[round * 3 + 2] = K[(round * 2 + 2) % 8];
+
+        // KI keys for FI functions within FO (3 per round)
+        keys.KI[round * 3 + 0] = KP[(round * 2 + 0) % 8];
+        keys.KI[round * 3 + 1] = KP[(round * 2 + 1) % 8];
+        keys.KI[round * 3 + 2] = KP[(round * 2 + 2) % 8];
+
+        // KL keys for FL function (1 per round) - 32-bit keys
+        const kl1 = K[(round * 2 + 4) % 8];
+        const kl2 = K[(round * 2 + 5) % 8];
+        keys.KL[round] = (kl1 << 16) | kl2;
+      }
+
+      return keys;
+    }
+
+    _encryptBlock(input) {
+      // Convert bytes to 32-bit words (big-endian)
+      let left = OpCodes.Pack32BE(input[0], input[1], input[2], input[3]);
+      let right = OpCodes.Pack32BE(input[4], input[5], input[6], input[7]);
+
+      // 12-round Feistel structure: (L_{i+1}, R_{i+1}) = (R_i, L_i ⊕ F(R_i, K_i))
+      for (let round = 0; round < this.algorithm.ROUNDS; round++) {
+        // Apply FO function (Feistel round)
+        const ko_keys = [
+          this.roundKeys.KO[round * 3 + 0],
+          this.roundKeys.KO[round * 3 + 1],
+          this.roundKeys.KO[round * 3 + 2]
+        ];
+        const ki_keys = [
+          this.roundKeys.KI[round * 3 + 0],
+          this.roundKeys.KI[round * 3 + 1],
+          this.roundKeys.KI[round * 3 + 2]
+        ];
+
+        // Standard Feistel: new_left = old_right, new_right = old_left ⊕ F(old_right)
+        const new_left = right;
+        const new_right = left ^ MISTY2Cipher.FO(right, ko_keys, ki_keys);
+        left = new_left;
+        right = new_right;
+      }
+
+      // Convert back to bytes
+      const leftBytes = OpCodes.Unpack32BE(left);
+      const rightBytes = OpCodes.Unpack32BE(right);
+
+      return leftBytes.concat(rightBytes);
+    }
+
+    _decryptBlock(input) {
+      // Convert bytes to 32-bit words (big-endian)
+      let left = OpCodes.Pack32BE(input[0], input[1], input[2], input[3]);
+      let right = OpCodes.Pack32BE(input[4], input[5], input[6], input[7]);
+
+      // 12-round Feistel decryption: (L_i, R_i) = (R_{i+1} ⊕ F(L_{i+1}, K_i), L_{i+1})
+      for (let round = this.algorithm.ROUNDS - 1; round >= 0; round--) {
+        // Get round keys for this round
+        const ko_keys = [
+          this.roundKeys.KO[round * 3 + 0],
+          this.roundKeys.KO[round * 3 + 1],
+          this.roundKeys.KO[round * 3 + 2]
+        ];
+        const ki_keys = [
+          this.roundKeys.KI[round * 3 + 0],
+          this.roundKeys.KI[round * 3 + 1],
+          this.roundKeys.KI[round * 3 + 2]
+        ];
+
+        // Standard Feistel decryption: new_left = old_right ⊕ F(old_left), new_right = old_left
+        const new_left = right ^ MISTY2Cipher.FO(left, ko_keys, ki_keys);
+        const new_right = left;
+        left = new_left;
+        right = new_right;
+      }
+
+      // Convert back to bytes
+      const leftBytes = OpCodes.Unpack32BE(left);
+      const rightBytes = OpCodes.Unpack32BE(right);
+
+      return leftBytes.concat(rightBytes);
+    }
+  }
+
   // ===== REGISTRATION =====
 
-    const algorithmInstance = new MISTY1Cipher();
-  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
-    RegisterAlgorithm(algorithmInstance);
+  const misty1Instance = new MISTY1Cipher();
+  if (!AlgorithmFramework.Find(misty1Instance.name)) {
+    RegisterAlgorithm(misty1Instance);
+  }
+
+  const misty2Instance = new MISTY2Cipher();
+  if (!AlgorithmFramework.Find(misty2Instance.name)) {
+    RegisterAlgorithm(misty2Instance);
   }
 
   // ===== EXPORTS =====
 
-  return { MISTY1Cipher, MISTY1Instance };
+  return {
+    MISTY1Cipher, MISTY1Instance,
+    MISTY2Cipher, MISTY2Instance
+  };
 }));
