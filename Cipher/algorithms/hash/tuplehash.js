@@ -1,5 +1,5 @@
 /*
- * TupleHash128 - SHA-3 Derived Tuple Hashing (128-bit security)
+ * TupleHash - SHA-3 Derived Tuple Hashing (128-bit and 256-bit security)
  * Professional implementation following NIST SP 800-185
  * (c)2006-2025 Hawkynt
  *
@@ -33,18 +33,20 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           HashFunctionAlgorithm, IHashFunctionInstance, LinkItem } = AlgorithmFramework;
 
-  // Load CSHAKE128 for underlying implementation
+  // Load CSHAKE for underlying implementation
   // Try global scope first (browser), then require (Node.js)
   const global = typeof globalThis !== 'undefined' ? globalThis
     : (typeof window !== 'undefined' ? window
     : (typeof self !== 'undefined' ? self : {}));
 
-  let CSHAKE128 = global.CSHAKE128;
-  if (!CSHAKE128 && typeof require !== 'undefined') {
+  let cSHAKEAlgorithm = global.cSHAKEAlgorithm;
+
+  if (!cSHAKEAlgorithm && typeof require !== 'undefined') {
     try {
-      CSHAKE128 = require('./cshake128.js');
+      const CSHAKE = require('./cshake.js');
+      cSHAKEAlgorithm = CSHAKE.cSHAKEAlgorithm;
     } catch(e) {
-      // CSHAKE128 will be checked at runtime
+      // cSHAKE will be checked at runtime
     }
   }
 
@@ -167,26 +169,103 @@
 
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
-      return new TupleHash128Instance(this);
+      return new TupleHashInstance(this, 128);
     }
   }
 
-  class TupleHash128Instance extends IHashFunctionInstance {
-    constructor(algorithm) {
+  class TupleHash256 extends HashFunctionAlgorithm {
+    constructor() {
+      super();
+
+      this.name = "TupleHash256";
+      this.description = "SHA-3 derived function for unambiguous tuple hashing with 256-bit security. Encodes each tuple element to prevent collisions between different tuple structures.";
+      this.inventor = "John Kelsey, Shu-jen Chang, Ray Perlner (NIST)";
+      this.year = 2016;
+      this.category = CategoryType.HASH;
+      this.subCategory = "SHA-3 Derived";
+      this.securityStatus = SecurityStatus.SECURE;
+      this.complexity = ComplexityType.INTERMEDIATE;
+      this.country = CountryCode.US;
+
+      this.SupportedOutputSizes = [{ minSize: 1, maxSize: 1024, stepSize: 1 }];
+
+      this.documentation = [
+        new LinkItem(
+          "NIST SP 800-185",
+          "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-185.pdf"
+        ),
+        new LinkItem(
+          "NIST Test Vectors",
+          "https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/KMAC_samples.pdf"
+        )
+      ];
+
+      // Official NIST test vectors from SP 800-185 (via BouncyCastle)
+      this.tests = [
+        {
+          text: "TupleHash256: (000102, 101112131415), empty S, 64 bytes (NIST)",
+          uri: "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/TupleHashTest.java",
+          input: null,
+          outputSize: 64,
+          customization: [],
+          tuples: [
+            OpCodes.Hex8ToBytes("000102"),
+            OpCodes.Hex8ToBytes("101112131415")
+          ],
+          expected: OpCodes.Hex8ToBytes("CFB7058CACA5E668F81A12A20A2195CE97A925F1DBA3E7449A56F82201EC607311AC2696B1AB5EA2352DF1423BDE7BD4BB78C9AED1A853C78672F9EB23BBE194")
+        },
+        {
+          text: "TupleHash256: (000102, 101112131415), S='My Tuple App', 64 bytes (NIST)",
+          uri: "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/TupleHashTest.java",
+          input: null,
+          outputSize: 64,
+          customization: OpCodes.AnsiToBytes("My Tuple App"),
+          tuples: [
+            OpCodes.Hex8ToBytes("000102"),
+            OpCodes.Hex8ToBytes("101112131415")
+          ],
+          expected: OpCodes.Hex8ToBytes("147C2191D5ED7EFD98DBD96D7AB5A11692576F5FE2A5065F3E33DE6BBA9F3AA1C4E9A068A289C61C95AAB30AEE1E410B0B607DE3620E24A4E3BF9852A1D4367E")
+        },
+        {
+          text: "TupleHash256: (000102, 101112131415, 202122232425262728), S='My Tuple App', 64 bytes (NIST)",
+          uri: "https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/TupleHashTest.java",
+          input: null,
+          outputSize: 64,
+          customization: OpCodes.AnsiToBytes("My Tuple App"),
+          tuples: [
+            OpCodes.Hex8ToBytes("000102"),
+            OpCodes.Hex8ToBytes("101112131415"),
+            OpCodes.Hex8ToBytes("202122232425262728")
+          ],
+          expected: OpCodes.Hex8ToBytes("45000BE63F9B6BFD89F54717670F69A9BC763591A4F05C50D68891A744BCC6E7D6D5B5E82C018DA999ED35B0BB49C9678E526ABD8E85C13ED254021DB9E790CE")
+        }
+      ];
+    }
+
+    CreateInstance(isInverse = false) {
+      if (isInverse) return null;
+      return new TupleHashInstance(this, 256);
+    }
+  }
+
+  class TupleHashInstance extends IHashFunctionInstance {
+    constructor(algorithm, securityBits) {
       super(algorithm);
 
-      // Ensure CSHAKE128 is available
-      if (!CSHAKE128) {
-        throw new Error("CSHAKE128 is required for TupleHash128");
+      this.securityBits = securityBits;
+
+      // Check cSHAKE is available
+      if (!cSHAKEAlgorithm) {
+        throw new Error("cSHAKE is required for TupleHash");
       }
 
-      // Create CSHAKE128 instance with N="TupleHash"
-      const CSHAKE128Algorithm = CSHAKE128.CSHAKE128Algorithm || CSHAKE128;
-      const cshakeAlgo = new CSHAKE128Algorithm();
+      // Create appropriate CSHAKE variant
+      const variant = securityBits === 128 ? '128' : '256';
+      const cshakeAlgo = new cSHAKEAlgorithm(variant);
       this.cshake = cshakeAlgo.CreateInstance();
       this.cshake.functionName = OpCodes.AnsiToBytes("TupleHash");
 
-      this._outputSize = 32; // Default 32 bytes (256 bits)
+      this._outputSize = securityBits === 128 ? 32 : 64; // Default based on security level
       this._customization = [];
       this._xofMode = false;
       this._firstOutput = true;
@@ -253,8 +332,8 @@
       const result = this.cshake.Result();
 
       // Reset for next operation
-      const CSHAKE128Algorithm = CSHAKE128.CSHAKE128Algorithm || CSHAKE128;
-      const cshakeAlgo = new CSHAKE128Algorithm();
+      const variant = this.securityBits === 128 ? '128' : '256';
+      const cshakeAlgo = new cSHAKEAlgorithm(variant);
       this.cshake = cshakeAlgo.CreateInstance();
       this.cshake.functionName = OpCodes.AnsiToBytes("TupleHash");
       this.cshake.customization = this._customization;
@@ -265,5 +344,7 @@
   }
 
   RegisterAlgorithm(new TupleHash128());
-  return TupleHash128;
+  RegisterAlgorithm(new TupleHash256());
+
+  return { TupleHash128, TupleHash256 };
 }));
