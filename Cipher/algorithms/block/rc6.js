@@ -1,18 +1,3 @@
-/*
- * RC6 (Rivest Cipher 6) Block Cipher Implementation
- * Compatible with AlgorithmFramework
- * (c)2006-2025 Hawkynt
- * 
- * RC6 Algorithm by Rivest, Robshaw, Sidney, and Yin
- * AES candidate cipher with 128-bit blocks and variable key lengths
- * RC6-32/20/b: 32-bit words, 20 rounds, b-byte key
- * Features quadratic nonlinearity and data-dependent rotations
- * 
- * Based on original RC6 specification and AES submission
- */
-
-// Load AlgorithmFramework (REQUIRED)
-
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     // AMD
@@ -24,8 +9,9 @@
       require('../../OpCodes')
     );
   } else {
-    // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes);
+    // Browser/Worker global - assign exports to global scope
+    const exports = factory(root.AlgorithmFramework, root.OpCodes);
+    if (exports) Object.assign(root, exports);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -39,22 +25,14 @@
   if (!AlgorithmFramework) {
     throw new Error('AlgorithmFramework dependency is required');
   }
-  
+
   if (!OpCodes) {
     throw new Error('OpCodes dependency is required');
   }
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          Algorithm, CryptoAlgorithm, SymmetricCipherAlgorithm, AsymmetricCipherAlgorithm,
-          BlockCipherAlgorithm, StreamCipherAlgorithm, EncodingAlgorithm, CompressionAlgorithm,
-          ErrorCorrectionAlgorithm, HashFunctionAlgorithm, MacAlgorithm, KdfAlgorithm,
-          PaddingAlgorithm, CipherModeAlgorithm, AeadAlgorithm, RandomGenerationAlgorithm,
-          IAlgorithmInstance, IBlockCipherInstance, IHashFunctionInstance, IMacInstance,
-          IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
-          TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
-
-  // ===== ALGORITHM IMPLEMENTATION =====
+          BlockCipherAlgorithm, IBlockCipherInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   class RC6Algorithm extends BlockCipherAlgorithm {
     constructor() {
@@ -62,44 +40,66 @@
 
       // Required metadata
       this.name = "RC6";
-      this.description = "AES finalist designed as evolution of RC5. Features 128-bit blocks, variable key sizes, and data-dependent rotations with quadratic nonlinearity. Patented algorithm with strong security properties.";
-      this.inventor = "Ron Rivest, Matt Robshaw, Ray Sidney, Yiqun Lisa Yin";
+      this.description = "AES competition finalist featuring data-dependent rotations and efficient design. RC6-32/20/b with 128-bit blocks, variable key sizes (128-256 bits), and 20 rounds.";
+      this.inventor = "Ronald Rivest, Matt Robshaw, Ray Sidney, Yiqun Lisa Yin";
       this.year = 1998;
       this.category = CategoryType.BLOCK;
-      this.subCategory = "Block Cipher";
-      this.securityStatus = null; // Strong security, patent considerations
+      this.subCategory = "Feistel-like Block Cipher";
+      this.securityStatus = SecurityStatus.SECURE;
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.US;
 
-      // Block and key specifications
-      this.blockSize = 16; // 128-bit blocks
-      this.keySizes = [
-        new KeySize(16, 32, 8) // 128, 192, 256-bit keys (16, 24, 32 bytes)
+      // Algorithm-specific metadata
+      this.SupportedKeySizes = [
+        new KeySize(16, 32, 8) // RC6-128/192/256
       ];
-
-      // AlgorithmFramework compatibility
-      this.SupportedKeySizes = [new KeySize(16, 32, 8)]; // 128, 192, 256-bit keys (16, 24, 32 bytes)
-      this.SupportedBlockSizes = [new KeySize(16, 16, 1)]; // Fixed 128-bit (16-byte) blocks
+      this.SupportedBlockSizes = [
+        new KeySize(16, 16, 0) // Fixed 128-bit blocks
+      ];
 
       // Documentation and references
       this.documentation = [
-        new LinkItem("RC6 Algorithm Specification", "https://people.csail.mit.edu/rivest/Rivest-rc6.pdf"),
-        new LinkItem("AES Candidate Submission", "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development")
+        new LinkItem("RC6 AES Submission", "https://www.grc.com/r&d/rc6.pdf"),
+        new LinkItem("Wikipedia - RC6", "https://en.wikipedia.org/wiki/RC6"),
+        new LinkItem("AES Competition Archive", "https://csrc.nist.gov/projects/cryptographic-standards-and-guidelines/archived-crypto-projects/aes-development")
       ];
 
       this.references = [
-        new LinkItem("RC6 Technical Report", "https://people.csail.mit.edu/rivest/pubs/RRSY98.pdf"),
-        new LinkItem("RC6 Patent Information", "https://patents.google.com/patent/US6269163B1")
+        new LinkItem("Crypto++ RC6 Implementation", "https://github.com/weidai11/cryptopp/blob/master/rc6.cpp"),
+        new LinkItem("Bouncy Castle RC6 Implementation", "https://github.com/bcgit/bc-java/blob/master/core/src/main/java/org/bouncycastle/crypto/engines/RC6Engine.java"),
+        new LinkItem("LibTomCrypt RC6 Implementation", "https://github.com/libtom/libtomcrypt/blob/develop/src/ciphers/rc6.c")
       ];
 
-      // Test vectors from official sources
+      // Test vectors from Crypto++ test suite (rc6val.dat)
+      // Source: https://github.com/weidai11/cryptopp/blob/master/TestData/rc6val.dat
       this.tests = [
         {
-          text: "IETF test vector - RC6-32/20/16 (128-bit key)",
-          uri: "https://datatracker.ietf.org/doc/html/draft-krovetz-rc6-rc5-vectors-00",
-          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          expected: OpCodes.Hex8ToBytes("3A96F9C7F6755CFE46F00E3DCD5D2A3C")
+          text: 'Crypto++ RC6-128 Test Vector #1',
+          uri: 'https://github.com/weidai11/cryptopp/blob/master/TestData/rc6val.dat',
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("8FC3A53656B1F778C129DF4E9848A41E")
+        },
+        {
+          text: 'Crypto++ RC6-128 Test Vector #2',
+          uri: 'https://github.com/weidai11/cryptopp/blob/master/TestData/rc6val.dat',
+          input: OpCodes.Hex8ToBytes("02132435465768798A9BACBDCEDFE0F1"),
+          key: OpCodes.Hex8ToBytes("0123456789ABCDEF0112233445566778"),
+          expected: OpCodes.Hex8ToBytes("524E192F4715C6231F51F6367EA43F18")
+        },
+        {
+          text: 'Crypto++ RC6-192 Test Vector #1',
+          uri: 'https://github.com/bcgit/bc-java/blob/master/core/src/test/java/org/bouncycastle/crypto/test/RC6Test.java',
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("6cd61bcb190b30384e8a3f168690ae82")
+        },
+        {
+          text: 'Crypto++ RC6-256 Test Vector #1',
+          uri: 'https://github.com/weidai11/cryptopp/blob/master/TestData/rc6val.dat',
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("8f5fbd0510d15fa893fa3fda6e857ec2")
         }
       ];
     }
@@ -107,203 +107,131 @@
     CreateInstance(isInverse = false) {
       return new RC6Instance(this, isInverse);
     }
-
-    // RC6 Constants - using OpCodes for proper optimization scoring  
-    static get P32() { return 0xb7e15163 | 0; } // P = Odd((e-2)*2^32) = -1207959197 (signed)
-    static get Q32() { return 0x9e3779b9 | 0; } // Q = Odd((φ-1)*2^32) = -1640531527 (signed)
-    static get ROUNDS() { return 20; }
-    static get KEY_SCHEDULE_SIZE() { return 44; } // 2*R + 4 = 2*20 + 4
   }
 
-  // Custom 32-bit rotation functions for RC6 (matches C# behavior)
-  function rotLeft32Signed(value, positions) {
-    // Use OpCodes for rotation, convert back to signed to match C#
-    return OpCodes.RotL32(value >>> 0, positions) | 0;
-  }
-
-  function rotRight32Signed(value, positions) {
-    // Use OpCodes for rotation, convert back to signed to match C#
-    return OpCodes.RotR32(value >>> 0, positions) | 0;
-  }
-
-  // Instance class - handles the actual encryption/decryption
   class RC6Instance extends IBlockCipherInstance {
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
       this._key = null;
-      this.keySchedule = null;
+      this.sTable = null;
+      this.rounds = 20; // RC6-32/20/b standard
       this.inputBuffer = [];
-      this.BlockSize = 16;
-      this.KeySize = 0;
+      this.BlockSize = 16; // 128-bit blocks
     }
 
+    // Magic constants for RC6-32 (w=32)
+    // P = Odd((e-2) * 2^32) where e = 2.718281828...
+    static P32 = 0xb7e15163;
+    // Q = Odd((phi-1) * 2^32) where phi = 1.618033988... (golden ratio)
+    static Q32 = 0x9e3779b9;
+    // LGW = log2(32) = 5
+    static LGW = 5;
+
+    // Property setter for key - validates and generates key schedule
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
-        this.keySchedule = null;
-        this.KeySize = 0;
+        this.sTable = null;
         return;
       }
 
-      // Validate key size (must be 16, 24, or 32 bytes)
-      if (![16, 24, 32].includes(keyBytes.length)) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16, 24, or 32 bytes)`);
+      // Validate key size
+      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
+        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+        (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
+      );
+
+      if (!isValidSize) {
+        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
       }
 
       this._key = [...keyBytes];
-      this.KeySize = keyBytes.length;
-      this._generateKeySchedule(keyBytes);
+      this._expandKey(keyBytes);
     }
 
     get key() {
       return this._key ? [...this._key] : null;
     }
 
-    Feed(data) {
-      if (!data || data.length === 0) return;
-      if (!this.key) throw new Error("Key not set");
+    /**
+     * RC6 Key Expansion
+     * Generates the key schedule S[0..2r+3] from user key
+     * Based on the RC6 specification and reference implementations
+     */
+    _expandKey(keyBytes) {
+      const r = this.rounds;
+      const c = Math.max(Math.floor((keyBytes.length + 3) / 4), 1);
 
-      this.inputBuffer.push(...data);
-    }
-
-    Result() {
-      if (!this.key) throw new Error("Key not set");
-      if (this.inputBuffer.length === 0) throw new Error("No data fed");
-
-      // Validate input length
-      if (this.inputBuffer.length % this.BlockSize !== 0) {
-        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
-      }
-
-      const output = [];
-
-      // Process each 16-byte block
-      for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
-        const block = this.inputBuffer.slice(i, i + this.BlockSize);
-        const processedBlock = this.isInverse 
-          ? this._decryptBlock(block) 
-          : this._encryptBlock(block);
-        output.push(...processedBlock);
-      }
-
-      // Clear input buffer
-      this.inputBuffer = [];
-
-      return output;
-    }
-
-    _setupKey(keyBytes) {
-      if (!keyBytes) {
-        throw new Error("Key is required");
-      }
-
-      // Validate key size (must be 16, 24, or 32 bytes)
-      if (![16, 24, 32].includes(keyBytes.length)) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be 16, 24, or 32 bytes)`);
-      }
-
-      this._generateKeySchedule(keyBytes);
-    }
-
-    EncryptBlock(blockIndex, data) {
-      if (data.length !== 16) {
-        throw new Error('RC6 requires exactly 16 bytes per block');
-      }
-      return this._encryptBlock(data);
-    }
-
-    DecryptBlock(blockIndex, data) {
-      if (data.length !== 16) {
-        throw new Error('RC6 requires exactly 16 bytes per block');
-      }
-      return this._decryptBlock(data);
-    }
-
-    // Private method for key schedule generation
-    _generateKeySchedule(keyBytes) {
-      const c = Math.floor((keyBytes.length + 3) / 4); // Key length in 32-bit words
-
-      // Initialize S array with magic constants
-      this.keySchedule = new Array(RC6Algorithm.KEY_SCHEDULE_SIZE);
-      this.keySchedule[0] = RC6Algorithm.P32;
-      for (let k = 1; k < RC6Algorithm.KEY_SCHEDULE_SIZE; k++) {
-        this.keySchedule[k] = (this.keySchedule[k - 1] + RC6Algorithm.Q32) | 0; // Use signed arithmetic like C#
-      }
-
-      // Convert key bytes to 32-bit words (little-endian) - using C# reference method
-      const L = new Array(Math.max(c, 1));
-      for (let i = 0; i < L.length; i++) {
-        L[i] = 0;
-      }
-
-      // Load key bytes in reverse order (from C# reference) - exactly as in Bouncy Castle
+      // Initialize L array from key bytes (little-endian)
+      const L = new Array(c).fill(0);
       for (let i = keyBytes.length - 1; i >= 0; i--) {
         const wordIndex = Math.floor(i / 4);
-        L[wordIndex] = ((L[wordIndex] << 8) + (keyBytes[i] & 0xff)) | 0;
-        // Note: C# uses signed 32-bit integers, force to signed 32-bit
+        L[wordIndex] = ((L[wordIndex] << 8) | (keyBytes[i] & 0xFF)) >>> 0;
       }
 
-      // Key mixing phase - 3 passes over max(S, L) iterations as per C# reference
-      let iter;
-      if (L.length > this.keySchedule.length) {
-        iter = 3 * L.length;
-      } else {
-        iter = 3 * this.keySchedule.length;
+      // Initialize S array with magic constants
+      const sTableSize = 2 * (r + 2);
+      this.sTable = new Array(sTableSize);
+      this.sTable[0] = RC6Instance.P32;
+
+      for (let i = 1; i < sTableSize; i++) {
+        this.sTable[i] = (this.sTable[i - 1] + RC6Instance.Q32) >>> 0;
       }
 
-      let A = 0, B = 0;
-      let ii = 0, jj = 0;
+      // Mix in the user key
+      let A = 0;
+      let B = 0;
+      let i = 0;
+      let j = 0;
+      const iterations = 3 * Math.max(sTableSize, c);
 
-      for (let k = 0; k < iter; k++) {
-        // A = S[ii] = (S[ii] + A + B)<<<3
-        A = this.keySchedule[ii] = rotLeft32Signed((this.keySchedule[ii] + A + B) | 0, 3);
+      for (let k = 0; k < iterations; k++) {
+        // S[i] = ROL(S[i] + A + B, 3)
+        A = this.sTable[i] = OpCodes.RotL32((this.sTable[i] + A + B) >>> 0, 3);
 
-        // B = L[jj] = (L[jj] + A + B)<<<(A + B)
-        B = L[jj] = rotLeft32Signed((L[jj] + A + B) | 0, (A + B) & 31);
+        // L[j] = ROL(L[j] + A + B, A + B)
+        const sum = (A + B) >>> 0;
+        B = L[j] = OpCodes.RotL32((L[j] + sum) >>> 0, sum);
 
-        ii = (ii + 1) % this.keySchedule.length;
-        jj = (jj + 1) % L.length;
+        i = (i + 1) % sTableSize;
+        j = (j + 1) % c;
       }
-
-      // Clear temporary key array
-      OpCodes.ClearArray(L);
     }
 
-    // Private method for block encryption - exact translation of C# reference
-    _encryptBlock(plainBytes) {
-      if (plainBytes.length !== 16) {
-        throw new Error(`Invalid block size: ${plainBytes.length} bytes`);
-      }
+    /**
+     * RC6 Encryption
+     * Input: 4 words A, B, C, D (128-bit block)
+     * Output: 4 words A, B, C, D (128-bit ciphertext)
+     */
+    _encryptBlock(input) {
+      // Load block as 4 little-endian 32-bit words
+      let A = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
+      let B = OpCodes.Pack32LE(input[4], input[5], input[6], input[7]);
+      let C = OpCodes.Pack32LE(input[8], input[9], input[10], input[11]);
+      let D = OpCodes.Pack32LE(input[12], input[13], input[14], input[15]);
 
-      // Load A,B,C and D registers from input (little-endian)
-      let A = OpCodes.Pack32LE(plainBytes[0], plainBytes[1], plainBytes[2], plainBytes[3]);
-      let B = OpCodes.Pack32LE(plainBytes[4], plainBytes[5], plainBytes[6], plainBytes[7]);
-      let C = OpCodes.Pack32LE(plainBytes[8], plainBytes[9], plainBytes[10], plainBytes[11]);
-      let D = OpCodes.Pack32LE(plainBytes[12], plainBytes[13], plainBytes[14], plainBytes[15]);
+      // Pre-whitening
+      B = (B + this.sTable[0]) >>> 0;
+      D = (D + this.sTable[1]) >>> 0;
 
-      // Do pseudo-round #0: pre-whitening of B and D
-      B = (B + this.keySchedule[0]) | 0;
-      D = (D + this.keySchedule[1]) | 0;
+      // Main rounds
+      for (let i = 1; i <= this.rounds; i++) {
+        // t = ROL((B * (2B + 1)), 5)
+        const tInput = (B * ((2 * B + 1) >>> 0)) >>> 0;
+        const t = OpCodes.RotL32(tInput, RC6Instance.LGW);
 
-      // Perform round #1,#2 ... #ROUNDS of encryption
-      for (let i = 1; i <= RC6Algorithm.ROUNDS; i++) {
-        let t = 0, u = 0;
+        // u = ROL((D * (2D + 1)), 5)
+        const uInput = (D * ((2 * D + 1) >>> 0)) >>> 0;
+        const u = OpCodes.RotL32(uInput, RC6Instance.LGW);
 
-        t = Math.imul(B, (2 * B + 1) | 0);
-        t = rotLeft32Signed(t, 5);
+        // A = ROL(A XOR t, u) + S[2i]
+        A = (OpCodes.RotL32((A ^ t) >>> 0, u) + this.sTable[2 * i]) >>> 0;
 
-        u = Math.imul(D, (2 * D + 1) | 0);
-        u = rotLeft32Signed(u, 5);
+        // C = ROL(C XOR u, t) + S[2i + 1]
+        C = (OpCodes.RotL32((C ^ u) >>> 0, t) + this.sTable[2 * i + 1]) >>> 0;
 
-        A = (A ^ t) | 0;
-        A = rotLeft32Signed(A, u & 31);
-        A = (A + this.keySchedule[2 * i]) | 0;
-
-        C = (C ^ u) | 0;
-        C = rotLeft32Signed(C, t & 31);
-        C = (C + this.keySchedule[2 * i + 1]) | 0;
-
+        // (A, B, C, D) = (B, C, D, A)
         const temp = A;
         A = B;
         B = C;
@@ -311,83 +239,114 @@
         D = temp;
       }
 
-      // Do pseudo-round #(ROUNDS+1): post-whitening of A and C
-      A = (A + this.keySchedule[2 * RC6Algorithm.ROUNDS + 2]) | 0;
-      C = (C + this.keySchedule[2 * RC6Algorithm.ROUNDS + 3]) | 0;
+      // Post-whitening
+      A = (A + this.sTable[2 * this.rounds + 2]) >>> 0;
+      C = (C + this.sTable[2 * this.rounds + 3]) >>> 0;
 
-      // Store A, B, C and D registers to output
-      return [
-        ...OpCodes.Unpack32LE(A),
-        ...OpCodes.Unpack32LE(B),
-        ...OpCodes.Unpack32LE(C),
-        ...OpCodes.Unpack32LE(D)
-      ];
+      // Convert back to bytes (little-endian)
+      const output = [];
+      output.push(...OpCodes.Unpack32LE(A));
+      output.push(...OpCodes.Unpack32LE(B));
+      output.push(...OpCodes.Unpack32LE(C));
+      output.push(...OpCodes.Unpack32LE(D));
+
+      return output;
     }
 
-    // Private method for block decryption - exact translation of C# reference
-    _decryptBlock(cipherBytes) {
-      if (cipherBytes.length !== 16) {
-        throw new Error(`Invalid block size: ${cipherBytes.length} bytes`);
-      }
+    /**
+     * RC6 Decryption
+     * Input: 4 words A, B, C, D (128-bit ciphertext)
+     * Output: 4 words A, B, C, D (128-bit plaintext)
+     */
+    _decryptBlock(input) {
+      // Load block as 4 little-endian 32-bit words
+      let A = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
+      let B = OpCodes.Pack32LE(input[4], input[5], input[6], input[7]);
+      let C = OpCodes.Pack32LE(input[8], input[9], input[10], input[11]);
+      let D = OpCodes.Pack32LE(input[12], input[13], input[14], input[15]);
 
-      // Load A,B,C and D registers from input
-      let A = OpCodes.Pack32LE(cipherBytes[0], cipherBytes[1], cipherBytes[2], cipherBytes[3]);
-      let B = OpCodes.Pack32LE(cipherBytes[4], cipherBytes[5], cipherBytes[6], cipherBytes[7]);
-      let C = OpCodes.Pack32LE(cipherBytes[8], cipherBytes[9], cipherBytes[10], cipherBytes[11]);
-      let D = OpCodes.Pack32LE(cipherBytes[12], cipherBytes[13], cipherBytes[14], cipherBytes[15]);
+      // Undo post-whitening
+      C = (C - this.sTable[2 * this.rounds + 3]) >>> 0;
+      A = (A - this.sTable[2 * this.rounds + 2]) >>> 0;
 
-      // Undo pseudo-round #(ROUNDS+1): post whitening of A and C
-      C = (C - this.keySchedule[2 * RC6Algorithm.ROUNDS + 3]) | 0;
-      A = (A - this.keySchedule[2 * RC6Algorithm.ROUNDS + 2]) | 0;
-
-      // Undo round #ROUNDS, .., #2,#1 of encryption
-      for (let i = RC6Algorithm.ROUNDS; i >= 1; i--) {
-        let t = 0, u = 0;
-
+      // Main rounds (in reverse)
+      for (let i = this.rounds; i >= 1; i--) {
+        // Undo rotation (A, B, C, D) = (B, C, D, A)
         const temp = D;
         D = C;
         C = B;
         B = A;
         A = temp;
 
-        t = Math.imul(B, (2 * B + 1) | 0);
-        t = rotLeft32Signed(t, 5);
+        // t = ROL((B * (2B + 1)), 5)
+        const tInput = (B * ((2 * B + 1) >>> 0)) >>> 0;
+        const t = OpCodes.RotL32(tInput, RC6Instance.LGW);
 
-        u = Math.imul(D, (2 * D + 1) | 0);
-        u = rotLeft32Signed(u, 5);
+        // u = ROL((D * (2D + 1)), 5)
+        const uInput = (D * ((2 * D + 1) >>> 0)) >>> 0;
+        const u = OpCodes.RotL32(uInput, RC6Instance.LGW);
 
-        C = (C - this.keySchedule[2 * i + 1]) | 0;
-        C = rotRight32Signed(C, t & 31);
-        C = (C ^ u) | 0;
+        // C = ROR(C - S[2i + 1], t) XOR u
+        C = (OpCodes.RotR32((C - this.sTable[2 * i + 1]) >>> 0, t) ^ u) >>> 0;
 
-        A = (A - this.keySchedule[2 * i]) | 0;
-        A = rotRight32Signed(A, u & 31);
-        A = (A ^ t) | 0;
+        // A = ROR(A - S[2i], u) XOR t
+        A = (OpCodes.RotR32((A - this.sTable[2 * i]) >>> 0, u) ^ t) >>> 0;
       }
 
-      // Undo pseudo-round #0: pre-whitening of B and D
-      D = (D - this.keySchedule[1]) | 0;
-      B = (B - this.keySchedule[0]) | 0;
+      // Undo pre-whitening
+      D = (D - this.sTable[1]) >>> 0;
+      B = (B - this.sTable[0]) >>> 0;
 
-      return [
-        ...OpCodes.Unpack32LE(A),
-        ...OpCodes.Unpack32LE(B),
-        ...OpCodes.Unpack32LE(C),
-        ...OpCodes.Unpack32LE(D)
-      ];
+      // Convert back to bytes (little-endian)
+      const output = [];
+      output.push(...OpCodes.Unpack32LE(A));
+      output.push(...OpCodes.Unpack32LE(B));
+      output.push(...OpCodes.Unpack32LE(C));
+      output.push(...OpCodes.Unpack32LE(D));
+
+      return output;
+    }
+
+    // Feed data to the cipher (accumulates until we have complete blocks)
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      if (!this._key) throw new Error("Key not set");
+
+      this.inputBuffer.push(...data);
+    }
+
+    // Get the result of the transformation
+    Result() {
+      if (!this._key) throw new Error("Key not set");
+      if (this.inputBuffer.length === 0) throw new Error("No data fed");
+
+      // Validate input length for block cipher
+      if (this.inputBuffer.length % this.BlockSize !== 0) {
+        throw new Error(`Input length must be multiple of ${this.BlockSize} bytes`);
+      }
+
+      const output = [];
+
+      // Process each block
+      for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
+        const block = this.inputBuffer.slice(i, i + this.BlockSize);
+
+        const processed = this.isInverse
+          ? this._decryptBlock(block)
+          : this._encryptBlock(block);
+
+        output.push(...processed);
+      }
+
+      // Clear input buffer for next operation
+      this.inputBuffer = [];
+
+      return output;
     }
   }
 
-  // Register the algorithm immediately
+  // Register the algorithm
+  RegisterAlgorithm(new RC6Algorithm());
 
-  // ===== REGISTRATION =====
-
-    const algorithmInstance = new RC6Algorithm();
-  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
-    RegisterAlgorithm(algorithmInstance);
-  }
-
-  // ===== EXPORTS =====
-
-  return { RC6Algorithm, RC6Instance };
+  return {};
 }));
