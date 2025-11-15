@@ -396,12 +396,14 @@
         return syndrome;
       }
 
-      // Decode syndrome to find error location (minimum weight perfect matching)
-      const errorLocation = this._decodeSyndrome(syndrome);
+      // Decode syndrome to find all error locations (minimum weight perfect matching)
+      const errorLocations = this._decodeSyndrome(syndrome);
 
-      // Apply correction if error detected
-      if (errorLocation !== -1) {
-        state[errorLocation] = state[errorLocation] ^ 1; // Flip bit
+      // Apply corrections for all detected errors
+      for (const errorLocation of errorLocations) {
+        if (errorLocation >= 0 && errorLocation < state.length) {
+          state[errorLocation] ^= 1; // Flip bit
+        }
       }
 
       return state;
@@ -430,16 +432,53 @@
       // Simplified minimum-weight perfect matching decoder
       // For production, use Blossom V or PyMatching algorithms
 
-      // Find first non-zero syndrome (indicates error nearby)
+      // Find all non-zero syndrome indices
+      const triggeredStabilizers = [];
       for (let i = 0; i < syndrome.length; ++i) {
         if (syndrome[i] !== 0) {
-          // Return approximate error location based on syndrome position
-          // In real implementation, this requires graph matching
-          return this._syndromeToErrorLocation(i);
+          triggeredStabilizers.push(i);
         }
       }
 
-      return -1; // No error detected
+      // If no errors detected, return empty array
+      if (triggeredStabilizers.length === 0) {
+        return [];
+      }
+
+      // Get stabilizers
+      const stabilizers = this._errorType === 'X' ? this._xStabilizers : this._zStabilizers;
+
+      // For single triggered stabilizer, pick one of its qubits
+      if (triggeredStabilizers.length === 1) {
+        const stabIdx = triggeredStabilizers[0];
+        if (stabIdx < stabilizers.length && stabilizers[stabIdx].length > 0) {
+          return [stabilizers[stabIdx][0]];
+        }
+        return [];
+      }
+
+      // For multiple triggered stabilizers, find qubits that appear in multiple stabilizers
+      // These are more likely to be the error location
+      const qubitCounts = new Map();
+      for (const stabIdx of triggeredStabilizers) {
+        if (stabIdx < stabilizers.length) {
+          for (const qubit of stabilizers[stabIdx]) {
+            qubitCounts.set(qubit, (qubitCounts.get(qubit) || 0) + 1);
+          }
+        }
+      }
+
+      // Find qubit that appears in most stabilizers
+      let maxCount = 0;
+      let errorQubit = -1;
+      for (const [qubit, count] of qubitCounts.entries()) {
+        if (count > maxCount) {
+          maxCount = count;
+          errorQubit = qubit;
+        }
+      }
+
+      return errorQubit >= 0 ? [errorQubit] : [];
     }
 
     _syndromeToErrorLocation(syndromeIndex) {
