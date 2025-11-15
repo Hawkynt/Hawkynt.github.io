@@ -152,7 +152,8 @@
 
       this.notes = [
         "Algorithm: weighted sum with position-based weights",
-        "Standard weights: position * digit (from right to left)",
+        "Standard weights: (n+1), n, (n-1), ..., 2 from LEFT to RIGHT",
+        "For ISBN-10 (9 digits): weights are 10, 9, 8, 7, 6, 5, 4, 3, 2",
         "Check digit: (11 - sum mod 11) mod 11",
         "Result 10 represented as 'X' in ISBN",
         "Used in: ISBN-10, ISSN, bank routing numbers",
@@ -164,13 +165,13 @@
       this.tests = [
         new TestCase(
           OpCodes.AnsiToBytes("012000008"), // ISBN-10 example without check digit
-          [10], // Check digit = X (10)
+          [3], // Check digit: (11 - (0*10 + 1*9 + 2*8 + 0*7 + 0*6 + 0*5 + 0*4 + 0*3 + 8*2) mod 11) mod 11 = (11 - 41 mod 11) mod 11 = (11 - 8) mod 11 = 3
           "ISBN-10 format",
           "https://en.wikipedia.org/wiki/International_Standard_Book_Number"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("123456789"), // Simple sequence
-          [3], // Weighted sum calculation
+          [10], // Weighted sum: 1*10 + 2*9 + 3*8 + 4*7 + 5*6 + 6*5 + 7*4 + 8*3 + 9*2 = 210; 210 mod 11 = 1; (11 - 1) mod 11 = 10 (X)
           "Simple digit sequence",
           "Modulo-11 weighted checksum"
         ),
@@ -214,16 +215,17 @@
         return [0];
       }
 
-      // Calculate weighted sum (weights from right to left: 1, 2, 3, ...)
+      // Calculate weighted sum (weights from left to right: 10, 9, 8, ..., 2)
+      // For ISBN-10: first digit × 10 + second digit × 9 + ... + ninth digit × 2
       let sum = 0;
-      let weight = 1;
+      const n = this.digits.length;
 
-      for (let i = this.digits.length - 1; i >= 0; i--) {
+      for (let i = 0; i < n; i++) {
+        const weight = n + 1 - i; // For n=9: weights are 10, 9, 8, 7, 6, 5, 4, 3, 2
         sum += this.digits[i] * weight;
-        weight++;
       }
 
-      // Check digit calculation
+      // Check digit calculation: (11 - sum mod 11) mod 11
       const checkDigit = (11 - (sum % 11)) % 11;
 
       this.digits = [];
@@ -271,19 +273,19 @@
       this.tests = [
         new TestCase(
           OpCodes.AnsiToBytes("123456"), // Simple digit sequence
-          [88], // 123456 mod 97 = 88
+          [72], // 123456 mod 97 = 72 (step-by-step: 1→1, 12→12, 123→26, 1234→70, 12345→26, 123456→72)
           "Simple digit sequence",
           "Modulo-97 calculation"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("98"), // Check digit test
-          [1], // 98 mod 97 = 1
+          [1], // 98 mod 97 = 1 (valid IBAN check verification)
           "IBAN check digit validation",
           "Valid IBAN check digit"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("999999"), // Large number
-          [63], // 999999 mod 97 = 63
+          [26], // 999999 mod 97 = 26 (sequential modulo calculation to prevent overflow)
           "Large digit sequence",
           "Modulo-97 overflow handling"
         )
