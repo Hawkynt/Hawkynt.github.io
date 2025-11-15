@@ -836,6 +836,7 @@
                                 <button class="btn btn-secondary" id="run-selected-tests">▶️ Test Selected</button>
                                 <button class="btn btn-secondary" id="stop-testing">⏹️ Stop Testing</button>
                                 <button class="btn btn-secondary" id="export-test-results">📊 Export Results</button>
+                                <button class="btn btn-secondary" id="download-infrastructure" title="Download OpCodes & AlgorithmFramework for all languages">📦 Download Multi-Language Infrastructure</button>
                             </div>
                             <div class="test-parallel-controls">
                                 <div class="parallel-toggle">
@@ -857,19 +858,19 @@
                                 <table class="test-grid">
                                     <thead>
                                         <tr>
-                                            <th class="sortable" data-column="selected">
+                                            <th data-column="selected">
                                                 <input type="checkbox" id="select-all-tests" />
                                             </th>
-                                            <th class="sortable" data-column="status">Status</th>
-                                            <th class="sortable" data-column="name">Algorithm Name</th>
-                                            <th class="sortable" data-column="category">Category</th>
-                                            <th class="sortable" data-column="test-vectors">Test Vectors</th>
-                                            <th class="sortable" data-column="passed">Passed</th>
-                                            <th class="sortable" data-column="failed">Failed</th>
-                                            <th class="sortable" data-column="success-rate">Success %</th>
-                                            <th class="sortable" data-column="enhanced-tests">Enhanced Tests</th>
-                                            <th class="sortable" data-column="duration">Duration</th>
-                                            <th class="sortable" data-column="last-tested">Last Tested</th>
+                                            <th class="sortable" data-column="status">Status <span class="sort-indicator"></span></th>
+                                            <th class="sortable" data-column="name">Algorithm Name <span class="sort-indicator"></span></th>
+                                            <th class="sortable" data-column="category">Category <span class="sort-indicator"></span></th>
+                                            <th class="sortable" data-column="test-vectors">Test Vectors <span class="sort-indicator"></span></th>
+                                            <th class="sortable" data-column="passed">Passed <span class="sort-indicator"></span></th>
+                                            <th class="sortable" data-column="failed">Failed <span class="sort-indicator"></span></th>
+                                            <th class="sortable" data-column="success-rate">Success % <span class="sort-indicator"></span></th>
+                                            <th class="sortable" data-column="enhanced-tests">Enhanced Tests <span class="sort-indicator"></span></th>
+                                            <th class="sortable" data-column="duration">Duration <span class="sort-indicator"></span></th>
+                                            <th class="sortable" data-column="last-tested">Last Tested <span class="sort-indicator"></span></th>
                                         </tr>
                                     </thead>
                                 </table>
@@ -969,6 +970,9 @@
     <script src="./codingplugins/freebasic.js"></script>
     <script src="./codingplugins/c.js"></script>
     <script src="./codingplugins/cpp.js"></script>
+
+    <!-- Infrastructure Generator (uses all coding plugins) -->
+    <script src="./infrastructure-generator.js"></script>
         
     <script src="./algorithms/asymmetric/bike.js"></script>
     <script src="./algorithms/asymmetric/classic-mceliece.js"></script>
@@ -977,6 +981,7 @@
     <script src="./algorithms/asymmetric/dilithium.js"></script>
     <script src="./algorithms/asymmetric/dsa.js"></script>
     <script src="./algorithms/asymmetric/ecdsa.js"></script>
+    <script src="./algorithms/asymmetric/ed25519.js"></script>
     <script src="./algorithms/asymmetric/elgamal.js"></script>
     <script src="./algorithms/asymmetric/esign.js"></script>
     <script src="./algorithms/asymmetric/faest.js"></script>
@@ -998,24 +1003,26 @@
     <script src="./algorithms/asymmetric/slh-dsa.js"></script>
     <script src="./algorithms/asymmetric/sphincs-plus.js"></script>
     <script src="./algorithms/asymmetric/sqisign.js"></script>
+    <script src="./algorithms/asymmetric/schnorr.js"></script>
     <script src="./algorithms/asymmetric/x25519.js"></script>
     <script src="./algorithms/aead/grain128aead.js"></script>
     <script src="./algorithms/aead/saturnin.js"></script>
     <script src="./algorithms/aead/elephant.js"></script>
     <script src="./algorithms/aead/gift-cofb.js"></script>
+    <script src="./algorithms/aead/forkae.js"></script>
     <script src="./algorithms/aead/isap.js"></script>
     <script src="./algorithms/aead/photon-beetle.js"></script>
     <script src="./algorithms/aead/romulus.js"></script>
     <script src="./algorithms/aead/sparkle.js"></script>
+    <script src="./algorithms/aead/skinny-aead.js"></script>
     <script src="./algorithms/aead/xoodyak.js"></script>
-    <script src="./algorithms/aead/knot-aead-128-256.js"></script>
+    <script src="./algorithms/aead/knot-aead.js"></script>
     <script src="./algorithms/aead/orange.js"></script>
     <script src="./algorithms/aead/ace.js"></script>
     <script src="./algorithms/aead/subterranean.js"></script>
     <script src="./algorithms/aead/comet-cham.js"></script>
-    <script src="./algorithms/aead/drygascon128.js"></script>
+    <script src="./algorithms/aead/gascon.js"></script>
     <script src="./algorithms/aead/estate-twegift.js"></script>
-    <script src="./algorithms/aead/tinyjambu128.js"></script>
     <script src="./algorithms/aead/gimli24.js"></script>
     <script src="./algorithms/aead/hyena.js"></script>
     <script src="./algorithms/aead/lotus-aead.js"></script>
@@ -1024,22 +1031,26 @@
     <script src="./algorithms/aead/spook.js"></script>
     <script src="./algorithms/aead/sundae-gift.js"></script>
     <script src="./algorithms/aead/oribatida-256-64.js"></script>
-    <script src="./algorithms/aead/gascon128.js"></script>
     <script src="./algorithms/aead/locus-aead.js"></script>
     <script src="./algorithms/aead/pyjamask96.js"></script>
+    <script src="./algorithms/aead/ascon.js"></script>
     <script src="./algorithms/aead/ascon128.js"></script>
     <script src="./algorithms/aead/ascon128a.js"></script>
     <script src="./algorithms/aead/ascon80pq.js"></script>
-    <script src="./algorithms/aead/tinyjambu192.js"></script>
-    <script src="./algorithms/aead/tinyjambu256.js"></script>
+    <script src="./algorithms/aead/deoxys-ii.js"></script>
+    <script src="./algorithms/aead/drygascon128.js"></script>
+    <script src="./algorithms/aead/ketje.js"></script>
+    <script src="./algorithms/aead/keyak.js"></script>
+    <script src="./algorithms/aead/paef-forkskinny.js"></script>
+    <script src="./algorithms/aead/tiaoxin.js"></script>
+    <script src="./algorithms/aead/tinyjambu.js"></script>
     <script src="./algorithms/block/anubis.js"></script>
     <script src="./algorithms/block/aria.js"></script>
     <script src="./algorithms/block/baseking.js"></script>
     <script src="./algorithms/block/bassomatic.js"></script>
     <script src="./algorithms/block/blowfish.js"></script>
     <script src="./algorithms/block/camellia.js"></script>
-    <script src="./algorithms/block/cast128.js"></script>
-    <script src="./algorithms/block/cast256.js"></script>
+    <script src="./algorithms/block/cast.js"></script>
     <script src="./algorithms/block/cham.js"></script>
     <script src="./algorithms/block/clefia.js"></script>
     <script src="./algorithms/block/crypton.js"></script>
@@ -1053,13 +1064,11 @@
     <script src="./algorithms/block/enrupt.js"></script>
     <script src="./algorithms/block/feal.js"></script>
     <script src="./algorithms/block/feal-nx.js"></script>
-    <script src="./algorithms/block/ff1.js"></script>
+    <script src="./algorithms/block/ff.js"></script>
     <script src="./algorithms/block/frog.js"></script>
     <script src="./algorithms/block/forkskinny.js"></script>
-    <script src="./algorithms/block/ff3.js"></script>
     <script src="./algorithms/block/gift128.js"></script>
-    <script src="./algorithms/block/gost-kuznyechik.js"></script>
-    <script src="./algorithms/block/gost28147.js"></script>
+    <script src="./algorithms/block/gost.js"></script>
     <script src="./algorithms/block/grand-cru.js"></script>
     <script src="./algorithms/block/hierocrypt3.js"></script>
     <script src="./algorithms/block/hierocrypt-l1.js"></script>
@@ -1068,33 +1077,32 @@
     <script src="./algorithms/block/hurricane.js"></script>
     <script src="./algorithms/block/idea.js"></script>
     <script src="./algorithms/block/ice.js"></script>
-    <script src="./algorithms/block/ice2.js"></script>
     <script src="./algorithms/block/kalyna.js"></script>
     <script src="./algorithms/block/keeloq.js"></script>
     <script src="./algorithms/block/khazad.js"></script>
     <script src="./algorithms/block/khufu.js"></script>
     <script src="./algorithms/block/kasumi.js"></script>
+    <script src="./algorithms/block/kuznyechik.js"></script>
     <script src="./algorithms/block/lea.js"></script>
-    <script src="./algorithms/block/loki89.js"></script>
-    <script src="./algorithms/block/loki91.js"></script>
-    <script src="./algorithms/block/loki97.js"></script>
+    <script src="./algorithms/block/lblock.js"></script>
+    <script src="./algorithms/block/loki.js"></script>
     <script src="./algorithms/block/lucifer.js"></script>
     <script src="./algorithms/block/macguffin.js"></script>
     <script src="./algorithms/block/magenta.js"></script>
+    <script src="./algorithms/block/magma.js"></script>
+    <script src="./algorithms/block/mantis.js"></script>
     <script src="./algorithms/block/mars.js"></script>
     <script src="./algorithms/block/mercy.js"></script>
-    <script src="./algorithms/block/misty1.js"></script>
-    <script src="./algorithms/block/misty2.js"></script>
+    <script src="./algorithms/block/midori.js"></script>
+    <script src="./algorithms/block/misty.js"></script>
     <script src="./algorithms/block/multi2.js"></script>
     <script src="./algorithms/block/newdes.js"></script>
     <script src="./algorithms/block/noekeon.js"></script>
     <script src="./algorithms/block/present.js"></script>
+    <script src="./algorithms/block/pride.js"></script>
     <script src="./algorithms/block/pyjamask128.js"></script>
-    <script src="./algorithms/block/rc2.js"></script>
-    <script src="./algorithms/block/rc5.js"></script>
-    <script src="./algorithms/block/rc6.js"></script>
-    <script src="./algorithms/block/redoc2.js"></script>
-    <script src="./algorithms/block/redoc3.js"></script>
+    <script src="./algorithms/block/rc.js"></script>
+    <script src="./algorithms/block/redoc.js"></script>
     <script src="./algorithms/block/rhx.js"></script>
     <script src="./algorithms/block/rijndael.js"></script>
     <script src="./algorithms/block/safer.js"></script>
@@ -1102,6 +1110,7 @@
     <script src="./algorithms/block/sc2000.js"></script>
     <script src="./algorithms/block/seed.js"></script>
     <script src="./algorithms/block/serpent.js"></script>
+    <script src="./algorithms/block/shacal-1.js"></script>
     <script src="./algorithms/block/shacal-2.js"></script>
     <script src="./algorithms/block/shark-cboxes.data.js"></script>
     <script src="./algorithms/block/shark.js"></script>
@@ -1120,6 +1129,7 @@
     <script src="./algorithms/block/thx.js"></script>
     <script src="./algorithms/block/tnepres.js"></script>
     <script src="./algorithms/block/twofish.js"></script>
+    <script src="./algorithms/block/twine.js"></script>
     <script src="./algorithms/block/unicorn-a.js"></script>
     <script src="./algorithms/block/xtea.js"></script>
     <script src="./algorithms/block/xxtea.js"></script>
@@ -1129,12 +1139,7 @@
     <script src="./algorithms/checksum/bsd-checksum.js"></script>
     <script src="./algorithms/checksum/check-digit.js"></script>
     <script src="./algorithms/checksum/constant-weight.js"></script>
-    <script src="./algorithms/checksum/crc128.js"></script>
-    <script src="./algorithms/checksum/crc16.js"></script>
-    <script src="./algorithms/checksum/crc24.js"></script>
-    <script src="./algorithms/checksum/crc32.js"></script>
-    <script src="./algorithms/checksum/crc64.js"></script>
-    <script src="./algorithms/checksum/crc8.js"></script>
+    <script src="./algorithms/checksum/crc.js"></script>
     <script src="./algorithms/checksum/cusip-checksum.js"></script>
     <script src="./algorithms/checksum/damm.js"></script>
     <script src="./algorithms/checksum/ean8-checksum.js"></script>
@@ -1146,23 +1151,22 @@
     <script src="./algorithms/checksum/imei-checksum.js"></script>
     <script src="./algorithms/checksum/internet-checksum.js"></script>
     <script src="./algorithms/checksum/isbn.js"></script>
+    <script src="./algorithms/checksum/isbn10-checksum.js"></script>
+    <script src="./algorithms/checksum/isbn13-checksum.js"></script>
     <script src="./algorithms/checksum/isin-checksum.js"></script>
     <script src="./algorithms/checksum/issn-checksum.js"></script>
     <script src="./algorithms/checksum/lrc.js"></script>
     <script src="./algorithms/checksum/luhn.js"></script>
-    <script src="./algorithms/checksum/modulo-10.js"></script>
-    <script src="./algorithms/checksum/modulo-11.js"></script>
-    <script src="./algorithms/checksum/modulo-97.js"></script>
+    <script src="./algorithms/checksum/modulo.js"></script>
     <script src="./algorithms/checksum/nmea-0183.js"></script>
     <script src="./algorithms/checksum/npi-checksum.js"></script>
-    <script src="./algorithms/checksum/ones-complement.js"></script>
+    <script src="./algorithms/checksum/complement.js"></script>
     <script src="./algorithms/checksum/parity.js"></script>
     <script src="./algorithms/checksum/planet-checksum.js"></script>
     <script src="./algorithms/checksum/postnet-checksum.js"></script>
     <script src="./algorithms/checksum/sedol-checksum.js"></script>
     <script src="./algorithms/checksum/sum-checksum.js"></script>
     <script src="./algorithms/checksum/sysv-checksum.js"></script>
-    <script src="./algorithms/checksum/twos-complement.js"></script>
     <script src="./algorithms/checksum/unix-sum.js"></script>
     <script src="./algorithms/checksum/upc-ean.js"></script>
     <script src="./algorithms/checksum/upca-checksum.js"></script>
@@ -1199,7 +1203,9 @@
     <script src="./algorithms/compression/arithmetic.js"></script>
     <script src="./algorithms/compression/bpe.js"></script>
     <script src="./algorithms/compression/brieflz.js"></script>
+    <script src="./algorithms/compression/bcm.js"></script>
     <script src="./algorithms/compression/brotli.js"></script>
+    <script src="./algorithms/compression/balz.js"></script>
     <script src="./algorithms/compression/bsc.js"></script>
     <script src="./algorithms/compression/zopfli.js"></script>
     <script src="./algorithms/compression/bwt.js"></script>
@@ -1207,15 +1213,18 @@
     <script src="./algorithms/compression/bzip2.js"></script>
     <script src="./algorithms/compression/cmix.js"></script>
     <script src="./algorithms/compression/csc.js"></script>
+    <script src="./algorithms/compression/crush.js"></script>
     <script src="./algorithms/compression/ctw.js"></script>
     <script src="./algorithms/compression/deflate-simple.js"></script>
     <script src="./algorithms/compression/deflate.js"></script>
+    <script src="./algorithms/compression/DEFLATE.js"></script>
     <script src="./algorithms/compression/delta.js"></script>
     <script src="./algorithms/compression/density.js"></script>
     <script src="./algorithms/compression/dna-compression.js"></script>
     <script src="./algorithms/compression/elias-delta.js"></script>
     <script src="./algorithms/compression/elias-gamma.js"></script>
     <script src="./algorithms/compression/fibonacci.js"></script>
+    <script src="./algorithms/compression/fse.js"></script>
     <script src="./algorithms/compression/fastlz.js"></script>
     <script src="./algorithms/compression/golomb-bitstream.js"></script>
     <script src="./algorithms/compression/golomb.js"></script>
@@ -1244,6 +1253,7 @@
     <script src="./algorithms/compression/lzw.js"></script>
     <script src="./algorithms/compression/lzx.js"></script>
     <script src="./algorithms/compression/mtf.js"></script>
+    <script src="./algorithms/compression/mcm.js"></script>
     <script src="./algorithms/compression/neural-compression.js"></script>
     <script src="./algorithms/compression/omega.js"></script>
     <script src="./algorithms/compression/packbits.js"></script>
@@ -1259,6 +1269,7 @@
     <script src="./algorithms/compression/rolz.js"></script>
     <script src="./algorithms/compression/shannon-fano.js"></script>
     <script src="./algorithms/compression/shoco.js"></script>
+    <script src="./algorithms/compression/Shoco.js"></script>
     <script src="./algorithms/compression/snappy.js"></script>
     <script src="./algorithms/compression/suffix-tree.js"></script>
     <script src="./algorithms/compression/tans.js"></script>
@@ -1295,6 +1306,7 @@
     <script src="./algorithms/ecc/cat-code.js"></script>
     <script src="./algorithms/ecc/color-code.js"></script>
     <script src="./algorithms/ecc/concatenated.js"></script>
+    <script src="./algorithms/ecc/constant-weight-balanced.js"></script>
     <script src="./algorithms/ecc/convolutional-viterbi.js"></script>
     <script src="./algorithms/ecc/css-quantum-code.js"></script>
     <script src="./algorithms/ecc/cortex-code.js"></script>
@@ -1309,13 +1321,17 @@
     <script src="./algorithms/ecc/gabidulin-code.js"></script>
     <script src="./algorithms/ecc/gkp-code.js"></script>
     <script src="./algorithms/ecc/golay.js"></script>
+    <script src="./algorithms/ecc/goppa-code.js"></script>
     <script src="./algorithms/ecc/hadamard-code.js"></script>
     <script src="./algorithms/ecc/hamming.js"></script>
     <script src="./algorithms/ecc/hermitian-code.js"></script>
     <script src="./algorithms/ecc/hsiao-code.js"></script>
     <script src="./algorithms/ecc/interleaver.js"></script>
+    <script src="./algorithms/ecc/justesen-code.js"></script>
+    <script src="./algorithms/ecc/kerdock-code.js"></script>
     <script src="./algorithms/ecc/ldpc.js"></script>
     <script src="./algorithms/ecc/lexicographic-code.js"></script>
+    <script src="./algorithms/ecc/levenshtein-code.js"></script>
     <script src="./algorithms/ecc/locally-recoverable-code.js"></script>
     <script src="./algorithms/ecc/lt-codes.js"></script>
     <script src="./algorithms/ecc/luby-transform-enhanced.js"></script>
@@ -1356,6 +1372,7 @@
     <script src="./algorithms/ecc/turbo-code.js"></script>
     <script src="./algorithms/ecc/varshamov-tenengolts.js"></script>
     <script src="./algorithms/ecc/zigzag-code.js"></script>
+    <script src="./algorithms/ecc/wozencraft-ensemble.js"></script>
     <script src="./algorithms/encoding/atbash.js"></script>
     <script src="./algorithms/encoding/base16.js"></script>
     <script src="./algorithms/encoding/base32.js"></script>
@@ -1378,30 +1395,24 @@
     <script src="./algorithms/encoding/z85.js"></script>
     <script src="./algorithms/hash/argon2.js"></script>
     <script src="./algorithms/hash/ascon-hash.js"></script>
-    <script src="./algorithms/hash/ascon-hash256.js"></script>
-    <script src="./algorithms/hash/ascon-xof.js"></script>
     <script src="./algorithms/hash/bcrypt.js"></script>
     <script src="./algorithms/hash/blake.js"></script>
-    <script src="./algorithms/hash/blake2b.js"></script>
-    <script src="./algorithms/hash/blake2s.js"></script>
+    <script src="./algorithms/hash/blake2.js"></script>
     <script src="./algorithms/hash/blake3-enhanced.js"></script>
     <script src="./algorithms/hash/blake3.js"></script>
     <script src="./algorithms/hash/cityhash.js"></script>
+    <script src="./algorithms/hash/cubehash.js"></script>
     <script src="./algorithms/hash/fnv.js"></script>
     <script src="./algorithms/hash/groestl.js"></script>
     <script src="./algorithms/hash/haraka.js"></script>
     <script src="./algorithms/hash/haval.js"></script>
     <script src="./algorithms/hash/highway-hash.js"></script>
     <script src="./algorithms/hash/jh.js"></script>
-    <script src="./algorithms/hash/md2.js"></script>
-    <script src="./algorithms/hash/md4.js"></script>
-    <script src="./algorithms/hash/md5.js"></script>
+    <script src="./algorithms/hash/md.js"></script>
     <script src="./algorithms/hash/mdc2.js"></script>
     <script src="./algorithms/hash/murmurhash3.js"></script>
     <script src="./algorithms/hash/radiogatun.js"></script>
-    <script src="./algorithms/hash/ripemd160.js"></script>
-    <script src="./algorithms/hash/ripemd256.js"></script>
-    <script src="./algorithms/hash/ripemd320.js"></script>
+    <script src="./algorithms/hash/ripemd.js"></script>
     <script src="./algorithms/hash/sha1.js"></script>
     <script src="./algorithms/hash/sha256.js"></script>
     <script src="./algorithms/hash/sha512.js"></script>
@@ -1409,6 +1420,7 @@
     <script src="./algorithms/hash/shake.js"></script>
     <script src="./algorithms/hash/siphash.js"></script>
     <script src="./algorithms/hash/skein.js"></script>
+    <script src="./algorithms/hash/skinny-hash.js"></script>
     <script src="./algorithms/hash/streebog.js"></script>
     <script src="./algorithms/hash/subterranean-hash.js"></script>
     <script src="./algorithms/hash/tiger.js"></script>
@@ -1417,10 +1429,10 @@
     <script src="./algorithms/hash/xxhash3.js"></script>
     <script src="./algorithms/hash/xxhash32.js"></script>
     <script src="./algorithms/hash/xoodyak-hash.js"></script>
-    <script src="./algorithms/hash/blake2xs.js"></script>
     <script src="./algorithms/hash/chc.js"></script>
     <script src="./algorithms/hash/cshake.js"></script>
     <script src="./algorithms/hash/dstu7564.js"></script>
+    <script src="./algorithms/hash/drygascon-hash.js"></script>
     <script src="./algorithms/hash/esch256.js"></script>
     <script src="./algorithms/hash/gimli24-hash.js"></script>
     <script src="./algorithms/hash/gost3411.js"></script>
@@ -1428,29 +1440,27 @@
     <script src="./algorithms/hash/kangaroo.js"></script>
     <script src="./algorithms/hash/knot-hash-256-256.js"></script>
     <script src="./algorithms/hash/keccak.js"></script>
-    <!-- Educational byte-array implementations - disabled (main DSTU7564 supports all output sizes) -->
-    <!-- <script src="./algorithms/hash/kupyna256.js"></script> -->
-    <!-- <script src="./algorithms/hash/kupyna512.js"></script> -->
-    <script src="./algorithms/hash/lsh-224.js"></script>
-    <script src="./algorithms/hash/lsh-256.js"></script>
-    <script src="./algorithms/hash/lsh-384.js"></script>
-    <script src="./algorithms/hash/lsh-512-256.js"></script>
-    <script src="./algorithms/hash/lsh-512.js"></script>
+    <script src="./algorithms/hash/kupyna.js"></script>
+    <script src="./algorithms/hash/lsh.js"></script>
     <script src="./algorithms/hash/panama-be.js"></script>
     <script src="./algorithms/hash/panama-le.js"></script>
     <script src="./algorithms/hash/parallelhash.js"></script>
     <script src="./algorithms/hash/photon-beetle-hash.js"></script>
-    <script src="./algorithms/hash/ripemd128.js"></script>
     <script src="./algorithms/hash/sm3.js"></script>
     <script src="./algorithms/hash/sparkle-hash.js"></script>
-    <script src="./algorithms/hash/tuplehash128.js"></script>
-    <script src="./algorithms/hash/tuplehash256.js"></script>
+    <script src="./algorithms/hash/tuplehash.js"></script>
+    <script src="./algorithms/kdf/balloon.js"></script>
+    <script src="./algorithms/kdf/bcrypt-pbkdf.js"></script>
+    <script src="./algorithms/kdf/concat-kdf.js"></script>
     <script src="./algorithms/kdf/hkdf.js"></script>
+    <script src="./algorithms/kdf/pbkdf1.js"></script>
     <script src="./algorithms/kdf/pbkdf2.js"></script>
     <script src="./algorithms/kdf/scrypt.js"></script>
+    <script src="./algorithms/kdf/x963kdf.js"></script>
     <script src="./algorithms/mac/cmac.js"></script>
     <script src="./algorithms/mac/gmac.js"></script>
     <script src="./algorithms/mac/hmac.js"></script>
+    <script src="./algorithms/mac/hmac-sha256.js"></script>
     <script src="./algorithms/mac/kmac.js"></script>
     <script src="./algorithms/mac/omac.js"></script>
     <script src="./algorithms/mac/poly1305.js"></script>
@@ -1492,7 +1502,6 @@
     <script src="./algorithms/modes/kwp.js"></script>
     <script src="./algorithms/modes/lrw.js"></script>
     <script src="./algorithms/modes/ocb.js"></script>
-    <script src="./algorithms/modes/ocb3.js"></script>
     <script src="./algorithms/modes/ofb.js"></script>
     <script src="./algorithms/modes/pcbc.js"></script>
     <script src="./algorithms/modes/siv.js"></script>
@@ -1505,20 +1514,80 @@
     <script src="./algorithms/padding/iso7816-4.js"></script>
     <script src="./algorithms/padding/no-padding.js"></script>
     <script src="./algorithms/padding/oaep.js"></script>
-    <script src="./algorithms/padding/pkcs1.js"></script>
-    <script src="./algorithms/padding/pkcs5.js"></script>
-    <script src="./algorithms/padding/pkcs7.js"></script>
+    <script src="./algorithms/padding/pkcs.js"></script>
     <script src="./algorithms/padding/pss.js"></script>
     <script src="./algorithms/padding/random.js"></script>
     <script src="./algorithms/padding/zero.js"></script>
     <script src="./algorithms/permutation/simpira-v2.js"></script>
     <script src="./algorithms/pqc/ml-kem.js"></script>
+    <script src="./algorithms/random/acrng.js"></script>
+    <script src="./algorithms/random/ars.js"></script>
+    <script src="./algorithms/random/blum-micali.js"></script>
+    <script src="./algorithms/random/blumblumshub.js"></script>
+    <script src="./algorithms/random/chacha8.js"></script>
+    <script src="./algorithms/random/cmwc.js"></script>
+    <script src="./algorithms/random/combined-lcg.js"></script>
+    <script src="./algorithms/random/dsfmt.js"></script>
+    <script src="./algorithms/random/fcsr.js"></script>
     <script src="./algorithms/random/fortuna.js"></script>
+    <script src="./algorithms/random/icg.js"></script>
+    <script src="./algorithms/random/isaac.js"></script>
+    <script src="./algorithms/random/jsf.js"></script>
+    <script src="./algorithms/random/kiss.js"></script>
+    <script src="./algorithms/random/knuth-b.js"></script>
+    <script src="./algorithms/random/lagged-fibonacci.js"></script>
+    <script src="./algorithms/random/lcg.js"></script>
+    <script src="./algorithms/random/lehmer.js"></script>
+    <script src="./algorithms/random/lfsr.js"></script>
+    <script src="./algorithms/random/mersenne-twister.js"></script>
+    <script src="./algorithms/random/mersenne-twister-64.js"></script>
+    <script src="./algorithms/random/middle-square.js"></script>
+    <script src="./algorithms/random/mixmax.js"></script>
+    <script src="./algorithms/random/mlcg.js"></script>
+    <script src="./algorithms/random/mrg32k3a.js"></script>
+    <script src="./algorithms/random/mulberry32.js"></script>
+    <script src="./algorithms/random/msws.js"></script>
+    <script src="./algorithms/random/mwc.js"></script>
+    <script src="./algorithms/random/mwc64x.js"></script>
+    <script src="./algorithms/random/pcg.js"></script>
+    <script src="./algorithms/random/pcg-rxs-m-xs.js"></script>
+    <script src="./algorithms/random/pcg-xsh-rs.js"></script>
+    <script src="./algorithms/random/pcg-xsl-rr.js"></script>
+    <script src="./algorithms/random/philox.js"></script>
+    <script src="./algorithms/random/ranlux.js"></script>
+    <script src="./algorithms/random/ran2.js"></script>
+    <script src="./algorithms/random/ran3.js"></script>
+    <script src="./algorithms/random/ranshi.js"></script>
+    <script src="./algorithms/random/romu.js"></script>
+    <script src="./algorithms/random/sfmt.js"></script>
+    <script src="./algorithms/random/sfc.js"></script>
+    <script src="./algorithms/random/sfc64.js"></script>
+    <script src="./algorithms/random/splitmix32.js"></script>
+    <script src="./algorithms/random/splitmix64.js"></script>
+    <script src="./algorithms/random/squares.js"></script>
+    <script src="./algorithms/random/swb.js"></script>
+    <script src="./algorithms/random/tinymt.js"></script>
+    <script src="./algorithms/random/threefry.js"></script>
+    <script src="./algorithms/random/well.js"></script>
+    <script src="./algorithms/random/wichmann-hill.js"></script>
+    <script src="./algorithms/random/wyrand.js"></script>
+    <script src="./algorithms/random/xoroshiro128plus.js"></script>
+    <script src="./algorithms/random/xoroshiro128plusplus.js"></script>
+    <script src="./algorithms/random/xoroshiro128starstar.js"></script>
+    <script src="./algorithms/random/xorshift.js"></script>
+    <script src="./algorithms/random/xorshift1024star.js"></script>
+    <script src="./algorithms/random/xorshift-plus.js"></script>
+    <script src="./algorithms/random/xorshift-star.js"></script>
+    <script src="./algorithms/random/xorwow.js"></script>
+    <script src="./algorithms/random/xoshiro-plusplus.js"></script>
+    <script src="./algorithms/random/xoshiro128starstar.js"></script>
+    <script src="./algorithms/random/xoshiro256plus.js"></script>
+    <script src="./algorithms/random/xoshiro256starstar.js"></script>
+    <script src="./algorithms/random/xxhash32.js"></script>
     <!-- yarrow-demo.js is a CLI demonstration script - use: node algorithms/random/yarrow-demo.js -->
     <script src="./algorithms/random/yarrow.js"></script>
     <script src="./algorithms/special/3way.js"></script>
     <script src="./algorithms/special/aes-siv.js"></script>
-    <!-- ascon.js moved to stream category to avoid duplicate registration -->
     <script src="./algorithms/aead/chacha20-poly1305.js"></script>
     <script src="./algorithms/special/elephant.js"></script>
     <script src="./algorithms/special/fiat-shamir.js"></script>
@@ -1530,14 +1599,11 @@
     <script src="./algorithms/special/xchacha20-poly1305.js"></script>
     <script src="./algorithms/special/rc2wrap.js"></script>
 
-    <script src="./algorithms/stream/a5-1.js"></script>
-    <script src="./algorithms/stream/a5-2.js"></script>
-    <script src="./algorithms/stream/a5-3.js"></script>
+    <script src="./algorithms/stream/a5.js"></script>
     <script src="./algorithms/stream/achterbahn.js"></script>
     <script src="./algorithms/stream/acorn.js"></script>
     <script src="./algorithms/stream/aegis-128.js"></script>
     <script src="./algorithms/stream/aes-gcm-siv.js"></script>
-    <script src="./algorithms/aead/ascon.js"></script>
     <script src="./algorithms/stream/beth-piper.js"></script>
     <script src="./algorithms/stream/caracachs.js"></script>
     <script src="./algorithms/stream/chacha20.js"></script>
@@ -1547,13 +1613,11 @@
     <script src="./algorithms/stream/e2.js"></script>
     <script src="./algorithms/stream/f-fcsr.js"></script>
     <script src="./algorithms/stream/geffe.js"></script>
-    <script src="./algorithms/stream/grain-v1.js"></script>
-    <script src="./algorithms/stream/grain.js"></script>
+    <script src="./algorithms/stream/grain.js"></script><!-- Grain v1 and Grain-128 consolidated -->
     <script src="./algorithms/stream/hc.js"></script>
     <script src="./algorithms/stream/isaac.js"></script>
     <script src="./algorithms/stream/leviathan.js"></script>
-    <script src="./algorithms/stream/mickey-128.js"></script>
-    <script src="./algorithms/stream/mickey.js"></script>
+    <script src="./algorithms/stream/mickey.js"></script><!-- MICKEY and MICKEY-128 consolidated -->
     <script src="./algorithms/stream/miller.js"></script>
     <script src="./algorithms/stream/morus.js"></script>
     <script src="./algorithms/stream/mugi.js"></script>
@@ -1582,7 +1646,6 @@
     <script src="./algorithms/stream/zuc256.js"></script>
     <!-- zuc128mac moved here to load after its dependency (zuc.js) -->
     <script src="./algorithms/mac/zuc128mac.js"></script>
-    <script src="./algorithms/stream/grain128.js"></script>
     <script src="./algorithms/stream/sober128.js"></script>
     <script src="./algorithms/stream/vmpc.js"></script>
     <script src="./algorithms/stream/vmpcksa3.js"></script>
