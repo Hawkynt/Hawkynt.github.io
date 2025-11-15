@@ -24,69 +24,69 @@
     
     /**
      * Rotate left (circular left shift) for 8-bit values
-     * @param {number} value - 8-bit value to rotate
-     * @param {number} positions - Number of positions to rotate (0-7)
-     * @returns {number} Rotated 8-bit value
+     * @param {uint8} value - 8-bit value to rotate
+     * @param {int32} positions - Number of positions to rotate (0-7)
+     * @returns {uint8} Rotated 8-bit value
      */
     RotL8: function(value, positions) {
       value &= 0xFF;
       positions &= 7;
       return ((value << positions) | (value >>> (8 - positions))) & 0xFF;
     },
-    
+
     /**
      * Rotate right (circular right shift) for 8-bit values
-     * @param {number} value - 8-bit value to rotate
-     * @param {number} positions - Number of positions to rotate (0-7)
-     * @returns {number} Rotated 8-bit value
+     * @param {uint8} value - 8-bit value to rotate
+     * @param {int32} positions - Number of positions to rotate (0-7)
+     * @returns {uint8} Rotated 8-bit value
      */
     RotR8: function(value, positions) {
       value &= 0xFF;
       positions &= 7;
       return ((value >>> positions) | (value << (8 - positions))) & 0xFF;
     },
-    
+
     /**
      * Rotate left (circular left shift) for 16-bit values
-     * @param {number} value - 16-bit value to rotate
-     * @param {number} positions - Number of positions to rotate (0-15)
-     * @returns {number} Rotated 16-bit value
+     * @param {uint16} value - 16-bit value to rotate
+     * @param {int32} positions - Number of positions to rotate (0-15)
+     * @returns {uint16} Rotated 16-bit value
      */
     RotL16: function(value, positions) {
       value &= 0xFFFF;
       positions &= 15;
       return ((value << positions) | (value >>> (16 - positions))) & 0xFFFF;
     },
-    
+
     /**
      * Rotate right (circular right shift) for 16-bit values
-     * @param {number} value - 16-bit value to rotate
-     * @param {number} positions - Number of positions to rotate (0-15)
-     * @returns {number} Rotated 16-bit value
+     * @param {uint16} value - 16-bit value to rotate
+     * @param {int32} positions - Number of positions to rotate (0-15)
+     * @returns {uint16} Rotated 16-bit value
      */
     RotR16: function(value, positions) {
       value &= 0xFFFF;
       positions &= 15;
       return ((value >>> positions) | (value << (16 - positions))) & 0xFFFF;
     },
-    
+
     /**
      * Rotate left (circular left shift) for 32-bit values
-     * @param {number} value - 32-bit value to rotate
-     * @param {number} positions - Number of positions to rotate (0-31)
-     * @returns {number} Rotated 32-bit value
+     * @param {uint32} value - 32-bit value to rotate
+     * @param {int32} positions - Number of positions to rotate (0-31)
+     * @returns {uint32} Rotated 32-bit value
      */
     RotL32: function(value, positions) {
       value = value >>> 0; // Ensure unsigned 32-bit
       positions &= 31;
       return ((value << positions) | (value >>> (32 - positions))) >>> 0;
     },
-    
+
     /**
      * Rotate right (circular right shift) for 32-bit values
-     * @param {number} value - 32-bit value to rotate
-     * @param {number} positions - Number of positions to rotate (0-31)
-     * @returns {number} Rotated 32-bit value
+     * @param {uint32} value - 32-bit value to rotate
+     * @param {int32} positions - Number of positions to rotate (0-31)
+     * @returns {uint32} Rotated 32-bit value
      */
     RotR32: function(value, positions) {
       value = value >>> 0; // Ensure unsigned 32-bit
@@ -96,9 +96,9 @@
 
     /**
      * Logical left shift for 8-bit values
-     * @param {number} value - 8-bit value to shift
-     * @param {number} positions - Number of positions to shift
-     * @returns {number} Shifted 8-bit value
+     * @param {uint8} value - 8-bit value to shift
+     * @param {int32} positions - Number of positions to shift
+     * @returns {uint8} Shifted 8-bit value
      */
     Shl8: function(value, positions) {
       return (value << positions) & 0xFF;
@@ -106,9 +106,9 @@
 
     /**
      * Logical right shift for 8-bit values
-     * @param {number} value - 8-bit value to shift
-     * @param {number} positions - Number of positions to shift
-     * @returns {number} Shifted 8-bit value
+     * @param {uint8} value - 8-bit value to shift
+     * @param {int32} positions - Number of positions to shift
+     * @returns {uint8} Shifted 8-bit value
      */
     Shr8: function(value, positions) {
       return (value >>> positions) & 0xFF;
@@ -116,9 +116,9 @@
 
     /**
      * Logical left shift for 16-bit values
-     * @param {number} value - 16-bit value to shift
-     * @param {number} positions - Number of positions to shift
-     * @returns {number} Shifted 16-bit value
+     * @param {uint16} value - 16-bit value to shift
+     * @param {int32} positions - Number of positions to shift
+     * @returns {uint16} Shifted 16-bit value
      */
     Shl16: function(value, positions) {
       return (value << positions) & 0xFFFF;
@@ -126,9 +126,9 @@
 
     /**
      * Logical right shift for 16-bit values
-     * @param {number} value - 16-bit value to shift
-     * @param {number} positions - Number of positions to shift
-     * @returns {number} Shifted 16-bit value
+     * @param {uint16} value - 16-bit value to shift
+     * @param {int32} positions - Number of positions to shift
+     * @returns {uint16} Shifted 16-bit value
      */
     Shr16: function(value, positions) {
       return (value >>> positions) & 0xFFFF;
@@ -136,9 +136,9 @@
 
     /**
      * Logical left shift for 32-bit values
-     * @param {number} value - 32-bit value to shift
-     * @param {number} positions - Number of positions to shift
-     * @returns {number} Shifted 32-bit value (unsigned)
+     * @param {uint32} value - 32-bit value to shift
+     * @param {int32} positions - Number of positions to shift
+     * @returns {uint32} Shifted 32-bit value (unsigned)
      */
     Shl32: function(value, positions) {
       return (value << positions) >>> 0;
@@ -146,9 +146,9 @@
 
     /**
      * Logical right shift for 32-bit values
-     * @param {number} value - 32-bit value to shift
-     * @param {number} positions - Number of positions to shift
-     * @returns {number} Shifted 32-bit value (unsigned)
+     * @param {uint32} value - 32-bit value to shift
+     * @param {int32} positions - Number of positions to shift
+     * @returns {uint32} Shifted 32-bit value (unsigned)
      */
     Shr32: function(value, positions) {
       return (value >>> positions) >>> 0;
@@ -157,7 +157,7 @@
     /**
      * Rotate left (circular left shift) for 64-bit BigInt values
      * @param {BigInt} value - 64-bit BigInt value to rotate
-     * @param {number} positions - Number of positions to rotate (0-63)
+     * @param {int32} positions - Number of positions to rotate (0-63)
      * @returns {BigInt} Rotated 64-bit BigInt value
      */
     RotL64n: function(value, positions) {
@@ -172,7 +172,7 @@
     /**
      * Rotate right (circular right shift) for 64-bit BigInt values
      * @param {BigInt} value - 64-bit BigInt value to rotate
-     * @param {number} positions - Number of positions to rotate (0-63)
+     * @param {int32} positions - Number of positions to rotate (0-63)
      * @returns {BigInt} Rotated 64-bit BigInt value
      */
     RotR64n: function(value, positions) {
@@ -187,7 +187,7 @@
     /**
      * Left shift for BigInt values (arithmetic/logical shift)
      * @param {BigInt} value - BigInt value to shift
-     * @param {number} positions - Number of positions to shift
+     * @param {int32} positions - Number of positions to shift
      * @returns {BigInt} Shifted BigInt value
      */
     ShiftLn: function(value, positions) {
@@ -197,7 +197,7 @@
     /**
      * Right shift for BigInt values (arithmetic/logical shift)
      * @param {BigInt} value - BigInt value to shift
-     * @param {number} positions - Number of positions to shift
+     * @param {int32} positions - Number of positions to shift
      * @returns {BigInt} Shifted BigInt value
      */
     ShiftRn: function(value, positions) {
@@ -208,8 +208,8 @@
 
     /**
      * Convert to unsigned 8-bit integer (byte)
-     * @param {number} value - Value to convert
-     * @returns {number} Unsigned 8-bit value (0-255)
+     * @param {int32} value - Value to convert
+     * @returns {uint8} Unsigned 8-bit value (0-255)
      */
     ToByte: function(value) {
       return value & 0xFF;
@@ -217,8 +217,8 @@
 
     /**
      * Convert to signed 8-bit integer
-     * @param {number} value - Value to convert
-     * @returns {number} Signed 8-bit value (-128 to 127)
+     * @param {int32} value - Value to convert
+     * @returns {int8} Signed 8-bit value (-128 to 127)
      */
     ToSByte: function(value) {
       value = value & 0xFF;
@@ -227,8 +227,8 @@
 
     /**
      * Convert to unsigned 16-bit integer (word)
-     * @param {number} value - Value to convert
-     * @returns {number} Unsigned 16-bit value (0-65535)
+     * @param {int32} value - Value to convert
+     * @returns {uint16} Unsigned 16-bit value (0-65535)
      */
     ToWord: function(value) {
       return value & 0xFFFF;
@@ -236,8 +236,8 @@
 
     /**
      * Convert to signed 16-bit integer (short)
-     * @param {number} value - Value to convert
-     * @returns {number} Signed 16-bit value (-32768 to 32767)
+     * @param {int32} value - Value to convert
+     * @returns {int16} Signed 16-bit value (-32768 to 32767)
      */
     ToShort: function(value) {
       value = value & 0xFFFF;
@@ -247,8 +247,8 @@
     /**
      * Convert to unsigned 32-bit integer (dword)
      * Replaces JavaScript's >>> 0 idiom
-     * @param {number} value - Value to convert
-     * @returns {number} Unsigned 32-bit value
+     * @param {int32} value - Value to convert
+     * @returns {uint32} Unsigned 32-bit value
      */
     ToDWord: function(value) {
       return value >>> 0;
@@ -256,8 +256,8 @@
 
     /**
      * Convert to signed 32-bit integer (int)
-     * @param {number} value - Value to convert
-     * @returns {number} Signed 32-bit value
+     * @param {uint32} value - Value to convert
+     * @returns {int32} Signed 32-bit value
      */
     ToInt: function(value) {
       return value | 0;
@@ -265,7 +265,7 @@
 
     /**
      * Convert to unsigned 64-bit BigInt (qword)
-     * @param {BigInt|number} value - Value to convert
+     * @param {BigInt} value - Value to convert
      * @returns {BigInt} Unsigned 64-bit value
      */
     ToQWord: function(value) {
@@ -274,7 +274,7 @@
 
     /**
      * Convert to signed 64-bit BigInt (long)
-     * @param {BigInt|number} value - Value to convert
+     * @param {BigInt} value - Value to convert
      * @returns {BigInt} Signed 64-bit value
      */
     ToLong: function(value) {
@@ -284,10 +284,10 @@
 
     /**
      * 64-bit left rotation (for future 64-bit ciphers)
-     * @param {number} low - Low 32 bits
-     * @param {number} high - High 32 bits
-     * @param {number} positions - Rotation positions (0-63)
-     * @returns {Object} {low, high} - Rotated 64-bit value
+     * @param {uint32} low - Low 32 bits
+     * @param {uint32} high - High 32 bits
+     * @param {int32} positions - Rotation positions (0-63)
+     * @returns {Object} {low: uint32, high: uint32} - Rotated 64-bit value
      */
     RotL64: function(low, high, positions) {
       positions &= 63;
@@ -415,18 +415,18 @@
     
     /**
      * Pack 2 bytes into a 16-bit word (big-endian)
-     * @param {number} b0 - Most significant byte
-     * @param {number} b1 - Second byte
-     * @returns {number} 16-bit word
+     * @param {uint8} b0 - Most significant byte
+     * @param {uint8} b1 - Least significant byte
+     * @returns {uint16} 16-bit word
      */
     Pack16BE: function(b0, b1) {
       return ((b0 & 0xFF) << 8) | (b1 & 0xFF);
     },
-      
+
     /**
      * Unpack 16-bit word to 2 bytes (big-endian)
-     * @param {number} word - 16-bit word to unpack
-     * @returns {Array} Array of 2 bytes [b0, b1]
+     * @param {uint16} word - 16-bit word to unpack
+     * @returns {uint8[]} Array of 2 bytes [b0, b1]
      */
     Unpack16BE: function(word) {
       word = word & 0xFFFF;
@@ -435,21 +435,21 @@
         word & 0xFF
       ];
     },
-    
+
     /**
      * Pack 2 bytes into a 16-bit word (little-endian)
-     * @param {number} b0 - Most significant byte
-     * @param {number} b1 - Second byte
-     * @returns {number} 16-bit word
+     * @param {uint8} b0 - Least significant byte
+     * @param {uint8} b1 - Most significant byte
+     * @returns {uint16} 16-bit word
      */
     Pack16LE: function(b0, b1) {
       return ((b1 & 0xFF) << 8) | (b0 & 0xFF);
     },
-  
+
     /**
      * Unpack 16-bit word to 2 bytes (little-endian)
-     * @param {number} word - 16-bit word to unpack
-     * @returns {Array} Array of 2 bytes [b0, b1]
+     * @param {uint16} word - 16-bit word to unpack
+     * @returns {uint8[]} Array of 2 bytes [b0, b1]
      */
     Unpack16LE: function(word) {
       word = word & 0xFFFF;
@@ -458,23 +458,23 @@
         (word >>> 8) & 0xFF
       ];
     },
-    
+
     /**
      * Pack 4 bytes into a 32-bit dword (big-endian)
-     * @param {number} b0 - Most significant byte
-     * @param {number} b1 - Second byte
-     * @param {number} b2 - Third byte
-     * @param {number} b3 - Least significant byte
-     * @returns {number} 32-bit word
+     * @param {uint8} b0 - Most significant byte
+     * @param {uint8} b1 - Second byte
+     * @param {uint8} b2 - Third byte
+     * @param {uint8} b3 - Least significant byte
+     * @returns {uint32} 32-bit word
      */
     Pack32BE: function(b0, b1, b2, b3) {
       return (((b0 & 0xFF) << 24) | ((b1 & 0xFF) << 16) | ((b2 & 0xFF) << 8) | (b3 & 0xFF)) >>> 0;
     },
-    
+
     /**
      * Unpack 32-bit dword to 4 bytes (big-endian)
-     * @param {number} dword - 32-bit dword to unpack
-     * @returns {Array} Array of 4 bytes [b0, b1, b2, b3]
+     * @param {uint32} dword - 32-bit dword to unpack
+     * @returns {uint8[]} Array of 4 bytes [b0, b1, b2, b3]
      */
     Unpack32BE: function(word) {
       word = word >>> 0;
@@ -485,23 +485,23 @@
         word & 0xFF
       ];
     },
-    
+
     /**
      * Pack 4 bytes into a 32-bit dword (little-endian)
-     * @param {number} b0 - Least significant byte
-     * @param {number} b1 - Second byte
-     * @param {number} b2 - Third byte
-     * @param {number} b3 - Most significant byte
-     * @returns {number} 32-bit word
+     * @param {uint8} b0 - Least significant byte
+     * @param {uint8} b1 - Second byte
+     * @param {uint8} b2 - Third byte
+     * @param {uint8} b3 - Most significant byte
+     * @returns {uint32} 32-bit word
      */
     Pack32LE: function(b0, b1, b2, b3) {
       return (((b3 & 0xFF) << 24) | ((b2 & 0xFF) << 16) | ((b1 & 0xFF) << 8) | (b0 & 0xFF)) >>> 0;
     },
-        
+
     /**
      * Unpack 32-bit dword to 4 bytes (little-endian)
-     * @param {number} dword - 32-bit dword to unpack
-     * @returns {Array} Array of 4 bytes [b0, b1, b2, b3]
+     * @param {uint32} dword - 32-bit dword to unpack
+     * @returns {uint8[]} Array of 4 bytes [b0, b1, b2, b3]
      */
     Unpack32LE: function(word) {
       word = word >>> 0;
@@ -513,6 +513,18 @@
       ];
     },
 
+    /**
+     * Pack 8 bytes into a 64-bit BigInt (big-endian)
+     * @param {uint8} b0 - Most significant byte
+     * @param {uint8} b1 - Byte 1
+     * @param {uint8} b2 - Byte 2
+     * @param {uint8} b3 - Byte 3
+     * @param {uint8} b4 - Byte 4
+     * @param {uint8} b5 - Byte 5
+     * @param {uint8} b6 - Byte 6
+     * @param {uint8} b7 - Least significant byte
+     * @returns {BigInt} 64-bit BigInt value
+     */
     Pack64BE: function(b0, b1, b2, b3, b4, b5, b6, b7) {
       return (
         ((b0 & 0xFF) << 56n)
@@ -526,6 +538,11 @@
       );
     },
 
+    /**
+     * Unpack 64-bit value to 8 bytes (big-endian)
+     * @param {BigInt} qword - 64-bit value to unpack
+     * @returns {uint8[]} Array of 8 bytes [b0, b1, b2, b3, b4, b5, b6, b7]
+     */
     Unpack64BE: function (qword) {
       qword = qword >>> 0;
       return [
@@ -540,6 +557,18 @@
       ];
     },
 
+    /**
+     * Pack 8 bytes into a 64-bit BigInt (little-endian)
+     * @param {uint8} b0 - Least significant byte
+     * @param {uint8} b1 - Byte 1
+     * @param {uint8} b2 - Byte 2
+     * @param {uint8} b3 - Byte 3
+     * @param {uint8} b4 - Byte 4
+     * @param {uint8} b5 - Byte 5
+     * @param {uint8} b6 - Byte 6
+     * @param {uint8} b7 - Most significant byte
+     * @returns {BigInt} 64-bit BigInt value
+     */
     Pack64LE: function(b0, b1, b2, b3, b4, b5, b6, b7) {
       return (
         ((b7 & 0xFF) << 56n)
@@ -552,7 +581,12 @@
         | ((b0 & 0xFF))
       );
     },
-    
+
+    /**
+     * Unpack 64-bit value to 8 bytes (little-endian)
+     * @param {BigInt} qword - 64-bit value to unpack
+     * @returns {uint8[]} Array of 8 bytes [b0, b1, b2, b3, b4, b5, b6, b7]
+     */
     Unpack64LE: function (qword) {
       qword = qword >>> 0;
       return [
@@ -569,8 +603,8 @@
     
     /**
      * Convert 32-bit words array to bytes array (big-endian)
-     * @param {Array} words - Array of 32-bit words
-     * @returns {Array} Array of bytes
+     * @param {uint32[]} words - Array of 32-bit words
+     * @returns {uint8[]} Array of bytes
      */
     Words32ToBytesBE: function(words) {
       const bytes = [];
@@ -586,8 +620,8 @@
 
     /**
      * Convert bytes array to 32-bit words array (big-endian)
-     * @param {Array} bytes - Array of bytes
-     * @returns {Array} Array of 32-bit words
+     * @param {uint8[]} bytes - Array of bytes
+     * @returns {uint32[]} Array of 32-bit words
      */
     BytesToWords32BE: function(bytes) {
       const words = [];
@@ -603,20 +637,20 @@
 
     /**
      * Extract specific byte from 32-bit word
-     * @param {number} word - 32-bit word
-     * @param {number} byteIndex - Byte index (0=LSB, 3=MSB)
-     * @returns {number} Extracted byte (0-255)
+     * @param {uint32} word - 32-bit word
+     * @param {int32} byteIndex - Byte index (0=LSB, 3=MSB)
+     * @returns {uint8} Extracted byte (0-255)
      */
     GetByte: function(word, byteIndex) {
       return (word >>> (byteIndex * 8)) & 0xFF;
     },
-    
+
     /**
      * Set specific byte in 32-bit word
-     * @param {number} word - Original 32-bit word
-     * @param {number} byteIndex - Byte index (0=LSB, 3=MSB)
-     * @param {number} value - New byte value (0-255)
-     * @returns {number} Updated 32-bit word
+     * @param {uint32} word - Original 32-bit word
+     * @param {int32} byteIndex - Byte index (0=LSB, 3=MSB)
+     * @param {uint8} value - New byte value (0-255)
+     * @returns {uint32} Updated 32-bit word
      */
     SetByte: function(word, byteIndex, value) {
       const shift = byteIndex * 8;
@@ -627,7 +661,7 @@
     /**
      * Split JavaScript number into high/low 32-bit components
      * Safely handles JavaScript's 53-bit integer limitation for 64-bit operations
-     * @param {number} value - JavaScript number to split
+     * @param {float64} value - JavaScript number to split
      * @returns {Object} {high32, low32} - High and low 32-bit components
      */
     Split64: function(value) {
@@ -638,9 +672,9 @@
 
     /**
      * Combine high/low 32-bit components into JavaScript number
-     * @param {number} high32 - High 32 bits
-     * @param {number} low32 - Low 32 bits
-     * @returns {number} Combined JavaScript number
+     * @param {uint32} high32 - High 32 bits
+     * @param {uint32} low32 - Low 32 bits
+     * @returns {float64} Combined JavaScript number
      */
     Combine64: function(high32, low32) {
       return (high32 * 0x100000000) + (low32 >>> 0);
@@ -656,9 +690,9 @@
     UInt64: {
       /**
        * Create 64-bit value from high and low 32-bit components
-       * @param {number} high - High 32 bits
-       * @param {number} low - Low 32 bits  
-       * @returns {Array} [high32, low32] representation
+       * @param {uint32} high - High 32 bits
+       * @param {uint32} low - Low 32 bits
+       * @returns {uint32[]} [high32, low32] representation
        */
       create: function(high, low) {
         return [high >>> 0, low >>> 0];
@@ -666,8 +700,8 @@
 
       /**
        * Create 64-bit value from bytes array (big-endian)
-       * @param {Array} bytes - 8-byte array
-       * @returns {Array} 64-bit value [high32, low32]
+       * @param {uint8[]} bytes - 8-byte array
+       * @returns {uint32[]} 64-bit value [high32, low32]
        */
       fromBytes: function(bytes) {
         if (bytes.length < 8) {
@@ -685,8 +719,8 @@
 
       /**
        * Convert 64-bit value to bytes array (big-endian)
-       * @param {Array} a - 64-bit value [high32, low32]
-       * @returns {Array} 8-byte array
+       * @param {uint32[]} a - 64-bit value [high32, low32]
+       * @returns {uint8[]} 8-byte array
        */
       toBytes: function(a) {
         const highBytes = OpCodes.Unpack32BE(a[0]);
@@ -696,8 +730,8 @@
 
       /**
        * Create 64-bit value from uint16 array (big-endian)
-       * @param {Array} words16 - 4-word array of 16-bit values
-       * @returns {Array} 64-bit value [high32, low32]
+       * @param {uint16[]} words16 - 4-word array of 16-bit values
+       * @returns {uint32[]} 64-bit value [high32, low32]
        */
       fromUInt16: function(words16) {
         if (words16.length < 4) {
@@ -715,8 +749,8 @@
 
       /**
        * Convert 64-bit value to uint16 array (big-endian)
-       * @param {Array} a - 64-bit value [high32, low32]
-       * @returns {Array} 4-word array of 16-bit values
+       * @param {uint32[]} a - 64-bit value [high32, low32]
+       * @returns {uint16[]} 4-word array of 16-bit values
        */
       toUInt16: function(a) {
         return [
@@ -727,8 +761,8 @@
 
       /**
        * Create 64-bit value from uint32 array (big-endian)
-       * @param {Array} words32 - 2-word array of 32-bit values
-       * @returns {Array} 64-bit value [high32, low32]
+       * @param {uint32[]} words32 - 2-word array of 32-bit values
+       * @returns {uint32[]} 64-bit value [high32, low32]
        */
       fromUInt32: function(words32) {
         if (words32.length < 2) {
@@ -743,8 +777,8 @@
 
       /**
        * Convert 64-bit value to uint32 array (big-endian)
-       * @param {Array} a - 64-bit value [high32, low32]
-       * @returns {Array} 2-word array of 32-bit values
+       * @param {uint32[]} a - 64-bit value [high32, low32]
+       * @returns {uint32[]} 2-word array of 32-bit values
        */
       toUInt32: function(a) {
         return [a[0], a[1]];
@@ -752,9 +786,9 @@
 
       /**
        * 64-bit addition
-       * @param {Array} a - First 64-bit value [high32, low32]
-       * @param {Array} b - Second 64-bit value [high32, low32]
-       * @returns {Array} Sum as [high32, low32]
+       * @param {uint32[]} a - First 64-bit value [high32, low32]
+       * @param {uint32[]} b - Second 64-bit value [high32, low32]
+       * @returns {uint32[]} Sum as [high32, low32]
        */
       add: function(a, b) {
         const low = (a[1] + b[1]) >>> 0;
@@ -764,9 +798,9 @@
 
       /**
        * 64-bit subtraction
-       * @param {Array} a - First 64-bit value (minuend) [high32, low32]
-       * @param {Array} b - Second 64-bit value (subtrahend) [high32, low32]
-       * @returns {Array} Difference as [high32, low32]
+       * @param {uint32[]} a - First 64-bit value (minuend) [high32, low32]
+       * @param {uint32[]} b - Second 64-bit value (subtrahend) [high32, low32]
+       * @returns {uint32[]} Difference as [high32, low32]
        */
       sub: function(a, b) {
         const low = (a[1] - b[1]) >>> 0;
@@ -776,9 +810,9 @@
 
       /**
        * 64-bit multiplication (returns low 64 bits of result)
-       * @param {Array} a - First 64-bit value [high32, low32]
-       * @param {Array} b - Second 64-bit value [high32, low32]
-       * @returns {Array} Product as [high32, low32] (truncated)
+       * @param {uint32[]} a - First 64-bit value [high32, low32]
+       * @param {uint32[]} b - Second 64-bit value [high32, low32]
+       * @returns {uint32[]} Product as [high32, low32] (truncated)
        */
       mul: function(a, b) {
         const a0 = a[1] & 0xFFFF;
@@ -804,14 +838,14 @@
 
       /**
        * 64-bit right rotation
-       * @param {Array} a - 64-bit value [high32, low32]
-       * @param {number} n - Number of positions to rotate (0-63)
-       * @returns {Array} Rotated value as [high32, low32]
+       * @param {uint32[]} a - 64-bit value [high32, low32]
+       * @param {int32} n - Number of positions to rotate (0-63)
+       * @returns {uint32[]} Rotated value as [high32, low32]
        */
       rotr: function(a, n) {
         if (n === 0) return a;
         n = n % 64; // Ensure n is within valid range
-        
+
         if (n < 32) {
           // For rotations less than 32 bits
           const high = ((a[0] >>> n) | ((a[1] << (32 - n)) & 0xFFFFFFFF)) >>> 0;
@@ -828,9 +862,9 @@
 
       /**
        * 64-bit left rotation
-       * @param {Array} a - 64-bit value [high32, low32]
-       * @param {number} n - Number of positions to rotate (0-63)
-       * @returns {Array} Rotated value as [high32, low32]
+       * @param {uint32[]} a - 64-bit value [high32, low32]
+       * @param {int32} n - Number of positions to rotate (0-63)
+       * @returns {uint32[]} Rotated value as [high32, low32]
        */
       rotl: function(a, n) {
         if (n === 0) return a;
@@ -839,9 +873,9 @@
 
       /**
        * 64-bit right shift (logical)
-       * @param {Array} a - 64-bit value [high32, low32]
-       * @param {number} n - Number of positions to shift (0-63)
-       * @returns {Array} Shifted value as [high32, low32]
+       * @param {uint32[]} a - 64-bit value [high32, low32]
+       * @param {int32} n - Number of positions to shift (0-63)
+       * @returns {uint32[]} Shifted value as [high32, low32]
        */
       shr: function(a, n) {
         if (n === 0) return a;
@@ -856,9 +890,9 @@
 
       /**
        * 64-bit left shift (logical)
-       * @param {Array} a - 64-bit value [high32, low32]
-       * @param {number} n - Number of positions to shift (0-63)
-       * @returns {Array} Shifted value as [high32, low32]
+       * @param {uint32[]} a - 64-bit value [high32, low32]
+       * @param {int32} n - Number of positions to shift (0-63)
+       * @returns {uint32[]} Shifted value as [high32, low32]
        */
       shl: function(a, n) {
         if (n === 0) return a;
@@ -873,9 +907,9 @@
 
       /**
        * 64-bit XOR operation
-       * @param {Array} a - First 64-bit value [high32, low32]
-       * @param {Array} b - Second 64-bit value [high32, low32]
-       * @returns {Array} XOR result as [high32, low32]
+       * @param {uint32[]} a - First 64-bit value [high32, low32]
+       * @param {uint32[]} b - Second 64-bit value [high32, low32]
+       * @returns {uint32[]} XOR result as [high32, low32]
        */
       xor: function(a, b) {
         return [(a[0] ^ b[0]) >>> 0, (a[1] ^ b[1]) >>> 0];
@@ -883,9 +917,9 @@
 
       /**
        * 64-bit AND operation
-       * @param {Array} a - First 64-bit value [high32, low32]
-       * @param {Array} b - Second 64-bit value [high32, low32]
-       * @returns {Array} AND result as [high32, low32]
+       * @param {uint32[]} a - First 64-bit value [high32, low32]
+       * @param {uint32[]} b - Second 64-bit value [high32, low32]
+       * @returns {uint32[]} AND result as [high32, low32]
        */
       and: function(a, b) {
         return [(a[0] & b[0]) >>> 0, (a[1] & b[1]) >>> 0];
@@ -893,9 +927,9 @@
 
       /**
        * 64-bit OR operation
-       * @param {Array} a - First 64-bit value [high32, low32]
-       * @param {Array} b - Second 64-bit value [high32, low32]
-       * @returns {Array} OR result as [high32, low32]
+       * @param {uint32[]} a - First 64-bit value [high32, low32]
+       * @param {uint32[]} b - Second 64-bit value [high32, low32]
+       * @returns {uint32[]} OR result as [high32, low32]
        */
       or: function(a, b) {
         return [(a[0] | b[0]) >>> 0, (a[1] | b[1]) >>> 0];
@@ -903,8 +937,8 @@
 
       /**
        * 64-bit NOT operation
-       * @param {Array} a - 64-bit value [high32, low32]
-       * @returns {Array} NOT result as [high32, low32]
+       * @param {uint32[]} a - 64-bit value [high32, low32]
+       * @returns {uint32[]} NOT result as [high32, low32]
        */
       not: function(a) {
         return [(~a[0]) >>> 0, (~a[1]) >>> 0];
@@ -912,8 +946,8 @@
 
       /**
        * Convert 64-bit value to JavaScript number (loses precision beyond 53 bits)
-       * @param {Array} a - 64-bit value [high32, low32]
-       * @returns {number} JavaScript number representation
+       * @param {uint32[]} a - 64-bit value [high32, low32]
+       * @returns {float64} JavaScript number representation
        */
       toNumber: function(a) {
         return OpCodes.Combine64(a[0], a[1]);
@@ -921,8 +955,8 @@
 
       /**
        * Create 64-bit value from JavaScript number
-       * @param {number} num - JavaScript number
-       * @returns {Array} 64-bit representation as [high32, low32]
+       * @param {float64} num - JavaScript number
+       * @returns {uint32[]} 64-bit representation as [high32, low32]
        */
       fromNumber: function(num) {
         const split = OpCodes.Split64(num);
@@ -931,8 +965,8 @@
 
       /**
        * Compare two 64-bit values for equality
-       * @param {Array} a - First 64-bit value [high32, low32]
-       * @param {Array} b - Second 64-bit value [high32, low32]
+       * @param {uint32[]} a - First 64-bit value [high32, low32]
+       * @param {uint32[]} b - Second 64-bit value [high32, low32]
        * @returns {boolean} True if equal
        */
       equals: function(a, b) {
@@ -941,8 +975,8 @@
 
       /**
        * Clone 64-bit value
-       * @param {Array} a - 64-bit value [high32, low32]
-       * @returns {Array} Cloned value as [high32, low32]
+       * @param {uint32[]} a - 64-bit value [high32, low32]
+       * @returns {uint32[]} Cloned value as [high32, low32]
        */
       clone: function(a) {
         return [a[0], a[1]];
@@ -957,11 +991,11 @@
     UInt128: {
       /**
        * Create 128-bit value from four 32-bit words
-       * @param {number} w3 - Most significant word
-       * @param {number} w2 - Second word
-       * @param {number} w1 - Third word
-       * @param {number} w0 - Least significant word
-       * @returns {Array} [w3, w2, w1, w0] representation
+       * @param {uint32} w3 - Most significant word
+       * @param {uint32} w2 - Second word
+       * @param {uint32} w1 - Third word
+       * @param {uint32} w0 - Least significant word
+       * @returns {uint32[]} [w3, w2, w1, w0] representation
        */
       create: function(w3, w2, w1, w0) {
         return [(w3 || 0) >>> 0, (w2 || 0) >>> 0, (w1 || 0) >>> 0, (w0 || 0) >>> 0];
@@ -969,9 +1003,9 @@
 
       /**
        * Create 128-bit value from two 64-bit values
-       * @param {Array} high64 - High 64 bits [high32, low32]
-       * @param {Array} low64 - Low 64 bits [high32, low32]
-       * @returns {Array} 128-bit value [w3, w2, w1, w0]
+       * @param {uint32[]} high64 - High 64 bits [high32, low32]
+       * @param {uint32[]} low64 - Low 64 bits [high32, low32]
+       * @returns {uint32[]} 128-bit value [w3, w2, w1, w0]
        */
       fromUInt64: function(high64, low64) {
         return [high64[0], high64[1], low64[0], low64[1]];
@@ -979,7 +1013,7 @@
 
       /**
        * Split 128-bit value into two 64-bit values
-       * @param {Array} a - 128-bit value [w3, w2, w1, w0]
+       * @param {uint32[]} a - 128-bit value [w3, w2, w1, w0]
        * @returns {Object} {high64: [w3, w2], low64: [w1, w0]}
        */
       toUInt64: function(a) {
@@ -991,8 +1025,8 @@
 
       /**
        * Create 128-bit value from bytes array (big-endian)
-       * @param {Array} bytes - 16-byte array
-       * @returns {Array} 128-bit value [w3, w2, w1, w0]
+       * @param {uint8[]} bytes - 16-byte array
+       * @returns {uint32[]} 128-bit value [w3, w2, w1, w0]
        */
       fromBytes: function(bytes) {
         if (bytes.length < 16) {
@@ -1013,8 +1047,8 @@
 
       /**
        * Convert 128-bit value to bytes array (big-endian)
-       * @param {Array} a - 128-bit value [w3, w2, w1, w0]
-       * @returns {Array} 16-byte array
+       * @param {uint32[]} a - 128-bit value [w3, w2, w1, w0]
+       * @returns {uint8[]} 16-byte array
        */
       toBytes: function(a) {
         const result = [];
@@ -1027,8 +1061,8 @@
 
       /**
        * Create 128-bit value from uint16 array (big-endian)
-       * @param {Array} words16 - 8-word array of 16-bit values
-       * @returns {Array} 128-bit value [w3, w2, w1, w0]
+       * @param {uint16[]} words16 - 8-word array of 16-bit values
+       * @returns {uint32[]} 128-bit value [w3, w2, w1, w0]
        */
       fromUInt16: function(words16) {
         if (words16.length < 8) {
@@ -1048,8 +1082,8 @@
 
       /**
        * Convert 128-bit value to uint16 array (big-endian)
-       * @param {Array} a - 128-bit value [w3, w2, w1, w0]
-       * @returns {Array} 8-word array of 16-bit values
+       * @param {uint32[]} a - 128-bit value [w3, w2, w1, w0]
+       * @returns {uint16[]} 8-word array of 16-bit values
        */
       toUInt16: function(a) {
         const result = [];
@@ -1062,8 +1096,8 @@
 
       /**
        * Create 128-bit value from uint32 array (big-endian)
-       * @param {Array} words32 - 4-word array of 32-bit values
-       * @returns {Array} 128-bit value [w3, w2, w1, w0]
+       * @param {uint32[]} words32 - 4-word array of 32-bit values
+       * @returns {uint32[]} 128-bit value [w3, w2, w1, w0]
        */
       fromUInt32: function(words32) {
         if (words32.length < 4) {
@@ -1078,8 +1112,8 @@
 
       /**
        * Convert 128-bit value to uint32 array (big-endian)
-       * @param {Array} a - 128-bit value [w3, w2, w1, w0]
-       * @returns {Array} 4-word array of 32-bit values
+       * @param {uint32[]} a - 128-bit value [w3, w2, w1, w0]
+       * @returns {uint32[]} 4-word array of 32-bit values
        */
       toUInt32: function(a) {
         return [a[0], a[1], a[2], a[3]];
@@ -1087,9 +1121,9 @@
 
       /**
        * 128-bit addition
-       * @param {Array} a - First 128-bit value
-       * @param {Array} b - Second 128-bit value
-       * @returns {Array} Sum as 128-bit value
+       * @param {uint32[]} a - First 128-bit value
+       * @param {uint32[]} b - Second 128-bit value
+       * @returns {uint32[]} Sum as 128-bit value
        */
       add: function(a, b) {
         let carry = 0;
@@ -1106,32 +1140,32 @@
 
       /**
        * 128-bit subtraction
-       * @param {Array} a - First 128-bit value (minuend)
-       * @param {Array} b - Second 128-bit value (subtrahend)
-       * @returns {Array} Difference as 128-bit value
+       * @param {uint32[]} a - First 128-bit value (minuend)
+       * @param {uint32[]} b - Second 128-bit value (subtrahend)
+       * @returns {uint32[]} Difference as 128-bit value
        */
       sub: function(a, b) {
         let borrow = 0;
         const result = new Array(4);
-        
+
         for (let i = 3; i >= 0; i--) {
           const diff = a[i] - b[i] - borrow;
           result[i] = diff >>> 0;
           borrow = diff < 0 ? 1 : 0;
         }
-        
+
         return result;
       },
 
       /**
        * 128-bit multiplication (returns low 128 bits of result)
-       * @param {Array} a - First 128-bit value
-       * @param {Array} b - Second 128-bit value
-       * @returns {Array} Product as 128-bit value (truncated)
+       * @param {uint32[]} a - First 128-bit value
+       * @param {uint32[]} b - Second 128-bit value
+       * @returns {uint32[]} Product as 128-bit value (truncated)
        */
       mul: function(a, b) {
         const result = new Array(4).fill(0);
-        
+
         for (let i = 3; i >= 0; i--) {
           let carry = 0;
           for (let j = 3; j >= 0; j--) {
@@ -1142,15 +1176,15 @@
             }
           }
         }
-        
+
         return result;
       },
 
       /**
        * 128-bit XOR operation
-       * @param {Array} a - First 128-bit value
-       * @param {Array} b - Second 128-bit value
-       * @returns {Array} XOR result
+       * @param {uint32[]} a - First 128-bit value
+       * @param {uint32[]} b - Second 128-bit value
+       * @returns {uint32[]} XOR result
        */
       xor: function(a, b) {
         return [(a[0] ^ b[0]) >>> 0, (a[1] ^ b[1]) >>> 0, (a[2] ^ b[2]) >>> 0, (a[3] ^ b[3]) >>> 0];
@@ -1158,9 +1192,9 @@
 
       /**
        * 128-bit AND operation
-       * @param {Array} a - First 128-bit value
-       * @param {Array} b - Second 128-bit value
-       * @returns {Array} AND result
+       * @param {uint32[]} a - First 128-bit value
+       * @param {uint32[]} b - Second 128-bit value
+       * @returns {uint32[]} AND result
        */
       and: function(a, b) {
         return [(a[0] & b[0]) >>> 0, (a[1] & b[1]) >>> 0, (a[2] & b[2]) >>> 0, (a[3] & b[3]) >>> 0];
@@ -1168,9 +1202,9 @@
 
       /**
        * 128-bit OR operation
-       * @param {Array} a - First 128-bit value
-       * @param {Array} b - Second 128-bit value
-       * @returns {Array} OR result
+       * @param {uint32[]} a - First 128-bit value
+       * @param {uint32[]} b - Second 128-bit value
+       * @returns {uint32[]} OR result
        */
       or: function(a, b) {
         return [(a[0] | b[0]) >>> 0, (a[1] | b[1]) >>> 0, (a[2] | b[2]) >>> 0, (a[3] | b[3]) >>> 0];
@@ -1178,8 +1212,8 @@
 
       /**
        * 128-bit NOT operation
-       * @param {Array} a - 128-bit value
-       * @returns {Array} NOT result
+       * @param {uint32[]} a - 128-bit value
+       * @returns {uint32[]} NOT result
        */
       not: function(a) {
         return [(~a[0]) >>> 0, (~a[1]) >>> 0, (~a[2]) >>> 0, (~a[3]) >>> 0];
@@ -1187,9 +1221,9 @@
 
       /**
        * 128-bit left shift
-       * @param {Array} a - 128-bit value
-       * @param {number} n - Number of positions to shift (0-127)
-       * @returns {Array} Shifted value
+       * @param {uint32[]} a - 128-bit value
+       * @param {int32} n - Number of positions to shift (0-127)
+       * @returns {uint32[]} Shifted value
        */
       shl: function(a, n) {
         if (n === 0) return a.slice();
@@ -1215,19 +1249,19 @@
 
       /**
        * 128-bit right shift
-       * @param {Array} a - 128-bit value
-       * @param {number} n - Number of positions to shift (0-127)
-       * @returns {Array} Shifted value
+       * @param {uint32[]} a - 128-bit value
+       * @param {int32} n - Number of positions to shift (0-127)
+       * @returns {uint32[]} Shifted value
        */
       shr: function(a, n) {
         if (n === 0) return a.slice();
         n = n % 128;
         if (n === 0) return a.slice();
-        
+
         const result = [0, 0, 0, 0];
         const wordShift = Math.floor(n / 32);
         const bitShift = n % 32;
-        
+
         for (let i = 3; i >= 0; i--) {
           const srcIndex = i - wordShift;
           if (srcIndex >= 0) {
@@ -1237,21 +1271,21 @@
             }
           }
         }
-        
+
         return result;
       },
 
       /**
        * 128-bit right rotation
-       * @param {Array} a - 128-bit value
-       * @param {number} n - Number of positions to rotate (0-127)
-       * @returns {Array} Rotated value
+       * @param {uint32[]} a - 128-bit value
+       * @param {int32} n - Number of positions to rotate (0-127)
+       * @returns {uint32[]} Rotated value
        */
       rotr: function(a, n) {
         if (n === 0) return a.slice();
         n = n % 128;
         if (n === 0) return a.slice();
-        
+
         const shifted = OpCodes.UInt128.shr(a, n);
         const rotated = OpCodes.UInt128.shl(a, 128 - n);
         return OpCodes.UInt128.or(shifted, rotated);
@@ -1259,9 +1293,9 @@
 
       /**
        * 128-bit left rotation
-       * @param {Array} a - 128-bit value
-       * @param {number} n - Number of positions to rotate (0-127)
-       * @returns {Array} Rotated value
+       * @param {uint32[]} a - 128-bit value
+       * @param {int32} n - Number of positions to rotate (0-127)
+       * @returns {uint32[]} Rotated value
        */
       rotl: function(a, n) {
         if (n === 0) return a.slice();
@@ -1270,8 +1304,8 @@
 
       /**
        * Compare two 128-bit values for equality
-       * @param {Array} a - First 128-bit value
-       * @param {Array} b - Second 128-bit value
+       * @param {uint32[]} a - First 128-bit value
+       * @param {uint32[]} b - Second 128-bit value
        * @returns {boolean} True if equal
        */
       equals: function(a, b) {
@@ -1280,8 +1314,8 @@
 
       /**
        * Clone 128-bit value
-       * @param {Array} a - 128-bit value
-       * @returns {Array} Cloned value
+       * @param {uint32[]} a - 128-bit value
+       * @returns {uint32[]} Cloned value
        */
       clone: function(a) {
         return [a[0], a[1], a[2], a[3]];
@@ -1289,7 +1323,7 @@
 
       /**
        * Check if 128-bit value is zero
-       * @param {Array} a - 128-bit value
+       * @param {uint32[]} a - 128-bit value
        * @returns {boolean} True if zero
        */
       isZero: function(a) {
@@ -1305,15 +1339,15 @@
     UInt256: {
       /**
        * Create 256-bit value from eight 32-bit words
-       * @param {number} w7 - Most significant word
-       * @param {number} w6 - Second word
-       * @param {number} w5 - Third word
-       * @param {number} w4 - Fourth word
-       * @param {number} w3 - Fifth word
-       * @param {number} w2 - Sixth word
-       * @param {number} w1 - Seventh word
-       * @param {number} w0 - Least significant word
-       * @returns {Array} [w7, w6, w5, w4, w3, w2, w1, w0] representation
+       * @param {uint32} w7 - Most significant word
+       * @param {uint32} w6 - Second word
+       * @param {uint32} w5 - Third word
+       * @param {uint32} w4 - Fourth word
+       * @param {uint32} w3 - Fifth word
+       * @param {uint32} w2 - Sixth word
+       * @param {uint32} w1 - Seventh word
+       * @param {uint32} w0 - Least significant word
+       * @returns {uint32[]} [w7, w6, w5, w4, w3, w2, w1, w0] representation
        */
       create: function(w7, w6, w5, w4, w3, w2, w1, w0) {
         return [
@@ -1324,9 +1358,9 @@
 
       /**
        * Create 256-bit value from two 128-bit values
-       * @param {Array} high128 - High 128 bits
-       * @param {Array} low128 - Low 128 bits
-       * @returns {Array} 256-bit value
+       * @param {uint32[]} high128 - High 128 bits [w3,w2,w1,w0]
+       * @param {uint32[]} low128 - Low 128 bits [w3,w2,w1,w0]
+       * @returns {uint32[]} 256-bit value [w7,w6,w5,w4,w3,w2,w1,w0]
        */
       fromUInt128: function(high128, low128) {
         return [high128[0], high128[1], high128[2], high128[3], low128[0], low128[1], low128[2], low128[3]];
@@ -1334,8 +1368,8 @@
 
       /**
        * Create 256-bit value from bytes array (big-endian)
-       * @param {Array} bytes - 32-byte array
-       * @returns {Array} 256-bit value [w7, w6, w5, w4, w3, w2, w1, w0]
+       * @param {uint8[]} bytes - 32-byte array
+       * @returns {uint32[]} 256-bit value [w7, w6, w5, w4, w3, w2, w1, w0]
        */
       fromBytes: function(bytes) {
         if (bytes.length < 32) {
@@ -2163,10 +2197,48 @@
       const bytes = [];
       for (let i = 0; i < str.length; ++i)
         bytes.push(str.charCodeAt(i) & 0xFF);
-      
+
       return bytes;
     },
-    
+
+    /**
+     * Convert double precision floating point to bytes (IEEE 754 little-endian)
+     * @param {number} value - Double precision floating point value
+     * @returns {Array} 8-byte array in little-endian order
+     */
+    DoubleToBytes: function(value) {
+      const buffer = new ArrayBuffer(8);
+      const float64View = new Float64Array(buffer);
+      const uint8View = new Uint8Array(buffer);
+
+      float64View[0] = value;
+
+      const bytes = [];
+      for (let i = 0; i < 8; ++i)
+        bytes.push(uint8View[i]);
+
+      return bytes;
+    },
+
+    /**
+     * Convert bytes to double precision floating point (IEEE 754 little-endian)
+     * @param {Array} bytes - 8-byte array in little-endian order
+     * @returns {number} Double precision floating point value
+     */
+    BytesToDouble: function(bytes) {
+      if (bytes.length < 8)
+        throw new Error('BytesToDouble: Need at least 8 bytes');
+
+      const buffer = new ArrayBuffer(8);
+      const uint8View = new Uint8Array(buffer);
+      const float64View = new Float64Array(buffer);
+
+      for (let i = 0; i < 8; ++i)
+        uint8View[i] = bytes[i] & 0xFF;
+
+      return float64View[0];
+    },
+
     // ========================[ COMPREHENSIVE HEX UTILITIES ]========================
 
     /**
@@ -3087,10 +3159,40 @@
      * 32-bit unsigned multiplication ensuring proper overflow behavior
      * @param {number} a - First operand
      * @param {number} b - Second operand
-     * @returns {number} 32-bit unsigned multiplication result
+     * @returns {number} 32-bit unsigned multiplication result (low 32 bits)
      */
     Mul32: function(a, b) {
       return Math.imul(a, b) >>> 0;
+    },
+
+    /**
+     * High 32 bits of 32x32 → 64-bit unsigned multiplication
+     * Used in counter-based PRNGs like Philox
+     * @param {number} a - First operand
+     * @param {number} b - Second operand
+     * @returns {number} High 32 bits of the 64-bit product
+     */
+    MulHi32: function(a, b) {
+      a = a >>> 0;
+      b = b >>> 0;
+
+      // Split into 16-bit parts for accurate multiplication
+      const a_lo = a & 0xFFFF;
+      const a_hi = a >>> 16;
+      const b_lo = b & 0xFFFF;
+      const b_hi = b >>> 16;
+
+      // Compute partial products
+      const p0 = a_lo * b_lo;
+      const p1 = a_lo * b_hi;
+      const p2 = a_hi * b_lo;
+      const p3 = a_hi * b_hi;
+
+      // Combine to get high 32 bits
+      const carry = ((p0 >>> 16) + (p1 & 0xFFFF) + (p2 & 0xFFFF)) >>> 16;
+      const hi = p3 + (p1 >>> 16) + (p2 >>> 16) + carry;
+
+      return hi >>> 0;
     },
 
     /**
@@ -3774,6 +3876,95 @@
     SetBitN: function(value, bitIndex, bitValue) {
       const mask = 1n << BigInt(bitIndex);
       return (bitValue & 1n) ? value | mask : value & ~mask;
+    },
+
+    // ========================[ BIGINT MODULAR ARITHMETIC ]========================
+
+    /**
+     * Modular multiplication for BigInt (a * b) mod m
+     * @param {BigInt} a - First operand
+     * @param {BigInt} b - Second operand
+     * @param {BigInt} m - Modulus
+     * @returns {BigInt} (a * b) mod m
+     */
+    MulModN: function(a, b, m) {
+      return ((a % m) * (b % m)) % m;
+    },
+
+    /**
+     * Modular squaring for BigInt (a * a) mod m
+     * Optimized for BBS and other quadratic residue operations
+     * @param {BigInt} a - Value to square
+     * @param {BigInt} m - Modulus
+     * @returns {BigInt} (a * a) mod m
+     */
+    SquareModN: function(a, m) {
+      const reduced = a % m;
+      return (reduced * reduced) % m;
+    },
+
+    /**
+     * Modular exponentiation for BigInt (base^exp) mod m
+     * Uses binary exponentiation (square-and-multiply)
+     * @param {BigInt} base - Base value
+     * @param {BigInt} exp - Exponent
+     * @param {BigInt} m - Modulus
+     * @returns {BigInt} (base^exp) mod m
+     */
+    ModPowN: function(base, exp, m) {
+      if (m === 1n) return 0n;
+      if (exp === 0n) return 1n;
+
+      let result = 1n;
+      base = base % m;
+
+      while (exp > 0n) {
+        if (exp & 1n) {
+          result = (result * base) % m;
+        }
+        exp = exp >> 1n;
+        base = (base * base) % m;
+      }
+
+      return result;
+    },
+
+    /**
+     * Greatest Common Divisor using Euclidean algorithm for BigInt
+     * @param {BigInt} a - First value
+     * @param {BigInt} b - Second value
+     * @returns {BigInt} GCD(a, b)
+     */
+    GcdN: function(a, b) {
+      a = a < 0n ? -a : a;
+      b = b < 0n ? -b : b;
+
+      while (b !== 0n) {
+        const temp = b;
+        b = a % b;
+        a = temp;
+      }
+
+      return a;
+    },
+
+    /**
+     * Count bits in BigInt value
+     * @param {BigInt} value - Value to measure
+     * @returns {number} Number of bits required to represent value
+     */
+    BitCountN: function(value) {
+      if (value === 0n) return 1;
+
+      value = value < 0n ? -value : value;
+      let count = 0;
+
+      while (value > 0n) {
+        count++;
+        value = value >> 1n;
+      }
+
+      return count;
     }
 
   };
