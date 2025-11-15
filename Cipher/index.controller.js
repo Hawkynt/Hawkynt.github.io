@@ -1612,6 +1612,7 @@ class CipherController {
         this.setupTestingActions();
         this.setupParallelTestingControls();
         this.setupTestStatusFilters();
+        this.setupTableSorting();
     }
     
     /**
@@ -1644,6 +1645,7 @@ class CipherController {
         const runSelectedBtn = document.getElementById('run-selected-tests');
         const stopTestingBtn = document.getElementById('stop-testing');
         const exportResultsBtn = document.getElementById('export-test-results');
+        const downloadInfraBtn = document.getElementById('download-infrastructure');
 
         if (runAllBtn) {
             runAllBtn.addEventListener('click', () => this.runAllTestsManually());
@@ -1659,6 +1661,23 @@ class CipherController {
 
         if (exportResultsBtn) {
             exportResultsBtn.addEventListener('click', () => this.exportTestResults());
+        }
+
+        if (downloadInfraBtn) {
+            downloadInfraBtn.addEventListener('click', async () => {
+                if (typeof InfrastructureGenerator !== 'undefined') {
+                    DebugConfig.log('📦 Generating multi-language infrastructure bundle...');
+                    try {
+                        await InfrastructureGenerator.DownloadInfrastructureBundle();
+                        DebugConfig.log('✅ Infrastructure bundle generated successfully');
+                    } catch (error) {
+                        DebugConfig.error('❌ Failed to generate infrastructure:', error);
+                        alert(`Failed to generate infrastructure: ${error.message}`);
+                    }
+                } else {
+                    alert('Infrastructure generator not loaded. Please reload the page.');
+                }
+            });
         }
 
         DebugConfig.log('✅ Testing actions setup complete');
@@ -1735,6 +1754,167 @@ class CipherController {
         });
 
         DebugConfig.log('✅ Test status filters initialized');
+    }
+
+    /**
+     * Setup table sorting functionality
+     */
+    setupTableSorting() {
+        // Initialize sorting state
+        this.currentSortColumn = null;
+        this.currentSortDirection = 'asc'; // Default to ascending
+
+        // Get all sortable headers
+        const sortableHeaders = document.querySelectorAll('.test-grid th.sortable');
+
+        sortableHeaders.forEach(header => {
+            header.addEventListener('click', () => {
+                const column = header.getAttribute('data-column');
+                this.sortTableByColumn(column);
+            });
+        });
+
+        DebugConfig.log('✅ Table sorting initialized');
+    }
+
+    /**
+     * Sort the test grid by a specific column
+     */
+    sortTableByColumn(column) {
+        // Determine sort direction
+        if (this.currentSortColumn === column) {
+            // Toggle direction if clicking the same column
+            this.currentSortDirection = this.currentSortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            // Default to ascending for new column
+            this.currentSortDirection = 'asc';
+        }
+
+        this.currentSortColumn = column;
+
+        // Get table body and rows
+        const tableBody = document.getElementById('test-grid-body');
+        if (!tableBody) return;
+
+        const rows = Array.from(tableBody.querySelectorAll('tr'));
+
+        // Sort rows
+        rows.sort((a, b) => {
+            let valueA = this.getCellValue(a, column);
+            let valueB = this.getCellValue(b, column);
+
+            // Handle numeric values
+            if (column === 'test-vectors' || column === 'passed' || column === 'failed' ||
+                column === 'success-rate' || column === 'enhanced-tests') {
+                valueA = parseFloat(valueA) || 0;
+                valueB = parseFloat(valueB) || 0;
+            }
+
+            // Handle duration (convert to milliseconds)
+            if (column === 'duration') {
+                valueA = this.parseDuration(valueA);
+                valueB = this.parseDuration(valueB);
+            }
+
+            // Handle dates
+            if (column === 'last-tested') {
+                valueA = new Date(valueA || 0).getTime();
+                valueB = new Date(valueB || 0).getTime();
+            }
+
+            // Compare values
+            let comparison = 0;
+            if (valueA > valueB) {
+                comparison = 1;
+            } else if (valueA < valueB) {
+                comparison = -1;
+            }
+
+            // Apply sort direction
+            return this.currentSortDirection === 'asc' ? comparison : -comparison;
+        });
+
+        // Re-append sorted rows
+        rows.forEach(row => tableBody.appendChild(row));
+
+        // Update header styling
+        this.updateSortIndicators();
+    }
+
+    /**
+     * Get cell value for a given column
+     */
+    getCellValue(row, column) {
+        const columnIndex = this.getColumnIndex(column);
+        const cell = row.cells[columnIndex];
+
+        if (!cell) return '';
+
+        // Handle different cell types
+        if (column === 'status') {
+            // Extract status from emoji or data attribute
+            return cell.textContent.trim();
+        }
+
+        return cell.textContent.trim();
+    }
+
+    /**
+     * Get column index by data-column attribute
+     */
+    getColumnIndex(column) {
+        const headers = document.querySelectorAll('.test-grid th');
+        for (let i = 0; i < headers.length; i++) {
+            if (headers[i].getAttribute('data-column') === column) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Parse duration string to milliseconds
+     */
+    parseDuration(duration) {
+        if (!duration) return 0;
+
+        // Handle formats like "123ms", "1.23s", "1m 23s"
+        const msMatch = duration.match(/(\d+)ms/);
+        if (msMatch) return parseFloat(msMatch[1]);
+
+        const sMatch = duration.match(/(\d+\.?\d*)s/);
+        if (sMatch) return parseFloat(sMatch[1]) * 1000;
+
+        const mMatch = duration.match(/(\d+)m/);
+        if (mMatch) {
+            let ms = parseFloat(mMatch[1]) * 60000;
+            const sMatch2 = duration.match(/(\d+)s/);
+            if (sMatch2) ms += parseFloat(sMatch2[1]) * 1000;
+            return ms;
+        }
+
+        return 0;
+    }
+
+    /**
+     * Update sort indicator styling
+     */
+    updateSortIndicators() {
+        // Remove all sort classes
+        const headers = document.querySelectorAll('.test-grid th.sortable');
+        headers.forEach(header => {
+            header.classList.remove('sorted-asc', 'sorted-desc');
+        });
+
+        // Add class to current sort column
+        if (this.currentSortColumn) {
+            const currentHeader = document.querySelector(
+                `.test-grid th.sortable[data-column="${this.currentSortColumn}"]`
+            );
+            if (currentHeader) {
+                currentHeader.classList.add(`sorted-${this.currentSortDirection}`);
+            }
+        }
     }
 
     /**
