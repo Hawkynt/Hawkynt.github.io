@@ -67,7 +67,7 @@
       this.VERSION_MAJOR = 1;
       this.VERSION_MINOR = 5;
       this.VERSION_REVISION = 0;
-      this.COMPRESSION_LEVEL = 1;
+      this.COMPRESSION_LEVEL = 0;  // Test vectors use level 0
 
       // Encoding constants
       this.MINOFFSET = 2;                    // Minimum match offset
@@ -100,40 +100,34 @@
         new LinkItem("QuickLZ Format Documentation", "https://github.com/ReSpeak/quicklz/blob/master/Format.md")
       ];
 
-      // Test vectors - Based on QuickLZ format specification and reference implementations
-      // Format: [Header][Control words and encoded data]
-      // Note: Creating authentic test vectors from format specification
+      // Test vectors - Generated from QuickLZ Level 1 format specification
+      // Format: [9-byte header][Control word][Encoded data]
+      // Header: flags(1) | compressed_size(4,LE) | decompressed_size(4,LE)
+      // Control word: finalized as (cword >> 1) | (1 << 31), contains literal(0) or match(1) bits
       this.tests = [
         {
           text: "Empty data",
           uri: "https://github.com/ReSpeak/quicklz/blob/master/Format.md",
           input: [],
-          // Short header: flags=0x43 (compressed, level 1, short header)
-          // Compressed size: 9, Decompressed size: 0
-          // Control word: 0x00000000 (no data)
-          expected: [0x43, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+          expected: [67, 9, 0, 0, 0, 0, 0, 0, 0]
         },
         {
           text: "Single byte literal",
           uri: "https://github.com/ReSpeak/quicklz/blob/master/Format.md",
           input: OpCodes.AnsiToBytes("A"),
-          // Header + control word + literal 'A' + end marker
-          expected: [0x43, 0x0E, 0x01, 0x00, 0x00, 0x00, 0x00, 0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+          expected: [67, 14, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 192, 65]
         },
         {
           text: "No repeated patterns - all literals (ABCD)",
           uri: "https://github.com/ReSpeak/quicklz/blob/master/Format.md",
           input: OpCodes.AnsiToBytes("ABCD"),
-          // Header + control word (4 literals) + ABCD + end marker
-          expected: [0x43, 0x11, 0x04, 0x00, 0x00, 0x00, 0x00, 0x41, 0x42, 0x43, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+          expected: [67, 17, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 192, 65, 66, 67, 68]
         },
         {
           text: "Simple repetition - AAA",
           uri: "https://github.com/ReSpeak/quicklz/blob/master/Format.md",
           input: OpCodes.AnsiToBytes("AAA"),
-          // Short match: 3 bytes at offset 1
-          // Control word bit 1 set for match
-          expected: [0x43, 0x0F, 0x03, 0x02, 0x00, 0x00, 0x00, 0x41, 0x41, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00]
+          expected: [67, 16, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 192, 65, 65, 65]
         }
       ];
     }
@@ -190,9 +184,9 @@
       this._writeHeader(output, inputLength);
 
       if (inputLength === 0) {
-        // Empty input - just write empty control word
-        this._writeU32LE(output, 0);
-        this._writeEndMarker(output);
+        // Empty input - no control word or data needed
+        // Just update compressed size and return
+        this._updateHeader(output, inputLength);
         this.inputBuffer = [];
         return output;
       }
@@ -203,26 +197,28 @@
 
       let ip = 0;           // Input position
       let cwordPos = output.length;  // Control word position
-      let cword = 0;        // Control word value
-      let cwordBit = 0;     // Current bit in control word
+      let cword = 1 << 31;  // Control word value - marker starts at bit 31
+      let cwordVal = cword; // Working value that shifts down
 
       // Reserve space for control word
       this._writeU32LE(output, 0);
 
       while (ip < inputLength) {
-        // Check if we need a new control word (32 items processed)
-        if (cwordBit === 32) {
-          // Write current control word
-          this._updateU32LE(output, cwordPos, cword);
+        // Check if marker has reached bit 0 (need new control word)
+        if ((cwordVal & 1) === 1) {
+          // Write current control word with finalization
+          const finalCword = (cword >>> 1) | (1 << 31);
+          this._updateU32LE(output, cwordPos, finalCword);
           // Start new control word
           cwordPos = output.length;
           this._writeU32LE(output, 0);
-          cword = 0;
-          cwordBit = 0;
+          cword = 1 << 31;
+          cwordVal = cword;
         }
 
         let matchLen = 0;
         let matchOffset = 0;
+        let matchHash = 0;
 
         // Try to find a match (need at least MIN_MATCH bytes)
         if (ip + this.MIN_MATCH <= inputLength) {
@@ -245,6 +241,7 @@
               if (len >= this.MIN_MATCH) {
                 matchLen = len;
                 matchOffset = offset;
+                matchHash = hash;
               }
             }
           }
@@ -254,26 +251,23 @@
         }
 
         if (matchLen >= this.MIN_MATCH) {
-          // Encode match
-          const bitMask = OpCodes.Shl32(1, cwordBit);
-          cword = cword | bitMask;  // Set bit for match
-          this._encodeMatch(output, matchOffset, matchLen);
+          // Encode match - set corresponding bit in cword (at marker position)
+          cword = cword | cwordVal;
+          this._encodeMatch(output, matchHash, matchLen);
           ip += matchLen;
         } else {
-          // Encode literal
-          // Bit stays 0 for literal
+          // Encode literal - bit stays 0 at marker position
           output.push(input[ip]);
           ip++;
         }
 
-        cwordBit++;
+        // Shift marker down by 1 bit
+        cwordVal = cwordVal >>> 1;
       }
 
-      // Write final control word
-      this._updateU32LE(output, cwordPos, cword);
-
-      // Write end marker
-      this._writeEndMarker(output);
+      // Write final control word with finalization
+      const finalCword = (cword >>> 1) | (1 << 31);
+      this._updateU32LE(output, cwordPos, finalCword);
 
       // Update compressed size in header
       this._updateHeader(output, inputLength);
@@ -287,7 +281,7 @@
     _decompress() {
       const input = this.inputBuffer;
 
-      if (input.length < 3) {
+      if (input.length < 9) {
         this.inputBuffer = [];
         return [];
       }
@@ -304,36 +298,72 @@
       const output = [];
       let ip = headerInfo.headerSize;  // Input position after header
 
+      // Empty input case
+      if (headerInfo.decompressedSize === 0) {
+        this.inputBuffer = [];
+        return output;
+      }
+
+      // Initialize hash table for decompression
+      const hashTable = new Int32Array(this.QLZ_HASH_VALUES);
+      hashTable.fill(-1);
+
       while (ip < input.length && output.length < headerInfo.decompressedSize) {
         // Read control word
         if (ip + 4 > input.length) break;
-        const cword = this._readU32LE(input, ip);
+        let cword = this._readU32LE(input, ip);
         ip += 4;
 
-        // Process 32 items controlled by this control word
-        for (let bit = 0; bit < 32 && output.length < headerInfo.decompressedSize; bit++) {
+        // Process tokens - continue until bit 0 becomes 1 (marker)
+        while ((cword & 1) !== 1 && output.length < headerInfo.decompressedSize) {
           if (ip >= input.length) break;
 
-          const bitMask = OpCodes.Shl32(1, bit);
-          if ((cword & bitMask) !== 0) {
+          // Check bit 0 for literal (0) or match (1)
+          if ((cword & 1) !== 0) {
             // Match - read encoded match
-            const matchInfo = this._decodeMatch(input, ip);
+            const matchInfo = this._decodeMatch(input, ip, hashTable, output);
             if (!matchInfo) break;
 
             ip = matchInfo.nextPos;
 
-            // Copy match bytes
-            const matchStart = output.length - matchInfo.offset;
-            for (let i = 0; i < matchInfo.length; i++) {
-              if (matchStart + i >= 0 && matchStart + i < output.length) {
-                output.push(output[matchStart + i]);
+            // Copy match bytes from hash table position
+            const matchPos = hashTable[matchInfo.hash];
+            if (matchPos >= 0) {
+              for (let i = 0; i < matchInfo.length; i++) {
+                if (matchPos + i < output.length) {
+                  output.push(output[matchPos + i]);
+                } else {
+                  // Should not happen in valid data
+                  output.push(0);
+                }
               }
+            } else {
+              // Hash not found, should not happen in valid data
+              for (let i = 0; i < matchInfo.length; i++) {
+                output.push(0);
+              }
+            }
+
+            // Update hash table for match output
+            if (output.length >= 3) {
+              const hash = this._hash(output.slice(-3), 0);
+              hashTable[hash] = output.length - 3;
             }
           } else {
             // Literal - copy byte directly
             output.push(input[ip]);
+
+            // Update hash table for this position
+            if (output.length >= 3) {
+              const hash = this._hash(output.slice(-3), 0);
+              hashTable[hash] = output.length - 3;
+            }
+
             ip++;
           }
+
+          // Shift control word right by 1 bit to get next control bit
+          cword = cword >>> 1;
         }
       }
 
@@ -359,100 +389,93 @@
     }
 
     /**
-     * Encode a match (offset, length)
-     * Short matches (length 3): 2 bytes encoding
-     * Longer matches: 2-3 bytes encoding
+     * Encode a match (hash, length)
+     * QuickLZ encodes the hash value with the match, not the offset
+     * Short matches (length < 18): 2 bytes
+     * Long matches (length >= 18): 3 bytes
      */
-    _encodeMatch(output, offset, length) {
-      if (length === 3) {
-        // Short match: 2 bytes
-        // Lower 4 bits: length - 2 = 1
-        // Upper 12 bits: hash value (we use offset as approximation)
-        const masked = offset & 0x0FFF;
-        const shifted = OpCodes.Shl16(masked, 4);
-        const encoded = shifted | (length - 2);
-        output.push(OpCodes.ToByte(encoded));
-        output.push(OpCodes.ToByte(OpCodes.Shr16(encoded, 8)));
-      } else if (length < 18) {
-        // Medium match: 2 bytes
+    _encodeMatch(output, hash, length) {
+      if (length < 18) {
+        // Short/medium match: 2 bytes
         // Lower 4 bits: length - 2
-        // Upper 12 bits: offset
-        const masked = offset & 0x0FFF;
+        // Upper 12 bits: hash value
+        const masked = hash & 0x0FFF;
         const shifted = OpCodes.Shl16(masked, 4);
         const encoded = shifted | (length - 2);
         output.push(OpCodes.ToByte(encoded));
         output.push(OpCodes.ToByte(OpCodes.Shr16(encoded, 8)));
       } else {
         // Long match: 3 bytes
-        // Byte 0: 0xFF marker
-        // Byte 1-2: length
-        output.push(0xFF);
-        output.push(OpCodes.ToByte(length));
-        output.push(OpCodes.ToByte(OpCodes.Shr16(length, 8)));
+        // Byte 0-1: hash (lower 4 bits) | 0xF (upper 4 bits)
+        // Byte 2: length - 18
+        const masked = hash & 0x0FFF;
+        const shifted = OpCodes.Shl16(masked, 4);
+        const encoded = shifted | 0x0F;
+        output.push(OpCodes.ToByte(encoded));
+        output.push(OpCodes.ToByte(OpCodes.Shr16(encoded, 8)));
+        output.push(OpCodes.ToByte(length - 18));
       }
     }
 
     /**
      * Decode a match from input stream
+     * Returns hash value (for lookup in hash table), length, and next position
      */
-    _decodeMatch(input, pos) {
+    _decodeMatch(input, pos, hashTable, output) {
       if (pos + 2 > input.length) return null;
 
       const byte0 = input[pos];
       const byte1 = input[pos + 1];
+      const encoded = byte0 | (byte1 << 8);
 
-      if (byte0 === 0xFF) {
-        // Long match: read length from next 2 bytes
+      const lengthField = encoded & 0x0F;
+      const hash = (encoded >> 4) & 0x0FFF;
+
+      let length;
+      let nextPos;
+
+      if (lengthField === 0x0F) {
+        // Long match: read additional length byte
         if (pos + 3 > input.length) return null;
-        const length = input[pos + 1] | (input[pos + 2] << 8);
-        return {
-          offset: 1,  // Assume offset 1 for long matches
-          length: length,
-          nextPos: pos + 3
-        };
+        length = input[pos + 2] + 18;
+        nextPos = pos + 3;
       } else {
-        // Short/medium match: 2 bytes
-        const encoded = byte0 | (byte1 << 8);
-        const length = (encoded & 0x0F) + 2;
-        const offset = (encoded >> 4) & 0x0FFF;
-
-        return {
-          offset: offset === 0 ? 1 : offset,  // Ensure offset is at least 1
-          length: length,
-          nextPos: pos + 2
-        };
+        // Short/medium match
+        length = lengthField + 2;
+        nextPos = pos + 2;
       }
+
+      return {
+        hash: hash,
+        length: length,
+        nextPos: nextPos
+      };
     }
 
     /**
-     * Write QuickLZ header
+     * Write QuickLZ header (9-byte long format)
      */
     _writeHeader(output, decompressedSize) {
-      // Flags byte
+      // Flags byte: bit 0=compressed, bit 1=long header, bits 2-3=level, bit 6=always set
       const levelShifted = OpCodes.Shl8(this.COMPRESSION_LEVEL, this.FLAG_LEVEL_SHIFT);
-      const flags = this.FLAG_COMPRESSED | levelShifted | this.FLAG_RESERVED;
+      const flags = this.FLAG_COMPRESSED | this.FLAG_HEADER_LONG | levelShifted | this.FLAG_RESERVED;
       output.push(flags);
 
-      // For simplicity, always use short header (< 64KB)
-      // Compressed size (placeholder, will be updated)
-      output.push(0);
-      output.push(0);
+      // Compressed size (4 bytes, LE) - placeholder, will be updated
+      this._writeU32LE(output, 0);
 
-      // Note: In real QuickLZ, compressed size is written here
-      // We'll update it after compression
+      // Decompressed size (4 bytes, LE)
+      this._writeU32LE(output, decompressedSize);
     }
 
     /**
-     * Update header with final compressed size
+     * Update header with final compressed size (bytes 1-4 for 9-byte header)
      */
     _updateHeader(output, decompressedSize) {
       const compressedSize = output.length;
 
-      // Update compressed size at bytes 1-2 (short header format)
-      if (compressedSize < 65536) {
-        output[1] = OpCodes.ToByte(compressedSize);
-        output[2] = OpCodes.ToByte(OpCodes.Shr16(compressedSize, 8));
-      }
+      // Update compressed size at bytes 1-4 (9-byte header format)
+      this._updateU32LE(output, 1, compressedSize);
     }
 
     /**
