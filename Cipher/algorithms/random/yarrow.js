@@ -70,35 +70,18 @@
   const YARROW_FAST = 0;                    // Fast pool index
   const YARROW_SLOW = 1;                    // Slow pool index
 
-  // Load SHA-256 implementation (dynamically)
-  let SHA256Algorithm = null;
-  let RijndaelAlgorithm = null;
-
   // Try to load dependencies
   const globalScope = typeof globalThis !== 'undefined' ? globalThis
     : (typeof window !== 'undefined' ? window
     : (typeof global !== 'undefined' ? global : {}));
 
-  // Check global scope first (browser), then require (Node.js)
-  if (globalScope.SHA256) {
-    SHA256Algorithm = globalScope.SHA256.SHA256Algorithm;
-  } else if (typeof require !== 'undefined') {
+  // Load SHA-256 and Rijndael implementations
+  if (typeof require !== 'undefined') {
     try {
-      const sha256Module = require('../hash/sha256.js');
-      SHA256Algorithm = sha256Module.SHA256Algorithm;
+      require('../hash/sha256.js');
+      require('../block/rijndael.js');
     } catch (e) {
-      // Will check later
-    }
-  }
-
-  if (globalScope.Rijndael) {
-    RijndaelAlgorithm = globalScope.Rijndael.RijndaelAlgorithm;
-  } else if (typeof require !== 'undefined') {
-    try {
-      const rijndaelModule = require('../block/rijndael.js');
-      RijndaelAlgorithm = rijndaelModule.RijndaelAlgorithm;
-    } catch (e) {
-      // Will check later
+      // Will check at runtime
     }
   }
 
@@ -107,11 +90,11 @@
    * Uses the full SHA-256 implementation from algorithms/hash/sha256.js
    */
   function sha256Hash(data) {
-    if (!SHA256Algorithm) {
+    const sha256Algo = AlgorithmFramework.Find('SHA-256');
+    if (!sha256Algo) {
       throw new Error("SHA-256 implementation not available");
     }
-    const sha256 = new SHA256Algorithm();
-    const instance = sha256.CreateInstance();
+    const instance = sha256Algo.CreateInstance();
     instance.Feed(data);
     return instance.Result();
   }
@@ -121,7 +104,8 @@
    * Uses Rijndael implementation from algorithms/block/rijndael.js
    */
   function aes256Encrypt(key, plaintext) {
-    if (!RijndaelAlgorithm) {
+    const aesAlgo = AlgorithmFramework.Find('Rijndael (AES)');
+    if (!aesAlgo) {
       throw new Error("AES (Rijndael) implementation not available");
     }
     if (key.length !== 32) {
@@ -130,8 +114,7 @@
     if (plaintext.length !== 16) {
       throw new Error("AES requires 16-byte blocks");
     }
-    const aes = new RijndaelAlgorithm();
-    const instance = aes.CreateInstance(false);
+    const instance = aesAlgo.CreateInstance(false);
     instance.key = key;
     instance.Feed(plaintext);
     return instance.Result();
