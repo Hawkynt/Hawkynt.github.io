@@ -88,7 +88,9 @@
         ];
 
         // Test vectors - Educational format with known input/output pairs
-        // Format: [FLAG][DATA] where FLAG indicates literal (0) or match (1-2)
+        // Format: [FLAG][DATA] where FLAG indicates literal (0) or match (1)
+        // Match format: [FLAG=1][DISTANCE_HIGH][DISTANCE_LOW][LENGTH]
+        // Literal format: [FLAG=0][BYTE]
         this.tests = [
           new TestCase(
             OpCodes.AnsiToBytes("ABCD"), // Simple literal sequence
@@ -98,19 +100,19 @@
           ),
           new TestCase(
             OpCodes.AnsiToBytes("AAAA"), // Repeated character
-            [0, 65, 1, 1, 0, 3], // Literal A + match (distance=1, length=3)
+            [0, 65, 1, 0, 1, 3], // Literal A + match (distance=1 -> [0,1], length=3)
             "Single character repetition",
             "https://github.com/nemequ/lzmat"
           ),
           new TestCase(
             OpCodes.AnsiToBytes("ABCABC"), // Pattern repetition
-            [0, 65, 0, 66, 0, 67, 1, 3, 0, 3], // ABC literals + match (dist=3, len=3)
+            [0, 65, 0, 66, 0, 67, 1, 0, 3, 3], // ABC literals + match (dist=3 -> [0,3], len=3)
             "Pattern repetition - ABCABC",
             "https://github.com/nemequ/lzmat"
           ),
           new TestCase(
             OpCodes.AnsiToBytes("ABABABAB"), // Overlapping pattern
-            [0, 65, 0, 66, 1, 2, 0, 6], // AB + match (dist=2, len=6)
+            [0, 65, 0, 66, 1, 0, 2, 6], // AB + match (dist=2 -> [0,2], len=6)
             "Overlapping pattern - ABABABAB",
             "https://github.com/nemequ/lzmat"
           ),
@@ -171,8 +173,9 @@
           if (match.length >= this.minMatchLength) {
             // Encode as match: [FLAG=1][DISTANCE_HIGH][DISTANCE_LOW][LENGTH]
             result.push(1); // Match flag
-            result.push((match.distance >> 8) & 0xFF);
-            result.push(match.distance & 0xFF);
+            const distanceBytes = OpCodes.Unpack16BE(match.distance);
+            result.push(distanceBytes[0]); // High byte
+            result.push(distanceBytes[1]); // Low byte
             result.push(match.length);
             pos += match.length;
           } else {
@@ -196,7 +199,9 @@
 
           if (flag === 1 && i + 3 <= this.inputBuffer.length) {
             // Match: [DISTANCE_HIGH][DISTANCE_LOW][LENGTH]
-            const distance = (this.inputBuffer[i++] << 8) | this.inputBuffer[i++];
+            const distHigh = this.inputBuffer[i++];
+            const distLow = this.inputBuffer[i++];
+            const distance = OpCodes.Pack16BE(distHigh, distLow);
             const length = this.inputBuffer[i++];
 
             // Copy from history buffer
@@ -261,8 +266,9 @@
         const b1 = this.inputBuffer[pos + 1];
         const b2 = this.inputBuffer[pos + 2];
 
-        // Simple hash function for 3-byte sequences
-        return ((b0 << 16) | (b1 << 8) | b2) % this.matchTableSize;
+        // Simple hash function for 3-byte sequences using multiplication instead of shifts
+        // Equivalent to: ((b0 << 16) | (b1 << 8) | b2)
+        return (b0 * 65536 + b1 * 256 + b2) % this.matchTableSize;
       }
 
       /**
