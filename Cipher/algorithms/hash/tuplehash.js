@@ -254,14 +254,14 @@
 
       this.securityBits = securityBits;
 
-      // Check cSHAKE is available
-      if (!cSHAKEAlgorithm) {
-        throw new Error("cSHAKE is required for TupleHash");
+      // Get registered cSHAKE algorithm
+      const cshakeName = securityBits === 128 ? 'cSHAKE128' : 'cSHAKE256';
+      const cshakeAlgo = AlgorithmFramework.Find(cshakeName);
+
+      if (!cshakeAlgo) {
+        throw new Error(`${cshakeName} is required for TupleHash`);
       }
 
-      // Create appropriate CSHAKE variant
-      const variant = securityBits === 128 ? '128' : '256';
-      const cshakeAlgo = new cSHAKEAlgorithm(variant);
       this.cshake = cshakeAlgo.CreateInstance();
       this.cshake.functionName = OpCodes.AnsiToBytes("TupleHash");
 
@@ -332,8 +332,8 @@
       const result = this.cshake.Result();
 
       // Reset for next operation
-      const variant = this.securityBits === 128 ? '128' : '256';
-      const cshakeAlgo = new cSHAKEAlgorithm(variant);
+      const cshakeName = this.securityBits === 128 ? 'cSHAKE128' : 'cSHAKE256';
+      const cshakeAlgo = AlgorithmFramework.Find(cshakeName);
       this.cshake = cshakeAlgo.CreateInstance();
       this.cshake.functionName = OpCodes.AnsiToBytes("TupleHash");
       this.cshake.customization = this._customization;

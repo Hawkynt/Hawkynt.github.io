@@ -13,8 +13,7 @@
     define(['../../AlgorithmFramework', '../../OpCodes'], factory);
   } else if (typeof module === 'object' && module.exports) {
     // Load dependencies first
-    require('./cshake128.js');
-    require('./cshake256.js');
+    require('./cshake.js');
     module.exports = factory(
       require('../../AlgorithmFramework'),
       require('../../OpCodes')
@@ -104,11 +103,11 @@
    */
   function getCSHAKEInstance(bitLength, functionName, customization) {
     // Load the appropriate cSHAKE algorithm
-    const cshakeName = bitLength === 128 ? "CSHAKE128" : "CSHAKE256";
+    const cshakeName = bitLength === 128 ? "cSHAKE128" : "cSHAKE256";
     const cshakeAlgo = AlgorithmFramework.Find(cshakeName);
 
     if (!cshakeAlgo) {
-      throw new Error(`${cshakeName} algorithm not found. Please ensure cshake${bitLength}.js is loaded.`);
+      throw new Error(`${cshakeName} algorithm not found. Please ensure cshake.js is loaded.`);
     }
 
     const instance = cshakeAlgo.CreateInstance();
