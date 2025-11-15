@@ -70,9 +70,9 @@
       this.tests = [
         {
           text: "GPRMC sentence",
-          uri: "https://en.wikipedia.org/wiki/NMEA_0183",
+          uri: "https://aprs.gids.nl/nmea/",
           input: OpCodes.AnsiToBytes("GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W"),
-          expected: [0x73] // Actual NMEA checksum
+          expected: [0x6A] // Verified NMEA checksum
         },
         {
           text: "GPGGA sentence",

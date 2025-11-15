@@ -72,7 +72,7 @@
           text: "Simple ASCII",
           uri: "SYSV checksum",
           input: OpCodes.AnsiToBytes("hello"),
-          expected: [0x01, 0xF5] // Sum of h+e+l+l+o = 0x01F5
+          expected: [0x02, 0x14] // Sum = 532 = 0x214, no folding needed
         },
         {
           text: "Single byte",
@@ -105,17 +105,15 @@
     Feed(data) {
       if (!data || data.length === 0) return;
 
-      // Sum all bytes
+      // Sum all bytes, keeping 16-bit result
+      const mask16 = OpCodes.BitMask(16);
       for (let i = 0; i < data.length; i++) {
-        this.sum = (this.sum + data[i]) & 0xFFFF; // Keep 16-bit
+        this.sum = (this.sum + data[i]) & mask16;
       }
     }
 
     Result() {
-      const result = [
-        (this.sum >>> 8) & 0xFF,  // High byte
-        this.sum & 0xFF            // Low byte
-      ];
+      const result = OpCodes.Unpack16BE(this.sum);
       this.sum = 0;
       return result;
     }

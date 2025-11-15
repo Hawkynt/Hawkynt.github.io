@@ -63,25 +63,25 @@
         "Used in BSD Unix 'sum' command",
         "Better error detection than simple sum",
         "16-bit result provides reasonable collision resistance",
-        "Formula: checksum = (checksum >> 1) + ((checksum & 1) << 15) + byte"
+        "Formula: rotate right by 1 bit, add byte, mask to 16 bits"
       ];
 
       this.tests = [
         new TestCase(
           OpCodes.AnsiToBytes("a"),
-          [0x00, 0x61], // 'a' = 0x61
+          [0x00, 0x61], // 'a' = 0x61, checksum = 0x0061
           "Single character",
           "BSD checksum calculation"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("abc"),
-          [0x01, 0x6B], // Calculated BSD checksum
+          [0x40, 0xAC], // Calculated BSD checksum = 0x40AC
           "Three characters",
           "BSD checksum with rotation"
         ),
         new TestCase(
           [0xFF, 0xFF],
-          [0xFF, 0xFF], // Calculated BSD checksum
+          [0x81, 0x7E], // Calculated BSD checksum = 0x817E
           "Maximum bytes",
           "BSD checksum overflow handling"
         )
@@ -104,20 +104,18 @@
     Feed(data) {
       if (!data || data.length === 0) return;
 
+      const mask16 = OpCodes.BitMask(16);
       for (let i = 0; i < data.length; i++) {
         // Rotate checksum right by 1 bit (with wraparound)
-        const rotated = (this.checksum >>> 1) | ((this.checksum & 1) << 15);
+        this.checksum = OpCodes.RotR16(this.checksum, 1);
 
-        // Add byte to rotated checksum
-        this.checksum = (rotated + data[i]) & 0xFFFF;
+        // Add byte to rotated checksum and mask to 16 bits
+        this.checksum = (this.checksum + data[i]) & mask16;
       }
     }
 
     Result() {
-      const result = [
-        (this.checksum >>> 8) & 0xFF,  // High byte
-        this.checksum & 0xFF            // Low byte
-      ];
+      const result = OpCodes.Unpack16BE(this.checksum);
       this.checksum = 0;
       return result;
     }
