@@ -601,8 +601,12 @@ class AlgorithmDetails {
         html += '<input type="checkbox" id="include-tests" onchange="window.algorithmDetailsInstance.updateCodeGeneration()">';
         html += '</div>';
         html += '<div class="config-row">';
+        html += '<label class="config-label">Include Native Wrapper:</label>';
+        html += '<input type="checkbox" id="include-native-wrapper" onchange="window.algorithmDetailsInstance.updateCodeGeneration()" title="Generate language-specific framework wrapper (e.g., C# SymmetricAlgorithm)">';
+        html += '</div>';
+        html += '<div class="config-row">';
         html += '<label class="config-label">Standalone Code:</label>';
-        html += '<input type="checkbox" id="standalone-code" checked onchange="window.algorithmDetailsInstance.updateCodeGeneration()">';
+        html += '<input type="checkbox" id="standalone-code" checked onchange="window.algorithmDetailsInstance.updateCodeGeneration()" title="Inline all OpCodes methods - no external dependencies">';
         html += '</div>';
         html += '</div>';
         html += '</div>';
@@ -619,6 +623,14 @@ class AlgorithmDetails {
         html += '<button class="code-toggle-btn" id="toggle-line-numbers" onclick="window.algorithmDetailsInstance.toggleLineNumbers()" title="Toggle Line Numbers">🔢 Numbers</button>';
         html += '<button class="code-copy-btn" onclick="window.algorithmDetailsInstance.copyCurrentCode()">📋 Copy</button>';
         html += '<button class="code-download-btn" onclick="window.algorithmDetailsInstance.downloadCurrentCode()">💾 Download</button>';
+        html += '</div>';
+        html += '</div>';
+        html += '<div class="code-section" style="margin-top: 10px;">';
+        html += '<h4 style="margin: 0 0 8px 0; font-size: 14px; color: var(--text-color);">📦 Infrastructure Downloads</h4>';
+        html += '<div style="display: flex; gap: 8px; flex-wrap: wrap;">';
+        html += '<button class="code-download-btn" onclick="window.algorithmDetailsInstance.downloadOpCodes()" title="Download OpCodes library for this language">📥 OpCodes</button>';
+        html += '<button class="code-download-btn" onclick="window.algorithmDetailsInstance.downloadAlgorithmFramework()" title="Download AlgorithmFramework for this language">📥 Framework</button>';
+        html += '<button class="code-download-btn" onclick="window.algorithmDetailsInstance.downloadNativeWrapper()" title="Download language-specific framework wrapper (e.g., C# SymmetricAlgorithm)">📥 Native Wrapper</button>';
         html += '</div>';
         html += '</div>';
         html += '<pre class="code-content" id="generated-code"><code class="language-javascript">';
@@ -867,23 +879,23 @@ class AlgorithmDetails {
     /**
      * Run a single test vector
      */
-    runSingleTest(testIndex) {
+    async runSingleTest(testIndex) {
         if (!this.currentAlgorithm || !this.currentAlgorithm.tests) {
             throw new Error('AlgorithmDetails: No algorithm or tests available for execution');
         }
-        
+
         const test = this.currentAlgorithm.tests[testIndex];
         if (!test) {
             throw new Error(`AlgorithmDetails: Test vector ${testIndex} not found`);
         }
-        
+
         // Find the test vector item in the DOM
         const testItems = this.element.querySelectorAll('.test-vector-item');
         const testItem = testItems[testIndex];
         if (!testItem) {
             throw new Error(`AlgorithmDetails: Test vector DOM element ${testIndex} not found`);
         }
-        
+
         // Add a results container if it doesn't exist
         let resultsContainer = testItem.querySelector('.test-results');
         if (!resultsContainer) {
@@ -891,53 +903,48 @@ class AlgorithmDetails {
             resultsContainer.className = 'test-results';
             testItem.appendChild(resultsContainer);
         }
-        
+
         // Show running state
         resultsContainer.innerHTML = '<div class="test-status running">🔄 Running test...</div>';
-        
+
         try {
-            // Execute the test
-            const result = this.executeTest(test);
-            
+            // Execute the test (now async via TestEngine)
+            const result = await this.executeTest(test);
+
             // Display results
             const success = result.success;
             const statusClass = success ? 'success' : 'failure';
             const statusIcon = success ? '✅' : '❌';
             const statusText = success ? 'PASSED' : 'FAILED';
-            
+
             let html = `<div class="test-status ${statusClass}">${statusIcon} ${statusText}</div>`;
-            
+
             if (result.output) {
                 html += '<div class="test-output">';
                 html += '<div class="test-data-label">Actual Output:</div>';
                 html += `<div class="test-data-value"><code>${this.formatBytes(result.output)}</code></div>`;
                 html += '</div>';
             }
-            
-            if (result.expected) {
-                html += '<div class="test-expected">';
-                html += '<div class="test-data-label">Expected Output:</div>';
-                html += `<div class="test-data-value"><code>${this.formatBytes(result.expected)}</code></div>`;
-                html += '</div>';
-            }
-            
+
+            // Note: Expected output already shown in test vector card above, no need to duplicate
+
             if (result.error) {
                 html += `<div class="test-error">Error: ${result.error}</div>`;
             }
-            
+
             if (result.duration !== undefined) {
-                html += `<div class="test-duration">Duration: ${result.duration}ms</div>`;
+                html += `<div class="test-duration">Duration: ${result.duration.toFixed(2)}ms</div>`;
             }
-            
+
             resultsContainer.innerHTML = html;
-            
+
             // Update the algorithm's test results and refresh the card
             this.updateAlgorithmTestResults();
-            
+
         } catch (error) {
             resultsContainer.innerHTML = `<div class="test-status failure">❌ FAILED</div><div class="test-error">Error: ${error.message}</div>`;
             DebugConfig.error('Test execution failed:', error);
-            
+
             // Update the algorithm's test results and refresh the card
             this.updateAlgorithmTestResults();
         }
@@ -1006,109 +1013,57 @@ class AlgorithmDetails {
     /**
      * Run all test vectors
      */
-    runAllTests() {
+    async runAllTests() {
         if (!this.currentAlgorithm || !this.currentAlgorithm.tests) {
             throw new Error('AlgorithmDetails: No algorithm or tests available for execution');
         }
-        
+
         const tests = this.currentAlgorithm.tests;
+
+        // Run tests sequentially with small delays for UI responsiveness
         for (let i = 0; i < tests.length; i++) {
-            // Add small delay between tests to show progress
-            setTimeout(() => {
-                this.runSingleTest(i);
-                // Update results after the last test completes
-                if (i === tests.length - 1) {
-                    setTimeout(() => this.updateAlgorithmTestResults(), 50);
-                }
-            }, i * 100);
+            await this.runSingleTest(i);
+
+            // Small delay to allow UI to update
+            if (i < tests.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 10));
+            }
         }
+
+        // Final update after all tests complete
+        this.updateAlgorithmTestResults();
     }
 
     /**
      * Execute a single test and return results
+     * Uses TestEngine.TestVector to ensure consistency with automated tests
      */
-    executeTest(test) {
+    async executeTest(test) {
         const startTime = performance.now();
-        
+
         try {
-            // Validate test structure first
-            if (!test.input || !test.expected) {
+            // Use TestEngine.TestVector for 100% consistency with automated tests
+            if (!window.TestEngine) {
                 return {
                     success: false,
-                    error: 'Test vector missing required input or expected output',
+                    error: 'TestEngine not loaded - required for test execution',
                     expected: test.expected,
                     duration: performance.now() - startTime
                 };
             }
-            
-            // Check if we have the actual algorithm implementation using AlgorithmFramework
-            if (!this.currentAlgorithm.CreateInstance) {
-                return {
-                    success: false,
-                    error: 'Algorithm implementation not available - CreateInstance method missing (AlgorithmFramework required)',
-                    expected: test.expected,
-                    duration: performance.now() - startTime
-                };
-            }
-            
-            // Create algorithm instance
-            const algorithmInstance = this.currentAlgorithm.CreateInstance(false);
-            if (!algorithmInstance) {
-                return {
-                    success: false,
-                    error: 'Failed to create algorithm instance',
-                    expected: test.expected,
-                    duration: performance.now() - startTime
-                };
-            }
-            
-            // Configure the instance based on test parameters
-            if (test.key !== undefined) {
-                // For algorithms that need keys
-                if (algorithmInstance.SetKey) {
-                    algorithmInstance.SetKey(test.key);
-                } else if (algorithmInstance.key !== undefined) {
-                    algorithmInstance.key = test.key;
-                }
-            }
-            
-            if (test.shift !== undefined) {
-                // For Caesar cipher and similar algorithms
-                if (algorithmInstance.shift !== undefined) {
-                    algorithmInstance.shift = test.shift;
-                } else if (algorithmInstance.SetShift) {
-                    algorithmInstance.SetShift(test.shift);
-                }
-            }
-            
-            // Execute the algorithm using AlgorithmFramework pattern
-            if (!algorithmInstance.Feed || !algorithmInstance.Result) {
-                return {
-                    success: false,
-                    error: 'Algorithm instance does not implement Feed/Result methods (AlgorithmFramework pattern)',
-                    expected: test.expected,
-                    duration: performance.now() - startTime
-                };
-            }
-            
-            // Clear any previous state and feed input data
-            if (algorithmInstance.Reset) {
-                algorithmInstance.Reset();
-            }
-            
-            algorithmInstance.Feed(test.input);
-            const actualOutput = algorithmInstance.Result();
-            
-            // Compare results
-            const matches = this.compareBytes(actualOutput, test.expected);
-            
+
+            // TestEngine.TestVector takes (algorithmInstance, vector, index)
+            const result = await window.TestEngine.TestVector(this.currentAlgorithm, test, 0);
+
+            // Convert TestEngine result format to UI format
             return {
-                success: matches,
-                output: actualOutput,
-                expected: test.expected,
+                success: result.passed,
+                output: result.output,
+                expected: result.expected,
+                error: result.error,
                 duration: performance.now() - startTime
             };
-            
+
         } catch (error) {
             return {
                 success: false,
@@ -1125,7 +1080,7 @@ class AlgorithmDetails {
     compareBytes(actual, expected) {
         if (!actual || !expected) return false;
         if (actual.length !== expected.length) return false;
-        
+
         for (let i = 0; i < actual.length; i++) {
             if (actual[i] !== expected[i]) return false;
         }
@@ -1226,10 +1181,22 @@ class AlgorithmDetails {
             
             // Generate target language code using the plugin
             const generationResult = plugin.GenerateFromAST(transformedAST, options);
-            
+
             if (generationResult.success) {
                 DebugConfig.log(`✅ Code generation successful for ${languageKey}`);
-                return generationResult.code;
+                let code = generationResult.code;
+
+                // Append native wrapper if requested
+                if (options.includeNativeWrapper) {
+                    DebugConfig.log('🔧 Generating native framework wrapper...');
+                    const wrapper = await this.generateNativeWrapper(algorithm, plugin);
+                    if (wrapper) {
+                        code += '\n\n' + wrapper;
+                        DebugConfig.log('✅ Native wrapper appended to generated code');
+                    }
+                }
+
+                return code;
             } else {
                 DebugConfig.error(`❌ Code generation failed: ${generationResult.error}`);
                 throw new Error(`Code generation failed: ${generationResult.error}`);
@@ -1260,13 +1227,24 @@ class AlgorithmDetails {
      * Get code generation options from UI settings
      */
     getCodeGenerationOptions() {
+        const includeComments = document.getElementById('include-comments')?.checked ?? true;
+        const includeExamples = document.getElementById('include-examples')?.checked ?? true;
+        const includeTests = document.getElementById('include-tests')?.checked ?? false;
+        const includeNativeWrapper = document.getElementById('include-native-wrapper')?.checked ?? false;
+        const standaloneCode = document.getElementById('standalone-code')?.checked ?? true;
+
         return {
-            stripComments: false,
-            stripTestVectors: true,
-            stripMetadata: false,
+            includeComments: includeComments,
+            includeExamples: includeExamples,
+            includeTestVectors: includeTests,
+            includeNativeWrapper: includeNativeWrapper,
+            standaloneCode: standaloneCode,
+            stripComments: !includeComments,
+            stripTestVectors: !includeTests,
+            stripExamples: !includeExamples,
             removeDebugCode: true,
             addTypeAnnotations: true,
-            addDocstrings: true
+            addDocstrings: includeComments
         };
     }
 
@@ -1275,20 +1253,205 @@ class AlgorithmDetails {
      */
     applyASTTransformations(ast, options) {
         DebugConfig.log('🔧 Applying AST transformations:', options);
-        
+
+        // CRITICAL: Strip IIFE and UMD patterns FIRST before any other transformations
+        // This unwraps the module wrapper to expose the actual algorithm code
+        ast = this.stripIIFEAndUMDPatterns(ast);
+
+        // Strip test vectors from AST if not included
         if (options.stripTestVectors) {
             ast = this.removeTestVectorsFromAST(ast);
         }
-        
+
+        // Strip examples from AST if not included
+        if (options.stripExamples) {
+            ast = this.removeExamplesFromAST(ast);
+        }
+
+        // Remove debug code
         if (options.removeDebugCode) {
             ast = this.removeDebugCodeFromAST(ast);
         }
-        
+
+        // Strip comments from AST if not included
         if (options.stripComments) {
             ast = this.removeCommentsFromAST(ast);
         }
-        
+
+        // Inline OpCodes methods for standalone code
+        if (options.standaloneCode) {
+            ast = this.inlineOpCodesInAST(ast);
+        }
+
         return ast;
+    }
+
+    /**
+     * Strip IIFE (Immediately Invoked Function Expression) and UMD (Universal Module Definition) patterns
+     * This unwraps module wrappers to expose the actual algorithm code for transpilation
+     *
+     * Patterns detected:
+     * 1. Simple IIFE: (function(global) { ... })(global);
+     * 2. UMD Pattern: (function(root, factory) { if (typeof define...) ... })(globalThis, function(...) { ... });
+     */
+    stripIIFEAndUMDPatterns(ast) {
+        DebugConfig.log('🔧 Stripping IIFE and UMD patterns from AST');
+
+        if (!ast || !ast.body || !Array.isArray(ast.body)) {
+            DebugConfig.log('⚠️  AST structure invalid for IIFE stripping');
+            return ast;
+        }
+
+        const newBody = [];
+
+        for (const statement of ast.body) {
+            // Check if this is an expression statement containing a call expression (IIFE/UMD)
+            if (statement.type === 'ExpressionStatement' &&
+                statement.expression &&
+                statement.expression.type === 'CallExpression') {
+
+                const callExpr = statement.expression;
+
+                // Pattern 1: Simple IIFE - (function(params) { body })(args)
+                if (callExpr.callee && callExpr.callee.type === 'FunctionExpression') {
+                    DebugConfig.log('✅ Detected simple IIFE pattern - unwrapping');
+                    const functionBody = callExpr.callee.body;
+
+                    if (functionBody && functionBody.type === 'BlockStatement' && functionBody.body) {
+                        // Extract the function body statements and add to new body
+                        newBody.push(...this.unwrapIIFEBody(functionBody.body));
+                        continue;
+                    }
+                }
+
+                // Pattern 2: UMD Pattern - (function(root, factory) { ... })(global, function(...) { ... })
+                // The actual code is in the factory function (second argument)
+                if (callExpr.arguments && callExpr.arguments.length >= 2) {
+                    const factoryArg = callExpr.arguments[1];
+
+                    if (factoryArg && factoryArg.type === 'FunctionExpression') {
+                        DebugConfig.log('✅ Detected UMD pattern - extracting factory function');
+                        const factoryBody = factoryArg.body;
+
+                        if (factoryBody && factoryBody.type === 'BlockStatement' && factoryBody.body) {
+                            // Extract the factory function body statements
+                            newBody.push(...this.unwrapIIFEBody(factoryBody.body));
+                            continue;
+                        }
+                    }
+                }
+
+                // Pattern 3: IIFE wrapped in parentheses - ((function() { ... })())
+                if (callExpr.callee && callExpr.callee.type === 'CallExpression') {
+                    const innerCall = callExpr.callee;
+                    if (innerCall.callee && innerCall.callee.type === 'FunctionExpression') {
+                        DebugConfig.log('✅ Detected nested IIFE pattern - unwrapping');
+                        const functionBody = innerCall.callee.body;
+
+                        if (functionBody && functionBody.type === 'BlockStatement' && functionBody.body) {
+                            newBody.push(...this.unwrapIIFEBody(functionBody.body));
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            // Not an IIFE/UMD pattern - keep as-is
+            newBody.push(statement);
+        }
+
+        // Replace AST body with unwrapped content
+        ast.body = newBody;
+        DebugConfig.log(`✅ IIFE/UMD stripping complete - ${newBody.length} top-level statements`);
+
+        return ast;
+    }
+
+    /**
+     * Unwrap IIFE body statements, removing module export code
+     */
+    unwrapIIFEBody(bodyStatements) {
+        const unwrapped = [];
+
+        for (const stmt of bodyStatements) {
+            // Skip 'use strict' directives at top level (will be added by language plugin if needed)
+            if (stmt.type === 'ExpressionStatement' &&
+                stmt.expression &&
+                stmt.expression.type === 'Literal' &&
+                stmt.expression.value === 'use strict') {
+                DebugConfig.log('  → Skipping "use strict" directive');
+                continue;
+            }
+
+            // Skip module export statements (CommonJS, AMD, global assignments)
+            if (this.isModuleExportStatement(stmt)) {
+                DebugConfig.log('  → Skipping module export statement');
+                continue;
+            }
+
+            unwrapped.push(stmt);
+        }
+
+        return unwrapped;
+    }
+
+    /**
+     * Check if a statement is a module export statement
+     */
+    isModuleExportStatement(stmt) {
+        if (stmt.type !== 'ExpressionStatement' && stmt.type !== 'IfStatement') {
+            return false;
+        }
+
+        // Check for: module.exports = ...
+        if (stmt.type === 'ExpressionStatement' &&
+            stmt.expression &&
+            stmt.expression.type === 'AssignmentExpression') {
+            const left = stmt.expression.left;
+
+            if (left && left.type === 'MemberExpression' &&
+                left.object && left.object.name === 'module' &&
+                left.property && left.property.name === 'exports') {
+                return true;
+            }
+
+            // Check for: global.OpCodes = ...
+            if (left && left.type === 'MemberExpression' &&
+                left.object && (left.object.name === 'global' || left.object.name === 'window' || left.object.name === 'root')) {
+                return true;
+            }
+        }
+
+        // Check for: if (typeof module !== 'undefined' && module.exports) { ... }
+        if (stmt.type === 'IfStatement' && stmt.test) {
+            const test = stmt.test;
+
+            // Check for typeof checks on 'module', 'define', 'exports'
+            if (test.type === 'BinaryExpression' || test.type === 'LogicalExpression') {
+                const testStr = this.astNodeToString(test);
+                if (testStr.includes('typeof module') ||
+                    testStr.includes('typeof define') ||
+                    testStr.includes('typeof exports') ||
+                    testStr.includes('module.exports')) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Convert AST node to string for pattern matching (simple helper)
+     */
+    astNodeToString(node) {
+        if (!node) return '';
+
+        try {
+            return JSON.stringify(node);
+        } catch (e) {
+            return '';
+        }
     }
 
     /**
@@ -1313,8 +1476,113 @@ class AlgorithmDetails {
      * Remove comments from AST
      */
     removeCommentsFromAST(ast) {
-        // For now, return AST as-is. Could implement comment removal logic here
         DebugConfig.log('🧹 Removing comments from AST');
+
+        const removeCommentsFromNode = (node) => {
+            if (!node || typeof node !== 'object') return node;
+
+            // Remove leadingComments and trailingComments
+            if (node.leadingComments) delete node.leadingComments;
+            if (node.trailingComments) delete node.trailingComments;
+            if (node.comments) delete node.comments;
+
+            // Recursively process child nodes
+            for (const key in node) {
+                if (node.hasOwnProperty(key) && key !== 'leadingComments' && key !== 'trailingComments') {
+                    if (Array.isArray(node[key])) {
+                        node[key] = node[key].map(child => removeCommentsFromNode(child));
+                    } else if (typeof node[key] === 'object' && node[key] !== null) {
+                        node[key] = removeCommentsFromNode(node[key]);
+                    }
+                }
+            }
+
+            return node;
+        };
+
+        return removeCommentsFromNode(ast);
+    }
+
+    /**
+     * Remove examples from AST
+     */
+    removeExamplesFromAST(ast) {
+        DebugConfig.log('🧹 Removing examples from AST');
+
+        const removeExamplesFromNode = (node) => {
+            if (!node || typeof node !== 'object') return node;
+
+            // Remove @example tags from JSDoc comments
+            if (node.leadingComments) {
+                node.leadingComments = node.leadingComments.filter(comment => {
+                    if (comment.value && typeof comment.value === 'string') {
+                        // Remove @example sections from JSDoc
+                        comment.value = comment.value.replace(/@example[\s\S]*?(?=@\w+|$)/g, '');
+                    }
+                    return true;
+                });
+            }
+
+            // Recursively process child nodes
+            for (const key in node) {
+                if (node.hasOwnProperty(key)) {
+                    if (Array.isArray(node[key])) {
+                        node[key] = node[key].map(child => removeExamplesFromNode(child));
+                    } else if (typeof node[key] === 'object' && node[key] !== null) {
+                        node[key] = removeExamplesFromNode(node[key]);
+                    }
+                }
+            }
+
+            return node;
+        };
+
+        return removeExamplesFromNode(ast);
+    }
+
+    /**
+     * Inline OpCodes methods into AST for standalone code
+     */
+    inlineOpCodesInAST(ast) {
+        DebugConfig.log('🔧 Inlining OpCodes methods for standalone code');
+
+        // Collect all OpCodes method calls used in the algorithm
+        const usedOpCodesMethods = new Set();
+
+        const collectOpCodesUsage = (node) => {
+            if (!node || typeof node !== 'object') return;
+
+            // Check for OpCodes.MethodName() calls
+            if (node.type === 'CallExpression' &&
+                node.callee &&
+                node.callee.type === 'MemberExpression' &&
+                node.callee.object &&
+                node.callee.object.name === 'OpCodes') {
+                if (node.callee.property && node.callee.property.name) {
+                    usedOpCodesMethods.add(node.callee.property.name);
+                }
+            }
+
+            // Recursively search all child nodes
+            for (const key in node) {
+                if (node.hasOwnProperty(key)) {
+                    if (Array.isArray(node[key])) {
+                        node[key].forEach(child => collectOpCodesUsage(child));
+                    } else if (typeof node[key] === 'object' && node[key] !== null) {
+                        collectOpCodesUsage(node[key]);
+                    }
+                }
+            }
+        };
+
+        collectOpCodesUsage(ast);
+
+        DebugConfig.log(`📝 Found ${usedOpCodesMethods.size} OpCodes methods used:`, Array.from(usedOpCodesMethods));
+
+        // For now, just mark that OpCodes inlining is needed
+        // The actual inlining will be done by the language plugin when it sees options.standaloneCode = true
+        ast._opCodesMethodsUsed = Array.from(usedOpCodesMethods);
+
         return ast;
     }
 
@@ -2793,11 +3061,11 @@ class AlgorithmDetails {
         if (!codeElement) {
             throw new Error('AlgorithmDetails: Code element not found for download');
         }
-        
+
         const codeText = codeElement.textContent;
         const algorithm = this.currentAlgorithm;
         const language = this.currentLanguage || 'javascript';
-        
+
         // Get file extension
         let extension = '.txt';
         if (typeof window !== 'undefined' && window.MultiLanguageGenerator) {
@@ -2814,7 +3082,7 @@ class AlgorithmDetails {
             };
             extension = extensionMap[language] || '.txt';
         }
-        
+
         // Create and download file
         const filename = `${algorithm.name.replace(/\s+/g, '_').toLowerCase()}${extension}`;
         const blob = new Blob([codeText], { type: 'text/plain' });
@@ -2826,6 +3094,970 @@ class AlgorithmDetails {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+    }
+
+    /**
+     * Download OpCodes library for current language
+     */
+    async downloadOpCodes() {
+        const language = this.currentLanguage || 'javascript';
+
+        try {
+            if (typeof InfrastructureGenerator === 'undefined') {
+                alert('Infrastructure generator not loaded. Please reload the page.');
+                return;
+            }
+
+            DebugConfig.log(`📦 Generating OpCodes for ${language}...`);
+            const plugin = window.LanguagePlugins.GetByExtension(language);
+
+            if (!plugin) {
+                alert(`No plugin found for language: ${language}`);
+                return;
+            }
+
+            // Generate OpCodes for this specific language
+            const result = await InfrastructureGenerator._generateOpCodesForLanguage(
+                await (await fetch('./OpCodes.js')).text(),
+                plugin
+            );
+
+            if (result.success) {
+                // Download the generated code
+                const filename = `OpCodes.${plugin.extension}`;
+                const blob = new Blob([result.code], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                DebugConfig.log(`✅ OpCodes downloaded for ${plugin.name}`);
+            } else {
+                alert(`Failed to generate OpCodes: ${result.error}`);
+            }
+        } catch (error) {
+            DebugConfig.error('Error downloading OpCodes:', error);
+            alert(`Error: ${error.message}`);
+        }
+    }
+
+    /**
+     * Download AlgorithmFramework for current language
+     */
+    async downloadAlgorithmFramework() {
+        const language = this.currentLanguage || 'javascript';
+
+        try {
+            if (typeof InfrastructureGenerator === 'undefined') {
+                alert('Infrastructure generator not loaded. Please reload the page.');
+                return;
+            }
+
+            DebugConfig.log(`📦 Generating AlgorithmFramework for ${language}...`);
+            const plugin = window.LanguagePlugins.GetByExtension(language);
+
+            if (!plugin) {
+                alert(`No plugin found for language: ${language}`);
+                return;
+            }
+
+            // Generate AlgorithmFramework for this specific language
+            const result = await InfrastructureGenerator._generateFrameworkForLanguage(
+                await (await fetch('./AlgorithmFramework.js')).text(),
+                plugin
+            );
+
+            if (result.success) {
+                // Download the generated code
+                const filename = `AlgorithmFramework.${plugin.extension}`;
+                const blob = new Blob([result.code], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                DebugConfig.log(`✅ AlgorithmFramework downloaded for ${plugin.name}`);
+            } else {
+                alert(`Failed to generate AlgorithmFramework: ${result.error}`);
+            }
+        } catch (error) {
+            DebugConfig.error('Error downloading AlgorithmFramework:', error);
+            alert(`Error: ${error.message}`);
+        }
+    }
+
+    /**
+     * Download native framework wrapper for current language
+     * Generates language-specific adapters (e.g., C# SymmetricAlgorithm, Java Cipher)
+     */
+    async downloadNativeWrapper() {
+        const language = this.currentLanguage || 'javascript';
+        const algorithm = this.currentAlgorithm;
+
+        try {
+            const plugin = window.LanguagePlugins.GetByExtension(language);
+
+            if (!plugin) {
+                alert(`No plugin found for language: ${language}`);
+                return;
+            }
+
+            DebugConfig.log(`📦 Generating native wrapper for ${algorithm.name} in ${plugin.name}...`);
+
+            // Generate native wrapper based on algorithm type and target language
+            const wrapperCode = await this.generateNativeWrapper(algorithm, plugin);
+
+            if (wrapperCode) {
+                // Download the generated wrapper
+                const filename = `${algorithm.name.replace(/\s+/g, '')}Wrapper.${plugin.extension}`;
+                const blob = new Blob([wrapperCode], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                DebugConfig.log(`✅ Native wrapper downloaded for ${plugin.name}`);
+            } else {
+                alert(`Native wrapper not yet implemented for ${plugin.name}`);
+            }
+        } catch (error) {
+            DebugConfig.error('Error downloading native wrapper:', error);
+            alert(`Error: ${error.message}`);
+        }
+    }
+
+    /**
+     * Generate native framework wrapper code
+     * Creates language-specific adapters that integrate with native crypto APIs
+     */
+    async generateNativeWrapper(algorithm, plugin) {
+        // Detect algorithm category
+        const category = algorithm.category?.name?.toLowerCase() || '';
+
+        // Language-specific wrapper templates
+        const wrappers = {
+            'cs': this.generateCSharpWrapper(algorithm, category),
+            'java': this.generateJavaWrapper(algorithm, category),
+            'py': this.generatePythonWrapper(algorithm, category),
+            'cpp': this.generateCppWrapper(algorithm, category)
+        };
+
+        return wrappers[plugin.extension] || null;
+    }
+
+    /**
+     * Generate C# native wrapper (SymmetricAlgorithm, HashAlgorithm, etc.)
+     */
+    generateCSharpWrapper(algorithm, category) {
+        const className = algorithm.name.replace(/[^a-zA-Z0-9]/g, '');
+        const needsKey = algorithm.NeedsKey || algorithm.SupportedMacSizes;
+
+        if (category.includes('mac')) {
+            // MACs use HMAC base class
+            return `using System;
+using System.Security.Cryptography;
+
+namespace Cipher.Wrappers
+{
+    /// <summary>
+    /// C# HMAC wrapper for ${algorithm.name}
+    /// Auto-generated from SynthelicZ Cipher Tools
+    /// </summary>
+    public class ${className}HMAC : HMAC
+    {
+        private readonly dynamic _instance;
+        private byte[] _key;
+
+        public ${className}HMAC()
+        {
+            HashName = "${algorithm.name}";
+            HashSizeValue = ${algorithm.SupportedOutputSizes?.[0]?.minSize * 8 || algorithm.outputSize * 8 || 256};
+        }
+
+        public ${className}HMAC(byte[] key) : this()
+        {
+            Key = key;
+        }
+
+        public override byte[] Key
+        {
+            get => _key;
+            set
+            {
+                _key = value;
+                KeyValue = value;
+            }
+        }
+
+        protected override void HashCore(byte[] array, int ibStart, int cbSize)
+        {
+            // Lazy initialization of instance
+            if (_instance == null)
+            {
+                var algorithm = new ${className}();
+                _instance = algorithm.CreateInstance(false);
+                if (_instance.GetType().GetProperty("key") != null)
+                    _instance.key = _key;
+            }
+
+            // Feed data to MAC algorithm
+            byte[] input = new byte[cbSize];
+            Array.Copy(array, ibStart, input, 0, cbSize);
+            _instance.Feed(input);
+        }
+
+        protected override byte[] HashFinal()
+        {
+            // Get final MAC result
+            return _instance.Result();
+        }
+
+        public override void Initialize()
+        {
+            // Reset by creating new instance
+            var algorithm = new ${className}();
+            _instance = algorithm.CreateInstance(false);
+            if (_instance.GetType().GetProperty("key") != null && _key != null)
+                _instance.key = _key;
+        }
+    }
+}`;
+        } else if (category.includes('hash') && needsKey) {
+            // Keyed hashes use KeyedHashAlgorithm
+            return `using System;
+using System.Security.Cryptography;
+
+namespace Cipher.Wrappers
+{
+    /// <summary>
+    /// C# KeyedHashAlgorithm wrapper for ${algorithm.name}
+    /// Auto-generated from SynthelicZ Cipher Tools
+    /// </summary>
+    public class ${className}Keyed : KeyedHashAlgorithm
+    {
+        private readonly dynamic _instance;
+
+        public ${className}Keyed()
+        {
+            HashSizeValue = ${algorithm.SupportedOutputSizes?.[0]?.minSize * 8 || 256};
+
+            // Create algorithm instance
+            var algorithm = new ${className}();
+            _instance = algorithm.CreateInstance(false);
+        }
+
+        public ${className}Keyed(byte[] key) : this()
+        {
+            Key = key;
+        }
+
+        public override byte[] Key
+        {
+            get => KeyValue;
+            set
+            {
+                KeyValue = value;
+                if (_instance != null && _instance.GetType().GetProperty("key") != null)
+                    _instance.key = value;
+            }
+        }
+
+        protected override void HashCore(byte[] array, int ibStart, int cbSize)
+        {
+            byte[] input = new byte[cbSize];
+            Array.Copy(array, ibStart, input, 0, cbSize);
+            _instance.Feed(input);
+        }
+
+        protected override byte[] HashFinal()
+        {
+            return _instance.Result();
+        }
+
+        public override void Initialize()
+        {
+            var algorithm = new ${className}();
+            _instance = algorithm.CreateInstance(false);
+            if (KeyValue != null && _instance.GetType().GetProperty("key") != null)
+                _instance.key = KeyValue;
+        }
+    }
+}`;
+        } else if (category.includes('block') || category.includes('stream')) {
+            return `using System;
+using System.Security.Cryptography;
+
+namespace Cipher.Wrappers
+{
+    /// <summary>
+    /// C# SymmetricAlgorithm wrapper for ${algorithm.name}
+    /// Auto-generated from SynthelicZ Cipher Tools
+    /// </summary>
+    public class ${className}Managed : SymmetricAlgorithm
+    {
+        public ${className}Managed()
+        {
+            // Set algorithm-specific defaults
+            KeySizeValue = ${algorithm.SupportedKeySizes?.[0]?.minSize * 8 || 128};
+            BlockSizeValue = ${algorithm.SupportedBlockSizes?.[0]?.minSize * 8 || 128};
+            FeedbackSizeValue = BlockSizeValue;
+
+            LegalKeySizesValue = new KeySizes[] {
+                new KeySizes(${algorithm.SupportedKeySizes?.[0]?.minSize * 8 || 128},
+                             ${algorithm.SupportedKeySizes?.[0]?.maxSize * 8 || 256},
+                             ${algorithm.SupportedKeySizes?.[0]?.step * 8 || 64})
+            };
+
+            LegalBlockSizesValue = new KeySizes[] {
+                new KeySizes(${algorithm.SupportedBlockSizes?.[0]?.minSize * 8 || 128},
+                             ${algorithm.SupportedBlockSizes?.[0]?.maxSize * 8 || 128},
+                             ${algorithm.SupportedBlockSizes?.[0]?.step * 8 || 64})
+            };
+        }
+
+        public override ICryptoTransform CreateEncryptor(byte[] rgbKey, byte[] rgbIV)
+        {
+            return new ${className}Transform(rgbKey, rgbIV, encrypting: true);
+        }
+
+        public override ICryptoTransform CreateDecryptor(byte[] rgbKey, byte[] rgbIV)
+        {
+            return new ${className}Transform(rgbKey, rgbIV, encrypting: false);
+        }
+
+        public override void GenerateKey()
+        {
+            KeyValue = new byte[KeySizeValue / 8];
+            RandomNumberGenerator.Fill(KeyValue);
+        }
+
+        public override void GenerateIV()
+        {
+            IVValue = new byte[BlockSizeValue / 8];
+            RandomNumberGenerator.Fill(IVValue);
+        }
+    }
+
+    internal class ${className}Transform : ICryptoTransform
+    {
+        private readonly byte[] _key;
+        private readonly byte[] _iv;
+        private readonly bool _encrypting;
+        private readonly dynamic _instance;
+
+        public ${className}Transform(byte[] key, byte[] iv, bool encrypting)
+        {
+            _key = key;
+            _iv = iv;
+            _encrypting = encrypting;
+
+            // Create algorithm instance (assumes generated ${className} class with CreateInstance method)
+            var algorithm = new ${className}();
+            _instance = algorithm.CreateInstance(!encrypting);
+            _instance.key = key;
+            if (iv != null && iv.Length > 0)
+            {
+                _instance.iv = iv;
+            }
+        }
+
+        public int TransformBlock(byte[] inputBuffer, int inputOffset, int inputCount,
+                                   byte[] outputBuffer, int outputOffset)
+        {
+            // Extract input block
+            byte[] input = new byte[inputCount];
+            Array.Copy(inputBuffer, inputOffset, input, 0, inputCount);
+
+            // Process using generated algorithm
+            _instance.Feed(input);
+            byte[] output = _instance.Result();
+
+            // Copy result to output buffer
+            Array.Copy(output, 0, outputBuffer, outputOffset, output.Length);
+            return output.Length;
+        }
+
+        public byte[] TransformFinalBlock(byte[] inputBuffer, int inputOffset, int inputCount)
+        {
+            byte[] output = new byte[inputCount];
+            TransformBlock(inputBuffer, inputOffset, inputCount, output, 0);
+            return output;
+        }
+
+        public int InputBlockSize => ${algorithm.SupportedBlockSizes?.[0]?.minSize || 16};
+        public int OutputBlockSize => ${algorithm.SupportedBlockSizes?.[0]?.minSize || 16};
+        public bool CanTransformMultipleBlocks => true;
+        public bool CanReuseTransform => false;
+
+        public void Dispose() { }
+    }
+}`;
+        } else if (category.includes('hash')) {
+            return `using System;
+using System.Security.Cryptography;
+
+namespace Cipher.Wrappers
+{
+    /// <summary>
+    /// C# HashAlgorithm wrapper for ${algorithm.name}
+    /// Auto-generated from SynthelicZ Cipher Tools
+    /// </summary>
+    public class ${className}Managed : HashAlgorithm
+    {
+        private readonly dynamic _instance;
+
+        public ${className}Managed()
+        {
+            HashSizeValue = ${algorithm.SupportedOutputSizes?.[0]?.minSize * 8 || 256};
+
+            // Create algorithm instance (assumes generated ${className} class with CreateInstance method)
+            var algorithm = new ${className}();
+            _instance = algorithm.CreateInstance(false);
+        }
+
+        protected override void HashCore(byte[] array, int ibStart, int cbSize)
+        {
+            // Extract input data
+            byte[] input = new byte[cbSize];
+            Array.Copy(array, ibStart, input, 0, cbSize);
+
+            // Feed data to hash algorithm
+            _instance.Feed(input);
+        }
+
+        protected override byte[] HashFinal()
+        {
+            // Get final hash result
+            return _instance.Result();
+        }
+
+        public override void Initialize()
+        {
+            // Reset by creating new instance
+            var algorithm = new ${className}();
+            _instance = algorithm.CreateInstance(false);
+        }
+    }
+}`;
+        } else if (category.includes('random')) {
+            return `using System;
+using System.Security.Cryptography;
+
+namespace Cipher.Wrappers
+{
+    /// <summary>
+    /// C# RandomNumberGenerator wrapper for ${algorithm.name}
+    /// Auto-generated from SynthelicZ Cipher Tools
+    /// </summary>
+    public class ${className}RandomNumberGenerator : RandomNumberGenerator
+    {
+        private readonly dynamic _instance;
+        private bool _disposed = false;
+
+        public ${className}RandomNumberGenerator()
+        {
+            // Create algorithm instance (assumes generated ${className} class with CreateInstance method)
+            var algorithm = new ${className}();
+            _instance = algorithm.CreateInstance(false);
+
+            // Set seed if algorithm supports it
+            if (_instance.GetType().GetProperty("seed") != null)
+            {
+                // Use cryptographically secure random seed
+                byte[] seedBytes = new byte[${algorithm.SupportedSeedSizes?.[0]?.minSize || 4}];
+                using (var rng = RandomNumberGenerator.Create())
+                {
+                    rng.GetBytes(seedBytes);
+                }
+                _instance.seed = seedBytes;
+            }
+        }
+
+        public ${className}RandomNumberGenerator(byte[] seed)
+        {
+            // Create algorithm instance with custom seed
+            var algorithm = new ${className}();
+            _instance = algorithm.CreateInstance(false);
+
+            if (_instance.GetType().GetProperty("seed") != null)
+            {
+                _instance.seed = seed;
+            }
+        }
+
+        public override void GetBytes(byte[] data)
+        {
+            if (data == null)
+                throw new ArgumentNullException(nameof(data));
+
+            if (_disposed)
+                throw new ObjectDisposedException(GetType().Name);
+
+            // Generate random bytes using the algorithm
+            for (int i = 0; i < data.Length; i++)
+            {
+                _instance.Feed(new byte[] { 0 }); // Request next random value
+                byte[] result = _instance.Result();
+                data[i] = result[0];
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                _disposed = true;
+            }
+            base.Dispose(disposing);
+        }
+    }
+}`;
+        } else if (category.includes('kdf')) {
+            return `using System;
+using System.Security.Cryptography;
+
+namespace Cipher.Wrappers
+{
+    /// <summary>
+    /// C# DeriveBytes wrapper for ${algorithm.name}
+    /// Auto-generated from SynthelicZ Cipher Tools
+    /// </summary>
+    public class ${className}DeriveBytes : DeriveBytes
+    {
+        private readonly dynamic _instance;
+        private readonly byte[] _password;
+        private readonly byte[] _salt;
+        private readonly int _iterations;
+        private bool _disposed = false;
+
+        public ${className}DeriveBytes(byte[] password, byte[] salt, int iterations)
+        {
+            _password = password ?? throw new ArgumentNullException(nameof(password));
+            _salt = salt ?? throw new ArgumentNullException(nameof(salt));
+            _iterations = iterations;
+
+            // Create algorithm instance
+            var algorithm = new ${className}();
+            _instance = algorithm.CreateInstance(false);
+
+            // Set KDF parameters
+            if (_instance.GetType().GetProperty("password") != null)
+                _instance.password = _password;
+            if (_instance.GetType().GetProperty("salt") != null)
+                _instance.salt = _salt;
+            if (_instance.GetType().GetProperty("iterations") != null)
+                _instance.iterations = _iterations;
+        }
+
+        public ${className}DeriveBytes(string password, byte[] salt, int iterations)
+            : this(System.Text.Encoding.UTF8.GetBytes(password), salt, iterations)
+        {
+        }
+
+        public override byte[] GetBytes(int cb)
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(GetType().Name);
+
+            if (cb <= 0)
+                throw new ArgumentOutOfRangeException(nameof(cb));
+
+            // Set output size
+            if (_instance.GetType().GetProperty("outputSize") != null)
+                _instance.outputSize = cb;
+
+            // Generate derived key
+            _instance.Feed(_password);
+            return _instance.Result();
+        }
+
+        public override void Reset()
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(GetType().Name);
+
+            // Reset by creating new instance
+            var algorithm = new ${className}();
+            _instance = algorithm.CreateInstance(false);
+
+            if (_instance.GetType().GetProperty("password") != null)
+                _instance.password = _password;
+            if (_instance.GetType().GetProperty("salt") != null)
+                _instance.salt = _salt;
+            if (_instance.GetType().GetProperty("iterations") != null)
+                _instance.iterations = _iterations;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    Array.Clear(_password, 0, _password.Length);
+                    if (_salt != null)
+                        Array.Clear(_salt, 0, _salt.Length);
+                }
+                _disposed = true;
+            }
+            base.Dispose(disposing);
+        }
+    }
+}`;
+        } else if (category.includes('asymmetric') && (algorithm.name.toLowerCase().includes('dsa') || algorithm.name.toLowerCase().includes('signature'))) {
+            return `using System;
+using System.Security.Cryptography;
+
+namespace Cipher.Wrappers
+{
+    /// <summary>
+    /// C# AsymmetricAlgorithm wrapper for ${algorithm.name}
+    /// Auto-generated from SynthelicZ Cipher Tools
+    /// </summary>
+    public class ${className}Algorithm : AsymmetricAlgorithm
+    {
+        private readonly dynamic _instance;
+        private byte[] _privateKey;
+        private byte[] _publicKey;
+
+        public ${className}Algorithm()
+        {
+            // Create algorithm instance
+            var algorithm = new ${className}();
+            _instance = algorithm.CreateInstance(false);
+
+            // Set key size from algorithm metadata
+            KeySizeValue = ${algorithm.SupportedKeySizes?.[0]?.minSize * 8 || 2048};
+            LegalKeySizesValue = new KeySizes[] {
+                new KeySizes(${algorithm.SupportedKeySizes?.[0]?.minSize * 8 || 1024},
+                             ${algorithm.SupportedKeySizes?.[0]?.maxSize * 8 || 4096},
+                             ${algorithm.SupportedKeySizes?.[0]?.step * 8 || 1024})
+            };
+        }
+
+        public byte[] SignData(byte[] data, HashAlgorithmName hashAlgorithm)
+        {
+            if (_privateKey == null)
+                throw new InvalidOperationException("Private key not set");
+
+            // Set private key
+            if (_instance.GetType().GetProperty("privateKey") != null)
+                _instance.privateKey = _privateKey;
+
+            // Sign data
+            _instance.Feed(data);
+            return _instance.Result();
+        }
+
+        public bool VerifyData(byte[] data, byte[] signature, HashAlgorithmName hashAlgorithm)
+        {
+            if (_publicKey == null)
+                throw new InvalidOperationException("Public key not set");
+
+            // Set public key
+            if (_instance.GetType().GetProperty("publicKey") != null)
+                _instance.publicKey = _publicKey;
+
+            // Verify signature
+            _instance.Feed(data);
+            byte[] computedSignature = _instance.Result();
+
+            // Compare signatures
+            if (signature.Length != computedSignature.Length)
+                return false;
+
+            for (int i = 0; i < signature.Length; i++)
+            {
+                if (signature[i] != computedSignature[i])
+                    return false;
+            }
+            return true;
+        }
+
+        public void ImportParameters(byte[] privateKey, byte[] publicKey)
+        {
+            _privateKey = privateKey;
+            _publicKey = publicKey;
+        }
+
+        public override string KeyExchangeAlgorithm => "${algorithm.name}";
+        public override string SignatureAlgorithm => "${algorithm.name}";
+    }
+}`;
+        }
+
+        return null;
+    }
+
+    /**
+     * Generate Java native wrapper (javax.crypto.Cipher, MessageDigest, etc.)
+     */
+    generateJavaWrapper(algorithm, category) {
+        const className = algorithm.name.replace(/[^a-zA-Z0-9]/g, '');
+
+        if (category.includes('block') || category.includes('stream')) {
+            return `package com.synthelicz.cipher.wrappers;
+
+import javax.crypto.*;
+import javax.crypto.spec.SecretKeySpec;
+import java.security.*;
+
+/**
+ * Java Cipher wrapper for ${algorithm.name}
+ * Auto-generated from SynthelicZ Cipher Tools
+ */
+public class ${className}Cipher extends CipherSpi {
+
+    private byte[] key;
+    private int opmode;
+
+    @Override
+    protected void engineSetMode(String mode) throws NoSuchAlgorithmException {
+        if (!mode.equalsIgnoreCase("ECB")) {
+            throw new NoSuchAlgorithmException("Only ECB mode is supported");
+        }
+    }
+
+    @Override
+    protected void engineSetPadding(String padding) throws NoSuchPaddingException {
+        if (!padding.equalsIgnoreCase("NoPadding")) {
+            throw new NoSuchPaddingException("Only NoPadding is supported");
+        }
+    }
+
+    @Override
+    protected int engineGetBlockSize() {
+        return ${algorithm.SupportedBlockSizes?.[0]?.minSize || 16};
+    }
+
+    @Override
+    protected int engineGetOutputSize(int inputLen) {
+        return inputLen;
+    }
+
+    @Override
+    protected byte[] engineGetIV() {
+        return null;
+    }
+
+    @Override
+    protected AlgorithmParameters engineGetParameters() {
+        return null;
+    }
+
+    @Override
+    protected void engineInit(int opmode, Key key, SecureRandom random) {
+        this.opmode = opmode;
+        this.key = key.getEncoded();
+    }
+
+    @Override
+    protected void engineInit(int opmode, Key key, AlgorithmParameterSpec params, SecureRandom random) {
+        engineInit(opmode, key, random);
+    }
+
+    @Override
+    protected void engineInit(int opmode, Key key, AlgorithmParameters params, SecureRandom random) {
+        engineInit(opmode, key, random);
+    }
+
+    @Override
+    protected byte[] engineUpdate(byte[] input, int inputOffset, int inputLen) {
+        // TODO: Implement using generated ${algorithm.name} code
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
+    protected int engineUpdate(byte[] input, int inputOffset, int inputLen,
+                               byte[] output, int outputOffset) {
+        // TODO: Implement using generated ${algorithm.name} code
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
+    protected byte[] engineDoFinal(byte[] input, int inputOffset, int inputLen) {
+        // TODO: Implement using generated ${algorithm.name} code
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
+    protected int engineDoFinal(byte[] input, int inputOffset, int inputLen,
+                               byte[] output, int outputOffset) {
+        // TODO: Implement using generated ${algorithm.name} code
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+}`;
+        } else if (category.includes('hash')) {
+            return `package com.synthelicz.cipher.wrappers;
+
+import java.security.*;
+
+/**
+ * Java MessageDigest wrapper for ${algorithm.name}
+ * Auto-generated from SynthelicZ Cipher Tools
+ */
+public class ${className}Digest extends MessageDigestSpi {
+
+    @Override
+    protected void engineUpdate(byte input) {
+        // TODO: Implement using generated ${algorithm.name} code
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
+    protected void engineUpdate(byte[] input, int offset, int len) {
+        // TODO: Implement using generated ${algorithm.name} code
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
+    protected byte[] engineDigest() {
+        // TODO: Implement using generated ${algorithm.name} code
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
+    protected void engineReset() {
+        // Reset internal state
+    }
+}`;
+        }
+
+        return null;
+    }
+
+    /**
+     * Generate Python native wrapper (cryptography library integration)
+     */
+    generatePythonWrapper(algorithm, category) {
+        const className = algorithm.name.replace(/[^a-zA-Z0-9]/g, '');
+
+        if (category.includes('block') || category.includes('stream')) {
+            return `"""
+${algorithm.name} wrapper for Python cryptography library
+Auto-generated from SynthelicZ Cipher Tools
+"""
+
+from cryptography.hazmat.primitives.ciphers import (
+    Cipher, CipherAlgorithm, CipherContext
+)
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+
+class ${className}(CipherAlgorithm):
+    """
+    ${algorithm.name} cipher algorithm
+
+    Block size: ${algorithm.SupportedBlockSizes?.[0]?.minSize || 16} bytes
+    Key sizes: ${algorithm.SupportedKeySizes?.[0]?.minSize || 16}-${algorithm.SupportedKeySizes?.[0]?.maxSize || 32} bytes
+    """
+
+    name = "${algorithm.name}"
+    block_size = ${algorithm.SupportedBlockSizes?.[0]?.minSize * 8 || 128}  # bits
+    key_size = ${algorithm.SupportedKeySizes?.[0]?.minSize * 8 || 128}  # bits
+
+    def __init__(self, key: bytes):
+        if len(key) not in [${algorithm.SupportedKeySizes?.map(k => k.minSize).join(', ') || '16, 24, 32'}]:
+            raise ValueError(f"Invalid key size: {len(key)}")
+        self.key = key
+
+    @property
+    def key_size(self):
+        return len(self.key) * 8
+
+# Example usage:
+# from cryptography.hazmat.primitives.ciphers import modes
+# cipher = Cipher(${className}(key), modes.ECB(), backend=default_backend())
+# encryptor = cipher.encryptor()
+# ciphertext = encryptor.update(plaintext) + encryptor.finalize()
+`;
+        } else if (category.includes('hash')) {
+            return `"""
+${algorithm.name} hash function for Python
+Auto-generated from SynthelicZ Cipher Tools
+"""
+
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.backends import default_backend
+
+class ${className}(hashes.HashAlgorithm):
+    """
+    ${algorithm.name} hash algorithm
+
+    Output size: ${algorithm.SupportedOutputSizes?.[0]?.minSize || 32} bytes
+    """
+
+    name = "${algorithm.name}"
+    digest_size = ${algorithm.SupportedOutputSizes?.[0]?.minSize || 32}  # bytes
+    block_size = ${algorithm.SupportedBlockSizes?.[0]?.minSize || 64}  # bytes
+
+    def __init__(self):
+        # TODO: Initialize state using generated ${algorithm.name} code
+        pass
+
+# Example usage:
+# from cryptography.hazmat.primitives import hashes
+# digest = hashes.Hash(${className}(), backend=default_backend())
+# digest.update(b"message")
+# hash_value = digest.finalize()
+`;
+        }
+
+        return null;
+    }
+
+    /**
+     * Generate C++ native wrapper
+     */
+    generateCppWrapper(algorithm, category) {
+        const className = algorithm.name.replace(/[^a-zA-Z0-9]/g, '');
+
+        return `// ${algorithm.name} C++ wrapper
+// Auto-generated from SynthelicZ Cipher Tools
+
+#include <cstdint>
+#include <vector>
+#include <stdexcept>
+
+namespace synthelicz {
+namespace cipher {
+
+class ${className} {
+public:
+    static constexpr size_t BLOCK_SIZE = ${algorithm.SupportedBlockSizes?.[0]?.minSize || 16};
+    static constexpr size_t KEY_SIZE = ${algorithm.SupportedKeySizes?.[0]?.minSize || 16};
+
+    ${className}(const uint8_t* key, size_t keyLen) {
+        if (keyLen != KEY_SIZE) {
+            throw std::invalid_argument("Invalid key size");
+        }
+        // TODO: Initialize using generated ${algorithm.name} code
+    }
+
+    void encrypt(const uint8_t* input, uint8_t* output, size_t length) {
+        // TODO: Implement using generated ${algorithm.name} code
+    }
+
+    void decrypt(const uint8_t* input, uint8_t* output, size_t length) {
+        // TODO: Implement using generated ${algorithm.name} code
+    }
+};
+
+} // namespace cipher
+} // namespace synthelicz
+`;
     }
 
     /**
