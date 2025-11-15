@@ -344,8 +344,9 @@
         };
 
         try {
-            // Create instance
-            const instance = algorithmInstance.CreateInstance();
+            // Create instance (respecting vector's inverse property for decryption tests)
+            const isInverse = vector.inverse === true;
+            const instance = algorithmInstance.CreateInstance(isInverse);
             if (!instance) {
                 throw new Error('Failed to create algorithm instance');
             }
@@ -397,7 +398,8 @@
                         // Test normal round-trip with timeout protection: decrypt(encrypt(data)) == data
                         const roundTripResult = await _executeWithTimeout(
                             () => {
-                                const reverseInstance = algorithmInstance.CreateInstance(true);
+                                // Create reverse instance: if we encrypted, decrypt; if we decrypted, encrypt
+                                const reverseInstance = algorithmInstance.CreateInstance(!isInverse);
                                 if (!reverseInstance) return null;
 
                                 if (_isBlockCipherMode(algorithmInstance)) {
@@ -701,7 +703,7 @@
             'input', 'expected', 'text', 'uri', 'key', 'kek', 'key2', 'iv', 'iv1', 'iv2',
             'nonce', 'tweak', 'tweakKey', 'aad', 'tagSize', 'tagLength', 'tag', 'radix',
             'alphabet', 'salt', 'info', 'outputSize', 'OutputSize', 'hashFunction',
-            'password', 'iterations', 'blockSize'
+            'password', 'iterations', 'blockSize', 'seed'
         ]);
 
         Object.keys(vector).forEach(prop => {
@@ -715,6 +717,9 @@
                 }
             }
         });
+
+        // PRNG seed (apply AFTER other properties like stateSize, operationMode, etc.)
+        _applyProperty(instance, vector, 'seed', 'setSeed');
     }
 
     function _applyProperty(instance, vector, vectorProp, methodName) {
