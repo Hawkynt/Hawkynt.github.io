@@ -88,6 +88,12 @@
 
   // ===== REDOC II IMPLEMENTATION =====
 
+  /**
+ * REDOC2Algorithm - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class REDOC2Algorithm extends AlgorithmFramework.BlockCipherAlgorithm {
     constructor() {
       super();
@@ -138,12 +144,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new REDOC2Instance(this, isInverse);
     }
   }
 
+  /**
+ * REDOC2 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class REDOC2Instance extends AlgorithmFramework.IBlockCipherInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -159,6 +183,11 @@
       this.SBOX = generateSBox(0x5A, 131);
       this.SBOX_INV = generateInverseSBox(this.SBOX);
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return this._key ? [...this._key] : null;
@@ -204,12 +233,24 @@
       return roundKeys;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!Array.isArray(data)) {
         throw new Error('Feed expects byte array');
       }
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) {
@@ -309,6 +350,12 @@
 
   // ===== REDOC III IMPLEMENTATION =====
 
+  /**
+ * REDOC3Algorithm - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class REDOC3Algorithm extends AlgorithmFramework.BlockCipherAlgorithm {
     constructor() {
       super();
@@ -360,12 +407,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new REDOC3Instance(this, isInverse);
     }
   }
 
+  /**
+ * REDOC3 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class REDOC3Instance extends AlgorithmFramework.IBlockCipherInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -381,6 +446,11 @@
       this.SBOX = generateSBox(0x9E, 157);
       this.SBOX_INV = generateInverseSBox(this.SBOX);
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return this._key ? [...this._key] : null;
@@ -433,12 +503,24 @@
       return roundKeys;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!Array.isArray(data)) {
         throw new Error('Feed expects byte array');
       }
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) {

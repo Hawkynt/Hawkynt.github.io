@@ -98,6 +98,12 @@
     return [...leftEncode(bitLength), ...data];
   }
 
+  /**
+ * TupleHash128 - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class TupleHash128 extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -167,11 +173,23 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new TupleHashInstance(this, 128);
     }
   }
+
+  /**
+ * TupleHash256 - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
 
   class TupleHash256 extends HashFunctionAlgorithm {
     constructor() {
@@ -242,11 +260,23 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new TupleHashInstance(this, 256);
     }
   }
+
+  /**
+ * TupleHash cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class TupleHashInstance extends IHashFunctionInstance {
     constructor(algorithm, securityBits) {
@@ -308,6 +338,12 @@
       }
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
 
@@ -315,6 +351,12 @@
       const encoded = encodeTuple(data);
       this.cshake.Feed(encoded);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (this._firstOutput) {

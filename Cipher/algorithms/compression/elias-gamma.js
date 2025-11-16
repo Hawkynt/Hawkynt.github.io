@@ -49,6 +49,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * EliasGammaAlgorithm - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class EliasGammaAlgorithm extends CompressionAlgorithm {
       constructor() {
         super();

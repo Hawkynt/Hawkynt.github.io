@@ -108,12 +108,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new SivModeInstance(this, isInverse);
     }
   }
 
+  /**
+ * SivMode cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class SivModeInstance extends IAlgorithmInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -154,6 +172,12 @@
       this.aad = aadArray || [];
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this.blockCipher) {
@@ -161,6 +185,12 @@
       }
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this.blockCipher) {

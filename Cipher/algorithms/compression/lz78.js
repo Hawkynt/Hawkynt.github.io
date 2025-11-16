@@ -49,6 +49,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * LZ78Algorithm - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class LZ78Algorithm extends CompressionAlgorithm {
       constructor() {
         super();

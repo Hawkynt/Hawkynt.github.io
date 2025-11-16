@@ -125,6 +125,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Checksums have no inverse
       if (isInverse) {
@@ -134,11 +140,23 @@
     }
   }
 
+  /**
+ * InternetChecksum cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class InternetChecksumInstance extends IAlgorithmInstance {
     constructor(algorithm) {
       super(algorithm);
       this.sum = 0;
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!Array.isArray(data)) {
@@ -170,6 +188,12 @@
         }
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       // Take 1's complement of the final sum

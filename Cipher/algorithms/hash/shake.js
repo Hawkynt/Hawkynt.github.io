@@ -279,6 +279,12 @@
       return configs[variant];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Hash functions have no inverse
       return new SHAKEInstance(this);

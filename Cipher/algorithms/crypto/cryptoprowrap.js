@@ -436,10 +436,22 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new CryptoProWrapInstance(this, isInverse);
     }
   }
+
+  /**
+ * CryptoProWrap cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class CryptoProWrapInstance extends IAlgorithmInstance {
     constructor(algorithm, isInverse) {
@@ -451,6 +463,12 @@
       this.mac = new GOSTMAC(CRYPTOPRO_SBOX);
       this.inputBuffer = [];
     }
+
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
 
     set key(keyBytes) {
       if (!keyBytes || keyBytes.length === 0) {
@@ -464,6 +482,11 @@
 
       this._key = Array.from(keyBytes);
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return this._key ? Array.from(this._key) : null;
@@ -486,6 +509,12 @@
       return this._ukm ? Array.from(this._ukm) : null;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) {
@@ -499,6 +528,12 @@
         this.inputBuffer.push(data[i] & 0xFF);
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) {

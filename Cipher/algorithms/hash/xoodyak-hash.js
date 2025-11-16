@@ -168,6 +168,12 @@
     state[44] = bytes11[0]; state[45] = bytes11[1]; state[46] = bytes11[2]; state[47] = bytes11[3];
   }
 
+  /**
+ * XoodyakHash - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class XoodyakHash extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -264,11 +270,23 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new XoodyakHashInstance(this);
     }
   }
+
+  /**
+ * XoodyakHash cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class XoodyakHashInstance extends IHashFunctionInstance {
     constructor(algorithm) {

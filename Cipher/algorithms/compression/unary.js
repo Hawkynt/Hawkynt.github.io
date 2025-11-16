@@ -49,6 +49,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * UnaryCompression - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class UnaryCompression extends CompressionAlgorithm {
       constructor() {
         super();

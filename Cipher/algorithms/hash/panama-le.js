@@ -45,6 +45,12 @@
     return OpCodes.RotL32(x, n);
   }
 
+  /**
+ * PanamaLEAlgorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class PanamaLEAlgorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -86,11 +92,23 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new PanamaLEInstance(this);
     }
   }
+
+  /**
+ * PanamaLE cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class PanamaLEInstance extends IHashFunctionInstance {
     constructor(algorithm) {
@@ -108,6 +126,12 @@
       this.bstart = 0;
       this.buffer = [];
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -201,6 +225,12 @@
                                        b16[i];
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       // Pad to block boundary

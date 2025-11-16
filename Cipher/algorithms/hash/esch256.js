@@ -295,6 +295,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Hash functions have no inverse
       return new Esch256Instance(this);
@@ -329,6 +335,12 @@
     get outputSize() {
       return this._outputSize;
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -365,6 +377,12 @@
         }
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       // Pad and finalize

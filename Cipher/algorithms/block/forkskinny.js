@@ -478,6 +478,12 @@
   const BRANCH_CONSTANT = [0x08040201, 0x82412010, 0x28140a05, 0x8844a251];
 
   // ForkSkinny-128-256 Algorithm
+  /**
+ * ForkSkinny128_256 - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class ForkSkinny128_256 extends BlockCipherAlgorithm {
     constructor() {
       super();
@@ -523,13 +529,31 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new ForkSkinny128_256Instance(this, isInverse);
     }
   }
 
   // ForkSkinny-128-256 Instance
+  /**
+ * ForkSkinny128_256 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class ForkSkinny128_256Instance extends IBlockCipherInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -537,6 +561,12 @@
       this._key = null;
       this._forkOutput = "both"; // "left", "right", or "both"
     }
+
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
 
     set key(keyBytes) {
       if (!keyBytes) {
@@ -550,6 +580,11 @@
 
       this._key = [...keyBytes];
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return this._key ? [...this._key] : null;
@@ -566,11 +601,23 @@
       return this._forkOutput;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) throw new Error("Key not set");
@@ -715,6 +762,12 @@
   }
 
   // ForkSkinny-128-384 Algorithm
+  /**
+ * ForkSkinny128_384 - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class ForkSkinny128_384 extends BlockCipherAlgorithm {
     constructor() {
       super();
@@ -758,13 +811,31 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new ForkSkinny128_384Instance(this, isInverse);
     }
   }
 
   // ForkSkinny-128-384 Instance
+  /**
+ * ForkSkinny128_384 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class ForkSkinny128_384Instance extends IBlockCipherInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -772,6 +843,12 @@
       this._key = null;
       this._forkOutput = "both";
     }
+
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
 
     set key(keyBytes) {
       if (!keyBytes) {
@@ -785,6 +862,11 @@
 
       this._key = [...keyBytes];
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return this._key ? [...this._key] : null;
@@ -801,11 +883,23 @@
       return this._forkOutput;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) throw new Error("Key not set");

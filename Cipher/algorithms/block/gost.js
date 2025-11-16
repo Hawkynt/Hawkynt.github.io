@@ -108,6 +108,12 @@
     ) >>> 0;
   }
 
+  /**
+ * Gost28147Algorithm - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class Gost28147Algorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
@@ -182,10 +188,22 @@
       this.GOST_SBOXES = Gost28147Tables.sBoxes;
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new Gost28147Instance(this, isInverse);
     }
   }
+
+  /**
+ * Gost28147 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class Gost28147Instance extends IBlockCipherInstance {
     constructor(algorithm, isInverse) {
@@ -197,6 +215,12 @@
       this.BlockSize = GOST28147_BLOCK_SIZE;
       this.KeySize = 0;
     }
+
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
 
     set key(keyBytes) {
       if (!keyBytes || keyBytes.length === 0) {
@@ -229,9 +253,20 @@
       this.KeySize = keyCopy.length;
     }
 
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
+
     get key() {
       return this._key ? Array.from(this._key) : null;
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) {
@@ -244,6 +279,12 @@
         this.inputBuffer.push(data[i] & 0xFF);
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) {
@@ -362,6 +403,12 @@
   const KUZNYECHIK_BLOCK_SIZE = 16;
   const KUZNYECHIK_KEY_BYTES = 32;
 
+  /**
+ * GostKuznyechikAlgorithm - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class GostKuznyechikAlgorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
@@ -460,12 +507,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new GostKuznyechikInstance(this, isInverse);
     }
   }
 
+  /**
+ * GostKuznyechik cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class GostKuznyechikInstance extends IBlockCipherInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -475,6 +540,12 @@
       this.BlockSize = KUZNYECHIK_BLOCK_SIZE;
       this.KeySize = 0;
     }
+
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
 
     set key(keyBytes) {
       if (!keyBytes) {
@@ -493,9 +564,20 @@
       this.roundKeys = this._expandKey(keyBytes);
     }
 
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
+
     get key() {
       return this._key ? [...this._key] : null;
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -503,6 +585,12 @@
 
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this.key) throw new Error("Key not set");

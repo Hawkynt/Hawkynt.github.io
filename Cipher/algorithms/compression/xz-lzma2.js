@@ -51,6 +51,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * XZAlgorithm - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class XZAlgorithm extends CompressionAlgorithm {
       constructor() {
         super();

@@ -358,6 +358,12 @@
   // SKINNY-tk2-HASH (32-byte state, 4-byte absorption rate)
   // ============================================================================
 
+  /**
+ * SKINNYtk2Hash - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class SKINNYtk2Hash extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -420,11 +426,23 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new SKINNYtk2HashInstance(this);
     }
   }
+
+  /**
+ * SKINNYtk2Hash cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class SKINNYtk2HashInstance extends IHashFunctionInstance {
     constructor(algorithm) {
@@ -443,6 +461,12 @@
       this.buffer.fill(0);
       this.bufferPos = 0;
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -472,6 +496,12 @@
         }
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       // XOR partial block into state
@@ -525,6 +555,12 @@
   // ============================================================================
   // SKINNY-tk3-HASH (48-byte state, 16-byte absorption rate)
   // ============================================================================
+
+  /**
+ * SKINNYtk3Hash - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
 
   class SKINNYtk3Hash extends HashFunctionAlgorithm {
     constructor() {
@@ -588,11 +624,23 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new SKINNYtk3HashInstance(this);
     }
   }
+
+  /**
+ * SKINNYtk3Hash cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class SKINNYtk3HashInstance extends IHashFunctionInstance {
     constructor(algorithm) {
@@ -611,6 +659,12 @@
       this.buffer.fill(0);
       this.bufferPos = 0;
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -640,6 +694,12 @@
         }
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       // XOR partial block into state

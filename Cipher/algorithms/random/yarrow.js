@@ -186,6 +186,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) {
         return null; // PRNGs have no inverse operation
@@ -193,6 +199,12 @@
       return new YarrowInstance(this);
     }
   }
+
+  /**
+ * Yarrow cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class YarrowInstance extends IAlgorithmInstance {
     constructor(algorithm) {

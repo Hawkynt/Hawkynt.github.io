@@ -58,6 +58,12 @@
     0x5F6DAAD6, 0x3DBEAEB8, 0x68DB8BC8, 0x3A9D3C9F
   ]);
 
+  /**
+ * JHAlgorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class JHAlgorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -109,12 +115,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new JHAlgorithmInstance(this, isInverse);
     }
   }
 
+  /**
+ * JHAlgorithm cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class JHAlgorithmInstance extends IHashFunctionInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;

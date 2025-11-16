@@ -41,6 +41,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * ZPAQAlgorithm - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class ZPAQAlgorithm extends CompressionAlgorithm {
       constructor() {
         super();

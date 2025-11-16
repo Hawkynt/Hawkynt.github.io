@@ -53,6 +53,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * Speck - NSA lightweight ARX block cipher (Addition-Rotation-XOR design)
+   * 64-bit blocks with 128-bit keys using 27 rounds, optimized for software efficiency
+   * @class
+   * @extends {BlockCipherAlgorithm}
+   */
   class SpeckCipher extends AlgorithmFramework.BlockCipherAlgorithm {
     constructor() {
       super();
@@ -117,12 +123,27 @@
       this.BETA = 3;          // Left rotation constant
     }
 
+    /**
+     * Create new Speck cipher instance
+     * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+     * @returns {SpeckInstance} New Speck cipher instance
+     */
     CreateInstance(isInverse = false) {
       return new SpeckInstance(this, isInverse);
     }
   }
 
+  /**
+   * Speck cipher instance implementing Feed/Result pattern with streaming capability
+   * @class
+   * @extends {IBlockCipherInstance}
+   */
   class SpeckInstance extends AlgorithmFramework.IBlockCipherInstance {
+    /**
+     * Initialize Speck cipher instance
+     * @param {SpeckCipher} algorithm - Parent algorithm instance
+     * @param {boolean} [isInverse=false] - Decryption mode flag
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -134,6 +155,11 @@
       this.KeySize = 0;
     }
 
+    /**
+     * Set encryption/decryption key and expand round keys
+     * @param {uint8[]|null} keyBytes - 128-bit (16-byte) key or null to clear
+     * @throws {Error} If key size invalid
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -143,7 +169,7 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
+      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
         keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
         (keyBytes.length - ks.minSize) % ks.stepSize === 0
       );
@@ -157,10 +183,19 @@
       this.roundKeys = this._expandKey(keyBytes);
     }
 
+    /**
+     * Get copy of current key
+     * @returns {uint8[]|null} Copy of key bytes or null
+     */
     get key() {
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * Feed data to cipher for encryption/decryption (streaming)
+     * @param {uint8[]} data - Input data bytes
+     * @throws {Error} If key not set
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this.key) throw new Error("Key not set");
@@ -175,17 +210,31 @@
       }
     }
 
+    /**
+     * Get cipher result (all processed blocks)
+     * @returns {uint8[]} Processed output bytes
+     */
     Result() {
       const result = [...this.outputBuffer];
       this.outputBuffer = [];
       return result;
     }
 
+    /**
+     * Reset cipher state (clear buffers)
+     */
     Reset() {
       this.inputBuffer = [];
       this.outputBuffer = [];
     }
 
+    /**
+     * Encrypt single 64-bit block using Speck ARX operations
+     * @private
+     * @param {uint8[]} blockBytes - 8-byte input block
+     * @returns {uint8[]} 8-byte encrypted block
+     * @throws {Error} If input not exactly 8 bytes
+     */
     _encryptBlock(blockBytes) {
       if (blockBytes.length !== 8) {
         throw new Error('Speck: Input must be exactly 8 bytes');
@@ -216,6 +265,13 @@
       return [...result0, ...result1];
     }
 
+    /**
+     * Decrypt single 64-bit block using Speck ARX operations
+     * @private
+     * @param {uint8[]} blockBytes - 8-byte input block
+     * @returns {uint8[]} 8-byte decrypted block
+     * @throws {Error} If input not exactly 8 bytes
+     */
     _decryptBlock(blockBytes) {
       if (blockBytes.length !== 8) {
         throw new Error('Speck: Input must be exactly 8 bytes');
@@ -246,6 +302,12 @@
       return [...result0, ...result1];
     }
 
+    /**
+     * Expand 128-bit key into 27 round keys using Speck key schedule
+     * @private
+     * @param {uint8[]} keyBytes - 16-byte master key
+     * @returns {uint32[]} Array of 27 round keys
+     */
     _expandKey(keyBytes) {
       // Convert 128-bit key to four 32-bit words using OpCodes (little-endian)
       // NSA Speck uses specific ordering: k3, k2, k1, k0 (reverse order)

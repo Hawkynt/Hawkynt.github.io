@@ -47,6 +47,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * XXHash32Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class XXHash32Algorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -96,12 +102,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new XXHash32AlgorithmInstance(this, isInverse);
     }
   }
 
+  /**
+ * XXHash32Algorithm cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class XXHash32AlgorithmInstance extends IHashFunctionInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;

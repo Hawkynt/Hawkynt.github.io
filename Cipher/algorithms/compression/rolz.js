@@ -51,6 +51,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * ROLZAlgorithm - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class ROLZAlgorithm extends CompressionAlgorithm {
       constructor() {
         super();

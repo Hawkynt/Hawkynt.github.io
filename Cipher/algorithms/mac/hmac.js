@@ -116,6 +116,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) {
         return null; // HMAC cannot be reversed
@@ -125,6 +131,12 @@
   }
 
   // Instance class - handles the actual HMAC computation
+  /**
+ * HMAC cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class HMACInstance extends IMacInstance {
     constructor(algorithm) {
       super(algorithm);
@@ -140,18 +152,31 @@
       this.BLOCK_SIZES = {
         'MD5': 64,
         'SHA-1': 64,
+        'SHA-224': 64,
         'SHA-256': 64,
+        'SHA-384': 128,
         'SHA-512': 128
       };
     }
 
     // Property setter for key
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
+
     set key(keyBytes) {
       if (!keyBytes || !Array.isArray(keyBytes)) {
         throw new Error('Invalid key - must be byte array');
       }
       this._key = [...keyBytes]; // Store copy
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return this._key ? [...this._key] : null;
@@ -181,6 +206,12 @@
     }
 
     // Feed data to the HMAC
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!Array.isArray(data)) {
@@ -190,6 +221,12 @@
     }
 
     // Get the HMAC result
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
+
     Result() {
       if (!this._key) {
         throw new Error('Key not set');

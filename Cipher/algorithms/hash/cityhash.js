@@ -42,6 +42,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * CityHash - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class CityHash extends HashFunctionAlgorithm {
       constructor() {
         super();

@@ -47,6 +47,12 @@
   const FNV_32_PRIME = 16777619;      // 0x01000193
   const FNV_32_OFFSET_BASIS = 2166136261; // 0x811c9dc5
 
+  /**
+ * FNVAlgorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class FNVAlgorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -104,12 +110,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new FNVAlgorithmInstance(this, isInverse);
     }
   }
 
+  /**
+ * FNVAlgorithm cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class FNVAlgorithmInstance extends IHashFunctionInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;

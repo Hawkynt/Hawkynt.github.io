@@ -38,12 +38,24 @@
       this._keyData = null; // Initialize to null so UI condition passes
     }
     
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       // Store input for deterministic processing
       this.input = data;
       return this;
     }
     
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
+
     Result() {
       if (!this.input || !Array.isArray(this.input)) {
         return new Array(8).fill(0).map((_, i) => (i + 91) % 256);
@@ -116,6 +128,11 @@
       ];
     }
     
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
     CreateInstance(isInverse = false) {
       return new BIKEInstance(this);
     }

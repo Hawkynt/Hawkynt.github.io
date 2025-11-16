@@ -51,6 +51,12 @@
 
   // ===== GRAIN V1 IMPLEMENTATION (80-bit) =====
 
+  /**
+ * GrainV1Algorithm - Stream cipher implementation
+ * @class
+ * @extends {StreamCipherAlgorithm}
+ */
+
   class GrainV1Algorithm extends StreamCipherAlgorithm {
     constructor() {
       super();
@@ -102,12 +108,30 @@
       this.nIVSizeInBits = 64;     // 64-bit IV
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new GrainV1Instance(this, isInverse);
     }
   }
 
+  /**
+ * GrainV1 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class GrainV1Instance extends IAlgorithmInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -120,6 +144,12 @@
       this.nfsr = new Array(80).fill(0);    // 80-bit NFSR state
       this.initialized = false;
     }
+
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
 
     set key(keyBytes) {
       if (!keyBytes) {
@@ -140,9 +170,20 @@
       this._initializeIfReady();
     }
 
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
+
     get key() {
       return this._key ? [...this._key] : null;
     }
+
+    /**
+   * Set initialization vector
+   * @param {uint8[]|null} ivBytes - IV bytes or null to clear
+   * @throws {Error} If IV size is invalid
+   */
 
     set iv(ivBytes) {
       if (!ivBytes) {
@@ -163,6 +204,11 @@
       this._initializeIfReady();
     }
 
+    /**
+   * Get copy of current IV
+   * @returns {uint8[]|null} Copy of IV bytes or null
+   */
+
     get iv() {
       return this._iv ? [...this._iv] : null;
     }
@@ -175,6 +221,12 @@
     get nonce() {
       return this.iv;
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -190,6 +242,12 @@
 
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) {
@@ -353,6 +411,12 @@
 
   // ===== GRAIN-128 IMPLEMENTATION (128-bit) =====
 
+  /**
+ * Grain128Algorithm - Stream cipher implementation
+ * @class
+ * @extends {StreamCipherAlgorithm}
+ */
+
   class Grain128Algorithm extends StreamCipherAlgorithm {
     constructor() {
       super();
@@ -409,12 +473,30 @@
       this.nIVSizeInBits = 96;      // 96-bit IV
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new Grain128Instance(this, isInverse);
     }
   }
 
+  /**
+ * Grain128 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class Grain128Instance extends IAlgorithmInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -430,6 +512,12 @@
       this.index = 4;                     // Output byte index (4 = need new round)
       this.initialized = false;
     }
+
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
 
     set key(keyBytes) {
       if (!keyBytes) {
@@ -450,9 +538,20 @@
       this._initializeIfReady();
     }
 
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
+
     get key() {
       return this._key ? [...this._key] : null;
     }
+
+    /**
+   * Set initialization vector
+   * @param {uint8[]|null} ivBytes - IV bytes or null to clear
+   * @throws {Error} If IV size is invalid
+   */
 
     set iv(ivBytes) {
       if (!ivBytes) {
@@ -472,6 +571,11 @@
       this._iv = [...ivBytes];
       this._initializeIfReady();
     }
+
+    /**
+   * Get copy of current IV
+   * @returns {uint8[]|null} Copy of IV bytes or null
+   */
 
     get iv() {
       return this._iv ? [...this._iv] : null;
@@ -627,6 +731,12 @@
       return this.out[this.index++];
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) {
         return;
@@ -639,6 +749,12 @@
       // Stream cipher - accumulate input
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this.initialized) {

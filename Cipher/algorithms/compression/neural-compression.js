@@ -41,6 +41,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * NeuralCompressionAlgorithm - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class NeuralCompressionAlgorithm extends CompressionAlgorithm {
       constructor() {
         super();

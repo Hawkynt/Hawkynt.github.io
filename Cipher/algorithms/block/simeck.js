@@ -50,19 +50,25 @@
 
   // ===== SIMECK-32 (32-bit blocks, 64-bit keys) =====
 
+  /**
+ * SIMECK32Algorithm - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class SIMECK32Algorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
 
       this.name = "SIMECK-32";
-      this.description = "Lightweight 32-bit block cipher designed by NSA researchers as simplified SIMON variant. Uses efficient AND-rotation-XOR round function suitable for hardware implementations in constrained devices.";
+      this.description = "Lightweight 32-bit block cipher combining design principles from SIMON and SPECK. Uses efficient AND-rotation-XOR round function suitable for hardware implementations in resource-constrained devices.";
       this.inventor = "Gangqiang Yang, Bo Zhu, Valentin Suder, Mark D. Aagaard, Guang Gong";
       this.year = 2015;
       this.category = CategoryType.BLOCK;
-      this.subCategory = "Block Cipher";
-      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.subCategory = "Lightweight Block Cipher";
+      this.securityStatus = null;
       this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = CountryCode.US;
+      this.country = CountryCode.CA;
 
       // SIMECK-32: 4-byte blocks, 8-byte keys
       this.SupportedKeySizes = [new KeySize(8, 8, 1)];
@@ -76,35 +82,102 @@
       // Crypto++ test vectors from TestVectors/simeck.txt
       this.tests = [
         {
-          text: "Crypto++ SIMECK-32 Test Vector #1",
+          text: "SIMECK-32 Official Test Vector",
           uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
           key: OpCodes.Hex8ToBytes("1918111009080100"),
           input: OpCodes.Hex8ToBytes("65656877"),
           expected: OpCodes.Hex8ToBytes("770d2c76")
         },
         {
-          text: "Crypto++ SIMECK-32 Test Vector #2",
+          text: "SIMECK-32 Reference Vector #2",
           uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
           key: OpCodes.Hex8ToBytes("3d6c4ae1678418be"),
           input: OpCodes.Hex8ToBytes("48230029"),
           expected: OpCodes.Hex8ToBytes("65359de9")
         },
         {
-          text: "Crypto++ SIMECK-32 Test Vector #3",
+          text: "SIMECK-32 Reference Vector #3",
           uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
           key: OpCodes.Hex8ToBytes("6df116495f906952"),
           input: OpCodes.Hex8ToBytes("72ae2cd6"),
           expected: OpCodes.Hex8ToBytes("0ab073ca")
+        },
+        {
+          text: "SIMECK-32 Reference Vector #4",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
+          key: OpCodes.Hex8ToBytes("2ea60bb301eb26e9"),
+          input: OpCodes.Hex8ToBytes("41bb5af1"),
+          expected: OpCodes.Hex8ToBytes("6ed0bc2e")
+        },
+        {
+          text: "SIMECK-32 Reference Vector #5",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
+          key: OpCodes.Hex8ToBytes("00990f3e390c7e87"),
+          input: OpCodes.Hex8ToBytes("153c12db"),
+          expected: OpCodes.Hex8ToBytes("76374119")
+        },
+        {
+          text: "SIMECK-32 Reference Vector #6",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
+          key: OpCodes.Hex8ToBytes("4db74d06491c440d"),
+          input: OpCodes.Hex8ToBytes("305e0124"),
+          expected: OpCodes.Hex8ToBytes("8252aa91")
+        },
+        {
+          text: "SIMECK-32 Reference Vector #7",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
+          key: OpCodes.Hex8ToBytes("4dc8074d2d1239b3"),
+          input: OpCodes.Hex8ToBytes("54de1547"),
+          expected: OpCodes.Hex8ToBytes("e288e7ea")
+        },
+        {
+          text: "SIMECK-32 Reference Vector #8",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
+          key: OpCodes.Hex8ToBytes("5d03701f26a6428b"),
+          input: OpCodes.Hex8ToBytes("66bb6443"),
+          expected: OpCodes.Hex8ToBytes("b73099ae")
+        },
+        {
+          text: "SIMECK-32 Reference Vector #9",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
+          key: OpCodes.Hex8ToBytes("1e1f3b2512384509"),
+          input: OpCodes.Hex8ToBytes("767d7a5a"),
+          expected: OpCodes.Hex8ToBytes("058a62df")
+        },
+        {
+          text: "SIMECK-32 Reference Vector #10",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
+          key: OpCodes.Hex8ToBytes("7ff57f966bfc63cb"),
+          input: OpCodes.Hex8ToBytes("1ad46e5d"),
+          expected: OpCodes.Hex8ToBytes("60c443f2")
         }
       ];
     }
+
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
 
     CreateInstance(isInverse = false) {
       return new SIMECK32Instance(this, isInverse);
     }
   }
 
+  /**
+ * SIMECK32 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class SIMECK32Instance extends IBlockCipherInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -112,6 +185,12 @@
       this._key = null;
       this.roundKeys = new Array(32); // 32 rounds for SIMECK-32
     }
+
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
 
     set key(keyBytes) {
       if (!keyBytes) {
@@ -126,6 +205,11 @@
       this._key = [...keyBytes];
       this._keySetup();
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() { return this._key ? [...this._key] : null; }
 
@@ -182,11 +266,23 @@
       state[rightIdx] = left;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) throw new Error("Key not set");
@@ -243,19 +339,25 @@
 
   // ===== SIMECK-64 (64-bit blocks, 128-bit keys) =====
 
+  /**
+ * SIMECK64Algorithm - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class SIMECK64Algorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
 
       this.name = "SIMECK-64";
-      this.description = "Lightweight 64-bit block cipher designed by NSA researchers as simplified SIMON variant. Uses efficient AND-rotation-XOR round function suitable for hardware implementations in constrained devices.";
+      this.description = "Lightweight 64-bit block cipher combining design principles from SIMON and SPECK. Uses efficient AND-rotation-XOR round function suitable for hardware implementations in resource-constrained devices.";
       this.inventor = "Gangqiang Yang, Bo Zhu, Valentin Suder, Mark D. Aagaard, Guang Gong";
       this.year = 2015;
       this.category = CategoryType.BLOCK;
-      this.subCategory = "Block Cipher";
-      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.subCategory = "Lightweight Block Cipher";
+      this.securityStatus = null;
       this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = CountryCode.US;
+      this.country = CountryCode.CA;
 
       // SIMECK-64: 8-byte blocks, 16-byte keys
       this.SupportedKeySizes = [new KeySize(16, 16, 1)];
@@ -269,35 +371,102 @@
       // Crypto++ test vectors from TestVectors/simeck.txt
       this.tests = [
         {
-          text: "Crypto++ SIMECK-64 Test Vector #1",
+          text: "SIMECK-64 Official Test Vector",
           uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
           key: OpCodes.Hex8ToBytes("1b1a1918131211100b0a090803020100"),
           input: OpCodes.Hex8ToBytes("656b696c20646e75"),
           expected: OpCodes.Hex8ToBytes("45ce69025f7ab7ed")
         },
         {
-          text: "Crypto++ SIMECK-64 Test Vector #2",
+          text: "SIMECK-64 Reference Vector #2",
           uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
           key: OpCodes.Hex8ToBytes("0938251f43bb8ba606b747de870c3e99"),
           input: OpCodes.Hex8ToBytes("f1bbe9ebe16cd6ae"),
           expected: OpCodes.Hex8ToBytes("4d11c6b9da2f7e28")
         },
         {
-          text: "Crypto++ SIMECK-64 Test Vector #3",
+          text: "SIMECK-64 Reference Vector #3",
           uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
           key: OpCodes.Hex8ToBytes("323ba122444066d09e7d49dc407836fd"),
           input: OpCodes.Hex8ToBytes("1cdbae3296f5453b"),
           expected: OpCodes.Hex8ToBytes("1e6a0792f5a717c5")
+        },
+        {
+          text: "SIMECK-64 Reference Vector #4",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
+          key: OpCodes.Hex8ToBytes("61ff698f2ddc8e6653bf67d699d5e980"),
+          input: OpCodes.Hex8ToBytes("b9729d49e18b1fda"),
+          expected: OpCodes.Hex8ToBytes("fca0fa8194bda9c7")
+        },
+        {
+          text: "SIMECK-64 Reference Vector #5",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
+          key: OpCodes.Hex8ToBytes("cfd3902d597e35cf9e0cf4d52c53cbc9"),
+          input: OpCodes.Hex8ToBytes("844f4a779d9c1672"),
+          expected: OpCodes.Hex8ToBytes("562b1caa75266241")
+        },
+        {
+          text: "SIMECK-64 Reference Vector #6",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
+          key: OpCodes.Hex8ToBytes("f8466a046454ceb13b33821fd4618dbe"),
+          input: OpCodes.Hex8ToBytes("78818744e6d91d2a"),
+          expected: OpCodes.Hex8ToBytes("d946fa4941516d8e")
+        },
+        {
+          text: "SIMECK-64 Reference Vector #7",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
+          key: OpCodes.Hex8ToBytes("97278a5928ce0bf52543e53cadae2488"),
+          input: OpCodes.Hex8ToBytes("d0576876162f6768"),
+          expected: OpCodes.Hex8ToBytes("ca3e5050126fa61b")
+        },
+        {
+          text: "SIMECK-64 Reference Vector #8",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
+          key: OpCodes.Hex8ToBytes("a786c2b5c19be1c0978c2ff11128c18c"),
+          input: OpCodes.Hex8ToBytes("08614014c9cd68d4"),
+          expected: OpCodes.Hex8ToBytes("a307ab5aa10f5c29")
+        },
+        {
+          text: "SIMECK-64 Reference Vector #9",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
+          key: OpCodes.Hex8ToBytes("63b126df89a982790c9bb4479cfed971"),
+          input: OpCodes.Hex8ToBytes("d96ca166d923d155"),
+          expected: OpCodes.Hex8ToBytes("5e47b40d9854418a")
+        },
+        {
+          text: "SIMECK-64 Reference Vector #10",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestVectors/simeck.txt",
+          key: OpCodes.Hex8ToBytes("463608dc1b2861c93f41078428a11e20"),
+          input: OpCodes.Hex8ToBytes("3f895ef162e09612"),
+          expected: OpCodes.Hex8ToBytes("c5fd5a6c32056800")
         }
       ];
     }
+
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
 
     CreateInstance(isInverse = false) {
       return new SIMECK64Instance(this, isInverse);
     }
   }
 
+  /**
+ * SIMECK64 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class SIMECK64Instance extends IBlockCipherInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -305,6 +474,12 @@
       this._key = null;
       this.roundKeys = new Array(44); // 44 rounds for SIMECK-64
     }
+
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
 
     set key(keyBytes) {
       if (!keyBytes) {
@@ -319,6 +494,11 @@
       this._key = [...keyBytes];
       this._keySetup();
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() { return this._key ? [...this._key] : null; }
 
@@ -376,11 +556,23 @@
       state[rightIdx] = left;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) throw new Error("Key not set");

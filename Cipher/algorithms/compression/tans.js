@@ -51,6 +51,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * TANSAlgorithm - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class TANSAlgorithm extends CompressionAlgorithm {
       constructor() {
         super();

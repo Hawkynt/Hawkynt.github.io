@@ -116,6 +116,12 @@
     return instance;
   }
 
+  /**
+ * ParallelHashAlgorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class ParallelHashAlgorithm extends HashFunctionAlgorithm {
     constructor(bitLength) {
       super();
@@ -254,11 +260,23 @@
       }
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new ParallelHashInstance(this, this.bitLength);
     }
   }
+
+  /**
+ * ParallelHash cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class ParallelHashInstance extends IHashFunctionInstance {
     constructor(algorithm, bitLength) {
@@ -365,6 +383,12 @@
       this.compressor = getCSHAKEInstance(this.bitLength, [], []);
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
 
@@ -389,6 +413,12 @@
         }
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       // Initialize if never fed data

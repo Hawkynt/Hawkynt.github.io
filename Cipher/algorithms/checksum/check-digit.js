@@ -209,6 +209,12 @@
       return configs[variant] || configs['Luhn'];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Checksums have no inverse
       if (isInverse) {
@@ -217,6 +223,12 @@
       return new CheckDigitInstance(this, this.config);
     }
   }
+
+  /**
+ * CheckDigit cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class CheckDigitInstance extends IAlgorithmInstance {
     constructor(algorithm, config) {
@@ -259,6 +271,12 @@
       }
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!Array.isArray(data)) {
         throw new Error('CheckDigitInstance.Feed: Input must be array of digits (0-9)');
@@ -273,6 +291,12 @@
 
       this.digits = data.slice(); // Store a copy
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this.digits || this.digits.length === 0) {

@@ -68,6 +68,12 @@
     '90befffa' + 'a4506ceb' + 'bef9a3f7' + 'c67178f2'
   );
 
+  /**
+ * SHA2_256Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class SHA2_256Algorithm extends HashFunctionAlgorithm {
     constructor(variant = '256') {
       super();
@@ -183,12 +189,30 @@
       return configs[variant] || configs['256'];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new SHA2_256AlgorithmInstance(this, isInverse);
     }
   }
 
+  /**
+ * SHA2_256Algorithm cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class SHA2_256AlgorithmInstance extends IHashFunctionInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;

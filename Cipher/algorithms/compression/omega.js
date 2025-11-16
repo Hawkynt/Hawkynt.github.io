@@ -51,6 +51,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * OmegaCodingAlgorithm - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class OmegaCodingAlgorithm extends CompressionAlgorithm {
       constructor() {
         super();

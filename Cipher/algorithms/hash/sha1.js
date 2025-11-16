@@ -49,6 +49,12 @@
   // K[3] = 0xCA62C1D6 (rounds 60-79)
   const K = Object.freeze([0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xCA62C1D6]);
 
+  /**
+ * SHA1Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class SHA1Algorithm extends HashFunctionAlgorithm {
       constructor() {
         super();

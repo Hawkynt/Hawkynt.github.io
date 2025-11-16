@@ -158,6 +158,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   }
 
   // CubeHash instance implementing Feed/Result pattern
+  /**
+ * CubeHash cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class CubeHashInstance extends IHashFunctionInstance {
     constructor(algorithm, rounds, blockBytes, hashBytes, iv) {
       super(algorithm);
@@ -182,6 +188,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
         this.state[i] = this.iv[i];
       }
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -213,6 +225,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
         cubeHashTransform(this.state);
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       // Pad with 0x80 at current position
@@ -256,6 +274,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   }
 
   // CubeHash-512 (recommended SHA-3 submission variant)
+  /**
+ * CubeHash512 - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class CubeHash512 extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -306,6 +330,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Hash functions have no inverse
       return new CubeHashInstance(this, 16, 32, 64, IV512);
@@ -313,6 +343,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   }
 
   // CubeHash-256 variant
+  /**
+ * CubeHash256 - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class CubeHash256 extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -356,6 +392,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
         }
       ];
     }
+
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
 
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
