@@ -53,6 +53,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * TEA (Tiny Encryption Algorithm) - Educational block cipher implementation
+   * 64-bit blocks with 128-bit keys using 32 rounds of simple XOR, shift, and add operations
+   * @class
+   * @extends {BlockCipherAlgorithm}
+   */
   class TEAAlgorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
@@ -143,12 +149,27 @@
       ];
     }
 
+    /**
+     * Create a new instance of the TEA cipher
+     * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+     * @returns {TEAInstance} New TEA cipher instance
+     */
     CreateInstance(isInverse = false) {
       return new TEAInstance(this, isInverse);
     }
   }
 
+  /**
+   * TEA cipher instance implementing Feed/Result pattern
+   * @class
+   * @extends {IBlockCipherInstance}
+   */
   class TEAInstance extends IBlockCipherInstance {
+    /**
+     * Initialize TEA cipher instance
+     * @param {TEAAlgorithm} algorithm - Parent algorithm instance
+     * @param {boolean} [isInverse=false] - Decryption mode flag
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -162,6 +183,11 @@
       this.ROUNDS = 32;        // Standard TEA uses 32 rounds
     }
 
+    /**
+     * Set encryption/decryption key
+     * @param {uint8[]|null} keyBytes - 128-bit (16-byte) key or null to clear
+     * @throws {Error} If key size is not exactly 16 bytes
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -178,10 +204,19 @@
       this.KeySize = keyBytes.length;
     }
 
+    /**
+     * Get copy of current key
+     * @returns {uint8[]|null} Copy of key bytes or null
+     */
     get key() {
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * Feed data to cipher for encryption/decryption
+     * @param {uint8[]} data - Input data bytes
+     * @throws {Error} If key not set
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this.key) throw new Error("Key not set");
@@ -189,6 +224,11 @@
       this.inputBuffer.push(...data);
     }
 
+    /**
+     * Get cipher result (encrypted or decrypted data)
+     * @returns {uint8[]} Processed output bytes
+     * @throws {Error} If key not set, no data fed, or invalid input length
+     */
     Result() {
       if (!this.key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
@@ -203,8 +243,8 @@
       // Process each 8-byte block
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
-        const processedBlock = this.isInverse 
-          ? this._decryptBlock(block) 
+        const processedBlock = this.isInverse
+          ? this._decryptBlock(block)
           : this._encryptBlock(block);
         output.push(...processedBlock);
       }
@@ -215,6 +255,12 @@
       return output;
     }
 
+    /**
+     * Encrypt single 64-bit block using TEA algorithm
+     * @private
+     * @param {uint8[]} block - 8-byte input block
+     * @returns {uint8[]} 8-byte encrypted block
+     */
     _encryptBlock(block) {
       // Convert block to two 32-bit words (big-endian)
       let v0 = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
@@ -242,6 +288,12 @@
       return [...v0Bytes, ...v1Bytes];
     }
 
+    /**
+     * Decrypt single 64-bit block using TEA algorithm
+     * @private
+     * @param {uint8[]} block - 8-byte input block
+     * @returns {uint8[]} 8-byte decrypted block
+     */
     _decryptBlock(block) {
       // Convert block to two 32-bit words (big-endian)
       let v0 = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);

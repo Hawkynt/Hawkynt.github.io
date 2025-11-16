@@ -181,6 +181,12 @@
     stateBytes[30] = unpacked[2]; stateBytes[31] = unpacked[3];
   }
 
+  /**
+ * KnotHash256 - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class KnotHash256 extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -253,11 +259,23 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new KnotHash256Instance(this);
     }
   }
+
+  /**
+ * KnotHash256 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class KnotHash256Instance extends IHashFunctionInstance {
     constructor(algorithm) {
@@ -278,6 +296,12 @@
       this.buffer = [];
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
 
@@ -286,6 +310,12 @@
         this.buffer.push(data[i]);
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       // Process all complete blocks

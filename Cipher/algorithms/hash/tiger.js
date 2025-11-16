@@ -52,6 +52,12 @@
   const TIGER_DIGESTSIZE = 24; // 192 bits = 24 bytes
   const TIGER_ROUNDS = 3;       // 3 passes of 8 rounds each
 
+  /**
+ * TigerAlgorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class TigerAlgorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -108,12 +114,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new TigerAlgorithmInstance(this, isInverse);
     }
   }
 
+  /**
+ * TigerAlgorithm cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class TigerAlgorithmInstance extends IHashFunctionInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;

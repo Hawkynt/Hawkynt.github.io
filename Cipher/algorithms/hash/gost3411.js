@@ -106,6 +106,12 @@
     return output;
   }
 
+  /**
+ * GOST3411Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class GOST3411Algorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -175,6 +181,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       // Hash functions don't have inverse
       if (isInverse) {
@@ -183,6 +195,12 @@
       return new GOST3411Instance(this);
     }
   }
+
+  /**
+ * GOST3411 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class GOST3411Instance extends IHashFunctionInstance {
     constructor(algorithm) {
@@ -228,6 +246,12 @@
       this._Reset();
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
 
@@ -243,6 +267,12 @@
         ++this.byteCount;
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       // Finalize hash

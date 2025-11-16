@@ -157,6 +157,12 @@
       return configs[variant] || configs['10'];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Checksums have no inverse
       if (isInverse) {
@@ -166,12 +172,24 @@
     }
   }
 
+  /**
+ * ISBN cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class ISBNInstance extends IAlgorithmInstance {
     constructor(algorithm, config) {
       super(algorithm);
       this.config = config;
       this.variant = algorithm.name.split('-')[1]; // Extract '10' or '13'
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!Array.isArray(data)) {
@@ -210,6 +228,12 @@
 
       this.digits = data.slice(); // Store a copy
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this.digits) {

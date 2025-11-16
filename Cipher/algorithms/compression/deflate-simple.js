@@ -49,6 +49,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * DeflateSimpleAlgorithm - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class DeflateSimpleAlgorithm extends CompressionAlgorithm {
       constructor() {
         super();

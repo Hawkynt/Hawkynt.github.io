@@ -207,6 +207,12 @@
       return configs[variant] || configs['32'];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Checksums have no inverse
       if (isInverse) {
@@ -216,6 +222,12 @@
     }
   }
 
+  /**
+ * Adler cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class AdlerInstance extends IAlgorithmInstance {
     constructor(algorithm, config) {
       super(algorithm);
@@ -223,6 +235,12 @@
       this.a = config.base;  // sum1 - starts at base value (usually 1)
       this.b = 0;            // sum2 - starts at 0
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!Array.isArray(data)) {
@@ -239,6 +257,12 @@
         this.b = (this.b + this.a) % this.config.modulo;
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       let result;

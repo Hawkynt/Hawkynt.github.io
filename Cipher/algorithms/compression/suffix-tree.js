@@ -41,6 +41,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * SuffixTreeAlgorithm - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class SuffixTreeAlgorithm extends CompressionAlgorithm {
       constructor() {
         super();

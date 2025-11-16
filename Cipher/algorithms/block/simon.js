@@ -53,6 +53,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * Simon - NSA lightweight block cipher optimized for hardware
+   * 64-bit blocks with 128-bit keys using 44 rounds and Feistel-like structure
+   * @class
+   * @extends {BlockCipherAlgorithm}
+   */
   class SimonCipher extends AlgorithmFramework.BlockCipherAlgorithm {
     constructor() {
       super();
@@ -117,11 +123,20 @@
       this.m = 4;            // Number of key words for Simon64/128
     }
 
+    /**
+     * Create new Simon cipher instance
+     * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+     * @returns {SimonInstance} New Simon cipher instance
+     */
     CreateInstance(isInverse = false) {
       return new SimonInstance(this, isInverse);
     }
 
-    // Z3 sequence for Simon64/128 (from NSA specification)
+    /**
+     * Get Z3 sequence for Simon64/128 key schedule
+     * @static
+     * @returns {uint8[]} Z3 bit sequence (62 bits)
+     */
     static getZ3Sequence() {
       // Z3 sequence for Simon64/128 configuration (62 bits)
       // Source: NSA reference implementation 
@@ -130,8 +145,12 @@
               0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1];
     }
 
-    // Simon round function implementation
-    // F(x) = ((x <<< 1) & (x <<< 8)) ^ (x <<< 2)
+    /**
+     * Simon round function: F(x) = ((x <<< 1) & (x <<< 8)) ^ (x <<< 2)
+     * @static
+     * @param {uint32} x - 32-bit input word
+     * @returns {uint32} Transformed 32-bit output
+     */
     static roundFunction(x) {
       const rot1 = OpCodes.RotL32(x, 1);
       const rot8 = OpCodes.RotL32(x, 8);
@@ -141,7 +160,17 @@
     }
   }
 
+  /**
+   * Simon cipher instance implementing Feed/Result pattern with streaming
+   * @class
+   * @extends {IBlockCipherInstance}
+   */
   class SimonInstance extends AlgorithmFramework.IBlockCipherInstance {
+    /**
+     * Initialize Simon cipher instance
+     * @param {SimonCipher} algorithm - Parent algorithm instance
+     * @param {boolean} [isInverse=false] - Decryption mode flag
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -153,6 +182,11 @@
       this.KeySize = 0;
     }
 
+    /**
+     * Set encryption/decryption key and expand round keys
+     * @param {uint8[]|null} keyBytes - 128-bit (16-byte) key or null to clear
+     * @throws {Error} If key size invalid
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -161,8 +195,8 @@
         return;
       }
 
-      // Validate key size  
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
+      // Validate key size
+      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
         keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
         (ks.stepSize === 0 || (keyBytes.length - ks.minSize) % ks.stepSize === 0)
       );
@@ -176,10 +210,19 @@
       this.roundKeys = this._expandKey(keyBytes);
     }
 
+    /**
+     * Get copy of current key
+     * @returns {uint8[]|null} Copy of key bytes or null
+     */
     get key() {
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * Feed data to cipher for encryption/decryption (streaming)
+     * @param {uint8[]} data - Input data bytes
+     * @throws {Error} If key not set
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this.key) throw new Error("Key not set");
@@ -194,17 +237,31 @@
       }
     }
 
+    /**
+     * Get cipher result (all processed blocks)
+     * @returns {uint8[]} Processed output bytes
+     */
     Result() {
       const result = [...this.outputBuffer];
       this.outputBuffer = [];
       return result;
     }
 
+    /**
+     * Reset cipher state (clear buffers)
+     */
     Reset() {
       this.inputBuffer = [];
       this.outputBuffer = [];
     }
 
+    /**
+     * Encrypt single 64-bit block using Simon
+     * @private
+     * @param {uint8[]} blockBytes - 8-byte input block
+     * @returns {uint8[]} 8-byte encrypted block
+     * @throws {Error} If input not exactly 8 bytes
+     */
     _encryptBlock(blockBytes) {
       if (blockBytes.length !== 8) {
         throw new Error('Simon: Input must be exactly 8 bytes');
@@ -229,12 +286,19 @@
       return [...xBytes, ...yBytes];
     }
 
+    /**
+     * Decrypt single 64-bit block using Simon
+     * @private
+     * @param {uint8[]} blockBytes - 8-byte input block
+     * @returns {uint8[]} 8-byte decrypted block
+     * @throws {Error} If input not exactly 8 bytes
+     */
     _decryptBlock(blockBytes) {
       if (blockBytes.length !== 8) {
         throw new Error('Simon: Input must be exactly 8 bytes');
       }
 
-      // Simon uses little-endian byte ordering for 32-bit words  
+      // Simon uses little-endian byte ordering for 32-bit words
       let x = OpCodes.Pack32LE(blockBytes[0], blockBytes[1], blockBytes[2], blockBytes[3]);
       let y = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
 
@@ -253,6 +317,12 @@
       return [...xBytes, ...yBytes];
     }
 
+    /**
+     * Expand 128-bit key into 44 round keys using Simon key schedule
+     * @private
+     * @param {uint8[]} keyBytes - 16-byte master key
+     * @returns {uint32[]} Array of 44 round keys
+     */
     _expandKey(keyBytes) {
       // Simon64/128: Convert 128-bit key to four 32-bit words (little-endian)
       const k = [

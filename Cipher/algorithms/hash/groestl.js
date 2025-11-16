@@ -42,6 +42,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * Groestl - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class Groestl extends HashFunctionAlgorithm {
       constructor() {
         super();

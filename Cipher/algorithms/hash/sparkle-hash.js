@@ -170,6 +170,12 @@
     state[11] = s11 >>> 0;
   }
 
+  /**
+ * SparkleHash - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class SparkleHash extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -248,11 +254,23 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new SparkleHashInstance(this);
     }
   }
+
+  /**
+ * SparkleHash cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class SparkleHashInstance extends IHashFunctionInstance {
     constructor(algorithm) {
@@ -276,6 +294,12 @@
       return this._outputSize;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
 
@@ -287,6 +311,12 @@
         this.buffer[this.bufferPos++] = data[i];
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       // Addition of constant M1 or M2 to the state

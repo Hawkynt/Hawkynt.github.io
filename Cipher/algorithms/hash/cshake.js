@@ -161,6 +161,12 @@
     return encoded.concat(str);
   }
 
+  /**
+ * cSHAKEAlgorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class cSHAKEAlgorithm extends HashFunctionAlgorithm {
     constructor(variant = '128') {
       super();
@@ -289,11 +295,23 @@
       return configs[variant] || configs['128'];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new cSHAKEInstance(this);
     }
   }
+
+  /**
+ * cSHAKE cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class cSHAKEInstance extends IHashFunctionInstance {
     constructor(algorithm) {
@@ -386,6 +404,12 @@
       }
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
 
@@ -416,6 +440,12 @@
       }
       keccakF(this.state);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       // Apply customization if not already done

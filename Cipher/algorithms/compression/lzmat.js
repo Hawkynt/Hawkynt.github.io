@@ -52,6 +52,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * LZMATCompression - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class LZMATCompression extends CompressionAlgorithm {
       constructor() {
         super();

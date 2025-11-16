@@ -56,6 +56,12 @@
     [0xba7c9045, 0xf12c7f99], [0x24a19947, 0xb3916cf7], [0x0801f2e2, 0x858efc16], [0x636920d8, 0x71574e69]
   ]);
 
+  /**
+ * HighwayHashAlgorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class HighwayHashAlgorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -132,12 +138,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new HighwayHashAlgorithmInstance(this, isInverse);
     }
   }
 
+  /**
+ * HighwayHashAlgorithm cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class HighwayHashAlgorithmInstance extends IHashFunctionInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;

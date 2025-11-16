@@ -189,8 +189,9 @@
   ]);
 
   // Shared CAST F-functions (used by both CAST-128 and CAST-256)
+  // Per RFC 2144/2612: F1 uses addition, F2 uses XOR, F3 uses subtraction
   function CAST_F1(x, km, kr, S1, S2, S3, S4) {
-    x = (x ^ km) >>> 0;
+    x = (km + x) >>> 0;
     x = OpCodes.RotL32(x, kr & 0x1f);
 
     const a = (x >>> 24) & 0xFF;
@@ -206,7 +207,7 @@
 
   function CAST_F2(x, km, kr, S1, S2, S3, S4) {
     x = (x ^ km) >>> 0;
-    x = OpCodes.RotR32(x, kr & 0x1f);
+    x = OpCodes.RotL32(x, kr & 0x1f);
 
     const a = (x >>> 24) & 0xFF;
     const b = (x >>> 16) & 0xFF;
@@ -220,7 +221,7 @@
   }
 
   function CAST_F3(x, km, kr, S1, S2, S3, S4) {
-    x = (x ^ km) >>> 0;
+    x = (km - x) >>> 0;
     x = OpCodes.RotL32(x, kr & 0x1f);
 
     const a = (x >>> 24) & 0xFF;
@@ -235,6 +236,12 @@
   }
 
   // ===== CAST-128 (CAST5) IMPLEMENTATION =====
+
+  /**
+ * CAST128Algorithm - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
 
   class CAST128Algorithm extends BlockCipherAlgorithm {
     constructor() {
@@ -288,12 +295,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new CAST128Instance(this, isInverse);
     }
   }
 
+  /**
+ * CAST128 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class CAST128Instance extends IBlockCipherInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -457,6 +482,12 @@
       ]);
     }
 
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
+
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -468,15 +499,32 @@
       this._setKey(keyBytes);
     }
 
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
+
     get key() {
       return this._key ? [...this._key] : null;
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this.Km) throw new Error('Key not set');
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this.Km) throw new Error('Key not set');
@@ -767,6 +815,12 @@
 
   // ===== CAST-256 (CAST6) IMPLEMENTATION =====
 
+  /**
+ * CAST256Algorithm - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class CAST256Algorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
@@ -803,35 +857,53 @@
 
       this.tests = [
         {
-          text: "CAST-256 128-bit key test vector (implementation verified)",
-          uri: "https://tools.ietf.org/rfc/rfc2612.txt",
+          text: "CAST-256 128-bit key test vector (Crypto++ validated)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/cast256v.dat",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           key: OpCodes.Hex8ToBytes("2342bb9efa38542c0af75647f29f615d"),
-          expected: OpCodes.Hex8ToBytes("e6ee9b00a854791cbae5d7d6bfafe418")
+          expected: OpCodes.Hex8ToBytes("c842a08972b43d20836c91d1b7530f6b")
         },
         {
-          text: "CAST-256 192-bit key test vector (implementation verified)",
-          uri: "https://tools.ietf.org/rfc/rfc2612.txt",
+          text: "CAST-256 192-bit key test vector (Crypto++ validated)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/cast256v.dat",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           key: OpCodes.Hex8ToBytes("2342bb9efa38542cbed0ac83940ac298bac77a7717942863"),
-          expected: OpCodes.Hex8ToBytes("7dcfc5cebdd8e355bf5da67632e61140")
+          expected: OpCodes.Hex8ToBytes("1b386c0210dcadcbdd0e41aa08a7a7e8")
         },
         {
-          text: "CAST-256 256-bit key test vector (implementation verified)",
-          uri: "https://tools.ietf.org/rfc/rfc2612.txt",
+          text: "CAST-256 256-bit key test vector (Crypto++ validated)",
+          uri: "https://github.com/weidai11/cryptopp/blob/master/TestData/cast256v.dat",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           key: OpCodes.Hex8ToBytes("2342bb9efa38542cbed0ac83940ac2988d7c47ce264908461cc1b5137ae6b604"),
-          expected: OpCodes.Hex8ToBytes("8276e7be3e6ea36201085ea502076500")
+          expected: OpCodes.Hex8ToBytes("4f6a2038286897b9c9870136553317fa")
         }
       ];
     }
+
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
 
     CreateInstance(isInverse = false) {
       return new CAST256Instance(this, isInverse);
     }
   }
 
+  /**
+ * CAST256 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class CAST256Instance extends IBlockCipherInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -846,6 +918,12 @@
       this.S3 = CAST_S3;
       this.S4 = CAST_S4;
     }
+
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
 
     set key(keyBytes) {
       if (!keyBytes) {
@@ -867,9 +945,20 @@
       this.roundKeys = this._generateRoundKeys(keyBytes);
     }
 
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
+
     get key() {
       return this._key ? [...this._key] : null;
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -877,6 +966,12 @@
 
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) throw new Error("Key not set");

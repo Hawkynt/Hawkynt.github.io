@@ -115,12 +115,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new PBKDF2Instance(this, isInverse);
     }
   }
 
+  /**
+ * PBKDF2 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class PBKDF2Instance extends IKdfInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -136,6 +154,12 @@
     get iterations() { return this.Iterations; }
     set iterations(value) { this.Iterations = value; }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!Array.isArray(data)) {
         throw new Error('PBKDF2Instance.Feed: Input must be byte array (password)');
@@ -148,6 +172,12 @@
       // Store input data for Result() method
       this._inputData = data;
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       // PBKDF2 can work with pre-set parameters or fed data

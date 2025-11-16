@@ -239,6 +239,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   const TBL512 = generateTBL512();
 
   // Base BLAKE instance for all variants
+  /**
+ * Blake cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class BlakeInstance extends IHashFunctionInstance {
     constructor(algorithm, outputSize, blockSize, iv, lengthFlag, rounds, is64bit = false) {
       super(algorithm);
@@ -268,6 +274,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       }
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
 
@@ -280,6 +292,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
         }
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       // Padding
@@ -571,6 +589,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   }
 
   // BLAKE-224 Algorithm
+  /**
+ * Blake224Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class Blake224Algorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -608,6 +632,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       this.testVectors = this.tests;
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Hash functions have no inverse
       return new BlakeInstance(this, 28, 64, SHA224_IV, 0x00, 14, false);
@@ -615,6 +645,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   }
 
   // BLAKE-256 Algorithm
+  /**
+ * Blake256Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class Blake256Algorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -658,6 +694,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       this.testVectors = this.tests;
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Hash functions have no inverse
       return new BlakeInstance(this, 32, 64, SHA256_IV, 0x01, 14, false);
@@ -665,6 +707,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   }
 
   // BLAKE-384 Algorithm
+  /**
+ * Blake384Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class Blake384Algorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -696,6 +744,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       this.testVectors = this.tests;
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Hash functions have no inverse
       return new BlakeInstance(this, 48, 128, SHA384_IV, 0x00, 16, true);
@@ -703,6 +757,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   }
 
   // BLAKE-512 Algorithm
+  /**
+ * Blake512Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class Blake512Algorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -733,6 +793,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
       this.testVectors = this.tests;
     }
+
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
 
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Hash functions have no inverse

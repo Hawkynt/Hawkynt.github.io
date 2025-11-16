@@ -385,6 +385,12 @@
 
   // ===== ROMULUS-N IMPLEMENTATION =====
 
+  /**
+ * RomulusN cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class RomulusNInstance extends IAeadInstance {
     constructor(algorithm, variant) {
       super(algorithm);
@@ -433,12 +439,23 @@
       }
     }
 
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
+
     set key(keyBytes) {
       if (!keyBytes || keyBytes.length !== 16) {
         throw new Error("Key must be 16 bytes");
       }
       this._key = new Uint8Array(keyBytes);
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return this._key ? Array.from(this._key) : null;
@@ -459,10 +476,22 @@
       this.aad = adBytes ? Array.from(adBytes) : [];
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       this.message.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) throw new Error("Key not set");
@@ -775,6 +804,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       const instance = new RomulusNInstance(this, 1);
       instance.isEncrypting = !isInverse;
@@ -806,6 +841,12 @@
       this.tests = [];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       const instance = new RomulusNInstance(this, 2);
       instance.isEncrypting = !isInverse;
@@ -836,6 +877,12 @@
 
       this.tests = [];
     }
+
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
 
     CreateInstance(isInverse = false) {
       const instance = new RomulusNInstance(this, 3);

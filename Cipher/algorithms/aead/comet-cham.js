@@ -140,16 +140,18 @@
    * @returns {Uint8Array} - Shuffled 16-byte block
    */
   function comet_shuffle_block_128(block) {
-    const x0 = OpCodes.Unpack32LE(block.slice(0, 4));
-    const x1 = OpCodes.Unpack32LE(block.slice(4, 8));
-    const x2 = OpCodes.Unpack32LE(block.slice(8, 12));
-    const x3 = OpCodes.Unpack32LE(block.slice(12, 16));
+    // Pack bytes to 32-bit words
+    const x0 = OpCodes.Pack32LE(block[0], block[1], block[2], block[3]);
+    const x1 = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
+    const x2 = OpCodes.Pack32LE(block[8], block[9], block[10], block[11]);
+    const x3 = OpCodes.Pack32LE(block[12], block[13], block[14], block[15]);
 
+    // Shuffle: [x3, ROR1(x2), x0, x1]
     const output = new Uint8Array(16);
-    OpCodes.Pack32LE(x3, output, 0);
-    OpCodes.Pack32LE(OpCodes.RotR32(x2, 1), output, 4);
-    OpCodes.Pack32LE(x0, output, 8);
-    OpCodes.Pack32LE(x1, output, 12);
+    output.set(OpCodes.Unpack32LE(x3), 0);
+    output.set(OpCodes.Unpack32LE(OpCodes.RotR32(x2, 1)), 4);
+    output.set(OpCodes.Unpack32LE(x0), 8);
+    output.set(OpCodes.Unpack32LE(x1), 12);
     return output;
   }
 
@@ -417,6 +419,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new CometChamInstance(this, isInverse);
     }
@@ -424,7 +432,19 @@
 
   // ========================[ Instance Class ]========================
 
+  /**
+ * CometCham cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class CometChamInstance extends IAeadInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -435,6 +455,12 @@
     }
 
     // Key property
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
+
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -447,6 +473,11 @@
 
       this._key = new Uint8Array(keyBytes);
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return this._key ? new Uint8Array(this._key) : null;
@@ -484,10 +515,22 @@
       return this._associatedData ? new Uint8Array(this._associatedData) : new Uint8Array(0);
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) throw new Error("Key not set");
