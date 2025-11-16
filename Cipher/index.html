@@ -257,45 +257,94 @@
                                             <option value="">None (Direct Key)</option>
                                         </select>
                                         <div id="key-kdf-parameters" style="display: none;">
-                                            <div class="kdf-param-row">
-                                                <div class="kdf-param-field" style="flex: 1;">
-                                                    <label>Salt (hex):</label>
-                                                    <input type="text" class="search-input" id="key-kdf-salt" placeholder="Optional">
-                                                </div>
-                                                <div class="kdf-param-field" id="key-kdf-iterations-container" style="width: 140px; display: none;">
-                                                    <label>Iterations:</label>
-                                                    <input type="number" class="search-input" id="key-kdf-iterations" value="10000" min="1">
-                                                </div>
-                                                <div class="kdf-param-field" id="key-kdf-n-container" style="width: 100px; display: none;">
-                                                    <label>N:</label>
-                                                    <input type="number" class="search-input" id="key-kdf-n" value="16" min="2">
+                                            <!-- Salt field (full width) -->
+                                            <div style="display: block; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.8rem; font-weight: 600; color: #a0aec0; margin-bottom: 0.25rem; display: block;">Salt</label>
+                                                <div class="data-control">
+                                                    <div class="data-toolbar data-toolbar-small">
+                                                        <div class="format-tabs">
+                                                            <button class="format-tab format-tab-small active" data-target="key-kdf-salt" data-format="text">📝</button>
+                                                            <button class="format-tab format-tab-small" data-target="key-kdf-salt" data-format="hex">#️⃣</button>
+                                                            <button class="format-tab format-tab-small" data-target="key-kdf-salt" data-format="base64">🔤</button>
+                                                        </div>
+                                                        <div class="toolbar-actions">
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="key-kdf-salt" data-action="copy" title="Copy">📄</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="key-kdf-salt" data-action="paste" title="Paste">📋</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="key-kdf-salt" data-action="download" title="Download">📥</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="key-kdf-salt" data-action="upload" title="Upload">📁</button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="textarea-container">
+                                                        <textarea class="data-input" id="key-kdf-salt" placeholder="Optional salt..." rows="1"></textarea>
+                                                        <div class="drop-overlay drop-overlay-small">
+                                                            <div class="drop-overlay-content">
+                                                                <div class="drop-overlay-icon">📁</div>
+                                                                <div class="drop-overlay-text">Drop files...</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <input type="file" style="display: none;" id="key-kdf-salt-file-input">
                                                 </div>
                                             </div>
-                                            <div class="kdf-param-row">
-                                                <div class="kdf-param-field" id="key-kdf-info-container" style="flex: 1; display: none;">
-                                                    <label>Info (hex):</label>
-                                                    <input type="text" class="search-input" id="key-kdf-info" placeholder="Optional">
+
+                                            <!-- Info field (full width, conditional) -->
+                                            <div id="key-kdf-info-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.8rem; font-weight: 600; color: #a0aec0; margin-bottom: 0.25rem; display: block;">Info</label>
+                                                <div class="data-control">
+                                                    <div class="data-toolbar data-toolbar-small">
+                                                        <div class="format-tabs">
+                                                            <button class="format-tab format-tab-small active" data-target="key-kdf-info" data-format="text">📝</button>
+                                                            <button class="format-tab format-tab-small" data-target="key-kdf-info" data-format="hex">#️⃣</button>
+                                                            <button class="format-tab format-tab-small" data-target="key-kdf-info" data-format="base64">🔤</button>
+                                                        </div>
+                                                        <div class="toolbar-actions">
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="key-kdf-info" data-action="copy" title="Copy">📄</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="key-kdf-info" data-action="paste" title="Paste">📋</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="key-kdf-info" data-action="download" title="Download">📥</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="key-kdf-info" data-action="upload" title="Upload">📁</button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="textarea-container">
+                                                        <textarea class="data-input" id="key-kdf-info" placeholder="Optional info..." rows="1"></textarea>
+                                                        <div class="drop-overlay drop-overlay-small">
+                                                            <div class="drop-overlay-content">
+                                                                <div class="drop-overlay-icon">📁</div>
+                                                                <div class="drop-overlay-text">Drop files...</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <input type="file" style="display: none;" id="key-kdf-info-file-input">
                                                 </div>
-                                                <div class="kdf-param-field" id="key-kdf-hash-container" style="width: 140px; display: none;">
-                                                    <label>Hash:</label>
-                                                    <select class="select" id="key-kdf-hash">
-                                                        <option value="SHA256">SHA-256</option>
-                                                        <option value="SHA1">SHA-1</option>
-                                                        <option value="SHA512">SHA-512</option>
-                                                    </select>
-                                                </div>
-                                                <div class="kdf-param-field" id="key-kdf-r-container" style="width: 80px; display: none;">
-                                                    <label>r:</label>
-                                                    <input type="number" class="search-input" id="key-kdf-r" value="1" min="1">
-                                                </div>
-                                                <div class="kdf-param-field" id="key-kdf-p-container" style="width: 80px; display: none;">
-                                                    <label>p:</label>
-                                                    <input type="number" class="search-input" id="key-kdf-p" value="1" min="1">
-                                                </div>
-                                                <div class="kdf-param-field" style="width: 110px;">
-                                                    <label>Output:</label>
-                                                    <input type="number" class="search-input" id="key-kdf-output-size" value="32" min="1" max="128">
-                                                </div>
+                                            </div>
+
+                                            <!-- Numeric parameters (each on own row) -->
+                                            <div id="key-kdf-iterations-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">Iterations:</label>
+                                                <input type="number" class="search-input" id="key-kdf-iterations" value="10000" min="1" style="width: 100%;">
+                                            </div>
+                                            <div id="key-kdf-n-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">N:</label>
+                                                <input type="number" class="search-input" id="key-kdf-n" value="16" min="2" style="width: 100%;">
+                                            </div>
+                                            <div id="key-kdf-hash-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">Hash:</label>
+                                                <select class="select" id="key-kdf-hash" style="width: 100%;">
+                                                    <option value="SHA256">SHA-256</option>
+                                                    <option value="SHA1">SHA-1</option>
+                                                    <option value="SHA512">SHA-512</option>
+                                                </select>
+                                            </div>
+                                            <div id="key-kdf-r-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">r:</label>
+                                                <input type="number" class="search-input" id="key-kdf-r" value="1" min="1" style="width: 100%;">
+                                            </div>
+                                            <div id="key-kdf-p-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">p:</label>
+                                                <input type="number" class="search-input" id="key-kdf-p" value="1" min="1" style="width: 100%;">
+                                            </div>
+                                            <div style="width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">Output:</label>
+                                                <input type="number" class="search-input" id="key-kdf-output-size" value="32" min="1" max="128" style="width: 100%;">
                                             </div>
                                         </div>
                                     </div>
@@ -341,45 +390,94 @@
                                             <option value="">None (Direct IV)</option>
                                         </select>
                                         <div id="iv-kdf-parameters" style="display: none;">
-                                            <div class="kdf-param-row">
-                                                <div class="kdf-param-field" style="flex: 1;">
-                                                    <label>Salt (hex):</label>
-                                                    <input type="text" class="search-input" id="iv-kdf-salt" placeholder="Optional">
-                                                </div>
-                                                <div class="kdf-param-field" id="iv-kdf-iterations-container" style="width: 140px; display: none;">
-                                                    <label>Iterations:</label>
-                                                    <input type="number" class="search-input" id="iv-kdf-iterations" value="10000" min="1">
-                                                </div>
-                                                <div class="kdf-param-field" id="iv-kdf-n-container" style="width: 100px; display: none;">
-                                                    <label>N:</label>
-                                                    <input type="number" class="search-input" id="iv-kdf-n" value="16" min="2">
+                                            <!-- Salt field (full width) -->
+                                            <div style="display: block; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.8rem; font-weight: 600; color: #a0aec0; margin-bottom: 0.25rem; display: block;">Salt</label>
+                                                <div class="data-control">
+                                                    <div class="data-toolbar data-toolbar-small">
+                                                        <div class="format-tabs">
+                                                            <button class="format-tab format-tab-small active" data-target="iv-kdf-salt" data-format="text">📝</button>
+                                                            <button class="format-tab format-tab-small" data-target="iv-kdf-salt" data-format="hex">#️⃣</button>
+                                                            <button class="format-tab format-tab-small" data-target="iv-kdf-salt" data-format="base64">🔤</button>
+                                                        </div>
+                                                        <div class="toolbar-actions">
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="iv-kdf-salt" data-action="copy" title="Copy">📄</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="iv-kdf-salt" data-action="paste" title="Paste">📋</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="iv-kdf-salt" data-action="download" title="Download">📥</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="iv-kdf-salt" data-action="upload" title="Upload">📁</button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="textarea-container">
+                                                        <textarea class="data-input" id="iv-kdf-salt" placeholder="Optional salt..." rows="1"></textarea>
+                                                        <div class="drop-overlay drop-overlay-small">
+                                                            <div class="drop-overlay-content">
+                                                                <div class="drop-overlay-icon">📁</div>
+                                                                <div class="drop-overlay-text">Drop files...</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <input type="file" style="display: none;" id="iv-kdf-salt-file-input">
                                                 </div>
                                             </div>
-                                            <div class="kdf-param-row">
-                                                <div class="kdf-param-field" id="iv-kdf-info-container" style="flex: 1; display: none;">
-                                                    <label>Info (hex):</label>
-                                                    <input type="text" class="search-input" id="iv-kdf-info" placeholder="Optional">
+
+                                            <!-- Info field (full width, conditional) -->
+                                            <div id="iv-kdf-info-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.8rem; font-weight: 600; color: #a0aec0; margin-bottom: 0.25rem; display: block;">Info</label>
+                                                <div class="data-control">
+                                                    <div class="data-toolbar data-toolbar-small">
+                                                        <div class="format-tabs">
+                                                            <button class="format-tab format-tab-small active" data-target="iv-kdf-info" data-format="text">📝</button>
+                                                            <button class="format-tab format-tab-small" data-target="iv-kdf-info" data-format="hex">#️⃣</button>
+                                                            <button class="format-tab format-tab-small" data-target="iv-kdf-info" data-format="base64">🔤</button>
+                                                        </div>
+                                                        <div class="toolbar-actions">
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="iv-kdf-info" data-action="copy" title="Copy">📄</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="iv-kdf-info" data-action="paste" title="Paste">📋</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="iv-kdf-info" data-action="download" title="Download">📥</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="iv-kdf-info" data-action="upload" title="Upload">📁</button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="textarea-container">
+                                                        <textarea class="data-input" id="iv-kdf-info" placeholder="Optional info..." rows="1"></textarea>
+                                                        <div class="drop-overlay drop-overlay-small">
+                                                            <div class="drop-overlay-content">
+                                                                <div class="drop-overlay-icon">📁</div>
+                                                                <div class="drop-overlay-text">Drop files...</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <input type="file" style="display: none;" id="iv-kdf-info-file-input">
                                                 </div>
-                                                <div class="kdf-param-field" id="iv-kdf-hash-container" style="width: 140px; display: none;">
-                                                    <label>Hash:</label>
-                                                    <select class="select" id="iv-kdf-hash">
-                                                        <option value="SHA256">SHA-256</option>
-                                                        <option value="SHA1">SHA-1</option>
-                                                        <option value="SHA512">SHA-512</option>
-                                                    </select>
-                                                </div>
-                                                <div class="kdf-param-field" id="iv-kdf-r-container" style="width: 80px; display: none;">
-                                                    <label>r:</label>
-                                                    <input type="number" class="search-input" id="iv-kdf-r" value="1" min="1">
-                                                </div>
-                                                <div class="kdf-param-field" id="iv-kdf-p-container" style="width: 80px; display: none;">
-                                                    <label>p:</label>
-                                                    <input type="number" class="search-input" id="iv-kdf-p" value="1" min="1">
-                                                </div>
-                                                <div class="kdf-param-field" style="width: 110px;">
-                                                    <label>Output:</label>
-                                                    <input type="number" class="search-input" id="iv-kdf-output-size" value="16" min="1" max="128">
-                                                </div>
+                                            </div>
+
+                                            <!-- Numeric parameters (each on own row) -->
+                                            <div id="iv-kdf-iterations-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">Iterations:</label>
+                                                <input type="number" class="search-input" id="iv-kdf-iterations" value="10000" min="1" style="width: 100%;">
+                                            </div>
+                                            <div id="iv-kdf-n-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">N:</label>
+                                                <input type="number" class="search-input" id="iv-kdf-n" value="16" min="2" style="width: 100%;">
+                                            </div>
+                                            <div id="iv-kdf-hash-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">Hash:</label>
+                                                <select class="select" id="iv-kdf-hash" style="width: 100%;">
+                                                    <option value="SHA256">SHA-256</option>
+                                                    <option value="SHA1">SHA-1</option>
+                                                    <option value="SHA512">SHA-512</option>
+                                                </select>
+                                            </div>
+                                            <div id="iv-kdf-r-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">r:</label>
+                                                <input type="number" class="search-input" id="iv-kdf-r" value="1" min="1" style="width: 100%;">
+                                            </div>
+                                            <div id="iv-kdf-p-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">p:</label>
+                                                <input type="number" class="search-input" id="iv-kdf-p" value="1" min="1" style="width: 100%;">
+                                            </div>
+                                            <div style="width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">Output:</label>
+                                                <input type="number" class="search-input" id="iv-kdf-output-size" value="16" min="1" max="128" style="width: 100%;">
                                             </div>
                                         </div>
                                     </div>
@@ -425,45 +523,94 @@
                                             <option value="">None (Direct Salt)</option>
                                         </select>
                                         <div id="salt-kdf-parameters" style="display: none;">
-                                            <div class="kdf-param-row">
-                                                <div class="kdf-param-field" style="flex: 1;">
-                                                    <label>Salt (hex):</label>
-                                                    <input type="text" class="search-input" id="salt-kdf-salt" placeholder="Optional">
-                                                </div>
-                                                <div class="kdf-param-field" id="salt-kdf-iterations-container" style="width: 140px; display: none;">
-                                                    <label>Iterations:</label>
-                                                    <input type="number" class="search-input" id="salt-kdf-iterations" value="10000" min="1">
-                                                </div>
-                                                <div class="kdf-param-field" id="salt-kdf-n-container" style="width: 100px; display: none;">
-                                                    <label>N:</label>
-                                                    <input type="number" class="search-input" id="salt-kdf-n" value="16" min="2">
+                                            <!-- Salt field (full width) -->
+                                            <div style="display: block; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.8rem; font-weight: 600; color: #a0aec0; margin-bottom: 0.25rem; display: block;">Salt</label>
+                                                <div class="data-control">
+                                                    <div class="data-toolbar data-toolbar-small">
+                                                        <div class="format-tabs">
+                                                            <button class="format-tab format-tab-small active" data-target="salt-kdf-salt" data-format="text">📝</button>
+                                                            <button class="format-tab format-tab-small" data-target="salt-kdf-salt" data-format="hex">#️⃣</button>
+                                                            <button class="format-tab format-tab-small" data-target="salt-kdf-salt" data-format="base64">🔤</button>
+                                                        </div>
+                                                        <div class="toolbar-actions">
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="salt-kdf-salt" data-action="copy" title="Copy">📄</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="salt-kdf-salt" data-action="paste" title="Paste">📋</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="salt-kdf-salt" data-action="download" title="Download">📥</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="salt-kdf-salt" data-action="upload" title="Upload">📁</button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="textarea-container">
+                                                        <textarea class="data-input" id="salt-kdf-salt" placeholder="Optional salt..." rows="1"></textarea>
+                                                        <div class="drop-overlay drop-overlay-small">
+                                                            <div class="drop-overlay-content">
+                                                                <div class="drop-overlay-icon">📁</div>
+                                                                <div class="drop-overlay-text">Drop files...</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <input type="file" style="display: none;" id="salt-kdf-salt-file-input">
                                                 </div>
                                             </div>
-                                            <div class="kdf-param-row">
-                                                <div class="kdf-param-field" id="salt-kdf-info-container" style="flex: 1; display: none;">
-                                                    <label>Info (hex):</label>
-                                                    <input type="text" class="search-input" id="salt-kdf-info" placeholder="Optional">
+
+                                            <!-- Info field (full width, conditional) -->
+                                            <div id="salt-kdf-info-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.8rem; font-weight: 600; color: #a0aec0; margin-bottom: 0.25rem; display: block;">Info</label>
+                                                <div class="data-control">
+                                                    <div class="data-toolbar data-toolbar-small">
+                                                        <div class="format-tabs">
+                                                            <button class="format-tab format-tab-small active" data-target="salt-kdf-info" data-format="text">📝</button>
+                                                            <button class="format-tab format-tab-small" data-target="salt-kdf-info" data-format="hex">#️⃣</button>
+                                                            <button class="format-tab format-tab-small" data-target="salt-kdf-info" data-format="base64">🔤</button>
+                                                        </div>
+                                                        <div class="toolbar-actions">
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="salt-kdf-info" data-action="copy" title="Copy">📄</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="salt-kdf-info" data-action="paste" title="Paste">📋</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="salt-kdf-info" data-action="download" title="Download">📥</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="salt-kdf-info" data-action="upload" title="Upload">📁</button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="textarea-container">
+                                                        <textarea class="data-input" id="salt-kdf-info" placeholder="Optional info..." rows="1"></textarea>
+                                                        <div class="drop-overlay drop-overlay-small">
+                                                            <div class="drop-overlay-content">
+                                                                <div class="drop-overlay-icon">📁</div>
+                                                                <div class="drop-overlay-text">Drop files...</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <input type="file" style="display: none;" id="salt-kdf-info-file-input">
                                                 </div>
-                                                <div class="kdf-param-field" id="salt-kdf-hash-container" style="width: 140px; display: none;">
-                                                    <label>Hash:</label>
-                                                    <select class="select" id="salt-kdf-hash">
-                                                        <option value="SHA256">SHA-256</option>
-                                                        <option value="SHA1">SHA-1</option>
-                                                        <option value="SHA512">SHA-512</option>
-                                                    </select>
-                                                </div>
-                                                <div class="kdf-param-field" id="salt-kdf-r-container" style="width: 80px; display: none;">
-                                                    <label>r:</label>
-                                                    <input type="number" class="search-input" id="salt-kdf-r" value="1" min="1">
-                                                </div>
-                                                <div class="kdf-param-field" id="salt-kdf-p-container" style="width: 80px; display: none;">
-                                                    <label>p:</label>
-                                                    <input type="number" class="search-input" id="salt-kdf-p" value="1" min="1">
-                                                </div>
-                                                <div class="kdf-param-field" style="width: 110px;">
-                                                    <label>Output:</label>
-                                                    <input type="number" class="search-input" id="salt-kdf-output-size" value="16" min="1" max="128">
-                                                </div>
+                                            </div>
+
+                                            <!-- Numeric parameters (each on own row) -->
+                                            <div id="salt-kdf-iterations-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">Iterations:</label>
+                                                <input type="number" class="search-input" id="salt-kdf-iterations" value="10000" min="1" style="width: 100%;">
+                                            </div>
+                                            <div id="salt-kdf-n-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">N:</label>
+                                                <input type="number" class="search-input" id="salt-kdf-n" value="16" min="2" style="width: 100%;">
+                                            </div>
+                                            <div id="salt-kdf-hash-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">Hash:</label>
+                                                <select class="select" id="salt-kdf-hash" style="width: 100%;">
+                                                    <option value="SHA256">SHA-256</option>
+                                                    <option value="SHA1">SHA-1</option>
+                                                    <option value="SHA512">SHA-512</option>
+                                                </select>
+                                            </div>
+                                            <div id="salt-kdf-r-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">r:</label>
+                                                <input type="number" class="search-input" id="salt-kdf-r" value="1" min="1" style="width: 100%;">
+                                            </div>
+                                            <div id="salt-kdf-p-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">p:</label>
+                                                <input type="number" class="search-input" id="salt-kdf-p" value="1" min="1" style="width: 100%;">
+                                            </div>
+                                            <div style="width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">Output:</label>
+                                                <input type="number" class="search-input" id="salt-kdf-output-size" value="16" min="1" max="128" style="width: 100%;">
                                             </div>
                                         </div>
                                     </div>
@@ -509,45 +656,94 @@
                                             <option value="">None (Direct Nonce)</option>
                                         </select>
                                         <div id="nonce-kdf-parameters" style="display: none;">
-                                            <div class="kdf-param-row">
-                                                <div class="kdf-param-field" style="flex: 1;">
-                                                    <label>Salt (hex):</label>
-                                                    <input type="text" class="search-input" id="nonce-kdf-salt" placeholder="Optional">
-                                                </div>
-                                                <div class="kdf-param-field" id="nonce-kdf-iterations-container" style="width: 140px; display: none;">
-                                                    <label>Iterations:</label>
-                                                    <input type="number" class="search-input" id="nonce-kdf-iterations" value="10000" min="1">
-                                                </div>
-                                                <div class="kdf-param-field" id="nonce-kdf-n-container" style="width: 100px; display: none;">
-                                                    <label>N:</label>
-                                                    <input type="number" class="search-input" id="nonce-kdf-n" value="16" min="2">
+                                            <!-- Salt field (full width) -->
+                                            <div style="display: block; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.8rem; font-weight: 600; color: #a0aec0; margin-bottom: 0.25rem; display: block;">Salt</label>
+                                                <div class="data-control">
+                                                    <div class="data-toolbar data-toolbar-small">
+                                                        <div class="format-tabs">
+                                                            <button class="format-tab format-tab-small active" data-target="nonce-kdf-salt" data-format="text">📝</button>
+                                                            <button class="format-tab format-tab-small" data-target="nonce-kdf-salt" data-format="hex">#️⃣</button>
+                                                            <button class="format-tab format-tab-small" data-target="nonce-kdf-salt" data-format="base64">🔤</button>
+                                                        </div>
+                                                        <div class="toolbar-actions">
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="nonce-kdf-salt" data-action="copy" title="Copy">📄</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="nonce-kdf-salt" data-action="paste" title="Paste">📋</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="nonce-kdf-salt" data-action="download" title="Download">📥</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="nonce-kdf-salt" data-action="upload" title="Upload">📁</button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="textarea-container">
+                                                        <textarea class="data-input" id="nonce-kdf-salt" placeholder="Optional salt..." rows="1"></textarea>
+                                                        <div class="drop-overlay drop-overlay-small">
+                                                            <div class="drop-overlay-content">
+                                                                <div class="drop-overlay-icon">📁</div>
+                                                                <div class="drop-overlay-text">Drop files...</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <input type="file" style="display: none;" id="nonce-kdf-salt-file-input">
                                                 </div>
                                             </div>
-                                            <div class="kdf-param-row">
-                                                <div class="kdf-param-field" id="nonce-kdf-info-container" style="flex: 1; display: none;">
-                                                    <label>Info (hex):</label>
-                                                    <input type="text" class="search-input" id="nonce-kdf-info" placeholder="Optional">
+
+                                            <!-- Info field (full width, conditional) -->
+                                            <div id="nonce-kdf-info-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.8rem; font-weight: 600; color: #a0aec0; margin-bottom: 0.25rem; display: block;">Info</label>
+                                                <div class="data-control">
+                                                    <div class="data-toolbar data-toolbar-small">
+                                                        <div class="format-tabs">
+                                                            <button class="format-tab format-tab-small active" data-target="nonce-kdf-info" data-format="text">📝</button>
+                                                            <button class="format-tab format-tab-small" data-target="nonce-kdf-info" data-format="hex">#️⃣</button>
+                                                            <button class="format-tab format-tab-small" data-target="nonce-kdf-info" data-format="base64">🔤</button>
+                                                        </div>
+                                                        <div class="toolbar-actions">
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="nonce-kdf-info" data-action="copy" title="Copy">📄</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="nonce-kdf-info" data-action="paste" title="Paste">📋</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="nonce-kdf-info" data-action="download" title="Download">📥</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="nonce-kdf-info" data-action="upload" title="Upload">📁</button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="textarea-container">
+                                                        <textarea class="data-input" id="nonce-kdf-info" placeholder="Optional info..." rows="1"></textarea>
+                                                        <div class="drop-overlay drop-overlay-small">
+                                                            <div class="drop-overlay-content">
+                                                                <div class="drop-overlay-icon">📁</div>
+                                                                <div class="drop-overlay-text">Drop files...</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <input type="file" style="display: none;" id="nonce-kdf-info-file-input">
                                                 </div>
-                                                <div class="kdf-param-field" id="nonce-kdf-hash-container" style="width: 140px; display: none;">
-                                                    <label>Hash:</label>
-                                                    <select class="select" id="nonce-kdf-hash">
-                                                        <option value="SHA256">SHA-256</option>
-                                                        <option value="SHA1">SHA-1</option>
-                                                        <option value="SHA512">SHA-512</option>
-                                                    </select>
-                                                </div>
-                                                <div class="kdf-param-field" id="nonce-kdf-r-container" style="width: 80px; display: none;">
-                                                    <label>r:</label>
-                                                    <input type="number" class="search-input" id="nonce-kdf-r" value="1" min="1">
-                                                </div>
-                                                <div class="kdf-param-field" id="nonce-kdf-p-container" style="width: 80px; display: none;">
-                                                    <label>p:</label>
-                                                    <input type="number" class="search-input" id="nonce-kdf-p" value="1" min="1">
-                                                </div>
-                                                <div class="kdf-param-field" style="width: 110px;">
-                                                    <label>Output:</label>
-                                                    <input type="number" class="search-input" id="nonce-kdf-output-size" value="12" min="1" max="128">
-                                                </div>
+                                            </div>
+
+                                            <!-- Numeric parameters (each on own row) -->
+                                            <div id="nonce-kdf-iterations-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">Iterations:</label>
+                                                <input type="number" class="search-input" id="nonce-kdf-iterations" value="10000" min="1" style="width: 100%;">
+                                            </div>
+                                            <div id="nonce-kdf-n-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">N:</label>
+                                                <input type="number" class="search-input" id="nonce-kdf-n" value="16" min="2" style="width: 100%;">
+                                            </div>
+                                            <div id="nonce-kdf-hash-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">Hash:</label>
+                                                <select class="select" id="nonce-kdf-hash" style="width: 100%;">
+                                                    <option value="SHA256">SHA-256</option>
+                                                    <option value="SHA1">SHA-1</option>
+                                                    <option value="SHA512">SHA-512</option>
+                                                </select>
+                                            </div>
+                                            <div id="nonce-kdf-r-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">r:</label>
+                                                <input type="number" class="search-input" id="nonce-kdf-r" value="1" min="1" style="width: 100%;">
+                                            </div>
+                                            <div id="nonce-kdf-p-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">p:</label>
+                                                <input type="number" class="search-input" id="nonce-kdf-p" value="1" min="1" style="width: 100%;">
+                                            </div>
+                                            <div style="width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">Output:</label>
+                                                <input type="number" class="search-input" id="nonce-kdf-output-size" value="12" min="1" max="128" style="width: 100%;">
                                             </div>
                                         </div>
                                     </div>
@@ -593,45 +789,94 @@
                                             <option value="">None (Direct Pepper)</option>
                                         </select>
                                         <div id="pepper-kdf-parameters" style="display: none;">
-                                            <div class="kdf-param-row">
-                                                <div class="kdf-param-field" style="flex: 1;">
-                                                    <label>Salt (hex):</label>
-                                                    <input type="text" class="search-input" id="pepper-kdf-salt" placeholder="Optional">
-                                                </div>
-                                                <div class="kdf-param-field" id="pepper-kdf-iterations-container" style="width: 140px; display: none;">
-                                                    <label>Iterations:</label>
-                                                    <input type="number" class="search-input" id="pepper-kdf-iterations" value="10000" min="1">
-                                                </div>
-                                                <div class="kdf-param-field" id="pepper-kdf-n-container" style="width: 100px; display: none;">
-                                                    <label>N:</label>
-                                                    <input type="number" class="search-input" id="pepper-kdf-n" value="16" min="2">
+                                            <!-- Salt field (full width) -->
+                                            <div style="display: block; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.8rem; font-weight: 600; color: #a0aec0; margin-bottom: 0.25rem; display: block;">Salt</label>
+                                                <div class="data-control">
+                                                    <div class="data-toolbar data-toolbar-small">
+                                                        <div class="format-tabs">
+                                                            <button class="format-tab format-tab-small active" data-target="pepper-kdf-salt" data-format="text">📝</button>
+                                                            <button class="format-tab format-tab-small" data-target="pepper-kdf-salt" data-format="hex">#️⃣</button>
+                                                            <button class="format-tab format-tab-small" data-target="pepper-kdf-salt" data-format="base64">🔤</button>
+                                                        </div>
+                                                        <div class="toolbar-actions">
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="pepper-kdf-salt" data-action="copy" title="Copy">📄</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="pepper-kdf-salt" data-action="paste" title="Paste">📋</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="pepper-kdf-salt" data-action="download" title="Download">📥</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="pepper-kdf-salt" data-action="upload" title="Upload">📁</button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="textarea-container">
+                                                        <textarea class="data-input" id="pepper-kdf-salt" placeholder="Optional salt..." rows="1"></textarea>
+                                                        <div class="drop-overlay drop-overlay-small">
+                                                            <div class="drop-overlay-content">
+                                                                <div class="drop-overlay-icon">📁</div>
+                                                                <div class="drop-overlay-text">Drop files...</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <input type="file" style="display: none;" id="pepper-kdf-salt-file-input">
                                                 </div>
                                             </div>
-                                            <div class="kdf-param-row">
-                                                <div class="kdf-param-field" id="pepper-kdf-info-container" style="flex: 1; display: none;">
-                                                    <label>Info (hex):</label>
-                                                    <input type="text" class="search-input" id="pepper-kdf-info" placeholder="Optional">
+
+                                            <!-- Info field (full width, conditional) -->
+                                            <div id="pepper-kdf-info-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.8rem; font-weight: 600; color: #a0aec0; margin-bottom: 0.25rem; display: block;">Info</label>
+                                                <div class="data-control">
+                                                    <div class="data-toolbar data-toolbar-small">
+                                                        <div class="format-tabs">
+                                                            <button class="format-tab format-tab-small active" data-target="pepper-kdf-info" data-format="text">📝</button>
+                                                            <button class="format-tab format-tab-small" data-target="pepper-kdf-info" data-format="hex">#️⃣</button>
+                                                            <button class="format-tab format-tab-small" data-target="pepper-kdf-info" data-format="base64">🔤</button>
+                                                        </div>
+                                                        <div class="toolbar-actions">
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="pepper-kdf-info" data-action="copy" title="Copy">📄</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="pepper-kdf-info" data-action="paste" title="Paste">📋</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="pepper-kdf-info" data-action="download" title="Download">📥</button>
+                                                            <button class="toolbar-btn toolbar-btn-small" data-target="pepper-kdf-info" data-action="upload" title="Upload">📁</button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="textarea-container">
+                                                        <textarea class="data-input" id="pepper-kdf-info" placeholder="Optional info..." rows="1"></textarea>
+                                                        <div class="drop-overlay drop-overlay-small">
+                                                            <div class="drop-overlay-content">
+                                                                <div class="drop-overlay-icon">📁</div>
+                                                                <div class="drop-overlay-text">Drop files...</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <input type="file" style="display: none;" id="pepper-kdf-info-file-input">
                                                 </div>
-                                                <div class="kdf-param-field" id="pepper-kdf-hash-container" style="width: 140px; display: none;">
-                                                    <label>Hash:</label>
-                                                    <select class="select" id="pepper-kdf-hash">
-                                                        <option value="SHA256">SHA-256</option>
-                                                        <option value="SHA1">SHA-1</option>
-                                                        <option value="SHA512">SHA-512</option>
-                                                    </select>
-                                                </div>
-                                                <div class="kdf-param-field" id="pepper-kdf-r-container" style="width: 80px; display: none;">
-                                                    <label>r:</label>
-                                                    <input type="number" class="search-input" id="pepper-kdf-r" value="1" min="1">
-                                                </div>
-                                                <div class="kdf-param-field" id="pepper-kdf-p-container" style="width: 80px; display: none;">
-                                                    <label>p:</label>
-                                                    <input type="number" class="search-input" id="pepper-kdf-p" value="1" min="1">
-                                                </div>
-                                                <div class="kdf-param-field" style="width: 110px;">
-                                                    <label>Output:</label>
-                                                    <input type="number" class="search-input" id="pepper-kdf-output-size" value="16" min="1" max="128">
-                                                </div>
+                                            </div>
+
+                                            <!-- Numeric parameters (each on own row) -->
+                                            <div id="pepper-kdf-iterations-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">Iterations:</label>
+                                                <input type="number" class="search-input" id="pepper-kdf-iterations" value="10000" min="1" style="width: 100%;">
+                                            </div>
+                                            <div id="pepper-kdf-n-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">N:</label>
+                                                <input type="number" class="search-input" id="pepper-kdf-n" value="16" min="2" style="width: 100%;">
+                                            </div>
+                                            <div id="pepper-kdf-hash-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">Hash:</label>
+                                                <select class="select" id="pepper-kdf-hash" style="width: 100%;">
+                                                    <option value="SHA256">SHA-256</option>
+                                                    <option value="SHA1">SHA-1</option>
+                                                    <option value="SHA512">SHA-512</option>
+                                                </select>
+                                            </div>
+                                            <div id="pepper-kdf-r-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">r:</label>
+                                                <input type="number" class="search-input" id="pepper-kdf-r" value="1" min="1" style="width: 100%;">
+                                            </div>
+                                            <div id="pepper-kdf-p-container" style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">p:</label>
+                                                <input type="number" class="search-input" id="pepper-kdf-p" value="1" min="1" style="width: 100%;">
+                                            </div>
+                                            <div style="width: 100%; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; font-weight: 500; display: block;">Output:</label>
+                                                <input type="number" class="search-input" id="pepper-kdf-output-size" value="16" min="1" max="128" style="width: 100%;">
                                             </div>
                                         </div>
                                     </div>
@@ -1453,9 +1698,11 @@
     <script src="./algorithms/kdf/bcrypt-pbkdf.js"></script>
     <script src="./algorithms/kdf/concat-kdf.js"></script>
     <script src="./algorithms/kdf/hkdf.js"></script>
+    <script src="./algorithms/kdf/kdf2.js"></script>
     <script src="./algorithms/kdf/pbkdf1.js"></script>
     <script src="./algorithms/kdf/pbkdf2.js"></script>
     <script src="./algorithms/kdf/scrypt.js"></script>
+    <script src="./algorithms/kdf/sp800-108-counter.js"></script>
     <script src="./algorithms/kdf/x963kdf.js"></script>
     <script src="./algorithms/mac/cmac.js"></script>
     <script src="./algorithms/mac/gmac.js"></script>
@@ -1524,11 +1771,13 @@
     <script src="./algorithms/random/ars.js"></script>
     <script src="./algorithms/random/blum-micali.js"></script>
     <script src="./algorithms/random/blumblumshub.js"></script>
-    <script src="./algorithms/random/chacha8.js"></script>
+    <script src="./algorithms/random/biski64.js"></script>
+    <script src="./algorithms/random/chacha.js"></script>
     <script src="./algorithms/random/cmwc.js"></script>
     <script src="./algorithms/random/combined-lcg.js"></script>
     <script src="./algorithms/random/dsfmt.js"></script>
     <script src="./algorithms/random/fcsr.js"></script>
+    <script src="./algorithms/random/gfsr.js"></script>
     <script src="./algorithms/random/fortuna.js"></script>
     <script src="./algorithms/random/icg.js"></script>
     <script src="./algorithms/random/isaac.js"></script>
@@ -1538,7 +1787,13 @@
     <script src="./algorithms/random/lagged-fibonacci.js"></script>
     <script src="./algorithms/random/lcg.js"></script>
     <script src="./algorithms/random/lehmer.js"></script>
+    <script src="./algorithms/random/lehmer64.js"></script>
+    <script src="./algorithms/random/lehmer128.js"></script>
     <script src="./algorithms/random/lfsr.js"></script>
+    <script src="./algorithms/random/lfsr88.js"></script>
+    <script src="./algorithms/random/lfsr113.js"></script>
+    <script src="./algorithms/random/lfsr258.js"></script>
+    <script src="./algorithms/random/lfib4.js"></script>
     <script src="./algorithms/random/mersenne-twister.js"></script>
     <script src="./algorithms/random/mersenne-twister-64.js"></script>
     <script src="./algorithms/random/middle-square.js"></script>
@@ -1549,23 +1804,36 @@
     <script src="./algorithms/random/msws.js"></script>
     <script src="./algorithms/random/mwc.js"></script>
     <script src="./algorithms/random/mwc64x.js"></script>
+    <script src="./algorithms/random/mwc256.js"></script>
     <script src="./algorithms/random/pcg.js"></script>
+    <script src="./algorithms/random/pcg64-dxsm.js"></script>
     <script src="./algorithms/random/pcg-rxs-m-xs.js"></script>
     <script src="./algorithms/random/pcg-xsh-rs.js"></script>
     <script src="./algorithms/random/pcg-xsl-rr.js"></script>
     <script src="./algorithms/random/philox.js"></script>
     <script src="./algorithms/random/ranlux.js"></script>
+    <script src="./algorithms/random/ranlux24.js"></script>
+    <script src="./algorithms/random/ranlux48.js"></script>
+    <script src="./algorithms/random/ran0.js"></script>
+    <script src="./algorithms/random/ran1.js"></script>
     <script src="./algorithms/random/ran2.js"></script>
     <script src="./algorithms/random/ran3.js"></script>
     <script src="./algorithms/random/ranshi.js"></script>
     <script src="./algorithms/random/romu.js"></script>
+    <script src="./algorithms/random/romuduo.js"></script>
+    <script src="./algorithms/random/romumono.js"></script>
+    <script src="./algorithms/random/romuquad.js"></script>
     <script src="./algorithms/random/sfmt.js"></script>
     <script src="./algorithms/random/sfc.js"></script>
     <script src="./algorithms/random/sfc64.js"></script>
+    <script src="./algorithms/random/shioi128.js"></script>
+    <script src="./algorithms/random/shishua.js"></script>
+    <script src="./algorithms/random/self-shrinking-generator.js"></script>
     <script src="./algorithms/random/splitmix32.js"></script>
     <script src="./algorithms/random/splitmix64.js"></script>
     <script src="./algorithms/random/squares.js"></script>
     <script src="./algorithms/random/swb.js"></script>
+    <script src="./algorithms/random/tea-prng.js"></script>
     <script src="./algorithms/random/tinymt.js"></script>
     <script src="./algorithms/random/threefry.js"></script>
     <script src="./algorithms/random/well.js"></script>
@@ -1574,8 +1842,13 @@
     <script src="./algorithms/random/xoroshiro128plus.js"></script>
     <script src="./algorithms/random/xoroshiro128plusplus.js"></script>
     <script src="./algorithms/random/xoroshiro128starstar.js"></script>
+    <script src="./algorithms/random/xoroshiro256plusplus.js"></script>
+    <script src="./algorithms/random/xoroshiro256starstar.js"></script>
     <script src="./algorithms/random/xorshift.js"></script>
     <script src="./algorithms/random/xorshift1024star.js"></script>
+    <script src="./algorithms/random/xorshift32.js"></script>
+    <script src="./algorithms/random/xorshift64.js"></script>
+    <script src="./algorithms/random/xor4096.js"></script>
     <script src="./algorithms/random/xorshift-plus.js"></script>
     <script src="./algorithms/random/xorshift-star.js"></script>
     <script src="./algorithms/random/xorwow.js"></script>
