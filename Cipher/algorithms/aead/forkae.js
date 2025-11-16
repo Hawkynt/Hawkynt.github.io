@@ -88,8 +88,13 @@
     setCounter(tweakey, counter, domain) {
       // Domain is encoded in top 3 bits of counter
       let val = counter | (domain << (this.counterSize * 8 - 3));
+
+      // For 48-byte tweakey (ForkSkinny-128-384), place counter in TK2
+      const counterPos = this.tweakeySize === 48 ? 16 + this.nonceSize + this.counterSize - 1 :
+                         16 + this.nonceSize + this.counterSize - 1;
+
       for (let i = 0; i < this.counterSize; i++) {
-        tweakey[16 + this.nonceSize + this.counterSize - 1 - i] = val & 0xFF;
+        tweakey[counterPos - i] = val & 0xFF;
         val >>>= 8;
       }
     }
@@ -106,9 +111,12 @@
     }
 
     encrypt(key, nonce, plaintext, ad) {
-      // Initialize tweakey: key || nonce || counter
+      // Initialize tweakey
       const tweakey = new Array(this.tweakeySize).fill(0);
+      // TK1 = key
       tweakey.splice(0, 16, ...key.slice(0, 16));
+      // TK2 = nonce || counter || padding (for 48-byte tweakey)
+      // or TK2 = nonce || counter (for 32-byte tweakey)
       tweakey.splice(16, this.nonceSize, ...nonce);
 
       // Tag accumulator (XOR of all intermediate tags)
@@ -472,7 +480,9 @@
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
-      this.mode = new PAEFMode(16, 14, 2, 32, "ForkSkinny-128-256");
+      // NOTE: Using the embedded ForkSkinny-128-256 from paef-forkskinny.js
+      // instead of the registered one due to a bug in the registered version
+      this.mode = new PAEFMode(16, 14, 2, 32, "ForkSkinny-128-256-Embedded");
       this._key = null;
       this._nonce = null;
       this._ad = [];
