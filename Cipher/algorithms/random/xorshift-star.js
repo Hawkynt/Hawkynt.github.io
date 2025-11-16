@@ -196,6 +196,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) {
         return null; // PRNGs have no inverse operation
@@ -203,6 +209,12 @@
       return new XorShiftStarInstance(this);
     }
   }
+
+  /**
+ * XorShiftStar cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class XorShiftStarInstance extends IRandomGeneratorInstance {
     constructor(algorithm) {
@@ -444,7 +456,19 @@
     }
 
     // AlgorithmFramework interface
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {}
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       const size = this._outputSize || 64;

@@ -51,6 +51,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * NOEKEONCipher - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class NOEKEONCipher extends AlgorithmFramework.BlockCipherAlgorithm {
     constructor() {
       super();
@@ -112,12 +118,30 @@
                              0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new NOEKEONInstance(this, isInverse);
     }
   }
 
+  /**
+ * NOEKEON cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class NOEKEONInstance extends AlgorithmFramework.IBlockCipherInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -128,6 +152,12 @@
       this.BlockSize = 16;    // 128-bit blocks
       this.KeySize = 0;
     }
+
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
 
     set key(keyBytes) {
       if (!keyBytes) {
@@ -152,9 +182,20 @@
       this.keyWords = this._convertKeyToWords(keyBytes);
     }
 
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
+
     get key() {
       return this._key ? [...this._key] : null;
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -170,6 +211,11 @@
       }
     }
 
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
     Result() {
       const result = [...this.outputBuffer];
       this.outputBuffer = [];

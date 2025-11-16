@@ -106,12 +106,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new BCHCodeInstance(this, isInverse);
     }
   }
 
+  /**
+ * BCHCode cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class BCHCodeInstance extends IErrorCorrectionInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -120,6 +138,12 @@
       // BCH(7,4) generator polynomial: x^3 + x + 1 (octal 013 = binary 1011)
       this.generatorPoly = [1, 0, 1, 1]; // coefficients from high to low
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!Array.isArray(data)) {
@@ -132,6 +156,12 @@
         this.result = this.encode(data);
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (this.result === null) {

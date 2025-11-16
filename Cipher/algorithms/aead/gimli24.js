@@ -205,6 +205,12 @@
    * Gimli-24 AEAD instance implementing Feed/Result pattern
    */
   class Gimli24Instance extends IAeadInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -217,6 +223,12 @@
     }
 
     // Key property (256 bits = 32 bytes)
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
+
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -229,6 +241,11 @@
 
       this._key = [...keyBytes];
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return this._key ? [...this._key] : null;

@@ -52,6 +52,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * CSCCompression - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class CSCCompression extends CompressionAlgorithm {
       constructor() {
         super();

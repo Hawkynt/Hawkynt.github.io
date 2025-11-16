@@ -100,6 +100,12 @@
 
   // ===== MD2 IMPLEMENTATION =====
 
+  /**
+ * MD2Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class MD2Algorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -155,12 +161,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new MD2AlgorithmInstance(this, isInverse);
     }
   }
 
+  /**
+ * MD2Algorithm cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class MD2AlgorithmInstance extends IHashFunctionInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -263,10 +287,22 @@
       this._length = 0;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       this.Init();
       this.Update(data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       return this.Final();
@@ -274,6 +310,12 @@
   }
 
   // ===== MD4 IMPLEMENTATION =====
+
+  /**
+ * MD4Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
 
   class MD4Algorithm extends HashFunctionAlgorithm {
     constructor() {
@@ -330,12 +372,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new MD4AlgorithmInstance(this, isInverse);
     }
   }
 
+  /**
+ * MD4Algorithm cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class MD4AlgorithmInstance extends IHashFunctionInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -478,10 +538,22 @@
       this._length = 0;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       this.Init();
       this.Update(data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       return this.Final();
@@ -489,6 +561,12 @@
   }
 
   // ===== MD5 IMPLEMENTATION =====
+
+  /**
+ * MD5Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
 
   class MD5Algorithm extends HashFunctionAlgorithm {
     constructor() {
@@ -576,6 +654,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       // Hash functions don't have an inverse operation
       if (isInverse) {
@@ -584,6 +668,12 @@
       return new MD5AlgorithmInstance(this);
     }
   }
+
+  /**
+ * MD5Algorithm cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class MD5AlgorithmInstance extends IHashFunctionInstance {
     constructor(algorithm) {
@@ -605,6 +695,12 @@
     Initialize() {
       this._Reset();
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -642,6 +738,12 @@
         this.bufferLength = remaining.length;
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       // Save current state

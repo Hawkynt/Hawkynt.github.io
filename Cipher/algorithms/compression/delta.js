@@ -49,6 +49,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * DeltaCompression - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class DeltaCompression extends CompressionAlgorithm {
       constructor() {
         super();

@@ -422,6 +422,12 @@
       this.tests = this.config.tests;
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Checksums have no inverse
       return new CRCInstance(this, this.config);
@@ -429,6 +435,12 @@
   }
 
   // ===== UNIFIED CRC INSTANCE CLASS =====
+
+  /**
+ * CRC cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class CRCInstance extends IAlgorithmInstance {
     constructor(algorithm, config) {
@@ -449,6 +461,12 @@
       this.crcTable = this._generateTable();
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
 
@@ -457,6 +475,12 @@
         this._updateCRC(data[i]);
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       const bitWidth = this.config.bitWidth;

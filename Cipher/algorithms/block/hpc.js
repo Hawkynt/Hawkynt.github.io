@@ -1340,6 +1340,12 @@
 
   // ========================[ ALGORITHM CLASS ]========================
 
+  /**
+ * HPCAlgorithm - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class HPCAlgorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
@@ -1413,6 +1419,12 @@
 
   // ========================[ INSTANCE CLASS ]========================
 
+  /**
+ * HPC cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class HPCInstance extends IBlockCipherInstance {
     constructor(algorithm, isInverse) {
       super(algorithm);
@@ -1424,6 +1436,12 @@
       this._KX = null; // Key expansion array
       this._tweak = null;
     }
+
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
 
     set key(keyBytes) {
       if (!keyBytes) {
@@ -1445,6 +1463,11 @@
       this._keyBitSize = keyBytes.length * 8;
       this._KX = null; // Will be initialized when needed
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return this._key ? [...this._key] : null;
@@ -1476,10 +1499,22 @@
       return this._tweak ? [...this._tweak] : null;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) {

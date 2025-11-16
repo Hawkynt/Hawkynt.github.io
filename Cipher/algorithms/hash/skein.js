@@ -375,6 +375,12 @@
 
   // ===== ALGORITHM REGISTRATION =====
 
+  /**
+ * SkeinAlgorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class SkeinAlgorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -427,11 +433,23 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Hash functions have no inverse
       return new SkeinInstance(this);
     }
   }
+
+  /**
+ * Skein cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class SkeinInstance extends IHashFunctionInstance {
     constructor(algorithm) {
@@ -440,10 +458,22 @@
       this.hasher.ubi.reset(PARAM_TYPE_MESSAGE);
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       this.hasher.update(data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       return this.hasher.finalize();

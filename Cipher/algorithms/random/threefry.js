@@ -243,6 +243,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) {
         return null; // Counter-based PRNGs have no inverse operation
@@ -250,6 +256,12 @@
       return new ThreefryInstance(this);
     }
   }
+
+  /**
+ * Threefry cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class ThreefryInstance extends IRandomGeneratorInstance {
     constructor(algorithm) {
@@ -285,6 +297,11 @@
       this._key[1] = bytesToBigInt64LE(keyBytes, 8);
       this._ready = true;
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return null; // Cannot retrieve key
@@ -390,12 +407,24 @@
     }
 
     // AlgorithmFramework interface implementation
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       // For counter-based PRNG, Feed sets the counter/seed
       if (data && data.length > 0) {
         this.seed = data;
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       const size = this._outputSize || 16; // Default to one block

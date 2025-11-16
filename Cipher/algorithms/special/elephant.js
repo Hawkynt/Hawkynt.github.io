@@ -308,6 +308,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     }
   }
 
+  /**
+ * Dumbo cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class DumboInstance extends IAlgorithmInstance {
     constructor(algorithm, isDecryption = false) {
       super(algorithm);
@@ -323,6 +329,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       this.STATE_SIZE = 20;
     }
 
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
+
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -333,6 +345,11 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       }
       this._key = new Uint8Array(keyBytes);
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() { return this._key ? Array.from(this._key) : null; }
 
@@ -411,12 +428,24 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       xorBlock(tag, state, this.TAG_SIZE);
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
       if (!this._nonce) throw new Error("Nonce not set");
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) throw new Error("Key not set");
@@ -701,6 +730,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       xorBlock(tag, state, this.TAG_SIZE);
     }
 
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
+
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (!this._nonce) throw new Error("Nonce not set");
@@ -960,6 +995,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       xorBlock(state, next, this.TAG_SIZE);
       xorBlock(tag, state, this.TAG_SIZE);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) throw new Error("Key not set");

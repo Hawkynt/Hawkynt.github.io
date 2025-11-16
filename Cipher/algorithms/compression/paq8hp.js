@@ -41,6 +41,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * PAQ8HPAlgorithm - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class PAQ8HPAlgorithm extends CompressionAlgorithm {
       constructor() {
         super();

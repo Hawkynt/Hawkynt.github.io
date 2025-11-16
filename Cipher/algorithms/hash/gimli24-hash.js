@@ -213,6 +213,12 @@
     state[11] = s11 >>> 0;
   }
 
+  /**
+ * Gimli24Hash - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class Gimli24Hash extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -289,11 +295,23 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new Gimli24HashInstance(this);
     }
   }
+
+  /**
+ * Gimli24Hash cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class Gimli24HashInstance extends IHashFunctionInstance {
     constructor(algorithm) {
@@ -360,10 +378,22 @@
       }
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       this._absorb(data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       var i, j, temp, word;

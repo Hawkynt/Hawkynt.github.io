@@ -140,6 +140,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) {
         return null; // PRNGs have no inverse operation
@@ -147,6 +153,12 @@
       return new KnuthBInstance(this);
     }
   }
+
+  /**
+ * KnuthB cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class KnuthBInstance extends IRandomGeneratorInstance {
     constructor(algorithm) {
@@ -330,10 +342,22 @@
     }
 
     // AlgorithmFramework interface implementation
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       // For PRNG, Feed is typically not used (Knuth-B is deterministic)
       // Could be used for reseeding if needed
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       // Use specified output size or default to 32 bytes

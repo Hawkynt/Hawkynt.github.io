@@ -160,6 +160,12 @@
 
   // ===== HARAKA-256 ALGORITHM =====
 
+  /**
+ * Haraka256Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class Haraka256Algorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -194,17 +200,35 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Hash functions have no inverse
       return new Haraka256Instance(this);
     }
   }
 
+  /**
+ * Haraka256 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class Haraka256Instance extends IHashFunctionInstance {
     constructor(algorithm) {
       super(algorithm);
       this.inputBuffer = [];
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -215,6 +239,12 @@
 
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (this.inputBuffer.length !== 32) {
@@ -278,6 +308,12 @@
 
   // ===== HARAKA-512 ALGORITHM =====
 
+  /**
+ * Haraka512Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class Haraka512Algorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -312,17 +348,35 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Hash functions have no inverse
       return new Haraka512Instance(this);
     }
   }
 
+  /**
+ * Haraka512 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class Haraka512Instance extends IHashFunctionInstance {
     constructor(algorithm) {
       super(algorithm);
       this.inputBuffer = [];
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -333,6 +387,12 @@
 
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (this.inputBuffer.length !== 64) {

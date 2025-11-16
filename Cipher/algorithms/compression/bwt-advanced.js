@@ -41,6 +41,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * BWTAdvancedAlgorithm - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class BWTAdvancedAlgorithm extends CompressionAlgorithm {
       constructor() {
         super();

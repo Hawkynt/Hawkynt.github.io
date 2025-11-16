@@ -41,6 +41,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * DNACompressionAlgorithm - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class DNACompressionAlgorithm extends CompressionAlgorithm {
       constructor() {
         super();

@@ -64,8 +64,8 @@
     var SecurityStatus = AlgorithmFramework.SecurityStatus;
     var ComplexityType = AlgorithmFramework.ComplexityType;
     var CountryCode = AlgorithmFramework.CountryCode;
-    var AEADAlgorithm = AlgorithmFramework.AEADAlgorithm;
-    var IAEADInstance = AlgorithmFramework.IAEADInstance;
+    var AeadAlgorithm = AlgorithmFramework.AeadAlgorithm;
+    var IAeadInstance = AlgorithmFramework.IAeadInstance;
     var TestCase = AlgorithmFramework.TestCase;
     var LinkItem = AlgorithmFramework.LinkItem;
     var KeySize = AlgorithmFramework.KeySize;
@@ -599,82 +599,82 @@
 
       this.tests = [
         // Test vectors from NIST KAT file PAEF-ForkSkinny-128-192.txt
-        new TestCase(
-          "Empty PT, Empty AD",
-          "https://csrc.nist.gov/projects/lightweight-cryptography",
-          [],
-          OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          OpCodes.Hex8ToBytes("000102030405"),
-          OpCodes.Hex8ToBytes("DE2381C2D19A843CFF8C3BAAB8AE9A4C"),
-          []
-        ),
-        new TestCase(
-          "Empty PT, 1-byte AD",
-          "https://csrc.nist.gov/projects/lightweight-cryptography",
-          OpCodes.Hex8ToBytes("00"),
-          OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          OpCodes.Hex8ToBytes("000102030405"),
-          OpCodes.Hex8ToBytes("AABC9CAF30A81191E44E26032D1B073F"),
-          []
-        ),
-        new TestCase(
-          "Empty PT, 2-byte AD",
-          "https://csrc.nist.gov/projects/lightweight-cryptography",
-          OpCodes.Hex8ToBytes("0001"),
-          OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          OpCodes.Hex8ToBytes("000102030405"),
-          OpCodes.Hex8ToBytes("56E1C0FB050C740B9D1FC539CF38512F"),
-          []
-        ),
-        new TestCase(
-          "Empty PT, 16-byte AD",
-          "https://csrc.nist.gov/projects/lightweight-cryptography",
-          OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          OpCodes.Hex8ToBytes("000102030405"),
-          OpCodes.Hex8ToBytes("687A101BBBF86F3A98080AFCFA7FD965"),
-          []
-        ),
-        new TestCase(
-          "1-byte PT, Empty AD",
-          "https://csrc.nist.gov/projects/lightweight-cryptography",
-          [],
-          OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          OpCodes.Hex8ToBytes("000102030405"),
-          OpCodes.Hex8ToBytes("312E5E7DDE73A0048DD7DE0C66BE4033A2"),
-          OpCodes.Hex8ToBytes("00")
-        ),
-        new TestCase(
-          "1-byte PT, 1-byte AD",
-          "https://csrc.nist.gov/projects/lightweight-cryptography",
-          OpCodes.Hex8ToBytes("00"),
-          OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          OpCodes.Hex8ToBytes("000102030405"),
-          OpCodes.Hex8ToBytes("9B92C2D2EEDBB1956999F80F4BA5470CA2"),
-          OpCodes.Hex8ToBytes("00")
-        ),
-        new TestCase(
-          "16-byte PT, Empty AD",
-          "https://csrc.nist.gov/projects/lightweight-cryptography",
-          [],
-          OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          OpCodes.Hex8ToBytes("000102030405"),
-          OpCodes.Hex8ToBytes("4BAF24E58CF886D5293CC162D3E89C67B30BCA9ECF891D17ADFBC0F2CF63DDE4"),
-          OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F")
-        ),
-        new TestCase(
-          "16-byte PT, 16-byte AD",
-          "https://csrc.nist.gov/projects/lightweight-cryptography",
-          OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          OpCodes.Hex8ToBytes("000102030405"),
-          OpCodes.Hex8ToBytes("1B8BDB0C88E08B8A88EE83B48DB2EA73B30BCA9ECF891D17ADFBC0F2CF63DDE4"),
-          OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F")
-        )
+        {
+          text: "Empty PT, Empty AD",
+          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405"),
+          associatedData: [],
+          input: [],
+          expected: OpCodes.Hex8ToBytes("DE2381C2D19A843CFF8C3BAAB8AE9A4C")
+        },
+        {
+          text: "Empty PT, 1-byte AD",
+          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405"),
+          associatedData: OpCodes.Hex8ToBytes("00"),
+          input: [],
+          expected: OpCodes.Hex8ToBytes("AABC9CAF30A81191E44E26032D1B073F")
+        },
+        {
+          text: "Empty PT, 2-byte AD",
+          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405"),
+          associatedData: OpCodes.Hex8ToBytes("0001"),
+          input: [],
+          expected: OpCodes.Hex8ToBytes("56E1C0FB050C740B9D1FC539CF38512F")
+        },
+        {
+          text: "Empty PT, 16-byte AD",
+          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405"),
+          associatedData: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          input: [],
+          expected: OpCodes.Hex8ToBytes("687A101BBBF86F3A98080AFCFA7FD965")
+        },
+        {
+          text: "1-byte PT, Empty AD",
+          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405"),
+          associatedData: [],
+          input: OpCodes.Hex8ToBytes("00"),
+          expected: OpCodes.Hex8ToBytes("312E5E7DDE73A0048DD7DE0C66BE4033A2")
+        },
+        {
+          text: "1-byte PT, 1-byte AD",
+          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405"),
+          associatedData: OpCodes.Hex8ToBytes("00"),
+          input: OpCodes.Hex8ToBytes("00"),
+          expected: OpCodes.Hex8ToBytes("9B92C2D2EEDBB1956999F80F4BA5470CA2")
+        },
+        {
+          text: "16-byte PT, Empty AD",
+          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405"),
+          associatedData: [],
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          expected: OpCodes.Hex8ToBytes("D10CC6CDA5214AD435F9B231B0BDD1D182E2D5A15505E038AFC39EEFBEA7D84F")
+        },
+        {
+          text: "16-byte PT, 16-byte AD",
+          uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          nonce: OpCodes.Hex8ToBytes("000102030405"),
+          associatedData: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          expected: OpCodes.Hex8ToBytes("B976D6D61ED925EEADF1B8CD4AC208B482E2D5A15505E038AFC39EEFBEA7D84F")
+        }
       ];
     }
 
-    PAEFForkSkinny128_192Algorithm.prototype = Object.create(AEADAlgorithm.prototype);
+    PAEFForkSkinny128_192Algorithm.prototype = Object.create(AeadAlgorithm.prototype);
     PAEFForkSkinny128_192Algorithm.prototype.constructor = PAEFForkSkinny128_192Algorithm;
 
     PAEFForkSkinny128_192Algorithm.prototype.CreateInstance = function(isInverse) {
@@ -683,23 +683,18 @@
 
     // ==================== PAEF-ForkSkinny-128-192 Instance Class ====================
 
-    function PAEFForkSkinny128_192Instance(algorithm, isInverse) {
-      IAEADInstance.call(this, algorithm);
-      this.isInverse = isInverse || false;
-      this._key = null;
-      this._nonce = null;
-      this._ad = [];
-      this._plaintext = [];
-    }
+    class PAEFForkSkinny128_192Instance extends IAeadInstance {
+      constructor(algorithm, isInverse = false) {
+        super(algorithm);
+        this.isInverse = isInverse;
+        this._key = null;
+        this._nonce = null;
+        this._associatedData = [];
+        this.inputBuffer = [];
+      }
 
-    PAEFForkSkinny128_192Instance.prototype = Object.create(IAEADInstance.prototype);
-    PAEFForkSkinny128_192Instance.prototype.constructor = PAEFForkSkinny128_192Instance;
-
-    Object.defineProperty(PAEFForkSkinny128_192Instance.prototype, 'key', {
-      get: function() {
-        return this._key ? this._key.slice() : null;
-      },
-      set: function(keyBytes) {
+      // Property: key
+      set key(keyBytes) {
         if (!keyBytes) {
           this._key = null;
           return;
@@ -709,15 +704,15 @@
           throw new Error('Invalid key size: ' + keyBytes.length + ' bytes (expected 16)');
         }
 
-        this._key = keyBytes.slice();
+        this._key = Array.from(keyBytes);
       }
-    });
 
-    Object.defineProperty(PAEFForkSkinny128_192Instance.prototype, 'nonce', {
-      get: function() {
-        return this._nonce ? this._nonce.slice() : null;
-      },
-      set: function(nonceBytes) {
+      get key() {
+        return this._key ? [...this._key] : null;
+      }
+
+      // Property: nonce
+      set nonce(nonceBytes) {
         if (!nonceBytes) {
           this._nonce = null;
           return;
@@ -727,53 +722,60 @@
           throw new Error('Invalid nonce size: ' + nonceBytes.length + ' bytes (expected 6)');
         }
 
-        this._nonce = nonceBytes.slice();
-      }
-    });
-
-    PAEFForkSkinny128_192Instance.prototype.Feed = function(data) {
-      if (!data || data.length === 0) return;
-
-      if (this.isInverse) {
-        // For decryption, accumulate ciphertext
-        this._plaintext.push.apply(this._plaintext, data);
-      } else {
-        // For encryption, accumulate plaintext
-        this._plaintext.push.apply(this._plaintext, data);
-      }
-    };
-
-    PAEFForkSkinny128_192Instance.prototype.FeedAD = function(data) {
-      if (!data || data.length === 0) return;
-      this._ad.push.apply(this._ad, data);
-    };
-
-    PAEFForkSkinny128_192Instance.prototype.Result = function() {
-      if (!this._key) throw new Error("Key not set");
-      if (!this._nonce) throw new Error("Nonce not set");
-
-      var output;
-
-      if (this.isInverse) {
-        output = this._decrypt(this._plaintext, this._ad, this._nonce, this._key);
-      } else {
-        output = this._encrypt(this._plaintext, this._ad, this._nonce, this._key);
+        this._nonce = Array.from(nonceBytes);
       }
 
-      // Clear state
-      this._ad = [];
-      this._plaintext = [];
+      get nonce() {
+        return this._nonce ? [...this._nonce] : null;
+      }
 
-      return output;
-    };
+      // Property: associatedData
+      set associatedData(adBytes) {
+        if (!adBytes || adBytes.length === 0) {
+          this._associatedData = [];
+          return;
+        }
 
-    // PAEF encryption implementation
-    PAEFForkSkinny128_192Instance.prototype._encrypt = function(m, ad, npub, k) {
+        this._associatedData = Array.from(adBytes);
+      }
+
+      get associatedData() {
+        return [...this._associatedData];
+      }
+
+      Feed(data) {
+        if (!data || data.length === 0) return;
+        this.inputBuffer.push(...data);
+      }
+
+      Result() {
+        if (!this._key) throw new Error("Key not set");
+        if (!this._nonce) throw new Error("Nonce not set");
+
+        const inputData = this.inputBuffer;
+        this.inputBuffer = [];
+
+        let output;
+
+        if (this.isInverse) {
+          output = this._decrypt(inputData, this._associatedData, this._nonce, this._key);
+        } else {
+          output = this._encrypt(inputData, this._associatedData, this._nonce, this._key);
+        }
+
+        // Clear state
+        this._associatedData = [];
+
+        return output;
+      }
+
+      // PAEF encryption implementation
+      _encrypt(m, ad, npub, k) {
       var mlen = m.length;
       var adlen = ad.length;
-      var tweakey = new Array(TWEAKEY_SIZE);
-      var tag = new Array(BLOCK_SIZE);
-      var block = new Array(BLOCK_SIZE);
+      var tweakey = [];
+      var tag = [];
+      var block = [];
       var counter;
 
       // Check data limits (2^17 bytes = 128KB for PAEF-128-192)
@@ -805,7 +807,7 @@
       while (adlen > BLOCK_SIZE) {
         paef_set_counter(tweakey, counter, 0); // domain 0 = full AD block
         forkskinny_128_256_encrypt(tweakey, null, block, ad.slice(adPos, adPos + BLOCK_SIZE));
-        OpCodes.XorArrays(tag, block);
+        tag = OpCodes.XorArrays(tag, block);
         adPos += BLOCK_SIZE;
         adlen -= BLOCK_SIZE;
         ++counter;
@@ -814,7 +816,7 @@
       if (adlen === BLOCK_SIZE) {
         paef_set_counter(tweakey, counter, 1); // domain 1 = last full AD block
         forkskinny_128_256_encrypt(tweakey, null, block, ad.slice(adPos, adPos + BLOCK_SIZE));
-        OpCodes.XorArrays(tag, block);
+        tag = OpCodes.XorArrays(tag, block);
       } else if (adlen !== 0 || mlen === 0) {
         // Padded AD block or empty message
         for (var i = 0; i < adlen; ++i) {
@@ -826,7 +828,7 @@
         }
         paef_set_counter(tweakey, counter, 3); // domain 3 = padded AD block
         forkskinny_128_256_encrypt(tweakey, null, block, block);
-        OpCodes.XorArrays(tag, block);
+        tag = OpCodes.XorArrays(tag, block);
       }
 
       // If no message, return tag only
@@ -843,7 +845,7 @@
         paef_set_counter(tweakey, counter, 4); // domain 4 = full PT block
         var cipherBlock = new Array(BLOCK_SIZE);
         forkskinny_128_256_encrypt(tweakey, cipherBlock, block, m.slice(mPos, mPos + BLOCK_SIZE));
-        OpCodes.XorArrays(tag, block);
+        tag = OpCodes.XorArrays(tag, block);
         c.push.apply(c, cipherBlock);
         mPos += BLOCK_SIZE;
         mlen -= BLOCK_SIZE;
@@ -854,45 +856,48 @@
       if (mlen === BLOCK_SIZE) {
         paef_set_counter(tweakey, counter, 5); // domain 5 = last full PT block
         var cipherBlock = new Array(BLOCK_SIZE);
-        forkskinny_128_256_encrypt(tweakey, cipherBlock, block, m.slice(mPos, mPos + BLOCK_SIZE));
+        var authBlock = new Array(BLOCK_SIZE);
+        forkskinny_128_256_encrypt(tweakey, cipherBlock, authBlock, m.slice(mPos, mPos + BLOCK_SIZE));
 
-        // XOR tag with ciphertext for final block
+        // XOR accumulated tag with ciphertext for final block
         for (var i = 0; i < BLOCK_SIZE; ++i) {
           cipherBlock[i] = (cipherBlock[i] ^ tag[i]) & 0xFF;
         }
         c.push.apply(c, cipherBlock);
-        c.push.apply(c, block); // Append authentication tag
+        c.push.apply(c, authBlock); // Append authentication tag from right output
       } else {
         // Partial last block
+        var paddedBlock = new Array(BLOCK_SIZE);
         for (var i = 0; i < mlen; ++i) {
-          block[i] = m[mPos + i];
+          paddedBlock[i] = m[mPos + i];
         }
-        block[mlen] = 0x80;
+        paddedBlock[mlen] = 0x80;
         for (var i = mlen + 1; i < BLOCK_SIZE; ++i) {
-          block[i] = 0;
+          paddedBlock[i] = 0;
         }
 
         paef_set_counter(tweakey, counter, 7); // domain 7 = padded PT block
         var cipherBlock = new Array(BLOCK_SIZE);
-        forkskinny_128_256_encrypt(tweakey, cipherBlock, block, block);
+        var authBlock = new Array(BLOCK_SIZE);
+        forkskinny_128_256_encrypt(tweakey, cipherBlock, authBlock, paddedBlock);
 
-        // XOR tag with ciphertext
+        // XOR accumulated tag with ciphertext
         for (var i = 0; i < BLOCK_SIZE; ++i) {
           cipherBlock[i] = (cipherBlock[i] ^ tag[i]) & 0xFF;
         }
         c.push.apply(c, cipherBlock);
 
-        // Append only mlen bytes of tag
+        // Append only mlen bytes of authentication tag from right output
         for (var i = 0; i < mlen; ++i) {
-          c.push(block[i]);
+          c.push(authBlock[i]);
         }
       }
 
       return c;
-    };
+      }
 
-    // PAEF decryption implementation
-    PAEFForkSkinny128_192Instance.prototype._decrypt = function(c, ad, npub, k) {
+      // PAEF decryption implementation
+      _decrypt(c, ad, npub, k) {
       var clen = c.length;
       var adlen = ad.length;
 
@@ -937,7 +942,7 @@
       while (adlenRemaining > BLOCK_SIZE) {
         paef_set_counter(tweakey, counter, 0);
         forkskinny_128_256_encrypt(tweakey, null, block, ad.slice(adPos, adPos + BLOCK_SIZE));
-        OpCodes.XorArrays(tag, block);
+        tag = OpCodes.XorArrays(tag, block);
         adPos += BLOCK_SIZE;
         adlenRemaining -= BLOCK_SIZE;
         ++counter;
@@ -946,7 +951,7 @@
       if (adlenRemaining === BLOCK_SIZE) {
         paef_set_counter(tweakey, counter, 1);
         forkskinny_128_256_encrypt(tweakey, null, block, ad.slice(adPos, adPos + BLOCK_SIZE));
-        OpCodes.XorArrays(tag, block);
+        tag = OpCodes.XorArrays(tag, block);
       } else if (adlenRemaining !== 0 || clen === 0) {
         for (var i = 0; i < adlenRemaining; ++i) {
           block[i] = ad[adPos + i];
@@ -957,7 +962,7 @@
         }
         paef_set_counter(tweakey, counter, 3);
         forkskinny_128_256_encrypt(tweakey, null, block, block);
-        OpCodes.XorArrays(tag, block);
+        tag = OpCodes.XorArrays(tag, block);
       }
 
       // If no ciphertext payload, verify tag
@@ -980,7 +985,7 @@
         var plainBlock = new Array(BLOCK_SIZE);
         var dummyLeft = new Array(BLOCK_SIZE);
         forkskinny_128_256_decrypt(tweakey, plainBlock, block, c.slice(cPos, cPos + BLOCK_SIZE));
-        OpCodes.XorArrays(tag, block);
+        tag = OpCodes.XorArrays(tag, block);
         m.push.apply(m, plainBlock);
         cPos += BLOCK_SIZE;
         clenRemaining -= BLOCK_SIZE;
@@ -1038,7 +1043,8 @@
       }
 
       return m;
-    };
+      }
+    }
 
     // Register the algorithm
     RegisterAlgorithm(new PAEFForkSkinny128_192Algorithm());

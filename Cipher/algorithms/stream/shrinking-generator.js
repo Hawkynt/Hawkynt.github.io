@@ -59,6 +59,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * ShrinkingGeneratorAlgorithm - Stream cipher implementation
+ * @class
+ * @extends {StreamCipherAlgorithm}
+ */
+
   class ShrinkingGeneratorAlgorithm extends StreamCipherAlgorithm {
     constructor() {
       super();
@@ -130,6 +136,12 @@
     }
   }
 
+  /**
+ * ShrinkingGenerator cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class ShrinkingGeneratorInstance extends IAlgorithmInstance {
     constructor(algorithm, isInverse) {
       super(algorithm, isInverse);
@@ -153,6 +165,11 @@
         this.initializeKey();
       }
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return this.keyData ? this.keyData.slice() : null;
@@ -212,6 +229,12 @@
 
       this.isInitialized = true;
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (Array.isArray(data)) {
@@ -294,6 +317,12 @@
 
       return keystream;
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this.isInitialized) {

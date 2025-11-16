@@ -51,6 +51,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * GolombBitStreamCompression - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class GolombBitStreamCompression extends CompressionAlgorithm {
       constructor() {
         super();

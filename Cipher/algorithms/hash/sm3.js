@@ -85,6 +85,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * SM3Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class SM3Algorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -164,6 +170,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) {
         return null; // Hash functions have no inverse
@@ -173,6 +185,12 @@
   }
 
   // ===== INSTANCE CLASS =====
+
+  /**
+ * SM3 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class SM3Instance extends IHashFunctionInstance {
     constructor(algorithm) {
@@ -205,6 +223,12 @@
     }
 
     // Feed data to the hash
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!Array.isArray(data)) {
@@ -296,6 +320,12 @@
     }
 
     // Get the hash result
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
+
     Result() {
       // Create a copy of the buffer for padding
       const finalBuffer = [...this.buffer];

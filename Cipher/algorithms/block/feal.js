@@ -61,6 +61,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * FEAL-8 (Fast Data Encipherment Algorithm) - Educational Feistel cipher
+   * 64-bit blocks with 64-bit keys using 8 rounds. Cryptographically broken.
+   * @class
+   * @extends {BlockCipherAlgorithm}
+   */
   class FEALAlgorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
@@ -114,15 +120,28 @@
       this.tests[0].key = OpCodes.Hex8ToBytes("0123456789abcdef");
     }
 
-    // Required: Create instance for this algorithm
+    /**
+     * Create new FEAL cipher instance
+     * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+     * @returns {FEALInstance} New FEAL cipher instance
+     */
     CreateInstance(isInverse = false) {
       return new FEALInstance(this, isInverse);
     }
 
   }
 
-  // Instance class - handles the actual encryption/decryption
+  /**
+   * FEAL cipher instance implementing Feed/Result pattern
+   * @class
+   * @extends {IBlockCipherInstance}
+   */
   class FEALInstance extends IBlockCipherInstance {
+    /**
+     * Initialize FEAL cipher instance
+     * @param {FEALAlgorithm} algorithm - Parent algorithm instance
+     * @param {boolean} [isInverse=false] - Decryption mode flag
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -133,7 +152,11 @@
       this.KeySize = 0;   // will be set when key is assigned
     }
 
-    // Property setter for key - validates and sets up key schedule
+    /**
+     * Set encryption/decryption key and generate round keys
+     * @param {uint8[]|null} keyBytes - 64-bit (8-byte) key or null to clear
+     * @throws {Error} If key size is not exactly 8 bytes
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -152,11 +175,19 @@
       this.roundKeys = this._generateRoundKeys(keyBytes);
     }
 
+    /**
+     * Get copy of current key
+     * @returns {uint8[]|null} Copy of key bytes or null
+     */
     get key() {
       return this._key ? [...this._key] : null; // Return copy
     }
 
-    // Feed data to the cipher (accumulates until we have complete blocks)
+    /**
+     * Feed data to cipher for encryption/decryption
+     * @param {uint8[]} data - Input data bytes
+     * @throws {Error} If key not set
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this.key) throw new Error("Key not set");
@@ -165,7 +196,11 @@
       this.inputBuffer.push(...data);
     }
 
-    // Get the result of the transformation
+    /**
+     * Get cipher result (encrypted or decrypted data)
+     * @returns {uint8[]} Processed output bytes
+     * @throws {Error} If key not set, no data fed, or invalid input length
+     */
     Result() {
       if (!this.key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
@@ -182,8 +217,8 @@
       // Process each block
       for (let i = 0; i < this.inputBuffer.length; i += blockSize) {
         const block = this.inputBuffer.slice(i, i + blockSize);
-        const processedBlock = this.isInverse 
-          ? this._decryptBlock(block) 
+        const processedBlock = this.isInverse
+          ? this._decryptBlock(block)
           : this._encryptBlock(block);
         output.push(...processedBlock);
       }
@@ -194,16 +229,35 @@
       return output;
     }
 
-    // FEAL S-box functions
+    /**
+     * FEAL S0 box function - rotated addition
+     * @private
+     * @param {uint8} a - First input byte
+     * @param {uint8} b - Second input byte
+     * @returns {uint8} Transformed byte
+     */
     _S0(a, b) {
       return OpCodes.RotL8((a + b) & 0xFF, 2);
     }
 
+    /**
+     * FEAL S1 box function - rotated addition with constant
+     * @private
+     * @param {uint8} a - First input byte
+     * @param {uint8} b - Second input byte
+     * @returns {uint8} Transformed byte
+     */
     _S1(a, b) {
       return OpCodes.RotL8((a + b + 1) & 0xFF, 2);
     }
 
-    // FEAL F-function
+    /**
+     * FEAL F-function (Feistel round function)
+     * @private
+     * @param {uint32} data - 32-bit input data
+     * @param {uint32} key - 32-bit round key
+     * @returns {uint32} Transformed 32-bit output
+     */
     _F(data, key) {
       // Split 32-bit data into bytes
       const d = OpCodes.Unpack32BE(data);
@@ -221,7 +275,12 @@
       return OpCodes.Pack32BE(f4, f3, f2, f1);
     }
 
-    // Generate round keys
+    /**
+     * Generate round keys from master key
+     * @private
+     * @param {uint8[]} keyBytes - 8-byte master key
+     * @returns {uint32[]} Array of 16 round keys
+     */
     _generateRoundKeys(keyBytes) {
       const roundKeys = [];
 
@@ -243,7 +302,12 @@
       return roundKeys;
     }
 
-    // Encrypt 8-byte block
+    /**
+     * Encrypt single 64-bit block using FEAL-8
+     * @private
+     * @param {uint8[]} block - 8-byte input block
+     * @returns {uint8[]} 8-byte encrypted block
+     */
     _encryptBlock(block) {
       // Split block into two 32-bit halves (big-endian)
       let left = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
@@ -268,7 +332,12 @@
       return leftBytes.concat(rightBytes);
     }
 
-    // Decrypt 8-byte block
+    /**
+     * Decrypt single 64-bit block using FEAL-8
+     * @private
+     * @param {uint8[]} block - 8-byte input block
+     * @returns {uint8[]} 8-byte decrypted block
+     */
     _decryptBlock(block) {
       // Split block into two 32-bit halves (big-endian)
       let left = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);

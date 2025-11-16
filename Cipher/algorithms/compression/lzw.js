@@ -52,6 +52,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * LZWCompression - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class LZWCompression extends CompressionAlgorithm {
       constructor() {
         super();

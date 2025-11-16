@@ -49,6 +49,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * BPECompression - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class BPECompression extends CompressionAlgorithm {
       constructor() {
         super();

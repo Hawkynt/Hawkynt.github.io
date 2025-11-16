@@ -318,10 +318,14 @@
           new LinkItem(
             "SafeCurves: choosing safe curves for elliptic-curve cryptography",
             "https://safecurves.cr.yp.to/"
+          ),
+          new LinkItem(
+            "Wycheproof Project - X25519 Test Vectors",
+            "https://github.com/google/wycheproof"
           )
         ];
 
-        // RFC 7748 Test Vectors (Section 6.1)
+        // RFC 7748 and Wycheproof Test Vectors
         this.tests = [
           {
             text: "RFC 7748 Section 6.1 - Test Vector 1",
@@ -420,6 +424,175 @@
             iterations: 1000,
             expected: OpCodes.Hex8ToBytes(
               "684cf59ba83309552800ef566f2f4d3c1c3887c49360e3875f2eb94d99532c51"
+            ),
+            input: null
+          },
+          // Wycheproof Test Vectors - Edge Cases
+          {
+            text: "Wycheproof - Public key = 0 (low-order point)",
+            uri: "https://github.com/google/wycheproof",
+            privateKey: OpCodes.Hex8ToBytes(
+              "207494038f2bb811d47805bcdf04a2ac585ada7f2f23389bfd4658f9ddd4debc"
+            ),
+            otherPublicKey: OpCodes.Hex8ToBytes(
+              "0000000000000000000000000000000000000000000000000000000000000000"
+            ),
+            expected: OpCodes.Hex8ToBytes(
+              "0000000000000000000000000000000000000000000000000000000000000000"
+            ),
+            input: null
+          },
+          {
+            text: "Wycheproof - Public key = 1 (low-order point)",
+            uri: "https://github.com/google/wycheproof",
+            privateKey: OpCodes.Hex8ToBytes(
+              "202e8972b61c7e61930eb9450b5070eae1c670475685541f0476217e4818cfab"
+            ),
+            otherPublicKey: OpCodes.Hex8ToBytes(
+              "0100000000000000000000000000000000000000000000000000000000000000"
+            ),
+            expected: OpCodes.Hex8ToBytes(
+              "0000000000000000000000000000000000000000000000000000000000000000"
+            ),
+            input: null
+          },
+          {
+            text: "Wycheproof - Edge case on twist",
+            uri: "https://github.com/google/wycheproof",
+            privateKey: OpCodes.Hex8ToBytes(
+              "38dde9f3e7b799045f9ac3793d4a9277dadeadc41bec0290f81f744f73775f84"
+            ),
+            otherPublicKey: OpCodes.Hex8ToBytes(
+              "0200000000000000000000000000000000000000000000000000000000000000"
+            ),
+            expected: OpCodes.Hex8ToBytes(
+              "9a2cfe84ff9c4a9739625cae4a3b82a906877a441946f8d7b3d795fe8f5d1639"
+            ),
+            input: null
+          },
+          {
+            text: "Wycheproof - Public key on twist",
+            uri: "https://github.com/google/wycheproof",
+            privateKey: OpCodes.Hex8ToBytes(
+              "588c061a50804ac488ad774ac716c3f5ba714b2712e048491379a500211998a8"
+            ),
+            otherPublicKey: OpCodes.Hex8ToBytes(
+              "63aa40c6e38346c5caf23a6df0a5e6c80889a08647e551b3563449befcfc9733"
+            ),
+            expected: OpCodes.Hex8ToBytes(
+              "b1a707519495ffffb298ff941716b06dfab87cf8d91123fe2be9a233dda22212"
+            ),
+            input: null
+          },
+          {
+            text: "Wycheproof - Edge case for public key (all-zeros variant)",
+            uri: "https://github.com/google/wycheproof",
+            privateKey: OpCodes.Hex8ToBytes(
+              "386f7f16c50731d64f82e6a170b142a4e34f31fd7768fcb8902925e7d1e21abe"
+            ),
+            otherPublicKey: OpCodes.Hex8ToBytes(
+              "0400000000000000000000000000000000000000000000000000000000000000"
+            ),
+            expected: OpCodes.Hex8ToBytes(
+              "0fcab5d842a078d7a71fc59b57bfb4ca0be6873b49dcdb9f44e14ae8fbdfa542"
+            ),
+            input: null
+          },
+          {
+            text: "Wycheproof - Public key >= p (reduction test)",
+            uri: "https://github.com/google/wycheproof",
+            privateKey: OpCodes.Hex8ToBytes(
+              "f01e48dafac9d7bcf589cbc382c878d18bda3550589ffb5d50b523bebe329dae"
+            ),
+            otherPublicKey: OpCodes.Hex8ToBytes(
+              "efffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"
+            ),
+            expected: OpCodes.Hex8ToBytes(
+              "bd36a0790eb883098c988b21786773de0b3a4df162282cf110de18dd484ce74b"
+            ),
+            input: null
+          },
+          {
+            text: "Wycheproof - Low-order public key test",
+            uri: "https://github.com/google/wycheproof",
+            privateKey: OpCodes.Hex8ToBytes(
+              "10255c9230a97a30a458ca284a629669293a31890cda9d147febc7d1e22d6bb1"
+            ),
+            otherPublicKey: OpCodes.Hex8ToBytes(
+              "e0eb7a7c3b41b8ae1656e3faf19fc46ada098deb9c32b1fd866205165f49b800"
+            ),
+            expected: OpCodes.Hex8ToBytes(
+              "0000000000000000000000000000000000000000000000000000000000000000"
+            ),
+            input: null
+          },
+          {
+            text: "Wycheproof - Checking for overflow handling",
+            uri: "https://github.com/google/wycheproof",
+            privateKey: OpCodes.Hex8ToBytes(
+              "c81724704000b26d31703cc97e3a378d56fad8219361c88cca8bd7c5719b12b2"
+            ),
+            otherPublicKey: OpCodes.Hex8ToBytes(
+              "fd300aeb40e1fa582518412b49b208a7842b1e1f056a040178ea4141534f652d"
+            ),
+            expected: OpCodes.Hex8ToBytes(
+              "b734105dc257585d73b566ccb76f062795ccbec89128e52b02f3e59639f13c46"
+            ),
+            input: null
+          },
+          {
+            text: "libsodium scalarmult1 - Standard test vector",
+            uri: "https://github.com/jedisct1/libsodium",
+            privateKey: OpCodes.Hex8ToBytes(
+              "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a"
+            ),
+            otherPublicKey: OpCodes.Hex8ToBytes(
+              "0900000000000000000000000000000000000000000000000000000000000000"
+            ),
+            expected: OpCodes.Hex8ToBytes(
+              "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a"
+            ),
+            input: null
+          },
+          {
+            text: "libsodium scalarmult2 - Standard test vector",
+            uri: "https://github.com/jedisct1/libsodium",
+            privateKey: OpCodes.Hex8ToBytes(
+              "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb"
+            ),
+            otherPublicKey: OpCodes.Hex8ToBytes(
+              "0900000000000000000000000000000000000000000000000000000000000000"
+            ),
+            expected: OpCodes.Hex8ToBytes(
+              "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f"
+            ),
+            input: null
+          },
+          {
+            text: "curve25519-donna - Non-canonical point test",
+            uri: "https://github.com/agl/curve25519-donna",
+            privateKey: OpCodes.Hex8ToBytes(
+              "0100000000000000000000000000000000000000000000000000000000000000"
+            ),
+            otherPublicKey: OpCodes.Hex8ToBytes(
+              "2500000000000000000000000000000000000000000000000000000000000000"
+            ),
+            expected: OpCodes.Hex8ToBytes(
+              "3c7777caf997b264416077665b4e229d0b9548dc0cd81998ddcdc5c8533c797f"
+            ),
+            input: null
+          },
+          {
+            text: "curve25519-donna - All-bits-set public key",
+            uri: "https://github.com/agl/curve25519-donna",
+            privateKey: OpCodes.Hex8ToBytes(
+              "0100000000000000000000000000000000000000000000000000000000000000"
+            ),
+            otherPublicKey: OpCodes.Hex8ToBytes(
+              "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            ),
+            expected: OpCodes.Hex8ToBytes(
+              "b32d1362c248d62fe62619cff04dd43db73ffc1b6308ede30b78d87380f1e834"
             ),
             input: null
           }

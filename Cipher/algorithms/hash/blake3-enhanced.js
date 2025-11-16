@@ -74,6 +74,12 @@
   const BLAKE3_KEY_LEN = 32;
   const BLAKE3_CHUNK_LEN = 1024;
 
+  /**
+ * BLAKE3Enhanced - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class BLAKE3Enhanced extends HashFunctionAlgorithm {
       constructor() {
         super();
@@ -221,7 +227,19 @@
     return output;
   }
 
+  /**
+ * BLAKE3Enhanced cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class BLAKE3EnhancedInstance extends IHashFunctionInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;

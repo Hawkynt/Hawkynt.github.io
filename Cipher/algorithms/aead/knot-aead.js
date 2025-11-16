@@ -481,7 +481,7 @@
           expected: OpCodes.Hex8ToBytes("E93B487DDE39FDFFE7FB011C639B307A5D")
         },
         {
-          text: "NIST LWC KAT Vector #340: 10-byte PT with 8-byte AD",
+          text: "NIST LWC KAT Vector #340: 10-byte PT with 9-byte AD",
           uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
@@ -511,12 +511,30 @@
       this.FINAL_ROUNDS = 32;
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new KnotAead128256Instance(this, isInverse);
     }
   }
 
+  /**
+ * KnotAead128256 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class KnotAead128256Instance extends IAeadInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -528,6 +546,12 @@
     }
 
     // Property: key
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
+
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -545,6 +569,11 @@
 
       this._key = [...keyBytes];
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return this._key ? [...this._key] : null;
@@ -724,6 +753,12 @@
     }
 
     // Feed/Result pattern
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!Array.isArray(data)) {
@@ -738,6 +773,12 @@
 
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) {
@@ -890,7 +931,7 @@
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           associatedData: [],
           input: OpCodes.Hex8ToBytes("00"),
-          expected: OpCodes.Hex8ToBytes("902F3A8F9CC74C133BE99356BB893CDB8D")
+          expected: OpCodes.Hex8ToBytes("844B6DA7E3AA4B388F62F2896DC5EF157A")
         },
         {
           text: "NIST LWC KAT Vector #44: 1-byte PT with 10-byte AD",
@@ -902,13 +943,13 @@
           expected: OpCodes.Hex8ToBytes("203D9C10A8E20EB23C99F37EB3D55629B2")
         },
         {
-          text: "NIST LWC KAT Vector #340: 10-byte PT with 8-byte AD",
+          text: "NIST LWC KAT Vector #340: 10-byte PT with 9-byte AD",
           uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           associatedData: OpCodes.Hex8ToBytes("000102030405060708"),
           input: OpCodes.Hex8ToBytes("00010203040506070809"),
-          expected: OpCodes.Hex8ToBytes("DE70DCA5E4FB0C29074E2B4F9B33B17E3F9F7AD5E9E98A44")
+          expected: OpCodes.Hex8ToBytes("0B27C0C725D709FF8C6CFBEDEFDABE971544FBE89AC67A074561")
         }
       ];
 
@@ -923,12 +964,30 @@
       this.FINAL_ROUNDS = 32;
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new KnotAead128384Instance(this, isInverse);
     }
   }
 
+  /**
+ * KnotAead128384 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class KnotAead128384Instance extends IAeadInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -940,6 +999,12 @@
     }
 
     // Property: key
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
+
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -957,6 +1022,11 @@
 
       this._key = [...keyBytes];
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return this._key ? [...this._key] : null;
@@ -1148,6 +1218,12 @@
     }
 
     // Feed/Result pattern
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!Array.isArray(data)) {
@@ -1162,6 +1238,12 @@
 
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) {

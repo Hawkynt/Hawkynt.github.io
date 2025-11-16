@@ -161,6 +161,12 @@
            rotr64(s4, 32) ^ rotr64(s5, 40) ^ rotr64(s6, 48) ^ rotr64(s7, 56);
   }
 
+  /**
+ * WhirlpoolAlgorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class WhirlpoolAlgorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -217,12 +223,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new WhirlpoolAlgorithmInstance(this, isInverse);
     }
   }
 
+  /**
+ * WhirlpoolAlgorithm cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class WhirlpoolAlgorithmInstance extends IHashFunctionInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -447,10 +471,22 @@
       this.bufferLength = 0;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       this.Init();
       this.Update(data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       return this.Final();

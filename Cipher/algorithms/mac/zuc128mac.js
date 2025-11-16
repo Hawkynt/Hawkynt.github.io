@@ -129,6 +129,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) {
         return null; // MACs cannot be reversed
@@ -138,6 +144,12 @@
   }
 
   // Instance class implementing ZUC-128-MAC
+  /**
+ * ZUC128MAC cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class ZUC128MACInstance extends IMacInstance {
     constructor(algorithm) {
       super(algorithm);
@@ -146,6 +158,12 @@
       this.inputBuffer = [];
       this.zucEngine = null;
     }
+
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
 
     set key(keyBytes) {
       if (!keyBytes) {
@@ -164,9 +182,20 @@
       this._key = [...keyBytes];
     }
 
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
+
     get key() {
       return this._key ? [...this._key] : null;
     }
+
+    /**
+   * Set initialization vector
+   * @param {uint8[]|null} ivBytes - IV bytes or null to clear
+   * @throws {Error} If IV size is invalid
+   */
 
     set iv(ivBytes) {
       if (!ivBytes) {
@@ -185,9 +214,20 @@
       this._iv = [...ivBytes];
     }
 
+    /**
+   * Get copy of current IV
+   * @returns {uint8[]|null} Copy of IV bytes or null
+   */
+
     get iv() {
       return this._iv ? [...this._iv] : null;
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -196,6 +236,12 @@
       }
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) {

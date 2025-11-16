@@ -620,6 +620,12 @@ const rawRoundConstants = [
     };
   })();
 
+  /**
+ * KhazadAlgorithm - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class KhazadAlgorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
@@ -693,12 +699,30 @@ const rawRoundConstants = [
       this.R = ROUNDS;
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new KhazadInstance(this, isInverse);
     }
   }
 
+  /**
+ * Khazad cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class KhazadInstance extends IBlockCipherInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -711,6 +735,11 @@ const rawRoundConstants = [
       this.roundKeyDecHi = new Uint32Array(ROUNDS + 1);
       this.roundKeyDecLo = new Uint32Array(ROUNDS + 1);
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return this._key ? OpCodes.CopyArray(this._key) : null;
@@ -754,6 +783,12 @@ const rawRoundConstants = [
       return this._crypt(block, this.roundKeyDecHi, this.roundKeyDecLo);
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (data === null || data === undefined) {
         return;
@@ -772,6 +807,12 @@ const rawRoundConstants = [
 
       this.inputBuffer.push(...bytes.map((b) => b & 0xff));
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) {

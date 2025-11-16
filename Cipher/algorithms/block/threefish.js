@@ -62,6 +62,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * Threefish-512 - Tweakable block cipher from the Skein hash function family
+   * 512-bit blocks and keys with 72 rounds, optimized for 64-bit platforms and timing attack resistance
+   * @class
+   * @extends {BlockCipherAlgorithm}
+   */
   class Threefish extends BlockCipherAlgorithm {
     constructor() {
       super();
@@ -131,13 +137,24 @@
       ];
     }
 
-    // Required: Create instance for this algorithm
+    /**
+     * Create new Threefish cipher instance
+     * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+     * @returns {ThreefishInstance} New Threefish cipher instance
+     */
     CreateInstance(isInverse = false) {
       return new ThreefishInstance(this, isInverse);
     }
 
-    // 64-bit addition with carry handling for JavaScript
-    // NOTE: This could be moved to OpCodes when Add64 becomes available
+    /**
+     * 64-bit addition with carry handling for JavaScript
+     * @private
+     * @param {uint32} aLow - Low 32 bits of first operand
+     * @param {uint32} aHigh - High 32 bits of first operand
+     * @param {uint32} bLow - Low 32 bits of second operand
+     * @param {uint32} bHigh - High 32 bits of second operand
+     * @returns {{low: uint32, high: uint32}} 64-bit sum
+     */
     add64(aLow, aHigh, bLow, bHigh) {
       const sumLow = (aLow + bLow) >>> 0;
       const carry = sumLow < aLow ? 1 : 0;
@@ -145,7 +162,16 @@
       return { low: sumLow, high: sumHigh };
     }
 
-    // MIX function for Threefish - operates on two 64-bit words
+    /**
+     * MIX function for Threefish - operates on two 64-bit words
+     * @private
+     * @param {uint32} x0Low - Low 32 bits of first word
+     * @param {uint32} x0High - High 32 bits of first word
+     * @param {uint32} x1Low - Low 32 bits of second word
+     * @param {uint32} x1High - High 32 bits of second word
+     * @param {number} rotation - Rotation amount
+     * @returns {{y0Low: uint32, y0High: uint32, y1Low: uint32, y1High: uint32}} Mixed words
+     */
     mix(x0Low, x0High, x1Low, x1High, rotation) {
       // y0 = (x0 + x1) mod 2^64
       const sum = this.add64(x0Low, x0High, x1Low, x1High);
@@ -163,7 +189,16 @@
       };
     }
 
-    // Inverse MIX function for decryption
+    /**
+     * Inverse MIX function for decryption
+     * @private
+     * @param {uint32} y0Low - Low 32 bits of first word
+     * @param {uint32} y0High - High 32 bits of first word
+     * @param {uint32} y1Low - Low 32 bits of second word
+     * @param {uint32} y1High - High 32 bits of second word
+     * @param {number} rotation - Rotation amount
+     * @returns {{x0Low: uint32, x0High: uint32, x1Low: uint32, x1High: uint32}} Unmixed words
+     */
     mixInverse(y0Low, y0High, y1Low, y1High, rotation) {
       // x1 = (y1 XOR y0) >>> rotation
       const xorResult = { low: (y1Low ^ y0Low) >>> 0, high: (y1High ^ y0High) >>> 0 };
@@ -182,7 +217,12 @@
       };
     }
 
-    // Permute function for Threefish-512 (π)
+    /**
+     * Permute function for Threefish-512 (π)
+     * @private
+     * @param {Array<{low: uint32, high: uint32}>} words - Array of 8 words to permute
+     * @returns {Array<{low: uint32, high: uint32}>} Permuted words
+     */
     permute(words) {
       // Threefish-512 permutation: π(0,1,2,3,4,5,6,7) = (2,1,4,7,6,5,0,3)
       return [
@@ -191,7 +231,12 @@
       ];
     }
 
-    // Inverse permute function for decryption
+    /**
+     * Inverse permute function for decryption
+     * @private
+     * @param {Array<{low: uint32, high: uint32}>} words - Array of 8 words to unpermute
+     * @returns {Array<{low: uint32, high: uint32}>} Unpermuted words
+     */
     permuteInverse(words) {
       // Inverse: π^-1(0,1,2,3,4,5,6,7) = (6,1,0,7,2,5,4,3)
       return [
@@ -200,7 +245,12 @@
       ];
     }
 
-    // Convert byte array to 64-bit word pairs
+    /**
+     * Convert byte array to 64-bit word pairs
+     * @private
+     * @param {uint8[]} bytes - Input byte array
+     * @returns {Array<{low: uint32, high: uint32}>} Array of 64-bit words
+     */
     bytesToWords64(bytes) {
       const words = [];
       for (let i = 0; i < bytes.length; i += 8) {
@@ -217,7 +267,12 @@
       return words;
     }
 
-    // Convert 64-bit word pairs back to byte array
+    /**
+     * Convert 64-bit word pairs back to byte array
+     * @private
+     * @param {Array<{low: uint32, high: uint32}>} words - Array of 64-bit words
+     * @returns {uint8[]} Byte array
+     */
     words64ToBytes(words) {
       const bytes = [];
       for (let i = 0; i < words.length; i++) {
@@ -233,7 +288,13 @@
       return bytes;
     }
 
-    // Generate subkey for round
+    /**
+     * Generate subkey for round
+     * @private
+     * @param {Array<{low: uint32, high: uint32}>} extendedKey - Extended key schedule
+     * @param {number} s - Round number
+     * @returns {Array<{low: uint32, high: uint32}>} Subkey for this round
+     */
     generateSubkey(extendedKey, s) {
       const subkey = [];
       for (let i = 0; i < 8; i++) {
@@ -258,7 +319,13 @@
       return subkey;
     }
 
-    // Encrypt a 512-bit block
+    /**
+     * Encrypt a 512-bit block
+     * @private
+     * @param {uint8[]} bytes - 64-byte input block
+     * @param {Array<{low: uint32, high: uint32}>} extendedKey - Extended key schedule
+     * @returns {uint8[]} 64-byte encrypted block
+     */
     encryptBlock(bytes, extendedKey) {
       const words = this.bytesToWords64(bytes);
 
@@ -313,8 +380,15 @@
       return this.words64ToBytes(words);
     }
 
-    // 64-bit subtraction with borrow handling
-    // NOTE: This could be moved to OpCodes when Sub64 becomes available
+    /**
+     * 64-bit subtraction with borrow handling
+     * @private
+     * @param {uint32} aLow - Low 32 bits of minuend
+     * @param {uint32} aHigh - High 32 bits of minuend
+     * @param {uint32} bLow - Low 32 bits of subtrahend
+     * @param {uint32} bHigh - High 32 bits of subtrahend
+     * @returns {{low: uint32, high: uint32}} 64-bit difference
+     */
     sub64(aLow, aHigh, bLow, bHigh) {
       const borrowLow = aLow < bLow ? 1 : 0;
       const resultLow = (aLow - bLow) >>> 0;
@@ -322,7 +396,13 @@
       return { low: resultLow, high: resultHigh };
     }
 
-    // Decrypt a 512-bit block
+    /**
+     * Decrypt a 512-bit block
+     * @private
+     * @param {uint8[]} bytes - 64-byte input block
+     * @param {Array<{low: uint32, high: uint32}>} extendedKey - Extended key schedule
+     * @returns {uint8[]} 64-byte decrypted block
+     */
     decryptBlock(bytes, extendedKey) {
       const words = this.bytesToWords64(bytes);
 
@@ -380,7 +460,12 @@
       return this.words64ToBytes(words);
     }
 
-    // Generate extended key from key bytes
+    /**
+     * Generate extended key from key bytes
+     * @private
+     * @param {uint8[]} keyBytes - 64-byte key
+     * @returns {Array<{low: uint32, high: uint32}>} Extended key schedule
+     */
     generateExtendedKey(keyBytes) {
       // Convert key to 64-bit words
       const keyWords = this.bytesToWords64(keyBytes);
@@ -417,8 +502,17 @@
     }
   }
 
-  // Instance class - handles the actual encryption/decryption
+  /**
+   * Threefish cipher instance implementing Feed/Result pattern
+   * @class
+   * @extends {IBlockCipherInstance}
+   */
   class ThreefishInstance extends IBlockCipherInstance {
+    /**
+     * Initialize Threefish cipher instance
+     * @param {Threefish} algorithm - Parent algorithm instance
+     * @param {boolean} [isInverse=false] - Decryption mode flag
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -429,7 +523,11 @@
       this.KeySize = 0;    // will be set when key is assigned
     }
 
-    // Property setter for key - validates and sets up extended key
+    /**
+     * Set encryption/decryption key
+     * @param {uint8[]|null} keyBytes - 512-bit (64-byte) key or null to clear
+     * @throws {Error} If key size is not exactly 64 bytes
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -453,11 +551,19 @@
       this.extendedKey = this.algorithm.generateExtendedKey(keyBytes);
     }
 
+    /**
+     * Get copy of current key
+     * @returns {uint8[]|null} Copy of key bytes or null
+     */
     get key() {
       return this._key ? [...this._key] : null; // Return copy
     }
 
-    // Feed data to the cipher (accumulates until we have complete blocks)
+    /**
+     * Feed data to cipher for encryption/decryption
+     * @param {uint8[]} data - Input data bytes
+     * @throws {Error} If key not set
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this.key) throw new Error("Key not set");
@@ -466,7 +572,11 @@
       this.inputBuffer.push(...data);
     }
 
-    // Get the result of the transformation
+    /**
+     * Get cipher result (encrypted or decrypted data)
+     * @returns {uint8[]} Processed output bytes
+     * @throws {Error} If key not set, no data fed, or invalid input length
+     */
     Result() {
       if (!this.key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");

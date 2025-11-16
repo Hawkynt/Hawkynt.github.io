@@ -447,7 +447,7 @@
           uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes(""),
+          aad: OpCodes.Hex8ToBytes(""),
           input: OpCodes.Hex8ToBytes(""),
           expected: OpCodes.Hex8ToBytes("AAB13EC6C00EA011AF831A0098A79883")
         },
@@ -457,7 +457,7 @@
           uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes("00"),
+          aad: OpCodes.Hex8ToBytes("00"),
           input: OpCodes.Hex8ToBytes(""),
           expected: OpCodes.Hex8ToBytes("B2DFE0A387561795DFB34A6FB60B74FD")
         },
@@ -467,7 +467,7 @@
           uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes("0001"),
+          aad: OpCodes.Hex8ToBytes("0001"),
           input: OpCodes.Hex8ToBytes(""),
           expected: OpCodes.Hex8ToBytes("A3418C9A93A22348816F3C907864B5AD")
         },
@@ -477,7 +477,7 @@
           uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          aad: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           input: OpCodes.Hex8ToBytes(""),
           expected: OpCodes.Hex8ToBytes("098196B91BA5CDDFE1B66D2E403737E5")
         },
@@ -487,7 +487,7 @@
           uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes(""),
+          aad: OpCodes.Hex8ToBytes(""),
           input: OpCodes.Hex8ToBytes("00"),
           expected: OpCodes.Hex8ToBytes("61C85435E5E798BE247258BDE9E901E281")
         },
@@ -497,7 +497,7 @@
           uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes("00"),
+          aad: OpCodes.Hex8ToBytes("00"),
           input: OpCodes.Hex8ToBytes("00"),
           expected: OpCodes.Hex8ToBytes("273B88F53F687B4E57E66068DC8F2810A8")
         },
@@ -507,26 +507,42 @@
           uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          ad: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          aad: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           input: OpCodes.Hex8ToBytes("00"),
           expected: OpCodes.Hex8ToBytes("3FB5DA8025AF0DB8ABED6100D573B0C70A")
         }
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
-      if (isInverse) {
-        return null; // AEAD decryption is handled by the same instance
-      }
-      return new EstateTweGIFTInstance(this);
+      return new EstateTweGIFTInstance(this, isInverse);
     }
   }
 
   // ===== ALGORITHM INSTANCE =====
 
+  /**
+ * EstateTweGIFT cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class EstateTweGIFTInstance extends IAeadInstance {
-    constructor(algorithm) {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
+    constructor(algorithm, isInverse = false) {
       super(algorithm);
+      this.isInverse = isInverse;
       this._key = null;
       this._nonce = null;
       this._ad = [];
@@ -534,6 +550,12 @@
     }
 
     // Key property with validation
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
+
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -546,6 +568,11 @@
 
       this._key = new Uint8Array(keyBytes);
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return this._key ? Array.from(this._key) : null;
@@ -570,21 +597,33 @@
     }
 
     // Associated data property
-    set associatedData(adBytes) {
-      this._ad = adBytes ? Array.from(adBytes) : [];
+    set aad(aadBytes) {
+      this._ad = aadBytes ? Array.from(aadBytes) : [];
     }
 
-    get associatedData() {
+    get aad() {
       return this._ad.slice();
     }
 
     // Feed data for encryption/decryption
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       this._inputBuffer.push(...data);
     }
 
     // Process and return result with authentication tag
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
+
     Result() {
       if (!this._key) {
         throw new Error("Key not set");
@@ -593,6 +632,16 @@
         throw new Error("Nonce not set");
       }
 
+      if (this.isInverse) {
+        // Decrypt mode - input buffer contains ciphertext+tag
+        return this._decrypt();
+      } else {
+        // Encrypt mode - input buffer contains plaintext
+        return this._encrypt();
+      }
+    }
+
+    _encrypt() {
       // Initialize key schedule
       const ks = new GIFT128NKeySchedule(this._key);
 
@@ -610,10 +659,9 @@
       estateEncrypt(ks, tag, output, input);
 
       // Combine ciphertext and tag
-      // Tag is in nibble format - reverse the 32-bit word order
+      // Convert tag from GIFT-128 nibble byte order (LE words) to standard byte order (reverse words)
       const result = new Uint8Array(output.length + 16);
       result.set(output, 0);
-      // Reverse word order: swap 4-byte groups
       for (let i = 0; i < 4; ++i) {
         result[output.length + i] = tag[12 + i];
         result[output.length + 4 + i] = tag[8 + i];
@@ -625,6 +673,58 @@
       this._inputBuffer = [];
 
       return Array.from(result);
+    }
+
+    _decrypt() {
+      const ciphertext = new Uint8Array(this._inputBuffer);
+
+      // Validate ciphertext length
+      if (ciphertext.length < 16) {
+        throw new Error("Invalid ciphertext length (too short for tag)");
+      }
+
+      // Split ciphertext and tag
+      const ctLen = ciphertext.length - 16;
+      const ctData = ciphertext.slice(0, ctLen);
+      const receivedTagStandard = ciphertext.slice(ctLen);
+
+      // Convert received tag from standard byte order to GIFT-128 nibble format (reverse words)
+      const receivedTag = new Uint8Array(16);
+      for (let i = 0; i < 4; ++i) {
+        receivedTag[i] = receivedTagStandard[12 + i];
+        receivedTag[4 + i] = receivedTagStandard[8 + i];
+        receivedTag[8 + i] = receivedTagStandard[4 + i];
+        receivedTag[12 + i] = receivedTagStandard[i];
+      }
+
+      // Initialize key schedule
+      const ks = new GIFT128NKeySchedule(this._key);
+
+      // Compute tag from nonce for decryption keystream
+      const decryptTag = new Uint8Array(this._nonce);
+      estateAuthenticate(ks, decryptTag, ctData, new Uint8Array(this._ad));
+
+      // Decrypt the ciphertext using nonce-derived tag
+      const plaintext = new Uint8Array(ctLen);
+      estateEncrypt(ks, decryptTag, plaintext, ctData);
+
+      // Recompute authentication tag from plaintext
+      const computedTag = new Uint8Array(this._nonce);
+      estateAuthenticate(ks, computedTag, plaintext, new Uint8Array(this._ad));
+
+      // Verify tag in constant time
+      if (!constantTimeCompare(computedTag, receivedTag)) {
+        // Zero out plaintext on authentication failure
+        for (let i = 0; i < plaintext.length; ++i) {
+          plaintext[i] = 0;
+        }
+        throw new Error("Authentication tag verification failed");
+      }
+
+      // Clear buffer
+      this._inputBuffer = [];
+
+      return Array.from(plaintext);
     }
 
     // Decrypt and verify
@@ -651,14 +751,15 @@
       // Initialize key schedule
       const ks = new GIFT128NKeySchedule(this._key);
 
-      // Initialize tag with nonce
-      const tag = new Uint8Array(this._nonce);
+      // Compute tag from nonce for decryption keystream
+      const decryptTag = new Uint8Array(this._nonce);
+      estateAuthenticate(ks, decryptTag, ctData, new Uint8Array(this._ad));
 
-      // Decrypt the ciphertext
+      // Decrypt the ciphertext using nonce-derived tag
       const plaintext = new Uint8Array(ctLen);
-      estateEncrypt(ks, receivedTag, plaintext, ctData);
+      estateEncrypt(ks, decryptTag, plaintext, ctData);
 
-      // Recompute authentication tag
+      // Recompute authentication tag from plaintext
       const computedTag = new Uint8Array(this._nonce);
       estateAuthenticate(ks, computedTag, plaintext, new Uint8Array(this._ad));
 

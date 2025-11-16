@@ -208,6 +208,12 @@
   // LSH-256 FAMILY INSTANCE (32-bit operations)
   // ============================================================================
 
+  /**
+ * LSH256 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class LSH256Instance extends IHashFunctionInstance {
     constructor(algorithm, iv, outputSize) {
       super(algorithm);
@@ -411,6 +417,12 @@
       this._msg_add_even();
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
 
@@ -453,6 +465,12 @@
       }
     }
 
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
+
     Result() {
       const remain_msg_byte = this.remain_databitlen >> 3;
 
@@ -480,6 +498,12 @@
   // ============================================================================
   // LSH-512 FAMILY INSTANCE (64-bit operations)
   // ============================================================================
+
+  /**
+ * LSH512 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class LSH512Instance extends IHashFunctionInstance {
     constructor(algorithm, iv, outputSize) {
@@ -686,6 +710,12 @@
       this._msg_add_even();
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
 
@@ -704,6 +734,12 @@
         }
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       this.buffer[this.bufferLength] = 0x80;
@@ -731,6 +767,12 @@
   // ============================================================================
   // ALGORITHM CLASSES
   // ============================================================================
+
+  /**
+ * LSH224Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
 
   class LSH224Algorithm extends HashFunctionAlgorithm {
     constructor() {
@@ -786,11 +828,23 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new LSH256Instance(this, LSH256_IV224, 28);
     }
   }
+
+  /**
+ * LSH256Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
 
   class LSH256Algorithm extends HashFunctionAlgorithm {
     constructor() {
@@ -846,11 +900,23 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new LSH256Instance(this, LSH256_IV256, 32);
     }
   }
+
+  /**
+ * LSH384Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
 
   class LSH384Algorithm extends HashFunctionAlgorithm {
     constructor() {
@@ -906,11 +972,23 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new LSH512Instance(this, LSH512_IV384, 48);
     }
   }
+
+  /**
+ * LSH512Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
 
   class LSH512Algorithm extends HashFunctionAlgorithm {
     constructor() {
@@ -966,11 +1044,23 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new LSH512Instance(this, LSH512_IV512, 64);
     }
   }
+
+  /**
+ * LSH512_256Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
 
   class LSH512_256Algorithm extends HashFunctionAlgorithm {
     constructor() {
@@ -1025,6 +1115,12 @@
         }
       ];
     }
+
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
 
     CreateInstance(isInverse = false) {
       if (isInverse) return null;

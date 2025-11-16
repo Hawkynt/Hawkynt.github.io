@@ -121,6 +121,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) {
         return null; // MAC cannot be reversed
@@ -128,6 +134,12 @@
       return new GOST28147MACInstance(this);
     }
   }
+
+  /**
+ * GOST28147MAC cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class GOST28147MACInstance extends IMacInstance {
     constructor(algorithm) {
@@ -143,6 +155,12 @@
       this.macIV = null; // Optional initialization vector
     }
 
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
+
     set key(keyBytes) {
       if (!keyBytes || keyBytes.length === 0) {
         this._key = null;
@@ -157,6 +175,11 @@
       this._key = Array.from(keyBytes);
       this.workingKey = this._generateWorkingKey(keyBytes);
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return this._key ? Array.from(this._key) : null;
@@ -174,6 +197,12 @@
       return this.macSize;
     }
 
+    /**
+   * Set initialization vector
+   * @param {uint8[]|null} ivBytes - IV bytes or null to clear
+   * @throws {Error} If IV size is invalid
+   */
+
     set iv(ivBytes) {
       if (!ivBytes || ivBytes.length === 0) {
         this.macIV = null;
@@ -185,9 +214,20 @@
       this.macIV = Array.from(ivBytes);
     }
 
+    /**
+   * Get copy of current IV
+   * @returns {uint8[]|null} Copy of IV bytes or null
+   */
+
     get iv() {
       return this.macIV ? Array.from(this.macIV) : null;
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -229,6 +269,12 @@
       }
       this.bufOff += len;
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) {

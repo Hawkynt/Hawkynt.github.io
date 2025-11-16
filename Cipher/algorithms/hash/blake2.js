@@ -471,6 +471,12 @@
 
   // ===== BLAKE2B ALGORITHM =====
 
+  /**
+ * BLAKE2bAlgorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class BLAKE2bAlgorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -528,12 +534,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new BLAKE2bAlgorithmInstance(this, isInverse);
     }
   }
 
+  /**
+ * BLAKE2bAlgorithm cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class BLAKE2bAlgorithmInstance extends IHashFunctionInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -580,10 +604,22 @@
       this._hasher = null;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       this.Init();
       this.Update(data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       return this.Final();
@@ -591,6 +627,12 @@
   }
 
   // ===== BLAKE2S ALGORITHM =====
+
+  /**
+ * BLAKE2sAlgorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
 
   class BLAKE2sAlgorithm extends HashFunctionAlgorithm {
     constructor() {
@@ -649,12 +691,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new BLAKE2sAlgorithmInstance(this, isInverse);
     }
   }
 
+  /**
+ * BLAKE2sAlgorithm cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class BLAKE2sAlgorithmInstance extends IHashFunctionInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -701,10 +761,22 @@
       this._hasher = null;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!this._hasher) this.Init();
       this.Update(data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._hasher) this.Init();
@@ -727,6 +799,12 @@
   const BLAKE2XS_DIGEST_LENGTH = 32;
   const BLAKE2XS_UNKNOWN_DIGEST_LENGTH = 65535;
   const BLAKE2XS_MAX_NUMBER_BLOCKS = 0x100000000; // 2^32
+
+  /**
+ * BLAKE2xsAlgorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
 
   class BLAKE2xsAlgorithm extends HashFunctionAlgorithm {
     constructor() {
@@ -839,12 +917,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new BLAKE2xsAlgorithmInstance(this, isInverse);
     }
   }
 
+  /**
+ * BLAKE2xsAlgorithm cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class BLAKE2xsAlgorithmInstance extends IHashFunctionInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -1007,10 +1103,22 @@
       OpCodes.ClearArray(this._buf);
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!this._rootHash) this.Init();
       this.Update(data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._rootHash) this.Init();

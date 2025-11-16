@@ -65,6 +65,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * CHC cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class CHCInstance extends IHashFunctionInstance {
     constructor(algorithm, blockCipherName) {
       super(algorithm);
@@ -147,6 +153,12 @@
       this._Reset();
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       this._EnsureInitialized();
       if (!data || data.length === 0) return;
@@ -184,6 +196,12 @@
         this.bufferLength = remaining.length;
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       this._EnsureInitialized();
@@ -284,6 +302,12 @@
     }
   }
 
+  /**
+ * CHCAlgorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class CHCAlgorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -326,6 +350,12 @@
         }
       ];
     }
+
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
 
     CreateInstance(isInverse = false) {
       // Hash functions don't have an inverse operation

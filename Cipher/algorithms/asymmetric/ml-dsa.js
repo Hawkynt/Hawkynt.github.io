@@ -98,12 +98,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new MLDSAInstance(this, isInverse);
     }
   }
 
+  /**
+ * MLDSA cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class MLDSAInstance extends IAlgorithmInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -152,6 +170,11 @@
       this.KeySetup(keyData);
     }
 
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
+
     get key() {
       return this._keyData;
     }
@@ -170,6 +193,12 @@
     }
 
     // Feed data for processing
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (Array.isArray(data)) {
         this.inputBuffer.push(...data);
@@ -181,6 +210,12 @@
     }
 
     // Get result (signature generation/verification)
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
+
     Result() {
       if (this.inputBuffer.length === 0) {
         return [];

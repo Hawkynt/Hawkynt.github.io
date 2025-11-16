@@ -255,22 +255,22 @@
               expected: OpCodes.Hex8ToBytes("803A2659C516B939AB")
             },
             {
-              text: "TinyJAMBU-192: 4-byte message with 4-byte AAD (Count 73)",
+              text: "TinyJAMBU-192: 4-byte message with 4-byte AAD (Count 137)",
               uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
               key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
               nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
               aad: OpCodes.Hex8ToBytes("00010203"),
               input: OpCodes.Hex8ToBytes("00010203"),
-              expected: OpCodes.Hex8ToBytes("86EBFBED7FB13ACB11A58A5E")
+              expected: OpCodes.Hex8ToBytes("EC0F17ADE4456F9A644D5FC2")
             },
             {
-              text: "TinyJAMBU-192: 8-byte message with 8-byte AAD (Count 297)",
+              text: "TinyJAMBU-192: 8-byte message with 32-byte AAD (Count 297)",
               uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
               key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
               nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes("0001020304050607"),
+              aad: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
               input: OpCodes.Hex8ToBytes("0001020304050607"),
-              expected: OpCodes.Hex8ToBytes("0C8F824F8B6FC46A32E1DD2D64F93BD2")
+              expected: OpCodes.Hex8ToBytes("813CA1B8AA61E2A8951D73F7B2D03BB3")
             }
           ]
         },
@@ -355,6 +355,12 @@
       return configs[variant];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new TinyJAMBUInstance(this, isInverse);
     }
@@ -366,6 +372,12 @@
    * TinyJAMBU AEAD Instance (supports all variants)
    */
   class TinyJAMBUInstance extends IAeadInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -380,6 +392,12 @@
       this.initRounds = algorithm.initRounds;
     }
 
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
+
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -392,6 +410,11 @@
 
       this._key = [...keyBytes];
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() { return this._key ? [...this._key] : null; }
 
@@ -428,10 +451,22 @@
       return this.aad;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) throw new Error("Key not set");
@@ -475,108 +510,37 @@
 
     /**
      * TinyJAMBU-192 permutation (6-word key schedule with rotation)
+     * Key schedule pattern: [0,1,2,3], [4,5,0,1], [2,3,4,5]
+     * Each round consists of 128 steps (4 x 32-bit operations)
      */
     _permutation192(state, key, rounds) {
       let s0 = state[0];
       let s1 = state[1];
       let s2 = state[2];
       let s3 = state[3];
-      let t1, t2, t3, t4;
 
       for (; rounds > 0; --rounds) {
         // First set of 128 steps (key[0,1,2,3])
-        for (let i = 0; i < 32; ++i) {
-          t1 = (s1 >>> 15) | (s2 << 17);
-          t2 = (s2 >>> 6) | (s3 << 26);
-          t3 = (s2 >>> 21) | (s3 << 11);
-          t4 = (s2 >>> 27) | (s3 << 5);
-          s0 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[0];
-        }
-        for (let i = 0; i < 32; ++i) {
-          t1 = (s2 >>> 15) | (s3 << 17);
-          t2 = (s3 >>> 6) | (s0 << 26);
-          t3 = (s3 >>> 21) | (s0 << 11);
-          t4 = (s3 >>> 27) | (s0 << 5);
-          s1 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[1];
-        }
-        for (let i = 0; i < 32; ++i) {
-          t1 = (s3 >>> 15) | (s0 << 17);
-          t2 = (s0 >>> 6) | (s1 << 26);
-          t3 = (s0 >>> 21) | (s1 << 11);
-          t4 = (s0 >>> 27) | (s1 << 5);
-          s2 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[2];
-        }
-        for (let i = 0; i < 32; ++i) {
-          t1 = (s0 >>> 15) | (s1 << 17);
-          t2 = (s1 >>> 6) | (s2 << 26);
-          t3 = (s1 >>> 21) | (s2 << 11);
-          t4 = (s1 >>> 27) | (s2 << 5);
-          s3 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[3];
-        }
+        s0 = steps32(s0, s1, s2, s3, key[0]);
+        s1 = steps32(s1, s2, s3, s0, key[1]);
+        s2 = steps32(s2, s3, s0, s1, key[2]);
+        s3 = steps32(s3, s0, s1, s2, key[3]);
 
         if ((--rounds) === 0) break;
 
         // Second set of 128 steps (key[4,5,0,1])
-        for (let i = 0; i < 32; ++i) {
-          t1 = (s1 >>> 15) | (s2 << 17);
-          t2 = (s2 >>> 6) | (s3 << 26);
-          t3 = (s2 >>> 21) | (s3 << 11);
-          t4 = (s2 >>> 27) | (s3 << 5);
-          s0 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[4];
-        }
-        for (let i = 0; i < 32; ++i) {
-          t1 = (s2 >>> 15) | (s3 << 17);
-          t2 = (s3 >>> 6) | (s0 << 26);
-          t3 = (s3 >>> 21) | (s0 << 11);
-          t4 = (s3 >>> 27) | (s0 << 5);
-          s1 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[5];
-        }
-        for (let i = 0; i < 32; ++i) {
-          t1 = (s3 >>> 15) | (s0 << 17);
-          t2 = (s0 >>> 6) | (s1 << 26);
-          t3 = (s0 >>> 21) | (s1 << 11);
-          t4 = (s0 >>> 27) | (s1 << 5);
-          s2 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[0];
-        }
-        for (let i = 0; i < 32; ++i) {
-          t1 = (s0 >>> 15) | (s1 << 17);
-          t2 = (s1 >>> 6) | (s2 << 26);
-          t3 = (s1 >>> 21) | (s2 << 11);
-          t4 = (s1 >>> 27) | (s2 << 5);
-          s3 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[1];
-        }
+        s0 = steps32(s0, s1, s2, s3, key[4]);
+        s1 = steps32(s1, s2, s3, s0, key[5]);
+        s2 = steps32(s2, s3, s0, s1, key[0]);
+        s3 = steps32(s3, s0, s1, s2, key[1]);
 
         if ((--rounds) === 0) break;
 
         // Third set of 128 steps (key[2,3,4,5])
-        for (let i = 0; i < 32; ++i) {
-          t1 = (s1 >>> 15) | (s2 << 17);
-          t2 = (s2 >>> 6) | (s3 << 26);
-          t3 = (s2 >>> 21) | (s3 << 11);
-          t4 = (s2 >>> 27) | (s3 << 5);
-          s0 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[2];
-        }
-        for (let i = 0; i < 32; ++i) {
-          t1 = (s2 >>> 15) | (s3 << 17);
-          t2 = (s3 >>> 6) | (s0 << 26);
-          t3 = (s3 >>> 21) | (s0 << 11);
-          t4 = (s3 >>> 27) | (s0 << 5);
-          s1 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[3];
-        }
-        for (let i = 0; i < 32; ++i) {
-          t1 = (s3 >>> 15) | (s0 << 17);
-          t2 = (s0 >>> 6) | (s1 << 26);
-          t3 = (s0 >>> 21) | (s1 << 11);
-          t4 = (s0 >>> 27) | (s1 << 5);
-          s2 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[4];
-        }
-        for (let i = 0; i < 32; ++i) {
-          t1 = (s0 >>> 15) | (s1 << 17);
-          t2 = (s1 >>> 6) | (s2 << 26);
-          t3 = (s1 >>> 21) | (s2 << 11);
-          t4 = (s1 >>> 27) | (s2 << 5);
-          s3 ^= t1 ^ (~(t2 & t3)) ^ t4 ^ key[5];
-        }
+        s0 = steps32(s0, s1, s2, s3, key[2]);
+        s1 = steps32(s1, s2, s3, s0, key[3]);
+        s2 = steps32(s2, s3, s0, s1, key[4]);
+        s3 = steps32(s3, s0, s1, s2, key[5]);
       }
 
       state[0] = s0;

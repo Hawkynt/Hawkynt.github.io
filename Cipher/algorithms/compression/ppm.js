@@ -42,6 +42,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * PPMAlgorithm - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class PPMAlgorithm extends CompressionAlgorithm {
       constructor() {
         super();

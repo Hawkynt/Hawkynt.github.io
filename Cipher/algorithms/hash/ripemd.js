@@ -48,6 +48,12 @@
 
   // ===== SHARED IMPLEMENTATION =====
 
+  /**
+ * RIPEMD cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class RIPEMDInstance extends IHashFunctionInstance {
     constructor(algorithm, variant) {
       super(algorithm);
@@ -87,6 +93,12 @@
       this._Reset();
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
 
@@ -123,6 +135,12 @@
         this.bufferLength = remaining.length;
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       // Save current state
@@ -789,6 +807,12 @@
 
   // ===== ALGORITHM CLASSES =====
 
+  /**
+ * RIPEMD128Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class RIPEMD128Algorithm extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -865,11 +889,23 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new RIPEMDInstance(this, 128);
     }
   }
+
+  /**
+ * RIPEMD160Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
 
   class RIPEMD160Algorithm extends HashFunctionAlgorithm {
     constructor() {
@@ -900,29 +936,71 @@
         {
           input: [],
           expected: OpCodes.Hex8ToBytes("9c1185a5c5e9fc54612808977ee8f548b2258d31"),
-          text: "Empty string test vector",
-          uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html"
+          text: "RIPEMD-160 empty string - Official OpenSSL test vector",
+          uri: "https://github.com/openssl/openssl/blob/master/test/recipes/30-test_evp_data/evpmd_ripemd.txt"
         },
         {
           input: OpCodes.AnsiToBytes("a"),
           expected: OpCodes.Hex8ToBytes("0bdc9d2d256b3ee9daae347be6f4dc835a467ffe"),
-          text: "Single character 'a' test vector",
-          uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html"
+          text: "RIPEMD-160 single character 'a' - Official OpenSSL test vector",
+          uri: "https://github.com/openssl/openssl/blob/master/test/recipes/30-test_evp_data/evpmd_ripemd.txt"
         },
         {
           input: OpCodes.AnsiToBytes("abc"),
           expected: OpCodes.Hex8ToBytes("8eb208f7e05d987a9b044a8e98c6b087f15a0bfc"),
-          text: "String 'abc' test vector",
-          uri: "https://homes.esat.kuleuven.be/~bosselae/ripemd160.html"
+          text: "RIPEMD-160 string 'abc' - Official OpenSSL test vector",
+          uri: "https://github.com/openssl/openssl/blob/master/test/recipes/30-test_evp_data/evpmd_ripemd.txt"
+        },
+        {
+          input: OpCodes.AnsiToBytes("message digest"),
+          expected: OpCodes.Hex8ToBytes("5d0689ef49d2fae572b881b123a85ffa21595f36"),
+          text: "RIPEMD-160 'message digest' - Official OpenSSL test vector",
+          uri: "https://github.com/openssl/openssl/blob/master/test/recipes/30-test_evp_data/evpmd_ripemd.txt"
+        },
+        {
+          input: OpCodes.AnsiToBytes("abcdefghijklmnopqrstuvwxyz"),
+          expected: OpCodes.Hex8ToBytes("f71c27109c692c1b56bbdceb5b9d2865b3708dbc"),
+          text: "RIPEMD-160 lowercase alphabet - Official OpenSSL test vector",
+          uri: "https://github.com/openssl/openssl/blob/master/test/recipes/30-test_evp_data/evpmd_ripemd.txt"
+        },
+        {
+          input: OpCodes.AnsiToBytes("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
+          expected: OpCodes.Hex8ToBytes("12a053384a9c0c88e405a06c27dcf49ada62eb2b"),
+          text: "RIPEMD-160 repeated pattern string - Official OpenSSL test vector",
+          uri: "https://github.com/openssl/openssl/blob/master/test/recipes/30-test_evp_data/evpmd_ripemd.txt"
+        },
+        {
+          input: OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"),
+          expected: OpCodes.Hex8ToBytes("b0e20b6e3116640286ed3a87a5713079b21f5189"),
+          text: "RIPEMD-160 alphanumeric string - Official OpenSSL test vector",
+          uri: "https://github.com/openssl/openssl/blob/master/test/recipes/30-test_evp_data/evpmd_ripemd.txt"
+        },
+        {
+          input: OpCodes.AnsiToBytes("12345678901234567890123456789012345678901234567890123456789012345678901234567890"),
+          expected: OpCodes.Hex8ToBytes("9b752e45573d4b39f4dbd3323cab82bf63326bfb"),
+          text: "RIPEMD-160 repeated digits (80 chars) - Official OpenSSL test vector",
+          uri: "https://github.com/openssl/openssl/blob/master/test/recipes/30-test_evp_data/evpmd_ripemd.txt"
         }
       ];
     }
+
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
 
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new RIPEMDInstance(this, 160);
     }
   }
+
+  /**
+ * RIPEMD256Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
 
   class RIPEMD256Algorithm extends HashFunctionAlgorithm {
     constructor() {
@@ -968,11 +1046,23 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new RIPEMDInstance(this, 256);
     }
   }
+
+  /**
+ * RIPEMD320Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
 
   class RIPEMD320Algorithm extends HashFunctionAlgorithm {
     constructor() {
@@ -1026,6 +1116,12 @@
         }
       ];
     }
+
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
 
     CreateInstance(isInverse = false) {
       if (isInverse) return null;

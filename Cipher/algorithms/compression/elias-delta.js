@@ -49,6 +49,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * EliasDeltaAlgorithm - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class EliasDeltaAlgorithm extends CompressionAlgorithm {
       constructor() {
         super();

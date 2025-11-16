@@ -153,6 +153,12 @@
     }
   }
 
+  /**
+ * SHA3Algorithm - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class SHA3Algorithm extends HashFunctionAlgorithm {
     constructor(variant = '256') {
       super();
@@ -321,11 +327,23 @@
       return configs[variant] || configs['256'];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new SHA3Instance(this);
     }
   }
+
+  /**
+ * SHA3 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class SHA3Instance extends IHashFunctionInstance {
     constructor(algorithm) {
@@ -335,6 +353,12 @@
       this.buffer = new Uint8Array(algorithm.rateInBytes);
       this.bufferLength = 0;
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -375,6 +399,12 @@
       }
       keccakF(this.state);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       const rate = this.algorithm.rateInBytes;

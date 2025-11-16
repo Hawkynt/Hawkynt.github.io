@@ -155,6 +155,12 @@
 
   // ===== MISTY1 IMPLEMENTATION =====
 
+  /**
+ * MISTY1Cipher - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class MISTY1Cipher extends AlgorithmFramework.BlockCipherAlgorithm {
     constructor() {
       super();
@@ -213,6 +219,12 @@
       this.ROUNDS = 8;
 
     }
+
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
 
     CreateInstance(isInverse = false) {
       return new MISTY1Instance(this, isInverse);
@@ -283,7 +295,19 @@
     }
   }
 
+  /**
+ * MISTY1 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class MISTY1Instance extends AlgorithmFramework.IBlockCipherInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -293,6 +317,12 @@
       this.BlockSize = 8;
       this.KeySize = 0;
     }
+
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
 
     set key(keyBytes) {
       if (!keyBytes) {
@@ -317,9 +347,20 @@
       this.roundKeys = this._expandKey(keyBytes);
     }
 
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
+
     get key() {
       return this._key ? [...this._key] : null;
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -327,6 +368,12 @@
 
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this.key) throw new Error("Key not set");
@@ -449,6 +496,12 @@
 
   // ===== MISTY2 IMPLEMENTATION =====
 
+  /**
+ * MISTY2Cipher - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class MISTY2Cipher extends AlgorithmFramework.BlockCipherAlgorithm {
     constructor() {
       super();
@@ -501,6 +554,12 @@
 
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new MISTY2Instance(this, isInverse);
     }
@@ -551,7 +610,19 @@
     }
   }
 
+  /**
+ * MISTY2 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class MISTY2Instance extends AlgorithmFramework.IBlockCipherInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -561,6 +632,12 @@
       this.BlockSize = 8;
       this.KeySize = 0;
     }
+
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
 
     set key(keyBytes) {
       if (!keyBytes) {
@@ -585,9 +662,20 @@
       this.roundKeys = this._generateRoundKeys(keyBytes);
     }
 
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
+
     get key() {
       return this._key ? [...this._key] : null;
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -595,6 +683,12 @@
 
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this.key) throw new Error("Key not set");

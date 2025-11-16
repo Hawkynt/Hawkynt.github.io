@@ -178,6 +178,12 @@
   // ASCON-HASH (256-bit fixed output)
   // ============================================================================
 
+  /**
+ * AsconHash - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class AsconHash extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -254,6 +260,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new AsconHashInstance(this, 'hash');
@@ -263,6 +275,12 @@
   // ============================================================================
   // ASCON-HASH256 (Alias for ASCON-HASH with NIST SP 800-232 branding)
   // ============================================================================
+
+  /**
+ * AsconHash256 - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
 
   class AsconHash256 extends HashFunctionAlgorithm {
     constructor() {
@@ -330,6 +348,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new AsconHashInstance(this, 'hash256');
@@ -339,6 +363,12 @@
   // ============================================================================
   // ASCON-XOF (Extendable Output Function)
   // ============================================================================
+
+  /**
+ * AsconXof - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
 
   class AsconXof extends HashFunctionAlgorithm {
     constructor() {
@@ -437,6 +467,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new AsconHashInstance(this, 'xof');
@@ -446,6 +482,12 @@
   // ============================================================================
   // Shared Instance Implementation
   // ============================================================================
+
+  /**
+ * AsconHash cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class AsconHashInstance extends IHashFunctionInstance {
     constructor(algorithm, variant) {
@@ -506,6 +548,12 @@
       this.mode = 0;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
 
@@ -533,6 +581,12 @@
         }
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (this.variant === 'xof') {

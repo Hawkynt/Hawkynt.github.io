@@ -60,6 +60,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * ZUCAlgorithm - Stream cipher implementation
+ * @class
+ * @extends {StreamCipherAlgorithm}
+ */
+
   class ZUCAlgorithm extends StreamCipherAlgorithm {
     constructor() {
       super();
@@ -165,13 +171,31 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new ZUCInstance(this, isInverse);
     }
   }
 
   // Instance class implementing production-grade ZUC
+  /**
+ * ZUC cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class ZUCInstance extends IAlgorithmInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -188,6 +212,12 @@
     }
 
     // Property setter for key
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
+
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -209,11 +239,22 @@
       }
     }
 
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
+
     get key() {
       return this._key ? [...this._key] : null;
     }
 
     // Property setter for IV
+    /**
+   * Set initialization vector
+   * @param {uint8[]|null} ivBytes - IV bytes or null to clear
+   * @throws {Error} If IV size is invalid
+   */
+
     set iv(ivBytes) {
       if (!ivBytes) {
         this._iv = null;
@@ -235,11 +276,22 @@
       }
     }
 
+    /**
+   * Get copy of current IV
+   * @returns {uint8[]|null} Copy of IV bytes or null
+   */
+
     get iv() {
       return this._iv ? [...this._iv] : null;
     }
 
     // Feed data to the cipher
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!Array.isArray(data)) {
@@ -256,6 +308,12 @@
     }
 
     // Get the cipher result
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
+
     Result() {
       if (!this._key) {
         throw new Error("Key not set");

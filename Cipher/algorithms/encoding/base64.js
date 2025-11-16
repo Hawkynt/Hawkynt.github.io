@@ -49,6 +49,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * Base64 encoding - RFC 4648 standard implementation
+   * Encodes binary data to ASCII text using 64-character alphabet
+   * @class
+   * @extends {EncodingAlgorithm}
+   */
   class Base64Algorithm extends EncodingAlgorithm {
     constructor() {
       super();
@@ -126,12 +132,27 @@
       ];
     }
 
+    /**
+     * Create new Base64 encoding/decoding instance
+     * @param {boolean} [isInverse=false] - True for decoding, false for encoding
+     * @returns {Base64Instance} New Base64 instance
+     */
     CreateInstance(isInverse = false) {
       return new Base64Instance(this, isInverse);
     }
   }
 
+  /**
+   * Base64 encoding instance implementing Feed/Result pattern
+   * @class
+   * @extends {IAlgorithmInstance}
+   */
   class Base64Instance extends IAlgorithmInstance {
+    /**
+     * Initialize Base64 instance
+     * @param {Base64Algorithm} algorithm - Parent algorithm instance
+     * @param {boolean} [isInverse=false] - Decoding mode flag
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -146,6 +167,11 @@
       }
     }
 
+    /**
+     * Feed data for encoding or decoding
+     * @param {uint8[]} data - Input byte array
+     * @throws {Error} If input is not byte array
+     */
     Feed(data) {
       if (!Array.isArray(data)) {
         throw new Error('Base64Instance.Feed: Input must be byte array');
@@ -158,6 +184,11 @@
       }
     }
 
+    /**
+     * Get encoding/decoding result
+     * @returns {uint8[]} Processed output bytes
+     * @throws {Error} If no data processed
+     */
     Result() {
       if (this.processedData === null) {
         throw new Error('Base64Instance.Result: No data processed. Call Feed() first.');
@@ -165,6 +196,11 @@
       return this.processedData;
     }
 
+    /**
+     * Encode binary data to Base64
+     * @param {uint8[]} data - Input byte array
+     * @returns {uint8[]} Base64-encoded bytes
+     */
     encode(data) {
       if (data.length === 0) {
         return [];
@@ -201,6 +237,11 @@
       return resultBytes;
     }
 
+    /**
+     * Decode Base64 to binary data
+     * @param {uint8[]} data - Base64-encoded byte array
+     * @returns {uint8[]} Decoded binary bytes
+     */
     decode(data) {
       if (data.length === 0) {
         return [];
@@ -256,13 +297,22 @@
       return result;
     }
 
-    // Utility methods
+    /**
+     * Encode string to Base64 string
+     * @param {string} str - Input ASCII string
+     * @returns {string} Base64-encoded string
+     */
     encodeString(str) {
       const bytes = OpCodes.AnsiToBytes(str);
       const encoded = this.encode(bytes);
       return OpCodes.BytesToAnsi(encoded);
     }
 
+    /**
+     * Decode Base64 string to original string
+     * @param {string} str - Base64-encoded string
+     * @returns {string} Decoded ASCII string
+     */
     decodeString(str) {
       const bytes = OpCodes.AnsiToBytes(str);
       const decoded = this.decode(bytes);

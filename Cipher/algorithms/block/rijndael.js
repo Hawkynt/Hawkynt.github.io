@@ -109,6 +109,12 @@
     return OpCodes.Pack32BE(sbox[b0], sbox[b1], sbox[b2], sbox[b3]);
   }
 
+  /**
+ * RijndaelAlgorithm - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class RijndaelAlgorithm extends BlockCipherAlgorithm {
     constructor() {
       super();
@@ -177,10 +183,22 @@
       this.tables = RijndaelTables;
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new RijndaelInstance(this, isInverse);
     }
   }
+
+  /**
+ * Rijndael cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class RijndaelInstance extends IBlockCipherInstance {
     constructor(algorithm, isInverse) {
@@ -194,6 +212,12 @@
       this.inputBuffer = [];
       this.tables = algorithm.tables;
     }
+
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
 
     set key(keyBytes) {
       if (!keyBytes || keyBytes.length === 0) {
@@ -229,9 +253,20 @@
       this.KeySize = this._key.length;
     }
 
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
+
     get key() {
       return this._key ? Array.from(this._key) : null;
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) {
@@ -244,6 +279,12 @@
         this.inputBuffer.push(data[i] & 0xff);
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) {

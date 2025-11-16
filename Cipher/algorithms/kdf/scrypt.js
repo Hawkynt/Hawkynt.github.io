@@ -126,6 +126,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) {
         return null; // KDFs cannot be reversed
@@ -135,6 +141,12 @@
   }
 
   // Instance class - handles the actual scrypt computation
+  /**
+ * Scrypt cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class ScryptInstance extends IKdfInstance {
     constructor(algorithm) {
       super(algorithm);
@@ -178,11 +190,23 @@
     set iterations(value) { this.Iterations = value; }
 
     // Feed data (not typically used for KDFs, but for framework compatibility)
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!this._password) this._password = data;
     }
 
     // Get the KDF result
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
+
     Result() {
       if (!this._password || !this._salt) {
         throw new Error('Password and salt required for scrypt');

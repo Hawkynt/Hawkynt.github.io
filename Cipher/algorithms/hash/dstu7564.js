@@ -114,6 +114,12 @@
   ]);
 
   // ===== DSTU7564 ALGORITHM CLASS =====
+  /**
+ * DSTU7564 - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class DSTU7564 extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -266,6 +272,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null; // Hash functions have no inverse
       return new DSTU7564Instance(this);
@@ -273,6 +285,12 @@
   }
 
   // ===== DSTU7564 INSTANCE CLASS =====
+  /**
+ * DSTU7564 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class DSTU7564Instance extends IHashFunctionInstance {
     constructor(algorithm) {
       super(algorithm);
@@ -327,6 +345,12 @@
       return this._outputSize;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
 
@@ -340,6 +364,12 @@
         }
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       // Apply padding

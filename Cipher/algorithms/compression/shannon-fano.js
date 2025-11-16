@@ -49,6 +49,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * ShannonFanoAlgorithm - Compression algorithm implementation
+ * @class
+ * @extends {CompressionAlgorithm}
+ */
+
   class ShannonFanoAlgorithm extends CompressionAlgorithm {
       constructor() {
         super();

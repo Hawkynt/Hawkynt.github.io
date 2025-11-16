@@ -50,24 +50,30 @@
 
   // ===== ACORN-128 CONSTANTS =====
 
-  const CA_ONE_WORD = 0xFFFFFFFF;
-  const CA_ZERO_WORD = 0x00000000;
-  const CB_ONE_WORD = 0xFFFFFFFF;
-  const CB_ZERO_WORD = 0x00000000;
-  const CA_ONE_BYTE = 0xFF;
-  const CA_ZERO_BYTE = 0x00;
-  const CB_ONE_BYTE = 0xFF;
-  const CB_ZERO_BYTE = 0x00;
+  /** @const {uint32} */ const CA_ONE_WORD = 0xFFFFFFFF;
+  /** @const {uint32} */ const CA_ZERO_WORD = 0x00000000;
+  /** @const {uint32} */ const CB_ONE_WORD = 0xFFFFFFFF;
+  /** @const {uint32} */ const CB_ZERO_WORD = 0x00000000;
+  /** @const {uint8} */ const CA_ONE_BYTE = 0xFF;
+  /** @const {uint8} */ const CA_ZERO_BYTE = 0x00;
+  /** @const {uint8} */ const CB_ONE_BYTE = 0xFF;
+  /** @const {uint8} */ const CB_ZERO_BYTE = 0x00;
 
-  const S1_HIGH_MASK = 0x1FFFFFFF;
-  const S2_HIGH_MASK = 0x00003FFF;
-  const S3_HIGH_MASK = 0x00007FFF;
-  const S4_HIGH_MASK = 0x0000007F;
-  const S5_HIGH_MASK = 0x0000001F;
-  const S6_HIGH_MASK = 0x07FFFFFF;
+  /** @const {uint32} */ const S1_HIGH_MASK = 0x1FFFFFFF;
+  /** @const {uint32} */ const S2_HIGH_MASK = 0x00003FFF;
+  /** @const {uint32} */ const S3_HIGH_MASK = 0x00007FFF;
+  /** @const {uint32} */ const S4_HIGH_MASK = 0x0000007F;
+  /** @const {uint32} */ const S5_HIGH_MASK = 0x0000001F;
+  /** @const {uint32} */ const S6_HIGH_MASK = 0x07FFFFFF;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * ACORN-128 - Production-grade AEAD stream cipher (CAESAR competition winner)
+   * 128-bit security with authenticated encryption and associated data support
+   * @class
+   * @extends {StreamCipherAlgorithm|AeadAlgorithm}
+   */
   class ACORNAlgorithm extends BaseAlgorithm {
     constructor() {
       super();
@@ -156,13 +162,28 @@
       ];
     }
 
+    /**
+     * Create new ACORN-128 instance
+     * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+     * @returns {ACORNInstance} New ACORN-128 instance
+     */
     CreateInstance(isInverse = false) {
       return new ACORNInstance(this, isInverse);
     }
   }
 
-  // Production-grade ACORN-128 instance implementation
+  /**
+   * ACORN-128 cipher instance implementing AEAD Feed/Result pattern
+   * Manages 293-bit state machine across 6 LFSRs
+   * @class
+   * @extends {IAlgorithmInstance}
+   */
   class ACORNInstance extends IAlgorithmInstance {
+    /**
+     * Initialize ACORN-128 instance
+     * @param {ACORNAlgorithm} algorithm - Parent algorithm instance
+     * @param {boolean} [isInverse=false] - Decryption mode flag
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -184,7 +205,11 @@
       };
     }
 
-    // Property setters for production use
+    /**
+     * Set 128-bit encryption key
+     * @param {uint8[]|null} keyBytes - 16-byte key or null to clear
+     * @throws {Error} If key invalid or wrong size
+     */
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -202,10 +227,19 @@
       this._key = [...keyBytes];
     }
 
+    /**
+     * Get copy of current key
+     * @returns {uint8[]|null} Copy of key bytes or null
+     */
     get key() {
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * Set 128-bit initialization vector (nonce)
+     * @param {uint8[]|null} ivBytes - 16-byte IV or null to clear
+     * @throws {Error} If IV invalid or wrong size
+     */
     set iv(ivBytes) {
       if (!ivBytes) {
         this._iv = null;
@@ -223,18 +257,35 @@
       this._iv = [...ivBytes];
     }
 
+    /**
+     * Get copy of current IV
+     * @returns {uint8[]|null} Copy of IV bytes or null
+     */
     get iv() {
       return this._iv ? [...this._iv] : null;
     }
 
+    /**
+     * Set nonce (alias for IV)
+     * @param {uint8[]|null} nonceBytes - 16-byte nonce or null to clear
+     */
     set nonce(nonceBytes) {
       this.iv = nonceBytes;
     }
 
+    /**
+     * Get copy of current nonce
+     * @returns {uint8[]|null} Copy of nonce bytes or null
+     */
     get nonce() {
       return this.iv;
     }
 
+    /**
+     * Set additional authenticated data (AAD)
+     * @param {uint8[]|null} aadBytes - AAD byte array or null to clear
+     * @throws {Error} If AAD invalid
+     */
     set aad(aadBytes) {
       if (!aadBytes) {
         this._aad = null;
@@ -248,19 +299,35 @@
       this._aad = [...aadBytes];
     }
 
+    /**
+     * Get copy of current AAD
+     * @returns {uint8[]|null} Copy of AAD bytes or null
+     */
     get aad() {
       return this._aad ? [...this._aad] : null;
     }
 
+    /**
+     * Set associated data (alias for AAD)
+     * @param {uint8[]|null} aadBytes - Associated data or null to clear
+     */
     set associatedData(aadBytes) {
       this.aad = aadBytes;
     }
 
+    /**
+     * Get copy of current associated data
+     * @returns {uint8[]|null} Copy of associated data bytes or null
+     */
     get associatedData() {
       return this.aad;
     }
 
-    // Feed data to the cipher
+    /**
+     * Feed data to cipher for encryption/decryption
+     * @param {uint8[]} data - Input data bytes
+     * @throws {Error} If data invalid
+     */
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!Array.isArray(data)) {
@@ -270,7 +337,11 @@
       this.inputBuffer.push(...data);
     }
 
-    // Get the cipher result (AEAD: ciphertext + authentication tag)
+    /**
+     * Get cipher result (ciphertext + auth tag for encryption, plaintext for decryption)
+     * @returns {uint8[]} Processed output bytes
+     * @throws {Error} If key/IV not set or authentication fails
+     */
     Result() {
       if (!this._key) {
         throw new Error("Key not set");
@@ -327,7 +398,10 @@
       }
     }
 
-    // Reset ACORN state
+    /**
+     * Reset ACORN-128 state to zero
+     * @private
+     */
     _resetState() {
       this.state.s1_l = this.state.s1_h = 0;
       this.state.s2_l = this.state.s2_h = 0;
@@ -339,7 +413,12 @@
       this.state.authDone = 0;
     }
 
-    // Initialize ACORN state with key and IV
+    /**
+     * Initialize ACORN state with key and IV (320 steps)
+     * @private
+     * @param {uint8[]} keyBytes - 16-byte key
+     * @param {uint8[]} ivBytes - 16-byte IV
+     */
     _initializeState(keyBytes, ivBytes) {
       // Convert bytes to 32-bit words (little-endian)
       const keyWords = [
@@ -381,7 +460,13 @@
       }
     }
 
-    // Convert 4 bytes to 32-bit word (little-endian)
+    /**
+     * Convert 4 bytes to 32-bit word (little-endian)
+     * @private
+     * @param {uint8[]} bytes - Byte array
+     * @param {int32} offset - Starting offset
+     * @returns {uint32} 32-bit word
+     */
     _bytesToWord(bytes, offset) {
       return (
         (bytes[offset] & 0xFF) |
@@ -391,7 +476,12 @@
       ) >>> 0;
     }
 
-    // Convert 32-bit word to 4 bytes (little-endian)
+    /**
+     * Convert 32-bit word to 4 bytes (little-endian)
+     * @private
+     * @param {uint32} word - 32-bit input word
+     * @returns {uint8[]} 4-byte array
+     */
     _wordToBytes(word) {
       return [
         word & 0xFF,
@@ -401,7 +491,14 @@
       ];
     }
 
-    // Majority function for 8-bit values
+    /**
+     * Majority function for 8-bit values
+     * @private
+     * @param {uint8} x - First input byte
+     * @param {uint8} y - Second input byte
+     * @param {uint8} z - Third input byte
+     * @returns {uint8} Majority result
+     */
     _maj8(x, y, z) {
       const a = x & 0xFF;
       const b = y & 0xFF;
@@ -409,7 +506,14 @@
       return ((a & b) ^ (a & c) ^ (b & c)) & 0xFF;
     }
 
-    // Choice function for 8-bit values
+    /**
+     * Choice function for 8-bit values
+     * @private
+     * @param {uint8} x - First input byte
+     * @param {uint8} y - Second input byte
+     * @param {uint8} z - Third input byte
+     * @returns {uint8} Choice result
+     */
     _ch8(x, y, z) {
       const a = x & 0xFF;
       const b = y & 0xFF;
@@ -417,12 +521,22 @@
       return ((a & b) ^ (((~a) & 0xFF) & c)) & 0xFF;
     }
 
-    // Ensure 32-bit unsigned
+    /**
+     * Ensure value is unsigned 32-bit
+     * @private
+     * @param {number} value - Input value
+     * @returns {uint32} Unsigned 32-bit result
+     */
     _toUint32(value) {
       return value >>> 0;
     }
 
-    // Apply shift operation to ACORN state
+    /**
+     * Apply 8-bit shift operation to ACORN state
+     * @private
+     * @param {uint8} s7Low - Low bits of state 7
+     * @param {uint8} feedback - Feedback byte
+     */
     _applyShift8(s7Low, feedback) {
       const mixed = (s7Low ^ ((feedback << 4) & 0xFF)) & 0xFF;
       this.state.s7 = (feedback >>> 4) & 0x0F;
@@ -446,7 +560,14 @@
       this.state.s6_h = this._toUint32((this.state.s6_h >>> 8) | (mixed << 19)) & S6_HIGH_MASK;
     }
 
-    // ACORN encryption step for single byte
+    /**
+     * ACORN encryption step for single byte
+     * @private
+     * @param {uint8} plaintextByte - Input plaintext byte
+     * @param {uint8} caByte - Control byte A
+     * @param {uint8} cbByte - Control byte B
+     * @returns {uint8} Encrypted ciphertext byte
+     */
     _acornEncrypt8(plaintextByte, caByte, cbByte) {
       const s244 = (this.state.s6_l >>> 14) & 0xFF;
       const s235 = (this.state.s6_l >>> 5) & 0xFF;
@@ -474,7 +595,12 @@
       return (plaintextByte ^ keystream) & 0xFF;
     }
 
-    // ACORN decryption step for single byte
+    /**
+     * ACORN decryption step for single byte
+     * @private
+     * @param {uint8} ciphertextByte - Input ciphertext byte
+     * @returns {uint8} Decrypted plaintext byte
+     */
     _acornDecrypt8(ciphertextByte) {
       const s244 = (this.state.s6_l >>> 14) & 0xFF;
       const s235 = (this.state.s6_l >>> 5) & 0xFF;
@@ -502,7 +628,14 @@
       return plaintext;
     }
 
-    // Process 32-bit word
+    /**
+     * Process 32-bit word (4 bytes)
+     * @private
+     * @param {uint32} word - Input 32-bit word
+     * @param {uint32} caWord - Control word A
+     * @param {uint32} cbWord - Control word B
+     * @returns {uint32} Processed 32-bit word
+     */
     _encryptWord(word, caWord, cbWord) {
       let result = 0;
       for (let offset = 0; offset < 32; offset += 8) {
@@ -515,7 +648,11 @@
       return result >>> 0;
     }
 
-    // Padding operation
+    /**
+     * ACORN padding operation (8 words)
+     * @private
+     * @param {uint32} cbWord - Control word B for padding
+     */
     _acornPad(cbWord) {
       this._encryptWord(1, CA_ONE_WORD, cbWord);
       this._encryptWord(0, CA_ONE_WORD, cbWord);
@@ -527,7 +664,11 @@
       this._encryptWord(0, CA_ZERO_WORD, cbWord);
     }
 
-    // Absorb associated data
+    /**
+     * Absorb additional authenticated data into state
+     * @private
+     * @param {uint8[]} aad - Associated data bytes
+     */
     _absorbAAD(aad) {
       if (!aad || aad.length === 0) return;
 
@@ -536,7 +677,12 @@
       }
     }
 
-    // Encrypt bytes
+    /**
+     * Encrypt plaintext bytes
+     * @private
+     * @param {uint8[]} plaintext - Input plaintext
+     * @returns {uint8[]} Encrypted ciphertext
+     */
     _encryptBytes(plaintext) {
       if (!this.state.authDone) {
         this._acornPad(CB_ONE_WORD);
@@ -552,7 +698,12 @@
       return output;
     }
 
-    // Decrypt bytes
+    /**
+     * Decrypt ciphertext bytes
+     * @private
+     * @param {uint8[]} ciphertext - Input ciphertext
+     * @returns {uint8[]} Decrypted plaintext
+     */
     _decryptBytes(ciphertext) {
       if (!this.state.authDone) {
         this._acornPad(CB_ONE_WORD);
@@ -568,7 +719,11 @@
       return output;
     }
 
-    // Finalize and generate authentication tag
+    /**
+     * Finalize and generate 128-bit authentication tag
+     * @private
+     * @returns {uint8[]} 16-byte authentication tag
+     */
     _finalizeTag() {
       if (!this.state.authDone) {
         this._acornPad(CB_ONE_WORD);

@@ -463,6 +463,12 @@
     }
   }
 
+  /**
+ * Haval - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class Haval extends HashFunctionAlgorithm {
       constructor() {
         super();

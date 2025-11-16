@@ -44,10 +44,9 @@
    * Security: BROKEN - Vulnerable to chosen plaintext/ciphertext attacks.
    * Use for educational and compatibility purposes only.
    *
-   * NOTE: This implementation uses direct bit operations (>>, &, ^, |) instead of OpCodes
-   * functions because: 1) WAKE uses signed integer arithmetic in the original C++ implementation
-   * (requiring | 0 for signed conversion), and 2) the shifts and XORs are fundamental to the
-   * algorithm's mixing functions, not complex operations that need abstraction.
+   * Implementation note: This cipher requires signed 32-bit integer arithmetic
+   * in several places (GenKey function) to match the original C++ reference.
+   * The | 0 conversions are intentional for compatibility with the reference.
    */
   class WAKE_Base extends StreamCipherAlgorithm {
     constructor(name, isBigEndian) {
@@ -73,6 +72,12 @@
         new LinkItem("Crypto++ WAKE Implementation", "https://github.com/weidai11/cryptopp/blob/master/wake.cpp")
       ];
     }
+
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
 
     CreateInstance(isInverse = false) {
       return new WAKEInstance(this, isInverse);
@@ -120,7 +125,19 @@
   }
 
   // WAKE Instance Implementation
+  /**
+ * WAKE cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class WAKEInstance extends IAlgorithmInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -145,6 +162,12 @@
       ];
     }
 
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
+
     set key(keyBytes) {
       if (!keyBytes) {
         this._key = null;
@@ -153,14 +176,21 @@
 
       // WAKE requires exactly 32-byte (256-bit) key
       if (keyBytes.length !== 32) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (WAKE requires 32 bytes)`);
+        throw new Error('Invalid key size: ' + keyBytes.length + ' bytes (WAKE requires 32 bytes)');
       }
 
-      this._key = [...keyBytes];
+      this._key = OpCodes.CopyArray(keyBytes);
       this._keySetup();
     }
 
-    get key() { return this._key ? [...this._key] : null; }
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
+
+    get key() {
+      return this._key ? OpCodes.CopyArray(this._key) : null;
+    }
 
     /**
      * WAKE key setup from Crypto++ wake.cpp lines 64-69
@@ -172,9 +202,9 @@
       if (!this._key) return;
 
       // Read 8 32-bit words from key (big-endian as per Crypto++)
-      const words = [];
-      for (let i = 0; i < 8; i++) {
-        const offset = i * 4;
+      var words = [];
+      for (var i = 0; i < 8; i++) {
+        var offset = i * 4;
         words.push(OpCodes.Pack32BE(
           this._key[offset],
           this._key[offset + 1],
@@ -200,49 +230,54 @@
     /**
      * GenKey() function from Crypto++ wake.cpp lines 33-61
      * Generates the 257-word table used by M() function
+     *
+     * IMPORTANT: The original C++ implementation uses signed 32-bit integers
+     * with arithmetic right shift (>>). JavaScript requires explicit conversion
+     * to signed integers using | 0 to match this behavior.
      */
     _genKey(k0, k1, k2, k3) {
-      // Initialize first 4 entries
+      // Initialize first 4 entries (using >>> 0 for unsigned)
       this.t[0] = k0 >>> 0;
       this.t[1] = k1 >>> 0;
       this.t[2] = k2 >>> 0;
       this.t[3] = k3 >>> 0;
 
       // Fill table (lines 42-46)
-      // IMPORTANT: x is treated as SIGNED int in C++, so >> is arithmetic shift!
-      for (let p = 4; p < 256; p++) {
-        let x = (this.t[p - 4] + this.t[p - 1]) | 0; // Convert to signed 32-bit
+      // CRITICAL: x must be signed for arithmetic shift to match C++ behavior
+      for (var p = 4; p < 256; p++) {
+        var x = (this.t[p - 4] + this.t[p - 1]) | 0; // Signed 32-bit
+        // Arithmetic shift >> preserves sign, then XOR with TT lookup
         this.t[p] = ((x >> 3) ^ this.TT[x & 7]) >>> 0;
       }
 
       // Mix first entries (lines 48-49)
-      for (let p = 0; p < 23; p++) {
+      for (var p = 0; p < 23; p++) {
         this.t[p] = OpCodes.Add32(this.t[p], this.t[p + 89]);
       }
 
       // Change top byte to permutation (lines 50-54)
-      // IMPORTANT: x and z are signed ints in C++
-      let x = this.t[33] | 0;
-      let z = (this.t[59] | 0x01000001) | 0;
+      // CRITICAL: x and z must be signed integers for correct overflow behavior
+      var x = this.t[33] | 0;
+      var z = (this.t[59] | 0x01000001) | 0;
       z = (z & 0xff7fffff) | 0;
 
-      for (let p = 0; p < 256; p++) {
-        x = ((x & 0xff7fffff) + z) | 0;
+      for (var p = 0; p < 256; p++) {
+        x = ((x & 0xff7fffff) + z) | 0; // Signed addition with mask
         this.t[p] = ((this.t[p] & 0x00ffffff) ^ x) >>> 0;
       }
 
       // Further permutation changes (lines 56-60)
-      // This is the exact C++ code translated:
+      // Exact translation of C++:
       // t[p] = t[y = byte(t[p ^ y] ^ y)];
       // t[y] = t[p + 1];
       this.t[256] = this.t[0];
-      let y = x & 0xFF;
+      var y = x & 0xFF;
 
-      for (let p = 0; p < 256; p++) {
+      for (var p = 0; p < 256; p++) {
         // y = byte(t[p ^ y] ^ y)
         y = ((this.t[(p ^ y) & 0xFF] ^ y) & 0xFF);
         // t[p] = t[y]
-        const temp = this.t[y];
+        var temp = this.t[y];
         // t[y] = t[p + 1]
         this.t[y] = this.t[p + 1];
         // Now assign temp to t[p]
@@ -255,8 +290,8 @@
      * M(x, y) = ((x + y) >> 8) ^ t[(x + y) & 0xFF]
      */
     _M(x, y) {
-      const w = OpCodes.Add32(x, y);
-      return ((w >>> 8) ^ this.t[w & 0xFF]) >>> 0;
+      var w = OpCodes.Add32(x, y);
+      return OpCodes.Shr32(w, 8) ^ this.t[w & 0xFF];
     }
 
     /**
@@ -265,7 +300,7 @@
      */
     _generateWord() {
       // Output r6, then update cascade
-      const output = this.r6;
+      var output = this.r6;
 
       this.r3 = this._M(this.r3, this.r6);
       this.r4 = this._M(this.r4, this.r3);
@@ -279,7 +314,7 @@
      * Generate bytes for keystream buffer based on endianness variant
      */
     _generateBlock() {
-      const word = this._generateWord();
+      var word = this._generateWord();
 
       // Output word in correct endianness
       if (this.algorithm.isBigEndian) {
@@ -300,19 +335,31 @@
       return this.keystreamBuffer[this.keystreamPosition++];
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error("Key not set");
-      this.inputBuffer.push(...data);
+      this.inputBuffer.push.apply(this.inputBuffer, data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
-      const output = [];
-      for (let i = 0; i < this.inputBuffer.length; i++) {
-        const keystreamByte = this._getNextKeystreamByte();
+      var output = [];
+      for (var i = 0; i < this.inputBuffer.length; i++) {
+        var keystreamByte = this._getNextKeystreamByte();
         output.push(this.inputBuffer[i] ^ keystreamByte);
       }
 
@@ -323,8 +370,8 @@
 
   // ===== REGISTRATION =====
 
-  const wakeLE = new WAKE_OFB_LE();
-  const wakeBE = new WAKE_OFB_BE();
+  var wakeLE = new WAKE_OFB_LE();
+  var wakeBE = new WAKE_OFB_BE();
 
   if (!AlgorithmFramework.Find(wakeLE.name)) {
     RegisterAlgorithm(wakeLE);
@@ -336,5 +383,5 @@
 
   // ===== EXPORTS =====
 
-  return { WAKE_OFB_LE, WAKE_OFB_BE, WAKEInstance };
+  return { WAKE_OFB_LE: WAKE_OFB_LE, WAKE_OFB_BE: WAKE_OFB_BE, WAKEInstance: WAKEInstance };
 }));

@@ -141,6 +141,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new SingletonBoundCodeInstance(this, isInverse);
     }
@@ -155,6 +161,12 @@
    * - GF(256) arithmetic using primitive polynomial x^8 + x^4 + x^3 + x^2 + 1 (0x11D)
    */
   class SingletonBoundCodeInstance extends IErrorCorrectionInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;

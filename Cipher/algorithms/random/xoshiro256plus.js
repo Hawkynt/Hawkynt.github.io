@@ -144,6 +144,12 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) {
         return null; // PRNGs have no inverse operation
@@ -151,6 +157,12 @@
       return new Xoshiro256PlusInstance(this);
     }
   }
+
+  /**
+ * Xoshiro256Plus cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class Xoshiro256PlusInstance extends IRandomGeneratorInstance {
     constructor(algorithm) {
@@ -266,11 +278,23 @@
     }
 
     // AlgorithmFramework interface implementation
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       // For PRNG, Feed can be used to add entropy (reseed)
       // Not implemented in basic xoshiro256+ - would require mixing
       // For now, Feed is a no-op (xoshiro256+ is deterministic)
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       // Use specified output size or default to 32 bytes (4 x 64-bit values)

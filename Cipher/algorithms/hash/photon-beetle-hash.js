@@ -77,6 +77,12 @@
   // PHOTON S-box
   const sbox = [ 12, 5, 6, 11, 9, 0, 10, 13, 3, 14, 15, 8, 4, 7, 1, 2 ];
 
+  /**
+ * PhotonBeetleHash - Cryptographic hash function
+ * @class
+ * @extends {HashFunctionAlgorithm}
+ */
+
   class PhotonBeetleHash extends HashFunctionAlgorithm {
     constructor() {
       super();
@@ -155,11 +161,23 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       if (isInverse) return null;
       return new PhotonBeetleHashInstance(this);
     }
   }
+
+  /**
+ * PhotonBeetleHash cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
 
   class PhotonBeetleHashInstance extends IHashFunctionInstance {
     constructor(algorithm) {
@@ -183,6 +201,12 @@
     get outputSize() {
       return this._outputSize;
     }
+
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
 
     Feed(data) {
       if (!data || data.length === 0) return;
@@ -208,6 +232,12 @@
         }
       }
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       this._finishAbsorbing();

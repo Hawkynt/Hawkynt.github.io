@@ -443,12 +443,30 @@
       this.tests = [];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new SkinnyAeadInstance(this, isInverse);
     }
   }
 
+  /**
+ * SkinnyAead cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class SkinnyAeadInstance extends IAeadInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -457,6 +475,12 @@
       this._nonce = null;
       this._aad = [];
     }
+
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
 
     set key(keyBytes) {
       if (!keyBytes) {
@@ -468,6 +492,11 @@
       }
       this._key = [...keyBytes];
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() { return this._key ? [...this._key] : null; }
 
@@ -491,12 +520,24 @@
 
     get aad() { return [...this._aad]; }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       if (!this._key) throw new Error('Key not set');
       if (!this._nonce) throw new Error('Nonce not set');
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) throw new Error('Key not set');
@@ -899,13 +940,31 @@
   const m1 = new SkinnyAeadAlgorithm(1, 16, 16, false);
   m1.tests = [
     {
-      text: 'SKINNY-AEAD-M1 Official Test Vector #1',
-      uri: 'https://github.com/rweather/lightweight-crypto/tree/master/test/kat',
+      text: 'SKINNY-AEAD-M1 Official Test Vector #1 (empty PT, empty AD)',
+      uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M1.txt',
       input: OpCodes.Hex8ToBytes(''),
       key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
       nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
       aad: OpCodes.Hex8ToBytes(''),
-      expected: OpCodes.Hex8ToBytes('9736557DC70991AE34F6B7AA1D7E3F97')
+      expected: OpCodes.Hex8ToBytes('99CE68EF7B52AAD0E11C6E2FC722426D')
+    },
+    {
+      text: 'SKINNY-AEAD-M1 Official Test Vector #2 (empty PT, 1 byte AD)',
+      uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M1.txt',
+      input: OpCodes.Hex8ToBytes(''),
+      key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+      nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+      aad: OpCodes.Hex8ToBytes('00'),
+      expected: OpCodes.Hex8ToBytes('4720E8EA3682D9E9DC5C83563705F8F4')
+    },
+    {
+      text: 'SKINNY-AEAD-M1 Official Test Vector #37 (1 byte PT, 3 bytes AD)',
+      uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M1.txt',
+      input: OpCodes.Hex8ToBytes('00'),
+      key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+      nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+      aad: OpCodes.Hex8ToBytes('000102'),
+      expected: OpCodes.Hex8ToBytes('859DB826629C124578ABA5A459E97A312F')
     }
   ];
 
@@ -913,12 +972,12 @@
   m2.tests = [
     {
       text: 'SKINNY-AEAD-M2 Official Test Vector #1',
-      uri: 'https://github.com/rweather/lightweight-crypto/tree/master/test/kat',
+      uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M2.txt',
       input: OpCodes.Hex8ToBytes(''),
       key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
       nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B'),
       aad: OpCodes.Hex8ToBytes(''),
-      expected: OpCodes.Hex8ToBytes('B896C005BCCE9527925B76FC89090F34')
+      expected: OpCodes.Hex8ToBytes('B9E76FC4D90272FF24E6386BF522CFE3')
     }
   ];
 
@@ -926,7 +985,7 @@
   m3.tests = [
     {
       text: 'SKINNY-AEAD-M3 Official Test Vector #1',
-      uri: 'https://github.com/rweather/lightweight-crypto/tree/master/test/kat',
+      uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M3.txt',
       input: OpCodes.Hex8ToBytes(''),
       key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
       nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
@@ -939,12 +998,12 @@
   m4.tests = [
     {
       text: 'SKINNY-AEAD-M4 Official Test Vector #1',
-      uri: 'https://github.com/rweather/lightweight-crypto/tree/master/test/kat',
+      uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M4.txt',
       input: OpCodes.Hex8ToBytes(''),
       key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
       nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B'),
       aad: OpCodes.Hex8ToBytes(''),
-      expected: OpCodes.Hex8ToBytes('85A43FB5EFD483F7')
+      expected: OpCodes.Hex8ToBytes('F94B439573612A09')
     }
   ];
 
@@ -952,12 +1011,12 @@
   m5.tests = [
     {
       text: 'SKINNY-AEAD-M5 Official Test Vector #1',
-      uri: 'https://github.com/rweather/lightweight-crypto/tree/master/test/kat',
+      uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M5.txt',
       input: OpCodes.Hex8ToBytes(''),
       key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
       nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B'),
       aad: OpCodes.Hex8ToBytes(''),
-      expected: OpCodes.Hex8ToBytes('D198D0305EE8109F48D8AF8B7A2EFF76')
+      expected: OpCodes.Hex8ToBytes('26171C0816F2CCC821D57F0090F8E1AB')
     }
   ];
 
@@ -965,12 +1024,12 @@
   m6.tests = [
     {
       text: 'SKINNY-AEAD-M6 Official Test Vector #1',
-      uri: 'https://github.com/rweather/lightweight-crypto/tree/master/test/kat',
+      uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M6.txt',
       input: OpCodes.Hex8ToBytes(''),
       key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
       nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B'),
       aad: OpCodes.Hex8ToBytes(''),
-      expected: OpCodes.Hex8ToBytes('D113DD8394C3A72E')
+      expected: OpCodes.Hex8ToBytes('DAAB927F30D9C87B')
     }
   ];
 

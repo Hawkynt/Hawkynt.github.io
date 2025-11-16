@@ -53,6 +53,12 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+ * ThreeWayAlgorithm - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class ThreeWayAlgorithm extends BlockCipherAlgorithm {
       constructor() {
         super();

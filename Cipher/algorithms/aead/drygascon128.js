@@ -270,10 +270,13 @@
       mixData[12] = data[15] ^ ds; // Add domain separator
       mixData[13] = ds >>> 10;
 
-      for (let i = 0; i < 14; ++i) {
+      // Mix rounds: 13 rounds with core_round, last without
+      for (let i = 0; i < 13; ++i) {
         this.mixPhaseRound(mixData[i] & 0x3FF);
         this.c.coreRound(0);
       }
+      // Final mix round without core_round after it
+      this.mixPhaseRound(mixData[13] & 0x3FF);
     }
 
     // Mix a single 10-bit value into state
@@ -285,7 +288,8 @@
       const x3 = this.selectX((data >>> 6) & 0x03);
       const x4 = this.selectX((data >>> 8) & 0x03);
 
-      // XOR into state.c.W[0,2,4,6,8]
+      // XOR into state.c.S at indices for W[0,2,4,6,8]
+      // S[0][0] = W[0], S[1][0] = W[2], S[2][0] = W[4], S[3][0] = W[6], S[4][0] = W[8]
       this.c.S[0][0] = (this.c.S[0][0] ^ x0) >>> 0;
       this.c.S[1][0] = (this.c.S[1][0] ^ x1) >>> 0;
       this.c.S[2][0] = (this.c.S[2][0] ^ x2) >>> 0;
@@ -295,56 +299,53 @@
 
     // G function: run core rounds and squeeze output
     g() {
-      // Perform rounds and XOR output from state
-      this.c.coreRound(0);
+      // Bug Fix #2 & #3: Use flat W[10] array with correct XOR pattern
+      // W[0]^W[5], W[1]^W[6], W[2]^W[7], W[3]^W[4]
+      // First round sets r[], subsequent rounds XOR into r[]
 
-      // First round output
-      const w0 = (this.c.S[0][0] ^ this.c.S[2][1]) >>> 0;
-      const w1 = (this.c.S[0][1] ^ this.c.S[3][0]) >>> 0;
-      const w2 = (this.c.S[1][0] ^ this.c.S[3][1]) >>> 0;
-      const w3 = (this.c.S[1][1] ^ this.c.S[2][0]) >>> 0;
-
-      // Remaining rounds
-      for (let round = 1; round < this.rounds; ++round) {
+      for (let round = 0; round < this.rounds; ++round) {
         this.c.coreRound(round);
 
-        // XOR additional output
-        const w0_new = (this.c.S[0][0] ^ this.c.S[2][1]) >>> 0;
-        const w1_new = (this.c.S[0][1] ^ this.c.S[3][0]) >>> 0;
-        const w2_new = (this.c.S[1][0] ^ this.c.S[3][1]) >>> 0;
-        const w3_new = (this.c.S[1][1] ^ this.c.S[2][0]) >>> 0;
+        // Extract W[0] through W[9] from state as flat 32-bit words
+        const W = [
+          this.c.S[0][0],  // W[0]
+          this.c.S[0][1],  // W[1]
+          this.c.S[1][0],  // W[2]
+          this.c.S[1][1],  // W[3]
+          this.c.S[2][0],  // W[4]
+          this.c.S[2][1],  // W[5]
+          this.c.S[3][0],  // W[6]
+          this.c.S[3][1],  // W[7]
+          this.c.S[4][0],  // W[8]
+          this.c.S[4][1]   // W[9]
+        ];
 
-        this.r[0] ^= OpCodes.Unpack32LE(w0_new)[0];
-        this.r[1] ^= OpCodes.Unpack32LE(w0_new)[1];
-        this.r[2] ^= OpCodes.Unpack32LE(w0_new)[2];
-        this.r[3] ^= OpCodes.Unpack32LE(w0_new)[3];
+        // XOR pattern: W[0]^W[5], W[1]^W[6], W[2]^W[7], W[3]^W[4]
+        const out0 = (W[0] ^ W[5]) >>> 0;
+        const out1 = (W[1] ^ W[6]) >>> 0;
+        const out2 = (W[2] ^ W[7]) >>> 0;
+        const out3 = (W[3] ^ W[4]) >>> 0;
 
-        this.r[4] ^= OpCodes.Unpack32LE(w1_new)[0];
-        this.r[5] ^= OpCodes.Unpack32LE(w1_new)[1];
-        this.r[6] ^= OpCodes.Unpack32LE(w1_new)[2];
-        this.r[7] ^= OpCodes.Unpack32LE(w1_new)[3];
+        // Convert to bytes
+        const b0 = OpCodes.Unpack32LE(out0);
+        const b1 = OpCodes.Unpack32LE(out1);
+        const b2 = OpCodes.Unpack32LE(out2);
+        const b3 = OpCodes.Unpack32LE(out3);
 
-        this.r[8] ^= OpCodes.Unpack32LE(w2_new)[0];
-        this.r[9] ^= OpCodes.Unpack32LE(w2_new)[1];
-        this.r[10] ^= OpCodes.Unpack32LE(w2_new)[2];
-        this.r[11] ^= OpCodes.Unpack32LE(w2_new)[3];
-
-        this.r[12] ^= OpCodes.Unpack32LE(w3_new)[0];
-        this.r[13] ^= OpCodes.Unpack32LE(w3_new)[1];
-        this.r[14] ^= OpCodes.Unpack32LE(w3_new)[2];
-        this.r[15] ^= OpCodes.Unpack32LE(w3_new)[3];
+        if (round === 0) {
+          // First round: set r[]
+          this.r[0] = b0[0]; this.r[1] = b0[1]; this.r[2] = b0[2]; this.r[3] = b0[3];
+          this.r[4] = b1[0]; this.r[5] = b1[1]; this.r[6] = b1[2]; this.r[7] = b1[3];
+          this.r[8] = b2[0]; this.r[9] = b2[1]; this.r[10] = b2[2]; this.r[11] = b2[3];
+          this.r[12] = b3[0]; this.r[13] = b3[1]; this.r[14] = b3[2]; this.r[15] = b3[3];
+        } else {
+          // Subsequent rounds: XOR into r[]
+          this.r[0] ^= b0[0]; this.r[1] ^= b0[1]; this.r[2] ^= b0[2]; this.r[3] ^= b0[3];
+          this.r[4] ^= b1[0]; this.r[5] ^= b1[1]; this.r[6] ^= b1[2]; this.r[7] ^= b1[3];
+          this.r[8] ^= b2[0]; this.r[9] ^= b2[1]; this.r[10] ^= b2[2]; this.r[11] ^= b2[3];
+          this.r[12] ^= b3[0]; this.r[13] ^= b3[1]; this.r[14] ^= b3[2]; this.r[15] ^= b3[3];
+        }
       }
-
-      // Store final output
-      const b0 = OpCodes.Unpack32LE(w0);
-      const b1 = OpCodes.Unpack32LE(w1);
-      const b2 = OpCodes.Unpack32LE(w2);
-      const b3 = OpCodes.Unpack32LE(w3);
-
-      this.r[0] = b0[0]; this.r[1] = b0[1]; this.r[2] = b0[2]; this.r[3] = b0[3];
-      this.r[4] = b1[0]; this.r[5] = b1[1]; this.r[6] = b1[2]; this.r[7] = b1[3];
-      this.r[8] = b2[0]; this.r[9] = b2[1]; this.r[10] = b2[2]; this.r[11] = b2[3];
-      this.r[12] = b3[0]; this.r[13] = b3[1]; this.r[14] = b3[2]; this.r[15] = b3[3];
     }
 
     // F function wrapper: mix + g
@@ -476,10 +477,16 @@
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           aad: OpCodes.Hex8ToBytes(""),
           input: OpCodes.Hex8ToBytes("0001020304050607"),
-          expected: OpCodes.Hex8ToBytes("8D8F6233FB2FB74DD5DE8C9BD8CCD4CAD04C3BD1C7B7")
+          expected: OpCodes.Hex8ToBytes("F2EDDAB10170B930EFD25F2E831D0EF375492D8733063CCA")
         }
       ];
     }
+
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
 
     CreateInstance(isInverse = false) {
       return new DryGASCON128k16Instance(this, isInverse);
@@ -488,7 +495,19 @@
 
   // ========================[ DRYGASCON128K16 INSTANCE ]========================
 
+  /**
+ * DryGASCON128k16 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class DryGASCON128k16Instance extends IAeadInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -497,6 +516,12 @@
       this._aad = [];
       this.inputBuffer = [];
     }
+
+    /**
+   * Set encryption/decryption key
+   * @param {uint8[]|null} keyBytes - Encryption key or null to clear
+   * @throws {Error} If key size is invalid
+   */
 
     set key(keyBytes) {
       if (!keyBytes) {
@@ -510,6 +535,11 @@
 
       this._key = [...keyBytes];
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() { return this._key ? [...this._key] : null; }
 
@@ -546,10 +576,22 @@
       return this.aad;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!data || data.length === 0) return;
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) throw new Error("Key not set");
@@ -617,31 +659,21 @@
         }
       } while (cWordsAreSame);
 
-      // Copy first 16 bytes of state.c to x
-      for (let i = 0; i < 16; ++i) {
-        const stateIdx = Math.floor(i / 8);
-        const wordOffset = i % 8;
-        if (wordOffset < 4) {
-          state.x[i] = (state.c.S[stateIdx][0] >>> (wordOffset * 8)) & 0xFF;
-        } else {
-          state.x[i] = (state.c.S[stateIdx][1] >>> ((wordOffset - 4) * 8)) & 0xFF;
-        }
-      }
+      // Copy first 16 bytes of state.c to x (c.W[0-3] → x)
+      const b0 = OpCodes.Unpack32LE(state.c.S[0][0]);
+      const b1 = OpCodes.Unpack32LE(state.c.S[0][1]);
+      const b2 = OpCodes.Unpack32LE(state.c.S[1][0]);
+      const b3 = OpCodes.Unpack32LE(state.c.S[1][1]);
+      state.x[0] = b0[0]; state.x[1] = b0[1]; state.x[2] = b0[2]; state.x[3] = b0[3];
+      state.x[4] = b1[0]; state.x[5] = b1[1]; state.x[6] = b1[2]; state.x[7] = b1[3];
+      state.x[8] = b2[0]; state.x[9] = b2[1]; state.x[10] = b2[2]; state.x[11] = b2[3];
+      state.x[12] = b3[0]; state.x[13] = b3[1]; state.x[14] = b3[2]; state.x[15] = b3[3];
 
-      // Replace first 16 bytes of state with key
-      for (let i = 0; i < 16; ++i) {
-        const stateIdx = Math.floor(i / 8);
-        const wordOffset = i % 8;
-        if (wordOffset < 4) {
-          // Update low word
-          const mask = ~(0xFF << (wordOffset * 8));
-          state.c.S[stateIdx][0] = ((state.c.S[stateIdx][0] & mask) | (this._key[i] << (wordOffset * 8))) >>> 0;
-        } else {
-          // Update high word
-          const mask = ~(0xFF << ((wordOffset - 4) * 8));
-          state.c.S[stateIdx][1] = ((state.c.S[stateIdx][1] & mask) | (this._key[i] << ((wordOffset - 4) * 8))) >>> 0;
-        }
-      }
+      // Replace first 16 bytes of state with key (c.W[0-3] = key[0-15])
+      state.c.S[0][0] = OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]);
+      state.c.S[0][1] = OpCodes.Pack32LE(this._key[4], this._key[5], this._key[6], this._key[7]);
+      state.c.S[1][0] = OpCodes.Pack32LE(this._key[8], this._key[9], this._key[10], this._key[11]);
+      state.c.S[1][1] = OpCodes.Pack32LE(this._key[12], this._key[13], this._key[14], this._key[15]);
 
       // Absorb nonce with increased rounds
       state.rounds = DRYSPONGE128_INIT_ROUNDS;

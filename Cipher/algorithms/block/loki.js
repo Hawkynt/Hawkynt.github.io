@@ -55,6 +55,12 @@
 
   // ===== LOKI89 IMPLEMENTATION =====
 
+  /**
+ * LOKI89Algorithm - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class LOKI89Algorithm extends AlgorithmFramework.BlockCipherAlgorithm {
     constructor() {
       super();
@@ -106,12 +112,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new LOKI89Instance(this, isInverse);
     }
   }
 
+  /**
+ * LOKI89 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class LOKI89Instance extends AlgorithmFramework.IBlockCipherInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -142,6 +166,11 @@
         4, 21, 11, 28, 15, 23, 31, 0
       ];
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return this._key;
@@ -179,12 +208,24 @@
       return [KL, KR];
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!Array.isArray(data)) {
         throw new Error('Feed expects byte array');
       }
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) {
@@ -336,6 +377,12 @@
 
   // ===== LOKI91 IMPLEMENTATION =====
 
+  /**
+ * LOKI91Algorithm - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class LOKI91Algorithm extends AlgorithmFramework.BlockCipherAlgorithm {
     constructor() {
       super();
@@ -386,12 +433,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new LOKI91Instance(this, isInverse);
     }
   }
 
+  /**
+ * LOKI91 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class LOKI91Instance extends AlgorithmFramework.IBlockCipherInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -424,6 +489,11 @@
         0x1F83D9AB, 0x5BE0CD19, 0x137E2179, 0x2E1B2138
       ];
     }
+
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
 
     get key() {
       return this._key;
@@ -512,12 +582,24 @@
       return result;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!Array.isArray(data)) {
         throw new Error('Feed expects byte array');
       }
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) {
@@ -625,6 +707,12 @@
 
   // ===== LOKI97 IMPLEMENTATION =====
 
+  /**
+ * LOKI97Algorithm - Block cipher implementation
+ * @class
+ * @extends {BlockCipherAlgorithm}
+ */
+
   class LOKI97Algorithm extends AlgorithmFramework.BlockCipherAlgorithm {
     constructor() {
       super();
@@ -685,12 +773,30 @@
       ];
     }
 
+    /**
+   * Create new cipher instance
+   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
+   * @returns {Object} New cipher instance
+   */
+
     CreateInstance(isInverse = false) {
       return new LOKI97Instance(this, isInverse);
     }
   }
 
+  /**
+ * LOKI97 cipher instance implementing Feed/Result pattern
+ * @class
+ * @extends {IBlockCipherInstance}
+ */
+
   class LOKI97Instance extends AlgorithmFramework.IBlockCipherInstance {
+    /**
+   * Initialize Algorithm cipher instance
+   * @param {Object} algorithm - Parent algorithm instance
+   * @param {boolean} [isInverse=false] - Decryption mode flag
+   */
+
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
@@ -725,6 +831,11 @@
     }
 
     // Lowercase key property for test framework compatibility
+    /**
+   * Get copy of current key
+   * @returns {uint8[]|null} Copy of key bytes or null
+   */
+
     get key() {
       return this._key;
     }
@@ -817,12 +928,24 @@
       return roundKeys;
     }
 
+    /**
+   * Feed data to cipher for processing
+   * @param {uint8[]} data - Input data bytes
+   * @throws {Error} If key not set
+   */
+
     Feed(data) {
       if (!Array.isArray(data)) {
         throw new Error('Feed expects byte array');
       }
       this.inputBuffer.push(...data);
     }
+
+    /**
+   * Get cipher result (encrypted or decrypted data)
+   * @returns {uint8[]} Processed output bytes
+   * @throws {Error} If key not set, no data fed, or invalid input length
+   */
 
     Result() {
       if (!this._key) {
