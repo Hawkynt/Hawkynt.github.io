@@ -73,97 +73,135 @@
     }
   })();
 
-  // Linear transformation multiplication constants from RFC 7801 Section 4.2
-  const L_COEFFS = new Uint8Array([
+  // Linear transformation base vector from RFC 7801 Section 4.2
+  const LINEAR = new Uint8Array([
     148, 32, 133, 16, 194, 192, 1, 251, 1, 192, 194, 16, 133, 32, 148, 1
   ]);
 
   // GF(2^8) multiplication with irreducible polynomial 0x1C3 (x^8 + x^7 + x^6 + x + 1)
   function gfMul(a, b) {
     let result = 0;
+    let aVal = a & 0xFF;
+    let bVal = b & 0xFF;
     for (let i = 0; i < 8; ++i) {
-      if (b & 1) result ^= a;
-      const high_bit_set = a & 0x80;
-      a <<= 1;
-      if (high_bit_set) a ^= 0xC3; // Reduction modulo 0x1C3
-      b >>= 1;
+      if (bVal & 1) result ^= aVal;
+      const high_bit_set = aVal & 0x80;
+      aVal = (aVal << 1) & 0xFF;
+      if (high_bit_set) aVal ^= 0xC3; // Reduction modulo 0x1C3
+      bVal >>= 1;
     }
     return result & 0xFF;
   }
 
-  // Linear transformation l: (V_8)^16 -> V_8 from RFC 7801 Section 4.2
-  function linearTransformL(block) {
-    let result = 0;
+  // Build L transformation matrix (following Botan's approach for correctness)
+  // This creates a 16x16 matrix and squares it 4 times, equivalent to applying R^16
+  function buildLMatrix() {
+    const L = [];
+    for (let i = 0; i < 256; ++i) L.push(0);
+
+    // Initialize with LINEAR vector and identity elements
     for (let i = 0; i < 16; ++i) {
-      result ^= gfMul(block[i], L_COEFFS[i]);
+      L[i] = LINEAR[i];
+      if (i > 0) {
+        L[17 * i - 1] = 1;
+      }
     }
+
+    // Square matrix in GF(2^8)
+    function sqr_matrix(mat) {
+      const res = [];
+      for (let i = 0; i < 256; ++i) res.push(0);
+      for (let i = 0; i < 16; ++i) {
+        for (let j = 0; j < 16; ++j) {
+          for (let k = 0; k < 16; ++k) {
+            const mul = gfMul(mat[16 * i + k], mat[16 * k + j]);
+            res[16 * i + j] ^= mul;
+          }
+        }
+      }
+      return res;
+    }
+
+    // Square 4 times
+    let result = L.slice();
+    for (let i = 0; i < 4; ++i) {
+      result = sqr_matrix(result);
+    }
+
+
     return result;
   }
 
-  // R transformation from RFC 7801 Section 4.2: R(a_15,...,a_0) = (l(a) ⊕ a_15, a_15, a_14, ..., a_1)
-  // Input:  [a_15, a_14, ..., a_1, a_0] at positions [0, 1, ..., 14, 15]
-  // Output: [l⊕a_15, a_15, a_14, ..., a_1] at positions [0, 1, 2, ..., 15]
-  function transformR(inputBlock) {
-    const lValue = linearTransformL(inputBlock);
+  // Build inverse L matrix
+  function buildInvLMatrix() {
+    const L = [];
+    for (let i = 0; i < 256; ++i) L.push(0);
+
+    // Initialize with reversed LINEAR vector and identity elements
+    for (let i = 0; i < 16; ++i) {
+      L[i] = LINEAR[15 - i];
+      if (i > 0) {
+        L[17 * i - 1] = 1;
+      }
+    }
+
+    // Square matrix in GF(2^8)
+    function sqr_matrix(mat) {
+      const res = [];
+      for (let i = 0; i < 256; ++i) res.push(0);
+      for (let i = 0; i < 16; ++i) {
+        for (let j = 0; j < 16; ++j) {
+          for (let k = 0; k < 16; ++k) {
+            res[16 * i + j] ^= gfMul(mat[16 * i + k], mat[16 * k + j]);
+          }
+        }
+      }
+      return res;
+    }
+
+    // Reverse result
+    let result = L.slice();
+    for (let i = 0; i < 4; ++i) {
+      result = sqr_matrix(result);
+    }
+
+    // Reverse the matrix
+    const reversed = [];
+    for (let i = 0; i < 256; ++i) {
+      reversed.push(result[255 - i]);
+    }
+
+    return reversed;
+  }
+
+  // Pre-compute matrices
+  const L_MATRIX = buildLMatrix();
+  const INV_L_MATRIX = buildInvLMatrix();
+
+  // Matrix-based L transformation (correct implementation matching Botan)
+  function transformL(block) {
     const result = new Uint8Array(16);
-
-    // out[0] = l ⊕ a_15
-    result[0] = lValue ^ inputBlock[0];
-
-    // out[1] = a_15, out[2] = a_14, ..., out[15] = a_1
-    for (let i = 1; i < 16; ++i) {
-      result[i] = inputBlock[i - 1];
+    for (let row = 0; row < 16; ++row) {
+      let sum = 0;
+      for (let col = 0; col < 16; ++col) {
+        sum ^= gfMul(L_MATRIX[row * 16 + col], block[col]);
+      }
+      result[row] = sum;
     }
-
     return result;
   }
 
-  // Linear transformation L: (V_8)^16 -> (V_8)^16 is R applied 16 times
-  function transformL(inputBlock) {
-    let block = new Uint8Array(inputBlock);
-
-    // Apply R transformation 16 times
-    for (let i = 0; i < 16; ++i) {
-      block = transformR(block);
-    }
-
-    return block;
-  }
-
-  // Inverse R transformation: R^{-1}
-  function invTransformR(inputBlock) {
+  // Matrix-based inverse L transformation
+  function invTransformL(block) {
     const result = new Uint8Array(16);
-
-    // Reconstruct: out[0..14] = input[1..15]
-    for (let i = 0; i < 15; ++i) {
-      result[i] = inputBlock[i + 1];
+    for (let row = 0; row < 16; ++row) {
+      let sum = 0;
+      for (let col = 0; col < 16; ++col) {
+        sum ^= gfMul(INV_L_MATRIX[row * 16 + col], block[col]);
+      }
+      result[row] = sum;
     }
-
-    // Compute out[15] such that l(result) = input[0] ⊕ input[1]
-    // Since L_COEFFS[15] = 1, we have:
-    // l(result) = sum(result[i] * L_COEFFS[i]) for i=0..15
-    //           = sum(result[i] * L_COEFFS[i]) for i=0..14 + result[15] * 1
-    // So: result[15] = input[0] ⊕ input[1] ⊕ sum(result[i] * L_COEFFS[i]) for i=0..14
-
-    let partialL = 0;
-    for (let i = 0; i < 15; ++i) {
-      partialL ^= gfMul(result[i], L_COEFFS[i]);
-    }
-
-    result[15] = (inputBlock[0] ^ inputBlock[1] ^ partialL) & 0xFF;
-
     return result;
-  }
-
-  // Inverse linear transformation L^{-1} - apply R^{-1} 16 times
-  function invTransformL(inputBlock) {
-    let block = new Uint8Array(inputBlock);
-
-    for (let i = 0; i < 16; ++i) {
-      block = invTransformR(block);
-    }
-
-    return block;
   }
 
   // Substitution transformation S (apply S-box to all bytes)
@@ -193,12 +231,19 @@
     return result;
   }
 
-  // Feistel round constant C_i from RFC 7801 Section 4.3
-  function getRoundConstant(i) {
-    const result = new Uint8Array(16);
-    result[15] = i; // Vec_128(i)
-    return transformL(result);
+  // Feistel round constants from RFC 7801 Section 4.3
+  // Pre-compute all 32 round constants
+  function computeRoundConstants() {
+    const constants = [];
+    for (let i = 1; i <= 32; ++i) {
+      const vec = new Uint8Array(16);
+      vec[15] = i; // Vec_128(i)
+      constants.push(transformL(vec));
+    }
+    return constants;
   }
+
+  const ROUND_CONSTANTS = computeRoundConstants();
 
   // LSX transformation: L ∘ S ∘ X[k]
   function transformLSX(block, key) {
@@ -208,52 +253,68 @@
     return result;
   }
 
-  // Feistel function F[C](a,b) = (LSX[C](a) ⊕ b, a) from RFC 7801 Section 4.3
-  function feistelF(a, b, c) {
-    const lsxResult = transformLSX(a, c);
-    const newA = transformX(lsxResult, b); // LSX[C](a) ⊕ b
-    const newB = a; // a
-    return [newA, newB];
-  }
-
   // Key schedule from RFC 7801 Section 4.3 and 4.4
-  // Following Botan's implementation for correctness
+  // Following Botan's exact implementation
   function keyExpansion(key) {
     const keys = new Array(10);
 
-    // Start with the 256-bit key split into two 128-bit halves
-    let k1 = new Uint8Array(key.slice(0, 16));   // First 128 bits
-    let k2 = new Uint8Array(key.slice(16, 32));  // Second 128 bits
+    // Load key in Botan's internal format (reverse each 8-byte half)
+    function loadKey128(bytes, offset) {
+      const result = new Uint8Array(16);
+      for (let i = 0; i < 8; ++i) {
+        result[7 - i] = bytes[offset + i];
+        result[15 - i] = bytes[offset + 8 + i];
+      }
+      return result;
+    }
 
-    // Store initial keys
-    keys[0] = new Uint8Array(k1);
-    keys[1] = new Uint8Array(k2);
+    let k1 = loadKey128(key, 0);
+    let k2 = loadKey128(key, 16);
 
-    // Perform 4 iterations, each generating 2 new key pairs
+
+    // Store initial keys with deep copies
+    const k1InitCopy = new Uint8Array(16);
+    const k2InitCopy = new Uint8Array(16);
+    for (let j = 0; j < 16; ++j) {
+      k1InitCopy[j] = k1[j];
+      k2InitCopy[j] = k2[j];
+    }
+    keys[0] = k1InitCopy;
+    keys[1] = k2InitCopy;
+
+    // Perform 4 iterations (matching Botan lines 245-268)
     for (let i = 0; i < 4; ++i) {
       // Each iteration performs 8 Feistel rounds (4 pairs)
       for (let r = 0; r < 8; r += 2) {
-        // First Feistel round
-        const c1 = getRoundConstant(8 * i + r + 1);
-        let temp1 = transformLSX(k1, c1);
-        temp1 = transformX(temp1, k2);
+        // First Feistel round (lines 246-253)
+        let t0 = transformX(k1, ROUND_CONSTANTS[8 * i + r]);
+        t0 = transformS(t0);
+        t0 = transformL(t0);
+        t0 = transformX(t0, k2);
 
-        const newK1 = temp1;
-        const newK2 = k1;
+        const t2 = k1;
 
-        // Second Feistel round
-        const c2 = getRoundConstant(8 * i + r + 2);
-        let temp2 = transformLSX(newK1, c2);
-        temp2 = transformX(temp2, newK2);
+        // Second Feistel round (lines 255-261)
+        k1 = transformX(t0, ROUND_CONSTANTS[8 * i + r + 1]);
+        k1 = transformS(k1);
+        k1 = transformL(k1);
+        k1 = transformX(k1, t2);
 
-        k1 = temp2;
-        k2 = newK1;
+        k2 = t0;
       }
 
-      // Store keys after this iteration
-      keys[2 * (i + 1)] = new Uint8Array(k1);
-      keys[2 * (i + 1) + 1] = new Uint8Array(k2);
+      // Store keys after this iteration (lines 264-267)
+      // IMPORTANT: Make deep copies to avoid aliasing issues
+      const k1Copy = new Uint8Array(16);
+      const k2Copy = new Uint8Array(16);
+      for (let j = 0; j < 16; ++j) {
+        k1Copy[j] = k1[j];
+        k2Copy[j] = k2[j];
+      }
+      keys[2 * (i + 1)] = k1Copy;
+      keys[2 * (i + 1) + 1] = k2Copy;
     }
+
 
     return keys;
   }
@@ -407,10 +468,30 @@
       return output;
     }
 
-    encryptBlock(block) {
-      let state = new Uint8Array(block);
+    // Load block in little-endian order (matching Botan's load_le)
+    loadLE(block) {
+      const result = new Uint8Array(16);
+      for (let i = 0; i < 8; ++i) {
+        result[7 - i] = block[i];
+        result[15 - i] = block[8 + i];
+      }
+      return result;
+    }
 
-      // 9 rounds of X[K_i] ∘ L ∘ S
+    // Store block in little-endian order (matching Botan's store_le)
+    storeLE(block) {
+      const result = new Uint8Array(16);
+      for (let i = 0; i < 8; ++i) {
+        result[i] = block[7 - i];
+        result[8 + i] = block[15 - i];
+      }
+      return result;
+    }
+
+    encryptBlock(block) {
+      let state = this.loadLE(new Uint8Array(block));
+
+      // 9 rounds of X[K_i] ∘ S ∘ L
       for (let i = 0; i < 9; ++i) {
         state = transformX(state, this._roundKeys[i]);
         state = transformS(state);
@@ -420,11 +501,11 @@
       // Final round: X[K_10]
       state = transformX(state, this._roundKeys[9]);
 
-      return state;
+      return this.storeLE(state);
     }
 
     decryptBlock(block) {
-      let state = new Uint8Array(block);
+      let state = this.loadLE(new Uint8Array(block));
 
       // Inverse final round: X[K_10]
       state = transformX(state, this._roundKeys[9]);
@@ -436,7 +517,7 @@
         state = transformX(state, this._roundKeys[i]);
       }
 
-      return state;
+      return this.storeLE(state);
     }
   }
 

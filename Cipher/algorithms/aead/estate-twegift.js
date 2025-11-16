@@ -124,6 +124,7 @@
   // ===== GIFT-128 NIBBLE-TO-WORDS CONVERSION =====
 
   // Convert nibble-based representation to word-based
+  // Matches C reference: gift128n_to_words() in internal-gift128.c lines 155-207
   function gift128nToWords(input) {
     // Load little-endian 32-bit words (HYENA nibble order)
     let s0 = OpCodes.Pack32LE(input[12], input[13], input[14], input[15]);
@@ -131,7 +132,7 @@
     let s2 = OpCodes.Pack32LE(input[4], input[5], input[6], input[7]);
     let s3 = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
 
-    // Rearrange bits for word-based processing
+    // Apply PERM_WORDS to rearrange bits
     const permWords = function(x) {
       x = bitPermuteStep(x, 0x0a0a0a0a, 3);
       x = bitPermuteStep(x, 0x00cc00cc, 6);
@@ -145,35 +146,57 @@
     s2 = permWords(s2);
     s3 = permWords(s3);
 
-    // Rearrange bytes and return as big-endian words
-    const output = new Uint32Array(4);
-    output[0] = OpCodes.Pack32BE(
-      (s0 & 0xFF), (s1 & 0xFF), (s2 & 0xFF), (s3 & 0xFF)
-    );
-    output[1] = OpCodes.Pack32BE(
-      ((s0 >>> 8) & 0xFF), ((s1 >>> 8) & 0xFF), ((s2 >>> 8) & 0xFF), ((s3 >>> 8) & 0xFF)
-    );
-    output[2] = OpCodes.Pack32BE(
-      ((s0 >>> 16) & 0xFF), ((s1 >>> 16) & 0xFF), ((s2 >>> 16) & 0xFF), ((s3 >>> 16) & 0xFF)
-    );
-    output[3] = OpCodes.Pack32BE(
-      ((s0 >>> 24) & 0xFF), ((s1 >>> 24) & 0xFF), ((s2 >>> 24) & 0xFF), ((s3 >>> 24) & 0xFF)
-    );
+    // Interleave bytes from the four words (NOT standard word packing!)
+    // C ref: output[0]=s0, output[1]=s1, output[2]=s2, output[3]=s3,
+    //        output[4]=s0>>8, output[5]=s1>>8, ...
+    const output = new Uint8Array(16);
+    output[0] = s0 & 0xFF;
+    output[1] = s1 & 0xFF;
+    output[2] = s2 & 0xFF;
+    output[3] = s3 & 0xFF;
+    output[4] = (s0 >>> 8) & 0xFF;
+    output[5] = (s1 >>> 8) & 0xFF;
+    output[6] = (s2 >>> 8) & 0xFF;
+    output[7] = (s3 >>> 8) & 0xFF;
+    output[8] = (s0 >>> 16) & 0xFF;
+    output[9] = (s1 >>> 16) & 0xFF;
+    output[10] = (s2 >>> 16) & 0xFF;
+    output[11] = (s3 >>> 16) & 0xFF;
+    output[12] = (s0 >>> 24) & 0xFF;
+    output[13] = (s1 >>> 24) & 0xFF;
+    output[14] = (s2 >>> 24) & 0xFF;
+    output[15] = (s3 >>> 24) & 0xFF;
 
-    return output;
+    // Pack into 32-bit words for processing
+    const words = new Uint32Array(4);
+    words[0] = OpCodes.Pack32BE(output[0], output[1], output[2], output[3]);
+    words[1] = OpCodes.Pack32BE(output[4], output[5], output[6], output[7]);
+    words[2] = OpCodes.Pack32BE(output[8], output[9], output[10], output[11]);
+    words[3] = OpCodes.Pack32BE(output[12], output[13], output[14], output[15]);
+
+    return words;
   }
 
   // Convert word-based representation to nibble-based
+  // Matches C reference: gift128n_to_nibbles() in internal-gift128.c lines 215-259
   function gift128nToNibbles(input) {
-    // Reverse the byte arrangement
-    let s0 = (input[0] & 0xFF) | ((input[1] & 0xFF) << 8) |
-             ((input[2] & 0xFF) << 16) | ((input[3] & 0xFF) << 24);
-    let s1 = ((input[0] >>> 8) & 0xFF) | ((input[1] >>> 8) & 0xFF) << 8 |
-             ((input[2] >>> 8) & 0xFF) << 16 | ((input[3] >>> 8) & 0xFF) << 24;
-    let s2 = ((input[0] >>> 16) & 0xFF) | ((input[1] >>> 16) & 0xFF) << 8 |
-             ((input[2] >>> 16) & 0xFF) << 16 | ((input[3] >>> 16) & 0xFF) << 24;
-    let s3 = ((input[0] >>> 24) & 0xFF) | ((input[1] >>> 24) & 0xFF) << 8 |
-             ((input[2] >>> 24) & 0xFF) << 16 | ((input[3] >>> 24) & 0xFF) << 24;
+    // Unpack 32-bit words to bytes (reverse of the packing in toWords)
+    const bytes = new Uint8Array(16);
+    const w0 = OpCodes.Unpack32BE(input[0]);
+    const w1 = OpCodes.Unpack32BE(input[1]);
+    const w2 = OpCodes.Unpack32BE(input[2]);
+    const w3 = OpCodes.Unpack32BE(input[3]);
+    bytes[0] = w0[0]; bytes[1] = w0[1]; bytes[2] = w0[2]; bytes[3] = w0[3];
+    bytes[4] = w1[0]; bytes[5] = w1[1]; bytes[6] = w1[2]; bytes[7] = w1[3];
+    bytes[8] = w2[0]; bytes[9] = w2[1]; bytes[10] = w2[2]; bytes[11] = w2[3];
+    bytes[12] = w3[0]; bytes[13] = w3[1]; bytes[14] = w3[2]; bytes[15] = w3[3];
+
+    // De-interleave bytes to reconstruct the four words
+    // C ref: s0 = (input[12]<<24) | (input[8]<<16) | (input[4]<<8) | input[0]
+    let s0 = (bytes[12] << 24) | (bytes[8] << 16) | (bytes[4] << 8) | bytes[0];
+    let s1 = (bytes[13] << 24) | (bytes[9] << 16) | (bytes[5] << 8) | bytes[1];
+    let s2 = (bytes[14] << 24) | (bytes[10] << 16) | (bytes[6] << 8) | bytes[2];
+    let s3 = (bytes[15] << 24) | (bytes[11] << 16) | (bytes[7] << 8) | bytes[3];
 
     s0 = s0 >>> 0;
     s1 = s1 >>> 0;
@@ -194,7 +217,7 @@
     s2 = invPermWords(s2);
     s3 = invPermWords(s3);
 
-    // Store as little-endian bytes
+    // Store as little-endian bytes (HYENA nibble order)
     const output = new Uint8Array(16);
     const b0 = OpCodes.Unpack32LE(s0);
     const b1 = OpCodes.Unpack32LE(s1);
@@ -288,8 +311,9 @@
     let offset = 0;
     const mlen = m.length;
 
-    // Process full blocks
-    while (offset + 16 < mlen) {
+    // Process full blocks (leaving at least one block for tweak processing)
+    // C reference: while (mlen > 16) - process until <= 16 bytes remain
+    while (mlen - offset > 16) {
       for (let i = 0; i < 16; ++i) {
         tag[i] ^= m[offset + i];
       }
@@ -300,10 +324,10 @@
       offset += 16;
     }
 
-    // Process last block (full or partial)
+    // Process last block (full or partial) with appropriate tweak
     const remaining = mlen - offset;
     if (remaining === 16) {
-      // Full last block
+      // Full last block with tweak1
       for (let i = 0; i < 16; ++i) {
         tag[i] ^= m[offset + i];
       }
@@ -312,7 +336,7 @@
         tag[i] = encrypted[i];
       }
     } else if (remaining > 0) {
-      // Partial last block
+      // Partial last block with padding and tweak2
       for (let i = 0; i < remaining; ++i) {
         tag[i] ^= m[offset + i];
       }
@@ -658,16 +682,10 @@
       // Encrypt the plaintext
       estateEncrypt(ks, tag, output, input);
 
-      // Combine ciphertext and tag
-      // Convert tag from GIFT-128 nibble byte order (LE words) to standard byte order (reverse words)
+      // Combine ciphertext and tag (tag is already in correct format)
       const result = new Uint8Array(output.length + 16);
       result.set(output, 0);
-      for (let i = 0; i < 4; ++i) {
-        result[output.length + i] = tag[12 + i];
-        result[output.length + 4 + i] = tag[8 + i];
-        result[output.length + 8 + i] = tag[4 + i];
-        result[output.length + 12 + i] = tag[i];
-      }
+      result.set(tag, output.length);
 
       // Clear buffer
       this._inputBuffer = [];
@@ -683,36 +701,23 @@
         throw new Error("Invalid ciphertext length (too short for tag)");
       }
 
-      // Split ciphertext and tag
+      // Split ciphertext and tag (tag is already in GIFT-128n format)
       const ctLen = ciphertext.length - 16;
       const ctData = ciphertext.slice(0, ctLen);
-      const receivedTagStandard = ciphertext.slice(ctLen);
-
-      // Convert received tag from standard byte order to GIFT-128 nibble format (reverse words)
-      const receivedTag = new Uint8Array(16);
-      for (let i = 0; i < 4; ++i) {
-        receivedTag[i] = receivedTagStandard[12 + i];
-        receivedTag[4 + i] = receivedTagStandard[8 + i];
-        receivedTag[8 + i] = receivedTagStandard[4 + i];
-        receivedTag[12 + i] = receivedTagStandard[i];
-      }
+      const receivedTag = ciphertext.slice(ctLen);
 
       // Initialize key schedule
       const ks = new GIFT128NKeySchedule(this._key);
 
-      // Compute tag from nonce for decryption keystream
-      const decryptTag = new Uint8Array(this._nonce);
-      estateAuthenticate(ks, decryptTag, ctData, new Uint8Array(this._ad));
-
-      // Decrypt the ciphertext using nonce-derived tag
+      // Decrypt ciphertext using RECEIVED tag as OFB IV (matches C line 192)
       const plaintext = new Uint8Array(ctLen);
-      estateEncrypt(ks, decryptTag, plaintext, ctData);
+      estateEncrypt(ks, receivedTag, plaintext, ctData);
 
-      // Recompute authentication tag from plaintext
+      // Compute authentication tag from plaintext (matches C line 195)
       const computedTag = new Uint8Array(this._nonce);
       estateAuthenticate(ks, computedTag, plaintext, new Uint8Array(this._ad));
 
-      // Verify tag in constant time
+      // Verify tag in constant time (matches C line 198)
       if (!constantTimeCompare(computedTag, receivedTag)) {
         // Zero out plaintext on authentication failure
         for (let i = 0; i < plaintext.length; ++i) {
@@ -751,15 +756,11 @@
       // Initialize key schedule
       const ks = new GIFT128NKeySchedule(this._key);
 
-      // Compute tag from nonce for decryption keystream
-      const decryptTag = new Uint8Array(this._nonce);
-      estateAuthenticate(ks, decryptTag, ctData, new Uint8Array(this._ad));
-
-      // Decrypt the ciphertext using nonce-derived tag
+      // Decrypt ciphertext using RECEIVED tag as OFB IV
       const plaintext = new Uint8Array(ctLen);
-      estateEncrypt(ks, decryptTag, plaintext, ctData);
+      estateEncrypt(ks, receivedTag, plaintext, ctData);
 
-      // Recompute authentication tag from plaintext
+      // Compute authentication tag from plaintext
       const computedTag = new Uint8Array(this._nonce);
       estateAuthenticate(ks, computedTag, plaintext, new Uint8Array(this._ad));
 

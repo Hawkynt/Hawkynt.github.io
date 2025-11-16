@@ -161,16 +161,17 @@
 
   // AES MixColumns transformation
   function MixColumns(state) {
-    for (let i = 0; i < 4; ++i) {
+    for (let c = 0; c < 4; ++c) {
+      const i = c * 4; // Column c starts at byte c*4
       const s0 = state[i];
-      const s1 = state[i + 4];
-      const s2 = state[i + 8];
-      const s3 = state[i + 12];
+      const s1 = state[i + 1];
+      const s2 = state[i + 2];
+      const s3 = state[i + 3];
 
       state[i] = MUL2[s0] ^ MUL3[s1] ^ s2 ^ s3;
-      state[i + 4] = s0 ^ MUL2[s1] ^ MUL3[s2] ^ s3;
-      state[i + 8] = s0 ^ s1 ^ MUL2[s2] ^ MUL3[s3];
-      state[i + 12] = MUL3[s0] ^ s1 ^ s2 ^ MUL2[s3];
+      state[i + 1] = s0 ^ MUL2[s1] ^ MUL3[s2] ^ s3;
+      state[i + 2] = s0 ^ s1 ^ MUL2[s2] ^ MUL3[s3];
+      state[i + 3] = MUL3[s0] ^ s1 ^ s2 ^ MUL2[s3];
     }
   }
 

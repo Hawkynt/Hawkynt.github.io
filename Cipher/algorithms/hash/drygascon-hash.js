@@ -309,9 +309,9 @@
     }
   }
 
-  // ========================[ DRYSPONGE STATE BASE ]========================
+  // ========================[ DRYSPONGE128 STATE ]========================
 
-  class DrySpongeState {
+  class DrySponge128State {
     constructor(rate, xsize, rounds, initRounds) {
       this.c = new GASCON128Permutation();
       this.r = new Array(rate);
@@ -458,6 +458,180 @@
     }
   }
 
+  // ========================[ DRYSPONGE256 STATE ]========================
+
+  class DrySponge256State {
+    constructor(rate, xsize, rounds, initRounds) {
+      this.c = new GASCON256Permutation();
+      this.r = new Array(rate);
+      for (let i = 0; i < rate; ++i) this.r[i] = 0;
+      this.x = new Array(xsize);
+      for (let i = 0; i < xsize; ++i) this.x[i] = 0;
+      this.domain = 0;
+      this.rounds = rounds;
+      this.initRounds = initRounds;
+      this.rate = rate;
+      this.xsize = xsize;
+    }
+
+    // Helper to select x word (constant-time selection)
+    selectX(index) {
+      const wordsCount = this.xsize / 4;
+      const xW = new Array(wordsCount);
+      for (let i = 0; i < wordsCount; ++i) {
+        xW[i] = OpCodes.Pack32LE(
+          this.x[i * 4],
+          this.x[i * 4 + 1],
+          this.x[i * 4 + 2],
+          this.x[i * 4 + 3]
+        );
+      }
+
+      // Constant-time selection
+      let result = 0;
+      for (let i = 0; i < wordsCount; ++i) {
+        const mask = ((i === index) ? 0xFFFFFFFF : 0) >>> 0;
+        result = (result ^ (xW[i] & mask)) >>> 0;
+      }
+      return result;
+    }
+
+    // Mix phase: absorb data into state (18-bit groups for GASCON256)
+    mixPhase(data) {
+      const ds = this.domain;
+
+      // For GASCON256: mix 18-bit groups (9 x 2-bit indices = 18 bits per mix round)
+      // Reference: internal-drysponge.c lines 485-522
+      // Exactly matching C code line-by-line
+
+      // Round 1: data[0..2] (bits 0-23, take bits 0-17)
+      this.mixPhaseRound(data[0] | (data[1] << 8) | (data[2] << 16));
+      this.c.coreRound(0);
+
+      // Round 2: data[2..4] shifted (bits 18-41, take bits 18-35)
+      this.mixPhaseRound((data[2] >>> 2) | (data[3] << 6) | (data[4] << 14));
+      this.c.coreRound(0);
+
+      // Round 3: data[4..6] shifted (bits 36-59, take bits 36-53)
+      this.mixPhaseRound((data[4] >>> 4) | (data[5] << 4) | (data[6] << 12));
+      this.c.coreRound(0);
+
+      // Round 4: data[6..8] shifted (bits 54-77, take bits 54-71)
+      this.mixPhaseRound((data[6] >>> 6) | (data[7] << 2) | (data[8] << 10));
+      this.c.coreRound(0);
+
+      // Round 5: data[9..11] (bits 72-95, take bits 72-89)
+      this.mixPhaseRound(data[9] | (data[10] << 8) | (data[11] << 16));
+      this.c.coreRound(0);
+
+      // Round 6: data[11..13] shifted (bits 90-113, take bits 90-107)
+      this.mixPhaseRound((data[11] >>> 2) | (data[12] << 6) | (data[13] << 14));
+      this.c.coreRound(0);
+
+      // Round 7: data[13..15] shifted (bits 108-127, take bits 108-125)
+      this.mixPhaseRound((data[13] >>> 4) | (data[14] << 4) | (data[15] << 12));
+      this.c.coreRound(0);
+
+      // Round 8: data[15] final 2 bits + domain separator (bits 126-127)
+      this.mixPhaseRound((data[15] >>> 6) ^ ds);
+
+      // Reset domain for next block
+      this.domain = 0;
+    }
+
+    // Mix a value into state (up to 9 x 2-bit indices = 18 bits for GASCON256)
+    mixPhaseRound(data) {
+      // For GASCON256: up to 9 x 2-bit indices
+      // Mix into c.W[0, 2, 4, 6, 8, 10, 12, 14, 16] (9 even-indexed words)
+      // In bit-interleaved format: S[0][0], S[1][0], S[2][0], ..., S[8][0]
+      // Reference: internal-drysponge.c lines 410-423
+      const indices = 9;  // GASCON256 always uses 9 indices
+      const x = new Array(indices);
+
+      for (let i = 0; i < indices; ++i) {
+        x[i] = this.selectX((data >>> (i * 2)) & 0x03);
+      }
+
+      this.c.S[0][0] = (this.c.S[0][0] ^ x[0]) >>> 0;
+      this.c.S[1][0] = (this.c.S[1][0] ^ x[1]) >>> 0;
+      this.c.S[2][0] = (this.c.S[2][0] ^ x[2]) >>> 0;
+      this.c.S[3][0] = (this.c.S[3][0] ^ x[3]) >>> 0;
+      this.c.S[4][0] = (this.c.S[4][0] ^ x[4]) >>> 0;
+      this.c.S[5][0] = (this.c.S[5][0] ^ x[5]) >>> 0;
+      this.c.S[6][0] = (this.c.S[6][0] ^ x[6]) >>> 0;
+      this.c.S[7][0] = (this.c.S[7][0] ^ x[7]) >>> 0;
+      this.c.S[8][0] = (this.c.S[8][0] ^ x[8]) >>> 0;
+    }
+
+    // G function for GASCON256: XOR pattern W[0]^W[5]^W[10]^W[15], etc.
+    g() {
+      // GASCON256 has 18 x 32-bit words (W[0..17])
+      // XOR pattern from reference C code:
+      // W[0] = c.W[0] ^ c.W[5] ^ c.W[10] ^ c.W[15]
+      // W[1] = c.W[1] ^ c.W[6] ^ c.W[11] ^ c.W[12]
+      // W[2] = c.W[2] ^ c.W[7] ^ c.W[8] ^ c.W[13]
+      // W[3] = c.W[3] ^ c.W[4] ^ c.W[9] ^ c.W[14]
+
+      for (let round = 0; round < this.rounds; ++round) {
+        this.c.coreRound(round);
+
+        // Extract W[0-17] as flat 32-bit words from bit-interleaved state
+        const W = [
+          this.c.S[0][0], this.c.S[0][1],  // W[0], W[1]
+          this.c.S[1][0], this.c.S[1][1],  // W[2], W[3]
+          this.c.S[2][0], this.c.S[2][1],  // W[4], W[5]
+          this.c.S[3][0], this.c.S[3][1],  // W[6], W[7]
+          this.c.S[4][0], this.c.S[4][1],  // W[8], W[9]
+          this.c.S[5][0], this.c.S[5][1],  // W[10], W[11]
+          this.c.S[6][0], this.c.S[6][1],  // W[12], W[13]
+          this.c.S[7][0], this.c.S[7][1],  // W[14], W[15]
+          this.c.S[8][0], this.c.S[8][1]   // W[16], W[17]
+        ];
+
+        // XOR pattern for 256 variant
+        const out0 = (W[0] ^ W[5] ^ W[10] ^ W[15]) >>> 0;
+        const out1 = (W[1] ^ W[6] ^ W[11] ^ W[12]) >>> 0;
+        const out2 = (W[2] ^ W[7] ^ W[8] ^ W[13]) >>> 0;
+        const out3 = (W[3] ^ W[4] ^ W[9] ^ W[14]) >>> 0;
+
+        // Convert to bytes
+        const b0 = OpCodes.Unpack32LE(out0);
+        const b1 = OpCodes.Unpack32LE(out1);
+        const b2 = OpCodes.Unpack32LE(out2);
+        const b3 = OpCodes.Unpack32LE(out3);
+
+        if (round === 0) {
+          // First round: set r[]
+          this.r[0] = b0[0]; this.r[1] = b0[1]; this.r[2] = b0[2]; this.r[3] = b0[3];
+          this.r[4] = b1[0]; this.r[5] = b1[1]; this.r[6] = b1[2]; this.r[7] = b1[3];
+          this.r[8] = b2[0]; this.r[9] = b2[1]; this.r[10] = b2[2]; this.r[11] = b2[3];
+          this.r[12] = b3[0]; this.r[13] = b3[1]; this.r[14] = b3[2]; this.r[15] = b3[3];
+        } else {
+          // Subsequent rounds: XOR into r[]
+          this.r[0] ^= b0[0]; this.r[1] ^= b0[1]; this.r[2] ^= b0[2]; this.r[3] ^= b0[3];
+          this.r[4] ^= b1[0]; this.r[5] ^= b1[1]; this.r[6] ^= b1[2]; this.r[7] ^= b1[3];
+          this.r[8] ^= b2[0]; this.r[9] ^= b2[1]; this.r[10] ^= b2[2]; this.r[11] ^= b2[3];
+          this.r[12] ^= b3[0]; this.r[13] ^= b3[1]; this.r[14] ^= b3[2]; this.r[15] ^= b3[3];
+        }
+      }
+    }
+
+    // F function: mix + g
+    f(input, len) {
+      const padded = new Array(this.rate);
+      if (len < this.rate) {
+        for (let i = 0; i < len; ++i) padded[i] = input[i];
+        padded[len] = 0x01;
+        for (let i = len + 1; i < this.rate; ++i) padded[i] = 0;
+      } else {
+        for (let i = 0; i < this.rate; ++i) padded[i] = input[i];
+      }
+
+      this.mixPhase(padded);  // mixPhase resets domain to 0
+      this.g();
+    }
+  }
+
   // ========================[ DRYGASCON128-HASH ALGORITHM ]========================
 
   /**
@@ -559,7 +733,7 @@
   class DryGASCON128HashInstance extends IHashFunctionInstance {
     constructor(algorithm) {
       super(algorithm);
-      this.state = new DrySpongeState(
+      this.state = new DrySponge128State(
         DRYSPONGE128_RATE,
         DRYSPONGE128_XSIZE,
         DRYSPONGE128_ROUNDS,
@@ -768,11 +942,7 @@
   class DryGASCON256HashInstance extends IHashFunctionInstance {
     constructor(algorithm) {
       super(algorithm);
-      // NOTE: DryGASCON256 requires DrySponge256State with GASCON256Permutation (9 words = 72 bytes)
-      // and different mix phase (18-bit groups) + g() function (4x4 XOR pattern).
-      // Current implementation uses GASCON128 which is incorrect but allows basic testing.
-      // TODO: Implement complete DrySponge256State class for bit-perfect accuracy.
-      this.state = new DrySpongeState(
+      this.state = new DrySponge256State(
         DRYSPONGE256_RATE,
         DRYSPONGE256_XSIZE,
         DRYSPONGE256_ROUNDS,
@@ -786,7 +956,7 @@
       if (this.initialized) return;
 
       // Precomputed initialization vector from C reference implementation
-      // drygascon256_hash_init (c is 72 bytes, x is 16 bytes)
+      // drygascon256_hash_init: c is 72 bytes (9 x 64-bit words), x is 16 bytes
       const hashInit = OpCodes.Hex8ToBytes(
         "243f6a8885a308d313198a2e03707344" +  // c[0-15]
         "a4093822299f31d0082efa98ec4e6c89" +  // c[16-31]
@@ -796,8 +966,8 @@
         "452821e638d01377be5466cf34e90c6c"    // x[0-15]
       );
 
-      // Load precomputed c state (first 40 bytes - GASCON state is still 40 bytes)
-      for (let i = 0; i < 40; i += 8) {
+      // Load precomputed c state (72 bytes = 9 x 64-bit words)
+      for (let i = 0; i < 72; i += 8) {
         const idx = i / 8;
         this.state.c.S[idx] = [
           OpCodes.Pack32LE(hashInit[i], hashInit[i+1], hashInit[i+2], hashInit[i+3]),
@@ -805,11 +975,7 @@
         ];
       }
 
-      // Load precomputed x value (16 bytes, starting after the first 72 bytes of init vector)
-      // But we only loaded 40 bytes into c, so x starts at byte 72 in the init vector
-      // Wait, the C code shows c is all that data before x comment
-      // Let me count: lines 516-524 = 72 bytes for c, then lines 526-527 = 16 bytes for x
-      // So x starts at index 72
+      // Load precomputed x value (16 bytes, starting at byte 72)
       for (let i = 0; i < 16; ++i) {
         this.state.x[i] = hashInit[72 + i];
       }
