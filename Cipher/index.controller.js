@@ -2943,6 +2943,8 @@ class CipherController {
         // Add event listener for KDF selection change
         kdfSelect.addEventListener('change', () => {
             this.updateKdfParameterVisibility(parameterType);
+            // Re-validate inputs to update salmon coloring
+            this.validateInputs();
         });
 
         // Initialize visibility on page load
@@ -2963,7 +2965,7 @@ class CipherController {
 
         // Show/hide the entire parameters container
         if (selectedKdf) {
-            kdfParameters.style.display = 'flex';
+            kdfParameters.style.display = 'block';
         } else {
             kdfParameters.style.display = 'none';
             return;
@@ -3039,11 +3041,15 @@ class CipherController {
         }
 
         // Get KDF parameters from UI (using parameterType prefix)
-        const saltHex = document.getElementById(`${parameterType}-kdf-salt`)?.value || '';
+        const saltTextarea = document.getElementById(`${parameterType}-kdf-salt`);
         const outputSize = parseInt(document.getElementById(`${parameterType}-kdf-output-size`)?.value) || 32;
 
-        // Convert salt from hex to bytes
-        const saltBytes = saltHex.trim() ? this.hexToBytes(saltHex) : [];
+        // Get salt bytes using format-aware parsing
+        let saltBytes = [];
+        if (saltTextarea && saltTextarea.value.trim()) {
+            const saltFormat = this.getActiveFormatForParameter(saltTextarea);
+            saltBytes = this.parseInputByFormat(saltTextarea.value, saltFormat);
+        }
 
         // Set common parameters
         kdfInstance.salt = saltBytes;
@@ -3057,8 +3063,12 @@ class CipherController {
                 break;
 
             case 'HKDF':
-                const infoHex = document.getElementById(`${parameterType}-kdf-info`)?.value || '';
-                const infoBytes = infoHex.trim() ? this.hexToBytes(infoHex) : [];
+                const infoTextarea = document.getElementById(`${parameterType}-kdf-info`);
+                let infoBytes = [];
+                if (infoTextarea && infoTextarea.value.trim()) {
+                    const infoFormat = this.getActiveFormatForParameter(infoTextarea);
+                    infoBytes = this.parseInputByFormat(infoTextarea.value, infoFormat);
+                }
                 const hashFunction = document.getElementById(`${parameterType}-kdf-hash`)?.value || 'SHA256';
                 kdfInstance.info = infoBytes;
                 kdfInstance.hashFunction = hashFunction;
