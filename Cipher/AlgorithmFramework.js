@@ -183,181 +183,481 @@
     //#endregion
 
     //#region ===== Core Classes =====
+
+    /**
+     * Link item with text description and URI
+     */
     class LinkItem {
+      /**
+       * @param {string} text - Display text
+       * @param {string} uri - URL reference
+       */
       constructor(text, uri) {
+        /** @type {string} */
         this.text = text
+        /** @type {string} */
         this.uri = uri
       }
     }
 
+    /**
+     * Test case with input data and expected output
+     */
     class TestCase extends LinkItem {
+      /**
+       * @param {byte[]} input - Input data bytes
+       * @param {byte[]} expected - Expected output bytes
+       * @param {string} description - Test description
+       * @param {string} uri - Reference URI
+       */
       constructor(input, expected, description = '', uri = '') {
         super(description, uri)
+        /** @type {byte[]} */
         this.input = input
+        /** @type {byte[]} */
         this.expected = expected
       }
     }
 
+    /**
+     * Known vulnerability information
+     */
     class Vulnerability extends LinkItem {
+      /**
+       * @param {string} type - Vulnerability type
+       * @param {string} mitigation - Mitigation strategy
+       * @param {string} uri - Reference URI
+       */
       constructor(type, mitigation, uri = '') {
         super(type, uri)
+        /** @type {string} */
         this.mitigation = mitigation
       }
     }
 
+    /**
+     * Authentication result for AEAD operations
+     */
     class AuthResult {
+      /**
+       * @param {bool} success - Whether authentication succeeded
+       * @param {byte[]} output - Output data if successful
+       * @param {string} failureReason - Reason for failure if unsuccessful
+       */
       constructor(success, output = null, failureReason = null) {
+        /** @type {bool} */
         this.Success = success
+        /** @type {byte[]} */
         this.Output = output
+        /** @type {string} */
         this.FailureReason = failureReason
       }
     }
 
+    /**
+     * Key size specification with min, max, and step
+     */
     class KeySize {
+      /**
+       * @param {int} minSize - Minimum key size in bytes
+       * @param {int} maxSize - Maximum key size in bytes
+       * @param {int} stepSize - Step size between valid sizes
+       */
       constructor(minSize, maxSize, stepSize = 1) {
+        /** @type {int} */
         this.minSize = minSize
+        /** @type {int} */
         this.maxSize = maxSize
+        /** @type {int} */
         this.stepSize = stepSize
       }
     }
     //#endregion
 
     //#region ===== Base Interfaces =====
+
+    /**
+     * Base interface for all algorithm instances
+     * Implements the Feed/Result pattern for streaming data processing
+     */
     class IAlgorithmInstance {
+      /**
+       * @param {Algorithm} algorithm - The parent algorithm
+       */
       constructor(algorithm) {
+        /** @type {Algorithm} */
         this.algorithm = algorithm
+        /** @type {bool} */
+        this.isInverse = false
+        /** @type {byte[]} */
+        this.inputBuffer = []
       }
-      Feed(_) { throw 'Feed() not implemented' }
+
+      /**
+       * Feed data into the algorithm for processing
+       * @param {byte[]} data - Input data bytes
+       * @returns {void}
+       */
+      Feed(data) { throw 'Feed() not implemented' }
+
+      /**
+       * Get the processed result
+       * @returns {byte[]} Output data bytes
+       */
       Result() { throw 'Result() not implemented' }
+
+      /**
+       * Dispose of sensitive data
+       * @returns {void}
+       */
+      Dispose() {
+        if (this.inputBuffer) {
+          this.inputBuffer.length = 0
+        }
+      }
     }
 
+    /**
+     * Base class for all cryptographic algorithms
+     */
     class Algorithm {
       constructor() {
+        /** @type {string} */
         this.name = null
+        /** @type {string} */
         this.description = null
+        /** @type {string} */
         this.inventor = null
+        /** @type {int} */
         this.year = null
+        /** @type {object} */
         this.category = null
+        /** @type {string} */
         this.subCategory = null
+        /** @type {object} */
         this.securityStatus = null
+        /** @type {object} */
         this.complexity = null
+        /** @type {object} */
         this.country = null
+        /** @type {LinkItem[]} */
         this.documentation = []
+        /** @type {LinkItem[]} */
         this.references = []
+        /** @type {Vulnerability[]} */
         this.knownVulnerabilities = []
+        /** @type {TestCase[]} */
         this.tests = []
       }
+
+      /**
+       * Create an instance of this algorithm
+       * @param {bool} isInverse - True for decryption/decompression, false for encryption/compression
+       * @returns {IAlgorithmInstance} Algorithm instance
+       */
       CreateInstance(isInverse = false) { throw 'CreateInstance() not implemented' }
     }
     //#endregion
 
     //#region ===== Family Placeholders =====
+
+    /** @extends Algorithm */
     class CryptoAlgorithm extends Algorithm {}
+
+    /** @extends CryptoAlgorithm */
     class SymmetricCipherAlgorithm extends CryptoAlgorithm {}
+
+    /** @extends CryptoAlgorithm */
     class AsymmetricCipherAlgorithm extends CryptoAlgorithm {}
+
+    /**
+     * Base class for block cipher algorithms
+     * @extends SymmetricCipherAlgorithm
+     */
     class BlockCipherAlgorithm extends SymmetricCipherAlgorithm {
       constructor() {
         super()
+        /** @type {KeySize[]} */
         this.SupportedKeySizes = []
+        /** @type {KeySize[]} */
         this.SupportedBlockSizes = []
       }
+
+      /**
+       * Create an instance of this block cipher
+       * @param {bool} isInverse - True for decryption, false for encryption
+       * @returns {IBlockCipherInstance} Block cipher instance
+       */
+      CreateInstance(isInverse = false) { throw 'CreateInstance() not implemented' }
     }
-    class StreamCipherAlgorithm extends SymmetricCipherAlgorithm {}
-    class EncodingAlgorithm extends Algorithm {}
-    class CompressionAlgorithm extends Algorithm {}
+
+    /**
+     * Base class for stream cipher algorithms
+     * @extends SymmetricCipherAlgorithm
+     */
+    class StreamCipherAlgorithm extends SymmetricCipherAlgorithm {
+      /**
+       * Create an instance of this stream cipher
+       * @param {bool} isInverse - True for decryption, false for encryption
+       * @returns {IAlgorithmInstance} Stream cipher instance
+       */
+      CreateInstance(isInverse = false) { throw 'CreateInstance() not implemented' }
+    }
+
+    /**
+     * Base class for encoding algorithms
+     * @extends Algorithm
+     */
+    class EncodingAlgorithm extends Algorithm {
+      /**
+       * Create an instance of this encoding algorithm
+       * @param {bool} isInverse - True for decoding, false for encoding
+       * @returns {IAlgorithmInstance} Encoding instance
+       */
+      CreateInstance(isInverse = false) { throw 'CreateInstance() not implemented' }
+    }
+
+    /**
+     * Base class for compression algorithms
+     * @extends Algorithm
+     */
+    class CompressionAlgorithm extends Algorithm {
+      /**
+       * Create an instance of this compression algorithm
+       * @param {bool} isInverse - True for decompression, false for compression
+       * @returns {IAlgorithmInstance} Compression instance
+       */
+      CreateInstance(isInverse = false) { throw 'CreateInstance() not implemented' }
+    }
+
+    /** @extends Algorithm */
     class ErrorCorrectionAlgorithm extends Algorithm {}
+
+    /**
+     * Base class for hash function algorithms
+     * @extends Algorithm
+     */
     class HashFunctionAlgorithm extends Algorithm {
       constructor() {
         super()
+        /** @type {KeySize[]} */
         this.SupportedOutputSizes = []
       }
+
+      /**
+       * Create an instance of this hash function
+       * @param {bool} isInverse - Ignored for hash functions (always false)
+       * @returns {IHashFunctionInstance} Hash function instance
+       */
+      CreateInstance(isInverse = false) { throw 'CreateInstance() not implemented' }
     }
+
+    /**
+     * Base class for MAC algorithms
+     * @extends Algorithm
+     */
     class MacAlgorithm extends Algorithm {
       constructor() {
         super()
+        /** @type {KeySize[]} */
         this.SupportedMacSizes = []
+        /** @type {bool} */
         this.NeedsKey = true
       }
     }
+
+    /**
+     * Base class for KDF algorithms
+     * @extends Algorithm
+     */
     class KdfAlgorithm extends Algorithm {
       constructor() {
         super()
+        /** @type {KeySize[]} */
         this.SupportedOutputSizes = []
+        /** @type {bool} */
         this.SaltRequired = true
       }
     }
+
+    /** @extends Algorithm */
     class PaddingAlgorithm extends Algorithm {
       constructor() {
         super()
+        /** @type {bool} */
         this.IsLengthIncluded = false
       }
     }
+
+    /** @extends Algorithm */
     class CipherModeAlgorithm extends Algorithm {
       constructor() {
         super()
+        /** @type {bool} */
         this.RequiresIV = true
+        /** @type {KeySize[]} */
         this.SupportedIVSizes = []
       }
     }
+
+    /** @extends CryptoAlgorithm */
     class AeadAlgorithm extends CryptoAlgorithm {
       constructor() {
         super()
+        /** @type {KeySize[]} */
         this.SupportedTagSizes = []
+        /** @type {bool} */
         this.SupportsDetached = false
       }
     }
+
+    /** @extends Algorithm */
     class RandomGenerationAlgorithm extends Algorithm {
       constructor() {
         super()
+        /** @type {bool} */
         this.IsDeterministic = false
+        /** @type {bool} */
         this.IsCryptographicallySecure = true
+        /** @type {KeySize[]} */
         this.SupportedSeedSizes = []
       }
     }
     //#endregion
 
     //#region ===== Instance Interface Extensions =====
+
+    /**
+     * Instance interface for block ciphers
+     * @extends IAlgorithmInstance
+     */
     class IBlockCipherInstance extends IAlgorithmInstance {
+      /**
+       * @param {BlockCipherAlgorithm} algorithm - Parent algorithm
+       */
       constructor(algorithm) {
         super(algorithm)
+        /** @type {int} - Block size in bytes */
         this.BlockSize = 0
+        /** @type {int} - Key size in bytes */
         this.KeySize = 0
+        /** @type {byte[]} - Encryption/decryption key */
+        this._key = null
       }
+
+      /**
+       * Set the encryption/decryption key
+       * @param {byte[]} keyBytes - Key bytes
+       */
+      set key(keyBytes) { this._key = keyBytes }
+
+      /**
+       * Get the current key
+       * @returns {byte[]} Key bytes
+       */
+      get key() { return this._key }
+
+      /**
+       * Encrypt a single block
+       * @param {byte[]} block - Input block
+       * @returns {byte[]} Encrypted block
+       */
+      EncryptBlock(block) { throw 'EncryptBlock() not implemented' }
+
+      /**
+       * Decrypt a single block
+       * @param {byte[]} block - Encrypted block
+       * @returns {byte[]} Decrypted block
+       */
+      DecryptBlock(block) { throw 'DecryptBlock() not implemented' }
     }
 
+    /**
+     * Instance interface for hash functions
+     * @extends IAlgorithmInstance
+     */
     class IHashFunctionInstance extends IAlgorithmInstance {
+      /**
+       * @param {HashFunctionAlgorithm} algorithm - Parent algorithm
+       */
       constructor(algorithm) {
         super(algorithm)
+        /** @type {int} - Output hash size in bytes */
         this.OutputSize = 0
       }
     }
 
+    /**
+     * Instance interface for MAC algorithms
+     * @extends IAlgorithmInstance
+     */
     class IMacInstance extends IAlgorithmInstance {
-      ComputeMac(_) { throw 'ComputeMac() not implemented' }
+      /**
+       * Compute MAC over data
+       * @param {byte[]} data - Input data
+       * @returns {byte[]} MAC bytes
+       */
+      ComputeMac(data) { throw 'ComputeMac() not implemented' }
     }
 
+    /**
+     * Instance interface for KDF algorithms
+     * @extends IAlgorithmInstance
+     */
     class IKdfInstance extends IAlgorithmInstance {
+      /**
+       * @param {KdfAlgorithm} algorithm - Parent algorithm
+       */
       constructor(algorithm) {
         super(algorithm)
+        /** @type {int} - Output key size in bytes */
         this.OutputSize = 0
+        /** @type {int} - Number of iterations */
         this.Iterations = 0
       }
     }
 
+    /**
+     * Instance interface for AEAD algorithms
+     * @extends IAlgorithmInstance
+     */
     class IAeadInstance extends IAlgorithmInstance {
+      /**
+       * @param {AeadAlgorithm} algorithm - Parent algorithm
+       */
       constructor(algorithm) {
         super(algorithm)
+        /** @type {byte[]} - Additional authenticated data */
         this.aad = []
+        /** @type {int} - Authentication tag size in bytes */
         this.tagSize = 0
       }
     }
 
+    /**
+     * Instance interface for error correction algorithms
+     * @extends IAlgorithmInstance
+     */
     class IErrorCorrectionInstance extends IAlgorithmInstance {
-      DetectError(_) { throw 'DetectError() not implemented' }
+      /**
+       * Detect errors in data
+       * @param {byte[]} data - Input data
+       * @returns {bool} True if errors detected
+       */
+      DetectError(data) { throw 'DetectError() not implemented' }
     }
 
+    /**
+     * Instance interface for random number generators
+     * @extends IAlgorithmInstance
+     */
     class IRandomGeneratorInstance extends IAlgorithmInstance {
-      NextBytes(_) { throw 'NextBytes() not implemented' }
+      /**
+       * Generate random bytes
+       * @param {int} count - Number of bytes to generate
+       * @returns {byte[]} Random bytes
+       */
+      NextBytes(count) { throw 'NextBytes() not implemented' }
     }
     //#endregion
 
