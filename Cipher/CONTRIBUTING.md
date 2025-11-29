@@ -407,6 +407,7 @@ this.tests = [
 
 // Additional properties can be added after construction
 this.tests[0].key = OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c");
+```
 
 ### Hash Function Tests
 ```javascript
@@ -427,6 +428,7 @@ this.tests = [
 ```
 
 ### Variable Output Tests (for algorithms like SHAKE)
+
 ```javascript
 this.tests = [
     {
@@ -452,6 +454,7 @@ this.tests = [
 - Ensures test vectors are properly formatted
 - Throws helpful error messages for invalid test data
 - Prevents duplicate algorithm registration
+  
 ```javascript
 [
     {
@@ -472,6 +475,7 @@ this.tests = [
 ```
 
 ### Stream Cipher Tests
+
 ```javascript
 [
     {
@@ -548,7 +552,6 @@ CreateInstance(isInverse = false) {
 
 ## Testing Framework Flow
 
-```
 All Algorithm Types:
 1. Load algorithm file and get registered algorithm from AlgorithmFramework.Algorithms
 2. For each test vector:
@@ -589,7 +592,6 @@ Encoding:
 - Test properties: input, expected, outputSize (optional)
 - Feed test.input, compare Result() with test.expected
 - For round-trip: create inverse instance, feed encoded, get decoded
-```
 
 **✅ Key Benefits:**
 - Test vectors contain all configuration in one place
@@ -1136,16 +1138,16 @@ const byte = OpCodes.ToByte(value);
 
 Replace ALL language-specific type coercion with these functions:
 
-| Function | Replaces | Description | Range |
-|----------|----------|-------------|-------|
-| `ToByte(value)` | `value & 0xFF` | Unsigned 8-bit | 0 to 255 |
-| `ToSByte(value)` | Manual two's complement | Signed 8-bit | -128 to 127 |
-| `ToWord(value)` | `value & 0xFFFF` | Unsigned 16-bit | 0 to 65535 |
-| `ToShort(value)` | Manual two's complement | Signed 16-bit | -32768 to 32767 |
-| `ToDWord(value)` | `value >>> 0` | **Unsigned 32-bit** | 0 to 2³²-1 |
-| `ToInt(value)` | `value \| 0` | **Signed 32-bit** | -2³¹ to 2³¹-1 |
-| `ToQWord(value)` | `BigInt(value) & 0xFFFF...FFFFn` | Unsigned 64-bit | 0 to 2⁶⁴-1 |
-| `ToLong(value)` | Manual BigInt conversion | Signed 64-bit | -2⁶³ to 2⁶³-1 |
+| Function         | Replaces                         | Description         | Range           |
+|------------------|----------------------------------|---------------------|-----------------|
+| `ToByte(value)`  | `value & 0xFF`                   | Unsigned 8-bit      | 0 to 255        |
+| `ToSByte(value)` | Manual two's complement          | Signed 8-bit        | -128 to 127     |
+| `ToWord(value)`  | `value & 0xFFFF`                 | Unsigned 16-bit     | 0 to 65535      |
+| `ToShort(value)` | Manual two's complement          | Signed 16-bit       | -32768 to 32767 |
+| `ToDWord(value)` | `value >>> 0`                    | **Unsigned 32-bit** | 0 to 2³²-1      |
+| `ToInt(value)`   | `value \| 0`                     | **Signed 32-bit**   | -2³¹ to 2³¹-1   |
+| `ToQWord(value)` | `BigInt(value) & 0xFFFF...FFFFn` | Unsigned 64-bit     | 0 to 2⁶⁴-1      |
+| `ToLong(value)`  | Manual BigInt conversion         | Signed 64-bit       | -2⁶³ to 2⁶³-1   |
 
 **Example - SHA-256 portable additions:**
 ```javascript
@@ -1160,15 +1162,15 @@ const temp1 = OpCodes.ToDWord(h + S1 + ch + K[t] + W[t]);
 
 #### Bit Rotations
 
-| Function | Description |
-|----------|-------------|
-| `RotL8(value, positions)` | Rotate left 8-bit |
-| `RotR8(value, positions)` | Rotate right 8-bit |
-| `RotL16(value, positions)` | Rotate left 16-bit |
-| `RotR16(value, positions)` | Rotate right 16-bit |
-| `RotL32(value, positions)` | Rotate left 32-bit |
-| `RotR32(value, positions)` | Rotate right 32-bit |
-| `RotL64n(value, positions)` | Rotate left 64-bit BigInt |
+| Function                    | Description                |
+|-----------------------------|----------------------------|
+| `RotL8(value, positions)`   | Rotate left 8-bit          |
+| `RotR8(value, positions)`   | Rotate right 8-bit         |
+| `RotL16(value, positions)`  | Rotate left 16-bit         |
+| `RotR16(value, positions)`  | Rotate right 16-bit        |
+| `RotL32(value, positions)`  | Rotate left 32-bit         |
+| `RotR32(value, positions)`  | Rotate right 32-bit        |
+| `RotL64n(value, positions)` | Rotate left 64-bit BigInt  |
 | `RotR64n(value, positions)` | Rotate right 64-bit BigInt |
 
 **Example:**
@@ -1180,16 +1182,16 @@ const S1 = OpCodes.RotR32(e, 6) ^ OpCodes.RotR32(e, 11) ^ OpCodes.RotR32(e, 25);
 
 #### Bit Shifts
 
-| Function | Description |
-|----------|-------------|
-| `Shl8(value, positions)` | Logical left shift 8-bit |
-| `Shr8(value, positions)` | Logical right shift 8-bit |
-| `Shl16(value, positions)` | Logical left shift 16-bit |
-| `Shr16(value, positions)` | Logical right shift 16-bit |
-| `Shl32(value, positions)` | Logical left shift 32-bit |
-| `Shr32(value, positions)` | Logical right shift 32-bit |
-| `ShiftLn(value, positions)` | BigInt left shift |
-| `ShiftRn(value, positions)` | BigInt right shift |
+| Function                    | Description                |
+|-----------------------------|----------------------------|
+| `Shl8(value, positions)`    | Logical left shift 8-bit   |
+| `Shr8(value, positions)`    | Logical right shift 8-bit  |
+| `Shl16(value, positions)`   | Logical left shift 16-bit  |
+| `Shr16(value, positions)`   | Logical right shift 16-bit |
+| `Shl32(value, positions)`   | Logical left shift 32-bit  |
+| `Shr32(value, positions)`   | Logical right shift 32-bit |
+| `ShiftLn(value, positions)` | BigInt left shift          |
+| `ShiftRn(value, positions)` | BigInt right shift         |
 
 **Example:**
 ```javascript
@@ -1200,16 +1202,16 @@ const s1 = OpCodes.RotR32(W[t-2], 17) ^ OpCodes.RotR32(W[t-2], 19) ^ OpCodes.Shr
 
 #### Byte Packing/Unpacking
 
-| Function | Description |
-|----------|-------------|
-| `Pack16BE(b0, b1)` | Pack bytes to 16-bit big-endian |
-| `Pack16LE(b0, b1)` | Pack bytes to 16-bit little-endian |
-| `Pack32BE(b0, b1, b2, b3)` | Pack bytes to 32-bit big-endian |
-| `Pack32LE(b0, b1, b2, b3)` | Pack bytes to 32-bit little-endian |
-| `Unpack16BE(word)` | Unpack 16-bit big-endian to bytes |
-| `Unpack16LE(word)` | Unpack 16-bit little-endian to bytes |
-| `Unpack32BE(dword)` | Unpack 32-bit big-endian to bytes |
-| `Unpack32LE(dword)` | Unpack 32-bit little-endian to bytes |
+| Function                   | Description                          |
+|----------------------------|--------------------------------------|
+| `Pack16BE(b0, b1)`         | Pack bytes to 16-bit big-endian      |
+| `Pack16LE(b0, b1)`         | Pack bytes to 16-bit little-endian   |
+| `Pack32BE(b0, b1, b2, b3)` | Pack bytes to 32-bit big-endian      |
+| `Pack32LE(b0, b1, b2, b3)` | Pack bytes to 32-bit little-endian   |
+| `Unpack16BE(word)`         | Unpack 16-bit big-endian to bytes    |
+| `Unpack16LE(word)`         | Unpack 16-bit little-endian to bytes |
+| `Unpack32BE(dword)`        | Unpack 32-bit big-endian to bytes    |
+| `Unpack32LE(dword)`        | Unpack 32-bit little-endian to bytes |
 
 **Example:**
 ```javascript
@@ -1284,8 +1286,8 @@ a = to_dword(temp1 + temp2);
 ```
 
 **Python (Direct Translation):**
+
 ```python
-# opcodes.py
 def to_dword(value):
     return value & 0xFFFFFFFF
 
@@ -1299,10 +1301,130 @@ a = to_dword(temp1 + temp2)
 ### Benefits Summary
 
 ✅ **Algorithm code is language-agnostic** - Same logical structure everywhere
-✅ **Only ~60 OpCodes functions need porting** - Not thousands of lines of algorithm code
+✅ **Only OpCodes functions need porting** - Not thousands of lines of algorithm code
 ✅ **Type safety in compiled languages** - Compiler catches type errors
 ✅ **Clear documentation** - Function names self-document intent
 ✅ **Easy code review** - No hunting for obscure language idioms
+
+## JSDoc Type Annotations
+
+### Philosophy
+
+All OpCodes functions and algorithm implementations must use precise JSDoc type annotations. These annotations enable automatic transpilation to statically-typed languages (C#, Rust, etc.) with correct type inference.
+Missing or incorrect type annotations will lead to transpilation errors. While type inference can fill some gaps, explicit annotations are helpful for the AST generator and are required for complex types.
+
+### Type Syntax Conventions
+
+Only the following type syntaxes are allowed in JSDoc comments:
+
+| Syntax                | Meaning          | C# Equivalent        | Example                                                 |
+|-----------------------|------------------|----------------------|---------------------------------------------------------|
+| `type[]`              | Typed array      | `type[]`             | `uint8[]` → `byte[]`                                    |
+| `(name: type, ...)`   | Named tuple      | `(type name, ...)`   | `(low: uint32, high: uint32)` → `(uint low, uint high)` |
+| `(name: type, ...)[]` | Array of tuples  | `(type name, ...)[]` | `(h: uint32, l: uint32)[]` → `(uint h, uint l)[]`       |
+| `{name: type, ...}`   | Record (legacy)  | `(type name, ...)`   | `{low: uint32, high: uint32}` → `(uint low, uint high)` |
+
+> **Note**: The record syntax `{...}` currently maps to tuples for compatibility. Use tuple syntax `(...)` for new code.
+
+### Primitive Types
+
+Only the following primitive types are supported:
+
+| JSDoc Type | Description    | C# Type | JavaScript Type | Python Type | Rust Type | C++ Type  | C Type    | Pascal Type | BASIC Type | Go Type | Java Type | Kotlin Type | Delphi Type |
+|------------|----------------|---------|-----------------|-------------|-----------|-----------|-----------|-------------|------------|---------|-----------|-------------|-------------|
+| `uint8`    | Unsigned 8-bit | `byte`  | `number`        | `int`       | `u8`      | `uint8_t` | `uint8_t` | `Byte`      | `Byte`     | `uint8` | `byte`    | `UByte`     | `Byte`      |
+| `int8`              | Signed 8-bit        | `sbyte`      | `number`            | `int`            | `i8`           | `int8_t`    | `int8_t`      | `ShortInt`     | `SByte`     | `int8`     | `sbyte`     | `Byte`       | `ShortInt`    |
+| `uint16`            | Unsigned 16-bit     | `ushort`     | `number`            | `int`            | `u16`          | `uint16_t`  | `uint16_t`    | `Word`         | `Word`      | `uint16`   | `short`     | `UShort`     | `Word`       |
+| `int16`             | Signed 16-bit       | `short`      | `number`            | `int`            | `i16`          | `int16_t`   | `int16_t`     | `SmallInt`      | `SmallInt`  | `int16`    | `short`     | `Short`      | `SmallInt`   |
+| `uint32`            | Unsigned 32-bit     | `uint`       | `number`            | `int`            | `u32`          | `uint32_t`  | `uint32_t`    | `Cardinal`      | `LongWord`  | `uint32`   | `int`       | `UInt`       | `Cardinal`   |
+| `int32`             | Signed 32-bit       | `int`        | `number`            | `int`            | `i32`          | `int32_t`   | `int32_t`     | `Integer`       | `LongInt`   | `int32`    | `int`       | `Int`        | `Integer`    |
+| `uint64`            | Unsigned 64-bit     | `ulong`      | `bigint`            | `int`            | `u64`          | `uint64_t`  | `uint64_t`    | `UInt64`        | `QWord`     | `uint64`   | `long`      | `ULong`      | `UInt64`     |
+| `int64`             | Signed 64-bit       | `long`       | `bigint`            | `int`            | `i64`          | `int64_t`   | `int64_t`     | `Int64`         | `Int64`     | `int64`    | `long`      | `Long`       | `Int64`      |
+| `bigint` / `BigInt` | Arbitrary precision | `BigInteger` | `bigint`            | `int`            | `BigInt`       | `__int128`  | `__int128`    | `Int64`         | `Int64`     | `big.Int`  | `BigInteger`| `BigInteger` | `Int64`      |
+| `boolean`           | Boolean             | `bool`       | `boolean`           | `bool`           | `bool`         | `bool`      | `bool`        | `Boolean`       | `Boolean`   | `bool`     | `boolean`   | `Boolean`    | `Boolean`    |
+| `string`            | String              | `string`     | `string`            | `str`            | `String`       | `std::string`| `char*`       | `String`        | `String`    | `string`    | `String`     | `String`     | `String`     |
+| `char`              | Unicode Character   | `char`       | `string` (length 1) | `str` (length 1) | `char`         | `char`      | `char`        | `Char`          | `Char`      | `rune`     | `char`       | `Char`       | `Char`       |
+
+### Array Types
+
+Only typed array types are supported:
+
+| JSDoc Type | Description  | C# Type    |
+|------------|--------------|------------|
+| `uint8[]`  | Byte array   | `byte[]`   |
+| `uint32[]` | Word array   | `uint[]`   |
+| `string[]` | String array | `string[]` |
+
+
+### Examples
+
+**Function returning a tuple:**
+```javascript
+/**
+ * 64-bit left rotation
+ * @param {uint32} low - Low 32 bits
+ * @param {uint32} high - High 32 bits
+ * @param {int32} positions - Rotation positions (0-63)
+ * @returns {(low: uint32, high: uint32)} Rotated 64-bit value
+ */
+RotL64: function(low, high, positions) {
+  // ...
+  return {low: newLow, high: newHigh};
+}
+```
+
+**Function with typed arrays:**
+```javascript
+/**
+ * XOR two byte arrays
+ * @param {uint8[]} arr1 - First byte array
+ * @param {uint8[]} arr2 - Second byte array
+ * @returns {uint8[]} XOR result
+ */
+FastXorArrays: function(arr1, arr2) {
+  // ...
+}
+```
+
+**Function returning array of tuples:**
+```javascript
+/**
+ * Create 64-bit values as [high32, low32] pairs
+ * @param {string[]} hexValues - Array of hex strings
+ * @returns {(high: uint32, low: uint32)[]} Array of [high32, low32] pairs
+ */
+CreateUint64ArrayFromHex: function(hexValues) {
+  // ...
+}
+```
+
+### Critical Rules
+
+❌ **NEVER use generic `Object` for structured returns:**
+```javascript
+// ❌ WRONG - No type information for transpiler
+@returns {Object} {low, high}
+```
+
+✅ **ALWAYS use tuple syntax for structured returns:**
+```javascript
+// ✅ CORRECT - Explicit type information
+@returns {(low: uint32, high: uint32)}
+```
+
+❌ **NEVER use untyped `Array`:**
+```javascript
+// ❌ WRONG - Element type unknown
+@param {Array} data
+@returns {Array}
+```
+
+✅ **ALWAYS specify element type:**
+```javascript
+// ✅ CORRECT - Element type explicit
+@param {uint8[]} data
+@returns {uint8[]}
+```
 
 ## Testing Troubleshooting
 
@@ -1380,3 +1502,100 @@ Run:
 ```bash
 node Tests/TestSuite.js Algorithm.js --verbose
 ```
+
+---
+
+## 🔄 Code Transpilation
+
+The transpiler system converts JavaScript algorithm implementations to other programming languages. This enables the cryptographic library to be used across multiple language ecosystems.
+
+### Transpiler Architecture
+
+The transpilation system consists of:
+
+- **transpile.js** - Main CLI entry point for transpilation
+- **type-aware-transpiler.js** - Core transpiler with AST processing and type inference
+- **codingplugins/** - Language-specific code emitters (e.g., `csharp.js`)
+
+### Using the Transpiler CLI
+
+```bash
+# Basic usage: transpile a JavaScript file to C#
+node transpile.js OpCodes.js "C#"
+
+# Output to a specific file
+node transpile.js OpCodes.js "C#" > generated/OpCodes.cs
+
+# Transpile and build to verify
+node transpile.js OpCodes.js "C#" > generated/OpCodes.cs && cd generated && dotnet build
+```
+
+### TranspilerTestCases.js - Regression Testing for Language Plugins
+
+The `TranspilerTestCases.js` file contains a comprehensive set of JavaScript patterns specifically designed to test code generation of language plugins. Use this file to:
+
+1. **Test language plugin correctness**: Transpile the test cases and verify the output compiles
+2. **Add regression tests**: When you fix a transpiler bug, add a minimal test case
+3. **Document edge cases**: Each test case documents a specific JavaScript pattern that needs special handling
+
+```bash
+# Test C# code generation
+node transpile.js TranspilerTestCases.js "C#" > generated/TranspilerTestCases.cs
+cd generated && dotnet build
+
+# Check for specific pattern support
+node transpile.js TranspilerTestCases.js "C#" | grep -A5 "DoubleTilde"
+```
+
+### Test Case Categories in TranspilerTestCases.js
+
+The test cases cover these JavaScript-to-C# transpilation challenges:
+
+| Category | Patterns | C# Equivalent |
+|----------|----------|---------------|
+| **Type Casting Idioms** | `x \| 0`, `x >>> 0`, `~~x`, `+str`, `!!value` | `(int)x`, `(uint)x`, `(int)x`, `double.Parse()`, `!= null/0` |
+| **Ternary Expressions** | Nested ternary, type coercion | Explicit casts on branches |
+| **Object Patterns** | Constructor functions, prototype methods, method shorthand | Classes, methods (requires manual intervention) |
+| **Type Narrowing** | `int * int` → `uint`, `long` → `ulong` | Explicit narrowing casts |
+| **Array Operations** | Spread, element type inference | Proper element typing |
+
+### Adding New Test Cases
+
+When fixing transpiler bugs, add a regression test:
+
+```javascript
+/**
+ * Description of the pattern being tested
+ * @param {uint32} input - Input parameter with JSDoc type
+ * @returns {uint32} Result type for proper C# return type
+ */
+PatternName: function(input) {
+  // Minimal code that reproduces the pattern
+  return result;
+},
+```
+
+**Important**: Always include JSDoc type annotations - they drive the type-aware transpilation system.
+
+### Known Limitations
+
+Some JavaScript patterns cannot be directly transpiled to C# and require manual intervention:
+
+1. **Nested class definitions inside methods** - C# doesn't support this; classes must be at type scope
+2. **Prototype method assignments** - Must be manually moved to class definitions
+3. **Objects with methods as local variables** - Cannot create anonymous classes inline in C#
+4. **JavaScript `arguments` object** - No direct equivalent; use `params` arrays
+5. **Dynamic method references** - `Function.length` and similar have no C# equivalent
+
+These patterns are documented in the generated code with `// TRANSPILER NOTE:` comments explaining the required manual fixes.
+
+### Type Inference System
+
+The transpiler uses a sophisticated type inference system based on:
+
+1. **JSDoc annotations** (highest priority) - `@param {uint32}`, `@returns {byte[]}`
+2. **Variable naming conventions** - `key`, `iv`, `block` → `byte[]`; `i`, `j`, `index` → loop counters
+3. **Expression analysis** - Bitwise operations, array literals, function calls
+4. **Context propagation** - Return type flows to expressions, array type to elements
+
+See the "Type System" section above for the complete type mapping table.
