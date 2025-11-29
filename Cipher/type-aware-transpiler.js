@@ -29,7 +29,8 @@
         returns: null,
         type: null,
         throws: [],
-        examples: []
+        examples: [],
+        csharpOverride: null  // Native C# code to use instead of transpiling
       };
 
       if (!comment) return result;
@@ -70,11 +71,59 @@
       }
 
       // Parse @returns tag
-      const returnMatch = cleaned.match(/@returns?\s+\{([^}]+)\}(?:\s+-?\s+(.*))?/);
+      // Capture type in braces, then everything after (optional dash is common but not required)
+      const returnMatch = cleaned.match(/@returns?\s+\{([^}]+)\}\s*(.*)/);
       if (returnMatch) {
+        let returnType = this.parseType(returnMatch[1]);
+        // Description may start with optional "- " prefix
+        let description = (returnMatch[2] || '').replace(/^-\s*/, '');
+
+        // Check for Object type with tuple-like description
+        // Supports both {propName: type, propName: type} and {prop, prop} formats
+        if (returnType.name === 'Object' && description) {
+          const tuplePattern = /\{([^}]+)\}/;
+          const tupleMatch = description.match(tuplePattern);
+          if (tupleMatch) {
+            const tupleContent = tupleMatch[1];
+            // Parse comma-separated pairs
+            const pairs = tupleContent.split(',').map(p => p.trim()).filter(p => p);
+            const tupleParts = [];
+            for (const pair of pairs) {
+              const colonIdx = pair.indexOf(':');
+              if (colonIdx > 0) {
+                // Format: "propName: type"
+                const propName = pair.substring(0, colonIdx).trim();
+                const propType = pair.substring(colonIdx + 1).trim();
+                tupleParts.push({ name: propName, type: this.parseType(propType) });
+              } else {
+                // Format: just "propName" - default to uint for crypto operations
+                const propName = pair.trim();
+                if (propName && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(propName)) {
+                  tupleParts.push({ name: propName, type: this.parseType('uint') });
+                }
+              }
+            }
+            if (tupleParts.length > 0) {
+              // Create a tuple type
+              returnType = {
+                name: 'tuple',
+                isTuple: true,
+                tupleElements: tupleParts,
+                isArray: false,
+                isOptional: false,
+                isUnion: false,
+                unionTypes: [],
+                isGeneric: false,
+                genericTypes: [],
+                isNullable: false
+              };
+            }
+          }
+        }
+
         result.returns = {
-          type: this.parseType(returnMatch[1]),
-          description: returnMatch[2] || ''
+          type: returnType,
+          description: description
         };
       }
 
@@ -92,6 +141,15 @@
           type: throwsMatch[1],
           description: throwsMatch[2] || ''
         });
+      }
+
+      // Parse @csharp directive - native C# code to use instead of transpiling
+      // Format: @csharp <C# statement(s)>
+      // Stop at next @ tag or end of comment
+      const csharpRegex = /@csharp\s+(.+?)(?=\n\s*@|\n*$)/s;
+      const csharpMatch = cleaned.match(csharpRegex);
+      if (csharpMatch) {
+        result.csharpOverride = csharpMatch[1].trim();
       }
 
       return result;
@@ -261,7 +319,12 @@
         'CRC32': { params: ['byte[]'], returns: 'dword', description: 'Calculate CRC32' },
         'CRC16': { params: ['byte[]'], returns: 'word', description: 'Calculate CRC16' },
         'Checksum8': { params: ['byte[]'], returns: 'byte', description: 'Calculate 8-bit checksum' },
-        'Checksum16': { params: ['byte[]'], returns: 'word', description: 'Calculate 16-bit checksum' }
+        'Checksum16': { params: ['byte[]'], returns: 'word', description: 'Calculate 16-bit checksum' },
+
+        // Tuple-returning operations
+        'Split64': { params: ['double'], returns: '(high32: uint32, low32: uint32)', description: 'Split 64-bit float to two 32-bit components' },
+        'SplitNibbles': { params: ['byte'], returns: '(high: uint8, low: uint8)', description: 'Split byte into high and low nibbles' },
+        'Combine64': { params: ['dword', 'dword'], returns: 'double', description: 'Combine two 32-bit to 64-bit float' }
       };
 
       // AlgorithmFramework.js class types and interfaces
@@ -272,35 +335,64 @@
             'name': 'string',
             'description': 'string',
             'inventor': 'string',
-            'year': 'number',
+            'year': 'int',
             'category': 'CategoryType',
+            'subCategory': 'string',
             'securityStatus': 'SecurityStatus',
-            'complexity': 'ComplexityType'
+            'complexity': 'ComplexityType',
+            'country': 'CountryCode',
+            'documentation': 'LinkItem[]',
+            'references': 'LinkItem[]',
+            'knownVulnerabilities': 'Vulnerability[]',
+            'tests': 'object[]'
           },
           methods: {
-            'CreateInstance': { params: ['boolean'], returns: 'IAlgorithmInstance' }
+            'CreateInstance': { params: ['bool'], returns: 'IAlgorithmInstance' }
           }
         },
-        
+
         'BlockCipherAlgorithm': {
-          extends: 'SymmetricCipherAlgorithm',
+          extends: 'Algorithm',
           properties: {
             'SupportedKeySizes': 'KeySize[]',
-            'SupportedBlockSizes': 'KeySize[]'
+            'SupportedBlockSizes': 'KeySize[]',
+            'Tables': 'object'
+          },
+          methods: {
+            'CreateInstance': { params: ['bool'], returns: 'IBlockCipherInstance' }
           }
         },
 
         'IBlockCipherInstance': {
           extends: 'IAlgorithmInstance',
           properties: {
-            'BlockSize': 'number',
-            'KeySize': 'number',
-            'key': 'number[]',
-            'iv': 'number[]'
+            'BlockSize': 'int',
+            'KeySize': 'int',
+            'key': 'byte[]',
+            'iv': 'byte[]',
+            'IsInverse': 'bool',
+            'InputBuffer': 'byte[]',
+            'RoundKeys': 'byte[]',
+            'Rounds': 'int'
           },
           methods: {
-            'Feed': { params: ['number[]'], returns: 'void' },
-            'Result': { params: [], returns: 'number[]' }
+            'Feed': { params: ['byte[]'], returns: 'void' },
+            'Result': { params: [], returns: 'byte[]' },
+            'EncryptBlock': { params: ['byte[]'], returns: 'byte[]' },
+            'DecryptBlock': { params: ['byte[]'], returns: 'byte[]' },
+            'Dispose': { params: [], returns: 'void' }
+          }
+        },
+
+        'IAlgorithmInstance': {
+          properties: {
+            'IsInverse': 'bool',
+            'InputBuffer': 'byte[]'
+          },
+          methods: {
+            'Feed': { params: ['byte[]'], returns: 'void' },
+            'Result': { params: [], returns: 'byte[]' },
+            'Dispose': { params: [], returns: 'void' }
           }
         },
 
@@ -308,13 +400,59 @@
           extends: 'Algorithm',
           properties: {
             'SupportedOutputSizes': 'KeySize[]'
+          },
+          methods: {
+            'CreateInstance': { params: ['bool'], returns: 'IHashFunctionInstance' }
           }
         },
 
         'IHashFunctionInstance': {
           extends: 'IAlgorithmInstance',
           properties: {
-            'OutputSize': 'number'
+            'OutputSize': 'int'
+          },
+          methods: {
+            'Feed': { params: ['byte[]'], returns: 'void' },
+            'Result': { params: [], returns: 'byte[]' }
+          }
+        },
+
+        'CompressionAlgorithm': {
+          extends: 'Algorithm',
+          methods: {
+            'CreateInstance': { params: ['bool'], returns: 'ICompressionInstance' }
+          }
+        },
+
+        'ICompressionInstance': {
+          extends: 'IAlgorithmInstance',
+          properties: {
+            'IsInverse': 'bool',
+            'InputBuffer': 'byte[]'
+          },
+          methods: {
+            'Feed': { params: ['byte[]'], returns: 'void' },
+            'Result': { params: [], returns: 'byte[]' }
+          }
+        },
+
+        'StreamCipherAlgorithm': {
+          extends: 'Algorithm',
+          methods: {
+            'CreateInstance': { params: ['bool'], returns: 'IStreamCipherInstance' }
+          }
+        },
+
+        'IStreamCipherInstance': {
+          extends: 'IAlgorithmInstance',
+          properties: {
+            'key': 'byte[]',
+            'iv': 'byte[]',
+            'IsInverse': 'bool'
+          },
+          methods: {
+            'Feed': { params: ['byte[]'], returns: 'void' },
+            'Result': { params: [], returns: 'byte[]' }
           }
         }
       };
@@ -607,6 +745,10 @@
       this.jsDocParser = new JSDocParser();
       this.typeKnowledge = new PreciseTypeKnowledge();
       this.typeAnnotations = new Map(); // Store type information for nodes
+      this.lastJSDocComment = null; // Track the last JSDoc comment seen
+      this.pendingComments = []; // Track all comments between tokens
+      this.classHierarchy = new Map(); // Maps class names to their base classes
+      this.classMembers = new Map(); // Maps class names to their member type signatures
     }
 
     /**
@@ -1061,8 +1203,429 @@
       }
       this.position = 0;
       this.currentToken = this.tokens[0];
-      
-      return this.parseProgram();
+
+      let ast = this.parseProgram();
+
+      // Unwrap UMD/IIFE module patterns to extract inner factory function
+      ast = this.unwrapModulePatterns(ast);
+
+      // Multi-pass type narrowing until convergence
+      this.performTypeNarrowing(ast);
+
+      return ast;
+    }
+
+    /**
+     * Unwrap UMD (Universal Module Definition) and IIFE patterns
+     * Extracts the factory function body from patterns like:
+     *   (function(root, factory) { ... })(globalThis, function(deps) { ...actual code... })
+     * @param {Object} ast - Parsed AST
+     * @returns {Object} Unwrapped AST or original if not a module pattern
+     */
+    unwrapModulePatterns(ast) {
+      if (!ast || !ast.body || ast.body.length === 0) return ast;
+
+      // Check if program consists primarily of a single IIFE call expression
+      const mainStatements = ast.body.filter(stmt =>
+        stmt.type !== 'EmptyStatement' &&
+        !(stmt.type === 'ExpressionStatement' && stmt.expression?.type === 'Literal')
+      );
+
+      if (mainStatements.length !== 1) return ast;
+
+      const stmt = mainStatements[0];
+
+      // Pattern 1: ExpressionStatement containing CallExpression
+      if (stmt.type === 'ExpressionStatement' && stmt.expression?.type === 'CallExpression') {
+        const unwrapped = this.tryUnwrapUMD(stmt.expression);
+        if (unwrapped) {
+          console.error('📦 Unwrapped UMD module pattern');
+          return unwrapped;
+        }
+      }
+
+      return ast;
+    }
+
+    /**
+     * Try to unwrap a UMD CallExpression pattern
+     * @param {Object} callExpr - CallExpression AST node
+     * @returns {Object|null} Unwrapped Program AST or null if not a UMD pattern
+     */
+    tryUnwrapUMD(callExpr) {
+      // UMD pattern: (function(root, factory) { ... })(globalThisExpr, factoryFunction)
+      // The callee is a parenthesized FunctionExpression
+      const callee = callExpr.callee;
+      const args = callExpr.arguments || [];
+
+      // Callee must be a FunctionExpression (the UMD wrapper)
+      if (!callee || callee.type !== 'FunctionExpression') return null;
+
+      // The wrapper typically has 2 parameters: root and factory
+      const wrapperParams = callee.params || [];
+      if (wrapperParams.length < 2) return null;
+
+      // Check if the second parameter is named 'factory' (common UMD convention)
+      const factoryParamName = wrapperParams[1]?.name;
+      if (!factoryParamName) return null;
+
+      // Find the factory function in the call arguments (typically second argument)
+      // args[0] = globalThis/window/global expression
+      // args[1] = factory function
+      let factoryFn = null;
+
+      for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        if (arg.type === 'FunctionExpression' || arg.type === 'ArrowFunctionExpression') {
+          // Check if this function has parameters matching the expected dependencies
+          // (AlgorithmFramework, OpCodes, etc.)
+          const params = arg.params || [];
+          if (params.length >= 1) {
+            // This is likely the factory function
+            factoryFn = arg;
+            break;
+          }
+        }
+      }
+
+      if (!factoryFn) return null;
+
+      // Extract the factory function's body
+      const factoryBody = factoryFn.body;
+      if (!factoryBody) return null;
+
+      // If the factory body is a BlockStatement, extract its statements
+      let statements = [];
+      if (factoryBody.type === 'BlockStatement') {
+        statements = factoryBody.body || [];
+      } else {
+        // Arrow function with expression body
+        statements = [{ type: 'ReturnStatement', argument: factoryBody }];
+      }
+
+      // Filter out "use strict" directives and dependency validation checks
+      const filteredStatements = statements.filter(stmt => {
+        // Keep "use strict"
+        if (stmt.type === 'ExpressionStatement' &&
+            stmt.expression?.type === 'Literal' &&
+            stmt.expression?.value === 'use strict') {
+          return false; // Skip, C# doesn't need this
+        }
+
+        // Skip dependency validation: if (!Dependency) throw ...
+        if (stmt.type === 'IfStatement' &&
+            stmt.test?.type === 'UnaryExpression' &&
+            stmt.test?.operator === '!' &&
+            stmt.consequent?.type === 'ThrowStatement') {
+          return false;
+        }
+
+        return true;
+      });
+
+      // Skip destructuring from AlgorithmFramework (const { ... } = AlgorithmFramework)
+      // These are framework imports that need different handling
+      const processedStatements = filteredStatements.filter(stmt => {
+        if (stmt.type === 'VariableDeclaration') {
+          const decl = stmt.declarations?.[0];
+          if (decl?.id?.type === 'ObjectPattern' &&
+              decl?.init?.type === 'Identifier' &&
+              decl?.init?.name === 'AlgorithmFramework') {
+            // Store the destructured names for reference
+            this.frameworkImports = new Set();
+            for (const prop of decl.id.properties || []) {
+              if (prop.key?.name) {
+                this.frameworkImports.add(prop.key.name);
+              }
+            }
+            return false; // Skip this statement
+          }
+        }
+        return true;
+      });
+
+      // Create a new Program with the extracted statements
+      return {
+        type: 'Program',
+        body: processedStatements,
+        sourceType: 'module',
+        isUnwrappedModule: true,
+        factoryParams: factoryFn.params?.map(p => p.name) || []
+      };
+    }
+
+    /**
+     * Perform multi-pass type narrowing until convergence
+     * Each pass narrows types based on usage context, continuing until no changes occur
+     */
+    performTypeNarrowing(ast) {
+      const MAX_ITERATIONS = 10;
+      let iteration = 0;
+      let typesChanged = true;
+
+      // console.error(`DEBUG: Starting multi-pass type narrowing...`);
+
+      while (typesChanged && iteration < MAX_ITERATIONS) {
+        typesChanged = false;
+        iteration++;
+
+        const changeCount = this.narrowTypesPass(ast);
+        if (changeCount > 0) {
+          typesChanged = true;
+          // console.error(`DEBUG: Pass ${iteration}: ${changeCount} types narrowed`);
+        }
+      }
+
+      // console.error(`DEBUG: Type narrowing completed after ${iteration} passes (${this.typeAnnotations.size} types inferred)`);
+    }
+
+    /**
+     * Single pass of type narrowing
+     * Returns the number of types that were narrowed
+     */
+    narrowTypesPass(node, context = {}) {
+      if (!node || typeof node !== 'object') return 0;
+
+      let changeCount = 0;
+
+      // Handle different node types
+      switch (node.type) {
+        case 'ClassDeclaration':
+          // Track class inheritance hierarchy
+          if (node.id && node.id.name) {
+            const className = node.id.name;
+
+            // Track base class if present
+            if (node.superClass) {
+              const baseName = node.superClass.name || (node.superClass.property ? node.superClass.property.name : null);
+              if (baseName) {
+                this.classHierarchy.set(className, baseName);
+              }
+            }
+
+            // Collect member signatures from this class
+            const members = new Map();
+            if (node.body && node.body.body) {
+              node.body.body.forEach(member => {
+                if (member.key && member.key.name && member.value) {
+                  // Store member with its type info
+                  const memberName = member.key.name;
+                  if (member.value.typeInfo) {
+                    members.set(memberName, member.value.typeInfo);
+                  }
+                }
+              });
+            }
+            this.classMembers.set(className, members);
+          }
+          break;
+
+        case 'VariableDeclarator':
+          if (node.id && node.init) {
+            const existing = this.typeAnnotations.get(node.id);
+            const currentType = existing?.type || 'object';
+            const inferredType = this.inferExpressionType(node.init, context);
+
+            // Only update if we're narrowing from 'object' to something more specific
+            // Never widen types or change between non-object types
+            if (currentType === 'object' && inferredType !== 'object') {
+              this.typeAnnotations.set(node.id, { type: inferredType, source: 'assignment' });
+              if (node.id.name) context[node.id.name] = inferredType;
+              changeCount++;
+            }
+          }
+          break;
+
+        case 'AssignmentExpression':
+          // Infer type from right side to left side
+          if (node.left && node.right) {
+            const rightType = this.inferExpressionType(node.right, context);
+            if (node.left.type === 'Identifier') {
+              const existing = this.typeAnnotations.get(node.left);
+              const currentType = existing?.type || 'object';
+              if (currentType === 'object' && rightType !== 'object') {
+                this.typeAnnotations.set(node.left, { type: rightType, source: 'assignment' });
+                if (node.left.name) context[node.left.name] = rightType;
+                changeCount++;
+              }
+            } else if (node.left.type === 'MemberExpression') {
+              // Handle array element assignment: arr[i] = value
+              const arrayType = this.inferExpressionType(node.left.object, context);
+              if (arrayType && arrayType.isArray && arrayType !== 'object') {
+                const existing = this.typeAnnotations.get(node.left.object);
+                if (!existing || existing.type === 'object') {
+                  this.typeAnnotations.set(node.left.object, { type: arrayType, source: 'array_assignment' });
+                  changeCount++;
+                }
+              }
+            }
+          }
+          break;
+
+        case 'FunctionDeclaration':
+        case 'FunctionExpression':
+        case 'ArrowFunctionExpression':
+          // Analyze function return type from JSDoc or return statements
+          if (!this.typeAnnotations.has(node)) {
+            const returnType = this._analyzeReturnType(node);
+            if (returnType && returnType !== 'object') {
+              this.typeAnnotations.set(node, { type: returnType, source: 'jsdoc' });
+              changeCount++;
+            }
+          }
+
+          // Add parameters to context
+          if (node.params) {
+            node.params.forEach(param => {
+              if (param.type === 'Identifier' && param.name) {
+                // First try JSDoc, then fall back to usage-based inference
+                let paramType = this._extractJSDocParamType(node, param.name);
+                let typeSource = 'jsdoc';
+                if (!paramType) {
+                  paramType = this._inferParameterTypeFromUsage(node, param.name);
+                  typeSource = 'inferred';
+                }
+                paramType = paramType || 'object';
+                if (!this.typeAnnotations.has(param) && paramType !== 'object') {
+                  this.typeAnnotations.set(param, { type: paramType, source: typeSource });
+                  context[param.name] = paramType;
+                  changeCount++;
+                }
+              }
+            });
+          }
+          break;
+      }
+
+      // Recursively process children
+      for (const key in node) {
+        if (key === 'loc' || key === 'range' || key === 'comments') continue;
+        const value = node[key];
+
+        if (Array.isArray(value)) {
+          value.forEach(child => {
+            changeCount += this.narrowTypesPass(child, { ...context });
+          });
+        } else if (value && typeof value === 'object') {
+          changeCount += this.narrowTypesPass(value, { ...context });
+        }
+      }
+
+      return changeCount;
+    }
+
+    /**
+     * Helper to analyze return type from JSDoc or return statements
+     */
+    _analyzeReturnType(funcNode) {
+      // Check for JSDoc return type
+      if (funcNode.typeInfo && funcNode.typeInfo.returns) {
+        return funcNode.typeInfo.returns;
+      }
+
+      // TODO: Analyze actual return statements in function body
+      return 'object';
+    }
+
+    /**
+     * Helper to extract JSDoc parameter type
+     */
+    _extractJSDocParamType(funcNode, paramName) {
+      if (funcNode.typeInfo && funcNode.typeInfo.params) {
+        return funcNode.typeInfo.params.get(paramName);
+      }
+      return null;
+    }
+
+    /**
+     * Infer parameter type from usage patterns within the function body.
+     * Looks for array-like usage (.length, indexing, array methods).
+     * @param {Object} funcNode - The function AST node
+     * @param {string} paramName - The parameter name to analyze
+     * @returns {string|null} Inferred type or null
+     */
+    _inferParameterTypeFromUsage(funcNode, paramName) {
+      if (!funcNode.body) return null;
+
+      let hasArrayUsage = false;
+      let hasLengthAccess = false;
+      let hasIndexAccess = false;
+
+      const analyzeNode = (node) => {
+        if (!node || typeof node !== 'object') return;
+
+        // Check for param.length access
+        if (node.type === 'MemberExpression' &&
+            node.object && node.object.type === 'Identifier' &&
+            node.object.name === paramName &&
+            node.property && node.property.name === 'length') {
+          hasLengthAccess = true;
+        }
+
+        // Check for param[index] access
+        if (node.type === 'MemberExpression' &&
+            node.computed === true &&
+            node.object && node.object.type === 'Identifier' &&
+            node.object.name === paramName) {
+          hasIndexAccess = true;
+        }
+
+        // Check for array method calls (push, pop, slice, etc.)
+        if (node.type === 'CallExpression' &&
+            node.callee && node.callee.type === 'MemberExpression' &&
+            node.callee.object && node.callee.object.type === 'Identifier' &&
+            node.callee.object.name === paramName) {
+          const method = node.callee.property && node.callee.property.name;
+          if (['push', 'pop', 'shift', 'unshift', 'slice', 'splice', 'concat', 'indexOf', 'includes', 'fill'].includes(method)) {
+            hasArrayUsage = true;
+          }
+        }
+
+        // Recursively analyze children
+        for (const key in node) {
+          if (key === 'loc' || key === 'range' || key === 'comments') continue;
+          const value = node[key];
+          if (Array.isArray(value)) {
+            value.forEach(analyzeNode);
+          } else if (value && typeof value === 'object') {
+            analyzeNode(value);
+          }
+        }
+      };
+
+      analyzeNode(funcNode.body);
+
+      // If we see length access or index access, it's likely an array
+      if (hasArrayUsage || hasLengthAccess || hasIndexAccess) {
+        // Default to byte[] for cryptographic code where arrays are common
+        return 'byte[]';
+      }
+
+      return null;
+    }
+
+    /**
+     * Look up method type from class hierarchy (follows inheritance chain)
+     * @param {string} className - The class to search in
+     * @param {string} memberName - The member/method name to find
+     * @returns {Object|null} Type info from base class or null
+     */
+    _lookupInheritedMemberType(className, memberName) {
+      // Check current class first
+      if (this.classMembers.has(className)) {
+        const members = this.classMembers.get(className);
+        if (members.has(memberName)) {
+          return members.get(memberName);
+        }
+      }
+
+      // Walk up the inheritance chain
+      if (this.classHierarchy.has(className)) {
+        const baseName = this.classHierarchy.get(className);
+        return this._lookupInheritedMemberType(baseName, memberName);
+      }
+
+      return null;
     }
 
     /**
@@ -1077,12 +1640,16 @@
       }
       
       while (this.currentToken) {
-        // Skip comments at the program level
-        this.skipComments();
+        // Skip and collect comments at the program level
+        const leadingComments = this.skipComments();
         if (!this.currentToken) break;
-        
+
         const stmt = this.parseStatement();
         if (stmt) {
+          // Attach leading comments to the statement node
+          if (leadingComments && leadingComments.length > 0) {
+            stmt.leadingComments = leadingComments;
+          }
           statements.push(stmt);
         }
       }
@@ -1515,13 +2082,17 @@
       this.consume('PUNCTUATION', '{');
       
       while (this.currentToken && !(this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '}')) {
-        // Skip comments at block level
-        this.skipComments();
-        
+        // Skip and collect comments at block level
+        const leadingComments = this.skipComments();
+
         // Check again after skipping comments
         if (this.currentToken && !(this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '}')) {
           const stmt = this.parseStatement();
           if (stmt) {
+            // Attach leading comments to the statement node
+            if (leadingComments && leadingComments.length > 0) {
+              stmt.leadingComments = leadingComments;
+            }
             node.body.push(stmt);
           }
         }
@@ -2081,10 +2652,14 @@
     }
 
     /**
-     * Parse number
+     * Parse number (supports decimal, hex 0x, octal 0o, binary 0b)
      */
     parseNumber() {
-      const node = { type: 'Literal', value: parseFloat(this.currentToken.value) };
+      const tokenValue = this.currentToken.value;
+      // Use Number() to correctly parse hex (0x), octal (0o), binary (0b), and decimal
+      // parseFloat doesn't handle hex/octal/binary literals correctly
+      const numValue = Number(tokenValue);
+      const node = { type: 'Literal', value: numValue, raw: tokenValue };
       this.advance();
       return node;
     }
@@ -2230,14 +2805,32 @@
         
         // Parse property (key: value)
         const property = { type: 'Property' };
-        
+
+        // Capture JSDoc comment before this property
+        const jsDoc = this.consumeJSDoc();
+
         // Parse key (can be identifier, string, number, or keyword)
         if (this.currentToken.type === 'IDENTIFIER') {
           property.key = this.parseIdentifier();
-          
-          // Check for shorthand property syntax (e.g., {func1, func2})
+
           this.skipComments();
-          if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && 
+
+          // Check for ES6 method shorthand syntax (e.g., { getValue() { ... } })
+          if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '(') {
+            // Method shorthand: parse as function
+            const params = this.parseParameterList();
+            this.skipComments();
+            const body = this.parseBlockStatement();
+
+            property.value = {
+              type: 'FunctionExpression',
+              params,
+              body
+            };
+            property.method = true;
+          }
+          // Check for shorthand property syntax (e.g., {func1, func2})
+          else if (this.currentToken && this.currentToken.type === 'PUNCTUATION' &&
               (this.currentToken.value === ',' || this.currentToken.value === '}')) {
             // Shorthand property: {key} means {key: key}
             property.value = { type: 'Identifier', name: property.key.name };
@@ -2310,7 +2903,49 @@
           property.shorthand = false;
         }
         property.computed = false;
-        
+
+        // Attach JSDoc type information if available
+        if (jsDoc) {
+          // Store JSDoc on the property node
+          property.jsDoc = jsDoc;
+
+          // Create leadingComments from jsDoc so transformer can access @type
+          if (this.lastJSDocRawComment) {
+            property.leadingComments = property.leadingComments || [];
+            property.leadingComments.push({ type: 'CommentBlock', value: this.lastJSDocRawComment });
+            this.lastJSDocRawComment = null;
+          }
+
+          // If the property value is a function, attach type info
+          if (property.value && property.value.type === 'FunctionExpression') {
+            property.value.typeInfo = {
+              params: new Map(jsDoc.params.map(p => [p.name, p.type])),
+              returns: jsDoc.returns ? jsDoc.returns.type : null,
+              csharpOverride: jsDoc.csharpOverride || null  // Native C# code override
+            };
+
+            // Attach type info to function parameters
+            if (property.value.params) {
+              property.value.params.forEach((param, index) => {
+                if (jsDoc.params[index] && param.type === 'Identifier') {
+                  this.typeAnnotations.set(param, {
+                    type: jsDoc.params[index].type,
+                    source: 'jsdoc'
+                  });
+                }
+              });
+            }
+
+            // Store return type in type annotations
+            if (jsDoc.returns) {
+              this.typeAnnotations.set(property.value, {
+                type: jsDoc.returns.type,
+                source: 'jsdoc'
+              });
+            }
+          }
+        }
+
         node.properties.push(property);
         
         this.skipComments(); // Skip comments after property value
@@ -2426,13 +3061,44 @@
     }
 
     /**
-     * Skip any comment tokens
+     * Skip any comment tokens and collect them for attachment to the next statement
+     * @returns {Array} Collected comments (for attachment to nodes)
      */
     skipComments() {
-      while (this.currentToken && 
+      const collected = [];
+      while (this.currentToken &&
              (this.currentToken.type === 'COMMENT_SINGLE' || this.currentToken.type === 'COMMENT_MULTI')) {
+
+        // Collect comment for attachment to nodes
+        collected.push({
+          type: this.currentToken.type === 'COMMENT_MULTI' ? 'Block' : 'Line',
+          value: this.currentToken.value
+        });
+
+        // Capture JSDoc comments (/** ... */)
+        if (this.currentToken.type === 'COMMENT_MULTI' && this.currentToken.value.startsWith('/**')) {
+          this.lastJSDocComment = this.currentToken.value;
+        }
+
         this.advance();
       }
+      // Also store in pendingComments for alternate access
+      this.pendingComments = collected;
+      return collected;
+    }
+
+    /**
+     * Consume and parse the last JSDoc comment if available
+     * Returns parsed JSDoc info or null
+     */
+    consumeJSDoc() {
+      if (this.lastJSDocComment) {
+        const jsDoc = this.jsDocParser.parseJSDoc(this.lastJSDocComment);
+        this.lastJSDocRawComment = this.lastJSDocComment; // Store raw comment for leadingComments
+        this.lastJSDocComment = null; // Clear after consumption
+        return jsDoc;
+      }
+      return null;
     }
 
     /**
@@ -2495,75 +3161,13 @@
 
     /**
      * Enhanced method parsing with JSDoc type extraction
+     * NOTE: This method is now deprecated - JSDoc extraction happens in parseObjectExpression
+     * Keeping for compatibility but it does nothing now
      */
     parseMethodWithTypes(node) {
-      // Look for preceding JSDoc comment
-      let jsDocComment = null;
-      
-      // In a real implementation, we'd need to track comments during tokenization
-      // For now, we'll simulate this
-      if (node.key && node.key.name) {
-        // This would normally be extracted during tokenization
-        jsDocComment = this.extractJSDocForMethod(node.key.name);
-      }
-
-      if (jsDocComment) {
-        const jsDocInfo = this.jsDocParser.parseJSDoc(jsDocComment);
-        
-        // Attach type information to the node
-        this.typeAnnotations.set(node, {
-          jsDoc: jsDocInfo,
-          paramTypes: jsDocInfo.params.map(p => p.type),
-          returnType: jsDocInfo.returns ? jsDocInfo.returns.type : null
-        });
-
-        // Attach type info to parameters
-        if (node.value && node.value.params) {
-          node.value.params.forEach((param, index) => {
-            if (jsDocInfo.params[index]) {
-              this.typeAnnotations.set(param, {
-                type: jsDocInfo.params[index].type,
-                description: jsDocInfo.params[index].description
-              });
-            }
-          });
-        }
-      }
-
+      // JSDoc extraction now happens in parseObjectExpression via consumeJSDoc()
+      // This method is kept for backward compatibility but does no work
       return node;
-    }
-
-    /**
-     * Extract JSDoc comment for a method (placeholder implementation)
-     * In a real implementation, this would be done during tokenization
-     */
-    extractJSDocForMethod(methodName) {
-      // This is a simplified approach - in practice, you'd track comment tokens
-      // and associate them with the following declarations during parsing
-      const jsDocPatterns = {
-        'RotL32': `/**
-         * Rotate left (circular left shift) for 32-bit values
-         * @param {number} value - 32-bit value to rotate
-         * @param {number} positions - Number of positions to rotate (0-31)
-         * @returns {number} Rotated 32-bit value
-         */`,
-        'Feed': `/**
-         * Feed data to the algorithm instance
-         * @param {number[]} data - Input data bytes
-         * @returns {void}
-         */`,
-        'Result': `/**
-         * Get the result of the algorithm processing
-         * @returns {number[]} Output data bytes
-         */`,
-        'CreateInstance': `/**
-         * Create a new algorithm instance
-         * @param {boolean} isInverse - Whether to create inverse operation instance
-         * @returns {IAlgorithmInstance} Algorithm instance or null if not supported
-         */`
-      };
-
-      return jsDocPatterns[methodName] || null;
     }
 
     /**
@@ -2596,10 +3200,107 @@
           return this.inferMemberExpressionType(node, context);
 
         case 'Identifier':
+          // Check context first (function parameters, local variables)
+          if (context[node.name]) {
+            return context[node.name];
+          }
+          // Check type annotations
+          if (this.typeAnnotations.has(node)) {
+            return this.typeAnnotations.get(node).type;
+          }
+          // Fallback to type knowledge
           return this.typeKnowledge.inferType(node.name, context);
+
+        case 'BinaryExpression':
+        case 'LogicalExpression':
+          return this.inferBinaryExpressionType(node, context);
+
+        case 'UnaryExpression':
+          return this.inferUnaryExpressionType(node, context);
+
+        case 'UpdateExpression':
+          // ++x, x++, --x, x-- always return number
+          return { name: 'number' };
+
+        case 'AssignmentExpression':
+          // Assignment returns the type of the right side
+          return this.inferExpressionType(node.right, context);
+
+        case 'ConditionalExpression':
+          // a ? b : c - infer from consequent (could merge both branches)
+          return this.inferExpressionType(node.consequent, context);
+
+        case 'NewExpression':
+          // new Array(), new List(), etc.
+          if (node.callee.name === 'Array' || node.callee.name === 'List') {
+            return { name: 'any[]', isArray: true };
+          }
+          return { name: node.callee.name || 'object' };
 
         default:
           return { name: 'any' };
+      }
+    }
+
+    /**
+     * Infer type for binary expressions
+     */
+    inferBinaryExpressionType(node, context) {
+      const left = this.inferExpressionType(node.left, context);
+      const right = this.inferExpressionType(node.right, context);
+
+      switch (node.operator) {
+        case '+':
+        case '-':
+        case '*':
+        case '/':
+        case '%':
+        case '<<':
+        case '>>':
+        case '>>>':
+        case '&':
+        case '|':
+        case '^':
+          // Bitwise and arithmetic operators return number (or preserve specific type)
+          if (left.name !== 'any' && left.name !== 'string') return left;
+          if (right.name !== 'any' && right.name !== 'string') return right;
+          return { name: 'number' };
+
+        case '==':
+        case '===':
+        case '!=':
+        case '!==':
+        case '<':
+        case '>':
+        case '<=':
+        case '>=':
+        case '&&':
+        case '||':
+          // Comparison and logical operators return boolean
+          return { name: 'boolean' };
+
+        default:
+          return { name: 'any' };
+      }
+    }
+
+    /**
+     * Infer type for unary expressions
+     */
+    inferUnaryExpressionType(node, context) {
+      switch (node.operator) {
+        case '!':
+          return { name: 'boolean' };
+        case '+':
+        case '-':
+        case '~':
+          return { name: 'number' };
+        case 'typeof':
+          return { name: 'string' };
+        case 'void':
+          return { name: 'void' };
+        default:
+          return this.inferExpressionType(node.argument, context);
       }
     }
 
@@ -2610,12 +3311,87 @@
       if (node.callee.type === 'MemberExpression') {
         const objectName = node.callee.object.name;
         const methodName = node.callee.property.name;
-        
+
+        // First, try to find the actual function definition with JSDoc
+        // Look through all parsed object properties for OpCodes.methodName
+        for (const [annotatedNode, typeInfo] of this.typeAnnotations.entries()) {
+          if (annotatedNode.type === 'FunctionExpression' &&
+              typeInfo.type && typeInfo.type.name) {
+            // Check if this is the method we're calling
+            // We need to match by finding the property name in parent context
+            // For now, use the methodName from typeInfo if available
+            if (typeInfo.source === 'jsdoc' && typeInfo.type) {
+              // This function has JSDoc - check if it matches our call
+              // We'd need parent context to properly match, but for OpCodes we can check the method name
+              // This is a simplified approach - ideally we'd track function->method name mapping
+            }
+          }
+        }
+
+        // Fallback to hardcoded OpCodes signatures
         if (objectName === 'OpCodes') {
           const methodInfo = this.typeKnowledge.opCodesTypes[methodName];
           if (methodInfo) {
             return this.jsDocParser.parseType(methodInfo.returns);
           }
+        }
+
+        // Check for array methods
+        const objectType = this.inferExpressionType(node.callee.object, context);
+        if (objectType.isArray || (objectType.name && objectType.name.endsWith('[]'))) {
+          if (methodName === 'slice' || methodName === 'concat' || methodName === 'filter' || methodName === 'map') {
+            return objectType; // Returns same array type
+          }
+          if (methodName === 'pop' || methodName === 'shift') {
+            // Returns element type
+            if (objectType.elementType) return objectType.elementType;
+            if (objectType.name && objectType.name.endsWith('[]')) {
+              const elementTypeName = objectType.name.slice(0, -2);
+              return { name: elementTypeName };
+            }
+          }
+          if (methodName === 'push' || methodName === 'unshift') {
+            return { name: 'int' }; // Returns new length
+          }
+          if (methodName === 'join') {
+            return { name: 'string' };
+          }
+        }
+
+        // String methods
+        if (objectType.name === 'string') {
+          if (methodName === 'substring' || methodName === 'substr' || methodName === 'slice' ||
+              methodName === 'toLowerCase' || methodName === 'toUpperCase' || methodName === 'trim') {
+            return { name: 'string' };
+          }
+          if (methodName === 'split') {
+            return { name: 'string[]', isArray: true, elementType: { name: 'string' } };
+          }
+          if (methodName === 'indexOf' || methodName === 'lastIndexOf') {
+            return { name: 'int' };
+          }
+          if (methodName === 'charCodeAt') {
+            return { name: 'int' };
+          }
+        }
+      }
+
+      // Direct function call
+      if (node.callee.type === 'Identifier') {
+        const funcName = node.callee.name;
+
+        // Check for constructors
+        if (funcName === 'Array') {
+          return { name: 'any[]', isArray: true };
+        }
+        if (funcName === 'String') {
+          return { name: 'string' };
+        }
+        if (funcName === 'Number') {
+          return { name: 'number' };
+        }
+        if (funcName === 'Boolean') {
+          return { name: 'boolean' };
         }
       }
 
@@ -2623,14 +3399,50 @@
     }
 
     /**
-     * Infer type for member expressions (obj.prop)
+     * Infer type for member expressions (obj.prop or obj[index])
      */
     inferMemberExpressionType(node, context) {
-      const objectName = node.object.name;
-      const propertyName = node.property.name;
-      
+      const objectType = this.inferExpressionType(node.object, context);
+
+      // Handle array indexing: arr[i] returns element type
+      if (node.computed) {
+        if (objectType.isArray && objectType.elementType) {
+          return objectType.elementType;
+        }
+        if (objectType.name && objectType.name.endsWith('[]')) {
+          // Extract element type from "type[]" format
+          const elementTypeName = objectType.name.slice(0, -2);
+          return { name: elementTypeName };
+        }
+        // Default for indexed access
+        return { name: 'any' };
+      }
+
+      // Handle property access
+      const propertyName = node.property.name || node.property.value;
+
+      // Array properties
+      if (objectType.isArray || (objectType.name && objectType.name.endsWith('[]'))) {
+        if (propertyName === 'length') {
+          return { name: 'int' };
+        }
+        if (propertyName === 'push' || propertyName === 'pop' || propertyName === 'shift' ||
+            propertyName === 'unshift' || propertyName === 'slice' || propertyName === 'splice') {
+          // These are methods - would need full method signature handling
+          return { name: 'function' };
+        }
+      }
+
+      // String properties
+      if (objectType.name === 'string') {
+        if (propertyName === 'length') {
+          return { name: 'int' };
+        }
+      }
+
       // Check framework class properties
-      if (this.typeKnowledge.frameworkTypes[objectName]) {
+      const objectName = node.object.name;
+      if (objectName && this.typeKnowledge.frameworkTypes[objectName]) {
         const classInfo = this.typeKnowledge.frameworkTypes[objectName];
         if (classInfo.properties && classInfo.properties[propertyName]) {
           return this.jsDocParser.parseType(classInfo.properties[propertyName]);
@@ -3022,17 +3834,18 @@
    * Generates properly typed code using LanguagePlugin system only
    */
   class TypeAwareCodeGenerator {
-    constructor(languagePlugin, parser) {
+    constructor(languagePlugin, parser, options = {}) {
       if (!languagePlugin || typeof languagePlugin === 'string') {
         throw new Error('TypeAwareCodeGenerator requires a LanguagePlugin instance. Legacy string mode is no longer supported.');
       }
-      
+
       this.languagePlugin = languagePlugin;
       this.parser = parser;
       this.typeKnowledge = parser.typeKnowledge;
       this.indentLevel = 0;
       this.targetLanguage = languagePlugin.name.toLowerCase();
       this.indentString = languagePlugin.options.indent || '  ';
+      this.options = options;
     }
 
     /**
@@ -3043,12 +3856,15 @@
         parser: this.parser,
         typeKnowledge: this.typeKnowledge,
         indent: this.indentString,
+        useAstPipeline: true,  // Use new AST pipeline for better type handling
+        className: this.options.className,  // Pass through class name
+        namespace: this.options.namespace   // Pass through namespace
       });
-      
+
       if (!result.success) {
         throw new Error(`Code generation failed: ${result.error}`);
       }
-      
+
       return result.code;
     }
 
@@ -3084,9 +3900,9 @@
         if (options.includeTestVectors === false) {
           this.removeTestVectors(ast);
         }
-         
+
         // Generate code using LanguagePlugin
-        this.generator = new TypeAwareCodeGenerator(languagePlugin, this.parser);
+        this.generator = new TypeAwareCodeGenerator(languagePlugin, this.parser, options);
         const generatedCode = this.generator.generate(ast);
         
         return {
@@ -3117,7 +3933,7 @@
         if (node.type === 'ClassDeclaration' && node.superClass) {
           const isAlgorithmClass = this.isAlgorithmFrameworkClass(node.superClass);
           if (isAlgorithmClass) {
-            console.log(`🔍 Found AlgorithmFramework class: ${node.id?.name}`);
+            console.error(`🔍 Found AlgorithmFramework class: ${node.id?.name}`);
             this.removeTestAssignmentsFromClass(node);
           }
         }
@@ -3201,7 +4017,7 @@
             stmt.expression.left.type === 'MemberExpression' &&
             stmt.expression.left.object?.type === 'ThisExpression' &&
             stmt.expression.left.property?.name === 'tests') {
-          console.log(`🗑️ Removing this.tests assignment in ${classNode.id?.name} constructor`);
+          console.error(`🗑️ Removing this.tests assignment in ${classNode.id?.name} constructor`);
           return false;
         }
         return true;
@@ -3209,7 +4025,7 @@
 
       const removedCount = originalLength - constructor.value.body.body.length;
       if (removedCount > 0) {
-        console.log(`✅ Removed ${removedCount} test vector assignment(s) from ${classNode.id?.name}`);
+        console.error(`✅ Removed ${removedCount} test vector assignment(s) from ${classNode.id?.name}`);
       }
     }
 
