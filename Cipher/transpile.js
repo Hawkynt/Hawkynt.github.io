@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Load type-aware transpiler
-const { TypeAwareJSTranspiler } = require('./type-aware-transpiler.js');
+const { TypeAwareJSTranspiler, TypeAwareJSASTParser } = require('./type-aware-transpiler.js');
 
 // Load language plugin framework
 const { LanguagePlugin, LanguagePlugins } = require('./codingplugins/LanguagePlugin.js');
@@ -35,6 +35,22 @@ if (!fs.existsSync(inputFile)) {
 }
 
 const sourceCode = fs.readFileSync(inputFile, 'utf8');
+
+// Load type libraries from OpCodes.js and AlgorithmFramework.js
+const scriptDir = path.dirname(__filename);
+const opCodesPath = path.join(scriptDir, 'OpCodes.js');
+const frameworkPath = path.join(scriptDir, 'AlgorithmFramework.js');
+
+const typeLibraryOptions = {};
+if (fs.existsSync(opCodesPath)) {
+  typeLibraryOptions.opCodesSource = fs.readFileSync(opCodesPath, 'utf8');
+}
+if (fs.existsSync(frameworkPath)) {
+  typeLibraryOptions.frameworkSource = fs.readFileSync(frameworkPath, 'utf8');
+}
+if (Object.keys(typeLibraryOptions).length > 0) {
+  TypeAwareJSASTParser.loadTypeLibraries(typeLibraryOptions);
+}
 
 // Generate class name from input file (e.g., "rijndael.js" -> "RijndaelGenerated")
 const baseName = path.basename(inputFile, path.extname(inputFile));

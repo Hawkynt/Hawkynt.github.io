@@ -229,233 +229,13 @@
     }
 
     initializeTypeDatabase() {
-      // Precise OpCodes.js method signatures with specific bit-width types
-      this.opCodesTypes = {
-        // 8-bit operations (byte)
-        'RotL8': { params: ['byte', 'int'], returns: 'byte', description: '8-bit rotate left' },
-        'RotR8': { params: ['byte', 'int'], returns: 'byte', description: '8-bit rotate right' },
-        
-        // 16-bit operations (word/short)
-        'RotL16': { params: ['word', 'int'], returns: 'word', description: '16-bit rotate left' },
-        'RotR16': { params: ['word', 'int'], returns: 'word', description: '16-bit rotate right' },
-        
-        // 32-bit operations (dword/int)
-        'RotL32': { params: ['dword', 'int'], returns: 'dword', description: '32-bit rotate left' },
-        'RotR32': { params: ['dword', 'int'], returns: 'dword', description: '32-bit rotate right' },
-        
-        // Packing operations - 4 bytes to 32-bit
-        'Pack32BE': { params: ['byte', 'byte', 'byte', 'byte'], returns: 'dword', description: 'Pack 4 bytes to 32-bit big-endian' },
-        'Pack32LE': { params: ['byte', 'byte', 'byte', 'byte'], returns: 'dword', description: 'Pack 4 bytes to 32-bit little-endian' },
-        'Pack16BE': { params: ['byte', 'byte'], returns: 'word', description: 'Pack 2 bytes to 16-bit big-endian' },
-        'Pack16LE': { params: ['byte', 'byte'], returns: 'word', description: 'Pack 2 bytes to 16-bit little-endian' },
-        
-        // Unpacking operations - 32-bit to 4 bytes
-        'Unpack32BE': { params: ['dword'], returns: 'byte[]', description: 'Unpack 32-bit to 4 bytes big-endian' },
-        'Unpack32LE': { params: ['dword'], returns: 'byte[]', description: 'Unpack 32-bit to 4 bytes little-endian' },
-        'Unpack16BE': { params: ['word'], returns: 'byte[]', description: 'Unpack 16-bit to 2 bytes big-endian' },
-        'Unpack16LE': { params: ['word'], returns: 'byte[]', description: 'Unpack 16-bit to 2 bytes little-endian' },
-        
-        // Byte manipulation
-        'GetByte': { params: ['dword', 'int'], returns: 'byte', description: 'Extract byte from 32-bit value' },
-        'SetByte': { params: ['dword', 'int', 'byte'], returns: 'dword', description: 'Set byte in 32-bit value' },
-        'GetWord': { params: ['dword', 'int'], returns: 'word', description: 'Extract word from 32-bit value' },
-        'SetWord': { params: ['dword', 'int', 'word'], returns: 'dword', description: 'Set word in 32-bit value' },
-        
-        // String/array conversion
-        'AnsiToBytes': { params: ['string'], returns: 'byte[]', description: 'Convert ANSI string to bytes' },
-        'AsciiToBytes': { params: ['string'], returns: 'byte[]', description: 'Convert ASCII string to bytes' },
-        'Hex8ToBytes': { params: ['string'], returns: 'byte[]', description: 'Convert hex string to bytes (8-bit)' },
-        'Hex4ToBytes': { params: ['string'], returns: 'byte[]', description: 'Convert hex string to bytes (4-bit)' },
-        'BytesToAnsi': { params: ['byte[]'], returns: 'string', description: 'Convert bytes to ANSI string' },
-        'BytesToAscii': { params: ['byte[]'], returns: 'string', description: 'Convert bytes to ASCII string' },
-        'BytesToHex': { params: ['byte[]'], returns: 'string', description: 'Convert bytes to hex string' },
-        
-        // Array operations
-        'XorArrays': { params: ['byte[]', 'byte[]'], returns: 'byte[]', description: 'XOR two byte arrays' },
-        'CopyArray': { params: ['byte[]'], returns: 'byte[]', description: 'Copy byte array' },
-        'ClearArray': { params: ['byte[]'], returns: 'void', description: 'Clear byte array' },
-        'CompareArrays': { params: ['byte[]', 'byte[]'], returns: 'boolean', description: 'Compare byte arrays' },
-        'ConcatArrays': { params: ['byte[]', 'byte[]'], returns: 'byte[]', description: 'Concatenate byte arrays' },
-        
-        // Bitwise operations
-        'SwapBytes': { params: ['word'], returns: 'word', description: 'Swap bytes in 16-bit value' },
-        'SwapWords': { params: ['dword'], returns: 'dword', description: 'Swap words in 32-bit value' },
-        'ReverseBits': { params: ['byte'], returns: 'byte', description: 'Reverse bits in byte' },
-        'CountBits': { params: ['dword'], returns: 'int', description: 'Count set bits' },
-        
-        // Galois Field operations
-        'GF256Mul': { params: ['byte', 'byte'], returns: 'byte', description: 'GF(256) multiplication' },
-        'GF256Inv': { params: ['byte'], returns: 'byte', description: 'GF(256) inverse' },
-        'GF256Pow': { params: ['byte', 'byte'], returns: 'byte', description: 'GF(256) power' },
-        'GFMul': { params: ['dword', 'dword', 'dword', 'int'], returns: 'dword', description: 'Generic GF multiplication' },
-        
-        // 64-bit operations (qword/long)
-        'UInt64.create': { params: ['dword', 'dword'], returns: 'qword', description: 'Create 64-bit from two 32-bit' },
-        'UInt64.add': { params: ['qword', 'qword'], returns: 'qword', description: '64-bit addition' },
-        'UInt64.sub': { params: ['qword', 'qword'], returns: 'qword', description: '64-bit subtraction' },
-        'UInt64.mul': { params: ['qword', 'qword'], returns: 'qword', description: '64-bit multiplication' },
-        'UInt64.rotr': { params: ['qword', 'int'], returns: 'qword', description: '64-bit rotate right' },
-        'UInt64.rotl': { params: ['qword', 'int'], returns: 'qword', description: '64-bit rotate left' },
-        'UInt64.xor': { params: ['qword', 'qword'], returns: 'qword', description: '64-bit XOR' },
-        'UInt64.and': { params: ['qword', 'qword'], returns: 'qword', description: '64-bit AND' },
-        'UInt64.or': { params: ['qword', 'qword'], returns: 'qword', description: '64-bit OR' },
-        'UInt64.shr': { params: ['qword', 'int'], returns: 'qword', description: '64-bit shift right' },
-        'UInt64.shl': { params: ['qword', 'int'], returns: 'qword', description: '64-bit shift left' },
-        'UInt64.high': { params: ['qword'], returns: 'dword', description: 'Get high 32 bits' },
-        'UInt64.low': { params: ['qword'], returns: 'dword', description: 'Get low 32 bits' },
-        
-        // Floating point operations
-        'Float32ToBytes': { params: ['float'], returns: 'byte[]', description: 'Convert 32-bit float to bytes' },
-        'BytesToFloat32': { params: ['byte[]'], returns: 'float', description: 'Convert bytes to 32-bit float' },
-        'Float64ToBytes': { params: ['double'], returns: 'byte[]', description: 'Convert 64-bit double to bytes' },
-        'BytesToFloat64': { params: ['byte[]'], returns: 'double', description: 'Convert bytes to 64-bit double' },
-        
-        // Endianness operations
-        'SwapEndian16': { params: ['word'], returns: 'word', description: 'Swap endianness of 16-bit value' },
-        'SwapEndian32': { params: ['dword'], returns: 'dword', description: 'Swap endianness of 32-bit value' },
-        'SwapEndian64': { params: ['qword'], returns: 'qword', description: 'Swap endianness of 64-bit value' },
-        
-        // Hash operations
-        'CRC32': { params: ['byte[]'], returns: 'dword', description: 'Calculate CRC32' },
-        'CRC16': { params: ['byte[]'], returns: 'word', description: 'Calculate CRC16' },
-        'Checksum8': { params: ['byte[]'], returns: 'byte', description: 'Calculate 8-bit checksum' },
-        'Checksum16': { params: ['byte[]'], returns: 'word', description: 'Calculate 16-bit checksum' },
+      // OpCodes method signatures - dynamically loaded from OpCodes.js JSDoc
+      // These are populated by loadTypesFromSource() when available
+      this.opCodesTypes = {};
 
-        // Tuple-returning operations
-        'Split64': { params: ['double'], returns: '(high32: uint32, low32: uint32)', description: 'Split 64-bit float to two 32-bit components' },
-        'SplitNibbles': { params: ['byte'], returns: '(high: uint8, low: uint8)', description: 'Split byte into high and low nibbles' },
-        'Combine64': { params: ['dword', 'dword'], returns: 'double', description: 'Combine two 32-bit to 64-bit float' }
-      };
-
-      // AlgorithmFramework.js class types and interfaces
-      this.frameworkTypes = {
-        // Base classes
-        'Algorithm': {
-          properties: {
-            'name': 'string',
-            'description': 'string',
-            'inventor': 'string',
-            'year': 'int',
-            'category': 'CategoryType',
-            'subCategory': 'string',
-            'securityStatus': 'SecurityStatus',
-            'complexity': 'ComplexityType',
-            'country': 'CountryCode',
-            'documentation': 'LinkItem[]',
-            'references': 'LinkItem[]',
-            'knownVulnerabilities': 'Vulnerability[]',
-            'tests': 'object[]'
-          },
-          methods: {
-            'CreateInstance': { params: ['bool'], returns: 'IAlgorithmInstance' }
-          }
-        },
-
-        'BlockCipherAlgorithm': {
-          extends: 'Algorithm',
-          properties: {
-            'SupportedKeySizes': 'KeySize[]',
-            'SupportedBlockSizes': 'KeySize[]',
-            'Tables': 'object'
-          },
-          methods: {
-            'CreateInstance': { params: ['bool'], returns: 'IBlockCipherInstance' }
-          }
-        },
-
-        'IBlockCipherInstance': {
-          extends: 'IAlgorithmInstance',
-          properties: {
-            'BlockSize': 'int',
-            'KeySize': 'int',
-            'key': 'byte[]',
-            'iv': 'byte[]',
-            'IsInverse': 'bool',
-            'InputBuffer': 'byte[]',
-            'RoundKeys': 'byte[]',
-            'Rounds': 'int'
-          },
-          methods: {
-            'Feed': { params: ['byte[]'], returns: 'void' },
-            'Result': { params: [], returns: 'byte[]' },
-            'EncryptBlock': { params: ['byte[]'], returns: 'byte[]' },
-            'DecryptBlock': { params: ['byte[]'], returns: 'byte[]' },
-            'Dispose': { params: [], returns: 'void' }
-          }
-        },
-
-        'IAlgorithmInstance': {
-          properties: {
-            'IsInverse': 'bool',
-            'InputBuffer': 'byte[]'
-          },
-          methods: {
-            'Feed': { params: ['byte[]'], returns: 'void' },
-            'Result': { params: [], returns: 'byte[]' },
-            'Dispose': { params: [], returns: 'void' }
-          }
-        },
-
-        'HashFunctionAlgorithm': {
-          extends: 'Algorithm',
-          properties: {
-            'SupportedOutputSizes': 'KeySize[]'
-          },
-          methods: {
-            'CreateInstance': { params: ['bool'], returns: 'IHashFunctionInstance' }
-          }
-        },
-
-        'IHashFunctionInstance': {
-          extends: 'IAlgorithmInstance',
-          properties: {
-            'OutputSize': 'int'
-          },
-          methods: {
-            'Feed': { params: ['byte[]'], returns: 'void' },
-            'Result': { params: [], returns: 'byte[]' }
-          }
-        },
-
-        'CompressionAlgorithm': {
-          extends: 'Algorithm',
-          methods: {
-            'CreateInstance': { params: ['bool'], returns: 'ICompressionInstance' }
-          }
-        },
-
-        'ICompressionInstance': {
-          extends: 'IAlgorithmInstance',
-          properties: {
-            'IsInverse': 'bool',
-            'InputBuffer': 'byte[]'
-          },
-          methods: {
-            'Feed': { params: ['byte[]'], returns: 'void' },
-            'Result': { params: [], returns: 'byte[]' }
-          }
-        },
-
-        'StreamCipherAlgorithm': {
-          extends: 'Algorithm',
-          methods: {
-            'CreateInstance': { params: ['bool'], returns: 'IStreamCipherInstance' }
-          }
-        },
-
-        'IStreamCipherInstance': {
-          extends: 'IAlgorithmInstance',
-          properties: {
-            'key': 'byte[]',
-            'iv': 'byte[]',
-            'IsInverse': 'bool'
-          },
-          methods: {
-            'Feed': { params: ['byte[]'], returns: 'void' },
-            'Result': { params: [], returns: 'byte[]' }
-          }
-        }
-      };
+      // Framework class types - dynamically loaded from AlgorithmFramework.js JSDoc
+      // These are populated by loadTypesFromSource() when available
+      this.frameworkTypes = {};
 
       // Enhanced cryptographic patterns with precise types
       this.patternTypes = {
@@ -526,6 +306,210 @@
         'string': { bits: -1, signed: false, category: 'string', canPromoteTo: [] },
         'void': { bits: 0, signed: false, category: 'void', canPromoteTo: [] }
       };
+    }
+
+    /**
+     * Load type information from a JavaScript source file by parsing its JSDoc comments.
+     * Populates opCodesTypes for static utility classes or frameworkTypes for class hierarchies.
+     * @param {string} sourceCode - The JavaScript source code to parse
+     * @param {string} targetType - 'opcodes' for static methods, 'framework' for classes
+     */
+    loadTypesFromSource(sourceCode, targetType = 'opcodes') {
+      const jsDocParser = new JSDocParser();
+
+      // Map JSDoc types to internal type representation
+      const normalizeType = (jsDocType) => {
+        if (!jsDocType) return null;
+        // JSDocParser returns type as object {name, isArray, ...}, extract the name
+        const typeName = typeof jsDocType === 'object' ? jsDocType.name : jsDocType;
+        if (!typeName) return null;
+        const typeMap = {
+          'uint8': 'byte', 'uint16': 'word', 'uint32': 'dword', 'uint64': 'qword',
+          'int8': 'sbyte', 'int16': 'short', 'int32': 'int', 'int64': 'long',
+          'number': 'int', 'boolean': 'bool', 'bool': 'bool',
+          'uint8[]': 'byte[]', 'uint16[]': 'word[]', 'uint32[]': 'dword[]', 'uint64[]': 'qword[]',
+          'byte[]': 'byte[]', 'string': 'string', 'void': 'void', 'object': 'object'
+        };
+        // Handle array types from JSDocParser
+        const baseType = typeMap[typeName] || typeName;
+        if (typeof jsDocType === 'object' && jsDocType.isArray) {
+          return baseType.endsWith('[]') ? baseType : baseType + '[]';
+        }
+        return baseType;
+      };
+
+      // Find all JSDoc comments followed by function/method definitions
+      const jsDocPattern = /\/\*\*[\s\S]*?\*\/\s*(?:(?:static\s+)?(\w+)\s*\(|(?:get|set)\s+(\w+)\s*\(|class\s+(\w+)(?:\s+extends\s+(\w+))?)/g;
+      const commentBlockPattern = /\/\*\*([\s\S]*?)\*\//g;
+
+      let match;
+      let lastComment = null;
+      let lastCommentEnd = 0;
+
+      // Extract all comment blocks with their positions
+      const comments = [];
+      while ((match = commentBlockPattern.exec(sourceCode)) !== null) {
+        comments.push({
+          text: match[1],
+          start: match.index,
+          end: match.index + match[0].length
+        });
+      }
+
+      // Find declarations and match them with preceding comments
+      // Patterns: method(params){, get/set name(){, class Name{, name: function(params){
+      const declarationPattern = /(?:static\s+)?(\w+)\s*\([^)]*\)\s*\{|(?:get|set)\s+(\w+)\s*\([^)]*\)\s*\{|class\s+(\w+)(?:\s+extends\s+(\w+))?\s*\{|(\w+)\s*:\s*function\s*\([^)]*\)\s*\{/g;
+
+      while ((match = declarationPattern.exec(sourceCode)) !== null) {
+        const methodName = match[1] || match[5]; // match[5] is for "name: function(...)" pattern
+        const accessorName = match[2];
+        const className = match[3];
+        const baseClass = match[4];
+        const declStart = match.index;
+
+        // Find the closest preceding comment
+        const precedingComment = comments.filter(c => c.end <= declStart).pop();
+
+        if (precedingComment && (declStart - precedingComment.end) < 50) {
+          const parsed = jsDocParser.parseJSDoc('/**' + precedingComment.text + '*/');
+
+          if (targetType === 'opcodes' && methodName) {
+            // Extract method signature for OpCodes-style static methods
+            const params = parsed.params.map(p => normalizeType(p.type));
+            const returns = normalizeType(parsed.returns?.type);
+
+            if (params.length > 0 || returns) {
+              this.opCodesTypes[methodName] = {
+                params,
+                returns: returns || 'void',
+                description: parsed.description || ''
+              };
+            }
+          } else if (targetType === 'framework') {
+            if (className) {
+              // Initialize class in framework types
+              if (!this.frameworkTypes[className]) {
+                this.frameworkTypes[className] = {
+                  properties: {},
+                  methods: {}
+                };
+              }
+              if (baseClass) {
+                this.frameworkTypes[className].extends = baseClass;
+              }
+            }
+          }
+        }
+      }
+
+      // For framework types, also extract property types from @type annotations
+      if (targetType === 'framework') {
+        const propTypePattern = /\/\*\*\s*@type\s+\{([^}]+)\}\s*\*\/\s*(?:this\.)?(\w+)/g;
+        while ((match = propTypePattern.exec(sourceCode)) !== null) {
+          const propType = normalizeType(match[1]);
+          const propName = match[2];
+
+          // Find which class this property belongs to by looking for preceding class declaration
+          const beforeProp = sourceCode.substring(0, match.index);
+          const classMatch = beforeProp.match(/class\s+(\w+)(?:\s+extends\s+\w+)?\s*\{[^}]*$/);
+          if (classMatch) {
+            const owningClass = classMatch[1];
+            if (!this.frameworkTypes[owningClass]) {
+              this.frameworkTypes[owningClass] = { properties: {}, methods: {} };
+            }
+            this.frameworkTypes[owningClass].properties[propName] = propType;
+          }
+        }
+
+        // Extract method signatures with JSDoc from the source code
+        // Use brace-counting approach to track class scope
+        const classPattern = /class\s+(\w+)(?:\s+extends\s+(\w+))?\s*\{/g;
+        const classRanges = [];
+
+        // Find all class declarations and compute their ranges using brace counting
+        while ((match = classPattern.exec(sourceCode)) !== null) {
+          const className = match[1];
+          const baseClass = match[2] || null;
+          const classStart = match.index;
+          const braceStart = classStart + match[0].length - 1; // Position of opening brace
+
+          // Count braces to find the end of the class
+          let braceCount = 1;
+          let pos = braceStart + 1;
+          while (pos < sourceCode.length && braceCount > 0) {
+            const char = sourceCode[pos];
+            if (char === '{') ++braceCount;
+            else if (char === '}') --braceCount;
+            ++pos;
+          }
+
+          classRanges.push({
+            name: className,
+            extends: baseClass,
+            start: braceStart,
+            end: pos
+          });
+
+          // Ensure class is in frameworkTypes
+          if (!this.frameworkTypes[className]) {
+            this.frameworkTypes[className] = { properties: {}, methods: {} };
+          }
+          if (baseClass) {
+            this.frameworkTypes[className].extends = baseClass;
+          }
+        }
+
+        // Now find all methods with JSDoc by first extracting all JSDoc blocks
+        // then checking if each is followed by a method definition
+        const jsDocBlockPattern = /\/\*\*([^*]|\*(?!\/))*\*\//g;
+        const jsDocBlocks = [];
+        while ((match = jsDocBlockPattern.exec(sourceCode)) !== null) {
+          jsDocBlocks.push({
+            text: match[0],
+            content: match[0].slice(3, -2), // Remove /** and */
+            start: match.index,
+            end: match.index + match[0].length
+          });
+        }
+
+        // For each JSDoc block, check if it's followed by a method
+        for (const block of jsDocBlocks) {
+          // Get text immediately after this JSDoc block
+          const afterBlock = sourceCode.substring(block.end, block.end + 200);
+          // Check if it starts with whitespace then a method name and opening paren
+          const methodMatch = afterBlock.match(/^\s*(\w+)\s*\([^)]*\)\s*\{/);
+
+          if (methodMatch) {
+            const methodName = methodMatch[1];
+            // Skip if it's a class, function, or constructor keyword
+            if (methodName === 'class' || methodName === 'function' || methodName === 'if' || methodName === 'while' || methodName === 'for') continue;
+
+            const methodPos = block.start;
+
+            // Find which class this method belongs to (innermost class containing this position)
+            let owningClass = null;
+            for (const range of classRanges) {
+              if (methodPos > range.start && methodPos < range.end) {
+                // This method is inside this class - check if it's the innermost
+                if (!owningClass || range.start > classRanges.find(r => r.name === owningClass).start) {
+                  owningClass = range.name;
+                }
+              }
+            }
+
+            if (owningClass) {
+              const parsed = jsDocParser.parseJSDoc(block.text);
+
+              if (parsed.params.length > 0 || parsed.returns) {
+                this.frameworkTypes[owningClass].methods[methodName] = {
+                  params: parsed.params.map(p => normalizeType(p.type)),
+                  returns: normalizeType(parsed.returns?.type) || 'void'
+                };
+              }
+            }
+          }
+        }
+      }
     }
 
     /**
@@ -737,13 +721,40 @@
    * Extends the original parser to extract and use type information
    */
   class TypeAwareJSASTParser {
+    // Shared type knowledge loaded from library files (OpCodes.js, AlgorithmFramework.js)
+    static sharedTypeKnowledge = null;
+
+    /**
+     * Load type information from library source files.
+     * Call this once before parsing algorithm files to populate shared type knowledge.
+     * @param {Object} options - Options object with opCodesSource and/or frameworkSource
+     * @param {string} options.opCodesSource - Source code of OpCodes.js
+     * @param {string} options.frameworkSource - Source code of AlgorithmFramework.js
+     */
+    static loadTypeLibraries(options = {}) {
+      if (!TypeAwareJSASTParser.sharedTypeKnowledge) {
+        TypeAwareJSASTParser.sharedTypeKnowledge = new PreciseTypeKnowledge();
+      }
+      const tk = TypeAwareJSASTParser.sharedTypeKnowledge;
+
+      if (options.opCodesSource) {
+        tk.loadTypesFromSource(options.opCodesSource, 'opcodes');
+        console.error(`📚 Loaded ${Object.keys(tk.opCodesTypes).length} OpCodes method signatures from JSDoc`);
+      }
+      if (options.frameworkSource) {
+        tk.loadTypesFromSource(options.frameworkSource, 'framework');
+        console.error(`📚 Loaded ${Object.keys(tk.frameworkTypes).length} framework class types from JSDoc`);
+      }
+    }
+
     constructor(code) {
       this.code = code;
       this.tokens = [];
       this.position = 0;
       this.currentToken = null;
       this.jsDocParser = new JSDocParser();
-      this.typeKnowledge = new PreciseTypeKnowledge();
+      // Use shared type knowledge if available, otherwise create new instance
+      this.typeKnowledge = TypeAwareJSASTParser.sharedTypeKnowledge || new PreciseTypeKnowledge();
       this.typeAnnotations = new Map(); // Store type information for nodes
       this.lastJSDocComment = null; // Track the last JSDoc comment seen
       this.pendingComments = []; // Track all comments between tokens
@@ -4074,7 +4085,13 @@
   };
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = TypeAwareJSASTTranspiler;
+    module.exports = {
+      TypeAwareJSTranspiler,
+      TypeAwareJSASTParser,
+      TypeAwareCodeGenerator,
+      JSDocParser,
+      PreciseTypeKnowledge
+    };
   } else if (typeof global !== 'undefined') {
     global.TypeAwareJSASTTranspiler = TypeAwareJSASTTranspiler;
   } else if (typeof window !== 'undefined') {
