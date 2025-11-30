@@ -610,7 +610,14 @@ class AlgorithmDetails {
         html += '</div>';
         html += '</div>';
         html += '</div>';
-        
+
+        // Language-specific options section (dynamically populated)
+        html += '<div class="code-section" id="language-options-section" style="display: none;">';
+        html += '<h3 class="section-title">Language-Specific Options</h3>';
+        html += '<div class="code-config" id="language-options-container">';
+        html += '</div>';
+        html += '</div>';
+
         // Code display section
         html += '<div class="code-section">';
         html += '<h3 class="section-title">Generated Code</h3>';
@@ -1155,7 +1162,15 @@ class AlgorithmDetails {
                 DebugConfig.error('❌ TypeAwareJSASTTranspiler not available');
                 throw new Error('TypeAwareJSASTTranspiler not loaded');
             }
-            
+
+            // Step 2.5: Ensure type libraries are initialized for proper type inference
+            if (!window.TypeAwareJSASTTranspiler.typeLibrariesReady) {
+                DebugConfig.log('⏳ Waiting for type libraries to initialize...');
+                await window.TypeAwareJSASTTranspiler.initTypeLibraries();
+                window.TypeAwareJSASTTranspiler.typeLibrariesReady = true;
+                DebugConfig.log('✅ Type libraries initialized');
+            }
+
             // Step 3: Get the language plugin
             const plugin = window.LanguagePlugins.GetByExtension(languageKey);
             if (!plugin) {
@@ -2989,14 +3004,14 @@ class AlgorithmDetails {
         if (!this.element) {
             throw new Error('AlgorithmDetails: Modal not available for language switching');
         }
-        
+
         // Update active button
         const languageButtons = this.element.querySelectorAll('.language-btn');
         languageButtons.forEach(btn => {
             const isActive = btn.getAttribute('data-language') === languageKey;
             btn.classList.toggle('active', isActive);
         });
-        
+
         // Update language display
         const languageDisplay = this.element.querySelector('#current-language');
         if (languageDisplay) {
@@ -3004,22 +3019,209 @@ class AlgorithmDetails {
             let languageName = languageKey;
             if (typeof window !== 'undefined' && window.MultiLanguageGenerator) {
                 const langInfo = window.MultiLanguageGenerator.getLanguageInfo(languageKey);
-                if (langInfo) {
+                if (langInfo)
                     languageName = langInfo.name;
-                }
+            }
+            languageDisplay.textContent = languageName;
         }
-        languageDisplay.textContent = languageName;
-        }
-        
+
+        // Update language-specific options
+        this.updateLanguageOptions(languageKey);
+
         // Update code display with async loading
         const codeElement = this.element.querySelector('#generated-code code');
-        if (codeElement) {
+        if (codeElement)
             this.loadCodeAsync(languageKey, codeElement);
-        }
-        
+
         // Store current language
         this.currentLanguage = languageKey;
-    }    /**
+    }
+
+    /**
+     * Update language-specific options panel based on selected language
+     */
+    updateLanguageOptions(languageKey) {
+        const optionsSection = this.element.querySelector('#language-options-section');
+        const optionsContainer = this.element.querySelector('#language-options-container');
+        if (!optionsSection || !optionsContainer) return;
+
+        // Get language plugin
+        let plugin = null;
+        if (typeof window !== 'undefined' && window.LanguagePlugins)
+            plugin = window.LanguagePlugins.GetByExtension(languageKey);
+
+        if (!plugin || !plugin.options) {
+            optionsSection.style.display = 'none';
+            return;
+        }
+
+        // Store reference to plugin for constraint checking
+        this._currentPlugin = plugin;
+
+        // Build options UI
+        let html = '';
+        const options = plugin.options;
+        const optionsMeta = plugin.optionsMeta || {};
+        const optionConstraints = plugin.optionConstraints || {};
+
+        // Group options by type for better organization
+        const booleanOptions = [];
+        const stringOptions = [];
+        const selectOptions = [];
+
+        // Default enum choices for common options (fallback if not defined in plugin)
+        const defaultEnumChoices = {
+            indent: [
+                { value: '  ', label: '2 Spaces' },
+                { value: '    ', label: '4 Spaces' },
+                { value: '\t', label: 'Tab' }
+            ]
+        };
+
+        for (const [key, value] of Object.entries(options)) {
+            // Skip internal/formatting options that shouldn't be exposed
+            if (key === 'lineEnding') continue;
+
+            const label = this.formatOptionLabel(key);
+            const optionId = `lang-opt-${key}`;
+            const meta = optionsMeta[key];
+
+            // Check if this option has enum choices defined in plugin metadata
+            if (meta && meta.type === 'enum' && meta.choices) {
+                selectOptions.push({
+                    key, label, value, optionId,
+                    choices: meta.choices
+                });
+            } else if (typeof value === 'boolean') {
+                // Check constraints for boolean options
+                const constraint = optionConstraints[key];
+                const isEnabled = this.isOptionEnabled(key, options, optionConstraints);
+                const disabledReason = constraint?.disabledReason || '';
+
+                booleanOptions.push({ key, label, value, optionId, isEnabled, disabledReason });
+            } else if (typeof value === 'string') {
+                // Check for default enum choices
+                if (defaultEnumChoices[key]) {
+                    selectOptions.push({
+                        key, label, value, optionId,
+                        choices: defaultEnumChoices[key]
+                    });
+                } else if (this.isNameOption(key)) {
+                    stringOptions.push({ key, label, value, optionId });
+                }
+                // Skip other string options that aren't name fields or enums
+            }
+        }
+
+        // Render select options first (most important)
+        for (const opt of selectOptions) {
+            html += '<div class="config-row">';
+            html += `<label class="config-label">${opt.label}:</label>`;
+            html += `<select id="${opt.optionId}" onchange="window.algorithmDetailsInstance.onLanguageOptionChange('${opt.key}', this.value)">`;
+            for (const choice of opt.choices) {
+                const selected = choice.value === opt.value ? ' selected' : '';
+                const description = choice.description ? ` title="${choice.description}"` : '';
+                html += `<option value="${choice.value}"${selected}${description}>${choice.label}</option>`;
+            }
+            html += '</select>';
+            html += '</div>';
+        }
+
+        // Render string options (namespace, package name, etc.)
+        for (const opt of stringOptions) {
+            html += '<div class="config-row">';
+            html += `<label class="config-label">${opt.label}:</label>`;
+            html += `<input type="text" id="${opt.optionId}" value="${opt.value}" onchange="window.algorithmDetailsInstance.onLanguageOptionChange('${opt.key}', this.value)" style="flex: 1; padding: 4px;">`;
+            html += '</div>';
+        }
+
+        // Render boolean options in a compact grid
+        if (booleanOptions.length > 0) {
+            html += '<div class="config-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 8px;">';
+            for (const opt of booleanOptions) {
+                const checked = opt.value ? ' checked' : '';
+                const disabled = opt.isEnabled ? '' : ' disabled';
+                const disabledStyle = opt.isEnabled ? '' : ' opacity: 0.5;';
+                const title = opt.isEnabled ? '' : ` title="${opt.disabledReason}"`;
+                html += `<div class="config-row" style="margin: 0;${disabledStyle}"${title}>`;
+                html += `<label class="config-label" style="font-size: 12px;">${opt.label}:</label>`;
+                html += `<input type="checkbox" id="${opt.optionId}"${checked}${disabled} onchange="window.algorithmDetailsInstance.onLanguageOptionChange('${opt.key}', this.checked)">`;
+                html += '</div>';
+            }
+            html += '</div>';
+        }
+
+        optionsContainer.innerHTML = html;
+        optionsSection.style.display = html ? 'block' : 'none';
+    }
+
+    /**
+     * Check if an option is a name/identifier field
+     */
+    isNameOption(key) {
+        const nameKeys = ['namespace', 'packageName', 'unitName', 'namespaceName', 'className', 'moduleName'];
+        return nameKeys.includes(key);
+    }
+
+    /**
+     * Check if an option is enabled based on constraints
+     */
+    isOptionEnabled(optionKey, currentOptions, constraints) {
+        const constraint = constraints[optionKey];
+        if (!constraint || !constraint.enabledWhen) return true;
+
+        // Check each constraint condition
+        for (const [dependsOnKey, allowedValues] of Object.entries(constraint.enabledWhen)) {
+            const currentValue = currentOptions[dependsOnKey];
+            if (!allowedValues.includes(currentValue)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Format option key into human-readable label
+     */
+    formatOptionLabel(key) {
+        // Convert camelCase to Title Case with spaces
+        return key
+            .replace(/([A-Z])/g, ' $1')
+            .replace(/^./, str => str.toUpperCase())
+            .replace(/Use /g, '')
+            .replace(/Add /g, '')
+            .trim();
+    }
+
+    /**
+     * Handle language option change
+     */
+    onLanguageOptionChange(optionKey, value) {
+        // Get current plugin and update its option
+        if (typeof window !== 'undefined' && window.LanguagePlugins && this.currentLanguage) {
+            const plugin = window.LanguagePlugins.GetByExtension(this.currentLanguage);
+            if (plugin && plugin.options) {
+                plugin.options[optionKey] = value;
+
+                // If this option affects constraints of other options, refresh the UI
+                if (plugin.optionConstraints) {
+                    // Check if any constraint depends on this option
+                    const affectsOthers = Object.values(plugin.optionConstraints).some(
+                        constraint => constraint.enabledWhen && optionKey in constraint.enabledWhen
+                    );
+                    if (affectsOthers) {
+                        // Refresh the options UI to update enabled/disabled states
+                        this.updateLanguageOptions(this.currentLanguage);
+                    }
+                }
+
+                // Regenerate code with new options
+                this.updateCodeGeneration();
+            }
+        }
+    }
+
+    /**
      * Copy current code to clipboard
      */
     copyCurrentCode() {
