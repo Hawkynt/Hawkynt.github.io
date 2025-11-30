@@ -155,6 +155,9 @@
       this.MASK_128 = (1n << 128n) - 1n;
 
       this._ready = false;
+
+      // Output size for test compatibility
+      this.outputSize = 8; // Default: 8 bytes (64-bit)
     }
 
     /**
@@ -284,17 +287,24 @@
         throw new Error("Seed not set");
       }
 
-      // Generate 64-bit random value and convert to 8 bytes
-      const value64 = this._next64();
+      // Respect outputSize if set
+      const outputSize = this.outputSize || 8;
+      const result = [];
 
-      const bytes = [];
-      let v = value64;
-      for (let i = 0; i < 8; ++i) {
-        bytes.unshift(Number(v & 0xFFn));
-        v = v >> 8n;
+      while (result.length < outputSize) {
+        // Generate 64-bit random value and convert to 8 bytes (big-endian)
+        const value64 = this._next64();
+
+        const bytes = [];
+        let v = value64;
+        for (let i = 0; i < 8; ++i) {
+          bytes.unshift(Number(v & 0xFFn));
+          v = v >> 8n;
+        }
+        result.push(...bytes);
       }
 
-      return bytes;
+      return result.slice(0, outputSize);
     }
   }
 

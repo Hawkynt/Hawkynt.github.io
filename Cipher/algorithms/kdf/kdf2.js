@@ -292,7 +292,8 @@
       const counterBytes = OpCodes.Unpack32BE(uint32Counter);
 
       // Concatenate arrays using OpCodes for consistency
-      return OpCodes.ConcatArrays(secret, counterBytes, salt);
+      // ConcatArrays takes an array of arrays as single argument
+      return OpCodes.ConcatArrays([secret, counterBytes, salt]);
     }
 
     hashData(data, hashFunction) {
@@ -406,10 +407,17 @@
         throw new Error('Unsupported hash function: ' + hashName);
       }
 
-      // Placeholder: in a full implementation, this would instantiate the hash algorithm
-      // from the framework and use it to compute the hash
-      // For now, return error to force use of Node.js crypto
-      throw new Error('Hash computation requires Node.js crypto module');
+      // Try to use framework-registered hash algorithms
+      const hashAlgo = AlgorithmFramework.Find(algoName);
+      if (hashAlgo) {
+        const instance = hashAlgo.CreateInstance(false);
+        if (instance) {
+          instance.Feed(msgArray);
+          return instance.Result();
+        }
+      }
+
+      throw new Error('Hash algorithm ' + algoName + ' not available. Ensure hash algorithms are loaded before KDF2.');
     }
   }
 

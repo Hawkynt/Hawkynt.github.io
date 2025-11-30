@@ -293,7 +293,7 @@
       this.S[5][1] = (this.S[5][1] ^ r1[1] ^ r2[1]) >>> 0;
 
       r1 = rotr64_interleaved_odd(this.S[6][0], this.S[6][1], 26);
-      r2 = rotr64_interleaved_odd(this.S[6][0], this.S[6][1], 29);
+      r2 = rotr64_interleaved(this.S[6][0], this.S[6][1], 29);
       this.S[6][0] = (this.S[6][0] ^ r1[0] ^ r2[0]) >>> 0;
       this.S[6][1] = (this.S[6][1] ^ r1[1] ^ r2[1]) >>> 0;
 
@@ -616,8 +616,8 @@
       }
     }
 
-    // F function: mix + g
-    f(input, len) {
+    // F function with absorb only (g_core - no squeeze)
+    fAbsorb(input, len) {
       const padded = new Array(this.rate);
       if (len < this.rate) {
         for (let i = 0; i < len; ++i) padded[i] = input[i];
@@ -627,8 +627,14 @@
         for (let i = 0; i < this.rate; ++i) padded[i] = input[i];
       }
 
-      this.mixPhase(padded);  // mixPhase resets domain to 0
-      this.g();
+      this.mixPhase(padded);
+    }
+
+    // G-core: run rounds but don't squeeze
+    gCore() {
+      for (let round = 0; round < this.rounds; ++round) {
+        this.c.coreRound(round);
+      }
     }
   }
 
@@ -1012,17 +1018,20 @@
       const message = this.inputBuffer;
       const mLen = message.length;
 
+      // Process message as associated data (following drygascon256_process_ad)
       if (mLen === 0) {
         // Empty message: final block with domain separation
         this.state.domain = DRYDOMAIN256_ASSOC_DATA | DRYDOMAIN256_FINAL | DRYDOMAIN256_PADDED;
-        this.state.f([], 0);
+        this.state.fAbsorb([], 0);
+        this.state.g();  // Final block gets full g() with squeeze
       } else {
         let offset = 0;
 
-        // Absorb all blocks except the last (no domain separation)
+        // Absorb all blocks except the last using fAbsorb + gCore
         while (mLen - offset > this.state.rate) {
           const block = message.slice(offset, offset + this.state.rate);
-          this.state.f(block, this.state.rate);
+          this.state.fAbsorb(block, this.state.rate);
+          this.state.gCore();  // Only run rounds, no squeeze
           offset += this.state.rate;
         }
 
@@ -1032,13 +1041,13 @@
         if (lastBlock.length < this.state.rate) {
           this.state.domain |= DRYDOMAIN256_PADDED;
         }
-        this.state.f(lastBlock, lastBlock.length);
+        this.state.fAbsorb(lastBlock, lastBlock.length);
+        this.state.g();  // Final block gets full g() with squeeze
       }
 
       // Squeeze hash (four blocks for 512-bit output)
+      // First 16 bytes are in state.r after the final g() call above
       const output = [];
-
-      // First block
       for (let i = 0; i < 16; ++i) {
         output.push(this.state.r[i]);
       }

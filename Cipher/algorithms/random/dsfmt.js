@@ -144,13 +144,13 @@
           input: null,
           seed: OpCodes.Unpack32LE(0),
           outputSize: 40, // 5 doubles = 40 bytes
-          expected: OpCodes.ConcatArrays(
+          expected: OpCodes.ConcatArrays([
             OpCodes.DoubleToBytes(1.421944098478936),
             OpCodes.DoubleToBytes(1.957408659873361),
             OpCodes.DoubleToBytes(1.190111011127383),
             OpCodes.DoubleToBytes(1.632549872377003),
             OpCodes.DoubleToBytes(1.616831120464805)
-          )
+          ])
         },
         {
           text: "dSFMT-521 with seed 0 (doubles 6-10 in [1,2))",
@@ -159,13 +159,13 @@
           seed: OpCodes.Unpack32LE(0),
           skipBytes: 40, // Skip first 5 doubles
           outputSize: 40,
-          expected: OpCodes.ConcatArrays(
+          expected: OpCodes.ConcatArrays([
             OpCodes.DoubleToBytes(1.984390160895336),
             OpCodes.DoubleToBytes(1.643335574461273),
             OpCodes.DoubleToBytes(1.739347032660861),
             OpCodes.DoubleToBytes(1.228605414113949),
             OpCodes.DoubleToBytes(1.052731243538065)
-          )
+          ])
         },
         {
           text: "dSFMT-521 with seed 0 (doubles 11-15 in [1,2))",
@@ -174,13 +174,13 @@
           seed: OpCodes.Unpack32LE(0),
           skipBytes: 80, // Skip first 10 doubles
           outputSize: 40,
-          expected: OpCodes.ConcatArrays(
+          expected: OpCodes.ConcatArrays([
             OpCodes.DoubleToBytes(1.772446323308858),
             OpCodes.DoubleToBytes(1.114863567000073),
             OpCodes.DoubleToBytes(1.636605378654444),
             OpCodes.DoubleToBytes(1.087462000589056),
             OpCodes.DoubleToBytes(1.391044934734219)
-          )
+          ])
         }
       ];
     }

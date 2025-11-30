@@ -113,7 +113,7 @@
           input: null,
           seed: OpCodes.Unpack32LE(5489), // 5489 as little-endian bytes
           outputSize: 40, // 10 uint32 values = 40 bytes
-          expected: OpCodes.ConcatArrays(
+          expected: OpCodes.ConcatArrays([
             OpCodes.Unpack32LE(376485915),   // Verified with reference implementation
             OpCodes.Unpack32LE(3675503792),
             OpCodes.Unpack32LE(3777897591),
@@ -124,7 +124,7 @@
             OpCodes.Unpack32LE(1342551794),
             OpCodes.Unpack32LE(1771045778),
             OpCodes.Unpack32LE(317509827)
-          )
+          ])
         },
         {
           text: "MT19937 with seed 1 (common test seed, first 10 outputs)",
@@ -132,7 +132,7 @@
           input: null,
           seed: OpCodes.Unpack32LE(1), // 1 as little-endian bytes
           outputSize: 40, // 10 uint32 values = 40 bytes
-          expected: OpCodes.ConcatArrays(
+          expected: OpCodes.ConcatArrays([
             OpCodes.Unpack32LE(774130764),   // Verified with reference implementation
             OpCodes.Unpack32LE(2332414448),
             OpCodes.Unpack32LE(3106955262),
@@ -143,7 +143,7 @@
             OpCodes.Unpack32LE(3748795418),
             OpCodes.Unpack32LE(3870927516),
             OpCodes.Unpack32LE(2071169545)
-          )
+          ])
         },
         {
           text: "MT19937 with seed 123456789 (validation test)",
@@ -151,13 +151,13 @@
           input: null,
           seed: OpCodes.Unpack32LE(123456789), // 123456789 as little-endian bytes
           outputSize: 20, // 5 uint32 values = 20 bytes
-          expected: OpCodes.ConcatArrays(
+          expected: OpCodes.ConcatArrays([
             OpCodes.Unpack32LE(3481605019),  // Verified with reference implementation
             OpCodes.Unpack32LE(865328785),
             OpCodes.Unpack32LE(1447750686),
             OpCodes.Unpack32LE(4025893196),
             OpCodes.Unpack32LE(2890053587)
-          )
+          ])
         }
       ];
     }

@@ -318,80 +318,106 @@
       this.sBox3 = [...this.SBOX3_INIT];
       this.sBox4 = [...this.SBOX4_INIT];
 
-      // Initial key expansion with password
-      this._expandKey(password);
+      // Truncate password to 72 bytes (bcrypt limit)
+      const truncatedPassword = password.length > 72 ? password.slice(0, 72) : password;
+
+      // Initial key expansion with password and salt
+      this._keyExpansion(truncatedPassword, salt);
 
       // Perform expensive key schedule 2^cost times
       const rounds = 1 << cost; // 2^cost
       for (let i = 0; i < rounds; i++) {
-        this._expandKey(password);
-        this._expandKey(salt);
+        this._keyExpansion(truncatedPassword, null);
+        this._keyExpansion(salt, null);
+      }
+    }
+
+    // Key expansion: XOR key into P-box, then encrypt zeros to fill P and S boxes
+    // Reference: bcrypt.js _ekskey function
+    _keyExpansion(key, salt) {
+      // Helper to read 4 bytes as a big-endian 32-bit word, cycling through data
+      const streamToWord = (data, offsetRef) => {
+        let word = 0;
+        for (let i = 0; i < 4; i++) {
+          word = ((word << 8) | (data[offsetRef.off] & 0xff)) >>> 0;
+          offsetRef.off = (offsetRef.off + 1) % data.length;
+        }
+        return word;
+      };
+
+      // XOR key bytes into P-box (cycling through key)
+      let keyOffset = { off: 0 };
+      for (let i = 0; i < 18; i++) {
+        const keyWord = streamToWord(key, keyOffset);
+        this.pBox[i] = (this.pBox[i] ^ keyWord) >>> 0;
       }
 
-      // Encrypt all-zero blocks to initialize P-box
-      let left = 0;
-      let right = 0;
+      // Generate P-box and S-boxes by encrypting zeros (optionally XORed with salt)
+      const hasSalt = salt && salt.length > 0;
+      let saltOffset = { off: 0 };
+      let L = 0;
+      let R = 0;
 
+      // Fill P-box
       for (let i = 0; i < 18; i += 2) {
-        const encrypted = this._encryptPair(left, right);
-        left = encrypted.left;
-        right = encrypted.right;
-        this.pBox[i] = left;
-        this.pBox[i + 1] = right;
+        if (hasSalt) {
+          L = (L ^ streamToWord(salt, saltOffset)) >>> 0;
+          R = (R ^ streamToWord(salt, saltOffset)) >>> 0;
+        }
+        const result = this._encryptPair(L, R);
+        L = result.left >>> 0;
+        R = result.right >>> 0;
+        this.pBox[i] = L;
+        this.pBox[i + 1] = R;
       }
 
-      // Encrypt all-zero blocks to initialize S-boxes
+      // Fill S-boxes (combined as single 1024-entry array)
       const sBoxes = [this.sBox1, this.sBox2, this.sBox3, this.sBox4];
       for (const sBox of sBoxes) {
         for (let i = 0; i < 256; i += 2) {
-          const encrypted = this._encryptPair(left, right);
-          left = encrypted.left;
-          right = encrypted.right;
-          sBox[i] = left;
-          sBox[i + 1] = right;
+          if (hasSalt) {
+            L = (L ^ streamToWord(salt, saltOffset)) >>> 0;
+            R = (R ^ streamToWord(salt, saltOffset)) >>> 0;
+          }
+          const result = this._encryptPair(L, R);
+          L = result.left >>> 0;
+          R = result.right >>> 0;
+          sBox[i] = L;
+          sBox[i + 1] = R;
         }
       }
     }
 
-    _expandKey(key) {
-      let keyIndex = 0;
-      for (let i = 0; i < 18; i++) {
-        // Pack 4 key bytes into a 32-bit word (big-endian)
-        const b0 = key[keyIndex % key.length];
-        keyIndex++;
-        const b1 = key[keyIndex % key.length];
-        keyIndex++;
-        const b2 = key[keyIndex % key.length];
-        keyIndex++;
-        const b3 = key[keyIndex % key.length];
-        keyIndex++;
-
-        const keyWord = OpCodes.Pack32BE(b0, b1, b2, b3);
-        this.pBox[i] ^= keyWord;
-      }
-    }
-
-    _encryptPair(left, right) {
+    _encryptPair(L, R) {
       // 16 rounds of Feistel network
-      for (let i = 0; i < 16; i++) {
-        left ^= this.pBox[i];
-        right ^= this._f(left);
+      // Reference: bcrypt.js _encipher function (unrolled for clarity)
+      // Note: Output order matches bcrypt.js: lr[0] = r ^ P[17], lr[1] = l
 
-        // Swap left and right
-        const temp = left;
-        left = right;
-        right = temp;
-      }
+      L = (L ^ this.pBox[0]) >>> 0;
 
-      // Undo last swap and apply final subkey
-      const temp = left;
-      left = right;
-      right = temp;
+      // Unrolled 16 rounds (8 pairs of L/R updates)
+      R = (R ^ this._f(L) ^ this.pBox[1]) >>> 0;
+      L = (L ^ this._f(R) ^ this.pBox[2]) >>> 0;
+      R = (R ^ this._f(L) ^ this.pBox[3]) >>> 0;
+      L = (L ^ this._f(R) ^ this.pBox[4]) >>> 0;
+      R = (R ^ this._f(L) ^ this.pBox[5]) >>> 0;
+      L = (L ^ this._f(R) ^ this.pBox[6]) >>> 0;
+      R = (R ^ this._f(L) ^ this.pBox[7]) >>> 0;
+      L = (L ^ this._f(R) ^ this.pBox[8]) >>> 0;
+      R = (R ^ this._f(L) ^ this.pBox[9]) >>> 0;
+      L = (L ^ this._f(R) ^ this.pBox[10]) >>> 0;
+      R = (R ^ this._f(L) ^ this.pBox[11]) >>> 0;
+      L = (L ^ this._f(R) ^ this.pBox[12]) >>> 0;
+      R = (R ^ this._f(L) ^ this.pBox[13]) >>> 0;
+      L = (L ^ this._f(R) ^ this.pBox[14]) >>> 0;
+      R = (R ^ this._f(L) ^ this.pBox[15]) >>> 0;
+      L = (L ^ this._f(R) ^ this.pBox[16]) >>> 0;
 
-      right ^= this.pBox[16];
-      left ^= this.pBox[17];
+      // Final output: swap L and R, with R XORed with P[17]
+      const outL = (R ^ this.pBox[17]) >>> 0;
+      const outR = L;
 
-      return { left, right };
+      return { left: outL, right: outR };
     }
 
     _f(x) {
@@ -476,7 +502,7 @@
           uri: "https://github.com/randombit/botan/blob/master/src/tests/data/passhash/bcrypt.vec",
           input: OpCodes.Hex8ToBytes("616263"), // "abc"
           cost: 5,
-          salt: bcryptBase64Decode("DfPyLs.G.To9fXEFgUL1O").slice(0, 16),
+          salt: bcryptBase64Decode("DfPyLs.G6.To9fXEFgUL1O").slice(0, 16), // Fixed: was missing '6'
           expected: bcryptBase64Decode("6HpYw3jIXgPcl/L3Qt3jESuWmhxtmpS").slice(0, 23)
         },
         {
@@ -484,32 +510,32 @@
           uri: "https://github.com/randombit/botan/blob/master/src/tests/data/passhash/bcrypt.vec",
           input: OpCodes.Hex8ToBytes(""), // empty string
           cost: 5,
-          salt: bcryptBase64Decode("CCCCCCCCCCCCCCCCCCCCC").slice(0, 16),
-          expected: bcryptBase64Decode(".7uG0VCzI2bS7j6ymqJi9CdcdxiRTWNy").slice(0, 23)
+          salt: bcryptBase64Decode("CCCCCCCCCCCCCCCCCCCCC.").slice(0, 16), // Fixed: added trailing '.'
+          expected: bcryptBase64Decode("7uG0VCzI2bS7j6ymqJi9CdcdxiRTWNy.").slice(0, 23) // Fixed: removed leading '.'
         },
         {
           text: "Botan Test Vector #3: Hex U*2 with cost 5",
           uri: "https://github.com/randombit/botan/blob/master/src/tests/data/passhash/bcrypt.vec",
           input: OpCodes.Hex8ToBytes("552A55"), // "U*U"
           cost: 5,
-          salt: bcryptBase64Decode("CCCCCCCCCCCCCCCCCCCCC").slice(0, 16),
-          expected: bcryptBase64Decode(".E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW").slice(0, 23)
+          salt: bcryptBase64Decode("CCCCCCCCCCCCCCCCCCCCC.").slice(0, 16), // Fixed: added trailing '.'
+          expected: bcryptBase64Decode("E5YPO9kmyuRGyh0XouQYb4YMJKvyOeW.").slice(0, 23) // Fixed: removed leading '.'
         },
         {
           text: "Botan Test Vector #4: Hex U*U* with cost 5",
           uri: "https://github.com/randombit/botan/blob/master/src/tests/data/passhash/bcrypt.vec",
           input: OpCodes.Hex8ToBytes("552A552A"), // "U*U*"
           cost: 5,
-          salt: bcryptBase64Decode("CCCCCCCCCCCCCCCCCCCCC").slice(0, 16),
-          expected: bcryptBase64Decode(".VGOzA784oUp/Z0DY336zx7pLYAy0lwK").slice(0, 23)
+          salt: bcryptBase64Decode("CCCCCCCCCCCCCCCCCCCCC.").slice(0, 16), // Fixed: added trailing '.'
+          expected: bcryptBase64Decode("VGOzA784oUp/Z0DY336zx7pLYAy0lwK.").slice(0, 23) // Fixed: removed leading '.'
         },
         {
           text: "Botan Test Vector #5: Long ASCII string (72+ chars truncated)",
           uri: "https://github.com/randombit/botan/blob/master/src/tests/data/passhash/bcrypt.vec",
           input: OpCodes.Hex8ToBytes("303132333435363738396162636465666768696A6B6C6D6E6F707172737475767778797A4142434445464748494A4B4C4D4E4F505152535455565758595A303132333435363738396368617273206166746572203732206172652069676E6F726564"),
           cost: 5,
-          salt: bcryptBase64Decode("abcdefghijklmnopqrstu").slice(0, 16),
-          expected: bcryptBase64Decode("u5s2v8.iXieOjg/.AySBTTZIIVFJeBui").slice(0, 23)
+          salt: bcryptBase64Decode("abcdefghijklmnopqrstuu").slice(0, 16), // Fixed: added trailing 'u'
+          expected: bcryptBase64Decode("5s2v8.iXieOjg/.AySBTTZIIVFJeBui.").slice(0, 23) // Fixed: removed leading 'u'
         },
         {
           text: "Botan Test Vector #6: OpenBSD 'A' single char",
