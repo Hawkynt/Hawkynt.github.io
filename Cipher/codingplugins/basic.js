@@ -30,12 +30,12 @@
       super();
 
       // Required plugin metadata
-      this.name = 'BASIC';
+      this.name = 'Basic';
       this.extension = 'bas';
       this.icon = '📟';
-      this.description = 'Enhanced BASIC language code generator with modern variant support';
+      this.description = 'BASIC language with multiple dialects (VB.NET, FreeBASIC, QB64, QBasic, etc.)';
       this.mimeType = 'text/x-basic';
-      this.version = 'Multi-dialect: VB.NET, FreeBASIC, QB64, PureBASIC, PowerBASIC, True BASIC, Liberty BASIC';
+      this.version = 'Multi-dialect: VB.NET, FreeBASIC, QB64, QBasic, PureBASIC, PowerBASIC, True BASIC, Liberty BASIC';
 
       // Enhanced BASIC-specific options with modern variant support
       this.options = {
@@ -44,7 +44,7 @@
         useLineNumbers: false, // Modern BASIC doesn't need line numbers by default
         addComments: true,
         upperCase: false, // Modern BASIC supports mixed case
-        variant: 'FREEBASIC', // Default variant: FREEBASIC, VBNET, QB64, PUREBASIC, POWERBASIC, TRUEBASIC, LIBERTYBASIC
+        variant: 'FREEBASIC', // Default variant
         strictTypes: true, // Enable strong typing for modern variants
         useModules: true, // Enable module/namespace support
         useClasses: true, // Enable OOP features for modern variants
@@ -56,6 +56,92 @@
         addDocComments: true, // Add XML documentation for VB.NET
         optimization: 'BALANCED', // SPEED, SIZE, BALANCED
         compatibility: 'MODERN' // LEGACY, MODERN, STRICT
+      };
+
+      // Option metadata - defines enum choices and constraints
+      this.optionsMeta = {
+        variant: {
+          type: 'enum',
+          choices: [
+            { value: 'FREEBASIC', label: 'FreeBASIC', description: 'Modern open-source BASIC compiler' },
+            { value: 'VBNET', label: 'VB.NET', description: 'Microsoft Visual Basic .NET' },
+            { value: 'VBA', label: 'VBA', description: 'Visual Basic for Applications (Office)' },
+            { value: 'VBSCRIPT', label: 'VBScript', description: 'Windows scripting language' },
+            { value: 'VB6', label: 'Visual Basic 6', description: 'Classic Visual Basic 6.0' },
+            { value: 'QB64', label: 'QB64', description: 'Modern QBasic-compatible compiler' },
+            { value: 'QBASIC', label: 'QBasic', description: '16-bit DOS BASIC interpreter' },
+            { value: 'QUICKBASIC', label: 'QuickBasic 4.5', description: 'Microsoft QuickBasic compiler' },
+            { value: 'PUREBASIC', label: 'PureBASIC', description: 'Cross-platform BASIC compiler' },
+            { value: 'POWERBASIC', label: 'PowerBASIC', description: 'High-performance Windows BASIC' },
+            { value: 'BLITZBASIC', label: 'BlitzBasic', description: 'Game development BASIC' },
+            { value: 'TRUEBASIC', label: 'True BASIC', description: 'Educational structured BASIC' },
+            { value: 'LIBERTYBASIC', label: 'Liberty BASIC', description: 'Beginner-friendly Windows BASIC' },
+            { value: 'GAMBAS', label: 'Gambas', description: 'Linux Visual Basic clone' },
+            { value: 'XOJO', label: 'Xojo', description: 'Cross-platform RAD tool (REALbasic)' }
+          ]
+        },
+        optimization: {
+          type: 'enum',
+          choices: [
+            { value: 'SPEED', label: 'Speed', description: 'Optimize for execution speed' },
+            { value: 'SIZE', label: 'Size', description: 'Optimize for smaller code' },
+            { value: 'BALANCED', label: 'Balanced', description: 'Balance between speed and size' }
+          ]
+        },
+        compatibility: {
+          type: 'enum',
+          choices: [
+            { value: 'LEGACY', label: 'Legacy', description: 'Maximum backward compatibility' },
+            { value: 'MODERN', label: 'Modern', description: 'Use modern language features' },
+            { value: 'STRICT', label: 'Strict', description: 'Strict type checking and validation' }
+          ]
+        },
+        indent: {
+          type: 'enum',
+          choices: [
+            { value: '  ', label: '2 Spaces' },
+            { value: '    ', label: '4 Spaces' },
+            { value: '\t', label: 'Tab' }
+          ]
+        }
+      };
+
+      // Option constraints - defines which options are available/disabled based on other options
+      this.optionConstraints = {
+        // useClasses is only available for dialects that support OOP
+        useClasses: {
+          enabledWhen: { variant: ['VBNET', 'FREEBASIC', 'VB6', 'GAMBAS', 'XOJO'] },
+          disabledReason: 'OOP classes not supported in this dialect'
+        },
+        // useExceptionHandling is only available for dialects that support try/catch
+        useExceptionHandling: {
+          enabledWhen: { variant: ['VBNET', 'FREEBASIC', 'VBA', 'VB6', 'GAMBAS', 'XOJO', 'PUREBASIC'] },
+          disabledReason: 'Exception handling not supported in this dialect'
+        },
+        // useGenerics is only available for VB.NET
+        useGenerics: {
+          enabledWhen: { variant: ['VBNET'] },
+          disabledReason: 'Generics only supported in VB.NET'
+        },
+        // addDocComments (XML docs) is only for VB.NET
+        addDocComments: {
+          enabledWhen: { variant: ['VBNET'] },
+          disabledReason: 'XML documentation only supported in VB.NET'
+        },
+        // useModules available in most modern dialects
+        useModules: {
+          enabledWhen: { variant: ['VBNET', 'FREEBASIC', 'VB6', 'VBA', 'GAMBAS', 'XOJO', 'PUREBASIC', 'POWERBASIC'] },
+          disabledReason: 'Modules not supported in this dialect'
+        },
+        // useLineNumbers for legacy dialects
+        useLineNumbers: {
+          enabledWhen: { variant: ['QBASIC', 'QUICKBASIC', 'GWBASIC', 'TRUEBASIC'] },
+          defaultWhen: { variant: ['QBASIC', 'QUICKBASIC', 'GWBASIC'] }
+        },
+        // upperCase for legacy dialects
+        upperCase: {
+          defaultWhen: { variant: ['QBASIC', 'QUICKBASIC', 'GWBASIC', 'TRUEBASIC'] }
+        }
       };
 
       // Internal state
@@ -339,7 +425,7 @@
       // Return type for functions
       if (isFunction) {
         const returnType = this._inferReturnType(functionName, node, options);
-        signature += ` As ${returnType}`;
+        signature += ` ${this._kw('As', options)} ${returnType}`;
       }
 
       code += this._formatBasicLine(signature, options);
@@ -363,12 +449,29 @@
 
     /**
      * Generate class declaration with OOP support
+     * Routes to appropriate generator based on dialect capabilities
      * @private
      */
     _generateClass(node, options) {
-      if (!options.useClasses || !this._supportsClasses(options)) {
-        return this._generateClassAsModule(node, options);
+      // Check if dialect supports true OOP classes
+      if (this._supportsClasses(options)) {
+        return this._generateOOPClass(node, options);
       }
+
+      // Check if dialect supports Type structures with methods
+      if (this._supportsTypeWithMethods(options)) {
+        return this._generateTypeStructure(node, options);
+      }
+
+      // Fallback to purely procedural code (QBasic, PowerBASIC, etc.)
+      return this._generateProceduralModule(node, options);
+    }
+
+    /**
+     * Generate OOP-style class (VB.NET, FreeBASIC with useClasses)
+     * @private
+     */
+    _generateOOPClass(node, options) {
 
       const className = node.id ? this._toBasicName(node.id.name, options) : 'UnnamedClass';
       let code = '';
@@ -510,16 +613,16 @@
         });
 
         if (options.strictTypes && this._requiresExplicitType(options)) {
-          return this._formatBasicLine(`Dim ${varName} As ${varType} = ${initValue}`, options);
+          return this._formatBasicLine(`${this._kw('Dim', options)} ${varName} ${this._kw('As', options)} ${varType} = ${initValue}`, options);
         } else {
           return this._formatBasicLine(`${varName} = ${initValue}`, options);
         }
       } else {
         const varType = this._inferBasicType(varName, null, options);
         if (this._requiresDeclaration(options)) {
-          return this._formatBasicLine(`Dim ${varName} As ${varType}`, options);
+          return this._formatBasicLine(`${this._kw('Dim', options)} ${varName} ${this._kw('As', options)} ${varType}`, options);
         } else {
-          return this._formatBasicLine(`Dim ${varName}`, options);
+          return this._formatBasicLine(`${this._kw('Dim', options)} ${varName}`, options);
         }
       }
     }
@@ -541,15 +644,15 @@
       if (node.argument) {
         const returnValue = this._generateNode(node.argument, options);
         if (this.currentVariant === 'VBNET' || this.currentVariant === 'FREEBASIC') {
-          return this._formatBasicLine(`Return ${returnValue}`, options);
+          return this._formatBasicLine(`${this._kw('Return', options)} ${returnValue}`, options);
         } else {
-          return this._formatBasicLine(`' Return ${returnValue}`, options);
+          return this._formatBasicLine(`' ${this._kw('Return', options)} ${returnValue}`, options);
         }
       } else {
         if (this.currentVariant === 'VBNET' || this.currentVariant === 'FREEBASIC') {
-          return this._formatBasicLine('Return', options);
+          return this._formatBasicLine(this._kw('Return', options), options);
         } else {
-          return this._formatBasicLine('Return', options);
+          return this._formatBasicLine(this._kw('Return', options), options);
         }
       }
     }
@@ -560,7 +663,7 @@
      */
     _generateIfStatement(node, options) {
       const test = this._generateNode(node.test, options);
-      let code = this._formatBasicLine(`If ${test} Then`, options);
+      let code = this._formatBasicLine(`${this._kw('If', options)} ${test} ${this._kw('Then', options)}`, options);
 
       this.indentLevel++;
       if (node.consequent) {
@@ -570,17 +673,19 @@
 
       if (node.alternate) {
         if (node.alternate.type === 'IfStatement') {
-          code += this._formatBasicLine('ElseIf', options);
-          code += this._generateIfStatement(node.alternate, options).replace(/^If /, '');
+          code += this._formatBasicLine(this._kw('ElseIf', options), options);
+          const altCode = this._generateIfStatement(node.alternate, options);
+          const ifKw = this._kw('If', options);
+          code += altCode.replace(new RegExp(`^${ifKw} `), '');
         } else {
-          code += this._formatBasicLine('Else', options);
+          code += this._formatBasicLine(this._kw('Else', options), options);
           this.indentLevel++;
           code += this._generateNode(node.alternate, options);
           this.indentLevel--;
         }
       }
 
-      code += this._formatBasicLine('End If', options);
+      code += this._formatBasicLine(`${this._kw('End', options)} ${this._kw('If', options)}`, options);
       return code;
     }
 
@@ -590,7 +695,7 @@
      */
     _generateWhileStatement(node, options) {
       const test = this._generateNode(node.test, options);
-      let code = this._formatBasicLine(`While ${test}`, options);
+      let code = this._formatBasicLine(`${this._kw('While', options)} ${test}`, options);
 
       this.indentLevel++;
       if (node.body) {
@@ -598,7 +703,7 @@
       }
       this.indentLevel--;
 
-      code += this._formatBasicLine('Wend', options);
+      code += this._formatBasicLine(this._kw('Wend', options), options);
       return code;
     }
 
@@ -622,7 +727,7 @@
       const left = this._generateNode(node.left, options);
       const right = this._generateNode(node.right, options);
 
-      let code = this._formatBasicLine(`For Each ${left} In ${right}`, options);
+      let code = this._formatBasicLine(`${this._kw('For', options)} ${this._kw('Each', options)} ${left} ${this._kw('In', options)} ${right}`, options);
 
       this.indentLevel++;
       if (node.body) {
@@ -630,7 +735,7 @@
       }
       this.indentLevel--;
 
-      code += this._formatBasicLine('Next', options);
+      code += this._formatBasicLine(this._kw('Next', options), options);
       return code;
     }
 
@@ -647,7 +752,7 @@
      * @private
      */
     _generateDoWhileStatement(node, options) {
-      let code = this._formatBasicLine('Do', options);
+      let code = this._formatBasicLine(this._kw('Do', options), options);
 
       this.indentLevel++;
       if (node.body) {
@@ -656,7 +761,7 @@
       this.indentLevel--;
 
       const test = this._generateNode(node.test, options);
-      code += this._formatBasicLine(`Loop While ${test}`, options);
+      code += this._formatBasicLine(`${this._kw('Loop', options)} ${this._kw('While', options)} ${test}`, options);
 
       return code;
     }
@@ -667,7 +772,7 @@
      */
     _generateSwitchStatement(node, options) {
       const discriminant = this._generateNode(node.discriminant, options);
-      let code = this._formatBasicLine(`Select Case ${discriminant}`, options);
+      let code = this._formatBasicLine(`${this._kw('Select', options)} ${this._kw('Case', options)} ${discriminant}`, options);
 
       this.indentLevel++;
       if (node.cases) {
@@ -677,7 +782,7 @@
       }
       this.indentLevel--;
 
-      code += this._formatBasicLine('End Select', options);
+      code += this._formatBasicLine(`${this._kw('End', options)} ${this._kw('Select', options)}`, options);
       return code;
     }
 
@@ -690,9 +795,9 @@
 
       if (node.test) {
         const test = this._generateNode(node.test, options);
-        code += this._formatBasicLine(`Case ${test}`, options);
+        code += this._formatBasicLine(`${this._kw('Case', options)} ${test}`, options);
       } else {
-        code += this._formatBasicLine('Case Else', options);
+        code += this._formatBasicLine(`${this._kw('Case', options)} ${this._kw('Else', options)}`, options);
       }
 
       this.indentLevel++;
@@ -731,7 +836,7 @@
         return this._generateTryStatementFallback(node, options);
       }
 
-      let code = this._formatBasicLine('Try', options);
+      let code = this._formatBasicLine(this._kw('Try', options), options);
 
       this.indentLevel++;
       if (node.block) {
@@ -744,13 +849,13 @@
       }
 
       if (node.finalizer) {
-        code += this._formatBasicLine('Finally', options);
+        code += this._formatBasicLine(this._kw('Finally', options), options);
         this.indentLevel++;
         code += this._generateNode(node.finalizer, options);
         this.indentLevel--;
       }
 
-      code += this._formatBasicLine('End Try', options);
+      code += this._formatBasicLine(`${this._kw('End', options)} ${this._kw('Try', options)}`, options);
       return code;
     }
 
@@ -764,9 +869,9 @@
       if (node.param) {
         const paramName = this._generateNode(node.param, options);
         const exceptionType = this._inferBasicType(paramName, null, options, 'Exception');
-        code += this._formatBasicLine(`Catch ${paramName} As ${exceptionType}`, options);
+        code += this._formatBasicLine(`${this._kw('Catch', options)} ${paramName} ${this._kw('As', options)} ${exceptionType}`, options);
       } else {
-        code += this._formatBasicLine('Catch', options);
+        code += this._formatBasicLine(this._kw('Catch', options), options);
       }
 
       this.indentLevel++;
@@ -819,16 +924,16 @@
       const object = this._generateNode(node.object, options);
 
       if (this.currentVariant === 'VBNET') {
-        let code = this._formatBasicLine(`With ${object}`, options);
+        let code = this._formatBasicLine(`${this._kw('With', options)} ${object}`, options);
         this.indentLevel++;
         if (node.body) {
           code += this._generateNode(node.body, options);
         }
         this.indentLevel--;
-        code += this._formatBasicLine('End With', options);
+        code += this._formatBasicLine(`${this._kw('End', options)} ${this._kw('With', options)}`, options);
         return code;
       } else {
-        return this._formatBasicLine(`' With statement not supported in ${this.currentVariant}`, options);
+        return this._formatBasicLine(`' ${this._kw('With', options)} statement not supported in ${this.currentVariant}`, options);
       }
     }
 
@@ -1278,19 +1383,49 @@
      * @private
      */
     _getFunctionKeyword(isFunction, options) {
-      if (isFunction) {
-        return this.currentVariant === 'VBNET' ? 'Function' : 'Function';
-      } else {
-        return this.currentVariant === 'VBNET' ? 'Sub' : 'Sub';
-      }
+      const keyword = isFunction ? 'Function' : 'Sub';
+      return this._kw(keyword, options);
     }
 
     /**
-     * Check if variant supports classes
+     * Format keyword based on upperCase option
+     * @private
+     */
+    _kw(keyword, options) {
+      if (!keyword) return '';
+      if (options.upperCase || this.currentVariant === 'QB64') {
+        return keyword.toUpperCase();
+      }
+      return keyword;
+    }
+
+    /**
+     * Check if variant supports OOP classes
      * @private
      */
     _supportsClasses(options) {
-      return ['VBNET', 'FREEBASIC'].includes(this.currentVariant);
+      // Dialects with true class support
+      const oopDialects = ['VBNET', 'FREEBASIC', 'VB6', 'VBA', 'GAMBAS', 'XOJO'];
+      return oopDialects.includes(this.currentVariant) && options.useClasses;
+    }
+
+    /**
+     * Check if variant has any OOP-like features (Types with methods)
+     * @private
+     */
+    _supportsTypeWithMethods(options) {
+      // Dialects that support Type/Structure with associated functions
+      const typeDialects = ['FREEBASIC', 'QB64', 'PUREBASIC', 'BLITZBASIC', 'POWERBASIC'];
+      return typeDialects.includes(this.currentVariant);
+    }
+
+    /**
+     * Check if variant is purely procedural (no OOP at all)
+     * @private
+     */
+    _isPurelyProcedural(options) {
+      const proceduralDialects = ['QBASIC', 'QUICKBASIC', 'TRUEBASIC', 'LIBERTYBASIC', 'VBSCRIPT'];
+      return proceduralDialects.includes(this.currentVariant);
     }
 
     /**
@@ -1298,7 +1433,8 @@
      * @private
      */
     _supportsExceptions(options) {
-      return ['VBNET', 'FREEBASIC'].includes(this.currentVariant);
+      const exceptionDialects = ['VBNET', 'FREEBASIC', 'VBA', 'VB6', 'GAMBAS', 'XOJO', 'PUREBASIC'];
+      return exceptionDialects.includes(this.currentVariant) && options.useExceptionHandling;
     }
 
     /**
@@ -1337,6 +1473,10 @@
         case 'POWERBASIC':
           result = this._generatePowerBASICCompleteProgram(code, options);
           this._generatePowerBASICProjectFiles(options);
+          break;
+        case 'QBASIC':
+          result = this._generateQBasicCompleteProgram(code, options);
+          this._generateQBasicProjectFiles(options);
           break;
         default:
           // Fallback to generic BASIC structure
@@ -2044,11 +2184,7 @@
      * @private
      */
     _formatParameter(name, type, options) {
-      if (this.currentVariant === 'VBNET') {
-        return `${name} As ${type}`;
-      } else {
-        return `${name} As ${type}`;
-      }
+      return `${name} ${this._kw('As', options)} ${type}`;
     }
 
     /**
@@ -2077,7 +2213,7 @@
      * @private
      */
     _getEndKeyword(isFunction, options) {
-      return 'End';
+      return this._kw('End', options);
     }
 
     /**
@@ -2153,25 +2289,531 @@
     }
 
     /**
-     * Generate class as module fallback
+     * Generate Type structure with standalone functions (FreeBASIC, QB64, PureBASIC)
+     * This is the native FreeBASIC style - Type for data, Functions for methods
      * @private
      */
-    _generateClassAsModule(node, options) {
-      const className = node.id ? this._toBasicName(node.id.name, options) : 'UnnamedModule';
+    _generateTypeStructure(node, options) {
+      const typeName = node.id ? this._toBasicName(node.id.name, options) : 'UnnamedType';
       let code = '';
 
+      // Type comment
       if (options.addComments) {
-        code += this._formatBasicLine(`' Module: ${className} (Class simulation)`, options);
+        code += this._formatBasicLine(`' Type: ${typeName}`, options);
+        code += this._formatBasicLine(`' Data structure with associated functions`, options);
       }
 
-      // Generate module-like structure
-      if (node.body && node.body.body) {
-        for (const member of node.body.body) {
-          code += this._generateNode(member, options);
+      // Type declaration
+      code += this._formatBasicLine(`${this._kw('Type', options)} ${typeName}`, options);
+
+      // Extract fields from constructor
+      this.indentLevel++;
+      const fields = this._extractFieldsFromConstructor(node);
+
+      if (fields.length > 0) {
+        for (const field of fields) {
+          if (options.strictTypes) {
+            code += this._formatBasicLine(`${field.name} ${this._kw('As', options)} ${field.type}`, options);
+          } else {
+            code += this._formatBasicLine(`${field.name}`, options);
+          }
+        }
+      } else {
+        // Add a placeholder field if no fields found
+        code += this._formatBasicLine(`Placeholder ${this._kw('As', options)} Integer`, options);
+      }
+      this.indentLevel--;
+
+      code += this._formatBasicLine(`${this._kw('End', options)} ${this._kw('Type', options)}`, options);
+      code += '\n';
+
+      // Generate methods as standalone functions
+      const bodyMembers = node.body?.body || node.body || [];
+      if (bodyMembers.length > 0) {
+        if (options.addComments) {
+          code += this._formatBasicLine(`' Methods for ${typeName}`, options);
+        }
+        for (const method of bodyMembers) {
+          if (method.type === 'MethodDefinition') {
+            code += this._generateMethodAsStandaloneFunction(method, typeName, options);
+            code += '\n';
+          }
         }
       }
 
       return code;
+    }
+
+    /**
+     * Generate method as standalone function (for Type structures)
+     * @private
+     */
+    _generateMethodAsStandaloneFunction(node, typeName, options) {
+      if (!node.key || !node.value) return '';
+
+      const methodName = this._toBasicName(node.key.name, options);
+      const isConstructor = node.key.name === 'constructor';
+      let code = '';
+
+      // Function signature
+      if (isConstructor) {
+        // Constructor becomes Create<TypeName> function
+        code += this._formatBasicLine(`${this._kw('Function', options)} Create${typeName}(`, options);
+      } else {
+        // Regular method becomes <TypeName>_<MethodName> with Self parameter
+        let signature = `${this._kw('Function', options)} ${typeName}_${methodName}(`;
+        if (options.strictTypes) {
+          signature += `${this._kw('ByRef', options)} Self ${this._kw('As', options)} ${typeName}`;
+        } else {
+          signature += `${this._kw('ByRef', options)} Self`;
+        }
+        if (node.value.params && node.value.params.length > 0) {
+          signature += ', ';
+        }
+        code += this._formatBasicLine(signature, options);
+      }
+
+      // Parameters
+      if (node.value.params && node.value.params.length > 0) {
+        const params = node.value.params.map(param => {
+          const paramName = this._toBasicName(param.name || 'param', options);
+          const paramType = this._inferBasicType(paramName, param, options);
+          if (options.strictTypes) {
+            return `${this._kw('ByVal', options)} ${paramName} ${this._kw('As', options)} ${paramType}`;
+          } else {
+            return `${this._kw('ByVal', options)} ${paramName}`;
+          }
+        });
+        code = code.trimEnd() + params.join(', ');
+      }
+
+      // Return type
+      if (isConstructor) {
+        code = code.trimEnd() + `) ${this._kw('As', options)} ${typeName}\n`;
+      } else {
+        code = code.trimEnd() + `) ${this._kw('As', options)} Integer\n`;
+      }
+
+      // Function body
+      this.indentLevel++;
+      if (isConstructor) {
+        // Create and initialize instance
+        code += this._formatBasicLine(`${this._kw('Dim', options)} Result ${this._kw('As', options)} ${typeName}`, options);
+
+        if (node.value.body && node.value.body.body) {
+          for (const stmt of node.value.body.body) {
+            code += this._generateConstructorBodyStatement(stmt, 'Result', options);
+          }
+        }
+
+        code += this._formatBasicLine(`${this._kw('Return', options)} Result`, options);
+      } else {
+        // Regular method body
+        if (node.value.body && node.value.body.body) {
+          for (const stmt of node.value.body.body) {
+            code += this._generateMethodBodyStatement(stmt, 'Self', options);
+          }
+        }
+      }
+      this.indentLevel--;
+
+      code += this._formatBasicLine(`${this._kw('End', options)} ${this._kw('Function', options)}`, options);
+
+      return code;
+    }
+
+    /**
+     * Generate purely procedural code (QBasic, PowerBASIC, TrueBASIC, LibertyBASIC)
+     * @private
+     */
+    _generateProceduralModule(node, options) {
+      const moduleName = node.id ? this._toBasicName(node.id.name, options) : 'UnnamedModule';
+      let code = '';
+
+      if (options.addComments) {
+        code += this._formatBasicLine(`' Module: ${moduleName}`, options);
+        code += this._formatBasicLine(`' Procedural implementation (no OOP support in ${this.currentVariant})`, options);
+      }
+
+      // Extract fields and generate module-level variables
+      const fields = this._extractFieldsFromConstructor(node);
+      if (fields.length > 0) {
+        if (options.addComments) {
+          code += this._formatBasicLine(`' Module variables`, options);
+        }
+        for (const field of fields) {
+          const varName = `${moduleName}_${field.name}`;
+          if (options.strictTypes) {
+            code += this._formatBasicLine(`${this._kw('Dim', options)} ${this._kw('Shared', options)} ${varName} ${this._kw('As', options)} ${field.type}`, options);
+          } else {
+            code += this._formatBasicLine(`${this._kw('Dim', options)} ${this._kw('Shared', options)} ${varName}`, options);
+          }
+        }
+        code += '\n';
+      }
+
+      // Generate methods as standalone SUBs/FUNCTIONs with module prefix
+      const bodyMembers = node.body?.body || node.body || [];
+      for (const method of bodyMembers) {
+        if (method.type === 'MethodDefinition') {
+          code += this._generateMethodAsProcedure(method, moduleName, options);
+          code += '\n';
+        }
+      }
+
+      return code;
+    }
+
+    /**
+     * Generate method as procedure for purely procedural dialects
+     * @private
+     */
+    _generateMethodAsProcedure(node, moduleName, options) {
+      if (!node.key || !node.value) return '';
+
+      const methodName = this._toBasicName(node.key.name, options);
+      const isConstructor = node.key.name === 'constructor';
+      const isFunction = this._shouldBeFunction(node.value);
+      let code = '';
+
+      const keyword = isFunction ? this._kw('Function', options) : this._kw('Sub', options);
+      const fullName = isConstructor ? `${moduleName}_Init` : `${moduleName}_${methodName}`;
+
+      // Procedure signature
+      let signature = `${keyword} ${fullName}(`;
+
+      // Parameters
+      if (node.value.params && node.value.params.length > 0) {
+        const params = node.value.params.map(param => {
+          const paramName = this._toBasicName(param.name || 'param', options);
+          const paramType = this._inferBasicType(paramName, param, options);
+          if (options.strictTypes) {
+            return `${paramName} ${this._kw('As', options)} ${paramType}`;
+          } else {
+            return paramName;
+          }
+        });
+        signature += params.join(', ');
+      }
+
+      signature += ')';
+
+      // Return type for functions
+      if (isFunction && options.strictTypes) {
+        const returnType = this._inferReturnType(methodName, node.value, options);
+        signature += ` ${this._kw('As', options)} ${returnType}`;
+      }
+
+      code += this._formatBasicLine(signature, options);
+
+      // Procedure body
+      this.indentLevel++;
+      if (node.value.body) {
+        const bodyCode = this._generateNode(node.value.body, options);
+        code += bodyCode || this._formatBasicLine(`' Not implemented`, options);
+      }
+      this.indentLevel--;
+
+      const endKeyword = isFunction ? `${this._kw('End', options)} ${this._kw('Function', options)}` : `${this._kw('End', options)} ${this._kw('Sub', options)}`;
+      code += this._formatBasicLine(endKeyword, options);
+
+      return code;
+    }
+
+    /**
+     * Extract fields from constructor body
+     * @private
+     */
+    _extractFieldsFromConstructor(classNode) {
+      const fields = [];
+      const bodyMembers = classNode.body?.body || classNode.body || [];
+
+      // Find constructor method
+      const constructor = bodyMembers.find(
+        method => method.type === 'MethodDefinition' &&
+                  method.key && method.key.name === 'constructor'
+      );
+
+      if (!constructor || !constructor.value || !constructor.value.body || !constructor.value.body.body) {
+        return fields;
+      }
+
+      // Extract this._field = value patterns
+      for (const stmt of constructor.value.body.body) {
+        if (stmt.type === 'ExpressionStatement' && stmt.expression) {
+          const expr = stmt.expression;
+
+          if (expr.type === 'AssignmentExpression' && expr.left && expr.left.type === 'MemberExpression') {
+            const memberExpr = expr.left;
+
+            if (memberExpr.object && memberExpr.object.type === 'ThisExpression' && memberExpr.property) {
+              const fieldName = memberExpr.property.name || memberExpr.property;
+              const fieldType = this._inferFieldType(expr.right);
+
+              // Remove leading underscore for field name
+              const cleanFieldName = this._toBasicName(fieldName.replace(/^_/, ''), {});
+
+              fields.push({
+                name: cleanFieldName,
+                type: fieldType
+              });
+            }
+          }
+        }
+      }
+
+      return fields;
+    }
+
+    /**
+     * Infer BASIC type from initialization value
+     * @private
+     */
+    _inferFieldType(initNode) {
+      if (!initNode) return 'Integer';
+
+      switch (initNode.type) {
+        case 'Literal':
+          if (typeof initNode.value === 'number') {
+            return Number.isInteger(initNode.value) ? 'Long' : 'Double';
+          } else if (typeof initNode.value === 'string') {
+            return 'String';
+          } else if (typeof initNode.value === 'boolean') {
+            return 'Integer';
+          }
+          return 'Integer';
+
+        case 'ArrayExpression':
+          return 'Integer()';
+
+        case 'Identifier':
+          if (initNode.name === 'null') return 'Integer';
+          return 'Integer';
+
+        default:
+          return 'Integer';
+      }
+    }
+
+    /**
+     * Generate constructor body statement (converts this.field to Result.field)
+     * @private
+     */
+    _generateConstructorBodyStatement(stmt, instanceVar, options) {
+      if (!stmt) return '';
+
+      if (stmt.type === 'ExpressionStatement' && stmt.expression) {
+        const expr = stmt.expression;
+
+        if (expr.type === 'AssignmentExpression' && expr.left && expr.left.type === 'MemberExpression') {
+          const memberExpr = expr.left;
+
+          if (memberExpr.object && memberExpr.object.type === 'ThisExpression' && memberExpr.property) {
+            const fieldName = this._toBasicName((memberExpr.property.name || memberExpr.property).replace(/^_/, ''), options);
+            const value = this._generateInitValue(expr.right, options);
+
+            return this._formatBasicLine(`${instanceVar}.${fieldName} = ${value}`, options);
+          }
+        }
+      }
+
+      return '';
+    }
+
+    /**
+     * Generate method body statement (converts this.field to Self.field)
+     * @private
+     */
+    _generateMethodBodyStatement(stmt, instanceVar, options) {
+      if (!stmt) return '';
+
+      // Handle ForStatement
+      if (stmt.type === 'ForStatement') {
+        return this._generateForLoopInMethod(stmt, instanceVar, options);
+      }
+
+      // Handle ReturnStatement
+      if (stmt.type === 'ReturnStatement') {
+        if (stmt.argument) {
+          const returnValue = this._generateExpressionInMethod(stmt.argument, instanceVar, options);
+          return this._formatBasicLine(`${this._kw('Return', options)} ${returnValue}`, options);
+        }
+        return this._formatBasicLine(`${this._kw('Return', options)} 0`, options);
+      }
+
+      // Handle ExpressionStatement
+      if (stmt.type === 'ExpressionStatement' && stmt.expression) {
+        const exprCode = this._generateExpressionInMethod(stmt.expression, instanceVar, options);
+        if (exprCode) {
+          return this._formatBasicLine(exprCode, options);
+        }
+      }
+
+      return '';
+    }
+
+    /**
+     * Generate expression within method context (converts this.x to Self.x)
+     * @private
+     */
+    _generateExpressionInMethod(expr, instanceVar, options) {
+      if (!expr) return '';
+
+      // Handle this.field -> Self.Field
+      if (expr.type === 'MemberExpression') {
+        if (expr.object && expr.object.type === 'ThisExpression' && expr.property) {
+          const fieldName = this._toBasicName((expr.property.name || expr.property).replace(/^_/, ''), options);
+          return `${instanceVar}.${fieldName}`;
+        }
+
+        // Handle array.length -> UBound(array) + 1
+        if (expr.property && (expr.property.name === 'length' || expr.property === 'length')) {
+          const objName = this._generateExpressionInMethod(expr.object, instanceVar, options);
+          return `UBound(${objName}) + 1`;
+        }
+
+        const objectCode = this._generateExpressionInMethod(expr.object, instanceVar, options);
+        const propertyCode = expr.computed ?
+          `(${this._generateExpressionInMethod(expr.property, instanceVar, options)})` :
+          `.${this._toBasicName(expr.property.name || expr.property, options)}`;
+
+        return objectCode + propertyCode;
+      }
+
+      // Handle CallExpression
+      if (expr.type === 'CallExpression') {
+        if (expr.callee && expr.callee.type === 'MemberExpression') {
+          const method = expr.callee.property.name || expr.callee.property;
+
+          // Handle array.push(value)
+          if (method === 'push') {
+            const arrayName = this._generateExpressionInMethod(expr.callee.object, instanceVar, options);
+            if (expr.arguments && expr.arguments.length > 0) {
+              const value = this._generateExpressionInMethod(expr.arguments[0], instanceVar, options);
+              return `ReDim Preserve ${arrayName}(UBound(${arrayName}) + 1): ${arrayName}(UBound(${arrayName})) = ${value}`;
+            }
+          }
+        }
+
+        const callee = this._generateExpressionInMethod(expr.callee, instanceVar, options);
+        const args = expr.arguments ?
+          expr.arguments.map(arg => this._generateExpressionInMethod(arg, instanceVar, options)).join(', ') : '';
+        return `${callee}(${args})`;
+      }
+
+      // Handle BinaryExpression
+      if (expr.type === 'BinaryExpression') {
+        const left = this._generateExpressionInMethod(expr.left, instanceVar, options);
+        const right = this._generateExpressionInMethod(expr.right, instanceVar, options);
+        const operator = this._mapBinaryOperator(expr.operator, options);
+        return `${left} ${operator} ${right}`;
+      }
+
+      // Handle AssignmentExpression
+      if (expr.type === 'AssignmentExpression') {
+        const left = this._generateExpressionInMethod(expr.left, instanceVar, options);
+        const right = this._generateExpressionInMethod(expr.right, instanceVar, options);
+        return `${left} = ${right}`;
+      }
+
+      // Handle Identifier
+      if (expr.type === 'Identifier') {
+        return this._toBasicName(expr.name, options);
+      }
+
+      // Handle Literal
+      if (expr.type === 'Literal') {
+        return this._generateLiteral(expr, options);
+      }
+
+      return '';
+    }
+
+    /**
+     * Generate for loop within method context
+     * @private
+     */
+    _generateForLoopInMethod(node, instanceVar, options) {
+      let code = '';
+
+      if (node.init && node.test && node.update) {
+        // Extract loop variable
+        let loopVar = 'I';
+        if (node.init.type === 'VariableDeclaration' && node.init.declarations && node.init.declarations.length > 0) {
+          loopVar = this._toBasicName(node.init.declarations[0].id.name, options);
+        }
+
+        // Extract end value from test
+        let endValue = '0';
+        if (node.test.type === 'BinaryExpression') {
+          if (node.test.operator === '<') {
+            endValue = this._generateExpressionInMethod(node.test.right, instanceVar, options) + ' - 1';
+          } else if (node.test.operator === '<=') {
+            endValue = this._generateExpressionInMethod(node.test.right, instanceVar, options);
+          }
+        }
+
+        if (options.strictTypes) {
+          code += this._formatBasicLine(`${this._kw('For', options)} ${loopVar} ${this._kw('As', options)} Integer = 0 ${this._kw('To', options)} ${endValue}`, options);
+        } else {
+          code += this._formatBasicLine(`${this._kw('For', options)} ${loopVar} = 0 ${this._kw('To', options)} ${endValue}`, options);
+        }
+
+        // Loop body
+        this.indentLevel++;
+        if (node.body) {
+          if (node.body.type === 'BlockStatement' && node.body.body) {
+            for (const stmt of node.body.body) {
+              code += this._generateMethodBodyStatement(stmt, instanceVar, options);
+            }
+          } else {
+            code += this._generateMethodBodyStatement(node.body, instanceVar, options);
+          }
+        }
+        this.indentLevel--;
+
+        code += this._formatBasicLine(`${this._kw('Next', options)} ${loopVar}`, options);
+      }
+
+      return code;
+    }
+
+    /**
+     * Generate initialization value
+     * @private
+     */
+    _generateInitValue(node, options) {
+      if (!node) return '0';
+
+      switch (node.type) {
+        case 'Literal':
+          if (node.value === null) return '0';
+          if (typeof node.value === 'boolean') return node.value ? '-1' : '0';
+          if (typeof node.value === 'string') return `"${node.value.replace(/"/g, '""')}"`;
+          return String(node.value);
+
+        case 'ArrayExpression':
+          return '0';
+
+        case 'Identifier':
+          if (node.name === 'null') return '0';
+          return this._toBasicName(node.name, options);
+
+        default:
+          return '0';
+      }
+    }
+
+    /**
+     * Generate class as module fallback (legacy, redirects to appropriate method)
+     * @private
+     */
+    _generateClassAsModule(node, options) {
+      // This is now a legacy method that redirects
+      if (this._supportsTypeWithMethods(options)) {
+        return this._generateTypeStructure(node, options);
+      }
+      return this._generateProceduralModule(node, options);
     }
 
     /**
@@ -2202,7 +2844,7 @@
      * @private
      */
     _getClassKeyword(options) {
-      return 'Class';
+      return this._kw('Class', options);
     }
 
     /**
@@ -2211,9 +2853,9 @@
      */
     _getInheritanceKeyword(options) {
       if (this.currentVariant === 'VBNET') {
-        return ' Inherits';
+        return ` ${this._kw('Inherits', options)}`;
       } else {
-        return ' Extends';
+        return ` ${this._kw('Extends', options)}`;
       }
     }
 
@@ -2222,7 +2864,7 @@
      * @private
      */
     _getEndClassKeyword(options) {
-      return 'End Class';
+      return `${this._kw('End', options)} ${this._kw('Class', options)}`;
     }
 
     /**
@@ -2233,10 +2875,10 @@
       let modifiers = '';
 
       if (node.static) {
-        modifiers += 'Shared ';
+        modifiers += `${this._kw('Shared', options)} `;
       }
       if (node.kind === 'constructor') {
-        modifiers += 'New ';
+        modifiers += `${this._kw('New', options)} `;
       }
 
       return modifiers;
@@ -2270,7 +2912,7 @@
         }
       }
 
-      let code = this._formatBasicLine(`For ${variable} = ${start} To ${end}`, options);
+      let code = this._formatBasicLine(`${this._kw('For', options)} ${variable} = ${start} ${this._kw('To', options)} ${end}`, options);
 
       this.indentLevel++;
       if (node.body) {
@@ -2278,7 +2920,7 @@
       }
       this.indentLevel--;
 
-      code += this._formatBasicLine('Next', options);
+      code += this._formatBasicLine(this._kw('Next', options), options);
       return code;
     }
 
@@ -2293,8 +2935,8 @@
         code += this._generateNode(node.init, options);
       }
 
-      const test = node.test ? this._generateNode(node.test, options) : 'True';
-      code += this._formatBasicLine(`While ${test}`, options);
+      const test = node.test ? this._generateNode(node.test, options) : this._kw('True', options);
+      code += this._formatBasicLine(`${this._kw('While', options)} ${test}`, options);
 
       this.indentLevel++;
       if (node.body) {
@@ -2305,7 +2947,7 @@
       }
       this.indentLevel--;
 
-      code += this._formatBasicLine('Wend', options);
+      code += this._formatBasicLine(this._kw('Wend', options), options);
       return code;
     }
 
@@ -4064,6 +4706,176 @@ pause
 
       this.projectFiles.set('README.md', readmeContent);
       this.projectFiles.set('compile.bat', compileScript);
+    }
+
+    /**
+     * Generate QBasic complete program (16-bit DOS)
+     * @private
+     */
+    _generateQBasicCompleteProgram(code, options) {
+      let program = '';
+
+      // QBasic header
+      program += "' QBasic Generated Program\n";
+      program += `' Generated: ${new Date().toISOString()}\n`;
+      program += "' 16-bit DOS BASIC interpreter/compiler\n";
+      program += "' Compatible with QBasic 4.5 and QuickBasic 4.5\n\n";
+
+      // QBasic options
+      program += "DECLARE SUB Main ()\n";
+      if (this._hasEncryptFunction(code)) {
+        program += "DECLARE FUNCTION Encrypt& (Data&, Key&)\n";
+        program += "DECLARE FUNCTION Decrypt& (Data&, Key&)\n";
+      }
+      program += "\n";
+
+      // Generated functions (QBasic style)
+      const qbasicCode = this._convertToQBasicSyntax(code);
+      program += qbasicCode + "\n\n";
+
+      // Main subroutine
+      program += "SUB Main\n";
+      program += "    DIM testData AS LONG\n";
+      program += "    DIM testKey AS LONG\n";
+      program += "    DIM result AS LONG\n\n";
+
+      program += "    CLS\n";
+      program += "    PRINT \"QBasic Cryptographic Program\"\n";
+      program += "    PRINT \"============================\"\n";
+      program += "    PRINT\n\n";
+
+      program += "    testData = &H1020304\n";
+      program += "    testKey = &HAABBCCDD\n\n";
+
+      program += "    PRINT \"Input Data: \"; HEX$(testData)\n";
+      program += "    PRINT \"Key: \"; HEX$(testKey)\n";
+      program += "    PRINT\n\n";
+
+      if (this._hasEncryptFunction(code)) {
+        program += "    result = Encrypt(testData, testKey)\n";
+        program += "    PRINT \"Encrypted: \"; HEX$(result)\n";
+        program += "    result = Decrypt(result, testKey)\n";
+        program += "    PRINT \"Decrypted: \"; HEX$(result)\n";
+      }
+
+      program += "    PRINT\n";
+      program += "    PRINT \"Press any key to exit...\"\n";
+      program += "    DO: LOOP WHILE INKEY$ = \"\"\n";
+      program += "END SUB\n\n";
+
+      program += "' Program entry point\n";
+      program += "Main\n";
+      program += "END\n";
+
+      return program;
+    }
+
+    /**
+     * Convert code to QBasic syntax
+     * @private
+     */
+    _convertToQBasicSyntax(code) {
+      // QBasic uses LONG instead of Integer for 32-bit values
+      // Uses & suffix for LONG literals
+      // No classes, purely procedural
+      let qbasicCode = code;
+
+      // Convert Integer to LONG for cryptographic operations
+      qbasicCode = qbasicCode.replace(/As Integer/gi, 'AS LONG');
+      qbasicCode = qbasicCode.replace(/\bDim\b/gi, 'DIM');
+      qbasicCode = qbasicCode.replace(/\bFunction\b/gi, 'FUNCTION');
+      qbasicCode = qbasicCode.replace(/\bSub\b/gi, 'SUB');
+      qbasicCode = qbasicCode.replace(/\bEnd Function\b/gi, 'END FUNCTION');
+      qbasicCode = qbasicCode.replace(/\bEnd Sub\b/gi, 'END SUB');
+      qbasicCode = qbasicCode.replace(/\bReturn\b/gi, '');  // QBasic uses function name assignment
+
+      return qbasicCode;
+    }
+
+    /**
+     * Generate QBasic project files
+     * @private
+     */
+    _generateQBasicProjectFiles(options) {
+      const projectName = options.packageName || 'GeneratedProgram';
+
+      const readmeContent = `# ${projectName} - QBasic Program
+
+Generated QBasic program for MS-DOS and compatible environments.
+
+## Requirements
+
+- QBasic 1.1 (included with MS-DOS 5.0+)
+- QuickBasic 4.5 (commercial, compiled)
+- QB64 (modern, recommended for actual use)
+- DOSBox (for running on modern systems)
+
+## Running in QBasic/QuickBasic
+
+1. Start QBasic: \`QBASIC\`
+2. Load the program: File -> Open -> \`${projectName}.bas\`
+3. Run: Run -> Start (F5)
+
+## Running with DOSBox
+
+1. Install DOSBox
+2. Mount directory: \`MOUNT C C:\\path\\to\\project\`
+3. Run QBasic: \`C:\` then \`QBASIC ${projectName}.bas /RUN\`
+
+## Compiling with QuickBasic 4.5
+
+\`\`\`
+BC ${projectName}.bas ${projectName}.obj /O;
+LINK ${projectName}.obj;
+\`\`\`
+
+## Running with QB64 (Modern Alternative)
+
+For modern systems, use QB64 which is 100% compatible:
+1. Download QB64 from https://qb64.org
+2. Open \`${projectName}.bas\`
+3. Press F5 to run
+
+## Limitations
+
+- 16-bit limitations (640KB conventional memory)
+- No true OOP support
+- LONG integers limited to 32-bit
+- No exception handling
+
+## Notes
+
+- Uses LONG type for 32-bit cryptographic operations
+- SUB/FUNCTION procedures for modularity
+- Compatible with both interpreted and compiled modes
+`;
+
+      const runScript = `@echo off
+REM QBasic runner script for ${projectName}
+echo QBasic Program Runner
+echo =====================
+echo.
+
+if exist "QBASIC.EXE" (
+    echo Running with QBasic...
+    QBASIC /RUN "${projectName}.bas"
+) else if exist "QB.EXE" (
+    echo Running with QuickBasic...
+    QB /RUN "${projectName}.bas"
+) else (
+    echo QBasic/QuickBasic not found!
+    echo.
+    echo Options:
+    echo 1. Use DOSBox with QBasic
+    echo 2. Use QB64 ^(modern alternative^)
+    echo 3. Install QuickBasic 4.5
+    echo.
+    pause
+)
+`;
+
+      this.projectFiles.set('README.md', readmeContent);
+      this.projectFiles.set('run.bat', runScript);
     }
 
     /**

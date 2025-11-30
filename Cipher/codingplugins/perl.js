@@ -102,16 +102,21 @@ class PerlPlugin extends LanguagePlugin {
       
       // Generate Perl code
       const code = this._generateNode(ast, mergedOptions);
-      
+
       // Add standard headers and pragmas
-      const finalCode = this._wrapWithPragmas(code, mergedOptions);
-      
+      let finalCode = this._wrapWithPragmas(code, mergedOptions);
+
+      // Apply line ending preference
+      if (mergedOptions.lineEnding !== '\n') {
+        finalCode = finalCode.replace(/\n/g, mergedOptions.lineEnding);
+      }
+
       // Collect dependencies
       const dependencies = this._collectDependencies(ast, mergedOptions);
-      
+
       // Generate warnings if any
       const warnings = this._generateWarnings(ast, mergedOptions);
-      
+
       return this.CreateSuccessResult(finalCode, dependencies, warnings);
       
     } catch (error) {
@@ -386,6 +391,9 @@ class PerlPlugin extends LanguagePlugin {
     const className = node.id ? node.id.name : 'UnnamedClass';
     let code = '';
 
+    // Get class body members - handle both node.body and node.body.body
+    const bodyMembers = node.body?.body || node.body || [];
+
     if (options.useModernOOP && options.useExperimentalFeatures) {
       // Modern Perl 5.38+ class syntax
       code += this._indent(`class ${className}`);
@@ -399,8 +407,8 @@ class PerlPlugin extends LanguagePlugin {
       this._pushScope('class');
 
       // Class body
-      if (node.body && node.body.length > 0) {
-        const members = node.body
+      if (bodyMembers.length > 0) {
+        const members = bodyMembers
           .map(member => this._generateNode(member, options))
           .filter(m => m && m.trim());
         code += members.join('\n\n');
@@ -425,8 +433,8 @@ class PerlPlugin extends LanguagePlugin {
       code += '\n';
 
       // Class body (methods and attributes)
-      if (node.body && node.body.length > 0) {
-        const methods = node.body
+      if (bodyMembers.length > 0) {
+        const methods = bodyMembers
           .map(method => this._generateNode(method, options))
           .filter(m => m && m.trim());
         code += methods.join('\n\n');
@@ -445,20 +453,74 @@ class PerlPlugin extends LanguagePlugin {
    */
   _generateMethod(node, options) {
     if (!node.key || !node.value) return '';
-    
+
     const methodName = node.key.name;
     const isConstructor = methodName === 'constructor';
-    
+    const isStatic = node.static;
+
     if (isConstructor) {
-      // Constructor is handled by Moo automatically
-      return '';
+      // Generate constructor as BUILDARGS for Moo/Moose or new() for traditional
+      if (options.useModernOOP && options.useExperimentalFeatures) {
+        // Modern Perl class - constructor is implicit, just generate ADJUST block if needed
+        if (!node.value.body || !node.value.body.body || node.value.body.body.length === 0) {
+          return ''; // Empty constructor
+        }
+
+        const params = node.value.params || [];
+        let code = '';
+
+        // Generate ADJUST block with constructor parameters
+        if (params.length > 0) {
+          code += this._indent(`ADJUST (${params.map(p => '$' + p.name).join(', ')}) {\n`);
+        } else {
+          code += this._indent('ADJUST {\n');
+        }
+
+        this.indentLevel++;
+        this._pushScope('method');
+
+        // Extract field initializations from constructor
+        if (node.value.body) {
+          const bodyCode = this._generateNode(node.value.body, options);
+          code += bodyCode || this._indent("# empty constructor\n");
+        }
+
+        this._popScope();
+        this.indentLevel--;
+        code += this._indent('}\n');
+        return code;
+      } else {
+        // Traditional Moo/Moose style - generate BUILD method
+        const params = node.value.params || [];
+        let code = this._indent('sub BUILD {\n');
+        this.indentLevel++;
+        code += this._indent('my ($self');
+        if (params.length > 0) {
+          code += ', ' + params.map(p => '$' + p.name).join(', ');
+        }
+        code += ') = @_;\n\n';
+
+        // Generate body
+        if (node.value.body) {
+          const bodyCode = this._generateNode(node.value.body, options);
+          code += bodyCode || this._indent("# empty constructor\n");
+        }
+
+        this.indentLevel--;
+        code += this._indent('}\n');
+        return code;
+      }
     }
-    
-    return this._generateFunction({
+
+    // Generate regular method with $self as first parameter
+    const params = node.value.params || [];
+    const perlFunctionNode = {
       id: { name: methodName },
-      params: [{ name: 'self' }, ...(node.value.params || [])],
+      params: [{ name: 'self' }, ...params],
       body: node.value.body
-    }, options);
+    };
+
+    return this._generateFunction(perlFunctionNode, options);
   }
 
   /**
@@ -482,15 +544,32 @@ class PerlPlugin extends LanguagePlugin {
    */
   _generateVariableDeclaration(node, options) {
     if (!node.declarations) return '';
-    
+
     return node.declarations
       .map(decl => {
         const varName = decl.id ? '$' + decl.id.name : '$variable';
+        let typeComment = '';
+
+        // Add type comments if enabled or required by strictTypes
+        if (options.addTypeComments || options.strictTypes) {
+          if (decl.id && decl.id.typeAnnotation) {
+            typeComment = this._generateTSTypeAnnotation(decl.id, options);
+          } else if (options.strictTypes && decl.init) {
+            // Infer type from initialization when strictTypes is enabled
+            const inferredType = this._inferType(decl.init);
+            typeComment = ` # ${inferredType}`;
+          } else if (options.strictTypes) {
+            // Require explicit type when strictTypes is enabled
+            this._addWarning(`Variable ${varName} lacks type information`);
+            typeComment = ' # unknown';
+          }
+        }
+
         if (decl.init) {
           const initValue = this._generateNode(decl.init, options);
-          return this._indent(`my ${varName} = ${initValue};\n`);
+          return this._indent(`my ${varName} = ${initValue};${typeComment}\n`);
         } else {
-          return this._indent(`my ${varName};\n`);
+          return this._indent(`my ${varName};${typeComment}\n`);
         }
       })
       .join('');
@@ -539,7 +618,6 @@ class PerlPlugin extends LanguagePlugin {
       return this._generateOpCodesCall(node, options);
     }
 
-    const callee = this._generateNode(node.callee, options);
     const args = node.arguments ?
       node.arguments.map(arg => this._generateNode(arg, options)).join(', ') : '';
 
@@ -547,9 +625,52 @@ class PerlPlugin extends LanguagePlugin {
     if (node.callee && node.callee.type === 'MemberExpression') {
       const object = this._generateNode(node.callee.object, options);
       const method = node.callee.property.name || node.callee.property;
+
+      // Handle special array methods
+      if (method === 'push') {
+        // Convert array.push(x) to push @{$array_ref}, $x or push @array, $x
+        if (object.startsWith('$self->{') || object.includes('->')) {
+          // It's a hash reference access like $self->{_buffer}
+          return `push @{${object}}, ${args}`;
+        } else {
+          const arrayName = object.replace(/^\$/, '@');
+          return `push ${arrayName}, ${args}`;
+        }
+      } else if (method === 'pop') {
+        if (object.startsWith('$self->{') || object.includes('->')) {
+          return `pop @{${object}}`;
+        } else {
+          const arrayName = object.replace(/^\$/, '@');
+          return `pop ${arrayName}`;
+        }
+      } else if (method === 'shift') {
+        if (object.startsWith('$self->{') || object.includes('->')) {
+          return `shift @{${object}}`;
+        } else {
+          const arrayName = object.replace(/^\$/, '@');
+          return `shift ${arrayName}`;
+        }
+      } else if (method === 'unshift') {
+        if (object.startsWith('$self->{') || object.includes('->')) {
+          return `unshift @{${object}}, ${args}`;
+        } else {
+          const arrayName = object.replace(/^\$/, '@');
+          return `unshift ${arrayName}, ${args}`;
+        }
+      } else if (method === 'splice') {
+        if (object.startsWith('$self->{') || object.includes('->')) {
+          return `splice @{${object}}, ${args}`;
+        } else {
+          const arrayName = object.replace(/^\$/, '@');
+          return `splice ${arrayName}, ${args}`;
+        }
+      }
+
+      // Regular method call
       return `${object}->${method}(${args})`;
     }
 
+    const callee = this._generateNode(node.callee, options);
     return `${callee}(${args})`;
   }
 
@@ -559,15 +680,54 @@ class PerlPlugin extends LanguagePlugin {
    */
   _generateMemberExpression(node, options) {
     const object = this._generateNode(node.object, options);
-    const property = node.computed ? 
-      `{${this._generateNode(node.property, options)}}` : 
-      `->{${node.property.name || node.property}}`;
-    
+    const propertyName = node.property.name || node.property;
+
+    // Handle array.length as scalar(@array) or scalar(@{$ref})
+    if (propertyName === 'length' && !node.computed) {
+      if (object.startsWith('$') && !object.startsWith('$self')) {
+        // Regular scalar variable - convert to array
+        const arrayName = object.replace(/^\$/, '@');
+        return `scalar(${arrayName})`;
+      } else if (object.includes('->') || object.includes('{')) {
+        // Reference access like $self->{items} - needs dereferencing
+        return `scalar(@{${object}})`;
+      } else {
+        const arrayName = object.replace(/^\$/, '@');
+        return `scalar(${arrayName})`;
+      }
+    }
+
+    // Handle computed member access (array indexing or hash access)
+    if (node.computed) {
+      const index = this._generateNode(node.property, options);
+      // Array indexing: convert $array[$index] syntax
+      if (object.startsWith('$')) {
+        return `${object}[${index}]`;
+      } else if (object.startsWith('@')) {
+        return `${object}[${index}]`;
+      } else if (object.startsWith('%')) {
+        return `${object}{${index}}`;
+      } else {
+        // For $self->{field} or other references, use arrow notation
+        // Check if we're accessing nested multidimensional arrays
+        if (options.useMultidimensionalArrays && this._isNestedArrayAccess(node)) {
+          // Modern multidimensional array syntax (Perl 5.36+)
+          return `${object}[${index}]`;
+        } else {
+          // Traditional array of array references
+          return `${object}->[${index}]`;
+        }
+      }
+    }
+
+    // Non-computed property access (hash key or method)
+    const property = `->{${propertyName}}`;
+
     // Convert this.something to $self->{something}
     if (object === '$self' || object === 'this') {
       return `$self${property}`;
     }
-    
+
     return `${object}${property}`;
   }
 
@@ -588,7 +748,12 @@ class PerlPlugin extends LanguagePlugin {
    */
   _generateIdentifier(node, options) {
     if (node.name === 'this') return '$self';
-    return '$' + this._toPerlName(node.name);
+    const name = this._toPerlName(node.name);
+    // Don't add $ if the name already starts with a sigil
+    if (name.startsWith('$') || name.startsWith('@') || name.startsWith('%')) {
+      return name;
+    }
+    return '$' + name;
   }
 
   /**
@@ -622,6 +787,12 @@ class PerlPlugin extends LanguagePlugin {
       if (element === null) return 'undef';
       return this._generateNode(element, options);
     });
+
+    // Context sensitivity: in list context, use qw() for simple word lists
+    if (options.useContextSensitivity && this._isSimpleWordList(node)) {
+      const words = node.elements.map(e => e.value).join(' ');
+      return `qw(${words})`;
+    }
 
     return `[${elements.join(', ')}]`;
   }
@@ -944,7 +1115,14 @@ class PerlPlugin extends LanguagePlugin {
    * @private
    */
   _generateForStatement(node, options) {
-    const init = node.init ? this._generateNode(node.init, options).replace(/^my /, '').replace(/;\s*$/, '') : '';
+    // Extract init, test, and update parts
+    let init = '';
+    if (node.init) {
+      const initCode = this._generateNode(node.init, options);
+      // Remove 'my ' if present and trailing semicolon
+      init = initCode.trim().replace(/^my\s+/, '').replace(/;\s*$/, '').trim();
+    }
+
     const test = node.test ? this._generateNode(node.test, options) : '';
     const update = node.update ? this._generateNode(node.update, options) : '';
 
@@ -1360,14 +1538,18 @@ class PerlPlugin extends LanguagePlugin {
     if (options.useModernOOP && options.useExperimentalFeatures) {
       // Modern Perl class field
       const staticKeyword = node.static ? 'our ' : 'field ';
-      return this._indent(`${staticKeyword}$${key} = ${value};\n`);
+      if (node.value) {
+        return this._indent(`${staticKeyword}$${key} = ${value};\n`);
+      } else {
+        return this._indent(`${staticKeyword}$${key};\n`);
+      }
     } else {
       // Traditional Moo/Moose attribute
       let code = this._indent(`has '${key}' => (\n`);
       this.indentLevel++;
       code += this._indent(`is => 'rw',\n`);
       if (node.value) {
-        code += this._indent(`default => ${value},\n`);
+        code += this._indent(`default => sub { ${value} },\n`);
       }
       this.indentLevel--;
       code += this._indent(');\n');
@@ -1506,6 +1688,59 @@ class PerlPlugin extends LanguagePlugin {
         return `Array<${this._generateTSType(node.elementType, options)}>`;
       default:
         return node.type || 'any';
+    }
+  }
+
+  /**
+   * Infer Perl type from AST node
+   * @private
+   */
+  _inferType(node) {
+    if (!node) return 'unknown';
+
+    switch (node.type) {
+      case 'Literal':
+        if (typeof node.value === 'string') return 'string';
+        if (typeof node.value === 'number') return 'number';
+        if (typeof node.value === 'boolean') return 'boolean';
+        if (node.value === null) return 'undef';
+        return 'scalar';
+      case 'ArrayExpression':
+        return 'arrayref';
+      case 'ObjectExpression':
+        return 'hashref';
+      case 'FunctionExpression':
+      case 'ArrowFunctionExpression':
+        return 'coderef';
+      case 'NewExpression':
+        return 'object';
+      case 'BinaryExpression':
+        if (['+', '-', '*', '/', '%', '**'].includes(node.operator)) return 'number';
+        if (['==', '!=', '<', '>', '<=', '>='].includes(node.operator)) return 'boolean';
+        if (['.', 'x'].includes(node.operator)) return 'string';
+        return 'scalar';
+      case 'LogicalExpression':
+        return 'boolean';
+      case 'UnaryExpression':
+        if (node.operator === '!') return 'boolean';
+        if (node.operator === '-' || node.operator === '+') return 'number';
+        return 'scalar';
+      case 'CallExpression':
+        // Try to infer from function name
+        if (node.callee && node.callee.name) {
+          const funcName = node.callee.name.toLowerCase();
+          if (funcName.includes('array') || funcName.includes('list')) return 'arrayref';
+          if (funcName.includes('hash') || funcName.includes('object')) return 'hashref';
+          if (funcName.includes('string') || funcName.includes('str')) return 'string';
+          if (funcName.includes('number') || funcName.includes('int')) return 'number';
+        }
+        return 'scalar';
+      case 'MemberExpression':
+        return 'scalar';
+      case 'Identifier':
+        return 'scalar';
+      default:
+        return 'unknown';
     }
   }
 
@@ -1805,16 +2040,28 @@ class PerlPlugin extends LanguagePlugin {
     }
   }
 
-
   /**
-   * Add proper indentation
+   * Check if array contains only simple string literals (for qw() optimization)
    * @private
    */
-  _indent(code) {
-    const indentStr = this.options.indent.repeat(this.indentLevel);
-    return code.split('\n').map(line => 
-      line.trim() ? indentStr + line : line
-    ).join('\n');
+  _isSimpleWordList(node) {
+    if (!node.elements || node.elements.length === 0) return false;
+    return node.elements.every(element =>
+      element &&
+      element.type === 'Literal' &&
+      typeof element.value === 'string' &&
+      /^[a-zA-Z0-9_]+$/.test(element.value)
+    );
+  }
+
+  /**
+   * Check if member expression is accessing nested array
+   * @private
+   */
+  _isNestedArrayAccess(node) {
+    if (!node || node.type !== 'MemberExpression') return false;
+    // Check if the object is also a member expression (chained array access)
+    return node.object && node.object.type === 'MemberExpression' && node.computed;
   }
 
   /**
@@ -2043,17 +2290,31 @@ class PerlPlugin extends LanguagePlugin {
       warnings.push('File operations detected. Use Path::Tiny for safer path handling and proper error checking.');
     }
 
-    // Best practices
-    if (this._hasGlobalVariables(ast)) {
-      warnings.push('Global variables detected. Consider lexical scoping (my) and package variables (our) for better encapsulation.');
-    }
+    // Best practices (only when enabled)
+    if (options.enableBestPractices) {
+      if (this._hasGlobalVariables(ast)) {
+        warnings.push('Global variables detected. Consider lexical scoping (my) and package variables (our) for better encapsulation.');
+      }
 
-    if (this._hasImplicitReturns(ast)) {
-      warnings.push('Explicit return statements recommended for clarity, especially in subroutines.');
-    }
+      if (this._hasImplicitReturns(ast)) {
+        warnings.push('Explicit return statements recommended for clarity, especially in subroutines.');
+      }
 
-    if (this._hasComplexRegex(ast)) {
-      warnings.push('Complex regular expressions detected. Consider using /x modifier for readability and Regexp::Common for standard patterns.');
+      if (this._hasComplexRegex(ast)) {
+        warnings.push('Complex regular expressions detected. Consider using /x modifier for readability and Regexp::Common for standard patterns.');
+      }
+
+      if (this._hasMagicNumbers(ast)) {
+        warnings.push('Magic numbers detected. Consider using named constants for better maintainability.');
+      }
+
+      if (this._hasDeepNesting(ast)) {
+        warnings.push('Deep nesting detected. Consider extracting nested blocks into subroutines for better readability.');
+      }
+
+      if (this._hasLongSubroutines(ast)) {
+        warnings.push('Long subroutines detected. Consider breaking them into smaller, focused functions.');
+      }
     }
 
     // Compatibility warnings
@@ -2072,6 +2333,49 @@ class PerlPlugin extends LanguagePlugin {
 
     if (this._hasCircularReferences(ast)) {
       warnings.push('Potential circular references detected. Consider using Scalar::Util::weaken() to prevent memory leaks.');
+    }
+
+    // Comprehensive warnings (additional detailed analysis when enabled)
+    if (options.addComprehensiveWarnings) {
+      // Unicode and encoding warnings
+      if (this._hasUnicodeOperations(ast)) {
+        warnings.push('Unicode operations detected. Ensure proper encoding with use utf8; and decode_utf8()/encode_utf8() where needed.');
+      }
+
+      // Reference and dereferencing warnings
+      if (this._hasComplexDereferencing(ast)) {
+        warnings.push('Complex dereferencing detected. Consider using postfix dereference for clarity: $arrayref->@* instead of @{$arrayref}.');
+      }
+
+      // Operator precedence warnings
+      if (this._hasAmbiguousOperators(ast)) {
+        warnings.push('Ambiguous operator usage detected. Use parentheses to clarify precedence, especially with string/numeric operators.');
+      }
+
+      // Testing and debugging recommendations
+      if (this._lacksTesting(ast)) {
+        warnings.push('No test infrastructure detected. Consider adding Test::More or Test2::Suite for comprehensive testing.');
+      }
+
+      // Documentation warnings
+      if (this._lacksDocumentation(ast)) {
+        warnings.push('Limited documentation detected. Consider adding POD (Plain Old Documentation) for modules and public subroutines.');
+      }
+
+      // Error handling warnings
+      if (this._lacksErrorHandling(ast)) {
+        warnings.push('Limited error handling detected. Consider using Try::Tiny or eval/die with proper $@ checking.');
+      }
+
+      // Deprecated feature warnings
+      if (this._hasDeprecatedFeatures(ast)) {
+        warnings.push('Deprecated Perl features detected. Review code for bareword filehandles, indirect object syntax, or other deprecated patterns.');
+      }
+
+      // Concurrency warnings
+      if (this._hasConcurrencyIssues(ast)) {
+        warnings.push('Potential concurrency issues detected. Use Thread::Queue or Mojo::IOLoop for safe concurrent operations.');
+      }
     }
 
     return [...new Set(warnings)]; // Remove duplicates
@@ -2347,6 +2651,61 @@ class PerlPlugin extends LanguagePlugin {
   }
 
   /**
+   * Check if AST has magic numbers (numeric literals used directly)
+   * @private
+   */
+  _hasMagicNumbers(ast) {
+    return this._traverseAST(ast, node =>
+      node.type === 'Literal' &&
+      typeof node.value === 'number' &&
+      node.value !== 0 &&
+      node.value !== 1 &&
+      node.value !== -1
+    );
+  }
+
+  /**
+   * Check if AST has deep nesting (more than 4 levels)
+   * @private
+   */
+  _hasDeepNesting(ast) {
+    let maxDepth = 0;
+    const checkDepth = (node, depth = 0) => {
+      if (!node) return;
+      maxDepth = Math.max(maxDepth, depth);
+      if (node.type === 'BlockStatement' || node.type === 'IfStatement' ||
+          node.type === 'WhileStatement' || node.type === 'ForStatement') {
+        if (node.body) {
+          if (Array.isArray(node.body)) {
+            node.body.forEach(child => checkDepth(child, depth + 1));
+          } else {
+            checkDepth(node.body, depth + 1);
+          }
+        }
+        if (node.alternate) checkDepth(node.alternate, depth + 1);
+      }
+    };
+    checkDepth(ast, 0);
+    return maxDepth > 4;
+  }
+
+  /**
+   * Check if AST has long subroutines (more than 50 statements)
+   * @private
+   */
+  _hasLongSubroutines(ast) {
+    return this._traverseAST(ast, node =>
+      (node.type === 'FunctionDeclaration' ||
+       node.type === 'FunctionExpression' ||
+       node.type === 'ArrowFunctionExpression') &&
+      node.body &&
+      node.body.type === 'BlockStatement' &&
+      node.body.body &&
+      node.body.body.length > 50
+    );
+  }
+
+  /**
    * Check if AST has modern features
    * @private
    */
@@ -2397,6 +2756,104 @@ class PerlPlugin extends LanguagePlugin {
       node.type === 'SequenceExpression' ||
       (node.type === 'BinaryExpression' &&
        (node.left.type === 'BinaryExpression' || node.right.type === 'BinaryExpression'))
+    );
+  }
+
+  /**
+   * Check if AST has Unicode operations
+   * @private
+   */
+  _hasUnicodeOperations(ast) {
+    return this._traverseAST(ast, node =>
+      (node.type === 'Literal' && typeof node.value === 'string' && /[^\x00-\x7F]/.test(node.value)) ||
+      (node.type === 'CallExpression' && node.callee.name &&
+       (node.callee.name.includes('decode') || node.callee.name.includes('encode')))
+    );
+  }
+
+  /**
+   * Check if AST has complex dereferencing
+   * @private
+   */
+  _hasComplexDereferencing(ast) {
+    return this._traverseAST(ast, node =>
+      node.type === 'MemberExpression' &&
+      node.object.type === 'MemberExpression'
+    );
+  }
+
+  /**
+   * Check if AST has ambiguous operators
+   * @private
+   */
+  _hasAmbiguousOperators(ast) {
+    return this._traverseAST(ast, node =>
+      node.type === 'BinaryExpression' &&
+      node.left.type === 'BinaryExpression' &&
+      !node.parenthesized
+    );
+  }
+
+  /**
+   * Check if AST lacks testing infrastructure
+   * @private
+   */
+  _lacksTesting(ast) {
+    return !this._traverseAST(ast, node =>
+      node.type === 'CallExpression' &&
+      node.callee.name &&
+      (node.callee.name.includes('test') || node.callee.name.includes('assert'))
+    );
+  }
+
+  /**
+   * Check if AST lacks documentation
+   * @private
+   */
+  _lacksDocumentation(ast) {
+    // Simple heuristic: check if there are functions but no comments
+    const hasFunctions = this._traverseAST(ast, node =>
+      node.type === 'FunctionDeclaration' ||
+      node.type === 'ClassDeclaration'
+    );
+    // In real implementation, would check for POD or comments
+    return hasFunctions;
+  }
+
+  /**
+   * Check if AST lacks error handling
+   * @private
+   */
+  _lacksErrorHandling(ast) {
+    const hasFunctions = this._traverseAST(ast, node =>
+      node.type === 'FunctionDeclaration'
+    );
+    const hasTryCatch = this._traverseAST(ast, node =>
+      node.type === 'TryStatement'
+    );
+    return hasFunctions && !hasTryCatch;
+  }
+
+  /**
+   * Check if AST has deprecated features
+   * @private
+   */
+  _hasDeprecatedFeatures(ast) {
+    return this._traverseAST(ast, node =>
+      // Check for indirect object notation patterns
+      (node.type === 'NewExpression' && node.callee.type === 'Identifier')
+    );
+  }
+
+  /**
+   * Check if AST has concurrency issues
+   * @private
+   */
+  _hasConcurrencyIssues(ast) {
+    return this._traverseAST(ast, node =>
+      node.type === 'CallExpression' &&
+      node.callee.name &&
+      (node.callee.name.includes('thread') || node.callee.name.includes('fork'))
     );
   }
 

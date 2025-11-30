@@ -1,8 +1,12 @@
 /**
  * Kotlin Language Plugin for Multi-Language Code Generation
  * Generates Kotlin compatible code from JavaScript AST
- * 
+ *
  * Follows the LanguagePlugin specification exactly
+ *
+ * Supports two generation modes:
+ * 1. Direct emission (legacy) - _generateNode directly emits Kotlin code
+ * 2. AST pipeline (new) - JS AST -> Kotlin AST -> Kotlin Emitter
  */
 
 // Import the framework
@@ -10,15 +14,32 @@
 (function() {
   // Use local variables to avoid global conflicts
   let LanguagePlugin, LanguagePlugins;
+  let KotlinAST, KotlinEmitter, KotlinTransformer;
+
 if (typeof require !== 'undefined') {
   // Node.js environment
   const framework = require('./LanguagePlugin.js');
   LanguagePlugin = framework.LanguagePlugin;
   LanguagePlugins = framework.LanguagePlugins;
+
+  // Load new AST pipeline components
+  try {
+    KotlinAST = require('./KotlinAST.js');
+    const emitterModule = require('./KotlinEmitter.js');
+    KotlinEmitter = emitterModule.KotlinEmitter;
+    const transformerModule = require('./KotlinTransformer.js');
+    KotlinTransformer = transformerModule.KotlinTransformer;
+  } catch (e) {
+    // Pipeline components not available - will use legacy mode
+    console.warn('Kotlin AST pipeline components not loaded:', e.message);
+  }
 } else {
   // Browser environment - use globals
   LanguagePlugin = window.LanguagePlugin;
   LanguagePlugins = window.LanguagePlugins;
+  KotlinAST = window.KotlinAST;
+  KotlinEmitter = window.KotlinEmitter;
+  KotlinTransformer = window.KotlinTransformer;
 }
 
 /**
@@ -52,7 +73,8 @@ class KotlinPlugin extends LanguagePlugin {
       useExtensionFunctions: true,
       useCryptoExtensions: true,
       useResultType: true,
-      packageName: 'com.cipher.generated'
+      packageName: 'com.cipher.generated',
+      useAstPipeline: true // Enable new AST pipeline by default
     };
     
     // Internal state
@@ -67,31 +89,85 @@ class KotlinPlugin extends LanguagePlugin {
    */
   GenerateFromAST(ast, options = {}) {
     try {
-      // Reset state for clean generation
-      this.indentLevel = 0;
-      
       // Merge options
       const mergedOptions = { ...this.options, ...options };
-      
+
       // Validate AST
       if (!ast || typeof ast !== 'object') {
         return this.CreateErrorResult('Invalid AST: must be an object');
       }
-      
-      // Generate Kotlin code
-      const code = this._generateNode(ast, mergedOptions);
-      
-      // Add standard imports and package
-      const finalCode = this._wrapWithImports(code, mergedOptions);
-      
+
+      // Check if new AST pipeline is requested and available
+      if (mergedOptions.useAstPipeline && KotlinTransformer && KotlinEmitter) {
+        return this._generateWithAstPipeline(ast, mergedOptions);
+      }
+
+      // Fall back to legacy direct emission
+      return this._generateWithLegacyMode(ast, mergedOptions);
+
+    } catch (error) {
+      return this.CreateErrorResult(`Code generation failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Generate using new AST pipeline (JS AST -> Kotlin AST -> Kotlin Emitter)
+   * @private
+   */
+  _generateWithAstPipeline(jsAst, options) {
+    try {
+      // Transform JS AST to Kotlin AST
+      const transformer = new KotlinTransformer({
+        typeKnowledge: options.typeKnowledge,
+        packageName: options.packageName || 'com.cipher.generated'
+      });
+      const kotlinAst = transformer.transform(jsAst);
+
+      // Emit Kotlin code from Kotlin AST
+      const emitter = new KotlinEmitter({
+        indent: options.indent || '    ',
+        newline: options.lineEnding || '\n'
+      });
+      const code = emitter.emit(kotlinAst);
+
       // Collect dependencies
-      const dependencies = this._collectDependencies(ast, mergedOptions);
-      
+      const dependencies = this._collectDependencies(jsAst, options);
+
+      // Generate warnings
+      const warnings = this._generateWarnings(jsAst, options);
+      warnings.push('Generated using AST pipeline (JS AST -> Kotlin AST -> Emitter)');
+
+      return this.CreateSuccessResult(code, dependencies, warnings);
+    } catch (error) {
+      console.error('AST pipeline failed:', error);
+      // Fall back to legacy mode
+      return this._generateWithLegacyMode(jsAst, options);
+    }
+  }
+
+  /**
+   * Generate using legacy direct emission mode
+   * @private
+   */
+  _generateWithLegacyMode(ast, options) {
+    try {
+      // Reset state for clean generation
+      this.indentLevel = 0;
+
+      // Generate Kotlin code
+      const code = this._generateNode(ast, options);
+
+      // Add standard imports and package
+      const finalCode = this._wrapWithImports(code, options);
+
+      // Collect dependencies
+      const dependencies = this._collectDependencies(ast, options);
+
       // Generate warnings if any
-      const warnings = this._generateWarnings(ast, mergedOptions);
-      
+      const warnings = this._generateWarnings(ast, options);
+
       return this.CreateSuccessResult(finalCode, dependencies, warnings);
-      
+
     } catch (error) {
       return this.CreateErrorResult(`Code generation failed: ${error.message}`);
     }
@@ -275,7 +351,7 @@ class KotlinPlugin extends LanguagePlugin {
   _generateFunction(node, options) {
     const functionName = node.id ? this._toKotlinName(node.id.name) : 'unnamedFunction';
     let code = '';
-    
+
     // KDoc comment
     if (options.addKDoc) {
       code += this._indent('/**\n');
@@ -289,10 +365,14 @@ class KotlinPlugin extends LanguagePlugin {
       code += this._indent(' * @return return value\n');
       code += this._indent(' */\n');
     }
-    
+
+    // Check if function should be inline (if useInlineFunctions option is enabled)
+    const shouldInline = options.useInlineFunctions && this._shouldBeInlineFunction(node);
+    const inlineModifier = shouldInline ? 'inline ' : '';
+
     // Function signature
-    code += this._indent(`fun ${functionName}(`);
-    
+    code += this._indent(`${inlineModifier}fun ${functionName}(`);
+
     // Parameters with types
     if (node.params && node.params.length > 0) {
       const params = node.params.map(param => {
@@ -302,7 +382,7 @@ class KotlinPlugin extends LanguagePlugin {
       });
       code += params.join(', ');
     }
-    
+
     // Return type
     const returnType = this._inferReturnType(functionName);
     code += `): ${returnType} {\n`;
@@ -343,12 +423,16 @@ class KotlinPlugin extends LanguagePlugin {
       code += this._indent(' */\n');
     }
 
+    // Check if class should be a data class (if useDataClasses option is enabled)
+    const isDataClass = options.useDataClasses && this._isDataClassCandidate(node);
+    const dataModifier = isDataClass ? 'data ' : '';
+
     // Class declaration with inheritance
     if (node.superClass) {
       const superName = this._generateNode(node.superClass, options);
-      code += this._indent(`class ${className} : ${superName}() {\n`);
+      code += this._indent(`${dataModifier}class ${className} : ${superName}() {\n`);
     } else {
-      code += this._indent(`class ${className} {\n`);
+      code += this._indent(`${dataModifier}class ${className} {\n`);
     }
 
     // Class body
@@ -467,14 +551,17 @@ class KotlinPlugin extends LanguagePlugin {
           // Use 'val' for constants, 'var' for mutable
           const keyword = node.kind === 'const' ? 'val' : 'var';
 
-          // Try to infer type from the initializer and use type inference when possible
-          if (this._canInferTypeFromInit(decl.init)) {
-            return this._indent(`${keyword} ${varName} = ${initValue}\n`);
-          } else {
+          // strictTypes option: always include type annotation
+          // Otherwise, try to infer type from the initializer and use type inference when possible
+          if (options.strictTypes || !this._canInferTypeFromInit(decl.init)) {
             return this._indent(`${keyword} ${varName}: ${varType} = ${initValue}\n`);
+          } else {
+            return this._indent(`${keyword} ${varName} = ${initValue}\n`);
           }
         } else {
-          return this._indent(`var ${varName}: ${varType}? = null\n`);
+          // Respect nullSafety option when generating nullable types
+          const nullable = options.nullSafety ? '?' : '';
+          return this._indent(`var ${varName}: ${varType}${nullable} = null\n`);
         }
       })
       .join('');
@@ -1303,6 +1390,88 @@ The generated Kotlin code follows modern Kotlin conventions:
            init.type === 'ObjectExpression' ||
            init.type === 'CallExpression' ||
            init.type === 'NewExpression';
+  }
+
+  /**
+   * Check if class is a data class candidate
+   * Data classes in Kotlin are simple data holders with these characteristics:
+   * - No inheritance (or only inherits from interfaces)
+   * - Primary purpose is holding data (mostly properties, minimal methods)
+   * - No complex logic in methods
+   * @private
+   */
+  _isDataClassCandidate(node) {
+    // Data classes cannot inherit from other classes (only interfaces)
+    if (node.superClass) {
+      return false;
+    }
+
+    // Need class body to analyze
+    if (!node.body || !node.body.body || node.body.body.length === 0) {
+      return false;
+    }
+
+    const members = node.body.body;
+    let propertyCount = 0;
+    let methodCount = 0;
+    let constructorCount = 0;
+
+    for (const member of members) {
+      if (member.type === 'PropertyDefinition' || member.type === 'ClassProperty') {
+        propertyCount++;
+      } else if (member.type === 'MethodDefinition') {
+        if (member.key && member.key.name === 'constructor') {
+          constructorCount++;
+        } else {
+          methodCount++;
+        }
+      }
+    }
+
+    // Heuristic: Class is a data class candidate if:
+    // 1. Has at least one property
+    // 2. Has few or no methods (allow up to 2 simple methods like toString/equals)
+    // 3. Has a constructor
+    return propertyCount > 0 && methodCount <= 2 && constructorCount <= 1;
+  }
+
+  /**
+   * Check if function should be marked as inline
+   * Inline functions in Kotlin are beneficial when:
+   * - Function has lambda parameters (to avoid lambda allocation overhead)
+   * - Function is small and called frequently
+   * - Function uses reified type parameters
+   * @private
+   */
+  _shouldBeInlineFunction(node) {
+    // Check if function has any lambda/function parameters
+    if (!node.params || node.params.length === 0) {
+      return false;
+    }
+
+    // Look for parameters that might be lambda functions
+    // In JavaScript AST, this is tricky - we check parameter names and usage
+    for (const param of node.params) {
+      const paramName = param.name || '';
+      // Heuristic: parameters with names suggesting lambda/callback usage
+      if (paramName.toLowerCase().includes('callback') ||
+          paramName.toLowerCase().includes('lambda') ||
+          paramName.toLowerCase().includes('block') ||
+          paramName.toLowerCase().includes('action') ||
+          paramName.toLowerCase().includes('predicate') ||
+          paramName.toLowerCase().includes('transform')) {
+        return true;
+      }
+    }
+
+    // Check function body for lambda invocations
+    if (node.body && node.body.type === 'BlockStatement') {
+      // Simple heuristic: if body is very small (1-3 statements), might benefit from inlining
+      const statementCount = node.body.body ? node.body.body.length : 0;
+      return statementCount > 0 && statementCount <= 3;
+    }
+
+    return false;
   }
 
 

@@ -825,14 +825,14 @@ class PHPPlugin extends LanguagePlugin {
   _generateClass(node, options) {
     const className = node.id ? node.id.name : 'UnnamedClass';
     let code = '';
-    
+
     // DocBlock for class
     if (options.addDocBlocks) {
       code += this._indent('/**\n');
       code += this._indent(` * ${className} class\n`);
       code += this._indent(' */\n');
     }
-    
+
     // Class declaration with inheritance
     if (node.superClass) {
       const superName = this._generateNode(node.superClass, options);
@@ -840,22 +840,61 @@ class PHPPlugin extends LanguagePlugin {
     } else {
       code += this._indent(`class ${className}\n`);
     }
-    
+
     code += this._indent('{\n');
-    
+
     // Class body
     this.indentLevel++;
-    if (node.body && node.body.length > 0) {
-      const methods = node.body
+
+    // Extract and generate property declarations from constructor
+    const properties = this._extractPropertiesFromConstructor(node);
+    if (properties.length > 0) {
+      for (const prop of properties) {
+        code += this._indent(`private $${prop.name};\n`);
+      }
+      code += '\n';
+    }
+
+    if (node.body && node.body.body && node.body.body.length > 0) {
+      const methods = node.body.body
         .map(method => this._generateNode(method, options))
         .filter(m => m.trim());
       code += methods.join('\n\n');
     }
     this.indentLevel--;
-    
+
     code += this._indent('}\n');
-    
+
     return code;
+  }
+
+  /**
+   * Extract property names from constructor body (this.x = ... patterns)
+   * @private
+   */
+  _extractPropertiesFromConstructor(classNode) {
+    const properties = [];
+    const bodyMembers = classNode.body?.body || classNode.body || [];
+
+    for (const member of bodyMembers) {
+      if (member.type === 'MethodDefinition' &&
+          (member.key?.name === 'constructor' || member.kind === 'constructor')) {
+        const constructorBody = member.value?.body?.body || [];
+        for (const stmt of constructorBody) {
+          if (stmt.type === 'ExpressionStatement' &&
+              stmt.expression?.type === 'AssignmentExpression' &&
+              stmt.expression.left?.type === 'MemberExpression' &&
+              stmt.expression.left.object?.type === 'ThisExpression') {
+            const propName = stmt.expression.left.property?.name;
+            if (propName && !properties.find(p => p.name === propName)) {
+              properties.push({ name: propName });
+            }
+          }
+        }
+        break;
+      }
+    }
+    return properties;
   }
 
   /**
@@ -890,16 +929,30 @@ class PHPPlugin extends LanguagePlugin {
     // Method signature
     const phpMethodName = isConstructor ? '__construct' : this._toPHPName(methodName);
     code += this._indent(`public function ${phpMethodName}(`);
-    
-    // Parameters
+
+    // Parameters with constructor promotion support
     if (node.value.params && node.value.params.length > 0) {
       const params = node.value.params.map(param => {
         const paramName = param.name || 'param';
+        let paramStr = '';
+
+        // Check if this is a constructor with promotion enabled
+        if (isConstructor && options.useConstructorPromotion && this._isPromotableParam(param, node)) {
+          // Add visibility modifier for promoted properties
+          const visibility = this._getParamVisibility(param) || 'private';
+          paramStr = `${visibility} `;
+        }
+
+        // Add type hint
         if (options.addTypeHints) {
           const typeHint = this._inferPHPTypeHint(paramName);
-          return typeHint ? `${typeHint} $${paramName}` : `$${paramName}`;
+          if (typeHint) {
+            paramStr += `${typeHint} `;
+          }
         }
-        return `$${paramName}`;
+
+        paramStr += `$${paramName}`;
+        return paramStr;
       });
       code += params.join(', ');
     }
@@ -913,9 +966,15 @@ class PHPPlugin extends LanguagePlugin {
     }
     
     code += '\n' + this._indent('{\n');
-    
+
     // Method body
     this.indentLevel++;
+
+    // Add input validation if enabled
+    if (options.enableInputValidation && node.value.params && node.value.params.length > 0) {
+      code += this._generateInputValidation(node.value.params, options);
+    }
+
     if (node.value.body) {
       const bodyCode = this._generateNode(node.value.body, options);
       code += bodyCode || (isConstructor ? '' : this._indent("return null;\n"));
@@ -1102,7 +1161,7 @@ class PHPPlugin extends LanguagePlugin {
     }
 
     // Map common JavaScript functions to PHP equivalents
-    const mappedFunction = this._mapJSFunctionToPHP(functionName);
+    const mappedFunction = this._mapJSFunctionToPHP(functionName, options);
     return `${mappedFunction}(${args})`;
   }
 
@@ -1114,6 +1173,18 @@ class PHPPlugin extends LanguagePlugin {
     const object = this._generateNode(node.callee.object, options);
     const method = node.callee.property.name || node.callee.property;
     const args = this._generateArguments(node.arguments || [], options);
+
+    // Handle array.push() - convert to PHP array append or array_push
+    if (method === 'push') {
+      // If single argument, use $array[] = value syntax
+      if (node.arguments && node.arguments.length === 1) {
+        const value = this._generateNode(node.arguments[0], options);
+        return `${object}[] = ${value}`;
+      } else if (node.arguments && node.arguments.length > 1) {
+        // Multiple arguments, use array_push
+        return `array_push(${object}, ${args})`;
+      }
+    }
 
     // Handle static method calls
     if (node.callee.object.type === 'Identifier' &&
@@ -1161,7 +1232,7 @@ class PHPPlugin extends LanguagePlugin {
    * Map JavaScript functions to PHP equivalents
    * @private
    */
-  _mapJSFunctionToPHP(functionName) {
+  _mapJSFunctionToPHP(functionName, options = null) {
     const jsToPhpMap = {
       // Array functions
       'push': 'array_push',
@@ -1198,7 +1269,8 @@ class PHPPlugin extends LanguagePlugin {
       'abs': 'abs',
       'min': 'min',
       'max': 'max',
-      'random': 'rand',
+      // Use secure random when enabled (random_int for crypto-safe randomness)
+      'random': (options && options.useSecureRandom) ? 'random_int' : 'rand',
 
       // Object functions
       'hasOwnProperty': 'property_exists',
@@ -1233,6 +1305,13 @@ class PHPPlugin extends LanguagePlugin {
    */
   _generateMemberExpression(node, options) {
     const object = this._generateNode(node.object, options);
+    const propName = node.property.name || node.property;
+
+    // Handle special JavaScript properties
+    if (!node.computed && propName === 'length') {
+      // Convert array.length to count($array)
+      return `count(${object})`;
+    }
 
     // Handle computed vs non-computed property access
     let property;
@@ -1240,8 +1319,6 @@ class PHPPlugin extends LanguagePlugin {
       const prop = this._generateNode(node.property, options);
       property = `[${prop}]`;
     } else {
-      const propName = node.property.name || node.property;
-
       // Handle static property access
       if (this._isStaticAccess(node)) {
         property = `::$${propName}`;
@@ -1981,25 +2058,79 @@ class PHPPlugin extends LanguagePlugin {
     if (!code) return '';
 
     const indentStr = this.options.indent.repeat(this.indentLevel);
+    const lineEnding = this.options.lineEnding || '\n';
+
     return code.split('\n').map(line => {
       const trimmed = line.trim();
       if (!trimmed) return '';
       return indentStr + trimmed;
-    }).join('\n');
+    }).join(lineEnding);
+  }
+
+  /**
+   * Append line ending based on options
+   * @private
+   */
+  _lineEnd() {
+    return this.options.lineEnding || '\n';
+  }
+
+  /**
+   * Wrap long lines based on maxLineLength option
+   * @private
+   */
+  _wrapLine(code, options = null) {
+    const opts = options || this.options;
+    if (!opts.maxLineLength || !code) return code;
+
+    const maxLength = opts.maxLineLength;
+    const lines = code.split('\n');
+    const wrappedLines = [];
+
+    for (const line of lines) {
+      if (line.length <= maxLength) {
+        wrappedLines.push(line);
+        continue;
+      }
+
+      // Simple wrapping at commas, operators, or spaces
+      let currentLine = '';
+      const words = line.split(/(\s+|,\s*|\s*\|\|\s*|\s*&&\s*|\s*\.\s*)/);
+
+      for (const word of words) {
+        if (currentLine.length + word.length > maxLength && currentLine.length > 0) {
+          wrappedLines.push(currentLine);
+          currentLine = this.options.indent.repeat(this.indentLevel + 1) + word.trim();
+        } else {
+          currentLine += word;
+        }
+      }
+
+      if (currentLine) {
+        wrappedLines.push(currentLine);
+      }
+    }
+
+    return wrappedLines.join(this._lineEnd());
   }
 
   /**
    * Get visibility modifier
    * @private
    */
-  _getVisibility(node, defaultVisibility = 'public') {
-    if (node.accessibility) {
-      return node.accessibility;
+  _getVisibility(node, defaultVisibility = 'public', options = null) {
+    // Return empty string if visibility modifiers are disabled
+    if (options && !options.addVisibilityModifiers) {
+      return '';
     }
-    if (node.kind === 'private') return 'private';
-    if (node.kind === 'protected') return 'protected';
-    if (node.kind === 'public') return 'public';
-    return defaultVisibility;
+
+    if (node.accessibility) {
+      return node.accessibility + ' ';
+    }
+    if (node.kind === 'private') return 'private ';
+    if (node.kind === 'protected') return 'protected ';
+    if (node.kind === 'public') return 'public ';
+    return defaultVisibility + ' ';
   }
 
   /**
@@ -2008,6 +2139,48 @@ class PHPPlugin extends LanguagePlugin {
    */
   _isStatic(node) {
     return node.static === true;
+  }
+
+  /**
+   * Check if parameter can be promoted in constructor (PHP 8.0+)
+   * @private
+   */
+  _isPromotableParam(param, constructorNode) {
+    if (!param || !constructorNode) return false;
+
+    const paramName = param.name || param.argument?.name;
+    if (!paramName) return false;
+
+    // Check if parameter is assigned to a property in constructor body
+    const body = constructorNode.value?.body?.body || [];
+    const hasPropertyAssignment = body.some(stmt => {
+      if (stmt.type === 'ExpressionStatement' &&
+          stmt.expression?.type === 'AssignmentExpression' &&
+          stmt.expression.left?.type === 'MemberExpression' &&
+          stmt.expression.left.object?.type === 'ThisExpression' &&
+          stmt.expression.left.property?.name === paramName &&
+          stmt.expression.right?.type === 'Identifier' &&
+          stmt.expression.right.name === paramName) {
+        return true;
+      }
+      return false;
+    });
+
+    return hasPropertyAssignment;
+  }
+
+  /**
+   * Get visibility modifier for promoted parameter
+   * @private
+   */
+  _getParamVisibility(param) {
+    // Check if parameter has visibility hints
+    if (param.accessibility) {
+      return param.accessibility;
+    }
+
+    // Default to private for promoted properties
+    return 'private';
   }
 
   /**
@@ -2636,7 +2809,7 @@ class PHPPlugin extends LanguagePlugin {
     }
 
     // Property declaration
-    const visibility = this._getVisibility(node, 'private');
+    const visibility = this._getVisibility(node, 'private', options);
     const modifiers = this._getPropertyModifiers(node, options);
     const typeHint = options.addPropertyTypes ? this._getPropertyTypeHint(node, options) : '';
 
@@ -2704,15 +2877,29 @@ class PHPPlugin extends LanguagePlugin {
       'mixed': options.useUnionTypes ? 'mixed' : ''
     };
 
-    // Handle union types
-    if (docType.includes('|')) {
-      const types = docType.split('|').map(t => t.trim());
-      const mappedTypes = types.map(t => typeMap[t] || '').filter(t => t);
+    // Handle union types (|) and intersection types (&)
+    if (docType.includes('|') || docType.includes('&')) {
+      // Check for intersection types (PHP 8.1+)
+      if (docType.includes('&') && options.useIntersectionTypes) {
+        const types = docType.split('&').map(t => t.trim());
+        const mappedTypes = types.map(t => typeMap[t] || t).filter(t => t);
 
-      if (mappedTypes.length === 0) return '';
-      if (mappedTypes.length === 1) return mappedTypes[0];
+        if (mappedTypes.length === 0) return '';
+        if (mappedTypes.length === 1) return mappedTypes[0];
 
-      return options.useUnionTypes ? mappedTypes.join('|') : mappedTypes[0];
+        return mappedTypes.join('&');
+      }
+
+      // Handle union types
+      if (docType.includes('|')) {
+        const types = docType.split('|').map(t => t.trim());
+        const mappedTypes = types.map(t => typeMap[t] || '').filter(t => t);
+
+        if (mappedTypes.length === 0) return '';
+        if (mappedTypes.length === 1) return mappedTypes[0];
+
+        return options.useUnionTypes ? mappedTypes.join('|') : mappedTypes[0];
+      }
     }
 
     return typeMap[docType] || '';
@@ -2792,6 +2979,79 @@ class PHPPlugin extends LanguagePlugin {
     }
 
     return code;
+  }
+
+  /**
+   * Generate input validation for function parameters
+   * @private
+   */
+  _generateInputValidation(params, options) {
+    if (!params || params.length === 0) return '';
+
+    let code = '';
+    for (const param of params) {
+      const paramName = param.name || param.argument?.name || 'param';
+      const typeHint = this._inferPHPTypeHint(paramName);
+
+      // Generate validation based on inferred type
+      if (typeHint === 'string') {
+        code += this._indent(`if (!is_string($${paramName})) {\n`);
+        this.indentLevel++;
+        code += this._indent(`throw new \\InvalidArgumentException('${paramName} must be a string');\n`);
+        this.indentLevel--;
+        code += this._indent(`}\n`);
+      } else if (typeHint === 'int') {
+        code += this._indent(`if (!is_int($${paramName})) {\n`);
+        this.indentLevel++;
+        code += this._indent(`throw new \\InvalidArgumentException('${paramName} must be an integer');\n`);
+        this.indentLevel--;
+        code += this._indent(`}\n`);
+      } else if (typeHint === 'array') {
+        code += this._indent(`if (!is_array($${paramName})) {\n`);
+        this.indentLevel++;
+        code += this._indent(`throw new \\InvalidArgumentException('${paramName} must be an array');\n`);
+        this.indentLevel--;
+        code += this._indent(`}\n`);
+      }
+    }
+
+    if (code) {
+      code += '\n';
+    }
+
+    return code;
+  }
+
+  /**
+   * Generate parameters for functions/methods
+   * @private
+   */
+  _generateParameters(params, options) {
+    if (!params || params.length === 0) return '';
+
+    return params.map(param => {
+      const paramName = param.name || param.argument?.name || 'param';
+      let paramStr = '';
+
+      // Type hint
+      if (options.addParameterTypes || options.addTypeHints) {
+        const typeHint = this._inferPHPTypeHint(paramName);
+        if (typeHint) {
+          paramStr += `${typeHint} `;
+        }
+      }
+
+      // Parameter name
+      paramStr += `$${paramName}`;
+
+      // Default value
+      if (param.default || param.right) {
+        const defaultValue = this._generateNode(param.default || param.right, options);
+        paramStr += ` = ${defaultValue}`;
+      }
+
+      return paramStr;
+    }).join(', ');
   }
 
   /**
@@ -3219,7 +3479,63 @@ class PHPPlugin extends LanguagePlugin {
     const consequent = this._generateNode(node.consequent, options);
     const alternate = this._generateNode(node.alternate, options);
 
+    // Use null coalescing operator (??) for isset/null checks when enabled
+    if (options.useNullCoalescing && this._isNullCheck(node.test)) {
+      // Pattern: x !== null ? x : y  =>  x ?? y
+      // Pattern: isset(x) ? x : y  =>  x ?? y
+      const variable = this._extractVariableFromNullCheck(node.test);
+      if (variable && consequent.includes(variable)) {
+        return `${variable} ?? ${alternate}`;
+      }
+    }
+
     return `${test} ? ${consequent} : ${alternate}`;
+  }
+
+  /**
+   * Check if expression is a null/isset check
+   * @private
+   */
+  _isNullCheck(node) {
+    if (!node) return false;
+
+    // Check for !== null, === null patterns
+    if (node.type === 'BinaryExpression' &&
+        (node.operator === '!==' || node.operator === '!==' ||
+         node.operator === '===' || node.operator === '==')) {
+      return node.left?.type === 'Literal' && node.left.value === null ||
+             node.right?.type === 'Literal' && node.right.value === null;
+    }
+
+    // Check for isset() call pattern
+    if (node.type === 'CallExpression' &&
+        node.callee?.name === 'isset') {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Extract variable name from null check expression
+   * @private
+   */
+  _extractVariableFromNullCheck(node) {
+    if (node.type === 'BinaryExpression') {
+      const variable = node.left?.type === 'Literal' ? node.right : node.left;
+      if (variable?.type === 'Identifier') {
+        return '$' + variable.name;
+      }
+    }
+
+    if (node.type === 'CallExpression' && node.callee?.name === 'isset') {
+      const arg = node.arguments?.[0];
+      if (arg?.type === 'Identifier') {
+        return '$' + arg.name;
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -3328,34 +3644,62 @@ class PHPPlugin extends LanguagePlugin {
    */
   _generateArrayExpression(node, options) {
     if (!node.elements || node.elements.length === 0) {
-      return '[]';
+      return options.useShortArraySyntax ? '[]' : 'array()';
     }
 
     const isMultiline = node.elements.length > 5 ||
                        node.elements.some(el => el?.type === 'ArrayExpression' || el?.type === 'ObjectExpression');
 
-    if (isMultiline) {
-      let code = '[\n';
-      this.indentLevel++;
+    if (options.useShortArraySyntax) {
+      // Modern PHP 5.4+ short array syntax
+      if (isMultiline) {
+        let code = '[\n';
+        this.indentLevel++;
 
-      const elements = node.elements.map((element, index) => {
-        if (element === null) {
-          return this._indent('null');
-        }
-        return this._indent(this._generateNode(element, options));
-      });
+        const elements = node.elements.map((element, index) => {
+          if (element === null) {
+            return this._indent('null');
+          }
+          return this._indent(this._generateNode(element, options));
+        });
 
-      code += elements.join(',\n');
+        code += elements.join(',\n');
 
-      this.indentLevel--;
-      code += '\n' + this._indent(']');
-      return code;
+        this.indentLevel--;
+        code += '\n' + this._indent(']');
+        return code;
+      } else {
+        const elements = node.elements.map(element => {
+          if (element === null) return 'null';
+          return this._generateNode(element, options);
+        });
+        return `[${elements.join(', ')}]`;
+      }
     } else {
-      const elements = node.elements.map(element => {
-        if (element === null) return 'null';
-        return this._generateNode(element, options);
-      });
-      return `[${elements.join(', ')}]`;
+      // Legacy PHP array() syntax
+      if (isMultiline) {
+        let code = 'array(\n';
+        this.indentLevel++;
+
+        const elements = node.elements.map((element, index) => {
+          if (element === null) {
+            return this._indent('null');
+          }
+          return this._indent(this._generateNode(element, options));
+        });
+
+        code += elements.join(',\n');
+
+        this.indentLevel--;
+        code += '\n' + this._indent(')');
+        return code;
+      } else {
+        const elements = node.elements.map(element => {
+          if (element === null) return 'null';
+          return this._generateNode(element, options);
+        });
+        return `array(${elements.join(', ')})`;
+      }
     }
   }
 
