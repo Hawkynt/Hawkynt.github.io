@@ -480,9 +480,8 @@
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
-      // NOTE: Using the embedded ForkSkinny-128-256 from paef-forkskinny.js
-      // instead of the registered one due to a bug in the registered version
-      this.mode = new PAEFMode(16, 14, 2, 32, "ForkSkinny-128-256-Embedded");
+      // Use the registered ForkSkinny-128-256 algorithm
+      this.mode = new PAEFMode(16, 14, 2, 32, "ForkSkinny-128-256");
       this._key = null;
       this._nonce = null;
       this._ad = [];
