@@ -611,9 +611,9 @@ body {
     z-index: 10;
 }
 
-/* Show overlay on hover or drag */
-.textarea-container:hover .drop-overlay,
-.textarea-container.drag-active .drop-overlay {
+/* Show overlay on hover or drag - only when textarea is empty */
+.textarea-container.textarea-empty:hover .drop-overlay,
+.textarea-container.textarea-empty.drag-active .drop-overlay {
     opacity: 1;
 }
 
@@ -759,11 +759,37 @@ body {
 
 .select {
     padding: 0.5rem 1rem;
-    border: 1px solid #e2e8f0;
+    border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 6px;
     font-size: 0.875rem;
-    background: white;
+    background: rgba(30, 30, 50, 0.95);
+    color: #e2e8f0;
     cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.select:hover {
+    border-color: rgba(116, 192, 255, 0.5);
+    background: rgba(40, 40, 60, 0.95);
+}
+
+.select:focus {
+    border-color: #74c0ff;
+    box-shadow: 0 0 0 3px rgba(116, 192, 255, 0.15);
+    outline: none;
+}
+
+.select option {
+    background: #1e1e32;
+    color: #e2e8f0;
+    padding: 0.5rem;
+}
+
+.select optgroup {
+    background: #252540;
+    color: #a0aec0;
+    font-weight: 600;
+    padding: 0.25rem 0;
 }
 
 /* Category-colored optgroups */
