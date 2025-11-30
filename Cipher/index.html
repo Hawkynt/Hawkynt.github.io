@@ -882,6 +882,70 @@
                                     </div>
                                 </div>
 
+                                <!-- PRNG Settings Block (for Random Number Generators) -->
+                                <div class="cipher-block" id="output-size-block" style="display: none;">
+                                    <div class="block-separator"></div>
+                                    <h4 class="block-title">
+                                        <span class="block-title-icon">🎲</span>
+                                        PRNG Settings
+                                    </h4>
+
+                                    <!-- Output Size -->
+                                    <div style="margin-bottom: 0.75rem;">
+                                        <label style="font-size: 0.8rem; font-weight: 600; color: #a0aec0; margin-bottom: 0.25rem; display: block;">Output Size</label>
+                                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                            <input type="number" class="search-input" id="prng-output-size" value="32" min="1" max="10000" style="flex: 1;">
+                                            <span style="color: rgba(255, 255, 255, 0.6); font-size: 0.875rem;">bytes</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Seed Expansion (if input too short) -->
+                                    <div class="kdf-subblock" style="margin-bottom: 0.75rem;">
+                                        <label style="font-size: 0.8rem; font-weight: 600; color: #a0aec0; margin-bottom: 0.25rem; display: block;">
+                                            📈 If Seed Too Short
+                                        </label>
+                                        <select class="select" id="prng-seed-expansion" style="margin-bottom: 0.5rem;">
+                                            <option value="error">Error (require exact size)</option>
+                                            <option value="builtin-repeat">Repeat input bytes</option>
+                                            <option value="builtin-zero">Pad with zeros</option>
+                                            <option value="builtin-splitmix">SplitMix64 expansion</option>
+                                            <!-- KDF algorithms will be populated dynamically -->
+                                        </select>
+                                        <div id="prng-expansion-parameters" style="display: none;">
+                                            <!-- KDF parameters populated dynamically -->
+                                            <div id="prng-expansion-salt-container" style="margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; display: block;">Salt:</label>
+                                                <input type="text" class="search-input" id="prng-expansion-salt" placeholder="Optional salt..." style="width: 100%;">
+                                            </div>
+                                            <div id="prng-expansion-iterations-container" style="display: none; margin-bottom: 0.5rem;">
+                                                <label style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.6); margin-bottom: 0.25rem; display: block;">Iterations:</label>
+                                                <input type="number" class="search-input" id="prng-expansion-iterations" value="1000" min="1" style="width: 100%;">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Seed Reduction (if input too long) -->
+                                    <div class="kdf-subblock" style="margin-bottom: 0.5rem;">
+                                        <label style="font-size: 0.8rem; font-weight: 600; color: #a0aec0; margin-bottom: 0.25rem; display: block;">
+                                            📉 If Seed Too Long
+                                        </label>
+                                        <select class="select" id="prng-seed-reduction" style="margin-bottom: 0.5rem;">
+                                            <option value="error">Error (require exact size)</option>
+                                            <option value="builtin-truncate">Truncate (first N bytes)</option>
+                                            <option value="builtin-xorfold">XOR fold</option>
+                                            <option value="builtin-splitmix">SplitMix64 mixing</option>
+                                            <!-- Hash algorithms will be populated dynamically -->
+                                        </select>
+                                        <div id="prng-reduction-parameters" style="display: none;">
+                                            <!-- Hash parameters populated dynamically -->
+                                        </div>
+                                    </div>
+
+                                    <div style="margin-top: 0.5rem; font-size: 0.75rem; color: rgba(255, 255, 255, 0.5); padding: 0.5rem; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                                        💡 Input is used as seed. Required size: <span id="prng-required-seed-size">varies by algorithm</span>
+                                    </div>
+                                </div>
+
                                 <!-- ===== ACTIONS SECTION ===== -->
                                 <div class="section-separator"></div>
                                 <div class="section-header-block">
@@ -1197,7 +1261,37 @@
     
     <!-- Language Plugin Framework -->
     <script src="./codingplugins/LanguagePlugin.js"></script>
-    
+
+    <!-- Language AST Definitions (must load before transformers/emitters) -->
+    <script src="./codingplugins/CSharpAST.js"></script>
+    <script src="./codingplugins/PythonAST.js"></script>
+    <script src="./codingplugins/JavaAST.js"></script>
+    <script src="./codingplugins/GoAST.js"></script>
+    <script src="./codingplugins/RustAST.js"></script>
+    <script src="./codingplugins/CppAST.js"></script>
+    <script src="./codingplugins/TypeScriptAST.js"></script>
+    <script src="./codingplugins/KotlinAST.js"></script>
+
+    <!-- Language Transformers (JS AST -> Language AST) -->
+    <script src="./codingplugins/CSharpTransformer.js"></script>
+    <script src="./codingplugins/PythonTransformer.js"></script>
+    <script src="./codingplugins/JavaTransformer.js"></script>
+    <script src="./codingplugins/GoTransformer.js"></script>
+    <script src="./codingplugins/RustTransformer.js"></script>
+    <script src="./codingplugins/CppTransformer.js"></script>
+    <script src="./codingplugins/TypeScriptTransformer.js"></script>
+    <script src="./codingplugins/KotlinTransformer.js"></script>
+
+    <!-- Language Emitters (Language AST -> Code) -->
+    <script src="./codingplugins/CSharpEmitter.js"></script>
+    <script src="./codingplugins/PythonEmitter.js"></script>
+    <script src="./codingplugins/JavaEmitter.js"></script>
+    <script src="./codingplugins/GoEmitter.js"></script>
+    <script src="./codingplugins/RustEmitter.js"></script>
+    <script src="./codingplugins/CppEmitter.js"></script>
+    <script src="./codingplugins/TypeScriptEmitter.js"></script>
+    <script src="./codingplugins/KotlinEmitter.js"></script>
+
     <!-- Language Plugins -->
     <script src="./codingplugins/python.js"></script>
     <script src="./codingplugins/perl.js"></script>
@@ -1212,13 +1306,9 @@
     <script src="./codingplugins/java.js"></script>
     <script src="./codingplugins/csharp.js"></script>
     <script src="./codingplugins/ruby.js"></script>
-    <script src="./codingplugins/freebasic.js"></script>
     <script src="./codingplugins/c.js"></script>
     <script src="./codingplugins/cpp.js"></script>
 
-    <!-- Infrastructure Generator (uses all coding plugins) -->
-    <script src="./infrastructure-generator.js"></script>
-        
     <script src="./algorithms/asymmetric/bike.js"></script>
     <script src="./algorithms/asymmetric/classic-mceliece.js"></script>
     <script src="./algorithms/asymmetric/cross.js"></script>
@@ -1248,7 +1338,7 @@
     <script src="./algorithms/asymmetric/slh-dsa.js"></script>
     <script src="./algorithms/asymmetric/sphincs-plus.js"></script>
     <script src="./algorithms/asymmetric/sqisign.js"></script>
-    <script src="./algorithms/asymmetric/schnorr.js"></script>
+    <!-- schnorr.js depends on SHA-256, moved to load after hash/sha256.js -->
     <script src="./algorithms/asymmetric/x25519.js"></script>
     <script src="./algorithms/aead/grain128aead.js"></script>
     <script src="./algorithms/aead/saturnin.js"></script>
@@ -1275,15 +1365,11 @@
     <script src="./algorithms/aead/spoc.js"></script>
     <script src="./algorithms/aead/spook.js"></script>
     <script src="./algorithms/aead/sundae-gift.js"></script>
-    <script src="./algorithms/aead/oribatida-256-64.js"></script>
+    <script src="./algorithms/aead/oribatida.js"></script>
     <script src="./algorithms/aead/locus-aead.js"></script>
     <script src="./algorithms/aead/pyjamask96.js"></script>
     <script src="./algorithms/aead/ascon.js"></script>
-    <script src="./algorithms/aead/ascon128.js"></script>
-    <script src="./algorithms/aead/ascon128a.js"></script>
-    <script src="./algorithms/aead/ascon80pq.js"></script>
     <script src="./algorithms/aead/deoxys-ii.js"></script>
-    <script src="./algorithms/aead/drygascon128.js"></script>
     <script src="./algorithms/aead/ketje.js"></script>
     <script src="./algorithms/aead/keyak.js"></script>
     <script src="./algorithms/aead/paef-forkskinny.js"></script>
@@ -1380,7 +1466,7 @@
     <script src="./algorithms/block/xxtea.js"></script>
     <script src="./algorithms/checksum/aba-routing.js"></script>
     <script src="./algorithms/checksum/adler.js"></script>
-    <script src="./algorithms/checksum/berger-code.js"></script>
+    <script src="./algorithms/ecc/berger-code.js"></script>
     <script src="./algorithms/checksum/bsd-checksum.js"></script>
     <script src="./algorithms/checksum/check-digit.js"></script>
     <script src="./algorithms/checksum/constant-weight.js"></script>
@@ -1513,7 +1599,6 @@
     <script src="./algorithms/compression/rle.js"></script>
     <script src="./algorithms/compression/rolz.js"></script>
     <script src="./algorithms/compression/shannon-fano.js"></script>
-    <script src="./algorithms/compression/shoco.js"></script>
     <script src="./algorithms/compression/Shoco.js"></script>
     <script src="./algorithms/compression/snappy.js"></script>
     <script src="./algorithms/compression/suffix-tree.js"></script>
@@ -1638,9 +1723,9 @@
     <script src="./algorithms/encoding/xxencode.js"></script>
     <script src="./algorithms/encoding/yenc.js"></script>
     <script src="./algorithms/encoding/z85.js"></script>
-    <script src="./algorithms/hash/argon2.js"></script>
+    <script src="./algorithms/kdf/argon2.js"></script>
     <script src="./algorithms/hash/ascon-hash.js"></script>
-    <script src="./algorithms/hash/bcrypt.js"></script>
+    <script src="./algorithms/kdf/bcrypt.js"></script>
     <script src="./algorithms/hash/blake.js"></script>
     <script src="./algorithms/hash/blake2.js"></script>
     <script src="./algorithms/hash/blake3-enhanced.js"></script>
@@ -1660,6 +1745,7 @@
     <script src="./algorithms/hash/ripemd.js"></script>
     <script src="./algorithms/hash/sha1.js"></script>
     <script src="./algorithms/hash/sha256.js"></script>
+    <script src="./algorithms/asymmetric/schnorr.js"></script><!-- depends on SHA-256 -->
     <script src="./algorithms/hash/sha512.js"></script>
     <script src="./algorithms/hash/sha3.js"></script>
     <script src="./algorithms/hash/shake.js"></script>
@@ -1683,12 +1769,11 @@
     <script src="./algorithms/hash/gost3411.js"></script>
     <script src="./algorithms/hash/isap-hash.js"></script>
     <script src="./algorithms/hash/kangaroo.js"></script>
-    <script src="./algorithms/hash/knot-hash-256-256.js"></script>
+    <script src="./algorithms/hash/knot-hash.js"></script>
     <script src="./algorithms/hash/keccak.js"></script>
     <script src="./algorithms/hash/kupyna.js"></script>
     <script src="./algorithms/hash/lsh.js"></script>
-    <script src="./algorithms/hash/panama-be.js"></script>
-    <script src="./algorithms/hash/panama-le.js"></script>
+    <script src="./algorithms/hash/panama.js"></script>
     <script src="./algorithms/hash/parallelhash.js"></script>
     <script src="./algorithms/hash/photon-beetle-hash.js"></script>
     <script src="./algorithms/hash/sm3.js"></script>
@@ -1862,13 +1947,13 @@
     <script src="./algorithms/special/3way.js"></script>
     <script src="./algorithms/special/aes-siv.js"></script>
     <script src="./algorithms/aead/chacha20-poly1305.js"></script>
-    <script src="./algorithms/special/elephant.js"></script>
+    <!-- elephant.js is in aead/, already loaded above -->
     <script src="./algorithms/special/fiat-shamir.js"></script>
     <script src="./algorithms/special/fish.js"></script>
     <script src="./algorithms/special/gimli.js"></script>
     <script src="./algorithms/special/shamir-secret-sharing.js"></script>
     <script src="./algorithms/special/time-lock-puzzle.js"></script>
-    <script src="./algorithms/special/tinyjambu.js"></script>
+    <!-- tinyjambu.js is in aead/, already loaded above -->
     <script src="./algorithms/special/xchacha20-poly1305.js"></script>
     <script src="./algorithms/special/rc2wrap.js"></script>
 
@@ -1888,7 +1973,7 @@
     <script src="./algorithms/stream/geffe.js"></script>
     <script src="./algorithms/stream/grain.js"></script><!-- Grain v1 and Grain-128 consolidated -->
     <script src="./algorithms/stream/hc.js"></script>
-    <script src="./algorithms/stream/isaac.js"></script>
+    <script src="./algorithms/random/isaac.js"></script>
     <script src="./algorithms/stream/leviathan.js"></script>
     <script src="./algorithms/stream/mickey.js"></script><!-- MICKEY and MICKEY-128 consolidated -->
     <script src="./algorithms/stream/miller.js"></script>
@@ -1922,7 +2007,7 @@
     <script src="./algorithms/stream/sober128.js"></script>
     <script src="./algorithms/stream/vmpc.js"></script>
     <script src="./algorithms/stream/vmpcksa3.js"></script>
-    <script src="./algorithms/stream/wage.js"></script>
+    <script src="./algorithms/aead/wage.js"></script>
 
     <!-- Application Models -->
     <script src="index.models.algorithms.js"></script>
