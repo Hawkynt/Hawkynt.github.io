@@ -748,10 +748,13 @@
       mixData[12] = data[15] ^ ds;
       mixData[13] = ds >>> 10;
 
-      for (let i = 0; i < 14; ++i) {
+      // Mix rounds 0-12 followed by coreRound(0), then final mix round 13 without coreRound
+      for (let i = 0; i < 13; ++i) {
         this.mixPhaseRound(mixData[i] & 0x3FF);
         this.c.coreRound(0);
       }
+      // Final mix round (ds >> 10) without coreRound after
+      this.mixPhaseRound(mixData[13] & 0x3FF);
     }
 
     mixPhaseRound(data) {
@@ -769,41 +772,13 @@
     }
 
     g() {
+      // First round: compute and ASSIGN to r
       this.c.coreRound(0);
 
-      const w0 = (this.c.S[0][0] ^ this.c.S[2][1]) >>> 0;
-      const w1 = (this.c.S[0][1] ^ this.c.S[3][0]) >>> 0;
-      const w2 = (this.c.S[1][0] ^ this.c.S[3][1]) >>> 0;
-      const w3 = (this.c.S[1][1] ^ this.c.S[2][0]) >>> 0;
-
-      for (let round = 1; round < this.rounds; ++round) {
-        this.c.coreRound(round);
-
-        const w0_new = (this.c.S[0][0] ^ this.c.S[2][1]) >>> 0;
-        const w1_new = (this.c.S[0][1] ^ this.c.S[3][0]) >>> 0;
-        const w2_new = (this.c.S[1][0] ^ this.c.S[3][1]) >>> 0;
-        const w3_new = (this.c.S[1][1] ^ this.c.S[2][0]) >>> 0;
-
-        this.r[0] ^= OpCodes.Unpack32LE(w0_new)[0];
-        this.r[1] ^= OpCodes.Unpack32LE(w0_new)[1];
-        this.r[2] ^= OpCodes.Unpack32LE(w0_new)[2];
-        this.r[3] ^= OpCodes.Unpack32LE(w0_new)[3];
-
-        this.r[4] ^= OpCodes.Unpack32LE(w1_new)[0];
-        this.r[5] ^= OpCodes.Unpack32LE(w1_new)[1];
-        this.r[6] ^= OpCodes.Unpack32LE(w1_new)[2];
-        this.r[7] ^= OpCodes.Unpack32LE(w1_new)[3];
-
-        this.r[8] ^= OpCodes.Unpack32LE(w2_new)[0];
-        this.r[9] ^= OpCodes.Unpack32LE(w2_new)[1];
-        this.r[10] ^= OpCodes.Unpack32LE(w2_new)[2];
-        this.r[11] ^= OpCodes.Unpack32LE(w2_new)[3];
-
-        this.r[12] ^= OpCodes.Unpack32LE(w3_new)[0];
-        this.r[13] ^= OpCodes.Unpack32LE(w3_new)[1];
-        this.r[14] ^= OpCodes.Unpack32LE(w3_new)[2];
-        this.r[15] ^= OpCodes.Unpack32LE(w3_new)[3];
-      }
+      let w0 = (this.c.S[0][0] ^ this.c.S[2][1]) >>> 0;
+      let w1 = (this.c.S[0][1] ^ this.c.S[3][0]) >>> 0;
+      let w2 = (this.c.S[1][0] ^ this.c.S[3][1]) >>> 0;
+      let w3 = (this.c.S[1][1] ^ this.c.S[2][0]) >>> 0;
 
       const b0 = OpCodes.Unpack32LE(w0);
       const b1 = OpCodes.Unpack32LE(w1);
@@ -814,6 +789,26 @@
       this.r[4] = b1[0]; this.r[5] = b1[1]; this.r[6] = b1[2]; this.r[7] = b1[3];
       this.r[8] = b2[0]; this.r[9] = b2[1]; this.r[10] = b2[2]; this.r[11] = b2[3];
       this.r[12] = b3[0]; this.r[13] = b3[1]; this.r[14] = b3[2]; this.r[15] = b3[3];
+
+      // Remaining rounds: XOR into r
+      for (let round = 1; round < this.rounds; ++round) {
+        this.c.coreRound(round);
+
+        w0 = (this.c.S[0][0] ^ this.c.S[2][1]) >>> 0;
+        w1 = (this.c.S[0][1] ^ this.c.S[3][0]) >>> 0;
+        w2 = (this.c.S[1][0] ^ this.c.S[3][1]) >>> 0;
+        w3 = (this.c.S[1][1] ^ this.c.S[2][0]) >>> 0;
+
+        const b0_new = OpCodes.Unpack32LE(w0);
+        const b1_new = OpCodes.Unpack32LE(w1);
+        const b2_new = OpCodes.Unpack32LE(w2);
+        const b3_new = OpCodes.Unpack32LE(w3);
+
+        this.r[0] ^= b0_new[0]; this.r[1] ^= b0_new[1]; this.r[2] ^= b0_new[2]; this.r[3] ^= b0_new[3];
+        this.r[4] ^= b1_new[0]; this.r[5] ^= b1_new[1]; this.r[6] ^= b1_new[2]; this.r[7] ^= b1_new[3];
+        this.r[8] ^= b2_new[0]; this.r[9] ^= b2_new[1]; this.r[10] ^= b2_new[2]; this.r[11] ^= b2_new[3];
+        this.r[12] ^= b3_new[0]; this.r[13] ^= b3_new[1]; this.r[14] ^= b3_new[2]; this.r[15] ^= b3_new[3];
+      }
     }
 
     f(input, len) {
@@ -918,7 +913,7 @@
           nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           aad: OpCodes.Hex8ToBytes(""),
           input: OpCodes.Hex8ToBytes("0001020304050607"),
-          expected: OpCodes.Hex8ToBytes("8D8F6233FB2FB74DD5DE8C9BD8CCD4CAD04C3BD1C7B7")
+          expected: OpCodes.Hex8ToBytes("F2EDDAB10170B930EFD25F2E831D0EF375492D8733063CCA")
         }
       ];
     }

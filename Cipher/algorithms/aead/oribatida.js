@@ -178,7 +178,7 @@
         for (let round = 0; round < SIMP_192_ROUNDS / 2; ++round) {
           // First round of pair
           let t1 = x3 ^ (rotl48(x2, 1) & rotl48(x2, 8)) ^ rotl48(x2, 2) ^ x1;
-          let t0 = x1 ^ rotr48(x0, 3) ^ rotr48(x0, 4) ^ 0x000000FFFFFFFFCn ^ (z & 1n);
+          let t0 = x1 ^ rotr48(x0, 3) ^ rotr48(x0, 4) ^ 0x0000FFFFFFFFFFFCn ^ (z & 1n);
 
           z = (z >> 1n) | (z << 61n); // Rotate round constant
 
@@ -188,7 +188,7 @@
 
           // Second round of pair
           x2 = x2 ^ (rotl48(t1, 1) & rotl48(t1, 8)) ^ rotl48(t1, 2) ^ x0;
-          x0 = x0 ^ rotr48(t0, 3) ^ rotr48(t0, 4) ^ 0x000000FFFFFFFFCn ^ (z & 1n);
+          x0 = x0 ^ rotr48(t0, 3) ^ rotr48(t0, 4) ^ 0x0000FFFFFFFFFFFCn ^ (z & 1n);
 
           x0 &= 0x0000FFFFFFFFFFFFn;
           x2 &= 0x0000FFFFFFFFFFFFn;
@@ -200,12 +200,14 @@
         }
 
         // Swap words for all steps except the last
+        // Reference: swap (x0,x2) and (x1,x3)
         if (step < steps - 1) {
-          let temp = x0;
-          x0 = x1;
-          x1 = x2;
-          x2 = x3;
-          x3 = temp;
+          let temp0 = x0;
+          let temp1 = x1;
+          x0 = x2;
+          x1 = x3;
+          x2 = temp0;
+          x3 = temp1;
         }
       }
 
@@ -420,13 +422,13 @@
           expected: OpCodes.Hex8ToBytes("2CA7F3D7AC0074E649A768A5")
         },
         {
-          text: "NIST LWC KAT Count=17: 1-byte plaintext, 12-byte AD (full rate block)",
+          text: "NIST LWC KAT Count=46: 1-byte plaintext, 12-byte AD (full rate block)",
           uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("0001020304050607"),
-          aad: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          aad: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
           input: OpCodes.Hex8ToBytes("00"),
-          expected: OpCodes.Hex8ToBytes("D27591055628CED5D4EC408914")
+          expected: OpCodes.Hex8ToBytes("5DF32FD38E0D3E2A6482DD055D")
         },
         {
           text: "NIST LWC KAT Count=18: 0-byte plaintext, 13-byte AD (partial rate block)",
@@ -438,13 +440,13 @@
           expected: OpCodes.Hex8ToBytes("685C11CA5529E306030FD98F")
         },
         {
-          text: "NIST LWC KAT Count=34: 12-byte plaintext (full rate block), 6-byte AD",
+          text: "NIST LWC KAT Count=403: 12-byte plaintext (full rate block), 6-byte AD",
           uri: "https://csrc.nist.gov/Projects/lightweight-cryptography",
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           nonce: OpCodes.Hex8ToBytes("0001020304050607"),
           aad: OpCodes.Hex8ToBytes("000102030405"),
-          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          expected: OpCodes.Hex8ToBytes("10BEC53B7C7089EE95475257F9CAED015A80")
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+          expected: OpCodes.Hex8ToBytes("A1315D1F07AA2B5BFA676B5CBED7374A962CD217373CCE64")
         }
       ];
     }

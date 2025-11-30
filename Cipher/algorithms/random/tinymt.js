@@ -119,7 +119,7 @@
           input: null,
           seed: OpCodes.Unpack32LE(1), // Seed 1 as little-endian byte array
           outputSize: 40, // 10 uint32 values = 40 bytes
-          expected: OpCodes.ConcatArrays(
+          expected: OpCodes.ConcatArrays([
             OpCodes.Unpack32LE(2545341989),  // Verified from RFC 8682
             OpCodes.Unpack32LE(981918433),
             OpCodes.Unpack32LE(3715302833),
@@ -130,7 +130,7 @@
             OpCodes.Unpack32LE(2196103051),
             OpCodes.Unpack32LE(2783359912),
             OpCodes.Unpack32LE(764534509)
-          )
+          ])
         },
         {
           text: "TinyMT32 with seed 1 (RFC 8682 extended test, outputs 11-20)",
@@ -139,7 +139,7 @@
           seed: OpCodes.Unpack32LE(1), // Seed 1 as little-endian byte array
           skipBytes: 40, // Skip first 10 outputs
           outputSize: 40, // Next 10 uint32 values
-          expected: OpCodes.ConcatArrays(
+          expected: OpCodes.ConcatArrays([
             OpCodes.Unpack32LE(643179475),   // Outputs 11-20 from RFC 8682
             OpCodes.Unpack32LE(1822416315),
             OpCodes.Unpack32LE(881558334),
@@ -150,7 +150,7 @@
             OpCodes.Unpack32LE(3984931427),
             OpCodes.Unpack32LE(4092394160),
             OpCodes.Unpack32LE(44209675)
-          )
+          ])
         },
         {
           text: "TinyMT32 with seed 1 (RFC 8682 extended test, outputs 21-30)",
@@ -159,7 +159,7 @@
           seed: OpCodes.Unpack32LE(1), // Seed 1 as little-endian byte array
           skipBytes: 80, // Skip first 20 outputs
           outputSize: 40, // Next 10 uint32 values
-          expected: OpCodes.ConcatArrays(
+          expected: OpCodes.ConcatArrays([
             OpCodes.Unpack32LE(2188315343),  // Outputs 21-30 from RFC 8682
             OpCodes.Unpack32LE(2908663843),
             OpCodes.Unpack32LE(1834519336),
@@ -170,7 +170,7 @@
             OpCodes.Unpack32LE(4035716197),
             OpCodes.Unpack32LE(3412127188),
             OpCodes.Unpack32LE(552822483)
-          )
+          ])
         }
       ];
     }

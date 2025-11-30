@@ -417,24 +417,184 @@
         return OpCodes.HMAC(key, message, hashName);
       }
 
-      // Fallback: Simple HMAC-SHA256 using Web Crypto
-      if (typeof crypto !== 'undefined' && crypto.subtle) {
-        return this._hmacWebCrypto(key, message, hashName);
+      // Try using AlgorithmFramework HMAC implementation
+      const hmacResult = this._hmacWithFramework(key, message, hashName);
+      if (hmacResult) {
+        return hmacResult;
+      }
+
+      // Fallback: use built-in pure JavaScript implementation
+      if (hashName === 'SHA-256' || hashName === 'SHA256') {
+        return this._hmacSha256Pure(key, message);
       }
 
       throw new Error(
-        `Cannot compute HMAC: No crypto library available (requires Node.js crypto or Web Crypto API)`
+        `Cannot compute HMAC: No crypto library available for ${hashName}. Ensure HMAC algorithms are loaded before SP800-108-Counter.`
       );
     }
 
-    // HMAC computation using Web Crypto API (async, but we'll handle synchronously if cached)
-    _hmacWebCrypto(key, message, hashName) {
-      // Web Crypto is async, but for KDF we need sync
-      // This is a limitation we must work around or throw
-      throw new Error(
-        `Web Crypto API is async. For SP800-108 Counter KDF in browser, ` +
-        `use the async version or provide HMAC via OpCodes.`
-      );
+    // HMAC computation using AlgorithmFramework's HMAC implementation
+    _hmacWithFramework(key, message, hashName) {
+      // Map hash names to HMAC algorithm names in the framework
+      const hmacAlgoMap = {
+        'SHA-1': 'HMAC-SHA-1',
+        'SHA1': 'HMAC-SHA-1',
+        'SHA-256': 'HMAC-SHA-256',
+        'SHA256': 'HMAC-SHA-256',
+        'SHA-512': 'HMAC-SHA-512',
+        'SHA512': 'HMAC-SHA-512'
+      };
+
+      const hmacAlgoName = hmacAlgoMap[hashName];
+      if (!hmacAlgoName) {
+        return null;
+      }
+
+      // Try to find the HMAC algorithm in the framework
+      const hmacAlgo = AlgorithmFramework.Find(hmacAlgoName);
+      if (hmacAlgo) {
+        const instance = hmacAlgo.CreateInstance(false);
+        if (instance) {
+          instance.key = key;
+          instance.Feed(message);
+          return instance.Result();
+        }
+      }
+
+      return null;
+    }
+
+    // Pure JavaScript HMAC-SHA256 implementation (fallback when no crypto available)
+    _hmacSha256Pure(key, message) {
+      const BLOCK_SIZE = 64;
+      const OUTPUT_SIZE = 32;
+
+      // Ensure key and message are arrays
+      let keyArr = Array.isArray(key) ? key : Array.from(key);
+      const msgArr = Array.isArray(message) ? message : Array.from(message);
+
+      // If key is longer than block size, hash it
+      if (keyArr.length > BLOCK_SIZE) {
+        keyArr = this._sha256Pure(keyArr);
+      }
+
+      // Pad key to block size
+      while (keyArr.length < BLOCK_SIZE) {
+        keyArr.push(0);
+      }
+
+      // Create inner and outer padding
+      const ipad = keyArr.map(b => b ^ 0x36);
+      const opad = keyArr.map(b => b ^ 0x5c);
+
+      // Inner hash: SHA256(ipad || message)
+      const innerInput = ipad.concat(msgArr);
+      const innerHash = this._sha256Pure(innerInput);
+
+      // Outer hash: SHA256(opad || inner_hash)
+      const outerInput = opad.concat(innerHash);
+      return this._sha256Pure(outerInput);
+    }
+
+    // Pure JavaScript SHA-256 implementation
+    _sha256Pure(message) {
+      // SHA-256 constants
+      const K = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+      ];
+
+      // Initial hash values
+      let H = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+        0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+      ];
+
+      // Helper functions
+      const rotr = (x, n) => ((x >>> n) | (x << (32 - n))) >>> 0;
+      const ch = (x, y, z) => ((x & y) ^ (~x & z)) >>> 0;
+      const maj = (x, y, z) => ((x & y) ^ (x & z) ^ (y & z)) >>> 0;
+      const sigma0 = x => (rotr(x, 2) ^ rotr(x, 13) ^ rotr(x, 22)) >>> 0;
+      const sigma1 = x => (rotr(x, 6) ^ rotr(x, 11) ^ rotr(x, 25)) >>> 0;
+      const gamma0 = x => (rotr(x, 7) ^ rotr(x, 18) ^ (x >>> 3)) >>> 0;
+      const gamma1 = x => (rotr(x, 17) ^ rotr(x, 19) ^ (x >>> 10)) >>> 0;
+
+      // Pre-processing: adding padding bits
+      const msgArr = Array.isArray(message) ? message : Array.from(message);
+      const msgLen = msgArr.length;
+      const bitLen = msgLen * 8;
+
+      // Append '1' bit and padding zeros
+      msgArr.push(0x80);
+      while ((msgArr.length % 64) !== 56) {
+        msgArr.push(0);
+      }
+
+      // Append original length in bits as 64-bit big-endian
+      for (let i = 7; i >= 0; i--) {
+        msgArr.push((bitLen / Math.pow(2, i * 8)) & 0xff);
+      }
+
+      // Process each 512-bit block
+      for (let offset = 0; offset < msgArr.length; offset += 64) {
+        const W = new Array(64);
+
+        // Copy block into first 16 words
+        for (let i = 0; i < 16; i++) {
+          W[i] = ((msgArr[offset + i * 4] << 24) |
+                  (msgArr[offset + i * 4 + 1] << 16) |
+                  (msgArr[offset + i * 4 + 2] << 8) |
+                  msgArr[offset + i * 4 + 3]) >>> 0;
+        }
+
+        // Extend the first 16 words into the remaining 48 words
+        for (let i = 16; i < 64; i++) {
+          W[i] = (gamma1(W[i - 2]) + W[i - 7] + gamma0(W[i - 15]) + W[i - 16]) >>> 0;
+        }
+
+        // Initialize working variables
+        let [a, b, c, d, e, f, g, h] = H;
+
+        // Main loop
+        for (let i = 0; i < 64; i++) {
+          const T1 = (h + sigma1(e) + ch(e, f, g) + K[i] + W[i]) >>> 0;
+          const T2 = (sigma0(a) + maj(a, b, c)) >>> 0;
+          h = g;
+          g = f;
+          f = e;
+          e = (d + T1) >>> 0;
+          d = c;
+          c = b;
+          b = a;
+          a = (T1 + T2) >>> 0;
+        }
+
+        // Add compressed chunk to current hash value
+        H[0] = (H[0] + a) >>> 0;
+        H[1] = (H[1] + b) >>> 0;
+        H[2] = (H[2] + c) >>> 0;
+        H[3] = (H[3] + d) >>> 0;
+        H[4] = (H[4] + e) >>> 0;
+        H[5] = (H[5] + f) >>> 0;
+        H[6] = (H[6] + g) >>> 0;
+        H[7] = (H[7] + h) >>> 0;
+      }
+
+      // Produce the final hash value (big-endian)
+      const result = [];
+      for (let i = 0; i < 8; i++) {
+        result.push((H[i] >>> 24) & 0xff);
+        result.push((H[i] >>> 16) & 0xff);
+        result.push((H[i] >>> 8) & 0xff);
+        result.push(H[i] & 0xff);
+      }
+      return result;
     }
   }
 

@@ -116,13 +116,13 @@
           input: null,
           seed: this._encodeSingleSeed(1234567),
           outputSize: 20, // 5 uint32 values = 20 bytes
-          expected: OpCodes.ConcatArrays(
+          expected: OpCodes.ConcatArrays([
             OpCodes.Unpack32LE(1459213977),  // Verified from Rosetta Code Python implementation
             OpCodes.Unpack32LE(2827710106),
             OpCodes.Unpack32LE(4245671317),
             OpCodes.Unpack32LE(3877608661),
             OpCodes.Unpack32LE(2595287583)
-          )
+          ])
         },
         {
           text: "MRG32k3a with seed 987654321 (first 5 outputs)",
@@ -130,13 +130,13 @@
           input: null,
           seed: this._encodeSingleSeed(987654321),
           outputSize: 20, // 5 uint32 values = 20 bytes
-          expected: OpCodes.ConcatArrays(
+          expected: OpCodes.ConcatArrays([
             OpCodes.Unpack32LE(3042735940),  // Verified from Rosetta Code Python implementation
             OpCodes.Unpack32LE(3103110088),
             OpCodes.Unpack32LE(3280483497),
             OpCodes.Unpack32LE(795861024),
             OpCodes.Unpack32LE(1610389998)
-          )
+          ])
         },
         {
           text: "MRG32k3a with seed 12345 (first 5 outputs)",
@@ -144,13 +144,13 @@
           input: null,
           seed: this._encodeSingleSeed(12345),
           outputSize: 20, // 5 uint32 values = 20 bytes
-          expected: OpCodes.ConcatArrays(
+          expected: OpCodes.ConcatArrays([
             OpCodes.Unpack32LE(2076541391),  // Verified from Rosetta Code Python implementation
             OpCodes.Unpack32LE(3272943522),
             OpCodes.Unpack32LE(3830942070),
             OpCodes.Unpack32LE(3312114526),
             OpCodes.Unpack32LE(742589995)
-          )
+          ])
         }
       ];
     }
@@ -169,14 +169,14 @@
      * @private
      */
     _encodeSeed(s10, s11, s12, s20, s21, s22) {
-      return OpCodes.ConcatArrays(
+      return OpCodes.ConcatArrays([
         OpCodes.Unpack32LE(s10),
         OpCodes.Unpack32LE(s11),
         OpCodes.Unpack32LE(s12),
         OpCodes.Unpack32LE(s20),
         OpCodes.Unpack32LE(s21),
         OpCodes.Unpack32LE(s22)
-      );
+      ]);
     }
 
     /**

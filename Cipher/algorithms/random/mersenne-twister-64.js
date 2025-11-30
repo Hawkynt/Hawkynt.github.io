@@ -142,7 +142,7 @@
           input: null,
           seed: BigIntToBytes64LE(5489n), // 5489 as little-endian bytes
           outputSize: 80, // 10 uint64 values = 80 bytes
-          expected: OpCodes.ConcatArrays(
+          expected: OpCodes.ConcatArrays([
             // Verified against official reference implementation
             // These are the exact first 10 outputs from genrand64_int64() with seed 5489
             BigIntToBytes64LE(14514284786278117030n),
@@ -155,7 +155,7 @@
             BigIntToBytes64LE(418970542659199878n),
             BigIntToBytes64LE(9604170989252516556n),
             BigIntToBytes64LE(6358044926049913402n)
-          )
+          ])
         },
         {
           text: "MT19937-64 with seed 1 (common test seed, first 5 outputs)",
@@ -163,14 +163,14 @@
           input: null,
           seed: BigIntToBytes64LE(1n), // 1 as little-endian bytes
           outputSize: 40, // 5 uint64 values = 40 bytes
-          expected: OpCodes.ConcatArrays(
+          expected: OpCodes.ConcatArrays([
             // Generated from implementation verified against official reference
             BigIntToBytes64LE(2469588189546311528n),
             BigIntToBytes64LE(2516265689700432462n),
             BigIntToBytes64LE(8323445853463659930n),
             BigIntToBytes64LE(387828560950575246n),
             BigIntToBytes64LE(6472927700900931384n)
-          )
+          ])
         },
         {
           text: "MT19937-64 with seed 123456789 (validation test)",
@@ -178,14 +178,14 @@
           input: null,
           seed: BigIntToBytes64LE(123456789n), // 123456789 as little-endian bytes
           outputSize: 40, // 5 uint64 values = 40 bytes
-          expected: OpCodes.ConcatArrays(
+          expected: OpCodes.ConcatArrays([
             // Generated from implementation verified against official reference
             BigIntToBytes64LE(6435547048506935310n),
             BigIntToBytes64LE(4923172384746461813n),
             BigIntToBytes64LE(2520679223035091359n),
             BigIntToBytes64LE(526781223349236672n),
             BigIntToBytes64LE(16028989633461488813n)
-          )
+          ])
         }
       ];
     }

@@ -473,8 +473,11 @@
     }
   }
 
-  // Register algorithm
-  RegisterAlgorithm(new Shoco());
+  // Register algorithm (guard against double registration)
+  const algorithmInstance = new Shoco();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
+  }
 
   return Shoco;
 }));

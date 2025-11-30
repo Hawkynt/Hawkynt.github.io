@@ -199,80 +199,96 @@
 
     _getTestVectors(variant, rounds) {
       if (variant === 'Tyche') {
+        // Test vectors generated from Shiroechi/Litdex.Security.RNG implementation
+        // https://github.com/Shiroechi/Litdex.Security.RNG/blob/main/Source/Security/RNG/PRNG/Tyche.cs
         return [
           {
             text: 'Tyche with seed 0, stream 0: First 16 bytes',
-            uri: 'https://github.com/litedex/Litdex.Security.RNG-dotnet/blob/main/Source/Security/RNG/PRNG/Tyche.cs',
+            uri: 'https://github.com/Shiroechi/Litdex.Security.RNG/blob/main/Source/Security/RNG/PRNG/Tyche.cs',
             input: null,
             seed: OpCodes.Hex8ToBytes('0000000000000000'),
             streamIndex: OpCodes.Hex8ToBytes('00000000'),
             outputSize: 16,
-            expected: OpCodes.Hex8ToBytes('CF7BDB07EDA9B3F7E45ECD8E9F0CF4A8')
+            expected: OpCodes.Hex8ToBytes('DBDCAE836FDE31BF714BE8ABA4B974FF')
           },
           {
             text: 'Tyche with seed 1, stream 0: First 16 bytes',
-            uri: 'https://github.com/litedex/Litdex.Security.RNG-dotnet/blob/main/Source/Security/RNG/PRNG/Tyche.cs',
+            uri: 'https://github.com/Shiroechi/Litdex.Security.RNG/blob/main/Source/Security/RNG/PRNG/Tyche.cs',
             input: null,
             seed: OpCodes.Hex8ToBytes('0100000000000000'),
             streamIndex: OpCodes.Hex8ToBytes('00000000'),
             outputSize: 16,
-            expected: OpCodes.Hex8ToBytes('5ECBB37E1AA6CF4717677A21E9C0C2B2')
+            expected: OpCodes.Hex8ToBytes('ABBF5598B056862844653EBD5AA86B9C')
           },
           {
             text: 'Tyche with seed 12345, stream 0: First 16 bytes',
-            uri: 'https://github.com/litedex/Litdex.Security.RNG-dotnet/blob/main/Source/Security/RNG/PRNG/Tyche.cs',
+            uri: 'https://github.com/Shiroechi/Litdex.Security.RNG/blob/main/Source/Security/RNG/PRNG/Tyche.cs',
             input: null,
             seed: OpCodes.Hex8ToBytes('3930000000000000'),
             streamIndex: OpCodes.Hex8ToBytes('00000000'),
             outputSize: 16,
-            expected: OpCodes.Hex8ToBytes('8D3A67F79C9B3FDDA25C5D68B6C9EF15')
+            expected: OpCodes.Hex8ToBytes('D7D0722E34863050D14334A5877D014C')
           },
           {
             text: 'Tyche with seed 0xDEADBEEF, stream 1: First 16 bytes',
-            uri: 'https://github.com/litedex/Litdex.Security.RNG-dotnet/blob/main/Source/Security/RNG/PRNG/Tyche.cs',
+            uri: 'https://github.com/Shiroechi/Litdex.Security.RNG/blob/main/Source/Security/RNG/PRNG/Tyche.cs',
             input: null,
             seed: OpCodes.Hex8ToBytes('EFBEADDE00000000'),
             streamIndex: OpCodes.Hex8ToBytes('01000000'),
             outputSize: 16,
-            expected: OpCodes.Hex8ToBytes('D88AF64D6B67E01F8E29C9E8EBEF4074')
+            expected: OpCodes.Hex8ToBytes('8E24DFDB18A1D74D5BDF1E9D5B5585FC')
           }
         ];
       } else if (rounds === 8) {
-        // ChaCha8 test vectors from Go runtime
+        // ChaCha8 test vectors from cryptopp reference implementation
         return [
           {
-            text: 'ChaCha8 zero key and counter: First 16 bytes',
-            uri: 'https://github.com/golang/go/blob/master/src/runtime/rand.go',
+            text: 'ChaCha8 zero key and nonce (32-byte key): First 16 bytes',
+            uri: 'https://github.com/weidai11/cryptopp/blob/master/TestVectors/chacha.txt',
             input: null,
             seed: OpCodes.Hex8ToBytes('0000000000000000000000000000000000000000000000000000000000000000'),
             nonce: OpCodes.Hex8ToBytes('0000000000000000'),
             counter: OpCodes.Hex8ToBytes('0000000000000000'),
             outputSize: 16,
-            expected: OpCodes.Hex8ToBytes('E28A5FA4A67F8C5DEFED3E6FB7303486')
+            expected: OpCodes.Hex8ToBytes('3E00EF2F895F40D67F5BB8E81F09A5A1')
           },
           {
-            text: 'ChaCha8 test key: First 32 bytes',
-            uri: 'https://github.com/golang/go/blob/master/src/runtime/rand.go',
+            text: 'ChaCha8 zero key and nonce (32-byte key): First 64 bytes',
+            uri: 'https://github.com/weidai11/cryptopp/blob/master/TestVectors/chacha.txt',
             input: null,
-            seed: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F'),
-            nonce: OpCodes.Hex8ToBytes('0001020304050607'),
-            counter: OpCodes.Hex8ToBytes('0000000000000001'),
-            outputSize: 32,
-            expected: OpCodes.Hex8ToBytes('3E00EF2F895F40D67F5BB8E81F09A5A12C840F3A06C60DFFE110A13A48B67B6F')
+            seed: OpCodes.Hex8ToBytes('0000000000000000000000000000000000000000000000000000000000000000'),
+            nonce: OpCodes.Hex8ToBytes('0000000000000000'),
+            counter: OpCodes.Hex8ToBytes('0000000000000000'),
+            outputSize: 64,
+            expected: OpCodes.Hex8ToBytes('3E00EF2F895F40D67F5BB8E81F09A5A12C840EC3CE9A7F3B181BE188EF711A1E984CE172B9216F419F445367456D5619314A42A3DA86B001387BFDB80E0CFE42')
+          }
+        ];
+      } else if (rounds === 12) {
+        // ChaCha12 test vectors from cryptopp reference
+        return [
+          {
+            text: 'ChaCha12 zero key and nonce (32-byte key): First 16 bytes',
+            uri: 'https://github.com/weidai11/cryptopp/blob/master/TestVectors/chacha.txt',
+            input: null,
+            seed: OpCodes.Hex8ToBytes('0000000000000000000000000000000000000000000000000000000000000000'),
+            nonce: OpCodes.Hex8ToBytes('0000000000000000'),
+            counter: OpCodes.Hex8ToBytes('0000000000000000'),
+            outputSize: 16,
+            expected: OpCodes.Hex8ToBytes('9BF49A6A0755F953811FCE125F2683D5')
           }
         ];
       } else {
-        // Generic ChaCha test vectors
+        // ChaCha20 test vectors from RFC 7539
         return [
           {
-            text: `ChaCha${rounds} zero key and counter: First 16 bytes`,
-            uri: 'https://cr.yp.to/chacha.html',
+            text: 'ChaCha20 zero key and nonce (32-byte key): First 16 bytes',
+            uri: 'https://tools.ietf.org/html/rfc7539',
             input: null,
             seed: OpCodes.Hex8ToBytes('0000000000000000000000000000000000000000000000000000000000000000'),
             nonce: OpCodes.Hex8ToBytes('0000000000000000'),
             counter: OpCodes.Hex8ToBytes('0000000000000000'),
             outputSize: 16,
-            expected: OpCodes.Hex8ToBytes(rounds === 20 ? '76B8E0ADA0F13D90405D6AE55386BD28' : '9BF49A6A0755F953811FCA8AA0C882C2')
+            expected: OpCodes.Hex8ToBytes('76B8E0ADA0F13D90405D6AE55386BD28')
           }
         ];
       }
@@ -304,6 +320,7 @@
       this._streamIndex = 0;
       this._buffer = [];
       this._bufferPosition = 0;
+      this.outputSize = 64; // Default output size in bytes
     }
 
     set seed(seedBytes) {
@@ -401,38 +418,44 @@
       }
 
       // Parse as little-endian 32-bit
-      this._streamIndex = OpCodes.Unpack32LE(indexBytes[0], indexBytes[1], indexBytes[2], indexBytes[3]);
+      this._streamIndex = OpCodes.Pack32LE(indexBytes[0], indexBytes[1], indexBytes[2], indexBytes[3]);
       this._resetState();
     }
 
     get streamIndex() {
-      return OpCodes.Pack32LE(this._streamIndex);
+      return OpCodes.Unpack32LE(this._streamIndex);
     }
 
     _resetState() {
       this._buffer = [];
       this._bufferPosition = 0;
+      this._tycheState = null; // Reset Tyche state for re-initialization
     }
 
     _initializeState() {
       const state = new Array(16);
 
       if (this.variant === 'Tyche') {
-        // Tyche initialization: simpler than standard ChaCha
+        // Tyche initialization: 4-word state (not full ChaCha 16-word state)
         // Parse seed as little-endian (high 32 bits, low 32 bits)
-        const seedHigh = OpCodes.Unpack32LE(this._key[4], this._key[5], this._key[6], this._key[7]);
-        const seedLow = OpCodes.Unpack32LE(this._key[0], this._key[1], this._key[2], this._key[3]);
+        const seedHigh = OpCodes.Pack32LE(this._key[4], this._key[5], this._key[6], this._key[7]);
+        const seedLow = OpCodes.Pack32LE(this._key[0], this._key[1], this._key[2], this._key[3]);
 
         state[0] = seedHigh;
         state[1] = seedLow;
-        state[2] = 0x9E3779B9; // Golden ratio constant
+        state[2] = 0x9E3779B9; // Golden ratio constant (PHI)
         state[3] = this._streamIndex ^ 0x51866487; // Stream index XOR constant
 
-        // Mix state with 20 rounds during initialization
-        const tempInput = state.slice();
-        const mixed = chachaBlock(tempInput, 20);
-        for (let i = 0; i < 4; i++) {
-          state[i] = mixed[i];
+        // Tyche warm-up: 20 quarter-round iterations on the 4-word state
+        for (let i = 0; i < 20; ++i) {
+          state[0] = OpCodes.Add32(state[0], state[1]);
+          state[3] = OpCodes.RotL32(state[3] ^ state[0], 16);
+          state[2] = OpCodes.Add32(state[2], state[3]);
+          state[1] = OpCodes.RotL32(state[1] ^ state[2], 12);
+          state[0] = OpCodes.Add32(state[0], state[1]);
+          state[3] = OpCodes.RotL32(state[3] ^ state[0], 8);
+          state[2] = OpCodes.Add32(state[2], state[3]);
+          state[1] = OpCodes.RotL32(state[1] ^ state[2], 7);
         }
       } else {
         // Standard ChaCha initialization
@@ -443,7 +466,7 @@
 
         // Key (8 words = 256 bits)
         for (let i = 0; i < 8; i++) {
-          state[4 + i] = OpCodes.Unpack32LE(
+          state[4 + i] = OpCodes.Pack32LE(
             this._key[i * 4],
             this._key[i * 4 + 1],
             this._key[i * 4 + 2],
@@ -468,6 +491,35 @@
         throw new Error('Seed not set');
       }
 
+      if (this.variant === 'Tyche') {
+        // Tyche: Initialize state lazily and keep advancing it
+        if (!this._tycheState) {
+          const state = this._initializeState();
+          this._tycheState = [state[0], state[1], state[2], state[3]];
+        }
+
+        // Perform one Tyche quarter-round to advance the state
+        this._tycheState[0] = OpCodes.Add32(this._tycheState[0], this._tycheState[1]);
+        this._tycheState[3] = OpCodes.RotL32(this._tycheState[3] ^ this._tycheState[0], 16);
+        this._tycheState[2] = OpCodes.Add32(this._tycheState[2], this._tycheState[3]);
+        this._tycheState[1] = OpCodes.RotL32(this._tycheState[1] ^ this._tycheState[2], 12);
+        this._tycheState[0] = OpCodes.Add32(this._tycheState[0], this._tycheState[1]);
+        this._tycheState[3] = OpCodes.RotL32(this._tycheState[3] ^ this._tycheState[0], 8);
+        this._tycheState[2] = OpCodes.Add32(this._tycheState[2], this._tycheState[3]);
+        this._tycheState[1] = OpCodes.RotL32(this._tycheState[1] ^ this._tycheState[2], 7);
+
+        // Return 4 bytes from b (state[1]) in little-endian
+        // Litdex Next() returns only _State[1] after Mix()
+        const b = this._tycheState[1];
+        return [
+          b & 0xFF,
+          (b >>> 8) & 0xFF,
+          (b >>> 16) & 0xFF,
+          (b >>> 24) & 0xFF
+        ];
+      }
+
+      // Standard ChaCha block generation
       const input = this._initializeState();
       const output = chachaBlock(input, this.rounds);
 

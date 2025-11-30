@@ -669,10 +669,8 @@
       let outputRight = null;
 
       if (this._forkOutput === "both" || this._forkOutput === "left") {
-        // Save state at fork point (state AND tweakey)
+        // Save state at fork point (state only, NOT tweakey - per reference implementation)
         const F_S = [state.S[0], state.S[1], state.S[2], state.S[3]];
-        const F_TK1 = [state.TK1[0], state.TK1[1], state.TK1[2], state.TK1[3]];
-        const F_TK2 = [state.TK2[0], state.TK2[1], state.TK2[2], state.TK2[3]];
 
         if (this._forkOutput === "both") {
           // Generate right output first
@@ -680,19 +678,11 @@
                                     FORKSKINNY_128_256_ROUNDS_BEFORE + FORKSKINNY_128_256_ROUNDS_AFTER);
           outputRight = this.unpackState(state.S);
 
-          // Restore fork point (state AND tweakey)
+          // Restore fork point state only (NOT tweakey - tweakey continues from right branch)
           state.S[0] = F_S[0];
           state.S[1] = F_S[1];
           state.S[2] = F_S[2];
           state.S[3] = F_S[3];
-          state.TK1[0] = F_TK1[0];
-          state.TK1[1] = F_TK1[1];
-          state.TK1[2] = F_TK1[2];
-          state.TK1[3] = F_TK1[3];
-          state.TK2[0] = F_TK2[0];
-          state.TK2[1] = F_TK2[1];
-          state.TK2[2] = F_TK2[2];
-          state.TK2[3] = F_TK2[3];
         }
 
         // Generate left output with branching constant
@@ -955,34 +945,19 @@
       let outputRight = null;
 
       if (this._forkOutput === "both" || this._forkOutput === "left") {
-        // Save state at fork point (state AND tweakey)
+        // Save state at fork point (state only, NOT tweakey - per reference implementation)
         const F_S = [state.S[0], state.S[1], state.S[2], state.S[3]];
-        const F_TK1 = [state.TK1[0], state.TK1[1], state.TK1[2], state.TK1[3]];
-        const F_TK2 = [state.TK2[0], state.TK2[1], state.TK2[2], state.TK2[3]];
-        const F_TK3 = [state.TK3[0], state.TK3[1], state.TK3[2], state.TK3[3]];
 
         if (this._forkOutput === "both") {
           forkskinny_128_384_rounds(state, FORKSKINNY_128_384_ROUNDS_BEFORE,
                                     FORKSKINNY_128_384_ROUNDS_BEFORE + FORKSKINNY_128_384_ROUNDS_AFTER);
           outputRight = this.unpackState(state.S);
 
-          // Restore fork point (state AND tweakey)
+          // Restore fork point state only (NOT tweakey - tweakey continues from right branch)
           state.S[0] = F_S[0];
           state.S[1] = F_S[1];
           state.S[2] = F_S[2];
           state.S[3] = F_S[3];
-          state.TK1[0] = F_TK1[0];
-          state.TK1[1] = F_TK1[1];
-          state.TK1[2] = F_TK1[2];
-          state.TK1[3] = F_TK1[3];
-          state.TK2[0] = F_TK2[0];
-          state.TK2[1] = F_TK2[1];
-          state.TK2[2] = F_TK2[2];
-          state.TK2[3] = F_TK2[3];
-          state.TK3[0] = F_TK3[0];
-          state.TK3[1] = F_TK3[1];
-          state.TK3[2] = F_TK3[2];
-          state.TK3[3] = F_TK3[3];
         }
 
         state.S[0] ^= BRANCH_CONSTANT[0];

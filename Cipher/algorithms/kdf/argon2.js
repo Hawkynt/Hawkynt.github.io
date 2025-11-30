@@ -251,383 +251,356 @@
   }
 
   // ===== ARGON2 CORE FUNCTIONS =====
+  // Using Uint32Array with [low, high] pairs for 64-bit values (matching noble-hashes approach)
+
+  // Temporary block buffer - 256 u32 = 128 u64 = 1024 bytes
+  const A2_BUF = new Uint32Array(256);
 
   /**
-   * fBlaMka mixing function: fBlaMka(x, y) = x + y + 2 * (x & 0xFFFFFFFF) * (y & 0xFFFFFFFF)
+   * 32-bit multiply returning 64-bit result as {h, l}
    */
-  function fBlaMka(x, y) {
-    const mask32 = BigInt('0xFFFFFFFF');
-    const mask64 = BigInt('0xFFFFFFFFFFFFFFFF');
-    const xy = (x & mask32) * (y & mask32);
-    return (x + y + (xy << BigInt(1))) & mask64;
+  function mul(a, b) {
+    const aL = a & 0xffff;
+    const aH = a >>> 16;
+    const bL = b & 0xffff;
+    const bH = b >>> 16;
+    const ll = Math.imul(aL, bL);
+    const hl = Math.imul(aH, bL);
+    const lh = Math.imul(aL, bH);
+    const hh = Math.imul(aH, bH);
+    const carry = (ll >>> 16) + (hl & 0xffff) + lh;
+    const high = (hh + (hl >>> 16) + (carry >>> 16)) | 0;
+    const low = (carry << 16) | (ll & 0xffff);
+    return { h: high, l: low };
   }
 
   /**
-   * BlaMka G permutation function
+   * 2 * a * b (via shifts) - returns 64-bit result
    */
-  function blamkaG(a, b, c, d) {
-    a = fBlaMka(a, b);
-    d = OpCodes.RotR64n(d ^ a, 32);
-    c = fBlaMka(c, d);
-    b = OpCodes.RotR64n(b ^ c, 24);
-    a = fBlaMka(a, b);
-    d = OpCodes.RotR64n(d ^ a, 16);
-    c = fBlaMka(c, d);
-    b = OpCodes.RotR64n(b ^ c, 63);
-    return [a, b, c, d];
+  function mul2(a, b) {
+    const { h, l } = mul(a, b);
+    return { h: ((h << 1) | (l >>> 31)) & 0xffffffff, l: (l << 1) & 0xffffffff };
   }
 
   /**
-   * Argon2 block compression function (P permutation)
+   * 64-bit addition of 3 values: Al + Bl + Cl (returns lower 32 bits)
    */
-  function blamkaRound(block) {
-    // Apply column-wise permutation
-    for (let i = 0; i < 8; i++) {
-      const [a, b, c, d] = blamkaG(
-        block[i], block[i + 32], block[i + 64], block[i + 96]
-      );
-      block[i] = a;
-      block[i + 32] = b;
-      block[i + 64] = c;
-      block[i + 96] = d;
-    }
-
-    for (let i = 0; i < 8; i++) {
-      const [a, b, c, d] = blamkaG(
-        block[i + 8], block[i + 40], block[i + 72], block[i + 104]
-      );
-      block[i + 8] = a;
-      block[i + 40] = b;
-      block[i + 72] = c;
-      block[i + 104] = d;
-    }
-
-    for (let i = 0; i < 8; i++) {
-      const [a, b, c, d] = blamkaG(
-        block[i + 16], block[i + 48], block[i + 80], block[i + 112]
-      );
-      block[i + 16] = a;
-      block[i + 48] = b;
-      block[i + 80] = c;
-      block[i + 112] = d;
-    }
-
-    for (let i = 0; i < 8; i++) {
-      const [a, b, c, d] = blamkaG(
-        block[i + 24], block[i + 56], block[i + 88], block[i + 120]
-      );
-      block[i + 24] = a;
-      block[i + 56] = b;
-      block[i + 88] = c;
-      block[i + 120] = d;
-    }
-
-    // Apply row-wise permutation
-    for (let i = 0; i < 8; i++) {
-      const idx = i * 16;
-      const [a, b, c, d] = blamkaG(
-        block[idx], block[idx + 4], block[idx + 8], block[idx + 12]
-      );
-      block[idx] = a;
-      block[idx + 4] = b;
-      block[idx + 8] = c;
-      block[idx + 12] = d;
-    }
-
-    for (let i = 0; i < 8; i++) {
-      const idx = i * 16;
-      const [a, b, c, d] = blamkaG(
-        block[idx + 1], block[idx + 5], block[idx + 9], block[idx + 13]
-      );
-      block[idx + 1] = a;
-      block[idx + 5] = b;
-      block[idx + 9] = c;
-      block[idx + 13] = d;
-    }
-
-    for (let i = 0; i < 8; i++) {
-      const idx = i * 16;
-      const [a, b, c, d] = blamkaG(
-        block[idx + 2], block[idx + 6], block[idx + 10], block[idx + 14]
-      );
-      block[idx + 2] = a;
-      block[idx + 6] = b;
-      block[idx + 10] = c;
-      block[idx + 14] = d;
-    }
-
-    for (let i = 0; i < 8; i++) {
-      const idx = i * 16;
-      const [a, b, c, d] = blamkaG(
-        block[idx + 3], block[idx + 7], block[idx + 11], block[idx + 15]
-      );
-      block[idx + 3] = a;
-      block[idx + 7] = b;
-      block[idx + 11] = c;
-      block[idx + 15] = d;
-    }
+  function add3L(Al, Bl, Cl) {
+    return (Al >>> 0) + (Bl >>> 0) + (Cl >>> 0);
   }
 
   /**
-   * Compress two blocks into one using BlaMka
+   * 64-bit addition of 3 values: returns high 32 bits with carry from low
    */
-  function compressBlocks(block1, block2) {
-    const R = new Array(ARGON2_QWORDS_IN_BLOCK);
-    const Z = new Array(ARGON2_QWORDS_IN_BLOCK);
-
-    // R = block1 XOR block2
-    for (let i = 0; i < ARGON2_QWORDS_IN_BLOCK; i++) {
-      R[i] = block1[i] ^ block2[i];
-    }
-
-    // Z = P(R)
-    for (let i = 0; i < ARGON2_QWORDS_IN_BLOCK; i++) {
-      Z[i] = R[i];
-    }
-    blamkaRound(Z);
-
-    // Result = Z XOR R
-    for (let i = 0; i < ARGON2_QWORDS_IN_BLOCK; i++) {
-      R[i] ^= Z[i];
-    }
-
-    return R;
+  function add3H(low, Ah, Bh, Ch) {
+    return (Ah + Bh + Ch + ((low / 0x100000000) | 0)) | 0;
   }
 
   /**
-   * Initial hashing of inputs (H0)
+   * 64-bit right rotate by 32 (just swaps h and l)
    */
-  function initialHash(password, salt, timeCost, memoryCost, parallelism, outputLength, type, secret, ad) {
-    // Build initial hash input: H0 = H(
-    //   LE32(parallelism) || LE32(outputLength) || LE32(memoryCost) || LE32(timeCost) ||
-    //   LE32(version) || LE32(type) ||
-    //   LE32(pwdlen) || password ||
-    //   LE32(saltlen) || salt ||
-    //   LE32(secretlen) || secret ||
-    //   LE32(adlen) || ad
-    // )
+  function rotr32H(_h, l) { return l; }
+  function rotr32L(h, _l) { return h; }
 
-    const params = [
-      parallelism, outputLength, memoryCost, timeCost,
-      ARGON2_VERSION, type,
-      password.length
-    ];
+  /**
+   * 64-bit right rotate for shift in [1, 32)
+   */
+  function rotrSH(h, l, s) { return (h >>> s) | (l << (32 - s)); }
+  function rotrSL(h, l, s) { return (h << (32 - s)) | (l >>> s); }
 
-    let totalLength = 4 * params.length + password.length + 4 + salt.length;
-    if (secret && secret.length > 0) totalLength += 4 + secret.length;
-    if (ad && ad.length > 0) totalLength += 4 + ad.length;
+  /**
+   * 64-bit right rotate for shift in (32, 64)
+   */
+  function rotrBH(h, l, s) { return (h << (64 - s)) | (l >>> (s - 32)); }
+  function rotrBL(h, l, s) { return (h >>> (s - 32)) | (l << (64 - s)); }
 
-    const input = new Uint8Array(totalLength);
+  /**
+   * BlaMka: A + B + (2 * u32(A) * u32(B))
+   */
+  function blamka(Ah, Al, Bh, Bl) {
+    const { h: Ch, l: Cl } = mul2(Al, Bl);
+    const Rll = add3L(Al, Bl, Cl);
+    return { h: add3H(Rll, Ah, Bh, Ch), l: Rll | 0 };
+  }
+
+  /**
+   * G function operating on A2_BUF with index-based access
+   */
+  function G(a, b, c, d) {
+    let Al = A2_BUF[2*a], Ah = A2_BUF[2*a + 1];
+    let Bl = A2_BUF[2*b], Bh = A2_BUF[2*b + 1];
+    let Cl = A2_BUF[2*c], Ch = A2_BUF[2*c + 1];
+    let Dl = A2_BUF[2*d], Dh = A2_BUF[2*d + 1];
+
+    ({ h: Ah, l: Al } = blamka(Ah, Al, Bh, Bl));
+    ({ Dh, Dl } = { Dh: Dh ^ Ah, Dl: Dl ^ Al });
+    ({ Dh, Dl } = { Dh: rotr32H(Dh, Dl), Dl: rotr32L(Dh, Dl) });
+
+    ({ h: Ch, l: Cl } = blamka(Ch, Cl, Dh, Dl));
+    ({ Bh, Bl } = { Bh: Bh ^ Ch, Bl: Bl ^ Cl });
+    ({ Bh, Bl } = { Bh: rotrSH(Bh, Bl, 24), Bl: rotrSL(Bh, Bl, 24) });
+
+    ({ h: Ah, l: Al } = blamka(Ah, Al, Bh, Bl));
+    ({ Dh, Dl } = { Dh: Dh ^ Ah, Dl: Dl ^ Al });
+    ({ Dh, Dl } = { Dh: rotrSH(Dh, Dl, 16), Dl: rotrSL(Dh, Dl, 16) });
+
+    ({ h: Ch, l: Cl } = blamka(Ch, Cl, Dh, Dl));
+    ({ Bh, Bl } = { Bh: Bh ^ Ch, Bl: Bl ^ Cl });
+    ({ Bh, Bl } = { Bh: rotrBH(Bh, Bl, 63), Bl: rotrBL(Bh, Bl, 63) });
+
+    A2_BUF[2*a] = Al; A2_BUF[2*a + 1] = Ah;
+    A2_BUF[2*b] = Bl; A2_BUF[2*b + 1] = Bh;
+    A2_BUF[2*c] = Cl; A2_BUF[2*c + 1] = Ch;
+    A2_BUF[2*d] = Dl; A2_BUF[2*d + 1] = Dh;
+  }
+
+  /**
+   * P permutation: applies G to 16 elements in column then diagonal pattern
+   */
+  function P(v00, v01, v02, v03, v04, v05, v06, v07,
+             v08, v09, v10, v11, v12, v13, v14, v15) {
+    G(v00, v04, v08, v12);
+    G(v01, v05, v09, v13);
+    G(v02, v06, v10, v14);
+    G(v03, v07, v11, v15);
+    G(v00, v05, v10, v15);
+    G(v01, v06, v11, v12);
+    G(v02, v07, v08, v13);
+    G(v03, v04, v09, v14);
+  }
+
+  /**
+   * Block compression: XOR inputs, apply P to columns then rows, XOR with inputs
+   * Memory layout uses Uint32Array with 256 elements per block (128 u64 values)
+   */
+  function block(B, xPos, yPos, outPos, needXor) {
+    // XOR input blocks into A2_BUF
+    for (let i = 0; i < 256; i++) {
+      A2_BUF[i] = B[xPos + i] ^ B[yPos + i];
+    }
+
+    // Apply P to 8 columns (each column has 16 consecutive elements in index space)
+    for (let i = 0; i < 128; i += 16) {
+      P(i, i+1, i+2, i+3, i+4, i+5, i+6, i+7,
+        i+8, i+9, i+10, i+11, i+12, i+13, i+14, i+15);
+    }
+
+    // Apply P to 8 rows (interleaved pattern)
+    for (let i = 0; i < 16; i += 2) {
+      P(i, i+1, i+16, i+17, i+32, i+33, i+48, i+49,
+        i+64, i+65, i+80, i+81, i+96, i+97, i+112, i+113);
+    }
+
+    // XOR result back with both original inputs
+    if (needXor) {
+      for (let i = 0; i < 256; i++) {
+        B[outPos + i] ^= A2_BUF[i] ^ B[xPos + i] ^ B[yPos + i];
+      }
+    } else {
+      for (let i = 0; i < 256; i++) {
+        B[outPos + i] = A2_BUF[i] ^ B[xPos + i] ^ B[yPos + i];
+      }
+    }
+
+    // Clear temporary buffer
+    A2_BUF.fill(0);
+  }
+
+  /**
+   * Variable-length hash function H' using Blake2b
+   * @param {Uint32Array} A - Input data as u32 array
+   * @param {number} dkLen - Desired output length in bytes
+   * @returns {Uint32Array} - Output as u32 array
+   */
+  function Hp(A, dkLen) {
+    const A8 = new Uint8Array(A.buffer, A.byteOffset, A.byteLength);
+    const T = new Uint32Array(1);
+    T[0] = dkLen;
+    const T8 = new Uint8Array(T.buffer);
+
+    // Build input: LE32(dkLen) || A
+    const input = new Uint8Array(4 + A8.length);
+    input.set(T8, 0);
+    input.set(A8, 4);
+
+    if (dkLen <= 64) {
+      // Fast path: single blake2b call
+      const hash = blake2b(input, null, dkLen);
+      const result = new Uint32Array(Math.ceil(dkLen / 4));
+      const hashView = new Uint8Array(hash);
+      for (let i = 0; i < dkLen; i++) {
+        if (i % 4 === 0) result[i >> 2] = 0;
+        result[i >> 2] |= hashView[i] << ((i % 4) * 8);
+      }
+      return result;
+    }
+
+    // Long output: chain blake2b calls
+    const out = new Uint8Array(dkLen);
+    let V = blake2b(input, null, 64);
     let pos = 0;
 
-    // Write parameters as LE32
-    for (const param of params) {
-      input[pos++] = param & 0xFF;
-      input[pos++] = (param >> 8) & 0xFF;
-      input[pos++] = (param >> 16) & 0xFF;
-      input[pos++] = (param >> 24) & 0xFF;
+    // First block: copy first 32 bytes
+    out.set(new Uint8Array(V).subarray(0, 32), pos);
+    pos += 32;
+
+    // Middle blocks
+    while (dkLen - pos > 64) {
+      V = blake2b(V, null, 64);
+      out.set(new Uint8Array(V).subarray(0, 32), pos);
+      pos += 32;
     }
 
-    // Write password
-    input.set(password, pos);
-    pos += password.length;
+    // Last block
+    const lastLen = dkLen - pos;
+    V = blake2b(V, null, lastLen);
+    out.set(new Uint8Array(V).subarray(0, lastLen), pos);
 
-    // Write salt length and salt
-    input[pos++] = salt.length & 0xFF;
-    input[pos++] = (salt.length >> 8) & 0xFF;
-    input[pos++] = (salt.length >> 16) & 0xFF;
-    input[pos++] = (salt.length >> 24) & 0xFF;
-    input.set(salt, pos);
-    pos += salt.length;
-
-    // Write secret if present
-    if (secret && secret.length > 0) {
-      input[pos++] = secret.length & 0xFF;
-      input[pos++] = (secret.length >> 8) & 0xFF;
-      input[pos++] = (secret.length >> 16) & 0xFF;
-      input[pos++] = (secret.length >> 24) & 0xFF;
-      input.set(secret, pos);
-      pos += secret.length;
+    // Convert to Uint32Array
+    const result = new Uint32Array(Math.ceil(dkLen / 4));
+    for (let i = 0; i < dkLen; i++) {
+      if (i % 4 === 0) result[i >> 2] = 0;
+      result[i >> 2] |= out[i] << ((i % 4) * 8);
     }
-
-    // Write associated data if present
-    if (ad && ad.length > 0) {
-      input[pos++] = ad.length & 0xFF;
-      input[pos++] = (ad.length >> 8) & 0xFF;
-      input[pos++] = (ad.length >> 16) & 0xFF;
-      input[pos++] = (ad.length >> 24) & 0xFF;
-      input.set(ad, pos);
-      pos += ad.length;
-    }
-
-    return blake2b(input, null, 64);
+    return result;
   }
 
   /**
-   * Generate initial block for a lane
+   * Index alpha calculation for reference block selection
    */
-  function generateInitialBlock(h0, lane, i) {
-    const input = new Uint8Array(72);
-    input.set(h0, 0);
-    input[64] = lane & 0xFF;
-    input[65] = (lane >> 8) & 0xFF;
-    input[66] = (lane >> 16) & 0xFF;
-    input[67] = (lane >> 24) & 0xFF;
-    input[68] = i & 0xFF;
-    input[69] = (i >> 8) & 0xFF;
-    input[70] = (i >> 16) & 0xFF;
-    input[71] = (i >> 24) & 0xFF;
-
-    const blockBytes = blake2bLong(input, ARGON2_BLOCK_SIZE);
-    const block = new Array(ARGON2_QWORDS_IN_BLOCK);
-
-    for (let j = 0; j < ARGON2_QWORDS_IN_BLOCK; j++) {
-      let qword = BigInt(0);
-      const offset = j * 8;
-      for (let k = 0; k < 8; k++) {
-        qword |= BigInt(blockBytes[offset + k]) << BigInt(k * 8);
-      }
-      block[j] = qword;
-    }
-
-    return block;
-  }
-
-  /**
-   * Index generation for Argon2i/Argon2id (data-independent addressing)
-   */
-  function generateAddresses(position, memory, zeroBlock, inputBlock, addressBlock) {
-    inputBlock[0] = BigInt(position.pass);
-    inputBlock[1] = BigInt(position.lane);
-    inputBlock[2] = BigInt(position.slice);
-    inputBlock[3] = BigInt(memory.length);
-    inputBlock[4] = BigInt(position.timeCost);
-    inputBlock[5] = BigInt(position.type);
-
-    for (let i = 6; i < ARGON2_QWORDS_IN_BLOCK; i++) {
-      inputBlock[i] = BigInt(0);
-    }
-
-    const tmpBlock = compressBlocks(zeroBlock, inputBlock);
-    const tmpBlock2 = compressBlocks(zeroBlock, tmpBlock);
-
-    for (let i = 0; i < ARGON2_QWORDS_IN_BLOCK; i++) {
-      addressBlock[i] = tmpBlock2[i];
-    }
-  }
-
-  /**
-   * Get reference block index
-   */
-  function getRefIndex(position, pseudoRand, sameLane, memory, segmentLength, laneLength) {
-    let referenceAreaSize;
-    let startPos;
-
-    if (position.pass === 0) {
-      if (position.slice === 0) {
-        referenceAreaSize = position.index - 1;
-      } else {
-        if (sameLane) {
-          referenceAreaSize = position.slice * segmentLength + position.index - 1;
-        } else {
-          referenceAreaSize = position.slice * segmentLength - (position.index === 0 ? 1 : 0);
-        }
-      }
+  function indexAlpha(r, s, laneLen, segmentLen, index, randL, sameLane) {
+    let area;
+    if (r === 0) {
+      if (s === 0) area = index - 1;
+      else if (sameLane) area = s * segmentLen + index - 1;
+      else area = s * segmentLen + (index === 0 ? -1 : 0);
+    } else if (sameLane) {
+      area = laneLen - segmentLen + index - 1;
     } else {
-      if (sameLane) {
-        referenceAreaSize = laneLength - segmentLength + position.index - 1;
-      } else {
-        referenceAreaSize = laneLength - segmentLength - (position.index === 0 ? 1 : 0);
-      }
+      area = laneLen - segmentLen + (index === 0 ? -1 : 0);
     }
 
-    const relativePos = Number(pseudoRand & BigInt('0xFFFFFFFF'));
-    const relativePosBig = BigInt(relativePos);
-    let area = (relativePosBig * relativePosBig) >> BigInt(32);
-    area = (BigInt(referenceAreaSize) - BigInt(1) - ((BigInt(referenceAreaSize) * area) >> BigInt(32)));
-
-    if (position.pass !== 0 && position.slice !== ARGON2_SYNC_POINTS - 1) {
-      startPos = 0;
-    } else {
-      startPos = position.pass !== 0 ?
-        ((position.slice + 1) * segmentLength) :
-        0;
-    }
-
-    const absPos = (startPos + Number(area)) % laneLength;
-    return absPos;
+    const startPos = (r !== 0 && s !== ARGON2_SYNC_POINTS - 1) ? (s + 1) * segmentLen : 0;
+    const rel = area - 1 - mul(area, mul(randL, randL).h).h;
+    return (startPos + rel) % laneLen;
   }
 
   /**
-   * Fill a segment of a lane
+   * Process a single block in a segment
    */
-  function fillSegment(position, memory, segmentLength, laneLength, lanes, timeCost, type) {
-    const dataIndependent = (type === Argon2Type.Argon2i) ||
-                           (type === Argon2Type.Argon2id && position.pass === 0 && position.slice < ARGON2_SYNC_POINTS / 2);
+  function processBlock(B, address, l, r, s, index, laneLen, segmentLen, lanes, offset, prev, dataIndependent, needXor) {
+    if (offset % laneLen) prev = offset - 1;
 
-    const zeroBlock = new Array(ARGON2_QWORDS_IN_BLOCK).fill(BigInt(0));
-    const inputBlock = new Array(ARGON2_QWORDS_IN_BLOCK).fill(BigInt(0));
-    const addressBlock = new Array(ARGON2_QWORDS_IN_BLOCK).fill(BigInt(0));
-    let addressCounter = 0;
-
+    let randL, randH;
     if (dataIndependent) {
-      generateAddresses({ ...position, timeCost, type }, memory, zeroBlock, inputBlock, addressBlock);
-    }
-
-    const startingIndex = position.pass === 0 && position.slice === 0 ? 2 : 0;
-    const currentOffset = position.lane * laneLength + position.slice * segmentLength + startingIndex;
-
-    let prevOffset;
-    if (startingIndex === 0 && position.slice === 0) {
-      prevOffset = position.lane * laneLength + laneLength - 1;
+      const i128 = index % 128;
+      if (i128 === 0) {
+        address[256 + 12]++;
+        block(address, 256, 2 * 256, 0, false);
+        block(address, 0, 2 * 256, 0, false);
+      }
+      randL = address[2 * i128];
+      randH = address[2 * i128 + 1];
     } else {
-      prevOffset = currentOffset - 1;
+      const T = 256 * prev;
+      randL = B[T];
+      randH = B[T + 1];
     }
 
-    for (let i = startingIndex; i < segmentLength; i++) {
-      if (currentOffset + i >= memory.length) break;
+    // Determine reference lane and position
+    const refLane = (r === 0 && s === 0) ? l : randH % lanes;
+    const refPos = indexAlpha(r, s, laneLen, segmentLen, index, randL, refLane === l);
+    const refBlock = laneLen * refLane + refPos;
 
-      const localPos = {
-        pass: position.pass,
-        lane: position.lane,
-        slice: position.slice,
-        index: i,
-        timeCost,
-        type
-      };
+    // Apply block compression
+    block(B, 256 * prev, 256 * refBlock, offset * 256, needXor);
+  }
 
-      let pseudoRand;
-      if (dataIndependent) {
-        if (addressCounter % ARGON2_QWORDS_IN_BLOCK === 0) {
-          inputBlock[6]++;
-          generateAddresses(localPos, memory, zeroBlock, inputBlock, addressBlock);
-          addressCounter = 0;
-        }
-        pseudoRand = addressBlock[addressCounter++];
-      } else {
-        pseudoRand = memory[prevOffset][0];
-      }
+  /**
+   * Initialize Argon2: compute H0 and setup memory
+   */
+  function argon2Init(password, salt, type, opts) {
+    const { p, dkLen, m, t, version, key, personalization } = opts;
 
-      const refLane = position.pass === 0 && position.slice === 0 ?
-        position.lane :
-        Number((pseudoRand >> BigInt(32)) % BigInt(lanes));
+    // Compute H0 = Blake2b(LE32(p) || LE32(dkLen) || LE32(m) || LE32(t) ||
+    //                       LE32(version) || LE32(type) ||
+    //                       LE32(|password|) || password ||
+    //                       LE32(|salt|) || salt ||
+    //                       LE32(|key|) || key ||
+    //                       LE32(|personalization|) || personalization)
+    const BUF = new Uint32Array(1);
+    const BUF8 = new Uint8Array(BUF.buffer);
 
-      const sameLane = refLane === position.lane;
-      const refIndex = getRefIndex(localPos, pseudoRand, sameLane, memory, segmentLength, laneLength);
-      const refBlock = memory[refLane * laneLength + refIndex];
+    // Build input manually
+    const items = [p, dkLen, m, t, version, type];
+    const dataItems = [password, salt, key || new Uint8Array(0), personalization || new Uint8Array(0)];
 
-      const currentBlock = compressBlocks(memory[prevOffset], refBlock);
-
-      if (position.pass === 0) {
-        memory[currentOffset + i] = currentBlock;
-      } else {
-        for (let j = 0; j < ARGON2_QWORDS_IN_BLOCK; j++) {
-          memory[currentOffset + i][j] ^= currentBlock[j];
-        }
-      }
-
-      prevOffset = currentOffset + i;
+    let totalLen = items.length * 4;
+    for (const item of dataItems) {
+      totalLen += 4 + item.length;
     }
+
+    const input = new Uint8Array(totalLen);
+    let pos = 0;
+
+    for (const item of items) {
+      input[pos++] = item & 0xFF;
+      input[pos++] = (item >> 8) & 0xFF;
+      input[pos++] = (item >> 16) & 0xFF;
+      input[pos++] = (item >> 24) & 0xFF;
+    }
+
+    for (const data of dataItems) {
+      input[pos++] = data.length & 0xFF;
+      input[pos++] = (data.length >> 8) & 0xFF;
+      input[pos++] = (data.length >> 16) & 0xFF;
+      input[pos++] = (data.length >> 24) & 0xFF;
+      input.set(data, pos);
+      pos += data.length;
+    }
+
+    const H0_bytes = blake2b(input, null, 64);
+    const H0 = new Uint32Array(18);
+    const H0_8 = new Uint8Array(H0.buffer);
+    H0_8.set(new Uint8Array(H0_bytes));
+
+    // Memory layout
+    const lanes = p;
+    // m' = 4 * p * floor(m / (4*p))
+    const mP = 4 * p * Math.floor(m / (ARGON2_SYNC_POINTS * p));
+    const laneLen = Math.floor(mP / p);
+    const segmentLen = Math.floor(laneLen / ARGON2_SYNC_POINTS);
+
+    // Allocate memory: 256 u32 per block
+    const memUsed = mP * 256;
+    const B = new Uint32Array(memUsed);
+
+    // Fill first two blocks of each lane
+    for (let l = 0; l < p; l++) {
+      const i = 256 * laneLen * l;
+      // B[l][0] = H'(1024)(H0 || LE32(0) || LE32(l))
+      H0[17] = l;
+      H0[16] = 0;
+      B.set(Hp(H0, 1024), i);
+      // B[l][1] = H'(1024)(H0 || LE32(1) || LE32(l))
+      H0[16] = 1;
+      B.set(Hp(H0, 1024), i + 256);
+    }
+
+    return { type, mP, p, t, version, B, laneLen, lanes, segmentLen, dkLen };
+  }
+
+  /**
+   * Compute final output from memory
+   */
+  function argon2Output(B, p, laneLen, dkLen) {
+    const B_final = new Uint32Array(256);
+    for (let l = 0; l < p; l++) {
+      for (let j = 0; j < 256; j++) {
+        B_final[j] ^= B[256 * (laneLen * l + laneLen - 1) + j];
+      }
+    }
+    return Hp(B_final, dkLen);
   }
 
   /**
@@ -640,59 +613,69 @@
     if (parallelism < 1) throw new Error('Parallelism must be at least 1');
     if (outputLength < 4) throw new Error('Output length must be at least 4');
 
-    // Calculate memory layout
-    const memoryBlocks = Math.floor(memoryCost / parallelism) * parallelism;
-    const laneLength = Math.floor(memoryBlocks / parallelism);
-    const segmentLength = Math.floor(laneLength / ARGON2_SYNC_POINTS);
+    const opts = {
+      p: parallelism,
+      dkLen: outputLength,
+      m: memoryCost,
+      t: timeCost,
+      version: ARGON2_VERSION,
+      key: secret,
+      personalization: ad
+    };
 
-    // Initial hash
-    const h0 = initialHash(password, salt, timeCost, memoryCost, parallelism, outputLength, type, secret, ad);
+    const { mP, p, t, version, B, laneLen, lanes, segmentLen, dkLen } = argon2Init(password, salt, type, opts);
 
-    // Allocate memory
-    const memory = new Array(memoryBlocks);
-
-    // Fill first two blocks of each lane
-    for (let lane = 0; lane < parallelism; lane++) {
-      memory[lane * laneLength + 0] = generateInitialBlock(h0, lane, 0);
-      memory[lane * laneLength + 1] = generateInitialBlock(h0, lane, 1);
-    }
+    // Address block for data-independent addressing: [address, input, zero_block]
+    const address = new Uint32Array(3 * 256);
+    address[256 + 6] = mP;
+    address[256 + 8] = t;
+    address[256 + 10] = type;
 
     // Process all passes
-    for (let pass = 0; pass < timeCost; pass++) {
-      for (let slice = 0; slice < ARGON2_SYNC_POINTS; slice++) {
-        for (let lane = 0; lane < parallelism; lane++) {
-          const position = { pass, lane, slice };
-          fillSegment(position, memory, segmentLength, laneLength, parallelism, timeCost, type);
+    for (let r = 0; r < t; r++) {
+      const needXor = r !== 0 && version === 0x13;
+      address[256 + 0] = r;
+
+      for (let s = 0; s < ARGON2_SYNC_POINTS; s++) {
+        address[256 + 4] = s;
+        const dataIndependent = type === Argon2Type.Argon2i || (type === Argon2Type.Argon2id && r === 0 && s < 2);
+
+        for (let l = 0; l < p; l++) {
+          address[256 + 2] = l;
+          address[256 + 12] = 0;
+
+          let startPos = 0;
+          if (r === 0 && s === 0) {
+            startPos = 2;
+            if (dataIndependent) {
+              address[256 + 12]++;
+              block(address, 256, 2 * 256, 0, false);
+              block(address, 0, 2 * 256, 0, false);
+            }
+          }
+
+          // Current block position
+          let offset = l * laneLen + s * segmentLen + startPos;
+          // Previous block position
+          let prev = offset % laneLen ? offset - 1 : offset + laneLen - 1;
+
+          for (let index = startPos; index < segmentLen; index++, offset++, prev++) {
+            processBlock(B, address, l, r, s, index, laneLen, segmentLen, lanes, offset, prev, dataIndependent, needXor);
+          }
         }
       }
     }
 
-    // Final block XOR
-    const finalBlock = new Array(ARGON2_QWORDS_IN_BLOCK);
-    for (let i = 0; i < ARGON2_QWORDS_IN_BLOCK; i++) {
-      finalBlock[i] = memory[laneLength - 1][i];
+    // Get final output
+    const resultU32 = argon2Output(B, p, laneLen, dkLen);
+
+    // Convert Uint32Array to byte array
+    const result = new Uint8Array(dkLen);
+    for (let i = 0; i < dkLen; i++) {
+      result[i] = (resultU32[i >> 2] >> ((i % 4) * 8)) & 0xFF;
     }
 
-    for (let lane = 1; lane < parallelism; lane++) {
-      const lastBlockIndex = lane * laneLength + laneLength - 1;
-      for (let i = 0; i < ARGON2_QWORDS_IN_BLOCK; i++) {
-        finalBlock[i] ^= memory[lastBlockIndex][i];
-      }
-    }
-
-    // Convert final block to bytes
-    const finalBlockBytes = new Uint8Array(ARGON2_BLOCK_SIZE);
-    for (let i = 0; i < ARGON2_QWORDS_IN_BLOCK; i++) {
-      let qword = finalBlock[i];
-      const offset = i * 8;
-      for (let j = 0; j < 8; j++) {
-        finalBlockBytes[offset + j] = Number(qword & BigInt('0xFF'));
-        qword >>= BigInt(8);
-      }
-    }
-
-    // Generate final output
-    return blake2bLong(finalBlockBytes, outputLength);
+    return result;
   }
 
   // ===== ALGORITHM CLASSES =====

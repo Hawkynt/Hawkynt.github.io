@@ -133,7 +133,7 @@
           input: null,
           seed: OpCodes.Unpack32LE(1234),
           outputSize: 40, // 10 uint32 values = 40 bytes
-          expected: OpCodes.ConcatArrays(
+          expected: OpCodes.ConcatArrays([
             OpCodes.Unpack32LE(3440181298),
             OpCodes.Unpack32LE(1564997079),
             OpCodes.Unpack32LE(1510669302),
@@ -144,7 +144,7 @@
             OpCodes.Unpack32LE(2143818589),
             OpCodes.Unpack32LE(3827219408),
             OpCodes.Unpack32LE(2987036003)
-          )
+          ])
         },
         {
           text: "SFMT19937 with seed 1234 (outputs 11-20)",
@@ -153,7 +153,7 @@
           seed: OpCodes.Unpack32LE(1234),
           skipBytes: 40, // Skip first 10 outputs
           outputSize: 40,
-          expected: OpCodes.ConcatArrays(
+          expected: OpCodes.ConcatArrays([
             OpCodes.Unpack32LE(2674978610),
             OpCodes.Unpack32LE(1536842514),
             OpCodes.Unpack32LE(2027035537),
@@ -164,7 +164,7 @@
             OpCodes.Unpack32LE(1370534252),
             OpCodes.Unpack32LE(4231012796),
             OpCodes.Unpack32LE(3994803019)
-          )
+          ])
         }
       ];
     }
@@ -228,10 +228,10 @@
 
       for (let i = 1; i < N32; ++i) {
         const prev = this._state[i - 1];
-        const xored = prev ^ (prev >>> 30);
-        // Multiply and add index (ensure 32-bit arithmetic)
-        this._state[i] = ((INIT_MULTIPLIER * xored) >>> 0) + i;
-        this._state[i] = this._state[i] >>> 0;
+        const xored = (prev ^ (prev >>> 30)) >>> 0; // Ensure unsigned
+        // 32-bit multiplication using BigInt to avoid overflow
+        const product = Number((BigInt(INIT_MULTIPLIER) * BigInt(xored)) & 0xFFFFFFFFn);
+        this._state[i] = (product + i) >>> 0;
       }
 
       // Period certification (ensures non-degenerate state)
