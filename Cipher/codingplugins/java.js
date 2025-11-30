@@ -10,15 +10,32 @@
 (function() {
   // Use local variables to avoid global conflicts
   let LanguagePlugin, LanguagePlugins;
+  let JavaAST, JavaEmitter, JavaTransformer;
+
 if (typeof require !== 'undefined') {
   // Node.js environment
   const framework = require('./LanguagePlugin.js');
   LanguagePlugin = framework.LanguagePlugin;
   LanguagePlugins = framework.LanguagePlugins;
+
+  // Load new AST pipeline components
+  try {
+    JavaAST = require('./JavaAST.js');
+    const emitterModule = require('./JavaEmitter.js');
+    JavaEmitter = emitterModule.JavaEmitter;
+    const transformerModule = require('./JavaTransformer.js');
+    JavaTransformer = transformerModule.JavaTransformer;
+  } catch (e) {
+    // Pipeline components not available - will use legacy mode
+    console.warn('Java AST pipeline components not loaded:', e.message);
+  }
 } else {
   // Browser environment - use globals
   LanguagePlugin = window.LanguagePlugin;
   LanguagePlugins = window.LanguagePlugins;
+  JavaAST = window.JavaAST;
+  JavaEmitter = window.JavaEmitter;
+  JavaTransformer = window.JavaTransformer;
 }
 
 /**
@@ -44,7 +61,8 @@ class JavaPlugin extends LanguagePlugin {
       addComments: true,
       useStrictTypes: true,
       packageName: 'com.generated',
-      className: 'GeneratedClass'
+      className: 'GeneratedClass',
+      useAstPipeline: true // Enable new AST pipeline by default
     };
     
     // Internal state
@@ -60,34 +78,75 @@ class JavaPlugin extends LanguagePlugin {
    */
   GenerateFromAST(ast, options = {}) {
     try {
-      // Reset state for clean generation
-      this.indentLevel = 0;
-      this.imports.clear();
-      
       // Merge options
       const mergedOptions = { ...this.options, ...options };
-      
+
       // Validate AST
       if (!ast || typeof ast !== 'object') {
         return this.CreateErrorResult('Invalid AST: must be an object');
       }
-      
-      // Generate Java code
+
+      // Check if new AST pipeline is requested and available
+      if (mergedOptions.useAstPipeline && JavaTransformer && JavaEmitter) {
+        return this._generateWithAstPipeline(ast, mergedOptions);
+      }
+
+      // Reset state for clean generation (legacy mode)
+      this.indentLevel = 0;
+      this.imports.clear();
+
+      // Generate Java code using legacy direct emission
       const code = this._generateNode(ast, mergedOptions);
-      
+
       // Add package declaration, imports, and class structure
       const finalCode = this._wrapWithClassStructure(code, mergedOptions);
-      
+
       // Collect dependencies
       const dependencies = this._collectDependencies(ast, mergedOptions);
-      
+
       // Generate warnings if any
       const warnings = this._generateWarnings(ast, mergedOptions);
-      
+
       return this.CreateSuccessResult(finalCode, dependencies, warnings);
-      
+
     } catch (error) {
       return this.CreateErrorResult('Code generation failed: ' + error.message);
+    }
+  }
+
+  /**
+   * Generate Java code using the new AST pipeline
+   * Pipeline: JS AST -> Java AST -> Java Emitter -> Java Source
+   * @private
+   */
+  _generateWithAstPipeline(ast, options) {
+    try {
+      // Create transformer with options
+      const transformer = new JavaTransformer({
+        packageName: options.packageName || 'com.generated',
+        className: options.className || 'GeneratedClass',
+        typeKnowledge: options.parser?.typeKnowledge || options.typeKnowledge
+      });
+
+      // Transform JS AST to Java AST
+      const javaAst = transformer.transform(ast);
+
+      // Create emitter with formatting options
+      const emitter = new JavaEmitter({
+        indent: options.indent || '    ',
+        newline: options.lineEnding || '\n'
+      });
+
+      // Emit Java source code
+      const code = emitter.emit(javaAst);
+
+      // Collect any warnings from transformation
+      const warnings = transformer.warnings || [];
+
+      return this.CreateSuccessResult(code, [], warnings);
+
+    } catch (error) {
+      return this.CreateErrorResult('AST pipeline generation failed: ' + error.message);
     }
   }
 

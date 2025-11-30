@@ -1,23 +1,44 @@
 /**
  * Python Language Plugin for Multi-Language Code Generation
  * Generates Python 3.x compatible code from JavaScript AST
- * 
+ *
  * Follows the LanguagePlugin specification exactly
+ *
+ * Supports two generation modes:
+ * 1. Direct emission (legacy) - _generateNode directly emits Python code
+ * 2. AST pipeline (new) - JS AST -> Python AST -> Python Emitter
  */
 
 // Import the framework (Node.js environment)
 (function() {
   // Use local variables to avoid global conflicts
   let LanguagePlugin, LanguagePlugins;
+  let PythonAST, PythonEmitter, PythonTransformer;
+
   if (typeof require !== 'undefined') {
     // Node.js environment
     const framework = require('./LanguagePlugin.js');
     LanguagePlugin = framework.LanguagePlugin;
     LanguagePlugins = framework.LanguagePlugins;
+
+    // Load new AST pipeline components
+    try {
+      PythonAST = require('./PythonAST.js');
+      const emitterModule = require('./PythonEmitter.js');
+      PythonEmitter = emitterModule.PythonEmitter;
+      const transformerModule = require('./PythonTransformer.js');
+      PythonTransformer = transformerModule.PythonTransformer;
+    } catch (e) {
+      // Pipeline components not available - will use legacy mode
+      console.warn('Python AST pipeline components not loaded:', e.message);
+    }
   } else {
     // Browser environment - use globals
     LanguagePlugin = window.LanguagePlugin;
     LanguagePlugins = window.LanguagePlugins;
+    PythonAST = window.PythonAST;
+    PythonEmitter = window.PythonEmitter;
+    PythonTransformer = window.PythonTransformer;
   }
 
 /**
@@ -95,33 +116,82 @@ class PythonPlugin extends LanguagePlugin {
    */
   GenerateFromAST(ast, options = {}) {
     try {
-      // Reset state for clean generation
-      this.indentLevel = 0;
-      
       // Merge options
       const mergedOptions = { ...this.options, ...options };
-      
+
       // Validate AST
       if (!ast || typeof ast !== 'object') {
         return this.CreateErrorResult('Invalid AST: must be an object');
       }
-      
-      // Generate Python code
+
+      // Check if new AST pipeline is requested and available
+      if (mergedOptions.useAstPipeline && PythonTransformer && PythonEmitter) {
+        return this._generateWithAstPipeline(ast, mergedOptions);
+      }
+
+      // Reset state for clean generation (legacy mode)
+      this.indentLevel = 0;
+
+      // Generate Python code using legacy direct emission
       const code = this._generateNode(ast, mergedOptions);
-      
+
       // Add standard imports and headers
       const finalCode = this._wrapWithImports(code, mergedOptions);
-      
+
       // Collect dependencies
       const dependencies = this._collectDependencies(ast, mergedOptions);
-      
+
       // Generate warnings if any
       const warnings = this._generateWarnings(ast, mergedOptions);
-      
+
       return this.CreateSuccessResult(finalCode, dependencies, warnings);
-      
+
     } catch (error) {
       return this.CreateErrorResult(`Code generation failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Generate Python code using the new AST pipeline
+   * Pipeline: JS AST -> Python AST -> Python Emitter -> Python Source
+   * @private
+   */
+  _generateWithAstPipeline(ast, options) {
+    try {
+      console.error('[INFO] Using AST pipeline for Python generation');
+
+      // Create transformer with options
+      const transformer = new PythonTransformer({
+        typeKnowledge: options.parser?.typeKnowledge || options.typeKnowledge,
+        addTypeHints: options.addTypeHints !== undefined ? options.addTypeHints : true,
+        addDocstrings: options.addDocstrings !== undefined ? options.addDocstrings : true,
+        strictTypes: options.strictTypes !== undefined ? options.strictTypes : false
+      });
+
+      // Transform JS AST to Python AST
+      const pyAst = transformer.transform(ast);
+      console.error('[INFO] Transformation complete');
+
+      // Create emitter with formatting options
+      const emitter = new PythonEmitter({
+        indent: options.indent || '    ',
+        lineEnding: options.lineEnding || '\n',
+        addTypeHints: options.addTypeHints !== undefined ? options.addTypeHints : true,
+        addDocstrings: options.addDocstrings !== undefined ? options.addDocstrings : true
+      });
+
+      // Emit Python source code
+      const code = emitter.emit(pyAst);
+      console.error('[INFO] Emission complete');
+
+      // Collect any warnings from transformation
+      const warnings = transformer.warnings || [];
+
+      return this.CreateSuccessResult(code, [], warnings);
+
+    } catch (error) {
+      console.error('[ERROR] AST pipeline error:', error);
+      return this.CreateErrorResult('AST pipeline generation failed: ' + error.message);
     }
   }
 
