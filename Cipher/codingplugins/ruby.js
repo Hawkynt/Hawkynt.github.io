@@ -699,7 +699,15 @@ class RubyPlugin extends LanguagePlugin {
       this._autoDetectRequires(code);
 
       // Add headers, requires, and script structure
-      const finalCode = this._wrapWithHeaders(code, mergedOptions);
+      let finalCode = this._wrapWithHeaders(code, mergedOptions);
+
+      // Apply line wrapping if maxLineLength is set
+      if (mergedOptions.maxLineLength) {
+        finalCode = this._wrapLongLines(finalCode, mergedOptions);
+      }
+
+      // Apply line ending style
+      finalCode = this._applyLineEnding(finalCode, mergedOptions);
 
       // Collect dependencies
       const dependencies = this._collectDependencies(ast, mergedOptions);
@@ -1060,7 +1068,18 @@ class RubyPlugin extends LanguagePlugin {
 
       const returnType = this._inferReturnType(methodName);
       code += this._indent(`# @return [${returnType}] return value description\n`);
+
+      // Add memoization note if applicable
+      if (options.useMemoization && this._shouldMemoize(node, methodName)) {
+        code += this._indent('# @note This method uses memoization for performance\n');
+      }
+
       code += this._indent('#\n');
+    }
+
+    // Add type annotations if enabled
+    if (options.addTypeAnnotations || options.addSorbetTypes) {
+      code += this._generateTypeSignature(node, methodName, options);
     }
 
     // Method signature with modern Ruby features
@@ -1079,6 +1098,23 @@ class RubyPlugin extends LanguagePlugin {
 
     // Method body
     this.indentLevel++;
+
+    // Add memoization implementation if enabled
+    if (options.useMemoization && this._shouldMemoize(node, methodName)) {
+      code += this._indent(`@${methodName}_memo ||= begin\n`);
+      this.indentLevel++;
+    }
+
+    // Add debug info if enabled
+    if (options.addDebugInfo) {
+      code += this._indent(`puts "DEBUG: Entering method ${methodName}"\n`);
+    }
+
+    // Add performance hint comments
+    if (options.addPerformanceHints && this._hasPerformanceIssues(methodName)) {
+      code += this._indent(`# PERFORMANCE: Consider optimizing this method\n`);
+    }
+
     if (node.body) {
       const bodyCode = this._generateNode(node.body, options);
       if (bodyCode && bodyCode.trim()) {
@@ -1087,16 +1123,36 @@ class RubyPlugin extends LanguagePlugin {
           code += '\n';
         }
       } else {
-        code += this._indent(`# Implementation for ${methodName}\n`);
+        if (options.generateTODOs) {
+          code += this._indent(`# TODO: Implement ${methodName}\n`);
+        } else {
+          code += this._indent(`# Implementation for ${methodName}\n`);
+        }
         code += this._indent('nil\n');
       }
     } else {
-      code += this._indent(`# Implementation for ${methodName}\n`);
+      if (options.generateTODOs) {
+        code += this._indent(`# TODO: Implement ${methodName}\n`);
+      } else {
+        code += this._indent(`# Implementation for ${methodName}\n`);
+      }
       code += this._indent('nil\n');
     }
+
+    // Close memoization block
+    if (options.useMemoization && this._shouldMemoize(node, methodName)) {
+      this.indentLevel--;
+      code += this._indent('end\n');
+    }
+
     this.indentLevel--;
 
     code += this._indent('end\n');
+
+    // Add linting hints
+    if (options.addLinting) {
+      code += this._generateLintingHints(methodName, node);
+    }
 
     return code;
   }
@@ -1200,6 +1256,61 @@ class RubyPlugin extends LanguagePlugin {
       if (line.startsWith(indentStr)) return line; // Already indented
       return indentStr + line.replace(/^\s*/, ''); // Apply indentation
     }).join('\n');
+  }
+
+  /**
+   * Apply line ending style to code
+   * @private
+   */
+  _applyLineEnding(code, options) {
+    if (!code) return '';
+    if (options.lineEnding === '\n') return code; // Default, no change needed
+    return code.replace(/\n/g, options.lineEnding);
+  }
+
+  /**
+   * Wrap long lines according to maxLineLength
+   * @private
+   */
+  _wrapLongLines(code, options) {
+    if (!code || !options.maxLineLength) return code;
+
+    const lines = code.split('\n');
+    const wrapped = [];
+
+    lines.forEach(line => {
+      if (line.length <= options.maxLineLength) {
+        wrapped.push(line);
+        return;
+      }
+
+      // Don't wrap comments, strings, or special lines
+      if (line.trim().startsWith('#') || line.includes('"') || line.includes("'")) {
+        wrapped.push(line);
+        return;
+      }
+
+      // Simple line wrapping for method chains and expressions
+      const indent = line.match(/^\s*/)[0];
+      let remaining = line.trim();
+
+      while (remaining.length > options.maxLineLength - indent.length) {
+        let breakPoint = remaining.lastIndexOf(' ', options.maxLineLength - indent.length - 2);
+        if (breakPoint === -1) {
+          wrapped.push(indent + remaining);
+          break;
+        }
+
+        wrapped.push(indent + remaining.substring(0, breakPoint).trim() + ' \\');
+        remaining = remaining.substring(breakPoint).trim();
+      }
+
+      if (remaining.length > 0) {
+        wrapped.push(indent + this.options.indent + remaining);
+      }
+    });
+
+    return wrapped.join('\n');
   }
 
   /**
@@ -1382,7 +1493,10 @@ class RubyPlugin extends LanguagePlugin {
   _generateForStatement(node, options) {
     // Convert JavaScript for loop to Ruby iterator
     if (this._isSimpleForLoop(node)) {
-      return this._generateRubyRangeLoop(node, options);
+      // Use blocks for iteration if enabled (default Ruby style)
+      if (options.useBlocksForIteration !== false) {
+        return this._generateRubyRangeLoop(node, options);
+      }
     }
 
     // Fallback to while loop
@@ -1604,6 +1718,22 @@ class RubyPlugin extends LanguagePlugin {
     // Handle function calls
     const functionName = this._getFunctionName(node.callee);
 
+    // Replace insecure random with SecureRandom when enabled
+    if (options.useSecureRandom) {
+      if (functionName === 'random' || functionName === 'Math.random') {
+        this.requires.add('securerandom');
+        return 'SecureRandom.random_number';
+      }
+      if (functionName === 'randomBytes') {
+        this.requires.add('securerandom');
+        return `SecureRandom.bytes(${args})`;
+      }
+      if (functionName === 'randomInt') {
+        this.requires.add('securerandom');
+        return `SecureRandom.random_number(${args})`;
+      }
+    }
+
     // OpCodes integration for crypto operations
     if (options.enableOpCodesIntegration && this.cryptoOperations[functionName]) {
       return this._generateCryptoOperation(functionName, args, options);
@@ -1653,7 +1783,17 @@ class RubyPlugin extends LanguagePlugin {
       const property = this._getPropertyName(node.property);
       const rubyProperty = this._toRubyMethod(property);
 
-      // Safe navigation operator
+      // Convert this._property to @property (instance variable syntax)
+      if (object === 'self') {
+        return `@${rubyProperty}`;
+      }
+
+      // Use double colon for constants when enabled
+      if (options.useDoubleColonForConstants && this._isConstant(property)) {
+        return `${object}::${this._toRubyConstant(property)}`;
+      }
+
+      // Safe navigation operator (but not for arrays or basic method calls)
       if (options.useSafeNavigation && this._mightBeNil(object)) {
         return `${object}&.${rubyProperty}`;
       }
@@ -1856,19 +1996,33 @@ class RubyPlugin extends LanguagePlugin {
       // OpCodes function
       return operation(args);
     } else if (typeof operation === 'string') {
-      // Ruby method
-      if (operation.includes('::')) {
+      // Ruby method - use gems if enabled, otherwise use native Ruby
+      if (options.useCryptoGems !== false && operation.includes('::')) {
         // Add required gem
         const gemName = operation.split('::')[0].toLowerCase();
         if (this.cryptoGems[gemName]) {
           this.gems.add(gemName);
         }
-      }
 
-      if (args) {
-        return `${operation}(${args})`;
+        if (args) {
+          return `${operation}(${args})`;
+        } else {
+          return operation;
+        }
       } else {
-        return operation;
+        // Use native Ruby bitwise operations if gems are disabled
+        if (functionName === 'rotateLeft' || functionName === 'RotL32') {
+          return `((${args.split(',')[0].trim()} << ${args.split(',')[1].trim()}) | (${args.split(',')[0].trim()} >> (32 - ${args.split(',')[1].trim()})))`;
+        }
+        if (functionName === 'rotateRight' || functionName === 'RotR32') {
+          return `((${args.split(',')[0].trim()} >> ${args.split(',')[1].trim()}) | (${args.split(',')[0].trim()} << (32 - ${args.split(',')[1].trim()})))`;
+        }
+
+        if (args) {
+          return `${operation}(${args})`;
+        } else {
+          return operation;
+        }
       }
     }
 
@@ -2558,7 +2712,9 @@ class RubyPlugin extends LanguagePlugin {
 
   _toRubyConstant(name) {
     if (!name) return name;
-    return name.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase();
+    // Preserve PascalCase for class names, don't convert to SCREAMING_CASE
+    // Only insert underscores between lowercase and uppercase letters
+    return name.replace(/([a-z])([A-Z])/g, '$1$2');
   }
 
   _isConstant(name) {
@@ -2627,7 +2783,19 @@ class RubyPlugin extends LanguagePlugin {
 
   _mightBeNil(object) {
     // Simple heuristic for when safe navigation might be needed
-    return !['self', 'this', 'true', 'false'].includes(object);
+    // Don't use safe navigation for: self, this, true, false, instance variables, local variables
+    if (['self', 'this', 'true', 'false'].includes(object)) {
+      return false;
+    }
+    // Don't use safe navigation on instance variables (@var) or class variables (@@var)
+    if (/^@/.test(object)) {
+      return false;
+    }
+    // Don't use safe navigation on array/hash access
+    if (/\[.*\]/.test(object)) {
+      return false;
+    }
+    return true;
   }
 
   _hasSecurityImplications(code) {
@@ -2777,6 +2945,60 @@ class RubyPlugin extends LanguagePlugin {
     // Heuristic for strings that should be frozen
     return typeof node.value === 'string' &&
            (node.value.length > 10 || /^[A-Z_]+$/.test(node.value));
+  }
+
+  _shouldMemoize(node, methodName) {
+    // Memoize methods that don't take parameters and look like accessors/calculators
+    const hasNoParams = !node.params || node.params.length === 0;
+    const isCalculator = /^(calculate|compute|get|find|generate)/.test(methodName);
+    return hasNoParams && isCalculator;
+  }
+
+  _generateTypeSignature(node, methodName, options) {
+    let code = '';
+
+    if (options.addSorbetTypes) {
+      // Sorbet type signature
+      code += this._indent('# @sig (');
+      if (node.params && node.params.length > 0) {
+        const paramTypes = node.params.map(p => {
+          const paramName = this._getParameterName(p);
+          const paramType = this._inferRubyType(paramName);
+          return `${paramName}: ${paramType}`;
+        }).join(', ');
+        code += paramTypes;
+      }
+      code += ') -> ';
+      code += this._inferReturnType(methodName);
+      code += '\n';
+    } else if (options.addTypeAnnotations) {
+      // RBS-style type annotation in comment
+      code += this._indent('# Type: (');
+      if (node.params && node.params.length > 0) {
+        const paramTypes = node.params.map(p => this._inferRubyType(this._getParameterName(p))).join(', ');
+        code += paramTypes;
+      }
+      code += ') -> ';
+      code += this._inferReturnType(methodName);
+      code += '\n';
+    }
+
+    return code;
+  }
+
+  _generateLintingHints(methodName, node) {
+    let code = '';
+    const paramCount = node.params ? node.params.length : 0;
+
+    if (paramCount > 5) {
+      code += this._indent('# rubocop:disable Metrics/ParameterLists\n');
+    }
+
+    if (methodName.length > 30) {
+      code += this._indent('# rubocop:disable Naming/MethodName\n');
+    }
+
+    return code;
   }
 
   _convertSwitchToIf(node, options) {
@@ -2945,7 +3167,8 @@ class RubyPlugin extends LanguagePlugin {
 
   _generateMethodDefinition(node, options) {
     const isStatic = node.static;
-    const methodName = this._toRubyMethod(node.key.name);
+    const originalMethodName = node.key.name;
+    const methodName = originalMethodName === 'constructor' ? 'initialize' : this._toRubyMethod(originalMethodName);
     const isConstructor = methodName === 'initialize';
 
     let code = '';

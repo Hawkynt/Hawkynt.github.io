@@ -1091,10 +1091,25 @@
      * Transform a variable declaration (const/let/var)
      */
     transformVariableDeclaration(node, targetClass) {
+      const isConst = node.kind === 'const';
+
       for (const decl of node.declarations) {
         if (!decl.init) continue;
 
+        // Handle ObjectPattern destructuring - skip (imports framework types)
+        if (decl.id.type === 'ObjectPattern') {
+          // e.g., const { RegisterAlgorithm, CategoryType } = AlgorithmFramework
+          // These are just imports - skip them, the types are used directly
+          continue;
+        }
+
+        // Handle ArrayPattern destructuring - skip for now
+        if (decl.id.type === 'ArrayPattern') {
+          continue;
+        }
+
         const name = decl.id.name;
+        if (!name) continue;
 
         // Check if this is an object literal defining a namespace/static class
         if (decl.init.type === 'ObjectExpression') {
@@ -1107,8 +1122,109 @@
         else if (decl.init.type === 'CallExpression' &&
                  (decl.init.callee.type === 'FunctionExpression' ||
                   decl.init.callee.type === 'ArrowFunctionExpression')) {
-          // IIFE pattern - extract the inner content
-          this.transformIIFE(decl.init, targetClass);
+          // IIFE pattern: check if it returns something (result assigned to variable)
+          // vs. just executing code (side effects only)
+          const returnValue = this.getIIFEReturnValue(decl.init);
+          if (returnValue) {
+            // First extract any local declarations from the IIFE as private static fields
+            this.extractIIFELocalDeclarations(decl.init, targetClass);
+
+            // IIFE returns a value - create a static field with that value
+            const fieldType = this.inferFullExpressionType(returnValue) || new CSharpType('object');
+            const field = new CSharpField(this.toPascalCase(name), fieldType);
+            field.isStatic = true;
+            field.isReadOnly = isConst;
+            field.initializer = this.transformExpression(returnValue);
+            targetClass.members.push(field);
+          } else {
+            // IIFE just executes code - extract content as top-level declarations
+            this.transformIIFE(decl.init, targetClass);
+          }
+        }
+        // Handle simple literals and expressions as static fields/constants
+        else if (decl.init.type === 'Literal' ||
+                 decl.init.type === 'ArrayExpression' ||
+                 decl.init.type === 'UnaryExpression' ||
+                 decl.init.type === 'BinaryExpression' ||
+                 decl.init.type === 'CallExpression' ||
+                 decl.init.type === 'NewExpression') {
+          const fieldType = this.inferFullExpressionType(decl.init) || new CSharpType('object');
+          const field = new CSharpField(this.toPascalCase(name), fieldType);
+          field.isStatic = true;
+          field.isReadOnly = isConst;
+          field.initializer = this.transformExpression(decl.init);
+          targetClass.members.push(field);
+
+          // Register the variable type for later lookups
+          this.variableTypes.set(name, fieldType);
+        }
+        // Handle function expressions as static methods
+        else if (decl.init.type === 'FunctionExpression' || decl.init.type === 'ArrowFunctionExpression') {
+          const method = this.transformFunctionToMethod(name, decl.init);
+          method.isStatic = true;
+          targetClass.members.push(method);
+        }
+      }
+    }
+
+    /**
+     * Get the return value from an IIFE if it has one
+     */
+    getIIFEReturnValue(callNode) {
+      const func = callNode.callee;
+      if (!func.body || func.body.type !== 'BlockStatement') {
+        // Arrow function with expression body - the body IS the return value
+        if (func.body) return func.body;
+        return null;
+      }
+
+      // Look for a return statement at the end of the function body
+      const body = func.body.body;
+      if (!body || body.length === 0) return null;
+
+      // Check the last statement
+      const lastStmt = body[body.length - 1];
+      if (lastStmt.type === 'ReturnStatement' && lastStmt.argument) {
+        return lastStmt.argument;
+      }
+
+      return null;
+    }
+
+    /**
+     * Extract local variable declarations from an IIFE and add them as static fields
+     * Used when an IIFE returns a value that references its local variables
+     */
+    extractIIFELocalDeclarations(callNode, targetClass) {
+      const func = callNode.callee;
+      if (!func.body || func.body.type !== 'BlockStatement') {
+        return;
+      }
+
+      const body = func.body.body;
+      if (!body || body.length === 0) return;
+
+      for (const stmt of body) {
+        if (stmt.type === 'VariableDeclaration') {
+          const isConst = stmt.kind === 'const';
+          for (const decl of stmt.declarations) {
+            if (!decl.init || !decl.id.name) continue;
+
+            // Skip the return statement's variable if it matches
+            const name = decl.id.name;
+
+            // Create a private static field for each local declaration
+            const fieldType = this.inferFullExpressionType(decl.init) || new CSharpType('object');
+            const field = new CSharpField(this.toPascalCase(name), fieldType);
+            field.accessModifier = 'private';
+            field.isStatic = true;
+            field.isReadOnly = isConst;
+            field.initializer = this.transformExpression(decl.init);
+            targetClass.members.push(field);
+
+            // Register for later lookup
+            this.variableTypes.set(name, fieldType);
+          }
         }
       }
     }
@@ -1747,6 +1863,12 @@
         case 'ForStatement':
           return this.transformForStatement(node);
 
+        case 'ForOfStatement':
+          return this.transformForOfStatement(node);
+
+        case 'ForInStatement':
+          return this.transformForInStatement(node);
+
         case 'WhileStatement':
           return this.transformWhileStatement(node);
 
@@ -1989,6 +2111,18 @@
         case 'SequenceExpression':
           // Return the last expression
           return this.transformExpression(node.expressions[node.expressions.length - 1]);
+
+        case 'SpreadElement':
+          // ...array -> spread into collection (handled in context)
+          return this.transformExpression(node.argument);
+
+        case 'Super':
+          // super -> base in C#
+          return new CSharpBase();
+
+        case 'TemplateLiteral':
+          // `Hello ${name}!` -> $"Hello {name}!"
+          return this.transformTemplateLiteral(node);
 
         default:
           // Return a placeholder identifier for unhandled expression types
@@ -2842,6 +2976,37 @@
           }
         }
 
+        // Handle Object methods
+        if (node.callee.object.type === 'Identifier' && node.callee.object.name === 'Object') {
+          // Object.freeze(arr) - In C# arrays are already fixed-size, just return the array
+          // For objects, we could use readonly fields, but for now just return as-is
+          if (methodName === 'freeze' && args.length === 1) {
+            return args[0];
+          }
+          // Object.keys(obj) -> obj.Keys or dictionary operations
+          if (methodName === 'keys' && args.length === 1) {
+            return new CSharpMethodCall(args[0], 'Keys', []);
+          }
+          // Object.values(obj) -> obj.Values
+          if (methodName === 'values' && args.length === 1) {
+            return new CSharpMethodCall(args[0], 'Values', []);
+          }
+          // Object.entries(obj) -> for dictionaries, needs conversion
+          if (methodName === 'entries' && args.length === 1) {
+            // Return as ToList() for now - may need manual adjustment
+            return new CSharpMethodCall(args[0], 'ToList', []);
+          }
+          // Object.assign(target, ...sources) -> manual merge or spread
+          if (methodName === 'assign' && args.length >= 1) {
+            // For simple case Object.assign({}, source), just return source
+            if (args.length === 2 && args[0].nodeType === 'ObjectCreation') {
+              return args[1];
+            }
+            // Otherwise return first arg (target) - caller needs to handle merging
+            return args[0];
+          }
+        }
+
         // Apply type propagation: cast arguments to match expected parameter types
         // This handles cases like writeBits(byte & 0xFF, 8) where byte&0xFF is int but uint is expected
         const pascalMethodName = this.toPascalCase(methodName);
@@ -2969,10 +3134,19 @@
         node.arguments[0].type === 'Identifier' &&
         this.isArrayBufferVariable(node.arguments[0].name);
 
+      // Check if argument is an array literal (initialization with values)
+      const hasArrayInit = node.arguments.length > 0 &&
+        node.arguments[0].type === 'ArrayExpression';
+
       if (typeName === 'Uint8Array') {
         if (isBufferView) {
           // new Uint8Array(buffer) -> buffer (it's already byte[])
           return args[0];
+        }
+        if (hasArrayInit) {
+          // new Uint8Array([...]) -> new byte[] { ... }
+          const elements = node.arguments[0].elements.map(e => this.transformExpression(e));
+          return new CSharpArrayCreation(CSharpType.Byte(), null, elements);
         }
         return new CSharpArrayCreation(CSharpType.Byte(), args[0] || CSharpLiteral.Int(0), null);
       }
@@ -2981,11 +3155,19 @@
           // new Uint16Array(buffer) -> MemoryMarshal.Cast<byte, ushort>(buffer)
           return this.createMemoryMarshalCast(args[0], 'byte', 'ushort');
         }
+        if (hasArrayInit) {
+          const elements = node.arguments[0].elements.map(e => this.transformExpression(e));
+          return new CSharpArrayCreation(CSharpType.UShort(), null, elements);
+        }
         return new CSharpArrayCreation(CSharpType.UShort(), args[0] || CSharpLiteral.Int(0), null);
       }
       if (typeName === 'Uint32Array') {
         if (isBufferView) {
           return this.createMemoryMarshalCast(args[0], 'byte', 'uint');
+        }
+        if (hasArrayInit) {
+          const elements = node.arguments[0].elements.map(e => this.transformExpression(e));
+          return new CSharpArrayCreation(CSharpType.UInt(), null, elements);
         }
         return new CSharpArrayCreation(CSharpType.UInt(), args[0] || CSharpLiteral.Int(0), null);
       }
@@ -2993,11 +3175,19 @@
         if (isBufferView) {
           return this.createMemoryMarshalCast(args[0], 'byte', 'sbyte');
         }
+        if (hasArrayInit) {
+          const elements = node.arguments[0].elements.map(e => this.transformExpression(e));
+          return new CSharpArrayCreation(CSharpType.SByte(), null, elements);
+        }
         return new CSharpArrayCreation(CSharpType.SByte(), args[0] || CSharpLiteral.Int(0), null);
       }
       if (typeName === 'Int16Array') {
         if (isBufferView) {
           return this.createMemoryMarshalCast(args[0], 'byte', 'short');
+        }
+        if (hasArrayInit) {
+          const elements = node.arguments[0].elements.map(e => this.transformExpression(e));
+          return new CSharpArrayCreation(CSharpType.Short(), null, elements);
         }
         return new CSharpArrayCreation(CSharpType.Short(), args[0] || CSharpLiteral.Int(0), null);
       }
@@ -3005,17 +3195,29 @@
         if (isBufferView) {
           return this.createMemoryMarshalCast(args[0], 'byte', 'int');
         }
+        if (hasArrayInit) {
+          const elements = node.arguments[0].elements.map(e => this.transformExpression(e));
+          return new CSharpArrayCreation(CSharpType.Int(), null, elements);
+        }
         return new CSharpArrayCreation(CSharpType.Int(), args[0] || CSharpLiteral.Int(0), null);
       }
       if (typeName === 'Float32Array') {
         if (isBufferView) {
           return this.createMemoryMarshalCast(args[0], 'byte', 'float');
         }
+        if (hasArrayInit) {
+          const elements = node.arguments[0].elements.map(e => this.transformExpression(e));
+          return new CSharpArrayCreation(CSharpType.Float(), null, elements);
+        }
         return new CSharpArrayCreation(CSharpType.Float(), args[0] || CSharpLiteral.Int(0), null);
       }
       if (typeName === 'Float64Array') {
         if (isBufferView) {
           return this.createMemoryMarshalCast(args[0], 'byte', 'double');
+        }
+        if (hasArrayInit) {
+          const elements = node.arguments[0].elements.map(e => this.transformExpression(e));
+          return new CSharpArrayCreation(CSharpType.Double(), null, elements);
         }
         return new CSharpArrayCreation(CSharpType.Double(), args[0] || CSharpLiteral.Int(0), null);
       }
@@ -3408,6 +3610,121 @@
       return forStmt;
     }
 
+    /**
+     * Transform for-of statement: for (const x of array) { ... }
+     * C# equivalent: foreach (var x in array) { ... }
+     */
+    transformForOfStatement(node) {
+      // Extract variable name from left side
+      let varName = 'item';
+      let varType = CSharpType.Var();
+
+      if (node.left.type === 'VariableDeclaration') {
+        const decl = node.left.declarations[0];
+        if (decl && decl.id) {
+          varName = decl.id.name;
+        }
+      } else if (node.left.type === 'Identifier') {
+        varName = node.left.name;
+      }
+
+      // Transform the iterable
+      const iterable = this.transformExpression(node.right);
+
+      // Transform the body
+      let body = this.transformStatement(node.body);
+      if (body.nodeType !== 'Block') {
+        const block = new CSharpBlock();
+        block.statements.push(body);
+        body = block;
+      }
+
+      return new CSharpForEach(varName, varType, iterable, body);
+    }
+
+    /**
+     * Transform for-in statement: for (const key in object) { ... }
+     * C# equivalent: foreach (var key in object.Keys) { ... }
+     */
+    transformForInStatement(node) {
+      // Extract variable name from left side
+      let varName = 'key';
+      let varType = CSharpType.Var();
+
+      if (node.left.type === 'VariableDeclaration') {
+        const decl = node.left.declarations[0];
+        if (decl && decl.id) {
+          varName = decl.id.name;
+        }
+      } else if (node.left.type === 'Identifier') {
+        varName = node.left.name;
+      }
+
+      // Transform the object - for-in iterates over keys
+      const object = this.transformExpression(node.right);
+      // Access .Keys property for dictionaries or use directly for arrays (index iteration)
+      const iterable = new CSharpMemberAccess(object, 'Keys');
+
+      // Transform the body
+      let body = this.transformStatement(node.body);
+      if (body.nodeType !== 'Block') {
+        const block = new CSharpBlock();
+        block.statements.push(body);
+        body = block;
+      }
+
+      return new CSharpForEach(varName, varType, iterable, body);
+    }
+
+    /**
+     * Transform template literal: `Hello ${name}!` -> $"Hello {name}!"
+     * C# uses interpolated strings with $ prefix
+     */
+    transformTemplateLiteral(node) {
+      let formatStr = '';
+
+      for (let i = 0; i < node.quasis.length; ++i) {
+        // Escape braces and other special chars in the raw text
+        formatStr += node.quasis[i].value.raw.replace(/{/g, '{{').replace(/}/g, '}}');
+        if (i < node.expressions.length) {
+          // Insert interpolation placeholder
+          const expr = this.transformExpression(node.expressions[i]);
+          // For simple identifiers, we can emit directly; for complex expressions, wrap
+          if (expr.nodeType === 'Identifier') {
+            formatStr += `{${expr.name}}`;
+          } else {
+            // Complex expressions need to be handled carefully
+            formatStr += `{${this.emitExpressionInline(expr)}}`;
+          }
+        }
+      }
+
+      // Return as an interpolated string literal
+      return new CSharpLiteral('$"' + formatStr + '"', 'interpolated');
+    }
+
+    /**
+     * Helper to emit a C# expression inline for interpolated strings
+     */
+    emitExpressionInline(expr) {
+      if (!expr) return '';
+      if (expr.nodeType === 'Identifier') return expr.name;
+      if (expr.nodeType === 'Literal') {
+        if (typeof expr.value === 'string') return `"${expr.value}"`;
+        return String(expr.value);
+      }
+      if (expr.nodeType === 'MemberAccess') {
+        return `${this.emitExpressionInline(expr.expression)}.${expr.memberName}`;
+      }
+      if (expr.nodeType === 'MethodCall') {
+        const obj = this.emitExpressionInline(expr.expression);
+        const args = expr.arguments.map(a => this.emitExpressionInline(a)).join(', ');
+        return `${obj}.${expr.methodName}(${args})`;
+      }
+      // Fallback - use placeholder
+      return `/* complex expr */`;
+    }
+
     transformWhileStatement(node) {
       // Handle JavaScript truthy conditions - add explicit comparison
       const condition = this.ensureBooleanCondition(node.test);
@@ -3610,6 +3927,22 @@
     // ========================[ HELPERS ]========================
 
     transformIIFE(callNode, targetClass) {
+      // First, try to find the factory function in UMD pattern
+      // UMD pattern: (function(root, factory) { ... })((function(){...})(), function(deps) { ... })
+      if (callNode.arguments && callNode.arguments.length >= 2) {
+        const factoryArg = callNode.arguments[1];
+        if (factoryArg.type === 'FunctionExpression' || factoryArg.type === 'ArrowFunctionExpression') {
+          // Found UMD factory function - extract from its body
+          if (factoryArg.body && factoryArg.body.body) {
+            for (const stmt of factoryArg.body.body) {
+              this.transformTopLevel(stmt, targetClass);
+            }
+            return;
+          }
+        }
+      }
+
+      // Simple IIFE pattern - extract from callee's body
       const func = callNode.callee;
       if (func.body && func.body.type === 'BlockStatement') {
         for (const stmt of func.body.body) {

@@ -62,6 +62,71 @@ class CPlugin extends LanguagePlugin {
       memoryManagement: 'manual' // manual, gc, pool
     };
 
+    // Option metadata - defines enum choices
+    this.optionsMeta = {
+      standard: {
+        type: 'enum',
+        choices: [
+          { value: 'c89', label: 'C89/ANSI C', description: 'ANSI C 1989 standard' },
+          { value: 'c99', label: 'C99', description: 'ISO C 1999 with inline, restrict, VLAs' },
+          { value: 'c11', label: 'C11', description: 'ISO C 2011 with _Generic, _Static_assert, atomics' },
+          { value: 'c17', label: 'C17', description: 'ISO C 2017 bug fix release' },
+          { value: 'c23', label: 'C23', description: 'ISO C 2023 with typeof, auto, constexpr' }
+        ]
+      },
+      memoryManagement: {
+        type: 'enum',
+        choices: [
+          { value: 'manual', label: 'Manual', description: 'Manual malloc/free memory management' },
+          { value: 'pool', label: 'Memory Pool', description: 'Use memory pool allocator' },
+          { value: 'gc', label: 'Garbage Collection', description: 'Use Boehm GC or similar' }
+        ]
+      },
+      indent: {
+        type: 'enum',
+        choices: [
+          { value: '  ', label: '2 Spaces' },
+          { value: '    ', label: '4 Spaces' },
+          { value: '\t', label: 'Tab' }
+        ]
+      }
+    };
+
+    // Option constraints
+    this.optionConstraints = {
+      useStaticAssert: {
+        enabledWhen: { standard: ['c11', 'c17', 'c23'] },
+        disabledReason: '_Static_assert requires C11 or later'
+      },
+      useGenericSelections: {
+        enabledWhen: { standard: ['c11', 'c17', 'c23'] },
+        disabledReason: '_Generic requires C11 or later'
+      },
+      useAlignof: {
+        enabledWhen: { standard: ['c11', 'c17', 'c23'] },
+        disabledReason: '_Alignof requires C11 or later'
+      },
+      useThreadLocal: {
+        enabledWhen: { standard: ['c11', 'c17', 'c23'] },
+        disabledReason: '_Thread_local requires C11 or later'
+      },
+      useAtomics: {
+        enabledWhen: { standard: ['c11', 'c17', 'c23'] },
+        disabledReason: 'Atomics require C11 or later'
+      }
+    };
+
+    // Standard level numeric values for comparison
+    this.standardLevels = {
+      'c89': 89,
+      'c90': 90,
+      'c99': 99,
+      'c11': 11,
+      'c17': 17,
+      'c18': 18,
+      'c23': 23
+    };
+
     // Enhanced C type mappings for cryptographic algorithms
     this.typeMap = {
       'byte': 'uint8_t',
@@ -141,12 +206,18 @@ class CPlugin extends LanguagePlugin {
       
       // Merge options
       const mergedOptions = { ...this.options, ...options };
-      
+
+      // Apply merged options to this.options for methods that use this.options directly
+      // Store original options to restore later
+      const originalOptions = { ...this.options };
+      this.options = mergedOptions;
+
       // Validate AST
       if (!ast || typeof ast !== 'object') {
+        this.options = originalOptions; // Restore on error
         return this.CreateErrorResult('Invalid AST: must be an object');
       }
-      
+
       // Generate C code
       const code = this._generateNode(ast, mergedOptions);
       
@@ -158,10 +229,17 @@ class CPlugin extends LanguagePlugin {
       
       // Generate warnings if any
       const warnings = this._generateWarnings(ast, mergedOptions);
-      
+
+      // Restore original options
+      this.options = originalOptions;
+
       return this.CreateSuccessResult(finalCode, dependencies, warnings);
-      
+
     } catch (error) {
+      // Restore original options on error
+      if (originalOptions) {
+        this.options = originalOptions;
+      }
       return this.CreateErrorResult('Code generation failed: ' + error.message);
     }
   }
@@ -352,14 +430,18 @@ class CPlugin extends LanguagePlugin {
     if (node.params && node.params.length > 0) {
       node.params.forEach((param, index) => {
         const paramName = this._toCIdentifier(param.name || `param${index}`);
-        const paramType = this._inferCType(null, param.name || `param${index}`, options);
+        let paramType = this._inferCType(null, param.name || `param${index}`, options);
 
-        // Add const correctness for input parameters
-        if (paramType.includes('*') && (paramName.includes('key') || paramName.includes('input') || paramName.includes('data'))) {
-          parameters.push(`const ${paramType} ${paramName}`);
-        } else {
-          parameters.push(`${paramType} ${paramName}`);
+        // Add const correctness for input parameters (if enabled)
+        if (options.useConstCorrectness && paramType.includes('*') &&
+            (paramName.includes('key') || paramName.includes('input') || paramName.includes('data') ||
+             paramName.includes('nonce') || paramName.includes('iv') || paramName.includes('src'))) {
+          // Only add const if not already present
+          if (!paramType.includes('const')) {
+            paramType = 'const ' + paramType;
+          }
         }
+        parameters.push(`${paramType} ${paramName}`);
       });
     }
 
@@ -413,7 +495,9 @@ class CPlugin extends LanguagePlugin {
 
     // Add parameter validation for crypto functions
     if (isCryptoFunction && options.addSafetyChecks) {
-      code += this._indent('/* Parameter validation */\n');
+      if (options.addComments) {
+        code += this._indent('/* Parameter validation */\n');
+      }
       parameters.forEach(param => {
         const [, , name] = param.split(' ');
         if (param.includes('*')) {
@@ -427,9 +511,15 @@ class CPlugin extends LanguagePlugin {
 
     // Local variables for cleanup tracking
     if (isCryptoFunction && options.addSafetyChecks) {
-      code += this._indent('/* Local variables for cleanup tracking */\n');
+      if (options.addComments) {
+        code += this._indent('/* Local variables for cleanup tracking */\n');
+      }
       code += this._indent(`${returnType} result = ${returnType === 'crypto_error_t' ? 'CRYPTO_SUCCESS' : '0'};\n`);
-      code += this._indent('void *allocated_memory[16] = {0}; /* Track up to 16 allocations */\n');
+      if (options.addComments) {
+        code += this._indent('void *allocated_memory[16] = {0}; /* Track up to 16 allocations */\n');
+      } else {
+        code += this._indent('void *allocated_memory[16] = {0};\n');
+      }
       code += this._indent('size_t allocation_count = 0;\n\n');
     }
 
@@ -458,10 +548,16 @@ class CPlugin extends LanguagePlugin {
     if (isCryptoFunction && options.addSafetyChecks) {
       code += this._indent('\n');
       code += this._indent('cleanup:\n');
-      code += this._indent('    /* Clean up any allocated memory */\n');
+      if (options.addComments) {
+        code += this._indent('    /* Clean up any allocated memory */\n');
+      }
       code += this._indent('    for (size_t i = 0; i < allocation_count; i++) {\n');
       code += this._indent('        if (allocated_memory[i]) {\n');
-      code += this._indent('            secure_clear(allocated_memory[i], 0); /* Size tracking would be needed */\n');
+      if (options.addComments) {
+        code += this._indent('            secure_clear(allocated_memory[i], 0); /* Size tracking would be needed */\n');
+      } else {
+        code += this._indent('            secure_clear(allocated_memory[i], 0);\n');
+      }
       code += this._indent('            free(allocated_memory[i]);\n');
       code += this._indent('        }\n');
       code += this._indent('    }\n');
@@ -499,7 +595,9 @@ class CPlugin extends LanguagePlugin {
 
     // Add unused parameter attributes to avoid warnings
     if (parameters.length > 0) {
-      code += this._indent('/* Mark parameters as unused to avoid compiler warnings */\n');
+      if (options.addComments) {
+        code += this._indent('/* Mark parameters as unused to avoid compiler warnings */\n');
+      }
       parameters.forEach(param => {
         // Extract parameter name from "type name" format
         const paramName = param.split(' ').pop().replace(/[^a-zA-Z0-9_]/g, '');
@@ -508,7 +606,9 @@ class CPlugin extends LanguagePlugin {
       code += this._indent('\n');
     }
 
-    code += this._indent('/* Fallback implementation - function body not provided */\n');
+    if (options.addComments) {
+      code += this._indent('/* Fallback implementation - function body not provided */\n');
+    }
 
     // Crypto functions have special error codes
     if (isCryptoFunction) {
@@ -520,16 +620,22 @@ class CPlugin extends LanguagePlugin {
     // Type-aware return value based on return type
     if (returnType === 'void') {
       // Void functions: just return
-      code += this._indent('/* Empty function body - void return type */\n');
+      if (options.addComments) {
+        code += this._indent('/* Empty function body - void return type */\n');
+      }
       code += this._indent('return;\n');
     } else if (returnType.includes('*')) {
       // Pointer return types: return NULL
-      code += this._indent('/* Function not implemented - returning NULL for safety */\n');
+      if (options.addComments) {
+        code += this._indent('/* Function not implemented - returning NULL for safety */\n');
+      }
       code += this._indent('fprintf(stderr, "Function not implemented: %s\\n", __func__);\n');
       code += this._indent('return NULL;\n');
     } else if (returnType === 'bool' || returnType === '_Bool') {
       // Boolean return types: return false
-      code += this._indent('/* Function not implemented - returning false */\n');
+      if (options.addComments) {
+        code += this._indent('/* Function not implemented - returning false */\n');
+      }
       code += this._indent('fprintf(stderr, "Function not implemented: %s\\n", __func__);\n');
       code += this._indent('return false;\n');
     } else if (returnType.includes('int') || returnType === 'long' || returnType === 'short' ||
@@ -537,17 +643,23 @@ class CPlugin extends LanguagePlugin {
       // Integer/size return types: return -1 or 0 depending on signed/unsigned
       const isUnsigned = returnType.includes('unsigned') || returnType.includes('uint') ||
                         returnType === 'size_t';
-      code += this._indent(`/* Function not implemented - returning ${isUnsigned ? '0' : '-1'} */\n`);
+      if (options.addComments) {
+        code += this._indent(`/* Function not implemented - returning ${isUnsigned ? '0' : '-1'} */\n`);
+      }
       code += this._indent('fprintf(stderr, "Function not implemented: %s\\n", __func__);\n');
       code += this._indent(`return ${isUnsigned ? '0' : '-1'};\n`);
     } else if (returnType === 'float' || returnType === 'double') {
       // Floating point: return 0.0
-      code += this._indent('/* Function not implemented - returning 0.0 */\n');
+      if (options.addComments) {
+        code += this._indent('/* Function not implemented - returning 0.0 */\n');
+      }
       code += this._indent('fprintf(stderr, "Function not implemented: %s\\n", __func__);\n');
       code += this._indent('return 0.0;\n');
     } else {
       // Default fallback: try to return 0 with cast
-      code += this._indent('/* Function not implemented - returning default value */\n');
+      if (options.addComments) {
+        code += this._indent('/* Function not implemented - returning default value */\n');
+      }
       code += this._indent('fprintf(stderr, "Function not implemented: %s\\n", __func__);\n');
       code += this._indent(`return (${returnType})0;\n`);
     }
@@ -994,11 +1106,162 @@ class CPlugin extends LanguagePlugin {
     } else if (node.value === null) {
       return 'NULL';
     } else if (typeof node.value === 'boolean') {
-      // C doesn't have boolean literals (before C99 stdbool.h)
-      return node.value ? '1' : '0';
+      // Use standard-appropriate boolean literal
+      return this._getBoolLiteral(node.value, options);
     } else {
       return String(node.value);
     }
+  }
+
+  /**
+   * Check if current standard is at least the specified level
+   * @private
+   */
+  _isStandardAtLeast(options, minStandard) {
+    const current = options.standard || 'c11';
+    const levels = { 'c89': 1, 'c90': 1, 'c99': 2, 'c11': 3, 'c17': 4, 'c18': 4, 'c23': 5 };
+    const minLevel = levels[minStandard] || 0;
+    const currentLevel = levels[current] || 3;
+    return currentLevel >= minLevel;
+  }
+
+  /**
+   * Check if C99 or later
+   * @private
+   */
+  _isC99OrLater(options) {
+    return this._isStandardAtLeast(options, 'c99');
+  }
+
+  /**
+   * Check if C11 or later
+   * @private
+   */
+  _isC11OrLater(options) {
+    return this._isStandardAtLeast(options, 'c11');
+  }
+
+  /**
+   * Check if C23 or later
+   * @private
+   */
+  _isC23OrLater(options) {
+    return this._isStandardAtLeast(options, 'c23');
+  }
+
+  /**
+   * Get the boolean type for current standard
+   * @private
+   */
+  _getBoolType(options) {
+    if (this._isC99OrLater(options)) {
+      return 'bool';
+    }
+    return 'int';  // C89 doesn't have bool
+  }
+
+  /**
+   * Get boolean literal for current standard
+   * @private
+   */
+  _getBoolLiteral(value, options) {
+    if (this._isC99OrLater(options)) {
+      return value ? 'true' : 'false';
+    }
+    return value ? '1' : '0';  // C89 uses int
+  }
+
+  /**
+   * Get inline keyword for current standard
+   * @private
+   */
+  _getInlineKeyword(options) {
+    if (this._isC99OrLater(options)) {
+      return 'inline';
+    }
+    return '';  // C89 doesn't have inline (use compiler-specific __inline if needed)
+  }
+
+  /**
+   * Get restrict keyword for current standard
+   * @private
+   */
+  _getRestrictKeyword(options) {
+    if (this._isC99OrLater(options)) {
+      return 'restrict';
+    }
+    return '';  // C89 doesn't have restrict
+  }
+
+  /**
+   * Get static_assert syntax for current standard
+   * @private
+   */
+  _getStaticAssert(condition, message, options) {
+    if (this._isC23OrLater(options)) {
+      return `static_assert(${condition}, ${message});`;  // C23 uses static_assert
+    } else if (this._isC11OrLater(options)) {
+      return `_Static_assert(${condition}, ${message});`;  // C11 uses _Static_assert
+    }
+    return `/* static assert: ${condition} - ${message} */`;  // Fallback to comment
+  }
+
+  /**
+   * Get thread_local keyword for current standard
+   * @private
+   */
+  _getThreadLocalKeyword(options) {
+    if (this._isC23OrLater(options)) {
+      return 'thread_local';  // C23 uses thread_local
+    } else if (this._isC11OrLater(options)) {
+      return '_Thread_local';  // C11 uses _Thread_local
+    }
+    return '';  // Not available in C99 or earlier
+  }
+
+  /**
+   * Get alignas keyword for current standard
+   * @private
+   */
+  _getAlignasKeyword(alignment, options) {
+    if (this._isC23OrLater(options)) {
+      return `alignas(${alignment})`;  // C23 uses alignas
+    } else if (this._isC11OrLater(options)) {
+      return `_Alignas(${alignment})`;  // C11 uses _Alignas
+    }
+    return '';  // Not available in C99 or earlier
+  }
+
+  /**
+   * Get noreturn attribute for current standard
+   * @private
+   */
+  _getNoreturnKeyword(options) {
+    if (this._isC23OrLater(options)) {
+      return '[[noreturn]]';  // C23 uses attribute syntax
+    } else if (this._isC11OrLater(options)) {
+      return '_Noreturn';  // C11 uses _Noreturn
+    }
+    return '';  // Not available in C99 or earlier
+  }
+
+  /**
+   * Get typeof keyword for current standard (C23 feature)
+   * @private
+   */
+  _getTypeofKeyword(options) {
+    if (this._isC23OrLater(options)) {
+      return 'typeof';  // C23 standardized typeof
+    }
+    return '__typeof__';  // GCC extension for older standards
+  }
+
+  /**
+   * Get auto keyword for current standard (C23 feature for type inference)
+   * @private
+   */
+  _supportsAutoTypeInference(options) {
+    return this._isC23OrLater(options);
   }
 
   /**
@@ -1046,7 +1309,12 @@ class CPlugin extends LanguagePlugin {
   _inferCType(node, varName, options) {
     // Check cryptographic context first
     if (this.cryptoTypeMap[varName]) {
-      return this.cryptoTypeMap[varName];
+      let type = this.cryptoTypeMap[varName];
+      // If useConstCorrectness is false, remove const qualifier from cryptoTypeMap
+      if (options && !options.useConstCorrectness && type.includes('const')) {
+        type = type.replace(/const\s+/g, '');
+      }
+      return type;
     }
 
     // Check general type mappings
@@ -1057,9 +1325,10 @@ class CPlugin extends LanguagePlugin {
     // Infer from literal values
     if (node && node.type === 'Literal') {
       if (typeof node.value === 'string') {
-        return 'const char*';
+        // Apply const correctness if option is enabled
+        return (options && options.useConstCorrectness) ? 'const char*' : 'char*';
       } else if (typeof node.value === 'boolean') {
-        return options.standard === 'c99' || options.standard === 'c11' ? 'bool' : 'int';
+        return this._getBoolType(options);
       } else if (typeof node.value === 'number') {
         if (Number.isInteger(node.value)) {
           if (node.value >= 0 && node.value <= 255) {
@@ -1181,11 +1450,13 @@ class CPlugin extends LanguagePlugin {
       code += this._generateCryptoUtilities(options);
     }
     
-    // Add includes
-    for (const include of this.includes) {
-      result += '#include <' + include + '>\n';
+    // Add includes (only if addHeaders option is true)
+    if (options.addHeaders) {
+      for (const include of this.includes) {
+        result += '#include <' + include + '>\n';
+      }
+      result += '\n';
     }
-    result += '\n';
     
     // Feature test macros
     if (options.standard === 'c99' || options.standard === 'c11') {
@@ -1195,16 +1466,20 @@ class CPlugin extends LanguagePlugin {
     
     // Function prototypes
     if (this.prototypes.length > 0) {
-      result += '/* Function prototypes */\n';
+      if (options.addComments) {
+        result += '/* Function prototypes */\n';
+      }
       this.prototypes.forEach(proto => {
         result += proto + '\n';
       });
       result += '\n';
     }
-    
+
     // Add any generated structures
     if (this.structures.length > 0) {
-      result += '/* Generated structures */\n';
+      if (options.addComments) {
+        result += '/* Generated structures */\n';
+      }
       this.structures.forEach(struct => {
         result += struct + '\n';
       });
@@ -1213,7 +1488,9 @@ class CPlugin extends LanguagePlugin {
 
     // Add any global constants
     if (this.constants.length > 0) {
-      result += '/* Generated constants */\n';
+      if (options.addComments) {
+        result += '/* Generated constants */\n';
+      }
       this.constants.forEach(constant => {
         result += constant + '\n';
       });
@@ -1222,7 +1499,9 @@ class CPlugin extends LanguagePlugin {
 
     // Add any global variables
     if (this.globalVariables.length > 0) {
-      result += '/* Generated global variables */\n';
+      if (options.addComments) {
+        result += '/* Generated global variables */\n';
+      }
       this.globalVariables.forEach(variable => {
         result += variable + '\n';
       });
@@ -1231,37 +1510,47 @@ class CPlugin extends LanguagePlugin {
 
     // Generated code
     result += code;
-    
+
     // Enhanced main function with crypto initialization
-    result += '\n\n/**\n';
-    result += ' * Main function\n';
-    result += ' * Entry point for the generated C program\n';
-    result += ' * Includes cryptographic library initialization if needed\n';
-    result += ' *\n';
-    result += ' * @param argc Number of command-line arguments\n';
-    result += ' * @param argv Array of command-line argument strings\n';
-    result += ' * @return EXIT_SUCCESS on success, EXIT_FAILURE on error\n';
-    result += ' */\n';
+    if (options.addComments) {
+      result += '\n\n/**\n';
+      result += ' * Main function\n';
+      result += ' * Entry point for the generated C program\n';
+      result += ' * Includes cryptographic library initialization if needed\n';
+      result += ' *\n';
+      result += ' * @param argc Number of command-line arguments\n';
+      result += ' * @param argv Array of command-line argument strings\n';
+      result += ' * @return EXIT_SUCCESS on success, EXIT_FAILURE on error\n';
+      result += ' */\n';
+    } else {
+      result += '\n\n';
+    }
     result += 'int main(int argc, char* argv[])\n';
     result += '{\n';
 
     // Add crypto library initialization
     if (options.useCryptoLibs) {
       if (options.useOpenSSL) {
-        result += '    /* Initialize OpenSSL */\n';
+        if (options.addComments) {
+          result += '    /* Initialize OpenSSL */\n';
+        }
         result += '    SSL_library_init();\n';
         result += '    SSL_load_error_strings();\n';
         result += '    OpenSSL_add_all_algorithms();\n\n';
       }
       if (options.useSodium) {
-        result += '    /* Initialize libsodium */\n';
+        if (options.addComments) {
+          result += '    /* Initialize libsodium */\n';
+        }
         result += '    if (sodium_init() < 0) {\n';
         result += '        fprintf(stderr, "Failed to initialize libsodium\\n");\n';
         result += '        return EXIT_FAILURE;\n';
         result += '    }\n\n';
       }
       if (options.useAtomics) {
-        result += '    /* Mark crypto library as initialized */\n';
+        if (options.addComments) {
+          result += '    /* Mark crypto library as initialized */\n';
+        }
         result += '    crypto_mark_library_initialized();\n\n';
       }
     }
@@ -1270,7 +1559,9 @@ class CPlugin extends LanguagePlugin {
     if (code && code.trim()) {
       result += code + '\n';
     } else {
-      result += '    /* Program logic will be added here */\n';
+      if (options.addComments) {
+        result += '    /* Program logic will be added here */\n';
+      }
     }
     result += '    printf("Generated C code execution successful\\n");\n';
     result += '    printf("Compiler: %s\\n", __VERSION__);\n';

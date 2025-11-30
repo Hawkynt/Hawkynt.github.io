@@ -85,9 +85,14 @@ class CSharpPlugin extends LanguagePlugin {
    * @returns {CodeGenerationResult}
    */
   GenerateFromAST(ast, options = {}) {
+    // Save original options
+    const originalOptions = this.options;
+
     try {
-      // Merge options
+      // Merge options and temporarily set as instance options
+      // This allows all helper methods to access the merged options via this.options
       const mergedOptions = { ...this.options, ...options };
+      this.options = mergedOptions;
 
       // Validate AST
       if (!ast || typeof ast !== 'object') {
@@ -120,20 +125,23 @@ class CSharpPlugin extends LanguagePlugin {
 
       // Generate C# code using legacy direct emission
       const code = this._generateNode(ast, mergedOptions);
-      
+
       // Add namespace, usings, and class structure
       const finalCode = this._wrapWithNamespaceStructure(code, mergedOptions);
-      
+
       // Collect dependencies
       const dependencies = this._collectDependencies(ast, mergedOptions);
-      
+
       // Generate warnings if any
       const warnings = this._generateWarnings(ast, mergedOptions);
-      
+
       return this.CreateSuccessResult(finalCode, dependencies, warnings);
-      
+
     } catch (error) {
       return this.CreateErrorResult('Code generation failed: ' + error.message);
+    } finally {
+      // Restore original options
+      this.options = originalOptions;
     }
   }
 
@@ -1103,11 +1111,13 @@ class CSharpPlugin extends LanguagePlugin {
                     const params = propValue.params ?
                       propValue.params.map(param => {
                         const paramName = this._toCamelCase(param.name || 'param');
-                        const paramType = this._inferCryptoParameterType(paramName);
+                        let paramType = this._inferCryptoParameterType(paramName);
                         // Make params optional with default = null for reference types, 0 for value types
-                        const defaultValue = paramType.endsWith('[]') ? ' = null' :
-                                             paramType === 'string' ? ' = null' :
-                                             paramType === 'object' ? ' = null' : '';
+                        const isRefType = paramType.endsWith('[]') || paramType === 'string' || paramType === 'object';
+                        if (isRefType) {
+                          paramType = this._makeNullable(paramType, true);
+                        }
+                        const defaultValue = isRefType ? ' = null' : '';
                         return `${paramType} ${paramName}${defaultValue}`;
                       }).join(', ') : '';
 
@@ -1391,14 +1401,15 @@ class CSharpPlugin extends LanguagePlugin {
           }
 
           if (node.kind === 'const') {
-            if (inferredType && inferredType !== 'object') {
-              return this._indent(`${inferredType} ${camelCaseVarName} = ${initValue};\n`);
-            } else {
-              return this._indent(`var ${camelCaseVarName} = ${initValue};\n`);
-            }
+            const typeToUse = this._chooseVarOrType(inferredType);
+            return this._indent(`${typeToUse} ${camelCaseVarName} = ${initValue};\n`);
           } else {
-            if (inferredType !== 'int' && inferredType !== 'object') {
-              return this._indent(`${inferredType} ${camelCaseVarName} = ${initValue};\n`);
+            // For let/var, use explicit type for non-trivial types when strict typing enabled
+            const typeToUse = (this.options.useStrictTypes && inferredType && inferredType !== 'int' && inferredType !== 'object')
+              ? inferredType
+              : this._chooseVarOrType(inferredType);
+            if (typeToUse !== 'var') {
+              return this._indent(`${typeToUse} ${camelCaseVarName} = ${initValue};\n`);
             } else {
               return this._indent(`var ${camelCaseVarName} = ${initValue};\n`);
             }
@@ -4894,7 +4905,7 @@ class CSharpPlugin extends LanguagePlugin {
           return 'double';
         }
         if (typeof node.value === 'boolean') return 'bool';
-        if (node.value === null) return 'object?';
+        if (node.value === null) return this._makeNullable('object', true);
         break;
       case 'ArrayExpression':
         // Analyze array elements to determine specific type
@@ -5503,14 +5514,63 @@ class CSharpPlugin extends LanguagePlugin {
   }
 
   /**
+   * Apply nullable type modifier if useNullableTypes option is enabled
+   * @private
+   */
+  _makeNullable(type, isNullable = true) {
+    if (!isNullable || !this.options.useNullableTypes) {
+      return type;
+    }
+
+    // Don't add ? to types that already have it
+    if (type.endsWith('?')) {
+      return type;
+    }
+
+    // Don't add ? to value types (they require Nullable<T> or T? syntax)
+    // For reference types (string, object, arrays, custom classes)
+    const referenceTypes = ['string', 'object'];
+    const isReferenceType = referenceTypes.includes(type) ||
+                           type.includes('[]') ||
+                           type.includes('<') ||
+                           /^[A-Z]/.test(type); // Custom class names start with uppercase
+
+    if (isReferenceType) {
+      return type + '?';
+    }
+
+    return type;
+  }
+
+  /**
+   * Choose between 'var' and explicit type based on useStrictTypes option
+   * @private
+   */
+  _chooseVarOrType(inferredType) {
+    // If useStrictTypes is false, prefer var for simplicity
+    if (!this.options.useStrictTypes) {
+      return 'var';
+    }
+
+    // If useStrictTypes is true, use explicit type when known
+    // Fall back to var if type is unknown or generic 'object'
+    if (inferredType && inferredType !== 'object') {
+      return inferredType;
+    }
+
+    return 'var';
+  }
+
+  /**
    * Add proper indentation
    * @private
    */
   _indent(code) {
     const indentStr = this.options.indent.repeat(this.indentLevel);
-    return code.split('\n').map(line => 
+    const lineEnd = this.options.lineEnding || '\n';
+    return code.split(lineEnd).map(line =>
       line.trim() ? indentStr + line : line
-    ).join('\n');
+    ).join(lineEnd);
   }
 
   /**
@@ -5519,6 +5579,10 @@ class CSharpPlugin extends LanguagePlugin {
    */
   _wrapWithNamespaceStructure(code, options) {
     let result = '';
+    const indent1 = options.indent || '    '; // 1 level
+    const indent2 = indent1 + indent1; // 2 levels
+    const indent3 = indent2 + indent1; // 3 levels
+    const lineEnd = options.lineEnding || '\n';
 
     // Using statements
     this.usings.add('System');
@@ -5527,45 +5591,45 @@ class CSharpPlugin extends LanguagePlugin {
     this.usings.add('System.Numerics'); // For BigInteger support
 
     for (const using of this.usings) {
-      result += 'using ' + using + ';\n';
+      result += 'using ' + using + ';' + lineEnd;
     }
-    result += '\n';
-    
+    result += lineEnd;
+
     // File header comment
     if (options.addComments) {
-      result += '/// <summary>\n';
-      result += '/// Generated C# code\n';
-      result += '/// This file was automatically generated from JavaScript AST\n';
-      result += '/// </summary>\n';
+      result += '/// <summary>' + lineEnd;
+      result += '/// Generated C# code' + lineEnd;
+      result += '/// This file was automatically generated from JavaScript AST' + lineEnd;
+      result += '/// </summary>' + lineEnd;
     }
-    
+
     // Namespace declaration
-    result += 'namespace ' + options.namespace + '\n';
-    result += '{\n';
-    
+    result += 'namespace ' + options.namespace + lineEnd;
+    result += '{' + lineEnd;
+
     // Class wrapper
-    result += '    /// <summary>\n';
-    result += '    /// Main generated class\n';
-    result += '    /// </summary>\n';
-    result += '    public class ' + options.className + '\n';
-    result += '    {\n';
-    
+    result += indent1 + '/// <summary>' + lineEnd;
+    result += indent1 + '/// Main generated class' + lineEnd;
+    result += indent1 + '/// </summary>' + lineEnd;
+    result += indent1 + 'public class ' + options.className + lineEnd;
+    result += indent1 + '{' + lineEnd;
+
     // Add Main method for console applications
-    result += '        /// <summary>\n';
-    result += '        /// Main entry point for testing\n';
-    result += '        /// </summary>\n';
-    result += '        /// <param name="args">Command line arguments</param>\n';
-    result += '        public static void Main(string[] args)\n';
-    result += '        {\n';
-    result += '            // Test code would go here\n';
-    result += '            // Example: var result = cipher.Encrypt(testData);\n';
-    result += '            Console.WriteLine("Tests completed successfully");\n';
-    result += '            Console.WriteLine("Generated code execution");\n';
-    result += '        }\n\n';
-    
+    result += indent2 + '/// <summary>' + lineEnd;
+    result += indent2 + '/// Main entry point for testing' + lineEnd;
+    result += indent2 + '/// </summary>' + lineEnd;
+    result += indent2 + '/// <param name="args">Command line arguments</param>' + lineEnd;
+    result += indent2 + 'public static void Main(string[] args)' + lineEnd;
+    result += indent2 + '{' + lineEnd;
+    result += indent3 + '// Test code would go here' + lineEnd;
+    result += indent3 + '// Example: var result = cipher.Encrypt(testData);' + lineEnd;
+    result += indent3 + 'Console.WriteLine("Tests completed successfully");' + lineEnd;
+    result += indent3 + 'Console.WriteLine("Generated code execution");' + lineEnd;
+    result += indent2 + '}' + lineEnd + lineEnd;
+
     // Output nested classes first (these are generated from JavaScript constructor patterns)
     if (this.nestedClasses && this.nestedClasses.length > 0) {
-      result += '        // Nested classes generated from JavaScript constructor patterns\n';
+      result += indent2 + '// Nested classes generated from JavaScript constructor patterns' + lineEnd;
       for (const nestedClass of this.nestedClasses) {
         let classCode = nestedClass.code;
 
@@ -5573,35 +5637,35 @@ class CSharpPlugin extends LanguagePlugin {
         if (this.prototypeMethods && this.prototypeMethods.has(nestedClass.name)) {
           const methods = this.prototypeMethods.get(nestedClass.name);
           // Insert the methods before the closing brace of the class
-          // The class code ends with "        }\n", so we insert before that
-          const lastBraceIndex = classCode.lastIndexOf('        }\n');
+          const closingPattern = indent2 + '}' + lineEnd;
+          const lastBraceIndex = classCode.lastIndexOf(closingPattern);
           if (lastBraceIndex !== -1) {
             const beforeBrace = classCode.substring(0, lastBraceIndex);
             const closingBrace = classCode.substring(lastBraceIndex);
-            classCode = beforeBrace + '\n' + methods.join('\n') + closingBrace;
+            classCode = beforeBrace + lineEnd + methods.join(lineEnd) + closingBrace;
           }
         }
 
-        result += classCode + '\n';
+        result += classCode + lineEnd;
       }
     }
 
     // Output inline object classes (generated from ES6 object literals with methods)
     if (this.inlineObjectClasses && this.inlineObjectClasses.length > 0) {
-      result += '        // Inline object classes generated from ES6 object literals with methods\n';
+      result += indent2 + '// Inline object classes generated from ES6 object literals with methods' + lineEnd;
       for (const inlineClass of this.inlineObjectClasses) {
-        result += inlineClass.code + '\n';
+        result += inlineClass.code + lineEnd;
       }
     }
 
     // Generated code (indented)
-    const indentedCode = code.split('\n').map(line =>
-      line.trim() ? '        ' + line : line
-    ).join('\n');
+    const indentedCode = code.split(lineEnd).map(line =>
+      line.trim() ? indent2 + line : line
+    ).join(lineEnd);
 
-    result += indentedCode + '\n';
-    result += '    }\n';
-    result += '}\n';
+    result += indentedCode + lineEnd;
+    result += indent1 + '}' + lineEnd;
+    result += '}' + lineEnd;
 
     return result;
   }

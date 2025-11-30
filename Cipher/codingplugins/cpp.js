@@ -10,15 +10,32 @@
 (function() {
   // Use local variables to avoid global conflicts
   let LanguagePlugin, LanguagePlugins;
+  let CppAST, CppEmitter, CppTransformer;
+
 if (typeof require !== 'undefined') {
   // Node.js environment
   const framework = require('./LanguagePlugin.js');
   LanguagePlugin = framework.LanguagePlugin;
   LanguagePlugins = framework.LanguagePlugins;
+
+  // Load new AST pipeline components
+  try {
+    CppAST = require('./CppAST.js');
+    const emitterModule = require('./CppEmitter.js');
+    CppEmitter = emitterModule.CppEmitter;
+    const transformerModule = require('./CppTransformer.js');
+    CppTransformer = transformerModule.CppTransformer;
+  } catch (e) {
+    // Pipeline components not available - will use legacy mode
+    console.warn('C++ AST pipeline components not loaded:', e.message);
+  }
 } else {
   // Browser environment - use globals
   LanguagePlugin = window.LanguagePlugin;
   LanguagePlugins = window.LanguagePlugins;
+  CppAST = window.CppAST;
+  CppEmitter = window.CppEmitter;
+  CppTransformer = window.CppTransformer;
 }
 
 /**
@@ -52,14 +69,270 @@ class CppPlugin extends LanguagePlugin {
       useConcepts: true,
       useRanges: true,
       useSimd: false, // Enable SIMD optimizations
-      useCoroutines: false // Enable coroutines for async crypto
+      useCoroutines: false, // Enable coroutines for async crypto
+      useAstPipeline: true // Enable new AST pipeline by default
     };
-    
+
+    // Option metadata - defines enum choices
+    this.optionsMeta = {
+      cppStandard: {
+        type: 'enum',
+        choices: [
+          { value: 'cpp98', label: 'C++98', description: 'ISO C++ 1998 standard' },
+          { value: 'cpp03', label: 'C++03', description: 'ISO C++ 2003 standard' },
+          { value: 'cpp11', label: 'C++11', description: 'ISO C++ 2011 with auto, lambdas, move semantics' },
+          { value: 'cpp14', label: 'C++14', description: 'ISO C++ 2014 with generic lambdas' },
+          { value: 'cpp17', label: 'C++17', description: 'ISO C++ 2017 with structured bindings' },
+          { value: 'cpp20', label: 'C++20', description: 'ISO C++ 2020 with concepts, ranges, coroutines' },
+          { value: 'cpp23', label: 'C++23', description: 'ISO C++ 2023 with modules, constexpr improvements' }
+        ]
+      },
+      indent: {
+        type: 'enum',
+        choices: [
+          { value: '  ', label: '2 Spaces' },
+          { value: '    ', label: '4 Spaces' },
+          { value: '\t', label: 'Tab' }
+        ]
+      }
+    };
+
+    // Option constraints
+    this.optionConstraints = {
+      useConcepts: {
+        enabledWhen: { cppStandard: ['cpp20', 'cpp23'] },
+        disabledReason: 'Concepts require C++20 or later'
+      },
+      useRanges: {
+        enabledWhen: { cppStandard: ['cpp20', 'cpp23'] },
+        disabledReason: 'Ranges require C++20 or later'
+      },
+      useCoroutines: {
+        enabledWhen: { cppStandard: ['cpp20', 'cpp23'] },
+        disabledReason: 'Coroutines require C++20 or later'
+      },
+      useConstexpr: {
+        enabledWhen: { cppStandard: ['cpp11', 'cpp14', 'cpp17', 'cpp20', 'cpp23'] },
+        disabledReason: 'constexpr requires C++11 or later'
+      },
+      useSmartPointers: {
+        enabledWhen: { cppStandard: ['cpp11', 'cpp14', 'cpp17', 'cpp20', 'cpp23'] },
+        disabledReason: 'Smart pointers require C++11 or later'
+      }
+    };
+
     // Internal state
     this.indentLevel = 0;
     this.includes = new Set();
     this.namespaces = new Set();
     this.declarations = [];
+  }
+
+  /**
+   * Check if current C++ standard is at least the specified level
+   * @private
+   */
+  _isStandardAtLeast(options, minStandard) {
+    const current = options.cppStandard || 'cpp20';
+    const levels = { 'cpp98': 1, 'cpp03': 2, 'cpp11': 3, 'cpp14': 4, 'cpp17': 5, 'cpp20': 6, 'cpp23': 7 };
+    const minLevel = levels[minStandard] || 0;
+    const currentLevel = levels[current] || 6;
+    return currentLevel >= minLevel;
+  }
+
+  /**
+   * Check if C++11 or later
+   * @private
+   */
+  _isCpp11OrLater(options) {
+    return this._isStandardAtLeast(options, 'cpp11');
+  }
+
+  /**
+   * Check if C++14 or later
+   * @private
+   */
+  _isCpp14OrLater(options) {
+    return this._isStandardAtLeast(options, 'cpp14');
+  }
+
+  /**
+   * Check if C++17 or later
+   * @private
+   */
+  _isCpp17OrLater(options) {
+    return this._isStandardAtLeast(options, 'cpp17');
+  }
+
+  /**
+   * Check if C++20 or later
+   * @private
+   */
+  _isCpp20OrLater(options) {
+    return this._isStandardAtLeast(options, 'cpp20');
+  }
+
+  /**
+   * Check if C++23 or later
+   * @private
+   */
+  _isCpp23OrLater(options) {
+    return this._isStandardAtLeast(options, 'cpp23');
+  }
+
+  /**
+   * Get auto keyword usage based on standard
+   * @private
+   */
+  _supportsAuto(options) {
+    return this._isCpp11OrLater(options);
+  }
+
+  /**
+   * Get constexpr keyword based on standard
+   * @private
+   */
+  _supportsConstexpr(options) {
+    return this._isCpp11OrLater(options);
+  }
+
+  /**
+   * Get extended constexpr (relaxed constexpr) based on standard
+   * @private
+   */
+  _supportsExtendedConstexpr(options) {
+    return this._isCpp14OrLater(options);
+  }
+
+  /**
+   * Get if constexpr based on standard
+   * @private
+   */
+  _supportsIfConstexpr(options) {
+    return this._isCpp17OrLater(options);
+  }
+
+  /**
+   * Get concepts support
+   * @private
+   */
+  _supportsConcepts(options) {
+    return this._isCpp20OrLater(options) && options.useConcepts;
+  }
+
+  /**
+   * Get ranges support
+   * @private
+   */
+  _supportsRanges(options) {
+    return this._isCpp20OrLater(options) && options.useRanges;
+  }
+
+  /**
+   * Get coroutines support
+   * @private
+   */
+  _supportsCoroutines(options) {
+    return this._isCpp20OrLater(options) && options.useCoroutines;
+  }
+
+  /**
+   * Get modules support
+   * @private
+   */
+  _supportsModules(options) {
+    return this._isCpp20OrLater(options);
+  }
+
+  /**
+   * Get lambda expression syntax based on standard
+   * @private
+   */
+  _supportsLambdas(options) {
+    return this._isCpp11OrLater(options);
+  }
+
+  /**
+   * Get generic lambdas support
+   * @private
+   */
+  _supportsGenericLambdas(options) {
+    return this._isCpp14OrLater(options);
+  }
+
+  /**
+   * Get structured bindings support
+   * @private
+   */
+  _supportsStructuredBindings(options) {
+    return this._isCpp17OrLater(options);
+  }
+
+  /**
+   * Get init-statement in if/switch support
+   * @private
+   */
+  _supportsInitStatementInIf(options) {
+    return this._isCpp17OrLater(options);
+  }
+
+  /**
+   * Get [[nodiscard]] attribute support
+   * @private
+   */
+  _supportsNodiscard(options) {
+    return this._isCpp17OrLater(options);
+  }
+
+  /**
+   * Get [[likely]]/[[unlikely]] attribute support
+   * @private
+   */
+  _supportsLikelyUnlikely(options) {
+    return this._isCpp20OrLater(options);
+  }
+
+  /**
+   * Get appropriate nullptr or NULL based on standard
+   * @private
+   */
+  _getNullPtr(options) {
+    return this._isCpp11OrLater(options) ? 'nullptr' : 'NULL';
+  }
+
+  /**
+   * Get appropriate smart pointer type
+   * @private
+   */
+  _getSmartPointerType(options, innerType) {
+    if (!this._isCpp11OrLater(options) || !options.useSmartPointers) {
+      return innerType + '*';
+    }
+    return 'std::unique_ptr<' + innerType + '>';
+  }
+
+  /**
+   * Get appropriate array initialization syntax
+   * @private
+   */
+  _getArrayInit(options, elements) {
+    if (this._isCpp11OrLater(options)) {
+      return '{' + elements + '}';  // C++11 initializer list
+    }
+    return '{' + elements + '}';  // Same syntax but different semantics
+  }
+
+  /**
+   * Get for-each loop syntax based on standard
+   * @private
+   */
+  _getForEachSyntax(options, varName, containerExpr, bodyCode) {
+    if (this._isCpp11OrLater(options)) {
+      const autoKw = this._supportsAuto(options) ? 'auto' : 'int';
+      return `for (${autoKw}& ${varName} : ${containerExpr}) {\n${bodyCode}}\n`;
+    }
+    // Pre-C++11: use iterators
+    return `for (std::vector<int>::iterator it = ${containerExpr}.begin(); it != ${containerExpr}.end(); ++it) {\n    int ${varName} = *it;\n${bodyCode}}\n`;
   }
 
   /**
@@ -70,36 +343,78 @@ class CppPlugin extends LanguagePlugin {
    */
   GenerateFromAST(ast, options = {}) {
     try {
-      // Reset state for clean generation
-      this.indentLevel = 0;
-      this.includes.clear();
-      this.namespaces.clear();
-      this.declarations = [];
-      
       // Merge options
       const mergedOptions = { ...this.options, ...options };
-      
+
       // Validate AST
       if (!ast || typeof ast !== 'object') {
         return this.CreateErrorResult('Invalid AST: must be an object');
       }
-      
-      // Generate C++ code
+
+      // Check if new AST pipeline is requested and available
+      if (mergedOptions.useAstPipeline && CppTransformer && CppEmitter) {
+        return this._generateWithAstPipeline(ast, mergedOptions);
+      }
+
+      // Reset state for clean generation (legacy mode)
+      this.indentLevel = 0;
+      this.includes.clear();
+      this.namespaces.clear();
+      this.declarations = [];
+
+      // Generate C++ code using legacy direct emission
       const code = this._generateNode(ast, mergedOptions);
-      
+
       // Add headers, namespaces, and program structure
       const finalCode = this._wrapWithProgramStructure(code, mergedOptions);
-      
+
       // Collect dependencies
       const dependencies = this._collectDependencies(ast, mergedOptions);
-      
+
       // Generate warnings if any
       const warnings = this._generateWarnings(ast, mergedOptions);
-      
+
       return this.CreateSuccessResult(finalCode, dependencies, warnings);
-      
+
     } catch (error) {
       return this.CreateErrorResult('Code generation failed: ' + error.message);
+    }
+  }
+
+  /**
+   * Generate C++ code using the new AST pipeline
+   * Pipeline: JS AST -> C++ AST -> C++ Emitter -> C++ Source
+   * @private
+   */
+  _generateWithAstPipeline(ast, options) {
+    try {
+      // Create transformer with options
+      const transformer = new CppTransformer({
+        namespace: options.namespace || 'generated',
+        className: options.className || 'GeneratedClass',
+        typeKnowledge: options.parser?.typeKnowledge || options.typeKnowledge
+      });
+
+      // Transform JS AST to C++ AST
+      const cppAst = transformer.transform(ast);
+
+      // Create emitter with formatting options
+      const emitter = new CppEmitter({
+        indent: options.indent || '    ',
+        lineEnding: options.lineEnding || '\n',
+        braceStyle: options.braceStyle || 'knr'
+      });
+
+      // Emit C++ source code
+      const code = emitter.emit(cppAst);
+
+      // Collect any warnings from transformation
+      const warnings = transformer.warnings || [];
+
+      return this.CreateSuccessResult(code, [], warnings);
+
+    } catch (error) {
+      return this.CreateErrorResult('AST pipeline generation failed: ' + error.message);
     }
   }
 
@@ -291,12 +606,12 @@ class CppPlugin extends LanguagePlugin {
   _generateFunction(node, options) {
     const functionName = node.id ? this._toCamelCase(node.id.name) : 'unnamedFunction';
     let code = '';
-    
+
     // Function template (C++11+)
-    if (options.useModernSyntax) {
+    if (this._isCpp11OrLater(options) && options.useTemplates) {
       code += this._indent('template<typename T = int>\n');
     }
-    
+
     // Doxygen comment
     if (options.addComments) {
       code += this._indent('/**\n');
@@ -309,35 +624,50 @@ class CppPlugin extends LanguagePlugin {
         });
       }
       code += this._indent(' * @return Result of the operation\n');
-      code += this._indent(' * @throws std::exception On error conditions\n');
+      if (this._isCpp11OrLater(options)) {
+        code += this._indent(' * @throws std::exception On error conditions\n');
+      }
       code += this._indent(' */\n');
     }
-    
-    // Function signature with modern C++ features
-    let returnType = 'auto';
-    if (!options.useModernSyntax || options.cppStandard === 'cpp98' || options.cppStandard === 'cpp03') {
-      returnType = 'int';
+
+    // Function signature based on C++ standard
+    let returnType = this._supportsAuto(options) ? 'auto' : 'int';
+
+    // Apply constexpr if enabled and standard supports it
+    let modifiers = '';
+    if (options.useConstexpr && this._supportsConstexpr(options)) {
+      modifiers += 'constexpr ';
     }
-    
-    code += this._indent(returnType + ' ' + functionName + '(');
-    
-    // Parameters with C++ types
+
+    // Apply [[nodiscard]] for C++17+
+    if (this._supportsNodiscard(options)) {
+      modifiers += '[[nodiscard]] ';
+    }
+
+    code += this._indent(modifiers + returnType + ' ' + functionName + '(');
+
+    // Parameters with C++ types based on standard
     if (node.params && node.params.length > 0) {
       const params = node.params.map(param => {
         const paramName = param.name || 'param';
-        const paramType = options.useModernSyntax ? 'const T&' : 'int';
+        let paramType;
+        if (this._isCpp11OrLater(options) && options.useTemplates) {
+          paramType = 'const T&';
+        } else {
+          paramType = 'int';
+        }
         return paramType + ' ' + this._toCamelCase(paramName);
       });
       code += params.join(', ');
     }
-    
+
     code += ')';
-    
+
     // Trailing return type (C++11+)
-    if (options.useModernSyntax && (options.cppStandard === 'cpp11' || options.cppStandard === 'cpp14' || options.cppStandard === 'cpp17' || options.cppStandard === 'cpp20')) {
+    if (this._isCpp11OrLater(options) && returnType === 'auto') {
       code += ' -> int';
     }
-    
+
     code += '\n';
     code += this._indent('{\n');
     
@@ -650,7 +980,7 @@ class CppPlugin extends LanguagePlugin {
     if (node.callee.type === 'MemberExpression' &&
         node.callee.object.name === 'OpCodes') {
       const methodName = node.callee.property.name;
-      return this._generateOpCodesCall(methodName, args);
+      return this._generateOpCodesCall(methodName, args, options);
     }
 
     // Handle special JavaScript methods
@@ -803,7 +1133,7 @@ class CppPlugin extends LanguagePlugin {
    */
   _wrapWithProgramStructure(code, options) {
     let result = '';
-    
+
     // File header comment
     if (options.addComments) {
       result += '/**\n';
@@ -816,27 +1146,30 @@ class CppPlugin extends LanguagePlugin {
       result += ' * @date Generated at runtime\n';
       result += ' */\n\n';
     }
-    
-    // Standard includes
-    this.includes.add('iostream');
-    this.includes.add('string');
-    this.includes.add('vector');
-    this.includes.add('algorithm');
-    
-    if (options.useSmartPointers) {
-      this.includes.add('memory');
+
+    // Add includes only if addHeaders is enabled
+    if (options.addHeaders) {
+      // Standard includes
+      this.includes.add('iostream');
+      this.includes.add('string');
+      this.includes.add('vector');
+      this.includes.add('algorithm');
+
+      if (options.useSmartPointers) {
+        this.includes.add('memory');
+      }
+
+      if (options.useModernSyntax) {
+        this.includes.add('type_traits');
+        this.includes.add('utility');
+      }
+
+      // Add includes
+      for (const include of this.includes) {
+        result += '#include <' + include + '>\n';
+      }
+      result += '\n';
     }
-    
-    if (options.useModernSyntax) {
-      this.includes.add('type_traits');
-      this.includes.add('utility');
-    }
-    
-    // Add includes
-    for (const include of this.includes) {
-      result += '#include <' + include + '>\n';
-    }
-    result += '\n';
     
     // Using namespace (if enabled)
     if (options.useNamespaces) {
@@ -925,7 +1258,7 @@ class CppPlugin extends LanguagePlugin {
    * Generate OpCodes method call with C++ crypto optimizations
    * @private
    */
-  _generateOpCodesCall(methodName, args) {
+  _generateOpCodesCall(methodName, args, options) {
     // Map OpCodes methods to C++ equivalents with optimizations
     switch (methodName) {
       case 'Pack32LE':
@@ -953,8 +1286,12 @@ class CppPlugin extends LanguagePlugin {
         return `std::rotr(static_cast<uint32_t>(${args}))`;
       case 'XorArrays':
         this.includes.add('#include <algorithm>');
-        this.includes.add('#include <ranges>');
-        return `[&]() { auto [a, b] = std::make_tuple(${args}); std::ranges::transform(a, b, a.begin(), std::bit_xor<>{}); return a; }()`;
+        if (options.useRanges && options.cppStandard === 'cpp20') {
+          this.includes.add('#include <ranges>');
+          return `[&]() { auto [a, b] = std::make_tuple(${args}); std::ranges::transform(a, b, a.begin(), std::bit_xor<>{}); return a; }()`;
+        } else {
+          return `[&]() { auto [a, b] = std::make_tuple(${args}); std::transform(a.begin(), a.end(), b.begin(), a.begin(), std::bit_xor<>{}); return a; }()`;
+        }
       case 'ClearArray':
         this.includes.add('#include <cstring>');
         return `std::memset(${args}, 0, sizeof(${args}))`;
@@ -1065,7 +1402,7 @@ class CppPlugin extends LanguagePlugin {
    * @private
    */
   _generateCryptoConcepts(options) {
-    if (options.cppStandard !== 'cpp20') return '';
+    if (!options.useConcepts || options.cppStandard !== 'cpp20') return '';
 
     let concepts = '';
     this.includes.add('#include <concepts>');

@@ -39,6 +39,7 @@ class DelphiPlugin extends LanguagePlugin {
 
     // Enhanced Delphi-specific options
     this.options = {
+      dialect: 'delphi', // turbo, borland, delphi, freepascal
       indent: '  ', // 2 spaces (Delphi standard)
       lineEnding: '\n',
       addComments: true,
@@ -63,6 +64,129 @@ class DelphiPlugin extends LanguagePlugin {
       compilerDirectives: true
     };
 
+    // Dialect-specific feature sets
+    this.dialectFeatures = {
+      turbo: {
+        hasClasses: false,        // NO classes - only records (no methods)
+        hasObjects: false,        // Objects introduced in Borland Pascal
+        hasMethods: false,        // Turbo Pascal records cannot have methods
+        hasGenerics: false,
+        hasAnonymousMethods: false,
+        hasInlineFunctions: false,
+        hasRecordHelpers: false,
+        hasClassHelpers: false,
+        hasInterfaces: false,
+        hasRTTI: false,
+        hasAttributes: false,
+        hasUnicodeStrings: false,
+        hasDynamicArrays: false,
+        hasOverloads: false,
+        maxStringLength: 255,
+        integerType: 'Integer',   // 16-bit in Turbo Pascal
+        cardinalType: 'Word',
+        defaultUnits: ['Crt', 'Dos'],
+        fileExtension: '.pas',
+        programStructure: 'program', // program vs unit
+        useRecordForClass: true   // Convert classes to records + standalone procedures
+      },
+      borland: {
+        hasClasses: false,        // Uses Object type instead of class
+        hasObjects: true,         // Borland Pascal 7.0 introduced Object type
+        hasMethods: true,         // Objects can have methods
+        hasGenerics: false,
+        hasAnonymousMethods: false,
+        hasInlineFunctions: false,
+        hasRecordHelpers: false,
+        hasClassHelpers: false,
+        hasInterfaces: false,
+        hasRTTI: false,
+        hasAttributes: false,
+        hasUnicodeStrings: false,
+        hasDynamicArrays: false,
+        hasOverloads: false,
+        maxStringLength: 255,
+        integerType: 'Integer',
+        cardinalType: 'Word',
+        defaultUnits: ['Crt', 'Dos', 'Objects'],
+        fileExtension: '.pas',
+        programStructure: 'program'
+      },
+      delphi: {
+        hasClasses: true,
+        hasObjects: true,
+        hasMethods: true,
+        hasGenerics: true,
+        hasAnonymousMethods: true,
+        hasInlineFunctions: true,
+        hasRecordHelpers: true,
+        hasClassHelpers: true,
+        hasInterfaces: true,
+        hasRTTI: true,
+        hasAttributes: true,
+        hasUnicodeStrings: true,
+        hasDynamicArrays: true,
+        hasOverloads: true,
+        maxStringLength: null,    // Unlimited
+        integerType: 'Integer',   // 32-bit in Delphi
+        cardinalType: 'Cardinal',
+        defaultUnits: [],         // Will add namespaced units separately
+        fileExtension: '.pas',
+        programStructure: 'unit'
+      },
+      freepascal: {
+        hasClasses: true,
+        hasObjects: true,
+        hasMethods: true,
+        hasGenerics: true,
+        hasAnonymousMethods: true, // FPC 3.2+
+        hasInlineFunctions: true,
+        hasRecordHelpers: true,
+        hasClassHelpers: true,
+        hasInterfaces: true,
+        hasRTTI: true,
+        hasAttributes: false,     // Limited support
+        hasUnicodeStrings: true,
+        hasDynamicArrays: true,
+        hasOverloads: true,
+        maxStringLength: null,
+        integerType: 'Integer',
+        cardinalType: 'Cardinal',
+        defaultUnits: [],         // Will add non-namespaced units separately
+        fileExtension: '.pas',
+        programStructure: 'unit',
+        modeDirective: '{$mode objfpc}{$H+}' // Object FPC mode with long strings
+      }
+    };
+
+    // Option metadata - defines enum choices
+    this.optionsMeta = {
+      dialect: {
+        type: 'enum',
+        choices: [
+          { value: 'turbo', label: 'Turbo Pascal', description: 'Turbo Pascal 7.0 for DOS - no OOP classes' },
+          { value: 'borland', label: 'Borland Pascal', description: 'Borland Pascal 7.0 with Objects unit' },
+          { value: 'delphi', label: 'Delphi', description: 'Modern Delphi (RAD Studio) with full features' },
+          { value: 'freepascal', label: 'Free Pascal', description: 'Free Pascal Compiler (FPC) - cross-platform' }
+        ]
+      },
+      targetFramework: {
+        type: 'enum',
+        choices: [
+          { value: 'Console', label: 'Console', description: 'Console application without GUI' },
+          { value: 'VCL', label: 'VCL (Windows)', description: 'Visual Component Library for Windows' },
+          { value: 'FMX', label: 'FMX (Cross-platform)', description: 'FireMonkey for Windows, macOS, iOS, Android' }
+        ]
+      },
+      indent: {
+        type: 'enum',
+        choices: [
+          { value: '  ', label: '2 Spaces' },
+          { value: '    ', label: '4 Spaces' },
+          { value: '\t', label: 'Tab' }
+        ]
+      }
+    };
+
     // Internal state
     this.indentLevel = 0;
     this.uses = new Set();
@@ -71,6 +195,7 @@ class DelphiPlugin extends LanguagePlugin {
     this.implementationMethods = new Map();
     this.currentClass = null;
     this.currentMethod = null;
+    this.currentParamMapping = null;
     this.variableScope = new Map();
     this.cryptoOperations = new Set();
 
@@ -143,6 +268,27 @@ class DelphiPlugin extends LanguagePlugin {
   }
 
   /**
+   * Get the features available for the current dialect
+   * @param {Object} options - Generation options containing dialect
+   * @returns {Object} Feature set for the dialect
+   */
+  _getDialectFeatures(options) {
+    const dialect = (options.dialect || 'delphi').toLowerCase();
+    return this.dialectFeatures[dialect] || this.dialectFeatures.delphi;
+  }
+
+  /**
+   * Check if a feature is available in the current dialect
+   * @param {string} feature - Feature name (e.g., 'hasClasses', 'hasGenerics')
+   * @param {Object} options - Generation options
+   * @returns {boolean}
+   */
+  _hasFeature(feature, options) {
+    const features = this._getDialectFeatures(options);
+    return features[feature] === true;
+  }
+
+  /**
    * Generate Delphi code from Abstract Syntax Tree
    * @param {Object} ast - Parsed/Modified AST representation
    * @param {Object} options - Generation options
@@ -195,6 +341,7 @@ class DelphiPlugin extends LanguagePlugin {
     this.implementationMethods.clear();
     this.currentClass = null;
     this.currentMethod = null;
+    this.currentParamMapping = null;
     this.variableScope.clear();
     this.cryptoOperations.clear();
   }
@@ -205,7 +352,10 @@ class DelphiPlugin extends LanguagePlugin {
    */
   _preprocessAST(ast, options) {
     // Deep copy to avoid modifying original
-    const processed = JSON.parse(JSON.stringify(ast));
+    // Handle BigInt values by converting to strings during serialization
+    const processed = JSON.parse(JSON.stringify(ast, (key, value) =>
+      typeof value === 'bigint' ? value.toString() + 'n' : value
+    ));
 
     // Add type inference hints
     this._addTypeInference(processed, options);
@@ -506,6 +656,7 @@ class DelphiPlugin extends LanguagePlugin {
   _generateClass(node, options) {
     const className = node.id ? this._ensureClassName(node.id.name) : 'TUnnamedClass';
     let code = '';
+    const features = this._getDialectFeatures(options);
 
     this.currentClass = className;
 
@@ -514,38 +665,90 @@ class DelphiPlugin extends LanguagePlugin {
       code += this._generateClassDocumentation(node, options);
     }
 
-    // Attributes
-    if (options.useAttributes && node.attributes) {
-      code += this._generateAttributes(node.attributes, options);
+    // Turbo Pascal: use record (no methods) + standalone procedures
+    if (features.useRecordForClass) {
+      code += this._indent(`${className} = record\n`);
+      this.indentLevel++;
+
+      // Only generate fields, no methods
+      if (node.body && node.body.length > 0) {
+        const body = node.body.body || node.body;
+        for (const member of body) {
+          if (member.type === 'PropertyDefinition' || member.type === 'FieldDeclaration') {
+            code += this._generateField(member, options);
+          }
+          // Methods will be generated as standalone procedures after the record
+        }
+      }
+
+      this.indentLevel--;
+      code += this._indent('end;\n\n');
+
+      // Generate standalone procedures for methods
+      if (node.body && node.body.length > 0) {
+        const body = node.body.body || node.body;
+        for (const member of body) {
+          if (member.type === 'MethodDefinition') {
+            code += this._generateStandaloneProcedure(className, member, options);
+          }
+        }
+      }
     }
+    // Borland Pascal: use object type (supports methods)
+    else if (!this._hasFeature('hasClasses', options) && this._hasFeature('hasObjects', options)) {
+      code += this._indent(`${className} = object`);
+      if (node.superClass) {
+        const superName = this._generateNode(node.superClass, options);
+        code += `(${superName})`;
+      }
+      code += '\n';
 
-    // Class declaration with generics and inheritance
-    code += this._indent(`${className} = class`);
+      // Object sections (fields and methods)
+      if (node.body && node.body.length > 0) {
+        code += this._generateClassSections(node.body, options);
+      }
 
-    if (options.useGenerics && node.typeParameters) {
-      const generics = node.typeParameters.map(tp => tp.name).join(', ');
-      code += `<${generics}>`;
+      code += this._indent('end;\n');
     }
+    // Modern Pascal (Delphi/FreePascal): use class
+    else {
+      // Attributes (only for modern Pascal dialects)
+      if (options.useAttributes && node.attributes && this._hasFeature('hasAttributes', options)) {
+        code += this._generateAttributes(node.attributes, options);
+      }
 
-    if (node.superClass) {
-      const superName = this._generateNode(node.superClass, options);
-      code += `(${superName})`;
+      code += this._indent(`${className} = class`);
+
+      if (options.useGenerics && node.typeParameters && this._hasFeature('hasGenerics', options)) {
+        const generics = node.typeParameters.map(tp => tp.name).join(', ');
+        code += `<${generics}>`;
+      }
+
+      if (node.superClass) {
+        const superName = this._generateNode(node.superClass, options);
+        code += `(${superName})`;
+      }
+
+      // Interface implementations (only for modern Pascal)
+      if (options.useInterfaces && node.implements && this._hasFeature('hasInterfaces', options)) {
+        const interfaces = node.implements.map(iface => this._generateNode(iface, options));
+        code += `, ${interfaces.join(', ')}`;
+      }
+
+      code += '\n';
+
+      // Class sections
+      if (node.body && node.body.length > 0) {
+        code += this._generateClassSections(node.body, options);
+      }
+
+      code += this._indent('end;\n');
+
+      // Class helper if enabled (only for modern Pascal)
+      if (options.useClassHelpers && this._hasFeature('hasClassHelpers', options)) {
+        code += this._generateClassHelper(className, node, options);
+      }
     }
-
-    // Interface implementations
-    if (options.useInterfaces && node.implements) {
-      const interfaces = node.implements.map(iface => this._generateNode(iface, options));
-      code += `, ${interfaces.join(', ')}`;
-    }
-
-    code += '\n';
-
-    // Class sections
-    if (node.body && node.body.length > 0) {
-      code += this._generateClassSections(node.body, options);
-    }
-
-    code += this._indent('end;\n');
 
     this.currentClass = null;
     return code;
@@ -563,10 +766,30 @@ class DelphiPlugin extends LanguagePlugin {
       published: []
     };
 
+    // Extract fields from constructor
+    const constructorFields = [];
+    const constructor = body.find(m => m.type === 'MethodDefinition' && m.kind === 'constructor');
+    if (constructor && constructor.value && constructor.value.body) {
+      constructorFields.push(...this._extractFieldsFromConstructor(constructor, options));
+    }
+
+    // Add constructor fields to private section
+    constructorFields.forEach(field => {
+      sections.private.push(field);
+    });
+
     // Categorize members by visibility
     body.forEach(member => {
-      const visibility = this._getVisibility(member, options);
-      sections[visibility].push(member);
+      // Skip constructor for now (we'll add it back to public later)
+      if (member.type === 'MethodDefinition' && member.kind === 'constructor') {
+        sections.public.push(member);
+      } else if (member.type === 'MethodDefinition') {
+        const visibility = this._getVisibility(member, options);
+        sections[visibility].push(member);
+      } else {
+        const visibility = this._getVisibility(member, options);
+        sections[visibility].push(member);
+      }
     });
 
     let code = '';
@@ -580,9 +803,11 @@ class DelphiPlugin extends LanguagePlugin {
         // Fields first
         const fields = members.filter(m => this._isField(m));
         if (fields.length > 0) {
-          code += this._indent('{ Fields }\n');
+          if (options.addComments) {
+            code += this._indent('{ Fields }\n');
+          }
           fields.forEach(field => {
-            code += this._generateNode(field, options);
+            code += this._generateClassField(field, options);
           });
           code += '\n';
         }
@@ -590,7 +815,9 @@ class DelphiPlugin extends LanguagePlugin {
         // Properties
         const properties = members.filter(m => this._isProperty(m));
         if (properties.length > 0) {
-          code += this._indent('{ Properties }\n');
+          if (options.addComments) {
+            code += this._indent('{ Properties }\n');
+          }
           properties.forEach(prop => {
             code += this._generateNode(prop, options);
           });
@@ -600,7 +827,9 @@ class DelphiPlugin extends LanguagePlugin {
         // Methods
         const methods = members.filter(m => this._isMethod(m));
         if (methods.length > 0) {
-          code += this._indent('{ Methods }\n');
+          if (options.addComments) {
+            code += this._indent('{ Methods }\n');
+          }
           methods.forEach(method => {
             code += this._generateNode(method, options);
           });
@@ -611,6 +840,113 @@ class DelphiPlugin extends LanguagePlugin {
     });
 
     return code;
+  }
+
+  /**
+   * Extract field declarations from constructor body
+   * @private
+   */
+  _extractFieldsFromConstructor(constructor, options) {
+    const fields = [];
+
+    if (!constructor.value || !constructor.value.body || !constructor.value.body.body) {
+      return fields;
+    }
+
+    const statements = constructor.value.body.body;
+
+    // Process constructor body for field assignments
+    statements.forEach(stmt => {
+      if (stmt.type === 'ExpressionStatement' && stmt.expression) {
+        const expr = stmt.expression;
+
+        // Look for this.fieldName = value
+        if (expr.type === 'AssignmentExpression' &&
+            expr.left && expr.left.type === 'MemberExpression' &&
+            expr.left.object && expr.left.object.type === 'ThisExpression') {
+
+          const fieldName = expr.left.property.name || expr.left.property;
+          const initValue = expr.right;
+
+          fields.push({
+            type: 'FieldDeclaration',
+            name: fieldName,
+            fieldType: this._inferTypeFromValue(initValue, options),
+            isPrivate: true
+          });
+        }
+      }
+    });
+
+    return fields;
+  }
+
+  /**
+   * Generate a class field declaration
+   * @private
+   */
+  _generateClassField(field, options) {
+    if (!field || !field.name) return '';
+
+    // Convert JavaScript field name to Pascal convention
+    const pascalFieldName = this._jsFieldToPascalField(field.name);
+    const fieldType = field.fieldType || 'Variant';
+
+    return this._indent(`${pascalFieldName}: ${fieldType};\n`);
+  }
+
+  /**
+   * Convert JavaScript field name to Pascal field convention
+   * @private
+   */
+  _jsFieldToPascalField(jsName) {
+    // Remove leading underscore if present
+    let name = jsName;
+    if (name.startsWith('_')) {
+      name = name.substring(1);
+    }
+
+    // Pascal convention: F prefix for fields, PascalCase
+    const pascalName = this._pascalCase(name);
+    return 'F' + pascalName;
+  }
+
+  /**
+   * Infer type from initialization value
+   * @private
+   */
+  _inferTypeFromValue(valueNode, options) {
+    if (!valueNode) return 'Variant';
+
+    switch (valueNode.type) {
+      case 'NullLiteral':
+      case 'Literal':
+        if (valueNode.value === null) return 'Pointer';
+        if (typeof valueNode.value === 'string') return 'string';
+        if (typeof valueNode.value === 'number') {
+          return Number.isInteger(valueNode.value) ? 'Integer' : 'Double';
+        }
+        if (typeof valueNode.value === 'boolean') return 'Boolean';
+        return 'Variant';
+
+      case 'ArrayExpression':
+        return 'TArray<Variant>';
+
+      case 'ObjectExpression':
+        return 'TObject';
+
+      case 'NumericLiteral':
+        return Number.isInteger(valueNode.value) ? 'Integer' : 'Double';
+
+      case 'StringLiteral':
+        return 'string';
+
+      case 'BooleanLiteral':
+        return 'Boolean';
+
+      default:
+        return 'Variant';
+    }
   }
 
   /**
@@ -719,8 +1055,8 @@ class DelphiPlugin extends LanguagePlugin {
     if (!node.key || !node.value) return '';
 
     const methodName = this._pascalCase(node.key.name);
-    const isConstructor = node.key.name === 'constructor';
-    const isDestructor = node.key.name === 'destructor';
+    const isConstructor = node.kind === 'constructor' || node.key.name === 'constructor';
+    const isDestructor = node.kind === 'destructor' || node.key.name === 'destructor';
     const isStatic = node.static;
     const isVirtual = node.virtual || false;
     const isOverride = node.override || false;
@@ -757,16 +1093,24 @@ class DelphiPlugin extends LanguagePlugin {
       code += `<${generics}>`;
     }
 
-    // Parameters
+    // Parameters (for constructor, convert to Pascal parameter names)
     if (node.value.params && node.value.params.length > 0) {
-      const params = node.value.params.map(param => this._generateParameter(param, options));
+      const params = node.value.params.map(param => {
+        if (isConstructor) {
+          return this._generateConstructorParameter(param, options);
+        } else {
+          return this._generateParameter(param, options);
+        }
+      });
       code += `(${params.join('; ')})`;
+    } else if (isConstructor) {
+      code += ''; // No parens for parameterless constructor
     } else {
       code += '()';
     }
 
     // Return type for functions
-    if (this._isFunction(node)) {
+    if (this._isFunction(node) && !isConstructor && !isDestructor) {
       const returnType = this._inferReturnType(node.value, options);
       code += `: ${returnType}`;
     }
@@ -777,6 +1121,7 @@ class DelphiPlugin extends LanguagePlugin {
     if (isOverride) modifiers.push('override');
     if (isAbstract) modifiers.push('abstract');
     if (options.useInlineFunctions && this._shouldBeInline(node)) modifiers.push('inline');
+    if (isDestructor && !isOverride) modifiers.push('override'); // Destructor always overrides
 
     if (modifiers.length > 0) {
       code += `; ${modifiers.join('; ')}`;
@@ -784,11 +1129,97 @@ class DelphiPlugin extends LanguagePlugin {
 
     code += ';\n';
 
-    // Add to implementation methods
-    this.implementationMethods.set(`${this.currentClass}.${methodName}`, node);
+    // Add to implementation methods with proper key
+    const implKey = isConstructor ? `${this.currentClass}.Create` :
+                    isDestructor ? `${this.currentClass}.Destroy` :
+                    `${this.currentClass}.${methodName}`;
+    this.implementationMethods.set(implKey, node);
 
     this.currentMethod = null;
     return code;
+  }
+
+  /**
+   * Generate standalone procedure for Turbo Pascal (no methods in records)
+   * @private
+   */
+  _generateStandaloneProcedure(className, node, options) {
+    if (!node.key || !node.value) return '';
+
+    const methodName = this._pascalCase(node.key.name);
+    const isConstructor = node.kind === 'constructor' || node.key.name === 'constructor';
+    let code = '';
+
+    // Procedure name includes class name prefix
+    const procName = isConstructor ? `${className}_Create` : `${className}_${methodName}`;
+
+    // Determine if function or procedure
+    const returnType = this._inferReturnType(node.value, options);
+    const isFunction = returnType && returnType !== 'void';
+
+    // Generate declaration
+    if (isFunction) {
+      code += `function ${procName}`;
+    } else {
+      code += `procedure ${procName}`;
+    }
+
+    // Parameters - add 'var Self' as first parameter for instance methods
+    const params = [];
+    if (!node.static) {
+      params.push(`var Self: ${className}`);
+    }
+
+    if (node.value.params && node.value.params.length > 0) {
+      for (const param of node.value.params) {
+        params.push(this._generateParameter(param, options));
+      }
+    }
+
+    if (params.length > 0) {
+      code += `(${params.join('; ')})`;
+    }
+
+    if (isFunction) {
+      code += `: ${returnType}`;
+    }
+
+    code += ';\n';
+
+    // Generate body
+    if (node.value.body) {
+      code += 'begin\n';
+      this.indentLevel++;
+      code += this._generateNode(node.value.body, options);
+      this.indentLevel--;
+      code += 'end;\n\n';
+    }
+
+    return code;
+  }
+
+  /**
+   * Generate constructor parameter with Pascal naming
+   * @private
+   */
+  _generateConstructorParameter(param, options) {
+    let name = param.name || 'AParam';
+    name = this._pascalCase(name);
+    // Add 'A' prefix for parameters (Pascal convention)
+    if (!name.startsWith('A')) {
+      name = 'A' + name;
+    }
+
+    // Infer parameter type
+    let type = this._inferParameterType(param, options);
+
+    // Default value support
+    let defaultValue = '';
+    if (param.default) {
+      defaultValue = ' = ' + this._generateNode(param.default, options);
+    }
+
+    return `${name}: ${type}${defaultValue}`;
   }
 
   /**
@@ -943,7 +1374,13 @@ class DelphiPlugin extends LanguagePlugin {
    * @private
    */
   _inferType(value, context, options) {
-    if (!value) return 'Variant';
+    if (!value) {
+      // With null safety, use Nullable types for uncertain values
+      if (options.nullSafety) {
+        return 'Nullable<Variant>';
+      }
+      return 'Variant';
+    }
 
     // Check crypto types first
     if (options.useCryptoExtensions && context) {
@@ -958,7 +1395,13 @@ class DelphiPlugin extends LanguagePlugin {
     }
     if (typeof value === 'boolean') return 'Boolean';
     if (Array.isArray(value)) return 'TArray<Variant>';
-    if (value === null) return 'Pointer';
+    if (value === null) {
+      // With null safety, explicitly mark nullable types
+      if (options.nullSafety) {
+        return 'Nullable<Pointer>';
+      }
+      return 'Pointer';
+    }
 
     return 'Variant';
   }
@@ -969,22 +1412,28 @@ class DelphiPlugin extends LanguagePlugin {
    */
   _generateCryptoOperation(node, options) {
     const { left, operator, right } = node;
+    const leftCode = this._generateNode(left, options);
+    const rightCode = this._generateNode(right, options);
 
     this.cryptoOperations.add('OpCodes');
 
     switch (operator) {
       case '<<':
-        return `OpCodes.RotL32(${this._generateNode(left, options)}, ${this._generateNode(right, options)})`;
+        return `OpCodes.RotL32(${leftCode}, ${rightCode})`;
       case '>>':
-        return `OpCodes.RotR32(${this._generateNode(left, options)}, ${this._generateNode(right, options)})`;
+        return `OpCodes.RotR32(${leftCode}, ${rightCode})`;
       case '^':
         if (this._isArrayType(left) && this._isArrayType(right)) {
-          return `OpCodes.XorArrays(${this._generateNode(left, options)}, ${this._generateNode(right, options)})`;
+          return `OpCodes.XorArrays(${leftCode}, ${rightCode})`;
         }
-        break;
+        return `${leftCode} xor ${rightCode}`;
+      case '&':
+        return `${leftCode} and ${rightCode}`;
+      case '|':
+        return `${leftCode} or ${rightCode}`;
     }
 
-    return `${left} ${operator} ${right}`;
+    return `${leftCode} ${operator} ${rightCode}`;
   }
 
   /**
@@ -1171,92 +1620,141 @@ class DelphiPlugin extends LanguagePlugin {
    * @private
    */
   _wrapWithUnitStructure(code, options) {
+    const ln = options.lineEnding || '\n';
+    const features = this._getDialectFeatures(options);
     let result = '';
 
-    // Unit header with namespace support
-    if (options.namespaceName && options.useModernSyntax) {
-      result += `unit ${options.namespaceName}.${options.unitName};\n\n`;
+    // Dialect-specific header
+    const dialect = (options.dialect || 'delphi').toLowerCase();
+    if (features.programStructure === 'program') {
+      // Turbo/Borland Pascal uses program structure
+      result += `program ${options.unitName};${ln}${ln}`;
     } else {
-      result += `unit ${options.unitName};\n\n`;
+      // Delphi/FreePascal uses unit structure
+      // Only Delphi supports namespaced unit names (not FreePascal)
+      if (dialect === 'delphi' && options.namespaceName && options.useModernSyntax) {
+        result += `unit ${options.namespaceName}.${options.unitName};${ln}${ln}`;
+      } else {
+        result += `unit ${options.unitName};${ln}${ln}`;
+      }
     }
 
-    // Compiler directives
+    // Compiler directives (dialect-specific)
     if (options.compilerDirectives) {
-      result += '{$MODE DELPHI}\n';
-      result += '{$H+}\n';
-      result += '{$WARN SYMBOL_DEPRECATED OFF}\n\n';
+      const dialect = (options.dialect || 'delphi').toLowerCase();
+      if (dialect === 'freepascal') {
+        // FreePascal mode directive
+        result += `{$mode objfpc}{$H+}${ln}`;
+        result += `{$WARN 5024 off}${ln}`; // Parameter not used
+      } else if (dialect === 'delphi') {
+        result += `{$MODE DELPHI}${ln}`;
+        result += `{$H+}${ln}`;
+        if (options.nullSafety) {
+          result += `{$WARN IMPLICIT_VARIANTS OFF}${ln}`;
+          result += `{$NULLABLEPOINTERS ON}${ln}`;
+        }
+        result += `{$WARN SYMBOL_DEPRECATED OFF}${ln}`;
+      } else if (dialect === 'turbo' || dialect === 'borland') {
+        // Minimal directives for older Pascal
+        result += `{$N+}${ln}`; // Numeric coprocessor
+        result += `{$E+}${ln}`; // Emulation if no coprocessor
+      }
+      result += ln;
     }
 
-    // Interface section
-    result += 'interface\n\n';
+    // Interface section (only for unit structure)
+    if (features.programStructure === 'unit') {
+      result += `interface${ln}${ln}`;
+    }
 
     // Uses clause with crypto and modern units
     this._addStandardUnits(options);
     if (this.uses.size > 0) {
-      result += 'uses\n';
+      result += `uses${ln}`;
       const usesList = Array.from(this.uses);
       for (let i = 0; i < usesList.length; i++) {
         result += '  ' + usesList[i];
         if (i < usesList.length - 1) {
-          result += ',\n';
+          result += `,${ln}`;
         } else {
-          result += ';\n';
+          result += `;${ln}`;
         }
       }
-      result += '\n';
+      result += ln;
     }
 
     // Type declarations
     if (this.typeDeclarations.size > 0 || this.forwardDeclarations.size > 0) {
-      result += 'type\n';
+      result += `type${ln}`;
 
-      // Forward declarations
-      if (this.forwardDeclarations.size > 0) {
-        result += '  { Forward declarations }\n';
+      // Forward declarations (only for dialects with classes)
+      if (this.forwardDeclarations.size > 0 && this._hasFeature('hasClasses', options)) {
+        if (options.addComments) {
+          result += `  { Forward declarations }${ln}`;
+        }
         Array.from(this.forwardDeclarations).forEach(decl => {
-          result += `  ${decl} = class;\n`;
+          result += `  ${decl} = class;${ln}`;
         });
-        result += '\n';
+        result += ln;
+      } else if (this.forwardDeclarations.size > 0) {
+        // For Turbo/Borland Pascal, use object forward declarations
+        if (options.addComments) {
+          result += `  { Forward declarations }${ln}`;
+        }
+        Array.from(this.forwardDeclarations).forEach(decl => {
+          result += `  ${decl} = object;${ln}`;
+        });
+        result += ln;
       }
 
       // Type declarations
       if (this.typeDeclarations.size > 0) {
         Array.from(this.typeDeclarations.entries()).forEach(([name, decl]) => {
-          result += `  ${decl}\n`;
+          result += `  ${decl}${ln}`;
         });
-        result += '\n';
+        result += ln;
       }
     }
 
     // Function declarations
     if (code.trim()) {
-      result += '{ Function and procedure declarations }\n';
+      if (options.addComments) {
+        result += `{ Function and procedure declarations }${ln}`;
+      }
       result += code;
-      result += '\n';
+      result += ln;
     }
 
-    // Implementation section
-    result += 'implementation\n\n';
+    // Implementation section (only for unit structure)
+    if (features.programStructure === 'unit') {
+      result += `implementation${ln}${ln}`;
+    }
 
     // Implementation code
     if (this.implementationMethods.size > 0) {
-      result += '{ Implementation }\n\n';
+      if (options.addComments) {
+        result += `{ Implementation }${ln}${ln}`;
+      }
       Array.from(this.implementationMethods.entries()).forEach(([name, node]) => {
         result += this._generateImplementation(name, node, options);
-        result += '\n';
+        result += ln;
       });
     }
 
-    // Initialization/finalization
-    if (options.useCryptoExtensions && this.cryptoOperations.size > 0) {
-      result += 'initialization\n';
-      result += '  { Initialize crypto subsystem }\n\n';
-      result += 'finalization\n';
-      result += '  { Cleanup crypto subsystem }\n\n';
+    // Initialization/finalization (only for units, not programs)
+    if (features.programStructure === 'unit' && options.useCryptoExtensions && this.cryptoOperations.size > 0) {
+      result += `initialization${ln}`;
+      if (options.addComments) {
+        result += `  { Initialize crypto subsystem }${ln}${ln}`;
+      }
+      result += `finalization${ln}`;
+      if (options.addComments) {
+        result += `  { Cleanup crypto subsystem }${ln}${ln}`;
+      }
     }
 
     // Unit end
-    result += 'end.\n';
+    result += `end.${ln}`;
 
     return result;
   }
@@ -1266,32 +1764,61 @@ class DelphiPlugin extends LanguagePlugin {
    * @private
    */
   _addStandardUnits(options) {
-    // Core units
-    this.uses.add('System.SysUtils');
-    this.uses.add('System.Variants');
-    this.uses.add('System.Classes');
+    const features = this._getDialectFeatures(options);
+    const dialect = (options.dialect || 'delphi').toLowerCase();
 
-    // Crypto-related units
-    if (options.useCryptoExtensions) {
-      this.uses.add('System.Hash');
-      this.uses.add('System.NetEncoding');
+    // Add dialect-specific default units
+    if (features.defaultUnits) {
+      features.defaultUnits.forEach(unit => this.uses.add(unit));
     }
 
-    // Generic and RTTI units
-    if (options.useGenerics) {
-      this.uses.add('System.Generics.Collections');
-      this.uses.add('System.Generics.Defaults');
-    }
+    // Modern Delphi uses System.* namespaced units
+    if (dialect === 'delphi') {
+      this.uses.add('System.SysUtils');
+      this.uses.add('System.Variants');
+      this.uses.add('System.Classes');
 
-    if (options.useRTTI) {
-      this.uses.add('System.Rtti');
-      this.uses.add('System.TypInfo');
-    }
+      // Framework-specific units (Delphi only)
+      if (options.targetFramework === 'VCL') {
+        this.uses.add('Vcl.Forms');
+        this.uses.add('Vcl.Controls');
+      } else if (options.targetFramework === 'FMX') {
+        this.uses.add('FMX.Forms');
+        this.uses.add('FMX.Controls');
+      }
 
-    // Parallel library
-    if (options.useParallelLibrary) {
-      this.uses.add('System.Threading');
+      // Crypto-related units
+      if (options.useCryptoExtensions) {
+        this.uses.add('System.Hash');
+        this.uses.add('System.NetEncoding');
+      }
+
+      // Generic and RTTI units
+      if (options.useGenerics && this._hasFeature('hasGenerics', options)) {
+        this.uses.add('System.Generics.Collections');
+        this.uses.add('System.Generics.Defaults');
+      }
+
+      if (options.useRTTI && this._hasFeature('hasRTTI', options)) {
+        this.uses.add('System.Rtti');
+        this.uses.add('System.TypInfo');
+      }
+
+      // Parallel library
+      if (options.useParallelLibrary) {
+        this.uses.add('System.Threading');
+      }
+    } else if (dialect === 'freepascal') {
+      // FreePascal uses non-namespaced units
+      this.uses.add('SysUtils');
+      this.uses.add('Classes');
+
+      if (options.useGenerics && this._hasFeature('hasGenerics', options)) {
+        this.uses.add('Generics.Collections');
+        this.uses.add('Generics.Defaults');
+      }
     }
+    // Turbo/Borland Pascal already have their units set via defaultUnits
 
     // OpCodes if used
     if (this.cryptoOperations.has('OpCodes')) {
@@ -1306,27 +1833,60 @@ class DelphiPlugin extends LanguagePlugin {
   _generateImplementation(name, node, options) {
     let code = '';
 
+    const isConstructor = name.endsWith('.Create');
+    const isDestructor = name.endsWith('.Destroy');
+    const isMethod = name.includes('.');
+
+    // Build parameter name mapping for constructor
+    const paramMapping = new Map();
+    if (isConstructor && node.value && node.value.params) {
+      node.value.params.forEach(param => {
+        const jsName = param.name || param;
+        let pascalName = this._pascalCase(jsName);
+        if (!pascalName.startsWith('A')) {
+          pascalName = 'A' + pascalName;
+        }
+        paramMapping.set(jsName, pascalName);
+      });
+    }
+
+    // Store mapping for use in body generation
+    this.currentParamMapping = paramMapping;
+
     // Method signature
-    if (name.includes('.')) {
-      // Class method implementation
-      const [className, methodName] = name.split('.');
-      code += `${this._getMethodType(node)} ${className}.${methodName}`;
+    if (isConstructor) {
+      code += `constructor ${name}`;
+    } else if (isDestructor) {
+      code += `destructor ${name}`;
+    } else if (isMethod) {
+      code += `${this._getMethodType(node)} ${name}`;
     } else {
-      // Function implementation
       code += `function ${name}`;
     }
 
     // Parameters
+    const params = [];
     if (node.value && node.value.params && node.value.params.length > 0) {
-      const params = node.value.params.map(param => this._generateParameter(param, options));
-      code += `(${params.join('; ')})`;
+      if (isConstructor) {
+        params.push(...node.value.params.map(param => this._generateConstructorParameter(param, options)));
+      } else {
+        params.push(...node.value.params.map(param => this._generateParameter(param, options)));
+      }
     } else if (node.params && node.params.length > 0) {
-      const params = node.params.map(param => this._generateParameter(param, options));
+      params.push(...node.params.map(param => this._generateParameter(param, options)));
+    }
+
+    if (params.length > 0) {
       code += `(${params.join('; ')})`;
+    } else if (!isConstructor || params.length > 0) {
+      // Add empty parens for non-constructor or constructor with params
+      if (isMethod && !isConstructor) {
+        code += '()';
+      }
     }
 
     // Return type
-    if (this._isFunction(node)) {
+    if (this._isFunction(node) && !isConstructor && !isDestructor) {
       const returnType = this._inferReturnType(node.value || node, options);
       code += `: ${returnType}`;
     }
@@ -1338,15 +1898,196 @@ class DelphiPlugin extends LanguagePlugin {
     if (body) {
       code += 'begin\n';
       this.indentLevel++;
-      const bodyCode = this._generateNode(body, options);
-      // Empty body is valid in Delphi
+
+      const bodyCode = this._generateMethodBody(body, options);
       code += bodyCode;
       this.indentLevel--;
       code += 'end;\n';
     } else {
       code += 'begin\n';
-      // No body - empty is valid
       code += 'end;\n';
+    }
+
+    // Clear parameter mapping
+    this.currentParamMapping = null;
+
+    return code;
+  }
+
+  /**
+   * Generate method body with JavaScript to Pascal conversions
+   * @private
+   */
+  _generateMethodBody(body, options) {
+    if (!body || !body.body) return '';
+
+    let code = '';
+    const statements = body.body;
+
+    for (const stmt of statements) {
+      code += this._generateMethodStatement(stmt, options);
+    }
+
+    return code;
+  }
+
+  /**
+   * Generate a single statement in a method body
+   * @private
+   */
+  _generateMethodStatement(stmt, options) {
+    // Convert JavaScript patterns to Pascal
+    if (stmt.type === 'ExpressionStatement' && stmt.expression) {
+      const expr = stmt.expression;
+
+      // Handle array.push() -> SetLength + assignment
+      if (expr.type === 'CallExpression' &&
+          expr.callee.type === 'MemberExpression' &&
+          expr.callee.property.name === 'push') {
+
+        const arrayName = this._convertThisPropertyToPascal(expr.callee.object, options);
+        const value = this._generatePascalExpression(expr.arguments[0], options);
+
+        let code = this._indent(`SetLength(${arrayName}, Length(${arrayName}) + 1);\n`);
+        code += this._indent(`${arrayName}[High(${arrayName})] := ${value};\n`);
+        return code;
+      }
+
+      // Handle regular assignment with this.property conversion
+      if (expr.type === 'AssignmentExpression') {
+        const left = this._convertThisPropertyToPascal(expr.left, options);
+        const right = this._generatePascalExpression(expr.right, options);
+        return this._indent(`${left} := ${right};\n`);
+      }
+    }
+
+    // Handle for loops with array.length
+    if (stmt.type === 'ForStatement') {
+      return this._generateForLoopWithArrayLength(stmt, options);
+    }
+
+    // Handle return statements in methods
+    if (stmt.type === 'ReturnStatement') {
+      if (stmt.argument) {
+        const value = this._generatePascalExpression(stmt.argument, options);
+        return this._indent(`Result := ${value};\n`);
+      } else {
+        return this._indent('Exit;\n');
+      }
+    }
+
+    // Default: use standard generation
+    return this._generateNode(stmt, options);
+  }
+
+  /**
+   * Generate expression with Pascal conversions
+   * @private
+   */
+  _generatePascalExpression(node, options) {
+    if (!node) return '';
+
+    // Handle array indexing like data[i]
+    if (node.type === 'MemberExpression' && node.computed) {
+      const obj = this._convertThisPropertyToPascal(node.object, options);
+      const index = this._generatePascalExpression(node.property, options);
+      return `${obj}[${index}]`;
+    }
+
+    // Handle member expressions with this.property
+    if (node.type === 'MemberExpression') {
+      return this._convertThisPropertyToPascal(node, options);
+    }
+
+    // Handle identifiers (parameters, local vars)
+    if (node.type === 'Identifier') {
+      // Check if this is a constructor parameter that needs remapping
+      if (this.currentParamMapping && this.currentParamMapping.has(node.name)) {
+        return this.currentParamMapping.get(node.name);
+      }
+      return this._pascalCase(node.name);
+    }
+
+    // Default generation
+    return this._generateNode(node, options);
+  }
+
+  /**
+   * Convert this.property to FProperty (Pascal field convention)
+   * @private
+   */
+  _convertThisPropertyToPascal(node, options) {
+    if (!node) return '';
+
+    if (node.type === 'MemberExpression') {
+      // Handle computed property access (array indexing): State[i]
+      if (node.computed) {
+        const obj = this._convertThisPropertyToPascal(node.object, options);
+        const index = this._generateNode(node.property, options);
+        return `${obj}[${index}]`;
+      }
+
+      if (node.object.type === 'ThisExpression') {
+        // this.property -> FProperty
+        const propertyName = node.property.name || (node.property.value !== undefined ? String(node.property.value) : 'unknown');
+        return this._jsFieldToPascalField(propertyName);
+      } else {
+        // nested member expression
+        const obj = this._convertThisPropertyToPascal(node.object, options);
+        const prop = node.property.name || (node.property.value !== undefined ? String(node.property.value) : 'unknown');
+        return `${obj}.${this._pascalCase(prop)}`;
+      }
+    } else if (node.type === 'ThisExpression') {
+      return 'Self';
+    }
+
+    return this._generateNode(node, options);
+  }
+
+  /**
+   * Generate for loop with array.length conversion
+   * @private
+   */
+  _generateForLoopWithArrayLength(node, options) {
+    let code = this._indent('for ');
+
+    // Extract loop variable from init
+    let loopVar = 'I';
+    let startValue = '0';
+    if (node.init && node.init.type === 'VariableDeclaration') {
+      const decl = node.init.declarations[0];
+      loopVar = this._pascalCase(decl.id.name);
+      if (decl.init) {
+        startValue = this._generateNode(decl.init, options);
+      }
+    }
+
+    // Extract array from test condition (i < array.length)
+    let endValue = '0';
+    if (node.test && node.test.type === 'BinaryExpression') {
+      const right = node.test.right;
+      if (right.type === 'MemberExpression' && right.property.name === 'length') {
+        const arrayName = this._convertThisPropertyToPascal(right.object, options);
+        // Use High() for arrays (0-indexed, so Length-1 = High)
+        endValue = `High(${arrayName})`;
+      } else {
+        endValue = this._generateNode(right, options);
+      }
+    }
+
+    code += `${loopVar} := ${startValue} to ${endValue} do\n`;
+
+    // Generate body
+    if (node.body.type === 'BlockStatement') {
+      code += this._indent('begin\n');
+      this.indentLevel++;
+      code += this._generateMethodBody(node.body, options);
+      this.indentLevel--;
+      code += this._indent('end;\n');
+    } else {
+      this.indentLevel++;
+      code += this._generateMethodStatement(node.body, options);
+      this.indentLevel--;
     }
 
     return code;
@@ -1495,6 +2236,10 @@ class DelphiPlugin extends LanguagePlugin {
 
   _pascalCase(str) {
     if (!str) return str;
+    // Ensure str is a string
+    if (typeof str !== 'string') {
+      str = String(str);
+    }
     return str.charAt(0).toUpperCase() + str.slice(1);
   }
 
@@ -1523,7 +2268,8 @@ class DelphiPlugin extends LanguagePlugin {
 
   _isField(member) {
     return member.type === 'FieldDeclaration' ||
-           (member.type === 'VariableDeclaration' && !member.isMethod);
+           (member.type === 'VariableDeclaration' && !member.isMethod) ||
+           (member.name && member.fieldType); // Fields extracted from constructor
   }
 
   _isProperty(member) {
@@ -1555,7 +2301,9 @@ class DelphiPlugin extends LanguagePlugin {
   _shouldBeInline(node) {
     if (!node.body) return false;
     // Simple heuristic: inline if body is small and no complex operations
-    const bodyStr = JSON.stringify(node.body);
+    const bodyStr = JSON.stringify(node.body, (key, value) =>
+      typeof value === 'bigint' ? value.toString() : value
+    );
     return bodyStr.length < 200 && !bodyStr.includes('try') && !bodyStr.includes('while');
   }
 
@@ -1567,13 +2315,14 @@ class DelphiPlugin extends LanguagePlugin {
   }
 
   _isCryptoFunction(name) {
+    if (!name) return false;
     const cryptoFunctions = ['hash', 'encrypt', 'decrypt', 'sign', 'verify', 'hmac', 'pbkdf2'];
-    return cryptoFunctions.some(cf => name.toLowerCase().includes(cf));
+    return cryptoFunctions.some(cf => String(name).toLowerCase().includes(cf));
   }
 
   _isArrayType(node) {
     return node.type === 'ArrayExpression' ||
-           (node.type === 'Identifier' && node.name.toLowerCase().includes('array'));
+           (node.type === 'Identifier' && node.name && String(node.name).toLowerCase().includes('array'));
   }
 
   _inferReturnType(node, options) {
@@ -1596,8 +2345,8 @@ class DelphiPlugin extends LanguagePlugin {
     }
 
     // Check if it's a crypto parameter
-    if (options.useCryptoExtensions) {
-      const name = param.name.toLowerCase();
+    if (options.useCryptoExtensions && param.name) {
+      const name = String(param.name).toLowerCase();
       if (name.includes('key') || name.includes('hash') || name.includes('digest')) {
         return 'TBytes';
       }
@@ -1612,7 +2361,7 @@ class DelphiPlugin extends LanguagePlugin {
   _inferCryptoType(value, context, options) {
     if (!context) return null;
 
-    const contextLower = context.toLowerCase();
+    const contextLower = String(context).toLowerCase();
     if (contextLower.includes('key')) return 'TBytes';
     if (contextLower.includes('hash')) return 'THashSHA2';
     if (contextLower.includes('digest')) return 'TBytes';
@@ -1657,14 +2406,21 @@ class DelphiPlugin extends LanguagePlugin {
     }
   }
 
+  // Helper for safe JSON.stringify with BigInt support
+  _safeStringify(obj) {
+    return JSON.stringify(obj, (key, value) =>
+      typeof value === 'bigint' ? value.toString() : value
+    );
+  }
+
   // Analysis methods for warnings
   _hasVariantUsage(ast) {
-    const code = JSON.stringify(ast);
+    const code = this._safeStringify(ast);
     return code.includes('Variant') || code.includes('variant');
   }
 
   _hasManualMemoryManagement(ast) {
-    const code = JSON.stringify(ast);
+    const code = this._safeStringify(ast);
     return code.includes('GetMem') || code.includes('FreeMem') || code.includes('New') || code.includes('Dispose');
   }
 
@@ -1687,7 +2443,7 @@ class DelphiPlugin extends LanguagePlugin {
   }
 
   _hasTryBlocks(ast) {
-    const code = JSON.stringify(ast);
+    const code = this._safeStringify(ast);
     return code.includes('TryStatement') || code.includes('try');
   }
 
@@ -1698,12 +2454,12 @@ class DelphiPlugin extends LanguagePlugin {
   }
 
   _hasInterfaceUsage(ast) {
-    const code = JSON.stringify(ast);
+    const code = this._safeStringify(ast);
     return code.includes('InterfaceDeclaration') || code.includes('interface');
   }
 
   _hasGenericUsage(ast) {
-    const code = JSON.stringify(ast);
+    const code = this._safeStringify(ast);
     return code.includes('typeParameters') || code.includes('generics');
   }
 
@@ -1712,7 +2468,7 @@ class DelphiPlugin extends LanguagePlugin {
     const traverse = (node) => {
       if (!node) return false;
       if (node.type === 'FunctionDeclaration' && node.body) {
-        const bodyStr = JSON.stringify(node.body);
+        const bodyStr = this._safeStringify(node.body);
         return bodyStr.length < 100;
       }
       if (Array.isArray(node)) {
@@ -1728,7 +2484,7 @@ class DelphiPlugin extends LanguagePlugin {
   }
 
   _hasResourceUsage(ast) {
-    const code = JSON.stringify(ast);
+    const code = this._safeStringify(ast);
     return code.includes('Create') || code.includes('resource');
   }
 
@@ -1751,12 +2507,12 @@ class DelphiPlugin extends LanguagePlugin {
   }
 
   _hasReflectionPatterns(ast) {
-    const code = JSON.stringify(ast);
+    const code = this._safeStringify(ast);
     return code.includes('typeof') || code.includes('reflection') || code.includes('meta');
   }
 
   _hasDeprecatedFeatures(ast) {
-    const code = JSON.stringify(ast);
+    const code = this._safeStringify(ast);
     return code.includes('goto') || code.includes('asm');
   }
 
@@ -1884,7 +2640,24 @@ class DelphiPlugin extends LanguagePlugin {
     let code = '\n';
     code += this._indent(`${recordName}Helper = record helper for ${recordName}\n`);
     this.indentLevel++;
-    code += this._indent('{ Helper methods }\n');
+    if (options.addComments) {
+      code += this._indent('{ Helper methods }\n');
+    }
+    this.indentLevel--;
+    code += this._indent('end;\n');
+
+    return code;
+  }
+
+  _generateClassHelper(className, node, options) {
+    if (!options.useClassHelpers) return '';
+
+    let code = '\n';
+    code += this._indent(`${className}Helper = class helper for ${className}\n`);
+    this.indentLevel++;
+    if (options.addComments) {
+      code += this._indent('{ Helper methods }\n');
+    }
     this.indentLevel--;
     code += this._indent('end;\n');
 
@@ -2085,10 +2858,42 @@ class DelphiPlugin extends LanguagePlugin {
   }
 
   _generateMemberExpression(node, options) {
-    const object = this._generateNode(node.object, options);
-    const property = node.computed ?
-      `[${this._generateNode(node.property, options)}]` :
-      `.${this._pascalCase(node.property.name || node.property)}`;
+    // Special handling for this.property -> FProperty
+    if (node.object && node.object.type === 'ThisExpression') {
+      const propertyName = node.property.name || node.property;
+
+      // Handle array indexing: this.array[i]
+      if (node.computed) {
+        const fieldName = this._jsFieldToPascalField(propertyName);
+        return fieldName;
+      }
+
+      // Handle array.length
+      if (propertyName === 'length') {
+        // This shouldn't happen with this.length, but handle gracefully
+        return 'Length(Self)';
+      }
+
+      // Regular field access: this.field -> FField
+      return this._jsFieldToPascalField(propertyName);
+    }
+
+    // Handle array.length for non-this expressions
+    if (node.property && node.property.name === 'length' && !node.computed) {
+      const arrayName = this._convertThisPropertyToPascal(node.object, options);
+      return `Length(${arrayName})`;
+    }
+
+    // Default member expression handling
+    const object = this._convertThisPropertyToPascal(node.object, options);
+    let property;
+    if (node.computed) {
+      property = `[${this._generateNode(node.property, options)}]`;
+    } else {
+      // For non-computed access, property should have a name
+      const propName = node.property.name || (typeof node.property === 'string' ? node.property : 'unknown');
+      property = `.${this._pascalCase(propName)}`;
+    }
 
     return object + property;
   }
@@ -2638,11 +3443,12 @@ class DelphiPlugin extends LanguagePlugin {
     return this._generateFunctionExpression(node, options);
   }
 
-  _indent(code) {
-    const indentStr = this.options.indent.repeat(this.indentLevel);
+  _indent(code, options = this.options) {
+    const indentStr = options.indent.repeat(this.indentLevel);
+    const lineEnding = options.lineEnding || '\n';
     return code.split('\n').map(line =>
       line.trim() ? indentStr + line : line
-    ).join('\n');
+    ).join(lineEnding);
   }
 
   /**

@@ -1,8 +1,12 @@
 /**
  * TypeScript Language Plugin for Multi-Language Code Generation
  * Generates TypeScript compatible code from JavaScript AST
- * 
+ *
  * Follows the LanguagePlugin specification exactly
+ *
+ * Supports two generation modes:
+ * 1. Direct emission (legacy) - _generateNode directly emits TypeScript code
+ * 2. AST pipeline (new) - JS AST -> TS AST -> TS Emitter
  */
 
 // Import the framework
@@ -10,15 +14,32 @@
 (function() {
   // Use local variables to avoid global conflicts
   let LanguagePlugin, LanguagePlugins;
+  let TypeScriptAST, TypeScriptEmitter, TypeScriptTransformer;
+
 if (typeof require !== 'undefined') {
   // Node.js environment
   const framework = require('./LanguagePlugin.js');
   LanguagePlugin = framework.LanguagePlugin;
   LanguagePlugins = framework.LanguagePlugins;
+
+  // Load new AST pipeline components
+  try {
+    TypeScriptAST = require('./TypeScriptAST.js');
+    const emitterModule = require('./TypeScriptEmitter.js');
+    TypeScriptEmitter = emitterModule.TypeScriptEmitter;
+    const transformerModule = require('./TypeScriptTransformer.js');
+    TypeScriptTransformer = transformerModule.TypeScriptTransformer;
+  } catch (e) {
+    // Pipeline components not available - will use legacy mode
+    console.warn('TypeScript AST pipeline components not loaded:', e.message);
+  }
 } else {
   // Browser environment - use globals
   LanguagePlugin = window.LanguagePlugin;
   LanguagePlugins = window.LanguagePlugins;
+  TypeScriptAST = window.TypeScriptAST;
+  TypeScriptEmitter = window.TypeScriptEmitter;
+  TypeScriptTransformer = window.TypeScriptTransformer;
 }
 
 /**
@@ -44,7 +65,8 @@ class TypeScriptPlugin extends LanguagePlugin {
       strictTypes: true,
       addJSDoc: true,
       useInterfaces: true,
-      exportAll: false
+      exportAll: false,
+      useAstPipeline: true // Enable new AST pipeline by default
     };
     
     // Internal state
@@ -59,33 +81,75 @@ class TypeScriptPlugin extends LanguagePlugin {
    */
   GenerateFromAST(ast, options = {}) {
     try {
-      // Reset state for clean generation
-      this.indentLevel = 0;
-      
       // Merge options
       const mergedOptions = { ...this.options, ...options };
-      
+
       // Validate AST
       if (!ast || typeof ast !== 'object') {
         return this.CreateErrorResult('Invalid AST: must be an object');
       }
-      
-      // Generate TypeScript code
+
+      // Check if new AST pipeline is requested and available
+      if (mergedOptions.useAstPipeline && TypeScriptTransformer && TypeScriptEmitter) {
+        return this._generateWithAstPipeline(ast, mergedOptions);
+      }
+
+      // Reset state for clean generation (legacy mode)
+      this.indentLevel = 0;
+
+      // Generate TypeScript code using legacy direct emission
       const code = this._generateNode(ast, mergedOptions);
-      
+
       // Add standard headers and types
       const finalCode = this._wrapWithTypes(code, mergedOptions);
-      
+
       // Collect dependencies
       const dependencies = this._collectDependencies(ast, mergedOptions);
-      
+
       // Generate warnings if any
       const warnings = this._generateWarnings(ast, mergedOptions);
-      
+
       return this.CreateSuccessResult(finalCode, dependencies, warnings);
-      
+
     } catch (error) {
       return this.CreateErrorResult(`Code generation failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Generate TypeScript code using the new AST pipeline
+   * Pipeline: JS AST -> TS AST -> TS Emitter -> TS Source
+   * @private
+   */
+  _generateWithAstPipeline(ast, options) {
+    try {
+      // Create transformer with options
+      const transformer = new TypeScriptTransformer({
+        typeKnowledge: options.parser?.typeKnowledge || options.typeKnowledge
+      });
+
+      // Transform JS AST to TypeScript AST
+      const tsAst = transformer.transform(ast);
+
+      // Create emitter with options
+      const emitter = new TypeScriptEmitter({
+        indent: options.indent || '  ',
+        newline: options.lineEnding || options.newline || '\n'
+      });
+
+      // Emit TypeScript code from TypeScript AST
+      const code = emitter.emit(tsAst);
+
+      // Collect dependencies
+      const dependencies = this._collectDependencies(ast, options);
+
+      // Generate warnings if any
+      const warnings = this._generateWarnings(ast, options);
+
+      return this.CreateSuccessResult(code, dependencies, warnings);
+
+    } catch (error) {
+      return this.CreateErrorResult(`AST pipeline failed: ${error.message}\n${error.stack}`);
     }
   }
 
@@ -255,15 +319,22 @@ class TypeScriptPlugin extends LanguagePlugin {
     if (node.params && node.params.length > 0) {
       const params = node.params.map(param => {
         const paramName = param.name || 'param';
-        const paramType = this._inferTypeScriptType(paramName);
-        return `${paramName}: ${paramType}`;
+        if (options.strictTypes) {
+          const paramType = this._inferTypeScriptType(paramName);
+          return `${paramName}: ${paramType}`;
+        }
+        return paramName;
       });
       code += params.join(', ');
     }
-    
+
     // Return type
-    const returnType = this._inferReturnType(functionName);
-    code += `): ${returnType} {\n`;
+    if (options.strictTypes) {
+      const returnType = this._inferReturnType(functionName);
+      code += `): ${returnType} {\n`;
+    } else {
+      code += ') {\n';
+    }
     
     // Function body
     this.indentLevel++;
@@ -357,16 +428,23 @@ class TypeScriptPlugin extends LanguagePlugin {
     if (node.value.params && node.value.params.length > 0) {
       const params = node.value.params.map(param => {
         const paramName = param.name || 'param';
-        const paramType = this._inferTypeScriptType(paramName);
-        return `${paramName}: ${paramType}`;
+        if (options.strictTypes) {
+          const paramType = this._inferTypeScriptType(paramName);
+          return `${paramName}: ${paramType}`;
+        }
+        return paramName;
       });
       code += params.join(', ');
     }
-    
+
     // Return type
     if (!isConstructor) {
-      const returnType = this._inferReturnType(methodName);
-      code += `): ${returnType} {\n`;
+      if (options.strictTypes) {
+        const returnType = this._inferReturnType(methodName);
+        code += `): ${returnType} {\n`;
+      } else {
+        code += ') {\n';
+      }
     } else {
       code += ') {\n';
     }
@@ -409,18 +487,25 @@ class TypeScriptPlugin extends LanguagePlugin {
    */
   _generateVariableDeclaration(node, options) {
     if (!node.declarations) return '';
-    
+
     return node.declarations
       .map(decl => {
         const varName = decl.id ? decl.id.name : 'variable';
-        const varType = this._inferTypeScriptType(varName);
-        
+
         if (decl.init) {
           const initValue = this._generateNode(decl.init, options);
           const keyword = node.kind || 'let';
-          return this._indent(`${keyword} ${varName}: ${varType} = ${initValue};\n`);
+          if (options.strictTypes) {
+            const varType = this._inferTypeScriptType(varName);
+            return this._indent(`${keyword} ${varName}: ${varType} = ${initValue};\n`, options);
+          }
+          return this._indent(`${keyword} ${varName} = ${initValue};\n`, options);
         } else {
-          return this._indent(`let ${varName}: ${varType} | undefined;\n`);
+          if (options.strictTypes) {
+            const varType = this._inferTypeScriptType(varName);
+            return this._indent(`let ${varName}: ${varType} | undefined;\n`, options);
+          }
+          return this._indent(`let ${varName};\n`, options);
         }
       })
       .join('');
@@ -557,14 +642,14 @@ class TypeScriptPlugin extends LanguagePlugin {
    */
   _generateArrayExpression(node, options) {
     if (!node.elements || node.elements.length === 0) {
-      return options.useTypeScript ? '[] as any[]' : '[]';
+      return options.strictTypes ? '[] as any[]' : '[]';
     }
 
     const elements = node.elements
       .map(element => element ? this._generateNode(element, options) : 'undefined')
       .join(', ');
 
-    return options.useTypeScript ? `[${elements}] as any[]` : `[${elements}]`;
+    return options.strictTypes ? `[${elements}] as any[]` : `[${elements}]`;
   }
 
   /**
@@ -573,7 +658,7 @@ class TypeScriptPlugin extends LanguagePlugin {
    */
   _generateObjectExpression(node, options) {
     if (!node.properties || node.properties.length === 0) {
-      return options.useTypeScript ? '{} as Record<string, any>' : '{}';
+      return options.strictTypes ? '{} as Record<string, any>' : '{}';
     }
 
     const properties = node.properties.map(prop => this._generateNode(prop, options));
@@ -600,18 +685,18 @@ class TypeScriptPlugin extends LanguagePlugin {
   _generateFunctionExpression(node, options) {
     const name = node.id ? node.id.name : '';
     const params = this._generateParameters(node.params, options);
-    const returnType = options.useTypeScript ? ': any' : '';
+    const returnType = options.strictTypes ? ': any' : '';
 
     let code = `function ${name}(${params})${returnType} {\n`;
     this.indentLevel++;
 
     if (node.body) {
       const body = this._generateNode(node.body, options);
-      code += body || this._indent('// Empty function body\n');
+      code += body || this._indent('// Empty function body\n', options);
     }
 
     this.indentLevel--;
-    code += this._indent('}');
+    code += this._indent('}', options);
     return code;
   }
 
@@ -621,15 +706,15 @@ class TypeScriptPlugin extends LanguagePlugin {
    */
   _generateArrowFunctionExpression(node, options) {
     const params = this._generateParameters(node.params, options);
-    const returnType = options.useTypeScript ? ': any' : '';
+    const returnType = options.strictTypes ? ': any' : '';
 
     if (node.body.type === 'BlockStatement') {
       let code = `(${params})${returnType} => {\n`;
       this.indentLevel++;
       const body = this._generateNode(node.body, options);
-      code += body || this._indent('// Empty arrow function body\n');
+      code += body || this._indent('// Empty arrow function body\n', options);
       this.indentLevel--;
-      code += this._indent('}');
+      code += this._indent('}', options);
       return code;
     } else {
       const body = this._generateNode(node.body, options);
@@ -760,7 +845,7 @@ class TypeScriptPlugin extends LanguagePlugin {
    */
   _generateRestElement(node, options) {
     const argument = this._generateNode(node.argument, options);
-    const type = options.useTypeScript ? ': any[]' : '';
+    const type = options.strictTypes ? ': any[]' : '';
     return `...${argument}${type}`;
   }
 
@@ -817,7 +902,7 @@ class TypeScriptPlugin extends LanguagePlugin {
    */
   _generateVariableDeclarator(node, options) {
     const id = node.id ? this._generateNode(node.id, options) : 'variable';
-    const type = options.useTypeScript ? ': any' : '';
+    const type = options.strictTypes ? ': any' : '';
 
     if (node.init) {
       const init = this._generateNode(node.init, options);
@@ -1061,11 +1146,11 @@ class TypeScriptPlugin extends LanguagePlugin {
    * @private
    */
   _generateCatchClause(node, options) {
-    let code = this._indent('catch');
+    let code = this._indent('catch', options);
 
     if (node.param) {
       const param = this._generateNode(node.param, options);
-      const type = options.useTypeScript ? ': any' : '';
+      const type = options.strictTypes ? ': any' : '';
       code += ` (${param}${type})`;
     }
 
@@ -1152,7 +1237,7 @@ class TypeScriptPlugin extends LanguagePlugin {
 
     return params.map(param => {
       const name = this._generateNode(param, options);
-      const type = options.useTypeScript ? ': any' : '';
+      const type = options.strictTypes ? ': any' : '';
       return `${name}${type}`;
     }).join(', ');
   }
@@ -1200,11 +1285,12 @@ class TypeScriptPlugin extends LanguagePlugin {
    * Add proper indentation
    * @private
    */
-  _indent(code) {
-    const indentStr = this.options.indent.repeat(this.indentLevel);
-    return code.split('\n').map(line => 
+  _indent(code, options = this.options) {
+    const indentStr = options.indent.repeat(this.indentLevel);
+    const lineEnding = options.lineEnding;
+    return code.split(lineEnding).map(line =>
       line.trim() ? indentStr + line : line
-    ).join('\n');
+    ).join(lineEnding);
   }
 
   /**
