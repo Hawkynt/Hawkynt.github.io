@@ -1410,7 +1410,8 @@ class CipherController {
         this.populateModeDropdown();
         this.populatePaddingDropdown();
         this.populateKdfDropdown();
-        
+        this.populatePrngSeedProcessingDropdowns();
+
         // Setup encrypt/decrypt buttons
         const encryptBtn = document.getElementById('encrypt-btn');
         const decryptBtn = document.getElementById('decrypt-btn');
@@ -1437,6 +1438,9 @@ class CipherController {
         // Setup KDF controls
         this.setupKdfControls();
 
+        // Setup PRNG seed processing controls
+        this.setupPrngSeedProcessingControls();
+
         // Setup input validation and salmon tinting
         this.setupInputValidation();
 
@@ -1446,6 +1450,7 @@ class CipherController {
             algorithmSelect.addEventListener('change', () => {
                 this.updateBlockVisibility();
                 this.updateActionButtons();
+                this.updatePrngRequiredSeedSize();
             });
         }
 
@@ -1463,6 +1468,42 @@ class CipherController {
      * Setup drag-and-drop file loading for input and all data parameter fields
      */
     setupDragAndDrop() {
+        // Store references to drop targets for document-level handler
+        this._dropTargets = new Map();
+
+        // CRITICAL: Prevent browser from opening dropped files at document/window level
+        // Must use capture phase (true) to intercept before bubbling
+        const preventDefaults = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        };
+
+        // Prevent on window level to catch everything
+        window.addEventListener('dragover', preventDefaults, true);
+        window.addEventListener('dragenter', preventDefaults, true);
+        window.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            // Find if we dropped on a registered target
+            const dropTarget = e.target.closest('.drop-target');
+            if (dropTarget && this._dropTargets.has(dropTarget)) {
+                const { element, fieldName, container } = this._dropTargets.get(dropTarget);
+
+                // Remove visual feedback
+                if (container) {
+                    container.classList.remove('drag-active');
+                }
+                element.classList.remove('drag-over');
+
+                // Process dropped files
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    this.handleFileForTextarea(files[0], element, fieldName);
+                }
+            }
+        }, true);
+
         // Apply to input text
         const inputText = document.getElementById('input-text');
         if (inputText) {
@@ -1485,42 +1526,70 @@ class CipherController {
      * Add drag-and-drop handlers to a textarea element
      */
     addDragAndDropToElement(element, fieldName) {
+        // Mark element as a valid drop target
+        element.classList.add('drop-target');
+
         // Get the container (parent element) for overlay activation
         const container = element.parentElement;
 
-        // Prevent default drag behaviors
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            element.addEventListener(eventName, (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-            }, false);
+        // Register this target
+        this._dropTargets.set(element, { element, fieldName, container });
+        if (container && container.classList.contains('textarea-container')) {
+            container.classList.add('drop-target');
+            this._dropTargets.set(container, { element, fieldName, container });
+
+            // Update empty state for drop overlay visibility
+            this.updateTextareaEmptyState(element, container);
+            element.addEventListener('input', () => this.updateTextareaEmptyState(element, container));
+        }
+
+        // Visual feedback handlers (these can bubble normally)
+        element.addEventListener('dragenter', (e) => {
+            if (container) {
+                container.classList.add('drag-active');
+            }
+            element.classList.add('drag-over');
         });
 
-        // Activate overlay on drag over
-        ['dragenter', 'dragover'].forEach(eventName => {
-            element.addEventListener(eventName, () => {
-                if (container && container.classList.contains('textarea-container')) {
-                    container.classList.add('drag-active');
-                }
-            }, false);
-        });
-
-        // Deactivate overlay on drag leave or drop
-        ['dragleave', 'drop'].forEach(eventName => {
-            element.addEventListener(eventName, () => {
-                if (container && container.classList.contains('textarea-container')) {
+        element.addEventListener('dragleave', (e) => {
+            // Only remove if actually leaving the element (not entering a child)
+            const rect = element.getBoundingClientRect();
+            const x = e.clientX;
+            const y = e.clientY;
+            if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
+                if (container) {
                     container.classList.remove('drag-active');
                 }
-            }, false);
+                element.classList.remove('drag-over');
+            }
         });
 
-        // Handle file drop
-        element.addEventListener('drop', (e) => {
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                this.handleFileForTextarea(files[0], element, fieldName);
-            }
-        }, false);
+        // Same for container
+        if (container && container.classList.contains('textarea-container')) {
+            container.addEventListener('dragenter', () => {
+                container.classList.add('drag-active');
+                element.classList.add('drag-over');
+            });
+
+            container.addEventListener('dragleave', (e) => {
+                const rect = container.getBoundingClientRect();
+                const x = e.clientX;
+                const y = e.clientY;
+                if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
+                    container.classList.remove('drag-active');
+                    element.classList.remove('drag-over');
+                }
+            });
+        }
+    }
+
+    /**
+     * Update textarea-empty class on container based on content
+     */
+    updateTextareaEmptyState(element, container) {
+        if (!container) return;
+        const isEmpty = !element.value || element.value.trim() === '';
+        container.classList.toggle('textarea-empty', isEmpty);
     }
 
     /**
@@ -1557,6 +1626,12 @@ class CipherController {
 
             textarea.value = text;
 
+            // Update empty state for drop overlay
+            const container = textarea.parentElement;
+            if (container && container.classList.contains('textarea-container')) {
+                this.updateTextareaEmptyState(textarea, container);
+            }
+
             // Trigger validation
             this.validateInputs();
 
@@ -1584,9 +1659,9 @@ class CipherController {
         
         // Initialize chain builder if available
         this.initializeChainBuilder();
-        
-        // Setup drag and drop functionality
-        this.setupDragAndDrop();
+
+        // Setup drag and drop functionality for chaining canvas
+        this.setupChainDragAndDrop();
         
         // Setup algorithm palette tabs and populate it
         this.populateAlgorithmPalette();
@@ -2420,7 +2495,208 @@ class CipherController {
 
         DebugConfig.log(`📋 Populated KDF dropdowns for all parameters with ${kdfAlgorithms.length} KDF algorithms`);
     }
-    
+
+    /**
+     * Populate PRNG seed processing dropdowns with registered algorithms
+     */
+    populatePrngSeedProcessingDropdowns() {
+        const algorithms = this.getAllAlgorithms();
+
+        // Built-in option color (neutral gray)
+        const builtinColor = '#6c757d';
+
+        // === Expansion dropdown (KDF + Padding algorithms) ===
+        const expansionSelect = document.getElementById('prng-seed-expansion');
+        if (expansionSelect) {
+            // Style existing built-in options
+            Array.from(expansionSelect.options).forEach(option => {
+                if (option.value.startsWith('builtin-') || option.value === 'error') {
+                    option.style.backgroundColor = builtinColor;
+                    option.style.color = 'white';
+                }
+            });
+
+            // Keep built-in options, add algorithm options
+            const kdfAlgorithms = algorithms.filter(a =>
+                a.category === AlgorithmFramework.CategoryType.KDF
+            ).sort((a, b) => a.name.localeCompare(b.name));
+
+            const paddingAlgorithms = algorithms.filter(a =>
+                a.category === AlgorithmFramework.CategoryType.PADDING
+            ).sort((a, b) => a.name.localeCompare(b.name));
+
+            // Get category colors
+            const kdfColor = AlgorithmFramework.CategoryType.KDF?.color || '#17a2b8';
+            const paddingColor = AlgorithmFramework.CategoryType.PADDING?.color || '#28a745';
+            const kdfIcon = AlgorithmFramework.CategoryType.KDF?.icon || '🔑';
+            const paddingIcon = AlgorithmFramework.CategoryType.PADDING?.icon || '📐';
+
+            // Add KDF group
+            if (kdfAlgorithms.length > 0) {
+                const kdfGroup = document.createElement('optgroup');
+                kdfGroup.label = `${kdfIcon} Key Derivation`;
+                kdfAlgorithms.forEach(alg => {
+                    const option = document.createElement('option');
+                    option.value = `kdf:${alg.name}`;
+                    option.textContent = alg.name;
+                    option.style.backgroundColor = kdfColor;
+                    option.style.color = 'white';
+                    kdfGroup.appendChild(option);
+                });
+                expansionSelect.appendChild(kdfGroup);
+            }
+
+            // Add Padding group
+            if (paddingAlgorithms.length > 0) {
+                const padGroup = document.createElement('optgroup');
+                padGroup.label = `${paddingIcon} Padding`;
+                paddingAlgorithms.forEach(alg => {
+                    const option = document.createElement('option');
+                    option.value = `padding:${alg.name}`;
+                    option.textContent = alg.name;
+                    option.style.backgroundColor = paddingColor;
+                    option.style.color = 'white';
+                    padGroup.appendChild(option);
+                });
+                expansionSelect.appendChild(padGroup);
+            }
+        }
+
+        // === Reduction dropdown (Hash algorithms) ===
+        const reductionSelect = document.getElementById('prng-seed-reduction');
+        if (reductionSelect) {
+            // Style existing built-in options
+            Array.from(reductionSelect.options).forEach(option => {
+                if (option.value.startsWith('builtin-') || option.value === 'error') {
+                    option.style.backgroundColor = builtinColor;
+                    option.style.color = 'white';
+                }
+            });
+
+            const hashAlgorithms = algorithms.filter(a =>
+                a.category === AlgorithmFramework.CategoryType.HASH
+            ).sort((a, b) => a.name.localeCompare(b.name));
+
+            // Get category color
+            const hashColor = AlgorithmFramework.CategoryType.HASH?.color || '#ffc107';
+            const hashIcon = AlgorithmFramework.CategoryType.HASH?.icon || '#️⃣';
+
+            // Add Hash group
+            if (hashAlgorithms.length > 0) {
+                const hashGroup = document.createElement('optgroup');
+                hashGroup.label = `${hashIcon} Hash Functions`;
+                hashAlgorithms.forEach(alg => {
+                    const option = document.createElement('option');
+                    option.value = `hash:${alg.name}`;
+                    option.textContent = alg.name;
+                    option.style.backgroundColor = hashColor;
+                    option.style.color = 'white';
+                    hashGroup.appendChild(option);
+                });
+                reductionSelect.appendChild(hashGroup);
+            }
+        }
+
+        DebugConfig.log('📋 Populated PRNG seed processing dropdowns with color coding');
+    }
+
+    /**
+     * Setup PRNG seed processing controls (change events, parameter visibility)
+     */
+    setupPrngSeedProcessingControls() {
+        const expansionSelect = document.getElementById('prng-seed-expansion');
+        const reductionSelect = document.getElementById('prng-seed-reduction');
+
+        if (expansionSelect) {
+            expansionSelect.addEventListener('change', () => {
+                this.updatePrngExpansionParameters();
+            });
+        }
+
+        if (reductionSelect) {
+            reductionSelect.addEventListener('change', () => {
+                this.updatePrngReductionParameters();
+            });
+        }
+
+        // Initialize parameter visibility
+        this.updatePrngExpansionParameters();
+        this.updatePrngReductionParameters();
+    }
+
+    /**
+     * Update expansion parameters visibility based on selected method
+     */
+    updatePrngExpansionParameters() {
+        const expansionSelect = document.getElementById('prng-seed-expansion');
+        const parametersDiv = document.getElementById('prng-expansion-parameters');
+        const saltContainer = document.getElementById('prng-expansion-salt-container');
+        const iterationsContainer = document.getElementById('prng-expansion-iterations-container');
+
+        if (!expansionSelect || !parametersDiv) return;
+
+        const value = expansionSelect.value;
+
+        // Show parameters for KDF algorithms
+        if (value.startsWith('kdf:')) {
+            parametersDiv.style.display = 'block';
+            if (saltContainer) saltContainer.style.display = 'block';
+
+            // Show iterations for PBKDF2-like algorithms
+            const algName = value.substring(4);
+            const showIterations = algName.toLowerCase().includes('pbkdf') ||
+                                   algName.toLowerCase().includes('bcrypt') ||
+                                   algName.toLowerCase().includes('scrypt');
+            if (iterationsContainer) {
+                iterationsContainer.style.display = showIterations ? 'block' : 'none';
+            }
+        } else {
+            parametersDiv.style.display = 'none';
+        }
+    }
+
+    /**
+     * Update reduction parameters visibility based on selected method
+     */
+    updatePrngReductionParameters() {
+        const reductionSelect = document.getElementById('prng-seed-reduction');
+        const parametersDiv = document.getElementById('prng-reduction-parameters');
+
+        if (!reductionSelect || !parametersDiv) return;
+
+        // Currently no additional parameters for reduction methods
+        parametersDiv.style.display = 'none';
+    }
+
+    /**
+     * Update the displayed required seed size for the selected PRNG
+     */
+    updatePrngRequiredSeedSize() {
+        const algorithmSelect = document.getElementById('selected-algorithm');
+        const sizeSpan = document.getElementById('prng-required-seed-size');
+
+        if (!sizeSpan) return;
+
+        const algorithmName = algorithmSelect?.value;
+        if (!algorithmName) {
+            sizeSpan.textContent = 'varies by algorithm';
+            return;
+        }
+
+        const algorithm = AlgorithmFramework.Algorithms.find(a => a.name === algorithmName);
+        if (!algorithm || algorithm.category !== AlgorithmFramework.CategoryType.RANDOM) {
+            sizeSpan.textContent = 'varies by algorithm';
+            return;
+        }
+
+        const { minSize, maxSize } = this.getSeedSizeRange(algorithm);
+        if (minSize === maxSize) {
+            sizeSpan.textContent = `${minSize} bytes`;
+        } else {
+            sizeSpan.textContent = `${minSize}-${maxSize} bytes`;
+        }
+    }
+
     /**
      * Populate testing categories dropdown for filtering
      */
@@ -3142,6 +3418,16 @@ class CipherController {
             });
         });
 
+        // PRNG seed processing dropdown listeners
+        const prngExpansion = document.getElementById('prng-seed-expansion');
+        const prngReduction = document.getElementById('prng-seed-reduction');
+        if (prngExpansion) {
+            prngExpansion.addEventListener('change', () => this.validateInputs());
+        }
+        if (prngReduction) {
+            prngReduction.addEventListener('change', () => this.validateInputs());
+        }
+
         // Initial validation
         this.validateInputs();
     }
@@ -3234,7 +3520,40 @@ class CipherController {
 
         // Validate INPUT field (only if no padding is selected)
         const paddingValue = paddingSelect ? paddingSelect.value : '';
-        if (!paddingValue && inputText.value) {
+
+        // Special validation for PRNG algorithms - input is seed
+        if (algorithm.category === AlgorithmFramework.CategoryType.RANDOM) {
+            const expansionMethod = document.getElementById('prng-seed-expansion')?.value || 'error';
+            const reductionMethod = document.getElementById('prng-seed-reduction')?.value || 'error';
+
+            if (inputText.value) {
+                const inputFormat = document.querySelector('.input-section .format-tab.active')?.getAttribute('data-format') || 'text';
+
+                try {
+                    const inputBytes = this.parseInputByFormat(inputText.value, inputFormat);
+                    const { minSize, maxSize } = this.getSeedSizeRange(algorithm);
+                    const inputSize = inputBytes.length;
+
+                    clearValidation(inputText);
+
+                    // Check if seed is too short and error mode is selected
+                    if (inputSize < minSize && expansionMethod === 'error') {
+                        inputText.classList.add('input-invalid');
+                    }
+                    // Check if seed is too long and error mode is selected
+                    else if (inputSize > maxSize && reductionMethod === 'error') {
+                        inputText.classList.add('input-invalid');
+                    }
+                } catch (e) {
+                    // Invalid format - show as invalid
+                    clearValidation(inputText);
+                    inputText.classList.add('input-invalid');
+                }
+            } else {
+                clearValidation(inputText);
+            }
+        } else if (!paddingValue && inputText.value) {
+            // Standard validation for non-PRNG algorithms
             const inputFormat = document.querySelector('.input-section .format-tab.active')?.getAttribute('data-format') || 'text';
             let inputBytes;
 
@@ -3324,7 +3643,7 @@ class CipherController {
 
     /**
      * Update block visibility based on selected algorithm
-     * Shows/hides Mode, Padding, Key, IV, Salt, Nonce, Pepper blocks dynamically
+     * Shows/hides Mode, Padding, Key, IV, Salt, Nonce, Pepper, OutputSize blocks dynamically
      */
     updateBlockVisibility() {
         const algorithmSelect = document.getElementById('selected-algorithm');
@@ -3340,6 +3659,7 @@ class CipherController {
         const saltBlock = document.getElementById('salt-block');
         const nonceBlock = document.getElementById('nonce-block');
         const pepperBlock = document.getElementById('pepper-block');
+        const outputSizeBlock = document.getElementById('output-size-block');
 
         // If no algorithm selected, hide all optional blocks
         if (!algorithmName) {
@@ -3350,6 +3670,7 @@ class CipherController {
             if (saltBlock) saltBlock.style.display = 'none';
             if (nonceBlock) nonceBlock.style.display = 'none';
             if (pepperBlock) pepperBlock.style.display = 'none';
+            if (outputSizeBlock) outputSizeBlock.style.display = 'none';
             return;
         }
 
@@ -3364,6 +3685,7 @@ class CipherController {
             if (saltBlock) saltBlock.style.display = 'none';
             if (nonceBlock) nonceBlock.style.display = 'none';
             if (pepperBlock) pepperBlock.style.display = 'none';
+            if (outputSizeBlock) outputSizeBlock.style.display = 'none';
             return;
         }
 
@@ -3377,6 +3699,7 @@ class CipherController {
         const showSalt = category === AlgorithmFramework.CategoryType.HASH || category === AlgorithmFramework.CategoryType.KDF;
         const showNonce = category === AlgorithmFramework.CategoryType.STREAM || category === AlgorithmFramework.CategoryType.AEAD;
         const showPepper = category === AlgorithmFramework.CategoryType.KDF;
+        const showOutputSize = category === AlgorithmFramework.CategoryType.RANDOM;
 
         // Apply visibility
         if (modeBlock) modeBlock.style.display = showMode ? '' : 'none';
@@ -3386,8 +3709,9 @@ class CipherController {
         if (saltBlock) saltBlock.style.display = showSalt ? '' : 'none';
         if (nonceBlock) nonceBlock.style.display = showNonce ? '' : 'none';
         if (pepperBlock) pepperBlock.style.display = showPepper ? '' : 'none';
+        if (outputSizeBlock) outputSizeBlock.style.display = showOutputSize ? '' : 'none';
 
-        DebugConfig.log(`🔍 Block visibility updated for ${algorithmName} (${category.name}): Mode=${showMode}, Padding=${showPadding}, Key=${showKey}, IV=${showIV}, Salt=${showSalt}, Nonce=${showNonce}, Pepper=${showPepper}`);
+        DebugConfig.log(`🔍 Block visibility updated for ${algorithmName} (${category.name}): Mode=${showMode}, Padding=${showPadding}, Key=${showKey}, IV=${showIV}, Salt=${showSalt}, Nonce=${showNonce}, Pepper=${showPepper}, OutputSize=${showOutputSize}`);
     }
 
     /**
@@ -3450,6 +3774,8 @@ class CipherController {
                 encryptBtn.innerHTML = '🗜️ Compress';
             } else if (category === AlgorithmFramework.CategoryType.ECC) {
                 encryptBtn.innerHTML = '🔧 Encode';
+            } else if (category === AlgorithmFramework.CategoryType.RANDOM) {
+                encryptBtn.innerHTML = '🎲 Generate';
             } else {
                 encryptBtn.innerHTML = '⚡ Transform';
             }
@@ -3482,9 +3808,10 @@ class CipherController {
 
         // Categories that don't need keys
         const noKeyCategories = [
-            'HASH',
-            'CHECKSUM',
-            'ENCODING'
+            AlgorithmFramework.CategoryType.HASH,
+            AlgorithmFramework.CategoryType.CHECKSUM,
+            AlgorithmFramework.CategoryType.ENCODING,
+            AlgorithmFramework.CategoryType.RANDOM  // PRNGs use seed from input, not key
         ];
 
         return !noKeyCategories.includes(algorithm.category);
@@ -3724,6 +4051,75 @@ class CipherController {
                 }
             }
 
+            // Special handling for PRNGs (Random Number Generators)
+            // PRNGs use input as seed and outputSize to control output length
+            if (algorithm.category === AlgorithmFramework.CategoryType.RANDOM) {
+                // Validate we have seed input
+                if (!inputBytes || inputBytes.length === 0) {
+                    throw new Error(`❌ ${algorithmName} requires a seed.\n\n💡 Tip: Enter seed data in the Input field. The seed determines the sequence of random numbers generated.`);
+                }
+
+                // Get required seed size for this PRNG
+                const { minSize, maxSize } = this.getSeedSizeRange(algorithm);
+                const targetSize = maxSize; // Use max supported size
+
+                // Get processing methods from dropdowns
+                const expansionMethod = document.getElementById('prng-seed-expansion')?.value || 'builtin-splitmix';
+                const reductionMethod = document.getElementById('prng-seed-reduction')?.value || 'builtin-splitmix';
+
+                // Process seed to match required size
+                let processedSeed = inputBytes;
+                const inputSize = inputBytes.length;
+
+                if (inputSize < targetSize) {
+                    // Need to expand seed
+                    if (expansionMethod === 'error') {
+                        throw new Error(`❌ Seed too short: ${inputSize} bytes provided, ${targetSize} bytes required.\n\n💡 Tip: Select an expansion method in "If Seed Too Short" dropdown.`);
+                    }
+                    processedSeed = await this.expandSeed(inputBytes, targetSize, expansionMethod);
+                    DebugConfig.log(`🌱 Seed expanded from ${inputSize} to ${processedSeed.length} bytes using ${expansionMethod}`);
+                } else if (inputSize > targetSize) {
+                    // Need to reduce seed
+                    if (reductionMethod === 'error') {
+                        throw new Error(`❌ Seed too long: ${inputSize} bytes provided, ${targetSize} bytes required.\n\n💡 Tip: Select a reduction method in "If Seed Too Long" dropdown.`);
+                    }
+                    processedSeed = await this.reduceSeed(inputBytes, targetSize, reductionMethod);
+                    DebugConfig.log(`🌱 Seed reduced from ${inputSize} to ${processedSeed.length} bytes using ${reductionMethod}`);
+                }
+
+                // Set the processed seed
+                instance.seed = processedSeed;
+
+                // Get output size from UI
+                const outputSizeInput = document.getElementById('prng-output-size');
+                const outputSize = parseInt(outputSizeInput?.value) || 32;
+                instance.outputSize = outputSize;
+
+                // PRNGs don't use Feed/Result pattern with input data
+                // They use seed + outputSize and generate via Result()
+                let outputBytes;
+                try {
+                    // For PRNGs, we don't Feed data - we just call Result() after setting seed/outputSize
+                    instance.Feed([]); // Empty feed, seed was already set
+                    outputBytes = instance.Result();
+
+                    if (!outputBytes || outputBytes.length === 0) {
+                        throw new Error('PRNG generated no output');
+                    }
+                } catch (error) {
+                    if (error.message.includes('❌')) {
+                        throw error;
+                    }
+                    throw new Error(`❌ Random number generation failed: ${error.message}\n\n💡 Tip: Check that the seed is valid for ${algorithmName}.`);
+                }
+
+                return {
+                    bytes: outputBytes,
+                    operation: 'generate',
+                    algorithm: algorithmName
+                };
+            }
+
             // Set key if provided and supported
             if (keyBytes && instance.key !== undefined) {
                 try {
@@ -3912,8 +4308,32 @@ class CipherController {
             // Hide KDF parameters for this parameter type
             this.updateKdfParameterVisibility(paramType);
         });
+
+        // Reset PRNG settings to defaults
+        const prngOutputSize = document.getElementById('prng-output-size');
+        if (prngOutputSize) prngOutputSize.value = '32';
+
+        const prngSeedExpansion = document.getElementById('prng-seed-expansion');
+        if (prngSeedExpansion) prngSeedExpansion.value = 'builtin-splitmix';
+
+        const prngSeedReduction = document.getElementById('prng-seed-reduction');
+        if (prngSeedReduction) prngSeedReduction.value = 'builtin-splitmix';
+
+        const prngExpansionSalt = document.getElementById('prng-expansion-salt');
+        if (prngExpansionSalt) prngExpansionSalt.value = '';
+
+        const prngExpansionIterations = document.getElementById('prng-expansion-iterations');
+        if (prngExpansionIterations) prngExpansionIterations.value = '1000';
+
+        // Hide expansion parameters
+        const prngExpansionParams = document.getElementById('prng-expansion-parameters');
+        if (prngExpansionParams) prngExpansionParams.style.display = 'none';
+
+        // Update block visibility and action buttons for cleared state
+        this.updateBlockVisibility();
+        this.updateActionButtons();
     }
-    
+
     /**
      * Convert hex string to byte array
      */
@@ -3931,7 +4351,331 @@ class CipherController {
     bytesToHex(bytes) {
         return bytes.map(b => b.toString(16).padStart(2, '0')).join('');
     }
-    
+
+    /**
+     * Get supported seed size range for a PRNG algorithm
+     * @param {Algorithm} algorithm - The PRNG algorithm
+     * @returns {{minSize: number, maxSize: number}} Seed size range in bytes
+     */
+    getSeedSizeRange(algorithm) {
+        // Check if algorithm specifies SupportedSeedSizes
+        if (algorithm.SupportedSeedSizes && algorithm.SupportedSeedSizes.length > 0) {
+            const minSize = Math.min(...algorithm.SupportedSeedSizes.map(ss => ss.minSize));
+            const maxSize = Math.max(...algorithm.SupportedSeedSizes.map(ss => ss.maxSize || ss.minSize));
+            return { minSize, maxSize };
+        }
+
+        // Check if algorithm specifies SupportedKeySizes (some PRNGs use this)
+        if (algorithm.SupportedKeySizes && algorithm.SupportedKeySizes.length > 0) {
+            const minSize = Math.min(...algorithm.SupportedKeySizes.map(ks => ks.minSize));
+            const maxSize = Math.max(...algorithm.SupportedKeySizes.map(ks => ks.maxSize || ks.minSize));
+            return { minSize, maxSize };
+        }
+
+        // Default fallback based on common PRNG seed sizes
+        return { minSize: 4, maxSize: 32 };
+    }
+
+    /**
+     * Expand seed to target size using selected method
+     * @param {Array} seedBytes - Original seed bytes
+     * @param {number} targetSize - Target size in bytes
+     * @param {string} method - Expansion method (builtin-* or kdf:AlgName or padding:AlgName)
+     * @returns {Promise<Array>} Expanded seed bytes
+     */
+    async expandSeed(seedBytes, targetSize, method) {
+        // Built-in methods
+        if (method.startsWith('builtin-')) {
+            switch (method) {
+                case 'builtin-repeat':
+                    return this.padRepeat(seedBytes, targetSize);
+                case 'builtin-zero':
+                    return this.padZero(seedBytes, targetSize);
+                case 'builtin-splitmix':
+                    return this.splitmix64Process(seedBytes, targetSize);
+            }
+        }
+
+        // KDF algorithm from registry
+        if (method.startsWith('kdf:')) {
+            const algName = method.substring(4);
+            return await this.expandWithKdf(seedBytes, targetSize, algName);
+        }
+
+        // Padding algorithm from registry
+        if (method.startsWith('padding:')) {
+            const algName = method.substring(8);
+            return this.expandWithPadding(seedBytes, targetSize, algName);
+        }
+
+        // Default fallback
+        return this.splitmix64Process(seedBytes, targetSize);
+    }
+
+    /**
+     * Reduce seed to target size using selected method
+     * @param {Array} seedBytes - Original seed bytes
+     * @param {number} targetSize - Target size in bytes
+     * @param {string} method - Reduction method (builtin-* or hash:AlgName)
+     * @returns {Promise<Array>} Reduced seed bytes
+     */
+    async reduceSeed(seedBytes, targetSize, method) {
+        // Built-in methods
+        if (method.startsWith('builtin-')) {
+            switch (method) {
+                case 'builtin-truncate':
+                    return seedBytes.slice(0, targetSize);
+                case 'builtin-xorfold':
+                    return this.xorFoldProcess(seedBytes, targetSize);
+                case 'builtin-splitmix':
+                    return this.splitmix64Process(seedBytes, targetSize);
+            }
+        }
+
+        // Hash algorithm from registry
+        if (method.startsWith('hash:')) {
+            const algName = method.substring(5);
+            return await this.reduceWithHash(seedBytes, targetSize, algName);
+        }
+
+        // Default fallback
+        return this.splitmix64Process(seedBytes, targetSize);
+    }
+
+    /**
+     * Expand seed using a registered KDF algorithm
+     * @param {Array} seedBytes - Original seed bytes
+     * @param {number} targetSize - Target size in bytes
+     * @param {string} algName - KDF algorithm name
+     * @returns {Promise<Array>} Expanded seed bytes
+     */
+    async expandWithKdf(seedBytes, targetSize, algName) {
+        const kdfAlgorithm = AlgorithmFramework.Algorithms.find(a => a.name === algName);
+        if (!kdfAlgorithm) {
+            DebugConfig.log(`KDF algorithm "${algName}" not found, falling back to SplitMix64`);
+            return this.splitmix64Process(seedBytes, targetSize);
+        }
+
+        try {
+            const kdfInstance = kdfAlgorithm.CreateInstance();
+            if (!kdfInstance) {
+                throw new Error('Failed to create KDF instance');
+            }
+
+            // Get optional parameters from UI
+            const saltInput = document.getElementById('prng-expansion-salt');
+            const iterationsInput = document.getElementById('prng-expansion-iterations');
+
+            // Set KDF parameters
+            if (saltInput && saltInput.value) {
+                kdfInstance.salt = Array.from(new TextEncoder().encode(saltInput.value));
+            }
+            if (iterationsInput && kdfInstance.iterations !== undefined) {
+                kdfInstance.iterations = parseInt(iterationsInput.value) || 1000;
+            }
+            if (kdfInstance.outputSize !== undefined) {
+                kdfInstance.outputSize = targetSize;
+            }
+
+            // Run KDF
+            kdfInstance.Feed(seedBytes);
+            const result = kdfInstance.Result();
+
+            // Ensure correct output size
+            if (result.length >= targetSize) {
+                return result.slice(0, targetSize);
+            }
+            // If KDF returned less than needed, pad with SplitMix64
+            return [...result, ...this.splitmix64Process(result, targetSize - result.length)].slice(0, targetSize);
+        } catch (e) {
+            DebugConfig.log(`KDF "${algName}" failed: ${e.message}, falling back to SplitMix64`);
+            return this.splitmix64Process(seedBytes, targetSize);
+        }
+    }
+
+    /**
+     * Expand seed using a registered Padding algorithm
+     * @param {Array} seedBytes - Original seed bytes
+     * @param {number} targetSize - Target size in bytes
+     * @param {string} algName - Padding algorithm name
+     * @returns {Array} Expanded seed bytes
+     */
+    expandWithPadding(seedBytes, targetSize, algName) {
+        const paddingAlgorithm = AlgorithmFramework.Algorithms.find(a => a.name === algName);
+        if (!paddingAlgorithm) {
+            DebugConfig.log(`Padding algorithm "${algName}" not found, falling back to zero padding`);
+            return this.padZero(seedBytes, targetSize);
+        }
+
+        try {
+            const paddingInstance = paddingAlgorithm.CreateInstance(false);
+            if (!paddingInstance) {
+                throw new Error('Failed to create padding instance');
+            }
+
+            // Set block size to target size
+            if (paddingInstance.setBlockSize) {
+                paddingInstance.setBlockSize(targetSize);
+            } else if (paddingInstance.blockSize !== undefined) {
+                paddingInstance.blockSize = targetSize;
+            }
+
+            // Apply padding
+            paddingInstance.Feed(seedBytes);
+            const result = paddingInstance.Result();
+
+            return result.slice(0, targetSize);
+        } catch (e) {
+            DebugConfig.log(`Padding "${algName}" failed: ${e.message}, falling back to zero padding`);
+            return this.padZero(seedBytes, targetSize);
+        }
+    }
+
+    /**
+     * Reduce seed using a registered Hash algorithm
+     * @param {Array} seedBytes - Original seed bytes
+     * @param {number} targetSize - Target size in bytes
+     * @param {string} algName - Hash algorithm name
+     * @returns {Promise<Array>} Reduced seed bytes
+     */
+    async reduceWithHash(seedBytes, targetSize, algName) {
+        const hashAlgorithm = AlgorithmFramework.Algorithms.find(a => a.name === algName);
+        if (!hashAlgorithm) {
+            DebugConfig.log(`Hash algorithm "${algName}" not found, falling back to XOR fold`);
+            return this.xorFoldProcess(seedBytes, targetSize);
+        }
+
+        try {
+            // Use counter-mode hashing if we need more bytes than one hash produces
+            const result = [];
+            let counter = 0;
+
+            while (result.length < targetSize) {
+                const hashInstance = hashAlgorithm.CreateInstance();
+                if (!hashInstance) {
+                    throw new Error('Failed to create hash instance');
+                }
+
+                // Feed counter + seed for domain separation
+                const counterBytes = [
+                    (counter >> 24) & 0xff,
+                    (counter >> 16) & 0xff,
+                    (counter >> 8) & 0xff,
+                    counter & 0xff
+                ];
+                hashInstance.Feed([...counterBytes, ...seedBytes]);
+                result.push(...hashInstance.Result());
+                ++counter;
+            }
+
+            return result.slice(0, targetSize);
+        } catch (e) {
+            DebugConfig.log(`Hash "${algName}" failed: ${e.message}, falling back to XOR fold`);
+            return this.xorFoldProcess(seedBytes, targetSize);
+        }
+    }
+
+    /**
+     * SplitMix64-based seed processing (works for both expansion and reduction)
+     * @param {Array} seedBytes - Original seed bytes
+     * @param {number} targetSize - Target size in bytes
+     * @returns {Array} Processed seed bytes
+     */
+    splitmix64Process(seedBytes, targetSize) {
+        // Convert seed bytes to a 64-bit state by XOR folding
+        let state = BigInt(0);
+        for (let i = 0; i < seedBytes.length; ++i) {
+            state ^= BigInt(seedBytes[i]) << BigInt((i % 8) * 8);
+        }
+
+        // Ensure non-zero state
+        if (state === BigInt(0))
+            state = BigInt('0x853c49e6748fea9b');
+
+        // SplitMix64 constants
+        const GOLDEN = BigInt('0x9e3779b97f4a7c15');
+        const MIX1 = BigInt('0xbf58476d1ce4e5b9');
+        const MIX2 = BigInt('0x94d049bb133111eb');
+        const MASK64 = BigInt('0xffffffffffffffff');
+
+        // Generate output bytes using SplitMix64
+        const result = [];
+        while (result.length < targetSize) {
+            // Advance state
+            state = (state + GOLDEN) & MASK64;
+
+            // Mix
+            let z = state;
+            z = ((z ^ (z >> BigInt(30))) * MIX1) & MASK64;
+            z = ((z ^ (z >> BigInt(27))) * MIX2) & MASK64;
+            z = (z ^ (z >> BigInt(31))) & MASK64;
+
+            // Extract 8 bytes from 64-bit result
+            for (let i = 0; i < 8 && result.length < targetSize; ++i) {
+                result.push(Number((z >> BigInt(i * 8)) & BigInt(0xff)));
+            }
+        }
+
+        return result.slice(0, targetSize);
+    }
+
+    /**
+     * XOR folding for reduction
+     * @param {Array} seedBytes - Original seed bytes
+     * @param {number} targetSize - Target size in bytes
+     * @returns {Array} Folded seed bytes
+     */
+    xorFoldProcess(seedBytes, targetSize) {
+        const result = new Array(targetSize).fill(0);
+
+        // XOR each byte into the result at position (i % targetSize)
+        for (let i = 0; i < seedBytes.length; ++i) {
+            result[i % targetSize] ^= seedBytes[i];
+        }
+
+        // Additional mixing pass to improve distribution
+        for (let pass = 0; pass < 3; ++pass) {
+            for (let i = 0; i < targetSize; ++i) {
+                const next = (i + 1) % targetSize;
+                result[next] ^= ((result[i] << 1) | (result[i] >> 7)) & 0xff;
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Zero padding for undersized seeds
+     * @param {Array} seedBytes - Original seed bytes
+     * @param {number} targetSize - Target size in bytes
+     * @returns {Array} Padded seed bytes
+     */
+    padZero(seedBytes, targetSize) {
+        const result = [...seedBytes];
+        while (result.length < targetSize) {
+            result.push(0);
+        }
+        return result;
+    }
+
+    /**
+     * Repeat padding for undersized seeds
+     * @param {Array} seedBytes - Original seed bytes
+     * @param {number} targetSize - Target size in bytes
+     * @returns {Array} Padded seed bytes
+     */
+    padRepeat(seedBytes, targetSize) {
+        if (seedBytes.length === 0) {
+            return new Array(targetSize).fill(0);
+        }
+
+        const result = [];
+        while (result.length < targetSize) {
+            result.push(...seedBytes);
+        }
+        return result.slice(0, targetSize);
+    }
+
     /**
      * Populate algorithm palette for chaining
      */
@@ -4043,9 +4787,9 @@ class CipherController {
     }
     
     /**
-     * Setup drag and drop functionality for chaining
+     * Setup drag and drop functionality for chaining canvas
      */
-    setupDragAndDrop() {
+    setupChainDragAndDrop() {
         const canvas = document.getElementById('chain-canvas');
         if (!canvas) return;
         
