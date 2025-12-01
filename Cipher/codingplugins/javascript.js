@@ -10,15 +10,32 @@
 (function() {
   // Use local variables to avoid global conflicts
   let LanguagePlugin, LanguagePlugins;
+  let JavaScriptAST, JavaScriptEmitter, JavaScriptTransformer;
+
 if (typeof require !== 'undefined') {
   // Node.js environment
   const framework = require('./LanguagePlugin.js');
   LanguagePlugin = framework.LanguagePlugin;
   LanguagePlugins = framework.LanguagePlugins;
+
+  // Load new AST pipeline components
+  try {
+    JavaScriptAST = require('./JavaScriptAST.js');
+    const emitterModule = require('./JavaScriptEmitter.js');
+    JavaScriptEmitter = emitterModule.JavaScriptEmitter;
+    const transformerModule = require('./JavaScriptTransformer.js');
+    JavaScriptTransformer = transformerModule.JavaScriptTransformer;
+  } catch (e) {
+    // Pipeline components not available - will use legacy mode
+    console.warn('JavaScript AST pipeline components not loaded:', e.message);
+  }
 } else {
   // Browser environment - use globals
   LanguagePlugin = window.LanguagePlugin;
   LanguagePlugins = window.LanguagePlugins;
+  JavaScriptAST = window.JavaScriptAST;
+  JavaScriptEmitter = window.JavaScriptEmitter;
+  JavaScriptTransformer = window.JavaScriptTransformer;
 }
 
 /**
@@ -54,7 +71,8 @@ class JavaScriptPlugin extends LanguagePlugin {
       useNullishCoalescing: true,
       useAsyncAwait: true,
       useBigInt: true,
-      usePrivateFields: true
+      usePrivateFields: true,
+      useAstPipeline: true // Enable new AST pipeline by default
     };
 
     // Option metadata - defines enum choices
@@ -306,33 +324,73 @@ class JavaScriptPlugin extends LanguagePlugin {
    */
   GenerateFromAST(ast, options = {}) {
     try {
-      // Reset state for clean generation
-      this.indentLevel = 0;
-      
       // Merge options
       const mergedOptions = { ...this.options, ...options };
-      
+
       // Validate AST
       if (!ast || typeof ast !== 'object') {
         return this.CreateErrorResult('Invalid AST: must be an object');
       }
-      
-      // Generate JavaScript code
+
+      // Check if new AST pipeline is requested and available
+      if (mergedOptions.useAstPipeline && JavaScriptTransformer && JavaScriptEmitter) {
+        return this._generateWithAstPipeline(ast, mergedOptions);
+      }
+
+      // Reset state for clean generation (legacy mode)
+      this.indentLevel = 0;
+
+      // Generate JavaScript code using legacy direct emission
       const code = this._generateNode(ast, mergedOptions);
-      
+
       // Add standard headers and exports
       const finalCode = this._wrapWithHeaders(code, mergedOptions);
-      
+
       // Collect dependencies
       const dependencies = this._collectDependencies(ast, mergedOptions);
-      
+
       // Generate warnings if any
       const warnings = this._generateWarnings(ast, mergedOptions);
-      
+
       return this.CreateSuccessResult(finalCode, dependencies, warnings);
-      
+
     } catch (error) {
       return this.CreateErrorResult(`Code generation failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Generate JavaScript code using the new AST pipeline
+   * Pipeline: IL AST -> JS Transformer -> JS AST -> JS Emitter -> JS Source
+   * @private
+   */
+  _generateWithAstPipeline(ast, options) {
+    try {
+      // Create transformer
+      const transformer = new JavaScriptTransformer({});
+
+      // Transform IL AST to JavaScript AST
+      const jsAst = transformer.transform(ast);
+
+      // Create emitter with options
+      const emitter = new JavaScriptEmitter({
+        indent: options.indent || '  ',
+        newline: options.lineEnding || options.newline || '\n'
+      });
+
+      // Emit JavaScript code from JavaScript AST
+      const code = emitter.emit(jsAst);
+
+      // Collect dependencies
+      const dependencies = this._collectDependencies(ast, options);
+
+      // Generate warnings if any
+      const warnings = this._generateWarnings(ast, options);
+
+      return this.CreateSuccessResult(code, dependencies, warnings);
+
+    } catch (error) {
+      return this.CreateErrorResult(`AST pipeline failed: ${error.message}\n${error.stack}`);
     }
   }
 
