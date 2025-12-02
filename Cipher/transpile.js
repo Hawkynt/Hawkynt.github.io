@@ -13,8 +13,15 @@ const { TypeAwareJSTranspiler, TypeAwareJSASTParser } = require('./type-aware-tr
 // Load language plugin framework
 const { LanguagePlugin, LanguagePlugins } = require('./codingplugins/LanguagePlugin.js');
 
-// Load C# plugin
+// Load language plugins
 const csharpPlugin = require('./codingplugins/csharp.js');
+const goPlugin = require('./codingplugins/go.js');
+const javaPlugin = require('./codingplugins/java.js');
+const cppPlugin = require('./codingplugins/cpp.js');
+const kotlinPlugin = require('./codingplugins/kotlin.js');
+const typescriptPlugin = require('./codingplugins/typescript.js');
+const pythonPlugin = require('./codingplugins/python.js');
+const rustPlugin = require('./codingplugins/rust.js');
 
 // Get command line arguments
 const args = process.argv.slice(2);

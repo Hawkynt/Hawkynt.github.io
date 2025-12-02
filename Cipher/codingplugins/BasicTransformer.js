@@ -325,8 +325,26 @@
         if (!decl.init) continue;
 
         // Skip ObjectPattern destructuring
-        if (decl.id.type === 'ObjectPattern' || decl.id.type === 'ArrayPattern')
+        if (decl.id.type === 'ObjectPattern')
           continue;
+
+        // Handle array destructuring: const [a, b, c] = arr;
+        if (decl.id.type === 'ArrayPattern') {
+          const sourceExpr = decl.init ? this.transformExpression(decl.init) : null;
+          if (sourceExpr) {
+            for (let i = 0; i < decl.id.elements.length; ++i) {
+              const elem = decl.id.elements[i];
+              if (!elem) continue; // Skip holes in destructuring
+
+              const varName = this.toPascalCase(elem.name);
+              const indexExpr = new BasicArrayAccess(sourceExpr, BasicLiteral.Integer(i));
+              const dim = new BasicDim(varName, BasicType.Variant(), indexExpr);
+              dim.isConst = node.kind === 'const';
+              targetModule.declarations.push(dim);
+            }
+          }
+          continue;
+        }
 
         const name = decl.id.name;
 
@@ -456,6 +474,13 @@
               // Field
               const field = this.transformPropertyDefinition(member);
               cls.fields.push(field);
+            } else if (member.type === 'StaticBlock') {
+              // ES2022 static block -> BASIC module-level statements
+              const initStatements = this.transformStaticBlock(member);
+              if (initStatements) {
+                cls.staticInitStatements = cls.staticInitStatements || [];
+                cls.staticInitStatements.push(...initStatements);
+              }
             }
           }
         }
@@ -472,6 +497,13 @@
             if (member.type === 'PropertyDefinition') {
               const field = this.transformPropertyDefinitionToField(member);
               typeDecl.fields.push(field);
+            } else if (member.type === 'StaticBlock') {
+              // ES2022 static block -> BASIC module-level statements
+              const initStatements = this.transformStaticBlock(member);
+              if (initStatements) {
+                typeDecl.staticInitStatements = typeDecl.staticInitStatements || [];
+                typeDecl.staticInitStatements.push(...initStatements);
+              }
             }
           }
         }
@@ -600,6 +632,12 @@
       }
 
       return new BasicField(fieldName, fieldType);
+    }
+
+    transformStaticBlock(node) {
+      // ES2022 static block -> BASIC module-level statements
+      // BASIC doesn't have static class blocks, so transform to statements
+      return node.body.map(stmt => this.transformStatement(stmt));
     }
 
     /**
@@ -1109,6 +1147,12 @@
         // 19. MetaProperty (import.meta, new.target)
         case 'MetaProperty':
           return new BasicIdentifier('Unknown');
+
+        // 20. ObjectPattern (destructuring)
+        case 'ObjectPattern':
+          // Object destructuring - Basic doesn't support this directly
+          // Return a comment placeholder
+          return new BasicComment('Object destructuring not supported in Basic', true);
 
         default:
           return null;

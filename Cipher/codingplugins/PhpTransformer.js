@@ -338,8 +338,26 @@
       for (const decl of node.declarations) {
         if (!decl.init) continue;
 
-        // Skip destructuring patterns
-        if (decl.id.type === 'ObjectPattern' || decl.id.type === 'ArrayPattern') continue;
+        // Skip object destructuring
+        if (decl.id.type === 'ObjectPattern') continue;
+
+        // Handle array destructuring: const [a, b, c] = arr;
+        // PHP supports list() unpacking: [$a, $b, $c] = $arr;
+        if (decl.id.type === 'ArrayPattern') {
+          const sourceExpr = decl.init ? this.transformExpression(decl.init) : null;
+          if (sourceExpr) {
+            for (let i = 0; i < decl.id.elements.length; ++i) {
+              const elem = decl.id.elements[i];
+              if (!elem) continue; // Skip holes in destructuring
+
+              const varName = this.toSnakeCase(elem.name);
+              const indexExpr = new PhpArrayAccess(sourceExpr, PhpLiteral.Int(i));
+              const constDecl = new PhpConst(this.toScreamingSnakeCase(elem.name), null, indexExpr);
+              targetFile.items.push(constDecl);
+            }
+          }
+          continue;
+        }
 
         const name = decl.id.name;
 
@@ -435,6 +453,14 @@
             // Field
             const property = this.transformPropertyDefinition(member);
             phpClass.properties.push(property);
+          } else if (member.type === 'StaticBlock') {
+            // ES2022 static block -> PHP doesn't have static class blocks
+            // Transform to statements in a static initialization method
+            const initStatements = this.transformStaticBlock(member);
+            if (initStatements) {
+              phpClass.staticInitStatements = phpClass.staticInitStatements || [];
+              phpClass.staticInitStatements.push(...initStatements);
+            }
           }
         }
       }
@@ -696,6 +722,12 @@
       this.classFieldTypes.set(propertyName, propertyType);
 
       return property;
+    }
+
+    transformStaticBlock(node) {
+      // ES2022 static block -> PHP module-level statements
+      // PHP doesn't have static class blocks, so transform to statements
+      return node.body.map(stmt => this.transformStatement(stmt));
     }
 
     /**
@@ -1094,6 +1126,11 @@
 
         case 'ChainExpression':
           return this.transformExpression(node.expression);
+
+        case 'ObjectPattern':
+          // Object destructuring - PHP doesn't support this directly
+          // Return a comment placeholder
+          return new PhpIdentifier('/* Object destructuring not supported in PHP */');
 
         default:
           return null;

@@ -222,6 +222,7 @@ class LanguagePlugin {
     }
     return braces === 0 && parens === 0 && brackets === 0;
   }
+
 }
 
 /**

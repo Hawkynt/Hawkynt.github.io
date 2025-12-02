@@ -549,6 +549,13 @@
             if (field) {
               struct.fields.push(field);
             }
+          } else if (member.type === 'StaticBlock') {
+            // ES2022 static block -> Go package-level init() function
+            const initStatements = this.transformStaticBlock(member);
+            if (initStatements) {
+              struct.staticInitStatements = struct.staticInitStatements || [];
+              struct.staticInitStatements.push(...initStatements);
+            }
           }
         }
       }
@@ -864,6 +871,13 @@
       return field;
     }
 
+    transformStaticBlock(node) {
+      // ES2022 static block -> Go package-level init() function
+      // Go doesn't have static class blocks, so transform to statements
+      // that will be placed in an init() function
+      return node.body.map(stmt => this.transformStatement(stmt));
+    }
+
     transformFunctionDeclaration(node) {
       const func = new GoFunc(this.toPascalCase(node.id.name));
       if (this.options.addComments) {
@@ -964,9 +978,23 @@
         if (declarator.id.type === 'ObjectPattern')
           continue;
 
-        // Skip ArrayPattern destructuring
-        if (declarator.id.type === 'ArrayPattern')
+        // Handle array destructuring: const [a, b, c] = arr;
+        if (declarator.id.type === 'ArrayPattern') {
+          const sourceExpr = declarator.init ? this.transformExpression(declarator.init) : null;
+          if (sourceExpr) {
+            for (let i = 0; i < declarator.id.elements.length; ++i) {
+              const elem = declarator.id.elements[i];
+              if (!elem) continue; // Skip holes in destructuring
+
+              const varName = elem.name;
+              const indexExpr = new GoIndexExpression(sourceExpr, GoLiteral.Int(i));
+              const goVar = new GoVar(varName, null, indexExpr);
+              goVar.isShortDecl = true; // Use :=
+              vars.push(goVar);
+            }
+          }
           continue;
+        }
 
         const name = declarator.id.name;
         let type = null;
@@ -1287,6 +1315,10 @@
           return this.transformSuper(node);
         case 'TemplateLiteral':
           return this.transformTemplateLiteral(node);
+        case 'ObjectPattern':
+          // Object destructuring - Go doesn't support this directly
+          // Return a comment placeholder
+          return new GoIdentifier('/* Object destructuring not supported in Go */');
         default:
           console.warn(`Unhandled expression type: ${node.type}`);
           return new GoIdentifier('nil');
