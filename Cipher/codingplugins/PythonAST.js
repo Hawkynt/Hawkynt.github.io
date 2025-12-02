@@ -313,6 +313,19 @@
       this.literalType = literalType; // 'int', 'float', 'str', 'bool', 'None', 'bytes'
     }
 
+    toString() {
+      if (this.literalType === 'None') return 'None';
+      if (this.literalType === 'bool') return this.value ? 'True' : 'False';
+      if (this.literalType === 'str') {
+        const escaped = String(this.value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+          .replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t');
+        return `"${escaped}"`;
+      }
+      if (this.literalType === 'bytes') return `b"${this.value}"`;
+      if (this.literalType === 'hex') return `0x${this.value.toString(16).toUpperCase()}`;
+      return String(this.value);
+    }
+
     static Int(value) { return new PythonLiteral(value, 'int'); }
     static Float(value) { return new PythonLiteral(value, 'float'); }
     static Str(value) { return new PythonLiteral(value, 'str'); }
@@ -323,6 +336,30 @@
   }
 
   /**
+   * F-String (formatted string literal) - holds parts and expressions separately
+   * Example: f"Hello {name}, you are {age} years old"
+   */
+  class PythonFString extends PythonNode {
+    constructor(parts = [], expressions = []) {
+      super('FString');
+      this.parts = parts;           // Array of string parts (quasis)
+      this.expressions = expressions; // Array of expression AST nodes
+    }
+
+    toString() {
+      let result = 'f"';
+      for (let i = 0; i < this.parts.length; ++i) {
+        const part = (this.parts[i] || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+          .replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t')
+          .replace(/\{/g, '{{').replace(/\}/g, '}}');
+        result += part;
+        if (i < this.expressions.length) result += `{${this.expressions[i]}}`;
+      }
+      return result + '"';
+    }
+  }
+
+  /**
    * Identifier (variable name)
    */
   class PythonIdentifier extends PythonNode {
@@ -330,6 +367,8 @@
       super('Identifier');
       this.name = name;
     }
+
+    toString() { return this.name; }
   }
 
   /**
@@ -342,6 +381,8 @@
       this.operator = operator;     // '+', '-', '*', '/', '//', '%', '**', '&', '|', '^', '<<', '>>', etc.
       this.right = right;
     }
+
+    toString() { return `${this.left} ${this.operator} ${this.right}`; }
   }
 
   /**
@@ -352,6 +393,11 @@
       super('UnaryExpression');
       this.operator = operator;     // 'not', '-', '~'
       this.operand = operand;
+    }
+
+    toString() {
+      const wordOps = ['not', 'await'];
+      return wordOps.includes(this.operator) ? `${this.operator} ${this.operand}` : `${this.operator}${this.operand}`;
     }
   }
 
@@ -364,6 +410,8 @@
       this.object = object;         // PythonExpression
       this.attribute = attribute;   // string (attribute name)
     }
+
+    toString() { return `${this.object}.${this.attribute}`; }
   }
 
   /**
@@ -375,6 +423,8 @@
       this.object = object;
       this.index = index;
     }
+
+    toString() { return `${this.object}[${this.index}]`; }
   }
 
   /**
@@ -387,6 +437,11 @@
       this.args = args;             // Positional arguments
       this.kwargs = kwargs;         // Keyword arguments [{name, value}]
     }
+
+    toString() {
+      const allArgs = [...this.args.map(a => String(a)), ...this.kwargs.map(kw => `${kw.name}=${kw.value}`)];
+      return `${this.func}(${allArgs.join(', ')})`;
+    }
   }
 
   /**
@@ -397,6 +452,8 @@
       super('List');
       this.elements = elements;
     }
+
+    toString() { return `[${this.elements.map(e => String(e)).join(', ')}]`; }
   }
 
   /**
@@ -407,6 +464,11 @@
       super('Dict');
       this.items = items;           // [{key, value}]
     }
+
+    toString() {
+      const pairs = this.items.map(item => `${item.key}: ${item.value}`);
+      return `{${pairs.join(', ')}}`;
+    }
   }
 
   /**
@@ -416,6 +478,11 @@
     constructor(elements = []) {
       super('Tuple');
       this.elements = elements;
+    }
+
+    toString() {
+      const els = this.elements.map(e => String(e)).join(', ');
+      return this.elements.length === 1 ? `(${els},)` : `(${els})`;
     }
   }
 
@@ -430,6 +497,12 @@
       this.iterable = iterable;
       this.condition = condition;
     }
+
+    toString() {
+      let code = `[${this.expression} for ${this.variable} in ${this.iterable}`;
+      if (this.condition) code += ` if ${this.condition}`;
+      return code + ']';
+    }
   }
 
   /**
@@ -442,6 +515,10 @@
       this.condition = condition;
       this.falseExpression = falseExpr;
     }
+
+    toString() {
+      return `${this.trueExpression} if ${this.condition} else ${this.falseExpression}`;
+    }
   }
 
   /**
@@ -452,6 +529,11 @@
       super('Lambda');
       this.parameters = parameters; // PythonParameter[]
       this.body = body;             // PythonExpression
+    }
+
+    toString() {
+      const params = this.parameters.map(p => p.name || String(p)).join(', ');
+      return `lambda ${params}: ${this.body}`;
     }
   }
 
@@ -464,6 +546,13 @@
       this.start = start;
       this.stop = stop;
       this.step = step;
+    }
+
+    toString() {
+      const start = this.start ? String(this.start) : '';
+      const stop = this.stop ? String(this.stop) : '';
+      const step = this.step ? `:${String(this.step)}` : '';
+      return `${start}:${stop}${step}`;
     }
   }
 
@@ -504,6 +593,7 @@
 
     // Expressions
     PythonLiteral,
+    PythonFString,
     PythonIdentifier,
     PythonBinaryExpression,
     PythonUnaryExpression,

@@ -332,7 +332,8 @@
       this.indentLevel--;
 
       // Elsif branches
-      for (const elsif of node.elsifBranches) {
+      const elsifBranches = node.elsifBranches || [];
+      for (const elsif of elsifBranches) {
         code += this.line('elsif ' + this.emit(elsif.condition));
         this.indentLevel++;
         code += this.emitBlockContents(elsif.body);

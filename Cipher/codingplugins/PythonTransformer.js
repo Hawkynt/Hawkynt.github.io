@@ -22,7 +22,7 @@
     PythonParameter, PythonBlock, PythonAssignment, PythonExpressionStatement,
     PythonReturn, PythonIf, PythonFor, PythonWhile, PythonBreak, PythonContinue,
     PythonRaise, PythonTryExcept, PythonExceptClause, PythonPass,
-    PythonLiteral, PythonIdentifier, PythonBinaryExpression, PythonUnaryExpression,
+    PythonLiteral, PythonFString, PythonIdentifier, PythonBinaryExpression, PythonUnaryExpression,
     PythonMemberAccess, PythonSubscript, PythonCall, PythonList, PythonDict,
     PythonTuple, PythonListComprehension, PythonConditional, PythonLambda, PythonSlice
   } = PythonAST;
@@ -388,6 +388,13 @@
             const assignment = this.transformPropertyDefinition(member);
             if (assignment)
               pyClass.classVariables.push(assignment);
+          } else if (member.type === 'StaticBlock') {
+            // ES2022 static block -> module-level code before class (Python doesn't have static blocks)
+            const statements = this.transformStaticBlock(member);
+            if (statements && statements.length > 0) {
+              // Add as module-level statements (will be handled by caller)
+              pyClass.staticInitStatements = statements;
+            }
           }
         }
       }
@@ -540,6 +547,12 @@
       return assignment;
     }
 
+    transformStaticBlock(node) {
+      // ES2022 static block -> Python module-level statements
+      // Python doesn't have static class blocks, so transform to statements
+      return node.body.map(stmt => this.transformStatement(stmt));
+    }
+
     transformVariableDeclaration(node) {
       const assignments = [];
 
@@ -548,9 +561,27 @@
         if (declarator.id.type === 'ObjectPattern')
           continue;
 
-        // Skip ArrayPattern destructuring
-        if (declarator.id.type === 'ArrayPattern')
+        // Handle array destructuring: const [a, b, c] = arr;
+        // Python supports tuple unpacking natively: a, b, c = arr
+        if (declarator.id.type === 'ArrayPattern') {
+          const sourceExpr = declarator.init ? this.transformExpression(declarator.init) : null;
+          if (sourceExpr && declarator.id.elements.length > 0) {
+            // Build tuple of variable names
+            const varNames = [];
+            for (const elem of declarator.id.elements) {
+              if (elem) {
+                varNames.push(new PythonIdentifier(toSnakeCase(elem.name)));
+              } else {
+                varNames.push(new PythonIdentifier('_')); // Placeholder for holes
+              }
+            }
+
+            // Create tuple unpacking: (a, b, c) = arr
+            const tupleTarget = new PythonTuple(varNames);
+            assignments.push(new PythonAssignment(tupleTarget, sourceExpr));
+          }
           continue;
+        }
 
         const varName = toSnakeCase(declarator.id.name);
 
@@ -1004,6 +1035,10 @@
           return this.transformSpreadElement(node);
         case 'AwaitExpression':
           return this.transformAwaitExpression(node);
+        case 'ObjectPattern':
+          // Object destructuring - Python doesn't support this directly
+          // Return a comment placeholder
+          return new PythonIdentifier('# Object destructuring not supported in Python');
         default:
           this.warnings.push(`Unsupported expression type: ${node.type}`);
           return new PythonIdentifier('None');
@@ -1425,17 +1460,17 @@
     }
 
     transformTemplateLiteral(node) {
-      // Convert template literal to f-string
-      let result = 'f"';
-      for (let i = 0; i < node.quasis.length; i++) {
-        result += node.quasis[i].value.raw;
-        if (i < node.expressions.length) {
-          const expr = this.transformExpression(node.expressions[i]);
-          result += `{${expr}}`;
-        }
+      // Convert template literal to Python f-string AST node
+      const parts = [];
+      const expressions = [];
+
+      for (let i = 0; i < node.quasis.length; ++i) {
+        parts.push(node.quasis[i].value.raw || '');
+        if (i < node.expressions.length)
+          expressions.push(this.transformExpression(node.expressions[i]));
       }
-      result += '"';
-      return new PythonLiteral(result, 'str');
+
+      return new PythonFString(parts, expressions);
     }
 
     // ========================[ TYPE MAPPING ]========================

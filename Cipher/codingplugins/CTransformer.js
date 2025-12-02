@@ -322,8 +322,27 @@
       for (const decl of node.declarations) {
         if (!decl.init) continue;
 
-        // Skip destructuring patterns
-        if (decl.id.type === 'ObjectPattern' || decl.id.type === 'ArrayPattern') continue;
+        // Skip object destructuring
+        if (decl.id.type === 'ObjectPattern') continue;
+
+        // Handle array destructuring: const [a, b, c] = arr;
+        if (decl.id.type === 'ArrayPattern') {
+          const sourceExpr = decl.init ? this.transformExpression(decl.init) : null;
+          if (sourceExpr) {
+            for (let i = 0; i < decl.id.elements.length; ++i) {
+              const elem = decl.id.elements[i];
+              if (!elem) continue; // Skip holes in destructuring
+
+              const varName = this.toSnakeCase(elem.name);
+              const indexExpr = new CArrayAccess(sourceExpr, CLiteral.Int(i));
+              const globalVar = new CVariable(varName, CType.Auto(), indexExpr);
+              globalVar.type.isStatic = true;
+              globalVar.type.isConst = node.kind === 'const';
+              targetFile.globals.push(globalVar);
+            }
+          }
+          continue;
+        }
 
         const name = decl.id.name;
 
@@ -460,6 +479,14 @@
             // Field
             const field = this.transformPropertyDefinition(member);
             struct.fields.push(field);
+          } else if (member.type === 'StaticBlock') {
+            // ES2022 static block -> C doesn't have static blocks
+            // Transform to global initialization function
+            const initStatements = this.transformStaticBlock(member);
+            if (initStatements) {
+              struct.staticInitStatements = struct.staticInitStatements || [];
+              struct.staticInitStatements.push(...initStatements);
+            }
           }
         }
       }
@@ -585,6 +612,12 @@
       return field;
     }
 
+    transformStaticBlock(node) {
+      // ES2022 static block -> C global initialization statements
+      // C doesn't have static class blocks, so transform to statements
+      return node.body.map(stmt => this.transformStatement(stmt));
+    }
+
     /**
      * Transform a block statement
      */
@@ -691,7 +724,26 @@
       const statements = [];
 
       for (const decl of node.declarations) {
-        if (decl.id.type === 'ObjectPattern' || decl.id.type === 'ArrayPattern') continue;
+        // Skip object destructuring
+        if (decl.id.type === 'ObjectPattern') continue;
+
+        // Handle array destructuring: const [a, b, c] = arr;
+        if (decl.id.type === 'ArrayPattern') {
+          const sourceExpr = decl.init ? this.transformExpression(decl.init) : null;
+          if (sourceExpr) {
+            for (let i = 0; i < decl.id.elements.length; ++i) {
+              const elem = decl.id.elements[i];
+              if (!elem) continue; // Skip holes in destructuring
+
+              const varName = this.toSnakeCase(elem.name);
+              const indexExpr = new CArrayAccess(sourceExpr, CLiteral.Int(i));
+              const varDecl = new CVariableDeclaration(varName, CType.Auto(), indexExpr);
+              this.registerVariableType(elem.name, CType.Auto());
+              statements.push(varDecl);
+            }
+          }
+          continue;
+        }
 
         const varName = this.toSnakeCase(decl.id.name);
         let varType = null;
@@ -979,6 +1031,12 @@
         // 19. TemplateLiteral
         case 'TemplateLiteral':
           return this.transformTemplateLiteral(node);
+
+        // 20. ObjectPattern (destructuring)
+        case 'ObjectPattern':
+          // Object destructuring - C doesn't support this directly
+          // Return a comment placeholder
+          return new CIdentifier('/* Object destructuring not supported in C */');
 
         default:
           return null;

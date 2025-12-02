@@ -1206,7 +1206,10 @@
     }
 
     /**
-     * Parse tokens into AST
+     * Parse tokens into AST and build IL AST
+     * This is the main entry point that performs both phases:
+     *   Phase 1: JS Parsing (parseProgram)
+     *   Phase 2: IL Building (buildILAST)
      */
     parse() {
       if (this.tokens.length === 0) {
@@ -1215,22 +1218,317 @@
       this.position = 0;
       this.currentToken = this.tokens[0];
 
-      let ast = this.parseProgram();
+      // PHASE 1: Parse JavaScript into plain JS AST
+      const jsAst = this.parseProgram();
 
-      // Unwrap UMD/IIFE module patterns to extract inner factory function
-      ast = this.unwrapModulePatterns(ast);
+      // PHASE 2: Build IL AST from JS AST
+      const ilAst = this.buildILAST(jsAst);
 
-      // Multi-pass type narrowing until convergence
-      this.performTypeNarrowing(ast);
+      return ilAst;
+    }
 
+    /**
+     * PHASE 2: Build IL AST from JS AST
+     * Transforms plain JavaScript AST into Intermediate Language AST with:
+     *   1. Module unwrapping - Extract content from IIFE/UMD wrappers
+     *   2. Syntax flattening - Normalize prototype methods, constructor functions
+     *   3. Type inference - Add typeAnnotation to all typed nodes
+     *   4. Constant resolution - Evaluate IIFE-computed constants
+     *
+     * @param {Object} jsAst - Plain JavaScript AST from Phase 1
+     * @returns {Object} IL AST with types and flattened structures
+     */
+    buildILAST(jsAst) {
+      let ilAst = jsAst;
+
+      // Step 1: Unwrap UMD/IIFE module patterns to extract inner factory function
+      ilAst = this.unwrapModulePatterns(ilAst);
+
+      // Step 2: Flatten prototype methods and constructor function assignments
+      ilAst = this.flattenMethodDefinitions(ilAst);
+
+      // Step 3: Multi-pass type narrowing until convergence
+      this.performTypeNarrowing(ilAst);
+
+      // Mark as IL AST for downstream consumers
+      ilAst.isILAST = true;
+
+      return ilAst;
+    }
+
+    // ========================[ IL AST BUILDING - SYNTAX FLATTENING ]========================
+
+    /**
+     * IL AST Building Step 2: Flatten method definition patterns
+     *
+     * Normalizes different JavaScript method definition styles into unified MethodDefinition nodes:
+     *   1. Prototype methods: ClassName.prototype.methodName = function() {...}
+     *   2. Constructor function assignments: this.methodName = function() {...}
+     *   3. Function constructor patterns: function ClassName() {} + prototype methods
+     *
+     * This is part of the JS AST → IL AST transformation (Phase 2).
+     *
+     * @param {Object} ast - JS AST (or partially transformed IL AST)
+     * @returns {Object} AST with flattened method definitions
+     */
+    flattenMethodDefinitions(ast) {
+      if (!ast || !ast.body) return ast;
+
+      // Build a map of class names to their ClassDeclaration nodes
+      const classMap = new Map();
+      for (const stmt of ast.body) {
+        if (stmt.type === 'ClassDeclaration' && stmt.id?.name) {
+          classMap.set(stmt.id.name, stmt);
+        }
+      }
+
+      // Also track function constructor patterns: function ClassName() {...}
+      const functionConstructorMap = new Map();
+      for (const stmt of ast.body) {
+        if (stmt.type === 'FunctionDeclaration' && stmt.id?.name) {
+          // Check if function name starts with uppercase (convention for constructor functions)
+          const name = stmt.id.name;
+          if (name[0] === name[0].toUpperCase()) {
+            functionConstructorMap.set(name, stmt);
+          }
+        }
+      }
+
+      // Collect prototype assignments to process and remove
+      const prototypeAssignments = [];
+      const statementsToKeep = [];
+
+      for (const stmt of ast.body) {
+        const protoInfo = this.extractPrototypeAssignment(stmt);
+        if (protoInfo) {
+          prototypeAssignments.push({ stmt, ...protoInfo });
+        } else {
+          statementsToKeep.push(stmt);
+        }
+      }
+
+      // Process prototype assignments
+      for (const { className, methodName, functionExpr } of prototypeAssignments) {
+        // Create a MethodDefinition node
+        const methodDef = {
+          type: 'MethodDefinition',
+          kind: 'method',
+          static: false,
+          computed: false,
+          key: { type: 'Identifier', name: methodName },
+          value: functionExpr
+        };
+
+        // Try to add to existing class
+        if (classMap.has(className)) {
+          const classDecl = classMap.get(className);
+          if (classDecl.body?.body) {
+            classDecl.body.body.push(methodDef);
+          } else if (classDecl.body && Array.isArray(classDecl.body)) {
+            classDecl.body.push(methodDef);
+          }
+        }
+        // If class doesn't exist but there's a constructor function, synthesize a class
+        else if (functionConstructorMap.has(className)) {
+          const constructorFunc = functionConstructorMap.get(className);
+
+          // Create a synthetic ClassDeclaration
+          const syntheticClass = {
+            type: 'ClassDeclaration',
+            id: { type: 'Identifier', name: className },
+            superClass: null,
+            body: {
+              type: 'ClassBody',
+              body: [
+                // Convert the constructor function to a constructor method
+                {
+                  type: 'MethodDefinition',
+                  kind: 'constructor',
+                  static: false,
+                  computed: false,
+                  key: { type: 'Identifier', name: 'constructor' },
+                  value: {
+                    type: 'FunctionExpression',
+                    params: constructorFunc.params || [],
+                    body: constructorFunc.body,
+                    async: false,
+                    generator: false
+                  }
+                },
+                methodDef
+              ]
+            }
+          };
+
+          // Add to class map and replace the function with the class
+          classMap.set(className, syntheticClass);
+
+          // Remove the original function from statements and add the class
+          const funcIndex = statementsToKeep.findIndex(s => s === constructorFunc);
+          if (funcIndex >= 0) {
+            statementsToKeep[funcIndex] = syntheticClass;
+          }
+
+          // Remove from function map so we don't process it again
+          functionConstructorMap.delete(className);
+        }
+      }
+
+      // Now process this.methodName = function inside constructors
+      for (const stmt of statementsToKeep) {
+        if (stmt.type === 'ClassDeclaration') {
+          this.flattenConstructorFunctionAssignments(stmt);
+        }
+      }
+
+      ast.body = statementsToKeep;
       return ast;
     }
 
     /**
-     * Unwrap UMD (Universal Module Definition) and IIFE patterns
-     * Extracts the factory function body from patterns like:
-     *   (function(root, factory) { ... })(globalThis, function(deps) { ...actual code... })
-     * @param {Object} ast - Parsed AST
+     * Extract prototype assignment information from a statement
+     * Pattern: ClassName.prototype.methodName = function(...) {...}
+     * @param {Object} stmt - Statement node
+     * @returns {Object|null} { className, methodName, functionExpr } or null
+     */
+    extractPrototypeAssignment(stmt) {
+      if (stmt.type !== 'ExpressionStatement') return null;
+
+      const expr = stmt.expression;
+      if (expr?.type !== 'AssignmentExpression' || expr.operator !== '=') return null;
+
+      const left = expr.left;
+      const right = expr.right;
+
+      // Check for MemberExpression pattern: X.prototype.Y
+      if (left?.type !== 'MemberExpression') return null;
+
+      // left should be X.prototype.Y which means:
+      // left.object = X.prototype (another MemberExpression)
+      // left.property = Y (Identifier for method name)
+      const protoAccess = left.object;
+      const methodNameNode = left.property;
+
+      if (protoAccess?.type !== 'MemberExpression') return null;
+      if (protoAccess.property?.name !== 'prototype' && protoAccess.property?.value !== 'prototype') return null;
+
+      // Extract class name from X.prototype
+      const classNameNode = protoAccess.object;
+      if (classNameNode?.type !== 'Identifier') return null;
+
+      // Extract method name
+      const methodName = methodNameNode?.name || methodNameNode?.value;
+      if (!methodName) return null;
+
+      // Right side should be a function expression
+      if (right?.type !== 'FunctionExpression' && right?.type !== 'ArrowFunctionExpression') return null;
+
+      return {
+        className: classNameNode.name,
+        methodName: methodName,
+        functionExpr: right
+      };
+    }
+
+    /**
+     * Flatten this.methodName = function assignments inside class constructors
+     * Converts them to proper MethodDefinitions
+     * @param {Object} classDecl - ClassDeclaration node
+     */
+    flattenConstructorFunctionAssignments(classDecl) {
+      const classBody = classDecl.body?.body || classDecl.body || [];
+
+      // Find the constructor
+      const constructorIndex = classBody.findIndex(member =>
+        member.type === 'MethodDefinition' && member.kind === 'constructor'
+      );
+
+      if (constructorIndex === -1) return;
+
+      const constructor = classBody[constructorIndex];
+      const constructorBody = constructor.value?.body?.body || [];
+
+      // Collect methods to extract and statements to keep
+      const methodsToAdd = [];
+      const statementsToKeep = [];
+
+      for (const stmt of constructorBody) {
+        const methodInfo = this.extractThisFunctionAssignment(stmt);
+        if (methodInfo) {
+          // Create a MethodDefinition
+          const methodDef = {
+            type: 'MethodDefinition',
+            kind: 'method',
+            static: false,
+            computed: false,
+            key: { type: 'Identifier', name: methodInfo.methodName },
+            value: methodInfo.functionExpr
+          };
+          methodsToAdd.push(methodDef);
+        } else {
+          statementsToKeep.push(stmt);
+        }
+      }
+
+      // Update constructor body
+      if (constructor.value?.body?.body) {
+        constructor.value.body.body = statementsToKeep;
+      }
+
+      // Add extracted methods to class body
+      for (const method of methodsToAdd) {
+        classBody.push(method);
+      }
+    }
+
+    /**
+     * Extract this.methodName = function assignment from a statement
+     * Pattern: this.methodName = function(...) {...}
+     * @param {Object} stmt - Statement node
+     * @returns {Object|null} { methodName, functionExpr } or null
+     */
+    extractThisFunctionAssignment(stmt) {
+      if (stmt.type !== 'ExpressionStatement') return null;
+
+      const expr = stmt.expression;
+      if (expr?.type !== 'AssignmentExpression' || expr.operator !== '=') return null;
+
+      const left = expr.left;
+      const right = expr.right;
+
+      // Check for this.X = function pattern
+      if (left?.type !== 'MemberExpression') return null;
+      if (left.object?.type !== 'ThisExpression') return null;
+
+      const methodName = left.property?.name || left.property?.value;
+      if (!methodName) return null;
+
+      // Right side should be a function expression
+      if (right?.type !== 'FunctionExpression' && right?.type !== 'ArrowFunctionExpression') return null;
+
+      return {
+        methodName: methodName,
+        functionExpr: right
+      };
+    }
+
+    // ========================[ IL AST BUILDING - MODULE UNWRAPPING ]========================
+
+    /**
+     * IL AST Building Step 1: Unwrap module patterns
+     *
+     * Extracts the actual code from UMD (Universal Module Definition) and IIFE wrappers.
+     * These patterns are commonly used for browser/Node.js compatibility but obscure the
+     * actual algorithm code.
+     *
+     * Supported patterns:
+     *   - UMD: (function(root, factory) { ... })(globalThis, function(deps) { ...code... })
+     *   - IIFE: (function() { ...code... })()
+     *   - CommonJS wrapper: (function(exports) { ...code... })(module.exports)
+     *
+     * This is part of the JS AST → IL AST transformation (Phase 2).
+     *
+     * @param {Object} ast - JS AST from Phase 1
      * @returns {Object} Unwrapped AST or original if not a module pattern
      */
     unwrapModulePatterns(ast) {
@@ -1732,23 +2030,30 @@
       }
       
       this.consume('PUNCTUATION', '{');
-      
-      node.body = [];
+
+      // Use standard Acorn format: { type: 'ClassBody', body: [...] }
+      const members = [];
       while (this.currentToken && !(this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '}')) {
         this.skipComments(); // Skip any comments before class members
-        
+
         if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '}') {
           break; // Exit if we encounter closing brace after skipping comments
         }
-        
+
         const member = this.parseClassMember();
         if (member) {
-          node.body.push(member);
+          members.push(member);
         }
       }
-      
+
+      // Create ClassBody node to match Acorn's structure
+      node.body = {
+        type: 'ClassBody',
+        body: members
+      };
+
       this.consume('PUNCTUATION', '}');
-      
+
       return node;
     }
 
@@ -1774,17 +2079,24 @@
       }
       
       this.consume('PUNCTUATION', '{');
-      
-      node.body = [];
+
+      // Use standard Acorn format: { type: 'ClassBody', body: [...] }
+      const members = [];
       while (this.currentToken && !(this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '}')) {
         const method = this.parseClassMethod();
         if (method) {
-          node.body.push(method);
+          members.push(method);
         }
       }
-      
+
+      // Create ClassBody node to match Acorn's structure
+      node.body = {
+        type: 'ClassBody',
+        body: members
+      };
+
       this.consume('PUNCTUATION', '}');
-      
+
       return node;
     }
 
@@ -4081,7 +4393,49 @@
     TypeAwareCodeGenerator,
     TypeAwareJSTranspiler,
     JSDocParser,
-    PreciseTypeKnowledge
+    PreciseTypeKnowledge,
+
+    /**
+     * Initialize type libraries by fetching OpCodes.js and AlgorithmFramework.js
+     * This is called automatically in browser context, or can be called manually
+     * @returns {Promise<void>}
+     */
+    async initTypeLibraries() {
+      if (TypeAwareJSASTParser.sharedTypeKnowledge &&
+          Object.keys(TypeAwareJSASTParser.sharedTypeKnowledge.opCodesTypes).length > 0) {
+        // Already initialized
+        return;
+      }
+
+      const options = {};
+
+      try {
+        // Fetch OpCodes.js source
+        const opCodesResponse = await fetch('./OpCodes.js');
+        if (opCodesResponse.ok) {
+          options.opCodesSource = await opCodesResponse.text();
+        }
+      } catch (e) {
+        console.warn('Could not fetch OpCodes.js for type extraction:', e);
+      }
+
+      try {
+        // Fetch AlgorithmFramework.js source
+        const frameworkResponse = await fetch('./AlgorithmFramework.js');
+        if (frameworkResponse.ok) {
+          options.frameworkSource = await frameworkResponse.text();
+        }
+      } catch (e) {
+        console.warn('Could not fetch AlgorithmFramework.js for type extraction:', e);
+      }
+
+      if (Object.keys(options).length > 0) {
+        TypeAwareJSASTParser.loadTypeLibraries(options);
+      }
+    },
+
+    /** Flag indicating if type libraries have been initialized */
+    typeLibrariesReady: false
   };
 
   if (typeof module !== 'undefined' && module.exports) {
@@ -4096,6 +4450,27 @@
     global.TypeAwareJSASTTranspiler = TypeAwareJSASTTranspiler;
   } else if (typeof window !== 'undefined') {
     window.TypeAwareJSASTTranspiler = TypeAwareJSASTTranspiler;
+
+    // Auto-initialize type libraries when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', async () => {
+        try {
+          await TypeAwareJSASTTranspiler.initTypeLibraries();
+          TypeAwareJSASTTranspiler.typeLibrariesReady = true;
+          console.log('📚 Type libraries initialized for transpiler');
+        } catch (e) {
+          console.warn('Failed to initialize type libraries:', e);
+        }
+      });
+    } else {
+      // DOM already loaded, initialize immediately
+      TypeAwareJSASTTranspiler.initTypeLibraries().then(() => {
+        TypeAwareJSASTTranspiler.typeLibrariesReady = true;
+        console.log('📚 Type libraries initialized for transpiler');
+      }).catch(e => {
+        console.warn('Failed to initialize type libraries:', e);
+      });
+    }
   }
 
 })(typeof global !== 'undefined' ? global : this);
