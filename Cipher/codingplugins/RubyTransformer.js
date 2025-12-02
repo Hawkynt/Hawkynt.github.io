@@ -307,7 +307,24 @@
         if (!decl.init) continue;
 
         if (decl.id.type === 'ObjectPattern') continue;
-        if (decl.id.type === 'ArrayPattern') continue;
+
+        // Handle array destructuring: const [a, b, c] = arr;
+        // Ruby supports multiple assignment: a, b, c = arr
+        if (decl.id.type === 'ArrayPattern') {
+          const sourceExpr = decl.init ? this.transformExpression(decl.init) : null;
+          if (sourceExpr) {
+            for (let i = 0; i < decl.id.elements.length; ++i) {
+              const elem = decl.id.elements[i];
+              if (!elem) continue; // Skip holes in destructuring
+
+              const varName = this.toSnakeCase(elem.name);
+              const indexExpr = new RubyArrayAccess(sourceExpr, RubyLiteral.Int(i));
+              const constDecl = new RubyConstant(this.toScreamingSnakeCase(elem.name), indexExpr);
+              targetModule.items.push(constDecl);
+            }
+          }
+          continue;
+        }
 
         const name = decl.id.name;
 
@@ -453,6 +470,13 @@
             // Field
             const fieldName = this.toSnakeCase(member.key.name);
             instanceVars.push(fieldName);
+          } else if (member.type === 'StaticBlock') {
+            // ES2022 static block -> Ruby module-level statements
+            const initStatements = this.transformStaticBlock(member);
+            if (initStatements) {
+              rubyClass.staticInitStatements = rubyClass.staticInitStatements || [];
+              rubyClass.staticInitStatements.push(...initStatements);
+            }
           }
         }
 
@@ -561,6 +585,12 @@
     /**
      * Transform a method definition
      */
+    transformStaticBlock(node) {
+      // ES2022 static block -> Ruby module-level statements
+      // Ruby doesn't have static class blocks, so transform to statements
+      return node.body.map(stmt => this.transformStatement(stmt));
+    }
+
     transformMethodDefinition(node) {
       const methodName = this.toSnakeCase(node.key.name);
       const method = new RubyMethod(methodName);
@@ -1004,6 +1034,11 @@
 
         case 'TemplateLiteral':
           return this.transformTemplateLiteral(node);
+
+        case 'ObjectPattern':
+          // Object destructuring - Ruby doesn't support this directly
+          // Return a comment placeholder
+          return new RubyIdentifier('# Object destructuring not supported in Ruby');
 
         default:
           return null;

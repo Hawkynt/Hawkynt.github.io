@@ -258,6 +258,12 @@
             if (transformed) {
               jsClass.members.push(transformed);
             }
+          } else if (member.type === 'StaticBlock') {
+            // ES2022 static block -> JavaScript supports it natively
+            const transformed = this.transformStaticBlock(member);
+            if (transformed) {
+              jsClass.members.push(transformed);
+            }
           } else {
             const transformed = this.transformNode(member);
             if (transformed) {
@@ -282,6 +288,19 @@
       prop.isStatic = node.static || false;
 
       return prop;
+    }
+
+    transformStaticBlock(node) {
+      // ES2022 static block -> JavaScript supports it natively
+      // static { code } -> static { code }
+      const statements = node.body.map(stmt => this.transformStatement(stmt));
+
+      // Return a simple object representing the static block
+      return {
+        type: 'StaticBlock',
+        isStaticBlock: true,
+        body: statements
+      };
     }
 
     transformMethodDefinition(node) {
@@ -465,9 +484,24 @@
         if (decl.id.type === 'ObjectPattern')
           continue;
 
-        // Skip ArrayPattern destructuring
-        if (decl.id.type === 'ArrayPattern')
+        // Handle array destructuring: const [a, b, c] = arr;
+        // JavaScript natively supports this, but we'll expand it for consistency
+        if (decl.id.type === 'ArrayPattern') {
+          const sourceExpr = decl.init ? this.transformExpression(decl.init) : null;
+          if (sourceExpr) {
+            for (let i = 0; i < decl.id.elements.length; ++i) {
+              const elem = decl.id.elements[i];
+              if (!elem) continue; // Skip holes in destructuring
+
+              const varName = elem.name;
+              const indexExpr = new JavaScriptMemberExpression(sourceExpr, JavaScriptLiteral.Number(i), true);
+              const varDecl = new JavaScriptVariableDeclaration(varName, indexExpr);
+              varDecl.kind = node.kind || 'const';
+              declarations.push(varDecl);
+            }
+          }
           continue;
+        }
 
         const name = decl.id.name;
         const initializer = decl.init ? this.transformExpression(decl.init) : null;
@@ -639,6 +673,11 @@
 
         case 'Super':
           return new JavaScriptSuper();
+
+        case 'ObjectPattern':
+          // Object destructuring - keep as-is in JavaScript
+          // This is a valid JavaScript pattern
+          return new JavaScriptIdentifier('/* Object destructuring pattern */');
 
         default:
           console.warn(`Unhandled expression type: ${node.type}`);

@@ -554,6 +554,11 @@
             if (transformed) {
               tsClass.members.push(transformed);
             }
+          } else if (member.type === 'StaticBlock') {
+            const transformed = this.transformStaticBlock(member);
+            if (transformed) {
+              tsClass.members.push(transformed);
+            }
           } else {
             const transformed = this.transformNode(member);
             if (transformed) {
@@ -585,6 +590,19 @@
       }
 
       return prop;
+    }
+
+    transformStaticBlock(node) {
+      // TypeScript/ES2022 supports static blocks natively
+      // static { code } -> static { code }
+      const statements = node.body.map(stmt => this.transformStatement(stmt));
+
+      // Create a static block representation (simple object with isStatic marker)
+      return {
+        type: 'StaticBlock',
+        isStaticBlock: true,
+        body: statements
+      };
     }
 
     transformMethodDefinition(node) {
@@ -837,9 +855,27 @@
         if (decl.id.type === 'ObjectPattern')
           continue;
 
-        // Skip ArrayPattern destructuring
-        if (decl.id.type === 'ArrayPattern')
+        // Handle array destructuring: const [a, b, c] = arr;
+        // TypeScript supports native destructuring, but we'll expand it for consistency
+        if (decl.id.type === 'ArrayPattern') {
+          const sourceExpr = decl.init ? this.transformExpression(decl.init) : null;
+          if (sourceExpr) {
+            for (let i = 0; i < decl.id.elements.length; ++i) {
+              const elem = decl.id.elements[i];
+              if (!elem) continue; // Skip holes in destructuring
+
+              const varName = elem.name;
+              const indexExpr = new TypeScriptElementAccess(sourceExpr, TypeScriptLiteral.Number(i));
+              const varType = TypeScriptType.Any();
+
+              const varDecl = new TypeScriptVariableDeclaration(varName, varType, indexExpr);
+              varDecl.kind = node.kind === 'var' ? 'let' : (node.kind || 'const');
+              declarations.push(varDecl);
+              this.variableTypes.set(varName, varType);
+            }
+          }
           continue;
+        }
 
         const name = decl.id.name;
         const type = decl.init ? this.inferType(decl.init) : TypeScriptType.Any();
@@ -1017,6 +1053,11 @@
 
         case 'Super':
           return new TypeScriptSuper();
+
+        case 'ObjectPattern':
+          // Object destructuring - TypeScript supports this natively
+          // Return a comment placeholder
+          return new TypeScriptIdentifier('/* Object destructuring pattern */');
 
         default:
           console.warn(`Unhandled expression type: ${node.type}`);

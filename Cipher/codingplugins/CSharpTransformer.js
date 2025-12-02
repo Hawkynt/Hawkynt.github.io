@@ -1103,8 +1103,27 @@
           continue;
         }
 
-        // Handle ArrayPattern destructuring - skip for now
+        // Handle ArrayPattern destructuring: const [a, b, c] = arr;
         if (decl.id.type === 'ArrayPattern') {
+          const sourceExpr = decl.init ? this.transformExpression(decl.init) : null;
+          if (sourceExpr) {
+            for (let i = 0; i < decl.id.elements.length; ++i) {
+              const elem = decl.id.elements[i];
+              if (!elem) continue; // Skip holes in destructuring
+
+              const fieldName = this.toPascalCase(elem.name);
+              const indexExpr = new CSharpElementAccess(sourceExpr, CSharpLiteral.Int(i));
+              const fieldType = CSharpType.Var();
+
+              const field = new CSharpField(fieldName, fieldType);
+              field.isStatic = true;
+              field.isReadOnly = isConst;
+              field.initializer = indexExpr;
+              targetClass.members.push(field);
+
+              this.variableTypes.set(elem.name, fieldType);
+            }
+          }
           continue;
         }
 
@@ -1932,6 +1951,25 @@
       }
 
       for (const decl of node.declarations) {
+        // Handle array destructuring: const [a, b, c] = arr;
+        if (decl.id.type === 'ArrayPattern') {
+          const sourceExpr = decl.init ? this.transformExpression(decl.init) : null;
+          if (sourceExpr) {
+            for (let i = 0; i < decl.id.elements.length; ++i) {
+              const elem = decl.id.elements[i];
+              if (!elem) continue; // Skip holes in destructuring
+
+              const varName = this.toCamelCase(elem.name);
+              const indexExpr = new CSharpElementAccess(sourceExpr, CSharpLiteral.Int(i));
+              const varType = CSharpType.Var();
+
+              this.registerVariableType(elem.name, varType);
+              results.push(new CSharpVariableDeclaration(varName, varType, indexExpr));
+            }
+          }
+          continue;
+        }
+
         const name = this.toCamelCase(decl.id.name);
         const originalName = decl.id.name;
         let type = CSharpType.Var();
@@ -2123,6 +2161,11 @@
         case 'TemplateLiteral':
           // `Hello ${name}!` -> $"Hello {name}!"
           return this.transformTemplateLiteral(node);
+
+        case 'ObjectPattern':
+          // Object destructuring - C# doesn't support this directly
+          // Return a comment placeholder
+          return new CSharpIdentifier('/* Object destructuring not supported in C# */');
 
         default:
           // Return a placeholder identifier for unhandled expression types
@@ -3394,7 +3437,13 @@
       const init = new CSharpObjectInitializer(true); // true = dictionary initializer syntax
 
       for (const prop of node.properties) {
-        const name = prop.key.name || prop.key.value;
+        // Handle spread elements: { ...obj } - skip them for now
+        if (prop.type === 'SpreadElement') continue;
+
+        // Handle computed properties: { [expr]: value }
+        if (!prop.key) continue;
+
+        const name = prop.key.name || prop.key.value || 'Unknown';
         const value = this.transformExpression(prop.value);
         init.assignments.push({ name: this.toPascalCase(name), value });
       }
@@ -4030,6 +4079,10 @@
         } else if (item.type === 'PropertyDefinition' || item.type === 'ClassProperty') {
           const field = this.transformClassProperty(item, baseClassName);
           if (field) csClass.members.push(field);
+        } else if (item.type === 'StaticBlock') {
+          // Static initialization block - transform to static constructor
+          const staticCtor = this.transformStaticBlock(item);
+          if (staticCtor) csClass.members.push(staticCtor);
         }
       }
 
@@ -4176,6 +4229,20 @@
         field.initializer = this.transformExpression(propNode.value);
       }
       return field;
+    }
+
+    transformStaticBlock(staticBlockNode) {
+      // ES2022 static initialization blocks -> C# static constructor
+      // static { code } -> static ClassName() { code }
+      const body = staticBlockNode.body;
+      const statements = body.map(stmt => this.transformStatement(stmt));
+
+      // Create a static constructor (constructor with static modifier)
+      const ctor = new CSharpConstructor(this.currentClass?.name || 'UnknownClass');
+      ctor.isStatic = true;
+      ctor.body = statements;
+
+      return ctor;
     }
 
     transformToField(name, valueNode, explicitType = null) {
@@ -4702,12 +4769,12 @@
     // ========================[ UTILITY METHODS ]========================
 
     toPascalCase(str) {
-      if (!str) return 'Unknown';
+      if (!str || typeof str !== 'string') return 'Unknown';
       return str.charAt(0).toUpperCase() + str.slice(1);
     }
 
     toCamelCase(str) {
-      if (!str) return 'unknown';
+      if (!str || typeof str !== 'string') return 'unknown';
       const result = str.charAt(0).toLowerCase() + str.slice(1);
       return this.escapeReservedKeyword(result);
     }

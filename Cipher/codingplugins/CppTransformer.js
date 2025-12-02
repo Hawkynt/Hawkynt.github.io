@@ -780,6 +780,14 @@
             // Class field
             const field = this.transformPropertyDefinition(member);
             classNode.publicMembers.push(field);
+          } else if (member.type === 'StaticBlock') {
+            // ES2022 static block -> static initialization (C++17 inline static variables)
+            // Or add to a static initializer function
+            const initStatements = this.transformStaticBlock(member);
+            if (initStatements) {
+              classNode.staticInitStatements = classNode.staticInitStatements || [];
+              classNode.staticInitStatements.push(...initStatements);
+            }
           }
         }
       }
@@ -852,6 +860,16 @@
       }
 
       return field;
+    }
+
+    /**
+     * Transform static block to static initialization statements
+     */
+    transformStaticBlock(node) {
+      // ES2022 static block -> C++ global namespace statements or static member initialization
+      // C++ doesn't have static class blocks, so transform to statements that will be emitted
+      // outside the class definition
+      return node.body.map(stmt => this.transformStatement(stmt));
     }
 
     /**
@@ -1351,8 +1369,9 @@
           // Transform the inner expression - null checks would need to be explicit
           return this.transformExpression(node.expression);
         case 'ObjectPattern':
-          // Object destructuring on left side - similar to ArrayPattern
-          return new CppIdentifier(`/* ObjectPattern: destructuring assignment */`);
+          // Object destructuring - C++ doesn't support this directly (requires structured bindings in C++17)
+          // Return a comment placeholder
+          return new CppIdentifier('/* Object destructuring not supported in C++ */');
         default:
           return new CppIdentifier(`/* unknown expression: ${node.type} */`);
       }

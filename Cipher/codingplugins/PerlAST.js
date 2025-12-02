@@ -377,6 +377,8 @@
       this.name = name;         // Variable name without sigil
       this.sigil = sigil;       // '$', '@', '%', '&', or '' for bareword
     }
+
+    toString() { return this.sigil + this.name; }
   }
 
   /**
@@ -389,6 +391,8 @@
       this.operator = operator; // '+', '-', '*', '/', '%', '&', '|', '^', '<<', '>>', etc.
       this.right = right;
     }
+
+    toString() { return `${this.left} ${this.operator} ${this.right}`; }
   }
 
   /**
@@ -401,6 +405,8 @@
       this.operand = operand;
       this.isPrefix = isPrefix;
     }
+
+    toString() { return this.isPrefix ? `${this.operator}${this.operand}` : `${this.operand}${this.operator}`; }
   }
 
   /**
@@ -413,6 +419,8 @@
       this.operator = operator; // '=', '+=', '-=', '.=', etc.
       this.value = value;
     }
+
+    toString() { return `${this.target} ${this.operator} ${this.value}`; }
   }
 
   /**
@@ -425,6 +433,12 @@
       this.member = member;     // String or expression
       this.accessType = accessType; // '->', '{key}', '[index]'
     }
+
+    toString() {
+      if (this.accessType === '->') return `${this.object}->${this.member}`;
+      if (this.accessType === '{key}') return `${this.object}{${this.member}}`;
+      return `${this.object}[${this.member}]`;
+    }
   }
 
   /**
@@ -436,6 +450,10 @@
       this.object = object;
       this.index = index;
       this.subscriptType = subscriptType; // 'array' or 'hash'
+    }
+
+    toString() {
+      return this.subscriptType === 'hash' ? `${this.object}{${this.index}}` : `${this.object}[${this.index}]`;
     }
   }
 

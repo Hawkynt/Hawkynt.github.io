@@ -370,9 +370,26 @@
         if (decl.id.type === 'ObjectPattern')
           continue;
 
-        // Skip ArrayPattern destructuring
-        if (decl.id.type === 'ArrayPattern')
+        // Handle array destructuring: const [a, b, c] = arr;
+        if (decl.id.type === 'ArrayPattern') {
+          const sourceExpr = decl.init ? this.transformExpression(decl.init) : null;
+          if (sourceExpr) {
+            for (let i = 0; i < decl.id.elements.length; ++i) {
+              const elem = decl.id.elements[i];
+              if (!elem) continue; // Skip holes in destructuring
+
+              const varName = this.toSnakeCase(elem.name);
+              const indexExpr = new RustIndexExpression(sourceExpr, RustLiteral.Usize(i));
+              const constDecl = new RustConst(
+                node.kind === 'const' ? this.toScreamingSnakeCase(elem.name) : varName,
+                new RustType('_'), // Type inference
+                indexExpr
+              );
+              targetModule.items.push(constDecl);
+            }
+          }
           continue;
+        }
 
         const name = decl.id.name;
 
@@ -608,6 +625,14 @@
             // Field
             const field = this.transformPropertyDefinition(member);
             struct.fields.push(field);
+          } else if (member.type === 'StaticBlock') {
+            // ES2022 static block -> Rust doesn't have static class blocks
+            // Transform to module-level statements or lazy_static
+            const initStatements = this.transformStaticBlock(member);
+            if (initStatements) {
+              struct.staticInitStatements = struct.staticInitStatements || [];
+              struct.staticInitStatements.push(...initStatements);
+            }
           }
         }
       }
@@ -895,6 +920,12 @@
       return field;
     }
 
+    transformStaticBlock(node) {
+      // ES2022 static block -> Rust module-level statements or lazy_static
+      // Rust doesn't have static class blocks, so transform to statements
+      return node.body.map(stmt => this.transformStatement(stmt));
+    }
+
     /**
      * Transform a block statement
      */
@@ -1061,6 +1092,25 @@
       const statements = [];
 
       for (const decl of node.declarations) {
+        // Handle array destructuring: const [a, b, c] = arr;
+        if (decl.id.type === 'ArrayPattern') {
+          const sourceExpr = decl.init ? this.transformExpression(decl.init) : null;
+          if (sourceExpr) {
+            for (let i = 0; i < decl.id.elements.length; ++i) {
+              const elem = decl.id.elements[i];
+              if (!elem) continue; // Skip holes in destructuring
+
+              const varName = this.toSnakeCase(elem.name);
+              const indexExpr = new RustIndexExpression(sourceExpr, RustLiteral.Usize(i));
+              const letStmt = new RustLet(varName, new RustType('_'), indexExpr);
+              letStmt.isMutable = node.kind !== 'const';
+              this.registerVariableType(elem.name, new RustType('_'));
+              statements.push(letStmt);
+            }
+          }
+          continue;
+        }
+
         const varName = this.toSnakeCase(decl.id.name);
         let varType = null;
         let initializer = null;
@@ -1298,6 +1348,11 @@
         case 'TemplateLiteral':
           // `Hello ${name}!` -> format!("Hello {}!", name)
           return this.transformTemplateLiteral(node);
+
+        case 'ObjectPattern':
+          // Object destructuring - Rust supports destructuring with structs
+          // Return a comment placeholder
+          return new RustIdentifier('/* Object destructuring pattern */');
 
         default:
           return null;

@@ -306,6 +306,10 @@
           } else if (member.type === 'PropertyDefinition' || member.type === 'FieldDefinition') {
             const field = this.transformPropertyDefinition(member);
             javaClass.members.push(field);
+          } else if (member.type === 'StaticBlock') {
+            // ES2022 static initialization block -> Java static initializer
+            const staticBlock = this.transformStaticBlock(member);
+            javaClass.members.push(staticBlock);
           } else {
             // Unknown member type
             this.warnings.push(`Unknown class member type: ${member.type} in class ${javaClass.name}`);
@@ -418,6 +422,22 @@
     }
 
     /**
+     * Transform StaticBlock to Java static initializer
+     */
+    transformStaticBlock(node) {
+      // ES2022 static { code } -> Java static { code }
+      const statements = node.body.map(stmt => this.transformStatement(stmt));
+
+      // Create a static initializer block (represented as a special method-like structure)
+      const staticInit = new JavaMethod('', 'void');
+      staticInit.isStatic = true;
+      staticInit.isStaticInitializer = true; // Mark this as a static initializer
+      staticInit.body = statements;
+
+      return staticInit;
+    }
+
+    /**
      * Transform VariableDeclaration to JavaField[] or JavaVariableDeclaration[]
      */
     transformVariableDeclaration(node, isField = false) {
@@ -428,9 +448,33 @@
         if (declarator.id.type === 'ObjectPattern')
           continue;
 
-        // Skip ArrayPattern destructuring
-        if (declarator.id.type === 'ArrayPattern')
+        // Handle array destructuring: const [a, b, c] = arr;
+        if (declarator.id.type === 'ArrayPattern') {
+          const sourceExpr = declarator.init ? this.transformExpression(declarator.init) : null;
+          if (sourceExpr) {
+            for (let i = 0; i < declarator.id.elements.length; ++i) {
+              const elem = declarator.id.elements[i];
+              if (!elem) continue; // Skip holes in destructuring
+
+              const varName = elem.name;
+              const indexExpr = new JavaArrayAccess(sourceExpr, JavaLiteral.Int(i));
+              const varType = new JavaType('var');
+
+              if (isField) {
+                const field = new JavaField(varName, varType);
+                field.initializer = indexExpr;
+                field.isStatic = true;
+                results.push(field);
+              } else {
+                const varDecl = new JavaVariableDeclaration(varName, varType);
+                varDecl.initializer = indexExpr;
+                this.variableTypes.set(varName, varType);
+                results.push(varDecl);
+              }
+            }
+          }
           continue;
+        }
 
         const name = declarator.id.name;
         const type = this.inferVariableType(declarator);
@@ -700,6 +744,10 @@
         case 'TemplateLiteral':
           // `Hello ${name}!` -> "Hello " + name + "!"
           return this.transformTemplateLiteral(node);
+        case 'ObjectPattern':
+          // Object destructuring - Java doesn't support this directly
+          // Return a comment placeholder
+          return new JavaIdentifier('/* Object destructuring not supported in Java */');
         default:
           this.warnings.push(`Unsupported expression type: ${node.type}`);
           return new JavaIdentifier('/* unsupported: ' + node.type + ' */');

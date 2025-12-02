@@ -226,7 +226,8 @@
       } else {
         code += this.line(decl + ' {');
         this.indentLevel++;
-        for (const stmt of node.body.statements) {
+        const statements = node.body.statements || node.body.body || (Array.isArray(node.body) ? node.body : []);
+        for (const stmt of statements) {
           code += this.emit(stmt);
         }
         this.indentLevel--;

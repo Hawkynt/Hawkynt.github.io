@@ -93,7 +93,7 @@
      * Convert name to camelCase (Delphi convention for variables/fields)
      */
     toCamelCase(str) {
-      if (!str) return str;
+      if (!str || typeof str !== 'string') return str || 'Unknown';
       // Remove leading underscore
       if (str.startsWith('_')) str = str.substring(1);
       return str.charAt(0).toUpperCase() + str.slice(1);
@@ -103,7 +103,7 @@
      * Convert name to SCREAMING_SNAKE_CASE (Delphi convention for constants)
      */
     toScreamingCase(str) {
-      if (!str) return str;
+      if (!str || typeof str !== 'string') return str || 'Unknown';
       return str
         .replace(/([A-Z])/g, '_$1')
         .toUpperCase()
@@ -287,7 +287,26 @@
     transformTopLevelVariableDeclaration(node, targetUnit) {
       for (const decl of node.declarations) {
         if (!decl.init) continue;
-        if (decl.id.type === 'ObjectPattern' || decl.id.type === 'ArrayPattern') continue;
+
+        // Skip object destructuring
+        if (decl.id.type === 'ObjectPattern') continue;
+
+        // Handle array destructuring: const [a, b, c] = arr;
+        if (decl.id.type === 'ArrayPattern') {
+          const sourceExpr = decl.init ? this.transformExpression(decl.init) : null;
+          if (sourceExpr) {
+            for (let i = 0; i < decl.id.elements.length; ++i) {
+              const elem = decl.id.elements[i];
+              if (!elem) continue; // Skip holes in destructuring
+
+              const varName = this.toPascalCase(elem.name);
+              const indexExpr = new DelphiArrayAccess(sourceExpr, DelphiLiteral.Integer(i));
+              const constDecl = new DelphiConstDeclaration(varName, indexExpr, null);
+              targetUnit.interfaceSection.constants.push(constDecl);
+            }
+          }
+          continue;
+        }
 
         const name = decl.id.name;
 
@@ -489,6 +508,13 @@
           // Field
           const field = this.transformPropertyToField(member);
           delphiClass.fields.push(field);
+        } else if (member.type === 'StaticBlock') {
+          // ES2022 static block -> Delphi class initialization section
+          const initStatements = this.transformStaticBlock(member);
+          if (initStatements) {
+            delphiClass.staticInitStatements = delphiClass.staticInitStatements || [];
+            delphiClass.staticInitStatements.push(...initStatements);
+          }
         }
       }
 
@@ -589,6 +615,12 @@
       this.fieldTypes.set(fieldName, fieldType);
 
       return field;
+    }
+
+    transformStaticBlock(node) {
+      // ES2022 static block -> Delphi initialization/finalization section
+      // Transform to statements that will be emitted in initialization section
+      return node.body.map(stmt => this.transformStatement(stmt));
     }
 
     /**
@@ -977,6 +1009,11 @@
 
         case 'TemplateLiteral':
           return this.transformTemplateLiteral(node);
+
+        case 'ObjectPattern':
+          // Object destructuring - Delphi doesn't support this directly
+          // Return a comment placeholder
+          return new DelphiIdentifier('{ Object destructuring not supported in Delphi }');
 
         default:
           return null;

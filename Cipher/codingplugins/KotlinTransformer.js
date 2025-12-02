@@ -321,6 +321,10 @@
         case 'TemplateLiteral':
           // `Hello ${name}!` -> "Hello $name!"
           return this.transformTemplateLiteral(node);
+        case 'ObjectPattern':
+          // Object destructuring - Kotlin supports destructuring declarations
+          // Return a comment placeholder
+          return new KotlinIdentifier('/* Object destructuring pattern */');
         default:
           console.warn(`No expression transformer for: ${node.type}`);
           return new KotlinIdentifier(`/* Unhandled: ${node.type} */`);
@@ -555,7 +559,25 @@
         return prop;
       }
 
+      if (node.type === 'StaticBlock') {
+        // ES2022 static block -> Kotlin companion object init block
+        return this.transformStaticBlock(node);
+      }
+
       return null;
+    }
+
+    transformStaticBlock(node) {
+      // ES2022 static { code } -> Kotlin companion object with init { code }
+      // Note: This creates an init block that should be added to the companion object
+      const statements = node.body.map(stmt => this.transformStatement(stmt));
+
+      // Create an init block (represented as a special function)
+      const initBlock = new KotlinFunction('init', KotlinType.Unit());
+      initBlock.isInitBlock = true;
+      initBlock.body = statements;
+
+      return initBlock;
     }
 
     transformAccessor(node) {
@@ -727,9 +749,27 @@
         if (decl.id && decl.id.type === 'ObjectPattern')
           continue;
 
-        // Skip ArrayPattern destructuring
-        if (decl.id && decl.id.type === 'ArrayPattern')
+        // Handle array destructuring: const [a, b, c] = arr;
+        // Kotlin supports destructuring declarations
+        if (decl.id && decl.id.type === 'ArrayPattern') {
+          const sourceExpr = decl.init ? this.transformNode(decl.init) : null;
+          if (sourceExpr && decl.id.elements.length > 0) {
+            for (let i = 0; i < decl.id.elements.length; ++i) {
+              const elem = decl.id.elements[i];
+              if (!elem) continue; // Skip holes in destructuring
+
+              const varName = elem.name;
+              const indexExpr = new KotlinIndexAccess(sourceExpr, KotlinLiteral.Int(i));
+              const varType = new KotlinType('Any');
+
+              const varDecl = new KotlinVariableDeclaration(varName, varType, indexExpr);
+              varDecl.isVar = node.kind !== 'const';
+              this.variableTypes.set(varName, varType);
+              statements.push(varDecl);
+            }
+          }
           continue;
+        }
 
         const varName = decl.id ? decl.id.name : 'variable';
         const varType = this.inferVariableType(varName, decl.init);

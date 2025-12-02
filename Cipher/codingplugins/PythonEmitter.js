@@ -270,7 +270,8 @@
       let code = this.line(`if ${this.emit(node.condition)}:`);
 
       this.indentLevel++;
-      if (node.thenBranch.statements.length > 0) {
+      const thenStatements = node.thenBranch?.statements || [];
+      if (thenStatements.length > 0) {
         code += this.emit(node.thenBranch);
       } else {
         code += this.line('pass');
@@ -278,10 +279,12 @@
       this.indentLevel--;
 
       // elif branches
-      for (const elifBranch of node.elifBranches) {
+      const elifBranches = node.elifBranches || [];
+      for (const elifBranch of elifBranches) {
         code += this.line(`elif ${this.emit(elifBranch.condition)}:`);
         this.indentLevel++;
-        if (elifBranch.body.statements.length > 0) {
+        const elifStatements = elifBranch.body?.statements || [];
+        if (elifStatements.length > 0) {
           code += this.emit(elifBranch.body);
         } else {
           code += this.line('pass');
@@ -293,7 +296,8 @@
       if (node.elseBranch) {
         code += this.line('else:');
         this.indentLevel++;
-        if (node.elseBranch.statements.length > 0) {
+        const elseStatements = node.elseBranch?.statements || [];
+        if (elseStatements.length > 0) {
           code += this.emit(node.elseBranch);
         } else {
           code += this.line('pass');
@@ -310,7 +314,8 @@
       let code = this.line(`for ${varStr} in ${this.emit(node.iterable)}:`);
 
       this.indentLevel++;
-      if (node.body.statements.length > 0) {
+      const bodyStatements = node.body?.statements || [];
+      if (bodyStatements.length > 0) {
         code += this.emit(node.body);
       } else {
         code += this.line('pass');
@@ -324,7 +329,8 @@
       let code = this.line(`while ${this.emit(node.condition)}:`);
 
       this.indentLevel++;
-      if (node.body.statements.length > 0) {
+      const bodyStatements = node.body?.statements || [];
+      if (bodyStatements.length > 0) {
         code += this.emit(node.body);
       } else {
         code += this.line('pass');
@@ -395,7 +401,6 @@
       if (node.literalType === 'None') return 'None';
       if (node.literalType === 'bool') return node.value ? 'True' : 'False';
       if (node.literalType === 'str') {
-        // Use f-strings for better readability when needed
         const escaped = String(node.value)
           .replace(/\\/g, '\\\\')
           .replace(/"/g, '\\"')
@@ -411,6 +416,29 @@
         return `0x${node.value.toString(16).toUpperCase()}`;
       }
       return String(node.value);
+    }
+
+    emitFString(node) {
+      // Emit Python f-string: f"text {expr} text {expr} ..."
+      let result = 'f"';
+      for (let i = 0; i < node.parts.length; ++i) {
+        // Escape the string part
+        const part = (node.parts[i] || '')
+          .replace(/\\/g, '\\\\')
+          .replace(/"/g, '\\"')
+          .replace(/\n/g, '\\n')
+          .replace(/\r/g, '\\r')
+          .replace(/\t/g, '\\t')
+          .replace(/\{/g, '{{')   // Escape literal braces in f-strings
+          .replace(/\}/g, '}}');
+        result += part;
+        if (i < node.expressions.length) {
+          const expr = this.emit(node.expressions[i]);
+          result += `{${expr}}`;
+        }
+      }
+      result += '"';
+      return result;
     }
 
     emitIdentifier(node) {
