@@ -295,23 +295,23 @@
         const byteIndex = Math.floor(i / 8);
         const bitIndex = i % 8;
 
-        if ((temp_b[byteIndex] >>> bitIndex) & 1) {
+        if (OpCodes.AndN(OpCodes.Shr32(temp_b[byteIndex], bitIndex), 1)) {
           for (let j = 0; j < 16; j++) {
-            result[j] ^= temp_a[j];
+            result[j] = OpCodes.XorN(result[j], temp_a[j]);
           }
         }
 
         // Shift a left by 1 bit (multiply by x)
         let carry = 0;
         for (let j = 0; j < 16; j++) {
-          const newCarry = (temp_a[j] >>> 7) & 1;
-          temp_a[j] = ((temp_a[j] << 1) | carry) & 0xFF;
+          const newCarry = OpCodes.AndN(OpCodes.Shr32(temp_a[j], 7), 1);
+          temp_a[j] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(temp_a[j], 1), carry), 0xFF);
           carry = newCarry;
         }
 
         // If overflow, reduce by the polynomial x^128 + x^7 + x^2 + x + 1
         if (carry) {
-          temp_a[0] ^= 0x87; // The reduction polynomial in bit-reversed form
+          temp_a[0] = OpCodes.XorN(temp_a[0], 0x87); // The reduction polynomial in bit-reversed form
         }
       }
 

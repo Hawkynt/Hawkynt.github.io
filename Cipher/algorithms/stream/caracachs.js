@@ -309,14 +309,14 @@
       // Self-encrypt the key material
       for (let i = 0; i < lngkey; ++i) {
         const plain = this._encode(tab[i]);
-        tab[i] = tab[i] ^ plain;
+        tab[i] = OpCodes.XorN(tab[i], plain);
       }
 
       // Additional mixing rounds
       let i = lngkey - 1;
       for (let z = 1; z <= ((lngkey + 1) * 10); ++z) {
         const plain = this._encode(tab[i]);
-        tab[i] = tab[i] ^ plain;
+        tab[i] = OpCodes.XorN(tab[i], plain);
         ++i;
         if (i >= lngkey) {
           i = 0;
@@ -367,16 +367,16 @@
     _stream(index) {
       // b[index] = (b[index] * a) + 1
       // CRITICAL: Use Math.imul for correct 32-bit integer multiplication
-      this.b[index] = (Math.imul(this.b[index], this.a) + 1) >>> 0;
+      this.b[index] = OpCodes.ToUint32(Math.imul(this.b[index], this.a) + 1);
 
-      // r = r + ((b[index] >> 16) & 0x7fff)
+      // r = r + ((b[index] shr 16) AND 0x7fff)
       // NOTE: r is treated as 32-bit unsigned in the C code
-      this.r = (this.r + ((this.b[index] >>> 16) & 0x7FFF)) >>> 0;
+      this.r = OpCodes.ToUint32(this.r + OpCodes.AndN(OpCodes.Shr32(this.b[index], 16), 0x7FFF));
 
-      // r = (r << (r%16)) | (r >> (16-(r%16)))
+      // r = (r shl (r%16)) OR (r shr (16-(r%16)))
       // This rotation operates on the full 32-bit value
       const rotAmount = this.r % 16;
-      this.r = ((this.r << rotAmount) | (this.r >>> (16 - rotAmount))) >>> 0;
+      this.r = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(this.r, rotAmount), OpCodes.Shr32(this.r, (16 - rotAmount))));
     }
 
     // Encode/decode a single byte (symmetric operation)
@@ -388,11 +388,11 @@
 
       // XOR byte with r
       const d = byte;
-      byte = byte ^ (this.r & 0xFF);
+      byte = OpCodes.XorN(byte, OpCodes.AndN(this.r, 0xFF));
 
       // Update state (r is 32-bit unsigned)
-      this.r = (this.r + d) >>> 0;
-      this.b[this.cle - 1] = (this.b[this.cle - 1] + d) >>> 0;
+      this.r = OpCodes.ToUint32(this.r + d);
+      this.b[this.cle - 1] = OpCodes.ToUint32(this.b[this.cle - 1] + d);
 
       return byte;
     }
@@ -406,11 +406,11 @@
 
       // XOR byte with r
       const d = byte;
-      byte = byte ^ (this.r & 0xFF);
+      byte = OpCodes.XorN(byte, OpCodes.AndN(this.r, 0xFF));
 
       // Update state (r is 32-bit unsigned)
-      this.r = (this.r + d) >>> 0;
-      this.b[this.cle - 1] = (this.b[this.cle - 1] + d) >>> 0;
+      this.r = OpCodes.ToUint32(this.r + d);
+      this.b[this.cle - 1] = OpCodes.ToUint32(this.b[this.cle - 1] + d);
 
       return byte;
     }

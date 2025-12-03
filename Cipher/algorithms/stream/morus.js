@@ -190,7 +190,7 @@ class MORUSInstance extends IAlgorithmInstance {
     // S[2] = key XOR nonce
     this.state[2] = [];
     for (let i = 0; i < 4; i++) {
-      this.state[2][i] = (keyWords[i] ^ nonceWords[i]) >>> 0;
+      this.state[2][i] = OpCodes.ToUint32(OpCodes.XorN(keyWords[i], nonceWords[i]));
     }
 
     // S[3] = constant
@@ -233,10 +233,10 @@ class MORUSInstance extends IAlgorithmInstance {
     const bytes = [];
     for (let i = 0; i < words.length; i++) {
       const word = words[i];
-      bytes.push(word & 0xFF);
-      bytes.push((word >>> 8) & 0xFF);
-      bytes.push((word >>> 16) & 0xFF);
-      bytes.push((word >>> 24) & 0xFF);
+      bytes.push(OpCodes.AndN(word, 0xFF));
+      bytes.push(OpCodes.AndN(OpCodes.Shr32(word, 8), 0xFF));
+      bytes.push(OpCodes.AndN(OpCodes.Shr32(word, 16), 0xFF));
+      bytes.push(OpCodes.AndN(OpCodes.Shr32(word, 24), 0xFF));
     }
     return bytes;
   }
@@ -252,57 +252,82 @@ class MORUSInstance extends IAlgorithmInstance {
 
     // S'[0] = S[0] XOR (S[1] AND S[2]) XOR S[3] XOR (S[1] <<< 5) XOR (S[2] <<< 31)
     for (let i = 0; i < 4; i++) {
-      newState[0][i] = (
-        this.state[0][i] ^
-        (this.state[1][i] & this.state[2][i]) ^
-        this.state[3][i] ^
-        OpCodes.RotL32(this.state[1][i], 5) ^
-        OpCodes.RotL32(this.state[2][i], 31)
-      ) >>> 0;
+      newState[0][i] = OpCodes.ToUint32(
+        OpCodes.XorN(
+          OpCodes.XorN(
+            OpCodes.XorN(
+              OpCodes.XorN(this.state[0][i], OpCodes.AndN(this.state[1][i], this.state[2][i])),
+              this.state[3][i]
+            ),
+            OpCodes.RotL32(this.state[1][i], 5)
+          ),
+          OpCodes.RotL32(this.state[2][i], 31)
+        )
+      );
     }
 
     // S'[1] = S[1] XOR (S[2] AND S[3]) XOR S[4] XOR (S[2] <<< 13) XOR (S[3] <<< 3)
     for (let i = 0; i < 4; i++) {
-      newState[1][i] = (
-        this.state[1][i] ^
-        (this.state[2][i] & this.state[3][i]) ^
-        this.state[4][i] ^
-        OpCodes.RotL32(this.state[2][i], 13) ^
-        OpCodes.RotL32(this.state[3][i], 3)
-      ) >>> 0;
+      newState[1][i] = OpCodes.ToUint32(
+        OpCodes.XorN(
+          OpCodes.XorN(
+            OpCodes.XorN(
+              OpCodes.XorN(this.state[1][i], OpCodes.AndN(this.state[2][i], this.state[3][i])),
+              this.state[4][i]
+            ),
+            OpCodes.RotL32(this.state[2][i], 13)
+          ),
+          OpCodes.RotL32(this.state[3][i], 3)
+        )
+      );
     }
 
     // S'[2] = S[2] XOR (S[3] AND S[4]) XOR S[0] XOR (S[3] <<< 27) XOR (S[4] <<< 14)
     for (let i = 0; i < 4; i++) {
-      newState[2][i] = (
-        this.state[2][i] ^
-        (this.state[3][i] & this.state[4][i]) ^
-        this.state[0][i] ^
-        OpCodes.RotL32(this.state[3][i], 27) ^
-        OpCodes.RotL32(this.state[4][i], 14)
-      ) >>> 0;
+      newState[2][i] = OpCodes.ToUint32(
+        OpCodes.XorN(
+          OpCodes.XorN(
+            OpCodes.XorN(
+              OpCodes.XorN(this.state[2][i], OpCodes.AndN(this.state[3][i], this.state[4][i])),
+              this.state[0][i]
+            ),
+            OpCodes.RotL32(this.state[3][i], 27)
+          ),
+          OpCodes.RotL32(this.state[4][i], 14)
+        )
+      );
     }
 
     // S'[3] = S[3] XOR (S[4] AND S[0]) XOR S[1] XOR (S[4] <<< 15) XOR (S[0] <<< 9)
     for (let i = 0; i < 4; i++) {
-      newState[3][i] = (
-        this.state[3][i] ^
-        (this.state[4][i] & this.state[0][i]) ^
-        this.state[1][i] ^
-        OpCodes.RotL32(this.state[4][i], 15) ^
-        OpCodes.RotL32(this.state[0][i], 9)
-      ) >>> 0;
+      newState[3][i] = OpCodes.ToUint32(
+        OpCodes.XorN(
+          OpCodes.XorN(
+            OpCodes.XorN(
+              OpCodes.XorN(this.state[3][i], OpCodes.AndN(this.state[4][i], this.state[0][i])),
+              this.state[1][i]
+            ),
+            OpCodes.RotL32(this.state[4][i], 15)
+          ),
+          OpCodes.RotL32(this.state[0][i], 9)
+        )
+      );
     }
 
     // S'[4] = S[4] XOR (S[0] AND S[1]) XOR S[2] XOR (S[0] <<< 29) XOR (S[1] <<< 18)
     for (let i = 0; i < 4; i++) {
-      newState[4][i] = (
-        this.state[4][i] ^
-        (this.state[0][i] & this.state[1][i]) ^
-        this.state[2][i] ^
-        OpCodes.RotL32(this.state[0][i], 29) ^
-        OpCodes.RotL32(this.state[1][i], 18)
-      ) >>> 0;
+      newState[4][i] = OpCodes.ToUint32(
+        OpCodes.XorN(
+          OpCodes.XorN(
+            OpCodes.XorN(
+              OpCodes.XorN(this.state[4][i], OpCodes.AndN(this.state[0][i], this.state[1][i])),
+              this.state[2][i]
+            ),
+            OpCodes.RotL32(this.state[0][i], 29)
+          ),
+          OpCodes.RotL32(this.state[1][i], 18)
+        )
+      );
     }
 
     this.state = newState;
@@ -318,12 +343,15 @@ class MORUSInstance extends IAlgorithmInstance {
       // Keystream = S[0] XOR S[1] XOR (S[2] AND S[3]) XOR S[4]
       const ks = new Array(4);
       for (let i = 0; i < 4; i++) {
-        ks[i] = (
-          this.state[0][i] ^
-          this.state[1][i] ^
-          (this.state[2][i] & this.state[3][i]) ^
-          this.state[4][i]
-        ) >>> 0;
+        ks[i] = OpCodes.ToUint32(
+          OpCodes.XorN(
+            OpCodes.XorN(
+              OpCodes.XorN(this.state[0][i], this.state[1][i]),
+              OpCodes.AndN(this.state[2][i], this.state[3][i])
+            ),
+            this.state[4][i]
+          )
+        );
       }
 
       keystreamWords.push(...ks);
@@ -347,7 +375,7 @@ class MORUSInstance extends IAlgorithmInstance {
 
       const blockWords = this._bytesToWords(block);
       for (let j = 0; j < 4; j++) {
-        this.state[0][j] = (this.state[0][j] ^ blockWords[j]) >>> 0;
+        this.state[0][j] = OpCodes.ToUint32(OpCodes.XorN(this.state[0][j], blockWords[j]));
       }
 
       this._updateState();
@@ -362,16 +390,16 @@ class MORUSInstance extends IAlgorithmInstance {
     const lengthWords = new Array(4);
 
     // AAD length (little-endian 64-bit)
-    lengthWords[0] = (aadLength & 0xFFFFFFFF);
-    lengthWords[1] = (Math.floor(aadLength / 0x100000000) & 0xFFFFFFFF);
+    lengthWords[0] = OpCodes.AndN(aadLength, 0xFFFFFFFF);
+    lengthWords[1] = OpCodes.AndN(Math.floor(aadLength / 0x100000000), 0xFFFFFFFF);
 
     // Plaintext length (little-endian 64-bit)
-    lengthWords[2] = (plaintextLength & 0xFFFFFFFF);
-    lengthWords[3] = (Math.floor(plaintextLength / 0x100000000) & 0xFFFFFFFF);
+    lengthWords[2] = OpCodes.AndN(plaintextLength, 0xFFFFFFFF);
+    lengthWords[3] = OpCodes.AndN(Math.floor(plaintextLength / 0x100000000), 0xFFFFFFFF);
 
     // XOR with state[0]
     for (let i = 0; i < 4; i++) {
-      this.state[0][i] = (this.state[0][i] ^ lengthWords[i]) >>> 0;
+      this.state[0][i] = OpCodes.ToUint32(OpCodes.XorN(this.state[0][i], lengthWords[i]));
     }
 
     // Final rounds (10 rounds)
@@ -382,12 +410,15 @@ class MORUSInstance extends IAlgorithmInstance {
     // Generate tag: S[0] XOR S[1] XOR S[2] XOR S[3]
     const tagWords = new Array(4);
     for (let i = 0; i < 4; i++) {
-      tagWords[i] = (
-        this.state[0][i] ^
-        this.state[1][i] ^
-        this.state[2][i] ^
-        this.state[3][i]
-      ) >>> 0;
+      tagWords[i] = OpCodes.ToUint32(
+        OpCodes.XorN(
+          OpCodes.XorN(
+            OpCodes.XorN(this.state[0][i], this.state[1][i]),
+            this.state[2][i]
+          ),
+          this.state[3][i]
+        )
+      );
     }
 
     return this._wordsToBytes(tagWords);

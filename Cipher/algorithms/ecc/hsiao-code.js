@@ -182,13 +182,13 @@
       encoded[7] = d4;
 
       // Hsiao parity bits (odd-weight columns optimization)
-      encoded[1] = d1 ^ d2 ^ d4;
-      encoded[2] = d1 ^ d3 ^ d4;
-      encoded[4] = d2 ^ d3 ^ d4;
+      encoded[1] = OpCodes.XorN(OpCodes.XorN(d1, d2), d4);
+      encoded[2] = OpCodes.XorN(OpCodes.XorN(d1, d3), d4);
+      encoded[4] = OpCodes.XorN(OpCodes.XorN(d2, d3), d4);
 
       // Overall parity bit (position 0)
-      encoded[0] = encoded[1] ^ encoded[2] ^ encoded[3] ^ encoded[4] ^
-                   encoded[5] ^ encoded[6] ^ encoded[7];
+      encoded[0] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(encoded[1], encoded[2]), encoded[3]), encoded[4]),
+                   encoded[5]), encoded[6]), encoded[7]);
 
       return encoded;
     }
@@ -202,13 +202,13 @@
       const received = [...data];
 
       // Calculate syndrome (positions 1-7)
-      const s1 = received[1] ^ received[3] ^ received[5] ^ received[7];
-      const s2 = received[2] ^ received[3] ^ received[6] ^ received[7];
-      const s4 = received[4] ^ received[5] ^ received[6] ^ received[7];
-      const syndrome = s1 + (s2 << 1) + (s4 << 2);
+      const s1 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(received[1], received[3]), received[5]), received[7]);
+      const s2 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(received[2], received[3]), received[6]), received[7]);
+      const s4 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(received[4], received[5]), received[6]), received[7]);
+      const syndrome = s1 + OpCodes.Shl32(s2, 1) + OpCodes.Shl32(s4, 2);
 
       // Calculate overall parity
-      const overallParity = received.reduce((p, bit) => p ^ bit, 0);
+      const overallParity = received.reduce((p, bit) => OpCodes.XorN(p, bit), 0);
 
       // Error detection logic
       if (syndrome === 0 && overallParity === 0) {
@@ -216,7 +216,7 @@
       } else if (syndrome === 0 && overallParity !== 0) {
         // Error in overall parity bit
         console.log('Hsiao: Parity bit error detected and corrected');
-        received[0] ^= 1;
+        received[0] = OpCodes.XorN(received[0], 1);
       } else {
         // Count 1s in syndrome (Hsiao's odd-weight column property)
         const syndromeWeight = (syndrome.toString(2).match(/1/g) || []).length;
@@ -225,7 +225,7 @@
           // Single bit error (correctable) - odd syndrome weight + odd parity
           console.log(`Hsiao: Single error at position ${syndrome}, correcting...`);
           if (syndrome >= 1 && syndrome <= 7) {
-            received[syndrome] ^= 1;
+            received[syndrome] = OpCodes.XorN(received[syndrome], 1);
           }
         } else if (overallParity === 0 || syndromeWeight % 2 === 0) {
           // Double bit error (detectable, not correctable) - even syndrome weight or even parity
@@ -240,12 +240,12 @@
     DetectError(data) {
       if (data.length !== 8) return true;
 
-      const s1 = data[1] ^ data[3] ^ data[5] ^ data[7];
-      const s2 = data[2] ^ data[3] ^ data[6] ^ data[7];
-      const s4 = data[4] ^ data[5] ^ data[6] ^ data[7];
-      const syndrome = s1 + (s2 << 1) + (s4 << 2);
+      const s1 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(data[1], data[3]), data[5]), data[7]);
+      const s2 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(data[2], data[3]), data[6]), data[7]);
+      const s4 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(data[4], data[5]), data[6]), data[7]);
+      const syndrome = s1 + OpCodes.Shl32(s2, 1) + OpCodes.Shl32(s4, 2);
 
-      const overallParity = data.reduce((p, bit) => p ^ bit, 0);
+      const overallParity = data.reduce((p, bit) => OpCodes.XorN(p, bit), 0);
 
       return syndrome !== 0 || overallParity !== 0;
     }

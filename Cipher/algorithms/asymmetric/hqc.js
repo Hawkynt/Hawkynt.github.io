@@ -295,7 +295,7 @@
       let seedValue = n + weight + this.securityLevel;
 
       for (let placed = 0; placed < Math.min(weight, 100); placed++) { // Limit to 100 positions max
-        seedValue = (seedValue * 1664525 + 1013904223) >>> 0;
+        seedValue = OpCodes.Shr32(seedValue * 1664525 + 1013904223, 0);
         const pos = seedValue % Math.min(n, 1000); // Limit positions to 1000 max
         if (!positions.includes(pos)) {
           positions.push(pos);
@@ -431,8 +431,8 @@
 
       // Simple hash mixing
       for (let i = 0; i < message.length; i++) {
-        hash[i % 16] ^= message[i];
-        hash[(i + 1) % 16] = OpCodes.RotL8(hash[(i + 1) % 16], 1) ^ message[i];
+        hash[i % 16] = OpCodes.XorN(hash[i % 16], message[i]);
+        hash[(i + 1) % 16] = OpCodes.XorN(OpCodes.RotL8(hash[(i + 1) % 16], 1), message[i]);
       }
 
       return hash;

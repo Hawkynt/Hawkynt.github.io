@@ -228,7 +228,7 @@
      * Algorithm from https://prng.di.unimi.it/xoroshiro128starstar.c:
      * 1. result = rotl(s[0] * 5, 7) * 9  (**starstar** scrambler)
      * 2. s[1] ^= s[0]
-     * 3. s[0] = rotl(s[0], 24) ^ s[1] ^ (s[1] << 16)
+     * 3. s[0] = rotl(s[0], 24) XOR s[1] XOR (s[1] shl 16)
      * 4. s[1] = rotl(s[1], 37)
      *
      * The ** variant uses multiplication-based scrambler (multiply by 5, rotate 7, multiply by 9)
@@ -254,10 +254,10 @@
       // s[1] ^= s[0]
       const s1_xor_s0 = OpCodes.XorN(s1, s0);
 
-      // s[0] = rotl(s[0], 24) ^ s[1] ^ (s[1] << 16)
+      // s[0] = rotl(s[0], 24) XOR s[1] XOR (s[1] shl 16)
       this._s0 = OpCodes.XorN(
         OpCodes.XorN(OpCodes.RotL64n(s0, 24), s1_xor_s0),
-        OpCodes.ToQWord(OpCodes.ShiftLn(s1_xor_s0, 16))
+        OpCodes.ToQWord(OpCodes.ShiftLn(s1_xor_s0, 16n))
       );
 
       // s[1] = rotl(s[1], 37)
@@ -289,7 +289,7 @@
 
         // Extract bytes in little-endian order
         for (let i = 0; i < 8 && bytesGenerated < length; ++i) {
-          const shifted = OpCodes.ShiftRn(value64, i * 8);
+          const shifted = OpCodes.ShiftRn(value64, BigInt(i * 8));
           const byteVal = Number(OpCodes.AndN(shifted, 0xFFn));
           output.push(byteVal);
           ++bytesGenerated;
@@ -352,7 +352,7 @@
 
       for (let i = 0; i < JUMP.length; ++i) {
         for (let b = 0; b < 64; ++b) {
-          const mask = OpCodes.ShiftLn(1n, b);
+          const mask = OpCodes.ShiftLn(1n, BigInt(b));
           if (OpCodes.AndN(JUMP[i], mask) !== 0n) {
             s0 = OpCodes.XorN(s0, this._s0);
             s1 = OpCodes.XorN(s1, this._s1);
@@ -382,7 +382,7 @@
 
       for (let i = 0; i < LONG_JUMP.length; ++i) {
         for (let b = 0; b < 64; ++b) {
-          const mask = OpCodes.ShiftLn(1n, b);
+          const mask = OpCodes.ShiftLn(1n, BigInt(b));
           if (OpCodes.AndN(LONG_JUMP[i], mask) !== 0n) {
             s0 = OpCodes.XorN(s0, this._s0);
             s1 = OpCodes.XorN(s1, this._s1);

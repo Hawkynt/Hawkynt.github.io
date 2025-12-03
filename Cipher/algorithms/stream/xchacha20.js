@@ -196,22 +196,22 @@
     quarterRound: function(state, a, b, c, d) {
       // a += b; d ^= a; d <<<= 16;
       state[a] = (state[a] + state[b]) >>> 0;
-      state[d] ^= state[a];
+      state[d] = global.OpCodes.XorN(state[d], state[a]);
       state[d] = global.OpCodes.RotL32(state[d], 16);
-      
+
       // c += d; b ^= c; b <<<= 12;
       state[c] = (state[c] + state[d]) >>> 0;
-      state[b] ^= state[c];
+      state[b] = global.OpCodes.XorN(state[b], state[c]);
       state[b] = global.OpCodes.RotL32(state[b], 12);
-      
+
       // a += b; d ^= a; d <<<= 8;
       state[a] = (state[a] + state[b]) >>> 0;
-      state[d] ^= state[a];
+      state[d] = global.OpCodes.XorN(state[d], state[a]);
       state[d] = global.OpCodes.RotL32(state[d], 8);
-      
+
       // c += d; b ^= c; b <<<= 7;
       state[c] = (state[c] + state[d]) >>> 0;
-      state[b] ^= state[c];
+      state[b] = global.OpCodes.XorN(state[b], state[c]);
       state[b] = global.OpCodes.RotL32(state[b], 7);
     },
     
@@ -392,7 +392,7 @@
         // XOR with data
         const blockSize = Math.min(XCHACHA20_BLOCK_SIZE, data.length - pos);
         for (let i = 0; i < blockSize; i++) {
-          output[pos + i] = data[pos + i] ^ keystream[i];
+          output[pos + i] = global.OpCodes.XorN(data[pos + i], keystream[i]);
         }
         
         pos += blockSize;
@@ -464,7 +464,7 @@
     stringToBytes: function(str) {
       const bytes = [];
       for (let i = 0; i < str.length; i++) {
-        bytes.push(str.charCodeAt(i) & 0xFF);
+        bytes.push(global.OpCodes.AndN(str.charCodeAt(i), 0xFF));
       }
       return bytes;
     },

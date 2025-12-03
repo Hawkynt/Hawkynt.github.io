@@ -158,8 +158,8 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
     for (let round = 1; round < totalRounds; round++) {
       for (let i = 0; i < 16; i++) {
         roundKeys[round][i] = roundKeys[round - 1][i];
-        roundKeys[round][i] ^= OpCodes.RotL8(key[(round + i) % key.length], round & 7);
-        roundKeys[round][i] ^= (round * 16 + i) & 0xFF;
+        roundKeys[round][i] = OpCodes.XorN(roundKeys[round][i], OpCodes.RotL8(key[(round + i) % key.length], OpCodes.AndN(round, 7)));
+        roundKeys[round][i] = OpCodes.XorN(roundKeys[round][i], OpCodes.AndN(OpCodes.Add32(round * 16, i), 0xFF));
       }
     }
 
@@ -200,7 +200,7 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
 
   _addRoundKey(state, round) {
     for (let i = 0; i < 16; i++) {
-      state[i] ^= this._roundKeys[round][i];
+      state[i] = OpCodes.XorN(state[i], this._roundKeys[round][i]);
     }
   }
 
@@ -242,10 +242,10 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
 
   _sBox(byte, round) {
     let result = byte;
-    result ^= OpCodes.RotL8(result, 1);
-    result ^= OpCodes.RotL8(result, 2);
-    result ^= (round * 17) & 0xFF;
-    result = ((result * 7) ^ (result >> 4)) & 0xFF;
+    result = OpCodes.XorN(result, OpCodes.RotL8(result, 1));
+    result = OpCodes.XorN(result, OpCodes.RotL8(result, 2));
+    result = OpCodes.XorN(result, OpCodes.AndN(round * 17, 0xFF));
+    result = OpCodes.AndN(OpCodes.XorN(result * 7, OpCodes.Shr32(result, 4)), 0xFF);
     return result;
   }
 
@@ -266,7 +266,7 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
         newState[i * 4 + j] = 0;
         for (let k = 0; k < 4; k++) {
           const mixValue = this._getMixValue(j, k);
-          newState[i * 4 + j] ^= OpCodes.GF256Mul(state[i * 4 + k], mixValue);
+          newState[i * 4 + j] = OpCodes.XorN(newState[i * 4 + j], OpCodes.GF256Mul(state[i * 4 + k], mixValue));
         }
       }
     }
@@ -299,7 +299,7 @@ class Hierocrypt3Instance extends IBlockCipherInstance {
         newState[i * 4 + j] = 0;
         for (let k = 0; k < 4; k++) {
           const mixValue = this._getInvMixValue(j, k);
-          newState[i * 4 + j] ^= OpCodes.GF256Mul(tempState[i * 4 + k], mixValue);
+          newState[i * 4 + j] = OpCodes.XorN(newState[i * 4 + j], OpCodes.GF256Mul(tempState[i * 4 + k], mixValue));
         }
       }
     }

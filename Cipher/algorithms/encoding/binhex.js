@@ -234,13 +234,13 @@
         const byte3 = i + 2 < data.length ? data[i + 2] : 0;
 
         // Pack 3 bytes into 24-bit value
-        const packed = (byte1 << 16) | (byte2 << 8) | byte3;
+        const packed = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(byte1, 16), OpCodes.Shl32(byte2, 8)), byte3);
 
         // Convert to 4 base-64 characters using BinHex alphabet
-        const char4 = this.algorithm.alphabet[packed & 0x3F];
-        const char3 = this.algorithm.alphabet[(packed >>> 6) & 0x3F];
-        const char2 = this.algorithm.alphabet[(packed >>> 12) & 0x3F];
-        const char1 = this.algorithm.alphabet[(packed >>> 18) & 0x3F];
+        const char4 = this.algorithm.alphabet[OpCodes.AndN(packed, 0x3F)];
+        const char3 = this.algorithm.alphabet[OpCodes.AndN(OpCodes.Shr32(packed, 6), 0x3F)];
+        const char2 = this.algorithm.alphabet[OpCodes.AndN(OpCodes.Shr32(packed, 12), 0x3F)];
+        const char1 = this.algorithm.alphabet[OpCodes.AndN(OpCodes.Shr32(packed, 18), 0x3F)];
 
         result += char1 + char2 + char3 + char4;
       }
@@ -271,12 +271,12 @@
         const val4 = this.algorithm.decodeTable[input[i + 3]] || 0;
 
         // Reconstruct 24-bit value
-        const packed = (val1 << 18) | (val2 << 12) | (val3 << 6) | val4;
+        const packed = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(val1, 18), OpCodes.Shl32(val2, 12)), OpCodes.Shl32(val3, 6)), val4);
 
         // Unpack to 3 bytes
-        result.push((packed >>> 16) & 0xFF);
-        result.push((packed >>> 8) & 0xFF);
-        result.push(packed & 0xFF);
+        result.push(OpCodes.AndN(OpCodes.Shr32(packed, 16), 0xFF));
+        result.push(OpCodes.AndN(OpCodes.Shr32(packed, 8), 0xFF));
+        result.push(OpCodes.AndN(packed, 0xFF));
       }
 
       // Simple padding removal

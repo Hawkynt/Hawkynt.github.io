@@ -138,7 +138,7 @@
       // Initialize LFSR1 from first part of key
       const lfsr1 = new Array(this.LFSR1_LENGTH);
       for (let i = 0; i < this.LFSR1_LENGTH; i++) {
-        lfsr1[i] = (key[i % key.length] >> (i % 8)) & 1;
+        lfsr1[i] = OpCodes.AndN(OpCodes.Shr32(key[i % key.length], (i % 8)), 1);
       }
 
       // Initialize LFSR2 from middle part of key + IV
@@ -146,7 +146,7 @@
       for (let i = 0; i < this.LFSR2_LENGTH; i++) {
         const keyIdx = (i + 4) % key.length;
         const ivIdx = i % iv.length;
-        lfsr2[i] = ((key[keyIdx] ^ iv[ivIdx]) >> (i % 8)) & 1;
+        lfsr2[i] = OpCodes.AndN(OpCodes.Shr32(OpCodes.XorN(key[keyIdx], iv[ivIdx]), (i % 8)), 1);
       }
 
       // Initialize LFSR3 from last part of key + IV
@@ -154,7 +154,7 @@
       for (let i = 0; i < this.LFSR3_LENGTH; i++) {
         const keyIdx = (i + 8) % key.length;
         const ivIdx = (i + 4) % iv.length;
-        lfsr3[i] = ((key[keyIdx] ^ iv[ivIdx]) >> (i % 8)) & 1;
+        lfsr3[i] = OpCodes.AndN(OpCodes.Shr32(OpCodes.XorN(key[keyIdx], iv[ivIdx]), (i % 8)), 1);
       }
 
       // Ensure LFSRs are not all-zero
@@ -170,7 +170,7 @@
       // Calculate feedback bit
       let feedback = 0;
       for (const tap of taps) {
-        feedback ^= lfsr[tap - 1]; // Convert to 0-based indexing
+        feedback = OpCodes.XorN(feedback, lfsr[tap - 1]); // Convert to 0-based indexing
       }
 
       // Shift register
@@ -183,9 +183,9 @@
       return outputBit;
     }
 
-    // Geffe combining function: f(x1,x2,x3) = (x1 ∧ x2) ⊕ (¬x1 ∧ x3)
+    // Geffe combining function: f(x1,x2,x3) = (x1 AND x2) XOR (NOT x1 AND x3)
     geffeFunction(bit1, bit2, bit3) {
-      return (bit1 & bit2) ^ ((1 - bit1) & bit3);
+      return OpCodes.XorN(OpCodes.AndN(bit1, bit2), OpCodes.AndN((1 - bit1), bit3));
     }
 
     // Generate one byte of keystream
@@ -203,10 +203,10 @@
         const keyBit = this.geffeFunction(bit1, bit2, bit3);
 
         // Add bit to output byte
-        output |= keyBit << bit;
+        output = OpCodes.OrN(output, OpCodes.Shl32(keyBit, bit));
       }
 
-      return output & 0xFF;
+      return OpCodes.AndN(output, 0xFF);
     }
   }
 
@@ -357,7 +357,7 @@
       // Process each byte of input
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this.algorithm.generateKeystreamByte(this.state);
-        result.push(this.inputBuffer[i] ^ keystreamByte);
+        result.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer

@@ -314,7 +314,7 @@
       const product = OpCodes.ToDWord(OpCodes.ToDWord(val) * prime4bytes);
       const shifted = OpCodes.Shr32(product, 32 - this.HASH_LOG);
       const mask = OpCodes.BitMask(this.HASH_LOG);
-      return shifted&mask; // Bitwise AND for masking
+      return OpCodes.AndN(shifted, mask);
     }
 
     _countMatch(data, matchPos, currentPos, maxPos) {
@@ -341,7 +341,7 @@
 
       // Match length encoding (4 bits, max 15 direct)
       const matchField = Math.min(matchLength, 15);
-      token = token|matchField; // Bitwise OR to combine fields
+      token = OpCodes.OrN(token, matchField);
 
       output.push(OpCodes.ToByte(token));
 
@@ -360,8 +360,8 @@
         output.push(OpCodes.ToByte(input[literalStart + i]));
 
       // Offset (little-endian 16-bit)
-      output.push(OpCodes.ToByte(offset&0xFF)); // Low byte
-      output.push(OpCodes.ToByte(OpCodes.Shr16(offset, 8)&0xFF)); // High byte
+      output.push(OpCodes.ToByte(OpCodes.AndN(offset, 0xFF))); // Low byte
+      output.push(OpCodes.ToByte(OpCodes.AndN(OpCodes.Shr16(offset, 8), 0xFF))); // High byte
 
       // Extended match length
       if (matchLength >= 15) {
@@ -411,14 +411,14 @@
         // Read offset (little-endian 16-bit)
         if (ip + 1 >= inputLength)
           break;
-        const offset = OpCodes.ToByte(input[ip])|OpCodes.Shl16(OpCodes.ToByte(input[ip+1]), 8);
+        const offset = OpCodes.OrN(OpCodes.ToByte(input[ip]), OpCodes.Shl16(OpCodes.ToByte(input[ip+1]), 8));
         ip += 2;
 
         if (offset === 0)
           break; // Invalid offset
 
         // Decode match length (low 4 bits) + MIN_MATCH
-        const matchLenField = token&0x0F; // Low nibble
+        const matchLenField = OpCodes.AndN(token, 0x0F); // Low nibble
         let matchLength = matchLenField + this.MIN_MATCH;
         if (matchLenField === 15) {
           // Extended length

@@ -224,9 +224,9 @@
       // Convert seed bytes to 32-bit unsigned integer (little-endian)
       let seedValue = 0;
       for (let i = 0; i < Math.min(seedBytes.length, 4); ++i) {
-        seedValue |= (seedBytes[i] << (i * 8));
+        seedValue = OpCodes.OrN(seedValue, OpCodes.Shl32(seedBytes[i], i * 8));
       }
-      seedValue = seedValue >>> 0; // Ensure unsigned
+      seedValue = OpCodes.ToUint32(seedValue);
 
       // Initialize state array (from RFC 8682 tinymt32_init)
       this._status[0] = seedValue;
@@ -236,13 +236,13 @@
 
       // Initialization loop (MIN_LOOP = 8 iterations)
       for (let i = 1; i < MIN_LOOP; ++i) {
-        // status[i & 3] ^= i + MULT * (status[(i-1) & 3] ^ (status[(i-1) & 3] >> 30))
-        const prev = this._status[(i - 1) & 3];
-        const xored = (prev ^ (prev >>> 30)) >>> 0;
+        // status[i AND 3] XOR= i + MULT * (status[(i-1) AND 3] XOR (status[(i-1) AND 3] shr 30))
+        const prev = this._status[OpCodes.AndN(i - 1, 3)];
+        const xored = OpCodes.ToUint32(OpCodes.XorN(prev, OpCodes.Shr32(prev, 30)));
         // CRITICAL: Use Math.imul for correct 32-bit integer multiplication
         // Regular JavaScript multiplication loses precision with large numbers
-        const mult = Math.imul(INIT_MULTIPLIER, xored) >>> 0;
-        this._status[i & 3] ^= (i + mult) >>> 0;
+        const mult = OpCodes.ToUint32(Math.imul(INIT_MULTIPLIER, xored));
+        this._status[OpCodes.AndN(i, 3)] = OpCodes.XorN(this._status[OpCodes.AndN(i, 3)], OpCodes.ToUint32(i + mult));
       }
 
       // Period certification
@@ -266,7 +266,7 @@
      */
     _periodCertification() {
       // Check if all status words are zero (after masking)
-      if ((this._status[0] & TINYMT32_MASK) === 0 &&
+      if (OpCodes.AndN(this._status[0], TINYMT32_MASK) === 0 &&
           this._status[1] === 0 &&
           this._status[2] === 0 &&
           this._status[3] === 0) {
@@ -287,26 +287,26 @@
 
       // Extract and combine state elements
       y = this._status[3];
-      x = ((this._status[0] & TINYMT32_MASK) ^
-           this._status[1] ^
-           this._status[2]) >>> 0;
+      x = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(this._status[0], TINYMT32_MASK),
+           this._status[1]),
+           this._status[2]));
 
       // Apply shifts and XOR
-      x ^= (x << TINYMT32_SH0) >>> 0;
-      y ^= ((y >>> TINYMT32_SH0) ^ x) >>> 0;
+      x = OpCodes.XorN(x, OpCodes.ToUint32(OpCodes.Shl32(x, TINYMT32_SH0)));
+      y = OpCodes.ToUint32(OpCodes.XorN(y, OpCodes.XorN(OpCodes.Shr32(y, TINYMT32_SH0), x)));
 
       // Rotate state array
       this._status[0] = this._status[1];
       this._status[1] = this._status[2];
-      this._status[2] = (x ^ (y << TINYMT32_SH1)) >>> 0;
+      this._status[2] = OpCodes.ToUint32(OpCodes.XorN(x, OpCodes.Shl32(y, TINYMT32_SH1)));
       this._status[3] = y;
 
       // Conditional matrix operations based on LSB of y
       // CRITICAL: Use signed arithmetic for proper masking behavior
-      const lsb = y & 1;
+      const lsb = OpCodes.AndN(y, 1);
       if (lsb !== 0) {
-        this._status[1] ^= this._mat1;
-        this._status[2] ^= this._mat2;
+        this._status[1] = OpCodes.XorN(this._status[1], this._mat1);
+        this._status[2] = OpCodes.XorN(this._status[2], this._mat2);
       }
     }
 
@@ -320,16 +320,16 @@
       let t0, t1;
 
       t0 = this._status[3];
-      t1 = (this._status[0] + (this._status[2] >>> TINYMT32_SH8)) >>> 0;
+      t1 = OpCodes.ToUint32(this._status[0] + OpCodes.Shr32(this._status[2], TINYMT32_SH8));
 
-      t0 ^= t1;
+      t0 = OpCodes.XorN(t0, t1);
 
       // Conditional XOR with tmat based on LSB of t1
-      if ((t1 & 1) !== 0) {
-        t0 ^= this._tmat;
+      if (OpCodes.AndN(t1, 1) !== 0) {
+        t0 = OpCodes.XorN(t0, this._tmat);
       }
 
-      return t0 >>> 0;
+      return OpCodes.ToUint32(t0);
     }
 
     /**
@@ -370,10 +370,10 @@
       for (let i = 0; i < fullWords; ++i) {
         const value = this._next32();
         // Output in little-endian format
-        output.push((value) & 0xFF);
-        output.push((value >>> 8) & 0xFF);
-        output.push((value >>> 16) & 0xFF);
-        output.push((value >>> 24) & 0xFF);
+        output.push(OpCodes.AndN(value, 0xFF));
+        output.push(OpCodes.AndN(OpCodes.Shr32(value, 8), 0xFF));
+        output.push(OpCodes.AndN(OpCodes.Shr32(value, 16), 0xFF));
+        output.push(OpCodes.AndN(OpCodes.Shr32(value, 24), 0xFF));
       }
 
       // Handle remaining bytes (if length not multiple of 4)
@@ -381,7 +381,7 @@
       if (remainingBytes > 0) {
         const value = this._next32();
         for (let i = 0; i < remainingBytes; ++i) {
-          output.push((value >>> (i * 8)) & 0xFF);
+          output.push(OpCodes.AndN(OpCodes.Shr32(value, i * 8), 0xFF));
         }
       }
 

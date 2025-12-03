@@ -252,12 +252,12 @@
 
       // XOR with salt_key
       for (let i = 0; i < this._saltKey.length && i < keyLen; i++) {
-        tkey[i] ^= this._saltKey[i];
+        tkey[i] = OpCodes.XorN(tkey[i], this._saltKey[i]);
       }
 
       // XOR remaining bytes with 0x55 if salt_key is shorter than key
       for (let i = this._saltKey.length; i < keyLen; i++) {
-        tkey[i] ^= 0x55;
+        tkey[i] = OpCodes.XorN(tkey[i], 0x55);
       }
 
       // Encrypt IV with tkey to get MIV (Modified IV)
@@ -292,11 +292,11 @@
       counterBlock[blockSize - 1] = counterBytes[3];
 
       // Increment counter for next block
-      this.blockCounter = (this.blockCounter + 1) >>> 0;
+      this.blockCounter = OpCodes.ToUint32(this.blockCounter + 1);
 
       // XOR: currentIV = currentIV XOR MIV XOR counterBlock
       for (let i = 0; i < blockSize; i++) {
-        this.currentIV[i] ^= this.MIV[i] ^ counterBlock[i];
+        this.currentIV[i] = OpCodes.XorN(OpCodes.XorN(this.currentIV[i], this.MIV[i]), counterBlock[i]);
       }
 
       // Encrypt to get keystream block
@@ -353,7 +353,7 @@
         }
 
         // XOR input byte with keystream byte
-        output.push(this.inputBuffer[i] ^ this.keystreamBlock[this.padlen]);
+        output.push(OpCodes.XorN(this.inputBuffer[i], this.keystreamBlock[this.padlen]));
         this.padlen++;
       }
 

@@ -187,7 +187,7 @@
           } else {
             // Encode as literal: [FLAG=0][LITERAL]
             result.push(0); // Literal flag
-            result.push(this.inputBuffer[pos]);
+            result.push(OpCodes.ToByte(this.inputBuffer[pos]));
             pos++;
           }
         }
@@ -272,9 +272,9 @@
         const b1 = this.inputBuffer[pos + 1];
         const b2 = this.inputBuffer[pos + 2];
 
-        // Simple hash function for 3-byte sequences using multiplication instead of shifts
+        // Simple hash function for 3-byte sequences
         // Equivalent to: ((b0 << 16) | (b1 << 8) | b2)
-        return (b0 * 65536 + b1 * 256 + b2) % this.matchTableSize;
+        return OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(b0, 16), OpCodes.Shl32(b1, 8)), b2)) % this.matchTableSize;
       }
 
       /**

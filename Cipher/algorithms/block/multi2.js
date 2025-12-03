@@ -47,17 +47,17 @@
   function pi2(p, k) {
     let t = (p[1] + k[0]) >>> 0;
     t = (OpCodes.RotL32(t, 1) + t - 1) >>> 0;
-    t = (OpCodes.RotL32(t, 4) ^ t) >>> 0;
+    t = OpCodes.XorN(OpCodes.RotL32(t, 4), t) >>> 0;
     p[0] ^= t;
   }
 
   function pi3(p, k) {
     let t = (p[0] + k[1]) >>> 0;
     t = (OpCodes.RotL32(t, 2) + t + 1) >>> 0;
-    t = (OpCodes.RotL32(t, 8) ^ t) >>> 0;
+    t = OpCodes.XorN(OpCodes.RotL32(t, 8), t) >>> 0;
     t = (t + k[2]) >>> 0;
     t = (OpCodes.RotL32(t, 1) - t) >>> 0;
-    t = OpCodes.RotL32(t, 16) ^ (p[0] | t);
+    t = OpCodes.XorN(OpCodes.RotL32(t, 16), (p[0] | t));
     p[1] ^= t;
   }
 
@@ -312,7 +312,7 @@
 
     _decrypt(p) {
       let n = this._rounds;
-      let t = 4 * (((n - 1) >> 2) & 1);
+      let t = 4 * OpCodes.AndN(OpCodes.Shr32((n - 1), 2), 1);
 
       while (true) {
         const mod = n <= 4 ? n : ((n - 1) % 4) + 1;

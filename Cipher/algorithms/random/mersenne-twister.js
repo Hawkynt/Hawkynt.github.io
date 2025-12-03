@@ -210,22 +210,22 @@
       // Expecting little-endian format to match test vectors
       let seedValue = 0;
       for (let i = 0; i < Math.min(seedBytes.length, 4); ++i) {
-        seedValue |= (seedBytes[i] << (i * 8));
+        seedValue = OpCodes.OrN(seedValue, OpCodes.Shl32(seedBytes[i], i * 8));
       }
-      seedValue = seedValue >>> 0; // Ensure unsigned
+      seedValue = OpCodes.ToUint32(seedValue);
 
       // Initialize state array using improved initialization
       // This matches mt19937ar.c init_genrand() function
-      this._state[0] = seedValue >>> 0;
+      this._state[0] = OpCodes.ToUint32(seedValue);
 
       for (this._index = 1; this._index < N; ++this._index) {
-        // state[i] = f * (state[i-1] ^ (state[i-1] >> 30)) + i
+        // state[i] = f * (state[i-1] XOR (state[i-1] shr 30)) + i
         const prev = this._state[this._index - 1];
-        const xored = prev ^ (prev >>> 30);
+        const xored = OpCodes.XorN(prev, OpCodes.Shr32(prev, 30));
         // CRITICAL: Must truncate multiplication to 32-bit BEFORE adding index
         // to avoid JavaScript floating-point precision loss with large numbers
-        const mult = (INIT_MULTIPLIER * xored) >>> 0;
-        this._state[this._index] = (mult + this._index) >>> 0;
+        const mult = OpCodes.ToUint32(INIT_MULTIPLIER * xored);
+        this._state[this._index] = OpCodes.ToUint32(mult + this._index);
       }
 
       // Reset index to trigger twist on first generation
@@ -257,12 +257,12 @@
       let y = this._state[this._index++];
 
       // Tempering transformations
-      y ^= (y >>> 11);
-      y ^= ((y << 7) & TEMPERING_MASK_B) >>> 0;
-      y ^= ((y << 15) & TEMPERING_MASK_C) >>> 0;
-      y ^= (y >>> 18);
+      y = OpCodes.XorN(y, OpCodes.Shr32(y, 11));
+      y = OpCodes.ToUint32(OpCodes.XorN(y, OpCodes.AndN(OpCodes.Shl32(y, 7), TEMPERING_MASK_B)));
+      y = OpCodes.ToUint32(OpCodes.XorN(y, OpCodes.AndN(OpCodes.Shl32(y, 15), TEMPERING_MASK_C)));
+      y = OpCodes.XorN(y, OpCodes.Shr32(y, 18));
 
-      return y >>> 0;
+      return OpCodes.ToUint32(y);
     }
 
     /**
@@ -274,20 +274,20 @@
 
       // First loop: i from 0 to N-M-1
       for (i = 0; i < N - M; ++i) {
-        const y = (this._state[i] & UPPER_MASK) | (this._state[i + 1] & LOWER_MASK);
-        this._state[i] = this._state[i + M] ^ (y >>> 1) ^ this._mag01[y & 0x1];
+        const y = OpCodes.OrN(OpCodes.AndN(this._state[i], UPPER_MASK), OpCodes.AndN(this._state[i + 1], LOWER_MASK));
+        this._state[i] = OpCodes.XorN(OpCodes.XorN(this._state[i + M], OpCodes.Shr32(y, 1)), this._mag01[OpCodes.AndN(y, 0x1)]);
       }
 
       // Second loop: i from N-M to N-2
       for (; i < N - 1; ++i) {
-        const y = (this._state[i] & UPPER_MASK) | (this._state[i + 1] & LOWER_MASK);
-        this._state[i] = this._state[i + (M - N)] ^ (y >>> 1) ^ this._mag01[y & 0x1];
+        const y = OpCodes.OrN(OpCodes.AndN(this._state[i], UPPER_MASK), OpCodes.AndN(this._state[i + 1], LOWER_MASK));
+        this._state[i] = OpCodes.XorN(OpCodes.XorN(this._state[i + (M - N)], OpCodes.Shr32(y, 1)), this._mag01[OpCodes.AndN(y, 0x1)]);
       }
 
       // Final element
       {
-        const y = (this._state[N - 1] & UPPER_MASK) | (this._state[0] & LOWER_MASK);
-        this._state[N - 1] = this._state[M - 1] ^ (y >>> 1) ^ this._mag01[y & 0x1];
+        const y = OpCodes.OrN(OpCodes.AndN(this._state[N - 1], UPPER_MASK), OpCodes.AndN(this._state[0], LOWER_MASK));
+        this._state[N - 1] = OpCodes.XorN(OpCodes.XorN(this._state[M - 1], OpCodes.Shr32(y, 1)), this._mag01[OpCodes.AndN(y, 0x1)]);
       }
 
       this._index = 0;
@@ -316,10 +316,10 @@
       for (let i = 0; i < fullWords; ++i) {
         const value = this._next32();
         // Output in little-endian format
-        output.push((value) & 0xFF);
-        output.push((value >>> 8) & 0xFF);
-        output.push((value >>> 16) & 0xFF);
-        output.push((value >>> 24) & 0xFF);
+        output.push(OpCodes.AndN(value, 0xFF));
+        output.push(OpCodes.AndN(OpCodes.Shr32(value, 8), 0xFF));
+        output.push(OpCodes.AndN(OpCodes.Shr32(value, 16), 0xFF));
+        output.push(OpCodes.AndN(OpCodes.Shr32(value, 24), 0xFF));
       }
 
       // Handle remaining bytes (if length not multiple of 4)
@@ -327,7 +327,7 @@
       if (remainingBytes > 0) {
         const value = this._next32();
         for (let i = 0; i < remainingBytes; ++i) {
-          output.push((value >>> (i * 8)) & 0xFF);
+          output.push(OpCodes.AndN(OpCodes.Shr32(value, i * 8), 0xFF));
         }
       }
 

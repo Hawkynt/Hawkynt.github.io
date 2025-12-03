@@ -81,7 +81,7 @@
 
     // Process remaining bits from second-most significant to least significant
     for (let i = bitLength - 2; i >= 0; i--) {
-      if ((e >> BigInt(i)) & 1n) {
+      if (OpCodes.AndN(OpCodes.ShiftRn(e, BigInt(i)), 1n)) {
         // Bit is 1: v_{2k+1} = v_k * v_{k+1} - p, v_{2k+2} = v_{k+1}^2 - 2
         let temp = (v * v1 - p) % n;
         if (temp < 0n) temp += n;
@@ -144,7 +144,7 @@
    * @returns {number} Jacobi symbol value (-1, 0, or 1)
    */
   function Jacobi(a, b) {
-    if (b <= 0n || (b & 1n) === 0n) {
+    if (b <= 0n || OpCodes.AndN(b, 1n) === 0n) {
       throw new Error('Jacobi: b must be positive and odd');
     }
 
@@ -154,21 +154,21 @@
     while (a !== 0n) {
       // Remove factors of 2
       let i = 0n;
-      while ((a & 1n) === 0n) {
-        a >>= 1n;
+      while (OpCodes.AndN(a, 1n) === 0n) {
+        a = OpCodes.ShiftRn(a, 1n);
         i++;
       }
 
       // If removed odd number of 2s and b ≡ 3,5 (mod 8), flip sign
-      if ((i & 1n) === 1n) {
-        const bMod8 = b & 7n;
+      if (OpCodes.AndN(i, 1n) === 1n) {
+        const bMod8 = OpCodes.AndN(b, 7n);
         if (bMod8 === 3n || bMod8 === 5n) {
           result = -result;
         }
       }
 
       // Quadratic reciprocity: if both a,b ≡ 3 (mod 4), flip sign
-      if ((a & 3n) === 3n && (b & 3n) === 3n) {
+      if (OpCodes.AndN(a, 3n) === 3n && OpCodes.AndN(b, 3n) === 3n) {
         result = -result;
       }
 
@@ -238,7 +238,7 @@
       if (exp % 2n === 1n) {
         result = (result * base) % modulus;
       }
-      exp = exp >> 1n;
+      exp = OpCodes.ShiftRn(exp, 1n);
       base = (base * base) % modulus;
     }
     return result;

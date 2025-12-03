@@ -292,9 +292,9 @@
       for (let i = 0; i < blockSize; i++) {
         let maskByte = blockIndex + totalBlocks;
         if (this.tweak && i < this.tweak.length) {
-          maskByte ^= this.tweak[i];
+          maskByte = OpCodes.XorN(maskByte, this.tweak[i]);
         }
-        mask[i] = (maskByte + i) & 0xFF;
+        mask[i] = OpCodes.AndN(maskByte + i, 0xFF);
       }
 
       return mask;

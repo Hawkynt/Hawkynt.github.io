@@ -88,7 +88,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   function cubeHashTransform(x) {
     // Step 1: Add x_0jklm into x_1jklm modulo 2^32, for each (j,k,l,m)
     for (let i = 0; i < 16; ++i) {
-      x[16 + i] = (x[16 + i] + x[i]) >>> 0;
+      x[16 + i] = OpCodes.ToUint32(x[16 + i] + x[i]);
     }
 
     // Step 2: Rotate x_0jklm upwards by 7 bits, for each (j,k,l,m)
@@ -105,7 +105,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
     // Step 4: XOR x_1jklm into x_0jklm, for each (j,k,l,m)
     for (let i = 0; i < 16; ++i) {
-      x[i] ^= x[16 + i];
+      x[i] = OpCodes.XorN(x[i], x[16 + i]);
     }
 
     // Step 5: Swap x_1jk0m with x_1jk1m, for each (j,k,m)
@@ -120,7 +120,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
     // Step 6: Add x_0jklm into x_1jklm modulo 2^32, for each (j,k,l,m)
     for (let i = 0; i < 16; ++i) {
-      x[16 + i] = (x[16 + i] + x[i]) >>> 0;
+      x[16 + i] = OpCodes.ToUint32(x[16 + i] + x[i]);
     }
 
     // Step 7: Rotate x_0jklm upwards by 11 bits, for each (j,k,l,m)
@@ -146,7 +146,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
     // Step 9: XOR x_1jklm into x_0jklm, for each (j,k,l,m)
     for (let i = 0; i < 16; ++i) {
-      x[i] ^= x[16 + i];
+      x[i] = OpCodes.XorN(x[i], x[16 + i]);
     }
 
     // Step 10: Swap x_1jkl0 with x_1jkl1, for each (j,k,l)
@@ -215,9 +215,9 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     _processBlock() {
       // XOR block into state (little-endian byte order)
       for (let i = 0; i < this.blockBytes; ++i) {
-        const wordIdx = i >>> 2;
-        const byteIdx = i & 3;
-        this.state[wordIdx] ^= (this.buffer[i] << (byteIdx * 8)) >>> 0;
+        const wordIdx = OpCodes.Shr32(i, 2);
+        const byteIdx = OpCodes.AndN(i, 3);
+        this.state[wordIdx] = OpCodes.XorN(this.state[wordIdx], OpCodes.Shl32(this.buffer[i], byteIdx * 8));
       }
 
       // Apply r rounds
@@ -235,18 +235,18 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     Result() {
       // Pad with 0x80 at current position
       const padPos = this.buffer.length;
-      const wordIdx = padPos >>> 2;
-      const byteIdx = padPos & 3;
+      const wordIdx = OpCodes.Shr32(padPos, 2);
+      const byteIdx = OpCodes.AndN(padPos, 3);
 
       // XOR any remaining buffered data
       for (let i = 0; i < this.buffer.length; ++i) {
-        const wIdx = i >>> 2;
-        const bIdx = i & 3;
-        this.state[wIdx] ^= (this.buffer[i] << (bIdx * 8)) >>> 0;
+        const wIdx = OpCodes.Shr32(i, 2);
+        const bIdx = OpCodes.AndN(i, 3);
+        this.state[wIdx] = OpCodes.XorN(this.state[wIdx], OpCodes.Shl32(this.buffer[i], bIdx * 8));
       }
 
       // XOR padding byte
-      this.state[wordIdx] ^= (0x80 << (byteIdx * 8)) >>> 0;
+      this.state[wordIdx] = OpCodes.XorN(this.state[wordIdx], OpCodes.Shl32(0x80, byteIdx * 8));
 
       // Apply r rounds after padding
       for (let i = 0; i < this.rounds; ++i) {
@@ -254,7 +254,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       }
 
       // Finalization: XOR 1 into state[31]
-      this.state[31] ^= 1;
+      this.state[31] = OpCodes.XorN(this.state[31], 1);
 
       // Apply 10*r final rounds
       for (let i = 0; i < 10 * this.rounds; ++i) {
@@ -264,9 +264,9 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       // Extract hash (first h/8 bytes from state, little-endian)
       const output = [];
       for (let i = 0; i < this.hashBytes; ++i) {
-        const wordIndex = i >>> 2;
-        const byteIndex = i & 3;
-        output.push((this.state[wordIndex] >>> (byteIndex * 8)) & 0xFF);
+        const wordIndex = OpCodes.Shr32(i, 2);
+        const byteIndex = OpCodes.AndN(i, 3);
+        output.push(OpCodes.AndN(OpCodes.Shr32(this.state[wordIndex], byteIndex * 8), 0xFF));
       }
 
       return output;

@@ -179,14 +179,14 @@
       // Convert seed bytes to 128-bit BigInt (big-endian)
       let seedValue = 0n;
       for (let i = 0; i < 16; ++i) {
-        seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8n), BigInt(seed128[i]));
+        seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, BigInt(8)), BigInt(seed128[i]));
       }
 
       // For test vector compatibility:
       // Lower 64 bits (bytes 8-15) = state
       // Upper 64 bits (bytes 0-7) = increment (ensure odd)
-      this._state = seedValue & this.MASK_64;
-      this._increment = OpCodes.OrN((seedValue >> 64n) & this.MASK_64, 1n);
+      this._state = OpCodes.AndN(seedValue, this.MASK_64);
+      this._increment = OpCodes.OrN(OpCodes.AndN(OpCodes.ShiftRn(seedValue, BigInt(64)), this.MASK_64), 1n);
 
       // Note: We don't perform initial LCG step here to match test vectors
       // NumPy does seeding differently via SeedSequence
@@ -211,7 +211,7 @@
      */
     _lcgStep(state) {
       // Use 64-bit "cheap" multiplier for LCG (not 128-bit!)
-      const result = (state * this.MULTIPLIER_64 + this._increment) & this.MASK_128;
+      const result = OpCodes.AndN(state * this.MULTIPLIER_64 + this._increment, this.MASK_128);
       return result;
     }
 
@@ -229,21 +229,21 @@
      */
     _dxsmOutput(state) {
       // Split 128-bit state into high and low 64-bit parts
-      let hi = (state >> 64n) & this.MASK_64;
-      const lo = state & this.MASK_64;
+      let hi = OpCodes.AndN(OpCodes.ShiftRn(state, BigInt(64)), this.MASK_64);
+      const lo = OpCodes.AndN(state, this.MASK_64);
 
       // First xorshift (32-bit shift)
-      hi = OpCodes.XorN(hi, hi >> 32n) & this.MASK_64;
+      hi = OpCodes.AndN(OpCodes.XorN(hi, OpCodes.ShiftRn(hi, BigInt(32))), this.MASK_64);
 
       // Multiply by cheap multiplier
-      hi = (hi * this.MULTIPLIER_64) & this.MASK_64;
+      hi = OpCodes.AndN(hi * this.MULTIPLIER_64, this.MASK_64);
 
       // Second xorshift (48-bit shift)
-      hi = OpCodes.XorN(hi, hi >> 48n) & this.MASK_64;
+      hi = OpCodes.AndN(OpCodes.XorN(hi, OpCodes.ShiftRn(hi, BigInt(48))), this.MASK_64);
 
       // Final multiply with low bits (ensure odd)
       const loOdd = OpCodes.OrN(lo, 1n);
-      hi = (hi * loOdd) & this.MASK_64;
+      hi = OpCodes.AndN(hi * loOdd, this.MASK_64);
 
       return hi;
     }
@@ -298,8 +298,8 @@
         const bytes = [];
         let v = value64;
         for (let i = 0; i < 8; ++i) {
-          bytes.unshift(Number(v & 0xFFn));
-          v = v >> 8n;
+          bytes.unshift(Number(OpCodes.AndN(v, 0xFFn)));
+          v = OpCodes.ShiftRn(v, BigInt(8));
         }
         result.push(...bytes);
       }

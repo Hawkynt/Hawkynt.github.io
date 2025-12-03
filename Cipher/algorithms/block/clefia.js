@@ -108,20 +108,20 @@
     b &= 0xFF;
 
     for (let i = 0; i < 8; i++) {
-      if (b & 1) {
-        result ^= a;
+      if (OpCodes.AndN(b, 1)) {
+        result = OpCodes.XorN(result, a);
       }
 
-      const highBit = a & 0x80;
-      a = (a << 1) & 0xFF;
+      const highBit = OpCodes.AndN(a, 0x80);
+      a = OpCodes.AndN(OpCodes.Shl8(a, 1), 0xFF);
       if (highBit) {
-        a ^= 0x1D; // CLEFIA polynomial: z^8 + z^4 + z^3 + z^2 + 1
+        a = OpCodes.XorN(a, 0x1D); // CLEFIA polynomial: z^8 + z^4 + z^3 + z^2 + 1
       }
 
-      b >>>= 1;
+      b = OpCodes.Shr8(b, 1);
     }
 
-    return result & 0xFF;
+    return OpCodes.AndN(result, 0xFF);
   }
 
   /**
@@ -294,7 +294,7 @@
           const conWord = conWords[conStartIdx + i * 4 + j];
           const conBytes = OpCodes.Unpack32BE(conWord);
           for (let k = 0; k < 4; k++) {
-            temp[j * 4 + k] = L[j * 4 + k] ^ conBytes[k];
+            temp[j * 4 + k] = OpCodes.XorN(L[j * 4 + k], conBytes[k]);
           }
         }
 
@@ -327,24 +327,24 @@
       const t = new Array(16);
 
       // First half (bytes 0-7): 7-bit left rotation with crossover
-      t[0] = ((x[0] << 7) | (x[1] >>> 1)) & 0xFF;
-      t[1] = ((x[1] << 7) | (x[2] >>> 1)) & 0xFF;
-      t[2] = ((x[2] << 7) | (x[3] >>> 1)) & 0xFF;
-      t[3] = ((x[3] << 7) | (x[4] >>> 1)) & 0xFF;
-      t[4] = ((x[4] << 7) | (x[5] >>> 1)) & 0xFF;
-      t[5] = ((x[5] << 7) | (x[6] >>> 1)) & 0xFF;
-      t[6] = ((x[6] << 7) | (x[7] >>> 1)) & 0xFF;
-      t[7] = ((x[7] << 7) | (x[15] & 0x7F)) & 0xFF;
+      t[0] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl8(x[0], 7), OpCodes.Shr8(x[1], 1)), 0xFF);
+      t[1] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl8(x[1], 7), OpCodes.Shr8(x[2], 1)), 0xFF);
+      t[2] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl8(x[2], 7), OpCodes.Shr8(x[3], 1)), 0xFF);
+      t[3] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl8(x[3], 7), OpCodes.Shr8(x[4], 1)), 0xFF);
+      t[4] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl8(x[4], 7), OpCodes.Shr8(x[5], 1)), 0xFF);
+      t[5] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl8(x[5], 7), OpCodes.Shr8(x[6], 1)), 0xFF);
+      t[6] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl8(x[6], 7), OpCodes.Shr8(x[7], 1)), 0xFF);
+      t[7] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl8(x[7], 7), OpCodes.AndN(x[15], 0x7F)), 0xFF);
 
       // Second half (bytes 8-15): 7-bit right rotation with crossover
-      t[8] = ((x[8] >>> 7) | (x[0] & 0xFE)) & 0xFF;
-      t[9] = ((x[9] >>> 7) | (x[8] << 1)) & 0xFF;
-      t[10] = ((x[10] >>> 7) | (x[9] << 1)) & 0xFF;
-      t[11] = ((x[11] >>> 7) | (x[10] << 1)) & 0xFF;
-      t[12] = ((x[12] >>> 7) | (x[11] << 1)) & 0xFF;
-      t[13] = ((x[13] >>> 7) | (x[12] << 1)) & 0xFF;
-      t[14] = ((x[14] >>> 7) | (x[13] << 1)) & 0xFF;
-      t[15] = ((x[15] >>> 7) | (x[14] << 1)) & 0xFF;
+      t[8] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr8(x[8], 7), OpCodes.AndN(x[0], 0xFE)), 0xFF);
+      t[9] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr8(x[9], 7), OpCodes.Shl8(x[8], 1)), 0xFF);
+      t[10] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr8(x[10], 7), OpCodes.Shl8(x[9], 1)), 0xFF);
+      t[11] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr8(x[11], 7), OpCodes.Shl8(x[10], 1)), 0xFF);
+      t[12] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr8(x[12], 7), OpCodes.Shl8(x[11], 1)), 0xFF);
+      t[13] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr8(x[13], 7), OpCodes.Shl8(x[12], 1)), 0xFF);
+      t[14] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr8(x[14], 7), OpCodes.Shl8(x[13], 1)), 0xFF);
+      t[15] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr8(x[15], 7), OpCodes.Shl8(x[14], 1)), 0xFF);
 
       // Copy back to input array
       for (let i = 0; i < 16; i++) {
@@ -416,18 +416,18 @@
 
       // S-box substitution: S0,S1,S0,S1
       const y = [
-        S0[xBytes[0] ^ rk[0]],
-        S1[xBytes[1] ^ rk[1]],
-        S0[xBytes[2] ^ rk[2]],
-        S1[xBytes[3] ^ rk[3]]
+        S0[OpCodes.XorN(xBytes[0], rk[0])],
+        S1[OpCodes.XorN(xBytes[1], rk[1])],
+        S0[OpCodes.XorN(xBytes[2], rk[2])],
+        S1[OpCodes.XorN(xBytes[3], rk[3])]
       ];
 
       // Diffusion matrix multiplication (GF(2^8))
       const z = [
-        y[0] ^ gfMul(y[1], 2) ^ gfMul(y[2], 4) ^ gfMul(y[3], 6),
-        gfMul(y[0], 2) ^ y[1] ^ gfMul(y[2], 6) ^ gfMul(y[3], 4),
-        gfMul(y[0], 4) ^ gfMul(y[1], 6) ^ y[2] ^ gfMul(y[3], 2),
-        gfMul(y[0], 6) ^ gfMul(y[1], 4) ^ gfMul(y[2], 2) ^ y[3]
+        OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(y[0], gfMul(y[1], 2)), gfMul(y[2], 4)), gfMul(y[3], 6)),
+        OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(gfMul(y[0], 2), y[1]), gfMul(y[2], 6)), gfMul(y[3], 4)),
+        OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(gfMul(y[0], 4), gfMul(y[1], 6)), y[2]), gfMul(y[3], 2)),
+        OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(gfMul(y[0], 6), gfMul(y[1], 4)), gfMul(y[2], 2)), y[3])
       ];
 
       // Pack result back into 32-bit word (big-endian per RFC 6114)
@@ -442,18 +442,18 @@
 
       // S-box substitution: S1,S0,S1,S0
       const y = [
-        S1[xBytes[0] ^ rk[0]],
-        S0[xBytes[1] ^ rk[1]],
-        S1[xBytes[2] ^ rk[2]],
-        S0[xBytes[3] ^ rk[3]]
+        S1[OpCodes.XorN(xBytes[0], rk[0])],
+        S0[OpCodes.XorN(xBytes[1], rk[1])],
+        S1[OpCodes.XorN(xBytes[2], rk[2])],
+        S0[OpCodes.XorN(xBytes[3], rk[3])]
       ];
 
       // Diffusion matrix multiplication (GF(2^8))
       const z = [
-        y[0] ^ gfMul(y[1], 8) ^ gfMul(y[2], 2) ^ gfMul(y[3], 10),
-        gfMul(y[0], 8) ^ y[1] ^ gfMul(y[2], 10) ^ gfMul(y[3], 2),
-        gfMul(y[0], 2) ^ gfMul(y[1], 10) ^ y[2] ^ gfMul(y[3], 8),
-        gfMul(y[0], 10) ^ gfMul(y[1], 2) ^ gfMul(y[2], 8) ^ y[3]
+        OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(y[0], gfMul(y[1], 8)), gfMul(y[2], 2)), gfMul(y[3], 10)),
+        OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(gfMul(y[0], 8), y[1]), gfMul(y[2], 10)), gfMul(y[3], 2)),
+        OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(gfMul(y[0], 2), gfMul(y[1], 10)), y[2]), gfMul(y[3], 8)),
+        OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(gfMul(y[0], 10), gfMul(y[1], 2)), gfMul(y[2], 8)), y[3])
       ];
 
       // Pack result back into 32-bit word (big-endian per RFC 6114)

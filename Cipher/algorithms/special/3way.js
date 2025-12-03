@@ -181,8 +181,8 @@
             roundKey[2] = prevKey[2];
 
             // Apply round constant
-            const rcon = (1 << (round - 1)) & global.OpCodes.MASK32;
-            roundKey[0] ^= rcon;
+            const rcon = global.OpCodes.AndN(global.OpCodes.Shl32(1, round - 1), global.OpCodes.MASK32);
+            roundKey[0] = global.OpCodes.XorN(roundKey[0], rcon);
 
             // Simple key schedule transformation
             roundKey[0] = this._theta(roundKey[0]);
@@ -280,24 +280,24 @@
 
       // Theta linear transformation
       _theta(x) {
-        const y = x ^ global.OpCodes.RotL32(x, 16) ^ global.OpCodes.RotL32(x, 8);
-        return y >>> 0;
+        const y = global.OpCodes.XorN(x, global.OpCodes.XorN(global.OpCodes.RotL32(x, 16), global.OpCodes.RotL32(x, 8)));
+        return global.OpCodes.ToUint32(y);
       }
 
       // Pi permutation
       _pi(x) {
         let result = 0;
         for (let i = 0; i < 32; i++) {
-          const bit = (x >>> i) & 1;
+          const bit = global.OpCodes.AndN(global.OpCodes.Shr32(x, i), 1);
           const newPos = this._piTable[i];
-          result |= (bit << newPos);
+          result = global.OpCodes.OrN(result, global.OpCodes.Shl32(bit, newPos));
         }
-        return result >>> 0;
+        return global.OpCodes.ToUint32(result);
       }
 
       // Gamma substitution (simplified)
       _gamma(a, b, c) {
-        return a ^ (b | (~c));
+        return global.OpCodes.XorN(a, global.OpCodes.OrN(b, ~c));
       }
 
       get _piTable() {

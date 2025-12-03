@@ -52,7 +52,7 @@
     clockLFSR: function(register, size, tapPositions) {
       let feedback = 0;
       for (const pos of tapPositions) {
-        feedback ^= register[pos % size];
+        feedback = OpCodes.XorN(feedback, register[pos % size]);
       }
 
       for (let i = 0; i < size - 1; i++) {
@@ -75,7 +75,7 @@
       const s3 = register[3];
 
       // Simple nonlinear function: (s0 AND s1) XOR (s2 AND s3) XOR s0
-      return ((s0 & s1) ^ (s2 & s3) ^ s0) & 1;
+      return OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(s0, s1), OpCodes.AndN(s2, s3)), s0), 1);
     },
 
     /**
@@ -90,7 +90,7 @@
       for (let i = 0; i < size && bitIndex < keyBytes.length * 8; i++) {
         const byteIndex = Math.floor(bitIndex / 8);
         const bitPos = bitIndex % 8;
-        register[i] = (keyBytes[byteIndex] >>> bitPos) & 1;
+        register[i] = OpCodes.AndN(OpCodes.Shr32(keyBytes[byteIndex], bitPos), 1);
         bitIndex++;
       }
 
@@ -203,7 +203,7 @@
       const controlS = this.registerS[0];
 
       // Clock register R (LFSR-style with simplified polynomial)
-      const feedbackR = this.registerR[0] ^ this.registerR[7] ^ this.registerR[15];
+      const feedbackR = OpCodes.XorN(OpCodes.XorN(this.registerR[0], this.registerR[7]), this.registerR[15]);
       for (let i = 0; i < this.REGISTER_SIZE - 1; i++) {
         this.registerR[i] = this.registerR[i + 1];
       }
@@ -216,7 +216,7 @@
       }
       this.registerS[this.REGISTER_SIZE - 1] = feedbackS;
 
-      return controlR ^ controlS;
+      return OpCodes.XorN(controlR, controlS);
     },
 
     /**
@@ -229,7 +229,7 @@
       }
 
       // Output is combination of both registers
-      const output = this.registerR[0] ^ this.registerS[0];
+      const output = OpCodes.XorN(this.registerR[0], this.registerS[0]);
 
       // Clock the registers
       this.clockRegisters();
@@ -246,7 +246,7 @@
 
       for (let bit = 0; bit < 8; bit++) {
         const bitValue = this.generateBit();
-        byte |= (bitValue << bit);
+        byte = OpCodes.OrN(byte, OpCodes.Shl32(bitValue, bit));
       }
 
       return byte;
@@ -460,18 +460,18 @@
 
       // Seed registers with key (16 bytes = 128 bits)
       for (let i = 0; i < 16; i++) {
-        state.registerR[i % 32] ^= key[i];
-        state.registerS[i % 32] ^= key[15 - i]; // Reverse order for S
+        state.registerR[i % 32] = OpCodes.XorN(state.registerR[i % 32], key[i]);
+        state.registerS[i % 32] = OpCodes.XorN(state.registerS[i % 32], key[15 - i]); // Reverse order for S
       }
 
       // Simple mixing inspired by MICKEY irregular clocking
       for (let round = 0; round < 32; round++) {
         for (let i = 0; i < 32; i++) {
-          const feedbackR = state.registerR[(i + 13) % 32] ^ state.registerR[(i + 29) % 32];
-          const feedbackS = state.registerS[(i + 17) % 32] ^ state.registerS[(i + 23) % 32];
+          const feedbackR = OpCodes.XorN(state.registerR[(i + 13) % 32], state.registerR[(i + 29) % 32]);
+          const feedbackS = OpCodes.XorN(state.registerS[(i + 17) % 32], state.registerS[(i + 23) % 32]);
 
-          state.registerR[i] = (state.registerR[i] + feedbackR + round) & 0xFF;
-          state.registerS[i] = (state.registerS[i] + feedbackS + round + 1) & 0xFF;
+          state.registerR[i] = OpCodes.AndN((state.registerR[i] + feedbackR + round), 0xFF);
+          state.registerS[i] = OpCodes.AndN((state.registerS[i] + feedbackS + round + 1), 0xFF);
         }
       }
 
@@ -486,23 +486,23 @@
       const posS = (this.state.pos + 17) % 32;
 
       // Control bits for irregular clocking
-      const controlR = this.state.registerS[posS] & 1;
-      const controlS = this.state.registerR[posR] & 1;
+      const controlR = OpCodes.AndN(this.state.registerS[posS], 1);
+      const controlS = OpCodes.AndN(this.state.registerR[posR], 1);
 
       // Output byte
-      const byte = (this.state.registerR[posR] ^ this.state.registerS[posS] ^ this.state.counter) & 0xFF;
+      const byte = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(this.state.registerR[posR], this.state.registerS[posS]), this.state.counter), 0xFF);
 
       // Update registers based on control bits (irregular clocking)
       if (controlR) {
-        this.state.registerR[posR] = (this.state.registerR[posR] + byte + 1) & 0xFF;
+        this.state.registerR[posR] = OpCodes.AndN((this.state.registerR[posR] + byte + 1), 0xFF);
       }
       if (controlS) {
-        this.state.registerS[posS] = (this.state.registerS[posS] + byte + 2) & 0xFF;
+        this.state.registerS[posS] = OpCodes.AndN((this.state.registerS[posS] + byte + 2), 0xFF);
       }
 
       // Always advance position and counter
       this.state.pos = (this.state.pos + 1) % 32;
-      this.state.counter = (this.state.counter + 1) & 0xFF;
+      this.state.counter = OpCodes.AndN((this.state.counter + 1), 0xFF);
 
       return byte;
     },
@@ -512,7 +512,7 @@
 
       const output = new Array(input.length);
       for (let i = 0; i < input.length; i++) {
-        output[i] = input[i] ^ this.generateByte();
+        output[i] = OpCodes.XorN(input[i], this.generateByte());
       }
 
       return output;
@@ -552,7 +552,7 @@
 
           const output = new Array(this._inputData.length);
           for (let i = 0; i < this._inputData.length; i++) {
-            output[i] = this._inputData[i] ^ this._cipher.generateByte();
+            output[i] = OpCodes.XorN(this._inputData[i], this._cipher.generateByte());
           }
 
           return output;

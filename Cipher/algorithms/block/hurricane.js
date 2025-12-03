@@ -239,7 +239,7 @@
     _calculateChecksum(bytes) {
       let checksum = 0;
       for (let i = 0; i < bytes.length; ++i) {
-        checksum = (checksum + bytes[i]) & 0xFF; // mod 256
+        checksum = OpCodes.AndN((checksum + bytes[i]), 0xFF); // mod 256
       }
       return checksum;
     }
@@ -315,7 +315,7 @@
           // Generate candidate using key
           // IMPORTANT: z accumulates across retries (NOT reset on collision)
           for (let j = keyLen - 1; j >= m; --j) {
-            z = (z + key[j] + x) & 0xFF; // mod 256
+            z = OpCodes.AndN((z + key[j] + x), 0xFF); // mod 256
           }
 
           // m increments on every attempt (matching Pascal GOTO KeyLoop behavior)
@@ -387,7 +387,7 @@
         }
 
         // Pass 3: Backward with KeyCS XOR 0x55
-        output[len - 1] = this.matrix[output[len - 1]][keyCS ^ 0x55];
+        output[len - 1] = this.matrix[output[len - 1]][OpCodes.XorN(keyCS, 0x55)];
 
         // Pass 4: Backward with next byte
         for (let i = len - 2; i >= 0; --i) {
@@ -417,7 +417,7 @@
       }
 
       // Reverse Pass 3: Backward with KeyCS XOR 0x55
-      output[len - 1] = this.matrix_1[output[len - 1]][keyCS ^ 0x55];
+      output[len - 1] = this.matrix_1[output[len - 1]][OpCodes.XorN(keyCS, 0x55)];
 
       // Reverse Pass 2: Backward with previous byte
       for (let i = len - 1; i >= 1; --i) {

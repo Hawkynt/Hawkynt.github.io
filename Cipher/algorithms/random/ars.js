@@ -133,18 +133,18 @@
       const s2 = state[base + 2];
       const s3 = state[base + 3];
 
-      state[base] = (
-        OpCodes.GF256Mul(s0, 2) ^ OpCodes.GF256Mul(s1, 3) ^ s2 ^ s3
-      ) & 0xFF;
-      state[base + 1] = (
-        s0 ^ OpCodes.GF256Mul(s1, 2) ^ OpCodes.GF256Mul(s2, 3) ^ s3
-      ) & 0xFF;
-      state[base + 2] = (
-        s0 ^ s1 ^ OpCodes.GF256Mul(s2, 2) ^ OpCodes.GF256Mul(s3, 3)
-      ) & 0xFF;
-      state[base + 3] = (
-        OpCodes.GF256Mul(s0, 3) ^ s1 ^ s2 ^ OpCodes.GF256Mul(s3, 2)
-      ) & 0xFF;
+      state[base] = OpCodes.AndN(
+        OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(s0, 2), OpCodes.GF256Mul(s1, 3)), OpCodes.XorN(s2, s3)),
+        0xFF);
+      state[base + 1] = OpCodes.AndN(
+        OpCodes.XorN(OpCodes.XorN(s0, OpCodes.GF256Mul(s1, 2)), OpCodes.XorN(OpCodes.GF256Mul(s2, 3), s3)),
+        0xFF);
+      state[base + 2] = OpCodes.AndN(
+        OpCodes.XorN(OpCodes.XorN(s0, s1), OpCodes.XorN(OpCodes.GF256Mul(s2, 2), OpCodes.GF256Mul(s3, 3))),
+        0xFF);
+      state[base + 3] = OpCodes.AndN(
+        OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(s0, 3), s1), OpCodes.XorN(s2, OpCodes.GF256Mul(s3, 2))),
+        0xFF);
     }
   }
 
@@ -168,7 +168,7 @@
 
     // XOR with round key (AddRoundKey)
     for (let i = 0; i < 16; ++i) {
-      state[i] ^= roundKey[i];
+      state[i] = OpCodes.XorN(state[i], roundKey[i]);
     }
   }
 
@@ -194,16 +194,16 @@
     let carry = 0;
     for (let i = 0; i < 8; ++i) {
       const sum = key[i] + WEYL_CONSTANT[i] + carry;
-      result[i] = sum & 0xFF;
-      carry = sum >>> 8;
+      result[i] = OpCodes.AndN(sum, 0xFF);
+      carry = OpCodes.Shr32(sum, 8);
     }
 
     // Add second 64-bit word (bytes 8-15)
     carry = 0;
     for (let i = 8; i < 16; ++i) {
       const sum = key[i] + WEYL_CONSTANT[i] + carry;
-      result[i] = sum & 0xFF;
-      carry = sum >>> 8;
+      result[i] = OpCodes.AndN(sum, 0xFF);
+      carry = OpCodes.Shr32(sum, 8);
     }
 
     return result;
@@ -221,7 +221,7 @@
     // Initialize state with counter XOR key (initial whitening)
     const state = new Array(16);
     for (let i = 0; i < 16; ++i) {
-      state[i] = counter[i] ^ key[i];
+      state[i] = OpCodes.XorN(counter[i], key[i]);
     }
 
     // Current round key starts with the input key
@@ -454,7 +454,7 @@
     _incrementCounter() {
       // Increment as a 128-bit little-endian integer
       for (let i = 0; i < 16; ++i) {
-        this._counter[i] = (this._counter[i] + 1) & 0xFF;
+        this._counter[i] = OpCodes.AndN(this._counter[i] + 1, 0xFF);
         if (this._counter[i] !== 0) {
           break; // No carry, done
         }

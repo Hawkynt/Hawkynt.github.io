@@ -58,7 +58,7 @@
 
   // 64-bit XOR operation
   function xor64(a, b) {
-    return [a[0] ^ b[0], a[1] ^ b[1]];
+    return [OpCodes.XorN(a[0], b[0]), OpCodes.XorN(a[1], b[1])];
   }
 
   // 64-bit rotation (left)
@@ -70,15 +70,15 @@
 
     if (positions < 32) {
       return [
-        ((low << positions) | (high >>> (32 - positions))) >>> 0,
-        ((high << positions) | (low >>> (32 - positions))) >>> 0
+        OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions))),
+        OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions)))
       ];
     }
 
     positions -= 32;
     return [
-      ((high << positions) | (low >>> (32 - positions))) >>> 0,
-      ((low << positions) | (high >>> (32 - positions))) >>> 0
+      OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions))),
+      OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions)))
     ];
   }
 
@@ -98,7 +98,7 @@
 
       const D = new Array(5);
       for (let x = 0; x < 5; ++x) {
-        D[x] = xor64(C[(x + 4) % 5], rotl64(C[(x + 1) % 5], 1));
+        D[x] = xor64(C[OpCodes.AndN(x + 4, 0xFF) % 5], rotl64(C[OpCodes.AndN(x + 1, 0xFF) % 5], 1));
       }
 
       for (let x = 0; x < 5; ++x) {
@@ -119,7 +119,7 @@
       }
       for (let x = 0; x < 5; ++x) {
         for (let y = 0; y < 5; ++y) {
-          state[y + 5 * ((2 * x + 3 * y) % 5)] = temp[x + 5 * y];
+          state[y + 5 * (OpCodes.AndN(2 * x + 3 * y, 0xFF) % 5)] = temp[x + 5 * y];
         }
       }
 
@@ -130,8 +130,8 @@
           row[x] = [state[x + 5 * y][0], state[x + 5 * y][1]];
         }
         for (let x = 0; x < 5; ++x) {
-          const notNext = [~row[(x + 1) % 5][0], ~row[(x + 1) % 5][1]];
-          const andResult = [notNext[0] & row[(x + 2) % 5][0], notNext[1] & row[(x + 2) % 5][1]];
+          const notNext = [~row[OpCodes.AndN(x + 1, 0xFF) % 5][0], ~row[OpCodes.AndN(x + 1, 0xFF) % 5][1]];
+          const andResult = [OpCodes.AndN(notNext[0], row[OpCodes.AndN(x + 2, 0xFF) % 5][0]), OpCodes.AndN(notNext[1], row[OpCodes.AndN(x + 2, 0xFF) % 5][1])];
           state[x + 5 * y] = xor64(row[x], andResult);
         }
       }
@@ -165,9 +165,9 @@
         const byteInLane = bytePos % 8;
 
         if (byteInLane < 4) {
-          this.state[laneIdx][0] ^= (bytes[i] << (byteInLane * 8));
+          this.state[laneIdx][0] = OpCodes.XorN(this.state[laneIdx][0], OpCodes.Shl32(bytes[i], byteInLane * 8));
         } else {
-          this.state[laneIdx][1] ^= (bytes[i] << ((byteInLane - 4) * 8));
+          this.state[laneIdx][1] = OpCodes.XorN(this.state[laneIdx][1], OpCodes.Shl32(bytes[i], (byteInLane - 4) * 8));
         }
       }
     }
@@ -181,9 +181,9 @@
         const byteInLane = bytePos % 8;
 
         if (byteInLane < 4) {
-          result[i] = (this.state[laneIdx][0] >>> (byteInLane * 8)) & 0xFF;
+          result[i] = OpCodes.AndN(OpCodes.Shr32(this.state[laneIdx][0], byteInLane * 8), 0xFF);
         } else {
-          result[i] = (this.state[laneIdx][1] >>> ((byteInLane - 4) * 8)) & 0xFF;
+          result[i] = OpCodes.AndN(OpCodes.Shr32(this.state[laneIdx][1], (byteInLane - 4) * 8), 0xFF);
         }
       }
       return result;
@@ -251,7 +251,7 @@
 
         // XOR to create ciphertext
         for (let i = 0; i < len; ++i) {
-          ciphertext.push(plaintext[i] ^ keystream[i]);
+          ciphertext.push(OpCodes.XorN(plaintext[i], keystream[i]));
         }
 
         // XOR ciphertext back into state
@@ -278,7 +278,7 @@
 
         // XOR to get plaintext
         for (let i = 0; i < len; ++i) {
-          plaintext.push(ciphertext[i] ^ keystream[i]);
+          plaintext.push(OpCodes.XorN(ciphertext[i], keystream[i]));
         }
 
         // XOR ciphertext back into state

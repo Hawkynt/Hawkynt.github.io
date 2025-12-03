@@ -285,7 +285,7 @@
       // Process input data byte by byte (stream cipher)
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();
-        output.push(this.inputBuffer[i] ^ keystreamByte);
+        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer for next operation
@@ -334,19 +334,19 @@
     _clockCipher() {
       // Extract bits from specific positions
       // Register A taps: 65, 92 (output), 90, 91, 92 (feedback)
-      const t1 = this.state[65] ^ this.state[92];
-      const s1 = this.state[90] & this.state[91];
-      const f1 = t1 ^ s1 ^ this.state[170]; // XOR with bit from register B
+      const t1 = OpCodes.XorN(this.state[65], this.state[92]);
+      const s1 = OpCodes.AndN(this.state[90], this.state[91]);
+      const f1 = OpCodes.XorN(OpCodes.XorN(t1, s1), this.state[170]); // XOR with bit from register B
 
       // Register B taps: 161, 176 (output), 174, 175, 176 (feedback)
-      const t2 = this.state[161] ^ this.state[176];
-      const s2 = this.state[174] & this.state[175];
-      const f2 = t2 ^ s2 ^ this.state[263]; // XOR with bit from register C
+      const t2 = OpCodes.XorN(this.state[161], this.state[176]);
+      const s2 = OpCodes.AndN(this.state[174], this.state[175]);
+      const f2 = OpCodes.XorN(OpCodes.XorN(t2, s2), this.state[263]); // XOR with bit from register C
 
       // Register C taps: 242, 287 (output), 285, 286, 287 (feedback)
-      const t3 = this.state[242] ^ this.state[287];
-      const s3 = this.state[285] & this.state[286];
-      const f3 = t3 ^ s3 ^ this.state[68]; // XOR with bit from register A
+      const t3 = OpCodes.XorN(this.state[242], this.state[287]);
+      const s3 = OpCodes.AndN(this.state[285], this.state[286]);
+      const f3 = OpCodes.XorN(OpCodes.XorN(t3, s3), this.state[68]); // XOR with bit from register A
 
       // Shift registers and insert feedback
       // Shift register C (positions 177-287) - shift right
@@ -368,7 +368,7 @@
       this.state[0] = f3; // Insert feedback from register C
 
       // Output bit (only used during keystream generation)
-      return t1 ^ t2 ^ t3;
+      return OpCodes.XorN(OpCodes.XorN(t1, t2), t3);
     }
 
     // Generate one keystream bit
@@ -380,7 +380,7 @@
     _generateKeystreamByte() {
       let byte = 0;
       for (let i = 0; i < 8; i++) {
-        byte = byte | (this._generateKeystreamBit() << i);  // LSB first
+        byte = OpCodes.OrN(byte, OpCodes.Shl32(this._generateKeystreamBit(), i));  // LSB first
       }
       return byte;
     }

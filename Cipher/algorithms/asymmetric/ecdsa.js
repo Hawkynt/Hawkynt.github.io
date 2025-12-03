@@ -85,8 +85,8 @@
       base = base % p;
 
       while (exp > 0n) {
-        if (exp & 1n) result = (result * base) % p;
-        exp >>= 1n;
+        if (OpCodes.AndN(exp, 1n)) result = (result * base) % p;
+        exp = OpCodes.ShiftRn(exp, 1n);
         base = (base * base) % p;
       }
 
@@ -197,11 +197,11 @@
       let addend = P;
 
       while (k > 0n) {
-        if (k & 1n) {
+        if (OpCodes.AndN(k, 1n)) {
           result = this.add(result, addend);
         }
         addend = this.double(addend);
-        k >>= 1n;
+        k = OpCodes.ShiftRn(k, 1n);
       }
 
       return result;
@@ -217,7 +217,7 @@
 
       if (compressed) {
         // Compressed format: 0x02/0x03 || x
-        const prefix = (point.y & 1n) === 0n ? 0x02 : 0x03;
+        const prefix = OpCodes.AndN(point.y, 1n) === 0n ? 0x02 : 0x03;
         return [prefix, ...this._bigIntToBytes(point.x, coordSize)];
       } else {
         // Uncompressed format: 0x04 || x || y
@@ -507,7 +507,7 @@
       // Convert bytes to BigInt
       let d = 0n;
       for (let i = 0; i < keyBytes.length; ++i) {
-        d = (d << 8n) | BigInt(keyBytes[i]);
+        d = OpCodes.OrN(OpCodes.ShiftLn(d, 8n), BigInt(keyBytes[i]));
       }
 
       // Validate private key range: 1 <= d < n
@@ -701,7 +701,7 @@
       // Convert hash bytes to BigInt
       let e = 0n;
       for (let i = 0; i < hash.length; ++i) {
-        e = (e << 8n) | BigInt(hash[i]);
+        e = OpCodes.OrN(OpCodes.ShiftLn(e, 8n), BigInt(hash[i]));
       }
 
       // Ensure e is in proper range for the curve
@@ -723,15 +723,15 @@
       // Simple deterministic mixing (NOT secure)
       for (let i = 0; i < message.length; ++i) {
         const byte = message[i];
-        hash[i % 32] = (hash[i % 32] + byte) & 0xFF;
-        hash[(i + 7) % 32] ^= byte;
-        hash[(i + 13) % 32] = (hash[(i + 13) % 32] + (byte << 1)) & 0xFF;
+        hash[i % 32] = OpCodes.AndN(hash[i % 32] + byte, 0xFF);
+        hash[(i + 7) % 32] = OpCodes.XorN(hash[(i + 7) % 32], byte);
+        hash[(i + 13) % 32] = OpCodes.AndN(hash[(i + 13) % 32] + OpCodes.Shl32(byte, 1), 0xFF);
       }
 
       // Additional mixing
       for (let round = 0; round < 3; ++round) {
         for (let i = 0; i < 32; ++i) {
-          const mix = (hash[i] + hash[(i + 1) % 32] + hash[(i + 31) % 32]) & 0xFF;
+          const mix = OpCodes.AndN(hash[i] + hash[(i + 1) % 32] + hash[(i + 31) % 32], 0xFF);
           hash[i] = OpCodes.RotL8(mix, (i % 8));
         }
       }
@@ -799,7 +799,7 @@
 
     _integerToBytes(value) {
       let hex = value.toString(16);
-      if (hex.length & 1) hex = '0' + hex;
+      if (OpCodes.AndN(hex.length, 1)) hex = '0' + hex;
 
       const bytes = [];
       for (let i = 0; i < hex.length; i += 2) {
@@ -807,7 +807,7 @@
       }
 
       // Add leading 0x00 if high bit is set (DER encoding requirement)
-      if (bytes[0] & 0x80) {
+      if (OpCodes.AndN(bytes[0], 0x80)) {
         bytes.unshift(0x00);
       }
 
@@ -817,7 +817,7 @@
     _bytesToInteger(bytes) {
       let value = 0n;
       for (let i = 0; i < bytes.length; ++i) {
-        value = (value << 8n) | BigInt(bytes[i]);
+        value = OpCodes.OrN(OpCodes.ShiftLn(value, 8n), BigInt(bytes[i]));
       }
       return value;
     }

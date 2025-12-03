@@ -96,7 +96,7 @@
     },
     
     xor64: function(a, b) {
-      return [a[0] ^ b[0], a[1] ^ b[1]];
+      return [OpCodes.XorN(a[0], b[0]), OpCodes.XorN(a[1], b[1])];
     },
     
     rotl64: function(val, positions) {
@@ -107,13 +107,13 @@
       if (positions === 32) return [high, low];
 
       if (positions < 32) {
-        const newHigh = OpCodes.ToDWord((high << positions) | OpCodes.Shr32(low, 32 - positions));
-        const newLow = OpCodes.ToDWord((low << positions) | OpCodes.Shr32(high, 32 - positions));
+        const newHigh = OpCodes.ToDWord(OpCodes.OrN(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions)));
+        const newLow = OpCodes.ToDWord(OpCodes.OrN(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions)));
         return [newLow, newHigh];
       } else {
         positions -= 32;
-        const newHigh = OpCodes.ToDWord((low << positions) | OpCodes.Shr32(high, 32 - positions));
-        const newLow = OpCodes.ToDWord((high << positions) | OpCodes.Shr32(low, 32 - positions));
+        const newHigh = OpCodes.ToDWord(OpCodes.OrN(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions)));
+        const newLow = OpCodes.ToDWord(OpCodes.OrN(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions)));
         return [newLow, newHigh];
       }
     },
@@ -210,7 +210,7 @@
       }
       
       // Pad with message length in last byte
-      finalBlock[7] = messageLen & 0xFF;
+      finalBlock[7] = OpCodes.AndN(messageLen, 0xFF);
       
       const m = this.bytesToWord64LE(finalBlock, 0);
       v3 = this.xor64(v3, m);

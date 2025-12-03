@@ -216,11 +216,11 @@
       for (let i = 0; i < data.length; i++) {
         if (this.config.useRotation) {
           // BSD algorithm: circular right rotation
-          this.checksum = ((this.checksum >>> 1) | ((this.checksum & 1) << 15)) + data[i];
-          this.checksum = this.checksum & 0xFFFF; // Keep it 16-bit
+          this.checksum = OpCodes.OrN(OpCodes.Shr32(this.checksum, 1), OpCodes.Shl32(OpCodes.AndN(this.checksum, 1), 15)) + data[i];
+          this.checksum = OpCodes.AndN(this.checksum, 0xFFFF); // Keep it 16-bit
         } else {
           // SYSV algorithm: simple addition with overflow
-          this.checksum = (this.checksum + data[i]) & 0xFFFF;
+          this.checksum = OpCodes.AndN(this.checksum + data[i], 0xFFFF);
         }
       }
     }
@@ -234,8 +234,8 @@
     Result() {
       // Return checksum as 2-byte array (big-endian)
       const result = [
-        (this.checksum >>> 8) & 0xFF,
-        this.checksum & 0xFF
+        OpCodes.AndN(OpCodes.Shr32(this.checksum, 8), 0xFF),
+        OpCodes.AndN(this.checksum, 0xFF)
       ];
 
       // Reset for next calculation

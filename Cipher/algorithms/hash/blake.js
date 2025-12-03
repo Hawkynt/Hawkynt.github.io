@@ -104,18 +104,18 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
   // Mixing function G for 32-bit versions
   function G1s_32(a, b, c, d, x) {
-    a = (a + b + x) | 0;
-    d = OpCodes.RotR32(d ^ a, 16);
-    c = (c + d) | 0;
-    b = OpCodes.RotR32(b ^ c, 12);
+    a = OpCodes.ToUint32(a + b + x);
+    d = OpCodes.RotR32(OpCodes.XorN(d, a), 16);
+    c = OpCodes.ToUint32(c + d);
+    b = OpCodes.RotR32(OpCodes.XorN(b, c), 12);
     return { a, b, c, d };
   }
 
   function G2s_32(a, b, c, d, x) {
-    a = (a + b + x) | 0;
-    d = OpCodes.RotR32(d ^ a, 8);
-    c = (c + d) | 0;
-    b = OpCodes.RotR32(b ^ c, 7);
+    a = OpCodes.ToUint32(a + b + x);
+    d = OpCodes.RotR32(OpCodes.XorN(d, a), 8);
+    c = OpCodes.ToUint32(c + d);
+    b = OpCodes.RotR32(OpCodes.XorN(b, c), 7);
     return { a, b, c, d };
   }
 
@@ -127,8 +127,8 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   // So: Al = v[2*a+1] = LOW word, Ah = v[2*a] = HIGH word
   function G1b_64(v, a, b, c, d, msg, k, TBL) {
     const Xpos = 2 * BSIGMA[k];
-    const Xl = msg[Xpos + 1] ^ TBL[k * 2 + 1];  // LOW ^ LOW
-    const Xh = msg[Xpos] ^ TBL[k * 2];          // HIGH ^ HIGH
+    const Xl = OpCodes.XorN(msg[Xpos + 1], TBL[k * 2 + 1]);  // LOW XOR LOW
+    const Xh = OpCodes.XorN(msg[Xpos], TBL[k * 2]);          // HIGH XOR HIGH
 
     // Load values: Al gets v[2*a+1] (LOW), Ah gets v[2*a] (HIGH)
     let Al = v[2 * a + 1], Ah = v[2 * a];
@@ -138,10 +138,10 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
     // v[a] = v[a] + v[b] + x
     let ll = OpCodes.Add3L64(Al, Bl, Xl);
-    Ah = OpCodes.Add3H64(ll, Ah, Bh, Xh) >>> 0;
-    Al = (ll | 0) >>> 0;
+    Ah = OpCodes.ToUint32(OpCodes.Add3H64(ll, Ah, Bh, Xh));
+    Al = OpCodes.ToUint32(ll);
 
-    // v[d] = rotr(v[d] ^ v[a], 32) - swaps high/low
+    // v[d] = rotr(v[d] XOR v[a], 32) - swaps high/low
     const xorD1 = OpCodes.Xor64_HL(Dh, Dl, Ah, Al);
     Dh = xorD1.h;
     Dl = xorD1.l;
@@ -154,7 +154,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     Ch = addCD.h;
     Cl = addCD.l;
 
-    // v[b] = rotr(v[b] ^ v[c], 25)
+    // v[b] = rotr(v[b] XOR v[c], 25)
     const xorB1 = OpCodes.Xor64_HL(Bh, Bl, Ch, Cl);
     Bh = xorB1.h;
     Bl = xorB1.l;
@@ -176,8 +176,8 @@ if (!global.OpCodes && typeof require !== 'undefined') {
   // G2b function matching noble-hashes (second half of mixing function)
   function G2b_64(v, a, b, c, d, msg, k, TBL) {
     const Xpos = 2 * BSIGMA[k];
-    const Xl = msg[Xpos + 1] ^ TBL[k * 2 + 1];  // LOW ^ LOW
-    const Xh = msg[Xpos] ^ TBL[k * 2];          // HIGH ^ HIGH
+    const Xl = OpCodes.XorN(msg[Xpos + 1], TBL[k * 2 + 1]);  // LOW XOR LOW
+    const Xh = OpCodes.XorN(msg[Xpos], TBL[k * 2]);          // HIGH XOR HIGH
 
     // Load values: Al=LOW, Ah=HIGH (backwards naming!)
     let Al = v[2 * a + 1], Ah = v[2 * a];
@@ -187,10 +187,10 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
     // v[a] = v[a] + v[b] + x
     let ll = OpCodes.Add3L64(Al, Bl, Xl);
-    Ah = OpCodes.Add3H64(ll, Ah, Bh, Xh) >>> 0;
-    Al = (ll | 0) >>> 0;
+    Ah = OpCodes.ToUint32(OpCodes.Add3H64(ll, Ah, Bh, Xh));
+    Al = OpCodes.ToUint32(ll);
 
-    // v[d] = rotr(v[d] ^ v[a], 16)
+    // v[d] = rotr(v[d] XOR v[a], 16)
     const xorD2 = OpCodes.Xor64_HL(Dh, Dl, Ah, Al);
     Dh = xorD2.h;
     Dl = xorD2.l;
@@ -203,7 +203,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     Ch = addCD.h;
     Cl = addCD.l;
 
-    // v[b] = rotr(v[b] ^ v[c], 11)
+    // v[b] = rotr(v[b] XOR v[c], 11)
     const xorB2 = OpCodes.Xor64_HL(Bh, Bl, Ch, Cl);
     Bh = xorB2.h;
     Bl = xorB2.l;
@@ -264,12 +264,12 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       if (is64bit) {
         this.state = new Array(16);
         for (let i = 0; i < 16; i++) {
-          this.state[i] = iv[i] | 0;
+          this.state[i] = OpCodes.ToUint32(iv[i]);
         }
       } else {
         this.state = new Array(8);
         for (let i = 0; i < 8; i++) {
-          this.state[i] = iv[i] | 0;
+          this.state[i] = OpCodes.ToUint32(iv[i]);
         }
       }
     }
@@ -424,23 +424,23 @@ if (!global.OpCodes && typeof require !== 'undefined') {
         v[i] = this.state[i];
       }
       for (let i = 0; i < 4; i++) {
-        v[8 + i] = this.constants[i] ^ this.salt[i];
+        v[8 + i] = OpCodes.XorN(this.constants[i], this.salt[i]);
       }
 
       // Add length counter to v[12..15] for BLAKE1
       if (withLength) {
         const lengthBits = this.length * 8;
         const lengthLow = OpCodes.ToUint32(lengthBits);
-        const lengthHigh = Math.floor(lengthBits / 0x100000000) >>> 0;
-        v[12] = (this.constants[4] ^ lengthLow ^ this.salt[0]) >>> 0;
-        v[13] = (this.constants[5] ^ lengthLow ^ this.salt[1]) >>> 0;
-        v[14] = (this.constants[6] ^ lengthHigh ^ this.salt[2]) >>> 0;
-        v[15] = (this.constants[7] ^ lengthHigh ^ this.salt[3]) >>> 0;
+        const lengthHigh = OpCodes.ToUint32(Math.floor(lengthBits / 0x100000000));
+        v[12] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this.constants[4], lengthLow), this.salt[0]));
+        v[13] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this.constants[5], lengthLow), this.salt[1]));
+        v[14] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this.constants[6], lengthHigh), this.salt[2]));
+        v[15] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this.constants[7], lengthHigh), this.salt[3]));
       } else {
-        v[12] = (this.constants[4] ^ this.salt[0]) >>> 0;
-        v[13] = (this.constants[5] ^ this.salt[1]) >>> 0;
-        v[14] = (this.constants[6] ^ this.salt[2]) >>> 0;
-        v[15] = (this.constants[7] ^ this.salt[3]) >>> 0;
+        v[12] = OpCodes.ToUint32(OpCodes.XorN(this.constants[4], this.salt[0]));
+        v[13] = OpCodes.ToUint32(OpCodes.XorN(this.constants[5], this.salt[1]));
+        v[14] = OpCodes.ToUint32(OpCodes.XorN(this.constants[6], this.salt[2]));
+        v[15] = OpCodes.ToUint32(OpCodes.XorN(this.constants[7], this.salt[3]));
       }
 
       // Precompute TBL for constants
@@ -456,35 +456,35 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       // Compression rounds
       for (let r = 0, k = 0, j = 0; r < this.rounds; r++) {
         // Column step
-        ({ a: v[0], b: v[4], c: v[8], d: v[12] } = G1s_32(v[0], v[4], v[8], v[12], W[BSIGMA[k++]] ^ TBL[j++]));
-        ({ a: v[0], b: v[4], c: v[8], d: v[12] } = G2s_32(v[0], v[4], v[8], v[12], W[BSIGMA[k++]] ^ TBL[j++]));
-        ({ a: v[1], b: v[5], c: v[9], d: v[13] } = G1s_32(v[1], v[5], v[9], v[13], W[BSIGMA[k++]] ^ TBL[j++]));
-        ({ a: v[1], b: v[5], c: v[9], d: v[13] } = G2s_32(v[1], v[5], v[9], v[13], W[BSIGMA[k++]] ^ TBL[j++]));
-        ({ a: v[2], b: v[6], c: v[10], d: v[14] } = G1s_32(v[2], v[6], v[10], v[14], W[BSIGMA[k++]] ^ TBL[j++]));
-        ({ a: v[2], b: v[6], c: v[10], d: v[14] } = G2s_32(v[2], v[6], v[10], v[14], W[BSIGMA[k++]] ^ TBL[j++]));
-        ({ a: v[3], b: v[7], c: v[11], d: v[15] } = G1s_32(v[3], v[7], v[11], v[15], W[BSIGMA[k++]] ^ TBL[j++]));
-        ({ a: v[3], b: v[7], c: v[11], d: v[15] } = G2s_32(v[3], v[7], v[11], v[15], W[BSIGMA[k++]] ^ TBL[j++]));
+        ({ a: v[0], b: v[4], c: v[8], d: v[12] } = G1s_32(v[0], v[4], v[8], v[12], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
+        ({ a: v[0], b: v[4], c: v[8], d: v[12] } = G2s_32(v[0], v[4], v[8], v[12], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
+        ({ a: v[1], b: v[5], c: v[9], d: v[13] } = G1s_32(v[1], v[5], v[9], v[13], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
+        ({ a: v[1], b: v[5], c: v[9], d: v[13] } = G2s_32(v[1], v[5], v[9], v[13], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
+        ({ a: v[2], b: v[6], c: v[10], d: v[14] } = G1s_32(v[2], v[6], v[10], v[14], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
+        ({ a: v[2], b: v[6], c: v[10], d: v[14] } = G2s_32(v[2], v[6], v[10], v[14], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
+        ({ a: v[3], b: v[7], c: v[11], d: v[15] } = G1s_32(v[3], v[7], v[11], v[15], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
+        ({ a: v[3], b: v[7], c: v[11], d: v[15] } = G2s_32(v[3], v[7], v[11], v[15], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
 
         // Diagonal step
-        ({ a: v[0], b: v[5], c: v[10], d: v[15] } = G1s_32(v[0], v[5], v[10], v[15], W[BSIGMA[k++]] ^ TBL[j++]));
-        ({ a: v[0], b: v[5], c: v[10], d: v[15] } = G2s_32(v[0], v[5], v[10], v[15], W[BSIGMA[k++]] ^ TBL[j++]));
-        ({ a: v[1], b: v[6], c: v[11], d: v[12] } = G1s_32(v[1], v[6], v[11], v[12], W[BSIGMA[k++]] ^ TBL[j++]));
-        ({ a: v[1], b: v[6], c: v[11], d: v[12] } = G2s_32(v[1], v[6], v[11], v[12], W[BSIGMA[k++]] ^ TBL[j++]));
-        ({ a: v[2], b: v[7], c: v[8], d: v[13] } = G1s_32(v[2], v[7], v[8], v[13], W[BSIGMA[k++]] ^ TBL[j++]));
-        ({ a: v[2], b: v[7], c: v[8], d: v[13] } = G2s_32(v[2], v[7], v[8], v[13], W[BSIGMA[k++]] ^ TBL[j++]));
-        ({ a: v[3], b: v[4], c: v[9], d: v[14] } = G1s_32(v[3], v[4], v[9], v[14], W[BSIGMA[k++]] ^ TBL[j++]));
-        ({ a: v[3], b: v[4], c: v[9], d: v[14] } = G2s_32(v[3], v[4], v[9], v[14], W[BSIGMA[k++]] ^ TBL[j++]));
+        ({ a: v[0], b: v[5], c: v[10], d: v[15] } = G1s_32(v[0], v[5], v[10], v[15], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
+        ({ a: v[0], b: v[5], c: v[10], d: v[15] } = G2s_32(v[0], v[5], v[10], v[15], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
+        ({ a: v[1], b: v[6], c: v[11], d: v[12] } = G1s_32(v[1], v[6], v[11], v[12], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
+        ({ a: v[1], b: v[6], c: v[11], d: v[12] } = G2s_32(v[1], v[6], v[11], v[12], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
+        ({ a: v[2], b: v[7], c: v[8], d: v[13] } = G1s_32(v[2], v[7], v[8], v[13], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
+        ({ a: v[2], b: v[7], c: v[8], d: v[13] } = G2s_32(v[2], v[7], v[8], v[13], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
+        ({ a: v[3], b: v[4], c: v[9], d: v[14] } = G1s_32(v[3], v[4], v[9], v[14], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
+        ({ a: v[3], b: v[4], c: v[9], d: v[14] } = G2s_32(v[3], v[4], v[9], v[14], OpCodes.XorN(W[BSIGMA[k++]], TBL[j++])));
       }
 
       // Finalize state (XOR with salt)
-      this.state[0] = (this.state[0] ^ v[0] ^ v[8] ^ this.salt[0]) >>> 0;
-      this.state[1] = (this.state[1] ^ v[1] ^ v[9] ^ this.salt[1]) >>> 0;
-      this.state[2] = (this.state[2] ^ v[2] ^ v[10] ^ this.salt[2]) >>> 0;
-      this.state[3] = (this.state[3] ^ v[3] ^ v[11] ^ this.salt[3]) >>> 0;
-      this.state[4] = (this.state[4] ^ v[4] ^ v[12] ^ this.salt[0]) >>> 0;
-      this.state[5] = (this.state[5] ^ v[5] ^ v[13] ^ this.salt[1]) >>> 0;
-      this.state[6] = (this.state[6] ^ v[6] ^ v[14] ^ this.salt[2]) >>> 0;
-      this.state[7] = (this.state[7] ^ v[7] ^ v[15] ^ this.salt[3]) >>> 0;
+      this.state[0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[0], v[0]), v[8]), this.salt[0]));
+      this.state[1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[1], v[1]), v[9]), this.salt[1]));
+      this.state[2] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[2], v[2]), v[10]), this.salt[2]));
+      this.state[3] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[3], v[3]), v[11]), this.salt[3]));
+      this.state[4] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[4], v[4]), v[12]), this.salt[0]));
+      this.state[5] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[5], v[5]), v[13]), this.salt[1]));
+      this.state[6] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[6], v[6]), v[14]), this.salt[2]));
+      this.state[7] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[7], v[7]), v[15]), this.salt[3]));
     }
 
     compress64(withLength = true) {
@@ -525,7 +525,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
       // XOR salt into v[8..11] (indices 16..23 in flat array)
       for (let i = 0; i < 8; i++) {
-        v[16 + i] ^= this.salt[i];
+        v[16 + i] = OpCodes.XorN(v[16 + i], this.salt[i]);
       }
 
       // XOR length counter into v[12..13] if withLength (noble-hashes line 451-457)
@@ -533,15 +533,15 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       //              v12h is stored at BBUF[25] and contains LOW word
       if (withLength) {
         const lengthBits = this.length * 8;
-        const lengthHigh = Math.floor(lengthBits / 0x100000000) >>> 0;
+        const lengthHigh = OpCodes.ToUint32(Math.floor(lengthBits / 0x100000000));
         const lengthLow = OpCodes.ToUint32(lengthBits);
 
         // v[24] = v12l (contains HIGH word), v[25] = v12h (contains LOW word)
-        v[24] = (v[24] ^ lengthHigh) >>> 0;  // HIGH word ^= HIGH bits
-        v[25] = (v[25] ^ lengthLow) >>> 0;   // LOW word ^= LOW bits
+        v[24] = OpCodes.ToUint32(OpCodes.XorN(v[24], lengthHigh));  // HIGH word XOR HIGH bits
+        v[25] = OpCodes.ToUint32(OpCodes.XorN(v[25], lengthLow));   // LOW word XOR LOW bits
         // v[26] = v13l (contains HIGH word), v[27] = v13h (contains LOW word)
-        v[26] = (v[26] ^ lengthHigh) >>> 0;  // HIGH word ^= HIGH bits
-        v[27] = (v[27] ^ lengthLow) >>> 0;   // LOW word ^= LOW bits
+        v[26] = OpCodes.ToUint32(OpCodes.XorN(v[26], lengthHigh));  // HIGH word XOR HIGH bits
+        v[27] = OpCodes.ToUint32(OpCodes.XorN(v[27], lengthLow));   // LOW word XOR LOW bits
       }
 
       // 16 rounds of compression (matching noble-hashes lines 458-476)
@@ -568,23 +568,23 @@ if (!global.OpCodes && typeof require !== 'undefined') {
       }
 
       // Finalize state (matching noble-hashes lines 477-492)
-      // Pattern: this.v0l ^= BBUF[0] ^ BBUF[16] ^ this.salt[0]
-      this.state[0] ^= v[0] ^ v[16] ^ this.salt[0];   // v0l
-      this.state[1] ^= v[1] ^ v[17] ^ this.salt[1];   // v0h
-      this.state[2] ^= v[2] ^ v[18] ^ this.salt[2];   // v1l
-      this.state[3] ^= v[3] ^ v[19] ^ this.salt[3];   // v1h
-      this.state[4] ^= v[4] ^ v[20] ^ this.salt[4];   // v2l
-      this.state[5] ^= v[5] ^ v[21] ^ this.salt[5];   // v2h
-      this.state[6] ^= v[6] ^ v[22] ^ this.salt[6];   // v3l
-      this.state[7] ^= v[7] ^ v[23] ^ this.salt[7];   // v3h
-      this.state[8] ^= v[8] ^ v[24] ^ this.salt[0];   // v4l (salt repeats)
-      this.state[9] ^= v[9] ^ v[25] ^ this.salt[1];   // v4h
-      this.state[10] ^= v[10] ^ v[26] ^ this.salt[2]; // v5l
-      this.state[11] ^= v[11] ^ v[27] ^ this.salt[3]; // v5h
-      this.state[12] ^= v[12] ^ v[28] ^ this.salt[4]; // v6l
-      this.state[13] ^= v[13] ^ v[29] ^ this.salt[5]; // v6h
-      this.state[14] ^= v[14] ^ v[30] ^ this.salt[6]; // v7l
-      this.state[15] ^= v[15] ^ v[31] ^ this.salt[7]; // v7h
+      // Pattern: this.v0l XOR BBUF[0] XOR BBUF[16] XOR this.salt[0]
+      this.state[0] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[0], v[0]), v[16]), this.salt[0]);   // v0l
+      this.state[1] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[1], v[1]), v[17]), this.salt[1]);   // v0h
+      this.state[2] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[2], v[2]), v[18]), this.salt[2]);   // v1l
+      this.state[3] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[3], v[3]), v[19]), this.salt[3]);   // v1h
+      this.state[4] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[4], v[4]), v[20]), this.salt[4]);   // v2l
+      this.state[5] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[5], v[5]), v[21]), this.salt[5]);   // v2h
+      this.state[6] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[6], v[6]), v[22]), this.salt[6]);   // v3l
+      this.state[7] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[7], v[7]), v[23]), this.salt[7]);   // v3h
+      this.state[8] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[8], v[8]), v[24]), this.salt[0]);   // v4l (salt repeats)
+      this.state[9] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[9], v[9]), v[25]), this.salt[1]);   // v4h
+      this.state[10] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[10], v[10]), v[26]), this.salt[2]); // v5l
+      this.state[11] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[11], v[11]), v[27]), this.salt[3]); // v5h
+      this.state[12] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[12], v[12]), v[28]), this.salt[4]); // v6l
+      this.state[13] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[13], v[13]), v[29]), this.salt[5]); // v6h
+      this.state[14] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[14], v[14]), v[30]), this.salt[6]); // v7l
+      this.state[15] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[15], v[15]), v[31]), this.salt[7]); // v7h
     }
   }
 

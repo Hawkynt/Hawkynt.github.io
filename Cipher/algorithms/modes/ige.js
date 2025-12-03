@@ -234,10 +234,7 @@
         const plaintextBlock = this.inputBuffer.slice(i * blockSize, (i + 1) * blockSize);
 
         // IGE encryption: XOR plaintext with previous ciphertext
-        const xorWithCipher = [];
-        for (let j = 0; j < blockSize; j++) {
-          xorWithCipher[j] = plaintextBlock[j] ^ prevCiphertext[j];
-        }
+        const xorWithCipher = OpCodes.XorArrays(plaintextBlock, prevCiphertext);
 
         // Encrypt the result
         const cipher = this.blockCipher.algorithm.CreateInstance(false);
@@ -246,10 +243,7 @@
         const encryptedBlock = cipher.Result();
 
         // XOR encrypted result with previous plaintext
-        const ciphertextBlock = [];
-        for (let j = 0; j < blockSize; j++) {
-          ciphertextBlock[j] = encryptedBlock[j] ^ prevPlaintext[j];
-        }
+        const ciphertextBlock = OpCodes.XorArrays(encryptedBlock, prevPlaintext);
 
         output.push(...ciphertextBlock);
 
@@ -273,10 +267,7 @@
         const ciphertextBlock = this.inputBuffer.slice(i * blockSize, (i + 1) * blockSize);
 
         // IGE decryption: XOR ciphertext with previous plaintext
-        const xorWithPlain = [];
-        for (let j = 0; j < blockSize; j++) {
-          xorWithPlain[j] = ciphertextBlock[j] ^ prevPlaintext[j];
-        }
+        const xorWithPlain = OpCodes.XorArrays(ciphertextBlock, prevPlaintext);
 
         // Decrypt the result
         const cipher = this.blockCipher.algorithm.CreateInstance(true);
@@ -285,10 +276,7 @@
         const decryptedBlock = cipher.Result();
 
         // XOR decrypted result with previous ciphertext
-        const plaintextBlock = [];
-        for (let j = 0; j < blockSize; j++) {
-          plaintextBlock[j] = decryptedBlock[j] ^ prevCiphertext[j];
-        }
+        const plaintextBlock = OpCodes.XorArrays(decryptedBlock, prevCiphertext);
 
         output.push(...plaintextBlock);
 

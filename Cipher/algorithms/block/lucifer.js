@@ -169,8 +169,16 @@ let LuciferAlgorithm, LuciferInstance;
       const subKey = keyRegister.slice(0, 8);
       subKeys.push(subKey);
       
-      // Rotate key register 56 bits (7 bytes) to the left using OpCodes
-      keyRegister = OpCodes.RotL128(keyRegister, 56);
+      // Rotate key register 56 bits (7 bytes) to the left
+      // Manual rotation: move bytes 7-15 to positions 0-8, then bytes 0-6 to positions 9-15
+      const rotated = new Array(16);
+      for (let i = 0; i < 9; i++) {
+        rotated[i] = keyRegister[i + 7];
+      }
+      for (let i = 0; i < 7; i++) {
+        rotated[i + 9] = keyRegister[i];
+      }
+      keyRegister = rotated;
     }
     
     return subKeys;
@@ -185,20 +193,20 @@ let LuciferAlgorithm, LuciferInstance;
     // XOR with subkey first
     const xored = new Array(8);
     for (let i = 0; i < 8; i++) {
-      xored[i] = rightHalf[i] ^ subKey[i];
+      xored[i] = OpCodes.XorN(rightHalf[i], subKey[i]);
     }
     
     // Apply S-boxes to each byte
     for (let i = 0; i < 8; i++) {
       const byte = xored[i];
-      const highNibble = (byte >>> 4) & 0x0F;
-      const lowNibble = byte & 0x0F;
-      
+      const highNibble = OpCodes.AndN(OpCodes.Shr32(byte, 4), 0x0F);
+      const lowNibble = OpCodes.AndN(byte, 0x0F);
+
       // S-box 0 for high nibble, S-box 1 for low nibble
       const newHigh = this.SBOX0[highNibble];
       const newLow = this.SBOX1[lowNibble];
-      
-      result[i] = ((newHigh & 0x0F) << 4) | (newLow & 0x0F);
+
+      result[i] = OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(newHigh, 0x0F), 4), OpCodes.AndN(newLow, 0x0F));
     }
     
     // Simple permutation (identity for now - actual Lucifer uses shifts/rotations)

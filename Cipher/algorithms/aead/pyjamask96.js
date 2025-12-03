@@ -56,116 +56,116 @@
 
   function matrixMultiply_b881b9ca(y) {
     let result = y;
-    result ^= OpCodes.RotR32(y, 2);
-    result ^= OpCodes.RotR32(y, 3);
-    result ^= OpCodes.RotR32(y, 4);
-    result ^= OpCodes.RotR32(y, 8);
-    result ^= OpCodes.RotR32(y, 15);
-    result ^= OpCodes.RotR32(y, 16);
-    result ^= OpCodes.RotR32(y, 18);
-    result ^= OpCodes.RotR32(y, 19);
-    result ^= OpCodes.RotR32(y, 20);
-    result ^= OpCodes.RotR32(y, 23);
-    result ^= OpCodes.RotR32(y, 24);
-    result ^= OpCodes.RotR32(y, 25);
-    result ^= OpCodes.RotR32(y, 28);
-    result ^= OpCodes.RotR32(y, 30);
-    return result >>> 0;
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 2));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 3));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 4));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 8));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 15));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 16));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 18));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 19));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 20));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 23));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 24));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 25));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 28));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 30));
+    return OpCodes.ToUint32(result);
   }
 
   function matrixMultiply_a3861085(y) {
     let result = y;
-    result ^= OpCodes.RotR32(y, 2);
-    result ^= OpCodes.RotR32(y, 6);
-    result ^= OpCodes.RotR32(y, 7);
-    result ^= OpCodes.RotR32(y, 8);
-    result ^= OpCodes.RotR32(y, 13);
-    result ^= OpCodes.RotR32(y, 14);
-    result ^= OpCodes.RotR32(y, 19);
-    result ^= OpCodes.RotR32(y, 24);
-    result ^= OpCodes.RotR32(y, 29);
-    result ^= OpCodes.RotR32(y, 31);
-    return result >>> 0;
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 2));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 6));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 7));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 8));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 13));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 14));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 19));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 24));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 29));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 31));
+    return OpCodes.ToUint32(result);
   }
 
   function matrixMultiply_63417021(y) {
     let result = OpCodes.RotR32(y, 1);
-    result ^= OpCodes.RotR32(y, 2);
-    result ^= OpCodes.RotR32(y, 6);
-    result ^= OpCodes.RotR32(y, 7);
-    result ^= OpCodes.RotR32(y, 9);
-    result ^= OpCodes.RotR32(y, 15);
-    result ^= OpCodes.RotR32(y, 17);
-    result ^= OpCodes.RotR32(y, 18);
-    result ^= OpCodes.RotR32(y, 19);
-    result ^= OpCodes.RotR32(y, 26);
-    result ^= OpCodes.RotR32(y, 31);
-    return result >>> 0;
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 2));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 6));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 7));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 9));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 15));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 17));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 18));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 19));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 26));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 31));
+    return OpCodes.ToUint32(result);
   }
 
   function matrixMultiply_692cf280(y) {
     let result = OpCodes.RotR32(y, 1);
-    result ^= OpCodes.RotR32(y, 2);
-    result ^= OpCodes.RotR32(y, 4);
-    result ^= OpCodes.RotR32(y, 7);
-    result ^= OpCodes.RotR32(y, 10);
-    result ^= OpCodes.RotR32(y, 12);
-    result ^= OpCodes.RotR32(y, 13);
-    result ^= OpCodes.RotR32(y, 16);
-    result ^= OpCodes.RotR32(y, 17);
-    result ^= OpCodes.RotR32(y, 18);
-    result ^= OpCodes.RotR32(y, 19);
-    result ^= OpCodes.RotR32(y, 22);
-    result ^= OpCodes.RotR32(y, 24);
-    return result >>> 0;
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 2));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 4));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 7));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 10));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 12));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 13));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 16));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 17));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 18));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 19));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 22));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 24));
+    return OpCodes.ToUint32(result);
   }
 
   // Inverse matrix multiplications for decryption
   function matrixMultiply_2037a121(y) {
     let result = OpCodes.RotR32(y, 2);
-    result ^= OpCodes.RotR32(y, 10);
-    result ^= OpCodes.RotR32(y, 11);
-    result ^= OpCodes.RotR32(y, 13);
-    result ^= OpCodes.RotR32(y, 14);
-    result ^= OpCodes.RotR32(y, 15);
-    result ^= OpCodes.RotR32(y, 16);
-    result ^= OpCodes.RotR32(y, 18);
-    result ^= OpCodes.RotR32(y, 23);
-    result ^= OpCodes.RotR32(y, 26);
-    result ^= OpCodes.RotR32(y, 31);
-    return result >>> 0;
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 10));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 11));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 13));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 14));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 15));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 16));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 18));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 23));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 26));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 31));
+    return OpCodes.ToUint32(result);
   }
 
   function matrixMultiply_108ff2a0(y) {
     let result = OpCodes.RotR32(y, 3);
-    result ^= OpCodes.RotR32(y, 8);
-    result ^= OpCodes.RotR32(y, 12);
-    result ^= OpCodes.RotR32(y, 13);
-    result ^= OpCodes.RotR32(y, 14);
-    result ^= OpCodes.RotR32(y, 15);
-    result ^= OpCodes.RotR32(y, 16);
-    result ^= OpCodes.RotR32(y, 17);
-    result ^= OpCodes.RotR32(y, 18);
-    result ^= OpCodes.RotR32(y, 19);
-    result ^= OpCodes.RotR32(y, 22);
-    result ^= OpCodes.RotR32(y, 24);
-    result ^= OpCodes.RotR32(y, 26);
-    return result >>> 0;
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 8));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 12));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 13));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 14));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 15));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 16));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 17));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 18));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 19));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 22));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 24));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 26));
+    return OpCodes.ToUint32(result);
   }
 
   function matrixMultiply_9054d8c0(y) {
     let result = y;
-    result ^= OpCodes.RotR32(y, 3);
-    result ^= OpCodes.RotR32(y, 9);
-    result ^= OpCodes.RotR32(y, 11);
-    result ^= OpCodes.RotR32(y, 13);
-    result ^= OpCodes.RotR32(y, 16);
-    result ^= OpCodes.RotR32(y, 17);
-    result ^= OpCodes.RotR32(y, 19);
-    result ^= OpCodes.RotR32(y, 20);
-    result ^= OpCodes.RotR32(y, 24);
-    result ^= OpCodes.RotR32(y, 25);
-    return result >>> 0;
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 3));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 9));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 11));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 13));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 16));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 17));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 19));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 20));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 24));
+    result = OpCodes.XorN(result, OpCodes.RotR32(y, 25));
+    return OpCodes.ToUint32(result);
   }
 
   // Key schedule for Pyjamask-96
@@ -182,22 +182,22 @@
     // Derive round keys for all rounds
     for (let round = 0; round < PYJAMASK_ROUNDS; ++round) {
       // Mix columns
-      const temp = (k0 ^ k1 ^ k2 ^ k3) >>> 0;
-      k0 = (k0 ^ temp) >>> 0;
-      k1 = (k1 ^ temp) >>> 0;
-      k2 = (k2 ^ temp) >>> 0;
-      k3 = (k3 ^ temp) >>> 0;
+      const temp = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(k0, k1), k2), k3));
+      k0 = OpCodes.ToUint32(OpCodes.XorN(k0, temp));
+      k1 = OpCodes.ToUint32(OpCodes.XorN(k1, temp));
+      k2 = OpCodes.ToUint32(OpCodes.XorN(k2, temp));
+      k3 = OpCodes.ToUint32(OpCodes.XorN(k3, temp));
 
       // Mix rows and add round constants
       // Note: Reference code uses RIGHT rotation (not left as per spec)
       k0 = matrixMultiply_b881b9ca(k0);
-      k0 = (k0 ^ 0x00000080 ^ round) >>> 0;
+      k0 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(k0, 0x00000080), round));
       k1 = OpCodes.RotR32(k1, 8);
-      k1 = (k1 ^ 0x00006a00) >>> 0;
+      k1 = OpCodes.ToUint32(OpCodes.XorN(k1, 0x00006a00));
       k2 = OpCodes.RotR32(k2, 15);
-      k2 = (k2 ^ 0x003f0000) >>> 0;
+      k2 = OpCodes.ToUint32(OpCodes.XorN(k2, 0x003f0000));
       k3 = OpCodes.RotR32(k3, 18);
-      k3 = (k3 ^ 0x24000000) >>> 0;
+      k3 = OpCodes.ToUint32(OpCodes.XorN(k3, 0x24000000));
 
       // Store round key (only first 3 words for 96-bit)
       rk.push(k0, k1, k2);
@@ -217,20 +217,20 @@
     // Perform all encryption rounds
     for (let round = 0; round < PYJAMASK_ROUNDS; ++round) {
       // Add round key
-      s0 = (s0 ^ keySchedule[rkIndex++]) >>> 0;
-      s1 = (s1 ^ keySchedule[rkIndex++]) >>> 0;
-      s2 = (s2 ^ keySchedule[rkIndex++]) >>> 0;
+      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, keySchedule[rkIndex++]));
+      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, keySchedule[rkIndex++]));
+      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, keySchedule[rkIndex++]));
 
       // Apply 96-bit Pyjamask S-box (matching C reference exactly)
-      s0 = (s0 ^ s1) >>> 0;
-      s1 = (s1 ^ s2) >>> 0;
-      s2 = (s2 ^ (s0 & s1)) >>> 0;
-      s0 = (s0 ^ (s1 & s2)) >>> 0;
-      s1 = (s1 ^ (s0 & s2)) >>> 0;
-      s2 = (s2 ^ s0) >>> 0;
-      s2 = (~s2) >>> 0;
-      s1 = (s1 ^ s0) >>> 0;
-      s0 = (s0 ^ s1) >>> 0;
+      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, s1));
+      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, s2));
+      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, OpCodes.AndN(s0, s1)));
+      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, OpCodes.AndN(s1, s2)));
+      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, OpCodes.AndN(s0, s2)));
+      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, s0));
+      s2 = OpCodes.ToUint32(~s2);
+      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, s0));
+      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, s1));
 
       // Mix rows
       s0 = matrixMultiply_a3861085(s0);
@@ -239,9 +239,9 @@
     }
 
     // Final round key addition
-    s0 = (s0 ^ keySchedule[rkIndex++]) >>> 0;
-    s1 = (s1 ^ keySchedule[rkIndex++]) >>> 0;
-    s2 = (s2 ^ keySchedule[rkIndex++]) >>> 0;
+    s0 = OpCodes.ToUint32(OpCodes.XorN(s0, keySchedule[rkIndex++]));
+    s1 = OpCodes.ToUint32(OpCodes.XorN(s1, keySchedule[rkIndex++]));
+    s2 = OpCodes.ToUint32(OpCodes.XorN(s2, keySchedule[rkIndex++]));
 
     // Pack output
     const output = [];
@@ -254,12 +254,12 @@
 
   // Double a value in GF(96) for OCB mode
   function doubleL(out, input) {
-    const mask = (input[0] >> 7) & 1;
+    const mask = OpCodes.AndN(OpCodes.Shr32(input[0], 7), 1);
     for (let i = 0; i < 11; ++i) {
-      out[i] = ((input[i] << 1) | (input[i + 1] >> 7)) & 0xFF;
+      out[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(input[i], 1), OpCodes.Shr32(input[i + 1], 7)), 0xFF);
     }
-    out[11] = ((input[11] << 1) ^ (mask ? 0x41 : 0)) & 0xFF;
-    out[10] ^= (mask ? 0x06 : 0);
+    out[11] = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(input[11], 1), (mask ? 0x41 : 0)), 0xFF);
+    out[10] = OpCodes.XorN(out[10], (mask ? 0x06 : 0));
   }
 
   // OCB mode implementation for Pyjamask-96
@@ -286,11 +286,11 @@
       for (let i = 0; i < NONCE_SIZE; ++i) {
         this.offset[BLOCK_SIZE - NONCE_SIZE + i] = nonce[i];
       }
-      this.offset[0] = ((TAG_SIZE * 8) & 0x7F) << 1;
-      this.offset[BLOCK_SIZE - NONCE_SIZE - 1] |= 0x01;
+      this.offset[0] = OpCodes.Shl32(OpCodes.AndN(TAG_SIZE * 8, 0x7F), 1);
+      this.offset[BLOCK_SIZE - NONCE_SIZE - 1] = OpCodes.OrN(this.offset[BLOCK_SIZE - NONCE_SIZE - 1], 0x01);
 
-      const bottom = this.offset[BLOCK_SIZE - 1] & 0x3F;
-      this.offset[BLOCK_SIZE - 1] &= 0xC0;
+      const bottom = OpCodes.AndN(this.offset[BLOCK_SIZE - 1], 0x3F);
+      this.offset[BLOCK_SIZE - 1] = OpCodes.AndN(this.offset[BLOCK_SIZE - 1], 0xC0);
 
       // Create stretch for offset calculation (96-bit block handling)
       const stretch = new Array(20);
@@ -300,10 +300,10 @@
       }
       // Extend stretch per Pyjamask specification
       for (let i = 0; i < 8; ++i) {
-        stretch[i + 12] = ((stretch[i + 1] << 1) | (stretch[i + 2] >> 7)) & 0xFF;
+        stretch[i + 12] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(stretch[i + 1], 1), OpCodes.Shr32(stretch[i + 2], 7)), 0xFF);
       }
       for (let i = 0; i < 8; ++i) {
-        stretch[i + 12] ^= stretch[i];
+        stretch[i + 12] = OpCodes.XorN(stretch[i + 12], stretch[i]);
       }
 
       // Extract offset
@@ -311,8 +311,8 @@
       const bitPos = bottom % 8;
       if (bitPos !== 0) {
         for (let i = 0; i < BLOCK_SIZE; ++i) {
-          this.offset[i] = ((stretch[i + bytePos] << bitPos) |
-                           (stretch[i + bytePos + 1] >> (8 - bitPos))) & 0xFF;
+          this.offset[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(stretch[i + bytePos], bitPos),
+                           OpCodes.Shr32(stretch[i + bytePos + 1], (8 - bitPos))), 0xFF);
         }
       } else {
         for (let i = 0; i < BLOCK_SIZE; ++i) {
@@ -324,10 +324,10 @@
     calculateL(blockNumber) {
       const L = [...this.L1];
       doubleL(L, L);
-      let i = blockNumber >> 2;
-      while ((i & 1) === 0) {
+      let i = OpCodes.Shr32(blockNumber, 2);
+      while ((OpCodes.AndN(i, 1)) === 0) {
         doubleL(L, L);
-        i >>= 1;
+        i = OpCodes.Shr32(i, 1);
       }
       return L;
     }
@@ -342,26 +342,26 @@
       // Process full blocks
       while (adLen >= BLOCK_SIZE) {
         let L;
-        if (blockNumber & 1) {
+        if (OpCodes.AndN(blockNumber, 1)) {
           L = this.L0;
-        } else if ((blockNumber & 3) === 2) {
+        } else if ((OpCodes.AndN(blockNumber, 3)) === 2) {
           L = this.L1;
         } else {
           L = this.calculateL(blockNumber);
         }
 
         for (let i = 0; i < BLOCK_SIZE; ++i) {
-          offset[i] ^= L[i];
+          offset[i] = OpCodes.XorN(offset[i], L[i]);
         }
 
         const block = [];
         for (let i = 0; i < BLOCK_SIZE; ++i) {
-          block[i] = offset[i] ^ ad[adIndex++];
+          block[i] = OpCodes.XorN(offset[i], ad[adIndex++]);
         }
 
         const encrypted = encryptBlock(this.keySchedule, block);
         for (let i = 0; i < BLOCK_SIZE; ++i) {
-          tag[i] ^= encrypted[i];
+          tag[i] = OpCodes.XorN(tag[i], encrypted[i]);
         }
 
         adLen -= BLOCK_SIZE;
@@ -371,16 +371,16 @@
       // Process partial block
       if (adLen > 0) {
         for (let i = 0; i < BLOCK_SIZE; ++i) {
-          offset[i] ^= this.Lstar[i];
+          offset[i] = OpCodes.XorN(offset[i], this.Lstar[i]);
         }
         for (let i = 0; i < adLen; ++i) {
-          offset[i] ^= ad[adIndex++];
+          offset[i] = OpCodes.XorN(offset[i], ad[adIndex++]);
         }
-        offset[adLen] ^= 0x80;
+        offset[adLen] = OpCodes.XorN(offset[adLen], 0x80);
 
         const encrypted = encryptBlock(this.keySchedule, offset);
         for (let i = 0; i < BLOCK_SIZE; ++i) {
-          tag[i] ^= encrypted[i];
+          tag[i] = OpCodes.XorN(tag[i], encrypted[i]);
         }
       }
 
@@ -397,30 +397,30 @@
       // Process full plaintext blocks
       while (ptLen >= BLOCK_SIZE) {
         let L;
-        if (blockNumber & 1) {
+        if (OpCodes.AndN(blockNumber, 1)) {
           L = this.L0;
-        } else if ((blockNumber & 3) === 2) {
+        } else if ((OpCodes.AndN(blockNumber, 3)) === 2) {
           L = this.L1;
         } else {
           L = this.calculateL(blockNumber);
         }
 
         for (let i = 0; i < BLOCK_SIZE; ++i) {
-          this.offset[i] ^= L[i];
+          this.offset[i] = OpCodes.XorN(this.offset[i], L[i]);
         }
 
         for (let i = 0; i < BLOCK_SIZE; ++i) {
-          sum[i] ^= plaintext[ptIndex + i];
+          sum[i] = OpCodes.XorN(sum[i], plaintext[ptIndex + i]);
         }
 
         const block = [];
         for (let i = 0; i < BLOCK_SIZE; ++i) {
-          block[i] = this.offset[i] ^ plaintext[ptIndex++];
+          block[i] = OpCodes.XorN(this.offset[i], plaintext[ptIndex++]);
         }
 
         const encrypted = encryptBlock(this.keySchedule, block);
         for (let i = 0; i < BLOCK_SIZE; ++i) {
-          ciphertext.push(encrypted[i] ^ this.offset[i]);
+          ciphertext.push(OpCodes.XorN(encrypted[i], this.offset[i]));
         }
 
         ptLen -= BLOCK_SIZE;
@@ -430,24 +430,24 @@
       // Process partial plaintext block
       if (ptLen > 0) {
         for (let i = 0; i < ptLen; ++i) {
-          sum[i] ^= plaintext[ptIndex + i];
+          sum[i] = OpCodes.XorN(sum[i], plaintext[ptIndex + i]);
         }
-        sum[ptLen] ^= 0x80;
+        sum[ptLen] = OpCodes.XorN(sum[ptLen], 0x80);
 
         for (let i = 0; i < BLOCK_SIZE; ++i) {
-          this.offset[i] ^= this.Lstar[i];
+          this.offset[i] = OpCodes.XorN(this.offset[i], this.Lstar[i]);
         }
 
         const encrypted = encryptBlock(this.keySchedule, this.offset);
         for (let i = 0; i < ptLen; ++i) {
-          ciphertext.push(encrypted[i] ^ plaintext[ptIndex++]);
+          ciphertext.push(OpCodes.XorN(encrypted[i], plaintext[ptIndex++]));
         }
       }
 
       // Finalize
       for (let i = 0; i < BLOCK_SIZE; ++i) {
-        sum[i] ^= this.offset[i];
-        sum[i] ^= this.Ldollar[i];
+        sum[i] = OpCodes.XorN(sum[i], this.offset[i]);
+        sum[i] = OpCodes.XorN(sum[i], this.Ldollar[i]);
       }
 
       const finalTag = encryptBlock(this.keySchedule, sum);
@@ -455,7 +455,7 @@
       // Process AD and compute final tag
       const adTag = this.processAD(ad);
       for (let i = 0; i < BLOCK_SIZE; ++i) {
-        finalTag[i] ^= adTag[i];
+        finalTag[i] = OpCodes.XorN(finalTag[i], adTag[i]);
       }
 
       // Append tag
@@ -480,28 +480,28 @@
       // Process full ciphertext blocks
       while (remainingLen >= BLOCK_SIZE) {
         let L;
-        if (blockNumber & 1) {
+        if (OpCodes.AndN(blockNumber, 1)) {
           L = this.L0;
-        } else if ((blockNumber & 3) === 2) {
+        } else if ((OpCodes.AndN(blockNumber, 3)) === 2) {
           L = this.L1;
         } else {
           L = this.calculateL(blockNumber);
         }
 
         for (let i = 0; i < BLOCK_SIZE; ++i) {
-          this.offset[i] ^= L[i];
+          this.offset[i] = OpCodes.XorN(this.offset[i], L[i]);
         }
 
         const block = [];
         for (let i = 0; i < BLOCK_SIZE; ++i) {
-          block[i] = this.offset[i] ^ ciphertext[ctIndex + i];
+          block[i] = OpCodes.XorN(this.offset[i], ciphertext[ctIndex + i]);
         }
 
         const decrypted = encryptBlock(this.keySchedule, block);
         for (let i = 0; i < BLOCK_SIZE; ++i) {
-          const pt = decrypted[i] ^ this.offset[i];
+          const pt = OpCodes.XorN(decrypted[i], this.offset[i]);
           plaintext.push(pt);
-          sum[i] ^= pt;
+          sum[i] = OpCodes.XorN(sum[i], pt);
         }
 
         ctIndex += BLOCK_SIZE;
@@ -512,22 +512,22 @@
       // Process partial ciphertext block
       if (remainingLen > 0) {
         for (let i = 0; i < BLOCK_SIZE; ++i) {
-          this.offset[i] ^= this.Lstar[i];
+          this.offset[i] = OpCodes.XorN(this.offset[i], this.Lstar[i]);
         }
 
         const encrypted = encryptBlock(this.keySchedule, this.offset);
         for (let i = 0; i < remainingLen; ++i) {
-          const pt = encrypted[i] ^ ciphertext[ctIndex++];
+          const pt = OpCodes.XorN(encrypted[i], ciphertext[ctIndex++]);
           plaintext.push(pt);
-          sum[i] ^= pt;
+          sum[i] = OpCodes.XorN(sum[i], pt);
         }
-        sum[remainingLen] ^= 0x80;
+        sum[remainingLen] = OpCodes.XorN(sum[remainingLen], 0x80);
       }
 
       // Finalize
       for (let i = 0; i < BLOCK_SIZE; ++i) {
-        sum[i] ^= this.offset[i];
-        sum[i] ^= this.Ldollar[i];
+        sum[i] = OpCodes.XorN(sum[i], this.offset[i]);
+        sum[i] = OpCodes.XorN(sum[i], this.Ldollar[i]);
       }
 
       const computedTag = encryptBlock(this.keySchedule, sum);
@@ -535,7 +535,7 @@
       // Process AD and compute final tag
       const adTag = this.processAD(ad);
       for (let i = 0; i < BLOCK_SIZE; ++i) {
-        computedTag[i] ^= adTag[i];
+        computedTag[i] = OpCodes.XorN(computedTag[i], adTag[i]);
       }
 
       // Verify tag

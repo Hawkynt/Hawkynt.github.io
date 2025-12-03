@@ -301,7 +301,7 @@
       // Simple permutation rounds
       for (let round = 0; round < 8; round++) {
         for (let i = 0; i < 16; i++) {
-          state[i] = OpCodes.RotL32(state[i] + state[(i + 1) % 16], 7) ^ state[(i + 8) % 16];
+          state[i] = OpCodes.XorN(OpCodes.RotL32(state[i] + state[(i + 1) % 16], 7), state[(i + 8) % 16]);
         }
       }
 
@@ -317,7 +317,7 @@
       // Process data (stream cipher mode - no tag)
       const output = [];
       for (let i = 0; i < data.length; i++) {
-        output.push(data[i] ^ keystream[i % keystream.length]);
+        output.push(OpCodes.XorN(data[i], keystream[i % keystream.length]));
       }
 
       return output;

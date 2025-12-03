@@ -208,7 +208,7 @@
 
       // Initialize accumulator
       let h = BigInt(0);
-      const p = (BigInt(1) << BigInt(130)) - BigInt(5); // 2^130 - 5
+      const p = OpCodes.ShiftLn(BigInt(1), BigInt(130)) - BigInt(5); // 2^130 - 5
 
       // Process message in 16-byte blocks
       if (message.length === 0) {
@@ -232,9 +232,9 @@
           // Convert block to number and add padding bit
           let n = this.bytesToNum(block);
           if (blockSize === 16) {
-            n += BigInt(1) << BigInt(128); // Add 2^128
+            n += OpCodes.ShiftLn(BigInt(1), BigInt(128)); // Add 2^128
           } else {
-            n += BigInt(1) << BigInt(blockSize * 8); // Add 2^(8*blockSize)
+            n += OpCodes.ShiftLn(BigInt(1), BigInt(blockSize * 8)); // Add 2^(8*blockSize)
           }
 
           // h = ((h + n) * r) mod p
@@ -244,7 +244,7 @@
       }
 
       // Final step: add s
-      h = (h + s) % (BigInt(1) << BigInt(128)); // mod 2^128
+      h = (h + s) % OpCodes.ShiftLn(BigInt(1), BigInt(128)); // mod 2^128
 
       // Convert back to bytes
       return this.numToBytes(h, 16);
@@ -256,7 +256,7 @@
     bytesToNum(bytes) {
       let num = BigInt(0);
       for (let i = bytes.length - 1; i >= 0; i--) {
-        num = (num << BigInt(8)) + BigInt(bytes[i]);
+        num = OpCodes.ShiftLn(num, BigInt(8)) + BigInt(bytes[i]);
       }
       return num;
     }
@@ -267,8 +267,8 @@
     numToBytes(num, length) {
       const bytes = new Array(length);
       for (let i = 0; i < length; i++) {
-        bytes[i] = Number(num & BigInt(0xff));
-        num >>= BigInt(8);
+        bytes[i] = Number(num&BigInt(0xff)); // Native BigInt AND (no OpCodes equivalent)
+        num = OpCodes.ShiftRn(num, BigInt(8));
       }
       return bytes;
     }

@@ -197,7 +197,7 @@
       // Convert seed bytes to 32-bit integer (big-endian)
       let seedValue = 0;
       for (let i = 0; i < seedBytes.length && i < 4; ++i) {
-        seedValue = ((seedValue << 8) | seedBytes[i]) >>> 0;
+        seedValue = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(seedValue, 8), seedBytes[i]));
       }
 
       // Validate seed is in valid range [1, MODULUS-1]
@@ -205,7 +205,7 @@
         throw new Error('Lehmer RNG seed must be in range [1, 2147483646]');
       }
 
-      this._state = seedValue >>> 0; // Ensure unsigned 32-bit
+      this._state = OpCodes.ToUint32(seedValue); // Ensure unsigned 32-bit
       this._ready = true;
     }
 
@@ -241,7 +241,7 @@
       }
 
       // Schrage's method to compute (16807 × state) mod 2147483647
-      const hi = (this._state / QUOTIENT) | 0; // ⌊state/q⌋ using integer truncation
+      const hi = Math.floor(this._state / QUOTIENT); // ⌊state/q⌋ using integer truncation
       const lo = this._state % QUOTIENT;       // state mod q
 
       let test = MULTIPLIER * lo - REMAINDER * hi; // a×lo - r×hi

@@ -71,44 +71,44 @@
       let t0, t1;
 
       // Step chi: s[i] = s[i] ^ (~(s[i+1]) & s[i+2])
-      x8 = (x8 ^ (x0 << 1)) >>> 0;
+      x8 = OpCodes.ToUint32(OpCodes.XorN(x8, OpCodes.Shl32(x0, 1)));
 
       // CHI macro for each word
       const chi = (a, b) => {
-        t0 = ((a >>> 1) | (b << 31)) >>> 0;
-        t1 = ((a >>> 2) | (b << 30)) >>> 0;
-        return (a ^ ((~t0) & t1)) >>> 0;
+        t0 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(a, 1), OpCodes.Shl32(b, 31)));
+        t1 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(a, 2), OpCodes.Shl32(b, 30)));
+        return OpCodes.ToUint32(OpCodes.XorN(a, OpCodes.AndN(~t0, t1)));
       };
 
       x0 = chi(x0, x1); x1 = chi(x1, x2);
       x2 = chi(x2, x3); x3 = chi(x3, x4);
       x4 = chi(x4, x5); x5 = chi(x5, x6);
       x6 = chi(x6, x7); x7 = chi(x7, x8);
-      x8 = (x8 ^ ((~(x8 >>> 1)) & (x8 >>> 2))) >>> 0;
+      x8 = OpCodes.ToUint32(OpCodes.XorN(x8, OpCodes.AndN(~OpCodes.Shr32(x8, 1), OpCodes.Shr32(x8, 2))));
 
       // Step iota: invert s[0]
-      x0 = (x0 ^ 1) >>> 0;
+      x0 = OpCodes.ToUint32(OpCodes.XorN(x0, 1));
 
       // Step theta: s[i] = s[i] ^ s[i + 3] ^ s[i + 8]
-      x8 = ((x8 & 1) ^ (x0 << 1)) >>> 0;
+      x8 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.AndN(x8, 1), OpCodes.Shl32(x0, 1)));
 
       const theta = (a, b) => {
-        t0 = ((a >>> 3) | (b << 29)) >>> 0;
-        t1 = ((a >>> 8) | (b << 24)) >>> 0;
-        return (a ^ t0 ^ t1) >>> 0;
+        t0 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(a, 3), OpCodes.Shl32(b, 29)));
+        t1 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(a, 8), OpCodes.Shl32(b, 24)));
+        return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(a, t0), t1));
       };
 
       x0 = theta(x0, x1); x1 = theta(x1, x2);
       x2 = theta(x2, x3); x3 = theta(x3, x4);
       x4 = theta(x4, x5); x5 = theta(x5, x6);
       x6 = theta(x6, x7); x7 = theta(x7, x8);
-      x8 = (x8 ^ (x8 >>> 3) ^ (x8 >>> 8)) >>> 0;
+      x8 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(x8, OpCodes.Shr32(x8, 3)), OpCodes.Shr32(x8, 8)));
 
       // Step pi: permute bits with rule s[i] = s[(i * 12) % 257]
       // BCP = bit copy, BUP = move bit up, BDN = move bit down
-      const BCP = (x, bit) => (x & (1 << bit)) >>> 0;
-      const BUP = (x, from, to) => ((x << (to - from)) & (1 << to)) >>> 0;
-      const BDN = (x, from, to) => ((x >>> (from - to)) & (1 << to)) >>> 0;
+      const BCP = (x, bit) => OpCodes.ToUint32(OpCodes.AndN(x, OpCodes.Shl32(1, bit)));
+      const BUP = (x, from, to) => OpCodes.ToUint32(OpCodes.AndN(OpCodes.Shl32(x, (to - from)), OpCodes.Shl32(1, to)));
+      const BDN = (x, from, to) => OpCodes.ToUint32(OpCodes.AndN(OpCodes.Shr32(x, (from - to)), OpCodes.Shl32(1, to)));
 
       this.x[0] = BCP(x0, 0)      ^ BDN(x0, 12,  1) ^ BDN(x0, 24,  2) ^
                   BDN(x1,  4,  3) ^ BDN(x1, 16,  4) ^ BDN(x1, 28,  5) ^

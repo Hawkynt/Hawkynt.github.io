@@ -291,7 +291,7 @@
       // Process input data byte by byte (stream cipher)
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();
-        output.push(this.inputBuffer[i] ^ keystreamByte);
+        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer for next operation
@@ -349,7 +349,7 @@
             const byteIndex = Math.floor(ivBitIndex / 8);
             const bitIndex = ivBitIndex % 8;
             const ivBit = OpCodes.GetBit(this._iv[byteIndex], bitIndex);
-            this.nlfsr[reg][i] ^= ivBit;
+            this.nlfsr[reg][i] = OpCodes.XorN(this.nlfsr[reg][i], ivBit);
             ivBitIndex++;
           }
         }
@@ -372,16 +372,16 @@
       // Calculate linear feedback
       let feedback = 0;
       for (let i = 0; i < taps.length; i++) {
-        feedback ^= reg[taps[i]];
+        feedback = OpCodes.XorN(feedback, reg[taps[i]]);
       }
 
       // Add nonlinear terms for security
       if (size > 20) {
-        feedback ^= (reg[5] & reg[10]);
-        feedback ^= (reg[8] & reg[15]);
+        feedback = OpCodes.XorN(feedback, OpCodes.AndN(reg[5], reg[10]));
+        feedback = OpCodes.XorN(feedback, OpCodes.AndN(reg[8], reg[15]));
       }
       if (size > 25) {
-        feedback ^= (reg[3] & reg[7] & reg[12]);
+        feedback = OpCodes.XorN(feedback, OpCodes.AndN(OpCodes.AndN(reg[3], reg[7]), reg[12]));
       }
 
       // Shift register and insert feedback
@@ -389,7 +389,7 @@
       for (let i = size - 1; i > 0; i--) {
         reg[i] = reg[i - 1];
       }
-      reg[0] = feedback & 1;
+      reg[0] = OpCodes.AndN(feedback, 1);
 
       return output;
     }
@@ -411,29 +411,29 @@
 
       // Linear terms
       for (let i = 0; i < inputs.length; i++) {
-        output ^= inputs[i];
+        output = OpCodes.XorN(output, inputs[i]);
       }
 
       // Nonlinear terms for security
       if (inputs.length >= 8) {
-        output ^= (inputs[0] & inputs[1]);
-        output ^= (inputs[2] & inputs[3]);
-        output ^= (inputs[4] & inputs[5]);
-        output ^= (inputs[6] & inputs[7]);
+        output = OpCodes.XorN(output, OpCodes.AndN(inputs[0], inputs[1]));
+        output = OpCodes.XorN(output, OpCodes.AndN(inputs[2], inputs[3]));
+        output = OpCodes.XorN(output, OpCodes.AndN(inputs[4], inputs[5]));
+        output = OpCodes.XorN(output, OpCodes.AndN(inputs[6], inputs[7]));
       }
 
       if (inputs.length >= 12) {
-        output ^= (inputs[0] & inputs[2] & inputs[4]);
-        output ^= (inputs[8] & inputs[9]);
-        output ^= (inputs[10] & inputs[11]);
+        output = OpCodes.XorN(output, OpCodes.AndN(OpCodes.AndN(inputs[0], inputs[2]), inputs[4]));
+        output = OpCodes.XorN(output, OpCodes.AndN(inputs[8], inputs[9]));
+        output = OpCodes.XorN(output, OpCodes.AndN(inputs[10], inputs[11]));
       }
 
       // Higher-order terms
       if (inputs.length >= 13) {
-        output ^= (inputs[1] & inputs[3] & inputs[5] & inputs[12]);
+        output = OpCodes.XorN(output, OpCodes.AndN(OpCodes.AndN(OpCodes.AndN(inputs[1], inputs[3]), inputs[5]), inputs[12]));
       }
 
-      return output & 1;
+      return OpCodes.AndN(output, 1);
     }
 
     // Generate single keystream byte
@@ -443,10 +443,10 @@
       for (let bit = 0; bit < 8; bit++) {
         const nlfsr_outputs = this._clockAllNLFSRs();
         const keystreamBit = this._combiningFunction(nlfsr_outputs);
-        keystreamByte |= (keystreamBit << bit);
+        keystreamByte = OpCodes.OrN(keystreamByte, OpCodes.Shl32(keystreamBit, bit));
       }
 
-      return keystreamByte & 0xFF;
+      return OpCodes.AndN(keystreamByte, 0xFF);
     }
   }
 

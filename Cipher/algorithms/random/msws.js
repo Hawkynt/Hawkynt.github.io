@@ -188,7 +188,7 @@
 
     /**
      * Set seed value (1-8 bytes)
-     * Seed initialization: state = (seed << 64) | ~seed, weyl = 0
+     * Seed initialization: state = (seed left-shift 64) bitwise-OR ~seed, weyl = 0
      * This ensures the initial state is 128 bits with good mixing
      */
     set seed(seedBytes) {
@@ -200,15 +200,15 @@
       // Convert seed bytes to 64-bit BigInt (big-endian)
       let seed64 = 0n;
       for (let i = 0; i < Math.min(seedBytes.length, 8); ++i) {
-        seed64 = (seed64 << 8n) | BigInt(seedBytes[i] & 0xFF);
+        seed64 = OpCodes.OrN(OpCodes.ShiftLn(seed64, 8n), BigInt(OpCodes.AndN(seedBytes[i], 0xFF)));
       }
 
-      // Initialize state as per MSWS specification: state = (seed << 64) | ~seed
+      // Initialize state as per MSWS specification: state = (seed left-shift 64) bitwise-OR ~seed
       // This creates a 128-bit state where upper 64 bits = seed, lower 64 bits = bitwise NOT of seed
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
-      const upperBits = seed64 << 64n;
-      const lowerBits = (~seed64) & mask64;
-      this._state = upperBits | lowerBits;
+      const upperBits = OpCodes.ShiftLn(seed64, 64n);
+      const lowerBits = OpCodes.AndN(~seed64, mask64);
+      this._state = OpCodes.OrN(upperBits, lowerBits);
 
       // Initialize Weyl counter to 0
       this._weyl = 0n;
@@ -227,7 +227,7 @@
      * 1. x *= x              (square state, produces 128-bit result)
      * 2. w += weyl_constant  (increment Weyl sequence)
      * 3. x += w              (add Weyl counter to state)
-     * 4. return x >> 32      (extract middle 64 bits)
+     * 4. return x right-shift 32      (extract middle 64 bits)
      *
      * Note: All state is maintained at full 128-bit precision
      */
@@ -237,19 +237,19 @@
       }
 
       // Step 1: Square the state (128-bit * 128-bit = 256-bit, but we keep lower 128 bits)
-      const mask128 = (1n << 128n) - 1n;
-      this._state = (this._state * this._state) & mask128;
+      const mask128 = OpCodes.AndN(OpCodes.ShiftLn(1n, 128n) - 1n, OpCodes.ShiftLn(1n, 128n) - 1n);
+      this._state = OpCodes.AndN(this._state * this._state, mask128);
 
       // Step 2: Increment Weyl counter (mod 2^64)
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
-      this._weyl = (this._weyl + this._weylConstant) & mask64;
+      this._weyl = OpCodes.AndN(this._weyl + this._weylConstant, mask64);
 
       // Step 3: Add Weyl counter to state
-      this._state = (this._state + this._weyl) & mask128;
+      this._state = OpCodes.AndN(this._state + this._weyl, mask128);
 
       // Step 4: Extract middle 64 bits (bits 32-95 of the 128-bit state)
-      // This is equivalent to: (state >> 32) & 0xFFFFFFFFFFFFFFFF
-      const output = (this._state >> 32n) & mask64;
+      // This is equivalent to: (state right-shift 32) AND 0xFFFFFFFFFFFFFFFF
+      const output = OpCodes.AndN(OpCodes.ShiftRn(this._state, 32n), mask64);
 
       return output;
     }
@@ -281,7 +281,7 @@
         for (let i = 0; i < bytesToExtract; ++i) {
           // Extract from most significant byte first (big-endian)
           const shift = BigInt((7 - i) * 8);
-          const byte = Number((value >> shift) & 0xFFn);
+          const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, shift), 0xFFn));
           output.push(byte);
         }
 

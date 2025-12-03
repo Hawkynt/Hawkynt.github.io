@@ -74,14 +74,14 @@
     k[3] = OpCodes.Pack32LE(key[12], key[13], key[14], key[15]);
 
     // Key schedule generation (from C reference)
-    k[4] = (k[1] ^ OpCodes.RotL32(k[1], 1) ^ OpCodes.RotL32(k[1], 11)) >>> 0;
-    k[5] = (k[0] ^ OpCodes.RotL32(k[0], 1) ^ OpCodes.RotL32(k[0], 11)) >>> 0;
-    k[6] = (k[3] ^ OpCodes.RotL32(k[3], 1) ^ OpCodes.RotL32(k[3], 11)) >>> 0;
-    k[7] = (k[2] ^ OpCodes.RotL32(k[2], 1) ^ OpCodes.RotL32(k[2], 11)) >>> 0;
-    k[0] = (k[0] ^ OpCodes.RotL32(k[0], 1) ^ OpCodes.RotL32(k[0], 8)) >>> 0;
-    k[1] = (k[1] ^ OpCodes.RotL32(k[1], 1) ^ OpCodes.RotL32(k[1], 8)) >>> 0;
-    k[2] = (k[2] ^ OpCodes.RotL32(k[2], 1) ^ OpCodes.RotL32(k[2], 8)) >>> 0;
-    k[3] = (k[3] ^ OpCodes.RotL32(k[3], 1) ^ OpCodes.RotL32(k[3], 8)) >>> 0;
+    k[4] = OpCodes.XorN(OpCodes.XorN(k[1], OpCodes.RotL32(k[1], 1)), OpCodes.RotL32(k[1], 11));
+    k[5] = OpCodes.XorN(OpCodes.XorN(k[0], OpCodes.RotL32(k[0], 1)), OpCodes.RotL32(k[0], 11));
+    k[6] = OpCodes.XorN(OpCodes.XorN(k[3], OpCodes.RotL32(k[3], 1)), OpCodes.RotL32(k[3], 11));
+    k[7] = OpCodes.XorN(OpCodes.XorN(k[2], OpCodes.RotL32(k[2], 1)), OpCodes.RotL32(k[2], 11));
+    k[0] = OpCodes.XorN(OpCodes.XorN(k[0], OpCodes.RotL32(k[0], 1)), OpCodes.RotL32(k[0], 8));
+    k[1] = OpCodes.XorN(OpCodes.XorN(k[1], OpCodes.RotL32(k[1], 1)), OpCodes.RotL32(k[1], 8));
+    k[2] = OpCodes.XorN(OpCodes.XorN(k[2], OpCodes.RotL32(k[2], 1)), OpCodes.RotL32(k[2], 8));
+    k[3] = OpCodes.XorN(OpCodes.XorN(k[3], OpCodes.RotL32(k[3], 1)), OpCodes.RotL32(k[3], 8));
 
     // Unpack input block
     let x0 = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
@@ -92,14 +92,14 @@
     // Perform 80 rounds (8 at a time)
     for (let round = 0; round < 80; round += 8) {
       // Round operations: ((x ^ round_const) + (rotate(next_x) ^ key))
-      x0 = OpCodes.RotL32(((x0 ^ round) + (OpCodes.RotL32(x1, 1) ^ k[0])) >>> 0, 8);
-      x1 = OpCodes.RotL32(((x1 ^ (round + 1)) + (OpCodes.RotL32(x2, 8) ^ k[1])) >>> 0, 1);
-      x2 = OpCodes.RotL32(((x2 ^ (round + 2)) + (OpCodes.RotL32(x3, 1) ^ k[2])) >>> 0, 8);
-      x3 = OpCodes.RotL32(((x3 ^ (round + 3)) + (OpCodes.RotL32(x0, 8) ^ k[3])) >>> 0, 1);
-      x0 = OpCodes.RotL32(((x0 ^ (round + 4)) + (OpCodes.RotL32(x1, 1) ^ k[4])) >>> 0, 8);
-      x1 = OpCodes.RotL32(((x1 ^ (round + 5)) + (OpCodes.RotL32(x2, 8) ^ k[5])) >>> 0, 1);
-      x2 = OpCodes.RotL32(((x2 ^ (round + 6)) + (OpCodes.RotL32(x3, 1) ^ k[6])) >>> 0, 8);
-      x3 = OpCodes.RotL32(((x3 ^ (round + 7)) + (OpCodes.RotL32(x0, 8) ^ k[7])) >>> 0, 1);
+      x0 = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.XorN(x0, round) + OpCodes.XorN(OpCodes.RotL32(x1, 1), k[0])), 8);
+      x1 = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.XorN(x1, (round + 1)) + OpCodes.XorN(OpCodes.RotL32(x2, 8), k[1])), 1);
+      x2 = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.XorN(x2, (round + 2)) + OpCodes.XorN(OpCodes.RotL32(x3, 1), k[2])), 8);
+      x3 = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.XorN(x3, (round + 3)) + OpCodes.XorN(OpCodes.RotL32(x0, 8), k[3])), 1);
+      x0 = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.XorN(x0, (round + 4)) + OpCodes.XorN(OpCodes.RotL32(x1, 1), k[4])), 8);
+      x1 = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.XorN(x1, (round + 5)) + OpCodes.XorN(OpCodes.RotL32(x2, 8), k[5])), 1);
+      x2 = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.XorN(x2, (round + 6)) + OpCodes.XorN(OpCodes.RotL32(x3, 1), k[6])), 8);
+      x3 = OpCodes.RotL32(OpCodes.ToUint32(OpCodes.XorN(x3, (round + 7)) + OpCodes.XorN(OpCodes.RotL32(x0, 8), k[7])), 1);
     }
 
     // Pack output block
@@ -124,13 +124,13 @@
    */
   function comet_adjust_block_key(Z) {
     // Carry bit from bit 63 (byte 7, bit 7)
-    const mask = (Z[7] & 0x80) ? 0x1B : 0x00;
+    const mask = OpCodes.AndN(Z[7], 0x80) ? 0x1B : 0x00;
 
     // Left shift by 1 bit across 8 bytes
     for (let i = 7; i > 0; --i) {
-      Z[i] = ((Z[i] << 1) | (Z[i - 1] >>> 7)) & 0xFF;
+      Z[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(Z[i], 1), OpCodes.Shr32(Z[i - 1], 7)), 0xFF);
     }
-    Z[0] = ((Z[0] << 1) ^ mask) & 0xFF;
+    Z[0] = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(Z[0], 1), mask), 0xFF);
   }
 
   /**
@@ -229,7 +229,7 @@
 
       // Ciphertext = plaintext XOR shuffled Y
       for (let i = 0; i < 16; ++i) {
-        ciphertext[offset + i] = plaintext[offset + i] ^ Ys[i];
+        ciphertext[offset + i] = OpCodes.XorN(plaintext[offset + i], Ys[i]);
       }
 
       offset += 16;
@@ -253,7 +253,7 @@
 
       // Ciphertext = plaintext XOR shuffled Y
       for (let i = 0; i < remaining; ++i) {
-        ciphertext[offset + i] = plaintext[offset + i] ^ Ys[i];
+        ciphertext[offset + i] = OpCodes.XorN(plaintext[offset + i], Ys[i]);
       }
     }
 
@@ -286,7 +286,7 @@
 
       // Plaintext = ciphertext XOR shuffled Y
       for (let i = 0; i < 16; ++i) {
-        plaintext[offset + i] = ciphertext[offset + i] ^ Ys[i];
+        plaintext[offset + i] = OpCodes.XorN(ciphertext[offset + i], Ys[i]);
       }
 
       // Update Y with plaintext
@@ -309,7 +309,7 @@
 
       // Plaintext = ciphertext XOR shuffled Y
       for (let i = 0; i < remaining; ++i) {
-        plaintext[offset + i] = ciphertext[offset + i] ^ Ys[i];
+        plaintext[offset + i] = OpCodes.XorN(ciphertext[offset + i], Ys[i]);
       }
 
       // Update Y with partial plaintext

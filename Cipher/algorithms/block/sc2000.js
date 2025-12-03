@@ -221,7 +221,7 @@ class SC2000Instance extends IBlockCipherInstance {
     const result = new Uint8Array(8);
 
     for (let i = 0; i < 8; i++) {
-      result[i] = input[i] ^ roundKey[i];
+      result[i] = OpCodes.XorN(input[i], roundKey[i]);
     }
 
     for (let i = 0; i < 8; i++) {
@@ -236,8 +236,8 @@ class SC2000Instance extends IBlockCipherInstance {
     const left = OpCodes.Pack32BE(result[0], result[1], result[2], result[3]);
     const right = OpCodes.Pack32BE(result[4], result[5], result[6], result[7]);
 
-    const mixedLeft = OpCodes.RotL32(left, 7) ^ right;
-    const mixedRight = OpCodes.RotL32(right, 13) ^ left;
+    const mixedLeft = OpCodes.XorN(OpCodes.RotL32(left, 7), right);
+    const mixedRight = OpCodes.XorN(OpCodes.RotL32(right, 13), left);
 
     const finalResult = new Uint8Array(8);
     finalResult[0] = (mixedLeft >> 24) & 0xFF;
@@ -259,7 +259,7 @@ class SC2000Instance extends IBlockCipherInstance {
 
     for (let i = 0; i < 8; i += 2) {
       const combined = (state[i] << 8) | state[i + 1];
-      const sboxValue = this._sBox5[combined & 0x1F] ^ this._sBox6[(combined >> 5) & 0x3F];
+      const sboxValue = OpCodes.XorN(this._sBox5[combined & 0x1F], this._sBox6[(combined >> 5) & 0x3F]);
       state[i] = (sboxValue >> 8) & 0xFF;
       state[i + 1] = sboxValue & 0xFF;
     }
@@ -293,7 +293,7 @@ class SC2000Instance extends IBlockCipherInstance {
     for (let i = 0; i < 8; i += 2) {
       const combined = (state[i] << 8) | state[i + 1];
       for (let j = 0; j < 65536; j++) {
-        const testVal = this._sBox5[j & 0x1F] ^ this._sBox6[(j >> 5) & 0x3F];
+        const testVal = OpCodes.XorN(this._sBox5[j & 0x1F], this._sBox6[(j >> 5) & 0x3F]);
         if (testVal === combined) {
           state[i] = (j >> 8) & 0xFF;
           state[i + 1] = j & 0xFF;

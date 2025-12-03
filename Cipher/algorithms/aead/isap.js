@@ -59,15 +59,15 @@
 
     if (positions < 32) {
       return [
-        ((low >>> positions) | (high << (32 - positions))) >>> 0,
-        ((high >>> positions) | (low << (32 - positions))) >>> 0
+        OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, 32 - positions))),
+        OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(high, positions), OpCodes.Shl32(low, 32 - positions)))
       ];
     }
 
     positions -= 32;
     return [
-      ((high >>> positions) | (low << (32 - positions))) >>> 0,
-      ((low >>> positions) | (high << (32 - positions))) >>> 0
+      OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(high, positions), OpCodes.Shl32(low, 32 - positions))),
+      OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, 32 - positions)))
     ];
   }
 
@@ -99,37 +99,37 @@
     // Ascon permutation round
     round(c) {
       // Apply constant to S2
-      this.S[2][0] = (this.S[2][0] ^ c) >>> 0;
+      this.S[2][0] = OpCodes.ToUint32(OpCodes.XorN(this.S[2][0], c));
 
       // Pre-XOR phase
-      this.S[0][0] ^= this.S[4][0]; this.S[0][1] ^= this.S[4][1];
-      this.S[4][0] ^= this.S[3][0]; this.S[4][1] ^= this.S[3][1];
-      this.S[2][0] ^= this.S[1][0]; this.S[2][1] ^= this.S[1][1];
+      this.S[0][0] = OpCodes.XorN(this.S[0][0], this.S[4][0]); this.S[0][1] = OpCodes.XorN(this.S[0][1], this.S[4][1]);
+      this.S[4][0] = OpCodes.XorN(this.S[4][0], this.S[3][0]); this.S[4][1] = OpCodes.XorN(this.S[4][1], this.S[3][1]);
+      this.S[2][0] = OpCodes.XorN(this.S[2][0], this.S[1][0]); this.S[2][1] = OpCodes.XorN(this.S[2][1], this.S[1][1]);
 
       // S-box: Compute ~xi & xj (Chi layer)
-      const t0_l = ((~this.S[0][0]) & this.S[1][0]) >>> 0;
-      const t0_h = ((~this.S[0][1]) & this.S[1][1]) >>> 0;
-      const t1_l = ((~this.S[1][0]) & this.S[2][0]) >>> 0;
-      const t1_h = ((~this.S[1][1]) & this.S[2][1]) >>> 0;
-      const t2_l = ((~this.S[2][0]) & this.S[3][0]) >>> 0;
-      const t2_h = ((~this.S[2][1]) & this.S[3][1]) >>> 0;
-      const t3_l = ((~this.S[3][0]) & this.S[4][0]) >>> 0;
-      const t3_h = ((~this.S[3][1]) & this.S[4][1]) >>> 0;
-      const t4_l = ((~this.S[4][0]) & this.S[0][0]) >>> 0;
-      const t4_h = ((~this.S[4][1]) & this.S[0][1]) >>> 0;
+      const t0_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[0][0], this.S[1][0]));
+      const t0_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[0][1], this.S[1][1]));
+      const t1_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[1][0], this.S[2][0]));
+      const t1_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[1][1], this.S[2][1]));
+      const t2_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[2][0], this.S[3][0]));
+      const t2_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[2][1], this.S[3][1]));
+      const t3_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[3][0], this.S[4][0]));
+      const t3_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[3][1], this.S[4][1]));
+      const t4_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[4][0], this.S[0][0]));
+      const t4_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[4][1], this.S[0][1]));
 
-      this.S[0][0] ^= t1_l; this.S[0][1] ^= t1_h;
-      this.S[1][0] ^= t2_l; this.S[1][1] ^= t2_h;
-      this.S[2][0] ^= t3_l; this.S[2][1] ^= t3_h;
-      this.S[3][0] ^= t4_l; this.S[3][1] ^= t4_h;
-      this.S[4][0] ^= t0_l; this.S[4][1] ^= t0_h;
+      this.S[0][0] = OpCodes.XorN(this.S[0][0], t1_l); this.S[0][1] = OpCodes.XorN(this.S[0][1], t1_h);
+      this.S[1][0] = OpCodes.XorN(this.S[1][0], t2_l); this.S[1][1] = OpCodes.XorN(this.S[1][1], t2_h);
+      this.S[2][0] = OpCodes.XorN(this.S[2][0], t3_l); this.S[2][1] = OpCodes.XorN(this.S[2][1], t3_h);
+      this.S[3][0] = OpCodes.XorN(this.S[3][0], t4_l); this.S[3][1] = OpCodes.XorN(this.S[3][1], t4_h);
+      this.S[4][0] = OpCodes.XorN(this.S[4][0], t0_l); this.S[4][1] = OpCodes.XorN(this.S[4][1], t0_h);
 
       // Post-XOR phase
-      this.S[1][0] ^= this.S[0][0]; this.S[1][1] ^= this.S[0][1];
-      this.S[0][0] ^= this.S[4][0]; this.S[0][1] ^= this.S[4][1];
-      this.S[3][0] ^= this.S[2][0]; this.S[3][1] ^= this.S[2][1];
-      this.S[2][0] = (~this.S[2][0]) >>> 0;
-      this.S[2][1] = (~this.S[2][1]) >>> 0;
+      this.S[1][0] = OpCodes.XorN(this.S[1][0], this.S[0][0]); this.S[1][1] = OpCodes.XorN(this.S[1][1], this.S[0][1]);
+      this.S[0][0] = OpCodes.XorN(this.S[0][0], this.S[4][0]); this.S[0][1] = OpCodes.XorN(this.S[0][1], this.S[4][1]);
+      this.S[3][0] = OpCodes.XorN(this.S[3][0], this.S[2][0]); this.S[3][1] = OpCodes.XorN(this.S[3][1], this.S[2][1]);
+      this.S[2][0] = OpCodes.ToUint32(~this.S[2][0]);
+      this.S[2][1] = OpCodes.ToUint32(~this.S[2][1]);
 
       // Linear diffusion layer
       const s0_l = this.S[0][0], s0_h = this.S[0][1];
@@ -140,28 +140,28 @@
 
       let r0 = rotr64(s0_l, s0_h, 19);
       let r1 = rotr64(s0_l, s0_h, 28);
-      this.S[0][0] = (s0_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[0][1] = (s0_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s0_l, r0[0]), r1[0]));
+      this.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s0_h, r0[1]), r1[1]));
 
       r0 = rotr64(s1_l, s1_h, 61);
       r1 = rotr64(s1_l, s1_h, 39);
-      this.S[1][0] = (s1_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[1][1] = (s1_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[1][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s1_l, r0[0]), r1[0]));
+      this.S[1][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s1_h, r0[1]), r1[1]));
 
       r0 = rotr64(s2_l, s2_h, 1);
       r1 = rotr64(s2_l, s2_h, 6);
-      this.S[2][0] = (s2_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[2][1] = (s2_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[2][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s2_l, r0[0]), r1[0]));
+      this.S[2][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s2_h, r0[1]), r1[1]));
 
       r0 = rotr64(s3_l, s3_h, 10);
       r1 = rotr64(s3_l, s3_h, 17);
-      this.S[3][0] = (s3_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[3][1] = (s3_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[3][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s3_l, r0[0]), r1[0]));
+      this.S[3][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s3_h, r0[1]), r1[1]));
 
       r0 = rotr64(s4_l, s4_h, 7);
       r1 = rotr64(s4_l, s4_h, 41);
-      this.S[4][0] = (s4_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[4][1] = (s4_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[4][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s4_l, r0[0]), r1[0]));
+      this.S[4][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s4_h, r0[1]), r1[1]));
     }
 
     // Ascon-p[12] permutation
@@ -447,7 +447,7 @@
         const stateBytes = OpCodes.Unpack32BE(encState.S[0][1]).concat(OpCodes.Unpack32BE(encState.S[0][0]));
 
         for (let i = 0; i < blockSize; ++i) {
-          output.push(plaintext[offset + i] ^ stateBytes[i]);
+          output.push(OpCodes.XorN(plaintext[offset + i], stateBytes[i]));
         }
 
         offset += blockSize;
@@ -511,7 +511,7 @@
         const stateBytes = OpCodes.Unpack32BE(encState.S[0][1]).concat(OpCodes.Unpack32BE(encState.S[0][0]));
 
         for (let i = 0; i < blockSize; ++i) {
-          plaintext.push(ciphertext[offset + i] ^ stateBytes[i]);
+          plaintext.push(OpCodes.XorN(ciphertext[offset + i], stateBytes[i]));
         }
 
         offset += blockSize;
@@ -551,18 +551,18 @@
       for (let bit = 0; bit < numBits; ++bit) {
         const byteIndex = Math.floor(bit / 8);
         const bitIndex = 7 - (bit % 8);
-        const bitValue = (y[byteIndex] >>> bitIndex) & 0x01;
+        const bitValue = OpCodes.AndN(OpCodes.Shr32(y[byteIndex], bitIndex), 0x01);
 
         // XOR bit into state[0] MSB: x0 ^= (bit << 7) << 56
-        state.S[0][1] = (state.S[0][1] ^ ((bitValue << 7) << 24)) >>> 0;
+        state.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(state.S[0][1], OpCodes.Shl32(OpCodes.Shl32(bitValue, 7), 24)));
 
         // Single round (sB = 1)
         state.round(0x4b); // Last round constant
       }
 
       // Absorb final bit
-      const lastBit = y[y.length - 1] & 0x01;
-      state.S[0][1] = (state.S[0][1] ^ ((lastBit << 7) << 24)) >>> 0;
+      const lastBit = OpCodes.AndN(y[y.length - 1], 0x01);
+      state.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(state.S[0][1], OpCodes.Shl32(OpCodes.Shl32(lastBit, 7), 24)));
 
       state.p12(); // Final sK rounds
 
@@ -600,8 +600,8 @@
           this._associatedData[offset + 4], this._associatedData[offset + 5],
           this._associatedData[offset + 6], this._associatedData[offset + 7]
         );
-        macState.S[0][1] ^= block64_high;
-        macState.S[0][0] ^= block64_low;
+        macState.S[0][1] = OpCodes.XorN(macState.S[0][1], block64_high);
+        macState.S[0][0] = OpCodes.XorN(macState.S[0][0], block64_low);
         macState.p12();
         offset += this.RATE;
       }
@@ -610,13 +610,13 @@
       const adRemainder = this._associatedData.length - offset;
       for (let i = 0; i < adRemainder; ++i) {
         const shiftAmount = (7 - i) * 8;
-        macState.S[0][1] = (macState.S[0][1] ^ ((this._associatedData[offset + i] & 0xFF) << shiftAmount)) >>> 0;
+        macState.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(macState.S[0][1], OpCodes.Shl32(OpCodes.AndN(this._associatedData[offset + i], 0xFF), shiftAmount)));
       }
-      macState.S[0][1] = (macState.S[0][1] ^ (0x80 << ((7 - adRemainder) * 8))) >>> 0;
+      macState.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(macState.S[0][1], OpCodes.Shl32(0x80, (7 - adRemainder) * 8)));
       macState.p12();
 
       // Domain separation
-      macState.S[4][0] = (macState.S[4][0] ^ 1) >>> 0;
+      macState.S[4][0] = OpCodes.ToUint32(OpCodes.XorN(macState.S[4][0], 1));
 
       // Absorb ciphertext
       offset = 0;
@@ -629,8 +629,8 @@
           ciphertext[offset + 4], ciphertext[offset + 5],
           ciphertext[offset + 6], ciphertext[offset + 7]
         );
-        macState.S[0][1] ^= block64_high;
-        macState.S[0][0] ^= block64_low;
+        macState.S[0][1] = OpCodes.XorN(macState.S[0][1], block64_high);
+        macState.S[0][0] = OpCodes.XorN(macState.S[0][0], block64_low);
         macState.p12();
         offset += this.RATE;
       }
@@ -639,9 +639,9 @@
       const ctRemainder = ciphertext.length - offset;
       for (let i = 0; i < ctRemainder; ++i) {
         const shiftAmount = (7 - i) * 8;
-        macState.S[0][1] = (macState.S[0][1] ^ ((ciphertext[offset + i] & 0xFF) << shiftAmount)) >>> 0;
+        macState.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(macState.S[0][1], OpCodes.Shl32(OpCodes.AndN(ciphertext[offset + i], 0xFF), shiftAmount)));
       }
-      macState.S[0][1] = (macState.S[0][1] ^ (0x80 << ((7 - ctRemainder) * 8))) >>> 0;
+      macState.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(macState.S[0][1], OpCodes.Shl32(0x80, (7 - ctRemainder) * 8)));
       macState.p12();
 
       // Derive K* (re-keyed key)

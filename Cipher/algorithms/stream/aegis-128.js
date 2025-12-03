@@ -213,10 +213,10 @@
         const c = state[col * 4 + 2];
         const d = state[col * 4 + 3];
 
-        state[col * 4] = gfMul2[a] ^ gfMul3[b] ^ c ^ d;
-        state[col * 4 + 1] = a ^ gfMul2[b] ^ gfMul3[c] ^ d;
-        state[col * 4 + 2] = a ^ b ^ gfMul2[c] ^ gfMul3[d];
-        state[col * 4 + 3] = gfMul3[a] ^ b ^ c ^ gfMul2[d];
+        state[col * 4] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(gfMul2[a], gfMul3[b]), c), d);
+        state[col * 4 + 1] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(a, gfMul2[b]), gfMul3[c]), d);
+        state[col * 4 + 2] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(a, b), gfMul2[c]), gfMul3[d]);
+        state[col * 4 + 3] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(gfMul3[a], b), c), gfMul2[d]);
       }
 
       return state;
@@ -234,7 +234,7 @@
     xorState(a, b) {
       const result = new Array(16);
       for (let i = 0; i < 16; i++) {
-        result[i] = a[i] ^ b[i];
+        result[i] = OpCodes.XorN(a[i], b[i]);
       }
       return result;
     }
@@ -388,8 +388,8 @@
       for (let i = 0; i < inputCopy.length; i++) {
         const keyByte = this._key[i % this._key.length];
         const ivByte = this._iv[i % this._iv.length];
-        const keystreamByte = (keyByte ^ ivByte ^ (i & 0xFF)) & 0xFF;
-        result.push(inputCopy[i] ^ keystreamByte);
+        const keystreamByte = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(keyByte, ivByte), OpCodes.AndN(i, 0xFF)), 0xFF);
+        result.push(OpCodes.XorN(inputCopy[i], keystreamByte));
       }
 
       // Clear input buffer for next operation

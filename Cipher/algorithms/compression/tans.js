@@ -74,7 +74,7 @@
 
         // tANS parameters
         this.TABLE_LOG = 8;                     // Simplified table size log2 (256 entries)
-        this.TABLE_SIZE = 1 << this.TABLE_LOG; // 256
+        this.TABLE_SIZE = OpCodes.Shl32(1, this.TABLE_LOG); // 256
         this.MAX_SYMBOL_VALUE = 255;            // Maximum symbol value
 
         this.documentation = [
@@ -185,7 +185,7 @@
         // Store symbol table
         for (const [symbol, freq] of Object.entries(normalizedFreqs)) {
           compressed.push(parseInt(symbol));
-          compressed.push(freq & 0xFF);
+          compressed.push(OpCodes.ToByte(freq));
         }
 
         // Store original data length and data (simplified approach)

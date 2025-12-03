@@ -192,7 +192,7 @@
       for (let i = 0; i < this.algorithm.LFSR_A_LENGTH && bitIndex < 128; i++) {
         const byteIndex = Math.floor(bitIndex / 8);
         const bitPos = bitIndex % 8;
-        this.lfsrA[i] = (this.keyData[byteIndex] >>> bitPos) & 1;
+        this.lfsrA[i] = OpCodes.AndN(OpCodes.Shr32(this.keyData[byteIndex], bitPos), 1);
         bitIndex++;
       }
 
@@ -200,7 +200,7 @@
       for (let i = 0; i < this.algorithm.LFSR_S_LENGTH && bitIndex < 128; i++) {
         const byteIndex = Math.floor(bitIndex / 8);
         const bitPos = bitIndex % 8;
-        this.lfsrS[i] = (this.keyData[byteIndex] >>> bitPos) & 1;
+        this.lfsrS[i] = OpCodes.AndN(OpCodes.Shr32(this.keyData[byteIndex], bitPos), 1);
         bitIndex++;
       }
 
@@ -208,13 +208,13 @@
       while (bitIndex < 128) {
         const byteIndex = Math.floor(bitIndex / 8);
         const bitPos = bitIndex % 8;
-        const keyBit = (this.keyData[byteIndex] >>> bitPos) & 1;
+        const keyBit = OpCodes.AndN(OpCodes.Shr32(this.keyData[byteIndex], bitPos), 1);
 
         // XOR with existing LFSR states alternately
         if ((bitIndex % 2) === 0) {
-          this.lfsrA[bitIndex % this.algorithm.LFSR_A_LENGTH] ^= keyBit;
+          this.lfsrA[bitIndex % this.algorithm.LFSR_A_LENGTH] = OpCodes.XorN(this.lfsrA[bitIndex % this.algorithm.LFSR_A_LENGTH], keyBit);
         } else {
-          this.lfsrS[bitIndex % this.algorithm.LFSR_S_LENGTH] ^= keyBit;
+          this.lfsrS[bitIndex % this.algorithm.LFSR_S_LENGTH] = OpCodes.XorN(this.lfsrS[bitIndex % this.algorithm.LFSR_S_LENGTH], keyBit);
         }
         bitIndex++;
       }
@@ -249,7 +249,7 @@
      */
     updateLFSRA() {
       const output = this.lfsrA[0];
-      const feedback = this.lfsrA[0] ^ this.lfsrA[3];
+      const feedback = OpCodes.XorN(this.lfsrA[0], this.lfsrA[3]);
 
       // Shift register
       for (let i = 0; i < this.algorithm.LFSR_A_LENGTH - 1; i++) {
@@ -265,7 +265,7 @@
      */
     updateLFSRS() {
       const output = this.lfsrS[0];
-      const feedback = this.lfsrS[0] ^ this.lfsrS[1] ^ this.lfsrS[2] ^ this.lfsrS[5];
+      const feedback = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.lfsrS[0], this.lfsrS[1]), this.lfsrS[2]), this.lfsrS[5]);
 
       // Shift register
       for (let i = 0; i < this.algorithm.LFSR_S_LENGTH - 1; i++) {
@@ -309,7 +309,7 @@
 
         for (let bit = 0; bit < 8; bit++) {
           const bitValue = this.generateBit();
-          byte |= (bitValue << bit);
+          byte = OpCodes.OrN(byte, OpCodes.Shl32(bitValue, bit));
         }
 
         keystream.push(byte);
@@ -334,7 +334,7 @@
       const keystream = this.generateKeystream(this.inputData.length);
 
       for (let i = 0; i < this.inputData.length; i++) {
-        result[i] = this.inputData[i] ^ keystream[i];
+        result[i] = OpCodes.XorN(this.inputData[i], keystream[i]);
       }
 
       return result;

@@ -301,7 +301,7 @@
       // Process compressed stream
       while (inputPos<input.length && output.length<uncompressedLength) {
         const tag = input[inputPos++];
-        const tagType = tag&0x03;
+        const tagType = OpCodes.AndN(tag, 0x03);
 
         if (tagType === 0x00) {
           // Literal (tag type 00)
@@ -326,7 +326,7 @@
           // Copy with 1-byte offset (tag type 01)
           // Length: 4-11 bytes (encoded in bits 2-4 as len-4)
           // Offset: 0-2047 (upper 3 bits in tag bits 5-7, lower 8 bits in next byte)
-          const length = OpCodes.Shr8(tag&0x1C, 2)+4;
+          const length = OpCodes.Shr8(OpCodes.AndN(tag, 0x1C), 2)+4;
           const offsetHigh = OpCodes.Shr8(tag, 5);
           const offsetLow = input[inputPos++];
           const offset = OpCodes.Pack16LE(offsetLow, offsetHigh);
@@ -407,12 +407,12 @@
       if (pos+3>=input.length) return 0;
 
       // Simple hash combining 4 bytes
-      const hash = OpCodes.Shl32(input[pos], 8)^
-                   OpCodes.Shl32(input[pos+1], 4)^
-                   OpCodes.Shl32(input[pos+2], 2)^
-                   input[pos+3];
+      const hash = OpCodes.XorN(OpCodes.Shl32(input[pos], 8),
+                   OpCodes.XorN(OpCodes.Shl32(input[pos+1], 4),
+                   OpCodes.XorN(OpCodes.Shl32(input[pos+2], 2),
+                   input[pos+3])));
 
-      return hash&OpCodes.ToDWord(this.MAX_HASH_TABLE_SIZE-1);
+      return OpCodes.AndN(hash, OpCodes.ToDWord(this.MAX_HASH_TABLE_SIZE-1));
     }
 
     /**
@@ -421,10 +421,10 @@
      */
     _writeVarint(output, value) {
       while (value>=0x80) {
-        output.push((value&0x7F)|0x80);
+        output.push(OpCodes.OrN(OpCodes.AndN(value, 0x7F), 0x80));
         value = OpCodes.Shr32(value, 7);
       }
-      output.push(value&0x7F);
+      output.push(OpCodes.AndN(value, 0x7F));
     }
 
     /**
@@ -439,9 +439,9 @@
         const byte = input[pos+bytesRead];
         ++bytesRead;
 
-        value |= OpCodes.Shl32(byte&0x7F, shift);
+        value = OpCodes.OrN(value, OpCodes.Shl32(OpCodes.AndN(byte, 0x7F), shift));
 
-        if ((byte&0x80) === 0) {
+        if (OpCodes.AndN(byte, 0x80) === 0) {
           break;
         }
 
@@ -461,16 +461,16 @@
 
       if (length<=this.MAX_LITERAL_LENGTH_SHORT) {
         // Short literal: tag = ((length-1) << 2) | 0x00
-        output.push(OpCodes.Shl8(length-1, 2)|0x00);
+        output.push(OpCodes.OrN(OpCodes.Shl8(length-1, 2), 0x00));
       } else {
         // Extended literal length encoding
         const extraBytes = this._varintSize(length-1);
-        output.push(OpCodes.Shl8(this.MAX_LITERAL_LENGTH_SHORT+extraBytes, 2)|0x00);
+        output.push(OpCodes.OrN(OpCodes.Shl8(this.MAX_LITERAL_LENGTH_SHORT+extraBytes, 2), 0x00));
 
         // Write length-1 as little-endian bytes
         let remaining = length-1;
         for (let i = 0; i<extraBytes; ++i) {
-          output.push(remaining&0xFF);
+          output.push(OpCodes.AndN(remaining, 0xFF));
           remaining = OpCodes.Shr32(remaining, 8);
         }
       }
@@ -491,20 +491,20 @@
         // Length encoded as len-4 in bits 2-4
         // Offset upper 3 bits in bits 5-7, lower 8 bits in next byte
         const [offsetLow, offsetHigh] = OpCodes.Unpack16LE(offset);
-        const tag = OpCodes.Shl8(length-4, 2)|OpCodes.Shl8(offsetHigh, 5)|0x01;
+        const tag = OpCodes.OrN(OpCodes.Shl8(length-4, 2), OpCodes.OrN(OpCodes.Shl8(offsetHigh, 5), 0x01));
         output.push(tag, offsetLow);
 
       } else if (offset<this.MAX_OFFSET_2BYTE) {
         // 2-byte offset copy (tag type 10)
         // Length encoded as len-1 in upper 6 bits
         const [offsetLow, offsetHigh] = OpCodes.Unpack16LE(offset);
-        const tag = OpCodes.Shl8(length-1, 2)|0x02;
+        const tag = OpCodes.OrN(OpCodes.Shl8(length-1, 2), 0x02);
         output.push(tag, offsetLow, offsetHigh);
 
       } else {
         // 4-byte offset copy (tag type 11)
         const [b0, b1, b2, b3] = OpCodes.Unpack32LE(offset);
-        const tag = OpCodes.Shl8(length-1, 2)|0x03;
+        const tag = OpCodes.OrN(OpCodes.Shl8(length-1, 2), 0x03);
         output.push(tag, b0, b1, b2, b3);
       }
     }

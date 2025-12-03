@@ -77,7 +77,7 @@
       for (let round = 0; round < 16; round++) {
         for (let i = 0; i < 16; i++) {
           // LFSR feedback
-          const feedback = state.lfsr[0] ^ state.lfsr[5] ^ state.lfsr[11] ^ state.lfsr[15];
+          const feedback = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(state.lfsr[0], state.lfsr[5]), state.lfsr[11]), state.lfsr[15]);
 
           // Shift LFSR
           for (let j = 0; j < 15; j++) {
@@ -86,7 +86,7 @@
           state.lfsr[15] = feedback;
 
           // Update buffer with MUGI-style non-linear transformation
-          state.buffer[i] = (state.buffer[i] + state.lfsr[i] + round + i) & 0xFF;
+          state.buffer[i] = OpCodes.AndN((state.buffer[i] + state.lfsr[i] + round + i), 0xFF);
         }
       }
 
@@ -104,22 +104,22 @@
       const lfsrVal = this.state.lfsr[pos];
 
       // MUGI-style output generation
-      const byte = (bufVal ^ lfsrVal ^ (this.state.round * 3 + pos)) & 0xFF;
+      const byte = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(bufVal, lfsrVal), (this.state.round * 3 + pos)), 0xFF);
 
       // Update LFSR (simplified feedback)
-      const feedback = this.state.lfsr[0] ^ this.state.lfsr[5] ^ this.state.lfsr[11] ^ this.state.lfsr[15];
+      const feedback = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state.lfsr[0], this.state.lfsr[5]), this.state.lfsr[11]), this.state.lfsr[15]);
       for (let i = 0; i < 15; i++) {
         this.state.lfsr[i] = this.state.lfsr[i + 1];
       }
       this.state.lfsr[15] = feedback;
 
       // Update buffer
-      this.state.buffer[pos] = (this.state.buffer[pos] + byte + 1) & 0xFF;
+      this.state.buffer[pos] = OpCodes.AndN((this.state.buffer[pos] + byte + 1), 0xFF);
 
       // Update counters
       this.state.counter = (this.state.counter + 1) % 16;
       if (this.state.counter === 0) {
-        this.state.round = (this.state.round + 1) & 0xFF;
+        this.state.round = OpCodes.AndN((this.state.round + 1), 0xFF);
       }
 
       return byte;
@@ -130,7 +130,7 @@
 
       const output = new Array(input.length);
       for (let i = 0; i < input.length; i++) {
-        output[i] = input[i] ^ this.generateByte();
+        output[i] = OpCodes.XorN(input[i], this.generateByte());
       }
 
       return output;
@@ -170,7 +170,7 @@
 
           const output = new Array(this._inputData.length);
           for (let i = 0; i < this._inputData.length; i++) {
-            output[i] = this._inputData[i] ^ this._cipher.generateByte();
+            output[i] = OpCodes.XorN(this._inputData[i], this._cipher.generateByte());
           }
 
           return output;

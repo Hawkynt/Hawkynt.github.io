@@ -214,7 +214,7 @@
         // Find error position using syndrome
         const errorPos = this.findErrorPosition(syndrome);
         if (errorPos >= 0 && errorPos < 7) {
-          received[errorPos] ^= 1;
+          received[errorPos] = OpCodes.XorN(received[errorPos], 1);
           console.log(`BCH: Corrected error at position ${errorPos}`);
         }
       }
@@ -231,7 +231,7 @@
       for (let i = 0; i <= result.length - divisorLen; ++i) {
         if (result[i] === 1) {
           for (let j = 0; j < divisorLen; ++j) {
-            result[i + j] ^= divisor[j];
+            result[i + j] = OpCodes.XorN(result[i + j], divisor[j]);
           }
         }
       }

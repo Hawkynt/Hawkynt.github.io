@@ -251,12 +251,12 @@
       for (let i = 0; i < this.algorithm.ROUNDS; i++) {
         // Right rotate x by 8 bits, add y, then XOR with round key
         x = OpCodes.RotR32(x, this.algorithm.ALPHA);
-        x = (x + y) >>> 0;
-        x ^= this.roundKeys[i];
+        x = OpCodes.ToUint32(x + y);
+        x = OpCodes.XorN(x, this.roundKeys[i]);
 
         // Left rotate y by 3 bits, then XOR with new x
         y = OpCodes.RotL32(y, this.algorithm.BETA);
-        y ^= x;
+        y = OpCodes.XorN(y, x);
       }
 
       // Convert back to bytes using OpCodes (little-endian)
@@ -287,12 +287,12 @@
       // x = ROL((x ^ roundKey) - y, 8)
       for (let i = this.algorithm.ROUNDS - 1; i >= 0; i--) {
         // Reverse: y = ROL(y, 3) ^ x
-        y ^= x;
+        y = OpCodes.XorN(y, x);
         y = OpCodes.RotR32(y, this.algorithm.BETA);
 
         // Reverse: x = (ROR(x, 8) + y) ^ roundKey
-        x ^= this.roundKeys[i];
-        x = (x - y) >>> 0;
+        x = OpCodes.XorN(x, this.roundKeys[i]);
+        x = OpCodes.ToUint32(x - y);
         x = OpCodes.RotL32(x, this.algorithm.ALPHA);
       }
 
@@ -332,11 +332,11 @@
         // l[i % 3] = (ROR(l[i % 3], 8) + roundKeys[i]) ^ i
         const idx = i % 3;
         l[idx] = OpCodes.RotR32(l[idx], this.algorithm.ALPHA);
-        l[idx] = (l[idx] + roundKeys[i]) >>> 0;
-        l[idx] ^= i;
+        l[idx] = OpCodes.ToUint32(l[idx] + roundKeys[i]);
+        l[idx] = OpCodes.XorN(l[idx], i);
 
         // Generate next round key: roundKeys[i+1] = ROL(roundKeys[i], 3) ^ l[i % 3]
-        roundKeys[i + 1] = OpCodes.RotL32(roundKeys[i], this.algorithm.BETA) ^ l[idx];
+        roundKeys[i + 1] = OpCodes.XorN(OpCodes.RotL32(roundKeys[i], this.algorithm.BETA), l[idx]);
       }
 
       return roundKeys;

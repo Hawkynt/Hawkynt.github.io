@@ -227,7 +227,7 @@
       for (let r = 0; r < rows; ++r) {
         let parity = 0;
         for (let c = 0; c < cols; ++c) {
-          parity ^= encoded[r * (cols + 1) + c];
+          parity = OpCodes.XorN(parity, encoded[r * (cols + 1) + c]);
         }
         encoded[r * (cols + 1) + cols] = parity;
       }
@@ -236,7 +236,7 @@
       for (let c = 0; c < cols; ++c) {
         let parity = 0;
         for (let r = 0; r < rows; ++r) {
-          parity ^= encoded[r * (cols + 1) + c];
+          parity = OpCodes.XorN(parity, encoded[r * (cols + 1) + c]);
         }
         encoded[rows * (cols + 1) + c] = parity;
       }
@@ -244,7 +244,7 @@
       // Calculate overall parity (bottom-right corner)
       let overallParity = 0;
       for (let r = 0; r < rows; ++r) {
-        overallParity ^= encoded[r * (cols + 1) + cols];
+        overallParity = OpCodes.XorN(overallParity, encoded[r * (cols + 1) + cols]);
       }
       encoded[rows * (cols + 1) + cols] = overallParity;
 
@@ -267,7 +267,7 @@
       for (let r = 0; r < rows; ++r) {
         let syndrome = 0;
         for (let c = 0; c <= cols; ++c) {
-          syndrome ^= received[r * (cols + 1) + c];
+          syndrome = OpCodes.XorN(syndrome, received[r * (cols + 1) + c]);
         }
         if (syndrome !== 0) {
           errorRow = r;
@@ -279,7 +279,7 @@
       for (let c = 0; c < cols; ++c) {
         let syndrome = 0;
         for (let r = 0; r <= rows; ++r) {
-          syndrome ^= received[r * (cols + 1) + c];
+          syndrome = OpCodes.XorN(syndrome, received[r * (cols + 1) + c]);
         }
         if (syndrome !== 0) {
           errorCol = c;
@@ -289,7 +289,7 @@
       // Single-bit error correction
       if (errorRow !== -1 && errorCol !== -1) {
         console.log(`2D Parity: Error detected at position (${errorRow}, ${errorCol}), correcting...`);
-        received[errorRow * (cols + 1) + errorCol] ^= 1;
+        received[errorRow * (cols + 1) + errorCol] = OpCodes.XorN(received[errorRow * (cols + 1) + errorCol], 1);
       } else if (errorRow !== -1 || errorCol !== -1) {
         console.warn('2D Parity: Parity error in row/column parity bits');
       }
@@ -316,7 +316,7 @@
       for (let r = 0; r <= rows; ++r) {
         let syndrome = 0;
         for (let c = 0; c <= cols; ++c) {
-          syndrome ^= data[r * (cols + 1) + c];
+          syndrome = OpCodes.XorN(syndrome, data[r * (cols + 1) + c]);
         }
         if (syndrome !== 0) return true;
       }
@@ -325,7 +325,7 @@
       for (let c = 0; c <= cols; ++c) {
         let syndrome = 0;
         for (let r = 0; r <= rows; ++r) {
-          syndrome ^= data[r * (cols + 1) + c];
+          syndrome = OpCodes.XorN(syndrome, data[r * (cols + 1) + c]);
         }
         if (syndrome !== 0) return true;
       }

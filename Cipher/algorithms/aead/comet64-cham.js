@@ -78,22 +78,22 @@
     k[7] = OpCodes.Pack16LE(key[14], key[15]);
 
     // Key schedule generation (from C reference)
-    k[8] = (k[1] ^ OpCodes.RotL16(k[1], 1) ^ OpCodes.RotL16(k[1], 11)) & 0xFFFF;
-    k[9] = (k[0] ^ OpCodes.RotL16(k[0], 1) ^ OpCodes.RotL16(k[0], 11)) & 0xFFFF;
-    k[10] = (k[3] ^ OpCodes.RotL16(k[3], 1) ^ OpCodes.RotL16(k[3], 11)) & 0xFFFF;
-    k[11] = (k[2] ^ OpCodes.RotL16(k[2], 1) ^ OpCodes.RotL16(k[2], 11)) & 0xFFFF;
-    k[12] = (k[5] ^ OpCodes.RotL16(k[5], 1) ^ OpCodes.RotL16(k[5], 11)) & 0xFFFF;
-    k[13] = (k[4] ^ OpCodes.RotL16(k[4], 1) ^ OpCodes.RotL16(k[4], 11)) & 0xFFFF;
-    k[14] = (k[7] ^ OpCodes.RotL16(k[7], 1) ^ OpCodes.RotL16(k[7], 11)) & 0xFFFF;
-    k[15] = (k[6] ^ OpCodes.RotL16(k[6], 1) ^ OpCodes.RotL16(k[6], 11)) & 0xFFFF;
-    k[0] = (k[0] ^ OpCodes.RotL16(k[0], 1) ^ OpCodes.RotL16(k[0], 8)) & 0xFFFF;
-    k[1] = (k[1] ^ OpCodes.RotL16(k[1], 1) ^ OpCodes.RotL16(k[1], 8)) & 0xFFFF;
-    k[2] = (k[2] ^ OpCodes.RotL16(k[2], 1) ^ OpCodes.RotL16(k[2], 8)) & 0xFFFF;
-    k[3] = (k[3] ^ OpCodes.RotL16(k[3], 1) ^ OpCodes.RotL16(k[3], 8)) & 0xFFFF;
-    k[4] = (k[4] ^ OpCodes.RotL16(k[4], 1) ^ OpCodes.RotL16(k[4], 8)) & 0xFFFF;
-    k[5] = (k[5] ^ OpCodes.RotL16(k[5], 1) ^ OpCodes.RotL16(k[5], 8)) & 0xFFFF;
-    k[6] = (k[6] ^ OpCodes.RotL16(k[6], 1) ^ OpCodes.RotL16(k[6], 8)) & 0xFFFF;
-    k[7] = (k[7] ^ OpCodes.RotL16(k[7], 1) ^ OpCodes.RotL16(k[7], 8)) & 0xFFFF;
+    k[8] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[1], OpCodes.RotL16(k[1], 1)), OpCodes.RotL16(k[1], 11)), 0xFFFF);
+    k[9] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[0], OpCodes.RotL16(k[0], 1)), OpCodes.RotL16(k[0], 11)), 0xFFFF);
+    k[10] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[3], OpCodes.RotL16(k[3], 1)), OpCodes.RotL16(k[3], 11)), 0xFFFF);
+    k[11] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[2], OpCodes.RotL16(k[2], 1)), OpCodes.RotL16(k[2], 11)), 0xFFFF);
+    k[12] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[5], OpCodes.RotL16(k[5], 1)), OpCodes.RotL16(k[5], 11)), 0xFFFF);
+    k[13] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[4], OpCodes.RotL16(k[4], 1)), OpCodes.RotL16(k[4], 11)), 0xFFFF);
+    k[14] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[7], OpCodes.RotL16(k[7], 1)), OpCodes.RotL16(k[7], 11)), 0xFFFF);
+    k[15] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[6], OpCodes.RotL16(k[6], 1)), OpCodes.RotL16(k[6], 11)), 0xFFFF);
+    k[0] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[0], OpCodes.RotL16(k[0], 1)), OpCodes.RotL16(k[0], 8)), 0xFFFF);
+    k[1] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[1], OpCodes.RotL16(k[1], 1)), OpCodes.RotL16(k[1], 8)), 0xFFFF);
+    k[2] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[2], OpCodes.RotL16(k[2], 1)), OpCodes.RotL16(k[2], 8)), 0xFFFF);
+    k[3] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[3], OpCodes.RotL16(k[3], 1)), OpCodes.RotL16(k[3], 8)), 0xFFFF);
+    k[4] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[4], OpCodes.RotL16(k[4], 1)), OpCodes.RotL16(k[4], 8)), 0xFFFF);
+    k[5] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[5], OpCodes.RotL16(k[5], 1)), OpCodes.RotL16(k[5], 8)), 0xFFFF);
+    k[6] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[6], OpCodes.RotL16(k[6], 1)), OpCodes.RotL16(k[6], 8)), 0xFFFF);
+    k[7] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(k[7], OpCodes.RotL16(k[7], 1)), OpCodes.RotL16(k[7], 8)), 0xFFFF);
 
     // Unpack input block (4 words of 16 bits each)
     let x0 = OpCodes.Pack16LE(input[0], input[1]);
@@ -104,10 +104,10 @@
     // Perform 80 rounds (4 at a time)
     for (let round = 0; round < 80; round += 4) {
       // Round operations: ((x ^ round_const) + (rotate(next_x) ^ key))
-      x0 = OpCodes.RotL16(((x0 ^ round) + (OpCodes.RotL16(x1, 1) ^ k[round % 16])) & 0xFFFF, 8);
-      x1 = OpCodes.RotL16(((x1 ^ (round + 1)) + (OpCodes.RotL16(x2, 8) ^ k[(round + 1) % 16])) & 0xFFFF, 1);
-      x2 = OpCodes.RotL16(((x2 ^ (round + 2)) + (OpCodes.RotL16(x3, 1) ^ k[(round + 2) % 16])) & 0xFFFF, 8);
-      x3 = OpCodes.RotL16(((x3 ^ (round + 3)) + (OpCodes.RotL16(x0, 8) ^ k[(round + 3) % 16])) & 0xFFFF, 1);
+      x0 = OpCodes.RotL16(OpCodes.AndN(OpCodes.XorN(x0, round) + OpCodes.XorN(OpCodes.RotL16(x1, 1), k[round % 16]), 0xFFFF), 8);
+      x1 = OpCodes.RotL16(OpCodes.AndN(OpCodes.XorN(x1, (round + 1)) + OpCodes.XorN(OpCodes.RotL16(x2, 8), k[(round + 1) % 16]), 0xFFFF), 1);
+      x2 = OpCodes.RotL16(OpCodes.AndN(OpCodes.XorN(x2, (round + 2)) + OpCodes.XorN(OpCodes.RotL16(x3, 1), k[(round + 2) % 16]), 0xFFFF), 8);
+      x3 = OpCodes.RotL16(OpCodes.AndN(OpCodes.XorN(x3, (round + 3)) + OpCodes.XorN(OpCodes.RotL16(x0, 8), k[(round + 3) % 16]), 0xFFFF), 1);
     }
 
     // Pack output block
@@ -132,13 +132,13 @@
    */
   function comet_adjust_block_key(Z) {
     // Carry bit from bit 63 (byte 7, bit 7)
-    const mask = (Z[7] & 0x80) ? 0x1B : 0x00;
+    const mask = OpCodes.AndN(Z[7], 0x80) ? 0x1B : 0x00;
 
     // Left shift by 1 bit across 8 bytes
     for (let i = 7; i > 0; --i) {
-      Z[i] = ((Z[i] << 1) | (Z[i - 1] >>> 7)) & 0xFF;
+      Z[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(Z[i], 1), OpCodes.Shr32(Z[i - 1], 7)), 0xFF);
     }
-    Z[0] = ((Z[0] << 1) ^ mask) & 0xFF;
+    Z[0] = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(Z[0], 1), mask), 0xFF);
   }
 
   /**
@@ -238,7 +238,7 @@
 
       // Ciphertext = plaintext XOR shuffled Y
       for (let i = 0; i < 8; ++i) {
-        ciphertext[offset + i] = plaintext[offset + i] ^ Ys[i];
+        ciphertext[offset + i] = OpCodes.XorN(plaintext[offset + i], Ys[i]);
       }
 
       offset += 8;
@@ -262,7 +262,7 @@
 
       // Ciphertext = plaintext XOR shuffled Y
       for (let i = 0; i < remaining; ++i) {
-        ciphertext[offset + i] = plaintext[offset + i] ^ Ys[i];
+        ciphertext[offset + i] = OpCodes.XorN(plaintext[offset + i], Ys[i]);
       }
     }
 
@@ -295,7 +295,7 @@
 
       // Plaintext = ciphertext XOR shuffled Y
       for (let i = 0; i < 8; ++i) {
-        plaintext[offset + i] = ciphertext[offset + i] ^ Ys[i];
+        plaintext[offset + i] = OpCodes.XorN(ciphertext[offset + i], Ys[i]);
       }
 
       // Update Y with plaintext
@@ -318,7 +318,7 @@
 
       // Plaintext = ciphertext XOR shuffled Y
       for (let i = 0; i < remaining; ++i) {
-        plaintext[offset + i] = ciphertext[offset + i] ^ Ys[i];
+        plaintext[offset + i] = OpCodes.XorN(ciphertext[offset + i], Ys[i]);
       }
 
       // Update Y with partial plaintext

@@ -69,11 +69,11 @@
       for (let i = 0; i < 8; i++) {
         let value = 0x42; // Start with base value
         for (let j = 0; j < this.input.length; j++) {
-          value ^= OpCodes.RotL8(this.input[j], (i + j + 1) % 8);
+          value = OpCodes.XorN(value, OpCodes.RotL8(this.input[j], (i + j + 1) % 8));
           value = OpCodes.RotL8(value, 1);
         }
-        value ^= (i * 67 + 89) % 256; // Mix with constants
-        output[i] = value & 0xFF;
+        value = OpCodes.XorN(value, (i * 67 + 89) % 256); // Mix with constants
+        output[i] = OpCodes.AndN(value, 0xFF);
       }
       
       return output;

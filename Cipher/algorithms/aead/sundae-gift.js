@@ -69,8 +69,8 @@
 
   // Bit permutation helper (bit_permute_step technique)
   function bitPermuteStep(value, mask, shift) {
-    const t = ((value >>> shift) ^ value) & mask;
-    return ((value ^ t) ^ (t << shift)) >>> 0;
+    const t = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(value, shift), value), mask);
+    return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(value, t), OpCodes.Shl32(t, shift)));
   }
 
   // PERM3_INNER - Core permutation
@@ -79,7 +79,7 @@
     x = bitPermuteStep(x, 0x00cc00cc, 6);
     x = bitPermuteStep(x, 0x0000f0f0, 12);
     x = bitPermuteStep(x, 0x000000ff, 24);
-    return x >>> 0;
+    return OpCodes.ToUint32(x);
   }
 
   // Row permutations PERM0-PERM3
@@ -129,13 +129,13 @@
     // Perform all 40 rounds
     for (let round = 0; round < 40; round++) {
       // SubCells - apply the S-box
-      s1 ^= s0 & s2;
-      s0 ^= s1 & s3;
-      s2 ^= s0 | s1;
-      s3 ^= s2;
-      s1 ^= s3;
-      s3 ^= 0xFFFFFFFF;
-      s2 ^= s0 & s1;
+      s1 = OpCodes.XorN(s1, OpCodes.AndN(s0, s2));
+      s0 = OpCodes.XorN(s0, OpCodes.AndN(s1, s3));
+      s2 = OpCodes.XorN(s2, OpCodes.OrN(s0, s1));
+      s3 = OpCodes.XorN(s3, s2);
+      s1 = OpCodes.XorN(s1, s3);
+      s3 = OpCodes.XorN(s3, 0xFFFFFFFF);
+      s2 = OpCodes.XorN(s2, OpCodes.AndN(s0, s1));
 
       // Swap s0 and s3
       let temp = s0;
@@ -149,24 +149,27 @@
       s3 = perm3(s3);
 
       // AddRoundKey - XOR in the key schedule and round constant
-      s2 ^= w1;
-      s1 ^= w3;
-      s3 ^= (0x80000000 ^ GIFT128_RC[round]) >>> 0;
+      s2 = OpCodes.XorN(s2, w1);
+      s1 = OpCodes.XorN(s1, w3);
+      s3 = OpCodes.XorN(s3, OpCodes.ToUint32(OpCodes.XorN(0x80000000, GIFT128_RC[round])));
 
       // Rotate the key schedule
       temp = w3;
       w3 = w2;
       w2 = w1;
       w1 = w0;
-      w0 = (((temp & 0xFFFC0000) >>> 2) | ((temp & 0x00030000) << 14) |
-            ((temp & 0x00000FFF) << 4) | ((temp & 0x0000F000) >>> 12)) >>> 0;
+      w0 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
+            OpCodes.Shr32(OpCodes.AndN(temp, 0xFFFC0000), 2),
+            OpCodes.Shl32(OpCodes.AndN(temp, 0x00030000), 14)),
+            OpCodes.Shl32(OpCodes.AndN(temp, 0x00000FFF), 4)),
+            OpCodes.Shr32(OpCodes.AndN(temp, 0x0000F000), 12)));
     }
 
     // Store output as big-endian
-    const b0 = OpCodes.Unpack32BE(s0 >>> 0);
-    const b1 = OpCodes.Unpack32BE(s1 >>> 0);
-    const b2 = OpCodes.Unpack32BE(s2 >>> 0);
-    const b3 = OpCodes.Unpack32BE(s3 >>> 0);
+    const b0 = OpCodes.Unpack32BE(OpCodes.ToUint32(s0));
+    const b1 = OpCodes.Unpack32BE(OpCodes.ToUint32(s1));
+    const b2 = OpCodes.Unpack32BE(OpCodes.ToUint32(s2));
+    const b3 = OpCodes.Unpack32BE(OpCodes.ToUint32(s3));
 
     output[0] = b0[0]; output[1] = b0[1]; output[2] = b0[2]; output[3] = b0[3];
     output[4] = b1[0]; output[5] = b1[1]; output[6] = b1[2]; output[7] = b1[3];
@@ -188,15 +191,15 @@
     B[15] = B0;
 
     // XOR feedback polynomial at positions 10, 12, 14
-    B[10] ^= B0;
-    B[12] ^= B0;
-    B[14] ^= B0;
+    B[10] = OpCodes.XorN(B[10], B0);
+    B[12] = OpCodes.XorN(B[12], B0);
+    B[14] = OpCodes.XorN(B[14], B0);
   }
 
   // XOR block operation
   function xorBlock(dest, src, length) {
     for (let i = 0; i < length; i++) {
-      dest[i] ^= src[i];
+      dest[i] = OpCodes.XorN(dest[i], src[i]);
     }
   }
 
@@ -231,7 +234,7 @@
 
     // Pad and process the last block
     if (len < 16) {
-      V[len] ^= 0x80;
+      V[len] = OpCodes.XorN(V[len], 0x80);
       sundaeMultiply(V);
       gift128bEncrypt(ks, V, V);
     } else {
@@ -250,8 +253,8 @@
 
     // Format and encrypt the initial domain separation block
     let domain = domainsep;
-    if (adlen > 0) domain |= 0x80;
-    if (mlen > 0) domain |= 0x40;
+    if (adlen > 0) domain = OpCodes.OrN(domain, 0x80);
+    if (mlen > 0) domain = OpCodes.OrN(domain, 0x40);
     V[0] = domain;
     for (let i = 1; i < 16; i++) V[i] = 0;
     gift128bEncrypt(ks, T, V);
@@ -273,7 +276,7 @@
       gift128bEncrypt(ks, V, V);
       // XOR plaintext with V to get next tag/partial ciphertext
       for (let i = 0; i < 16; i++) {
-        P[i] = V[i] ^ m[mpos + i];
+        P[i] = OpCodes.XorN(V[i], m[mpos + i]);
       }
       // Write previous tag to ciphertext
       c.set(T.slice(0, 16), cpos);
@@ -287,7 +290,7 @@
     if (mlen > 0) {
       gift128bEncrypt(ks, V, V);
       for (let i = 0; i < mlen; i++) {
-        V[i] ^= m[mpos + i];
+        V[i] = OpCodes.XorN(V[i], m[mpos + i]);
       }
       c.set(T.slice(0, 16), cpos);
       c.set(V.slice(0, mlen), cpos + 16);
@@ -321,7 +324,7 @@
     while (len >= 16) {
       gift128bEncrypt(ks, V, V);
       for (let i = 0; i < 16; i++) {
-        m[mpos + i] = c[cpos + i] ^ V[i];
+        m[mpos + i] = OpCodes.XorN(c[cpos + i], V[i]);
       }
       cpos += 16;
       mpos += 16;
@@ -330,14 +333,14 @@
     if (len > 0) {
       gift128bEncrypt(ks, V, V);
       for (let i = 0; i < len; i++) {
-        m[mpos + i] = c[cpos + i] ^ V[i];
+        m[mpos + i] = OpCodes.XorN(c[cpos + i], V[i]);
       }
     }
 
     // Format and encrypt the initial domain separation block
     let domain = domainsep;
-    if (adlen > 0) domain |= 0x80;
-    if (mlen > 0) domain |= 0x40;
+    if (adlen > 0) domain = OpCodes.OrN(domain, 0x80);
+    if (mlen > 0) domain = OpCodes.OrN(domain, 0x40);
     V[0] = domain;
     for (let i = 1; i < 16; i++) V[i] = 0;
     gift128bEncrypt(ks, V, V);
@@ -351,7 +354,7 @@
     // Check the authentication tag (constant-time comparison)
     let diff = 0;
     for (let i = 0; i < 16; i++) {
-      diff |= T[i] ^ V[i];
+      diff = OpCodes.OrN(diff, OpCodes.XorN(T[i], V[i]));
     }
 
     // Clear plaintext on authentication failure

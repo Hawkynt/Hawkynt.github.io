@@ -60,20 +60,20 @@
   // Rotate left and XOR for mixing
   function rotlXor64(x, n, xor) {
     const mask = 0xFFFFFFFFFFFFFFFFn;
-    x = BigInt(x) & mask;
-    xor = BigInt(xor) & mask;
-    n = Number(n) & 63;
-    return (((x << BigInt(n)) | (x >> BigInt(64 - n))) ^ xor) & mask;
+    x = OpCodes.AndN(BigInt(x), mask);
+    xor = OpCodes.AndN(BigInt(xor), mask);
+    n = OpCodes.AndN(Number(n), 63);
+    return OpCodes.AndN(OpCodes.XorN(OpCodes.RotL64n(x, n), xor), mask);
   }
 
   // XOR and rotate right for unmixing
   function xorRotr64(x, n, xor) {
     const mask = 0xFFFFFFFFFFFFFFFFn;
-    x = BigInt(x) & mask;
-    xor = BigInt(xor) & mask;
-    const xored = x ^ xor;
-    n = Number(n) & 63;
-    return ((xored >> BigInt(n)) | (xored << BigInt(64 - n))) & mask;
+    x = OpCodes.AndN(BigInt(x), mask);
+    xor = OpCodes.AndN(BigInt(xor), mask);
+    const xored = OpCodes.XorN(x, xor);
+    n = OpCodes.AndN(Number(n), 63);
+    return OpCodes.AndN(OpCodes.RotR64n(xored, n), mask);
   }
 
   // Threefish-512 encryption
@@ -84,8 +84,8 @@
     const kw = new Array(17);
     let knw = C_240;
     for (let i = 0; i < 8; i++) {
-      kw[i] = BigInt(key[i]) & mask;
-      knw ^= kw[i];
+      kw[i] = OpCodes.AndN(BigInt(key[i]), mask);
+      knw = OpCodes.XorN(knw, kw[i]);
     }
     kw[8] = knw;
     for (let i = 0; i < 8; i++) {
@@ -94,21 +94,21 @@
 
     // Tweak schedule
     const t = new Array(5);
-    t[0] = BigInt(tweak[0]) & mask;
-    t[1] = BigInt(tweak[1]) & mask;
-    t[2] = t[0] ^ t[1];
+    t[0] = OpCodes.AndN(BigInt(tweak[0]), mask);
+    t[1] = OpCodes.AndN(BigInt(tweak[1]), mask);
+    t[2] = OpCodes.XorN(t[0], t[1]);
     t[3] = t[0];
     t[4] = t[1];
 
     // Load block into state
-    let b0 = BigInt(block[0]) & mask;
-    let b1 = BigInt(block[1]) & mask;
-    let b2 = BigInt(block[2]) & mask;
-    let b3 = BigInt(block[3]) & mask;
-    let b4 = BigInt(block[4]) & mask;
-    let b5 = BigInt(block[5]) & mask;
-    let b6 = BigInt(block[6]) & mask;
-    let b7 = BigInt(block[7]) & mask;
+    let b0 = OpCodes.AndN(BigInt(block[0]), mask);
+    let b1 = OpCodes.AndN(BigInt(block[1]), mask);
+    let b2 = OpCodes.AndN(BigInt(block[2]), mask);
+    let b3 = OpCodes.AndN(BigInt(block[3]), mask);
+    let b4 = OpCodes.AndN(BigInt(block[4]), mask);
+    let b5 = OpCodes.AndN(BigInt(block[5]), mask);
+    let b6 = OpCodes.AndN(BigInt(block[6]), mask);
+    let b7 = OpCodes.AndN(BigInt(block[7]), mask);
 
     // Initial subkey injection
     b0 += kw[0];
@@ -190,8 +190,8 @@
 
     // Mask all to 64-bit before returning
     return [
-      b0 & mask, b1 & mask, b2 & mask, b3 & mask,
-      b4 & mask, b5 & mask, b6 & mask, b7 & mask
+      OpCodes.AndN(b0, mask), OpCodes.AndN(b1, mask), OpCodes.AndN(b2, mask), OpCodes.AndN(b3, mask),
+      OpCodes.AndN(b4, mask), OpCodes.AndN(b5, mask), OpCodes.AndN(b6, mask), OpCodes.AndN(b7, mask)
     ];
   }
 
@@ -202,8 +202,8 @@
   const PARAM_TYPE_OUTPUT = 63;
 
   // UBI tweak structure
-  const T1_FINAL = 1n << 63n;
-  const T1_FIRST = 1n << 62n;
+  const T1_FINAL = OpCodes.ShiftLn(1n, 63);
+  const T1_FIRST = OpCodes.ShiftLn(1n, 62);
 
   class SkeinUBI {
     constructor(blockSize) {
@@ -216,8 +216,8 @@
 
     reset(type) {
       this.tweak[0] = 0n;
-      this.tweak[1] = BigInt(type) << 56n; // Type in bits 120-125
-      this.tweak[1] |= T1_FIRST; // Set first flag
+      this.tweak[1] = OpCodes.ShiftLn(BigInt(type), 56); // Type in bits 120-125
+      this.tweak[1] = OpCodes.OrN(this.tweak[1], T1_FIRST); // Set first flag
       this.currentOffset = 0;
     }
 
@@ -244,14 +244,15 @@
       // Convert current block to 64-bit words (little-endian)
       for (let i = 0; i < 8; i++) {
         const offset = i * 8;
-        this.message[i] = BigInt(this.currentBlock[offset]) |
-                         (BigInt(this.currentBlock[offset + 1]) << 8n) |
-                         (BigInt(this.currentBlock[offset + 2]) << 16n) |
-                         (BigInt(this.currentBlock[offset + 3]) << 24n) |
-                         (BigInt(this.currentBlock[offset + 4]) << 32n) |
-                         (BigInt(this.currentBlock[offset + 5]) << 40n) |
-                         (BigInt(this.currentBlock[offset + 6]) << 48n) |
-                         (BigInt(this.currentBlock[offset + 7]) << 56n);
+        this.message[i] = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
+                         BigInt(this.currentBlock[offset]),
+                         OpCodes.ShiftLn(BigInt(this.currentBlock[offset + 1]), 8)),
+                         OpCodes.ShiftLn(BigInt(this.currentBlock[offset + 2]), 16)),
+                         OpCodes.ShiftLn(BigInt(this.currentBlock[offset + 3]), 24)),
+                         OpCodes.ShiftLn(BigInt(this.currentBlock[offset + 4]), 32)),
+                         OpCodes.ShiftLn(BigInt(this.currentBlock[offset + 5]), 40)),
+                         OpCodes.ShiftLn(BigInt(this.currentBlock[offset + 6]), 48)),
+                         OpCodes.ShiftLn(BigInt(this.currentBlock[offset + 7]), 56));
       }
 
       // Encrypt message with Threefish using current chain as key
@@ -259,7 +260,7 @@
 
       // XOR with message (Davies-Meyer construction)
       for (let i = 0; i < 8; i++) {
-        chain[i] = (output[i] ^ this.message[i]) & 0xFFFFFFFFFFFFFFFFn;
+        chain[i] = OpCodes.AndN(OpCodes.XorN(output[i], this.message[i]), 0xFFFFFFFFFFFFFFFFn);
       }
     }
 
@@ -270,7 +271,7 @@
       }
 
       // Set final flag
-      this.tweak[1] |= T1_FINAL;
+      this.tweak[1] = OpCodes.OrN(this.tweak[1], T1_FINAL);
       this.processBlock(chain);
     }
   }
@@ -320,7 +321,7 @@
       // Output length in bits (little-endian 64-bit)
       const outBits = BigInt(this.outputBits);
       for (let i = 0; i < 8; i++) {
-        config[8 + i] = Number((outBits >> BigInt(i * 8)) & 0xFFn);
+        config[8 + i] = Number(OpCodes.AndN(OpCodes.ShiftRn(outBits, BigInt(i * 8)), 0xFFn));
       }
 
       this.ubi.reset(PARAM_TYPE_CONFIG);
@@ -358,7 +359,7 @@
         const word = outputWords[i];
         const bytesToWrite = Math.min(8, outputBytes - i * 8);
         for (let j = 0; j < bytesToWrite; j++) {
-          result[i * 8 + j] = Number((word >> BigInt(j * 8)) & 0xFFn);
+          result[i * 8 + j] = Number(OpCodes.AndN(OpCodes.ShiftRn(word, BigInt(j * 8)), 0xFFn));
         }
       }
 

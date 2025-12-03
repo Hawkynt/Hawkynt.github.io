@@ -205,18 +205,18 @@
       let bufferBits = 0;
 
       for (let i = 0; i < data.length; i++) {
-        buffer = (buffer << 8) | data[i];
+        buffer = OpCodes.OrN(OpCodes.Shl32(buffer, 8), data[i]);
         bufferBits += 8;
 
         while (bufferBits >= 5) {
-          result += this.alphabet[(buffer >>> (bufferBits - 5)) & 31];
+          result += this.alphabet[OpCodes.AndN(OpCodes.Shr32(buffer, bufferBits - 5), 31)];
           bufferBits -= 5;
         }
       }
 
       // Handle remaining bits
       if (bufferBits > 0) {
-        result += this.alphabet[(buffer << (5 - bufferBits)) & 31];
+        result += this.alphabet[OpCodes.AndN(OpCodes.Shl32(buffer, 5 - bufferBits), 31)];
       }
 
       // Add padding
@@ -253,11 +253,11 @@
           throw new Error(`Invalid Base32 character: ${cleanInput[i]}`);
         }
 
-        buffer = (buffer << 5) | value;
+        buffer = OpCodes.OrN(OpCodes.Shl32(buffer, 5), value);
         bufferBits += 5;
 
         if (bufferBits >= 8) {
-          result.push((buffer >>> (bufferBits - 8)) & 255);
+          result.push(OpCodes.AndN(OpCodes.Shr32(buffer, bufferBits - 8), 255));
           bufferBits -= 8;
         }
       }

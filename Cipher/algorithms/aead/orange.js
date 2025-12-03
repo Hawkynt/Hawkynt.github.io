@@ -89,8 +89,8 @@
 
   // Bit permutation helper
   function bitPermuteStep(y, mask, shift) {
-    const t = ((y >>> shift) ^ y) & mask;
-    return (y ^ t) ^ (t << shift);
+    const t = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(y, shift), y), mask);
+    return OpCodes.XorN(OpCodes.XorN(y, t), OpCodes.Shl32(t, shift));
   }
 
   // Convert to bit-sliced form
@@ -367,7 +367,7 @@
       // AddConstant
       const rcOffset = round * 8;
       for (let i = 0; i < 8; ++i) {
-        state2d[i][0] ^= RC_constants[rcOffset + i];
+        state2d[i][0] = OpCodes.XorN(state2d[i][0], RC_constants[rcOffset + i]);
       }
 
       // SubCells (S-box layer)
@@ -398,20 +398,20 @@
             const b = state2d[k][j];
 
             // GF(16) multiplication
-            sum ^= x * (b & 1);
-            sum ^= x * (b & 2);
-            sum ^= x * (b & 4);
-            sum ^= x * (b & 8);
+            sum = OpCodes.XorN(sum, x * OpCodes.AndN(b, 1));
+            sum = OpCodes.XorN(sum, x * OpCodes.AndN(b, 2));
+            sum = OpCodes.XorN(sum, x * OpCodes.AndN(b, 4));
+            sum = OpCodes.XorN(sum, x * OpCodes.AndN(b, 8));
           }
 
           // Reduction modulo x^4 + x + 1
-          let t0 = sum >>> 4;
-          sum = (sum & 15) ^ t0 ^ (t0 << 1);
+          let t0 = OpCodes.Shr32(sum, 4);
+          sum = OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(sum, 15), t0), OpCodes.Shl32(t0, 1));
 
-          let t1 = sum >>> 4;
-          sum = (sum & 15) ^ t1 ^ (t1 << 1);
+          let t1 = OpCodes.Shr32(sum, 4);
+          sum = OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(sum, 15), t1), OpCodes.Shl32(t1, 1));
 
-          tempCol[i] = sum & 0xf;
+          tempCol[i] = OpCodes.AndN(sum, 0xf);
         }
         for (let i = 0; i < 8; ++i) {
           state2d[i][j] = tempCol[i];
@@ -421,8 +421,7 @@
 
     // Convert 2D nibble array back to byte array
     for (let i = 0; i < 64; i += 2) {
-      state[i >>> 1] = ((state2d[i >>> 3][i & 7] & 0xf)) |
-                       ((state2d[i >>> 3][(i + 1) & 7] & 0xf) << 4);
+      state[OpCodes.Shr32(i, 1)] = OpCodes.OrN(OpCodes.AndN(state2d[OpCodes.Shr32(i, 3)][OpCodes.AndN(i, 7)], 0xf), OpCodes.Shl32(OpCodes.AndN(state2d[OpCodes.Shr32(i, 3)][OpCodes.AndN(i + 1, 7)], 0xf), 4));
     }
   }
 
@@ -431,20 +430,20 @@
   // Doubles a block in GF(128) field
   function orangeBlockDouble(block, value) {
     for (let v = 0; v < value; ++v) {
-      const mask = ((block[15] & 0x80) !== 0) ? 0x87 : 0x00;
+      const mask = (OpCodes.AndN(block[15], 0x80) !== 0) ? 0x87 : 0x00;
       for (let i = 15; i > 0; --i) {
-        block[i] = (block[i] << 1) | (block[i - 1] >>> 7);
+        block[i] = OpCodes.OrN(OpCodes.Shl32(block[i], 1), OpCodes.Shr32(block[i - 1], 7));
       }
-      block[0] = (block[0] << 1) ^ mask;
+      block[0] = OpCodes.XorN(OpCodes.Shl32(block[0], 1), mask);
     }
   }
 
   // Rotates a block left by 1 bit
   function orangeBlockRotate(out, input) {
     for (let i = 15; i > 0; --i) {
-      out[i] = (input[i] << 1) | (input[i - 1] >>> 7);
+      out[i] = OpCodes.OrN(OpCodes.Shl32(input[i], 1), OpCodes.Shr32(input[i - 1], 7));
     }
-    out[0] = (input[0] << 1) | (input[15] >>> 7);
+    out[0] = OpCodes.OrN(OpCodes.Shl32(input[0], 1), OpCodes.Shr32(input[15], 7));
   }
 
   // ORANGE rho function
@@ -452,7 +451,7 @@
     orangeBlockDouble(S, 1);
     orangeBlockRotate(KS.subarray(0, 16), state.subarray(0, 16));
     for (let i = 0; i < 16; ++i) {
-      KS[16 + i] = state[16 + i] ^ S[i];
+      KS[16 + i] = OpCodes.XorN(state[16 + i], S[i]);
     }
     S.set(state.subarray(16, 32));
   }
@@ -721,12 +720,12 @@
       if (adlen === 0) {
         if (mlen === 0) {
           // Empty message and AD
-          state[16] ^= 2;
+          state[16] = OpCodes.XorN(state[16], 2);
           photon256Permute(state);
           output.set(state.subarray(0, 16), mlen);
         } else {
           // Message only
-          state[16] ^= 1;
+          state[16] = OpCodes.XorN(state[16], 1);
           this._orangeEncrypt(state, this._key, output, this._plaintext, mlen);
           this._orangeGenerateTag(state);
           output.set(state.subarray(0, 16), mlen);
@@ -763,11 +762,11 @@
       if (adlen === 0) {
         if (mlen === 0) {
           // Empty message and AD
-          state[16] ^= 2;
+          state[16] = OpCodes.XorN(state[16], 2);
           photon256Permute(state);
         } else {
           // Message only
-          state[16] ^= 1;
+          state[16] = OpCodes.XorN(state[16], 1);
           this._orangeDecrypt(state, this._key, output, this._ciphertext, mlen);
         }
       } else {
@@ -797,7 +796,7 @@
       while (len > 32) {
         photon256Permute(state);
         for (let i = 0; i < 32; ++i) {
-          state[i] ^= data[offset + i];
+          state[i] = OpCodes.XorN(state[i], data[offset + i]);
         }
         offset += 32;
         len -= 32;
@@ -807,14 +806,14 @@
       if (len < 32) {
         const stateSecondHalf = state.subarray(16, 32);
         orangeBlockDouble(stateSecondHalf, domain1);
-        state[len] ^= 0x01;
+        state[len] = OpCodes.XorN(state[len], 0x01);
       } else {
         const stateSecondHalf = state.subarray(16, 32);
         orangeBlockDouble(stateSecondHalf, domain0);
       }
 
       for (let i = 0; i < len; ++i) {
-        state[i] ^= data[offset + i];
+        state[i] = OpCodes.XorN(state[i], data[offset + i]);
       }
     }
 
@@ -828,8 +827,8 @@
         photon256Permute(state);
         orangeRho(KS, S, state);
         for (let i = 0; i < 32; ++i) {
-          c[offset + i] = m[offset + i] ^ KS[i];
-          state[i] ^= c[offset + i];
+          c[offset + i] = OpCodes.XorN(m[offset + i], KS[i]);
+          state[i] = OpCodes.XorN(state[i], c[offset + i]);
         }
         offset += 32;
         len -= 32;
@@ -841,17 +840,17 @@
         orangeBlockDouble(stateSecondHalf, 2);
         orangeRho(KS, S, state);
         for (let i = 0; i < len; ++i) {
-          c[offset + i] = m[offset + i] ^ KS[i];
-          state[i] ^= c[offset + i];
+          c[offset + i] = OpCodes.XorN(m[offset + i], KS[i]);
+          state[i] = OpCodes.XorN(state[i], c[offset + i]);
         }
-        state[len] ^= 0x01;
+        state[len] = OpCodes.XorN(state[len], 0x01);
       } else {
         const stateSecondHalf = state.subarray(16, 32);
         orangeBlockDouble(stateSecondHalf, 1);
         orangeRho(KS, S, state);
         for (let i = 0; i < 32; ++i) {
-          c[offset + i] = m[offset + i] ^ KS[i];
-          state[i] ^= c[offset + i];
+          c[offset + i] = OpCodes.XorN(m[offset + i], KS[i]);
+          state[i] = OpCodes.XorN(state[i], c[offset + i]);
         }
       }
     }
@@ -866,8 +865,8 @@
         photon256Permute(state);
         orangeRho(KS, S, state);
         for (let i = 0; i < 32; ++i) {
-          state[i] ^= c[offset + i];
-          m[offset + i] = c[offset + i] ^ KS[i];
+          state[i] = OpCodes.XorN(state[i], c[offset + i]);
+          m[offset + i] = OpCodes.XorN(c[offset + i], KS[i]);
         }
         offset += 32;
         len -= 32;
@@ -879,17 +878,17 @@
         orangeBlockDouble(stateSecondHalf, 2);
         orangeRho(KS, S, state);
         for (let i = 0; i < len; ++i) {
-          state[i] ^= c[offset + i];
-          m[offset + i] = c[offset + i] ^ KS[i];
+          state[i] = OpCodes.XorN(state[i], c[offset + i]);
+          m[offset + i] = OpCodes.XorN(c[offset + i], KS[i]);
         }
-        state[len] ^= 0x01;
+        state[len] = OpCodes.XorN(state[len], 0x01);
       } else {
         const stateSecondHalf = state.subarray(16, 32);
         orangeBlockDouble(stateSecondHalf, 1);
         orangeRho(KS, S, state);
         for (let i = 0; i < 32; ++i) {
-          state[i] ^= c[offset + i];
-          m[offset + i] = c[offset + i] ^ KS[i];
+          state[i] = OpCodes.XorN(state[i], c[offset + i]);
+          m[offset + i] = OpCodes.XorN(c[offset + i], KS[i]);
         }
       }
     }

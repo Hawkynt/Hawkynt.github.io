@@ -81,7 +81,7 @@
       if (bytes.length === 0) return 0n;
       let result = 0n;
       for (let i = 0; i < bytes.length; i++) {
-        result = OpCodes.ShiftLn(result, 8) + BigInt(bytes[i] & 0xFF);
+        result = OpCodes.ShiftLn(result, 8) + BigInt(bytes[i]&0xFF);
       }
       return result;
     }
@@ -95,7 +95,7 @@
       let value = bigint < 0n ? -bigint : bigint;
 
       while (value > 0n) {
-        bytes.unshift(Number(value & 0xFFn));
+        bytes.unshift(Number(value&0xFFn));
         value = OpCodes.ShiftRn(value, 8);
       }
 
@@ -174,7 +174,7 @@
 
         // XOR current block with previous output
         for (let j = 0; j < FF1_CONSTANTS.BLOCK_SIZE; j++) {
-          y[j] ^= data[blockOffset + j];
+          y[j] = OpCodes.XorN(y[j], data[blockOffset + j]);
         }
 
         // Encrypt the XOR result
@@ -188,19 +188,18 @@
 
   // Calculate b parameter: ceiling(log_2(radix^v)) / 8
   // Following BouncyCastle SP80038G.java implementation for accuracy
-  // NOTE: Uses direct bit operations (not OpCodes) as this is integer factorization logic
   function calculateB_FF1(radix, v) {
     // Count trailing zeros (powers of 2 in radix factorization)
     let powersOfTwo = 0;
     let temp = radix;
-    while ((temp & 1) === 0) {  // Direct bit test for LSB
+    while (OpCodes.AndN(temp, 1) === 0) {  // Bit test for LSB
       powersOfTwo++;
-      temp >>>= 1;  // Unsigned right shift
+      temp = OpCodes.Shr32(temp, 1);  // Unsigned right shift
     }
 
     // Calculate total bits needed
     let bits = powersOfTwo * v;
-    const oddPart = radix >>> powersOfTwo;  // Unsigned right shift
+    const oddPart = OpCodes.Shr32(radix, powersOfTwo);  // Unsigned right shift
 
     if (oddPart !== 1) {
       // Add bits from odd part: ceil(log2(oddPart^v))
@@ -569,7 +568,7 @@
       // Calculate parameters
       const t = this._tweak.length;
       const b = calculateB_FF1(this._radix, v);
-      const d = (b + 7) & ~3; // Round up to nearest multiple of 4
+      const d = OpCodes.AndN(b + 7, ~3); // Round up to nearest multiple of 4
       const P = calculateP_FF1(this._radix, u, n, t);
       const { modU, modV } = calculateModUV(this._radix, u, v);
 
@@ -582,7 +581,7 @@
 
         // Update m
         m = n - m;
-        const modulus = (i & 1) === 0 ? modU : modV;
+        const modulus = OpCodes.AndN(i, 1) === 0 ? modU : modV;
 
         // Calculate c = (NUM(A) + y) mod radix^m
         const numA = this.radixConverter.fromEncoding(A);
@@ -614,7 +613,7 @@
       // Calculate parameters
       const t = this._tweak.length;
       const b = calculateB_FF1(this._radix, v);
-      const d = (b + 7) & ~3; // Round up to nearest multiple of 4
+      const d = OpCodes.AndN(b + 7, ~3); // Round up to nearest multiple of 4
       const P = calculateP_FF1(this._radix, u, n, t);
       const { modU, modV } = calculateModUV(this._radix, u, v);
 
@@ -627,7 +626,7 @@
 
         // Update m
         m = n - m;
-        const modulus = (i & 1) === 0 ? modU : modV;
+        const modulus = OpCodes.AndN(i, 1) === 0 ? modU : modV;
 
         // Calculate c = (NUM(B) - y) mod radix^m
         const numB = this.radixConverter.fromEncoding(B);
@@ -653,7 +652,7 @@
       const bytesAB = BigIntegerUtils.toByteArray(numAB);
 
       // Construct Q = T || 0^s || [round] || [NUM(B)]_b
-      const zeroes = (-(t + b + 1)) & 15; // Padding to make total length multiple of 16
+      const zeroes = OpCodes.AndN(-(t + b + 1), 15); // Padding to make total length multiple of 16
       const Q = new Uint8Array(t + zeroes + 1 + b);
 
       // Copy tweak
@@ -1031,7 +1030,7 @@
       // FF3 has 8 rounds
       for (let i = 0; i < FF3_CONSTANTS.ROUNDS; i++) {
         let W;
-        if (i % 2 === 0) {
+        if (OpCodes.AndN(i, 1) === 0) {
           // Even round: use TR
           W = [...TR];
         } else {
@@ -1040,7 +1039,7 @@
         }
 
         // XOR with round number
-        W[3] ^= i;
+        W[3] = OpCodes.XorN(W[3], i);
 
         // Convert B to big integer string representation
         const bInt = this._numeralArrayToBigInt(B);
@@ -1095,13 +1094,13 @@
       // FF3 rounds in reverse (7 down to 0)
       for (let i = FF3_CONSTANTS.ROUNDS - 1; i >= 0; i--) {
         let W;
-        if (i % 2 === 0) {
+        if (OpCodes.AndN(i, 1) === 0) {
           W = [...TR];
         } else {
           W = [...TL];
         }
 
-        W[3] ^= i;
+        W[3] = OpCodes.XorN(W[3], i);
 
         // Convert A to big integer and then to bytes
         const aInt = this._numeralArrayToBigInt(A);
@@ -1172,10 +1171,10 @@
 
       for (let i = 0; i < 16; i++) {
         seed = OpCodes.Add32(a * seed, c);
-        state[i] = OpCodes.GetByte(seed, i % 4);
+        state[i] = OpCodes.GetByte(seed, OpCodes.AndN(i, 3));
 
         // Apply some key-dependent transformation
-        state[i] ^= this._key[i % keyLength];
+        state[i] = OpCodes.XorN(state[i], this._key[i % keyLength]);
 
         // Add position-dependent variation
         state[i] = OpCodes.GetByte(OpCodes.Add32(state[i], i * 7), 0);
@@ -1254,7 +1253,7 @@
       let bigValue = BigInt(value);
 
       for (let i = 0; i < length; i++) {
-        bytes[i] = Number(bigValue & 0xFFn);
+        bytes[i] = Number(bigValue&0xFFn);
         bigValue = OpCodes.ShiftRn(bigValue, 8);
       }
       return bytes;

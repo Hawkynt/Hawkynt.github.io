@@ -338,13 +338,13 @@
       const opad = 0x5c;
 
       // Inner hash: H((K' XOR ipad) || message)
-      const innerKey = keyPrime.map(b => b ^ ipad);
+      const innerKey = keyPrime.map(b => OpCodes.XorN(b, ipad));
       const innerInput = innerKey.concat(message);
       const innerHashInst = hashAlg.CreateInstance();
       const innerHash = innerHashInst.Hash(innerInput);
 
       // Outer hash: H((K' XOR opad) || innerHash)
-      const outerKey = keyPrime.map(b => b ^ opad);
+      const outerKey = keyPrime.map(b => OpCodes.XorN(b, opad));
       const outerInput = outerKey.concat(innerHash);
       const outerHashInst = hashAlg.CreateInstance();
       const result = outerHashInst.Hash(outerInput);

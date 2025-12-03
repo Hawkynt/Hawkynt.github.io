@@ -207,8 +207,8 @@
       for (let i = 0; i < data.length; i++) {
         const byte = data[i];
         // Extract high and low nibbles (4 bits each)
-        const high_nibble = (byte >> 4) & 0x0F;
-        const low_nibble = byte & 0x0F;
+        const high_nibble = OpCodes.AndN(OpCodes.Shr32(byte, 4), 0x0F);
+        const low_nibble = OpCodes.AndN(byte, 0x0F);
         result.push(this.alphabet.charCodeAt(high_nibble));
         result.push(this.alphabet.charCodeAt(low_nibble));
       }
@@ -244,7 +244,7 @@
           throw new Error('Base16Instance.decode: Invalid hex character');
         }
 
-        result.push((high << 4) | low);
+        result.push(OpCodes.OrN(OpCodes.Shl32(high, 4), low));
       }
 
       return result;

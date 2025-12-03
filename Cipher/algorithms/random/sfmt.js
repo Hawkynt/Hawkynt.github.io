@@ -219,19 +219,19 @@
       // Convert seed bytes to 32-bit unsigned integer (little-endian)
       let seedValue = 0;
       for (let i = 0; i < Math.min(seedBytes.length, 4); ++i) {
-        seedValue |= (seedBytes[i] << (i * 8));
+        seedValue = OpCodes.OrN(seedValue, OpCodes.Shl32(seedBytes[i], i * 8));
       }
-      seedValue = seedValue >>> 0; // Ensure unsigned
+      seedValue = OpCodes.ToUint32(seedValue);
 
       // Initialize state array
       this._state[0] = seedValue;
 
       for (let i = 1; i < N32; ++i) {
         const prev = this._state[i - 1];
-        const xored = (prev ^ (prev >>> 30)) >>> 0; // Ensure unsigned
+        const xored = OpCodes.ToUint32(OpCodes.XorN(prev, OpCodes.Shr32(prev, 30)));
         // 32-bit multiplication using BigInt to avoid overflow
         const product = Number((BigInt(INIT_MULTIPLIER) * BigInt(xored)) & 0xFFFFFFFFn);
-        this._state[i] = (product + i) >>> 0;
+        this._state[i] = OpCodes.ToUint32(product + i);
       }
 
       // Period certification (ensures non-degenerate state)
@@ -255,25 +255,25 @@
 
       // Compute inner product
       for (let i = 0; i < 4; ++i) {
-        inner ^= this._state[i] & parity[i];
+        inner = OpCodes.XorN(inner, OpCodes.AndN(this._state[i], parity[i]));
       }
 
       // Reduce to single bit
-      for (let i = 16; i > 0; i >>= 1) {
-        inner ^= inner >>> i;
+      for (let i = 16; i > 0; i = OpCodes.Shr32(i, 1)) {
+        inner = OpCodes.XorN(inner, OpCodes.Shr32(inner, i));
       }
-      inner &= 1;
+      inner = OpCodes.AndN(inner, 1);
 
       // If inner is 0, modify state to ensure full period
       if (inner === 0) {
         for (let i = 0; i < 4; ++i) {
           let work = 1;
           for (let j = 0; j < 32; ++j) {
-            if ((work & parity[i]) !== 0) {
-              this._state[i] ^= work;
+            if (OpCodes.AndN(work, parity[i]) !== 0) {
+              this._state[i] = OpCodes.XorN(this._state[i], work);
               return;
             }
-            work = work << 1;
+            work = OpCodes.Shl32(work, 1);
           }
         }
       }
@@ -282,14 +282,14 @@
     /**
      * Left shift of 128-bit block by SL2 bytes
      * Direct translation from SFMT-common.h lshift128 function:
-     *   th = ((uint64_t)in->u[3] << 32) | ((uint64_t)in->u[2]);
-     *   tl = ((uint64_t)in->u[1] << 32) | ((uint64_t)in->u[0]);
-     *   oh = th << (shift * 8);
-     *   ol = tl << (shift * 8);
-     *   oh |= tl >> (64 - shift * 8);
-     *   out->u[1] = (uint32_t)(ol >> 32);
+     *   th = ((uint64_t)in->u[3] shl 32) | ((uint64_t)in->u[2]);
+     *   tl = ((uint64_t)in->u[1] shl 32) | ((uint64_t)in->u[0]);
+     *   oh = th shl (shift * 8);
+     *   ol = tl shl (shift * 8);
+     *   oh |= tl shr (64 - shift * 8);
+     *   out->u[1] = (uint32_t)(ol shr 32);
      *   out->u[0] = (uint32_t)ol;
-     *   out->u[3] = (uint32_t)(oh >> 32);
+     *   out->u[3] = (uint32_t)(oh shr 32);
      *   out->u[2] = (uint32_t)oh;
      *
      * @param {Array} block - 4x32-bit block [u0, u1, u2, u3]
@@ -299,20 +299,20 @@
       const shiftBits = SL2 * 8;
 
       // Build 64-bit values exactly as C code does
-      const th = (BigInt(block[3] >>> 0) << 32n) | BigInt(block[2] >>> 0);
-      const tl = (BigInt(block[1] >>> 0) << 32n) | BigInt(block[0] >>> 0);
+      const th = (BigInt(OpCodes.ToUint32(block[3])) << 32n) | BigInt(OpCodes.ToUint32(block[2]));
+      const tl = (BigInt(OpCodes.ToUint32(block[1])) << 32n) | BigInt(OpCodes.ToUint32(block[0]));
 
       // Shift
       let oh = (th << BigInt(shiftBits)) & 0xFFFFFFFFFFFFFFFFn;
       let ol = (tl << BigInt(shiftBits)) & 0xFFFFFFFFFFFFFFFFn;
-      oh |= tl >> BigInt(64 - shiftBits);
+      oh |= (tl >> BigInt(64 - shiftBits));
 
       // Unpack exactly as C code does
       const result = [0, 0, 0, 0];
-      result[1] = Number((ol >> 32n) & 0xFFFFFFFFn) >>> 0;
-      result[0] = Number(ol & 0xFFFFFFFFn) >>> 0;
-      result[3] = Number((oh >> 32n) & 0xFFFFFFFFn) >>> 0;
-      result[2] = Number(oh & 0xFFFFFFFFn) >>> 0;
+      result[1] = OpCodes.ToUint32(Number((ol >> 32n) & 0xFFFFFFFFn));
+      result[0] = OpCodes.ToUint32(Number(ol & 0xFFFFFFFFn));
+      result[3] = OpCodes.ToUint32(Number((oh >> 32n) & 0xFFFFFFFFn));
+      result[2] = OpCodes.ToUint32(Number(oh & 0xFFFFFFFFn));
 
       return result;
     }
@@ -320,14 +320,14 @@
     /**
      * Right shift of 128-bit block by SR2 bytes
      * Direct translation from SFMT-common.h rshift128 function:
-     *   th = ((uint64_t)in->u[3] << 32) | ((uint64_t)in->u[2]);
-     *   tl = ((uint64_t)in->u[1] << 32) | ((uint64_t)in->u[0]);
-     *   oh = th >> (shift * 8);
-     *   ol = tl >> (shift * 8);
-     *   ol |= th << (64 - shift * 8);
-     *   out->u[1] = (uint32_t)(ol >> 32);
+     *   th = ((uint64_t)in->u[3] shl 32) | ((uint64_t)in->u[2]);
+     *   tl = ((uint64_t)in->u[1] shl 32) | ((uint64_t)in->u[0]);
+     *   oh = th shr (shift * 8);
+     *   ol = tl shr (shift * 8);
+     *   ol |= th shl (64 - shift * 8);
+     *   out->u[1] = (uint32_t)(ol shr 32);
      *   out->u[0] = (uint32_t)ol;
-     *   out->u[3] = (uint32_t)(oh >> 32);
+     *   out->u[3] = (uint32_t)(oh shr 32);
      *   out->u[2] = (uint32_t)oh;
      *
      * @param {Array} block - 4x32-bit block [u0, u1, u2, u3]
@@ -337,8 +337,8 @@
       const shiftBits = SR2 * 8;
 
       // Build 64-bit values exactly as C code does
-      const th = (BigInt(block[3] >>> 0) << 32n) | BigInt(block[2] >>> 0);
-      const tl = (BigInt(block[1] >>> 0) << 32n) | BigInt(block[0] >>> 0);
+      const th = (BigInt(OpCodes.ToUint32(block[3])) << 32n) | BigInt(OpCodes.ToUint32(block[2]));
+      const tl = (BigInt(OpCodes.ToUint32(block[1])) << 32n) | BigInt(OpCodes.ToUint32(block[0]));
 
       // Shift
       let oh = th >> BigInt(shiftBits);
@@ -347,10 +347,10 @@
 
       // Unpack exactly as C code does
       const result = [0, 0, 0, 0];
-      result[1] = Number((ol >> 32n) & 0xFFFFFFFFn) >>> 0;
-      result[0] = Number(ol & 0xFFFFFFFFn) >>> 0;
-      result[3] = Number((oh >> 32n) & 0xFFFFFFFFn) >>> 0;
-      result[2] = Number(oh & 0xFFFFFFFFn) >>> 0;
+      result[1] = OpCodes.ToUint32(Number((ol >> 32n) & 0xFFFFFFFFn));
+      result[0] = OpCodes.ToUint32(Number(ol & 0xFFFFFFFFn));
+      result[3] = OpCodes.ToUint32(Number((oh >> 32n) & 0xFFFFFFFFn));
+      result[2] = OpCodes.ToUint32(Number(oh & 0xFFFFFFFFn));
 
       return result;
     }
@@ -373,8 +373,8 @@
       const y = this._rshift128(c);
 
       for (let i = 0; i < 4; ++i) {
-        result[i] = a[i] ^ x[i] ^ ((b[i] >>> SR1) & masks[i]) ^ y[i] ^ (d[i] << SL1);
-        result[i] = result[i] >>> 0; // Ensure unsigned 32-bit
+        result[i] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(a[i], x[i]), OpCodes.AndN(OpCodes.Shr32(b[i], SR1), masks[i])), y[i]), OpCodes.Shl32(d[i], SL1));
+        result[i] = OpCodes.ToUint32(result[i]);
       }
 
       return result;
@@ -491,10 +491,10 @@
       for (let i = 0; i < fullWords; ++i) {
         const value = this._next32();
         // Output in little-endian format
-        output.push((value) & 0xFF);
-        output.push((value >>> 8) & 0xFF);
-        output.push((value >>> 16) & 0xFF);
-        output.push((value >>> 24) & 0xFF);
+        output.push(OpCodes.AndN(value, 0xFF));
+        output.push(OpCodes.AndN(OpCodes.Shr32(value, 8), 0xFF));
+        output.push(OpCodes.AndN(OpCodes.Shr32(value, 16), 0xFF));
+        output.push(OpCodes.AndN(OpCodes.Shr32(value, 24), 0xFF));
       }
 
       // Handle remaining bytes (if length not multiple of 4)
@@ -502,7 +502,7 @@
       if (remainingBytes > 0) {
         const value = this._next32();
         for (let i = 0; i < remainingBytes; ++i) {
-          output.push((value >>> (i * 8)) & 0xFF);
+          output.push(OpCodes.AndN(OpCodes.Shr32(value, i * 8), 0xFF));
         }
       }
 

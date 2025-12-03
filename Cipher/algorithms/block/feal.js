@@ -237,7 +237,7 @@
      * @returns {uint8} Transformed byte
      */
     _S0(a, b) {
-      return OpCodes.RotL8((a + b) & 0xFF, 2);
+      return OpCodes.RotL8(OpCodes.AndN(a + b, 0xFF), 2);
     }
 
     /**
@@ -248,7 +248,7 @@
      * @returns {uint8} Transformed byte
      */
     _S1(a, b) {
-      return OpCodes.RotL8((a + b + 1) & 0xFF, 2);
+      return OpCodes.RotL8(OpCodes.AndN(a + b + 1, 0xFF), 2);
     }
 
     /**
@@ -264,12 +264,12 @@
       const k = OpCodes.Unpack32BE(key);
 
       // Apply S-boxes
-      const t0 = d[1] ^ d[0];
-      const t1 = d[2] ^ d[3];
-      const f1 = this._S1(t0 ^ k[0], t1 ^ k[1]);
-      const f2 = this._S0(f1 ^ t0, t1 ^ k[2]);
-      const f3 = this._S1(f2 ^ t1, f1 ^ k[3]);
-      const f4 = this._S0(f3 ^ f1, f2);
+      const t0 = OpCodes.XorN(d[1], d[0]);
+      const t1 = OpCodes.XorN(d[2], d[3]);
+      const f1 = this._S1(OpCodes.XorN(t0, k[0]), OpCodes.XorN(t1, k[1]));
+      const f2 = this._S0(OpCodes.XorN(f1, t0), OpCodes.XorN(t1, k[2]));
+      const f3 = this._S1(OpCodes.XorN(f2, t1), OpCodes.XorN(f1, k[3]));
+      const f4 = this._S0(OpCodes.XorN(f3, f1), f2);
 
       // Pack result
       return OpCodes.Pack32BE(f4, f3, f2, f1);
@@ -317,7 +317,7 @@
       for (let round = 0; round < 8; round++) {
         const temp = left;
         left = right;
-        right = temp ^ this._F(right, this.roundKeys[round]);
+        right = OpCodes.XorN(temp, this._F(right, this.roundKeys[round]));
       }
 
       // Swap halves for final result
@@ -347,7 +347,7 @@
       for (let round = 7; round >= 0; round--) {
         const temp = left;
         left = right;
-        right = temp ^ this._F(right, this.roundKeys[round]);
+        right = OpCodes.XorN(temp, this._F(right, this.roundKeys[round]));
       }
 
       // Swap halves for final result

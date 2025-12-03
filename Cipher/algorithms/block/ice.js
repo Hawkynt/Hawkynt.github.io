@@ -91,11 +91,11 @@
         IceCore.spBox[i] = new Array(1024);
 
         for (let j = 0; j < 1024; ++j) {
-          const col = (j >>> 1) & 0xff;
-          const row = (j & 0x1) | ((j & 0x200) >>> 8);
+          const col = OpCodes.AndN(OpCodes.Shr32(j, 1), 0xff);
+          const row = OpCodes.OrN(OpCodes.AndN(j, 0x1), OpCodes.Shr32(OpCodes.AndN(j, 0x200), 8));
 
           // Apply Galois Field exponentiation and permutation
-          const x = IceCore.gfExp7(col ^ sXor[i][row], sMod[i][row]) << (24 - i * 8);
+          const x = OpCodes.Shl32(IceCore.gfExp7(OpCodes.XorN(col, sXor[i][row]), sMod[i][row]), 24 - i * 8);
           IceCore.spBox[i][j] = IceCore.perm32(x, pBox);
         }
       }
@@ -108,15 +108,15 @@
       let res = 0;
 
       while (b !== 0) {
-        if ((b & 1) !== 0) {
-          res ^= a;
+        if (OpCodes.AndN(b, 1) !== 0) {
+          res = OpCodes.XorN(res, a);
         }
 
-        a <<= 1;
-        b >>>= 1;
+        a = OpCodes.Shl32(a, 1);
+        b = OpCodes.Shr32(b, 1);
 
         if (a >= 256) {
-          a ^= m;
+          a = OpCodes.XorN(a, m);
         }
       }
 
@@ -139,36 +139,39 @@
       let i = 0;
 
       while (x !== 0) {
-        if ((x & 1) !== 0) {
-          res |= pBox[i];
+        if (OpCodes.AndN(x, 1) !== 0) {
+          res = OpCodes.OrN(res, pBox[i]);
         }
         ++i;
-        x >>>= 1;
+        x = OpCodes.Shr32(x, 1);
       }
 
-      return res >>> 0;
+      return OpCodes.ToUint32(res);
     }
 
     // ICE round function
     static roundFunc(p, subkey) {
       // Extract and expand right half
-      let tl = ((p >>> 16) & 0x3ff) | (((p >>> 14) | (p << 18)) & 0xffc00);
-      let tr = (p & 0x3ff) | ((p << 2) & 0xffc00);
+      let tl = OpCodes.OrN(OpCodes.AndN(OpCodes.Shr32(p, 16), 0x3ff), OpCodes.AndN(OpCodes.OrN(OpCodes.Shr32(p, 14), OpCodes.Shl32(p, 18)), 0xffc00));
+      let tr = OpCodes.OrN(OpCodes.AndN(p, 0x3ff), OpCodes.AndN(OpCodes.Shl32(p, 2), 0xffc00));
 
       // Key-dependent bit selection
-      let al = subkey[2] & (tl ^ tr);
-      let ar = al ^ tr;
-      al ^= tl;
+      let al = OpCodes.AndN(subkey[2], OpCodes.XorN(tl, tr));
+      let ar = OpCodes.XorN(al, tr);
+      al = OpCodes.XorN(al, tl);
 
       // XOR with subkey
-      al ^= subkey[0];
-      ar ^= subkey[1];
+      al = OpCodes.XorN(al, subkey[0]);
+      ar = OpCodes.XorN(ar, subkey[1]);
 
       // S-box substitution and P-box permutation (combined in spBox)
-      return (IceCore.spBox[0][al >>> 10] |
-              IceCore.spBox[1][al & 0x3ff] |
-              IceCore.spBox[2][ar >>> 10] |
-              IceCore.spBox[3][ar & 0x3ff]) >>> 0;
+      return OpCodes.ToUint32(OpCodes.OrN(
+        OpCodes.OrN(
+          OpCodes.OrN(IceCore.spBox[0][OpCodes.Shr32(al, 10)], IceCore.spBox[1][OpCodes.AndN(al, 0x3ff)]),
+          IceCore.spBox[2][OpCodes.Shr32(ar, 10)]
+        ),
+        IceCore.spBox[3][OpCodes.AndN(ar, 0x3ff)]
+      ));
     }
   }
 
@@ -345,11 +348,11 @@
           const currSk = j % 3;
 
           for (let k = 0; k < 4; ++k) {
-            const kbIdx = (kr + k) & 3;
-            const bit = kb[kbIdx] & 1;
+            const kbIdx = OpCodes.AndN(kr + k, 3);
+            const bit = OpCodes.AndN(kb[kbIdx], 1);
 
-            subkey[currSk] = (subkey[currSk] << 1) | bit;
-            kb[kbIdx] = (kb[kbIdx] >>> 1) | ((bit ^ 1) << 15);
+            subkey[currSk] = OpCodes.OrN(OpCodes.Shl32(subkey[currSk], 1), bit);
+            kb[kbIdx] = OpCodes.OrN(OpCodes.Shr32(kb[kbIdx], 1), OpCodes.Shl32(OpCodes.XorN(bit, 1), 15));
           }
         }
       }
@@ -360,26 +363,26 @@
       let l = 0, r = 0;
 
       for (let i = 0; i < 4; ++i) {
-        l |= (plaintext[i] & 0xff) << (24 - i * 8);
-        r |= (plaintext[i + 4] & 0xff) << (24 - i * 8);
+        l = OpCodes.OrN(l, OpCodes.Shl32(OpCodes.AndN(plaintext[i], 0xff), 24 - i * 8));
+        r = OpCodes.OrN(r, OpCodes.Shl32(OpCodes.AndN(plaintext[i + 4], 0xff), 24 - i * 8));
       }
 
-      l = l >>> 0;
-      r = r >>> 0;
+      l = OpCodes.ToUint32(l);
+      r = OpCodes.ToUint32(r);
 
       // Feistel network
       for (let i = 0; i < this._rounds; i += 2) {
-        l ^= IceCore.roundFunc(r, this.keySchedule[i]);
-        r ^= IceCore.roundFunc(l, this.keySchedule[i + 1]);
+        l = OpCodes.XorN(l, IceCore.roundFunc(r, this.keySchedule[i]));
+        r = OpCodes.XorN(r, IceCore.roundFunc(l, this.keySchedule[i + 1]));
       }
 
       // Unpack to bytes (big-endian, reversed order)
       const ciphertext = new Array(8);
       for (let i = 0; i < 4; ++i) {
-        ciphertext[3 - i] = (r >>> 0) & 0xff;
-        ciphertext[7 - i] = (l >>> 0) & 0xff;
-        r >>>= 8;
-        l >>>= 8;
+        ciphertext[3 - i] = OpCodes.AndN(OpCodes.ToUint32(r), 0xff);
+        ciphertext[7 - i] = OpCodes.AndN(OpCodes.ToUint32(l), 0xff);
+        r = OpCodes.Shr32(r, 8);
+        l = OpCodes.Shr32(l, 8);
       }
 
       return ciphertext;
@@ -390,26 +393,26 @@
       let l = 0, r = 0;
 
       for (let i = 0; i < 4; ++i) {
-        l |= (ciphertext[i] & 0xff) << (24 - i * 8);
-        r |= (ciphertext[i + 4] & 0xff) << (24 - i * 8);
+        l = OpCodes.OrN(l, OpCodes.Shl32(OpCodes.AndN(ciphertext[i], 0xff), 24 - i * 8));
+        r = OpCodes.OrN(r, OpCodes.Shl32(OpCodes.AndN(ciphertext[i + 4], 0xff), 24 - i * 8));
       }
 
-      l = l >>> 0;
-      r = r >>> 0;
+      l = OpCodes.ToUint32(l);
+      r = OpCodes.ToUint32(r);
 
       // Feistel network - reverse order for decryption
       for (let i = this._rounds - 1; i > 0; i -= 2) {
-        l ^= IceCore.roundFunc(r, this.keySchedule[i]);
-        r ^= IceCore.roundFunc(l, this.keySchedule[i - 1]);
+        l = OpCodes.XorN(l, IceCore.roundFunc(r, this.keySchedule[i]));
+        r = OpCodes.XorN(r, IceCore.roundFunc(l, this.keySchedule[i - 1]));
       }
 
       // Unpack to bytes (big-endian, reversed order)
       const plaintext = new Array(8);
       for (let i = 0; i < 4; ++i) {
-        plaintext[3 - i] = (r >>> 0) & 0xff;
-        plaintext[7 - i] = (l >>> 0) & 0xff;
-        r >>>= 8;
-        l >>>= 8;
+        plaintext[3 - i] = OpCodes.AndN(OpCodes.ToUint32(r), 0xff);
+        plaintext[7 - i] = OpCodes.AndN(OpCodes.ToUint32(l), 0xff);
+        r = OpCodes.Shr32(r, 8);
+        l = OpCodes.Shr32(l, 8);
       }
 
       return plaintext;
@@ -515,7 +518,7 @@
       // Extract 4 16-bit words from key (big-endian)
       const kb = new Array(4);
       for (let j = 0; j < 4; ++j) {
-        kb[3 - j] = ((key[j * 2] & 0xff) << 8) | (key[j * 2 + 1] & 0xff);
+        kb[3 - j] = OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(key[j * 2], 0xff), 8), OpCodes.AndN(key[j * 2 + 1], 0xff));
       }
 
       if (this._rounds === 8) {
@@ -625,7 +628,7 @@
       for (let i = 0; i < size; ++i) {
         // Extract 4 16-bit words from key (big-endian)
         for (let j = 0; j < 4; ++j) {
-          kb[3 - j] = ((key[i * 8 + j * 2] & 0xff) << 8) | (key[i * 8 + j * 2 + 1] & 0xff);
+          kb[3 - j] = OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(key[i * 8 + j * 2], 0xff), 8), OpCodes.AndN(key[i * 8 + j * 2 + 1], 0xff));
         }
 
         // Build forward rounds

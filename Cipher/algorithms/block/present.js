@@ -371,8 +371,8 @@
     // Add round key (XOR operation)
     _addRoundKey(state, roundKey) {
       return {
-        high: (state.high ^ roundKey.high) >>> 0,
-        low: (state.low ^ roundKey.low) >>> 0
+        high: OpCodes.XorN(state.high, roundKey.high) >>> 0,
+        low: OpCodes.XorN(state.low, roundKey.low) >>> 0
       };
     }
 
@@ -552,7 +552,7 @@
 
           // Step 3: XOR bits with round counter at position 15
           const counterValue = BigInt(round) << BigInt(15);
-          key = key ^ counterValue;
+          key = key^counterValue;
 
           // Ensure key stays within 80-bit range
           key = key & ((BigInt(1) << BigInt(80)) - BigInt(1));
@@ -600,7 +600,7 @@
 
           // Step 4: XOR round counter with bits 66-62 (use 1-indexed round counter)
           const roundCounter = BigInt(round + 1) & 0x1Fn;
-          keyState = keyState ^ (roundCounter << 62n);
+          keyState = keyState^(roundCounter << 62n);
         }
       }
 

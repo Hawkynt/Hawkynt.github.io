@@ -77,9 +77,9 @@
       // s4 = y ^ x ^ ((x | s8) << 1)
       // s0 = s8 ^ y ^ ((x & y) << 3)
       // s8 = x ^ (s8 << 1) ^ ((y & s8) << 2)
-      this.words[col + 4] = (y ^ x ^ (((x | s8) << 1) >>> 0)) >>> 0;
-      this.words[col] = (s8 ^ y ^ (((x & y) << 3) >>> 0)) >>> 0;
-      this.words[col + 8] = (x ^ ((s8 << 1) >>> 0) ^ (((y & s8) << 2) >>> 0)) >>> 0;
+      this.words[col + 4] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(y, x), OpCodes.Shl32(OpCodes.OrN(x, s8), 1)));
+      this.words[col] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s8, y), OpCodes.Shl32(OpCodes.AndN(x, y), 3)));
+      this.words[col + 8] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(x, OpCodes.Shl32(s8, 1)), OpCodes.Shl32(OpCodes.AndN(y, s8), 2)));
     }
 
     /**
@@ -98,7 +98,7 @@
         // Small swap: rotate first row (words 0-3) by 1 position
         const x = this.words[0];
         const y = this.words[2];
-        this.words[0] = this.words[1] ^ 0x9e377900 ^ round; // Round constant
+        this.words[0] = OpCodes.XorN(OpCodes.XorN(this.words[1], 0x9e377900), round); // Round constant
         this.words[1] = x;
         this.words[2] = this.words[3];
         this.words[3] = y;
@@ -136,7 +136,7 @@
      */
     loadBytes(bytes, offset, count) {
       for (let i = 0; i < count && i < GIMLI24_STATE_SIZE; i += 4) {
-        const wordIndex = (offset + i) >>> 2;
+        const wordIndex = OpCodes.Shr32(offset + i, 2);
         if (wordIndex < 12) {
           this.words[wordIndex] = OpCodes.Pack32LE(
             bytes[i] || 0,
@@ -154,7 +154,7 @@
     storeBytes(offset, count) {
       const result = [];
       for (let i = 0; i < count; i += 4) {
-        const wordIndex = (offset + i) >>> 2;
+        const wordIndex = OpCodes.Shr32(offset + i, 2);
         if (wordIndex < 12) {
           const wordBytes = OpCodes.Unpack32LE(this.words[wordIndex]);
           result.push(wordBytes[0], wordBytes[1], wordBytes[2], wordBytes[3]);
@@ -168,13 +168,13 @@
      */
     xorBytes(bytes, offset) {
       for (let i = 0; i < bytes.length && (offset + i) < GIMLI24_STATE_SIZE; ++i) {
-        const wordIndex = (offset + i) >>> 2;
-        const byteInWord = (offset + i) & 3;
-        const mask = 0xFF << (byteInWord * 8);
-        const cleared = this.words[wordIndex] & (~mask >>> 0);
-        const currentByte = (this.words[wordIndex] >>> (byteInWord * 8)) & 0xFF;
-        const newByte = (currentByte ^ bytes[i]) & 0xFF;
-        this.words[wordIndex] = (cleared | (newByte << (byteInWord * 8))) >>> 0;
+        const wordIndex = OpCodes.Shr32(offset + i, 2);
+        const byteInWord = OpCodes.AndN(offset + i, 3);
+        const mask = OpCodes.Shl32(0xFF, byteInWord * 8);
+        const cleared = OpCodes.AndN(this.words[wordIndex], ~mask);
+        const currentByte = OpCodes.AndN(OpCodes.Shr32(this.words[wordIndex], byteInWord * 8), 0xFF);
+        const newByte = OpCodes.AndN(OpCodes.XorN(currentByte, bytes[i]), 0xFF);
+        this.words[wordIndex] = OpCodes.ToUint32(OpCodes.OrN(cleared, OpCodes.Shl32(newByte, byteInWord * 8)));
       }
     }
 
@@ -184,9 +184,9 @@
     getBytes(offset, count) {
       const result = [];
       for (let i = 0; i < count && (offset + i) < GIMLI24_STATE_SIZE; ++i) {
-        const wordIndex = (offset + i) >>> 2;
-        const byteInWord = (offset + i) & 3;
-        result.push((this.words[wordIndex] >>> (byteInWord * 8)) & 0xFF);
+        const wordIndex = OpCodes.Shr32(offset + i, 2);
+        const byteInWord = OpCodes.AndN(offset + i, 3);
+        result.push(OpCodes.AndN(OpCodes.Shr32(this.words[wordIndex], byteInWord * 8), 0xFF));
       }
       return result;
     }
@@ -324,15 +324,15 @@
       }
 
       // Padding: XOR 0x01 at position adLen and position 47
-      const wordIndex1 = adLen >>> 2;
-      const byteInWord1 = adLen & 3;
-      const mask1 = 0xFF << (byteInWord1 * 8);
-      const cleared1 = this.state.words[wordIndex1] & (~mask1 >>> 0);
-      const currentByte1 = (this.state.words[wordIndex1] >>> (byteInWord1 * 8)) & 0xFF;
-      this.state.words[wordIndex1] = (cleared1 | ((currentByte1 ^ 0x01) << (byteInWord1 * 8))) >>> 0;
+      const wordIndex1 = OpCodes.Shr32(adLen, 2);
+      const byteInWord1 = OpCodes.AndN(adLen, 3);
+      const mask1 = OpCodes.Shl32(0xFF, byteInWord1 * 8);
+      const cleared1 = OpCodes.AndN(this.state.words[wordIndex1], ~mask1);
+      const currentByte1 = OpCodes.AndN(OpCodes.Shr32(this.state.words[wordIndex1], byteInWord1 * 8), 0xFF);
+      this.state.words[wordIndex1] = OpCodes.ToUint32(OpCodes.OrN(cleared1, OpCodes.Shl32(OpCodes.XorN(currentByte1, 0x01), byteInWord1 * 8)));
 
       // XOR 0x01 at byte position 47 (word 11, byte 3)
-      this.state.words[11] ^= 0x01000000;
+      this.state.words[11] = OpCodes.XorN(this.state.words[11], 0x01000000);
 
       this.state.permute();
       this.adProcessed = true;
@@ -353,7 +353,7 @@
 
         // XOR plaintext with state to get ciphertext
         for (let i = 0; i < GIMLI24_BLOCK_SIZE; ++i) {
-          ciphertext.push(stateBytes[i] ^ block[i]);
+          ciphertext.push(OpCodes.XorN(stateBytes[i], block[i]));
         }
 
         this.state.permute();
@@ -367,20 +367,20 @@
         const stateBytes = this.state.getBytes(0, dataLen);
 
         for (let i = 0; i < dataLen; ++i) {
-          ciphertext.push(stateBytes[i] ^ block[i]);
+          ciphertext.push(OpCodes.XorN(stateBytes[i], block[i]));
         }
       }
 
       // Padding after encryption
-      const wordIndex1 = dataLen >>> 2;
-      const byteInWord1 = dataLen & 3;
-      const mask1 = 0xFF << (byteInWord1 * 8);
-      const cleared1 = this.state.words[wordIndex1] & (~mask1 >>> 0);
-      const currentByte1 = (this.state.words[wordIndex1] >>> (byteInWord1 * 8)) & 0xFF;
-      this.state.words[wordIndex1] = (cleared1 | ((currentByte1 ^ 0x01) << (byteInWord1 * 8))) >>> 0;
+      const wordIndex1 = OpCodes.Shr32(dataLen, 2);
+      const byteInWord1 = OpCodes.AndN(dataLen, 3);
+      const mask1 = OpCodes.Shl32(0xFF, byteInWord1 * 8);
+      const cleared1 = OpCodes.AndN(this.state.words[wordIndex1], ~mask1);
+      const currentByte1 = OpCodes.AndN(OpCodes.Shr32(this.state.words[wordIndex1], byteInWord1 * 8), 0xFF);
+      this.state.words[wordIndex1] = OpCodes.ToUint32(OpCodes.OrN(cleared1, OpCodes.Shl32(OpCodes.XorN(currentByte1, 0x01), byteInWord1 * 8)));
 
       // XOR 0x01 at byte position 47
-      this.state.words[11] ^= 0x01000000;
+      this.state.words[11] = OpCodes.XorN(this.state.words[11], 0x01000000);
 
       this.state.permute();
 
@@ -403,7 +403,7 @@
         // XOR ciphertext with state to get plaintext
         const ptBlock = [];
         for (let i = 0; i < GIMLI24_BLOCK_SIZE; ++i) {
-          ptBlock.push(stateBytes[i] ^ block[i]);
+          ptBlock.push(OpCodes.XorN(stateBytes[i], block[i]));
         }
         plaintext.push(...ptBlock);
 
@@ -423,7 +423,7 @@
 
         const ptBlock = [];
         for (let i = 0; i < dataLen; ++i) {
-          ptBlock.push(stateBytes[i] ^ block[i]);
+          ptBlock.push(OpCodes.XorN(stateBytes[i], block[i]));
         }
         plaintext.push(...ptBlock);
 
@@ -433,15 +433,15 @@
       }
 
       // Padding after decryption
-      const wordIndex1 = dataLen >>> 2;
-      const byteInWord1 = dataLen & 3;
-      const mask1 = 0xFF << (byteInWord1 * 8);
-      const cleared1 = this.state.words[wordIndex1] & (~mask1 >>> 0);
-      const currentByte1 = (this.state.words[wordIndex1] >>> (byteInWord1 * 8)) & 0xFF;
-      this.state.words[wordIndex1] = (cleared1 | ((currentByte1 ^ 0x01) << (byteInWord1 * 8))) >>> 0;
+      const wordIndex1 = OpCodes.Shr32(dataLen, 2);
+      const byteInWord1 = OpCodes.AndN(dataLen, 3);
+      const mask1 = OpCodes.Shl32(0xFF, byteInWord1 * 8);
+      const cleared1 = OpCodes.AndN(this.state.words[wordIndex1], ~mask1);
+      const currentByte1 = OpCodes.AndN(OpCodes.Shr32(this.state.words[wordIndex1], byteInWord1 * 8), 0xFF);
+      this.state.words[wordIndex1] = OpCodes.ToUint32(OpCodes.OrN(cleared1, OpCodes.Shl32(OpCodes.XorN(currentByte1, 0x01), byteInWord1 * 8)));
 
       // XOR 0x01 at byte position 47
-      this.state.words[11] ^= 0x01000000;
+      this.state.words[11] = OpCodes.XorN(this.state.words[11], 0x01000000);
 
       this.state.permute();
 
@@ -492,7 +492,7 @@
         // Constant-time tag comparison
         let tagMatch = 0;
         for (let i = 0; i < GIMLI24_TAG_SIZE; ++i) {
-          tagMatch |= computedTag[i] ^ receivedTag[i];
+          tagMatch = OpCodes.OrN(tagMatch, OpCodes.XorN(computedTag[i], receivedTag[i]));
         }
 
         if (tagMatch !== 0) {

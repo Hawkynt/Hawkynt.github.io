@@ -67,13 +67,13 @@
         let value = 0x91; // Start with base value
         for (let j = 0; j < this.input.length; j++) {
           // Simulate bit-flipping operations characteristic of BIKE
-          value ^= OpCodes.RotL8(this.input[j], (i + j + 2) % 8);
-          value = (value + (OpCodes.Shr8(this.input[j], j % 4) & 0xF)) & 0xFF;
+          value = OpCodes.XorN(value, OpCodes.RotL8(this.input[j], (i + j + 2) % 8));
+          value = OpCodes.AndN(value + OpCodes.AndN(OpCodes.Shr8(this.input[j], j % 4), 0xF), 0xFF);
         }
         // Mix with BIKE-style constants
-        value ^= (i * 91 + 137) % 256;
+        value = OpCodes.XorN(value, (i * 91 + 137) % 256);
         value = OpCodes.RotL8(value, (i + 3) % 8);
-        output[i] = value & 0xFF;
+        output[i] = OpCodes.AndN(value, 0xFF);
       }
       
       return output;

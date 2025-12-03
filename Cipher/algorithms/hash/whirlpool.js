@@ -136,7 +136,7 @@
   // Extract byte from 64-bit word at position (0-7)
   // pos 0 = MSB (bits 56-63), pos 7 = LSB (bits 0-7)
   function getByte(word, pos) {
-    const shift = BigInt(((~pos) & 7) * 8);
+    const shift = BigInt(OpCodes.AndN(~pos, 7) * 8);
     return Number((word >> shift) & 0xFFn);
   }
 
@@ -362,7 +362,7 @@
       if (typeof data === 'string') {
         const bytes = [];
         for (let i = 0; i < data.length; i++) {
-          bytes.push(data.charCodeAt(i) & 0xFF);
+          bytes.push(OpCodes.AndN(data.charCodeAt(i), 0xFF));
         }
         data = bytes;
       }

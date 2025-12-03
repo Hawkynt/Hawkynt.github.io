@@ -270,18 +270,18 @@
       // Generate result based on variant bit width
       switch (this.config.resultBytes) {
         case 2: // Adler-16
-          const checksum16 = ((this.b << 8) | this.a) >>> 0;
+          const checksum16 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(this.b, 8), this.a));
           result = OpCodes.Unpack16BE(checksum16);
           break;
 
-        case 4: // Adler-32  
-          result = OpCodes.Unpack32BE(((this.b << 16) | this.a) >>> 0);
+        case 4: // Adler-32
+          result = OpCodes.Unpack32BE(OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(this.b, 16), this.a)));
           break;
 
         case 8: // Adler-64
           // Handle 64-bit result as two 32-bit parts
-          const high = this.b >>> 0;
-          const low = this.a >>> 0;
+          const high = OpCodes.ToUint32(this.b);
+          const low = OpCodes.ToUint32(this.a);
           result = [...OpCodes.Unpack32BE(high), ...OpCodes.Unpack32BE(low)];
           break;
 

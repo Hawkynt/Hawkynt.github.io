@@ -78,7 +78,7 @@
 
       // Documentation links
       this.documentation = [
-        new LinkItem("Spritz Paper (Rivest & Schuldt)", "https://people.csail.mit.edu/rivest/pubs/RS14.pdf"),
+        new LinkItem("Spritz Paper (Rivest and Schuldt)", "https://people.csail.mit.edu/rivest/pubs/RS14.pdf"),
         new LinkItem("Spritz Cryptanalysis", "https://eprint.iacr.org/2016/856.pdf"),
         new LinkItem("Rivest's Spritz Page", "https://people.csail.mit.edu/rivest/Spritz/")
       ];
@@ -101,7 +101,7 @@
       this.tests = [
         {
           text: "Spritz Basic Test",
-          uri: "Educational test case based on Rivest & Schuldt specification",
+          uri: "Educational test case based on Rivest and Schuldt specification",
           input: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           expected: OpCodes.Hex8ToBytes("06256ff1baf8bbdc38dcc328c9bd21dc")
@@ -269,7 +269,7 @@
       // Process input data byte by byte (stream cipher)
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._squeeze();
-        output.push(this.inputBuffer[i] ^ keystreamByte);
+        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer for next operation
@@ -320,8 +320,8 @@
 
     // Absorb single byte
     _absorbByte(b) {
-      this._absorbNibble(b & 0xF);        // Low nibble
-      this._absorbNibble((b >>> 4) & 0xF); // High nibble
+      this._absorbNibble(OpCodes.AndN(b, 0xF));        // Low nibble
+      this._absorbNibble(OpCodes.AndN(OpCodes.Shr32(b, 4), 0xF)); // High nibble
     }
 
     // Absorb single nibble (4 bits)

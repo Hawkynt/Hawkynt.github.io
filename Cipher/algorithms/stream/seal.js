@@ -271,7 +271,7 @@
 
       // Extend the sixteen 32-bit words into eighty 32-bit words
       for (let t = 16; t < 80; t++) {
-        W[t] = OpCodes.RotL32(W[t-3] ^ W[t-8] ^ W[t-14] ^ W[t-16], 1);
+        W[t] = OpCodes.RotL32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(W[t-3], W[t-8]), W[t-14]), W[t-16]), 1);
       }
 
       // Initialize working variables
@@ -282,16 +282,16 @@
         let f, k;
 
         if (t < 20) {
-          f = (b & c) | ((~b) & d);
+          f = OpCodes.OrN(OpCodes.AndN(b, c), OpCodes.AndN(~b, d));
           k = K[0];
         } else if (t < 40) {
-          f = b ^ c ^ d;
+          f = OpCodes.XorN(OpCodes.XorN(b, c), d);
           k = K[1];
         } else if (t < 60) {
-          f = (b & c) | (b & d) | (c & d);
+          f = OpCodes.OrN(OpCodes.OrN(OpCodes.AndN(b, c), OpCodes.AndN(b, d)), OpCodes.AndN(c, d));
           k = K[2];
         } else {
-          f = b ^ c ^ d;
+          f = OpCodes.XorN(OpCodes.XorN(b, c), d);
           k = K[3];
         }
 
@@ -374,26 +374,26 @@
      * Generate 1024 bytes (256 words) of keystream
      */
     _generateKeystream() {
-      let a = this.outsideCounter ^ this.R[4 * this.insideCounter];
-      let b = OpCodes.RotR32(this.outsideCounter, 8) ^ this.R[4 * this.insideCounter + 1];
-      let c = OpCodes.RotR32(this.outsideCounter, 16) ^ this.R[4 * this.insideCounter + 2];
-      let d = OpCodes.RotR32(this.outsideCounter, 24) ^ this.R[4 * this.insideCounter + 3];
+      let a = OpCodes.XorN(this.outsideCounter, this.R[4 * this.insideCounter]);
+      let b = OpCodes.XorN(OpCodes.RotR32(this.outsideCounter, 8), this.R[4 * this.insideCounter + 1]);
+      let c = OpCodes.XorN(OpCodes.RotR32(this.outsideCounter, 16), this.R[4 * this.insideCounter + 2]);
+      let d = OpCodes.XorN(OpCodes.RotR32(this.outsideCounter, 24), this.R[4 * this.insideCounter + 3]);
 
       // Two rounds of Feistel-like mixing
       for (let j = 0; j < 2; j++) {
-        let p = a & 0x7fc;
+        let p = OpCodes.AndN(a, 0x7fc);
         b = OpCodes.Add32(b, this.T[p >>> 2]);
         a = OpCodes.RotR32(a, 9);
 
-        p = b & 0x7fc;
+        p = OpCodes.AndN(b, 0x7fc);
         c = OpCodes.Add32(c, this.T[p >>> 2]);
         b = OpCodes.RotR32(b, 9);
 
-        p = c & 0x7fc;
+        p = OpCodes.AndN(c, 0x7fc);
         d = OpCodes.Add32(d, this.T[p >>> 2]);
         c = OpCodes.RotR32(c, 9);
 
-        p = d & 0x7fc;
+        p = OpCodes.AndN(d, 0x7fc);
         a = OpCodes.Add32(a, this.T[p >>> 2]);
         d = OpCodes.RotR32(d, 9);
       }
@@ -402,66 +402,66 @@
       const n1 = d, n2 = b, n3 = a, n4 = c;
 
       // One more round
-      let p = a & 0x7fc;
+      let p = OpCodes.AndN(a, 0x7fc);
       b = OpCodes.Add32(b, this.T[p >>> 2]);
       a = OpCodes.RotR32(a, 9);
 
-      p = b & 0x7fc;
+      p = OpCodes.AndN(b, 0x7fc);
       c = OpCodes.Add32(c, this.T[p >>> 2]);
       b = OpCodes.RotR32(b, 9);
 
-      p = c & 0x7fc;
+      p = OpCodes.AndN(c, 0x7fc);
       d = OpCodes.Add32(d, this.T[p >>> 2]);
       c = OpCodes.RotR32(c, 9);
 
-      p = d & 0x7fc;
+      p = OpCodes.AndN(d, 0x7fc);
       a = OpCodes.Add32(a, this.T[p >>> 2]);
       d = OpCodes.RotR32(d, 9);
 
       // Generate 8192 bits (1024 bytes) of keystream
       const output = [];
       for (let i = 0; i < 64; i++) {
-        p = a & 0x7fc;
+        p = OpCodes.AndN(a, 0x7fc);
         a = OpCodes.RotR32(a, 9);
         b = OpCodes.Add32(b, this.T[p >>> 2]);
-        b ^= a;
+        b = OpCodes.XorN(b, a);
 
-        let q = b & 0x7fc;
+        let q = OpCodes.AndN(b, 0x7fc);
         b = OpCodes.RotR32(b, 9);
-        c ^= this.T[q >>> 2];
+        c = OpCodes.XorN(c, this.T[q >>> 2]);
         c = OpCodes.Add32(c, b);
 
-        p = (p + c) & 0x7fc;
+        p = OpCodes.AndN(p + c, 0x7fc);
         c = OpCodes.RotR32(c, 9);
         d = OpCodes.Add32(d, this.T[p >>> 2]);
-        d ^= c;
+        d = OpCodes.XorN(d, c);
 
-        q = (q + d) & 0x7fc;
+        q = OpCodes.AndN(q + d, 0x7fc);
         d = OpCodes.RotR32(d, 9);
-        a ^= this.T[q >>> 2];
+        a = OpCodes.XorN(a, this.T[q >>> 2]);
         a = OpCodes.Add32(a, d);
 
-        p = (p + a) & 0x7fc;
-        b ^= this.T[p >>> 2];
+        p = OpCodes.AndN(p + a, 0x7fc);
+        b = OpCodes.XorN(b, this.T[p >>> 2]);
         a = OpCodes.RotR32(a, 9);
 
-        q = (q + b) & 0x7fc;
+        q = OpCodes.AndN(q + b, 0x7fc);
         c = OpCodes.Add32(c, this.T[q >>> 2]);
         b = OpCodes.RotR32(b, 9);
 
-        p = (p + c) & 0x7fc;
-        d ^= this.T[p >>> 2];
+        p = OpCodes.AndN(p + c, 0x7fc);
+        d = OpCodes.XorN(d, this.T[p >>> 2]);
         c = OpCodes.RotR32(c, 9);
 
-        q = (q + d) & 0x7fc;
+        q = OpCodes.AndN(q + d, 0x7fc);
         d = OpCodes.RotR32(d, 9);
         a = OpCodes.Add32(a, this.T[q >>> 2]);
 
         // Output 4 words with S-box mixing
         const w1 = OpCodes.Add32(b, this.S[4 * i + 0]);
-        const w2 = c ^ this.S[4 * i + 1];
+        const w2 = OpCodes.XorN(c, this.S[4 * i + 1]);
         const w3 = OpCodes.Add32(d, this.S[4 * i + 2]);
-        const w4 = a ^ this.S[4 * i + 3];
+        const w4 = OpCodes.XorN(a, this.S[4 * i + 3]);
 
         // Convert to bytes based on endianness
         if (this.isBigEndian) {
@@ -477,16 +477,16 @@
         }
 
         // Mix in saved values (alternating pattern)
-        if (i & 1) {
+        if (OpCodes.AndN(i, 1)) {
           a = OpCodes.Add32(a, n3);
           b = OpCodes.Add32(b, n4);
-          c ^= n3;
-          d ^= n4;
+          c = OpCodes.XorN(c, n3);
+          d = OpCodes.XorN(d, n4);
         } else {
           a = OpCodes.Add32(a, n1);
           b = OpCodes.Add32(b, n2);
-          c ^= n1;
-          d ^= n2;
+          c = OpCodes.XorN(c, n1);
+          d = OpCodes.XorN(d, n2);
         }
       }
 
@@ -537,7 +537,7 @@
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._getNextKeystreamByte();
-        output.push(this.inputBuffer[i] ^ keystreamByte);
+        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
       }
 
       this.inputBuffer = [];

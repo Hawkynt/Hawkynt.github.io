@@ -71,14 +71,14 @@
         let value = 0x71; // Start with base value (hex for 113)
         for (let j = 0; j < this.input.length; j++) {
           // Simulate AES-like operations
-          value ^= OpCodes.RotL8(this.input[j], (i + j + 3) % 8);
-          value = (value + (OpCodes.Shl8(this.input[j], j % 3) & 0xFF)) & 0xFF;
-          value ^= (OpCodes.Shr8(this.input[j], j % 5) & 0x1F);
+          value = OpCodes.XorN(value, OpCodes.RotL8(this.input[j], (i + j + 3) % 8));
+          value = OpCodes.AndN(value + OpCodes.AndN(OpCodes.Shl8(this.input[j], j % 3), 0xFF), 0xFF);
+          value = OpCodes.XorN(value, OpCodes.AndN(OpCodes.Shr8(this.input[j], j % 5), 0x1F));
         }
         // Mix with FAEST-style constants
-        value ^= (i * 113 + 157) % 256;
+        value = OpCodes.XorN(value, (i * 113 + 157) % 256);
         value = OpCodes.RotL8(value, (i + 4) % 8);
-        output[i] = value & 0xFF;
+        output[i] = OpCodes.AndN(value, 0xFF);
       }
       
       return output;

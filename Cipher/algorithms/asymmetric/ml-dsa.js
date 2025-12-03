@@ -351,7 +351,7 @@
 
       // Initialize state with seed and padding
       for (let i = 0; i < 32; i++) {
-        state[i] = i < seed.length ? seed[i] : (i * 0x67 + 0x91) & OpCodes.BitMask(8);
+        state[i] = i < seed.length ? seed[i] : OpCodes.ToUint32(OpCodes.AndN(i * 0x67 + 0x91, OpCodes.BitMask(8)));
       }
 
       // Keccak-like permutation (very simplified)
@@ -361,7 +361,7 @@
           const a = state[j];
           const b = state[(j + 1) % state.length];
           const c = state[(j + 7) % state.length];
-          state[j] = OpCodes.RotL8(a ^ b ^ c, (j + i) & OpCodes.BitMask(3));
+          state[j] = OpCodes.RotL8(OpCodes.XorN(OpCodes.XorN(a, b), c), OpCodes.ToUint32(OpCodes.AndN(j + i, OpCodes.BitMask(3))));
         }
 
         // Extract byte
@@ -393,10 +393,10 @@
       for (let s = 0; s < seed.length; s++) {
         seedValue += seed[s];
       }
-      seedValue = (seedValue + i * 73 + j * 97) >>> 0;
+      seedValue = OpCodes.ToUint32(seedValue + i * 73 + j * 97);
 
       for (let k = 0; k < n; k++) {
-        seedValue = (seedValue * 1664525 + 1013904223) >>> 0;
+        seedValue = OpCodes.ToUint32(seedValue * 1664525 + 1013904223);
         poly[k] = seedValue % this.Q;
       }
 
@@ -414,10 +414,10 @@
         for (let s = 0; s < seed.length; s++) {
           seedValue += seed[s];
         }
-        seedValue = (seedValue + i * suffix.length) >>> 0;
+        seedValue = OpCodes.ToUint32(seedValue + i * suffix.length);
 
         for (let j = 0; j < this.N; j++) {
-          seedValue = (seedValue * 1103515245 + 12345) >>> 0;
+          seedValue = OpCodes.ToUint32(seedValue * 1103515245 + 12345);
           const value = seedValue % (2 * eta + 1);
           vectors[i][j] = value - eta; // Range [-eta, eta]
         }
@@ -488,20 +488,20 @@
       const mu = this._educationalHash([...this.privateKey.skSeed, ...message], this.CRHBYTES);
 
       // Generate commitment (simplified) - use OpCodes for string generation
-      const commitmentBytes = [...OpCodes.AnsiToBytes('ML_DSA_COMMITMENT_'), this.parameterSet & OpCodes.BitMask(8), ...OpCodes.AnsiToBytes('_'), ...OpCodes.AnsiToBytes(this.privateKey.keyId)];
+      const commitmentBytes = [...OpCodes.AnsiToBytes('ML_DSA_COMMITMENT_'), OpCodes.AndN(this.parameterSet, OpCodes.BitMask(8)), ...OpCodes.AnsiToBytes('_'), ...OpCodes.AnsiToBytes(this.privateKey.keyId)];
 
       // Generate challenge c (simplified Fiat-Shamir)
-      const challenge = ((message.length * 37 + params.tau) % 256);
+      const challenge = OpCodes.AndN(message.length * 37 + params.tau, 0xFF);
 
       // Generate response z (simplified) - use OpCodes for string generation
       const gamma1Str = String(params.gamma1);
-      const responseBytes = [...OpCodes.AnsiToBytes('ML_DSA_RESPONSE_'), challenge & OpCodes.BitMask(8), ...OpCodes.AnsiToBytes('_GAMMA1_'), ...gamma1Str.split('').map(c => c.charCodeAt(0))];
+      const responseBytes = [...OpCodes.AnsiToBytes('ML_DSA_RESPONSE_'), OpCodes.AndN(challenge, OpCodes.BitMask(8)), ...OpCodes.AnsiToBytes('_GAMMA1_'), ...gamma1Str.split('').map(c => c.charCodeAt(0))];
 
       // Pack signature (c, z, h) - use OpCodes for delimiter
       const delimiter = OpCodes.AnsiToBytes('||');
       const hintBytes = OpCodes.AnsiToBytes('HINT');
 
-      return [...commitmentBytes, ...delimiter, challenge & OpCodes.BitMask(8), ...delimiter, ...responseBytes, ...delimiter, ...hintBytes];
+      return [...commitmentBytes, ...delimiter, OpCodes.AndN(challenge, OpCodes.BitMask(8)), ...delimiter, ...responseBytes, ...delimiter, ...hintBytes];
     }
 
     // Educational signature verification (simplified ML-DSA-like)
@@ -512,7 +512,7 @@
 
       // For educational purposes, verify signature format
       const signature = String.fromCharCode(...signatureData);
-      const expectedPrefixBytes = [...OpCodes.AnsiToBytes('ML_DSA_COMMITMENT_'), this.parameterSet & OpCodes.BitMask(8)];
+      const expectedPrefixBytes = [...OpCodes.AnsiToBytes('ML_DSA_COMMITMENT_'), OpCodes.AndN(this.parameterSet, OpCodes.BitMask(8))];
       const expectedPrefix = String.fromCharCode(...expectedPrefixBytes);
 
       if (signature.includes(expectedPrefix)) {
@@ -526,7 +526,7 @@
           const hint = parts[3];
 
           // Educational verification (always accept properly formatted signatures)
-          const validMessage = [...OpCodes.AnsiToBytes('VALID_ML_DSA_SIGNATURE_'), this.parameterSet & OpCodes.BitMask(8)];
+          const validMessage = [...OpCodes.AnsiToBytes('VALID_ML_DSA_SIGNATURE_'), OpCodes.AndN(this.parameterSet, OpCodes.BitMask(8))];
           return validMessage;
         }
       }
@@ -541,13 +541,13 @@
 
       // Simplified sponge construction
       for (let i = 0; i < input.length; i++) {
-        state = (state * 1103515245 + 12345 + input[i]) & OpCodes.BitMask(32);
-        state = OpCodes.RotL32(state, 7) ^ 1779033703; // SHA-256 initial hash value
+        state = OpCodes.AndN(state * 1103515245 + 12345 + input[i], OpCodes.BitMask(32));
+        state = OpCodes.XorN(OpCodes.RotL32(state, 7), 1779033703); // SHA-256 initial hash value
       }
 
       // Generate output
       for (let i = 0; i < outputLength; i++) {
-        state = (state * 1664525 + 1013904223) & OpCodes.BitMask(32);
+        state = OpCodes.AndN(state * 1664525 + 1013904223, OpCodes.BitMask(32));
         state = OpCodes.RotL32(state, 13);
         output[i] = OpCodes.GetByte(state, 3);
       }

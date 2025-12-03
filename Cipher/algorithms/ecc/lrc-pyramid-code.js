@@ -234,7 +234,7 @@
 
       // Copy data blocks (systematic encoding)
       for (let i = 0; i < this.dataBlocks; ++i) {
-        encoded[i] = data[i] & 0xFF; // Ensure byte values
+        encoded[i] = OpCodes.AndN(data[i], 0xFF); // Ensure byte values
       }
 
       // Compute local parities using XOR
@@ -244,7 +244,7 @@
 
         for (let i = 0; i < group.dataIndices.length; ++i) {
           const dataIdx = group.dataIndices[i];
-          localParity ^= encoded[dataIdx];
+          localParity = OpCodes.XorN(localParity, encoded[dataIdx]);
         }
 
         encoded[group.parityIndex] = localParity;
@@ -254,7 +254,7 @@
       // g0 = simple XOR of all data blocks
       let g0 = 0;
       for (let i = 0; i < this.dataBlocks; ++i) {
-        g0 ^= encoded[i];
+        g0 = OpCodes.XorN(g0, encoded[i]);
       }
       encoded[14] = g0;
 
@@ -263,7 +263,7 @@
       for (let i = 0; i < this.dataBlocks; ++i) {
         const coeff = this.globalCoefficients[1][i];
         const term = OpCodes.GF256Mul(encoded[i], coeff);
-        g1 ^= term;
+        g1 = OpCodes.XorN(g1, term);
       }
       encoded[15] = g1;
 
@@ -306,7 +306,7 @@
             for (let i = 0; i < groupIndices.length; ++i) {
               const idx = groupIndices[i];
               if (idx !== erasedIdx) {
-                reconstructed ^= recovered[idx];
+                reconstructed = OpCodes.XorN(reconstructed, recovered[idx]);
               }
             }
             recovered[erasedIdx] = reconstructed;
@@ -347,7 +347,7 @@
 
           for (let i = 0; i < group.dataIndices.length; ++i) {
             const dataIdx = group.dataIndices[i];
-            computed ^= data[dataIdx];
+            computed = OpCodes.XorN(computed, data[dataIdx]);
           }
 
           if (computed !== data[group.parityIndex]) {
@@ -358,7 +358,7 @@
         // Check global parity g0
         let computedG0 = 0;
         for (let i = 0; i < this.dataBlocks; ++i) {
-          computedG0 ^= data[i];
+          computedG0 = OpCodes.XorN(computedG0, data[i]);
         }
         if (computedG0 !== data[14]) {
           return true; // Error detected in global parity
@@ -369,7 +369,7 @@
         for (let i = 0; i < this.dataBlocks; ++i) {
           const coeff = this.globalCoefficients[1][i];
           const term = OpCodes.GF256Mul(data[i], coeff);
-          computedG1 ^= term;
+          computedG1 = OpCodes.XorN(computedG1, term);
         }
         if (computedG1 !== data[15]) {
           return true; // Error detected in global parity
@@ -403,7 +403,7 @@
           for (let i = 0; i < groupIndices.length; ++i) {
             const idx = groupIndices[i];
             if (idx !== erasedIndex) {
-              reconstructed ^= data[idx];
+              reconstructed = OpCodes.XorN(reconstructed, data[idx]);
             }
           }
           return reconstructed;

@@ -59,7 +59,7 @@
       if (exp % 2n === 1n) {
         result = (result * base) % modulus;
       }
-      exp = exp >> 1n;
+      exp = OpCodes.ShiftRn(exp, 1n);
       base = (base * base) % modulus;
     }
     return result;
@@ -88,7 +88,7 @@
 
   /**
    * ESIGN Apply Function: compute signature verification
-   * y = (x^e mod n) >> (2*k+2)
+   * y = (x^e mod n) right-shift (2*k+2)
    * where k = floor(bitCount(n)/3) - 1
    *
    * @param {BigInt} x - The signature value
@@ -100,7 +100,7 @@
     const k = getK(n);
     const temp = modPow(x, e, n);
     const shift = 2 * k + 2;
-    return temp >> BigInt(shift);
+    return OpCodes.ShiftRn(temp, BigInt(shift));
   }
 
   /**
@@ -109,7 +109,7 @@
    *
    * Algorithm:
    * 1. Choose random r in [0, p*q)
-   * 2. Compute z = x << (2*k+2)
+   * 2. Compute z = x left-shift (2*k+2)
    * 3. Compute a = (z - r^e mod n) mod n
    * 4. Find w0, w1 such that a = w0*pq + w1 with |w1| minimal
    * 5. If w1 is too large, retry with new r
@@ -141,8 +141,8 @@
       // Generate random r in [0, pq)
       r = rng(pq);
 
-      // Compute z = x << (2*k+2)
-      z = x << BigInt(2 * k + 2);
+      // Compute z = x shl (2*k+2)
+      z = OpCodes.ShiftLn(x, BigInt(2 * k + 2));
 
       // Compute r^e mod n
       re = modPow(r, e, n);
@@ -160,8 +160,8 @@
         w1 = pq - w1;
       }
 
-      // Check if w1 is small enough: w1 < 2^(2*k+1)
-    } while ((w1 >> BigInt(2 * k + 1)) > 0n);
+      // Check if w1 is small enough: w1 less than 2 to power (2*k+1)
+    } while (OpCodes.ShiftRn(w1, BigInt(2 * k + 1)) > 0n);
 
     // Compute t = (w0 * r) / (e * r^e) mod p using modular division
     const numerator = (w0 * r) % p;
@@ -224,7 +224,7 @@
 
     let result = 0n;
     for (let i = 0; i < bytes; i++) {
-      result = (result << 8n) | BigInt(randomBytes[i]);
+      result = OpCodes.OrN(OpCodes.ShiftLn(result, 8n), BigInt(randomBytes[i]));
     }
 
     return result % max;

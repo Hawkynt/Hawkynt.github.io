@@ -184,7 +184,7 @@
       let dataWord = 0;
       for (let i = 0; i < 12; ++i) {
         if (data[i]) {
-          dataWord |= (1 << (11 - i));
+          dataWord = OpCodes.XorN(dataWord, (1 << (11 - i)));
         }
       }
 
@@ -192,12 +192,12 @@
       let parityWord = 0;
       for (let i = 0; i < 12; ++i) {
         if (dataWord & (1 << (11 - i))) {
-          parityWord ^= this.generatorMatrix[i];
+          parityWord = OpCodes.XorN(parityWord, this.generatorMatrix[i]);
         }
       }
 
       // Combine data and parity
-      const codeword = (dataWord << 12) | parityWord;
+      const codeword = OpCodes.OrN(OpCodes.Shl32(dataWord, 12), parityWord);
 
       // Convert to bit array
       const result = new Array(24);
@@ -218,7 +218,7 @@
       let received = 0;
       for (let i = 0; i < 24; ++i) {
         if (data[i]) {
-          received |= (1 << (23 - i));
+          received = OpCodes.XorN(received, (1 << (23 - i)));
         }
       }
 
@@ -233,11 +233,11 @@
       let expectedParity = 0;
       for (let i = 0; i < 12; ++i) {
         if (receivedData & (1 << (11 - i))) {
-          expectedParity ^= this.generatorMatrix[i];
+          expectedParity = OpCodes.XorN(expectedParity, this.generatorMatrix[i]);
         }
       }
 
-      syndrome = receivedParity ^ expectedParity;
+      syndrome = OpCodes.XorN(receivedParity, expectedParity);
 
       if (syndrome !== 0) {
         console.log(`Extended Golay: Error detected (syndrome: ${syndrome.toString(16)})`);
@@ -261,7 +261,7 @@
       let received = 0;
       for (let i = 0; i < 24; ++i) {
         if (data[i]) {
-          received |= (1 << (23 - i));
+          received = OpCodes.XorN(received, (1 << (23 - i)));
         }
       }
 
@@ -271,11 +271,11 @@
       let expectedParity = 0;
       for (let i = 0; i < 12; ++i) {
         if (receivedData & (1 << (11 - i))) {
-          expectedParity ^= this.generatorMatrix[i];
+          expectedParity = OpCodes.XorN(expectedParity, this.generatorMatrix[i]);
         }
       }
 
-      return (receivedParity ^ expectedParity) !== 0;
+      return (OpCodes.XorN(receivedParity, expectedParity)) !== 0;
     }
   }
 

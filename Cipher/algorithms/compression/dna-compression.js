@@ -203,10 +203,10 @@
 
         // Header: k-mer size + data length using OpCodes
         compressed.push(this.kmerSize);
-        compressed.push(OpCodes.RotR8(data.length & 0xFF, 0));
-        compressed.push(OpCodes.RotR8((data.length >>> 8) & 0xFF, 0));
-        compressed.push(OpCodes.RotR8((data.length >>> 16) & 0xFF, 0));
-        compressed.push(OpCodes.RotR8((data.length >>> 24) & 0xFF, 0));
+        compressed.push(OpCodes.RotR8(OpCodes.AndN(data.length, 0xFF), 0));
+        compressed.push(OpCodes.RotR8(OpCodes.AndN(OpCodes.Shr32(data.length, 8), 0xFF), 0));
+        compressed.push(OpCodes.RotR8(OpCodes.AndN(OpCodes.Shr32(data.length, 16), 0xFF), 0));
+        compressed.push(OpCodes.RotR8(OpCodes.AndN(OpCodes.Shr32(data.length, 24), 0xFF), 0));
 
         // Compress based on detected format
         if (format === 'FASTA') {
@@ -235,10 +235,16 @@
 
         // Parse header using OpCodes
         const kmerSize = data[offset++];
-        const originalLength = OpCodes.RotL8(data[offset++], 0) |
-                              (OpCodes.RotL8(data[offset++], 0) << 8) |
-                              (OpCodes.RotL8(data[offset++], 0) << 16) |
-                              (OpCodes.RotL8(data[offset++], 0) << 24);
+        const originalLength = OpCodes.OrN(
+          OpCodes.OrN(
+            OpCodes.OrN(
+              OpCodes.RotL8(data[offset++], 0),
+              OpCodes.Shl32(OpCodes.RotL8(data[offset++], 0), 8)
+            ),
+            OpCodes.Shl32(OpCodes.RotL8(data[offset++], 0), 16)
+          ),
+          OpCodes.Shl32(OpCodes.RotL8(data[offset++], 0), 24)
+        );
 
         if (originalLength === 0) return [];
 

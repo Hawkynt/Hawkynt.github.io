@@ -156,7 +156,7 @@
     murmurHash32(input, seed) {
       seed = seed || this.seed;
       const len = input.length;
-      let h1 = seed >>> 0;  // Ensure unsigned 32-bit
+      let h1 = OpCodes.Shr32(seed, 0);  // Ensure unsigned 32-bit
       let offset = 0;
 
       // Process 4-byte chunks
@@ -168,38 +168,38 @@
         k1 = OpCodes.RotL32(k1, this.r1);
         k1 = Math.imul(k1, this.c2);
 
-        h1 ^= k1;
+        h1 = OpCodes.XorN(h1, k1);
         h1 = OpCodes.RotL32(h1, this.r2);
-        h1 = (Math.imul(h1, this.m) + this.n) >>> 0;
+        h1 = OpCodes.Shr32(Math.imul(h1, this.m) + this.n, 0);
 
         offset += 4;
       }
 
       // Handle remaining bytes (1-3 bytes)
       let k1 = 0;
-      const remaining = len & 3; // len % 4
+      const remaining = OpCodes.AndN(len, 3); // len % 4
 
-      if (remaining >= 3) k1 ^= input[offset + 2] << 16;
-      if (remaining >= 2) k1 ^= input[offset + 1] << 8;
+      if (remaining >= 3) k1 = OpCodes.XorN(k1, OpCodes.Shl32(input[offset + 2], 16));
+      if (remaining >= 2) k1 = OpCodes.XorN(k1, OpCodes.Shl32(input[offset + 1], 8));
       if (remaining >= 1) {
-        k1 ^= input[offset];
+        k1 = OpCodes.XorN(k1, input[offset]);
         k1 = Math.imul(k1, this.c1);
         k1 = OpCodes.RotL32(k1, this.r1);
         k1 = Math.imul(k1, this.c2);
-        h1 ^= k1;
+        h1 = OpCodes.XorN(h1, k1);
       }
 
       // Finalization
-      h1 ^= len;
+      h1 = OpCodes.XorN(h1, len);
 
       // Apply final mixing (avalanche)
-      h1 ^= h1 >>> 16;
+      h1 = OpCodes.XorN(h1, OpCodes.Shr32(h1, 16));
       h1 = Math.imul(h1, 0x85ebca6b);
-      h1 ^= h1 >>> 13;
+      h1 = OpCodes.XorN(h1, OpCodes.Shr32(h1, 13));
       h1 = Math.imul(h1, 0xc2b2ae35);
-      h1 ^= h1 >>> 16;
+      h1 = OpCodes.XorN(h1, OpCodes.Shr32(h1, 16));
 
-      return h1 >>> 0; // Ensure unsigned 32-bit result
+      return OpCodes.Shr32(h1, 0); // Ensure unsigned 32-bit result
     }
 
     Hash(input) {
@@ -207,7 +207,7 @@
       if (typeof input === 'string') {
         const bytes = [];
         for (let i = 0; i < input.length; i++) {
-          bytes.push(input.charCodeAt(i) & 0xFF);
+          bytes.push(OpCodes.AndN(input.charCodeAt(i), 0xFF));
         }
         input = bytes;
       }

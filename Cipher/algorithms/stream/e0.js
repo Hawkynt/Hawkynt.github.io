@@ -271,7 +271,7 @@
       const result = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();
-        result.push(this.inputBuffer[i] ^ keystreamByte);
+        result.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer for next operation
@@ -297,14 +297,14 @@
           if (keyBitIndex < totalKeyBits) {
             const byteIndex = Math.floor(keyBitIndex / 8);
             const bitIndex = keyBitIndex % 8;
-            this.lfsr[reg][i] = (this._key[byteIndex] >> bitIndex) & 1;
+            this.lfsr[reg][i] = OpCodes.AndN(OpCodes.Shr32(this._key[byteIndex], bitIndex), 1);
             keyBitIndex++;
           } else {
             // Repeat key pattern if key is shorter than total LFSR space
             const repeatIndex = keyBitIndex % totalKeyBits;
             const byteIndex = Math.floor(repeatIndex / 8);
             const bitIndex = repeatIndex % 8;
-            this.lfsr[reg][i] = (this._key[byteIndex] >> bitIndex) & 1;
+            this.lfsr[reg][i] = OpCodes.AndN(OpCodes.Shr32(this._key[byteIndex], bitIndex), 1);
             keyBitIndex++;
           }
         }
@@ -326,8 +326,8 @@
 
       // Initialize memory elements with some key-derived values
       const keyLength = this._key.length;
-      this.c0 = (this._key[0] ^ this._key[1 % keyLength]) & 3;
-      this.c_minus_1 = (this._key[2 % keyLength] ^ this._key[3 % keyLength]) & 3;
+      this.c0 = OpCodes.AndN(OpCodes.XorN(this._key[0], this._key[1 % keyLength]), 3);
+      this.c_minus_1 = OpCodes.AndN(OpCodes.XorN(this._key[2 % keyLength], this._key[3 % keyLength]), 3);
 
       this.initialized = true;
     }
@@ -340,7 +340,7 @@
       // Calculate feedback using primitive polynomial
       let feedback = 0;
       for (let i = 0; i < taps.length; i++) {
-        feedback ^= reg[taps[i]];
+        feedback = OpCodes.XorN(feedback, reg[taps[i]]);
       }
 
       // Get output bit before shifting
@@ -368,12 +368,12 @@
       sum += this.c0 + this.c_minus_1;
 
       // Extract output bit and carry bits
-      const outputBit = sum & 1;
-      const carry = sum >> 1;
+      const outputBit = OpCodes.AndN(sum, 1);
+      const carry = OpCodes.Shr32(sum, 1);
 
       // Update memory elements (simplified E0 state update)
       this.c_minus_1 = this.c0;
-      this.c0 = carry & 3;  // Keep only 2 bits
+      this.c0 = OpCodes.AndN(carry, 3);  // Keep only 2 bits
 
       return outputBit;
     }
@@ -394,7 +394,7 @@
 
       for (let bit = 0; bit < 8; bit++) {
         const keystreamBit = this._generateKeystreamBit();
-        keystreamByte |= (keystreamBit << bit);
+        keystreamByte = OpCodes.OrN(keystreamByte, OpCodes.Shl32(keystreamBit, bit));
       }
 
       return keystreamByte;

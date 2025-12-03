@@ -133,11 +133,11 @@
     }
 
     writeBits(value, numBits) {
-      this.bitBuffer = (this.bitBuffer | OpCodes.Shl32(value, this.bitCount)) >>> 0;
+      this.bitBuffer = OpCodes.ToUint32(OpCodes.OrN(this.bitBuffer, OpCodes.Shl32(value, this.bitCount)));
       this.bitCount += numBits;
 
       while (this.bitCount >= 8) {
-        this.bytes.push(this.bitBuffer & 0xFF);
+        this.bytes.push(OpCodes.AndN(this.bitBuffer, 0xFF));
         this.bitBuffer = OpCodes.Shr32(this.bitBuffer, 8);
         this.bitCount -= 8;
       }
@@ -147,15 +147,15 @@
     writeHuffmanCode(code, length) {
       let reversed = 0;
       for (let i = 0; i < length; ++i) {
-        const bit = (OpCodes.Shr16(code, i) & 1);
-        reversed = (reversed | OpCodes.Shl16(bit, length - 1 - i)) & 0xFFFF;
+        const bit = OpCodes.AndN(OpCodes.Shr16(code, i), 1);
+        reversed = OpCodes.AndN(OpCodes.OrN(reversed, OpCodes.Shl16(bit, length - 1 - i)), 0xFFFF);
       }
       this.writeBits(reversed, length);
     }
 
     flush() {
       if (this.bitCount > 0) {
-        this.bytes.push(this.bitBuffer & 0xFF);
+        this.bytes.push(OpCodes.AndN(this.bitBuffer, 0xFF));
         this.bitBuffer = 0;
         this.bitCount = 0;
       }
@@ -180,12 +180,12 @@
         if (this.bytePos >= this.bytes.length) {
           throw new Error('Unexpected end of compressed data');
         }
-        this.bitBuffer = (this.bitBuffer | OpCodes.Shl32(this.bytes[this.bytePos++], this.bitCount)) >>> 0;
+        this.bitBuffer = OpCodes.ToUint32(OpCodes.OrN(this.bitBuffer, OpCodes.Shl32(this.bytes[this.bytePos++], this.bitCount)));
         this.bitCount += 8;
       }
 
-      const mask = (OpCodes.Shl32(1, numBits) - 1) >>> 0;
-      const value = this.bitBuffer & mask;
+      const mask = OpCodes.ToUint32(OpCodes.Shl32(1, numBits) - 1);
+      const value = OpCodes.AndN(this.bitBuffer, mask);
       this.bitBuffer = OpCodes.Shr32(this.bitBuffer, numBits);
       this.bitCount -= numBits;
       return value;
@@ -224,7 +224,7 @@
       blCount[0] = 0;
 
       for (let bits = 1; bits <= maxLen; ++bits) {
-        code = OpCodes.Shl16((code + blCount[bits - 1]), 1);
+        code = OpCodes.Shl16(code + blCount[bits - 1], 1);
         nextCode[bits] = code;
       }
 
@@ -247,7 +247,7 @@
         const {code, length} = codes[symbol];
 
         for (let i = length - 1; i >= 0; --i) {
-          const bit = (OpCodes.Shr16(code, i) & 1);
+          const bit = OpCodes.AndN(OpCodes.Shr16(code, i), 1);
           const key = bit ? 'one' : 'zero';
 
           if (i === 0) {
@@ -307,7 +307,7 @@
       this.MIN_MATCH = 3;            // Minimum match length
       this.HASH_BITS = 15;           // Hash table size
       this.HASH_SIZE = OpCodes.Shl32(1, this.HASH_BITS);
-      this.HASH_MASK = this.HASH_SIZE - 1;
+      this.HASH_MASK = OpCodes.ToUint32(this.HASH_SIZE - 1);
 
       // Documentation
       this.documentation = [
@@ -514,8 +514,8 @@
       const hash1 = OpCodes.Shl16(data[pos], 10);
       const hash2 = OpCodes.Shl16(data[pos + 1], 5);
       const hash3 = data[pos + 2];
-      const combined = ((hash1 ^ hash2) ^ hash3) & 0xFFFF;
-      return combined & this.algorithm.HASH_MASK;
+      const combined = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(hash1, hash2), hash3), 0xFFFF);
+      return OpCodes.AndN(combined, this.algorithm.HASH_MASK);
     }
 
     _matchLength(data, pos1, pos2) {
@@ -543,7 +543,7 @@
       for (let i = 0; i < DISTANCE_CODES.length; ++i) {
         const info = DISTANCE_CODES[i];
         const maxDist = i < DISTANCE_CODES.length - 1 ?
-          DISTANCE_CODES[i + 1].base - 1 : info.base + OpCodes.Shl32(1, info.extra) - 1;
+          DISTANCE_CODES[i + 1].base - 1 : OpCodes.ToUint32(info.base + OpCodes.Shl32(1, info.extra) - 1);
         if (distance <= maxDist) return i;
       }
       return 29;
@@ -566,7 +566,7 @@
           const len = reader.readBits(16);
           const nlen = reader.readBits(16);
 
-          if ((len ^ nlen) !== 0xFFFF) {
+          if (OpCodes.XorN(len, nlen) !== 0xFFFF) {
             throw new Error('Invalid uncompressed block length');
           }
 

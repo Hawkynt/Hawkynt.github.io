@@ -279,12 +279,12 @@
       if (seedBytes.length <= 4) {
         // Seed is 4 bytes or less - pack into 32-bit value (big-endian)
         for (let i = 0; i < seedBytes.length; ++i) {
-          seedValue = ((seedValue << 8) | seedBytes[i]) >>> 0;
+          seedValue = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(seedValue, 8), seedBytes[i]));
         }
       } else {
         // Seed is more than 4 bytes - XOR fold into 32 bits
         for (let i = 0; i < seedBytes.length; ++i) {
-          seedValue = ((seedValue << 8) | seedBytes[i]) >>> 0;
+          seedValue = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(seedValue, 8), seedBytes[i]));
         }
       }
 
@@ -299,7 +299,7 @@
       // Fill state array with LCG-generated values
       // Generate first value before storing to ensure even seed=0 gets mixed
       for (let i = 0; i < STATE_SIZE; ++i) {
-        lcgState = ((LCG_A * lcgState + LCG_C) >>> 0);
+        lcgState = OpCodes.ToUint32(LCG_A * lcgState + LCG_C);
         this._state[i] = lcgState;
       }
 
@@ -351,12 +351,12 @@
       const idx4 = (idx + STATE_SIZE - 32) % STATE_SIZE;   // i-32
 
       // Four-tap XOR recurrence
-      const newValue = (
-        this._state[idx1] ^
-        this._state[idx2] ^
-        this._state[idx3] ^
-        this._state[idx4]
-      ) >>> 0;
+      const newValue = OpCodes.ToUint32(
+        OpCodes.XorN(
+          OpCodes.XorN(this._state[idx1], this._state[idx2]),
+          OpCodes.XorN(this._state[idx3], this._state[idx4])
+        )
+      );
 
       // Store new value at current position
       this._state[idx] = newValue;

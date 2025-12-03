@@ -398,16 +398,16 @@
       // 320 clocks initialization phase
       for (let i = 0; i < 320; ++i) {
         const output = this._getOutput();
-        this._shift(this.nfsr, (this._getOutputNFSR() ^ this.lfsr[0] ^ output) & 1);
-        this._shift(this.lfsr, (this._getOutputLFSR() ^ output) & 1);
+        this._shift(this.nfsr, OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(this._getOutputNFSR(), this.lfsr[0]), output), 1));
+        this._shift(this.lfsr, OpCodes.AndN(OpCodes.XorN(this._getOutputLFSR(), output), 1));
       }
 
       // Absorb key (64 more clocks)
       for (let quotient = 0; quotient < 8; ++quotient) {
         for (let remainder = 0; remainder < 8; ++remainder) {
           const output = this._getOutput();
-          this._shift(this.nfsr, (this._getOutputNFSR() ^ this.lfsr[0] ^ output ^ ((this._key[quotient] >> remainder))) & 1);
-          this._shift(this.lfsr, (this._getOutputLFSR() ^ output ^ ((this._key[quotient + 8] >> remainder))) & 1);
+          this._shift(this.nfsr, OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this._getOutputNFSR(), this.lfsr[0]), output), OpCodes.Shr32(this._key[quotient], remainder)), 1));
+          this._shift(this.lfsr, OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(this._getOutputLFSR(), output), OpCodes.Shr32(this._key[quotient + 8], remainder)), 1));
         }
       }
 
@@ -424,89 +424,87 @@
 
     // Shift array right by 1 bit, insert val at MSB
     _shift(array, val) {
-      array[0] = OpCodes.ToDWord((array[0] >>> 1) | (array[1] << 31));
-      array[1] = OpCodes.ToDWord((array[1] >>> 1) | (array[2] << 31));
-      array[2] = OpCodes.ToDWord((array[2] >>> 1) | (array[3] << 31));
-      array[3] = OpCodes.ToDWord((array[3] >>> 1) | (val << 31));
+      array[0] = OpCodes.ToDWord(OpCodes.OrN(OpCodes.Shr32(array[0], 1), OpCodes.Shl32(array[1], 31)));
+      array[1] = OpCodes.ToDWord(OpCodes.OrN(OpCodes.Shr32(array[1], 1), OpCodes.Shl32(array[2], 31)));
+      array[2] = OpCodes.ToDWord(OpCodes.OrN(OpCodes.Shr32(array[2], 1), OpCodes.Shl32(array[3], 31)));
+      array[3] = OpCodes.ToDWord(OpCodes.OrN(OpCodes.Shr32(array[3], 1), OpCodes.Shl32(val, 31)));
     }
 
     // Get output from NFSR
     _getOutputNFSR() {
       const b0 = this.nfsr[0];
-      const b3 = this.nfsr[0] >>> 3;
-      const b11 = this.nfsr[0] >>> 11;
-      const b13 = this.nfsr[0] >>> 13;
-      const b17 = this.nfsr[0] >>> 17;
-      const b18 = this.nfsr[0] >>> 18;
-      const b22 = this.nfsr[0] >>> 22;
-      const b24 = this.nfsr[0] >>> 24;
-      const b25 = this.nfsr[0] >>> 25;
-      const b26 = this.nfsr[0] >>> 26;
-      const b27 = this.nfsr[0] >>> 27;
-      const b40 = this.nfsr[1] >>> 8;
-      const b48 = this.nfsr[1] >>> 16;
-      const b56 = this.nfsr[1] >>> 24;
-      const b59 = this.nfsr[1] >>> 27;
-      const b61 = this.nfsr[1] >>> 29;
-      const b65 = this.nfsr[2] >>> 1;
-      const b67 = this.nfsr[2] >>> 3;
-      const b68 = this.nfsr[2] >>> 4;
-      const b70 = this.nfsr[2] >>> 6;
-      const b78 = this.nfsr[2] >>> 14;
-      const b82 = this.nfsr[2] >>> 18;
-      const b84 = this.nfsr[2] >>> 20;
-      const b88 = this.nfsr[2] >>> 24;
-      const b91 = this.nfsr[2] >>> 27;
-      const b92 = this.nfsr[2] >>> 28;
-      const b93 = this.nfsr[2] >>> 29;
-      const b95 = this.nfsr[2] >>> 31;
+      const b3 = OpCodes.Shr32(this.nfsr[0], 3);
+      const b11 = OpCodes.Shr32(this.nfsr[0], 11);
+      const b13 = OpCodes.Shr32(this.nfsr[0], 13);
+      const b17 = OpCodes.Shr32(this.nfsr[0], 17);
+      const b18 = OpCodes.Shr32(this.nfsr[0], 18);
+      const b22 = OpCodes.Shr32(this.nfsr[0], 22);
+      const b24 = OpCodes.Shr32(this.nfsr[0], 24);
+      const b25 = OpCodes.Shr32(this.nfsr[0], 25);
+      const b26 = OpCodes.Shr32(this.nfsr[0], 26);
+      const b27 = OpCodes.Shr32(this.nfsr[0], 27);
+      const b40 = OpCodes.Shr32(this.nfsr[1], 8);
+      const b48 = OpCodes.Shr32(this.nfsr[1], 16);
+      const b56 = OpCodes.Shr32(this.nfsr[1], 24);
+      const b59 = OpCodes.Shr32(this.nfsr[1], 27);
+      const b61 = OpCodes.Shr32(this.nfsr[1], 29);
+      const b65 = OpCodes.Shr32(this.nfsr[2], 1);
+      const b67 = OpCodes.Shr32(this.nfsr[2], 3);
+      const b68 = OpCodes.Shr32(this.nfsr[2], 4);
+      const b70 = OpCodes.Shr32(this.nfsr[2], 6);
+      const b78 = OpCodes.Shr32(this.nfsr[2], 14);
+      const b82 = OpCodes.Shr32(this.nfsr[2], 18);
+      const b84 = OpCodes.Shr32(this.nfsr[2], 20);
+      const b88 = OpCodes.Shr32(this.nfsr[2], 24);
+      const b91 = OpCodes.Shr32(this.nfsr[2], 27);
+      const b92 = OpCodes.Shr32(this.nfsr[2], 28);
+      const b93 = OpCodes.Shr32(this.nfsr[2], 29);
+      const b95 = OpCodes.Shr32(this.nfsr[2], 31);
       const b96 = this.nfsr[3];
 
-      return (b0 ^ b26 ^ b56 ^ b91 ^ b96 ^ b3 & b67 ^ b11 & b13 ^ b17 & b18
-        ^ b27 & b59 ^ b40 & b48 ^ b61 & b65 ^ b68 & b84 ^ b22 & b24 & b25 ^ b70 & b78 & b82 ^ b88 & b92 & b93 & b95) & 1;
+      return OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(b0, b26), b56), b91), b96), OpCodes.AndN(b3, b67)), OpCodes.AndN(b11, b13)), OpCodes.AndN(b17, b18)), OpCodes.AndN(b27, b59)), OpCodes.AndN(b40, b48)), OpCodes.AndN(b61, b65)), OpCodes.AndN(b68, b84)), OpCodes.AndN(OpCodes.AndN(b22, b24), b25)), OpCodes.AndN(OpCodes.AndN(b70, b78), b82)), OpCodes.AndN(OpCodes.AndN(OpCodes.AndN(b88, b92), b93), b95)), 1);
     }
 
     // Get output from LFSR
     _getOutputLFSR() {
       const s0 = this.lfsr[0];
-      const s7 = this.lfsr[0] >>> 7;
-      const s38 = this.lfsr[1] >>> 6;
-      const s70 = this.lfsr[2] >>> 6;
-      const s81 = this.lfsr[2] >>> 17;
+      const s7 = OpCodes.Shr32(this.lfsr[0], 7);
+      const s38 = OpCodes.Shr32(this.lfsr[1], 6);
+      const s70 = OpCodes.Shr32(this.lfsr[2], 6);
+      const s81 = OpCodes.Shr32(this.lfsr[2], 17);
       const s96 = this.lfsr[3];
 
-      return (s0 ^ s7 ^ s38 ^ s70 ^ s81 ^ s96) & 1;
+      return OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, s7), s38), s70), s81), s96), 1);
     }
 
     // Get output from output function h(x)
     _getOutput() {
-      const b2 = this.nfsr[0] >>> 2;
-      const b12 = this.nfsr[0] >>> 12;
-      const b15 = this.nfsr[0] >>> 15;
-      const b36 = this.nfsr[1] >>> 4;
-      const b45 = this.nfsr[1] >>> 13;
+      const b2 = OpCodes.Shr32(this.nfsr[0], 2);
+      const b12 = OpCodes.Shr32(this.nfsr[0], 12);
+      const b15 = OpCodes.Shr32(this.nfsr[0], 15);
+      const b36 = OpCodes.Shr32(this.nfsr[1], 4);
+      const b45 = OpCodes.Shr32(this.nfsr[1], 13);
       const b64 = this.nfsr[2];
-      const b73 = this.nfsr[2] >>> 9;
-      const b89 = this.nfsr[2] >>> 25;
-      const b95 = this.nfsr[2] >>> 31;
-      const s8 = this.lfsr[0] >>> 8;
-      const s13 = this.lfsr[0] >>> 13;
-      const s20 = this.lfsr[0] >>> 20;
-      const s42 = this.lfsr[1] >>> 10;
-      const s60 = this.lfsr[1] >>> 28;
-      const s79 = this.lfsr[2] >>> 15;
-      const s93 = this.lfsr[2] >>> 29;
-      const s94 = this.lfsr[2] >>> 30;
+      const b73 = OpCodes.Shr32(this.nfsr[2], 9);
+      const b89 = OpCodes.Shr32(this.nfsr[2], 25);
+      const b95 = OpCodes.Shr32(this.nfsr[2], 31);
+      const s8 = OpCodes.Shr32(this.lfsr[0], 8);
+      const s13 = OpCodes.Shr32(this.lfsr[0], 13);
+      const s20 = OpCodes.Shr32(this.lfsr[0], 20);
+      const s42 = OpCodes.Shr32(this.lfsr[1], 10);
+      const s60 = OpCodes.Shr32(this.lfsr[1], 28);
+      const s79 = OpCodes.Shr32(this.lfsr[2], 15);
+      const s93 = OpCodes.Shr32(this.lfsr[2], 29);
+      const s94 = OpCodes.Shr32(this.lfsr[2], 30);
 
-      return ((b12 & s8) ^ (s13 & s20) ^ (b95 & s42) ^ (s60 & s79) ^ (b12 & b95 & s94) ^ s93
-        ^ b2 ^ b15 ^ b36 ^ b45 ^ b64 ^ b73 ^ b89) & 1;
+      return OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(b12, s8), OpCodes.AndN(s13, s20)), OpCodes.AndN(b95, s42)), OpCodes.AndN(s60, s79)), OpCodes.AndN(OpCodes.AndN(b12, b95), s94)), s93), b2), b15), b36), b45), b64), b73), b89), 1);
     }
 
     // Initialize authentication registers
     _initGrain(auth) {
       for (let quotient = 0; quotient < 2; ++quotient) {
         for (let remainder = 0; remainder < 32; ++remainder) {
-          auth[quotient] = OpCodes.ToDWord(auth[quotient] | (this._getByteKeyStream() << remainder));
+          auth[quotient] = OpCodes.ToDWord(OpCodes.OrN(auth[quotient], OpCodes.Shl32(this._getByteKeyStream(), remainder)));
         }
       }
     }
@@ -514,19 +512,19 @@
     // Get one bit of keystream and shift
     _getByteKeyStream() {
       const rlt = this._getOutput();
-      this._shift(this.nfsr, (this._getOutputNFSR() ^ this.lfsr[0]) & 1);
-      this._shift(this.lfsr, this._getOutputLFSR() & 1);
+      this._shift(this.nfsr, OpCodes.AndN(OpCodes.XorN(this._getOutputNFSR(), this.lfsr[0]), 1));
+      this._shift(this.lfsr, OpCodes.AndN(this._getOutputLFSR(), 1));
       return rlt;
     }
 
     // Update internal authentication state with one bit
     _updateInternalState(mask) {
       mask = -mask;  // Expand bit to full 32-bit mask
-      this.authAcc[0] ^= this.authSr[0] & mask;
-      this.authAcc[1] ^= this.authSr[1] & mask;
+      this.authAcc[0] = OpCodes.XorN(this.authAcc[0], OpCodes.AndN(this.authSr[0], mask));
+      this.authAcc[1] = OpCodes.XorN(this.authAcc[1], OpCodes.AndN(this.authSr[1], mask));
       mask = this._getByteKeyStream();
-      this.authSr[0] = OpCodes.ToDWord((this.authSr[0] >>> 1) | (this.authSr[1] << 31));
-      this.authSr[1] = OpCodes.ToDWord((this.authSr[1] >>> 1) | (mask << 31));
+      this.authSr[0] = OpCodes.ToDWord(OpCodes.OrN(OpCodes.Shr32(this.authSr[0], 1), OpCodes.Shl32(this.authSr[1], 31)));
+      this.authSr[1] = OpCodes.ToDWord(OpCodes.OrN(OpCodes.Shr32(this.authSr[1], 1), OpCodes.Shl32(mask, 31)));
     }
 
     // Encode AD length in DER format
@@ -537,11 +535,11 @@
       } else if (adlen < 0x100) {
         buf.push(0x81, adlen);
       } else if (adlen < 0x10000) {
-        buf.push(0x82, adlen >>> 8, adlen & 0xFF);
+        buf.push(0x82, OpCodes.Shr32(adlen, 8), OpCodes.AndN(adlen, 0xFF));
       } else if (adlen < 0x1000000) {
-        buf.push(0x83, adlen >>> 16, (adlen >>> 8) & 0xFF, adlen & 0xFF);
+        buf.push(0x83, OpCodes.Shr32(adlen, 16), OpCodes.AndN(OpCodes.Shr32(adlen, 8), 0xFF), OpCodes.AndN(adlen, 0xFF));
       } else {
-        buf.push(0x84, adlen >>> 24, (adlen >>> 16) & 0xFF, (adlen >>> 8) & 0xFF, adlen & 0xFF);
+        buf.push(0x84, OpCodes.Shr32(adlen, 24), OpCodes.AndN(OpCodes.Shr32(adlen, 16), 0xFF), OpCodes.AndN(OpCodes.Shr32(adlen, 8), 0xFF), OpCodes.AndN(adlen, 0xFF));
       }
       return buf;
     }
@@ -566,10 +564,10 @@
         const b = buf[off + i];
         for (let j = 0; j < 8; ++j) {
           // First shift of LFSR/NFSR
-          this._shift(this.nfsr, (this._getOutputNFSR() ^ this.lfsr[0]) & 1);
-          this._shift(this.lfsr, this._getOutputLFSR() & 1);
+          this._shift(this.nfsr, OpCodes.AndN(OpCodes.XorN(this._getOutputNFSR(), this.lfsr[0]), 1));
+          this._shift(this.lfsr, OpCodes.AndN(this._getOutputLFSR(), 1));
           // Update authentication state (includes second shift via _getByteKeyStream)
-          this._updateInternalState((b >> j) & 1);
+          this._updateInternalState(OpCodes.AndN(OpCodes.Shr32(b, j), 1));
         }
       }
     }
@@ -581,8 +579,8 @@
         let cc = 0;
         const input_i = plaintext[i];
         for (let j = 0; j < 8; ++j) {
-          const input_i_j = (input_i >> j) & 1;
-          cc |= (input_i_j ^ this._getByteKeyStream()) << j;
+          const input_i_j = OpCodes.AndN(OpCodes.Shr32(input_i, j), 1);
+          cc = OpCodes.OrN(cc, OpCodes.Shl32(OpCodes.XorN(input_i_j, this._getByteKeyStream()), j));
           this._updateInternalState(input_i_j);
         }
         ciphertext.push(cc);
@@ -597,8 +595,8 @@
         let cc = 0;
         const input_i = ciphertext[i];
         for (let j = 0; j < 8; ++j) {
-          cc |= (((input_i >> j) & 1) ^ this._getByteKeyStream()) << j;
-          this._updateInternalState((cc >> j) & 1);
+          cc = OpCodes.OrN(cc, OpCodes.Shl32(OpCodes.XorN(OpCodes.AndN(OpCodes.Shr32(input_i, j), 1), this._getByteKeyStream()), j));
+          this._updateInternalState(OpCodes.AndN(OpCodes.Shr32(cc, j), 1));
         }
         plaintext.push(cc);
       }
@@ -608,21 +606,21 @@
     // Compute authentication tag
     _computeTag() {
       // Final step: XOR shift register into accumulator (Java line 229-230)
-      this.authAcc[0] ^= this.authSr[0];
-      this.authAcc[1] ^= this.authSr[1];
+      this.authAcc[0] = OpCodes.XorN(this.authAcc[0], this.authSr[0]);
+      this.authAcc[1] = OpCodes.XorN(this.authAcc[1], this.authSr[1]);
 
       // Output as little-endian (Java line 231: Pack.intToLittleEndian(authAcc, mac, 0))
       const tag = [];
       // First int (authAcc[0])
-      tag.push(this.authAcc[0] & 0xFF);
-      tag.push((this.authAcc[0] >>> 8) & 0xFF);
-      tag.push((this.authAcc[0] >>> 16) & 0xFF);
-      tag.push((this.authAcc[0] >>> 24) & 0xFF);
+      tag.push(OpCodes.AndN(this.authAcc[0], 0xFF));
+      tag.push(OpCodes.AndN(OpCodes.Shr32(this.authAcc[0], 8), 0xFF));
+      tag.push(OpCodes.AndN(OpCodes.Shr32(this.authAcc[0], 16), 0xFF));
+      tag.push(OpCodes.AndN(OpCodes.Shr32(this.authAcc[0], 24), 0xFF));
       // Second int (authAcc[1])
-      tag.push(this.authAcc[1] & 0xFF);
-      tag.push((this.authAcc[1] >>> 8) & 0xFF);
-      tag.push((this.authAcc[1] >>> 16) & 0xFF);
-      tag.push((this.authAcc[1] >>> 24) & 0xFF);
+      tag.push(OpCodes.AndN(this.authAcc[1], 0xFF));
+      tag.push(OpCodes.AndN(OpCodes.Shr32(this.authAcc[1], 8), 0xFF));
+      tag.push(OpCodes.AndN(OpCodes.Shr32(this.authAcc[1], 16), 0xFF));
+      tag.push(OpCodes.AndN(OpCodes.Shr32(this.authAcc[1], 24), 0xFF));
 
       return tag;
     }

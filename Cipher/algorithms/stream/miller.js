@@ -115,7 +115,7 @@ class MillerInstance extends IAlgorithmInstance {
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       const keystreamByte = this._generateByte();
-      output.push(this.inputBuffer[i] ^ keystreamByte);
+      output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
     }
 
     this.inputBuffer = [];
@@ -140,11 +140,11 @@ class MillerInstance extends IAlgorithmInstance {
 
     // Miller encoding initialization - phase transitions
     for (let i = 0; i < 16; i++) {
-      const bit = this._state.delay[i] & 1;
+      const bit = OpCodes.AndN(this._state.delay[i], 1);
       // Miller encoding: transition at start, optional mid-bit transition
-      this._state.phase ^= 1; // Always transition at start
-      if (bit) this._state.phase ^= 1; // Additional transition for '1' bit
-      this._state.delay[i] = (this._state.delay[i] + this._state.phase) & 0xFF;
+      this._state.phase = OpCodes.XorN(this._state.phase, 1); // Always transition at start
+      if (bit) this._state.phase = OpCodes.XorN(this._state.phase, 1); // Additional transition for '1' bit
+      this._state.delay[i] = OpCodes.AndN((this._state.delay[i] + this._state.phase), 0xFF);
     }
   }
 
@@ -159,14 +159,14 @@ class MillerInstance extends IAlgorithmInstance {
     const delayed = this._state.delay[(pos + 8) % 16];
 
     // Miller encoding: XOR current with phase-shifted delayed value
-    this._state.phase = (this._state.phase + 1) & 1;
-    const byte = (current ^ delayed ^ (this._state.phase << 4) ^ this._state.clock) & 0xFF;
+    this._state.phase = OpCodes.AndN((this._state.phase + 1), 1);
+    const byte = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(current, delayed), OpCodes.Shl32(this._state.phase, 4)), this._state.clock), 0xFF);
 
     // Update delay line (shift and insert new value)
-    this._state.delay[pos] = (this._state.delay[pos] + byte + this._state.counter) & 0xFF;
+    this._state.delay[pos] = OpCodes.AndN((this._state.delay[pos] + byte + this._state.counter), 0xFF);
 
     // Update state
-    this._state.clock = (this._state.clock + 1) & 0xFF;
+    this._state.clock = OpCodes.AndN((this._state.clock + 1), 0xFF);
     this._state.counter = (this._state.counter + 1) % 16;
 
     return byte;

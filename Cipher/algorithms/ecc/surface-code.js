@@ -432,7 +432,7 @@
       // Apply corrections for all detected errors
       for (const errorLocation of errorLocations) {
         if (errorLocation >= 0 && errorLocation < state.length) {
-          state[errorLocation] ^= 1; // Flip bit
+          state[errorLocation] = OpCodes.XorN(state[errorLocation], 1); // Flip bit
         }
       }
 
@@ -449,7 +449,7 @@
         let measurement = 0;
         for (let qubit of s) {
           if (qubit < state.length) {
-            measurement = measurement ^ state[qubit]; // XOR parity
+            measurement = OpCodes.XorN(measurement, state[qubit]); // XOR parity
           }
         }
         syndrome.push(measurement);

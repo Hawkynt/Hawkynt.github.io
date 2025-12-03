@@ -140,7 +140,7 @@ class FROGInstance extends IBlockCipherInstance {
 
     const expandedKey = new Uint8Array(256);
     for (let i = 0; i < 256; i++) {
-      expandedKey[i] = key[i % key.length] ^ i;
+      expandedKey[i] = OpCodes.XorN(key[i % key.length], i);
     }
 
     let keyIndex = 0;
@@ -149,7 +149,7 @@ class FROGInstance extends IBlockCipherInstance {
       keyIndex = (keyIndex + 1) % 256;
 
       if (i > 0) {
-        this._internalKey[i] ^= this._internalKey[i - 1];
+        this._internalKey[i] = OpCodes.XorN(this._internalKey[i], this._internalKey[i - 1]);
       }
 
       this._internalKey[i] = OpCodes.RotL8(this._internalKey[i], (i % 8) + 1);
@@ -170,18 +170,18 @@ class FROGInstance extends IBlockCipherInstance {
 
       for (let i = 0; i < 16; i++) {
         const instruction = this._internalKey[keyOffset + i];
-        const operation = instruction & 0x03;
-        const sourceIdx = (instruction >> 2) & 0x0F;
+        const operation = OpCodes.AndN(instruction, 0x03);
+        const sourceIdx = OpCodes.AndN(OpCodes.Shr32(instruction, 2), 0x0F);
 
         switch (operation) {
           case 0:
-            block[i] ^= this._internalKey[keyOffset + 16 + sourceIdx];
+            block[i] = OpCodes.XorN(block[i], this._internalKey[keyOffset + 16 + sourceIdx]);
             break;
           case 1:
-            block[i] = OpCodes.RotL8(block[i], (sourceIdx & 0x07) + 1);
+            block[i] = OpCodes.RotL8(block[i], (OpCodes.AndN(sourceIdx, 0x07)) + 1);
             break;
           case 2:
-            block[i] ^= originalBlock[sourceIdx % 16];
+            block[i] = OpCodes.XorN(block[i], originalBlock[sourceIdx % 16]);
             break;
           case 3:
             block[i] = this._substituteByte(block[i], keyOffset + sourceIdx);
@@ -212,18 +212,18 @@ class FROGInstance extends IBlockCipherInstance {
 
       for (let i = 15; i >= 0; i--) {
         const instruction = this._internalKey[keyOffset + i];
-        const operation = instruction & 0x03;
-        const sourceIdx = (instruction >> 2) & 0x0F;
+        const operation = OpCodes.AndN(instruction, 0x03);
+        const sourceIdx = OpCodes.AndN(OpCodes.Shr32(instruction, 2), 0x0F);
 
         switch (operation) {
           case 0:
-            block[i] ^= this._internalKey[keyOffset + 16 + sourceIdx];
+            block[i] = OpCodes.XorN(block[i], this._internalKey[keyOffset + 16 + sourceIdx]);
             break;
           case 1:
-            block[i] = OpCodes.RotR8(block[i], (sourceIdx & 0x07) + 1);
+            block[i] = OpCodes.RotR8(block[i], (OpCodes.AndN(sourceIdx, 0x07)) + 1);
             break;
           case 2:
-            block[i] ^= originalBlock[sourceIdx % 16];
+            block[i] = OpCodes.XorN(block[i], originalBlock[sourceIdx % 16]);
             break;
           case 3:
             block[i] = this._invSubstituteByte(block[i], keyOffset + sourceIdx);
@@ -239,7 +239,7 @@ class FROGInstance extends IBlockCipherInstance {
 
   _substituteByte(byte, keyOffset) {
     const sboxKey = this._internalKey[keyOffset % 2304];
-    return ((byte + sboxKey) ^ OpCodes.RotL8(byte, 3)) & 0xFF;
+    return OpCodes.AndN(OpCodes.XorN(byte + sboxKey, OpCodes.RotL8(byte, 3)), 0xFF);
   }
 
   _invSubstituteByte(byte, keyOffset) {
@@ -261,10 +261,10 @@ class FROGInstance extends IBlockCipherInstance {
         block[offset + 3]
       ];
 
-      block[offset] = temp[1] ^ temp[2] ^ temp[3];
-      block[offset + 1] = temp[0] ^ temp[2] ^ temp[3];
-      block[offset + 2] = temp[0] ^ temp[1] ^ temp[3];
-      block[offset + 3] = temp[0] ^ temp[1] ^ temp[2];
+      block[offset] = OpCodes.XorN(OpCodes.XorN(temp[1], temp[2]), temp[3]);
+      block[offset + 1] = OpCodes.XorN(OpCodes.XorN(temp[0], temp[2]), temp[3]);
+      block[offset + 2] = OpCodes.XorN(OpCodes.XorN(temp[0], temp[1]), temp[3]);
+      block[offset + 3] = OpCodes.XorN(OpCodes.XorN(temp[0], temp[1]), temp[2]);
     }
   }
 
@@ -278,10 +278,10 @@ class FROGInstance extends IBlockCipherInstance {
         block[offset + 3]
       ];
 
-      block[offset] = temp[1] ^ temp[2] ^ temp[3];
-      block[offset + 1] = temp[0] ^ temp[2] ^ temp[3];
-      block[offset + 2] = temp[0] ^ temp[1] ^ temp[3];
-      block[offset + 3] = temp[0] ^ temp[1] ^ temp[2];
+      block[offset] = OpCodes.XorN(OpCodes.XorN(temp[1], temp[2]), temp[3]);
+      block[offset + 1] = OpCodes.XorN(OpCodes.XorN(temp[0], temp[2]), temp[3]);
+      block[offset + 2] = OpCodes.XorN(OpCodes.XorN(temp[0], temp[1]), temp[3]);
+      block[offset + 3] = OpCodes.XorN(OpCodes.XorN(temp[0], temp[1]), temp[2]);
     }
   }
 }

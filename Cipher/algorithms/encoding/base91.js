@@ -220,18 +220,18 @@
       const alphabetStr = String.fromCharCode(...this.alphabet);
 
       for (let i = 0; i < data.length; i++) {
-        this.ebq |= (data[i] & 255) << this.en;
+        this.ebq = OpCodes.OrN(this.ebq, OpCodes.Shl32(OpCodes.AndN(data[i], 255), this.en));
         this.en += 8;
 
         if (this.en > 13) {
-          let ev = this.ebq & 8191;
+          let ev = OpCodes.AndN(this.ebq, 8191);
 
           if (ev > 88) {
-            this.ebq >>= 13;
+            this.ebq = OpCodes.Shr32(this.ebq, 13);
             this.en -= 13;
           } else {
-            ev = this.ebq & 16383;
-            this.ebq >>= 14;
+            ev = OpCodes.AndN(this.ebq, 16383);
+            this.ebq = OpCodes.Shr32(this.ebq, 14);
             this.en -= 14;
           }
 
@@ -278,7 +278,7 @@
         }
 
         this.dv += charValue * 91;
-        this.dq |= (this.dv << this.dn);
+        this.dq = OpCodes.OrN(this.dq, OpCodes.Shl32(this.dv, this.dn));
 
         if (this.dv > 88) {
           this.dn += 13;
@@ -289,16 +289,16 @@
         this.dv = -1;
 
         while (this.dn > 7) {
-          result.push(this.dq & 255);
-          this.dq >>= 8;
+          result.push(OpCodes.AndN(this.dq, 255));
+          this.dq = OpCodes.Shr32(this.dq, 8);
           this.dn -= 8;
         }
       }
 
       if (this.dv >= 0) {
-        this.dq |= (this.dv << this.dn);
+        this.dq = OpCodes.OrN(this.dq, OpCodes.Shl32(this.dv, this.dn));
         if (this.dn > 0) {
-          result.push(this.dq & 255);
+          result.push(OpCodes.AndN(this.dq, 255));
         }
       }
 

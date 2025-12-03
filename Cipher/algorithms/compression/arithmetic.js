@@ -284,8 +284,8 @@
           break;
         }
 
-        this.low = (this.low << 1) >>> 0;
-        this.high = ((this.high << 1) | 1) >>> 0;
+        this.low = OpCodes.ToUint32(OpCodes.Shl32(this.low, 1));
+        this.high = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(this.high, 1), 1));
       }
     }
 
@@ -344,7 +344,7 @@
 
       // Read initial value
       for (let i = 0; i < this.BITS && i < bits.length; i++) {
-        this.value = (this.value << 1) | bits[i];
+        this.value = OpCodes.OrN(OpCodes.Shl32(this.value, 1), bits[i]);
       }
 
       let bitIndex = this.BITS;
@@ -403,12 +403,12 @@
           break;
         }
 
-        this.low = (this.low << 1) >>> 0;
-        this.high = ((this.high << 1) | 1) >>> 0;
-        this.value = (this.value << 1) >>> 0;
+        this.low = OpCodes.ToUint32(OpCodes.Shl32(this.low, 1));
+        this.high = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(this.high, 1), 1));
+        this.value = OpCodes.ToUint32(OpCodes.Shl32(this.value, 1));
 
         if (newBitIndex < bits.length) {
-          this.value |= bits[newBitIndex];
+          this.value = OpCodes.OrN(this.value, bits[newBitIndex]);
           newBitIndex++;
         }
       }

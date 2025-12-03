@@ -78,7 +78,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     const result = [];
     let value = n;
     while (value > 0) {
-      result.unshift(value & 0xff);
+      result.unshift(value&0xff); // Native AND for integer operations
       value = Math.floor(value / 256);
     }
     result.unshift(result.length);
@@ -90,7 +90,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     const result = [];
     let value = n;
     while (value > 0) {
-      result.unshift(value & 0xff);
+      result.unshift(value&0xff); // Native AND for integer operations
       value = Math.floor(value / 256);
     }
     result.push(result.length);
@@ -117,7 +117,7 @@ if (!global.OpCodes && typeof require !== 'undefined') {
 
   // Helper functions for 64-bit operations
   function xor64(a, b) {
-    return [a[0] ^ b[0], a[1] ^ b[1]];
+    return [OpCodes.XorN(a[0], b[0]), OpCodes.XorN(a[1], b[1])];
   }
 
   function rotl64(val, positions) {
@@ -129,13 +129,14 @@ if (!global.OpCodes && typeof require !== 'undefined') {
     if (positions === 32) {
       return [high, low];
     } else if (positions < 32) {
-      const newLow = ((low << positions) | (high >>> (32 - positions))) >>> 0;
-      const newHigh = ((high << positions) | (low >>> (32 - positions))) >>> 0;
+      // Manual 64-bit rotation across two 32-bit words (no OpCodes equivalent for split 64-bit rotations)
+      const newLow = OpCodes.OrN(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions));
+      const newHigh = OpCodes.OrN(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions));
       return [newLow, newHigh];
     } else {
       positions -= 32;
-      const newLow = ((high << positions) | (low >>> (32 - positions))) >>> 0;
-      const newHigh = ((low << positions) | (high >>> (32 - positions))) >>> 0;
+      const newLow = OpCodes.OrN(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions));
+      const newHigh = OpCodes.OrN(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions));
       return [newLow, newHigh];
     }
   }
@@ -188,8 +189,8 @@ if (!global.OpCodes && typeof require !== 'undefined') {
         }
 
         for (let x = 0; x < 5; x++) {
-          const notNext = [~row[(x + 1) % 5][0], ~row[(x + 1) % 5][1]];
-          const andResult = [notNext[0] & row[(x + 2) % 5][0], notNext[1] & row[(x + 2) % 5][1]];
+          const notNext = [~row[(x + 1) % 5][0], ~row[(x + 1) % 5][1]]; // Native NOT
+          const andResult = [OpCodes.AndN(notNext[0], row[(x + 2) % 5][0]), OpCodes.AndN(notNext[1], row[(x + 2) % 5][1])];
           state[x + 5 * y] = xor64(row[x], andResult);
         }
       }

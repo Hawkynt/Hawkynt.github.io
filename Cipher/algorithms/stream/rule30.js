@@ -232,7 +232,7 @@
       // Process input data byte by byte (stream cipher)
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateByte();
-        output.push(this.inputBuffer[i] ^ keystreamByte);
+        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer for next operation
@@ -285,7 +285,7 @@
         const right = this.cells[(i + 1) % this.DEFAULT_SIZE];
 
         // Apply Rule 30: XOR of left neighbor and (center OR right neighbor)
-        newCells[i] = left ^ (center | right);
+        newCells[i] = OpCodes.XorN(left, OpCodes.OrN(center, right));
       }
 
       this.cells = newCells;
@@ -302,9 +302,9 @@
       let byte = 0;
       for (let bit = 0; bit < 8; bit++) {
         const bitValue = this._generateBit();
-        byte |= (bitValue << bit);
+        byte = OpCodes.OrN(byte, OpCodes.Shl32(bitValue, bit));
       }
-      return byte & 0xFF;
+      return OpCodes.AndN(byte, 0xFF);
     }
   }
 

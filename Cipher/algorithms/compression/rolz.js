@@ -458,8 +458,8 @@
         result.push(freqTableSizeBytes[1]);
 
         for (const [byte, freq] of freqEntries) {
-          result.push(parseInt(byte) & 0xFF);
-          result.push(Math.min(255, freq) & 0xFF);
+          result.push(OpCodes.ToByte(parseInt(byte)));
+          result.push(OpCodes.ToByte(Math.min(255, freq)));
         }
 
         // Encoded data length

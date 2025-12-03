@@ -215,7 +215,7 @@
         // Small swap - exactly as in C reference
         let x = s[0];
         let y = s[2];
-        s[0] = (s[1] ^ 0x9e377900 ^ round) >>> 0;
+        s[0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s[1], 0x9e377900), round));
         s[1] = x;
         s[2] = s[3];
         s[3] = y;
@@ -265,9 +265,9 @@
       const z = s[i2];
 
       // Apply SP-box transformations with proper 32-bit masking
-      s[i1] = (y ^ x ^ (((x | z) << 1) >>> 0)) >>> 0;
-      s[i0] = (z ^ y ^ (((x & y) << 3) >>> 0)) >>> 0;
-      s[i2] = (x ^ ((z << 1) >>> 0) ^ (((y & z) << 2) >>> 0)) >>> 0;
+      s[i1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(y, x), OpCodes.Shl32(OpCodes.OrN(x, z), 1)));
+      s[i0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(z, y), OpCodes.Shl32(OpCodes.AndN(x, y), 3)));
+      s[i2] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(x, OpCodes.Shl32(z, 1)), OpCodes.Shl32(OpCodes.AndN(y, z), 2)));
     }
   }
 

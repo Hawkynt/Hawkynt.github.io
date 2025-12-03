@@ -389,20 +389,20 @@
       const MASK_64 = 0xFFFFFFFFFFFFFFFFn;
 
       // Step 1: tmp = a + b + counter
-      let tmp = (this._a + this._b + this._counter) & MASK_64;
+      let tmp = OpCodes.AndN(this._a + this._b + this._counter, MASK_64);
 
       // Step 2: Increment counter
-      this._counter = (this._counter + 1n) & MASK_64;
+      this._counter = OpCodes.AndN(this._counter + 1n, MASK_64);
 
       // Step 3: a = b ^ (b >> 11)
-      this._a = (this._b ^ (this._b >> 11n)) & MASK_64;
+      this._a = OpCodes.AndN(OpCodes.XorN(this._b, OpCodes.ShiftRn(this._b, BigInt(11))), MASK_64);
 
       // Step 4: b = c + (c << 3)
-      this._b = (this._c + (this._c << 3n)) & MASK_64;
+      this._b = OpCodes.AndN(this._c + OpCodes.ShiftLn(this._c, BigInt(3)), MASK_64);
 
       // Step 5: c = ROL(c, 24) + tmp
       // Using OpCodes for 64-bit rotation
-      this._c = (OpCodes.RotL64n(this._c, 24) + tmp) & MASK_64;
+      this._c = OpCodes.AndN(OpCodes.RotL64n(this._c, 24) + tmp, MASK_64);
 
       return tmp;
     }
@@ -434,7 +434,7 @@
         // Convert BigInt to bytes manually (big-endian)
         for (let i = 0; i < bytesToExtract; ++i) {
           const shift = BigInt((7 - i) * 8);
-          const byte = Number((value >> shift) & 0xFFn);
+          const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, shift), 0xFFn));
           output.push(byte);
         }
 

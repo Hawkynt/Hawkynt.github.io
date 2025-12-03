@@ -262,18 +262,18 @@
 
       // newH gets: XOR of block with d (first 4 bytes) and dd (last 4 bytes)
       for (let i = 0; i < 4; ++i) {
-        newH[i] = block[i] ^ d[i];
+        newH[i] = OpCodes.XorN(block[i], d[i]);
       }
       for (let i = 4; i < 8; ++i) {
-        newH[i] = block[i] ^ dd[i];
+        newH[i] = OpCodes.XorN(block[i], dd[i]);
       }
 
       // newHH gets: XOR of block with dd (first 4 bytes) and d (last 4 bytes)
       for (let i = 0; i < 4; ++i) {
-        newHH[i] = block[i] ^ dd[i];
+        newHH[i] = OpCodes.XorN(block[i], dd[i]);
       }
       for (let i = 4; i < 8; ++i) {
-        newHH[i] = block[i] ^ d[i];
+        newHH[i] = OpCodes.XorN(block[i], d[i]);
       }
 
       this.h = newH;

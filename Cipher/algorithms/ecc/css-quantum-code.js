@@ -49,7 +49,7 @@
 
       // Required metadata
       this.name = "CSS Quantum Code";
-      this.description = "Quantum stabilizer code constructed from two classical linear codes C1 and C2 where C2⊥ ⊆ C1. Corrects quantum errors (bit-flip X and phase-flip Z errors). Steane [[7,1,3]] code corrects one qubit error. Foundation for fault-tolerant quantum computing. Used in quantum computers by IBM, Google.";
+      this.description = "Quantum stabilizer code constructed from two classical linear codes C1 and C2 where the dual of C2 is a subset of C1. Corrects quantum errors (bit-flip X and phase-flip Z errors). Steane [[7,1,3]] code corrects one qubit error. Foundation for fault-tolerant quantum computing. Used in quantum computers by IBM, Google.";
       this.inventor = "Robert Calderbank, Peter Shor, Andrew Steane";
       this.year = 1996;
       this.category = CategoryType.ECC;
@@ -99,18 +99,18 @@
       // All test vectors are ENCODE tests (logical qubit → physical qubits)
       // Round-trip tests will verify decoding with and without errors
       this.tests = [
-        // Steane [[7,1,3]] - Encoding logical |0⟩
+        // Steane [[7,1,3]] - Encoding logical qubit state 0
         new TestCase(
           [0],
           [0, 0, 0, 0, 0, 0, 0],
-          "Steane [[7,1,3]] encode logical |0⟩",
+          "Steane [[7,1,3]] encode logical qubit state 0",
           "https://errorcorrectionzoo.org/c/steane"
         ),
-        // Steane [[7,1,3]] - Encoding logical |1⟩
+        // Steane [[7,1,3]] - Encoding logical qubit state 1
         new TestCase(
           [1],
           [1, 1, 1, 1, 1, 1, 1],
-          "Steane [[7,1,3]] encode logical |1⟩",
+          "Steane [[7,1,3]] encode logical qubit state 1",
           "https://errorcorrectionzoo.org/c/steane"
         )
       ];
@@ -218,8 +218,8 @@
 
     /**
      * Encode logical qubit to 7 physical qubits using Steane [[7,1,3]] code
-     * For classical simulation: |0⟩ → |0000000⟩, |1⟩ → |1111111⟩
-     * Real quantum encoding would preserve superposition: α|0⟩+β|1⟩ → α|0000000⟩+β|1111111⟩
+     * For classical simulation: state 0 maps to all-zeros, state 1 maps to all-ones
+     * Real quantum encoding would preserve superposition with linear combinations of these basis states
      */
     encode(logicalQubit) {
       if (logicalQubit.length !== this.k) {
@@ -229,8 +229,8 @@
       const logical = logicalQubit[0];
 
       // Steane code logical codewords
-      // Logical |0⟩ encoded as |0000000⟩ (all qubits in |0⟩)
-      // Logical |1⟩ encoded as |1111111⟩ (all qubits in |1⟩)
+      // Logical qubit state 0 encoded as all-zeros codeword (all qubits in ground state)
+      // Logical qubit state 1 encoded as all-ones codeword (all qubits in excited state)
       // This is the standard CSS construction using dual Hamming codes
       const encoded = new Array(this.n).fill(logical);
 
@@ -258,7 +258,7 @@
 
       // Correct the error if detected
       if (errorPosition !== -1) {
-        received[errorPosition] ^= 1; // Flip the erroneous bit
+        received[errorPosition] = OpCodes.XorN(received[errorPosition], 1); // Flip the erroneous bit
       }
 
       // Extract logical qubit (majority vote for classical simulation)
@@ -279,7 +279,7 @@
         let parity = 0;
         for (let j = 0; j < this.n; ++j) {
           if (this.H[i][j] === 1) {
-            parity ^= qubits[j];
+            parity = OpCodes.XorN(parity, qubits[j]);
           }
         }
         syndrome[i] = parity;
@@ -295,7 +295,7 @@
      */
     syndromeToErrorPosition(syndrome) {
       // Convert syndrome to integer
-      const syndromeValue = syndrome[0] | (syndrome[1] << 1) | (syndrome[2] << 2);
+      const syndromeValue = OpCodes.OrN(OpCodes.OrN(syndrome[0], OpCodes.Shl32(syndrome[1], 1)), OpCodes.Shl32(syndrome[2], 2));
 
       if (syndromeValue === 0) {
         return -1; // No error
@@ -317,7 +317,7 @@
         ones += qubits[i];
       }
 
-      // Majority vote: if more than half are 1, logical qubit is |1⟩
+      // Majority vote: if more than half are 1, logical qubit is in state 1
       return ones > this.n / 2 ? 1 : 0;
     }
 
@@ -330,7 +330,7 @@
       }
 
       const syndrome = this.measureSyndrome(data);
-      const syndromeValue = syndrome[0] | (syndrome[1] << 1) | (syndrome[2] << 2);
+      const syndromeValue = OpCodes.OrN(OpCodes.OrN(syndrome[0], OpCodes.Shl32(syndrome[1], 1)), OpCodes.Shl32(syndrome[2], 2));
 
       return syndromeValue !== 0;
     }
@@ -349,19 +349,19 @@
 
       switch (errorType) {
         case 'bit-flip':
-          // X gate: bit-flip (|0⟩↔|1⟩)
-          result[position] ^= 1;
+          // X gate: bit-flip (swaps qubit states 0 and 1)
+          result[position] = OpCodes.XorN(result[position], 1);
           break;
 
         case 'phase-flip':
           // Z gate: phase-flip (classical simulation: no visible effect on computational basis)
-          // In real quantum: |+⟩→|-⟩, but classical bits unchanged
+          // In real quantum: flips phase of superposition states, but classical bits unchanged
           // For educational purposes, we mark this symbolically
           break;
 
         case 'both':
           // Y gate: both bit-flip and phase-flip
-          result[position] ^= 1;
+          result[position] = OpCodes.XorN(result[position], 1);
           break;
 
         default:

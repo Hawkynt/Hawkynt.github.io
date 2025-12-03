@@ -58,7 +58,7 @@
 
       this.notes = [
         "LRC = ((XOR of all bytes) XOR 0xFF) + 1 = two's complement of XOR",
-        "Verification: (sum of all bytes + LRC) & 0xFF == 0",
+        "Verification: (sum of all bytes + LRC) AND 0xFF == 0",
         "Simple error detection for serial protocols",
         "Can detect single-bit errors and some multi-bit errors",
         "Used in ASCII-based protocols and legacy systems"
@@ -121,7 +121,7 @@
       if (!data || data.length === 0) return;
 
       for (let i = 0; i < data.length; i++) {
-        this.lrc ^= data[i];
+        this.lrc = OpCodes.XorN(this.lrc, data[i]);
       }
     }
 
@@ -133,7 +133,7 @@
 
     Result() {
       // Two's complement: flip bits and add 1
-      const result = [(~this.lrc + 1) & 0xFF];
+      const result = [OpCodes.AndN((~this.lrc + 1), 0xFF)];
       this.lrc = 0;
       return result;
     }

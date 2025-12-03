@@ -163,8 +163,8 @@
               // Match extends to end - encode without next literal
               // Format: [FLAG=2][DISTANCE_HIGH][DISTANCE_LOW][LENGTH] (no literal)
               result.push(2); // End-match flag
-              result.push((match.distance >> 8) & 0xFF);
-              result.push(match.distance & 0xFF);
+              result.push(OpCodes.AndN(OpCodes.Shr32(match.distance, 8), 0xFF));
+              result.push(OpCodes.AndN(match.distance, 0xFF));
               result.push(match.length);
               pos = nextLiteralPos;
             } else {
@@ -173,8 +173,8 @@
 
               // Format: [FLAG=1][DISTANCE_HIGH][DISTANCE_LOW][LENGTH][LITERAL]
               result.push(1); // Match flag
-              result.push((match.distance >> 8) & 0xFF);
-              result.push(match.distance & 0xFF);
+              result.push(OpCodes.AndN(OpCodes.Shr32(match.distance, 8), 0xFF));
+              result.push(OpCodes.AndN(match.distance, 0xFF));
               result.push(match.length);
               result.push(nextLiteral);
 
@@ -202,7 +202,7 @@
 
           if (flag === 1 && i + 4 <= this.inputBuffer.length) {
             // Match with literal: (distance, length, literal)
-            const distance = (this.inputBuffer[i++] << 8) | this.inputBuffer[i++];
+            const distance = OpCodes.OrN(OpCodes.Shl32(this.inputBuffer[i++], 8), this.inputBuffer[i++]);
             const length = this.inputBuffer[i++];
             const literal = this.inputBuffer[i++];
 
@@ -220,7 +220,7 @@
             result.push(literal);
           } else if (flag === 2 && i + 3 <= this.inputBuffer.length) {
             // End match: (distance, length) - no literal
-            const distance = (this.inputBuffer[i++] << 8) | this.inputBuffer[i++];
+            const distance = OpCodes.OrN(OpCodes.Shl32(this.inputBuffer[i++], 8), this.inputBuffer[i++]);
             const length = this.inputBuffer[i++];
 
             // Copy from history

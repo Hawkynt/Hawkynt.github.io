@@ -50,7 +50,7 @@
 
       // Required metadata
       this.name = "Fire Code";
-      this.description = "Burst error correction code using cyclic polynomial structure. Can correct single burst errors up to length b. Generator polynomial G(x) = (x^c + 1)p(x) where p(x) is irreducible. Used in IEEE 802.3 Ethernet.";
+      this.description = "Burst error correction code using cyclic polynomial structure. Can correct single burst errors up to length b. Generator polynomial G(x) = (OpCodes.XorN(x, c) + 1)p(x) where p(x) is irreducible. Used in IEEE 802.3 Ethernet.";
       this.inventor = "Philip Fire";
       this.year = 1959;
       this.category = CategoryType.ECC;
@@ -135,7 +135,7 @@
       // Fire code parameters: can correct burst of length b
       this._burstLength = 3; // Maximum burst length to correct
       this._c = 5; // Period parameter
-      this._polynomial = 0b100101; // Example irreducible polynomial p(x) = x^5 + x^2 + 1
+      this._polynomial = 0b100101; // Example irreducible polynomial p(x) = OpCodes.XorN(x, 5) + OpCodes.XorN(x, 2) + 1
     }
 
     set burstLength(b) {
@@ -192,7 +192,7 @@
     }
 
     encode(data) {
-      // Fire code encoding using generator G(x) = (x^c + 1) * p(x)
+      // Fire code encoding using generator G(x) = (OpCodes.XorN(x, c) + 1) * p(x)
       // For simplicity, we add check bits based on syndrome calculation
 
       const checkBits = this._burstLength + this._c - 1;
@@ -202,12 +202,12 @@
       let syndrome = 0;
       for (let i = 0; i < data.length; ++i) {
         if (data[i]) {
-          syndrome ^= (1 << (i % checkBits));
+          syndrome = OpCodes.XorN(syndrome, (1 << (i % checkBits)));
         }
       }
 
       for (let i = 0; i < checkBits; ++i) {
-        encoded.push((syndrome >> i) & 1);
+        encoded.push(OpCodes.AndN(OpCodes.Shr32(syndrome, i), 1));
       }
 
       return encoded;
@@ -229,17 +229,17 @@
       let syndrome = 0;
       for (let i = 0; i < messageLength; ++i) {
         if (message[i]) {
-          syndrome ^= (1 << (i % checkBits));
+          syndrome = OpCodes.XorN(syndrome, (1 << (i % checkBits)));
         }
       }
 
       // Compare with received check bits
       let receivedSyndrome = 0;
       for (let i = 0; i < checkBits; ++i) {
-        receivedSyndrome |= (receivedCheck[i] << i);
+        receivedSyndrome = OpCodes.XorN(receivedSyndrome, (receivedCheck[i] << i));
       }
 
-      const errorSyndrome = syndrome ^ receivedSyndrome;
+      const errorSyndrome = OpCodes.XorN(syndrome, receivedSyndrome);
 
       if (errorSyndrome !== 0) {
         console.log(`Fire code: Burst error detected (syndrome: ${errorSyndrome.toString(2)})`);
@@ -263,13 +263,13 @@
       let syndrome = 0;
       for (let i = 0; i < messageLength; ++i) {
         if (message[i]) {
-          syndrome ^= (1 << (i % checkBits));
+          syndrome = OpCodes.XorN(syndrome, (1 << (i % checkBits)));
         }
       }
 
       let receivedSyndrome = 0;
       for (let i = 0; i < checkBits; ++i) {
-        receivedSyndrome |= (receivedCheck[i] << i);
+        receivedSyndrome = OpCodes.XorN(receivedSyndrome, (receivedCheck[i] << i));
       }
 
       return syndrome !== receivedSyndrome;

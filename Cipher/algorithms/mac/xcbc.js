@@ -69,7 +69,7 @@
       // Documentation links
       this.documentation = [
         new LinkItem("RFC 3566 - The AES-XCBC-MAC-96 Algorithm", "https://tools.ietf.org/html/rfc3566"),
-        new LinkItem("Black & Rogaway - CBC MACs for Arbitrary-Length Messages", "https://web.cs.ucdavis.edu/~rogaway/papers/3k.pdf")
+        new LinkItem("Black and Rogaway - CBC MACs for Arbitrary-Length Messages", "https://web.cs.ucdavis.edu/~rogaway/papers/3k.pdf")
       ];
 
       // Reference links
@@ -335,10 +335,10 @@
 
         // w[i] = w[i-Nk] XOR temp
         w[i] = [
-          w[i-Nk][0] ^ temp[0],
-          w[i-Nk][1] ^ temp[1],
-          w[i-Nk][2] ^ temp[2],
-          w[i-Nk][3] ^ temp[3]
+          OpCodes.XorN(w[i-Nk][0], temp[0]),
+          OpCodes.XorN(w[i-Nk][1], temp[1]),
+          OpCodes.XorN(w[i-Nk][2], temp[2]),
+          OpCodes.XorN(w[i-Nk][3], temp[3])
         ];
       }
 
@@ -424,10 +424,10 @@
         const c2 = state[col * 4 + 2];
         const c3 = state[col * 4 + 3];
 
-        state[col * 4] = OpCodes.GF256Mul(c0, 2) ^ OpCodes.GF256Mul(c1, 3) ^ c2 ^ c3;
-        state[col * 4 + 1] = c0 ^ OpCodes.GF256Mul(c1, 2) ^ OpCodes.GF256Mul(c2, 3) ^ c3;
-        state[col * 4 + 2] = c0 ^ c1 ^ OpCodes.GF256Mul(c2, 2) ^ OpCodes.GF256Mul(c3, 3);
-        state[col * 4 + 3] = OpCodes.GF256Mul(c0, 3) ^ c1 ^ c2 ^ OpCodes.GF256Mul(c3, 2);
+        state[col * 4] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(c0, 2), OpCodes.GF256Mul(c1, 3)), c2), c3);
+        state[col * 4 + 1] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(c0, OpCodes.GF256Mul(c1, 2)), OpCodes.GF256Mul(c2, 3)), c3);
+        state[col * 4 + 2] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(c0, c1), OpCodes.GF256Mul(c2, 2)), OpCodes.GF256Mul(c3, 3));
+        state[col * 4 + 3] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(c0, 3), c1), c2), OpCodes.GF256Mul(c3, 2));
       }
     }
 

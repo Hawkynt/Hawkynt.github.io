@@ -181,7 +181,7 @@
         // Count ones and zeros
         let onesCount = 0;
         for (let j = 0; j < group.length; j++) {
-          if (group[j] & 1) onesCount++;
+          if (OpCodes.AndN(group[j], 1)) onesCount++;
         }
 
         // If votes are tied or corrupted beyond correction capability
@@ -198,7 +198,7 @@
 
       // Repeat each bit N times
       for (let i = 0; i < data.length; i++) {
-        const bit = data[i] & 1; // Get least significant bit
+        const bit = OpCodes.AndN(data[i], 1); // Get least significant bit
         for (let j = 0; j < this.repetitionCount; j++) {
           result.push(bit);
         }
@@ -224,7 +224,7 @@
         // Count ones
         let onesCount = 0;
         for (let j = 0; j < group.length; j++) {
-          if (group[j] & 1) onesCount++;
+          if (OpCodes.AndN(group[j], 1)) onesCount++;
         }
 
         // Majority vote: Q = AB ∨ BC ∨ AC

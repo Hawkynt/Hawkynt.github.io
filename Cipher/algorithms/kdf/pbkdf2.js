@@ -251,8 +251,8 @@
       }
 
       // Create inner and outer padded keys
-      const innerKey = keyBytes.map(b => b ^ ipad);
-      const outerKey = keyBytes.map(b => b ^ opad);
+      const innerKey = keyBytes.map(b => OpCodes.XorN(b, ipad));
+      const outerKey = keyBytes.map(b => OpCodes.XorN(b, opad));
 
       // HMAC = H(outer_key || H(inner_key || data))
       const innerHash = this.sha1([...innerKey, ...data]);
@@ -304,7 +304,7 @@
 
       // Append length as 64-bit big-endian
       for (let i = 7; i >= 0; i--) {
-        paddedData.push((originalLength >>> (i * 8)) & 0xFF);
+        paddedData.push(OpCodes.AndN(OpCodes.Shr32(originalLength, i * 8), 0xFF));
       }
 
       // Process message in chunks of 64 bytes
@@ -323,7 +323,7 @@
 
         // Extend the sixteen 32-bit words into eighty 32-bit words
         for (let i = 16; i < 80; i++) {
-          w[i] = this.leftRotate(w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16], 1);
+          w[i] = this.leftRotate(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(w[i-3], w[i-8]), w[i-14]), w[i-16]), 1);
         }
 
         // Initialize hash value for this chunk
@@ -333,20 +333,20 @@
         for (let i = 0; i < 80; i++) {
           let f, k;
           if (i < 20) {
-            f = (b & c) | (~b & d);
+            f = OpCodes.OrN(OpCodes.AndN(b, c), OpCodes.AndN(~b, d));
             k = OpCodes.Hex32ToDWords('5A827999')[0];
           } else if (i < 40) {
-            f = b ^ c ^ d;
+            f = OpCodes.XorN(OpCodes.XorN(b, c), d);
             k = OpCodes.Hex32ToDWords('6ED9EBA1')[0];
           } else if (i < 60) {
-            f = (b & c) | (b & d) | (c & d);
+            f = OpCodes.OrN(OpCodes.OrN(OpCodes.AndN(b, c), OpCodes.AndN(b, d)), OpCodes.AndN(c, d));
             k = OpCodes.Hex32ToDWords('8F1BBCDC')[0];
           } else {
-            f = b ^ c ^ d;
+            f = OpCodes.XorN(OpCodes.XorN(b, c), d);
             k = OpCodes.Hex32ToDWords('CA62C1D6')[0];
           }
 
-          const temp = (this.leftRotate(a, 5) + f + e + k + w[i]) & MASK32;
+          const temp = OpCodes.AndN(OpCodes.ToUint32(this.leftRotate(a, 5) + f + e + k + w[i]), MASK32);
           e = d;
           d = c;
           c = this.leftRotate(b, 30);
@@ -355,11 +355,11 @@
         }
 
         // Add this chunk's hash to result so far
-        h[0] = (h[0] + a) & MASK32;
-        h[1] = (h[1] + b) & MASK32;
-        h[2] = (h[2] + c) & MASK32;
-        h[3] = (h[3] + d) & MASK32;
-        h[4] = (h[4] + e) & MASK32;
+        h[0] = OpCodes.AndN(OpCodes.ToUint32(h[0] + a), MASK32);
+        h[1] = OpCodes.AndN(OpCodes.ToUint32(h[1] + b), MASK32);
+        h[2] = OpCodes.AndN(OpCodes.ToUint32(h[2] + c), MASK32);
+        h[3] = OpCodes.AndN(OpCodes.ToUint32(h[3] + d), MASK32);
+        h[4] = OpCodes.AndN(OpCodes.ToUint32(h[4] + e), MASK32);
       }
 
       // Convert to byte array

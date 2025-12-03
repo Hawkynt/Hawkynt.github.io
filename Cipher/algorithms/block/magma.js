@@ -61,16 +61,16 @@
   function transformT(input) {
     let output = 0;
     for (let i = 0; i < 8; ++i) {
-      const nibble = (input >>> (4 * i)) & 0x0F;
+      const nibble = OpCodes.AndN(OpCodes.Shr32(input, 4 * i), 0x0F);
       const substituted = SBOX[i][nibble];
-      output |= (substituted << (4 * i));
+      output = OpCodes.OrN(output, OpCodes.Shl32(substituted, 4 * i));
     }
-    return output >>> 0;
+    return OpCodes.Shr32(output, 0);
   }
 
   // Transformation g: t followed by 11-bit left rotation (RFC 8891 Section 4.1)
   function transformG(k, a) {
-    const sum = (k + a) >>> 0; // Addition modulo 2^32
+    const sum = OpCodes.Shr32(k + a, 0); // Addition modulo 2^32
     const afterT = transformT(sum);
     return OpCodes.RotL32(afterT, 11);
   }
@@ -292,11 +292,11 @@
       for (let i = 0; i < 31; ++i) {
         const temp = a1;
         a1 = a0;
-        a0 = transformG(this._roundKeys[i], a0) ^ temp;
+        a0 = OpCodes.XorN(transformG(this._roundKeys[i], a0), temp);
       }
 
       // Final round G*[k](a_1, a_0) = (g[k](a_0) XOR a_1, a_0)
-      const finalOutput1 = transformG(this._roundKeys[31], a0) ^ a1;
+      const finalOutput1 = OpCodes.XorN(transformG(this._roundKeys[31], a0), a1);
       const finalOutput0 = a0;
 
       // Convert back to bytes (big-endian per RFC 8891): output is (finalOutput1, finalOutput0)

@@ -47,15 +47,15 @@
 
     if (positions < 32) {
       return [
-        ((low >>> positions) | (high << (32 - positions))) >>> 0,
-        ((high >>> positions) | (low << (32 - positions))) >>> 0
+        OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, 32 - positions))),
+        OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(high, positions), OpCodes.Shl32(low, 32 - positions)))
       ];
     }
 
     positions -= 32;
     return [
-      ((high >>> positions) | (low << (32 - positions))) >>> 0,
-      ((low >>> positions) | (high << (32 - positions))) >>> 0
+      OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(high, positions), OpCodes.Shl32(low, 32 - positions))),
+      OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, 32 - positions)))
     ];
   }
 
@@ -100,39 +100,39 @@
       // Reference: internal-ascon.c ascon_permute() function
 
       // Addition of constants (to S[2] low word)
-      this.S[2][0] = (this.S[2][0] ^ c) >>> 0;
+      this.S[2][0] = OpCodes.ToUint32(OpCodes.XorN(this.S[2][0], c));
 
       // Substitution layer (S-box)
       // Pre-XOR phase
-      this.S[0][0] ^= this.S[4][0]; this.S[0][1] ^= this.S[4][1]; // x0 ^= x4
-      this.S[4][0] ^= this.S[3][0]; this.S[4][1] ^= this.S[3][1]; // x4 ^= x3
-      this.S[2][0] ^= this.S[1][0]; this.S[2][1] ^= this.S[1][1]; // x2 ^= x1
+      this.S[0][0] = OpCodes.XorN(this.S[0][0], this.S[4][0]); this.S[0][1] = OpCodes.XorN(this.S[0][1], this.S[4][1]); // x0 ^= x4
+      this.S[4][0] = OpCodes.XorN(this.S[4][0], this.S[3][0]); this.S[4][1] = OpCodes.XorN(this.S[4][1], this.S[3][1]); // x4 ^= x3
+      this.S[2][0] = OpCodes.XorN(this.S[2][0], this.S[1][0]); this.S[2][1] = OpCodes.XorN(this.S[2][1], this.S[1][1]); // x2 ^= x1
 
       // Compute temporary values for 5-bit S-box
-      const t0_l = ((~this.S[0][0]) & this.S[1][0]) >>> 0;
-      const t0_h = ((~this.S[0][1]) & this.S[1][1]) >>> 0;
-      const t1_l = ((~this.S[1][0]) & this.S[2][0]) >>> 0;
-      const t1_h = ((~this.S[1][1]) & this.S[2][1]) >>> 0;
-      const t2_l = ((~this.S[2][0]) & this.S[3][0]) >>> 0;
-      const t2_h = ((~this.S[2][1]) & this.S[3][1]) >>> 0;
-      const t3_l = ((~this.S[3][0]) & this.S[4][0]) >>> 0;
-      const t3_h = ((~this.S[3][1]) & this.S[4][1]) >>> 0;
-      const t4_l = ((~this.S[4][0]) & this.S[0][0]) >>> 0;
-      const t4_h = ((~this.S[4][1]) & this.S[0][1]) >>> 0;
+      const t0_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[0][0], this.S[1][0]));
+      const t0_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[0][1], this.S[1][1]));
+      const t1_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[1][0], this.S[2][0]));
+      const t1_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[1][1], this.S[2][1]));
+      const t2_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[2][0], this.S[3][0]));
+      const t2_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[2][1], this.S[3][1]));
+      const t3_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[3][0], this.S[4][0]));
+      const t3_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[3][1], this.S[4][1]));
+      const t4_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[4][0], this.S[0][0]));
+      const t4_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[4][1], this.S[0][1]));
 
       // Apply S-box
-      this.S[0][0] ^= t1_l; this.S[0][1] ^= t1_h;
-      this.S[1][0] ^= t2_l; this.S[1][1] ^= t2_h;
-      this.S[2][0] ^= t3_l; this.S[2][1] ^= t3_h;
-      this.S[3][0] ^= t4_l; this.S[3][1] ^= t4_h;
-      this.S[4][0] ^= t0_l; this.S[4][1] ^= t0_h;
+      this.S[0][0] = OpCodes.XorN(this.S[0][0], t1_l); this.S[0][1] = OpCodes.XorN(this.S[0][1], t1_h);
+      this.S[1][0] = OpCodes.XorN(this.S[1][0], t2_l); this.S[1][1] = OpCodes.XorN(this.S[1][1], t2_h);
+      this.S[2][0] = OpCodes.XorN(this.S[2][0], t3_l); this.S[2][1] = OpCodes.XorN(this.S[2][1], t3_h);
+      this.S[3][0] = OpCodes.XorN(this.S[3][0], t4_l); this.S[3][1] = OpCodes.XorN(this.S[3][1], t4_h);
+      this.S[4][0] = OpCodes.XorN(this.S[4][0], t0_l); this.S[4][1] = OpCodes.XorN(this.S[4][1], t0_h);
 
       // Post-XOR phase
-      this.S[1][0] ^= this.S[0][0]; this.S[1][1] ^= this.S[0][1]; // x1 ^= x0
-      this.S[0][0] ^= this.S[4][0]; this.S[0][1] ^= this.S[4][1]; // x0 ^= x4
-      this.S[3][0] ^= this.S[2][0]; this.S[3][1] ^= this.S[2][1]; // x3 ^= x2
-      this.S[2][0] = (~this.S[2][0]) >>> 0;                        // x2 = ~x2
-      this.S[2][1] = (~this.S[2][1]) >>> 0;
+      this.S[1][0] = OpCodes.XorN(this.S[1][0], this.S[0][0]); this.S[1][1] = OpCodes.XorN(this.S[1][1], this.S[0][1]); // x1 ^= x0
+      this.S[0][0] = OpCodes.XorN(this.S[0][0], this.S[4][0]); this.S[0][1] = OpCodes.XorN(this.S[0][1], this.S[4][1]); // x0 ^= x4
+      this.S[3][0] = OpCodes.XorN(this.S[3][0], this.S[2][0]); this.S[3][1] = OpCodes.XorN(this.S[3][1], this.S[2][1]); // x3 ^= x2
+      this.S[2][0] = OpCodes.ToUint32(~this.S[2][0]);                        // x2 = ~x2
+      this.S[2][1] = OpCodes.ToUint32(~this.S[2][1]);
 
       // Linear diffusion layer
       // Save state before rotations
@@ -145,32 +145,32 @@
       // x0 ^= rotr64(x0, 19) ^ rotr64(x0, 28)
       let r0 = rotr64(s0_l, s0_h, 19);
       let r1 = rotr64(s0_l, s0_h, 28);
-      this.S[0][0] = (s0_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[0][1] = (s0_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s0_l, r0[0]), r1[0]));
+      this.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s0_h, r0[1]), r1[1]));
 
       // x1 ^= rotr64(x1, 61) ^ rotr64(x1, 39)
       r0 = rotr64(s1_l, s1_h, 61);
       r1 = rotr64(s1_l, s1_h, 39);
-      this.S[1][0] = (s1_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[1][1] = (s1_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[1][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s1_l, r0[0]), r1[0]));
+      this.S[1][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s1_h, r0[1]), r1[1]));
 
       // x2 ^= rotr64(x2, 1) ^ rotr64(x2, 6)
       r0 = rotr64(s2_l, s2_h, 1);
       r1 = rotr64(s2_l, s2_h, 6);
-      this.S[2][0] = (s2_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[2][1] = (s2_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[2][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s2_l, r0[0]), r1[0]));
+      this.S[2][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s2_h, r0[1]), r1[1]));
 
       // x3 ^= rotr64(x3, 10) ^ rotr64(x3, 17)
       r0 = rotr64(s3_l, s3_h, 10);
       r1 = rotr64(s3_l, s3_h, 17);
-      this.S[3][0] = (s3_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[3][1] = (s3_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[3][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s3_l, r0[0]), r1[0]));
+      this.S[3][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s3_h, r0[1]), r1[1]));
 
       // x4 ^= rotr64(x4, 7) ^ rotr64(x4, 41)
       r0 = rotr64(s4_l, s4_h, 7);
       r1 = rotr64(s4_l, s4_h, 41);
-      this.S[4][0] = (s4_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[4][1] = (s4_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[4][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s4_l, r0[0]), r1[0]));
+      this.S[4][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s4_h, r0[1]), r1[1]));
     }
   }
 
@@ -612,25 +612,25 @@
         // Create mask for partial block (big-endian: leftmost bytes count)
         let maskHigh = 0, maskLow = 0;
         if (finalBytes <= 4) {
-          maskHigh = (0xFFFFFFFF << (8 * (4 - finalBytes))) >>> 0;
+          maskHigh = OpCodes.ToUint32(OpCodes.Shl32(0xFFFFFFFF, 8 * (4 - finalBytes)));
           maskLow = 0;
         } else {
           maskHigh = 0xFFFFFFFF;
-          maskLow = (0xFFFFFFFF << (8 * (8 - finalBytes))) >>> 0;
+          maskLow = OpCodes.ToUint32(OpCodes.Shl32(0xFFFFFFFF, 8 * (8 - finalBytes)));
         }
 
         // XOR masked data into S[0]
-        this.permutation.S[0][0] = (this.permutation.S[0][0] ^ (low & maskLow)) >>> 0;
-        this.permutation.S[0][1] = (this.permutation.S[0][1] ^ (high & maskHigh)) >>> 0;
+        this.permutation.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][0], OpCodes.AndN(low, maskLow)));
+        this.permutation.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][1], OpCodes.AndN(high, maskHigh)));
       }
 
       // Apply 0x80 padding byte at position finalBytes
       if (finalBytes < 4) {
         // Padding in high word (bytes 0-3)
-        this.permutation.S[0][1] = (this.permutation.S[0][1] ^ (0x80 << (8 * (3 - finalBytes)))) >>> 0;
+        this.permutation.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][1], OpCodes.Shl32(0x80, 8 * (3 - finalBytes))));
       } else {
         // Padding in low word (bytes 4-7)
-        this.permutation.S[0][0] = (this.permutation.S[0][0] ^ (0x80 << (8 * (7 - finalBytes)))) >>> 0;
+        this.permutation.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][0], OpCodes.Shl32(0x80, 8 * (7 - finalBytes))));
       }
 
       // Squeeze phase: extract 32 bytes (4 blocks of 8 bytes)
@@ -641,14 +641,14 @@
 
         // Extract S[0] as big-endian bytes
         output.push(
-          (this.permutation.S[0][1] >>> 24) & 0xFF,
-          (this.permutation.S[0][1] >>> 16) & 0xFF,
-          (this.permutation.S[0][1] >>> 8) & 0xFF,
-          this.permutation.S[0][1] & 0xFF,
-          (this.permutation.S[0][0] >>> 24) & 0xFF,
-          (this.permutation.S[0][0] >>> 16) & 0xFF,
-          (this.permutation.S[0][0] >>> 8) & 0xFF,
-          this.permutation.S[0][0] & 0xFF
+          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][1], 24), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][1], 16), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][1], 8), 0xFF),
+          OpCodes.AndN(this.permutation.S[0][1], 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][0], 24), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][0], 16), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][0], 8), 0xFF),
+          OpCodes.AndN(this.permutation.S[0][0], 0xFF)
         );
       }
 
@@ -675,24 +675,24 @@
           // Create mask for partial block (big-endian: leftmost bytes count)
           let maskHigh = 0, maskLow = 0;
           if (this.bufferPos <= 4) {
-            maskHigh = (0xFFFFFFFF << (8 * (4 - this.bufferPos))) >>> 0;
+            maskHigh = OpCodes.ToUint32(OpCodes.Shl32(0xFFFFFFFF, 8 * (4 - this.bufferPos)));
             maskLow = 0;
           } else {
             maskHigh = 0xFFFFFFFF;
-            maskLow = (0xFFFFFFFF << (8 * (8 - this.bufferPos))) >>> 0;
+            maskLow = OpCodes.ToUint32(OpCodes.Shl32(0xFFFFFFFF, 8 * (8 - this.bufferPos)));
           }
 
-          this.permutation.S[0][0] = (this.permutation.S[0][0] ^ (low & maskLow)) >>> 0;
-          this.permutation.S[0][1] = (this.permutation.S[0][1] ^ (high & maskHigh)) >>> 0;
+          this.permutation.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][0], OpCodes.AndN(low, maskLow)));
+          this.permutation.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][1], OpCodes.AndN(high, maskHigh)));
         }
 
         // Apply 0x80 padding byte at position bufferPos
         if (this.bufferPos < 4) {
           // Padding in high word (bytes 0-3)
-          this.permutation.S[0][1] = (this.permutation.S[0][1] ^ (0x80 << (8 * (3 - this.bufferPos)))) >>> 0;
+          this.permutation.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][1], OpCodes.Shl32(0x80, 8 * (3 - this.bufferPos))));
         } else {
           // Padding in low word (bytes 4-7)
-          this.permutation.S[0][0] = (this.permutation.S[0][0] ^ (0x80 << (8 * (7 - this.bufferPos)))) >>> 0;
+          this.permutation.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(this.permutation.S[0][0], OpCodes.Shl32(0x80, 8 * (7 - this.bufferPos))));
         }
 
         this.bufferPos = 0;
@@ -722,14 +722,14 @@
 
         // Extract S[0] as big-endian bytes
         output.push(
-          (this.permutation.S[0][1] >>> 24) & 0xFF,
-          (this.permutation.S[0][1] >>> 16) & 0xFF,
-          (this.permutation.S[0][1] >>> 8) & 0xFF,
-          this.permutation.S[0][1] & 0xFF,
-          (this.permutation.S[0][0] >>> 24) & 0xFF,
-          (this.permutation.S[0][0] >>> 16) & 0xFF,
-          (this.permutation.S[0][0] >>> 8) & 0xFF,
-          this.permutation.S[0][0] & 0xFF
+          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][1], 24), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][1], 16), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][1], 8), 0xFF),
+          OpCodes.AndN(this.permutation.S[0][1], 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][0], 24), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][0], 16), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][0], 8), 0xFF),
+          OpCodes.AndN(this.permutation.S[0][0], 0xFF)
         );
         outlen -= ASCON_HASH_RATE;
       }
@@ -740,14 +740,14 @@
 
         // Extract partial block from S[0]
         const stateBytes = [
-          (this.permutation.S[0][1] >>> 24) & 0xFF,
-          (this.permutation.S[0][1] >>> 16) & 0xFF,
-          (this.permutation.S[0][1] >>> 8) & 0xFF,
-          this.permutation.S[0][1] & 0xFF,
-          (this.permutation.S[0][0] >>> 24) & 0xFF,
-          (this.permutation.S[0][0] >>> 16) & 0xFF,
-          (this.permutation.S[0][0] >>> 8) & 0xFF,
-          this.permutation.S[0][0] & 0xFF
+          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][1], 24), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][1], 16), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][1], 8), 0xFF),
+          OpCodes.AndN(this.permutation.S[0][1], 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][0], 24), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][0], 16), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(this.permutation.S[0][0], 8), 0xFF),
+          OpCodes.AndN(this.permutation.S[0][0], 0xFF)
         ];
 
         for (let i = 0; i < outlen; i++) {
@@ -770,8 +770,8 @@
         this.buffer[4], this.buffer[5], this.buffer[6], this.buffer[7]
       );
 
-      this.permutation.S[0][0] ^= low;
-      this.permutation.S[0][1] ^= high;
+      this.permutation.S[0][0] = OpCodes.XorN(this.permutation.S[0][0], low);
+      this.permutation.S[0][1] = OpCodes.XorN(this.permutation.S[0][1], high);
 
       this.permutation.permute();
     }

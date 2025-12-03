@@ -181,7 +181,7 @@
 
     encode(data) {
       const m = this._m;
-      const n = 1 << m; // 2^m
+      const n = OpCodes.Shl32(1, m); // 2^m
       const k = 1 + m; // First-order RM has k = 1 + m data bits
 
       if (data.length !== k) {
@@ -197,7 +197,7 @@
       // Constant term (data[0])
       if (data[0] === 1) {
         for (let i = 0; i < n; ++i) {
-          codeword[i] ^= 1;
+          codeword[i] = OpCodes.XorN(codeword[i], 1);
         }
       }
 
@@ -206,8 +206,8 @@
         if (data[1 + var_idx] === 1) {
           // For variable var_idx, set bits where that variable is 1
           for (let i = 0; i < n; ++i) {
-            if ((i >> (m - 1 - var_idx)) & 1) {
-              codeword[i] ^= 1;
+            if (OpCodes.AndN(OpCodes.Shr32(i, m - 1 - var_idx), 1)) {
+              codeword[i] = OpCodes.XorN(codeword[i], 1);
             }
           }
         }
@@ -218,7 +218,7 @@
 
     decode(data) {
       const m = this._m;
-      const n = 1 << m;
+      const n = OpCodes.Shl32(1, m);
       const k = 1 + m;
 
       if (data.length !== n) {
@@ -237,7 +237,7 @@
         let count0 = 0, count1 = 0;
 
         for (let i = 0; i < n; ++i) {
-          if ((i >> (m - 1 - var_idx)) & 1) {
+          if (OpCodes.AndN(OpCodes.Shr32(i, m - 1 - var_idx), 1)) {
             count1 += data[i];
           } else {
             count0 += data[i];
@@ -253,7 +253,7 @@
     }
 
     DetectError(data) {
-      const n = 1 << this._m;
+      const n = OpCodes.Shl32(1, this._m);
       if (data.length !== n) return true;
 
       try {

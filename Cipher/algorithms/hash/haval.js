@@ -69,32 +69,32 @@
 
     // F1: Pass 1 boolean function
     f1(x6, x5, x4, x3, x2, x1, x0) {
-      return ((x1) & ((x0) ^ (x4))) ^ ((x2) & (x5)) ^ ((x3) & (x6)) ^ (x0);
+      return OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(x1, OpCodes.XorN(x0, x4)), OpCodes.AndN(x2, x5)), OpCodes.AndN(x3, x6)), x0);
     }
 
     // F2: Pass 2 boolean function
     f2(x6, x5, x4, x3, x2, x1, x0) {
-      return (((x2) & (((x1) & ~(x3)) ^ ((x4) & (x5)) ^ (x6) ^ (x0))) ^
-             ((x4) & ((x1) ^ (x5))) ^ ((x3) & (x5)) ^ (x0));
+      return OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(x2, OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(x1, ~x3), OpCodes.AndN(x4, x5)), OpCodes.XorN(x6, x0))),
+             OpCodes.AndN(x4, OpCodes.XorN(x1, x5))), OpCodes.AndN(x3, x5)), x0);
     }
 
     // F3: Pass 3 boolean function
     f3(x6, x5, x4, x3, x2, x1, x0) {
-      return ((x3) & (((x1) & (x2)) ^ (x6) ^ (x0))) ^
-             ((x1) & (x4)) ^ ((x2) & (x5)) ^ (x0);
+      return OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(x3, OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(x1, x2), x6), x0)),
+             OpCodes.AndN(x1, x4)), OpCodes.AndN(x2, x5)), x0);
     }
 
     // F4: Pass 4 boolean function
     f4(x6, x5, x4, x3, x2, x1, x0) {
-      return (((x3) & (((x1) & (x2)) ^ ((x4) | (x6)) ^ (x5))) ^
-             ((x4) & (((~(x2)) & (x5)) ^ (x1) ^ (x6) ^ (x0))) ^
-             ((x2) & (x6)) ^ (x0));
+      return OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(x3, OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(x1, x2), OpCodes.OrN(x4, x6)), x5)),
+             OpCodes.AndN(x4, OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(~x2, x5), x1), OpCodes.XorN(x6, x0)))),
+             OpCodes.AndN(x2, x6)), x0);
     }
 
     // F5: Pass 5 boolean function
     f5(x6, x5, x4, x3, x2, x1, x0) {
-      return (((x0) & ~(((x1) & (x2) & (x3)) ^ (x5))) ^
-             ((x1) & (x4)) ^ ((x2) & (x5)) ^ ((x3) & (x6)));
+      return OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(x0, ~OpCodes.XorN(OpCodes.AndN(OpCodes.AndN(x1, x2), x3), x5)),
+             OpCodes.AndN(x1, x4)), OpCodes.AndN(x2, x5)), OpCodes.AndN(x3, x6));
     }
 
     // Round constants from reference implementation - RK2, RK3, RK4, RK5
@@ -301,7 +301,7 @@
       const MSGLEN = msgLen * 8;  // Message length in bits
 
       // Byte 118: VERSION (always 0x01) | (PASSES * 8)
-      this.buffer.push(0x01 | (PASSES * 8));
+      this.buffer.push(OpCodes.OrN(0x01, (PASSES * 8)));
 
       // Byte 119: olen * 8 (output length in words, multiplied by 8)
       this.buffer.push(olen * 8);
@@ -309,7 +309,7 @@
       // Append MSGLEN in little-endian 64-bit format
       // Note: JavaScript bitwise operators work on 32 bits, so we handle low and high separately
       for (let i = 0; i < 4; i++) {
-        this.buffer.push((MSGLEN >>> (i * 8)) & 0xFF);
+        this.buffer.push(OpCodes.AndN(OpCodes.Shr32(MSGLEN, i * 8), 0xFF));
       }
       // High 32 bits are always 0 for reasonable message sizes
       for (let i = 0; i < 4; i++) {
@@ -327,64 +327,64 @@
 
     // Helper functions for tailoring (from sphlib)
     mix128(a0, a1, a2, a3, n) {
-      let tmp = (a0 & 0x000000FF) |
-                (a1 & 0x0000FF00) |
-                (a2 & 0x00FF0000) |
-                (a3 & 0xFF000000);
+      let tmp = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.AndN(a0, 0x000000FF),
+                OpCodes.AndN(a1, 0x0000FF00)),
+                OpCodes.AndN(a2, 0x00FF0000)),
+                OpCodes.AndN(a3, 0xFF000000));
       if (n > 0) tmp = OpCodes.RotL32(tmp, n);
       return tmp;
     }
 
     mix160_0(x5, x6, x7) {
-      const tmp = (x5 & 0x01F80000) | (x6 & 0xFE000000) | (x7 & 0x0000003F);
+      const tmp = OpCodes.OrN(OpCodes.OrN(OpCodes.AndN(x5, 0x01F80000), OpCodes.AndN(x6, 0xFE000000)), OpCodes.AndN(x7, 0x0000003F));
       return OpCodes.RotL32(tmp, 13);
     }
 
     mix160_1(x5, x6, x7) {
-      const tmp = (x5 & 0xFE000000) | (x6 & 0x0000003F) | (x7 & 0x00000FC0);
+      const tmp = OpCodes.OrN(OpCodes.OrN(OpCodes.AndN(x5, 0xFE000000), OpCodes.AndN(x6, 0x0000003F)), OpCodes.AndN(x7, 0x00000FC0));
       return OpCodes.RotL32(tmp, 7);
     }
 
     mix160_2(x5, x6, x7) {
-      return (x5 & 0x0000003F) | (x6 & 0x00000FC0) | (x7 & 0x0007F000);
+      return OpCodes.OrN(OpCodes.OrN(OpCodes.AndN(x5, 0x0000003F), OpCodes.AndN(x6, 0x00000FC0)), OpCodes.AndN(x7, 0x0007F000));
     }
 
     mix160_3(x5, x6, x7) {
-      const tmp = (x5 & 0x00000FC0) | (x6 & 0x0007F000) | (x7 & 0x01F80000);
+      const tmp = OpCodes.OrN(OpCodes.OrN(OpCodes.AndN(x5, 0x00000FC0), OpCodes.AndN(x6, 0x0007F000)), OpCodes.AndN(x7, 0x01F80000));
       return OpCodes.RotL32(tmp, 6);
     }
 
     mix160_4(x5, x6, x7) {
-      const tmp = (x5 & 0x0007F000) | (x6 & 0x01F80000) | (x7 & 0xFE000000);
+      const tmp = OpCodes.OrN(OpCodes.OrN(OpCodes.AndN(x5, 0x0007F000), OpCodes.AndN(x6, 0x01F80000)), OpCodes.AndN(x7, 0xFE000000));
       return OpCodes.RotL32(tmp, 12);
     }
 
     mix192_0(x6, x7) {
-      const tmp = (x6 & 0xFC000000) | (x7 & 0x0000001F);
+      const tmp = OpCodes.OrN(OpCodes.AndN(x6, 0xFC000000), OpCodes.AndN(x7, 0x0000001F));
       return OpCodes.RotL32(tmp, 6);
     }
 
     mix192_1(x6, x7) {
-      return (x6 & 0x0000001F) | (x7 & 0x000003E0);
+      return OpCodes.OrN(OpCodes.AndN(x6, 0x0000001F), OpCodes.AndN(x7, 0x000003E0));
     }
 
     mix192_2(x6, x7) {
-      const tmp = (x6 & 0x000003E0) | (x7 & 0x0000FC00);
+      const tmp = OpCodes.OrN(OpCodes.AndN(x6, 0x000003E0), OpCodes.AndN(x7, 0x0000FC00));
       return OpCodes.RotL32(tmp, 5);
     }
 
     mix192_3(x6, x7) {
-      const tmp = (x6 & 0x0000FC00) | (x7 & 0x001F0000);
+      const tmp = OpCodes.OrN(OpCodes.AndN(x6, 0x0000FC00), OpCodes.AndN(x7, 0x001F0000));
       return OpCodes.RotL32(tmp, 10);
     }
 
     mix192_4(x6, x7) {
-      const tmp = (x6 & 0x001F0000) | (x7 & 0x03E00000);
+      const tmp = OpCodes.OrN(OpCodes.AndN(x6, 0x001F0000), OpCodes.AndN(x7, 0x03E00000));
       return OpCodes.RotL32(tmp, 16);
     }
 
     mix192_5(x6, x7) {
-      const tmp = (x6 & 0x03E00000) | (x7 & 0xFC000000);
+      const tmp = OpCodes.OrN(OpCodes.AndN(x6, 0x03E00000), OpCodes.AndN(x7, 0xFC000000));
       return OpCodes.RotL32(tmp, 21);
     }
 
@@ -433,13 +433,13 @@
         result.push(...OpCodes.Unpack32LE(w5));
       } else if (this.hashBits === 224) {
         // 224-bit tailoring (case 7 in sphlib)
-        const w0 = OpCodes.Add32(s0, (s7 >>> 27) & 0x1F);
-        const w1 = OpCodes.Add32(s1, (s7 >>> 22) & 0x1F);
-        const w2 = OpCodes.Add32(s2, (s7 >>> 18) & 0x0F);
-        const w3 = OpCodes.Add32(s3, (s7 >>> 13) & 0x1F);
-        const w4 = OpCodes.Add32(s4, (s7 >>>  9) & 0x0F);
-        const w5 = OpCodes.Add32(s5, (s7 >>>  4) & 0x1F);
-        const w6 = OpCodes.Add32(s6, (s7       ) & 0x0F);
+        const w0 = OpCodes.Add32(s0, OpCodes.AndN(OpCodes.Shr32(s7, 27), 0x1F));
+        const w1 = OpCodes.Add32(s1, OpCodes.AndN(OpCodes.Shr32(s7, 22), 0x1F));
+        const w2 = OpCodes.Add32(s2, OpCodes.AndN(OpCodes.Shr32(s7, 18), 0x0F));
+        const w3 = OpCodes.Add32(s3, OpCodes.AndN(OpCodes.Shr32(s7, 13), 0x1F));
+        const w4 = OpCodes.Add32(s4, OpCodes.AndN(OpCodes.Shr32(s7, 9), 0x0F));
+        const w5 = OpCodes.Add32(s5, OpCodes.AndN(OpCodes.Shr32(s7, 4), 0x1F));
+        const w6 = OpCodes.Add32(s6, OpCodes.AndN(s7, 0x0F));
         result.push(...OpCodes.Unpack32LE(w0));
         result.push(...OpCodes.Unpack32LE(w1));
         result.push(...OpCodes.Unpack32LE(w2));

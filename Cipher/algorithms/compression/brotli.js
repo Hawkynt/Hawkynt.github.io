@@ -158,7 +158,7 @@
 
         const byte = this.buffer[this.bytePos];
         const mask = OpCodes.BitMask(bitsToRead);
-        const bits = OpCodes.ToByte(OpCodes.Shr8(byte, this.bitPos)&mask);
+        const bits = OpCodes.ToByte(OpCodes.AndN(OpCodes.Shr8(byte, this.bitPos), mask));
 
         result |= OpCodes.Shl32(bits, bitsRead);
 
@@ -697,7 +697,7 @@
       // RFC 7932 Section 7.1: Context modes for literals
       if (mode === 0) {
         // LSB6 mode
-        return p1&0x3F;
+        return OpCodes.AndN(p1, 0x3F);
       } else if (mode === 1) {
         // MSB6 mode
         return OpCodes.Shr8(p1, 2);

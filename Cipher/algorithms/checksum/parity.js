@@ -283,8 +283,8 @@
         // Count bits in this byte
         let temp = byte;
         while (temp > 0) {
-          totalBits += temp & 1;
-          temp >>>= 1;
+          totalBits += OpCodes.AndN(temp, 1);
+          temp = OpCodes.Shr32(temp, 1);
         }
       }
 
@@ -305,7 +305,7 @@
       let checksum = 0;
 
       for (let byte of this.data) {
-        checksum ^= byte;
+        checksum = OpCodes.XorN(checksum, byte);
       }
 
       return [checksum];

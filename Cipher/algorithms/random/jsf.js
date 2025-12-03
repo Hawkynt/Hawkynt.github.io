@@ -10,7 +10,7 @@
  *
  * State: 128 bits (four 32-bit words: a, b, c, d)
  * Algorithm: e = a - ROL(b, 27)
- *            a = b ^ ROL(c, 17)
+ *            a = b XOR ROL(c, 17)
  *            b = c + d
  *            c = d + e
  *            d = e + a
@@ -305,7 +305,7 @@
      *
      * Algorithm from Bob Jenkins (http://burtleburtle.net/bob/rand/smallprng.html):
      * e = a - ROL(b, 27)
-     * a = b ^ ROL(c, 17)
+     * a = b XOR ROL(c, 17)
      * b = c + d
      * c = d + e
      * d = e + a
@@ -317,19 +317,19 @@
       }
 
       // Step 1: e = a - ROL(b, 27)
-      const e = (this._a - OpCodes.RotL32(this._b, 27)) >>> 0;
+      const e = OpCodes.ToUint32(this._a - OpCodes.RotL32(this._b, 27));
 
-      // Step 2: a = b ^ ROL(c, 17)
-      this._a = (this._b ^ OpCodes.RotL32(this._c, 17)) >>> 0;
+      // Step 2: a = b XOR ROL(c, 17)
+      this._a = OpCodes.ToUint32(OpCodes.XorN(this._b, OpCodes.RotL32(this._c, 17)));
 
       // Step 3: b = c + d
-      this._b = (this._c + this._d) >>> 0;
+      this._b = OpCodes.ToUint32(this._c + this._d);
 
       // Step 4: c = d + e
-      this._c = (this._d + e) >>> 0;
+      this._c = OpCodes.ToUint32(this._d + e);
 
       // Step 5: d = e + a
-      this._d = (e + this._a) >>> 0;
+      this._d = OpCodes.ToUint32(e + this._a);
 
       return this._d;
     }

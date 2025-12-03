@@ -175,7 +175,7 @@
 
         // Process each bit from MSB to LSB
         for (let bitIdx = 7; bitIdx >= 0; bitIdx--) {
-          const bit = (byte >>> bitIdx) & 1;
+          const bit = OpCodes.AndN(OpCodes.Shr32(byte, bitIdx), 1);
 
           // Manchester encoding: 0 -> 01 (low to high), 1 -> 10 (high to low)
           if (bit === 0) {
@@ -216,7 +216,7 @@
           throw new Error(`Manchester: Invalid transition pair ${first}${second}`);
         }
 
-        currentByte = (currentByte << 1) | bit;
+        currentByte = OpCodes.OrN(OpCodes.Shl32(currentByte, 1), bit);
         bitCount++;
 
         if (bitCount === 8) {

@@ -193,7 +193,7 @@
       for (let i = 0; i < 8; ++i) {
         let sum = 0;
         for (let j = 0; j < 4; ++j) {
-          sum ^= (data[j] & this.generator[j][i]);
+          sum = OpCodes.XorN(sum, OpCodes.AndN(data[j], this.generator[j][i]));
         }
         codeword[i] = sum;
       }
@@ -212,7 +212,7 @@
       for (let i = 0; i < 4; ++i) {
         let sum = 0;
         for (let j = 0; j < 8; ++j) {
-          sum ^= (data[j] & this.generator[i][j]);
+          sum = OpCodes.XorN(sum, OpCodes.AndN(data[j], this.generator[i][j]));
         }
         syndrome[i] = sum;
       }
@@ -226,13 +226,13 @@
         // Calculate overall parity
         let overallParity = 0;
         for (let i = 0; i < 8; ++i) {
-          overallParity ^= data[i];
+          overallParity = OpCodes.XorN(overallParity, data[i]);
         }
 
         // SECDED logic: syndrome gives error position
         let syndromeVal = 0;
         for (let i = 0; i < 4; ++i) {
-          syndromeVal |= (syndrome[i] << i);
+          syndromeVal = OpCodes.OrN(syndromeVal, OpCodes.Shl32(syndrome[i], i));
         }
 
         if (syndromeVal !== 0 && overallParity !== 0) {
@@ -254,7 +254,7 @@
       for (let i = 0; i < 4; ++i) {
         let sum = 0;
         for (let j = 0; j < 8; ++j) {
-          sum ^= (data[j] & this.generator[i][j]);
+          sum = OpCodes.XorN(sum, OpCodes.AndN(data[j], this.generator[i][j]));
         }
         syndrome[i] = sum;
       }

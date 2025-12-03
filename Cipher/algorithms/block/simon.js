@@ -146,7 +146,7 @@
     }
 
     /**
-     * Simon round function: F(x) = ((x <<< 1) & (x <<< 8)) ^ (x <<< 2)
+     * Simon round function: F(x) = ((x rotL 1) AND (x rotL 8)) XOR (x rotL 2)
      * @static
      * @param {uint32} x - 32-bit input word
      * @returns {uint32} Transformed 32-bit output
@@ -156,7 +156,7 @@
       const rot8 = OpCodes.RotL32(x, 8);
       const rot2 = OpCodes.RotL32(x, 2);
 
-      return ((rot1 & rot8) ^ rot2) >>> 0;
+      return OpCodes.ToUint32(OpCodes.XorN(OpCodes.AndN(rot1, rot8), rot2));
     }
   }
 
@@ -272,10 +272,10 @@
       let y = OpCodes.Pack32LE(blockBytes[4], blockBytes[5], blockBytes[6], blockBytes[7]);
 
       // Simon encryption: 44 rounds of Feistel-like operations
-      // Round function: (x, y) -> (y ^ F(x) ^ k_i, x)
-      // where F(x) = ((x <<< 1) & (x <<< 8)) ^ (x <<< 2)
+      // Round function: (x, y) -> (y XOR F(x) XOR k_i, x)
+      // where F(x) = ((x rotL 1) AND (x rotL 8)) XOR (x rotL 2)
       for (let i = 0; i < this.algorithm.ROUNDS; i++) {
-        const temp = y ^ SimonCipher.roundFunction(x) ^ this.roundKeys[i];
+        const temp = OpCodes.XorN(OpCodes.XorN(y, SimonCipher.roundFunction(x)), this.roundKeys[i]);
         y = x;
         x = temp;
       }
@@ -304,11 +304,11 @@
 
       // Simon decryption: reverse the encryption process
       // Inverse operations in reverse order:
-      // (x, y) -> (y, x ^ F(y) ^ k_i)
+      // (x, y) -> (y, x XOR F(y) XOR k_i)
       for (let i = this.algorithm.ROUNDS - 1; i >= 0; i--) {
         const temp = x;
         x = y;
-        y = temp ^ SimonCipher.roundFunction(x) ^ this.roundKeys[i];
+        y = OpCodes.XorN(OpCodes.XorN(temp, SimonCipher.roundFunction(x)), this.roundKeys[i]);
       }
 
       // Convert back to bytes (little-endian)
@@ -341,19 +341,19 @@
       }
 
       // Generate remaining round keys using Simon key schedule for m=4
-      // k_i = c ^ (z3)_{i-m} ^ k_{i-m} ^ ((k_{i-1} >>> 3) ^ k_{i-3} ^ ((k_{i-1} >>> 3) ^ k_{i-3}) >>> 1)
+      // k_i = c XOR (z3)_{i-m} XOR k_{i-m} XOR ((k_{i-1} rotR 3) XOR k_{i-3} XOR ((k_{i-1} rotR 3) XOR k_{i-3}) rotR 1)
       const c = 0xfffffffc;  // 2^32 - 4
       const z3Sequence = SimonCipher.getZ3Sequence();
 
       for (let i = this.algorithm.m; i < this.algorithm.ROUNDS; i++) {
         let tmp = OpCodes.RotR32(roundKeys[i - 1], 3);
-        tmp ^= roundKeys[i - 3];
-        tmp ^= OpCodes.RotR32(tmp, 1);
-        tmp ^= roundKeys[i - this.algorithm.m];
-        tmp ^= c;
-        tmp ^= z3Sequence[i - this.algorithm.m];
+        tmp = OpCodes.XorN(tmp, roundKeys[i - 3]);
+        tmp = OpCodes.XorN(tmp, OpCodes.RotR32(tmp, 1));
+        tmp = OpCodes.XorN(tmp, roundKeys[i - this.algorithm.m]);
+        tmp = OpCodes.XorN(tmp, c);
+        tmp = OpCodes.XorN(tmp, z3Sequence[i - this.algorithm.m]);
 
-        roundKeys[i] = tmp >>> 0;
+        roundKeys[i] = OpCodes.ToUint32(tmp);
       }
 
       return roundKeys;

@@ -316,8 +316,8 @@
      * Algorithm from Chris Doty-Humphrey (PractRand):
      * tmp = a + b + counter
      * counter = counter + 1
-     * a = b ^ (b >> 9)
-     * b = c + (c << 3)
+     * a = b XOR (b right-shift 9)
+     * b = c + (c left-shift 3)
      * c = ROL(c, 21) + tmp
      * return tmp
      */
@@ -327,20 +327,20 @@
       }
 
       // Step 1: tmp = a + b + counter
-      let tmp = (this._a + this._b + this._counter) >>> 0;
+      let tmp = OpCodes.ToUint32(this._a + this._b + this._counter);
 
       // Step 2: Increment counter
-      this._counter = (this._counter + 1) >>> 0;
+      this._counter = OpCodes.ToUint32(this._counter + 1);
 
       // Step 3: a = b ^ (b >> 9)
-      this._a = (this._b ^ (this._b >>> 9)) >>> 0;
+      this._a = OpCodes.ToUint32(OpCodes.XorN(this._b, OpCodes.Shr32(this._b, 9)));
 
       // Step 4: b = c + (c << 3)
-      this._b = (this._c + (this._c << 3)) >>> 0;
+      this._b = OpCodes.ToUint32(this._c + OpCodes.Shl32(this._c, 3));
 
       // Step 5: c = ROL(c, 21) + tmp
       // Using OpCodes for rotation
-      this._c = (OpCodes.RotL32(this._c, 21) + tmp) >>> 0;
+      this._c = OpCodes.ToUint32(OpCodes.RotL32(this._c, 21) + tmp);
 
       return tmp;
     }

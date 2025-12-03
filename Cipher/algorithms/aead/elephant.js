@@ -91,23 +91,30 @@
    * @param {number} lfsrIV - initial value for round constant LFSR (0x75 or 0x45)
    */
   function spongentPermute(state, nBits, nRounds, lfsrIV) {
-    var nSBox = nBits >>> 3;  // Number of bytes
+    var nSBox = OpCodes.Shr32(nBits, 3);  // Number of bytes
     var IV = lfsrIV;
     var tmp = new Array(nSBox);
 
     for (var round = 0; round < nRounds; ++round) {
       // Add round constants
-      state[0] ^= IV;
-      var reversedIV = ((IV & 0x01) << 7) | ((IV & 0x02) << 5) | ((IV & 0x04) << 3) | ((IV & 0x08) << 1) |
-                       ((IV & 0x10) >>> 1) | ((IV & 0x20) >>> 3) | ((IV & 0x40) >>> 5) | ((IV & 0x80) >>> 7);
-      state[nSBox - 1] ^= reversedIV;
+      state[0] = OpCodes.XorN(state[0], IV);
+      var reversedIV = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
+        OpCodes.Shl32(OpCodes.AndN(IV, 0x01), 7),
+        OpCodes.Shl32(OpCodes.AndN(IV, 0x02), 5)),
+        OpCodes.Shl32(OpCodes.AndN(IV, 0x04), 3)),
+        OpCodes.Shl32(OpCodes.AndN(IV, 0x08), 1)),
+        OpCodes.Shr32(OpCodes.AndN(IV, 0x10), 1)),
+        OpCodes.Shr32(OpCodes.AndN(IV, 0x20), 3)),
+        OpCodes.Shr32(OpCodes.AndN(IV, 0x40), 5)),
+        OpCodes.Shr32(OpCodes.AndN(IV, 0x80), 7));
+      state[nSBox - 1] = OpCodes.XorN(state[nSBox - 1], reversedIV);
 
       // Step LFSR for next round constant
-      IV = (((IV << 1) | (((0x40 & IV) >>> 6) ^ ((0x20 & IV) >>> 5))) & 0x7f);
+      IV = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(IV, 1), OpCodes.XorN(OpCodes.Shr32(OpCodes.AndN(0x40, IV), 6), OpCodes.Shr32(OpCodes.AndN(0x20, IV), 5))), 0x7f);
 
       // S-box layer
       for (var j = 0; j < nSBox; ++j) {
-        state[j] = SPONGENT_SBOX[state[j] & 0xFF];
+        state[j] = SPONGENT_SBOX[OpCodes.AndN(state[j], 0xFF)];
       }
 
       // Bit permutation layer
@@ -117,18 +124,18 @@
 
       for (var j = 0; j < nSBox; ++j) {
         for (var k = 0; k < 8; ++k) {
-          var bitNo = (j << 3) + k;
+          var bitNo = OpCodes.Shl32(j, 3) + k;
           var permutedBitNo = bitNo;
 
           // Apply permutation formula: bit i -> ((i * nBits) / 4) % (nBits - 1)
           // except for last bit which stays in place
           if (permutedBitNo !== nBits - 1) {
-            permutedBitNo = ((permutedBitNo * nBits) >>> 2) % (nBits - 1);
+            permutedBitNo = OpCodes.Shr32((permutedBitNo * nBits), 2) % (nBits - 1);
           }
 
           // Extract bit from state and place in permuted position
-          var bit = ((state[j] & 0xFF) >>> k) & 0x1;
-          tmp[permutedBitNo >>> 3] ^= bit << (permutedBitNo & 7);
+          var bit = OpCodes.AndN(OpCodes.Shr32(OpCodes.AndN(state[j], 0xFF), k), 0x1);
+          tmp[OpCodes.Shr32(permutedBitNo, 3)] = OpCodes.XorN(tmp[OpCodes.Shr32(permutedBitNo, 3)], OpCodes.Shl32(bit, OpCodes.AndN(permutedBitNo, 7)));
         }
       }
 
@@ -170,7 +177,7 @@
     var tempA = new Array(25);
     var index = function(x, y) { return x + y * 5; };
     var ROL8 = function(a, offset) {
-      return ((a << offset) | ((a & 0xff) >>> (8 - offset))) & 0xFF;
+      return OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(a, offset), OpCodes.Shr32(OpCodes.AndN(a, 0xff), (8 - offset))), 0xFF);
     };
 
     for (var round = 0; round < 18; ++round) {
@@ -180,15 +187,15 @@
       for (x = 0; x < 5; ++x) {
         tempA[x] = 0;
         for (y = 0; y < 5; ++y) {
-          tempA[x] ^= state[index(x, y)];
+          tempA[x] = OpCodes.XorN(tempA[x], state[index(x, y)]);
         }
       }
       for (x = 0; x < 5; ++x) {
-        tempA[x + 5] = ROL8(tempA[(x + 1) % 5], 1) ^ tempA[(x + 4) % 5];
+        tempA[x + 5] = OpCodes.XorN(ROL8(tempA[(x + 1) % 5], 1), tempA[(x + 4) % 5]);
       }
       for (x = 0; x < 5; ++x) {
         for (y = 0; y < 5; ++y) {
-          state[index(x, y)] ^= tempA[x + 5];
+          state[index(x, y)] = OpCodes.XorN(state[index(x, y)], tempA[x + 5]);
         }
       }
 
@@ -209,7 +216,7 @@
       // Chi
       for (y = 0; y < 5; ++y) {
         for (x = 0; x < 5; ++x) {
-          tempA[x] = (state[index(x, y)] ^ ((~state[index((x + 1) % 5, y)]) & state[index((x + 2) % 5, y)])) & 0xFF;
+          tempA[x] = OpCodes.AndN(OpCodes.XorN(state[index(x, y)], OpCodes.AndN(~state[index((x + 1) % 5, y)], state[index((x + 2) % 5, y)])), 0xFF);
         }
         for (x = 0; x < 5; ++x) {
           state[index(x, y)] = tempA[x];
@@ -217,7 +224,7 @@
       }
 
       // Iota
-      state[0] ^= RC[round];
+      state[0] = OpCodes.XorN(state[0], RC[round]);
     }
   }
 
@@ -226,10 +233,10 @@
   /**
    * Dumbo LFSR: feedback polynomial for 160-bit mask
    * Complete LFSR operation: shift left + compute feedback byte
-   * newByte = rotL3(mask[0]) ^ (mask[3] << 7) ^ (mask[13] >> 7)
+   * newByte = rotL3(mask[0]) XOR (mask[3] left-shift 7) XOR (mask[13] right-shift 7)
    */
   function dumboLFSR(output, input) {
-    var temp = (OpCodes.RotL8(input[0], 3) ^ (input[3] << 7) ^ (input[13] >>> 7)) & 0xFF;
+    var temp = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.RotL8(input[0], 3), OpCodes.Shl32(input[3], 7)), OpCodes.Shr32(input[13], 7)), 0xFF);
     for (var i = 0; i < 19; ++i) {
       output[i] = input[i + 1];
     }
@@ -239,10 +246,10 @@
   /**
    * Jumbo LFSR: feedback polynomial for 176-bit mask
    * Complete LFSR operation: shift left + compute feedback byte
-   * newByte = rotL1(mask[0]) ^ (mask[3] << 7) ^ (mask[19] >> 7)
+   * newByte = rotL1(mask[0]) XOR (mask[3] left-shift 7) XOR (mask[19] right-shift 7)
    */
   function jumboLFSR(output, input) {
-    var temp = (OpCodes.RotL8(input[0], 1) ^ (input[3] << 7) ^ (input[19] >>> 7)) & 0xFF;
+    var temp = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.RotL8(input[0], 1), OpCodes.Shl32(input[3], 7)), OpCodes.Shr32(input[19], 7)), 0xFF);
     for (var i = 0; i < 21; ++i) {
       output[i] = input[i + 1];
     }
@@ -252,10 +259,10 @@
   /**
    * Delirium LFSR: feedback polynomial for 200-bit mask
    * Complete LFSR operation: shift left + compute feedback byte
-   * newByte = rotL1(mask[0]) ^ rotL1(mask[2]) ^ (mask[13] << 1)
+   * newByte = rotL1(mask[0]) XOR rotL1(mask[2]) XOR (mask[13] left-shift 1)
    */
   function deliriumLFSR(output, input) {
-    var temp = (OpCodes.RotL8(input[0], 1) ^ OpCodes.RotL8(input[2], 1) ^ (input[13] << 1)) & 0xFF;
+    var temp = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.RotL8(input[0], 1), OpCodes.RotL8(input[2], 1)), OpCodes.Shl32(input[13], 1)), 0xFF);
     for (var i = 0; i < 24; ++i) {
       output[i] = input[i + 1];
     }
@@ -371,11 +378,11 @@
 
     /**
      * Helper: XOR two arrays into a third array
-     * z[i] ^= x[i] ^ y[i]
+     * z[i] XOR-equals x[i] XOR y[i]
      */
     xorTo(len, x, y, z) {
       for (var i = 0; i < len; ++i) {
-        z[i] = (z[i] ^ x[i] ^ y[i]) & 0xFF;
+        z[i] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(z[i], x[i]), y[i]), 0xFF);
       }
     }
 
@@ -385,7 +392,7 @@
      */
     xorArray(len, src, dest) {
       for (var i = 0; i < len; ++i) {
-        dest[i] = (dest[i] ^ src[i]) & 0xFF;
+        dest[i] = OpCodes.AndN(OpCodes.XorN(dest[i], src[i]), 0xFF);
       }
     }
 
@@ -438,7 +445,7 @@
 
       // buffer ^= input
       for (var i = 0; i < blockSize; ++i) {
-        this.buffer[i] = (this.buffer[i] ^ input[inOff + i]) & 0xFF;
+        this.buffer[i] = OpCodes.AndN(OpCodes.XorN(this.buffer[i], OpCodes.AndN(input[inOff + i], 0xFF)), 0xFF);
       }
 
       // Copy to output
@@ -687,14 +694,13 @@
           result[mlen + i] = this.tagBuffer[i];
         }
       } else {
-        // Decryption: verify tag
+        // Decryption: verify tag (constant-time comparison)
         var receivedTag = this.inputBuffer.slice(mlen);
-        var tagMatch = true;
+        var diff = 0;
         for (var i = 0; i < this.macSize; ++i) {
-          if (this.tagBuffer[i] !== receivedTag[i]) {
-            tagMatch = false;
-          }
+          diff = OpCodes.OrN(diff, OpCodes.XorN(this.tagBuffer[i], receivedTag[i]));
         }
+        var tagMatch = (diff === 0);
         if (!tagMatch) {
           throw new Error('Authentication tag verification failed');
         }

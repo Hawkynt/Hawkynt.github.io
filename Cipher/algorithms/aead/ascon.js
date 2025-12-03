@@ -48,15 +48,15 @@
 
     if (positions < 32) {
       return [
-        ((low << positions) | (high >>> (32 - positions))) >>> 0,
-        ((high << positions) | (low >>> (32 - positions))) >>> 0
+        OpCodes.OrN(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions)),
+        OpCodes.OrN(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions))
       ];
     }
 
     positions -= 32;
     return [
-      ((high << positions) | (low >>> (32 - positions))) >>> 0,
-      ((low << positions) | (high >>> (32 - positions))) >>> 0
+      OpCodes.OrN(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions)),
+      OpCodes.OrN(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions))
     ];
   }
 
@@ -82,43 +82,43 @@
 
     _round(roundNum) {
       // Round constant: ((0x0F - roundNum) << 4) | roundNum
-      const c = ((0x0F - roundNum) << 4) | roundNum;
+      const c = OpCodes.OrN(OpCodes.Shl32(0x0F - roundNum, 4), roundNum);
 
       // Add round constant to x2
-      this.S[2][0] = (this.S[2][0] ^ c) >>> 0;
+      this.S[2][0] = OpCodes.XorN(this.S[2][0], c);
 
       // Substitution layer (canonical from C reference)
       // x0 ^= x4; x4 ^= x3; x2 ^= x1;
-      this.S[0][0] = (this.S[0][0] ^ this.S[4][0]) >>> 0; this.S[0][1] = (this.S[0][1] ^ this.S[4][1]) >>> 0;
-      this.S[4][0] = (this.S[4][0] ^ this.S[3][0]) >>> 0; this.S[4][1] = (this.S[4][1] ^ this.S[3][1]) >>> 0;
-      this.S[2][0] = (this.S[2][0] ^ this.S[1][0]) >>> 0; this.S[2][1] = (this.S[2][1] ^ this.S[1][1]) >>> 0;
+      this.S[0][0] = OpCodes.XorN(this.S[0][0], this.S[4][0]); this.S[0][1] = OpCodes.XorN(this.S[0][1], this.S[4][1]);
+      this.S[4][0] = OpCodes.XorN(this.S[4][0], this.S[3][0]); this.S[4][1] = OpCodes.XorN(this.S[4][1], this.S[3][1]);
+      this.S[2][0] = OpCodes.XorN(this.S[2][0], this.S[1][0]); this.S[2][1] = OpCodes.XorN(this.S[2][1], this.S[1][1]);
 
       // t0 = ~x0; t1 = ~x1; t2 = ~x2; t3 = ~x3; t4 = ~x4;
       // t0 &= x1; t1 &= x2; t2 &= x3; t3 &= x4; t4 &= x0;
-      const t0_l = ((~this.S[0][0]) & this.S[1][0]) >>> 0;
-      const t0_h = ((~this.S[0][1]) & this.S[1][1]) >>> 0;
-      const t1_l = ((~this.S[1][0]) & this.S[2][0]) >>> 0;
-      const t1_h = ((~this.S[1][1]) & this.S[2][1]) >>> 0;
-      const t2_l = ((~this.S[2][0]) & this.S[3][0]) >>> 0;
-      const t2_h = ((~this.S[2][1]) & this.S[3][1]) >>> 0;
-      const t3_l = ((~this.S[3][0]) & this.S[4][0]) >>> 0;
-      const t3_h = ((~this.S[3][1]) & this.S[4][1]) >>> 0;
-      const t4_l = ((~this.S[4][0]) & this.S[0][0]) >>> 0;
-      const t4_h = ((~this.S[4][1]) & this.S[0][1]) >>> 0;
+      const t0_l = OpCodes.AndN(~this.S[0][0], this.S[1][0]);
+      const t0_h = OpCodes.AndN(~this.S[0][1], this.S[1][1]);
+      const t1_l = OpCodes.AndN(~this.S[1][0], this.S[2][0]);
+      const t1_h = OpCodes.AndN(~this.S[1][1], this.S[2][1]);
+      const t2_l = OpCodes.AndN(~this.S[2][0], this.S[3][0]);
+      const t2_h = OpCodes.AndN(~this.S[2][1], this.S[3][1]);
+      const t3_l = OpCodes.AndN(~this.S[3][0], this.S[4][0]);
+      const t3_h = OpCodes.AndN(~this.S[3][1], this.S[4][1]);
+      const t4_l = OpCodes.AndN(~this.S[4][0], this.S[0][0]);
+      const t4_h = OpCodes.AndN(~this.S[4][1], this.S[0][1]);
 
       // x0 ^= t1; x1 ^= t2; x2 ^= t3; x3 ^= t4; x4 ^= t0;
-      this.S[0][0] = (this.S[0][0] ^ t1_l) >>> 0; this.S[0][1] = (this.S[0][1] ^ t1_h) >>> 0;
-      this.S[1][0] = (this.S[1][0] ^ t2_l) >>> 0; this.S[1][1] = (this.S[1][1] ^ t2_h) >>> 0;
-      this.S[2][0] = (this.S[2][0] ^ t3_l) >>> 0; this.S[2][1] = (this.S[2][1] ^ t3_h) >>> 0;
-      this.S[3][0] = (this.S[3][0] ^ t4_l) >>> 0; this.S[3][1] = (this.S[3][1] ^ t4_h) >>> 0;
-      this.S[4][0] = (this.S[4][0] ^ t0_l) >>> 0; this.S[4][1] = (this.S[4][1] ^ t0_h) >>> 0;
+      this.S[0][0] = OpCodes.XorN(this.S[0][0], t1_l); this.S[0][1] = OpCodes.XorN(this.S[0][1], t1_h);
+      this.S[1][0] = OpCodes.XorN(this.S[1][0], t2_l); this.S[1][1] = OpCodes.XorN(this.S[1][1], t2_h);
+      this.S[2][0] = OpCodes.XorN(this.S[2][0], t3_l); this.S[2][1] = OpCodes.XorN(this.S[2][1], t3_h);
+      this.S[3][0] = OpCodes.XorN(this.S[3][0], t4_l); this.S[3][1] = OpCodes.XorN(this.S[3][1], t4_h);
+      this.S[4][0] = OpCodes.XorN(this.S[4][0], t0_l); this.S[4][1] = OpCodes.XorN(this.S[4][1], t0_h);
 
       // x1 ^= x0; x0 ^= x4; x3 ^= x2; x2 = ~x2;
-      this.S[1][0] = (this.S[1][0] ^ this.S[0][0]) >>> 0; this.S[1][1] = (this.S[1][1] ^ this.S[0][1]) >>> 0;
-      this.S[0][0] = (this.S[0][0] ^ this.S[4][0]) >>> 0; this.S[0][1] = (this.S[0][1] ^ this.S[4][1]) >>> 0;
-      this.S[3][0] = (this.S[3][0] ^ this.S[2][0]) >>> 0; this.S[3][1] = (this.S[3][1] ^ this.S[2][1]) >>> 0;
-      this.S[2][0] = (~this.S[2][0]) >>> 0;
-      this.S[2][1] = (~this.S[2][1]) >>> 0;
+      this.S[1][0] = OpCodes.XorN(this.S[1][0], this.S[0][0]); this.S[1][1] = OpCodes.XorN(this.S[1][1], this.S[0][1]);
+      this.S[0][0] = OpCodes.XorN(this.S[0][0], this.S[4][0]); this.S[0][1] = OpCodes.XorN(this.S[0][1], this.S[4][1]);
+      this.S[3][0] = OpCodes.XorN(this.S[3][0], this.S[2][0]); this.S[3][1] = OpCodes.XorN(this.S[3][1], this.S[2][1]);
+      this.S[2][0] = OpCodes.ToUint32(~this.S[2][0]);
+      this.S[2][1] = OpCodes.ToUint32(~this.S[2][1]);
 
       // Linear diffusion layer
       const s0_l = this.S[0][0], s0_h = this.S[0][1];
@@ -130,32 +130,32 @@
       // x0 ^= rightRotate19_64(x0) ^ rightRotate28_64(x0)
       let r0 = rotr64(s0_l, s0_h, 19);
       let r1 = rotr64(s0_l, s0_h, 28);
-      this.S[0][0] = (s0_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[0][1] = (s0_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[0][0] = OpCodes.XorN(OpCodes.XorN(s0_l, r0[0]), r1[0]);
+      this.S[0][1] = OpCodes.XorN(OpCodes.XorN(s0_h, r0[1]), r1[1]);
 
       // x1 ^= rightRotate61_64(x1) ^ rightRotate39_64(x1)
       r0 = rotr64(s1_l, s1_h, 61);
       r1 = rotr64(s1_l, s1_h, 39);
-      this.S[1][0] = (s1_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[1][1] = (s1_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[1][0] = OpCodes.XorN(OpCodes.XorN(s1_l, r0[0]), r1[0]);
+      this.S[1][1] = OpCodes.XorN(OpCodes.XorN(s1_h, r0[1]), r1[1]);
 
       // x2 ^= rightRotate1_64(x2) ^ rightRotate6_64(x2)
       r0 = rotr64(s2_l, s2_h, 1);
       r1 = rotr64(s2_l, s2_h, 6);
-      this.S[2][0] = (s2_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[2][1] = (s2_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[2][0] = OpCodes.XorN(OpCodes.XorN(s2_l, r0[0]), r1[0]);
+      this.S[2][1] = OpCodes.XorN(OpCodes.XorN(s2_h, r0[1]), r1[1]);
 
       // x3 ^= rightRotate10_64(x3) ^ rightRotate17_64(x3)
       r0 = rotr64(s3_l, s3_h, 10);
       r1 = rotr64(s3_l, s3_h, 17);
-      this.S[3][0] = (s3_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[3][1] = (s3_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[3][0] = OpCodes.XorN(OpCodes.XorN(s3_l, r0[0]), r1[0]);
+      this.S[3][1] = OpCodes.XorN(OpCodes.XorN(s3_h, r0[1]), r1[1]);
 
       // x4 ^= rightRotate7_64(x4) ^ rightRotate41_64(x4)
       r0 = rotr64(s4_l, s4_h, 7);
       r1 = rotr64(s4_l, s4_h, 41);
-      this.S[4][0] = (s4_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[4][1] = (s4_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[4][0] = OpCodes.XorN(OpCodes.XorN(s4_l, r0[0]), r1[0]);
+      this.S[4][1] = OpCodes.XorN(OpCodes.XorN(s4_h, r0[1]), r1[1]);
     }
   }
 
@@ -488,7 +488,7 @@
 
       // S[0] = IV
       const ivHigh = Math.floor(this.IV / 0x100000000);
-      const ivLow = (this.IV & 0xFFFFFFFF) >>> 0;
+      const ivLow = OpCodes.AndN(this.IV, 0xFFFFFFFF);
       this.perm.S[0] = [ivLow, ivHigh];
 
       if (this.keybytes === 16) {
@@ -540,10 +540,10 @@
         const k2High = OpCodes.Pack32BE(this._key[8], this._key[9], this._key[10], this._key[11]);
         const k2Low = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
 
-        this.perm.S[3][0] ^= k1Low;
-        this.perm.S[3][1] ^= k1High;
-        this.perm.S[4][0] ^= k2Low;
-        this.perm.S[4][1] ^= k2High;
+        this.perm.S[3][0] = OpCodes.XorN(this.perm.S[3][0], k1Low);
+        this.perm.S[3][1] = OpCodes.XorN(this.perm.S[3][1], k1High);
+        this.perm.S[4][0] = OpCodes.XorN(this.perm.S[4][0], k2Low);
+        this.perm.S[4][1] = OpCodes.XorN(this.perm.S[4][1], k2High);
       } else {
         // Ascon-80pq: XOR key at byte position 20 (state.B + 20)
         // state.B[20-39] maps to S[2] low, S[3], S[4]
@@ -553,11 +553,11 @@
         const k2High = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
         const k2Low = OpCodes.Pack32BE(this._key[16], this._key[17], this._key[18], this._key[19]);
 
-        this.perm.S[2][0] ^= k0;      // S[2] low  XOR key[0-3]
-        this.perm.S[3][1] ^= k1High;  // S[3] high XOR key[4-7]
-        this.perm.S[3][0] ^= k1Low;   // S[3] low  XOR key[8-11]
-        this.perm.S[4][1] ^= k2High;  // S[4] high XOR key[12-15]
-        this.perm.S[4][0] ^= k2Low;   // S[4] low  XOR key[16-19]
+        this.perm.S[2][0] = OpCodes.XorN(this.perm.S[2][0], k0);      // S[2] low  XOR key[0-3]
+        this.perm.S[3][1] = OpCodes.XorN(this.perm.S[3][1], k1High);  // S[3] high XOR key[4-7]
+        this.perm.S[3][0] = OpCodes.XorN(this.perm.S[3][0], k1Low);   // S[3] low  XOR key[8-11]
+        this.perm.S[4][1] = OpCodes.XorN(this.perm.S[4][1], k2High);  // S[4] high XOR key[12-15]
+        this.perm.S[4][0] = OpCodes.XorN(this.perm.S[4][0], k2Low);   // S[4] low  XOR key[16-19]
       }
 
       // Process AAD
@@ -566,7 +566,7 @@
       }
 
       // Domain separation (C reference: state.B[39] ^= 0x01 which is S[4] byte 7)
-      this.perm.S[4][0] ^= 1;
+      this.perm.S[4][0] = OpCodes.XorN(this.perm.S[4][0], 1);
 
       // Encrypt plaintext
       const ciphertext = this._processData(plaintext, true);
@@ -588,7 +588,7 @@
 
       // Initialize state (same as encrypt)
       const ivHigh = Math.floor(this.IV / 0x100000000);
-      const ivLow = (this.IV & 0xFFFFFFFF) >>> 0;
+      const ivLow = OpCodes.AndN(this.IV, 0xFFFFFFFF);
       this.perm.S[0] = [ivLow, ivHigh];
 
       if (this.keybytes === 16) {
@@ -629,10 +629,10 @@
         const k2High = OpCodes.Pack32BE(this._key[8], this._key[9], this._key[10], this._key[11]);
         const k2Low = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
 
-        this.perm.S[3][0] ^= k1Low;
-        this.perm.S[3][1] ^= k1High;
-        this.perm.S[4][0] ^= k2Low;
-        this.perm.S[4][1] ^= k2High;
+        this.perm.S[3][0] = OpCodes.XorN(this.perm.S[3][0], k1Low);
+        this.perm.S[3][1] = OpCodes.XorN(this.perm.S[3][1], k1High);
+        this.perm.S[4][0] = OpCodes.XorN(this.perm.S[4][0], k2Low);
+        this.perm.S[4][1] = OpCodes.XorN(this.perm.S[4][1], k2High);
       } else {
         // Ascon-80pq: XOR key at byte position 20
         const k0 = OpCodes.Pack32BE(this._key[0], this._key[1], this._key[2], this._key[3]);
@@ -641,11 +641,11 @@
         const k2High = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
         const k2Low = OpCodes.Pack32BE(this._key[16], this._key[17], this._key[18], this._key[19]);
 
-        this.perm.S[2][0] ^= k0;
-        this.perm.S[3][1] ^= k1High;
-        this.perm.S[3][0] ^= k1Low;
-        this.perm.S[4][1] ^= k2High;
-        this.perm.S[4][0] ^= k2Low;
+        this.perm.S[2][0] = OpCodes.XorN(this.perm.S[2][0], k0);
+        this.perm.S[3][1] = OpCodes.XorN(this.perm.S[3][1], k1High);
+        this.perm.S[3][0] = OpCodes.XorN(this.perm.S[3][0], k1Low);
+        this.perm.S[4][1] = OpCodes.XorN(this.perm.S[4][1], k2High);
+        this.perm.S[4][0] = OpCodes.XorN(this.perm.S[4][0], k2Low);
       }
 
       // Process AAD
@@ -654,7 +654,7 @@
       }
 
       // Domain separation
-      this.perm.S[4][0] ^= 1;
+      this.perm.S[4][0] = OpCodes.XorN(this.perm.S[4][0], 1);
 
       // Decrypt ciphertext
       const plaintext = this._processData(ciphertext, false);
@@ -686,17 +686,17 @@
         if (this.rate === 8) {
           const high = OpCodes.Pack32BE(aad[offset], aad[offset+1], aad[offset+2], aad[offset+3]);
           const low = OpCodes.Pack32BE(aad[offset+4], aad[offset+5], aad[offset+6], aad[offset+7]);
-          this.perm.S[0][0] ^= low;
-          this.perm.S[0][1] ^= high;
+          this.perm.S[0][0] = OpCodes.XorN(this.perm.S[0][0], low);
+          this.perm.S[0][1] = OpCodes.XorN(this.perm.S[0][1], high);
         } else {
           const high0 = OpCodes.Pack32BE(aad[offset], aad[offset+1], aad[offset+2], aad[offset+3]);
           const low0 = OpCodes.Pack32BE(aad[offset+4], aad[offset+5], aad[offset+6], aad[offset+7]);
           const high1 = OpCodes.Pack32BE(aad[offset+8], aad[offset+9], aad[offset+10], aad[offset+11]);
           const low1 = OpCodes.Pack32BE(aad[offset+12], aad[offset+13], aad[offset+14], aad[offset+15]);
-          this.perm.S[0][0] ^= low0;
-          this.perm.S[0][1] ^= high0;
-          this.perm.S[1][0] ^= low1;
-          this.perm.S[1][1] ^= high1;
+          this.perm.S[0][0] = OpCodes.XorN(this.perm.S[0][0], low0);
+          this.perm.S[0][1] = OpCodes.XorN(this.perm.S[0][1], high0);
+          this.perm.S[1][0] = OpCodes.XorN(this.perm.S[1][0], low1);
+          this.perm.S[1][1] = OpCodes.XorN(this.perm.S[1][1], high1);
         }
         this.perm.P(this.b);
         offset += this.rate;
@@ -714,17 +714,17 @@
         if (this.rate === 8) {
           const high = OpCodes.Pack32BE(padded[0], padded[1], padded[2], padded[3]);
           const low = OpCodes.Pack32BE(padded[4], padded[5], padded[6], padded[7]);
-          this.perm.S[0][0] ^= low;
-          this.perm.S[0][1] ^= high;
+          this.perm.S[0][0] = OpCodes.XorN(this.perm.S[0][0], low);
+          this.perm.S[0][1] = OpCodes.XorN(this.perm.S[0][1], high);
         } else {
           const high0 = OpCodes.Pack32BE(padded[0], padded[1], padded[2], padded[3]);
           const low0 = OpCodes.Pack32BE(padded[4], padded[5], padded[6], padded[7]);
           const high1 = OpCodes.Pack32BE(padded[8], padded[9], padded[10], padded[11]);
           const low1 = OpCodes.Pack32BE(padded[12], padded[13], padded[14], padded[15]);
-          this.perm.S[0][0] ^= low0;
-          this.perm.S[0][1] ^= high0;
-          this.perm.S[1][0] ^= low1;
-          this.perm.S[1][1] ^= high1;
+          this.perm.S[0][0] = OpCodes.XorN(this.perm.S[0][0], low0);
+          this.perm.S[0][1] = OpCodes.XorN(this.perm.S[0][1], high0);
+          this.perm.S[1][0] = OpCodes.XorN(this.perm.S[1][0], low1);
+          this.perm.S[1][1] = OpCodes.XorN(this.perm.S[1][1], high1);
         }
         this.perm.P(this.b);
       } else {
@@ -732,7 +732,7 @@
         // PAD(0) is always applied to the first word of the rate
         // For empty AAD: S[0]
         // For complete blocks: S[0] (after last permutation)
-        this.perm.S[0][1] ^= 0x80000000;
+        this.perm.S[0][1] = OpCodes.XorN(this.perm.S[0][1], 0x80000000);
         this.perm.P(this.b);
       }
     }
@@ -749,16 +749,16 @@
 
           if (encrypt) {
             // Encrypt: C = P XOR S[0]
-            this.perm.S[0][0] ^= low;
-            this.perm.S[0][1] ^= high;
+            this.perm.S[0][0] = OpCodes.XorN(this.perm.S[0][0], low);
+            this.perm.S[0][1] = OpCodes.XorN(this.perm.S[0][1], high);
 
             const outHigh = OpCodes.Unpack32BE(this.perm.S[0][1]);
             const outLow = OpCodes.Unpack32BE(this.perm.S[0][0]);
             output.push(...outHigh, ...outLow);
           } else {
             // Decrypt: P = C XOR S[0], then S[0] = C
-            const pHigh = (high ^ this.perm.S[0][1]) >>> 0;
-            const pLow = (low ^ this.perm.S[0][0]) >>> 0;
+            const pHigh = OpCodes.XorN(high, this.perm.S[0][1]);
+            const pLow = OpCodes.XorN(low, this.perm.S[0][0]);
 
             const outHigh = OpCodes.Unpack32BE(pHigh);
             const outLow = OpCodes.Unpack32BE(pLow);
@@ -774,10 +774,10 @@
           const low1 = OpCodes.Pack32BE(data[offset+12], data[offset+13], data[offset+14], data[offset+15]);
 
           if (encrypt) {
-            this.perm.S[0][0] ^= low0;
-            this.perm.S[0][1] ^= high0;
-            this.perm.S[1][0] ^= low1;
-            this.perm.S[1][1] ^= high1;
+            this.perm.S[0][0] = OpCodes.XorN(this.perm.S[0][0], low0);
+            this.perm.S[0][1] = OpCodes.XorN(this.perm.S[0][1], high0);
+            this.perm.S[1][0] = OpCodes.XorN(this.perm.S[1][0], low1);
+            this.perm.S[1][1] = OpCodes.XorN(this.perm.S[1][1], high1);
 
             const out0High = OpCodes.Unpack32BE(this.perm.S[0][1]);
             const out0Low = OpCodes.Unpack32BE(this.perm.S[0][0]);
@@ -785,10 +785,10 @@
             const out1Low = OpCodes.Unpack32BE(this.perm.S[1][0]);
             output.push(...out0High, ...out0Low, ...out1High, ...out1Low);
           } else {
-            const p0High = (high0 ^ this.perm.S[0][1]) >>> 0;
-            const p0Low = (low0 ^ this.perm.S[0][0]) >>> 0;
-            const p1High = (high1 ^ this.perm.S[1][1]) >>> 0;
-            const p1Low = (low1 ^ this.perm.S[1][0]) >>> 0;
+            const p0High = OpCodes.XorN(high0, this.perm.S[0][1]);
+            const p0Low = OpCodes.XorN(low0, this.perm.S[0][0]);
+            const p1High = OpCodes.XorN(high1, this.perm.S[1][1]);
+            const p1Low = OpCodes.XorN(low1, this.perm.S[1][0]);
 
             const out0High = OpCodes.Unpack32BE(p0High);
             const out0Low = OpCodes.Unpack32BE(p0Low);
@@ -821,8 +821,8 @@
           const low = OpCodes.Pack32BE(padded[4], padded[5], padded[6], padded[7]);
 
           if (encrypt) {
-            this.perm.S[0][0] ^= low;
-            this.perm.S[0][1] ^= high;
+            this.perm.S[0][0] = OpCodes.XorN(this.perm.S[0][0], low);
+            this.perm.S[0][1] = OpCodes.XorN(this.perm.S[0][1], high);
 
             const outHigh = OpCodes.Unpack32BE(this.perm.S[0][1]);
             const outLow = OpCodes.Unpack32BE(this.perm.S[0][0]);
@@ -834,9 +834,9 @@
             // Decrypt partial block following BouncyCastle ProcessFinalDecrypt exactly
             // Step 1: XOR padding into state at position `remaining`
             if (remaining < 4) {
-              this.perm.S[0][1] ^= (0x80000000 >>> (remaining << 3)) >>> 0;
+              this.perm.S[0][1] = OpCodes.XorN(this.perm.S[0][1], OpCodes.Shr32(0x80000000, OpCodes.Shl32(remaining, 3)));
             } else {
-              this.perm.S[0][0] ^= (0x80000000 >>> ((remaining - 4) << 3)) >>> 0;
+              this.perm.S[0][0] = OpCodes.XorN(this.perm.S[0][0], OpCodes.Shr32(0x80000000, OpCodes.Shl32(remaining - 4, 3)));
             }
 
             // Step 2: Pack ciphertext bytes
@@ -847,8 +847,8 @@
             const cLow = OpCodes.Pack32BE(padded[4], padded[5], padded[6], padded[7]);
 
             // Step 3: XOR ciphertext into state
-            this.perm.S[0][0] ^= cLow;
-            this.perm.S[0][1] ^= cHigh;
+            this.perm.S[0][0] = OpCodes.XorN(this.perm.S[0][0], cLow);
+            this.perm.S[0][1] = OpCodes.XorN(this.perm.S[0][1], cHigh);
 
             // Step 4: Output plaintext (state XOR ciphertext = plaintext)
             const pHigh = OpCodes.Unpack32BE(this.perm.S[0][1]);
@@ -862,14 +862,14 @@
             }
 
             // Step 5: Mask to clear the ciphertext bytes (keep padding and lower state)
-            const maskLow = remaining <= 4 ? 0 : (0xFFFFFFFF >>> ((remaining - 4) << 3));
-            const maskHigh = remaining < 4 ? (0xFFFFFFFF >>> (remaining << 3)) : 0xFFFFFFFF;
-            this.perm.S[0][0] &= maskLow;
-            this.perm.S[0][1] &= maskHigh;
+            const maskLow = remaining <= 4 ? 0 : OpCodes.Shr32(0xFFFFFFFF, OpCodes.Shl32(remaining - 4, 3));
+            const maskHigh = remaining < 4 ? OpCodes.Shr32(0xFFFFFFFF, OpCodes.Shl32(remaining, 3)) : 0xFFFFFFFF;
+            this.perm.S[0][0] = OpCodes.AndN(this.perm.S[0][0], maskLow);
+            this.perm.S[0][1] = OpCodes.AndN(this.perm.S[0][1], maskHigh);
 
             // Step 6: XOR ciphertext back to restore it in the cleared position
-            this.perm.S[0][0] ^= cLow;
-            this.perm.S[0][1] ^= cHigh;
+            this.perm.S[0][0] = OpCodes.XorN(this.perm.S[0][0], cLow);
+            this.perm.S[0][1] = OpCodes.XorN(this.perm.S[0][1], cHigh);
           }
         } else {
           // 16-byte rate
@@ -879,10 +879,10 @@
           const low1 = OpCodes.Pack32BE(padded[12], padded[13], padded[14], padded[15]);
 
           if (encrypt) {
-            this.perm.S[0][0] ^= low0;
-            this.perm.S[0][1] ^= high0;
-            this.perm.S[1][0] ^= low1;
-            this.perm.S[1][1] ^= high1;
+            this.perm.S[0][0] = OpCodes.XorN(this.perm.S[0][0], low0);
+            this.perm.S[0][1] = OpCodes.XorN(this.perm.S[0][1], high0);
+            this.perm.S[1][0] = OpCodes.XorN(this.perm.S[1][0], low1);
+            this.perm.S[1][1] = OpCodes.XorN(this.perm.S[1][1], high1);
 
             const out0High = OpCodes.Unpack32BE(this.perm.S[0][1]);
             const out0Low = OpCodes.Unpack32BE(this.perm.S[0][0]);
@@ -900,7 +900,7 @@
             const sBlock = [...s0High, ...s0Low, ...s1High, ...s1Low];
 
             for (let i = 0; i < remaining; ++i) {
-              output.push(data[offset + i] ^ sBlock[i]);
+              output.push(OpCodes.XorN(data[offset + i], sBlock[i]));
               padded[i] = data[offset + i];
             }
 
@@ -908,10 +908,10 @@
             const c0Low = OpCodes.Pack32BE(padded[4], padded[5], padded[6], padded[7]);
             const c1High = OpCodes.Pack32BE(padded[8], padded[9], padded[10], padded[11]);
             const c1Low = OpCodes.Pack32BE(padded[12], padded[13], padded[14], padded[15]);
-            this.perm.S[0][0] ^= c0Low;
-            this.perm.S[0][1] ^= c0High;
-            this.perm.S[1][0] ^= c1Low;
-            this.perm.S[1][1] ^= c1High;
+            this.perm.S[0][0] = OpCodes.XorN(this.perm.S[0][0], c0Low);
+            this.perm.S[0][1] = OpCodes.XorN(this.perm.S[0][1], c0High);
+            this.perm.S[1][0] = OpCodes.XorN(this.perm.S[1][0], c1Low);
+            this.perm.S[1][1] = OpCodes.XorN(this.perm.S[1][1], c1High);
           }
         }
       } else {
@@ -919,7 +919,7 @@
         // PAD(0) is always applied to the first word of the rate
         // For empty message: S[0]
         // For complete blocks: S[0] (after last permutation)
-        this.perm.S[0][1] ^= 0x80000000;
+        this.perm.S[0][1] = OpCodes.XorN(this.perm.S[0][1], 0x80000000);
       }
 
       return output;
@@ -938,16 +938,16 @@
 
         if (this.variant === 'ascon128a') {
           // Ascon-128a: XOR at S[2-3]
-          this.perm.S[2][0] ^= k1Low;
-          this.perm.S[2][1] ^= k1High;
-          this.perm.S[3][0] ^= k2Low;
-          this.perm.S[3][1] ^= k2High;
+          this.perm.S[2][0] = OpCodes.XorN(this.perm.S[2][0], k1Low);
+          this.perm.S[2][1] = OpCodes.XorN(this.perm.S[2][1], k1High);
+          this.perm.S[3][0] = OpCodes.XorN(this.perm.S[3][0], k2Low);
+          this.perm.S[3][1] = OpCodes.XorN(this.perm.S[3][1], k2High);
         } else {
           // Ascon-128: XOR at S[1-2]
-          this.perm.S[1][0] ^= k1Low;
-          this.perm.S[1][1] ^= k1High;
-          this.perm.S[2][0] ^= k2Low;
-          this.perm.S[2][1] ^= k2High;
+          this.perm.S[1][0] = OpCodes.XorN(this.perm.S[1][0], k1Low);
+          this.perm.S[1][1] = OpCodes.XorN(this.perm.S[1][1], k1High);
+          this.perm.S[2][0] = OpCodes.XorN(this.perm.S[2][0], k2Low);
+          this.perm.S[2][1] = OpCodes.XorN(this.perm.S[2][1], k2High);
         }
       } else {
         // Ascon-80pq: XOR full 20-byte key at byte position 8 (state.B + 8)
@@ -958,11 +958,11 @@
         const k2High = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
         const k2Low = OpCodes.Pack32BE(this._key[16], this._key[17], this._key[18], this._key[19]);
 
-        this.perm.S[1][1] ^= k0;      // S[1] high XOR key[0-3]
-        this.perm.S[1][0] ^= k1High;  // S[1] low  XOR key[4-7]
-        this.perm.S[2][1] ^= k1Low;   // S[2] high XOR key[8-11]
-        this.perm.S[2][0] ^= k2High;  // S[2] low  XOR key[12-15]
-        this.perm.S[3][1] ^= k2Low;   // S[3] high XOR key[16-19]
+        this.perm.S[1][1] = OpCodes.XorN(this.perm.S[1][1], k0);      // S[1] high XOR key[0-3]
+        this.perm.S[1][0] = OpCodes.XorN(this.perm.S[1][0], k1High);  // S[1] low  XOR key[4-7]
+        this.perm.S[2][1] = OpCodes.XorN(this.perm.S[2][1], k1Low);   // S[2] high XOR key[8-11]
+        this.perm.S[2][0] = OpCodes.XorN(this.perm.S[2][0], k2High);  // S[2] low  XOR key[12-15]
+        this.perm.S[3][1] = OpCodes.XorN(this.perm.S[3][1], k2Low);   // S[3] high XOR key[16-19]
       }
 
       // Final permutation
@@ -978,10 +978,10 @@
         const k2High = OpCodes.Pack32BE(this._key[8], this._key[9], this._key[10], this._key[11]);
         const k2Low = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
 
-        const tag3High = (this.perm.S[3][1] ^ k1High) >>> 0;
-        const tag3Low = (this.perm.S[3][0] ^ k1Low) >>> 0;
-        const tag4High = (this.perm.S[4][1] ^ k2High) >>> 0;
-        const tag4Low = (this.perm.S[4][0] ^ k2Low) >>> 0;
+        const tag3High = OpCodes.XorN(this.perm.S[3][1], k1High);
+        const tag3Low = OpCodes.XorN(this.perm.S[3][0], k1Low);
+        const tag4High = OpCodes.XorN(this.perm.S[4][1], k2High);
+        const tag4Low = OpCodes.XorN(this.perm.S[4][0], k2Low);
 
         const tag3HighBytes = OpCodes.Unpack32BE(tag3High);
         const tag3LowBytes = OpCodes.Unpack32BE(tag3Low);
@@ -1000,10 +1000,10 @@
         const k2High = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
         const k2Low = OpCodes.Pack32BE(this._key[16], this._key[17], this._key[18], this._key[19]);
 
-        const tag3High = (this.perm.S[3][1] ^ k1High) >>> 0;
-        const tag3Low = (this.perm.S[3][0] ^ k1Low) >>> 0;
-        const tag4High = (this.perm.S[4][1] ^ k2High) >>> 0;
-        const tag4Low = (this.perm.S[4][0] ^ k2Low) >>> 0;
+        const tag3High = OpCodes.XorN(this.perm.S[3][1], k1High);
+        const tag3Low = OpCodes.XorN(this.perm.S[3][0], k1Low);
+        const tag4High = OpCodes.XorN(this.perm.S[4][1], k2High);
+        const tag4Low = OpCodes.XorN(this.perm.S[4][0], k2Low);
 
         const tag3HighBytes = OpCodes.Unpack32BE(tag3High);
         const tag3LowBytes = OpCodes.Unpack32BE(tag3Low);

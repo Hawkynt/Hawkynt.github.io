@@ -77,31 +77,31 @@
 
     for (let i = 0; i < MAXROUNDS; ++i) {
       // Theta: Column Parity Mixer
-      const p0 = a0^a4^a8;
-      const p1 = a1^a5^a9;
-      const p2 = a2^a6^a10;
-      const p3 = a3^a7^a11;
+      const p0 = OpCodes.XorN(OpCodes.XorN(a0, a4), a8);
+      const p1 = OpCodes.XorN(OpCodes.XorN(a1, a5), a9);
+      const p2 = OpCodes.XorN(OpCodes.XorN(a2, a6), a10);
+      const p3 = OpCodes.XorN(OpCodes.XorN(a3, a7), a11);
 
-      const e0 = OpCodes.RotL32(p3, 5)^OpCodes.RotL32(p3, 14);
-      const e1 = OpCodes.RotL32(p0, 5)^OpCodes.RotL32(p0, 14);
-      const e2 = OpCodes.RotL32(p1, 5)^OpCodes.RotL32(p1, 14);
-      const e3 = OpCodes.RotL32(p2, 5)^OpCodes.RotL32(p2, 14);
+      const e0 = OpCodes.XorN(OpCodes.RotL32(p3, 5), OpCodes.RotL32(p3, 14));
+      const e1 = OpCodes.XorN(OpCodes.RotL32(p0, 5), OpCodes.RotL32(p0, 14));
+      const e2 = OpCodes.XorN(OpCodes.RotL32(p1, 5), OpCodes.RotL32(p1, 14));
+      const e3 = OpCodes.XorN(OpCodes.RotL32(p2, 5), OpCodes.RotL32(p2, 14));
 
-      a0 ^= e0;
-      a4 ^= e0;
-      a8 ^= e0;
+      a0 = OpCodes.XorN(a0, e0);
+      a4 = OpCodes.XorN(a4, e0);
+      a8 = OpCodes.XorN(a8, e0);
 
-      a1 ^= e1;
-      a5 ^= e1;
-      a9 ^= e1;
+      a1 = OpCodes.XorN(a1, e1);
+      a5 = OpCodes.XorN(a5, e1);
+      a9 = OpCodes.XorN(a9, e1);
 
-      a2 ^= e2;
-      a6 ^= e2;
-      a10 ^= e2;
+      a2 = OpCodes.XorN(a2, e2);
+      a6 = OpCodes.XorN(a6, e2);
+      a10 = OpCodes.XorN(a10, e2);
 
-      a3 ^= e3;
-      a7 ^= e3;
-      a11 ^= e3;
+      a3 = OpCodes.XorN(a3, e3);
+      a7 = OpCodes.XorN(a7, e3);
+      a11 = OpCodes.XorN(a11, e3);
 
       // Rho-west: plane shift
       let b0 = a0;
@@ -120,23 +120,23 @@
       let b11 = OpCodes.RotL32(a11, 11);
 
       // Iota: round constant
-      b0 ^= RC[i];
+      b0 = OpCodes.XorN(b0, RC[i]);
 
       // Chi: non-linear layer
-      a0 = b0^(~b4&b8);
-      a1 = b1^(~b5&b9);
-      a2 = b2^(~b6&b10);
-      a3 = b3^(~b7&b11);
+      a0 = OpCodes.XorN(b0, OpCodes.AndN(~b4, b8));
+      a1 = OpCodes.XorN(b1, OpCodes.AndN(~b5, b9));
+      a2 = OpCodes.XorN(b2, OpCodes.AndN(~b6, b10));
+      a3 = OpCodes.XorN(b3, OpCodes.AndN(~b7, b11));
 
-      a4 = b4^(~b8&b0);
-      a5 = b5^(~b9&b1);
-      a6 = b6^(~b10&b2);
-      a7 = b7^(~b11&b3);
+      a4 = OpCodes.XorN(b4, OpCodes.AndN(~b8, b0));
+      a5 = OpCodes.XorN(b5, OpCodes.AndN(~b9, b1));
+      a6 = OpCodes.XorN(b6, OpCodes.AndN(~b10, b2));
+      a7 = OpCodes.XorN(b7, OpCodes.AndN(~b11, b3));
 
-      b8 ^= (~b0&b4);
-      b9 ^= (~b1&b5);
-      b10 ^= (~b2&b6);
-      b11 ^= (~b3&b7);
+      b8 = OpCodes.XorN(b8, OpCodes.AndN(~b0, b4));
+      b9 = OpCodes.XorN(b9, OpCodes.AndN(~b1, b5));
+      b10 = OpCodes.XorN(b10, OpCodes.AndN(~b2, b6));
+      b11 = OpCodes.XorN(b11, OpCodes.AndN(~b3, b7));
 
       // Rho-east: plane shift
       a4 = OpCodes.RotL32(a4, 1);
@@ -432,14 +432,14 @@
     _down(Xi, XiOff, XiLen, Cd) {
       // XOR data into state
       for (let i = 0; i < XiLen; i++) {
-        this.state[i] ^= Xi[XiOff + i];
+        this.state[i] = OpCodes.XorN(this.state[i], Xi[XiOff + i]);
       }
 
       // Add padding bit
-      this.state[XiLen] ^= 0x01;
+      this.state[XiLen] = OpCodes.XorN(this.state[XiLen], 0x01);
 
       // Add domain separation at last byte
-      this.state[STATE_SIZE - 1] ^= Cd;
+      this.state[STATE_SIZE - 1] = OpCodes.XorN(this.state[STATE_SIZE - 1], Cd);
     }
 
     /**
@@ -447,7 +447,7 @@
      * @param {number} Cu - Domain separation for up phase
      */
     _up(Cu) {
-      this.state[STATE_SIZE - 1] ^= Cu;
+      this.state[STATE_SIZE - 1] = OpCodes.XorN(this.state[STATE_SIZE - 1], Cu);
       xoodooPermutation(this.state);
       this.phase = PHASE_UP;
     }
@@ -501,12 +501,12 @@
           this._up(domain);
 
           for (let i = 0; i < SQUEEZE_RATE; i++) {
-            const plainByte = this.state[i] ^ ciphertext[pos + i];
+            const plainByte = OpCodes.XorN(this.state[i], ciphertext[pos + i]);
             output.push(plainByte);
             this.state[i] = ciphertext[pos + i];
           }
 
-          this.state[SQUEEZE_RATE] ^= 0x01;
+          this.state[SQUEEZE_RATE] = OpCodes.XorN(this.state[SQUEEZE_RATE], 0x01);
           this.phase = PHASE_DOWN;
           pos += SQUEEZE_RATE;
           clen -= SQUEEZE_RATE;
@@ -517,12 +517,12 @@
         this._up(domain);
 
         for (let i = 0; i < clen; i++) {
-          const plainByte = this.state[i] ^ ciphertext[pos + i];
+          const plainByte = OpCodes.XorN(this.state[i], ciphertext[pos + i]);
           output.push(plainByte);
           this.state[i] = ciphertext[pos + i];
         }
         // Add padding at position 'clen'
-        this.state[clen] ^= 0x01;
+        this.state[clen] = OpCodes.XorN(this.state[clen], 0x01);
         this.phase = PHASE_DOWN;
 
         // Generate and verify tag
@@ -552,17 +552,17 @@
           this._up(domain);
 
           for (let i = 0; i < SQUEEZE_RATE; i++) {
-            const cipherByte = this.state[i] ^ input[pos + i];
+            const cipherByte = OpCodes.XorN(this.state[i], input[pos + i]);
             output.push(cipherByte);
           }
 
           // Absorb plaintext into state for authentication
           for (let i = 0; i < SQUEEZE_RATE; i++) {
-            this.state[i] ^= input[pos + i];
+            this.state[i] = OpCodes.XorN(this.state[i], input[pos + i]);
           }
 
           // Add padding
-          this.state[SQUEEZE_RATE] ^= 0x01;
+          this.state[SQUEEZE_RATE] = OpCodes.XorN(this.state[SQUEEZE_RATE], 0x01);
           this.phase = PHASE_DOWN;
           pos += SQUEEZE_RATE;
           mlen -= SQUEEZE_RATE;
@@ -573,17 +573,17 @@
         this._up(domain);
 
         for (let i = 0; i < mlen; i++) {
-          const cipherByte = this.state[i] ^ input[pos + i];
+          const cipherByte = OpCodes.XorN(this.state[i], input[pos + i]);
           output.push(cipherByte);
         }
 
         // Absorb plaintext into state for authentication
         for (let i = 0; i < mlen; i++) {
-          this.state[i] ^= input[pos + i];
+          this.state[i] = OpCodes.XorN(this.state[i], input[pos + i]);
         }
 
         // Add padding
-        this.state[mlen] ^= 0x01;
+        this.state[mlen] = OpCodes.XorN(this.state[mlen], 0x01);
         this.phase = PHASE_DOWN;
 
         // Generate authentication tag

@@ -297,9 +297,9 @@
      * Generate next 32-bit value using xorshift128 algorithm
      *
      * Algorithm from Marsaglia (2003):
-     * t = x ^ (x << 11)
+     * t = XOR(x, left_shift(x, 11))
      * x = y; y = z; z = w
-     * w = w ^ (w >> 19) ^ (t ^ (t >> 8))
+     * w = XOR(XOR(w, right_shift(w, 19)), XOR(t, right_shift(t, 8)))
      * return w
      */
     _next32() {
@@ -308,8 +308,10 @@
       }
 
       // Step 1: t = x ^ (x << 11)
-      let t = this._x ^ ((this._x << 11) >>> 0);
-      t = t >>> 0; // Ensure unsigned 32-bit
+      let t = this._x;
+      const xShifted = OpCodes.Shl32(this._x, 11);
+      t = OpCodes.XorN(t, xShifted);
+      t = OpCodes.ToUint32(t); // Ensure unsigned 32-bit
 
       // Step 2: Rotate state (x=y, y=z, z=w)
       this._x = this._y;
@@ -317,7 +319,11 @@
       this._z = this._w;
 
       // Step 3: w = w ^ (w >> 19) ^ (t ^ (t >> 8))
-      this._w = (this._w ^ (this._w >>> 19) ^ (t ^ (t >>> 8))) >>> 0;
+      const wShr19 = OpCodes.Shr32(this._w, 19);
+      const tShr8 = OpCodes.Shr32(t, 8);
+      const wXorShr = OpCodes.XorN(this._w, wShr19);
+      const tXorShr = OpCodes.XorN(t, tShr8);
+      this._w = OpCodes.ToUint32(OpCodes.XorN(wXorShr, tXorShr));
 
       return this._w;
     }

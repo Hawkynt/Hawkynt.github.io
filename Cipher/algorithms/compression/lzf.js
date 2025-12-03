@@ -266,17 +266,17 @@
             // Short reference: LLLooooo oooooooo
             // LLL = encoded length (1-6 represents real length 2-7)
             // ooooooooooooo = 13-bit offset
-            output.push(OpCodes.OrN(OpCodes.Shl8(encodedLen, 5), OpCodes.Shr16(off, 8)));
-            output.push(OpCodes.AndN(off, 0xFF));
+            output.push(OpCodes.ToByte(OpCodes.OrN(OpCodes.Shl8(encodedLen, 5), OpCodes.Shr16(off, 8))));
+            output.push(OpCodes.ToByte(off));
           } else {
             // Long reference: 111ooooo LLLLLLLL oooooooo
             // 111 = marker for long reference
             // ooooo = high 5 bits of offset
             // LLLLLLLL = len - 8 (extended length: real length >= 8)
             // oooooooo = low 8 bits of offset
-            output.push(OpCodes.OrN(0xE0, OpCodes.Shr16(off, 8)));
-            output.push(OpCodes.AndN(encodedLen - 7, 0xFF));
-            output.push(OpCodes.AndN(off, 0xFF));
+            output.push(OpCodes.ToByte(OpCodes.OrN(0xE0, OpCodes.Shr16(off, 8))));
+            output.push(OpCodes.ToByte(encodedLen - 7));
+            output.push(OpCodes.ToByte(off));
           }
 
           ip += len; // Skip matched bytes

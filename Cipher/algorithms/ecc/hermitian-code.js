@@ -234,8 +234,8 @@
     // GF(4) = {0, 1, α, α+1} represented as {0, 1, 2, 3}
     // Primitive polynomial: x^2 + x + 1
     gf4Add(a, b) {
-      // Addition in GF(2^m) is XOR
-      return a^b;
+      // Addition in GF(2^m) is XOR using OpCodes
+      return OpCodes.XorN(a, b);
     }
 
     gf4Multiply(a, b) {

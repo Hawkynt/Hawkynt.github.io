@@ -110,7 +110,7 @@
       // Append length in bits as 64-bit big-endian
       const bitLength = this.length * 8;
       for (let i = 0; i < 8; ++i) {
-        padding[paddingLength + i] = (bitLength >>> ((7 - i) * 8)) & 0xff;
+        padding[paddingLength + i] = OpCodes.AndN(OpCodes.Shr32(bitLength, (7 - i) * 8), 0xff);
       }
 
       this.process(padding);
@@ -139,9 +139,9 @@
       }
 
       for (let i = 16; i < 64; ++i) {
-        const s0 = OpCodes.RotR32(w[i - 15], 7) ^ OpCodes.RotR32(w[i - 15], 18) ^ (w[i - 15] >>> 3);
-        const s1 = OpCodes.RotR32(w[i - 2], 17) ^ OpCodes.RotR32(w[i - 2], 19) ^ (w[i - 2] >>> 10);
-        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+        const s0 = OpCodes.XorN(OpCodes.XorN(OpCodes.RotR32(w[i - 15], 7), OpCodes.RotR32(w[i - 15], 18)), OpCodes.Shr32(w[i - 15], 3));
+        const s1 = OpCodes.XorN(OpCodes.XorN(OpCodes.RotR32(w[i - 2], 17), OpCodes.RotR32(w[i - 2], 19)), OpCodes.Shr32(w[i - 2], 10));
+        w[i] = OpCodes.ToUint32(w[i - 16] + s0 + w[i - 7] + s1);
       }
 
       // Initialize working variables
@@ -156,32 +156,32 @@
 
       // Compression function main loop
       for (let i = 0; i < 64; ++i) {
-        const S1 = OpCodes.RotR32(e, 6) ^ OpCodes.RotR32(e, 11) ^ OpCodes.RotR32(e, 25);
-        const ch = (e & f) ^ (~e & g);
-        const temp1 = (h + S1 + ch + SHA256_K[i] + w[i]) >>> 0;
-        const S0 = OpCodes.RotR32(a, 2) ^ OpCodes.RotR32(a, 13) ^ OpCodes.RotR32(a, 22);
-        const maj = (a & b) ^ (a & c) ^ (b & c);
-        const temp2 = (S0 + maj) >>> 0;
+        const S1 = OpCodes.XorN(OpCodes.XorN(OpCodes.RotR32(e, 6), OpCodes.RotR32(e, 11)), OpCodes.RotR32(e, 25));
+        const ch = OpCodes.XorN(OpCodes.AndN(e, f), OpCodes.AndN(~e, g));
+        const temp1 = OpCodes.ToUint32(h + S1 + ch + SHA256_K[i] + w[i]);
+        const S0 = OpCodes.XorN(OpCodes.XorN(OpCodes.RotR32(a, 2), OpCodes.RotR32(a, 13)), OpCodes.RotR32(a, 22));
+        const maj = OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(a, b), OpCodes.AndN(a, c)), OpCodes.AndN(b, c));
+        const temp2 = OpCodes.ToUint32(S0 + maj);
 
         h = g;
         g = f;
         f = e;
-        e = (d + temp1) >>> 0;
+        e = OpCodes.ToUint32(d + temp1);
         d = c;
         c = b;
         b = a;
-        a = (temp1 + temp2) >>> 0;
+        a = OpCodes.ToUint32(temp1 + temp2);
       }
 
       // Add compressed chunk to current hash value
-      this.h[0] = (this.h[0] + a) >>> 0;
-      this.h[1] = (this.h[1] + b) >>> 0;
-      this.h[2] = (this.h[2] + c) >>> 0;
-      this.h[3] = (this.h[3] + d) >>> 0;
-      this.h[4] = (this.h[4] + e) >>> 0;
-      this.h[5] = (this.h[5] + f) >>> 0;
-      this.h[6] = (this.h[6] + g) >>> 0;
-      this.h[7] = (this.h[7] + h) >>> 0;
+      this.h[0] = OpCodes.ToUint32(this.h[0] + a);
+      this.h[1] = OpCodes.ToUint32(this.h[1] + b);
+      this.h[2] = OpCodes.ToUint32(this.h[2] + c);
+      this.h[3] = OpCodes.ToUint32(this.h[3] + d);
+      this.h[4] = OpCodes.ToUint32(this.h[4] + e);
+      this.h[5] = OpCodes.ToUint32(this.h[5] + f);
+      this.h[6] = OpCodes.ToUint32(this.h[6] + g);
+      this.h[7] = OpCodes.ToUint32(this.h[7] + h);
     }
   }
 
@@ -237,13 +237,13 @@
           // RotWord, SubWord, Rcon
           temp = this._rotWord(temp);
           temp = this._subWord(temp);
-          temp = (temp ^ (AES_RCON[(i / nk) - 1] << 24)) >>> 0;
+          temp = OpCodes.ToUint32(OpCodes.XorN(temp, OpCodes.Shl32(AES_RCON[(i / nk) - 1], 24)));
         } else if (i % nk === 4) {
           // SubWord for AES-256
           temp = this._subWord(temp);
         }
 
-        w[i] = (w[i - nk] ^ temp) >>> 0;
+        w[i] = OpCodes.ToUint32(OpCodes.XorN(w[i - nk], temp));
       }
 
       // Convert to byte array
@@ -299,7 +299,7 @@
     _addRoundKey(state, round) {
       const offset = round * 16;
       for (let i = 0; i < 16; ++i) {
-        state[i] ^= this.roundKeys[offset + i];
+        state[i] = OpCodes.XorN(state[i], this.roundKeys[offset + i]);
       }
     }
 
@@ -341,10 +341,10 @@
         const s2 = state[base + 2];
         const s3 = state[base + 3];
 
-        state[base] = OpCodes.GF256Mul(s0, 2) ^ OpCodes.GF256Mul(s1, 3) ^ s2 ^ s3;
-        state[base + 1] = s0 ^ OpCodes.GF256Mul(s1, 2) ^ OpCodes.GF256Mul(s2, 3) ^ s3;
-        state[base + 2] = s0 ^ s1 ^ OpCodes.GF256Mul(s2, 2) ^ OpCodes.GF256Mul(s3, 3);
-        state[base + 3] = OpCodes.GF256Mul(s0, 3) ^ s1 ^ s2 ^ OpCodes.GF256Mul(s3, 2);
+        state[base] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(s0, 2), OpCodes.GF256Mul(s1, 3)), s2), s3);
+        state[base + 1] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, OpCodes.GF256Mul(s1, 2)), OpCodes.GF256Mul(s2, 3)), s3);
+        state[base + 2] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, s1), OpCodes.GF256Mul(s2, 2)), OpCodes.GF256Mul(s3, 3));
+        state[base + 3] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(s0, 3), s1), s2), OpCodes.GF256Mul(s3, 2));
       }
     }
   }
@@ -380,7 +380,7 @@
       // Documentation
       this.documentation = [
         new LinkItem(
-          "Practical Cryptography - Ferguson & Schneier (2003)",
+          "Practical Cryptography - Ferguson and Schneier (2003)",
           "https://www.schneier.com/books/practical-cryptography/"
         ),
         new LinkItem(
@@ -423,7 +423,7 @@
           text: "Multiple block test - 128 bytes sequential entropy, generate 64 bytes",
           uri: "https://github.com/libtom/libtomcrypt/blob/develop/src/prngs/fortuna.c",
           input: null,
-          seed: new Array(128).fill(0).map((_, i) => i & 0xff),
+          seed: new Array(128).fill(0).map((_, i) => OpCodes.AndN(i, 0xff)),
           outputSize: 64,
           expected: OpCodes.Hex8ToBytes(
             '667dbf72dbf3a8b403512fc0e26ec57f' +
@@ -490,7 +490,7 @@
      */
     _updateIV() {
       for (let i = 0; i < 16; ++i) {
-        this.IV[i] = (this.IV[i] + 1) & 0xff;
+        this.IV[i] = OpCodes.AndN(this.IV[i] + 1, 0xff);
         if (this.IV[i] !== 0) {
           break; // No carry, done
         }
@@ -516,7 +516,7 @@
       // Pool scheduling: pool i is included every 2^i reseeds
       // Pool 0 is always included
       for (let i = 0; i < FORTUNA_POOLS; ++i) {
-        if (i === 0 || ((newResetCnt >>> (i - 1)) & 1) === 0) {
+        if (i === 0 || OpCodes.AndN(OpCodes.Shr32(newResetCnt, i - 1), 1) === 0) {
           // Include this pool
           const poolHash = this.pools[i].done();
           md.process(poolHash);
@@ -570,7 +570,7 @@
       }
 
       // Format: source (1 byte) || length (1 byte) || data
-      const header = [source & 0xff, chunk.length & 0xff];
+      const header = [OpCodes.AndN(source, 0xff), OpCodes.AndN(chunk.length, 0xff)];
       this.pools[targetPool].process(header);
       this.pools[targetPool].process(chunk);
 

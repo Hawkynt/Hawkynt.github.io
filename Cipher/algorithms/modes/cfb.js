@@ -218,10 +218,7 @@
           const keystream = encryptCipher.Result();
 
           // XOR ciphertext with keystream to get plaintext
-          const plainBlock = [];
-          for (let j = 0; j < remainingBytes; j++) {
-            plainBlock[j] = cipherBlock[j] ^ keystream[j];
-          }
+          const plainBlock = OpCodes.XorArrays(cipherBlock.slice(0, remainingBytes), keystream.slice(0, remainingBytes));
           output.push(...plainBlock);
 
           // Update feedback register for next iteration
@@ -247,10 +244,7 @@
           const keystream = encryptCipher.Result();
 
           // XOR plaintext with keystream to get ciphertext
-          const cipherBlock = [];
-          for (let j = 0; j < remainingBytes; j++) {
-            cipherBlock[j] = plainBlock[j] ^ keystream[j];
-          }
+          const cipherBlock = OpCodes.XorArrays(plainBlock.slice(0, remainingBytes), keystream.slice(0, remainingBytes));
           output.push(...cipherBlock);
 
           // Update feedback register for next iteration

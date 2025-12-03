@@ -315,15 +315,15 @@
 
       // Shift left by 1 bit (multiply by x)
       for (let i = 15; i >= 0; i--) {
-        const newCarry = (value[i] >>> 7) & 1;
-        result[i] = ((value[i] << 1) | carry) & 0xFF;
+        const newCarry = OpCodes.AndN(OpCodes.Shr32(value[i], 7), 1);
+        result[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(value[i], 1), carry), 0xFF);
         carry = newCarry;
       }
 
       // If there was a carry, reduce by the polynomial
       // x^128 + x^7 + x^2 + x + 1 = 0x87 in little-endian bit order
       if (carry) {
-        result[0] ^= 0x87;
+        result[0] = OpCodes.XorN(result[0], 0x87);
       }
 
       return result;

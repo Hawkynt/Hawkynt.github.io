@@ -238,7 +238,7 @@
 
         // Append message length in bits (big-endian, 64-bit)
         for (let i = 7; i >= 0; i--) {
-          this.buffer.push((msgBitLength >>> (i * 8)) & 0xFF);
+          this.buffer.push(OpCodes.AndN(OpCodes.Shr32(msgBitLength, i * 8), 0xFF));
         }
 
         // Process final block
@@ -251,7 +251,7 @@
 
         // XOR with original state for feedforward
         for (let i = 0; i < this.state.length; i++) {
-          finalState[i] ^= this.state[i];
+          finalState[i] = OpCodes.XorN(finalState[i], this.state[i]);
         }
 
         // Truncate to desired output length
@@ -270,7 +270,7 @@
         // h ⊕ m
         const hXorM = new Array(h.length);
         for (let i = 0; i < h.length; i++) {
-          hXorM[i] = h[i] ^ m[i];
+          hXorM[i] = OpCodes.XorN(h[i], m[i]);
         }
 
         // Compute P(h ⊕ m) and Q(m)
@@ -279,7 +279,7 @@
 
         // Final result: P(h ⊕ m) ⊕ Q(m) ⊕ h
         for (let i = 0; i < this.state.length; i++) {
-          this.state[i] = pResult[i] ^ qResult[i] ^ h[i];
+          this.state[i] = OpCodes.XorN(OpCodes.XorN(pResult[i], qResult[i]), h[i]);
         }
       }
 
@@ -364,14 +364,14 @@
       // AddRoundConstant for P permutation
       addRoundConstantP(state, round) {
         // P permutation: add round constant to position (0,0)
-        state[0] ^= round;
+        state[0] = OpCodes.XorN(state[0], round);
       }
 
       // AddRoundConstant for Q permutation
       addRoundConstantQ(state, round) {
         // Q permutation: add round constants to the last row
         for (let col = 0; col < this.cols; col++) {
-          state[7 * this.cols + col] ^= 0xFF ^ ((col << 4) ^ round);
+          state[7 * this.cols + col] = OpCodes.XorN(state[7 * this.cols + col], OpCodes.XorN(0xFF, OpCodes.XorN(OpCodes.Shl32(col, 4), round)));
         }
       }
 
@@ -443,7 +443,7 @@
           for (let row = 0; row < this.rows; row++) {
             let result = 0;
             for (let i = 0; i < this.rows; i++) {
-              result ^= this.gfMult(matrix[row][i], column[i]);
+              result = OpCodes.XorN(result, this.gfMult(matrix[row][i], column[i]));
             }
             state[row * this.cols + col] = result;
           }
@@ -454,17 +454,17 @@
       gfMult(a, b) {
         let result = 0;
         for (let i = 0; i < 8; i++) {
-          if ((b & 1) !== 0) {
-            result ^= a;
+          if (OpCodes.AndN(b, 1) !== 0) {
+            result = OpCodes.XorN(result, a);
           }
-          const hiBitSet = (a & 0x80) !== 0;
-          a <<= 1;
+          const hiBitSet = OpCodes.AndN(a, 0x80) !== 0;
+          a = OpCodes.Shl32(a, 1);
           if (hiBitSet) {
-            a ^= 0x1B; // AES irreducible polynomial
+            a = OpCodes.XorN(a, 0x1B); // AES irreducible polynomial
           }
-          b >>>= 1;
+          b = OpCodes.Shr32(b, 1);
         }
-        return result & 0xFF;
+        return OpCodes.AndN(result, 0xFF);
       }
     }
 

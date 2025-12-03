@@ -227,7 +227,7 @@
      * Algorithm from https://prng.di.unimi.it/xoroshiro128plusplus.c:
      * 1. result = rotl(s[0] + s[1], 17) + s[0]
      * 2. s[1] ^= s[0]
-     * 3. s[0] = rotl(s[0], 49) ^ s[1] ^ (s[1] << 21)
+     * 3. s[0] = rotl(s[0], 49) XOR s[1] XOR (s[1] shl 21)
      * 4. s[1] = rotl(s[1], 28)
      *
      * @returns {BigInt} 64-bit random value
@@ -249,7 +249,7 @@
       // s[1] ^= s[0]
       const s1_xor_s0 = OpCodes.XorN(s1, s0);
 
-      // s[0] = rotl(s[0], 49) ^ s[1] ^ (s[1] << 21)
+      // s[0] = rotl(s[0], 49) XOR s[1] XOR (s[1] shl 21)
       this._s0 = OpCodes.XorN(
         OpCodes.XorN(OpCodes.RotL64n(s0, 49), s1_xor_s0),
         OpCodes.ToQWord(OpCodes.ShiftLn(s1_xor_s0, 21))
@@ -284,7 +284,7 @@
 
         // Extract bytes in little-endian order
         for (let i = 0; i < 8 && bytesGenerated < length; ++i) {
-          const shifted = OpCodes.ShiftRn(value64, i * 8);
+          const shifted = OpCodes.ShiftRn(value64, BigInt(i * 8));
           const byteVal = Number(OpCodes.AndN(shifted, 0xFFn));
           output.push(byteVal);
           ++bytesGenerated;
@@ -347,7 +347,7 @@
 
       for (let i = 0; i < JUMP.length; ++i) {
         for (let b = 0; b < 64; ++b) {
-          const mask = OpCodes.ShiftLn(1n, b);
+          const mask = OpCodes.ShiftLn(1n, BigInt(b));
           if (OpCodes.AndN(JUMP[i], mask) !== 0n) {
             s0 = OpCodes.XorN(s0, this._s0);
             s1 = OpCodes.XorN(s1, this._s1);
@@ -377,7 +377,7 @@
 
       for (let i = 0; i < LONG_JUMP.length; ++i) {
         for (let b = 0; b < 64; ++b) {
-          const mask = OpCodes.ShiftLn(1n, b);
+          const mask = OpCodes.ShiftLn(1n, BigInt(b));
           if (OpCodes.AndN(LONG_JUMP[i], mask) !== 0n) {
             s0 = OpCodes.XorN(s0, this._s0);
             s1 = OpCodes.XorN(s1, this._s1);

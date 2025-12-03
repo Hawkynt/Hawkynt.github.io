@@ -235,7 +235,7 @@
         let weylState = this._state[wordCount - 1] || 1;
 
         for (let i = wordCount; i < 128; ++i) {
-          weylState = (weylState + weylConstant) >>> 0;
+          weylState = OpCodes.ToUint32(weylState + weylConstant);
           this._state[i] = weylState;
         }
       }
@@ -295,11 +295,10 @@
       const xj = this._state[j];
 
       // Step 1: t = x[i] XOR (x[i] << a)
-      let t = xi ^ ((xi << this._a) >>> 0);
-      t = t >>> 0; // Ensure unsigned 32-bit
+      let t = OpCodes.ToUint32(OpCodes.XorN(xi, OpCodes.Shl32(xi, this._a)));
 
       // Step 2: x[i] = x[j] XOR (x[j] >> b) XOR (t XOR (t >> c))
-      this._state[i] = (xj ^ (xj >>> this._b) ^ (t ^ (t >>> this._c))) >>> 0;
+      this._state[i] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(xj, OpCodes.Shr32(xj, this._b)), OpCodes.XorN(t, OpCodes.Shr32(t, this._c))));
 
       // Advance position (circular buffer)
       this._position = (this._position + 1) % 128;

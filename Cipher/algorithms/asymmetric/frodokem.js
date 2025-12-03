@@ -389,10 +389,10 @@
         const matrixValue = this._publicKey.matrix[row][col];
 
         // Mix with parameter-specific values for better distribution using OpCodes
-        const mixed = (matrixValue + i + this.currentN + row * col) & 0xFFFF;
+        const mixed = OpCodes.AndN(matrixValue + i + this.currentN + row * col, 0xFFFF);
         const highByte = OpCodes.Unpack16BE(mixed)[0]; // Get high byte
         const lowByte = OpCodes.Unpack16BE(mixed)[1];  // Get low byte
-        keyStream[i] = (lowByte ^ highByte) & 0xFF;
+        keyStream[i] = OpCodes.AndN(OpCodes.XorN(lowByte, highByte), 0xFF);
       }
 
       return keyStream;

@@ -156,9 +156,9 @@
    * SingletonBoundCodeInstance - MDS code implementation using Cauchy matrices
    *
    * Implementation details:
-   * - Systematic encoding: [data | parity] where parity computed via Cauchy matrix
+   * - Systematic encoding: [data parity] where parity computed via Cauchy matrix
    * - Erasure decoding: Matrix inversion to reconstruct from any k symbols
-   * - GF(256) arithmetic using primitive polynomial x^8 + x^4 + x^3 + x^2 + 1 (0x11D)
+   * - GF(256) arithmetic using primitive polynomial (0x11D): x^8 + x^4 + x^3 + x^2 + 1
    */
   class SingletonBoundCodeInstance extends IErrorCorrectionInstance {
     /**
@@ -177,8 +177,8 @@
       this.k = 4;        // Message length
       this.r = 2;        // Redundancy (n - k)
       this.d = 3;        // Minimum distance (n - k + 1) - Singleton bound!
-      this.field = 256;  // GF(2^8)
-      this.primitive = 0x11D; // Primitive polynomial: x^8 + x^4 + x^3 + x^2 + 1
+      this.field = 256;  // GF(256) - Galois Field with 256 elements
+      this.primitive = 0x11D; // Primitive polynomial: x to the 8th plus x to the 4th plus x cubed plus x squared plus 1
 
       // Initialize Galois Field arithmetic tables
       this.initializeGaloisField();
@@ -257,7 +257,7 @@
         }
       }
 
-      // Systematic encoding: [message | parity]
+      // Systematic encoding: [message parity]
       const codeword = new Array(this.n);
 
       // Copy message symbols
@@ -323,7 +323,7 @@
         let sum = 0;
         for (let j = 0; j < this.k; ++j) {
           const matrixElement = this.cauchyMatrix[this.k + i][j];
-          sum ^= this.gfMultiply(matrixElement, message[j]);
+          sum = OpCodes.XorN(sum, this.gfMultiply(matrixElement, message[j]));
         }
         parity[i] = sum;
       }
@@ -379,7 +379,7 @@
       for (let i = 0; i < this.k; ++i) {
         let sum = 0;
         for (let j = 0; j < this.k; ++j) {
-          sum ^= this.gfMultiply(inverse[i][j], survivingValues[j]);
+          sum = OpCodes.XorN(sum, this.gfMultiply(inverse[i][j], survivingValues[j]));
         }
         message[i] = sum;
       }
@@ -389,14 +389,14 @@
 
     /**
      * Generate Cauchy matrix for MDS code in systematic form
-     * Generator matrix G = [I_k | P] where I_k is identity and P is r×k parity matrix
+     * Generator matrix G = [I_k P] where I_k is identity and P is r×k parity matrix
      * P derived from Cauchy matrix to ensure MDS property
      * @returns {Array<Array<number>>} n×k generator matrix in systematic form
      */
     generateCauchyMatrix() {
       const matrix = [];
 
-      // First k rows: Identity matrix [I_k | *]
+      // First k rows: Identity matrix [I_k combined with parity]
       for (let i = 0; i < this.k; ++i) {
         const row = new Array(this.k);
         for (let j = 0; j < this.k; ++j) {
@@ -423,7 +423,7 @@
         const row = [];
         for (let j = 0; j < this.k; ++j) {
           // C[i,j] = 1/(x[i] + y[j]) in GF(256)
-          const denominator = x[i] ^ y[j]; // Addition in GF(2^8) is XOR
+          const denominator = OpCodes.XorN(x[i], y[j]); // Addition in GF(2^8) is XOR
           if (denominator === 0) {
             throw new Error('Cauchy matrix: x_i + y_j = 0 not allowed');
           }
@@ -461,7 +461,7 @@
     invertMatrix(matrix) {
       const k = matrix.length;
 
-      // Create augmented matrix [A | I]
+      // Create augmented matrix [A I] where A is matrix to invert, I is identity
       const augmented = [];
       for (let i = 0; i < k; ++i) {
         const row = [...matrix[i]];
@@ -505,7 +505,7 @@
           if (row !== col && augmented[row][col] !== 0) {
             const factor = augmented[row][col];
             for (let j = 0; j < 2 * k; ++j) {
-              augmented[row][j] ^= this.gfMultiply(factor, augmented[col][j]);
+              augmented[row][j] = OpCodes.XorN(augmented[row][j], this.gfMultiply(factor, augmented[col][j]));
             }
           }
         }
@@ -531,9 +531,9 @@
       for (let i = 0; i < this.field - 1; ++i) {
         this.gfAntilog[i] = x;
         this.gfLog[x] = i;
-        x <<= 1;
-        if (x & this.field) {
-          x ^= this.primitive;
+        x = OpCodes.Shl32(x, 1);
+        if (OpCodes.AndN(x, this.field)) {
+          x = OpCodes.XorN(x, this.primitive);
         }
       }
       this.gfLog[0] = this.field - 1; // Special case for zero

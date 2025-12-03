@@ -225,7 +225,7 @@
         }
 
         // Convert 4 bytes to 32-bit number (big-endian)
-        const num = (group[0] << 24) | (group[1] << 16) | (group[2] << 8) | group[3];
+        const num = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(group[0], 24), OpCodes.Shl32(group[1], 16)), OpCodes.Shl32(group[2], 8)), group[3]);
 
         // Special case for all zeros (Adobe Ascii85 optimization)
         if (num === 0 && groupSize === 4) {
@@ -290,10 +290,10 @@
 
         // Convert back to 4 bytes
         const bytes = [
-          (num >>> 24) & 0xFF,
-          (num >>> 16) & 0xFF,
-          (num >>> 8) & 0xFF,
-          num & 0xFF
+          OpCodes.AndN(OpCodes.Shr32(num, 24), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(num, 16), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(num, 8), 0xFF),
+          OpCodes.AndN(num, 0xFF)
         ];
 
         // For partial groups, only output the actual data bytes

@@ -129,17 +129,17 @@
       }
 
       // Generate round constant using LFSR
-      rc = (rc << 1) ^ ((rc >>> 5) & 0x01) ^ ((rc >>> 4) & 0x01) ^ 0x01;
-      rc &= 0x3F;
+      rc = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(rc, 1), OpCodes.AndN(OpCodes.Shr32(rc, 5), 0x01)), OpCodes.AndN(OpCodes.Shr32(rc, 4), 0x01)), 0x01);
+      rc = OpCodes.AndN(rc, 0x3F);
 
       // AddConstants
-      s[0] ^= rc & 0x0f;
-      s[4] ^= (rc >>> 4) & 0x03;
+      s[0] ^= OpCodes.AndN(rc, 0x0f);
+      s[4] ^= OpCodes.AndN(OpCodes.Shr32(rc, 4), 0x03);
       s[8] ^= 0x02;
 
       // AddRoundTweakey: XOR first two rows with tweakey
       for (let i = 0; i < 8; ++i) {
-        s[i] ^= tk1[i] ^ tk2[i] ^ tk3[i];
+        s[i] ^= OpCodes.XorN(OpCodes.XorN(tk1[i], tk2[i]), tk3[i]);
       }
 
       // ShiftRows: Row 1 right by 1, row 2 by 2 (swap pairs), row 3 left by 1
@@ -162,10 +162,10 @@
         const c2 = s[8 + i];
         const c3 = s[12 + i];
 
-        s[i] = c0 ^ c2 ^ c3;
+        s[i] = OpCodes.XorN(OpCodes.XorN(c0, c2), c3);
         s[4 + i] = c0;
-        s[8 + i] = c1 ^ c2;
-        s[12 + i] = c0 ^ c2;
+        s[8 + i] = OpCodes.XorN(c1, c2);
+        s[12 + i] = OpCodes.XorN(c0, c2);
       }
 
       // Update tweakey: apply permutation and LFSR
@@ -185,8 +185,8 @@
         const x2 = tk2_new[i];
         const x3 = tk3_new[i];
 
-        tk2[i] = ((x2 << 1) ^ ((x2 >>> 7) & 0x01) ^ ((x2 >>> 5) & 0x01)) & 0xFF;
-        tk3[i] = ((x3 >>> 1) ^ ((x3 << 7) & 0x80) ^ ((x3 << 1) & 0x80)) & 0xFF;
+        tk2[i] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(x2, 1), OpCodes.AndN(OpCodes.Shr32(x2, 7), 0x01)), OpCodes.AndN(OpCodes.Shr32(x2, 5), 0x01)), 0xFF);
+        tk3[i] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shr32(x3, 1), OpCodes.AndN(OpCodes.Shl32(x3, 7), 0x80)), OpCodes.AndN(OpCodes.Shl32(x3, 1), 0x80)), 0xFF);
       }
 
       // Copy lower rows without LFSR
@@ -235,13 +235,13 @@
       }
 
       // AddConstants
-      s[0] ^= SKINNY_RC[round] & 0x0f;
-      s[4] ^= (SKINNY_RC[round] >>> 4) & 0x03;
+      s[0] ^= OpCodes.AndN(SKINNY_RC[round], 0x0f);
+      s[4] ^= OpCodes.AndN(OpCodes.Shr32(SKINNY_RC[round], 4), 0x03);
       s[8] ^= 0x02;
 
       // AddRoundTweakey
       for (let i = 0; i < 8; ++i) {
-        s[i] ^= tk1[i] ^ tk2[i];
+        s[i] ^= OpCodes.XorN(tk1[i], tk2[i]);
       }
 
       // ShiftRows: Row 1 right by 1, row 2 by 2 (swap pairs), row 3 left by 1
@@ -264,10 +264,10 @@
         const c2 = s[8 + i];
         const c3 = s[12 + i];
 
-        s[i] = c0 ^ c2 ^ c3;
+        s[i] = OpCodes.XorN(OpCodes.XorN(c0, c2), c3);
         s[4 + i] = c0;
-        s[8 + i] = c1 ^ c2;
-        s[12 + i] = c0 ^ c2;
+        s[8 + i] = OpCodes.XorN(c1, c2);
+        s[12 + i] = OpCodes.XorN(c0, c2);
       }
 
       // Update tweakey
@@ -283,7 +283,7 @@
       // Apply LFSR to first two rows of TK2
       for (let i = 0; i < 8; ++i) {
         const x2 = tk2_new[i];
-        tk2[i] = ((x2 << 1) ^ ((x2 >>> 7) & 0x01) ^ ((x2 >>> 5) & 0x01)) & 0xFF;
+        tk2[i] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(x2, 1), OpCodes.AndN(OpCodes.Shr32(x2, 7), 0x01)), OpCodes.AndN(OpCodes.Shr32(x2, 5), 0x01)), 0xFF);
       }
 
       for (let i = 8; i < 16; ++i) {
@@ -308,14 +308,14 @@
    * Updates CNT' = 2 * CNT mod GF(2^56) with polynomial x^56 + x^7 + x^4 + x^2 + 1
    */
   function lfsr_gf56(cnt) {
-    const fb = (cnt[6] >>> 7) & 0x01;
-    cnt[6] = ((cnt[6] << 1) | (cnt[5] >>> 7)) & 0xFF;
-    cnt[5] = ((cnt[5] << 1) | (cnt[4] >>> 7)) & 0xFF;
-    cnt[4] = ((cnt[4] << 1) | (cnt[3] >>> 7)) & 0xFF;
-    cnt[3] = ((cnt[3] << 1) | (cnt[2] >>> 7)) & 0xFF;
-    cnt[2] = ((cnt[2] << 1) | (cnt[1] >>> 7)) & 0xFF;
-    cnt[1] = ((cnt[1] << 1) | (cnt[0] >>> 7)) & 0xFF;
-    cnt[0] = ((cnt[0] << 1) ^ (fb === 1 ? 0x95 : 0x00)) & 0xFF;
+    const fb = OpCodes.AndN(OpCodes.Shr32(cnt[6], 7), 0x01);
+    cnt[6] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(cnt[6], 1), OpCodes.Shr32(cnt[5], 7)), 0xFF);
+    cnt[5] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(cnt[5], 1), OpCodes.Shr32(cnt[4], 7)), 0xFF);
+    cnt[4] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(cnt[4], 1), OpCodes.Shr32(cnt[3], 7)), 0xFF);
+    cnt[3] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(cnt[3], 1), OpCodes.Shr32(cnt[2], 7)), 0xFF);
+    cnt[2] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(cnt[2], 1), OpCodes.Shr32(cnt[1], 7)), 0xFF);
+    cnt[1] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(cnt[1], 1), OpCodes.Shr32(cnt[0], 7)), 0xFF);
+    cnt[0] = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(cnt[0], 1), (fb === 1 ? 0x95 : 0x00)), 0xFF);
   }
 
   /**
@@ -323,20 +323,20 @@
    * Updates CNT' = 2 * CNT mod GF(2^24) with polynomial x^24 + x^4 + x^3 + x + 1
    */
   function lfsr_gf24(cnt) {
-    const fb = (cnt[2] >>> 7) & 0x01;
-    cnt[2] = ((cnt[2] << 1) | (cnt[1] >>> 7)) & 0xFF;
-    cnt[1] = ((cnt[1] << 1) | (cnt[0] >>> 7)) & 0xFF;
-    cnt[0] = ((cnt[0] << 1) ^ (fb === 1 ? 0x1B : 0x00)) & 0xFF;
+    const fb = OpCodes.AndN(OpCodes.Shr32(cnt[2], 7), 0x01);
+    cnt[2] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(cnt[2], 1), OpCodes.Shr32(cnt[1], 7)), 0xFF);
+    cnt[1] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(cnt[1], 1), OpCodes.Shr32(cnt[0], 7)), 0xFF);
+    cnt[0] = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(cnt[0], 1), (fb === 1 ? 0x1B : 0x00)), 0xFF);
   }
 
   /**
    * G function: generates keystream/tag material by applying linear transformation
-   * G(S) = S >>> 1 XOR S[7] XOR S << 7
+   * G(S) = S right-shift 1 XOR S[7] XOR S left-shift 7
    */
   function g_function(input, output, offset, length) {
     for (let i = 0; i < length; ++i) {
       const s = input[i];
-      output[offset + i] = ((s >>> 1) ^ (s & 0x80) ^ ((s << 7) & 0x80)) & 0xFF;
+      output[offset + i] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shr32(s, 1), OpCodes.AndN(s, 0x80)), OpCodes.AndN(OpCodes.Shl32(s, 7), 0x80)), 0xFF);
     }
   }
 
@@ -351,7 +351,7 @@
     for (let i = 0; i < length; ++i) {
       const m = plaintext[ptOff + i];
       state[i] ^= m;
-      ciphertext[ctOff + i] = m ^ gout[i];
+      ciphertext[ctOff + i] = OpCodes.XorN(m, gout[i]);
     }
   }
 
@@ -364,7 +364,7 @@
     g_function(state, gout, 0, 16);
 
     for (let i = 0; i < length; ++i) {
-      const m = ciphertext[ctOff + i] ^ gout[i];
+      const m = OpCodes.XorN(ciphertext[ctOff + i], gout[i]);
       plaintext[ptOff + i] = m;
       state[i] ^= m;
     }
@@ -380,7 +380,7 @@
     for (let i = 0; i < length; ++i) {
       output[i] = input[inOff + i];
     }
-    output[15] = length & 0x0F;
+    output[15] = OpCodes.AndN(length, 0x0F);
   }
 
   // ===== ROMULUS-N IMPLEMENTATION =====

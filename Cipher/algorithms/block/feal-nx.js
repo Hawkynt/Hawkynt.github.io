@@ -280,11 +280,11 @@
 
     // FEAL S-box functions (same as FEAL-8)
     _S0(a, b) {
-      return OpCodes.RotL8((a + b) & 0xFF, 2);
+      return OpCodes.RotL8(OpCodes.AndN((a + b), 0xFF), 2);
     }
 
     _S1(a, b) {
-      return OpCodes.RotL8((a + b + 1) & 0xFF, 2);
+      return OpCodes.RotL8(OpCodes.AndN((a + b + 1), 0xFF), 2);
     }
 
     // FEAL F-function - takes 4 bytes data and 2 bytes key
@@ -296,8 +296,8 @@
 
       // FEAL F-function as per specification
       const ret = [0, 0, 0, 0];
-      const T = a[3] ^ a[2] ^ b[1];
-      ret[1] = this._S1(a[0] ^ a[1] ^ b[0], T);
+      const T = OpCodes.XorN(OpCodes.XorN(a[3], a[2]), b[1]);
+      ret[1] = this._S1(OpCodes.XorN(OpCodes.XorN(a[0], a[1]), b[0]), T);
       ret[0] = this._S0(a[0], ret[1]);
       ret[2] = this._S0(T, ret[1]);
       ret[3] = this._S1(ret[2], a[3]);
@@ -311,10 +311,10 @@
       const ret = [0, 0, 0, 0];
 
       // FEAL Fk function as per specification
-      ret[1] = this._S1(a[0] ^ a[1], b[0] ^ a[2] ^ a[3]);
-      ret[0] = this._S0(a[0], b[2] ^ ret[1]);
-      ret[2] = this._S0(a[2] ^ a[3], b[1] ^ this._S1(a[0] ^ a[1], b[0] ^ a[2] ^ a[3]));
-      ret[3] = this._S1(a[3], b[3] ^ ret[2]);
+      ret[1] = this._S1(OpCodes.XorN(a[0], a[1]), OpCodes.XorN(OpCodes.XorN(b[0], a[2]), a[3]));
+      ret[0] = this._S0(a[0], OpCodes.XorN(b[2], ret[1]));
+      ret[2] = this._S0(OpCodes.XorN(a[2], a[3]), OpCodes.XorN(b[1], this._S1(OpCodes.XorN(a[0], a[1]), OpCodes.XorN(OpCodes.XorN(b[0], a[2]), a[3]))));
+      ret[3] = this._S1(a[3], OpCodes.XorN(b[3], ret[2]));
 
       return ret;
     }

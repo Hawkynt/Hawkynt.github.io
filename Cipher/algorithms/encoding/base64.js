@@ -214,12 +214,12 @@
         const b = i < data.length ? data[i++] : 0;
         const c = i < data.length ? data[i++] : 0;
 
-        const combined = (a << 16) | (b << 8) | c;
+        const combined = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(a, 16), OpCodes.Shl32(b, 8)), c);
 
-        result += this.alphabet[(combined >> 18) & 63];
-        result += this.alphabet[(combined >> 12) & 63];
-        result += this.alphabet[(combined >> 6) & 63];
-        result += this.alphabet[combined & 63];
+        result += this.alphabet[OpCodes.AndN(OpCodes.Shr32(combined, 18), 63)];
+        result += this.alphabet[OpCodes.AndN(OpCodes.Shr32(combined, 12), 63)];
+        result += this.alphabet[OpCodes.AndN(OpCodes.Shr32(combined, 6), 63)];
+        result += this.alphabet[OpCodes.AndN(combined, 63)];
       }
 
       // Add padding
@@ -267,11 +267,11 @@
         const c = this.decodeTable[cleanInput[i++]] || 0;
         const d = this.decodeTable[cleanInput[i++]] || 0;
 
-        const combined = (a << 18) | (b << 12) | (c << 6) | d;
+        const combined = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(a, 18), OpCodes.Shl32(b, 12)), OpCodes.Shl32(c, 6)), d);
 
-        result.push((combined >> 16) & 255);
-        result.push((combined >> 8) & 255);
-        result.push(combined & 255);
+        result.push(OpCodes.AndN(OpCodes.Shr32(combined, 16), 255));
+        result.push(OpCodes.AndN(OpCodes.Shr32(combined, 8), 255));
+        result.push(OpCodes.AndN(combined, 255));
       }
 
       // Handle remaining characters (incomplete group)
@@ -281,16 +281,16 @@
         const c = i < cleanInput.length ? (this.decodeTable[cleanInput[i++]] || 0) : 0;
         const d = i < cleanInput.length ? (this.decodeTable[cleanInput[i++]] || 0) : 0;
 
-        const combined = (a << 18) | (b << 12) | (c << 6) | d;
+        const combined = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(a, 18), OpCodes.Shl32(b, 12)), OpCodes.Shl32(c, 6)), d);
 
-        result.push((combined >> 16) & 255);
+        result.push(OpCodes.AndN(OpCodes.Shr32(combined, 16), 255));
 
         if (paddingCount < 2) {
-          result.push((combined >> 8) & 255);
+          result.push(OpCodes.AndN(OpCodes.Shr32(combined, 8), 255));
         }
 
         if (paddingCount === 0) {
-          result.push(combined & 255);
+          result.push(OpCodes.AndN(combined, 255));
         }
       }
 

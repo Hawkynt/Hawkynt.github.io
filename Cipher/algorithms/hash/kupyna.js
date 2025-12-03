@@ -126,14 +126,14 @@
   // SubBytes transformation using 4 S-boxes
   function subBytes(s, numColumns) {
     for (let col = 0; col < numColumns; ++col) {
-      s[col][0] = S0[s[col][0] & 0xFF];
-      s[col][1] = S1[s[col][1] & 0xFF];
-      s[col][2] = S2[s[col][2] & 0xFF];
-      s[col][3] = S3[s[col][3] & 0xFF];
-      s[col][4] = S0[s[col][4] & 0xFF];
-      s[col][5] = S1[s[col][5] & 0xFF];
-      s[col][6] = S2[s[col][6] & 0xFF];
-      s[col][7] = S3[s[col][7] & 0xFF];
+      s[col][0] = S0[OpCodes.AndN(s[col][0], 0xFF)];
+      s[col][1] = S1[OpCodes.AndN(s[col][1], 0xFF)];
+      s[col][2] = S2[OpCodes.AndN(s[col][2], 0xFF)];
+      s[col][3] = S3[OpCodes.AndN(s[col][3], 0xFF)];
+      s[col][4] = S0[OpCodes.AndN(s[col][4], 0xFF)];
+      s[col][5] = S1[OpCodes.AndN(s[col][5], 0xFF)];
+      s[col][6] = S2[OpCodes.AndN(s[col][6], 0xFF)];
+      s[col][7] = S3[OpCodes.AndN(s[col][7], 0xFF)];
     }
   }
 
@@ -144,7 +144,7 @@
     for (let i = 0; i < 8; ++i) {
       words[i] = 0n;
       for (let j = 0; j < 8; ++j) {
-        words[i] |= BigInt(s[i][j] & 0xFF) << BigInt(j * 8);
+        words[i] |= BigInt(OpCodes.AndN(s[i][j], 0xFF)) << BigInt(j * 8);
       }
     }
 
@@ -186,7 +186,7 @@
     for (let i = 0; i < 16; ++i) {
       words[i] = 0n;
       for (let j = 0; j < 8; ++j) {
-        words[i] |= BigInt(s[i][j] & 0xFF) << BigInt(j * 8);
+        words[i] |= BigInt(OpCodes.AndN(s[i][j], 0xFF)) << BigInt(j * 8);
       }
     }
 
@@ -276,7 +276,7 @@
       // Pack column into 64-bit BigInt word (little-endian)
       let c = 0n;
       for (let i = 0; i < 8; ++i) {
-        c |= BigInt(s[col][i] & 0xFF) << BigInt(i * 8);
+        c |= BigInt(OpCodes.AndN(s[col][i], 0xFF)) << BigInt(i * 8);
       }
 
       // MixColumn operation (circulant matrix in GF(2^8))
@@ -318,8 +318,8 @@
         this.state[i] = new Array(8).fill(0);
       }
       // Set initial value to block size
-      this.state[0][0] = this.blockSize & 0xFF;
-      this.state[0][1] = (this.blockSize >>> 8) & 0xFF;
+      this.state[0][0] = OpCodes.AndN(this.blockSize, 0xFF);
+      this.state[0][1] = OpCodes.AndN(OpCodes.Shr32(this.blockSize, 8), 0xFF);
 
       this.tempState1 = new Array(this.numColumns);
       this.tempState2 = new Array(this.numColumns);
@@ -339,7 +339,7 @@
         // AddRoundConstants
         let rc = round;
         for (let col = 0; col < this.numColumns; ++col) {
-          s[col][0] ^= rc & 0xFF;
+          s[col][0] = OpCodes.XorN(s[col][0], OpCodes.AndN(rc, 0xFF));
           rc += 0x10;
         }
 
@@ -359,7 +359,7 @@
           // Convert column to 64-bit BigInt
           let word = 0n;
           for (let i = 0; i < 8; ++i) {
-            word |= BigInt(s[col][i] & 0xFF) << BigInt(i * 8);
+            word |= BigInt(OpCodes.AndN(s[col][i], 0xFF)) << BigInt(i * 8);
           }
 
           // Add constant
@@ -387,8 +387,8 @@
       // Load block and XOR with state for tempState1, copy to tempState2
       for (let col = 0; col < this.numColumns; ++col) {
         for (let i = 0; i < 8; ++i) {
-          const word = input[pos++] & 0xFF;
-          this.tempState1[col][i] = this.state[col][i] ^ word;
+          const word = OpCodes.AndN(input[pos++], 0xFF);
+          this.tempState1[col][i] = OpCodes.XorN(this.state[col][i], word);
           this.tempState2[col][i] = word;
         }
       }
@@ -400,8 +400,8 @@
       // XOR results back into state
       for (let col = 0; col < this.numColumns; ++col) {
         for (let i = 0; i < 8; ++i) {
-          this.state[col][i] ^= this.tempState1[col][i] ^ this.tempState2[col][i];
-          this.state[col][i] &= 0xFF;
+          this.state[col][i] = OpCodes.XorN(this.state[col][i], OpCodes.XorN(this.tempState1[col][i], this.tempState2[col][i]));
+          this.state[col][i] = OpCodes.AndN(this.state[col][i], 0xFF);
         }
       }
     }
@@ -473,10 +473,10 @@
 
       // Append length in bits (little-endian, 96 bits)
       const totalBits = (this.inputBlocks * this.blockSize + inputBytes) * 8;
-      this.buf[this.bufOff++] = totalBits & 0xFF;
-      this.buf[this.bufOff++] = (totalBits >>> 8) & 0xFF;
-      this.buf[this.bufOff++] = (totalBits >>> 16) & 0xFF;
-      this.buf[this.bufOff++] = (totalBits >>> 24) & 0xFF;
+      this.buf[this.bufOff++] = OpCodes.AndN(totalBits, 0xFF);
+      this.buf[this.bufOff++] = OpCodes.AndN(OpCodes.Shr32(totalBits, 8), 0xFF);
+      this.buf[this.bufOff++] = OpCodes.AndN(OpCodes.Shr32(totalBits, 16), 0xFF);
+      this.buf[this.bufOff++] = OpCodes.AndN(OpCodes.Shr32(totalBits, 24), 0xFF);
 
       // Upper 64 bits of length (usually 0 for reasonable input sizes)
       for (let i = 0; i < 8; ++i) {
@@ -496,17 +496,17 @@
 
       for (let col = 0; col < this.numColumns; ++col) {
         for (let i = 0; i < 8; ++i) {
-          this.state[col][i] ^= this.tempState1[col][i];
-          this.state[col][i] &= 0xFF;
+          this.state[col][i] = OpCodes.XorN(this.state[col][i], this.tempState1[col][i]);
+          this.state[col][i] = OpCodes.AndN(this.state[col][i], 0xFF);
         }
       }
 
       // Extract hash (last N columns)
       const output = [];
-      const startCol = this.numColumns - (this.hashSize >>> 3);
+      const startCol = this.numColumns - OpCodes.Shr32(this.hashSize, 3);
       for (let col = startCol; col < this.numColumns; ++col) {
         for (let i = 0; i < 8; ++i) {
-          output.push(this.state[col][i] & 0xFF);
+          output.push(OpCodes.AndN(this.state[col][i], 0xFF));
         }
       }
 

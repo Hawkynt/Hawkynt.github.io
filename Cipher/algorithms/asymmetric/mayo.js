@@ -297,7 +297,7 @@
 
       // Hash message for multivariate system
       for (let i = 0; i < message.length; i++) {
-        hash[i % 32] ^= message[i];
+        hash[i % 32] = OpCodes.XorN(hash[i % 32], message[i]);
         // Apply finite field arithmetic
         hash[(i + 1) % 32] = this._gf16Add(hash[(i + 1) % 32], message[i]);
       }
@@ -307,19 +307,19 @@
 
     // GF(16) field operations
     _gf16Add(a, b) {
-      return (a ^ b) & 0x0F;
+      return OpCodes.AndN(OpCodes.XorN(a, b), 0x0F);
     }
 
     _gf16Mul(a, b) {
       if (a === 0 || b === 0) return 0;
-      a &= 0x0F;
-      b &= 0x0F;
+      a = OpCodes.AndN(a, 0x0F);
+      b = OpCodes.AndN(b, 0x0F);
       return GF16_EXP[(GF16_LOG[a] + GF16_LOG[b]) % 15];
     }
 
     _gf16Inv(a) {
       if (a === 0) return 0;
-      a &= 0x0F;
+      a = OpCodes.AndN(a, 0x0F);
       return GF16_EXP[(15 - GF16_LOG[a]) % 15];
     }
   }

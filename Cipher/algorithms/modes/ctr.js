@@ -204,7 +204,7 @@
       // Add from least significant byte (right to left)
       for (let i = result.length - 1; i >= 0 && carry > 0; i--) {
         const sum = result[i] + carry;
-        result[i] = sum & 0xFF;
+        result[i] = OpCodes.AndN(sum, 0xFF);
         carry = Math.floor(sum / 256);
       }
 
@@ -245,10 +245,7 @@
         const keystream = encryptCipher.Result();
 
         // XOR input with keystream to get output
-        const outputBlock = [];
-        for (let j = 0; j < remainingBytes; j++) {
-          outputBlock[j] = inputBlock[j] ^ keystream[j];
-        }
+        const outputBlock = OpCodes.XorArrays(inputBlock.slice(0, remainingBytes), keystream.slice(0, remainingBytes));
         output.push(...outputBlock);
 
         // Increment counter for next block

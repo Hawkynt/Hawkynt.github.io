@@ -156,7 +156,7 @@
       // Generate 8 bits for one byte
       for (let bit = 0; bit < 8; bit++) {
         // Simple FCSR step (educational version)
-        const feedback = state.main[0] ^ state.carry[0];
+        const feedback = OpCodes.XorN(state.main[0], state.carry[0]);
 
         // Shift main register
         for (let i = 0; i < state.main.length - 1; i++) {
@@ -165,18 +165,18 @@
         state.main[state.main.length - 1] = feedback;
 
         // Update carry register
-        const carryFeedback = (state.carry[0] + state.main[7]) & 0xFF;
+        const carryFeedback = OpCodes.AndN((state.carry[0] + state.main[7]), 0xFF);
         for (let i = 0; i < state.carry.length - 1; i++) {
           state.carry[i] = state.carry[i + 1];
         }
         state.carry[state.carry.length - 1] = carryFeedback;
 
         // Output bit
-        output |= (feedback & 1) << bit;
+        output = OpCodes.OrN(output, OpCodes.Shl32(OpCodes.AndN(feedback, 1), bit));
       }
 
       state.counter++;
-      return output & 0xFF;
+      return OpCodes.AndN(output, 0xFF);
     }
   }
 
@@ -327,7 +327,7 @@
       // Process each byte of input
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this.algorithm.generateKeystreamByte(this.state);
-        result.push(this.inputBuffer[i] ^ keystreamByte);
+        result.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer

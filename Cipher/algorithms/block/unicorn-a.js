@@ -178,12 +178,12 @@ class UnicornAInstance extends IBlockCipherInstance {
 
       for (let i = 0; i < 8; i++) {
         roundKeys[round].mainKey[i] = key[(round * 8 + i) % key.length];
-        roundKeys[round].mainKey[i] ^= OpCodes.RotL8(key[(round + i) % key.length], round & 7);
-        roundKeys[round].mainKey[i] ^= (round * 13 + i * 7) & 0xFF;
+        roundKeys[round].mainKey[i] = OpCodes.XorN(roundKeys[round].mainKey[i], OpCodes.RotL8(key[(round + i) % key.length], OpCodes.AndN(round, 7)));
+        roundKeys[round].mainKey[i] = OpCodes.XorN(roundKeys[round].mainKey[i], OpCodes.AndN(round * 13 + i * 7, 0xFF));
 
         roundKeys[round].tempKey[i] = key[(round * 4 + i) % key.length];
-        roundKeys[round].tempKey[i] ^= OpCodes.RotL8(roundKeys[round].mainKey[i], (i + 1) & 7);
-        roundKeys[round].tempKey[i] ^= (round * 17 + i * 11) & 0xFF;
+        roundKeys[round].tempKey[i] = OpCodes.XorN(roundKeys[round].tempKey[i], OpCodes.RotL8(roundKeys[round].mainKey[i], OpCodes.AndN(i + 1, 7)));
+        roundKeys[round].tempKey[i] = OpCodes.XorN(roundKeys[round].tempKey[i], OpCodes.AndN(round * 17 + i * 11, 0xFF));
       }
     }
 
@@ -224,7 +224,7 @@ class UnicornAInstance extends IBlockCipherInstance {
 
     const result = new Uint8Array(8);
     for (let i = 0; i < 8; i++) {
-      result[i] = mainStream[i] ^ tempStream[i % 4];
+      result[i] = OpCodes.XorN(mainStream[i], tempStream[i % 4]);
     }
 
     return result;
@@ -248,9 +248,9 @@ class UnicornAInstance extends IBlockCipherInstance {
     const result = new Uint8Array(4);
 
     for (let i = 0; i < 4; i++) {
-      result[i] = input[i] ^ input[i + 4] ^ key[i];
+      result[i] = OpCodes.XorN(OpCodes.XorN(input[i], input[i + 4]), key[i]);
       result[i] = this._sBox[result[i]];
-      result[i] ^= OpCodes.RotL8(result[i], (i + 1) & 7);
+      result[i] = OpCodes.XorN(result[i], OpCodes.RotL8(result[i], OpCodes.AndN(i + 1, 7)));
     }
 
     const temp = result[0];
@@ -266,12 +266,12 @@ class UnicornAInstance extends IBlockCipherInstance {
     const result = new Uint8Array(4);
 
     for (let i = 0; i < 4; i++) {
-      result[i] = input[i] ^ key[(round + i) % 8];
+      result[i] = OpCodes.XorN(input[i], key[(round + i) % 8]);
       result[i] = this._sBox[result[i]];
     }
 
-    result[0] ^= result[1];
-    result[2] ^= result[3];
+    result[0] = OpCodes.XorN(result[0], result[1]);
+    result[2] = OpCodes.XorN(result[2], result[3]);
 
     const temp = result[0];
     result[0] = OpCodes.RotL8(result[2], 3);

@@ -302,13 +302,13 @@
       let z = words[n-1];
 
       for (let round = 0; round < rounds; round++) {
-        sum = (sum + this.DELTA) >>> 0;
-        const e = (sum >>> 2) & 3;
+        sum = OpCodes.Shr32((sum + this.DELTA), 0);
+        const e = OpCodes.AndN(OpCodes.Shr32(sum, 2), 3);
 
         for (let p = 0; p < n; p++) {
           const y = words[(p + 1) % n];
-          const mx = this._calculateMX(z, y, sum, k[(p & 3) ^ e], p, e);
-          words[p] = (words[p] + mx) >>> 0;
+          const mx = this._calculateMX(z, y, sum, k[OpCodes.XorN(OpCodes.AndN(p, 3), e)], p, e);
+          words[p] = OpCodes.Shr32((words[p] + mx), 0);
           z = words[p];
         }
       }
@@ -326,20 +326,20 @@
 
       // Calculate number of rounds: 6 + 52/n (minimum 6 rounds)
       const rounds = 6 + Math.floor(52 / n);
-      let sum = (rounds * this.DELTA) >>> 0;
+      let sum = OpCodes.Shr32((rounds * this.DELTA), 0);
       let y = words[0];
 
       for (let round = 0; round < rounds; round++) {
-        const e = (sum >>> 2) & 3;
+        const e = OpCodes.AndN(OpCodes.Shr32(sum, 2), 3);
 
         for (let p = n - 1; p >= 0; p--) {
           const z = words[p > 0 ? p - 1 : n - 1];
-          const mx = this._calculateMX(z, y, sum, k[(p & 3) ^ e], p, e);
-          words[p] = (words[p] - mx) >>> 0;
+          const mx = this._calculateMX(z, y, sum, k[OpCodes.XorN(OpCodes.AndN(p, 3), e)], p, e);
+          words[p] = OpCodes.Shr32((words[p] - mx), 0);
           y = words[p];
         }
 
-        sum = (sum - this.DELTA) >>> 0;
+        sum = OpCodes.Shr32((sum - this.DELTA), 0);
       }
 
       return words;
@@ -348,12 +348,12 @@
     // Calculate the MX value for XXTEA round function
     _calculateMX(z, y, sum, key, p, e) {
       // Original XXTEA MX calculation with improved bit operations
-      const part1 = ((z >>> 5) ^ (y << 2)) >>> 0;
-      const part2 = ((y >>> 3) ^ (z << 4)) >>> 0;
-      const part3 = (sum ^ y) >>> 0;
-      const part4 = (key ^ z) >>> 0;
+      const part1 = OpCodes.Shr32(OpCodes.XorN(OpCodes.Shr32(z, 5), OpCodes.Shl32(y, 2)), 0);
+      const part2 = OpCodes.Shr32(OpCodes.XorN(OpCodes.Shr32(y, 3), OpCodes.Shl32(z, 4)), 0);
+      const part3 = OpCodes.Shr32(OpCodes.XorN(sum, y), 0);
+      const part4 = OpCodes.Shr32(OpCodes.XorN(key, z), 0);
 
-      return ((part1 + part2) ^ (part3 + part4)) >>> 0;
+      return OpCodes.Shr32(OpCodes.XorN((part1 + part2), (part3 + part4)), 0);
     }
   }
 

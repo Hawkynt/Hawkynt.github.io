@@ -52,7 +52,7 @@
     45, 15, 21, 8, 18, 2, 61, 56, 14
   ]);
 
-  function xor64(a, b) { return [a[0] ^ b[0], a[1] ^ b[1]]; }
+  function xor64(a, b) { return [OpCodes.XorN(a[0], b[0]), OpCodes.XorN(a[1], b[1])]; }
 
   function rotl64(val, positions) {
     const [low, high] = val;
@@ -62,15 +62,15 @@
 
     if (positions < 32) {
       return [
-        ((low << positions) | (high >>> (32 - positions))) >>> 0,
-        ((high << positions) | (low >>> (32 - positions))) >>> 0
+        OpCodes.OrN(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions)),
+        OpCodes.OrN(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions))
       ];
     }
 
     positions -= 32;
     return [
-      ((high << positions) | (low >>> (32 - positions))) >>> 0,
-      ((low << positions) | (high >>> (32 - positions))) >>> 0
+      OpCodes.OrN(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions)),
+      OpCodes.OrN(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions))
     ];
   }
 
@@ -114,7 +114,7 @@
         for (let x = 0; x < 5; x++) row[x] = [state[x + 5 * y][0], state[x + 5 * y][1]];
         for (let x = 0; x < 5; x++) {
           const notNext = [~row[(x + 1) % 5][0], ~row[(x + 1) % 5][1]];
-          const andResult = [notNext[0] & row[(x + 2) % 5][0], notNext[1] & row[(x + 2) % 5][1]];
+          const andResult = [OpCodes.AndN(notNext[0], row[(x + 2) % 5][0]), OpCodes.AndN(notNext[1], row[(x + 2) % 5][1])];
           state[x + 5 * y] = xor64(row[x], andResult);
         }
       }
@@ -132,7 +132,8 @@
     // Determine number of bytes needed
     let n = 1;
     let v = value;
-    while ((v >>>= 8) !== 0) {
+    while (OpCodes.Shr32(v, 8) !== 0) {
+      v = OpCodes.Shr32(v, 8);
       n++;
     }
 
@@ -141,7 +142,7 @@
 
     // Encode value in big-endian
     for (let i = 1; i <= n; i++) {
-      result[i] = (value >>> (8 * (n - i))) & 0xFF;
+      result[i] = OpCodes.AndN(OpCodes.Shr32(value, 8 * (n - i)), 0xFF);
     }
 
     return result;

@@ -271,10 +271,10 @@
     /**
      * GF(4) addition (XOR in GF(2^n))
      * Note: XOR is the fundamental addition operation in Galois Fields GF(2^n)
-     * This is mathematically correct and cannot be replaced with OpCodes
+     * Using OpCodes for consistency with codebase standards
      */
     gfAdd(a, b) {
-      return a ^ b; // Galois Field addition (XOR is the mathematical operation)
+      return OpCodes.XorN(a, b); // Galois Field addition using OpCodes
     }
 
     /**

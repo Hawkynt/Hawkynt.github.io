@@ -10,7 +10,7 @@
  *
  * Algorithm:
  *   result = rotl(s[0] + s[3], 23) + s[0]  // ++ scrambler (addition + rotation)
- *   t = s[1] << 17
+ *   t = s[1] shl 17
  *   s[2] ^= s[0]
  *   s[3] ^= s[1]
  *   s[1] ^= s[2]
@@ -248,7 +248,7 @@
       // Convert seed bytes to 64-bit BigInt (little-endian)
       let seedValue = 0n;
       for (let i = 0; i < Math.min(8, seedBytes.length); ++i) {
-        seedValue = OpCodes.OrN(seedValue, OpCodes.ShiftLn(BigInt(seedBytes[i]), i * 8));
+        seedValue = OpCodes.OrN(seedValue, OpCodes.ShiftLn(BigInt(seedBytes[i]), BigInt(i * 8)));
       }
 
       // Initialize state using SplitMix64
@@ -282,7 +282,7 @@
      *
      * Algorithm from https://prng.di.unimi.it/xoshiro256plusplus.c:
      * 1. result = rotl(s[0] + s[3], 23) + s[0]  (++ scrambler)
-     * 2. t = s[1] << 17
+     * 2. t = s[1] shl 17
      * 3. s[2] ^= s[0]
      * 4. s[3] ^= s[1]
      * 5. s[1] ^= s[2]
@@ -306,7 +306,7 @@
       const result = OpCodes.ToQWord(rotated + s0);
 
       // State update
-      const t = OpCodes.ShiftLn(this._s1, 17);
+      const t = OpCodes.ShiftLn(this._s1, 17n);
 
       this._s2 = OpCodes.XorN(this._s2, this._s0);
       this._s3 = OpCodes.XorN(this._s3, this._s1);
@@ -342,7 +342,7 @@
 
         // Extract bytes in little-endian order
         for (let i = 0; i < 8 && bytesGenerated < length; ++i) {
-          const shifted = OpCodes.ShiftRn(value64, i * 8);
+          const shifted = OpCodes.ShiftRn(value64, BigInt(i * 8));
           const byteVal = Number(OpCodes.AndN(shifted, 0xFFn));
           output.push(byteVal);
           ++bytesGenerated;
@@ -410,7 +410,7 @@
 
       for (let i = 0; i < JUMP.length; ++i) {
         for (let b = 0; b < 64; ++b) {
-          const mask = OpCodes.ShiftLn(1n, b);
+          const mask = OpCodes.ShiftLn(1n, BigInt(b));
           if (OpCodes.AndN(JUMP[i], mask) !== 0n) {
             s0 = OpCodes.XorN(s0, this._s0);
             s1 = OpCodes.XorN(s1, this._s1);
@@ -449,7 +449,7 @@
 
       for (let i = 0; i < LONG_JUMP.length; ++i) {
         for (let b = 0; b < 64; ++b) {
-          const mask = OpCodes.ShiftLn(1n, b);
+          const mask = OpCodes.ShiftLn(1n, BigInt(b));
           if (OpCodes.AndN(LONG_JUMP[i], mask) !== 0n) {
             s0 = OpCodes.XorN(s0, this._s0);
             s1 = OpCodes.XorN(s1, this._s1);

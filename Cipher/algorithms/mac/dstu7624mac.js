@@ -275,7 +275,7 @@
     // XOR two byte arrays
     _xor(x, xOff, y, yOff, result) {
       for (let i = 0; i < this._blockSize; i++) {
-        result[i] = (x[i + xOff] ^ y[i + yOff]) & 0xFF;
+        result[i] = OpCodes.AndN(OpCodes.XorN(x[i + xOff], y[i + yOff]), 0xFF);
       }
     }
 

@@ -180,12 +180,12 @@
 
       for (let i = 0; i < 8; ++i) {
         const block = input.slice(i * 6, (i + 1) * 6);
-        const row = (block[0] << 1) | block[5];
-        const col = (block[1] << 3) | (block[2] << 2) | (block[3] << 1) | block[4];
+        const row = OpCodes.OrN(OpCodes.Shl32(block[0], 1), block[5]);
+        const col = OpCodes.OrN(OpCodes.Shl32(block[1], 3), OpCodes.OrN(OpCodes.Shl32(block[2], 2), OpCodes.OrN(OpCodes.Shl32(block[3], 1), block[4])));
         const val = this.SBOX[i][row][col];
 
         for (let j = 3; j >= 0; --j) {
-          output.push((val >>> j) & 1);
+          output.push(OpCodes.AndN(OpCodes.Shr32(val, j), 1));
         }
       }
 
@@ -208,7 +208,7 @@
       const bits = [];
       for (let i = 0; i < bytes.length; ++i) {
         for (let j = 7; j >= 0; --j) {
-          bits.push((bytes[i] >>> j) & 1);
+          bits.push(OpCodes.AndN(OpCodes.Shr32(bytes[i], j), 1));
         }
       }
       return bits;
@@ -219,7 +219,7 @@
       for (let i = 0; i < bits.length; i += 8) {
         let byte = 0;
         for (let j = 0; j < 8; ++j) {
-          byte = (byte << 1) | bits[i + j];
+          byte = OpCodes.OrN(OpCodes.Shl32(byte, 1), bits[i + j]);
         }
         bytes.push(byte);
       }
@@ -503,7 +503,7 @@
 
       // XOR the cfbOutV with the plaintext producing the ciphertext
       for (let i = 0; i < cfbBlockSize; ++i) {
-        outData[outOff + i] = this.cfbOutV[i] ^ inData[inOff + i];
+        outData[outOff + i] = OpCodes.XorN(this.cfbOutV[i], inData[inOff + i]);
       }
 
       // Shift feedback register and insert new ciphertext

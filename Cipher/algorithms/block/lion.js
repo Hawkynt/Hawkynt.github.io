@@ -281,7 +281,7 @@
           const xor2 = W[t-8] >>> 0;
           const xor3 = W[t-14] >>> 0;
           const xor4 = W[t-16] >>> 0;
-          const temp = ((xor1 ^ xor2) ^ (xor3 ^ xor4)) >>> 0;
+          const temp = OpCodes.XorN(OpCodes.XorN(xor1, xor2), OpCodes.XorN(xor3, xor4)) >>> 0;
           W[t] = OpCodes.RotL32(temp, 1);
         }
 
@@ -293,13 +293,13 @@
             f = ((b & c) | ((~b) & d)) >>> 0;
             k = 0x5A827999;
           } else if (t < 40) {
-            f = ((b ^ c) ^ d) >>> 0;
+            f = OpCodes.XorN(OpCodes.XorN(b, c), d) >>> 0;
             k = 0x6ED9EBA1;
           } else if (t < 60) {
             f = ((b & c) | ((b & d) | (c & d))) >>> 0;
             k = 0x8F1BBCDC;
           } else {
-            f = ((b ^ c) ^ d) >>> 0;
+            f = OpCodes.XorN(OpCodes.XorN(b, c), d) >>> 0;
             k = 0xCA62C1D6;
           }
 
@@ -364,7 +364,7 @@
 
         const t = (S[i] + S[j]) & 0xFF;
         const keystreamByte = S[t];
-        const ciphertextByte = (data[k] ^ keystreamByte) & 0xFF;
+        const ciphertextByte = OpCodes.AndN(OpCodes.XorN(data[k], keystreamByte), 0xFF);
         output.push(ciphertextByte);
       }
 

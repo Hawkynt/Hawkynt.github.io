@@ -99,7 +99,7 @@
   function PHOTON_Permutation(state, state_2d) {
     // Convert byte array to 2D nibble array
     for (let i = 0; i < DSquare; ++i) {
-      state_2d[i >> Dq][i & Dr] = ((state[i >> 1] & 0xFF) >>> (4 * (i & 1))) & 0xf;
+      state_2d[OpCodes.Shr32(i, Dq)][OpCodes.AndN(i, Dr)] = OpCodes.AndN(OpCodes.Shr32(OpCodes.AndN(state[OpCodes.Shr32(i, 1)], 0xFF), 4 * OpCodes.AndN(i, 1)), 0xf);
     }
 
     // 12 rounds of PHOTON permutation
@@ -107,7 +107,7 @@
       // AddConstant
       const rcOff = round * D;
       for (let i = 0; i < D; ++i) {
-        state_2d[i][0] ^= RC[rcOff + i];
+        state_2d[i][0] = OpCodes.XorN(state_2d[i][0], RC[rcOff + i]);
       }
 
       // SubCells (S-box layer)
@@ -138,20 +138,20 @@
             const b = state_2d[k][j];
 
             // GF(16) multiplication by expanding b
-            sum ^= x * (b & 1);
-            sum ^= x * (b & 2);
-            sum ^= x * (b & 4);
-            sum ^= x * (b & 8);
+            sum = OpCodes.XorN(sum, x * OpCodes.AndN(b, 1));
+            sum = OpCodes.XorN(sum, x * OpCodes.AndN(b, 2));
+            sum = OpCodes.XorN(sum, x * OpCodes.AndN(b, 4));
+            sum = OpCodes.XorN(sum, x * OpCodes.AndN(b, 8));
           }
 
           // Reduction modulo x^4 + x + 1
-          let t0 = sum >>> 4;
-          sum = (sum & 15) ^ t0 ^ (t0 << 1);
+          let t0 = OpCodes.Shr32(sum, 4);
+          sum = OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(sum, 15), t0), OpCodes.Shl32(t0, 1));
 
-          let t1 = sum >>> 4;
-          sum = (sum & 15) ^ t1 ^ (t1 << 1);
+          let t1 = OpCodes.Shr32(sum, 4);
+          sum = OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(sum, 15), t1), OpCodes.Shl32(t1, 1));
 
-          tempCol[i] = sum & 0xf;
+          tempCol[i] = OpCodes.AndN(sum, 0xf);
         }
         for (let i = 0; i < D; ++i) {
           state_2d[i][j] = tempCol[i];
@@ -161,8 +161,7 @@
 
     // Convert 2D nibble array back to byte array
     for (let i = 0; i < DSquare; i += 2) {
-      state[i >> 1] = ((state_2d[i >> Dq][i & Dr] & 0xf)) |
-                       ((state_2d[i >> Dq][(i + 1) & Dr] & 0xf) << 4);
+      state[OpCodes.Shr32(i, 1)] = OpCodes.OrN(OpCodes.AndN(state_2d[OpCodes.Shr32(i, Dq)][OpCodes.AndN(i, Dr)], 0xf), OpCodes.Shl32(OpCodes.AndN(state_2d[OpCodes.Shr32(i, Dq)][OpCodes.AndN(i + 1, Dr)], 0xf), 4));
     }
   }
 
@@ -499,7 +498,7 @@
         this._processAssociatedData(actualMsgLen === 0);
       } else if (actualMsgLen === 0) {
         // Empty AD and empty message
-        this.state[STATE_INBYTES - 1] ^= (1 << this.algorithm.LAST_THREE_BITS_OFFSET);
+        this.state[STATE_INBYTES - 1] ^= OpCodes.Shl32(1, this.algorithm.LAST_THREE_BITS_OFFSET);
       }
 
       // Encrypt/decrypt the message
@@ -520,7 +519,7 @@
           // Constant-time tag comparison
           let tagMatch = 0xFF;
           for (let i = 0; i < 16; ++i) {
-            tagMatch &= (computedTag[i] ^ receivedTag[i]) - 1;
+            tagMatch = OpCodes.AndN(tagMatch, OpCodes.XorN(computedTag[i], receivedTag[i]) - 1);
           }
 
           if (tagMatch !== 0xFF) {
@@ -563,7 +562,7 @@
           // Constant-time tag comparison
           let tagMatch = 0xFF;
           for (let i = 0; i < 16; ++i) {
-            tagMatch &= (computedTag[i] ^ receivedTag[i]) - 1;
+            tagMatch = OpCodes.AndN(tagMatch, OpCodes.XorN(computedTag[i], receivedTag[i]) - 1);
           }
 
           if (tagMatch !== 0xFF) {
@@ -592,7 +591,7 @@
       while (pos + this.rate < adlen) {
         PHOTON_Permutation(this.state, this.state_2d);
         for (let i = 0; i < this.rate; ++i) {
-          this.state[i] ^= ad[pos + i];
+          this.state[i] = OpCodes.XorN(this.state[i], ad[pos + i]);
         }
         pos += this.rate;
       }
@@ -604,18 +603,18 @@
         this.state[i] ^= ad[pos + i];
       }
       if (remaining < this.rate) {
-        this.state[remaining] ^= 0x01;  // ozs padding
+        this.state[remaining] = OpCodes.XorN(this.state[remaining], 0x01);  // ozs padding
       }
 
       // Add domain separation
       if (mempty && remaining === this.rate) {
-        this.state[STATE_INBYTES - 1] ^= (3 << this.algorithm.LAST_THREE_BITS_OFFSET);
+        this.state[STATE_INBYTES - 1] ^= OpCodes.Shl32(3, this.algorithm.LAST_THREE_BITS_OFFSET);
       } else if (mempty) {
-        this.state[STATE_INBYTES - 1] ^= (4 << this.algorithm.LAST_THREE_BITS_OFFSET);
+        this.state[STATE_INBYTES - 1] ^= OpCodes.Shl32(4, this.algorithm.LAST_THREE_BITS_OFFSET);
       } else if (remaining === this.rate) {
-        this.state[STATE_INBYTES - 1] ^= (1 << this.algorithm.LAST_THREE_BITS_OFFSET);
+        this.state[STATE_INBYTES - 1] ^= OpCodes.Shl32(1, this.algorithm.LAST_THREE_BITS_OFFSET);
       } else {
-        this.state[STATE_INBYTES - 1] ^= (2 << this.algorithm.LAST_THREE_BITS_OFFSET);
+        this.state[STATE_INBYTES - 1] ^= OpCodes.Shl32(2, this.algorithm.LAST_THREE_BITS_OFFSET);
       }
     }
 
@@ -637,26 +636,26 @@
         }
         // Rotate first half of state by 1 bit to the right, store in second half of shuffle
         for (let i = 0; i < half - 1; ++i) {
-          shuffle[half + i] = ((this.state[i] >>> 1) | (this.state[i + 1] << 7)) & 0xFF;
+          shuffle[half + i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr32(this.state[i], 1), OpCodes.Shl32(this.state[i + 1], 7)), 0xFF);
         }
-        shuffle[this.rate - 1] = ((this.state[half - 1] >>> 1) | (this.state[0] << 7)) & 0xFF;
+        shuffle[this.rate - 1] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr32(this.state[half - 1], 1), OpCodes.Shl32(this.state[0], 7)), 0xFF);
 
         // Update state and generate output
         if (isEncrypt) {
           // Encryption: state ^= plaintext, then ciphertext = plaintext ^ shuffle
           for (let i = 0; i < this.rate; ++i) {
-            this.state[i] ^= msg[pos + i];
+            this.state[i] = OpCodes.XorN(this.state[i], msg[pos + i]);
           }
           for (let i = 0; i < this.rate; ++i) {
-            output[pos + i] = msg[pos + i] ^ shuffle[i];
+            output[pos + i] = OpCodes.XorN(msg[pos + i], shuffle[i]);
           }
         } else {
           // Decryption: plaintext = ciphertext ^ shuffle, then state ^= plaintext
           for (let i = 0; i < this.rate; ++i) {
-            output[pos + i] = msg[pos + i] ^ shuffle[i];
+            output[pos + i] = OpCodes.XorN(msg[pos + i], shuffle[i]);
           }
           for (let i = 0; i < this.rate; ++i) {
-            this.state[i] ^= output[pos + i];
+            this.state[i] = OpCodes.XorN(this.state[i], output[pos + i]);
           }
         }
 
@@ -675,44 +674,44 @@
         }
         // Rotate first half of state by 1 bit to the right, store in second half of shuffle
         for (let i = 0; i < half - 1; ++i) {
-          shuffle[half + i] = ((this.state[i] >>> 1) | (this.state[i + 1] << 7)) & 0xFF;
+          shuffle[half + i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr32(this.state[i], 1), OpCodes.Shl32(this.state[i + 1], 7)), 0xFF);
         }
-        shuffle[this.rate - 1] = ((this.state[half - 1] >>> 1) | (this.state[0] << 7)) & 0xFF;
+        shuffle[this.rate - 1] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr32(this.state[half - 1], 1), OpCodes.Shl32(this.state[0], 7)), 0xFF);
 
         // Update state and generate output for partial block
         if (isEncrypt) {
           // Encryption: state ^= plaintext, then ciphertext = plaintext ^ shuffle
           for (let i = 0; i < remaining; ++i) {
-            this.state[i] ^= msg[pos + i];
+            this.state[i] = OpCodes.XorN(this.state[i], msg[pos + i]);
           }
           if (remaining < this.rate) {
-            this.state[remaining] ^= 0x01;  // ozs padding
+            this.state[remaining] = OpCodes.XorN(this.state[remaining], 0x01);  // ozs padding
           }
           for (let i = 0; i < remaining; ++i) {
-            output[pos + i] = msg[pos + i] ^ shuffle[i];
+            output[pos + i] = OpCodes.XorN(msg[pos + i], shuffle[i]);
           }
         } else {
           // Decryption: plaintext = ciphertext ^ shuffle, then state ^= plaintext
           for (let i = 0; i < remaining; ++i) {
-            output[pos + i] = msg[pos + i] ^ shuffle[i];
+            output[pos + i] = OpCodes.XorN(msg[pos + i], shuffle[i]);
           }
           for (let i = 0; i < remaining; ++i) {
-            this.state[i] ^= output[pos + i];
+            this.state[i] = OpCodes.XorN(this.state[i], output[pos + i]);
           }
           if (remaining < this.rate) {
-            this.state[remaining] ^= 0x01;  // ozs padding
+            this.state[remaining] = OpCodes.XorN(this.state[remaining], 0x01);  // ozs padding
           }
         }
 
       // Add domain separation
       if (adempty && remaining === this.rate) {
-        this.state[STATE_INBYTES - 1] ^= (5 << this.algorithm.LAST_THREE_BITS_OFFSET);
+        this.state[STATE_INBYTES - 1] ^= OpCodes.Shl32(5, this.algorithm.LAST_THREE_BITS_OFFSET);
       } else if (adempty) {
-        this.state[STATE_INBYTES - 1] ^= (6 << this.algorithm.LAST_THREE_BITS_OFFSET);
+        this.state[STATE_INBYTES - 1] ^= OpCodes.Shl32(6, this.algorithm.LAST_THREE_BITS_OFFSET);
       } else if (remaining === this.rate) {
-        this.state[STATE_INBYTES - 1] ^= (1 << this.algorithm.LAST_THREE_BITS_OFFSET);
+        this.state[STATE_INBYTES - 1] ^= OpCodes.Shl32(1, this.algorithm.LAST_THREE_BITS_OFFSET);
       } else {
-        this.state[STATE_INBYTES - 1] ^= (2 << this.algorithm.LAST_THREE_BITS_OFFSET);
+        this.state[STATE_INBYTES - 1] ^= OpCodes.Shl32(2, this.algorithm.LAST_THREE_BITS_OFFSET);
       }
 
       return output;

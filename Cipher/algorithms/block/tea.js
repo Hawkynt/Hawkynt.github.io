@@ -276,9 +276,15 @@
 
       // 32 rounds of TEA encryption
       for (let i = 0; i < this.ROUNDS; i++) {
-        sum = (sum + this.DELTA) >>> 0;
-        v0 = (v0 + (((v1 << 4) + k0) ^ (v1 + sum) ^ ((v1 >>> 5) + k1))) >>> 0;
-        v1 = (v1 + (((v0 << 4) + k2) ^ (v0 + sum) ^ ((v0 >>> 5) + k3))) >>> 0;
+        sum = OpCodes.ToUint32(sum + this.DELTA);
+        v0 = OpCodes.ToUint32(v0 + OpCodes.XorN(OpCodes.XorN(
+          OpCodes.ToUint32(OpCodes.Shl32(v1, 4) + k0),
+          OpCodes.ToUint32(v1 + sum)),
+          OpCodes.ToUint32(OpCodes.Shr32(v1, 5) + k1)));
+        v1 = OpCodes.ToUint32(v1 + OpCodes.XorN(OpCodes.XorN(
+          OpCodes.ToUint32(OpCodes.Shl32(v0, 4) + k2),
+          OpCodes.ToUint32(v0 + sum)),
+          OpCodes.ToUint32(OpCodes.Shr32(v0, 5) + k3)));
       }
 
       // Convert back to bytes
@@ -305,13 +311,19 @@
       const k2 = OpCodes.Pack32BE(this._key[8], this._key[9], this._key[10], this._key[11]);
       const k3 = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
 
-      let sum = (this.DELTA * this.ROUNDS) >>> 0;
+      let sum = OpCodes.ToUint32(this.DELTA * this.ROUNDS);
 
       // 32 rounds of TEA decryption (reverse order)
       for (let i = 0; i < this.ROUNDS; i++) {
-        v1 = (v1 - (((v0 << 4) + k2) ^ (v0 + sum) ^ ((v0 >>> 5) + k3))) >>> 0;
-        v0 = (v0 - (((v1 << 4) + k0) ^ (v1 + sum) ^ ((v1 >>> 5) + k1))) >>> 0;
-        sum = (sum - this.DELTA) >>> 0;
+        v1 = OpCodes.ToUint32(v1 - OpCodes.XorN(OpCodes.XorN(
+          OpCodes.ToUint32(OpCodes.Shl32(v0, 4) + k2),
+          OpCodes.ToUint32(v0 + sum)),
+          OpCodes.ToUint32(OpCodes.Shr32(v0, 5) + k3)));
+        v0 = OpCodes.ToUint32(v0 - OpCodes.XorN(OpCodes.XorN(
+          OpCodes.ToUint32(OpCodes.Shl32(v1, 4) + k0),
+          OpCodes.ToUint32(v1 + sum)),
+          OpCodes.ToUint32(OpCodes.Shr32(v1, 5) + k1)));
+        sum = OpCodes.ToUint32(sum - this.DELTA);
       }
 
       // Convert back to bytes

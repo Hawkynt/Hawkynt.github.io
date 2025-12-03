@@ -224,10 +224,10 @@
       // Construct KWP IV: 0xA65959A6 || original_length (32-bit big-endian)
       const kwpIV = [
         0xA6, 0x59, 0x59, 0xA6,
-        (originalLength >>> 24) & 0xFF,
-        (originalLength >>> 16) & 0xFF,
-        (originalLength >>> 8) & 0xFF,
-        originalLength & 0xFF
+        OpCodes.AndN(OpCodes.Shr32(originalLength, 24), 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(originalLength, 16), 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(originalLength, 8), 0xFF),
+        OpCodes.AndN(originalLength, 0xFF)
       ];
 
       let result;
@@ -270,10 +270,10 @@
 
             // XOR MSB of A with (n*j)+i
             const t = (n * j) + i;
-            A[7] ^= t & 0xFF;
-            A[6] ^= (t >> 8) & 0xFF;
-            A[5] ^= (t >> 16) & 0xFF;
-            A[4] ^= (t >> 24) & 0xFF;
+            A[7] = OpCodes.XorN(A[7], OpCodes.AndN(t, 0xFF));
+            A[6] = OpCodes.XorN(A[6], OpCodes.AndN(OpCodes.Shr32(t, 8), 0xFF));
+            A[5] = OpCodes.XorN(A[5], OpCodes.AndN(OpCodes.Shr32(t, 16), 0xFF));
+            A[4] = OpCodes.XorN(A[4], OpCodes.AndN(OpCodes.Shr32(t, 24), 0xFF));
           }
         }
 
@@ -336,10 +336,10 @@
           for (let i = n; i >= 1; i--) {
             // XOR MSB of A with (n*j)+i
             const t = (n * j) + i;
-            A[7] ^= t & 0xFF;
-            A[6] ^= (t >> 8) & 0xFF;
-            A[5] ^= (t >> 16) & 0xFF;
-            A[4] ^= (t >> 24) & 0xFF;
+            A[7] = OpCodes.XorN(A[7], OpCodes.AndN(t, 0xFF));
+            A[6] = OpCodes.XorN(A[6], OpCodes.AndN(OpCodes.Shr32(t, 8), 0xFF));
+            A[5] = OpCodes.XorN(A[5], OpCodes.AndN(OpCodes.Shr32(t, 16), 0xFF));
+            A[4] = OpCodes.XorN(A[4], OpCodes.AndN(OpCodes.Shr32(t, 24), 0xFF));
 
             // Decrypt A || R[i] with KEK
             const input = A.concat(R[i]);
@@ -375,7 +375,7 @@
       }
 
       // Extract original key length
-      const originalLength = (iv[4] << 24) | (iv[5] << 16) | (iv[6] << 8) | iv[7];
+      const originalLength = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(iv[4], 24), OpCodes.Shl32(iv[5], 16)), OpCodes.Shl32(iv[6], 8)), iv[7]);
 
       // Validate length
       if (originalLength > paddedKey.length) {

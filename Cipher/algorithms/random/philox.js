@@ -70,12 +70,12 @@
     const hi1 = OpCodes.MulHi32(PHILOX_M4x32_1, counter[2]);
     const lo1 = OpCodes.Mul32(PHILOX_M4x32_1, counter[2]);
 
-    // Feistel-like mixing with key (XOR is simple enough to use directly)
+    // Feistel-like mixing with key
     return [
-      (hi1 ^ counter[1] ^ key[0]) >>> 0,
-      lo1 >>> 0,
-      (hi0 ^ counter[3] ^ key[1]) >>> 0,
-      lo0 >>> 0
+      OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(hi1, counter[1]), key[0])),
+      OpCodes.ToUint32(lo1),
+      OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(hi0, counter[3]), key[1])),
+      OpCodes.ToUint32(lo0)
     ];
   }
 

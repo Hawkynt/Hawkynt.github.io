@@ -283,7 +283,7 @@
       // Step 5: Compute tag = N XOR H XOR C'
       const tag = new Array(this.tagSize);
       for (let i = 0; i < this.tagSize; i++) {
-        tag[i] = N[i] ^ H[i] ^ CPrime[i];
+        tag[i] = OpCodes.XorN(OpCodes.XorN(N[i], H[i]), CPrime[i]);
       }
 
       // Clear sensitive data
@@ -315,7 +315,7 @@
       // Step 4: Compute expected tag = N XOR H XOR C'
       const expectedTag = new Array(this.tagSize);
       for (let i = 0; i < this.tagSize; i++) {
-        expectedTag[i] = N[i] ^ H[i] ^ CPrime[i];
+        expectedTag[i] = OpCodes.XorN(OpCodes.XorN(N[i], H[i]), CPrime[i]);
       }
 
       // Step 5: Verify tag
@@ -358,13 +358,13 @@
       // Compute CMAC subkeys (K1 and K2)
       const L = this._aesEncrypt(new Array(blockSize).fill(0));
       const K1 = this._leftShift(L);
-      if (L[0] & 0x80) {
-        K1[blockSize - 1] ^= blockSize === 16 ? 0x87 : 0x1B; // Rb constant
+      if (OpCodes.AndN(L[0], 0x80)) {
+        K1[blockSize - 1] = OpCodes.XorN(K1[blockSize - 1], blockSize === 16 ? 0x87 : 0x1B); // Rb constant
       }
 
       const K2 = this._leftShift(K1);
-      if (K1[0] & 0x80) {
-        K2[blockSize - 1] ^= blockSize === 16 ? 0x87 : 0x1B;
+      if (OpCodes.AndN(K1[0], 0x80)) {
+        K2[blockSize - 1] = OpCodes.XorN(K2[blockSize - 1], blockSize === 16 ? 0x87 : 0x1B);
       }
 
       // CMAC computation
@@ -374,7 +374,7 @@
       if (numBlocks === 0) {
         // Empty message case
         const finalBlock = [...K2];
-        finalBlock[0] ^= 0x80; // Padding
+        finalBlock[0] = OpCodes.XorN(finalBlock[0], 0x80); // Padding
         mac = this._aesEncrypt(finalBlock);
         return mac;
       }
@@ -383,7 +383,7 @@
       for (let i = 0; i < numBlocks - 1; i++) {
         const block = message.slice(i * blockSize, (i + 1) * blockSize);
         for (let j = 0; j < blockSize; j++) {
-          mac[j] ^= block[j];
+          mac[j] = OpCodes.XorN(mac[j], block[j]);
         }
         mac = this._aesEncrypt(mac);
       }
@@ -395,7 +395,7 @@
       if (lastBlock.length === blockSize) {
         // Complete final block - use K1
         for (let j = 0; j < blockSize; j++) {
-          mac[j] ^= lastBlock[j] ^ K1[j];
+          mac[j] = OpCodes.XorN(mac[j], OpCodes.XorN(lastBlock[j], K1[j]));
         }
       } else {
         // Incomplete final block - use K2 and padding
@@ -404,7 +404,7 @@
           paddedBlock.push(0x00);
         }
         for (let j = 0; j < blockSize; j++) {
-          mac[j] ^= paddedBlock[j] ^ K2[j];
+          mac[j] = OpCodes.XorN(mac[j], OpCodes.XorN(paddedBlock[j], K2[j]));
         }
       }
 
@@ -420,8 +420,8 @@
       let carry = 0;
 
       for (let i = data.length - 1; i >= 0; i--) {
-        const newCarry = (data[i] & 0x80) ? 1 : 0;
-        result[i] = ((data[i] << 1) | carry) & 0xFF;
+        const newCarry = OpCodes.AndN(data[i], 0x80) ? 1 : 0;
+        result[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(data[i], 1), carry), 0xFF);
         carry = newCarry;
       }
 
@@ -461,7 +461,7 @@
 
         // XOR with data
         for (let j = 0; j < remainingBytes; j++) {
-          output.push(inputBlock[j] ^ keystream[j]);
+          output.push(OpCodes.XorN(inputBlock[j], keystream[j]));
         }
 
         // Increment counter
@@ -478,7 +478,7 @@
      */
     _incrementCounter(counter) {
       for (let i = counter.length - 1; i >= 0; i--) {
-        counter[i] = (counter[i] + 1) & 0xFF;
+        counter[i] = OpCodes.AndN(counter[i] + 1, 0xFF);
         if (counter[i] !== 0) break; // No carry
       }
     }

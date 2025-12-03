@@ -116,7 +116,7 @@
         if (exp % 2n === 1n) {
           result = (result * base) % m;
         }
-        exp = exp >> 1n;
+        exp = OpCodes.ShiftRn(exp, 1n);
         base = (base * base) % m;
       }
 
@@ -198,7 +198,7 @@
       do {
         result = 0n;
         for (let i = 0; i < bits; ++i) {
-          result = (result << 1n) | BigInt(Math.random() < 0.5 ? 0 : 1);
+          result = OpCodes.OrN(OpCodes.ShiftLn(result, 1n), BigInt(Math.random() < 0.5 ? 0 : 1));
         }
       } while (result >= range);
 
@@ -211,8 +211,8 @@
      * @returns {BigInt} Random prime
      */
     generatePrime3Mod8: function(bits) {
-      const minValue = 1n << BigInt(bits - 1);
-      const maxValue = (1n << BigInt(bits)) - 1n;
+      const minValue = OpCodes.ShiftLn(1n, BigInt(bits - 1));
+      const maxValue = OpCodes.ShiftLn(1n, BigInt(bits)) - 1n;
 
       let candidate;
       do {
@@ -234,8 +234,8 @@
      * @returns {BigInt} Random prime
      */
     generatePrime7Mod8: function(bits) {
-      const minValue = 1n << BigInt(bits - 1);
-      const maxValue = (1n << BigInt(bits)) - 1n;
+      const minValue = OpCodes.ShiftLn(1n, BigInt(bits - 1));
+      const maxValue = OpCodes.ShiftLn(1n, BigInt(bits)) - 1n;
 
       let candidate;
       do {
@@ -561,13 +561,13 @@
         // out = out (no change)
       } else if (outMod16 === r2 || outMod16 === r2 + 8n) {
         // out = out * 2
-        out = (out << 1n) % n;
+        out = OpCodes.ShiftLn(out, 1n) % n;
       } else if (outMod16 === r3a || outMod16 === r3b) {
         // out = n - out
         out = n - out;
       } else if (outMod16 === r4 || outMod16 === r4 + 8n) {
         // out = (n - out) * 2
-        out = ((n - out) << 1n) % n;
+        out = OpCodes.ShiftLn(n - out, 1n) % n;
       } else {
         // Invalid input - return 0
         out = 0n;
@@ -601,7 +601,7 @@
       // Convert message to BigInt (this would normally be a hash)
       let x = 0n;
       for (let i = 0; i < message.length; ++i) {
-        x = (x << 8n) | BigInt(message[i]);
+        x = OpCodes.ShiftLn(x, 8n) | BigInt(message[i]);
       }
 
       // Ensure x < n
@@ -719,7 +719,7 @@
       // Convert signature to BigInt
       let s = 0n;
       for (let i = 0; i < signature.length; ++i) {
-        s = (s << 8n) | BigInt(signature[i]);
+        s = OpCodes.ShiftLn(s, 8n) | BigInt(signature[i]);
       }
 
       // Apply public function
@@ -739,8 +739,8 @@
 
       const bytes = [];
       while (value > 0n) {
-        bytes.unshift(Number(value & 0xFFn));
-        value = value >> 8n;
+        bytes.unshift(Number(OpCodes.AndN(value, 0xFFn)));
+        value = OpCodes.ShiftRn(value, 8n);
       }
       return bytes;
     }

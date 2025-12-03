@@ -341,7 +341,7 @@
     _generateSupport(n, m) {
       const support = new Array(n);
       for (let i = 0; i < n; i++) {
-        support[i] = i % (1 << m); // Simplified support
+        support[i] = i % OpCodes.Shl32(1, m); // Simplified support
       }
       return support;
     }

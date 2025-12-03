@@ -247,7 +247,7 @@
         this._state = OpCodes.Pack32BE(0, 0, 0, seedBytes[0]);
       }
 
-      this._state = this._state >>> 0; // Ensure unsigned 32-bit
+      this._state = OpCodes.ToUint32(this._state); // Ensure unsigned 32-bit
       this._ready = true;
     }
 
@@ -283,15 +283,15 @@
       // Step 2: MurmurHash3-style mixing
       // First mix: XOR with right-shift 15, multiply by (z | 1)
       const zShifted15 = OpCodes.Shr32(z, 15);
-      z = Math.imul(z ^ zShifted15, z | 1);
+      z = Math.imul(OpCodes.XorN(z, zShifted15), OpCodes.OrN(z, 1));
 
       // Step 3: Second mix: XOR with addition and multiply
       const zShifted7 = OpCodes.Shr32(z, 7);
-      z = OpCodes.ToInt(z ^ (z + Math.imul(z ^ zShifted7, z | 61)));
+      z = OpCodes.ToInt(OpCodes.XorN(z, z + Math.imul(OpCodes.XorN(z, zShifted7), OpCodes.OrN(z, 61))));
 
       // Step 4: Final mix: XOR with right-shift 14
       const zShifted14 = OpCodes.Shr32(z, 14);
-      return OpCodes.ToDWord(z ^ zShifted14);
+      return OpCodes.ToDWord(OpCodes.XorN(z, zShifted14));
     }
 
     /**

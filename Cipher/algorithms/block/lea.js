@@ -312,27 +312,27 @@
         const delta = this.algorithm.DELTA;
 
         // Generate rkey[0], rkey[6], rkey[12], ... (indices 0, 6, 12, 18, ...)
-        rkey[0] = OpCodes.RotL32((key[0] + delta[0][0]) >>> 0, 1);
+        rkey[0] = OpCodes.RotL32(OpCodes.ToUint32(key[0] + delta[0][0]), 1);
         for (let i = 1; i < 24; i++) {
-          rkey[i * 6] = OpCodes.RotL32((rkey[(i - 1) * 6] + delta[i % 4][i]) >>> 0, 1);
+          rkey[i * 6] = OpCodes.RotL32(OpCodes.ToUint32(rkey[(i - 1) * 6] + delta[i % 4][i]), 1);
         }
 
         // Generate rkey[1], rkey[3], rkey[5], rkey[7], ... (tripled values)
-        rkey[1] = rkey[3] = rkey[5] = OpCodes.RotL32((key[1] + delta[0][1]) >>> 0, 3);
+        rkey[1] = rkey[3] = rkey[5] = OpCodes.RotL32(OpCodes.ToUint32(key[1] + delta[0][1]), 3);
         for (let i = 1; i < 24; i++) {
-          rkey[i * 6 + 1] = rkey[i * 6 + 3] = rkey[i * 6 + 5] = OpCodes.RotL32((rkey[(i - 1) * 6 + 1] + delta[i % 4][i + 1]) >>> 0, 3);
+          rkey[i * 6 + 1] = rkey[i * 6 + 3] = rkey[i * 6 + 5] = OpCodes.RotL32(OpCodes.ToUint32(rkey[(i - 1) * 6 + 1] + delta[i % 4][i + 1]), 3);
         }
 
         // Generate rkey[2], rkey[8], rkey[14], ... (indices 2, 8, 14, 20, ...)
-        rkey[2] = OpCodes.RotL32((key[2] + delta[0][2]) >>> 0, 6);
+        rkey[2] = OpCodes.RotL32(OpCodes.ToUint32(key[2] + delta[0][2]), 6);
         for (let i = 1; i < 24; i++) {
-          rkey[i * 6 + 2] = OpCodes.RotL32((rkey[(i - 1) * 6 + 2] + delta[i % 4][i + 2]) >>> 0, 6);
+          rkey[i * 6 + 2] = OpCodes.RotL32(OpCodes.ToUint32(rkey[(i - 1) * 6 + 2] + delta[i % 4][i + 2]), 6);
         }
 
         // Generate rkey[4], rkey[10], rkey[16], ... (indices 4, 10, 16, 22, ...)
-        rkey[4] = OpCodes.RotL32((key[3] + delta[0][3]) >>> 0, 11);
+        rkey[4] = OpCodes.RotL32(OpCodes.ToUint32(key[3] + delta[0][3]), 11);
         for (let i = 1; i < 24; i++) {
-          rkey[i * 6 + 4] = OpCodes.RotL32((rkey[(i - 1) * 6 + 4] + delta[i % 4][i + 3]) >>> 0, 11);
+          rkey[i * 6 + 4] = OpCodes.RotL32(OpCodes.ToUint32(rkey[(i - 1) * 6 + 4] + delta[i % 4][i + 3]), 11);
         }
 
       } else if (keyWords === 6) { // 192-bit key - LEA-192
@@ -379,9 +379,9 @@
         const oldX = [...X];
 
         // Apply LEA round function according to specification
-        X[0] = OpCodes.RotL32(((oldX[0] ^ RK[0]) + (oldX[1] ^ RK[1])) >>> 0, 9);
-        X[1] = OpCodes.RotR32(((oldX[1] ^ RK[2]) + (oldX[2] ^ RK[3])) >>> 0, 5);
-        X[2] = OpCodes.RotR32(((oldX[2] ^ RK[4]) + (oldX[3] ^ RK[5])) >>> 0, 3);
+        X[0] = OpCodes.RotL32(OpCodes.ToUint32((OpCodes.XorN(oldX[0], RK[0]) + OpCodes.XorN(oldX[1], RK[1]))), 9);
+        X[1] = OpCodes.RotR32(OpCodes.ToUint32((OpCodes.XorN(oldX[1], RK[2]) + OpCodes.XorN(oldX[2], RK[3]))), 5);
+        X[2] = OpCodes.RotR32(OpCodes.ToUint32((OpCodes.XorN(oldX[2], RK[4]) + OpCodes.XorN(oldX[3], RK[5]))), 3);
         X[3] = oldX[0]; // Circular shift
       }
 
@@ -424,20 +424,20 @@
         // From X[i+1][0] = ((X[i][0] ⊕ RK[0]) + (X[i][1] ⊕ RK[1])) <<< 9
         // We get: X[i][1] = ((X[i+1][0] >>> 9) - (X[i][0] ⊕ RK[0])) ⊕ RK[1]
         let temp = OpCodes.RotR32(oldX[0], 9); // Inverse left rotation
-        temp = (temp - (X[0] ^ RK[0])) >>> 0; // Inverse addition
-        X[1] = temp ^ RK[1]; // Inverse XOR
+        temp = OpCodes.ToUint32(temp - OpCodes.XorN(X[0], RK[0])); // Inverse addition
+        X[1] = OpCodes.XorN(temp, RK[1]); // Inverse XOR
 
         // From X[i+1][1] = ((X[i][1] ⊕ RK[2]) + (X[i][2] ⊕ RK[3])) >>> 5
         // We get: X[i][2] = ((X[i+1][1] <<< 5) - (X[i][1] ⊕ RK[2])) ⊕ RK[3]
         temp = OpCodes.RotL32(oldX[1], 5); // Inverse right rotation
-        temp = (temp - (X[1] ^ RK[2])) >>> 0; // Inverse addition
-        X[2] = temp ^ RK[3]; // Inverse XOR
+        temp = OpCodes.ToUint32(temp - OpCodes.XorN(X[1], RK[2])); // Inverse addition
+        X[2] = OpCodes.XorN(temp, RK[3]); // Inverse XOR
 
         // From X[i+1][2] = ((X[i][2] ⊕ RK[4]) + (X[i][3] ⊕ RK[5])) >>> 3
         // We get: X[i][3] = ((X[i+1][2] <<< 3) - (X[i][2] ⊕ RK[4])) ⊕ RK[5]
         temp = OpCodes.RotL32(oldX[2], 3); // Inverse right rotation
-        temp = (temp - (X[2] ^ RK[4])) >>> 0; // Inverse addition
-        X[3] = temp ^ RK[5]; // Inverse XOR
+        temp = OpCodes.ToUint32(temp - OpCodes.XorN(X[2], RK[4])); // Inverse addition
+        X[3] = OpCodes.XorN(temp, RK[5]); // Inverse XOR
       }
 
       // Convert back to byte array using OpCodes (little-endian)

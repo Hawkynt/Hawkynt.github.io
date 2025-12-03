@@ -114,7 +114,7 @@
         if (exp % 2n === 1n) {
           result = (result * base) % m;
         }
-        exp = exp >> 1n;
+        exp = OpCodes.ShiftRn(exp, 1n);
         base = (base * base) % m;
       }
 
@@ -289,7 +289,7 @@
       do {
         result = 0n;
         for (let i = 0; i < bits; ++i) {
-          result = (result << 1n) | BigInt(Math.random() < 0.5 ? 0 : 1);
+          result = OpCodes.OrN(OpCodes.ShiftLn(result, 1n), BigInt(Math.random() < 0.5 ? 0 : 1));
         }
       } while (result >= range);
 
@@ -302,8 +302,8 @@
      * @returns {BigInt} Random prime
      */
     generatePrime3Mod4: function(bits) {
-      const minValue = 1n << BigInt(bits - 1);
-      const maxValue = (1n << BigInt(bits)) - 1n;
+      const minValue = OpCodes.ShiftLn(1n, BigInt(bits - 1));
+      const maxValue = OpCodes.ShiftLn(1n, BigInt(bits)) - 1n;
 
       let candidate;
       do {
@@ -618,7 +618,7 @@
       // Convert message to BigInt
       let m = 0n;
       for (let i = 0; i < message.length; ++i) {
-        m = (m << 8n) | BigInt(message[i]);
+        m = OpCodes.OrN(OpCodes.ShiftLn(m, 8n), BigInt(message[i]));
       }
 
       // Ensure m < n
@@ -667,7 +667,7 @@
       // Convert ciphertext to BigInt
       let c = 0n;
       for (let i = 0; i < ciphertext.length; ++i) {
-        c = (c << 8n) | BigInt(ciphertext[i]);
+        c = OpCodes.OrN(OpCodes.ShiftLn(c, 8n), BigInt(ciphertext[i]));
       }
 
       // Ensure c < n
@@ -739,8 +739,8 @@
 
       const bytes = [];
       while (value > 0n) {
-        bytes.unshift(Number(value & 0xFFn));
-        value = value >> 8n;
+        bytes.unshift(Number(OpCodes.AndN(value, 0xFFn)));
+        value = OpCodes.ShiftRn(value, 8n);
       }
       return bytes;
     }

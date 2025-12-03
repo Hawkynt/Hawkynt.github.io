@@ -80,8 +80,8 @@
 
   // Bit permutation helper
   function bitPermuteStep16(value, mask, shift) {
-    const t = ((value >>> shift) ^ value) & mask;
-    return ((value ^ t) ^ (t << shift)) & 0xFFFF;
+    const t = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(value, shift), value), mask);
+    return OpCodes.ToUint32(OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(value, t), OpCodes.Shl32(t, shift)), 0xFFFF));
   }
 
   // Permutation macros for GIFT-64 (16-bit nibble permutations)
@@ -89,14 +89,14 @@
     x = bitPermuteStep16(x, 0x0a0a, 3);
     x = bitPermuteStep16(x, 0x00cc, 6);
     // Swap nibbles: (x & 0x0f0f) << 4 | (x & 0xf0f0) >> 4
-    const swapped = ((x & 0x0f0f) << 4) | ((x & 0xf0f0) >>> 4);
-    return swapped & 0xFFFF;
+    const swapped = OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(x, 0x0f0f), 4), OpCodes.Shr32(OpCodes.AndN(x, 0xf0f0), 4));
+    return OpCodes.ToUint32(OpCodes.AndN(swapped, 0xFFFF));
   }
 
   function PERM0(x) {
     const inner = PERM1_INNER(x);
     // leftRotate12_16
-    return (((inner << 12) | (inner >>> 4)) & 0xFFFF);
+    return OpCodes.ToUint32(OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(inner, 12), OpCodes.Shr32(inner, 4)), 0xFFFF));
   }
 
   function PERM1(x) {
@@ -106,13 +106,13 @@
   function PERM2(x) {
     const inner = PERM1_INNER(x);
     // leftRotate4_16
-    return (((inner << 4) | (inner >>> 12)) & 0xFFFF);
+    return OpCodes.ToUint32(OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(inner, 4), OpCodes.Shr32(inner, 12)), 0xFFFF));
   }
 
   function PERM3(x) {
     const inner = PERM1_INNER(x);
     // leftRotate8_16
-    return (((inner << 8) | (inner >>> 8)) & 0xFFFF);
+    return OpCodes.ToUint32(OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(inner, 8), OpCodes.Shr32(inner, 8)), 0xFFFF));
   }
 
   // GIFT-64 Key Schedule
@@ -136,8 +136,8 @@
     // Bit permutation to scatter nibbles
     // 0 8 16 24 1 9 17 25 2 10 18 26 3 11 19 27 4 12 20 28 5 13 21 29 6 14 22 30 7 15 23 31
     function bitPermuteStep32(y, mask, shift) {
-      const t = ((y >>> shift) ^ y) & mask;
-      return ((y ^ t) ^ (t << shift)) >>> 0;
+      const t = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(y, shift), y), mask);
+      return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(y, t), OpCodes.Shl32(t, shift)));
     }
 
     s0 = bitPermuteStep32(s0, 0x0a0a0a0a, 3);
@@ -151,29 +151,29 @@
     s1 = bitPermuteStep32(s1, 0x0000ff00, 8);
 
     // Rearrange bytes
-    output[0] = s0 & 0xFF;
-    output[1] = s1 & 0xFF;
-    output[2] = (s0 >>> 8) & 0xFF;
-    output[3] = (s1 >>> 8) & 0xFF;
-    output[4] = (s0 >>> 16) & 0xFF;
-    output[5] = (s1 >>> 16) & 0xFF;
-    output[6] = (s0 >>> 24) & 0xFF;
-    output[7] = (s1 >>> 24) & 0xFF;
+    output[0] = OpCodes.AndN(s0, 0xFF);
+    output[1] = OpCodes.AndN(s1, 0xFF);
+    output[2] = OpCodes.AndN(OpCodes.Shr32(s0, 8), 0xFF);
+    output[3] = OpCodes.AndN(OpCodes.Shr32(s1, 8), 0xFF);
+    output[4] = OpCodes.AndN(OpCodes.Shr32(s0, 16), 0xFF);
+    output[5] = OpCodes.AndN(OpCodes.Shr32(s1, 16), 0xFF);
+    output[6] = OpCodes.AndN(OpCodes.Shr32(s0, 24), 0xFF);
+    output[7] = OpCodes.AndN(OpCodes.Shr32(s1, 24), 0xFF);
   }
 
   // Convert GIFT-64 word representation back to nibble representation
   function gift64nToNibbles(output, input) {
     // Rearrange bytes
-    let s0 = (input[6] << 24) | (input[4] << 16) | (input[2] << 8) | input[0];
-    let s1 = (input[7] << 24) | (input[5] << 16) | (input[3] << 8) | input[1];
+    let s0 = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(input[6], 24), OpCodes.Shl32(input[4], 16)), OpCodes.Shl32(input[2], 8)), input[0]);
+    let s1 = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(input[7], 24), OpCodes.Shl32(input[5], 16)), OpCodes.Shl32(input[3], 8)), input[1]);
 
-    s0 = s0 >>> 0;
-    s1 = s1 >>> 0;
+    s0 = OpCodes.ToUint32(s0);
+    s1 = OpCodes.ToUint32(s1);
 
     // Inverse bit permutation
     function bitPermuteStep32(y, mask, shift) {
-      const t = ((y >>> shift) ^ y) & mask;
-      return ((y ^ t) ^ (t << shift)) >>> 0;
+      const t = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(y, shift), y), mask);
+      return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(y, t), OpCodes.Shl32(t, shift)));
     }
 
     s0 = bitPermuteStep32(s0, 0x00aa00aa, 7);
@@ -220,13 +220,13 @@
     // 28 rounds of GIFT-64
     for (let round = 0; round < 28; ++round) {
       // SubCells - GIFT-64 S-box
-      s1 ^= s0 & s2;
-      s0 ^= s1 & s3;
-      s2 ^= s0 | s1;
-      s3 ^= s2;
-      s1 ^= s3;
-      s3 ^= 0xFFFF;
-      s2 ^= s0 & s1;
+      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, OpCodes.AndN(s0, s2)));
+      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, OpCodes.AndN(s1, s3)));
+      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, OpCodes.OrN(s0, s1)));
+      s3 = OpCodes.ToUint32(OpCodes.XorN(s3, s2));
+      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, s3));
+      s3 = OpCodes.ToUint32(OpCodes.XorN(s3, 0xFFFF));
+      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, OpCodes.AndN(s0, s1)));
       let temp = s0;
       s0 = s3;
       s3 = temp;
@@ -238,13 +238,13 @@
       s3 = PERM3(s3);
 
       // AddRoundKey
-      s0 = (s0 ^ (w3 & 0xFFFF)) & 0xFFFF;
-      s1 = (s1 ^ (w3 >>> 16)) & 0xFFFF;
-      s3 = (s3 ^ (0x8000 ^ GIFT64_RC[round])) & 0xFFFF;
+      s0 = OpCodes.ToUint32(OpCodes.AndN(OpCodes.XorN(s0, OpCodes.AndN(w3, 0xFFFF)), 0xFFFF));
+      s1 = OpCodes.ToUint32(OpCodes.AndN(OpCodes.XorN(s1, OpCodes.Shr32(w3, 16)), 0xFFFF));
+      s3 = OpCodes.ToUint32(OpCodes.AndN(OpCodes.XorN(s3, OpCodes.XorN(0x8000, GIFT64_RC[round])), 0xFFFF));
 
       // AddTweak every 4 rounds except last
-      if (((round + 1) % 4) === 0 && round < 27 && tweak !== 0) {
-        s2 = (s2 ^ tweak) & 0xFFFF;
+      if (OpCodes.AndN(OpCodes.AndN(round + 1, 0xFF) % 4, 0xFF) === 0 && round < 27 && tweak !== 0) {
+        s2 = OpCodes.ToUint32(OpCodes.AndN(OpCodes.XorN(s2, tweak), 0xFFFF));
       }
 
       // Rotate key schedule
@@ -252,8 +252,7 @@
       w3 = w2;
       w2 = w1;
       w1 = w0;
-      w0 = (((temp & 0xFFFC0000) >>> 2) | ((temp & 0x00030000) << 14) |
-            ((temp & 0x00000FFF) << 4) | ((temp & 0x0000F000) >>> 12)) >>> 0;
+      w0 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shr32(OpCodes.AndN(temp, 0xFFFC0000), 2), OpCodes.Shl32(OpCodes.AndN(temp, 0x00030000), 14)), OpCodes.Shl32(OpCodes.AndN(temp, 0x00000FFF), 4)), OpCodes.Shr32(OpCodes.AndN(temp, 0x0000F000), 12)));
     }
 
     // Convert back to word representation
@@ -294,25 +293,21 @@
     let w2 = ks.k[2];
     let w3 = ks.k[3];
 
-    w0 = (((w0 & 0xC0000000) >>> 14) | ((w0 & 0x3FFF0000) << 2) |
-          ((w0 & 0x0000000F) << 12) | ((w0 & 0x0000FFF0) >>> 4)) >>> 0;
-    w1 = (((w1 & 0xC0000000) >>> 14) | ((w1 & 0x3FFF0000) << 2) |
-          ((w1 & 0x0000000F) << 12) | ((w1 & 0x0000FFF0) >>> 4)) >>> 0;
-    w2 = (((w2 & 0xC0000000) >>> 14) | ((w2 & 0x3FFF0000) << 2) |
-          ((w2 & 0x0000000F) << 12) | ((w2 & 0x0000FFF0) >>> 4)) >>> 0;
-    w3 = (((w3 & 0xC0000000) >>> 14) | ((w3 & 0x3FFF0000) << 2) |
-          ((w3 & 0x0000000F) << 12) | ((w3 & 0x0000FFF0) >>> 4)) >>> 0;
+    w0 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shr32(OpCodes.AndN(w0, 0xC0000000), 14), OpCodes.Shl32(OpCodes.AndN(w0, 0x3FFF0000), 2)), OpCodes.Shl32(OpCodes.AndN(w0, 0x0000000F), 12)), OpCodes.Shr32(OpCodes.AndN(w0, 0x0000FFF0), 4)));
+    w1 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shr32(OpCodes.AndN(w1, 0xC0000000), 14), OpCodes.Shl32(OpCodes.AndN(w1, 0x3FFF0000), 2)), OpCodes.Shl32(OpCodes.AndN(w1, 0x0000000F), 12)), OpCodes.Shr32(OpCodes.AndN(w1, 0x0000FFF0), 4)));
+    w2 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shr32(OpCodes.AndN(w2, 0xC0000000), 14), OpCodes.Shl32(OpCodes.AndN(w2, 0x3FFF0000), 2)), OpCodes.Shl32(OpCodes.AndN(w2, 0x0000000F), 12)), OpCodes.Shr32(OpCodes.AndN(w2, 0x0000FFF0), 4)));
+    w3 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shr32(OpCodes.AndN(w3, 0xC0000000), 14), OpCodes.Shl32(OpCodes.AndN(w3, 0x3FFF0000), 2)), OpCodes.Shl32(OpCodes.AndN(w3, 0x0000000F), 12)), OpCodes.Shr32(OpCodes.AndN(w3, 0x0000FFF0), 4)));
 
     // Inverse permutation helper
     function INV_PERM1_INNER(x) {
       x = bitPermuteStep16(x, 0x0505, 5);
       x = bitPermuteStep16(x, 0x00cc, 6);
-      const swapped = ((x & 0x0f0f) << 4) | ((x & 0xf0f0) >>> 4);
-      return swapped & 0xFFFF;
+      const swapped = OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(x, 0x0f0f), 4), OpCodes.Shr32(OpCodes.AndN(x, 0xf0f0), 4));
+      return OpCodes.ToUint32(OpCodes.AndN(swapped, 0xFFFF));
     }
 
     function INV_PERM0(x) {
-      const rotated = ((x >>> 12) | (x << 4)) & 0xFFFF;
+      const rotated = OpCodes.ToUint32(OpCodes.AndN(OpCodes.OrN(OpCodes.Shr32(x, 12), OpCodes.Shl32(x, 4)), 0xFFFF));
       return INV_PERM1_INNER(rotated);
     }
 
@@ -321,12 +316,12 @@
     }
 
     function INV_PERM2(x) {
-      const rotated = ((x >>> 4) | (x << 12)) & 0xFFFF;
+      const rotated = OpCodes.ToUint32(OpCodes.AndN(OpCodes.OrN(OpCodes.Shr32(x, 4), OpCodes.Shl32(x, 12)), 0xFFFF));
       return INV_PERM1_INNER(rotated);
     }
 
     function INV_PERM3(x) {
-      const rotated = ((x >>> 8) | (x << 8)) & 0xFFFF;
+      const rotated = OpCodes.ToUint32(OpCodes.AndN(OpCodes.OrN(OpCodes.Shr32(x, 8), OpCodes.Shl32(x, 8)), 0xFFFF));
       return INV_PERM1_INNER(rotated);
     }
 
@@ -337,18 +332,17 @@
       w0 = w1;
       w1 = w2;
       w2 = w3;
-      w3 = (((temp & 0x3FFF0000) << 2) | ((temp & 0xC0000000) >>> 14) |
-            ((temp & 0x0000FFF0) >>> 4) | ((temp & 0x0000000F) << 12)) >>> 0;
+      w3 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(temp, 0x3FFF0000), 2), OpCodes.Shr32(OpCodes.AndN(temp, 0xC0000000), 14)), OpCodes.Shr32(OpCodes.AndN(temp, 0x0000FFF0), 4)), OpCodes.Shl32(OpCodes.AndN(temp, 0x0000000F), 12)));
 
       // AddTweak every 4 rounds except last
-      if ((round % 4) === 0 && round !== 28 && tweak !== 0) {
-        s2 = (s2 ^ tweak) & 0xFFFF;
+      if (OpCodes.AndN(round, 0xFF) % 4 === 0 && round !== 28 && tweak !== 0) {
+        s2 = OpCodes.ToUint32(OpCodes.AndN(OpCodes.XorN(s2, tweak), 0xFFFF));
       }
 
       // AddRoundKey
-      s0 = (s0 ^ (w3 & 0xFFFF)) & 0xFFFF;
-      s1 = (s1 ^ (w3 >>> 16)) & 0xFFFF;
-      s3 = (s3 ^ (0x8000 ^ GIFT64_RC[round - 1])) & 0xFFFF;
+      s0 = OpCodes.ToUint32(OpCodes.AndN(OpCodes.XorN(s0, OpCodes.AndN(w3, 0xFFFF)), 0xFFFF));
+      s1 = OpCodes.ToUint32(OpCodes.AndN(OpCodes.XorN(s1, OpCodes.Shr32(w3, 16)), 0xFFFF));
+      s3 = OpCodes.ToUint32(OpCodes.AndN(OpCodes.XorN(s3, OpCodes.XorN(0x8000, GIFT64_RC[round - 1])), 0xFFFF));
 
       // InvPermBits
       s0 = INV_PERM0(s0);
@@ -360,13 +354,13 @@
       temp = s0;
       s0 = s3;
       s3 = temp;
-      s2 ^= s0 & s1;
-      s3 ^= 0xFFFF;
-      s1 ^= s3;
-      s3 ^= s2;
-      s2 ^= s0 | s1;
-      s0 ^= s1 & s3;
-      s1 ^= s0 & s2;
+      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, OpCodes.AndN(s0, s1)));
+      s3 = OpCodes.ToUint32(OpCodes.XorN(s3, 0xFFFF));
+      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, s3));
+      s3 = OpCodes.ToUint32(OpCodes.XorN(s3, s2));
+      s2 = OpCodes.ToUint32(OpCodes.XorN(s2, OpCodes.OrN(s0, s1)));
+      s0 = OpCodes.ToUint32(OpCodes.XorN(s0, OpCodes.AndN(s1, s3)));
+      s1 = OpCodes.ToUint32(OpCodes.XorN(s1, OpCodes.AndN(s0, s2)));
     }
 
     // Convert back to word representation
@@ -393,11 +387,11 @@
 
   // Multiply key by 2 in GF(128)
   function locusMul2(ks) {
-    const mask = ((ks.k[0] & 0x80000000) !== 0) ? 0x87 : 0;
-    ks.k[0] = ((ks.k[0] << 1) | (ks.k[1] >>> 31)) >>> 0;
-    ks.k[1] = ((ks.k[1] << 1) | (ks.k[2] >>> 31)) >>> 0;
-    ks.k[2] = ((ks.k[2] << 1) | (ks.k[3] >>> 31)) >>> 0;
-    ks.k[3] = ((ks.k[3] << 1) ^ mask) >>> 0;
+    const mask = OpCodes.AndN(ks.k[0], 0x80000000) !== 0 ? 0x87 : 0;
+    ks.k[0] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ks.k[0], 1), OpCodes.Shr32(ks.k[1], 31)));
+    ks.k[1] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ks.k[1], 1), OpCodes.Shr32(ks.k[2], 31)));
+    ks.k[2] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ks.k[2], 1), OpCodes.Shr32(ks.k[3], 31)));
+    ks.k[3] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shl32(ks.k[3], 1), mask));
   }
 
   // Initialize LOCUS state
@@ -413,7 +407,7 @@
     // Compute T = key XOR nonce
     const T = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
-      T[i] = key[i] ^ nonce[i];
+      T[i] = OpCodes.XorN(key[i], nonce[i]);
     }
 
     // Reinitialize key schedule with T
@@ -440,14 +434,14 @@
 
       // X = ad[i] XOR deltaN
       for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-        X[i] = ad[adPos + i] ^ deltaN[i];
+        X[i] = OpCodes.XorN(ad[adPos + i], deltaN[i]);
       }
 
       gift64tEncrypt(ks, X, X, GIFT64T_TWEAK_2);
 
       // V = V XOR X
       for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-        V[i] ^= X[i];
+        V[i] = OpCodes.XorN(V[i], X[i]);
       }
 
       adPos += GIFT64_BLOCK_SIZE;
@@ -461,24 +455,24 @@
       X[i] = deltaN[i];
     }
 
-    const temp = adlen & 0xFF;
+    const temp = OpCodes.AndN(adlen, 0xFFFFFFFF);
     if (temp < GIFT64_BLOCK_SIZE) {
       // Partial block - use tweak 3 with padding
       for (let i = 0; i < temp; ++i) {
-        X[i] ^= ad[adPos + i];
+        X[i] = OpCodes.XorN(X[i], ad[adPos + i]);
       }
-      X[temp] ^= 0x01; // Padding bit
+      X[temp] = OpCodes.XorN(X[temp], 0x01); // Padding bit
       gift64tEncrypt(ks, X, X, GIFT64T_TWEAK_3);
     } else {
       // Full block - use tweak 2
       for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-        X[i] ^= ad[adPos + i];
+        X[i] = OpCodes.XorN(X[i], ad[adPos + i]);
       }
       gift64tEncrypt(ks, X, X, GIFT64T_TWEAK_2);
     }
 
     for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-      V[i] ^= X[i];
+      V[i] = OpCodes.XorN(V[i], X[i]);
     }
   }
 
@@ -488,14 +482,14 @@
 
     const temp = new Uint8Array(GIFT64_BLOCK_SIZE);
     for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-      temp[i] = W[i] ^ deltaN[i] ^ V[i];
+      temp[i] = OpCodes.XorN(OpCodes.XorN(W[i], deltaN[i]), V[i]);
     }
 
     gift64tEncrypt(ks, temp, temp, GIFT64T_TWEAK_6);
 
     const tag = new Uint8Array(GIFT64_BLOCK_SIZE);
     for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-      tag[i] = temp[i] ^ deltaN[i];
+      tag[i] = OpCodes.XorN(temp[i], deltaN[i]);
     }
 
     return tag;
@@ -731,21 +725,21 @@
 
           // X = plaintext[i] XOR deltaN
           for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-            X[i] = plaintext[ptPos + i] ^ state.deltaN[i];
+            X[i] = OpCodes.XorN(plaintext[ptPos + i], state.deltaN[i]);
           }
 
           gift64tEncrypt(state.ks, X, X, GIFT64T_TWEAK_4);
 
           // W = W XOR X
           for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-            W[i] ^= X[i];
+            W[i] = OpCodes.XorN(W[i], X[i]);
           }
 
           gift64tEncrypt(state.ks, X, X, GIFT64T_TWEAK_4);
 
           // ciphertext[i] = X XOR deltaN
           for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-            ciphertext[ctPos + i] = X[i] ^ state.deltaN[i];
+            ciphertext[ctPos + i] = OpCodes.XorN(X[i], state.deltaN[i]);
           }
 
           ptPos += GIFT64_BLOCK_SIZE;
@@ -760,26 +754,26 @@
           for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
             X[i] = state.deltaN[i];
           }
-          X[0] ^= remaining & 0xFF;
+          X[0] = OpCodes.XorN(X[0], OpCodes.AndN(remaining, 0xFFFFFFFF));
 
           gift64tEncrypt(state.ks, X, X, GIFT64T_TWEAK_5);
 
           for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-            W[i] ^= X[i];
+            W[i] = OpCodes.XorN(W[i], X[i]);
           }
 
           for (let i = 0; i < remaining; ++i) {
-            W[i] ^= plaintext[ptPos + i];
+            W[i] = OpCodes.XorN(W[i], plaintext[ptPos + i]);
           }
 
           gift64tEncrypt(state.ks, X, X, GIFT64T_TWEAK_5);
 
           for (let i = 0; i < remaining; ++i) {
-            X[i] ^= state.deltaN[i];
+            X[i] = OpCodes.XorN(X[i], state.deltaN[i]);
           }
 
           for (let i = 0; i < remaining; ++i) {
-            ciphertext[ctPos + i] = plaintext[ptPos + i] ^ X[i];
+            ciphertext[ctPos + i] = OpCodes.XorN(plaintext[ptPos + i], X[i]);
           }
         }
       }
@@ -834,21 +828,21 @@
 
           // X = ciphertext[i] XOR deltaN
           for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-            X[i] = ciphertext[ctPos + i] ^ state.deltaN[i];
+            X[i] = OpCodes.XorN(ciphertext[ctPos + i], state.deltaN[i]);
           }
 
           gift64tDecrypt(state.ks, X, X, GIFT64T_TWEAK_4);
 
           // W = W XOR X
           for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-            W[i] ^= X[i];
+            W[i] = OpCodes.XorN(W[i], X[i]);
           }
 
           gift64tDecrypt(state.ks, X, X, GIFT64T_TWEAK_4);
 
           // plaintext[i] = X XOR deltaN
           for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-            plaintext[ptPos + i] = X[i] ^ state.deltaN[i];
+            plaintext[ptPos + i] = OpCodes.XorN(X[i], state.deltaN[i]);
           }
 
           ctPos += GIFT64_BLOCK_SIZE;
@@ -863,26 +857,26 @@
           for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
             X[i] = state.deltaN[i];
           }
-          X[0] ^= remaining & 0xFF;
+          X[0] = OpCodes.XorN(X[0], OpCodes.AndN(remaining, 0xFFFFFFFF));
 
           gift64tEncrypt(state.ks, X, X, GIFT64T_TWEAK_5);
 
           for (let i = 0; i < GIFT64_BLOCK_SIZE; ++i) {
-            W[i] ^= X[i];
+            W[i] = OpCodes.XorN(W[i], X[i]);
           }
 
           gift64tEncrypt(state.ks, X, X, GIFT64T_TWEAK_5);
 
           for (let i = 0; i < remaining; ++i) {
-            X[i] ^= state.deltaN[i];
+            X[i] = OpCodes.XorN(X[i], state.deltaN[i]);
           }
 
           for (let i = 0; i < remaining; ++i) {
-            plaintext[ptPos + i] = ciphertext[ctPos + i] ^ X[i];
+            plaintext[ptPos + i] = OpCodes.XorN(ciphertext[ctPos + i], X[i]);
           }
 
           for (let i = 0; i < remaining; ++i) {
-            W[i] ^= plaintext[ptPos + i];
+            W[i] = OpCodes.XorN(W[i], plaintext[ptPos + i]);
           }
         }
       }

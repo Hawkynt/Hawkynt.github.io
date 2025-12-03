@@ -164,7 +164,7 @@
         if (this.pos + 1 >= this.data.length) {
           return 0; // Safety
         }
-        this.tag = this.data[this.pos] + OpCodes.Shl16(this.data[this.pos + 1], 8);
+        this.tag = OpCodes.OrN(this.data[this.pos], OpCodes.Shl16(this.data[this.pos + 1], 8));
         this.pos += 2;
         this.bitsLeft = 16;
       }

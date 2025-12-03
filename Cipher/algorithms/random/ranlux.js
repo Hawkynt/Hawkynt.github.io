@@ -239,9 +239,9 @@
       // Convert seed bytes to 32-bit unsigned integer (little-endian)
       let seedValue = 0;
       for (let i = 0; i < Math.min(seedBytes.length, 4); ++i) {
-        seedValue |= (seedBytes[i] << (i * 8));
+        seedValue = OpCodes.OrN(seedValue, OpCodes.Shl32(seedBytes[i], i * 8));
       }
-      seedValue = seedValue >>> 0; // Ensure unsigned
+      seedValue = OpCodes.ToUint32(seedValue); // Ensure unsigned
 
       // Initialize state using multiplicative congruential generator
       // Based on F. James FORTRAN implementation
@@ -255,7 +255,7 @@
         }
 
         // Mask to 24 bits
-        this._state[i] = (seedValue & MASK_24BIT) >>> 0;
+        this._state[i] = OpCodes.ToUint32(OpCodes.AndN(seedValue, MASK_24BIT));
       }
 
       // Initialize indices
@@ -264,7 +264,7 @@
       this._count = 0;
 
       // Set carry based on MSB of last state element
-      this._carry = (this._state[23] & 0x800000) ? 1 : 0;
+      this._carry = OpCodes.AndN(this._state[23], 0x800000) ? 1 : 0;
 
       this._initialized = true;
     }
@@ -316,7 +316,7 @@
       }
 
       // Update state
-      this._state[this._i] = delta & MASK_24BIT;
+      this._state[this._i] = OpCodes.AndN(delta, MASK_24BIT);
       const result = this._state[this._i];
 
       // Decrement indices (circular, counting backwards)
@@ -337,7 +337,7 @@
           } else {
             this._carry = 0;
           }
-          this._state[this._i] = deltaSkip & MASK_24BIT;
+          this._state[this._i] = OpCodes.AndN(deltaSkip, MASK_24BIT);
           this._i = (this._i === 0) ? 23 : this._i - 1;
           this._j = (this._j === 0) ? 23 : this._j - 1;
         }
@@ -369,9 +369,9 @@
       for (let i = 0; i < fullValues; ++i) {
         const value = this._next24();
         // Output in little-endian format (3 bytes)
-        output.push(value & 0xFF);
-        output.push((value >>> 8) & 0xFF);
-        output.push((value >>> 16) & 0xFF);
+        output.push(OpCodes.AndN(value, 0xFF));
+        output.push(OpCodes.AndN(OpCodes.Shr32(value, 8), 0xFF));
+        output.push(OpCodes.AndN(OpCodes.Shr32(value, 16), 0xFF));
       }
 
       // Handle remaining bytes (if length not multiple of 3)
@@ -379,7 +379,7 @@
       if (remainingBytes > 0) {
         const value = this._next24();
         for (let i = 0; i < remainingBytes; ++i) {
-          output.push((value >>> (i * 8)) & 0xFF);
+          output.push(OpCodes.AndN(OpCodes.Shr32(value, i * 8), 0xFF));
         }
       }
 

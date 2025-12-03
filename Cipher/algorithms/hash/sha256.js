@@ -253,8 +253,8 @@
       }
 
       for (let t = 16; t < 64; t++) {
-        const s0 = OpCodes.RotR32(W[t-15], 7) ^ OpCodes.RotR32(W[t-15], 18) ^ OpCodes.Shr32(W[t-15], 3);
-        const s1 = OpCodes.RotR32(W[t-2], 17) ^ OpCodes.RotR32(W[t-2], 19) ^ OpCodes.Shr32(W[t-2], 10);
+        const s0 = OpCodes.XorN(OpCodes.XorN(OpCodes.RotR32(W[t-15], 7), OpCodes.RotR32(W[t-15], 18)), OpCodes.Shr32(W[t-15], 3));
+        const s1 = OpCodes.XorN(OpCodes.XorN(OpCodes.RotR32(W[t-2], 17), OpCodes.RotR32(W[t-2], 19)), OpCodes.Shr32(W[t-2], 10));
         W[t] = OpCodes.ToDWord(W[t-16] + s0 + W[t-7] + s1);
       }
 
@@ -264,11 +264,11 @@
 
       // Main loop
       for (let t = 0; t < 64; t++) {
-        const S1 = OpCodes.RotR32(e, 6) ^ OpCodes.RotR32(e, 11) ^ OpCodes.RotR32(e, 25);
-        const ch = (e & f) ^ (~e & g);
+        const S1 = OpCodes.XorN(OpCodes.XorN(OpCodes.RotR32(e, 6), OpCodes.RotR32(e, 11)), OpCodes.RotR32(e, 25));
+        const ch = OpCodes.XorN(OpCodes.AndN(e, f), OpCodes.AndN(~e, g));
         const temp1 = OpCodes.ToDWord(h + S1 + ch + K[t] + W[t]);
-        const S0 = OpCodes.RotR32(a, 2) ^ OpCodes.RotR32(a, 13) ^ OpCodes.RotR32(a, 22);
-        const maj = (a & b) ^ (a & c) ^ (b & c);
+        const S0 = OpCodes.XorN(OpCodes.XorN(OpCodes.RotR32(a, 2), OpCodes.RotR32(a, 13)), OpCodes.RotR32(a, 22));
+        const maj = OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(a, b), OpCodes.AndN(a, c)), OpCodes.AndN(b, c));
         const temp2 = OpCodes.ToDWord(S0 + maj);
 
         h = g; g = f; f = e; e = OpCodes.ToDWord(d + temp1);
@@ -297,7 +297,7 @@
       if (typeof data === 'string') {
         const bytes = [];
         for (let i = 0; i < data.length; i++) {
-          bytes.push(data.charCodeAt(i) & 0xFF);
+          bytes.push(OpCodes.AndN(data.charCodeAt(i), 0xFF));
         }
         data = bytes;
       }

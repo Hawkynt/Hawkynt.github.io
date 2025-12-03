@@ -206,13 +206,13 @@
       encoded[7] = d4; // position 8 in SECDED (position 7 in Hamming)
 
       // Hamming parity bits at positions 1, 2, 4 (1-indexed in Hamming)
-      encoded[1] = d1 ^ d2 ^ d4; // position 2 in SECDED (p1 in Hamming)
-      encoded[2] = d1 ^ d3 ^ d4; // position 3 in SECDED (p2 in Hamming)
-      encoded[4] = d2 ^ d3 ^ d4; // position 5 in SECDED (p4 in Hamming)
+      encoded[1] = OpCodes.XorN(OpCodes.XorN(d1, d2), d4); // position 2 in SECDED (p1 in Hamming)
+      encoded[2] = OpCodes.XorN(OpCodes.XorN(d1, d3), d4); // position 3 in SECDED (p2 in Hamming)
+      encoded[4] = OpCodes.XorN(OpCodes.XorN(d2, d3), d4); // position 5 in SECDED (p4 in Hamming)
 
       // Overall parity bit at position 0 (covers all 7 Hamming bits)
-      encoded[0] = encoded[1] ^ encoded[2] ^ encoded[3] ^ encoded[4] ^
-                   encoded[5] ^ encoded[6] ^ encoded[7];
+      encoded[0] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(encoded[1], encoded[2]), encoded[3]), encoded[4]),
+                   encoded[5]), encoded[6]), encoded[7]);
 
       return encoded;
     }
@@ -232,7 +232,7 @@
       } else if (syndrome === 0 && overallParity !== 0) {
         // Error in overall parity bit (position 0)
         console.log('SECDED: Parity bit error detected and corrected');
-        received[0] ^= 1;
+        received[0] = OpCodes.XorN(received[0], 1);
       } else if (syndrome !== 0 && overallParity !== 0) {
         // Single bit error in Hamming portion (correctable)
         // Syndrome indicates position in 1-indexed Hamming code
@@ -240,7 +240,7 @@
         const errorPos = syndrome;
         console.log(`SECDED: Single error at position ${errorPos + 1}, correcting...`);
         if (errorPos >= 1 && errorPos <= 7) {
-          received[errorPos] ^= 1;
+          received[errorPos] = OpCodes.XorN(received[errorPos], 1);
         }
       } else if (syndrome !== 0 && overallParity === 0) {
         // Double bit error detected (cannot correct)
@@ -253,17 +253,17 @@
 
     calculateSyndrome(data) {
       // Calculate Hamming syndrome from positions 1-7 (indices 1-7)
-      const s1 = data[1] ^ data[3] ^ data[5] ^ data[7]; // p1 XOR positions 3,5,7
-      const s2 = data[2] ^ data[3] ^ data[6] ^ data[7]; // p2 XOR positions 3,6,7
-      const s4 = data[4] ^ data[5] ^ data[6] ^ data[7]; // p4 XOR positions 5,6,7
+      const s1 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(data[1], data[3]), data[5]), data[7]); // p1 XOR positions 3,5,7
+      const s2 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(data[2], data[3]), data[6]), data[7]); // p2 XOR positions 3,6,7
+      const s4 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(data[4], data[5]), data[6]), data[7]); // p4 XOR positions 5,6,7
 
       // Syndrome indicates error position in Hamming code (1-indexed)
-      return s1 + (s2 << 1) + (s4 << 2);
+      return s1 + OpCodes.Shl32(s2, 1) + OpCodes.Shl32(s4, 2);
     }
 
     calculateOverallParity(data) {
       // XOR all bits including overall parity bit
-      return data.reduce((parity, bit) => parity ^ bit, 0);
+      return data.reduce((parity, bit) => OpCodes.XorN(parity, bit), 0);
     }
   }
 

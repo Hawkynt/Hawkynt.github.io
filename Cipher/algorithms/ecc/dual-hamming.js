@@ -192,7 +192,7 @@
       for (let i = 0; i < 7; ++i) {
         let sum = 0;
         for (let j = 0; j < 3; ++j) {
-          sum ^= (data[j] & this.generator[j][i]);
+          sum = OpCodes.XorN(sum, OpCodes.AndN(data[j], this.generator[j][i]));
         }
         codeword[i] = sum;
       }
@@ -211,7 +211,7 @@
       let bestMessage = [0, 0, 0];
 
       for (let m = 0; m < 8; ++m) {
-        const message = [(m >> 2) & 1, (m >> 1) & 1, m & 1];
+        const message = [OpCodes.AndN(OpCodes.Shr32(m, 2), 1), OpCodes.AndN(OpCodes.Shr32(m, 1), 1), OpCodes.AndN(m, 1)];
 
         // Encode this message
         const testCodeword = this.encode(message);

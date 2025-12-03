@@ -293,7 +293,7 @@
 
           // Byte (1 byte, 255 if null)
           if (token.byte !== null) {
-            bytes.push(token.byte & 0xFF);
+            bytes.push(OpCodes.AndN(token.byte, 0xFF));
           } else {
             bytes.push(255);
           }
@@ -348,7 +348,7 @@
       _stringToBytes(str) {
         const bytes = [];
         for (let i = 0; i < str.length; i++) {
-          bytes.push(str.charCodeAt(i) & 0xFF);
+          bytes.push(OpCodes.AndN(str.charCodeAt(i), 0xFF));
         }
         return bytes;
       }

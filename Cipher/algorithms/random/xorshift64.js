@@ -8,7 +8,7 @@
  * Period: 2^64 - 1
  * State: 64 bits (one 64-bit word)
  * Algorithm: Three xorshift operations with parameters (13, 7, 17)
- * Formula: x ^= x << 13; x ^= x >> 7; x ^= x << 17;
+ * Formula: x = XOR(x, left_shift(x, 13)); x = XOR(x, right_shift(x, 7)); x = XOR(x, left_shift(x, 17));
  *
  * AlgorithmFramework Format
  * (c)2006-2025 Hawkynt
@@ -95,7 +95,7 @@
           "https://prng.di.unimi.it/"
         ),
         new LinkItem(
-          "Note on Marsaglia's Xorshift RNGs (Panneton & L'Ecuyer)",
+          "Note on Marsaglia's Xorshift RNGs (Panneton and L'Ecuyer)",
           "https://www.iro.umontreal.ca/~lecuyer/myftp/papers/xorshift.pdf"
         )
       ];
@@ -238,9 +238,9 @@
      * Generate next 64-bit value using xorshift64 algorithm
      *
      * Algorithm from Marsaglia (2003):
-     * x ^= x << 13
-     * x ^= x >> 7
-     * x ^= x << 17
+     * x = XOR(x, left_shift(x, 13))
+     * x = XOR(x, right_shift(x, 7))
+     * x = XOR(x, left_shift(x, 17))
      * return x
      *
      * Uses shift parameters (13, 7, 17) recommended by Marsaglia
@@ -252,13 +252,13 @@
 
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
 
-      // Step 1: x ^= x << 13
+      // Step 1: x = XOR(x, left_shift(x, 13))
       this._state = OpCodes.XorN(this._state, OpCodes.AndN(OpCodes.ShiftLn(this._state, 13), mask64));
 
-      // Step 2: x ^= x >> 7
+      // Step 2: x = XOR(x, right_shift(x, 7))
       this._state = OpCodes.XorN(this._state, OpCodes.ShiftRn(this._state, 7));
 
-      // Step 3: x ^= x << 17
+      // Step 3: x = XOR(x, left_shift(x, 17))
       this._state = OpCodes.XorN(this._state, OpCodes.AndN(OpCodes.ShiftLn(this._state, 17), mask64));
 
       // Ensure state remains 64-bit

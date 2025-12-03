@@ -246,7 +246,7 @@
      * Algorithm from https://github.com/danielcota/biski64:
      * 1. output = mix + loop_mix
      * 2. old_loop_mix = loop_mix
-     * 3. loop_mix = fast_loop ^ mix
+     * 3. loop_mix = fast_loop XOR mix
      * 4. mix = rotl(mix, 16) + rotl(old_loop_mix, 40)
      * 5. fast_loop += 0x9999999999999999
      *
@@ -300,7 +300,7 @@
 
         // Extract bytes in little-endian order (matching test vectors)
         for (let i = 0; i < 8 && bytesGenerated < length; ++i) {
-          const shifted = OpCodes.ShiftRn(value64, i * 8);
+          const shifted = OpCodes.ShiftRn(value64, BigInt(i * 8));
           const byteVal = Number(OpCodes.AndN(shifted, 0xFFn));
           output.push(byteVal);
           ++bytesGenerated;

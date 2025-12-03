@@ -239,13 +239,13 @@
       const dbMask = this._mgf1(seed, db.length);
 
       // Step 6: Mask DB
-      const maskedDB = db.map((byte, i) => byte ^ dbMask[i]);
+      const maskedDB = db.map((byte, i) => OpCodes.XorN(byte, dbMask[i]));
 
       // Step 7: Generate mask for seed
       const seedMask = this._mgf1(maskedDB, hashLength);
 
       // Step 8: Mask seed
-      const maskedSeed = seed.map((byte, i) => byte ^ seedMask[i]);
+      const maskedSeed = seed.map((byte, i) => OpCodes.XorN(byte, seedMask[i]));
 
       // Step 9: Construct EM = 0x00 || maskedSeed || maskedDB
       const result = [0x00, ...maskedSeed, ...maskedDB];
@@ -281,11 +281,11 @@
 
       // Unmask seed
       const seedMask = this._mgf1(maskedDB, hashLength);
-      const seed = maskedSeed.map((byte, i) => byte ^ seedMask[i]);
+      const seed = maskedSeed.map((byte, i) => OpCodes.XorN(byte, seedMask[i]));
 
       // Unmask DB
       const dbMask = this._mgf1(seed, maskedDB.length);
-      const db = maskedDB.map((byte, i) => byte ^ dbMask[i]);
+      const db = maskedDB.map((byte, i) => OpCodes.XorN(byte, dbMask[i]));
 
       // Extract labelHash and find message
       const labelHash = this._simpleHash(this._label);
@@ -349,10 +349,10 @@
 
       // Simple hash: XOR data in chunks and add constants
       for (let i = 0; i < hashLength; i++) {
-        hash[i] = (i * 17 + 42) & 0xFF; // Base pattern
+        hash[i] = OpCodes.AndN((i * 17 + 42), 0xFF); // Base pattern
 
         for (let j = 0; j < data.length; j++) {
-          hash[i] ^= data[j];
+          hash[i] = OpCodes.XorN(hash[i], data[j]);
           hash[i] = OpCodes.RotL8(hash[i], 1); // Rotate left 1 bit
         }
       }
@@ -371,9 +371,9 @@
       const seed = new Array(length);
       // Use simple XOR pattern based on message for deterministic output
       for (let i = 0; i < length; i++) {
-        seed[i] = (i * 23 + 17) & 0xFF; // Base pattern
+        seed[i] = OpCodes.AndN((i * 23 + 17), 0xFF); // Base pattern
         if (message && message.length > 0) {
-          seed[i] ^= message[i % message.length];
+          seed[i] = OpCodes.XorN(seed[i], message[i % message.length]);
         }
       }
       return seed;

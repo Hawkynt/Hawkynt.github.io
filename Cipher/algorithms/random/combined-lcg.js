@@ -48,7 +48,7 @@
     ADDITIVE: 0,      // Add outputs: (X1 + X2) mod 2^64
     SUBTRACTIVE: 1,   // Subtract outputs: (X1 - X2) mod 2^64
     MULTIPLICATIVE: 2,// Multiply outputs: (X1 * X2) mod 2^64
-    XOR: 3            // XOR outputs: X1 ^ X2
+    XOR: 3            // XOR outputs: X1 XOR X2
   });
 
   /**
@@ -474,7 +474,7 @@
           return OpCodes.AndN(value1 * value2, mask64);
 
         case CombinationMode.XOR:
-          // value1 ^ value2
+          // value1 XOR value2
           return OpCodes.XorN(value1, value2);
 
         default:

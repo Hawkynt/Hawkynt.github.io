@@ -67,7 +67,7 @@
       ];
 
       this.references = [
-        new LinkItem("MacWilliams & Sloane - Theory of Error-Correcting Codes", "https://archive.org/details/theoryoferrorcor0000macw"),
+        new LinkItem("MacWilliams and Sloane - Theory of Error-Correcting Codes", "https://archive.org/details/theoryoferrorcor0000macw"),
         new LinkItem("Recursive Plotkin Construction Decoding", "https://www.researchgate.net/publication/286929473_Recursive_Codes_with_the_Plotkin-Construction_and_Their_Decoding"),
         new LinkItem("Plotkin construction: rank and kernel", "https://www.researchgate.net/publication/1757474_Plotkin_construction_Rank_and_Kernel")
       ];
@@ -272,7 +272,7 @@
     // Get code parameters [n, k, d] for given level
     getParameters() {
       const level = this._level;
-      const n = 1 << (level + 1); // 2^(level+1)
+      const n = OpCodes.Shl32(1, level + 1); // 2^(level+1)
       const k = n / 2 + 1;        // n/2 + 1
       const d = n / 2;            // n/2
       return { n, k, d };
@@ -336,7 +336,7 @@
 
       // Second half: u+v (XOR)
       for (let i = 0; i < uEncoded.length; ++i) {
-        codeword.push(uEncoded[i] ^ vEncoded[i]);
+        codeword.push(OpCodes.XorN(uEncoded[i], vEncoded[i]));
       }
 
       return codeword;
@@ -363,7 +363,7 @@
       const uReceived = [...r1];
       const vReceived = [];
       for (let i = 0; i < halfN; ++i) {
-        vReceived.push(r1[i] ^ r2[i]);
+        vReceived.push(OpCodes.XorN(r1[i], r2[i]));
       }
 
       // Recursively decode u and v

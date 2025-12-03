@@ -238,7 +238,7 @@
       // Generate keystream and XOR with input (stream cipher)
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();
-        output[i] = this.inputBuffer[i] ^ keystreamByte;
+        output[i] = OpCodes.XorN(this.inputBuffer[i], keystreamByte);
       }
 
       // Clear input buffer for next operation
@@ -258,7 +258,7 @@
         // Pack 4 key bytes into each 32-bit word
         for (let j = 0; j < 4; j++) {
           const keyIndex = (i * 4 + j) % this._key.length;
-          word |= (this._key[keyIndex] << (j * 8));
+          word = OpCodes.ToUint32(OpCodes.OrN(word, OpCodes.Shl32(this._key[keyIndex], j * 8)));
         }
 
         // Ensure non-zero values in register
@@ -267,7 +267,7 @@
           word = OpCodes.Pack32BE(initBytes[0], initBytes[1], initBytes[2], initBytes[3]) + i;
         }
 
-        this.fibonacciRegister[i] = word >>> 0; // Ensure 32-bit unsigned
+        this.fibonacciRegister[i] = OpCodes.ToUint32(word); // Ensure 32-bit unsigned
       }
 
       // Initialize shrinking register differently
@@ -278,7 +278,7 @@
         // Use different key pattern for shrinking register
         for (let j = 0; j < 4; j++) {
           const keyIndex = (i * 4 + j + Math.floor(this._key.length / 2)) % this._key.length;
-          word |= (this._key[keyIndex] << (j * 8));
+          word = OpCodes.ToUint32(OpCodes.OrN(word, OpCodes.Shl32(this._key[keyIndex], j * 8)));
         }
 
         if (word === 0) {
@@ -286,7 +286,7 @@
           word = OpCodes.Pack32BE(initBytes[0], initBytes[1], initBytes[2], initBytes[3]) + i;
         }
 
-        this.shrinkingRegister[i] = word >>> 0;
+        this.shrinkingRegister[i] = OpCodes.ToUint32(word);
       }
 
       // Reset positions
@@ -306,7 +306,7 @@
       const pos_p = (this.fibPos - this.LAG_P + this.REGISTER_SIZE) % this.REGISTER_SIZE;
       const pos_q = (this.fibPos - this.LAG_Q + this.REGISTER_SIZE) % this.REGISTER_SIZE;
 
-      const newValue = (this.fibonacciRegister[pos_p] + this.fibonacciRegister[pos_q]) >>> 0;
+      const newValue = OpCodes.ToUint32(this.fibonacciRegister[pos_p] + this.fibonacciRegister[pos_q]);
 
       this.fibonacciRegister[this.fibPos] = newValue;
       this.fibPos = (this.fibPos + 1) % this.REGISTER_SIZE;
@@ -319,7 +319,7 @@
       const pos_p = (this.shrinkPos - this.LAG_P + this.REGISTER_SIZE) % this.REGISTER_SIZE;
       const pos_q = (this.shrinkPos - this.LAG_Q + this.REGISTER_SIZE) % this.REGISTER_SIZE;
 
-      const newValue = (this.shrinkingRegister[pos_p] ^ this.shrinkingRegister[pos_q]) >>> 0;
+      const newValue = OpCodes.ToUint32(OpCodes.XorN(this.shrinkingRegister[pos_p], this.shrinkingRegister[pos_q]));
 
       this.shrinkingRegister[this.shrinkPos] = newValue;
       this.shrinkPos = (this.shrinkPos + 1) % this.REGISTER_SIZE;
@@ -334,7 +334,7 @@
       do {
         fibValue = this._clockFibonacci();
         shrinkValue = this._clockShrinking();
-      } while ((shrinkValue & 1) === 0); // Continue until LSB of shrinking value is 1
+      } while (OpCodes.ToUint32(OpCodes.AndN(shrinkValue, 1)) === 0); // Continue until LSB of shrinking value is 1
 
       return fibValue;
     }
@@ -347,7 +347,7 @@
       }
 
       // Extract next byte from current word
-      const byte = (this.currentWord >> (this.wordBytesUsed * 8)) & 0xFF;
+      const byte = OpCodes.ToUint32(OpCodes.AndN(OpCodes.Shr32(this.currentWord, this.wordBytesUsed * 8), 0xFF));
       this.wordBytesUsed++;
 
       return byte;

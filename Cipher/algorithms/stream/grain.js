@@ -266,7 +266,7 @@
       const result = [];
       for (let i = 0; i < this.inputBuffer.length; ++i) {
         const keystreamByte = this._generateKeystreamByte();
-        result.push(this.inputBuffer[i] ^ keystreamByte);
+        result.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer for next operation
@@ -288,14 +288,14 @@
       for (let i = 0; i < 80; ++i) {
         const byteIndex = Math.floor(i / 8);
         const bitIndex = i % 8;
-        this.nfsr[i] = (this._key[byteIndex] >>> bitIndex) & 1;
+        this.nfsr[i] = OpCodes.AndN(OpCodes.Shr32(this._key[byteIndex], bitIndex), 1);
       }
 
       // Load IV into LFSR low 64 bits
       for (let i = 0; i < 64; ++i) {
         const byteIndex = Math.floor(i / 8);
         const bitIndex = i % 8;
-        this.lfsr[i] = (this._iv[byteIndex] >>> bitIndex) & 1;
+        this.lfsr[i] = OpCodes.AndN(OpCodes.Shr32(this._iv[byteIndex], bitIndex), 1);
       }
 
       // Fill remaining 16 LFSR bits with ones
@@ -308,8 +308,8 @@
         const output = this._generateOutputBit();
 
         // Update both registers with feedback XOR output
-        const newLFSRBit = this._updateLFSR() ^ output;
-        const newNFSRBit = this._updateNFSR() ^ output;
+        const newLFSRBit = OpCodes.XorN(this._updateLFSR(), output);
+        const newNFSRBit = OpCodes.XorN(this._updateNFSR(), output);
 
         // Shift and insert new bits
         this._shiftRegister(this.lfsr, newLFSRBit);
@@ -325,7 +325,7 @@
      */
     _updateLFSR() {
       // Feedback polynomial positions: 62, 51, 13, 0
-      return this.lfsr[62] ^ this.lfsr[51] ^ this.lfsr[13] ^ this.lfsr[0];
+      return OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.lfsr[62], this.lfsr[51]), this.lfsr[13]), this.lfsr[0]);
     }
 
     /**
@@ -334,24 +334,33 @@
      */
     _updateNFSR() {
       // Linear terms from NFSR and LFSR
-      const linear = this.nfsr[62] ^ this.nfsr[60] ^ this.nfsr[52] ^ this.nfsr[45] ^
-                    this.nfsr[37] ^ this.nfsr[33] ^ this.nfsr[28] ^ this.nfsr[21] ^
-                    this.nfsr[14] ^ this.nfsr[9] ^ this.nfsr[0] ^ this.lfsr[63];
+      let linear = this.nfsr[62];
+      linear = OpCodes.XorN(linear, this.nfsr[60]);
+      linear = OpCodes.XorN(linear, this.nfsr[52]);
+      linear = OpCodes.XorN(linear, this.nfsr[45]);
+      linear = OpCodes.XorN(linear, this.nfsr[37]);
+      linear = OpCodes.XorN(linear, this.nfsr[33]);
+      linear = OpCodes.XorN(linear, this.nfsr[28]);
+      linear = OpCodes.XorN(linear, this.nfsr[21]);
+      linear = OpCodes.XorN(linear, this.nfsr[14]);
+      linear = OpCodes.XorN(linear, this.nfsr[9]);
+      linear = OpCodes.XorN(linear, this.nfsr[0]);
+      linear = OpCodes.XorN(linear, this.lfsr[63]);
 
       // Nonlinear terms
-      const nonlinear = (this.nfsr[63] & this.nfsr[60]) ^
-                       (this.nfsr[37] & this.nfsr[33]) ^
-                       (this.nfsr[15] & this.nfsr[9]) ^
-                       (this.nfsr[60] & this.nfsr[52] & this.nfsr[45]) ^
-                       (this.nfsr[33] & this.nfsr[28] & this.nfsr[21]) ^
-                       (this.nfsr[63] & this.nfsr[45] & this.nfsr[28] & this.nfsr[9]) ^
-                       (this.nfsr[60] & this.nfsr[52] & this.nfsr[37] & this.nfsr[33]) ^
-                       (this.nfsr[63] & this.nfsr[60] & this.nfsr[21] & this.nfsr[15]) ^
-                       (this.nfsr[63] & this.nfsr[60] & this.nfsr[52] & this.nfsr[45] & this.nfsr[37]) ^
-                       (this.nfsr[33] & this.nfsr[28] & this.nfsr[21] & this.nfsr[15] & this.nfsr[9]) ^
-                       (this.nfsr[52] & this.nfsr[45] & this.nfsr[37] & this.nfsr[33] & this.nfsr[28] & this.nfsr[21]);
+      let nonlinear = OpCodes.AndN(this.nfsr[63], this.nfsr[60]);
+      nonlinear = OpCodes.XorN(nonlinear, OpCodes.AndN(this.nfsr[37], this.nfsr[33]));
+      nonlinear = OpCodes.XorN(nonlinear, OpCodes.AndN(this.nfsr[15], this.nfsr[9]));
+      nonlinear = OpCodes.XorN(nonlinear, OpCodes.AndN(OpCodes.AndN(this.nfsr[60], this.nfsr[52]), this.nfsr[45]));
+      nonlinear = OpCodes.XorN(nonlinear, OpCodes.AndN(OpCodes.AndN(this.nfsr[33], this.nfsr[28]), this.nfsr[21]));
+      nonlinear = OpCodes.XorN(nonlinear, OpCodes.AndN(OpCodes.AndN(OpCodes.AndN(this.nfsr[63], this.nfsr[45]), this.nfsr[28]), this.nfsr[9]));
+      nonlinear = OpCodes.XorN(nonlinear, OpCodes.AndN(OpCodes.AndN(OpCodes.AndN(this.nfsr[60], this.nfsr[52]), this.nfsr[37]), this.nfsr[33]));
+      nonlinear = OpCodes.XorN(nonlinear, OpCodes.AndN(OpCodes.AndN(OpCodes.AndN(this.nfsr[63], this.nfsr[60]), this.nfsr[21]), this.nfsr[15]));
+      nonlinear = OpCodes.XorN(nonlinear, OpCodes.AndN(OpCodes.AndN(OpCodes.AndN(OpCodes.AndN(this.nfsr[63], this.nfsr[60]), this.nfsr[52]), this.nfsr[45]), this.nfsr[37]));
+      nonlinear = OpCodes.XorN(nonlinear, OpCodes.AndN(OpCodes.AndN(OpCodes.AndN(OpCodes.AndN(this.nfsr[33], this.nfsr[28]), this.nfsr[21]), this.nfsr[15]), this.nfsr[9]));
+      nonlinear = OpCodes.XorN(nonlinear, OpCodes.AndN(OpCodes.AndN(OpCodes.AndN(OpCodes.AndN(OpCodes.AndN(this.nfsr[52], this.nfsr[45]), this.nfsr[37]), this.nfsr[33]), this.nfsr[28]), this.nfsr[21]));
 
-      return linear ^ nonlinear;
+      return OpCodes.XorN(linear, nonlinear);
     }
 
     /**
@@ -360,17 +369,26 @@
      */
     _generateOutputBit() {
       // Output filter: combines bits from LFSR and NFSR
-      const lfsrBits = this.lfsr[3] ^ this.lfsr[25] ^ this.lfsr[46] ^ this.lfsr[64];
-      const nfsrBits = this.nfsr[63] ^ this.nfsr[60] ^ this.nfsr[52] ^ this.nfsr[45] ^
-                      this.nfsr[37] ^ this.nfsr[33] ^ this.nfsr[28];
+      let lfsrBits = OpCodes.XorN(OpCodes.XorN(this.lfsr[3], this.lfsr[25]), OpCodes.XorN(this.lfsr[46], this.lfsr[64]));
+      let nfsrBits = this.nfsr[63];
+      nfsrBits = OpCodes.XorN(nfsrBits, this.nfsr[60]);
+      nfsrBits = OpCodes.XorN(nfsrBits, this.nfsr[52]);
+      nfsrBits = OpCodes.XorN(nfsrBits, this.nfsr[45]);
+      nfsrBits = OpCodes.XorN(nfsrBits, this.nfsr[37]);
+      nfsrBits = OpCodes.XorN(nfsrBits, this.nfsr[33]);
+      nfsrBits = OpCodes.XorN(nfsrBits, this.nfsr[28]);
 
       // Boolean function h(x)
       const x1 = this.lfsr[25], x2 = this.lfsr[46], x3 = this.lfsr[64], x4 = this.lfsr[63];
       const x5 = this.nfsr[63];
 
-      const h = x1 ^ x4 ^ (x1 & x3) ^ (x2 & x3) ^ (x3 & x4) ^ (x1 & x2 & x5);
+      let h = OpCodes.XorN(x1, x4);
+      h = OpCodes.XorN(h, OpCodes.AndN(x1, x3));
+      h = OpCodes.XorN(h, OpCodes.AndN(x2, x3));
+      h = OpCodes.XorN(h, OpCodes.AndN(x3, x4));
+      h = OpCodes.XorN(h, OpCodes.AndN(OpCodes.AndN(x1, x2), x5));
 
-      return lfsrBits ^ nfsrBits ^ h;
+      return OpCodes.XorN(OpCodes.XorN(lfsrBits, nfsrBits), h);
     }
 
     /**
@@ -382,7 +400,7 @@
       for (let i = 79; i > 0; --i) {
         register[i] = register[i - 1];
       }
-      register[0] = newBit & 1;
+      register[0] = OpCodes.AndN(newBit, 1);
     }
 
     /**
@@ -395,7 +413,7 @@
       // Generate 8 bits for one byte
       for (let bit = 0; bit < 8; ++bit) {
         const outputBit = this._generateOutputBit();
-        byte = byte | (outputBit << bit);
+        byte = OpCodes.OrN(byte, OpCodes.Shl32(outputBit, bit));
 
         // Update registers for next bit
         const newLFSRBit = this._updateLFSR();
@@ -616,8 +634,8 @@
         const lfsrOutput = this._getOutputLFSR();
 
         // During init, output is fed back into both registers
-        this.nfsr = this._shift(this.nfsr, nfsrOutput ^ this.lfsr[0] ^ output);
-        this.lfsr = this._shift(this.lfsr, lfsrOutput ^ output);
+        this.nfsr = this._shift(this.nfsr, OpCodes.XorN(OpCodes.XorN(nfsrOutput, this.lfsr[0]), output));
+        this.lfsr = this._shift(this.lfsr, OpCodes.XorN(lfsrOutput, output));
       }
 
       this.initialized = true;
@@ -628,72 +646,74 @@
     _getOutputNFSR() {
       // Extract bits from NFSR using bit positions
       const b0 = this.nfsr[0];
-      const b3 = (this.nfsr[0] >>> 3) | (this.nfsr[1] << 29);
-      const b11 = (this.nfsr[0] >>> 11) | (this.nfsr[1] << 21);
-      const b13 = (this.nfsr[0] >>> 13) | (this.nfsr[1] << 19);
-      const b17 = (this.nfsr[0] >>> 17) | (this.nfsr[1] << 15);
-      const b18 = (this.nfsr[0] >>> 18) | (this.nfsr[1] << 14);
-      const b26 = (this.nfsr[0] >>> 26) | (this.nfsr[1] << 6);
-      const b27 = (this.nfsr[0] >>> 27) | (this.nfsr[1] << 5);
-      const b40 = (this.nfsr[1] >>> 8) | (this.nfsr[2] << 24);
-      const b48 = (this.nfsr[1] >>> 16) | (this.nfsr[2] << 16);
-      const b56 = (this.nfsr[1] >>> 24) | (this.nfsr[2] << 8);
-      const b59 = (this.nfsr[1] >>> 27) | (this.nfsr[2] << 5);
-      const b61 = (this.nfsr[1] >>> 29) | (this.nfsr[2] << 3);
-      const b65 = (this.nfsr[2] >>> 1) | (this.nfsr[3] << 31);
-      const b67 = (this.nfsr[2] >>> 3) | (this.nfsr[3] << 29);
-      const b68 = (this.nfsr[2] >>> 4) | (this.nfsr[3] << 28);
-      const b84 = (this.nfsr[2] >>> 20) | (this.nfsr[3] << 12);
-      const b91 = (this.nfsr[2] >>> 27) | (this.nfsr[3] << 5);
+      const b3 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[0], 3), OpCodes.Shl32(this.nfsr[1], 29)));
+      const b11 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[0], 11), OpCodes.Shl32(this.nfsr[1], 21)));
+      const b13 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[0], 13), OpCodes.Shl32(this.nfsr[1], 19)));
+      const b17 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[0], 17), OpCodes.Shl32(this.nfsr[1], 15)));
+      const b18 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[0], 18), OpCodes.Shl32(this.nfsr[1], 14)));
+      const b26 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[0], 26), OpCodes.Shl32(this.nfsr[1], 6)));
+      const b27 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[0], 27), OpCodes.Shl32(this.nfsr[1], 5)));
+      const b40 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[1], 8), OpCodes.Shl32(this.nfsr[2], 24)));
+      const b48 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[1], 16), OpCodes.Shl32(this.nfsr[2], 16)));
+      const b56 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[1], 24), OpCodes.Shl32(this.nfsr[2], 8)));
+      const b59 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[1], 27), OpCodes.Shl32(this.nfsr[2], 5)));
+      const b61 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[1], 29), OpCodes.Shl32(this.nfsr[2], 3)));
+      const b65 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[2], 1), OpCodes.Shl32(this.nfsr[3], 31)));
+      const b67 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[2], 3), OpCodes.Shl32(this.nfsr[3], 29)));
+      const b68 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[2], 4), OpCodes.Shl32(this.nfsr[3], 28)));
+      const b84 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[2], 20), OpCodes.Shl32(this.nfsr[3], 12)));
+      const b91 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[2], 27), OpCodes.Shl32(this.nfsr[3], 5)));
       const b96 = this.nfsr[3];
 
-      // g(x) = b0 + b26 + b56 + b91 + b96 + b3b67 + b11b13 + b17b18
-      //        + b27b59 + b40b48 + b61b65 + b68b84
-      return OpCodes.ToDWord(b0 ^ b26 ^ b56 ^ b91 ^ b96 ^ (b3 & b67) ^ (b11 & b13) ^ (b17 & b18)
-        ^ (b27 & b59) ^ (b40 & b48) ^ (b61 & b65) ^ (b68 & b84));
+      // g(x) = b0 XOR b26 XOR b56 XOR b91 XOR b96 XOR b3b67 XOR b11b13 XOR b17b18
+      //        XOR b27b59 XOR b40b48 XOR b61b65 XOR b68b84
+      return OpCodes.ToDWord(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(b0, b26), b56), b91), b96),
+        OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(b3, b67), OpCodes.AndN(b11, b13)), OpCodes.AndN(b17, b18)),
+        OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(b27, b59), OpCodes.AndN(b40, b48)), OpCodes.XorN(OpCodes.AndN(b61, b65), OpCodes.AndN(b68, b84))))));
     }
 
     // Get output from linear function f(x) - LFSR feedback
     _getOutputLFSR() {
       // Extract bits from LFSR using bit positions
       const s0 = this.lfsr[0];
-      const s7 = (this.lfsr[0] >>> 7) | (this.lfsr[1] << 25);
-      const s38 = (this.lfsr[1] >>> 6) | (this.lfsr[2] << 26);
-      const s70 = (this.lfsr[2] >>> 6) | (this.lfsr[3] << 26);
-      const s81 = (this.lfsr[2] >>> 17) | (this.lfsr[3] << 15);
+      const s7 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.lfsr[0], 7), OpCodes.Shl32(this.lfsr[1], 25)));
+      const s38 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.lfsr[1], 6), OpCodes.Shl32(this.lfsr[2], 26)));
+      const s70 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.lfsr[2], 6), OpCodes.Shl32(this.lfsr[3], 26)));
+      const s81 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.lfsr[2], 17), OpCodes.Shl32(this.lfsr[3], 15)));
       const s96 = this.lfsr[3];
 
-      // f(x) = s0 + s7 + s38 + s70 + s81 + s96
-      return OpCodes.ToDWord(s0 ^ s7 ^ s38 ^ s70 ^ s81 ^ s96);
+      // f(x) = s0 XOR s7 XOR s38 XOR s70 XOR s81 XOR s96
+      return OpCodes.ToDWord(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, s7), s38), s70), s81), s96));
     }
 
     // Get output from output function h(x)
     _getOutput() {
       // Extract NFSR bits for output function
-      const b2 = (this.nfsr[0] >>> 2) | (this.nfsr[1] << 30);
-      const b12 = (this.nfsr[0] >>> 12) | (this.nfsr[1] << 20);
-      const b15 = (this.nfsr[0] >>> 15) | (this.nfsr[1] << 17);
-      const b36 = (this.nfsr[1] >>> 4) | (this.nfsr[2] << 28);
-      const b45 = (this.nfsr[1] >>> 13) | (this.nfsr[2] << 19);
+      const b2 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[0], 2), OpCodes.Shl32(this.nfsr[1], 30)));
+      const b12 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[0], 12), OpCodes.Shl32(this.nfsr[1], 20)));
+      const b15 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[0], 15), OpCodes.Shl32(this.nfsr[1], 17)));
+      const b36 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[1], 4), OpCodes.Shl32(this.nfsr[2], 28)));
+      const b45 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[1], 13), OpCodes.Shl32(this.nfsr[2], 19)));
       const b64 = this.nfsr[2];
-      const b73 = (this.nfsr[2] >>> 9) | (this.nfsr[3] << 23);
-      const b89 = (this.nfsr[2] >>> 25) | (this.nfsr[3] << 7);
-      const b95 = (this.nfsr[2] >>> 31) | (this.nfsr[3] << 1);
+      const b73 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[2], 9), OpCodes.Shl32(this.nfsr[3], 23)));
+      const b89 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[2], 25), OpCodes.Shl32(this.nfsr[3], 7)));
+      const b95 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.nfsr[2], 31), OpCodes.Shl32(this.nfsr[3], 1)));
 
       // Extract LFSR bits for output function
-      const s8 = (this.lfsr[0] >>> 8) | (this.lfsr[1] << 24);
-      const s13 = (this.lfsr[0] >>> 13) | (this.lfsr[1] << 19);
-      const s20 = (this.lfsr[0] >>> 20) | (this.lfsr[1] << 12);
-      const s42 = (this.lfsr[1] >>> 10) | (this.lfsr[2] << 22);
-      const s60 = (this.lfsr[1] >>> 28) | (this.lfsr[2] << 4);
-      const s79 = (this.lfsr[2] >>> 15) | (this.lfsr[3] << 17);
-      const s93 = (this.lfsr[2] >>> 29) | (this.lfsr[3] << 3);
-      const s94 = (this.lfsr[2] >>> 31) | (this.lfsr[3] << 1);
+      const s8 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.lfsr[0], 8), OpCodes.Shl32(this.lfsr[1], 24)));
+      const s13 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.lfsr[0], 13), OpCodes.Shl32(this.lfsr[1], 19)));
+      const s20 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.lfsr[0], 20), OpCodes.Shl32(this.lfsr[1], 12)));
+      const s42 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.lfsr[1], 10), OpCodes.Shl32(this.lfsr[2], 22)));
+      const s60 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.lfsr[1], 28), OpCodes.Shl32(this.lfsr[2], 4)));
+      const s79 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.lfsr[2], 15), OpCodes.Shl32(this.lfsr[3], 17)));
+      const s93 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.lfsr[2], 29), OpCodes.Shl32(this.lfsr[3], 3)));
+      const s94 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this.lfsr[2], 31), OpCodes.Shl32(this.lfsr[3], 1)));
 
-      // h(x) = b12s8 + s13s20 + b95s42 + s60s79 + b12b95s94 + s93
-      //        + b2 + b15 + b36 + b45 + b64 + b73 + b89
-      return OpCodes.ToDWord((b12 & s8) ^ (s13 & s20) ^ (b95 & s42) ^ (s60 & s79) ^ (b12 & b95 & s94)
-        ^ s93 ^ b2 ^ b15 ^ b36 ^ b45 ^ b64 ^ b73 ^ b89);
+      // h(x) = b12s8 XOR s13s20 XOR b95s42 XOR s60s79 XOR b12b95s94 XOR s93
+      //        XOR b2 XOR b15 XOR b36 XOR b45 XOR b64 XOR b73 XOR b89
+      return OpCodes.ToDWord(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(b12, s8), OpCodes.AndN(s13, s20)), OpCodes.AndN(b95, s42)), OpCodes.AndN(s60, s79)),
+        OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(OpCodes.AndN(b12, b95), s94), s93), OpCodes.XorN(OpCodes.XorN(b2, b15), OpCodes.XorN(b36, b45))),
+        OpCodes.XorN(OpCodes.XorN(b64, b73), b89))));
     }
 
     // Shift register array by 32 bits and add new value
@@ -710,13 +730,13 @@
       const output = this._getOutput();
 
       // Store output bytes (little-endian)
-      this.out[0] = output & 0xFF;
-      this.out[1] = (output >>> 8) & 0xFF;
-      this.out[2] = (output >>> 16) & 0xFF;
-      this.out[3] = (output >>> 24) & 0xFF;
+      this.out[0] = OpCodes.AndN(output, 0xFF);
+      this.out[1] = OpCodes.AndN(OpCodes.Shr32(output, 8), 0xFF);
+      this.out[2] = OpCodes.AndN(OpCodes.Shr32(output, 16), 0xFF);
+      this.out[3] = OpCodes.AndN(OpCodes.Shr32(output, 24), 0xFF);
 
       // Update registers (after initialization, no output feedback)
-      const nfsrFeedback = this._getOutputNFSR() ^ this.lfsr[0];
+      const nfsrFeedback = OpCodes.XorN(this._getOutputNFSR(), this.lfsr[0]);
       const lfsrFeedback = this._getOutputLFSR();
       this.nfsr = this._shift(this.nfsr, nfsrFeedback);
       this.lfsr = this._shift(this.lfsr, lfsrFeedback);
@@ -768,7 +788,7 @@
       // XOR input with keystream
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; ++i) {
-        output.push(this.inputBuffer[i] ^ this._getKeyStream());
+        output.push(OpCodes.XorN(this.inputBuffer[i], this._getKeyStream()));
       }
 
       this.inputBuffer = [];

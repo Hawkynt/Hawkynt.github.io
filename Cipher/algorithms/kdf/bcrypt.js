@@ -66,13 +66,13 @@
       const b2 = bytes[i++] || 0;
 
       // Pack 3 bytes into 24 bits
-      const bits = (b0 << 16) | (b1 << 8) | b2;
+      const bits = OpCodes.OrN(OpCodes.Shl32(b0, 16), OpCodes.OrN(OpCodes.Shl32(b1, 8), b2));
 
       // Extract 4 6-bit values (base64 chars)
-      result += BCRYPT_BASE64_ALPHABET.charAt((bits >>> 18) & 0x3F);
-      result += BCRYPT_BASE64_ALPHABET.charAt((bits >>> 12) & 0x3F);
-      result += BCRYPT_BASE64_ALPHABET.charAt((bits >>> 6) & 0x3F);
-      result += BCRYPT_BASE64_ALPHABET.charAt(bits & 0x3F);
+      result += BCRYPT_BASE64_ALPHABET.charAt(OpCodes.AndN(OpCodes.Shr32(bits, 18), 0x3F));
+      result += BCRYPT_BASE64_ALPHABET.charAt(OpCodes.AndN(OpCodes.Shr32(bits, 12), 0x3F));
+      result += BCRYPT_BASE64_ALPHABET.charAt(OpCodes.AndN(OpCodes.Shr32(bits, 6), 0x3F));
+      result += BCRYPT_BASE64_ALPHABET.charAt(OpCodes.AndN(bits, 0x3F));
     }
 
     return result;
@@ -95,12 +95,12 @@
       }
 
       // Pack 4 6-bit values into 24 bits
-      const bits = (c0 << 18) | (c1 << 12) | (c2 << 6) | c3;
+      const bits = OpCodes.OrN(OpCodes.Shl32(c0, 18), OpCodes.OrN(OpCodes.Shl32(c1, 12), OpCodes.OrN(OpCodes.Shl32(c2, 6), c3)));
 
       // Extract 3 bytes
-      result.push((bits >>> 16) & 0xFF);
-      result.push((bits >>> 8) & 0xFF);
-      result.push(bits & 0xFF);
+      result.push(OpCodes.AndN(OpCodes.Shr32(bits, 16), 0xFF));
+      result.push(OpCodes.AndN(OpCodes.Shr32(bits, 8), 0xFF));
+      result.push(OpCodes.AndN(bits, 0xFF));
     }
 
     return result;
@@ -325,7 +325,7 @@
       this._keyExpansion(truncatedPassword, salt);
 
       // Perform expensive key schedule 2^cost times
-      const rounds = 1 << cost; // 2^cost
+      const rounds = OpCodes.Shl32(1, cost); // 2^cost
       for (let i = 0; i < rounds; i++) {
         this._keyExpansion(truncatedPassword, null);
         this._keyExpansion(salt, null);
@@ -339,7 +339,7 @@
       const streamToWord = (data, offsetRef) => {
         let word = 0;
         for (let i = 0; i < 4; i++) {
-          word = ((word << 8) | (data[offsetRef.off] & 0xff)) >>> 0;
+          word = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(word, 8), OpCodes.AndN(data[offsetRef.off], 0xff)));
           offsetRef.off = (offsetRef.off + 1) % data.length;
         }
         return word;
@@ -349,7 +349,7 @@
       let keyOffset = { off: 0 };
       for (let i = 0; i < 18; i++) {
         const keyWord = streamToWord(key, keyOffset);
-        this.pBox[i] = (this.pBox[i] ^ keyWord) >>> 0;
+        this.pBox[i] = OpCodes.ToUint32(OpCodes.XorN(this.pBox[i], keyWord));
       }
 
       // Generate P-box and S-boxes by encrypting zeros (optionally XORed with salt)
@@ -361,12 +361,12 @@
       // Fill P-box
       for (let i = 0; i < 18; i += 2) {
         if (hasSalt) {
-          L = (L ^ streamToWord(salt, saltOffset)) >>> 0;
-          R = (R ^ streamToWord(salt, saltOffset)) >>> 0;
+          L = OpCodes.ToUint32(OpCodes.XorN(L, streamToWord(salt, saltOffset)));
+          R = OpCodes.ToUint32(OpCodes.XorN(R, streamToWord(salt, saltOffset)));
         }
         const result = this._encryptPair(L, R);
-        L = result.left >>> 0;
-        R = result.right >>> 0;
+        L = OpCodes.ToUint32(result.left);
+        R = OpCodes.ToUint32(result.right);
         this.pBox[i] = L;
         this.pBox[i + 1] = R;
       }
@@ -376,12 +376,12 @@
       for (const sBox of sBoxes) {
         for (let i = 0; i < 256; i += 2) {
           if (hasSalt) {
-            L = (L ^ streamToWord(salt, saltOffset)) >>> 0;
-            R = (R ^ streamToWord(salt, saltOffset)) >>> 0;
+            L = OpCodes.ToUint32(OpCodes.XorN(L, streamToWord(salt, saltOffset)));
+            R = OpCodes.ToUint32(OpCodes.XorN(R, streamToWord(salt, saltOffset)));
           }
           const result = this._encryptPair(L, R);
-          L = result.left >>> 0;
-          R = result.right >>> 0;
+          L = OpCodes.ToUint32(result.left);
+          R = OpCodes.ToUint32(result.right);
           sBox[i] = L;
           sBox[i + 1] = R;
         }
@@ -393,28 +393,28 @@
       // Reference: bcrypt.js _encipher function (unrolled for clarity)
       // Note: Output order matches bcrypt.js: lr[0] = r ^ P[17], lr[1] = l
 
-      L = (L ^ this.pBox[0]) >>> 0;
+      L = OpCodes.ToUint32(OpCodes.XorN(L, this.pBox[0]));
 
       // Unrolled 16 rounds (8 pairs of L/R updates)
-      R = (R ^ this._f(L) ^ this.pBox[1]) >>> 0;
-      L = (L ^ this._f(R) ^ this.pBox[2]) >>> 0;
-      R = (R ^ this._f(L) ^ this.pBox[3]) >>> 0;
-      L = (L ^ this._f(R) ^ this.pBox[4]) >>> 0;
-      R = (R ^ this._f(L) ^ this.pBox[5]) >>> 0;
-      L = (L ^ this._f(R) ^ this.pBox[6]) >>> 0;
-      R = (R ^ this._f(L) ^ this.pBox[7]) >>> 0;
-      L = (L ^ this._f(R) ^ this.pBox[8]) >>> 0;
-      R = (R ^ this._f(L) ^ this.pBox[9]) >>> 0;
-      L = (L ^ this._f(R) ^ this.pBox[10]) >>> 0;
-      R = (R ^ this._f(L) ^ this.pBox[11]) >>> 0;
-      L = (L ^ this._f(R) ^ this.pBox[12]) >>> 0;
-      R = (R ^ this._f(L) ^ this.pBox[13]) >>> 0;
-      L = (L ^ this._f(R) ^ this.pBox[14]) >>> 0;
-      R = (R ^ this._f(L) ^ this.pBox[15]) >>> 0;
-      L = (L ^ this._f(R) ^ this.pBox[16]) >>> 0;
+      R = OpCodes.ToUint32(OpCodes.XorN(R, OpCodes.XorN(this._f(L), this.pBox[1])));
+      L = OpCodes.ToUint32(OpCodes.XorN(L, OpCodes.XorN(this._f(R), this.pBox[2])));
+      R = OpCodes.ToUint32(OpCodes.XorN(R, OpCodes.XorN(this._f(L), this.pBox[3])));
+      L = OpCodes.ToUint32(OpCodes.XorN(L, OpCodes.XorN(this._f(R), this.pBox[4])));
+      R = OpCodes.ToUint32(OpCodes.XorN(R, OpCodes.XorN(this._f(L), this.pBox[5])));
+      L = OpCodes.ToUint32(OpCodes.XorN(L, OpCodes.XorN(this._f(R), this.pBox[6])));
+      R = OpCodes.ToUint32(OpCodes.XorN(R, OpCodes.XorN(this._f(L), this.pBox[7])));
+      L = OpCodes.ToUint32(OpCodes.XorN(L, OpCodes.XorN(this._f(R), this.pBox[8])));
+      R = OpCodes.ToUint32(OpCodes.XorN(R, OpCodes.XorN(this._f(L), this.pBox[9])));
+      L = OpCodes.ToUint32(OpCodes.XorN(L, OpCodes.XorN(this._f(R), this.pBox[10])));
+      R = OpCodes.ToUint32(OpCodes.XorN(R, OpCodes.XorN(this._f(L), this.pBox[11])));
+      L = OpCodes.ToUint32(OpCodes.XorN(L, OpCodes.XorN(this._f(R), this.pBox[12])));
+      R = OpCodes.ToUint32(OpCodes.XorN(R, OpCodes.XorN(this._f(L), this.pBox[13])));
+      L = OpCodes.ToUint32(OpCodes.XorN(L, OpCodes.XorN(this._f(R), this.pBox[14])));
+      R = OpCodes.ToUint32(OpCodes.XorN(R, OpCodes.XorN(this._f(L), this.pBox[15])));
+      L = OpCodes.ToUint32(OpCodes.XorN(L, OpCodes.XorN(this._f(R), this.pBox[16])));
 
       // Final output: swap L and R, with R XORed with P[17]
-      const outL = (R ^ this.pBox[17]) >>> 0;
+      const outL = OpCodes.ToUint32(OpCodes.XorN(R, this.pBox[17]));
       const outR = L;
 
       return { left: outL, right: outR };
@@ -422,14 +422,14 @@
 
     _f(x) {
       // Blowfish F-function: Split input into 4 bytes, lookup in S-boxes, combine
-      const a = (x >>> 24) & 0xFF;
-      const b = (x >>> 16) & 0xFF;
-      const c = (x >>> 8) & 0xFF;
-      const d = x & 0xFF;
+      const a = OpCodes.AndN(OpCodes.Shr32(x, 24), 0xFF);
+      const b = OpCodes.AndN(OpCodes.Shr32(x, 16), 0xFF);
+      const c = OpCodes.AndN(OpCodes.Shr32(x, 8), 0xFF);
+      const d = OpCodes.AndN(x, 0xFF);
 
       // F = ((S1[a] + S2[b]) XOR S3[c]) + S4[d]
-      const result = (((this.sBox1[a] + this.sBox2[b]) >>> 0) ^ this.sBox3[c]) >>> 0;
-      return (result + this.sBox4[d]) >>> 0;
+      const result = OpCodes.ToUint32(OpCodes.XorN(OpCodes.ToUint32(this.sBox1[a] + this.sBox2[b]), this.sBox3[c]));
+      return OpCodes.ToUint32(result + this.sBox4[d]);
     }
 
     encrypt(block) {

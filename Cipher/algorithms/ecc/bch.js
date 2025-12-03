@@ -72,7 +72,7 @@
       ];
 
       this.references = [
-        new LinkItem("Bose & Ray-Chaudhuri Original Paper", "https://projecteuclid.org/journals/illinois-journal-of-mathematics/volume-6/number-1/On-a-class-of-error-correcting-binary-group-codes/10.1215/ijm/1255631584.full"),
+        new LinkItem("Bose and Ray-Chaudhuri Original Paper", "https://projecteuclid.org/journals/illinois-journal-of-mathematics/volume-6/number-1/On-a-class-of-error-correcting-binary-group-codes/10.1215/ijm/1255631584.full"),
         new LinkItem("Hocquenghem's Paper", "https://www.google.com/search?q=hocquenghem+codes+correcteurs+erreurs"),
         new LinkItem("Modern BCH Implementation Guide", "https://ieeexplore.ieee.org/document/1057683")
       ];
@@ -221,7 +221,7 @@
       // Simple XOR parity for demonstration
       let parity = 0;
       for (let i = 0; i < data.length; i++) {
-        parity ^= data[i];
+        parity = OpCodes.XorN(parity, data[i]);
       }
       return parity;
     }
@@ -230,14 +230,14 @@
       // Simplified checksum calculation
       let checksum = 0;
       for (let i = 0; i < data.length; i++) {
-        checksum = (checksum + data[i]) & 0xFF;
+        checksum = OpCodes.AndN((checksum + data[i]), 0xFF);
       }
       return checksum;
     }
 
     // Galois Field arithmetic helpers (simplified for education)
     gfAdd(a, b) {
-      return a ^ b; // Addition in GF(2) is XOR
+      return OpCodes.XorN(a, b); // Addition in GF(2) is XOR
     }
 
     gfMultiply(a, b) {

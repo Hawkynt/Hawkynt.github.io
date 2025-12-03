@@ -205,7 +205,7 @@
       }
 
       // Ensure increment is odd (required for full period LCG)
-      // Apache Commons RNG stores increment >> 1 to ensure odd on restoration
+      // Apache Commons RNG stores increment shr 1 to ensure odd on restoration
       // We directly ensure it's odd here
       this._increment = OpCodes.OrN(OpCodes.ShiftLn(seqValue, 1n), 1n);
 

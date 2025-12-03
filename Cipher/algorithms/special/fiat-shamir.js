@@ -156,7 +156,7 @@
         // Initialize RNG state from seed using simple hash
         this._rngState = 0;
         for (let i = 0; i < this._seed.length; i++) {
-          this._rngState = ((this._rngState * 31) + this._seed[i]) >>> 0;
+          this._rngState = OpCodes.ToUint32((this._rngState * 31) + this._seed[i]);
         }
         // Ensure non-zero state
         if (this._rngState === 0) this._rngState = 1;

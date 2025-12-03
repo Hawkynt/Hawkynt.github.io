@@ -127,13 +127,13 @@
       const c3 = state[4 * i + 3];
 
       function mulX(p) {
-        return ((p & 0x7F) << 1) ^ (((p & 0x80) >>> 7) * 0x1B);
+        return OpCodes.XorN(OpCodes.Shl32(OpCodes.AndN(p, 0x7F), 1), OpCodes.Shr32(OpCodes.AndN(p, 0x80), 7) * 0x1B);
       }
 
-      result[j++] = mulX(c0) ^ mulX(c1) ^ c1 ^ c2 ^ c3;
-      result[j++] = c0 ^ mulX(c1) ^ mulX(c2) ^ c2 ^ c3;
-      result[j++] = c0 ^ c1 ^ mulX(c2) ^ mulX(c3) ^ c3;
-      result[j++] = mulX(c0) ^ c0 ^ c1 ^ c2 ^ mulX(c3);
+      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(mulX(c0), mulX(c1)), c1), c2), c3);
+      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(c0, mulX(c1)), mulX(c2)), c2), c3);
+      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(c0, c1), mulX(c2)), mulX(c3)), c3);
+      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(mulX(c0), c0), c1), c2), mulX(c3));
     }
 
     return result;
@@ -149,16 +149,16 @@
       const c2 = state[4 * i + 2];
       const c3 = state[4 * i + 3];
 
-      function mul14(p) { return mulX(mulX(mulX(p))) ^ mulX(p) ^ p; }
-      function mul13(p) { return mulX(mulX(mulX(p))) ^ mulX(mulX(p)) ^ p; }
-      function mul11(p) { return mulX(mulX(mulX(p))) ^ mulX(p) ^ p; }
-      function mul9(p) { return mulX(mulX(mulX(p))) ^ p; }
-      function mulX(p) { return ((p & 0x7F) << 1) ^ (((p & 0x80) >>> 7) * 0x1B); }
+      function mul14(p) { return OpCodes.XorN(OpCodes.XorN(mulX(mulX(mulX(p))), mulX(p)), p); }
+      function mul13(p) { return OpCodes.XorN(OpCodes.XorN(mulX(mulX(mulX(p))), mulX(mulX(p))), p); }
+      function mul11(p) { return OpCodes.XorN(OpCodes.XorN(mulX(mulX(mulX(p))), mulX(p)), p); }
+      function mul9(p) { return OpCodes.XorN(mulX(mulX(mulX(p))), p); }
+      function mulX(p) { return OpCodes.XorN(OpCodes.Shl32(OpCodes.AndN(p, 0x7F), 1), OpCodes.Shr32(OpCodes.AndN(p, 0x80), 7) * 0x1B); }
 
-      result[j++] = mul14(c0) ^ mul11(c1) ^ mul13(c2) ^ mul9(c3);
-      result[j++] = mul9(c0) ^ mul14(c1) ^ mul11(c2) ^ mul13(c3);
-      result[j++] = mul13(c0) ^ mul9(c1) ^ mul14(c2) ^ mul11(c3);
-      result[j++] = mul11(c0) ^ mul13(c1) ^ mul9(c2) ^ mul14(c3);
+      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(mul14(c0), mul11(c1)), mul13(c2)), mul9(c3));
+      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(mul9(c0), mul14(c1)), mul11(c2)), mul13(c3));
+      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(mul13(c0), mul9(c1)), mul14(c2)), mul11(c3));
+      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(mul11(c0), mul13(c1)), mul9(c2)), mul14(c3));
     }
 
     return result;
@@ -478,7 +478,7 @@
 
       // Fill with strengthened constants (v2 improvement)
       for (let i = 0; i < 16; ++i) {
-        constant[i] = (counter + i * 17) & 0xFF; // Dense constants to prevent invariant subspaces
+        constant[i] = OpCodes.AndN((counter + i * 17), 0xFF); // Dense constants to prevent invariant subspaces
       }
 
       return constant;

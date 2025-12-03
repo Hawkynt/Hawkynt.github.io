@@ -233,7 +233,7 @@
           // Standard Zstd frame
           const frame = this._decodeFrame(reader);
           result.push(...frame);
-        } else if ((magic&ZSTD_MAGIC_SKIPPABLE_MASK)===ZSTD_MAGIC_SKIPPABLE_START) {
+        } else if (OpCodes.AndN(magic, ZSTD_MAGIC_SKIPPABLE_MASK) === ZSTD_MAGIC_SKIPPABLE_START) {
           // Skippable frame - read size and skip
           const frameSize = reader.readU32LE();
           reader.skipBytes(frameSize);
@@ -253,20 +253,20 @@
       // Read frame header descriptor
       const descriptor = reader.readU8();
 
-      const frameContentSizeFlag = (descriptor>>>6)&3;
-      const singleSegmentFlag = (descriptor>>>5)&1;
-      const checksumFlag = (descriptor>>>2)&1;
-      const dictIdFlag = descriptor&3;
+      const frameContentSizeFlag = OpCodes.AndN(OpCodes.Shr32(descriptor, 6), 3);
+      const singleSegmentFlag = OpCodes.AndN(OpCodes.Shr32(descriptor, 5), 1);
+      const checksumFlag = OpCodes.AndN(OpCodes.Shr32(descriptor, 2), 1);
+      const dictIdFlag = OpCodes.AndN(descriptor, 3);
 
       // Read window descriptor (if not single segment)
       let windowSize = 0;
       if (!singleSegmentFlag) {
         const windowDescriptor = reader.readU8();
-        const exponent = windowDescriptor>>>3;
-        const mantissa = windowDescriptor&7;
+        const exponent = OpCodes.Shr32(windowDescriptor, 3);
+        const mantissa = OpCodes.AndN(windowDescriptor, 7);
         const windowLog = MIN_WINDOW_LOG + exponent;
-        const windowBase = 1<<windowLog;
-        windowSize = windowBase + (windowBase>>>3) * mantissa;
+        const windowBase = OpCodes.Shl32(1, windowLog);
+        windowSize = windowBase + OpCodes.Shr32(windowBase, 3) * mantissa;
       }
 
       // Read dictionary ID if present
@@ -306,9 +306,9 @@
 
       while (!lastBlock) {
         const blockHeader = reader.readU24LE();
-        lastBlock = (blockHeader&1) !== 0;
-        const blockType = (blockHeader>>>1)&3;
-        const blockSize = blockHeader>>>3;
+        lastBlock = OpCodes.AndN(blockHeader, 1) !== 0;
+        const blockType = OpCodes.AndN(OpCodes.Shr32(blockHeader, 1), 3);
+        const blockSize = OpCodes.Shr32(blockHeader, 3);
 
         if (blockSize > MAX_BLOCK_SIZE) {
           throw new Error(`Block size ${blockSize} exceeds maximum ${MAX_BLOCK_SIZE}`);
@@ -375,16 +375,16 @@
       } else {
         result.push(0x40); // Update descriptor for 2-byte size
         const size = data.length - 256;
-        result.push(size&0xFF);
-        result.push((size>>>8)&0xFF);
+        result.push(OpCodes.AndN(size, 0xFF));
+        result.push(OpCodes.AndN(OpCodes.Shr32(size, 8), 0xFF));
       }
 
       if (data.length === 0) {
         // Empty frame - just header + empty block
-        const blockHeader = (0<<3)|(BLOCK_TYPE_RAW<<1)|1; // Last block, raw, size=0
-        result.push(blockHeader&0xFF);
-        result.push((blockHeader>>>8)&0xFF);
-        result.push((blockHeader>>>16)&0xFF);
+        const blockHeader = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(0, 3), OpCodes.Shl32(BLOCK_TYPE_RAW, 1)), 1); // Last block, raw, size=0
+        result.push(OpCodes.AndN(blockHeader, 0xFF));
+        result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 8), 0xFF));
+        result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 16), 0xFF));
 
         this.inputBuffer = [];
         return result;
@@ -395,17 +395,17 @@
 
       if (isRepetitive && data.length > 1) {
         // RLE block
-        const blockHeader = (data.length<<3)|(BLOCK_TYPE_RLE<<1)|1; // Last block
-        result.push(blockHeader&0xFF);
-        result.push((blockHeader>>>8)&0xFF);
-        result.push((blockHeader>>>16)&0xFF);
+        const blockHeader = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(data.length, 3), OpCodes.Shl32(BLOCK_TYPE_RLE, 1)), 1); // Last block
+        result.push(OpCodes.AndN(blockHeader, 0xFF));
+        result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 8), 0xFF));
+        result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 16), 0xFF));
         result.push(data[0]); // The repeated byte
       } else {
         // Raw block
-        const blockHeader = (data.length<<3)|(BLOCK_TYPE_RAW<<1)|1; // Last block
-        result.push(blockHeader&0xFF);
-        result.push((blockHeader>>>8)&0xFF);
-        result.push((blockHeader>>>16)&0xFF);
+        const blockHeader = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(data.length, 3), OpCodes.Shl32(BLOCK_TYPE_RAW, 1)), 1); // Last block
+        result.push(OpCodes.AndN(blockHeader, 0xFF));
+        result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 8), 0xFF));
+        result.push(OpCodes.AndN(OpCodes.Shr32(blockHeader, 16), 0xFF));
         result.push(...data);
       }
 
@@ -448,7 +448,7 @@
       const b0 = this.readU8();
       const b1 = this.readU8();
       const b2 = this.readU8();
-      return b0|(b1<<8)|(b2<<16);
+      return OpCodes.OrN(OpCodes.OrN(b0, OpCodes.Shl32(b1, 8)), OpCodes.Shl32(b2, 16));
     }
 
     readU32LE() {

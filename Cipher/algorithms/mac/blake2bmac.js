@@ -83,7 +83,7 @@
    * Message word permutation schedule (SIGMA).
    * 10 rounds of permutations for mixing message words in the compression function.
    * After round 9, the schedule wraps around (round 10 uses schedule 0, etc.).
-   * @constant {ReadonlyArray<ReadonlyArray<uint8>>}
+   * @constant {ReadonlyArray<ReadonlyArray<uint8> >}
    */
   const SIGMA = Object.freeze([
     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
@@ -113,9 +113,9 @@
    */
   function RotR64(value, positions) {
     const mask64 = BigInt('0xffffffffffffffff');
-    value = value & mask64;
-    positions = BigInt(positions) & BigInt(63);
-    return ((value >> positions) | (value << (BigInt(64) - positions))) & mask64;
+    value = OpCodes.AndN(value, mask64);
+    positions = OpCodes.AndN(BigInt(positions), BigInt(63));
+    return OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftRn(value, positions), OpCodes.ShiftLn(value, (BigInt(64) - positions))), mask64);
   }
 
   /**
@@ -124,10 +124,10 @@
    * Provides both confusion (through addition and XOR) and diffusion (through rotation).
    *
    * The G function performs four mixing steps with rotation amounts 32, 24, 16, and 63:
-   * 1. v[a] = v[a] + v[b] + x; v[d] = (v[d] ^ v[a]) >>> 32
-   * 2. v[c] = v[c] + v[d]; v[b] = (v[b] ^ v[c]) >>> 24
-   * 3. v[a] = v[a] + v[b] + y; v[d] = (v[d] ^ v[a]) >>> 16
-   * 4. v[c] = v[c] + v[d]; v[b] = (v[b] ^ v[c]) >>> 63
+   * 1. v[a] = v[a] + v[b] + x; v[d] = (v[d] XOR v[a]) rotated right 32
+   * 2. v[c] = v[c] + v[d]; v[b] = (v[b] XOR v[c]) rotated right 24
+   * 3. v[a] = v[a] + v[b] + y; v[d] = (v[d] XOR v[a]) rotated right 16
+   * 4. v[c] = v[c] + v[d]; v[b] = (v[b] XOR v[c]) rotated right 63
    *
    * @param {Array<BigInt>} v - Working vector (16 x 64-bit words), modified in place
    * @param {uint8} a - First state word index (0-15)
@@ -138,14 +138,14 @@
    * @param {BigInt} y - Second message word (64-bit)
    */
   function BLAKE2b_G(v, a, b, c, d, x, y) {
-    v[a] = (v[a] + v[b] + x) & BigInt('0xffffffffffffffff');
-    v[d] = RotR64(v[d] ^ v[a], 32);
-    v[c] = (v[c] + v[d]) & BigInt('0xffffffffffffffff');
-    v[b] = RotR64(v[b] ^ v[c], 24);
-    v[a] = (v[a] + v[b] + y) & BigInt('0xffffffffffffffff');
-    v[d] = RotR64(v[d] ^ v[a], 16);
-    v[c] = (v[c] + v[d]) & BigInt('0xffffffffffffffff');
-    v[b] = RotR64(v[b] ^ v[c], 63);
+    v[a] = OpCodes.AndN((v[a] + v[b] + x), BigInt('0xffffffffffffffff'));
+    v[d] = RotR64(OpCodes.XorN(v[d], v[a]), 32);
+    v[c] = OpCodes.AndN((v[c] + v[d]), BigInt('0xffffffffffffffff'));
+    v[b] = RotR64(OpCodes.XorN(v[b], v[c]), 24);
+    v[a] = OpCodes.AndN((v[a] + v[b] + y), BigInt('0xffffffffffffffff'));
+    v[d] = RotR64(OpCodes.XorN(v[d], v[a]), 16);
+    v[c] = OpCodes.AndN((v[c] + v[d]), BigInt('0xffffffffffffffff'));
+    v[b] = RotR64(OpCodes.XorN(v[b], v[c]), 63);
   }
 
   /**
@@ -181,8 +181,8 @@
       v[i + 8] = BLAKE2B_IV[i];
     }
 
-    v[12] ^= t[0];
-    v[13] ^= t[1];
+    v[12] = OpCodes.XorN(v[12], t[0]);
+    v[13] = OpCodes.XorN(v[13], t[1]);
 
     if (f) {
       v[14] = ~v[14];
@@ -204,7 +204,7 @@
 
     // XOR state with working vector
     for (let i = 0; i < 8; i++) {
-      h[i] ^= v[i] ^ v[i + 8];
+      h[i] = OpCodes.XorN(h[i], OpCodes.XorN(v[i], v[i + 8]));
     }
   }
 
@@ -513,7 +513,7 @@
       }
 
       // Parameter block: h[0] ^= 0x01010000 ^ (keylen << 8) ^ outlen
-      h[0] ^= BigInt(0x01010000) ^ (BigInt(this._key.length) << BigInt(8)) ^ BigInt(this._outputSize);
+      h[0] = OpCodes.XorN(h[0], OpCodes.XorN(BigInt(0x01010000), OpCodes.XorN(OpCodes.ShiftLn(BigInt(this._key.length), 8), BigInt(this._outputSize))));
 
       // Process key block if key is provided
       const buffer = new Uint8Array(BLAKE2B_BLOCKBYTES);
@@ -549,14 +549,14 @@
           const m = new Array(16);
           for (let i = 0; i < 16; i++) {
             const idx = i * 8;
-            m[i] = BigInt(buffer[idx]) |
-                   (BigInt(buffer[idx + 1]) << BigInt(8)) |
-                   (BigInt(buffer[idx + 2]) << BigInt(16)) |
-                   (BigInt(buffer[idx + 3]) << BigInt(24)) |
-                   (BigInt(buffer[idx + 4]) << BigInt(32)) |
-                   (BigInt(buffer[idx + 5]) << BigInt(40)) |
-                   (BigInt(buffer[idx + 6]) << BigInt(48)) |
-                   (BigInt(buffer[idx + 7]) << BigInt(56));
+            m[i] = OpCodes.OrN(BigInt(buffer[idx]),
+                   OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 1]), 8),
+                   OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 2]), 16),
+                   OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 3]), 24),
+                   OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 4]), 32),
+                   OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 5]), 40),
+                   OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 6]), 48),
+                               OpCodes.ShiftLn(BigInt(buffer[idx + 7]), 56))))))));
           }
 
           BLAKE2b_compress(h, m, [totalLen, BigInt(0)], false);
@@ -576,14 +576,14 @@
       const m = new Array(16);
       for (let i = 0; i < 16; i++) {
         const idx = i * 8;
-        m[i] = BigInt(buffer[idx]) |
-               (BigInt(buffer[idx + 1]) << BigInt(8)) |
-               (BigInt(buffer[idx + 2]) << BigInt(16)) |
-               (BigInt(buffer[idx + 3]) << BigInt(24)) |
-               (BigInt(buffer[idx + 4]) << BigInt(32)) |
-               (BigInt(buffer[idx + 5]) << BigInt(40)) |
-               (BigInt(buffer[idx + 6]) << BigInt(48)) |
-               (BigInt(buffer[idx + 7]) << BigInt(56));
+        m[i] = OpCodes.OrN(BigInt(buffer[idx]),
+               OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 1]), 8),
+               OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 2]), 16),
+               OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 3]), 24),
+               OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 4]), 32),
+               OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 5]), 40),
+               OpCodes.OrN(OpCodes.ShiftLn(BigInt(buffer[idx + 6]), 48),
+                           OpCodes.ShiftLn(BigInt(buffer[idx + 7]), 56))))))));
       }
 
       BLAKE2b_compress(h, m, [totalLen, BigInt(0)], true);
@@ -593,7 +593,7 @@
       for (let i = 0; i < this._outputSize; i++) {
         const wordIndex = Math.floor(i / 8);
         const byteIndex = i % 8;
-        output.push(Number((h[wordIndex] >> BigInt(byteIndex * 8)) & BigInt(0xFF)));
+        output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(h[wordIndex], byteIndex * 8), BigInt(0xFF))));
       }
 
       this.inputBuffer = []; // Clear for next operation

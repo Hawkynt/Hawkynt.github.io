@@ -184,9 +184,9 @@
           const ivWord = global.OpCodes.Pack32LE(
             iv[i * 4], iv[i * 4 + 1], iv[i * 4 + 2], iv[i * 4 + 3]
           );
-          lfgA[i] ^= ivWord;
-          lfgB[i] ^= ivWord;
-          lfgC[i] ^= ivWord;
+          lfgA[i] = global.OpCodes.XorN(lfgA[i], ivWord);
+          lfgB[i] = global.OpCodes.XorN(lfgB[i], ivWord);
+          lfgC[i] = global.OpCodes.XorN(lfgC[i], ivWord);
         }
       }
 
@@ -201,9 +201,9 @@
         // Mix the LFG states to create keystream
 
         // Simple state mixing for educational purposes
-        const mixA = (lfgA[posA % this.LAG_A] + lfgA[(posA + this.TAP_A) % this.LAG_A]) >>> 0;
-        const mixB = (lfgB[posB % this.LAG_B] + lfgB[(posB + this.TAP_B) % this.LAG_B]) >>> 0;
-        const mixC = (lfgC[posC % this.LAG_C] + lfgC[(posC + this.TAP_C) % this.LAG_C]) >>> 0;
+        const mixA = global.OpCodes.ToUint32(lfgA[posA % this.LAG_A] + lfgA[(posA + this.TAP_A) % this.LAG_A]);
+        const mixB = global.OpCodes.ToUint32(lfgB[posB % this.LAG_B] + lfgB[(posB + this.TAP_B) % this.LAG_B]);
+        const mixC = global.OpCodes.ToUint32(lfgC[posC % this.LAG_C] + lfgC[(posC + this.TAP_C) % this.LAG_C]);
 
         // Update LFG states
         lfgA[posA % this.LAG_A] = mixA;
@@ -211,10 +211,10 @@
         lfgC[posC % this.LAG_C] = mixC;
 
         // Generate keystream by combining all three
-        const keystreamWord = (mixA ^ mixB ^ mixC ^ (i * 0x9E3779B9)) >>> 0;
-        const keystreamByte = (keystreamWord + i) & 0xFF;
+        const keystreamWord = global.OpCodes.ToUint32(global.OpCodes.XorN(global.OpCodes.XorN(global.OpCodes.XorN(mixA, mixB), mixC), (i * 0x9E3779B9)));
+        const keystreamByte = global.OpCodes.AndN((keystreamWord + i), 0xFF);
 
-        output.push(data[i] ^ keystreamByte);
+        output.push(global.OpCodes.XorN(data[i], keystreamByte));
 
         // Advance positions
         posA = (posA + 1) % this.LAG_A;
@@ -232,8 +232,8 @@
       }
 
       const iv = new Array(this.IV_SIZE).fill(0);
-      iv[0] = blockIndex & 0xFF;
-      iv[1] = global.OpCodes.ShiftR32(blockIndex, 8) & 0xFF;
+      iv[0] = global.OpCodes.AndN(blockIndex, 0xFF);
+      iv[1] = global.OpCodes.AndN(global.OpCodes.ShiftR32(blockIndex, 8), 0xFF);
 
       return this.educationalPike(this.key, iv, plaintext);
     },
@@ -244,8 +244,8 @@
       }
 
       const iv = new Array(this.IV_SIZE).fill(0);
-      iv[0] = blockIndex & 0xFF;
-      iv[1] = global.OpCodes.ShiftR32(blockIndex, 8) & 0xFF;
+      iv[0] = global.OpCodes.AndN(blockIndex, 0xFF);
+      iv[1] = global.OpCodes.AndN(global.OpCodes.ShiftR32(blockIndex, 8), 0xFF);
 
       return this.educationalPike(this.key, iv, ciphertext);
     },

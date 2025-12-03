@@ -113,29 +113,29 @@
       for (let i = 0; i < this.CLOCK_LFSR_LENGTH && bitIndex < 128; i++) {
         const byteIndex = Math.floor(bitIndex / 8);
         const bitPos = bitIndex % 8;
-        this.clockLFSR[i] = (key[byteIndex] >>> bitPos) & 1;
+        this.clockLFSR[i] = OpCodes.AndN(OpCodes.Shr32(key[byteIndex], bitPos), 1);
         bitIndex++;
       }
-      
+
       // Initialize data LFSR
       for (let i = 0; i < this.DATA_LFSR_LENGTH && bitIndex < 128; i++) {
         const byteIndex = Math.floor(bitIndex / 8);
         const bitPos = bitIndex % 8;
-        this.dataLFSR[i] = (key[byteIndex] >>> bitPos) & 1;
+        this.dataLFSR[i] = OpCodes.AndN(OpCodes.Shr32(key[byteIndex], bitPos), 1);
         bitIndex++;
       }
-      
+
       // Use remaining key bits to modify existing LFSR states
       while (bitIndex < 128) {
         const byteIndex = Math.floor(bitIndex / 8);
         const bitPos = bitIndex % 8;
-        const keyBit = (key[byteIndex] >>> bitPos) & 1;
-        
+        const keyBit = OpCodes.AndN(OpCodes.Shr32(key[byteIndex], bitPos), 1);
+
         // XOR with existing LFSR states alternately
         if ((bitIndex % 2) === 0) {
-          this.clockLFSR[bitIndex % this.CLOCK_LFSR_LENGTH] ^= keyBit;
+          this.clockLFSR[bitIndex % this.CLOCK_LFSR_LENGTH] = OpCodes.XorN(this.clockLFSR[bitIndex % this.CLOCK_LFSR_LENGTH], keyBit);
         } else {
-          this.dataLFSR[bitIndex % this.DATA_LFSR_LENGTH] ^= keyBit;
+          this.dataLFSR[bitIndex % this.DATA_LFSR_LENGTH] = OpCodes.XorN(this.dataLFSR[bitIndex % this.DATA_LFSR_LENGTH], keyBit);
         }
         bitIndex++;
       }
@@ -158,14 +158,14 @@
      */
     updateClockLFSR: function() {
       const output = this.clockLFSR[0];
-      const feedback = this.clockLFSR[0] ^ this.clockLFSR[1] ^ this.clockLFSR[2] ^ this.clockLFSR[5];
-      
+      const feedback = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.clockLFSR[0], this.clockLFSR[1]), this.clockLFSR[2]), this.clockLFSR[5]);
+
       // Shift register
       for (let i = 0; i < this.CLOCK_LFSR_LENGTH - 1; i++) {
         this.clockLFSR[i] = this.clockLFSR[i + 1];
       }
       this.clockLFSR[this.CLOCK_LFSR_LENGTH - 1] = feedback;
-      
+
       return output;
     },
     
@@ -175,14 +175,14 @@
      */
     updateDataLFSR: function() {
       const output = this.dataLFSR[0];
-      const feedback = this.dataLFSR[0] ^ this.dataLFSR[5]; // Taps at positions 0 and 5 (counting from 0)
-      
+      const feedback = OpCodes.XorN(this.dataLFSR[0], this.dataLFSR[5]); // Taps at positions 0 and 5 (counting from 0)
+
       // Shift register
       for (let i = 0; i < this.DATA_LFSR_LENGTH - 1; i++) {
         this.dataLFSR[i] = this.dataLFSR[i + 1];
       }
       this.dataLFSR[this.DATA_LFSR_LENGTH - 1] = feedback;
-      
+
       return output;
     },
     
@@ -217,12 +217,12 @@
      */
     generateByte: function() {
       let byte = 0;
-      
+
       for (let bit = 0; bit < 8; bit++) {
         const bitValue = this.generateBit();
-        byte |= (bitValue << bit);
+        byte = OpCodes.OrN(byte, OpCodes.Shl32(bitValue, bit));
       }
-      
+
       return byte;
     },
     

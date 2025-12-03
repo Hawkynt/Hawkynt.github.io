@@ -266,7 +266,7 @@
       // For educational/testing purposes, use deterministic generation based on seed
       if (seed) {
         for (let i = 0; i < length; i++) {
-          bytes[i] = (seed[i % seed.length] + i * 17) & 0xFF;
+          bytes[i] = OpCodes.AndN(seed[i % seed.length] + i * 17, 0xFF);
         }
       } else {
         // Non-deterministic for real usage (not recommended for production)
@@ -282,9 +282,9 @@
       // Simple hash for educational purposes (32 bytes output)
       const hash = new Array(32);
       for (let i = 0; i < 32; i++) {
-        hash[i] = (i * 17 + 42) & 0xFF;
+        hash[i] = OpCodes.AndN(i * 17 + 42, 0xFF);
         for (let j = 0; j < data.length; j++) {
-          hash[i] ^= data[j];
+          hash[i] = OpCodes.XorN(hash[i], data[j]);
           hash[i] = OpCodes.RotL8(hash[i], 1);
         }
       }
@@ -407,7 +407,7 @@
           for (let j = 0; j < eta; j++) {
             const byteIndex = Math.floor((offset + i * eta * 2 + j) / 8);
             const bitIndex = (offset + i * eta * 2 + j) % 8;
-            if (randomness[byteIndex] && (randomness[byteIndex] & (1 << bitIndex))) {
+            if (randomness[byteIndex] && OpCodes.AndN(randomness[byteIndex], OpCodes.Shl32(1, bitIndex))) {
               sum++;
             }
           }
@@ -416,7 +416,7 @@
           for (let j = 0; j < eta; j++) {
             const byteIndex = Math.floor((offset + i * eta * 2 + eta + j) / 8);
             const bitIndex = (offset + i * eta * 2 + eta + j) % 8;
-            if (randomness[byteIndex] && (randomness[byteIndex] & (1 << bitIndex))) {
+            if (randomness[byteIndex] && OpCodes.AndN(randomness[byteIndex], OpCodes.Shl32(1, bitIndex))) {
               sum--;
             }
           }
@@ -429,12 +429,13 @@
 
     // Compress coefficient
     compress(x, d) {
-      return Math.floor((x * (1 << d) + this.params.q / 2) / this.params.q) & ((1 << d) - 1);
+      const shiftedD = OpCodes.Shl32(1, d);
+      return OpCodes.AndN(Math.floor((x * shiftedD + this.params.q / 2) / this.params.q), shiftedD - 1);
     }
 
     // Decompress coefficient
     decompress(x, d) {
-      return Math.floor((x * this.params.q + (1 << (d - 1))) / (1 << d));
+      return Math.floor((x * this.params.q + OpCodes.Shl32(1, d - 1)) / OpCodes.Shl32(1, d));
     }
 
     // Generate matrix A from seed
@@ -548,7 +549,7 @@
         // Encode polynomial vector s
         for (let i = 0; i < this.params.k; i++) {
           for (let j = 0; j < this.params.n; j++) {
-            encoded.push(s[i][j] & 0xFF);
+            encoded.push(OpCodes.AndN(s[i][j], 0xFF));
           }
         }
 
@@ -628,7 +629,7 @@
 
         // Simulate encryption by combining message with randomness
         for (let i = 0; i < 32; i++) {
-          ciphertext.push(message[i] ^ randomness[i % randomness.length]);
+          ciphertext.push(OpCodes.XorN(message[i], randomness[i % randomness.length]));
         }
 
         // Pad to expected ciphertext size
@@ -649,7 +650,7 @@
 
         // Simulate decryption
         for (let i = 0; i < 32; i++) {
-          message[i] = ciphertext[i] ^ s[i % s.length];
+          message[i] = OpCodes.XorN(ciphertext[i], s[i % s.length]);
         }
 
         return message;

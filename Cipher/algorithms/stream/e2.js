@@ -70,18 +70,18 @@
       // Create a block using counter (simplified E2-based keystream generation)
       const counter = new Array(16);
       for (let i = 0; i < 16; i++) {
-        counter[i] = (blockIndex >>> (i % 4 * 8)) & 0xFF;
+        counter[i] = OpCodes.AndN(OpCodes.Shr32(blockIndex, (i % 4 * 8)), 0xFF);
       }
 
       // Simple keystream generation based on E2 principles
       const keystream = new Array(16);
       for (let i = 0; i < 16; i++) {
-        keystream[i] = (this.setupKey[i] ^ counter[i] ^ (blockIndex * 17 + i)) & 0xFF;
+        keystream[i] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(this.setupKey[i], counter[i]), (blockIndex * 17 + i)), 0xFF);
       }
 
       // Apply S-box-like transformation for better diffusion
       for (let i = 0; i < 16; i++) {
-        keystream[i] = (keystream[i] + (keystream[(i + 1) % 16] ^ keystream[(i + 15) % 16])) & 0xFF;
+        keystream[i] = OpCodes.AndN((keystream[i] + OpCodes.XorN(keystream[(i + 1) % 16], keystream[(i + 15) % 16])), 0xFF);
       }
 
       return keystream;
@@ -100,7 +100,7 @@
         }
 
         // XOR input with keystream
-        output[i] = input[i] ^ this.keystream[this.keystreamPos++];
+        output[i] = OpCodes.XorN(input[i], this.keystream[this.keystreamPos++]);
       }
 
       return output;
@@ -149,7 +149,7 @@
               keystreamPos = 0;
             }
 
-            output[i] = this._inputData[i] ^ keystream[keystreamPos++];
+            output[i] = OpCodes.XorN(this._inputData[i], keystream[keystreamPos++]);
           }
 
           return output;

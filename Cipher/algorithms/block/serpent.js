@@ -259,281 +259,281 @@
     // S-box implementations using bitwise operations (from Bouncy Castle reference)
     // S0 - { 3, 8,15, 1,10, 6, 5,11,14,13, 4, 2, 7, 0, 9,12 }
     _sb0(a, b, c, d) {
-      const t1 = a ^ d;
-      const t3 = c ^ t1;
-      const t4 = b ^ t3;
-      this.X3 = (a & d) ^ t4;
-      const t7 = a ^ (b & t1);
-      this.X2 = t4 ^ (c | t7);
-      const t12 = this.X3 & (t3 ^ t7);
-      this.X1 = (~t3) ^ t12;
-      this.X0 = t12 ^ (~t7);
+      const t1 = OpCodes.XorN(a, d);
+      const t3 = OpCodes.XorN(c, t1);
+      const t4 = OpCodes.XorN(b, t3);
+      this.X3 = OpCodes.XorN(OpCodes.AndN(a, d), t4);
+      const t7 = OpCodes.XorN(a, OpCodes.AndN(b, t1));
+      this.X2 = OpCodes.XorN(t4, OpCodes.OrN(c, t7));
+      const t12 = OpCodes.AndN(this.X3, OpCodes.XorN(t3, t7));
+      this.X1 = OpCodes.XorN(~t3, t12);
+      this.X0 = OpCodes.XorN(t12, ~t7);
     }
 
     // InvS0 - {13, 3,11, 0,10, 6, 5,12, 1,14, 4, 7,15, 9, 8, 2 }
     _ib0(a, b, c, d) {
       const t1 = ~a;
-      const t2 = a ^ b;
-      const t4 = d ^ (t1 | t2);
-      const t5 = c ^ t4;
-      this.X2 = t2 ^ t5;
-      const t8 = t1 ^ (d & t2);
-      this.X1 = t4 ^ (this.X2 & t8);
-      this.X3 = (a & t4) ^ (t5 | this.X1);
-      this.X0 = this.X3 ^ (t5 ^ t8);
+      const t2 = OpCodes.XorN(a, b);
+      const t4 = OpCodes.XorN(d, OpCodes.OrN(t1, t2));
+      const t5 = OpCodes.XorN(c, t4);
+      this.X2 = OpCodes.XorN(t2, t5);
+      const t8 = OpCodes.XorN(t1, OpCodes.AndN(d, t2));
+      this.X1 = OpCodes.XorN(t4, OpCodes.AndN(this.X2, t8));
+      this.X3 = OpCodes.XorN(OpCodes.AndN(a, t4), OpCodes.OrN(t5, this.X1));
+      this.X0 = OpCodes.XorN(this.X3, OpCodes.XorN(t5, t8));
     }
 
     // S1 - {15,12, 2, 7, 9, 0, 5,10, 1,11,14, 8, 6,13, 3, 4 }
     _sb1(a, b, c, d) {
-      const t2 = b ^ (~a);
-      const t5 = c ^ (a | t2);
-      this.X2 = d ^ t5;
-      const t7 = b ^ (d | t2);
-      const t8 = t2 ^ this.X2;
-      this.X3 = t8 ^ (t5 & t7);
-      const t11 = t5 ^ t7;
-      this.X1 = this.X3 ^ t11;
-      this.X0 = t5 ^ (t8 & t11);
+      const t2 = OpCodes.XorN(b, ~a);
+      const t5 = OpCodes.XorN(c, OpCodes.OrN(a, t2));
+      this.X2 = OpCodes.XorN(d, t5);
+      const t7 = OpCodes.XorN(b, OpCodes.OrN(d, t2));
+      const t8 = OpCodes.XorN(t2, this.X2);
+      this.X3 = OpCodes.XorN(t8, OpCodes.AndN(t5, t7));
+      const t11 = OpCodes.XorN(t5, t7);
+      this.X1 = OpCodes.XorN(this.X3, t11);
+      this.X0 = OpCodes.XorN(t5, OpCodes.AndN(t8, t11));
     }
 
     // InvS1 - { 5, 8, 2,14,15, 6,12, 3,11, 4, 7, 9, 1,13,10, 0 }
     _ib1(a, b, c, d) {
-      const t1 = b ^ d;
-      const t3 = a ^ (b & t1);
-      const t4 = t1 ^ t3;
-      this.X3 = c ^ t4;
-      const t7 = b ^ (t1 & t3);
-      const t8 = this.X3 | t7;
-      this.X1 = t3 ^ t8;
+      const t1 = OpCodes.XorN(b, d);
+      const t3 = OpCodes.XorN(a, OpCodes.AndN(b, t1));
+      const t4 = OpCodes.XorN(t1, t3);
+      this.X3 = OpCodes.XorN(c, t4);
+      const t7 = OpCodes.XorN(b, OpCodes.AndN(t1, t3));
+      const t8 = OpCodes.OrN(this.X3, t7);
+      this.X1 = OpCodes.XorN(t3, t8);
       const t10 = ~this.X1;
-      const t11 = this.X3 ^ t7;
-      this.X0 = t10 ^ t11;
-      this.X2 = t4 ^ (t10 | t11);
+      const t11 = OpCodes.XorN(this.X3, t7);
+      this.X0 = OpCodes.XorN(t10, t11);
+      this.X2 = OpCodes.XorN(t4, OpCodes.OrN(t10, t11));
     }
 
     // S2 - { 8, 6, 7, 9, 3,12,10,15,13, 1,14, 4, 0,11, 5, 2 }
     _sb2(a, b, c, d) {
       const t1 = ~a;
-      const t2 = b ^ d;
-      const t3 = c & t1;
-      this.X0 = t2 ^ t3;
-      const t5 = c ^ t1;
-      const t6 = c ^ this.X0;
-      const t7 = b & t6;
-      this.X3 = t5 ^ t7;
-      this.X2 = a ^ ((d | t7) & (this.X0 | t5));
-      this.X1 = (t2 ^ this.X3) ^ (this.X2 ^ (d | t1));
+      const t2 = OpCodes.XorN(b, d);
+      const t3 = OpCodes.AndN(c, t1);
+      this.X0 = OpCodes.XorN(t2, t3);
+      const t5 = OpCodes.XorN(c, t1);
+      const t6 = OpCodes.XorN(c, this.X0);
+      const t7 = OpCodes.AndN(b, t6);
+      this.X3 = OpCodes.XorN(t5, t7);
+      this.X2 = OpCodes.XorN(a, OpCodes.AndN(OpCodes.OrN(d, t7), OpCodes.OrN(this.X0, t5)));
+      this.X1 = OpCodes.XorN(OpCodes.XorN(t2, this.X3), OpCodes.XorN(this.X2, OpCodes.OrN(d, t1)));
     }
 
     // InvS2 - {12, 9,15, 4,11,14, 1, 2, 0, 3, 6,13, 5, 8,10, 7 }
     _ib2(a, b, c, d) {
-      const t1 = b ^ d;
+      const t1 = OpCodes.XorN(b, d);
       const t2 = ~t1;
-      const t3 = a ^ c;
-      const t4 = c ^ t1;
-      const t5 = b & t4;
-      this.X0 = t3 ^ t5;
-      const t7 = a | t2;
-      const t8 = d ^ t7;
-      const t9 = t3 | t8;
-      this.X3 = t1 ^ t9;
+      const t3 = OpCodes.XorN(a, c);
+      const t4 = OpCodes.XorN(c, t1);
+      const t5 = OpCodes.AndN(b, t4);
+      this.X0 = OpCodes.XorN(t3, t5);
+      const t7 = OpCodes.OrN(a, t2);
+      const t8 = OpCodes.XorN(d, t7);
+      const t9 = OpCodes.OrN(t3, t8);
+      this.X3 = OpCodes.XorN(t1, t9);
       const t11 = ~t4;
-      const t12 = this.X0 | this.X3;
-      this.X1 = t11 ^ t12;
-      this.X2 = (d & t11) ^ (t3 ^ t12);
+      const t12 = OpCodes.OrN(this.X0, this.X3);
+      this.X1 = OpCodes.XorN(t11, t12);
+      this.X2 = OpCodes.XorN(OpCodes.AndN(d, t11), OpCodes.XorN(t3, t12));
     }
 
     // S3 - { 0,15,11, 8,12, 9, 6, 3,13, 1, 2, 4,10, 7, 5,14 }
     _sb3(a, b, c, d) {
-      const t1 = a ^ b;
-      const t2 = a & c;
-      const t3 = a | d;
-      const t4 = c ^ d;
-      const t5 = t1 & t3;
-      const t6 = t2 | t5;
-      this.X2 = t4 ^ t6;
-      const t8 = b ^ t3;
-      const t9 = t6 ^ t8;
-      const t10 = t4 & t9;
-      this.X0 = t1 ^ t10;
-      const t12 = this.X2 & this.X0;
-      this.X1 = t9 ^ t12;
-      this.X3 = (b | d) ^ (t4 ^ t12);
+      const t1 = OpCodes.XorN(a, b);
+      const t2 = OpCodes.AndN(a, c);
+      const t3 = OpCodes.OrN(a, d);
+      const t4 = OpCodes.XorN(c, d);
+      const t5 = OpCodes.AndN(t1, t3);
+      const t6 = OpCodes.OrN(t2, t5);
+      this.X2 = OpCodes.XorN(t4, t6);
+      const t8 = OpCodes.XorN(b, t3);
+      const t9 = OpCodes.XorN(t6, t8);
+      const t10 = OpCodes.AndN(t4, t9);
+      this.X0 = OpCodes.XorN(t1, t10);
+      const t12 = OpCodes.AndN(this.X2, this.X0);
+      this.X1 = OpCodes.XorN(t9, t12);
+      this.X3 = OpCodes.XorN(OpCodes.OrN(b, d), OpCodes.XorN(t4, t12));
     }
 
     // InvS3 - { 0, 9,10, 7,11,14, 6,13, 3, 5,12, 2, 4, 8,15, 1 }
     _ib3(a, b, c, d) {
-      const t1 = a | b;
-      const t2 = b ^ c;
-      const t3 = b & t2;
-      const t4 = a ^ t3;
-      const t5 = c ^ t4;
-      const t6 = d | t4;
-      this.X0 = t2 ^ t6;
-      const t8 = t2 | t6;
-      const t9 = d ^ t8;
-      this.X2 = t5 ^ t9;
-      const t11 = t1 ^ t9;
-      const t12 = this.X0 & t11;
-      this.X3 = t4 ^ t12;
-      this.X1 = this.X3 ^ (this.X0 ^ t11);
+      const t1 = OpCodes.OrN(a, b);
+      const t2 = OpCodes.XorN(b, c);
+      const t3 = OpCodes.AndN(b, t2);
+      const t4 = OpCodes.XorN(a, t3);
+      const t5 = OpCodes.XorN(c, t4);
+      const t6 = OpCodes.OrN(d, t4);
+      this.X0 = OpCodes.XorN(t2, t6);
+      const t8 = OpCodes.OrN(t2, t6);
+      const t9 = OpCodes.XorN(d, t8);
+      this.X2 = OpCodes.XorN(t5, t9);
+      const t11 = OpCodes.XorN(t1, t9);
+      const t12 = OpCodes.AndN(this.X0, t11);
+      this.X3 = OpCodes.XorN(t4, t12);
+      this.X1 = OpCodes.XorN(this.X3, OpCodes.XorN(this.X0, t11));
     }
 
     // S4 - { 1,15, 8, 3,12, 0,11, 6, 2, 5, 4,10, 9,14, 7,13 }
     _sb4(a, b, c, d) {
-      const t1 = a ^ d;
-      const t2 = d & t1;
-      const t3 = c ^ t2;
-      const t4 = b | t3;
-      this.X3 = t1 ^ t4;
+      const t1 = OpCodes.XorN(a, d);
+      const t2 = OpCodes.AndN(d, t1);
+      const t3 = OpCodes.XorN(c, t2);
+      const t4 = OpCodes.OrN(b, t3);
+      this.X3 = OpCodes.XorN(t1, t4);
       const t6 = ~b;
-      const t7 = t1 | t6;
-      this.X0 = t3 ^ t7;
-      const t9 = a & this.X0;
-      const t10 = t1 ^ t6;
-      const t11 = t4 & t10;
-      this.X2 = t9 ^ t11;
-      this.X1 = (a ^ t3) ^ (t10 & this.X2);
+      const t7 = OpCodes.OrN(t1, t6);
+      this.X0 = OpCodes.XorN(t3, t7);
+      const t9 = OpCodes.AndN(a, this.X0);
+      const t10 = OpCodes.XorN(t1, t6);
+      const t11 = OpCodes.AndN(t4, t10);
+      this.X2 = OpCodes.XorN(t9, t11);
+      this.X1 = OpCodes.XorN(OpCodes.XorN(a, t3), OpCodes.AndN(t10, this.X2));
     }
 
     // InvS4 - { 5, 0, 8, 3,10, 9, 7,14, 2,12,11, 6, 4,15,13, 1 }
     _ib4(a, b, c, d) {
-      const t1 = c | d;
-      const t2 = a & t1;
-      const t3 = b ^ t2;
-      const t4 = a & t3;
-      const t5 = c ^ t4;
-      this.X1 = d ^ t5;
+      const t1 = OpCodes.OrN(c, d);
+      const t2 = OpCodes.AndN(a, t1);
+      const t3 = OpCodes.XorN(b, t2);
+      const t4 = OpCodes.AndN(a, t3);
+      const t5 = OpCodes.XorN(c, t4);
+      this.X1 = OpCodes.XorN(d, t5);
       const t7 = ~a;
-      const t8 = t5 & this.X1;
-      this.X3 = t3 ^ t8;
-      const t10 = this.X1 | t7;
-      const t11 = d ^ t10;
-      this.X0 = this.X3 ^ t11;
-      this.X2 = (t3 & t11) ^ (this.X1 ^ t7);
+      const t8 = OpCodes.AndN(t5, this.X1);
+      this.X3 = OpCodes.XorN(t3, t8);
+      const t10 = OpCodes.OrN(this.X1, t7);
+      const t11 = OpCodes.XorN(d, t10);
+      this.X0 = OpCodes.XorN(this.X3, t11);
+      this.X2 = OpCodes.XorN(OpCodes.AndN(t3, t11), OpCodes.XorN(this.X1, t7));
     }
 
     // S5 - {15, 5, 2,11, 4,10, 9,12, 0, 3,14, 8,13, 6, 7, 1 }
     _sb5(a, b, c, d) {
       const t1 = ~a;
-      const t2 = a ^ b;
-      const t3 = a ^ d;
-      const t4 = c ^ t1;
-      const t5 = t2 | t3;
-      this.X0 = t4 ^ t5;
-      const t7 = d & this.X0;
-      const t8 = t2 ^ this.X0;
-      this.X1 = t7 ^ t8;
-      const t10 = t1 | this.X0;
-      const t11 = t2 | t7;
-      const t12 = t3 ^ t10;
-      this.X2 = t11 ^ t12;
-      this.X3 = (b ^ t7) ^ (this.X1 & t12);
+      const t2 = OpCodes.XorN(a, b);
+      const t3 = OpCodes.XorN(a, d);
+      const t4 = OpCodes.XorN(c, t1);
+      const t5 = OpCodes.OrN(t2, t3);
+      this.X0 = OpCodes.XorN(t4, t5);
+      const t7 = OpCodes.AndN(d, this.X0);
+      const t8 = OpCodes.XorN(t2, this.X0);
+      this.X1 = OpCodes.XorN(t7, t8);
+      const t10 = OpCodes.OrN(t1, this.X0);
+      const t11 = OpCodes.OrN(t2, t7);
+      const t12 = OpCodes.XorN(t3, t10);
+      this.X2 = OpCodes.XorN(t11, t12);
+      this.X3 = OpCodes.XorN(OpCodes.XorN(b, t7), OpCodes.AndN(this.X1, t12));
     }
 
     // InvS5 - { 8,15, 2, 9, 4, 1,13,14,11, 6, 5, 3, 7,12,10, 0 }
     _ib5(a, b, c, d) {
       const t1 = ~c;
-      const t2 = b & t1;
-      const t3 = d ^ t2;
-      const t4 = a & t3;
-      const t5 = b ^ t1;
-      this.X3 = t4 ^ t5;
-      const t7 = b | this.X3;
-      const t8 = a & t7;
-      this.X1 = t3 ^ t8;
-      const t10 = a | d;
-      const t11 = t1 ^ t7;
-      this.X0 = t10 ^ t11;
-      this.X2 = (b & t10) ^ (t4 | (a ^ c));
+      const t2 = OpCodes.AndN(b, t1);
+      const t3 = OpCodes.XorN(d, t2);
+      const t4 = OpCodes.AndN(a, t3);
+      const t5 = OpCodes.XorN(b, t1);
+      this.X3 = OpCodes.XorN(t4, t5);
+      const t7 = OpCodes.OrN(b, this.X3);
+      const t8 = OpCodes.AndN(a, t7);
+      this.X1 = OpCodes.XorN(t3, t8);
+      const t10 = OpCodes.OrN(a, d);
+      const t11 = OpCodes.XorN(t1, t7);
+      this.X0 = OpCodes.XorN(t10, t11);
+      this.X2 = OpCodes.XorN(OpCodes.AndN(b, t10), OpCodes.OrN(t4, OpCodes.XorN(a, c)));
     }
 
     // S6 - { 7, 2,12, 5, 8, 4, 6,11,14, 9, 1,15,13, 3,10, 0 }
     _sb6(a, b, c, d) {
       const t1 = ~a;
-      const t2 = a ^ d;
-      const t3 = b ^ t2;
-      const t4 = t1 | t2;
-      const t5 = c ^ t4;
-      this.X1 = b ^ t5;
-      const t7 = t2 | this.X1;
-      const t8 = d ^ t7;
-      const t9 = t5 & t8;
-      this.X2 = t3 ^ t9;
-      const t11 = t5 ^ t8;
-      this.X0 = this.X2 ^ t11;
-      this.X3 = (~t5) ^ (t3 & t11);
+      const t2 = OpCodes.XorN(a, d);
+      const t3 = OpCodes.XorN(b, t2);
+      const t4 = OpCodes.OrN(t1, t2);
+      const t5 = OpCodes.XorN(c, t4);
+      this.X1 = OpCodes.XorN(b, t5);
+      const t7 = OpCodes.OrN(t2, this.X1);
+      const t8 = OpCodes.XorN(d, t7);
+      const t9 = OpCodes.AndN(t5, t8);
+      this.X2 = OpCodes.XorN(t3, t9);
+      const t11 = OpCodes.XorN(t5, t8);
+      this.X0 = OpCodes.XorN(this.X2, t11);
+      this.X3 = OpCodes.XorN(~t5, OpCodes.AndN(t3, t11));
     }
 
     // InvS6 - {15,10, 1,13, 5, 3, 6, 0, 4, 9,14, 7, 2,12, 8,11 }
     _ib6(a, b, c, d) {
       const t1 = ~a;
-      const t2 = a ^ b;
-      const t3 = c ^ t2;
-      const t4 = c | t1;
-      const t5 = d ^ t4;
-      this.X1 = t3 ^ t5;
-      const t7 = t3 & t5;
-      const t8 = t2 ^ t7;
-      const t9 = b | t8;
-      this.X3 = t5 ^ t9;
-      const t11 = b | this.X3;
-      this.X0 = t8 ^ t11;
-      this.X2 = (d & t1) ^ (t3 ^ t11);
+      const t2 = OpCodes.XorN(a, b);
+      const t3 = OpCodes.XorN(c, t2);
+      const t4 = OpCodes.OrN(c, t1);
+      const t5 = OpCodes.XorN(d, t4);
+      this.X1 = OpCodes.XorN(t3, t5);
+      const t7 = OpCodes.AndN(t3, t5);
+      const t8 = OpCodes.XorN(t2, t7);
+      const t9 = OpCodes.OrN(b, t8);
+      this.X3 = OpCodes.XorN(t5, t9);
+      const t11 = OpCodes.OrN(b, this.X3);
+      this.X0 = OpCodes.XorN(t8, t11);
+      this.X2 = OpCodes.XorN(OpCodes.AndN(d, t1), OpCodes.XorN(t3, t11));
     }
 
     // S7 - { 1,13,15, 0,14, 8, 2,11, 7, 4,12,10, 9, 3, 5, 6 }
     _sb7(a, b, c, d) {
-      const t1 = b ^ c;
-      const t2 = c & t1;
-      const t3 = d ^ t2;
-      const t4 = a ^ t3;
-      const t5 = d | t1;
-      const t6 = t4 & t5;
-      this.X1 = b ^ t6;
-      const t8 = t3 | this.X1;
-      const t9 = a & t4;
-      this.X3 = t1 ^ t9;
-      const t11 = t4 ^ t8;
-      const t12 = this.X3 & t11;
-      this.X2 = t3 ^ t12;
-      this.X0 = (~t11) ^ (this.X3 & this.X2);
+      const t1 = OpCodes.XorN(b, c);
+      const t2 = OpCodes.AndN(c, t1);
+      const t3 = OpCodes.XorN(d, t2);
+      const t4 = OpCodes.XorN(a, t3);
+      const t5 = OpCodes.OrN(d, t1);
+      const t6 = OpCodes.AndN(t4, t5);
+      this.X1 = OpCodes.XorN(b, t6);
+      const t8 = OpCodes.OrN(t3, this.X1);
+      const t9 = OpCodes.AndN(a, t4);
+      this.X3 = OpCodes.XorN(t1, t9);
+      const t11 = OpCodes.XorN(t4, t8);
+      const t12 = OpCodes.AndN(this.X3, t11);
+      this.X2 = OpCodes.XorN(t3, t12);
+      this.X0 = OpCodes.XorN(~t11, OpCodes.AndN(this.X3, this.X2));
     }
 
     // InvS7 - { 3, 0, 6,13, 9,14,15, 8, 5,12,11, 7,10, 1, 4, 2 }
     _ib7(a, b, c, d) {
-      const t3 = c | (a & b);
-      const t4 = d & (a | b);
-      this.X3 = t3 ^ t4;
+      const t3 = OpCodes.OrN(c, OpCodes.AndN(a, b));
+      const t4 = OpCodes.AndN(d, OpCodes.OrN(a, b));
+      this.X3 = OpCodes.XorN(t3, t4);
       const t6 = ~d;
-      const t7 = b ^ t4;
-      const t9 = t7 | (this.X3 ^ t6);
-      this.X1 = a ^ t9;
-      this.X0 = (c ^ t7) ^ (d | this.X1);
-      this.X2 = (t3 ^ this.X1) ^ (this.X0 ^ (a & this.X3));
+      const t7 = OpCodes.XorN(b, t4);
+      const t9 = OpCodes.OrN(t7, OpCodes.XorN(this.X3, t6));
+      this.X1 = OpCodes.XorN(a, t9);
+      this.X0 = OpCodes.XorN(OpCodes.XorN(c, t7), OpCodes.OrN(d, this.X1));
+      this.X2 = OpCodes.XorN(OpCodes.XorN(t3, this.X1), OpCodes.XorN(this.X0, OpCodes.AndN(a, this.X3)));
     }
 
     // Linear transformation based on Bouncy Castle reference
     _linearTransform() {
       const x0 = OpCodes.RotL32(this.X0, 13);
       const x2 = OpCodes.RotL32(this.X2, 3);
-      const x1 = this.X1 ^ x0 ^ x2;
-      const x3 = this.X3 ^ x2 ^ (x0 << 3);
+      const x1 = OpCodes.XorN(OpCodes.XorN(this.X1, x0), x2);
+      const x3 = OpCodes.XorN(OpCodes.XorN(this.X3, x2), OpCodes.Shl32(x0, 3));
 
       this.X1 = OpCodes.RotL32(x1, 1);
       this.X3 = OpCodes.RotL32(x3, 7);
-      this.X0 = OpCodes.RotL32(x0 ^ this.X1 ^ this.X3, 5);
-      this.X2 = OpCodes.RotL32(x2 ^ this.X3 ^ (this.X1 << 7), 22);
+      this.X0 = OpCodes.RotL32(OpCodes.XorN(OpCodes.XorN(x0, this.X1), this.X3), 5);
+      this.X2 = OpCodes.RotL32(OpCodes.XorN(OpCodes.XorN(x2, this.X3), OpCodes.Shl32(this.X1, 7)), 22);
     }
 
     // Inverse linear transformation based on Bouncy Castle reference
     _inverseLT() {
-      const x2 = OpCodes.RotR32(this.X2, 22) ^ this.X3 ^ (this.X1 << 7);
-      const x0 = OpCodes.RotR32(this.X0, 5) ^ this.X1 ^ this.X3;
+      const x2 = OpCodes.XorN(OpCodes.XorN(OpCodes.RotR32(this.X2, 22), this.X3), OpCodes.Shl32(this.X1, 7));
+      const x0 = OpCodes.XorN(OpCodes.XorN(OpCodes.RotR32(this.X0, 5), this.X1), this.X3);
       const x3 = OpCodes.RotR32(this.X3, 7);
       const x1 = OpCodes.RotR32(this.X1, 1);
-      this.X3 = x3 ^ x2 ^ (x0 << 3);
-      this.X1 = x1 ^ x0 ^ x2;
+      this.X3 = OpCodes.XorN(OpCodes.XorN(x3, x2), OpCodes.Shl32(x0, 3));
+      this.X1 = OpCodes.XorN(OpCodes.XorN(x1, x0), x2);
       this.X2 = OpCodes.RotR32(x2, 3);
       this.X0 = OpCodes.RotR32(x0, 13);
     }
@@ -571,16 +571,16 @@
         const wo = [0, 0, 0, 0];
         
         wo[0] = w[(r+0)%8] = OpCodes.RotL32(
-          w[(r+0)%8] ^ w[(r+3)%8] ^ w[(r+5)%8] ^ w[(r+7)%8] ^ this.PHI ^ (r+0), 11
+          OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(w[(r+0)%8], w[(r+3)%8]), w[(r+5)%8]), w[(r+7)%8]), this.PHI), (r+0)), 11
         );
         wo[1] = w[(r+1)%8] = OpCodes.RotL32(
-          w[(r+1)%8] ^ w[(r+4)%8] ^ w[(r+6)%8] ^ w[(r+0)%8] ^ this.PHI ^ (r+1), 11
+          OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(w[(r+1)%8], w[(r+4)%8]), w[(r+6)%8]), w[(r+0)%8]), this.PHI), (r+1)), 11
         );
         wo[2] = w[(r+2)%8] = OpCodes.RotL32(
-          w[(r+2)%8] ^ w[(r+5)%8] ^ w[(r+7)%8] ^ w[(r+1)%8] ^ this.PHI ^ (r+2), 11
+          OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(w[(r+2)%8], w[(r+5)%8]), w[(r+7)%8]), w[(r+1)%8]), this.PHI), (r+2)), 11
         );
         wo[3] = w[(r+3)%8] = OpCodes.RotL32(
-          w[(r+3)%8] ^ w[(r+6)%8] ^ w[(r+0)%8] ^ w[(r+2)%8] ^ this.PHI ^ (r+3), 11
+          OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(w[(r+3)%8], w[(r+6)%8]), w[(r+0)%8]), w[(r+2)%8]), this.PHI), (r+3)), 11
         );
         
         // Apply S-box to subkey (libgcrypt pattern: 3,2,1,0,7,6,5,4...)
@@ -639,10 +639,10 @@
       // 32 rounds
       for (let round = 0; round < this.ROUNDS; round++) {
         // Key mixing first
-        this.X0 ^= this.roundKeys[round][0];
-        this.X1 ^= this.roundKeys[round][1];
-        this.X2 ^= this.roundKeys[round][2];
-        this.X3 ^= this.roundKeys[round][3];
+        this.X0 = OpCodes.XorN(this.X0, this.roundKeys[round][0]);
+        this.X1 = OpCodes.XorN(this.X1, this.roundKeys[round][1]);
+        this.X2 = OpCodes.XorN(this.X2, this.roundKeys[round][2]);
+        this.X3 = OpCodes.XorN(this.X3, this.roundKeys[round][3]);
 
         // S-box substitution
         const sboxIndex = round % 8;
@@ -655,10 +655,10 @@
       }
 
       // Final key mixing
-      this.X0 ^= this.roundKeys[32][0];
-      this.X1 ^= this.roundKeys[32][1];
-      this.X2 ^= this.roundKeys[32][2];
-      this.X3 ^= this.roundKeys[32][3];
+      this.X0 = OpCodes.XorN(this.X0, this.roundKeys[32][0]);
+      this.X1 = OpCodes.XorN(this.X1, this.roundKeys[32][1]);
+      this.X2 = OpCodes.XorN(this.X2, this.roundKeys[32][2]);
+      this.X3 = OpCodes.XorN(this.X3, this.roundKeys[32][3]);
 
       // Convert back to bytes (little-endian)
       const result = [];
@@ -685,10 +685,10 @@
       this.X3 = OpCodes.Pack32LE(block[12], block[13], block[14], block[15]);
 
       // Undo the final key mixing
-      this.X0 ^= this.roundKeys[32][0];
-      this.X1 ^= this.roundKeys[32][1];
-      this.X2 ^= this.roundKeys[32][2];
-      this.X3 ^= this.roundKeys[32][3];
+      this.X0 = OpCodes.XorN(this.X0, this.roundKeys[32][0]);
+      this.X1 = OpCodes.XorN(this.X1, this.roundKeys[32][1]);
+      this.X2 = OpCodes.XorN(this.X2, this.roundKeys[32][2]);
+      this.X3 = OpCodes.XorN(this.X3, this.roundKeys[32][3]);
 
       // 32 rounds in reverse
       for (let round = this.ROUNDS - 1; round >= 0; round--) {
@@ -702,10 +702,10 @@
         this._applyInverseSBox(sboxIndex);
 
         // Undo key mixing
-        this.X0 ^= this.roundKeys[round][0];
-        this.X1 ^= this.roundKeys[round][1];
-        this.X2 ^= this.roundKeys[round][2];
-        this.X3 ^= this.roundKeys[round][3];
+        this.X0 = OpCodes.XorN(this.X0, this.roundKeys[round][0]);
+        this.X1 = OpCodes.XorN(this.X1, this.roundKeys[round][1]);
+        this.X2 = OpCodes.XorN(this.X2, this.roundKeys[round][2]);
+        this.X3 = OpCodes.XorN(this.X3, this.roundKeys[round][3]);
       }
 
       // Convert back to bytes (little-endian)

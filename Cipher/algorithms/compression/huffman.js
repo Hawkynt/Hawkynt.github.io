@@ -166,7 +166,7 @@
           const char = parseInt(uniqueChars[0]);
           const count = frequencies[char];
           this.inputBuffer = [];
-          return [1, char, count & 0xFF, (count >> 8) & 0xFF]; // Special single-char format
+          return [1, char, OpCodes.AndN(count, 0xFF), OpCodes.AndN(OpCodes.Shr32(count, 8), 0xFF)]; // Special single-char format
         }
 
         // Build Huffman tree
@@ -198,7 +198,7 @@
         // Handle special single-char case
         if (this.inputBuffer[0] === 1) {
           const char = this.inputBuffer[1];
-          const count = this.inputBuffer[2] | (this.inputBuffer[3] << 8);
+          const count = OpCodes.OrN(this.inputBuffer[2], OpCodes.Shl32(this.inputBuffer[3], 8));
           this.inputBuffer = [];
           return new Array(count).fill(char);
         }
@@ -283,16 +283,16 @@
         for (const char of chars) {
           result.push(parseInt(char));
           const freq = frequencies[char];
-          result.push(freq & 0xFF);
-          result.push((freq >> 8) & 0xFF);
+          result.push(OpCodes.AndN(freq, 0xFF));
+          result.push(OpCodes.AndN(OpCodes.Shr32(freq, 8), 0xFF));
         }
 
         // Store bit string length
         const bitCount = bitString.length;
-        result.push(bitCount & 0xFF);
-        result.push((bitCount >> 8) & 0xFF);
-        result.push((bitCount >> 16) & 0xFF);
-        result.push((bitCount >> 24) & 0xFF);
+        result.push(OpCodes.AndN(bitCount, 0xFF));
+        result.push(OpCodes.AndN(OpCodes.Shr32(bitCount, 8), 0xFF));
+        result.push(OpCodes.AndN(OpCodes.Shr32(bitCount, 16), 0xFF));
+        result.push(OpCodes.AndN(OpCodes.Shr32(bitCount, 24), 0xFF));
 
         // Pack bits into bytes
         for (let i = 0; i < bitString.length; i += 8) {
@@ -312,12 +312,12 @@
 
         for (let i = 0; i < charCount; i++) {
           const char = data[pos++];
-          const freq = data[pos++] | (data[pos++] << 8);
+          const freq = OpCodes.OrN(data[pos++], OpCodes.Shl32(data[pos++], 8));
           frequencies[char] = freq;
         }
 
         // Read bit count
-        const bitCount = data[pos++] | (data[pos++] << 8) | (data[pos++] << 16) | (data[pos++] << 24);
+        const bitCount = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(data[pos++], OpCodes.Shl32(data[pos++], 8)), OpCodes.Shl32(data[pos++], 16)), OpCodes.Shl32(data[pos++], 24));
 
         // Read and convert bytes to bit string
         let bitString = '';

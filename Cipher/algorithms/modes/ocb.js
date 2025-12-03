@@ -65,14 +65,14 @@
 
       // Shift left by 1 bit (multiply by x)
       for (let i = 15; i >= 0; i--) {
-        const newCarry = Math.floor(value[i] / 128); // Avoid >> 7
-        result[i] = ((value[i] * 2) | carry) & 0xFF; // Avoid << 1
+        const newCarry = OpCodes.Shr32(value[i], 7);
+        result[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(value[i], 1), carry), 0xFF);
         carry = newCarry;
       }
 
       // If there was a carry, reduce by the polynomial x^128 + x^7 + x^2 + x + 1
       if (carry) {
-        result[0] ^= 0x87;
+        result[0] = OpCodes.XorN(result[0], 0x87);
       }
 
       return result;
@@ -86,9 +86,9 @@
     static ntz(n) {
       if (n === 0) return 0;
       let count = 0;
-      while ((n & 1) === 0) {
+      while (OpCodes.AndN(n, 1) === 0) {
         count++;
-        n = Math.floor(n / 2);
+        n = OpCodes.Shr32(n, 1);
       }
       return count;
     }
@@ -365,7 +365,7 @@
         // XOR with pad
         const paddedBlock = [];
         for (let i = 0; i < finalBlock.length; i++) {
-          paddedBlock[i] = finalBlock[i] ^ pad[i];
+          paddedBlock[i] = OpCodes.XorN(finalBlock[i], pad[i]);
         }
         ciphertext.push(...paddedBlock);
 
@@ -446,7 +446,7 @@
         // XOR with pad to get plaintext
         const plaintextBlock = [];
         for (let i = 0; i < finalBlock.length; i++) {
-          plaintextBlock[i] = finalBlock[i] ^ pad[i];
+          plaintextBlock[i] = OpCodes.XorN(finalBlock[i], pad[i]);
         }
         plaintext.push(...plaintextBlock);
 
@@ -501,7 +501,7 @@
       // Simplified offset calculation (educational)
       const offset = [...L];
       for (let j = 0; j < 16; j++) {
-        offset[j] ^= (i + j) & 0xFF;
+        offset[j] = OpCodes.XorN(offset[j], OpCodes.AndN(i + j, 0xFF));
       }
       return offset;
     }
@@ -533,7 +533,7 @@
 
       // Process AAD (simplified)
       for (let i = 0; i < aad.length; i++) {
-        tagInput[i % 16] ^= aad[i];
+        tagInput[i % 16] = OpCodes.XorN(tagInput[i % 16], aad[i]);
       }
 
       const cipher = this.blockCipher.algorithm.CreateInstance(false);
@@ -822,7 +822,7 @@
         // C_* = P_* ⊕ Pad[1..len(P_*)]
         const finalCipher = [];
         for (let i = 0; i < finalBlock.length; i++) {
-          finalCipher[i] = finalBlock[i] ^ pad[i];
+          finalCipher[i] = OpCodes.XorN(finalBlock[i], pad[i]);
         }
         ciphertext.push(...finalCipher);
 
@@ -898,7 +898,7 @@
         // Reverse the encryption XOR
         const finalPlain = [];
         for (let i = 0; i < finalBlock.length; i++) {
-          finalPlain[i] = finalBlock[i] ^ pad[i];
+          finalPlain[i] = OpCodes.XorN(finalBlock[i], pad[i]);
         }
         output.push(...finalPlain);
       }
@@ -949,8 +949,8 @@
       }
 
       // Set the last byte: bottom bit = 1, upper 7 bits = (tag_length/8 - 1)
-      // For 128-bit tag: (128/8 - 1) = 15, multiply by 2 instead of shift = 30, plus 1 = 31
-      processedNonce[15] = ((this.tagLength - 1) * 2) | 1;
+      // For 128-bit tag: (128/8 - 1) = 15, shift left by 1 = 30, plus 1 = 31
+      processedNonce[15] = OpCodes.OrN(OpCodes.Shl32(this.tagLength - 1, 1), 1);
 
       // Generate offset: Offset_0 = E_K(processed_nonce)
       const cipher = this.blockCipher.algorithm.CreateInstance(false);
