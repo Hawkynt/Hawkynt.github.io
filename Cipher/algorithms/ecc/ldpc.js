@@ -201,7 +201,7 @@
       for (let i = 0; i < this.n - this.k; i++) {
         let parity = 0;
         for (let j = 0; j < this.k; j++) {
-          parity ^= (this.parityMatrix[i][j] * data[j]);
+          parity = OpCodes.XorN(parity, (this.parityMatrix[i][j] * data[j]));
         }
         encoded[this.k + i] = parity;
       }
@@ -232,7 +232,7 @@
           // Find first bit involved in this parity check and flip it
           for (let j = 0; j < this.n; j++) {
             if (this.parityMatrix[i][j] === 1) {
-              received[j] ^= 1;
+              received[j] = OpCodes.XorN(received[j], 1);
               break;
             }
           }
@@ -248,7 +248,7 @@
       for (let i = 0; i < this.parityMatrix.length; i++) {
         let sum = 0;
         for (let j = 0; j < this.n; j++) {
-          sum ^= (this.parityMatrix[i][j] * data[j]);
+          sum = OpCodes.XorN(sum, (this.parityMatrix[i][j] * data[j]));
         }
         syndrome[i] = sum;
       }

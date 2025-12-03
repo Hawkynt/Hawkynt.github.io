@@ -40,7 +40,7 @@
       super();
 
       this.name = "NPI";
-      this.description = "NPI (National Provider Identifier) check digit for US healthcare providers using Luhn algorithm. 10-digit unique identifier required by HIPAA for physicians, pharmacies, hospitals in electronic healthcare transactions. Administered by CMS (Centers for Medicare & Medicaid Services).";
+      this.description = "NPI (National Provider Identifier) check digit for US healthcare providers using Luhn algorithm. 10-digit unique identifier required by HIPAA for physicians, pharmacies, hospitals in electronic healthcare transactions. Administered by CMS (Centers for Medicare and Medicaid Services).";
       this.inventor = "US Department of Health and Human Services";
       this.year = 2007;
       this.category = CategoryType.CHECKSUM;

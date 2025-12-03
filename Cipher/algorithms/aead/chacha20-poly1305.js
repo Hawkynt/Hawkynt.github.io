@@ -360,7 +360,7 @@
         const blockEnd = Math.min(i + this.BLOCK_SIZE, data.length);
 
         for (let j = i; j < blockEnd; j++) {
-          result.push(data[j] ^ keystream[j - i]);
+          result.push(OpCodes.XorN(data[j], keystream[j - i]));
         }
 
         blockCounter++;
@@ -445,16 +445,16 @@
      */
     _quarterRound(state, a, b, c, d) {
       state[a] = OpCodes.Add32(state[a], state[b]);
-      state[d] = OpCodes.RotL32(state[d] ^ state[a], 16);
+      state[d] = OpCodes.RotL32(OpCodes.XorN(state[d], state[a]), 16);
 
       state[c] = OpCodes.Add32(state[c], state[d]);
-      state[b] = OpCodes.RotL32(state[b] ^ state[c], 12);
+      state[b] = OpCodes.RotL32(OpCodes.XorN(state[b], state[c]), 12);
 
       state[a] = OpCodes.Add32(state[a], state[b]);
-      state[d] = OpCodes.RotL32(state[d] ^ state[a], 8);
+      state[d] = OpCodes.RotL32(OpCodes.XorN(state[d], state[a]), 8);
 
       state[c] = OpCodes.Add32(state[c], state[d]);
-      state[b] = OpCodes.RotL32(state[b] ^ state[c], 7);
+      state[b] = OpCodes.RotL32(OpCodes.XorN(state[b], state[c]), 7);
     }
 
     // ===== POLY1305 IMPLEMENTATION =====
@@ -493,18 +493,18 @@
 
     /**
      * Encode length as 8-byte little-endian integer
-     * Note: JavaScript >>> operator only works for 32 bits, so we handle high/low separately
+     * Note: JavaScript unsigned right shift only works for 32 bits, so we handle high/low separately
      */
     _encodeLengthLE64(length) {
       const bytes = new Array(8);
       // Low 32 bits
       for (let i = 0; i < 4; i++) {
-        bytes[i] = (length >>> (i * 8)) & 0xff;
+        bytes[i] = OpCodes.AndN(OpCodes.Shr32(length, i * 8), 0xff);
       }
       // High 32 bits (will be 0 for lengths < 2^32)
       const high = Math.floor(length / 0x100000000);
       for (let i = 0; i < 4; i++) {
-        bytes[4 + i] = (high >>> (i * 8)) & 0xff;
+        bytes[4 + i] = OpCodes.AndN(OpCodes.Shr32(high, i * 8), 0xff);
       }
       return bytes;
     }
@@ -523,18 +523,18 @@
       const s = key.slice(16, 32);
 
       // Clamp r according to RFC 8439 Section 2.5
-      r[3] &= 15;
-      r[7] &= 15;
-      r[11] &= 15;
-      r[15] &= 15;
-      r[4] &= 252;
-      r[8] &= 252;
-      r[12] &= 252;
+      r[3] = OpCodes.AndN(r[3], 15);
+      r[7] = OpCodes.AndN(r[7], 15);
+      r[11] = OpCodes.AndN(r[11], 15);
+      r[15] = OpCodes.AndN(r[15], 15);
+      r[4] = OpCodes.AndN(r[4], 252);
+      r[8] = OpCodes.AndN(r[8], 252);
+      r[12] = OpCodes.AndN(r[12], 252);
 
       // Convert to BigInt for arithmetic
       const rBig = this._bytesToBigInt(r);
       const sBig = this._bytesToBigInt(s);
-      const p = (BigInt(1) << BigInt(130)) - BigInt(5); // Prime: 2^130 - 5
+      const p = (OpCodes.ShiftLn(BigInt(1), 130)) - BigInt(5); // Prime: 2^130 - 5
 
       // Initialize accumulator
       let accumulator = BigInt(0);
@@ -551,7 +551,7 @@
 
         // Convert block to number and add padding bit
         let n = this._bytesToBigInt(block);
-        n += BigInt(1) << BigInt(blockSize * 8); // Add 2^(8*blockSize)
+        n += OpCodes.ShiftLn(BigInt(1), blockSize * 8); // Add 2^(8*blockSize)
 
         // accumulator = ((accumulator + n) * r) mod p
         accumulator = (accumulator + n) % p;
@@ -559,7 +559,7 @@
       }
 
       // Add s: tag = (accumulator + s) mod 2^128
-      accumulator = (accumulator + sBig) % (BigInt(1) << BigInt(128));
+      accumulator = (accumulator + sBig) % OpCodes.ShiftLn(BigInt(1), 128);
 
       // Convert back to bytes
       return this._bigIntToBytes(accumulator, 16);
@@ -571,7 +571,7 @@
     _bytesToBigInt(bytes) {
       let result = BigInt(0);
       for (let i = bytes.length - 1; i >= 0; i--) {
-        result = (result << BigInt(8)) + BigInt(bytes[i]);
+        result = (OpCodes.ShiftLn(result, 8)) + BigInt(bytes[i]);
       }
       return result;
     }
@@ -582,8 +582,8 @@
     _bigIntToBytes(bigInt, length) {
       const bytes = new Array(length);
       for (let i = 0; i < length; i++) {
-        bytes[i] = Number(bigInt & BigInt(0xff));
-        bigInt >>= BigInt(8);
+        bytes[i] = Number(OpCodes.AndN(bigInt, BigInt(0xff)));
+        bigInt = OpCodes.ShiftRn(bigInt, 8);
       }
       return bytes;
     }

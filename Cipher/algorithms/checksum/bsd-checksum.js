@@ -134,7 +134,7 @@
         this.checksum = OpCodes.RotR16(this.checksum, 1);
 
         // Add byte to rotated checksum and mask to 16 bits
-        this.checksum = (this.checksum + data[i]) & mask16;
+        this.checksum = OpCodes.AndN(this.checksum + data[i], mask16);
       }
     }
 

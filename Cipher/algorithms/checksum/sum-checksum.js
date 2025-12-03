@@ -114,7 +114,7 @@
     Feed(data) {
       if (!data || data.length === 0) return;
       for (let i = 0; i < data.length; i++) {
-        this.sum = (this.sum + data[i]) & 0xFF;
+        this.sum = OpCodes.AndN(this.sum + data[i], 0xFF);
       }
     }
 
@@ -209,7 +209,7 @@
     Feed(data) {
       if (!data || data.length === 0) return;
       for (let i = 0; i < data.length; i++) {
-        this.sum = (this.sum + data[i]) & 0xFFFF;
+        this.sum = OpCodes.AndN(this.sum + data[i], 0xFFFF);
       }
     }
 
@@ -221,8 +221,8 @@
 
     Result() {
       const result = [
-        (this.sum >>> 8) & 0xFF,  // High byte
-        this.sum & 0xFF            // Low byte
+        OpCodes.AndN(OpCodes.Shr32(this.sum, 8), 0xFF),  // High byte
+        OpCodes.AndN(this.sum, 0xFF)                      // Low byte
       ];
       this.sum = 0;
       return result;
@@ -301,7 +301,7 @@
     Feed(data) {
       if (!data || data.length === 0) return;
       for (let i = 0; i < data.length; i++) {
-        this.sum = (this.sum + data[i]) >>> 0; // Unsigned 32-bit
+        this.sum = OpCodes.Shr32(this.sum + data[i], 0); // Unsigned 32-bit
       }
     }
 
@@ -313,10 +313,10 @@
 
     Result() {
       const result = [
-        (this.sum >>> 24) & 0xFF,
-        (this.sum >>> 16) & 0xFF,
-        (this.sum >>> 8) & 0xFF,
-        this.sum & 0xFF
+        OpCodes.AndN(OpCodes.Shr32(this.sum, 24), 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(this.sum, 16), 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(this.sum, 8), 0xFF),
+        OpCodes.AndN(this.sum, 0xFF)
       ];
       this.sum = 0;
       return result;

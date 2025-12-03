@@ -166,60 +166,60 @@
 
     _g(w, k) {
       // G-function: 4 rounds of Feistel using F-table
-      let g1 = (w >>> 8) & 0xFF;
-      let g2 = w & 0xFF;
+      let g1 = OpCodes.AndN(OpCodes.Shr32(w, 8), 0xFF);
+      let g2 = OpCodes.AndN(w, 0xFF);
 
-      const g3 = this.ftable[g2 ^ this._key[(4 * k) % 10]] ^ g1;
-      const g4 = this.ftable[g3 ^ this._key[(4 * k + 1) % 10]] ^ g2;
-      const g5 = this.ftable[g4 ^ this._key[(4 * k + 2) % 10]] ^ g3;
-      const g6 = this.ftable[g5 ^ this._key[(4 * k + 3) % 10]] ^ g4;
+      const g3 = OpCodes.XorN(this.ftable[OpCodes.XorN(g2, this._key[(4 * k) % 10])], g1);
+      const g4 = OpCodes.XorN(this.ftable[OpCodes.XorN(g3, this._key[(4 * k + 1) % 10])], g2);
+      const g5 = OpCodes.XorN(this.ftable[OpCodes.XorN(g4, this._key[(4 * k + 2) % 10])], g3);
+      const g6 = OpCodes.XorN(this.ftable[OpCodes.XorN(g5, this._key[(4 * k + 3) % 10])], g4);
 
-      return ((g5 << 8) | g6) & 0xFFFF;
+      return OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(g5, 8), g6), 0xFFFF);
     }
 
     _encryptBlock(block) {
       // Load 32-bit value (big-endian)
-      let wl = (block[0] << 8) | block[1];  // High 16 bits
-      let wr = (block[2] << 8) | block[3];  // Low 16 bits
+      let wl = OpCodes.OrN(OpCodes.Shl32(block[0], 8), block[1]);  // High 16 bits
+      let wr = OpCodes.OrN(OpCodes.Shl32(block[2], 8), block[3]);  // Low 16 bits
 
       // 24 rounds of Feistel (2 rounds per iteration)
       let k = 0;
       for (let i = 0; i < 12; ++i) {
-        wr ^= this._g(wl, k) ^ k;
+        wr = OpCodes.XorN(wr, OpCodes.XorN(this._g(wl, k), k));
         k++;
-        wl ^= this._g(wr, k) ^ k;
+        wl = OpCodes.XorN(wl, OpCodes.XorN(this._g(wr, k), k));
         k++;
       }
 
       // Output with wr and wl swapped
       return [
-        (wr >>> 8) & 0xFF,
-        wr & 0xFF,
-        (wl >>> 8) & 0xFF,
-        wl & 0xFF
+        OpCodes.AndN(OpCodes.Shr32(wr, 8), 0xFF),
+        OpCodes.AndN(wr, 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(wl, 8), 0xFF),
+        OpCodes.AndN(wl, 0xFF)
       ];
     }
 
     _decryptBlock(block) {
       // Load 32-bit value (big-endian)
-      let wl = (block[0] << 8) | block[1];
-      let wr = (block[2] << 8) | block[3];
+      let wl = OpCodes.OrN(OpCodes.Shl32(block[0], 8), block[1]);
+      let wr = OpCodes.OrN(OpCodes.Shl32(block[2], 8), block[3]);
 
       // 24 rounds in reverse (2 rounds per iteration, same pattern as encrypt but k goes backwards)
       let k = 23;
       for (let i = 0; i < 12; ++i) {
-        wr ^= this._g(wl, k) ^ k;
+        wr = OpCodes.XorN(wr, OpCodes.XorN(this._g(wl, k), k));
         k--;
-        wl ^= this._g(wr, k) ^ k;
+        wl = OpCodes.XorN(wl, OpCodes.XorN(this._g(wr, k), k));
         k--;
       }
 
       // Output with wr and wl swapped
       return [
-        (wr >>> 8) & 0xFF,
-        wr & 0xFF,
-        (wl >>> 8) & 0xFF,
-        wl & 0xFF
+        OpCodes.AndN(OpCodes.Shr32(wr, 8), 0xFF),
+        OpCodes.AndN(wr, 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(wl, 8), 0xFF),
+        OpCodes.AndN(wl, 0xFF)
       ];
     }
 

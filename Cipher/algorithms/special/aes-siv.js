@@ -233,12 +233,12 @@
       for (let round = 0; round < 4; round++) {
         // Add round key
         for (let i = 0; i < 16; i++) {
-          result[i] ^= key[i] ^ round;
+          result[i] = OpCodes.XorN(OpCodes.XorN(result[i], key[i]), round);
         }
 
         // Simple substitution and permutation
         for (let i = 0; i < 16; i++) {
-          result[i] = OpCodes.RotL8(result[i] ^ (i + 1), (round + 1) % 8) & 0xFF;
+          result[i] = OpCodes.AndN(OpCodes.RotL8(OpCodes.XorN(result[i], i + 1), (round + 1) % 8), 0xFF);
         }
 
         // Simple mixing
@@ -275,7 +275,7 @@
 
         // XOR with previous MAC
         for (let j = 0; j < blockSize; j++) {
-          block[j] ^= mac[j];
+          block[j] = OpCodes.XorN(block[j], mac[j]);
         }
 
         // Encrypt with key
@@ -301,7 +301,7 @@
 
         // v = (v * 2) XOR MAC(string) - simplified multiplication
         for (let j = 0; j < 16; j++) {
-          v[j] = OpCodes.RotL8(v[j], 1) ^ mac[j];
+          v[j] = OpCodes.XorN(OpCodes.RotL8(v[j], 1), mac[j]);
         }
       }
 
@@ -328,12 +328,12 @@
         // XOR with data
         const blockSize = Math.min(16, data.length - i);
         for (let j = 0; j < blockSize; j++) {
-          result.push(data[i + j] ^ keystream[j]);
+          result.push(OpCodes.XorN(data[i + j], keystream[j]));
         }
 
         // Increment counter
         for (let j = 15; j >= 0; j--) {
-          counter[j] = (counter[j] + 1) & 0xFF;
+          counter[j] = OpCodes.AndN(counter[j] + 1, 0xFF);
           if (counter[j] !== 0) break;
         }
       }

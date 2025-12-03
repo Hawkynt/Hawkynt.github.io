@@ -485,7 +485,7 @@
         keyIndex = (keyIndex + 1) % key.length;
 
         const keyWord = OpCodes.Pack32BE(b0, b1, b2, b3);
-        this.pBox[i] ^= keyWord;
+        this.pBox[i] = OpCodes.XorN(this.pBox[i], keyWord);
       }
 
       // Encrypt all-zero string with the current state and use results to replace P-box and S-boxes
@@ -541,8 +541,8 @@
     _encryptPair(left, right) {
       // 16 rounds of Feistel network
       for (let i = 0; i < 16; i++) {
-        left ^= this.pBox[i];
-        right ^= this._f(left);
+        left = OpCodes.XorN(left, this.pBox[i]);
+        right = OpCodes.XorN(right, this._f(left));
 
         // Swap left and right
         const temp = left;
@@ -555,21 +555,21 @@
       left = right;
       right = temp;
 
-      right ^= this.pBox[16];
-      left ^= this.pBox[17];
+      right = OpCodes.XorN(right, this.pBox[16]);
+      left = OpCodes.XorN(left, this.pBox[17]);
 
       return { left, right };
     }
 
     _decryptPair(left, right) {
       // Reverse of encryption - apply final subkeys first
-      left ^= this.pBox[17];
-      right ^= this.pBox[16];
+      left = OpCodes.XorN(left, this.pBox[17]);
+      right = OpCodes.XorN(right, this.pBox[16]);
 
       // 16 rounds in reverse order
       for (let i = 15; i >= 0; i--) {
-        right ^= this._f(left);
-        left ^= this.pBox[i];
+        right = OpCodes.XorN(right, this._f(left));
+        left = OpCodes.XorN(left, this.pBox[i]);
 
         // Swap left and right
         const temp = left;
@@ -590,13 +590,13 @@
       const [a, b, c, d] = OpCodes.Unpack32BE(x);
 
       // Step 1: S1[a] + S2[b] mod 2^32
-      const temp1 = (this.sBox1[a] + this.sBox2[b]) >>> 0;
+      const temp1 = OpCodes.ToUint32(this.sBox1[a] + this.sBox2[b]);
 
       // Step 2: temp1 XOR S3[c]
-      const temp2 = temp1 ^ this.sBox3[c];
+      const temp2 = OpCodes.XorN(temp1, this.sBox3[c]);
 
       // Step 3: temp2 + S4[d] mod 2^32
-      return (temp2 + this.sBox4[d]) >>> 0;
+      return OpCodes.ToUint32(temp2 + this.sBox4[d]);
     }
   }
 

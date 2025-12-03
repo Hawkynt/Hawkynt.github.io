@@ -111,10 +111,10 @@
       const s2 = state[base + 2];
       const s3 = state[base + 3];
 
-      state[base] = (OpCodes.GF256Mul(s0, 2) ^ OpCodes.GF256Mul(s1, 3) ^ s2 ^ s3) & 0xff;
-      state[base + 1] = (s0 ^ OpCodes.GF256Mul(s1, 2) ^ OpCodes.GF256Mul(s2, 3) ^ s3) & 0xff;
-      state[base + 2] = (s0 ^ s1 ^ OpCodes.GF256Mul(s2, 2) ^ OpCodes.GF256Mul(s3, 3)) & 0xff;
-      state[base + 3] = (OpCodes.GF256Mul(s0, 3) ^ s1 ^ s2 ^ OpCodes.GF256Mul(s3, 2)) & 0xff;
+      state[base] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(s0, 2), OpCodes.GF256Mul(s1, 3)), s2), s3), 0xff);
+      state[base + 1] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, OpCodes.GF256Mul(s1, 2)), OpCodes.GF256Mul(s2, 3)), s3), 0xff);
+      state[base + 2] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, s1), OpCodes.GF256Mul(s2, 2)), OpCodes.GF256Mul(s3, 3)), 0xff);
+      state[base + 3] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(s0, 3), s1), s2), OpCodes.GF256Mul(s3, 2)), 0xff);
     }
   }
 
@@ -510,7 +510,7 @@
 
           for (let i = 0; i < remaining.length; ++i) {
             const keyByte = i < 16 ? K0[i] : K1[i - 16];
-            plaintext.push(remaining[i] ^ keyByte);
+            plaintext.push(OpCodes.XorN(remaining[i], keyByte));
           }
         }
 
@@ -520,7 +520,7 @@
         // Constant-time tag comparison
         let tagMatch = 0;
         for (let i = 0; i < 16; ++i) {
-          tagMatch |= tag[i] ^ receivedTag[i];
+          tagMatch |= OpCodes.XorN(tag[i], receivedTag[i]);
         }
 
         if (tagMatch !== 0) {
@@ -586,7 +586,7 @@
 
           for (let i = 0; i < remaining.length; ++i) {
             const keyByte = i < 16 ? K0[i] : K1[i - 16];
-            ciphertext.push(remaining[i] ^ keyByte);
+            ciphertext.push(OpCodes.XorN(remaining[i], keyByte));
           }
         }
 
@@ -608,13 +608,13 @@
       // AD length in bits (64-bit little-endian)
       const adBits = adLen * 8;
       for (let i = 0; i < 8; ++i) {
-        lenBlock0[i] = (adBits >>> (i * 8)) & 0xff;
+        lenBlock0[i] = OpCodes.AndN(OpCodes.Shr32(adBits, i * 8), 0xff);
       }
 
       // Message length in bits (64-bit little-endian)
       const msgBits = msgLen * 8;
       for (let i = 0; i < 8; ++i) {
-        lenBlock1[i] = (msgBits >>> (i * 8)) & 0xff;
+        lenBlock1[i] = OpCodes.AndN(OpCodes.Shr32(msgBits, i * 8), 0xff);
       }
 
       // Run 20 finalization rounds

@@ -136,7 +136,7 @@
         this.TABLE_SIZE = 256; // Size of the ANS table (power of 2)
         this.TABLE_BITS = 8; // log2(TABLE_SIZE)
         this.STATE_BITS = 16; // Size of the state variable
-        this.MAX_STATE = (1 << this.STATE_BITS) - 1;
+        this.MAX_STATE = OpCodes.Shl32(1, this.STATE_BITS) - 1;
       }
 
       Feed(data) {

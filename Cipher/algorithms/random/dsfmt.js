@@ -237,9 +237,9 @@
       // Convert seed bytes to 32-bit unsigned integer (little-endian)
       let seedValue = 0;
       for (let i = 0; i < Math.min(seedBytes.length, 4); ++i) {
-        seedValue |= (seedBytes[i] << (i * 8));
+        seedValue = OpCodes.OrN(seedValue, OpCodes.Shl32(seedBytes[i], i * 8));
       }
-      seedValue = seedValue >>> 0; // Ensure unsigned
+      seedValue = OpCodes.ToUint32(seedValue);
 
       // Initialize state array treating it as 32-bit words
       // state[0] = seed (low 32 bits), state[1] = 0 (high 32 bits)
@@ -267,8 +267,8 @@
         const sum64 = (mult64 + BigInt(i)) & 0xFFFFFFFFFFFFFFFFn;
 
         // Store result
-        this._state[idx] = Number(sum64 & 0xFFFFFFFFn) >>> 0;
-        this._state[idx + 1] = Number(sum64 >> 32n) >>> 0;
+        this._state[idx] = OpCodes.ToUint32(Number(sum64 & 0xFFFFFFFFn));
+        this._state[idx + 1] = OpCodes.ToUint32(Number(sum64 >> 32n));
       }
 
       // Apply initial mask to ensure IEEE 754 format
@@ -293,8 +293,8 @@
       for (let i = 0; i < N64; ++i) {
         const idx = i * 2;
         // Apply LOW_MASK and set HIGH_CONST
-        this._state[idx] = (this._state[idx] & LOW_MASK_LOW) >>> 0;
-        this._state[idx + 1] = ((this._state[idx + 1] & LOW_MASK_HIGH) | HIGH_CONST_HIGH) >>> 0;
+        this._state[idx] = OpCodes.ToUint32(OpCodes.AndN(this._state[idx], LOW_MASK_LOW));
+        this._state[idx + 1] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.AndN(this._state[idx + 1], LOW_MASK_HIGH), HIGH_CONST_HIGH));
       }
     }
 
@@ -312,23 +312,23 @@
       for (let i = 0; i < 2; ++i) {
         const idx = i * 2;
         const pcvIdx = i * 2;
-        innerLow ^= this._state[idx] & pcv[pcvIdx];
-        innerHigh ^= this._state[idx + 1] & pcv[pcvIdx + 1];
+        innerLow = OpCodes.XorN(innerLow, OpCodes.AndN(this._state[idx], pcv[pcvIdx]));
+        innerHigh = OpCodes.XorN(innerHigh, OpCodes.AndN(this._state[idx + 1], pcv[pcvIdx + 1]));
       }
 
       // Reduce to single bit
-      let inner = innerLow ^ innerHigh;
-      for (let i = 16; i > 0; i >>= 1) {
-        inner ^= inner >>> i;
+      let inner = OpCodes.XorN(innerLow, innerHigh);
+      for (let i = 16; i > 0; i = OpCodes.Shr32(i, 1)) {
+        inner = OpCodes.XorN(inner, OpCodes.Shr32(inner, i));
       }
-      inner &= 1;
+      inner = OpCodes.AndN(inner, 1);
 
       // If inner is 0, modify state to ensure full period
       if (inner === 0) {
-        this._state[0] ^= FIX1_LOW;
-        this._state[1] = (this._state[1] ^ FIX1_HIGH) >>> 0;
-        this._state[2] ^= FIX2_LOW;
-        this._state[3] = (this._state[3] ^ FIX2_HIGH) >>> 0;
+        this._state[0] = OpCodes.XorN(this._state[0], FIX1_LOW);
+        this._state[1] = OpCodes.ToUint32(OpCodes.XorN(this._state[1], FIX1_HIGH));
+        this._state[2] = OpCodes.XorN(this._state[2], FIX2_LOW);
+        this._state[3] = OpCodes.ToUint32(OpCodes.XorN(this._state[3], FIX2_HIGH));
 
         // Re-apply initial mask
         this._initialMask();
@@ -360,31 +360,31 @@
 
       // Update lung
       // lung[0] = (t0 << SL1) ^ (L1 >> 32) ^ (L1 << 32) ^ b0
-      const newL0 = ((t0 << BigInt(SL1)) ^ (L1 >> 32n) ^ (L1 << 32n) ^ b0) & 0xFFFFFFFFFFFFFFFFn;
+      const newL0 = (((t0 << BigInt(SL1)) ^ (L1 >> 32n) ^ (L1 << 32n) ^ b0) & 0xFFFFFFFFFFFFFFFFn);
 
       // lung[1] = (t1 << SL1) ^ (L0 >> 32) ^ (L0 << 32) ^ b1
-      const newL1 = ((t1 << BigInt(SL1)) ^ (L0 >> 32n) ^ (L0 << 32n) ^ b1) & 0xFFFFFFFFFFFFFFFFn;
+      const newL1 = (((t1 << BigInt(SL1)) ^ (L0 >> 32n) ^ (L0 << 32n) ^ b1) & 0xFFFFFFFFFFFFFFFFn);
 
       // Store lung
-      this._state[lungIdx] = Number(newL0 & 0xFFFFFFFFn) >>> 0;
-      this._state[lungIdx + 1] = Number(newL0 >> 32n) >>> 0;
-      this._state[lungIdx + 2] = Number(newL1 & 0xFFFFFFFFn) >>> 0;
-      this._state[lungIdx + 3] = Number(newL1 >> 32n) >>> 0;
+      this._state[lungIdx] = OpCodes.ToUint32(Number(newL0 & 0xFFFFFFFFn));
+      this._state[lungIdx + 1] = OpCodes.ToUint32(Number(newL0 >> 32n));
+      this._state[lungIdx + 2] = OpCodes.ToUint32(Number(newL1 & 0xFFFFFFFFn));
+      this._state[lungIdx + 3] = OpCodes.ToUint32(Number(newL1 >> 32n));
 
       // Compute output r
       // r[0] = (lung[0] >> SR) ^ (lung[0] & MSK1) ^ t0
       const msk1 = BigInt(MSK1);
-      const r0 = ((newL0 >> BigInt(SR)) ^ (newL0 & msk1) ^ t0) & 0xFFFFFFFFFFFFFFFFn;
+      const r0 = (((newL0 >> BigInt(SR)) ^ (newL0 & msk1) ^ t0) & 0xFFFFFFFFFFFFFFFFn);
 
       // r[1] = (lung[1] >> SR) ^ (lung[1] & MSK2) ^ t1
       const msk2 = BigInt(MSK2);
-      const r1 = ((newL1 >> BigInt(SR)) ^ (newL1 & msk2) ^ t1) & 0xFFFFFFFFFFFFFFFFn;
+      const r1 = (((newL1 >> BigInt(SR)) ^ (newL1 & msk2) ^ t1) & 0xFFFFFFFFFFFFFFFFn);
 
       // Store result
-      this._state[rIdx] = Number(r0 & 0xFFFFFFFFn) >>> 0;
-      this._state[rIdx + 1] = Number(r0 >> 32n) >>> 0;
-      this._state[rIdx + 2] = Number(r1 & 0xFFFFFFFFn) >>> 0;
-      this._state[rIdx + 3] = Number(r1 >> 32n) >>> 0;
+      this._state[rIdx] = OpCodes.ToUint32(Number(r0 & 0xFFFFFFFFn));
+      this._state[rIdx + 1] = OpCodes.ToUint32(Number(r0 >> 32n));
+      this._state[rIdx + 2] = OpCodes.ToUint32(Number(r1 & 0xFFFFFFFFn));
+      this._state[rIdx + 3] = OpCodes.ToUint32(Number(r1 >> 32n));
     }
 
     /**

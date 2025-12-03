@@ -332,8 +332,8 @@
       // Construct PRF input: tweak || round || input
       const prfInput = [];
       prfInput.push(...this.tweak);
-      prfInput.push(round & 0xFF);
-      prfInput.push(...input.map(n => n & 0xFF));
+      prfInput.push(OpCodes.AndN(round, 0xFF));
+      prfInput.push(...input.map(n => OpCodes.AndN(n, 0xFF)));
 
       // Pad to block size
       const blockSize = this.blockCipher.BlockSize;
@@ -396,8 +396,8 @@
       // Construct PRF input: tweak || round || input
       const prfInput = [];
       prfInput.push(...this.tweak);
-      prfInput.push(round & 0xFF);
-      prfInput.push(...input.map(n => n & 0xFF));
+      prfInput.push(OpCodes.AndN(round, 0xFF));
+      prfInput.push(...input.map(n => OpCodes.AndN(n, 0xFF)));
 
       // Pad to block size
       const blockSize = this.blockCipher.BlockSize;

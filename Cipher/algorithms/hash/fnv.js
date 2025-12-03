@@ -198,8 +198,8 @@
 
       for (let i = 0; i < bytes.length; i++) {
         // FNV-1a: XOR byte first, then multiply
-        hash = (hash ^ (bytes[i] & 0xFF)) >>> 0;
-        hash = Math.imul(hash, FNV_32_PRIME) >>> 0;
+        hash = OpCodes.ToUint32(OpCodes.XorN(hash, OpCodes.AndN(bytes[i], 0xFF)));
+        hash = OpCodes.ToUint32(Math.imul(hash, FNV_32_PRIME));
       }
 
       // Return as 4-byte array using OpCodes

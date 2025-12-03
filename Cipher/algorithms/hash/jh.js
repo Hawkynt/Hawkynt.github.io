@@ -244,7 +244,7 @@
     _jhCompress(block) {
       // XOR block into left half of state
       for (let i = 0; i < 16; i++) {
-        this._state[i] ^= block[i];
+        this._state[i] = OpCodes.XorN(this._state[i], block[i]);
       }
 
       // Apply simplified rounds (educational implementation)
@@ -254,7 +254,7 @@
 
       // XOR block into right half of state
       for (let i = 0; i < 16; i++) {
-        this._state[16 + i] ^= block[i];
+        this._state[16 + i] = OpCodes.XorN(this._state[16 + i], block[i]);
       }
     }
 
@@ -265,9 +265,9 @@
       // Simple mixing for educational purposes
       for (let i = 0; i < 32; i++) {
         let temp = this._state[i];
-        temp = OpCodes.RotL32(temp, 7) ^ (round * 0x9e3779b9);
-        temp ^= this._state[(i + 1) % 32];
-        this._state[i] = temp >>> 0;
+        temp = OpCodes.XorN(OpCodes.RotL32(temp, 7), (round * 0x9e3779b9));
+        temp = OpCodes.XorN(temp, this._state[(i + 1) % 32]);
+        this._state[i] = OpCodes.ToUint32(temp);
       }
 
       // Additional diffusion
@@ -296,7 +296,7 @@
 
       // Append 64-bit length (big-endian)
       for (let i = 7; i >= 0; i--) {
-        this._buffer[this._bufferLength + (7 - i)] = (totalBits >>> (i * 8)) & 0xFF;
+        this._buffer[this._bufferLength + (7 - i)] = OpCodes.AndN(OpCodes.Shr32(totalBits, i * 8), 0xFF);
       }
       this._bufferLength += 8;
 

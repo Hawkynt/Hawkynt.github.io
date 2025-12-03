@@ -173,7 +173,7 @@
         if (typeof data === 'string') {
           const bytes = [];
           for (let i = 0; i < data.length; i++) {
-            bytes.push(data.charCodeAt(i) & 0xFF);
+            bytes.push(OpCodes.AndN(data.charCodeAt(i), 0xFF));
           }
           data = bytes;
         }
@@ -254,7 +254,7 @@
 
         // Extend the sixteen 32-bit words into eighty 32-bit words
         for (let t = 16; t < 80; t++) {
-          W[t] = OpCodes.RotL32(W[t-3] ^ W[t-8] ^ W[t-14] ^ W[t-16], 1);
+          W[t] = OpCodes.RotL32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(W[t-3], W[t-8]), W[t-14]), W[t-16]), 1);
         }
 
         // Initialize working variables
@@ -265,20 +265,20 @@
           let f, k;
 
           if (t < 20) {
-            f = (b & c) | ((~b) & d);
+            f = OpCodes.OrN(OpCodes.AndN(b, c), OpCodes.AndN(~b, d));
             k = K[0];
           } else if (t < 40) {
-            f = b ^ c ^ d;
+            f = OpCodes.XorN(OpCodes.XorN(b, c), d);
             k = K[1];
           } else if (t < 60) {
-            f = (b & c) | (b & d) | (c & d);
+            f = OpCodes.OrN(OpCodes.OrN(OpCodes.AndN(b, c), OpCodes.AndN(b, d)), OpCodes.AndN(c, d));
             k = K[2];
           } else {
-            f = b ^ c ^ d;
+            f = OpCodes.XorN(OpCodes.XorN(b, c), d);
             k = K[3];
           }
 
-          const temp = (OpCodes.RotL32(a, 5) + f + e + k + W[t]) >>> 0;
+          const temp = OpCodes.ToUint32(OpCodes.RotL32(a, 5) + f + e + k + W[t]);
           e = d;
           d = c;
           c = OpCodes.RotL32(b, 30);
@@ -287,11 +287,11 @@
         }
 
         // Add working variables to hash value
-        this._h[0] = (this._h[0] + a) >>> 0;
-        this._h[1] = (this._h[1] + b) >>> 0;
-        this._h[2] = (this._h[2] + c) >>> 0;
-        this._h[3] = (this._h[3] + d) >>> 0;
-        this._h[4] = (this._h[4] + e) >>> 0;
+        this._h[0] = OpCodes.ToUint32(this._h[0] + a);
+        this._h[1] = OpCodes.ToUint32(this._h[1] + b);
+        this._h[2] = OpCodes.ToUint32(this._h[2] + c);
+        this._h[3] = OpCodes.ToUint32(this._h[3] + d);
+        this._h[4] = OpCodes.ToUint32(this._h[4] + e);
       }
 
       /**

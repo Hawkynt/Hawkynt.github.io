@@ -69,22 +69,22 @@
       }
 
       for (let i = 0; i < 256; i++) {
-        const xl = (i & 0xf0) >>> 4;
-        const xr = i & 0x0f;
-        const yr = xr ^ PBOX[1][xl ^ PBOX[0][xr]];
-        const yl = xl ^ PBOX[0][xr] ^ PBOX[2][yr];
-        const yCombined = (yr | (yl << 4)) & 0xff;
+        const xl = OpCodes.Shr32(OpCodes.AndN(i, 0xf0), 4);
+        const xr = OpCodes.AndN(i, 0x0f);
+        const yr = OpCodes.XorN(xr, PBOX[1][OpCodes.XorN(xl, PBOX[0][xr])]);
+        const yl = OpCodes.XorN(OpCodes.XorN(xl, PBOX[0][xr]), PBOX[2][yr]);
+        const yCombined = OpCodes.AndN(OpCodes.OrN(yr, OpCodes.Shl32(yl, 4)), 0xff);
 
         SBox[0][i] = yCombined;
         SBox[1][yCombined] = i;
 
-        const xrWord = (yCombined * 0x01010101) >>> 0;
-        const xlWord = (i * 0x01010101) >>> 0;
+        const xrWord = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(yCombined, OpCodes.Shl32(yCombined, 8)), OpCodes.Shl32(yCombined, 16)), OpCodes.Shl32(yCombined, 24)));
+        const xlWord = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(i, OpCodes.Shl32(i, 8)), OpCodes.Shl32(i, 16)), OpCodes.Shl32(i, 24)));
 
-        MixTables[0][i] = xrWord & MA[0];
-        MixTables[1][yCombined] = xlWord & MA[1];
-        MixTables[2][i] = xrWord & MA[2];
-        MixTables[3][yCombined] = xlWord & MA[3];
+        MixTables[0][i] = OpCodes.AndN(xrWord, MA[0]);
+        MixTables[1][yCombined] = OpCodes.AndN(xlWord, MA[1]);
+        MixTables[2][i] = OpCodes.AndN(xrWord, MA[2]);
+        MixTables[3][yCombined] = OpCodes.AndN(xlWord, MA[3]);
       }
 
       initialized = true;
@@ -92,19 +92,27 @@
 
     generateTables();
 
-    const piMix = (words, n0, n1, n2, n3) => (
-      ((words[0] & MA[n0]) ^
-       (words[1] & MA[n1]) ^
-       (words[2] & MA[n2]) ^
-       (words[3] & MA[n3])) >>> 0
-    );
+    const piMix = (words, n0, n1, n2, n3) =>
+      OpCodes.ToUint32(
+        OpCodes.XorN(
+          OpCodes.XorN(
+            OpCodes.XorN(OpCodes.AndN(words[0], MA[n0]), OpCodes.AndN(words[1], MA[n1])),
+            OpCodes.AndN(words[2], MA[n2])
+          ),
+          OpCodes.AndN(words[3], MA[n3])
+        )
+      );
 
-    const phiN = (word, n0, n1, n2, n3) => (
-      ((word & MB[n0]) ^
-       (OpCodes.RotL32(word, 8) & MB[n1]) ^
-       (OpCodes.RotL32(word, 16) & MB[n2]) ^
-       (OpCodes.RotL32(word, 24) & MB[n3])) >>> 0
-    );
+    const phiN = (word, n0, n1, n2, n3) =>
+      OpCodes.ToUint32(
+        OpCodes.XorN(
+          OpCodes.XorN(
+            OpCodes.XorN(OpCodes.AndN(word, MB[n0]), OpCodes.AndN(OpCodes.RotL32(word, 8), MB[n1])),
+            OpCodes.AndN(OpCodes.RotL32(word, 16), MB[n2])
+          ),
+          OpCodes.AndN(OpCodes.RotL32(word, 24), MB[n3])
+        )
+      );
 
     const phi0 = (src, out) => {
       out[0] = phiN(src[0], 0, 1, 2, 3);
@@ -120,14 +128,21 @@
       out[3] = phiN(src[3], 0, 1, 2, 3);
     };
 
-    const getByte = (word, index) => (word >>> (index * 8)) & 0xff;
+    const getByte = (word, index) => OpCodes.AndN(OpCodes.Shr32(word, index * 8), 0xff);
 
-    const gammaTau = (vec, m, p, q) => (
-      (SBox[p][getByte(vec[0], m)] |
-       (SBox[q][getByte(vec[1], m)] << 8) |
-       (SBox[p][getByte(vec[2], m)] << 16) |
-       (SBox[q][getByte(vec[3], m)] << 24)) >>> 0
-    );
+    const gammaTau = (vec, m, p, q) =>
+      OpCodes.ToUint32(
+        OpCodes.OrN(
+          OpCodes.OrN(
+            OpCodes.OrN(
+              SBox[p][getByte(vec[0], m)],
+              OpCodes.Shl32(SBox[q][getByte(vec[1], m)], 8)
+            ),
+            OpCodes.Shl32(SBox[p][getByte(vec[2], m)], 16)
+          ),
+          OpCodes.Shl32(SBox[q][getByte(vec[3], m)], 24)
+        )
+      );
 
     return Object.freeze({
       PBOX,
@@ -330,7 +345,7 @@
 
       for (let i = 0; i < keyWords.length; i++) {
         const idx = i * 4;
-        keyWords[i] = OpCodes.Pack32LE(keyBytes[idx], keyBytes[idx + 1], keyBytes[idx + 2], keyBytes[idx + 3]) >>> 0;
+        keyWords[i] = OpCodes.ToUint32(OpCodes.Pack32LE(keyBytes[idx], keyBytes[idx + 1], keyBytes[idx + 2], keyBytes[idx + 3]));
       }
 
       eKey[2] = eKey[3] = eKey[6] = eKey[7] = 0;
@@ -338,77 +353,77 @@
       const keyUnits = Math.floor((keyBytes.length + 7) / 8);
       switch (keyUnits) {
         case 4:
-          eKey[3] = keyWords[6] >>> 0;
-          eKey[7] = keyWords[7] >>> 0;
+          eKey[3] = OpCodes.ToUint32(keyWords[6]);
+          eKey[7] = OpCodes.ToUint32(keyWords[7]);
         case 3:
-          eKey[2] = keyWords[4] >>> 0;
-          eKey[6] = keyWords[5] >>> 0;
+          eKey[2] = OpCodes.ToUint32(keyWords[4]);
+          eKey[6] = OpCodes.ToUint32(keyWords[5]);
         case 2:
-          eKey[0] = keyWords[0] >>> 0;
-          eKey[4] = keyWords[1] >>> 0;
-          eKey[1] = keyWords[2] >>> 0;
-          eKey[5] = keyWords[3] >>> 0;
+          eKey[0] = OpCodes.ToUint32(keyWords[0]);
+          eKey[4] = OpCodes.ToUint32(keyWords[1]);
+          eKey[1] = OpCodes.ToUint32(keyWords[2]);
+          eKey[5] = OpCodes.ToUint32(keyWords[3]);
           break;
         default:
           throw new Error('Unsupported key length: ' + keyBytes.length + ' bytes');
       }
 
-      tmp[0] = (tables.piMix(eKey.subarray(0, 4), 0, 1, 2, 3) ^ tables.KP[0]) >>> 0;
-      tmp[1] = (tables.piMix(eKey.subarray(0, 4), 1, 2, 3, 0) ^ tables.KP[1]) >>> 0;
-      tmp[2] = (tables.piMix(eKey.subarray(0, 4), 2, 3, 0, 1) ^ tables.KP[2]) >>> 0;
-      tmp[3] = (tables.piMix(eKey.subarray(0, 4), 3, 0, 1, 2) ^ tables.KP[3]) >>> 0;
+      tmp[0] = OpCodes.ToUint32(OpCodes.XorN(tables.piMix(eKey.subarray(0, 4), 0, 1, 2, 3), tables.KP[0]));
+      tmp[1] = OpCodes.ToUint32(OpCodes.XorN(tables.piMix(eKey.subarray(0, 4), 1, 2, 3, 0), tables.KP[1]));
+      tmp[2] = OpCodes.ToUint32(OpCodes.XorN(tables.piMix(eKey.subarray(0, 4), 2, 3, 0, 1), tables.KP[2]));
+      tmp[3] = OpCodes.ToUint32(OpCodes.XorN(tables.piMix(eKey.subarray(0, 4), 3, 0, 1, 2), tables.KP[3]));
 
       eKey[0] = tables.gammaTau(tmp, 0, 0, 1);
       eKey[1] = tables.gammaTau(tmp, 1, 1, 0);
       eKey[2] = tables.gammaTau(tmp, 2, 0, 1);
       eKey[3] = tables.gammaTau(tmp, 3, 1, 0);
 
-      tmp[0] = (tables.piMix(eKey.subarray(4, 8), 1, 2, 3, 0) ^ tables.KQ[0]) >>> 0;
-      tmp[1] = (tables.piMix(eKey.subarray(4, 8), 2, 3, 0, 1) ^ tables.KQ[1]) >>> 0;
-      tmp[2] = (tables.piMix(eKey.subarray(4, 8), 3, 0, 1, 2) ^ tables.KQ[2]) >>> 0;
-      tmp[3] = (tables.piMix(eKey.subarray(4, 8), 0, 1, 2, 3) ^ tables.KQ[3]) >>> 0;
+      tmp[0] = OpCodes.ToUint32(OpCodes.XorN(tables.piMix(eKey.subarray(4, 8), 1, 2, 3, 0), tables.KQ[0]));
+      tmp[1] = OpCodes.ToUint32(OpCodes.XorN(tables.piMix(eKey.subarray(4, 8), 2, 3, 0, 1), tables.KQ[1]));
+      tmp[2] = OpCodes.ToUint32(OpCodes.XorN(tables.piMix(eKey.subarray(4, 8), 3, 0, 1, 2), tables.KQ[2]));
+      tmp[3] = OpCodes.ToUint32(OpCodes.XorN(tables.piMix(eKey.subarray(4, 8), 0, 1, 2, 3), tables.KQ[3]));
 
       eKey[4] = tables.gammaTau(tmp, 0, 1, 0);
       eKey[5] = tables.gammaTau(tmp, 1, 0, 1);
       eKey[6] = tables.gammaTau(tmp, 2, 1, 0);
       eKey[7] = tables.gammaTau(tmp, 3, 0, 1);
 
-      const t0 = (eKey[0] ^ eKey[1] ^ eKey[2] ^ eKey[3]) >>> 0;
-      const t1 = (eKey[4] ^ eKey[5] ^ eKey[6] ^ eKey[7]) >>> 0;
+      const t0 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(eKey[0], eKey[1]), eKey[2]), eKey[3]));
+      const t1 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(eKey[4], eKey[5]), eKey[6]), eKey[7]));
 
       for (let i = 0; i < 4; i++) {
-        eKey[i] = (eKey[i] ^ t1) >>> 0;
-        eKey[4 + i] = (eKey[4 + i] ^ t0) >>> 0;
+        eKey[i] = OpCodes.ToUint32(OpCodes.XorN(eKey[i], t1));
+        eKey[4 + i] = OpCodes.ToUint32(OpCodes.XorN(eKey[4 + i], t0));
       }
 
-      let rc = 0x01010101 >>> 0;
+      let rc = OpCodes.ToUint32(0x01010101);
 
       const h0Block = (n, r0, r1) => {
         eKey[4 * n + 8] = OpCodes.RotL32(eKey[4 * n + 0], r0);
-        eKey[4 * n + 9] = (rc ^ eKey[4 * n + 1]) >>> 0;
+        eKey[4 * n + 9] = OpCodes.ToUint32(OpCodes.XorN(rc, eKey[4 * n + 1]));
         eKey[4 * n + 10] = OpCodes.RotL32(eKey[4 * n + 2], r1);
-        eKey[4 * n + 11] = (rc ^ eKey[4 * n + 3]) >>> 0;
+        eKey[4 * n + 11] = OpCodes.ToUint32(OpCodes.XorN(rc, eKey[4 * n + 3]));
       };
 
       const h1Block = (n, r0, r1) => {
-        eKey[4 * n + 8] = (rc ^ eKey[4 * n + 0]) >>> 0;
+        eKey[4 * n + 8] = OpCodes.ToUint32(OpCodes.XorN(rc, eKey[4 * n + 0]));
         eKey[4 * n + 9] = OpCodes.RotL32(eKey[4 * n + 1], r0);
-        eKey[4 * n + 10] = (rc ^ eKey[4 * n + 2]) >>> 0;
+        eKey[4 * n + 10] = OpCodes.ToUint32(OpCodes.XorN(rc, eKey[4 * n + 2]));
         eKey[4 * n + 11] = OpCodes.RotL32(eKey[4 * n + 3], r1);
       };
 
-      h0Block(0, 8, 16); h1Block(1, 16, 24); rc = (rc << 1) >>> 0;
-      h1Block(2, 24, 8); h0Block(3, 8, 16); rc = (rc << 1) >>> 0;
-      h0Block(4, 16, 24); h1Block(5, 24, 8); rc = (rc << 1) >>> 0;
-      h1Block(6, 8, 16); h0Block(7, 16, 24); rc = (rc << 1) >>> 0;
-      h0Block(8, 24, 8); h1Block(9, 8, 16); rc = (rc << 1) >>> 0;
+      h0Block(0, 8, 16); h1Block(1, 16, 24); rc = OpCodes.ToUint32(OpCodes.Shl32(rc, 1));
+      h1Block(2, 24, 8); h0Block(3, 8, 16); rc = OpCodes.ToUint32(OpCodes.Shl32(rc, 1));
+      h0Block(4, 16, 24); h1Block(5, 24, 8); rc = OpCodes.ToUint32(OpCodes.Shl32(rc, 1));
+      h1Block(6, 8, 16); h0Block(7, 16, 24); rc = OpCodes.ToUint32(OpCodes.Shl32(rc, 1));
+      h0Block(8, 24, 8); h1Block(9, 8, 16); rc = OpCodes.ToUint32(OpCodes.Shl32(rc, 1));
       h1Block(10, 16, 24);
 
       for (let i = 0; i < 13; i++) {
         const src = eKey.subarray(i * 4, i * 4 + 4);
         const destIndex = 48 - 4 * i;
         const dest = dKey.subarray(destIndex, destIndex + 4);
-        if (i & 1) {
+        if (OpCodes.AndN(i, 1)) {
           tables.phi0(src, tmpOut);
         } else {
           tables.phi1(src, tmpOut);
@@ -442,33 +457,49 @@
 
       for (let i = 0; i < 4; i++) {
         const idx = i * 4;
-        const word = OpCodes.Pack32LE(bytes[idx], bytes[idx + 1], bytes[idx + 2], bytes[idx + 3]) >>> 0;
-        b0[i] = (word ^ schedule[i]) >>> 0;
+        const word = OpCodes.ToUint32(OpCodes.Pack32LE(bytes[idx], bytes[idx + 1], bytes[idx + 2], bytes[idx + 3]));
+        b0[i] = OpCodes.ToUint32(OpCodes.XorN(word, schedule[i]));
       }
 
-      const getByte = (word, index) => (word >>> (index * 8)) & 0xff;
+      const getByte = (word, index) => OpCodes.AndN(OpCodes.Shr32(word, index * 8), 0xff);
 
       const roundF0 = offset => {
         for (let i = 0; i < 4; i++) {
-          b1[i] = (
-            mix[i][getByte(b0[0], i)] ^
-            mix[(i + 1) & 3][getByte(b0[1], i)] ^
-            mix[(i + 2) & 3][getByte(b0[2], i)] ^
-            mix[(i + 3) & 3][getByte(b0[3], i)] ^
-            schedule[offset + i]
-          ) >>> 0;
+          b1[i] = OpCodes.ToUint32(
+            OpCodes.XorN(
+              OpCodes.XorN(
+                OpCodes.XorN(
+                  OpCodes.XorN(
+                    mix[i][getByte(b0[0], i)],
+                    mix[OpCodes.AndN(i + 1, 3)][getByte(b0[1], i)]
+                  ),
+                  mix[OpCodes.AndN(i + 2, 3)][getByte(b0[2], i)]
+                ),
+                mix[OpCodes.AndN(i + 3, 3)][getByte(b0[3], i)]
+              ),
+              schedule[offset + i]
+            )
+          );
         }
       };
 
       const roundF1 = offset => {
         for (let i = 0; i < 4; i++) {
-          b0[i] = (
-            mix[(i + 1) & 3][getByte(b1[0], i)] ^
-            mix[(i + 2) & 3][getByte(b1[1], i)] ^
-            mix[(i + 3) & 3][getByte(b1[2], i)] ^
-            mix[i][getByte(b1[3], i)] ^
-            schedule[offset + i]
-          ) >>> 0;
+          b0[i] = OpCodes.ToUint32(
+            OpCodes.XorN(
+              OpCodes.XorN(
+                OpCodes.XorN(
+                  OpCodes.XorN(
+                    mix[OpCodes.AndN(i + 1, 3)][getByte(b1[0], i)],
+                    mix[OpCodes.AndN(i + 2, 3)][getByte(b1[1], i)]
+                  ),
+                  mix[OpCodes.AndN(i + 3, 3)][getByte(b1[2], i)]
+                ),
+                mix[i][getByte(b1[3], i)]
+              ),
+              schedule[offset + i]
+            )
+          );
         }
       };
 
@@ -479,10 +510,10 @@
       roundF0(36); roundF1(40);
       roundF0(44);
 
-      outWords[0] = (gammaTau(b1, 0, 1, 0) ^ schedule[48]) >>> 0;
-      outWords[1] = (gammaTau(b1, 1, 0, 1) ^ schedule[49]) >>> 0;
-      outWords[2] = (gammaTau(b1, 2, 1, 0) ^ schedule[50]) >>> 0;
-      outWords[3] = (gammaTau(b1, 3, 0, 1) ^ schedule[51]) >>> 0;
+      outWords[0] = OpCodes.ToUint32(OpCodes.XorN(gammaTau(b1, 0, 1, 0), schedule[48]));
+      outWords[1] = OpCodes.ToUint32(OpCodes.XorN(gammaTau(b1, 1, 0, 1), schedule[49]));
+      outWords[2] = OpCodes.ToUint32(OpCodes.XorN(gammaTau(b1, 2, 1, 0), schedule[50]));
+      outWords[3] = OpCodes.ToUint32(OpCodes.XorN(gammaTau(b1, 3, 0, 1), schedule[51]));
 
       const result = [];
       for (let i = 0; i < 4; i++) {

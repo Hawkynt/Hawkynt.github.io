@@ -172,10 +172,10 @@
         let word;
         if (i + 1 < data.length) {
           // Normal case: pair of bytes (big-endian)
-          word = (data[i] << 8) | data[i + 1];
+          word = OpCodes.OrN(OpCodes.Shl32(data[i], 8), data[i + 1]);
         } else {
           // Odd number of bytes: pad with zero
-          word = data[i] << 8;
+          word = OpCodes.Shl32(data[i], 8);
         }
 
         // Add to sum
@@ -184,7 +184,7 @@
         // Handle carry (convert to 1's complement arithmetic)
         const maxValue = OpCodes.Pack16BE(...OpCodes.Hex8ToBytes("ffff"));
         while (this.sum > maxValue) {
-          this.sum = (this.sum & maxValue) + (this.sum >>> 16);
+          this.sum = OpCodes.AndN(this.sum, maxValue) + OpCodes.Shr32(this.sum, 16);
         }
       }
     }
@@ -198,7 +198,7 @@
     Result() {
       // Take 1's complement of the final sum
       const maxValue = OpCodes.Pack16BE(...OpCodes.Hex8ToBytes("ffff"));
-      const checksum = (~this.sum) & maxValue;
+      const checksum = OpCodes.AndN((~this.sum), maxValue);
 
       // Return as 2-byte array (big-endian)
       const result = OpCodes.Unpack16BE(checksum);

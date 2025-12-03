@@ -8,7 +8,7 @@
  * 
  * SIKE: Supersingular Isogeny Key Encapsulation Mechanism (BROKEN)
  * Reference: https://sike.org/ (Historical)
- * Breaking Paper: "An efficient key recovery attack on SIKE" by Castryck & Decru (2022)
+ * Breaking Paper: "An efficient key recovery attack on SIKE" by Castryck and Decru (2022)
  * 
  * (c)2006-2025 Hawkynt - Educational implementation
  */
@@ -70,10 +70,10 @@
       for (let i = 0; i < 8; i++) {
         let value = 0;
         for (let j = 0; j < this.input.length; j++) {
-          value ^= OpCodes.RotL8(this.input[j], (i + j) % 8);
+          value = OpCodes.XorN(value, OpCodes.RotL8(this.input[j], (i + j) % 8));
         }
-        value ^= (i * 42 + 123) % 256;
-        output[i] = value & 0xFF;
+        value = OpCodes.XorN(value, (i * 42 + 123) % 256);
+        output[i] = OpCodes.AndN(value, 0xFF);
       }
       
       return output;

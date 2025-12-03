@@ -84,7 +84,7 @@
           text: "Simple test",
           uri: "XOR checksum",
           input: OpCodes.AnsiToBytes("TEST"),
-          expected: [0x54 ^ 0x45 ^ 0x53 ^ 0x54] // T^E^S^T
+          expected: [OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(0x54, 0x45), 0x53), 0x54)] // T^E^S^T
         }
       ];
     }
@@ -131,7 +131,7 @@
 
       // XOR all bytes
       for (let i = 0; i < data.length; i++) {
-        this.checksum ^= data[i];
+        this.checksum = OpCodes.XorN(this.checksum, data[i]);
       }
     }
 
@@ -142,7 +142,7 @@
    */
 
     Result() {
-      const result = [this.checksum & 0xFF];
+      const result = [OpCodes.AndN(this.checksum, 0xFF)];
       this.checksum = 0;
       return result;
     }

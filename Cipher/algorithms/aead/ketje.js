@@ -117,7 +117,7 @@
 
       const D = new Array(5);
       for (let x = 0; x < 5; ++x) {
-        D[x] = C[(x + 4) % 5] ^ this._rotl(C[(x + 1) % 5], 1);
+        D[x] = OpCodes.XorN(C[OpCodes.AndN(x + 4, 0xFF) % 5], this._rotl(C[OpCodes.AndN(x + 1, 0xFF) % 5], 1));
       }
 
       for (let x = 0; x < 5; ++x) {
@@ -136,8 +136,8 @@
         for (let y = 0; y < 5; ++y) {
           const offset = RHO_OFFSETS[x][y] % this.laneSize;
           const rotated = this._rotl(this.state[x][y], offset);
-          const newX = (0 * x + 1 * y) % 5;
-          const newY = (2 * x + 3 * y) % 5;
+          const newX = OpCodes.AndN(0 * x + 1 * y, 0xFF) % 5;
+          const newY = OpCodes.AndN(2 * x + 3 * y, 0xFF) % 5;
           B[newX][newY] = rotated;
         }
       }
@@ -145,7 +145,7 @@
       // Chi step
       for (let x = 0; x < 5; ++x) {
         for (let y = 0; y < 5; ++y) {
-          this.state[x][y] = B[x][y] ^ ((~B[(x + 1) % 5][y]) & B[(x + 2) % 5][y]);
+          this.state[x][y] = OpCodes.XorN(B[x][y], OpCodes.AndN(~B[OpCodes.AndN(x + 1, 0xFF) % 5][y], B[OpCodes.AndN(x + 2, 0xFF) % 5][y]));
           this.state[x][y] = this._maskLane(this.state[x][y]);
         }
       }
@@ -173,7 +173,7 @@
       // Apply coordinate transformation (simplified twist)
       for (let x = 0; x < 5; ++x) {
         for (let y = 0; y < 5; ++y) {
-          const tx = (x + y) % 5;
+          const tx = OpCodes.AndN(x + y, 0xFF) % 5;
           const ty = y;
           this.state[tx][ty] = temp[x][y];
         }
@@ -194,7 +194,7 @@
 
       for (let x = 0; x < 5; ++x) {
         for (let y = 0; y < 5; ++y) {
-          const tx = (x + 5 - y) % 5;
+          const tx = OpCodes.AndN(x + 5 - y, 0xFF) % 5;
           const ty = y;
           this.state[tx][ty] = temp[x][y];
         }
@@ -218,18 +218,18 @@
      */
     _rotl(value, positions) {
       if (positions === 0) return value;
-      const mask = (1n << BigInt(this.laneSize)) - 1n;
-      value = value & mask;
-      const pos = BigInt(positions % this.laneSize);
-      return ((value << pos) | (value >> (BigInt(this.laneSize) - pos))) & mask;
+      const mask = OpCodes.ShiftLn(1n, BigInt(this.laneSize)) - 1n;
+      value = OpCodes.AndN(value, mask);
+      const pos = BigInt(OpCodes.AndN(positions, 0xFF) % this.laneSize);
+      return OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftLn(value, pos), OpCodes.ShiftRn(value, BigInt(this.laneSize) - pos)), mask);
     }
 
     /**
      * Mask lane to correct bit width
      */
     _maskLane(value) {
-      const mask = (1n << BigInt(this.laneSize)) - 1n;
-      return value & mask;
+      const mask = OpCodes.ShiftLn(1n, BigInt(this.laneSize)) - 1n;
+      return OpCodes.AndN(value, mask);
     }
 
     /**
@@ -245,7 +245,7 @@
 
           let lane = 0n;
           for (let b = 0; b < bytesPerLane && byteIndex < offset + length; ++b) {
-            lane |= BigInt(bytes[byteIndex++] || 0) << BigInt(b * 8);
+            lane = OpCodes.OrN(lane, OpCodes.ShiftLn(BigInt(bytes[byteIndex++] || 0), BigInt(b * 8)));
           }
           this.state[x][y] = lane;
         }
@@ -265,7 +265,7 @@
         for (let x = 0; x < 5 && extracted < length; ++x) {
           const lane = this.state[x][y];
           for (let b = 0; b < bytesPerLane && extracted < length; ++b) {
-            result.push(Number((lane >> BigInt(b * 8)) & 0xFFn));
+            result.push(Number(OpCodes.AndN(OpCodes.ShiftRn(lane, BigInt(b * 8)), 0xFFn)));
             ++extracted;
           }
         }
@@ -287,9 +287,9 @@
 
           let lane = 0n;
           for (let b = 0; b < bytesPerLane && byteIndex < offset + length; ++b) {
-            lane |= BigInt(bytes[byteIndex++] || 0) << BigInt(b * 8);
+            lane = OpCodes.OrN(lane, OpCodes.ShiftLn(BigInt(bytes[byteIndex++] || 0), BigInt(b * 8)));
           }
-          this.state[x][y] ^= lane;
+          this.state[x][y] = OpCodes.XorN(this.state[x][y], lane);
         }
         if (byteIndex >= offset + length) break;
       }
@@ -663,7 +663,7 @@
           while (paddedAAD.length < this.rate) {
             paddedAAD.push(0);
           }
-          paddedAAD[this.rate - 1] |= 0x01; // AAD frame bit
+          paddedAAD[this.rate - 1] = OpCodes.OrN(paddedAAD[this.rate - 1], 0x01); // AAD frame bit
 
           duplex.duplexStep(paddedAAD, 0);
           aadOffset += blockSize;
@@ -692,7 +692,7 @@
           // XOR to decrypt
           const ptBlock = [];
           for (let i = 0; i < blockSize; ++i) {
-            ptBlock.push(ctBlock[i] ^ keystream[i]);
+            ptBlock.push(OpCodes.XorN(ctBlock[i], keystream[i]));
           }
           output.push(...ptBlock);
 
@@ -702,7 +702,7 @@
             paddedPT.push(0);
           }
           if (ctOffset + blockSize >= ciphertext.length) {
-            paddedPT[this.rate - 1] |= 0x02; // Final block frame bit
+            paddedPT[this.rate - 1] = OpCodes.OrN(paddedPT[this.rate - 1], 0x02); // Final block frame bit
           }
 
           duplex.perm.applyTwist();
@@ -740,7 +740,7 @@
           // XOR to encrypt
           const ctBlock = [];
           for (let i = 0; i < blockSize; ++i) {
-            ctBlock.push(ptBlock[i] ^ keystream[i]);
+            ctBlock.push(OpCodes.XorN(ptBlock[i], keystream[i]));
           }
           output.push(...ctBlock);
 
@@ -750,7 +750,7 @@
             paddedPT.push(0);
           }
           if (ptOffset + blockSize >= this._inputBuffer.length) {
-            paddedPT[this.rate - 1] |= 0x02; // Final block frame bit
+            paddedPT[this.rate - 1] = OpCodes.OrN(paddedPT[this.rate - 1], 0x02); // Final block frame bit
           }
 
           duplex.perm.applyTwist();

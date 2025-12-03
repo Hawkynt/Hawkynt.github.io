@@ -187,7 +187,7 @@
 
     encode(data) {
       const m = this._m;
-      const n = (1 << m) - 1; // 2^m - 1
+      const n = (OpCodes.Shl32(1, m)) - 1; // 2^m - 1
 
       if (data.length !== m) {
         throw new Error(`Simplex encode: Input must be exactly ${m} bits for Simplex(${n},${m})`);
@@ -204,7 +204,7 @@
           for (let j = 0; j < n; ++j) {
             const position = j + 1;
             // Check if bit i is set in position
-            if ((position >> i) & 1) {
+            if (OpCodes.AndN(OpCodes.Shr32(position, i), 1)) {
               codeword[j] ^= 1;
             }
           }
@@ -216,7 +216,7 @@
 
     decode(data) {
       const m = this._m;
-      const n = (1 << m) - 1;
+      const n = (OpCodes.Shl32(1, m)) - 1;
 
       if (data.length !== n) {
         throw new Error(`Simplex decode: Input must be exactly ${n} bits for Simplex(${n},${m})`);
@@ -228,14 +228,14 @@
       let maxCorrelation = -Infinity;
       let bestMessage = 0;
 
-      for (let msg = 0; msg < (1 << m); ++msg) {
+      for (let msg = 0; msg < (OpCodes.Shl32(1, m)); ++msg) {
         // Generate codeword for this message
         const testCodeword = new Array(n).fill(0);
         for (let i = 0; i < m; ++i) {
-          if ((msg >> i) & 1) {
+          if (OpCodes.AndN(OpCodes.Shr32(msg, i), 1)) {
             for (let j = 0; j < n; ++j) {
               const position = j + 1;
-              if ((position >> i) & 1) {
+              if (OpCodes.AndN(OpCodes.Shr32(position, i), 1)) {
                 testCodeword[j] ^= 1;
               }
             }
@@ -256,14 +256,14 @@
 
       // Convert bestMessage to bit array
       for (let i = 0; i < m; ++i) {
-        decoded[i] = (bestMessage >> i) & 1;
+        decoded[i] = OpCodes.AndN(OpCodes.Shr32(bestMessage, i), 1);
       }
 
       return decoded;
     }
 
     DetectError(data) {
-      const n = (1 << this._m) - 1;
+      const n = (OpCodes.Shl32(1, this)._m) - 1;
       if (data.length !== n) return true;
 
       try {

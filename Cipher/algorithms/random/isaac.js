@@ -41,8 +41,8 @@
 
   // ISAAC constants
   const SIZE_L = 8;
-  const STATE_ARRAY_SIZE = SIZE_L << 5; // 256
-  const KEYSTREAM_SIZE = STATE_ARRAY_SIZE << 2; // 1024 bytes
+  const STATE_ARRAY_SIZE = OpCodes.Shl32(SIZE_L, 5); // 256
+  const KEYSTREAM_SIZE = OpCodes.Shl32(STATE_ARRAY_SIZE, 2); // 1024 bytes
   const GOLDEN_RATIO = 0x9e3779b9; // Phi (golden ratio) initialization constant
 
   class IsaacAlgorithm extends RandomGenerationAlgorithm {
@@ -324,13 +324,13 @@
 
       // Convert key bytes to 32-bit little-endian words in results array
       // Pad to multiple of 4 if needed
-      const paddedLength = keyBytes.length + (keyBytes.length & 3);
+      const paddedLength = keyBytes.length + OpCodes.AndN(keyBytes.length, 3);
       const paddedKey = new Uint8Array(paddedLength);
       paddedKey.set(keyBytes);
 
       for (let i = 0; i < paddedKey.length; i += 4) {
         // Pack as little-endian 32-bit word
-        this.results[i >>> 2] = OpCodes.Pack32LE(
+        this.results[OpCodes.Shr32(i, 2)] = OpCodes.Pack32LE(
           paddedKey[i],
           paddedKey[i + 1],
           paddedKey[i + 2],
@@ -353,7 +353,7 @@
         for (let j = 0; j < STATE_ARRAY_SIZE; j += SIZE_L) {
           // Add results or engineState based on pass
           for (let k = 0; k < SIZE_L; ++k) {
-            abcdefgh[k] = (abcdefgh[k] + (pass < 1 ? this.results[j + k] : this.engineState[j + k])) >>> 0;
+            abcdefgh[k] = OpCodes.ToUint32(abcdefgh[k] + (pass < 1 ? this.results[j + k] : this.engineState[j + k]));
           }
 
           this._mix(abcdefgh);
@@ -376,14 +376,14 @@
      * Based on BouncyCastle mix() method
      */
     _mix(x) {
-      x[0] = (x[0] ^ (x[1] << 11)) >>> 0; x[3] = (x[3] + x[0]) >>> 0; x[1] = (x[1] + x[2]) >>> 0;
-      x[1] = (x[1] ^ (x[2] >>> 2)) >>> 0; x[4] = (x[4] + x[1]) >>> 0; x[2] = (x[2] + x[3]) >>> 0;
-      x[2] = (x[2] ^ (x[3] << 8)) >>> 0;  x[5] = (x[5] + x[2]) >>> 0; x[3] = (x[3] + x[4]) >>> 0;
-      x[3] = (x[3] ^ (x[4] >>> 16)) >>> 0; x[6] = (x[6] + x[3]) >>> 0; x[4] = (x[4] + x[5]) >>> 0;
-      x[4] = (x[4] ^ (x[5] << 10)) >>> 0; x[7] = (x[7] + x[4]) >>> 0; x[5] = (x[5] + x[6]) >>> 0;
-      x[5] = (x[5] ^ (x[6] >>> 4)) >>> 0;  x[0] = (x[0] + x[5]) >>> 0; x[6] = (x[6] + x[7]) >>> 0;
-      x[6] = (x[6] ^ (x[7] << 8)) >>> 0;  x[1] = (x[1] + x[6]) >>> 0; x[7] = (x[7] + x[0]) >>> 0;
-      x[7] = (x[7] ^ (x[0] >>> 9)) >>> 0;  x[2] = (x[2] + x[7]) >>> 0; x[0] = (x[0] + x[1]) >>> 0;
+      x[0] = OpCodes.ToUint32(OpCodes.XorN(x[0], OpCodes.Shl32(x[1], 11))); x[3] = OpCodes.ToUint32(x[3] + x[0]); x[1] = OpCodes.ToUint32(x[1] + x[2]);
+      x[1] = OpCodes.ToUint32(OpCodes.XorN(x[1], OpCodes.Shr32(x[2], 2))); x[4] = OpCodes.ToUint32(x[4] + x[1]); x[2] = OpCodes.ToUint32(x[2] + x[3]);
+      x[2] = OpCodes.ToUint32(OpCodes.XorN(x[2], OpCodes.Shl32(x[3], 8)));  x[5] = OpCodes.ToUint32(x[5] + x[2]); x[3] = OpCodes.ToUint32(x[3] + x[4]);
+      x[3] = OpCodes.ToUint32(OpCodes.XorN(x[3], OpCodes.Shr32(x[4], 16))); x[6] = OpCodes.ToUint32(x[6] + x[3]); x[4] = OpCodes.ToUint32(x[4] + x[5]);
+      x[4] = OpCodes.ToUint32(OpCodes.XorN(x[4], OpCodes.Shl32(x[5], 10))); x[7] = OpCodes.ToUint32(x[7] + x[4]); x[5] = OpCodes.ToUint32(x[5] + x[6]);
+      x[5] = OpCodes.ToUint32(OpCodes.XorN(x[5], OpCodes.Shr32(x[6], 4)));  x[0] = OpCodes.ToUint32(x[0] + x[5]); x[6] = OpCodes.ToUint32(x[6] + x[7]);
+      x[6] = OpCodes.ToUint32(OpCodes.XorN(x[6], OpCodes.Shl32(x[7], 8)));  x[1] = OpCodes.ToUint32(x[1] + x[6]); x[7] = OpCodes.ToUint32(x[7] + x[0]);
+      x[7] = OpCodes.ToUint32(OpCodes.XorN(x[7], OpCodes.Shr32(x[0], 9)));  x[2] = OpCodes.ToUint32(x[2] + x[7]); x[0] = OpCodes.ToUint32(x[0] + x[1]);
     }
 
     /**
@@ -391,25 +391,25 @@
      * Based on BouncyCastle isaac() method
      */
     _isaac() {
-      this.b = (this.b + (++this.c)) >>> 0;
+      this.b = OpCodes.ToUint32(this.b + (++this.c));
 
       for (let i = 0; i < STATE_ARRAY_SIZE; ++i) {
         const x = this.engineState[i];
 
-        // Choose operation based on i & 3
-        switch (i & 3) {
-          case 0: this.a = (this.a ^ (this.a << 13)) >>> 0; break;
-          case 1: this.a = (this.a ^ (this.a >>> 6)) >>> 0; break;
-          case 2: this.a = (this.a ^ (this.a << 2)) >>> 0; break;
-          case 3: this.a = (this.a ^ (this.a >>> 16)) >>> 0; break;
+        // Choose operation based on i AND 3
+        switch (OpCodes.AndN(i, 3)) {
+          case 0: this.a = OpCodes.ToUint32(OpCodes.XorN(this.a, OpCodes.Shl32(this.a, 13))); break;
+          case 1: this.a = OpCodes.ToUint32(OpCodes.XorN(this.a, OpCodes.Shr32(this.a, 6))); break;
+          case 2: this.a = OpCodes.ToUint32(OpCodes.XorN(this.a, OpCodes.Shl32(this.a, 2))); break;
+          case 3: this.a = OpCodes.ToUint32(OpCodes.XorN(this.a, OpCodes.Shr32(this.a, 16))); break;
         }
 
-        this.a = (this.a + this.engineState[(i + 128) & 0xFF]) >>> 0;
+        this.a = OpCodes.ToUint32(this.a + this.engineState[OpCodes.AndN(i + 128, 0xFF)]);
 
-        const y = (this.engineState[(x >>> 2) & 0xFF] + this.a + this.b) >>> 0;
+        const y = OpCodes.ToUint32(this.engineState[OpCodes.AndN(OpCodes.Shr32(x, 2), 0xFF)] + this.a + this.b);
         this.engineState[i] = y;
 
-        this.b = (this.engineState[(y >>> 10) & 0xFF] + x) >>> 0;
+        this.b = OpCodes.ToUint32(this.engineState[OpCodes.AndN(OpCodes.Shr32(y, 10), 0xFF)] + x);
         this.results[i] = this.b;
       }
 
@@ -442,7 +442,7 @@
         }
 
         output.push(this.keyStream[this.index]);
-        this.index = (this.index + 1) & 1023; // Wrap at 1024
+        this.index = OpCodes.AndN(this.index + 1, 1023); // Wrap at 1024
       }
 
       return output;
@@ -461,8 +461,8 @@
         this._isaac();
       }
 
-      const output = this.keyStream[this.index] ^ input;
-      this.index = (this.index + 1) & 1023;
+      const output = OpCodes.XorN(this.keyStream[this.index], input);
+      this.index = OpCodes.AndN(this.index + 1, 1023);
 
       return output;
     }

@@ -141,7 +141,7 @@
         // Initialize RNG state from seed using simple hash
         this._rngState = 0;
         for (let i = 0; i < this._seed.length; i++) {
-          this._rngState = ((this._rngState * 31) + this._seed[i]) >>> 0;
+          this._rngState = OpCodes.ToUint32((this._rngState * 31) + this._seed[i]);
         }
         // Ensure non-zero state
         if (this._rngState === 0) this._rngState = 1;
@@ -235,7 +235,7 @@
       xorEncrypt(data, key) {
         const result = new Array(data.length);
         for (let i = 0; i < data.length; i++) {
-          result[i] = data[i] ^ key[i % key.length];
+          result[i] = OpCodes.XorN(data[i], key[i % key.length]);
         }
         return result;
       }

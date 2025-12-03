@@ -83,38 +83,38 @@
    */
   function Alzette(x, y, rc) {
     // Round 1
-    x = OpCodes.ToDWord(x + OpCodes.RotL32(y, 1));
-    y ^= OpCodes.RotL32(x, 8);
-    x ^= rc;
+    x = OpCodes.ToUint32(x + OpCodes.RotL32(y, 1));
+    y = OpCodes.XorN(y, OpCodes.RotL32(x, 8));
+    x = OpCodes.XorN(x, rc);
 
     // Round 2
-    x = OpCodes.ToDWord(x + OpCodes.RotL32(y, 15));
-    y ^= OpCodes.RotL32(x, 15);
-    x ^= rc;
+    x = OpCodes.ToUint32(x + OpCodes.RotL32(y, 15));
+    y = OpCodes.XorN(y, OpCodes.RotL32(x, 15));
+    x = OpCodes.XorN(x, rc);
 
     // Round 3
-    x = OpCodes.ToDWord(x + y);
-    y ^= OpCodes.RotL32(x, 1);
-    x ^= rc;
+    x = OpCodes.ToUint32(x + y);
+    y = OpCodes.XorN(y, OpCodes.RotL32(x, 1));
+    x = OpCodes.XorN(x, rc);
 
     // Round 4
-    x = OpCodes.ToDWord(x + OpCodes.RotL32(y, 8));
-    y ^= OpCodes.RotL32(x, 16);
-    x ^= rc;
+    x = OpCodes.ToUint32(x + OpCodes.RotL32(y, 8));
+    y = OpCodes.XorN(y, OpCodes.RotL32(x, 16));
+    x = OpCodes.XorN(x, rc);
 
-    return { x: x >>> 0, y: y >>> 0 };
+    return { x: OpCodes.ToUint32(x), y: OpCodes.ToUint32(y) };
   }
 
   /**
    * ELL linear mixing function
    * Provides diffusion in the linear layer
-   * ELL(x) = (x >>> 16) ^ (x & 0xFFFF)
+   * ELL(x) = XOR of (x rotated right 16) with (x AND 0xFFFF)
    *
    * @param {number} x - Input word
    * @returns {number} Mixed output
    */
   function ELL(x) {
-    return OpCodes.RotR32(x, 16) ^ (x & 0xFFFF);
+    return OpCodes.XorN(OpCodes.RotR32(x, 16), OpCodes.AndN(x, 0xFFFF));
   }
 
   /**
@@ -145,8 +145,8 @@
 
     for (let step = 0; step < steps; ++step) {
       // Add round constants
-      y0 ^= RCON[step & 7];
-      y1 ^= step;
+      y0 = OpCodes.XorN(y0, RCON[OpCodes.AndN(step, 7)]);
+      y1 = OpCodes.XorN(y1, step);
 
       // ARXbox layer - 6 parallel Alzette transformations
       let result;
@@ -176,44 +176,44 @@
       y5 = result.y;
 
       // Linear layer - Reference: internal-sparkle.c lines 221-243
-      let tx = x0 ^ x1 ^ x2;
-      let ty = y0 ^ y1 ^ y2;
-      tx = OpCodes.RotL32(tx ^ (tx << 16), 16);
-      ty = OpCodes.RotL32(ty ^ (ty << 16), 16);
+      let tx = OpCodes.XorN(OpCodes.XorN(x0, x1), x2);
+      let ty = OpCodes.XorN(OpCodes.XorN(y0, y1), y2);
+      tx = OpCodes.RotL32(OpCodes.XorN(tx, OpCodes.Shl32(tx, 16)), 16);
+      ty = OpCodes.RotL32(OpCodes.XorN(ty, OpCodes.Shl32(ty, 16)), 16);
 
-      y3 ^= tx;
-      y4 ^= tx;
-      tx ^= y5;
+      y3 = OpCodes.XorN(y3, tx);
+      y4 = OpCodes.XorN(y4, tx);
+      tx = OpCodes.XorN(tx, y5);
       y5 = y2;
-      y2 = y3 ^ y0;
+      y2 = OpCodes.XorN(y3, y0);
       y3 = y0;
-      y0 = y4 ^ y1;
+      y0 = OpCodes.XorN(y4, y1);
       y4 = y1;
-      y1 = tx ^ y5;  // Note: y5 was already updated to old y2
+      y1 = OpCodes.XorN(tx, y5);  // Note: y5 was already updated to old y2
 
-      x3 ^= ty;
-      x4 ^= ty;
-      ty ^= x5;
+      x3 = OpCodes.XorN(x3, ty);
+      x4 = OpCodes.XorN(x4, ty);
+      ty = OpCodes.XorN(ty, x5);
       x5 = x2;
-      x2 = x3 ^ x0;
+      x2 = OpCodes.XorN(x3, x0);
       x3 = x0;
-      x0 = x4 ^ x1;
+      x0 = OpCodes.XorN(x4, x1);
       x4 = x1;
-      x1 = ty ^ x5;  // Note: x5 was already updated to old x2
+      x1 = OpCodes.XorN(ty, x5);  // Note: x5 was already updated to old x2
     }
 
-    state[0] = x0 >>> 0;
-    state[1] = y0 >>> 0;
-    state[2] = x1 >>> 0;
-    state[3] = y1 >>> 0;
-    state[4] = x2 >>> 0;
-    state[5] = y2 >>> 0;
-    state[6] = x3 >>> 0;
-    state[7] = y3 >>> 0;
-    state[8] = x4 >>> 0;
-    state[9] = y4 >>> 0;
-    state[10] = x5 >>> 0;
-    state[11] = y5 >>> 0;
+    state[0] = OpCodes.ToUint32(x0);
+    state[1] = OpCodes.ToUint32(y0);
+    state[2] = OpCodes.ToUint32(x1);
+    state[3] = OpCodes.ToUint32(y1);
+    state[4] = OpCodes.ToUint32(x2);
+    state[5] = OpCodes.ToUint32(y2);
+    state[6] = OpCodes.ToUint32(x3);
+    state[7] = OpCodes.ToUint32(y3);
+    state[8] = OpCodes.ToUint32(x4);
+    state[9] = OpCodes.ToUint32(y4);
+    state[10] = OpCodes.ToUint32(x5);
+    state[11] = OpCodes.ToUint32(y5);
   }
 
   // ===== SCHWAEMM256-128 ALGORITHM =====
@@ -491,8 +491,8 @@
      * For Schwaemm256-128 (SPARKLE-384 with rate=8 words, capacity=4 words):
      * Reference implementation (sparkle.c lines 127-141):
      * - Save s[0..3] to temps
-     * - s[0] = s[4] ^ s[8]
-     * - s[4] ^= temp ^ s[8]
+     * - s[0] = XOR of s[4] and s[8]
+     * - s[4] = XOR of s[4], temp, and s[8]
      * - (and same for 1,2,3)
      */
     _rho() {
@@ -501,15 +501,15 @@
       const t2 = this.state[2];
       const t3 = this.state[3];
 
-      this.state[0] = this.state[4] ^ this.state[8];
-      this.state[1] = this.state[5] ^ this.state[9];
-      this.state[2] = this.state[6] ^ this.state[10];
-      this.state[3] = this.state[7] ^ this.state[11];
+      this.state[0] = OpCodes.XorN(this.state[4], this.state[8]);
+      this.state[1] = OpCodes.XorN(this.state[5], this.state[9]);
+      this.state[2] = OpCodes.XorN(this.state[6], this.state[10]);
+      this.state[3] = OpCodes.XorN(this.state[7], this.state[11]);
 
-      this.state[4] ^= t0 ^ this.state[8];
-      this.state[5] ^= t1 ^ this.state[9];
-      this.state[6] ^= t2 ^ this.state[10];
-      this.state[7] ^= t3 ^ this.state[11];
+      this.state[4] = OpCodes.XorN(this.state[4], OpCodes.XorN(t0, this.state[8]));
+      this.state[5] = OpCodes.XorN(this.state[5], OpCodes.XorN(t1, this.state[9]));
+      this.state[6] = OpCodes.XorN(this.state[6], OpCodes.XorN(t2, this.state[10]));
+      this.state[7] = OpCodes.XorN(this.state[7], OpCodes.XorN(t3, this.state[11]));
     }
 
     /**
@@ -539,9 +539,9 @@
 
         // XOR AD block into state (treating state as byte array)
         for (let i = 0; i < this.RATE_BYTES; ++i) {
-          const wordIdx = i >>> 2;
-          const byteIdx = (i & 3) << 3;
-          this.state[wordIdx] ^= ad[pos + i] << byteIdx;
+          const wordIdx = OpCodes.Shr32(i, 2);
+          const byteIdx = OpCodes.Shl32(OpCodes.AndN(i, 3), 3);
+          this.state[wordIdx] = OpCodes.XorN(this.state[wordIdx], OpCodes.Shl32(ad[pos + i], byteIdx));
         }
 
         Sparkle384(this.state, this.STEPS_SLIM);
@@ -552,31 +552,31 @@
       // Process final block (adlen is now <= RATE and > 0)
       if (adlen === this.RATE_BYTES) {
         // Full final block: domain 0x05
-        this.state[this.STATE_WORDS - 1] ^= this._A1;
+        this.state[this.STATE_WORDS - 1] = OpCodes.XorN(this.state[this.STATE_WORDS - 1], this._A1);
         this._rho();
 
         // XOR full block
         for (let i = 0; i < this.RATE_BYTES; ++i) {
-          const wordIdx = i >>> 2;
-          const byteIdx = (i & 3) << 3;
-          this.state[wordIdx] ^= ad[pos + i] << byteIdx;
+          const wordIdx = OpCodes.Shr32(i, 2);
+          const byteIdx = OpCodes.Shl32(OpCodes.AndN(i, 3), 3);
+          this.state[wordIdx] = OpCodes.XorN(this.state[wordIdx], OpCodes.Shl32(ad[pos + i], byteIdx));
         }
       } else {
         // Partial block (0 < adlen < RATE): domain 0x04
-        this.state[this.STATE_WORDS - 1] ^= this._A0;
+        this.state[this.STATE_WORDS - 1] = OpCodes.XorN(this.state[this.STATE_WORDS - 1], this._A0);
         this._rho();
 
         // XOR partial block
         for (let i = 0; i < adlen; ++i) {
-          const wordIdx = i >>> 2;
-          const byteIdx = (i & 3) << 3;
-          this.state[wordIdx] ^= ad[pos + i] << byteIdx;
+          const wordIdx = OpCodes.Shr32(i, 2);
+          const byteIdx = OpCodes.Shl32(OpCodes.AndN(i, 3), 3);
+          this.state[wordIdx] = OpCodes.XorN(this.state[wordIdx], OpCodes.Shl32(ad[pos + i], byteIdx));
         }
 
         // Add padding byte 0x80
-        const padWordIdx = adlen >>> 2;
-        const padByteIdx = (adlen & 3) << 3;
-        this.state[padWordIdx] ^= 0x80 << padByteIdx;
+        const padWordIdx = OpCodes.Shr32(adlen, 2);
+        const padByteIdx = OpCodes.Shl32(OpCodes.AndN(adlen, 3), 3);
+        this.state[padWordIdx] = OpCodes.XorN(this.state[padWordIdx], OpCodes.Shl32(0x80, padByteIdx));
       }
 
       Sparkle384(this.state, this.STEPS_BIG);
@@ -629,10 +629,10 @@
           while (mlen > this.RATE_BYTES) {
             // Decrypt: plaintext = ciphertext XOR state
             for (let i = 0; i < this.RATE_BYTES; ++i) {
-              const wordIdx = i >>> 2;
-              const byteIdx = (i & 3) << 3;
-              const stateByte = (this.state[wordIdx] >>> byteIdx) & 0xFF;
-              const plainByte = this.inputBuffer[pos + i] ^ stateByte;
+              const wordIdx = OpCodes.Shr32(i, 2);
+              const byteIdx = OpCodes.Shl32(OpCodes.AndN(i, 3), 3);
+              const stateByte = OpCodes.AndN(OpCodes.Shr32(this.state[wordIdx], byteIdx), 0xFF);
+              const plainByte = OpCodes.XorN(this.inputBuffer[pos + i], stateByte);
               output.push(plainByte);
             }
 
@@ -641,9 +641,9 @@
 
             // XOR plaintext into state
             for (let i = 0; i < this.RATE_BYTES; ++i) {
-              const wordIdx = i >>> 2;
-              const byteIdx = (i & 3) << 3;
-              this.state[wordIdx] ^= output[output.length - this.RATE_BYTES + i] << byteIdx;
+              const wordIdx = OpCodes.Shr32(i, 2);
+              const byteIdx = OpCodes.Shl32(OpCodes.AndN(i, 3), 3);
+              this.state[wordIdx] = OpCodes.XorN(this.state[wordIdx], OpCodes.Shl32(output[output.length - this.RATE_BYTES + i], byteIdx));
             }
 
             Sparkle384(this.state, this.STEPS_SLIM);
@@ -656,47 +656,47 @@
             // Full final block: domain 0x07
             // Decrypt first
             for (let i = 0; i < this.RATE_BYTES; ++i) {
-              const wordIdx = i >>> 2;
-              const byteIdx = (i & 3) << 3;
-              const stateByte = (this.state[wordIdx] >>> byteIdx) & 0xFF;
-              const plainByte = this.inputBuffer[pos + i] ^ stateByte;
+              const wordIdx = OpCodes.Shr32(i, 2);
+              const byteIdx = OpCodes.Shl32(OpCodes.AndN(i, 3), 3);
+              const stateByte = OpCodes.AndN(OpCodes.Shr32(this.state[wordIdx], byteIdx), 0xFF);
+              const plainByte = OpCodes.XorN(this.inputBuffer[pos + i], stateByte);
               output.push(plainByte);
             }
 
-            this.state[this.STATE_WORDS - 1] ^= this._M3;
+            this.state[this.STATE_WORDS - 1] = OpCodes.XorN(this.state[this.STATE_WORDS - 1], this._M3);
             this._rho();
 
             // XOR plaintext into state
             for (let i = 0; i < this.RATE_BYTES; ++i) {
-              const wordIdx = i >>> 2;
-              const byteIdx = (i & 3) << 3;
-              this.state[wordIdx] ^= output[output.length - this.RATE_BYTES + i] << byteIdx;
+              const wordIdx = OpCodes.Shr32(i, 2);
+              const byteIdx = OpCodes.Shl32(OpCodes.AndN(i, 3), 3);
+              this.state[wordIdx] = OpCodes.XorN(this.state[wordIdx], OpCodes.Shl32(output[output.length - this.RATE_BYTES + i], byteIdx));
             }
           } else if (mlen > 0) {
             // Partial final block: domain 0x06
             // Decrypt partial block first
             for (let i = 0; i < mlen; ++i) {
-              const wordIdx = i >>> 2;
-              const byteIdx = (i & 3) << 3;
-              const stateByte = (this.state[wordIdx] >>> byteIdx) & 0xFF;
-              const plainByte = this.inputBuffer[pos + i] ^ stateByte;
+              const wordIdx = OpCodes.Shr32(i, 2);
+              const byteIdx = OpCodes.Shl32(OpCodes.AndN(i, 3), 3);
+              const stateByte = OpCodes.AndN(OpCodes.Shr32(this.state[wordIdx], byteIdx), 0xFF);
+              const plainByte = OpCodes.XorN(this.inputBuffer[pos + i], stateByte);
               output.push(plainByte);
             }
 
-            this.state[this.STATE_WORDS - 1] ^= this._M2;
+            this.state[this.STATE_WORDS - 1] = OpCodes.XorN(this.state[this.STATE_WORDS - 1], this._M2);
             this._rho();
 
             // XOR plaintext into state
             for (let i = 0; i < mlen; ++i) {
-              const wordIdx = i >>> 2;
-              const byteIdx = (i & 3) << 3;
-              this.state[wordIdx] ^= output[output.length - mlen + i] << byteIdx;
+              const wordIdx = OpCodes.Shr32(i, 2);
+              const byteIdx = OpCodes.Shl32(OpCodes.AndN(i, 3), 3);
+              this.state[wordIdx] = OpCodes.XorN(this.state[wordIdx], OpCodes.Shl32(output[output.length - mlen + i], byteIdx));
             }
 
             // Add padding
-            const padWordIdx = mlen >>> 2;
-            const padByteIdx = (mlen & 3) << 3;
-            this.state[padWordIdx] ^= 0x80 << padByteIdx;
+            const padWordIdx = OpCodes.Shr32(mlen, 2);
+            const padByteIdx = OpCodes.Shl32(OpCodes.AndN(mlen, 3), 3);
+            this.state[padWordIdx] = OpCodes.XorN(this.state[padWordIdx], OpCodes.Shl32(0x80, padByteIdx));
           }
 
           Sparkle384(this.state, this.STEPS_BIG);
@@ -706,17 +706,17 @@
         // Reference: sparkle.c lines 296-298
         const computedTag = [];
         for (let i = 0; i < this.TAG_BYTES; ++i) {
-          const wordIdx = (this.RATE_BYTES + i) >>> 2;
-          const byteIdx = (i & 3) << 3;
-          const capacityByte = (this.state[wordIdx] >>> byteIdx) & 0xFF;
-          computedTag.push(capacityByte ^ this._key[i]);
+          const wordIdx = OpCodes.Shr32(this.RATE_BYTES + i, 2);
+          const byteIdx = OpCodes.Shl32(OpCodes.AndN(i, 3), 3);
+          const capacityByte = OpCodes.AndN(OpCodes.Shr32(this.state[wordIdx], byteIdx), 0xFF);
+          computedTag.push(OpCodes.XorN(capacityByte, this._key[i]));
         }
 
         // Verify tag (constant-time comparison)
         const providedTag = this.inputBuffer.slice(this.inputBuffer.length - this.TAG_BYTES);
         let tagMatch = 0;
         for (let i = 0; i < this.TAG_BYTES; ++i) {
-          tagMatch |= computedTag[i] ^ providedTag[i];
+          tagMatch = OpCodes.OrN(tagMatch, OpCodes.XorN(computedTag[i], providedTag[i]));
         }
 
         if (tagMatch !== 0) {
@@ -738,10 +738,10 @@
           while (mlen > this.RATE_BYTES) {
             // Compute ciphertext: c = m XOR state
             for (let i = 0; i < this.RATE_BYTES; ++i) {
-              const wordIdx = i >>> 2;
-              const byteIdx = (i & 3) << 3;
-              const stateByte = (this.state[wordIdx] >>> byteIdx) & 0xFF;
-              output.push(this.inputBuffer[pos + i] ^ stateByte);
+              const wordIdx = OpCodes.Shr32(i, 2);
+              const byteIdx = OpCodes.Shl32(OpCodes.AndN(i, 3), 3);
+              const stateByte = OpCodes.AndN(OpCodes.Shr32(this.state[wordIdx], byteIdx), 0xFF);
+              output.push(OpCodes.XorN(this.inputBuffer[pos + i], stateByte));
             }
 
             // rho operation
@@ -749,9 +749,9 @@
 
             // XOR plaintext into state
             for (let i = 0; i < this.RATE_BYTES; ++i) {
-              const wordIdx = i >>> 2;
-              const byteIdx = (i & 3) << 3;
-              this.state[wordIdx] ^= this.inputBuffer[pos + i] << byteIdx;
+              const wordIdx = OpCodes.Shr32(i, 2);
+              const byteIdx = OpCodes.Shl32(OpCodes.AndN(i, 3), 3);
+              this.state[wordIdx] = OpCodes.XorN(this.state[wordIdx], OpCodes.Shl32(this.inputBuffer[pos + i], byteIdx));
             }
 
             Sparkle384(this.state, this.STEPS_SLIM);
@@ -764,45 +764,45 @@
             // Full final block: domain 0x07
             // Compute ciphertext first
             for (let i = 0; i < this.RATE_BYTES; ++i) {
-              const wordIdx = i >>> 2;
-              const byteIdx = (i & 3) << 3;
-              const stateByte = (this.state[wordIdx] >>> byteIdx) & 0xFF;
-              output.push(this.inputBuffer[pos + i] ^ stateByte);
+              const wordIdx = OpCodes.Shr32(i, 2);
+              const byteIdx = OpCodes.Shl32(OpCodes.AndN(i, 3), 3);
+              const stateByte = OpCodes.AndN(OpCodes.Shr32(this.state[wordIdx], byteIdx), 0xFF);
+              output.push(OpCodes.XorN(this.inputBuffer[pos + i], stateByte));
             }
 
-            this.state[this.STATE_WORDS - 1] ^= this._M3;
+            this.state[this.STATE_WORDS - 1] = OpCodes.XorN(this.state[this.STATE_WORDS - 1], this._M3);
             this._rho();
 
             // XOR plaintext into state
             for (let i = 0; i < this.RATE_BYTES; ++i) {
-              const wordIdx = i >>> 2;
-              const byteIdx = (i & 3) << 3;
-              this.state[wordIdx] ^= this.inputBuffer[pos + i] << byteIdx;
+              const wordIdx = OpCodes.Shr32(i, 2);
+              const byteIdx = OpCodes.Shl32(OpCodes.AndN(i, 3), 3);
+              this.state[wordIdx] = OpCodes.XorN(this.state[wordIdx], OpCodes.Shl32(this.inputBuffer[pos + i], byteIdx));
             }
           } else if (mlen > 0) {
             // Partial final block: domain 0x06
             // Compute partial ciphertext first
             for (let i = 0; i < mlen; ++i) {
-              const wordIdx = i >>> 2;
-              const byteIdx = (i & 3) << 3;
-              const stateByte = (this.state[wordIdx] >>> byteIdx) & 0xFF;
-              output.push(this.inputBuffer[pos + i] ^ stateByte);
+              const wordIdx = OpCodes.Shr32(i, 2);
+              const byteIdx = OpCodes.Shl32(OpCodes.AndN(i, 3), 3);
+              const stateByte = OpCodes.AndN(OpCodes.Shr32(this.state[wordIdx], byteIdx), 0xFF);
+              output.push(OpCodes.XorN(this.inputBuffer[pos + i], stateByte));
             }
 
-            this.state[this.STATE_WORDS - 1] ^= this._M2;
+            this.state[this.STATE_WORDS - 1] = OpCodes.XorN(this.state[this.STATE_WORDS - 1], this._M2);
             this._rho();
 
             // XOR plaintext into state
             for (let i = 0; i < mlen; ++i) {
-              const wordIdx = i >>> 2;
-              const byteIdx = (i & 3) << 3;
-              this.state[wordIdx] ^= this.inputBuffer[pos + i] << byteIdx;
+              const wordIdx = OpCodes.Shr32(i, 2);
+              const byteIdx = OpCodes.Shl32(OpCodes.AndN(i, 3), 3);
+              this.state[wordIdx] = OpCodes.XorN(this.state[wordIdx], OpCodes.Shl32(this.inputBuffer[pos + i], byteIdx));
             }
 
             // Add padding
-            const padWordIdx = mlen >>> 2;
-            const padByteIdx = (mlen & 3) << 3;
-            this.state[padWordIdx] ^= 0x80 << padByteIdx;
+            const padWordIdx = OpCodes.Shr32(mlen, 2);
+            const padByteIdx = OpCodes.Shl32(OpCodes.AndN(mlen, 3), 3);
+            this.state[padWordIdx] = OpCodes.XorN(this.state[padWordIdx], OpCodes.Shl32(0x80, padByteIdx));
           }
 
           Sparkle384(this.state, this.STEPS_BIG);
@@ -813,10 +813,10 @@
         // lw_xor_block_2_src(c, SCHWAEMM_256_128_RIGHT(s), k, SCHWAEMM_256_128_TAG_SIZE)
         // This means: tag[i] = capacity[i] ^ key[i]
         for (let i = 0; i < this.TAG_BYTES; ++i) {
-          const wordIdx = (this.RATE_BYTES + i) >>> 2;
-          const byteIdx = (i & 3) << 3;
-          const capacityByte = (this.state[wordIdx] >>> byteIdx) & 0xFF;
-          output.push(capacityByte ^ this._key[i]);
+          const wordIdx = OpCodes.Shr32(this.RATE_BYTES + i, 2);
+          const byteIdx = OpCodes.Shl32(OpCodes.AndN(i, 3), 3);
+          const capacityByte = OpCodes.AndN(OpCodes.Shr32(this.state[wordIdx], byteIdx), 0xFF);
+          output.push(OpCodes.XorN(capacityByte, this._key[i]));
         }
 
         // Reset for next operation

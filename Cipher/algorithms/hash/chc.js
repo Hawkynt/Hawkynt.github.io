@@ -290,7 +290,7 @@
 
       // state = state XOR T0 XOR T1
       for (let i = 0; i < this.blockSize; i++) {
-        this.state[i] ^= T0[i] ^ T1[i];
+        this.state[i] = OpCodes.XorN(this.state[i], OpCodes.XorN(T0[i], T1[i]));
       }
 
       // Clear sensitive data

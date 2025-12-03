@@ -79,7 +79,7 @@
       const highRow = baseSBoxes[(2 * i) + 1];
       const table = tables[i];
       for (let j = 0; j < 256; j++) {
-        const combined = lowRow[j & 0x0f] | (highRow[j >>> 4] << 4);
+        const combined = OpCodes.OrN(lowRow[OpCodes.AndN(j, 0x0f)], OpCodes.Shl32(highRow[OpCodes.Shr32(j, 4)], 4));
         table[j] = OpCodes.RotL32(combined, rotation[i]);
       }
     }
@@ -96,16 +96,19 @@
 
   function gostRound(word, keyWord) {
     const sum = OpCodes.Add32(word, keyWord);
-    const b0 = sum & 0xFF;
-    const b1 = (sum >>> 8) & 0xFF;
-    const b2 = (sum >>> 16) & 0xFF;
-    const b3 = (sum >>> 24) & 0xFF;
-    return (
-      Gost28147Tables.T0[b0] ^
-      Gost28147Tables.T1[b1] ^
-      Gost28147Tables.T2[b2] ^
-      Gost28147Tables.T3[b3]
-    ) >>> 0;
+    const b0 = OpCodes.AndN(sum, 0xFF);
+    const b1 = OpCodes.AndN(OpCodes.Shr32(sum, 8), 0xFF);
+    const b2 = OpCodes.AndN(OpCodes.Shr32(sum, 16), 0xFF);
+    const b3 = OpCodes.AndN(OpCodes.Shr32(sum, 24), 0xFF);
+    return OpCodes.ToUint32(
+      OpCodes.XorN(
+        OpCodes.XorN(
+          OpCodes.XorN(Gost28147Tables.T0[b0], Gost28147Tables.T1[b1]),
+          Gost28147Tables.T2[b2]
+        ),
+        Gost28147Tables.T3[b3]
+      )
+    );
   }
 
   /**
@@ -276,7 +279,7 @@
         throw new Error("Key not set");
       }
       for (let i = 0; i < data.length; i++) {
-        this.inputBuffer.push(data[i] & 0xFF);
+        this.inputBuffer.push(OpCodes.AndN(data[i], 0xFF));
       }
     }
 
@@ -327,8 +330,8 @@
       const k = this.subkeys;
 
       const applyPair = (firstKey, secondKey) => {
-        n2 = (n2 ^ gostRound(n1, firstKey)) >>> 0;
-        n1 = (n1 ^ gostRound(n2, secondKey)) >>> 0;
+        n2 = OpCodes.ToUint32(OpCodes.XorN(n2, gostRound(n1, firstKey)));
+        n1 = OpCodes.ToUint32(OpCodes.XorN(n1, gostRound(n2, secondKey)));
       };
 
       for (let cycle = 0; cycle < 3; cycle++) {
@@ -338,14 +341,14 @@
         applyPair(k[6], k[7]);
       }
 
-      n2 = (n2 ^ gostRound(n1, k[7])) >>> 0;
-      n1 = (n1 ^ gostRound(n2, k[6])) >>> 0;
-      n2 = (n2 ^ gostRound(n1, k[5])) >>> 0;
-      n1 = (n1 ^ gostRound(n2, k[4])) >>> 0;
-      n2 = (n2 ^ gostRound(n1, k[3])) >>> 0;
-      n1 = (n1 ^ gostRound(n2, k[2])) >>> 0;
-      n2 = (n2 ^ gostRound(n1, k[1])) >>> 0;
-      n1 = (n1 ^ gostRound(n2, k[0])) >>> 0;
+      n2 = OpCodes.ToUint32(OpCodes.XorN(n2, gostRound(n1, k[7])));
+      n1 = OpCodes.ToUint32(OpCodes.XorN(n1, gostRound(n2, k[6])));
+      n2 = OpCodes.ToUint32(OpCodes.XorN(n2, gostRound(n1, k[5])));
+      n1 = OpCodes.ToUint32(OpCodes.XorN(n1, gostRound(n2, k[4])));
+      n2 = OpCodes.ToUint32(OpCodes.XorN(n2, gostRound(n1, k[3])));
+      n1 = OpCodes.ToUint32(OpCodes.XorN(n1, gostRound(n2, k[2])));
+      n2 = OpCodes.ToUint32(OpCodes.XorN(n2, gostRound(n1, k[1])));
+      n1 = OpCodes.ToUint32(OpCodes.XorN(n1, gostRound(n2, k[0])));
 
       const leftBytes = OpCodes.Unpack32LE(n2);
       const rightBytes = OpCodes.Unpack32LE(n1);
@@ -362,8 +365,8 @@
       const k = this.subkeys;
 
       const applyPair = (firstKey, secondKey) => {
-        n2 = (n2 ^ gostRound(n1, firstKey)) >>> 0;
-        n1 = (n1 ^ gostRound(n2, secondKey)) >>> 0;
+        n2 = OpCodes.ToUint32(OpCodes.XorN(n2, gostRound(n1, firstKey)));
+        n1 = OpCodes.ToUint32(OpCodes.XorN(n1, gostRound(n2, secondKey)));
       };
 
       applyPair(k[0], k[1]);
@@ -387,12 +390,12 @@
       const subkeys = new Uint32Array(GOST28147_KEY_BYTES / 4);
       for (let i = 0; i < subkeys.length; i++) {
         const offset = i * 4;
-        subkeys[i] = OpCodes.Pack32LE(
+        subkeys[i] = OpCodes.ToUint32(OpCodes.Pack32LE(
           keyBytes[offset],
           keyBytes[offset + 1],
           keyBytes[offset + 2],
           keyBytes[offset + 3]
-        ) >>> 0;
+        ));
       }
       return subkeys;
     }
@@ -667,13 +670,13 @@
     _gfMultiply(x, y) {
       let z = 0;
       while (y !== 0) {
-        if (y & 1) {
-          z ^= x;
+        if (OpCodes.AndN(y, 1)) {
+          z = OpCodes.XorN(z, x);
         }
-        x = (x << 1) ^ (x & 0x80 ? 0xC3 : 0x00);
-        y >>>= 1;
+        x = OpCodes.XorN(OpCodes.Shl32(x, 1), OpCodes.AndN(x, 0x80) ? 0xC3 : 0x00);
+        y = OpCodes.Shr32(y, 1);
       }
-      return z & 0xFF;
+      return OpCodes.AndN(z, 0xFF);
     }
 
     _lTransformation(state) {
@@ -682,7 +685,7 @@
 
         for (let i = 14; i >= 0; i--) {
           state[i + 1] = state[i];
-          x ^= this._gfMultiply(state[i], this.algorithm.LINEAR_VECTOR[i]);
+          x = OpCodes.XorN(x, this._gfMultiply(state[i], this.algorithm.LINEAR_VECTOR[i]));
         }
 
         state[0] = x;
@@ -695,7 +698,7 @@
 
         for (let j = 0; j < 15; j++) {
           state[j] = state[j + 1];
-          c ^= this._gfMultiply(state[j], this.algorithm.LINEAR_VECTOR[j]);
+          c = OpCodes.XorN(c, this._gfMultiply(state[j], this.algorithm.LINEAR_VECTOR[j]));
         }
 
         state[15] = c;
@@ -704,7 +707,7 @@
 
     _addRoundKey(state, roundKey) {
       for (let i = 0; i < 16; i++) {
-        state[i] ^= roundKey[i];
+        state[i] = OpCodes.XorN(state[i], roundKey[i]);
       }
     }
 
@@ -726,7 +729,7 @@
     _feistelFunction(input, constant) {
       const temp = new Array(16);
       for (let i = 0; i < 16; i++) {
-        temp[i] = input[i] ^ constant[i];
+        temp[i] = OpCodes.XorN(input[i], constant[i]);
       }
 
       this._sTransformation(temp);
@@ -754,7 +757,7 @@
           const temp = this._feistelFunction(left, roundConstants[constIndex]);
 
           for (let k = 0; k < 16; k++) {
-            temp[k] ^= right[k];
+            temp[k] = OpCodes.XorN(temp[k], right[k]);
           }
 
           right = [...left];

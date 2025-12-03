@@ -240,7 +240,7 @@
 
     encode(data) {
       const r = this._parityBits;
-      const n = (1 << r) - 1 - this._shortened; // Total bits after shortening
+      const n = OpCodes.Shl32(1, r) - 1 - this._shortened; // Total bits after shortening
       const k = n - r; // Data bits (extended parity is added after, doesn't affect k)
 
       if (data.length !== k) {
@@ -248,13 +248,13 @@
       }
 
       // Standard Hamming encoding
-      const fullN = (1 << r) - 1;
+      const fullN = OpCodes.Shl32(1, r) - 1;
       const encoded = new Array(fullN).fill(0);
 
       // Place data bits (skipping power-of-2 positions)
       let dataIdx = 0;
       for (let i = 1; i <= fullN; ++i) {
-        if ((i & (i - 1)) !== 0) { // Not a power of 2
+        if (OpCodes.AndN(i, i - 1) !== 0) { // Not a power of 2
           if (dataIdx < data.length) {
             encoded[i - 1] = data[dataIdx++];
           }
@@ -263,11 +263,11 @@
 
       // Calculate parity bits
       for (let p = 0; p < r; ++p) {
-        const pos = 1 << p;
+        const pos = OpCodes.Shl32(1, p);
         let parity = 0;
         for (let i = 1; i <= fullN; ++i) {
-          if ((i & pos) !== 0) {
-            parity ^= encoded[i - 1];
+          if (OpCodes.AndN(i, pos) !== 0) {
+            parity = OpCodes.XorN(parity, encoded[i - 1]);
           }
         }
         encoded[pos - 1] = parity;
@@ -278,7 +278,7 @@
 
       // Add overall parity for extended (SECDED)
       if (this._extended) {
-        const overallParity = result.reduce((p, bit) => p ^ bit, 0);
+        const overallParity = result.reduce((p, bit) => OpCodes.XorN(p, bit), 0);
         result.push(overallParity);
       }
 
@@ -287,7 +287,7 @@
 
     decode(data) {
       const r = this._parityBits;
-      const expectedLen = (1 << r) - 1 - this._shortened + (this._extended ? 1 : 0);
+      const expectedLen = OpCodes.Shl32(1, r) - 1 - this._shortened + (this._extended ? 1 : 0);
 
       if (data.length !== expectedLen) {
         throw new Error(`Hamming decode: Input must be exactly ${expectedLen} bits for this configuration`);
@@ -298,7 +298,7 @@
 
       // Check overall parity for extended codes
       if (this._extended) {
-        overallParity = received.reduce((p, bit) => p ^ bit, 0);
+        overallParity = received.reduce((p, bit) => OpCodes.XorN(p, bit), 0);
         received = received.slice(0, -1); // Remove overall parity bit
       }
 
@@ -310,16 +310,16 @@
       // Calculate syndrome
       let syndrome = 0;
       for (let p = 0; p < r; ++p) {
-        const pos = 1 << p;
+        const pos = OpCodes.Shl32(1, p);
         let parity = 0;
-        const fullN = (1 << r) - 1;
+        const fullN = OpCodes.Shl32(1, r) - 1;
         for (let i = 1; i <= fullN; ++i) {
-          if ((i & pos) !== 0) {
-            parity ^= received[i - 1];
+          if (OpCodes.AndN(i, pos) !== 0) {
+            parity = OpCodes.XorN(parity, received[i - 1]);
           }
         }
         if (parity !== 0) {
-          syndrome |= pos;
+          syndrome = OpCodes.OrN(syndrome, pos);
         }
       }
 
@@ -335,7 +335,7 @@
           // Single bit error (correctable)
           console.log(`Hamming SECDED: Single error at position ${syndrome}, correcting...`);
           if (syndrome > 0 && syndrome <= received.length) {
-            received[syndrome - 1] ^= 1;
+            received[syndrome - 1] = OpCodes.XorN(received[syndrome - 1], 1);
           }
         } else {
           // Double bit error (detectable, not correctable)
@@ -346,7 +346,7 @@
         if (syndrome !== 0) {
           console.log(`Hamming: Error at position ${syndrome}, correcting...`);
           if (syndrome > 0 && syndrome <= received.length) {
-            received[syndrome - 1] ^= 1;
+            received[syndrome - 1] = OpCodes.XorN(received[syndrome - 1], 1);
           }
         }
       }
@@ -358,9 +358,9 @@
 
       // Extract data bits (skip power-of-2 positions)
       const result = [];
-      const fullN = (1 << r) - 1;
+      const fullN = OpCodes.Shl32(1, r) - 1;
       for (let i = 1; i <= fullN && result.length < data.length - (this._extended ? 1 : 0) - r; ++i) {
-        if ((i & (i - 1)) !== 0) { // Not a power of 2
+        if (OpCodes.AndN(i, i - 1) !== 0) { // Not a power of 2
           if (i - 1 < received.length) {
             result.push(received[i - 1]);
           }
@@ -372,14 +372,14 @@
 
     DetectError(data) {
       const r = this._parityBits;
-      const expectedLen = (1 << r) - 1 - this._shortened + (this._extended ? 1 : 0);
+      const expectedLen = OpCodes.Shl32(1, r) - 1 - this._shortened + (this._extended ? 1 : 0);
 
       if (data.length !== expectedLen) return true;
 
       let received = [...data];
 
       if (this._extended) {
-        const overallParity = received.reduce((p, bit) => p ^ bit, 0);
+        const overallParity = received.reduce((p, bit) => OpCodes.XorN(p, bit), 0);
         received = received.slice(0, -1);
 
         // Pad if shortened
@@ -388,17 +388,17 @@
         }
 
         let syndrome = 0;
-        const fullN = (1 << r) - 1;
+        const fullN = OpCodes.Shl32(1, r) - 1;
         for (let p = 0; p < r; ++p) {
-          const pos = 1 << p;
+          const pos = OpCodes.Shl32(1, p);
           let parity = 0;
           for (let i = 1; i <= fullN; ++i) {
-            if ((i & pos) !== 0) {
-              parity ^= received[i - 1];
+            if (OpCodes.AndN(i, pos) !== 0) {
+              parity = OpCodes.XorN(parity, received[i - 1]);
             }
           }
           if (parity !== 0) {
-            syndrome |= pos;
+            syndrome = OpCodes.OrN(syndrome, pos);
           }
         }
 
@@ -410,17 +410,17 @@
         }
 
         let syndrome = 0;
-        const fullN = (1 << r) - 1;
+        const fullN = OpCodes.Shl32(1, r) - 1;
         for (let p = 0; p < r; ++p) {
-          const pos = 1 << p;
+          const pos = OpCodes.Shl32(1, p);
           let parity = 0;
           for (let i = 1; i <= fullN; ++i) {
-            if ((i & pos) !== 0) {
-              parity ^= received[i - 1];
+            if (OpCodes.AndN(i, pos) !== 0) {
+              parity = OpCodes.XorN(parity, received[i - 1]);
             }
           }
           if (parity !== 0) {
-            syndrome |= pos;
+            syndrome = OpCodes.OrN(syndrome, pos);
           }
         }
 

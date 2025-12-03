@@ -69,19 +69,19 @@
       this.tests = [
         new TestCase(
           OpCodes.AnsiToBytes("GPRMC"),
-          [0x47 ^ 0x50 ^ 0x52 ^ 0x4D ^ 0x43], // G^P^R^M^C
+          [OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(0x47, 0x50), 0x52), 0x4D), 0x43)], // G^P^R^M^C
           "NMEA sentence type",
           "https://nmeachecksum.eqth.net/"
         ),
         new TestCase(
           [0x01, 0x02, 0x03, 0x04],
-          [0x01 ^ 0x02 ^ 0x03 ^ 0x04], // = 0x04
+          [OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(0x01, 0x02), 0x03), 0x04)], // = 0x04
           "Simple sequence",
           "XOR checksum calculation"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("ABC"),
-          [0x41 ^ 0x42 ^ 0x43], // = 0x00
+          [OpCodes.XorN(OpCodes.XorN(0x41, 0x42), 0x43)], // = 0x00
           "ASCII test",
           "XOR checksum test"
         )
@@ -129,7 +129,7 @@
       if (!data || data.length === 0) return;
 
       for (let i = 0; i < data.length; i++) {
-        this.checksum ^= data[i];
+        this.checksum = OpCodes.XorN(this.checksum, data[i]);
       }
     }
 
@@ -140,7 +140,7 @@
    */
 
     Result() {
-      const result = [this.checksum & 0xFF];
+      const result = [OpCodes.AndN(this.checksum, 0xFF)];
       this.checksum = 0;
       return result;
     }

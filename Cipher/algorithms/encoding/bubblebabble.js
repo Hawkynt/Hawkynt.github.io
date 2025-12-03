@@ -178,7 +178,7 @@
       for (let i = 0; i < data.length && i < 10; i++) {
         const byte = data[i];
         const consonantIdx = byte % 20;
-        const vowelIdx = (byte >> 4) % 6;
+        const vowelIdx = OpCodes.Shr32(byte, 4) % 6;
 
         result += this.algorithm.consonants[consonantIdx];
         result += this.algorithm.vowels[vowelIdx];

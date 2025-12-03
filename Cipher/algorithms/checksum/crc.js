@@ -398,7 +398,7 @@
       ];
 
       this.references = [
-        new LinkItem("Peterson & Brown Paper", "https://dl.acm.org/doi/10.1145/321075.321076"),
+        new LinkItem("Peterson and Brown Paper", "https://dl.acm.org/doi/10.1145/321075.321076"),
         new LinkItem("CRC Parameter Database", "https://reveng.sourceforge.io/crc-catalogue/")
       ];
 
@@ -523,30 +523,30 @@
 
       if (this.config.inputReflected) {
         // Reflected algorithm (LSB first)
-        const tblIdx = (this.crc ^ inputByte) & 0xFF;
+        const tblIdx = OpCodes.AndN(OpCodes.XorN(this.crc, inputByte), 0xFF);
         if (bitWidth === 8) {
-          this.crc = this.crcTable[tblIdx] & 0xFF;
+          this.crc = OpCodes.AndN(this.crcTable[tblIdx], 0xFF);
         } else if (bitWidth === 16) {
-          this.crc = ((this.crc >> 8) ^ this.crcTable[tblIdx]) & 0xFFFF;
+          this.crc = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(this.crc, 8), this.crcTable[tblIdx]), 0xFFFF);
         } else if (bitWidth === 24) {
-          this.crc = ((this.crc >> 8) ^ this.crcTable[tblIdx]) & 0xFFFFFF;
+          this.crc = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(this.crc, 8), this.crcTable[tblIdx]), 0xFFFFFF);
         } else if (bitWidth === 32) {
-          this.crc = ((this.crc >>> 8) ^ this.crcTable[tblIdx]) >>> 0;
+          this.crc = OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shr32(this.crc, 8), this.crcTable[tblIdx]));
         }
       } else {
         // Normal algorithm (MSB first)
         if (bitWidth === 8) {
-          const tblIdx = (this.crc ^ inputByte) & 0xFF;
-          this.crc = this.crcTable[tblIdx] & 0xFF;
+          const tblIdx = OpCodes.AndN(OpCodes.XorN(this.crc, inputByte), 0xFF);
+          this.crc = OpCodes.AndN(this.crcTable[tblIdx], 0xFF);
         } else if (bitWidth === 16) {
-          const tblIdx = ((this.crc >> 8) ^ inputByte) & 0xFF;
-          this.crc = ((this.crc << 8) ^ this.crcTable[tblIdx]) & 0xFFFF;
+          const tblIdx = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(this.crc, 8), inputByte), 0xFF);
+          this.crc = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(this.crc, 8), this.crcTable[tblIdx]), 0xFFFF);
         } else if (bitWidth === 24) {
-          const tblIdx = ((this.crc >> 16) ^ inputByte) & 0xFF;
-          this.crc = ((this.crc << 8) ^ this.crcTable[tblIdx]) & 0xFFFFFF;
+          const tblIdx = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(this.crc, 16), inputByte), 0xFF);
+          this.crc = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(this.crc, 8), this.crcTable[tblIdx]), 0xFFFFFF);
         } else if (bitWidth === 32) {
-          const tblIdx = ((this.crc >>> 24) ^ inputByte) & 0xFF;
-          this.crc = ((this.crc << 8) ^ this.crcTable[tblIdx]) >>> 0;
+          const tblIdx = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(this.crc, 24), inputByte), 0xFF);
+          this.crc = OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shl32(this.crc, 8), this.crcTable[tblIdx]));
         }
       }
     }
@@ -554,48 +554,48 @@
     _updateCRC64(byte) {
       if (this.config.inputReflected) {
         // Reflected algorithm (LSB first)
-        const tblIdx = (this.crcLow ^ byte) & 0xFF;
+        const tblIdx = OpCodes.AndN(OpCodes.XorN(this.crcLow, byte), 0xFF);
         const tableEntry = this.crcTable[tblIdx];
 
-        this.crcLow = (((this.crcLow >>> 8) | ((this.crcHigh & 0xFF) << 24)) ^ tableEntry.low) >>> 0;
-        this.crcHigh = ((this.crcHigh >>> 8) ^ tableEntry.high) >>> 0;
+        this.crcLow = OpCodes.ToUint32(OpCodes.XorN(OpCodes.OrN(OpCodes.Shr32(this.crcLow, 8), OpCodes.Shl32(OpCodes.AndN(this.crcHigh, 0xFF), 24)), tableEntry.low));
+        this.crcHigh = OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shr32(this.crcHigh, 8), tableEntry.high));
       } else{
         // Normal algorithm (MSB first)
-        const tblIdx = ((this.crcHigh >>> 24) ^ byte) & 0xFF;
+        const tblIdx = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(this.crcHigh, 24), byte), 0xFF);
         const tableEntry = this.crcTable[tblIdx];
 
-        this.crcHigh = ((this.crcHigh << 8) | ((this.crcLow >>> 24) & 0xFF)) ^ tableEntry.high;
-        this.crcLow = (this.crcLow << 8) ^ tableEntry.low;
+        this.crcHigh = OpCodes.XorN(OpCodes.OrN(OpCodes.Shl32(this.crcHigh, 8), OpCodes.AndN(OpCodes.Shr32(this.crcLow, 24), 0xFF)), tableEntry.high);
+        this.crcLow = OpCodes.XorN(OpCodes.Shl32(this.crcLow, 8), tableEntry.low);
 
-        this.crcHigh = this.crcHigh >>> 0;
-        this.crcLow = this.crcLow >>> 0;
+        this.crcHigh = OpCodes.ToUint32(this.crcHigh);
+        this.crcLow = OpCodes.ToUint32(this.crcLow);
       }
     }
 
     _updateCRC128(byte) {
       if (this.config.inputReflected) {
         // Reflected algorithm (LSB first)
-        const tblIdx = (this.crc[3] ^ byte) & 0xFF;
+        const tblIdx = OpCodes.AndN(OpCodes.XorN(this.crc[3], byte), 0xFF);
         const tableEntry = this.crcTable[tblIdx];
 
-        this.crc[3] = ((this.crc[3] >>> 8) | ((this.crc[2] & 0xFF) << 24)) ^ tableEntry[3];
-        this.crc[2] = ((this.crc[2] >>> 8) | ((this.crc[1] & 0xFF) << 24)) ^ tableEntry[2];
-        this.crc[1] = ((this.crc[1] >>> 8) | ((this.crc[0] & 0xFF) << 24)) ^ tableEntry[1];
-        this.crc[0] = (this.crc[0] >>> 8) ^ tableEntry[0];
+        this.crc[3] = OpCodes.XorN(OpCodes.OrN(OpCodes.Shr32(this.crc[3], 8), OpCodes.Shl32(OpCodes.AndN(this.crc[2], 0xFF), 24)), tableEntry[3]);
+        this.crc[2] = OpCodes.XorN(OpCodes.OrN(OpCodes.Shr32(this.crc[2], 8), OpCodes.Shl32(OpCodes.AndN(this.crc[1], 0xFF), 24)), tableEntry[2]);
+        this.crc[1] = OpCodes.XorN(OpCodes.OrN(OpCodes.Shr32(this.crc[1], 8), OpCodes.Shl32(OpCodes.AndN(this.crc[0], 0xFF), 24)), tableEntry[1]);
+        this.crc[0] = OpCodes.XorN(OpCodes.Shr32(this.crc[0], 8), tableEntry[0]);
       } else {
         // Normal algorithm (MSB first)
-        const tblIdx = ((this.crc[0] >>> 24) ^ byte) & 0xFF;
+        const tblIdx = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(this.crc[0], 24), byte), 0xFF);
         const tableEntry = this.crcTable[tblIdx];
 
-        this.crc[0] = ((this.crc[0] << 8) | ((this.crc[1] >>> 24) & 0xFF)) ^ tableEntry[0];
-        this.crc[1] = ((this.crc[1] << 8) | ((this.crc[2] >>> 24) & 0xFF)) ^ tableEntry[1];
-        this.crc[2] = ((this.crc[2] << 8) | ((this.crc[3] >>> 24) & 0xFF)) ^ tableEntry[2];
-        this.crc[3] = (this.crc[3] << 8) ^ tableEntry[3];
+        this.crc[0] = OpCodes.XorN(OpCodes.OrN(OpCodes.Shl32(this.crc[0], 8), OpCodes.AndN(OpCodes.Shr32(this.crc[1], 24), 0xFF)), tableEntry[0]);
+        this.crc[1] = OpCodes.XorN(OpCodes.OrN(OpCodes.Shl32(this.crc[1], 8), OpCodes.AndN(OpCodes.Shr32(this.crc[2], 24), 0xFF)), tableEntry[1]);
+        this.crc[2] = OpCodes.XorN(OpCodes.OrN(OpCodes.Shl32(this.crc[2], 8), OpCodes.AndN(OpCodes.Shr32(this.crc[3], 24), 0xFF)), tableEntry[2]);
+        this.crc[3] = OpCodes.XorN(OpCodes.Shl32(this.crc[3], 8), tableEntry[3]);
 
-        this.crc[0] = this.crc[0] >>> 0;
-        this.crc[1] = this.crc[1] >>> 0;
-        this.crc[2] = this.crc[2] >>> 0;
-        this.crc[3] = this.crc[3] >>> 0;
+        this.crc[0] = OpCodes.ToUint32(this.crc[0]);
+        this.crc[1] = OpCodes.ToUint32(this.crc[1]);
+        this.crc[2] = OpCodes.ToUint32(this.crc[2]);
+        this.crc[3] = OpCodes.ToUint32(this.crc[3]);
       }
     }
 
@@ -623,18 +623,18 @@
       }
 
       // Apply final XOR
-      finalCrc = finalCrc ^ this.config.finalXor;
+      finalCrc = OpCodes.XorN(finalCrc, this.config.finalXor);
 
       // Convert to byte array (big-endian)
       if (bitWidth === 8) {
-        return [finalCrc & 0xFF];
+        return [OpCodes.AndN(finalCrc, 0xFF)];
       } else if (bitWidth === 16) {
         return OpCodes.Unpack16BE(finalCrc);
       } else if (bitWidth === 24) {
         return [
-          (finalCrc >> 16) & 0xFF,
-          (finalCrc >> 8) & 0xFF,
-          finalCrc & 0xFF
+          OpCodes.AndN(OpCodes.Shr32(finalCrc, 16), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(finalCrc, 8), 0xFF),
+          OpCodes.AndN(finalCrc, 0xFF)
         ];
       } else if (bitWidth === 32) {
         return OpCodes.Unpack32BE(finalCrc);
@@ -654,36 +654,36 @@
       }
 
       // Apply final XOR after reflection
-      finalCrcHigh = (finalCrcHigh ^ this.config.finalXorHigh) >>> 0;
-      finalCrcLow = (finalCrcLow ^ this.config.finalXorLow) >>> 0;
+      finalCrcHigh = OpCodes.ToUint32(OpCodes.XorN(finalCrcHigh, this.config.finalXorHigh));
+      finalCrcLow = OpCodes.ToUint32(OpCodes.XorN(finalCrcLow, this.config.finalXorLow));
 
       // Return CRC as 8-byte array (big-endian)
       return [
-        (finalCrcHigh >>> 24) & 0xFF,
-        (finalCrcHigh >>> 16) & 0xFF,
-        (finalCrcHigh >>> 8) & 0xFF,
-        finalCrcHigh & 0xFF,
-        (finalCrcLow >>> 24) & 0xFF,
-        (finalCrcLow >>> 16) & 0xFF,
-        (finalCrcLow >>> 8) & 0xFF,
-        finalCrcLow & 0xFF
+        OpCodes.AndN(OpCodes.Shr32(finalCrcHigh, 24), 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(finalCrcHigh, 16), 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(finalCrcHigh, 8), 0xFF),
+        OpCodes.AndN(finalCrcHigh, 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(finalCrcLow, 24), 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(finalCrcLow, 16), 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(finalCrcLow, 8), 0xFF),
+        OpCodes.AndN(finalCrcLow, 0xFF)
       ];
     }
 
     _result128() {
       const finalCrc = [
-        (this.crc[0] ^ this.config.finalXor[0]) >>> 0,
-        (this.crc[1] ^ this.config.finalXor[1]) >>> 0,
-        (this.crc[2] ^ this.config.finalXor[2]) >>> 0,
-        (this.crc[3] ^ this.config.finalXor[3]) >>> 0
+        OpCodes.ToUint32(OpCodes.XorN(this.crc[0], this.config.finalXor[0])),
+        OpCodes.ToUint32(OpCodes.XorN(this.crc[1], this.config.finalXor[1])),
+        OpCodes.ToUint32(OpCodes.XorN(this.crc[2], this.config.finalXor[2])),
+        OpCodes.ToUint32(OpCodes.XorN(this.crc[3], this.config.finalXor[3]))
       ];
 
       // Return CRC as 16-byte array (big-endian)
       return [
-        (finalCrc[0] >>> 24) & 0xFF, (finalCrc[0] >>> 16) & 0xFF, (finalCrc[0] >>> 8) & 0xFF, finalCrc[0] & 0xFF,
-        (finalCrc[1] >>> 24) & 0xFF, (finalCrc[1] >>> 16) & 0xFF, (finalCrc[1] >>> 8) & 0xFF, finalCrc[1] & 0xFF,
-        (finalCrc[2] >>> 24) & 0xFF, (finalCrc[2] >>> 16) & 0xFF, (finalCrc[2] >>> 8) & 0xFF, finalCrc[2] & 0xFF,
-        (finalCrc[3] >>> 24) & 0xFF, (finalCrc[3] >>> 16) & 0xFF, (finalCrc[3] >>> 8) & 0xFF, finalCrc[3] & 0xFF
+        OpCodes.AndN(OpCodes.Shr32(finalCrc[0], 24), 0xFF), OpCodes.AndN(OpCodes.Shr32(finalCrc[0], 16), 0xFF), OpCodes.AndN(OpCodes.Shr32(finalCrc[0], 8), 0xFF), OpCodes.AndN(finalCrc[0], 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(finalCrc[1], 24), 0xFF), OpCodes.AndN(OpCodes.Shr32(finalCrc[1], 16), 0xFF), OpCodes.AndN(OpCodes.Shr32(finalCrc[1], 8), 0xFF), OpCodes.AndN(finalCrc[1], 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(finalCrc[2], 24), 0xFF), OpCodes.AndN(OpCodes.Shr32(finalCrc[2], 16), 0xFF), OpCodes.AndN(OpCodes.Shr32(finalCrc[2], 8), 0xFF), OpCodes.AndN(finalCrc[2], 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(finalCrc[3], 24), 0xFF), OpCodes.AndN(OpCodes.Shr32(finalCrc[3], 16), 0xFF), OpCodes.AndN(OpCodes.Shr32(finalCrc[3], 8), 0xFF), OpCodes.AndN(finalCrc[3], 0xFF)
       ];
     }
 
@@ -729,25 +729,25 @@
 
           crc = i;
           for (let j = 0; j < 8; j++) {
-            if (crc & 1) {
-              crc = ((crc >>> 1) ^ reflectedPoly) >>> 0;
+            if (OpCodes.AndN(crc, 1)) {
+              crc = OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shr32(crc, 1), reflectedPoly));
             } else {
-              crc = crc >>> 1;
+              crc = OpCodes.Shr32(crc, 1);
             }
           }
         } else {
           // Generate normal table
-          crc = bitWidth === 8 ? i : i << (bitWidth - 8);
+          crc = bitWidth === 8 ? i : OpCodes.Shl32(i, bitWidth - 8);
           for (let j = 0; j < 8; j++) {
-            if (crc & msbBit) {
-              crc = (crc << 1) ^ this.config.polynomial;
+            if (OpCodes.AndN(crc, msbBit)) {
+              crc = OpCodes.XorN(OpCodes.Shl32(crc, 1), this.config.polynomial);
             } else {
-              crc = crc << 1;
+              crc = OpCodes.Shl32(crc, 1);
             }
           }
         }
 
-        table[i] = crc & mask;
+        table[i] = OpCodes.AndN(crc, mask);
       }
 
       return table;
@@ -773,32 +773,32 @@
           crcLow = i;
           crcHigh = 0;
           for (let j = 0; j < 8; j++) {
-            const carry = crcLow & 1;
-            crcLow = (crcLow >>> 1) | ((crcHigh & 1) << 31);
-            crcHigh = crcHigh >>> 1;
+            const carry = OpCodes.AndN(crcLow, 1);
+            crcLow = OpCodes.OrN(OpCodes.Shr32(crcLow, 1), OpCodes.Shl32(OpCodes.AndN(crcHigh, 1), 31));
+            crcHigh = OpCodes.Shr32(crcHigh, 1);
 
             if (carry) {
-              crcHigh = (crcHigh ^ polyHigh) >>> 0;
-              crcLow = (crcLow ^ polyLow) >>> 0;
+              crcHigh = OpCodes.ToUint32(OpCodes.XorN(crcHigh, polyHigh));
+              crcLow = OpCodes.ToUint32(OpCodes.XorN(crcLow, polyLow));
             }
           }
         } else {
           // Generate normal table
-          crcHigh = i << 24;
+          crcHigh = OpCodes.Shl32(i, 24);
           crcLow = 0;
           for (let j = 0; j < 8; j++) {
-            const carry = crcHigh & 0x80000000;
-            crcHigh = ((crcHigh << 1) | ((crcLow >>> 31) & 1)) >>> 0;
-            crcLow = (crcLow << 1) >>> 0;
+            const carry = OpCodes.AndN(crcHigh, 0x80000000);
+            crcHigh = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(crcHigh, 1), OpCodes.AndN(OpCodes.Shr32(crcLow, 31), 1)));
+            crcLow = OpCodes.ToUint32(OpCodes.Shl32(crcLow, 1));
 
             if (carry) {
-              crcHigh ^= this.config.polynomialHigh;
-              crcLow ^= this.config.polynomialLow;
+              crcHigh = OpCodes.XorN(crcHigh, this.config.polynomialHigh);
+              crcLow = OpCodes.XorN(crcLow, this.config.polynomialLow);
             }
           }
         }
 
-        table[i] = { high: crcHigh >>> 0, low: crcLow >>> 0 };
+        table[i] = { high: OpCodes.ToUint32(crcHigh), low: OpCodes.ToUint32(crcLow) };
       }
 
       return table;
@@ -808,28 +808,28 @@
       const table = new Array(256);
 
       for (let i = 0; i < 256; i++) {
-        let crc = [i << 24, 0, 0, 0];
+        let crc = [OpCodes.Shl32(i, 24), 0, 0, 0];
 
         // Process 8 bits
         for (let j = 0; j < 8; j++) {
-          const carry = crc[0] & 0x80000000;
+          const carry = OpCodes.AndN(crc[0], 0x80000000);
 
           // Shift left across all 128 bits
-          crc[0] = ((crc[0] << 1) | ((crc[1] >>> 31) & 1)) >>> 0;
-          crc[1] = ((crc[1] << 1) | ((crc[2] >>> 31) & 1)) >>> 0;
-          crc[2] = ((crc[2] << 1) | ((crc[3] >>> 31) & 1)) >>> 0;
-          crc[3] = (crc[3] << 1) >>> 0;
+          crc[0] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(crc[0], 1), OpCodes.AndN(OpCodes.Shr32(crc[1], 31), 1)));
+          crc[1] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(crc[1], 1), OpCodes.AndN(OpCodes.Shr32(crc[2], 31), 1)));
+          crc[2] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(crc[2], 1), OpCodes.AndN(OpCodes.Shr32(crc[3], 31), 1)));
+          crc[3] = OpCodes.ToUint32(OpCodes.Shl32(crc[3], 1));
 
           // XOR with polynomial if there was a carry
           if (carry) {
-            crc[0] ^= this.config.polynomial[0];
-            crc[1] ^= this.config.polynomial[1];
-            crc[2] ^= this.config.polynomial[2];
-            crc[3] ^= this.config.polynomial[3];
+            crc[0] = OpCodes.XorN(crc[0], this.config.polynomial[0]);
+            crc[1] = OpCodes.XorN(crc[1], this.config.polynomial[1]);
+            crc[2] = OpCodes.XorN(crc[2], this.config.polynomial[2]);
+            crc[3] = OpCodes.XorN(crc[3], this.config.polynomial[3]);
           }
         }
 
-        table[i] = [crc[0] >>> 0, crc[1] >>> 0, crc[2] >>> 0, crc[3] >>> 0];
+        table[i] = [OpCodes.ToUint32(crc[0]), OpCodes.ToUint32(crc[1]), OpCodes.ToUint32(crc[2]), OpCodes.ToUint32(crc[3])];
       }
 
       return table;
@@ -838,8 +838,8 @@
     _reflect8(value) {
       let reflected = 0;
       for (let i = 0; i < 8; i++) {
-        reflected = (reflected << 1) | (value & 1);
-        value >>= 1;
+        reflected = OpCodes.OrN(OpCodes.Shl32(reflected, 1), OpCodes.AndN(value, 1));
+        value = OpCodes.Shr32(value, 1);
       }
       return reflected;
     }
@@ -847,8 +847,8 @@
     _reflect16(value) {
       let reflected = 0;
       for (let i = 0; i < 16; i++) {
-        reflected = (reflected << 1) | (value & 1);
-        value >>= 1;
+        reflected = OpCodes.OrN(OpCodes.Shl32(reflected, 1), OpCodes.AndN(value, 1));
+        value = OpCodes.Shr32(value, 1);
       }
       return reflected;
     }
@@ -856,8 +856,8 @@
     _reflect24(value) {
       let reflected = 0;
       for (let i = 0; i < 24; i++) {
-        reflected = (reflected << 1) | (value & 1);
-        value >>= 1;
+        reflected = OpCodes.OrN(OpCodes.Shl32(reflected, 1), OpCodes.AndN(value, 1));
+        value = OpCodes.Shr32(value, 1);
       }
       return reflected;
     }
@@ -865,10 +865,10 @@
     _reflect32(value) {
       let reflected = 0;
       for (let i = 0; i < 32; i++) {
-        reflected = (reflected << 1) | (value & 1);
-        value >>>= 1;
+        reflected = OpCodes.OrN(OpCodes.Shl32(reflected, 1), OpCodes.AndN(value, 1));
+        value = OpCodes.Shr32(value, 1);
       }
-      return reflected >>> 0;
+      return OpCodes.ToUint32(reflected);
     }
 
     _reflect64(high, low) {

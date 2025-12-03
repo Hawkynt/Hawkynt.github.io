@@ -225,7 +225,7 @@ class HCInstance extends IAlgorithmInstance {
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       const keystreamByte = this._getNextKeystreamByte();
-      output.push(this.inputBuffer[i] ^ keystreamByte);
+      output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
     }
 
     this.inputBuffer = [];
@@ -262,14 +262,14 @@ class HCInstance extends IAlgorithmInstance {
         this._key[i * 4 + 1],
         this._key[i * 4 + 2],
         this._key[i * 4 + 3]
-      ) >>> 0;
+      );
 
       IV[i] = OpCodes.Pack32LE(
         this._iv[i * 4],
         this._iv[i * 4 + 1],
         this._iv[i * 4 + 2],
         this._iv[i * 4 + 3]
-      ) >>> 0;
+      );
     }
 
     // Initialize W array for key expansion
@@ -285,7 +285,7 @@ class HCInstance extends IAlgorithmInstance {
 
     // Expand to fill first 272 positions
     for (let i = 16; i < 272; i++) {
-      W[i] = (this._f2(W[i - 2]) + W[i - 7] + this._f1(W[i - 15]) + W[i - 16] + i) >>> 0;
+      W[i] = OpCodes.ToUint32(this._f2(W[i - 2]) + W[i - 7] + this._f1(W[i - 15]) + W[i - 16] + i);
     }
 
     // Copy first 16 positions from positions 256-271
@@ -295,7 +295,7 @@ class HCInstance extends IAlgorithmInstance {
 
     // Continue expansion to fill 1024 positions
     for (let i = 16; i < 1024; i++) {
-      W[i] = (this._f2(W[i - 2]) + W[i - 7] + this._f1(W[i - 15]) + W[i - 16] + 256 + i) >>> 0;
+      W[i] = OpCodes.ToUint32(this._f2(W[i - 2]) + W[i - 7] + this._f1(W[i - 15]) + W[i - 16] + 256 + i);
     }
 
     // Initialize P and Q tables from W
@@ -340,14 +340,14 @@ class HCInstance extends IAlgorithmInstance {
         this._key[i * 4 + 1],
         this._key[i * 4 + 2],
         this._key[i * 4 + 3]
-      ) >>> 0;
+      );
 
       IV[i] = OpCodes.Pack32LE(
         this._iv[i * 4],
         this._iv[i * 4 + 1],
         this._iv[i * 4 + 2],
         this._iv[i * 4 + 3]
-      ) >>> 0;
+      );
     }
 
     // Initialize W array for key expansion (2560 words)
@@ -361,7 +361,7 @@ class HCInstance extends IAlgorithmInstance {
 
     // Key expansion using f1 and f2 functions
     for (let i = 16; i < 2560; i++) {
-      W[i] = (this._f2(W[i - 2]) + W[i - 7] + this._f1(W[i - 15]) + W[i - 16] + i) >>> 0;
+      W[i] = OpCodes.ToUint32(this._f2(W[i - 2]) + W[i - 7] + this._f1(W[i - 15]) + W[i - 16] + i);
     }
 
     // Initialize P and Q tables from W
@@ -386,91 +386,91 @@ class HCInstance extends IAlgorithmInstance {
    * f1 function for key expansion
    */
   _f1(x) {
-    return (OpCodes.RotR32(x, 7) ^ OpCodes.RotR32(x, 18) ^ (x >>> 3)) >>> 0;
+    return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.RotR32(x, 7), OpCodes.RotR32(x, 18)), OpCodes.Shr32(x, 3)));
   }
 
   /**
    * f2 function for key expansion
    */
   _f2(x) {
-    return (OpCodes.RotR32(x, 17) ^ OpCodes.RotR32(x, 19) ^ (x >>> 10)) >>> 0;
+    return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.RotR32(x, 17), OpCodes.RotR32(x, 19)), OpCodes.Shr32(x, 10)));
   }
 
   /**
    * h1 function for P table lookups (Q table) - HC-128 variant
    */
   _h1_128(x) {
-    const a = x & 0xFF;
-    const c = (x >>> 16) & 0xFF;
-    return (this.Q[a] + this.Q[256 + c]) >>> 0;
+    const a = OpCodes.AndN(x, 0xFF);
+    const c = OpCodes.AndN(OpCodes.Shr32(x, 16), 0xFF);
+    return OpCodes.ToUint32(this.Q[a] + this.Q[256 + c]);
   }
 
   /**
    * h2 function for Q table lookups (P table) - HC-128 variant
    */
   _h2_128(x) {
-    const a = x & 0xFF;
-    const c = (x >>> 16) & 0xFF;
-    return (this.P[a] + this.P[256 + c]) >>> 0;
+    const a = OpCodes.AndN(x, 0xFF);
+    const c = OpCodes.AndN(OpCodes.Shr32(x, 16), 0xFF);
+    return OpCodes.ToUint32(this.P[a] + this.P[256 + c]);
   }
 
   /**
    * h1 function for P table (uses Q table lookups) - HC-256 variant
    */
   _h1_256(x) {
-    const a = x & 0xFF;
-    const b = (x >>> 8) & 0xFF;
-    const c = (x >>> 16) & 0xFF;
-    const d = (x >>> 24) & 0xFF;
-    return (this.Q[a] + this.Q[256 + b] + this.Q[512 + c] + this.Q[768 + d]) >>> 0;
+    const a = OpCodes.AndN(x, 0xFF);
+    const b = OpCodes.AndN(OpCodes.Shr32(x, 8), 0xFF);
+    const c = OpCodes.AndN(OpCodes.Shr32(x, 16), 0xFF);
+    const d = OpCodes.AndN(OpCodes.Shr32(x, 24), 0xFF);
+    return OpCodes.ToUint32(this.Q[a] + this.Q[256 + b] + this.Q[512 + c] + this.Q[768 + d]);
   }
 
   /**
    * h2 function for Q table (uses P table lookups) - HC-256 variant
    */
   _h2_256(x) {
-    const a = x & 0xFF;
-    const b = (x >>> 8) & 0xFF;
-    const c = (x >>> 16) & 0xFF;
-    const d = (x >>> 24) & 0xFF;
-    return (this.P[a] + this.P[256 + b] + this.P[512 + c] + this.P[768 + d]) >>> 0;
+    const a = OpCodes.AndN(x, 0xFF);
+    const b = OpCodes.AndN(OpCodes.Shr32(x, 8), 0xFF);
+    const c = OpCodes.AndN(OpCodes.Shr32(x, 16), 0xFF);
+    const d = OpCodes.AndN(OpCodes.Shr32(x, 24), 0xFF);
+    return OpCodes.ToUint32(this.P[a] + this.P[256 + b] + this.P[512 + c] + this.P[768 + d]);
   }
 
   /**
    * Setup update function (16 steps without keystream output) - HC-128 only
    */
   _setupUpdate() {
-    const cc = this.counter & 0x1FF;
+    const cc = OpCodes.AndN(this.counter, 0x1FF);
 
     if (this.counter < 512) {
-      this.counter = (this.counter + 16) & 0x3FF;
+      this.counter = OpCodes.AndN(this.counter + 16, 0x3FF);
       for (let i = 0; i < 16; i++) {
-        const j = (cc + i) & 0x1FF;
-        const nextJ = (cc + i + 1) & 0x1FF;
+        const j = OpCodes.AndN(cc + i, 0x1FF);
+        const nextJ = OpCodes.AndN(cc + i + 1, 0x1FF);
 
-        const tem2 = OpCodes.RotR32(this.X[(i + 6) & 0xF], 8);
+        const tem2 = OpCodes.RotR32(this.X[OpCodes.AndN(i + 6, 0xF)], 8);
         const tem0 = OpCodes.RotR32(this.P[nextJ], 23);
-        const tem1 = OpCodes.RotR32(this.X[(i + 13) & 0xF], 10);
-        const tem3 = this._h1_128(this.X[(i + 4) & 0xF]);
+        const tem1 = OpCodes.RotR32(this.X[OpCodes.AndN(i + 13, 0xF)], 10);
+        const tem3 = this._h1_128(this.X[OpCodes.AndN(i + 4, 0xF)]);
 
-        this.P[j] = (this.P[j] + tem2 + (tem0 ^ tem1)) >>> 0;
-        this.P[j] = (this.P[j] ^ tem3) >>> 0;
-        this.X[i & 0xF] = this.P[j];
+        this.P[j] = OpCodes.ToUint32(this.P[j] + tem2 + OpCodes.XorN(tem0, tem1));
+        this.P[j] = OpCodes.ToUint32(OpCodes.XorN(this.P[j], tem3));
+        this.X[OpCodes.AndN(i, 0xF)] = this.P[j];
       }
     } else {
-      this.counter = (this.counter + 16) & 0x3FF;
+      this.counter = OpCodes.AndN(this.counter + 16, 0x3FF);
       for (let i = 0; i < 16; i++) {
-        const j = (512 + cc + i) & 0x3FF;
-        const nextJ = (512 + cc + i + 1) & 0x3FF;
+        const j = OpCodes.AndN(512 + cc + i, 0x3FF);
+        const nextJ = OpCodes.AndN(512 + cc + i + 1, 0x3FF);
 
-        const tem2 = OpCodes.RotL32(this.Y[(i + 6) & 0xF], 8);
-        const tem0 = OpCodes.RotL32(this.Q[nextJ & 0x1FF], 23);
-        const tem1 = OpCodes.RotL32(this.Y[(i + 13) & 0xF], 10);
-        const tem3 = this._h2_128(this.Y[(i + 4) & 0xF]);
+        const tem2 = OpCodes.RotL32(this.Y[OpCodes.AndN(i + 6, 0xF)], 8);
+        const tem0 = OpCodes.RotL32(this.Q[OpCodes.AndN(nextJ, 0x1FF)], 23);
+        const tem1 = OpCodes.RotL32(this.Y[OpCodes.AndN(i + 13, 0xF)], 10);
+        const tem3 = this._h2_128(this.Y[OpCodes.AndN(i + 4, 0xF)]);
 
-        this.Q[j & 0x1FF] = (this.Q[j & 0x1FF] + tem2 + (tem0 ^ tem1)) >>> 0;
-        this.Q[j & 0x1FF] = (this.Q[j & 0x1FF] ^ tem3) >>> 0;
-        this.Y[i & 0xF] = this.Q[j & 0x1FF];
+        this.Q[OpCodes.AndN(j, 0x1FF)] = OpCodes.ToUint32(this.Q[OpCodes.AndN(j, 0x1FF)] + tem2 + OpCodes.XorN(tem0, tem1));
+        this.Q[OpCodes.AndN(j, 0x1FF)] = OpCodes.ToUint32(OpCodes.XorN(this.Q[OpCodes.AndN(j, 0x1FF)], tem3));
+        this.Y[OpCodes.AndN(i, 0xF)] = this.Q[OpCodes.AndN(j, 0x1FF)];
       }
     }
   }
@@ -479,37 +479,37 @@ class HCInstance extends IAlgorithmInstance {
    * Generate keystream (16 steps with output) - HC-128 only
    */
   _generateKeystream16(keystream) {
-    const cc = this.counter & 0x1FF;
+    const cc = OpCodes.AndN(this.counter, 0x1FF);
 
     if (this.counter < 512) {
-      this.counter = (this.counter + 16) & 0x3FF;
+      this.counter = OpCodes.AndN(this.counter + 16, 0x3FF);
       for (let i = 0; i < 16; i++) {
-        const j = (cc + i) & 0x1FF;
-        const nextJ = (cc + i + 1) & 0x1FF;
+        const j = OpCodes.AndN(cc + i, 0x1FF);
+        const nextJ = OpCodes.AndN(cc + i + 1, 0x1FF);
 
-        const tem2 = OpCodes.RotR32(this.X[(i + 6) & 0xF], 8);
+        const tem2 = OpCodes.RotR32(this.X[OpCodes.AndN(i + 6, 0xF)], 8);
         const tem0 = OpCodes.RotR32(this.P[nextJ], 23);
-        const tem1 = OpCodes.RotR32(this.X[(i + 13) & 0xF], 10);
-        const tem3 = this._h1_128(this.X[(i + 4) & 0xF]);
+        const tem1 = OpCodes.RotR32(this.X[OpCodes.AndN(i + 13, 0xF)], 10);
+        const tem3 = this._h1_128(this.X[OpCodes.AndN(i + 4, 0xF)]);
 
-        this.P[j] = (this.P[j] + tem2 + (tem0 ^ tem1)) >>> 0;
-        this.X[i & 0xF] = this.P[j];
-        keystream[i] = (tem3 ^ this.P[j]) >>> 0;
+        this.P[j] = OpCodes.ToUint32(this.P[j] + tem2 + OpCodes.XorN(tem0, tem1));
+        this.X[OpCodes.AndN(i, 0xF)] = this.P[j];
+        keystream[i] = OpCodes.ToUint32(OpCodes.XorN(tem3, this.P[j]));
       }
     } else {
-      this.counter = (this.counter + 16) & 0x3FF;
+      this.counter = OpCodes.AndN(this.counter + 16, 0x3FF);
       for (let i = 0; i < 16; i++) {
-        const j = (512 + cc + i) & 0x3FF;
-        const nextJ = (512 + cc + i + 1) & 0x3FF;
+        const j = OpCodes.AndN(512 + cc + i, 0x3FF);
+        const nextJ = OpCodes.AndN(512 + cc + i + 1, 0x3FF);
 
-        const tem2 = OpCodes.RotL32(this.Y[(i + 6) & 0xF], 8);
-        const tem0 = OpCodes.RotL32(this.Q[nextJ & 0x1FF], 23);
-        const tem1 = OpCodes.RotL32(this.Y[(i + 13) & 0xF], 10);
-        const tem3 = this._h2_128(this.Y[(i + 4) & 0xF]);
+        const tem2 = OpCodes.RotL32(this.Y[OpCodes.AndN(i + 6, 0xF)], 8);
+        const tem0 = OpCodes.RotL32(this.Q[OpCodes.AndN(nextJ, 0x1FF)], 23);
+        const tem1 = OpCodes.RotL32(this.Y[OpCodes.AndN(i + 13, 0xF)], 10);
+        const tem3 = this._h2_128(this.Y[OpCodes.AndN(i + 4, 0xF)]);
 
-        this.Q[j & 0x1FF] = (this.Q[j & 0x1FF] + tem2 + (tem0 ^ tem1)) >>> 0;
-        this.Y[i & 0xF] = this.Q[j & 0x1FF];
-        keystream[i] = (tem3 ^ this.Q[j & 0x1FF]) >>> 0;
+        this.Q[OpCodes.AndN(j, 0x1FF)] = OpCodes.ToUint32(this.Q[OpCodes.AndN(j, 0x1FF)] + tem2 + OpCodes.XorN(tem0, tem1));
+        this.Y[OpCodes.AndN(i, 0xF)] = this.Q[OpCodes.AndN(j, 0x1FF)];
+        keystream[i] = OpCodes.ToUint32(OpCodes.XorN(tem3, this.Q[OpCodes.AndN(j, 0x1FF)]));
       }
     }
   }
@@ -518,33 +518,33 @@ class HCInstance extends IAlgorithmInstance {
    * Generate one 32-bit keystream word following official HC-256 specification
    */
   _generateWord() {
-    const j = this.counter & 0x3FF; // 1024 mask for table index
+    const j = OpCodes.AndN(this.counter, 0x3FF); // 1024 mask for table index
     let s;
 
     if (this.counter < 1024) {
       // Update P table
-      const j3 = (j - 3) & 0x3FF;
-      const j10 = (j - 10) & 0x3FF;
-      const j12 = (j - 12) & 0x3FF;
-      const j1023 = (j - 1023) & 0x3FF;
+      const j3 = OpCodes.AndN(j - 3, 0x3FF);
+      const j10 = OpCodes.AndN(j - 10, 0x3FF);
+      const j12 = OpCodes.AndN(j - 12, 0x3FF);
+      const j1023 = OpCodes.AndN(j - 1023, 0x3FF);
 
-      this.P[j] = (this.P[j] + this.P[j10] +
-                   (OpCodes.RotR32(this.P[j3], 10) ^ OpCodes.RotR32(this.P[j1023], 23)) +
-                   this.Q[(this.P[j3] ^ this.P[j1023]) & 0x3FF]) >>> 0;
+      this.P[j] = OpCodes.ToUint32(this.P[j] + this.P[j10] +
+                   OpCodes.XorN(OpCodes.RotR32(this.P[j3], 10), OpCodes.RotR32(this.P[j1023], 23)) +
+                   this.Q[OpCodes.AndN(OpCodes.XorN(this.P[j3], this.P[j1023]), 0x3FF)]);
 
-      s = (this._h1_256(this.P[j12]) ^ this.P[j]) >>> 0;
+      s = OpCodes.ToUint32(OpCodes.XorN(this._h1_256(this.P[j12]), this.P[j]));
     } else {
       // Update Q table
-      const j3 = (j - 3) & 0x3FF;
-      const j10 = (j - 10) & 0x3FF;
-      const j12 = (j - 12) & 0x3FF;
-      const j1023 = (j - 1023) & 0x3FF;
+      const j3 = OpCodes.AndN(j - 3, 0x3FF);
+      const j10 = OpCodes.AndN(j - 10, 0x3FF);
+      const j12 = OpCodes.AndN(j - 12, 0x3FF);
+      const j1023 = OpCodes.AndN(j - 1023, 0x3FF);
 
-      this.Q[j] = (this.Q[j] + this.Q[j10] +
-                   (OpCodes.RotR32(this.Q[j3], 10) ^ OpCodes.RotR32(this.Q[j1023], 23)) +
-                   this.P[(this.Q[j3] ^ this.Q[j1023]) & 0x3FF]) >>> 0;
+      this.Q[j] = OpCodes.ToUint32(this.Q[j] + this.Q[j10] +
+                   OpCodes.XorN(OpCodes.RotR32(this.Q[j3], 10), OpCodes.RotR32(this.Q[j1023], 23)) +
+                   this.P[OpCodes.AndN(OpCodes.XorN(this.Q[j3], this.Q[j1023]), 0x3FF)]);
 
-      s = (this._h2_256(this.Q[j12]) ^ this.Q[j]) >>> 0;
+      s = OpCodes.ToUint32(OpCodes.XorN(this._h2_256(this.Q[j12]), this.Q[j]));
     }
 
     this.counter = (this.counter + 1) % 2048; // Wrap at 2048

@@ -3925,6 +3925,18 @@
     },
 
     /**
+     * Bitwise XOR for 32-bit values, returning unsigned result
+     * Use this when you need XOR to return an unsigned 32-bit integer
+     * (avoids JavaScript's signed integer behavior with high bit set)
+     * @param {int32} a - First operand
+     * @param {int32} b - Second operand
+     * @returns {uint32} Unsigned 32-bit XOR result
+     */
+    Xor32: function(a, b) {
+      return (a ^ b) >>> 0;
+    },
+
+    /**
      * Extract specific bit from BigInt value
      * @param {BigInt} value - Source value
      * @param {number} bitIndex - Bit position (0 = LSB)

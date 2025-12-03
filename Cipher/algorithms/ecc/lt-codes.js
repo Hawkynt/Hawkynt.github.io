@@ -269,7 +269,7 @@
 
         // XOR all connected source symbols
         for (const sourceIdx of neighbors) {
-          encodedSymbol ^= this.sourceSymbols[sourceIdx];
+          encodedSymbol = OpCodes.XorN(encodedSymbol, this.sourceSymbols[sourceIdx]);
         }
 
         result.push(encodedSymbol);
@@ -343,7 +343,7 @@
               const connectedEncoded = workingGraph.getReverseNeighbors(sourceIdx);
               for (const connectedIdx of connectedEncoded) {
                 if (connectedIdx !== encodedIdx) {
-                  workingSymbols[connectedIdx] ^= decoded[sourceIdx];
+                  workingSymbols[connectedIdx] = OpCodes.XorN(workingSymbols[connectedIdx], decoded[sourceIdx]);
                 }
                 workingGraph.removeEdge(sourceIdx, connectedIdx);
               }

@@ -232,9 +232,9 @@
      * Algorithm:
      * 1. state += GOLDEN_GAMMA
      * 2. z = state
-     * 3. z = (z ^ (z >> 30)) * MIX_CONST_1
-     * 4. z = (z ^ (z >> 27)) * MIX_CONST_2
-     * 5. return z ^ (z >> 31)
+     * 3. z = (z XOR (z shr 30)) * MIX_CONST_1
+     * 4. z = (z XOR (z shr 27)) * MIX_CONST_2
+     * 5. return z XOR (z shr 31)
      */
     _next64() {
       if (!this._ready) {

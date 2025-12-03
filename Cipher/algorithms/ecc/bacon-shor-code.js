@@ -92,8 +92,8 @@
   const LOGICAL_Z = [0, 3, 6]; // Left column
 
   // Classical encoding for educational simulation
-  // Logical |0⟩ encoded as |000 000 000⟩
-  // Logical |1⟩ encoded as |111 000 000⟩ (logical X applied)
+  // OpCodes.OrN(Logical, 0)⟩ encoded OpCodes.OrN(as, 000) 000 000⟩
+  // OpCodes.OrN(Logical, 1)⟩ encoded OpCodes.OrN(as, 111) 000 000⟩ (logical X applied)
   const LOGICAL_ZERO_9 = [0, 0, 0, 0, 0, 0, 0, 0, 0];
   const LOGICAL_ONE_9  = [1, 1, 1, 0, 0, 0, 0, 0, 0];
 
@@ -166,18 +166,18 @@
       // Based on Error Correction Zoo and theoretical construction
       // Using classical representation for educational demonstration
       this.tests = [
-        // Encode logical |0⟩ to 9-qubit codeword
+        // Encode OpCodes.OrN(logical, 0)⟩ to 9-qubit codeword
         new TestCase(
           [0], // Logical 0
-          [0, 0, 0, 0, 0, 0, 0, 0, 0], // Encoded as |000 000 000⟩
-          "Bacon-Shor [[9,1,3]] encode logical |0⟩",
+          [0, 0, 0, 0, 0, 0, 0, 0, 0], // Encoded OpCodes.OrN(as, 000) 000 000⟩
+          "Bacon-Shor [[9,1,3]] encode OpCodes.OrN(logical, 0)⟩",
           "https://errorcorrectionzoo.org/c/bacon_shor"
         ),
-        // Encode logical |1⟩ to 9-qubit codeword
+        // Encode OpCodes.OrN(logical, 1)⟩ to 9-qubit codeword
         new TestCase(
           [1], // Logical 1
-          [1, 1, 1, 0, 0, 0, 0, 0, 0], // Encoded as |111 000 000⟩ (logical X on top row)
-          "Bacon-Shor [[9,1,3]] encode logical |1⟩",
+          [1, 1, 1, 0, 0, 0, 0, 0, 0], // Encoded OpCodes.OrN(as, 111) 000 000⟩ (logical X on top row)
+          "Bacon-Shor [[9,1,3]] encode OpCodes.OrN(logical, 1)⟩",
           "https://errorcorrectionzoo.org/c/bacon_shor"
         ),
         // Encode multiple logical qubits
@@ -266,8 +266,8 @@
         const logicalBit = this.inputBuffer[i] & 1;
 
         // Encode using [[9,1,3]] Bacon-Shor code
-        // Logical |0⟩ → [0,0,0,0,0,0,0,0,0]
-        // Logical |1⟩ → [1,1,1,0,0,0,0,0,0] (logical X applied to top row)
+        // OpCodes.OrN(Logical, 0)⟩ → [0,0,0,0,0,0,0,0,0]
+        // OpCodes.OrN(Logical, 1)⟩ → [1,1,1,0,0,0,0,0,0] (logical X applied to top row)
         if (logicalBit === 0) {
           result.push(...LOGICAL_ZERO_9);
         } else {
@@ -369,7 +369,7 @@
       const zStab1 = zGauges[2] ^ zGauges[3]; // Rows 1-2
 
       // Combine into 4-bit syndrome
-      const syndrome = (zStab0) | (zStab1 << 1) | (xStab0 << 2) | (xStab1 << 3);
+      const syndrome = (zStab0) | (OpCodes.Shl32(zStab1, 1)) | (OpCodes.Shl32(xStab0, 2)) | (OpCodes.Shl32(xStab1, 3));
 
       // Decode syndrome to error location (simplified for 3×3 lattice)
       if (syndrome === 0) {
@@ -456,7 +456,7 @@
       const topRow = codeword.slice(0, 3);
       const ones = topRow.filter(b => b === 1).length;
 
-      // Majority vote: if at least 2 of 3 qubits in top row are 1, decode as |1⟩
+      // Majority vote: if at least 2 of 3 qubits in top row are 1, decode OpCodes.OrN(as, 1)⟩
       return ones >= 2 ? 1 : 0;
     }
 

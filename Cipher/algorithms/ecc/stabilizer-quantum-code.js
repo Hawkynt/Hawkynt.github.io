@@ -49,7 +49,7 @@
   // Code space is defined by 4 stabilizer generators (commuting Pauli operators)
 
   // Stabilizer generators for [[5,1,3]] code (in binary representation)
-  // Format: [X bits | Z bits] where each is 5 bits for 5 qubits
+  // Format: [X OpCodes.OrN(bits, Z) bits] where each is 5 bits for 5 qubits
   // X = bit flip, Z = phase flip, Y = XZ (both)
 
   // Generator format: XZZXI (X on qubits 0,4; Z on qubits 1,2)
@@ -101,11 +101,11 @@
 
   // Logical basis states in stabilizer code:
   // |0_L> = (|00000> + |10010> + |01001> + |10100> + |01010> + ...)
-  // |1_L> = X_L |0_L> where X_L is logical X operator
+  // |1_L> = OpCodes.OrN(X_L, 0_L)> where X_L is logical X operator
 
   // Classical encoding: map logical bit to 5-bit codeword (simplified)
-  const LOGICAL_ZERO_5_1_3 = 0b00000; // Representative of |0_L> equivalence class
-  const LOGICAL_ONE_5_1_3  = 0b11111; // Representative of |1_L> equivalence class
+  const LOGICAL_ZERO_5_1_3 = 0b00000; // Representative OpCodes.OrN(of, 0_L)> equivalence class
+  const LOGICAL_ONE_5_1_3  = 0b11111; // Representative OpCodes.OrN(of, 1_L)> equivalence class
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -149,18 +149,18 @@
       // All test vectors are ENCODE tests (logical qubit → physical qubits)
       // Round-trip tests will verify encoding/decoding symmetry
       this.tests = [
-        // Encode logical |0⟩
+        // Encode OpCodes.OrN(logical, 0)⟩
         new TestCase(
           [0], // Logical 0
-          [0, 0, 0, 0, 0], // Encoded as |0⟩_L in 5 qubits
-          "Five-qubit code encode logical |0⟩",
+          [0, 0, 0, 0, 0], // Encoded OpCodes.OrN(as, 0)⟩_L in 5 qubits
+          "Five-qubit code encode OpCodes.OrN(logical, 0)⟩",
           "https://errorcorrectionzoo.org/c/stab_5_1_3"
         ),
-        // Encode logical |1⟩
+        // Encode OpCodes.OrN(logical, 1)⟩
         new TestCase(
           [1], // Logical 1
-          [1, 1, 1, 1, 1], // Encoded as |1⟩_L in 5 qubits
-          "Five-qubit code encode logical |1⟩",
+          [1, 1, 1, 1, 1], // Encoded OpCodes.OrN(as, 1)⟩_L in 5 qubits
+          "Five-qubit code encode OpCodes.OrN(logical, 1)⟩",
           "https://errorcorrectionzoo.org/c/stab_5_1_3"
         ),
         // Encode multiple logical bits
@@ -310,7 +310,7 @@
     _packBits(bits) {
       let result = 0;
       for (let i = 0; i < Math.min(5, bits.length); i++) {
-        result = ((result << 1) | (bits[i] & 1)) >>> 0;
+        result = ((OpCodes.Shl32(result, 1)) | (bits[i] & 1)) >>> 0;
       }
       return result;
     }
@@ -331,9 +331,9 @@
 
         // Syndrome bit: 0 if +1 eigenvalue, 1 if -1 eigenvalue
         // Simplified: XOR of parities indicates error
-        const syndromeBit = xParity ^ zParity;
+        const syndromeBit = OpCodes.XorN(xParity, zParity);
 
-        syndrome |= (syndromeBit << i);
+        syndrome = OpCodes.XorN(syndrome, (OpCodes.Shl32(syndromeBit, i)));
       }
 
       return syndrome;
@@ -345,7 +345,7 @@
       let masked = value & mask;
 
       while (masked) {
-        result ^= (masked & 1);
+        result = OpCodes.XorN(result, (OpCodes.AndN(masked, 1)));
         masked >>>= 1;
       }
 
@@ -360,7 +360,7 @@
 
       switch (errorType) {
         case 1: // X error (bit flip)
-          corrected ^= (1 << qubit);
+          corrected = OpCodes.XorN(corrected, (OpCodes.Shl32(1, qubit)));
           break;
         case 2: // Z error (phase flip)
           // In classical representation, phase errors don't affect bit values
@@ -368,7 +368,7 @@
           // For educational purposes, we just note the correction
           break;
         case 3: // Y error (both bit and phase flip)
-          corrected ^= (1 << qubit);
+          corrected = OpCodes.XorN(corrected, (OpCodes.Shl32(1, qubit)));
           // Also correct phase (not visible in classical representation)
           break;
       }
@@ -393,7 +393,7 @@
       let count = 0;
       let temp = value;
       while (temp) {
-        count += temp & 1;
+        count += OpCodes.AndN(temp, 1);
         temp >>>= 1;
       }
       return count;
@@ -444,7 +444,7 @@
     _getBitPositions(value) {
       const positions = [];
       for (let i = 0; i < 5; i++) {
-        if (value & (1 << i)) {
+        if (value & (OpCodes.Shl32(1, i))) {
           positions.push(i);
         }
       }

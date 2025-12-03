@@ -208,14 +208,14 @@
 
       // Multiply by x (left shift with carry)
       for (let i = 15; i >= 0; i--) {
-        const newCarry = (block[i] & 0x80) ? 0x87 : 0x00; // x^128 = x^7 + x^2 + x + 1
-        result[i] = ((block[i] << 1) | carry) & 0xFF;
-        carry = newCarry ? 1 : 0;
+        const newCarry = OpCodes.AndN(block[i], 0x80) ? 1 : 0;
+        result[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(block[i], 1), carry), 0xFF);
+        carry = newCarry;
       }
 
       // Handle reduction for x^128
       if (carry) {
-        result[15] ^= 0x87; // Reduction polynomial
+        result[15] = OpCodes.XorN(result[15], 0x87); // Reduction polynomial
       }
 
       return result;

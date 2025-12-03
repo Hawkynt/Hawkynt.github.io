@@ -231,7 +231,7 @@
           // XOR with previous ciphertext (or IV)
           const xorBlock = [];
           for (let j = 0; j < blockSize; j++) {
-            xorBlock[j] = block[j] ^ previousBlock[j];
+            xorBlock[j] = OpCodes.XorN(block[j], previousBlock[j]);
           }
 
           // Encrypt
@@ -253,7 +253,7 @@
           // XOR with previous ciphertext (or IV)
           const xorBlock = [];
           for (let j = 0; j < blockSize; j++) {
-            xorBlock[j] = block[j] ^ previousBlock[j];
+            xorBlock[j] = OpCodes.XorN(block[j], previousBlock[j]);
           }
 
           // Encrypt
@@ -273,7 +273,7 @@
         // Step 1: Encrypt penultimate block normally
         const xorPenultimate = [];
         for (let j = 0; j < blockSize; j++) {
-          xorPenultimate[j] = penultimateBlock[j] ^ previousBlock[j];
+          xorPenultimate[j] = OpCodes.XorN(penultimateBlock[j], previousBlock[j]);
         }
 
         const cipher1 = this.blockCipher.algorithm.CreateInstance(false);
@@ -290,7 +290,7 @@
         // Step 3: Encrypt the padded final block
         const xorFinal = [];
         for (let j = 0; j < blockSize; j++) {
-          xorFinal[j] = paddedFinal[j] ^ previousBlock[j];
+          xorFinal[j] = OpCodes.XorN(paddedFinal[j], previousBlock[j]);
         }
 
         const cipher2 = this.blockCipher.algorithm.CreateInstance(false);
@@ -331,7 +331,7 @@
           // XOR with previous ciphertext (or IV)
           const plainBlock = [];
           for (let j = 0; j < blockSize; j++) {
-            plainBlock[j] = decryptedBlock[j] ^ previousBlock[j];
+            plainBlock[j] = OpCodes.XorN(decryptedBlock[j], previousBlock[j]);
           }
 
           output.push(...plainBlock);
@@ -353,7 +353,7 @@
           // XOR with previous ciphertext (or IV)
           const plainBlock = [];
           for (let j = 0; j < blockSize; j++) {
-            plainBlock[j] = decryptedBlock[j] ^ previousBlock[j];
+            plainBlock[j] = OpCodes.XorN(decryptedBlock[j], previousBlock[j]);
           }
 
           output.push(...plainBlock);
@@ -375,7 +375,7 @@
         // First reverse the CBC XOR to get the padded final block
         const paddedFinal = [];
         for (let i = 0; i < blockSize; i++) {
-          paddedFinal[i] = decryptedFinal[i] ^ previousBlock[i];
+          paddedFinal[i] = OpCodes.XorN(decryptedFinal[i], previousBlock[i]);
         }
 
         const penultimateCipher = [...truncatedPenultimate];
@@ -392,7 +392,7 @@
         // Step 4: XOR to get plaintext blocks
         const plainPenultimate = [];
         for (let j = 0; j < blockSize; j++) {
-          plainPenultimate[j] = decryptedPenultimate[j] ^ previousBlock[j];
+          plainPenultimate[j] = OpCodes.XorN(decryptedPenultimate[j], previousBlock[j]);
         }
 
         const plainFinalPartial = [];

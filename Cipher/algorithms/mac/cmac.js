@@ -290,15 +290,15 @@
           }
 
           // XOR with Rcon
-          temp[0] ^= this.RCON[Math.floor(i/Nk) - 1];
+          temp[0] = OpCodes.XorN(temp[0], this.RCON[Math.floor(i/Nk) - 1]);
         }
 
         // w[i] = w[i-Nk] XOR temp
         w[i] = [
-          w[i-Nk][0] ^ temp[0],
-          w[i-Nk][1] ^ temp[1],
-          w[i-Nk][2] ^ temp[2],
-          w[i-Nk][3] ^ temp[3]
+          OpCodes.XorN(w[i-Nk][0], temp[0]),
+          OpCodes.XorN(w[i-Nk][1], temp[1]),
+          OpCodes.XorN(w[i-Nk][2], temp[2]),
+          OpCodes.XorN(w[i-Nk][3], temp[3])
         ];
       }
 
@@ -322,14 +322,14 @@
 
       // Generate K1
       const K1 = this._leftShift(L);
-      if (L[0] & 0x80) {
-        K1[15] ^= 0x87; // Rb constant for 128-bit blocks
+      if (OpCodes.AndN(L[0], 0x80)) {
+        K1[15] = OpCodes.XorN(K1[15], 0x87); // Rb constant for 128-bit blocks
       }
 
       // Generate K2
       const K2 = this._leftShift(K1);
-      if (K1[0] & 0x80) {
-        K2[15] ^= 0x87;
+      if (OpCodes.AndN(K1[0], 0x80)) {
+        K2[15] = OpCodes.XorN(K2[15], 0x87);
       }
 
       return { K1, K2 };
@@ -341,8 +341,8 @@
       let carry = 0;
 
       for (let i = data.length - 1; i >= 0; i--) {
-        const newCarry = (data[i] & 0x80) ? 1 : 0;
-        result[i] = ((data[i] << 1) | carry) & 0xFF;
+        const newCarry = OpCodes.AndN(data[i], 0x80) ? 1 : 0;
+        result[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(data[i], 1), carry), 0xFF);
         carry = newCarry;
       }
 
@@ -381,7 +381,7 @@
 
     _addRoundKey(state, roundKey) {
       for (let i = 0; i < 16; i++) {
-        state[i] ^= roundKey[i];
+        state[i] = OpCodes.XorN(state[i], roundKey[i]);
       }
     }
 
@@ -421,19 +421,19 @@
         const c2 = state[col * 4 + 2];
         const c3 = state[col * 4 + 3];
 
-        state[col * 4] = this._mul2(c0) ^ this._mul3(c1) ^ c2 ^ c3;
-        state[col * 4 + 1] = c0 ^ this._mul2(c1) ^ this._mul3(c2) ^ c3;
-        state[col * 4 + 2] = c0 ^ c1 ^ this._mul2(c2) ^ this._mul3(c3);
-        state[col * 4 + 3] = this._mul3(c0) ^ c1 ^ c2 ^ this._mul2(c3);
+        state[col * 4] = OpCodes.XorN(this._mul2(c0), OpCodes.XorN(this._mul3(c1), OpCodes.XorN(c2, c3)));
+        state[col * 4 + 1] = OpCodes.XorN(c0, OpCodes.XorN(this._mul2(c1), OpCodes.XorN(this._mul3(c2), c3)));
+        state[col * 4 + 2] = OpCodes.XorN(c0, OpCodes.XorN(c1, OpCodes.XorN(this._mul2(c2), this._mul3(c3))));
+        state[col * 4 + 3] = OpCodes.XorN(this._mul3(c0), OpCodes.XorN(c1, OpCodes.XorN(c2, this._mul2(c3))));
       }
     }
 
     _mul2(x) {
-      return ((x << 1) ^ (((x >> 7) & 1) * 0x1B)) & 0xFF;
+      return OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(x, 1), (OpCodes.AndN(OpCodes.Shr32(x, 7), 1) * 0x1B)), 0xFF);
     }
 
     _mul3(x) {
-      return this._mul2(x) ^ x;
+      return OpCodes.XorN(this._mul2(x), x);
     }
 
     // Core CMAC computation
@@ -448,12 +448,12 @@
 
         // XOR with K2 (for incomplete block)
         for (let i = 0; i < 16; i++) {
-          finalBlock[i] ^= this.subkeys.K2[i];
+          finalBlock[i] = OpCodes.XorN(finalBlock[i], this.subkeys.K2[i]);
         }
 
         // XOR with state and encrypt
         for (let i = 0; i < 16; i++) {
-          x[i] ^= finalBlock[i];
+          x[i] = OpCodes.XorN(x[i], finalBlock[i]);
         }
 
         return this._aesEncrypt(x);
@@ -472,7 +472,7 @@
 
         // XOR with previous state
         for (let i = 0; i < 16; i++) {
-          x[i] ^= block[i];
+          x[i] = OpCodes.XorN(x[i], block[i]);
         }
 
         // Encrypt with AES
@@ -487,7 +487,7 @@
       if (remainingBytes === 16) {
         // Complete final block: XOR with K1
         for (let i = 0; i < 16; i++) {
-          finalBlock[i] = this.inputBuffer[pos + i] ^ this.subkeys.K1[i];
+          finalBlock[i] = OpCodes.XorN(this.inputBuffer[pos + i], this.subkeys.K1[i]);
         }
       } else {
         // Incomplete final block: pad and XOR with K2
@@ -499,13 +499,13 @@
         }
 
         for (let i = 0; i < 16; i++) {
-          finalBlock[i] ^= this.subkeys.K2[i];
+          finalBlock[i] = OpCodes.XorN(finalBlock[i], this.subkeys.K2[i]);
         }
       }
 
       // XOR with state and encrypt
       for (let i = 0; i < 16; i++) {
-        x[i] ^= finalBlock[i];
+        x[i] = OpCodes.XorN(x[i], finalBlock[i]);
       }
 
       return this._aesEncrypt(x);

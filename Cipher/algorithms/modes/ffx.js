@@ -306,7 +306,7 @@
         return OpCodes.AnsiToBytes(str);
       } else {
         // General radix conversion (simplified)
-        return symbols.map(s => s & 0xFF);
+        return symbols.map(s => OpCodes.AndN(s, 0xFF));
       }
     }
 
@@ -320,8 +320,8 @@
       // Construct PRF input: tweak || round || input
       const prfInput = [];
       prfInput.push(...this.tweak);
-      prfInput.push(round & 0xFF);
-      prfInput.push(...input.map(s => s & 0xFF));
+      prfInput.push(OpCodes.AndN(round, 0xFF));
+      prfInput.push(...input.map(s => OpCodes.AndN(s, 0xFF)));
 
       // Pad to block size
       const blockSize = this.blockCipher.BlockSize;

@@ -225,10 +225,7 @@
         const plaintextBlock = this.inputBuffer.slice(i * blockSize, (i + 1) * blockSize);
 
         // XOR plaintext with previous feedback (IV for first block)
-        const xorBlock = [];
-        for (let j = 0; j < blockSize; j++) {
-          xorBlock[j] = plaintextBlock[j] ^ previousFeedback[j];
-        }
+        const xorBlock = OpCodes.XorArrays(plaintextBlock, previousFeedback);
 
         // Encrypt the XORed block
         const cipher = this.blockCipher.algorithm.CreateInstance(false);
@@ -239,11 +236,7 @@
         output.push(...ciphertextBlock);
 
         // PCBC feedback: XOR plaintext and ciphertext for next iteration
-        const newFeedback = [];
-        for (let j = 0; j < blockSize; j++) {
-          newFeedback[j] = plaintextBlock[j] ^ ciphertextBlock[j];
-        }
-        previousFeedback = newFeedback;
+        previousFeedback = OpCodes.XorArrays(plaintextBlock, ciphertextBlock);
       }
 
       return output;
@@ -266,19 +259,12 @@
         const decryptedBlock = cipher.Result();
 
         // XOR with previous feedback to get plaintext
-        const plaintextBlock = [];
-        for (let j = 0; j < blockSize; j++) {
-          plaintextBlock[j] = decryptedBlock[j] ^ previousFeedback[j];
-        }
+        const plaintextBlock = OpCodes.XorArrays(decryptedBlock, previousFeedback);
 
         output.push(...plaintextBlock);
 
         // PCBC feedback: XOR plaintext and ciphertext for next iteration
-        const newFeedback = [];
-        for (let j = 0; j < blockSize; j++) {
-          newFeedback[j] = plaintextBlock[j] ^ ciphertextBlock[j];
-        }
-        previousFeedback = newFeedback;
+        previousFeedback = OpCodes.XorArrays(plaintextBlock, ciphertextBlock);
       }
 
       return output;

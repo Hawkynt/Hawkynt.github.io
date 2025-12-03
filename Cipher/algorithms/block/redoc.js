@@ -225,7 +225,7 @@
       for (let round = 0; round < this.ROUNDS; round++) {
         const roundKey = new Array(10);
         for (let i = 0; i < 10; i++) {
-          roundKey[i] = (this.keyX[i] ^ this.keyY[(i + round) % 10] ^ round) & 0xFF;
+          roundKey[i] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(this.keyX[i], this.keyY[(i + round) % 10]), round), 0xFF);
         }
         roundKeys.push(roundKey);
       }
@@ -590,8 +590,8 @@
         // Step 4: Enhanced diffusion - Four-way mixing
         for (let i = 0; i < 4; i++) {
           // Mix each quartet with others
-          data[i] ^= data[i + 4] ^ data[i + 8] ^ data[i + 12];
-          data[i + 4] ^= data[i + 8] ^ data[i + 12];
+          data[i] ^= OpCodes.XorN(OpCodes.XorN(data[i + 4], data[i + 8]), data[i + 12]);
+          data[i + 4] ^= OpCodes.XorN(data[i + 8], data[i + 12]);
           data[i + 8] ^= data[i + 12];
         }
 
@@ -601,8 +601,8 @@
         // Reverse Step 4: Enhanced diffusion
         for (let i = 3; i >= 0; i--) {
           data[i + 8] ^= data[i + 12];
-          data[i + 4] ^= data[i + 8] ^ data[i + 12];
-          data[i] ^= data[i + 4] ^ data[i + 8] ^ data[i + 12];
+          data[i + 4] ^= OpCodes.XorN(data[i + 8], data[i + 12]);
+          data[i] ^= OpCodes.XorN(OpCodes.XorN(data[i + 4], data[i + 8]), data[i + 12]);
         }
 
         // Reverse Step 3: Enhanced rotation

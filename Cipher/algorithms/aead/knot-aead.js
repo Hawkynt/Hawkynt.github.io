@@ -103,20 +103,20 @@
 
     // Process each byte independently (bit-sliced operation)
     for (let i = 0; i < 8; ++i) {
-      const a0b = a0[i] & 0xFF;
-      const a1b = a1[i] & 0xFF;
-      const a2b = a2[i] & 0xFF;
-      const a3b = a3[i] & 0xFF;
+      const a0b = OpCodes.AndN(a0[i], 0xFF);
+      const a1b = OpCodes.AndN(a1[i], 0xFF);
+      const a2b = OpCodes.AndN(a2[i], 0xFF);
+      const a3b = OpCodes.AndN(a3[i], 0xFF);
 
       // Apply KNOT S-box
-      let t1 = (~a0b) & 0xFF;
-      let t3 = (a2b ^ (a1b & t1)) & 0xFF;
-      const b3 = (a3b ^ t3) & 0xFF;
-      const t6 = (a3b ^ t1) & 0xFF;
-      const b2 = ((a1b | a2b) ^ t6) & 0xFF;
-      t1 = (a1b ^ a3b) & 0xFF;
-      const a0_out = (t1 ^ (t3 & t6)) & 0xFF;
-      const b1 = (t3 ^ (b2 & t1)) & 0xFF;
+      let t1 = OpCodes.AndN(~a0b, 0xFF);
+      let t3 = OpCodes.AndN(OpCodes.XorN(a2b, OpCodes.AndN(a1b, t1)), 0xFF);
+      const b3 = OpCodes.AndN(OpCodes.XorN(a3b, t3), 0xFF);
+      const t6 = OpCodes.AndN(OpCodes.XorN(a3b, t1), 0xFF);
+      const b2 = OpCodes.AndN(OpCodes.XorN(OpCodes.OrN(a1b, a2b), t6), 0xFF);
+      t1 = OpCodes.AndN(OpCodes.XorN(a1b, a3b), 0xFF);
+      const a0_out = OpCodes.AndN(OpCodes.XorN(t1, OpCodes.AndN(t3, t6)), 0xFF);
+      const b1 = OpCodes.AndN(OpCodes.XorN(t3, OpCodes.AndN(b2, t1)), 0xFF);
 
       result.a0[i] = a0_out;
       result.b1[i] = b1;
@@ -145,20 +145,20 @@
 
     // Process each byte independently (bit-sliced operation)
     for (let i = 0; i < 4; ++i) {
-      const a0b = a0[i] & 0xFF;
-      const a1b = a1[i] & 0xFF;
-      const a2b = a2[i] & 0xFF;
-      const a3b = a3[i] & 0xFF;
+      const a0b = OpCodes.AndN(a0[i], 0xFF);
+      const a1b = OpCodes.AndN(a1[i], 0xFF);
+      const a2b = OpCodes.AndN(a2[i], 0xFF);
+      const a3b = OpCodes.AndN(a3[i], 0xFF);
 
       // Apply KNOT S-box
-      let t1 = (~a0b) & 0xFF;
-      let t3 = (a2b ^ (a1b & t1)) & 0xFF;
-      const b3 = (a3b ^ t3) & 0xFF;
-      const t6 = (a3b ^ t1) & 0xFF;
-      const b2 = ((a1b | a2b) ^ t6) & 0xFF;
-      t1 = (a1b ^ a3b) & 0xFF;
-      const a0_out = (t1 ^ (t3 & t6)) & 0xFF;
-      const b1 = (t3 ^ (b2 & t1)) & 0xFF;
+      let t1 = OpCodes.AndN(~a0b, 0xFF);
+      let t3 = OpCodes.AndN(OpCodes.XorN(a2b, OpCodes.AndN(a1b, t1)), 0xFF);
+      const b3 = OpCodes.AndN(OpCodes.XorN(a3b, t3), 0xFF);
+      const t6 = OpCodes.AndN(OpCodes.XorN(a3b, t1), 0xFF);
+      const b2 = OpCodes.AndN(OpCodes.XorN(OpCodes.OrN(a1b, a2b), t6), 0xFF);
+      t1 = OpCodes.AndN(OpCodes.XorN(a1b, a3b), 0xFF);
+      const a0_out = OpCodes.AndN(OpCodes.XorN(t1, OpCodes.AndN(t3, t6)), 0xFF);
+      const b1 = OpCodes.AndN(OpCodes.XorN(t3, OpCodes.AndN(b2, t1)), 0xFF);
 
       result.a0[i] = a0_out;
       result.b1[i] = b1;
@@ -178,7 +178,7 @@
   function rotL64(bytes, positions) {
     if (positions === 0) return [...bytes];
 
-    positions = positions & 63;
+    positions = OpCodes.AndN(positions, 63);
     const result = new Array(8);
 
     // Calculate byte shift and bit shift
@@ -188,15 +188,15 @@
     if (bitShift === 0) {
       // Simple byte rotation
       for (let i = 0; i < 8; ++i) {
-        result[i] = bytes[(i - byteShift + 8) & 7];
+        result[i] = bytes[OpCodes.AndN(OpCodes.AndN(i - byteShift + 8, 0xFF), 7)];
       }
     } else {
       // Bit rotation with carry
       const rightShift = 8 - bitShift;
       for (let i = 0; i < 8; ++i) {
-        const srcIdx1 = (i - byteShift + 8) & 7;
-        const srcIdx2 = (i - byteShift - 1 + 8) & 7;
-        result[i] = (((bytes[srcIdx1] << bitShift) | (bytes[srcIdx2] >>> rightShift)) & 0xFF);
+        const srcIdx1 = OpCodes.AndN(OpCodes.AndN(i - byteShift + 8, 0xFF), 7);
+        const srcIdx2 = OpCodes.AndN(OpCodes.AndN(i - byteShift - 1 + 8, 0xFF), 7);
+        result[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(bytes[srcIdx1], bitShift), OpCodes.Shr32(bytes[srcIdx2], rightShift)), 0xFF);
       }
     }
 
@@ -212,7 +212,7 @@
   function rotL32(bytes, positions) {
     if (positions === 0) return [...bytes];
 
-    positions = positions & 31;
+    positions = OpCodes.AndN(positions, 31);
     const result = new Array(4);
 
     // Calculate byte shift and bit shift
@@ -222,15 +222,15 @@
     if (bitShift === 0) {
       // Simple byte rotation
       for (let i = 0; i < 4; ++i) {
-        result[i] = bytes[(i - byteShift + 4) & 3];
+        result[i] = bytes[OpCodes.AndN(OpCodes.AndN(i - byteShift + 4, 0xFF), 3)];
       }
     } else {
       // Bit rotation with carry
       const rightShift = 8 - bitShift;
       for (let i = 0; i < 4; ++i) {
-        const srcIdx1 = (i - byteShift + 4) & 3;
-        const srcIdx2 = (i - byteShift - 1 + 4) & 3;
-        result[i] = (((bytes[srcIdx1] << bitShift) | (bytes[srcIdx2] >>> rightShift)) & 0xFF);
+        const srcIdx1 = OpCodes.AndN(OpCodes.AndN(i - byteShift + 4, 0xFF), 3);
+        const srcIdx2 = OpCodes.AndN(OpCodes.AndN(i - byteShift - 1 + 4, 0xFF), 3);
+        result[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(bytes[srcIdx1], bitShift), OpCodes.Shr32(bytes[srcIdx2], rightShift)), 0xFF);
       }
     }
 
@@ -254,24 +254,24 @@
     // Use BigInt for exact 96-bit arithmetic
     let value = 0n;
     for (let i = 0; i < 8; ++i) {
-      value |= BigInt(low64bytes[i] & 0xFF) << BigInt(i * 8);
+      value = OpCodes.OrN(value, OpCodes.ShiftLn(BigInt(OpCodes.AndN(low64bytes[i], 0xFF)), BigInt(i * 8)));
     }
     for (let i = 0; i < 4; ++i) {
-      value |= BigInt(high32bytes[i] & 0xFF) << BigInt(64 + i * 8);
+      value = OpCodes.OrN(value, OpCodes.ShiftLn(BigInt(OpCodes.AndN(high32bytes[i], 0xFF)), BigInt(64 + i * 8)));
     }
 
     // Rotate
-    const mask96 = (1n << 96n) - 1n;
-    const rotated = ((value << BigInt(bits)) | (value >> BigInt(96 - bits))) & mask96;
+    const mask96 = OpCodes.ShiftLn(1n, 96n) - 1n;
+    const rotated = OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftLn(value, BigInt(bits)), OpCodes.ShiftRn(value, BigInt(96 - bits))), mask96);
 
     // Split back
     const low64 = new Array(8);
     const high32 = new Array(4);
     for (let i = 0; i < 8; ++i) {
-      low64[i] = Number((rotated >> BigInt(i * 8)) & 0xFFn);
+      low64[i] = Number(OpCodes.AndN(OpCodes.ShiftRn(rotated, BigInt(i * 8)), 0xFFn));
     }
     for (let i = 0; i < 4; ++i) {
-      high32[i] = Number((rotated >> BigInt(64 + i * 8)) & 0xFFn);
+      high32[i] = Number(OpCodes.AndN(OpCodes.ShiftRn(rotated, BigInt(64 + i * 8)), 0xFFn));
     }
 
     return { low64, high32 };
@@ -294,7 +294,7 @@
     // Perform permutation rounds
     for (let i = 0; i < rounds; ++i) {
       // Add round constant to first word (low byte)
-      x0[0] = (x0[0] ^ RC6[i]) & 0xFF;
+      x0[0] = OpCodes.AndN(OpCodes.XorN(x0[0], RC6[i]), 0xFF);
 
       // S-box layer
       const sboxOut = knotSbox64(x0, x1, x2, x3);
@@ -345,7 +345,7 @@
     // Perform permutation rounds
     for (let i = 0; i < rounds; ++i) {
       // Add round constant to first word (low byte)
-      x0[0] = (x0[0] ^ RC7[i]) & 0xFF;
+      x0[0] = OpCodes.AndN(OpCodes.XorN(x0[0], RC7[i]), 0xFF);
 
       // S-box layer (bit-sliced on 64-bit and 32-bit parts separately)
       const sbox64Out = knotSbox64(x0, x2, x4, x6);
@@ -649,14 +649,14 @@
 
       if (ad.length === 0) {
         // Empty AD: apply domain separation only
-        this.state[31] ^= 0x80;
+        this.state[31] = OpCodes.XorN(this.state[31], 0x80);
         return;
       }
 
       // Process full blocks
       while (offset + rate <= ad.length) {
         for (let i = 0; i < rate; ++i) {
-          this.state[i] ^= ad[offset + i];
+          this.state[i] = OpCodes.XorN(this.state[i], ad[offset + i]);
         }
         knot256Permute(this.state, this.algorithm.PROCESS_ROUNDS);
         offset += rate;
@@ -666,16 +666,16 @@
       const remaining = ad.length - offset;
       if (remaining > 0) {
         for (let i = 0; i < remaining; ++i) {
-          this.state[i] ^= ad[offset + i];
+          this.state[i] = OpCodes.XorN(this.state[i], ad[offset + i]);
         }
       }
 
       // Padding: XOR 0x01 at end of data
-      this.state[remaining] ^= 0x01;
+      this.state[remaining] = OpCodes.XorN(this.state[remaining], 0x01);
       knot256Permute(this.state, this.algorithm.PROCESS_ROUNDS);
 
       // Domain separation
-      this.state[31] ^= 0x80;
+      this.state[31] = OpCodes.XorN(this.state[31], 0x80);
     }
 
     // Encrypt plaintext
@@ -687,7 +687,7 @@
       // Process full blocks
       while (offset + rate <= plaintext.length) {
         for (let i = 0; i < rate; ++i) {
-          ciphertext.push(this.state[i] ^ plaintext[offset + i]);
+          ciphertext.push(OpCodes.XorN(this.state[i], plaintext[offset + i]));
           this.state[i] = ciphertext[ciphertext.length - 1];
         }
         knot256Permute(this.state, this.algorithm.PROCESS_ROUNDS);
@@ -698,11 +698,11 @@
       const remaining = plaintext.length - offset;
       if (remaining > 0) {
         for (let i = 0; i < remaining; ++i) {
-          ciphertext.push(this.state[i] ^ plaintext[offset + i]);
+          ciphertext.push(OpCodes.XorN(this.state[i], plaintext[offset + i]));
           this.state[i] = ciphertext[ciphertext.length - 1];
         }
         // Padding
-        this.state[remaining] ^= 0x01;
+        this.state[remaining] = OpCodes.XorN(this.state[remaining], 0x01);
       }
 
       return ciphertext;
@@ -718,7 +718,7 @@
       while (offset + rate <= ciphertext.length) {
         for (let i = 0; i < rate; ++i) {
           const ct = ciphertext[offset + i];
-          plaintext.push(this.state[i] ^ ct);
+          plaintext.push(OpCodes.XorN(this.state[i], ct));
           this.state[i] = ct;
         }
         knot256Permute(this.state, this.algorithm.PROCESS_ROUNDS);
@@ -730,11 +730,11 @@
       if (remaining > 0) {
         for (let i = 0; i < remaining; ++i) {
           const ct = ciphertext[offset + i];
-          plaintext.push(this.state[i] ^ ct);
+          plaintext.push(OpCodes.XorN(this.state[i], ct));
           this.state[i] = ct;
         }
         // Padding
-        this.state[remaining] ^= 0x01;
+        this.state[remaining] = OpCodes.XorN(this.state[remaining], 0x01);
       }
 
       return plaintext;
@@ -1114,14 +1114,14 @@
 
       if (ad.length === 0) {
         // Empty AD: apply domain separation only
-        this.state[47] ^= 0x80;
+        this.state[47] = OpCodes.XorN(this.state[47], 0x80);
         return;
       }
 
       // Process full blocks
       while (offset + rate <= ad.length) {
         for (let i = 0; i < rate; ++i) {
-          this.state[i] ^= ad[offset + i];
+          this.state[i] = OpCodes.XorN(this.state[i], ad[offset + i]);
         }
         knot384Permute(this.state, this.algorithm.PROCESS_ROUNDS);
         offset += rate;
@@ -1131,16 +1131,16 @@
       const remaining = ad.length - offset;
       if (remaining > 0) {
         for (let i = 0; i < remaining; ++i) {
-          this.state[i] ^= ad[offset + i];
+          this.state[i] = OpCodes.XorN(this.state[i], ad[offset + i]);
         }
       }
 
       // Padding: XOR 0x01 at end of data
-      this.state[remaining] ^= 0x01;
+      this.state[remaining] = OpCodes.XorN(this.state[remaining], 0x01);
       knot384Permute(this.state, this.algorithm.PROCESS_ROUNDS);
 
       // Domain separation
-      this.state[47] ^= 0x80;
+      this.state[47] = OpCodes.XorN(this.state[47], 0x80);
     }
 
     // Encrypt plaintext
@@ -1152,7 +1152,7 @@
       // Process full blocks
       while (offset + rate <= plaintext.length) {
         for (let i = 0; i < rate; ++i) {
-          ciphertext.push(this.state[i] ^ plaintext[offset + i]);
+          ciphertext.push(OpCodes.XorN(this.state[i], plaintext[offset + i]));
           this.state[i] = ciphertext[ciphertext.length - 1];
         }
         knot384Permute(this.state, this.algorithm.PROCESS_ROUNDS);
@@ -1163,11 +1163,11 @@
       const remaining = plaintext.length - offset;
       if (remaining > 0) {
         for (let i = 0; i < remaining; ++i) {
-          ciphertext.push(this.state[i] ^ plaintext[offset + i]);
+          ciphertext.push(OpCodes.XorN(this.state[i], plaintext[offset + i]));
           this.state[i] = ciphertext[ciphertext.length - 1];
         }
         // Padding
-        this.state[remaining] ^= 0x01;
+        this.state[remaining] = OpCodes.XorN(this.state[remaining], 0x01);
       }
 
       return ciphertext;
@@ -1183,7 +1183,7 @@
       while (offset + rate <= ciphertext.length) {
         for (let i = 0; i < rate; ++i) {
           const ct = ciphertext[offset + i];
-          plaintext.push(this.state[i] ^ ct);
+          plaintext.push(OpCodes.XorN(this.state[i], ct));
           this.state[i] = ct;
         }
         knot384Permute(this.state, this.algorithm.PROCESS_ROUNDS);
@@ -1195,11 +1195,11 @@
       if (remaining > 0) {
         for (let i = 0; i < remaining; ++i) {
           const ct = ciphertext[offset + i];
-          plaintext.push(this.state[i] ^ ct);
+          plaintext.push(OpCodes.XorN(this.state[i], ct));
           this.state[i] = ct;
         }
         // Padding
-        this.state[remaining] ^= 0x01;
+        this.state[remaining] = OpCodes.XorN(this.state[remaining], 0x01);
       }
 
       return plaintext;

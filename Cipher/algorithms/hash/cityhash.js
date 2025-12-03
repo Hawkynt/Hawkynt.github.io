@@ -150,14 +150,14 @@
         // Convert to 8-byte array (little-endian byte order for test vector compatibility)
         // Note: OpCodes 64-bit functions use high/low 32-bit split, not BigInt
         return [
-          Number((hash64 >> 56n) & 0xffn),
-          Number((hash64 >> 48n) & 0xffn),
-          Number((hash64 >> 40n) & 0xffn),
-          Number((hash64 >> 32n) & 0xffn),
-          Number((hash64 >> 24n) & 0xffn),
-          Number((hash64 >> 16n) & 0xffn),
-          Number((hash64 >> 8n) & 0xffn),
-          Number(hash64 & 0xffn)
+          Number(OpCodes.AndN(OpCodes.ShiftRn(hash64, 56n), 0xffn)),
+          Number(OpCodes.AndN(OpCodes.ShiftRn(hash64, 48n), 0xffn)),
+          Number(OpCodes.AndN(OpCodes.ShiftRn(hash64, 40n), 0xffn)),
+          Number(OpCodes.AndN(OpCodes.ShiftRn(hash64, 32n), 0xffn)),
+          Number(OpCodes.AndN(OpCodes.ShiftRn(hash64, 24n), 0xffn)),
+          Number(OpCodes.AndN(OpCodes.ShiftRn(hash64, 16n), 0xffn)),
+          Number(OpCodes.AndN(OpCodes.ShiftRn(hash64, 8n), 0xffn)),
+          Number(OpCodes.AndN(hash64, 0xffn))
         ];
       }
 
@@ -190,16 +190,16 @@
         if (length >= 4) {
           const mul = this.K2 + BigInt(length) * 2n;
           const a = BigInt(this.fetch32(bytes, 0));
-          return this.hashLen16(BigInt(length) + (a << 3n), BigInt(this.fetch32(bytes, length - 4)), mul);
+          return this.hashLen16(BigInt(length) + OpCodes.ShiftLn(a, 3n), BigInt(this.fetch32(bytes, length - 4)), mul);
         }
 
         if (length > 0) {
           const a = bytes[0];
-          const b = bytes[length >> 1];
+          const b = bytes[OpCodes.Shr32(length, 1)];
           const c = bytes[length - 1];
-          const y = BigInt(a) + (BigInt(b) << 8n);
-          const z = BigInt(length) + (BigInt(c) << 2n);
-          return this.shiftMix(y * this.K2 ^ z * this.K0) * this.K2;
+          const y = BigInt(a) + OpCodes.ShiftLn(BigInt(b), 8n);
+          const z = BigInt(length) + OpCodes.ShiftLn(BigInt(c), 2n);
+          return this.shiftMix(OpCodes.XorN(y * this.K2, z * this.K0)) * this.K2;
         }
 
         return this.K2;
@@ -233,13 +233,13 @@
         const h = this.fetch64(bytes, length - 16) * mul;
 
         const u = this.rotr64(a + g, 43n) + (this.rotr64(b, 30n) + c) * 9n;
-        const v = ((a + g) ^ d) + f + 1n;
+        const v = OpCodes.XorN(a + g, d) + f + 1n;
         const w = ((u + v) * mul) + h;
         const x = this.rotr64(e + f, 42n) + c;
         const y = (((v + w) * mul) + g) * mul;
         const z = e + f + c;
 
-        const aa = ((x + z) * mul + y) & 0xffffffffn;
+        const aa = OpCodes.AndN((x + z) * mul + y, 0xffffffffn);
         const bb = this.shiftMix((z + aa) * mul + d + h) * mul;
 
         return this.hashLen16(aa, bb, mul);
@@ -250,8 +250,8 @@
 
         // For strings over 64 bytes
         let x = this.fetch64(bytes, 0);
-        let y = this.fetch64(bytes, length - 16) ^ this.K1;
-        let z = this.fetch64(bytes, length - 56) ^ this.K0;
+        let y = OpCodes.XorN(this.fetch64(bytes, length - 16), this.K1);
+        let z = OpCodes.XorN(this.fetch64(bytes, length - 56), this.K0);
 
         let v0 = 0n, v1 = 0n;
         let w0 = 0n, w1 = 0n;
@@ -266,7 +266,7 @@
         while (pos < length - 64) {
           x = this.rotr64(x + y + v0 + this.fetch64(bytes, pos + 8), 37n) * this.K1;
           y = this.rotr64(y + v1 + this.fetch64(bytes, pos + 48), 42n) * this.K1;
-          x ^= w1;
+          x = OpCodes.XorN(x, w1);
           y += v0 + this.fetch64(bytes, pos + 40);
           z = this.rotr64(z + w0, 33n) * this.K1;
 
@@ -277,16 +277,16 @@
           pos += 64;
         }
 
-        const mul = this.K1 + ((z & 0xffn) << 1n);
+        const mul = this.K1 + OpCodes.ShiftLn(OpCodes.AndN(z, 0xffn), 1n);
 
         // Final processing
-        w0 += BigInt((length - 1) & 63);
+        w0 += BigInt(OpCodes.AndN(length - 1, 63));
         v0 += w0;
         w0 += v0;
 
         x = this.rotr64(x + y + v0 + this.fetch64(bytes, pos + 8), 37n) * mul;
         y = this.rotr64(y + v1 + this.fetch64(bytes, pos + 48), 42n) * mul;
-        x ^= w1 * 9n;
+        x = OpCodes.XorN(x, w1 * 9n);
         y += v0 * 9n + this.fetch64(bytes, pos + 40);
         z = this.rotr64(z + w0, 33n) * mul;
 
@@ -316,25 +316,25 @@
         // Note: OpCodes Pack64LE works with separate bytes, not pre-packed 32-bit values
         const low = BigInt(this.fetch32(bytes, offset));
         const high = BigInt(this.fetch32(bytes, offset + 4));
-        return low + (high << 32n);
+        return low + OpCodes.ShiftLn(high, 32n);
       }
 
       rotr64(val, shift) {
         const mask = 0xffffffffffffffffn;
-        val = val & mask;
-        return ((val >> shift) | (val << (64n - shift))) & mask;
+        val = OpCodes.AndN(val, mask);
+        return OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftRn(val, shift), OpCodes.ShiftLn(val, 64n - shift)), mask);
       }
 
       shiftMix(val) {
-        return val ^ (val >> 47n);
+        return OpCodes.XorN(val, OpCodes.ShiftRn(val, 47n));
       }
 
       hashLen16(u, v, mul) {
         mul = mul || this.K2;
-        let a = (u ^ v) * mul;
-        a ^= (a >> 47n);
-        let b = (v ^ a) * mul;
-        b ^= (b >> 47n);
+        let a = OpCodes.XorN(u, v) * mul;
+        a = OpCodes.XorN(a, OpCodes.ShiftRn(a, 47n));
+        let b = OpCodes.XorN(v, a) * mul;
+        b = OpCodes.XorN(b, OpCodes.ShiftRn(b, 47n));
         return b * mul;
       }
 

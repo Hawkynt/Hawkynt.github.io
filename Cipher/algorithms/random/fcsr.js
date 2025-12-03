@@ -261,12 +261,12 @@
         this._stateLow = OpCodes.Pack32LE(lowBytes[0], lowBytes[1], lowBytes[2], lowBytes[3]);
 
         // High word: next 4 bytes
-        const highBytes = seedBytes.slice(4, 8);
-        this._stateHigh = OpCodes.Pack32LE(highBytes[0] || 0, highBytes[1] || 0, highBytes[2] || 0, highBytes[3] || 0);
+        const highBytes = seedBytes.slice(4, 8).concat([0, 0, 0, 0]).slice(0, 4);
+        this._stateHigh = OpCodes.Pack32LE(highBytes[0], highBytes[1], highBytes[2], highBytes[3]);
       }
 
       // Extract carry bit from LSB of seed (matching C# line 12)
-      this._carryBit = seedBytes[0] & 1;
+      this._carryBit = OpCodes.AndN(seedBytes[0], 1);
 
       this._ready = true;
     }
@@ -307,27 +307,27 @@
      */
     _calculateFeedback() {
       // Perform AND operation on both words
-      const maskedLow = (this._stateLow >>> 0) & (this._connectionLow >>> 0);
-      const maskedHigh = (this._stateHigh >>> 0) & (this._connectionHigh >>> 0);
+      const maskedLow = OpCodes.AndN(OpCodes.ToUint32(this._stateLow), OpCodes.ToUint32(this._connectionLow));
+      const maskedHigh = OpCodes.AndN(OpCodes.ToUint32(this._stateHigh), OpCodes.ToUint32(this._connectionHigh));
 
       // XOR reduction on low word
       let resultLow = maskedLow;
-      resultLow ^= resultLow >>> 16;
-      resultLow ^= resultLow >>> 8;
-      resultLow ^= resultLow >>> 4;
-      resultLow ^= resultLow >>> 2;
-      resultLow ^= resultLow >>> 1;
+      resultLow = OpCodes.XorN(resultLow, OpCodes.Shr32(resultLow, 16));
+      resultLow = OpCodes.XorN(resultLow, OpCodes.Shr32(resultLow, 8));
+      resultLow = OpCodes.XorN(resultLow, OpCodes.Shr32(resultLow, 4));
+      resultLow = OpCodes.XorN(resultLow, OpCodes.Shr32(resultLow, 2));
+      resultLow = OpCodes.XorN(resultLow, OpCodes.Shr32(resultLow, 1));
 
       // XOR reduction on high word
       let resultHigh = maskedHigh;
-      resultHigh ^= resultHigh >>> 16;
-      resultHigh ^= resultHigh >>> 8;
-      resultHigh ^= resultHigh >>> 4;
-      resultHigh ^= resultHigh >>> 2;
-      resultHigh ^= resultHigh >>> 1;
+      resultHigh = OpCodes.XorN(resultHigh, OpCodes.Shr32(resultHigh, 16));
+      resultHigh = OpCodes.XorN(resultHigh, OpCodes.Shr32(resultHigh, 8));
+      resultHigh = OpCodes.XorN(resultHigh, OpCodes.Shr32(resultHigh, 4));
+      resultHigh = OpCodes.XorN(resultHigh, OpCodes.Shr32(resultHigh, 2));
+      resultHigh = OpCodes.XorN(resultHigh, OpCodes.Shr32(resultHigh, 1));
 
       // Combine both results
-      return (resultLow ^ resultHigh) & 1;
+      return OpCodes.AndN(OpCodes.XorN(resultLow, resultHigh), 1);
     }
 
     /**
@@ -350,19 +350,19 @@
       const feedbackCarrySum = feedbackBit + this._carryBit;
 
       // Extract new carry bit (bit 1 of sum) (C# line 27)
-      this._carryBit = (feedbackCarrySum >>> 1) & 1;
+      this._carryBit = OpCodes.AndN(OpCodes.Shr32(feedbackCarrySum, 1), 1);
 
       // Output bit is current LSB of state (C# line 30)
-      const outputBit = this._stateLow & 1;
+      const outputBit = OpCodes.AndN(this._stateLow, 1);
 
       // Shift state right: move LSB of high into MSB of low (C# line 31)
-      const carryFromHigh = this._stateHigh & 1;
-      this._stateLow = ((this._stateLow >>> 1) | (carryFromHigh << 31)) >>> 0;
-      this._stateHigh = (this._stateHigh >>> 1) >>> 0;
+      const carryFromHigh = OpCodes.AndN(this._stateHigh, 1);
+      this._stateLow = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this._stateLow, 1), OpCodes.Shl32(carryFromHigh, 31)));
+      this._stateHigh = OpCodes.ToUint32(OpCodes.Shr32(this._stateHigh, 1));
 
       // Insert (feedbackCarrySum & 1) at bit 63 (C# line 34)
-      const insertBit = feedbackCarrySum & 1;
-      this._stateHigh = (this._stateHigh | (insertBit << 31)) >>> 0;
+      const insertBit = OpCodes.AndN(feedbackCarrySum, 1);
+      this._stateHigh = OpCodes.ToUint32(OpCodes.OrN(this._stateHigh, OpCodes.Shl32(insertBit, 31)));
 
       return outputBit;
     }
@@ -387,7 +387,7 @@
         // Generate 8 bits for this byte (C# line 19: qword |= (ulong)GetNextBit() << i)
         for (let bitIdx = 0; bitIdx < 8; ++bitIdx) {
           const bit = this._stepFCSR();
-          byte |= bit << bitIdx;
+          byte = OpCodes.OrN(byte, OpCodes.Shl32(bit, bitIdx));
         }
         result[byteIdx] = byte;
       }

@@ -162,10 +162,11 @@
 
       for (let i = 0; i < 256; i++) {
         // Use a combination of the index and seed values to generate S-box entries
-        this.t1[i] = seeds[0] ^ BigInt(i) ^ (BigInt(i) << 8n) ^ (BigInt(i) << 16n);
-        this.t2[i] = seeds[1] ^ BigInt(i) ^ (BigInt(i) << 12n) ^ (BigInt(i) << 24n);
-        this.t3[i] = seeds[2] ^ BigInt(i) ^ (BigInt(i) << 4n) ^ (BigInt(i) << 20n);
-        this.t4[i] = seeds[3] ^ BigInt(i) ^ (BigInt(i) << 6n) ^ (BigInt(i) << 28n);
+        const bi = BigInt(i);
+        this.t1[i] = seeds[0] ^ bi ^ (bi << 8n) ^ (bi << 16n);
+        this.t2[i] = seeds[1] ^ bi ^ (bi << 12n) ^ (bi << 24n);
+        this.t3[i] = seeds[2] ^ bi ^ (bi << 4n) ^ (bi << 20n);
+        this.t4[i] = seeds[3] ^ bi ^ (bi << 6n) ^ (bi << 28n);
       }
     }
 
@@ -347,7 +348,7 @@
       if (typeof data === 'string') {
         const bytes = [];
         for (let i = 0; i < data.length; i++) {
-          bytes.push(data.charCodeAt(i) & 0xFF);
+          bytes.push(OpCodes.AndN(data.charCodeAt(i), 0xFF));
         }
         data = bytes;
       }

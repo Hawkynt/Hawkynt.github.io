@@ -180,7 +180,7 @@ class LeviathanInstance extends IAlgorithmInstance {
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       const keystreamByte = this._generateKeystreamByte();
-      output.push(this.inputBuffer[i] ^ keystreamByte);
+      output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
     }
 
     this.inputBuffer = [];
@@ -217,8 +217,8 @@ class LeviathanInstance extends IAlgorithmInstance {
         this.state[i] = ivWords[i - keyWords.length];
       } else {
         // Fill remaining state with derived material
-        this.state[i] = this.state[i % keyWords.length] ^
-                       this.state[(i * 3) % ivWords.length + keyWords.length];
+        this.state[i] = OpCodes.XorN(this.state[i % keyWords.length],
+                       this.state[(i * 3) % ivWords.length + keyWords.length]);
       }
     }
 
@@ -251,10 +251,10 @@ class LeviathanInstance extends IAlgorithmInstance {
    */
   _mixLFSR(offset) {
     // LFSR feedback with multiple tap points
-    const feedback = this.state[offset] ^
-                     this.state[offset + 3] ^
-                     this.state[offset + 7] ^
-                     this.state[offset + 12];
+    const feedback = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.state[offset],
+                     this.state[offset + 3]),
+                     this.state[offset + 7]),
+                     this.state[offset + 12]);
 
     // Shift LFSR
     for (let i = 0; i < this.LFSR_SIZE - 1; i++) {
@@ -272,8 +272,8 @@ class LeviathanInstance extends IAlgorithmInstance {
       const lfsr2_offset = (i + 1) * this.LFSR_SIZE;
 
       // Mix last word of current LFSR with first word of next LFSR
-      const mix = this.state[lfsr1_offset + this.LFSR_SIZE - 1] ^
-                 this.state[lfsr2_offset];
+      const mix = OpCodes.XorN(this.state[lfsr1_offset + this.LFSR_SIZE - 1],
+                 this.state[lfsr2_offset]);
 
       this.state[lfsr1_offset + this.LFSR_SIZE - 1] = mix;
       this.state[lfsr2_offset] = OpCodes.RotL32(mix, 11);
@@ -293,9 +293,9 @@ class LeviathanInstance extends IAlgorithmInstance {
     const x6 = this.state[119];
 
     // Apply S-box operations
-    const bytes1 = OpCodes.Unpack32LE(x1 ^ x4);
-    const bytes2 = OpCodes.Unpack32LE(x2 ^ x5);
-    const bytes3 = OpCodes.Unpack32LE(x3 ^ x6);
+    const bytes1 = OpCodes.Unpack32LE(OpCodes.XorN(x1, x4));
+    const bytes2 = OpCodes.Unpack32LE(OpCodes.XorN(x2, x5));
+    const bytes3 = OpCodes.Unpack32LE(OpCodes.XorN(x3, x6));
 
     const sbox_out1 = OpCodes.Pack32LE(
       SBOX[bytes1[0]], SBOX[bytes1[1]],
@@ -313,9 +313,9 @@ class LeviathanInstance extends IAlgorithmInstance {
     );
 
     // Combine with rotation and XOR
-    return sbox_out1 ^
-           OpCodes.RotL32(sbox_out2, 8) ^
-           OpCodes.RotL32(sbox_out3, 16);
+    return OpCodes.XorN(OpCodes.XorN(sbox_out1,
+           OpCodes.RotL32(sbox_out2, 8)),
+           OpCodes.RotL32(sbox_out3, 16));
   }
 
   /**

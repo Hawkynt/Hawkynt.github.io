@@ -325,7 +325,7 @@
     intToBinary(value, length) {
       const bits = [];
       for (let i = length - 1; i >= 0; --i) {
-        bits.push((value >>> i) & 1);
+        bits.push(OpCodes.AndN(OpCodes.Shr32(value, i), 1));
       }
       return bits;
     }
@@ -338,7 +338,7 @@
     binaryToInt(bits) {
       let value = 0;
       for (let i = 0; i < bits.length; ++i) {
-        value = (value << 1) | bits[i];
+        value = OpCodes.OrN(OpCodes.Shl32(value, 1), bits[i]);
       }
       return value;
     }

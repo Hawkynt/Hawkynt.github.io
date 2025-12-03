@@ -323,17 +323,17 @@
 
     // ChaCha20 quarter round
     _quarterRound(state, a, b, c, d) {
-      state[a] = (state[a] + state[b]) >>> 0;
-      state[d] = OpCodes.RotL32(state[d] ^ state[a], 16);
+      state[a] = OpCodes.ToUint32(state[a] + state[b]);
+      state[d] = OpCodes.RotL32(OpCodes.XorN(state[d], state[a]), 16);
 
-      state[c] = (state[c] + state[d]) >>> 0;
-      state[b] = OpCodes.RotL32(state[b] ^ state[c], 12);
+      state[c] = OpCodes.ToUint32(state[c] + state[d]);
+      state[b] = OpCodes.RotL32(OpCodes.XorN(state[b], state[c]), 12);
 
-      state[a] = (state[a] + state[b]) >>> 0;
-      state[d] = OpCodes.RotL32(state[d] ^ state[a], 8);
+      state[a] = OpCodes.ToUint32(state[a] + state[b]);
+      state[d] = OpCodes.RotL32(OpCodes.XorN(state[d], state[a]), 8);
 
-      state[c] = (state[c] + state[d]) >>> 0;
-      state[b] = OpCodes.RotL32(state[b] ^ state[c], 7);
+      state[c] = OpCodes.ToUint32(state[c] + state[d]);
+      state[b] = OpCodes.RotL32(OpCodes.XorN(state[b], state[c]), 7);
     }
 
     // ChaCha20 block function
@@ -386,7 +386,7 @@
 
       // Add original state
       for (let i = 0; i < 16; i++) {
-        workingState[i] = (workingState[i] + state[i]) >>> 0;
+        workingState[i] = OpCodes.ToUint32(workingState[i] + state[i]);
       }
 
       // Serialize to bytes
@@ -420,7 +420,7 @@
         const block = data.slice(i, i + this.BLOCK_SIZE);
 
         for (let j = 0; j < block.length; j++) {
-          result.push(block[j] ^ keystream[j]);
+          result.push(OpCodes.XorN(block[j], keystream[j]));
         }
 
         blockCounter++;
@@ -472,9 +472,9 @@
     _encodeLength(length) {
       const result = new Array(8);
       // JavaScript bitwise operators work on 32-bit integers only
-      // Shifts >= 32 bits wrap around, so we need special handling
+      // Shifts shl 32 bits wrap around, so we need special handling
       for (let i = 0; i < 4; i++) {
-        result[i] = (length >>> (i * 8)) & 0xFF;
+        result[i] = OpCodes.AndN(OpCodes.Shr32(length, i * 8), 0xFF);
       }
       // Upper 4 bytes are zero for lengths < 2^32
       for (let i = 4; i < 8; i++) {

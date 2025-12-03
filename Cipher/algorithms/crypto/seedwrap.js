@@ -148,9 +148,9 @@
 
         // XOR t into the last bytes of A (MSB first)
         for (let k = 1; t !== 0; ++k) {
-          const v = t & 0xff;
-          buf[iv.length - k] ^= v;
-          t >>>= 8;
+          const v = OpCodes.AndN(t, 0xff);
+          buf[iv.length - k] = OpCodes.XorN(buf[iv.length - k], v);
+          t = OpCodes.Shr32(t, 8);
         }
 
         // Store A and R[i]
@@ -232,9 +232,9 @@
 
           // XOR t from the last bytes of A (MSB first)
           for (let k = 1; t !== 0; ++k) {
-            const v = t & 0xff;
-            buf[iv.length - k] ^= v;
-            t >>>= 8;
+            const v = OpCodes.AndN(t, 0xff);
+            buf[iv.length - k] = OpCodes.XorN(buf[iv.length - k], v);
+            t = OpCodes.Shr32(t, 8);
           }
 
           // Decrypt the block
@@ -271,7 +271,7 @@
       // Required metadata
       this.name = "SEED-WRAP";
       this.description = "RFC 4010 SEED Key Wrap algorithm. Provides authenticated encryption for key material using SEED block cipher with RFC 3394 key wrap structure. Ensures both confidentiality and integrity of wrapped keys.";
-      this.inventor = "Korea Internet & Security Agency (KISA) / IETF";
+      this.inventor = "Korea Internet Security Agency (KISA) / IETF";
       this.year = 2005;
       this.category = CategoryType.SPECIAL;
       this.subCategory = "Key Wrapping";

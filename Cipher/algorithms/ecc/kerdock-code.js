@@ -192,7 +192,7 @@
     encode(data) {
       const m = this._m;
       const k = 2 * m; // Number of information symbols
-      const n = 1 << (m + 1); // Codeword length = 2^(m+1)
+      const n = OpCodes.Shl32(1, m + 1); // Codeword length = 2^(m+1)
 
       if (data.length !== k) {
         throw new Error(`Kerdock encode: Input must be exactly ${k} bits for m=${m}`);
@@ -213,8 +213,8 @@
 
         // Linear part from first m bits
         for (let j = 0; j < m; ++j) {
-          if (((i >> j) & 1) === 1) {
-            bit ^= u[j];
+          if ((OpCodes.AndN(OpCodes.Shr32(i, j), 1)) === 1) {
+            bit = OpCodes.XorN(bit, u[j]);
           }
         }
 
@@ -224,11 +224,11 @@
             // Add quadratic term based on position
             let quad = 0;
             for (let k = 0; k < m; ++k) {
-              if (((i >> k) & 1) === 1 && k <= j) {
-                quad ^= 1;
+              if ((OpCodes.AndN(OpCodes.Shr32(i, k), 1)) === 1 && k <= j) {
+                quad = OpCodes.XorN(quad, 1);
               }
             }
-            bit ^= quad;
+            bit = OpCodes.XorN(bit, quad);
           }
         }
 
@@ -240,7 +240,7 @@
 
     decode(data) {
       const m = this._m;
-      const n = 1 << (m + 1);
+      const n = OpCodes.Shl32(1, m + 1);
       const k = 2 * m;
 
       if (data.length !== n) {
@@ -248,16 +248,16 @@
       }
 
       // Simplified maximum likelihood decoding
-      // Try all 2^k possible messages (feasible for small m)
+      // Try all OpCodes.XorN(2, k) possible messages (feasible for small m)
       let minDistance = Infinity;
       let bestMessage = new Array(k).fill(0);
 
-      const totalMessages = 1 << k;
+      const totalMessages = OpCodes.Shl32(1, k);
 
       for (let msgIndex = 0; msgIndex < totalMessages; ++msgIndex) {
         const message = [];
         for (let i = 0; i < k; ++i) {
-          message.push((msgIndex >> i) & 1);
+          message.push(OpCodes.AndN(OpCodes.Shr32(msgIndex, i), 1));
         }
 
         const testCodeword = this.encode(message);
@@ -281,7 +281,7 @@
 
     DetectError(data) {
       const m = this._m;
-      const n = 1 << (m + 1);
+      const n = OpCodes.Shl32(1, m + 1);
 
       if (data.length !== n) return true;
 

@@ -78,7 +78,7 @@
 
       this.references = [
         new LinkItem(
-          "Park & Miller: Random Number Generators: Good Ones Are Hard To Find",
+          "Park, Miller: Random Number Generators: Good Ones Are Hard To Find",
           "https://www.firstpr.com.au/dsp/rand31/"
         ),
         new LinkItem(

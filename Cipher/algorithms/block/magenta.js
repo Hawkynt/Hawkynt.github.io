@@ -294,11 +294,11 @@
 
         // Fast exponentiation in GF(2^8)
         while (exp > 0) {
-          if (exp & 1) {
+          if (OpCodes.AndN(exp, 1)) {
             result = this._gf256Multiply(result, base, irreducible);
           }
           base = this._gf256Multiply(base, base, irreducible);
-          exp >>>= 1;
+          exp = OpCodes.Shr32(exp, 1);
         }
 
         sbox[i] = result;
@@ -310,24 +310,24 @@
     // Galois Field GF(2^8) multiplication with specified irreducible polynomial
     _gf256Multiply(a, b, irreducible) {
       let result = 0;
-      a &= 0xFF;
-      b &= 0xFF;
+      a = OpCodes.AndN(a, 0xFF);
+      b = OpCodes.AndN(b, 0xFF);
 
       for (let i = 0; i < 8; i++) {
-        if (b & 1) {
-          result ^= a;
+        if (OpCodes.AndN(b, 1)) {
+          result = OpCodes.XorN(result, a);
         }
 
-        const highBit = a & 0x80;
-        a = (a << 1) & 0xFF;
+        const highBit = OpCodes.AndN(a, 0x80);
+        a = OpCodes.AndN(OpCodes.Shl32(a, 1), 0xFF);
         if (highBit) {
-          a ^= irreducible;
+          a = OpCodes.XorN(a, irreducible);
         }
 
-        b >>>= 1;
+        b = OpCodes.Shr32(b, 1);
       }
 
-      return result & 0xFF;
+      return OpCodes.AndN(result, 0xFF);
     }
 
     // MAGENTA permutation C3 - cyclic 3-bit permutation on 16 bytes
@@ -343,13 +343,13 @@
       // Convert bytes to a single 128-bit value for bit-level operations
       let carry = 0;
       for (let i = 15; i >= 0; i--) {
-        const temp = (data[i] << 3) | carry;
-        result[i] = temp & 0xFF;
-        carry = (temp >> 8) & 0x07;
+        const temp = OpCodes.OrN(OpCodes.Shl32(data[i], 3), carry);
+        result[i] = OpCodes.AndN(temp, 0xFF);
+        carry = OpCodes.AndN(OpCodes.Shr32(temp, 8), 0x07);
       }
 
       // Apply the final carry to the most significant bits of result[0]
-      result[0] |= carry;
+      result[0] = OpCodes.OrN(result[0], carry);
 
       return result;
     }

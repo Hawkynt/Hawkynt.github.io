@@ -295,9 +295,7 @@
       // Uc = PRF(Password, Uc-1), T = T XOR Uc
       for (let j = 1; j < iterations; j++) {
         U = this._hmacSha256(password, U);
-        for (let k = 0; k < T.length; k++) {
-          T[k] ^= U[k];
-        }
+        T = OpCodes.XorArrays(T, U);
       }
 
       return T;
@@ -316,7 +314,7 @@
 
       // Step 2: Use memory array to mix X
       for (let i = 0; i < N; i++) {
-        const j = this._integerify(X, r) & (N - 1);
+        const j = OpCodes.AndN(this._integerify(X, r), N - 1);
 
         // XOR X with V[j]
         X = OpCodes.XorArrays(X, V[j]);
@@ -331,7 +329,7 @@
     // RFC 7914 scryptBlockMix function
     _scryptBlockMix(B, r) {
       const blockLen = 64;
-      const X = B.slice(B.length - blockLen); // X = B[2r-1]
+      let X = B.slice(B.length - blockLen); // X = B[2r-1]
       const Y = new Array(B.length);
 
       // Process each block and store in Y sequentially
@@ -339,9 +337,8 @@
         const blockStart = i * blockLen;
 
         // X = Salsa20/8(X ⊕ B[i])
-        for (let j = 0; j < blockLen; j++) {
-          X[j] ^= B[blockStart + j];
-        }
+        const blockSlice = B.slice(blockStart, blockStart + blockLen);
+        X = OpCodes.XorArrays(X, blockSlice);
         this._salsa20_8(X);
 
         // Store X in Y[i]
@@ -381,51 +378,51 @@
       // Salsa20/8 core (8 rounds of double-round = 4 iterations)
       for (let i = 0; i < 4; i++) {
         // Odd round (operate on columns)
-        x[ 4] ^= OpCodes.RotL32((x[ 0] + x[12]) >>> 0, 7);
-        x[ 8] ^= OpCodes.RotL32((x[ 4] + x[ 0]) >>> 0, 9);
-        x[12] ^= OpCodes.RotL32((x[ 8] + x[ 4]) >>> 0, 13);
-        x[ 0] ^= OpCodes.RotL32((x[12] + x[ 8]) >>> 0, 18);
+        x[ 4] = OpCodes.XorN(x[ 4], OpCodes.RotL32(OpCodes.ToUint32(x[ 0] + x[12]), 7));
+        x[ 8] = OpCodes.XorN(x[ 8], OpCodes.RotL32(OpCodes.ToUint32(x[ 4] + x[ 0]), 9));
+        x[12] = OpCodes.XorN(x[12], OpCodes.RotL32(OpCodes.ToUint32(x[ 8] + x[ 4]), 13));
+        x[ 0] = OpCodes.XorN(x[ 0], OpCodes.RotL32(OpCodes.ToUint32(x[12] + x[ 8]), 18));
 
-        x[ 9] ^= OpCodes.RotL32((x[ 5] + x[ 1]) >>> 0, 7);
-        x[13] ^= OpCodes.RotL32((x[ 9] + x[ 5]) >>> 0, 9);
-        x[ 1] ^= OpCodes.RotL32((x[13] + x[ 9]) >>> 0, 13);
-        x[ 5] ^= OpCodes.RotL32((x[ 1] + x[13]) >>> 0, 18);
+        x[ 9] = OpCodes.XorN(x[ 9], OpCodes.RotL32(OpCodes.ToUint32(x[ 5] + x[ 1]), 7));
+        x[13] = OpCodes.XorN(x[13], OpCodes.RotL32(OpCodes.ToUint32(x[ 9] + x[ 5]), 9));
+        x[ 1] = OpCodes.XorN(x[ 1], OpCodes.RotL32(OpCodes.ToUint32(x[13] + x[ 9]), 13));
+        x[ 5] = OpCodes.XorN(x[ 5], OpCodes.RotL32(OpCodes.ToUint32(x[ 1] + x[13]), 18));
 
-        x[14] ^= OpCodes.RotL32((x[10] + x[ 6]) >>> 0, 7);
-        x[ 2] ^= OpCodes.RotL32((x[14] + x[10]) >>> 0, 9);
-        x[ 6] ^= OpCodes.RotL32((x[ 2] + x[14]) >>> 0, 13);
-        x[10] ^= OpCodes.RotL32((x[ 6] + x[ 2]) >>> 0, 18);
+        x[14] = OpCodes.XorN(x[14], OpCodes.RotL32(OpCodes.ToUint32(x[10] + x[ 6]), 7));
+        x[ 2] = OpCodes.XorN(x[ 2], OpCodes.RotL32(OpCodes.ToUint32(x[14] + x[10]), 9));
+        x[ 6] = OpCodes.XorN(x[ 6], OpCodes.RotL32(OpCodes.ToUint32(x[ 2] + x[14]), 13));
+        x[10] = OpCodes.XorN(x[10], OpCodes.RotL32(OpCodes.ToUint32(x[ 6] + x[ 2]), 18));
 
-        x[ 3] ^= OpCodes.RotL32((x[15] + x[11]) >>> 0, 7);
-        x[ 7] ^= OpCodes.RotL32((x[ 3] + x[15]) >>> 0, 9);
-        x[11] ^= OpCodes.RotL32((x[ 7] + x[ 3]) >>> 0, 13);
-        x[15] ^= OpCodes.RotL32((x[11] + x[ 7]) >>> 0, 18);
+        x[ 3] = OpCodes.XorN(x[ 3], OpCodes.RotL32(OpCodes.ToUint32(x[15] + x[11]), 7));
+        x[ 7] = OpCodes.XorN(x[ 7], OpCodes.RotL32(OpCodes.ToUint32(x[ 3] + x[15]), 9));
+        x[11] = OpCodes.XorN(x[11], OpCodes.RotL32(OpCodes.ToUint32(x[ 7] + x[ 3]), 13));
+        x[15] = OpCodes.XorN(x[15], OpCodes.RotL32(OpCodes.ToUint32(x[11] + x[ 7]), 18));
 
         // Even round (operate on rows)
-        x[ 1] ^= OpCodes.RotL32((x[ 0] + x[ 3]) >>> 0, 7);
-        x[ 2] ^= OpCodes.RotL32((x[ 1] + x[ 0]) >>> 0, 9);
-        x[ 3] ^= OpCodes.RotL32((x[ 2] + x[ 1]) >>> 0, 13);
-        x[ 0] ^= OpCodes.RotL32((x[ 3] + x[ 2]) >>> 0, 18);
+        x[ 1] = OpCodes.XorN(x[ 1], OpCodes.RotL32(OpCodes.ToUint32(x[ 0] + x[ 3]), 7));
+        x[ 2] = OpCodes.XorN(x[ 2], OpCodes.RotL32(OpCodes.ToUint32(x[ 1] + x[ 0]), 9));
+        x[ 3] = OpCodes.XorN(x[ 3], OpCodes.RotL32(OpCodes.ToUint32(x[ 2] + x[ 1]), 13));
+        x[ 0] = OpCodes.XorN(x[ 0], OpCodes.RotL32(OpCodes.ToUint32(x[ 3] + x[ 2]), 18));
 
-        x[ 6] ^= OpCodes.RotL32((x[ 5] + x[ 4]) >>> 0, 7);
-        x[ 7] ^= OpCodes.RotL32((x[ 6] + x[ 5]) >>> 0, 9);
-        x[ 4] ^= OpCodes.RotL32((x[ 7] + x[ 6]) >>> 0, 13);
-        x[ 5] ^= OpCodes.RotL32((x[ 4] + x[ 7]) >>> 0, 18);
+        x[ 6] = OpCodes.XorN(x[ 6], OpCodes.RotL32(OpCodes.ToUint32(x[ 5] + x[ 4]), 7));
+        x[ 7] = OpCodes.XorN(x[ 7], OpCodes.RotL32(OpCodes.ToUint32(x[ 6] + x[ 5]), 9));
+        x[ 4] = OpCodes.XorN(x[ 4], OpCodes.RotL32(OpCodes.ToUint32(x[ 7] + x[ 6]), 13));
+        x[ 5] = OpCodes.XorN(x[ 5], OpCodes.RotL32(OpCodes.ToUint32(x[ 4] + x[ 7]), 18));
 
-        x[11] ^= OpCodes.RotL32((x[10] + x[ 9]) >>> 0, 7);
-        x[ 8] ^= OpCodes.RotL32((x[11] + x[10]) >>> 0, 9);
-        x[ 9] ^= OpCodes.RotL32((x[ 8] + x[11]) >>> 0, 13);
-        x[10] ^= OpCodes.RotL32((x[ 9] + x[ 8]) >>> 0, 18);
+        x[11] = OpCodes.XorN(x[11], OpCodes.RotL32(OpCodes.ToUint32(x[10] + x[ 9]), 7));
+        x[ 8] = OpCodes.XorN(x[ 8], OpCodes.RotL32(OpCodes.ToUint32(x[11] + x[10]), 9));
+        x[ 9] = OpCodes.XorN(x[ 9], OpCodes.RotL32(OpCodes.ToUint32(x[ 8] + x[11]), 13));
+        x[10] = OpCodes.XorN(x[10], OpCodes.RotL32(OpCodes.ToUint32(x[ 9] + x[ 8]), 18));
 
-        x[12] ^= OpCodes.RotL32((x[15] + x[14]) >>> 0, 7);
-        x[13] ^= OpCodes.RotL32((x[12] + x[15]) >>> 0, 9);
-        x[14] ^= OpCodes.RotL32((x[13] + x[12]) >>> 0, 13);
-        x[15] ^= OpCodes.RotL32((x[14] + x[13]) >>> 0, 18);
+        x[12] = OpCodes.XorN(x[12], OpCodes.RotL32(OpCodes.ToUint32(x[15] + x[14]), 7));
+        x[13] = OpCodes.XorN(x[13], OpCodes.RotL32(OpCodes.ToUint32(x[12] + x[15]), 9));
+        x[14] = OpCodes.XorN(x[14], OpCodes.RotL32(OpCodes.ToUint32(x[13] + x[12]), 13));
+        x[15] = OpCodes.XorN(x[15], OpCodes.RotL32(OpCodes.ToUint32(x[14] + x[13]), 18));
       }
 
       // Add original B32 to x (B32 = B32 + x)
       for (let i = 0; i < 16; i++) {
-        B32[i] = (B32[i] + x[i]) >>> 0;
+        B32[i] = OpCodes.ToUint32(B32[i] + x[i]);
       }
 
       // Convert back to bytes (little-endian)
@@ -448,11 +445,19 @@
 
       if (lastBlockOffset + 4 > B.length) return 0;
 
-      // Read as little-endian 32-bit integer (use >>> 0 to force unsigned)
-      return (B[lastBlockOffset] |
-             (B[lastBlockOffset + 1] << 8) |
-             (B[lastBlockOffset + 2] << 16) |
-             (B[lastBlockOffset + 3] << 24)) >>> 0;
+      // Read as little-endian 32-bit integer using OpCodes
+      return OpCodes.ToUint32(
+        OpCodes.OrN(
+          OpCodes.OrN(
+            OpCodes.OrN(
+              B[lastBlockOffset],
+              OpCodes.Shl32(B[lastBlockOffset + 1], 8)
+            ),
+            OpCodes.Shl32(B[lastBlockOffset + 2], 16)
+          ),
+          OpCodes.Shl32(B[lastBlockOffset + 3], 24)
+        )
+      );
     }
 
     // HMAC-SHA256 implementation
@@ -478,8 +483,8 @@
       const ipadByte = 0x36;
       const opadByte = 0x5C;
       for (let i = 0; i < blockSize; i++) {
-        ipad[i] = key[i] ^ ipadByte;
-        opad[i] = key[i] ^ opadByte;
+        ipad[i] = OpCodes.XorN(key[i], ipadByte);
+        opad[i] = OpCodes.XorN(key[i], opadByte);
       }
 
       // HMAC = H(opad || H(ipad || message))

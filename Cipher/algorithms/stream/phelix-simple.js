@@ -178,8 +178,8 @@ class PhelixInstance extends IAlgorithmInstance {
       const nonceWord = OpCodes.Pack32LE(
         nonce[i * 4], nonce[i * 4 + 1], nonce[i * 4 + 2], nonce[i * 4 + 3]
       );
-      state[i] = (state[i] + nonceWord) >>> 0;
-      state[i + 4] ^= nonceWord;
+      state[i] = OpCodes.ToUint32(state[i] + nonceWord);
+      state[i + 4] = OpCodes.XorN(state[i + 4], nonceWord);
     }
 
     // Initialize with rounds (Phelix-inspired mixing)
@@ -189,10 +189,10 @@ class PhelixInstance extends IAlgorithmInstance {
         const k = (i + 3) % this.STATE_SIZE;
 
         // Addition mod 2^32, XOR, and rotation (core Phelix operations)
-        state[i] = (state[i] + state[j]) >>> 0;
-        state[i] ^= OpCodes.RotL32(state[k], 7);
+        state[i] = OpCodes.ToUint32(state[i] + state[j]);
+        state[i] = OpCodes.XorN(state[i], OpCodes.RotL32(state[k], 7));
         state[i] = OpCodes.RotL32(state[i], 13);
-        state[i] = (state[i] + 0x9E3779B9) >>> 0;  // Golden ratio constant
+        state[i] = OpCodes.ToUint32(state[i] + 0x9E3779B9);  // Golden ratio constant
       }
     }
 
@@ -215,8 +215,8 @@ class PhelixInstance extends IAlgorithmInstance {
           const next = (j + 1) % this.STATE_SIZE;
           const prev = (j + this.STATE_SIZE - 1) % this.STATE_SIZE;
 
-          state[j] = (state[j] + state[next]) >>> 0;
-          state[j] ^= OpCodes.RotL32(state[prev], 11);
+          state[j] = OpCodes.ToUint32(state[j] + state[next]);
+          state[j] = OpCodes.XorN(state[j], OpCodes.RotL32(state[prev], 11));
           state[j] = OpCodes.RotL32(state[j], 17);
         }
 
@@ -228,7 +228,7 @@ class PhelixInstance extends IAlgorithmInstance {
         }
       }
 
-      output.push(data[i] ^ keystreamBytes[i % keystreamBytes.length]);
+      output.push(OpCodes.XorN(data[i], keystreamBytes[i % keystreamBytes.length]));
     }
 
     return output;

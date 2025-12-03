@@ -498,7 +498,7 @@
 
       // Process from most significant byte to least (reversed for LE)
       while (i--) {
-        r = (r << 8) + block[i];
+        r = OpCodes.Shl32(r, 8) + block[i];
         r %= mod;
       }
 
@@ -516,10 +516,10 @@
       // For shifts >= 32, the result wraps around due to 5-bit mask on shift amount
       // Since Balloon counter values are typically small, explicitly handle 32-bit range
       return [
-        (value >>> 0) & 0xFF,
-        (value >>> 8) & 0xFF,
-        (value >>> 16) & 0xFF,
-        (value >>> 24) & 0xFF,
+        OpCodes.AndN(OpCodes.Shr32(value, 0), 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(value, 8), 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(value, 16), 0xFF),
+        OpCodes.AndN(OpCodes.Shr32(value, 24), 0xFF),
         0, 0, 0, 0  // Upper 32 bits (JavaScript numbers are 53-bit safe integers, but bitwise ops are 32-bit)
       ];
     }

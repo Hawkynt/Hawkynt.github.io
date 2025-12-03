@@ -194,16 +194,16 @@
       // Convolutional encoding with K=3, rate 1/2
       const output = [];
       let state = 0; // Shift register state (K-1 bits)
-      const stateMask = (1 << (this._constraintLength - 1)) - 1;
+      const stateMask = OpCodes.Shl32(1, this._constraintLength - 1) - 1;
 
       for (let i = 0; i < data.length; ++i) {
-        const inputBit = data[i] & 1;
+        const inputBit = OpCodes.AndN(data[i], 1);
 
         // Shift input bit into state
-        state = ((state << 1) | inputBit) & stateMask;
+        state = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(state, 1), inputBit), stateMask);
 
         // Generate output bits using generator polynomials
-        const fullState = state | (inputBit << (this._constraintLength - 1));
+        const fullState = OpCodes.OrN(state, OpCodes.Shl32(inputBit, this._constraintLength - 1));
         const out1 = this.convolve(fullState, this._generator1);
         const out2 = this.convolve(fullState, this._generator2);
 
@@ -216,11 +216,11 @@
     convolve(state, generator) {
       // XOR all bits where generator polynomial is 1
       let result = 0;
-      let temp = state & generator;
+      let temp = OpCodes.AndN(state, generator);
 
       while (temp) {
-        result ^= (temp & 1);
-        temp >>= 1;
+        result = OpCodes.XorN(result, OpCodes.AndN(temp, 1));
+        temp = OpCodes.Shr32(temp, 1);
       }
 
       return result;
@@ -233,7 +233,7 @@
       }
 
       const numBits = received.length / this._rate;
-      const numStates = 1 << (this._constraintLength - 1);
+      const numStates = OpCodes.Shl32(1, this._constraintLength - 1);
 
       // Path metrics and survivor paths
       const pathMetrics = new Array(numStates).fill(Infinity);
@@ -257,15 +257,15 @@
           // Try both possible input bits (0 and 1)
           for (let inputBit = 0; inputBit <= 1; ++inputBit) {
             // Calculate next state
-            const nextState = ((state << 1) | inputBit) & (numStates - 1);
+            const nextState = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(state, 1), inputBit), numStates - 1);
 
             // Calculate expected output
-            const fullState = state | (inputBit << (this._constraintLength - 1));
+            const fullState = OpCodes.OrN(state, OpCodes.Shl32(inputBit, this._constraintLength - 1));
             const e1 = this.convolve(fullState, this._generator1);
             const e2 = this.convolve(fullState, this._generator2);
 
             // Calculate Hamming distance (branch metric)
-            const branchMetric = (r1 ^ e1) + (r2 ^ e2);
+            const branchMetric = OpCodes.XorN(r1, e1) + OpCodes.XorN(r2, e2);
             const newMetric = pathMetrics[state] + branchMetric;
 
             // Update if better path found

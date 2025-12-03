@@ -278,13 +278,13 @@
         } else {
           // Read one more bit
           if (stream.getRemainingBits() < 1) return null;
-          value = (value << 1) | stream.readBit();
+          value = OpCodes.OrN(OpCodes.Shl32(value, 1), stream.readBit());
           return value - u;
         }
       }
 
       _isPowerOfTwo(n) {
-        return n > 0 && (n & (n - 1)) === 0;
+        return n > 0 && OpCodes.AndN(n, (n - 1)) === 0;
       }
 
       // Advanced methods using BitStream capabilities
@@ -296,7 +296,7 @@
        * @returns {Array} Encoded bytes
        */
       encodeRice(values, k) {
-        this.SetParameter(1 << k); // Set M = 2^k for Rice coding
+        this.SetParameter(OpCodes.Shl32(1, k)); // Set M = 2^k for Rice coding
         return this._encode(values);
       }
 

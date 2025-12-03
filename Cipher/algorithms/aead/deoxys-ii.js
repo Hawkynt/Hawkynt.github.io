@@ -168,10 +168,10 @@
       const s2 = state[i + 2];
       const s3 = state[i + 3];
 
-      state[i] = MUL2[s0] ^ MUL3[s1] ^ s2 ^ s3;
-      state[i + 1] = s0 ^ MUL2[s1] ^ MUL3[s2] ^ s3;
-      state[i + 2] = s0 ^ s1 ^ MUL2[s2] ^ MUL3[s3];
-      state[i + 3] = MUL3[s0] ^ s1 ^ s2 ^ MUL2[s3];
+      state[i] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(MUL2[s0], MUL3[s1]), s2), s3);
+      state[i + 1] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, MUL2[s1]), MUL3[s2]), s3);
+      state[i + 2] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, s1), MUL2[s2]), MUL3[s3]);
+      state[i + 3] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(MUL3[s0], s1), s2), MUL2[s3]);
     }
   }
 
@@ -195,7 +195,7 @@
   function LFSR2(tk) {
     for (let i = 0; i < 16; ++i) {
       const x = tk[i];
-      tk[i] = ((x << 1) & 0xFE) ^ (((x >> 7) ^ (x >> 5)) & 0x01);
+      tk[i] = OpCodes.XorN(OpCodes.AndN(OpCodes.Shl32(x, 1), 0xFE), OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(x, 7), OpCodes.Shr32(x, 5)), 0x01));
     }
   }
 
@@ -203,7 +203,7 @@
   function LFSR3(tk) {
     for (let i = 0; i < 16; ++i) {
       const x = tk[i];
-      tk[i] = ((x >> 1) & 0x7F) ^ (((x << 7) ^ (x << 1)) & 0x80);
+      tk[i] = OpCodes.XorN(OpCodes.AndN(OpCodes.Shr32(x, 1), 0x7F), OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(x, 7), OpCodes.Shl32(x, 1)), 0x80));
     }
   }
 
@@ -216,7 +216,7 @@
     // First subtweakey
     subtweakeys[0] = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
-      subtweakeys[0][i] = tweakCopy[i] ^ subkeys[0][i];
+      subtweakeys[0][i] = OpCodes.XorN(tweakCopy[i], subkeys[0][i]);
     }
 
     // Remaining subtweakeys
@@ -224,7 +224,7 @@
       HSubstitution(tweakCopy);
       subtweakeys[r] = new Uint8Array(16);
       for (let i = 0; i < 16; ++i) {
-        subtweakeys[r][i] = tweakCopy[i] ^ subkeys[r][i];
+        subtweakeys[r][i] = OpCodes.XorN(tweakCopy[i], subkeys[r][i]);
       }
     }
 
@@ -255,7 +255,7 @@
     // First subtweakey
     subtweakeys[0] = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
-      subtweakeys[0][i] = tweakCopy[i] ^ subkeys[0][i];
+      subtweakeys[0][i] = OpCodes.XorN(tweakCopy[i], subkeys[0][i]);
     }
 
     // Remaining subtweakeys
@@ -263,7 +263,7 @@
       HSubstitution(tweakCopy);
       subtweakeys[r] = new Uint8Array(16);
       for (let i = 0; i < 16; ++i) {
-        subtweakeys[r][i] = tweakCopy[i] ^ subkeys[r][i];
+        subtweakeys[r][i] = OpCodes.XorN(tweakCopy[i], subkeys[r][i]);
       }
     }
 
@@ -293,7 +293,7 @@
     // First subkey
     const sk0 = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
-      sk0[i] = tk2[i] ^ RCON[0][i];
+      sk0[i] = OpCodes.XorN(tk2[i], RCON[0][i]);
     }
     subkeys.push(sk0);
 
@@ -303,7 +303,7 @@
       LFSR2(tk2);
       const sk = new Uint8Array(16);
       for (let i = 0; i < 16; ++i) {
-        sk[i] = tk2[i] ^ RCON[r][i];
+        sk[i] = OpCodes.XorN(tk2[i], RCON[r][i]);
       }
       subkeys.push(sk);
     }
@@ -320,7 +320,7 @@
     // First subkey
     const sk0 = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
-      sk0[i] = tk3[i] ^ tk2[i] ^ RCON[0][i];
+      sk0[i] = OpCodes.XorN(OpCodes.XorN(tk3[i], tk2[i]), RCON[0][i]);
     }
     subkeys.push(sk0);
 
@@ -333,7 +333,7 @@
 
       const sk = new Uint8Array(16);
       for (let i = 0; i < 16; ++i) {
-        sk[i] = tk3[i] ^ tk2[i] ^ RCON[r][i];
+        sk[i] = OpCodes.XorN(OpCodes.XorN(tk3[i], tk2[i]), RCON[r][i]);
       }
       subkeys.push(sk);
     }
@@ -744,7 +744,7 @@
       // Constant-time tag comparison
       let mismatch = 0;
       for (let i = 0; i < 16; ++i) {
-        mismatch |= tag[i] ^ expectedTag[i];
+        mismatch = OpCodes.OrN(mismatch, OpCodes.XorN(tag[i], expectedTag[i]));
       }
 
       if (mismatch !== 0) {
@@ -854,7 +854,7 @@
 
         // XOR with message
         for (let i = 0; i < msgBlock.length; ++i) {
-          output[start + i] = msgBlock[i] ^ keystreamBlock[i];
+          output[start + i] = OpCodes.XorN(msgBlock[i], keystreamBlock[i]);
         }
 
         // XOR counter back out

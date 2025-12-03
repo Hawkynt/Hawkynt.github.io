@@ -266,7 +266,7 @@ class HierocryptL1Instance extends IBlockCipherInstance {
 
       // Derive 8 bytes from the working key
       for (let i = 0; i < 8; i++) {
-        roundKey[i] = workingKey[i] ^ workingKey[i + 8];
+        roundKey[i] = OpCodes.XorN(workingKey[i], workingKey[i + 8]);
       }
 
       roundKeys.push(roundKey);
@@ -274,7 +274,7 @@ class HierocryptL1Instance extends IBlockCipherInstance {
       // Update working key using non-linear feedback
       for (let i = 0; i < 16; i++) {
         const constByte = (constants[round % 8] >>> ((i % 4) * 8)) & 0xFF;
-        workingKey[i] = this._sbox[workingKey[i] ^ constByte ^ round];
+        workingKey[i] = this._sbox[OpCodes.XorN(OpCodes.XorN(workingKey[i], constByte), round)];
         workingKey[i] = OpCodes.RotL8(workingKey[i], (i + round) & 7);
       }
     }

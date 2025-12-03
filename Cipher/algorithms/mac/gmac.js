@@ -342,11 +342,11 @@
           }
 
           // XOR with Rcon
-          temp[0] ^= this.RCON[Math.floor(i / keyWords) - 1];
+          temp[0] = OpCodes.XorN(temp[0], this.RCON[Math.floor(i / keyWords) - 1]);
         }
 
         for (let j = 0; j < 4; j++) {
-          w[i*4 + j] = w[(i-keyWords)*4 + j] ^ temp[j];
+          w[i*4 + j] = OpCodes.XorN(w[(i-keyWords)*4 + j], temp[j]);
         }
       }
 
@@ -422,16 +422,16 @@
         const s2 = state[c + 8];
         const s3 = state[c + 12];
 
-        state[c] = OpCodes.GF256Mul(0x02, s0) ^ OpCodes.GF256Mul(0x03, s1) ^ s2 ^ s3;
-        state[c + 4] = s0 ^ OpCodes.GF256Mul(0x02, s1) ^ OpCodes.GF256Mul(0x03, s2) ^ s3;
-        state[c + 8] = s0 ^ s1 ^ OpCodes.GF256Mul(0x02, s2) ^ OpCodes.GF256Mul(0x03, s3);
-        state[c + 12] = OpCodes.GF256Mul(0x03, s0) ^ s1 ^ s2 ^ OpCodes.GF256Mul(0x02, s3);
+        state[c] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(0x02, s0), OpCodes.GF256Mul(0x03, s1)), s2), s3);
+        state[c + 4] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, OpCodes.GF256Mul(0x02, s1)), OpCodes.GF256Mul(0x03, s2)), s3);
+        state[c + 8] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, s1), OpCodes.GF256Mul(0x02, s2)), OpCodes.GF256Mul(0x03, s3));
+        state[c + 12] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(0x03, s0), s1), s2), OpCodes.GF256Mul(0x02, s3));
       }
     }
 
     _addRoundKey(state, roundKey) {
       for (let i = 0; i < 16; i++) {
-        state[i] ^= roundKey[i];
+        state[i] = OpCodes.XorN(state[i], roundKey[i]);
       }
     }
 
@@ -444,25 +444,25 @@
 
       for (let i = 0; i < 16; i++) {
         for (let j = 7; j >= 0; j--) {
-          if ((x[i] >>> j) & 1) {
+          if (OpCodes.AndN(OpCodes.Shr32(x[i], j), 1)) {
             // XOR v into result
             for (let k = 0; k < 16; k++) {
-              result[k] ^= v[k];
+              result[k] = OpCodes.XorN(result[k], v[k]);
             }
           }
 
           // Right shift v across all 16 bytes with carry propagation
           // These manual >>> 1 operations are essential for GF(2^128) multiplication
           // and cannot be replaced - OpCodes has no multi-byte shift-with-carry function
-          const carry = v[15] & 1;
+          const carry = OpCodes.AndN(v[15], 1);
           for (let k = 15; k > 0; k--) {
             // Shift current byte right, OR in high bit from previous byte
-            v[k] = (v[k] >>> 1) | OpCodes.RotL8(v[k-1] & 1, 7);
+            v[k] = OpCodes.OrN(OpCodes.Shr32(v[k], 1), OpCodes.RotL8(OpCodes.AndN(v[k-1], 1), 7));
           }
-          v[0] = (v[0] >>> 1); // Shift most significant byte
+          v[0] = OpCodes.Shr32(v[0], 1); // Shift most significant byte
 
           if (carry) {
-            v[0] ^= 0xE1; // Apply reduction polynomial
+            v[0] = OpCodes.XorN(v[0], 0xE1); // Apply reduction polynomial
           }
         }
       }
@@ -485,7 +485,7 @@
 
         // Y_i = (Y_{i-1} ⊕ X_i) · H
         for (let j = 0; j < 16; j++) {
-          y[j] ^= block[j];
+          y[j] = OpCodes.XorN(y[j], block[j]);
         }
 
         y = this._gfMultiply(y, this.h);
@@ -540,7 +540,7 @@
       // Final tag = GHASH ⊕ E_K(J_0)
       const tag = new Array(16);
       for (let i = 0; i < 16; i++) {
-        tag[i] = ghashResult[i] ^ tagMask[i];
+        tag[i] = OpCodes.XorN(ghashResult[i], tagMask[i]);
       }
 
       return tag;

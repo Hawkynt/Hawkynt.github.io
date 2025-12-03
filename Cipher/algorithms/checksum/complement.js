@@ -136,10 +136,10 @@
         let word;
         if (i + 1 < data.length) {
           // Full 16-bit word (big-endian)
-          word = (data[i] << 8) | data[i + 1];
+          word = OpCodes.OrN(OpCodes.Shl32(data[i], 8), data[i + 1]);
         } else {
           // Odd byte: pad with zero
-          word = data[i] << 8;
+          word = OpCodes.Shl32(data[i], 8);
         }
 
         // Add to sum
@@ -147,7 +147,7 @@
 
         // End-around carry: add carry bits back
         if (this.sum > 0xFFFF) {
-          this.sum = (this.sum & 0xFFFF) + (this.sum >>> 16);
+          this.sum = OpCodes.AndN(this.sum, 0xFFFF) + OpCodes.Shr32(this.sum, 16);
         }
       }
     }
@@ -161,19 +161,19 @@
     Result() {
       // Final end-around carry
       while (this.sum > 0xFFFF) {
-        this.sum = (this.sum & 0xFFFF) + (this.sum >>> 16);
+        this.sum = OpCodes.AndN(this.sum, 0xFFFF) + OpCodes.Shr32(this.sum, 16);
       }
 
       // One's complement (invert all bits)
-      const checksum = (~this.sum) & 0xFFFF;
+      const checksum = OpCodes.AndN(~this.sum, 0xFFFF);
 
       // Reset state
       this.sum = 0;
 
       // Return as big-endian bytes
       return [
-        (checksum >>> 8) & 0xFF,
-        checksum & 0xFF
+        OpCodes.AndN(OpCodes.Shr32(checksum, 8), 0xFF),
+        OpCodes.AndN(checksum, 0xFF)
       ];
     }
   }
@@ -204,8 +204,8 @@
 
       this.notes = [
         "Algorithm: sum all bytes, then negate (two's complement)",
-        "Two's complement: (~sum + 1) & 0xFF",
-        "Verification: (sum of all bytes + checksum) & 0xFF == 0",
+        "Two's complement: (~sum + 1) AND 0xFF",
+        "Verification: (sum of all bytes + checksum) AND 0xFF == 0",
         "Used in: Serial protocols, embedded systems",
         "Better than simple sum for zero-sum validation",
         "Similar to LRC but uses summation instead of XOR"
@@ -274,7 +274,7 @@
       if (!data || data.length === 0) return;
 
       for (let i = 0; i < data.length; i++) {
-        this.sum = (this.sum + data[i]) & 0xFF;
+        this.sum = OpCodes.AndN(this.sum + data[i], 0xFF);
       }
     }
 
@@ -286,7 +286,7 @@
 
     Result() {
       // Two's complement: negate the sum
-      const checksum = ((~this.sum) + 1) & 0xFF;
+      const checksum = OpCodes.AndN((~this.sum) + 1, 0xFF);
       this.sum = 0;
       return [checksum];
     }
@@ -317,7 +317,7 @@
 
       this.notes = [
         "Algorithm: sum all bytes (16-bit), then negate",
-        "Verification: (sum + checksum) & 0xFFFF == 0",
+        "Verification: (sum + checksum) AND 0xFFFF == 0",
         "Better collision resistance than 8-bit",
         "Used in network protocols and data integrity"
       ];
@@ -379,7 +379,7 @@
       if (!data || data.length === 0) return;
 
       for (let i = 0; i < data.length; i++) {
-        this.sum = (this.sum + data[i]) & 0xFFFF;
+        this.sum = OpCodes.AndN(this.sum + data[i], 0xFFFF);
       }
     }
 
@@ -391,11 +391,11 @@
 
     Result() {
       // Two's complement: negate the sum
-      const checksum = ((~this.sum) + 1) & 0xFFFF;
+      const checksum = OpCodes.AndN((~this.sum) + 1, 0xFFFF);
       this.sum = 0;
       return [
-        (checksum >>> 8) & 0xFF,  // High byte
-        checksum & 0xFF            // Low byte
+        OpCodes.AndN(OpCodes.Shr32(checksum, 8), 0xFF),  // High byte
+        OpCodes.AndN(checksum, 0xFF)                      // Low byte
       ];
     }
   }

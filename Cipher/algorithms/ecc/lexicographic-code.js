@@ -223,11 +223,11 @@
       codebook.push(new Array(n).fill(0));
 
       // Try adding codewords in lexicographic order
-      for (let candidate = 1; candidate < (1 << n); ++candidate) {
+      for (let candidate = 1; candidate < OpCodes.Shl32(1, n); ++candidate) {
         // Convert candidate to bit array
         const codeword = [];
         for (let i = n - 1; i >= 0; --i) {
-          codeword.push((candidate >> i) & 1);
+          codeword.push(OpCodes.AndN(OpCodes.Shr32(candidate, i), 1));
         }
 
         // Check if this codeword has minimum distance d from all existing codewords
@@ -271,7 +271,7 @@
       // Convert data to index
       let index = 0;
       for (let i = 0; i < k; ++i) {
-        index = (index << 1) | data[i];
+        index = OpCodes.OrN(OpCodes.Shl32(index, 1), data[i]);
       }
 
       if (index >= this.codebook.length) {
@@ -306,7 +306,7 @@
       const k = Math.floor(Math.log2(this.codebook.length));
       const decoded = [];
       for (let i = k - 1; i >= 0; --i) {
-        decoded.push((bestIndex >> i) & 1);
+        decoded.push(OpCodes.AndN(OpCodes.Shr32(bestIndex, i), 1));
       }
 
       return decoded;

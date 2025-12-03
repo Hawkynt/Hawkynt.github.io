@@ -382,20 +382,20 @@
         const k2 = OpCodes.Pack32BE(...OpCodes.Hex8ToBytes('b5c0fbcf'));
         const k3 = OpCodes.Pack32BE(...OpCodes.Hex8ToBytes('e9b5dba5'));
 
-        h0 = (h0 + byte + k0) >>> 0; h0 = OpCodes.RotR32(h0, 2);
-        h1 = (h1 ^ h0 + k1) >>> 0; h1 = OpCodes.RotR32(h1, 13);
-        h2 = (h2 + h1 + k2) >>> 0; h2 = OpCodes.RotR32(h2, 22);
-        h3 = (h3 ^ h2 + k3) >>> 0;
+        h0 = OpCodes.ToUint32(h0 + byte + k0); h0 = OpCodes.RotR32(h0, 2);
+        h1 = OpCodes.ToUint32(OpCodes.XorN(h1, h0 + k1)); h1 = OpCodes.RotR32(h1, 13);
+        h2 = OpCodes.ToUint32(h2 + h1 + k2); h2 = OpCodes.RotR32(h2, 22);
+        h3 = OpCodes.ToUint32(OpCodes.XorN(h3, h2 + k3));
 
         // Mix with remaining registers
-        h4 ^= h3; h5 += h4; h6 ^= h5; h7 += h6;
+        h4 = OpCodes.XorN(h4, h3); h5 += h4; h6 = OpCodes.XorN(h6, h5); h7 += h6;
       }
 
       // Generate output
       const state = [h0, h1, h2, h3, h4, h5, h6, h7];
       for (let i = 0; i < outputLength; i++) {
         const reg = i % 8;
-        state[reg] = (state[reg] + i + 1) >>> 0;
+        state[reg] = OpCodes.ToUint32(state[reg] + i + 1);
         state[reg] = OpCodes.RotL32(state[reg], (i % 31) + 1);
         output[i] = OpCodes.Unpack32BE(state[reg])[i % 4];
       }
@@ -414,14 +414,14 @@
       let inputPos = 0;
       while (inputPos < input.length) {
         for (let i = 0; i < rate && inputPos < input.length; i++) {
-          state[i] ^= input[inputPos++];
+          state[i] = OpCodes.XorN(state[i], input[inputPos++]);
         }
         this.keccakF1600Educational(state);
       }
 
       // Padding (simplified)
-      state[inputPos % rate] ^= 0x1F; // SHAKE domain separator
-      state[rate - 1] ^= 0x80; // Padding
+      state[inputPos % rate] = OpCodes.XorN(state[inputPos % rate], 0x1F); // SHAKE domain separator
+      state[rate - 1] = OpCodes.XorN(state[rate - 1], 0x80); // Padding
       this.keccakF1600Educational(state);
 
       // Squeezing phase
@@ -452,7 +452,7 @@
           const y = Math.floor(i / 5);
           const prev = ((y + 4) % 5) * 5 + x;
           const next = ((y + 1) % 5) * 5 + x;
-          state[i * 8] ^= state[prev * 8] ^ state[next * 8];
+          state[i * 8] = OpCodes.XorN(state[i * 8], OpCodes.XorN(state[prev * 8], state[next * 8]));
         }
 
         // Rho-like rotation
@@ -493,12 +493,12 @@
             const a = tempRow[x];
             const b = tempRow[(x + 1) % 5];
             const c = tempRow[(x + 2) % 5];
-            state[(y * 5 + x) * 8] = a ^ ((~b) & c);
+            state[(y * 5 + x) * 8] = OpCodes.XorN(a, OpCodes.AndN(~b, c));
           }
         }
 
         // Iota-like round constant
-        state[0] ^= round;
+        state[0] = OpCodes.XorN(state[0], round);
       }
     }
 
@@ -519,7 +519,7 @@
       const tree64 = tree || 0;
       for (let i = 0; i < 8; i++) {
         const shift = 8 * (7 - i);
-        address[4 + i] = (tree64 >>> shift) & 0xFF;
+        address[4 + i] = OpCodes.AndN(OpCodes.Shr32(tree64, shift), 0xFF);
       }
 
       // Type (4 bytes) - using OpCodes
@@ -566,14 +566,14 @@
       for (let i = 0; i < outputLength; i++) {
         if (bitsLeft < logW) {
           if (inputIndex < input.length) {
-            bits = ((bits * 256) + input[inputIndex++]) >>> 0;
+            bits = OpCodes.ToUint32((bits * 256) + input[inputIndex++]);
             bitsLeft += 8;
           }
         }
 
         if (bitsLeft >= logW) {
           const shift = bitsLeft - logW;
-          output[i] = (bits >>> shift) & (w - 1);
+          output[i] = OpCodes.AndN(OpCodes.Shr32(bits, shift), w - 1);
           bitsLeft -= logW;
         } else {
           output[i] = 0;

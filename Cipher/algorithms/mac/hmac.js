@@ -274,8 +274,8 @@
       const outerKey = new Array(blockSize);
 
       for (let i = 0; i < blockSize; i++) {
-        innerKey[i] = processedKey[i] ^ this.IPAD;
-        outerKey[i] = processedKey[i] ^ this.OPAD;
+        innerKey[i] = OpCodes.XorN(processedKey[i], this.IPAD);
+        outerKey[i] = OpCodes.XorN(processedKey[i], this.OPAD);
       }
 
       // Inner hash: Hash(K XOR ipad, message)

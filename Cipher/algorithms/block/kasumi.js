@@ -260,7 +260,7 @@
 
       // Build K' keys
       for (let n = 0; n < 8; ++n) {
-        Kprime[n] = ukey[n] ^ C[n];
+        Kprime[n] = OpCodes.XorN(ukey[n], C[n]);
       }
 
       // Generate round subkeys
@@ -275,65 +275,65 @@
 
       for (let n = 0; n < 8; ++n) {
         this.KLi1[n] = OpCodes.RotL16(ukey[n], 1);
-        this.KLi2[n] = Kprime[(n + 2) & 0x7];
-        this.KOi1[n] = OpCodes.RotL16(ukey[(n + 1) & 0x7], 5);
-        this.KOi2[n] = OpCodes.RotL16(ukey[(n + 5) & 0x7], 8);
-        this.KOi3[n] = OpCodes.RotL16(ukey[(n + 6) & 0x7], 13);
-        this.KIi1[n] = Kprime[(n + 4) & 0x7];
-        this.KIi2[n] = Kprime[(n + 3) & 0x7];
-        this.KIi3[n] = Kprime[(n + 7) & 0x7];
+        this.KLi2[n] = Kprime[OpCodes.AndN((n + 2), 0x7)];
+        this.KOi1[n] = OpCodes.RotL16(ukey[OpCodes.AndN((n + 1), 0x7)], 5);
+        this.KOi2[n] = OpCodes.RotL16(ukey[OpCodes.AndN((n + 5), 0x7)], 8);
+        this.KOi3[n] = OpCodes.RotL16(ukey[OpCodes.AndN((n + 6), 0x7)], 13);
+        this.KIi1[n] = Kprime[OpCodes.AndN((n + 4), 0x7)];
+        this.KIi2[n] = Kprime[OpCodes.AndN((n + 3), 0x7)];
+        this.KIi3[n] = Kprime[OpCodes.AndN((n + 7), 0x7)];
       }
     }
 
     _FI(inVal, subkey) {
       // Split 16-bit input into 9-bit and 7-bit parts
-      let nine = (inVal >>> 7) & 0x1FF;
-      let seven = inVal & 0x7F;
+      let nine = OpCodes.AndN(OpCodes.Shr32(inVal, 7), 0x1FF);
+      let seven = OpCodes.AndN(inVal, 0x7F);
 
       // Run S-box operations
-      nine = this.S9[nine] ^ seven;
-      seven = this.S7[seven] ^ (nine & 0x7F);
-      seven ^= (subkey >>> 9);
-      nine ^= (subkey & 0x1FF);
-      nine = this.S9[nine] ^ seven;
-      seven = this.S7[seven] ^ (nine & 0x7F);
+      nine = OpCodes.XorN(this.S9[nine], seven);
+      seven = OpCodes.XorN(this.S7[seven], OpCodes.AndN(nine, 0x7F));
+      seven = OpCodes.XorN(seven, OpCodes.Shr32(subkey, 9));
+      nine = OpCodes.XorN(nine, OpCodes.AndN(subkey, 0x1FF));
+      nine = OpCodes.XorN(this.S9[nine], seven);
+      seven = OpCodes.XorN(this.S7[seven], OpCodes.AndN(nine, 0x7F));
 
-      return ((seven << 9) + nine) & 0xFFFF;
+      return OpCodes.AndN((OpCodes.Shl32(seven, 9) + nine), 0xFFFF);
     }
 
     _FO(inVal, roundNo) {
       // Split 32-bit input into two 16-bit words
-      let left = (inVal >>> 16) & 0xFFFF;
-      let right = inVal & 0xFFFF;
+      let left = OpCodes.AndN(OpCodes.Shr32(inVal, 16), 0xFFFF);
+      let right = OpCodes.AndN(inVal, 0xFFFF);
 
       // Apply three iterations
-      left ^= this.KOi1[roundNo];
+      left = OpCodes.XorN(left, this.KOi1[roundNo]);
       left = this._FI(left, this.KIi1[roundNo]);
-      left ^= right;
+      left = OpCodes.XorN(left, right);
 
-      right ^= this.KOi2[roundNo];
+      right = OpCodes.XorN(right, this.KOi2[roundNo]);
       right = this._FI(right, this.KIi2[roundNo]);
-      right ^= left;
+      right = OpCodes.XorN(right, left);
 
-      left ^= this.KOi3[roundNo];
+      left = OpCodes.XorN(left, this.KOi3[roundNo]);
       left = this._FI(left, this.KIi3[roundNo]);
-      left ^= right;
+      left = OpCodes.XorN(left, right);
 
-      return (((right << 16) >>> 0) + left) >>> 0;
+      return OpCodes.ToUint32((OpCodes.ToUint32(OpCodes.Shl32(right, 16)) + left));
     }
 
     _FL(inVal, roundNo) {
       // Split into left and right halves
-      let l = (inVal >>> 16) & 0xFFFF;
-      let r = inVal & 0xFFFF;
+      let l = OpCodes.AndN(OpCodes.Shr32(inVal, 16), 0xFFFF);
+      let r = OpCodes.AndN(inVal, 0xFFFF);
 
       // Linear operations
-      const a = (l & this.KLi1[roundNo]) & 0xFFFF;
-      r ^= OpCodes.RotL16(a, 1);
-      const b = (r | this.KLi2[roundNo]) & 0xFFFF;
-      l ^= OpCodes.RotL16(b, 1);
+      const a = OpCodes.AndN(OpCodes.AndN(l, this.KLi1[roundNo]), 0xFFFF);
+      r = OpCodes.XorN(r, OpCodes.RotL16(a, 1));
+      const b = OpCodes.AndN(OpCodes.OrN(r, this.KLi2[roundNo]), 0xFFFF);
+      l = OpCodes.XorN(l, OpCodes.RotL16(b, 1));
 
-      return (((l << 16) >>> 0) + r) >>> 0;
+      return OpCodes.ToUint32((OpCodes.ToUint32(OpCodes.Shl32(l, 16)) + r));
     }
 
     _encryptBlock(block) {
@@ -349,11 +349,11 @@
       for (let n = 0; n <= 7; ) {
         let temp = this._FL(left, n);
         temp = this._FO(temp, n++);
-        right ^= temp;
+        right = OpCodes.XorN(right, temp);
 
         temp = this._FO(right, n);
         temp = this._FL(temp, n++);
-        left ^= temp;
+        left = OpCodes.XorN(left, temp);
       }
 
       // Store result
@@ -376,11 +376,11 @@
       for (let n = 7; n >= 0; ) {
         let temp = this._FO(right, n);
         temp = this._FL(temp, n--);
-        left ^= temp;
+        left = OpCodes.XorN(left, temp);
 
         temp = this._FL(left, n);
         temp = this._FO(temp, n--);
-        right ^= temp;
+        right = OpCodes.XorN(right, temp);
       }
 
       // Store result

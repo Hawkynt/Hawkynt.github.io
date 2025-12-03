@@ -293,19 +293,19 @@
       let h = this._state;
 
       // Step 3: First avalanche - XOR with right shift 15
-      h = h ^ OpCodes.Shr32(h, 15);
+      h = OpCodes.XorN(h, OpCodes.Shr32(h, 15));
 
       // Step 4: Multiply by PRIME2
       h = OpCodes.ToDWord(Math.imul(h, this.PRIME2));
 
       // Step 5: Second avalanche - XOR with right shift 13
-      h = h ^ OpCodes.Shr32(h, 13);
+      h = OpCodes.XorN(h, OpCodes.Shr32(h, 13));
 
       // Step 6: Multiply by PRIME3
       h = OpCodes.ToDWord(Math.imul(h, this.PRIME3));
 
       // Step 7: Final avalanche - XOR with right shift 16
-      h = h ^ OpCodes.Shr32(h, 16);
+      h = OpCodes.XorN(h, OpCodes.Shr32(h, 16));
 
       // Step 8: Return final mixed value
       return OpCodes.ToDWord(h);

@@ -293,9 +293,9 @@
       for (let i = 0; i < this.field - 1; ++i) {
         this.gfAntilog[i] = x;
         this.gfLog[x] = i;
-        x <<= 1;
-        if (x & this.field) {
-          x ^= this.primitive;
+        x = OpCodes.Shl32(x, 1);
+        if (OpCodes.AndN(x, this.field)) {
+          x = OpCodes.XorN(x, this.primitive);
         }
       }
       this.gfLog[0] = this.field - 1; // Special case for zero
@@ -316,7 +316,7 @@
 
     gfAdd(a, b) {
       // Addition in GF(2^m) is XOR
-      return a ^ b;
+      return OpCodes.XorN(a, b);
     }
 
     gfPower(base, exponent) {

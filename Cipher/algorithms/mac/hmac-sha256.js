@@ -3,7 +3,7 @@
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  *
- * RFC 2104 & RFC 4231 compliant HMAC implementation with SHA-256
+ * RFC 2104 and RFC 4231 compliant HMAC implementation with SHA-256
  * Provides cryptographic authentication and integrity verification
  */
 
@@ -345,8 +345,8 @@
       const outerKey = new Array(this.BLOCK_SIZE);
 
       for (let i = 0; i < this.BLOCK_SIZE; i++) {
-        innerKey[i] = processedKey[i] ^ this.IPAD;
-        outerKey[i] = processedKey[i] ^ this.OPAD;
+        innerKey[i] = OpCodes.XorN(processedKey[i], this.IPAD);
+        outerKey[i] = OpCodes.XorN(processedKey[i], this.OPAD);
       }
 
       // Step 3: Inner hash - H((K ⊕ ipad) || message)

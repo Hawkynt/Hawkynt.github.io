@@ -359,7 +359,7 @@
     _encodeCounter(counter, numBytes) {
       const result = [];
       for (let i = numBytes - 1; i >= 0; i--) {
-        result.push((counter >>> (i * 8)) & 0xFF);
+        result.push(OpCodes.AndN(OpCodes.Shr32(counter, i * 8), 0xFF));
       }
       return result;
     }

@@ -231,7 +231,7 @@
      * Build parity-check matrix with multiple edge types
      * Each edge type has different connection patterns and degree distributions
      *
-     * Structure: H = [H1 | H2] where:
+     * Structure: H = [OpCodes.OrN(H1, H2)] where:
      *   H1: m x k submatrix for edge type 1 (information bits)
      *   H2: m x (n-k) submatrix for edge type 2 (parity bits)
      */
@@ -343,14 +343,14 @@
 
     /**
      * Transform parity-check matrix to systematic form for efficient encoding
-     * Uses row operations to convert H to [P^T | I] form, then G = [I | P]
+     * Uses row operations to convert H to [OpCodes.XorN(P, T) | I] form, then G = [OpCodes.OrN(I, P)]
      */
     transformToSystematicForm() {
-      // For LDPC codes, we need to solve H*c^T = 0 for encoding
+      // For LDPC codes, we need to solve H*OpCodes.XorN(c, T) = 0 for encoding
       // We'll transform H into systematic form using Gaussian elimination
-      // Goal: H = [A | B] where B is invertible (usually identity or near-identity)
-      // Then for codeword c = [s | p] (systematic | parity):
-      // H*c^T = A*s^T + B*p^T = 0  =>  p^T = B^(-1) * A * s^T
+      // Goal: H = [OpCodes.OrN(A, B)] where B is invertible (usually identity or near-identity)
+      // Then for codeword c = [OpCodes.OrN(s, p)] (OpCodes.OrN(systematic, parity)):
+      // H*OpCodes.XorN(c, T) = A*OpCodes.XorN(s, T) + B*OpCodes.XorN(p, T) = 0  =>  OpCodes.XorN(p, T) = B^(-1) * A * OpCodes.XorN(s, T)
 
       // Make a copy of parity check matrix to transform
       const H_copy = [];
@@ -358,9 +358,9 @@
         H_copy[i] = [...this.parityCheckMatrix[i]];
       }
 
-      // Try to get H into form [A | I] using column swaps and row operations
+      // Try to get H into form [OpCodes.OrN(A, I)] using column swaps and row operations
       // For educational simplicity, we'll use a robust encoding approach:
-      // Solve H*c^T = 0 directly for each basis vector
+      // Solve H*OpCodes.XorN(c, T) = 0 directly for each basis vector
 
       this.encodingMatrix = [];
 
@@ -405,7 +405,7 @@
       const m = A.length;
       const n = A[0].length;
 
-      // Create augmented matrix [A | b]
+      // Create augmented matrix [OpCodes.OrN(A, b)]
       const aug = [];
       for (let i = 0; i < m; ++i) {
         aug[i] = [...A[i], b[i]];
@@ -461,7 +461,7 @@
         // Solve for this variable
         let value = aug[row][n]; // RHS
         for (let col = leadCol + 1; col < n; ++col) {
-          value ^= (aug[row][col] & solution[col]);
+          value = OpCodes.XorN(value, OpCodes.AndN(aug[row][col], solution[col]));
         }
         solution[leadCol] = value;
       }
@@ -513,7 +513,7 @@
 
     /**
      * Encode information bits using multi-edge LDPC structure
-     * Systematic encoding: codeword = [info_bits | parity_bits]
+     * Systematic encoding: codeword = [OpCodes.OrN(info_bits, parity_bits)]
      */
     encode(infoBits) {
       if (infoBits.length !== this.k) {
@@ -524,7 +524,7 @@
 
       // Copy information bits (systematic part)
       for (let i = 0; i < this.k; ++i) {
-        codeword[i] = infoBits[i] & 1;
+        codeword[i] = OpCodes.AndN(infoBits[i], 1);
       }
 
       // Compute parity bits using precomputed encoding matrix
@@ -534,7 +534,7 @@
 
         for (let infoPos = 0; infoPos < this.k; ++infoPos) {
           if (infoBits[infoPos] === 1 && this.encodingMatrix[infoPos][parityPos] === 1) {
-            parityBit ^= 1;
+            parityBit = OpCodes.XorN(parityBit, 1);
           }
         }
 
@@ -684,7 +684,7 @@
     }
 
     /**
-     * Calculate syndrome: s = H * c^T (mod 2)
+     * Calculate syndrome: s = H * OpCodes.XorN(c, T) (mod 2)
      */
     calculateSyndrome(codeword) {
       const syndrome = new Array(this.m);
@@ -692,9 +692,9 @@
       for (let check = 0; check < this.m; ++check) {
         let sum = 0;
         for (let bit = 0; bit < this.n; ++bit) {
-          sum ^= (this.parityCheckMatrix[check][bit] & codeword[bit]);
+          sum = OpCodes.XorN(sum, OpCodes.AndN(this.parityCheckMatrix[check][bit], codeword[bit]));
         }
-        syndrome[check] = sum & 1;
+        syndrome[check] = OpCodes.AndN(sum, 1);
       }
 
       return syndrome;

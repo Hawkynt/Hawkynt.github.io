@@ -175,23 +175,23 @@
 
     encode(data) {
       const k = data.length;
-      const n = 1 << k; // 2^k
+      const n = OpCodes.Shl32(1, k); // 2^k
 
       // Convert data bits to index
       let index = 0;
       for (let i = 0; i < k; ++i) {
-        index = (index << 1) | data[i];
+        index = OpCodes.OrN(OpCodes.Shl32(index, 1), data[i]);
       }
 
       // Generate Hadamard codeword using Walsh functions
       const codeword = new Array(n);
       for (let i = 0; i < n; ++i) {
-        // Walsh function evaluation: count bits in (index & i)
+        // Walsh function evaluation: count bits in (index AND i)
         let dotProduct = 0;
-        let temp = index & i;
+        let temp = OpCodes.AndN(index, i);
         while (temp > 0) {
-          dotProduct ^= (temp & 1);
-          temp >>= 1;
+          dotProduct = OpCodes.XorN(dotProduct, OpCodes.AndN(temp, 1));
+          temp = OpCodes.Shr32(temp, 1);
         }
         codeword[i] = dotProduct;
       }
@@ -203,7 +203,7 @@
       const n = data.length;
 
       // Verify n is power of 2
-      if ((n & (n - 1)) !== 0) {
+      if (OpCodes.AndN(n, n - 1) !== 0) {
         throw new Error('Hadamard decode: Input length must be power of 2');
       }
 
@@ -218,10 +218,10 @@
         for (let i = 0; i < n; ++i) {
           // Walsh function evaluation
           let dotProduct = 0;
-          let temp = index & i;
+          let temp = OpCodes.AndN(index, i);
           while (temp > 0) {
-            dotProduct ^= (temp & 1);
-            temp >>= 1;
+            dotProduct = OpCodes.XorN(dotProduct, OpCodes.AndN(temp, 1));
+            temp = OpCodes.Shr32(temp, 1);
           }
 
           // Correlate with received data
@@ -243,8 +243,8 @@
       // Convert index back to bits
       const decoded = new Array(k);
       for (let i = k - 1; i >= 0; --i) {
-        decoded[i] = decodedIndex & 1;
-        decodedIndex >>= 1;
+        decoded[i] = OpCodes.AndN(decodedIndex, 1);
+        decodedIndex = OpCodes.Shr32(decodedIndex, 1);
       }
 
       return decoded;
@@ -252,7 +252,7 @@
 
     DetectError(data) {
       const n = data.length;
-      if ((n & (n - 1)) !== 0) return true;
+      if (OpCodes.AndN(n, n - 1) !== 0) return true;
 
       const k = Math.log2(n);
 

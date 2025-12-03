@@ -280,8 +280,8 @@
           const codeNum = parseInt(code);
           const codeBytes = OpCodes.Unpack16BE(codeNum);
           bytes.push(codeBytes[0], codeBytes[1]);
-          bytes.push(replacement[0] & 0xFF);
-          bytes.push(replacement[1] & 0xFF);
+          bytes.push(OpCodes.ToByte(replacement[0]));
+          bytes.push(OpCodes.ToByte(replacement[1]));
         }
 
         // Data length (4 bytes, big-endian)

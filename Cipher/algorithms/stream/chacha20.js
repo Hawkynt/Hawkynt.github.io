@@ -163,7 +163,7 @@ class ChaCha20Instance extends IAlgorithmInstance {
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       const keystreamByte = this._getNextKeystreamByte();
-      output.push(this.inputBuffer[i] ^ keystreamByte);
+      output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
     }
 
     this.inputBuffer = [];
@@ -209,19 +209,19 @@ class ChaCha20Instance extends IAlgorithmInstance {
 
   _quarterRound(state, a, b, c, d) {
     state[a] = OpCodes.Add32(state[a], state[b]);
-    state[d] ^= state[a];
+    state[d] = OpCodes.XorN(state[d], state[a]);
     state[d] = OpCodes.RotL32(state[d], 16);
 
     state[c] = OpCodes.Add32(state[c], state[d]);
-    state[b] ^= state[c];
+    state[b] = OpCodes.XorN(state[b], state[c]);
     state[b] = OpCodes.RotL32(state[b], 12);
 
     state[a] = OpCodes.Add32(state[a], state[b]);
-    state[d] ^= state[a];
+    state[d] = OpCodes.XorN(state[d], state[a]);
     state[d] = OpCodes.RotL32(state[d], 8);
 
     state[c] = OpCodes.Add32(state[c], state[d]);
-    state[b] ^= state[c];
+    state[b] = OpCodes.XorN(state[b], state[c]);
     state[b] = OpCodes.RotL32(state[b], 7);
   }
 

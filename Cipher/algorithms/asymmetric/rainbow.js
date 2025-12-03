@@ -470,7 +470,7 @@
      * @private
      */
     _gfAdd(a, b) {
-      return a ^ b;
+      return OpCodes.XorN(a, b);
     }
 
     /**

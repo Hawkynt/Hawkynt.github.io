@@ -120,8 +120,8 @@
     base = base % mod;
 
     while (exp > 0n) {
-      if (exp & 1n) result = (result * base) % mod;
-      exp >>= 1n;
+      if (OpCodes.AndN(exp, 1n)) result = (result * base) % mod;
+      exp = OpCodes.ShiftRn(exp, 1n);
       base = (base * base) % mod;
     }
 
@@ -226,11 +226,11 @@
     let addend = point;
 
     while (k > 0n) {
-      if (k & 1n) {
+      if (OpCodes.AndN(k, 1n)) {
         result = pointAdd(result, addend);
       }
       addend = pointDouble(addend);
-      k >>= 1n;
+      k = OpCodes.ShiftRn(k, 1n);
     }
 
     return result;
@@ -241,7 +241,7 @@
    */
   function hasEvenY(point) {
     if (point.isInfinity) return false;
-    return (point.y & 1n) === 0n;
+    return OpCodes.AndN(point.y, 1n) === 0n;
   }
 
   /**
@@ -261,7 +261,7 @@
     if (modMul(y, y, P) !== ySq) return null;
 
     // Return point with even Y coordinate
-    const evenY = (y & 1n) === 0n ? y : P - y;
+    const evenY = OpCodes.AndN(y, 1n) === 0n ? y : P - y;
     return new ECPoint(x, evenY);
   }
 
@@ -273,7 +273,7 @@
   function bytesToBigInt(bytes) {
     let result = 0n;
     for (let i = 0; i < bytes.length; ++i) {
-      result = (result << 8n) | BigInt(bytes[i]);
+      result = OpCodes.OrN(OpCodes.ShiftLn(result, 8n), BigInt(bytes[i]));
     }
     return result;
   }
@@ -284,8 +284,8 @@
   function bigIntToBytes(value, length = 32) {
     const result = new Array(length);
     for (let i = length - 1; i >= 0; --i) {
-      result[i] = Number(value & 0xFFn);
-      value >>= 8n;
+      result[i] = Number(OpCodes.AndN(value, 0xFFn));
+      value = OpCodes.ShiftRn(value, 8n);
     }
     return result;
   }

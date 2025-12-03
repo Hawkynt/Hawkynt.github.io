@@ -265,8 +265,8 @@
      */
     gf4Add(a, b) {
       // XOR is the fundamental GF(2) addition operation
-      // For small field elements, direct XOR is more efficient than OpCodes wrapper
-      return a ^ b;
+      // Using OpCodes for consistency with codebase standards
+      return OpCodes.XorN(a, b);
     }
 
     /**

@@ -230,7 +230,7 @@
             for (let col = 0; col < this.N; ++col) {
               const expandedRow = i * this.N + row;
               const expandedCol = j * this.N + col;
-              H[expandedRow][expandedCol] = (H[expandedRow][expandedCol] ^ submatrix[row][col]) & 1;
+              H[expandedRow][expandedCol] = OpCodes.AndN(OpCodes.XorN(H[expandedRow][expandedCol], submatrix[row][col]), 1);
             }
           }
         }
@@ -261,7 +261,7 @@
         // Create circulant permutation matrix with this shift
         for (let row = 0; row < size; ++row) {
           const col = (row + shift) % size;
-          submatrix[row][col] = (submatrix[row][col] ^ 1) & 1;
+          submatrix[row][col] = OpCodes.AndN(OpCodes.XorN(submatrix[row][col], 1), 1);
         }
       }
 
@@ -368,7 +368,7 @@
           if (row !== col && augmented[row][col] === 1) {
             // XOR with pivot row
             for (let c = 0; c < augmented[row].length; ++c) {
-              augmented[row][c] ^= augmented[col][c];
+              augmented[row][c] = OpCodes.XorN(augmented[row][c], augmented[col][c]);
             }
           }
         }
@@ -440,7 +440,7 @@
 
       // Copy systematic bits to first k positions
       for (let i = 0; i < this.k; ++i) {
-        codeword[i] = data[i] & 1;
+        codeword[i] = OpCodes.AndN(data[i], 1);
       }
 
       // Compute parity bits using precomputed parity matrix
@@ -451,11 +451,11 @@
         // XOR contributions from all systematic bits
         for (let sysIdx = 0; sysIdx < this.k; ++sysIdx) {
           if (data[sysIdx] === 1) {
-            parityBit ^= this.parityMatrix[sysIdx][parityIdx];
+            parityBit = OpCodes.XorN(parityBit, this.parityMatrix[sysIdx][parityIdx]);
           }
         }
 
-        codeword[this.k + parityIdx] = parityBit & 1;
+        codeword[this.k + parityIdx] = OpCodes.AndN(parityBit, 1);
       }
 
       return codeword;
@@ -516,7 +516,7 @@
         }
 
         if (maxBit >= 0 && maxScore > 0) {
-          decoded[maxBit] ^= 1;
+          decoded[maxBit] = OpCodes.XorN(decoded[maxBit], 1);
         } else {
           // Cannot improve further
           break;
@@ -539,10 +539,10 @@
 
         for (let j = 0; j < this.n; ++j) {
           // XOR multiplication for GF(2)
-          sum ^= (this.parityCheckMatrix[i][j] * codeword[j]);
+          sum = OpCodes.XorN(sum, (this.parityCheckMatrix[i][j] * codeword[j]));
         }
 
-        syndrome[i] = sum & 1;
+        syndrome[i] = OpCodes.AndN(sum, 1);
       }
 
       return syndrome;

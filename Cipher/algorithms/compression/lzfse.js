@@ -133,7 +133,7 @@
         this.MAX_MATCH_LENGTH = 271; // Maximum match length
         this.LOOKAHEAD_SIZE = 271; // Lookahead buffer size
         this.HASH_BITS = 16; // Hash table size
-        this.HASH_SIZE = 1 << this.HASH_BITS;
+        this.HASH_SIZE = OpCodes.Shl32(1, this.HASH_BITS);
       }
 
       Feed(data) {

@@ -272,7 +272,7 @@
       // Process input data byte by byte (stream cipher)
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._getNextKeystreamByte();
-        output.push(this.inputBuffer[i] ^ keystreamByte);
+        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer for next operation
@@ -295,9 +295,9 @@
       for (let i = 0; i < this.LFSR_SIZE && keyIndex < this._key.length; i++) {
         let word = 0;
         for (let j = 0; j < 4 && keyIndex < this._key.length; j++) {
-          word |= (this._key[keyIndex++] << (j * 8));
+          word = OpCodes.OrN(word, OpCodes.Shl32(this._key[keyIndex++], j * 8));
         }
-        this.lfsr[i] = word >>> 0; // Ensure unsigned 32-bit
+        this.lfsr[i] = OpCodes.ToUint32(word); // Ensure unsigned 32-bit
       }
 
       // Initialize FSM registers
@@ -308,9 +308,9 @@
       for (let i = 0; i < 4 && i < this.LFSR_SIZE; i++) {
         let word = 0;
         for (let j = 0; j < 4; j++) {
-          word |= (this._iv[i * 4 + j] << (j * 8));
+          word = OpCodes.OrN(word, OpCodes.Shl32(this._iv[i * 4 + j], j * 8));
         }
-        this.lfsr[i] ^= word >>> 0;
+        this.lfsr[i] = OpCodes.XorN(this.lfsr[i], OpCodes.ToUint32(word));
       }
 
       // Run initialization phase (10 rounds)
@@ -327,7 +327,7 @@
     // Clock the LFSR (Linear Feedback Shift Register)
     _clockLFSR() {
       // SOSEMANUK uses a SNOW-like LFSR with specific feedback
-      const feedback = this.lfsr[0] ^ this.lfsr[3] ^ this.lfsr[5] ^ this.lfsr[9];
+      const feedback = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.lfsr[0], this.lfsr[3]), this.lfsr[5]), this.lfsr[9]);
 
       // Shift LFSR
       for (let i = 0; i < this.LFSR_SIZE - 1; i++) {
@@ -344,8 +344,8 @@
 
       // Update FSM registers with ARX operations
       const temp = this.R1;
-      this.R1 = (this.R2 + v) >>> 0;
-      this.R2 = OpCodes.RotL32(temp, 8) ^ u;
+      this.R1 = OpCodes.ToUint32(this.R2 + v);
+      this.R2 = OpCodes.XorN(OpCodes.RotL32(temp, 8), u);
     }
 
     // Apply Serpent S-box transformation
@@ -355,11 +355,11 @@
 
       // Apply S-box to each 4-bit nibble
       for (let i = 0; i < 8; i++) {
-        const nibble = (input >>> (i * 4)) & 0xF;
-        output |= (sbox[nibble] << (i * 4));
+        const nibble = OpCodes.AndN(OpCodes.Shr32(input, i * 4), 0xF);
+        output = OpCodes.OrN(output, OpCodes.Shl32(sbox[nibble], i * 4));
       }
 
-      return output >>> 0;
+      return OpCodes.ToUint32(output);
     }
 
     // Generate a 32-bit keystream word
@@ -370,10 +370,10 @@
 
       // Combine LFSR and FSM outputs
       const lfsrOut = this.lfsr[0];
-      const fsmOut = this.R1 ^ this.R2;
+      const fsmOut = OpCodes.XorN(this.R1, this.R2);
 
       // Apply nonlinear transformation
-      const combined = lfsrOut ^ fsmOut;
+      const combined = OpCodes.XorN(lfsrOut, fsmOut);
       const sboxed = this._applySBox(combined, 0);
 
       return sboxed;

@@ -61,7 +61,7 @@
    * @returns {Array} XOR result [low32, high32]
    */
   function xor64(a, b) {
-    return [a[0] ^ b[0], a[1] ^ b[1]];
+    return [OpCodes.XorN(a[0], b[0]), OpCodes.XorN(a[1], b[1])];
   }
 
   /**
@@ -79,15 +79,15 @@
 
     if (positions < 32) {
       return [
-        ((low << positions) | (high >>> (32 - positions))) >>> 0,
-        ((high << positions) | (low >>> (32 - positions))) >>> 0
+        OpCodes.OrN(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions)),
+        OpCodes.OrN(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions))
       ];
     }
 
     positions -= 32;
     return [
-      ((high << positions) | (low >>> (32 - positions))) >>> 0,
-      ((low << positions) | (high >>> (32 - positions))) >>> 0
+      OpCodes.OrN(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, 32 - positions)),
+      OpCodes.OrN(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, 32 - positions))
     ];
   }
 
@@ -143,7 +143,7 @@
 
         for (let x = 0; x < 5; x++) {
           const notNext = [~row[(x + 1) % 5][0], ~row[(x + 1) % 5][1]];
-          const andResult = [notNext[0] & row[(x + 2) % 5][0], notNext[1] & row[(x + 2) % 5][1]];
+          const andResult = [OpCodes.AndN(notNext[0], row[(x + 2) % 5][0]), OpCodes.AndN(notNext[1], row[(x + 2) % 5][1])];
           state[x + 5 * y] = xor64(row[x], andResult);
         }
       }

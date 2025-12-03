@@ -119,8 +119,8 @@
       // Generate IV based only on key (deterministic)
       for (let i = 0; i < 16; i++) {
         siv[i] = this.key[i];
-        siv[i] ^= OpCodes.RotL8(this.key[(i + 8) % 16], (i % 8) + 1);
-        siv[i] ^= (i * 17) & 0xFF; // Add position-based entropy
+        siv[i] = OpCodes.XorN(siv[i], OpCodes.RotL8(this.key[(i + 8) % 16], (i % 8) + 1));
+        siv[i] = OpCodes.XorN(siv[i], OpCodes.AndN(i * 17, 0xFF)); // Add position-based entropy
       }
 
       return siv;
@@ -139,8 +139,8 @@
       for (let i = 0; i < length; i++) {
         // Simple keystream generation using SIV and key
         let byte = siv[i % 16];
-        byte ^= this.key[i % 16];
-        byte ^= (i & 0xFF);
+        byte = OpCodes.XorN(byte, this.key[i % 16]);
+        byte = OpCodes.XorN(byte, OpCodes.AndN(i, 0xFF));
         byte = OpCodes.RotL8(byte, (i % 8) + 1);
         keystream.push(byte);
       }

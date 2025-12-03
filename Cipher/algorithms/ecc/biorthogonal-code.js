@@ -187,7 +187,7 @@
 
     encode(data) {
       const m = this._m;
-      const n = 1 << m; // 2^m
+      const n = OpCodes.Shl32(1, m); // 2^m
       const k = m + 1; // m bits for RM(1,m), 1 bit for complement
 
       if (data.length !== k) {
@@ -208,7 +208,7 @@
         if (rmData[i] === 1) {
           for (let j = 0; j < n; ++j) {
             const position = j + 1;
-            if ((position >> i) & 1) {
+            if (OpCodes.AndN(OpCodes.Shr32(position, i), 1)) {
               codeword[j] ^= 1;
             }
           }
@@ -227,7 +227,7 @@
 
     decode(data) {
       const m = this._m;
-      const n = 1 << m;
+      const n = OpCodes.Shl32(1, m);
       const k = m + 1;
 
       if (data.length !== n) {
@@ -239,7 +239,7 @@
       const complement = (onesCount > n / 2) ? 1 : 0;
 
       // Undo complement if needed
-      const received = complement ? data.map(bit => bit ^ 1) : [...data];
+      const received = complement ? data.map(bit => OpCodes.XorN(bit, 1)) : [...data];
 
       // Decode using RM correlation
       const rmData = new Array(m).fill(0);
@@ -249,7 +249,7 @@
 
         for (let j = 0; j < n; ++j) {
           const position = j + 1;
-          if ((position >> i) & 1) {
+          if (OpCodes.AndN(OpCodes.Shr32(position, i), 1)) {
             count1 += received[j];
           } else {
             count0 += received[j];
@@ -264,7 +264,7 @@
     }
 
     DetectError(data) {
-      const n = 1 << this._m;
+      const n = OpCodes.Shl32(1, this)._m;
       if (data.length !== n) return true;
 
       try {

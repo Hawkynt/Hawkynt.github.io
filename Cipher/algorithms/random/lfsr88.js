@@ -117,7 +117,7 @@
           "https://pubsonline.informs.org/doi/10.1287/ijoc.2016.0744"
         ),
         new LinkItem(
-          "Panneton & L'Ecuyer: On the xorshift random number generators (2005)",
+          "Panneton and L'Ecuyer: On the xorshift random number generators (2005)",
           "https://dl.acm.org/doi/10.1145/1132973.1132974"
         )
       ];
@@ -316,18 +316,18 @@
      * Algorithm from L'Ecuyer (1996) / GSL implementation:
      *
      * Component z1 (period 2^31-1):
-     *   b = ((z1 << 13) ^ z1) >> 19
-     *   z1 = ((z1 & 0xFFFFFFFE) << 12) ^ b
+     *   b = ((z1 shl 13) XOR z1) shr 19
+     *   z1 = ((z1 AND 0xFFFFFFFE) shl 12) XOR b
      *
      * Component z2 (period 2^29-1):
-     *   b = ((z2 << 2) ^ z2) >> 25
-     *   z2 = ((z2 & 0xFFFFFFF8) << 4) ^ b
+     *   b = ((z2 shl 2) XOR z2) shr 25
+     *   z2 = ((z2 AND 0xFFFFFFF8) shl 4) XOR b
      *
      * Component z3 (period 2^28-1):
-     *   b = ((z3 << 3) ^ z3) >> 11
-     *   z3 = ((z3 & 0xFFFFFFF0) << 17) ^ b
+     *   b = ((z3 shl 3) XOR z3) shr 11
+     *   z3 = ((z3 AND 0xFFFFFFF0) shl 17) XOR b
      *
-     * Output: z1 ^ z2 ^ z3
+     * Output: z1 XOR z2 XOR z3
      */
     _next32() {
       if (!this._ready) {
@@ -336,27 +336,27 @@
 
       // Component z1: period 2^31-1
       let b1 = OpCodes.Shr32(
-        OpCodes.Shl32(this._z1, 13) ^ this._z1,
+        OpCodes.XorN(OpCodes.Shl32(this._z1, 13), this._z1),
         19
       );
-      this._z1 = OpCodes.Shl32(this._z1 & 0xFFFFFFFE, 12) ^ b1;
+      this._z1 = OpCodes.XorN(OpCodes.Shl32(OpCodes.AndN(this._z1, 0xFFFFFFFE), 12), b1);
 
       // Component z2: period 2^29-1
       let b2 = OpCodes.Shr32(
-        OpCodes.Shl32(this._z2, 2) ^ this._z2,
+        OpCodes.XorN(OpCodes.Shl32(this._z2, 2), this._z2),
         25
       );
-      this._z2 = OpCodes.Shl32(this._z2 & 0xFFFFFFF8, 4) ^ b2;
+      this._z2 = OpCodes.XorN(OpCodes.Shl32(OpCodes.AndN(this._z2, 0xFFFFFFF8), 4), b2);
 
       // Component z3: period 2^28-1
       let b3 = OpCodes.Shr32(
-        OpCodes.Shl32(this._z3, 3) ^ this._z3,
+        OpCodes.XorN(OpCodes.Shl32(this._z3, 3), this._z3),
         11
       );
-      this._z3 = OpCodes.Shl32(this._z3 & 0xFFFFFFF0, 17) ^ b3;
+      this._z3 = OpCodes.XorN(OpCodes.Shl32(OpCodes.AndN(this._z3, 0xFFFFFFF0), 17), b3);
 
       // Combine all components with XOR
-      return (this._z1 ^ this._z2 ^ this._z3) >>> 0;
+      return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this._z1, this._z2), this._z3));
     }
 
     /**

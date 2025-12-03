@@ -208,10 +208,10 @@
       this.KeySize = keyBytes.length;
 
       // Extract control bits from key (6 least-significant bits of last key byte)
-      this.controlBits = keyBytes[keyBytes.length - 1] & 0x3F;
+      this.controlBits = OpCodes.AndN(keyBytes[keyBytes.length - 1], 0x3F);
 
       // Number of rounds determined by 3 lowest control bits (1-8 rounds)
-      this.numRounds = (this.controlBits & 0x07) + 1;
+      this.numRounds = OpCodes.AndN(this.controlBits, 0x07) + 1;
 
       // Generate permutation tables from key schedule
       this._generatePermutationTables(keyBytes);
@@ -236,7 +236,7 @@
       // Simple PRNG seeded with key (this is a reconstruction - original algorithm details unknown)
       let seed = 0;
       for (let i = 0; i < keyBytes.length; ++i) {
-        seed = OpCodes.RotL32(seed ^ keyBytes[i], 5) >>> 0;
+        seed = OpCodes.ToUint32(OpCodes.RotL32(OpCodes.XorN(seed, keyBytes[i]), 5));
       }
 
       // Generate 8 permutation tables
@@ -251,10 +251,10 @@
         // Fisher-Yates shuffle using PRNG
         for (let i = 255; i > 0; --i) {
           // Simple PRNG: multiply-with-carry style (LCG parameters from Numerical Recipes)
-          seed = (seed * 1103515245 + 12345) >>> 0;
+          seed = OpCodes.ToUint32(seed * 1103515245 + 12345);
 
           // Extract random index using modulo (avoid >>> shift for test suite compliance)
-          const randomValue = Math.floor((seed & 0xFFFFFF) / 256);
+          const randomValue = Math.floor(OpCodes.AndN(seed, 0xFFFFFF) / 256);
           const j = randomValue % (i + 1);
 
           // Swap
@@ -272,13 +272,13 @@
      * Used for per-block table variation
      */
     _regenerateTablesIfNeeded() {
-      if ((this.controlBits & 0x20) !== 0) {
+      if (OpCodes.AndN(this.controlBits, 0x20) !== 0) {
         // Bit 5 set: regenerate tables after each block
         // Use current table state to seed new generation
         let seed = 0;
         for (let t = 0; t < 8; ++t) {
           for (let i = 0; i < 16; ++i) {
-            seed = OpCodes.RotL32(seed ^ this.permutationTables[t][i], 3) >>> 0;
+            seed = OpCodes.ToUint32(OpCodes.RotL32(OpCodes.XorN(seed, this.permutationTables[t][i]), 3));
           }
         }
 
@@ -287,10 +287,10 @@
           const table = this.permutationTables[tableIdx];
 
           for (let i = 255; i > 0; --i) {
-            seed = (seed * 1103515245 + 12345) >>> 0;
+            seed = OpCodes.ToUint32(seed * 1103515245 + 12345);
 
             // Extract random index (avoid >>> shift for test suite compliance)
-            const randomValue = Math.floor((seed & 0xFFFFFF) / 256);
+            const randomValue = Math.floor(OpCodes.AndN(seed, 0xFFFFFF) / 256);
             const j = randomValue % (i + 1);
 
             const temp = table[i];
@@ -307,7 +307,7 @@
     _xorWithTable(block, tableIdx) {
       const table = this.permutationTables[tableIdx % 8];
       for (let i = 0; i < 256; ++i) {
-        block[i] ^= table[i];
+        block[i] = OpCodes.XorN(block[i], table[i]);
       }
     }
 
@@ -317,7 +317,7 @@
      * Control bit 3 determines if done on all 8 bit-planes or in groups of 4
      */
     _bitShredding(block) {
-      const useGroupsOf4 = (this.controlBits & 0x08) !== 0;
+      const useGroupsOf4 = OpCodes.AndN(this.controlBits, 0x08) !== 0;
 
       if (useGroupsOf4) {
         // Shred in groups of 4 bit-planes
@@ -342,7 +342,7 @@
 
         // Extract bit-plane
         for (let i = 0; i < 256; ++i) {
-          extractedBits[i] = (block[i] & bitMask) !== 0 ? 1 : 0;
+          extractedBits[i] = OpCodes.AndN(block[i], bitMask) !== 0 ? 1 : 0;
         }
 
         // Simple permutation: bit-reversal on index
@@ -353,14 +353,14 @@
           let temp = i;
 
           // Unrolled bit reversal for 8-bit value
-          reversed |= (temp & 0x01) ? 0x80 : 0;
-          reversed |= (temp & 0x02) ? 0x40 : 0;
-          reversed |= (temp & 0x04) ? 0x20 : 0;
-          reversed |= (temp & 0x08) ? 0x10 : 0;
-          reversed |= (temp & 0x10) ? 0x08 : 0;
-          reversed |= (temp & 0x20) ? 0x04 : 0;
-          reversed |= (temp & 0x40) ? 0x02 : 0;
-          reversed |= (temp & 0x80) ? 0x01 : 0;
+          reversed = OpCodes.OrN(reversed, OpCodes.AndN(temp, 0x01) ? 0x80 : 0);
+          reversed = OpCodes.OrN(reversed, OpCodes.AndN(temp, 0x02) ? 0x40 : 0);
+          reversed = OpCodes.OrN(reversed, OpCodes.AndN(temp, 0x04) ? 0x20 : 0);
+          reversed = OpCodes.OrN(reversed, OpCodes.AndN(temp, 0x08) ? 0x10 : 0);
+          reversed = OpCodes.OrN(reversed, OpCodes.AndN(temp, 0x10) ? 0x08 : 0);
+          reversed = OpCodes.OrN(reversed, OpCodes.AndN(temp, 0x20) ? 0x04 : 0);
+          reversed = OpCodes.OrN(reversed, OpCodes.AndN(temp, 0x40) ? 0x02 : 0);
+          reversed = OpCodes.OrN(reversed, OpCodes.AndN(temp, 0x80) ? 0x01 : 0);
 
           permuted[reversed] = extractedBits[i];
         }
@@ -368,9 +368,9 @@
         // Put bit-plane back
         for (let i = 0; i < 256; ++i) {
           if (permuted[i]) {
-            block[i] |= bitMask;
+            block[i] = OpCodes.OrN(block[i], bitMask);
           } else {
-            block[i] &= ~bitMask;
+            block[i] = OpCodes.AndN(block[i], ~bitMask);
           }
         }
       }
@@ -390,7 +390,7 @@
         const next = block[(i + 1) % 256];
 
         // Mix current byte with neighbors using rotation and XOR
-        temp[i] = OpCodes.RotL8(curr, 1) ^ OpCodes.RotR8(prev, 1) ^ next;
+        temp[i] = OpCodes.XorN(OpCodes.XorN(OpCodes.RotL8(curr, 1), OpCodes.RotR8(prev, 1)), next);
       }
 
       // Copy back

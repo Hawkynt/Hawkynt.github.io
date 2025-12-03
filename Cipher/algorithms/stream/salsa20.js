@@ -143,7 +143,7 @@ class Salsa20Instance extends IAlgorithmInstance {
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       const keystreamByte = this._getNextKeystreamByte();
-      output.push(this.inputBuffer[i] ^ keystreamByte);
+      output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
     }
 
     this.inputBuffer = [];
@@ -192,12 +192,12 @@ class Salsa20Instance extends IAlgorithmInstance {
   }
 
   _quarterRound(y0, y1, y2, y3) {
-    const z1 = y1 ^ OpCodes.RotL32((y0 + y3) >>> 0, 7);
-    const z2 = y2 ^ OpCodes.RotL32((z1 + y0) >>> 0, 9);
-    const z3 = y3 ^ OpCodes.RotL32((z2 + z1) >>> 0, 13);
-    const z0 = y0 ^ OpCodes.RotL32((z3 + z2) >>> 0, 18);
+    const z1 = OpCodes.XorN(y1, OpCodes.RotL32(OpCodes.Add32(y0, y3), 7));
+    const z2 = OpCodes.XorN(y2, OpCodes.RotL32(OpCodes.Add32(z1, y0), 9));
+    const z3 = OpCodes.XorN(y3, OpCodes.RotL32(OpCodes.Add32(z2, z1), 13));
+    const z0 = OpCodes.XorN(y0, OpCodes.RotL32(OpCodes.Add32(z3, z2), 18));
 
-    return [z0 >>> 0, z1 >>> 0, z2 >>> 0, z3 >>> 0];
+    return [OpCodes.ToUint32(z0), OpCodes.ToUint32(z1), OpCodes.ToUint32(z2), OpCodes.ToUint32(z3)];
   }
 
   _salsa20Core(input) {
@@ -216,10 +216,10 @@ class Salsa20Instance extends IAlgorithmInstance {
           t[m] = x[(5*j + 4*m) % 16];
         }
 
-        t[1] ^= OpCodes.RotL32((t[0] + t[3]) | 0, 7);
-        t[2] ^= OpCodes.RotL32((t[1] + t[0]) | 0, 9);
-        t[3] ^= OpCodes.RotL32((t[2] + t[1]) | 0, 13);
-        t[0] ^= OpCodes.RotL32((t[3] + t[2]) | 0, 18);
+        t[1] = OpCodes.XorN(t[1], OpCodes.RotL32(OpCodes.Add32(t[0], t[3]), 7));
+        t[2] = OpCodes.XorN(t[2], OpCodes.RotL32(OpCodes.Add32(t[1], t[0]), 9));
+        t[3] = OpCodes.XorN(t[3], OpCodes.RotL32(OpCodes.Add32(t[2], t[1]), 13));
+        t[0] = OpCodes.XorN(t[0], OpCodes.RotL32(OpCodes.Add32(t[3], t[2]), 18));
 
         for (let m = 0; m < 4; m++) {
           w[4*j + (j+m) % 4] = t[m];
@@ -232,7 +232,7 @@ class Salsa20Instance extends IAlgorithmInstance {
 
     const output = new Array(16);
     for (let i = 0; i < 16; i++) {
-      output[i] = (x[i] + y[i]) | 0;
+      output[i] = OpCodes.Add32(x[i], y[i]);
     }
 
     return output;
@@ -250,9 +250,9 @@ class Salsa20Instance extends IAlgorithmInstance {
       keystream.push(bytes[0], bytes[1], bytes[2], bytes[3]);
     }
 
-    this.counter[0] = (this.counter[0] + 1) >>> 0;
+    this.counter[0] = OpCodes.Add32(this.counter[0], 1);
     if (this.counter[0] === 0) {
-      this.counter[1] = (this.counter[1] + 1) >>> 0;
+      this.counter[1] = OpCodes.Add32(this.counter[1], 1);
     }
 
     return keystream;

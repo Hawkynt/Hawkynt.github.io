@@ -93,7 +93,7 @@
       ];
 
       this.references = [
-        new LinkItem("Cryptanalysis Paper (Rijmen & Preneel)", "https://www.researchgate.net/publication/2748370_Cryptanalysis_of_McGuffin"),
+        new LinkItem("Cryptanalysis Paper (Rijmen, Preneel)", "https://www.researchgate.net/publication/2748370_Cryptanalysis_of_McGuffin"),
         new LinkItem("Springer Cryptanalysis", "https://link.springer.com/chapter/10.1007/3-540-60590-8_27")
       ];
 
@@ -313,7 +313,7 @@
         for (let i = 0; i < 6; i++) {
           const keyByte1 = key[(round + i) % key.length];
           const keyByte2 = key[(round + i + 8) % key.length];
-          roundKey[i] = OpCodes.XorArrays([keyByte1], [keyByte2 ^ round ^ i])[0];
+          roundKey[i] = OpCodes.XorN(keyByte1, OpCodes.XorN(OpCodes.XorN(keyByte2, round), i));
         }
 
         // Convert to bit array (48 bits)

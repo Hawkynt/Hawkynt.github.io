@@ -270,7 +270,7 @@
      */
     set polynomial(poly) {
       if (typeof poly === 'number') {
-        this._polynomial = poly >>> 0; // Ensure unsigned 32-bit
+        this._polynomial = OpCodes.ToUint32(poly);
       }
     }
 
@@ -290,19 +290,19 @@
     _calculateFeedback() {
       // Apply polynomial mask to the 64-bit state
       // Polynomial is up to 32-bit, so it only affects the low word
-      // The C# code does: masked = this._state & polynom
+      // The C# code does: masked = this._state AND polynom
       // where _state is ulong (64-bit) and polynom is up to 32-bit
-      let masked = (this._stateLow >>> 0) & (this._polynomial >>> 0);
+      let masked = OpCodes.AndN(OpCodes.ToUint32(this._stateLow), OpCodes.ToUint32(this._polynomial));
 
       // XOR reduction: collapse all bits down to single bit
       // This is the parallel XOR reduction from the C# code
-      masked ^= masked >>> 16;
-      masked ^= masked >>> 8;
-      masked ^= masked >>> 4;
-      masked ^= masked >>> 2;
-      masked ^= masked >>> 1;
+      masked = OpCodes.XorN(masked, OpCodes.Shr32(masked, 16));
+      masked = OpCodes.XorN(masked, OpCodes.Shr32(masked, 8));
+      masked = OpCodes.XorN(masked, OpCodes.Shr32(masked, 4));
+      masked = OpCodes.XorN(masked, OpCodes.Shr32(masked, 2));
+      masked = OpCodes.XorN(masked, OpCodes.Shr32(masked, 1));
 
-      return masked & 1;
+      return OpCodes.AndN(masked, 1);
     }
 
     /**
@@ -314,12 +314,12 @@
       const feedback = this._calculateFeedback();
 
       // Shift right: move LSB of high into MSB of low, insert feedback at bit 63
-      const carryBit = this._stateHigh & 1;
-      this._stateLow = ((this._stateLow >>> 1) | (carryBit << 31)) >>> 0;
-      this._stateHigh = ((this._stateHigh >>> 1) | ((feedback !== 0 ? 1 : 0) << 31)) >>> 0;
+      const carryBit = OpCodes.AndN(this._stateHigh, 1);
+      this._stateLow = OpCodes.ToUint32(OpCodes.Shr32(this._stateLow, 1) | OpCodes.Shl32(carryBit, 31));
+      this._stateHigh = OpCodes.ToUint32(OpCodes.Shr32(this._stateHigh, 1) | OpCodes.Shl32((feedback !== 0 ? 1 : 0), 31));
 
-      // Output bit is LSB AFTER shift (C# code line 19: return (byte)(this._state & 1))
-      const outputBit = this._stateLow & 1;
+      // Output bit is LSB AFTER shift (C# code line 19: return (byte)(this._state AND 1))
+      const outputBit = OpCodes.AndN(this._stateLow, 1);
 
       return outputBit;
     }
@@ -342,7 +342,7 @@
         // Generate 8 bits for this byte
         for (let bitIdx = 0; bitIdx < 8; ++bitIdx) {
           const bit = this._stepLFSR();
-          byte |= bit << bitIdx;
+          byte = byte | OpCodes.Shl32(bit, bitIdx);
         }
         result[byteIdx] = byte;
       }
