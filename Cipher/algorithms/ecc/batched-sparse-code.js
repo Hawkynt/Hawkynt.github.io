@@ -409,7 +409,7 @@
 
     _gfAdd(a, b) {
       // GF(256) addition is XOR
-      return (a ^ b) & 0xFF;
+      return (OpCodes.XorN(a, b)) & 0xFF;
     }
 
     _gfMultiply(a, b) {
@@ -426,19 +426,19 @@
       if (a === 0 || b === 0) return 0;
 
       // Simplified polynomial multiplication in GF(256)
-      // Using irreducible polynomial: x^8 + x^4 + x^3 + x^2 + 1
+      // Using irreducible polynomial: OpCodes.XorN(x, 8) + OpCodes.XorN(x, 4) + OpCodes.XorN(x, 3) + OpCodes.XorN(x, 2) + 1
       let result = 0;
       let bb = b;
 
       while (a !== 0) {
-        if ((a & 1) !== 0) {
-          result ^= bb;
+        if ((OpCodes.AndN(a, 1)) !== 0) {
+          result = OpCodes.XorN(result, bb);
         }
         a >>= 1;
         const msb = (bb & 0x80) !== 0;
         bb <<= 1;
         if (msb) {
-          bb ^= 0x1B; // Irreducible polynomial
+          bb = OpCodes.XorN(bb, 0x1B); // Irreducible polynomial
         }
       }
 
@@ -558,7 +558,7 @@
       }
 
       // For GF(256): use extended Euclidean algorithm
-      // Simplified: a^254 = a^-1 in GF(256)
+      // Simplified: OpCodes.XorN(a, 254) = a^-1 in GF(256)
       if (this.fieldSize === 256) {
         return this._gfPower(a, 254);
       }
@@ -571,7 +571,7 @@
       base &= 0xFF;
 
       while (exp > 0) {
-        if ((exp & 1) !== 0) {
+        if ((OpCodes.AndN(exp, 1)) !== 0) {
           result = this._gfMultiply(result, base);
         }
         base = this._gfMultiply(base, base);

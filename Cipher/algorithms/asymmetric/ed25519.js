@@ -56,10 +56,10 @@
   const SIGNATURE_SIZE = 64; // R (32 bytes) + S (32 bytes)
 
   // Prime modulus: 2^255 - 19
-  const P = (1n << 255n) - 19n;
+  const P = OpCodes.ShiftLn(1n, 255n) - 19n;
 
   // Order of base point (group order): 2^252 + 27742317777372353535851937790883648493
-  const L = (1n << 252n) + 27742317777372353535851937790883648493n;
+  const L = OpCodes.ShiftLn(1n, 252n) + 27742317777372353535851937790883648493n;
 
   // Curve parameter d = -121665/121666 (mod p)
   const D = 37095705934669439343138083508754565189542113879843219016388785533085940283555n;
@@ -96,8 +96,8 @@
     var result = 1n;
     base = base % mod;
     while (exp > 0n) {
-      if (exp & 1n) result = (result * base) % mod;
-      exp >>= 1n;
+      if (OpCodes.AndN(exp, 1n)) result = (result * base) % mod;
+      exp = OpCodes.ShiftRn(exp, 1n);
       base = (base * base) % mod;
     }
     return result;
@@ -122,8 +122,8 @@
   function encodeInt(value, length) {
     const result = new Array(length);
     for (var i = 0; i < length; ++i) {
-      result[i] = Number(value & 0xFFn);
-      value >>= 8n;
+      result[i] = Number(OpCodes.AndN(value, 0xFFn));
+      value = OpCodes.ShiftRn(value, 8n);
     }
     return result;
   }
@@ -134,7 +134,7 @@
   function decodeInt(bytes) {
     var result = 0n;
     for (var i = bytes.length - 1; i >= 0; --i) {
-      result = (result << 8n) | BigInt(bytes[i] & 0xFF);
+      result = OpCodes.OrN(OpCodes.ShiftLn(result, 8n), BigInt(OpCodes.AndN(bytes[i], 0xFF)));
     }
     return result;
   }
@@ -149,8 +149,8 @@
     const bytes = encodeInt(y, 32);
 
     // Set sign bit (bit 255) based on x's parity
-    if (x & 1n) {
-      bytes[31] |= 0x80;
+    if (OpCodes.AndN(x, 1n)) {
+      bytes[31] = OpCodes.OrN(bytes[31], 0x80);
     }
 
     return bytes;
@@ -165,11 +165,11 @@
     }
 
     // Extract sign bit
-    const signBit = (bytes[31] & 0x80) !== 0;
+    const signBit = OpCodes.AndN(bytes[31], 0x80) !== 0;
 
     // Decode y-coordinate
     const yBytes = bytes.slice(0);
-    yBytes[31] &= 0x7F; // Clear sign bit
+    yBytes[31] = OpCodes.AndN(yBytes[31], 0x7F); // Clear sign bit
     const y = decodeInt(yBytes);
 
     if (y >= P) {
@@ -199,7 +199,7 @@
     }
 
     // Adjust sign
-    if ((x & 1n) !== (signBit ? 1n : 0n)) {
+    if (OpCodes.AndN(x, 1n) !== (signBit ? 1n : 0n)) {
       x = modP(-x);
     }
 
@@ -389,9 +389,9 @@
 
     // Clamp the first 32 bytes to create scalar
     const scalar = h.slice(0, 32);
-    scalar[0] &= 0xF8;  // Clear lowest 3 bits
-    scalar[31] &= 0x7F; // Clear highest bit
-    scalar[31] |= 0x40; // Set second-highest bit
+    scalar[0] = OpCodes.AndN(scalar[0], 0xF8);  // Clear lowest 3 bits
+    scalar[31] = OpCodes.AndN(scalar[31], 0x7F); // Clear highest bit
+    scalar[31] = OpCodes.OrN(scalar[31], 0x40); // Set second-highest bit
 
     const s = decodeInt(scalar);
 
@@ -415,9 +415,9 @@
 
     // First 32 bytes: clamped scalar
     const scalarBytes = h.slice(0, 32);
-    scalarBytes[0] &= 0xF8;
-    scalarBytes[31] &= 0x7F;
-    scalarBytes[31] |= 0x40;
+    scalarBytes[0] = OpCodes.AndN(scalarBytes[0], 0xF8);
+    scalarBytes[31] = OpCodes.AndN(scalarBytes[31], 0x7F);
+    scalarBytes[31] = OpCodes.OrN(scalarBytes[31], 0x40);
     const s = decodeInt(scalarBytes);
 
     // Second 32 bytes: prefix for nonce

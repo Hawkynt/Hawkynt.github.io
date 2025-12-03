@@ -143,14 +143,14 @@ class SPEEDInstance extends IBlockCipherInstance {
       const roundIndex = Math.floor(i / 16);
       const byteIndex = i % 16;
 
-      expanded[i] = baseValue ^ (roundIndex & 0xFF) ^ (byteIndex * 7);
+      expanded[i] = OpCodes.XorN(OpCodes.XorN(baseValue, OpCodes.AndN(roundIndex, 0xFF)), (byteIndex * 7));
       expanded[i] = OpCodes.RotL8(expanded[i], (i % 8) + 1);
 
       if (i > 0) {
-        expanded[i] ^= expanded[i - 1];
+        expanded[i] = OpCodes.XorN(expanded[i], expanded[i - 1]);
       }
       if (i >= 16) {
-        expanded[i] ^= expanded[i - 16];
+        expanded[i] = OpCodes.XorN(expanded[i], expanded[i - 16]);
       }
     }
 
@@ -196,21 +196,21 @@ class SPEEDInstance extends IBlockCipherInstance {
 
     for (let i = 0; i < 16; i++) {
       const keyByte = this._expandedKey[keyOffset + i];
-      const operation = keyByte & 0x03;
+      const operation = OpCodes.AndN(keyByte, 0x03);
 
       switch (operation) {
         case 0:
-          state[i] ^= keyByte;
+          state[i] = OpCodes.XorN(state[i], keyByte);
           break;
         case 1:
-          state[i] = OpCodes.RotL8(state[i], (keyByte >> 2) & 0x07);
+          state[i] = OpCodes.RotL8(state[i], OpCodes.AndN(OpCodes.Shr32(keyByte, 2), 0x07));
           break;
         case 2:
           state[i] = this._substitute(state[i], keyByte);
           break;
         case 3:
           const neighbor = (i + 1) % 16;
-          state[i] ^= state[neighbor];
+          state[i] = OpCodes.XorN(state[i], state[neighbor]);
           break;
       }
     }
@@ -233,21 +233,21 @@ class SPEEDInstance extends IBlockCipherInstance {
 
     for (let i = 15; i >= 0; i--) {
       const keyByte = this._expandedKey[keyOffset + i];
-      const operation = keyByte & 0x03;
+      const operation = OpCodes.AndN(keyByte, 0x03);
 
       switch (operation) {
         case 0:
-          state[i] ^= keyByte;
+          state[i] = OpCodes.XorN(state[i], keyByte);
           break;
         case 1:
-          state[i] = OpCodes.RotR8(state[i], (keyByte >> 2) & 0x07);
+          state[i] = OpCodes.RotR8(state[i], OpCodes.AndN(OpCodes.Shr32(keyByte, 2), 0x07));
           break;
         case 2:
           state[i] = this._invSubstitute(state[i], keyByte);
           break;
         case 3:
           const neighbor = (i + 1) % 16;
-          state[i] ^= state[neighbor];
+          state[i] = OpCodes.XorN(state[i], state[neighbor]);
           break;
       }
     }
@@ -255,10 +255,10 @@ class SPEEDInstance extends IBlockCipherInstance {
 
   _substitute(byte, key) {
     let result = byte;
-    result ^= OpCodes.RotL8(result, 1);
-    result ^= OpCodes.RotL8(result, 3);
-    result ^= key;
-    result = ((result * 3) ^ (result >> 2)) & 0xFF;
+    result = OpCodes.XorN(result, OpCodes.RotL8(result, 1));
+    result = OpCodes.XorN(result, OpCodes.RotL8(result, 3));
+    result = OpCodes.XorN(result, key);
+    result = OpCodes.AndN(OpCodes.XorN((result * 3), OpCodes.Shr32(result, 2)), 0xFF);
     return result;
   }
 
@@ -279,10 +279,10 @@ class SPEEDInstance extends IBlockCipherInstance {
       const c = state[offset + 2];
       const d = state[offset + 3];
 
-      state[offset] = a ^ b ^ c;
-      state[offset + 1] = a ^ b ^ d;
-      state[offset + 2] = a ^ c ^ d;
-      state[offset + 3] = b ^ c ^ d;
+      state[offset] = OpCodes.XorN(OpCodes.XorN(a, b), c);
+      state[offset + 1] = OpCodes.XorN(OpCodes.XorN(a, b), d);
+      state[offset + 2] = OpCodes.XorN(OpCodes.XorN(a, c), d);
+      state[offset + 3] = OpCodes.XorN(OpCodes.XorN(b, c), d);
     }
 
     const temp = state[0];
@@ -306,10 +306,10 @@ class SPEEDInstance extends IBlockCipherInstance {
       const c = state[offset + 2];
       const d = state[offset + 3];
 
-      state[offset] = a ^ b ^ c;
-      state[offset + 1] = a ^ b ^ d;
-      state[offset + 2] = a ^ c ^ d;
-      state[offset + 3] = b ^ c ^ d;
+      state[offset] = OpCodes.XorN(OpCodes.XorN(a, b), c);
+      state[offset + 1] = OpCodes.XorN(OpCodes.XorN(a, b), d);
+      state[offset + 2] = OpCodes.XorN(OpCodes.XorN(a, c), d);
+      state[offset + 3] = OpCodes.XorN(OpCodes.XorN(b, c), d);
     }
   }
 }

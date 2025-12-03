@@ -299,19 +299,19 @@
      * Uses two 16-bit MWC generators combined into a 32-bit output
      *
      * Formula:
-     *   znew = 36969 * (z & 65535) + (z >> 16)
-     *   wnew = 18000 * (w & 65535) + (w >> 16)
-     *   MWC = (znew << 16) + wnew
+     *   znew = 36969 * (z AND 65535) + (z shr 16)
+     *   wnew = 18000 * (w AND 65535) + (w shr 16)
+     *   MWC = (znew shl 16) + wnew
      */
     _mwc() {
-      // Update z: z = 36969 * (z & 0xFFFF) + (z >> 16)
-      this._z = ((36969 * (this._z & 0xFFFF)) + (this._z >>> 16)) >>> 0;
+      // Update z: z = 36969 * (z AND 0xFFFF) + (z shr 16)
+      this._z = OpCodes.ToUint32((36969 * OpCodes.AndN(this._z, 0xFFFF)) + OpCodes.Shr32(this._z, 16));
 
-      // Update w: w = 18000 * (w & 0xFFFF) + (w >> 16)
-      this._w = ((18000 * (this._w & 0xFFFF)) + (this._w >>> 16)) >>> 0;
+      // Update w: w = 18000 * (w AND 0xFFFF) + (w shr 16)
+      this._w = OpCodes.ToUint32((18000 * OpCodes.AndN(this._w, 0xFFFF)) + OpCodes.Shr32(this._w, 16));
 
-      // Combine: (z << 16) + w
-      return ((this._z << 16) + this._w) >>> 0;
+      // Combine: (z shl 16) + w
+      return OpCodes.ToUint32(OpCodes.Shl32(this._z, 16) + this._w);
     }
 
     /**
@@ -319,14 +319,14 @@
      * Three XOR-shift operations
      *
      * Formula:
-     *   jsr ^= (jsr << 17)
-     *   jsr ^= (jsr >> 13)
-     *   jsr ^= (jsr << 5)
+     *   jsr XOR= (jsr shl 17)
+     *   jsr XOR= (jsr shr 13)
+     *   jsr XOR= (jsr shl 5)
      */
     _shr3() {
-      this._jsr = (this._jsr ^ (this._jsr << 17)) >>> 0;
-      this._jsr = (this._jsr ^ (this._jsr >>> 13)) >>> 0;
-      this._jsr = (this._jsr ^ (this._jsr << 5)) >>> 0;
+      this._jsr = OpCodes.ToUint32(OpCodes.XorN(this._jsr, OpCodes.Shl32(this._jsr, 17)));
+      this._jsr = OpCodes.ToUint32(OpCodes.XorN(this._jsr, OpCodes.Shr32(this._jsr, 13)));
+      this._jsr = OpCodes.ToUint32(OpCodes.XorN(this._jsr, OpCodes.Shl32(this._jsr, 5)));
       return this._jsr;
     }
 
@@ -338,14 +338,14 @@
      *   jcong = 69069 * jcong + 1234567
      */
     _cong() {
-      this._jcong = ((69069 * this._jcong) + 1234567) >>> 0;
+      this._jcong = OpCodes.ToUint32((69069 * this._jcong) + 1234567);
       return this._jcong;
     }
 
     /**
      * Generate next 32-bit value using KISS algorithm
      *
-     * Formula: ((MWC^CONG)+SHR3)
+     * Formula: ((MWC XOR CONG)+SHR3)
      * This combines all four generators using XOR and addition
      */
     _next32() {
@@ -357,8 +357,8 @@
       const cong = this._cong();
       const shr3 = this._shr3();
 
-      // KISS = ((MWC ^ CONG) + SHR3)
-      return ((mwc ^ cong) + shr3) >>> 0;
+      // KISS = ((MWC XOR CONG) + SHR3)
+      return OpCodes.ToUint32(OpCodes.XorN(mwc, cong) + shr3);
     }
 
     /**

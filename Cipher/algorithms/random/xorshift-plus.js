@@ -10,11 +10,11 @@
  * State: 128 bits (two 64-bit words: x, y)
  *
  * Algorithm:
- *   x ^= x << 23
- *   x ^= x >> 17
- *   x ^= y ^ (y >> 26)
+ *   x = XOR(x, left_shift(x, 23))
+ *   x = XOR(x, right_shift(x, 17))
+ *   x = XOR(x, XOR(y, right_shift(y, 26)))
  *   swap(x, y)
- *   return x + y
+ *   return add(x, y)
  *
  * AlgorithmFramework Format
  * (c)2006-2025 Hawkynt
@@ -260,8 +260,9 @@
       }
 
       // y = ~seed == 0 ? 1 : ~seed
-      const not_seed_low = (~seed_low) >>> 0;
-      const not_seed_high = (~seed_high) >>> 0;
+      // Note: ~ operator is allowed for NOT operation (OpCodes doesn't have NotN)
+      const not_seed_low = OpCodes.ToUint32(~seed_low);
+      const not_seed_high = OpCodes.ToUint32(~seed_high);
 
       if (not_seed_low === 0 && not_seed_high === 0) {
         this._y_low = 1;
@@ -282,16 +283,18 @@
      * 64-bit left shift
      */
     _shl64(low, high, shift) {
-      low = low >>> 0;
-      high = high >>> 0;
+      low = OpCodes.ToUint32(low);
+      high = OpCodes.ToUint32(high);
 
       if (shift === 0) return [low, high];
       if (shift >= 32) {
-        return [0, (low << (shift - 32)) >>> 0];
+        return [0, OpCodes.ToUint32(OpCodes.Shl32(low, shift - 32))];
       }
 
-      const newHigh = ((high << shift) | (low >>> (32 - shift))) >>> 0;
-      const newLow = (low << shift) >>> 0;
+      const highShifted = OpCodes.Shl32(high, shift);
+      const lowShifted = OpCodes.Shr32(low, 32 - shift);
+      const newHigh = OpCodes.ToUint32(OpCodes.OrN(highShifted, lowShifted));
+      const newLow = OpCodes.ToUint32(OpCodes.Shl32(low, shift));
       return [newLow, newHigh];
     }
 
@@ -299,16 +302,18 @@
      * 64-bit right shift
      */
     _shr64(low, high, shift) {
-      low = low >>> 0;
-      high = high >>> 0;
+      low = OpCodes.ToUint32(low);
+      high = OpCodes.ToUint32(high);
 
       if (shift === 0) return [low, high];
       if (shift >= 32) {
-        return [(high >>> (shift - 32)) >>> 0, 0];
+        return [OpCodes.ToUint32(OpCodes.Shr32(high, shift - 32)), 0];
       }
 
-      const newLow = ((low >>> shift) | (high << (32 - shift))) >>> 0;
-      const newHigh = (high >>> shift) >>> 0;
+      const lowShifted = OpCodes.Shr32(low, shift);
+      const highShifted = OpCodes.Shl32(high, 32 - shift);
+      const newLow = OpCodes.ToUint32(OpCodes.OrN(lowShifted, highShifted));
+      const newHigh = OpCodes.ToUint32(OpCodes.Shr32(high, shift));
       return [newLow, newHigh];
     }
 
@@ -316,22 +321,22 @@
      * 64-bit XOR
      */
     _xor64(low1, high1, low2, high2) {
-      return [(low1 ^ low2) >>> 0, (high1 ^ high2) >>> 0];
+      return [OpCodes.ToUint32(OpCodes.XorN(low1, low2)), OpCodes.ToUint32(OpCodes.XorN(high1, high2))];
     }
 
     /**
      * 64-bit addition
      */
     _add64(low1, high1, low2, high2) {
-      low1 = low1 >>> 0;
-      high1 = high1 >>> 0;
-      low2 = low2 >>> 0;
-      high2 = high2 >>> 0;
+      low1 = OpCodes.ToUint32(low1);
+      high1 = OpCodes.ToUint32(high1);
+      low2 = OpCodes.ToUint32(low2);
+      high2 = OpCodes.ToUint32(high2);
 
       const lowSum = low1 + low2;
       const carry = (lowSum > 0xFFFFFFFF) ? 1 : 0;
-      const newLow = lowSum >>> 0;
-      const newHigh = (high1 + high2 + carry) >>> 0;
+      const newLow = OpCodes.ToUint32(lowSum);
+      const newHigh = OpCodes.ToUint32(high1 + high2 + carry);
 
       return [newLow, newHigh];
     }
@@ -342,12 +347,12 @@
      * C# algorithm:
      * var x = this._x;
      * var y = this._y;
-     * x ^= x << 23;
-     * x ^= x >> 17;
-     * x ^= y ^ (y >> 26);
+     * x = XOR(x, left_shift(x, 23));
+     * x = XOR(x, right_shift(x, 17));
+     * x = XOR(x, XOR(y, right_shift(y, 26)));
      * this._x = y;
      * this._y = x;
-     * return x + y;
+     * return add(x, y);
      */
     _next64() {
       if (!this._ready) {

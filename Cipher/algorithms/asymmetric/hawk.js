@@ -283,7 +283,7 @@
         const position = i;
 
         // Create deterministic signature using safe operations
-        const mixed = (hashByte + keyByte + position) & 0xFF;
+        const mixed = OpCodes.AndN(hashByte + keyByte + position, 0xFF);
         signature[i] = mixed % 256;
       }
 
@@ -305,7 +305,7 @@
 
       // Hash to polynomial coefficients in NTRU ring
       for (let i = 0; i < message.length; i++) {
-        hash[i % 32] ^= message[i];
+        hash[i % 32] = OpCodes.XorN(hash[i % 32], message[i]);
         // Apply NTT-style mixing
         const q = this.params ? this.params.q : 256;
         hash[(i + 1) % 32] = (hash[(i + 1) % 32] + message[i]) % q;
@@ -321,7 +321,7 @@
       const u2 = ((seed * 7) % 256) / 256.0;
       const z0 = Math.sqrt(-2 * Math.log(u1 + 0.001)) * Math.cos(2 * Math.PI * u2);
       const sigma1 = this.params ? this.params.sigma1 : 1.5;
-      return Math.floor(z0 * sigma1) & 0xFF;
+      return OpCodes.AndN(Math.floor(z0 * sigma1), 0xFF);
     }
   }
 

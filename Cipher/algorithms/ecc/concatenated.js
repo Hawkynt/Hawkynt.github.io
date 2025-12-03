@@ -267,9 +267,9 @@
       encoded[6] = d4;
 
       // Parity bits at positions 1, 2, 4
-      encoded[0] = d1 ^ d2 ^ d4;
-      encoded[1] = d1 ^ d3 ^ d4;
-      encoded[3] = d2 ^ d3 ^ d4;
+      encoded[0] = OpCodes.XorN(d1, d2) ^ d4;
+      encoded[1] = OpCodes.XorN(d1, d3) ^ d4;
+      encoded[3] = OpCodes.XorN(d2, d3) ^ d4;
 
       return encoded;
     }
@@ -286,7 +286,7 @@
       const s1 = received[0] ^ received[2] ^ received[4] ^ received[6];
       const s2 = received[1] ^ received[2] ^ received[5] ^ received[6];
       const s4 = received[3] ^ received[4] ^ received[5] ^ received[6];
-      const syndrome = s1 + (s2 << 1) + (s4 << 2);
+      const syndrome = s1 + (OpCodes.Shl32(s2, 1)) + (OpCodes.Shl32(s4, 2));
 
       // Correct error if detected
       if (syndrome !== 0 && syndrome <= 7) {

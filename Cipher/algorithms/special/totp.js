@@ -430,13 +430,13 @@
       const hmacResult = this._hmac(this._key, counterBytes);
 
       // Step 3: Dynamic Truncation (DT) - same as HOTP
-      const offset = hmacResult[hmacResult.length - 1] & 0x0F;
-      const binaryCode = (
-        ((hmacResult[offset] & 0x7F) << 24) |
-        ((hmacResult[offset + 1] & 0xFF) << 16) |
-        ((hmacResult[offset + 2] & 0xFF) << 8) |
-        (hmacResult[offset + 3] & 0xFF)
-      );
+      const offset = OpCodes.AndN(hmacResult[hmacResult.length - 1], 0x0F);
+      const binaryCode =
+        OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
+          OpCodes.Shl32(OpCodes.AndN(hmacResult[offset], 0x7F), 24),
+          OpCodes.Shl32(OpCodes.AndN(hmacResult[offset + 1], 0xFF), 16)),
+          OpCodes.Shl32(OpCodes.AndN(hmacResult[offset + 2], 0xFF), 8)),
+          OpCodes.AndN(hmacResult[offset + 3], 0xFF));
 
       // Step 4: Compute OTP = binaryCode mod 10^digits
       const modulus = Math.pow(10, this._digits);
@@ -464,7 +464,7 @@
     _encodeCounter(counter) {
       const result = new Array(8).fill(0);
       for (let i = 7; i >= 0; i--) {
-        result[i] = counter & 0xFF;
+        result[i] = OpCodes.AndN(counter, 0xFF);
         counter = Math.floor(counter / 256);
       }
       return result;

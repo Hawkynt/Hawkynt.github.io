@@ -70,7 +70,7 @@
         new LinkItem("MacKay-Mitchison-McFadden (2004)", "https://ieeexplore.ieee.org/document/1337106"),
         new LinkItem("Gottesman - Stabilizer Codes", "https://arxiv.org/abs/quant-ph/9705052"),
         new LinkItem("PRX Quantum - QLDPC Review", "https://link.aps.org/doi/10.1103/PRXQuantum.2.040101"),
-        new LinkItem("Nielsen & Chuang - Quantum Computation", "https://doi.org/10.1017/CBO9780511976667")
+        new LinkItem("Nielsen and Chuang - Quantum Computation", "https://doi.org/10.1017/CBO9780511976667")
       ];
 
       this.knownVulnerabilities = [
@@ -243,7 +243,7 @@
       // Correct X errors (bit-flips)
       const errorPosX = this.syndromeToErrorPosition(syndromeX);
       if (errorPosX !== -1) {
-        received[errorPosX] ^= 1;
+        received[errorPosX] = OpCodes.XorN(received[errorPosX], 1);
       }
 
       // Measure X-stabilizers to detect Z errors (phase-flips)
@@ -276,7 +276,7 @@
         // Sparse matrix: only sum where matrix entry is 1
         for (let j = 0; j < this.n; ++j) {
           if (parityMatrix[i][j] === 1) {
-            parity ^= qubits[j];
+            parity = OpCodes.XorN(parity, qubits[j]);
           }
         }
         syndrome[i] = parity;
@@ -295,7 +295,7 @@
       let syndromeValue = 0;
       for (let i = 0; i < syndrome.length; ++i) {
         if (syndrome[i] === 1) {
-          syndromeValue |= (1 << i);
+          syndromeValue = OpCodes.OrN(syndromeValue, OpCodes.Shl32(1, i));
         }
       }
 
@@ -320,7 +320,7 @@
       }
 
       // Majority vote: if more than half are 1, logical qubit is |1⟩
-      return ones > (this.n >> 1) ? 1 : 0;
+      return ones > OpCodes.Shr32(this.n, 1) ? 1 : 0;
     }
 
     /**
@@ -336,14 +336,14 @@
       const syndromeX = this.measureSyndrome(data, this.H_Z);
       let syndromeValueX = 0;
       for (let i = 0; i < syndromeX.length; ++i) {
-        syndromeValueX |= (syndromeX[i] << i);
+        syndromeValueX = OpCodes.OrN(syndromeValueX, OpCodes.Shl32(syndromeX[i], i));
       }
 
       // Check Z errors via X-stabilizers
       const syndromeZ = this.measureSyndrome(data, this.H_X);
       let syndromeValueZ = 0;
       for (let i = 0; i < syndromeZ.length; ++i) {
-        syndromeValueZ |= (syndromeZ[i] << i);
+        syndromeValueZ = OpCodes.OrN(syndromeValueZ, OpCodes.Shl32(syndromeZ[i], i));
       }
 
       return syndromeValueX !== 0 || syndromeValueZ !== 0;
@@ -364,7 +364,7 @@
       switch (errorType) {
         case 'X':
           // X gate: bit-flip (|0⟩↔|1⟩)
-          result[position] ^= 1;
+          result[position] = OpCodes.XorN(result[position], 1);
           break;
 
         case 'Z':
@@ -374,7 +374,7 @@
 
         case 'Y':
           // Y gate: both bit-flip and phase-flip (iXZ)
-          result[position] ^= 1;
+          result[position] = OpCodes.XorN(result[position], 1);
           break;
 
         default:

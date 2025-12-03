@@ -94,7 +94,7 @@
         ),
         new TestCase(
           OpCodes.Hex8ToBytes("0001"), // Data: 0x001
-          OpCodes.Hex8ToBytes("000C75"), // Encoded: 0x001 << 11 | syndrome = 0x800 | 0x475 = 0x000C75
+          OpCodes.Hex8ToBytes("000C75"), // Encoded: 0x001 shl 11 OR syndrome = 0x800 OR 0x475 = 0x000C75
           "Single bit pattern",
           "Systematic encoding with generator polynomial 0xC75"
         ),
@@ -178,17 +178,17 @@
     _bytesToInt23(bytes) {
       let value = 0;
       for (let i = 0; i < Math.min(bytes.length, 3); i++) {
-        value = (value << 8) | (bytes[i] & 0xFF);
+        value = OpCodes.OrN(OpCodes.Shl32(value, 8), OpCodes.AndN(bytes[i], 0xFF));
       }
-      return value & MASK23;
+      return OpCodes.AndN(value, MASK23);
     }
 
     // Convert 23-bit integer to byte array (big-endian: MSB first)
     _int23ToBytes(value) {
       return [
-        (value >>> 16) & 0x7F,
-        (value >>> 8) & 0xFF,
-        (value) & 0xFF
+        OpCodes.AndN(OpCodes.Shr32(value, 16), 0x7F),
+        OpCodes.AndN(OpCodes.Shr32(value, 8), 0xFF),
+        OpCodes.AndN(value, 0xFF)
       ];
     }
 
@@ -196,16 +196,16 @@
     _bytesToInt12(bytes) {
       let value = 0;
       for (let i = 0; i < Math.min(bytes.length, 2); i++) {
-        value = (value << 8) | (bytes[i] & 0xFF);
+        value = OpCodes.OrN(OpCodes.Shl32(value, 8), OpCodes.AndN(bytes[i], 0xFF));
       }
-      return value & MASK12;
+      return OpCodes.AndN(value, MASK12);
     }
 
     // Convert 12-bit integer to byte array (big-endian: MSB first)
     _int12ToBytes(value) {
       return [
-        (value >>> 8) & 0x0F,
-        (value) & 0xFF
+        OpCodes.AndN(OpCodes.Shr32(value, 8), 0x0F),
+        OpCodes.AndN(value, 0xFF)
       ];
     }
 
@@ -215,20 +215,20 @@
 
       // Perform modulo-2 division (XOR-based)
       for (let i = 22; i >= 11; i--) {
-        if (syndrome & (1 << i)) {
-          syndrome ^= (GENPOL << (i - 11));
+        if (OpCodes.AndN(syndrome, OpCodes.Shl32(1, i))) {
+          syndrome = OpCodes.XorN(syndrome, OpCodes.Shl32(GENPOL, i - 11));
         }
       }
 
-      return syndrome & ((1 << 11) - 1); // Return 11-bit syndrome
+      return OpCodes.AndN(syndrome, OpCodes.Shl32(1, 11) - 1); // Return 11-bit syndrome
     }
 
     // Count number of 1-bits (Hamming weight)
     _hammingWeight(value) {
       let count = 0;
       while (value) {
-        count += value & 1;
-        value >>>= 1;
+        count += OpCodes.AndN(value, 1);
+        value = OpCodes.Shr32(value, 1);
       }
       return count;
     }
@@ -239,7 +239,7 @@
 
       // Try single-bit errors (23 patterns)
       for (let i = 0; i < 23; i++) {
-        const pattern = 1 << i;
+        const pattern = OpCodes.Shl32(1, i);
         if (this._getSyndrome(pattern) === syndrome) {
           return pattern;
         }
@@ -248,7 +248,7 @@
       // Try two-bit errors (253 patterns)
       for (let i = 0; i < 23; i++) {
         for (let j = i + 1; j < 23; j++) {
-          const pattern = (1 << i) | (1 << j);
+          const pattern = OpCodes.OrN(OpCodes.Shl32(1, i), OpCodes.Shl32(1, j));
           if (this._getSyndrome(pattern) === syndrome) {
             return pattern;
           }
@@ -259,7 +259,7 @@
       for (let i = 0; i < 23; i++) {
         for (let j = i + 1; j < 23; j++) {
           for (let k = j + 1; k < 23; k++) {
-            const pattern = (1 << i) | (1 << j) | (1 << k);
+            const pattern = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(1, i), OpCodes.Shl32(1, j)), OpCodes.Shl32(1, k));
             if (this._getSyndrome(pattern) === syndrome) {
               return pattern;
             }
@@ -280,13 +280,13 @@
       const data12 = this._bytesToInt12(this.inputBuffer.slice(0, 2));
 
       // Systematic encoding: multiply data by X^11
-      const shifted = (data12 << 11) & MASK23;
+      const shifted = OpCodes.AndN(OpCodes.Shl32(data12, 11), MASK23);
 
       // Calculate syndrome (parity bits)
       const syndrome = this._getSyndrome(shifted);
 
       // Combine data and parity: codeword = data * X^11 + syndrome
-      const codeword = shifted | syndrome;
+      const codeword = OpCodes.OrN(shifted, syndrome);
 
       this.inputBuffer = [];
       return this._int23ToBytes(codeword);
@@ -305,7 +305,7 @@
 
       // If syndrome is zero, no errors detected
       if (syndrome === 0) {
-        const data12 = (received >>> 11) & MASK12;
+        const data12 = OpCodes.AndN(OpCodes.Shr32(received, 11), MASK12);
         this.inputBuffer = [];
         return this._int12ToBytes(data12);
       }
@@ -318,10 +318,10 @@
       }
 
       // Correct errors
-      const corrected = received ^ errorPattern;
+      const corrected = OpCodes.XorN(received, errorPattern);
 
       // Extract data bits (upper 12 bits)
-      const data12 = (corrected >>> 11) & MASK12;
+      const data12 = OpCodes.AndN(OpCodes.Shr32(corrected, 11), MASK12);
 
       this.inputBuffer = [];
       return this._int12ToBytes(data12);

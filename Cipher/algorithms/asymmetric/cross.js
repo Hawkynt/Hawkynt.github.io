@@ -334,8 +334,8 @@
 
       // Simple hash mixing using OpCodes
       for (let i = 0; i < message.length; i++) {
-        hash[i % 32] ^= message[i];
-        hash[(i + 1) % 32] = OpCodes.RotL8(hash[(i + 1) % 32], 1) ^ message[i];
+        hash[i % 32] = OpCodes.XorN(hash[i % 32], message[i]);
+        hash[(i + 1) % 32] = OpCodes.XorN(OpCodes.RotL8(hash[(i + 1) % 32], 1), message[i]);
       }
 
       return hash;

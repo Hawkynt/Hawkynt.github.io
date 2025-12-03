@@ -366,7 +366,7 @@
 
           // XOR the counter t into the last 4 bytes of A (big-endian)
           for (let k = 1; t !== 0 && k <= 4; ++k) {
-            A[8 - k] ^= (t >>> ((k - 1) * 8)) & 0xFF;
+            A[8 - k] = OpCodes.XorN(A[8 - k], OpCodes.AndN(OpCodes.Shr32(t, (k - 1) * 8), 0xFF));
           }
 
           // R[i] = LSB(64, B)
@@ -439,7 +439,7 @@
           // XOR t into A (reverse the operation from wrapping)
           const A_copy = [...A];
           for (let k = 1; t !== 0 && k <= 4; ++k) {
-            A_copy[8 - k] ^= (t >>> ((k - 1) * 8)) & 0xFF;
+            A_copy[8 - k] = OpCodes.XorN(A_copy[8 - k], OpCodes.AndN(OpCodes.Shr32(t, (k - 1) * 8), 0xFF));
           }
 
           // B = AES_Decrypt(K, (A XOR t) | R[i])

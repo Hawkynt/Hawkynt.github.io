@@ -344,7 +344,7 @@
 
         // XOR all connected source symbols
         for (const sourceIdx of neighbors) {
-          encodedSymbol ^= this.sourceSymbols[sourceIdx];
+          encodedSymbol = OpCodes.XorN(encodedSymbol, this.sourceSymbols[sourceIdx]);
         }
 
         result.push(encodedSymbol);
@@ -442,7 +442,7 @@
               for (const connectedIdx of connectedEncoded) {
                 if (connectedIdx !== encodedIdx) {
                   // XOR out the decoded symbol
-                  workingSymbols[connectedIdx] ^= decoded[sourceIdx];
+                  workingSymbols[connectedIdx] = OpCodes.XorN(workingSymbols[connectedIdx], decoded[sourceIdx]);
                 }
                 // Remove edge from graph
                 workingGraph.removeEdge(sourceIdx, connectedIdx);
@@ -531,9 +531,9 @@
           if (row !== currentRow && matrix.get(row, col) === 1) {
             // XOR this row with current row
             for (let c = 0; c < cols; c++) {
-              matrix.set(row, c, matrix.get(row, c) ^ matrix.get(currentRow, c));
+              matrix.set(row, c, OpCodes.XorN(matrix.get(row, c), matrix.get(currentRow, c)));
             }
-            augmented[row] ^= augmented[currentRow];
+            augmented[row] = OpCodes.XorN(augmented[row], augmented[currentRow]);
           }
         }
 

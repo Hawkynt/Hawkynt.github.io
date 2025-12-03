@@ -239,9 +239,9 @@
 
       // Split into 32-bit parts for accurate multiplication
       const a_lo = OpCodes.AndN(a, mask32);
-      const a_hi = OpCodes.ShiftRn(a, 32);
+      const a_hi = OpCodes.ShiftRn(a, 32n);
       const b_lo = OpCodes.AndN(b, mask32);
-      const b_hi = OpCodes.ShiftRn(b, 32);
+      const b_hi = OpCodes.ShiftRn(b, 32n);
 
       // Compute partial products (64-bit intermediate results)
       const ll = a_lo * b_lo;
@@ -250,11 +250,11 @@
       const hh = a_hi * b_hi;
 
       // Combine with carry propagation
-      const mid1 = lh + OpCodes.ShiftRn(ll, 32);
+      const mid1 = lh + OpCodes.ShiftRn(ll, 32n);
       const mid2 = hl + OpCodes.AndN(mid1, mask32);
 
-      const lo = OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftLn(OpCodes.AndN(mid2, mask32), 32), OpCodes.AndN(ll, mask32)), 0xFFFFFFFFFFFFFFFFn);
-      const hi = OpCodes.AndN(hh + OpCodes.ShiftRn(mid1, 32) + OpCodes.ShiftRn(mid2, 32), 0xFFFFFFFFFFFFFFFFn);
+      const lo = OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftLn(OpCodes.AndN(mid2, mask32), 32n), OpCodes.AndN(ll, mask32)), 0xFFFFFFFFFFFFFFFFn);
+      const hi = OpCodes.AndN(hh + OpCodes.ShiftRn(mid1, 32n) + OpCodes.ShiftRn(mid2, 32n), 0xFFFFFFFFFFFFFFFFn);
 
       return { hi, lo };
     }
@@ -264,8 +264,8 @@
      *
      * Algorithm (from wyhash reference):
      * 1. state += WYRAND_PRIME0
-     * 2. t = (state) * (state ^ WYRAND_PRIME1)  // 128-bit multiplication
-     * 3. return (t >> 64) ^ t  // XOR high and low parts
+     * 2. t = (state) * (state XOR WYRAND_PRIME1)  // 128-bit multiplication
+     * 3. return (t shr 64) XOR t  // XOR high and low parts
      */
     _next64() {
       if (!this._ready) {
@@ -311,7 +311,7 @@
         // Extract bytes (big-endian order - most significant byte first)
         const bytesToExtract = Math.min(bytesRemaining, 8);
         for (let i = 0; i < bytesToExtract; ++i) {
-          const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, (7 - i) * 8), 0xFFn));
+          const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, BigInt((7 - i) * 8)), 0xFFn));
           output.push(byte);
         }
 

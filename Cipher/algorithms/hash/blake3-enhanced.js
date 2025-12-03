@@ -140,13 +140,13 @@
   // BLAKE3 G function (quarter round) - BLAKE3 specification Section 2.2
   function g(state, a, b, c, d, mx, my) {
     state[a] = OpCodes.Add32(state[a], OpCodes.Add32(state[b], mx));
-    state[d] = OpCodes.RotR32(state[d] ^ state[a], 16);
+    state[d] = OpCodes.RotR32(OpCodes.XorN(state[d], state[a]), 16);
     state[c] = OpCodes.Add32(state[c], state[d]);
-    state[b] = OpCodes.RotR32(state[b] ^ state[c], 12);
+    state[b] = OpCodes.RotR32(OpCodes.XorN(state[b], state[c]), 12);
     state[a] = OpCodes.Add32(state[a], OpCodes.Add32(state[b], my));
-    state[d] = OpCodes.RotR32(state[d] ^ state[a], 8);
+    state[d] = OpCodes.RotR32(OpCodes.XorN(state[d], state[a]), 8);
     state[c] = OpCodes.Add32(state[c], state[d]);
-    state[b] = OpCodes.RotR32(state[b] ^ state[c], 7);
+    state[b] = OpCodes.RotR32(OpCodes.XorN(state[b], state[c]), 7);
   }
 
   // BLAKE3 compression function - BLAKE3 specification Section 2.2
@@ -165,8 +165,8 @@
     }
 
     // Load counter (64-bit), block_len, flags
-    state[12] = counter & 0xFFFFFFFF;
-    state[13] = (counter / 0x100000000) & 0xFFFFFFFF;
+    state[12] = OpCodes.AndN(counter, 0xFFFFFFFF);
+    state[13] = OpCodes.AndN(counter / 0x100000000, 0xFFFFFFFF);
     state[14] = block_len;
     state[15] = flags;
 
@@ -220,8 +220,8 @@
     // Finalize - XOR state with IV and chaining value
     const output = new Uint32Array(16);
     for (let i = 0; i < 8; i++) {
-      output[i] = state[i] ^ state[i + 8];
-      output[i + 8] = state[i] ^ chaining_value[i];
+      output[i] = OpCodes.XorN(state[i], state[i + 8]);
+      output[i + 8] = OpCodes.XorN(state[i], chaining_value[i]);
     }
 
     return output;

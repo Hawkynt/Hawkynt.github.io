@@ -50,37 +50,37 @@
 
   // P0 permutation: X ^ ROL(X, 9) ^ ROL(X, 17)
   function P0(X) {
-    return X ^ OpCodes.RotL32(X, 9) ^ OpCodes.RotL32(X, 17);
+    return OpCodes.XorN(X, OpCodes.XorN(OpCodes.RotL32(X, 9), OpCodes.RotL32(X, 17)));
   }
 
   // P1 permutation: X ^ ROL(X, 15) ^ ROL(X, 23)
   function P1(X) {
-    return X ^ OpCodes.RotL32(X, 15) ^ OpCodes.RotL32(X, 23);
+    return OpCodes.XorN(X, OpCodes.XorN(OpCodes.RotL32(X, 15), OpCodes.RotL32(X, 23)));
   }
 
   // Message expansion function
   function EE(W0, W7, W13, W3, W10) {
-    return P1(W0 ^ W7 ^ OpCodes.RotL32(W13, 15)) ^ OpCodes.RotL32(W3, 7) ^ W10;
+    return OpCodes.XorN(P1(OpCodes.XorN(W0, OpCodes.XorN(W7, OpCodes.RotL32(W13, 15)))), OpCodes.XorN(OpCodes.RotL32(W3, 7), W10));
   }
 
   // FF function for rounds 0-15
   function FF1(X, Y, Z) {
-    return X ^ Y ^ Z;
+    return OpCodes.XorN(X, OpCodes.XorN(Y, Z));
   }
 
   // FF function for rounds 16-63
   function FF2(X, Y, Z) {
-    return (X & Y) | ((X | Y) & Z);
+    return OpCodes.OrN(OpCodes.AndN(X, Y), OpCodes.AndN(OpCodes.OrN(X, Y), Z));
   }
 
   // GG function for rounds 0-15
   function GG1(X, Y, Z) {
-    return X ^ Y ^ Z;
+    return OpCodes.XorN(X, OpCodes.XorN(Y, Z));
   }
 
   // GG function for rounds 16-63
   function GG2(X, Y, Z) {
-    return (Z ^ (X & (Y ^ Z)));
+    return OpCodes.XorN(Z, OpCodes.AndN(X, OpCodes.XorN(Y, Z)));
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -257,8 +257,8 @@
 
       // Expand message schedule (W[16] through W[67])
       for (let i = 16; i < 68; ++i) {
-        W[i] = P1(W[i - 16] ^ W[i - 9] ^ OpCodes.RotL32(W[i - 3], 15)) ^
-               OpCodes.RotL32(W[i - 13], 7) ^ W[i - 6];
+        W[i] = OpCodes.XorN(P1(OpCodes.XorN(W[i - 16], OpCodes.XorN(W[i - 9], OpCodes.RotL32(W[i - 3], 15)))),
+               OpCodes.XorN(OpCodes.RotL32(W[i - 13], 7), W[i - 6]));
       }
 
       // Initialize working variables
@@ -279,12 +279,12 @@
 
         // Compute W'[j] = W[j] ^ W[j+4]
         const Wj = W[j];
-        const Wjp = Wj ^ W[j + 4];
+        const Wjp = OpCodes.XorN(Wj, W[j + 4]);
 
         // Compute SS1, SS2, TT1, TT2
         const A12 = OpCodes.RotL32(A, 12);
         const SS1 = OpCodes.RotL32(A12 + E + TJrot, 7);
-        const SS2 = SS1 ^ A12;
+        const SS2 = OpCodes.XorN(SS1, A12);
 
         let TT1, TT2;
         if (j < 16) {
@@ -300,7 +300,7 @@
         C = OpCodes.RotL32(B, 9);
         B = A;
         // NOTE: >>> 0 is JavaScript idiom for unsigned 32-bit conversion, not a bit shift operation
-        A = TT1 >>> 0; // Ensure 32-bit unsigned
+        A = OpCodes.ToUint32(TT1); // Ensure 32-bit unsigned
 
         H = G;
         G = OpCodes.RotL32(F, 19);
@@ -309,14 +309,14 @@
       }
 
       // Update state (XOR with working variables as per SM3 spec)
-      this.state[0] ^= A;
-      this.state[1] ^= B;
-      this.state[2] ^= C;
-      this.state[3] ^= D;
-      this.state[4] ^= E;
-      this.state[5] ^= F;
-      this.state[6] ^= G;
-      this.state[7] ^= H;
+      this.state[0] = OpCodes.XorN(this.state[0], A);
+      this.state[1] = OpCodes.XorN(this.state[1], B);
+      this.state[2] = OpCodes.XorN(this.state[2], C);
+      this.state[3] = OpCodes.XorN(this.state[3], D);
+      this.state[4] = OpCodes.XorN(this.state[4], E);
+      this.state[5] = OpCodes.XorN(this.state[5], F);
+      this.state[6] = OpCodes.XorN(this.state[6], G);
+      this.state[7] = OpCodes.XorN(this.state[7], H);
     }
 
     // Get the hash result
@@ -343,7 +343,7 @@
       // For messages < 2^32 bits, high 32 bits are 0
       const lengthHigh = Math.floor(bitLength / 0x100000000);
       // NOTE: >>> 0 is JavaScript idiom for unsigned 32-bit conversion, not a bit shift operation
-      const lengthLow = bitLength >>> 0;
+      const lengthLow = OpCodes.ToUint32(bitLength);
 
       const lengthBytes = [
         ...OpCodes.Unpack32BE(lengthHigh),

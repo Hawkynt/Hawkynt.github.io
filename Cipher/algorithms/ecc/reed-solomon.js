@@ -72,7 +72,7 @@
       ];
 
       this.references = [
-        new LinkItem("Reed & Solomon Original Paper", "https://dl.acm.org/doi/10.1145/368873.368880"),
+        new LinkItem("Reed and Solomon Original Paper", "https://dl.acm.org/doi/10.1145/368873.368880"),
         new LinkItem("Practical Reed-Solomon", "https://ieeexplore.ieee.org/document/1057683"),
         new LinkItem("CD Error Correction", "https://www.ecma-international.org/publications-and-standards/standards/ecma-130/")
       ];
@@ -247,7 +247,7 @@
         // Correct errors (simplified)
         for (let loc of errorLocations) {
           if (loc < this.n) {
-            received[loc] ^= syndromes[0]; // Simplified correction
+            received[loc] = OpCodes.XorN(received[loc], syndromes[0]); // Simplified correction
           }
         }
       } else {
@@ -266,9 +266,9 @@
       for (let i = 0; i < this.field - 1; i++) {
         this.gfAntilog[i] = x;
         this.gfLog[x] = i;
-        x <<= 1;
-        if (x & this.field) {
-          x ^= this.primitive;
+        x = OpCodes.Shl32(x, 1);
+        if (OpCodes.AndN(x, this.field)) {
+          x = OpCodes.XorN(x, this.primitive);
         }
       }
       this.gfLog[0] = this.field - 1; // Special case for zero
@@ -297,8 +297,8 @@
 
         // Multiply by (x - α^i)
         for (let j = 0; j < gen.length; j++) {
-          newGen[j] ^= this.gfMultiply(gen[j], alpha_i);
-          newGen[j + 1] ^= gen[j];
+          newGen[j] = OpCodes.XorN(newGen[j], this.gfMultiply(gen[j], alpha_i));
+          newGen[j + 1] = OpCodes.XorN(newGen[j + 1], gen[j]);
         }
         gen = newGen;
       }
@@ -311,11 +311,11 @@
       const parity = new Array(this.n - this.k).fill(0);
 
       for (let i = 0; i < this.k; i++) {
-        const coeff = data[i] ^ parity[0];
+        const coeff = OpCodes.XorN(data[i], parity[0]);
 
         // Shift parity symbols
         for (let j = 0; j < this.n - this.k - 1; j++) {
-          parity[j] = parity[j + 1] ^ this.gfMultiply(this.generator[j], coeff);
+          parity[j] = OpCodes.XorN(parity[j + 1], this.gfMultiply(this.generator[j], coeff));
         }
         parity[this.n - this.k - 1] = this.gfMultiply(this.generator[this.n - this.k - 1], coeff);
       }
@@ -333,7 +333,7 @@
         let alpha_power = 1;
 
         for (let j = 0; j < this.n; j++) {
-          syndromes[i] ^= this.gfMultiply(data[j], alpha_power);
+          syndromes[i] = OpCodes.XorN(syndromes[i], this.gfMultiply(data[j], alpha_power));
           alpha_power = this.gfMultiply(alpha_power, alpha_i);
         }
       }

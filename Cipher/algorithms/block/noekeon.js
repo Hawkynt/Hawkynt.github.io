@@ -244,16 +244,16 @@
       if (this.isInverse) {
         let a0 = keyWords[0], a1 = keyWords[1], a2 = keyWords[2], a3 = keyWords[3];
 
-        let t02 = a0 ^ a2;
-        t02 ^= OpCodes.RotL32(t02, 8) ^ OpCodes.RotL32(t02, 24);
+        let t02 = OpCodes.XorN(a0, a2);
+        t02 = OpCodes.XorN(OpCodes.XorN(t02, OpCodes.RotL32(t02, 8)), OpCodes.RotL32(t02, 24));
 
-        let t13 = a1 ^ a3;
-        t13 ^= OpCodes.RotL32(t13, 8) ^ OpCodes.RotL32(t13, 24);
+        let t13 = OpCodes.XorN(a1, a3);
+        t13 = OpCodes.XorN(OpCodes.XorN(t13, OpCodes.RotL32(t13, 8)), OpCodes.RotL32(t13, 24));
 
-        a0 ^= t13;
-        a1 ^= t02;
-        a2 ^= t13;
-        a3 ^= t02;
+        a0 = OpCodes.XorN(a0, t13);
+        a1 = OpCodes.XorN(a1, t02);
+        a2 = OpCodes.XorN(a2, t13);
+        a3 = OpCodes.XorN(a3, t02);
 
         keyWords[0] = a0; keyWords[1] = a1; keyWords[2] = a2; keyWords[3] = a3;
       }
@@ -276,24 +276,24 @@
 
       let round = 0;
       for (;;) {
-        a0 ^= this.algorithm.ROUND_CONSTANTS[round];
+        a0 = OpCodes.XorN(a0, this.algorithm.ROUND_CONSTANTS[round]);
 
         // theta(a, k);
-        let t02 = a0 ^ a2;
-        t02 ^= OpCodes.RotL32(t02, 8) ^ OpCodes.RotL32(t02, 24);
+        let t02 = OpCodes.XorN(a0, a2);
+        t02 = OpCodes.XorN(OpCodes.XorN(t02, OpCodes.RotL32(t02, 8)), OpCodes.RotL32(t02, 24));
 
-        a0 ^= k0;
-        a1 ^= k1;
-        a2 ^= k2;
-        a3 ^= k3;
+        a0 = OpCodes.XorN(a0, k0);
+        a1 = OpCodes.XorN(a1, k1);
+        a2 = OpCodes.XorN(a2, k2);
+        a3 = OpCodes.XorN(a3, k3);
 
-        let t13 = a1 ^ a3;
-        t13 ^= OpCodes.RotL32(t13, 8) ^ OpCodes.RotL32(t13, 24);
+        let t13 = OpCodes.XorN(a1, a3);
+        t13 = OpCodes.XorN(OpCodes.XorN(t13, OpCodes.RotL32(t13, 8)), OpCodes.RotL32(t13, 24));
 
-        a0 ^= t13;
-        a1 ^= t02;
-        a2 ^= t13;
-        a3 ^= t02;
+        a0 = OpCodes.XorN(a0, t13);
+        a1 = OpCodes.XorN(a1, t02);
+        a2 = OpCodes.XorN(a2, t13);
+        a3 = OpCodes.XorN(a3, t02);
 
         if (++round > 16) {
           break;
@@ -341,23 +341,23 @@
       let round = 16;
       for (;;) {
         // theta(a, k);
-        let t02 = a0 ^ a2;
-        t02 ^= OpCodes.RotL32(t02, 8) ^ OpCodes.RotL32(t02, 24);
+        let t02 = OpCodes.XorN(a0, a2);
+        t02 = OpCodes.XorN(OpCodes.XorN(t02, OpCodes.RotL32(t02, 8)), OpCodes.RotL32(t02, 24));
 
-        a0 ^= k0;
-        a1 ^= k1;
-        a2 ^= k2;
-        a3 ^= k3;
+        a0 = OpCodes.XorN(a0, k0);
+        a1 = OpCodes.XorN(a1, k1);
+        a2 = OpCodes.XorN(a2, k2);
+        a3 = OpCodes.XorN(a3, k3);
 
-        let t13 = a1 ^ a3;
-        t13 ^= OpCodes.RotL32(t13, 8) ^ OpCodes.RotL32(t13, 24);
+        let t13 = OpCodes.XorN(a1, a3);
+        t13 = OpCodes.XorN(OpCodes.XorN(t13, OpCodes.RotL32(t13, 8)), OpCodes.RotL32(t13, 24));
 
-        a0 ^= t13;
-        a1 ^= t02;
-        a2 ^= t13;
-        a3 ^= t02;
+        a0 = OpCodes.XorN(a0, t13);
+        a1 = OpCodes.XorN(a1, t02);
+        a2 = OpCodes.XorN(a2, t13);
+        a3 = OpCodes.XorN(a3, t02);
 
-        a0 ^= this.algorithm.ROUND_CONSTANTS[round];
+        a0 = OpCodes.XorN(a0, this.algorithm.ROUND_CONSTANTS[round]);
 
         if (--round < 0) {
           break;
@@ -392,13 +392,13 @@
     // NOEKEON Gamma function (matching C# BouncyCastle implementation)
     _gamma(a) {
       const t = a[3];
-      a[1] ^= a[3] | a[2];
-      a[3] = a[0] ^ (a[2] & (~a[1]));
+      a[1] = OpCodes.XorN(a[1], OpCodes.OrN(a[3], a[2]));
+      a[3] = OpCodes.XorN(a[0], OpCodes.AndN(a[2], ~a[1]));
 
-      a[2] = t ^ (~a[1]) ^ a[2] ^ a[3];
+      a[2] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(t, ~a[1]), a[2]), a[3]);
 
-      a[1] ^= a[3] | a[2];
-      a[0] = t ^ (a[2] & a[1]);
+      a[1] = OpCodes.XorN(a[1], OpCodes.OrN(a[3], a[2]));
+      a[0] = OpCodes.XorN(t, OpCodes.AndN(a[2], a[1]));
     }
   }
 

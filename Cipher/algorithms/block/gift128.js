@@ -176,8 +176,8 @@
 
     // Bit permutation helper using bit_permute_step technique
     bitPermuteStep(value, mask, shift) {
-      const t = ((value >>> shift) ^ value) & mask;
-      return (value ^ t) ^ (t << shift);
+      const t = OpCodes.AndN(OpCodes.XorN((value >>> shift), value), mask);
+      return OpCodes.XorN(OpCodes.XorN(value, t), (t << shift));
     }
 
     // PERM3_INNER - Core permutation used by all PERM functions
@@ -356,7 +356,7 @@
         // AddRoundKey
         state[2] ^= keyState[1];
         state[1] ^= keyState[3];
-        state[3] ^= (0x80000000 ^ Gift128Instance.RC[round]);
+        state[3] ^= OpCodes.XorN(0x80000000, Gift128Instance.RC[round]);
 
         // Ensure all values are unsigned 32-bit
         state = state.map(x => x >>> 0);
@@ -416,7 +416,7 @@
         // AddRoundKey (same as encryption, XOR is self-inverse)
         state[2] ^= keyState[1];
         state[1] ^= keyState[3];
-        state[3] ^= (0x80000000 ^ Gift128Instance.RC[round]);
+        state[3] ^= OpCodes.XorN(0x80000000, Gift128Instance.RC[round]);
 
         // Ensure all values are unsigned 32-bit
         state = state.map(x => x >>> 0);

@@ -191,10 +191,7 @@
 
       for (let i = 0; i < data.length; i += 4) {
         // Pack 4 bytes into 32-bit value (big-endian)
-        const value = (data[i] << 24) | 
-                     (data[i + 1] << 16) | 
-                     (data[i + 2] << 8) | 
-                     data[i + 3];
+        const value = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(data[i], 24), OpCodes.Shl32(data[i + 1], 16)), OpCodes.Shl32(data[i + 2], 8)), data[i + 3]);
 
         // Convert to 5 base-85 characters
         let temp = value;
@@ -237,10 +234,10 @@
         }
 
         // Unpack 32-bit value to 4 bytes (big-endian)
-        result.push((value >>> 24) & 0xFF);
-        result.push((value >>> 16) & 0xFF);
-        result.push((value >>> 8) & 0xFF);
-        result.push(value & 0xFF);
+        result.push(OpCodes.AndN(OpCodes.Shr32(value, 24), 0xFF));
+        result.push(OpCodes.AndN(OpCodes.Shr32(value, 16), 0xFF));
+        result.push(OpCodes.AndN(OpCodes.Shr32(value, 8), 0xFF));
+        result.push(OpCodes.AndN(value, 0xFF));
       }
 
       return result;

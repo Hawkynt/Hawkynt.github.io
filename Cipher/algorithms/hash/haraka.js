@@ -137,13 +137,13 @@
 
       // Galois field multiplication in GF(2^8)
       function mulX(p) {
-        return ((p & 0x7F) << 1) ^ (((p & 0x80) >>> 7) * 0x1B);
+        return OpCodes.XorN(OpCodes.Shl32(OpCodes.AndN(p, 0x7F), 1), (OpCodes.Shr32(OpCodes.AndN(p, 0x80), 7) * 0x1B));
       }
 
-      result[j++] = mulX(c0) ^ mulX(c1) ^ c1 ^ c2 ^ c3;
-      result[j++] = c0 ^ mulX(c1) ^ mulX(c2) ^ c2 ^ c3;
-      result[j++] = c0 ^ c1 ^ mulX(c2) ^ mulX(c3) ^ c3;
-      result[j++] = mulX(c0) ^ c0 ^ c1 ^ c2 ^ mulX(c3);
+      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(mulX(c0), mulX(c1)), c1), c2), c3);
+      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(c0, mulX(c1)), mulX(c2)), c2), c3);
+      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(c0, c1), mulX(c2)), mulX(c3)), c3);
+      result[j++] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(mulX(c0), c0), c1), c2), mulX(c3));
     }
 
     return result;
@@ -283,8 +283,8 @@
       // Final XOR with original input (Davies-Meyer construction)
       const output = new Array(32);
       for (let i = 0; i < 16; ++i) {
-        output[i] = s2[0][i] ^ original[i];
-        output[i + 16] = s2[1][i] ^ original[i + 16];
+        output[i] = OpCodes.XorN(s2[0][i], original[i]);
+        output[i + 16] = OpCodes.XorN(s2[1][i], original[i + 16]);
       }
 
       return output;

@@ -71,23 +71,23 @@
    */
   function RotR64(value, positions) {
     const mask64 = BigInt('0xffffffffffffffff');
-    value = value & mask64;
-    positions = BigInt(positions) & BigInt(63);
-    return ((value >> positions) | (value << (BigInt(64) - positions))) & mask64;
+    value = OpCodes.AndN(value, mask64);
+    positions = OpCodes.AndN(BigInt(positions), BigInt(63));
+    return OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftRn(value, positions), OpCodes.ShiftLn(value, (BigInt(64) - positions))), mask64);
   }
 
   /**
    * BLAKE2b G function (mixing function for 64-bit)
    */
   function BLAKE2b_G(v, a, b, c, d, x, y) {
-    v[a] = (v[a] + v[b] + x) & BigInt('0xffffffffffffffff');
-    v[d] = RotR64(v[d] ^ v[a], 32);
-    v[c] = (v[c] + v[d]) & BigInt('0xffffffffffffffff');
-    v[b] = RotR64(v[b] ^ v[c], 24);
-    v[a] = (v[a] + v[b] + y) & BigInt('0xffffffffffffffff');
-    v[d] = RotR64(v[d] ^ v[a], 16);
-    v[c] = (v[c] + v[d]) & BigInt('0xffffffffffffffff');
-    v[b] = RotR64(v[b] ^ v[c], 63);
+    v[a] = OpCodes.AndN((v[a] + v[b] + x), BigInt('0xffffffffffffffff'));
+    v[d] = RotR64(OpCodes.XorN(v[d], v[a]), 32);
+    v[c] = OpCodes.AndN((v[c] + v[d]), BigInt('0xffffffffffffffff'));
+    v[b] = RotR64(OpCodes.XorN(v[b], v[c]), 24);
+    v[a] = OpCodes.AndN((v[a] + v[b] + y), BigInt('0xffffffffffffffff'));
+    v[d] = RotR64(OpCodes.XorN(v[d], v[a]), 16);
+    v[c] = OpCodes.AndN((v[c] + v[d]), BigInt('0xffffffffffffffff'));
+    v[b] = RotR64(OpCodes.XorN(v[b], v[c]), 63);
   }
 
   /**
@@ -105,10 +105,10 @@
     }
 
     // Mix counter and final flag
-    v[12] ^= t & BigInt('0xffffffffffffffff');
-    v[13] ^= (t >> BigInt(64)) & BigInt('0xffffffffffffffff');
+    v[12] = OpCodes.XorN(v[12], OpCodes.AndN(t, BigInt('0xffffffffffffffff')));
+    v[13] = OpCodes.XorN(v[13], OpCodes.AndN(OpCodes.ShiftRn(t, BigInt(64)), BigInt('0xffffffffffffffff')));
     if (f) {
-      v[14] ^= BigInt('0xffffffffffffffff');
+      v[14] = OpCodes.XorN(v[14], BigInt('0xffffffffffffffff'));
     }
 
     // 12 rounds of mixing
@@ -130,7 +130,7 @@
 
     // Update hash state
     for (let i = 0; i < 8; i++) {
-      h[i] ^= v[i] ^ v[i + 8];
+      h[i] = OpCodes.XorN(h[i], OpCodes.XorN(v[i], v[i + 8]));
     }
   }
 
@@ -142,7 +142,7 @@
     for (let i = 0; i < bytes.length; i += 8) {
       let word = BigInt(0);
       for (let j = 0; j < 8 && i + j < bytes.length; j++) {
-        word |= BigInt(bytes[i + j]) << BigInt(j * 8);
+        word = OpCodes.OrN(word, OpCodes.ShiftLn(BigInt(bytes[i + j]), BigInt(j * 8)));
       }
       words.push(word);
     }
@@ -159,8 +159,8 @@
     for (let i = 0; i < words.length && byteIndex < length; i++) {
       let word = words[i];
       for (let j = 0; j < 8 && byteIndex < length; j++) {
-        bytes[byteIndex++] = Number(word & BigInt('0xff'));
-        word >>= BigInt(8);
+        bytes[byteIndex++] = Number(OpCodes.AndN(word, BigInt('0xff')));
+        word = OpCodes.ShiftRn(word, BigInt(8));
       }
     }
 
@@ -184,10 +184,11 @@
     }
 
     // Set parameter block in h[0]
-    this.h[0] ^= BigInt(this.outputLength) |
-                 (BigInt(key ? key.length : 0) << BigInt(8)) |
-                 (BigInt(1) << BigInt(16)) |  // fanout = 1
-                 (BigInt(1) << BigInt(24));   // depth = 1
+    this.h[0] = OpCodes.XorN(this.h[0], OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
+                 BigInt(this.outputLength),
+                 OpCodes.ShiftLn(BigInt(key ? key.length : 0), BigInt(8))),
+                 OpCodes.ShiftLn(BigInt(1), BigInt(16))),  // fanout = 1
+                 OpCodes.ShiftLn(BigInt(1), BigInt(24))));   // depth = 1
 
     // Process key if provided
     if (key && key.length > 0) {
@@ -268,14 +269,14 @@
    * BLAKE2s G function (mixing function for 32-bit)
    */
   function BLAKE2s_G(v, a, b, c, d, x, y) {
-    v[a] = (v[a] + v[b] + x) >>> 0;
-    v[d] = OpCodes.RotR32(v[d] ^ v[a], 16);
-    v[c] = (v[c] + v[d]) >>> 0;
-    v[b] = OpCodes.RotR32(v[b] ^ v[c], 12);
-    v[a] = (v[a] + v[b] + y) >>> 0;
-    v[d] = OpCodes.RotR32(v[d] ^ v[a], 8);
-    v[c] = (v[c] + v[d]) >>> 0;
-    v[b] = OpCodes.RotR32(v[b] ^ v[c], 7);
+    v[a] = OpCodes.ToUint32(v[a] + v[b] + x);
+    v[d] = OpCodes.RotR32(OpCodes.XorN(v[d], v[a]), 16);
+    v[c] = OpCodes.ToUint32(v[c] + v[d]);
+    v[b] = OpCodes.RotR32(OpCodes.XorN(v[b], v[c]), 12);
+    v[a] = OpCodes.ToUint32(v[a] + v[b] + y);
+    v[d] = OpCodes.RotR32(OpCodes.XorN(v[d], v[a]), 8);
+    v[c] = OpCodes.ToUint32(v[c] + v[d]);
+    v[b] = OpCodes.RotR32(OpCodes.XorN(v[b], v[c]), 7);
   }
 
   /**
@@ -293,10 +294,10 @@
     }
 
     // Mix counter and final flag
-    v[12] ^= t0;
-    v[13] ^= t1;
+    v[12] = OpCodes.XorN(v[12], t0);
+    v[13] = OpCodes.XorN(v[13], t1);
     if (f) {
-      v[14] = ~v[14] >>> 0;
+      v[14] = OpCodes.ToUint32(~v[14]);
     }
 
     // 10 rounds of mixing
@@ -318,7 +319,7 @@
 
     // Update hash state
     for (let i = 0; i < 8; i++) {
-      h[i] ^= v[i] ^ v[i + 8];
+      h[i] = OpCodes.XorN(h[i], OpCodes.XorN(v[i], v[i + 8]));
     }
   }
 
@@ -349,29 +350,30 @@
     }
 
     // Set parameter block
-    this.h[0] ^= this.outputLength |
-                 ((key ? key.length : 0) << 8) |
-                 (fanout << 16) |
-                 (depth << 24);
+    this.h[0] = OpCodes.XorN(this.h[0],
+                 OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(this.outputLength,
+                 OpCodes.Shl32((key ? key.length : 0), 8)),
+                 OpCodes.Shl32(fanout, 16)),
+                 OpCodes.Shl32(depth, 24)));
 
-    this.h[1] ^= leafLength;
+    this.h[1] = OpCodes.XorN(this.h[1], leafLength);
 
     // h[2] and h[3]: node_offset
-    const nodeOffsetLo = nOffset >>> 0;
+    const nodeOffsetLo = OpCodes.ToUint32(nOffset);
     const nodeOffsetHi = Math.floor(nOffset / 0x100000000);
-    this.h[2] ^= nodeOffsetLo;
-    this.h[3] ^= ((xofLength & 0xFFFF) | (nodeDepth << 16) | (innerHashLength << 24));
+    this.h[2] = OpCodes.XorN(this.h[2], nodeOffsetLo);
+    this.h[3] = OpCodes.XorN(this.h[3], OpCodes.OrN(OpCodes.OrN(OpCodes.AndN(xofLength, 0xFFFF), OpCodes.Shl32(nodeDepth, 16)), OpCodes.Shl32(innerHashLength, 24)));
 
     // h[4] and h[5]: salt
     if (salt && salt.length === 8) {
-      this.h[4] ^= OpCodes.Pack32LE(salt[0], salt[1], salt[2], salt[3]);
-      this.h[5] ^= OpCodes.Pack32LE(salt[4], salt[5], salt[6], salt[7]);
+      this.h[4] = OpCodes.XorN(this.h[4], OpCodes.Pack32LE(salt[0], salt[1], salt[2], salt[3]));
+      this.h[5] = OpCodes.XorN(this.h[5], OpCodes.Pack32LE(salt[4], salt[5], salt[6], salt[7]));
     }
 
     // h[6] and h[7]: personalization
     if (personalization && personalization.length === 8) {
-      this.h[6] ^= OpCodes.Pack32LE(personalization[0], personalization[1], personalization[2], personalization[3]);
-      this.h[7] ^= OpCodes.Pack32LE(personalization[4], personalization[5], personalization[6], personalization[7]);
+      this.h[6] = OpCodes.XorN(this.h[6], OpCodes.Pack32LE(personalization[0], personalization[1], personalization[2], personalization[3]));
+      this.h[7] = OpCodes.XorN(this.h[7], OpCodes.Pack32LE(personalization[4], personalization[5], personalization[6], personalization[7]));
     }
 
     // Process key if provided

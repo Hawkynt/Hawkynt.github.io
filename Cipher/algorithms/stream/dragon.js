@@ -178,7 +178,7 @@ class DragonInstance extends IAlgorithmInstance {
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       const keystreamByte = this._generateKeystreamByte();
-      output.push(this.inputBuffer[i] ^ keystreamByte);
+      output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
     }
 
     this.inputBuffer = [];
@@ -244,13 +244,13 @@ class DragonInstance extends IAlgorithmInstance {
    */
   _getNLFSR1Feedback() {
     // Linear feedback polynomial terms
-    const linear = this.nlfsr1[0] ^ this.nlfsr1[2] ^ this.nlfsr1[5] ^ this.nlfsr1[7];
+    const linear = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.nlfsr1[0], this.nlfsr1[2]), this.nlfsr1[5]), this.nlfsr1[7]);
 
     // Nonlinear terms using F function
-    const nonlinear1 = this._F(this.nlfsr1[1] ^ this.nlfsr1[6]);
+    const nonlinear1 = this._F(OpCodes.XorN(this.nlfsr1[1], this.nlfsr1[6]));
     const nonlinear2 = OpCodes.RotL32(this._F(this.nlfsr1[3]), 16);
 
-    return linear ^ nonlinear1 ^ nonlinear2;
+    return OpCodes.XorN(OpCodes.XorN(linear, nonlinear1), nonlinear2);
   }
 
   /**
@@ -258,13 +258,13 @@ class DragonInstance extends IAlgorithmInstance {
    */
   _getNLFSR2Feedback() {
     // Linear feedback polynomial terms
-    const linear = this.nlfsr2[0] ^ this.nlfsr2[3] ^ this.nlfsr2[4] ^ this.nlfsr2[7];
+    const linear = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this.nlfsr2[0], this.nlfsr2[3]), this.nlfsr2[4]), this.nlfsr2[7]);
 
     // Nonlinear terms using F function
-    const nonlinear1 = this._F(this.nlfsr2[1] ^ this.nlfsr2[5]);
+    const nonlinear1 = this._F(OpCodes.XorN(this.nlfsr2[1], this.nlfsr2[5]));
     const nonlinear2 = OpCodes.RotL32(this._F(this.nlfsr2[2]), 8);
 
-    return linear ^ nonlinear1 ^ nonlinear2;
+    return OpCodes.XorN(OpCodes.XorN(linear, nonlinear1), nonlinear2);
   }
 
   /**
@@ -295,15 +295,15 @@ class DragonInstance extends IAlgorithmInstance {
     this._clockNLFSRs();
 
     // Output function combines values from both NLFSRs
-    const x1 = this.nlfsr1[3] ^ this.nlfsr1[6];
-    const x2 = this.nlfsr2[1] ^ this.nlfsr2[4];
+    const x1 = OpCodes.XorN(this.nlfsr1[3], this.nlfsr1[6]);
+    const x2 = OpCodes.XorN(this.nlfsr2[1], this.nlfsr2[4]);
 
     // Apply nonlinear filter
     const y1 = this._F(x1);
     const y2 = this._F(x2);
 
     // Combine with rotation and addition
-    return (y1 + OpCodes.RotL32(y2, 16)) >>> 0;
+    return OpCodes.ToUint32(y1 + OpCodes.RotL32(y2, 16));
   }
 
   /**

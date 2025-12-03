@@ -293,7 +293,7 @@
       if (typeof data === 'string') {
         const bytes = [];
         for (let i = 0; i < data.length; i++) {
-          bytes.push(data.charCodeAt(i) & 0xFF);
+          bytes.push(OpCodes.AndN(data.charCodeAt(i), 0xFF));
         }
         data = bytes;
       }

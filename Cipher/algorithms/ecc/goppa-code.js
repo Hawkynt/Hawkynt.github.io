@@ -201,7 +201,7 @@
       for (let i = 0; i < this.parityCheck.length; ++i) {
         let sum = 0;
         for (let j = 0; j < 7; ++j) {
-          sum ^= (data[j] & this.parityCheck[i][j]);
+          sum = OpCodes.XorN(sum, OpCodes.AndN(data[j], this.parityCheck[i][j]));
         }
         if (sum !== 0) {
           throw new Error(`Goppa encode: Input violates parity check ${i+1}`);
@@ -223,7 +223,7 @@
       for (let i = 0; i < this.parityCheck.length; ++i) {
         let sum = 0;
         for (let j = 0; j < 7; ++j) {
-          sum ^= (data[j] & this.parityCheck[i][j]);
+          sum = OpCodes.XorN(sum, OpCodes.AndN(data[j], this.parityCheck[i][j]));
         }
         syndrome[i] = sum;
       }
@@ -248,7 +248,7 @@
       for (let i = 0; i < this.parityCheck.length; ++i) {
         let sum = 0;
         for (let j = 0; j < 7; ++j) {
-          sum ^= (data[j] & this.parityCheck[i][j]);
+          sum = OpCodes.XorN(sum, OpCodes.AndN(data[j], this.parityCheck[i][j]));
         }
         syndrome[i] = sum;
       }

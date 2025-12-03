@@ -258,9 +258,9 @@
       const splitmix64Next = (z) => {
         let local = z;
         local = OpCodes.AndN(local + GOLDEN_GAMMA, 0xFFFFFFFFFFFFFFFFn);
-        local = OpCodes.AndN(OpCodes.XorN(local, OpCodes.ShiftRn(local, 30)) * MIX_CONST_1, 0xFFFFFFFFFFFFFFFFn);
-        local = OpCodes.AndN(OpCodes.XorN(local, OpCodes.ShiftRn(local, 27)) * MIX_CONST_2, 0xFFFFFFFFFFFFFFFFn);
-        local = OpCodes.AndN(OpCodes.XorN(local, OpCodes.ShiftRn(local, 31)), 0xFFFFFFFFFFFFFFFFn);
+        local = OpCodes.AndN(OpCodes.XorN(local, OpCodes.ShiftRn(local, 30n)) * MIX_CONST_1, 0xFFFFFFFFFFFFFFFFn);
+        local = OpCodes.AndN(OpCodes.XorN(local, OpCodes.ShiftRn(local, 27n)) * MIX_CONST_2, 0xFFFFFFFFFFFFFFFFn);
+        local = OpCodes.AndN(OpCodes.XorN(local, OpCodes.ShiftRn(local, 31n)), 0xFFFFFFFFFFFFFFFFn);
         return local;  // Returns new state AND updates z in C# via ref
       };
 
@@ -291,8 +291,8 @@
      * Algorithm (from C# implementation):
      * 1. index = (index + 1) % R
      * 2. t = A * state[index] + carry  (128-bit arithmetic)
-     * 3. carry = t >> 64 (high 64 bits)
-     * 4. state[index] = t & 0xFFFFFFFFFFFFFFFF (low 64 bits)
+     * 3. carry = t shr 64 (high 64 bits)
+     * 4. state[index] = t AND 0xFFFFFFFFFFFFFFFF (low 64 bits)
      * 5. return 2^64 - 1 - state[index] (complement)
      */
     _next64() {
@@ -307,7 +307,7 @@
       const t = OpCodes.AndN(this.A * this._state[this._index] + this._carry, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFn);
 
       // Step 3: Extract carry (high 64 bits)
-      this._carry = OpCodes.ShiftRn(t, 64);
+      this._carry = OpCodes.ShiftRn(t, 64n);
 
       // Step 4: Update state (low 64 bits)
       this._state[this._index] = OpCodes.AndN(t, 0xFFFFFFFFFFFFFFFFn);

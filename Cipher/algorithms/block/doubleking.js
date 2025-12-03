@@ -159,7 +159,7 @@
         const template = [...this.ROUND_CONSTANTS_TEMPLATE];
         for (let i = 0; i < 12; i++) {
           const roundConstValue = template[i] === -1 ? this.ROUND_CONSTANTS[r] : template[i];
-          result[i] = block[i] ^ key[i] ^ roundConstValue;
+          result[i] = OpCodes.XorN(OpCodes.XorN(block[i], key[i]), roundConstValue);
         }
       } else if (mode === 'dec') {
         // Decryption mode - different round constant handling
@@ -172,7 +172,7 @@
         const diffusedTemplate = this.diffusion([...template.reverse()]);
 
         for (let i = 0; i < 12; i++) {
-          result[i] = block[i] ^ key[i] ^ diffusedTemplate[i];
+          result[i] = OpCodes.XorN(OpCodes.XorN(block[i], key[i]), diffusedTemplate[i]);
         }
       }
 
@@ -185,7 +185,7 @@
       for (let i = 0; i < 12; i++) {
         result[i] = 0;
         for (const offset of this.DIFFUSION_CONSTANTS) {
-          result[i] ^= block[(i + offset) % 12];
+          result[i] = OpCodes.XorN(result[i], block[(i + offset) % 12]);
         }
       }
       return result;
@@ -204,7 +204,7 @@
     sBox(block) {
       const result = new Array(12);
       for (let i = 0; i < 12; i++) {
-        result[i] = block[i] ^ (block[(i + 4) % 12] | (~block[(i + 8) % 12] >>> 0));
+        result[i] = OpCodes.XorN(block[i], OpCodes.OrN(block[(i + 4) % 12], ~OpCodes.ToUint32(block[(i + 8) % 12])));
       }
       return result;
     }

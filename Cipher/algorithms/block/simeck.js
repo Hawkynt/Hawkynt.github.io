@@ -262,7 +262,7 @@
       const left = state[leftIdx];
       const right = state[rightIdx];
 
-      state[leftIdx] = ((left & OpCodes.RotL16(left, 5)) ^ OpCodes.RotL16(left, 1) ^ right ^ key) & 0xFFFF;
+      state[leftIdx] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(left, OpCodes.RotL16(left, 5)), OpCodes.RotL16(left, 1)), right), key), 0xFFFF);
       state[rightIdx] = left;
     }
 
@@ -552,7 +552,7 @@
       const left = state[leftIdx];
       const right = state[rightIdx];
 
-      state[leftIdx] = ((left & OpCodes.RotL32(left, 5)) ^ OpCodes.RotL32(left, 1) ^ right ^ key) >>> 0;
+      state[leftIdx] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(left, OpCodes.RotL32(left, 5)), OpCodes.RotL32(left, 1)), right), key) >>> 0;
       state[rightIdx] = left;
     }
 

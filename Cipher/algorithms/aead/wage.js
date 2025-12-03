@@ -108,7 +108,7 @@
    * If low bit is 1: (x >> 1) ^ 0x78
    */
   function omega(x) {
-    return ((x >>> 1) ^ (0x78 & (-(x & 0x01)))) & 0x7F;
+    return OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(x, 1), OpCodes.AndN(0x78, -(OpCodes.AndN(x, 0x01)))), 0x7F);
   }
 
   /**
@@ -116,28 +116,22 @@
    * Packs three 7-bit values into bits 0, 8, 16 of a 32-bit word
    */
   function wagesSboxParallel3(x6) {
-    var x0 = x6 >>> 6;
-    var x1 = x6 >>> 5;
-    var x2 = x6 >>> 4;
-    var x3 = x6 >>> 3;
-    var x4 = x6 >>> 2;
-    var x5 = x6 >>> 1;
+    var x0 = OpCodes.Shr32(x6, 6);
+    var x1 = OpCodes.Shr32(x6, 5);
+    var x2 = OpCodes.Shr32(x6, 4);
+    var x3 = OpCodes.Shr32(x6, 3);
+    var x4 = OpCodes.Shr32(x6, 2);
+    var x5 = OpCodes.Shr32(x6, 1);
 
-    x0 ^= (x2 & x3); x3 = ~x3; x3 ^= (x5 & x6); x5 = ~x5; x5 ^= (x2 & x4);
-    x6 ^= (x0 & x4); x4 = ~x4; x4 ^= (x5 & x1); x5 = ~x5; x5 ^= (x0 & x2);
-    x1 ^= (x6 & x2); x2 = ~x2; x2 ^= (x5 & x3); x5 = ~x5; x5 ^= (x6 & x0);
-    x3 ^= (x1 & x0); x0 = ~x0; x0 ^= (x5 & x4); x5 = ~x5; x5 ^= (x1 & x6);
-    x4 ^= (x3 & x6); x6 = ~x6; x6 ^= (x5 & x2); x5 = ~x5; x5 ^= (x3 & x1);
-    x2 ^= (x4 & x1); x1 = ~x1; x1 ^= (x5 & x0); x5 = ~x5; x5 ^= (x4 & x3);
+    x0 = OpCodes.XorN(x0, OpCodes.AndN(x2, x3)); x3 = ~x3; x3 = OpCodes.XorN(x3, OpCodes.AndN(x5, x6)); x5 = ~x5; x5 = OpCodes.XorN(x5, OpCodes.AndN(x2, x4));
+    x6 = OpCodes.XorN(x6, OpCodes.AndN(x0, x4)); x4 = ~x4; x4 = OpCodes.XorN(x4, OpCodes.AndN(x5, x1)); x5 = ~x5; x5 = OpCodes.XorN(x5, OpCodes.AndN(x0, x2));
+    x1 = OpCodes.XorN(x1, OpCodes.AndN(x6, x2)); x2 = ~x2; x2 = OpCodes.XorN(x2, OpCodes.AndN(x5, x3)); x5 = ~x5; x5 = OpCodes.XorN(x5, OpCodes.AndN(x6, x0));
+    x3 = OpCodes.XorN(x3, OpCodes.AndN(x1, x0)); x0 = ~x0; x0 = OpCodes.XorN(x0, OpCodes.AndN(x5, x4)); x5 = ~x5; x5 = OpCodes.XorN(x5, OpCodes.AndN(x1, x6));
+    x4 = OpCodes.XorN(x4, OpCodes.AndN(x3, x6)); x6 = ~x6; x6 = OpCodes.XorN(x6, OpCodes.AndN(x5, x2)); x5 = ~x5; x5 = OpCodes.XorN(x5, OpCodes.AndN(x3, x1));
+    x2 = OpCodes.XorN(x2, OpCodes.AndN(x4, x1)); x1 = ~x1; x1 = OpCodes.XorN(x1, OpCodes.AndN(x5, x0)); x5 = ~x5; x5 = OpCodes.XorN(x5, OpCodes.AndN(x4, x3));
     x2 = ~x2; x4 = ~x4;
 
-    return (((x2 & 0x00010101) << 6) ^
-            ((x6 & 0x00010101) << 5) ^
-            ((x4 & 0x00010101) << 4) ^
-            ((x1 & 0x00010101) << 3) ^
-            ((x3 & 0x00010101) << 2) ^
-            ((x5 & 0x00010101) << 1) ^
-             (x0 & 0x00010101)) >>> 0;
+    return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(OpCodes.AndN(x2, 0x00010101), 6), OpCodes.Shl32(OpCodes.AndN(x6, 0x00010101), 5)), OpCodes.Shl32(OpCodes.AndN(x4, 0x00010101), 4)), OpCodes.Shl32(OpCodes.AndN(x1, 0x00010101), 3)), OpCodes.Shl32(OpCodes.AndN(x3, 0x00010101), 2)), OpCodes.Shl32(OpCodes.AndN(x5, 0x00010101), 1)), OpCodes.AndN(x0, 0x00010101)));
   }
 
   /**
@@ -154,49 +148,49 @@
       //      s[24] ^ s[26] ^ s[30] ^ s[31] ^ WGP(s[36]) ^ RC1[round]
 
       fb0 = omega(s[0]);
-      fb0 ^= s[6] ^ s[8] ^ s[12] ^ s[13] ^ s[19] ^ s[24] ^ s[26] ^ s[30] ^ s[31];
-      fb0 ^= WAGE_RC[rcIndex + 1];
-      fb0 ^= WAGE_WGP[s[36]];
+      fb0 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(fb0, s[6]), s[8]), s[12]), s[13]), s[19]), s[24]), s[26]), s[30]), s[31]);
+      fb0 = OpCodes.XorN(fb0, WAGE_RC[rcIndex + 1]);
+      fb0 = OpCodes.XorN(fb0, WAGE_WGP[s[36]]);
 
       fb1 = omega(s[1]);
-      fb1 ^= s[7] ^ s[9] ^ s[13] ^ s[14] ^ s[20] ^ s[25] ^ s[27] ^ s[31] ^ s[32];
-      fb1 ^= WAGE_RC[rcIndex + 3];
-      fb1 ^= WAGE_WGP[fb0];
+      fb1 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(fb1, s[7]), s[9]), s[13]), s[14]), s[20]), s[25]), s[27]), s[31]), s[32]);
+      fb1 = OpCodes.XorN(fb1, WAGE_RC[rcIndex + 3]);
+      fb1 = OpCodes.XorN(fb1, WAGE_WGP[fb0]);
 
       fb2 = omega(s[2]);
-      fb2 ^= s[8] ^ s[10] ^ s[14] ^ s[15] ^ s[21] ^ s[26] ^ s[28] ^ s[32] ^ s[33];
-      fb2 ^= WAGE_RC[rcIndex + 5];
-      fb2 ^= WAGE_WGP[fb1];
+      fb2 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(fb2, s[8]), s[10]), s[14]), s[15]), s[21]), s[26]), s[28]), s[32]), s[33]);
+      fb2 = OpCodes.XorN(fb2, WAGE_RC[rcIndex + 5]);
+      fb2 = OpCodes.XorN(fb2, WAGE_WGP[fb1]);
 
       // Apply S-box to specific components
-      temp = s[8] | (s[9] << 8) | (s[10] << 16);
+      temp = OpCodes.OrN(OpCodes.OrN(s[8], OpCodes.Shl32(s[9], 8)), OpCodes.Shl32(s[10], 16));
       temp = wagesSboxParallel3(temp);
-      s[5] ^= (temp) & 0x7F;
-      s[6] ^= (temp >>> 8) & 0x7F;
-      s[7] ^= (temp >>> 16) & 0x7F;
+      s[5] = OpCodes.XorN(s[5], OpCodes.AndN(temp, 0x7F));
+      s[6] = OpCodes.XorN(s[6], OpCodes.AndN(OpCodes.Shr32(temp, 8), 0x7F));
+      s[7] = OpCodes.XorN(s[7], OpCodes.AndN(OpCodes.Shr32(temp, 16), 0x7F));
 
-      temp = s[15] | (s[16] << 8) | (s[17] << 16);
+      temp = OpCodes.OrN(OpCodes.OrN(s[15], OpCodes.Shl32(s[16], 8)), OpCodes.Shl32(s[17], 16));
       temp = wagesSboxParallel3(temp);
-      s[11] ^= (temp) & 0x7F;
-      s[12] ^= (temp >>> 8) & 0x7F;
-      s[13] ^= (temp >>> 16) & 0x7F;
+      s[11] = OpCodes.XorN(s[11], OpCodes.AndN(temp, 0x7F));
+      s[12] = OpCodes.XorN(s[12], OpCodes.AndN(OpCodes.Shr32(temp, 8), 0x7F));
+      s[13] = OpCodes.XorN(s[13], OpCodes.AndN(OpCodes.Shr32(temp, 16), 0x7F));
 
       // Apply WGP to s[18], s[19], s[20] with RC0
-      s[19] ^= WAGE_WGP[s[18]] ^ WAGE_RC[rcIndex + 0];
-      s[20] ^= WAGE_WGP[s[19]] ^ WAGE_RC[rcIndex + 2];
-      s[21] ^= WAGE_WGP[s[20]] ^ WAGE_RC[rcIndex + 4];
+      s[19] = OpCodes.XorN(s[19], OpCodes.XorN(WAGE_WGP[s[18]], WAGE_RC[rcIndex + 0]));
+      s[20] = OpCodes.XorN(s[20], OpCodes.XorN(WAGE_WGP[s[19]], WAGE_RC[rcIndex + 2]));
+      s[21] = OpCodes.XorN(s[21], OpCodes.XorN(WAGE_WGP[s[20]], WAGE_RC[rcIndex + 4]));
 
-      temp = s[27] | (s[28] << 8) | (s[29] << 16);
+      temp = OpCodes.OrN(OpCodes.OrN(s[27], OpCodes.Shl32(s[28], 8)), OpCodes.Shl32(s[29], 16));
       temp = wagesSboxParallel3(temp);
-      s[24] ^= (temp) & 0x7F;
-      s[25] ^= (temp >>> 8) & 0x7F;
-      s[26] ^= (temp >>> 16) & 0x7F;
+      s[24] = OpCodes.XorN(s[24], OpCodes.AndN(temp, 0x7F));
+      s[25] = OpCodes.XorN(s[25], OpCodes.AndN(OpCodes.Shr32(temp, 8), 0x7F));
+      s[26] = OpCodes.XorN(s[26], OpCodes.AndN(OpCodes.Shr32(temp, 16), 0x7F));
 
-      temp = s[34] | (s[35] << 8) | (s[36] << 16);
+      temp = OpCodes.OrN(OpCodes.OrN(s[34], OpCodes.Shl32(s[35], 8)), OpCodes.Shl32(s[36], 16));
       temp = wagesSboxParallel3(temp);
-      s[30] ^= (temp) & 0x7F;
-      s[31] ^= (temp >>> 8) & 0x7F;
-      s[32] ^= (temp >>> 16) & 0x7F;
+      s[30] = OpCodes.XorN(s[30], OpCodes.AndN(temp, 0x7F));
+      s[31] = OpCodes.XorN(s[31], OpCodes.AndN(OpCodes.Shr32(temp, 8), 0x7F));
+      s[32] = OpCodes.XorN(s[32], OpCodes.AndN(OpCodes.Shr32(temp, 16), 0x7F));
 
       // Rotate state by 3 positions
       for (var i = 0; i < STATE_SIZE - 3; ++i) {
@@ -221,7 +215,7 @@
     out[1] = (temp >>> 18) & 0x7F;
     out[2] = (temp >>> 11) & 0x7F;
     out[3] = (temp >>> 4) & 0x7F;
-    out[4] = (temp << 3) & 0x7F;
+    out[4] = OpCodes.AndN(OpCodes.Shl32(temp, 3), 0x7F);
 
     temp = OpCodes.Pack32BE(input[4], input[5], input[6], input[7]);
     out[4] ^= (temp >>> 29) & 0x7F;
@@ -701,7 +695,7 @@
       // Process full blocks
       while (adlen >= RATE_SIZE) {
         wageAbsorb(this.state, ad.slice(offset, offset + RATE_SIZE));
-        this.state[0] ^= 0x40;  // Domain separation for AD
+        this.state[0] = OpCodes.XorN(this.state[0], 0x40);  // Domain separation for AD
         wagePermute(this.state);
         offset += RATE_SIZE;
         adlen -= RATE_SIZE;
@@ -716,7 +710,7 @@
         pad[i] = 0;
       }
       wageAbsorb(this.state, pad);
-      this.state[0] ^= 0x40;  // Domain separation for AD
+      this.state[0] = OpCodes.XorN(this.state[0], 0x40);  // Domain separation for AD
       wagePermute(this.state);
     }
 
@@ -763,10 +757,10 @@
       while (mlen >= RATE_SIZE) {
         rate = wageGetRate(this.state);
         for (var i = 0; i < RATE_SIZE; ++i) {
-          block[i] = rate[i] ^ this.inputBuffer[offset + i];
+          block[i] = OpCodes.XorN(rate[i], this.inputBuffer[offset + i]);
         }
         wageSetRate(this.state, block);
-        this.state[0] ^= 0x20;  // Domain separation for message
+        this.state[0] = OpCodes.XorN(this.state[0], 0x20);  // Domain separation for message
         wagePermute(this.state);
         output.push.apply(output, block);
         offset += RATE_SIZE;
@@ -776,14 +770,14 @@
       // Process final block with padding
       rate = wageGetRate(this.state);
       for (var i = 0; i < mlen; ++i) {
-        block[i] = rate[i] ^ this.inputBuffer[offset + i];
+        block[i] = OpCodes.XorN(rate[i], this.inputBuffer[offset + i]);
       }
       for (var i = mlen; i < RATE_SIZE; ++i) {
         block[i] = rate[i];
       }
-      block[mlen] ^= 0x80;  // Padding marker
+      block[mlen] = OpCodes.XorN(block[mlen], 0x80);  // Padding marker
       wageSetRate(this.state, block);
-      this.state[0] ^= 0x20;  // Domain separation for message
+      this.state[0] = OpCodes.XorN(this.state[0], 0x20);  // Domain separation for message
       wagePermute(this.state);
       for (var i = 0; i < mlen; ++i) {
         output.push(block[i]);
@@ -818,10 +812,10 @@
       while (clen >= RATE_SIZE) {
         rate = wageGetRate(this.state);
         for (var i = 0; i < RATE_SIZE; ++i) {
-          block[i] = rate[i] ^ this.inputBuffer[offset + i];
+          block[i] = OpCodes.XorN(rate[i], this.inputBuffer[offset + i]);
         }
         wageSetRate(this.state, this.inputBuffer.slice(offset, offset + RATE_SIZE));
-        this.state[0] ^= 0x20;  // Domain separation for message
+        this.state[0] = OpCodes.XorN(this.state[0], 0x20);  // Domain separation for message
         wagePermute(this.state);
         output.push.apply(output, block);
         offset += RATE_SIZE;
@@ -831,15 +825,15 @@
       // Process final block with padding
       rate = wageGetRate(this.state);
       for (var i = 0; i < clen; ++i) {
-        block2[i] = rate[i] ^ this.inputBuffer[offset + i];
+        block2[i] = OpCodes.XorN(rate[i], this.inputBuffer[offset + i]);
         block[i] = this.inputBuffer[offset + i];
       }
       for (var i = clen; i < RATE_SIZE; ++i) {
         block[i] = rate[i];
       }
-      block[clen] ^= 0x80;  // Padding marker
+      block[clen] = OpCodes.XorN(block[clen], 0x80);  // Padding marker
       wageSetRate(this.state, block);
-      this.state[0] ^= 0x20;  // Domain separation for message
+      this.state[0] = OpCodes.XorN(this.state[0], 0x20);  // Domain separation for message
       wagePermute(this.state);
       for (var i = 0; i < clen; ++i) {
         output.push(block2[i]);

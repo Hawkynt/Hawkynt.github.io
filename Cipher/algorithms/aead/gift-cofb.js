@@ -80,8 +80,8 @@
 
   // Bit permutation helper (from C reference)
   function bitPermuteStep(value, mask, shift) {
-    const t = ((value >>> shift) ^ value) & mask;
-    return ((value ^ t) ^ (t << shift)) >>> 0;
+    const t = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(value, shift), value), mask);
+    return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(value, t), OpCodes.Shl32(t, shift)));
   }
 
   // PERM3_INNER - core permutation
@@ -90,7 +90,7 @@
     x = bitPermuteStep(x, 0x00cc00cc, 6);
     x = bitPermuteStep(x, 0x0000f0f0, 12);
     x = bitPermuteStep(x, 0x000000ff, 24);
-    return x >>> 0;
+    return OpCodes.ToUint32(x);
   }
 
   // Row permutations PERM0-PERM3
@@ -126,13 +126,13 @@
     // Perform all 40 rounds
     for (let round = 0; round < 40; ++round) {
       // SubCells - apply the S-box
-      s1 ^= s0 & s2;
-      s0 ^= s1 & s3;
-      s2 ^= s0 | s1;
-      s3 ^= s2;
-      s1 ^= s3;
-      s3 ^= 0xFFFFFFFF;
-      s2 ^= s0 & s1;
+      s1 = OpCodes.XorN(s1, OpCodes.AndN(s0, s2));
+      s0 = OpCodes.XorN(s0, OpCodes.AndN(s1, s3));
+      s2 = OpCodes.XorN(s2, OpCodes.OrN(s0, s1));
+      s3 = OpCodes.XorN(s3, s2);
+      s1 = OpCodes.XorN(s1, s3);
+      s3 = OpCodes.XorN(s3, 0xFFFFFFFF);
+      s2 = OpCodes.XorN(s2, OpCodes.AndN(s0, s1));
 
       // Swap s0 and s3
       let temp = s0;
@@ -146,40 +146,45 @@
       s3 = perm3(s3);
 
       // AddRoundKey - XOR in the key schedule and the round constant
-      s2 ^= w1;
-      s1 ^= w3;
-      s3 ^= (0x80000000 ^ GIFT128_RC[round]) >>> 0;
+      s2 = OpCodes.XorN(s2, w1);
+      s1 = OpCodes.XorN(s1, w3);
+      s3 = OpCodes.XorN(s3, OpCodes.ToUint32(OpCodes.XorN(0x80000000, GIFT128_RC[round])));
 
       // Rotate the key schedule
       temp = w3;
       w3 = w2;
       w2 = w1;
       w1 = w0;
-      w0 = (((temp & 0xFFFC0000) >>> 2) | ((temp & 0x00030000) << 14) |
-            ((temp & 0x00000FFF) << 4) | ((temp & 0x0000F000) >>> 12)) >>> 0;
+      w0 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
+            OpCodes.Shr32(OpCodes.AndN(temp, 0xFFFC0000), 2),
+            OpCodes.Shl32(OpCodes.AndN(temp, 0x00030000), 14)),
+            OpCodes.Shl32(OpCodes.AndN(temp, 0x00000FFF), 4)),
+            OpCodes.Shr32(OpCodes.AndN(temp, 0x0000F000), 12)));
     }
 
-    output[0] = s0 >>> 0;
-    output[1] = s1 >>> 0;
-    output[2] = s2 >>> 0;
-    output[3] = s3 >>> 0;
+    output[0] = OpCodes.ToUint32(s0);
+    output[1] = OpCodes.ToUint32(s1);
+    output[2] = OpCodes.ToUint32(s2);
+    output[3] = OpCodes.ToUint32(s3);
   }
 
   // ===== COFB MODE IMPLEMENTATION =====
 
   // Doubles an L value in F(2^64)
   function cofbDoubleL(L) {
-    const mask = L.x >> 31;  // Arithmetic right shift: -1 if MSB set, 0 otherwise
-    const newY = ((L.y << 1) ^ (mask & 0x1B)) >>> 0;
-    const newX = ((L.x << 1) | (L.y >>> 31)) >>> 0;
+    // Arithmetic right shift equivalent: -1 if MSB set, 0 otherwise
+    const mask = OpCodes.Shr32(L.x, 31) !== 0 ? -1 : 0;
+    const newY = OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shl32(L.y, 1), OpCodes.AndN(mask, 0x1B)));
+    const newX = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(L.x, 1), OpCodes.Shr32(L.y, 31)));
     return { x: newX, y: newY };
   }
 
   // Triples an L value in F(2^64)
   function cofbTripleL(L) {
-    const mask = L.x >> 31;  // Arithmetic right shift: -1 if MSB set, 0 otherwise
-    const tx = (((L.x << 1) | (L.y >>> 31)) ^ L.x) >>> 0;
-    const ty = (((L.y << 1) ^ (mask & 0x1B)) ^ L.y) >>> 0;
+    // Arithmetic right shift equivalent: -1 if MSB set, 0 otherwise
+    const mask = OpCodes.Shr32(L.x, 31) !== 0 ? -1 : 0;
+    const tx = OpCodes.ToUint32(OpCodes.XorN(OpCodes.OrN(OpCodes.Shl32(L.x, 1), OpCodes.Shr32(L.y, 31)), L.x));
+    const ty = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(L.y, 1), OpCodes.AndN(mask, 0x1B)), L.y));
     return { x: tx, y: ty };
   }
 
@@ -189,8 +194,8 @@
     const ly = Y[1];
     Y[0] = Y[2];
     Y[1] = Y[3];
-    Y[2] = ((lx << 1) | (ly >>> 31)) >>> 0;
-    Y[3] = ((ly << 1) | (lx >>> 31)) >>> 0;
+    Y[2] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(lx, 1), OpCodes.Shr32(ly, 31)));
+    Y[3] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ly, 1), OpCodes.Shr32(lx, 31)));
   }
 
   // Process associated data
@@ -209,10 +214,10 @@
       cofbFeedback(Y);
 
       // XOR Y with L and AD
-      Y[0] ^= L.x ^ OpCodes.Pack32BE(ad[pos], ad[pos+1], ad[pos+2], ad[pos+3]);
-      Y[1] ^= L.y ^ OpCodes.Pack32BE(ad[pos+4], ad[pos+5], ad[pos+6], ad[pos+7]);
-      Y[2] ^= OpCodes.Pack32BE(ad[pos+8], ad[pos+9], ad[pos+10], ad[pos+11]);
-      Y[3] ^= OpCodes.Pack32BE(ad[pos+12], ad[pos+13], ad[pos+14], ad[pos+15]);
+      Y[0] = OpCodes.XorN(Y[0], OpCodes.XorN(L.x, OpCodes.Pack32BE(ad[pos], ad[pos+1], ad[pos+2], ad[pos+3])));
+      Y[1] = OpCodes.XorN(Y[1], OpCodes.XorN(L.y, OpCodes.Pack32BE(ad[pos+4], ad[pos+5], ad[pos+6], ad[pos+7])));
+      Y[2] = OpCodes.XorN(Y[2], OpCodes.Pack32BE(ad[pos+8], ad[pos+9], ad[pos+10], ad[pos+11]));
+      Y[3] = OpCodes.XorN(Y[3], OpCodes.Pack32BE(ad[pos+12], ad[pos+13], ad[pos+14], ad[pos+15]));
 
       // Encrypt Y in-place
       gift128bEncryptPreloaded(ks, Y, Y);
@@ -227,17 +232,17 @@
     const ly = Y[1];
     Y[0] = Y[2];
     Y[1] = Y[3];
-    Y[2] = ((lx << 1) | (ly >>> 31)) >>> 0;
-    Y[3] = ((ly << 1) | (lx >>> 31)) >>> 0;
+    Y[2] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(lx, 1), OpCodes.Shr32(ly, 31)));
+    Y[3] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(ly, 1), OpCodes.Shr32(lx, 31)));
     if (DEBUG) console.log(`[cofbProcessAD] Y after feedback: [${Y[0].toString(16)}, ${Y[1].toString(16)}, ${Y[2].toString(16)}, ${Y[3].toString(16)}]`);
 
     if (adlen === 16) {
       // Full last block - XOR Y with AD
       if (DEBUG) console.log(`[cofbProcessAD] Processing full 16-byte AD block at pos=${pos}`);
-      Y[0] ^= OpCodes.Pack32BE(ad[pos], ad[pos+1], ad[pos+2], ad[pos+3]);
-      Y[1] ^= OpCodes.Pack32BE(ad[pos+4], ad[pos+5], ad[pos+6], ad[pos+7]);
-      Y[2] ^= OpCodes.Pack32BE(ad[pos+8], ad[pos+9], ad[pos+10], ad[pos+11]);
-      Y[3] ^= OpCodes.Pack32BE(ad[pos+12], ad[pos+13], ad[pos+14], ad[pos+15]);
+      Y[0] = OpCodes.XorN(Y[0], OpCodes.Pack32BE(ad[pos], ad[pos+1], ad[pos+2], ad[pos+3]));
+      Y[1] = OpCodes.XorN(Y[1], OpCodes.Pack32BE(ad[pos+4], ad[pos+5], ad[pos+6], ad[pos+7]));
+      Y[2] = OpCodes.XorN(Y[2], OpCodes.Pack32BE(ad[pos+8], ad[pos+9], ad[pos+10], ad[pos+11]));
+      Y[3] = OpCodes.XorN(Y[3], OpCodes.Pack32BE(ad[pos+12], ad[pos+13], ad[pos+14], ad[pos+15]));
       if (DEBUG) console.log(`[cofbProcessAD] Y after XOR with AD: [${Y[0].toString(16)}, ${Y[1].toString(16)}, ${Y[2].toString(16)}, ${Y[3].toString(16)}]`);
       if (DEBUG) console.log(`[cofbProcessAD] Before triple: L={x:${L.x.toString(16)}, y:${L.y.toString(16)}}`);
       L = cofbTripleL(L);
@@ -250,10 +255,10 @@
       padded[adlen] = 0x80;
       if (DEBUG) console.log(`[cofbProcessAD] Padded AD: ${Array.from(padded).map(b => b.toString(16).padStart(2, '0')).join('')}`);
 
-      Y[0] ^= OpCodes.Pack32BE(padded[0], padded[1], padded[2], padded[3]);
-      Y[1] ^= OpCodes.Pack32BE(padded[4], padded[5], padded[6], padded[7]);
-      Y[2] ^= OpCodes.Pack32BE(padded[8], padded[9], padded[10], padded[11]);
-      Y[3] ^= OpCodes.Pack32BE(padded[12], padded[13], padded[14], padded[15]);
+      Y[0] = OpCodes.XorN(Y[0], OpCodes.Pack32BE(padded[0], padded[1], padded[2], padded[3]));
+      Y[1] = OpCodes.XorN(Y[1], OpCodes.Pack32BE(padded[4], padded[5], padded[6], padded[7]));
+      Y[2] = OpCodes.XorN(Y[2], OpCodes.Pack32BE(padded[8], padded[9], padded[10], padded[11]));
+      Y[3] = OpCodes.XorN(Y[3], OpCodes.Pack32BE(padded[12], padded[13], padded[14], padded[15]));
       if (DEBUG) console.log(`[cofbProcessAD] Y after XOR with padded AD: [${Y[0].toString(16)}, ${Y[1].toString(16)}, ${Y[2].toString(16)}, ${Y[3].toString(16)}]`);
       if (DEBUG) console.log(`[cofbProcessAD] Before double-triple: L={x:${L.x.toString(16)}, y:${L.y.toString(16)}}`);
       L = cofbTripleL(cofbTripleL(L));
@@ -273,8 +278,8 @@
     if (DEBUG) console.log(`[cofbProcessAD] Final XOR with L and encrypt`);
     if (DEBUG) console.log(`[cofbProcessAD] Y before final XOR: [${Y[0].toString(16)}, ${Y[1].toString(16)}, ${Y[2].toString(16)}, ${Y[3].toString(16)}]`);
     if (DEBUG) console.log(`[cofbProcessAD] L for final XOR: {x:${L.x.toString(16)}, y:${L.y.toString(16)}}`);
-    Y[0] ^= L.x;
-    Y[1] ^= L.y;
+    Y[0] = OpCodes.XorN(Y[0], L.x);
+    Y[1] = OpCodes.XorN(Y[1], L.y);
     if (DEBUG) console.log(`[cofbProcessAD] Y after final XOR: [${Y[0].toString(16)}, ${Y[1].toString(16)}, ${Y[2].toString(16)}, ${Y[3].toString(16)}]`);
     gift128bEncryptPreloaded(ks, Y, Y);
     if (DEBUG) console.log(`[cofbProcessAD] Final Y after encrypt: [${Y[0].toString(16)}, ${Y[1].toString(16)}, ${Y[2].toString(16)}, ${Y[3].toString(16)}]`);
@@ -552,10 +557,10 @@
         P[3] = OpCodes.Pack32BE(plaintext[pos+12], plaintext[pos+13], plaintext[pos+14], plaintext[pos+15]);
 
         // XOR Y with P to get ciphertext
-        const c0 = Y[0] ^ P[0];
-        const c1 = Y[1] ^ P[1];
-        const c2 = Y[2] ^ P[2];
-        const c3 = Y[3] ^ P[3];
+        const c0 = OpCodes.XorN(Y[0], P[0]);
+        const c1 = OpCodes.XorN(Y[1], P[1]);
+        const c2 = OpCodes.XorN(Y[2], P[2]);
+        const c3 = OpCodes.XorN(Y[3], P[3]);
 
         const bytes = OpCodes.Unpack32BE(c0);
         ciphertext[pos] = bytes[0]; ciphertext[pos+1] = bytes[1];
@@ -572,10 +577,10 @@
 
         L = cofbDoubleL(L);
         cofbFeedback(Y);
-        Y[0] ^= L.x ^ P[0];
-        Y[1] ^= L.y ^ P[1];
-        Y[2] ^= P[2];
-        Y[3] ^= P[3];
+        Y[0] = OpCodes.XorN(Y[0], OpCodes.XorN(L.x, P[0]));
+        Y[1] = OpCodes.XorN(Y[1], OpCodes.XorN(L.y, P[1]));
+        Y[2] = OpCodes.XorN(Y[2], P[2]);
+        Y[3] = OpCodes.XorN(Y[3], P[3]);
         gift128bEncryptPreloaded(ks, Y, Y);
 
         pos += 16;
@@ -590,10 +595,10 @@
         P[2] = OpCodes.Pack32BE(plaintext[pos+8], plaintext[pos+9], plaintext[pos+10], plaintext[pos+11]);
         P[3] = OpCodes.Pack32BE(plaintext[pos+12], plaintext[pos+13], plaintext[pos+14], plaintext[pos+15]);
 
-        const c0 = Y[0] ^ P[0];
-        const c1 = Y[1] ^ P[1];
-        const c2 = Y[2] ^ P[2];
-        const c3 = Y[3] ^ P[3];
+        const c0 = OpCodes.XorN(Y[0], P[0]);
+        const c1 = OpCodes.XorN(Y[1], P[1]);
+        const c2 = OpCodes.XorN(Y[2], P[2]);
+        const c3 = OpCodes.XorN(Y[3], P[3]);
 
         const bytes = OpCodes.Unpack32BE(c0);
         ciphertext[pos] = bytes[0]; ciphertext[pos+1] = bytes[1];
@@ -609,10 +614,10 @@
         ciphertext[pos+14] = bytes3[2]; ciphertext[pos+15] = bytes3[3];
 
         cofbFeedback(Y);
-        Y[0] ^= P[0];
-        Y[1] ^= P[1];
-        Y[2] ^= P[2];
-        Y[3] ^= P[3];
+        Y[0] = OpCodes.XorN(Y[0], P[0]);
+        Y[1] = OpCodes.XorN(Y[1], P[1]);
+        Y[2] = OpCodes.XorN(Y[2], P[2]);
+        Y[3] = OpCodes.XorN(Y[3], P[3]);
         L = cofbTripleL(L);
         pos += 16;
       } else if (remaining > 0) {
@@ -640,22 +645,22 @@
 
         // XOR plaintext bytes with Y bytes and copy only needed bytes to ciphertext
         for (let i = 0; i < remaining; ++i) {
-          ciphertext[pos + i] = plaintext[pos + i] ^ yBytes[i];
+          ciphertext[pos + i] = OpCodes.XorN(plaintext[pos + i], yBytes[i]);
         }
 
         cofbFeedback(Y);
-        Y[0] ^= P[0];
-        Y[1] ^= P[1];
-        Y[2] ^= P[2];
-        Y[3] ^= P[3];
+        Y[0] = OpCodes.XorN(Y[0], P[0]);
+        Y[1] = OpCodes.XorN(Y[1], P[1]);
+        Y[2] = OpCodes.XorN(Y[2], P[2]);
+        Y[3] = OpCodes.XorN(Y[3], P[3]);
         L = cofbTripleL(cofbTripleL(L));
         pos += remaining;
       }
 
       // Generate authentication tag
       if (mlen > 0) {
-        Y[0] ^= L.x;
-        Y[1] ^= L.y;
+        Y[0] = OpCodes.XorN(Y[0], L.x);
+        Y[1] = OpCodes.XorN(Y[1], L.y);
         gift128bEncryptPreloaded(ks, Y, Y);
       }
 
@@ -713,10 +718,10 @@
         C[3] = OpCodes.Pack32BE(ciphertext[pos+12], ciphertext[pos+13], ciphertext[pos+14], ciphertext[pos+15]);
 
         const P = new Uint32Array(4);
-        P[0] = Y[0] ^ C[0];
-        P[1] = Y[1] ^ C[1];
-        P[2] = Y[2] ^ C[2];
-        P[3] = Y[3] ^ C[3];
+        P[0] = OpCodes.XorN(Y[0], C[0]);
+        P[1] = OpCodes.XorN(Y[1], C[1]);
+        P[2] = OpCodes.XorN(Y[2], C[2]);
+        P[3] = OpCodes.XorN(Y[3], C[3]);
 
         const bytes = OpCodes.Unpack32BE(P[0]);
         plaintext[pos] = bytes[0]; plaintext[pos+1] = bytes[1];
@@ -733,10 +738,10 @@
 
         L = cofbDoubleL(L);
         cofbFeedback(Y);
-        Y[0] ^= L.x ^ P[0];
-        Y[1] ^= L.y ^ P[1];
-        Y[2] ^= P[2];
-        Y[3] ^= P[3];
+        Y[0] = OpCodes.XorN(Y[0], OpCodes.XorN(L.x, P[0]));
+        Y[1] = OpCodes.XorN(Y[1], OpCodes.XorN(L.y, P[1]));
+        Y[2] = OpCodes.XorN(Y[2], P[2]);
+        Y[3] = OpCodes.XorN(Y[3], P[3]);
         gift128bEncryptPreloaded(ks, Y, Y);
 
         pos += 16;
@@ -752,10 +757,10 @@
         C[3] = OpCodes.Pack32BE(ciphertext[pos+12], ciphertext[pos+13], ciphertext[pos+14], ciphertext[pos+15]);
 
         const P = new Uint32Array(4);
-        P[0] = Y[0] ^ C[0];
-        P[1] = Y[1] ^ C[1];
-        P[2] = Y[2] ^ C[2];
-        P[3] = Y[3] ^ C[3];
+        P[0] = OpCodes.XorN(Y[0], C[0]);
+        P[1] = OpCodes.XorN(Y[1], C[1]);
+        P[2] = OpCodes.XorN(Y[2], C[2]);
+        P[3] = OpCodes.XorN(Y[3], C[3]);
 
         const bytes = OpCodes.Unpack32BE(P[0]);
         plaintext[pos] = bytes[0]; plaintext[pos+1] = bytes[1];
@@ -771,10 +776,10 @@
         plaintext[pos+14] = bytes3[2]; plaintext[pos+15] = bytes3[3];
 
         cofbFeedback(Y);
-        Y[0] ^= P[0];
-        Y[1] ^= P[1];
-        Y[2] ^= P[2];
-        Y[3] ^= P[3];
+        Y[0] = OpCodes.XorN(Y[0], P[0]);
+        Y[1] = OpCodes.XorN(Y[1], P[1]);
+        Y[2] = OpCodes.XorN(Y[2], P[2]);
+        Y[3] = OpCodes.XorN(Y[3], P[3]);
         L = cofbTripleL(L);
         pos += 16;
       } else if (remaining > 0) {
@@ -791,7 +796,7 @@
 
         // XOR to get plaintext
         for (let i = 0; i < remaining; ++i) {
-          plaintext[pos + i] = tempBytes[i] ^ ciphertext[pos + i];
+          plaintext[pos + i] = OpCodes.XorN(tempBytes[i], ciphertext[pos + i]);
         }
 
         // Reconstruct padded plaintext block
@@ -806,18 +811,18 @@
         P[3] = OpCodes.Pack32BE(padded[12], padded[13], padded[14], padded[15]);
 
         cofbFeedback(Y);
-        Y[0] ^= P[0];
-        Y[1] ^= P[1];
-        Y[2] ^= P[2];
-        Y[3] ^= P[3];
+        Y[0] = OpCodes.XorN(Y[0], P[0]);
+        Y[1] = OpCodes.XorN(Y[1], P[1]);
+        Y[2] = OpCodes.XorN(Y[2], P[2]);
+        Y[3] = OpCodes.XorN(Y[3], P[3]);
         L = cofbTripleL(cofbTripleL(L));
         pos += remaining;
       }
 
       // Verify authentication tag
       if (mlen > 0) {
-        Y[0] ^= L.x;
-        Y[1] ^= L.y;
+        Y[0] = OpCodes.XorN(Y[0], L.x);
+        Y[1] = OpCodes.XorN(Y[1], L.y);
         gift128bEncryptPreloaded(ks, Y, Y);
       }
 
@@ -837,7 +842,7 @@
       // Constant-time comparison
       let diff = 0;
       for (let i = 0; i < 16; ++i) {
-        diff |= computedTag[i] ^ receivedTag[i];
+        diff = OpCodes.OrN(diff, OpCodes.XorN(computedTag[i], receivedTag[i]));
       }
 
       if (diff !== 0) {

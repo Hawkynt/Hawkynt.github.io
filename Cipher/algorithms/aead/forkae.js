@@ -44,7 +44,7 @@
   function xorBytes(a, b, len) {
     const result = new Array(len);
     for (let i = 0; i < len; i++) {
-      result[i] = (a[i] ^ b[i]) & 0xFF;
+      result[i] = OpCodes.AndN(OpCodes.XorN(a[i], b[i]), 0xFF);
     }
     return result;
   }
@@ -87,15 +87,15 @@
     // Set counter value in tweakey (big-endian with domain separation)
     setCounter(tweakey, counter, domain) {
       // Domain is encoded in top 3 bits of counter
-      let val = counter | (domain << (this.counterSize * 8 - 3));
+      let val = OpCodes.OrN(counter, OpCodes.Shl32(domain, (this.counterSize * 8 - 3)));
 
       // For 48-byte tweakey (ForkSkinny-128-384), place counter in TK2
       const counterPos = this.tweakeySize === 48 ? 16 + this.nonceSize + this.counterSize - 1 :
                          16 + this.nonceSize + this.counterSize - 1;
 
       for (let i = 0; i < this.counterSize; i++) {
-        tweakey[counterPos - i] = val & 0xFF;
-        val >>>= 8;
+        tweakey[counterPos - i] = OpCodes.AndN(val, 0xFF);
+        val = OpCodes.Shr32(val, 8);
       }
     }
 

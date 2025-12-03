@@ -469,7 +469,7 @@
       _stringToBytes(str) {
         const bytes = [];
         for (let i = 0; i < str.length; i++) {
-          bytes.push(str.charCodeAt(i) & 0xFF);
+          bytes.push(OpCodes.ToByte(str.charCodeAt(i)));
         }
         return bytes;
       }

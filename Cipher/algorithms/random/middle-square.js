@@ -180,7 +180,7 @@
 
     /**
      * Set seed value
-     * Matches C# implementation: state = ((UInt128)seed << 64) | ~seed
+     * Matches C# implementation: state = ((UInt128)seed left-shift 64) bitwise-OR ~seed
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -197,13 +197,13 @@
       // Middle Square initialization: state = (seed << 64) | ~seed
       // This matches the C# implementation's UInt128 initialization
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
-      const highPart = OpCodes.ShiftLn(seedValue, 64);
+      const highPart = OpCodes.ShiftLn(seedValue, 64n);
       // Bitwise NOT for 64-bit: XOR with all 1s
       const lowPart = OpCodes.AndN(OpCodes.XorN(seedValue, mask64), mask64);
       this._state = OpCodes.OrN(highPart, lowPart);
 
       // Mask to 128-bit
-      const mask128 = OpCodes.ShiftLn(1n, 128) - 1n;
+      const mask128 = OpCodes.ShiftLn(1n, 128n) - 1n;
       this._state = OpCodes.AndN(this._state, mask128);
 
       this._ready = true;
@@ -239,7 +239,7 @@
     /**
      * Generate next value using Middle Square method
      * Matches C# implementation:
-     * - Without modulo: state *= state; return (ulong)(state >> 32);
+     * - Without modulo: state *= state; return (ulong)(state right-shift 32);
      * - With modulo: state *= state; return (ulong)(state / modulo % modulo);
      */
     _next() {
@@ -251,7 +251,7 @@
       this._state = this._state * this._state;
 
       // Mask to 128-bit (simulate UInt128 overflow)
-      const mask128 = OpCodes.ShiftLn(1n, 128) - 1n;
+      const mask128 = OpCodes.ShiftLn(1n, 128n) - 1n;
       this._state = OpCodes.AndN(this._state, mask128);
 
       let outputValue;
@@ -259,7 +259,7 @@
       if (this._modulo === 0n) {
         // Without modulo: extract middle 32 bits (shift right by 32)
         // This matches C#: (ulong)(state >> 32)
-        outputValue = OpCodes.ShiftRn(this._state, 32);
+        outputValue = OpCodes.ShiftRn(this._state, 32n);
       } else {
         // With modulo: (state / modulo) % modulo
         // This matches C#: (ulong)(state / modulo % modulo)

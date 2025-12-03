@@ -307,7 +307,7 @@
       if (typeof data === 'string') {
         const bytes = [];
         for (let i = 0; i < data.length; ++i) {
-          bytes.push(data.charCodeAt(i) & 0xFF);
+          bytes.push(OpCodes.AndN(data.charCodeAt(i), 0xFF));
         }
         data = bytes;
       }
@@ -358,7 +358,7 @@
 
       // Low 64 bits
       for (let i = 0; i < 8; ++i) {
-        this._buffer[this._bufferLength + 8 + i] = Number(OpCodes.ShiftRn(lengthBits, (7 - i) * 8) & 0xFFn);
+        this._buffer[this._bufferLength + 8 + i] = Number(OpCodes.AndN(OpCodes.ShiftRn(lengthBits, (7 - i) * 8), 0xFFn));
       }
 
       this._processBlock(this._buffer);
@@ -372,7 +372,7 @@
         const value = this._h[i];
         const bytesToWrite = Math.min(8, outputBytes - bytesWritten);
         for (let j = 0; j < bytesToWrite; ++j) {
-          result.push(Number(OpCodes.ShiftRn(value, (7 - j) * 8) & 0xFFn));
+          result.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, (7 - j) * 8), 0xFFn)));
         }
         bytesWritten += bytesToWrite;
       }
@@ -393,16 +393,16 @@
       for (let t = 0; t < 16; ++t) {
         let value = 0n;
         for (let i = 0; i < 8; ++i) {
-          value = OpCodes.ShiftLn(value, 8) | BigInt(block[t * 8 + i]);
+          value = OpCodes.OrN(OpCodes.ShiftLn(value, 8), BigInt(block[t * 8 + i]));
         }
         W[t] = value;
       }
 
       // Extend first 16 words into remaining 64 words
       for (let t = 16; t < 80; ++t) {
-        const s0 = OpCodes.RotR64n(W[t-15], 1) ^ OpCodes.RotR64n(W[t-15], 8) ^ OpCodes.ShiftRn(W[t-15], 7);
-        const s1 = OpCodes.RotR64n(W[t-2], 19) ^ OpCodes.RotR64n(W[t-2], 61) ^ OpCodes.ShiftRn(W[t-2], 6);
-        W[t] = (W[t-16] + s0 + W[t-7] + s1) & 0xFFFFFFFFFFFFFFFFn;
+        const s0 = OpCodes.XorN(OpCodes.XorN(OpCodes.RotR64n(W[t-15], 1), OpCodes.RotR64n(W[t-15], 8)), OpCodes.ShiftRn(W[t-15], 7));
+        const s1 = OpCodes.XorN(OpCodes.XorN(OpCodes.RotR64n(W[t-2], 19), OpCodes.RotR64n(W[t-2], 61)), OpCodes.ShiftRn(W[t-2], 6));
+        W[t] = OpCodes.AndN((W[t-16] + s0 + W[t-7] + s1), 0xFFFFFFFFFFFFFFFFn);
       }
 
       // Initialize working variables
@@ -411,26 +411,26 @@
 
       // Main loop (80 rounds)
       for (let t = 0; t < 80; ++t) {
-        const S1 = OpCodes.RotR64n(e, 14) ^ OpCodes.RotR64n(e, 18) ^ OpCodes.RotR64n(e, 41);
-        const ch = (e & f) ^ (~e & g);
-        const temp1 = (h + S1 + ch + K[t] + W[t]) & 0xFFFFFFFFFFFFFFFFn;
-        const S0 = OpCodes.RotR64n(a, 28) ^ OpCodes.RotR64n(a, 34) ^ OpCodes.RotR64n(a, 39);
-        const maj = (a & b) ^ (a & c) ^ (b & c);
-        const temp2 = (S0 + maj) & 0xFFFFFFFFFFFFFFFFn;
+        const S1 = OpCodes.XorN(OpCodes.XorN(OpCodes.RotR64n(e, 14), OpCodes.RotR64n(e, 18)), OpCodes.RotR64n(e, 41));
+        const ch = OpCodes.XorN(OpCodes.AndN(e, f), OpCodes.AndN(~e, g));
+        const temp1 = OpCodes.AndN((h + S1 + ch + K[t] + W[t]), 0xFFFFFFFFFFFFFFFFn);
+        const S0 = OpCodes.XorN(OpCodes.XorN(OpCodes.RotR64n(a, 28), OpCodes.RotR64n(a, 34)), OpCodes.RotR64n(a, 39));
+        const maj = OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(a, b), OpCodes.AndN(a, c)), OpCodes.AndN(b, c));
+        const temp2 = OpCodes.AndN((S0 + maj), 0xFFFFFFFFFFFFFFFFn);
 
-        h = g; g = f; f = e; e = (d + temp1) & 0xFFFFFFFFFFFFFFFFn;
-        d = c; c = b; b = a; a = (temp1 + temp2) & 0xFFFFFFFFFFFFFFFFn;
+        h = g; g = f; f = e; e = OpCodes.AndN((d + temp1), 0xFFFFFFFFFFFFFFFFn);
+        d = c; c = b; b = a; a = OpCodes.AndN((temp1 + temp2), 0xFFFFFFFFFFFFFFFFn);
       }
 
       // Add working variables to hash value
-      this._h[0] = (this._h[0] + a) & 0xFFFFFFFFFFFFFFFFn;
-      this._h[1] = (this._h[1] + b) & 0xFFFFFFFFFFFFFFFFn;
-      this._h[2] = (this._h[2] + c) & 0xFFFFFFFFFFFFFFFFn;
-      this._h[3] = (this._h[3] + d) & 0xFFFFFFFFFFFFFFFFn;
-      this._h[4] = (this._h[4] + e) & 0xFFFFFFFFFFFFFFFFn;
-      this._h[5] = (this._h[5] + f) & 0xFFFFFFFFFFFFFFFFn;
-      this._h[6] = (this._h[6] + g) & 0xFFFFFFFFFFFFFFFFn;
-      this._h[7] = (this._h[7] + h) & 0xFFFFFFFFFFFFFFFFn;
+      this._h[0] = OpCodes.AndN((this._h[0] + a), 0xFFFFFFFFFFFFFFFFn);
+      this._h[1] = OpCodes.AndN((this._h[1] + b), 0xFFFFFFFFFFFFFFFFn);
+      this._h[2] = OpCodes.AndN((this._h[2] + c), 0xFFFFFFFFFFFFFFFFn);
+      this._h[3] = OpCodes.AndN((this._h[3] + d), 0xFFFFFFFFFFFFFFFFn);
+      this._h[4] = OpCodes.AndN((this._h[4] + e), 0xFFFFFFFFFFFFFFFFn);
+      this._h[5] = OpCodes.AndN((this._h[5] + f), 0xFFFFFFFFFFFFFFFFn);
+      this._h[6] = OpCodes.AndN((this._h[6] + g), 0xFFFFFFFFFFFFFFFFn);
+      this._h[7] = OpCodes.AndN((this._h[7] + h), 0xFFFFFFFFFFFFFFFFn);
     }
 
     /**

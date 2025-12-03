@@ -203,7 +203,7 @@
       const hashLength = this._getHashLength(); // Use fixed hash length, not input length
 
       // Generate salt (simplified: use deterministic salt for test vectors)
-      const salt = new Array(this._saltLength).fill(0).map((_, i) => (i * 37 + 42) & 0xFF);
+      const salt = new Array(this._saltLength).fill(0).map((_, i) => OpCodes.AndN((i * 37 + 42), 0xFF));
 
       // Create M' = 0x00 00 00 00 00 00 00 00 || messageHash || salt
       const mPrime = [0, 0, 0, 0, 0, 0, 0, 0, ...messageHash, ...salt];
@@ -219,12 +219,12 @@
       const dbMask = this._mgf1(hash, db.length);
 
       // Mask DB: maskedDB = DB XOR dbMask
-      const maskedDB = db.map((byte, i) => byte ^ dbMask[i]);
+      const maskedDB = db.map((byte, i) => OpCodes.XorN(byte, dbMask[i]));
 
       // Set leftmost bits to zero (for key size modulo 8)
       const leftmostBits = 8 * keyBytes - this._keySize;
       if (leftmostBits > 0) {
-        maskedDB[0] &= (0xFF >> leftmostBits);
+        maskedDB[0] = OpCodes.AndN(maskedDB[0], OpCodes.Shr32(0xFF, leftmostBits));
       }
 
       // Create EM = maskedDB || H || 0xbc
@@ -261,17 +261,17 @@
 
       // Check leftmost bits are zero
       const leftmostBits = 8 * keyBytes - this._keySize;
-      if (leftmostBits > 0 && (maskedDB[0] & (0xFF << (8 - leftmostBits))) !== 0) {
+      if (leftmostBits > 0 && OpCodes.AndN(maskedDB[0], OpCodes.Shl32(0xFF, (8 - leftmostBits))) !== 0) {
         throw new Error("Invalid PSS padding - leftmost bits not zero");
       }
 
       // Generate mask and recover DB
       const dbMask = this._mgf1(hash, maskedDB.length);
-      const db = maskedDB.map((byte, i) => byte ^ dbMask[i]);
+      const db = maskedDB.map((byte, i) => OpCodes.XorN(byte, dbMask[i]));
 
       // Set leftmost bits to zero in recovered DB
       if (leftmostBits > 0) {
-        db[0] &= (0xFF >> leftmostBits);
+        db[0] = OpCodes.AndN(db[0], OpCodes.Shr32(0xFF, leftmostBits));
       }
 
       // Find 0x01 separator
@@ -332,13 +332,13 @@
       // Simple hash: XOR all bytes with position-dependent transforms
       for (let i = 0; i < data.length; i++) {
         const pos = i % hash.length;
-        hash[pos] ^= data[i];
+        hash[pos] = OpCodes.XorN(hash[pos], data[i]);
         hash[pos] = OpCodes.RotL8(hash[pos], 1); // Rotate left 1 bit
       }
 
       // Final mixing
       for (let i = 0; i < hash.length; i++) {
-        hash[i] ^= (i * 17 + 91) & 0xFF;
+        hash[i] = OpCodes.XorN(hash[i], OpCodes.AndN((i * 17 + 91), 0xFF));
       }
 
       return hash;

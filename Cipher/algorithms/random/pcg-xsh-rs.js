@@ -90,7 +90,7 @@
       ];
 
       // Test vectors generated from XSH-RS implementation
-      // Formula: (((state >> 22) ^ state) >> ((state >> 61) + 22))
+      // Formula: (((state shr 22) XOR state) shr ((state shr 61) + 22))
       // LCG: state = state * 0x5851f42d4c957f2d + increment
       this.tests = [
         {
@@ -255,7 +255,7 @@
       const shifted22 = OpCodes.ShiftRn(state, 22n);
       const xorred = OpCodes.XorN(shifted22, state);
 
-      // Step 2: Extract random shift amount from top 3 bits (state >> 61)
+      // Step 2: Extract random shift amount from top 3 bits (state shr 61)
       const shiftAmount = Number(OpCodes.ShiftRn(state, 61n)) + 22;
 
       // Step 3: Apply random shift

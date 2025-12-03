@@ -61,20 +61,20 @@
     _primitiveMultiply(a, b) {
       let result = 0;
       while (b > 0) {
-        if (b & 1) {
-          result ^= a;
+        if (OpCodes.AndN(b, 1)) {
+          result = OpCodes.XorN(result, a);
         }
-        a <<= 1;
-        if (a & this.size) {
-          a ^= this.primitive;
+        a = OpCodes.Shl32(a, 1);
+        if (OpCodes.AndN(a, this.size)) {
+          a = OpCodes.XorN(a, this.primitive);
         }
-        b >>= 1;
+        b = OpCodes.Shr32(b, 1);
       }
       return result;
     }
 
     add(a, b) {
-      return a ^ b;  // XOR for GF(2^m)
+      return OpCodes.XorN(a, b);  // XOR for GF(2^m)
     }
 
     subtract(a, b) {
@@ -158,7 +158,7 @@
       for (const col of sourceNonZeros) {
         const currentValue = this.get(targetRow, col);
         const sourceValue = this.get(sourceRow, col);
-        this.set(targetRow, col, currentValue ^ sourceValue);
+        this.set(targetRow, col, OpCodes.XorN(currentValue, sourceValue));
       }
     }
 

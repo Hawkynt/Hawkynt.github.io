@@ -191,7 +191,7 @@
       for (let i = 0; i < 4; ++i) {
         let sum = 0;
         for (let j = 0; j < 2; ++j) {
-          sum ^= (data[j] & this.generator[j][i]);
+          sum = OpCodes.XorN(sum, OpCodes.AndN(data[j], this.generator[j][i]));
         }
         codeword[i] = sum;
       }
@@ -209,7 +209,7 @@
       let bestMessage = [0, 0];
 
       for (let m = 0; m < 4; ++m) {
-        const message = [(m >> 1) & 1, m & 1];
+        const message = [OpCodes.AndN(OpCodes.Shr32(m, 1), 1), OpCodes.AndN(m, 1)];
         const testCodeword = this.encode(message);
 
         // Calculate Hamming distance

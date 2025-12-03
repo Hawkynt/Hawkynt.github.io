@@ -128,7 +128,7 @@
       // Convert bytes to BigInt
       result = 0n;
       for (let i = 0; i < randomBytes.length; ++i) {
-        result = OpCodes.ShiftLn(result, 8) | BigInt(randomBytes[i]);
+        result = OpCodes.OrN(OpCodes.ShiftLn(result, 8n), BigInt(randomBytes[i]));
       }
     } while (result >= range);
 
@@ -176,14 +176,14 @@
    * Generate a random prime of specified bit length
    */
   function generatePrime(bits) {
-    const min = OpCodes.ShiftLn(1n, bits - 1);
-    const max = OpCodes.ShiftLn(1n, bits);
+    const min = OpCodes.ShiftLn(1n, BigInt(bits - 1));
+    const max = OpCodes.ShiftLn(1n, BigInt(bits));
 
     let candidate;
     do {
       candidate = randomBigInt(min, max);
       // Make it odd
-      candidate |= 1n;
+      candidate = OpCodes.OrN(candidate, 1n);
     } while (!isProbablyPrime(candidate));
 
     return candidate;
@@ -196,7 +196,7 @@
   function bytesToBigInt(bytes) {
     let result = 0n;
     for (let i = 0; i < bytes.length; ++i) {
-      result = OpCodes.ShiftLn(result, 8) | BigInt(bytes[i]);
+      result = OpCodes.OrN(OpCodes.ShiftLn(result, 8n), BigInt(bytes[i]));
     }
     return result;
   }
@@ -210,8 +210,8 @@
     let value = bigint;
 
     for (let i = 0; i < length; ++i) {
-      bytes.unshift(Number(value & 0xFFn));
-      value = OpCodes.ShiftRn(value, 8);
+      bytes.unshift(Number(OpCodes.AndN(value, 0xFFn)));
+      value = OpCodes.ShiftRn(value, 8n);
     }
 
     return bytes;

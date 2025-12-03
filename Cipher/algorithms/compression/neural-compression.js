@@ -262,12 +262,12 @@
         for (let i = 0; i < this.contextSize; i++) {
           const contextByte = this.contextBuffer[i];
           const weight = this.weights[i];
-          prediction += contextByte ^ Math.floor(weight * 255);
+          prediction += OpCodes.XorN(contextByte, Math.floor(weight * 255));
           totalWeight += weight;
         }
 
         if (totalWeight > 0) {
-          prediction = Math.floor(prediction / totalWeight) & 0xFF;
+          prediction = OpCodes.AndN(Math.floor(prediction / totalWeight), 0xFF);
         }
 
         return prediction;
@@ -296,7 +296,7 @@
 
         for (let i = 0; i < this.contextSize; i++) {
           // Use OpCodes for safe arithmetic operations
-          const adjustment = Math.floor(learningFactor * this.contextBuffer[i]) & 0xFF;
+          const adjustment = OpCodes.AndN(Math.floor(learningFactor * this.contextBuffer[i]), 0xFF);
           this.weights[i] = Math.max(0, Math.min(1, this.weights[i] + adjustment / 255.0));
         }
 

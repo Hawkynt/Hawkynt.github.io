@@ -315,11 +315,11 @@
 
       // Process k logical qubits at a time
       for (let i = 0; i < logicalQubits.length; i += this.k) {
-        const q0 = logicalQubits[i] & 1;
-        const q1 = logicalQubits[i + 1] & 1;
+        const q0 = OpCodes.AndN(logicalQubits[i], 1);
+        const q1 = OpCodes.AndN(logicalQubits[i + 1], 1);
 
         // Pack two logical qubits into index
-        const logicalState = (q0 << 1) | q1;
+        const logicalState = OpCodes.OrN(OpCodes.Shl32(q0, 1), q1);
 
         // Lookup codeword from logical basis
         const codeword = LOGICAL_CODEWORDS_6_2_2[logicalState];
@@ -369,8 +369,8 @@
         const logicalState = this.extractLogicalQubits(block);
 
         // Unpack logical state to two qubits
-        const q0 = (logicalState >> 1) & 1;
-        const q1 = logicalState & 1;
+        const q0 = OpCodes.AndN(OpCodes.Shr32(logicalState, 1), 1);
+        const q1 = OpCodes.AndN(logicalState, 1);
 
         decoded.push(q0, q1);
       }
@@ -391,7 +391,7 @@
         // Compute parity check (GF(2) addition = XOR)
         for (let j = 0; j < this.n; ++j) {
           if (parityMatrix[i][j] === 1) {
-            parity ^= qubits[j];
+            parity = OpCodes.XorN(parity, qubits[j]);
           }
         }
 
@@ -485,7 +485,7 @@
       switch (errorType) {
         case 'X':
           // X gate: bit-flip (|0⟩↔|1⟩)
-          result[position] ^= 1;
+          result[position] = OpCodes.XorN(result[position], 1);
           break;
 
         case 'Z':
@@ -496,7 +496,7 @@
 
         case 'Y':
           // Y gate: both bit-flip and phase-flip (iXZ)
-          result[position] ^= 1;
+          result[position] = OpCodes.XorN(result[position], 1);
           break;
 
         default:

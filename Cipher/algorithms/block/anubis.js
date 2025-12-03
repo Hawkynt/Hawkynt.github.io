@@ -523,31 +523,35 @@
       // Convert input bytes to state array
       for (let i = 0; i < 4; i++) {
         state[i] = OpCodes.Pack32BE(bytes[i*4], bytes[i*4+1], bytes[i*4+2], bytes[i*4+3]);
-        state[i] = (state[i] ^ roundKey[0][i]) >>> 0;
+        state[i] = OpCodes.ToUint32(OpCodes.XorN(state[i], roundKey[0][i]));
       }
 
       // R-1 full rounds
       for (let r = 1; r < R; r++) {
-        inter[0] = (this.algorithm.T0[(state[0] >>> 24) & 0xff] ^
-                    this.algorithm.T1[(state[1] >>> 24) & 0xff] ^
-                    this.algorithm.T2[(state[2] >>> 24) & 0xff] ^
-                    this.algorithm.T3[(state[3] >>> 24) & 0xff] ^
-                    roundKey[r][0]) >>> 0;
-        inter[1] = (this.algorithm.T0[(state[0] >>> 16) & 0xff] ^
-                    this.algorithm.T1[(state[1] >>> 16) & 0xff] ^
-                    this.algorithm.T2[(state[2] >>> 16) & 0xff] ^
-                    this.algorithm.T3[(state[3] >>> 16) & 0xff] ^
-                    roundKey[r][1]) >>> 0;
-        inter[2] = (this.algorithm.T0[(state[0] >>> 8) & 0xff] ^
-                    this.algorithm.T1[(state[1] >>> 8) & 0xff] ^
-                    this.algorithm.T2[(state[2] >>> 8) & 0xff] ^
-                    this.algorithm.T3[(state[3] >>> 8) & 0xff] ^
-                    roundKey[r][2]) >>> 0;
-        inter[3] = (this.algorithm.T0[state[0] & 0xff] ^
-                    this.algorithm.T1[state[1] & 0xff] ^
-                    this.algorithm.T2[state[2] & 0xff] ^
-                    this.algorithm.T3[state[3] & 0xff] ^
-                    roundKey[r][3]) >>> 0;
+        inter[0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
+                    this.algorithm.T0[OpCodes.AndN(OpCodes.Shr32(state[0], 24), 0xff)],
+                    this.algorithm.T1[OpCodes.AndN(OpCodes.Shr32(state[1], 24), 0xff)]),
+                    this.algorithm.T2[OpCodes.AndN(OpCodes.Shr32(state[2], 24), 0xff)]),
+                    this.algorithm.T3[OpCodes.AndN(OpCodes.Shr32(state[3], 24), 0xff)]),
+                    roundKey[r][0]));
+        inter[1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
+                    this.algorithm.T0[OpCodes.AndN(OpCodes.Shr32(state[0], 16), 0xff)],
+                    this.algorithm.T1[OpCodes.AndN(OpCodes.Shr32(state[1], 16), 0xff)]),
+                    this.algorithm.T2[OpCodes.AndN(OpCodes.Shr32(state[2], 16), 0xff)]),
+                    this.algorithm.T3[OpCodes.AndN(OpCodes.Shr32(state[3], 16), 0xff)]),
+                    roundKey[r][1]));
+        inter[2] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
+                    this.algorithm.T0[OpCodes.AndN(OpCodes.Shr32(state[0], 8), 0xff)],
+                    this.algorithm.T1[OpCodes.AndN(OpCodes.Shr32(state[1], 8), 0xff)]),
+                    this.algorithm.T2[OpCodes.AndN(OpCodes.Shr32(state[2], 8), 0xff)]),
+                    this.algorithm.T3[OpCodes.AndN(OpCodes.Shr32(state[3], 8), 0xff)]),
+                    roundKey[r][2]));
+        inter[3] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
+                    this.algorithm.T0[OpCodes.AndN(state[0], 0xff)],
+                    this.algorithm.T1[OpCodes.AndN(state[1], 0xff)]),
+                    this.algorithm.T2[OpCodes.AndN(state[2], 0xff)]),
+                    this.algorithm.T3[OpCodes.AndN(state[3], 0xff)]),
+                    roundKey[r][3]));
 
         for (let i = 0; i < 4; i++) {
           state[i] = inter[i];
@@ -555,26 +559,30 @@
       }
 
       // Final round (different structure)
-      inter[0] = ((this.algorithm.T0[(state[0] >>> 24) & 0xff] & 0xff000000) ^
-                  (this.algorithm.T1[(state[1] >>> 24) & 0xff] & 0x00ff0000) ^
-                  (this.algorithm.T2[(state[2] >>> 24) & 0xff] & 0x0000ff00) ^
-                  (this.algorithm.T3[(state[3] >>> 24) & 0xff] & 0x000000ff) ^
-                  roundKey[R][0]) >>> 0;
-      inter[1] = ((this.algorithm.T0[(state[0] >>> 16) & 0xff] & 0xff000000) ^
-                  (this.algorithm.T1[(state[1] >>> 16) & 0xff] & 0x00ff0000) ^
-                  (this.algorithm.T2[(state[2] >>> 16) & 0xff] & 0x0000ff00) ^
-                  (this.algorithm.T3[(state[3] >>> 16) & 0xff] & 0x000000ff) ^
-                  roundKey[R][1]) >>> 0;
-      inter[2] = ((this.algorithm.T0[(state[0] >>> 8) & 0xff] & 0xff000000) ^
-                  (this.algorithm.T1[(state[1] >>> 8) & 0xff] & 0x00ff0000) ^
-                  (this.algorithm.T2[(state[2] >>> 8) & 0xff] & 0x0000ff00) ^
-                  (this.algorithm.T3[(state[3] >>> 8) & 0xff] & 0x000000ff) ^
-                  roundKey[R][2]) >>> 0;
-      inter[3] = ((this.algorithm.T0[state[0] & 0xff] & 0xff000000) ^
-                  (this.algorithm.T1[state[1] & 0xff] & 0x00ff0000) ^
-                  (this.algorithm.T2[state[2] & 0xff] & 0x0000ff00) ^
-                  (this.algorithm.T3[state[3] & 0xff] & 0x000000ff) ^
-                  roundKey[R][3]) >>> 0;
+      inter[0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
+                  OpCodes.AndN(this.algorithm.T0[OpCodes.AndN(OpCodes.Shr32(state[0], 24), 0xff)], 0xff000000),
+                  OpCodes.AndN(this.algorithm.T1[OpCodes.AndN(OpCodes.Shr32(state[1], 24), 0xff)], 0x00ff0000)),
+                  OpCodes.AndN(this.algorithm.T2[OpCodes.AndN(OpCodes.Shr32(state[2], 24), 0xff)], 0x0000ff00)),
+                  OpCodes.AndN(this.algorithm.T3[OpCodes.AndN(OpCodes.Shr32(state[3], 24), 0xff)], 0x000000ff)),
+                  roundKey[R][0]));
+      inter[1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
+                  OpCodes.AndN(this.algorithm.T0[OpCodes.AndN(OpCodes.Shr32(state[0], 16), 0xff)], 0xff000000),
+                  OpCodes.AndN(this.algorithm.T1[OpCodes.AndN(OpCodes.Shr32(state[1], 16), 0xff)], 0x00ff0000)),
+                  OpCodes.AndN(this.algorithm.T2[OpCodes.AndN(OpCodes.Shr32(state[2], 16), 0xff)], 0x0000ff00)),
+                  OpCodes.AndN(this.algorithm.T3[OpCodes.AndN(OpCodes.Shr32(state[3], 16), 0xff)], 0x000000ff)),
+                  roundKey[R][1]));
+      inter[2] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
+                  OpCodes.AndN(this.algorithm.T0[OpCodes.AndN(OpCodes.Shr32(state[0], 8), 0xff)], 0xff000000),
+                  OpCodes.AndN(this.algorithm.T1[OpCodes.AndN(OpCodes.Shr32(state[1], 8), 0xff)], 0x00ff0000)),
+                  OpCodes.AndN(this.algorithm.T2[OpCodes.AndN(OpCodes.Shr32(state[2], 8), 0xff)], 0x0000ff00)),
+                  OpCodes.AndN(this.algorithm.T3[OpCodes.AndN(OpCodes.Shr32(state[3], 8), 0xff)], 0x000000ff)),
+                  roundKey[R][2]));
+      inter[3] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
+                  OpCodes.AndN(this.algorithm.T0[OpCodes.AndN(state[0], 0xff)], 0xff000000),
+                  OpCodes.AndN(this.algorithm.T1[OpCodes.AndN(state[1], 0xff)], 0x00ff0000)),
+                  OpCodes.AndN(this.algorithm.T2[OpCodes.AndN(state[2], 0xff)], 0x0000ff00)),
+                  OpCodes.AndN(this.algorithm.T3[OpCodes.AndN(state[3], 0xff)], 0x000000ff)),
+                  roundKey[R][3]));
 
       // Convert state back to bytes
       const resultBytes = new Array(16);
@@ -611,32 +619,40 @@
       // Generate R+1 round keys
       for (let r = 0; r <= R; r++) {
         // Generate r-th round key
-        let K0 = this.algorithm.T4[(kappa[N-1] >>> 24) & 0xff];
-        let K1 = this.algorithm.T4[(kappa[N-1] >>> 16) & 0xff];
-        let K2 = this.algorithm.T4[(kappa[N-1] >>> 8) & 0xff];
-        let K3 = this.algorithm.T4[kappa[N-1] & 0xff];
+        let K0 = this.algorithm.T4[OpCodes.AndN(OpCodes.Shr32(kappa[N-1], 24), 0xff)];
+        let K1 = this.algorithm.T4[OpCodes.AndN(OpCodes.Shr32(kappa[N-1], 16), 0xff)];
+        let K2 = this.algorithm.T4[OpCodes.AndN(OpCodes.Shr32(kappa[N-1], 8), 0xff)];
+        let K3 = this.algorithm.T4[OpCodes.AndN(kappa[N-1], 0xff)];
 
         for (let t = N - 2; t >= 0; t--) {
-          K0 = (this.algorithm.T4[(kappa[t] >>> 24) & 0xff] ^
-                ((this.algorithm.T5[(K0 >>> 24) & 0xff] & 0xff000000) |
-                 (this.algorithm.T5[(K0 >>> 16) & 0xff] & 0x00ff0000) |
-                 (this.algorithm.T5[(K0 >>> 8) & 0xff] & 0x0000ff00) |
-                 (this.algorithm.T5[K0 & 0xff] & 0x000000ff))) >>> 0;
-          K1 = (this.algorithm.T4[(kappa[t] >>> 16) & 0xff] ^
-                ((this.algorithm.T5[(K1 >>> 24) & 0xff] & 0xff000000) |
-                 (this.algorithm.T5[(K1 >>> 16) & 0xff] & 0x00ff0000) |
-                 (this.algorithm.T5[(K1 >>> 8) & 0xff] & 0x0000ff00) |
-                 (this.algorithm.T5[K1 & 0xff] & 0x000000ff))) >>> 0;
-          K2 = (this.algorithm.T4[(kappa[t] >>> 8) & 0xff] ^
-                ((this.algorithm.T5[(K2 >>> 24) & 0xff] & 0xff000000) |
-                 (this.algorithm.T5[(K2 >>> 16) & 0xff] & 0x00ff0000) |
-                 (this.algorithm.T5[(K2 >>> 8) & 0xff] & 0x0000ff00) |
-                 (this.algorithm.T5[K2 & 0xff] & 0x000000ff))) >>> 0;
-          K3 = (this.algorithm.T4[kappa[t] & 0xff] ^
-                ((this.algorithm.T5[(K3 >>> 24) & 0xff] & 0xff000000) |
-                 (this.algorithm.T5[(K3 >>> 16) & 0xff] & 0x00ff0000) |
-                 (this.algorithm.T5[(K3 >>> 8) & 0xff] & 0x0000ff00) |
-                 (this.algorithm.T5[K3 & 0xff] & 0x000000ff))) >>> 0;
+          K0 = OpCodes.ToUint32(OpCodes.XorN(
+                this.algorithm.T4[OpCodes.AndN(OpCodes.Shr32(kappa[t], 24), 0xff)],
+                OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
+                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K0, 24), 0xff)], 0xff000000),
+                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K0, 16), 0xff)], 0x00ff0000)),
+                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K0, 8), 0xff)], 0x0000ff00)),
+                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(K0, 0xff)], 0x000000ff))));
+          K1 = OpCodes.ToUint32(OpCodes.XorN(
+                this.algorithm.T4[OpCodes.AndN(OpCodes.Shr32(kappa[t], 16), 0xff)],
+                OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
+                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K1, 24), 0xff)], 0xff000000),
+                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K1, 16), 0xff)], 0x00ff0000)),
+                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K1, 8), 0xff)], 0x0000ff00)),
+                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(K1, 0xff)], 0x000000ff))));
+          K2 = OpCodes.ToUint32(OpCodes.XorN(
+                this.algorithm.T4[OpCodes.AndN(OpCodes.Shr32(kappa[t], 8), 0xff)],
+                OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
+                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K2, 24), 0xff)], 0xff000000),
+                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K2, 16), 0xff)], 0x00ff0000)),
+                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K2, 8), 0xff)], 0x0000ff00)),
+                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(K2, 0xff)], 0x000000ff))));
+          K3 = OpCodes.ToUint32(OpCodes.XorN(
+                this.algorithm.T4[OpCodes.AndN(kappa[t], 0xff)],
+                OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
+                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K3, 24), 0xff)], 0xff000000),
+                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K3, 16), 0xff)], 0x00ff0000)),
+                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(OpCodes.Shr32(K3, 8), 0xff)], 0x0000ff00)),
+                 OpCodes.AndN(this.algorithm.T5[OpCodes.AndN(K3, 0xff)], 0x000000ff))));
         }
 
         this.roundKeyEnc[r][0] = K0;
@@ -647,16 +663,18 @@
         // Compute kappa^{r+1} from kappa^r (if not the last round)
         if (r < R) {
           for (let i = 0; i < N; i++) {
-            inter[i] = (this.algorithm.T0[(kappa[i] >>> 24) & 0xff] ^
-                        this.algorithm.T1[(kappa[(N + i - 1) % N] >>> 16) & 0xff] ^
-                        this.algorithm.T2[(kappa[(N + i - 2) % N] >>> 8) & 0xff] ^
-                        this.algorithm.T3[kappa[(N + i - 3) % N] & 0xff]) >>> 0;
+            inter[i] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
+                        this.algorithm.T0[OpCodes.AndN(OpCodes.Shr32(kappa[i], 24), 0xff)],
+                        this.algorithm.T1[OpCodes.AndN(OpCodes.Shr32(kappa[(N + i - 1) % N], 16), 0xff)]),
+                        this.algorithm.T2[OpCodes.AndN(OpCodes.Shr32(kappa[(N + i - 2) % N], 8), 0xff)]),
+                        this.algorithm.T3[OpCodes.AndN(kappa[(N + i - 3) % N], 0xff)]));
           }
-          kappa[0] = ((this.algorithm.T0[4*r] & 0xff000000) ^
-                      (this.algorithm.T1[4*r + 1] & 0x00ff0000) ^
-                      (this.algorithm.T2[4*r + 2] & 0x0000ff00) ^
-                      (this.algorithm.T3[4*r + 3] & 0x000000ff) ^
-                      inter[0]) >>> 0;
+          kappa[0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
+                      OpCodes.AndN(this.algorithm.T0[4*r], 0xff000000),
+                      OpCodes.AndN(this.algorithm.T1[4*r + 1], 0x00ff0000)),
+                      OpCodes.AndN(this.algorithm.T2[4*r + 2], 0x0000ff00)),
+                      OpCodes.AndN(this.algorithm.T3[4*r + 3], 0x000000ff)),
+                      inter[0]));
           for (let i = 1; i < N; i++) {
             kappa[i] = inter[i];
           }
@@ -671,10 +689,11 @@
       for (let r = 1; r < R; r++) {
         for (let i = 0; i < 4; i++) {
           const v = this.roundKeyEnc[R - r][i];
-          this.roundKeyDec[r][i] = (this.algorithm.T0[this.algorithm.T4[(v >>> 24) & 0xff] & 0xff] ^
-                                    this.algorithm.T1[this.algorithm.T4[(v >>> 16) & 0xff] & 0xff] ^
-                                    this.algorithm.T2[this.algorithm.T4[(v >>> 8) & 0xff] & 0xff] ^
-                                    this.algorithm.T3[this.algorithm.T4[v & 0xff] & 0xff]) >>> 0;
+          this.roundKeyDec[r][i] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
+                                    this.algorithm.T0[OpCodes.AndN(this.algorithm.T4[OpCodes.AndN(OpCodes.Shr32(v, 24), 0xff)], 0xff)],
+                                    this.algorithm.T1[OpCodes.AndN(this.algorithm.T4[OpCodes.AndN(OpCodes.Shr32(v, 16), 0xff)], 0xff)]),
+                                    this.algorithm.T2[OpCodes.AndN(this.algorithm.T4[OpCodes.AndN(OpCodes.Shr32(v, 8), 0xff)], 0xff)]),
+                                    this.algorithm.T3[OpCodes.AndN(this.algorithm.T4[OpCodes.AndN(v, 0xff)], 0xff)]));
         }
       }
 

@@ -208,13 +208,13 @@
         }
 
         // Convert 3 bytes to 4 characters
-        const combined = (group[0] << 16) | (group[1] << 8) | group[2];
+        const combined = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(group[0], 16), OpCodes.Shl32(group[1], 8)), group[2]);
 
         // Extract 6-bit values and add space offset (0x20)
-        const char1 = ((combined >> 18) & 0x3F) + 0x20;
-        const char2 = ((combined >> 12) & 0x3F) + 0x20;
-        const char3 = ((combined >> 6) & 0x3F) + 0x20;
-        const char4 = (combined & 0x3F) + 0x20;
+        const char1 = OpCodes.AndN(OpCodes.Shr32(combined, 18), 0x3F) + 0x20;
+        const char2 = OpCodes.AndN(OpCodes.Shr32(combined, 12), 0x3F) + 0x20;
+        const char3 = OpCodes.AndN(OpCodes.Shr32(combined, 6), 0x3F) + 0x20;
+        const char4 = OpCodes.AndN(combined, 0x3F) + 0x20;
 
         result.push(char1);
         if (groupSize > 1 || (groupSize === 1 && data.length === 1)) {
@@ -244,32 +244,32 @@
 
         if (groupSize === 1) {
           // Single character, decode as one byte
-          const val = (data[i] - 0x20) & 0x3F;
+          const val = OpCodes.AndN((data[i] - 0x20), 0x3F);
           result.push(val);
         } else if (groupSize === 2) {
           // Two characters, decode as one byte
-          const val1 = (data[i] - 0x20) & 0x3F;
-          const val2 = (data[i + 1] - 0x20) & 0x3F;
-          const combined = (val1 << 6) | val2;
-          result.push((combined >> 4) & 0xFF);
+          const val1 = OpCodes.AndN((data[i] - 0x20), 0x3F);
+          const val2 = OpCodes.AndN((data[i + 1] - 0x20), 0x3F);
+          const combined = OpCodes.OrN(OpCodes.Shl32(val1, 6), val2);
+          result.push(OpCodes.AndN(OpCodes.Shr32(combined, 4), 0xFF));
         } else if (groupSize === 3) {
           // Three characters, decode as two bytes
-          const val1 = (data[i] - 0x20) & 0x3F;
-          const val2 = (data[i + 1] - 0x20) & 0x3F;
-          const val3 = (data[i + 2] - 0x20) & 0x3F;
-          const combined = (val1 << 12) | (val2 << 6) | val3;
-          result.push((combined >> 10) & 0xFF);
-          result.push((combined >> 2) & 0xFF);
+          const val1 = OpCodes.AndN((data[i] - 0x20), 0x3F);
+          const val2 = OpCodes.AndN((data[i + 1] - 0x20), 0x3F);
+          const val3 = OpCodes.AndN((data[i + 2] - 0x20), 0x3F);
+          const combined = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(val1, 12), OpCodes.Shl32(val2, 6)), val3);
+          result.push(OpCodes.AndN(OpCodes.Shr32(combined, 10), 0xFF));
+          result.push(OpCodes.AndN(OpCodes.Shr32(combined, 2), 0xFF));
         } else if (groupSize === 4) {
           // Four characters, decode as three bytes
-          const val1 = (data[i] - 0x20) & 0x3F;
-          const val2 = (data[i + 1] - 0x20) & 0x3F;
-          const val3 = (data[i + 2] - 0x20) & 0x3F;
-          const val4 = (data[i + 3] - 0x20) & 0x3F;
-          const combined = (val1 << 18) | (val2 << 12) | (val3 << 6) | val4;
-          result.push((combined >> 16) & 0xFF);
-          result.push((combined >> 8) & 0xFF);
-          result.push(combined & 0xFF);
+          const val1 = OpCodes.AndN((data[i] - 0x20), 0x3F);
+          const val2 = OpCodes.AndN((data[i + 1] - 0x20), 0x3F);
+          const val3 = OpCodes.AndN((data[i + 2] - 0x20), 0x3F);
+          const val4 = OpCodes.AndN((data[i + 3] - 0x20), 0x3F);
+          const combined = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(val1, 18), OpCodes.Shl32(val2, 12)), OpCodes.Shl32(val3, 6)), val4);
+          result.push(OpCodes.AndN(OpCodes.Shr32(combined, 16), 0xFF));
+          result.push(OpCodes.AndN(OpCodes.Shr32(combined, 8), 0xFF));
+          result.push(OpCodes.AndN(combined, 0xFF));
         }
       }
 

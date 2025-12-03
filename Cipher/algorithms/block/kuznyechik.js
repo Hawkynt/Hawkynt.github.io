@@ -81,16 +81,16 @@
   // GF(2^8) multiplication with irreducible polynomial 0x1C3 (x^8 + x^7 + x^6 + x + 1)
   function gfMul(a, b) {
     let result = 0;
-    let aVal = a & 0xFF;
-    let bVal = b & 0xFF;
+    let aVal = OpCodes.AndN(a, 0xFF);
+    let bVal = OpCodes.AndN(b, 0xFF);
     for (let i = 0; i < 8; ++i) {
-      if (bVal & 1) result ^= aVal;
-      const high_bit_set = aVal & 0x80;
-      aVal = (aVal << 1) & 0xFF;
-      if (high_bit_set) aVal ^= 0xC3; // Reduction modulo 0x1C3
-      bVal >>= 1;
+      if (OpCodes.AndN(bVal, 1)) result = OpCodes.XorN(result, aVal);
+      const high_bit_set = OpCodes.AndN(aVal, 0x80);
+      aVal = OpCodes.AndN(OpCodes.Shl32(aVal, 1), 0xFF);
+      if (high_bit_set) aVal = OpCodes.XorN(aVal, 0xC3); // Reduction modulo 0x1C3
+      bVal = OpCodes.Shr32(bVal, 1);
     }
-    return result & 0xFF;
+    return OpCodes.AndN(result, 0xFF);
   }
 
   // Single R transformation from RFC 7801:
@@ -102,7 +102,7 @@
     // Calculate l(a) = sum of gfMul(LINEAR[i], a[i]) for i=0..15
     let l = 0;
     for (let i = 0; i < 16; ++i) {
-      l ^= gfMul(LINEAR[i], block[i]);
+      l = OpCodes.XorN(l, gfMul(LINEAR[i], block[i]));
     }
 
     // Shift right and insert l at position 0
@@ -134,10 +134,10 @@
     // Calculate l(a')
     let l = 0;
     for (let i = 0; i < 16; ++i) {
-      l ^= gfMul(LINEAR[i], result[i]);
+      l = OpCodes.XorN(l, gfMul(LINEAR[i], result[i]));
     }
 
-    result[15] = block[0] ^ l;
+    result[15] = OpCodes.XorN(block[0], l);
     return result;
   }
 
@@ -172,7 +172,7 @@
   function transformX(block, key) {
     const result = new Uint8Array(16);
     for (let i = 0; i < 16; ++i) {
-      result[i] = block[i] ^ key[i];
+      result[i] = OpCodes.XorN(block[i], key[i]);
     }
     return result;
   }

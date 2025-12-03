@@ -293,19 +293,19 @@
 
       // Calculate lagged indices with byte wrapping (0-255)
       // In circular buffer: (c - lag) mod 256 = (c + (256 - lag)) mod 256
-      const idx1 = (c + 201) & 0xFF;  // c - 55 mod 256
-      const idx2 = (c + 137) & 0xFF;  // c - 119 mod 256
-      const idx3 = (c + 77) & 0xFF;   // c - 179 mod 256
-      const idx4 = c;                 // c - 256 mod 256 = c
+      const idx1 = OpCodes.AndN(c + 201, 0xFF);  // c - 55 mod 256
+      const idx2 = OpCodes.AndN(c + 137, 0xFF);  // c - 119 mod 256
+      const idx3 = OpCodes.AndN(c + 77, 0xFF);   // c - 179 mod 256
+      const idx4 = c;                            // c - 256 mod 256 = c
 
       // LFIB4 recurrence: sum four lagged values (mod 2^32)
-      const sum = (state[idx1] + state[idx2] + state[idx3] + state[idx4]) >>> 0;
+      const sum = OpCodes.ToUint32(state[idx1] + state[idx2] + state[idx3] + state[idx4]);
 
       // Store result back in state array at current position
       state[c] = sum;
 
       // Increment counter with byte wrap (0-255)
-      this._counter = (c + 1) & 0xFF;
+      this._counter = OpCodes.AndN(c + 1, 0xFF);
 
       return sum;
     }
@@ -334,7 +334,7 @@
         // Extract bytes (big-endian order - most significant byte first)
         const bytesToExtract = Math.min(bytesRemaining, 4);
         for (let i = 0; i < bytesToExtract; ++i) {
-          const byte = OpCodes.Shr32(value, 24 - i * 8) & 0xFF;
+          const byte = OpCodes.AndN(OpCodes.Shr32(value, 24 - i * 8), 0xFF);
           output.push(byte);
         }
 

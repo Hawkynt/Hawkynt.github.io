@@ -112,49 +112,51 @@ class SaturninCipher {
       // Rotated key: 5-bit rotation within each 16-bit half
       // Note: Custom bit-sliced operation for Saturnin's key schedule
       // Rotates bits 0-15 and 16-31 independently by 5 positions
-      this.k[8 + (index / 2)] = ((temp & 0x001F001F) << 11) |
-                                ((temp >>> 5) & 0x07FF07FF);
+      this.k[8 + (index / 2)] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(temp, 0x001F001F), 11),
+                                OpCodes.AndN(OpCodes.Shr32(temp, 5), 0x07FF07FF)));
     }
   }
 
   // Bit-sliced S-box
   sbox(state, a, b, c, d) {
-    state[a] ^= state[b] & state[c];
-    state[b] ^= state[a] | state[d];
-    state[d] ^= state[b] | state[c];
-    state[c] ^= state[b] & state[d];
-    state[b] ^= state[a] | state[c];
-    state[a] ^= state[b] | state[d];
+    state[a] = OpCodes.XorN(state[a], OpCodes.AndN(state[b], state[c]));
+    state[b] = OpCodes.XorN(state[b], OpCodes.OrN(state[a], state[d]));
+    state[d] = OpCodes.XorN(state[d], OpCodes.OrN(state[b], state[c]));
+    state[c] = OpCodes.XorN(state[c], OpCodes.AndN(state[b], state[d]));
+    state[b] = OpCodes.XorN(state[b], OpCodes.OrN(state[a], state[c]));
+    state[a] = OpCodes.XorN(state[a], OpCodes.OrN(state[b], state[d]));
   }
 
   // Inverse bit-sliced S-box
   sboxInverse(state, a, b, c, d) {
-    state[a] ^= state[b] | state[d];
-    state[b] ^= state[a] | state[c];
-    state[c] ^= state[b] & state[d];
-    state[d] ^= state[b] | state[c];
-    state[b] ^= state[a] | state[d];
-    state[a] ^= state[b] & state[c];
+    state[a] = OpCodes.XorN(state[a], OpCodes.OrN(state[b], state[d]));
+    state[b] = OpCodes.XorN(state[b], OpCodes.OrN(state[a], state[c]));
+    state[c] = OpCodes.XorN(state[c], OpCodes.AndN(state[b], state[d]));
+    state[d] = OpCodes.XorN(state[d], OpCodes.OrN(state[b], state[c]));
+    state[b] = OpCodes.XorN(state[b], OpCodes.OrN(state[a], state[d]));
+    state[a] = OpCodes.XorN(state[a], OpCodes.AndN(state[b], state[c]));
   }
 
   // Rotate 4-bit nibbles within 16-bit halves
   // Note: Custom bit-sliced permutation for Saturnin's slice layer
   // Applies independent rotations to low and high 16-bit halves
   leftRotate4N(a, mask1, bits1, mask2, bits2) {
-    return (((a & mask1) << bits1) |
-            ((a & (mask1 ^ 0xFFFF)) >>> (4 - bits1)) |
-            ((a & ((mask2 << 16) >>> 0)) << bits2) |
-            ((a & (((mask2 << 16) ^ 0xFFFF0000) >>> 0)) >>> (4 - bits2))) >>> 0;
+    return OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
+            OpCodes.Shl32(OpCodes.AndN(a, mask1), bits1),
+            OpCodes.Shr32(OpCodes.AndN(a, OpCodes.XorN(mask1, 0xFFFF)), (4 - bits1))),
+            OpCodes.Shl32(OpCodes.AndN(a, OpCodes.ToUint32(OpCodes.Shl32(mask2, 16))), bits2)),
+            OpCodes.Shr32(OpCodes.AndN(a, OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shl32(mask2, 16), 0xFFFF0000))), (4 - bits2))));
   }
 
   // Rotate 16-bit subwords
   // Note: Custom bit-sliced permutation for Saturnin's sheet layer
   // Applies independent rotations to low and high 16-bit halves
   leftRotate16N(a, mask1, bits1, mask2, bits2) {
-    return (((a & mask1) << bits1) |
-            ((a & (mask1 ^ 0xFFFF)) >>> (16 - bits1)) |
-            ((a & ((mask2 << 16) >>> 0)) << bits2) |
-            ((a & (((mask2 << 16) ^ 0xFFFF0000) >>> 0)) >>> (16 - bits2))) >>> 0;
+    return OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
+            OpCodes.Shl32(OpCodes.AndN(a, mask1), bits1),
+            OpCodes.Shr32(OpCodes.AndN(a, OpCodes.XorN(mask1, 0xFFFF)), (16 - bits1))),
+            OpCodes.Shl32(OpCodes.AndN(a, OpCodes.ToUint32(OpCodes.Shl32(mask2, 16))), bits2)),
+            OpCodes.Shr32(OpCodes.AndN(a, OpCodes.ToUint32(OpCodes.XorN(OpCodes.Shl32(mask2, 16), 0xFFFF0000))), (16 - bits2))));
   }
 
   // Slice permutation
@@ -207,74 +209,74 @@ class SaturninCipher {
 
   // MDS matrix helper
   mul(state, x0, x1, x2, x3) {
-    state[x0] = (state[x0] ^ state[x1]) >>> 0;
+    state[x0] = OpCodes.ToUint32(OpCodes.XorN(state[x0], state[x1]));
   }
 
   // Inverse MDS matrix helper
   mulInv(state, x0, x1, x2, x3) {
-    state[x3] = (state[x3] ^ state[x0]) >>> 0;
+    state[x3] = OpCodes.ToUint32(OpCodes.XorN(state[x3], state[x0]));
   }
 
   // SWAP helper for MDS - swaps 16-bit halves of 32-bit word
   swap(x) {
     // Note: Custom cross-word operation not available in OpCodes
-    return (((x << 16) | (x >>> 16)) >>> 0);
+    return OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(x, 16), OpCodes.Shr32(x, 16)));
   }
 
   // MDS matrix
   mds(state, x0, x1, x2, x3, x4, x5, x6, x7) {
-    state[x0] = (state[x0] ^ state[x4]) >>> 0;
-    state[x1] = (state[x1] ^ state[x5]) >>> 0;
-    state[x2] = (state[x2] ^ state[x6]) >>> 0;
-    state[x3] = (state[x3] ^ state[x7]) >>> 0;
+    state[x0] = OpCodes.ToUint32(OpCodes.XorN(state[x0], state[x4]));
+    state[x1] = OpCodes.ToUint32(OpCodes.XorN(state[x1], state[x5]));
+    state[x2] = OpCodes.ToUint32(OpCodes.XorN(state[x2], state[x6]));
+    state[x3] = OpCodes.ToUint32(OpCodes.XorN(state[x3], state[x7]));
 
     this.mul(state, x4, x5, x6, x7);
 
-    state[x5] = (state[x5] ^ this.swap(state[x0])) >>> 0;
-    state[x6] = (state[x6] ^ this.swap(state[x1])) >>> 0;
-    state[x7] = (state[x7] ^ this.swap(state[x2])) >>> 0;
-    state[x4] = (state[x4] ^ this.swap(state[x3])) >>> 0;
+    state[x5] = OpCodes.ToUint32(OpCodes.XorN(state[x5], this.swap(state[x0])));
+    state[x6] = OpCodes.ToUint32(OpCodes.XorN(state[x6], this.swap(state[x1])));
+    state[x7] = OpCodes.ToUint32(OpCodes.XorN(state[x7], this.swap(state[x2])));
+    state[x4] = OpCodes.ToUint32(OpCodes.XorN(state[x4], this.swap(state[x3])));
 
     this.mul(state, x0, x1, x2, x3);
     this.mul(state, x1, x2, x3, x0);
 
-    state[x2] = (state[x2] ^ state[x5]) >>> 0;
-    state[x3] = (state[x3] ^ state[x6]) >>> 0;
-    state[x0] = (state[x0] ^ state[x7]) >>> 0;
-    state[x1] = (state[x1] ^ state[x4]) >>> 0;
+    state[x2] = OpCodes.ToUint32(OpCodes.XorN(state[x2], state[x5]));
+    state[x3] = OpCodes.ToUint32(OpCodes.XorN(state[x3], state[x6]));
+    state[x0] = OpCodes.ToUint32(OpCodes.XorN(state[x0], state[x7]));
+    state[x1] = OpCodes.ToUint32(OpCodes.XorN(state[x1], state[x4]));
 
-    state[x5] = (state[x5] ^ this.swap(state[x2])) >>> 0;
-    state[x6] = (state[x6] ^ this.swap(state[x3])) >>> 0;
-    state[x7] = (state[x7] ^ this.swap(state[x0])) >>> 0;
-    state[x4] = (state[x4] ^ this.swap(state[x1])) >>> 0;
+    state[x5] = OpCodes.ToUint32(OpCodes.XorN(state[x5], this.swap(state[x2])));
+    state[x6] = OpCodes.ToUint32(OpCodes.XorN(state[x6], this.swap(state[x3])));
+    state[x7] = OpCodes.ToUint32(OpCodes.XorN(state[x7], this.swap(state[x0])));
+    state[x4] = OpCodes.ToUint32(OpCodes.XorN(state[x4], this.swap(state[x1])));
   }
 
   // Inverse MDS matrix
   mdsInverse(state, x0, x1, x2, x3, x4, x5, x6, x7) {
-    state[x6] = (state[x6] ^ this.swap(state[x2])) >>> 0;
-    state[x7] = (state[x7] ^ this.swap(state[x3])) >>> 0;
-    state[x4] = (state[x4] ^ this.swap(state[x0])) >>> 0;
-    state[x5] = (state[x5] ^ this.swap(state[x1])) >>> 0;
+    state[x6] = OpCodes.ToUint32(OpCodes.XorN(state[x6], this.swap(state[x2])));
+    state[x7] = OpCodes.ToUint32(OpCodes.XorN(state[x7], this.swap(state[x3])));
+    state[x4] = OpCodes.ToUint32(OpCodes.XorN(state[x4], this.swap(state[x0])));
+    state[x5] = OpCodes.ToUint32(OpCodes.XorN(state[x5], this.swap(state[x1])));
 
-    state[x0] = (state[x0] ^ state[x4]) >>> 0;
-    state[x1] = (state[x1] ^ state[x5]) >>> 0;
-    state[x2] = (state[x2] ^ state[x6]) >>> 0;
-    state[x3] = (state[x3] ^ state[x7]) >>> 0;
+    state[x0] = OpCodes.ToUint32(OpCodes.XorN(state[x0], state[x4]));
+    state[x1] = OpCodes.ToUint32(OpCodes.XorN(state[x1], state[x5]));
+    state[x2] = OpCodes.ToUint32(OpCodes.XorN(state[x2], state[x6]));
+    state[x3] = OpCodes.ToUint32(OpCodes.XorN(state[x3], state[x7]));
 
     this.mulInv(state, x0, x1, x2, x3);
     this.mulInv(state, x3, x0, x1, x2);
 
-    state[x6] = (state[x6] ^ this.swap(state[x0])) >>> 0;
-    state[x7] = (state[x7] ^ this.swap(state[x1])) >>> 0;
-    state[x4] = (state[x4] ^ this.swap(state[x2])) >>> 0;
-    state[x5] = (state[x5] ^ this.swap(state[x3])) >>> 0;
+    state[x6] = OpCodes.ToUint32(OpCodes.XorN(state[x6], this.swap(state[x0])));
+    state[x7] = OpCodes.ToUint32(OpCodes.XorN(state[x7], this.swap(state[x1])));
+    state[x4] = OpCodes.ToUint32(OpCodes.XorN(state[x4], this.swap(state[x2])));
+    state[x5] = OpCodes.ToUint32(OpCodes.XorN(state[x5], this.swap(state[x3])));
 
     this.mulInv(state, x4, x5, x6, x7);
 
-    state[x2] = (state[x2] ^ state[x7]) >>> 0;
-    state[x3] = (state[x3] ^ state[x4]) >>> 0;
-    state[x0] = (state[x0] ^ state[x5]) >>> 0;
-    state[x1] = (state[x1] ^ state[x6]) >>> 0;
+    state[x2] = OpCodes.ToUint32(OpCodes.XorN(state[x2], state[x7]));
+    state[x3] = OpCodes.ToUint32(OpCodes.XorN(state[x3], state[x4]));
+    state[x0] = OpCodes.ToUint32(OpCodes.XorN(state[x0], state[x5]));
+    state[x1] = OpCodes.ToUint32(OpCodes.XorN(state[x1], state[x6]));
   }
 
   // Encrypt a 256-bit block
@@ -295,7 +297,7 @@ class SaturninCipher {
 
     // XOR key into state
     for (let i = 0; i < 8; i++) {
-      x[i] = (x[i] ^ this.k[i]) >>> 0;
+      x[i] = OpCodes.ToUint32(OpCodes.XorN(x[i], this.k[i]));
     }
 
     // Perform all encryption rounds (2 rounds per iteration)
@@ -310,9 +312,9 @@ class SaturninCipher {
       this.slice(x);
       this.mds(x, 0, 1, 2, 3, 7, 4, 5, 6);
       this.sliceInverse(x);
-      x[2] = (x[2] ^ rc[rcIdx++]) >>> 0;
+      x[2] = OpCodes.ToUint32(OpCodes.XorN(x[2], rc[rcIdx++]));
       for (let i = 0; i < 8; i++) {
-        x[i] = (x[i] ^ this.k[8 + i]) >>> 0;
+        x[i] = OpCodes.ToUint32(OpCodes.XorN(x[i], this.k[8 + i]));
       }
 
       // Odd round
@@ -324,9 +326,9 @@ class SaturninCipher {
       this.sheet(x);
       this.mds(x, 2, 3, 0, 1, 7, 4, 5, 6);
       this.sheetInverse(x);
-      x[0] = (x[0] ^ rc[rcIdx++]) >>> 0;
+      x[0] = OpCodes.ToUint32(OpCodes.XorN(x[0], rc[rcIdx++]));
       for (let i = 0; i < 8; i++) {
-        x[i] = (x[i] ^ this.k[i]) >>> 0;
+        x[i] = OpCodes.ToUint32(OpCodes.XorN(x[i], this.k[i]));
       }
     }
 
@@ -362,9 +364,9 @@ class SaturninCipher {
     for (let r = 0; r < rounds; r++) {
       // Odd round (reversed)
       for (let i = 0; i < 8; i++) {
-        x[i] = (x[i] ^ this.k[i]) >>> 0;
+        x[i] = OpCodes.ToUint32(OpCodes.XorN(x[i], this.k[i]));
       }
-      x[0] = (x[0] ^ rc[rcIdx + 1]) >>> 0;
+      x[0] = OpCodes.ToUint32(OpCodes.XorN(x[0], rc[rcIdx + 1]));
       this.sheet(x);
       this.mdsInverse(x, 0, 1, 2, 3, 4, 5, 6, 7);
       this.sheetInverse(x);
@@ -376,9 +378,9 @@ class SaturninCipher {
 
       // Even round (reversed)
       for (let i = 0; i < 8; i++) {
-        x[i] = (x[i] ^ this.k[8 + i]) >>> 0;
+        x[i] = OpCodes.ToUint32(OpCodes.XorN(x[i], this.k[8 + i]));
       }
-      x[2] = (x[2] ^ rc[rcIdx]) >>> 0;
+      x[2] = OpCodes.ToUint32(OpCodes.XorN(x[2], rc[rcIdx]));
       this.slice(x);
       this.mdsInverse(x, 2, 3, 0, 1, 4, 5, 6, 7);
       this.sliceInverse(x);
@@ -393,7 +395,7 @@ class SaturninCipher {
 
     // XOR key into state
     for (let i = 0; i < 8; i++) {
-      x[i] = (x[i] ^ this.k[i]) >>> 0;
+      x[i] = OpCodes.ToUint32(OpCodes.XorN(x[i], this.k[i]));
     }
 
     // Store output
@@ -411,7 +413,7 @@ class SaturninCipher {
 // Helper function: XOR two byte arrays with optional offsets
 function xorBytes(dest, src1, src2, len, destOffset = 0, src1Offset = 0, src2Offset = 0) {
   for (let i = 0; i < len; i++) {
-    dest[destOffset + i] = ((src1[src1Offset + i] ^ src2[src2Offset + i]) & 0xFF) >>> 0;
+    dest[destOffset + i] = OpCodes.ToUint32(OpCodes.AndN(OpCodes.XorN(src1[src1Offset + i], src2[src2Offset + i]), 0xFF));
   }
 }
 
@@ -419,7 +421,7 @@ function xorBytes(dest, src1, src2, len, destOffset = 0, src1Offset = 0, src2Off
 function checkTag(plaintext, plaintextLen, tag1, tag2, tagLen) {
   let diff = 0;
   for (let i = 0; i < tagLen; i++) {
-    diff |= tag1[i] ^ tag2[i];
+    diff = OpCodes.OrN(diff, OpCodes.XorN(tag1[i], tag2[i]));
   }
   if (diff !== 0) {
     // Clear plaintext on auth failure
@@ -871,7 +873,7 @@ class SaturninShortInstance extends IAeadInstance {
     // Verify nonce (constant-time)
     let check1 = 0;
     for (let i = 0; i < 16; i++) {
-      check1 |= this._nonce[i] ^ decrypted[i];
+      check1 |= OpCodes.XorN(this._nonce[i], decrypted[i]);
     }
 
     // Find padding position and validate (constant-time)
@@ -879,15 +881,15 @@ class SaturninShortInstance extends IAeadInstance {
     let len = 0;
     for (let index = 15; index >= 0; index--) {
       const temp = decrypted[16 + index];
-      const temp2 = check2 & (-(1 - (((temp ^ 0x80) + 0xFF) >>> 8)));
-      len |= temp2 & index;
+      const temp2 = OpCodes.AndN(check2, (-(1 - (OpCodes.Shr32(OpCodes.XorN(temp, 0x80) + 0xFF, 8)))));
+      len |= OpCodes.AndN(temp2, index);
       check2 &= ~temp2;
-      check1 |= check2 & ((temp + 0xFF) >>> 8);
+      check1 |= OpCodes.AndN(check2, OpCodes.Shr32(temp + 0xFF, 8));
     }
     check1 |= check2;
 
     // check1 is 0 if valid, non-zero if invalid
-    const result = (check1 - 1) >> 8; // -1 if valid, 0 if invalid
+    const result = OpCodes.Shr32(check1 - 1, 8); // -1 if valid, 0 if invalid
 
     if (~result !== 0) {
       throw new Error("Authentication failed: invalid nonce or padding");

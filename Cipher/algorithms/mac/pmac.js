@@ -311,36 +311,36 @@
 
       // Generate Ls[i] = L << i for i = 1..31
       for (let x = 1; x < 32; x++) {
-        const m = this.Ls[x-1][0] >> 7; // Get MSB
+        const m = OpCodes.Shr32(this.Ls[x-1][0], 7); // Get MSB
 
         // Left shift by 1 bit
         for (let y = 0; y < 15; y++) {
-          this.Ls[x][y] = ((this.Ls[x-1][y] << 1) | (this.Ls[x-1][y+1] >> 7)) & 0xFF;
+          this.Ls[x][y] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(this.Ls[x-1][y], 1), OpCodes.Shr32(this.Ls[x-1][y+1], 7)), 0xFF);
         }
-        this.Ls[x][15] = (this.Ls[x-1][15] << 1) & 0xFF;
+        this.Ls[x][15] = OpCodes.AndN(OpCodes.Shl32(this.Ls[x-1][15], 1), 0xFF);
 
         // If MSB was 1, XOR with polynomial
         if (m === 1) {
           for (let y = 0; y < 16; y++) {
-            this.Ls[x][y] ^= poly_mul[y];
+            this.Ls[x][y] = OpCodes.XorN(this.Ls[x][y], poly_mul[y]);
           }
         }
       }
 
       // Generate Lr = L / x (right shift with polynomial)
       this.Lr = new Array(16);
-      const m = L[15] & 1; // Get LSB
+      const m = OpCodes.AndN(L[15], 1); // Get LSB
 
       // Right shift by 1 bit
       for (let x = 15; x > 0; x--) {
-        this.Lr[x] = ((L[x] >> 1) | (L[x-1] << 7)) & 0xFF;
+        this.Lr[x] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shr32(L[x], 1), OpCodes.Shl32(L[x-1], 7)), 0xFF);
       }
-      this.Lr[0] = L[0] >> 1;
+      this.Lr[0] = OpCodes.Shr32(L[0], 1);
 
       // If LSB was 1, XOR with division polynomial
       if (m === 1) {
         for (let x = 0; x < 16; x++) {
-          this.Lr[x] ^= poly_div[x];
+          this.Lr[x] = OpCodes.XorN(this.Lr[x], poly_div[x]);
         }
       }
     }
@@ -352,17 +352,17 @@
 
       // Li ^= Ls[y]
       for (let x = 0; x < this.blockLen; x++) {
-        this.Li[x] ^= this.Ls[y][x];
+        this.Li[x] = OpCodes.XorN(this.Li[x], this.Ls[y][x]);
       }
     }
 
     // Number of trailing zeros (NTZ)
     _pmac_ntz(x) {
-      x &= 0xFFFFFFFF;
+      x = OpCodes.AndN(x, 0xFFFFFFFF);
       let c = 0;
-      while ((x & 1) === 0) {
+      while (OpCodes.AndN(x, 1) === 0) {
         c++;
-        x >>= 1;
+        x = OpCodes.Shr32(x, 1);
       }
       return c;
     }
@@ -399,15 +399,15 @@
           }
 
           // XOR with Rcon
-          temp[0] ^= this.RCON[Math.floor(i/Nk) - 1];
+          temp[0] = OpCodes.XorN(temp[0], this.RCON[Math.floor(i/Nk) - 1]);
         }
 
         // w[i] = w[i-Nk] XOR temp
         w[i] = [
-          w[i-Nk][0] ^ temp[0],
-          w[i-Nk][1] ^ temp[1],
-          w[i-Nk][2] ^ temp[2],
-          w[i-Nk][3] ^ temp[3]
+          OpCodes.XorN(w[i-Nk][0], temp[0]),
+          OpCodes.XorN(w[i-Nk][1], temp[1]),
+          OpCodes.XorN(w[i-Nk][2], temp[2]),
+          OpCodes.XorN(w[i-Nk][3], temp[3])
         ];
       }
 
@@ -452,7 +452,7 @@
 
     _addRoundKey(state, roundKey) {
       for (let i = 0; i < 16; i++) {
-        state[i] ^= roundKey[i];
+        state[i] = OpCodes.XorN(state[i], roundKey[i]);
       }
     }
 
@@ -492,10 +492,10 @@
         const c2 = state[col * 4 + 2];
         const c3 = state[col * 4 + 3];
 
-        state[col * 4] = (OpCodes.GF256Mul(c0, 2) ^ OpCodes.GF256Mul(c1, 3) ^ c2 ^ c3) & 0xFF;
-        state[col * 4 + 1] = (c0 ^ OpCodes.GF256Mul(c1, 2) ^ OpCodes.GF256Mul(c2, 3) ^ c3) & 0xFF;
-        state[col * 4 + 2] = (c0 ^ c1 ^ OpCodes.GF256Mul(c2, 2) ^ OpCodes.GF256Mul(c3, 3)) & 0xFF;
-        state[col * 4 + 3] = (OpCodes.GF256Mul(c0, 3) ^ c1 ^ c2 ^ OpCodes.GF256Mul(c3, 2)) & 0xFF;
+        state[col * 4] = OpCodes.AndN(OpCodes.XorN(OpCodes.GF256Mul(c0, 2), OpCodes.XorN(OpCodes.GF256Mul(c1, 3), OpCodes.XorN(c2, c3))), 0xFF);
+        state[col * 4 + 1] = OpCodes.AndN(OpCodes.XorN(c0, OpCodes.XorN(OpCodes.GF256Mul(c1, 2), OpCodes.XorN(OpCodes.GF256Mul(c2, 3), c3))), 0xFF);
+        state[col * 4 + 2] = OpCodes.AndN(OpCodes.XorN(c0, OpCodes.XorN(c1, OpCodes.XorN(OpCodes.GF256Mul(c2, 2), OpCodes.GF256Mul(c3, 3)))), 0xFF);
+        state[col * 4 + 3] = OpCodes.AndN(OpCodes.XorN(OpCodes.GF256Mul(c0, 3), OpCodes.XorN(c1, OpCodes.XorN(c2, OpCodes.GF256Mul(c3, 2)))), 0xFF);
       }
     }
 
@@ -519,7 +519,7 @@
         // Z = Li XOR block
         const Z = new Array(this.blockLen);
         for (let x = 0; x < this.blockLen; x++) {
-          Z[x] = this.Li[x] ^ this.inputBuffer[offset + x];
+          Z[x] = OpCodes.XorN(this.Li[x], this.inputBuffer[offset + x]);
         }
 
         // Encrypt Z
@@ -527,7 +527,7 @@
 
         // checksum ^= E(Z)
         for (let x = 0; x < this.blockLen; x++) {
-          this.checksum[x] ^= encZ[x];
+          this.checksum[x] = OpCodes.XorN(this.checksum[x], encZ[x]);
         }
 
         offset += this.blockLen;
@@ -539,15 +539,15 @@
       if (remaining === this.blockLen) {
         // Final block is complete - XOR block with checksum and Lr
         for (let x = 0; x < this.blockLen; x++) {
-          this.checksum[x] ^= this.inputBuffer[offset + x] ^ this.Lr[x];
+          this.checksum[x] = OpCodes.XorN(this.checksum[x], OpCodes.XorN(this.inputBuffer[offset + x], this.Lr[x]));
         }
       } else {
         // Final block is incomplete (or empty message)
         // XOR partial bytes then add 0x80 padding
         for (let x = 0; x < remaining; x++) {
-          this.checksum[x] ^= this.inputBuffer[offset + x];
+          this.checksum[x] = OpCodes.XorN(this.checksum[x], this.inputBuffer[offset + x]);
         }
-        this.checksum[remaining] ^= 0x80;
+        this.checksum[remaining] = OpCodes.XorN(this.checksum[remaining], 0x80);
       }
 
       // Final encryption: MAC = E(checksum)

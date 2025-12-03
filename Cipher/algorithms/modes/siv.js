@@ -273,9 +273,7 @@
 
         // XOR with 2 * d (doubling in GF(2^128))
         d = this._gfDouble(d);
-        for (let j = 0; j < blockSize; j++) {
-          d[j] ^= cmacResult[j];
-        }
+        d = OpCodes.XorArrays(d, cmacResult);
       }
 
       const lastString = strings[strings.length - 1];
@@ -287,7 +285,7 @@
         const xorpos = lastString.length - blockSize;
 
         for (let j = 0; j < xorlen; j++) {
-          d[j] ^= lastString[xorpos + j];
+          d[j] = OpCodes.XorN(d[j], lastString[xorpos + j]);
         }
 
         // Append remaining part and compute CMAC
@@ -307,9 +305,7 @@
           paddedLast.push(0x00);
         }
 
-        for (let j = 0; j < blockSize; j++) {
-          d[j] ^= paddedLast[j];
-        }
+        d = OpCodes.XorArrays(d, paddedLast);
 
         return this._cmac(d);
       }
@@ -329,9 +325,7 @@
         const block = data.slice(i, i + blockSize);
 
         // XOR with previous MAC
-        for (let j = 0; j < blockSize; j++) {
-          mac[j] ^= block[j];
-        }
+        mac = OpCodes.XorArrays(mac, block);
 
         // Encrypt using MAC key
         const cipher = this.blockCipher.algorithm.CreateInstance(false);
@@ -352,9 +346,7 @@
         }
 
         // XOR and encrypt
-        for (let j = 0; j < blockSize; j++) {
-          mac[j] ^= paddedBlock[j];
-        }
+        mac = OpCodes.XorArrays(mac, paddedBlock);
 
         const cipher = this.blockCipher.algorithm.CreateInstance(false);
         cipher.key = this.key1;
@@ -377,7 +369,7 @@
 
       // Clear the most significant bit of IV for CTR mode
       let counter = [...iv];
-      counter[0] &= 0x7F;
+      counter[0] = OpCodes.AndN(counter[0], 0x7F);
 
       for (let i = 0; i < data.length; i += blockSize) {
         const remainingBytes = Math.min(blockSize, data.length - i);
@@ -391,7 +383,7 @@
 
         // XOR with data
         for (let j = 0; j < remainingBytes; j++) {
-          output.push(inputBlock[j] ^ keystream[j]);
+          output.push(OpCodes.XorN(inputBlock[j], keystream[j]));
         }
 
         // Increment counter
@@ -412,14 +404,14 @@
 
       // Process from right to left
       for (let i = block.length - 1; i >= 0; i--) {
-        const newCarry = (block[i] & 0x80) ? 1 : 0;
-        result[i] = ((block[i] << 1) | carry) & 0xFF;
+        const newCarry = OpCodes.AndN(block[i], 0x80) ? 1 : 0;
+        result[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(block[i], 1), carry), 0xFF);
         carry = newCarry;
       }
 
       // XOR with reduction polynomial if carry
       if (carry) {
-        result[result.length - 1] ^= 0x87; // x^128 + x^7 + x^2 + x + 1
+        result[result.length - 1] = OpCodes.XorN(result[result.length - 1], 0x87); // x^128 + x^7 + x^2 + x + 1
       }
 
       return result;
@@ -431,7 +423,7 @@
      */
     _incrementCounter(counter) {
       for (let i = counter.length - 1; i >= 0; i--) {
-        counter[i] = (counter[i] + 1) & 0xFF;
+        counter[i] = OpCodes.AndN(counter[i] + 1, 0xFF);
         if (counter[i] !== 0) break; // No carry
       }
     }

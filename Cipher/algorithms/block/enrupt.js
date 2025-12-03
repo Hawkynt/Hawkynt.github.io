@@ -318,14 +318,14 @@
 
       // Unbalanced Feistel network structure
       for (let round = 0; round < rounds; round++) {
-        sum = (sum + this.DELTA) >>> 0;
-        const e = (sum >>> 2) & 3;
+        sum = OpCodes.Shr32((sum + this.DELTA), 0);
+        const e = OpCodes.AndN(OpCodes.Shr32(sum, 2), 3);
 
         for (let p = 0; p < n; p++) {
           const y = words[(p + 1) % n];
           // EnRUPT uses modified MX calculation with unbalanced Feistel
           const mx = this._calculateEnRUPT_MX(z, y, sum, k[p % keyLen], p, e);
-          words[p] = (words[p] + mx) >>> 0;
+          words[p] = OpCodes.Shr32((words[p] + mx), 0);
           z = words[p];
         }
       }
@@ -344,22 +344,22 @@
 
       // EnRUPT round calculation: 8 * plaintext_words + 4 * key_words
       const rounds = 8 * n + 4 * keyLen;
-      let sum = (rounds * this.DELTA) >>> 0;
+      let sum = OpCodes.Shr32((rounds * this.DELTA), 0);
       let y = words[0];
 
       // Reverse unbalanced Feistel network
       for (let round = 0; round < rounds; round++) {
-        const e = (sum >>> 2) & 3;
+        const e = OpCodes.AndN(OpCodes.Shr32(sum, 2), 3);
 
         for (let p = n - 1; p >= 0; p--) {
           const z = words[p > 0 ? p - 1 : n - 1];
           // EnRUPT uses modified MX calculation with unbalanced Feistel
           const mx = this._calculateEnRUPT_MX(z, y, sum, k[p % keyLen], p, e);
-          words[p] = (words[p] - mx) >>> 0;
+          words[p] = OpCodes.Shr32((words[p] - mx), 0);
           y = words[p];
         }
 
-        sum = (sum - this.DELTA) >>> 0;
+        sum = OpCodes.Shr32((sum - this.DELTA), 0);
       }
 
       return words;
@@ -375,20 +375,20 @@
       // operations like rotations, packing, and array operations.
 
       // Part 1: Rotation-based diffusion (unbalanced left shift dominance)
-      const part1 = ((z >>> 5) ^ (y << 2)) >>> 0;
-      const part2 = ((y >>> 3) ^ (z << 4)) >>> 0;
+      const part1 = OpCodes.Shr32(OpCodes.XorN(OpCodes.Shr32(z, 5), OpCodes.Shl32(y, 2)), 0);
+      const part2 = OpCodes.Shr32(OpCodes.XorN(OpCodes.Shr32(y, 3), OpCodes.Shl32(z, 4)), 0);
 
       // Part 2: Sum and key mixing with ADD operations
-      const part3 = (sum ^ y) >>> 0;
-      const part4 = (key ^ z) >>> 0;
+      const part3 = OpCodes.Shr32(OpCodes.XorN(sum, y), 0);
+      const part4 = OpCodes.Shr32(OpCodes.XorN(key, z), 0);
 
       // EnRUPT combines with ADD instead of pure XOR for unbalanced Feistel
       // This creates the "unbalanced" nature compared to XXTEA
-      const combined1 = (part1 + part2) >>> 0;
-      const combined2 = (part3 + part4) >>> 0;
+      const combined1 = OpCodes.Shr32((part1 + part2), 0);
+      const combined2 = OpCodes.Shr32((part3 + part4), 0);
 
       // Final mixing with XOR
-      return (combined1 ^ combined2) >>> 0;
+      return OpCodes.Shr32(OpCodes.XorN(combined1, combined2), 0);
     }
   }
 

@@ -270,15 +270,15 @@
 
         // Convert keystream word to bytes (big-endian)
         const keystreamBytes = [
-          (keystreamWord >>> 24) & 0xFF,
-          (keystreamWord >>> 16) & 0xFF,
-          (keystreamWord >>> 8) & 0xFF,
-          keystreamWord & 0xFF
+          OpCodes.AndN(OpCodes.Shr32(keystreamWord, 24), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(keystreamWord, 16), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(keystreamWord, 8), 0xFF),
+          OpCodes.AndN(keystreamWord, 0xFF)
         ];
 
         // XOR with input data
         for (let j = 0; j < 4 && i + j < this.inputBuffer.length; j++) {
-          output.push(this.inputBuffer[i + j] ^ keystreamBytes[j]);
+          output.push(OpCodes.XorN(this.inputBuffer[i + j], keystreamBytes[j]));
         }
       }
 
@@ -299,11 +299,11 @@
       // Initialize LFSR according to SNOW 3G specification
       for (let i = 0; i < 16; i++) {
         if (i < 4) {
-          this.LFSR[i] = K[3 - i] ^ IV[3 - i];
+          this.LFSR[i] = OpCodes.XorN(K[3 - i], IV[3 - i]);
         } else if (i < 8) {
           this.LFSR[i] = K[11 - i];
         } else if (i < 12) {
-          this.LFSR[i] = K[7 - (i - 8)] ^ IV[7 - (i - 8)];
+          this.LFSR[i] = OpCodes.XorN(K[7 - (i - 8)], IV[7 - (i - 8)]);
         } else {
           this.LFSR[i] = K[19 - i];
         }
@@ -328,7 +328,7 @@
       const words = [];
       for (let i = 0; i < bytes.length; i += 4) {
         const word = OpCodes.Pack32BE(bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]);
-        words.push(word >>> 0); // Ensure unsigned
+        words.push(OpCodes.ToUint32(word));
       }
       return words;
     }
@@ -337,16 +337,16 @@
     _generateKeyword() {
       const F = this._clockFSM();
       this._clockLFSR(0); // Clock LFSR with 0 during keystream generation
-      return (F ^ this.LFSR[0]) >>> 0;
+      return OpCodes.XorN(F, this.LFSR[0]);
     }
 
     // FSM function
     _clockFSM() {
-      const F = (this.LFSR[15] + this.R1) >>> 0;
-      const r = (this.R2 + (this.R3 ^ this.LFSR[5])) >>> 0;
+      const F = OpCodes.ToUint32(this.LFSR[15] + this.R1);
+      const r = OpCodes.ToUint32(this.R2 + OpCodes.XorN(this.R3, this.LFSR[5]));
 
-      this.R3 = this._S2_T(this.R2) >>> 0;
-      this.R2 = this._S1_T(this.R1) >>> 0;
+      this.R3 = OpCodes.ToUint32(this._S2_T(this.R2));
+      this.R2 = OpCodes.ToUint32(this._S1_T(this.R1));
       this.R1 = r;
 
       return F;
@@ -354,7 +354,18 @@
 
     // LFSR function
     _clockLFSR(F) {
-      const v = (this.LFSR[0] ^ this._mulAlpha(this.LFSR[2]) ^ this.LFSR[11] ^ this._mulAlpha(this.LFSR[15]) ^ F) >>> 0;
+      const v = OpCodes.ToUint32(
+        OpCodes.XorN(
+          OpCodes.XorN(
+            OpCodes.XorN(
+              OpCodes.XorN(this.LFSR[0], this._mulAlpha(this.LFSR[2])),
+              this.LFSR[11]
+            ),
+            this._mulAlpha(this.LFSR[15])
+          ),
+          F
+        )
+      );
 
       // Shift LFSR
       for (let i = 0; i < 15; i++) {
@@ -365,23 +376,39 @@
 
     // S-box substitution S1
     _S1_T(w) {
-      return ((SNOW3GAlgorithm.S1[(w >>> 24) & 0xFF] << 24) |
-              (SNOW3GAlgorithm.S1[(w >>> 16) & 0xFF] << 16) |
-              (SNOW3GAlgorithm.S1[(w >>> 8) & 0xFF] << 8) |
-              (SNOW3GAlgorithm.S1[w & 0xFF])) >>> 0;
+      return OpCodes.ToUint32(
+        OpCodes.OrN(
+          OpCodes.OrN(
+            OpCodes.OrN(
+              OpCodes.Shl32(SNOW3GAlgorithm.S1[OpCodes.AndN(OpCodes.Shr32(w, 24), 0xFF)], 24),
+              OpCodes.Shl32(SNOW3GAlgorithm.S1[OpCodes.AndN(OpCodes.Shr32(w, 16), 0xFF)], 16)
+            ),
+            OpCodes.Shl32(SNOW3GAlgorithm.S1[OpCodes.AndN(OpCodes.Shr32(w, 8), 0xFF)], 8)
+          ),
+          SNOW3GAlgorithm.S1[OpCodes.AndN(w, 0xFF)]
+        )
+      );
     }
 
     // S-box substitution S2
     _S2_T(w) {
-      return ((SNOW3GAlgorithm.S2[(w >>> 24) & 0xFF] << 24) |
-              (SNOW3GAlgorithm.S2[(w >>> 16) & 0xFF] << 16) |
-              (SNOW3GAlgorithm.S2[(w >>> 8) & 0xFF] << 8) |
-              (SNOW3GAlgorithm.S2[w & 0xFF])) >>> 0;
+      return OpCodes.ToUint32(
+        OpCodes.OrN(
+          OpCodes.OrN(
+            OpCodes.OrN(
+              OpCodes.Shl32(SNOW3GAlgorithm.S2[OpCodes.AndN(OpCodes.Shr32(w, 24), 0xFF)], 24),
+              OpCodes.Shl32(SNOW3GAlgorithm.S2[OpCodes.AndN(OpCodes.Shr32(w, 16), 0xFF)], 16)
+            ),
+            OpCodes.Shl32(SNOW3GAlgorithm.S2[OpCodes.AndN(OpCodes.Shr32(w, 8), 0xFF)], 8)
+          ),
+          SNOW3GAlgorithm.S2[OpCodes.AndN(w, 0xFF)]
+        )
+      );
     }
 
     // Multiplication by alpha in GF(2^32)
     _mulAlpha(w) {
-      return ((w << 8) | (w >>> 24)) >>> 0;
+      return OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(w, 8), OpCodes.Shr32(w, 24)));
     }
   }
 

@@ -207,26 +207,27 @@
 
   // SEED G-function - uses all four S-boxes
   function G(x) {
-    const x_masked = x >>> 0; // Ensure unsigned 32-bit
-    return (
-      SS0[x_masked & 0xff] ^
-      SS1[(x_masked >>> 8) & 0xff] ^
-      SS2[(x_masked >>> 16) & 0xff] ^
-      SS3[(x_masked >>> 24) & 0xff]
-    ) >>> 0;
+    const x_masked = OpCodes.ToUint32(x);
+    return OpCodes.ToUint32(
+      OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
+        SS0[OpCodes.AndN(x_masked, 0xff)],
+        SS1[OpCodes.AndN(OpCodes.Shr32(x_masked, 8), 0xff)]),
+        SS2[OpCodes.AndN(OpCodes.Shr32(x_masked, 16), 0xff)]),
+        SS3[OpCodes.AndN(OpCodes.Shr32(x_masked, 24), 0xff)])
+    );
   }
 
   // SEED F-function - processes 64-bit data with two key words
   // Takes two 32-bit key words and a 64-bit value as [high32, low32] array
   function F(ki0, ki1, rHigh, rLow) {
-    const r0 = (ki0 ^ rHigh) >>> 0;
-    const r1 = (ki1 ^ rLow) >>> 0;
+    const r0 = OpCodes.ToUint32(OpCodes.XorN(ki0, rHigh));
+    const r1 = OpCodes.ToUint32(OpCodes.XorN(ki1, rLow));
 
-    const t0 = G((r0 ^ r1) >>> 0);
-    const t1 = G((r0 + t0) >>> 0);
+    const t0 = G(OpCodes.ToUint32(OpCodes.XorN(r0, r1)));
+    const t1 = G(OpCodes.ToUint32(r0 + t0));
 
-    const rd1 = G((t1 + t0) >>> 0);
-    const rd0 = (rd1 + t1) >>> 0;
+    const rd1 = G(OpCodes.ToUint32(t1 + t0));
+    const rd0 = OpCodes.ToUint32(rd1 + t1);
 
     return [rd0, rd1];
   }
@@ -249,19 +250,19 @@
       let KC_i, keyt;
 
       KC_i = KC[i];
-      key[2 * i + 0] = G((key0 + key2 - KC_i) >>> 0);
-      key[2 * i + 1] = G((key1 - key3 + KC_i) >>> 0);
+      key[2 * i + 0] = G(OpCodes.ToUint32(key0 + key2 - KC_i));
+      key[2 * i + 1] = G(OpCodes.ToUint32(key1 - key3 + KC_i));
 
-      keyt = (key0 >>> 8) | (key1 << 24);
-      key1 = (key1 >>> 8) | (key0 << 24);
+      keyt = OpCodes.OrN(OpCodes.Shr32(key0, 8), OpCodes.Shl32(key1, 24));
+      key1 = OpCodes.OrN(OpCodes.Shr32(key1, 8), OpCodes.Shl32(key0, 24));
       key0 = keyt;
 
       KC_i = KC[i + 1];
-      key[2 * i + 2] = G((key0 + key2 - KC_i) >>> 0);
-      key[2 * i + 3] = G((key1 - key3 + KC_i) >>> 0);
+      key[2 * i + 2] = G(OpCodes.ToUint32(key0 + key2 - KC_i));
+      key[2 * i + 3] = G(OpCodes.ToUint32(key1 - key3 + KC_i));
 
-      keyt = (key2 << 8) | (key3 >>> 24);
-      key3 = (key3 << 8) | (key2 >>> 24);
+      keyt = OpCodes.OrN(OpCodes.Shl32(key2, 8), OpCodes.Shr32(key3, 24));
+      key3 = OpCodes.OrN(OpCodes.Shl32(key3, 8), OpCodes.Shr32(key2, 24));
       key2 = keyt;
     }
 
@@ -475,15 +476,15 @@
         const w2 = this.workingKey[i + 2];
         const w3 = this.workingKey[i + 3];
 
-        // l ^= F(w0, w1, r)
+        // l XOR equals F(w0, w1, r)
         const [f1High, f1Low] = F(w0, w1, rHigh, rLow);
-        lHigh ^= f1High;
-        lLow ^= f1Low;
-        
-        // r ^= F(w2, w3, l)
+        lHigh = OpCodes.XorN(lHigh, f1High);
+        lLow = OpCodes.XorN(lLow, f1Low);
+
+        // r XOR equals F(w2, w3, l)
         const [f2High, f2Low] = F(w2, w3, lHigh, lLow);
-        rHigh ^= f2High;
-        rLow ^= f2Low;
+        rHigh = OpCodes.XorN(rHigh, f2High);
+        rLow = OpCodes.XorN(rLow, f2Low);
       }
 
       // Convert back to bytes (swap l and r for final output)
@@ -514,15 +515,15 @@
         const w2 = this.workingKey[i + 2];
         const w3 = this.workingKey[i + 3];
 
-        // l ^= F(w2, w3, r)
+        // l XOR equals F(w2, w3, r)
         const [f1High, f1Low] = F(w2, w3, rHigh, rLow);
-        lHigh ^= f1High;
-        lLow ^= f1Low;
-        
-        // r ^= F(w0, w1, l)
+        lHigh = OpCodes.XorN(lHigh, f1High);
+        lLow = OpCodes.XorN(lLow, f1Low);
+
+        // r XOR equals F(w0, w1, l)
         const [f2High, f2Low] = F(w0, w1, lHigh, lLow);
-        rHigh ^= f2High;
-        rLow ^= f2Low;
+        rHigh = OpCodes.XorN(rHigh, f2High);
+        rLow = OpCodes.XorN(rLow, f2Low);
       }
 
       // Convert back to bytes (swap l and r for final output)

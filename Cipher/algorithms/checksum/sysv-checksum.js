@@ -132,7 +132,7 @@
       // Sum all bytes, keeping 16-bit result
       const mask16 = OpCodes.BitMask(16);
       for (let i = 0; i < data.length; i++) {
-        this.sum = (this.sum + data[i]) & mask16;
+        this.sum = OpCodes.AndN(this.sum + data[i], mask16);
       }
     }
 

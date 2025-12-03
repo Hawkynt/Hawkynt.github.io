@@ -238,7 +238,7 @@
       const result = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();
-        result.push(this.inputBuffer[i] ^ keystreamByte);
+        result.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer for next operation
@@ -252,7 +252,7 @@
         const byteIndex = Math.floor(i / 8);
         const bitIndex = i % 8;
         if (byteIndex < this._key.length) {
-          this.state[i] = (this._key[byteIndex] >> bitIndex) & 1;
+          this.state[i] = OpCodes.AndN(OpCodes.Shr32(this._key[byteIndex], bitIndex), 1);
         } else {
           this.state[i] = 0;
         }
@@ -264,7 +264,7 @@
       // Calculate feedback using linear polynomial
       let feedback = 0;
       for (let i = 0; i < this.algorithm.FEEDBACK_TAPS.length; i++) {
-        feedback ^= this.state[this.algorithm.FEEDBACK_TAPS[i]];
+        feedback = OpCodes.XorN(feedback, this.state[this.algorithm.FEEDBACK_TAPS[i]]);
       }
 
       // Shift LFSR
@@ -290,28 +290,28 @@
 
       // Linear terms
       for (let i = 0; i < filterBits.length; i++) {
-        output ^= filterBits[i];
+        output = OpCodes.XorN(output, filterBits[i]);
       }
 
       // Quadratic terms (degree 2)
-      output ^= (filterBits[0] & filterBits[1]);
-      output ^= (filterBits[2] & filterBits[3]);
-      output ^= (filterBits[4] & filterBits[5]);
-      output ^= (filterBits[6] & filterBits[7]);
-      output ^= (filterBits[8] & filterBits[9]);
-      output ^= (filterBits[10] & filterBits[11]);
-      output ^= (filterBits[12] & filterBits[13]);
-      output ^= (filterBits[14] & filterBits[15]);
-      output ^= (filterBits[16] & filterBits[17]);
-      output ^= (filterBits[18] & filterBits[19]);
+      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[0], filterBits[1]));
+      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[2], filterBits[3]));
+      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[4], filterBits[5]));
+      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[6], filterBits[7]));
+      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[8], filterBits[9]));
+      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[10], filterBits[11]));
+      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[12], filterBits[13]));
+      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[14], filterBits[15]));
+      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[16], filterBits[17]));
+      output = OpCodes.XorN(output, OpCodes.AndN(filterBits[18], filterBits[19]));
 
       // Some cubic terms (degree 3) - simplified
       if (filterBits.length >= 6) {
-        output ^= (filterBits[0] & filterBits[1] & filterBits[2]);
-        output ^= (filterBits[3] & filterBits[4] & filterBits[5]);
+        output = OpCodes.XorN(output, OpCodes.AndN(OpCodes.AndN(filterBits[0], filterBits[1]), filterBits[2]));
+        output = OpCodes.XorN(output, OpCodes.AndN(OpCodes.AndN(filterBits[3], filterBits[4]), filterBits[5]));
       }
 
-      return output & 1;
+      return OpCodes.AndN(output, 1);
     }
 
     _generateKeystreamBit() {
@@ -325,7 +325,7 @@
 
       for (let bit = 0; bit < 8; bit++) {
         const keystreamBit = this._generateKeystreamBit();
-        keystreamByte |= (keystreamBit << bit);
+        keystreamByte = OpCodes.OrN(keystreamByte, OpCodes.Shl32(keystreamBit, bit));
       }
 
       return keystreamByte;

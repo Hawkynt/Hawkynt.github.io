@@ -36,13 +36,13 @@
   // ===== SHARED LFSR HELPERS =====
 
   function parity(x) {
-    return OpCodes.PopCountFast(x) & 1;
+    return OpCodes.AndN(OpCodes.PopCountFast(x), 1);
   }
 
   function clockone(reg, mask, taps) {
-    const t = reg & taps;
-    reg = (reg << 1) & mask;
-    reg |= parity(t);
+    const t = OpCodes.AndN(reg, taps);
+    reg = OpCodes.AndN(OpCodes.Shl32(reg, 1), mask);
+    reg = OpCodes.OrN(reg, parity(t));
     return reg;
   }
 
@@ -213,7 +213,7 @@
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();
-        output.push(this.inputBuffer[i] ^ keystreamByte);
+        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
       }
 
       this.inputBuffer = [];
@@ -234,10 +234,10 @@
 
         const byteIdx = Math.floor(i / 8);
         const bitIdx = i % 8;
-        if (this._key[byteIdx] & (1 << bitIdx)) {
-          this._lfsr1 ^= 1;
-          this._lfsr2 ^= 1;
-          this._lfsr3 ^= 1;
+        if (OpCodes.AndN(this._key[byteIdx], OpCodes.Shl32(1, bitIdx))) {
+          this._lfsr1 = OpCodes.XorN(this._lfsr1, 1);
+          this._lfsr2 = OpCodes.XorN(this._lfsr2, 1);
+          this._lfsr3 = OpCodes.XorN(this._lfsr3, 1);
         }
       }
 
@@ -245,10 +245,10 @@
       for (let i = 0; i < 22; i++) {
         this._clockAllRegisters();
 
-        if (this._frameNumber & (1 << i)) {
-          this._lfsr1 ^= 1;
-          this._lfsr2 ^= 1;
-          this._lfsr3 ^= 1;
+        if (OpCodes.AndN(this._frameNumber, OpCodes.Shl32(1, i))) {
+          this._lfsr1 = OpCodes.XorN(this._lfsr1, 1);
+          this._lfsr2 = OpCodes.XorN(this._lfsr2, 1);
+          this._lfsr3 = OpCodes.XorN(this._lfsr3, 1);
         }
       }
 
@@ -267,9 +267,9 @@
     }
 
     _clockRegisters() {
-      const c1 = (this._lfsr1 & this.R1MID) !== 0 ? 1 : 0;
-      const c2 = (this._lfsr2 & this.R2MID) !== 0 ? 1 : 0;
-      const c3 = (this._lfsr3 & this.R3MID) !== 0 ? 1 : 0;
+      const c1 = OpCodes.AndN(this._lfsr1, this.R1MID) !== 0 ? 1 : 0;
+      const c2 = OpCodes.AndN(this._lfsr2, this.R2MID) !== 0 ? 1 : 0;
+      const c3 = OpCodes.AndN(this._lfsr3, this.R3MID) !== 0 ? 1 : 0;
 
       const maj = (c1 + c2 + c3) >= 2 ? 1 : 0;
 
@@ -287,9 +287,13 @@
     _generateKeystreamBit() {
       this._clockRegisters();
 
-      return ((this._lfsr1 & this.R1OUT) ? 1 : 0) ^
-             ((this._lfsr2 & this.R2OUT) ? 1 : 0) ^
-             ((this._lfsr3 & this.R3OUT) ? 1 : 0);
+      return OpCodes.XorN(
+        OpCodes.XorN(
+          (OpCodes.AndN(this._lfsr1, this.R1OUT) ? 1 : 0),
+          (OpCodes.AndN(this._lfsr2, this.R2OUT) ? 1 : 0)
+        ),
+        (OpCodes.AndN(this._lfsr3, this.R3OUT) ? 1 : 0)
+      );
     }
 
     _generateKeystreamByte() {
@@ -472,7 +476,7 @@
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();
-        output.push(this.inputBuffer[i] ^ keystreamByte);
+        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
       }
 
       this.inputBuffer = [];
@@ -494,11 +498,11 @@
 
         const byteIdx = Math.floor(i / 8);
         const bitIdx = i % 8;
-        if (this._key[byteIdx] & (1 << bitIdx)) {
-          this._lfsr1 ^= 1;
-          this._lfsr2 ^= 1;
-          this._lfsr3 ^= 1;
-          this._lfsr4 ^= 1;
+        if (OpCodes.AndN(this._key[byteIdx], OpCodes.Shl32(1, bitIdx))) {
+          this._lfsr1 = OpCodes.XorN(this._lfsr1, 1);
+          this._lfsr2 = OpCodes.XorN(this._lfsr2, 1);
+          this._lfsr3 = OpCodes.XorN(this._lfsr3, 1);
+          this._lfsr4 = OpCodes.XorN(this._lfsr4, 1);
         }
       }
 
@@ -506,11 +510,11 @@
       for (let i = 0; i < 22; i++) {
         this._clockAllRegisters();
 
-        if (this._frameNumber & (1 << i)) {
-          this._lfsr1 ^= 1;
-          this._lfsr2 ^= 1;
-          this._lfsr3 ^= 1;
-          this._lfsr4 ^= 1;
+        if (OpCodes.AndN(this._frameNumber, OpCodes.Shl32(1, i))) {
+          this._lfsr1 = OpCodes.XorN(this._lfsr1, 1);
+          this._lfsr2 = OpCodes.XorN(this._lfsr2, 1);
+          this._lfsr3 = OpCodes.XorN(this._lfsr3, 1);
+          this._lfsr4 = OpCodes.XorN(this._lfsr4, 1);
         }
       }
 
@@ -531,8 +535,8 @@
 
     _clockRegisters() {
       // A5/2 uses LFSR4 for clocking control
-      const c4_0 = (this._lfsr4 & 0x01) !== 0 ? 1 : 0;
-      const c4_1 = (this._lfsr4 & 0x02) !== 0 ? 1 : 0;
+      const c4_0 = OpCodes.AndN(this._lfsr4, 0x01) !== 0 ? 1 : 0;
+      const c4_1 = OpCodes.AndN(this._lfsr4, 0x02) !== 0 ? 1 : 0;
 
       // Clock LFSR4 first
       this._lfsr4 = clockone(this._lfsr4, this.R4MASK, this.R4TAPS);
@@ -557,9 +561,13 @@
     _generateKeystreamBit() {
       this._clockRegisters();
 
-      return ((this._lfsr1 & this.R1OUT) ? 1 : 0) ^
-             ((this._lfsr2 & this.R2OUT) ? 1 : 0) ^
-             ((this._lfsr3 & this.R3OUT) ? 1 : 0);
+      return OpCodes.XorN(
+        OpCodes.XorN(
+          (OpCodes.AndN(this._lfsr1, this.R1OUT) ? 1 : 0),
+          (OpCodes.AndN(this._lfsr2, this.R2OUT) ? 1 : 0)
+        ),
+        (OpCodes.AndN(this._lfsr3, this.R3OUT) ? 1 : 0)
+      );
     }
 
     _generateKeystreamByte() {
@@ -765,7 +773,7 @@
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._getKeystreamByte();
-        output.push(this.inputBuffer[i] ^ keystreamByte);
+        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
       }
 
       this.inputBuffer = [];
@@ -773,16 +781,16 @@
     }
 
     _kasumiF1(input, key) {
-      let left = (input >>> 7) & 0x1FF;
-      let right = input & 0x7F;
+      let left = OpCodes.AndN(OpCodes.Shr32(input, 7), 0x1FF);
+      let right = OpCodes.AndN(input, 0x7F);
 
       left = S9[left % S9.length];
       right = S7[right];
 
-      left ^= (key >>> 7) & 0x1FF;
-      right ^= key & 0x7F;
+      left = OpCodes.XorN(left, OpCodes.AndN(OpCodes.Shr32(key, 7), 0x1FF));
+      right = OpCodes.XorN(right, OpCodes.AndN(key, 0x7F));
 
-      return ((left << 7) | right) & 0xFFFF;
+      return OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(left, 7), right), 0xFFFF);
     }
 
     _kasumiF0(left, right, roundKey) {
@@ -790,15 +798,15 @@
       const k2 = OpCodes.Pack32BE(roundKey[4], roundKey[5], roundKey[6], roundKey[7]);
 
       let temp = left;
-      let fi1_in = (temp >>> 16) & 0xFFFF;
-      fi1_in = this._kasumiF1(fi1_in, k1 & 0xFFFF);
+      let fi1_in = OpCodes.AndN(OpCodes.Shr32(temp, 16), 0xFFFF);
+      fi1_in = this._kasumiF1(fi1_in, OpCodes.AndN(k1, 0xFFFF));
 
-      let fi2_in = temp & 0xFFFF;
-      fi2_in = this._kasumiF1(fi2_in, (k1 >>> 16) & 0xFFFF);
+      let fi2_in = OpCodes.AndN(temp, 0xFFFF);
+      fi2_in = this._kasumiF1(fi2_in, OpCodes.AndN(OpCodes.Shr32(k1, 16), 0xFFFF));
 
-      temp = ((fi1_in << 16) | fi2_in) ^ k2;
+      temp = OpCodes.XorN(OpCodes.OrN(OpCodes.Shl32(fi1_in, 16), fi2_in), k2);
 
-      return { left: right, right: left ^ temp };
+      return { left: right, right: OpCodes.XorN(left, temp) };
     }
 
     _kasumiEncrypt(plaintext) {
@@ -826,12 +834,12 @@
       const input = new Array(8).fill(0);
       const blockCount = Math.floor(this.keystreamBuffer.length / 8);
 
-      const fullCount = (((this.count & 0x1F) << 27) | (blockCount & 0x07FFFFFF)) >>> 0;
-      input[0] = (fullCount >>> 24) & 0xFF;
-      input[1] = (fullCount >>> 16) & 0xFF;
-      input[2] = (fullCount >>> 8) & 0xFF;
-      input[3] = fullCount & 0xFF;
-      input[4] = (((this.bearer & 0x1F) << 3) | ((this.direction & 1) << 2)) & 0xFF;
+      const fullCount = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(this.count, 0x1F), 27), OpCodes.AndN(blockCount, 0x07FFFFFF)));
+      input[0] = OpCodes.AndN(OpCodes.Shr32(fullCount, 24), 0xFF);
+      input[1] = OpCodes.AndN(OpCodes.Shr32(fullCount, 16), 0xFF);
+      input[2] = OpCodes.AndN(OpCodes.Shr32(fullCount, 8), 0xFF);
+      input[3] = OpCodes.AndN(fullCount, 0xFF);
+      input[4] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(this.bearer, 0x1F), 3), OpCodes.Shl32(OpCodes.AndN(this.direction, 1), 2)), 0xFF);
 
       const keystreamBlock = this._kasumiEncrypt(input);
       this.keystreamBuffer.push(...keystreamBlock);

@@ -270,7 +270,7 @@
     // Expensive key schedule (used in bcrypt hash)
     // This does the 64 rounds of ExpandKey
     expensiveKeySchedule(salt, saltLen, password, passwordLen, cost) {
-      const rounds = 1 << cost;  // 2^cost iterations (typically 64 for cost=6)
+      const rounds = OpCodes.Shl32(1, cost);  // 2 raised to cost iterations (typically 64 for cost=6)
 
       for (let round = 0; round < rounds; round++) {
         // First expand with salt
@@ -286,7 +286,7 @@
       // XOR P-box with key
       let keyIndex = 0;
       for (let i = 0; i < 18; i++) {
-        this.pBox[i] = (this.pBox[i] ^ this._packKeyMaterial(key, keyLen, keyIndex)) >>> 0;
+        this.pBox[i] = OpCodes.ToUint32(OpCodes.XorN(this.pBox[i], this._packKeyMaterial(key, keyLen, keyIndex)));
         keyIndex = (keyIndex + 4) % keyLen;
       }
 
@@ -297,9 +297,9 @@
 
       // Update P-box
       for (let i = 0; i < 18; i += 2) {
-        left = (left ^ this._packKeyMaterial(salt, saltLen, saltIndex)) >>> 0;
+        left = OpCodes.ToUint32(OpCodes.XorN(left, this._packKeyMaterial(salt, saltLen, saltIndex)));
         saltIndex = (saltIndex + 4) % saltLen;
-        right = (right ^ this._packKeyMaterial(salt, saltLen, saltIndex)) >>> 0;
+        right = OpCodes.ToUint32(OpCodes.XorN(right, this._packKeyMaterial(salt, saltLen, saltIndex)));
         saltIndex = (saltIndex + 4) % saltLen;
 
         const encrypted = this._encryptPair(left, right);
@@ -314,9 +314,9 @@
       const sBoxes = [this.sBox1, this.sBox2, this.sBox3, this.sBox4];
       for (const sBox of sBoxes) {
         for (let i = 0; i < 256; i += 2) {
-          left = (left ^ this._packKeyMaterial(salt, saltLen, saltIndex)) >>> 0;
+          left = OpCodes.ToUint32(OpCodes.XorN(left, this._packKeyMaterial(salt, saltLen, saltIndex)));
           saltIndex = (saltIndex + 4) % saltLen;
-          right = (right ^ this._packKeyMaterial(salt, saltLen, saltIndex)) >>> 0;
+          right = OpCodes.ToUint32(OpCodes.XorN(right, this._packKeyMaterial(salt, saltLen, saltIndex)));
           saltIndex = (saltIndex + 4) % saltLen;
 
           const encrypted = this._encryptPair(left, right);
@@ -335,7 +335,7 @@
       // First XOR all P-box entries with key material
       let keyIndex = 0;
       for (let i = 0; i < 18; i++) {
-        this.pBox[i] = (this.pBox[i] ^ this._packKeyMaterial(key, keyLen, keyIndex)) >>> 0;
+        this.pBox[i] = OpCodes.ToUint32(OpCodes.XorN(this.pBox[i], this._packKeyMaterial(key, keyLen, keyIndex)));
         keyIndex = (keyIndex + 4) % keyLen;
       }
 
@@ -370,16 +370,16 @@
     _packKeyMaterial(key, keyLen, offset) {
       let result = 0;
       for (let i = 0; i < 4; ++i) {
-        result = (result << 8) | key[(offset + i) % keyLen];
+        result = OpCodes.OrN(OpCodes.Shl32(result, 8), key[(offset + i) % keyLen]);
       }
-      return result >>> 0;
+      return OpCodes.ToUint32(result);
     }
 
     _encryptPair(left, right) {
       // 16 rounds of Feistel network
       for (let i = 0; i < 16; ++i) {
-        left ^= this.pBox[i];
-        right ^= this._f(left);
+        left = OpCodes.XorN(left, this.pBox[i]);
+        right = OpCodes.XorN(right, this._f(left));
 
         // Swap
         const temp = left;
@@ -393,21 +393,21 @@
       right = temp;
 
       // Final XOR
-      right ^= this.pBox[16];
-      left ^= this.pBox[17];
+      right = OpCodes.XorN(right, this.pBox[16]);
+      left = OpCodes.XorN(left, this.pBox[17]);
 
-      return { left: left >>> 0, right: right >>> 0 };
+      return { left: OpCodes.ToUint32(left), right: OpCodes.ToUint32(right) };
     }
 
     _f(x) {
       // Blowfish F function using four S-boxes
-      const a = (x >>> 24) & 0xFF;
-      const b = (x >>> 16) & 0xFF;
-      const c = (x >>> 8) & 0xFF;
-      const d = x & 0xFF;
+      const a = OpCodes.AndN(OpCodes.Shr32(x, 24), 0xFF);
+      const b = OpCodes.AndN(OpCodes.Shr32(x, 16), 0xFF);
+      const c = OpCodes.AndN(OpCodes.Shr32(x, 8), 0xFF);
+      const d = OpCodes.AndN(x, 0xFF);
 
-      const result = (((this.sBox1[a] + this.sBox2[b]) >>> 0) ^ this.sBox3[c]) >>> 0;
-      return (result + this.sBox4[d]) >>> 0;
+      const result = OpCodes.ToUint32(OpCodes.XorN(OpCodes.ToUint32(this.sBox1[a] + this.sBox2[b]), this.sBox3[c]));
+      return OpCodes.ToUint32(result + this.sBox4[d]);
     }
 
     // Encrypt 8 bytes (Blowfish block size)
@@ -684,10 +684,10 @@
         // Hash salt with block number (append as 32-bit big-endian)
         const saltWithBlock = [
           ...salt,
-          (blockNum >>> 24) & 0xFF,
-          (blockNum >>> 16) & 0xFF,
-          (blockNum >>> 8) & 0xFF,
-          blockNum & 0xFF
+          OpCodes.AndN(OpCodes.Shr32(blockNum, 24), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(blockNum, 16), 0xFF),
+          OpCodes.AndN(OpCodes.Shr32(blockNum, 8), 0xFF),
+          OpCodes.AndN(blockNum, 0xFF)
         ];
         let saltHash = getSHA512Hash(saltWithBlock);
 
@@ -711,7 +711,7 @@
 
           // XOR into accumulator
           for (let i = 0; i < BCRYPT_BLOCK_SIZE; i++) {
-            out[i] ^= tmp[i];
+            out[i] = OpCodes.XorN(out[i], tmp[i]);
           }
         }
 

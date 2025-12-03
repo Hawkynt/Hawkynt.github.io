@@ -150,7 +150,7 @@
       // Initialize RNG state from seed using simple hash
       this._rngState = 0;
       for (let i = 0; i < this._seed.length; i++) {
-        this._rngState = ((this._rngState * 31) + this._seed[i]) >>> 0;
+        this._rngState = OpCodes.Shr32((this._rngState * 31) + this._seed[i], 0);
       }
       // Ensure non-zero state
       if (this._rngState === 0) this._rngState = 1;
@@ -172,7 +172,7 @@
         // Deterministic: Linear Congruential Generator
         // Using MINSTD parameters (a=48271, c=0, m=2^31-1)
         this._rngState = (this._rngState * 48271) % 0x7FFFFFFF;
-        return this._rngState & 0xFF;
+        return OpCodes.AndN(this._rngState, 0xFF);
       } else {
         // Non-deterministic: Use secure random
         return OpCodes.SecureRandom(256);

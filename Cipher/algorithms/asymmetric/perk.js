@@ -384,7 +384,7 @@
 
       // Fisher-Yates shuffle with deterministic seed
       for (let i = n - 1; i > 0; i--) {
-        seedValue = (seedValue * 1664525 + 1013904223) >>> 0;
+        seedValue = OpCodes.Shr32(seedValue * 1664525 + 1013904223, 0);
         const j = seedValue % (i + 1);
         [perm[i], perm[j]] = [perm[j], perm[i]];
       }

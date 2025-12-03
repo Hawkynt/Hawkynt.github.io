@@ -168,11 +168,11 @@
 
     // xxHash32 avalanche function
     xxh32Avalanche(h32) {
-      h32 ^= OpCodes.Shr32(h32, 15);
+      h32 = OpCodes.XorN(h32, OpCodes.Shr32(h32, 15));
       h32 = OpCodes.ToDWord(h32 * this.PRIME32_2);
-      h32 ^= OpCodes.Shr32(h32, 13);
+      h32 = OpCodes.XorN(h32, OpCodes.Shr32(h32, 13));
       h32 = OpCodes.ToDWord(h32 * this.PRIME32_3);
-      h32 ^= OpCodes.Shr32(h32, 16);
+      h32 = OpCodes.XorN(h32, OpCodes.Shr32(h32, 16));
       return OpCodes.ToDWord(h32);
     }
 
@@ -241,7 +241,7 @@
       if (typeof message === 'string') {
         const bytes = [];
         for (let i = 0; i < message.length; i++) {
-          bytes.push(message.charCodeAt(i) & 0xFF);
+          bytes.push(OpCodes.AndN(message.charCodeAt(i), 0xFF));
         }
         message = bytes;
       }
@@ -273,7 +273,7 @@
     simpleHash(str) {
       let hash = 0;
       for (let i = 0; i < str.length; i++) {
-        hash = ((hash << 5) - hash + str.charCodeAt(i)) & 0xFFFFFFFF;
+        hash = OpCodes.AndN(OpCodes.Shl32(hash, 5) - hash + str.charCodeAt(i), 0xFFFFFFFF);
       }
       return OpCodes.ToDWord(hash);
     }

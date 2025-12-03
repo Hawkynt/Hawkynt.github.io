@@ -286,7 +286,7 @@
       }
 
       // Step 1: Increment index with wraparound (0-255)
-      this._index = (this._index + 1) & 0xFF; // Fast modulo 256 using bitmask
+      this._index = Number(OpCodes.AndN(BigInt(this._index + 1), 0xFFn)); // Fast modulo 256 using bitmask
 
       // Step 2: t = a * Q[i] + c (64-bit arithmetic)
       const t = this.MULTIPLIER * this._Q[this._index] + this._carry;
@@ -325,7 +325,7 @@
         // Extract bytes (little-endian order to match test vectors)
         const bytesToExtract = Math.min(bytesRemaining, 4);
         for (let i = 0; i < bytesToExtract; ++i) {
-          const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, i * 8), 0xFFn));
+          const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, BigInt(i * 8)), 0xFFn));
           output.push(byte);
         }
 

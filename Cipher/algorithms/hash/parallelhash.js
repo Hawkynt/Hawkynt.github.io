@@ -44,7 +44,7 @@
     // Determine number of bytes needed
     let n = 1;
     let v = value;
-    while ((v >>>= 8) !== 0) {
+    while ((v = OpCodes.Shr32(v, 8)) !== 0) {
       n++;
     }
 
@@ -53,7 +53,7 @@
 
     // Encode value in big-endian
     for (let i = 1; i <= n; i++) {
-      result[i] = (value >>> (8 * (n - i))) & 0xFF;
+      result[i] = OpCodes.AndN(OpCodes.Shr32(value, 8 * (n - i)), 0xFF);
     }
 
     return result;
@@ -67,7 +67,7 @@
     // Determine number of bytes needed
     let n = 1;
     let v = value;
-    while ((v >>>= 8) !== 0) {
+    while ((v = OpCodes.Shr32(v, 8)) !== 0) {
       n++;
     }
 
@@ -75,7 +75,7 @@
 
     // Encode value in big-endian
     for (let i = 0; i < n; i++) {
-      result[i] = (value >>> (8 * (n - i - 1))) & 0xFF;
+      result[i] = OpCodes.AndN(OpCodes.Shr32(value, 8 * (n - i - 1)), 0xFF);
     }
 
     result[n] = n; // Byte count suffix

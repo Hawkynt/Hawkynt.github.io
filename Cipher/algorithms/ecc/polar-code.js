@@ -304,13 +304,13 @@
       let u = [...x];
 
       // Apply log2(N) stages in reverse order
-      // Polar transform is self-inverse (F^2 = I in GF(2))
+      // Polar transform is self-inverse (OpCodes.XorN(F, 2) = I in GF(2))
       for (let stage = this.n - 1; stage >= 0; stage--) {
-        const stepSize = 1 << stage;
-        const numGroups = this.N >> (stage + 1);
+        const stepSize = OpCodes.Shl32(1, stage);
+        const numGroups = OpCodes.Shr32(this.N, (stage + 1));
 
         for (let group = 0; group < numGroups; group++) {
-          const offset = group * (stepSize << 1);
+          const offset = group * (OpCodes.Shl32(stepSize, 1));
 
           for (let i = 0; i < stepSize; i++) {
             const idx1 = offset + i;
@@ -319,7 +319,7 @@
             // Inverse butterfly: [a, b] -> [a⊕b, b]
             const a = u[idx1];
             const b = u[idx2];
-            u[idx1] = a ^ b;
+            u[idx1] = OpCodes.XorN(a, b);
             // u[idx2] remains b
           }
         }
@@ -342,11 +342,11 @@
       // Apply log2(N) stages of butterfly operations
       // Bitwise shifts used for efficient index calculations (not cryptographic data)
       for (let stage = 0; stage < this.n; stage++) {
-        const stepSize = 1 << stage; // 2^stage - structural calculation
-        const numGroups = this.N >> (stage + 1); // N / 2^(stage+1) - structural calculation
+        const stepSize = OpCodes.Shl32(1, stage); // OpCodes.XorN(2, stage) - structural calculation
+        const numGroups = OpCodes.Shr32(this.N, (stage + 1)); // N / 2^(stage+1) - structural calculation
 
         for (let group = 0; group < numGroups; group++) {
-          const offset = group * (stepSize << 1); // Index calculation
+          const offset = group * (OpCodes.Shl32(stepSize, 1)); // Index calculation
 
           for (let i = 0; i < stepSize; i++) {
             const idx1 = offset + i;
@@ -355,7 +355,7 @@
             // Butterfly operation: [a, b] -> [a+b, b] (in GF(2), + is XOR)
             const a = x[idx1];
             const b = x[idx2];
-            x[idx1] = a ^ b; // GF(2) addition (XOR is the field operation)
+            x[idx1] = OpCodes.XorN(a, b); // GF(2) addition (XOR is the field operation)
             // x[idx2] remains b
           }
         }
@@ -409,7 +409,7 @@
     _isConnected(i, j) {
       // Simplified connectivity check based on polar graph structure
       // In actual polar graph, connectivity is determined by Kronecker structure
-      return (i & j) === i; // Bitwise AND for structural graph connectivity
+      return OpCodes.AndN(i, j) === i; // Bitwise AND for structural graph connectivity
     }
 
     /**
@@ -426,7 +426,7 @@
         let reversed = 0;
         for (let b = 0; b < bits; b++) {
           // Bit reversal: extract bit b from i, place in position (bits-1-b) in reversed
-          reversed = (reversed << 1) | ((i >> b) & 1); // Structural bit manipulation
+          reversed = OpCodes.OrN(OpCodes.Shl32(reversed, 1), OpCodes.AndN(OpCodes.Shr32(i, b), 1)); // Structural bit manipulation
         }
         permutation[i] = reversed;
       }
@@ -443,7 +443,7 @@
      */
     setParameters(N, K, frozenPositions = null) {
       // Validate N is power of 2 using bitwise trick: (N & (N-1)) == 0
-      if ((N & (N - 1)) !== 0 || N < 2) {
+      if (OpCodes.AndN(N, N - 1) !== 0 || N < 2) {
         throw new Error('Polar code length N must be a power of 2');
       }
 

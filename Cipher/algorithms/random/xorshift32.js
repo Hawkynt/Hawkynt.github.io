@@ -294,13 +294,13 @@
 
       // Step 1: x ^= x << 13
       let x = this._state;
-      x = OpCodes.ToDWord(x ^ OpCodes.Shl32(x, 13));
+      x = OpCodes.ToDWord(OpCodes.XorN(x, OpCodes.Shl32(x, 13)));
 
       // Step 2: x ^= x >> 17
-      x = OpCodes.ToDWord(x ^ OpCodes.Shr32(x, 17));
+      x = OpCodes.ToDWord(OpCodes.XorN(x, OpCodes.Shr32(x, 17)));
 
       // Step 3: x ^= x << 5
-      x = OpCodes.ToDWord(x ^ OpCodes.Shl32(x, 5));
+      x = OpCodes.ToDWord(OpCodes.XorN(x, OpCodes.Shl32(x, 5)));
 
       // Update state and return
       this._state = x;

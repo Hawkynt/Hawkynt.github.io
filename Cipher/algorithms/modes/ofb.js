@@ -217,10 +217,7 @@
         const keystream = encryptCipher.Result();
 
         // XOR input with keystream to get output
-        const outputBlock = [];
-        for (let j = 0; j < remainingBytes; j++) {
-          outputBlock[j] = inputBlock[j] ^ keystream[j];
-        }
+        const outputBlock = OpCodes.XorArrays(inputBlock.slice(0, remainingBytes), keystream.slice(0, remainingBytes));
         output.push(...outputBlock);
 
         // Update output register for next iteration

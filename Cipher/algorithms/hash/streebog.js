@@ -170,7 +170,7 @@
       // Add length (8 bytes, little-endian)
       const lengthBits = totalBytes * 8;
       for (let i = 0; i < 8; i++) {
-        padded.push((lengthBits >>> (i * 8)) & 0xFF);
+        padded.push(OpCodes.AndN(OpCodes.Shr32(lengthBits, i * 8), 0xFF));
       }
 
       // Process blocks
@@ -191,14 +191,14 @@
 
       // Simple mixing based on GOST principles
       for (let i = 0; i < 64; i++) {
-        result[i] = (h[i] ^ m[i] ^ (h[i] + m[i]) ^ (i * 13)) & 0xFF;
+        result[i] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(h[i], m[i]), (h[i] + m[i])), (i * 13)), 0xFF);
       }
 
       // Apply simple transformations
       for (let round = 0; round < 12; round++) {
         // Simple substitution
         for (let i = 0; i < 64; i++) {
-          result[i] = ((result[i] * 251) ^ (result[(i + 1) % 64] * 13) ^ round) & 0xFF;
+          result[i] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN((result[i] * 251), (result[(i + 1) % 64] * 13)), round), 0xFF);
         }
 
         // Simple permutation
