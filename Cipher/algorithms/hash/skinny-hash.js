@@ -41,25 +41,20 @@
    * Apply SKINNY-128 S-box to all bytes in a 32-bit word
    */
   function skinny128_sbox(x) {
-    x = x >>> 0;
+    x = OpCodes.ToUint32(x);
     let y;
 
-    x = ~x;
-    x ^= (((x >>> 2) & (x >>> 3)) & 0x11111111);
-    y = (((x << 5) & (x << 1)) & 0x20202020);
-    x ^= (((x << 5) & (x << 4)) & 0x40404040) ^ y;
-    y = (((x << 2) & (x << 1)) & 0x80808080);
-    x ^= (((x >>> 2) & (x << 1)) & 0x02020202) ^ y;
-    y = (((x >>> 5) & (x << 1)) & 0x04040404);
-    x ^= (((x >>> 1) & (x >>> 2)) & 0x08080808) ^ y;
-    x = ~x;
+    x = OpCodes.ToUint32((~x));
+    x = OpCodes.Xor32(x, (((OpCodes.Shr32(x, 2))&(OpCodes.Shr32(x, 3)))&0x11111111));
+    y = (((OpCodes.Shl32(x, 5))&(OpCodes.Shl32(x, 1)))&0x20202020);
+    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shl32(x, 5))&(OpCodes.Shl32(x, 4)))&0x40404040), y));
+    y = (((OpCodes.Shl32(x, 2))&(OpCodes.Shl32(x, 1)))&0x80808080);
+    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 2))&(OpCodes.Shl32(x, 1)))&0x02020202), y));
+    y = (((OpCodes.Shr32(x, 5))&(OpCodes.Shl32(x, 1)))&0x04040404);
+    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 1))&(OpCodes.Shr32(x, 2)))&0x08080808), y));
+    x = OpCodes.ToUint32((~x));
 
-    x = (((x & 0x08080808) << 1) |
-         ((x & 0x32323232) << 2) |
-         ((x & 0x01010101) << 5) |
-         ((x & 0x80808080) >>> 6) |
-         ((x & 0x40404040) >>> 4) |
-         ((x & 0x04040404) >>> 2)) >>> 0;
+    x = (((OpCodes.Shl32(x&0x08080808, 1)))|((OpCodes.Shl32(x&0x32323232, 2)))|((OpCodes.Shl32(x&0x01010101, 5)))|((OpCodes.Shr32(x&0x80808080, 6)))|((OpCodes.Shr32(x&0x40404040, 4)))|((OpCodes.Shr32(x&0x04040404, 2))))>>>0;
 
     return x;
   }
@@ -68,20 +63,20 @@
    * LFSR2 - Linear feedback shift register for TK2 update
    */
   function skinny128_LFSR2(x) {
-    x = x >>> 0;
-    const shifted = (x << 1) & 0xFEFEFEFE;
-    const feedback = (((x >>> 7) ^ (x >>> 5)) & 0x01010101);
-    return (shifted ^ feedback) >>> 0;
+    x = OpCodes.ToUint32(x);
+    const shifted = (OpCodes.Shl32(x, 1))&0xFEFEFEFE;
+    const feedback = ((OpCodes.Xor32(OpCodes.Shr32(x, 7), OpCodes.Shr32(x, 5)))&0x01010101);
+    return OpCodes.ToUint32(OpCodes.Xor32(shifted, feedback));
   }
 
   /**
    * LFSR3 - Linear feedback shift register for TK3 update
    */
   function skinny128_LFSR3(x) {
-    x = x >>> 0;
-    const shifted = (x >>> 1) & 0x7F7F7F7F;
-    const feedback = (((x << 7) ^ (x << 1)) & 0x80808080);
-    return (shifted ^ feedback) >>> 0;
+    x = OpCodes.ToUint32(x);
+    const shifted = (OpCodes.Shr32(x, 1))&0x7F7F7F7F;
+    const feedback = ((OpCodes.Xor32(OpCodes.Shl32(x, 7), OpCodes.Shl32(x, 1)))&0x80808080);
+    return OpCodes.ToUint32(OpCodes.Xor32(shifted, feedback));
   }
 
   /**
@@ -92,14 +87,9 @@
     const row3 = tk[idx + 1];
     const row3_rotated = OpCodes.RotL32(row3, 16);
 
-    tk[idx] = (((row2 >>> 8) & 0x000000FF) |
-               ((row2 << 16) & 0x00FF0000) |
-               (row3_rotated & 0xFF00FF00)) >>> 0;
+    tk[idx] = (((OpCodes.Shr32(row2, 8))&0x000000FF)|((OpCodes.Shl32(row2, 16))&0x00FF0000)|(row3_rotated&0xFF00FF00))>>>0;
 
-    tk[idx + 1] = (((row2 >>> 16) & 0x000000FF) |
-                   (row2 & 0xFF000000) |
-                   ((row3_rotated << 8) & 0x0000FF00) |
-                   (row3_rotated & 0x00FF0000)) >>> 0;
+    tk[idx + 1] = (((OpCodes.Shr32(row2, 16))&0x000000FF)|(row2&0xFF000000)|((OpCodes.Shl32(row3_rotated, 8))&0x0000FF00)|(row3_rotated&0x00FF0000))>>>0;
   }
 
   /**
@@ -127,80 +117,80 @@
     for (let round = 0; round < 48; round += 4) {
 
       // Round 1
-      rc = ((rc << 1) ^ ((rc >>> 5) & 0x01) ^ ((rc >>> 4) & 0x01) ^ 0x01) & 0x3F;
+      rc = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), ((OpCodes.Shr32(rc, 5))&0x01)), ((OpCodes.Shr32(rc, 4))&0x01)), 0x01))&0x3F;
       s0 = skinny128_sbox(s0);
       s1 = skinny128_sbox(s1);
       s2 = skinny128_sbox(s2);
       s3 = skinny128_sbox(s3);
-      s0 = (s0 ^ TK1[0] ^ TK2[0] ^ (rc & 0x0F)) >>> 0;
-      s1 = (s1 ^ TK1[1] ^ TK2[1] ^ (rc >>> 4)) >>> 0;
-      s2 = (s2 ^ 0x02) >>> 0;
+      s0 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[0]), TK2[0]), (rc&0x0F)))>>>0;
+      s1 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[1]), TK2[1]), (OpCodes.Shr32(rc, 4))))>>>0;
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, 0x02));
       s1 = OpCodes.RotL32(s1, 8);
       s2 = OpCodes.RotL32(s2, 16);
       s3 = OpCodes.RotL32(s3, 24);
-      s1 = (s1 ^ s2) >>> 0;
-      s2 = (s2 ^ s0) >>> 0;
-      s3 = (s3 ^ s2) >>> 0;
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s2));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s0));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s2));
       skinny128_permute_tk_half(TK1, 2);
       skinny128_permute_tk_half(TK2, 2);
       TK2[2] = skinny128_LFSR2(TK2[2]);
       TK2[3] = skinny128_LFSR2(TK2[3]);
 
       // Round 2
-      rc = ((rc << 1) ^ ((rc >>> 5) & 0x01) ^ ((rc >>> 4) & 0x01) ^ 0x01) & 0x3F;
+      rc = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), ((OpCodes.Shr32(rc, 5))&0x01)), ((OpCodes.Shr32(rc, 4))&0x01)), 0x01))&0x3F;
       s3 = skinny128_sbox(s3);
       s0 = skinny128_sbox(s0);
       s1 = skinny128_sbox(s1);
       s2 = skinny128_sbox(s2);
-      s3 = (s3 ^ TK1[2] ^ TK2[2] ^ (rc & 0x0F)) >>> 0;
-      s0 = (s0 ^ TK1[3] ^ TK2[3] ^ (rc >>> 4)) >>> 0;
-      s1 = (s1 ^ 0x02) >>> 0;
+      s3 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[2]), TK2[2]), (rc&0x0F)))>>>0;
+      s0 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[3]), TK2[3]), (OpCodes.Shr32(rc, 4))))>>>0;
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, 0x02));
       s0 = OpCodes.RotL32(s0, 8);
       s1 = OpCodes.RotL32(s1, 16);
       s2 = OpCodes.RotL32(s2, 24);
-      s0 = (s0 ^ s1) >>> 0;
-      s1 = (s1 ^ s3) >>> 0;
-      s2 = (s2 ^ s1) >>> 0;
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s1));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s3));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s1));
       skinny128_permute_tk_half(TK1, 0);
       skinny128_permute_tk_half(TK2, 0);
       TK2[0] = skinny128_LFSR2(TK2[0]);
       TK2[1] = skinny128_LFSR2(TK2[1]);
 
       // Round 3
-      rc = ((rc << 1) ^ ((rc >>> 5) & 0x01) ^ ((rc >>> 4) & 0x01) ^ 0x01) & 0x3F;
+      rc = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), ((OpCodes.Shr32(rc, 5))&0x01)), ((OpCodes.Shr32(rc, 4))&0x01)), 0x01))&0x3F;
       s2 = skinny128_sbox(s2);
       s3 = skinny128_sbox(s3);
       s0 = skinny128_sbox(s0);
       s1 = skinny128_sbox(s1);
-      s2 = (s2 ^ TK1[0] ^ TK2[0] ^ (rc & 0x0F)) >>> 0;
-      s3 = (s3 ^ TK1[1] ^ TK2[1] ^ (rc >>> 4)) >>> 0;
-      s0 = (s0 ^ 0x02) >>> 0;
+      s2 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[0]), TK2[0]), (rc&0x0F)))>>>0;
+      s3 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[1]), TK2[1]), (OpCodes.Shr32(rc, 4))))>>>0;
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, 0x02));
       s3 = OpCodes.RotL32(s3, 8);
       s0 = OpCodes.RotL32(s0, 16);
       s1 = OpCodes.RotL32(s1, 24);
-      s3 = (s3 ^ s0) >>> 0;
-      s0 = (s0 ^ s2) >>> 0;
-      s1 = (s1 ^ s0) >>> 0;
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s0));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s2));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s0));
       skinny128_permute_tk_half(TK1, 2);
       skinny128_permute_tk_half(TK2, 2);
       TK2[2] = skinny128_LFSR2(TK2[2]);
       TK2[3] = skinny128_LFSR2(TK2[3]);
 
       // Round 4
-      rc = ((rc << 1) ^ ((rc >>> 5) & 0x01) ^ ((rc >>> 4) & 0x01) ^ 0x01) & 0x3F;
+      rc = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), ((OpCodes.Shr32(rc, 5))&0x01)), ((OpCodes.Shr32(rc, 4))&0x01)), 0x01))&0x3F;
       s1 = skinny128_sbox(s1);
       s2 = skinny128_sbox(s2);
       s3 = skinny128_sbox(s3);
       s0 = skinny128_sbox(s0);
-      s1 = (s1 ^ TK1[2] ^ TK2[2] ^ (rc & 0x0F)) >>> 0;
-      s2 = (s2 ^ TK1[3] ^ TK2[3] ^ (rc >>> 4)) >>> 0;
-      s3 = (s3 ^ 0x02) >>> 0;
+      s1 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[2]), TK2[2]), (rc&0x0F)))>>>0;
+      s2 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[3]), TK2[3]), (OpCodes.Shr32(rc, 4))))>>>0;
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, 0x02));
       s2 = OpCodes.RotL32(s2, 8);
       s3 = OpCodes.RotL32(s3, 16);
       s0 = OpCodes.RotL32(s0, 24);
-      s2 = (s2 ^ s3) >>> 0;
-      s3 = (s3 ^ s1) >>> 0;
-      s0 = (s0 ^ s3) >>> 0;
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s3));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s1));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s3));
       skinny128_permute_tk_half(TK1, 0);
       skinny128_permute_tk_half(TK2, 0);
       TK2[0] = skinny128_LFSR2(TK2[0]);
@@ -248,20 +238,20 @@
     for (let round = 0; round < 56; round += 4) {
 
       // Round 1
-      rc = ((rc << 1) ^ ((rc >>> 5) & 0x01) ^ ((rc >>> 4) & 0x01) ^ 0x01) & 0x3F;
+      rc = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), ((OpCodes.Shr32(rc, 5))&0x01)), ((OpCodes.Shr32(rc, 4))&0x01)), 0x01))&0x3F;
       s0 = skinny128_sbox(s0);
       s1 = skinny128_sbox(s1);
       s2 = skinny128_sbox(s2);
       s3 = skinny128_sbox(s3);
-      s0 = (s0 ^ TK1[0] ^ TK2[0] ^ TK3[0] ^ (rc & 0x0F)) >>> 0;
-      s1 = (s1 ^ TK1[1] ^ TK2[1] ^ TK3[1] ^ (rc >>> 4)) >>> 0;
-      s2 = (s2 ^ 0x02) >>> 0;
+      s0 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[0]), TK2[0]), TK3[0]), (rc&0x0F)))>>>0;
+      s1 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[1]), TK2[1]), TK3[1]), (OpCodes.Shr32(rc, 4))))>>>0;
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, 0x02));
       s1 = OpCodes.RotL32(s1, 8);
       s2 = OpCodes.RotL32(s2, 16);
       s3 = OpCodes.RotL32(s3, 24);
-      s1 = (s1 ^ s2) >>> 0;
-      s2 = (s2 ^ s0) >>> 0;
-      s3 = (s3 ^ s2) >>> 0;
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s2));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s0));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s2));
       skinny128_permute_tk_half(TK1, 2);
       skinny128_permute_tk_half(TK2, 2);
       skinny128_permute_tk_half(TK3, 2);
@@ -271,20 +261,20 @@
       TK3[3] = skinny128_LFSR3(TK3[3]);
 
       // Round 2
-      rc = ((rc << 1) ^ ((rc >>> 5) & 0x01) ^ ((rc >>> 4) & 0x01) ^ 0x01) & 0x3F;
+      rc = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), ((OpCodes.Shr32(rc, 5))&0x01)), ((OpCodes.Shr32(rc, 4))&0x01)), 0x01))&0x3F;
       s3 = skinny128_sbox(s3);
       s0 = skinny128_sbox(s0);
       s1 = skinny128_sbox(s1);
       s2 = skinny128_sbox(s2);
-      s3 = (s3 ^ TK1[2] ^ TK2[2] ^ TK3[2] ^ (rc & 0x0F)) >>> 0;
-      s0 = (s0 ^ TK1[3] ^ TK2[3] ^ TK3[3] ^ (rc >>> 4)) >>> 0;
-      s1 = (s1 ^ 0x02) >>> 0;
+      s3 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[2]), TK2[2]), TK3[2]), (rc&0x0F)))>>>0;
+      s0 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0, TK1[3]), TK2[3]), TK3[3]), (OpCodes.Shr32(rc, 4))))>>>0;
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, 0x02));
       s0 = OpCodes.RotL32(s0, 8);
       s1 = OpCodes.RotL32(s1, 16);
       s2 = OpCodes.RotL32(s2, 24);
-      s0 = (s0 ^ s1) >>> 0;
-      s1 = (s1 ^ s3) >>> 0;
-      s2 = (s2 ^ s1) >>> 0;
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s1));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s3));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s1));
       skinny128_permute_tk_half(TK1, 0);
       skinny128_permute_tk_half(TK2, 0);
       skinny128_permute_tk_half(TK3, 0);
@@ -294,20 +284,20 @@
       TK3[1] = skinny128_LFSR3(TK3[1]);
 
       // Round 3
-      rc = ((rc << 1) ^ ((rc >>> 5) & 0x01) ^ ((rc >>> 4) & 0x01) ^ 0x01) & 0x3F;
+      rc = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), ((OpCodes.Shr32(rc, 5))&0x01)), ((OpCodes.Shr32(rc, 4))&0x01)), 0x01))&0x3F;
       s2 = skinny128_sbox(s2);
       s3 = skinny128_sbox(s3);
       s0 = skinny128_sbox(s0);
       s1 = skinny128_sbox(s1);
-      s2 = (s2 ^ TK1[0] ^ TK2[0] ^ TK3[0] ^ (rc & 0x0F)) >>> 0;
-      s3 = (s3 ^ TK1[1] ^ TK2[1] ^ TK3[1] ^ (rc >>> 4)) >>> 0;
-      s0 = (s0 ^ 0x02) >>> 0;
+      s2 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[0]), TK2[0]), TK3[0]), (rc&0x0F)))>>>0;
+      s3 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s3, TK1[1]), TK2[1]), TK3[1]), (OpCodes.Shr32(rc, 4))))>>>0;
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, 0x02));
       s3 = OpCodes.RotL32(s3, 8);
       s0 = OpCodes.RotL32(s0, 16);
       s1 = OpCodes.RotL32(s1, 24);
-      s3 = (s3 ^ s0) >>> 0;
-      s0 = (s0 ^ s2) >>> 0;
-      s1 = (s1 ^ s0) >>> 0;
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s0));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s2));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s0));
       skinny128_permute_tk_half(TK1, 2);
       skinny128_permute_tk_half(TK2, 2);
       skinny128_permute_tk_half(TK3, 2);
@@ -317,20 +307,20 @@
       TK3[3] = skinny128_LFSR3(TK3[3]);
 
       // Round 4
-      rc = ((rc << 1) ^ ((rc >>> 5) & 0x01) ^ ((rc >>> 4) & 0x01) ^ 0x01) & 0x3F;
+      rc = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), ((OpCodes.Shr32(rc, 5))&0x01)), ((OpCodes.Shr32(rc, 4))&0x01)), 0x01))&0x3F;
       s1 = skinny128_sbox(s1);
       s2 = skinny128_sbox(s2);
       s3 = skinny128_sbox(s3);
       s0 = skinny128_sbox(s0);
-      s1 = (s1 ^ TK1[2] ^ TK2[2] ^ TK3[2] ^ (rc & 0x0F)) >>> 0;
-      s2 = (s2 ^ TK1[3] ^ TK2[3] ^ TK3[3] ^ (rc >>> 4)) >>> 0;
-      s3 = (s3 ^ 0x02) >>> 0;
+      s1 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s1, TK1[2]), TK2[2]), TK3[2]), (rc&0x0F)))>>>0;
+      s2 = (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s2, TK1[3]), TK2[3]), TK3[3]), (OpCodes.Shr32(rc, 4))))>>>0;
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, 0x02));
       s2 = OpCodes.RotL32(s2, 8);
       s3 = OpCodes.RotL32(s3, 16);
       s0 = OpCodes.RotL32(s0, 24);
-      s2 = (s2 ^ s3) >>> 0;
-      s3 = (s3 ^ s1) >>> 0;
-      s0 = (s0 ^ s3) >>> 0;
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s3));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s1));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s3));
       skinny128_permute_tk_half(TK1, 0);
       skinny128_permute_tk_half(TK2, 0);
       skinny128_permute_tk_half(TK3, 0);

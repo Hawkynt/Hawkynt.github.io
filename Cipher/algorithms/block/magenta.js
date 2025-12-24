@@ -279,20 +279,20 @@
       return keySchedule;
     }
 
-    // MAGENTA S-box using GF(2^8) discrete exponentiation
-    // S-box[x] = x^99 in GF(2^8) with irreducible polynomial x^8 + x^4 + x^3 + x + 1
+    // MAGENTA S-box using GF(OpCodes.Xor32(2, 8)) discrete exponentiation
+    // S-box[x] = OpCodes.Xor32(x, 99) in GF(OpCodes.Xor32(2, 8)) with irreducible polynomial OpCodes.Xor32(x, 8) + OpCodes.Xor32(x, 4) + OpCodes.Xor32(x, 3) + x + 1
     _generateSBox() {
       const sbox = new Array(256);
-      const irreducible = 0x11B; // x^8 + x^4 + x^3 + x + 1
+      const irreducible = 0x11B; // OpCodes.Xor32(x, 8) + OpCodes.Xor32(x, 4) + OpCodes.Xor32(x, 3) + x + 1
 
-      sbox[0] = 0; // Special case: 0^99 = 0
+      sbox[0] = 0; // Special case: OpCodes.Xor32(0, 99) = 0
 
       for (let i = 1; i < 256; i++) {
         let result = 1;
         let base = i;
         let exp = 99;
 
-        // Fast exponentiation in GF(2^8)
+        // Fast exponentiation in GF(OpCodes.Xor32(2, 8))
         while (exp > 0) {
           if (OpCodes.AndN(exp, 1)) {
             result = this._gf256Multiply(result, base, irreducible);
@@ -307,7 +307,7 @@
       return sbox;
     }
 
-    // Galois Field GF(2^8) multiplication with specified irreducible polynomial
+    // Galois Field GF(OpCodes.Xor32(2, 8)) multiplication with specified irreducible polynomial
     _gf256Multiply(a, b, irreducible) {
       let result = 0;
       a = OpCodes.AndN(a, 0xFF);

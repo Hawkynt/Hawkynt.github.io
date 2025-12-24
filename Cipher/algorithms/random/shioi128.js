@@ -219,7 +219,7 @@
      *   uint64_t s0 = state[0], s1 = state[1];
      *   uint64_t result = rotl(s0 * 0xD2B74407B1CE6E93, 29) + s1;
      *   state[0] = s1;
-     *   state[1] = (s0 << 2) ^ ((int64_t)s0 >> 19) ^ s1;
+     *   state[1] = (OpCodes.Shl32(s0, 2))^((int64_t)OpCodes.Shr32(s0, 19))^s1;
      *   return result;
      * }
      *
@@ -245,7 +245,7 @@
       // state[0] = s1
       this._s0 = s1;
 
-      // state[1] = (s0 << 2) ^ ((int64_t)s0 >> 19) ^ s1
+      // state[1] = (OpCodes.Shl32(s0, 2))^((int64_t)OpCodes.Shr32(s0, 19))^s1
       // Note: >> is arithmetic right shift for signed int64_t
       // For arithmetic right shift in BigInt, we need to handle the sign bit
       const shifted_left = OpCodes.ToQWord(OpCodes.ShiftLn(s0, 2));
@@ -346,8 +346,8 @@
      *
      * void jump64(uint64_t state[2]) {
      *   uint64_t s0 = state[0], s1 = state[1];
-     *   state[0] = s0 ^ s1;
-     *   state[1] = (s0 << 2) ^ ((int64_t)s0 >> 19);
+     *   state[0] = s0^s1;
+     *   state[1] = (OpCodes.Shl32(s0, 2))^((int64_t)OpCodes.Shr32(s0, 19));
      * }
      */
     jump64() {
@@ -359,10 +359,10 @@
       const s0 = this._s0;
       const s1 = this._s1;
 
-      // state[0] = s0 ^ s1
+      // state[0] = s0^s1
       this._s0 = OpCodes.XorN(s0, s1);
 
-      // state[1] = (s0 << 2) ^ ((int64_t)s0 >> 19)
+      // state[1] = (OpCodes.Shl32(s0, 2))^((int64_t)OpCodes.Shr32(s0, 19))
       const shifted_left = OpCodes.ToQWord(OpCodes.ShiftLn(s0, 2));
 
       // Arithmetic right shift for signed int64_t

@@ -179,7 +179,7 @@
         // If shift is provided as byte array, XOR all bytes to get shift value
         let shift = 0;
         for (const byte of shiftAmount) {
-          shift ^= byte;
+          shift = OpCodes.Xor32(shift, byte);
         }
         this._shift = ((shift % 26) + 26) % 26;
       } else {

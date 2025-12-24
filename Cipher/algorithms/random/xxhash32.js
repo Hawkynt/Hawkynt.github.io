@@ -17,11 +17,11 @@
  * Algorithm:
  *   state = state + 0x9E3779B1 (PRIME1);
  *   h = state;
- *   h ^= h >> 15;
+ *   h ^= OpCodes.Shr32(h, 15);
  *   h *= 0x85EBCA77 (PRIME2);
- *   h ^= h >> 13;
+ *   h ^= OpCodes.Shr32(h, 13);
  *   h *= 0xC2B2AE3D (PRIME3);
- *   h ^= h >> 16;
+ *   h ^= OpCodes.Shr32(h, 16);
  *   return h;
  *
  * AlgorithmFramework Format
@@ -268,11 +268,11 @@
      * Algorithm:
      * 1. state = state + PRIME1  (Weyl sequence for state advancement)
      * 2. h = state
-     * 3. h ^= h >> 15            (First avalanche step)
+     * 3. h ^= OpCodes.Shr32(h, 15)            (First avalanche step)
      * 4. h *= PRIME2             (Multiply by prime)
-     * 5. h ^= h >> 13            (Second avalanche step)
+     * 5. h ^= OpCodes.Shr32(h, 13)            (Second avalanche step)
      * 6. h *= PRIME3             (Multiply by prime)
-     * 7. h ^= h >> 16            (Final avalanche step)
+     * 7. h ^= OpCodes.Shr32(h, 16)            (Final avalanche step)
      * 8. return h
      *
      * Constants from XXHash32 specification:
@@ -286,8 +286,7 @@
       }
 
       // Step 1: Advance state using PRIME1 (Weyl sequence)
-      this._state = OpCodes.ToInt(this._state + this.PRIME1);
-      this._state = OpCodes.ToDWord(this._state);
+      this._state = OpCodes.ToDWord(OpCodes.Add32(this._state, this.PRIME1));
 
       // Step 2: Initialize h with current state
       let h = this._state;

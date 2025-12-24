@@ -143,7 +143,7 @@
       this.result = null;
 
       // Generator matrix for ternary Golay [11,6,5] code
-      // G = [I_6 | P] where I_6 is identity and P is parity matrix
+      // G = [I_6|P] where I_6 is identity and P is parity matrix
       this.generator = [
         [1, 0, 0, 0, 0, 0, 1, 1, 2, 2, 1],
         [0, 1, 0, 0, 0, 0, 1, 2, 1, 1, 2],
@@ -153,7 +153,7 @@
         [0, 0, 0, 0, 0, 1, 2, 2, 1, 2, 1]
       ];
 
-      // Parity check matrix H = [-P^T | I_5]
+      // Parity check matrix H = [-P^T|I_5]
       this.parityCheck = [
         [2, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0],
         [2, 1, 1, 2, 2, 1, 0, 1, 0, 0, 0],

@@ -129,7 +129,7 @@ class Shacal1Instance extends IBlockCipherInstance {
     // Extend key schedule using SHA-1 message schedule
     // W[t] = ROTL^1(W[t-3] XOR W[t-8] XOR W[t-14] XOR W[t-16])
     for (let t = 16; t < 80; ++t) {
-      const temp = this.RK[t - 3] ^ this.RK[t - 8] ^ this.RK[t - 14] ^ this.RK[t - 16];
+      const temp = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.RK[t - 3], this.RK[t - 8]), this.RK[t - 14]), this.RK[t - 16]);
       this.RK[t] = OpCodes.RotL32(temp, 1);
     }
   }
@@ -138,16 +138,16 @@ class Shacal1Instance extends IBlockCipherInstance {
   _f(t, b, c, d) {
     if (t < 20) {
       // Ch(b,c,d) = (b AND c) XOR (NOT b AND d)
-      return (b & c) ^ (~b & d);
+      return OpCodes.Xor32(b&c, OpCodes.ToUint32(~b)&d);
     } else if (t < 40) {
       // Parity(b,c,d) = b XOR c XOR d
-      return b ^ c ^ d;
+      return OpCodes.Xor32(OpCodes.Xor32(b, c), d);
     } else if (t < 60) {
       // Maj(b,c,d) = (b AND c) XOR (b AND d) XOR (c AND d)
-      return (b & c) ^ (b & d) ^ (c & d);
+      return OpCodes.Xor32(OpCodes.Xor32(b&c, b&d), c&d);
     } else {
       // Parity(b,c,d) = b XOR c XOR d
-      return b ^ c ^ d;
+      return OpCodes.Xor32(OpCodes.Xor32(b, c), d);
     }
   }
 
@@ -162,7 +162,7 @@ class Shacal1Instance extends IBlockCipherInstance {
     // 80 rounds of SHA-1 compression
     for (let t = 0; t < 80; ++t) {
       const rcIndex = Math.floor(t / 20);
-      const temp = (OpCodes.RotL32(a, 5) + this._f(t, b, c, d) + e + this.RC[rcIndex] + this.RK[t]) >>> 0;
+      const temp = OpCodes.ToUint32(OpCodes.RotL32(a, 5) + this._f(t, b, c, d) + e + this.RC[rcIndex] + this.RK[t]);
       e = d;
       d = c;
       c = OpCodes.RotL32(b, 30);
@@ -195,7 +195,7 @@ class Shacal1Instance extends IBlockCipherInstance {
       b = OpCodes.RotR32(c, 30);
       c = d;
       d = e;
-      e = (temp - OpCodes.RotL32(a, 5) - this._f(t, b, c, d) - this.RC[rcIndex] - this.RK[t]) >>> 0;
+      e = OpCodes.ToUint32(temp - OpCodes.RotL32(a, 5) - this._f(t, b, c, d) - this.RC[rcIndex] - this.RK[t]);
     }
 
     return [

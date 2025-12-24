@@ -367,12 +367,12 @@
         bytes.push(...lengthBytes);
 
         // Alphabet size
-        bytes.push(alphabet.length & 0xFF);
+        bytes.push(OpCodes.ToByte(alphabet.length));
 
         // Alphabet symbols
-        bytes.push(alphabet.length & 0xFF); // Context depth info
+        bytes.push(OpCodes.ToByte(alphabet.length)); // Context depth info
         for (const symbol of alphabet) {
-          bytes.push(symbol.charCodeAt(0) & 0xFF);
+          bytes.push(OpCodes.ToByte(symbol.charCodeAt(0)));
         }
 
         // Encoded data length
@@ -424,7 +424,7 @@
       _stringToBytes(str) {
         const bytes = [];
         for (let i = 0; i < str.length; i++) {
-          bytes.push(str.charCodeAt(i) & 0xFF);
+          bytes.push(OpCodes.ToByte(str.charCodeAt(i)));
         }
         return bytes;
       }

@@ -6,7 +6,7 @@
  * XTEA Algorithm by David Wheeler and Roger Needham (1997)
  * - 64-bit block cipher with 128-bit keys
  * - 64 rounds (32 cycles) using improved key schedule over TEA
- * - Magic constant: 2^32 / golden ratio
+ * - Magic constant: OpCodes.Xor32(2, 32) / golden ratio
  * - Addresses equivalent key problem and other weaknesses in TEA
  */
 
@@ -156,7 +156,7 @@
 
       // XTEA constants
       this.CYCLES = 32;                          // XTEA uses 32 cycles (64 rounds)
-      this.DELTA = OpCodes.Pack32BE(...OpCodes.Hex8ToBytes('9E3779B9')); // Magic constant: 2^32 / golden ratio
+      this.DELTA = OpCodes.Pack32BE(...OpCodes.Hex8ToBytes('9E3779B9')); // Magic constant: OpCodes.Xor32(2, 32) / golden ratio
     }
 
     /**

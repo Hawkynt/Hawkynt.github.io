@@ -356,10 +356,10 @@
       for (let i = 0; i < fullWords; ++i) {
         const value = this._nextInt();
         // Output in little-endian format
-        output.push((value) & 0xFF);
-        output.push((value >>> 8) & 0xFF);
-        output.push((value >>> 16) & 0xFF);
-        output.push((value >>> 24) & 0xFF);
+        output.push(OpCodes.ToByte(value));
+        output.push(OpCodes.ToByte(OpCodes.Shr32(value, 8)));
+        output.push(OpCodes.ToByte(OpCodes.Shr32(value, 16)));
+        output.push(OpCodes.ToByte(OpCodes.Shr32(value, 24)));
       }
 
       // Handle remaining bytes (if length not multiple of 4)
@@ -367,7 +367,7 @@
       if (remainingBytes > 0) {
         const value = this._nextInt();
         for (let i = 0; i < remainingBytes; ++i) {
-          output.push((value >>> (i * 8)) & 0xFF);
+          output.push(OpCodes.ToByte(OpCodes.Shr32(value, i * 8)));
         }
       }
 

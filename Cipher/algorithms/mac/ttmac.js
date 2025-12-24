@@ -46,11 +46,11 @@
   ];
 
   // RIPEMD-160 boolean functions
-  function F(x, y, z) { return x ^ y ^ z; }
-  function G(x, y, z) { return z ^ (x & (y ^ z)); }
-  function H(x, y, z) { return z ^ (x | ~y); }
-  function I(x, y, z) { return y ^ (z & (x ^ y)); }
-  function J(x, y, z) { return x ^ (y | ~z); }
+  function F(x, y, z) { return OpCodes.Xor32(OpCodes.Xor32(x, y), z); }
+  function G(x, y, z) { return OpCodes.Xor32(z, (x&OpCodes.Xor32(y, z))); }
+  function H(x, y, z) { return OpCodes.Xor32(z, (x|~y)); }
+  function I(x, y, z) { return OpCodes.Xor32(y, (z&OpCodes.Xor32(x, y))); }
+  function J(x, y, z) { return OpCodes.Xor32(x, (y|~z)); }
 
   class TTMACAlgorithm extends MacAlgorithm {
     constructor() {
@@ -254,8 +254,8 @@
 
       // Helper for subround
       const subround = (fn, s, a, b, c, d, e, x, k) => {
-        const temp = (a + fn(b, c, d) + x + k) >>> 0;
-        a = (OpCodes.RotL32(temp, s) + e) >>> 0;
+        const temp = OpCodes.ToUint32(a + fn(b, c, d) + x + k);
+        a = OpCodes.ToUint32(OpCodes.RotL32(temp, s) + e);
         c = OpCodes.RotL32(c, 10);
         return [a, c];
       };
@@ -358,34 +358,34 @@
       [c2, e2] = subround(F, 11, c2, d2, e2, a2, b2, X[ 9], K[9]); [b2, d2] = subround(F, 11, b2, c2, d2, e2, a2, X[11], K[9]);
 
       // Update state
-      a1 = (a1 - this.digest[trackA]) >>> 0;
-      b1 = (b1 - this.digest[trackA + 1]) >>> 0;
-      c1 = (c1 - this.digest[trackA + 2]) >>> 0;
-      d1 = (d1 - this.digest[trackA + 3]) >>> 0;
-      e1 = (e1 - this.digest[trackA + 4]) >>> 0;
-      a2 = (a2 - this.digest[trackB]) >>> 0;
-      b2 = (b2 - this.digest[trackB + 1]) >>> 0;
-      c2 = (c2 - this.digest[trackB + 2]) >>> 0;
-      d2 = (d2 - this.digest[trackB + 3]) >>> 0;
-      e2 = (e2 - this.digest[trackB + 4]) >>> 0;
+      a1 = OpCodes.ToUint32(a1 - this.digest[trackA]);
+      b1 = OpCodes.ToUint32(b1 - this.digest[trackA + 1]);
+      c1 = OpCodes.ToUint32(c1 - this.digest[trackA + 2]);
+      d1 = OpCodes.ToUint32(d1 - this.digest[trackA + 3]);
+      e1 = OpCodes.ToUint32(e1 - this.digest[trackA + 4]);
+      a2 = OpCodes.ToUint32(a2 - this.digest[trackB]);
+      b2 = OpCodes.ToUint32(b2 - this.digest[trackB + 1]);
+      c2 = OpCodes.ToUint32(c2 - this.digest[trackB + 2]);
+      d2 = OpCodes.ToUint32(d2 - this.digest[trackB + 3]);
+      e2 = OpCodes.ToUint32(e2 - this.digest[trackB + 4]);
 
       if (!isLast) {
-        this.digest[trackA] = ((b1 + e1) - d2) >>> 0;
-        this.digest[trackA + 1] = (c1 - e2) >>> 0;
-        this.digest[trackA + 2] = (d1 - a2) >>> 0;
-        this.digest[trackA + 3] = (e1 - b2) >>> 0;
-        this.digest[trackA + 4] = (a1 - c2) >>> 0;
-        this.digest[trackB] = (d1 - e2) >>> 0;
-        this.digest[trackB + 1] = ((e1 + c1) - a2) >>> 0;
-        this.digest[trackB + 2] = (a1 - b2) >>> 0;
-        this.digest[trackB + 3] = (b1 - c2) >>> 0;
-        this.digest[trackB + 4] = (c1 - d2) >>> 0;
+        this.digest[trackA] = OpCodes.ToUint32((b1 + e1) - d2);
+        this.digest[trackA + 1] = OpCodes.ToUint32(c1 - e2);
+        this.digest[trackA + 2] = OpCodes.ToUint32(d1 - a2);
+        this.digest[trackA + 3] = OpCodes.ToUint32(e1 - b2);
+        this.digest[trackA + 4] = OpCodes.ToUint32(a1 - c2);
+        this.digest[trackB] = OpCodes.ToUint32(d1 - e2);
+        this.digest[trackB + 1] = OpCodes.ToUint32((e1 + c1) - a2);
+        this.digest[trackB + 2] = OpCodes.ToUint32(a1 - b2);
+        this.digest[trackB + 3] = OpCodes.ToUint32(b1 - c2);
+        this.digest[trackB + 4] = OpCodes.ToUint32(c1 - d2);
       } else {
-        this.digest[trackB] = (a2 - a1) >>> 0;
-        this.digest[trackB + 1] = (b2 - b1) >>> 0;
-        this.digest[trackB + 2] = (c2 - c1) >>> 0;
-        this.digest[trackB + 3] = (d2 - d1) >>> 0;
-        this.digest[trackB + 4] = (e2 - e1) >>> 0;
+        this.digest[trackB] = OpCodes.ToUint32(a2 - a1);
+        this.digest[trackB + 1] = OpCodes.ToUint32(b2 - b1);
+        this.digest[trackB + 2] = OpCodes.ToUint32(c2 - c1);
+        this.digest[trackB + 3] = OpCodes.ToUint32(d2 - d1);
+        this.digest[trackB + 4] = OpCodes.ToUint32(e2 - e1);
         this.digest[trackA] = 0;
         this.digest[trackA + 1] = 0;
         this.digest[trackA + 2] = 0;
@@ -411,10 +411,10 @@
       }
 
       // Append bit count (little-endian 64-bit)
-      const bitCountLo = this.bitCount >>> 0;
-      const bitCountHi = Math.floor(this.bitCount / 0x100000000) >>> 0;
-      this.buffer.push(bitCountLo & 0xff, (bitCountLo >>> 8) & 0xff, (bitCountLo >>> 16) & 0xff, (bitCountLo >>> 24) & 0xff);
-      this.buffer.push(bitCountHi & 0xff, (bitCountHi >>> 8) & 0xff, (bitCountHi >>> 16) & 0xff, (bitCountHi >>> 24) & 0xff);
+      const bitCountLo = OpCodes.ToUint32(this.bitCount);
+      const bitCountHi = OpCodes.ToUint32(Math.floor(this.bitCount / 0x100000000));
+      this.buffer.push(OpCodes.ToByte(bitCountLo), OpCodes.ToByte(OpCodes.Shr32(bitCountLo, 8)), OpCodes.ToByte(OpCodes.Shr32(bitCountLo, 16)), OpCodes.ToByte(OpCodes.Shr32(bitCountLo, 24)));
+      this.buffer.push(OpCodes.ToByte(bitCountHi), OpCodes.ToByte(OpCodes.Shr32(bitCountHi, 8)), OpCodes.ToByte(OpCodes.Shr32(bitCountHi, 16)), OpCodes.ToByte(OpCodes.Shr32(bitCountHi, 24)));
 
       // Process final block
       this._transform(this.buffer, true);

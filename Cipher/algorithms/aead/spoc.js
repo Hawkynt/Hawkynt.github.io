@@ -62,7 +62,7 @@
   function simeck64Round(x, y, rcBit) {
     const rotl5 = OpCodes.RotL32(x, 5);
     const rotl1 = OpCodes.RotL32(x, 1);
-    y = (y ^ (rotl5 & x) ^ rotl1 ^ 0xFFFFFFFE ^ (rcBit & 1)) >>> 0;
+    y = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, (rotl5&x)), rotl1), 0xFFFFFFFE), (rcBit&1)) >>> 0;
     return y;
   }
 
@@ -71,10 +71,10 @@
     for (let i = 0; i < 8; ++i) {
       if (i % 2 === 0) {
         y = simeck64Round(x, y, rc);
-        rc >>= 1;
+        rc = OpCodes.Shr32(rc, 1);
       } else {
         x = simeck64Round(y, x, rc);
-        rc >>= 1;
+        rc = OpCodes.Shr32(rc, 1);
       }
     }
     return [x, y];
@@ -101,18 +101,18 @@
       [x6, x7] = simeck64Box(x6, x7, SLISCP_LIGHT256_RC[rcOffset + 1]);
 
       // Add step constants
-      x0 = (x0 ^ 0xFFFFFFFF) >>> 0;
-      x1 = (x1 ^ 0xFFFFFF00 ^ SLISCP_LIGHT256_RC[rcOffset + 2]) >>> 0;
-      x4 = (x4 ^ 0xFFFFFFFF) >>> 0;
-      x5 = (x5 ^ 0xFFFFFF00 ^ SLISCP_LIGHT256_RC[rcOffset + 3]) >>> 0;
+      x0 = OpCodes.ToUint32((x0^0xFFFFFFFF));
+      x1 = OpCodes.ToUint32((x1^0xFFFFFF00^SLISCP_LIGHT256_RC[rcOffset + 2]));
+      x4 = OpCodes.ToUint32((x4^0xFFFFFFFF));
+      x5 = OpCodes.ToUint32((x5^0xFFFFFF00^SLISCP_LIGHT256_RC[rcOffset + 3]));
 
       // Mix the sub-blocks
-      const t0 = (x0 ^ x2) >>> 0;
-      const t1 = (x1 ^ x3) >>> 0;
+      const t0 = OpCodes.ToUint32((x0^x2));
+      const t1 = OpCodes.ToUint32((x1^x3));
       x0 = x2;
       x1 = x3;
-      x2 = (x4 ^ x6) >>> 0;
-      x3 = (x5 ^ x7) >>> 0;
+      x2 = OpCodes.ToUint32((x4^x6));
+      x3 = OpCodes.ToUint32((x5^x7));
       x4 = x6;
       x5 = x7;
       x6 = t0;
@@ -160,21 +160,21 @@
 
   // Load 24-bit word (big-endian)
   function loadWord24BE(bytes, offset) {
-    return ((bytes[offset] << 16) | (bytes[offset + 1] << 8) | bytes[offset + 2]) >>> 0;
+    return ((OpCodes.Shl32(bytes[offset], 16))|(OpCodes.Shl32(bytes[offset + 1], 8))|bytes[offset + 2]) >>> 0;
   }
 
   // Store 24-bit word (big-endian)
   function storeWord24BE(bytes, offset, value) {
-    bytes[offset] = (value >>> 16) & 0xFF;
-    bytes[offset + 1] = (value >>> 8) & 0xFF;
-    bytes[offset + 2] = value & 0xFF;
+    bytes[offset] = (OpCodes.Shr32(value, 16))&0xFF;
+    bytes[offset + 1] = (OpCodes.Shr32(value, 8))&0xFF;
+    bytes[offset + 2] = value&0xFF;
   }
 
   // Simeck-48 round function (used in sLiSCP-light-192)
   function simeck48Round(x, y, rcBit) {
-    const rotl5 = ((x << 5) | (x >>> 19)) & 0x00FFFFFF;
-    const rotl1 = ((x << 1) | (x >>> 23)) & 0x00FFFFFF;
-    y = ((y ^ (rotl5 & x) ^ rotl1 ^ 0x00FFFFFE ^ (rcBit & 1)) & 0x00FFFFFF) >>> 0;
+    const rotl5 = ((OpCodes.Shl32(x, 5))|(OpCodes.Shr32(x, 19)))&0x00FFFFFF;
+    const rotl1 = ((OpCodes.Shl32(x, 1))|(OpCodes.Shr32(x, 23)))&0x00FFFFFF;
+    y = ((OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, (rotl5&x)), rotl1), 0x00FFFFFE), (rcBit&1)))&0x00FFFFFF) >>> 0;
     return y;
   }
 
@@ -183,10 +183,10 @@
     for (let i = 0; i < 6; ++i) {
       if (i % 2 === 0) {
         y = simeck48Round(x, y, rc);
-        rc >>= 1;
+        rc = OpCodes.Shr32(rc, 1);
       } else {
         x = simeck48Round(y, x, rc);
-        rc >>= 1;
+        rc = OpCodes.Shr32(rc, 1);
       }
     }
     return [x, y];
@@ -213,18 +213,18 @@
       [x6, x7] = simeck48Box(x6, x7, SLISCP_LIGHT192_RC[rcOffset + 1]);
 
       // Add step constants
-      x0 = (x0 ^ 0x00FFFFFF) >>> 0;
-      x1 = (x1 ^ 0x00FFFF00 ^ SLISCP_LIGHT192_RC[rcOffset + 2]) >>> 0;
-      x4 = (x4 ^ 0x00FFFFFF) >>> 0;
-      x5 = (x5 ^ 0x00FFFF00 ^ SLISCP_LIGHT192_RC[rcOffset + 3]) >>> 0;
+      x0 = OpCodes.ToUint32((x0^0x00FFFFFF));
+      x1 = OpCodes.ToUint32((x1^0x00FFFF00^SLISCP_LIGHT192_RC[rcOffset + 2]));
+      x4 = OpCodes.ToUint32((x4^0x00FFFFFF));
+      x5 = OpCodes.ToUint32((x5^0x00FFFF00^SLISCP_LIGHT192_RC[rcOffset + 3]));
 
       // Mix the sub-blocks
-      const t0 = (x0 ^ x2) >>> 0;
-      const t1 = (x1 ^ x3) >>> 0;
+      const t0 = OpCodes.ToUint32((x0^x2));
+      const t1 = OpCodes.ToUint32((x1^x3));
       x0 = x2;
       x1 = x3;
-      x2 = (x4 ^ x6) >>> 0;
-      x3 = (x5 ^ x7) >>> 0;
+      x2 = OpCodes.ToUint32((x4^x6));
+      x3 = OpCodes.ToUint32((x5^x7));
       x4 = x6;
       x5 = x7;
       x6 = t0;
@@ -431,9 +431,9 @@
         while (remaining >= 16) {
           sliscpLight256PermuteSpoc(state);
           for (let i = 0; i < 16; ++i) {
-            state[i + 16] ^= ad[adOffset + i];
+            state[i + 16] = OpCodes.Xor32(state[i + 16], ad[adOffset + i]);
           }
-          state[0] ^= 0x20; // Domain separation
+          state[0] = OpCodes.Xor32(state[0], 0x20); // Domain separation
           adOffset += 16;
           remaining -= 16;
         }
@@ -442,10 +442,10 @@
         if (remaining > 0) {
           sliscpLight256PermuteSpoc(state);
           for (let i = 0; i < remaining; ++i) {
-            state[i + 16] ^= ad[adOffset + i];
+            state[i + 16] = OpCodes.Xor32(state[i + 16], ad[adOffset + i]);
           }
-          state[remaining + 16] ^= 0x80; // Padding
-          state[0] ^= 0x30; // Domain separation
+          state[remaining + 16] = OpCodes.Xor32(state[remaining + 16], 0x80); // Padding
+          state[0] = OpCodes.Xor32(state[0], 0x30); // Domain separation
         }
       }
 
@@ -463,10 +463,10 @@
           while (remaining >= 16) {
             sliscpLight256PermuteSpoc(state);
             for (let i = 0; i < 16; ++i) {
-              state[i + 16] ^= plaintext[mOffset + i];
-              ciphertext.push(plaintext[mOffset + i] ^ state[i]);
+              state[i + 16] = OpCodes.Xor32(state[i + 16], plaintext[mOffset + i]);
+              ciphertext.push(OpCodes.Xor32(plaintext[mOffset + i], state[i]));
             }
-            state[0] ^= 0x40; // Domain separation
+            state[0] = OpCodes.Xor32(state[0], 0x40); // Domain separation
             mOffset += 16;
             remaining -= 16;
           }
@@ -475,16 +475,16 @@
           if (remaining > 0) {
             sliscpLight256PermuteSpoc(state);
             for (let i = 0; i < remaining; ++i) {
-              state[i + 16] ^= plaintext[mOffset + i];
-              ciphertext.push(plaintext[mOffset + i] ^ state[i]);
+              state[i + 16] = OpCodes.Xor32(state[i + 16], plaintext[mOffset + i]);
+              ciphertext.push(OpCodes.Xor32(plaintext[mOffset + i], state[i]));
             }
-            state[remaining + 16] ^= 0x80; // Padding
-            state[0] ^= 0x50; // Domain separation
+            state[remaining + 16] = OpCodes.Xor32(state[remaining + 16], 0x80); // Padding
+            state[0] = OpCodes.Xor32(state[0], 0x50); // Domain separation
           }
         }
 
         // Finalize and generate tag
-        state[0] ^= 0x80;
+        state[0] = OpCodes.Xor32(state[0], 0x80);
         sliscpLight256PermuteSpoc(state);
 
         // Append tag
@@ -515,11 +515,11 @@
           while (remaining >= 16) {
             sliscpLight256PermuteSpoc(state);
             for (let i = 0; i < 16; ++i) {
-              const ptByte = ciphertext[cOffset + i] ^ state[i];
+              const ptByte = OpCodes.Xor32(ciphertext[cOffset + i], state[i]);
               plaintext.push(ptByte);
-              state[i + 16] ^= ptByte;
+              state[i + 16] = OpCodes.Xor32(state[i + 16], ptByte);
             }
-            state[0] ^= 0x40; // Domain separation
+            state[0] = OpCodes.Xor32(state[0], 0x40); // Domain separation
             cOffset += 16;
             remaining -= 16;
           }
@@ -528,23 +528,23 @@
           if (remaining > 0) {
             sliscpLight256PermuteSpoc(state);
             for (let i = 0; i < remaining; ++i) {
-              const ptByte = ciphertext[cOffset + i] ^ state[i];
+              const ptByte = OpCodes.Xor32(ciphertext[cOffset + i], state[i]);
               plaintext.push(ptByte);
-              state[i + 16] ^= ptByte;
+              state[i + 16] = OpCodes.Xor32(state[i + 16], ptByte);
             }
-            state[remaining + 16] ^= 0x80; // Padding
-            state[0] ^= 0x50; // Domain separation
+            state[remaining + 16] = OpCodes.Xor32(state[remaining + 16], 0x80); // Padding
+            state[0] = OpCodes.Xor32(state[0], 0x50); // Domain separation
           }
         }
 
         // Finalize and verify tag
-        state[0] ^= 0x80;
+        state[0] = OpCodes.Xor32(state[0], 0x80);
         sliscpLight256PermuteSpoc(state);
 
         // Check tag (constant-time comparison)
         let tagMatch = 0;
         for (let i = 0; i < 16; ++i) {
-          tagMatch |= state[i + 16] ^ ciphertext[mlen + i];
+          tagMatch |= OpCodes.Xor32(state[i + 16], ciphertext[mlen + i]);
         }
 
         if (tagMatch !== 0) {
@@ -751,14 +751,14 @@
       sliscpLight192Permute(state);
 
       // XOR remaining nonce bytes
-      state[6] ^= this._nonce[8];
-      state[7] ^= this._nonce[9];
-      state[8] ^= this._nonce[10];
-      state[9] ^= this._nonce[11];
-      state[18] ^= this._nonce[12];
-      state[19] ^= this._nonce[13];
-      state[20] ^= this._nonce[14];
-      state[21] ^= this._nonce[15];
+      state[6] = OpCodes.Xor32(state[6], this._nonce[8]);
+      state[7] = OpCodes.Xor32(state[7], this._nonce[9]);
+      state[8] = OpCodes.Xor32(state[8], this._nonce[10]);
+      state[9] = OpCodes.Xor32(state[9], this._nonce[11]);
+      state[18] = OpCodes.Xor32(state[18], this._nonce[12]);
+      state[19] = OpCodes.Xor32(state[19], this._nonce[13]);
+      state[20] = OpCodes.Xor32(state[20], this._nonce[14]);
+      state[21] = OpCodes.Xor32(state[21], this._nonce[15]);
 
       // Absorb associated data
       if (adlen > 0) {
@@ -768,15 +768,15 @@
         // Full rate blocks (8 bytes)
         while (remaining >= 8) {
           sliscpLight192Permute(state);
-          state[6] ^= ad[adOffset];
-          state[7] ^= ad[adOffset + 1];
-          state[8] ^= ad[adOffset + 2];
-          state[9] ^= ad[adOffset + 3];
-          state[18] ^= ad[adOffset + 4];
-          state[19] ^= ad[adOffset + 5];
-          state[20] ^= ad[adOffset + 6];
-          state[21] ^= ad[adOffset + 7];
-          state[0] ^= 0x20; // Domain separation
+          state[6] = OpCodes.Xor32(state[6], ad[adOffset]);
+          state[7] = OpCodes.Xor32(state[7], ad[adOffset + 1]);
+          state[8] = OpCodes.Xor32(state[8], ad[adOffset + 2]);
+          state[9] = OpCodes.Xor32(state[9], ad[adOffset + 3]);
+          state[18] = OpCodes.Xor32(state[18], ad[adOffset + 4]);
+          state[19] = OpCodes.Xor32(state[19], ad[adOffset + 5]);
+          state[20] = OpCodes.Xor32(state[20], ad[adOffset + 6]);
+          state[21] = OpCodes.Xor32(state[21], ad[adOffset + 7]);
+          state[0] = OpCodes.Xor32(state[0], 0x20); // Domain separation
           adOffset += 8;
           remaining -= 8;
         }
@@ -784,10 +784,10 @@
         // Partial block with padding
         if (remaining > 0) {
           sliscpLight192Permute(state);
-          state[SPOC_64_MASK_POS[remaining]] ^= 0x80; // Padding
-          state[0] ^= 0x30; // Domain separation
+          state[SPOC_64_MASK_POS[remaining]] = OpCodes.Xor32(state[SPOC_64_MASK_POS[remaining]], 0x80); // Padding
+          state[0] = OpCodes.Xor32(state[0], 0x30); // Domain separation
           for (let i = remaining - 1; i >= 0; --i) {
-            state[SPOC_64_MASK_POS[i]] ^= ad[adOffset + i];
+            state[SPOC_64_MASK_POS[i]] = OpCodes.Xor32(state[SPOC_64_MASK_POS[i]], ad[adOffset + i]);
           }
         }
       }
@@ -805,25 +805,25 @@
           // Full rate blocks
           while (remaining >= 8) {
             sliscpLight192Permute(state);
-            state[6] ^= plaintext[mOffset];
-            state[7] ^= plaintext[mOffset + 1];
-            state[8] ^= plaintext[mOffset + 2];
-            state[9] ^= plaintext[mOffset + 3];
-            state[18] ^= plaintext[mOffset + 4];
-            state[19] ^= plaintext[mOffset + 5];
-            state[20] ^= plaintext[mOffset + 6];
-            state[21] ^= plaintext[mOffset + 7];
+            state[6] = OpCodes.Xor32(state[6], plaintext[mOffset]);
+            state[7] = OpCodes.Xor32(state[7], plaintext[mOffset + 1]);
+            state[8] = OpCodes.Xor32(state[8], plaintext[mOffset + 2]);
+            state[9] = OpCodes.Xor32(state[9], plaintext[mOffset + 3]);
+            state[18] = OpCodes.Xor32(state[18], plaintext[mOffset + 4]);
+            state[19] = OpCodes.Xor32(state[19], plaintext[mOffset + 5]);
+            state[20] = OpCodes.Xor32(state[20], plaintext[mOffset + 6]);
+            state[21] = OpCodes.Xor32(state[21], plaintext[mOffset + 7]);
 
-            ciphertext.push(plaintext[mOffset] ^ state[0]);
-            ciphertext.push(plaintext[mOffset + 1] ^ state[1]);
-            ciphertext.push(plaintext[mOffset + 2] ^ state[2]);
-            ciphertext.push(plaintext[mOffset + 3] ^ state[3]);
-            ciphertext.push(plaintext[mOffset + 4] ^ state[12]);
-            ciphertext.push(plaintext[mOffset + 5] ^ state[13]);
-            ciphertext.push(plaintext[mOffset + 6] ^ state[14]);
-            ciphertext.push(plaintext[mOffset + 7] ^ state[15]);
+            ciphertext.push(OpCodes.Xor32(plaintext[mOffset], state[0]));
+            ciphertext.push(OpCodes.Xor32(plaintext[mOffset + 1], state[1]));
+            ciphertext.push(OpCodes.Xor32(plaintext[mOffset + 2], state[2]));
+            ciphertext.push(OpCodes.Xor32(plaintext[mOffset + 3], state[3]));
+            ciphertext.push(OpCodes.Xor32(plaintext[mOffset + 4], state[12]));
+            ciphertext.push(OpCodes.Xor32(plaintext[mOffset + 5], state[13]));
+            ciphertext.push(OpCodes.Xor32(plaintext[mOffset + 6], state[14]));
+            ciphertext.push(OpCodes.Xor32(plaintext[mOffset + 7], state[15]));
 
-            state[0] ^= 0x40; // Domain separation
+            state[0] = OpCodes.Xor32(state[0], 0x40); // Domain separation
             mOffset += 8;
             remaining -= 8;
           }
@@ -831,18 +831,18 @@
           // Partial block with padding
           if (remaining > 0) {
             sliscpLight192Permute(state);
-            state[SPOC_64_MASK_POS[remaining]] ^= 0x80; // Padding
+            state[SPOC_64_MASK_POS[remaining]] = OpCodes.Xor32(state[SPOC_64_MASK_POS[remaining]], 0x80); // Padding
             for (let i = remaining - 1; i >= 0; --i) {
               const mbyte = plaintext[mOffset + i];
-              state[SPOC_64_MASK_POS[i]] ^= mbyte;
-              ciphertext.push(mbyte ^ state[SPOC_64_RATE_POS[i]]);
+              state[SPOC_64_MASK_POS[i]] = OpCodes.Xor32(state[SPOC_64_MASK_POS[i]], mbyte);
+              ciphertext.push(OpCodes.Xor32(mbyte, state[SPOC_64_RATE_POS[i]]));
             }
-            state[0] ^= 0x50; // Domain separation
+            state[0] = OpCodes.Xor32(state[0], 0x50); // Domain separation
           }
         }
 
         // Finalize and generate tag
-        state[0] ^= 0x80;
+        state[0] = OpCodes.Xor32(state[0], 0x80);
         sliscpLight192Permute(state);
 
         // Append 8-byte tag
@@ -872,27 +872,27 @@
           while (remaining >= 8) {
             sliscpLight192Permute(state);
 
-            const m0 = ciphertext[cOffset] ^ state[0];
-            const m1 = ciphertext[cOffset + 1] ^ state[1];
-            const m2 = ciphertext[cOffset + 2] ^ state[2];
-            const m3 = ciphertext[cOffset + 3] ^ state[3];
-            const m4 = ciphertext[cOffset + 4] ^ state[12];
-            const m5 = ciphertext[cOffset + 5] ^ state[13];
-            const m6 = ciphertext[cOffset + 6] ^ state[14];
-            const m7 = ciphertext[cOffset + 7] ^ state[15];
+            const m0 = OpCodes.Xor32(ciphertext[cOffset], state[0]);
+            const m1 = OpCodes.Xor32(ciphertext[cOffset + 1], state[1]);
+            const m2 = OpCodes.Xor32(ciphertext[cOffset + 2], state[2]);
+            const m3 = OpCodes.Xor32(ciphertext[cOffset + 3], state[3]);
+            const m4 = OpCodes.Xor32(ciphertext[cOffset + 4], state[12]);
+            const m5 = OpCodes.Xor32(ciphertext[cOffset + 5], state[13]);
+            const m6 = OpCodes.Xor32(ciphertext[cOffset + 6], state[14]);
+            const m7 = OpCodes.Xor32(ciphertext[cOffset + 7], state[15]);
 
             plaintext.push(m0, m1, m2, m3, m4, m5, m6, m7);
 
-            state[6] ^= m0;
-            state[7] ^= m1;
-            state[8] ^= m2;
-            state[9] ^= m3;
-            state[18] ^= m4;
-            state[19] ^= m5;
-            state[20] ^= m6;
-            state[21] ^= m7;
+            state[6] = OpCodes.Xor32(state[6], m0);
+            state[7] = OpCodes.Xor32(state[7], m1);
+            state[8] = OpCodes.Xor32(state[8], m2);
+            state[9] = OpCodes.Xor32(state[9], m3);
+            state[18] = OpCodes.Xor32(state[18], m4);
+            state[19] = OpCodes.Xor32(state[19], m5);
+            state[20] = OpCodes.Xor32(state[20], m6);
+            state[21] = OpCodes.Xor32(state[21], m7);
 
-            state[0] ^= 0x40; // Domain separation
+            state[0] = OpCodes.Xor32(state[0], 0x40); // Domain separation
             cOffset += 8;
             remaining -= 8;
           }
@@ -900,30 +900,30 @@
           // Partial block with padding
           if (remaining > 0) {
             sliscpLight192Permute(state);
-            state[SPOC_64_MASK_POS[remaining]] ^= 0x80; // Padding
+            state[SPOC_64_MASK_POS[remaining]] = OpCodes.Xor32(state[SPOC_64_MASK_POS[remaining]], 0x80); // Padding
             for (let i = remaining - 1; i >= 0; --i) {
-              const mbyte = ciphertext[cOffset + i] ^ state[SPOC_64_RATE_POS[i]];
-              state[SPOC_64_MASK_POS[i]] ^= mbyte;
+              const mbyte = OpCodes.Xor32(ciphertext[cOffset + i], state[SPOC_64_RATE_POS[i]]);
+              state[SPOC_64_MASK_POS[i]] = OpCodes.Xor32(state[SPOC_64_MASK_POS[i]], mbyte);
               plaintext.push(mbyte);
             }
-            state[0] ^= 0x50; // Domain separation
+            state[0] = OpCodes.Xor32(state[0], 0x50); // Domain separation
           }
         }
 
         // Finalize and verify tag
-        state[0] ^= 0x80;
+        state[0] = OpCodes.Xor32(state[0], 0x80);
         sliscpLight192Permute(state);
 
         // Check 8-byte tag (constant-time comparison)
         let tagMatch = 0;
-        tagMatch |= state[6] ^ ciphertext[mlen];
-        tagMatch |= state[7] ^ ciphertext[mlen + 1];
-        tagMatch |= state[8] ^ ciphertext[mlen + 2];
-        tagMatch |= state[9] ^ ciphertext[mlen + 3];
-        tagMatch |= state[18] ^ ciphertext[mlen + 4];
-        tagMatch |= state[19] ^ ciphertext[mlen + 5];
-        tagMatch |= state[20] ^ ciphertext[mlen + 6];
-        tagMatch |= state[21] ^ ciphertext[mlen + 7];
+        tagMatch |= OpCodes.Xor32(state[6], ciphertext[mlen]);
+        tagMatch |= OpCodes.Xor32(state[7], ciphertext[mlen + 1]);
+        tagMatch |= OpCodes.Xor32(state[8], ciphertext[mlen + 2]);
+        tagMatch |= OpCodes.Xor32(state[9], ciphertext[mlen + 3]);
+        tagMatch |= OpCodes.Xor32(state[18], ciphertext[mlen + 4]);
+        tagMatch |= OpCodes.Xor32(state[19], ciphertext[mlen + 5]);
+        tagMatch |= OpCodes.Xor32(state[20], ciphertext[mlen + 6]);
+        tagMatch |= OpCodes.Xor32(state[21], ciphertext[mlen + 7]);
 
         if (tagMatch !== 0) {
           throw new Error("Authentication tag verification failed");

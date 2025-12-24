@@ -270,7 +270,7 @@
       let byte = 0;
 
       for (let i = 0; i < 8; ++i) {
-        byte = OpCodes.Shl8(byte, 1) | this._generateBit();
+        byte = OpCodes.Shl8(byte, 1)|this._generateBit();
       }
 
       return byte;

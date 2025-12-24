@@ -412,7 +412,7 @@
         // Read offset (little-endian)
         if (ip + 1 >= inputLength)
           break;
-        const offset = OpCodes.ToByte(input[ip]) | OpCodes.Shl16(OpCodes.ToByte(input[ip+1]), 8);
+        const offset = OpCodes.ToByte(input[ip])|OpCodes.Shl16(OpCodes.ToByte(input[ip+1]), 8);
         ip += 2;
 
         // Decode match length

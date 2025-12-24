@@ -63,14 +63,14 @@
   function split64(value) {
     const bigValue = BigInt(value);
     return {
-      high: Number((bigValue >> 32n) & 0xffffffffn),
-      low: Number(bigValue & 0xffffffffn)
+      high: Number((bigValue >> 32n)&0xffffffffn),
+      low: Number(bigValue&0xffffffffn)
     };
   }
 
   // Convert {high32, low32} to 64-bit BigInt (PRECISION-CRITICAL)
   function join64(high, low) {
-    return (BigInt(high >>> 0) << 32n) | BigInt(low >>> 0);
+    return (BigInt(OpCodes.ToUint32(high)) << 32n)|BigInt(OpCodes.ToUint32(low));
   }
 
   // Convert 8-byte array (big-endian) to {high32, low32} representation
@@ -100,7 +100,7 @@
     const product = a * b;
 
     // Split result into four 32-bit parts
-    const low64 = product & M64;
+    const low64 = product&M64;
     const high64 = product >> 64n;
 
     const low = split64(low64);
@@ -132,13 +132,13 @@
     const b_high = join64(bh_h, bh_l);
 
     // Build 128-bit values
-    const a = (a_high << 64n) | a_low;
-    const b = (b_high << 64n) | b_low;
+    const a = (a_high << 64n)|a_low;
+    const b = (b_high << 64n)|b_low;
     const sum = a + b;
 
     // Split back into 32-bit parts
-    const low64 = sum & M64;
-    const high64 = (sum >> 64n) & M64;
+    const low64 = sum&M64;
+    const high64 = (sum >> 64n)&M64;
 
     const low = split64(low64);
     const high = split64(high64);
@@ -347,7 +347,7 @@
         this._nonce = paddedNonce;
         // Use masked nonce for pad generation (bit 0 of last byte cleared)
         this._padNonce = [...paddedNonce];
-        this._padNonce[15] = paddedNonce[15] & 0xFE;
+        this._padNonce[15] = OpCodes.And32(paddedNonce[15], 0xFE);
       }
 
       // Reset first block flag when nonce changes
@@ -442,11 +442,11 @@
         // CRITICAL: Mask must be applied AFTER packing, not before
         const kh_high = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]);
         const kh_low = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
-        const kh = join64(kh_high, kh_low) & MPOLY;
+        const kh = join64(kh_high, kh_low)&MPOLY;
 
         const kl_high = OpCodes.Pack32BE(block[8], block[9], block[10], block[11]);
         const kl_low = OpCodes.Pack32BE(block[12], block[13], block[14], block[15]);
-        const kl = join64(kl_high, kl_low) & MPOLY;
+        const kl = join64(kl_high, kl_low)&MPOLY;
 
         // polyState stores: [ah, al, kh, kl] as BigInt values
         // Initialize accumulator to 0
@@ -579,7 +579,7 @@
 
       // Convert back to 64-bit BigInts and mask to 126 bits (high is 62 bits max)
       // PRECISION-CRITICAL: Must use BigInt to preserve all bits
-      const nhHigh = join64(nh_high_h, nh_high_l) & M62;
+      const nhHigh = join64(nh_high_h, nh_high_l)&M62;
       const nhLow = join64(nh_low_h, nh_low_l);
 
       return { high: nhHigh, low: nhLow };
@@ -590,7 +590,7 @@
     // Reference: vmac.cpp lines 708-721 (word128 version)
     _polyStep(ah, al, kh, kl, mh, ml) {
       // Build 127-bit accumulator from high/low parts
-      const a = (BigInt(ah) << 64n) | BigInt(al);
+      const a = (BigInt(ah) << 64n)|BigInt(al);
       const k_high = BigInt(kh);
       const k_low = BigInt(kl);
       const a_high = BigInt(ah);
@@ -604,8 +604,8 @@
       // t2 += t3
       // t4 += t1
       // t2 += (t4>>64)
-      // a = ((t2 & m63) << 64) | (t4 & m64)
-      // a += m & m126
+      // a = (OpCodes.Shl32((t2&m63), 64))|(t4&m64)
+      // a += m&m126
 
       const t1 = a * k_low;                    // a * kl
       const t2_init = a_high * k_low;          // (a>>64) * kl
@@ -617,20 +617,20 @@
       t2 += (t4 >> 64n);                       // Add carry from t4
 
       // Build result: high 63 bits from t2, low 64 bits from t4
-      const result_high = t2 & M63;
-      const result_low = t4 & M64;
-      let result = (result_high << 64n) | result_low;
+      const result_high = t2&M63;
+      const result_low = t4&M64;
+      let result = (result_high << 64n)|result_low;
 
       // Add message (masked to 126 bits)
       const m_high = BigInt(mh);
       const m_low = BigInt(ml);
-      const m = ((m_high & M62) << 64n) | m_low;  // m126 mask
+      const m = ((m_high&M62) << 64n)|m_low;  // m126 mask
       result += m;
 
       // Return as high/low parts
       return {
-        high: (result >> 64n) & M63,
-        low: result & M64
+        high: (result >> 64n)&M63,
+        low: result&M64
       };
     }
 
@@ -654,7 +654,7 @@
       p1 += len + (p2 >> 64n);
       p2 &= M64;
 
-      // At this point, (p1,p2) is at most 2^127+(len<<64)
+      // At this point, (p1,p2) is at most 2^127+(len << 64)
       t = ((p1 > M63) ? 1n : 0n) + (((p1 === M63) && (p2 === M64)) ? 1n : 0n);
       // ADD128(p1, p2, z, t)
       p2 += t;
@@ -665,7 +665,7 @@
       // Compute (p1,p2)/(2^64-2^32) and (p1,p2)%(2^64-2^32)
       t = p1 + (p2 >> 32n);
       t += (t >> 32n);
-      t += ((t & 0xffffffffn) > 0xfffffffen) ? 1n : 0n;
+      t += ((t&0xffffffffn) > 0xfffffffen) ? 1n : 0n;
       p1 += (t >> 32n);
       p2 += (p1 << 32n);
       p2 &= M64; // Keep p2 in 64-bit range
@@ -682,7 +682,7 @@
       // Compute (p1+k1)*(p2+k2)%p64
       const prod = p1 * p2;
       let rh = prod >> 64n;
-      let rl = prod & M64;
+      let rl = prod&M64;
 
       // Reduction mod p64:
       t = rh >> 56n;
@@ -691,7 +691,7 @@
       t += (rl >> 64n);
       rl &= M64;
 
-      rh = (rh << 8n) & M64;
+      rh = (rh << 8n)&M64;
       // ADD128(t, rl, z, rh)
       rl += rh;
       t += (rl >> 64n);
@@ -761,23 +761,23 @@
 
           if (this.isFirstBlock) {
             // First block: first_poly_step (Crypto++ vmac.cpp line 672)
-            // a = (NH_result & m126) + polynomial_key
+            // a = (NH_result&m126) + polynomial_key
             // This is a simple 128-bit addition with 126-bit masking
             const kh = this.polyState[polyOffset + 2];
             const kl = this.polyState[polyOffset + 3];
 
             // Mask NH result to 126 bits (high part to 62 bits)
-            const nhHigh = nhResult.high & M62;
+            const nhHigh = nhResult.high&M62;
             const nhLow = nhResult.low;
 
             // Add to polynomial key: simple 128-bit addition
-            const nhValue = (nhHigh << 64n) | nhLow;
-            const kValue = (kh << 64n) | kl;
+            const nhValue = (nhHigh << 64n)|nhLow;
+            const kValue = (kh << 64n)|kl;
             const sum = nhValue + kValue;
 
             // Extract high and low parts (no additional masking needed here)
             polyHigh = (sum >> 64n);
-            polyLow = sum & M64;
+            polyLow = sum&M64;
           } else {
             // Subsequent blocks: polynomial step
             const ah = this.polyState[polyOffset];
@@ -808,7 +808,7 @@
         let padOffset = tagIndex * 8;
         if (!this.is128) {
           // 64-bit mode: use bit 0 of last nonce byte
-          const nonceBit = this._nonce[15] & 1;
+          const nonceBit = OpCodes.And32(this._nonce[15], 1);
           padOffset = nonceBit * 8;
         }
 
@@ -828,7 +828,7 @@
 
         // Add pad to L3 result (both are BigInt)
         // PRECISION-CRITICAL: Final tag assembly
-        const finalTag = (l3Result + padValue) & M64;
+        const finalTag = (l3Result + padValue)&M64;
 
         // Convert to bytes (big-endian)
         const finalSplit = split64(finalTag);

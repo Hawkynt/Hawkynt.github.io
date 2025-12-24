@@ -394,7 +394,7 @@
 
       // Write 96-bit length as little-endian
       for (let i = 0; i < 12; ++i) {
-        this.buf[this.bufOff++] = Number((totalBits >> BigInt(i * 8)) & 0xFFn);
+        this.buf[this.bufOff++] = Number((totalBits >> BigInt(i * 8))&0xFFn);
       }
 
       this.processBlock(this.buf, 0);
@@ -412,13 +412,13 @@
 
       // Extract output
       const output = [];
-      const neededColumns = this._outputSize >>> 3;
+      const neededColumns = OpCodes.Shr32(this._outputSize, 3);
 
       for (let col = this.columns - neededColumns; col < this.columns; ++col) {
         const word = this.state[col];
         // Pack as little-endian
         for (let i = 0; i < 8; ++i) {
-          output.push(Number((word >> BigInt(i * 8)) & 0xFFn));
+          output.push(Number((word >> BigInt(i * 8))&0xFFn));
         }
       }
 
@@ -440,10 +440,10 @@
         // Read 8 bytes as little-endian 64-bit word
         let word = 0n;
         for (let i = 0; i < 8; ++i) {
-          word |= BigInt(input[pos++] & 0xFF) << BigInt(i * 8);
+          word |= BigInt(OpCodes.And32(input[pos++], 0xFF)) << BigInt(i * 8);
         }
 
-        this.tempState1[col] = this.state[col] ^ word;
+        this.tempState1[col] = this.state[col]^word;
         this.tempState2[col] = word;
       }
 
@@ -451,7 +451,7 @@
       this.Q(this.tempState2);
 
       for (let col = 0; col < this.columns; ++col) {
-        this.state[col] ^= this.tempState1[col] ^ this.tempState2[col];
+        this.state[col] ^= this.tempState1[col]^this.tempState2[col];
       }
     }
 
@@ -473,11 +473,11 @@
     Q(s) {
       for (let round = 0; round < this.rounds; ++round) {
         // AddRoundConstantsQ - matches Bouncy Castle exactly
-        let rc = (BigInt(((this.columns - 1) << 4) ^ round) << 56n) | 0x00F0F0F0F0F0F0F3n;
+        let rc = (BigInt(OpCodes.Xor32((this.columns - 1) << 4, round)) << 56n)|0x00F0F0F0F0F0F0F3n;
 
         for (let col = 0; col < this.columns; ++col) {
-          s[col] = (s[col] + rc) & 0xFFFFFFFFFFFFFFFFn;
-          rc = (rc - 0x1000000000000000n) & 0xFFFFFFFFFFFFFFFFn;
+          s[col] = (s[col] + rc)&0xFFFFFFFFFFFFFFFFn;
+          rc = (rc - 0x1000000000000000n)&0xFFFFFFFFFFFFFFFFn;
         }
 
         this.shiftRows(s);
@@ -494,20 +494,20 @@
         let c4 = s[4], c5 = s[5], c6 = s[6], c7 = s[7];
         let d;
 
-        d = (c0 ^ c4) & 0xFFFFFFFF00000000n; c0 ^= d; c4 ^= d;
-        d = (c1 ^ c5) & 0x00FFFFFFFF000000n; c1 ^= d; c5 ^= d;
-        d = (c2 ^ c6) & 0x0000FFFFFFFF0000n; c2 ^= d; c6 ^= d;
-        d = (c3 ^ c7) & 0x000000FFFFFFFF00n; c3 ^= d; c7 ^= d;
+        d = (c0^c4)&0xFFFFFFFF00000000n; c0 ^= d; c4 ^= d;
+        d = (c1^c5)&0x00FFFFFFFF000000n; c1 ^= d; c5 ^= d;
+        d = (c2^c6)&0x0000FFFFFFFF0000n; c2 ^= d; c6 ^= d;
+        d = (c3^c7)&0x000000FFFFFFFF00n; c3 ^= d; c7 ^= d;
 
-        d = (c0 ^ c2) & 0xFFFF0000FFFF0000n; c0 ^= d; c2 ^= d;
-        d = (c1 ^ c3) & 0x00FFFF0000FFFF00n; c1 ^= d; c3 ^= d;
-        d = (c4 ^ c6) & 0xFFFF0000FFFF0000n; c4 ^= d; c6 ^= d;
-        d = (c5 ^ c7) & 0x00FFFF0000FFFF00n; c5 ^= d; c7 ^= d;
+        d = (c0^c2)&0xFFFF0000FFFF0000n; c0 ^= d; c2 ^= d;
+        d = (c1^c3)&0x00FFFF0000FFFF00n; c1 ^= d; c3 ^= d;
+        d = (c4^c6)&0xFFFF0000FFFF0000n; c4 ^= d; c6 ^= d;
+        d = (c5^c7)&0x00FFFF0000FFFF00n; c5 ^= d; c7 ^= d;
 
-        d = (c0 ^ c1) & 0xFF00FF00FF00FF00n; c0 ^= d; c1 ^= d;
-        d = (c2 ^ c3) & 0xFF00FF00FF00FF00n; c2 ^= d; c3 ^= d;
-        d = (c4 ^ c5) & 0xFF00FF00FF00FF00n; c4 ^= d; c5 ^= d;
-        d = (c6 ^ c7) & 0xFF00FF00FF00FF00n; c6 ^= d; c7 ^= d;
+        d = (c0^c1)&0xFF00FF00FF00FF00n; c0 ^= d; c1 ^= d;
+        d = (c2^c3)&0xFF00FF00FF00FF00n; c2 ^= d; c3 ^= d;
+        d = (c4^c5)&0xFF00FF00FF00FF00n; c4 ^= d; c5 ^= d;
+        d = (c6^c7)&0xFF00FF00FF00FF00n; c6 ^= d; c7 ^= d;
 
         s[0] = c0; s[1] = c1; s[2] = c2; s[3] = c3;
         s[4] = c4; s[5] = c5; s[6] = c6; s[7] = c7;
@@ -519,41 +519,41 @@
         let c12 = s[12], c13 = s[13], c14 = s[14], c15 = s[15];
         let d;
 
-        d = (c00 ^ c08) & 0xFF00000000000000n; c00 ^= d; c08 ^= d;
-        d = (c01 ^ c09) & 0xFF00000000000000n; c01 ^= d; c09 ^= d;
-        d = (c02 ^ c10) & 0xFFFF000000000000n; c02 ^= d; c10 ^= d;
-        d = (c03 ^ c11) & 0xFFFFFF0000000000n; c03 ^= d; c11 ^= d;
-        d = (c04 ^ c12) & 0xFFFFFFFF00000000n; c04 ^= d; c12 ^= d;
-        d = (c05 ^ c13) & 0x00FFFFFFFF000000n; c05 ^= d; c13 ^= d;
-        d = (c06 ^ c14) & 0x00FFFFFFFFFF0000n; c06 ^= d; c14 ^= d;
-        d = (c07 ^ c15) & 0x00FFFFFFFFFFFF00n; c07 ^= d; c15 ^= d;
+        d = (c00^c08)&0xFF00000000000000n; c00 ^= d; c08 ^= d;
+        d = (c01^c09)&0xFF00000000000000n; c01 ^= d; c09 ^= d;
+        d = (c02^c10)&0xFFFF000000000000n; c02 ^= d; c10 ^= d;
+        d = (c03^c11)&0xFFFFFF0000000000n; c03 ^= d; c11 ^= d;
+        d = (c04^c12)&0xFFFFFFFF00000000n; c04 ^= d; c12 ^= d;
+        d = (c05^c13)&0x00FFFFFFFF000000n; c05 ^= d; c13 ^= d;
+        d = (c06^c14)&0x00FFFFFFFFFF0000n; c06 ^= d; c14 ^= d;
+        d = (c07^c15)&0x00FFFFFFFFFFFF00n; c07 ^= d; c15 ^= d;
 
-        d = (c00 ^ c04) & 0x00FFFFFF00000000n; c00 ^= d; c04 ^= d;
-        d = (c01 ^ c05) & 0xFFFFFFFFFF000000n; c01 ^= d; c05 ^= d;
-        d = (c02 ^ c06) & 0xFF00FFFFFFFF0000n; c02 ^= d; c06 ^= d;
-        d = (c03 ^ c07) & 0xFF0000FFFFFFFF00n; c03 ^= d; c07 ^= d;
-        d = (c08 ^ c12) & 0x00FFFFFF00000000n; c08 ^= d; c12 ^= d;
-        d = (c09 ^ c13) & 0xFFFFFFFFFF000000n; c09 ^= d; c13 ^= d;
-        d = (c10 ^ c14) & 0xFF00FFFFFFFF0000n; c10 ^= d; c14 ^= d;
-        d = (c11 ^ c15) & 0xFF0000FFFFFFFF00n; c11 ^= d; c15 ^= d;
+        d = (c00^c04)&0x00FFFFFF00000000n; c00 ^= d; c04 ^= d;
+        d = (c01^c05)&0xFFFFFFFFFF000000n; c01 ^= d; c05 ^= d;
+        d = (c02^c06)&0xFF00FFFFFFFF0000n; c02 ^= d; c06 ^= d;
+        d = (c03^c07)&0xFF0000FFFFFFFF00n; c03 ^= d; c07 ^= d;
+        d = (c08^c12)&0x00FFFFFF00000000n; c08 ^= d; c12 ^= d;
+        d = (c09^c13)&0xFFFFFFFFFF000000n; c09 ^= d; c13 ^= d;
+        d = (c10^c14)&0xFF00FFFFFFFF0000n; c10 ^= d; c14 ^= d;
+        d = (c11^c15)&0xFF0000FFFFFFFF00n; c11 ^= d; c15 ^= d;
 
-        d = (c00 ^ c02) & 0xFFFF0000FFFF0000n; c00 ^= d; c02 ^= d;
-        d = (c01 ^ c03) & 0x00FFFF0000FFFF00n; c01 ^= d; c03 ^= d;
-        d = (c04 ^ c06) & 0xFFFF0000FFFF0000n; c04 ^= d; c06 ^= d;
-        d = (c05 ^ c07) & 0x00FFFF0000FFFF00n; c05 ^= d; c07 ^= d;
-        d = (c08 ^ c10) & 0xFFFF0000FFFF0000n; c08 ^= d; c10 ^= d;
-        d = (c09 ^ c11) & 0x00FFFF0000FFFF00n; c09 ^= d; c11 ^= d;
-        d = (c12 ^ c14) & 0xFFFF0000FFFF0000n; c12 ^= d; c14 ^= d;
-        d = (c13 ^ c15) & 0x00FFFF0000FFFF00n; c13 ^= d; c15 ^= d;
+        d = (c00^c02)&0xFFFF0000FFFF0000n; c00 ^= d; c02 ^= d;
+        d = (c01^c03)&0x00FFFF0000FFFF00n; c01 ^= d; c03 ^= d;
+        d = (c04^c06)&0xFFFF0000FFFF0000n; c04 ^= d; c06 ^= d;
+        d = (c05^c07)&0x00FFFF0000FFFF00n; c05 ^= d; c07 ^= d;
+        d = (c08^c10)&0xFFFF0000FFFF0000n; c08 ^= d; c10 ^= d;
+        d = (c09^c11)&0x00FFFF0000FFFF00n; c09 ^= d; c11 ^= d;
+        d = (c12^c14)&0xFFFF0000FFFF0000n; c12 ^= d; c14 ^= d;
+        d = (c13^c15)&0x00FFFF0000FFFF00n; c13 ^= d; c15 ^= d;
 
-        d = (c00 ^ c01) & 0xFF00FF00FF00FF00n; c00 ^= d; c01 ^= d;
-        d = (c02 ^ c03) & 0xFF00FF00FF00FF00n; c02 ^= d; c03 ^= d;
-        d = (c04 ^ c05) & 0xFF00FF00FF00FF00n; c04 ^= d; c05 ^= d;
-        d = (c06 ^ c07) & 0xFF00FF00FF00FF00n; c06 ^= d; c07 ^= d;
-        d = (c08 ^ c09) & 0xFF00FF00FF00FF00n; c08 ^= d; c09 ^= d;
-        d = (c10 ^ c11) & 0xFF00FF00FF00FF00n; c10 ^= d; c11 ^= d;
-        d = (c12 ^ c13) & 0xFF00FF00FF00FF00n; c12 ^= d; c13 ^= d;
-        d = (c14 ^ c15) & 0xFF00FF00FF00FF00n; c14 ^= d; c15 ^= d;
+        d = (c00^c01)&0xFF00FF00FF00FF00n; c00 ^= d; c01 ^= d;
+        d = (c02^c03)&0xFF00FF00FF00FF00n; c02 ^= d; c03 ^= d;
+        d = (c04^c05)&0xFF00FF00FF00FF00n; c04 ^= d; c05 ^= d;
+        d = (c06^c07)&0xFF00FF00FF00FF00n; c06 ^= d; c07 ^= d;
+        d = (c08^c09)&0xFF00FF00FF00FF00n; c08 ^= d; c09 ^= d;
+        d = (c10^c11)&0xFF00FF00FF00FF00n; c10 ^= d; c11 ^= d;
+        d = (c12^c13)&0xFF00FF00FF00FF00n; c12 ^= d; c13 ^= d;
+        d = (c14^c15)&0xFF00FF00FF00FF00n; c14 ^= d; c15 ^= d;
 
         s[0] = c00; s[1] = c01; s[2] = c02; s[3] = c03;
         s[4] = c04; s[5] = c05; s[6] = c06; s[7] = c07;
@@ -566,24 +566,24 @@
     subBytes(s) {
       for (let i = 0; i < this.columns; ++i) {
         const u = s[i];
-        const lo = Number(u & 0xFFFFFFFFn);
-        const hi = Number((u >> 32n) & 0xFFFFFFFFn);
+        const lo = Number(u&0xFFFFFFFFn);
+        const hi = Number((u >> 32n)&0xFFFFFFFFn);
 
         // Process low 32 bits
-        const t0 = S0[lo & 0xFF];
-        const t1 = S1[OpCodes.Shr32(lo, 8) & 0xFF];
-        const t2 = S2[OpCodes.Shr32(lo, 16) & 0xFF];
+        const t0 = S0[OpCodes.And32(lo, 0xFF)];
+        const t1 = S1[OpCodes.And32(OpCodes.Shr32(lo, 8), 0xFF)];
+        const t2 = S2[OpCodes.And32(OpCodes.Shr32(lo, 16), 0xFF)];
         const t3 = S3[OpCodes.Shr32(lo, 24)];
-        const newLo = (t0 & 0xFF) | ((t1 & 0xFF) << 8) | ((t2 & 0xFF) << 16) | (t3 << 24);
+        const newLo = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.And32(t0, 0xFF), OpCodes.Shl32(OpCodes.And32(t1, 0xFF), 8)), OpCodes.Shl32(OpCodes.And32(t2, 0xFF), 16)), OpCodes.Shl32(t3, 24));
 
         // Process high 32 bits
-        const t4 = S0[hi & 0xFF];
-        const t5 = S1[OpCodes.Shr32(hi, 8) & 0xFF];
-        const t6 = S2[OpCodes.Shr32(hi, 16) & 0xFF];
+        const t4 = S0[OpCodes.And32(hi, 0xFF)];
+        const t5 = S1[OpCodes.And32(OpCodes.Shr32(hi, 8), 0xFF)];
+        const t6 = S2[OpCodes.And32(OpCodes.Shr32(hi, 16), 0xFF)];
         const t7 = S3[OpCodes.Shr32(hi, 24)];
-        const newHi = (t4 & 0xFF) | ((t5 & 0xFF) << 8) | ((t6 & 0xFF) << 16) | (t7 << 24);
+        const newHi = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.And32(t4, 0xFF), OpCodes.Shl32(OpCodes.And32(t5, 0xFF), 8)), OpCodes.Shl32(OpCodes.And32(t6, 0xFF), 16)), OpCodes.Shl32(t7, 24));
 
-        s[i] = (BigInt(OpCodes.ToDWord(newLo)) & 0xFFFFFFFFn) | (BigInt(OpCodes.ToDWord(newHi)) << 32n);
+        s[i] = (BigInt(OpCodes.ToDWord(newLo))&0xFFFFFFFFn)|(BigInt(OpCodes.ToDWord(newHi)) << 32n);
       }
     }
 
@@ -597,21 +597,19 @@
     // Mix single column using GF(2^8) arithmetic
     mixColumn(c) {
       // Multiply elements by 'x' in GF(2^8) with polynomial 0x1D
-      const x1 = ((c & 0x7F7F7F7F7F7F7F7Fn) << 1n) ^ (((c & 0x8080808080808080n) >> 7n) * 0x1Dn);
+      const x1 = ((c&0x7F7F7F7F7F7F7F7Fn) << 1n)^(((c&0x8080808080808080n) >> 7n) * 0x1Dn);
 
       // Use RIGHT rotation to match Bouncy Castle's rotate() function
-      let u = OpCodes.RotR64n(c, 8) ^ c;
+      let u = OpCodes.RotR64n(c, 8)^c;
       u ^= OpCodes.RotR64n(u, 16);
       u ^= OpCodes.RotR64n(c, 48);
 
-      let v = u ^ c ^ x1;
+      let v = u^c^x1;
 
       // Multiply elements by 'x^2'
-      v = ((v & 0x3F3F3F3F3F3F3F3Fn) << 2n) ^
-          (((v & 0x8080808080808080n) >> 6n) * 0x1Dn) ^
-          (((v & 0x4040404040404040n) >> 6n) * 0x1Dn);
+      v = ((v&0x3F3F3F3F3F3F3F3Fn) << 2n)^(((v&0x8080808080808080n) >> 6n) * 0x1Dn)^(((v&0x4040404040404040n) >> 6n) * 0x1Dn);
 
-      return u ^ OpCodes.RotR64n(v, 32) ^ OpCodes.RotR64n(x1, 40) ^ OpCodes.RotR64n(x1, 48);
+      return u^OpCodes.RotR64n(v, 32)^OpCodes.RotR64n(x1, 40)^OpCodes.RotR64n(x1, 48);
     }
   }
 

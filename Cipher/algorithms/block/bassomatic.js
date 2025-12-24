@@ -370,7 +370,7 @@
           if (permuted[i]) {
             block[i] = OpCodes.OrN(block[i], bitMask);
           } else {
-            block[i] = OpCodes.AndN(block[i], ~bitMask);
+            block[i] = OpCodes.AndN(block[i], OpCodes.Not32(bitMask));
           }
         }
       }

@@ -177,8 +177,8 @@ class SC2000Instance extends IBlockCipherInstance {
     for (let i = 0; i < totalKeys; i++) {
       for (let j = 0; j < 8; j++) {
         roundKeys[i][j] = key[(i * 8 + j) % key.length];
-        roundKeys[i][j] ^= OpCodes.RotL8(key[(i + j) % key.length], (i + j) & 7);
-        roundKeys[i][j] ^= (i * 16 + j * 3 + 0x5A) & 0xFF;
+        roundKeys[i][j] = OpCodes.Xor32(roundKeys[i][j], OpCodes.RotL8(key[(i + j) % key.length], (i + j)&7));
+        roundKeys[i][j] = OpCodes.Xor32(roundKeys[i][j], OpCodes.ToByte(i * 16 + j * 3 + 0x5A));
       }
     }
 
@@ -221,47 +221,47 @@ class SC2000Instance extends IBlockCipherInstance {
     const result = new Uint8Array(8);
 
     for (let i = 0; i < 8; i++) {
-      result[i] = OpCodes.XorN(input[i], roundKey[i]);
+      result[i] = OpCodes.Xor32(input[i], roundKey[i]);
     }
 
     for (let i = 0; i < 8; i++) {
-      result[i] = this._sBox4[result[i] & 0x0F];
+      result[i] = this._sBox4[result[i]&0x0F];
     }
 
-    result[0] ^= result[1];
-    result[2] ^= result[3];
-    result[4] ^= result[5];
-    result[6] ^= result[7];
+    result[0] = OpCodes.Xor32(result[0], result[1]);
+    result[2] = OpCodes.Xor32(result[2], result[3]);
+    result[4] = OpCodes.Xor32(result[4], result[5]);
+    result[6] = OpCodes.Xor32(result[6], result[7]);
 
     const left = OpCodes.Pack32BE(result[0], result[1], result[2], result[3]);
     const right = OpCodes.Pack32BE(result[4], result[5], result[6], result[7]);
 
-    const mixedLeft = OpCodes.XorN(OpCodes.RotL32(left, 7), right);
-    const mixedRight = OpCodes.XorN(OpCodes.RotL32(right, 13), left);
+    const mixedLeft = OpCodes.Xor32(OpCodes.RotL32(left, 7), right);
+    const mixedRight = OpCodes.Xor32(OpCodes.RotL32(right, 13), left);
 
     const finalResult = new Uint8Array(8);
-    finalResult[0] = (mixedLeft >> 24) & 0xFF;
-    finalResult[1] = (mixedLeft >> 16) & 0xFF;
-    finalResult[2] = (mixedLeft >> 8) & 0xFF;
-    finalResult[3] = mixedLeft & 0xFF;
-    finalResult[4] = (mixedRight >> 24) & 0xFF;
-    finalResult[5] = (mixedRight >> 16) & 0xFF;
-    finalResult[6] = (mixedRight >> 8) & 0xFF;
-    finalResult[7] = mixedRight & 0xFF;
+    finalResult[0] = (OpCodes.Shr32(mixedLeft, 24))&0xFF;
+    finalResult[1] = (OpCodes.Shr32(mixedLeft, 16))&0xFF;
+    finalResult[2] = (OpCodes.Shr32(mixedLeft, 8))&0xFF;
+    finalResult[3] = mixedLeft&0xFF;
+    finalResult[4] = (OpCodes.Shr32(mixedRight, 24))&0xFF;
+    finalResult[5] = (OpCodes.Shr32(mixedRight, 16))&0xFF;
+    finalResult[6] = (OpCodes.Shr32(mixedRight, 8))&0xFF;
+    finalResult[7] = mixedRight&0xFF;
 
     return finalResult;
   }
 
   _spnLayer(state, roundKey) {
     for (let i = 0; i < 8; i++) {
-      state[i] ^= roundKey[i];
+      state[i] = OpCodes.Xor32(state[i], roundKey[i]);
     }
 
     for (let i = 0; i < 8; i += 2) {
-      const combined = (state[i] << 8) | state[i + 1];
-      const sboxValue = OpCodes.XorN(this._sBox5[combined & 0x1F], this._sBox6[(combined >> 5) & 0x3F]);
-      state[i] = (sboxValue >> 8) & 0xFF;
-      state[i + 1] = sboxValue & 0xFF;
+      const combined = (OpCodes.Shl32(state[i], 8))|state[i + 1];
+      const sboxValue = OpCodes.Xor32(this._sBox5[combined&0x1F], this._sBox6[(OpCodes.Shr32(combined, 5))&0x3F]);
+      state[i] = OpCodes.ToByte(OpCodes.Shr32(sboxValue, 8));
+      state[i + 1] = OpCodes.ToByte(sboxValue);
     }
 
     const temp = state[0];
@@ -291,19 +291,19 @@ class SC2000Instance extends IBlockCipherInstance {
     state[1] = temp2;
 
     for (let i = 0; i < 8; i += 2) {
-      const combined = (state[i] << 8) | state[i + 1];
+      const combined = (OpCodes.Shl32(state[i], 8))|state[i + 1];
       for (let j = 0; j < 65536; j++) {
-        const testVal = OpCodes.XorN(this._sBox5[j & 0x1F], this._sBox6[(j >> 5) & 0x3F]);
+        const testVal = OpCodes.Xor32(this._sBox5[j&0x1F], this._sBox6[(OpCodes.Shr32(j, 5))&0x3F]);
         if (testVal === combined) {
-          state[i] = (j >> 8) & 0xFF;
-          state[i + 1] = j & 0xFF;
+          state[i] = OpCodes.ToByte(OpCodes.Shr32(j, 8));
+          state[i + 1] = OpCodes.ToByte(j);
           break;
         }
       }
     }
 
     for (let i = 0; i < 8; i++) {
-      state[i] ^= roundKey[i];
+      state[i] = OpCodes.Xor32(state[i], roundKey[i]);
     }
   }
 }

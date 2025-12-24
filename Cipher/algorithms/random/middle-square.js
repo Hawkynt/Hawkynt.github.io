@@ -91,7 +91,7 @@
       ];
 
       // Test vectors computed from C# implementation behavior
-      // C# implementation: state = ((UInt128)seed << 64) | ~seed
+      // C# implementation: state = ((UInt128)OpCodes.Shl32(seed, 64))|~seed
       // Then: Next() returns (ulong)((state *= state) >> 32)
       //
       // The state is initialized with:
@@ -121,7 +121,7 @@
           input: null,
           seed: OpCodes.Hex8ToBytes("01"), // seed = 1
           outputSize: 40, // 10 x 4 bytes = 40 bytes (first 10 values)
-          // State: (1 << 64) | ~1 = 0x0000000000000001FFFFFFFFFFFFFFFE
+          // State: (1 << 64)|~1 = 0x0000000000000001FFFFFFFFFFFFFFFE
           // Values: all zeros after first iteration, then 1 at position 5
           expected: OpCodes.Hex8ToBytes("00000000000000000000000000000000000000010000000000000000000000000000000000000000")
         },
@@ -194,7 +194,7 @@
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8), BigInt(seedBytes[i]));
       }
 
-      // Middle Square initialization: state = (seed << 64) | ~seed
+      // Middle Square initialization: state = (OpCodes.Shl32(seed, 64))|~seed
       // This matches the C# implementation's UInt128 initialization
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
       const highPart = OpCodes.ShiftLn(seedValue, 64n);

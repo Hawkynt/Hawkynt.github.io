@@ -139,7 +139,7 @@
 
       // NOTE: Authentic test vectors needed from official sources
       // RFC 5649 does not provide SEED-specific test vectors
-      // Acceptable sources: KISA (Korea Internet & Security Agency), BouncyCastle validated outputs
+      // Acceptable sources: KISA (Korea Internet&Security Agency), BouncyCastle validated outputs
       this.tests = [];
     }
 
@@ -328,7 +328,7 @@
       // Perform wrapping operation (RFC 3394 algorithm)
       for (let j = 0; j <= 5; ++j) {
         for (let i = 0; i < n; ++i) {
-          // B = SEED(K, A | R[i])
+          // B = SEED(K, A|R[i])
           const block = [...A, ...R[i]];
           this.seedInstance.Feed(block);
           const B = this.seedInstance.Result();
@@ -347,7 +347,7 @@
         }
       }
 
-      // Output is A | R[0] | R[1] | ... | R[n-1]
+      // Output is A|R[0]|R[1]|...|R[n-1]
       const output = [...A];
       for (let i = 0; i < n; ++i) {
         output.push(...R[i]);
@@ -413,7 +413,7 @@
               A_copy[8 - k] = OpCodes.XorN(A_copy[8 - k], OpCodes.AndN(OpCodes.Shr32(t, (k - 1) * 8), 0xFF));
             }
 
-            // B = SEED_Decrypt(K, (A XOR t) | R[i])
+            // B = SEED_Decrypt(K, (A XOR t)|R[i])
             const block = [...A_copy, ...R[i]];
             seedDecrypt.Feed(block);
             const B = seedDecrypt.Result();

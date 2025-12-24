@@ -315,8 +315,8 @@
 
       // Shift right: move LSB of high into MSB of low, insert feedback at bit 63
       const carryBit = OpCodes.AndN(this._stateHigh, 1);
-      this._stateLow = OpCodes.ToUint32(OpCodes.Shr32(this._stateLow, 1) | OpCodes.Shl32(carryBit, 31));
-      this._stateHigh = OpCodes.ToUint32(OpCodes.Shr32(this._stateHigh, 1) | OpCodes.Shl32((feedback !== 0 ? 1 : 0), 31));
+      this._stateLow = OpCodes.ToUint32(OpCodes.Shr32(this._stateLow, 1)|OpCodes.Shl32(carryBit, 31));
+      this._stateHigh = OpCodes.ToUint32(OpCodes.Shr32(this._stateHigh, 1)|OpCodes.Shl32((feedback !== 0 ? 1 : 0), 31));
 
       // Output bit is LSB AFTER shift (C# code line 19: return (byte)(this._state AND 1))
       const outputBit = OpCodes.AndN(this._stateLow, 1);
@@ -342,7 +342,7 @@
         // Generate 8 bits for this byte
         for (let bitIdx = 0; bitIdx < 8; ++bitIdx) {
           const bit = this._stepLFSR();
-          byte = byte | OpCodes.Shl32(bit, bitIdx);
+          byte = byte|OpCodes.Shl32(bit, bitIdx);
         }
         result[byteIdx] = byte;
       }

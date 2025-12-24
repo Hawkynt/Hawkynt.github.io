@@ -71,25 +71,25 @@
     const result = new Array(8);
 
     // Extract rows (as 16-bit values)
-    const row0 = (state[0] << 8) | state[1];
-    const row1 = (state[2] << 8) | state[3];
-    const row2 = (state[4] << 8) | state[5];
-    const row3 = (state[6] << 8) | state[7];
+    const row0 = OpCodes.Shl32(state[0], 8)|state[1];
+    const row1 = OpCodes.Shl32(state[2], 8)|state[3];
+    const row2 = OpCodes.Shl32(state[4], 8)|state[5];
+    const row3 = OpCodes.Shl32(state[6], 8)|state[7];
 
     // Mix: each new row is XOR of three other rows
-    const newRow0 = row1 ^ row2 ^ row3;
-    const newRow1 = row0 ^ row2 ^ row3;
-    const newRow2 = row0 ^ row1 ^ row3;
-    const newRow3 = row0 ^ row1 ^ row2;
+    const newRow0 = OpCodes.Xor32(OpCodes.Xor32(row1, row2), row3);
+    const newRow1 = OpCodes.Xor32(OpCodes.Xor32(row0, row2), row3);
+    const newRow2 = OpCodes.Xor32(OpCodes.Xor32(row0, row1), row3);
+    const newRow3 = OpCodes.Xor32(OpCodes.Xor32(row0, row1), row2);
 
-    result[0] = (newRow0 >>> 8) & 0xFF;
-    result[1] = newRow0 & 0xFF;
-    result[2] = (newRow1 >>> 8) & 0xFF;
-    result[3] = newRow1 & 0xFF;
-    result[4] = (newRow2 >>> 8) & 0xFF;
-    result[5] = newRow2 & 0xFF;
-    result[6] = (newRow3 >>> 8) & 0xFF;
-    result[7] = newRow3 & 0xFF;
+    result[0] = OpCodes.ToByte(OpCodes.Shr32(newRow0, 8));
+    result[1] = OpCodes.ToByte(newRow0);
+    result[2] = OpCodes.ToByte(OpCodes.Shr32(newRow1, 8));
+    result[3] = OpCodes.ToByte(newRow1);
+    result[4] = OpCodes.ToByte(OpCodes.Shr32(newRow2, 8));
+    result[5] = OpCodes.ToByte(newRow2);
+    result[6] = OpCodes.ToByte(OpCodes.Shr32(newRow3, 8));
+    result[7] = OpCodes.ToByte(newRow3);
 
     return result;
   }
@@ -152,8 +152,8 @@
   function bytesToNibbles(bytes) {
     const nibbles = new Array(16);
     for (let i = 0; i < 8; ++i) {
-      nibbles[2 * i] = (bytes[i] >>> 4) & 0x0F;       // High nibble
-      nibbles[2 * i + 1] = bytes[i] & 0x0F;            // Low nibble
+      nibbles[2 * i] = OpCodes.Shr32(bytes[i], 4)&0x0F;       // High nibble
+      nibbles[2 * i + 1] = bytes[i]&0x0F;            // Low nibble
     }
     return nibbles;
   }
@@ -162,7 +162,7 @@
   function nibblesToBytes(nibbles) {
     const bytes = new Array(8);
     for (let i = 0; i < 8; ++i) {
-      bytes[i] = ((nibbles[2 * i] & 0x0F) << 4) | (nibbles[2 * i + 1] & 0x0F);
+      bytes[i] = OpCodes.Shl32(nibbles[2 * i]&0x0F, 4)|(nibbles[2 * i + 1]&0x0F);
     }
     return bytes;
   }
@@ -276,10 +276,10 @@
       let carry = this._k0[7];
       for (let index = 0; index < 8; ++index) {
         const next = this._k0[index];
-        this._kPrime[index] = ((carry << 7) | (next >> 1)) & 0xFF;
+        this._kPrime[index] = OpCodes.ToByte(OpCodes.Shl32(carry, 7)|OpCodes.Shr32(next, 1));
         carry = next;
       }
-      this._kPrime[7] ^= (this._k0[0] >> 7);
+      this._kPrime[7] = OpCodes.Xor32(this._kPrime[7], OpCodes.Shr32(this._k0[0], 7));
 
       // For decryption (inverse), implement α-reflexivity property:
       // - Swap k0 and k' (k0 becomes rotated, k' becomes original)
@@ -396,7 +396,7 @@
 
         // XOR k1 and tweak
         for (let i = 0; i < 8; ++i) {
-          state[i] ^= this._k1[i] ^ tweakBytes[i];
+          state[i] ^= this._k1[i]^tweakBytes[i];
         }
 
         // ShuffleCells (Permutation)
@@ -420,7 +420,7 @@
       // After middle round: XOR ALPHA into k1 for backward rounds (from skinny-c)
       const k1Modified = new Array(8);
       for (let i = 0; i < 8; ++i) {
-        k1Modified[i] = this._k1[i] ^ ALPHA[i];
+        k1Modified[i] = this._k1[i]^ALPHA[i];
       }
 
       // Backward rounds (7 rounds in reverse)
@@ -436,7 +436,7 @@
 
         // XOR k1Modified and tweak
         for (let i = 0; i < 8; ++i) {
-          state[i] ^= k1Modified[i] ^ tweakBytes[i];
+          state[i] ^= k1Modified[i]^tweakBytes[i];
         }
 
         // Add round constant

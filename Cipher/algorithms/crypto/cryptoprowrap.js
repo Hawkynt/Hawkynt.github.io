@@ -93,7 +93,7 @@
           keyBytes[offset + 1],
           keyBytes[offset + 2],
           keyBytes[offset + 3]
-        ) >>> 0;
+        );
       }
     }
 
@@ -103,14 +103,14 @@
 
       // S-box substitution (8 x 4-bit S-boxes)
       let om = 0;
-      om += this.sbox[0 + ((cm >>> 0) & 0xF)] << 0;
-      om += this.sbox[16 + ((cm >>> 4) & 0xF)] << 4;
-      om += this.sbox[32 + ((cm >>> 8) & 0xF)] << 8;
-      om += this.sbox[48 + ((cm >>> 12) & 0xF)] << 12;
-      om += this.sbox[64 + ((cm >>> 16) & 0xF)] << 16;
-      om += this.sbox[80 + ((cm >>> 20) & 0xF)] << 20;
-      om += this.sbox[96 + ((cm >>> 24) & 0xF)] << 24;
-      om += this.sbox[112 + ((cm >>> 28) & 0xF)] << 28;
+      om += OpCodes.Shl32(this.sbox[0 + OpCodes.And32(OpCodes.ToUint32(cm), 0xF)], 0);
+      om += OpCodes.Shl32(this.sbox[16 + OpCodes.And32(OpCodes.Shr32(cm, 4), 0xF)], 4);
+      om += OpCodes.Shl32(this.sbox[32 + OpCodes.And32(OpCodes.Shr32(cm, 8), 0xF)], 8);
+      om += OpCodes.Shl32(this.sbox[48 + OpCodes.And32(OpCodes.Shr32(cm, 12), 0xF)], 12);
+      om += OpCodes.Shl32(this.sbox[64 + OpCodes.And32(OpCodes.Shr32(cm, 16), 0xF)], 16);
+      om += OpCodes.Shl32(this.sbox[80 + OpCodes.And32(OpCodes.Shr32(cm, 20), 0xF)], 20);
+      om += OpCodes.Shl32(this.sbox[96 + OpCodes.And32(OpCodes.Shr32(cm, 24), 0xF)], 24);
+      om += OpCodes.Shl32(this.sbox[112 + OpCodes.And32(OpCodes.Shr32(cm, 28), 0xF)], 28);
 
       // 11-bit left rotation
       return OpCodes.RotL32(om, 11);
@@ -125,7 +125,7 @@
       for (let cycle = 0; cycle < 3; cycle++) {
         for (let j = 0; j < 8; j++) {
           const tmp = N1;
-          N1 = (N2 ^ this._mainStep(N1, this.workingKey[j])) >>> 0;
+          N1 = OpCodes.Xor32(N2, this._mainStep(N1, this.workingKey[j]));
           N2 = tmp;
         }
       }
@@ -133,7 +133,7 @@
       // Final reverse round: 8 subkeys in reverse order
       for (let j = 7; j >= 0; j--) {
         const tmp = N1;
-        N1 = (N2 ^ this._mainStep(N1, this.workingKey[j])) >>> 0;
+        N1 = OpCodes.Xor32(N2, this._mainStep(N1, this.workingKey[j]));
         N2 = tmp;
       }
 
@@ -153,7 +153,7 @@
       // Forward round first
       for (let j = 0; j < 8; j++) {
         const tmp = N1;
-        N1 = (N2 ^ this._mainStep(N1, this.workingKey[j])) >>> 0;
+        N1 = OpCodes.Xor32(N2, this._mainStep(N1, this.workingKey[j]));
         N2 = tmp;
       }
 
@@ -161,7 +161,7 @@
       for (let cycle = 0; cycle < 3; cycle++) {
         for (let j = 7; j >= 0; j--) {
           const tmp = N1;
-          N1 = (N2 ^ this._mainStep(N1, this.workingKey[j])) >>> 0;
+          N1 = OpCodes.Xor32(N2, this._mainStep(N1, this.workingKey[j]));
           N2 = tmp;
         }
       }
@@ -205,7 +205,7 @@
       if (len > gapLen) {
         // Fill buffer
         for (let i = 0; i < gapLen; i++) {
-          this.buf[this.bufOff + i] = data[inOff + i] & 0xFF;
+          this.buf[this.bufOff + i] = OpCodes.And32(data[inOff + i], 0xFF);
         }
 
         this._processBlock();
@@ -216,7 +216,7 @@
         // Process full blocks
         while (len > BLOCK_SIZE) {
           for (let i = 0; i < BLOCK_SIZE; i++) {
-            this.buf[i] = data[inOff + i] & 0xFF;
+            this.buf[i] = OpCodes.And32(data[inOff + i], 0xFF);
           }
           this._processBlock();
           len -= BLOCK_SIZE;
@@ -226,7 +226,7 @@
 
       // Copy remaining
       for (let i = 0; i < len; i++) {
-        this.buf[this.bufOff + i] = data[inOff + i] & 0xFF;
+        this.buf[this.bufOff + i] = OpCodes.And32(data[inOff + i], 0xFF);
       }
       this.bufOff += len;
     }
@@ -245,7 +245,7 @@
         }
       } else {
         for (let i = 0; i < BLOCK_SIZE; i++) {
-          sum[i] = (this.buf[i] ^ this.mac[i]) & 0xFF;
+          sum[i] = OpCodes.And32(OpCodes.Xor32(this.buf[i], this.mac[i]), 0xFF);
         }
       }
 
@@ -269,7 +269,7 @@
         this.firstStep = false;
         if (this.macIV !== null) {
           for (let i = 0; i < BLOCK_SIZE; i++) {
-            sum[i] = (this.buf[i] ^ this.macIV[i]) & 0xFF;
+            sum[i] = OpCodes.And32(OpCodes.Xor32(this.buf[i], this.macIV[i]), 0xFF);
           }
         } else {
           for (let i = 0; i < BLOCK_SIZE; i++) {
@@ -278,7 +278,7 @@
         }
       } else {
         for (let i = 0; i < BLOCK_SIZE; i++) {
-          sum[i] = (this.buf[i] ^ this.mac[i]) & 0xFF;
+          sum[i] = OpCodes.And32(OpCodes.Xor32(this.buf[i], this.mac[i]), 0xFF);
         }
       }
 
@@ -318,14 +318,14 @@
         );
 
         // Check if bit j of ukm[i] is set
-        if ((ukm[i] & (1 << j)) !== 0) {
+        if (OpCodes.And32(ukm[i], OpCodes.Shl32(1, j)) !== 0) {
           sOn = OpCodes.Add32(sOn, kj);
         } else {
           sOff = OpCodes.Add32(sOff, kj);
         }
       }
 
-      // Create S[i] = sOn | sOff (8 bytes)
+      // Create S[i] = sOn|sOff (8 bytes)
       const s = new Array(8);
       const sOnBytes = OpCodes.Unpack32LE(sOn);
       const sOffBytes = OpCodes.Unpack32LE(sOff);
@@ -365,7 +365,7 @@
 
         // XOR with key block to produce ciphertext
         for (let j = 0; j < BLOCK_SIZE; j++) {
-          tempKey[blockOffset + j] = (keyBytes[blockOffset + j] ^ encryptedIV[j]) & 0xFF;
+          tempKey[blockOffset + j] = OpCodes.And32(OpCodes.Xor32(keyBytes[blockOffset + j], encryptedIV[j]), 0xFF);
         }
       }
 
@@ -525,7 +525,7 @@
       }
 
       for (let i = 0; i < data.length; i++) {
-        this.inputBuffer.push(data[i] & 0xFF);
+        this.inputBuffer.push(OpCodes.And32(data[i], 0xFF));
       }
     }
 

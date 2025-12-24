@@ -586,16 +586,16 @@
     }
 
     _f(x) {
-      // Blowfish F-function: F(x) = ((S1[a] + S2[b] mod 2^32) XOR S3[c]) + S4[d] mod 2^32
+      // Blowfish F-function: F(x) = ((S1[a] + S2[b] mod OpCodes.Xor32(2, 32)) XOR S3[c]) + S4[d] mod OpCodes.Xor32(2, 32)
       const [a, b, c, d] = OpCodes.Unpack32BE(x);
 
-      // Step 1: S1[a] + S2[b] mod 2^32
+      // Step 1: S1[a] + S2[b] mod OpCodes.Xor32(2, 32)
       const temp1 = OpCodes.ToUint32(this.sBox1[a] + this.sBox2[b]);
 
       // Step 2: temp1 XOR S3[c]
       const temp2 = OpCodes.XorN(temp1, this.sBox3[c]);
 
-      // Step 3: temp2 + S4[d] mod 2^32
+      // Step 3: temp2 + S4[d] mod OpCodes.Xor32(2, 32)
       return OpCodes.ToUint32(temp2 + this.sBox4[d]);
     }
   }

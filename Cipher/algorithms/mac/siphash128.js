@@ -180,6 +180,7 @@
       this.m = [0, 0];
       this.wordPos = 0;
       this.wordCount = 0;
+      this.OpCodes = OpCodes;
     }
 
     // Property: key (128-bit / 16 bytes)
@@ -289,7 +290,7 @@
       const message = this.inputBuffer;
       const messageLen = message.length;
       let i = 0;
-      const fullWords = messageLen & ~7; // Round down to multiple of 8
+      const fullWords = OpCodes.And32(messageLen, OpCodes.Not32(7)); // Round down to multiple of 8
 
       // Process complete 8-byte blocks
       if (this.wordPos === 0) {
@@ -302,12 +303,12 @@
         for (; i < messageLen; i++) {
           this.m = this._shr64(this.m, 8);
           // Place byte at position 56 (bits 56-63): high32[24-31]
-          this.m = this._or64(this.m, [0, ((message[i] & 0xFF) << 24) >>> 0]);
+          this.m = this._or64(this.m, [0, OpCodes.Shl32(OpCodes.And32(message[i], 0xFF), 24)]);
         }
         this.wordPos = messageLen - fullWords;
       } else {
         // Slow path: partial word pending
-        const bits = this.wordPos << 3;
+        const bits = OpCodes.Shl32(this.wordPos, 3);
         for (; i < fullWords; i += 8) {
           const n = this._bytesToWord64LE(message, i);
           this.m = this._or64(this._shl64(n, bits), this._shr64(this.m, -bits));
@@ -317,7 +318,7 @@
         // Process remaining bytes
         for (; i < messageLen; i++) {
           this.m = this._shr64(this.m, 8);
-          this.m = this._or64(this.m, [0, ((message[i] & 0xFF) << 24) >>> 0]);
+          this.m = this._or64(this.m, [0, OpCodes.Shl32(OpCodes.And32(message[i], 0xFF), 24)]);
 
           if (++this.wordPos === 8) {
             this._processMessageWord();
@@ -328,11 +329,11 @@
 
       // Finalization padding (BouncyCastle doFinal logic)
       // Shift m to align partial word
-      this.m = this._shr64(this.m, ((7 - this.wordPos) << 3));
+      this.m = this._shr64(this.m, OpCodes.Shl32((7 - this.wordPos), 3));
       this.m = this._shr64(this.m, 8);
       // Add message length byte at position 7 (bits 56-63): high32[24-31]
-      const lenByte = ((this.wordCount << 3) + this.wordPos) & 0xFF;
-      this.m = this._or64(this.m, [0, ((lenByte << 24) >>> 0)]);
+      const lenByte = OpCodes.And32((OpCodes.Shl32(this.wordCount, 3) + this.wordPos), 0xFF);
+      this.m = this._or64(this.m, [0, OpCodes.Shl32(lenByte, 24)]);
 
       this._processMessageWord();
 
@@ -425,9 +426,9 @@
      * Returns [low32, high32]
      */
     _add64(a, b) {
-      const low = (a[0] + b[0]) >>> 0;
+      const low = OpCodes.ToUint32((a[0] + b[0]));
       const carry = (low < a[0]) ? 1 : 0;
-      const high = (a[1] + b[1] + carry) >>> 0;
+      const high = OpCodes.ToUint32((a[1] + b[1] + carry));
       return [low, high];
     }
 
@@ -436,7 +437,7 @@
      * Returns [low32, high32]
      */
     _xor64(a, b) {
-      return [(a[0] ^ b[0]) >>> 0, (a[1] ^ b[1]) >>> 0];
+      return [OpCodes.Xor32(a[0], b[0]), OpCodes.Xor32(a[1], b[1])];
     }
 
     /**
@@ -444,7 +445,7 @@
      * Returns [low32, high32]
      */
     _or64(a, b) {
-      return [(a[0] | b[0]) >>> 0, (a[1] | b[1]) >>> 0];
+      return [OpCodes.Or32(a[0], b[0]), OpCodes.Or32(a[1], b[1])];
     }
 
     /**
@@ -463,11 +464,11 @@
 
       if (positions === 0) return [low, high];
       if (positions >= 32) {
-        const newLow = (high >>> (positions - 32)) >>> 0;
+        const newLow = OpCodes.Shr32(high, (positions - 32));
         return [newLow, 0];
       } else {
-        const newLow = ((low >>> positions) | (high << (32 - positions))) >>> 0;
-        const newHigh = (high >>> positions) >>> 0;
+        const newLow = OpCodes.Or32(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, (32 - positions)));
+        const newHigh = OpCodes.Shr32(high, positions);
         return [newLow, newHigh];
       }
     }
@@ -485,11 +486,11 @@
 
       if (positions === 0) return [low, high];
       if (positions >= 32) {
-        const newHigh = (low << (positions - 32)) >>> 0;
+        const newHigh = OpCodes.Shl32(low, (positions - 32));
         return [0, newHigh];
       } else {
-        const newHigh = ((high << positions) | (low >>> (32 - positions))) >>> 0;
-        const newLow = (low << positions) >>> 0;
+        const newHigh = OpCodes.Or32(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, (32 - positions)));
+        const newLow = OpCodes.Shl32(low, positions);
         return [newLow, newHigh];
       }
     }
@@ -509,16 +510,16 @@
 
       if (positions < 32) {
         // Rotate left within 64-bit word
-        // New low bits = old low << n | old high >> (32-n)
-        // New high bits = old high << n | old low >> (32-n)
-        const newLow = ((low << positions) | (high >>> (32 - positions))) >>> 0;
-        const newHigh = ((high << positions) | (low >>> (32 - positions))) >>> 0;
+        // New low bits = old low << n|old high >> (32-n)
+        // New high bits = old high << n|old low >> (32-n)
+        const newLow = OpCodes.Or32(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, (32 - positions)));
+        const newHigh = OpCodes.Or32(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, (32 - positions)));
         return [newLow, newHigh];
       } else {
         // Rotate more than 32 bits = swap + rotate remainder
         positions -= 32;
-        const newLow = ((high << positions) | (low >>> (32 - positions))) >>> 0;
-        const newHigh = ((low << positions) | (high >>> (32 - positions))) >>> 0;
+        const newLow = OpCodes.Or32(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, (32 - positions)));
+        const newHigh = OpCodes.Or32(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, (32 - positions)));
         return [newLow, newHigh];
       }
     }

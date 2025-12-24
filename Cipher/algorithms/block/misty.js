@@ -122,12 +122,12 @@
 
   // S7 lookup - shared by both variants
   function S7(x) {
-    return S7TABLE[x & 0x7F];
+    return S7TABLE[x&0x7F];
   }
 
   // S9 lookup - shared by both variants
   function S9(x) {
-    return S9TABLE[x & 0x1FF];
+    return S9TABLE[x&0x1FF];
   }
 
   // ===== SHARED FI FUNCTION =====
@@ -135,22 +135,22 @@
   // Used identically by both MISTY1 and MISTY2
   function FI(fi_in, subkey) {
     // Split 16-bit input into 9-bit left and 7-bit right parts
-    let d9 = (fi_in >>> 7) & 0x1FF;  // Upper 9 bits
-    let d7 = fi_in & 0x7F;           // Lower 7 bits
+    let d9 = OpCodes.Shr32(fi_in, 7)&0x1FF;  // Upper 9 bits
+    let d7 = fi_in&0x7F;           // Lower 7 bits
 
     // Split 16-bit subkey into 7-bit and 9-bit parts
-    const k7 = subkey & 0x7F;         // Lower 7 bits of subkey
-    const k9 = (subkey >>> 7) & 0x1FF; // Upper 9 bits of subkey
+    const k7 = subkey&0x7F;         // Lower 7 bits of subkey
+    const k9 = OpCodes.Shr32(subkey, 7)&0x1FF; // Upper 9 bits of subkey
 
     // 2-round Feistel structure as per RFC 2994 Section 2.3
     // First round
-    d9 = d9 ^ S7((d7 ^ k7) & 0x7F);
+    d9 = OpCodes.Xor32(d9, S7(OpCodes.Xor32(d7, k7)&0x7F));
 
     // Second round
-    d7 = d7 ^ (S9((d9 ^ k9) & 0x1FF) & 0x7F);
+    d7 = OpCodes.Xor32(d7, S9(OpCodes.Xor32(d9, k9)&0x1FF)&0x7F);
 
     // Combine results: 9-bit d9 in upper bits, 7-bit d7 in lower bits
-    return ((d9 & 0x1FF) << 7) | (d7 & 0x7F);
+    return OpCodes.Shl32(d9&0x1FF, 7)|(d7&0x7F);
   }
 
   // ===== MISTY1 IMPLEMENTATION =====
@@ -232,8 +232,8 @@
 
     // FO function - 3-round Feistel with FI function (RFC 2994)
     static FO(fo_in, k, EK) {
-      let t0 = (fo_in >>> 16) & 0xFFFF;  // Upper 16 bits
-      let t1 = fo_in & 0xFFFF;           // Lower 16 bits
+      let t0 = OpCodes.Shr32(fo_in, 16)&0xFFFF;  // Upper 16 bits
+      let t1 = fo_in&0xFFFF;           // Lower 16 bits
 
       // 3-round Feistel structure as per RFC 2994 Section 2.3
       // FO function uses specific key indexing
@@ -241,57 +241,57 @@
       // Round 1
       let temp = t0;
       t0 = t1;
-      t1 = temp ^ FI(t1 ^ EK[k], EK[(k + 5) % 8 + 8]);
+      t1 = OpCodes.Xor32(temp, FI(OpCodes.Xor32(t1, EK[k]), EK[(k + 5) % 8 + 8]));
 
       // Round 2
       temp = t0;
       t0 = t1;
-      t1 = temp ^ FI(t1 ^ EK[(k + 2) % 8], EK[(k + 1) % 8 + 8]);
+      t1 = OpCodes.Xor32(temp, FI(OpCodes.Xor32(t1, EK[(k + 2) % 8]), EK[(k + 1) % 8 + 8]));
 
       // Round 3
       temp = t0;
       t0 = t1;
-      t1 = temp ^ FI(t1 ^ EK[(k + 7) % 8], EK[(k + 3) % 8 + 8]);
+      t1 = OpCodes.Xor32(temp, FI(OpCodes.Xor32(t1, EK[(k + 7) % 8]), EK[(k + 3) % 8 + 8]));
 
-      return ((t0 & 0xFFFF) << 16) | (t1 & 0xFFFF);
+      return OpCodes.Shl32(t0&0xFFFF, 16)|(t1&0xFFFF);
     }
 
     // FL function - linear layer for diffusion (RFC 2994 exact implementation)
     static FL(fl_in, k, EK) {
-      let d0 = (fl_in >>> 16) & 0xFFFF;  // Upper 16 bits
-      let d1 = fl_in & 0xFFFF;           // Lower 16 bits
+      let d0 = OpCodes.Shr32(fl_in, 16)&0xFFFF;  // Upper 16 bits
+      let d1 = fl_in&0xFFFF;           // Lower 16 bits
 
       // FL function as per RFC 2994 Section 2.4
       if (k % 2 === 0) {
         // Even k
-        d1 = d1 ^ (d0 & EK[Math.floor(k / 2)]);
-        d0 = d0 ^ (d1 | EK[(Math.floor(k / 2) + 6) % 8 + 8]);
+        d1 = OpCodes.Xor32(d1, d0&EK[Math.floor(k / 2)]);
+        d0 = OpCodes.Xor32(d0, d1|EK[(Math.floor(k / 2) + 6) % 8 + 8]);
       } else {
         // Odd k
-        d1 = d1 ^ (d0 & EK[((k - 1) / 2 + 2) % 8 + 8]);
-        d0 = d0 ^ (d1 | EK[((k - 1) / 2 + 4) % 8]);
+        d1 = OpCodes.Xor32(d1, d0&EK[((k - 1) / 2 + 2) % 8 + 8]);
+        d0 = OpCodes.Xor32(d0, d1|EK[((k - 1) / 2 + 4) % 8]);
       }
 
-      return ((d0 & 0xFFFF) << 16) | (d1 & 0xFFFF);
+      return OpCodes.Shl32(d0&0xFFFF, 16)|(d1&0xFFFF);
     }
 
     // FL inverse function for decryption (RFC 2994)
     static FL_inv(fl_in, k, EK) {
-      let d0 = (fl_in >>> 16) & 0xFFFF;  // Upper 16 bits
-      let d1 = fl_in & 0xFFFF;           // Lower 16 bits
+      let d0 = OpCodes.Shr32(fl_in, 16)&0xFFFF;  // Upper 16 bits
+      let d1 = fl_in&0xFFFF;           // Lower 16 bits
 
       // Reverse FL function
       if (k % 2 === 0) {
         // Even k - reverse order
-        d0 = d0 ^ (d1 | EK[(Math.floor(k / 2) + 6) % 8 + 8]);
-        d1 = d1 ^ (d0 & EK[Math.floor(k / 2)]);
+        d0 = OpCodes.Xor32(d0, d1|EK[(Math.floor(k / 2) + 6) % 8 + 8]);
+        d1 = OpCodes.Xor32(d1, d0&EK[Math.floor(k / 2)]);
       } else {
         // Odd k - reverse order
-        d0 = d0 ^ (d1 | EK[((k - 1) / 2 + 4) % 8]);
-        d1 = d1 ^ (d0 & EK[((k - 1) / 2 + 2) % 8 + 8]);
+        d0 = OpCodes.Xor32(d0, d1|EK[((k - 1) / 2 + 4) % 8]);
+        d1 = OpCodes.Xor32(d1, d0&EK[((k - 1) / 2 + 2) % 8 + 8]);
       }
 
-      return ((d0 & 0xFFFF) << 16) | (d1 & 0xFFFF);
+      return OpCodes.Shl32(d0&0xFFFF, 16)|(d1&0xFFFF);
     }
   }
 
@@ -406,7 +406,7 @@
       // Convert 16 key bytes to 8 key words K[0]...K[7]
       const K = new Array(8);
       for (let i = 0; i < 8; i++) {
-        K[i] = (keyBytes[i * 2] << 8) | keyBytes[i * 2 + 1];
+        K[i] = OpCodes.Shl32(keyBytes[i * 2], 8)|keyBytes[i * 2 + 1];
       }
 
       // Generate EK array (32 elements) as per RFC 2994
@@ -419,17 +419,17 @@
 
       // Generate EK[8]...EK[15] using FI function
       for (let i = 0; i < 8; i++) {
-        EK[i + 8] = FI(EK[i], EK[(i + 1) % 8]) & 0xFFFF;
+        EK[i + 8] = FI(EK[i], EK[(i + 1) % 8])&0xFFFF;
       }
 
       // Generate EK[16]...EK[23] (lower 9 bits of EK[8]...EK[15])
       for (let i = 0; i < 8; i++) {
-        EK[i + 16] = EK[i + 8] & 0x1FF;
+        EK[i + 16] = EK[i + 8]&0x1FF;
       }
 
       // Generate EK[24]...EK[31] (upper 7 bits of EK[8]...EK[15])
       for (let i = 0; i < 8; i++) {
-        EK[i + 24] = (EK[i + 8] >>> 9) & 0x7F;
+        EK[i + 24] = OpCodes.Shr32(EK[i + 8], 9)&0x7F;
       }
 
       return { EK, K };
@@ -450,7 +450,7 @@
 
         // Apply FO function (Feistel round)
         const temp = right;
-        right = left ^ MISTY1Cipher.FO(right, round, this.roundKeys.EK);
+        right = OpCodes.Xor32(left, MISTY1Cipher.FO(right, round, this.roundKeys.EK));
         left = temp;
       }
 
@@ -477,7 +477,7 @@
       for (let round = this.algorithm.ROUNDS - 1; round >= 0; round--) {
         // Reverse Feistel structure: undo the XOR and swap
         const temp = left;
-        left = right ^ MISTY1Cipher.FO(left, round, this.roundKeys.EK);
+        left = OpCodes.Xor32(right, MISTY1Cipher.FO(left, round, this.roundKeys.EK));
         right = temp;
 
         // Even rounds: reverse FL operations after FO
@@ -566,47 +566,47 @@
 
     // FO function - simplified 32-bit function with 3-round Feistel structure
     static FO(input, ko_keys, ki_keys) {
-      let left = (input >>> 16) & 0xFFFF;
-      let right = input & 0xFFFF;
+      let left = OpCodes.Shr32(input, 16)&0xFFFF;
+      let right = input&0xFFFF;
 
       // 3-round Feistel structure
       for (let i = 0; i < 3; i++) {
         const temp = left;
         left = right;
-        right = temp ^ FI(right, ko_keys[i]);
+        right = OpCodes.Xor32(temp, FI(right, ko_keys[i]));
       }
 
-      return ((left & 0xFFFF) << 16) | (right & 0xFFFF);
+      return OpCodes.Shl32(left&0xFFFF, 16)|(right&0xFFFF);
     }
 
     // FL function - simplified 32-bit linear function
     static FL(input, kl_key) {
-      let left = (input >>> 16) & 0xFFFF;
-      let right = input & 0xFFFF;
+      let left = OpCodes.Shr32(input, 16)&0xFFFF;
+      let right = input&0xFFFF;
 
-      const kl1 = (kl_key >>> 16) & 0xFFFF;
-      const kl2 = kl_key & 0xFFFF;
+      const kl1 = OpCodes.Shr32(kl_key, 16)&0xFFFF;
+      const kl2 = kl_key&0xFFFF;
 
       // Simplified FL function
-      right = right ^ (left & kl1);
-      left = left ^ (right | kl2);
+      right = OpCodes.Xor32(right, left&kl1);
+      left = OpCodes.Xor32(left, right|kl2);
 
-      return ((left & 0xFFFF) << 16) | (right & 0xFFFF);
+      return OpCodes.Shl32(left&0xFFFF, 16)|(right&0xFFFF);
     }
 
     // Inverse FL function
     static FL_inv(input, kl_key) {
-      let left = (input >>> 16) & 0xFFFF;
-      let right = input & 0xFFFF;
+      let left = OpCodes.Shr32(input, 16)&0xFFFF;
+      let right = input&0xFFFF;
 
-      const kl1 = (kl_key >>> 16) & 0xFFFF;
-      const kl2 = kl_key & 0xFFFF;
+      const kl1 = OpCodes.Shr32(kl_key, 16)&0xFFFF;
+      const kl2 = kl_key&0xFFFF;
 
       // Reverse FL function
-      left = left ^ (right | kl2);
-      right = right ^ (left & kl1);
+      left = OpCodes.Xor32(left, right|kl2);
+      right = OpCodes.Xor32(right, left&kl1);
 
-      return ((left & 0xFFFF) << 16) | (right & 0xFFFF);
+      return OpCodes.Shl32(left&0xFFFF, 16)|(right&0xFFFF);
     }
   }
 
@@ -720,13 +720,13 @@
       // Convert key bytes to 16-bit words
       const K = new Array(8);
       for (let i = 0; i < 8; i++) {
-        K[i] = (keyBytes[i * 2] << 8) | keyBytes[i * 2 + 1];
+        K[i] = OpCodes.Shl32(keyBytes[i * 2], 8)|keyBytes[i * 2 + 1];
       }
 
       // Generate extended keys using FI function
       const KP = new Array(8);
       for (let i = 0; i < 8; i++) {
-        KP[i] = FI(K[i], K[(i + 1) % 8]) & 0xFFFF;
+        KP[i] = FI(K[i], K[(i + 1) % 8])&0xFFFF;
       }
 
       const keys = {
@@ -750,7 +750,7 @@
         // KL keys for FL function (1 per round) - 32-bit keys
         const kl1 = K[(round * 2 + 4) % 8];
         const kl2 = K[(round * 2 + 5) % 8];
-        keys.KL[round] = (kl1 << 16) | kl2;
+        keys.KL[round] = OpCodes.Shl32(kl1, 16)|kl2;
       }
 
       return keys;
@@ -775,9 +775,9 @@
           this.roundKeys.KI[round * 3 + 2]
         ];
 
-        // Standard Feistel: new_left = old_right, new_right = old_left ⊕ F(old_right)
+        // Standard Feistel: new_left = old_right, new_right = old_left XOR F(old_right)
         const new_left = right;
-        const new_right = left ^ MISTY2Cipher.FO(right, ko_keys, ki_keys);
+        const new_right = OpCodes.Xor32(left, MISTY2Cipher.FO(right, ko_keys, ki_keys));
         left = new_left;
         right = new_right;
       }
@@ -808,8 +808,8 @@
           this.roundKeys.KI[round * 3 + 2]
         ];
 
-        // Standard Feistel decryption: new_left = old_right ⊕ F(old_left), new_right = old_left
-        const new_left = right ^ MISTY2Cipher.FO(left, ko_keys, ki_keys);
+        // Standard Feistel decryption: new_left = old_right XOR F(old_left), new_right = old_left
+        const new_left = OpCodes.Xor32(right, MISTY2Cipher.FO(left, ko_keys, ki_keys));
         const new_right = left;
         left = new_left;
         right = new_right;

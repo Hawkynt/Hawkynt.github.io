@@ -9,8 +9,8 @@
  * This is the simplified version posted by Marsaglia on May 13, 2003:
  *
  *   t = a * Q[++i] + c     (64-bit arithmetic)
- *   c = t >> 32            (carry = upper 32 bits)
- *   Q[i] = t & 0xFFFFFFFF  (state = lower 32 bits)
+ *   c = t right-shift 32   (carry = upper 32 bits)
+ *   Q[i] = t AND 0xFFFFFFFF (state = lower 32 bits)
  *   return Q[i]
  *
  * Where:
@@ -274,10 +274,10 @@
      * Generate next 32-bit value using MWC256 algorithm
      *
      * Algorithm (Marsaglia's May 13, 2003 version):
-     * 1. i = (i + 1) % 256
+     * 1. i = (i + 1) modulo 256
      * 2. t = a * Q[i] + c  (64-bit arithmetic)
-     * 3. c = t >> 32       (carry = upper 32 bits)
-     * 4. Q[i] = t & 0xFFFFFFFF (state = lower 32 bits)
+     * 3. c = t right-shift 32 (carry = upper 32 bits)
+     * 4. Q[i] = t AND 0xFFFFFFFF (state = lower 32 bits)
      * 5. return Q[i]
      */
     _next32() {

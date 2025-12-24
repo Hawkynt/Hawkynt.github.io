@@ -443,7 +443,7 @@
       // Perform wrapping operation
       for (let j = 0; j <= 5; ++j) {
         for (let i = 0; i < n; ++i) {
-          // B = AES(K, A | R[i])
+          // B = AES(K, A|R[i])
           const block = [...A, ...R[i]];
           this.aesInstance.Feed(block);
           const B = this.aesInstance.Result();
@@ -462,7 +462,7 @@
         }
       }
 
-      // Output is A | R[0] | R[1] | ... | R[n-1]
+      // Output is A|R[0]|R[1]|...|R[n-1]
       const output = [...A];
       for (let i = 0; i < n; ++i) {
         output.push(...R[i]);
@@ -504,7 +504,7 @@
             A_copy[8 - k] = OpCodes.XorN(A_copy[8 - k], OpCodes.AndN(OpCodes.Shr32(t, (k - 1) * 8), 0xFF));
           }
 
-          // B = AES_Decrypt(K, (A XOR t) | R[i])
+          // B = AES_Decrypt(K, (A XOR t)|R[i])
           const block = [...A_copy, ...R[i]];
           aesDecrypt.Feed(block);
           const B = aesDecrypt.Result();

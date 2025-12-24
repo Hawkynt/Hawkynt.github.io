@@ -178,7 +178,7 @@
     mix(x0, x1, rotation) {
       // x0 += x1
       const sum = this.add64(x0.low, x0.high, x1.low, x1.high);
-      // x1 = rotl(x1, R) ^ x0
+      // x1 = rotl(x1, R)^x0
       const rotated = OpCodes.RotL64(x1.low, x1.high, rotation);
       return {
         x0: { low: sum.low, high: sum.high },
@@ -198,7 +198,7 @@
      * @returns {{x0: Object, x1: Object}} Updated word pair
      */
     unmix(x0, x1, rotation) {
-      // x1 = rotr(x1 ^ x0, R)
+      // x1 = rotr(OpCodes.Xor32(x1, x0), R)
       const xored = {
         low: OpCodes.Xor32(x1.low, x0.low),
         high: OpCodes.Xor32(x1.high, x0.high)
@@ -319,7 +319,7 @@
       // X0 += X4
       const sum0 = this.add64(X0.low, X0.high, X4.low, X4.high);
       X0.low = sum0.low; X0.high = sum0.high;
-      // X4 = rotl(X4, R1) ^ X0
+      // X4 = rotl(X4, R1)^X0
       const rot4 = OpCodes.RotL64(X4.low, X4.high, R1);
       X4.low = OpCodes.Xor32(rot4.low, X0.low);
       X4.high = OpCodes.Xor32(rot4.high, X0.high);
@@ -327,7 +327,7 @@
       // X1 += X5
       const sum1 = this.add64(X1.low, X1.high, X5.low, X5.high);
       X1.low = sum1.low; X1.high = sum1.high;
-      // X5 = rotl(X5, R2) ^ X1
+      // X5 = rotl(X5, R2)^X1
       const rot5 = OpCodes.RotL64(X5.low, X5.high, R2);
       X5.low = OpCodes.Xor32(rot5.low, X1.low);
       X5.high = OpCodes.Xor32(rot5.high, X1.high);
@@ -335,7 +335,7 @@
       // X2 += X6
       const sum2 = this.add64(X2.low, X2.high, X6.low, X6.high);
       X2.low = sum2.low; X2.high = sum2.high;
-      // X6 = rotl(X6, R3) ^ X2
+      // X6 = rotl(X6, R3)^X2
       const rot6 = OpCodes.RotL64(X6.low, X6.high, R3);
       X6.low = OpCodes.Xor32(rot6.low, X2.low);
       X6.high = OpCodes.Xor32(rot6.high, X2.high);
@@ -343,7 +343,7 @@
       // X3 += X7
       const sum3 = this.add64(X3.low, X3.high, X7.low, X7.high);
       X3.low = sum3.low; X3.high = sum3.high;
-      // X7 = rotl(X7, R4) ^ X3
+      // X7 = rotl(X7, R4)^X3
       const rot7 = OpCodes.RotL64(X7.low, X7.high, R4);
       X7.low = OpCodes.Xor32(rot7.low, X3.low);
       X7.high = OpCodes.Xor32(rot7.high, X3.high);

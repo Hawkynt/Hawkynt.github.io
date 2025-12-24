@@ -64,9 +64,9 @@
 
         // rANS parameters - very simplified for educational purposes
         this.PROB_BITS = 4;                       // Probability precision (4 bits)
-        this.PROB_SCALE = 1 << this.PROB_BITS;   // 16
-        this.RANS_L = 1 << 8;                     // Lower bound (256)
-        this.RANS_BYTE_L = 1 << 4;                // Byte renormalization bound (16)
+        this.PROB_SCALE = OpCodes.Shl32(1, this.PROB_BITS);   // 16
+        this.RANS_L = OpCodes.Shl32(1, 8);                     // Lower bound (256)
+        this.RANS_BYTE_L = OpCodes.Shl32(1, 4);                // Byte renormalization bound (16)
 
         this.documentation = [
           new LinkItem("rANS Implementation", "https://github.com/rygorous/ryg_rans"),
@@ -362,8 +362,8 @@
 
           // Renormalize if needed - simpler bounds
           while (state >= (this.ransL * this.probScale)) {
-            output.push(state & 0xFF);
-            state = state >>> 8;
+            output.push(OpCodes.ToByte(state));
+            state = OpCodes.Shr32(state, 8);
           }
 
           // Update state using rANS formula
@@ -375,7 +375,7 @@
         output.reverse();
 
         // Then append the final state (don't reverse this)
-        const stateBytes = OpCodes.Unpack32LE(state >>> 0);
+        const stateBytes = OpCodes.Unpack32LE(OpCodes.ToUint32(state));
         output.push(...stateBytes);
 
         return output;
@@ -415,7 +415,7 @@
 
           // Renormalize if needed
           while (state < this.ransL && offset < encodedData.length) {
-            state = (state << 8) | encodedData[offset++];
+            state = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(state, 8), encodedData[offset++]));
           }
         }
 

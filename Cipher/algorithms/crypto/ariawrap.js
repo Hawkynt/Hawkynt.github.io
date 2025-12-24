@@ -305,11 +305,11 @@
           // XOR t into the last byte(s) of A (big-endian)
           for (let k = 1; t !== 0 && k <= 8; ++k) {
             const shift = (k - 1) * 8;
-            const byteVal = (t >>> shift) & 0xff;
+            const byteVal = OpCodes.ToByte(OpCodes.Shr32(t, shift));
             if (byteVal !== 0) {
-              A[8 - k] ^= byteVal;
+              A[8 - k] = OpCodes.ToByte(OpCodes.Xor32(A[8 - k], byteVal));
             }
-            if (t < (1 << (k * 8))) break; // No more significant bytes
+            if (t < OpCodes.Shl32(1, k * 8)) break; // No more significant bytes
           }
 
           // R[i] = LSB(64, B)
@@ -383,11 +383,11 @@
           const A_prime = [...A];
           for (let k = 1; t !== 0 && k <= 8; ++k) {
             const shift = (k - 1) * 8;
-            const byteVal = (t >>> shift) & 0xff;
+            const byteVal = OpCodes.ToByte(OpCodes.Shr32(t, shift));
             if (byteVal !== 0) {
-              A_prime[8 - k] ^= byteVal;
+              A_prime[8 - k] = OpCodes.ToByte(OpCodes.Xor32(A_prime[8 - k], byteVal));
             }
-            if (t < (1 << (k * 8))) break;
+            if (t < OpCodes.Shl32(1, k * 8)) break;
           }
 
           // B = ARIA_DECRYPT(K, A' || R[i])

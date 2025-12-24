@@ -8,7 +8,7 @@
  * compared to the base LFSR.
  *
  * References:
- * - Coppersmith, D., Krawczyk, H., & Mansour, Y. (1993).
+ * - Coppersmith, D., Krawczyk, H.,&Mansour, Y. (1993).
  *   "The Shrinking Generator" presented at CRYPTO '93
  * - RFC reference implementations and academic cryptography literature
  * - https://github.com/Hawkynt/RandomNumberGenerators (C# reference)
@@ -186,7 +186,7 @@
         // Support array input (for test compatibility)
         this._state = 0n;
         for (let i = 0; i < seedValue.length; i++) {
-          this._state = (this._state << 8n) | BigInt(seedValue[i] & 0xFF);
+          this._state = (this._state << 8n) | BigInt(OpCodes.And32(seedValue[i], 0xFF));
         }
       } else {
         throw new Error('Invalid seed type: must be number, BigInt, or byte array');
@@ -273,7 +273,7 @@
 
         // Output y only if x == 1 (selector condition)
         if (xBit === 1) {
-          currentByte = (currentByte << 1) | yBit;
+          currentByte = OpCodes.Or32(OpCodes.Shl32(currentByte, 1), yBit);
           bitCount++;
 
           if (bitCount === 8) {
@@ -305,7 +305,7 @@
       let temp = masked;
       let parity = 0;
       while (temp > 0n) {
-        parity ^= 1;
+        parity = OpCodes.Xor32(parity, 1);
         temp = temp & (temp - 1n); // Remove rightmost set bit (Brian Kernighan's algorithm)
       }
 

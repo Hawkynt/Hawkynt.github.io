@@ -173,12 +173,9 @@
   // Byte swap for 32-bit word (little-endian <-> big-endian)
   // Reference: swap macro in shoco.c
   function swap32(word) {
-    return (
-      (OpCodes.Shl32(word, 24) & 0xFF000000) |
-      (OpCodes.Shl32(word, 8) & 0x00FF0000) |
-      (OpCodes.Shr32(word, 8) & 0x0000FF00) |
-      (OpCodes.Shr32(word, 24) & 0x000000FF)
-    ) >>> 0;
+    return OpCodes.ToUint32(
+      ((OpCodes.Shl32(word, 24))&0xFF000000)|((OpCodes.Shl32(word, 8))&0x00FF0000)|((OpCodes.Shr32(word, 8))&0x0000FF00)|((OpCodes.Shr32(word, 24))&0x000000FF)
+    );
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -364,10 +361,10 @@
 
         // Pack indices into word
         const pack = PACKS[packIndex];
-        let word = pack.word >>> 0;
+        let word = pack.word;
 
         for (let i = 0; i < indices.length; ++i) {
-          word = (word | OpCodes.Shl32(indices[i], pack.offsets[i])) >>> 0;
+          word = OpCodes.ToUint32(word|(OpCodes.Shl32(indices[i], pack.offsets[i])));
         }
 
         // Apply endianness swap (reference shoco.c applies swap before output)
@@ -378,7 +375,7 @@
         // Output packed bytes from low to high of swapped word
         // In C: code.bytes[i] accesses bytes in little-endian memory order (low to high)
         for (let i = 0; i < pack.bytes_packed; ++i) {
-          output.push(OpCodes.Shr32(word, i * 8) & 0xFF);
+          output.push(OpCodes.ToByte(OpCodes.Shr32(word, i * 8)));
         }
 
         inPos = nextPos;
@@ -409,7 +406,7 @@
         // Determine pack type by header bits
         let packIndex = -1;
         for (let p = 0; p < PACKS.length; ++p) {
-          if ((byte & PACKS[p].header_mask) === PACKS[p].header) {
+          if ((byte&PACKS[p].header_mask) === PACKS[p].header) {
             packIndex = p;
             break;
           }
@@ -437,7 +434,7 @@
         let word = 0;
         // Read bytes from low to high (matching C code.bytes[i] access pattern)
         for (let i = 0; i < pack.bytes_packed; ++i) {
-          word = (word | OpCodes.Shl32(input[inPos + i], i * 8)) >>> 0;
+          word = OpCodes.ToUint32(word|(OpCodes.Shl32(input[inPos + i], i * 8)));
         }
         inPos += pack.bytes_packed;
 
@@ -445,7 +442,7 @@
         word = swap32(word);
 
         // Extract indices
-        const chrId = OpCodes.Shr32(word, pack.offsets[0]) & pack.masks[0];
+        const chrId = (OpCodes.Shr32(word, pack.offsets[0]))&pack.masks[0];
         const firstChr = CHRS_BY_CHR_ID[chrId];
         output.push(firstChr);
 
@@ -454,7 +451,7 @@
           const mask = pack.masks[i];
           if (mask === 0) break;
 
-          const successorId = OpCodes.Shr32(word, pack.offsets[i]) & mask;
+          const successorId = (OpCodes.Shr32(word, pack.offsets[i]))&mask;
           const chr = CHRS_BY_CHR_AND_SUCCESSOR_ID[lastChrId][successorId];
 
           if (chr === 0 || chr === undefined) break;

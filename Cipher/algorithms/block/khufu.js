@@ -310,12 +310,12 @@
       // Simple PRNG for initial S-box generation
       // Using Linear Congruential Generator with seed
       const sbox = new Array(256);
-      let state = seed >>> 0;
+      let state = OpCodes.ToUint32(seed);
 
       for (let i = 0; i < 256; i++) {
         // LCG: state = (a * state + c) mod m
         // Using values similar to BSD rand()
-        state = (1103515245 * state + 12345) >>> 0;
+        state = OpCodes.ToUint32(1103515245 * state + 12345);
         sbox[i] = state;
       }
 
@@ -373,7 +373,7 @@
       // Simple key-based random number generator
       // In the reference implementation, this uses Khufu encryption of state
       // For simplicity, we use a hash-based approach
-      const val = (state[index % state.length] + index * 0x9e3779b9) >>> 0;
+      const val = OpCodes.ToUint32(state[index % state.length] + index * 0x9e3779b9);
       return val;
     }
 
@@ -383,8 +383,8 @@
       let R = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
 
       // Pre-whitening
-      L ^= this.auxKeys[0];
-      R ^= this.auxKeys[1];
+      L = OpCodes.Xor32(L, this.auxKeys[0]);
+      R = OpCodes.Xor32(R, this.auxKeys[1]);
 
       const octets = this.rounds / 8;
 
@@ -396,41 +396,41 @@
         // Pattern: 16, 16, 8, 8, 16, 16, 24, 24
 
         // Round 1: Rotate L by 16
-        R ^= sbox[L & 0xFF];
+        R ^= sbox[OpCodes.ToByte(L)];
         L = OpCodes.RotR32(L, 16);
 
         // Round 2: Rotate R by 16
-        L ^= sbox[R & 0xFF];
+        L ^= sbox[OpCodes.ToByte(R)];
         R = OpCodes.RotR32(R, 16);
 
         // Round 3: Rotate L by 8
-        R ^= sbox[L & 0xFF];
+        R ^= sbox[OpCodes.ToByte(L)];
         L = OpCodes.RotR32(L, 8);
 
         // Round 4: Rotate R by 8
-        L ^= sbox[R & 0xFF];
+        L ^= sbox[OpCodes.ToByte(R)];
         R = OpCodes.RotR32(R, 8);
 
         // Round 5: Rotate L by 16
-        R ^= sbox[L & 0xFF];
+        R ^= sbox[OpCodes.ToByte(L)];
         L = OpCodes.RotR32(L, 16);
 
         // Round 6: Rotate R by 16
-        L ^= sbox[R & 0xFF];
+        L ^= sbox[OpCodes.ToByte(R)];
         R = OpCodes.RotR32(R, 16);
 
         // Round 7: Rotate L by 24
-        R ^= sbox[L & 0xFF];
+        R ^= sbox[OpCodes.ToByte(L)];
         L = OpCodes.RotR32(L, 24);
 
         // Round 8: Rotate R by 24
-        L ^= sbox[R & 0xFF];
+        L ^= sbox[OpCodes.ToByte(R)];
         R = OpCodes.RotR32(R, 24);
       }
 
       // Post-whitening
-      L ^= this.auxKeys[2];
-      R ^= this.auxKeys[3];
+      L = OpCodes.Xor32(L, this.auxKeys[2]);
+      R = OpCodes.Xor32(R, this.auxKeys[3]);
 
       // Unpack to bytes
       const leftBytes = OpCodes.Unpack32BE(L);
@@ -445,8 +445,8 @@
       let R = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]);
 
       // Reverse post-whitening
-      L ^= this.auxKeys[2];
-      R ^= this.auxKeys[3];
+      L = OpCodes.Xor32(L, this.auxKeys[2]);
+      R = OpCodes.Xor32(R, this.auxKeys[3]);
 
       const octets = this.rounds / 8;
 
@@ -459,40 +459,40 @@
 
         // Reverse Round 8: Rotate R by -24 (left by 24)
         R = OpCodes.RotL32(R, 24);
-        L ^= sbox[R & 0xFF];
+        L ^= sbox[OpCodes.ToByte(R)];
 
         // Reverse Round 7: Rotate L by -24 (left by 24)
         L = OpCodes.RotL32(L, 24);
-        R ^= sbox[L & 0xFF];
+        R ^= sbox[OpCodes.ToByte(L)];
 
         // Reverse Round 6: Rotate R by -16 (left by 16)
         R = OpCodes.RotL32(R, 16);
-        L ^= sbox[R & 0xFF];
+        L ^= sbox[OpCodes.ToByte(R)];
 
         // Reverse Round 5: Rotate L by -16 (left by 16)
         L = OpCodes.RotL32(L, 16);
-        R ^= sbox[L & 0xFF];
+        R ^= sbox[OpCodes.ToByte(L)];
 
         // Reverse Round 4: Rotate R by -8 (left by 8)
         R = OpCodes.RotL32(R, 8);
-        L ^= sbox[R & 0xFF];
+        L ^= sbox[OpCodes.ToByte(R)];
 
         // Reverse Round 3: Rotate L by -8 (left by 8)
         L = OpCodes.RotL32(L, 8);
-        R ^= sbox[L & 0xFF];
+        R ^= sbox[OpCodes.ToByte(L)];
 
         // Reverse Round 2: Rotate R by -16 (left by 16)
         R = OpCodes.RotL32(R, 16);
-        L ^= sbox[R & 0xFF];
+        L ^= sbox[OpCodes.ToByte(R)];
 
         // Reverse Round 1: Rotate L by -16 (left by 16)
         L = OpCodes.RotL32(L, 16);
-        R ^= sbox[L & 0xFF];
+        R ^= sbox[OpCodes.ToByte(L)];
       }
 
       // Reverse pre-whitening
-      L ^= this.auxKeys[0];
-      R ^= this.auxKeys[1];
+      L = OpCodes.Xor32(L, this.auxKeys[0]);
+      R = OpCodes.Xor32(R, this.auxKeys[1]);
 
       // Unpack to bytes
       const leftBytes = OpCodes.Unpack32BE(L);

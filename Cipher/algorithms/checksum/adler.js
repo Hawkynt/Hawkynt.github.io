@@ -54,11 +54,23 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * @typedef {Object} AdlerConfig
+   * @property {string} description - Description of the variant
+   * @property {number} sumBits - Number of bits for each sum
+   * @property {number} modulo - Modulo value for checksum calculation
+   * @property {number} base - Starting value for sum1
+   * @property {number} resultBytes - Number of bytes in result
+   * @property {ComplexityType} complexity - Algorithm complexity level
+   * @property {TestCase[]} tests - Test vectors for this variant
+   */
+
   class AdlerAlgorithm extends Algorithm {
     constructor(variant = '32') {
       super();
 
       // Get configuration for this variant
+      /** @type {AdlerConfig} */
       this.config = this._getVariantConfig(variant);
 
       // Required metadata
@@ -104,7 +116,13 @@
       this.tests = this.config.tests;
     }
 
+    /**
+     * Get variant-specific configuration
+     * @param {string} variant - Variant identifier ('16', '32', or '64')
+     * @returns {AdlerConfig} Configuration for the specified variant
+     */
     _getVariantConfig(variant) {
+      /** @type {Object.<string, AdlerConfig>} */
       const configs = {
         '16': {
           description: 'Adler-16 checksum for lightweight error detection in embedded systems',
@@ -115,7 +133,7 @@
           complexity: ComplexityType.BEGINNER,
           tests: [
             new TestCase(
-              [],
+              /** @type {number[]} */ ([]),
               [0x00, 0x01],
               "Empty string",
               "RFC 1950 style - empty gives base value"
@@ -143,7 +161,7 @@
           complexity: ComplexityType.BEGINNER,
           tests: [
             new TestCase(
-              [],
+              /** @type {number[]} */ ([]),
               [0x00, 0x00, 0x00, 0x01],
               "Empty string",
               "RFC 1950 - empty string gives 1"
@@ -183,7 +201,7 @@
           complexity: ComplexityType.INTERMEDIATE,
           tests: [
             new TestCase(
-              [],
+              /** @type {number[]} */ ([]),
               [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01],
               "Empty string",
               "Educational test vector"
@@ -223,16 +241,23 @@
   }
 
   /**
- * Adler cipher instance implementing Feed/Result pattern
- * @class
- * @extends {IBlockCipherInstance}
- */
-
+   * Adler cipher instance implementing Feed/Result pattern
+   * @class
+   * @extends {IAlgorithmInstance}
+   */
   class AdlerInstance extends IAlgorithmInstance {
+    /**
+     * Create a new Adler instance
+     * @param {Algorithm} algorithm - Parent algorithm
+     * @param {AdlerConfig} config - Variant configuration
+     */
     constructor(algorithm, config) {
       super(algorithm);
+      /** @type {AdlerConfig} */
       this.config = config;
+      /** @type {number} */
       this.a = config.base;  // sum1 - starts at base value (usually 1)
+      /** @type {number} */
       this.b = 0;            // sum2 - starts at 0
     }
 

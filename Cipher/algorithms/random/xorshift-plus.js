@@ -260,9 +260,8 @@
       }
 
       // y = ~seed == 0 ? 1 : ~seed
-      // Note: ~ operator is allowed for NOT operation (OpCodes doesn't have NotN)
-      const not_seed_low = OpCodes.ToUint32(~seed_low);
-      const not_seed_high = OpCodes.ToUint32(~seed_high);
+      const not_seed_low = OpCodes.Not32(seed_low);
+      const not_seed_high = OpCodes.Not32(seed_high);
 
       if (not_seed_low === 0 && not_seed_high === 0) {
         this._y_low = 1;
@@ -364,7 +363,7 @@
       const y_low = this._y_low;
       const y_high = this._y_high;
 
-      // x ^= x << 23
+      // x ^= OpCodes.Shl32(x, 23)
       let temp = this._shl64(x_low, x_high, 23);
       [x_low, x_high] = this._xor64(x_low, x_high, temp[0], temp[1]);
 
@@ -372,7 +371,7 @@
       temp = this._shr64(x_low, x_high, 17);
       [x_low, x_high] = this._xor64(x_low, x_high, temp[0], temp[1]);
 
-      // x ^= y ^ (y >> 26)
+      // x ^= y^(y >> 26)
       temp = this._shr64(y_low, y_high, 26);
       temp = this._xor64(y_low, y_high, temp[0], temp[1]);
       [x_low, x_high] = this._xor64(x_low, x_high, temp[0], temp[1]);

@@ -84,7 +84,7 @@
   }
 
   /**
-   * Concatenate two matrices horizontally [A | B]
+   * Concatenate two matrices horizontally [A|B]
    */
   function concatenateMatrices(A, B) {
     if (A.length !== B.length) {
@@ -108,7 +108,7 @@
   const A_6_2_2 = createCirculantMatrix(CIRCULANT_FIRST_ROW_6_2_2);
   const AT_6_2_2 = transposeMatrix(A_6_2_2);
 
-  // Bicycle code structure: H_X = H_Z = (A | A^T)
+  // Bicycle code structure: H_X = H_Z = (A|A^T)
   const H_X_6_2_2 = concatenateMatrices(A_6_2_2, AT_6_2_2);
   const H_Z_6_2_2 = concatenateMatrices(A_6_2_2, AT_6_2_2);
 

@@ -660,7 +660,7 @@
         this.roundKeyEnc[r][2] = K2;
         this.roundKeyEnc[r][3] = K3;
 
-        // Compute kappa^{r+1} from kappa^r (if not the last round)
+        // Compute kappa^{r+1} from OpCodes.Xor32(kappa, r) (if not the last round)
         if (r < R) {
           for (let i = 0; i < N; i++) {
             inter[i] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(

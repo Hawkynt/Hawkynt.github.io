@@ -225,13 +225,13 @@
 
       // Process input in groups of 2 bits
       for (let i = 0; i < inputBits.length; i += this._inputBitsPerSymbol) {
-        const inputPair = (inputBits[i] << 1) | inputBits[i + 1]; // 2-bit input symbol - structural bit packing
+        const inputPair = OpCodes.Or32(OpCodes.Shl32(inputBits[i], 1), inputBits[i + 1]); // 2-bit input symbol - structural bit packing
         const outputSymbol = this._encodeSymbol(inputPair);
 
         // Output 3 bits per symbol (structural bit extraction)
-        encoded.push((outputSymbol >> 2) & 1); // Parity bit (coded) - structural extraction
-        encoded.push((outputSymbol >> 1) & 1); // Uncoded bit 1 - structural extraction
-        encoded.push(outputSymbol & 1);        // Uncoded bit 2 - structural extraction
+        encoded.push(OpCodes.And32(OpCodes.Shr32(outputSymbol, 2), 1)); // Parity bit (coded) - structural extraction
+        encoded.push(OpCodes.And32(OpCodes.Shr32(outputSymbol, 1), 1)); // Uncoded bit 1 - structural extraction
+        encoded.push(OpCodes.And32(outputSymbol, 1));        // Uncoded bit 2 - structural extraction
       }
 
       return encoded;
@@ -245,20 +245,20 @@
      */
     _encodeSymbol(inputSymbol) {
       // Extract 2 input bits (structural bit extraction)
-      const bit1 = (inputSymbol >> 1) & 1; // Most significant bit (goes through encoder) - structural extraction
-      const bit0 = inputSymbol & 1;        // Least significant bit (uncoded) - structural extraction
+      const bit1 = OpCodes.And32(OpCodes.Shr32(inputSymbol, 1), 1); // Most significant bit (goes through encoder) - structural extraction
+      const bit0 = OpCodes.And32(inputSymbol, 1);        // Least significant bit (uncoded) - structural extraction
 
       // Compute parity bit using convolutional encoder
       // State holds previous input bit
       // Parity = current_input XOR previous_input (GF(2) field operation)
-      const parityBit = bit1 ^ this._state; // GF(2) addition
+      const parityBit = OpCodes.Xor32(bit1, this._state); // GF(2) addition
 
       // Update state for next symbol (shift in current input bit)
       this._state = bit1;
 
       // Construct 3-bit output: [parity, bit1, bit0] (structural bit packing)
       // This maps to 8-PSK constellation using set partitioning
-      const outputSymbol = (parityBit << 2) | (bit1 << 1) | bit0; // Structural bit packing for constellation mapping
+      const outputSymbol = OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(parityBit, 2), OpCodes.Shl32(bit1, 1)), bit0); // Structural bit packing for constellation mapping
 
       return outputSymbol;
     }
@@ -279,7 +279,7 @@
       const receivedSymbols = [];
       for (let i = 0; i < numSymbols; ++i) {
         const idx = i * this._outputBitsPerSymbol;
-        const symbol = (receivedBits[idx] << 2) | (receivedBits[idx + 1] << 1) | receivedBits[idx + 2]; // Structural bit packing
+        const symbol = OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(receivedBits[idx], 2), OpCodes.Shl32(receivedBits[idx + 1], 1)), receivedBits[idx + 2]); // Structural bit packing
         receivedSymbols.push(symbol);
       }
 
@@ -290,8 +290,8 @@
       const decodedBits = [];
       for (let i = 0; i < decodedInput.length; ++i) {
         const inputSymbol = decodedInput[i];
-        decodedBits.push((inputSymbol >> 1) & 1); // MSB - structural extraction
-        decodedBits.push(inputSymbol & 1);        // LSB - structural extraction
+        decodedBits.push(OpCodes.And32(OpCodes.Shr32(inputSymbol, 1), 1)); // MSB - structural extraction
+        decodedBits.push(OpCodes.And32(inputSymbol, 1));        // LSB - structural extraction
       }
 
       return decodedBits;
@@ -326,7 +326,7 @@
           if (pathMetrics[state] === Infinity) continue;
 
           // Try each possible input (0-3 for 2-bit input)
-          for (let input = 0; input < (1 << this._inputBitsPerSymbol); ++input) { // Structural calculation: 2^inputBits
+          for (let input = 0; input < OpCodes.Shl32(1, this._inputBitsPerSymbol); ++input) { // Structural calculation: 2^inputBits
             // Get expected output and next state from trellis
             const transition = this._trellis[state][input];
             const nextState = transition.nextState;
@@ -371,7 +371,7 @@
 
         // Determine previous state
         for (let state = 0; state < numStates; ++state) {
-          for (let input = 0; input < (1 << this._inputBitsPerSymbol); ++input) {
+          for (let input = 0; input < OpCodes.Shl32(1, this._inputBitsPerSymbol); ++input) {
             if (this._trellis[state][input].nextState === currentState &&
                 input === inputSymbol) {
               currentState = state;
@@ -391,12 +391,12 @@
      */
     _buildTrellis() {
       const trellis = Array.from({ length: this._numStates }, () =>
-        Array.from({ length: 1 << this._inputBitsPerSymbol }, () => ({})) // Structural: 2^inputBits
+        Array.from({ length: OpCodes.Shl32(1, this._inputBitsPerSymbol) }, () => ({})) // Structural: 2^inputBits
       );
 
       // Build trellis transitions for each state and input
       for (let state = 0; state < this._numStates; ++state) {
-        for (let input = 0; input < (1 << this._inputBitsPerSymbol); ++input) { // Structural: 2^inputBits
+        for (let input = 0; input < OpCodes.Shl32(1, this._inputBitsPerSymbol); ++input) { // Structural: 2^inputBits
           // Simulate encoding to get output and next state
           const savedState = this._state;
           this._state = state;
@@ -448,12 +448,12 @@
      */
     _hammingDistance(symbol1, symbol2) {
       let distance = 0;
-      let xor = symbol1 ^ symbol2; // GF(2) subtraction (difference vector)
+      let xor = OpCodes.Xor32(symbol1, symbol2); // GF(2) subtraction (difference vector)
 
       // Count set bits in XOR (population count - structural operation)
       while (xor) {
-        distance += xor & 1; // Structural bit extraction
-        xor >>= 1; // Structural right shift
+        distance += OpCodes.And32(xor, 1); // Structural bit extraction
+        xor = OpCodes.Shr32(xor, 1); // Structural right shift
       }
 
       return distance;

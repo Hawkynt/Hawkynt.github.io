@@ -239,7 +239,7 @@
 
     /**
      * Constructs systematic generator matrix from expander graph
-     * G = [I_k | P] where I_k is k×k identity and P is k×(n-k) parity matrix
+     * G = [I_k|P] where I_k is k×k identity and P is k×(n-k) parity matrix
      * @returns {Array} - Generator matrix
      */
     constructGeneratorMatrix() {
@@ -302,7 +302,7 @@
       const m = A.length;
       const n = A[0].length;
 
-      // Create augmented matrix [A | b]
+      // Create augmented matrix [A|b]
       const aug = A.map((row, i) => [...row, b[i]]);
 
       // Forward elimination

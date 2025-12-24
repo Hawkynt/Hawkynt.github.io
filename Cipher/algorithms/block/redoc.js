@@ -314,7 +314,7 @@
 
         // Step 3: Simple rotation based on position
         for (let i = 0; i < 10; i++) {
-          data[i] = OpCodes.RotL8(data[i], (i + 1) & 0x07);
+          data[i] = OpCodes.RotL8(data[i], (i + 1)&0x07);
         }
 
         // Step 4: Left-right mixing (like Feistel)
@@ -332,7 +332,7 @@
 
         // Reverse Step 3: Simple rotation
         for (let i = 0; i < 10; i++) {
-          data[i] = OpCodes.RotR8(data[i], (i + 1) & 0x07);
+          data[i] = OpCodes.RotR8(data[i], (i + 1)&0x07);
         }
 
         // Reverse Step 2: Inverse S-box substitution
@@ -491,11 +491,7 @@
         const roundKey = new Array(16);
         for (let i = 0; i < 16; i++) {
           // Enhanced key schedule using all four key quarters
-          roundKey[i] = (this.keyA[i % 8] ^
-                        this.keyB[(i + round) % 8] ^
-                        this.keyC[(i + round * 2) % 8] ^
-                        this.keyD[(i + round * 3) % 8] ^
-                        round) & 0xFF;
+          roundKey[i] = (this.keyA[i % 8]^this.keyB[(i + round) % 8]^this.keyC[(i + round * 2) % 8]^this.keyD[(i + round * 3) % 8]^round)&0xFF;
         }
         roundKeys.push(roundKey);
       }
@@ -584,7 +580,7 @@
 
         // Step 3: Enhanced rotation based on position (16-byte block)
         for (let i = 0; i < 16; i++) {
-          data[i] = OpCodes.RotL8(data[i], (i + 1) & 0x07);
+          data[i] = OpCodes.RotL8(data[i], (i + 1)&0x07);
         }
 
         // Step 4: Enhanced diffusion - Four-way mixing
@@ -607,7 +603,7 @@
 
         // Reverse Step 3: Enhanced rotation
         for (let i = 0; i < 16; i++) {
-          data[i] = OpCodes.RotR8(data[i], (i + 1) & 0x07);
+          data[i] = OpCodes.RotR8(data[i], (i + 1)&0x07);
         }
 
         // Reverse Step 2: Inverse S-box substitution

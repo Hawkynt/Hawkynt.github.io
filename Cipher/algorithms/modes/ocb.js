@@ -649,7 +649,7 @@
 
       // OCB3 state
       this.L = null; // L = E_K(0^n)
-      this.LDollar = null; // L$ = L ⊕ (L << 1)
+      this.LDollar = null; // L$ = L ⊕ (OpCodes.Shl32(L, 1))
       this.LTable = []; // L[i] for offset calculations
     }
 

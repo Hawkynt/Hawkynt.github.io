@@ -263,7 +263,7 @@
 
       // Process each input bit as a logical qubit
       for (let i = 0; i < this.inputBuffer.length; ++i) {
-        const logicalBit = this.inputBuffer[i] & 1;
+        const logicalBit = this.inputBuffer[i]&1;
 
         // Encode using [[9,1,3]] Bacon-Shor code
         // OpCodes.OrN(Logical, 0)⟩ → [0,0,0,0,0,0,0,0,0]
@@ -332,7 +332,7 @@
         const gauge = X_GAUGES_3x3[i];
         // In classical simulation, gauge measurement is parity of two qubits
         // Real quantum: joint measurement of X⊗X operator
-        const outcome = codeword[gauge.qubits[0]] ^ codeword[gauge.qubits[1]];
+        const outcome = codeword[gauge.qubits[0]]^codeword[gauge.qubits[1]];
         gaugeOutcomes.push(outcome);
       }
 
@@ -348,7 +348,7 @@
         const gauge = Z_GAUGES_3x3[i];
         // In classical simulation, Z-gauge doesn't change computational basis
         // But we track parity for syndrome extraction
-        const outcome = codeword[gauge.qubits[0]] ^ codeword[gauge.qubits[1]];
+        const outcome = codeword[gauge.qubits[0]]^codeword[gauge.qubits[1]];
         gaugeOutcomes.push(outcome);
       }
 
@@ -361,15 +361,15 @@
     _analyzeGaugeSyndrome(xGauges, zGauges) {
       // Compute stabilizer syndromes from gauge outcomes
       // X-stabilizers (2 total): products of gauge pairs
-      const xStab0 = xGauges[0] ^ xGauges[2] ^ xGauges[4]; // Columns 0-1
-      const xStab1 = xGauges[1] ^ xGauges[3] ^ xGauges[5]; // Columns 1-2
+      const xStab0 = xGauges[0]^xGauges[2]^xGauges[4]; // Columns 0-1
+      const xStab1 = xGauges[1]^xGauges[3]^xGauges[5]; // Columns 1-2
 
       // Z-stabilizers (2 total): products of gauge pairs
-      const zStab0 = zGauges[0] ^ zGauges[1]; // Rows 0-1
-      const zStab1 = zGauges[2] ^ zGauges[3]; // Rows 1-2
+      const zStab0 = zGauges[0]^zGauges[1]; // Rows 0-1
+      const zStab1 = zGauges[2]^zGauges[3]; // Rows 1-2
 
       // Combine into 4-bit syndrome
-      const syndrome = (zStab0) | (OpCodes.Shl32(zStab1, 1)) | (OpCodes.Shl32(xStab0, 2)) | (OpCodes.Shl32(xStab1, 3));
+      const syndrome = (zStab0)|(OpCodes.Shl32(zStab1, 1))|(OpCodes.Shl32(xStab0, 2))|(OpCodes.Shl32(xStab1, 3));
 
       // Decode syndrome to error location (simplified for 3×3 lattice)
       if (syndrome === 0) {

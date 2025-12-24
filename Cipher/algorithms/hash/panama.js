@@ -94,7 +94,7 @@
      * Inverse of 4 mod 17 is 13 (used for SSE2 optimization alignment)
      */
     _aIndex(i) {
-      return OpCodes.ToUint32((i * 13 + 16) % 17);
+      return (i * 13 + 16) % 17;
     }
 
     /**
@@ -117,30 +117,30 @@
       }
 
       // Calculate buffer pointers BEFORE advancing bstart
-      const b16 = this.b[OpCodes.AndN(this.bstart + 16, STAGES - 1)];
-      const b4 = this.b[OpCodes.AndN(this.bstart + (STAGES - 4), STAGES - 1)];
+      const b16 = this.b[(this.bstart + 16)&(STAGES - 1)];
+      const b4 = this.b[(this.bstart + (STAGES - 4))&(STAGES - 1)];
 
       // Advance belt position
-      this.bstart = OpCodes.AndN(this.bstart + 1, STAGES - 1);
+      this.bstart = (this.bstart + 1)&(STAGES - 1);
 
       // Calculate buffer pointers AFTER advancing bstart
       const b0 = this.b[this.bstart];
-      const b25 = this.b[OpCodes.AndN(this.bstart + (STAGES - 25), STAGES - 1)];
+      const b25 = this.b[(this.bstart + (STAGES - 25))&(STAGES - 1)];
 
       // Buffer update
       if (input) {
         // US: update with input (PUSH phase)
         for (let i = 0; i < STAGE_SIZE; i++) {
           const t = b0[i];
-          b0[i] = OpCodes.ToUint32(OpCodes.XorN(input[i], t));
-          b25[(i + 6) % STAGE_SIZE] = OpCodes.ToUint32(OpCodes.XorN(b25[(i + 6) % STAGE_SIZE], t));
+          b0[i] = OpCodes.Xor32(input[i], t);
+          b25[(i + 6) % STAGE_SIZE] = OpCodes.Xor32(b25[(i + 6) % STAGE_SIZE], t);
         }
       } else {
         // UL: update without input (PULL phase)
         for (let i = 0; i < STAGE_SIZE; i++) {
           const t = b0[i];
-          b0[i] = OpCodes.ToUint32(OpCodes.XorN(this.a[this._aIndex(i + 1)], t));
-          b25[(i + 6) % STAGE_SIZE] = OpCodes.ToUint32(OpCodes.XorN(b25[(i + 6) % STAGE_SIZE], t));
+          b0[i] = OpCodes.Xor32(this.a[this._aIndex(i + 1)], t);
+          b25[(i + 6) % STAGE_SIZE] = OpCodes.Xor32(b25[(i + 6) % STAGE_SIZE], t);
         }
       }
 
@@ -150,8 +150,10 @@
         const ai1 = this.a[this._aIndex((i + 1) % 17)];
         const ai2 = this.a[this._aIndex((i + 2) % 17)];
 
-        // Gamma: a[i] ^ (a[i+1] | ~a[i+2])
-        const gamma = OpCodes.ToUint32(OpCodes.XorN(ai, OpCodes.OrN(ai1, OpCodes.ToUint32(~ai2))));
+        // Gamma: a[i]^(a[i+1]|~a[i+2])
+        const notAi2 = OpCodes.ToUint32(~ai2);
+        const orResult = ai1|notAi2;
+        const gamma = OpCodes.Xor32(ai, OpCodes.ToUint32(orResult));
 
         // Pi: rotation based on position
         const pos = (5 * i) % 17;
@@ -160,32 +162,31 @@
         cPtr[this._aIndex(pos)] = OpCodes.RotL32(gamma, rotation);
       }
 
-      // THETA transformation: a[0] = c[0] ^ c[1] ^ c[4] ^ 1
-      this.a[this._aIndex(0)] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(cPtr[this._aIndex(0)], cPtr[this._aIndex(1)]), cPtr[this._aIndex(4)]), 1));
+      // THETA transformation: a[0] = c[0]^c[1]^c[4]^1
+      const theta0_1 = OpCodes.Xor32(cPtr[this._aIndex(0)], cPtr[this._aIndex(1)]);
+      const theta0_2 = OpCodes.Xor32(theta0_1, cPtr[this._aIndex(4)]);
+      this.a[this._aIndex(0)] = OpCodes.Xor32(theta0_2, 1);
 
       // THETA and SIGMA with input (TS1S) or buffer (TS1L)
       if (input) {
         for (let i = 0; i < STAGE_SIZE; i++) {
-          this.a[this._aIndex(i + 1)] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(cPtr[this._aIndex(i + 1)],
-                                         cPtr[this._aIndex((i + 2) % 17)]),
-                                         cPtr[this._aIndex((i + 5) % 17)]),
-                                         input[i]));
+          const xor1 = OpCodes.Xor32(cPtr[this._aIndex(i + 1)], cPtr[this._aIndex((i + 2) % 17)]);
+          const xor2 = OpCodes.Xor32(xor1, cPtr[this._aIndex((i + 5) % 17)]);
+          this.a[this._aIndex(i + 1)] = OpCodes.Xor32(xor2, input[i]);
         }
       } else {
         for (let i = 0; i < STAGE_SIZE; i++) {
-          this.a[this._aIndex(i + 1)] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(cPtr[this._aIndex(i + 1)],
-                                         cPtr[this._aIndex((i + 2) % 17)]),
-                                         cPtr[this._aIndex((i + 5) % 17)]),
-                                         b4[i]));
+          const xor1 = OpCodes.Xor32(cPtr[this._aIndex(i + 1)], cPtr[this._aIndex((i + 2) % 17)]);
+          const xor2 = OpCodes.Xor32(xor1, cPtr[this._aIndex((i + 5) % 17)]);
+          this.a[this._aIndex(i + 1)] = OpCodes.Xor32(xor2, b4[i]);
         }
       }
 
       // TS2: theta-sigma from b[16]
       for (let i = 0; i < STAGE_SIZE; i++) {
-        this.a[this._aIndex(i + 9)] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(cPtr[this._aIndex(i + 9)],
-                                       cPtr[this._aIndex((i + 10) % 17)]),
-                                       cPtr[this._aIndex((i + 13) % 17)]),
-                                       b16[i]));
+        const xor1 = OpCodes.Xor32(cPtr[this._aIndex(i + 9)], cPtr[this._aIndex((i + 10) % 17)]);
+        const xor2 = OpCodes.Xor32(xor1, cPtr[this._aIndex((i + 13) % 17)]);
+        this.a[this._aIndex(i + 9)] = OpCodes.Xor32(xor2, b16[i]);
       }
     }
 

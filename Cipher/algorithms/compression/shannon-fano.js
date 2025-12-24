@@ -288,8 +288,8 @@
 
         // Table entries: [CharCode(1)][CodeLength(1)][CodeBits(variable)]
         for (const [char, code] of tableEntries) {
-          bytes.push(char.charCodeAt(0) & 0xFF); // Character
-          bytes.push(code.length & 0xFF); // Code length
+          bytes.push(OpCodes.ToByte(char.charCodeAt(0))); // Character
+          bytes.push(OpCodes.ToByte(code.length)); // Code length
 
           // Pack code bits into bytes
           const paddedCode = code + '0'.repeat((8 - (code.length % 8)) % 8);
@@ -327,12 +327,11 @@
         let pos = 0;
 
         // Read original length
-        const originalLength = (bytes[pos] << 24) | (bytes[pos + 1] << 16) | 
-                             (bytes[pos + 2] << 8) | bytes[pos + 3];
+        const originalLength = OpCodes.Pack32BE(bytes[pos], bytes[pos+1], bytes[pos+2], bytes[pos+3]);
         pos += 4;
 
         // Read table size
-        const tableSize = (bytes[pos] << 8) | bytes[pos + 1];
+        const tableSize = OpCodes.Pack16BE(bytes[pos], bytes[pos+1]);
         pos += 2;
 
         // Read code table
@@ -385,7 +384,7 @@
       _stringToBytes(str) {
         const bytes = [];
         for (let i = 0; i < str.length; i++) {
-          bytes.push(str.charCodeAt(i) & 0xFF);
+          bytes.push(OpCodes.ToByte(str.charCodeAt(i)));
         }
         return bytes;
       }

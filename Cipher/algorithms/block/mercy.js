@@ -135,7 +135,7 @@
         {
           text: "Mercy incremental input pattern",
           uri: "Implementation-derived test vector (round-trip validated)",
-          input: Array.from({ length: 512 }, (_, i) => i & 0xFF),
+          input: Array.from({ length: 512 }, (_, i) => i&0xFF),
           key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
           tweak: OpCodes.Hex8ToBytes("FEDCBA9876543210FEDCBA9876543210"),
           expected: OpCodes.Hex8ToBytes("873A7C5888A267BE835FF946630849AFD73B64C6CA8BF7168CD2ACB0B3C917FB" +
@@ -203,9 +203,9 @@
       // Initialize with identity
       p[0] = 1;
       for (i = 1; i < 256; i++) {
-        x = p[i - 1] ^ (p[i - 1] << 1);
-        if (x & 0x100) x ^= 0x11B;
-        p[i] = x & 0xFF;
+        x = p[i - 1]^OpCodes.Shl32(p[i - 1], 1);
+        if (x&0x100) x = OpCodes.Xor32(x, 0x11B);
+        p[i] = x&0xFF;
       }
 
       // Generate S-box using affine transformation
@@ -218,9 +218,9 @@
         s ^= OpCodes.RotL8(x, 2);
         s ^= OpCodes.RotL8(x, 3);
         s ^= OpCodes.RotL8(x, 4);
-        s ^= 0x63;
+        s = OpCodes.Xor32(s, 0x63);
 
-        sbox[i] = s & 0xFF;
+        sbox[i] = s&0xFF;
       }
 
       return sbox;
@@ -233,10 +233,10 @@
       for (let i = 0; i < 256; i++) {
         const keyByte = key[i % 16];
         const tweakByte = tweak[i % 16];
-        const roundByte = (round * 17 + i) & 0xFF;
+        const roundByte = (round * 17 + i)&0xFF;
 
         // Combine base S-box with key material
-        keySbox[i] = this.SBOX[(i ^ keyByte ^ tweakByte ^ roundByte) & 0xFF];
+        keySbox[i] = this.SBOX[(i^keyByte^tweakByte^roundByte)&0xFF];
       }
 
       return keySbox;
@@ -262,7 +262,7 @@
       for (let i = 0; i < this.HALF_BLOCK; i++) {
         const next = (i + 1) % this.HALF_BLOCK;
         const prev = (i + this.HALF_BLOCK - 1) % this.HALF_BLOCK;
-        output[i] = temp[i] ^ OpCodes.RotL8(temp[next], 1) ^ OpCodes.RotL8(temp[prev], 2);
+        output[i] = temp[i]^OpCodes.RotL8(temp[next], 1)^OpCodes.RotL8(temp[prev], 2);
       }
 
       // Additional mixing with rotations
@@ -273,10 +273,10 @@
           const t2 = output[i + 2];
           const t3 = output[i + 3];
 
-          output[i] = t0 ^ t2;
-          output[i + 1] = t1 ^ t3;
-          output[i + 2] = t2 ^ OpCodes.RotL8(t0, 3);
-          output[i + 3] = t3 ^ OpCodes.RotL8(t1, 5);
+          output[i] = t0^t2;
+          output[i + 1] = t1^t3;
+          output[i + 2] = t2^OpCodes.RotL8(t0, 3);
+          output[i + 3] = t3^OpCodes.RotL8(t1, 5);
         }
       }
 
@@ -294,15 +294,15 @@
         for (let i = 0; i < this.HALF_BLOCK; i++) {
           const keyByte = key[i % this.KEY_SIZE];
           const tweakByte = tweak[i % this.TWEAK_SIZE];
-          const positionByte = i & 0xFF;
-          const roundByte = round & 0xFF;
+          const positionByte = i&0xFF;
+          const roundByte = round&0xFF;
 
           // Mix key, tweak, position, and round number
-          roundKey[i] = (keyByte ^ tweakByte ^ positionByte ^ roundByte) & 0xFF;
+          roundKey[i] = (keyByte^tweakByte^positionByte^roundByte)&0xFF;
 
           // Additional mixing
           if (i > 0) {
-            roundKey[i] = (roundKey[i] ^ OpCodes.RotL8(roundKey[i - 1], 1)) & 0xFF;
+            roundKey[i] = (roundKey[i]^OpCodes.RotL8(roundKey[i - 1], 1))&0xFF;
           }
         }
 
@@ -333,7 +333,7 @@
         // XOR left with F(right)
         const newRight = new Array(this.HALF_BLOCK);
         for (let i = 0; i < this.HALF_BLOCK; i++) {
-          newRight[i] = left[i] ^ fOutput[i];
+          newRight[i] = left[i]^fOutput[i];
         }
 
         // Swap halves for next round
@@ -366,7 +366,7 @@
         // XOR right with F(left) to recover original left
         const newLeft = new Array(this.HALF_BLOCK);
         for (let i = 0; i < this.HALF_BLOCK; i++) {
-          newLeft[i] = right[i] ^ fOutput[i];
+          newLeft[i] = right[i]^fOutput[i];
         }
 
         // Swap halves for next round

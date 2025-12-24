@@ -343,7 +343,7 @@
       const result = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this.generateKeystreamByte();
-        result.push(this.inputBuffer[i] ^ keystreamByte);
+        result.push(OpCodes.Xor32(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer for next operation
@@ -372,12 +372,12 @@
           if (bit % 2 === 0 && keyIndex < this.keyBytes.length * 8) {
             const byteIdx = Math.floor(keyIndex / 8);
             const bitIdx = keyIndex % 8;
-            value = (this.keyBytes[byteIdx] >>> bitIdx) & 1;
+            value = OpCodes.And32(OpCodes.ToByte(OpCodes.Shr32(this.keyBytes[byteIdx], bitIdx)), 1);
             keyIndex++;
           } else if (ivIndex < this.ivBytes.length * 8) {
             const byteIdx = Math.floor(ivIndex / 8);
             const bitIdx = ivIndex % 8;
-            value = (this.ivBytes[byteIdx] >>> bitIdx) & 1;
+            value = OpCodes.And32(OpCodes.ToByte(OpCodes.Shr32(this.ivBytes[byteIdx], bitIdx)), 1);
             ivIndex++;
           }
 
@@ -405,7 +405,7 @@
 
       // Feed back into LFSRs for additional mixing
       for (let i = 0; i < this.algorithm.LFSR_COUNT; i++) {
-        this.lfsrs[i][0] ^= (mixed >>> i) & 1;
+        this.lfsrs[i][0] = OpCodes.Xor32(this.lfsrs[i][0], OpCodes.And32(OpCodes.ToByte(OpCodes.Shr32(mixed, i)), 1));
       }
     }
 
@@ -418,11 +418,11 @@
 
       // Primitive polynomials for each LFSR length
       switch (length) {
-        case 31: return lfsr[30] ^ lfsr[27];
-        case 29: return lfsr[28] ^ lfsr[26];
-        case 23: return lfsr[22] ^ lfsr[17];
-        case 19: return lfsr[18] ^ lfsr[17] ^ lfsr[13] ^ lfsr[12];
-        default: return lfsr[length-1] ^ lfsr[length-2];
+        case 31: return OpCodes.Xor32(lfsr[30], lfsr[27]);
+        case 29: return OpCodes.Xor32(lfsr[28], lfsr[26]);
+        case 23: return OpCodes.Xor32(lfsr[22], lfsr[17]);
+        case 19: return OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(lfsr[18], lfsr[17]), lfsr[13]), lfsr[12]);
+        default: return OpCodes.Xor32(lfsr[length-1], lfsr[length-2]);
       }
     }
 
@@ -479,7 +479,7 @@
       for (let i = 0; i < Math.min(bits.length, 32); i += 8) {
         let byte = 0;
         for (let j = 0; j < 8 && i + j < bits.length; j++) {
-          byte |= (bits[i + j] << j);
+          byte = OpCodes.ToUint32(OpCodes.Or32(byte, OpCodes.Shl32(bits[i + j], j)));
         }
 
         // Apply different S-boxes based on position
@@ -490,14 +490,14 @@
           case 3: byte = this.algorithm.SBOX4[byte]; break;
         }
 
-        result ^= byte << (8 * ((i / 8) % 4));
+        result = OpCodes.Xor32(result, OpCodes.Shl32(byte, 8 * ((i / 8) % 4)));
       }
 
       // Layer 2: Additional bit-level nonlinear operations
-      const x1 = (result >>> 0) & 0xFF;
-      const x2 = (result >>> 8) & 0xFF;
-      const x3 = (result >>> 16) & 0xFF;
-      const x4 = (result >>> 24) & 0xFF;
+      const x1 = OpCodes.ToByte(result);
+      const x2 = OpCodes.ToByte(OpCodes.Shr32(result, 8));
+      const x3 = OpCodes.ToByte(OpCodes.Shr32(result, 16));
+      const x4 = OpCodes.ToByte(OpCodes.Shr32(result, 24));
 
       // Apply inverse S-boxes for additional confusion
       const y1 = this.algorithm.SBOX3[x1];
@@ -506,10 +506,10 @@
       const y4 = this.algorithm.SBOX2[x4];
 
       // Complex bit mixing with majority functions and XOR
-      const maj1 = (x1 & x2) ^ (x1 & x3) ^ (x2 & x3);
-      const maj2 = (y1 & y2) ^ (y1 & y3) ^ (y2 & y3);
+      const maj1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(x1, x2), OpCodes.And32(x1, x3)), OpCodes.And32(x2, x3));
+      const maj2 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(y1, y2), OpCodes.And32(y1, y3)), OpCodes.And32(y2, y3));
 
-      return (maj1 ^ maj2 ^ y4 ^ lfsrOutputs[0] ^ lfsrOutputs[1] ^ lfsrOutputs[2] ^ lfsrOutputs[3]) & 0xFF;
+      return OpCodes.ToByte(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(maj1, maj2), y4), lfsrOutputs[0]), lfsrOutputs[1]), lfsrOutputs[2]), lfsrOutputs[3]));
     }
 
     /**

@@ -339,7 +339,7 @@
 
         // XOR with input data
         for (let j = 0; j < 4 && i + j < this.inputBuffer.length; j++) {
-          output.push(OpCodes.XorN(this.inputBuffer[i + j], keystreamBytes[j]));
+          output.push(OpCodes.Xor32(this.inputBuffer[i + j], keystreamBytes[j]));
         }
       }
 
@@ -355,9 +355,9 @@
 
       // Load key and IV into LFSR according to ZUC specification
       for (let i = 0; i < 16; i++) {
-        this.LFSR[i] = OpCodes.AndN(
-          OpCodes.OrN(
-            OpCodes.OrN(
+        this.LFSR[i] = OpCodes.And32(
+          OpCodes.Or32(
+            OpCodes.Or32(
               OpCodes.Shl32(this._key[i], 23),
               OpCodes.Shl32(this.algorithm.D[i], 8)
             ),
@@ -374,7 +374,7 @@
       for (let i = 0; i < this.algorithm.INIT_ROUNDS; i++) {
         this._bitReorganization();
         const W = this._nonlinearFunction();
-        this._LFSRWithInitialization(OpCodes.AndN(OpCodes.Shr32(W, 1), 0x7FFFFFFF));
+        this._LFSRWithInitialization(OpCodes.And32(OpCodes.Shr32(W, 1), 0x7FFFFFFF));
       }
 
       // Final initialization steps (from BouncyCastle line 519-521)
@@ -433,15 +433,15 @@
     // Modular addition mod (2^31 - 1) - from BouncyCastle
     _AddM(a, b) {
       const c = a + b;
-      return OpCodes.AndN(c, 0x7FFFFFFF) + OpCodes.Shr32(c, 31);
+      return OpCodes.And32(c, 0x7FFFFFFF) + OpCodes.Shr32(c, 31);
     }
 
     // Multiplication by 2^k modulo (2^31 - 1)
     _mulByPow2(x, k) {
-      x = OpCodes.AndN(x, this.algorithm.MASK31);
+      x = OpCodes.And32(x, this.algorithm.MASK31);
       k = k % 31;
-      const result = OpCodes.AndN(
-        OpCodes.OrN(
+      const result = OpCodes.And32(
+        OpCodes.Or32(
           OpCodes.Shl32(x, k),
           OpCodes.Shr32(x, 31 - k)
         ),
@@ -453,26 +453,26 @@
     // Bit reorganization
     _bitReorganization() {
       this.X[0] = OpCodes.ToUint32(
-        OpCodes.OrN(
-          OpCodes.Shl32(OpCodes.AndN(this.LFSR[15], 0x7FFF8000), 1),
-          OpCodes.AndN(this.LFSR[14], 0x0000FFFF)
+        OpCodes.Or32(
+          OpCodes.Shl32(OpCodes.And32(this.LFSR[15], 0x7FFF8000), 1),
+          OpCodes.And32(this.LFSR[14], 0x0000FFFF)
         )
       );
       this.X[1] = OpCodes.ToUint32(
-        OpCodes.OrN(
-          OpCodes.Shl32(OpCodes.AndN(this.LFSR[11], 0x0000FFFF), 16),
+        OpCodes.Or32(
+          OpCodes.Shl32(OpCodes.And32(this.LFSR[11], 0x0000FFFF), 16),
           OpCodes.Shr32(this.LFSR[9], 15)
         )
       );
       this.X[2] = OpCodes.ToUint32(
-        OpCodes.OrN(
-          OpCodes.Shl32(OpCodes.AndN(this.LFSR[7], 0x0000FFFF), 16),
+        OpCodes.Or32(
+          OpCodes.Shl32(OpCodes.And32(this.LFSR[7], 0x0000FFFF), 16),
           OpCodes.Shr32(this.LFSR[5], 15)
         )
       );
       this.X[3] = OpCodes.ToUint32(
-        OpCodes.OrN(
-          OpCodes.Shl32(OpCodes.AndN(this.LFSR[2], 0x0000FFFF), 16),
+        OpCodes.Or32(
+          OpCodes.Shl32(OpCodes.And32(this.LFSR[2], 0x0000FFFF), 16),
           OpCodes.Shr32(this.LFSR[0], 15)
         )
       );
@@ -481,15 +481,15 @@
     // S-box lookup (32-bit word composed of 4 bytes)
     _sbox(x) {
       return OpCodes.ToUint32(
-        OpCodes.OrN(
-          OpCodes.OrN(
-            OpCodes.OrN(
-              OpCodes.Shl32(this.algorithm.S0[OpCodes.AndN(OpCodes.Shr32(x, 24), 0xFF)], 24),
-              OpCodes.Shl32(this.algorithm.S1[OpCodes.AndN(OpCodes.Shr32(x, 16), 0xFF)], 16)
+        OpCodes.Or32(
+          OpCodes.Or32(
+            OpCodes.Or32(
+              OpCodes.Shl32(this.algorithm.S0[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)], 24),
+              OpCodes.Shl32(this.algorithm.S1[OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF)], 16)
             ),
-            OpCodes.Shl32(this.algorithm.S0[OpCodes.AndN(OpCodes.Shr32(x, 8), 0xFF)], 8)
+            OpCodes.Shl32(this.algorithm.S0[OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF)], 8)
           ),
-          this.algorithm.S1[OpCodes.AndN(x, 0xFF)]
+          this.algorithm.S1[OpCodes.And32(x, 0xFF)]
         )
       );
     }
@@ -497,10 +497,10 @@
     // Linear transformation L1
     _L1(x) {
       return OpCodes.ToUint32(
-        OpCodes.XorN(
-          OpCodes.XorN(
-            OpCodes.XorN(
-              OpCodes.XorN(x, OpCodes.RotL32(x, 2)),
+        OpCodes.Xor32(
+          OpCodes.Xor32(
+            OpCodes.Xor32(
+              OpCodes.Xor32(x, OpCodes.RotL32(x, 2)),
               OpCodes.RotL32(x, 10)
             ),
             OpCodes.RotL32(x, 18)
@@ -513,10 +513,10 @@
     // Linear transformation L2
     _L2(x) {
       return OpCodes.ToUint32(
-        OpCodes.XorN(
-          OpCodes.XorN(
-            OpCodes.XorN(
-              OpCodes.XorN(x, OpCodes.RotL32(x, 8)),
+        OpCodes.Xor32(
+          OpCodes.Xor32(
+            OpCodes.Xor32(
+              OpCodes.Xor32(x, OpCodes.RotL32(x, 8)),
               OpCodes.RotL32(x, 14)
             ),
             OpCodes.RotL32(x, 22)
@@ -528,13 +528,13 @@
 
     // Nonlinear function F
     _nonlinearFunction() {
-      // BUG FIX: The return value should be W, not (X[0] ^ R1)
+      // BUG FIX: The return value should be W, not (X[0]^R1)
       // W is calculated from BRC[0], F[0] (R1), and F[1] (R2)
-      const W = OpCodes.ToUint32(OpCodes.XorN(this.X[0], this.R1) + this.R2);
+      const W = OpCodes.ToUint32(OpCodes.Xor32(this.X[0], this.R1) + this.R2);
       const W1 = OpCodes.ToUint32(this.R1 + this.X[1]);
-      const W2 = OpCodes.ToUint32(OpCodes.XorN(this.R2, this.X[2]));
-      const u = this._L1(OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(W1, 16), OpCodes.Shr32(W2, 16))));
-      const v = this._L2(OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(W2, 16), OpCodes.Shr32(W1, 16))));
+      const W2 = OpCodes.ToUint32(OpCodes.Xor32(this.R2, this.X[2]));
+      const u = this._L1(OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(W1, 16), OpCodes.Shr32(W2, 16))));
+      const v = this._L2(OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(W2, 16), OpCodes.Shr32(W1, 16))));
 
       this.R1 = this._sbox(u);
       this.R2 = this._sbox(v);
@@ -545,7 +545,7 @@
     // Generate keystream word
     _generateKeystreamWord() {
       this._bitReorganization();
-      const Z = OpCodes.XorN(this._nonlinearFunction(), this.X[3]);  // BUG FIX: Must XOR with BRC[3] (which is X[3])
+      const Z = OpCodes.Xor32(this._nonlinearFunction(), this.X[3]);  // BUG FIX: Must XOR with BRC[3] (which is X[3])
       this._LFSRWithoutInitialization();
       return Z;
     }

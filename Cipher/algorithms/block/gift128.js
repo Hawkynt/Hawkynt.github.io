@@ -176,8 +176,8 @@
 
     // Bit permutation helper using bit_permute_step technique
     bitPermuteStep(value, mask, shift) {
-      const t = OpCodes.AndN(OpCodes.XorN((value >>> shift), value), mask);
-      return OpCodes.XorN(OpCodes.XorN(value, t), (t << shift));
+      const t = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(value, shift), value), mask);
+      return OpCodes.XorN(OpCodes.XorN(value, t), OpCodes.Shl32(t, shift));
     }
 
     // PERM3_INNER - Core permutation used by all PERM functions
@@ -186,7 +186,7 @@
       x = this.bitPermuteStep(x, 0x00cc00cc, 6);
       x = this.bitPermuteStep(x, 0x0000f0f0, 12);
       x = this.bitPermuteStep(x, 0x000000ff, 24);
-      return x >>> 0;
+      return OpCodes.ToUint32(x);
     }
 
     // PERM0 - Permutation with 8-bit left rotation
@@ -218,7 +218,7 @@
       x = this.bitPermuteStep(x, 0x00003333, 18);
       x = this.bitPermuteStep(x, 0x000f000f, 12);
       x = this.bitPermuteStep(x, 0x000000ff, 24);
-      return x >>> 0;
+      return OpCodes.ToUint32(x);
     }
 
     // INV_PERM0 - Inverse permutation with 8-bit right rotation
@@ -248,20 +248,20 @@
     sbox(state) {
       let s0 = state[0], s1 = state[1], s2 = state[2], s3 = state[3];
 
-      s1 ^= s0 & s2;
-      s0 ^= s1 & s3;
-      s2 ^= s0 | s1;
-      s3 ^= s2;
-      s1 ^= s3;
-      s3 ^= 0xFFFFFFFF;
-      s2 ^= s0 & s1;
+      s1 = OpCodes.Xor32(s1, (s0&s2));
+      s0 = OpCodes.Xor32(s0, (s1&s3));
+      s2 = OpCodes.Xor32(s2, (s0|s1));
+      s3 = OpCodes.Xor32(s3, s2);
+      s1 = OpCodes.Xor32(s1, s3);
+      s3 = OpCodes.Xor32(s3, 0xFFFFFFFF);
+      s2 = OpCodes.Xor32(s2, (s0&s1));
 
       // Swap s0 and s3
       const temp = s0;
       s0 = s3;
       s3 = temp;
 
-      return [s0 >>> 0, s1 >>> 0, s2 >>> 0, s3 >>> 0];
+      return [OpCodes.ToUint32(s0), OpCodes.ToUint32(s1), OpCodes.ToUint32(s2), OpCodes.ToUint32(s3)];
     }
 
     // Inverse GIFT-128 S-box
@@ -273,15 +273,15 @@
       s0 = s3;
       s3 = temp;
 
-      s2 ^= s0 & s1;
-      s3 ^= 0xFFFFFFFF;
-      s1 ^= s3;
-      s3 ^= s2;
-      s2 ^= s0 | s1;
-      s0 ^= s1 & s3;
-      s1 ^= s0 & s2;
+      s2 = OpCodes.Xor32(s2, (s0&s1));
+      s3 = OpCodes.Xor32(s3, 0xFFFFFFFF);
+      s1 = OpCodes.Xor32(s1, s3);
+      s3 = OpCodes.Xor32(s3, s2);
+      s2 = OpCodes.Xor32(s2, (s0|s1));
+      s0 = OpCodes.Xor32(s0, (s1&s3));
+      s1 = OpCodes.Xor32(s1, (s0&s2));
 
-      return [s0 >>> 0, s1 >>> 0, s2 >>> 0, s3 >>> 0];
+      return [OpCodes.ToUint32(s0), OpCodes.ToUint32(s1), OpCodes.ToUint32(s2), OpCodes.ToUint32(s3)];
     }
 
     // Apply bit permutation to state
@@ -307,19 +307,25 @@
     // Rotate key schedule forward (used in encryption)
     rotateKeyForward(keyState) {
       const temp = keyState[3];
-      const newW0 = ((temp & 0xFFFC0000) >>> 2) | ((temp & 0x00030000) << 14) |
-                    ((temp & 0x00000FFF) << 4) | ((temp & 0x0000F000) >>> 12);
+      const p1 = OpCodes.Shr32(temp&0xFFFC0000, 2);
+      const p2 = OpCodes.Shl32(temp&0x00030000, 14);
+      const p3 = OpCodes.Shl32(temp&0x00000FFF, 4);
+      const p4 = OpCodes.Shr32(temp&0x0000F000, 12);
+      const newW0 = p1|p2|p3|p4;
 
-      return [newW0 >>> 0, keyState[0], keyState[1], keyState[2]];
+      return [OpCodes.ToUint32(newW0), keyState[0], keyState[1], keyState[2]];
     }
 
     // Rotate key schedule backward (used in decryption)
     rotateKeyBackward(keyState) {
       const temp = keyState[0];
-      const newW3 = ((temp & 0x3FFF0000) << 2) | ((temp & 0xC0000000) >>> 14) |
-                    ((temp & 0x0000FFF0) >>> 4) | ((temp & 0x0000000F) << 12);
+      const p1 = OpCodes.Shl32(temp&0x3FFF0000, 2);
+      const p2 = OpCodes.Shr32(temp&0xC0000000, 14);
+      const p3 = OpCodes.Shr32(temp&0x0000FFF0, 4);
+      const p4 = OpCodes.Shl32(temp&0x0000000F, 12);
+      const newW3 = p1|p2|p3|p4;
 
-      return [keyState[1], keyState[2], keyState[3], newW3 >>> 0];
+      return [keyState[1], keyState[2], keyState[3], OpCodes.ToUint32(newW3)];
     }
 
     // Encrypt a single 16-byte block
@@ -354,12 +360,12 @@
         state = this.applyPermutation(state);
 
         // AddRoundKey
-        state[2] ^= keyState[1];
-        state[1] ^= keyState[3];
-        state[3] ^= OpCodes.XorN(0x80000000, Gift128Instance.RC[round]);
+        state[2] = OpCodes.Xor32(state[2], keyState[1]);
+        state[1] = OpCodes.Xor32(state[1], keyState[3]);
+        state[3] = OpCodes.Xor32(state[3], OpCodes.XorN(0x80000000, Gift128Instance.RC[round]));
 
         // Ensure all values are unsigned 32-bit
-        state = state.map(x => x >>> 0);
+        state = state.map(x => OpCodes.ToUint32(x));
 
         // Rotate key schedule
         keyState = this.rotateKeyForward(keyState);
@@ -403,9 +409,12 @@
       // Equivalent to applying the rotation transformation 10 times to each word
       for (let i = 0; i < 4; i++) {
         let w = keyState[i];
-        w = ((w & 0xFFF00000) >>> 4) | ((w & 0x000F0000) << 12) |
-            ((w & 0x000000FF) << 8) | ((w & 0x0000FF00) >>> 8);
-        keyState[i] = w >>> 0;
+        const p1 = OpCodes.Shr32(w&0xFFF00000, 4);
+        const p2 = OpCodes.Shl32(w&0x000F0000, 12);
+        const p3 = OpCodes.Shl32(w&0x000000FF, 8);
+        const p4 = OpCodes.Shr32(w&0x0000FF00, 8);
+        w = p1|p2|p3|p4;
+        keyState[i] = OpCodes.ToUint32(w);
       }
 
       // Perform 40 rounds in reverse
@@ -414,12 +423,12 @@
         keyState = this.rotateKeyBackward(keyState);
 
         // AddRoundKey (same as encryption, XOR is self-inverse)
-        state[2] ^= keyState[1];
-        state[1] ^= keyState[3];
-        state[3] ^= OpCodes.XorN(0x80000000, Gift128Instance.RC[round]);
+        state[2] = OpCodes.Xor32(state[2], keyState[1]);
+        state[1] = OpCodes.Xor32(state[1], keyState[3]);
+        state[3] = OpCodes.Xor32(state[3], OpCodes.XorN(0x80000000, Gift128Instance.RC[round]));
 
         // Ensure all values are unsigned 32-bit
-        state = state.map(x => x >>> 0);
+        state = state.map(x => OpCodes.ToUint32(x));
 
         // InvPermBits (inverse bit permutation)
         state = this.applyInvPermutation(state);

@@ -351,7 +351,7 @@
           const keyIndex = (box * 256 + i) % keyWords32.length;
           const mixValue = keyWords32[keyIndex];
           const baseQ = (box % 2 === 0) ? this.Q0[i] : this.Q1[i];
-          this.sboxKeys[box][i] = baseQ ^ ((mixValue >>> (8 * (i % 4))) & 0xFF);
+          this.sboxKeys[box][i] = OpCodes.Xor32(baseQ, OpCodes.ToByte(OpCodes.Shr32(mixValue, 8 * (i % 4))));
         }
       }
     }
@@ -359,23 +359,23 @@
     // Simplified h-function for educational purposes
     _h(x, k) {
       const bytes = [
-        (x >>> 0) & 0xFF,
-        (x >>> 8) & 0xFF,
-        (x >>> 16) & 0xFF,
-        (x >>> 24) & 0xFF
+        OpCodes.ToByte(x),
+        OpCodes.ToByte(OpCodes.Shr32(x, 8)),
+        OpCodes.ToByte(OpCodes.Shr32(x, 16)),
+        OpCodes.ToByte(OpCodes.Shr32(x, 24))
       ];
 
       // Apply key-dependent transformations (simplified)
       for (let i = Math.min(k.length - 1, 3); i >= 0; i--) {
         const keyBytes = [
-          (k[i] >>> 0) & 0xFF,
-          (k[i] >>> 8) & 0xFF,
-          (k[i] >>> 16) & 0xFF,
-          (k[i] >>> 24) & 0xFF
+          OpCodes.ToByte(k[i]),
+          OpCodes.ToByte(OpCodes.Shr32(k[i], 8)),
+          OpCodes.ToByte(OpCodes.Shr32(k[i], 16)),
+          OpCodes.ToByte(OpCodes.Shr32(k[i], 24))
         ];
 
         for (let j = 0; j < 4; j++) {
-          bytes[j] ^= keyBytes[j];
+          bytes[j] = OpCodes.Xor32(bytes[j], keyBytes[j]);
           bytes[j] = (j % 2 === 0) ? this.Q0[bytes[j]] : this.Q1[bytes[j]];
         }
       }
@@ -384,7 +384,7 @@
       const result = [0, 0, 0, 0];
       for (let i = 0; i < 4; i++) {
         for (let j = 0; j < 4; j++) {
-          result[i] ^= OpCodes.GF256Mul(this.MDS[i][j], bytes[j]);
+          result[i] = OpCodes.Xor32(result[i], OpCodes.GF256Mul(this.MDS[i][j], bytes[j]));
         }
       }
 
@@ -393,18 +393,18 @@
 
     // Pseudo Hadamard Transform
     _pht(a, b) {
-      const newA = (a + b) >>> 0;
-      const newB = (a + (b << 1)) >>> 0;
+      const newA = OpCodes.ToUint32(a + b);
+      const newB = OpCodes.ToUint32(a + OpCodes.Shl32(b, 1));
       return [newA, newB];
     }
 
     // F-function for Feistel rounds
     _fFunction(x) {
       const bytes = [
-        (x >>> 0) & 0xFF,
-        (x >>> 8) & 0xFF,
-        (x >>> 16) & 0xFF,
-        (x >>> 24) & 0xFF
+        OpCodes.ToByte(x),
+        OpCodes.ToByte(OpCodes.Shr32(x, 8)),
+        OpCodes.ToByte(OpCodes.Shr32(x, 16)),
+        OpCodes.ToByte(OpCodes.Shr32(x, 24))
       ];
 
       // Apply key-dependent S-boxes
@@ -419,7 +419,7 @@
       const result = [0, 0, 0, 0];
       for (let i = 0; i < 4; i++) {
         for (let j = 0; j < 4; j++) {
-          result[i] ^= OpCodes.GF256Mul(this.MDS[i][j], t[j]);
+          result[i] = OpCodes.Xor32(result[i], OpCodes.GF256Mul(this.MDS[i][j], t[j]));
         }
       }
 
@@ -439,10 +439,10 @@
 
         // Undo output whitening
         const outputOffset = 4 + (this.numRounds * 2);
-        r0 ^= this.subkeys[outputOffset];
-        r1 ^= this.subkeys[outputOffset + 1];
-        r2 ^= this.subkeys[outputOffset + 2];
-        r3 ^= this.subkeys[outputOffset + 3];
+        r0 = OpCodes.Xor32(r0, this.subkeys[outputOffset]);
+        r1 = OpCodes.Xor32(r1, this.subkeys[outputOffset + 1]);
+        r2 = OpCodes.Xor32(r2, this.subkeys[outputOffset + 2]);
+        r3 = OpCodes.Xor32(r3, this.subkeys[outputOffset + 3]);
 
         // Reverse Feistel rounds
         for (let round = this.numRounds - 1; round >= 0; round--) {
@@ -463,24 +463,24 @@
           const [t0, t1] = this._pht(f0, f1);
 
           // Undo round key application
-          r2 ^= (t0 + this.subkeys[k]) >>> 0;
-          r3 ^= (t1 + this.subkeys[k + 1]) >>> 0;
+          r2 = OpCodes.Xor32(r2, OpCodes.ToUint32(t0 + this.subkeys[k]));
+          r3 = OpCodes.Xor32(r3, OpCodes.ToUint32(t1 + this.subkeys[k + 1]));
         }
 
         // Undo input whitening
-        r0 ^= this.subkeys[0];
-        r1 ^= this.subkeys[1];
-        r2 ^= this.subkeys[2];
-        r3 ^= this.subkeys[3];
+        r0 = OpCodes.Xor32(r0, this.subkeys[0]);
+        r1 = OpCodes.Xor32(r1, this.subkeys[1]);
+        r2 = OpCodes.Xor32(r2, this.subkeys[2]);
+        r3 = OpCodes.Xor32(r3, this.subkeys[3]);
 
       } else {
         // Encryption
 
         // Input whitening
-        r0 ^= this.subkeys[0];
-        r1 ^= this.subkeys[1];
-        r2 ^= this.subkeys[2];
-        r3 ^= this.subkeys[3];
+        r0 = OpCodes.Xor32(r0, this.subkeys[0]);
+        r1 = OpCodes.Xor32(r1, this.subkeys[1]);
+        r2 = OpCodes.Xor32(r2, this.subkeys[2]);
+        r3 = OpCodes.Xor32(r3, this.subkeys[3]);
 
         // Feistel rounds
         for (let round = 0; round < this.numRounds; round++) {
@@ -494,8 +494,8 @@
           const [t0, t1] = this._pht(f0, f1);
 
           // Apply round keys and update state
-          r2 ^= (t0 + this.subkeys[k]) >>> 0;
-          r3 ^= (t1 + this.subkeys[k + 1]) >>> 0;
+          r2 = OpCodes.Xor32(r2, OpCodes.ToUint32(t0 + this.subkeys[k]));
+          r3 = OpCodes.Xor32(r3, OpCodes.ToUint32(t1 + this.subkeys[k + 1]));
           r2 = OpCodes.RotL32(r2, 1);
           r3 = OpCodes.RotR32(r3, 1);
 
@@ -505,10 +505,10 @@
 
         // Output whitening
         const outputOffset = 4 + (this.numRounds * 2);
-        r0 ^= this.subkeys[outputOffset];
-        r1 ^= this.subkeys[outputOffset + 1];
-        r2 ^= this.subkeys[outputOffset + 2];
-        r3 ^= this.subkeys[outputOffset + 3];
+        r0 = OpCodes.Xor32(r0, this.subkeys[outputOffset]);
+        r1 = OpCodes.Xor32(r1, this.subkeys[outputOffset + 1]);
+        r2 = OpCodes.Xor32(r2, this.subkeys[outputOffset + 2]);
+        r3 = OpCodes.Xor32(r3, this.subkeys[outputOffset + 3]);
       }
 
       // Convert back to bytes

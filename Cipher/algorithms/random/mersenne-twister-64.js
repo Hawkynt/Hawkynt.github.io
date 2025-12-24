@@ -53,7 +53,7 @@
   function BigIntToBytes64LE(value) {
     const bytes = [];
     for (let i = 0; i < 8; ++i) {
-      bytes.push(Number((value >> (BigInt(i) * 8n)) & 0xFFn));
+      bytes.push(Number((value >> (BigInt(i) * 8n))&0xFFn));
     }
     return bytes;
   }
@@ -62,7 +62,7 @@
   function BytesToBigInt64LE(bytes) {
     let value = 0n;
     for (let i = 0; i < Math.min(bytes.length, 8); ++i) {
-      value |= BigInt(bytes[i] & 0xFF) << (BigInt(i) * 8n);
+      value |= BigInt(bytes[i]&0xFF) << (BigInt(i) * 8n);
     }
     return value;
   }
@@ -77,9 +77,9 @@
   const INIT_MULTIPLIER = 6364136223846793005n;       // Initialization multiplier
 
   // Tempering masks (from official implementation)
-  const TEMPER_MASK_1 = 0x5555555555555555n;          // Used with >> 29
-  const TEMPER_MASK_2 = 0x71D67FFFEDA60000n;          // Used with << 17
-  const TEMPER_MASK_3 = 0xFFF7EEE000000000n;          // Used with << 37
+  const TEMPER_MASK_1 = 0x5555555555555555n;          // Used OpCodes.Shr32(with, 29)
+  const TEMPER_MASK_2 = 0x71D67FFFEDA60000n;          // Used OpCodes.Shl32(with, 17)
+  const TEMPER_MASK_3 = 0xFFF7EEE000000000n;          // Used OpCodes.Shl32(with, 37)
 
   class MersenneTwister64Algorithm extends RandomGenerationAlgorithm {
     constructor() {
@@ -242,11 +242,11 @@
       this._state[0] = seedValue;
 
       for (this._index = 1; this._index < NN; ++this._index) {
-        // mt[i] = (6364136223846793005ULL * (mt[i-1] ^ (mt[i-1] >> 62)) + i)
+        // mt[i] = (6364136223846793005ULL * (mt[i-1]^(mt[i-1] >> 62)) + i)
         const prev = this._state[this._index - 1];
-        const xored = prev ^ (prev >> 62n);
+        const xored = prev^(prev >> 62n);
         const mult = INIT_MULTIPLIER * xored;
-        this._state[this._index] = (mult + BigInt(this._index)) & 0xFFFFFFFFFFFFFFFFn;
+        this._state[this._index] = (mult + BigInt(this._index))&0xFFFFFFFFFFFFFFFFn;
       }
 
       // Reset index to trigger twist on first generation
@@ -278,12 +278,12 @@
       let x = this._state[this._index++];
 
       // Tempering transformations (exact sequence from reference implementation)
-      x ^= (x >> 29n) & TEMPER_MASK_1;
-      x ^= (x << 17n) & TEMPER_MASK_2;
-      x ^= (x << 37n) & TEMPER_MASK_3;
-      x ^= (x >> 43n);
+      x = x^((x >> 29n)&TEMPER_MASK_1);
+      x = x^((x << 17n)&TEMPER_MASK_2);
+      x = x^((x << 37n)&TEMPER_MASK_3);
+      x = x^(x >> 43n);
 
-      return x & 0xFFFFFFFFFFFFFFFFn;
+      return x&0xFFFFFFFFFFFFFFFFn;
     }
 
     /**
@@ -295,20 +295,20 @@
 
       // First loop: i from 0 to NN-MM-1
       for (i = 0; i < NN - MM; ++i) {
-        const x = (this._state[i] & UPPER_MASK) | (this._state[i + 1] & LOWER_MASK);
-        this._state[i] = this._state[i + MM] ^ (x >> 1n) ^ this._mag01[Number(x & 1n)];
+        const x = (this._state[i]&UPPER_MASK)|(this._state[i + 1]&LOWER_MASK);
+        this._state[i] = this._state[i + MM]^(x >> 1n)^this._mag01[Number(x&1n)];
       }
 
       // Second loop: i from NN-MM to NN-2
       for (; i < NN - 1; ++i) {
-        const x = (this._state[i] & UPPER_MASK) | (this._state[i + 1] & LOWER_MASK);
-        this._state[i] = this._state[i + (MM - NN)] ^ (x >> 1n) ^ this._mag01[Number(x & 1n)];
+        const x = (this._state[i]&UPPER_MASK)|(this._state[i + 1]&LOWER_MASK);
+        this._state[i] = this._state[i + (MM - NN)]^(x >> 1n)^this._mag01[Number(x&1n)];
       }
 
       // Final element
       {
-        const x = (this._state[NN - 1] & UPPER_MASK) | (this._state[0] & LOWER_MASK);
-        this._state[NN - 1] = this._state[MM - 1] ^ (x >> 1n) ^ this._mag01[Number(x & 1n)];
+        const x = (this._state[NN - 1]&UPPER_MASK)|(this._state[0]&LOWER_MASK);
+        this._state[NN - 1] = this._state[MM - 1]^(x >> 1n)^this._mag01[Number(x&1n)];
       }
 
       this._index = 0;
@@ -338,7 +338,7 @@
         const value = this._next64();
         // Output in little-endian format (LSB first)
         for (let j = 0; j < 8; ++j) {
-          output.push(Number((value >> (BigInt(j) * 8n)) & 0xFFn));
+          output.push(Number((value >> (BigInt(j) * 8n))&0xFFn));
         }
       }
 
@@ -347,7 +347,7 @@
       if (remainingBytes > 0) {
         const value = this._next64();
         for (let i = 0; i < remainingBytes; ++i) {
-          output.push(Number((value >> (BigInt(i) * 8n)) & 0xFFn));
+          output.push(Number((value >> (BigInt(i) * 8n))&0xFFn));
         }
       }
 

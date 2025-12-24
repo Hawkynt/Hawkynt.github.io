@@ -74,7 +74,8 @@
     const t4 = OpCodes.OrN(OpCodes.Shr32(s2, 27), OpCodes.Shl32(s3, 5));
 
     // Nonlinear feedback: XOR(t1, NAND(t2,t3), t4, key)
-    return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, t1), ~OpCodes.AndN(t2, t3)), t4), kword));
+    // NAND(t2,t3) = NOT(AND(t2,t3)) = XOR(AND(t2,t3), 0xFFFFFFFF)
+    return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, t1), OpCodes.Xor32(OpCodes.AndN(t2, t3), 0xFFFFFFFF)), t4), kword));
   }
 
   // ===== ALGORITHM CLASS =====

@@ -89,7 +89,7 @@
 
       // Test vectors from official sources
       // MINSTD is an MLCG with a=16807, m=2^31-1 (c=0 implicitly)
-      // Source: Park & Miller (1988) "Random Number Generators: Good Ones Are Hard To Find"
+      // Source: Park&Miller (1988) "Random Number Generators: Good Ones Are Hard To Find"
       // https://www.firstpr.com.au/dsp/rand31/
       // Expected sequence from seed=1: 16807, 282475249, 1622650073, 984943658, 1144108930...
       this.tests = [

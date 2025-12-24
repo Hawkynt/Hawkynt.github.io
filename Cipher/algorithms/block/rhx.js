@@ -342,12 +342,12 @@
         }
 
         // Add round constant-like value
-        const roundConstant = (expanded.length / 16) & 0xFF;
+        const roundConstant = (expanded.length / 16)&0xFF;
         state[0] ^= roundConstant;
 
         // XOR with a pattern based on position
         for (let i = 0; i < state.length; i++) {
-          state[i] ^= ((expanded.length + i) * 0x67) & 0xFF;
+          state[i] ^= ((expanded.length + i) * 0x67)&0xFF;
         }
 
         // Output bytes from current state
@@ -459,10 +459,10 @@
         const s2 = state[offset + 2];
         const s3 = state[offset + 3];
 
-        state[offset] = OpCodes.GF256Mul(0x02, s0) ^ OpCodes.GF256Mul(0x03, s1) ^ s2 ^ s3;
-        state[offset + 1] = s0 ^ OpCodes.GF256Mul(0x02, s1) ^ OpCodes.GF256Mul(0x03, s2) ^ s3;
-        state[offset + 2] = s0 ^ s1 ^ OpCodes.GF256Mul(0x02, s2) ^ OpCodes.GF256Mul(0x03, s3);
-        state[offset + 3] = OpCodes.GF256Mul(0x03, s0) ^ s1 ^ s2 ^ OpCodes.GF256Mul(0x02, s3);
+        state[offset] = OpCodes.GF256Mul(0x02, s0)^OpCodes.GF256Mul(0x03, s1)^s2^s3;
+        state[offset + 1] = s0^OpCodes.GF256Mul(0x02, s1)^OpCodes.GF256Mul(0x03, s2)^s3;
+        state[offset + 2] = s0^s1^OpCodes.GF256Mul(0x02, s2)^OpCodes.GF256Mul(0x03, s3);
+        state[offset + 3] = OpCodes.GF256Mul(0x03, s0)^s1^s2^OpCodes.GF256Mul(0x02, s3);
       }
     }
 
@@ -474,10 +474,10 @@
         const s2 = state[offset + 2];
         const s3 = state[offset + 3];
 
-        state[offset] = OpCodes.GF256Mul(0x0e, s0) ^ OpCodes.GF256Mul(0x0b, s1) ^ OpCodes.GF256Mul(0x0d, s2) ^ OpCodes.GF256Mul(0x09, s3);
-        state[offset + 1] = OpCodes.GF256Mul(0x09, s0) ^ OpCodes.GF256Mul(0x0e, s1) ^ OpCodes.GF256Mul(0x0b, s2) ^ OpCodes.GF256Mul(0x0d, s3);
-        state[offset + 2] = OpCodes.GF256Mul(0x0d, s0) ^ OpCodes.GF256Mul(0x09, s1) ^ OpCodes.GF256Mul(0x0e, s2) ^ OpCodes.GF256Mul(0x0b, s3);
-        state[offset + 3] = OpCodes.GF256Mul(0x0b, s0) ^ OpCodes.GF256Mul(0x0d, s1) ^ OpCodes.GF256Mul(0x09, s2) ^ OpCodes.GF256Mul(0x0e, s3);
+        state[offset] = OpCodes.GF256Mul(0x0e, s0)^OpCodes.GF256Mul(0x0b, s1)^OpCodes.GF256Mul(0x0d, s2)^OpCodes.GF256Mul(0x09, s3);
+        state[offset + 1] = OpCodes.GF256Mul(0x09, s0)^OpCodes.GF256Mul(0x0e, s1)^OpCodes.GF256Mul(0x0b, s2)^OpCodes.GF256Mul(0x0d, s3);
+        state[offset + 2] = OpCodes.GF256Mul(0x0d, s0)^OpCodes.GF256Mul(0x09, s1)^OpCodes.GF256Mul(0x0e, s2)^OpCodes.GF256Mul(0x0b, s3);
+        state[offset + 3] = OpCodes.GF256Mul(0x0b, s0)^OpCodes.GF256Mul(0x0d, s1)^OpCodes.GF256Mul(0x09, s2)^OpCodes.GF256Mul(0x0e, s3);
       }
     }
 
@@ -491,7 +491,7 @@
     _stringToBytes(str) {
       const bytes = [];
       for (let i = 0; i < str.length; i++) {
-        bytes.push(str.charCodeAt(i) & 0xFF);
+        bytes.push(str.charCodeAt(i)&0xFF);
       }
       return bytes;
     }

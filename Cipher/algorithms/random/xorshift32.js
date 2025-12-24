@@ -14,10 +14,10 @@
  * - Limitations: NOT cryptographically secure, relatively short period
  *
  * Algorithm (parameters 13, 17, 5):
- *   x ^= x << 13;
- *   x ^= x >> 17;
- *   x ^= x << 5;
- *   return x;
+ *   x XOR= (x left-shift 13)
+ *   x XOR= (x right-shift 17)
+ *   x XOR= (x left-shift 5)
+ *   return x
  *
  * Reference: Marsaglia, G. (2003). "Xorshift RNGs". Journal of Statistical Software, 8(14), 1-6.
  *
@@ -112,7 +112,7 @@
       ];
 
       // Test vectors generated from reference JavaScript implementation
-      // Algorithm: x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+      // Algorithm: XOR state with left-shifted state by 13, then XOR with right-shifted by 17, then XOR with left-shifted by 5
       // Parameters: (13, 17, 5) - Marsaglia's recommended triplet for 32-bit
       // Reference: Marsaglia, G. (2003). "Xorshift RNGs". Journal of Statistical Software, 8(14), 1-6.
       this.tests = [
@@ -279,28 +279,28 @@
      * Generate next 32-bit value using Xorshift32 algorithm
      *
      * Algorithm from Marsaglia (2003):
-     * x ^= x << 13;  // Left shift and XOR
-     * x ^= x >> 17;  // Right shift and XOR
-     * x ^= x << 5;   // Left shift and XOR
-     * return x;
+     * x XOR= (x shifted left by 13)  - Shift left and XOR
+     * x XOR= (x shifted right by 17) - Shift right and XOR
+     * x XOR= (x shifted left by 5)   - Shift left and XOR
+     * return x
      *
      * Parameters (13, 17, 5) are Marsaglia's recommended triplet for 32-bit xorshift
-     * These values ensure maximal period of 2^32-1
+     * These values ensure maximal period of 2 to the power of 32 minus 1
      */
     _next32() {
       if (!this._ready) {
         throw new Error('Xorshift32 not initialized: set seed first');
       }
 
-      // Step 1: x ^= x << 13
+      // Step 1: x ^= (x << 13)
       let x = this._state;
-      x = OpCodes.ToDWord(OpCodes.XorN(x, OpCodes.Shl32(x, 13)));
+      x = OpCodes.Xor32(x, OpCodes.Shl32(x, 13));
 
-      // Step 2: x ^= x >> 17
-      x = OpCodes.ToDWord(OpCodes.XorN(x, OpCodes.Shr32(x, 17)));
+      // Step 2: x ^= (x >>> 17)
+      x = OpCodes.Xor32(x, OpCodes.Shr32(x, 17));
 
-      // Step 3: x ^= x << 5
-      x = OpCodes.ToDWord(OpCodes.XorN(x, OpCodes.Shl32(x, 5)));
+      // Step 3: x ^= (x << 5)
+      x = OpCodes.Xor32(x, OpCodes.Shl32(x, 5));
 
       // Update state and return
       this._state = x;

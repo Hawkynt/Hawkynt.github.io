@@ -43,7 +43,7 @@
    * - SIMECK-64: 64-bit blocks, 128-bit keys, 44 rounds
    *
    * Uses simplified Feistel structure with efficient round function:
-   * F(x) = (x & ROL(x, 5)) ^ ROL(x, 1)
+   * F(x) = AND(x, ROL(x,5)) XOR ROL(x,1)
    *
    * Security: EDUCATIONAL - Designed for constrained devices, not vetted for general use
    */
@@ -237,9 +237,9 @@
         this.roundKeys[i] = t[0];
 
         // Update constant from sequence
-        constant &= 0xFFFC;
-        constant |= (sequence & 1);
-        sequence >>>= 1;
+        constant = OpCodes.AndN(constant, 0xFFFC);
+        constant = OpCodes.OrN(constant, OpCodes.AndN(sequence, 1));
+        sequence = OpCodes.Shr32(sequence, 1);
 
         // Apply round function to key state
         this._simeckRound16(constant, t, 1, 0);
@@ -255,7 +255,7 @@
     /**
      * SIMECK round function for 16-bit words
      * From simeck.cpp lines 25-30:
-     * left_new = (left & ROL(left, 5)) ^ ROL(left, 1) ^ right ^ key
+     * left_new = AND(left, ROL(left,5)) XOR ROL(left,1) XOR right XOR key
      * right_new = left_old
      */
     _simeckRound16(key, state, leftIdx, rightIdx) {
@@ -528,8 +528,8 @@
         // Save current t[0] as round key
         this.roundKeys[i] = t[0];
 
-        // Build constant: 0xFFFFFFFC | sequence_bit
-        const constant = (0xFFFFFFFC | sequenceBits[i]) >>> 0;
+        // Build constant: 0xFFFFFFFC|sequence_bit
+        const constant = OpCodes.ToUint32(OpCodes.OrN(0xFFFFFFFC, sequenceBits[i]));
 
         // Apply round function to key state
         this._simeckRound32(constant, t, 1, 0);
@@ -545,14 +545,14 @@
     /**
      * SIMECK round function for 32-bit words
      * From simeck.cpp lines 25-30:
-     * left_new = (left & ROL(left, 5)) ^ ROL(left, 1) ^ right ^ key
+     * left_new = AND(left, ROL(left,5)) XOR ROL(left,1) XOR right XOR key
      * right_new = left_old
      */
     _simeckRound32(key, state, leftIdx, rightIdx) {
       const left = state[leftIdx];
       const right = state[rightIdx];
 
-      state[leftIdx] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(left, OpCodes.RotL32(left, 5)), OpCodes.RotL32(left, 1)), right), key) >>> 0;
+      state[leftIdx] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.AndN(left, OpCodes.RotL32(left, 5)), OpCodes.RotL32(left, 1)), right), key));
       state[rightIdx] = left;
     }
 

@@ -142,31 +142,31 @@
       const s3_l = this.S[3][0], s3_h = this.S[3][1];
       const s4_l = this.S[4][0], s4_h = this.S[4][1];
 
-      // x0 ^= rotr64(x0, 19) ^ rotr64(x0, 28)
+      // x0 ^= rotr64(x0, 19)^rotr64(x0, 28)
       let r0 = rotr64(s0_l, s0_h, 19);
       let r1 = rotr64(s0_l, s0_h, 28);
       this.S[0][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s0_l, r0[0]), r1[0]));
       this.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s0_h, r0[1]), r1[1]));
 
-      // x1 ^= rotr64(x1, 61) ^ rotr64(x1, 39)
+      // x1 ^= rotr64(x1, 61)^rotr64(x1, 39)
       r0 = rotr64(s1_l, s1_h, 61);
       r1 = rotr64(s1_l, s1_h, 39);
       this.S[1][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s1_l, r0[0]), r1[0]));
       this.S[1][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s1_h, r0[1]), r1[1]));
 
-      // x2 ^= rotr64(x2, 1) ^ rotr64(x2, 6)
+      // x2 ^= rotr64(x2, 1)^rotr64(x2, 6)
       r0 = rotr64(s2_l, s2_h, 1);
       r1 = rotr64(s2_l, s2_h, 6);
       this.S[2][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s2_l, r0[0]), r1[0]));
       this.S[2][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s2_h, r0[1]), r1[1]));
 
-      // x3 ^= rotr64(x3, 10) ^ rotr64(x3, 17)
+      // x3 ^= rotr64(x3, 10)^rotr64(x3, 17)
       r0 = rotr64(s3_l, s3_h, 10);
       r1 = rotr64(s3_l, s3_h, 17);
       this.S[3][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s3_l, r0[0]), r1[0]));
       this.S[3][1] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s3_h, r0[1]), r1[1]));
 
-      // x4 ^= rotr64(x4, 7) ^ rotr64(x4, 41)
+      // x4 ^= rotr64(x4, 7)^rotr64(x4, 41)
       r0 = rotr64(s4_l, s4_h, 7);
       r1 = rotr64(s4_l, s4_h, 41);
       this.S[4][0] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(s4_l, r0[0]), r1[0]));

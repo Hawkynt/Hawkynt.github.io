@@ -184,25 +184,25 @@
       let dataWord = 0;
       for (let i = 0; i < 12; ++i) {
         if (data[i]) {
-          dataWord = OpCodes.XorN(dataWord, (1 << (11 - i)));
+          dataWord = OpCodes.Xor32(dataWord, OpCodes.Shl32(1, 11 - i));
         }
       }
 
       // Calculate parity bits using generator matrix
       let parityWord = 0;
       for (let i = 0; i < 12; ++i) {
-        if (dataWord & (1 << (11 - i))) {
-          parityWord = OpCodes.XorN(parityWord, this.generatorMatrix[i]);
+        if (dataWord&OpCodes.Shl32(1, 11 - i)) {
+          parityWord = OpCodes.Xor32(parityWord, this.generatorMatrix[i]);
         }
       }
 
       // Combine data and parity
-      const codeword = OpCodes.OrN(OpCodes.Shl32(dataWord, 12), parityWord);
+      const codeword = OpCodes.Shl32(dataWord, 12)|parityWord;
 
       // Convert to bit array
       const result = new Array(24);
       for (let i = 0; i < 24; ++i) {
-        result[i] = (codeword >> (23 - i)) & 1;
+        result[i] = OpCodes.Shr32(codeword, 23 - i)&1;
       }
 
       return result;
@@ -218,26 +218,26 @@
       let received = 0;
       for (let i = 0; i < 24; ++i) {
         if (data[i]) {
-          received = OpCodes.XorN(received, (1 << (23 - i)));
+          received = OpCodes.Xor32(received, OpCodes.Shl32(1, 23 - i));
         }
       }
 
       // Calculate syndrome
       let syndrome = 0;
-      const receivedParity = received & 0xFFF;
+      const receivedParity = received&0xFFF;
 
       // Extract data portion
-      const receivedData = received >>> 12;
+      const receivedData = OpCodes.Shr32(received, 12);
 
       // Calculate expected parity
       let expectedParity = 0;
       for (let i = 0; i < 12; ++i) {
-        if (receivedData & (1 << (11 - i))) {
-          expectedParity = OpCodes.XorN(expectedParity, this.generatorMatrix[i]);
+        if (receivedData&OpCodes.Shl32(1, 11 - i)) {
+          expectedParity = OpCodes.Xor32(expectedParity, this.generatorMatrix[i]);
         }
       }
 
-      syndrome = OpCodes.XorN(receivedParity, expectedParity);
+      syndrome = OpCodes.Xor32(receivedParity, expectedParity);
 
       if (syndrome !== 0) {
         console.log(`Extended Golay: Error detected (syndrome: ${syndrome.toString(16)})`);
@@ -248,7 +248,7 @@
       // Extract data bits
       const result = new Array(12);
       for (let i = 0; i < 12; ++i) {
-        result[i] = (receivedData >> (11 - i)) & 1;
+        result[i] = OpCodes.Shr32(receivedData, 11 - i)&1;
       }
 
       return result;
@@ -261,21 +261,21 @@
       let received = 0;
       for (let i = 0; i < 24; ++i) {
         if (data[i]) {
-          received = OpCodes.XorN(received, (1 << (23 - i)));
+          received = OpCodes.Xor32(received, OpCodes.Shl32(1, 23 - i));
         }
       }
 
-      const receivedParity = received & 0xFFF;
-      const receivedData = received >>> 12;
+      const receivedParity = received&0xFFF;
+      const receivedData = OpCodes.Shr32(received, 12);
 
       let expectedParity = 0;
       for (let i = 0; i < 12; ++i) {
-        if (receivedData & (1 << (11 - i))) {
-          expectedParity = OpCodes.XorN(expectedParity, this.generatorMatrix[i]);
+        if (receivedData&OpCodes.Shl32(1, 11 - i)) {
+          expectedParity = OpCodes.Xor32(expectedParity, this.generatorMatrix[i]);
         }
       }
 
-      return (OpCodes.XorN(receivedParity, expectedParity)) !== 0;
+      return OpCodes.Xor32(receivedParity, expectedParity) !== 0;
     }
   }
 

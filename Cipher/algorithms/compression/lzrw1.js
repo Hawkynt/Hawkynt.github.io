@@ -175,7 +175,7 @@
      * Uses simple XOR-shift hash for speed
      */
     _hash(p0, p1, p2) {
-      const h = (OpCodes.Shl16(p0, 8) ^ OpCodes.Shl16(p1, 4) ^ p2) & 0xFFF;
+      const h = (OpCodes.Shl16(p0, 8)^OpCodes.Shl16(p1, 4)^p2)&0xFFF;
       return h;
     }
 
@@ -246,12 +246,12 @@
             // Encode copy item: 16-bit word
             // High 4 bits: length - 3 (0-15 represents 3-18 bytes)
             // Low 12 bits: offset - 1 (0-4094 represents 1-4095)
-            const lengthCode = (matchLength - this.algorithm.MIN_MATCH_LENGTH) & 0x0F;
-            const offsetCode = (matchOffset - 1) & 0x0FFF;
-            const copyWord = OpCodes.Shl16(lengthCode, 12) | offsetCode;
+            const lengthCode = (matchLength - this.algorithm.MIN_MATCH_LENGTH)&0x0F;
+            const offsetCode = (matchOffset - 1)&0x0FFF;
+            const copyWord = OpCodes.Shl16(lengthCode, 12)|offsetCode;
 
-            result.push(OpCodes.Shr16(copyWord, 8) & 0xFF);
-            result.push(copyWord & 0xFF);
+            result.push(OpCodes.Shr16(copyWord, 8)&0xFF);
+            result.push(copyWord&0xFF);
 
             pos += matchLength;
           } else {
@@ -264,8 +264,8 @@
         }
 
         // Write 16-bit control word (big-endian)
-        result[controlWordPos] = OpCodes.Shr16(controlWord, 8) & 0xFF;
-        result[controlWordPos + 1] = controlWord & 0xFF;
+        result[controlWordPos] = OpCodes.Shr16(controlWord, 8)&0xFF;
+        result[controlWordPos + 1] = controlWord&0xFF;
       }
 
       this.inputBuffer = [];
@@ -288,7 +288,7 @@
 
         // Process up to 16 items based on control word
         for (let i = 0; i < this.algorithm.ITEMS_PER_GROUP && pos < input.length; i++) {
-          const isCopyItem = (controlWord & OpCodes.Shl16(1, i)) !== 0;
+          const isCopyItem = (controlWord&OpCodes.Shl16(1, i)) !== 0;
 
           if (isCopyItem) {
             // Copy item: read 16-bit word
@@ -297,8 +297,8 @@
             const copyWord = OpCodes.Pack16BE(input[pos], input[pos + 1]);
             pos += 2;
 
-            const length = (OpCodes.Shr16(copyWord, 12) & 0x0F) + this.algorithm.MIN_MATCH_LENGTH;
-            const offset = (copyWord & 0x0FFF) + 1;
+            const length = (OpCodes.Shr16(copyWord, 12)&0x0F) + this.algorithm.MIN_MATCH_LENGTH;
+            const offset = (copyWord&0x0FFF) + 1;
 
             // Copy bytes from history
             const copyStart = result.length - offset;

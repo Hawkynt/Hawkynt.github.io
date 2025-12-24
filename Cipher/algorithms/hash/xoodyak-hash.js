@@ -77,21 +77,21 @@
       const e2 = OpCodes.RotL32(p1, 5)^OpCodes.RotL32(p1, 14);
       const e3 = OpCodes.RotL32(p2, 5)^OpCodes.RotL32(p2, 14);
 
-      a0 ^= e0;
-      a4 ^= e0;
-      a8 ^= e0;
+      a0 = OpCodes.Xor32(a0, e0);
+      a4 = OpCodes.Xor32(a4, e0);
+      a8 = OpCodes.Xor32(a8, e0);
 
-      a1 ^= e1;
-      a5 ^= e1;
-      a9 ^= e1;
+      a1 = OpCodes.Xor32(a1, e1);
+      a5 = OpCodes.Xor32(a5, e1);
+      a9 = OpCodes.Xor32(a9, e1);
 
-      a2 ^= e2;
-      a6 ^= e2;
-      a10 ^= e2;
+      a2 = OpCodes.Xor32(a2, e2);
+      a6 = OpCodes.Xor32(a6, e2);
+      a10 = OpCodes.Xor32(a10, e2);
 
-      a3 ^= e3;
-      a7 ^= e3;
-      a11 ^= e3;
+      a3 = OpCodes.Xor32(a3, e3);
+      a7 = OpCodes.Xor32(a7, e3);
+      a11 = OpCodes.Xor32(a11, e3);
 
       // Rho-west: plane shift
       let b0 = a0;

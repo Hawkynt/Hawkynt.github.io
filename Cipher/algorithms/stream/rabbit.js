@@ -139,7 +139,7 @@ class RabbitInstance extends IAlgorithmInstance {
     const output = [];
     for (let i = 0; i < this.inputBuffer.length; i++) {
       const keystreamByte = this._getNextKeystreamByte();
-      output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+      output.push(OpCodes.Xor32(this.inputBuffer[i], keystreamByte));
     }
 
     this.inputBuffer = [];
@@ -151,16 +151,16 @@ class RabbitInstance extends IAlgorithmInstance {
 
     const K = new Array(8);
     for (let i = 0; i < 8; i++) {
-      K[i] = OpCodes.OrN(this._key[i*2], OpCodes.Shl32(this._key[i*2+1], 8));
+      K[i] = OpCodes.Or32(this._key[i*2], OpCodes.Shl32(this._key[i*2+1], 8));
     }
 
     for (let j = 0; j < 8; j++) {
-      if (j % 2 === 0) {
-        this.X[j] = OpCodes.OrN(OpCodes.Shl32(K[(j+1) & 7], 16), K[j]);
-        this.C[j] = OpCodes.OrN(OpCodes.Shl32(K[(j+4) & 7], 16), K[(j+5) & 7]);
+      if (OpCodes.ToInt(j % 2) === 0) {
+        this.X[j] = OpCodes.Or32(OpCodes.Shl32(K[OpCodes.ToInt((j+1) % 8)], 16), K[j]);
+        this.C[j] = OpCodes.Or32(OpCodes.Shl32(K[OpCodes.ToInt((j+4) % 8)], 16), K[OpCodes.ToInt((j+5) % 8)]);
       } else {
-        this.X[j] = OpCodes.OrN(OpCodes.Shl32(K[(j+5) & 7], 16), K[(j+4) & 7]);
-        this.C[j] = OpCodes.OrN(OpCodes.Shl32(K[j], 16), K[(j+1) & 7]);
+        this.X[j] = OpCodes.Or32(OpCodes.Shl32(K[OpCodes.ToInt((j+5) % 8)], 16), K[OpCodes.ToInt((j+4) % 8)]);
+        this.C[j] = OpCodes.Or32(OpCodes.Shl32(K[j], 16), K[OpCodes.ToInt((j+1) % 8)]);
       }
       this.X[j] = OpCodes.ToUint32(this.X[j]);
       this.C[j] = OpCodes.ToUint32(this.C[j]);
@@ -173,7 +173,7 @@ class RabbitInstance extends IAlgorithmInstance {
     }
 
     for (let i = 0; i < 8; i++) {
-      this.C[i] = OpCodes.ToUint32(OpCodes.XorN(this.C[i], this.X[(i + 4) & 7]));
+      this.C[i] = OpCodes.ToUint32(OpCodes.Xor32(this.C[i], this.X[OpCodes.ToInt((i + 4) % 8)]));
     }
 
     if (this._iv && this._iv.length >= 8) {
@@ -188,19 +188,19 @@ class RabbitInstance extends IAlgorithmInstance {
     const IV_0 = OpCodes.Pack32LE(this._iv[0], this._iv[1], this._iv[2], this._iv[3]);
     const IV_1 = OpCodes.Pack32LE(this._iv[4], this._iv[5], this._iv[6], this._iv[7]);
 
-    const i0 = OpCodes.OrN(OpCodes.AndN(OpCodes.RotL32(IV_0, 8), 0x00ff00ff), OpCodes.AndN(OpCodes.RotL32(IV_0, 24), 0xff00ff00));
-    const i2 = OpCodes.OrN(OpCodes.AndN(OpCodes.RotL32(IV_1, 8), 0x00ff00ff), OpCodes.AndN(OpCodes.RotL32(IV_1, 24), 0xff00ff00));
-    const i1 = OpCodes.OrN(OpCodes.Shr32(i0, 16), OpCodes.AndN(i2, 0xffff0000));
-    const i3 = OpCodes.OrN(OpCodes.Shl32(i2, 16), OpCodes.AndN(i0, 0x0000ffff));
+    const i0 = OpCodes.Or32(OpCodes.And32(OpCodes.RotL32(IV_0, 8), 0x00ff00ff), OpCodes.And32(OpCodes.RotL32(IV_0, 24), 0xff00ff00));
+    const i2 = OpCodes.Or32(OpCodes.And32(OpCodes.RotL32(IV_1, 8), 0x00ff00ff), OpCodes.And32(OpCodes.RotL32(IV_1, 24), 0xff00ff00));
+    const i1 = OpCodes.Or32(OpCodes.Shr32(i0, 16), OpCodes.And32(i2, 0xffff0000));
+    const i3 = OpCodes.Or32(OpCodes.Shl32(i2, 16), OpCodes.And32(i0, 0x0000ffff));
 
-    this.C[0] = OpCodes.ToUint32(OpCodes.XorN(this.C[0], i0));
-    this.C[1] = OpCodes.ToUint32(OpCodes.XorN(this.C[1], i1));
-    this.C[2] = OpCodes.ToUint32(OpCodes.XorN(this.C[2], i2));
-    this.C[3] = OpCodes.ToUint32(OpCodes.XorN(this.C[3], i3));
-    this.C[4] = OpCodes.ToUint32(OpCodes.XorN(this.C[4], i0));
-    this.C[5] = OpCodes.ToUint32(OpCodes.XorN(this.C[5], i1));
-    this.C[6] = OpCodes.ToUint32(OpCodes.XorN(this.C[6], i2));
-    this.C[7] = OpCodes.ToUint32(OpCodes.XorN(this.C[7], i3));
+    this.C[0] = OpCodes.ToUint32(OpCodes.Xor32(this.C[0], i0));
+    this.C[1] = OpCodes.ToUint32(OpCodes.Xor32(this.C[1], i1));
+    this.C[2] = OpCodes.ToUint32(OpCodes.Xor32(this.C[2], i2));
+    this.C[3] = OpCodes.ToUint32(OpCodes.Xor32(this.C[3], i3));
+    this.C[4] = OpCodes.ToUint32(OpCodes.Xor32(this.C[4], i0));
+    this.C[5] = OpCodes.ToUint32(OpCodes.Xor32(this.C[5], i1));
+    this.C[6] = OpCodes.ToUint32(OpCodes.Xor32(this.C[6], i2));
+    this.C[7] = OpCodes.ToUint32(OpCodes.Xor32(this.C[7], i3));
 
     for (let i = 0; i < 4; i++) {
       this._nextState();
@@ -209,11 +209,11 @@ class RabbitInstance extends IAlgorithmInstance {
 
   _gFunction(x, c) {
     const gx = OpCodes.ToUint32(x + c);
-    const ga = OpCodes.AndN(gx, 0xffff);
+    const ga = OpCodes.And32(gx, 0xffff);
     const gb = OpCodes.Shr32(gx, 16);
     const gh = OpCodes.Shr32(OpCodes.Shr32(ga * ga, 17) + ga * gb, 15) + gb * gb;
-    const gl = OpCodes.ToInt(OpCodes.AndN(gx, 0xffff0000) * gx) + OpCodes.ToInt(OpCodes.AndN(gx, 0x0000ffff) * gx);
-    return OpCodes.ToUint32(OpCodes.XorN(gh, gl));
+    const gl = OpCodes.ToInt(OpCodes.And32(gx, 0xffff0000) * gx) + OpCodes.ToInt(OpCodes.And32(gx, 0x0000ffff) * gx);
+    return OpCodes.ToUint32(OpCodes.Xor32(gh, gl));
   }
 
   _nextState() {
@@ -251,22 +251,22 @@ class RabbitInstance extends IAlgorithmInstance {
     this._nextState();
 
     const S = new Array(4);
-    S[0] = OpCodes.XorN(OpCodes.XorN(this.X[0], OpCodes.Shr32(this.X[5], 16)), OpCodes.Shl32(this.X[3], 16));
-    S[1] = OpCodes.XorN(OpCodes.XorN(this.X[2], OpCodes.Shr32(this.X[7], 16)), OpCodes.Shl32(this.X[5], 16));
-    S[2] = OpCodes.XorN(OpCodes.XorN(this.X[4], OpCodes.Shr32(this.X[1], 16)), OpCodes.Shl32(this.X[7], 16));
-    S[3] = OpCodes.XorN(OpCodes.XorN(this.X[6], OpCodes.Shr32(this.X[3], 16)), OpCodes.Shl32(this.X[1], 16));
+    S[0] = OpCodes.Xor32(OpCodes.Xor32(this.X[0], OpCodes.Shr32(this.X[5], 16)), OpCodes.Shl32(this.X[3], 16));
+    S[1] = OpCodes.Xor32(OpCodes.Xor32(this.X[2], OpCodes.Shr32(this.X[7], 16)), OpCodes.Shl32(this.X[5], 16));
+    S[2] = OpCodes.Xor32(OpCodes.Xor32(this.X[4], OpCodes.Shr32(this.X[1], 16)), OpCodes.Shl32(this.X[7], 16));
+    S[3] = OpCodes.Xor32(OpCodes.Xor32(this.X[6], OpCodes.Shr32(this.X[3], 16)), OpCodes.Shl32(this.X[1], 16));
 
     const keystream = [];
 
     for (let i = 0; i < 4; i++) {
-      S[i] = OpCodes.OrN(OpCodes.AndN(OpCodes.RotL32(S[i], 8), 0x00ff00ff), OpCodes.AndN(OpCodes.RotL32(S[i], 24), 0xff00ff00));
+      S[i] = OpCodes.Or32(OpCodes.And32(OpCodes.RotL32(S[i], 8), 0x00ff00ff), OpCodes.And32(OpCodes.RotL32(S[i], 24), 0xff00ff00));
     }
 
     for (let i = 3; i >= 0; i--) {
-      keystream.push(S[i] & 0xFF);
-      keystream.push((S[i] >>> 8) & 0xFF);
-      keystream.push((S[i] >>> 16) & 0xFF);
-      keystream.push((S[i] >>> 24) & 0xFF);
+      keystream.push(OpCodes.ToByte(S[i]));
+      keystream.push(OpCodes.ToByte(OpCodes.Shr32(S[i], 8)));
+      keystream.push(OpCodes.ToByte(OpCodes.Shr32(S[i], 16)));
+      keystream.push(OpCodes.ToByte(OpCodes.Shr32(S[i], 24)));
     }
 
     return keystream;

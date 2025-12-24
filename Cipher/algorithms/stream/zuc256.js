@@ -330,7 +330,7 @@
 
         // XOR with input data
         for (let j = 0; j < 4 && i + j < this.inputBuffer.length; j++) {
-          output.push(this.inputBuffer[i + j] ^ keystreamBytes[j]);
+          output.push(OpCodes.Xor32(this.inputBuffer[i + j], keystreamBytes[j]));
         }
       }
 
@@ -349,23 +349,23 @@
       const D = this.algorithm.D;
 
       // ZUC-256 specific LFSR initialization (from BouncyCastle specification)
-      // Each LFSR cell is constructed from 4 bytes: MAKEU31(a, b, c, d) = (a << 23) | (b << 16) | (c << 8) | d
+      // Each LFSR cell is constructed from 4 bytes: MAKEU31(a, b, c, d) = (OpCodes.Shl32(a, 23))|(OpCodes.Shl32(b, 16))|(OpCodes.Shl32(c, 8))|d
       this.LFSR[0] = this._MAKEU31(k[0], D[0], k[21], k[16]);
       this.LFSR[1] = this._MAKEU31(k[1], D[1], k[22], k[17]);
       this.LFSR[2] = this._MAKEU31(k[2], D[2], k[23], k[18]);
       this.LFSR[3] = this._MAKEU31(k[3], D[3], k[24], k[19]);
       this.LFSR[4] = this._MAKEU31(k[4], D[4], k[25], k[20]);
-      this.LFSR[5] = this._MAKEU31(iv[0], (D[5] | (iv[17] & 0x3F)), k[5], k[26]);
-      this.LFSR[6] = this._MAKEU31(iv[1], (D[6] | (iv[18] & 0x3F)), k[6], k[27]);
-      this.LFSR[7] = this._MAKEU31(iv[10], (D[7] | (iv[19] & 0x3F)), k[7], iv[2]);
-      this.LFSR[8] = this._MAKEU31(k[8], (D[8] | (iv[20] & 0x3F)), iv[3], iv[11]);
-      this.LFSR[9] = this._MAKEU31(k[9], (D[9] | (iv[21] & 0x3F)), iv[12], iv[4]);
-      this.LFSR[10] = this._MAKEU31(iv[5], (D[10] | (iv[22] & 0x3F)), k[10], k[28]);
-      this.LFSR[11] = this._MAKEU31(k[11], (D[11] | (iv[23] & 0x3F)), iv[6], iv[13]);
-      this.LFSR[12] = this._MAKEU31(k[12], (D[12] | (iv[24] & 0x3F)), iv[7], iv[14]);
+      this.LFSR[5] = this._MAKEU31(iv[0], OpCodes.Or32(D[5], OpCodes.And32(iv[17], 0x3F)), k[5], k[26]);
+      this.LFSR[6] = this._MAKEU31(iv[1], OpCodes.Or32(D[6], OpCodes.And32(iv[18], 0x3F)), k[6], k[27]);
+      this.LFSR[7] = this._MAKEU31(iv[10], OpCodes.Or32(D[7], OpCodes.And32(iv[19], 0x3F)), k[7], iv[2]);
+      this.LFSR[8] = this._MAKEU31(k[8], OpCodes.Or32(D[8], OpCodes.And32(iv[20], 0x3F)), iv[3], iv[11]);
+      this.LFSR[9] = this._MAKEU31(k[9], OpCodes.Or32(D[9], OpCodes.And32(iv[21], 0x3F)), iv[12], iv[4]);
+      this.LFSR[10] = this._MAKEU31(iv[5], OpCodes.Or32(D[10], OpCodes.And32(iv[22], 0x3F)), k[10], k[28]);
+      this.LFSR[11] = this._MAKEU31(k[11], OpCodes.Or32(D[11], OpCodes.And32(iv[23], 0x3F)), iv[6], iv[13]);
+      this.LFSR[12] = this._MAKEU31(k[12], OpCodes.Or32(D[12], OpCodes.And32(iv[24], 0x3F)), iv[7], iv[14]);
       this.LFSR[13] = this._MAKEU31(k[13], D[13], iv[15], iv[8]);
-      this.LFSR[14] = this._MAKEU31(k[14], (D[14] | ((k[31] >>> 4) & 0xF)), iv[16], iv[9]);
-      this.LFSR[15] = this._MAKEU31(k[15], (D[15] | (k[31] & 0xF)), k[30], k[29]);
+      this.LFSR[14] = this._MAKEU31(k[14], OpCodes.Or32(D[14], OpCodes.And32(OpCodes.Shr32(k[31], 4), 0xF)), iv[16], iv[9]);
+      this.LFSR[15] = this._MAKEU31(k[15], OpCodes.Or32(D[15], OpCodes.And32(k[31], 0xF)), k[30], k[29]);
 
       this.R1 = 0;
       this.R2 = 0;
@@ -374,7 +374,7 @@
       for (let i = 0; i < this.algorithm.INIT_ROUNDS; i++) {
         this._bitReorganization();
         const W = this._nonlinearFunction();
-        this._LFSRWithInitialization((W >>> 1) & 0x7FFFFFFF);
+        this._LFSRWithInitialization(OpCodes.And32(OpCodes.Shr32(W, 1), 0x7FFFFFFF));
       }
 
       // Final initialization step (BouncyCastle pattern)
@@ -387,14 +387,14 @@
 
     // Build a 31-bit integer from 4 bytes
     _MAKEU31(a, b, c, d) {
-      return (((a & 0xFF) << 23) | ((b & 0xFF) << 16) | ((c & 0xFF) << 8) | (d & 0xFF)) & this.algorithm.MASK31;
+      return OpCodes.And32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(a, 0xFF), 23), OpCodes.Shl32(OpCodes.And32(b, 0xFF), 16)), OpCodes.Shl32(OpCodes.And32(c, 0xFF), 8)), OpCodes.And32(d, 0xFF)), this.algorithm.MASK31);
     }
 
     // Modular addition: (a + b) mod (2^31 - 1)
     // More efficient than direct modulo
     _AddM(a, b) {
       const c = a + b;
-      return (c & 0x7FFFFFFF) + (c >>> 31);
+      return OpCodes.And32(c, 0x7FFFFFFF) + OpCodes.Shr32(c, 31);
     }
 
     // LFSR step with initialization feedback
@@ -432,45 +432,42 @@
 
     // Multiplication by 2^k modulo (2^31 - 1)
     _mulByPow2(x, k) {
-      x = x & this.algorithm.MASK31;
+      x = OpCodes.And32(x, this.algorithm.MASK31);
       k = k % 31;
-      const result = ((x << k) | (x >>> (31 - k))) & this.algorithm.MASK31;
+      const result = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(x, k), OpCodes.Shr32(x, 31 - k)), this.algorithm.MASK31);
       return result;
     }
 
     // Bit reorganization
     _bitReorganization() {
-      this.X[0] = (((this.LFSR[15] & 0x7FFF8000) << 1) | (this.LFSR[14] & 0x0000FFFF)) >>> 0;
-      this.X[1] = (((this.LFSR[11] & 0x0000FFFF) << 16) | (this.LFSR[9] >>> 15)) >>> 0;
-      this.X[2] = (((this.LFSR[7] & 0x0000FFFF) << 16) | (this.LFSR[5] >>> 15)) >>> 0;
-      this.X[3] = (((this.LFSR[2] & 0x0000FFFF) << 16) | (this.LFSR[0] >>> 15)) >>> 0;
+      this.X[0] = OpCodes.Shr32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(this.LFSR[15], 0x7FFF8000), 1), OpCodes.And32(this.LFSR[14], 0x0000FFFF)), 0);
+      this.X[1] = OpCodes.Shr32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(this.LFSR[11], 0x0000FFFF), 16), OpCodes.Shr32(this.LFSR[9], 15)), 0);
+      this.X[2] = OpCodes.Shr32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(this.LFSR[7], 0x0000FFFF), 16), OpCodes.Shr32(this.LFSR[5], 15)), 0);
+      this.X[3] = OpCodes.Shr32(OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(this.LFSR[2], 0x0000FFFF), 16), OpCodes.Shr32(this.LFSR[0], 15)), 0);
     }
 
     // S-box lookup (32-bit word composed of 4 bytes)
     _sbox(x) {
-      return ((this.algorithm.S0[(x >>> 24) & 0xFF] << 24) |
-              (this.algorithm.S1[(x >>> 16) & 0xFF] << 16) |
-              (this.algorithm.S0[(x >>> 8) & 0xFF] << 8) |
-              (this.algorithm.S1[x & 0xFF])) >>> 0;
+      return OpCodes.Shr32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(this.algorithm.S0[OpCodes.And32(OpCodes.Shr32(x, 24), 0xFF)], 24), OpCodes.Shl32(this.algorithm.S1[OpCodes.And32(OpCodes.Shr32(x, 16), 0xFF)], 16)), OpCodes.Shl32(this.algorithm.S0[OpCodes.And32(OpCodes.Shr32(x, 8), 0xFF)], 8)), this.algorithm.S1[OpCodes.And32(x, 0xFF)]), 0);
     }
 
     // Linear transformation L1
     _L1(x) {
-      return (x ^ OpCodes.RotL32(x, 2) ^ OpCodes.RotL32(x, 10) ^ OpCodes.RotL32(x, 18) ^ OpCodes.RotL32(x, 24)) >>> 0;
+      return OpCodes.Shr32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.RotL32(x, 2)), OpCodes.RotL32(x, 10)), OpCodes.RotL32(x, 18)), OpCodes.RotL32(x, 24)), 0);
     }
 
     // Linear transformation L2
     _L2(x) {
-      return (x ^ OpCodes.RotL32(x, 8) ^ OpCodes.RotL32(x, 14) ^ OpCodes.RotL32(x, 22) ^ OpCodes.RotL32(x, 30)) >>> 0;
+      return OpCodes.Shr32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.RotL32(x, 8)), OpCodes.RotL32(x, 14)), OpCodes.RotL32(x, 22)), OpCodes.RotL32(x, 30)), 0);
     }
 
     // Nonlinear function F (returns W for use during initialization)
     _nonlinearFunction() {
-      const W = (((this.X[0] ^ this.R1) >>> 0) + this.R2) >>> 0;
-      const W1 = (this.R1 + this.X[1]) >>> 0;
-      const W2 = (this.R2 ^ this.X[2]) >>> 0;
-      const u = this._L1(((W1 << 16) | (W2 >>> 16)) >>> 0);
-      const v = this._L2(((W2 << 16) | (W1 >>> 16)) >>> 0);
+      const W = OpCodes.Shr32(OpCodes.ToUint32(OpCodes.Xor32(this.X[0], this.R1) + this.R2), 0);
+      const W1 = OpCodes.ToUint32(this.R1 + this.X[1]);
+      const W2 = OpCodes.ToUint32(OpCodes.Xor32(this.R2, this.X[2]));
+      const u = this._L1(OpCodes.Shr32(OpCodes.Or32(OpCodes.Shl32(W1, 16), OpCodes.Shr32(W2, 16)), 0));
+      const v = this._L2(OpCodes.Shr32(OpCodes.Or32(OpCodes.Shl32(W2, 16), OpCodes.Shr32(W1, 16)), 0));
 
       this.R1 = this._sbox(u);
       this.R2 = this._sbox(v);
@@ -481,7 +478,7 @@
     // Generate keystream word
     _generateKeystreamWord() {
       this._bitReorganization();
-      const Z = (this._nonlinearFunction() ^ this.X[3]) >>> 0;
+      const Z = OpCodes.Shr32(OpCodes.Xor32(this._nonlinearFunction(), this.X[3]), 0);
       this._LFSRWithoutInitialization();
       return Z;
     }

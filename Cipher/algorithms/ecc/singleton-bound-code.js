@@ -158,7 +158,7 @@
    * Implementation details:
    * - Systematic encoding: [data parity] where parity computed via Cauchy matrix
    * - Erasure decoding: Matrix inversion to reconstruct from any k symbols
-   * - GF(256) arithmetic using primitive polynomial (0x11D): x^8 + x^4 + x^3 + x^2 + 1
+   * - GF(256) arithmetic using primitive polynomial (0x11D): x to the 8th plus x to the 4th plus x cubed plus x squared plus 1
    */
   class SingletonBoundCodeInstance extends IErrorCorrectionInstance {
     /**
@@ -391,7 +391,7 @@
      * Generate Cauchy matrix for MDS code in systematic form
      * Generator matrix G = [I_k P] where I_k is identity and P is r×k parity matrix
      * P derived from Cauchy matrix to ensure MDS property
-     * @returns {Array<Array<number>>} n×k generator matrix in systematic form
+     * @returns {Array<Array<number> >} n×k generator matrix in systematic form
      */
     generateCauchyMatrix() {
       const matrix = [];
@@ -423,7 +423,7 @@
         const row = [];
         for (let j = 0; j < this.k; ++j) {
           // C[i,j] = 1/(x[i] + y[j]) in GF(256)
-          const denominator = OpCodes.XorN(x[i], y[j]); // Addition in GF(2^8) is XOR
+          const denominator = OpCodes.XorN(x[i], y[j]); // Addition in GF(256) is XOR
           if (denominator === 0) {
             throw new Error('Cauchy matrix: x_i + y_j = 0 not allowed');
           }
@@ -439,7 +439,7 @@
     /**
      * Extract k×k submatrix for decoding
      * @param {Array<number>} rows - Row indices to extract
-     * @returns {Array<Array<number>>} k×k submatrix
+     * @returns {Array<Array<number> >} k×k submatrix
      */
     extractSubmatrix(rows) {
       const submatrix = [];
@@ -455,8 +455,8 @@
 
     /**
      * Invert matrix over GF(256) using Gaussian elimination
-     * @param {Array<Array<number>>} matrix - k×k matrix
-     * @returns {Array<Array<number>>} k×k inverse matrix
+     * @param {Array<Array<number> >} matrix - k×k matrix
+     * @returns {Array<Array<number> >} k×k inverse matrix
      */
     invertMatrix(matrix) {
       const k = matrix.length;

@@ -100,12 +100,12 @@
     // This is a plausible implementation of "key-dependent S-box" concept
     let seed = 0;
     for (let i = 0; i < keyBytes.length; ++i) {
-      seed = (seed * 31 + keyBytes[i]) & 0xffffffff;
+      seed = (seed * 31 + keyBytes[i])&0xffffffff;
     }
 
     // Fisher-Yates shuffle with key-based PRNG
     for (let i = 255; i > 0; --i) {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      seed = (seed * 1103515245 + 12345)&0x7fffffff;
       const j = seed % (i + 1);
       const temp = sbox[i];
       sbox[i] = sbox[j];
@@ -124,7 +124,7 @@
   function generateKeyDependentShifts(keyBytes) {
     let seed = 0;
     for (let i = 0; i < keyBytes.length; ++i) {
-      seed = (seed * 37 + keyBytes[i]) & 0xffffffff;
+      seed = (seed * 37 + keyBytes[i])&0xffffffff;
     }
 
     // Generate shift amounts for each row (keeping row 0 at 0)
@@ -349,7 +349,7 @@
         throw new Error("Key not set");
       }
       for (let i = 0; i < data.length; ++i) {
-        this.inputBuffer.push(data[i] & 0xff);
+        this.inputBuffer.push(data[i]&0xff);
       }
     }
 
@@ -390,7 +390,7 @@
     }
 
     _expandKey(keyBytes) {
-      const keyCopy = Uint8Array.from(keyBytes, value => value & 0xff);
+      const keyCopy = Uint8Array.from(keyBytes, value => value&0xff);
       const nk = KEY_SIZE / 4;
       const totalWords = NB * (this._rounds + 1);
       const words = new Uint32Array(totalWords);
@@ -411,10 +411,10 @@
       for (let i = nk; i < totalWords; ++i) {
         let temp = words[i - 1];
         if (i % nk === 0) {
-          temp = subWord(rotWord(temp), this.sbox) ^ ((RCON[rconIndex] << 24) >>> 0);
+          temp = OpCodes.Xor32(subWord(rotWord(temp), this.sbox), OpCodes.ToUint32(OpCodes.Shl32(RCON[rconIndex], 24)));
           ++rconIndex;
         }
-        words[i] = (words[i - nk] ^ temp) >>> 0;
+        words[i] = OpCodes.ToUint32(OpCodes.Xor32(words[i - nk], temp));
       }
 
       // Convert to byte array
@@ -444,7 +444,7 @@
 
       const state = new Uint8Array(BLOCK_SIZE);
       for (let i = 0; i < BLOCK_SIZE; ++i) {
-        state[i] = block[i] & 0xff;
+        state[i] = block[i]&0xff;
       }
 
       this._addRoundKey(state, 0);
@@ -478,7 +478,7 @@
 
       const state = new Uint8Array(BLOCK_SIZE);
       for (let i = 0; i < BLOCK_SIZE; ++i) {
-        state[i] = block[i] & 0xff;
+        state[i] = block[i]&0xff;
       }
 
       this._addRoundKey(state, this._rounds);
@@ -505,7 +505,7 @@
     _addRoundKey(state, round) {
       const offset = round * BLOCK_SIZE;
       for (let i = 0; i < BLOCK_SIZE; ++i) {
-        state[i] = (state[i] ^ this.roundKeys[offset + i]) & 0xff;
+        state[i] = (state[i]^this.roundKeys[offset + i])&0xff;
       }
     }
 
@@ -591,17 +591,17 @@
         const s3 = state[base + 3];
 
         state[base] = (
-          OpCodes.GF256Mul(s0, 2) ^ OpCodes.GF256Mul(s1, 3) ^ s2 ^ s3
-        ) & 0xff;
+          OpCodes.GF256Mul(s0, 2)^OpCodes.GF256Mul(s1, 3)^s2^s3
+        )&0xff;
         state[base + 1] = (
-          s0 ^ OpCodes.GF256Mul(s1, 2) ^ OpCodes.GF256Mul(s2, 3) ^ s3
-        ) & 0xff;
+          s0^OpCodes.GF256Mul(s1, 2)^OpCodes.GF256Mul(s2, 3)^s3
+        )&0xff;
         state[base + 2] = (
-          s0 ^ s1 ^ OpCodes.GF256Mul(s2, 2) ^ OpCodes.GF256Mul(s3, 3)
-        ) & 0xff;
+          s0^s1^OpCodes.GF256Mul(s2, 2)^OpCodes.GF256Mul(s3, 3)
+        )&0xff;
         state[base + 3] = (
-          OpCodes.GF256Mul(s0, 3) ^ s1 ^ s2 ^ OpCodes.GF256Mul(s3, 2)
-        ) & 0xff;
+          OpCodes.GF256Mul(s0, 3)^s1^s2^OpCodes.GF256Mul(s3, 2)
+        )&0xff;
       }
     }
 
@@ -614,17 +614,17 @@
         const s3 = state[base + 3];
 
         state[base] = (
-          OpCodes.GF256Mul(s0, 14) ^ OpCodes.GF256Mul(s1, 11) ^ OpCodes.GF256Mul(s2, 13) ^ OpCodes.GF256Mul(s3, 9)
-        ) & 0xff;
+          OpCodes.GF256Mul(s0, 14)^OpCodes.GF256Mul(s1, 11)^OpCodes.GF256Mul(s2, 13)^OpCodes.GF256Mul(s3, 9)
+        )&0xff;
         state[base + 1] = (
-          OpCodes.GF256Mul(s0, 9) ^ OpCodes.GF256Mul(s1, 14) ^ OpCodes.GF256Mul(s2, 11) ^ OpCodes.GF256Mul(s3, 13)
-        ) & 0xff;
+          OpCodes.GF256Mul(s0, 9)^OpCodes.GF256Mul(s1, 14)^OpCodes.GF256Mul(s2, 11)^OpCodes.GF256Mul(s3, 13)
+        )&0xff;
         state[base + 2] = (
-          OpCodes.GF256Mul(s0, 13) ^ OpCodes.GF256Mul(s1, 9) ^ OpCodes.GF256Mul(s2, 14) ^ OpCodes.GF256Mul(s3, 11)
-        ) & 0xff;
+          OpCodes.GF256Mul(s0, 13)^OpCodes.GF256Mul(s1, 9)^OpCodes.GF256Mul(s2, 14)^OpCodes.GF256Mul(s3, 11)
+        )&0xff;
         state[base + 3] = (
-          OpCodes.GF256Mul(s0, 11) ^ OpCodes.GF256Mul(s1, 13) ^ OpCodes.GF256Mul(s2, 9) ^ OpCodes.GF256Mul(s3, 14)
-        ) & 0xff;
+          OpCodes.GF256Mul(s0, 11)^OpCodes.GF256Mul(s1, 13)^OpCodes.GF256Mul(s2, 9)^OpCodes.GF256Mul(s3, 14)
+        )&0xff;
       }
     }
   }

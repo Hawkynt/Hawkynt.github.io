@@ -251,18 +251,18 @@
     _mulMod(x, y) {
       const BASE = 0x10001;
       const MASK = 0xFFFF;
-      
+
       if (x === 0) {
         x = BASE - y;
       } else if (y === 0) {
         x = BASE - x;
       } else {
         const p = x * y;
-        y = p & MASK;
-        x = (p >>> 16); // Use unsigned right shift
+        y = OpCodes.ToUint16(p);
+        x = OpCodes.ToUint32(OpCodes.Shr32(p, 16));
         x = y - x + ((y < x) ? 1 : 0);
       }
-      return x & MASK;
+      return OpCodes.ToUint16(x);
     }
 
     /**
@@ -272,26 +272,26 @@
     _mulInv(x) {
       const BASE = 0x10001;
       const MASK = 0xFFFF;
-      
+
       if (x < 2) return x;
-      
+
       let t0 = 1;
       let t1 = Math.floor(BASE / x);
       let y = BASE % x;
-      
+
       while (y !== 1) {
         const q = Math.floor(x / y);
         x = x % y;
-        t0 = (t0 + (t1 * q)) & MASK;
-        
+        t0 = OpCodes.ToUint16(t0 + (t1 * q));
+
         if (x === 1) return t0;
-        
+
         const q2 = Math.floor(y / x);
         y = y % x;
-        t1 = (t1 + (t0 * q2)) & MASK;
+        t1 = OpCodes.ToUint16(t1 + (t0 * q2));
       }
-      
-      return (1 - t1) & MASK;
+
+      return OpCodes.ToUint16(1 - t1);
     }
 
     /**
@@ -299,8 +299,7 @@
      * Based on Bouncy Castle AddInv implementation
      */
     _addInv(x) {
-      const MASK = 0xFFFF;
-      return (0 - x) & MASK;
+      return OpCodes.ToUint16(0 - x);
     }
 
     /**
@@ -326,15 +325,13 @@
       }
       
       // Generate remaining subkeys using IDEA key schedule
-      // Note: These bit operations are part of IDEA's key schedule algorithm
-      // and combine bits from different key values - not suitable for OpCodes replacement
       for (let i = 8; i < 52; i++) {
-        if ((i & 7) < 6) {
-          key[i] = ((key[i - 7] & 127) << 9 | key[i - 6] >>> 7) & MASK;
-        } else if ((i & 7) === 6) {
-          key[i] = ((key[i - 7] & 127) << 9 | key[i - 14] >>> 7) & MASK;
+        if (OpCodes.ToByte(i) < 6) {
+          key[i] = OpCodes.ToUint16(OpCodes.Shl16(OpCodes.ToByte(key[i - 7]), 9) + OpCodes.Shr16(key[i - 6], 7));
+        } else if (OpCodes.ToByte(i) === 6) {
+          key[i] = OpCodes.ToUint16(OpCodes.Shl16(OpCodes.ToByte(key[i - 7]), 9) + OpCodes.Shr16(key[i - 14], 7));
         } else {
-          key[i] = ((key[i - 15] & 127) << 9 | key[i - 14] >>> 7) & MASK;
+          key[i] = OpCodes.ToUint16(OpCodes.Shl16(OpCodes.ToByte(key[i - 15]), 9) + OpCodes.Shr16(key[i - 14], 7));
         }
       }
       
@@ -413,34 +410,30 @@
       // 8 rounds
       for (let round = 0; round < 8; round++) {
         x0 = this._mulMod(x0, workingKey[keyOff++]);
-        x1 += workingKey[keyOff++];
-        x1 &= MASK;
-        x2 += workingKey[keyOff++];
-        x2 &= MASK;
+        x1 = OpCodes.ToUint32((x1 + workingKey[keyOff++])&MASK);
+        x2 = OpCodes.ToUint32((x2 + workingKey[keyOff++])&MASK);
         x3 = this._mulMod(x3, workingKey[keyOff++]);
-        
+
         const t0 = x1;
         const t1 = x2;
-        x2 ^= x0;
-        x1 ^= x3;
+        x2 = OpCodes.Xor32(x2, x0);
+        x1 = OpCodes.Xor32(x1, x3);
         x2 = this._mulMod(x2, workingKey[keyOff++]);
-        x1 += x2;
-        x1 &= MASK;
+        x1 = OpCodes.ToUint32((x1 + x2)&MASK);
         x1 = this._mulMod(x1, workingKey[keyOff++]);
-        x2 += x1;
-        x2 &= MASK;
-        x0 ^= x1;
-        x3 ^= x2;
-        x1 ^= t1;
-        x2 ^= t0;
+        x2 = OpCodes.ToUint32((x2 + x1)&MASK);
+        x0 = OpCodes.Xor32(x0, x1);
+        x3 = OpCodes.Xor32(x3, x2);
+        x1 = OpCodes.Xor32(x1, t1);
+        x2 = OpCodes.Xor32(x2, t0);
       }
-      
+
       // Final transformation
       const result = [
-        this._mulMod(x0, workingKey[keyOff++]) & 0xFFFF,
-        (x2 + workingKey[keyOff++]) & MASK, // NB: Order - x2 and x1 swapped
-        (x1 + workingKey[keyOff++]) & MASK,
-        this._mulMod(x3, workingKey[keyOff]) & 0xFFFF
+        OpCodes.ToUint32(this._mulMod(x0, workingKey[keyOff++])&0xFFFF),
+        OpCodes.ToUint32((x2 + workingKey[keyOff++])&MASK), // NB: Order - x2 and x1 swapped
+        OpCodes.ToUint32((x1 + workingKey[keyOff++])&MASK),
+        OpCodes.ToUint32(this._mulMod(x3, workingKey[keyOff])&0xFFFF)
       ];
       
       // Convert back to bytes (big-endian)

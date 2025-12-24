@@ -442,7 +442,7 @@
      * @param {Array} frozenPositions - Frozen bit positions (optional)
      */
     setParameters(N, K, frozenPositions = null) {
-      // Validate N is power of 2 using bitwise trick: (N & (N-1)) == 0
+      // Validate N is power of 2 using bitwise trick: (N&(N-1)) == 0
       if (OpCodes.AndN(N, N - 1) !== 0 || N < 2) {
         throw new Error('Polar code length N must be a power of 2');
       }

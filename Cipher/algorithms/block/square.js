@@ -247,44 +247,44 @@
 
   function squareMultiplyGF(a, b) {
     let result = 0;
-    let multiplicand = a & 0xFF;
-    let multiplier = b & 0xFF;
+    let multiplicand = a&0xFF;
+    let multiplier = b&0xFF;
 
     for (let i = 0; i < 8; i++) {
-      if (multiplier & 1) {
-        result ^= multiplicand;
+      if (multiplier&1) {
+        result = OpCodes.Xor32(result, multiplicand);
       }
 
-      const highBit = multiplicand & 0x80;
-      multiplicand = (multiplicand << 1) & 0xFF;
+      const highBit = multiplicand&0x80;
+      multiplicand = (OpCodes.Shl32(multiplicand, 1))&0xFF;
       if (highBit) {
-        multiplicand ^= SQUARE_GF_MODULUS;
+        multiplicand = OpCodes.Xor32(multiplicand, SQUARE_GF_MODULUS);
       }
 
-      multiplier >>>= 1;
+      multiplier = OpCodes.Shr32(multiplier, 1);
     }
 
-    return result & 0xFF;
+    return result&0xFF;
   }
 
   function squareThetaWord(word) {
     const bytes = [
-      (word >>> 24) & 0xFF,
-      (word >>> 16) & 0xFF,
-      (word >>> 8) & 0xFF,
-      word & 0xFF
+      (OpCodes.Shr32(word, 24))&0xFF,
+      (OpCodes.Shr32(word, 16))&0xFF,
+      (OpCodes.Shr32(word, 8))&0xFF,
+      word&0xFF
     ];
 
     let transformed = 0;
     for (let column = 0; column < 4; column++) {
       let acc = 0;
       for (let row = 0; row < 4; row++) {
-        acc ^= squareMultiplyGF(bytes[row], SQUARE_THETA_MATRIX[row][column]);
+        acc = OpCodes.Xor32(acc, squareMultiplyGF(bytes[row], SQUARE_THETA_MATRIX[row][column]));
       }
-      transformed |= acc << ((3 - column) * 8);
+      transformed |= OpCodes.Shl32(acc, ((3 - column) * 8));
     }
 
-    return transformed >>> 0;
+    return OpCodes.ToUint32(transformed);
   }
 
   function squareApplyTheta(roundKeys, roundIndex) {
@@ -300,12 +300,12 @@
 
     for (let i = 0; i < 4; i++) {
       const idx = i * 4;
-      baseWords[i] = OpCodes.Pack32BE(
+      baseWords[i] = OpCodes.ToUint32(OpCodes.Pack32BE(
         keyBytes[idx],
         keyBytes[idx + 1],
         keyBytes[idx + 2],
         keyBytes[idx + 3]
-      ) >>> 0;
+      ));
     }
 
     for (let round = 1; round <= SQUARE_ROUNDS; round++) {
@@ -313,10 +313,10 @@
       const current = round * 4;
       const rotated = OpCodes.RotL32(baseWords[prev + 3], 8);
 
-      baseWords[current] = (baseWords[prev] ^ rotated ^ SQUARE_RCON[round - 1]) >>> 0;
-      baseWords[current + 1] = (baseWords[prev + 1] ^ baseWords[current]) >>> 0;
-      baseWords[current + 2] = (baseWords[prev + 2] ^ baseWords[current + 1]) >>> 0;
-      baseWords[current + 3] = (baseWords[prev + 3] ^ baseWords[current + 2]) >>> 0;
+      baseWords[current] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(baseWords[prev], rotated), SQUARE_RCON[round - 1]));
+      baseWords[current + 1] = OpCodes.ToUint32(OpCodes.Xor32(baseWords[prev + 1], baseWords[current]));
+      baseWords[current + 2] = OpCodes.ToUint32(OpCodes.Xor32(baseWords[prev + 2], baseWords[current + 1]));
+      baseWords[current + 3] = OpCodes.ToUint32(OpCodes.Xor32(baseWords[prev + 3], baseWords[current + 2]));
     }
 
     const encRoundKeys = baseWords.slice();
@@ -537,76 +537,64 @@
         throw new Error('Encryption round keys not initialised');
       }
 
-      let s0 = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]) >>> 0;
-      let s1 = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]) >>> 0;
-      let s2 = OpCodes.Pack32BE(block[8], block[9], block[10], block[11]) >>> 0;
-      let s3 = OpCodes.Pack32BE(block[12], block[13], block[14], block[15]) >>> 0;
+      let s0 = OpCodes.ToUint32(OpCodes.Pack32BE(block[0], block[1], block[2], block[3]));
+      let s1 = OpCodes.ToUint32(OpCodes.Pack32BE(block[4], block[5], block[6], block[7]));
+      let s2 = OpCodes.ToUint32(OpCodes.Pack32BE(block[8], block[9], block[10], block[11]));
+      let s3 = OpCodes.ToUint32(OpCodes.Pack32BE(block[12], block[13], block[14], block[15]));
 
       const roundKeys = this.encRoundKeys;
-      s0 ^= roundKeys[0];
-      s1 ^= roundKeys[1];
-      s2 ^= roundKeys[2];
-      s3 ^= roundKeys[3];
+      s0 = OpCodes.Xor32(s0, roundKeys[0]);
+      s1 = OpCodes.Xor32(s1, roundKeys[1]);
+      s2 = OpCodes.Xor32(s2, roundKeys[2]);
+      s3 = OpCodes.Xor32(s3, roundKeys[3]);
 
       for (let round = 1; round < SQUARE_ROUNDS; round++) {
         const rkOffset = round * 4;
-        const t0 = SQUARE_T_ENC[0][(s0 >>> 24) & 0xFF] ^
-                   SQUARE_T_ENC[1][(s1 >>> 24) & 0xFF] ^
-                   SQUARE_T_ENC[2][(s2 >>> 24) & 0xFF] ^
-                   SQUARE_T_ENC[3][(s3 >>> 24) & 0xFF] ^
-                   roundKeys[rkOffset];
-        const t1 = SQUARE_T_ENC[0][(s0 >>> 16) & 0xFF] ^
-                   SQUARE_T_ENC[1][(s1 >>> 16) & 0xFF] ^
-                   SQUARE_T_ENC[2][(s2 >>> 16) & 0xFF] ^
-                   SQUARE_T_ENC[3][(s3 >>> 16) & 0xFF] ^
-                   roundKeys[rkOffset + 1];
-        const t2 = SQUARE_T_ENC[0][(s0 >>> 8) & 0xFF] ^
-                   SQUARE_T_ENC[1][(s1 >>> 8) & 0xFF] ^
-                   SQUARE_T_ENC[2][(s2 >>> 8) & 0xFF] ^
-                   SQUARE_T_ENC[3][(s3 >>> 8) & 0xFF] ^
-                   roundKeys[rkOffset + 2];
-        const t3 = SQUARE_T_ENC[0][s0 & 0xFF] ^
-                   SQUARE_T_ENC[1][s1 & 0xFF] ^
-                   SQUARE_T_ENC[2][s2 & 0xFF] ^
-                   SQUARE_T_ENC[3][s3 & 0xFF] ^
-                   roundKeys[rkOffset + 3];
-        s0 = t0 >>> 0;
-        s1 = t1 >>> 0;
-        s2 = t2 >>> 0;
-        s3 = t3 >>> 0;
+        const t0 = SQUARE_T_ENC[0][(OpCodes.Shr32(s0, 24))&0xFF]^SQUARE_T_ENC[1][(OpCodes.Shr32(s1, 24))&0xFF]^SQUARE_T_ENC[2][(OpCodes.Shr32(s2, 24))&0xFF]^SQUARE_T_ENC[3][(OpCodes.Shr32(s3, 24))&0xFF]^roundKeys[rkOffset];
+        const t1 = SQUARE_T_ENC[0][(OpCodes.Shr32(s0, 16))&0xFF]^SQUARE_T_ENC[1][(OpCodes.Shr32(s1, 16))&0xFF]^SQUARE_T_ENC[2][(OpCodes.Shr32(s2, 16))&0xFF]^SQUARE_T_ENC[3][(OpCodes.Shr32(s3, 16))&0xFF]^roundKeys[rkOffset + 1];
+        const t2 = SQUARE_T_ENC[0][(OpCodes.Shr32(s0, 8))&0xFF]^SQUARE_T_ENC[1][(OpCodes.Shr32(s1, 8))&0xFF]^SQUARE_T_ENC[2][(OpCodes.Shr32(s2, 8))&0xFF]^SQUARE_T_ENC[3][(OpCodes.Shr32(s3, 8))&0xFF]^roundKeys[rkOffset + 2];
+        const t3 = SQUARE_T_ENC[0][s0&0xFF]^SQUARE_T_ENC[1][s1&0xFF]^SQUARE_T_ENC[2][s2&0xFF]^SQUARE_T_ENC[3][s3&0xFF]^roundKeys[rkOffset + 3];
+        s0 = OpCodes.ToUint32(t0);
+        s1 = OpCodes.ToUint32(t1);
+        s2 = OpCodes.ToUint32(t2);
+        s3 = OpCodes.ToUint32(t3);
       }
 
       const finalOffset = SQUARE_ROUNDS * 4;
       const r0 = OpCodes.Pack32BE(
-        SQUARE_SBOX[(s0 >>> 24) & 0xFF],
-        SQUARE_SBOX[(s1 >>> 24) & 0xFF],
-        SQUARE_SBOX[(s2 >>> 24) & 0xFF],
-        SQUARE_SBOX[(s3 >>> 24) & 0xFF]
-      ) ^ roundKeys[finalOffset];
+        SQUARE_SBOX[(OpCodes.Shr32(s0, 24))&0xFF],
+        SQUARE_SBOX[(OpCodes.Shr32(s1, 24))&0xFF],
+        SQUARE_SBOX[(OpCodes.Shr32(s2, 24))&0xFF],
+        SQUARE_SBOX[(OpCodes.Shr32(s3, 24))&0xFF]
+      );
+      const r0Final = OpCodes.Xor32(r0, roundKeys[finalOffset]);
       const r1 = OpCodes.Pack32BE(
-        SQUARE_SBOX[(s0 >>> 16) & 0xFF],
-        SQUARE_SBOX[(s1 >>> 16) & 0xFF],
-        SQUARE_SBOX[(s2 >>> 16) & 0xFF],
-        SQUARE_SBOX[(s3 >>> 16) & 0xFF]
-      ) ^ roundKeys[finalOffset + 1];
+        SQUARE_SBOX[(OpCodes.Shr32(s0, 16))&0xFF],
+        SQUARE_SBOX[(OpCodes.Shr32(s1, 16))&0xFF],
+        SQUARE_SBOX[(OpCodes.Shr32(s2, 16))&0xFF],
+        SQUARE_SBOX[(OpCodes.Shr32(s3, 16))&0xFF]
+      );
+      const r1Final = OpCodes.Xor32(r1, roundKeys[finalOffset + 1]);
       const r2 = OpCodes.Pack32BE(
-        SQUARE_SBOX[(s0 >>> 8) & 0xFF],
-        SQUARE_SBOX[(s1 >>> 8) & 0xFF],
-        SQUARE_SBOX[(s2 >>> 8) & 0xFF],
-        SQUARE_SBOX[(s3 >>> 8) & 0xFF]
-      ) ^ roundKeys[finalOffset + 2];
+        SQUARE_SBOX[(OpCodes.Shr32(s0, 8))&0xFF],
+        SQUARE_SBOX[(OpCodes.Shr32(s1, 8))&0xFF],
+        SQUARE_SBOX[(OpCodes.Shr32(s2, 8))&0xFF],
+        SQUARE_SBOX[(OpCodes.Shr32(s3, 8))&0xFF]
+      );
+      const r2Final = OpCodes.Xor32(r2, roundKeys[finalOffset + 2]);
       const r3 = OpCodes.Pack32BE(
-        SQUARE_SBOX[s0 & 0xFF],
-        SQUARE_SBOX[s1 & 0xFF],
-        SQUARE_SBOX[s2 & 0xFF],
-        SQUARE_SBOX[s3 & 0xFF]
-      ) ^ roundKeys[finalOffset + 3];
+        SQUARE_SBOX[s0&0xFF],
+        SQUARE_SBOX[s1&0xFF],
+        SQUARE_SBOX[s2&0xFF],
+        SQUARE_SBOX[s3&0xFF]
+      );
+      const r3Final = OpCodes.Xor32(r3, roundKeys[finalOffset + 3]);
 
       return [
-        ...OpCodes.Unpack32BE(r0 >>> 0),
-        ...OpCodes.Unpack32BE(r1 >>> 0),
-        ...OpCodes.Unpack32BE(r2 >>> 0),
-        ...OpCodes.Unpack32BE(r3 >>> 0)
+        ...OpCodes.Unpack32BE(OpCodes.ToUint32(r0Final)),
+        ...OpCodes.Unpack32BE(OpCodes.ToUint32(r1Final)),
+        ...OpCodes.Unpack32BE(OpCodes.ToUint32(r2Final)),
+        ...OpCodes.Unpack32BE(OpCodes.ToUint32(r3Final))
       ];
     }
 
@@ -615,76 +603,64 @@
         throw new Error('Decryption round keys not initialised');
       }
 
-      let s0 = OpCodes.Pack32BE(block[0], block[1], block[2], block[3]) >>> 0;
-      let s1 = OpCodes.Pack32BE(block[4], block[5], block[6], block[7]) >>> 0;
-      let s2 = OpCodes.Pack32BE(block[8], block[9], block[10], block[11]) >>> 0;
-      let s3 = OpCodes.Pack32BE(block[12], block[13], block[14], block[15]) >>> 0;
+      let s0 = OpCodes.ToUint32(OpCodes.Pack32BE(block[0], block[1], block[2], block[3]));
+      let s1 = OpCodes.ToUint32(OpCodes.Pack32BE(block[4], block[5], block[6], block[7]));
+      let s2 = OpCodes.ToUint32(OpCodes.Pack32BE(block[8], block[9], block[10], block[11]));
+      let s3 = OpCodes.ToUint32(OpCodes.Pack32BE(block[12], block[13], block[14], block[15]));
 
       const roundKeys = this.decRoundKeys;
-      s0 ^= roundKeys[0];
-      s1 ^= roundKeys[1];
-      s2 ^= roundKeys[2];
-      s3 ^= roundKeys[3];
+      s0 = OpCodes.Xor32(s0, roundKeys[0]);
+      s1 = OpCodes.Xor32(s1, roundKeys[1]);
+      s2 = OpCodes.Xor32(s2, roundKeys[2]);
+      s3 = OpCodes.Xor32(s3, roundKeys[3]);
 
       for (let round = 1; round < SQUARE_ROUNDS; round++) {
         const rkOffset = round * 4;
-        const t0 = SQUARE_T_DEC[0][(s0 >>> 24) & 0xFF] ^
-                   SQUARE_T_DEC[1][(s1 >>> 24) & 0xFF] ^
-                   SQUARE_T_DEC[2][(s2 >>> 24) & 0xFF] ^
-                   SQUARE_T_DEC[3][(s3 >>> 24) & 0xFF] ^
-                   roundKeys[rkOffset];
-        const t1 = SQUARE_T_DEC[0][(s0 >>> 16) & 0xFF] ^
-                   SQUARE_T_DEC[1][(s1 >>> 16) & 0xFF] ^
-                   SQUARE_T_DEC[2][(s2 >>> 16) & 0xFF] ^
-                   SQUARE_T_DEC[3][(s3 >>> 16) & 0xFF] ^
-                   roundKeys[rkOffset + 1];
-        const t2 = SQUARE_T_DEC[0][(s0 >>> 8) & 0xFF] ^
-                   SQUARE_T_DEC[1][(s1 >>> 8) & 0xFF] ^
-                   SQUARE_T_DEC[2][(s2 >>> 8) & 0xFF] ^
-                   SQUARE_T_DEC[3][(s3 >>> 8) & 0xFF] ^
-                   roundKeys[rkOffset + 2];
-        const t3 = SQUARE_T_DEC[0][s0 & 0xFF] ^
-                   SQUARE_T_DEC[1][s1 & 0xFF] ^
-                   SQUARE_T_DEC[2][s2 & 0xFF] ^
-                   SQUARE_T_DEC[3][s3 & 0xFF] ^
-                   roundKeys[rkOffset + 3];
-        s0 = t0 >>> 0;
-        s1 = t1 >>> 0;
-        s2 = t2 >>> 0;
-        s3 = t3 >>> 0;
+        const t0 = SQUARE_T_DEC[0][(OpCodes.Shr32(s0, 24))&0xFF]^SQUARE_T_DEC[1][(OpCodes.Shr32(s1, 24))&0xFF]^SQUARE_T_DEC[2][(OpCodes.Shr32(s2, 24))&0xFF]^SQUARE_T_DEC[3][(OpCodes.Shr32(s3, 24))&0xFF]^roundKeys[rkOffset];
+        const t1 = SQUARE_T_DEC[0][(OpCodes.Shr32(s0, 16))&0xFF]^SQUARE_T_DEC[1][(OpCodes.Shr32(s1, 16))&0xFF]^SQUARE_T_DEC[2][(OpCodes.Shr32(s2, 16))&0xFF]^SQUARE_T_DEC[3][(OpCodes.Shr32(s3, 16))&0xFF]^roundKeys[rkOffset + 1];
+        const t2 = SQUARE_T_DEC[0][(OpCodes.Shr32(s0, 8))&0xFF]^SQUARE_T_DEC[1][(OpCodes.Shr32(s1, 8))&0xFF]^SQUARE_T_DEC[2][(OpCodes.Shr32(s2, 8))&0xFF]^SQUARE_T_DEC[3][(OpCodes.Shr32(s3, 8))&0xFF]^roundKeys[rkOffset + 2];
+        const t3 = SQUARE_T_DEC[0][s0&0xFF]^SQUARE_T_DEC[1][s1&0xFF]^SQUARE_T_DEC[2][s2&0xFF]^SQUARE_T_DEC[3][s3&0xFF]^roundKeys[rkOffset + 3];
+        s0 = OpCodes.ToUint32(t0);
+        s1 = OpCodes.ToUint32(t1);
+        s2 = OpCodes.ToUint32(t2);
+        s3 = OpCodes.ToUint32(t3);
       }
 
       const finalOffset = SQUARE_ROUNDS * 4;
       const r0 = OpCodes.Pack32BE(
-        SQUARE_INV_SBOX[(s0 >>> 24) & 0xFF],
-        SQUARE_INV_SBOX[(s1 >>> 24) & 0xFF],
-        SQUARE_INV_SBOX[(s2 >>> 24) & 0xFF],
-        SQUARE_INV_SBOX[(s3 >>> 24) & 0xFF]
-      ) ^ roundKeys[finalOffset];
+        SQUARE_INV_SBOX[(OpCodes.Shr32(s0, 24))&0xFF],
+        SQUARE_INV_SBOX[(OpCodes.Shr32(s1, 24))&0xFF],
+        SQUARE_INV_SBOX[(OpCodes.Shr32(s2, 24))&0xFF],
+        SQUARE_INV_SBOX[(OpCodes.Shr32(s3, 24))&0xFF]
+      );
+      const r0Final = OpCodes.Xor32(r0, roundKeys[finalOffset]);
       const r1 = OpCodes.Pack32BE(
-        SQUARE_INV_SBOX[(s0 >>> 16) & 0xFF],
-        SQUARE_INV_SBOX[(s1 >>> 16) & 0xFF],
-        SQUARE_INV_SBOX[(s2 >>> 16) & 0xFF],
-        SQUARE_INV_SBOX[(s3 >>> 16) & 0xFF]
-      ) ^ roundKeys[finalOffset + 1];
+        SQUARE_INV_SBOX[(OpCodes.Shr32(s0, 16))&0xFF],
+        SQUARE_INV_SBOX[(OpCodes.Shr32(s1, 16))&0xFF],
+        SQUARE_INV_SBOX[(OpCodes.Shr32(s2, 16))&0xFF],
+        SQUARE_INV_SBOX[(OpCodes.Shr32(s3, 16))&0xFF]
+      );
+      const r1Final = OpCodes.Xor32(r1, roundKeys[finalOffset + 1]);
       const r2 = OpCodes.Pack32BE(
-        SQUARE_INV_SBOX[(s0 >>> 8) & 0xFF],
-        SQUARE_INV_SBOX[(s1 >>> 8) & 0xFF],
-        SQUARE_INV_SBOX[(s2 >>> 8) & 0xFF],
-        SQUARE_INV_SBOX[(s3 >>> 8) & 0xFF]
-      ) ^ roundKeys[finalOffset + 2];
+        SQUARE_INV_SBOX[(OpCodes.Shr32(s0, 8))&0xFF],
+        SQUARE_INV_SBOX[(OpCodes.Shr32(s1, 8))&0xFF],
+        SQUARE_INV_SBOX[(OpCodes.Shr32(s2, 8))&0xFF],
+        SQUARE_INV_SBOX[(OpCodes.Shr32(s3, 8))&0xFF]
+      );
+      const r2Final = OpCodes.Xor32(r2, roundKeys[finalOffset + 2]);
       const r3 = OpCodes.Pack32BE(
-        SQUARE_INV_SBOX[s0 & 0xFF],
-        SQUARE_INV_SBOX[s1 & 0xFF],
-        SQUARE_INV_SBOX[s2 & 0xFF],
-        SQUARE_INV_SBOX[s3 & 0xFF]
-      ) ^ roundKeys[finalOffset + 3];
+        SQUARE_INV_SBOX[s0&0xFF],
+        SQUARE_INV_SBOX[s1&0xFF],
+        SQUARE_INV_SBOX[s2&0xFF],
+        SQUARE_INV_SBOX[s3&0xFF]
+      );
+      const r3Final = OpCodes.Xor32(r3, roundKeys[finalOffset + 3]);
 
       return [
-        ...OpCodes.Unpack32BE(r0 >>> 0),
-        ...OpCodes.Unpack32BE(r1 >>> 0),
-        ...OpCodes.Unpack32BE(r2 >>> 0),
-        ...OpCodes.Unpack32BE(r3 >>> 0)
+        ...OpCodes.Unpack32BE(OpCodes.ToUint32(r0Final)),
+        ...OpCodes.Unpack32BE(OpCodes.ToUint32(r1Final)),
+        ...OpCodes.Unpack32BE(OpCodes.ToUint32(r2Final)),
+        ...OpCodes.Unpack32BE(OpCodes.ToUint32(r3Final))
       ];
     }
   }

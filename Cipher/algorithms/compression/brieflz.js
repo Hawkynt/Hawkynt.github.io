@@ -257,7 +257,7 @@
     putGamma(value) {
       // Encode value in gamma2 format
       // Format: interleaved bits from value's binary (minus leading 1) with continue flags
-      // Decoder: result=1; do { result=(result<<1)+bit } while(getBit())
+      // Decoder: result=1; do { result=(OpCodes.Shl32(result, 1))+bit } while(getBit())
 
       // Find bit length (position of MSB)
       let bitLen = 0;

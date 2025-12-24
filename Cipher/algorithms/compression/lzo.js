@@ -206,9 +206,9 @@
         while (inputPos < input.length) {
           const opcode = input[inputPos++];
 
-          if ((opcode & 0xF0) === 0x00) {
+          if ((opcode&0xF0) === 0x00) {
             // Literal run
-            let length = opcode & 0x0F;
+            let length = opcode&0x0F;
             if (length === 0) {
               // Extended length
               if (inputPos >= input.length) break;
@@ -221,12 +221,12 @@
             for (let i = 0; i < length && inputPos < input.length; i++) {
               output.push(input[inputPos++]);
             }
-          } else if ((opcode & 0xF0) === 0x10) {
+          } else if ((opcode&0xF0) === 0x10) {
             // Match with 16-bit offset
             if (inputPos + 1 >= input.length) break;
 
-            const length = (opcode & 0x0F) + 3;
-            const offset = (input[inputPos] << 8) | input[inputPos + 1];
+            const length = (opcode&0x0F) + 3;
+            const offset = (OpCodes.Shl32(input[inputPos], 8))|input[inputPos + 1];
             inputPos += 2;
 
             if (offset === 0) break; // End marker
@@ -284,7 +284,7 @@
 
       _hash(input, pos) {
         if (pos + 2 >= input.length) return 0;
-        return ((input[pos] << 8) ^ (input[pos + 1] << 4) ^ input[pos + 2]) & (this.HASH_SIZE - 1);
+        return ((OpCodes.Shl32(input[pos], 8))^(OpCodes.Shl32(input[pos + 1], 4))^input[pos + 2])&(this.HASH_SIZE - 1);
       }
 
       _updateHash(hashTable, input, pos) {
@@ -311,7 +311,7 @@
 
       _encodeMatch(output, offset, length) {
         if (length >= 3 && length <= 18 && offset <= 0xFFFF) {
-          output.push(0x10 | (length - 3));
+          output.push(0x10|(length - 3));
           const [high, low] = OpCodes.Unpack16BE(offset);
           output.push(high);
           output.push(low);

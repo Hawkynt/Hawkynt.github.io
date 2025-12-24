@@ -163,10 +163,10 @@
       for (let i = 0; i < 256; i++) {
         // Use a combination of the index and seed values to generate S-box entries
         const bi = BigInt(i);
-        this.t1[i] = seeds[0] ^ bi ^ (bi << 8n) ^ (bi << 16n);
-        this.t2[i] = seeds[1] ^ bi ^ (bi << 12n) ^ (bi << 24n);
-        this.t3[i] = seeds[2] ^ bi ^ (bi << 4n) ^ (bi << 20n);
-        this.t4[i] = seeds[3] ^ bi ^ (bi << 6n) ^ (bi << 28n);
+        this.t1[i] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(seeds[0], bi), OpCodes.ShiftLn(bi, 8n)), OpCodes.ShiftLn(bi, 16n));
+        this.t2[i] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(seeds[1], bi), OpCodes.ShiftLn(bi, 12n)), OpCodes.ShiftLn(bi, 24n));
+        this.t3[i] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(seeds[2], bi), OpCodes.ShiftLn(bi, 4n)), OpCodes.ShiftLn(bi, 20n));
+        this.t4[i] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(seeds[3], bi), OpCodes.ShiftLn(bi, 6n)), OpCodes.ShiftLn(bi, 28n));
       }
     }
 
@@ -190,21 +190,21 @@
      * 64-bit addition using BigInt
      */
     add64(a, b) {
-      return (a + b) & 0xFFFFFFFFFFFFFFFFn;
+      return OpCodes.AndN(a + b, 0xFFFFFFFFFFFFFFFFn);
     }
 
     /**
      * 64-bit subtraction using BigInt
      */
     subtract64(a, b) {
-      return (a - b) & 0xFFFFFFFFFFFFFFFFn;
+      return OpCodes.AndN(a - b, 0xFFFFFFFFFFFFFFFFn);
     }
 
     /**
      * 64-bit XOR operation using BigInt
      */
     xor64(a, b) {
-      return a ^ b;
+      return OpCodes.XorN(a, b);
     }
 
     /**
@@ -224,7 +224,7 @@
         let word = 0n;
         for (let j = 0; j < 8; j++) {
           const byte = BigInt(bytes[i + j] || 0);
-          word |= byte << BigInt(j * 8);
+          word = OpCodes.OrN(word, OpCodes.ShiftLn(byte, BigInt(j * 8)));
         }
         words.push(word);
       }
@@ -242,7 +242,7 @@
         // Manual unpacking of BigInt to bytes (little-endian)
         const word = words[i];
         for (let j = 0; j < 8 && byteIndex < length; j++) {
-          bytes[byteIndex++] = Number((word >> BigInt(j * 8)) & 0xFFn);
+          bytes[byteIndex++] = Number(OpCodes.AndN(OpCodes.ShiftRn(word, BigInt(j * 8)), 0xFFn));
         }
       }
 
@@ -258,10 +258,10 @@
         c = this.xor64(c, x[i]);
 
         // Extract bytes for S-box lookups
-        const byte0 = Number(c & 0xFFn);
-        const byte2 = Number((c >> 16n) & 0xFFn);
-        const byte4 = Number((c >> 32n) & 0xFFn);
-        const byte6 = Number((c >> 48n) & 0xFFn);
+        const byte0 = Number(OpCodes.AndN(c, 0xFFn));
+        const byte2 = Number(OpCodes.AndN(OpCodes.ShiftRn(c, 16n), 0xFFn));
+        const byte4 = Number(OpCodes.AndN(OpCodes.ShiftRn(c, 32n), 0xFFn));
+        const byte6 = Number(OpCodes.AndN(OpCodes.ShiftRn(c, 48n), 0xFFn));
 
         // S-box lookups using full 256-entry tables
         const s1 = this.t1[byte0];
@@ -270,8 +270,8 @@
         const s4 = this.t4[byte6];
 
         // Tiger round operations
-        a = this.subtract64(a, s1 ^ s2);
-        b = this.add64(b, s3 ^ s4);
+        a = this.subtract64(a, OpCodes.XorN(s1, s2));
+        b = this.add64(b, OpCodes.XorN(s3, s4));
         b = this.rotl64(b, 19);
 
         // Rotate state (a, b, c) -> (c, a, b)
@@ -297,7 +297,7 @@
           x[i] = this.subtract64(x[i], x[(i + 7) % 8]);
           x[i] = this.xor64(x[i], this.rotl64(x[(i + 7) % 8], 45));
           // Apply Tiger multiplier
-          x[i] = (x[i] * mult) & 0xFFFFFFFFFFFFFFFFn;
+          x[i] = OpCodes.AndN(x[i] * mult, 0xFFFFFFFFFFFFFFFFn);
         }
       }
       return x;
@@ -348,7 +348,7 @@
       if (typeof data === 'string') {
         const bytes = [];
         for (let i = 0; i < data.length; i++) {
-          bytes.push(OpCodes.AndN(data.charCodeAt(i), 0xFF));
+          bytes.push(OpCodes.ToByte(data.charCodeAt(i)));
         }
         data = bytes;
       }
@@ -399,7 +399,7 @@
 
       // Append length as 64-bit little-endian
       for (let i = 0; i < 8; i++) {
-        padding.push(Number((bitLength >> BigInt(i * 8)) & 0xFFn));
+        padding.push(Number(OpCodes.AndN(OpCodes.ShiftRn(bitLength, BigInt(i * 8)), 0xFFn)));
       }
 
       this.Update(padding);

@@ -197,7 +197,7 @@
     generateCodebook() {
       // Preparata code construction using cosets of RM(1,m)
       const m = this._m;
-      const n = 1 << m; // 2^m
+      const n = OpCodes.Shl32(1, m); // 2^m
       const k = n - 2 * m - 1; // Number of information bits
 
       const codebook = [];
@@ -207,13 +207,13 @@
 
       // Base coset: RM(1,m) codewords (message includes constant and m linear terms)
       const rmK = 1 + m;
-      const numRMCodewords = 1 << rmK;
+      const numRMCodewords = OpCodes.Shl32(1, rmK);
 
-      for (let msg = 0; msg < (1 << k); ++msg) {
+      for (let msg = 0; msg < (OpCodes.Shl32(1, k)); ++msg) {
         // Map k-bit message to n-bit codeword
         // Use first rmK bits for RM encoding, rest for coset selection
-        const rmBits = msg & ((1 << rmK) - 1);
-        const cosetBits = msg >> rmK;
+        const rmBits = msg&((OpCodes.Shl32(1, rmK)) - 1);
+        const cosetBits = OpCodes.Shr32(msg, rmK);
 
         const rmCodeword = this.rmEncode(rmBits, m);
 
@@ -231,22 +231,22 @@
 
     rmEncode(msg, m) {
       // First-order Reed-Muller encoding
-      const n = 1 << m;
+      const n = OpCodes.Shl32(1, m);
       const codeword = new Array(n).fill(0);
 
       // Constant term
-      if (msg & 1) {
+      if (msg&1) {
         for (let i = 0; i < n; ++i) {
-          codeword[i] ^= 1;
+          codeword[i] = OpCodes.Xor32(codeword[i], 1);
         }
       }
 
       // Linear terms
       for (let var_idx = 0; var_idx < m; ++var_idx) {
-        if ((msg >> (var_idx + 1)) & 1) {
+        if ((OpCodes.Shr32(msg, var_idx + 1))&1) {
           for (let i = 0; i < n; ++i) {
-            if ((i >> (m - 1 - var_idx)) & 1) {
-              codeword[i] ^= 1;
+            if ((OpCodes.Shr32(i, m - 1 - var_idx))&1) {
+              codeword[i] = OpCodes.Xor32(codeword[i], 1);
             }
           }
         }
@@ -257,7 +257,7 @@
 
     applyCoset(codeword, cosetBits, m) {
       // Apply coset transformation based on cosetBits
-      const n = 1 << m;
+      const n = OpCodes.Shl32(1, m);
       const result = [...codeword];
 
       // Simplified coset application
@@ -265,11 +265,11 @@
       const numCosetBits = n - 2 * m - 1 - (1 + m);
 
       for (let i = 0; i < numCosetBits && i < n; ++i) {
-        if ((cosetBits >> i) & 1) {
+        if ((OpCodes.Shr32(cosetBits, i))&1) {
           // Apply i-th coset leader (simplified)
           const pattern = (i * 17 + 5) % n; // Pseudo-random pattern
-          result[pattern] ^= 1;
-          result[(pattern + n / 2) % n] ^= 1;
+          result[pattern] = OpCodes.Xor32(result[pattern], 1);
+          result[(pattern + n / 2) % n] = OpCodes.Xor32(result[(pattern + n / 2) % n], 1);
         }
       }
 
@@ -277,7 +277,7 @@
     }
 
     encode(data) {
-      const k = (1 << this._m) - 2 * this._m - 1;
+      const k = OpCodes.Shl32(1, this._m) - 2 * this._m - 1;
 
       if (data.length !== k) {
         throw new Error(`Preparata encode: Input must be exactly ${k} bits for m=${this._m}`);
@@ -286,7 +286,7 @@
       // Convert data to index
       let index = 0;
       for (let i = 0; i < k; ++i) {
-        index = (index << 1) | data[i];
+        index = OpCodes.Shl32(index, 1)|data[i];
       }
 
       if (index >= this.codebook.length) {
@@ -297,7 +297,7 @@
     }
 
     decode(data) {
-      const n = 1 << this._m;
+      const n = OpCodes.Shl32(1, this._m);
       const k = n - 2 * this._m - 1;
 
       if (data.length !== n) {
@@ -325,14 +325,14 @@
       // Convert index back to bit array
       const decoded = [];
       for (let i = k - 1; i >= 0; --i) {
-        decoded.push((bestIndex >> i) & 1);
+        decoded.push((OpCodes.Shr32(bestIndex, i))&1);
       }
 
       return decoded;
     }
 
     DetectError(data) {
-      const n = 1 << this._m;
+      const n = OpCodes.Shl32(1, this._m);
       if (data.length !== n) return true;
 
       // Check if received word is valid codeword

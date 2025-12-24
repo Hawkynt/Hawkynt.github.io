@@ -106,7 +106,7 @@
           "http://simul.iro.umontreal.ca/testu01/tu01.html"
         ),
         new LinkItem(
-          "L'Ecuyer & Simard: TestU01 Paper (2007)",
+          "L'Ecuyer&Simard: TestU01 Paper (2007)",
           "https://dl.acm.org/doi/10.1145/1268776.1268777"
         ),
         new LinkItem(
@@ -275,9 +275,9 @@
     _bytesToBigInt64(bytes) {
       let result = 0n;
       for (let i = 0; i < 8; ++i) {
-        result = (result << 8n) | BigInt(bytes[i] & 0xFF);
+        result = OpCodes.OrN(result << 8n, BigInt(OpCodes.ToByte(bytes[i])));
       }
-      return result & 0xFFFFFFFFFFFFFFFFn;
+      return OpCodes.AndN(result, 0xFFFFFFFFFFFFFFFFn);
     }
 
     /**
@@ -285,9 +285,9 @@
      */
     _bigInt64ToBytes(value) {
       const bytes = [];
-      let val = value & 0xFFFFFFFFFFFFFFFFn;
+      let val = OpCodes.AndN(value, 0xFFFFFFFFFFFFFFFFn);
       for (let i = 7; i >= 0; --i) {
-        bytes[i] = Number(val & 0xFFn);
+        bytes[i] = Number(OpCodes.AndN(val, 0xFFn));
         val >>= 8n;
       }
       return bytes;
@@ -303,27 +303,27 @@
       }
 
       // Component 0: period 2^63 - 1
-      let b = ((this._z0 << 1n) ^ this._z0) >> 53n;
-      this._z0 = ((this._z0 & 0xFFFFFFFFFFFFFFFEn) << 10n) ^ b;
+      let b = OpCodes.XorN(this._z0 << 1n, this._z0) >> 53n;
+      this._z0 = OpCodes.XorN(OpCodes.AndN(this._z0, 0xFFFFFFFFFFFFFFFEn) << 10n, b);
 
       // Component 1: period 2^55 - 1
-      b = ((this._z1 << 24n) ^ this._z1) >> 50n;
-      this._z1 = ((this._z1 & 0xFFFFFFFFFFFFFE00n) << 5n) ^ b;
+      b = OpCodes.XorN(this._z1 << 24n, this._z1) >> 50n;
+      this._z1 = OpCodes.XorN(OpCodes.AndN(this._z1, 0xFFFFFFFFFFFFFE00n) << 5n, b);
 
       // Component 2: period 2^52 - 1
-      b = ((this._z2 << 3n) ^ this._z2) >> 23n;
-      this._z2 = ((this._z2 & 0xFFFFFFFFFFFFF000n) << 29n) ^ b;
+      b = OpCodes.XorN(this._z2 << 3n, this._z2) >> 23n;
+      this._z2 = OpCodes.XorN(OpCodes.AndN(this._z2, 0xFFFFFFFFFFFFF000n) << 29n, b);
 
       // Component 3: period 2^47 - 1
-      b = ((this._z3 << 5n) ^ this._z3) >> 24n;
-      this._z3 = ((this._z3 & 0xFFFFFFFFFFFE0000n) << 23n) ^ b;
+      b = OpCodes.XorN(this._z3 << 5n, this._z3) >> 24n;
+      this._z3 = OpCodes.XorN(OpCodes.AndN(this._z3, 0xFFFFFFFFFFFE0000n) << 23n, b);
 
       // Component 4: period 2^41 - 1
-      b = ((this._z4 << 3n) ^ this._z4) >> 33n;
-      this._z4 = ((this._z4 & 0xFFFFFFFFFF800000n) << 8n) ^ b;
+      b = OpCodes.XorN(this._z4 << 3n, this._z4) >> 33n;
+      this._z4 = OpCodes.XorN(OpCodes.AndN(this._z4, 0xFFFFFFFFFF800000n) << 8n, b);
 
       // XOR all components and mask to 64 bits
-      const result = (this._z0 ^ this._z1 ^ this._z2 ^ this._z3 ^ this._z4) & 0xFFFFFFFFFFFFFFFFn;
+      const result = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(this._z0, this._z1), this._z2), this._z3), this._z4), 0xFFFFFFFFFFFFFFFFn);
       return result;
     }
 
@@ -333,7 +333,7 @@
      */
     _next32() {
       const value64 = this._nextNumber();
-      return Number((value64 >> 32n) & 0xFFFFFFFFn);
+      return Number(OpCodes.AndN(value64 >> 32n, 0xFFFFFFFFn));
     }
 
     /**
@@ -360,7 +360,7 @@
 
         // Pack bytes in little-endian order (LSB first)
         for (let i = 0; i < chunk; ++i) {
-          output.push((value >> (i * 8)) & 0xFF);
+          output.push(OpCodes.ToByte(value >>> (i * 8)));
         }
 
         remaining -= chunk;

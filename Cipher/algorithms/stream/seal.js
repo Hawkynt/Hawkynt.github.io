@@ -271,7 +271,7 @@
 
       // Extend the sixteen 32-bit words into eighty 32-bit words
       for (let t = 16; t < 80; t++) {
-        W[t] = OpCodes.RotL32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(W[t-3], W[t-8]), W[t-14]), W[t-16]), 1);
+        W[t] = OpCodes.RotL32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(W[t-3], W[t-8]), W[t-14]), W[t-16]), 1);
       }
 
       // Initialize working variables
@@ -282,20 +282,20 @@
         let f, k;
 
         if (t < 20) {
-          f = OpCodes.OrN(OpCodes.AndN(b, c), OpCodes.AndN(~b, d));
+          f = OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(OpCodes.ToUint32(OpCodes.Not32(b)), d));
           k = K[0];
         } else if (t < 40) {
-          f = OpCodes.XorN(OpCodes.XorN(b, c), d);
+          f = OpCodes.Xor32(OpCodes.Xor32(b, c), d);
           k = K[1];
         } else if (t < 60) {
-          f = OpCodes.OrN(OpCodes.OrN(OpCodes.AndN(b, c), OpCodes.AndN(b, d)), OpCodes.AndN(c, d));
+          f = OpCodes.Or32(OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(b, d)), OpCodes.And32(c, d));
           k = K[2];
         } else {
-          f = OpCodes.XorN(OpCodes.XorN(b, c), d);
+          f = OpCodes.Xor32(OpCodes.Xor32(b, c), d);
           k = K[3];
         }
 
-        const temp = (OpCodes.RotL32(a, 5) + f + e + k + W[t]) >>> 0;
+        const temp = OpCodes.ToUint32(OpCodes.RotL32(a, 5) + f + e + k + W[t]);
         e = d;
         d = c;
         c = OpCodes.RotL32(b, 30);
@@ -304,11 +304,11 @@
       }
 
       // Add working variables to state
-      state[0] = (state[0] + a) >>> 0;
-      state[1] = (state[1] + b) >>> 0;
-      state[2] = (state[2] + c) >>> 0;
-      state[3] = (state[3] + d) >>> 0;
-      state[4] = (state[4] + e) >>> 0;
+      state[0] = OpCodes.ToUint32((state[0] + a));
+      state[1] = OpCodes.ToUint32((state[1] + b));
+      state[2] = OpCodes.ToUint32((state[2] + c));
+      state[3] = OpCodes.ToUint32((state[3] + d));
+      state[4] = OpCodes.ToUint32((state[4] + e));
     }
 
     /**
@@ -374,27 +374,27 @@
      * Generate 1024 bytes (256 words) of keystream
      */
     _generateKeystream() {
-      let a = OpCodes.XorN(this.outsideCounter, this.R[4 * this.insideCounter]);
-      let b = OpCodes.XorN(OpCodes.RotR32(this.outsideCounter, 8), this.R[4 * this.insideCounter + 1]);
-      let c = OpCodes.XorN(OpCodes.RotR32(this.outsideCounter, 16), this.R[4 * this.insideCounter + 2]);
-      let d = OpCodes.XorN(OpCodes.RotR32(this.outsideCounter, 24), this.R[4 * this.insideCounter + 3]);
+      let a = OpCodes.Xor32(this.outsideCounter, this.R[4 * this.insideCounter]);
+      let b = OpCodes.Xor32(OpCodes.RotR32(this.outsideCounter, 8), this.R[4 * this.insideCounter + 1]);
+      let c = OpCodes.Xor32(OpCodes.RotR32(this.outsideCounter, 16), this.R[4 * this.insideCounter + 2]);
+      let d = OpCodes.Xor32(OpCodes.RotR32(this.outsideCounter, 24), this.R[4 * this.insideCounter + 3]);
 
       // Two rounds of Feistel-like mixing
       for (let j = 0; j < 2; j++) {
-        let p = OpCodes.AndN(a, 0x7fc);
-        b = OpCodes.Add32(b, this.T[p >>> 2]);
+        let p = OpCodes.And32(a, 0x7fc);
+        b = OpCodes.Add32(b, this.T[OpCodes.Shr32(p, 2)]);
         a = OpCodes.RotR32(a, 9);
 
-        p = OpCodes.AndN(b, 0x7fc);
-        c = OpCodes.Add32(c, this.T[p >>> 2]);
+        p = OpCodes.And32(b, 0x7fc);
+        c = OpCodes.Add32(c, this.T[OpCodes.Shr32(p, 2)]);
         b = OpCodes.RotR32(b, 9);
 
-        p = OpCodes.AndN(c, 0x7fc);
-        d = OpCodes.Add32(d, this.T[p >>> 2]);
+        p = OpCodes.And32(c, 0x7fc);
+        d = OpCodes.Add32(d, this.T[OpCodes.Shr32(p, 2)]);
         c = OpCodes.RotR32(c, 9);
 
-        p = OpCodes.AndN(d, 0x7fc);
-        a = OpCodes.Add32(a, this.T[p >>> 2]);
+        p = OpCodes.And32(d, 0x7fc);
+        a = OpCodes.Add32(a, this.T[OpCodes.Shr32(p, 2)]);
         d = OpCodes.RotR32(d, 9);
       }
 
@@ -402,66 +402,66 @@
       const n1 = d, n2 = b, n3 = a, n4 = c;
 
       // One more round
-      let p = OpCodes.AndN(a, 0x7fc);
-      b = OpCodes.Add32(b, this.T[p >>> 2]);
+      let p = OpCodes.And32(a, 0x7fc);
+      b = OpCodes.Add32(b, this.T[OpCodes.Shr32(p, 2)]);
       a = OpCodes.RotR32(a, 9);
 
-      p = OpCodes.AndN(b, 0x7fc);
-      c = OpCodes.Add32(c, this.T[p >>> 2]);
+      p = OpCodes.And32(b, 0x7fc);
+      c = OpCodes.Add32(c, this.T[OpCodes.Shr32(p, 2)]);
       b = OpCodes.RotR32(b, 9);
 
-      p = OpCodes.AndN(c, 0x7fc);
-      d = OpCodes.Add32(d, this.T[p >>> 2]);
+      p = OpCodes.And32(c, 0x7fc);
+      d = OpCodes.Add32(d, this.T[OpCodes.Shr32(p, 2)]);
       c = OpCodes.RotR32(c, 9);
 
-      p = OpCodes.AndN(d, 0x7fc);
-      a = OpCodes.Add32(a, this.T[p >>> 2]);
+      p = OpCodes.And32(d, 0x7fc);
+      a = OpCodes.Add32(a, this.T[OpCodes.Shr32(p, 2)]);
       d = OpCodes.RotR32(d, 9);
 
       // Generate 8192 bits (1024 bytes) of keystream
       const output = [];
       for (let i = 0; i < 64; i++) {
-        p = OpCodes.AndN(a, 0x7fc);
+        p = OpCodes.And32(a, 0x7fc);
         a = OpCodes.RotR32(a, 9);
-        b = OpCodes.Add32(b, this.T[p >>> 2]);
-        b = OpCodes.XorN(b, a);
+        b = OpCodes.Add32(b, this.T[OpCodes.Shr32(p, 2)]);
+        b = OpCodes.Xor32(b, a);
 
-        let q = OpCodes.AndN(b, 0x7fc);
+        let q = OpCodes.And32(b, 0x7fc);
         b = OpCodes.RotR32(b, 9);
-        c = OpCodes.XorN(c, this.T[q >>> 2]);
+        c = OpCodes.Xor32(c, this.T[OpCodes.Shr32(q, 2)]);
         c = OpCodes.Add32(c, b);
 
-        p = OpCodes.AndN(p + c, 0x7fc);
+        p = OpCodes.And32((p + c), 0x7fc);
         c = OpCodes.RotR32(c, 9);
-        d = OpCodes.Add32(d, this.T[p >>> 2]);
-        d = OpCodes.XorN(d, c);
+        d = OpCodes.Add32(d, this.T[OpCodes.Shr32(p, 2)]);
+        d = OpCodes.Xor32(d, c);
 
-        q = OpCodes.AndN(q + d, 0x7fc);
+        q = OpCodes.And32((q + d), 0x7fc);
         d = OpCodes.RotR32(d, 9);
-        a = OpCodes.XorN(a, this.T[q >>> 2]);
+        a = OpCodes.Xor32(a, this.T[OpCodes.Shr32(q, 2)]);
         a = OpCodes.Add32(a, d);
 
-        p = OpCodes.AndN(p + a, 0x7fc);
-        b = OpCodes.XorN(b, this.T[p >>> 2]);
+        p = OpCodes.And32((p + a), 0x7fc);
+        b = OpCodes.Xor32(b, this.T[OpCodes.Shr32(p, 2)]);
         a = OpCodes.RotR32(a, 9);
 
-        q = OpCodes.AndN(q + b, 0x7fc);
-        c = OpCodes.Add32(c, this.T[q >>> 2]);
+        q = OpCodes.And32((q + b), 0x7fc);
+        c = OpCodes.Add32(c, this.T[OpCodes.Shr32(q, 2)]);
         b = OpCodes.RotR32(b, 9);
 
-        p = OpCodes.AndN(p + c, 0x7fc);
-        d = OpCodes.XorN(d, this.T[p >>> 2]);
+        p = OpCodes.And32((p + c), 0x7fc);
+        d = OpCodes.Xor32(d, this.T[OpCodes.Shr32(p, 2)]);
         c = OpCodes.RotR32(c, 9);
 
-        q = OpCodes.AndN(q + d, 0x7fc);
+        q = OpCodes.And32((q + d), 0x7fc);
         d = OpCodes.RotR32(d, 9);
-        a = OpCodes.Add32(a, this.T[q >>> 2]);
+        a = OpCodes.Add32(a, this.T[OpCodes.Shr32(q, 2)]);
 
         // Output 4 words with S-box mixing
         const w1 = OpCodes.Add32(b, this.S[4 * i + 0]);
-        const w2 = OpCodes.XorN(c, this.S[4 * i + 1]);
+        const w2 = OpCodes.Xor32(c, this.S[4 * i + 1]);
         const w3 = OpCodes.Add32(d, this.S[4 * i + 2]);
-        const w4 = OpCodes.XorN(a, this.S[4 * i + 3]);
+        const w4 = OpCodes.Xor32(a, this.S[4 * i + 3]);
 
         // Convert to bytes based on endianness
         if (this.isBigEndian) {
@@ -477,22 +477,22 @@
         }
 
         // Mix in saved values (alternating pattern)
-        if (OpCodes.AndN(i, 1)) {
+        if (OpCodes.And32(i, 1)) {
           a = OpCodes.Add32(a, n3);
           b = OpCodes.Add32(b, n4);
-          c = OpCodes.XorN(c, n3);
-          d = OpCodes.XorN(d, n4);
+          c = OpCodes.Xor32(c, n3);
+          d = OpCodes.Xor32(d, n4);
         } else {
           a = OpCodes.Add32(a, n1);
           b = OpCodes.Add32(b, n2);
-          c = OpCodes.XorN(c, n1);
-          d = OpCodes.XorN(d, n2);
+          c = OpCodes.Xor32(c, n1);
+          d = OpCodes.Xor32(d, n2);
         }
       }
 
       // Update counters
       if (++this.insideCounter === this.iterationsPerCount) {
-        this.outsideCounter = (this.outsideCounter + 1) >>> 0;
+        this.outsideCounter = OpCodes.ToUint32((this.outsideCounter + 1));
         this.insideCounter = 0;
       }
 
@@ -537,7 +537,7 @@
       const output = [];
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._getNextKeystreamByte();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor32(this.inputBuffer[i], keystreamByte));
       }
 
       this.inputBuffer = [];

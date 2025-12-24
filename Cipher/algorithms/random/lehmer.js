@@ -1,6 +1,6 @@
 /*
  * Lehmer RNG (Park-Miller Minimal Standard)
- * By D. H. Lehmer (1951), refined by Park & Miller (1988)
+ * By D. H. Lehmer (1951), refined by Park and Miller (1988)
  *
  * Pure multiplicative LCG using Schrage's method to avoid overflow
  * X(n+1) = (a × X(n)) mod m where a=16807, m=2^31-1
@@ -54,7 +54,7 @@
       // Required metadata
       this.name = "Lehmer RNG (Park-Miller)";
       this.description = "A multiplicative linear congruential generator using the Park-Miller minimal standard parameters. Uses Schrage's method to avoid overflow with the recurrence X(n+1) = (16807 × X(n)) mod (2^31-1). Despite being a minimal standard in 1988, it has known statistical weaknesses and should only be used for educational purposes.";
-      this.inventor = "D. H. Lehmer (refined by Park & Miller)";
+      this.inventor = "D. H. Lehmer (refined by Park and Miller)";
       this.year = 1951;
       this.category = CategoryType.RANDOM;
       this.subCategory = "Linear Congruential Generator";
@@ -70,7 +70,7 @@
       // Documentation
       this.documentation = [
         new LinkItem(
-          "Park & Miller (1988): Random Number Generators: Good Ones Are Hard to Find",
+          "Park and Miller (1988): Random Number Generators: Good Ones Are Hard to Find",
           "https://doi.org/10.1145/63039.63042"
         ),
         new LinkItem(
@@ -102,7 +102,7 @@
         )
       ];
 
-      // Test vectors from official Park & Miller 1988 paper
+      // Test vectors from official Park&Miller 1988 paper
       // Source: "Random Number Generators: Good Ones Are Hard to Find"
       // The canonical test: seed=1, after 10,000 iterations yields 1043618065
       this.tests = [
@@ -197,7 +197,7 @@
       // Convert seed bytes to 32-bit integer (big-endian)
       let seedValue = 0;
       for (let i = 0; i < seedBytes.length && i < 4; ++i) {
-        seedValue = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(seedValue, 8), seedBytes[i]));
+        seedValue = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(seedValue, 8), seedBytes[i]));
       }
 
       // Validate seed is in valid range [1, MODULUS-1]
@@ -205,7 +205,7 @@
         throw new Error('Lehmer RNG seed must be in range [1, 2147483646]');
       }
 
-      this._state = OpCodes.ToUint32(seedValue); // Ensure unsigned 32-bit
+      this._state = seedValue;
       this._ready = true;
     }
 

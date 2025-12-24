@@ -353,7 +353,7 @@
 
     /**
      * Encode data using RS(7,3) over GF(4)
-     * Systematic encoding: output = [data | parity]
+     * Systematic encoding: output = [data|parity]
      *
      * @param {Array} data - k=3 data symbols
      * @returns {Array} n=7 encoded symbols

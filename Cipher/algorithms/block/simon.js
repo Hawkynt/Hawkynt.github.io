@@ -342,7 +342,7 @@
 
       // Generate remaining round keys using Simon key schedule for m=4
       // k_i = c XOR (z3)_{i-m} XOR k_{i-m} XOR ((k_{i-1} rotR 3) XOR k_{i-3} XOR ((k_{i-1} rotR 3) XOR k_{i-3}) rotR 1)
-      const c = 0xfffffffc;  // 2^32 - 4
+      const c = 0xfffffffc;  // OpCodes.Xor32(2, 32) - 4
       const z3Sequence = SimonCipher.getZ3Sequence();
 
       for (let i = this.algorithm.m; i < this.algorithm.ROUNDS; i++) {

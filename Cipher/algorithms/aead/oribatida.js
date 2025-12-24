@@ -74,33 +74,28 @@
   // ===== 48-BIT HELPER FUNCTIONS (for SimP-192) =====
 
   function load48BE(bytes, offset) {
-    return (BigInt(bytes[offset]) << 40n) |
-           (BigInt(bytes[offset + 1]) << 32n) |
-           (BigInt(bytes[offset + 2]) << 24n) |
-           (BigInt(bytes[offset + 3]) << 16n) |
-           (BigInt(bytes[offset + 4]) << 8n) |
-           BigInt(bytes[offset + 5]);
+    return (BigInt(bytes[offset]) << 40n)|(BigInt(bytes[offset + 1]) << 32n)|(BigInt(bytes[offset + 2]) << 24n)|(BigInt(bytes[offset + 3]) << 16n)|(BigInt(bytes[offset + 4]) << 8n)|BigInt(bytes[offset + 5]);
   }
 
   function store48BE(bytes, offset, value) {
-    bytes[offset] = Number((value >> 40n) & 0xFFn);
-    bytes[offset + 1] = Number((value >> 32n) & 0xFFn);
-    bytes[offset + 2] = Number((value >> 24n) & 0xFFn);
-    bytes[offset + 3] = Number((value >> 16n) & 0xFFn);
-    bytes[offset + 4] = Number((value >> 8n) & 0xFFn);
-    bytes[offset + 5] = Number(value & 0xFFn);
+    bytes[offset] = Number((value >> 40n)&0xFFn);
+    bytes[offset + 1] = Number((value >> 32n)&0xFFn);
+    bytes[offset + 2] = Number((value >> 24n)&0xFFn);
+    bytes[offset + 3] = Number((value >> 16n)&0xFFn);
+    bytes[offset + 4] = Number((value >> 8n)&0xFFn);
+    bytes[offset + 5] = Number(value&0xFFn);
   }
 
   function rotl48(value, positions) {
     positions = positions % 48;
     const mask = (1n << 48n) - 1n;
-    return ((value << BigInt(positions)) | (value >> BigInt(48 - positions))) & mask;
+    return ((value << BigInt(positions))|(value >> BigInt(48 - positions)))&mask;
   }
 
   function rotr48(value, positions) {
     positions = positions % 48;
     const mask = (1n << 48n) - 1n;
-    return ((value >> BigInt(positions)) | (value << BigInt(48 - positions))) & mask;
+    return ((value >> BigInt(positions))|(value << BigInt(48 - positions)))&mask;
   }
 
   // ===== 64-BIT HELPER FUNCTIONS (for SimP-256) =====
@@ -109,38 +104,31 @@
     positions = positions % 64;
     if (positions === 0) return value;
     const mask = (1n << 64n) - 1n;
-    return ((value << BigInt(positions)) | (value >> BigInt(64 - positions))) & mask;
+    return ((value << BigInt(positions))|(value >> BigInt(64 - positions)))&mask;
   }
 
   function rotr64(value, positions) {
     positions = positions % 64;
     if (positions === 0) return value;
     const mask = (1n << 64n) - 1n;
-    return ((value >> BigInt(positions)) | (value << BigInt(64 - positions))) & mask;
+    return ((value >> BigInt(positions))|(value << BigInt(64 - positions)))&mask;
   }
 
   function load64BE(bytes, offset) {
     return (
-      (BigInt(bytes[offset]) << 56n) |
-      (BigInt(bytes[offset + 1]) << 48n) |
-      (BigInt(bytes[offset + 2]) << 40n) |
-      (BigInt(bytes[offset + 3]) << 32n) |
-      (BigInt(bytes[offset + 4]) << 24n) |
-      (BigInt(bytes[offset + 5]) << 16n) |
-      (BigInt(bytes[offset + 6]) << 8n) |
-      BigInt(bytes[offset + 7])
+      (BigInt(bytes[offset]) << 56n)|(BigInt(bytes[offset + 1]) << 48n)|(BigInt(bytes[offset + 2]) << 40n)|(BigInt(bytes[offset + 3]) << 32n)|(BigInt(bytes[offset + 4]) << 24n)|(BigInt(bytes[offset + 5]) << 16n)|(BigInt(bytes[offset + 6]) << 8n)|BigInt(bytes[offset + 7])
     );
   }
 
   function store64BE(bytes, offset, value) {
-    bytes[offset] = Number((value >> 56n) & 0xFFn);
-    bytes[offset + 1] = Number((value >> 48n) & 0xFFn);
-    bytes[offset + 2] = Number((value >> 40n) & 0xFFn);
-    bytes[offset + 3] = Number((value >> 32n) & 0xFFn);
-    bytes[offset + 4] = Number((value >> 24n) & 0xFFn);
-    bytes[offset + 5] = Number((value >> 16n) & 0xFFn);
-    bytes[offset + 6] = Number((value >> 8n) & 0xFFn);
-    bytes[offset + 7] = Number(value & 0xFFn);
+    bytes[offset] = Number((value >> 56n)&0xFFn);
+    bytes[offset + 1] = Number((value >> 48n)&0xFFn);
+    bytes[offset + 2] = Number((value >> 40n)&0xFFn);
+    bytes[offset + 3] = Number((value >> 32n)&0xFFn);
+    bytes[offset + 4] = Number((value >> 24n)&0xFFn);
+    bytes[offset + 5] = Number((value >> 16n)&0xFFn);
+    bytes[offset + 6] = Number((value >> 8n)&0xFFn);
+    bytes[offset + 7] = Number(value&0xFFn);
   }
 
   // ===== SimP-192 PERMUTATION (48-bit words, 26 rounds) =====
@@ -177,18 +165,18 @@
         // Perform all rounds for this step (two at a time)
         for (let round = 0; round < SIMP_192_ROUNDS / 2; ++round) {
           // First round of pair
-          let t1 = x3 ^ (rotl48(x2, 1) & rotl48(x2, 8)) ^ rotl48(x2, 2) ^ x1;
-          let t0 = x1 ^ rotr48(x0, 3) ^ rotr48(x0, 4) ^ 0x0000FFFFFFFFFFFCn ^ (z & 1n);
+          let t1 = x3^(rotl48(x2, 1)&rotl48(x2, 8))^rotl48(x2, 2)^x1;
+          let t0 = x1^rotr48(x0, 3)^rotr48(x0, 4)^0x0000FFFFFFFFFFFCn^(z&1n);
 
-          z = (z >> 1n) | (z << 61n); // Rotate round constant
+          z = (z >> 1n)|(z << 61n); // Rotate round constant
 
           // Truncate to 48 bits
           t0 &= 0x0000FFFFFFFFFFFFn;
           t1 &= 0x0000FFFFFFFFFFFFn;
 
           // Second round of pair
-          x2 = x2 ^ (rotl48(t1, 1) & rotl48(t1, 8)) ^ rotl48(t1, 2) ^ x0;
-          x0 = x0 ^ rotr48(t0, 3) ^ rotr48(t0, 4) ^ 0x0000FFFFFFFFFFFCn ^ (z & 1n);
+          x2 = x2^(rotl48(t1, 1)&rotl48(t1, 8))^rotl48(t1, 2)^x0;
+          x0 = x0^rotr48(t0, 3)^rotr48(t0, 4)^0x0000FFFFFFFFFFFCn^(z&1n);
 
           x0 &= 0x0000FFFFFFFFFFFFn;
           x2 &= 0x0000FFFFFFFFFFFFn;
@@ -196,7 +184,7 @@
           x1 = t0;
           x3 = t1;
 
-          z = (z >> 1n) | (z << 61n); // Rotate round constant
+          z = (z >> 1n)|(z << 61n); // Rotate round constant
         }
 
         // Swap words for all steps except the last
@@ -220,12 +208,12 @@
 
     xorBytes(data, offset, length) {
       for (let i = 0; i < length; ++i) {
-        this.state[i] ^= data[offset + i];
+        this.state[i] = OpCodes.Xor32(this.state[i], data[offset + i]);
       }
     }
 
     xorByte(position, value) {
-      this.state[position] ^= value;
+      this.state[position] = OpCodes.Xor32(this.state[position], value);
     }
 
     getBytes(offset, length) {
@@ -271,19 +259,19 @@
         // Perform all rounds for this step (two at a time)
         for (let round = 0; round < SIMP_256_ROUNDS / 2; ++round) {
           // First round of pair
-          let t1 = x3 ^ (rotl64(x2, 1) & rotl64(x2, 8)) ^ rotl64(x2, 2) ^ x1;
-          let t0 = x1 ^ rotr64(x0, 3) ^ rotr64(x0, 4) ^ 0xFFFFFFFFFFFFFFFCn ^ (z & 1n);
+          let t1 = x3^(rotl64(x2, 1)&rotl64(x2, 8))^rotl64(x2, 2)^x1;
+          let t0 = x1^rotr64(x0, 3)^rotr64(x0, 4)^0xFFFFFFFFFFFFFFFCn^(z&1n);
 
-          z = (z >> 1n) | (z << 61n); // Rotate round constant
+          z = (z >> 1n)|(z << 61n); // Rotate round constant
 
           // Second round of pair
-          x2 = x2 ^ (rotl64(t1, 1) & rotl64(t1, 8)) ^ rotl64(t1, 2) ^ x0;
-          x0 = x0 ^ rotr64(t0, 3) ^ rotr64(t0, 4) ^ 0xFFFFFFFFFFFFFFFCn ^ (z & 1n);
+          x2 = x2^(rotl64(t1, 1)&rotl64(t1, 8))^rotl64(t1, 2)^x0;
+          x0 = x0^rotr64(t0, 3)^rotr64(t0, 4)^0xFFFFFFFFFFFFFFFCn^(z&1n);
 
           x1 = t0;
           x3 = t1;
 
-          z = (z >> 1n) | (z << 61n); // Rotate round constant
+          z = (z >> 1n)|(z << 61n); // Rotate round constant
         }
 
         // Swap words for all steps except the last
@@ -306,12 +294,12 @@
 
     xorBytes(data, offset, length) {
       for (let i = 0; i < length; ++i) {
-        this.state[i] ^= data[offset + i];
+        this.state[i] = OpCodes.Xor32(this.state[i], data[offset + i]);
       }
     }
 
     xorByte(position, value) {
-      this.state[position] ^= value;
+      this.state[position] = OpCodes.Xor32(this.state[position], value);
     }
 
     getBytes(offset, length) {
@@ -609,11 +597,11 @@
       while (mlen - mPos > ORIBATIDA_192_RATE) {
         const stateBytes = simp.getBytes(0, ORIBATIDA_192_RATE);
         for (let i = 0; i < ORIBATIDA_192_RATE; ++i) {
-          ciphertext.push(stateBytes[i] ^ plaintext[mPos + i]);
+          ciphertext.push(OpCodes.Xor32(stateBytes[i], plaintext[mPos + i]));
         }
 
         for (let i = 0; i < ORIBATIDA_192_MASK_SIZE; ++i) {
-          ciphertext[ciphertext.length - ORIBATIDA_192_MASK_SIZE + i] ^= mask[i];
+          ciphertext[ciphertext.length - ORIBATIDA_192_MASK_SIZE + i] = OpCodes.Xor32(ciphertext[ciphertext.length - ORIBATIDA_192_MASK_SIZE + i], mask[i]);
         }
 
         simp.xorBytes(plaintext, mPos, ORIBATIDA_192_RATE);
@@ -627,10 +615,10 @@
       if (remaining === ORIBATIDA_192_RATE) {
         const stateBytes = simp.getBytes(0, ORIBATIDA_192_RATE);
         for (let i = 0; i < ORIBATIDA_192_RATE; ++i) {
-          ciphertext.push(stateBytes[i] ^ plaintext[mPos + i]);
+          ciphertext.push(OpCodes.Xor32(stateBytes[i], plaintext[mPos + i]));
         }
         for (let i = 0; i < ORIBATIDA_192_MASK_SIZE; ++i) {
-          ciphertext[ciphertext.length - ORIBATIDA_192_MASK_SIZE + i] ^= mask[i];
+          ciphertext[ciphertext.length - ORIBATIDA_192_MASK_SIZE + i] = OpCodes.Xor32(ciphertext[ciphertext.length - ORIBATIDA_192_MASK_SIZE + i], mask[i]);
         }
         simp.xorBytes(plaintext, mPos, ORIBATIDA_192_RATE);
         simp.xorByte(SIMP_192_STATE_SIZE - 1, domains[ORIBATIDA_DOMAIN_MSG]);
@@ -638,13 +626,13 @@
       } else if (remaining > 0) {
         const stateBytes = simp.getBytes(0, remaining);
         for (let i = 0; i < remaining; ++i) {
-          ciphertext.push(stateBytes[i] ^ plaintext[mPos + i]);
+          ciphertext.push(OpCodes.Xor32(stateBytes[i], plaintext[mPos + i]));
         }
         if (remaining > ORIBATIDA_192_RATE - ORIBATIDA_192_MASK_SIZE) {
           const maskStart = ORIBATIDA_192_RATE - ORIBATIDA_192_MASK_SIZE;
           const maskLen = remaining - maskStart;
           for (let i = 0; i < maskLen; ++i) {
-            ciphertext[ciphertext.length - maskLen + i] ^= mask[i];
+            ciphertext[ciphertext.length - maskLen + i] = OpCodes.Xor32(ciphertext[ciphertext.length - maskLen + i], mask[i]);
           }
         }
         simp.xorBytes(plaintext, mPos, remaining);
@@ -718,12 +706,12 @@
           block[i] = ciphertext[cPos + i];
         }
         for (let i = 0; i < ORIBATIDA_192_MASK_SIZE; ++i) {
-          block[ORIBATIDA_192_RATE - ORIBATIDA_192_MASK_SIZE + i] ^= mask[i];
+          block[ORIBATIDA_192_RATE - ORIBATIDA_192_MASK_SIZE + i] = OpCodes.Xor32(block[ORIBATIDA_192_RATE - ORIBATIDA_192_MASK_SIZE + i], mask[i]);
         }
 
         const stateBytes = simp.extractState();
         for (let i = 0; i < ORIBATIDA_192_RATE; ++i) {
-          plaintext.push(stateBytes[i] ^ block[i]);
+          plaintext.push(OpCodes.Xor32(stateBytes[i], block[i]));
           stateBytes[i] = block[i];
         }
         simp.loadState(stateBytes);
@@ -741,12 +729,12 @@
           block[i] = ciphertext[cPos + i];
         }
         for (let i = 0; i < ORIBATIDA_192_MASK_SIZE; ++i) {
-          block[ORIBATIDA_192_RATE - ORIBATIDA_192_MASK_SIZE + i] ^= mask[i];
+          block[ORIBATIDA_192_RATE - ORIBATIDA_192_MASK_SIZE + i] = OpCodes.Xor32(block[ORIBATIDA_192_RATE - ORIBATIDA_192_MASK_SIZE + i], mask[i]);
         }
 
         const stateBytes = simp.extractState();
         for (let i = 0; i < ORIBATIDA_192_RATE; ++i) {
-          plaintext.push(stateBytes[i] ^ block[i]);
+          plaintext.push(OpCodes.Xor32(stateBytes[i], block[i]));
           stateBytes[i] = block[i];
         }
         simp.loadState(stateBytes);
@@ -761,13 +749,13 @@
           const maskStart = ORIBATIDA_192_RATE - ORIBATIDA_192_MASK_SIZE;
           const maskLen = remaining - maskStart;
           for (let i = 0; i < maskLen; ++i) {
-            block[maskStart + i] ^= mask[i];
+            block[maskStart + i] = OpCodes.Xor32(block[maskStart + i], mask[i]);
           }
         }
 
         const stateBytes = simp.extractState();
         for (let i = 0; i < remaining; ++i) {
-          plaintext.push(stateBytes[i] ^ block[i]);
+          plaintext.push(OpCodes.Xor32(stateBytes[i], block[i]));
           stateBytes[i] = block[i];
         }
         simp.loadState(stateBytes);
@@ -781,7 +769,7 @@
 
       let tagMatch = 0;
       for (let i = 0; i < ORIBATIDA_192_TAG_SIZE; ++i) {
-        tagMatch |= computedTag[i] ^ receivedTag[i];
+        tagMatch = OpCodes.Or32(tagMatch, OpCodes.Xor32(computedTag[i], receivedTag[i]));
       }
 
       if (tagMatch !== 0) {
@@ -1041,11 +1029,11 @@
       while (mlen - mPos > ORIBATIDA_256_RATE) {
         const stateBytes = simp.getBytes(0, ORIBATIDA_256_RATE);
         for (let i = 0; i < ORIBATIDA_256_RATE; ++i) {
-          ciphertext.push(stateBytes[i] ^ plaintext[mPos + i]);
+          ciphertext.push(OpCodes.Xor32(stateBytes[i], plaintext[mPos + i]));
         }
 
         for (let i = 0; i < ORIBATIDA_256_MASK_SIZE; ++i) {
-          ciphertext[ciphertext.length - ORIBATIDA_256_MASK_SIZE + i] ^= mask[i];
+          ciphertext[ciphertext.length - ORIBATIDA_256_MASK_SIZE + i] = OpCodes.Xor32(ciphertext[ciphertext.length - ORIBATIDA_256_MASK_SIZE + i], mask[i]);
         }
 
         simp.xorBytes(plaintext, mPos, ORIBATIDA_256_RATE);
@@ -1059,10 +1047,10 @@
       if (remaining === ORIBATIDA_256_RATE) {
         const stateBytes = simp.getBytes(0, ORIBATIDA_256_RATE);
         for (let i = 0; i < ORIBATIDA_256_RATE; ++i) {
-          ciphertext.push(stateBytes[i] ^ plaintext[mPos + i]);
+          ciphertext.push(OpCodes.Xor32(stateBytes[i], plaintext[mPos + i]));
         }
         for (let i = 0; i < ORIBATIDA_256_MASK_SIZE; ++i) {
-          ciphertext[ciphertext.length - ORIBATIDA_256_MASK_SIZE + i] ^= mask[i];
+          ciphertext[ciphertext.length - ORIBATIDA_256_MASK_SIZE + i] = OpCodes.Xor32(ciphertext[ciphertext.length - ORIBATIDA_256_MASK_SIZE + i], mask[i]);
         }
         simp.xorBytes(plaintext, mPos, ORIBATIDA_256_RATE);
         simp.xorByte(SIMP_256_STATE_SIZE - 1, domains[ORIBATIDA_DOMAIN_MSG]);
@@ -1070,13 +1058,13 @@
       } else if (remaining > 0) {
         const stateBytes = simp.getBytes(0, remaining);
         for (let i = 0; i < remaining; ++i) {
-          ciphertext.push(stateBytes[i] ^ plaintext[mPos + i]);
+          ciphertext.push(OpCodes.Xor32(stateBytes[i], plaintext[mPos + i]));
         }
         if (remaining > ORIBATIDA_256_RATE - ORIBATIDA_256_MASK_SIZE) {
           const maskStart = ORIBATIDA_256_RATE - ORIBATIDA_256_MASK_SIZE;
           const maskLen = remaining - maskStart;
           for (let i = 0; i < maskLen; ++i) {
-            ciphertext[ciphertext.length - maskLen + i] ^= mask[i];
+            ciphertext[ciphertext.length - maskLen + i] = OpCodes.Xor32(ciphertext[ciphertext.length - maskLen + i], mask[i]);
           }
         }
         simp.xorBytes(plaintext, mPos, remaining);
@@ -1150,12 +1138,12 @@
           block[i] = ciphertext[cPos + i];
         }
         for (let i = 0; i < ORIBATIDA_256_MASK_SIZE; ++i) {
-          block[ORIBATIDA_256_RATE - ORIBATIDA_256_MASK_SIZE + i] ^= mask[i];
+          block[ORIBATIDA_256_RATE - ORIBATIDA_256_MASK_SIZE + i] = OpCodes.Xor32(block[ORIBATIDA_256_RATE - ORIBATIDA_256_MASK_SIZE + i], mask[i]);
         }
 
         const stateBytes = simp.extractState();
         for (let i = 0; i < ORIBATIDA_256_RATE; ++i) {
-          plaintext.push(stateBytes[i] ^ block[i]);
+          plaintext.push(OpCodes.Xor32(stateBytes[i], block[i]));
           stateBytes[i] = block[i];
         }
         simp.loadState(stateBytes);
@@ -1173,12 +1161,12 @@
           block[i] = ciphertext[cPos + i];
         }
         for (let i = 0; i < ORIBATIDA_256_MASK_SIZE; ++i) {
-          block[ORIBATIDA_256_RATE - ORIBATIDA_256_MASK_SIZE + i] ^= mask[i];
+          block[ORIBATIDA_256_RATE - ORIBATIDA_256_MASK_SIZE + i] = OpCodes.Xor32(block[ORIBATIDA_256_RATE - ORIBATIDA_256_MASK_SIZE + i], mask[i]);
         }
 
         const stateBytes = simp.extractState();
         for (let i = 0; i < ORIBATIDA_256_RATE; ++i) {
-          plaintext.push(stateBytes[i] ^ block[i]);
+          plaintext.push(OpCodes.Xor32(stateBytes[i], block[i]));
           stateBytes[i] = block[i];
         }
         simp.loadState(stateBytes);
@@ -1193,13 +1181,13 @@
           const maskStart = ORIBATIDA_256_RATE - ORIBATIDA_256_MASK_SIZE;
           const maskLen = remaining - maskStart;
           for (let i = 0; i < maskLen; ++i) {
-            block[maskStart + i] ^= mask[i];
+            block[maskStart + i] = OpCodes.Xor32(block[maskStart + i], mask[i]);
           }
         }
 
         const stateBytes = simp.extractState();
         for (let i = 0; i < remaining; ++i) {
-          plaintext.push(stateBytes[i] ^ block[i]);
+          plaintext.push(OpCodes.Xor32(stateBytes[i], block[i]));
           stateBytes[i] = block[i];
         }
         simp.loadState(stateBytes);
@@ -1213,7 +1201,7 @@
 
       let tagMatch = 0;
       for (let i = 0; i < ORIBATIDA_256_TAG_SIZE; ++i) {
-        tagMatch |= computedTag[i] ^ receivedTag[i];
+        tagMatch = OpCodes.Or32(tagMatch, OpCodes.Xor32(computedTag[i], receivedTag[i]));
       }
 
       if (tagMatch !== 0) {

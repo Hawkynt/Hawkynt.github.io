@@ -286,7 +286,7 @@
       _calculateBlockHash(block) {
         let hash = 0;
         for (let i = 0; i < block.length; i++) {
-          hash = OpCodes.RotL32((hash - hash + block[i]), 5) & 0xFFFFFFFF;
+          hash = OpCodes.RotL32((hash - hash + block[i]), 5)&0xFFFFFFFF;
         }
         return hash;
       }
@@ -341,7 +341,7 @@
           
           // Update context and model
           this.contextModel.update(context, byte);
-          context = OpCodes.RotL32(context, 8) | byte;
+          context = OpCodes.RotL32(context, 8)|byte;
           context &= 0xFFFFFF; // 24-bit context
         }
 
@@ -377,7 +377,7 @@
           
           // Update context and model
           this.contextModel.update(context, byte);
-          context = ((context << 8) | byte) & 0xFFFFFF;
+          context = ((OpCodes.Shl32(context, 8))|byte)&0xFFFFFF;
         }
 
         return decompressed;
@@ -404,7 +404,7 @@
       _encodeByte(byte, prediction) {
         // Simplified encoding - store signed error
         const error = byte - prediction;
-        return error & 0xFF;
+        return error&0xFF;
       }
 
       /**
@@ -414,7 +414,7 @@
       _decodeByte(encoded, prediction) {
         // Simplified decoding - restore from signed error
         const signedError = encoded > 127 ? encoded - 256 : encoded;
-        return (prediction + signedError) & 0xFF;
+        return (prediction + signedError)&0xFF;
       }
 
       /**
@@ -442,7 +442,7 @@
 
       predict(context) {
         const mask = OpCodes.RotL32(1, this.order * 8) - 1;
-        const contextKey = context & mask;
+        const contextKey = context&mask;
         const contextData = this.contexts.get(contextKey);
         
         if (contextData) {
@@ -454,7 +454,7 @@
 
       update(context, actualByte) {
         const mask = OpCodes.RotL32(1, this.order * 8) - 1;
-        const contextKey = context & mask;
+        const contextKey = context&mask;
         
         if (!this.contexts.has(contextKey)) {
           this.contexts.set(contextKey, {
@@ -514,7 +514,7 @@
 
         const transformed = [data[0]];
         for (let i = 1; i < data.length; i++) {
-          transformed.push((data[i] - data[i-1]) & 0xFF);
+          transformed.push((data[i] - data[i-1])&0xFF);
         }
         return transformed;
       }

@@ -298,7 +298,7 @@
 
       const lowShifted = OpCodes.Shr32(low, shift);
       const highShifted = OpCodes.Shl32(high, 32 - shift);
-      const newLow = OpCodes.ToUint32(OpCodes.OrN(lowShifted, highShifted));
+      const newLow = OpCodes.ToUint32(OpCodes.Or32(lowShifted, highShifted));
       const newHigh = OpCodes.ToUint32(OpCodes.Shr32(high, shift));
       return [newLow, newHigh];
     }
@@ -317,7 +317,7 @@
 
       const highShifted = OpCodes.Shl32(high, shift);
       const lowShifted = OpCodes.Shr32(low, 32 - shift);
-      const newHigh = OpCodes.ToUint32(OpCodes.OrN(highShifted, lowShifted));
+      const newHigh = OpCodes.ToUint32(OpCodes.Or32(highShifted, lowShifted));
       const newLow = OpCodes.ToUint32(OpCodes.Shl32(low, shift));
       return [newLow, newHigh];
     }
@@ -326,7 +326,7 @@
      * 64-bit XOR
      */
     _xor64(low1, high1, low2, high2) {
-      return [OpCodes.ToUint32(OpCodes.XorN(low1, low2)), OpCodes.ToUint32(OpCodes.XorN(high1, high2))];
+      return [OpCodes.ToUint32(OpCodes.Xor32(low1, low2)), OpCodes.ToUint32(OpCodes.Xor32(high1, high2))];
     }
 
     /**
@@ -339,47 +339,47 @@
       bHigh = OpCodes.ToUint32(bHigh);
 
       // Split into 16-bit chunks
-      const a00 = OpCodes.AndN(aLow, 0xFFFF);
+      const a00 = OpCodes.And32(aLow, 0xFFFF);
       const a16 = OpCodes.Shr32(aLow, 16);
-      const a32 = OpCodes.AndN(aHigh, 0xFFFF);
+      const a32 = OpCodes.And32(aHigh, 0xFFFF);
       const a48 = OpCodes.Shr32(aHigh, 16);
 
-      const b00 = OpCodes.AndN(bLow, 0xFFFF);
+      const b00 = OpCodes.And32(bLow, 0xFFFF);
       const b16 = OpCodes.Shr32(bLow, 16);
-      const b32 = OpCodes.AndN(bHigh, 0xFFFF);
+      const b32 = OpCodes.And32(bHigh, 0xFFFF);
       const b48 = OpCodes.Shr32(bHigh, 16);
 
       // Multiply 16-bit chunks
       let c00 = a00 * b00;
       let c16 = OpCodes.Shr32(c00, 16);
-      c00 = OpCodes.AndN(c00, 0xFFFF);
+      c00 = OpCodes.And32(c00, 0xFFFF);
 
       c16 += a16 * b00;
       let c32 = OpCodes.Shr32(c16, 16);
-      c16 = OpCodes.AndN(c16, 0xFFFF);
+      c16 = OpCodes.And32(c16, 0xFFFF);
 
       c16 += a00 * b16;
       c32 += OpCodes.Shr32(c16, 16);
-      c16 = OpCodes.AndN(c16, 0xFFFF);
+      c16 = OpCodes.And32(c16, 0xFFFF);
 
       c32 += a32 * b00;
       let c48 = OpCodes.Shr32(c32, 16);
-      c32 = OpCodes.AndN(c32, 0xFFFF);
+      c32 = OpCodes.And32(c32, 0xFFFF);
 
       c32 += a16 * b16;
       c48 += OpCodes.Shr32(c32, 16);
-      c32 = OpCodes.AndN(c32, 0xFFFF);
+      c32 = OpCodes.And32(c32, 0xFFFF);
 
       c32 += a00 * b32;
       c48 += OpCodes.Shr32(c32, 16);
-      c32 = OpCodes.AndN(c32, 0xFFFF);
+      c32 = OpCodes.And32(c32, 0xFFFF);
 
       c48 += a48 * b00 + a32 * b16 + a16 * b32 + a00 * b48;
-      c48 = OpCodes.AndN(c48, 0xFFFF);
+      c48 = OpCodes.And32(c48, 0xFFFF);
 
       const c16Shl = OpCodes.Shl32(c16, 16);
       const c48Shl = OpCodes.Shl32(c48, 16);
-      return [OpCodes.ToUint32(OpCodes.OrN(c16Shl, c00)), OpCodes.ToUint32(OpCodes.OrN(c48Shl, c32))];
+      return [OpCodes.ToUint32(OpCodes.Or32(c16Shl, c00)), OpCodes.ToUint32(OpCodes.Or32(c48Shl, c32))];
     }
 
     /**
@@ -405,7 +405,7 @@
       let temp = this._shr64(s_low, s_high, 12);
       [s_low, s_high] = this._xor64(s_low, s_high, temp[0], temp[1]);
 
-      // s ^= s << 25
+      // s ^= OpCodes.Shl32(s, 25)
       temp = this._shl64(s_low, s_high, 25);
       [s_low, s_high] = this._xor64(s_low, s_high, temp[0], temp[1]);
 

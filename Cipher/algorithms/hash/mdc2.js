@@ -244,11 +244,11 @@
     _processBlock(block) {
       // Prepare keys for DES encryption (using OpCodes for bit manipulation)
       const key1 = [...this.h];
-      // key1[0] = (key1[0] & 0x9F) | 0x40 = clear bit 5 and bit 6, then set bit 6
+      // key1[0] = (key1[0]&0x9F)|0x40 = clear bit 5 and bit 6, then set bit 6
       key1[0] = OpCodes.SetBit(OpCodes.SetBit(key1[0], 5, 0), 6, 1);
 
       const key2 = [...this.hh];
-      // key2[0] = (key2[0] & 0x9F) | 0x20 = clear bit 5 and bit 6, then set bit 5
+      // key2[0] = (key2[0]&0x9F)|0x20 = clear bit 5 and bit 6, then set bit 5
       key2[0] = OpCodes.SetBit(OpCodes.SetBit(key2[0], 6, 0), 5, 1);
 
       // Encrypt block with both keys

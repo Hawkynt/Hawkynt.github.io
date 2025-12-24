@@ -186,7 +186,7 @@
      */
     _nextBase() {
       // Schrage's method to compute (16807 × state) mod 2147483647
-      const hi = (this._state / QUOTIENT) | 0;
+      const hi = (this._state / QUOTIENT)|0;
       const lo = this._state % QUOTIENT;
 
       let test = MULTIPLIER * lo - REMAINDER * hi;

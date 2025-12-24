@@ -109,7 +109,7 @@
           // Copymap: 0x02 = bit 1 set (op 0=literal 'A', op 1=match)
           // Literal: A (0x41)
           // Match code: offset=1, length=3-3=0
-          // 16-bit little-endian: offset=1 << 6 | length=0 = 0x0040
+          // 16-bit little-endian: offset=1 << 6|length=0 = 0x0040
           expected: [0x02, 0x41, 0x40, 0x00]
         },
         {
@@ -119,7 +119,7 @@
           // Copymap: 0x08 = bit 3 set (ops 0-2=literals ABC, op 3=match)
           // Literals: A B C (0x41 0x42 0x43)
           // Match code: offset=3, length=3-3=0
-          // 16-bit: offset=3 << 6 | length=0 = 0x00C0
+          // 16-bit: offset=3 << 6|length=0 = 0x00C0
           expected: [0x08, 0x41, 0x42, 0x43, 0xC0, 0x00]
         },
         {
@@ -129,7 +129,7 @@
           // Copymap: 0x02 = bit 1 set (op 0=literal 'A', op 1=match of 7 more)
           // Literal: A (0x41)
           // Match code: offset=1, length=7-3=4
-          // 16-bit: offset=1 << 6 | length=4 = 0x0044
+          // 16-bit: offset=1 << 6|length=4 = 0x0044
           expected: [0x02, 0x41, 0x44, 0x00]
         },
         {
@@ -147,7 +147,7 @@
           // Copymap: 0x04 = bit 2 set (ops 0-1=literals AB, op 2=match of 8 bytes)
           // Literals: A B (0x41 0x42)
           // Match: offset=2, length=8-3=5
-          // 16-bit: offset=2 << 6 | length=5 = 0x0085
+          // 16-bit: offset=2 << 6|length=5 = 0x0085
           expected: [0x04, 0x41, 0x42, 0x85, 0x00]
         }
       ];
@@ -267,10 +267,10 @@
             // If match is long enough, encode it
             if (mlen >= this.MATCH_MIN) {
               // Set bit in copymap to indicate this is a copy operation
-              copymap = copymap | copymask;
+              copymap = OpCodes.Or32(copymap, copymask);
 
               // Encode: high 10 bits = offset, low 6 bits = (mlen - MATCH_MIN)
-              const match_code = OpCodes.Shl16(offset, this.MATCH_BITS) | (mlen - this.MATCH_MIN);
+              const match_code = OpCodes.Or16(OpCodes.Shl16(offset, this.MATCH_BITS), OpCodes.ToWord(mlen - this.MATCH_MIN));
               dst.push(OpCodes.ToByte(match_code)); // Low byte
               dst.push(OpCodes.ToByte(OpCodes.Shr16(match_code, 8))); // High byte
 
@@ -310,10 +310,8 @@
       if (pos + 3 > data.length)
         return 0;
 
-      const val = OpCodes.Shl32(OpCodes.ToByte(data[pos]), 16) |
-                  OpCodes.Shl32(OpCodes.ToByte(data[pos+1]), 8) |
-                  OpCodes.ToByte(data[pos+2]);
-      return (val^OpCodes.Shr32(val, 9))&(this.LEMPEL_SIZE - 1);
+      const val = OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(OpCodes.ToByte(data[pos]), 16), OpCodes.Shl32(OpCodes.ToByte(data[pos+1]), 8)), OpCodes.ToByte(data[pos+2]));
+      return OpCodes.And32(OpCodes.Xor32(val, OpCodes.Shr32(val, 9)), this.LEMPEL_SIZE - 1);
     }
 
     _findMatchLength(data, matchPos, currentPos, maxPos) {
@@ -347,17 +345,16 @@
         }
 
         // Check if this is a copy operation or literal
-        if ((copymap&copymask) !== 0) {
+        if (OpCodes.And32(copymap, copymask) !== 0) {
           // Copy operation - read match code (2 bytes)
           if (src_pos + 2 > slen)
             break;
 
-          const match_code = OpCodes.ToByte(src[src_pos]) |
-                            OpCodes.Shl16(OpCodes.ToByte(src[src_pos+1]), 8);
+          const match_code = OpCodes.Or16(OpCodes.ToByte(src[src_pos]), OpCodes.Shl16(OpCodes.ToByte(src[src_pos+1]), 8));
           src_pos += 2;
 
           // Decode offset and length
-          const mlen = (match_code&OpCodes.BitMask(this.MATCH_BITS)) + this.MATCH_MIN;
+          const mlen = OpCodes.And16(match_code, OpCodes.BitMask(this.MATCH_BITS)) + this.MATCH_MIN;
           const offset = OpCodes.Shr16(match_code, this.MATCH_BITS);
 
           // Validate offset

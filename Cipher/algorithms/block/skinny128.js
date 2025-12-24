@@ -41,27 +41,22 @@
    * This is a highly optimized bit-sliced implementation
    */
   function skinny128_sbox(x) {
-    x = x >>> 0;
+    x = OpCodes.ToUint32(x);
     let y;
 
     // Mix the bits (bit-sliced S-box operations)
     x = ~x;
-    x ^= (((x >>> 2) & (x >>> 3)) & 0x11111111);
-    y = (((x << 5) & (x << 1)) & 0x20202020);
-    x ^= (((x << 5) & (x << 4)) & 0x40404040) ^ y;
-    y = (((x << 2) & (x << 1)) & 0x80808080);
-    x ^= (((x >>> 2) & (x << 1)) & 0x02020202) ^ y;
-    y = (((x >>> 5) & (x << 1)) & 0x04040404);
-    x ^= (((x >>> 1) & (x >>> 2)) & 0x08080808) ^ y;
+    x = OpCodes.Xor32(x, (((OpCodes.Shr32(x, 2))&(OpCodes.Shr32(x, 3)))&0x11111111));
+    y = (((OpCodes.Shl32(x, 5))&(OpCodes.Shl32(x, 1)))&0x20202020);
+    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shl32(x, 5))&(OpCodes.Shl32(x, 4)))&0x40404040), y));
+    y = (((OpCodes.Shl32(x, 2))&(OpCodes.Shl32(x, 1)))&0x80808080);
+    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 2))&(OpCodes.Shl32(x, 1)))&0x02020202), y));
+    y = (((OpCodes.Shr32(x, 5))&(OpCodes.Shl32(x, 1)))&0x04040404);
+    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 1))&(OpCodes.Shr32(x, 2)))&0x08080808), y));
     x = ~x;
 
     // Final permutation [2 7 6 1 3 0 4 5]
-    x = (((x & 0x08080808) << 1) |
-         ((x & 0x32323232) << 2) |
-         ((x & 0x01010101) << 5) |
-         ((x & 0x80808080) >>> 6) |
-         ((x & 0x40404040) >>> 4) |
-         ((x & 0x04040404) >>> 2)) >>> 0;
+    x = (OpCodes.Shl32((x&0x08080808), 1)|OpCodes.Shl32((x&0x32323232), 2)|OpCodes.Shl32((x&0x01010101), 5)|OpCodes.Shr32((x&0x80808080), 6)|OpCodes.Shr32((x&0x40404040), 4)|OpCodes.Shr32((x&0x04040404), 2));
 
     return x;
   }
@@ -70,28 +65,23 @@
    * Apply inverse SKINNY-128 S-box to all bytes in a 32-bit word
    */
   function skinny128_inv_sbox(x) {
-    x = x >>> 0;
+    x = OpCodes.ToUint32(x);
     let y;
 
     // Mix the bits (inverse bit-sliced S-box operations)
     x = ~x;
-    y = (((x >>> 1) & (x >>> 3)) & 0x01010101);
-    x ^= (((x >>> 2) & (x >>> 3)) & 0x10101010) ^ y;
-    y = (((x >>> 6) & (x >>> 1)) & 0x02020202);
-    x ^= (((x >>> 1) & (x >>> 2)) & 0x08080808) ^ y;
-    y = (((x << 2) & (x << 1)) & 0x80808080);
-    x ^= (((x >>> 1) & (x << 2)) & 0x04040404) ^ y;
-    y = (((x << 5) & (x << 1)) & 0x20202020);
-    x ^= (((x << 4) & (x << 5)) & 0x40404040) ^ y;
+    y = (((OpCodes.Shr32(x, 1))&(OpCodes.Shr32(x, 3)))&0x01010101);
+    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 2))&(OpCodes.Shr32(x, 3)))&0x10101010), y));
+    y = (((OpCodes.Shr32(x, 6))&(OpCodes.Shr32(x, 1)))&0x02020202);
+    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 1))&(OpCodes.Shr32(x, 2)))&0x08080808), y));
+    y = (((OpCodes.Shl32(x, 2))&(OpCodes.Shl32(x, 1)))&0x80808080);
+    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shr32(x, 1))&(OpCodes.Shl32(x, 2)))&0x04040404), y));
+    y = (((OpCodes.Shl32(x, 5))&(OpCodes.Shl32(x, 1)))&0x20202020);
+    x = OpCodes.Xor32(x, OpCodes.Xor32((((OpCodes.Shl32(x, 4))&(OpCodes.Shl32(x, 5)))&0x40404040), y));
     x = ~x;
 
     // Final permutation [5 3 0 4 6 7 2 1]
-    x = (((x & 0x01010101) << 2) |
-         ((x & 0x04040404) << 4) |
-         ((x & 0x02020202) << 6) |
-         ((x & 0x20202020) >>> 5) |
-         ((x & 0xC8C8C8C8) >>> 2) |
-         ((x & 0x10101010) >>> 1)) >>> 0;
+    x = (OpCodes.Shl32((x&0x01010101), 2)|OpCodes.Shl32((x&0x04040404), 4)|OpCodes.Shl32((x&0x02020202), 6)|OpCodes.Shr32((x&0x20202020), 5)|OpCodes.Shr32((x&0xC8C8C8C8), 2)|OpCodes.Shr32((x&0x10101010), 1));
 
     return x;
   }
@@ -101,10 +91,10 @@
    * Applied to each byte independently
    */
   function skinny128_LFSR2(x) {
-    x = x >>> 0;
-    const shifted = (x << 1) & 0xFEFEFEFE;
-    const feedback = (((x >>> 7) ^ (x >>> 5)) & 0x01010101);
-    return (shifted ^ feedback) >>> 0;
+    x = OpCodes.ToUint32(x);
+    const shifted = (OpCodes.Shl32(x, 1))&0xFEFEFEFE;
+    const feedback = OpCodes.Xor32(OpCodes.Shr32(x, 7), OpCodes.Shr32(x, 5))&0x01010101;
+    return OpCodes.Xor32(shifted, feedback);
   }
 
   /**
@@ -112,10 +102,10 @@
    * Applied to each byte independently (inverse of LFSR2)
    */
   function skinny128_LFSR3(x) {
-    x = x >>> 0;
-    const shifted = (x >>> 1) & 0x7F7F7F7F;
-    const feedback = (((x << 7) ^ (x << 1)) & 0x80808080);
-    return (shifted ^ feedback) >>> 0;
+    x = OpCodes.ToUint32(x);
+    const shifted = (OpCodes.Shr32(x, 1))&0x7F7F7F7F;
+    const feedback = OpCodes.Xor32(OpCodes.Shl32(x, 7), OpCodes.Shl32(x, 1))&0x80808080;
+    return OpCodes.Xor32(shifted, feedback);
   }
 
   /**
@@ -128,14 +118,9 @@
     const row3 = tk[idx + 1];
     const row3_rotated = OpCodes.RotL32(row3, 16);
 
-    tk[idx] = (((row2 >>> 8) & 0x000000FF) |
-               ((row2 << 16) & 0x00FF0000) |
-               (row3_rotated & 0xFF00FF00)) >>> 0;
+    tk[idx] = (((OpCodes.Shr32(row2, 8))&0x000000FF)|((OpCodes.Shl32(row2, 16))&0x00FF0000)|(row3_rotated&0xFF00FF00));
 
-    tk[idx + 1] = (((row2 >>> 16) & 0x000000FF) |
-                   (row2 & 0xFF000000) |
-                   ((row3_rotated << 8) & 0x0000FF00) |
-                   (row3_rotated & 0x00FF0000)) >>> 0;
+    tk[idx + 1] = (((OpCodes.Shr32(row2, 16))&0x000000FF)|(row2&0xFF000000)|((OpCodes.Shl32(row3_rotated, 8))&0x0000FF00)|(row3_rotated&0x00FF0000));
   }
 
   /**
@@ -146,15 +131,9 @@
     const row0 = tk[idx];
     const row1 = tk[idx + 1];
 
-    tk[idx] = (((row0 >>> 16) & 0x000000FF) |
-               ((row0 << 8) & 0x0000FF00) |
-               ((row1 << 16) & 0x00FF0000) |
-               (row1 & 0xFF000000)) >>> 0;
+    tk[idx] = (((OpCodes.Shr32(row0, 16))&0x000000FF)|((OpCodes.Shl32(row0, 8))&0x0000FF00)|((OpCodes.Shl32(row1, 16))&0x00FF0000)|(row1&0xFF000000));
 
-    tk[idx + 1] = (((row0 >>> 16) & 0x0000FF00) |
-                   ((row0 << 16) & 0xFF000000) |
-                   ((row1 >>> 16) & 0x000000FF) |
-                   ((row1 << 8) & 0x00FF0000)) >>> 0;
+    tk[idx + 1] = (((OpCodes.Shr32(row0, 16))&0x0000FF00)|((OpCodes.Shl32(row0, 16))&0xFF000000)|((OpCodes.Shr32(row1, 16))&0x000000FF)|((OpCodes.Shl32(row1, 8))&0x00FF0000));
   }
 
   /**
@@ -167,21 +146,13 @@
     const row2 = tk[2];
     const row3 = tk[3];
 
-    tk[0] = (((row1 >>> 8) & 0x0000FFFF) |
-             ((row0 >>> 8) & 0x00FF0000) |
-             ((row0 << 8) & 0xFF000000)) >>> 0;
+    tk[0] = (((OpCodes.Shr32(row1, 8))&0x0000FFFF)|((OpCodes.Shr32(row0, 8))&0x00FF0000)|((OpCodes.Shl32(row0, 8))&0xFF000000));
 
-    tk[1] = (((row1 >>> 24) & 0x000000FF) |
-             ((row0 << 8) & 0x00FFFF00) |
-             ((row1 << 24) & 0xFF000000)) >>> 0;
+    tk[1] = (((OpCodes.Shr32(row1, 24))&0x000000FF)|((OpCodes.Shl32(row0, 8))&0x00FFFF00)|((OpCodes.Shl32(row1, 24))&0xFF000000));
 
-    tk[2] = (((row3 >>> 8) & 0x0000FFFF) |
-             ((row2 >>> 8) & 0x00FF0000) |
-             ((row2 << 8) & 0xFF000000)) >>> 0;
+    tk[2] = (((OpCodes.Shr32(row3, 8))&0x0000FFFF)|((OpCodes.Shr32(row2, 8))&0x00FF0000)|((OpCodes.Shl32(row2, 8))&0xFF000000));
 
-    tk[3] = (((row3 >>> 24) & 0x000000FF) |
-             ((row2 << 8) & 0x00FFFF00) |
-             ((row3 << 24) & 0xFF000000)) >>> 0;
+    tk[3] = (((OpCodes.Shr32(row3, 24))&0x000000FF)|((OpCodes.Shl32(row2, 8))&0x00FFFF00)|((OpCodes.Shl32(row3, 24))&0xFF000000));
   }
 
   // ============================================================================
@@ -366,10 +337,10 @@
           let rc = 0;
           for (let round = 0; round < rounds; round += 2) {
             // Round 1
-            rc = ((rc << 1) ^ ((rc >>> 5) & 0x01) ^ ((rc >>> 4) & 0x01) ^ 0x01) & 0x3F;
+            rc = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), (OpCodes.Shr32(rc, 5)&0x01)), (OpCodes.Shr32(rc, 4)&0x01)), 0x01)&0x3F;
             schedule.roundKeys.push({
-              tk0: (TK2[0] ^ TK3[0] ^ (rc & 0x0F)) >>> 0,
-              tk1: (TK2[1] ^ TK3[1] ^ (rc >>> 4)) >>> 0
+              tk0: OpCodes.Xor32(OpCodes.Xor32(TK2[0], TK3[0]), (rc&0x0F)),
+              tk1: OpCodes.Xor32(OpCodes.Xor32(TK2[1], TK3[1]), OpCodes.Shr32(rc, 4))
             });
 
             // Permute bottom half and apply LFSR
@@ -381,10 +352,10 @@
             TK3[3] = skinny128_LFSR3(TK3[3]);
 
             // Round 2
-            rc = ((rc << 1) ^ ((rc >>> 5) & 0x01) ^ ((rc >>> 4) & 0x01) ^ 0x01) & 0x3F;
+            rc = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), (OpCodes.Shr32(rc, 5)&0x01)), (OpCodes.Shr32(rc, 4)&0x01)), 0x01)&0x3F;
             schedule.roundKeys.push({
-              tk0: (TK2[2] ^ TK3[2] ^ (rc & 0x0F)) >>> 0,
-              tk1: (TK2[3] ^ TK3[3] ^ (rc >>> 4)) >>> 0
+              tk0: OpCodes.Xor32(OpCodes.Xor32(TK2[2], TK3[2]), (rc&0x0F)),
+              tk1: OpCodes.Xor32(OpCodes.Xor32(TK2[3], TK3[3]), OpCodes.Shr32(rc, 4))
             });
 
             // Permute top half and apply LFSR
@@ -400,10 +371,10 @@
           let rc = 0;
           for (let round = 0; round < rounds; round += 2) {
             // Round 1
-            rc = ((rc << 1) ^ ((rc >>> 5) & 0x01) ^ ((rc >>> 4) & 0x01) ^ 0x01) & 0x3F;
+            rc = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), (OpCodes.Shr32(rc, 5)&0x01)), (OpCodes.Shr32(rc, 4)&0x01)), 0x01)&0x3F;
             schedule.roundKeys.push({
-              tk0: (TK2[0] ^ (rc & 0x0F)) >>> 0,
-              tk1: (TK2[1] ^ (rc >>> 4)) >>> 0
+              tk0: OpCodes.Xor32(TK2[0], (rc&0x0F)),
+              tk1: OpCodes.Xor32(TK2[1], OpCodes.Shr32(rc, 4))
             });
 
             // Permute bottom half and apply LFSR
@@ -412,10 +383,10 @@
             TK2[3] = skinny128_LFSR2(TK2[3]);
 
             // Round 2
-            rc = ((rc << 1) ^ ((rc >>> 5) & 0x01) ^ ((rc >>> 4) & 0x01) ^ 0x01) & 0x3F;
+            rc = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(rc, 1), (OpCodes.Shr32(rc, 5)&0x01)), (OpCodes.Shr32(rc, 4)&0x01)), 0x01)&0x3F;
             schedule.roundKeys.push({
-              tk0: (TK2[2] ^ (rc & 0x0F)) >>> 0,
-              tk1: (TK2[3] ^ (rc >>> 4)) >>> 0
+              tk0: OpCodes.Xor32(TK2[2], (rc&0x0F)),
+              tk1: OpCodes.Xor32(TK2[3], OpCodes.Shr32(rc, 4))
             });
 
             // Permute top half and apply LFSR
@@ -491,21 +462,21 @@
 
         if (hasRoundKeys) {
           const rk = this.keySchedule.roundKeys[round];
-          s0 = (s0 ^ rk.tk0 ^ TK1[0]) >>> 0;
-          s1 = (s1 ^ rk.tk1 ^ TK1[1]) >>> 0;
+          s0 = OpCodes.Xor32(OpCodes.Xor32(s0, rk.tk0), TK1[0]);
+          s1 = OpCodes.Xor32(OpCodes.Xor32(s1, rk.tk1), TK1[1]);
         } else {
-          s0 = (s0 ^ TK1[0]) >>> 0;
-          s1 = (s1 ^ TK1[1]) >>> 0;
+          s0 = OpCodes.Xor32(s0, TK1[0]);
+          s1 = OpCodes.Xor32(s1, TK1[1]);
         }
-        s2 = (s2 ^ 0x02) >>> 0;
+        s2 = OpCodes.Xor32(s2, 0x02);
 
         s1 = OpCodes.RotL32(s1, 8);
         s2 = OpCodes.RotL32(s2, 16);
         s3 = OpCodes.RotL32(s3, 24);
 
-        s1 = (s1 ^ s2) >>> 0;
-        s2 = (s2 ^ s0) >>> 0;
-        s3 = (s3 ^ s2) >>> 0;
+        s1 = OpCodes.Xor32(s1, s2);
+        s2 = OpCodes.Xor32(s2, s0);
+        s3 = OpCodes.Xor32(s3, s2);
 
         skinny128_permute_tk_half(TK1, 2);
 
@@ -517,21 +488,21 @@
 
         if (hasRoundKeys) {
           const rk = this.keySchedule.roundKeys[round + 1];
-          s3 = (s3 ^ rk.tk0 ^ TK1[2]) >>> 0;
-          s0 = (s0 ^ rk.tk1 ^ TK1[3]) >>> 0;
+          s3 = OpCodes.Xor32(OpCodes.Xor32(s3, rk.tk0), TK1[2]);
+          s0 = OpCodes.Xor32(OpCodes.Xor32(s0, rk.tk1), TK1[3]);
         } else {
-          s3 = (s3 ^ TK1[2]) >>> 0;
-          s0 = (s0 ^ TK1[3]) >>> 0;
+          s3 = OpCodes.Xor32(s3, TK1[2]);
+          s0 = OpCodes.Xor32(s0, TK1[3]);
         }
-        s1 = (s1 ^ 0x02) >>> 0;
+        s1 = OpCodes.Xor32(s1, 0x02);
 
         s0 = OpCodes.RotL32(s0, 8);
         s1 = OpCodes.RotL32(s1, 16);
         s2 = OpCodes.RotL32(s2, 24);
 
-        s0 = (s0 ^ s1) >>> 0;
-        s1 = (s1 ^ s3) >>> 0;
-        s2 = (s2 ^ s1) >>> 0;
+        s0 = OpCodes.Xor32(s0, s1);
+        s1 = OpCodes.Xor32(s1, s3);
+        s2 = OpCodes.Xor32(s2, s1);
 
         skinny128_permute_tk_half(TK1, 0);
 
@@ -543,21 +514,21 @@
 
         if (hasRoundKeys) {
           const rk = this.keySchedule.roundKeys[round + 2];
-          s2 = (s2 ^ rk.tk0 ^ TK1[0]) >>> 0;
-          s3 = (s3 ^ rk.tk1 ^ TK1[1]) >>> 0;
+          s2 = OpCodes.Xor32(OpCodes.Xor32(s2, rk.tk0), TK1[0]);
+          s3 = OpCodes.Xor32(OpCodes.Xor32(s3, rk.tk1), TK1[1]);
         } else {
-          s2 = (s2 ^ TK1[0]) >>> 0;
-          s3 = (s3 ^ TK1[1]) >>> 0;
+          s2 = OpCodes.Xor32(s2, TK1[0]);
+          s3 = OpCodes.Xor32(s3, TK1[1]);
         }
-        s0 = (s0 ^ 0x02) >>> 0;
+        s0 = OpCodes.Xor32(s0, 0x02);
 
         s3 = OpCodes.RotL32(s3, 8);
         s0 = OpCodes.RotL32(s0, 16);
         s1 = OpCodes.RotL32(s1, 24);
 
-        s3 = (s3 ^ s0) >>> 0;
-        s0 = (s0 ^ s2) >>> 0;
-        s1 = (s1 ^ s0) >>> 0;
+        s3 = OpCodes.Xor32(s3, s0);
+        s0 = OpCodes.Xor32(s0, s2);
+        s1 = OpCodes.Xor32(s1, s0);
 
         skinny128_permute_tk_half(TK1, 2);
 
@@ -569,21 +540,21 @@
 
         if (hasRoundKeys) {
           const rk = this.keySchedule.roundKeys[round + 3];
-          s1 = (s1 ^ rk.tk0 ^ TK1[2]) >>> 0;
-          s2 = (s2 ^ rk.tk1 ^ TK1[3]) >>> 0;
+          s1 = OpCodes.Xor32(OpCodes.Xor32(s1, rk.tk0), TK1[2]);
+          s2 = OpCodes.Xor32(OpCodes.Xor32(s2, rk.tk1), TK1[3]);
         } else {
-          s1 = (s1 ^ TK1[2]) >>> 0;
-          s2 = (s2 ^ TK1[3]) >>> 0;
+          s1 = OpCodes.Xor32(s1, TK1[2]);
+          s2 = OpCodes.Xor32(s2, TK1[3]);
         }
-        s3 = (s3 ^ 0x02) >>> 0;
+        s3 = OpCodes.Xor32(s3, 0x02);
 
         s2 = OpCodes.RotL32(s2, 8);
         s3 = OpCodes.RotL32(s3, 16);
         s0 = OpCodes.RotL32(s0, 24);
 
-        s2 = (s2 ^ s3) >>> 0;
-        s3 = (s3 ^ s1) >>> 0;
-        s0 = (s0 ^ s3) >>> 0;
+        s2 = OpCodes.Xor32(s2, s3);
+        s3 = OpCodes.Xor32(s3, s1);
+        s0 = OpCodes.Xor32(s0, s3);
 
         skinny128_permute_tk_half(TK1, 0);
       }
@@ -635,9 +606,9 @@
         skinny128_inv_permute_tk_half(TK1, 2);
 
         // Inverse MixColumns
-        s0 = (s0 ^ s3) >>> 0;
-        s3 = (s3 ^ s1) >>> 0;
-        s2 = (s2 ^ s3) >>> 0;
+        s0 = OpCodes.Xor32(s0, s3);
+        s3 = OpCodes.Xor32(s3, s1);
+        s2 = OpCodes.Xor32(s2, s3);
 
         // Inverse ShiftRows
         s2 = OpCodes.RotL32(s2, 24);
@@ -647,13 +618,13 @@
         // Remove round tweakey
         if (hasRoundKeys) {
           const rk = this.keySchedule.roundKeys[round];
-          s1 = (s1 ^ rk.tk0 ^ TK1[2]) >>> 0;
-          s2 = (s2 ^ rk.tk1 ^ TK1[3]) >>> 0;
+          s1 = OpCodes.Xor32(OpCodes.Xor32(s1, rk.tk0), TK1[2]);
+          s2 = OpCodes.Xor32(OpCodes.Xor32(s2, rk.tk1), TK1[3]);
         } else {
-          s1 = (s1 ^ TK1[2]) >>> 0;
-          s2 = (s2 ^ TK1[3]) >>> 0;
+          s1 = OpCodes.Xor32(s1, TK1[2]);
+          s2 = OpCodes.Xor32(s2, TK1[3]);
         }
-        s3 = (s3 ^ 0x02) >>> 0;
+        s3 = OpCodes.Xor32(s3, 0x02);
 
         // Inverse S-box
         s0 = skinny128_inv_sbox(s0);
@@ -664,9 +635,9 @@
         // Round 3 inverse (C pattern: s1, s2, s3, s0 with offset 2)
         skinny128_inv_permute_tk_half(TK1, 0);
 
-        s1 = (s1 ^ s0) >>> 0;
-        s0 = (s0 ^ s2) >>> 0;
-        s3 = (s3 ^ s0) >>> 0;
+        s1 = OpCodes.Xor32(s1, s0);
+        s0 = OpCodes.Xor32(s0, s2);
+        s3 = OpCodes.Xor32(s3, s0);
 
         s3 = OpCodes.RotL32(s3, 24);
         s0 = OpCodes.RotL32(s0, 16);
@@ -674,13 +645,13 @@
 
         if (hasRoundKeys) {
           const rk = this.keySchedule.roundKeys[round - 1];
-          s2 = (s2 ^ rk.tk0 ^ TK1[0]) >>> 0;
-          s3 = (s3 ^ rk.tk1 ^ TK1[1]) >>> 0;
+          s2 = OpCodes.Xor32(OpCodes.Xor32(s2, rk.tk0), TK1[0]);
+          s3 = OpCodes.Xor32(OpCodes.Xor32(s3, rk.tk1), TK1[1]);
         } else {
-          s2 = (s2 ^ TK1[0]) >>> 0;
-          s3 = (s3 ^ TK1[1]) >>> 0;
+          s2 = OpCodes.Xor32(s2, TK1[0]);
+          s3 = OpCodes.Xor32(s3, TK1[1]);
         }
-        s0 = (s0 ^ 0x02) >>> 0;
+        s0 = OpCodes.Xor32(s0, 0x02);
 
         s1 = skinny128_inv_sbox(s1);
         s2 = skinny128_inv_sbox(s2);
@@ -690,9 +661,9 @@
         // Round 2 inverse (C pattern: s2, s3, s0, s1 with offset 1)
         skinny128_inv_permute_tk_half(TK1, 2);
 
-        s2 = (s2 ^ s1) >>> 0;
-        s1 = (s1 ^ s3) >>> 0;
-        s0 = (s0 ^ s1) >>> 0;
+        s2 = OpCodes.Xor32(s2, s1);
+        s1 = OpCodes.Xor32(s1, s3);
+        s0 = OpCodes.Xor32(s0, s1);
 
         s0 = OpCodes.RotL32(s0, 24);
         s1 = OpCodes.RotL32(s1, 16);
@@ -700,13 +671,13 @@
 
         if (hasRoundKeys) {
           const rk = this.keySchedule.roundKeys[round - 2];
-          s3 = (s3 ^ rk.tk0 ^ TK1[2]) >>> 0;
-          s0 = (s0 ^ rk.tk1 ^ TK1[3]) >>> 0;
+          s3 = OpCodes.Xor32(OpCodes.Xor32(s3, rk.tk0), TK1[2]);
+          s0 = OpCodes.Xor32(OpCodes.Xor32(s0, rk.tk1), TK1[3]);
         } else {
-          s3 = (s3 ^ TK1[2]) >>> 0;
-          s0 = (s0 ^ TK1[3]) >>> 0;
+          s3 = OpCodes.Xor32(s3, TK1[2]);
+          s0 = OpCodes.Xor32(s0, TK1[3]);
         }
-        s1 = (s1 ^ 0x02) >>> 0;
+        s1 = OpCodes.Xor32(s1, 0x02);
 
         s2 = skinny128_inv_sbox(s2);
         s3 = skinny128_inv_sbox(s3);
@@ -716,9 +687,9 @@
         // Round 1 inverse (C pattern: s3, s0, s1, s2 with offset 0)
         skinny128_inv_permute_tk_half(TK1, 0);
 
-        s3 = (s3 ^ s2) >>> 0;
-        s2 = (s2 ^ s0) >>> 0;
-        s1 = (s1 ^ s2) >>> 0;
+        s3 = OpCodes.Xor32(s3, s2);
+        s2 = OpCodes.Xor32(s2, s0);
+        s1 = OpCodes.Xor32(s1, s2);
 
         s1 = OpCodes.RotL32(s1, 24);
         s2 = OpCodes.RotL32(s2, 16);
@@ -726,13 +697,13 @@
 
         if (hasRoundKeys) {
           const rk = this.keySchedule.roundKeys[round - 3];
-          s0 = (s0 ^ rk.tk0 ^ TK1[0]) >>> 0;
-          s1 = (s1 ^ rk.tk1 ^ TK1[1]) >>> 0;
+          s0 = OpCodes.Xor32(OpCodes.Xor32(s0, rk.tk0), TK1[0]);
+          s1 = OpCodes.Xor32(OpCodes.Xor32(s1, rk.tk1), TK1[1]);
         } else {
-          s0 = (s0 ^ TK1[0]) >>> 0;
-          s1 = (s1 ^ TK1[1]) >>> 0;
+          s0 = OpCodes.Xor32(s0, TK1[0]);
+          s1 = OpCodes.Xor32(s1, TK1[1]);
         }
-        s2 = (s2 ^ 0x02) >>> 0;
+        s2 = OpCodes.Xor32(s2, 0x02);
 
         s3 = skinny128_inv_sbox(s3);
         s0 = skinny128_inv_sbox(s0);

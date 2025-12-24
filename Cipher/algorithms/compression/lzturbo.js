@@ -312,7 +312,7 @@
 
       while (remainingLiterals > this.MAX_LITERAL) {
         // Full literal chunk (15 literals, no match)
-        let token = OpCodes.Shl8(this.MAX_LITERAL, 4) | 0x0F; // 15 literals, end flag
+        let token = OpCodes.Shl8(this.MAX_LITERAL, 4)|0x0F; // 15 literals, end flag
         output.push(OpCodes.ToByte(token));
 
         // Write 15 literal bytes
@@ -325,7 +325,7 @@
 
       // Write sequence: literals + match
       const matchField = Math.min(matchLength, 14);
-      const token = OpCodes.Shl8(remainingLiterals, 4) | matchField;
+      const token = OpCodes.Shl8(remainingLiterals, 4)|matchField;
       output.push(OpCodes.ToByte(token));
 
       // Write remaining literals
@@ -351,7 +351,7 @@
       // Write only literals with end flag
       while (literalCount > this.MAX_LITERAL) {
         // Full chunk
-        let token = OpCodes.Shl8(this.MAX_LITERAL, 4) | 0x0F;
+        let token = OpCodes.Shl8(this.MAX_LITERAL, 4)|0x0F;
         output.push(OpCodes.ToByte(token));
 
         for (let i = 0; i < this.MAX_LITERAL; ++i)
@@ -362,7 +362,7 @@
       }
 
       // Final chunk
-      let token = OpCodes.Shl8(literalCount, 4) | 0x0F;
+      let token = OpCodes.Shl8(literalCount, 4)|0x0F;
       output.push(OpCodes.ToByte(token));
 
       for (let i = 0; i < literalCount; ++i)
@@ -400,7 +400,7 @@
         // Read offset (little-endian 16-bit)
         if (ip + 1 >= inputLength)
           break;
-        const offset = OpCodes.ToByte(input[ip]) | OpCodes.Shl16(OpCodes.ToByte(input[ip+1]), 8);
+        const offset = OpCodes.ToByte(input[ip])|OpCodes.Shl16(OpCodes.ToByte(input[ip+1]), 8);
         ip += 2;
 
         // Decode match length

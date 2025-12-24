@@ -281,7 +281,7 @@
       let okm = [];
       let previousBlock = [];
 
-      // Generate each block: T(i) = HMAC-Hash(PRK, T(i-1) | info | i)
+      // Generate each block: T(i) = HMAC-Hash(PRK, T(i-1)|info|i)
       for (let i = 1; i <= numBlocks; i++) {
         const blockInput = previousBlock.concat(info).concat([i]);
         const blockHash = this.calculateHMAC(prk, blockInput, hashFunction);

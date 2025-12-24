@@ -265,8 +265,10 @@
       // Simple mixing for educational purposes
       for (let i = 0; i < 32; i++) {
         let temp = this._state[i];
-        temp = OpCodes.XorN(OpCodes.RotL32(temp, 7), (round * 0x9e3779b9));
-        temp = OpCodes.XorN(temp, this._state[(i + 1) % 32]);
+        const rotated = OpCodes.RotL32(temp, 7);
+        const roundConst = OpCodes.ToUint32(round * 0x9e3779b9);
+        temp = OpCodes.Xor32(rotated, roundConst);
+        temp = OpCodes.Xor32(temp, this._state[(i + 1) % 32]);
         this._state[i] = OpCodes.ToUint32(temp);
       }
 
@@ -296,7 +298,7 @@
 
       // Append 64-bit length (big-endian)
       for (let i = 7; i >= 0; i--) {
-        this._buffer[this._bufferLength + (7 - i)] = OpCodes.AndN(OpCodes.Shr32(totalBits, i * 8), 0xFF);
+        this._buffer[this._bufferLength + (7 - i)] = OpCodes.ToByte(OpCodes.Shr32(totalBits, i * 8));
       }
       this._bufferLength += 8;
 

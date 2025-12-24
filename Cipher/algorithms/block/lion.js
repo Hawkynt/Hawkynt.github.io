@@ -277,11 +277,11 @@
           W[t] = OpCodes.Pack32BE(block[t*4], block[t*4+1], block[t*4+2], block[t*4+3]);
         }
         for (let t = 16; t < 80; t++) {
-          const xor1 = W[t-3] >>> 0;
-          const xor2 = W[t-8] >>> 0;
-          const xor3 = W[t-14] >>> 0;
-          const xor4 = W[t-16] >>> 0;
-          const temp = OpCodes.XorN(OpCodes.XorN(xor1, xor2), OpCodes.XorN(xor3, xor4)) >>> 0;
+          const xor1 = W[t-3];
+          const xor2 = W[t-8];
+          const xor3 = W[t-14];
+          const xor4 = W[t-16];
+          const temp = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(xor1, xor2), xor3), xor4);
           W[t] = OpCodes.RotL32(temp, 1);
         }
 
@@ -290,20 +290,20 @@
         for (let t = 0; t < 80; t++) {
           let f, k;
           if (t < 20) {
-            f = ((b & c) | ((~b) & d)) >>> 0;
+            f = OpCodes.ToUint32((b&c)|((~b)&d));
             k = 0x5A827999;
           } else if (t < 40) {
-            f = OpCodes.XorN(OpCodes.XorN(b, c), d) >>> 0;
+            f = OpCodes.Xor32(OpCodes.Xor32(b, c), d);
             k = 0x6ED9EBA1;
           } else if (t < 60) {
-            f = ((b & c) | ((b & d) | (c & d))) >>> 0;
+            f = OpCodes.ToUint32((b&c)|((b&d)|(c&d)));
             k = 0x8F1BBCDC;
           } else {
-            f = OpCodes.XorN(OpCodes.XorN(b, c), d) >>> 0;
+            f = OpCodes.Xor32(OpCodes.Xor32(b, c), d);
             k = 0xCA62C1D6;
           }
 
-          const temp = (OpCodes.RotL32(a, 5) + f + e + k + W[t]) >>> 0;
+          const temp = OpCodes.ToUint32(OpCodes.RotL32(a, 5) + f + e + k + W[t]);
           e = d;
           d = c;
           c = OpCodes.RotL32(b, 30);
@@ -311,11 +311,11 @@
           a = temp;
         }
 
-        h0 = (h0 + a) >>> 0;
-        h1 = (h1 + b) >>> 0;
-        h2 = (h2 + c) >>> 0;
-        h3 = (h3 + d) >>> 0;
-        h4 = (h4 + e) >>> 0;
+        h0 = OpCodes.ToUint32((h0 + a));
+        h1 = OpCodes.ToUint32((h1 + b));
+        h2 = OpCodes.ToUint32((h2 + c));
+        h3 = OpCodes.ToUint32((h3 + d));
+        h4 = OpCodes.ToUint32((h4 + e));
       }
 
       const result = [];
@@ -341,7 +341,7 @@
 
       let j = 0;
       for (let i = 0; i < 256; i++) {
-        j = (j + S[i] + key[i % key.length]) & 0xFF;
+        j = (j + S[i] + key[i % key.length])&0xFF;
         // Swap S[i] and S[j]
         const temp = S[i];
         S[i] = S[j];
@@ -354,17 +354,17 @@
       const output = [];
 
       for (let k = 0; k < data.length; k++) {
-        i = (i + 1) & 0xFF;
-        j = (j + S[i]) & 0xFF;
+        i = (i + 1)&0xFF;
+        j = (j + S[i])&0xFF;
 
         // Swap S[i] and S[j]
         const temp = S[i];
         S[i] = S[j];
         S[j] = temp;
 
-        const t = (S[i] + S[j]) & 0xFF;
+        const t = (S[i] + S[j])&0xFF;
         const keystreamByte = S[t];
-        const ciphertextByte = OpCodes.AndN(OpCodes.XorN(data[k], keystreamByte), 0xFF);
+        const ciphertextByte = OpCodes.Xor32(data[k], keystreamByte)&0xFF;
         output.push(ciphertextByte);
       }
 

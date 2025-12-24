@@ -18,18 +18,18 @@
  * 2. Improved (better mixing): 0x21f0aaad, 0x735a2d97 (used here)
  *
  * Standard Algorithm:
- *   state += 0x9E3779B9;
- *   z = state;
- *   z = (z ^ (z >>> 16)) * 0x85ebca6b;
- *   z = (z ^ (z >>> 13)) * 0xc2b2ae35;
- *   return (z ^ (z >>> 16)) >>> 0;
+ *   state += 0x9E3779B9
+ *   z = state
+ *   z = (z XOR (z right-shift 16)) * 0x85ebca6b
+ *   z = (z XOR (z right-shift 13)) * 0xc2b2ae35
+ *   return z XOR (z right-shift 16) as uint32
  *
  * Improved Algorithm (implemented):
- *   state += 0x9E3779B9;
- *   z = state;
- *   z = (z ^ (z >>> 16)) * 0x21f0aaad;
- *   z = (z ^ (z >>> 15)) * 0x735a2d97;
- *   return (z ^ (z >>> 15)) >>> 0;
+ *   state += 0x9E3779B9
+ *   z = state
+ *   z = (z XOR (z right-shift 16)) * 0x21f0aaad
+ *   z = (z XOR (z right-shift 15)) * 0x735a2d97
+ *   return z XOR (z right-shift 15) as uint32
  *
  * AlgorithmFramework Format
  * (c)2006-2025 Hawkynt
@@ -124,7 +124,7 @@
       // Test vectors generated from reference implementation
       // Using improved mixing constants (0x21f0aaad, 0x735a2d97)
       // Reference: https://github.com/attilabuti/SimplexNoise
-      // Algorithm: state += 0x9E3779B9; z = state; z = (z ^ (z >>> 16)) * 0x21f0aaad; z = (z ^ (z >>> 15)) * 0x735a2d97; return (z ^ (z >>> 15)) >>> 0;
+      // Algorithm: state += 0x9E3779B9; z = state; z = (z^(OpCodes.Shr32(z, 16))) * 0x21f0aaad; z = (z^(OpCodes.Shr32(z, 15))) * 0x735a2d97; return (z^(OpCodes.Shr32(z, 15))) >>> 0;
       this.tests = [
         {
           text: "Seed 0: First 5 outputs (20 bytes) - verified against reference implementation",
@@ -274,11 +274,11 @@
      * Generate next 32-bit value using SplitMix32 algorithm (improved variant)
      *
      * Algorithm:
-     * state += 0x9E3779B9;  // Add golden ratio constant (Weyl sequence)
-     * z = state;
-     * z = (z ^ (z >>> 16)) * 0x21f0aaad;  // First mixing stage
-     * z = (z ^ (z >>> 15)) * 0x735a2d97;  // Second mixing stage
-     * return (z ^ (z >>> 15)) >>> 0;      // Final mixing and unsigned conversion
+     * state += 0x9E3779B9  - Add golden ratio constant (Weyl sequence)
+     * z = state
+     * z = (z XOR (z right-shift 16)) * 0x21f0aaad  - First mixing stage
+     * z = (z XOR (z right-shift 15)) * 0x735a2d97  - Second mixing stage
+     * return z XOR (z right-shift 15) as uint32    - Final mixing and unsigned conversion
      *
      * Key constants:
      * - 0x9E3779B9: Golden ratio constant (creates full-period Weyl sequence)
@@ -290,20 +290,20 @@
       }
 
       // Step 1: Add golden ratio constant to state (Weyl sequence)
-      this._state = OpCodes.ToInt(this._state + this.GOLDEN_GAMMA);
+      this._state = OpCodes.ToInt(OpCodes.Add32(this._state, this.GOLDEN_GAMMA));
       let z = this._state;
 
       // Step 2: First mixing stage - XOR with right-shift 16, multiply by constant
       const zShifted16 = OpCodes.Shr32(z, 16);
-      z = Math.imul(OpCodes.XorN(z, zShifted16), this.MIX_CONST_1);
+      z = Math.imul(OpCodes.Xor32(z, zShifted16), this.MIX_CONST_1);
 
       // Step 3: Second mixing stage - XOR with right-shift 15, multiply by constant
       const zShifted15_1 = OpCodes.Shr32(z, 15);
-      z = Math.imul(OpCodes.XorN(z, zShifted15_1), this.MIX_CONST_2);
+      z = Math.imul(OpCodes.Xor32(z, zShifted15_1), this.MIX_CONST_2);
 
       // Step 4: Final mixing - XOR with right-shift 15
       const zShifted15_2 = OpCodes.Shr32(z, 15);
-      return OpCodes.ToDWord(OpCodes.XorN(z, zShifted15_2));
+      return OpCodes.ToDWord(OpCodes.Xor32(z, zShifted15_2));
     }
 
     /**

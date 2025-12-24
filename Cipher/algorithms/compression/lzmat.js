@@ -273,7 +273,7 @@
         const b2 = this.inputBuffer[pos + 2];
 
         // Simple hash function for 3-byte sequences
-        // Equivalent to: ((b0 << 16) | (b1 << 8) | b2)
+        // Equivalent to: ((OpCodes.Shl32(b0, 16))|(OpCodes.Shl32(b1, 8))|b2)
         return OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(b0, 16), OpCodes.Shl32(b1, 8)), b2)) % this.matchTableSize;
       }
 

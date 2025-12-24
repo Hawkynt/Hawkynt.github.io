@@ -3,7 +3,7 @@
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  *
- * FastLZ - Small & portable byte-aligned LZ77 compression
+ * FastLZ - Small&portable byte-aligned LZ77 compression
  * By Ariya Hidayat (2007)
  *
  * Fast LZ77 compression with two optimization levels:
@@ -74,7 +74,7 @@
 
       // Algorithm constants matching FastLZ specification
       this.HASH_LOG = 13;
-      this.HASH_SIZE = 1 << this.HASH_LOG; // 8192
+      this.HASH_SIZE = OpCodes.Shl32(1, this.HASH_LOG); // 8192
       this.HASH_MASK = this.HASH_SIZE - 1;
 
       // Distance limits
@@ -229,13 +229,13 @@
     }
 
     /**
-     * FastLZ hash function: h = (v * 2654435769) >> (32 - HASH_LOG)
+     * FastLZ hash function: h = (v * 2654435769) right-shift (32 - HASH_LOG)
      * Uses golden ratio multiplier for good distribution
      */
     _hash(value) {
       // Multiply by golden ratio constant (2654435769 = 0x9E3779B9)
-      const h = Math.imul(value & 0xFFFFFF, 0x9E3779B9);
-      return (h >>> (32 - this.HASH_LOG)) & this.HASH_MASK;
+      const h = Math.imul(value&0xFFFFFF, 0x9E3779B9);
+      return OpCodes.Shr32(h, (32 - this.HASH_LOG))&this.HASH_MASK;
     }
 
     /**
@@ -243,7 +243,7 @@
      */
     _read24(data, pos) {
       if (pos + 2 >= data.length) return 0;
-      return (data[pos] << 16) | (data[pos + 1] << 8) | data[pos + 2];
+      return OpCodes.Shl32(data[pos], 16)|OpCodes.Shl32(data[pos + 1], 8)|data[pos + 2];
     }
 
     /**
@@ -404,25 +404,25 @@
      * Output match token in FastLZ Level 1 format
      *
      * Short match (length 3-8):
-     *   [len-2 << 5 | dist >> 8] [dist & 0xFF]
+     *   [len-2 left-shift 5 OR right-shift(dist, 8)] [dist&0xFF]
      *
      * Long match (length 9-264):
-     *   [7 << 5 | dist >> 8] [len - 9] [dist & 0xFF]
+     *   [7 left-shift 5 OR right-shift(dist, 8)] [len - 9] [dist&0xFF]
      */
     _outputMatch(output, length, distance) {
       if (length < 7) {
         // Short match: 3-8 bytes
-        // opcode = (length - 2) << 5 | (distance >> 8)
-        const opcode = ((length - 2) << 5) | ((distance >> 8) & 0x1F);
+        // opcode = OpCodes.Shl32((length - 2), 5)|OpCodes.Shr32(distance, 8)
+        const opcode = OpCodes.Shl32((length - 2), 5)|OpCodes.Shr32(distance, 8);
         output.push(opcode);
-        output.push(distance & 0xFF);
+        output.push(OpCodes.ToByte(distance));
       } else {
         // Long match: 7+ bytes
-        // opcode = 7 << 5 | (distance >> 8)
+        // opcode = OpCodes.Shl32(7, 5)|OpCodes.Shr32(distance, 8)
         // Format: [opcode] [dist_low] [length-7]
-        const opcode = (7 << 5) | ((distance >> 8) & 0x1F);
+        const opcode = OpCodes.Shl32(7, 5)|OpCodes.Shr32(distance, 8);
         output.push(opcode);
-        output.push(distance & 0xFF);
+        output.push(OpCodes.ToByte(distance));
         output.push(length - 7); // Length byte: 0 = 7 bytes, 2 = 9 bytes, 9 = 16 bytes
       }
     }
@@ -440,11 +440,11 @@
         const opcode = input[ip++];
 
         // Check opcode type by examining top 3 bits
-        const type = opcode >> 5;
+        const type = OpCodes.Shr32(opcode, 5);
 
         if (type === 0) {
           // Literal run: copy (opcode + 1) bytes
-          const litLen = (opcode & 0x1F) + 1;
+          const litLen = (opcode&0x1F) + 1;
           for (let i = 0; i < litLen && ip < input.length; i++) {
             output.push(input[ip++]);
           }
@@ -453,9 +453,9 @@
           if (ip >= input.length) break;
 
           const len = type + 2; // 3-8 bytes
-          const distHigh = opcode & 0x1F;
+          const distHigh = opcode&0x1F;
           const distLow = input[ip++];
-          const distance = (distHigh << 8) | distLow;
+          const distance = (OpCodes.Shl32(distHigh, 8))|distLow;
 
           // Copy from history
           let ref = output.length - distance;
@@ -471,16 +471,16 @@
           // Format: [opcode] [dist_low] [length-7]
           if (ip + 1 >= input.length) break;
 
-          const distHigh = opcode & 0x1F;
+          const distHigh = opcode&0x1F;
           const distLow = input[ip++];
-          const distance = (distHigh << 8) | distLow;
+          const distance = (OpCodes.Shl32(distHigh, 8))|distLow;
           const lenByte = input[ip++];
           const len = lenByte + 7; // 7+ bytes
 
           // Handle far-distance marker for Level 2
-          if (distance === (31 << 8) && ip + 1 < input.length) {
+          if (distance === OpCodes.Shl32(31, 8) && ip + 1 < input.length) {
             // Far distance: read 16-bit offset
-            const farDist = (input[ip++] << 8) | input[ip++];
+            const farDist = OpCodes.Shl32(input[ip++], 8)|input[ip++];
             let ref = output.length - farDist;
             for (let i = 0; i < len; i++) {
               if (ref + i >= 0 && ref + i < output.length) {

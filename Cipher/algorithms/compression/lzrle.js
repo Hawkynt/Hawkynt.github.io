@@ -266,7 +266,7 @@
             if (pos >= input.length) break;
 
             const X = input[pos++];
-            // Run length = ((X << 3) | 0) + 4 (opcode 0x11 has L=1, but we ignore it for zero-run)
+            // Run length = ((OpCodes.Shl32(X, 3))|0) + 4 (opcode 0x11 has L=1, but we ignore it for zero-run)
             const runLength = OpCodes.Shl8(X, 3) + 4;
 
             // Emit zeros
@@ -284,7 +284,7 @@
           // Regular match with 16-bit offset
           pos += 2;
           const offset = OpCodes.Pack16BE(byte1, byte2);
-          const length = (opcode&0x0F) + 3;
+          const length = OpCodes.And8(opcode, 0x0F) + 3;
 
           // Copy from dictionary
           for (let i = 0; i < length; ++i) {
@@ -295,8 +295,8 @@
         }
 
         // Literal run (opcodes 0x00-0x0F)
-        if ((opcode&0xF0) === 0x00) {
-          let literalCount = opcode&0x0F;
+        if (OpCodes.And8(opcode, 0xF0) === 0x00) {
+          let literalCount = OpCodes.And8(opcode, 0x0F);
 
           // Extended length encoding
           if (literalCount === 0 && pos < input.length) {
@@ -313,7 +313,7 @@
         }
 
         // Match with small offset (opcodes 0x10-0x1F)
-        if ((opcode&0xF0) === 0x10) {
+        if (OpCodes.And8(opcode, 0xF0) === 0x10) {
           if (pos + 1 >= input.length) break;
 
           const byte1 = input[pos++];
@@ -322,7 +322,7 @@
 
           if (offset === 0) break; // End marker alternative
 
-          const length = (opcode&0x0F) + 3;
+          const length = OpCodes.And8(opcode, 0x0F) + 3;
 
           // Copy match
           for (let i = 0; i < length; ++i) {
@@ -344,7 +344,7 @@
       let length = 0;
       while (startPos + length < input.length && input[startPos + length] === 0x00) {
         ++length;
-        // Max encodable: ((255 << 3) | 7) + 4 = 2043
+        // Max encodable: ((255 << 3)|7) + 4 = 2043
         if (length >= OpCodes.Shl8(255, 3) + 11) break;
       }
       return length;
@@ -385,11 +385,11 @@
 
     _encodeZeroRun(output, runLength) {
       // LZO-RLE format: opcode 0x11, distance 0xBFFF, then X byte
-      // Run length = ((X << 3) | (0 0 0 0 0 L L L)) + 4
-      // Solving: runLength = (X << 3) + 4, so X = (runLength - 4) >> 3
+      // Run length = ((OpCodes.Shl32(X, 3))|(0 0 0 0 0 L L L)) + 4
+      // Solving: runLength = (OpCodes.Shl32(X, 3)) + 4, so X = (runLength - 4) >> 3
 
       const X = OpCodes.Shr8(runLength - 4, 3);
-      output.push(0x11, 0xFF, 0xBF, X&0xFF);
+      output.push(0x11, 0xFF, 0xBF, OpCodes.And8(X, 0xFF));
     }
 
     _encodeLiterals(output, input, startPos, count) {
@@ -400,7 +400,7 @@
         output.push(count);
       } else {
         output.push(0x00);
-        output.push((count - 15)&0xFF);
+        output.push(OpCodes.And8(count - 15, 0xFF));
       }
 
       // Copy literal bytes
@@ -411,11 +411,11 @@
 
     _encodeMatch(output, offset, length) {
       // Simplified match encoding using opcode 0x10-0x1F
-      // Opcode: 0x1L where L = (length - 3) & 0x0F
+      // Opcode: 0x1L where L = (length - 3)&0x0F
       // Followed by 16-bit big-endian offset
 
       const lengthCode = Math.min(length - 3, 15);
-      output.push(0x10|lengthCode);
+      output.push(OpCodes.Or8(0x10, lengthCode));
 
       // Big-endian offset
       const [high, low] = OpCodes.Unpack16BE(offset);

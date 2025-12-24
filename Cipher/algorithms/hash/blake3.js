@@ -376,7 +376,7 @@
       }
 
       const chaining_value = new Uint32Array(IV);
-      return compress(chaining_value, block, 0, BLAKE3_BLOCK_LEN, PARENT | this.flags);
+      return compress(chaining_value, block, 0, BLAKE3_BLOCK_LEN, PARENT|this.flags);
     }
 
     /**
@@ -392,7 +392,7 @@
       if (this.blocks_compressed === 0) {
         flags |= CHUNK_START;
       }
-      flags |= CHUNK_END | ROOT;
+      flags |= CHUNK_END|ROOT;
 
       // Compress the final block
       const block_data = Array.from(this.block).concat(new Array(Math.max(0, 64 - this.block_len)).fill(0));
@@ -416,7 +416,7 @@
           output.block_words,
           counter,
           output.block_len,
-          output.flags | ROOT
+          output.flags|ROOT
         );
 
         // Extract bytes from words (little-endian)
@@ -456,7 +456,7 @@
 
       while (output_pos < output_len) {
         const block = new Uint8Array(BLAKE3_BLOCK_LEN);
-        const compressed = compress(node, block, counter, 0, ROOT | this.flags);
+        const compressed = compress(node, block, counter, 0, ROOT|this.flags);
 
         // Convert output words to bytes
         const block_output = new Uint8Array(64);

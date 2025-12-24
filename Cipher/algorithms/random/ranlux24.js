@@ -239,9 +239,9 @@
       // Convert seed bytes to 32-bit unsigned integer (little-endian)
       let seedValue = 0;
       for (let i = 0; i < Math.min(seedBytes.length, 4); ++i) {
-        seedValue |= (seedBytes[i] << (i * 8));
+        seedValue = OpCodes.ToUint32(OpCodes.Or32(seedValue, OpCodes.Shl32(seedBytes[i], i * 8)));
       }
-      seedValue = seedValue >>> 0; // Ensure unsigned
+      seedValue = OpCodes.ToUint32(seedValue); // Ensure unsigned
 
       // C++ spec: if seed == 0, use default_seed (19780503u)
       if (seedValue === 0) {
@@ -264,7 +264,7 @@
         // Generate next LCG value
         lcgState = (LCG_A * lcgState) % LCG_M;
         // X[i] = (lcg_value * 2^0) mod 2^24 = lcg_value mod 2^24
-        this._state[i] = (lcgState & MASK_24BIT) >>> 0;
+        this._state[i] = OpCodes.ToUint32(OpCodes.And32(lcgState, MASK_24BIT));
       }
 
       // C++ spec: carry c = (X[-1] == 0) ? 1 : 0
@@ -317,7 +317,7 @@
       }
 
       // Ensure 24-bit result
-      temp &= MASK_24BIT;
+      temp = OpCodes.And32(temp, MASK_24BIT);
 
       // Update state
       this._state[longIndex] = temp;
@@ -393,9 +393,9 @@
       for (let i = 0; i < fullValues; ++i) {
         const value = this._nextOutput();
         // Output in little-endian format (3 bytes)
-        output.push(value & 0xFF);
-        output.push((value >>> 8) & 0xFF);
-        output.push((value >>> 16) & 0xFF);
+        output.push(OpCodes.ToByte(value));
+        output.push(OpCodes.ToByte(OpCodes.Shr32(value, 8)));
+        output.push(OpCodes.ToByte(OpCodes.Shr32(value, 16)));
       }
 
       // Handle remaining bytes (if length not multiple of 3)
@@ -403,7 +403,7 @@
       if (remainingBytes > 0) {
         const value = this._nextOutput();
         for (let i = 0; i < remainingBytes; ++i) {
-          output.push((value >>> (i * 8)) & 0xFF);
+          output.push(OpCodes.ToByte(OpCodes.Shr32(value, i * 8)));
         }
       }
 

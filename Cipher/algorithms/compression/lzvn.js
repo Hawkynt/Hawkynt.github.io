@@ -148,11 +148,11 @@
 
         // LZVN parameters (based on Apple's implementation)
         this.MIN_MATCH_LENGTH = 3; // Minimum match length
-        this.MAX_MATCH_LENGTH = 271; // Maximum match length  
+        this.MAX_MATCH_LENGTH = 271; // Maximum match length
         this.MIN_DISTANCE = 1; // Minimum match distance
         this.MAX_DISTANCE = 65535; // Maximum match distance (16-bit)
         this.HASH_BITS = 12; // Hash table size (4K entries)
-        this.HASH_SIZE = 1 << this.HASH_BITS;
+        this.HASH_SIZE = OpCodes.Shl32(1, this.HASH_BITS);
       }
 
       Feed(data) {
@@ -246,21 +246,21 @@
         while (pos < input.length) {
           const opcode = input[pos++];
 
-          if ((opcode & 0xF0) === 0x00) {
+          if ((opcode&0xF0) === 0x00) {
             // Small literal case: 0000LLLL
-            const literalLength = (opcode & 0x0F) + 1;
+            const literalLength = (opcode&0x0F) + 1;
             for (let i = 0; i < literalLength && pos < input.length; i++) {
               output.push(input[pos++]);
             }
-          } else if ((opcode & 0xE0) === 0xE0) {
+          } else if ((opcode&0xE0) === 0xE0) {
             // Match case: 111LLLLL or more complex encoding
             let matchLength, matchDistance;
 
-            if ((opcode & 0xF0) === 0xE0) {
+            if ((opcode&0xF0) === 0xE0) {
               // Short match: 1110LLLL
-              matchLength = (opcode & 0x0F) + 3;
+              matchLength = (opcode&0x0F) + 3;
               if (pos + 1 < input.length) {
-                matchDistance = (input[pos] << 8) | input[pos + 1];
+                matchDistance = (OpCodes.Shl32(input[pos], 8))|input[pos + 1];
                 pos += 2;
               } else {
                 break;
@@ -296,7 +296,7 @@
         if (pos + 2 >= input.length) return 0;
 
         // Simple 3-byte hash
-        return ((input[pos] << 8) ^ (input[pos + 1] << 4) ^ input[pos + 2]) & (this.HASH_SIZE - 1);
+        return (OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(input[pos], 8), OpCodes.Shl32(input[pos + 1], 4)), input[pos + 2]))&(this.HASH_SIZE - 1);
       }
 
       _findMatch(input, currentPos, candidatePos) {
@@ -337,9 +337,9 @@
         // LZVN match encoding (simplified)
         if (length >= 3 && length <= 18 && distance <= 65535) {
           // Short match format: 1110LLLL + distance(16-bit)
-          output.push(0xE0 | (Math.min(length - 3, 15)));
-          output.push((distance >>> 8) & 0xFF);
-          output.push(distance & 0xFF);
+          output.push(0xE0|(Math.min(length - 3, 15)));
+          output.push(OpCodes.ToByte(OpCodes.Shr32(distance, 8)));
+          output.push(OpCodes.ToByte(distance));
         }
       }
     }

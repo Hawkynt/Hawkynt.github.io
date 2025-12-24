@@ -262,17 +262,17 @@
         const bytes = [];
 
         // Store original length (4 bytes, big-endian)
-        bytes.push((originalLength >>> 24) & 0xFF);
-        bytes.push((originalLength >>> 16) & 0xFF);
-        bytes.push((originalLength >>> 8) & 0xFF);
-        bytes.push(originalLength & 0xFF);
+        bytes.push(OpCodes.ToByte(OpCodes.Shr32(originalLength, 24)));
+        bytes.push(OpCodes.ToByte(OpCodes.Shr32(originalLength, 16)));
+        bytes.push(OpCodes.ToByte(OpCodes.Shr32(originalLength, 8)));
+        bytes.push(OpCodes.ToByte(originalLength));
 
         // Store bit stream length (4 bytes, big-endian)
         const bitLength = bitStream.length;
-        bytes.push((bitLength >>> 24) & 0xFF);
-        bytes.push((bitLength >>> 16) & 0xFF);
-        bytes.push((bitLength >>> 8) & 0xFF);
-        bytes.push(bitLength & 0xFF);
+        bytes.push(OpCodes.ToByte(OpCodes.Shr32(bitLength, 24)));
+        bytes.push(OpCodes.ToByte(OpCodes.Shr32(bitLength, 16)));
+        bytes.push(OpCodes.ToByte(OpCodes.Shr32(bitLength, 8)));
+        bytes.push(OpCodes.ToByte(bitLength));
 
         // Pad bit stream to byte boundary
         const padding = (8 - (bitStream.length % 8)) % 8;
@@ -299,10 +299,10 @@
         }
 
         // Read original length
-        const originalLength = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
+        const originalLength = (OpCodes.Shl32(bytes[0], 24))|(OpCodes.Shl32(bytes[1], 16))|(OpCodes.Shl32(bytes[2], 8))|bytes[3];
 
         // Read bit stream length
-        const bitLength = (bytes[4] << 24) | (bytes[5] << 16) | (bytes[6] << 8) | bytes[7];
+        const bitLength = (OpCodes.Shl32(bytes[4], 24))|(OpCodes.Shl32(bytes[5], 16))|(OpCodes.Shl32(bytes[6], 8))|bytes[7];
 
         // Convert bytes back to bit stream
         let bitStream = '';
@@ -320,7 +320,7 @@
       _stringToBytes(str) {
         const bytes = [];
         for (let i = 0; i < str.length; i++) {
-          bytes.push(str.charCodeAt(i) & 0xFF);
+          bytes.push(OpCodes.ToByte(str.charCodeAt(i)));
         }
         return bytes;
       }

@@ -152,7 +152,7 @@
 
       // Masks
       this.MASK_64 = 0xFFFFFFFFFFFFFFFFn;
-      this.MASK_128 = (1n << 128n) - 1n;
+      this.MASK_128 = (OpCodes.ShiftLn(1n, 128n)) - 1n;
 
       this._ready = false;
 
@@ -199,8 +199,8 @@
       const stateBytes = [];
       let s = this._state;
       for (let i = 0; i < 16; ++i) {
-        stateBytes.unshift(Number(s & 0xFFn));
-        s = s >> 8n;
+        stateBytes.unshift(Number(OpCodes.AndN(s, 0xFFn)));
+        s = OpCodes.ShiftRn(s, 8n);
       }
       return stateBytes;
     }
@@ -221,10 +221,10 @@
      *
      * Algorithm:
      * 1. Extract high and low 64-bit parts
-     * 2. hi ^= hi >> 32
+     * 2. hi ^= right shift hi by 32 bits
      * 3. hi *= MULTIPLIER_64
-     * 4. hi ^= hi >> 48
-     * 5. hi *= (lo | 1)  // Ensure lo is odd for full-period mixing
+     * 4. hi ^= right shift hi by 48 bits
+     * 5. hi *= (lo|1)  // Ensure lo is odd for full-period mixing
      * 6. Return hi
      */
     _dxsmOutput(state) {

@@ -218,7 +218,7 @@
       for (let i = 0; i < 6; ++i) {
         let sum = 0;
         for (let j = 0; j < 3; ++j) {
-          sum ^= (data[j] & this.generator[j][i]);
+          sum = OpCodes.Xor32(sum, (data[j]&this.generator[j][i]));
         }
         codeword[i] = sum;
       }
@@ -243,7 +243,7 @@
       const corrected = [...data];
 
       // Check local group 1: {c0, c1, c3}
-      const localParity1 = data[0] ^ data[1] ^ data[3];
+      const localParity1 = data[0]^data[1]^data[3];
       if (localParity1 !== 0) {
         // Error in local group 1 - use locality to recover
         // In simplified version, we'll attempt single error correction
@@ -251,13 +251,13 @@
       }
 
       // Check local group 2: {c1, c2, c4}
-      const localParity2 = data[1] ^ data[2] ^ data[4];
+      const localParity2 = data[1]^data[2]^data[4];
       if (localParity2 !== 0) {
         console.warn('LRC: Error detected in local group 2');
       }
 
       // Check global parity: c5 = c0 XOR c1 XOR c2
-      const globalParity = data[0] ^ data[1] ^ data[2] ^ data[5];
+      const globalParity = data[0]^data[1]^data[2]^data[5];
       if (globalParity !== 0) {
         console.warn('LRC: Global parity error detected');
       }
@@ -271,13 +271,13 @@
       const syndromes = [];
 
       // Local parity 1: c3 = c0 XOR c1
-      syndromes.push(data[0] ^ data[1] ^ data[3]);
+      syndromes.push(data[0]^data[1]^data[3]);
 
       // Local parity 2: c4 = c1 XOR c2
-      syndromes.push(data[1] ^ data[2] ^ data[4]);
+      syndromes.push(data[1]^data[2]^data[4]);
 
       // Global parity: c5 = c0 XOR c1 XOR c2
-      syndromes.push(data[0] ^ data[1] ^ data[2] ^ data[5]);
+      syndromes.push(data[0]^data[1]^data[2]^data[5]);
 
       return syndromes;
     }
@@ -308,17 +308,17 @@
       // Demonstrate locality r=2 recovery
       switch (position) {
         case 0: // c0 = c1 XOR c3
-          return data[1] ^ data[3];
+          return data[1]^data[3];
         case 1: // c1 = c0 XOR c3
-          return data[0] ^ data[3];
+          return data[0]^data[3];
         case 2: // c2 = c1 XOR c4
-          return data[1] ^ data[4];
+          return data[1]^data[4];
         case 3: // c3 = c0 XOR c1
-          return data[0] ^ data[1];
+          return data[0]^data[1];
         case 4: // c4 = c1 XOR c2
-          return data[1] ^ data[2];
+          return data[1]^data[2];
         case 5: // c5 = c0 XOR c1 XOR c2
-          return data[0] ^ data[1] ^ data[2];
+          return data[0]^data[1]^data[2];
         default:
           throw new Error('Invalid position');
       }

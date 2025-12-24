@@ -299,12 +299,12 @@
           for (let i = 0; i < this.bufPos; ++i) {
             this.state[i] = this.buffer[i];
           }
-          this.state[this.bufPos] ^= 0x01; // ozs padding
+          this.state[this.bufPos] = OpCodes.ToByte(OpCodes.Xor32(this.state[this.bufPos], 0x01)); // ozs padding
         }
-        this.state[STATE_INBYTES - 1] ^= (1 << LAST_THREE_BITS_OFFSET);
+        this.state[STATE_INBYTES - 1] = OpCodes.ToByte(OpCodes.Xor32(this.state[STATE_INBYTES - 1], OpCodes.Shl32(1, LAST_THREE_BITS_OFFSET)));
       } else if (this.phase === 1 && this.bufPos === 0) {
         // Exactly one full block, no partial data
-        this.state[STATE_INBYTES - 1] ^= (2 << LAST_THREE_BITS_OFFSET);
+        this.state[STATE_INBYTES - 1] = OpCodes.ToByte(OpCodes.Xor32(this.state[STATE_INBYTES - 1], OpCodes.Shl32(2, LAST_THREE_BITS_OFFSET)));
       } else {
         // Process remaining partial data in 4-byte chunks
         let pos = 0;
@@ -320,24 +320,24 @@
         if (remaining !== 0) {
           this._PHOTON_Permutation();
           this._xorBytes(remaining, this.buffer, pos, this.state, 0);
-          this.state[remaining] ^= 0x01; // ozs padding
-          this.state[STATE_INBYTES - 1] ^= (2 << LAST_THREE_BITS_OFFSET);
+          this.state[remaining] = OpCodes.ToByte(OpCodes.Xor32(this.state[remaining], 0x01)); // ozs padding
+          this.state[STATE_INBYTES - 1] = OpCodes.ToByte(OpCodes.Xor32(this.state[STATE_INBYTES - 1], OpCodes.Shl32(2, LAST_THREE_BITS_OFFSET)));
         } else {
-          this.state[STATE_INBYTES - 1] ^= (1 << LAST_THREE_BITS_OFFSET);
+          this.state[STATE_INBYTES - 1] = OpCodes.ToByte(OpCodes.Xor32(this.state[STATE_INBYTES - 1], OpCodes.Shl32(1, LAST_THREE_BITS_OFFSET)));
         }
       }
     }
 
     _xorBytes(length, src, srcPos, dest, destPos) {
       for (let i = 0; i < length; ++i) {
-        dest[destPos + i] ^= src[srcPos + i];
+        dest[destPos + i] = OpCodes.ToByte(dest[destPos + i]^src[srcPos + i]);
       }
     }
 
     _PHOTON_Permutation() {
       // Convert byte array to 2D nibble array
       for (let i = 0; i < DSquare; ++i) {
-        this.state_2d[i >> Dq][i & Dr] = ((this.state[i >> 1] & 0xFF) >>> (4 * (i & 1))) & 0xf;
+        this.state_2d[OpCodes.Shr32(i, Dq)][i&Dr] = OpCodes.ToByte((OpCodes.Shr32(OpCodes.ToByte(this.state[OpCodes.Shr32(i, 1)]&0xFF), 4 * (i&1)))&0xf);
       }
 
       // 12 rounds of PHOTON permutation
@@ -345,7 +345,7 @@
         // AddConstant
         const rcOff = round * D;
         for (let i = 0; i < D; ++i) {
-          this.state_2d[i][0] ^= RC[rcOff + i];
+          this.state_2d[i][0] = OpCodes.ToByte(OpCodes.Xor32(this.state_2d[i][0], RC[rcOff + i]));
         }
 
         // SubCells (S-box layer)
@@ -376,20 +376,20 @@
               const b = this.state_2d[k][j];
 
               // GF(16) multiplication by expanding b
-              sum ^= x * (b & 1);
-              sum ^= x * (b & 2);
-              sum ^= x * (b & 4);
-              sum ^= x * (b & 8);
+              sum = OpCodes.Xor32(sum, OpCodes.ToUint32(x * (b&1)));
+              sum = OpCodes.Xor32(sum, OpCodes.ToUint32(x * (b&2)));
+              sum = OpCodes.Xor32(sum, OpCodes.ToUint32(x * (b&4)));
+              sum = OpCodes.Xor32(sum, OpCodes.ToUint32(x * (b&8)));
             }
 
             // Reduction modulo x^4 + x + 1
-            let t0 = sum >>> 4;
-            sum = (sum & 15) ^ t0 ^ (t0 << 1);
+            let t0 = OpCodes.Shr32(sum, 4);
+            sum = OpCodes.Xor32(OpCodes.Xor32(sum&15, t0), OpCodes.Shl32(t0, 1));
 
-            let t1 = sum >>> 4;
-            sum = (sum & 15) ^ t1 ^ (t1 << 1);
+            let t1 = OpCodes.Shr32(sum, 4);
+            sum = OpCodes.Xor32(OpCodes.Xor32(sum&15, t1), OpCodes.Shl32(t1, 1));
 
-            tempCol[i] = sum & 0xf;
+            tempCol[i] = OpCodes.ToByte(sum);
           }
           for (let i = 0; i < D; ++i) {
             this.state_2d[i][j] = tempCol[i];
@@ -399,8 +399,7 @@
 
       // Convert 2D nibble array back to byte array
       for (let i = 0; i < DSquare; i += 2) {
-        this.state[i >> 1] = ((this.state_2d[i >> Dq][i & Dr] & 0xf)) |
-                             ((this.state_2d[i >> Dq][(i + 1) & Dr] & 0xf) << 4);
+        this.state[OpCodes.Shr32(i, 1)] = OpCodes.ToByte((this.state_2d[OpCodes.Shr32(i, Dq)][i&Dr]&0xf)|OpCodes.Shl32(this.state_2d[OpCodes.Shr32(i, Dq)][(i + 1)&Dr]&0xf, 4));
       }
     }
   }

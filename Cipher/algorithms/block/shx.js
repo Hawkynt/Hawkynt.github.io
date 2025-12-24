@@ -331,7 +331,11 @@
 
       // Generate extended key schedule
       for (let i = keyWords; i < totalRoundKeys * 4; i++) {
-        w[i] = OpCodes.RotL32(w[i-8] ^ w[i-5] ^ w[i-3] ^ w[i-1] ^ this.PHI ^ i, 11);
+        const temp1 = OpCodes.Xor32(w[i-8], w[i-5]);
+        const temp2 = OpCodes.Xor32(temp1, w[i-3]);
+        const temp3 = OpCodes.Xor32(temp2, w[i-1]);
+        const temp4 = OpCodes.Xor32(temp3, this.PHI);
+        w[i] = OpCodes.RotL32(OpCodes.Xor32(temp4, i), 11);
       }
 
       // Group into round keys and apply S-box transformations
@@ -364,10 +368,10 @@
       if (this.isInverse) {
         // Decryption - follows Serpent specification exactly
         // Undo final key mixing
-        x0 ^= this.roundKeys[this.numRounds][0];
-        x1 ^= this.roundKeys[this.numRounds][1];
-        x2 ^= this.roundKeys[this.numRounds][2];
-        x3 ^= this.roundKeys[this.numRounds][3];
+        x0 = OpCodes.Xor32(x0, this.roundKeys[this.numRounds][0]);
+        x1 = OpCodes.Xor32(x1, this.roundKeys[this.numRounds][1]);
+        x2 = OpCodes.Xor32(x2, this.roundKeys[this.numRounds][2]);
+        x3 = OpCodes.Xor32(x3, this.roundKeys[this.numRounds][3]);
 
         // Reverse rounds
         for (let round = this.numRounds - 1; round >= 0; round--) {
@@ -381,20 +385,20 @@
           [x0, x1, x2, x3] = this._applyInvSBox(x0, x1, x2, x3, sboxIndex);
 
           // Key mixing
-          x0 ^= this.roundKeys[round][0];
-          x1 ^= this.roundKeys[round][1];
-          x2 ^= this.roundKeys[round][2];
-          x3 ^= this.roundKeys[round][3];
+          x0 = OpCodes.Xor32(x0, this.roundKeys[round][0]);
+          x1 = OpCodes.Xor32(x1, this.roundKeys[round][1]);
+          x2 = OpCodes.Xor32(x2, this.roundKeys[round][2]);
+          x3 = OpCodes.Xor32(x3, this.roundKeys[round][3]);
         }
 
       } else {
         // Encryption - follows Serpent specification exactly
         for (let round = 0; round < this.numRounds; round++) {
           // Key mixing first
-          x0 ^= this.roundKeys[round][0];
-          x1 ^= this.roundKeys[round][1];
-          x2 ^= this.roundKeys[round][2];
-          x3 ^= this.roundKeys[round][3];
+          x0 = OpCodes.Xor32(x0, this.roundKeys[round][0]);
+          x1 = OpCodes.Xor32(x1, this.roundKeys[round][1]);
+          x2 = OpCodes.Xor32(x2, this.roundKeys[round][2]);
+          x3 = OpCodes.Xor32(x3, this.roundKeys[round][3]);
 
           // S-box substitution
           const sboxIndex = round % 8;
@@ -407,10 +411,10 @@
         }
 
         // Final key mixing
-        x0 ^= this.roundKeys[this.numRounds][0];
-        x1 ^= this.roundKeys[this.numRounds][1];
-        x2 ^= this.roundKeys[this.numRounds][2];
-        x3 ^= this.roundKeys[this.numRounds][3];
+        x0 = OpCodes.Xor32(x0, this.roundKeys[this.numRounds][0]);
+        x1 = OpCodes.Xor32(x1, this.roundKeys[this.numRounds][1]);
+        x2 = OpCodes.Xor32(x2, this.roundKeys[this.numRounds][2]);
+        x3 = OpCodes.Xor32(x3, this.roundKeys[this.numRounds][3]);
       }
 
       // Convert back to bytes
@@ -430,11 +434,11 @@
       const processWord = (word) => {
         let result = 0;
         for (let i = 0; i < 8; i++) {
-          const nibble = (word >>> (i * 4)) & 0xF;
+          const nibble = OpCodes.Shr32(word, i * 4)&0xF;
           const substituted = sbox[nibble];
-          result |= (substituted << (i * 4));
+          result |= OpCodes.Shl32(substituted, i * 4);
         }
-        return result >>> 0;
+        return OpCodes.ToUint32(result);
       };
 
       return [processWord(x0), processWord(x1), processWord(x2), processWord(x3)];
@@ -448,11 +452,11 @@
       const processWord = (word) => {
         let result = 0;
         for (let i = 0; i < 8; i++) {
-          const nibble = (word >>> (i * 4)) & 0xF;
+          const nibble = OpCodes.Shr32(word, i * 4)&0xF;
           const substituted = invSbox[nibble];
-          result |= (substituted << (i * 4));
+          result |= OpCodes.Shl32(substituted, i * 4);
         }
-        return result >>> 0;
+        return OpCodes.ToUint32(result);
       };
 
       return [processWord(x0), processWord(x1), processWord(x2), processWord(x3)];
@@ -462,32 +466,32 @@
     _linearTransform(x0, x1, x2, x3) {
       x0 = OpCodes.RotL32(x0, 13);
       x2 = OpCodes.RotL32(x2, 3);
-      x3 ^= x2 ^ ((x0 << 3) >>> 0);
-      x1 ^= x0 ^ x2;
+      x3 = OpCodes.Xor32(x3, OpCodes.ToUint32(OpCodes.Xor32(x2, OpCodes.Shl32(x0, 3))));
+      x1 = OpCodes.Xor32(x1, OpCodes.Xor32(x0, x2));
       x3 = OpCodes.RotL32(x3, 7);
       x1 = OpCodes.RotL32(x1, 1);
-      x0 ^= x1 ^ x3;
-      x2 ^= x3 ^ ((x1 << 7) >>> 0);
+      x0 = OpCodes.Xor32(x0, OpCodes.Xor32(x1, x3));
+      x2 = OpCodes.Xor32(x2, OpCodes.ToUint32(OpCodes.Xor32(x3, OpCodes.Shl32(x1, 7))));
       x0 = OpCodes.RotL32(x0, 5);
       x2 = OpCodes.RotL32(x2, 22);
 
-      return [x0 >>> 0, x1 >>> 0, x2 >>> 0, x3 >>> 0];
+      return [OpCodes.ToUint32(x0), OpCodes.ToUint32(x1), OpCodes.ToUint32(x2), OpCodes.ToUint32(x3)];
     }
 
     // Inverse linear transformation
     _invLinearTransform(x0, x1, x2, x3) {
       x2 = OpCodes.RotR32(x2, 22);
       x0 = OpCodes.RotR32(x0, 5);
-      x2 ^= x3 ^ ((x1 << 7) >>> 0);
-      x0 ^= x1 ^ x3;
+      x2 = OpCodes.Xor32(x2, OpCodes.ToUint32(OpCodes.Xor32(x3, OpCodes.Shl32(x1, 7))));
+      x0 = OpCodes.Xor32(x0, OpCodes.Xor32(x1, x3));
       x3 = OpCodes.RotR32(x3, 7);
       x1 = OpCodes.RotR32(x1, 1);
-      x3 ^= x2 ^ ((x0 << 3) >>> 0);
-      x1 ^= x0 ^ x2;
+      x3 = OpCodes.Xor32(x3, OpCodes.ToUint32(OpCodes.Xor32(x2, OpCodes.Shl32(x0, 3))));
+      x1 = OpCodes.Xor32(x1, OpCodes.Xor32(x0, x2));
       x2 = OpCodes.RotR32(x2, 3);
       x0 = OpCodes.RotR32(x0, 13);
 
-      return [x0 >>> 0, x1 >>> 0, x2 >>> 0, x3 >>> 0];
+      return [OpCodes.ToUint32(x0), OpCodes.ToUint32(x1), OpCodes.ToUint32(x2), OpCodes.ToUint32(x3)];
     }
   }
 

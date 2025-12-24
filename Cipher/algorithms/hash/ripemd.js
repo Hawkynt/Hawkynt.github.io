@@ -241,31 +241,31 @@
       const hr = [0x50A28BE6, 0x5C4DD124, 0x6D703EF3, 0x00000000];
 
       // Initialize working variables
-      let al = this.h[0] | 0;
-      let bl = this.h[1] | 0;
-      let cl = this.h[2] | 0;
-      let dl = this.h[3] | 0;
+      let al = OpCodes.ToUint32(this.h[0]);
+      let bl = OpCodes.ToUint32(this.h[1]);
+      let cl = OpCodes.ToUint32(this.h[2]);
+      let dl = OpCodes.ToUint32(this.h[3]);
 
-      let ar = this.h[0] | 0;
-      let br = this.h[1] | 0;
-      let cr = this.h[2] | 0;
-      let dr = this.h[3] | 0;
+      let ar = OpCodes.ToUint32(this.h[0]);
+      let br = OpCodes.ToUint32(this.h[1]);
+      let cr = OpCodes.ToUint32(this.h[2]);
+      let dr = OpCodes.ToUint32(this.h[3]);
 
       // Boolean functions
       const fn1 = (a, b, c, d, m, k, s) => {
-        return OpCodes.RotL32((a + (b ^ c ^ d) + m + k) | 0, s) | 0;
+        return OpCodes.ToUint32(OpCodes.RotL32(OpCodes.ToUint32(a + OpCodes.Xor32(OpCodes.Xor32(b, c), d) + m + k), s));
       };
 
       const fn2 = (a, b, c, d, m, k, s) => {
-        return OpCodes.RotL32((a + ((b & c) | (~b & d)) + m + k) | 0, s) | 0;
+        return OpCodes.ToUint32(OpCodes.RotL32(OpCodes.ToUint32(a + OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(OpCodes.Not32(b), d)) + m + k), s));
       };
 
       const fn3 = (a, b, c, d, m, k, s) => {
-        return OpCodes.RotL32((a + ((b | ~c) ^ d) + m + k) | 0, s) | 0;
+        return OpCodes.ToUint32(OpCodes.RotL32(OpCodes.ToUint32(a + OpCodes.Xor32(OpCodes.Or32(b, OpCodes.Not32(c)), d) + m + k), s));
       };
 
       const fn4 = (a, b, c, d, m, k, s) => {
-        return OpCodes.RotL32((a + ((b & d) | (c & ~d)) + m + k) | 0, s) | 0;
+        return OpCodes.ToUint32(OpCodes.RotL32(OpCodes.ToUint32(a + OpCodes.Or32(OpCodes.And32(b, d), OpCodes.And32(c, OpCodes.Not32(d))) + m + k), s));
       };
 
       // 64 rounds computation
@@ -299,10 +299,10 @@
       }
 
       // Update state
-      const t = (this.h[1] + cl + dr) | 0;
-      this.h[1] = (this.h[2] + dl + ar) | 0;
-      this.h[2] = (this.h[3] + al + br) | 0;
-      this.h[3] = (this.h[0] + bl + cr) | 0;
+      const t = OpCodes.ToUint32(this.h[1] + cl + dr);
+      this.h[1] = OpCodes.ToUint32(this.h[2] + dl + ar);
+      this.h[2] = OpCodes.ToUint32(this.h[3] + al + br);
+      this.h[3] = OpCodes.ToUint32(this.h[0] + bl + cr);
       this.h[0] = t;
     }
 
@@ -344,37 +344,37 @@
       const hr = [0x50A28BE6, 0x5C4DD124, 0x6D703EF3, 0x7A6D76E9, 0x00000000];
 
       // Initialize working variables
-      let al = this.h[0] | 0;
-      let bl = this.h[1] | 0;
-      let cl = this.h[2] | 0;
-      let dl = this.h[3] | 0;
-      let el = this.h[4] | 0;
+      let al = OpCodes.ToUint32(this.h[0]);
+      let bl = OpCodes.ToUint32(this.h[1]);
+      let cl = OpCodes.ToUint32(this.h[2]);
+      let dl = OpCodes.ToUint32(this.h[3]);
+      let el = OpCodes.ToUint32(this.h[4]);
 
-      let ar = this.h[0] | 0;
-      let br = this.h[1] | 0;
-      let cr = this.h[2] | 0;
-      let dr = this.h[3] | 0;
-      let er = this.h[4] | 0;
+      let ar = OpCodes.ToUint32(this.h[0]);
+      let br = OpCodes.ToUint32(this.h[1]);
+      let cr = OpCodes.ToUint32(this.h[2]);
+      let dr = OpCodes.ToUint32(this.h[3]);
+      let er = OpCodes.ToUint32(this.h[4]);
 
       // Boolean functions
       const fn1 = (a, b, c, d, e, m, k, s) => {
-        return (OpCodes.RotL32((a + (b ^ c ^ d) + m + k) | 0, s) + e) | 0;
+        return OpCodes.ToUint32(OpCodes.RotL32(OpCodes.ToUint32(a + OpCodes.Xor32(OpCodes.Xor32(b, c), d) + m + k), s) + e);
       };
 
       const fn2 = (a, b, c, d, e, m, k, s) => {
-        return (OpCodes.RotL32((a + ((b & c) | (~b & d)) + m + k) | 0, s) + e) | 0;
+        return OpCodes.ToUint32(OpCodes.RotL32(OpCodes.ToUint32(a + OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(OpCodes.Not32(b), d)) + m + k), s) + e);
       };
 
       const fn3 = (a, b, c, d, e, m, k, s) => {
-        return (OpCodes.RotL32((a + ((b | ~c) ^ d) + m + k) | 0, s) + e) | 0;
+        return OpCodes.ToUint32(OpCodes.RotL32(OpCodes.ToUint32(a + OpCodes.Xor32(OpCodes.Or32(b, OpCodes.Not32(c)), d) + m + k), s) + e);
       };
 
       const fn4 = (a, b, c, d, e, m, k, s) => {
-        return (OpCodes.RotL32((a + ((b & d) | (c & ~d)) + m + k) | 0, s) + e) | 0;
+        return OpCodes.ToUint32(OpCodes.RotL32(OpCodes.ToUint32(a + OpCodes.Or32(OpCodes.And32(b, d), OpCodes.And32(c, OpCodes.Not32(d))) + m + k), s) + e);
       };
 
       const fn5 = (a, b, c, d, e, m, k, s) => {
-        return (OpCodes.RotL32((a + (b ^ (c | ~d)) + m + k) | 0, s) + e) | 0;
+        return OpCodes.ToUint32(OpCodes.RotL32(OpCodes.ToUint32(a + OpCodes.Xor32(b, OpCodes.Or32(c, OpCodes.Not32(d))) + m + k), s) + e);
       };
 
       // 80 rounds computation
@@ -412,11 +412,11 @@
       }
 
       // Update state
-      const t = (this.h[1] + cl + dr) | 0;
-      this.h[1] = (this.h[2] + dl + er) | 0;
-      this.h[2] = (this.h[3] + el + ar) | 0;
-      this.h[3] = (this.h[4] + al + br) | 0;
-      this.h[4] = (this.h[0] + bl + cr) | 0;
+      const t = OpCodes.ToUint32(this.h[1] + cl + dr);
+      this.h[1] = OpCodes.ToUint32(this.h[2] + dl + er);
+      this.h[2] = OpCodes.ToUint32(this.h[3] + el + ar);
+      this.h[3] = OpCodes.ToUint32(this.h[4] + al + br);
+      this.h[4] = OpCodes.ToUint32(this.h[0] + bl + cr);
       this.h[0] = t;
     }
 
@@ -425,172 +425,172 @@
       let a = this.h[0], b = this.h[1], c = this.h[2], d = this.h[3];
       let aa = this.h[4], bb = this.h[5], cc = this.h[6], dd = this.h[7];
 
-      // Round 1: Left chain uses f1 (x^y^z), Right chain uses f4 ((x&z)|(y&~z))
-      a = OpCodes.RotL32((a + (b ^ c ^ d) + X[0]) >>> 0, 11);
-      d = OpCodes.RotL32((d + (a ^ b ^ c) + X[1]) >>> 0, 14);
-      c = OpCodes.RotL32((c + (d ^ a ^ b) + X[2]) >>> 0, 15);
-      b = OpCodes.RotL32((b + (c ^ d ^ a) + X[3]) >>> 0, 12);
-      a = OpCodes.RotL32((a + (b ^ c ^ d) + X[4]) >>> 0, 5);
-      d = OpCodes.RotL32((d + (a ^ b ^ c) + X[5]) >>> 0, 8);
-      c = OpCodes.RotL32((c + (d ^ a ^ b) + X[6]) >>> 0, 7);
-      b = OpCodes.RotL32((b + (c ^ d ^ a) + X[7]) >>> 0, 9);
-      a = OpCodes.RotL32((a + (b ^ c ^ d) + X[8]) >>> 0, 11);
-      d = OpCodes.RotL32((d + (a ^ b ^ c) + X[9]) >>> 0, 13);
-      c = OpCodes.RotL32((c + (d ^ a ^ b) + X[10]) >>> 0, 14);
-      b = OpCodes.RotL32((b + (c ^ d ^ a) + X[11]) >>> 0, 15);
-      a = OpCodes.RotL32((a + (b ^ c ^ d) + X[12]) >>> 0, 6);
-      d = OpCodes.RotL32((d + (a ^ b ^ c) + X[13]) >>> 0, 7);
-      c = OpCodes.RotL32((c + (d ^ a ^ b) + X[14]) >>> 0, 9);
-      b = OpCodes.RotL32((b + (c ^ d ^ a) + X[15]) >>> 0, 8);
+      // Round 1: Left chain uses f1 (x^y^z), Right chain uses f4 ((x&z)|(&(OpCodes.ToUint32(~))))
+      a = OpCodes.RotL32((a + OpCodes.Xor32(OpCodes.Xor32(b, c), d) + X[0]) , 11);
+      d = OpCodes.RotL32((d + OpCodes.Xor32(OpCodes.Xor32(a, b), c) + X[1]) , 14);
+      c = OpCodes.RotL32((c + OpCodes.Xor32(OpCodes.Xor32(d, a), b) + X[2]) , 15);
+      b = OpCodes.RotL32((b + OpCodes.Xor32(OpCodes.Xor32(c, d), a) + X[3]) , 12);
+      a = OpCodes.RotL32((a + OpCodes.Xor32(OpCodes.Xor32(b, c), d) + X[4]) , 5);
+      d = OpCodes.RotL32((d + OpCodes.Xor32(OpCodes.Xor32(a, b), c) + X[5]) , 8);
+      c = OpCodes.RotL32((c + OpCodes.Xor32(OpCodes.Xor32(d, a), b) + X[6]) , 7);
+      b = OpCodes.RotL32((b + OpCodes.Xor32(OpCodes.Xor32(c, d), a) + X[7]) , 9);
+      a = OpCodes.RotL32((a + OpCodes.Xor32(OpCodes.Xor32(b, c), d) + X[8]) , 11);
+      d = OpCodes.RotL32((d + OpCodes.Xor32(OpCodes.Xor32(a, b), c) + X[9]) , 13);
+      c = OpCodes.RotL32((c + OpCodes.Xor32(OpCodes.Xor32(d, a), b) + X[10]) , 14);
+      b = OpCodes.RotL32((b + OpCodes.Xor32(OpCodes.Xor32(c, d), a) + X[11]) , 15);
+      a = OpCodes.RotL32((a + OpCodes.Xor32(OpCodes.Xor32(b, c), d) + X[12]) , 6);
+      d = OpCodes.RotL32((d + OpCodes.Xor32(OpCodes.Xor32(a, b), c) + X[13]) , 7);
+      c = OpCodes.RotL32((c + OpCodes.Xor32(OpCodes.Xor32(d, a), b) + X[14]) , 9);
+      b = OpCodes.RotL32((b + OpCodes.Xor32(OpCodes.Xor32(c, d), a) + X[15]) , 8);
 
-      aa = OpCodes.RotL32((aa + ((bb & dd) | (cc & ~dd)) + X[5] + 0x50A28BE6) >>> 0, 8);
-      dd = OpCodes.RotL32((dd + ((aa & cc) | (bb & ~cc)) + X[14] + 0x50A28BE6) >>> 0, 9);
-      cc = OpCodes.RotL32((cc + ((dd & bb) | (aa & ~bb)) + X[7] + 0x50A28BE6) >>> 0, 9);
-      bb = OpCodes.RotL32((bb + ((cc & aa) | (dd & ~aa)) + X[0] + 0x50A28BE6) >>> 0, 11);
-      aa = OpCodes.RotL32((aa + ((bb & dd) | (cc & ~dd)) + X[9] + 0x50A28BE6) >>> 0, 13);
-      dd = OpCodes.RotL32((dd + ((aa & cc) | (bb & ~cc)) + X[2] + 0x50A28BE6) >>> 0, 15);
-      cc = OpCodes.RotL32((cc + ((dd & bb) | (aa & ~bb)) + X[11] + 0x50A28BE6) >>> 0, 15);
-      bb = OpCodes.RotL32((bb + ((cc & aa) | (dd & ~aa)) + X[4] + 0x50A28BE6) >>> 0, 5);
-      aa = OpCodes.RotL32((aa + ((bb & dd) | (cc & ~dd)) + X[13] + 0x50A28BE6) >>> 0, 7);
-      dd = OpCodes.RotL32((dd + ((aa & cc) | (bb & ~cc)) + X[6] + 0x50A28BE6) >>> 0, 7);
-      cc = OpCodes.RotL32((cc + ((dd & bb) | (aa & ~bb)) + X[15] + 0x50A28BE6) >>> 0, 8);
-      bb = OpCodes.RotL32((bb + ((cc & aa) | (dd & ~aa)) + X[8] + 0x50A28BE6) >>> 0, 11);
-      aa = OpCodes.RotL32((aa + ((bb & dd) | (cc & ~dd)) + X[1] + 0x50A28BE6) >>> 0, 14);
-      dd = OpCodes.RotL32((dd + ((aa & cc) | (bb & ~cc)) + X[10] + 0x50A28BE6) >>> 0, 14);
-      cc = OpCodes.RotL32((cc + ((dd & bb) | (aa & ~bb)) + X[3] + 0x50A28BE6) >>> 0, 12);
-      bb = OpCodes.RotL32((bb + ((cc & aa) | (dd & ~aa)) + X[12] + 0x50A28BE6) >>> 0, 6);
+      aa = OpCodes.RotL32((aa + OpCodes.Or32(OpCodes.And32(bb, dd), OpCodes.And32(cc, OpCodes.Not32(dd))) + X[5] + 0x50A28BE6) , 8);
+      dd = OpCodes.RotL32((dd + OpCodes.Or32(OpCodes.And32(aa, cc), OpCodes.And32(bb, OpCodes.Not32(cc))) + X[14] + 0x50A28BE6) , 9);
+      cc = OpCodes.RotL32((cc + OpCodes.Or32(OpCodes.And32(dd, bb), OpCodes.And32(aa, OpCodes.Not32(bb))) + X[7] + 0x50A28BE6) , 9);
+      bb = OpCodes.RotL32((bb + OpCodes.Or32(OpCodes.And32(cc, aa), OpCodes.And32(dd, OpCodes.Not32(aa))) + X[0] + 0x50A28BE6) , 11);
+      aa = OpCodes.RotL32((aa + OpCodes.Or32(OpCodes.And32(bb, dd), OpCodes.And32(cc, OpCodes.Not32(dd))) + X[9] + 0x50A28BE6) , 13);
+      dd = OpCodes.RotL32((dd + OpCodes.Or32(OpCodes.And32(aa, cc), OpCodes.And32(bb, OpCodes.Not32(cc))) + X[2] + 0x50A28BE6) , 15);
+      cc = OpCodes.RotL32((cc + OpCodes.Or32(OpCodes.And32(dd, bb), OpCodes.And32(aa, OpCodes.Not32(bb))) + X[11] + 0x50A28BE6) , 15);
+      bb = OpCodes.RotL32((bb + OpCodes.Or32(OpCodes.And32(cc, aa), OpCodes.And32(dd, OpCodes.Not32(aa))) + X[4] + 0x50A28BE6) , 5);
+      aa = OpCodes.RotL32((aa + OpCodes.Or32(OpCodes.And32(bb, dd), OpCodes.And32(cc, OpCodes.Not32(dd))) + X[13] + 0x50A28BE6) , 7);
+      dd = OpCodes.RotL32((dd + OpCodes.Or32(OpCodes.And32(aa, cc), OpCodes.And32(bb, OpCodes.Not32(cc))) + X[6] + 0x50A28BE6) , 7);
+      cc = OpCodes.RotL32((cc + OpCodes.Or32(OpCodes.And32(dd, bb), OpCodes.And32(aa, OpCodes.Not32(bb))) + X[15] + 0x50A28BE6) , 8);
+      bb = OpCodes.RotL32((bb + OpCodes.Or32(OpCodes.And32(cc, aa), OpCodes.And32(dd, OpCodes.Not32(aa))) + X[8] + 0x50A28BE6) , 11);
+      aa = OpCodes.RotL32((aa + OpCodes.Or32(OpCodes.And32(bb, dd), OpCodes.And32(cc, OpCodes.Not32(dd))) + X[1] + 0x50A28BE6) , 14);
+      dd = OpCodes.RotL32((dd + OpCodes.Or32(OpCodes.And32(aa, cc), OpCodes.And32(bb, OpCodes.Not32(cc))) + X[10] + 0x50A28BE6) , 14);
+      cc = OpCodes.RotL32((cc + OpCodes.Or32(OpCodes.And32(dd, bb), OpCodes.And32(aa, OpCodes.Not32(bb))) + X[3] + 0x50A28BE6) , 12);
+      bb = OpCodes.RotL32((bb + OpCodes.Or32(OpCodes.And32(cc, aa), OpCodes.And32(dd, OpCodes.Not32(aa))) + X[12] + 0x50A28BE6) , 6);
 
       let t = a; a = aa; aa = t;
 
       // Round 2
-      a = OpCodes.RotL32((a + ((b & c) | (~b & d)) + X[7] + 0x5A827999) >>> 0, 7);
-      d = OpCodes.RotL32((d + ((a & b) | (~a & c)) + X[4] + 0x5A827999) >>> 0, 6);
-      c = OpCodes.RotL32((c + ((d & a) | (~d & b)) + X[13] + 0x5A827999) >>> 0, 8);
-      b = OpCodes.RotL32((b + ((c & d) | (~c & a)) + X[1] + 0x5A827999) >>> 0, 13);
-      a = OpCodes.RotL32((a + ((b & c) | (~b & d)) + X[10] + 0x5A827999) >>> 0, 11);
-      d = OpCodes.RotL32((d + ((a & b) | (~a & c)) + X[6] + 0x5A827999) >>> 0, 9);
-      c = OpCodes.RotL32((c + ((d & a) | (~d & b)) + X[15] + 0x5A827999) >>> 0, 7);
-      b = OpCodes.RotL32((b + ((c & d) | (~c & a)) + X[3] + 0x5A827999) >>> 0, 15);
-      a = OpCodes.RotL32((a + ((b & c) | (~b & d)) + X[12] + 0x5A827999) >>> 0, 7);
-      d = OpCodes.RotL32((d + ((a & b) | (~a & c)) + X[0] + 0x5A827999) >>> 0, 12);
-      c = OpCodes.RotL32((c + ((d & a) | (~d & b)) + X[9] + 0x5A827999) >>> 0, 15);
-      b = OpCodes.RotL32((b + ((c & d) | (~c & a)) + X[5] + 0x5A827999) >>> 0, 9);
-      a = OpCodes.RotL32((a + ((b & c) | (~b & d)) + X[2] + 0x5A827999) >>> 0, 11);
-      d = OpCodes.RotL32((d + ((a & b) | (~a & c)) + X[14] + 0x5A827999) >>> 0, 7);
-      c = OpCodes.RotL32((c + ((d & a) | (~d & b)) + X[11] + 0x5A827999) >>> 0, 13);
-      b = OpCodes.RotL32((b + ((c & d) | (~c & a)) + X[8] + 0x5A827999) >>> 0, 12);
+      a = OpCodes.RotL32((a + OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(OpCodes.Not32(b), d)) + X[7] + 0x5A827999) , 7);
+      d = OpCodes.RotL32((d + OpCodes.Or32(OpCodes.And32(a, b), OpCodes.And32(OpCodes.Not32(a), c)) + X[4] + 0x5A827999) , 6);
+      c = OpCodes.RotL32((c + OpCodes.Or32(OpCodes.And32(d, a), OpCodes.And32(OpCodes.Not32(d), b)) + X[13] + 0x5A827999) , 8);
+      b = OpCodes.RotL32((b + OpCodes.Or32(OpCodes.And32(c, d), OpCodes.And32(OpCodes.Not32(c), a)) + X[1] + 0x5A827999) , 13);
+      a = OpCodes.RotL32((a + OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(OpCodes.Not32(b), d)) + X[10] + 0x5A827999) , 11);
+      d = OpCodes.RotL32((d + OpCodes.Or32(OpCodes.And32(a, b), OpCodes.And32(OpCodes.Not32(a), c)) + X[6] + 0x5A827999) , 9);
+      c = OpCodes.RotL32((c + OpCodes.Or32(OpCodes.And32(d, a), OpCodes.And32(OpCodes.Not32(d), b)) + X[15] + 0x5A827999) , 7);
+      b = OpCodes.RotL32((b + OpCodes.Or32(OpCodes.And32(c, d), OpCodes.And32(OpCodes.Not32(c), a)) + X[3] + 0x5A827999) , 15);
+      a = OpCodes.RotL32((a + OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(OpCodes.Not32(b), d)) + X[12] + 0x5A827999) , 7);
+      d = OpCodes.RotL32((d + OpCodes.Or32(OpCodes.And32(a, b), OpCodes.And32(OpCodes.Not32(a), c)) + X[0] + 0x5A827999) , 12);
+      c = OpCodes.RotL32((c + OpCodes.Or32(OpCodes.And32(d, a), OpCodes.And32(OpCodes.Not32(d), b)) + X[9] + 0x5A827999) , 15);
+      b = OpCodes.RotL32((b + OpCodes.Or32(OpCodes.And32(c, d), OpCodes.And32(OpCodes.Not32(c), a)) + X[5] + 0x5A827999) , 9);
+      a = OpCodes.RotL32((a + OpCodes.Or32(OpCodes.And32(b, c), OpCodes.And32(OpCodes.Not32(b), d)) + X[2] + 0x5A827999) , 11);
+      d = OpCodes.RotL32((d + OpCodes.Or32(OpCodes.And32(a, b), OpCodes.And32(OpCodes.Not32(a), c)) + X[14] + 0x5A827999) , 7);
+      c = OpCodes.RotL32((c + OpCodes.Or32(OpCodes.And32(d, a), OpCodes.And32(OpCodes.Not32(d), b)) + X[11] + 0x5A827999) , 13);
+      b = OpCodes.RotL32((b + OpCodes.Or32(OpCodes.And32(c, d), OpCodes.And32(OpCodes.Not32(c), a)) + X[8] + 0x5A827999) , 12);
 
-      aa = OpCodes.RotL32((aa + ((bb | ~cc) ^ dd) + X[6] + 0x5C4DD124) >>> 0, 9);
-      dd = OpCodes.RotL32((dd + ((aa | ~bb) ^ cc) + X[11] + 0x5C4DD124) >>> 0, 13);
-      cc = OpCodes.RotL32((cc + ((dd | ~aa) ^ bb) + X[3] + 0x5C4DD124) >>> 0, 15);
-      bb = OpCodes.RotL32((bb + ((cc | ~dd) ^ aa) + X[7] + 0x5C4DD124) >>> 0, 7);
-      aa = OpCodes.RotL32((aa + ((bb | ~cc) ^ dd) + X[0] + 0x5C4DD124) >>> 0, 12);
-      dd = OpCodes.RotL32((dd + ((aa | ~bb) ^ cc) + X[13] + 0x5C4DD124) >>> 0, 8);
-      cc = OpCodes.RotL32((cc + ((dd | ~aa) ^ bb) + X[5] + 0x5C4DD124) >>> 0, 9);
-      bb = OpCodes.RotL32((bb + ((cc | ~dd) ^ aa) + X[10] + 0x5C4DD124) >>> 0, 11);
-      aa = OpCodes.RotL32((aa + ((bb | ~cc) ^ dd) + X[14] + 0x5C4DD124) >>> 0, 7);
-      dd = OpCodes.RotL32((dd + ((aa | ~bb) ^ cc) + X[15] + 0x5C4DD124) >>> 0, 7);
-      cc = OpCodes.RotL32((cc + ((dd | ~aa) ^ bb) + X[8] + 0x5C4DD124) >>> 0, 12);
-      bb = OpCodes.RotL32((bb + ((cc | ~dd) ^ aa) + X[12] + 0x5C4DD124) >>> 0, 7);
-      aa = OpCodes.RotL32((aa + ((bb | ~cc) ^ dd) + X[4] + 0x5C4DD124) >>> 0, 6);
-      dd = OpCodes.RotL32((dd + ((aa | ~bb) ^ cc) + X[9] + 0x5C4DD124) >>> 0, 15);
-      cc = OpCodes.RotL32((cc + ((dd | ~aa) ^ bb) + X[1] + 0x5C4DD124) >>> 0, 13);
-      bb = OpCodes.RotL32((bb + ((cc | ~dd) ^ aa) + X[2] + 0x5C4DD124) >>> 0, 11);
+      aa = OpCodes.RotL32((aa + OpCodes.Xor32(OpCodes.Or32(bb, OpCodes.Not32(cc)), dd) + X[6] + 0x5C4DD124) , 9);
+      dd = OpCodes.RotL32((dd + OpCodes.Xor32(OpCodes.Or32(aa, OpCodes.Not32(bb)), cc) + X[11] + 0x5C4DD124) , 13);
+      cc = OpCodes.RotL32((cc + OpCodes.Xor32(OpCodes.Or32(dd, OpCodes.Not32(aa)), bb) + X[3] + 0x5C4DD124) , 15);
+      bb = OpCodes.RotL32((bb + OpCodes.Xor32(OpCodes.Or32(cc, OpCodes.Not32(dd)), aa) + X[7] + 0x5C4DD124) , 7);
+      aa = OpCodes.RotL32((aa + OpCodes.Xor32(OpCodes.Or32(bb, OpCodes.Not32(cc)), dd) + X[0] + 0x5C4DD124) , 12);
+      dd = OpCodes.RotL32((dd + OpCodes.Xor32(OpCodes.Or32(aa, OpCodes.Not32(bb)), cc) + X[13] + 0x5C4DD124) , 8);
+      cc = OpCodes.RotL32((cc + OpCodes.Xor32(OpCodes.Or32(dd, OpCodes.Not32(aa)), bb) + X[5] + 0x5C4DD124) , 9);
+      bb = OpCodes.RotL32((bb + OpCodes.Xor32(OpCodes.Or32(cc, OpCodes.Not32(dd)), aa) + X[10] + 0x5C4DD124) , 11);
+      aa = OpCodes.RotL32((aa + OpCodes.Xor32(OpCodes.Or32(bb, OpCodes.Not32(cc)), dd) + X[14] + 0x5C4DD124) , 7);
+      dd = OpCodes.RotL32((dd + OpCodes.Xor32(OpCodes.Or32(aa, OpCodes.Not32(bb)), cc) + X[15] + 0x5C4DD124) , 7);
+      cc = OpCodes.RotL32((cc + OpCodes.Xor32(OpCodes.Or32(dd, OpCodes.Not32(aa)), bb) + X[8] + 0x5C4DD124) , 12);
+      bb = OpCodes.RotL32((bb + OpCodes.Xor32(OpCodes.Or32(cc, OpCodes.Not32(dd)), aa) + X[12] + 0x5C4DD124) , 7);
+      aa = OpCodes.RotL32((aa + OpCodes.Xor32(OpCodes.Or32(bb, OpCodes.Not32(cc)), dd) + X[4] + 0x5C4DD124) , 6);
+      dd = OpCodes.RotL32((dd + OpCodes.Xor32(OpCodes.Or32(aa, OpCodes.Not32(bb)), cc) + X[9] + 0x5C4DD124) , 15);
+      cc = OpCodes.RotL32((cc + OpCodes.Xor32(OpCodes.Or32(dd, OpCodes.Not32(aa)), bb) + X[1] + 0x5C4DD124) , 13);
+      bb = OpCodes.RotL32((bb + OpCodes.Xor32(OpCodes.Or32(cc, OpCodes.Not32(dd)), aa) + X[2] + 0x5C4DD124) , 11);
 
       t = b; b = bb; bb = t;
 
       // Round 3
-      a = OpCodes.RotL32((a + ((b | ~c) ^ d) + X[3] + 0x6ED9EBA1) >>> 0, 11);
-      d = OpCodes.RotL32((d + ((a | ~b) ^ c) + X[10] + 0x6ED9EBA1) >>> 0, 13);
-      c = OpCodes.RotL32((c + ((d | ~a) ^ b) + X[14] + 0x6ED9EBA1) >>> 0, 6);
-      b = OpCodes.RotL32((b + ((c | ~d) ^ a) + X[4] + 0x6ED9EBA1) >>> 0, 7);
-      a = OpCodes.RotL32((a + ((b | ~c) ^ d) + X[9] + 0x6ED9EBA1) >>> 0, 14);
-      d = OpCodes.RotL32((d + ((a | ~b) ^ c) + X[15] + 0x6ED9EBA1) >>> 0, 9);
-      c = OpCodes.RotL32((c + ((d | ~a) ^ b) + X[8] + 0x6ED9EBA1) >>> 0, 13);
-      b = OpCodes.RotL32((b + ((c | ~d) ^ a) + X[1] + 0x6ED9EBA1) >>> 0, 15);
-      a = OpCodes.RotL32((a + ((b | ~c) ^ d) + X[2] + 0x6ED9EBA1) >>> 0, 14);
-      d = OpCodes.RotL32((d + ((a | ~b) ^ c) + X[7] + 0x6ED9EBA1) >>> 0, 8);
-      c = OpCodes.RotL32((c + ((d | ~a) ^ b) + X[0] + 0x6ED9EBA1) >>> 0, 13);
-      b = OpCodes.RotL32((b + ((c | ~d) ^ a) + X[6] + 0x6ED9EBA1) >>> 0, 6);
-      a = OpCodes.RotL32((a + ((b | ~c) ^ d) + X[13] + 0x6ED9EBA1) >>> 0, 5);
-      d = OpCodes.RotL32((d + ((a | ~b) ^ c) + X[11] + 0x6ED9EBA1) >>> 0, 12);
-      c = OpCodes.RotL32((c + ((d | ~a) ^ b) + X[5] + 0x6ED9EBA1) >>> 0, 7);
-      b = OpCodes.RotL32((b + ((c | ~d) ^ a) + X[12] + 0x6ED9EBA1) >>> 0, 5);
+      a = OpCodes.RotL32((a + OpCodes.Xor32(OpCodes.Or32(b, OpCodes.Not32(c)), d) + X[3] + 0x6ED9EBA1) , 11);
+      d = OpCodes.RotL32((d + OpCodes.Xor32(OpCodes.Or32(a, OpCodes.Not32(b)), c) + X[10] + 0x6ED9EBA1) , 13);
+      c = OpCodes.RotL32((c + OpCodes.Xor32(OpCodes.Or32(d, OpCodes.Not32(a)), b) + X[14] + 0x6ED9EBA1) , 6);
+      b = OpCodes.RotL32((b + OpCodes.Xor32(OpCodes.Or32(c, OpCodes.Not32(d)), a) + X[4] + 0x6ED9EBA1) , 7);
+      a = OpCodes.RotL32((a + OpCodes.Xor32(OpCodes.Or32(b, OpCodes.Not32(c)), d) + X[9] + 0x6ED9EBA1) , 14);
+      d = OpCodes.RotL32((d + OpCodes.Xor32(OpCodes.Or32(a, OpCodes.Not32(b)), c) + X[15] + 0x6ED9EBA1) , 9);
+      c = OpCodes.RotL32((c + OpCodes.Xor32(OpCodes.Or32(d, OpCodes.Not32(a)), b) + X[8] + 0x6ED9EBA1) , 13);
+      b = OpCodes.RotL32((b + OpCodes.Xor32(OpCodes.Or32(c, OpCodes.Not32(d)), a) + X[1] + 0x6ED9EBA1) , 15);
+      a = OpCodes.RotL32((a + OpCodes.Xor32(OpCodes.Or32(b, OpCodes.Not32(c)), d) + X[2] + 0x6ED9EBA1) , 14);
+      d = OpCodes.RotL32((d + OpCodes.Xor32(OpCodes.Or32(a, OpCodes.Not32(b)), c) + X[7] + 0x6ED9EBA1) , 8);
+      c = OpCodes.RotL32((c + OpCodes.Xor32(OpCodes.Or32(d, OpCodes.Not32(a)), b) + X[0] + 0x6ED9EBA1) , 13);
+      b = OpCodes.RotL32((b + OpCodes.Xor32(OpCodes.Or32(c, OpCodes.Not32(d)), a) + X[6] + 0x6ED9EBA1) , 6);
+      a = OpCodes.RotL32((a + OpCodes.Xor32(OpCodes.Or32(b, OpCodes.Not32(c)), d) + X[13] + 0x6ED9EBA1) , 5);
+      d = OpCodes.RotL32((d + OpCodes.Xor32(OpCodes.Or32(a, OpCodes.Not32(b)), c) + X[11] + 0x6ED9EBA1) , 12);
+      c = OpCodes.RotL32((c + OpCodes.Xor32(OpCodes.Or32(d, OpCodes.Not32(a)), b) + X[5] + 0x6ED9EBA1) , 7);
+      b = OpCodes.RotL32((b + OpCodes.Xor32(OpCodes.Or32(c, OpCodes.Not32(d)), a) + X[12] + 0x6ED9EBA1) , 5);
 
-      aa = OpCodes.RotL32((aa + ((bb & cc) | (~bb & dd)) + X[15] + 0x6D703EF3) >>> 0, 9);
-      dd = OpCodes.RotL32((dd + ((aa & bb) | (~aa & cc)) + X[5] + 0x6D703EF3) >>> 0, 7);
-      cc = OpCodes.RotL32((cc + ((dd & aa) | (~dd & bb)) + X[1] + 0x6D703EF3) >>> 0, 15);
-      bb = OpCodes.RotL32((bb + ((cc & dd) | (~cc & aa)) + X[3] + 0x6D703EF3) >>> 0, 11);
-      aa = OpCodes.RotL32((aa + ((bb & cc) | (~bb & dd)) + X[7] + 0x6D703EF3) >>> 0, 8);
-      dd = OpCodes.RotL32((dd + ((aa & bb) | (~aa & cc)) + X[14] + 0x6D703EF3) >>> 0, 6);
-      cc = OpCodes.RotL32((cc + ((dd & aa) | (~dd & bb)) + X[6] + 0x6D703EF3) >>> 0, 6);
-      bb = OpCodes.RotL32((bb + ((cc & dd) | (~cc & aa)) + X[9] + 0x6D703EF3) >>> 0, 14);
-      aa = OpCodes.RotL32((aa + ((bb & cc) | (~bb & dd)) + X[11] + 0x6D703EF3) >>> 0, 12);
-      dd = OpCodes.RotL32((dd + ((aa & bb) | (~aa & cc)) + X[8] + 0x6D703EF3) >>> 0, 13);
-      cc = OpCodes.RotL32((cc + ((dd & aa) | (~dd & bb)) + X[12] + 0x6D703EF3) >>> 0, 5);
-      bb = OpCodes.RotL32((bb + ((cc & dd) | (~cc & aa)) + X[2] + 0x6D703EF3) >>> 0, 14);
-      aa = OpCodes.RotL32((aa + ((bb & cc) | (~bb & dd)) + X[10] + 0x6D703EF3) >>> 0, 13);
-      dd = OpCodes.RotL32((dd + ((aa & bb) | (~aa & cc)) + X[0] + 0x6D703EF3) >>> 0, 13);
-      cc = OpCodes.RotL32((cc + ((dd & aa) | (~dd & bb)) + X[4] + 0x6D703EF3) >>> 0, 7);
-      bb = OpCodes.RotL32((bb + ((cc & dd) | (~cc & aa)) + X[13] + 0x6D703EF3) >>> 0, 5);
+      aa = OpCodes.RotL32((aa + OpCodes.Or32(OpCodes.And32(bb, cc), OpCodes.And32(OpCodes.Not32(bb), dd)) + X[15] + 0x6D703EF3) , 9);
+      dd = OpCodes.RotL32((dd + OpCodes.Or32(OpCodes.And32(aa, bb), OpCodes.And32(OpCodes.Not32(aa), cc)) + X[5] + 0x6D703EF3) , 7);
+      cc = OpCodes.RotL32((cc + OpCodes.Or32(OpCodes.And32(dd, aa), OpCodes.And32(OpCodes.Not32(dd), bb)) + X[1] + 0x6D703EF3) , 15);
+      bb = OpCodes.RotL32((bb + OpCodes.Or32(OpCodes.And32(cc, dd), OpCodes.And32(OpCodes.Not32(cc), aa)) + X[3] + 0x6D703EF3) , 11);
+      aa = OpCodes.RotL32((aa + OpCodes.Or32(OpCodes.And32(bb, cc), OpCodes.And32(OpCodes.Not32(bb), dd)) + X[7] + 0x6D703EF3) , 8);
+      dd = OpCodes.RotL32((dd + OpCodes.Or32(OpCodes.And32(aa, bb), OpCodes.And32(OpCodes.Not32(aa), cc)) + X[14] + 0x6D703EF3) , 6);
+      cc = OpCodes.RotL32((cc + OpCodes.Or32(OpCodes.And32(dd, aa), OpCodes.And32(OpCodes.Not32(dd), bb)) + X[6] + 0x6D703EF3) , 6);
+      bb = OpCodes.RotL32((bb + OpCodes.Or32(OpCodes.And32(cc, dd), OpCodes.And32(OpCodes.Not32(cc), aa)) + X[9] + 0x6D703EF3) , 14);
+      aa = OpCodes.RotL32((aa + OpCodes.Or32(OpCodes.And32(bb, cc), OpCodes.And32(OpCodes.Not32(bb), dd)) + X[11] + 0x6D703EF3) , 12);
+      dd = OpCodes.RotL32((dd + OpCodes.Or32(OpCodes.And32(aa, bb), OpCodes.And32(OpCodes.Not32(aa), cc)) + X[8] + 0x6D703EF3) , 13);
+      cc = OpCodes.RotL32((cc + OpCodes.Or32(OpCodes.And32(dd, aa), OpCodes.And32(OpCodes.Not32(dd), bb)) + X[12] + 0x6D703EF3) , 5);
+      bb = OpCodes.RotL32((bb + OpCodes.Or32(OpCodes.And32(cc, dd), OpCodes.And32(OpCodes.Not32(cc), aa)) + X[2] + 0x6D703EF3) , 14);
+      aa = OpCodes.RotL32((aa + OpCodes.Or32(OpCodes.And32(bb, cc), OpCodes.And32(OpCodes.Not32(bb), dd)) + X[10] + 0x6D703EF3) , 13);
+      dd = OpCodes.RotL32((dd + OpCodes.Or32(OpCodes.And32(aa, bb), OpCodes.And32(OpCodes.Not32(aa), cc)) + X[0] + 0x6D703EF3) , 13);
+      cc = OpCodes.RotL32((cc + OpCodes.Or32(OpCodes.And32(dd, aa), OpCodes.And32(OpCodes.Not32(dd), bb)) + X[4] + 0x6D703EF3) , 7);
+      bb = OpCodes.RotL32((bb + OpCodes.Or32(OpCodes.And32(cc, dd), OpCodes.And32(OpCodes.Not32(cc), aa)) + X[13] + 0x6D703EF3) , 5);
 
       t = c; c = cc; cc = t;
 
       // Round 4
-      a = OpCodes.RotL32((a + ((b & d) | (c & ~d)) + X[1] + 0x8F1BBCDC) >>> 0, 11);
-      d = OpCodes.RotL32((d + ((a & c) | (b & ~c)) + X[9] + 0x8F1BBCDC) >>> 0, 12);
-      c = OpCodes.RotL32((c + ((d & b) | (a & ~b)) + X[11] + 0x8F1BBCDC) >>> 0, 14);
-      b = OpCodes.RotL32((b + ((c & a) | (d & ~a)) + X[10] + 0x8F1BBCDC) >>> 0, 15);
-      a = OpCodes.RotL32((a + ((b & d) | (c & ~d)) + X[0] + 0x8F1BBCDC) >>> 0, 14);
-      d = OpCodes.RotL32((d + ((a & c) | (b & ~c)) + X[8] + 0x8F1BBCDC) >>> 0, 15);
-      c = OpCodes.RotL32((c + ((d & b) | (a & ~b)) + X[12] + 0x8F1BBCDC) >>> 0, 9);
-      b = OpCodes.RotL32((b + ((c & a) | (d & ~a)) + X[4] + 0x8F1BBCDC) >>> 0, 8);
-      a = OpCodes.RotL32((a + ((b & d) | (c & ~d)) + X[13] + 0x8F1BBCDC) >>> 0, 9);
-      d = OpCodes.RotL32((d + ((a & c) | (b & ~c)) + X[3] + 0x8F1BBCDC) >>> 0, 14);
-      c = OpCodes.RotL32((c + ((d & b) | (a & ~b)) + X[7] + 0x8F1BBCDC) >>> 0, 5);
-      b = OpCodes.RotL32((b + ((c & a) | (d & ~a)) + X[15] + 0x8F1BBCDC) >>> 0, 6);
-      a = OpCodes.RotL32((a + ((b & d) | (c & ~d)) + X[14] + 0x8F1BBCDC) >>> 0, 8);
-      d = OpCodes.RotL32((d + ((a & c) | (b & ~c)) + X[5] + 0x8F1BBCDC) >>> 0, 6);
-      c = OpCodes.RotL32((c + ((d & b) | (a & ~b)) + X[6] + 0x8F1BBCDC) >>> 0, 5);
-      b = OpCodes.RotL32((b + ((c & a) | (d & ~a)) + X[2] + 0x8F1BBCDC) >>> 0, 12);
+      a = OpCodes.RotL32((a + OpCodes.Or32(OpCodes.And32(b, d), OpCodes.And32(c, OpCodes.Not32(d))) + X[1] + 0x8F1BBCDC) , 11);
+      d = OpCodes.RotL32((d + OpCodes.Or32(OpCodes.And32(a, c), OpCodes.And32(b, OpCodes.Not32(c))) + X[9] + 0x8F1BBCDC) , 12);
+      c = OpCodes.RotL32((c + OpCodes.Or32(OpCodes.And32(d, b), OpCodes.And32(a, OpCodes.Not32(b))) + X[11] + 0x8F1BBCDC) , 14);
+      b = OpCodes.RotL32((b + OpCodes.Or32(OpCodes.And32(c, a), OpCodes.And32(d, OpCodes.Not32(a))) + X[10] + 0x8F1BBCDC) , 15);
+      a = OpCodes.RotL32((a + OpCodes.Or32(OpCodes.And32(b, d), OpCodes.And32(c, OpCodes.Not32(d))) + X[0] + 0x8F1BBCDC) , 14);
+      d = OpCodes.RotL32((d + OpCodes.Or32(OpCodes.And32(a, c), OpCodes.And32(b, OpCodes.Not32(c))) + X[8] + 0x8F1BBCDC) , 15);
+      c = OpCodes.RotL32((c + OpCodes.Or32(OpCodes.And32(d, b), OpCodes.And32(a, OpCodes.Not32(b))) + X[12] + 0x8F1BBCDC) , 9);
+      b = OpCodes.RotL32((b + OpCodes.Or32(OpCodes.And32(c, a), OpCodes.And32(d, OpCodes.Not32(a))) + X[4] + 0x8F1BBCDC) , 8);
+      a = OpCodes.RotL32((a + OpCodes.Or32(OpCodes.And32(b, d), OpCodes.And32(c, OpCodes.Not32(d))) + X[13] + 0x8F1BBCDC) , 9);
+      d = OpCodes.RotL32((d + OpCodes.Or32(OpCodes.And32(a, c), OpCodes.And32(b, OpCodes.Not32(c))) + X[3] + 0x8F1BBCDC) , 14);
+      c = OpCodes.RotL32((c + OpCodes.Or32(OpCodes.And32(d, b), OpCodes.And32(a, OpCodes.Not32(b))) + X[7] + 0x8F1BBCDC) , 5);
+      b = OpCodes.RotL32((b + OpCodes.Or32(OpCodes.And32(c, a), OpCodes.And32(d, OpCodes.Not32(a))) + X[15] + 0x8F1BBCDC) , 6);
+      a = OpCodes.RotL32((a + OpCodes.Or32(OpCodes.And32(b, d), OpCodes.And32(c, OpCodes.Not32(d))) + X[14] + 0x8F1BBCDC) , 8);
+      d = OpCodes.RotL32((d + OpCodes.Or32(OpCodes.And32(a, c), OpCodes.And32(b, OpCodes.Not32(c))) + X[5] + 0x8F1BBCDC) , 6);
+      c = OpCodes.RotL32((c + OpCodes.Or32(OpCodes.And32(d, b), OpCodes.And32(a, OpCodes.Not32(b))) + X[6] + 0x8F1BBCDC) , 5);
+      b = OpCodes.RotL32((b + OpCodes.Or32(OpCodes.And32(c, a), OpCodes.And32(d, OpCodes.Not32(a))) + X[2] + 0x8F1BBCDC) , 12);
 
-      aa = OpCodes.RotL32((aa + (bb ^ cc ^ dd) + X[8]) >>> 0, 15);
-      dd = OpCodes.RotL32((dd + (aa ^ bb ^ cc) + X[6]) >>> 0, 5);
-      cc = OpCodes.RotL32((cc + (dd ^ aa ^ bb) + X[4]) >>> 0, 8);
-      bb = OpCodes.RotL32((bb + (cc ^ dd ^ aa) + X[1]) >>> 0, 11);
-      aa = OpCodes.RotL32((aa + (bb ^ cc ^ dd) + X[3]) >>> 0, 14);
-      dd = OpCodes.RotL32((dd + (aa ^ bb ^ cc) + X[11]) >>> 0, 14);
-      cc = OpCodes.RotL32((cc + (dd ^ aa ^ bb) + X[15]) >>> 0, 6);
-      bb = OpCodes.RotL32((bb + (cc ^ dd ^ aa) + X[0]) >>> 0, 14);
-      aa = OpCodes.RotL32((aa + (bb ^ cc ^ dd) + X[5]) >>> 0, 6);
-      dd = OpCodes.RotL32((dd + (aa ^ bb ^ cc) + X[12]) >>> 0, 9);
-      cc = OpCodes.RotL32((cc + (dd ^ aa ^ bb) + X[2]) >>> 0, 12);
-      bb = OpCodes.RotL32((bb + (cc ^ dd ^ aa) + X[13]) >>> 0, 9);
-      aa = OpCodes.RotL32((aa + (bb ^ cc ^ dd) + X[9]) >>> 0, 12);
-      dd = OpCodes.RotL32((dd + (aa ^ bb ^ cc) + X[7]) >>> 0, 5);
-      cc = OpCodes.RotL32((cc + (dd ^ aa ^ bb) + X[10]) >>> 0, 15);
-      bb = OpCodes.RotL32((bb + (cc ^ dd ^ aa) + X[14]) >>> 0, 8);
+      aa = OpCodes.RotL32((aa + OpCodes.Xor32(OpCodes.Xor32(bb, cc), dd) + X[8]) , 15);
+      dd = OpCodes.RotL32((dd + OpCodes.Xor32(OpCodes.Xor32(aa, bb), cc) + X[6]) , 5);
+      cc = OpCodes.RotL32((cc + OpCodes.Xor32(OpCodes.Xor32(dd, aa), bb) + X[4]) , 8);
+      bb = OpCodes.RotL32((bb + OpCodes.Xor32(OpCodes.Xor32(cc, dd), aa) + X[1]) , 11);
+      aa = OpCodes.RotL32((aa + OpCodes.Xor32(OpCodes.Xor32(bb, cc), dd) + X[3]) , 14);
+      dd = OpCodes.RotL32((dd + OpCodes.Xor32(OpCodes.Xor32(aa, bb), cc) + X[11]) , 14);
+      cc = OpCodes.RotL32((cc + OpCodes.Xor32(OpCodes.Xor32(dd, aa), bb) + X[15]) , 6);
+      bb = OpCodes.RotL32((bb + OpCodes.Xor32(OpCodes.Xor32(cc, dd), aa) + X[0]) , 14);
+      aa = OpCodes.RotL32((aa + OpCodes.Xor32(OpCodes.Xor32(bb, cc), dd) + X[5]) , 6);
+      dd = OpCodes.RotL32((dd + OpCodes.Xor32(OpCodes.Xor32(aa, bb), cc) + X[12]) , 9);
+      cc = OpCodes.RotL32((cc + OpCodes.Xor32(OpCodes.Xor32(dd, aa), bb) + X[2]) , 12);
+      bb = OpCodes.RotL32((bb + OpCodes.Xor32(OpCodes.Xor32(cc, dd), aa) + X[13]) , 9);
+      aa = OpCodes.RotL32((aa + OpCodes.Xor32(OpCodes.Xor32(bb, cc), dd) + X[9]) , 12);
+      dd = OpCodes.RotL32((dd + OpCodes.Xor32(OpCodes.Xor32(aa, bb), cc) + X[7]) , 5);
+      cc = OpCodes.RotL32((cc + OpCodes.Xor32(OpCodes.Xor32(dd, aa), bb) + X[10]) , 15);
+      bb = OpCodes.RotL32((bb + OpCodes.Xor32(OpCodes.Xor32(cc, dd), aa) + X[14]) , 8);
 
       t = d; d = dd; dd = t;
 
       // Update hash values - SEPARATE updates (not combined like RIPEMD-160)
-      this.h[0] = (this.h[0] + a) >>> 0;
-      this.h[1] = (this.h[1] + b) >>> 0;
-      this.h[2] = (this.h[2] + c) >>> 0;
-      this.h[3] = (this.h[3] + d) >>> 0;
-      this.h[4] = (this.h[4] + aa) >>> 0;
-      this.h[5] = (this.h[5] + bb) >>> 0;
-      this.h[6] = (this.h[6] + cc) >>> 0;
-      this.h[7] = (this.h[7] + dd) >>> 0;
+      this.h[0] = OpCodes.ToUint32(this.h[0] + a);
+      this.h[1] = OpCodes.ToUint32(this.h[1] + b);
+      this.h[2] = OpCodes.ToUint32(this.h[2] + c);
+      this.h[3] = OpCodes.ToUint32(this.h[3] + d);
+      this.h[4] = OpCodes.ToUint32(this.h[4] + aa);
+      this.h[5] = OpCodes.ToUint32(this.h[5] + bb);
+      this.h[6] = OpCodes.ToUint32(this.h[6] + cc);
+      this.h[7] = OpCodes.ToUint32(this.h[7] + dd);
     }
 
     _ProcessBlock320(X) {
       // RIPEMD auxiliary functions
-      const f1 = (x, y, z) => x ^ y ^ z;
-      const f2 = (x, y, z) => (x & y) | (~x & z);
-      const f3 = (x, y, z) => (x | ~y) ^ z;
-      const f4 = (x, y, z) => (x & z) | (y & ~z);
-      const f5 = (x, y, z) => x ^ (y | ~z);
+      const f1 = (x, y, z) => OpCodes.Xor32(OpCodes.Xor32(x, y), z);
+      const f2 = (x, y, z) => OpCodes.Or32(OpCodes.And32(x, y), OpCodes.And32(OpCodes.Not32(x), z));
+      const f3 = (x, y, z) => OpCodes.Xor32(OpCodes.Or32(x, OpCodes.Not32(y)), z);
+      const f4 = (x, y, z) => OpCodes.Or32(OpCodes.And32(x, z), OpCodes.And32(y, OpCodes.Not32(z)));
+      const f5 = (x, y, z) => OpCodes.Xor32(x, OpCodes.Or32(y, OpCodes.Not32(z)));
 
       const RL = (x, n) => OpCodes.RotL32(x, n);
 
@@ -609,199 +609,199 @@
       let t; // temp for swaps
 
       // Round 1-16 (left: f1, right: f5)
-      a = (RL((a + f1(b,c,d) + X[ 0]) | 0, 11) + e) | 0; c = RL(c, 10);
-      e = (RL((e + f1(a,b,c) + X[ 1]) | 0, 14) + d) | 0; b = RL(b, 10);
-      d = (RL((d + f1(e,a,b) + X[ 2]) | 0, 15) + c) | 0; a = RL(a, 10);
-      c = (RL((c + f1(d,e,a) + X[ 3]) | 0, 12) + b) | 0; e = RL(e, 10);
-      b = (RL((b + f1(c,d,e) + X[ 4]) | 0,  5) + a) | 0; d = RL(d, 10);
-      a = (RL((a + f1(b,c,d) + X[ 5]) | 0,  8) + e) | 0; c = RL(c, 10);
-      e = (RL((e + f1(a,b,c) + X[ 6]) | 0,  7) + d) | 0; b = RL(b, 10);
-      d = (RL((d + f1(e,a,b) + X[ 7]) | 0,  9) + c) | 0; a = RL(a, 10);
-      c = (RL((c + f1(d,e,a) + X[ 8]) | 0, 11) + b) | 0; e = RL(e, 10);
-      b = (RL((b + f1(c,d,e) + X[ 9]) | 0, 13) + a) | 0; d = RL(d, 10);
-      a = (RL((a + f1(b,c,d) + X[10]) | 0, 14) + e) | 0; c = RL(c, 10);
-      e = (RL((e + f1(a,b,c) + X[11]) | 0, 15) + d) | 0; b = RL(b, 10);
-      d = (RL((d + f1(e,a,b) + X[12]) | 0,  6) + c) | 0; a = RL(a, 10);
-      c = (RL((c + f1(d,e,a) + X[13]) | 0,  7) + b) | 0; e = RL(e, 10);
-      b = (RL((b + f1(c,d,e) + X[14]) | 0,  9) + a) | 0; d = RL(d, 10);
-      a = (RL((a + f1(b,c,d) + X[15]) | 0,  8) + e) | 0; c = RL(c, 10);
+      a = OpCodes.ToUint32(RL(OpCodes.ToUint32(a + f1(b,c,d) + X[ 0]), 11) + e); c = RL(c, 10);
+      e = OpCodes.ToUint32(RL(OpCodes.ToUint32(e + f1(a,b,c) + X[ 1]), 14) + d); b = RL(b, 10);
+      d = OpCodes.ToUint32(RL(OpCodes.ToUint32(d + f1(e,a,b) + X[ 2]), 15) + c); a = RL(a, 10);
+      c = OpCodes.ToUint32(RL(OpCodes.ToUint32(c + f1(d,e,a) + X[ 3]), 12) + b); e = RL(e, 10);
+      b = OpCodes.ToUint32(RL(OpCodes.ToUint32(b + f1(c,d,e) + X[ 4]),  5) + a); d = RL(d, 10);
+      a = OpCodes.ToUint32(RL(OpCodes.ToUint32(a + f1(b,c,d) + X[ 5]),  8) + e); c = RL(c, 10);
+      e = OpCodes.ToUint32(RL(OpCodes.ToUint32(e + f1(a,b,c) + X[ 6]),  7) + d); b = RL(b, 10);
+      d = OpCodes.ToUint32(RL(OpCodes.ToUint32(d + f1(e,a,b) + X[ 7]),  9) + c); a = RL(a, 10);
+      c = OpCodes.ToUint32(RL(OpCodes.ToUint32(c + f1(d,e,a) + X[ 8]), 11) + b); e = RL(e, 10);
+      b = OpCodes.ToUint32(RL(OpCodes.ToUint32(b + f1(c,d,e) + X[ 9]), 13) + a); d = RL(d, 10);
+      a = OpCodes.ToUint32(RL(OpCodes.ToUint32(a + f1(b,c,d) + X[10]), 14) + e); c = RL(c, 10);
+      e = OpCodes.ToUint32(RL(OpCodes.ToUint32(e + f1(a,b,c) + X[11]), 15) + d); b = RL(b, 10);
+      d = OpCodes.ToUint32(RL(OpCodes.ToUint32(d + f1(e,a,b) + X[12]),  6) + c); a = RL(a, 10);
+      c = OpCodes.ToUint32(RL(OpCodes.ToUint32(c + f1(d,e,a) + X[13]),  7) + b); e = RL(e, 10);
+      b = OpCodes.ToUint32(RL(OpCodes.ToUint32(b + f1(c,d,e) + X[14]),  9) + a); d = RL(d, 10);
+      a = OpCodes.ToUint32(RL(OpCodes.ToUint32(a + f1(b,c,d) + X[15]),  8) + e); c = RL(c, 10);
 
-      aa = (RL((aa + f5(bb,cc,dd) + X[ 5] + 0x50a28be6) | 0,  8) + ee) | 0; cc = RL(cc, 10);
-      ee = (RL((ee + f5(aa,bb,cc) + X[14] + 0x50a28be6) | 0,  9) + dd) | 0; bb = RL(bb, 10);
-      dd = (RL((dd + f5(ee,aa,bb) + X[ 7] + 0x50a28be6) | 0,  9) + cc) | 0; aa = RL(aa, 10);
-      cc = (RL((cc + f5(dd,ee,aa) + X[ 0] + 0x50a28be6) | 0, 11) + bb) | 0; ee = RL(ee, 10);
-      bb = (RL((bb + f5(cc,dd,ee) + X[ 9] + 0x50a28be6) | 0, 13) + aa) | 0; dd = RL(dd, 10);
-      aa = (RL((aa + f5(bb,cc,dd) + X[ 2] + 0x50a28be6) | 0, 15) + ee) | 0; cc = RL(cc, 10);
-      ee = (RL((ee + f5(aa,bb,cc) + X[11] + 0x50a28be6) | 0, 15) + dd) | 0; bb = RL(bb, 10);
-      dd = (RL((dd + f5(ee,aa,bb) + X[ 4] + 0x50a28be6) | 0,  5) + cc) | 0; aa = RL(aa, 10);
-      cc = (RL((cc + f5(dd,ee,aa) + X[13] + 0x50a28be6) | 0,  7) + bb) | 0; ee = RL(ee, 10);
-      bb = (RL((bb + f5(cc,dd,ee) + X[ 6] + 0x50a28be6) | 0,  7) + aa) | 0; dd = RL(dd, 10);
-      aa = (RL((aa + f5(bb,cc,dd) + X[15] + 0x50a28be6) | 0,  8) + ee) | 0; cc = RL(cc, 10);
-      ee = (RL((ee + f5(aa,bb,cc) + X[ 8] + 0x50a28be6) | 0, 11) + dd) | 0; bb = RL(bb, 10);
-      dd = (RL((dd + f5(ee,aa,bb) + X[ 1] + 0x50a28be6) | 0, 14) + cc) | 0; aa = RL(aa, 10);
-      cc = (RL((cc + f5(dd,ee,aa) + X[10] + 0x50a28be6) | 0, 14) + bb) | 0; ee = RL(ee, 10);
-      bb = (RL((bb + f5(cc,dd,ee) + X[ 3] + 0x50a28be6) | 0, 12) + aa) | 0; dd = RL(dd, 10);
-      aa = (RL((aa + f5(bb,cc,dd) + X[12] + 0x50a28be6) | 0,  6) + ee) | 0; cc = RL(cc, 10);
+      aa = OpCodes.ToUint32(RL(OpCodes.ToUint32(aa + f5(bb,cc,dd) + X[ 5] + 0x50a28be6),  8) + ee); cc = RL(cc, 10);
+      ee = OpCodes.ToUint32(RL(OpCodes.ToUint32(ee + f5(aa,bb,cc) + X[14] + 0x50a28be6),  9) + dd); bb = RL(bb, 10);
+      dd = OpCodes.ToUint32(RL(OpCodes.ToUint32(dd + f5(ee,aa,bb) + X[ 7] + 0x50a28be6),  9) + cc); aa = RL(aa, 10);
+      cc = OpCodes.ToUint32(RL(OpCodes.ToUint32(cc + f5(dd,ee,aa) + X[ 0] + 0x50a28be6), 11) + bb); ee = RL(ee, 10);
+      bb = OpCodes.ToUint32(RL(OpCodes.ToUint32(bb + f5(cc,dd,ee) + X[ 9] + 0x50a28be6), 13) + aa); dd = RL(dd, 10);
+      aa = OpCodes.ToUint32(RL(OpCodes.ToUint32(aa + f5(bb,cc,dd) + X[ 2] + 0x50a28be6), 15) + ee); cc = RL(cc, 10);
+      ee = OpCodes.ToUint32(RL(OpCodes.ToUint32(ee + f5(aa,bb,cc) + X[11] + 0x50a28be6), 15) + dd); bb = RL(bb, 10);
+      dd = OpCodes.ToUint32(RL(OpCodes.ToUint32(dd + f5(ee,aa,bb) + X[ 4] + 0x50a28be6),  5) + cc); aa = RL(aa, 10);
+      cc = OpCodes.ToUint32(RL(OpCodes.ToUint32(cc + f5(dd,ee,aa) + X[13] + 0x50a28be6),  7) + bb); ee = RL(ee, 10);
+      bb = OpCodes.ToUint32(RL(OpCodes.ToUint32(bb + f5(cc,dd,ee) + X[ 6] + 0x50a28be6),  7) + aa); dd = RL(dd, 10);
+      aa = OpCodes.ToUint32(RL(OpCodes.ToUint32(aa + f5(bb,cc,dd) + X[15] + 0x50a28be6),  8) + ee); cc = RL(cc, 10);
+      ee = OpCodes.ToUint32(RL(OpCodes.ToUint32(ee + f5(aa,bb,cc) + X[ 8] + 0x50a28be6), 11) + dd); bb = RL(bb, 10);
+      dd = OpCodes.ToUint32(RL(OpCodes.ToUint32(dd + f5(ee,aa,bb) + X[ 1] + 0x50a28be6), 14) + cc); aa = RL(aa, 10);
+      cc = OpCodes.ToUint32(RL(OpCodes.ToUint32(cc + f5(dd,ee,aa) + X[10] + 0x50a28be6), 14) + bb); ee = RL(ee, 10);
+      bb = OpCodes.ToUint32(RL(OpCodes.ToUint32(bb + f5(cc,dd,ee) + X[ 3] + 0x50a28be6), 12) + aa); dd = RL(dd, 10);
+      aa = OpCodes.ToUint32(RL(OpCodes.ToUint32(aa + f5(bb,cc,dd) + X[12] + 0x50a28be6),  6) + ee); cc = RL(cc, 10);
 
       t = a; a = aa; aa = t;
 
       // Round 17-32 (left: f2, right: f4)
-      e = (RL((e + f2(a,b,c) + X[ 7] + 0x5a827999) | 0,  7) + d) | 0; b = RL(b, 10);
-      d = (RL((d + f2(e,a,b) + X[ 4] + 0x5a827999) | 0,  6) + c) | 0; a = RL(a, 10);
-      c = (RL((c + f2(d,e,a) + X[13] + 0x5a827999) | 0,  8) + b) | 0; e = RL(e, 10);
-      b = (RL((b + f2(c,d,e) + X[ 1] + 0x5a827999) | 0, 13) + a) | 0; d = RL(d, 10);
-      a = (RL((a + f2(b,c,d) + X[10] + 0x5a827999) | 0, 11) + e) | 0; c = RL(c, 10);
-      e = (RL((e + f2(a,b,c) + X[ 6] + 0x5a827999) | 0,  9) + d) | 0; b = RL(b, 10);
-      d = (RL((d + f2(e,a,b) + X[15] + 0x5a827999) | 0,  7) + c) | 0; a = RL(a, 10);
-      c = (RL((c + f2(d,e,a) + X[ 3] + 0x5a827999) | 0, 15) + b) | 0; e = RL(e, 10);
-      b = (RL((b + f2(c,d,e) + X[12] + 0x5a827999) | 0,  7) + a) | 0; d = RL(d, 10);
-      a = (RL((a + f2(b,c,d) + X[ 0] + 0x5a827999) | 0, 12) + e) | 0; c = RL(c, 10);
-      e = (RL((e + f2(a,b,c) + X[ 9] + 0x5a827999) | 0, 15) + d) | 0; b = RL(b, 10);
-      d = (RL((d + f2(e,a,b) + X[ 5] + 0x5a827999) | 0,  9) + c) | 0; a = RL(a, 10);
-      c = (RL((c + f2(d,e,a) + X[ 2] + 0x5a827999) | 0, 11) + b) | 0; e = RL(e, 10);
-      b = (RL((b + f2(c,d,e) + X[14] + 0x5a827999) | 0,  7) + a) | 0; d = RL(d, 10);
-      a = (RL((a + f2(b,c,d) + X[11] + 0x5a827999) | 0, 13) + e) | 0; c = RL(c, 10);
-      e = (RL((e + f2(a,b,c) + X[ 8] + 0x5a827999) | 0, 12) + d) | 0; b = RL(b, 10);
+      e = OpCodes.ToUint32(RL(OpCodes.ToUint32(e + f2(a,b,c) + X[ 7] + 0x5a827999),  7) + d); b = RL(b, 10);
+      d = OpCodes.ToUint32(RL(OpCodes.ToUint32(d + f2(e,a,b) + X[ 4] + 0x5a827999),  6) + c); a = RL(a, 10);
+      c = OpCodes.ToUint32(RL(OpCodes.ToUint32(c + f2(d,e,a) + X[13] + 0x5a827999),  8) + b); e = RL(e, 10);
+      b = OpCodes.ToUint32(RL(OpCodes.ToUint32(b + f2(c,d,e) + X[ 1] + 0x5a827999), 13) + a); d = RL(d, 10);
+      a = OpCodes.ToUint32(RL(OpCodes.ToUint32(a + f2(b,c,d) + X[10] + 0x5a827999), 11) + e); c = RL(c, 10);
+      e = OpCodes.ToUint32(RL(OpCodes.ToUint32(e + f2(a,b,c) + X[ 6] + 0x5a827999),  9) + d); b = RL(b, 10);
+      d = OpCodes.ToUint32(RL(OpCodes.ToUint32(d + f2(e,a,b) + X[15] + 0x5a827999),  7) + c); a = RL(a, 10);
+      c = OpCodes.ToUint32(RL(OpCodes.ToUint32(c + f2(d,e,a) + X[ 3] + 0x5a827999), 15) + b); e = RL(e, 10);
+      b = OpCodes.ToUint32(RL(OpCodes.ToUint32(b + f2(c,d,e) + X[12] + 0x5a827999),  7) + a); d = RL(d, 10);
+      a = OpCodes.ToUint32(RL(OpCodes.ToUint32(a + f2(b,c,d) + X[ 0] + 0x5a827999), 12) + e); c = RL(c, 10);
+      e = OpCodes.ToUint32(RL(OpCodes.ToUint32(e + f2(a,b,c) + X[ 9] + 0x5a827999), 15) + d); b = RL(b, 10);
+      d = OpCodes.ToUint32(RL(OpCodes.ToUint32(d + f2(e,a,b) + X[ 5] + 0x5a827999),  9) + c); a = RL(a, 10);
+      c = OpCodes.ToUint32(RL(OpCodes.ToUint32(c + f2(d,e,a) + X[ 2] + 0x5a827999), 11) + b); e = RL(e, 10);
+      b = OpCodes.ToUint32(RL(OpCodes.ToUint32(b + f2(c,d,e) + X[14] + 0x5a827999),  7) + a); d = RL(d, 10);
+      a = OpCodes.ToUint32(RL(OpCodes.ToUint32(a + f2(b,c,d) + X[11] + 0x5a827999), 13) + e); c = RL(c, 10);
+      e = OpCodes.ToUint32(RL(OpCodes.ToUint32(e + f2(a,b,c) + X[ 8] + 0x5a827999), 12) + d); b = RL(b, 10);
 
-      ee = (RL((ee + f4(aa,bb,cc) + X[ 6] + 0x5c4dd124) | 0,  9) + dd) | 0; bb = RL(bb, 10);
-      dd = (RL((dd + f4(ee,aa,bb) + X[11] + 0x5c4dd124) | 0, 13) + cc) | 0; aa = RL(aa, 10);
-      cc = (RL((cc + f4(dd,ee,aa) + X[ 3] + 0x5c4dd124) | 0, 15) + bb) | 0; ee = RL(ee, 10);
-      bb = (RL((bb + f4(cc,dd,ee) + X[ 7] + 0x5c4dd124) | 0,  7) + aa) | 0; dd = RL(dd, 10);
-      aa = (RL((aa + f4(bb,cc,dd) + X[ 0] + 0x5c4dd124) | 0, 12) + ee) | 0; cc = RL(cc, 10);
-      ee = (RL((ee + f4(aa,bb,cc) + X[13] + 0x5c4dd124) | 0,  8) + dd) | 0; bb = RL(bb, 10);
-      dd = (RL((dd + f4(ee,aa,bb) + X[ 5] + 0x5c4dd124) | 0,  9) + cc) | 0; aa = RL(aa, 10);
-      cc = (RL((cc + f4(dd,ee,aa) + X[10] + 0x5c4dd124) | 0, 11) + bb) | 0; ee = RL(ee, 10);
-      bb = (RL((bb + f4(cc,dd,ee) + X[14] + 0x5c4dd124) | 0,  7) + aa) | 0; dd = RL(dd, 10);
-      aa = (RL((aa + f4(bb,cc,dd) + X[15] + 0x5c4dd124) | 0,  7) + ee) | 0; cc = RL(cc, 10);
-      ee = (RL((ee + f4(aa,bb,cc) + X[ 8] + 0x5c4dd124) | 0, 12) + dd) | 0; bb = RL(bb, 10);
-      dd = (RL((dd + f4(ee,aa,bb) + X[12] + 0x5c4dd124) | 0,  7) + cc) | 0; aa = RL(aa, 10);
-      cc = (RL((cc + f4(dd,ee,aa) + X[ 4] + 0x5c4dd124) | 0,  6) + bb) | 0; ee = RL(ee, 10);
-      bb = (RL((bb + f4(cc,dd,ee) + X[ 9] + 0x5c4dd124) | 0, 15) + aa) | 0; dd = RL(dd, 10);
-      aa = (RL((aa + f4(bb,cc,dd) + X[ 1] + 0x5c4dd124) | 0, 13) + ee) | 0; cc = RL(cc, 10);
-      ee = (RL((ee + f4(aa,bb,cc) + X[ 2] + 0x5c4dd124) | 0, 11) + dd) | 0; bb = RL(bb, 10);
+      ee = OpCodes.ToUint32(RL(OpCodes.ToUint32(ee + f4(aa,bb,cc) + X[ 6] + 0x5c4dd124),  9) + dd); bb = RL(bb, 10);
+      dd = OpCodes.ToUint32(RL(OpCodes.ToUint32(dd + f4(ee,aa,bb) + X[11] + 0x5c4dd124), 13) + cc); aa = RL(aa, 10);
+      cc = OpCodes.ToUint32(RL(OpCodes.ToUint32(cc + f4(dd,ee,aa) + X[ 3] + 0x5c4dd124), 15) + bb); ee = RL(ee, 10);
+      bb = OpCodes.ToUint32(RL(OpCodes.ToUint32(bb + f4(cc,dd,ee) + X[ 7] + 0x5c4dd124),  7) + aa); dd = RL(dd, 10);
+      aa = OpCodes.ToUint32(RL(OpCodes.ToUint32(aa + f4(bb,cc,dd) + X[ 0] + 0x5c4dd124), 12) + ee); cc = RL(cc, 10);
+      ee = OpCodes.ToUint32(RL(OpCodes.ToUint32(ee + f4(aa,bb,cc) + X[13] + 0x5c4dd124),  8) + dd); bb = RL(bb, 10);
+      dd = OpCodes.ToUint32(RL(OpCodes.ToUint32(dd + f4(ee,aa,bb) + X[ 5] + 0x5c4dd124),  9) + cc); aa = RL(aa, 10);
+      cc = OpCodes.ToUint32(RL(OpCodes.ToUint32(cc + f4(dd,ee,aa) + X[10] + 0x5c4dd124), 11) + bb); ee = RL(ee, 10);
+      bb = OpCodes.ToUint32(RL(OpCodes.ToUint32(bb + f4(cc,dd,ee) + X[14] + 0x5c4dd124),  7) + aa); dd = RL(dd, 10);
+      aa = OpCodes.ToUint32(RL(OpCodes.ToUint32(aa + f4(bb,cc,dd) + X[15] + 0x5c4dd124),  7) + ee); cc = RL(cc, 10);
+      ee = OpCodes.ToUint32(RL(OpCodes.ToUint32(ee + f4(aa,bb,cc) + X[ 8] + 0x5c4dd124), 12) + dd); bb = RL(bb, 10);
+      dd = OpCodes.ToUint32(RL(OpCodes.ToUint32(dd + f4(ee,aa,bb) + X[12] + 0x5c4dd124),  7) + cc); aa = RL(aa, 10);
+      cc = OpCodes.ToUint32(RL(OpCodes.ToUint32(cc + f4(dd,ee,aa) + X[ 4] + 0x5c4dd124),  6) + bb); ee = RL(ee, 10);
+      bb = OpCodes.ToUint32(RL(OpCodes.ToUint32(bb + f4(cc,dd,ee) + X[ 9] + 0x5c4dd124), 15) + aa); dd = RL(dd, 10);
+      aa = OpCodes.ToUint32(RL(OpCodes.ToUint32(aa + f4(bb,cc,dd) + X[ 1] + 0x5c4dd124), 13) + ee); cc = RL(cc, 10);
+      ee = OpCodes.ToUint32(RL(OpCodes.ToUint32(ee + f4(aa,bb,cc) + X[ 2] + 0x5c4dd124), 11) + dd); bb = RL(bb, 10);
 
       t = b; b = bb; bb = t;
 
       // Round 33-48 (left: f3, right: f3)
-      d = (RL((d + f3(e,a,b) + X[ 3] + 0x6ed9eba1) | 0, 11) + c) | 0; a = RL(a, 10);
-      c = (RL((c + f3(d,e,a) + X[10] + 0x6ed9eba1) | 0, 13) + b) | 0; e = RL(e, 10);
-      b = (RL((b + f3(c,d,e) + X[14] + 0x6ed9eba1) | 0,  6) + a) | 0; d = RL(d, 10);
-      a = (RL((a + f3(b,c,d) + X[ 4] + 0x6ed9eba1) | 0,  7) + e) | 0; c = RL(c, 10);
-      e = (RL((e + f3(a,b,c) + X[ 9] + 0x6ed9eba1) | 0, 14) + d) | 0; b = RL(b, 10);
-      d = (RL((d + f3(e,a,b) + X[15] + 0x6ed9eba1) | 0,  9) + c) | 0; a = RL(a, 10);
-      c = (RL((c + f3(d,e,a) + X[ 8] + 0x6ed9eba1) | 0, 13) + b) | 0; e = RL(e, 10);
-      b = (RL((b + f3(c,d,e) + X[ 1] + 0x6ed9eba1) | 0, 15) + a) | 0; d = RL(d, 10);
-      a = (RL((a + f3(b,c,d) + X[ 2] + 0x6ed9eba1) | 0, 14) + e) | 0; c = RL(c, 10);
-      e = (RL((e + f3(a,b,c) + X[ 7] + 0x6ed9eba1) | 0,  8) + d) | 0; b = RL(b, 10);
-      d = (RL((d + f3(e,a,b) + X[ 0] + 0x6ed9eba1) | 0, 13) + c) | 0; a = RL(a, 10);
-      c = (RL((c + f3(d,e,a) + X[ 6] + 0x6ed9eba1) | 0,  6) + b) | 0; e = RL(e, 10);
-      b = (RL((b + f3(c,d,e) + X[13] + 0x6ed9eba1) | 0,  5) + a) | 0; d = RL(d, 10);
-      a = (RL((a + f3(b,c,d) + X[11] + 0x6ed9eba1) | 0, 12) + e) | 0; c = RL(c, 10);
-      e = (RL((e + f3(a,b,c) + X[ 5] + 0x6ed9eba1) | 0,  7) + d) | 0; b = RL(b, 10);
-      d = (RL((d + f3(e,a,b) + X[12] + 0x6ed9eba1) | 0,  5) + c) | 0; a = RL(a, 10);
+      d = OpCodes.ToUint32(RL(OpCodes.ToUint32(d + f3(e,a,b) + X[ 3] + 0x6ed9eba1), 11) + c); a = RL(a, 10);
+      c = OpCodes.ToUint32(RL(OpCodes.ToUint32(c + f3(d,e,a) + X[10] + 0x6ed9eba1), 13) + b); e = RL(e, 10);
+      b = OpCodes.ToUint32(RL(OpCodes.ToUint32(b + f3(c,d,e) + X[14] + 0x6ed9eba1),  6) + a); d = RL(d, 10);
+      a = OpCodes.ToUint32(RL(OpCodes.ToUint32(a + f3(b,c,d) + X[ 4] + 0x6ed9eba1),  7) + e); c = RL(c, 10);
+      e = OpCodes.ToUint32(RL(OpCodes.ToUint32(e + f3(a,b,c) + X[ 9] + 0x6ed9eba1), 14) + d); b = RL(b, 10);
+      d = OpCodes.ToUint32(RL(OpCodes.ToUint32(d + f3(e,a,b) + X[15] + 0x6ed9eba1),  9) + c); a = RL(a, 10);
+      c = OpCodes.ToUint32(RL(OpCodes.ToUint32(c + f3(d,e,a) + X[ 8] + 0x6ed9eba1), 13) + b); e = RL(e, 10);
+      b = OpCodes.ToUint32(RL(OpCodes.ToUint32(b + f3(c,d,e) + X[ 1] + 0x6ed9eba1), 15) + a); d = RL(d, 10);
+      a = OpCodes.ToUint32(RL(OpCodes.ToUint32(a + f3(b,c,d) + X[ 2] + 0x6ed9eba1), 14) + e); c = RL(c, 10);
+      e = OpCodes.ToUint32(RL(OpCodes.ToUint32(e + f3(a,b,c) + X[ 7] + 0x6ed9eba1),  8) + d); b = RL(b, 10);
+      d = OpCodes.ToUint32(RL(OpCodes.ToUint32(d + f3(e,a,b) + X[ 0] + 0x6ed9eba1), 13) + c); a = RL(a, 10);
+      c = OpCodes.ToUint32(RL(OpCodes.ToUint32(c + f3(d,e,a) + X[ 6] + 0x6ed9eba1),  6) + b); e = RL(e, 10);
+      b = OpCodes.ToUint32(RL(OpCodes.ToUint32(b + f3(c,d,e) + X[13] + 0x6ed9eba1),  5) + a); d = RL(d, 10);
+      a = OpCodes.ToUint32(RL(OpCodes.ToUint32(a + f3(b,c,d) + X[11] + 0x6ed9eba1), 12) + e); c = RL(c, 10);
+      e = OpCodes.ToUint32(RL(OpCodes.ToUint32(e + f3(a,b,c) + X[ 5] + 0x6ed9eba1),  7) + d); b = RL(b, 10);
+      d = OpCodes.ToUint32(RL(OpCodes.ToUint32(d + f3(e,a,b) + X[12] + 0x6ed9eba1),  5) + c); a = RL(a, 10);
 
-      dd = (RL((dd + f3(ee,aa,bb) + X[15] + 0x6d703ef3) | 0,  9) + cc) | 0; aa = RL(aa, 10);
-      cc = (RL((cc + f3(dd,ee,aa) + X[ 5] + 0x6d703ef3) | 0,  7) + bb) | 0; ee = RL(ee, 10);
-      bb = (RL((bb + f3(cc,dd,ee) + X[ 1] + 0x6d703ef3) | 0, 15) + aa) | 0; dd = RL(dd, 10);
-      aa = (RL((aa + f3(bb,cc,dd) + X[ 3] + 0x6d703ef3) | 0, 11) + ee) | 0; cc = RL(cc, 10);
-      ee = (RL((ee + f3(aa,bb,cc) + X[ 7] + 0x6d703ef3) | 0,  8) + dd) | 0; bb = RL(bb, 10);
-      dd = (RL((dd + f3(ee,aa,bb) + X[14] + 0x6d703ef3) | 0,  6) + cc) | 0; aa = RL(aa, 10);
-      cc = (RL((cc + f3(dd,ee,aa) + X[ 6] + 0x6d703ef3) | 0,  6) + bb) | 0; ee = RL(ee, 10);
-      bb = (RL((bb + f3(cc,dd,ee) + X[ 9] + 0x6d703ef3) | 0, 14) + aa) | 0; dd = RL(dd, 10);
-      aa = (RL((aa + f3(bb,cc,dd) + X[11] + 0x6d703ef3) | 0, 12) + ee) | 0; cc = RL(cc, 10);
-      ee = (RL((ee + f3(aa,bb,cc) + X[ 8] + 0x6d703ef3) | 0, 13) + dd) | 0; bb = RL(bb, 10);
-      dd = (RL((dd + f3(ee,aa,bb) + X[12] + 0x6d703ef3) | 0,  5) + cc) | 0; aa = RL(aa, 10);
-      cc = (RL((cc + f3(dd,ee,aa) + X[ 2] + 0x6d703ef3) | 0, 14) + bb) | 0; ee = RL(ee, 10);
-      bb = (RL((bb + f3(cc,dd,ee) + X[10] + 0x6d703ef3) | 0, 13) + aa) | 0; dd = RL(dd, 10);
-      aa = (RL((aa + f3(bb,cc,dd) + X[ 0] + 0x6d703ef3) | 0, 13) + ee) | 0; cc = RL(cc, 10);
-      ee = (RL((ee + f3(aa,bb,cc) + X[ 4] + 0x6d703ef3) | 0,  7) + dd) | 0; bb = RL(bb, 10);
-      dd = (RL((dd + f3(ee,aa,bb) + X[13] + 0x6d703ef3) | 0,  5) + cc) | 0; aa = RL(aa, 10);
+      dd = OpCodes.ToUint32(RL(OpCodes.ToUint32(dd + f3(ee,aa,bb) + X[15] + 0x6d703ef3),  9) + cc); aa = RL(aa, 10);
+      cc = OpCodes.ToUint32(RL(OpCodes.ToUint32(cc + f3(dd,ee,aa) + X[ 5] + 0x6d703ef3),  7) + bb); ee = RL(ee, 10);
+      bb = OpCodes.ToUint32(RL(OpCodes.ToUint32(bb + f3(cc,dd,ee) + X[ 1] + 0x6d703ef3), 15) + aa); dd = RL(dd, 10);
+      aa = OpCodes.ToUint32(RL(OpCodes.ToUint32(aa + f3(bb,cc,dd) + X[ 3] + 0x6d703ef3), 11) + ee); cc = RL(cc, 10);
+      ee = OpCodes.ToUint32(RL(OpCodes.ToUint32(ee + f3(aa,bb,cc) + X[ 7] + 0x6d703ef3),  8) + dd); bb = RL(bb, 10);
+      dd = OpCodes.ToUint32(RL(OpCodes.ToUint32(dd + f3(ee,aa,bb) + X[14] + 0x6d703ef3),  6) + cc); aa = RL(aa, 10);
+      cc = OpCodes.ToUint32(RL(OpCodes.ToUint32(cc + f3(dd,ee,aa) + X[ 6] + 0x6d703ef3),  6) + bb); ee = RL(ee, 10);
+      bb = OpCodes.ToUint32(RL(OpCodes.ToUint32(bb + f3(cc,dd,ee) + X[ 9] + 0x6d703ef3), 14) + aa); dd = RL(dd, 10);
+      aa = OpCodes.ToUint32(RL(OpCodes.ToUint32(aa + f3(bb,cc,dd) + X[11] + 0x6d703ef3), 12) + ee); cc = RL(cc, 10);
+      ee = OpCodes.ToUint32(RL(OpCodes.ToUint32(ee + f3(aa,bb,cc) + X[ 8] + 0x6d703ef3), 13) + dd); bb = RL(bb, 10);
+      dd = OpCodes.ToUint32(RL(OpCodes.ToUint32(dd + f3(ee,aa,bb) + X[12] + 0x6d703ef3),  5) + cc); aa = RL(aa, 10);
+      cc = OpCodes.ToUint32(RL(OpCodes.ToUint32(cc + f3(dd,ee,aa) + X[ 2] + 0x6d703ef3), 14) + bb); ee = RL(ee, 10);
+      bb = OpCodes.ToUint32(RL(OpCodes.ToUint32(bb + f3(cc,dd,ee) + X[10] + 0x6d703ef3), 13) + aa); dd = RL(dd, 10);
+      aa = OpCodes.ToUint32(RL(OpCodes.ToUint32(aa + f3(bb,cc,dd) + X[ 0] + 0x6d703ef3), 13) + ee); cc = RL(cc, 10);
+      ee = OpCodes.ToUint32(RL(OpCodes.ToUint32(ee + f3(aa,bb,cc) + X[ 4] + 0x6d703ef3),  7) + dd); bb = RL(bb, 10);
+      dd = OpCodes.ToUint32(RL(OpCodes.ToUint32(dd + f3(ee,aa,bb) + X[13] + 0x6d703ef3),  5) + cc); aa = RL(aa, 10);
 
       t = c; c = cc; cc = t;
 
       // Round 49-64 (left: f4, right: f2)
-      c = (RL((c + f4(d,e,a) + X[ 1] + 0x8f1bbcdc) | 0, 11) + b) | 0; e = RL(e, 10);
-      b = (RL((b + f4(c,d,e) + X[ 9] + 0x8f1bbcdc) | 0, 12) + a) | 0; d = RL(d, 10);
-      a = (RL((a + f4(b,c,d) + X[11] + 0x8f1bbcdc) | 0, 14) + e) | 0; c = RL(c, 10);
-      e = (RL((e + f4(a,b,c) + X[10] + 0x8f1bbcdc) | 0, 15) + d) | 0; b = RL(b, 10);
-      d = (RL((d + f4(e,a,b) + X[ 0] + 0x8f1bbcdc) | 0, 14) + c) | 0; a = RL(a, 10);
-      c = (RL((c + f4(d,e,a) + X[ 8] + 0x8f1bbcdc) | 0, 15) + b) | 0; e = RL(e, 10);
-      b = (RL((b + f4(c,d,e) + X[12] + 0x8f1bbcdc) | 0,  9) + a) | 0; d = RL(d, 10);
-      a = (RL((a + f4(b,c,d) + X[ 4] + 0x8f1bbcdc) | 0,  8) + e) | 0; c = RL(c, 10);
-      e = (RL((e + f4(a,b,c) + X[13] + 0x8f1bbcdc) | 0,  9) + d) | 0; b = RL(b, 10);
-      d = (RL((d + f4(e,a,b) + X[ 3] + 0x8f1bbcdc) | 0, 14) + c) | 0; a = RL(a, 10);
-      c = (RL((c + f4(d,e,a) + X[ 7] + 0x8f1bbcdc) | 0,  5) + b) | 0; e = RL(e, 10);
-      b = (RL((b + f4(c,d,e) + X[15] + 0x8f1bbcdc) | 0,  6) + a) | 0; d = RL(d, 10);
-      a = (RL((a + f4(b,c,d) + X[14] + 0x8f1bbcdc) | 0,  8) + e) | 0; c = RL(c, 10);
-      e = (RL((e + f4(a,b,c) + X[ 5] + 0x8f1bbcdc) | 0,  6) + d) | 0; b = RL(b, 10);
-      d = (RL((d + f4(e,a,b) + X[ 6] + 0x8f1bbcdc) | 0,  5) + c) | 0; a = RL(a, 10);
-      c = (RL((c + f4(d,e,a) + X[ 2] + 0x8f1bbcdc) | 0, 12) + b) | 0; e = RL(e, 10);
+      c = OpCodes.ToUint32(RL(OpCodes.ToUint32(c + f4(d,e,a) + X[ 1] + 0x8f1bbcdc), 11) + b); e = RL(e, 10);
+      b = OpCodes.ToUint32(RL(OpCodes.ToUint32(b + f4(c,d,e) + X[ 9] + 0x8f1bbcdc), 12) + a); d = RL(d, 10);
+      a = OpCodes.ToUint32(RL(OpCodes.ToUint32(a + f4(b,c,d) + X[11] + 0x8f1bbcdc), 14) + e); c = RL(c, 10);
+      e = OpCodes.ToUint32(RL(OpCodes.ToUint32(e + f4(a,b,c) + X[10] + 0x8f1bbcdc), 15) + d); b = RL(b, 10);
+      d = OpCodes.ToUint32(RL(OpCodes.ToUint32(d + f4(e,a,b) + X[ 0] + 0x8f1bbcdc), 14) + c); a = RL(a, 10);
+      c = OpCodes.ToUint32(RL(OpCodes.ToUint32(c + f4(d,e,a) + X[ 8] + 0x8f1bbcdc), 15) + b); e = RL(e, 10);
+      b = OpCodes.ToUint32(RL(OpCodes.ToUint32(b + f4(c,d,e) + X[12] + 0x8f1bbcdc),  9) + a); d = RL(d, 10);
+      a = OpCodes.ToUint32(RL(OpCodes.ToUint32(a + f4(b,c,d) + X[ 4] + 0x8f1bbcdc),  8) + e); c = RL(c, 10);
+      e = OpCodes.ToUint32(RL(OpCodes.ToUint32(e + f4(a,b,c) + X[13] + 0x8f1bbcdc),  9) + d); b = RL(b, 10);
+      d = OpCodes.ToUint32(RL(OpCodes.ToUint32(d + f4(e,a,b) + X[ 3] + 0x8f1bbcdc), 14) + c); a = RL(a, 10);
+      c = OpCodes.ToUint32(RL(OpCodes.ToUint32(c + f4(d,e,a) + X[ 7] + 0x8f1bbcdc),  5) + b); e = RL(e, 10);
+      b = OpCodes.ToUint32(RL(OpCodes.ToUint32(b + f4(c,d,e) + X[15] + 0x8f1bbcdc),  6) + a); d = RL(d, 10);
+      a = OpCodes.ToUint32(RL(OpCodes.ToUint32(a + f4(b,c,d) + X[14] + 0x8f1bbcdc),  8) + e); c = RL(c, 10);
+      e = OpCodes.ToUint32(RL(OpCodes.ToUint32(e + f4(a,b,c) + X[ 5] + 0x8f1bbcdc),  6) + d); b = RL(b, 10);
+      d = OpCodes.ToUint32(RL(OpCodes.ToUint32(d + f4(e,a,b) + X[ 6] + 0x8f1bbcdc),  5) + c); a = RL(a, 10);
+      c = OpCodes.ToUint32(RL(OpCodes.ToUint32(c + f4(d,e,a) + X[ 2] + 0x8f1bbcdc), 12) + b); e = RL(e, 10);
 
-      cc = (RL((cc + f2(dd,ee,aa) + X[ 8] + 0x7a6d76e9) | 0, 15) + bb) | 0; ee = RL(ee, 10);
-      bb = (RL((bb + f2(cc,dd,ee) + X[ 6] + 0x7a6d76e9) | 0,  5) + aa) | 0; dd = RL(dd, 10);
-      aa = (RL((aa + f2(bb,cc,dd) + X[ 4] + 0x7a6d76e9) | 0,  8) + ee) | 0; cc = RL(cc, 10);
-      ee = (RL((ee + f2(aa,bb,cc) + X[ 1] + 0x7a6d76e9) | 0, 11) + dd) | 0; bb = RL(bb, 10);
-      dd = (RL((dd + f2(ee,aa,bb) + X[ 3] + 0x7a6d76e9) | 0, 14) + cc) | 0; aa = RL(aa, 10);
-      cc = (RL((cc + f2(dd,ee,aa) + X[11] + 0x7a6d76e9) | 0, 14) + bb) | 0; ee = RL(ee, 10);
-      bb = (RL((bb + f2(cc,dd,ee) + X[15] + 0x7a6d76e9) | 0,  6) + aa) | 0; dd = RL(dd, 10);
-      aa = (RL((aa + f2(bb,cc,dd) + X[ 0] + 0x7a6d76e9) | 0, 14) + ee) | 0; cc = RL(cc, 10);
-      ee = (RL((ee + f2(aa,bb,cc) + X[ 5] + 0x7a6d76e9) | 0,  6) + dd) | 0; bb = RL(bb, 10);
-      dd = (RL((dd + f2(ee,aa,bb) + X[12] + 0x7a6d76e9) | 0,  9) + cc) | 0; aa = RL(aa, 10);
-      cc = (RL((cc + f2(dd,ee,aa) + X[ 2] + 0x7a6d76e9) | 0, 12) + bb) | 0; ee = RL(ee, 10);
-      bb = (RL((bb + f2(cc,dd,ee) + X[13] + 0x7a6d76e9) | 0,  9) + aa) | 0; dd = RL(dd, 10);
-      aa = (RL((aa + f2(bb,cc,dd) + X[ 9] + 0x7a6d76e9) | 0, 12) + ee) | 0; cc = RL(cc, 10);
-      ee = (RL((ee + f2(aa,bb,cc) + X[ 7] + 0x7a6d76e9) | 0,  5) + dd) | 0; bb = RL(bb, 10);
-      dd = (RL((dd + f2(ee,aa,bb) + X[10] + 0x7a6d76e9) | 0, 15) + cc) | 0; aa = RL(aa, 10);
-      cc = (RL((cc + f2(dd,ee,aa) + X[14] + 0x7a6d76e9) | 0,  8) + bb) | 0; ee = RL(ee, 10);
+      cc = OpCodes.ToUint32(RL(OpCodes.ToUint32(cc + f2(dd,ee,aa) + X[ 8] + 0x7a6d76e9), 15) + bb); ee = RL(ee, 10);
+      bb = OpCodes.ToUint32(RL(OpCodes.ToUint32(bb + f2(cc,dd,ee) + X[ 6] + 0x7a6d76e9),  5) + aa); dd = RL(dd, 10);
+      aa = OpCodes.ToUint32(RL(OpCodes.ToUint32(aa + f2(bb,cc,dd) + X[ 4] + 0x7a6d76e9),  8) + ee); cc = RL(cc, 10);
+      ee = OpCodes.ToUint32(RL(OpCodes.ToUint32(ee + f2(aa,bb,cc) + X[ 1] + 0x7a6d76e9), 11) + dd); bb = RL(bb, 10);
+      dd = OpCodes.ToUint32(RL(OpCodes.ToUint32(dd + f2(ee,aa,bb) + X[ 3] + 0x7a6d76e9), 14) + cc); aa = RL(aa, 10);
+      cc = OpCodes.ToUint32(RL(OpCodes.ToUint32(cc + f2(dd,ee,aa) + X[11] + 0x7a6d76e9), 14) + bb); ee = RL(ee, 10);
+      bb = OpCodes.ToUint32(RL(OpCodes.ToUint32(bb + f2(cc,dd,ee) + X[15] + 0x7a6d76e9),  6) + aa); dd = RL(dd, 10);
+      aa = OpCodes.ToUint32(RL(OpCodes.ToUint32(aa + f2(bb,cc,dd) + X[ 0] + 0x7a6d76e9), 14) + ee); cc = RL(cc, 10);
+      ee = OpCodes.ToUint32(RL(OpCodes.ToUint32(ee + f2(aa,bb,cc) + X[ 5] + 0x7a6d76e9),  6) + dd); bb = RL(bb, 10);
+      dd = OpCodes.ToUint32(RL(OpCodes.ToUint32(dd + f2(ee,aa,bb) + X[12] + 0x7a6d76e9),  9) + cc); aa = RL(aa, 10);
+      cc = OpCodes.ToUint32(RL(OpCodes.ToUint32(cc + f2(dd,ee,aa) + X[ 2] + 0x7a6d76e9), 12) + bb); ee = RL(ee, 10);
+      bb = OpCodes.ToUint32(RL(OpCodes.ToUint32(bb + f2(cc,dd,ee) + X[13] + 0x7a6d76e9),  9) + aa); dd = RL(dd, 10);
+      aa = OpCodes.ToUint32(RL(OpCodes.ToUint32(aa + f2(bb,cc,dd) + X[ 9] + 0x7a6d76e9), 12) + ee); cc = RL(cc, 10);
+      ee = OpCodes.ToUint32(RL(OpCodes.ToUint32(ee + f2(aa,bb,cc) + X[ 7] + 0x7a6d76e9),  5) + dd); bb = RL(bb, 10);
+      dd = OpCodes.ToUint32(RL(OpCodes.ToUint32(dd + f2(ee,aa,bb) + X[10] + 0x7a6d76e9), 15) + cc); aa = RL(aa, 10);
+      cc = OpCodes.ToUint32(RL(OpCodes.ToUint32(cc + f2(dd,ee,aa) + X[14] + 0x7a6d76e9),  8) + bb); ee = RL(ee, 10);
 
       t = d; d = dd; dd = t;
 
       // Round 65-80 (left: f5, right: f1)
-      b = (RL((b + f5(c,d,e) + X[ 4] + 0xa953fd4e) | 0,  9) + a) | 0; d = RL(d, 10);
-      a = (RL((a + f5(b,c,d) + X[ 0] + 0xa953fd4e) | 0, 15) + e) | 0; c = RL(c, 10);
-      e = (RL((e + f5(a,b,c) + X[ 5] + 0xa953fd4e) | 0,  5) + d) | 0; b = RL(b, 10);
-      d = (RL((d + f5(e,a,b) + X[ 9] + 0xa953fd4e) | 0, 11) + c) | 0; a = RL(a, 10);
-      c = (RL((c + f5(d,e,a) + X[ 7] + 0xa953fd4e) | 0,  6) + b) | 0; e = RL(e, 10);
-      b = (RL((b + f5(c,d,e) + X[12] + 0xa953fd4e) | 0,  8) + a) | 0; d = RL(d, 10);
-      a = (RL((a + f5(b,c,d) + X[ 2] + 0xa953fd4e) | 0, 13) + e) | 0; c = RL(c, 10);
-      e = (RL((e + f5(a,b,c) + X[10] + 0xa953fd4e) | 0, 12) + d) | 0; b = RL(b, 10);
-      d = (RL((d + f5(e,a,b) + X[14] + 0xa953fd4e) | 0,  5) + c) | 0; a = RL(a, 10);
-      c = (RL((c + f5(d,e,a) + X[ 1] + 0xa953fd4e) | 0, 12) + b) | 0; e = RL(e, 10);
-      b = (RL((b + f5(c,d,e) + X[ 3] + 0xa953fd4e) | 0, 13) + a) | 0; d = RL(d, 10);
-      a = (RL((a + f5(b,c,d) + X[ 8] + 0xa953fd4e) | 0, 14) + e) | 0; c = RL(c, 10);
-      e = (RL((e + f5(a,b,c) + X[11] + 0xa953fd4e) | 0, 11) + d) | 0; b = RL(b, 10);
-      d = (RL((d + f5(e,a,b) + X[ 6] + 0xa953fd4e) | 0,  8) + c) | 0; a = RL(a, 10);
-      c = (RL((c + f5(d,e,a) + X[15] + 0xa953fd4e) | 0,  5) + b) | 0; e = RL(e, 10);
-      b = (RL((b + f5(c,d,e) + X[13] + 0xa953fd4e) | 0,  6) + a) | 0; d = RL(d, 10);
+      b = OpCodes.ToUint32(RL(OpCodes.ToUint32(b + f5(c,d,e) + X[ 4] + 0xa953fd4e),  9) + a); d = RL(d, 10);
+      a = OpCodes.ToUint32(RL(OpCodes.ToUint32(a + f5(b,c,d) + X[ 0] + 0xa953fd4e), 15) + e); c = RL(c, 10);
+      e = OpCodes.ToUint32(RL(OpCodes.ToUint32(e + f5(a,b,c) + X[ 5] + 0xa953fd4e),  5) + d); b = RL(b, 10);
+      d = OpCodes.ToUint32(RL(OpCodes.ToUint32(d + f5(e,a,b) + X[ 9] + 0xa953fd4e), 11) + c); a = RL(a, 10);
+      c = OpCodes.ToUint32(RL(OpCodes.ToUint32(c + f5(d,e,a) + X[ 7] + 0xa953fd4e),  6) + b); e = RL(e, 10);
+      b = OpCodes.ToUint32(RL(OpCodes.ToUint32(b + f5(c,d,e) + X[12] + 0xa953fd4e),  8) + a); d = RL(d, 10);
+      a = OpCodes.ToUint32(RL(OpCodes.ToUint32(a + f5(b,c,d) + X[ 2] + 0xa953fd4e), 13) + e); c = RL(c, 10);
+      e = OpCodes.ToUint32(RL(OpCodes.ToUint32(e + f5(a,b,c) + X[10] + 0xa953fd4e), 12) + d); b = RL(b, 10);
+      d = OpCodes.ToUint32(RL(OpCodes.ToUint32(d + f5(e,a,b) + X[14] + 0xa953fd4e),  5) + c); a = RL(a, 10);
+      c = OpCodes.ToUint32(RL(OpCodes.ToUint32(c + f5(d,e,a) + X[ 1] + 0xa953fd4e), 12) + b); e = RL(e, 10);
+      b = OpCodes.ToUint32(RL(OpCodes.ToUint32(b + f5(c,d,e) + X[ 3] + 0xa953fd4e), 13) + a); d = RL(d, 10);
+      a = OpCodes.ToUint32(RL(OpCodes.ToUint32(a + f5(b,c,d) + X[ 8] + 0xa953fd4e), 14) + e); c = RL(c, 10);
+      e = OpCodes.ToUint32(RL(OpCodes.ToUint32(e + f5(a,b,c) + X[11] + 0xa953fd4e), 11) + d); b = RL(b, 10);
+      d = OpCodes.ToUint32(RL(OpCodes.ToUint32(d + f5(e,a,b) + X[ 6] + 0xa953fd4e),  8) + c); a = RL(a, 10);
+      c = OpCodes.ToUint32(RL(OpCodes.ToUint32(c + f5(d,e,a) + X[15] + 0xa953fd4e),  5) + b); e = RL(e, 10);
+      b = OpCodes.ToUint32(RL(OpCodes.ToUint32(b + f5(c,d,e) + X[13] + 0xa953fd4e),  6) + a); d = RL(d, 10);
 
-      bb = (RL((bb + f1(cc,dd,ee) + X[12]) | 0,  8) + aa) | 0; dd = RL(dd, 10);
-      aa = (RL((aa + f1(bb,cc,dd) + X[15]) | 0,  5) + ee) | 0; cc = RL(cc, 10);
-      ee = (RL((ee + f1(aa,bb,cc) + X[10]) | 0, 12) + dd) | 0; bb = RL(bb, 10);
-      dd = (RL((dd + f1(ee,aa,bb) + X[ 4]) | 0,  9) + cc) | 0; aa = RL(aa, 10);
-      cc = (RL((cc + f1(dd,ee,aa) + X[ 1]) | 0, 12) + bb) | 0; ee = RL(ee, 10);
-      bb = (RL((bb + f1(cc,dd,ee) + X[ 5]) | 0,  5) + aa) | 0; dd = RL(dd, 10);
-      aa = (RL((aa + f1(bb,cc,dd) + X[ 8]) | 0, 14) + ee) | 0; cc = RL(cc, 10);
-      ee = (RL((ee + f1(aa,bb,cc) + X[ 7]) | 0,  6) + dd) | 0; bb = RL(bb, 10);
-      dd = (RL((dd + f1(ee,aa,bb) + X[ 6]) | 0,  8) + cc) | 0; aa = RL(aa, 10);
-      cc = (RL((cc + f1(dd,ee,aa) + X[ 2]) | 0, 13) + bb) | 0; ee = RL(ee, 10);
-      bb = (RL((bb + f1(cc,dd,ee) + X[13]) | 0,  6) + aa) | 0; dd = RL(dd, 10);
-      aa = (RL((aa + f1(bb,cc,dd) + X[14]) | 0,  5) + ee) | 0; cc = RL(cc, 10);
-      ee = (RL((ee + f1(aa,bb,cc) + X[ 0]) | 0, 15) + dd) | 0; bb = RL(bb, 10);
-      dd = (RL((dd + f1(ee,aa,bb) + X[ 3]) | 0, 13) + cc) | 0; aa = RL(aa, 10);
-      cc = (RL((cc + f1(dd,ee,aa) + X[ 9]) | 0, 11) + bb) | 0; ee = RL(ee, 10);
-      bb = (RL((bb + f1(cc,dd,ee) + X[11]) | 0, 11) + aa) | 0; dd = RL(dd, 10);
+      bb = OpCodes.ToUint32(RL(OpCodes.ToUint32(bb + f1(cc,dd,ee) + X[12]),  8) + aa); dd = RL(dd, 10);
+      aa = OpCodes.ToUint32(RL(OpCodes.ToUint32(aa + f1(bb,cc,dd) + X[15]),  5) + ee); cc = RL(cc, 10);
+      ee = OpCodes.ToUint32(RL(OpCodes.ToUint32(ee + f1(aa,bb,cc) + X[10]), 12) + dd); bb = RL(bb, 10);
+      dd = OpCodes.ToUint32(RL(OpCodes.ToUint32(dd + f1(ee,aa,bb) + X[ 4]),  9) + cc); aa = RL(aa, 10);
+      cc = OpCodes.ToUint32(RL(OpCodes.ToUint32(cc + f1(dd,ee,aa) + X[ 1]), 12) + bb); ee = RL(ee, 10);
+      bb = OpCodes.ToUint32(RL(OpCodes.ToUint32(bb + f1(cc,dd,ee) + X[ 5]),  5) + aa); dd = RL(dd, 10);
+      aa = OpCodes.ToUint32(RL(OpCodes.ToUint32(aa + f1(bb,cc,dd) + X[ 8]), 14) + ee); cc = RL(cc, 10);
+      ee = OpCodes.ToUint32(RL(OpCodes.ToUint32(ee + f1(aa,bb,cc) + X[ 7]),  6) + dd); bb = RL(bb, 10);
+      dd = OpCodes.ToUint32(RL(OpCodes.ToUint32(dd + f1(ee,aa,bb) + X[ 6]),  8) + cc); aa = RL(aa, 10);
+      cc = OpCodes.ToUint32(RL(OpCodes.ToUint32(cc + f1(dd,ee,aa) + X[ 2]), 13) + bb); ee = RL(ee, 10);
+      bb = OpCodes.ToUint32(RL(OpCodes.ToUint32(bb + f1(cc,dd,ee) + X[13]),  6) + aa); dd = RL(dd, 10);
+      aa = OpCodes.ToUint32(RL(OpCodes.ToUint32(aa + f1(bb,cc,dd) + X[14]),  5) + ee); cc = RL(cc, 10);
+      ee = OpCodes.ToUint32(RL(OpCodes.ToUint32(ee + f1(aa,bb,cc) + X[ 0]), 15) + dd); bb = RL(bb, 10);
+      dd = OpCodes.ToUint32(RL(OpCodes.ToUint32(dd + f1(ee,aa,bb) + X[ 3]), 13) + cc); aa = RL(aa, 10);
+      cc = OpCodes.ToUint32(RL(OpCodes.ToUint32(cc + f1(dd,ee,aa) + X[ 9]), 11) + bb); ee = RL(ee, 10);
+      bb = OpCodes.ToUint32(RL(OpCodes.ToUint32(bb + f1(cc,dd,ee) + X[11]), 11) + aa); dd = RL(dd, 10);
 
       // Update state
-      this.h[0] = (this.h[0] + a) | 0;
-      this.h[1] = (this.h[1] + b) | 0;
-      this.h[2] = (this.h[2] + c) | 0;
-      this.h[3] = (this.h[3] + d) | 0;
-      this.h[4] = (this.h[4] + ee) | 0;
-      this.h[5] = (this.h[5] + aa) | 0;
-      this.h[6] = (this.h[6] + bb) | 0;
-      this.h[7] = (this.h[7] + cc) | 0;
-      this.h[8] = (this.h[8] + dd) | 0;
-      this.h[9] = (this.h[9] + e) | 0;
+      this.h[0] = OpCodes.ToUint32(this.h[0] + a);
+      this.h[1] = OpCodes.ToUint32(this.h[1] + b);
+      this.h[2] = OpCodes.ToUint32(this.h[2] + c);
+      this.h[3] = OpCodes.ToUint32(this.h[3] + d);
+      this.h[4] = OpCodes.ToUint32(this.h[4] + ee);
+      this.h[5] = OpCodes.ToUint32(this.h[5] + aa);
+      this.h[6] = OpCodes.ToUint32(this.h[6] + bb);
+      this.h[7] = OpCodes.ToUint32(this.h[7] + cc);
+      this.h[8] = OpCodes.ToUint32(this.h[8] + dd);
+      this.h[9] = OpCodes.ToUint32(this.h[9] + e);
     }
   }
 

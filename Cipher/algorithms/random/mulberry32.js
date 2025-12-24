@@ -19,11 +19,11 @@
  * 3. NOT cryptographically secure - use CSPRNG for security-sensitive applications
  *
  * Algorithm:
- *   state = state + 0x6D2B79F5 | 0;
- *   z = state;
- *   z = Math.imul(z ^ z >>> 15, z | 1);
- *   z ^= z + Math.imul(z ^ z >>> 7, z | 61);
- *   return (z ^ z >>> 14) >>> 0;
+ *   state = (state + 0x6D2B79F5) to int32
+ *   z = state
+ *   z = Math.imul(z XOR (z right-shift 15), z OR 1)
+ *   z XOR= z + Math.imul(z XOR (z right-shift 7), z OR 61)
+ *   return z XOR (z right-shift 14) as uint32
  *
  * AlgorithmFramework Format
  * (c)2006-2025 Hawkynt
@@ -112,7 +112,7 @@
       ];
 
       // Test vectors generated from reference implementation
-      // Algorithm: state += 0x6D2B79F5; z = state; z = Math.imul(z ^ z >>> 15, z | 1); z ^= z + Math.imul(z ^ z >>> 7, z | 61); return (z ^ z >>> 14) >>> 0;
+      // Algorithm: state += 0x6D2B79F5 to int32, z = state, mixing with MurmurHash3-style operations
       // Reference: Tommy Ettinger's original Gist and bryc's implementation
       // Verified using JavaScript reference implementation
       this.tests = [
@@ -259,17 +259,14 @@
      * Generate next 32-bit value using Mulberry32 algorithm
      *
      * Algorithm (from Tommy Ettinger):
-     * state = state + 0x6D2B79F5 | 0;
-     * z = state;
-     * z = Math.imul(z ^ z >>> 15, z | 1);
-     * z ^= z + Math.imul(z ^ z >>> 7, z | 61);
-     * return (z ^ z >>> 14) >>> 0;
+     * state = (state + 0x6D2B79F5) to int32
+     * z = state
+     * z = Math.imul(z XOR (z right-shift 15), z OR 1)
+     * z XOR= z + Math.imul(z XOR (z right-shift 7), z OR 61)
+     * return z XOR (z right-shift 14) as uint32
      *
      * Key constant: 0x6D2B79F5 (1831565813 decimal)
      * This is a carefully chosen increment for the Weyl sequence
-     *
-     * NOTE: Bitwise operations (^, |, >>>) are integral to the Mulberry32 algorithm
-     * specification and cannot be replaced with OpCodes equivalents.
      */
     _next32() {
       if (!this._ready) {
@@ -281,7 +278,7 @@
       let z = this._state;
 
       // Step 2: MurmurHash3-style mixing
-      // First mix: XOR with right-shift 15, multiply by (z | 1)
+      // First mix: XOR with right-shift 15, multiply by (z|1)
       const zShifted15 = OpCodes.Shr32(z, 15);
       z = Math.imul(OpCodes.XorN(z, zShifted15), OpCodes.OrN(z, 1));
 

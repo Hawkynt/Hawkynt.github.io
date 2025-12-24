@@ -88,7 +88,7 @@
   function PERM1_INNER(x) {
     x = bitPermuteStep16(x, 0x0a0a, 3);
     x = bitPermuteStep16(x, 0x00cc, 6);
-    // Swap nibbles: (x & 0x0f0f) << 4 | (x & 0xf0f0) >> 4
+    // Swap nibbles: OpCodes.Shl32((x&0x0f0f), 4)|(x&0xf0f0) >> 4
     const swapped = OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(x, 0x0f0f), 4), OpCodes.Shr32(OpCodes.AndN(x, 0xf0f0), 4));
     return OpCodes.ToUint32(OpCodes.AndN(swapped, 0xFFFF));
   }
@@ -243,7 +243,7 @@
       s3 = OpCodes.ToUint32(OpCodes.AndN(OpCodes.XorN(s3, OpCodes.XorN(0x8000, GIFT64_RC[round])), 0xFFFF));
 
       // AddTweak every 4 rounds except last
-      if (OpCodes.AndN(OpCodes.AndN(round + 1, 0xFF) % 4, 0xFF) === 0 && round < 27 && tweak !== 0) {
+      if (OpCodes.AndN(OpCodes.AndN(OpCodes.AndN(round + 1, 0xFF), 3), 0xFF) === 0 && round < 27 && tweak !== 0) {
         s2 = OpCodes.ToUint32(OpCodes.AndN(OpCodes.XorN(s2, tweak), 0xFFFF));
       }
 
@@ -335,7 +335,7 @@
       w3 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(OpCodes.AndN(temp, 0x3FFF0000), 2), OpCodes.Shr32(OpCodes.AndN(temp, 0xC0000000), 14)), OpCodes.Shr32(OpCodes.AndN(temp, 0x0000FFF0), 4)), OpCodes.Shl32(OpCodes.AndN(temp, 0x0000000F), 12)));
 
       // AddTweak every 4 rounds except last
-      if (OpCodes.AndN(round, 0xFF) % 4 === 0 && round !== 28 && tweak !== 0) {
+      if (OpCodes.AndN(OpCodes.AndN(round, 0xFF), 3) === 0 && round !== 28 && tweak !== 0) {
         s2 = OpCodes.ToUint32(OpCodes.AndN(OpCodes.XorN(s2, tweak), 0xFFFF));
       }
 

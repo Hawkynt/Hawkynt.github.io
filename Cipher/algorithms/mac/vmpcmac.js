@@ -336,11 +336,11 @@
       // Step 2: Key Scheduling Algorithm (KSA) - scramble P with key over 768 rounds
       this.s = 0;
       for (let m = 0; m < 768; m++) {
-        const i = m & 0xFF;  // m mod 256
+        const i = m&0xFF;  // m mod 256
         const keyByte = this._key[m % this._key.length];
 
         // s = P[(s + P[i] + key[m mod keyLen]) mod 256]
-        this.s = this.P[(this.s + this.P[i] + keyByte) & 0xFF];
+        this.s = this.P[(this.s + this.P[i] + keyByte)&0xFF];
 
         // Swap P[i] and P[s]
         const temp = this.P[i];
@@ -350,11 +350,11 @@
 
       // Step 3: IV Scheduling - further scramble P with IV over 768 rounds
       for (let m = 0; m < 768; m++) {
-        const i = m & 0xFF;  // m mod 256
+        const i = m&0xFF;  // m mod 256
         const ivByte = this._iv[m % this._iv.length];
 
         // s = P[(s + P[i] + iv[m mod ivLen]) mod 256]
-        this.s = this.P[(this.s + this.P[i] + ivByte) & 0xFF];
+        this.s = this.P[(this.s + this.P[i] + ivByte)&0xFF];
 
         // Swap P[i] and P[s]
         const temp = this.P[i];
@@ -381,32 +381,32 @@
     // Update MAC with one message byte (BouncyCastle update() method)
     _updateMac(inputByte) {
       // Update s: s = P[(s + P[n]) mod 256]
-      this.s = this.P[(this.s + this.P[this.n & 0xFF]) & 0xFF];
+      this.s = this.P[(this.s + this.P[this.n&0xFF])&0xFF];
 
       // Generate keystream byte: c = input XOR P[(P[P[s]] + 1) mod 256]
-      const keystreamByte = this.P[(this.P[this.P[this.s & 0xFF] & 0xFF] + 1) & 0xFF];
-      const c = (inputByte ^ keystreamByte) & 0xFF;
+      const keystreamByte = this.P[(this.P[this.P[this.s&0xFF]&0xFF] + 1)&0xFF];
+      const c = (inputByte^keystreamByte)&0xFF;
 
       // Update mixing registers (dependencies: x4->x3, x3->x2, x2->x1, x1->s+c)
-      this.x4 = this.P[(this.x4 + this.x3) & 0xFF];
-      this.x3 = this.P[(this.x3 + this.x2) & 0xFF];
-      this.x2 = this.P[(this.x2 + this.x1) & 0xFF];
-      this.x1 = this.P[(this.x1 + this.s + c) & 0xFF];
+      this.x4 = this.P[(this.x4 + this.x3)&0xFF];
+      this.x3 = this.P[(this.x3 + this.x2)&0xFF];
+      this.x2 = this.P[(this.x2 + this.x1)&0xFF];
+      this.x1 = this.P[(this.x1 + this.s + c)&0xFF];
 
-      // Accumulate into T array (32 bytes, accessed via g & 0x1F)
-      this.T[this.g & 0x1F] = (this.T[this.g & 0x1F] ^ this.x1) & 0xFF;
-      this.T[(this.g + 1) & 0x1F] = (this.T[(this.g + 1) & 0x1F] ^ this.x2) & 0xFF;
-      this.T[(this.g + 2) & 0x1F] = (this.T[(this.g + 2) & 0x1F] ^ this.x3) & 0xFF;
-      this.T[(this.g + 3) & 0x1F] = (this.T[(this.g + 3) & 0x1F] ^ this.x4) & 0xFF;
-      this.g = (this.g + 4) & 0x1F;
+      // Accumulate into T array (32 bytes, accessed via g&0x1F)
+      this.T[this.g&0x1F] = (this.T[this.g&0x1F]^this.x1)&0xFF;
+      this.T[(this.g + 1)&0x1F] = (this.T[(this.g + 1)&0x1F]^this.x2)&0xFF;
+      this.T[(this.g + 2)&0x1F] = (this.T[(this.g + 2)&0x1F]^this.x3)&0xFF;
+      this.T[(this.g + 3)&0x1F] = (this.T[(this.g + 3)&0x1F]^this.x4)&0xFF;
+      this.g = (this.g + 4)&0x1F;
 
       // Swap P[n] and P[s]
-      const temp = this.P[this.n & 0xFF];
-      this.P[this.n & 0xFF] = this.P[this.s & 0xFF];
-      this.P[this.s & 0xFF] = temp;
+      const temp = this.P[this.n&0xFF];
+      this.P[this.n&0xFF] = this.P[this.s&0xFF];
+      this.P[this.s&0xFF] = temp;
 
       // Increment n
-      this.n = (this.n + 1) & 0xFF;
+      this.n = (this.n + 1)&0xFF;
     }
 
     // Finalize MAC and generate 20-byte output (BouncyCastle doFinal() method)
@@ -414,37 +414,37 @@
       // Post-Processing Phase: 24 rounds of additional mixing
       for (let r = 1; r < 25; r++) {
         // Update s
-        this.s = this.P[(this.s + this.P[this.n & 0xFF]) & 0xFF];
+        this.s = this.P[(this.s + this.P[this.n&0xFF])&0xFF];
 
         // Update mixing registers with round number
-        this.x4 = this.P[(this.x4 + this.x3 + r) & 0xFF];
-        this.x3 = this.P[(this.x3 + this.x2 + r) & 0xFF];
-        this.x2 = this.P[(this.x2 + this.x1 + r) & 0xFF];
-        this.x1 = this.P[(this.x1 + this.s + r) & 0xFF];
+        this.x4 = this.P[(this.x4 + this.x3 + r)&0xFF];
+        this.x3 = this.P[(this.x3 + this.x2 + r)&0xFF];
+        this.x2 = this.P[(this.x2 + this.x1 + r)&0xFF];
+        this.x1 = this.P[(this.x1 + this.s + r)&0xFF];
 
         // Accumulate into T
-        this.T[this.g & 0x1F] = (this.T[this.g & 0x1F] ^ this.x1) & 0xFF;
-        this.T[(this.g + 1) & 0x1F] = (this.T[(this.g + 1) & 0x1F] ^ this.x2) & 0xFF;
-        this.T[(this.g + 2) & 0x1F] = (this.T[(this.g + 2) & 0x1F] ^ this.x3) & 0xFF;
-        this.T[(this.g + 3) & 0x1F] = (this.T[(this.g + 3) & 0x1F] ^ this.x4) & 0xFF;
-        this.g = (this.g + 4) & 0x1F;
+        this.T[this.g&0x1F] = (this.T[this.g&0x1F]^this.x1)&0xFF;
+        this.T[(this.g + 1)&0x1F] = (this.T[(this.g + 1)&0x1F]^this.x2)&0xFF;
+        this.T[(this.g + 2)&0x1F] = (this.T[(this.g + 2)&0x1F]^this.x3)&0xFF;
+        this.T[(this.g + 3)&0x1F] = (this.T[(this.g + 3)&0x1F]^this.x4)&0xFF;
+        this.g = (this.g + 4)&0x1F;
 
         // Swap P[n] and P[s]
-        const temp = this.P[this.n & 0xFF];
-        this.P[this.n & 0xFF] = this.P[this.s & 0xFF];
-        this.P[this.s & 0xFF] = temp;
+        const temp = this.P[this.n&0xFF];
+        this.P[this.n&0xFF] = this.P[this.s&0xFF];
+        this.P[this.s&0xFF] = temp;
 
         // Increment n
-        this.n = (this.n + 1) & 0xFF;
+        this.n = (this.n + 1)&0xFF;
       }
 
       // Input T to the IV-phase of the VMPC KSA (768 rounds)
       for (let m = 0; m < 768; m++) {
-        const i = m & 0xFF;
-        const tByte = this.T[m & 0x1F];
+        const i = m&0xFF;
+        const tByte = this.T[m&0x1F];
 
         // s = P[(s + P[i] + T[m mod 32]) mod 256]
-        this.s = this.P[(this.s + this.P[i] + tByte) & 0xFF];
+        this.s = this.P[(this.s + this.P[i] + tByte)&0xFF];
 
         // Swap P[i] and P[s]
         const temp = this.P[i];
@@ -456,15 +456,15 @@
       const M = new Array(20);
       for (let i = 0; i < 20; i++) {
         // Update s
-        this.s = this.P[(this.s + this.P[i & 0xFF]) & 0xFF];
+        this.s = this.P[(this.s + this.P[i&0xFF])&0xFF];
 
         // Generate MAC byte: M[i] = P[(P[P[s]] + 1) mod 256]
-        M[i] = this.P[(this.P[this.P[this.s & 0xFF] & 0xFF] + 1) & 0xFF];
+        M[i] = this.P[(this.P[this.P[this.s&0xFF]&0xFF] + 1)&0xFF];
 
         // Swap P[i] and P[s]
-        const temp = this.P[i & 0xFF];
-        this.P[i & 0xFF] = this.P[this.s & 0xFF];
-        this.P[this.s & 0xFF] = temp;
+        const temp = this.P[i&0xFF];
+        this.P[i&0xFF] = this.P[this.s&0xFF];
+        this.P[this.s&0xFF] = temp;
       }
 
       return M;

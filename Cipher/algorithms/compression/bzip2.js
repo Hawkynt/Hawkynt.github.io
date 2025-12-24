@@ -83,13 +83,13 @@
       for (let i = 0; i < 256; ++i) {
         let crc = i;
         for (let j = 0; j < 8; ++j) {
-          if (crc & 1) {
-            crc = (crc >>> 1) ^ 0xEDB88320;
+          if (crc&1) {
+            crc = (OpCodes.Shr32(crc, 1))^0xEDB88320;
           } else {
-            crc = crc >>> 1;
+            crc = OpCodes.Shr32(crc, 1);
           }
         }
-        this.table[i] = crc >>> 0;
+        this.table[i] = OpCodes.ToUint32(crc);
       }
     }
 
@@ -98,7 +98,7 @@
     }
 
     update(byte) {
-      this.value = ((this.value >>> 8) ^ this.table[(this.value ^ byte) & 0xFF]) >>> 0;
+      this.value = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shr32(this.value, 8), this.table[OpCodes.Xor32(this.value, byte)&0xFF]));
     }
 
     updateRun(byte, length) {
@@ -109,8 +109,8 @@
 
     getValue() {
       // Reverse bytes and complement
-      const v = ~this.value >>> 0;
-      return ((v >>> 24) | ((v >>> 8) & 0xFF00) | ((v << 8) & 0xFF0000) | (v << 24)) >>> 0;
+      const v = ~OpCodes.ToUint32(this.value);
+      return OpCodes.ToUint32(OpCodes.Shr32(v, 24)|(OpCodes.Shr32(v, 8)&0xFF00)|(OpCodes.Shl32(v, 8)&0xFF0000)|OpCodes.Shl32(v, 24));
     }
   }
 
@@ -125,35 +125,35 @@
 
     writeBit(bit) {
       --this.bitsLeft;
-      this.current |= (bit & 1) << this.bitsLeft;
+      this.current |= OpCodes.Shl32(bit&1, this.bitsLeft);
 
       if (this.bitsLeft <= 24) {
-        this.buffer.push((this.current >>> 24) & 0xFF);
-        this.current = (this.current << 8) >>> 0;
+        this.buffer.push(OpCodes.Shr32(this.current, 24)&0xFF);
+        this.current = OpCodes.ToUint32(OpCodes.Shl32(this.current, 8));
         this.bitsLeft += 8;
       }
     }
 
     writeBits(n, value) {
       for (let i = n - 1; i >= 0; --i) {
-        this.writeBit((value >>> i) & 1);
+        this.writeBit(OpCodes.Shr32(value, i)&1);
       }
     }
 
     writeInt32(value) {
-      this.writeBits(16, (value >>> 16) & 0xFFFF);
-      this.writeBits(16, value & 0xFFFF);
+      this.writeBits(16, (OpCodes.Shr32(value, 16))&0xFFFF);
+      this.writeBits(16, value&0xFFFF);
     }
 
     writeLong48(value) {
       // Handle 48-bit value (JavaScript numbers are safe up to 53 bits)
-      this.writeBits(24, Math.floor(value / 16777216) & 0xFFFFFF);
-      this.writeBits(24, value & 0xFFFFFF);
+      this.writeBits(24, Math.floor(value / 16777216)&0xFFFFFF);
+      this.writeBits(24, value&0xFFFFFF);
     }
 
     flush() {
       if (this.bitsLeft < 32) {
-        this.buffer.push((this.current >>> 24) & 0xFF);
+        this.buffer.push(OpCodes.Shr32(this.current, 24)&0xFF);
       }
       this.current = 0;
       this.bitsLeft = 32;
@@ -179,19 +179,19 @@
         this.bitsLeft = 8;
       }
       --this.bitsLeft;
-      return (this.current >>> this.bitsLeft) & 1;
+      return OpCodes.Shr32(this.current, this.bitsLeft)&1;
     }
 
     readBits(n) {
       let result = 0;
       for (let i = 0; i < n; ++i) {
-        result = (result << 1) | this.readBit();
+        result = OpCodes.Shl32(result, 1)|this.readBit();
       }
       return result;
     }
 
     readInt32() {
-      return (this.readBits(16) << 16) | this.readBits(16);
+      return OpCodes.Shl32(this.readBits(16), 16)|this.readBits(16);
     }
 
     readLong48() {
@@ -337,7 +337,7 @@
 
       // Initialize weights
       for (let i = 0; i < alphaSize; ++i) {
-        weight[i + 1] = (frequencies[i] === 0 ? 1 : frequencies[i]) << 8;
+        weight[i + 1] = OpCodes.Shl32((frequencies[i] === 0 ? 1 : frequencies[i]), 8);
       }
 
       while (true) {
@@ -358,9 +358,9 @@
           // Sift up
           let zz = nHeap;
           let tmp = heap[zz];
-          while (weight[tmp] < weight[heap[zz >>> 1]]) {
-            heap[zz] = heap[zz >>> 1];
-            zz >>>= 1;
+          while (weight[tmp] < weight[heap[OpCodes.Shr32(zz, 1)]]) {
+            heap[zz] = heap[OpCodes.Shr32(zz, 1)];
+            zz = OpCodes.Shr32(zz, 1);
           }
           heap[zz] = tmp;
         }
@@ -375,7 +375,7 @@
           let zz = 1;
           let tmp = heap[zz];
           while (true) {
-            let yy = zz << 1;
+            let yy = OpCodes.Shl32(zz, 1);
             if (yy > nHeap) break;
             if (yy < nHeap && weight[heap[yy + 1]] < weight[heap[yy]]) ++yy;
             if (weight[tmp] < weight[heap[yy]]) break;
@@ -392,7 +392,7 @@
           zz = 1;
           tmp = heap[zz];
           while (true) {
-            let yy = zz << 1;
+            let yy = OpCodes.Shl32(zz, 1);
             if (yy > nHeap) break;
             if (yy < nHeap && weight[heap[yy + 1]] < weight[heap[yy]]) ++yy;
             if (weight[tmp] < weight[heap[yy]]) break;
@@ -405,12 +405,12 @@
           ++nNodes;
           parent[n1] = parent[n2] = nNodes;
 
-          const w1 = weight[n1] & 0xFFFFFF00;
-          const w2 = weight[n2] & 0xFFFFFF00;
-          const d1 = weight[n1] & 0xFF;
-          const d2 = weight[n2] & 0xFF;
+          const w1 = weight[n1]&0xFFFFFF00;
+          const w2 = weight[n2]&0xFFFFFF00;
+          const d1 = weight[n1]&0xFF;
+          const d2 = weight[n2]&0xFF;
 
-          weight[nNodes] = (w1 + w2) | (1 + (d1 > d2 ? d1 : d2));
+          weight[nNodes] = (w1 + w2)|(1 + (d1 > d2 ? d1 : d2));
           parent[nNodes] = -1;
           heap.push(nNodes);
           ++nHeap;
@@ -418,9 +418,9 @@
           // Sift up
           zz = nHeap;
           tmp = heap[zz];
-          while (weight[tmp] < weight[heap[zz >>> 1]]) {
-            heap[zz] = heap[zz >>> 1];
-            zz >>>= 1;
+          while (weight[tmp] < weight[heap[OpCodes.Shr32(zz, 1)]]) {
+            heap[zz] = heap[OpCodes.Shr32(zz, 1)];
+            zz = OpCodes.Shr32(zz, 1);
           }
           heap[zz] = tmp;
         }
@@ -444,9 +444,9 @@
 
         // If too long, adjust weights and retry
         for (let i = 1; i <= alphaSize; ++i) {
-          let j = weight[i] >>> 8;
-          j = 1 + (j >>> 1);
-          weight[i] = j << 8;
+          let j = OpCodes.Shr32(weight[i], 8);
+          j = 1 + OpCodes.Shr32(j, 1);
+          weight[i] = OpCodes.Shl32(j, 8);
         }
       }
     }
@@ -461,7 +461,7 @@
             codes[i] = code++;
           }
         }
-        code <<= 1;
+        code = OpCodes.Shl32(code, 1);
       }
 
       return codes;
@@ -616,7 +616,7 @@
       const reader = new BitReader(compressedData);
 
       // Read and validate file header
-      const magic = (reader.readBits(8) << 8) | reader.readBits(8);
+      const magic = OpCodes.Shl32(reader.readBits(8), 8)|reader.readBits(8);
       if (magic !== BZ_CONSTANTS.MAGIC_BZ) {
         throw new Error('Invalid BZIP2 magic number');
       }
@@ -685,7 +685,7 @@
         }
 
         // Update stream CRC
-        computedStreamCRC = (((computedStreamCRC << 1) | (computedStreamCRC >>> 31)) ^ computedCRC) >>> 0;
+        computedStreamCRC = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shl32(computedStreamCRC, 1)|OpCodes.Shr32(computedStreamCRC, 31), computedCRC));
 
         // Append block data without spread operator to avoid call stack issues with large arrays
         for (let i = 0; i < blockData.length; ++i) {
@@ -764,11 +764,11 @@
           let markerBit = reader.readBit();
           while (markerBit !== 0) {
             const nextTwoBits = reader.readBits(2);
-            curr += 1 - (nextTwoBits & 2); // +1 if bit 1 is 0, -1 if bit 1 is 1
+            curr += 1 - (nextTwoBits&2); // +1 if bit 1 is 0, -1 if bit 1 is 1
             if (curr < 1 || curr > 20) {
               throw new Error(`Invalid Huffman code length: ${curr}`);
             }
-            markerBit = nextTwoBits & 1; // bit 0 is the next marker
+            markerBit = nextTwoBits&1; // bit 0 is the next marker
           }
           tableLengths[i] = curr;
         }
@@ -879,7 +879,7 @@
         if (++zn > BZ_CONSTANTS.MAX_CODE_LEN) {
           throw new Error('Invalid Huffman code');
         }
-        zvec = (zvec << 1) | reader.readBit();
+        zvec = OpCodes.Shl32(zvec, 1)|reader.readBit();
       }
 
       const permIndex = zvec - table.base[zn];

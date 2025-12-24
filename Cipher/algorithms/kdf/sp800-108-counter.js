@@ -325,10 +325,10 @@
 
         // Add output length in bits [L]_32 (always 32 bits, big-endian)
         blockInput.push(
-          (outputBits >>> 24) & 0xFF,
-          (outputBits >>> 16) & 0xFF,
-          (outputBits >>> 8) & 0xFF,
-          outputBits & 0xFF
+          OpCodes.Shr32(outputBits, 24)&0xFF,
+          OpCodes.Shr32(outputBits, 16)&0xFF,
+          OpCodes.Shr32(outputBits, 8)&0xFF,
+          outputBits&0xFF
         );
 
         // Compute HMAC(K_I, block_input)
@@ -344,7 +344,7 @@
     _encodeCounter(counter, numBytes) {
       const result = [];
       for (let i = numBytes - 1; i >= 0; i--) {
-        result.push((counter >>> (i * 8)) & 0xFF);
+        result.push(OpCodes.Shr32(counter, i * 8)&0xFF);
       }
       return result;
     }
@@ -484,8 +484,8 @@
       }
 
       // Create inner and outer padding
-      const ipad = keyArr.map(b => b ^ 0x36);
-      const opad = keyArr.map(b => b ^ 0x5c);
+      const ipad = keyArr.map(b => OpCodes.Xor32(b, 0x36));
+      const opad = keyArr.map(b => OpCodes.Xor32(b, 0x5c));
 
       // Inner hash: SHA256(ipad || message)
       const innerInput = ipad.concat(msgArr);
@@ -517,13 +517,13 @@
       ];
 
       // Helper functions
-      const rotr = (x, n) => ((x >>> n) | (x << (32 - n))) >>> 0;
-      const ch = (x, y, z) => ((x & y) ^ (~x & z)) >>> 0;
-      const maj = (x, y, z) => ((x & y) ^ (x & z) ^ (y & z)) >>> 0;
-      const sigma0 = x => (rotr(x, 2) ^ rotr(x, 13) ^ rotr(x, 22)) >>> 0;
-      const sigma1 = x => (rotr(x, 6) ^ rotr(x, 11) ^ rotr(x, 25)) >>> 0;
-      const gamma0 = x => (rotr(x, 7) ^ rotr(x, 18) ^ (x >>> 3)) >>> 0;
-      const gamma1 = x => (rotr(x, 17) ^ rotr(x, 19) ^ (x >>> 10)) >>> 0;
+      const rotr = (x, n) => OpCodes.ToUint32((OpCodes.Shr32(x, n))|OpCodes.Shl32(x, 32 - n));
+      const ch = (x, y, z) => OpCodes.ToUint32(OpCodes.Xor32((x&y), ((~x)&z)));
+      const maj = (x, y, z) => OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32((x&y), (x&z)), (y&z)));
+      const sigma0 = x => OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rotr(x, 2), rotr(x, 13)), rotr(x, 22)));
+      const sigma1 = x => OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rotr(x, 6), rotr(x, 11)), rotr(x, 25)));
+      const gamma0 = x => OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rotr(x, 7), rotr(x, 18)), OpCodes.Shr32(x, 3)));
+      const gamma1 = x => OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(rotr(x, 17), rotr(x, 19)), OpCodes.Shr32(x, 10)));
 
       // Pre-processing: adding padding bits
       const msgArr = Array.isArray(message) ? message : Array.from(message);
@@ -538,7 +538,7 @@
 
       // Append original length in bits as 64-bit big-endian
       for (let i = 7; i >= 0; i--) {
-        msgArr.push((bitLen / Math.pow(2, i * 8)) & 0xff);
+        msgArr.push(Math.floor(bitLen / Math.pow(2, i * 8))&0xff);
       }
 
       // Process each 512-bit block
@@ -547,15 +547,12 @@
 
         // Copy block into first 16 words
         for (let i = 0; i < 16; i++) {
-          W[i] = ((msgArr[offset + i * 4] << 24) |
-                  (msgArr[offset + i * 4 + 1] << 16) |
-                  (msgArr[offset + i * 4 + 2] << 8) |
-                  msgArr[offset + i * 4 + 3]) >>> 0;
+          W[i] = OpCodes.ToUint32((OpCodes.Shl32(msgArr[offset + i * 4], 24))|(OpCodes.Shl32(msgArr[offset + i * 4 + 1], 16))|(OpCodes.Shl32(msgArr[offset + i * 4 + 2], 8))|msgArr[offset + i * 4 + 3]);
         }
 
         // Extend the first 16 words into the remaining 48 words
         for (let i = 16; i < 64; i++) {
-          W[i] = (gamma1(W[i - 2]) + W[i - 7] + gamma0(W[i - 15]) + W[i - 16]) >>> 0;
+          W[i] = OpCodes.ToUint32(gamma1(W[i - 2]) + W[i - 7] + gamma0(W[i - 15]) + W[i - 16]);
         }
 
         // Initialize working variables
@@ -563,36 +560,36 @@
 
         // Main loop
         for (let i = 0; i < 64; i++) {
-          const T1 = (h + sigma1(e) + ch(e, f, g) + K[i] + W[i]) >>> 0;
-          const T2 = (sigma0(a) + maj(a, b, c)) >>> 0;
+          const T1 = OpCodes.ToUint32(h + sigma1(e) + ch(e, f, g) + K[i] + W[i]);
+          const T2 = OpCodes.ToUint32(sigma0(a) + maj(a, b, c));
           h = g;
           g = f;
           f = e;
-          e = (d + T1) >>> 0;
+          e = OpCodes.ToUint32(d + T1);
           d = c;
           c = b;
           b = a;
-          a = (T1 + T2) >>> 0;
+          a = OpCodes.ToUint32(T1 + T2);
         }
 
         // Add compressed chunk to current hash value
-        H[0] = (H[0] + a) >>> 0;
-        H[1] = (H[1] + b) >>> 0;
-        H[2] = (H[2] + c) >>> 0;
-        H[3] = (H[3] + d) >>> 0;
-        H[4] = (H[4] + e) >>> 0;
-        H[5] = (H[5] + f) >>> 0;
-        H[6] = (H[6] + g) >>> 0;
-        H[7] = (H[7] + h) >>> 0;
+        H[0] = OpCodes.ToUint32(H[0] + a);
+        H[1] = OpCodes.ToUint32(H[1] + b);
+        H[2] = OpCodes.ToUint32(H[2] + c);
+        H[3] = OpCodes.ToUint32(H[3] + d);
+        H[4] = OpCodes.ToUint32(H[4] + e);
+        H[5] = OpCodes.ToUint32(H[5] + f);
+        H[6] = OpCodes.ToUint32(H[6] + g);
+        H[7] = OpCodes.ToUint32(H[7] + h);
       }
 
       // Produce the final hash value (big-endian)
       const result = [];
       for (let i = 0; i < 8; i++) {
-        result.push((H[i] >>> 24) & 0xff);
-        result.push((H[i] >>> 16) & 0xff);
-        result.push((H[i] >>> 8) & 0xff);
-        result.push(H[i] & 0xff);
+        result.push(OpCodes.Shr32(H[i], 24)&0xff);
+        result.push(OpCodes.Shr32(H[i], 16)&0xff);
+        result.push(OpCodes.Shr32(H[i], 8)&0xff);
+        result.push(H[i]&0xff);
       }
       return result;
     }

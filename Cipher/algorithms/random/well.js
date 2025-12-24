@@ -213,7 +213,7 @@
       // Convert seed bytes to 64-bit BigInt (big-endian)
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length && i < 8; ++i) {
-        seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8), BigInt(seedBytes[i]));
+        seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8n), BigInt(seedBytes[i]));
       }
 
       // Initialize state array using SplitMix64
@@ -261,17 +261,17 @@
     }
 
     /**
-     * MAT0POS: v XOR (v >> t)
+     * MAT0POS: v XOR (v right-shift t)
      * Matrix operation for positive (right) shift
      */
     _MAT0POS(t, v) {
       v = OpCodes.ToUint32(v);
       const shifted = OpCodes.Shr32(v, t);
-      return OpCodes.ToUint32(OpCodes.XorN(v, shifted));
+      return OpCodes.Xor32(v, shifted);
     }
 
     /**
-     * MAT0NEG: v XOR (v << -t)
+     * MAT0NEG: v XOR (v left-shift -t)
      * Matrix operation for negative (left) shift
      * In C#: t is negative, so -t gives positive shift amount
      */
@@ -279,7 +279,7 @@
       v = OpCodes.ToUint32(v);
       const shiftAmount = -t; // Convert negative to positive for left shift
       const shifted = OpCodes.Shl32(v, shiftAmount);
-      return OpCodes.ToUint32(OpCodes.XorN(v, shifted));
+      return OpCodes.Xor32(v, shifted);
     }
 
     /**
@@ -353,20 +353,20 @@
       // Step 1: Get z0 from previous position
       const z0 = OpCodes.ToUint32(this._VRm1);
 
-      // Step 2: Compute z1 = V0 ^ MAT0POS(T1, VM1)
-      const z1 = OpCodes.ToUint32(OpCodes.XorN(this._V0, this._MAT0POS(T1, this._VM1)));
+      // Step 2: Compute z1 = V0 XOR MAT0POS(T1, VM1)
+      const z1 = OpCodes.Xor32(this._V0, this._MAT0POS(T1, this._VM1));
 
-      // Step 3: Compute z2 = MAT0NEG(T2, VM2) ^ MAT0NEG(T3, VM3)
-      const z2 = OpCodes.ToUint32(OpCodes.XorN(this._MAT0NEG(T2, this._VM2), this._MAT0NEG(T3, this._VM3)));
+      // Step 3: Compute z2 = MAT0NEG(T2, VM2) XOR MAT0NEG(T3, VM3)
+      const z2 = OpCodes.Xor32(this._MAT0NEG(T2, this._VM2), this._MAT0NEG(T3, this._VM3));
 
-      // Step 4: Compute z3 = z1 ^ z2
-      const z3 = OpCodes.ToUint32(OpCodes.XorN(z1, z2));
+      // Step 4: Compute z3 = z1 XOR z2
+      const z3 = OpCodes.Xor32(z1, z2);
 
       // Step 5: Update state at current index
       this._newV1 = z3;
 
       // Step 6: Update state at previous position
-      this._newV0 = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(this._MAT0NEG(T4, z0), this._MAT0NEG(T5, z1)), this._MAT0NEG(T6, z2)));
+      this._newV0 = OpCodes.Xor32(OpCodes.Xor32(this._MAT0NEG(T4, z0), this._MAT0NEG(T5, z1)), this._MAT0NEG(T6, z2));
 
       // Step 7: Move index backward (circular)
       this._index = (this._index + R - 1) % R;
