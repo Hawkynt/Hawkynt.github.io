@@ -106,7 +106,7 @@
 
       // Test vectors from Zig standard library implementation
       // Reference: https://github.com/ziglang/zig/blob/master/lib/std/rand/Sfc64.zig
-      // Algorithm: tmp = a + b + counter; counter++; a = b ^ (b >> 11); b = c + (c << 3); c = ROL(c, 24) + tmp
+      // Algorithm: tmp = a + b + counter; counter++; a = b^(b >> 11); b = c + (OpCodes.Shl32(c, 3)); c = ROL(c, 24) + tmp
       // IMPORTANT: NumPy/Zig implementations discard first 12 outputs after seeding for better quality
       // These test vectors are AFTER the 12-iteration warmup period
       this.tests = [
@@ -283,12 +283,12 @@
 
       // Read 'a' (first 8 bytes)
       if (seedBytes.length >= 8) {
-        this._a = BigInt(OpCodes.Pack32BE(
+        this._a = OpCodes.ShiftLn(BigInt(OpCodes.Pack32BE(
           seedBytes[0] || 0,
           seedBytes[1] || 0,
           seedBytes[2] || 0,
           seedBytes[3] || 0
-        )) << 32n;
+        )), 32);
         this._a |= BigInt(OpCodes.Pack32BE(
           seedBytes[4] || 0,
           seedBytes[5] || 0,
@@ -302,7 +302,7 @@
         for (let i = 0; i < seedBytes.length; ++i) {
           bytes[i] = seedBytes[i];
         }
-        this._a = BigInt(OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3])) << 32n;
+        this._a = OpCodes.ShiftLn(BigInt(OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3])), 32);
         this._a |= BigInt(OpCodes.Pack32BE(bytes[4], bytes[5], bytes[6], bytes[7]));
         this._ready = true;
         return;
@@ -310,12 +310,12 @@
 
       // Read 'b' (next 8 bytes)
       if (seedBytes.length >= 16) {
-        this._b = BigInt(OpCodes.Pack32BE(
+        this._b = OpCodes.ShiftLn(BigInt(OpCodes.Pack32BE(
           seedBytes[8] || 0,
           seedBytes[9] || 0,
           seedBytes[10] || 0,
           seedBytes[11] || 0
-        )) << 32n;
+        )), 32);
         this._b |= BigInt(OpCodes.Pack32BE(
           seedBytes[12] || 0,
           seedBytes[13] || 0,
@@ -327,12 +327,12 @@
 
       // Read 'c' (next 8 bytes)
       if (seedBytes.length >= 24) {
-        this._c = BigInt(OpCodes.Pack32BE(
+        this._c = OpCodes.ShiftLn(BigInt(OpCodes.Pack32BE(
           seedBytes[16] || 0,
           seedBytes[17] || 0,
           seedBytes[18] || 0,
           seedBytes[19] || 0
-        )) << 32n;
+        )), 32);
         this._c |= BigInt(OpCodes.Pack32BE(
           seedBytes[20] || 0,
           seedBytes[21] || 0,
@@ -344,12 +344,12 @@
 
       // Read 'counter' (optional, if provided beyond 24 bytes)
       if (seedBytes.length >= 32) {
-        this._counter = BigInt(OpCodes.Pack32BE(
+        this._counter = OpCodes.ShiftLn(BigInt(OpCodes.Pack32BE(
           seedBytes[24] || 0,
           seedBytes[25] || 0,
           seedBytes[26] || 0,
           seedBytes[27] || 0
-        )) << 32n;
+        )), 32);
         this._counter |= BigInt(OpCodes.Pack32BE(
           seedBytes[28] || 0,
           seedBytes[29] || 0,
@@ -376,8 +376,8 @@
      * Algorithm from Chris Doty-Humphrey (PractRand) / NumPy implementation:
      * tmp = a + b + counter
      * counter = counter + 1
-     * a = b ^ (b >> 11)
-     * b = c + (c << 3)
+     * a = b^(b >> 11)
+     * b = c + (OpCodes.Shl32(c, 3))
      * c = ROL(c, 24) + tmp
      * return tmp
      */
@@ -394,10 +394,10 @@
       // Step 2: Increment counter
       this._counter = OpCodes.AndN(this._counter + 1n, MASK_64);
 
-      // Step 3: a = b ^ (b >> 11)
+      // Step 3: a = b^(b >> 11)
       this._a = OpCodes.AndN(OpCodes.XorN(this._b, OpCodes.ShiftRn(this._b, BigInt(11))), MASK_64);
 
-      // Step 4: b = c + (c << 3)
+      // Step 4: b = c + (OpCodes.Shl32(c, 3))
       this._b = OpCodes.AndN(this._c + OpCodes.ShiftLn(this._c, BigInt(3)), MASK_64);
 
       // Step 5: c = ROL(c, 24) + tmp

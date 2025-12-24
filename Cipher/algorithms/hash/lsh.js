@@ -201,7 +201,7 @@
   // 64-bit rotation using BigInt
   function rotl64(val, n) {
     n = BigInt(n) % 64n;
-    return ((val << n) | (val >> (64n - n))) & MASK64;
+    return OpCodes.OrN(OpCodes.ShiftLn(val, n), OpCodes.ShiftRn(val, 64n - n))&MASK64;
   }
 
   // ============================================================================
@@ -258,25 +258,25 @@
 
       let temp;
       temp = submsg_e_l[0];
-      submsg_e_l[0] = (submsg_o_l[0] + submsg_e_l[3]) >>> 0;
-      submsg_e_l[3] = (submsg_o_l[3] + submsg_e_l[1]) >>> 0;
-      submsg_e_l[1] = (submsg_o_l[1] + submsg_e_l[2]) >>> 0;
-      submsg_e_l[2] = (submsg_o_l[2] + temp) >>> 0;
+      submsg_e_l[0] = OpCodes.ToUint32(submsg_o_l[0] + submsg_e_l[3]);
+      submsg_e_l[3] = OpCodes.ToUint32(submsg_o_l[3] + submsg_e_l[1]);
+      submsg_e_l[1] = OpCodes.ToUint32(submsg_o_l[1] + submsg_e_l[2]);
+      submsg_e_l[2] = OpCodes.ToUint32(submsg_o_l[2] + temp);
       temp = submsg_e_l[4];
-      submsg_e_l[4] = (submsg_o_l[4] + submsg_e_l[7]) >>> 0;
-      submsg_e_l[7] = (submsg_o_l[7] + submsg_e_l[6]) >>> 0;
-      submsg_e_l[6] = (submsg_o_l[6] + submsg_e_l[5]) >>> 0;
-      submsg_e_l[5] = (submsg_o_l[5] + temp) >>> 0;
+      submsg_e_l[4] = OpCodes.ToUint32(submsg_o_l[4] + submsg_e_l[7]);
+      submsg_e_l[7] = OpCodes.ToUint32(submsg_o_l[7] + submsg_e_l[6]);
+      submsg_e_l[6] = OpCodes.ToUint32(submsg_o_l[6] + submsg_e_l[5]);
+      submsg_e_l[5] = OpCodes.ToUint32(submsg_o_l[5] + temp);
       temp = submsg_e_r[0];
-      submsg_e_r[0] = (submsg_o_r[0] + submsg_e_r[3]) >>> 0;
-      submsg_e_r[3] = (submsg_o_r[3] + submsg_e_r[1]) >>> 0;
-      submsg_e_r[1] = (submsg_o_r[1] + submsg_e_r[2]) >>> 0;
-      submsg_e_r[2] = (submsg_o_r[2] + temp) >>> 0;
+      submsg_e_r[0] = OpCodes.ToUint32(submsg_o_r[0] + submsg_e_r[3]);
+      submsg_e_r[3] = OpCodes.ToUint32(submsg_o_r[3] + submsg_e_r[1]);
+      submsg_e_r[1] = OpCodes.ToUint32(submsg_o_r[1] + submsg_e_r[2]);
+      submsg_e_r[2] = OpCodes.ToUint32(submsg_o_r[2] + temp);
       temp = submsg_e_r[4];
-      submsg_e_r[4] = (submsg_o_r[4] + submsg_e_r[7]) >>> 0;
-      submsg_e_r[7] = (submsg_o_r[7] + submsg_e_r[6]) >>> 0;
-      submsg_e_r[6] = (submsg_o_r[6] + submsg_e_r[5]) >>> 0;
-      submsg_e_r[5] = (submsg_o_r[5] + temp) >>> 0;
+      submsg_e_r[4] = OpCodes.ToUint32(submsg_o_r[4] + submsg_e_r[7]);
+      submsg_e_r[7] = OpCodes.ToUint32(submsg_o_r[7] + submsg_e_r[6]);
+      submsg_e_r[6] = OpCodes.ToUint32(submsg_o_r[6] + submsg_e_r[5]);
+      submsg_e_r[5] = OpCodes.ToUint32(submsg_o_r[5] + temp);
     }
 
     _msg_exp_odd() {
@@ -287,33 +287,33 @@
 
       let temp;
       temp = submsg_o_l[0];
-      submsg_o_l[0] = (submsg_e_l[0] + submsg_o_l[3]) >>> 0;
-      submsg_o_l[3] = (submsg_e_l[3] + submsg_o_l[1]) >>> 0;
-      submsg_o_l[1] = (submsg_e_l[1] + submsg_o_l[2]) >>> 0;
-      submsg_o_l[2] = (submsg_e_l[2] + temp) >>> 0;
+      submsg_o_l[0] = OpCodes.ToUint32(submsg_e_l[0] + submsg_o_l[3]);
+      submsg_o_l[3] = OpCodes.ToUint32(submsg_e_l[3] + submsg_o_l[1]);
+      submsg_o_l[1] = OpCodes.ToUint32(submsg_e_l[1] + submsg_o_l[2]);
+      submsg_o_l[2] = OpCodes.ToUint32(submsg_e_l[2] + temp);
       temp = submsg_o_l[4];
-      submsg_o_l[4] = (submsg_e_l[4] + submsg_o_l[7]) >>> 0;
-      submsg_o_l[7] = (submsg_e_l[7] + submsg_o_l[6]) >>> 0;
-      submsg_o_l[6] = (submsg_e_l[6] + submsg_o_l[5]) >>> 0;
-      submsg_o_l[5] = (submsg_e_l[5] + temp) >>> 0;
+      submsg_o_l[4] = OpCodes.ToUint32(submsg_e_l[4] + submsg_o_l[7]);
+      submsg_o_l[7] = OpCodes.ToUint32(submsg_e_l[7] + submsg_o_l[6]);
+      submsg_o_l[6] = OpCodes.ToUint32(submsg_e_l[6] + submsg_o_l[5]);
+      submsg_o_l[5] = OpCodes.ToUint32(submsg_e_l[5] + temp);
       temp = submsg_o_r[0];
-      submsg_o_r[0] = (submsg_e_r[0] + submsg_o_r[3]) >>> 0;
-      submsg_o_r[3] = (submsg_e_r[3] + submsg_o_r[1]) >>> 0;
-      submsg_o_r[1] = (submsg_e_r[1] + submsg_o_r[2]) >>> 0;
-      submsg_o_r[2] = (submsg_e_r[2] + temp) >>> 0;
+      submsg_o_r[0] = OpCodes.ToUint32(submsg_e_r[0] + submsg_o_r[3]);
+      submsg_o_r[3] = OpCodes.ToUint32(submsg_e_r[3] + submsg_o_r[1]);
+      submsg_o_r[1] = OpCodes.ToUint32(submsg_e_r[1] + submsg_o_r[2]);
+      submsg_o_r[2] = OpCodes.ToUint32(submsg_e_r[2] + temp);
       temp = submsg_o_r[4];
-      submsg_o_r[4] = (submsg_e_r[4] + submsg_o_r[7]) >>> 0;
-      submsg_o_r[7] = (submsg_e_r[7] + submsg_o_r[6]) >>> 0;
-      submsg_o_r[6] = (submsg_e_r[6] + submsg_o_r[5]) >>> 0;
-      submsg_o_r[5] = (submsg_e_r[5] + temp) >>> 0;
+      submsg_o_r[4] = OpCodes.ToUint32(submsg_e_r[4] + submsg_o_r[7]);
+      submsg_o_r[7] = OpCodes.ToUint32(submsg_e_r[7] + submsg_o_r[6]);
+      submsg_o_r[6] = OpCodes.ToUint32(submsg_e_r[6] + submsg_o_r[5]);
+      submsg_o_r[5] = OpCodes.ToUint32(submsg_e_r[5] + temp);
     }
 
     _msg_add_even() {
       const submsg_e_l = new Uint32Array(this.sub_msgs.buffer, 0, 8);
       const submsg_e_r = new Uint32Array(this.sub_msgs.buffer, 32, 8);
       for (let i = 0; i < 8; i++) {
-        this.cv_l[i] ^= submsg_e_l[i];
-        this.cv_r[i] ^= submsg_e_r[i];
+        this.cv_l[i] = OpCodes.Xor32(this.cv_l[i], submsg_e_l[i]);
+        this.cv_r[i] = OpCodes.Xor32(this.cv_r[i], submsg_e_r[i]);
       }
     }
 
@@ -321,14 +321,14 @@
       const submsg_o_l = new Uint32Array(this.sub_msgs.buffer, 64, 8);
       const submsg_o_r = new Uint32Array(this.sub_msgs.buffer, 96, 8);
       for (let i = 0; i < 8; i++) {
-        this.cv_l[i] ^= submsg_o_l[i];
-        this.cv_r[i] ^= submsg_o_r[i];
+        this.cv_l[i] = OpCodes.Xor32(this.cv_l[i], submsg_o_l[i]);
+        this.cv_r[i] = OpCodes.Xor32(this.cv_r[i], submsg_o_r[i]);
       }
     }
 
     _add_blk() {
       for (let i = 0; i < 8; i++) {
-        this.cv_l[i] = (this.cv_l[i] + this.cv_r[i]) >>> 0;
+        this.cv_l[i] = OpCodes.ToUint32(this.cv_l[i] + this.cv_r[i]);
       }
     }
 
@@ -340,7 +340,7 @@
 
     _xor_with_const(const_v) {
       for (let i = 0; i < 8; i++) {
-        this.cv_l[i] ^= const_v[i];
+        this.cv_l[i] = OpCodes.Xor32(this.cv_l[i], const_v[i]);
       }
     }
 
@@ -377,7 +377,7 @@
       this._rotate_blk(alpha);
       this._xor_with_const(const_v);
       for (let i = 0; i < 8; i++) {
-        this.cv_r[i] = (this.cv_r[i] + this.cv_l[i]) >>> 0;
+        this.cv_r[i] = OpCodes.ToUint32(this.cv_r[i] + this.cv_l[i]);
       }
       for (let i = 0; i < 8; i++) {
         this.cv_r[i] = OpCodes.RotL32(this.cv_r[i], beta);
@@ -428,7 +428,7 @@
 
       let databytelen = data.length;
       let dataOffset = 0;
-      let remain_msg_byte = this.remain_databitlen >> 3;
+      let remain_msg_byte = OpCodes.Shr32(this.remain_databitlen, 3);
 
       if (databytelen + remain_msg_byte < LSH256_MSG_BLK_BYTE_LEN) {
         for (let i = 0; i < databytelen; i++) {
@@ -472,7 +472,7 @@
    */
 
     Result() {
-      const remain_msg_byte = this.remain_databitlen >> 3;
+      const remain_msg_byte = OpCodes.Shr32(this.remain_databitlen, 3);
 
       this.last_block[remain_msg_byte] = 0x80;
       for (let i = remain_msg_byte + 1; i < LSH256_MSG_BLK_BYTE_LEN; i++) {
@@ -482,7 +482,7 @@
       this._compress(this.last_block);
 
       for (let i = 0; i < 8; i++) {
-        this.cv_l[i] ^= this.cv_r[i];
+        this.cv_l[i] = OpCodes.Xor32(this.cv_l[i], this.cv_r[i]);
       }
 
       const hash = new Uint8Array(this.outputSize);
@@ -552,75 +552,75 @@
       let temp;
 
       temp = this.submsg_e_l[0];
-      this.submsg_e_l[0] = (this.submsg_o_l[0] + this.submsg_e_l[3]) & MASK64;
-      this.submsg_e_l[3] = (this.submsg_o_l[3] + this.submsg_e_l[1]) & MASK64;
-      this.submsg_e_l[1] = (this.submsg_o_l[1] + this.submsg_e_l[2]) & MASK64;
-      this.submsg_e_l[2] = (this.submsg_o_l[2] + temp) & MASK64;
+      this.submsg_e_l[0] = OpCodes.AndN(this.submsg_o_l[0] + this.submsg_e_l[3], MASK64);
+      this.submsg_e_l[3] = OpCodes.AndN(this.submsg_o_l[3] + this.submsg_e_l[1], MASK64);
+      this.submsg_e_l[1] = OpCodes.AndN(this.submsg_o_l[1] + this.submsg_e_l[2], MASK64);
+      this.submsg_e_l[2] = OpCodes.AndN(this.submsg_o_l[2] + temp, MASK64);
 
       temp = this.submsg_e_l[4];
-      this.submsg_e_l[4] = (this.submsg_o_l[4] + this.submsg_e_l[7]) & MASK64;
-      this.submsg_e_l[7] = (this.submsg_o_l[7] + this.submsg_e_l[6]) & MASK64;
-      this.submsg_e_l[6] = (this.submsg_o_l[6] + this.submsg_e_l[5]) & MASK64;
-      this.submsg_e_l[5] = (this.submsg_o_l[5] + temp) & MASK64;
+      this.submsg_e_l[4] = OpCodes.AndN(this.submsg_o_l[4] + this.submsg_e_l[7], MASK64);
+      this.submsg_e_l[7] = OpCodes.AndN(this.submsg_o_l[7] + this.submsg_e_l[6], MASK64);
+      this.submsg_e_l[6] = OpCodes.AndN(this.submsg_o_l[6] + this.submsg_e_l[5], MASK64);
+      this.submsg_e_l[5] = OpCodes.AndN(this.submsg_o_l[5] + temp, MASK64);
 
       temp = this.submsg_e_r[0];
-      this.submsg_e_r[0] = (this.submsg_o_r[0] + this.submsg_e_r[3]) & MASK64;
-      this.submsg_e_r[3] = (this.submsg_o_r[3] + this.submsg_e_r[1]) & MASK64;
-      this.submsg_e_r[1] = (this.submsg_o_r[1] + this.submsg_e_r[2]) & MASK64;
-      this.submsg_e_r[2] = (this.submsg_o_r[2] + temp) & MASK64;
+      this.submsg_e_r[0] = OpCodes.AndN(this.submsg_o_r[0] + this.submsg_e_r[3], MASK64);
+      this.submsg_e_r[3] = OpCodes.AndN(this.submsg_o_r[3] + this.submsg_e_r[1], MASK64);
+      this.submsg_e_r[1] = OpCodes.AndN(this.submsg_o_r[1] + this.submsg_e_r[2], MASK64);
+      this.submsg_e_r[2] = OpCodes.AndN(this.submsg_o_r[2] + temp, MASK64);
 
       temp = this.submsg_e_r[4];
-      this.submsg_e_r[4] = (this.submsg_o_r[4] + this.submsg_e_r[7]) & MASK64;
-      this.submsg_e_r[7] = (this.submsg_o_r[7] + this.submsg_e_r[6]) & MASK64;
-      this.submsg_e_r[6] = (this.submsg_o_r[6] + this.submsg_e_r[5]) & MASK64;
-      this.submsg_e_r[5] = (this.submsg_o_r[5] + temp) & MASK64;
+      this.submsg_e_r[4] = OpCodes.AndN(this.submsg_o_r[4] + this.submsg_e_r[7], MASK64);
+      this.submsg_e_r[7] = OpCodes.AndN(this.submsg_o_r[7] + this.submsg_e_r[6], MASK64);
+      this.submsg_e_r[6] = OpCodes.AndN(this.submsg_o_r[6] + this.submsg_e_r[5], MASK64);
+      this.submsg_e_r[5] = OpCodes.AndN(this.submsg_o_r[5] + temp, MASK64);
     }
 
     _msg_exp_odd() {
       let temp;
 
       temp = this.submsg_o_l[0];
-      this.submsg_o_l[0] = (this.submsg_e_l[0] + this.submsg_o_l[3]) & MASK64;
-      this.submsg_o_l[3] = (this.submsg_e_l[3] + this.submsg_o_l[1]) & MASK64;
-      this.submsg_o_l[1] = (this.submsg_e_l[1] + this.submsg_o_l[2]) & MASK64;
-      this.submsg_o_l[2] = (this.submsg_e_l[2] + temp) & MASK64;
+      this.submsg_o_l[0] = OpCodes.AndN(this.submsg_e_l[0] + this.submsg_o_l[3], MASK64);
+      this.submsg_o_l[3] = OpCodes.AndN(this.submsg_e_l[3] + this.submsg_o_l[1], MASK64);
+      this.submsg_o_l[1] = OpCodes.AndN(this.submsg_e_l[1] + this.submsg_o_l[2], MASK64);
+      this.submsg_o_l[2] = OpCodes.AndN(this.submsg_e_l[2] + temp, MASK64);
 
       temp = this.submsg_o_l[4];
-      this.submsg_o_l[4] = (this.submsg_e_l[4] + this.submsg_o_l[7]) & MASK64;
-      this.submsg_o_l[7] = (this.submsg_e_l[7] + this.submsg_o_l[6]) & MASK64;
-      this.submsg_o_l[6] = (this.submsg_e_l[6] + this.submsg_o_l[5]) & MASK64;
-      this.submsg_o_l[5] = (this.submsg_e_l[5] + temp) & MASK64;
+      this.submsg_o_l[4] = OpCodes.AndN(this.submsg_e_l[4] + this.submsg_o_l[7], MASK64);
+      this.submsg_o_l[7] = OpCodes.AndN(this.submsg_e_l[7] + this.submsg_o_l[6], MASK64);
+      this.submsg_o_l[6] = OpCodes.AndN(this.submsg_e_l[6] + this.submsg_o_l[5], MASK64);
+      this.submsg_o_l[5] = OpCodes.AndN(this.submsg_e_l[5] + temp, MASK64);
 
       temp = this.submsg_o_r[0];
-      this.submsg_o_r[0] = (this.submsg_e_r[0] + this.submsg_o_r[3]) & MASK64;
-      this.submsg_o_r[3] = (this.submsg_e_r[3] + this.submsg_o_r[1]) & MASK64;
-      this.submsg_o_r[1] = (this.submsg_e_r[1] + this.submsg_o_r[2]) & MASK64;
-      this.submsg_o_r[2] = (this.submsg_e_r[2] + temp) & MASK64;
+      this.submsg_o_r[0] = OpCodes.AndN(this.submsg_e_r[0] + this.submsg_o_r[3], MASK64);
+      this.submsg_o_r[3] = OpCodes.AndN(this.submsg_e_r[3] + this.submsg_o_r[1], MASK64);
+      this.submsg_o_r[1] = OpCodes.AndN(this.submsg_e_r[1] + this.submsg_o_r[2], MASK64);
+      this.submsg_o_r[2] = OpCodes.AndN(this.submsg_e_r[2] + temp, MASK64);
 
       temp = this.submsg_o_r[4];
-      this.submsg_o_r[4] = (this.submsg_e_r[4] + this.submsg_o_r[7]) & MASK64;
-      this.submsg_o_r[7] = (this.submsg_e_r[7] + this.submsg_o_r[6]) & MASK64;
-      this.submsg_o_r[6] = (this.submsg_e_r[6] + this.submsg_o_r[5]) & MASK64;
-      this.submsg_o_r[5] = (this.submsg_e_r[5] + temp) & MASK64;
+      this.submsg_o_r[4] = OpCodes.AndN(this.submsg_e_r[4] + this.submsg_o_r[7], MASK64);
+      this.submsg_o_r[7] = OpCodes.AndN(this.submsg_e_r[7] + this.submsg_o_r[6], MASK64);
+      this.submsg_o_r[6] = OpCodes.AndN(this.submsg_e_r[6] + this.submsg_o_r[5], MASK64);
+      this.submsg_o_r[5] = OpCodes.AndN(this.submsg_e_r[5] + temp, MASK64);
     }
 
     _msg_add_even() {
       for (let i = 0; i < 8; i++) {
-        this.cv_l[i] ^= this.submsg_e_l[i];
-        this.cv_r[i] ^= this.submsg_e_r[i];
+        this.cv_l[i] = OpCodes.XorN(this.cv_l[i], this.submsg_e_l[i]);
+        this.cv_r[i] = OpCodes.XorN(this.cv_r[i], this.submsg_e_r[i]);
       }
     }
 
     _msg_add_odd() {
       for (let i = 0; i < 8; i++) {
-        this.cv_l[i] ^= this.submsg_o_l[i];
-        this.cv_r[i] ^= this.submsg_o_r[i];
+        this.cv_l[i] = OpCodes.XorN(this.cv_l[i], this.submsg_o_l[i]);
+        this.cv_r[i] = OpCodes.XorN(this.cv_r[i], this.submsg_o_r[i]);
       }
     }
 
     _add_blk() {
       for (let i = 0; i < 8; i++) {
-        this.cv_l[i] = (this.cv_l[i] + this.cv_r[i]) & MASK64;
+        this.cv_l[i] = OpCodes.AndN(this.cv_l[i] + this.cv_r[i], MASK64);
       }
     }
 
@@ -632,7 +632,7 @@
 
     _xor_with_const(offset) {
       for (let i = 0; i < 8; i++) {
-        this.cv_l[i] ^= LSH512_StepConstants[offset + i];
+        this.cv_l[i] = OpCodes.XorN(this.cv_l[i], LSH512_StepConstants[offset + i]);
       }
     }
 
@@ -672,7 +672,7 @@
       this._xor_with_const(const_v_offset);
 
       for (let i = 0; i < 8; i++) {
-        this.cv_r[i] = (this.cv_r[i] + this.cv_l[i]) & MASK64;
+        this.cv_r[i] = OpCodes.AndN(this.cv_r[i] + this.cv_l[i], MASK64);
       }
 
       for (let i = 0; i < 8; i++) {
@@ -750,7 +750,7 @@
       this._compress(this.buffer);
 
       for (let i = 0; i < 8; i++) {
-        this.cv_l[i] ^= this.cv_r[i];
+        this.cv_l[i] = OpCodes.XorN(this.cv_l[i], this.cv_r[i]);
       }
 
       const hash = new Uint8Array(this.outputSize);
@@ -778,8 +778,8 @@
     constructor() {
       super();
       this.name = "LSH-224";
-      this.description = "Korean Lightweight Secure Hash producing 224-bit digests. Developed by Korea Internet & Security Agency (KISA) as part of Korean cryptographic standards.";
-      this.inventor = "Korea Internet & Security Agency (KISA)";
+      this.description = "Korean Lightweight Secure Hash producing 224-bit digests. Developed by Korea Internet&Security Agency (KISA) as part of Korean cryptographic standards.";
+      this.inventor = "Korea Internet&Security Agency (KISA)";
       this.year = 2014;
       this.category = CategoryType.HASH;
       this.subCategory = "Korean Hash";
@@ -850,8 +850,8 @@
     constructor() {
       super();
       this.name = "LSH-256";
-      this.description = "Korean Lightweight Secure Hash producing 256-bit digests. Developed by Korea Internet & Security Agency (KISA) as part of Korean cryptographic standards.";
-      this.inventor = "Korea Internet & Security Agency (KISA)";
+      this.description = "Korean Lightweight Secure Hash producing 256-bit digests. Developed by Korea Internet&Security Agency (KISA) as part of Korean cryptographic standards.";
+      this.inventor = "Korea Internet&Security Agency (KISA)";
       this.year = 2014;
       this.category = CategoryType.HASH;
       this.subCategory = "Korean Hash";
@@ -923,7 +923,7 @@
       super();
       this.name = "LSH-384";
       this.description = "Korean cryptographic hash function standard producing 384-bit digests. Uses 512-bit internal processing with 28-step compression and 64-bit operations.";
-      this.inventor = "Korea Internet & Security Agency (KISA)";
+      this.inventor = "Korea Internet&Security Agency (KISA)";
       this.year = 2015;
       this.category = CategoryType.HASH;
       this.subCategory = "LSH Family";
@@ -995,7 +995,7 @@
       super();
       this.name = "LSH-512";
       this.description = "Korean cryptographic hash function standard producing 512-bit digests. Designed by KISA with 28-step compression function and 64-bit operations.";
-      this.inventor = "Korea Internet & Security Agency (KISA)";
+      this.inventor = "Korea Internet&Security Agency (KISA)";
       this.year = 2015;
       this.category = CategoryType.HASH;
       this.subCategory = "LSH Family";
@@ -1067,7 +1067,7 @@
       super();
       this.name = "LSH-512-256";
       this.description = "Korean cryptographic hash function standard producing 256-bit digests. Uses 512-bit internal processing with 28-step compression and 64-bit operations.";
-      this.inventor = "Korea Internet & Security Agency (KISA)";
+      this.inventor = "Korea Internet&Security Agency (KISA)";
       this.year = 2015;
       this.category = CategoryType.HASH;
       this.subCategory = "LSH Family";

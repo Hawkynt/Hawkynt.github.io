@@ -233,9 +233,9 @@
      * Generate next 32-bit value using Ranshi shift-XOR pattern
      *
      * Typical shift register PRNG pattern:
-     * state ^= state << a;
-     * state ^= state >> b;
-     * state ^= state << c;
+     * state = OpCodes.Xor32(state, state << a);
+     * state = OpCodes.Xor32(state, state >> b);
+     * state = OpCodes.Xor32(state, state << c);
      * return state;
      *
      * Using parameters inspired by common hardware PRNG designs:
@@ -251,13 +251,13 @@
       let s = this._state;
 
       // First shift-XOR: left shift by 13
-      s = (s ^ (s << 13)) >>> 0;
+      s = OpCodes.Xor32(s, OpCodes.Shl32(s, 13));
 
       // Second shift-XOR: right shift by 17
-      s = (s ^ (s >>> 17)) >>> 0;
+      s = OpCodes.Xor32(s, OpCodes.Shr32(s, 17));
 
       // Third shift-XOR: left shift by 5
-      s = (s ^ (s << 5)) >>> 0;
+      s = OpCodes.Xor32(s, OpCodes.Shl32(s, 5));
 
       // Update state
       this._state = s;

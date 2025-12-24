@@ -230,7 +230,7 @@
      * @returns {number} - Initial state (0 to 2^(K-1)-1)
      */
     findTailBitingState(data) {
-      const numStates = 1 << (this._constraintLength - 1); // Structural: 2^(K-1) states
+      const numStates = OpCodes.Shl32(1, this._constraintLength - 1); // Structural: 2^(K-1) states
 
       // Try each possible initial state
       for (let initialState = 0; initialState < numStates; ++initialState) {
@@ -239,9 +239,9 @@
 
         // Simulate encoding to find final state
         for (let i = 0; i < data.length; ++i) {
-          const inputBit = data[i] & 1; // Structural: extract LSB (ensure bit value)
+          const inputBit = data[i]&1; // Structural: extract LSB (ensure bit value)
           // Update state (shift register operation - structural)
-          state = ((state << 1) | inputBit) & stateMask; // Structural shift-and-mask
+          state = ((OpCodes.Shl32(state, 1))|inputBit)&stateMask; // Structural shift-and-mask
         }
 
         // Check if final state equals initial state (tail-biting property)
@@ -265,16 +265,16 @@
     encodeWithInitialState(data, initialState) {
       const output = [];
       let state = initialState;
-      const stateMask = (1 << (this._constraintLength - 1)) - 1; // Structural: mask for (K-1) state bits
+      const stateMask = OpCodes.Shl32(1, this._constraintLength - 1) - 1; // Structural: mask for (K-1) state bits
 
       for (let i = 0; i < data.length; ++i) {
-        const inputBit = data[i] & 1; // Structural: extract LSB (ensure bit value)
+        const inputBit = data[i]&1; // Structural: extract LSB (ensure bit value)
 
         // Update state: shift in input bit (shift register - structural)
-        state = ((state << 1) | inputBit) & stateMask; // Structural shift-and-mask
+        state = ((OpCodes.Shl32(state, 1))|inputBit)&stateMask; // Structural shift-and-mask
 
         // Generate output bits using generator polynomials
-        const fullState = state | (inputBit << (this._constraintLength - 1)); // Structural bit packing
+        const fullState = state|(OpCodes.Shl32(inputBit, this._constraintLength - 1)); // Structural bit packing
         const out1 = this.convolve(fullState, this._generator1);
         const out2 = this.convolve(fullState, this._generator2);
 
@@ -295,12 +295,12 @@
     convolve(state, generator) {
       // Compute GF(2) inner product: XOR of all (state AND generator) bits
       let result = 0;
-      let temp = state & generator; // Polynomial coefficient selection
+      let temp = state&generator; // Polynomial coefficient selection
 
       // Parity calculation (GF(2) sum)
       while (temp) {
-        result ^= (temp & 1); // GF(2) addition (XOR)
-        temp >>= 1; // Structural right shift
+        result = OpCodes.Xor32(result, (temp&1)); // GF(2) addition (XOR)
+        temp = OpCodes.Shr32(temp, 1); // Structural right shift
       }
 
       return result;
@@ -320,7 +320,7 @@
       }
 
       const numBits = received.length / this._rate;
-      const numStates = 1 << (this._constraintLength - 1); // Structural: 2^(K-1)
+      const numStates = OpCodes.Shl32(1, this._constraintLength - 1); // Structural: 2^(K-1)
 
       let bestPath = [];
       let bestMetric = Infinity;
@@ -350,7 +350,7 @@
      */
     viterbiDecodeFromState(received, startState) {
       const numBits = received.length / this._rate;
-      const numStates = 1 << (this._constraintLength - 1); // Structural: 2^(K-1) encoder states
+      const numStates = OpCodes.Shl32(1, this._constraintLength - 1); // Structural: 2^(K-1) encoder states
 
       // Path metrics and survivor paths
       const pathMetrics = new Array(numStates).fill(Infinity);
@@ -375,16 +375,16 @@
           // Try both possible input bits (0 and 1)
           for (let inputBit = 0; inputBit <= 1; ++inputBit) {
             // Calculate next state (shift register - structural)
-            const nextState = ((state << 1) | inputBit) & (numStates - 1); // Structural shift-and-mask
+            const nextState = ((OpCodes.Shl32(state, 1))|inputBit)&(numStates - 1); // Structural shift-and-mask
 
             // Calculate expected output
-            const fullState = state | (inputBit << (this._constraintLength - 1)); // Structural bit packing
+            const fullState = state|(OpCodes.Shl32(inputBit, this._constraintLength - 1)); // Structural bit packing
             const e1 = this.convolve(fullState, this._generator1);
             const e2 = this.convolve(fullState, this._generator2);
 
             // Calculate Hamming distance (branch metric)
             // Using GF(2) subtraction (XOR) and counting differences
-            const branchMetric = (r1 ^ e1) + (r2 ^ e2); // GF(2) difference + weight
+            const branchMetric = OpCodes.Xor32(r1, e1) + OpCodes.Xor32(r2, e2); // GF(2) difference + weight
             const newMetric = pathMetrics[state] + branchMetric;
 
             // Update if better path found
@@ -421,11 +421,11 @@
      */
     getFinalState(data, initialState) {
       let state = initialState;
-      const stateMask = (1 << (this._constraintLength - 1)) - 1; // Structural: mask for (K-1) state bits
+      const stateMask = OpCodes.Shl32(1, this._constraintLength - 1) - 1; // Structural: mask for (K-1) state bits
 
       for (let i = 0; i < data.length; ++i) {
-        const inputBit = data[i] & 1; // Structural: extract LSB (ensure bit value)
-        state = ((state << 1) | inputBit) & stateMask; // Structural shift-and-mask
+        const inputBit = data[i]&1; // Structural: extract LSB (ensure bit value)
+        state = ((OpCodes.Shl32(state, 1))|inputBit)&stateMask; // Structural shift-and-mask
       }
 
       return state;

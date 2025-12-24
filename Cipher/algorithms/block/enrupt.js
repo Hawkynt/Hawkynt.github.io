@@ -167,7 +167,7 @@
       this.KeySize = 0;
 
       // EnRUPT constants (derived from XXTEA)
-      this.DELTA = 0x9E3779B9; // Magic constant: 2^32 / golden ratio
+      this.DELTA = 0x9E3779B9; // Magic constant: OpCodes.Xor32(2, 32) / golden ratio
     }
 
     /**

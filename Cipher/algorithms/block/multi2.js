@@ -41,30 +41,30 @@
 
   // Pi functions
   function pi1(p) {
-    p[1] ^= p[0];
+    p[1] = OpCodes.Xor32(p[1], p[0]);
   }
 
   function pi2(p, k) {
-    let t = (p[1] + k[0]) >>> 0;
-    t = (OpCodes.RotL32(t, 1) + t - 1) >>> 0;
-    t = OpCodes.XorN(OpCodes.RotL32(t, 4), t) >>> 0;
-    p[0] ^= t;
+    let t = OpCodes.ToUint32((p[1] + k[0]));
+    t = OpCodes.ToUint32(OpCodes.RotL32(t, 1) + t - 1);
+    t = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(t, 4), t));
+    p[0] = OpCodes.Xor32(p[0], t);
   }
 
   function pi3(p, k) {
-    let t = (p[0] + k[1]) >>> 0;
-    t = (OpCodes.RotL32(t, 2) + t + 1) >>> 0;
-    t = OpCodes.XorN(OpCodes.RotL32(t, 8), t) >>> 0;
-    t = (t + k[2]) >>> 0;
-    t = (OpCodes.RotL32(t, 1) - t) >>> 0;
-    t = OpCodes.XorN(OpCodes.RotL32(t, 16), (p[0] | t));
-    p[1] ^= t;
+    let t = OpCodes.ToUint32((p[0] + k[1]));
+    t = OpCodes.ToUint32(OpCodes.RotL32(t, 2) + t + 1);
+    t = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotL32(t, 8), t));
+    t = OpCodes.ToUint32((t + k[2]));
+    t = OpCodes.ToUint32(OpCodes.RotL32(t, 1) - t);
+    t = OpCodes.Xor32(OpCodes.RotL32(t, 16), (p[0]|t));
+    p[1] = OpCodes.Xor32(p[1], t);
   }
 
   function pi4(p, k) {
-    let t = (p[1] + k[3]) >>> 0;
-    t = (OpCodes.RotL32(t, 2) + t + 1) >>> 0;
-    p[0] ^= t;
+    let t = OpCodes.ToUint32((p[1] + k[3]));
+    t = OpCodes.ToUint32(OpCodes.RotL32(t, 2) + t + 1);
+    p[0] = OpCodes.Xor32(p[0], t);
   }
 
   /**
@@ -306,13 +306,13 @@
         if (++n === this._rounds) break;
         pi4(p, [this.uk[t], this.uk[t + 1], this.uk[t + 2], this.uk[t + 3]]);
         if (++n === this._rounds) break;
-        t ^= 4;
+        t = OpCodes.Xor32(t, 4);
       }
     }
 
     _decrypt(p) {
       let n = this._rounds;
-      let t = 4 * OpCodes.AndN(OpCodes.Shr32((n - 1), 2), 1);
+      let t = 4 * (OpCodes.Shr32((n - 1), 2)&1);
 
       while (true) {
         const mod = n <= 4 ? n : ((n - 1) % 4) + 1;
@@ -336,7 +336,7 @@
           case 0:
             return;
         }
-        t ^= 4;
+        t = OpCodes.Xor32(t, 4);
       }
     }
   }

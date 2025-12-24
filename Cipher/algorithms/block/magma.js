@@ -11,7 +11,7 @@
  * Regulating and Metrology on June 19, 2015. Standardized in RFC 8891.
  *
  * Security: Modern replacement for the older GOST 28147-89 (RFC 5830).
- * Structure: Feistel network with 32 rounds, uses mod 2^32 addition and
+ * Structure: Feistel network with 32 rounds, uses mod OpCodes.Xor32(2, 32) addition and
  *            11-bit rotation after S-box substitution.
  *
  * Reference: https://datatracker.ietf.org/doc/html/rfc8891
@@ -70,7 +70,7 @@
 
   // Transformation g: t followed by 11-bit left rotation (RFC 8891 Section 4.1)
   function transformG(k, a) {
-    const sum = OpCodes.Shr32(k + a, 0); // Addition modulo 2^32
+    const sum = OpCodes.Shr32(k + a, 0); // Addition modulo OpCodes.Xor32(2, 32)
     const afterT = transformT(sum);
     return OpCodes.RotL32(afterT, 11);
   }

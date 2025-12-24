@@ -394,13 +394,13 @@
 
       // Append length as 64-bit little-endian
       // JavaScript bitwise ops are 32-bit, so handle low/high separately
-      const lengthLow = originalLength & 0xFFFFFFFF;
+      const lengthLow = originalLength&0xFFFFFFFF;
       const lengthHigh = Math.floor(originalLength / 0x100000000);
       for (let i = 0; i < 4; i++) {
-        paddedData.push((lengthLow >>> (i * 8)) & 0xFF);
+        paddedData.push(OpCodes.ToByte(OpCodes.Shr32(lengthLow, i * 8)));
       }
       for (let i = 0; i < 4; i++) {
-        paddedData.push((lengthHigh >>> (i * 8)) & 0xFF);
+        paddedData.push(OpCodes.ToByte(OpCodes.Shr32(lengthHigh, i * 8)));
       }
 
       // Process message in chunks of 64 bytes
@@ -424,31 +424,31 @@
         for (let i = 0; i < 64; i++) {
           let F, g;
           if (i < 16) {
-            F = (B & C) | (~B & D);
+            F = (B&C)|(~B&D);
             g = i;
           } else if (i < 32) {
-            F = (D & B) | (~D & C);
+            F = (D&B)|(~D&C);
             g = (5 * i + 1) % 16;
           } else if (i < 48) {
-            F = B ^ C ^ D;
+            F = OpCodes.Xor32(OpCodes.Xor32(B, C), D);
             g = (3 * i + 5) % 16;
           } else {
-            F = C ^ (B | ~D);
+            F = OpCodes.Xor32(C, (B|~D));
             g = (7 * i) % 16;
           }
 
-          const temp = (A + F + K[i] + M[g]) & MASK32;
+          const temp = (A + F + K[i] + M[g])&MASK32;
           A = D;
           D = C;
           C = B;
-          B = (B + OpCodes.RotL32(temp, s[i])) & MASK32;
+          B = (B + OpCodes.RotL32(temp, s[i]))&MASK32;
         }
 
         // Add this chunk's hash to result so far
-        h[0] = (h[0] + A) & MASK32;
-        h[1] = (h[1] + B) & MASK32;
-        h[2] = (h[2] + C) & MASK32;
-        h[3] = (h[3] + D) & MASK32;
+        h[0] = (h[0] + A)&MASK32;
+        h[1] = (h[1] + B)&MASK32;
+        h[2] = (h[2] + C)&MASK32;
+        h[3] = (h[3] + D)&MASK32;
       }
 
       // Convert to byte array (little-endian)
@@ -479,7 +479,7 @@
 
       // Append length as 64-bit big-endian
       for (let i = 7; i >= 0; i--) {
-        paddedData.push((originalLength >>> (i * 8)) & 0xFF);
+        paddedData.push(OpCodes.ToByte(OpCodes.Shr32(originalLength, i * 8)));
       }
 
       // Process message in chunks of 64 bytes
@@ -498,7 +498,7 @@
 
         // Extend the sixteen 32-bit words into eighty 32-bit words
         for (let i = 16; i < 80; i++) {
-          w[i] = OpCodes.RotL32(w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16], 1);
+          w[i] = OpCodes.RotL32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(w[i-3], w[i-8]), w[i-14]), w[i-16]), 1);
         }
 
         // Initialize hash value for this chunk
@@ -508,20 +508,20 @@
         for (let i = 0; i < 80; i++) {
           let f, k;
           if (i < 20) {
-            f = (b & c) | (~b & d);
+            f = (b&c)|(~b&d);
             k = OpCodes.Hex32ToDWords('5A827999')[0];
           } else if (i < 40) {
-            f = b ^ c ^ d;
+            f = OpCodes.Xor32(OpCodes.Xor32(b, c), d);
             k = OpCodes.Hex32ToDWords('6ED9EBA1')[0];
           } else if (i < 60) {
-            f = (b & c) | (b & d) | (c & d);
+            f = (b&c)|(b&d)|(c&d);
             k = OpCodes.Hex32ToDWords('8F1BBCDC')[0];
           } else {
-            f = b ^ c ^ d;
+            f = OpCodes.Xor32(OpCodes.Xor32(b, c), d);
             k = OpCodes.Hex32ToDWords('CA62C1D6')[0];
           }
 
-          const temp = (OpCodes.RotL32(a, 5) + f + e + k + w[i]) & MASK32;
+          const temp = (OpCodes.RotL32(a, 5) + f + e + k + w[i])&MASK32;
           e = d;
           d = c;
           c = OpCodes.RotL32(b, 30);
@@ -530,11 +530,11 @@
         }
 
         // Add this chunk's hash to result so far
-        h[0] = (h[0] + a) & MASK32;
-        h[1] = (h[1] + b) & MASK32;
-        h[2] = (h[2] + c) & MASK32;
-        h[3] = (h[3] + d) & MASK32;
-        h[4] = (h[4] + e) & MASK32;
+        h[0] = (h[0] + a)&MASK32;
+        h[1] = (h[1] + b)&MASK32;
+        h[2] = (h[2] + c)&MASK32;
+        h[3] = (h[3] + d)&MASK32;
+        h[4] = (h[4] + e)&MASK32;
       }
 
       // Convert to byte array (big-endian)

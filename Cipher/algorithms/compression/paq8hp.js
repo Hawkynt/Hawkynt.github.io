@@ -181,10 +181,10 @@
         const compressed = [];
 
         // Header: store original length
-        compressed.push((data.length >>> 24) & 0xFF);
-        compressed.push((data.length >>> 16) & 0xFF);
-        compressed.push((data.length >>> 8) & 0xFF);
-        compressed.push(data.length & 0xFF);
+        compressed.push(OpCodes.ToByte(OpCodes.Shr32(data.length, 24)));
+        compressed.push(OpCodes.ToByte(OpCodes.Shr32(data.length, 16)));
+        compressed.push(OpCodes.ToByte(OpCodes.Shr32(data.length, 8)));
+        compressed.push(OpCodes.ToByte(data.length));
 
         // Simple context-based compression inspired by PAQ8hp concepts
         const contexts = new Map();
@@ -194,7 +194,7 @@
           const byte = data[i];
 
           // Use previous bytes as context (simplified order-2)
-          const contextKey = context & 0xFFFF;
+          const contextKey = context&0xFFFF;
 
           if (!contexts.has(contextKey)) {
             contexts.set(contextKey, { counts: new Array(256).fill(0), total: 0 });
@@ -234,7 +234,7 @@
           }
 
           // Update context for next prediction using OpCodes
-          context = OpCodes.RotL32((context << 8) | byte, 0) & 0xFFFFFF;
+          context = OpCodes.RotL32(OpCodes.Shl32(context, 8)|byte, 0)&0xFFFFFF;
         }
 
         return compressed;
@@ -244,7 +244,7 @@
         if (!data || data.length < 4) return [];
 
         // Parse header to get original length
-        const originalLength = (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3];
+        const originalLength = OpCodes.Shl32(data[0], 24)|OpCodes.Shl32(data[1], 16)|OpCodes.Shl32(data[2], 8)|data[3];
         if (originalLength === 0) return [];
 
         // Use OpCodes for consistent operations
@@ -258,7 +258,7 @@
           const encoded = data[offset++];
 
           // Rebuild same context as compression
-          const contextKey = context & 0xFFFF;
+          const contextKey = context&0xFFFF;
 
           if (!contexts.has(contextKey)) {
             contexts.set(contextKey, { counts: new Array(256).fill(0), total: 0 });
@@ -299,7 +299,7 @@
           }
 
           // Update context using OpCodes
-          context = OpCodes.RotL32((context << 8) | decodedByte, 0) & 0xFFFFFF;
+          context = OpCodes.RotL32(OpCodes.Shl32(context, 8)|decodedByte, 0)&0xFFFFFF;
         }
 
         return decompressed.slice(0, originalLength);

@@ -266,16 +266,16 @@ class HierocryptL1Instance extends IBlockCipherInstance {
 
       // Derive 8 bytes from the working key
       for (let i = 0; i < 8; i++) {
-        roundKey[i] = OpCodes.XorN(workingKey[i], workingKey[i + 8]);
+        roundKey[i] = OpCodes.ToByte(workingKey[i]^workingKey[i + 8]);
       }
 
       roundKeys.push(roundKey);
 
       // Update working key using non-linear feedback
       for (let i = 0; i < 16; i++) {
-        const constByte = (constants[round % 8] >>> ((i % 4) * 8)) & 0xFF;
-        workingKey[i] = this._sbox[OpCodes.XorN(OpCodes.XorN(workingKey[i], constByte), round)];
-        workingKey[i] = OpCodes.RotL8(workingKey[i], (i + round) & 7);
+        const constByte = OpCodes.ToByte(OpCodes.Shr32(constants[round % 8], (i % 4) * 8));
+        workingKey[i] = this._sbox[OpCodes.ToByte((workingKey[i]^constByte)^round)];
+        workingKey[i] = OpCodes.RotL8(workingKey[i], (i + round) % 8);
       }
     }
 
@@ -336,7 +336,7 @@ class HierocryptL1Instance extends IBlockCipherInstance {
 
     const roundKey = this._roundKeys[round];
     for (let i = 0; i < 8; i++) {
-      state[i] ^= roundKey[i];
+      state[i] = OpCodes.ToByte(state[i]^roundKey[i]);
     }
   }
 
@@ -366,16 +366,16 @@ class HierocryptL1Instance extends IBlockCipherInstance {
     b1 = this._sbox[b1];
 
     // Linear diffusion using 2x2 MDS matrix
-    const t0 = OpCodes.GF256Mul(b0, this._xsMdsMatrix[0][0]) ^
-               OpCodes.GF256Mul(b1, this._xsMdsMatrix[0][1]);
-    const t1 = OpCodes.GF256Mul(b0, this._xsMdsMatrix[1][0]) ^
-               OpCodes.GF256Mul(b1, this._xsMdsMatrix[1][1]);
+    const t0 = OpCodes.Xor32(OpCodes.GF256Mul(b0, this._xsMdsMatrix[0][0]),
+               OpCodes.GF256Mul(b1, this._xsMdsMatrix[0][1]));
+    const t1 = OpCodes.Xor32(OpCodes.GF256Mul(b0, this._xsMdsMatrix[1][0]),
+               OpCodes.GF256Mul(b1, this._xsMdsMatrix[1][1]));
     b0 = t0;
     b1 = t1;
 
     // XOR with round constant (derived from round number)
-    b0 ^= (round * 17) & 0xFF;
-    b1 ^= (round * 23) & 0xFF;
+    b0 = OpCodes.Xor32(b0, OpCodes.ToByte(round * 17));
+    b1 = OpCodes.Xor32(b1, OpCodes.ToByte(round * 23));
 
     // Second S-box layer
     b0 = this._sbox[b0];
@@ -409,14 +409,14 @@ class HierocryptL1Instance extends IBlockCipherInstance {
     b1 = this._invSbox[b1];
 
     // Reverse XOR with round constant
-    b0 ^= (round * 17) & 0xFF;
-    b1 ^= (round * 23) & 0xFF;
+    b0 = OpCodes.Xor32(b0, OpCodes.ToByte(round * 17));
+    b1 = OpCodes.Xor32(b1, OpCodes.ToByte(round * 23));
 
     // Reverse linear diffusion using inverse 2x2 MDS matrix
-    const t0 = OpCodes.GF256Mul(b0, this._invXsMdsMatrix[0][0]) ^
-               OpCodes.GF256Mul(b1, this._invXsMdsMatrix[0][1]);
-    const t1 = OpCodes.GF256Mul(b0, this._invXsMdsMatrix[1][0]) ^
-               OpCodes.GF256Mul(b1, this._invXsMdsMatrix[1][1]);
+    const t0 = OpCodes.Xor32(OpCodes.GF256Mul(b0, this._invXsMdsMatrix[0][0]),
+               OpCodes.GF256Mul(b1, this._invXsMdsMatrix[0][1]));
+    const t1 = OpCodes.Xor32(OpCodes.GF256Mul(b0, this._invXsMdsMatrix[1][0]),
+               OpCodes.GF256Mul(b1, this._invXsMdsMatrix[1][1]));
     b0 = t0;
     b1 = t1;
 
@@ -438,7 +438,7 @@ class HierocryptL1Instance extends IBlockCipherInstance {
     for (let i = 0; i < 4; i++) {
       newState[i] = 0;
       for (let j = 0; j < 4; j++) {
-        newState[i] ^= OpCodes.GF256Mul(state[j], this._mdsMatrix[i][j]);
+        newState[i] = OpCodes.Xor32(newState[i], OpCodes.GF256Mul(state[j], this._mdsMatrix[i][j]));
       }
     }
 
@@ -446,7 +446,7 @@ class HierocryptL1Instance extends IBlockCipherInstance {
     for (let i = 0; i < 4; i++) {
       newState[i + 4] = 0;
       for (let j = 0; j < 4; j++) {
-        newState[i + 4] ^= OpCodes.GF256Mul(state[j + 4], this._mdsMatrix[i][j]);
+        newState[i + 4] = OpCodes.Xor32(newState[i + 4], OpCodes.GF256Mul(state[j + 4], this._mdsMatrix[i][j]));
       }
     }
 
@@ -463,7 +463,7 @@ class HierocryptL1Instance extends IBlockCipherInstance {
     for (let i = 0; i < 4; i++) {
       newState[i] = 0;
       for (let j = 0; j < 4; j++) {
-        newState[i] ^= OpCodes.GF256Mul(state[j], this._invMdsMatrix[i][j]);
+        newState[i] = OpCodes.Xor32(newState[i], OpCodes.GF256Mul(state[j], this._invMdsMatrix[i][j]));
       }
     }
 
@@ -471,7 +471,7 @@ class HierocryptL1Instance extends IBlockCipherInstance {
     for (let i = 0; i < 4; i++) {
       newState[i + 4] = 0;
       for (let j = 0; j < 4; j++) {
-        newState[i + 4] ^= OpCodes.GF256Mul(state[j + 4], this._invMdsMatrix[i][j]);
+        newState[i + 4] = OpCodes.Xor32(newState[i + 4], OpCodes.GF256Mul(state[j + 4], this._invMdsMatrix[i][j]));
       }
     }
 

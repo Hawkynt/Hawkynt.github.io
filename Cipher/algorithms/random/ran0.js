@@ -254,7 +254,7 @@
       }
 
       // Schrage's method from Numerical Recipes
-      const k = (this._idum / IQ) | 0;  // k = floor(idum / IQ)
+      const k = (this._idum / IQ)|0;  // k = floor(idum / IQ)
       this._idum = IA * (this._idum - k * IQ) - IR * k;
 
       if (this._idum < 0) {

@@ -78,7 +78,7 @@
     148, 32, 133, 16, 194, 192, 1, 251, 1, 192, 194, 16, 133, 32, 148, 1
   ]);
 
-  // GF(2^8) multiplication with irreducible polynomial 0x1C3 (x^8 + x^7 + x^6 + x + 1)
+  // GF(OpCodes.Xor32(2, 8)) multiplication with irreducible polynomial 0x1C3 (OpCodes.Xor32(x, 8) + OpCodes.Xor32(x, 7) + OpCodes.Xor32(x, 6) + x + 1)
   function gfMul(a, b) {
     let result = 0;
     let aVal = OpCodes.AndN(a, 0xFF);

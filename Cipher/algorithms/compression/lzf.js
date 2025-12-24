@@ -218,14 +218,14 @@
       }
 
       // Initialize hash value with first two bytes
-      let hval = OpCodes.OrN(OpCodes.Shl16(input[0], 8), input[1]);
+      let hval = OpCodes.Or16(OpCodes.Shl16(input[0], 8), input[1]);
 
       while (ip < iend - 2) {
         // Compute hash from current 3-byte sequence
-        // Hash function: (h ^ (h >> 8)) + byte3
-        hval = OpCodes.OrN(OpCodes.Shl16(input[ip], 8), input[ip + 1]);
-        const hidx = OpCodes.AndN(
-          (OpCodes.XorN(hval, OpCodes.Shr16(hval, 8)) + input[ip + 2]),
+        // Hash function: (h^(h >> 8)) + byte3
+        hval = OpCodes.Or16(OpCodes.Shl16(input[ip], 8), input[ip + 1]);
+        const hidx = OpCodes.And16(
+          (OpCodes.Xor16(hval, OpCodes.Shr16(hval, 8)) + input[ip + 2]),
           this.hsize - 1
         );
         const ref = htab[hidx];
@@ -266,7 +266,7 @@
             // Short reference: LLLooooo oooooooo
             // LLL = encoded length (1-6 represents real length 2-7)
             // ooooooooooooo = 13-bit offset
-            output.push(OpCodes.ToByte(OpCodes.OrN(OpCodes.Shl8(encodedLen, 5), OpCodes.Shr16(off, 8))));
+            output.push(OpCodes.ToByte(OpCodes.Or8(OpCodes.Shl8(encodedLen, 5), OpCodes.Shr16(off, 8))));
             output.push(OpCodes.ToByte(off));
           } else {
             // Long reference: 111ooooo LLLLLLLL oooooooo
@@ -274,7 +274,7 @@
             // ooooo = high 5 bits of offset
             // LLLLLLLL = len - 8 (extended length: real length >= 8)
             // oooooooo = low 8 bits of offset
-            output.push(OpCodes.ToByte(OpCodes.OrN(0xE0, OpCodes.Shr16(off, 8))));
+            output.push(OpCodes.ToByte(OpCodes.Or8(0xE0, OpCodes.Shr16(off, 8))));
             output.push(OpCodes.ToByte(encodedLen - 7));
             output.push(OpCodes.ToByte(off));
           }
@@ -284,7 +284,7 @@
 
           // Reset hash for next position
           if (ip < iend - 2) {
-            hval = OpCodes.OrN(OpCodes.Shl16(input[ip], 8), input[ip + 1]);
+            hval = OpCodes.Or16(OpCodes.Shl16(input[ip], 8), input[ip + 1]);
           }
         } else {
           ++ip;
@@ -357,14 +357,14 @@
             }
 
             len = input[ip++] + 7;
-            off = OpCodes.OrN(OpCodes.Shl16(OpCodes.AndN(ctrl, 0x1F), 8), input[ip++]);
+            off = OpCodes.Or16(OpCodes.Shl16(OpCodes.And8(ctrl, 0x1F), 8), input[ip++]);
           } else {
             // Short reference: LLLooooo oooooooo
             if (ip + 1 > iend) {
               throw new Error("LZF decompression error: insufficient input data for short reference");
             }
 
-            off = OpCodes.OrN(OpCodes.Shl16(OpCodes.AndN(ctrl, 0x1F), 8), input[ip++]);
+            off = OpCodes.Or16(OpCodes.Shl16(OpCodes.And8(ctrl, 0x1F), 8), input[ip++]);
           }
 
           len += 1; // Decode: add back the 1 we subtracted during encoding (min match = 2)

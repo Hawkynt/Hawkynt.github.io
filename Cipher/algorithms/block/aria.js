@@ -367,56 +367,56 @@
       // Step 4: Generate round keys using RFC 5794 formulas
       const rk = [];
 
-      // ek1 = W0 ^ (W1 >>> 19)
+      // ek1 = W0^(OpCodes.Shr32(W1, 19))
       rk[0] = this._xorWords(W0, this._rotateRight(W1, 19));
 
-      // ek2 = W1 ^ (W2 >>> 19)
+      // ek2 = W1^(OpCodes.Shr32(W2, 19))
       rk[1] = this._xorWords(W1, this._rotateRight(W2, 19));
 
-      // ek3 = W2 ^ (W3 >>> 19)
+      // ek3 = W2^(OpCodes.Shr32(W3, 19))
       rk[2] = this._xorWords(W2, this._rotateRight(W3, 19));
 
-      // ek4 = (W0 >>> 19) ^ W3
+      // ek4 = (OpCodes.Shr32(W0, 19))^W3
       rk[3] = this._xorWords(this._rotateRight(W0, 19), W3);
 
-      // ek5 = W0 ^ (W1 >>> 31)
+      // ek5 = W0^(OpCodes.Shr32(W1, 31))
       rk[4] = this._xorWords(W0, this._rotateRight(W1, 31));
 
-      // ek6 = W1 ^ (W2 >>> 31)
+      // ek6 = W1^(OpCodes.Shr32(W2, 31))
       rk[5] = this._xorWords(W1, this._rotateRight(W2, 31));
 
-      // ek7 = W2 ^ (W3 >>> 31)
+      // ek7 = W2^(OpCodes.Shr32(W3, 31))
       rk[6] = this._xorWords(W2, this._rotateRight(W3, 31));
 
-      // ek8 = (W0 >>> 31) ^ W3
+      // ek8 = (OpCodes.Shr32(W0, 31))^W3
       rk[7] = this._xorWords(this._rotateRight(W0, 31), W3);
 
-      // ek9 = W0 ^ (W1 <<< 61) = W0 ^ (W1 >>> 67)
+      // ek9 = W0^(W1 <<< 61) = W0^(OpCodes.Shr32(W1, 67))
       rk[8] = this._xorWords(W0, this._rotateRight(W1, 67));
 
-      // ek10 = W1 ^ (W2 <<< 61) = W1 ^ (W2 >>> 67)
+      // ek10 = W1^(W2 <<< 61) = W1^(OpCodes.Shr32(W2, 67))
       rk[9] = this._xorWords(W1, this._rotateRight(W2, 67));
 
-      // ek11 = W2 ^ (W3 <<< 61) = W2 ^ (W3 >>> 67)
+      // ek11 = W2^(W3 <<< 61) = W2^(OpCodes.Shr32(W3, 67))
       rk[10] = this._xorWords(W2, this._rotateRight(W3, 67));
 
-      // ek12 = (W0 <<< 61) ^ W3 = (W0 >>> 67) ^ W3
+      // ek12 = (W0 <<< 61)^W3 = (OpCodes.Shr32(W0, 67))^W3
       rk[11] = this._xorWords(this._rotateRight(W0, 67), W3);
 
       // Additional round keys for ARIA-192/256
       if (this.rounds >= 14) {
-        // ek13 = W0 ^ (W1 >>> 97)
+        // ek13 = W0^(OpCodes.Shr32(W1, 97))
         rk[12] = this._xorWords(W0, this._rotateRight(W1, 97));
-        // ek14 = W1 ^ (W2 >>> 97)
+        // ek14 = W1^(OpCodes.Shr32(W2, 97))
         rk[13] = this._xorWords(W1, this._rotateRight(W2, 97));
         // ek15 (final for ARIA-192)
         rk[14] = this._xorWords(W2, this._rotateRight(W3, 97));
       }
 
       if (this.rounds >= 16) {
-        // ek16 = (W0 >>> 97) ^ W3
+        // ek16 = (OpCodes.Shr32(W0, 97))^W3
         rk[15] = this._xorWords(this._rotateRight(W0, 97), W3);
-        // ek17 = W0 ^ (W1 <<< 19) = W0 ^ (W1 >>> 109) (final for ARIA-256)
+        // ek17 = W0^(W1 <<< 19) = W0^(OpCodes.Shr32(W1, 109)) (final for ARIA-256)
         rk[16] = this._xorWords(W0, this._rotateRight(W1, 109));
       }
 

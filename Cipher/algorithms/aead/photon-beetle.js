@@ -642,7 +642,7 @@
 
         // Update state and generate output
         if (isEncrypt) {
-          // Encryption: state ^= plaintext, then ciphertext = plaintext ^ shuffle
+          // Encryption: state ^= plaintext, then ciphertext = plaintext^shuffle
           for (let i = 0; i < this.rate; ++i) {
             this.state[i] = OpCodes.XorN(this.state[i], msg[pos + i]);
           }
@@ -650,7 +650,7 @@
             output[pos + i] = OpCodes.XorN(msg[pos + i], shuffle[i]);
           }
         } else {
-          // Decryption: plaintext = ciphertext ^ shuffle, then state ^= plaintext
+          // Decryption: plaintext = ciphertext^shuffle, then state ^= plaintext
           for (let i = 0; i < this.rate; ++i) {
             output[pos + i] = OpCodes.XorN(msg[pos + i], shuffle[i]);
           }
@@ -680,7 +680,7 @@
 
         // Update state and generate output for partial block
         if (isEncrypt) {
-          // Encryption: state ^= plaintext, then ciphertext = plaintext ^ shuffle
+          // Encryption: state ^= plaintext, then ciphertext = plaintext^shuffle
           for (let i = 0; i < remaining; ++i) {
             this.state[i] = OpCodes.XorN(this.state[i], msg[pos + i]);
           }
@@ -691,7 +691,7 @@
             output[pos + i] = OpCodes.XorN(msg[pos + i], shuffle[i]);
           }
         } else {
-          // Decryption: plaintext = ciphertext ^ shuffle, then state ^= plaintext
+          // Decryption: plaintext = ciphertext^shuffle, then state ^= plaintext
           for (let i = 0; i < remaining; ++i) {
             output[pos + i] = OpCodes.XorN(msg[pos + i], shuffle[i]);
           }

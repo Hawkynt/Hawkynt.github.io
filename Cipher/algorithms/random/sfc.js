@@ -102,7 +102,7 @@
 
       // Test vectors generated using verified SFC32 algorithm implementation
       // Reference: Apache Commons RNG DotyHumphreySmallFastCounting32
-      // Algorithm: tmp = a + b + counter; counter++; a = b ^ (b >> 9); b = c + (c << 3); c = ROL(c, 21) + tmp
+      // Algorithm: tmp = a + b + counter; counter++; a = b^(b >> 9); b = c + (OpCodes.Shl32(c, 3)); c = ROL(c, 21) + tmp
       // Note: PractRand recommends discarding first 12-15 outputs for better quality
       this.tests = [
         {
@@ -332,10 +332,10 @@
       // Step 2: Increment counter
       this._counter = OpCodes.ToUint32(this._counter + 1);
 
-      // Step 3: a = b ^ (b >> 9)
-      this._a = OpCodes.ToUint32(OpCodes.XorN(this._b, OpCodes.Shr32(this._b, 9)));
+      // Step 3: a = b^(b >> 9)
+      this._a = OpCodes.ToUint32(OpCodes.Xor32(this._b, OpCodes.Shr32(this._b, 9)));
 
-      // Step 4: b = c + (c << 3)
+      // Step 4: b = c + (OpCodes.Shl32(c, 3))
       this._b = OpCodes.ToUint32(this._c + OpCodes.Shl32(this._c, 3));
 
       // Step 5: c = ROL(c, 21) + tmp

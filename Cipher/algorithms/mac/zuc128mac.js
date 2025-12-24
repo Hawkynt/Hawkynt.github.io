@@ -307,7 +307,7 @@
         wordIndex = (wordIndex + 1) % 2;
         finalWord = keyStream[wordIndex];
       }
-      mac ^= finalWord;
+      mac = OpCodes.Xor32(mac, finalWord);
 
       // Clear input buffer
       this.inputBuffer = [];
@@ -333,7 +333,7 @@
       const second = keyStream[(wordIndex + 1) % 2];
       const leftPart = OpCodes.Shl32(first, bitNo);
       const rightPart = OpCodes.Shr32(second, 32 - bitNo);
-      return OpCodes.ToDWord(leftPart | rightPart);
+      return OpCodes.ToDWord(leftPart|rightPart);
     }
 
     ComputeMac(data) {

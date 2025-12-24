@@ -217,12 +217,12 @@
         for (let row = 0; row < rows; ++row) {
           // LFSR step (Galois LFSR with polynomial x^32 + x^31 + x^29 + x + 1)
           // Bitwise operations for LFSR state update (structural, not cryptographic data)
-          const feedback = ((lfsr >> 0) ^ (lfsr >> 1) ^ (lfsr >> 3) ^ (lfsr >> 31)) & 1;
+          const feedback = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shr32(lfsr, 0), OpCodes.Shr32(lfsr, 1)), OpCodes.Shr32(lfsr, 3)), OpCodes.Shr32(lfsr, 31))&1;
           lfsr = OpCodes.RotR32(lfsr, 1);
-          lfsr = (lfsr & 0x7FFFFFFF) | (feedback << 31); // Mask and set feedback bit
+          lfsr = (lfsr&0x7FFFFFFF)|(OpCodes.Shl32(feedback, 31)); // Mask and set feedback bit
 
           // Approximately 30% connection probability
-          if ((lfsr & 0xFF) < 77) { // Extract low byte for comparison (structural)
+          if ((lfsr&0xFF) < 77) { // Extract low byte for comparison (structural)
             matrix[row][col] = 1;
             ++connections;
           }
@@ -230,7 +230,7 @@
 
         // Ensure minimum connections per column
         while (connections < minColConnections) {
-          const row = (lfsr >>> 0) % rows; // Convert to unsigned for modulo (structural)
+          const row = (OpCodes.ToUint32(lfsr)) % rows; // Convert to unsigned for modulo (structural)
           lfsr = OpCodes.RotR32(lfsr, 1);
           if (matrix[row][col] === 0) {
             matrix[row][col] = 1;
@@ -247,7 +247,7 @@
         }
 
         while (connections < minRowConnections && cols > 0) {
-          const col = (lfsr >>> 0) % cols; // Convert to unsigned for modulo (structural)
+          const col = (OpCodes.ToUint32(lfsr)) % cols; // Convert to unsigned for modulo (structural)
           lfsr = OpCodes.RotR32(lfsr, 1);
           if (matrix[row][col] === 0) {
             matrix[row][col] = 1;
@@ -349,7 +349,7 @@
         // Sum inputs from connected neurons
         for (let i = 0; i < input.length; ++i) {
           if (connectivity[i][j] === 1) {
-            sum ^= input[i]; // XOR operation (GF(2) addition)
+            sum = OpCodes.Xor32(sum, input[i]); // XOR operation (GF(2) addition)
           }
         }
 
@@ -375,7 +375,7 @@
       }
 
       // Solve the linear system: connectivity * input = output (in GF(2))
-      // Create augmented matrix [connectivity | output]
+      // Create augmented matrix [connectivity|output]
       const augmented = [];
       for (let j = 0; j < outputSize; ++j) {
         const row = [];
@@ -414,7 +414,7 @@
           if (row !== currentRow && augmented[row][col] === 1) {
             // XOR rows in GF(2)
             for (let c = 0; c <= inputSize; ++c) {
-              augmented[row][c] ^= augmented[currentRow][c];
+              augmented[row][c] = OpCodes.Xor32(augmented[row][c], augmented[currentRow][c]);
             }
           }
         }
@@ -430,7 +430,7 @@
             let sum = augmented[row][inputSize]; // RHS value
             for (let j = i + 1; j < inputSize; ++j) {
               if (augmented[row][j] === 1) {
-                sum ^= input[j];
+                sum = OpCodes.Xor32(sum, input[j]);
               }
             }
             input[i] = sum;

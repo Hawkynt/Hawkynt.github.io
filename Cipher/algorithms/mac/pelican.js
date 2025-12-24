@@ -106,10 +106,10 @@
 
     for (let i = 0; i < 256; ++i) {
       const s = SBOX[i];
-      TE0[i] = (mul2[s] << 24) | (s << 16) | (s << 8) | mul3[s];
-      TE1[i] = (mul3[s] << 24) | (mul2[s] << 16) | (s << 8) | s;
-      TE2[i] = (s << 24) | (mul3[s] << 16) | (mul2[s] << 8) | s;
-      TE3[i] = (s << 24) | (s << 16) | (mul3[s] << 8) | mul2[s];
+      TE0[i] = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(mul2[s], 24), OpCodes.Shl32(s, 16)), OpCodes.Shl32(s, 8)), mul3[s]);
+      TE1[i] = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(mul3[s], 24), OpCodes.Shl32(mul2[s], 16)), OpCodes.Shl32(s, 8)), s);
+      TE2[i] = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(s, 24), OpCodes.Shl32(mul3[s], 16)), OpCodes.Shl32(mul2[s], 8)), s);
+      TE3[i] = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(s, 24), OpCodes.Shl32(s, 16)), OpCodes.Shl32(mul3[s], 8)), mul2[s]);
     }
   })();
 
@@ -255,7 +255,7 @@
 
         if (i % 4 === 0) {
           // RotWord
-          temp = ((temp << 8) | (temp >>> 24)) >>> 0;
+          temp = OpCodes.Shr32(OpCodes.Or32(OpCodes.Shl32(temp, 8), OpCodes.Shr32(temp, 24)), 0);
 
           // SubWord
           const bytes = OpCodes.Unpack32BE(temp);
@@ -265,80 +265,52 @@
           temp = OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
 
           // XOR with Rcon
-          temp ^= (rcon[(i / 4) - 1] << 24);
+          temp = OpCodes.Xor32(temp, OpCodes.Shl32(rcon[(i / 4) - 1], 24));
         }
 
-        this.roundKeys[i] = (this.roundKeys[i - 4] ^ temp) >>> 0;
+        this.roundKeys[i] = OpCodes.ToUint32(OpCodes.Xor32(this.roundKeys[i - 4], temp));
       }
     }
 
     _aesEncrypt(input, output) {
       // Load state
-      let s0 = OpCodes.Pack32BE(input[0], input[1], input[2], input[3]) >>> 0;
-      let s1 = OpCodes.Pack32BE(input[4], input[5], input[6], input[7]) >>> 0;
-      let s2 = OpCodes.Pack32BE(input[8], input[9], input[10], input[11]) >>> 0;
-      let s3 = OpCodes.Pack32BE(input[12], input[13], input[14], input[15]) >>> 0;
+      let s0 = OpCodes.ToUint32(OpCodes.Pack32BE(input[0], input[1], input[2], input[3]));
+      let s1 = OpCodes.ToUint32(OpCodes.Pack32BE(input[4], input[5], input[6], input[7]));
+      let s2 = OpCodes.ToUint32(OpCodes.Pack32BE(input[8], input[9], input[10], input[11]));
+      let s3 = OpCodes.ToUint32(OpCodes.Pack32BE(input[12], input[13], input[14], input[15]));
 
       // Initial round key addition
-      s0 ^= this.roundKeys[0];
-      s1 ^= this.roundKeys[1];
-      s2 ^= this.roundKeys[2];
-      s3 ^= this.roundKeys[3];
+      s0 = OpCodes.Xor32(s0, this.roundKeys[0]);
+      s1 = OpCodes.Xor32(s1, this.roundKeys[1]);
+      s2 = OpCodes.Xor32(s2, this.roundKeys[2]);
+      s3 = OpCodes.Xor32(s3, this.roundKeys[3]);
 
       // 9 main rounds
       for (let round = 1; round < 10; ++round) {
-        const t0 = (TE0[(s0 >>> 24) & 0xff] ^
-                    TE1[(s1 >>> 16) & 0xff] ^
-                    TE2[(s2 >>> 8) & 0xff] ^
-                    TE3[s3 & 0xff] ^
-                    this.roundKeys[round * 4]) >>> 0;
+        const t0 = OpCodes.Shr32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(TE0[OpCodes.And32(OpCodes.Shr32(s0, 24), 0xff)], TE1[OpCodes.And32(OpCodes.Shr32(s1, 16), 0xff)]), TE2[OpCodes.And32(OpCodes.Shr32(s2, 8), 0xff)]), TE3[OpCodes.And32(s3, 0xff)]), this.roundKeys[round * 4]), 0);
 
-        const t1 = (TE0[(s1 >>> 24) & 0xff] ^
-                    TE1[(s2 >>> 16) & 0xff] ^
-                    TE2[(s3 >>> 8) & 0xff] ^
-                    TE3[s0 & 0xff] ^
-                    this.roundKeys[round * 4 + 1]) >>> 0;
+        const t1 = OpCodes.Shr32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(TE0[OpCodes.And32(OpCodes.Shr32(s1, 24), 0xff)], TE1[OpCodes.And32(OpCodes.Shr32(s2, 16), 0xff)]), TE2[OpCodes.And32(OpCodes.Shr32(s3, 8), 0xff)]), TE3[OpCodes.And32(s0, 0xff)]), this.roundKeys[round * 4 + 1]), 0);
 
-        const t2 = (TE0[(s2 >>> 24) & 0xff] ^
-                    TE1[(s3 >>> 16) & 0xff] ^
-                    TE2[(s0 >>> 8) & 0xff] ^
-                    TE3[s1 & 0xff] ^
-                    this.roundKeys[round * 4 + 2]) >>> 0;
+        const t2 = OpCodes.Shr32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(TE0[OpCodes.And32(OpCodes.Shr32(s2, 24), 0xff)], TE1[OpCodes.And32(OpCodes.Shr32(s3, 16), 0xff)]), TE2[OpCodes.And32(OpCodes.Shr32(s0, 8), 0xff)]), TE3[OpCodes.And32(s1, 0xff)]), this.roundKeys[round * 4 + 2]), 0);
 
-        const t3 = (TE0[(s3 >>> 24) & 0xff] ^
-                    TE1[(s0 >>> 16) & 0xff] ^
-                    TE2[(s1 >>> 8) & 0xff] ^
-                    TE3[s2 & 0xff] ^
-                    this.roundKeys[round * 4 + 3]) >>> 0;
+        const t3 = OpCodes.Shr32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(TE0[OpCodes.And32(OpCodes.Shr32(s3, 24), 0xff)], TE1[OpCodes.And32(OpCodes.Shr32(s0, 16), 0xff)]), TE2[OpCodes.And32(OpCodes.Shr32(s1, 8), 0xff)]), TE3[OpCodes.And32(s2, 0xff)]), this.roundKeys[round * 4 + 3]), 0);
 
         s0 = t0; s1 = t1; s2 = t2; s3 = t3;
       }
 
       // Final round (no MixColumns)
-      const t0 = ((SBOX[(s0 >>> 24) & 0xff] << 24) |
-                  (SBOX[(s1 >>> 16) & 0xff] << 16) |
-                  (SBOX[(s2 >>> 8) & 0xff] << 8) |
-                  SBOX[s3 & 0xff]) >>> 0;
+      const t0 = OpCodes.Shr32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(SBOX[OpCodes.And32(OpCodes.Shr32(s0, 24), 0xff)], 24), OpCodes.Shl32(SBOX[OpCodes.And32(OpCodes.Shr32(s1, 16), 0xff)], 16)), OpCodes.Shl32(SBOX[OpCodes.And32(OpCodes.Shr32(s2, 8), 0xff)], 8)), SBOX[OpCodes.And32(s3, 0xff)]), 0);
 
-      const t1 = ((SBOX[(s1 >>> 24) & 0xff] << 24) |
-                  (SBOX[(s2 >>> 16) & 0xff] << 16) |
-                  (SBOX[(s3 >>> 8) & 0xff] << 8) |
-                  SBOX[s0 & 0xff]) >>> 0;
+      const t1 = OpCodes.Shr32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(SBOX[OpCodes.And32(OpCodes.Shr32(s1, 24), 0xff)], 24), OpCodes.Shl32(SBOX[OpCodes.And32(OpCodes.Shr32(s2, 16), 0xff)], 16)), OpCodes.Shl32(SBOX[OpCodes.And32(OpCodes.Shr32(s3, 8), 0xff)], 8)), SBOX[OpCodes.And32(s0, 0xff)]), 0);
 
-      const t2 = ((SBOX[(s2 >>> 24) & 0xff] << 24) |
-                  (SBOX[(s3 >>> 16) & 0xff] << 16) |
-                  (SBOX[(s0 >>> 8) & 0xff] << 8) |
-                  SBOX[s1 & 0xff]) >>> 0;
+      const t2 = OpCodes.Shr32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(SBOX[OpCodes.And32(OpCodes.Shr32(s2, 24), 0xff)], 24), OpCodes.Shl32(SBOX[OpCodes.And32(OpCodes.Shr32(s3, 16), 0xff)], 16)), OpCodes.Shl32(SBOX[OpCodes.And32(OpCodes.Shr32(s0, 8), 0xff)], 8)), SBOX[OpCodes.And32(s1, 0xff)]), 0);
 
-      const t3 = ((SBOX[(s3 >>> 24) & 0xff] << 24) |
-                  (SBOX[(s0 >>> 16) & 0xff] << 16) |
-                  (SBOX[(s1 >>> 8) & 0xff] << 8) |
-                  SBOX[s2 & 0xff]) >>> 0;
+      const t3 = OpCodes.Shr32(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(SBOX[OpCodes.And32(OpCodes.Shr32(s3, 24), 0xff)], 24), OpCodes.Shl32(SBOX[OpCodes.And32(OpCodes.Shr32(s0, 16), 0xff)], 16)), OpCodes.Shl32(SBOX[OpCodes.And32(OpCodes.Shr32(s1, 8), 0xff)], 8)), SBOX[OpCodes.And32(s2, 0xff)]), 0);
 
-      s0 = (t0 ^ this.roundKeys[40]) >>> 0;
-      s1 = (t1 ^ this.roundKeys[41]) >>> 0;
-      s2 = (t2 ^ this.roundKeys[42]) >>> 0;
-      s3 = (t3 ^ this.roundKeys[43]) >>> 0;
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(t0, this.roundKeys[40]));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(t1, this.roundKeys[41]));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(t2, this.roundKeys[42]));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(t3, this.roundKeys[43]));
 
       // Store output
       const b0 = OpCodes.Unpack32BE(s0);
@@ -356,31 +328,19 @@
 
     _fourRounds() {
       // Apply 4 AES rounds to state (uses T-tables)
-      let s0 = OpCodes.Pack32BE(this.state[0], this.state[1], this.state[2], this.state[3]) >>> 0;
-      let s1 = OpCodes.Pack32BE(this.state[4], this.state[5], this.state[6], this.state[7]) >>> 0;
-      let s2 = OpCodes.Pack32BE(this.state[8], this.state[9], this.state[10], this.state[11]) >>> 0;
-      let s3 = OpCodes.Pack32BE(this.state[12], this.state[13], this.state[14], this.state[15]) >>> 0;
+      let s0 = OpCodes.ToUint32(OpCodes.Pack32BE(this.state[0], this.state[1], this.state[2], this.state[3]));
+      let s1 = OpCodes.ToUint32(OpCodes.Pack32BE(this.state[4], this.state[5], this.state[6], this.state[7]));
+      let s2 = OpCodes.ToUint32(OpCodes.Pack32BE(this.state[8], this.state[9], this.state[10], this.state[11]));
+      let s3 = OpCodes.ToUint32(OpCodes.Pack32BE(this.state[12], this.state[13], this.state[14], this.state[15]));
 
       for (let r = 0; r < 4; ++r) {
-        const t0 = (TE0[(s0 >>> 24) & 0xff] ^
-                    TE1[(s1 >>> 16) & 0xff] ^
-                    TE2[(s2 >>> 8) & 0xff] ^
-                    TE3[s3 & 0xff]) >>> 0;
+        const t0 = OpCodes.Shr32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(TE0[OpCodes.And32(OpCodes.Shr32(s0, 24), 0xff)], TE1[OpCodes.And32(OpCodes.Shr32(s1, 16), 0xff)]), TE2[OpCodes.And32(OpCodes.Shr32(s2, 8), 0xff)]), TE3[OpCodes.And32(s3, 0xff)]), 0);
 
-        const t1 = (TE0[(s1 >>> 24) & 0xff] ^
-                    TE1[(s2 >>> 16) & 0xff] ^
-                    TE2[(s3 >>> 8) & 0xff] ^
-                    TE3[s0 & 0xff]) >>> 0;
+        const t1 = OpCodes.Shr32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(TE0[OpCodes.And32(OpCodes.Shr32(s1, 24), 0xff)], TE1[OpCodes.And32(OpCodes.Shr32(s2, 16), 0xff)]), TE2[OpCodes.And32(OpCodes.Shr32(s3, 8), 0xff)]), TE3[OpCodes.And32(s0, 0xff)]), 0);
 
-        const t2 = (TE0[(s2 >>> 24) & 0xff] ^
-                    TE1[(s3 >>> 16) & 0xff] ^
-                    TE2[(s0 >>> 8) & 0xff] ^
-                    TE3[s1 & 0xff]) >>> 0;
+        const t2 = OpCodes.Shr32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(TE0[OpCodes.And32(OpCodes.Shr32(s2, 24), 0xff)], TE1[OpCodes.And32(OpCodes.Shr32(s3, 16), 0xff)]), TE2[OpCodes.And32(OpCodes.Shr32(s0, 8), 0xff)]), TE3[OpCodes.And32(s1, 0xff)]), 0);
 
-        const t3 = (TE0[(s3 >>> 24) & 0xff] ^
-                    TE1[(s0 >>> 16) & 0xff] ^
-                    TE2[(s1 >>> 8) & 0xff] ^
-                    TE3[s2 & 0xff]) >>> 0;
+        const t3 = OpCodes.Shr32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(TE0[OpCodes.And32(OpCodes.Shr32(s3, 24), 0xff)], TE1[OpCodes.And32(OpCodes.Shr32(s0, 16), 0xff)]), TE2[OpCodes.And32(OpCodes.Shr32(s1, 8), 0xff)]), TE3[OpCodes.And32(s2, 0xff)]), 0);
 
         s0 = t0; s1 = t1; s2 = t2; s3 = t3;
       }
@@ -433,18 +393,18 @@
       // Process all complete 16-byte blocks
       for (let block = 0; block < numCompleteBlocks; ++block) {
         for (let i = 0; i < 16; ++i) {
-          this.state[i] ^= this.buffer[block * 16 + i];
+          this.state[i] = OpCodes.Xor32(this.state[i], this.buffer[block * 16 + i]);
         }
         this._fourRounds();
       }
 
       // Process remaining bytes (partial block, no 4 rounds)
       for (let i = 0; i < buflen; ++i) {
-        this.state[i] ^= this.buffer[numCompleteBlocks * 16 + i];
+        this.state[i] = OpCodes.Xor32(this.state[i], this.buffer[numCompleteBlocks * 16 + i]);
       }
 
       // Add padding byte 0x80 at current position
-      this.state[buflen] ^= 0x80;
+      this.state[buflen] = OpCodes.Xor32(this.state[buflen], 0x80);
 
       // Final AES encryption
       const tag = new Uint8Array(16);

@@ -44,15 +44,15 @@
 
     if (positions < 32) {
       return [
-        ((low >>> positions) | (high << (32 - positions))) >>> 0,
-        ((high >>> positions) | (low << (32 - positions))) >>> 0
+        OpCodes.Shr32(OpCodes.Or32(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, (32 - positions))), 0),
+        OpCodes.Shr32(OpCodes.Or32(OpCodes.Shr32(high, positions), OpCodes.Shl32(low, (32 - positions))), 0)
       ];
     }
 
     positions -= 32;
     return [
-      ((high >>> positions) | (low << (32 - positions))) >>> 0,
-      ((low >>> positions) | (high << (32 - positions))) >>> 0
+      OpCodes.Shr32(OpCodes.Or32(OpCodes.Shr32(high, positions), OpCodes.Shl32(low, (32 - positions))), 0),
+      OpCodes.Shr32(OpCodes.Or32(OpCodes.Shr32(low, positions), OpCodes.Shl32(high, (32 - positions))), 0)
     ];
   }
 
@@ -244,21 +244,21 @@
 
       if (shiftAmount >= 32) {
         // Shift is in high word only
-        maskHigh = (0xFFFFFFFF << (shiftAmount - 32)) >>> 0;
+        maskHigh = OpCodes.Shl32(0xFFFFFFFF, (shiftAmount - 32));
         maskLow = 0;
       } else if (shiftAmount > 0) {
         // Shift spans both words
         maskHigh = 0xFFFFFFFF;
-        maskLow = (0xFFFFFFFF << shiftAmount) >>> 0;
+        maskLow = OpCodes.Shl32(0xFFFFFFFF, shiftAmount);
       } else {
         // No shift (56 or more bits)
         maskHigh = 0xFFFFFFFF;
         maskLow = 0xFFFFFFFF;
       }
 
-      // XOR: x0 ^= (packed_buffer & mask)
-      this.S[0][1] = (this.S[0][1] ^ (bufHigh & maskHigh)) >>> 0;
-      this.S[0][0] = (this.S[0][0] ^ (bufLow & maskLow)) >>> 0;
+      // XOR: x0 ^= (packed_buffer&mask)
+      this.S[0][1] = OpCodes.Shr32(OpCodes.Xor32(this.S[0][1], OpCodes.And32(bufHigh, maskHigh)), 0);
+      this.S[0][0] = OpCodes.Shr32(OpCodes.Xor32(this.S[0][0], OpCodes.And32(bufLow, maskLow)), 0);
 
       // Squeeze 32 bytes (4 blocks of 8 bytes)
       // Reference: BouncyCastle ISAPDigest.cs DoFinal() lines 124-128
@@ -288,8 +288,8 @@
         this.buffer[4], this.buffer[5], this.buffer[6], this.buffer[7]
       );
 
-      this.S[0][1] ^= high;
-      this.S[0][0] ^= low;
+      this.S[0][1] = OpCodes.Xor32(this.S[0][1], high);
+      this.S[0][0] = OpCodes.Xor32(this.S[0][0], low);
 
       this._P12();
     }
@@ -317,50 +317,50 @@
       // This is the SAME round function used in AsconHash256
 
       // Apply constant to S2
-      this.S[2][0] = (this.S[2][0] ^ c) >>> 0;
+      this.S[2][0] = OpCodes.Xor32(this.S[2][0], c);
 
       // Pre-XOR phase
       // x0 ^= x4
-      this.S[0][0] ^= this.S[4][0]; this.S[0][1] ^= this.S[4][1];
+      this.S[0][0] = OpCodes.Xor32(this.S[0][0], this.S[4][0]); this.S[0][1] = OpCodes.Xor32(this.S[0][1], this.S[4][1]);
       // x4 ^= x3
-      this.S[4][0] ^= this.S[3][0]; this.S[4][1] ^= this.S[3][1];
+      this.S[4][0] = OpCodes.Xor32(this.S[4][0], this.S[3][0]); this.S[4][1] = OpCodes.Xor32(this.S[4][1], this.S[3][1]);
       // x2 ^= x1
-      this.S[2][0] ^= this.S[1][0]; this.S[2][1] ^= this.S[1][1];
+      this.S[2][0] = OpCodes.Xor32(this.S[2][0], this.S[1][0]); this.S[2][1] = OpCodes.Xor32(this.S[2][1], this.S[1][1]);
 
-      // S-box: Compute ~xi & xj (Chi layer from Keccak)
-      // t0 = ~x0 & x1
-      const t0_l = ((~this.S[0][0]) & this.S[1][0]) >>> 0;
-      const t0_h = ((~this.S[0][1]) & this.S[1][1]) >>> 0;
-      // t1 = ~x1 & x2
-      const t1_l = ((~this.S[1][0]) & this.S[2][0]) >>> 0;
-      const t1_h = ((~this.S[1][1]) & this.S[2][1]) >>> 0;
-      // t2 = ~x2 & x3
-      const t2_l = ((~this.S[2][0]) & this.S[3][0]) >>> 0;
-      const t2_h = ((~this.S[2][1]) & this.S[3][1]) >>> 0;
-      // t3 = ~x3 & x4
-      const t3_l = ((~this.S[3][0]) & this.S[4][0]) >>> 0;
-      const t3_h = ((~this.S[3][1]) & this.S[4][1]) >>> 0;
-      // t4 = ~x4 & x0
-      const t4_l = ((~this.S[4][0]) & this.S[0][0]) >>> 0;
-      const t4_h = ((~this.S[4][1]) & this.S[0][1]) >>> 0;
+      // S-box: Compute ~xi&xj (Chi layer from Keccak)
+      // t0 = ~x0&x1
+      const t0_l = OpCodes.Shr32(OpCodes.And32(OpCodes.Not32(this.S[0][0]), this.S[1][0]), 0);
+      const t0_h = OpCodes.Shr32(OpCodes.And32(OpCodes.Not32(this.S[0][1]), this.S[1][1]), 0);
+      // t1 = ~x1&x2
+      const t1_l = OpCodes.Shr32(OpCodes.And32(OpCodes.Not32(this.S[1][0]), this.S[2][0]), 0);
+      const t1_h = OpCodes.Shr32(OpCodes.And32(OpCodes.Not32(this.S[1][1]), this.S[2][1]), 0);
+      // t2 = ~x2&x3
+      const t2_l = OpCodes.Shr32(OpCodes.And32(OpCodes.Not32(this.S[2][0]), this.S[3][0]), 0);
+      const t2_h = OpCodes.Shr32(OpCodes.And32(OpCodes.Not32(this.S[2][1]), this.S[3][1]), 0);
+      // t3 = ~x3&x4
+      const t3_l = OpCodes.Shr32(OpCodes.And32(OpCodes.Not32(this.S[3][0]), this.S[4][0]), 0);
+      const t3_h = OpCodes.Shr32(OpCodes.And32(OpCodes.Not32(this.S[3][1]), this.S[4][1]), 0);
+      // t4 = ~x4&x0
+      const t4_l = OpCodes.Shr32(OpCodes.And32(OpCodes.Not32(this.S[4][0]), this.S[0][0]), 0);
+      const t4_h = OpCodes.Shr32(OpCodes.And32(OpCodes.Not32(this.S[4][1]), this.S[0][1]), 0);
 
       // XOR with temps
-      this.S[0][0] ^= t1_l; this.S[0][1] ^= t1_h;
-      this.S[1][0] ^= t2_l; this.S[1][1] ^= t2_h;
-      this.S[2][0] ^= t3_l; this.S[2][1] ^= t3_h;
-      this.S[3][0] ^= t4_l; this.S[3][1] ^= t4_h;
-      this.S[4][0] ^= t0_l; this.S[4][1] ^= t0_h;
+      this.S[0][0] = OpCodes.Xor32(this.S[0][0], t1_l); this.S[0][1] = OpCodes.Xor32(this.S[0][1], t1_h);
+      this.S[1][0] = OpCodes.Xor32(this.S[1][0], t2_l); this.S[1][1] = OpCodes.Xor32(this.S[1][1], t2_h);
+      this.S[2][0] = OpCodes.Xor32(this.S[2][0], t3_l); this.S[2][1] = OpCodes.Xor32(this.S[2][1], t3_h);
+      this.S[3][0] = OpCodes.Xor32(this.S[3][0], t4_l); this.S[3][1] = OpCodes.Xor32(this.S[3][1], t4_h);
+      this.S[4][0] = OpCodes.Xor32(this.S[4][0], t0_l); this.S[4][1] = OpCodes.Xor32(this.S[4][1], t0_h);
 
       // Post-XOR phase
       // x1 ^= x0
-      this.S[1][0] ^= this.S[0][0]; this.S[1][1] ^= this.S[0][1];
+      this.S[1][0] = OpCodes.Xor32(this.S[1][0], this.S[0][0]); this.S[1][1] = OpCodes.Xor32(this.S[1][1], this.S[0][1]);
       // x0 ^= x4
-      this.S[0][0] ^= this.S[4][0]; this.S[0][1] ^= this.S[4][1];
+      this.S[0][0] = OpCodes.Xor32(this.S[0][0], this.S[4][0]); this.S[0][1] = OpCodes.Xor32(this.S[0][1], this.S[4][1]);
       // x3 ^= x2
-      this.S[3][0] ^= this.S[2][0]; this.S[3][1] ^= this.S[2][1];
+      this.S[3][0] = OpCodes.Xor32(this.S[3][0], this.S[2][0]); this.S[3][1] = OpCodes.Xor32(this.S[3][1], this.S[2][1]);
       // x2 = ~x2
-      this.S[2][0] = (~this.S[2][0]) >>> 0;
-      this.S[2][1] = (~this.S[2][1]) >>> 0;
+      this.S[2][0] = OpCodes.ToUint32(OpCodes.Not32(this.S[2][0]));
+      this.S[2][1] = OpCodes.ToUint32(OpCodes.Not32(this.S[2][1]));
 
       // Linear diffusion layer
       // Need to save state before modifications
@@ -370,35 +370,35 @@
       const s3_l = this.S[3][0], s3_h = this.S[3][1];
       const s4_l = this.S[4][0], s4_h = this.S[4][1];
 
-      // x0 ^= rightRotate19_64(x0) ^ rightRotate28_64(x0)
+      // x0 ^= rightRotate19_64(x0)^rightRotate28_64(x0)
       let r0 = rotr64(s0_l, s0_h, 19);
       let r1 = rotr64(s0_l, s0_h, 28);
-      this.S[0][0] = (s0_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[0][1] = (s0_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[0][0] = OpCodes.Xor32(OpCodes.Xor32(s0_l, r0[0]), r1[0]);
+      this.S[0][1] = OpCodes.Xor32(OpCodes.Xor32(s0_h, r0[1]), r1[1]);
 
-      // x1 ^= rightRotate61_64(x1) ^ rightRotate39_64(x1)
+      // x1 ^= rightRotate61_64(x1)^rightRotate39_64(x1)
       r0 = rotr64(s1_l, s1_h, 61);
       r1 = rotr64(s1_l, s1_h, 39);
-      this.S[1][0] = (s1_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[1][1] = (s1_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[1][0] = OpCodes.Xor32(OpCodes.Xor32(s1_l, r0[0]), r1[0]);
+      this.S[1][1] = OpCodes.Xor32(OpCodes.Xor32(s1_h, r0[1]), r1[1]);
 
-      // x2 ^= rightRotate1_64(x2) ^ rightRotate6_64(x2)
+      // x2 ^= rightRotate1_64(x2)^rightRotate6_64(x2)
       r0 = rotr64(s2_l, s2_h, 1);
       r1 = rotr64(s2_l, s2_h, 6);
-      this.S[2][0] = (s2_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[2][1] = (s2_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[2][0] = OpCodes.Xor32(OpCodes.Xor32(s2_l, r0[0]), r1[0]);
+      this.S[2][1] = OpCodes.Xor32(OpCodes.Xor32(s2_h, r0[1]), r1[1]);
 
-      // x3 ^= rightRotate10_64(x3) ^ rightRotate17_64(x3)
+      // x3 ^= rightRotate10_64(x3)^rightRotate17_64(x3)
       r0 = rotr64(s3_l, s3_h, 10);
       r1 = rotr64(s3_l, s3_h, 17);
-      this.S[3][0] = (s3_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[3][1] = (s3_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[3][0] = OpCodes.Xor32(OpCodes.Xor32(s3_l, r0[0]), r1[0]);
+      this.S[3][1] = OpCodes.Xor32(OpCodes.Xor32(s3_h, r0[1]), r1[1]);
 
-      // x4 ^= rightRotate7_64(x4) ^ rightRotate41_64(x4)
+      // x4 ^= rightRotate7_64(x4)^rightRotate41_64(x4)
       r0 = rotr64(s4_l, s4_h, 7);
       r1 = rotr64(s4_l, s4_h, 41);
-      this.S[4][0] = (s4_l ^ r0[0] ^ r1[0]) >>> 0;
-      this.S[4][1] = (s4_h ^ r0[1] ^ r1[1]) >>> 0;
+      this.S[4][0] = OpCodes.Xor32(OpCodes.Xor32(s4_l, r0[0]), r1[0]);
+      this.S[4][1] = OpCodes.Xor32(OpCodes.Xor32(s4_h, r0[1]), r1[1]);
     }
   }
 

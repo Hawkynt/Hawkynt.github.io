@@ -238,7 +238,7 @@
 
         // Append message length in bits (big-endian, 64-bit)
         for (let i = 7; i >= 0; i--) {
-          this.buffer.push(OpCodes.AndN(OpCodes.Shr32(msgBitLength, i * 8), 0xFF));
+          this.buffer.push(OpCodes.ToByte(OpCodes.Shr32(msgBitLength, i * 8)));
         }
 
         // Process final block
@@ -371,7 +371,10 @@
       addRoundConstantQ(state, round) {
         // Q permutation: add round constants to the last row
         for (let col = 0; col < this.cols; col++) {
-          state[7 * this.cols + col] = OpCodes.XorN(state[7 * this.cols + col], OpCodes.XorN(0xFF, OpCodes.XorN(OpCodes.Shl32(col, 4), round)));
+          const shifted = OpCodes.Shl32(col, 4);
+          const xored = OpCodes.XorN(shifted, round);
+          const complement = OpCodes.XorN(0xFF, xored);
+          state[7 * this.cols + col] = OpCodes.XorN(state[7 * this.cols + col], complement);
         }
       }
 
@@ -458,13 +461,13 @@
             result = OpCodes.XorN(result, a);
           }
           const hiBitSet = OpCodes.AndN(a, 0x80) !== 0;
-          a = OpCodes.Shl32(a, 1);
+          a = OpCodes.ToByte(OpCodes.Shl32(a, 1));
           if (hiBitSet) {
             a = OpCodes.XorN(a, 0x1B); // AES irreducible polynomial
           }
           b = OpCodes.Shr32(b, 1);
         }
-        return OpCodes.AndN(result, 0xFF);
+        return OpCodes.ToByte(result);
       }
     }
 

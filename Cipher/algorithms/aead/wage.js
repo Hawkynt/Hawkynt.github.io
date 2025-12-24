@@ -104,11 +104,11 @@
 
   /**
    * omega(x) function: conditional XOR based on LSB
-   * If low bit is 0: x >> 1
-   * If low bit is 1: (x >> 1) ^ 0x78
+   * If low bit is 0: OpCodes.Shr32(x, 1)
+   * If low bit is 1: (OpCodes.Shr32(x, 1))^0x78
    */
   function omega(x) {
-    return OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(x, 1), OpCodes.AndN(0x78, -(OpCodes.AndN(x, 0x01)))), 0x7F);
+    return (OpCodes.Xor32(OpCodes.Shr32(x, 1), (0x78&(-(x&0x01)))))&0x7F;
   }
 
   /**
@@ -123,15 +123,15 @@
     var x4 = OpCodes.Shr32(x6, 2);
     var x5 = OpCodes.Shr32(x6, 1);
 
-    x0 = OpCodes.XorN(x0, OpCodes.AndN(x2, x3)); x3 = ~x3; x3 = OpCodes.XorN(x3, OpCodes.AndN(x5, x6)); x5 = ~x5; x5 = OpCodes.XorN(x5, OpCodes.AndN(x2, x4));
-    x6 = OpCodes.XorN(x6, OpCodes.AndN(x0, x4)); x4 = ~x4; x4 = OpCodes.XorN(x4, OpCodes.AndN(x5, x1)); x5 = ~x5; x5 = OpCodes.XorN(x5, OpCodes.AndN(x0, x2));
-    x1 = OpCodes.XorN(x1, OpCodes.AndN(x6, x2)); x2 = ~x2; x2 = OpCodes.XorN(x2, OpCodes.AndN(x5, x3)); x5 = ~x5; x5 = OpCodes.XorN(x5, OpCodes.AndN(x6, x0));
-    x3 = OpCodes.XorN(x3, OpCodes.AndN(x1, x0)); x0 = ~x0; x0 = OpCodes.XorN(x0, OpCodes.AndN(x5, x4)); x5 = ~x5; x5 = OpCodes.XorN(x5, OpCodes.AndN(x1, x6));
-    x4 = OpCodes.XorN(x4, OpCodes.AndN(x3, x6)); x6 = ~x6; x6 = OpCodes.XorN(x6, OpCodes.AndN(x5, x2)); x5 = ~x5; x5 = OpCodes.XorN(x5, OpCodes.AndN(x3, x1));
-    x2 = OpCodes.XorN(x2, OpCodes.AndN(x4, x1)); x1 = ~x1; x1 = OpCodes.XorN(x1, OpCodes.AndN(x5, x0)); x5 = ~x5; x5 = OpCodes.XorN(x5, OpCodes.AndN(x4, x3));
+    x0 = OpCodes.Xor32(x0, (x2&x3)); x3 = ~x3; x3 = OpCodes.Xor32(x3, (x5&x6)); x5 = ~x5; x5 = OpCodes.Xor32(x5, (x2&x4));
+    x6 = OpCodes.Xor32(x6, (x0&x4)); x4 = ~x4; x4 = OpCodes.Xor32(x4, (x5&x1)); x5 = ~x5; x5 = OpCodes.Xor32(x5, (x0&x2));
+    x1 = OpCodes.Xor32(x1, (x6&x2)); x2 = ~x2; x2 = OpCodes.Xor32(x2, (x5&x3)); x5 = ~x5; x5 = OpCodes.Xor32(x5, (x6&x0));
+    x3 = OpCodes.Xor32(x3, (x1&x0)); x0 = ~x0; x0 = OpCodes.Xor32(x0, (x5&x4)); x5 = ~x5; x5 = OpCodes.Xor32(x5, (x1&x6));
+    x4 = OpCodes.Xor32(x4, (x3&x6)); x6 = ~x6; x6 = OpCodes.Xor32(x6, (x5&x2)); x5 = ~x5; x5 = OpCodes.Xor32(x5, (x3&x1));
+    x2 = OpCodes.Xor32(x2, (x4&x1)); x1 = ~x1; x1 = OpCodes.Xor32(x1, (x5&x0)); x5 = ~x5; x5 = OpCodes.Xor32(x5, (x4&x3));
     x2 = ~x2; x4 = ~x4;
 
-    return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.Shl32(OpCodes.AndN(x2, 0x00010101), 6), OpCodes.Shl32(OpCodes.AndN(x6, 0x00010101), 5)), OpCodes.Shl32(OpCodes.AndN(x4, 0x00010101), 4)), OpCodes.Shl32(OpCodes.AndN(x1, 0x00010101), 3)), OpCodes.Shl32(OpCodes.AndN(x3, 0x00010101), 2)), OpCodes.Shl32(OpCodes.AndN(x5, 0x00010101), 1)), OpCodes.AndN(x0, 0x00010101)));
+    return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32((x2&0x00010101), 6), OpCodes.Shl32((x6&0x00010101), 5)), OpCodes.Shl32((x4&0x00010101), 4)), OpCodes.Shl32((x1&0x00010101), 3)), OpCodes.Shl32((x3&0x00010101), 2)), OpCodes.Shl32((x5&0x00010101), 1)), (x0&0x00010101)));
   }
 
   /**
@@ -144,53 +144,52 @@
     // Process all rounds 3 at a time to reduce state rotation overhead
     for (round = 0; round < Math.floor(NUM_ROUNDS / 3); ++round, rcIndex += 6) {
       // Calculate feedback for 3 rounds in parallel
-      // fb = omega(s[0]) ^ s[6] ^ s[8] ^ s[12] ^ s[13] ^ s[19] ^
-      //      s[24] ^ s[26] ^ s[30] ^ s[31] ^ WGP(s[36]) ^ RC1[round]
+      // fb = omega(s[0])^s[6]^s[8]^s[12]^s[13]^s[19]^//      s[24]^s[26]^s[30]^s[31]^WGP(s[36])^RC1[round]
 
       fb0 = omega(s[0]);
-      fb0 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(fb0, s[6]), s[8]), s[12]), s[13]), s[19]), s[24]), s[26]), s[30]), s[31]);
-      fb0 = OpCodes.XorN(fb0, WAGE_RC[rcIndex + 1]);
-      fb0 = OpCodes.XorN(fb0, WAGE_WGP[s[36]]);
+      fb0 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(fb0, s[6]), s[8]), s[12]), s[13]), s[19]), s[24]), s[26]), s[30]), s[31]);
+      fb0 = OpCodes.Xor32(fb0, WAGE_RC[rcIndex + 1]);
+      fb0 = OpCodes.Xor32(fb0, WAGE_WGP[s[36]]);
 
       fb1 = omega(s[1]);
-      fb1 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(fb1, s[7]), s[9]), s[13]), s[14]), s[20]), s[25]), s[27]), s[31]), s[32]);
-      fb1 = OpCodes.XorN(fb1, WAGE_RC[rcIndex + 3]);
-      fb1 = OpCodes.XorN(fb1, WAGE_WGP[fb0]);
+      fb1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(fb1, s[7]), s[9]), s[13]), s[14]), s[20]), s[25]), s[27]), s[31]), s[32]);
+      fb1 = OpCodes.Xor32(fb1, WAGE_RC[rcIndex + 3]);
+      fb1 = OpCodes.Xor32(fb1, WAGE_WGP[fb0]);
 
       fb2 = omega(s[2]);
-      fb2 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(fb2, s[8]), s[10]), s[14]), s[15]), s[21]), s[26]), s[28]), s[32]), s[33]);
-      fb2 = OpCodes.XorN(fb2, WAGE_RC[rcIndex + 5]);
-      fb2 = OpCodes.XorN(fb2, WAGE_WGP[fb1]);
+      fb2 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(fb2, s[8]), s[10]), s[14]), s[15]), s[21]), s[26]), s[28]), s[32]), s[33]);
+      fb2 = OpCodes.Xor32(fb2, WAGE_RC[rcIndex + 5]);
+      fb2 = OpCodes.Xor32(fb2, WAGE_WGP[fb1]);
 
       // Apply S-box to specific components
-      temp = OpCodes.OrN(OpCodes.OrN(s[8], OpCodes.Shl32(s[9], 8)), OpCodes.Shl32(s[10], 16));
+      temp = (s[8]|OpCodes.Shl32(s[9], 8))|OpCodes.Shl32(s[10], 16);
       temp = wagesSboxParallel3(temp);
-      s[5] = OpCodes.XorN(s[5], OpCodes.AndN(temp, 0x7F));
-      s[6] = OpCodes.XorN(s[6], OpCodes.AndN(OpCodes.Shr32(temp, 8), 0x7F));
-      s[7] = OpCodes.XorN(s[7], OpCodes.AndN(OpCodes.Shr32(temp, 16), 0x7F));
+      s[5] = OpCodes.Xor32(s[5], (temp&0x7F));
+      s[6] = OpCodes.Xor32(s[6], (OpCodes.Shr32(temp, 8)&0x7F));
+      s[7] = OpCodes.Xor32(s[7], (OpCodes.Shr32(temp, 16)&0x7F));
 
-      temp = OpCodes.OrN(OpCodes.OrN(s[15], OpCodes.Shl32(s[16], 8)), OpCodes.Shl32(s[17], 16));
+      temp = (s[15]|OpCodes.Shl32(s[16], 8))|OpCodes.Shl32(s[17], 16);
       temp = wagesSboxParallel3(temp);
-      s[11] = OpCodes.XorN(s[11], OpCodes.AndN(temp, 0x7F));
-      s[12] = OpCodes.XorN(s[12], OpCodes.AndN(OpCodes.Shr32(temp, 8), 0x7F));
-      s[13] = OpCodes.XorN(s[13], OpCodes.AndN(OpCodes.Shr32(temp, 16), 0x7F));
+      s[11] = OpCodes.Xor32(s[11], (temp&0x7F));
+      s[12] = OpCodes.Xor32(s[12], (OpCodes.Shr32(temp, 8)&0x7F));
+      s[13] = OpCodes.Xor32(s[13], (OpCodes.Shr32(temp, 16)&0x7F));
 
       // Apply WGP to s[18], s[19], s[20] with RC0
-      s[19] = OpCodes.XorN(s[19], OpCodes.XorN(WAGE_WGP[s[18]], WAGE_RC[rcIndex + 0]));
-      s[20] = OpCodes.XorN(s[20], OpCodes.XorN(WAGE_WGP[s[19]], WAGE_RC[rcIndex + 2]));
-      s[21] = OpCodes.XorN(s[21], OpCodes.XorN(WAGE_WGP[s[20]], WAGE_RC[rcIndex + 4]));
+      s[19] = OpCodes.Xor32(s[19], OpCodes.Xor32(WAGE_WGP[s[18]], WAGE_RC[rcIndex + 0]));
+      s[20] = OpCodes.Xor32(s[20], OpCodes.Xor32(WAGE_WGP[s[19]], WAGE_RC[rcIndex + 2]));
+      s[21] = OpCodes.Xor32(s[21], OpCodes.Xor32(WAGE_WGP[s[20]], WAGE_RC[rcIndex + 4]));
 
-      temp = OpCodes.OrN(OpCodes.OrN(s[27], OpCodes.Shl32(s[28], 8)), OpCodes.Shl32(s[29], 16));
+      temp = (s[27]|OpCodes.Shl32(s[28], 8))|OpCodes.Shl32(s[29], 16);
       temp = wagesSboxParallel3(temp);
-      s[24] = OpCodes.XorN(s[24], OpCodes.AndN(temp, 0x7F));
-      s[25] = OpCodes.XorN(s[25], OpCodes.AndN(OpCodes.Shr32(temp, 8), 0x7F));
-      s[26] = OpCodes.XorN(s[26], OpCodes.AndN(OpCodes.Shr32(temp, 16), 0x7F));
+      s[24] = OpCodes.Xor32(s[24], (temp&0x7F));
+      s[25] = OpCodes.Xor32(s[25], (OpCodes.Shr32(temp, 8)&0x7F));
+      s[26] = OpCodes.Xor32(s[26], (OpCodes.Shr32(temp, 16)&0x7F));
 
-      temp = OpCodes.OrN(OpCodes.OrN(s[34], OpCodes.Shl32(s[35], 8)), OpCodes.Shl32(s[36], 16));
+      temp = (s[34]|OpCodes.Shl32(s[35], 8))|OpCodes.Shl32(s[36], 16);
       temp = wagesSboxParallel3(temp);
-      s[30] = OpCodes.XorN(s[30], OpCodes.AndN(temp, 0x7F));
-      s[31] = OpCodes.XorN(s[31], OpCodes.AndN(OpCodes.Shr32(temp, 8), 0x7F));
-      s[32] = OpCodes.XorN(s[32], OpCodes.AndN(OpCodes.Shr32(temp, 16), 0x7F));
+      s[30] = OpCodes.Xor32(s[30], (temp&0x7F));
+      s[31] = OpCodes.Xor32(s[31], (OpCodes.Shr32(temp, 8)&0x7F));
+      s[32] = OpCodes.Xor32(s[32], (OpCodes.Shr32(temp, 16)&0x7F));
 
       // Rotate state by 3 positions
       for (var i = 0; i < STATE_SIZE - 3; ++i) {
@@ -211,34 +210,34 @@
     var temp;
 
     temp = OpCodes.Pack32BE(input[0], input[1], input[2], input[3]);
-    out[0] = (temp >>> 25) & 0x7F;
-    out[1] = (temp >>> 18) & 0x7F;
-    out[2] = (temp >>> 11) & 0x7F;
-    out[3] = (temp >>> 4) & 0x7F;
-    out[4] = OpCodes.AndN(OpCodes.Shl32(temp, 3), 0x7F);
+    out[0] = OpCodes.Shr32(temp, 25)&0x7F;
+    out[1] = OpCodes.Shr32(temp, 18)&0x7F;
+    out[2] = OpCodes.Shr32(temp, 11)&0x7F;
+    out[3] = OpCodes.Shr32(temp, 4)&0x7F;
+    out[4] = OpCodes.Shl32(temp, 3)&0x7F;
 
     temp = OpCodes.Pack32BE(input[4], input[5], input[6], input[7]);
-    out[4] ^= (temp >>> 29) & 0x7F;
-    out[5] = (temp >>> 22) & 0x7F;
-    out[6] = (temp >>> 15) & 0x7F;
-    out[7] = (temp >>> 8) & 0x7F;
-    out[8] = (temp >>> 1) & 0x7F;
-    out[18] = (temp << 6) & 0x7F;
+    out[4] ^= OpCodes.Shr32(temp, 29)&0x7F;
+    out[5] = OpCodes.Shr32(temp, 22)&0x7F;
+    out[6] = OpCodes.Shr32(temp, 15)&0x7F;
+    out[7] = OpCodes.Shr32(temp, 8)&0x7F;
+    out[8] = OpCodes.Shr32(temp, 1)&0x7F;
+    out[18] = OpCodes.Shl32(temp, 6)&0x7F;
 
     temp = OpCodes.Pack32BE(input[8], input[9], input[10], input[11]);
-    out[9] = (temp >>> 25) & 0x7F;
-    out[10] = (temp >>> 18) & 0x7F;
-    out[11] = (temp >>> 11) & 0x7F;
-    out[12] = (temp >>> 4) & 0x7F;
-    out[13] = (temp << 3) & 0x7F;
+    out[9] = OpCodes.Shr32(temp, 25)&0x7F;
+    out[10] = OpCodes.Shr32(temp, 18)&0x7F;
+    out[11] = OpCodes.Shr32(temp, 11)&0x7F;
+    out[12] = OpCodes.Shr32(temp, 4)&0x7F;
+    out[13] = OpCodes.Shl32(temp, 3)&0x7F;
 
     temp = OpCodes.Pack32BE(input[12], input[13], input[14], input[15]);
-    out[13] ^= (temp >>> 29) & 0x7F;
-    out[14] = (temp >>> 22) & 0x7F;
-    out[15] = (temp >>> 15) & 0x7F;
-    out[16] = (temp >>> 8) & 0x7F;
-    out[17] = (temp >>> 1) & 0x7F;
-    out[18] ^= (temp << 5) & 0x20;
+    out[13] ^= OpCodes.Shr32(temp, 29)&0x7F;
+    out[14] = OpCodes.Shr32(temp, 22)&0x7F;
+    out[15] = OpCodes.Shr32(temp, 15)&0x7F;
+    out[16] = OpCodes.Shr32(temp, 8)&0x7F;
+    out[17] = OpCodes.Shr32(temp, 1)&0x7F;
+    out[18] ^= OpCodes.Shl32(temp, 5)&0x20;
 
     return out;
   }
@@ -249,19 +248,19 @@
    */
   function wageAbsorb(s, data) {
     var temp = OpCodes.Pack32BE(data[0], data[1], data[2], data[3]);
-    s[8] ^= (temp >>> 25) & 0x7F;
-    s[9] ^= (temp >>> 18) & 0x7F;
-    s[15] ^= (temp >>> 11) & 0x7F;
-    s[16] ^= (temp >>> 4) & 0x7F;
-    s[18] ^= (temp << 3) & 0x7F;
+    s[8] ^= OpCodes.Shr32(temp, 25)&0x7F;
+    s[9] ^= OpCodes.Shr32(temp, 18)&0x7F;
+    s[15] ^= OpCodes.Shr32(temp, 11)&0x7F;
+    s[16] ^= OpCodes.Shr32(temp, 4)&0x7F;
+    s[18] ^= OpCodes.Shl32(temp, 3)&0x7F;
 
     temp = OpCodes.Pack32BE(data[4], data[5], data[6], data[7]);
-    s[18] ^= (temp >>> 29) & 0x7F;
-    s[27] ^= (temp >>> 22) & 0x7F;
-    s[28] ^= (temp >>> 15) & 0x7F;
-    s[34] ^= (temp >>> 8) & 0x7F;
-    s[35] ^= (temp >>> 1) & 0x7F;
-    s[36] ^= (temp << 6) & 0x7F;
+    s[18] ^= OpCodes.Shr32(temp, 29)&0x7F;
+    s[27] ^= OpCodes.Shr32(temp, 22)&0x7F;
+    s[28] ^= OpCodes.Shr32(temp, 15)&0x7F;
+    s[34] ^= OpCodes.Shr32(temp, 8)&0x7F;
+    s[35] ^= OpCodes.Shr32(temp, 1)&0x7F;
+    s[36] ^= OpCodes.Shl32(temp, 6)&0x7F;
   }
 
   /**
@@ -271,15 +270,15 @@
     var data = new Array(8);
     var temp;
 
-    temp = (s[8] << 25) | (s[9] << 18) | (s[15] << 11) | (s[16] << 4) | (s[18] >>> 3);
-    var bytes = OpCodes.Unpack32BE(temp >>> 0);
+    temp = (OpCodes.Shl32(s[8], 25))|(OpCodes.Shl32(s[9], 18))|(OpCodes.Shl32(s[15], 11))|(OpCodes.Shl32(s[16], 4))|(OpCodes.Shr32(s[18], 3));
+    var bytes = OpCodes.Unpack32BE(OpCodes.ToUint32(temp));
     data[0] = bytes[0];
     data[1] = bytes[1];
     data[2] = bytes[2];
     data[3] = bytes[3];
 
-    temp = (s[18] << 29) | (s[27] << 22) | (s[28] << 15) | (s[34] << 8) | (s[35] << 1) | (s[36] >>> 6);
-    bytes = OpCodes.Unpack32BE(temp >>> 0);
+    temp = (OpCodes.Shl32(s[18], 29))|(OpCodes.Shl32(s[27], 22))|(OpCodes.Shl32(s[28], 15))|(OpCodes.Shl32(s[34], 8))|(OpCodes.Shl32(s[35], 1))|(OpCodes.Shr32(s[36], 6));
+    bytes = OpCodes.Unpack32BE(OpCodes.ToUint32(temp));
     data[4] = bytes[0];
     data[5] = bytes[1];
     data[6] = bytes[2];
@@ -293,19 +292,19 @@
    */
   function wageSetRate(s, data) {
     var temp = OpCodes.Pack32BE(data[0], data[1], data[2], data[3]);
-    s[8] = (temp >>> 25) & 0x7F;
-    s[9] = (temp >>> 18) & 0x7F;
-    s[15] = (temp >>> 11) & 0x7F;
-    s[16] = (temp >>> 4) & 0x7F;
-    s[18] = (temp << 3) & 0x7F;
+    s[8] = OpCodes.Shr32(temp, 25)&0x7F;
+    s[9] = OpCodes.Shr32(temp, 18)&0x7F;
+    s[15] = OpCodes.Shr32(temp, 11)&0x7F;
+    s[16] = OpCodes.Shr32(temp, 4)&0x7F;
+    s[18] = OpCodes.Shl32(temp, 3)&0x7F;
 
     temp = OpCodes.Pack32BE(data[4], data[5], data[6], data[7]);
-    s[18] ^= (temp >>> 29) & 0x7F;
-    s[27] = (temp >>> 22) & 0x7F;
-    s[28] = (temp >>> 15) & 0x7F;
-    s[34] = (temp >>> 8) & 0x7F;
-    s[35] = (temp >>> 1) & 0x7F;
-    s[36] = ((temp << 6) & 0x40) ^ (s[36] & 0x3F);
+    s[18] ^= OpCodes.Shr32(temp, 29)&0x7F;
+    s[27] = OpCodes.Shr32(temp, 22)&0x7F;
+    s[28] = OpCodes.Shr32(temp, 15)&0x7F;
+    s[34] = OpCodes.Shr32(temp, 8)&0x7F;
+    s[35] = OpCodes.Shr32(temp, 1)&0x7F;
+    s[36] = OpCodes.Xor32((OpCodes.Shl32(temp, 6)&0x40), (s[36]&0x3F));
   }
 
   /**
@@ -324,7 +323,7 @@
     s[28] ^= components[6];
     s[34] ^= components[7];
     s[35] ^= components[8];
-    s[36] ^= components[18] & 0x40;
+    s[36] ^= components[18]&0x40;
     wagePermute(s);
 
     // Second absorption
@@ -337,7 +336,7 @@
     s[28] ^= components[15];
     s[34] ^= components[16];
     s[35] ^= components[17];
-    s[36] ^= (components[18] << 1) & 0x40;
+    s[36] ^= (OpCodes.Shl32(components[18], 1))&0x40;
     wagePermute(s);
   }
 
@@ -380,7 +379,7 @@
     s[15] = nonceComponents[13];
     s[16] = nonceComponents[17];
     s[17] = nonceComponents[15];
-    s[18] ^= (nonceComponents[18] >>> 2) & 0x1F;
+    s[18] ^= OpCodes.Shr32(nonceComponents[18], 2)&0x1F;
     s[28] = nonceComponents[0];
     s[29] = nonceComponents[2];
     s[30] = nonceComponents[4];
@@ -413,32 +412,32 @@
       components[i * 2] = s[28 + i];
       components[i * 2 + 1] = s[9 + i];
     }
-    components[18] = (s[18] << 2) & 0x60;
+    components[18] = (OpCodes.Shl32(s[18], 2))&0x60;
 
     // Convert components to bytes
-    temp = (components[0] << 25) | (components[1] << 18) | (components[2] << 11) | (components[3] << 4) | (components[4] >>> 3);
-    var bytes = OpCodes.Unpack32BE(temp >>> 0);
+    temp = (OpCodes.Shl32(components[0], 25))|(OpCodes.Shl32(components[1], 18))|(OpCodes.Shl32(components[2], 11))|(OpCodes.Shl32(components[3], 4))|(OpCodes.Shr32(components[4], 3));
+    var bytes = OpCodes.Unpack32BE(OpCodes.ToUint32(temp));
     tag[0] = bytes[0];
     tag[1] = bytes[1];
     tag[2] = bytes[2];
     tag[3] = bytes[3];
 
-    temp = (components[4] << 29) | (components[5] << 22) | (components[6] << 15) | (components[7] << 8) | (components[8] << 1) | (components[9] >>> 6);
-    bytes = OpCodes.Unpack32BE(temp >>> 0);
+    temp = (OpCodes.Shl32(components[4], 29))|(OpCodes.Shl32(components[5], 22))|(OpCodes.Shl32(components[6], 15))|(OpCodes.Shl32(components[7], 8))|(OpCodes.Shl32(components[8], 1))|(OpCodes.Shr32(components[9], 6));
+    bytes = OpCodes.Unpack32BE(OpCodes.ToUint32(temp));
     tag[4] = bytes[0];
     tag[5] = bytes[1];
     tag[6] = bytes[2];
     tag[7] = bytes[3];
 
-    temp = (components[9] << 26) | (components[10] << 19) | (components[11] << 12) | (components[12] << 5) | (components[13] >>> 2);
-    bytes = OpCodes.Unpack32BE(temp >>> 0);
+    temp = (OpCodes.Shl32(components[9], 26))|(OpCodes.Shl32(components[10], 19))|(OpCodes.Shl32(components[11], 12))|(OpCodes.Shl32(components[12], 5))|(OpCodes.Shr32(components[13], 2));
+    bytes = OpCodes.Unpack32BE(OpCodes.ToUint32(temp));
     tag[8] = bytes[0];
     tag[9] = bytes[1];
     tag[10] = bytes[2];
     tag[11] = bytes[3];
 
-    temp = (components[13] << 30) | (components[14] << 23) | (components[15] << 16) | (components[16] << 9) | (components[17] << 2) | (components[18] >>> 5);
-    bytes = OpCodes.Unpack32BE(temp >>> 0);
+    temp = (OpCodes.Shl32(components[13], 30))|(OpCodes.Shl32(components[14], 23))|(OpCodes.Shl32(components[15], 16))|(OpCodes.Shl32(components[16], 9))|(OpCodes.Shl32(components[17], 2))|(OpCodes.Shr32(components[18], 5));
+    bytes = OpCodes.Unpack32BE(OpCodes.ToUint32(temp));
     tag[12] = bytes[0];
     tag[13] = bytes[1];
     tag[14] = bytes[2];
@@ -695,7 +694,7 @@
       // Process full blocks
       while (adlen >= RATE_SIZE) {
         wageAbsorb(this.state, ad.slice(offset, offset + RATE_SIZE));
-        this.state[0] = OpCodes.XorN(this.state[0], 0x40);  // Domain separation for AD
+        this.state[0] = OpCodes.Xor32(this.state[0], 0x40);  // Domain separation for AD
         wagePermute(this.state);
         offset += RATE_SIZE;
         adlen -= RATE_SIZE;
@@ -710,7 +709,7 @@
         pad[i] = 0;
       }
       wageAbsorb(this.state, pad);
-      this.state[0] = OpCodes.XorN(this.state[0], 0x40);  // Domain separation for AD
+      this.state[0] = OpCodes.Xor32(this.state[0], 0x40);  // Domain separation for AD
       wagePermute(this.state);
     }
 
@@ -757,10 +756,10 @@
       while (mlen >= RATE_SIZE) {
         rate = wageGetRate(this.state);
         for (var i = 0; i < RATE_SIZE; ++i) {
-          block[i] = OpCodes.XorN(rate[i], this.inputBuffer[offset + i]);
+          block[i] = OpCodes.Xor32(rate[i], this.inputBuffer[offset + i]);
         }
         wageSetRate(this.state, block);
-        this.state[0] = OpCodes.XorN(this.state[0], 0x20);  // Domain separation for message
+        this.state[0] = OpCodes.Xor32(this.state[0], 0x20);  // Domain separation for message
         wagePermute(this.state);
         output.push.apply(output, block);
         offset += RATE_SIZE;
@@ -770,14 +769,14 @@
       // Process final block with padding
       rate = wageGetRate(this.state);
       for (var i = 0; i < mlen; ++i) {
-        block[i] = OpCodes.XorN(rate[i], this.inputBuffer[offset + i]);
+        block[i] = OpCodes.Xor32(rate[i], this.inputBuffer[offset + i]);
       }
       for (var i = mlen; i < RATE_SIZE; ++i) {
         block[i] = rate[i];
       }
-      block[mlen] = OpCodes.XorN(block[mlen], 0x80);  // Padding marker
+      block[mlen] = OpCodes.Xor32(block[mlen], 0x80);  // Padding marker
       wageSetRate(this.state, block);
-      this.state[0] = OpCodes.XorN(this.state[0], 0x20);  // Domain separation for message
+      this.state[0] = OpCodes.Xor32(this.state[0], 0x20);  // Domain separation for message
       wagePermute(this.state);
       for (var i = 0; i < mlen; ++i) {
         output.push(block[i]);
@@ -812,10 +811,10 @@
       while (clen >= RATE_SIZE) {
         rate = wageGetRate(this.state);
         for (var i = 0; i < RATE_SIZE; ++i) {
-          block[i] = OpCodes.XorN(rate[i], this.inputBuffer[offset + i]);
+          block[i] = OpCodes.Xor32(rate[i], this.inputBuffer[offset + i]);
         }
         wageSetRate(this.state, this.inputBuffer.slice(offset, offset + RATE_SIZE));
-        this.state[0] = OpCodes.XorN(this.state[0], 0x20);  // Domain separation for message
+        this.state[0] = OpCodes.Xor32(this.state[0], 0x20);  // Domain separation for message
         wagePermute(this.state);
         output.push.apply(output, block);
         offset += RATE_SIZE;
@@ -825,15 +824,15 @@
       // Process final block with padding
       rate = wageGetRate(this.state);
       for (var i = 0; i < clen; ++i) {
-        block2[i] = OpCodes.XorN(rate[i], this.inputBuffer[offset + i]);
+        block2[i] = OpCodes.Xor32(rate[i], this.inputBuffer[offset + i]);
         block[i] = this.inputBuffer[offset + i];
       }
       for (var i = clen; i < RATE_SIZE; ++i) {
         block[i] = rate[i];
       }
-      block[clen] = OpCodes.XorN(block[clen], 0x80);  // Padding marker
+      block[clen] = OpCodes.Xor32(block[clen], 0x80);  // Padding marker
       wageSetRate(this.state, block);
-      this.state[0] = OpCodes.XorN(this.state[0], 0x20);  // Domain separation for message
+      this.state[0] = OpCodes.Xor32(this.state[0], 0x20);  // Domain separation for message
       wagePermute(this.state);
       for (var i = 0; i < clen; ++i) {
         output.push(block2[i]);

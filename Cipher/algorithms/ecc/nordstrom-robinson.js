@@ -193,7 +193,7 @@
 
       for (let msg = 0; msg < 32; ++msg) {
         const rmWord = this.rmEncode(msg);
-        const codeword = rmWord.map((bit, i) => bit ^ cosetLeader[i]);
+        const codeword = rmWord.map((bit, i) => OpCodes.Xor32(bit, cosetLeader[i]));
         codebook.push({ message: msg + 32, codeword: codeword, coset: 1 });
       }
 
@@ -201,7 +201,7 @@
       const cosetLeader2 = [0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1];
       for (let msg = 0; msg < 32; ++msg) {
         const rmWord = this.rmEncode(msg);
-        const codeword = rmWord.map((bit, i) => bit ^ cosetLeader2[i]);
+        const codeword = rmWord.map((bit, i) => OpCodes.Xor32(bit, cosetLeader2[i]));
         codebook.push({ message: msg + 64, codeword: codeword, coset: 2 });
       }
 
@@ -209,7 +209,7 @@
       const cosetLeader3 = [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1];
       for (let msg = 0; msg < 32; ++msg) {
         const rmWord = this.rmEncode(msg);
-        const codeword = rmWord.map((bit, i) => bit ^ cosetLeader3[i]);
+        const codeword = rmWord.map((bit, i) => OpCodes.Xor32(bit, cosetLeader3[i]));
         codebook.push({ message: msg + 96, codeword: codeword, coset: 3 });
       }
 
@@ -217,7 +217,7 @@
       const cosetLeader4 = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1];
       for (let msg = 0; msg < 32; ++msg) {
         const rmWord = this.rmEncode(msg);
-        const codeword = rmWord.map((bit, i) => bit ^ cosetLeader4[i]);
+        const codeword = rmWord.map((bit, i) => OpCodes.Xor32(bit, cosetLeader4[i]));
         codebook.push({ message: msg + 128, codeword: codeword, coset: 4 });
       }
 
@@ -225,7 +225,7 @@
       const cosetLeader5 = [0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0];
       for (let msg = 0; msg < 32; ++msg) {
         const rmWord = this.rmEncode(msg);
-        const codeword = rmWord.map((bit, i) => bit ^ cosetLeader5[i]);
+        const codeword = rmWord.map((bit, i) => OpCodes.Xor32(bit, cosetLeader5[i]));
         codebook.push({ message: msg + 160, codeword: codeword, coset: 5 });
       }
 
@@ -233,7 +233,7 @@
       const cosetLeader6 = [0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0];
       for (let msg = 0; msg < 32; ++msg) {
         const rmWord = this.rmEncode(msg);
-        const codeword = rmWord.map((bit, i) => bit ^ cosetLeader6[i]);
+        const codeword = rmWord.map((bit, i) => OpCodes.Xor32(bit, cosetLeader6[i]));
         codebook.push({ message: msg + 192, codeword: codeword, coset: 6 });
       }
 
@@ -241,7 +241,7 @@
       const cosetLeader7 = [0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0];
       for (let msg = 0; msg < 32; ++msg) {
         const rmWord = this.rmEncode(msg);
-        const codeword = rmWord.map((bit, i) => bit ^ cosetLeader7[i]);
+        const codeword = rmWord.map((bit, i) => OpCodes.Xor32(bit, cosetLeader7[i]));
         codebook.push({ message: msg + 224, codeword: codeword, coset: 7 });
       }
 
@@ -256,18 +256,18 @@
       const codeword = new Array(n).fill(0);
 
       // Constant term
-      if (msg & 1) {
+      if ((msg&1) !== 0) {
         for (let i = 0; i < n; ++i) {
-          codeword[i] ^= 1;
+          codeword[i] = codeword[i]^1;
         }
       }
 
       // Linear terms
       for (let var_idx = 0; var_idx < m; ++var_idx) {
-        if ((msg >> (var_idx + 1)) & 1) {
+        if ((OpCodes.Shr32(msg, (var_idx + 1))&1) !== 0) {
           for (let i = 0; i < n; ++i) {
-            if ((i >> (m - 1 - var_idx)) & 1) {
-              codeword[i] ^= 1;
+            if ((OpCodes.Shr32(i, (m - 1 - var_idx))&1) !== 0) {
+              codeword[i] = codeword[i]^1;
             }
           }
         }
@@ -284,7 +284,7 @@
       // Convert 8-bit data to 8-bit index (0-255)
       let index = 0;
       for (let i = 0; i < 8; ++i) {
-        index = (index << 1) | data[i];
+        index = OpCodes.ToUint32(OpCodes.Shl32(index, 1)+(data[i]&1));
       }
 
       if (index >= this.codebook.length) {
@@ -320,8 +320,8 @@
       // Convert index back to 8-bit array
       const decoded = new Array(8);
       for (let i = 7; i >= 0; --i) {
-        decoded[i] = bestIndex & 1;
-        bestIndex >>= 1;
+        decoded[i] = bestIndex&1;
+        bestIndex = OpCodes.Shr32(bestIndex, 1);
       }
 
       return decoded;

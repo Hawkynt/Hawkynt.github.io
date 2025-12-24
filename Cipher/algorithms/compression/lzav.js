@@ -211,7 +211,7 @@
         }
 
         if (bestLen >= this.MIN_MATCH) {
-          // Encode match: [0x80 | length] [distance_low] [distance_high]
+          // Encode match: [0x80|length] [distance_low] [distance_high]
           output.push(OpCodes.ToByte(OpCodes.OrN(0x80, bestLen)));
           const [low, high] = OpCodes.Unpack16LE(bestDist);
           output.push(low);

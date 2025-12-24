@@ -70,14 +70,14 @@
 
     // Mill-to-belt feedforward: b(12)f[c+c%3*h]^=e[c+1]
     for (let c = 0; c < 12; c++) {
-      this.f[c + (c % 3) * this.h] = OpCodes.ToUint32(OpCodes.XorN(this.f[c + (c % 3) * this.h], this.e[c + 1]));
+      this.f[c + (c % 3) * this.h] = OpCodes.Xor32(this.f[c + (c % 3) * this.h], this.e[c + 1]);
     }
 
     // Mill transformation: b(g){i=c*7%g;k=e[i++];k^=e[i%g]|~e[(i+1)%g];j+=c;n[c]=n[c+g]=k>>j%32|k<<-j%32;}
     for (let c = 0; c < this.g; c++) {
       let i = (c * 7) % this.g;
       let k = this.e[i++];
-      k = OpCodes.ToUint32(OpCodes.XorN(k, OpCodes.OrN(this.e[i % this.g], OpCodes.ToUint32(~this.e[(i + 1) % this.g]))));
+      k = OpCodes.ToUint32(OpCodes.Xor32(k, OpCodes.Or32(this.e[i % this.g], OpCodes.Not32(this.e[(i + 1) % this.g]))));
       j += c;
       const rot = j % 32;
       // Use OpCodes for rotation: k>>j%32|k<<-j%32 means rotate right by j%32
@@ -89,18 +89,18 @@
     // So it processes i=38,37,...,1,0
     for (let i = 39; i > 0; i--) {
       const idx = i - 1; // After decrement
-      this.e[idx] = OpCodes.ToUint32(OpCodes.XorN(this.n[idx], OpCodes.XorN(this.n[idx + 1], this.n[idx + 4])));
+      this.e[idx] = OpCodes.Xor32(OpCodes.Xor32(this.n[idx], this.n[idx + 1]), this.n[idx + 4]);
       this.f[i] = this.f[idx]; // f[i+1] = f[i] where i is the decremented value
     }
 
     // Belt-to-mill feedforward: b(3)e[c+h]^=f[c*h]=f[c*h+h]
     for (let c = 0; c < 3; c++) {
       this.f[c * this.h] = this.f[c * this.h + this.h];
-      this.e[c + this.h] = OpCodes.ToUint32(OpCodes.XorN(this.e[c + this.h], this.f[c * this.h]));
+      this.e[c + this.h] = OpCodes.Xor32(this.e[c + this.h], this.f[c * this.h]);
     }
 
     // Iota: *e^=1
-    this.e[0] = OpCodes.ToUint32(OpCodes.XorN(this.e[0], 1));
+    this.e[0] = OpCodes.Xor32(this.e[0], 1);
   };
 
   RadioGatunHasher.prototype.update = function(data) {
@@ -136,7 +136,7 @@
       // Extract 4 bytes from alternating words
       for (let bytePos = 0; bytePos < 4 && outputOffset < outputBytes; bytePos++) {
         const wordIndex = 1 + (wordSelect % 2); // alternates between e[1] and e[2]
-        const byte = OpCodes.AndN(OpCodes.Shr32(this.e[wordIndex], 8 * bytePos), 255);
+        const byte = OpCodes.And32(OpCodes.Shr32(this.e[wordIndex], 8 * bytePos), 255);
         output[outputOffset++] = byte;
       }
       // After odd iterations (wordSelect % 2 == 1), run mill
@@ -149,7 +149,7 @@
   };
 
   RadioGatunHasher.prototype.processAllInput = function() {
-    // C: for(;;m()){b(3){for(j=0;j<4;){f[c*h]^=k=(*q?255&*q:1)<<8*j++;e[c+16]^=k;if(!*q++){b(18)m();return;}}}}
+    // C: for(;;m()){b(3){for(j=0;j<4;){f[c*h]^=k=OpCodes.Shl32((*q?255&*q:1), 8)*j++;e[c+16]^=k;if(!*q++){b(18)m();return;}}}}
     // CRITICAL: for(;;m()) means m() is in INCREMENT section - runs AFTER body, not before!
 
     let inputPos = 0;
@@ -163,18 +163,18 @@
           let hitEnd = false;
 
           if (inputPos < this.buffer.length) {
-            byte = OpCodes.AndN(this.buffer[inputPos], 0xFF);
+            byte = OpCodes.And32(this.buffer[inputPos], 0xFF);
           } else {
             byte = 1; // Padding
             hitEnd = true;
           }
 
           // k = byte << (8*j)
-          let k = OpCodes.ToUint32(OpCodes.Shl32(byte, 8 * j));
+          let k = OpCodes.Shl32(byte, 8 * j);
 
           // f[c*h]^=k; e[c+16]^=k;
-          this.f[c * this.h] = OpCodes.ToUint32(OpCodes.XorN(this.f[c * this.h], k));
-          this.e[c + 16] = OpCodes.ToUint32(OpCodes.XorN(this.e[c + 16], k));
+          this.f[c * this.h] = OpCodes.Xor32(this.f[c * this.h], k);
+          this.e[c + 16] = OpCodes.Xor32(this.e[c + 16], k);
 
           // if(!*q++) - if we just read end, do blank rounds and return
           if (hitEnd) {

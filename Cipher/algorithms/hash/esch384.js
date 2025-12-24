@@ -66,25 +66,25 @@
    * @returns {Object} {x, y} - Updated block halves
    */
   function alzette(x, y, k) {
-    // Step 1: x += ROL1(y), y ^= ROL8(x), x ^= k
-    x = (x + OpCodes.RotL32(y, 1)) >>> 0;
-    y = (y ^ OpCodes.RotL32(x, 8)) >>> 0;
-    x = (x ^ k) >>> 0;
+    // Step 1: x += ROL1(y), y XOR= ROL8(x), x XOR= k
+    x = OpCodes.ToUint32(x + OpCodes.RotL32(y, 1));
+    y = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.RotL32(x, 8)));
+    x = OpCodes.Xor32(x, k);
 
-    // Step 2: x += ROL15(y), y ^= ROL15(x), x ^= k
-    x = (x + OpCodes.RotL32(y, 15)) >>> 0;
-    y = (y ^ OpCodes.RotL32(x, 15)) >>> 0;
-    x = (x ^ k) >>> 0;
+    // Step 2: x += ROL15(y), y XOR= ROL15(x), x XOR= k
+    x = OpCodes.ToUint32(x + OpCodes.RotL32(y, 15));
+    y = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.RotL32(x, 15)));
+    x = OpCodes.Xor32(x, k);
 
-    // Step 3: x += y, y ^= ROL1(x), x ^= k
-    x = (x + y) >>> 0;
-    y = (y ^ OpCodes.RotL32(x, 1)) >>> 0;
-    x = (x ^ k) >>> 0;
+    // Step 3: x += y, y XOR= ROL1(x), x XOR= k
+    x = OpCodes.ToUint32(x + y);
+    y = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.RotL32(x, 1)));
+    x = OpCodes.Xor32(x, k);
 
-    // Step 4: x += ROL8(y), y ^= ROL16(x), x ^= k
-    x = (x + OpCodes.RotL32(y, 8)) >>> 0;
-    y = (y ^ OpCodes.RotL32(x, 16)) >>> 0;
-    x = (x ^ k) >>> 0;
+    // Step 4: x += ROL8(y), y XOR= ROL16(x), x XOR= k
+    x = OpCodes.ToUint32(x + OpCodes.RotL32(y, 8));
+    y = OpCodes.ToUint32(OpCodes.Xor32(y, OpCodes.RotL32(x, 16)));
+    x = OpCodes.Xor32(x, k);
 
     return { x: x, y: y };
   }
@@ -121,8 +121,8 @@
     // Perform all steps
     for (let step = 0; step < steps; ++step) {
       // Add round constants
-      y0 = (y0 ^ SPARKLE_RC[step]) >>> 0;
-      y1 = (y1 ^ step) >>> 0;
+      y0 = OpCodes.ToUint32(OpCodes.Xor32(y0, SPARKLE_RC[step]));
+      y1 = OpCodes.ToUint32(OpCodes.Xor32(y1, step));
 
       // ARXbox layer - apply Alzette to each branch
       result = alzette(x0, y0, RC_0);
@@ -150,59 +150,59 @@
       x7 = result.x; y7 = result.y;
 
       // Linear layer - diffusion step
-      // tx = x0 ^ x1 ^ x2 ^ x3; ty = y0 ^ y1 ^ y2 ^ y3
-      tx = (x0 ^ x1 ^ x2 ^ x3) >>> 0;
-      ty = (y0 ^ y1 ^ y2 ^ y3) >>> 0;
+      // tx = x0 XOR x1 XOR x2 XOR x3; ty = y0 XOR y1 XOR y2 XOR y3
+      tx = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(x0, x1), x2), x3));
+      ty = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y0, y1), y2), y3));
 
       // Apply Feistel-like transformation
-      tx = leftRotate16(tx ^ (tx << 16));
-      ty = leftRotate16(ty ^ (ty << 16));
+      tx = leftRotate16(OpCodes.Xor32(tx, OpCodes.Shl32(tx, 16)));
+      ty = leftRotate16(OpCodes.Xor32(ty, OpCodes.Shl32(ty, 16)));
 
       // Save original values before modification
       const origY0 = y0, origY1 = y1, origY2 = y2, origY3 = y3, origY7 = y7;
       const origX0 = x0, origX1 = x1, origX2 = x2, origX3 = x3, origX7 = x7;
 
       // Modify y4, y5, y6 in place, then update tx
-      y4 = (y4 ^ tx) >>> 0;
-      y5 = (y5 ^ tx) >>> 0;
-      y6 = (y6 ^ tx) >>> 0;
-      tx = (tx ^ origY7) >>> 0;
+      y4 = OpCodes.ToUint32(OpCodes.Xor32(y4, tx));
+      y5 = OpCodes.ToUint32(OpCodes.Xor32(y5, tx));
+      y6 = OpCodes.ToUint32(OpCodes.Xor32(y6, tx));
+      tx = OpCodes.ToUint32(OpCodes.Xor32(tx, origY7));
 
       // Now do the permutation with modified y4/y5/y6
       y7 = origY3;
-      y3 = (y4 ^ origY0) >>> 0;  // Uses modified y4
+      y3 = OpCodes.ToUint32(OpCodes.Xor32(y4, origY0));  // Uses modified y4
       y4 = origY0;
-      y0 = (y5 ^ origY1) >>> 0;  // Uses modified y5
+      y0 = OpCodes.ToUint32(OpCodes.Xor32(y5, origY1));  // Uses modified y5
       y5 = origY1;
-      y1 = (y6 ^ origY2) >>> 0;  // Uses modified y6
+      y1 = OpCodes.ToUint32(OpCodes.Xor32(y6, origY2));  // Uses modified y6
       y6 = origY2;
-      y2 = (tx ^ y7) >>> 0;  // Uses modified tx and y7
+      y2 = OpCodes.ToUint32(OpCodes.Xor32(tx, y7));  // Uses modified tx and y7
 
       // Same for x branch
-      x4 = (x4 ^ ty) >>> 0;
-      x5 = (x5 ^ ty) >>> 0;
-      x6 = (x6 ^ ty) >>> 0;
-      ty = (ty ^ origX7) >>> 0;
+      x4 = OpCodes.ToUint32(OpCodes.Xor32(x4, ty));
+      x5 = OpCodes.ToUint32(OpCodes.Xor32(x5, ty));
+      x6 = OpCodes.ToUint32(OpCodes.Xor32(x6, ty));
+      ty = OpCodes.ToUint32(OpCodes.Xor32(ty, origX7));
 
       x7 = origX3;
-      x3 = (x4 ^ origX0) >>> 0;  // Uses modified x4
+      x3 = OpCodes.ToUint32(OpCodes.Xor32(x4, origX0));  // Uses modified x4
       x4 = origX0;
-      x0 = (x5 ^ origX1) >>> 0;  // Uses modified x5
+      x0 = OpCodes.ToUint32(OpCodes.Xor32(x5, origX1));  // Uses modified x5
       x5 = origX1;
-      x1 = (x6 ^ origX2) >>> 0;  // Uses modified x6
+      x1 = OpCodes.ToUint32(OpCodes.Xor32(x6, origX2));  // Uses modified x6
       x6 = origX2;
-      x2 = (ty ^ x7) >>> 0;  // Uses modified ty and x7
+      x2 = OpCodes.ToUint32(OpCodes.Xor32(ty, x7));  // Uses modified ty and x7
     }
 
     // Store state back
-    s[0] = x0 >>> 0;  s[1] = y0 >>> 0;
-    s[2] = x1 >>> 0;  s[3] = y1 >>> 0;
-    s[4] = x2 >>> 0;  s[5] = y2 >>> 0;
-    s[6] = x3 >>> 0;  s[7] = y3 >>> 0;
-    s[8] = x4 >>> 0;  s[9] = y4 >>> 0;
-    s[10] = x5 >>> 0; s[11] = y5 >>> 0;
-    s[12] = x6 >>> 0; s[13] = y6 >>> 0;
-    s[14] = x7 >>> 0; s[15] = y7 >>> 0;
+    s[0] = OpCodes.ToUint32(x0);  s[1] = OpCodes.ToUint32(y0);
+    s[2] = OpCodes.ToUint32(x1);  s[3] = OpCodes.ToUint32(y1);
+    s[4] = OpCodes.ToUint32(x2);  s[5] = OpCodes.ToUint32(y2);
+    s[6] = OpCodes.ToUint32(x3);  s[7] = OpCodes.ToUint32(y3);
+    s[8] = OpCodes.ToUint32(x4);  s[9] = OpCodes.ToUint32(y4);
+    s[10] = OpCodes.ToUint32(x5); s[11] = OpCodes.ToUint32(y5);
+    s[12] = OpCodes.ToUint32(x6); s[13] = OpCodes.ToUint32(y6);
+    s[14] = OpCodes.ToUint32(x7); s[15] = OpCodes.ToUint32(y7);
   }
 
   /**
@@ -213,30 +213,30 @@
    * @param {number} domain - Domain separator (0x00, 0x01, or 0x02)
    */
   function esch_384_m4(s, block, domain) {
-    // tx = block[0] ^ block[2]; ty = block[1] ^ block[3]
-    let tx = (block[0] ^ block[2]) >>> 0;
-    let ty = (block[1] ^ block[3]) >>> 0;
+    // tx = block[0] XOR block[2]; ty = block[1] XOR block[3]
+    let tx = OpCodes.ToUint32(OpCodes.Xor32(block[0], block[2]));
+    let ty = OpCodes.ToUint32(OpCodes.Xor32(block[1], block[3]));
 
-    // Apply Feistel transformation: tx = ROL16(tx ^ (tx << 16))
-    tx = leftRotate16(tx ^ (tx << 16));
-    ty = leftRotate16(ty ^ (ty << 16));
+    // Apply Feistel transformation: tx = ROL16(tx XOR left shift tx by 16)
+    tx = leftRotate16(OpCodes.Xor32(tx, OpCodes.Shl32(tx, 16)));
+    ty = leftRotate16(OpCodes.Xor32(ty, OpCodes.Shl32(ty, 16)));
 
     // Mix into state (M4 mixes into 8 state words instead of 6)
-    s[0] = (s[0] ^ block[0] ^ ty) >>> 0;
-    s[1] = (s[1] ^ block[1] ^ tx) >>> 0;
-    s[2] = (s[2] ^ block[2] ^ ty) >>> 0;
-    s[3] = (s[3] ^ block[3] ^ tx) >>> 0;
+    s[0] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(s[0], block[0]), ty));
+    s[1] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(s[1], block[1]), tx));
+    s[2] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(s[2], block[2]), ty));
+    s[3] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(s[3], block[3]), tx));
 
     // Add domain separator to s[7] if non-zero
     if (domain !== 0) {
-      // DOMAIN macro: value << 24 for little-endian
-      s[7] = (s[7] ^ (domain << 24)) >>> 0;
+      // DOMAIN macro: OpCodes.Shl32(value, 24) for little-endian
+      s[7] = OpCodes.ToUint32(OpCodes.Xor32(s[7], OpCodes.Shl32(domain, 24)));
     }
 
-    s[4] = (s[4] ^ ty) >>> 0;
-    s[5] = (s[5] ^ tx) >>> 0;
-    s[6] = (s[6] ^ ty) >>> 0;
-    s[7] = (s[7] ^ tx) >>> 0;
+    s[4] = OpCodes.ToUint32(OpCodes.Xor32(s[4], ty));
+    s[5] = OpCodes.ToUint32(OpCodes.Xor32(s[5], tx));
+    s[6] = OpCodes.ToUint32(OpCodes.Xor32(s[6], ty));
+    s[7] = OpCodes.ToUint32(OpCodes.Xor32(s[7], tx));
   }
 
   /**

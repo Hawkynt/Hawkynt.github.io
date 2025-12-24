@@ -60,11 +60,11 @@
 
   // Signed 32-bit rotation helpers for RC6 (matches C# behavior)
   function rotLeft32Signed(value, positions) {
-    return OpCodes.RotL32(OpCodes.ToUint32(value), positions) | 0;
+    return OpCodes.RotL32(OpCodes.ToUint32(value), positions)|0;
   }
 
   function rotRight32Signed(value, positions) {
-    return OpCodes.RotR32(OpCodes.ToUint32(value), positions) | 0;
+    return OpCodes.RotR32(OpCodes.ToUint32(value), positions)|0;
   }
 
   // ===== RC2 ALGORITHM =====
@@ -962,9 +962,9 @@
       const c = Math.floor((keyBytes.length + 3) / 4);
 
       this.keySchedule = new Array(RC6Algorithm.KEY_SCHEDULE_SIZE);
-      this.keySchedule[0] = RC_MAGIC_P | 0;
+      this.keySchedule[0] = RC_MAGIC_P|0;
       for (let k = 1; k < RC6Algorithm.KEY_SCHEDULE_SIZE; k++) {
-        this.keySchedule[k] = (this.keySchedule[k - 1] + RC_MAGIC_Q) | 0;
+        this.keySchedule[k] = (this.keySchedule[k - 1] + RC_MAGIC_Q)|0;
       }
 
       const L = new Array(Math.max(c, 1));
@@ -974,7 +974,7 @@
 
       for (let i = keyBytes.length - 1; i >= 0; i--) {
         const wordIndex = Math.floor(i / 4);
-        L[wordIndex] = OpCodes.OrN(OpCodes.Shl32(L[wordIndex], 8) + OpCodes.AndN(keyBytes[i], 0xff), 0) | 0;
+        L[wordIndex] = OpCodes.OrN(OpCodes.Shl32(L[wordIndex], 8) + OpCodes.AndN(keyBytes[i], 0xff), 0)|0;
       }
 
       let iter;
@@ -988,8 +988,8 @@
       let ii = 0, jj = 0;
 
       for (let k = 0; k < iter; k++) {
-        A = this.keySchedule[ii] = rotLeft32Signed(OpCodes.OrN(this.keySchedule[ii] + A + B, 0) | 0, 3);
-        B = L[jj] = rotLeft32Signed(OpCodes.OrN(L[jj] + A + B, 0) | 0, OpCodes.AndN(A + B, 31));
+        A = this.keySchedule[ii] = rotLeft32Signed(OpCodes.OrN(this.keySchedule[ii] + A + B, 0)|0, 3);
+        B = L[jj] = rotLeft32Signed(OpCodes.OrN(L[jj] + A + B, 0)|0, OpCodes.AndN(A + B, 31));
 
         ii = (ii + 1) % this.keySchedule.length;
         jj = (jj + 1) % L.length;
@@ -1008,25 +1008,25 @@
       let C = OpCodes.Pack32LE(plainBytes[8], plainBytes[9], plainBytes[10], plainBytes[11]);
       let D = OpCodes.Pack32LE(plainBytes[12], plainBytes[13], plainBytes[14], plainBytes[15]);
 
-      B = OpCodes.OrN(B + this.keySchedule[0], 0) | 0;
-      D = OpCodes.OrN(D + this.keySchedule[1], 0) | 0;
+      B = OpCodes.OrN(B + this.keySchedule[0], 0)|0;
+      D = OpCodes.OrN(D + this.keySchedule[1], 0)|0;
 
       for (let i = 1; i <= RC6Algorithm.ROUNDS; i++) {
         let t = 0, u = 0;
 
-        t = Math.imul(B, OpCodes.OrN(2 * B + 1, 0) | 0);
+        t = Math.imul(B, OpCodes.OrN(2 * B + 1, 0)|0);
         t = rotLeft32Signed(t, 5);
 
-        u = Math.imul(D, OpCodes.OrN(2 * D + 1, 0) | 0);
+        u = Math.imul(D, OpCodes.OrN(2 * D + 1, 0)|0);
         u = rotLeft32Signed(u, 5);
 
-        A = OpCodes.OrN(OpCodes.XorN(A, t), 0) | 0;
+        A = OpCodes.OrN(OpCodes.XorN(A, t), 0)|0;
         A = rotLeft32Signed(A, OpCodes.AndN(u, 31));
-        A = OpCodes.OrN(A + this.keySchedule[2 * i], 0) | 0;
+        A = OpCodes.OrN(A + this.keySchedule[2 * i], 0)|0;
 
-        C = OpCodes.OrN(OpCodes.XorN(C, u), 0) | 0;
+        C = OpCodes.OrN(OpCodes.XorN(C, u), 0)|0;
         C = rotLeft32Signed(C, OpCodes.AndN(t, 31));
-        C = OpCodes.OrN(C + this.keySchedule[2 * i + 1], 0) | 0;
+        C = OpCodes.OrN(C + this.keySchedule[2 * i + 1], 0)|0;
 
         const temp = A;
         A = B;
@@ -1035,8 +1035,8 @@
         D = temp;
       }
 
-      A = OpCodes.OrN(A + this.keySchedule[2 * RC6Algorithm.ROUNDS + 2], 0) | 0;
-      C = OpCodes.OrN(C + this.keySchedule[2 * RC6Algorithm.ROUNDS + 3], 0) | 0;
+      A = OpCodes.OrN(A + this.keySchedule[2 * RC6Algorithm.ROUNDS + 2], 0)|0;
+      C = OpCodes.OrN(C + this.keySchedule[2 * RC6Algorithm.ROUNDS + 3], 0)|0;
 
       return [
         ...OpCodes.Unpack32LE(A),
@@ -1056,8 +1056,8 @@
       let C = OpCodes.Pack32LE(cipherBytes[8], cipherBytes[9], cipherBytes[10], cipherBytes[11]);
       let D = OpCodes.Pack32LE(cipherBytes[12], cipherBytes[13], cipherBytes[14], cipherBytes[15]);
 
-      C = OpCodes.OrN(C - this.keySchedule[2 * RC6Algorithm.ROUNDS + 3], 0) | 0;
-      A = OpCodes.OrN(A - this.keySchedule[2 * RC6Algorithm.ROUNDS + 2], 0) | 0;
+      C = OpCodes.OrN(C - this.keySchedule[2 * RC6Algorithm.ROUNDS + 3], 0)|0;
+      A = OpCodes.OrN(A - this.keySchedule[2 * RC6Algorithm.ROUNDS + 2], 0)|0;
 
       for (let i = RC6Algorithm.ROUNDS; i >= 1; i--) {
         let t = 0, u = 0;
@@ -1068,23 +1068,23 @@
         B = A;
         A = temp;
 
-        t = Math.imul(B, OpCodes.OrN(2 * B + 1, 0) | 0);
+        t = Math.imul(B, OpCodes.OrN(2 * B + 1, 0)|0);
         t = rotLeft32Signed(t, 5);
 
-        u = Math.imul(D, OpCodes.OrN(2 * D + 1, 0) | 0);
+        u = Math.imul(D, OpCodes.OrN(2 * D + 1, 0)|0);
         u = rotLeft32Signed(u, 5);
 
-        C = OpCodes.OrN(C - this.keySchedule[2 * i + 1], 0) | 0;
+        C = OpCodes.OrN(C - this.keySchedule[2 * i + 1], 0)|0;
         C = rotRight32Signed(C, OpCodes.AndN(t, 31));
-        C = OpCodes.OrN(OpCodes.XorN(C, u), 0) | 0;
+        C = OpCodes.OrN(OpCodes.XorN(C, u), 0)|0;
 
-        A = OpCodes.OrN(A - this.keySchedule[2 * i], 0) | 0;
+        A = OpCodes.OrN(A - this.keySchedule[2 * i], 0)|0;
         A = rotRight32Signed(A, OpCodes.AndN(u, 31));
-        A = OpCodes.OrN(OpCodes.XorN(A, t), 0) | 0;
+        A = OpCodes.OrN(OpCodes.XorN(A, t), 0)|0;
       }
 
-      D = OpCodes.OrN(D - this.keySchedule[1], 0) | 0;
-      B = OpCodes.OrN(B - this.keySchedule[0], 0) | 0;
+      D = OpCodes.OrN(D - this.keySchedule[1], 0)|0;
+      B = OpCodes.OrN(B - this.keySchedule[0], 0)|0;
 
       return [
         ...OpCodes.Unpack32LE(A),

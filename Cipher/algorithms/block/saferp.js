@@ -251,7 +251,7 @@
       // Copy key and compute XOR checksum
       for (let x = 0; x < keylen; ++x) {
         t[x] = this._key[x];
-        y ^= this._key[x];
+        y = OpCodes.Xor32(y, this._key[x]);
       }
       t[keylen] = y;
 
@@ -277,13 +277,13 @@
       for (let x = 1; x < maxRounds; ++x) {
         // Rotate each byte of augmented key left by 3 bits
         for (let y = 0; y < tlen; ++y) {
-          t[y] = ((t[y] << 3) | (t[y] >>> 5)) & 255;
+          t[y] = OpCodes.RotL8(t[y], 3);
         }
 
         // Select bytes and add bias
         let z = x;
         for (let y = 0; y < 16; ++y) {
-          this.K[x][y] = (t[z] + safer_bias[x - 1][y]) & 255;
+          this.K[x][y] = (t[z] + safer_bias[x - 1][y])&255;
           if (++z === tlen) z = 0;
         }
       }
@@ -291,26 +291,26 @@
 
     // PHT (Pseudo-Hadamard Transform)
     _pht(b) {
-      b[0] = (b[0] + (b[1] = (b[0] + b[1]) & 255)) & 255;
-      b[2] = (b[2] + (b[3] = (b[3] + b[2]) & 255)) & 255;
-      b[4] = (b[4] + (b[5] = (b[5] + b[4]) & 255)) & 255;
-      b[6] = (b[6] + (b[7] = (b[7] + b[6]) & 255)) & 255;
-      b[8] = (b[8] + (b[9] = (b[9] + b[8]) & 255)) & 255;
-      b[10] = (b[10] + (b[11] = (b[11] + b[10]) & 255)) & 255;
-      b[12] = (b[12] + (b[13] = (b[13] + b[12]) & 255)) & 255;
-      b[14] = (b[14] + (b[15] = (b[15] + b[14]) & 255)) & 255;
+      b[0] = (b[0] + (b[1] = (b[0] + b[1])&255))&255;
+      b[2] = (b[2] + (b[3] = (b[3] + b[2])&255))&255;
+      b[4] = (b[4] + (b[5] = (b[5] + b[4])&255))&255;
+      b[6] = (b[6] + (b[7] = (b[7] + b[6])&255))&255;
+      b[8] = (b[8] + (b[9] = (b[9] + b[8])&255))&255;
+      b[10] = (b[10] + (b[11] = (b[11] + b[10])&255))&255;
+      b[12] = (b[12] + (b[13] = (b[13] + b[12])&255))&255;
+      b[14] = (b[14] + (b[15] = (b[15] + b[14])&255))&255;
     }
 
     // Inverse PHT
     _ipht(b) {
-      b[15] = (b[15] - (b[14] = (b[14] - b[15]) & 255)) & 255;
-      b[13] = (b[13] - (b[12] = (b[12] - b[13]) & 255)) & 255;
-      b[11] = (b[11] - (b[10] = (b[10] - b[11]) & 255)) & 255;
-      b[9] = (b[9] - (b[8] = (b[8] - b[9]) & 255)) & 255;
-      b[7] = (b[7] - (b[6] = (b[6] - b[7]) & 255)) & 255;
-      b[5] = (b[5] - (b[4] = (b[4] - b[5]) & 255)) & 255;
-      b[3] = (b[3] - (b[2] = (b[2] - b[3]) & 255)) & 255;
-      b[1] = (b[1] - (b[0] = (b[0] - b[1]) & 255)) & 255;
+      b[15] = (b[15] - (b[14] = (b[14] - b[15])&255))&255;
+      b[13] = (b[13] - (b[12] = (b[12] - b[13])&255))&255;
+      b[11] = (b[11] - (b[10] = (b[10] - b[11])&255))&255;
+      b[9] = (b[9] - (b[8] = (b[8] - b[9])&255))&255;
+      b[7] = (b[7] - (b[6] = (b[6] - b[7])&255))&255;
+      b[5] = (b[5] - (b[4] = (b[4] - b[5])&255))&255;
+      b[3] = (b[3] - (b[2] = (b[2] - b[3])&255))&255;
+      b[1] = (b[1] - (b[0] = (b[0] - b[1])&255))&255;
     }
 
     // Armenian Shuffle
@@ -350,22 +350,22 @@
       const k = this.K[keyIdx];
       const k1 = this.K[keyIdx + 1];
 
-      b[0] = (safer_ebox[(b[0] ^ k[0]) & 255] + k1[0]) & 255;
-      b[1] = safer_lbox[(b[1] + k[1]) & 255] ^ k1[1];
-      b[2] = safer_lbox[(b[2] + k[2]) & 255] ^ k1[2];
-      b[3] = (safer_ebox[(b[3] ^ k[3]) & 255] + k1[3]) & 255;
-      b[4] = (safer_ebox[(b[4] ^ k[4]) & 255] + k1[4]) & 255;
-      b[5] = safer_lbox[(b[5] + k[5]) & 255] ^ k1[5];
-      b[6] = safer_lbox[(b[6] + k[6]) & 255] ^ k1[6];
-      b[7] = (safer_ebox[(b[7] ^ k[7]) & 255] + k1[7]) & 255;
-      b[8] = (safer_ebox[(b[8] ^ k[8]) & 255] + k1[8]) & 255;
-      b[9] = safer_lbox[(b[9] + k[9]) & 255] ^ k1[9];
-      b[10] = safer_lbox[(b[10] + k[10]) & 255] ^ k1[10];
-      b[11] = (safer_ebox[(b[11] ^ k[11]) & 255] + k1[11]) & 255;
-      b[12] = (safer_ebox[(b[12] ^ k[12]) & 255] + k1[12]) & 255;
-      b[13] = safer_lbox[(b[13] + k[13]) & 255] ^ k1[13];
-      b[14] = safer_lbox[(b[14] + k[14]) & 255] ^ k1[14];
-      b[15] = (safer_ebox[(b[15] ^ k[15]) & 255] + k1[15]) & 255;
+      b[0] = (safer_ebox[(b[0]^k[0])&255] + k1[0])&255;
+      b[1] = safer_lbox[(b[1] + k[1])&255]^k1[1];
+      b[2] = safer_lbox[(b[2] + k[2])&255]^k1[2];
+      b[3] = (safer_ebox[(b[3]^k[3])&255] + k1[3])&255;
+      b[4] = (safer_ebox[(b[4]^k[4])&255] + k1[4])&255;
+      b[5] = safer_lbox[(b[5] + k[5])&255]^k1[5];
+      b[6] = safer_lbox[(b[6] + k[6])&255]^k1[6];
+      b[7] = (safer_ebox[(b[7]^k[7])&255] + k1[7])&255;
+      b[8] = (safer_ebox[(b[8]^k[8])&255] + k1[8])&255;
+      b[9] = safer_lbox[(b[9] + k[9])&255]^k1[9];
+      b[10] = safer_lbox[(b[10] + k[10])&255]^k1[10];
+      b[11] = (safer_ebox[(b[11]^k[11])&255] + k1[11])&255;
+      b[12] = (safer_ebox[(b[12]^k[12])&255] + k1[12])&255;
+      b[13] = safer_lbox[(b[13] + k[13])&255]^k1[13];
+      b[14] = safer_lbox[(b[14] + k[14])&255]^k1[14];
+      b[15] = (safer_ebox[(b[15]^k[15])&255] + k1[15])&255;
     }
 
     // Inverse round function
@@ -373,22 +373,22 @@
       const k = this.K[keyIdx];
       const k1 = this.K[keyIdx + 1];
 
-      b[0] = safer_lbox[(b[0] - k1[0]) & 255] ^ k[0];
-      b[1] = (safer_ebox[(b[1] ^ k1[1]) & 255] - k[1]) & 255;
-      b[2] = (safer_ebox[(b[2] ^ k1[2]) & 255] - k[2]) & 255;
-      b[3] = safer_lbox[(b[3] - k1[3]) & 255] ^ k[3];
-      b[4] = safer_lbox[(b[4] - k1[4]) & 255] ^ k[4];
-      b[5] = (safer_ebox[(b[5] ^ k1[5]) & 255] - k[5]) & 255;
-      b[6] = (safer_ebox[(b[6] ^ k1[6]) & 255] - k[6]) & 255;
-      b[7] = safer_lbox[(b[7] - k1[7]) & 255] ^ k[7];
-      b[8] = safer_lbox[(b[8] - k1[8]) & 255] ^ k[8];
-      b[9] = (safer_ebox[(b[9] ^ k1[9]) & 255] - k[9]) & 255;
-      b[10] = (safer_ebox[(b[10] ^ k1[10]) & 255] - k[10]) & 255;
-      b[11] = safer_lbox[(b[11] - k1[11]) & 255] ^ k[11];
-      b[12] = safer_lbox[(b[12] - k1[12]) & 255] ^ k[12];
-      b[13] = (safer_ebox[(b[13] ^ k1[13]) & 255] - k[13]) & 255;
-      b[14] = (safer_ebox[(b[14] ^ k1[14]) & 255] - k[14]) & 255;
-      b[15] = safer_lbox[(b[15] - k1[15]) & 255] ^ k[15];
+      b[0] = safer_lbox[(b[0] - k1[0])&255]^k[0];
+      b[1] = (safer_ebox[(b[1]^k1[1])&255] - k[1])&255;
+      b[2] = (safer_ebox[(b[2]^k1[2])&255] - k[2])&255;
+      b[3] = safer_lbox[(b[3] - k1[3])&255]^k[3];
+      b[4] = safer_lbox[(b[4] - k1[4])&255]^k[4];
+      b[5] = (safer_ebox[(b[5]^k1[5])&255] - k[5])&255;
+      b[6] = (safer_ebox[(b[6]^k1[6])&255] - k[6])&255;
+      b[7] = safer_lbox[(b[7] - k1[7])&255]^k[7];
+      b[8] = safer_lbox[(b[8] - k1[8])&255]^k[8];
+      b[9] = (safer_ebox[(b[9]^k1[9])&255] - k[9])&255;
+      b[10] = (safer_ebox[(b[10]^k1[10])&255] - k[10])&255;
+      b[11] = safer_lbox[(b[11] - k1[11])&255]^k[11];
+      b[12] = safer_lbox[(b[12] - k1[12])&255]^k[12];
+      b[13] = (safer_ebox[(b[13]^k1[13])&255] - k[13])&255;
+      b[14] = (safer_ebox[(b[14]^k1[14])&255] - k[14])&255;
+      b[15] = safer_lbox[(b[15] - k1[15])&255]^k[15];
     }
 
     /**
@@ -429,22 +429,22 @@
         if (this.isInverse) {
           // Decrypt
           const finalKey = this.K[this._rounds * 2];
-          block[0] ^= finalKey[0];
-          block[1] = (block[1] - finalKey[1]) & 255;
-          block[2] = (block[2] - finalKey[2]) & 255;
-          block[3] ^= finalKey[3];
-          block[4] ^= finalKey[4];
-          block[5] = (block[5] - finalKey[5]) & 255;
-          block[6] = (block[6] - finalKey[6]) & 255;
-          block[7] ^= finalKey[7];
-          block[8] ^= finalKey[8];
-          block[9] = (block[9] - finalKey[9]) & 255;
-          block[10] = (block[10] - finalKey[10]) & 255;
-          block[11] ^= finalKey[11];
-          block[12] ^= finalKey[12];
-          block[13] = (block[13] - finalKey[13]) & 255;
-          block[14] = (block[14] - finalKey[14]) & 255;
-          block[15] ^= finalKey[15];
+          block[0] = OpCodes.Xor32(block[0], finalKey[0]);
+          block[1] = (block[1] - finalKey[1])&255;
+          block[2] = (block[2] - finalKey[2])&255;
+          block[3] = OpCodes.Xor32(block[3], finalKey[3]);
+          block[4] = OpCodes.Xor32(block[4], finalKey[4]);
+          block[5] = (block[5] - finalKey[5])&255;
+          block[6] = (block[6] - finalKey[6])&255;
+          block[7] = OpCodes.Xor32(block[7], finalKey[7]);
+          block[8] = OpCodes.Xor32(block[8], finalKey[8]);
+          block[9] = (block[9] - finalKey[9])&255;
+          block[10] = (block[10] - finalKey[10])&255;
+          block[11] = OpCodes.Xor32(block[11], finalKey[11]);
+          block[12] = OpCodes.Xor32(block[12], finalKey[12]);
+          block[13] = (block[13] - finalKey[13])&255;
+          block[14] = (block[14] - finalKey[14])&255;
+          block[15] = OpCodes.Xor32(block[15], finalKey[15]);
 
           // Reverse rounds
           if (this._rounds > 12) {
@@ -495,22 +495,22 @@
 
           // Final key mixing
           const finalKey = this.K[this._rounds * 2];
-          block[0] ^= finalKey[0];
-          block[1] = (block[1] + finalKey[1]) & 255;
-          block[2] = (block[2] + finalKey[2]) & 255;
-          block[3] ^= finalKey[3];
-          block[4] ^= finalKey[4];
-          block[5] = (block[5] + finalKey[5]) & 255;
-          block[6] = (block[6] + finalKey[6]) & 255;
-          block[7] ^= finalKey[7];
-          block[8] ^= finalKey[8];
-          block[9] = (block[9] + finalKey[9]) & 255;
-          block[10] = (block[10] + finalKey[10]) & 255;
-          block[11] ^= finalKey[11];
-          block[12] ^= finalKey[12];
-          block[13] = (block[13] + finalKey[13]) & 255;
-          block[14] = (block[14] + finalKey[14]) & 255;
-          block[15] ^= finalKey[15];
+          block[0] = OpCodes.Xor32(block[0], finalKey[0]);
+          block[1] = (block[1] + finalKey[1])&255;
+          block[2] = (block[2] + finalKey[2])&255;
+          block[3] = OpCodes.Xor32(block[3], finalKey[3]);
+          block[4] = OpCodes.Xor32(block[4], finalKey[4]);
+          block[5] = (block[5] + finalKey[5])&255;
+          block[6] = (block[6] + finalKey[6])&255;
+          block[7] = OpCodes.Xor32(block[7], finalKey[7]);
+          block[8] = OpCodes.Xor32(block[8], finalKey[8]);
+          block[9] = (block[9] + finalKey[9])&255;
+          block[10] = (block[10] + finalKey[10])&255;
+          block[11] = OpCodes.Xor32(block[11], finalKey[11]);
+          block[12] = OpCodes.Xor32(block[12], finalKey[12]);
+          block[13] = (block[13] + finalKey[13])&255;
+          block[14] = (block[14] + finalKey[14])&255;
+          block[15] = OpCodes.Xor32(block[15], finalKey[15]);
 
           output.push(...block);
         }

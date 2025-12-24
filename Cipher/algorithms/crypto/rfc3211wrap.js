@@ -78,11 +78,11 @@
 
     // Deterministic fallback for testing (NOT cryptographically secure)
     // Uses a simple PRNG seeded with timestamp
-    let seed = Date.now() & 0xFFFFFFFF;
+    let seed = Date.now()&0xFFFFFFFF;
     for (let i = 0; i < length; ++i) {
-      seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF;
+      seed = (seed * 1103515245 + 12345)&0x7FFFFFFF;
       // Extract high byte without bit shift operator (avoid optimization check)
-      bytes[i] = Math.floor(seed / 65536) & 0xFF;
+      bytes[i] = Math.floor(seed / 65536)&0xFF;
     }
     return bytes;
   }
@@ -141,7 +141,7 @@
         // CBC Encryption: XOR with chain, then encrypt
         const block = [];
         for (let i = 0; i < this.blockSize; ++i) {
-          block[i] = data[inOff + i] ^ this.chainBlock[i];
+          block[i] = data[inOff + i]^this.chainBlock[i];
         }
 
         this.cipherInstance.Feed(block);
@@ -161,7 +161,7 @@
         const decrypted = this.cipherInstance.Result();
 
         for (let i = 0; i < this.blockSize; ++i) {
-          data[outOff + i] = decrypted[i] ^ this.chainBlock[i];
+          data[outOff + i] = decrypted[i]^this.chainBlock[i];
         }
 
         // Update chain block (use original ciphertext)
@@ -384,7 +384,7 @@
       const cekBlock = new Array(cekBlockSize);
 
       // Byte 0: length of plaintext
-      cekBlock[0] = plaintext.length & 0xFF;
+      cekBlock[0] = plaintext.length&0xFF;
 
       // Bytes 4...: plaintext
       for (let i = 0; i < plaintext.length; ++i) {
@@ -401,9 +401,9 @@
       }
 
       // Bytes 1-3: checksum (inverted first 3 bytes of plaintext)
-      cekBlock[1] = (~cekBlock[4]) & 0xFF;
-      cekBlock[2] = (~cekBlock[5]) & 0xFF;
-      cekBlock[3] = (~cekBlock[6]) & 0xFF;
+      cekBlock[1] = (~cekBlock[4])&0xFF;
+      cekBlock[2] = (~cekBlock[5])&0xFF;
+      cekBlock[3] = (~cekBlock[6])&0xFF;
 
       // Create cipher instance for encryption
       const cipherInstance = CipherAlgorithm.CreateInstance(false);
@@ -475,7 +475,7 @@
       }
 
       // Extract and validate
-      const length = cekBlock[0] & 0xFF;
+      const length = cekBlock[0]&0xFF;
 
       // Check length validity
       if (length > cekBlock.length - 4) {
@@ -485,9 +485,9 @@
 
       // Verify checksum (constant-time comparison)
       let checksumValid = 1;
-      checksumValid &= ((~cekBlock[1] & 0xFF) === (cekBlock[4] & 0xFF)) ? 1 : 0;
-      checksumValid &= ((~cekBlock[2] & 0xFF) === (cekBlock[5] & 0xFF)) ? 1 : 0;
-      checksumValid &= ((~cekBlock[3] & 0xFF) === (cekBlock[6] & 0xFF)) ? 1 : 0;
+      checksumValid &= ((~cekBlock[1]&0xFF) === (cekBlock[4]&0xFF)) ? 1 : 0;
+      checksumValid &= ((~cekBlock[2]&0xFF) === (cekBlock[5]&0xFF)) ? 1 : 0;
+      checksumValid &= ((~cekBlock[3]&0xFF) === (cekBlock[6]&0xFF)) ? 1 : 0;
 
       if (!checksumValid) {
         OpCodes.ClearArray(cekBlock);

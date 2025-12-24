@@ -142,7 +142,7 @@
       this.result = null;
 
       // Generator matrix for Extended Hamming [8,4,4] self-dual code
-      // G = [I_4 | P] where the code is self-dual
+      // G = [I_4|P] where the code is self-dual
       this.generator = [
         [1, 0, 0, 0, 1, 1, 0, 1],
         [0, 1, 0, 0, 1, 0, 1, 1],

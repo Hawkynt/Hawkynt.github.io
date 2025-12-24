@@ -177,9 +177,9 @@ class PomaranchInstance extends IAlgorithmInstance {
       // Mix in IV for the first few LFSRs
       if (iv && iv.length >= 8 && i < 4) {
         const ivOffset = i * 2;
-        lfsrs[i] ^= OpCodes.Pack32LE(
+        lfsrs[i] = OpCodes.Xor32(lfsrs[i], OpCodes.Pack32LE(
           iv[ivOffset], iv[ivOffset + 1], 0, 0
-        );
+        ));
       }
 
       // Ensure non-zero state
@@ -192,8 +192,8 @@ class PomaranchInstance extends IAlgorithmInstance {
     for (let round = 0; round < 32; round++) {
       for (let i = 0; i < this.LFSR_COUNT; i++) {
         // LFSR feedback
-        const feedback = ((lfsrs[i] >>> 31) ^ (lfsrs[i] >>> 6) ^ (lfsrs[i] >>> 4) ^ (lfsrs[i] >>> 1)) & 1;
-        lfsrs[i] = ((lfsrs[i] << 1) | feedback) >>> 0;
+        const feedback = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shr32(lfsrs[i], 31), OpCodes.Shr32(lfsrs[i], 6)), OpCodes.Shr32(lfsrs[i], 4)), OpCodes.Shr32(lfsrs[i], 1)), 1);
+        lfsrs[i] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(lfsrs[i], 1), feedback));
       }
     }
 
@@ -203,8 +203,8 @@ class PomaranchInstance extends IAlgorithmInstance {
     for (let i = 0; i < data.length; i++) {
       // Clock all LFSRs
       for (let j = 0; j < this.LFSR_COUNT; j++) {
-        const feedback = ((lfsrs[j] >>> 31) ^ (lfsrs[j] >>> 6) ^ (lfsrs[j] >>> 4) ^ (lfsrs[j] >>> 1)) & 1;
-        lfsrs[j] = ((lfsrs[j] << 1) | feedback) >>> 0;
+        const feedback = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shr32(lfsrs[j], 31), OpCodes.Shr32(lfsrs[j], 6)), OpCodes.Shr32(lfsrs[j], 4)), OpCodes.Shr32(lfsrs[j], 1)), 1);
+        lfsrs[j] = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(lfsrs[j], 1), feedback));
       }
 
       // Nonlinear combining function (majority + XOR)
@@ -214,22 +214,22 @@ class PomaranchInstance extends IAlgorithmInstance {
 
         // Count bits from all LFSRs at current position
         for (let j = 0; j < this.LFSR_COUNT; j++) {
-          if ((lfsrs[j] >>> bit) & 1) {
+          if (OpCodes.And32(OpCodes.Shr32(lfsrs[j], bit), 1)) {
             majority++;
           }
         }
 
         // Majority function
         if (majority >= 5) {
-          keystreamByte |= (1 << bit);
+          keystreamByte = OpCodes.Or32(keystreamByte, OpCodes.Shl32(1, bit));
         }
       }
 
       // Additional mixing with position and key material
-      keystreamByte ^= (key[i % key.length] + i) & 0xFF;
-      keystreamByte ^= (lfsrs[i % this.LFSR_COUNT] >>> ((i % 4) * 8)) & 0xFF;
+      keystreamByte = OpCodes.Xor32(keystreamByte, OpCodes.And32(key[i % key.length] + i, 0xFF));
+      keystreamByte = OpCodes.Xor32(keystreamByte, OpCodes.And32(OpCodes.Shr32(lfsrs[i % this.LFSR_COUNT], (i % 4) * 8), 0xFF));
 
-      output.push(data[i] ^ (keystreamByte & 0xFF));
+      output.push(OpCodes.Xor32(data[i], OpCodes.And32(keystreamByte, 0xFF)));
     }
 
     return output;

@@ -67,10 +67,10 @@
     const [b0, b1, b2, b3] = OpCodes.Unpack32LE(sum);
 
     // S-box substitution (split each byte into nibbles)
-    const s0 = OpCodes.OrN(sBox[0][OpCodes.AndN(b0, 0x0F)], OpCodes.Shl32(sBox[1][OpCodes.Shr32(b0, 4)], 4));
-    const s1 = OpCodes.OrN(sBox[2][OpCodes.AndN(b1, 0x0F)], OpCodes.Shl32(sBox[3][OpCodes.Shr32(b1, 4)], 4));
-    const s2 = OpCodes.OrN(sBox[4][OpCodes.AndN(b2, 0x0F)], OpCodes.Shl32(sBox[5][OpCodes.Shr32(b2, 4)], 4));
-    const s3 = OpCodes.OrN(sBox[6][OpCodes.AndN(b3, 0x0F)], OpCodes.Shl32(sBox[7][OpCodes.Shr32(b3, 4)], 4));
+    const s0 = sBox[0][b0&0x0F]|OpCodes.Shl32(sBox[1][OpCodes.Shr32(b0, 4)], 4);
+    const s1 = sBox[2][b1&0x0F]|OpCodes.Shl32(sBox[3][OpCodes.Shr32(b1, 4)], 4);
+    const s2 = sBox[4][b2&0x0F]|OpCodes.Shl32(sBox[5][OpCodes.Shr32(b2, 4)], 4);
+    const s3 = sBox[6][b3&0x0F]|OpCodes.Shl32(sBox[7][OpCodes.Shr32(b3, 4)], 4);
 
     const result = OpCodes.Pack32LE(s0, s1, s2, s3);
     return OpCodes.RotL32(result, 11);
@@ -85,7 +85,7 @@
     for (let cycle = 0; cycle < 3; ++cycle) {
       for (let i = 0; i < 8; ++i) {
         const temp = n1;
-        n1 = OpCodes.XorN(n2, gostRound(n1, key[i], sBox));
+        n1 = OpCodes.Xor32(n2, gostRound(n1, key[i], sBox));
         n2 = temp;
       }
     }
@@ -93,7 +93,7 @@
     // Final 8 rounds (reverse key order)
     for (let i = 7; i >= 0; --i) {
       const temp = n1;
-      n1 = OpCodes.XorN(n2, gostRound(n1, key[i], sBox));
+      n1 = OpCodes.Xor32(n2, gostRound(n1, key[i], sBox));
       n2 = temp;
     }
 
@@ -256,7 +256,7 @@
       if (!data || data.length === 0) return;
 
       for (let i = 0; i < data.length; ++i) {
-        this.xBuf[this.xBufOff] = OpCodes.AndN(data[i], 0xFF);
+        this.xBuf[this.xBufOff] = OpCodes.ToByte(data[i]);
         ++this.xBufOff;
 
         if (this.xBufOff === 32) {
@@ -303,7 +303,7 @@
     _A(input) {
       const a = new Array(8);
       for (let j = 0; j < 8; ++j) {
-        a[j] = OpCodes.AndN(OpCodes.XorN(input[j], input[j+8]), 0xFF);
+        a[j] = OpCodes.ToByte(input[j]^input[j+8]);
       }
 
       // Shift: x0||x1||x2||x3 -> x1||x2||x3||(x0^x1)
@@ -349,9 +349,14 @@
         wS[i] = OpCodes.Pack16LE(input[i*2], input[i*2+1]);
       }
 
-      // Apply transformation: w[15] = w[0] ^ w[1] ^ w[2] ^ w[3] ^ w[12] ^ w[15]
+      // Apply transformation: w[15] = w[0]^w[1]^w[2]^w[3]^w[12]^w[15]
       const w_S = new Array(16);
-      w_S[15] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(wS[0], wS[1]), wS[2]), wS[3]), wS[12]), wS[15]), 0xFFFF);
+      const xor1 = wS[0]^wS[1];
+      const xor2 = xor1^wS[2];
+      const xor3 = xor2^wS[3];
+      const xor4 = xor3^wS[12];
+      const xor5 = xor4^wS[15];
+      w_S[15] = xor5&0xFFFF;
 
       // Shift: w[i] = w[i+1] for i=0..14
       for (let i = 0; i < 15; ++i) {
@@ -389,7 +394,7 @@
       for (let i = 0; i < 4; ++i) {
         // W = U XOR V
         for (let j = 0; j < 32; ++j) {
-          W[j] = OpCodes.AndN(OpCodes.XorN(U[j], V[j]), 0xFF);
+          W[j] = OpCodes.ToByte(U[j]^V[j]);
         }
 
         // K = P(W)
@@ -402,7 +407,7 @@
           // U = A(U) XOR C[i+1]
           this._A(U);
           for (let j = 0; j < 32; ++j) {
-            U[j] = OpCodes.AndN(OpCodes.XorN(U[j], this.C[i+1][j]), 0xFF);
+            U[j] = OpCodes.ToByte(U[j]^this.C[i+1][j]);
           }
 
           // V = A(A(V))
@@ -420,7 +425,7 @@
 
       // S = S XOR M
       for (let n = 0; n < 32; ++n) {
-        S[n] = OpCodes.AndN(OpCodes.XorN(S[n], this.M[n]), 0xFF);
+        S[n] = OpCodes.ToByte(S[n]^this.M[n]);
       }
 
       // Apply y to S
@@ -428,7 +433,7 @@
 
       // S = H XOR S
       for (let n = 0; n < 32; ++n) {
-        S[n] = OpCodes.AndN(OpCodes.XorN(this.H[n], S[n]), 0xFF);
+        S[n] = OpCodes.ToByte(this.H[n]^S[n]);
       }
 
       // Apply y^61 to S
@@ -446,8 +451,8 @@
     _sumByteArray(input) {
       let carry = 0;
       for (let i = 0; i < 32; ++i) {
-        const sum = OpCodes.AndN(this.Sum[i], 0xFF) + OpCodes.AndN(input[i], 0xFF) + carry;
-        this.Sum[i] = OpCodes.AndN(sum, 0xFF);
+        const sum = OpCodes.ToByte(this.Sum[i]) + OpCodes.ToByte(input[i]) + carry;
+        this.Sum[i] = OpCodes.ToByte(sum);
         // Extract carry (upper byte of 9-bit sum)
         carry = Math.floor(sum / 256);
       }

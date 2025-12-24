@@ -110,16 +110,16 @@
     for (let row = 0; row < 16; ++row) {
       const rowVal = matrix[row];
       // Count set bits in (rowVal AND input) - this is the dot product in GF(2)
-      const dotProduct = rowVal & input;
+      const dotProduct = OpCodes.And32(rowVal, input);
       // Count bits using Brian Kernighan's algorithm
       let bitCount = 0;
       let temp = dotProduct;
       while (temp) {
-        temp &= temp - 1;  // Clear least significant bit
+        temp = OpCodes.And32(temp, temp - 1);  // Clear least significant bit
         ++bitCount;
       }
       if (bitCount % 2 === 1) {
-        result |= (1 << (15 - row));  // MSB-first like pypride
+        result = OpCodes.Or32(result, OpCodes.Shl32(1, 15 - row));  // MSB-first like pypride
       }
     }
     return result;

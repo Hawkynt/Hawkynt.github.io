@@ -276,9 +276,9 @@
      */
     _getByte(word64, pos) {
       if (pos < 4) {
-        return OpCodes.Shr32(word64[0], (3 - pos) * 8) & 0xFF;
+        return OpCodes.Shr32(word64[0], (3 - pos) * 8)&0xFF;
       } else {
-        return OpCodes.Shr32(word64[1], (7 - pos) * 8) & 0xFF;
+        return OpCodes.Shr32(word64[1], (7 - pos) * 8)&0xFF;
       }
     }
 
@@ -321,7 +321,7 @@
 
         // XOR with plaintext (key material)
         const plain = this._pack64BE(keyBuffer, offset);
-        const cipher = [plain[0] ^ encrypted[0], plain[1] ^ encrypted[1]];
+        const cipher = [plain[0]^encrypted[0], plain[1]^encrypted[1]];
 
         // Store back to key buffer and use as next feedback
         const cipherBytes = this._unpack64BE(cipher);
@@ -368,15 +368,15 @@
       let temp = a;
 
       for (let i = 0; i < 8; ++i) {
-        if ((b & 1) !== 0) {
-          result ^= temp;
+        if ((b&1) !== 0) {
+          result = OpCodes.Xor32(result, temp);
         }
 
-        const carry = temp & 0x80;
+        const carry = temp&0x80;
         temp = OpCodes.ToByte(OpCodes.Shl8(temp, 1));
 
         if (carry !== 0) {
-          temp ^= 0xf5; // Irreducible polynomial
+          temp = OpCodes.Xor32(temp, 0xf5); // Irreducible polynomial
         }
 
         b = OpCodes.Shr8(b, 1);
@@ -458,7 +458,7 @@
       const rounds = numRounds !== null ? numRounds : this._rounds;
 
       // XOR with first round key
-      let tmp = [input64[0] ^ roundKeys[0][0], input64[1] ^ roundKeys[0][1]];
+      let tmp = [input64[0]^roundKeys[0][0], input64[1]^roundKeys[0][1]];
 
       // Middle rounds (use C-boxes for optimized S-box + Transform)
       for (let round = 1; round < rounds; round++) {
@@ -466,7 +466,7 @@
         tmp = this._sharkRoundCBox(tmp, CBOX_ENC);
 
         // XOR with round key
-        tmp = [tmp[0] ^ roundKeys[round][0], tmp[1] ^ roundKeys[round][1]];
+        tmp = [tmp[0]^roundKeys[round][0], tmp[1]^roundKeys[round][1]];
       }
 
       // Final round (S-box only, no transform)
@@ -477,7 +477,7 @@
       tmp = this._pack64BE(finalBytes, 0);
 
       // XOR with last round key
-      tmp = [tmp[0] ^ roundKeys[rounds][0], tmp[1] ^ roundKeys[rounds][1]];
+      tmp = [tmp[0]^roundKeys[rounds][0], tmp[1]^roundKeys[rounds][1]];
 
       return tmp;
     }
@@ -490,7 +490,7 @@
      */
     _sharkDecryptBlock(input64, roundKeys) {
       // XOR with first round key (which is the last encryption round key)
-      let tmp = [input64[0] ^ roundKeys[0][0], input64[1] ^ roundKeys[0][1]];
+      let tmp = [input64[0]^roundKeys[0][0], input64[1]^roundKeys[0][1]];
 
       // Middle rounds (use C-boxes for optimized inverse S-box + Transform)
       for (let round = 1; round < this._rounds; round++) {
@@ -498,7 +498,7 @@
         tmp = this._sharkRoundCBox(tmp, CBOX_DEC);
 
         // XOR with round key
-        tmp = [tmp[0] ^ roundKeys[round][0], tmp[1] ^ roundKeys[round][1]];
+        tmp = [tmp[0]^roundKeys[round][0], tmp[1]^roundKeys[round][1]];
       }
 
       // Final round (inverse S-box only, no transform)
@@ -509,7 +509,7 @@
       tmp = this._pack64BE(finalBytes, 0);
 
       // XOR with last round key (which is the first encryption round key)
-      tmp = [tmp[0] ^ roundKeys[this._rounds][0], tmp[1] ^ roundKeys[this._rounds][1]];
+      tmp = [tmp[0]^roundKeys[this._rounds][0], tmp[1]^roundKeys[this._rounds][1]];
 
       return tmp;
     }

@@ -273,7 +273,7 @@
 
       for (let j = 0; j < 6; ++j) {
         for (let i = 1; i <= n; ++i) {
-          // B = AES(K, A | R[i])
+          // B = AES(K, A|R[i])
           for (let k = 0; k < 8; ++k) {
             buf[k] = block[k];
             buf[k + 8] = block[8 * i + k];
@@ -282,7 +282,7 @@
           this.camellia.Feed(buf);
           const encrypted = this.camellia.Result();
 
-          // A = MSB(64, B) ^ t where t = (n*j)+i
+          // A = MSB(64, B)^t where t = (n*j)+i
           const t = n * j + i;
           for (let k = 0; k < 8; ++k) {
             block[k] = encrypted[k];
@@ -291,8 +291,8 @@
           // XOR the time step into A (big-endian)
           let tVal = t;
           for (let k = 1; tVal !== 0; ++k) {
-            block[8 - k] ^= (tVal & 0xFF);
-            tVal >>>= 8;
+            block[8 - k] = OpCodes.Xor32(block[8 - k], OpCodes.ToByte(tVal));
+            tVal = OpCodes.Shr32(tVal, 8);
           }
 
           // R[i] = LSB(64, B)
@@ -356,7 +356,7 @@
       // RFC 3394 unwrap algorithm (reverse order)
       for (let j = 5; j >= 0; --j) {
         for (let i = n; i >= 1; --i) {
-          // B = AES-1(K, (A ^ t) | R[i]) where t = n*j+i
+          // B = AES-1(K, (A^t)|R[i]) where t = n*j+i
           for (let k = 0; k < 8; ++k) {
             buf[k] = a[k];
             buf[k + 8] = block[8 * (i - 1) + k];
@@ -365,8 +365,8 @@
           const t = n * j + i;
           let tVal = t;
           for (let k = 1; tVal !== 0; ++k) {
-            buf[8 - k] ^= (tVal & 0xFF);
-            tVal >>>= 8;
+            buf[8 - k] = OpCodes.Xor32(buf[8 - k], OpCodes.ToByte(tVal));
+            tVal = OpCodes.Shr32(tVal, 8);
           }
 
           camelliaDecrypt.Feed(buf);
@@ -387,7 +387,7 @@
       // Verify IV using constant-time comparison
       let diff = 0;
       for (let i = 0; i < 8; ++i) {
-        diff |= (a[i] ^ iv[i]);
+        diff = OpCodes.ToUint32(OpCodes.Or32(diff, OpCodes.Xor32(a[i], iv[i])));
       }
 
       if (diff !== 0) {

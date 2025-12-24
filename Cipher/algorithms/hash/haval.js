@@ -292,15 +292,15 @@
       }
 
       // HAVAL appends special footer (from sphlib haval_helper.c):
-      // Byte 118: 0x01 | (PASSES << 3)
-      // Byte 119: olen << 3  (where olen is output length in 32-bit words)
+      // Byte 118: 0x01|(OpCodes.Shl32(PASSES, 3))
+      // Byte 119: OpCodes.Shl32(olen, 3)  (where olen is output length in 32-bit words)
       // Bytes 120-127: Message length in bits (64-bit little-endian)
 
       const PASSES = this.passes;  // Number of passes (3, 4, or 5)
       const olen = this.hashBits / 32;  // Output length in 32-bit words
       const MSGLEN = msgLen * 8;  // Message length in bits
 
-      // Byte 118: VERSION (always 0x01) | (PASSES * 8)
+      // Byte 118: VERSION (always 0x01)|(PASSES * 8)
       this.buffer.push(OpCodes.OrN(0x01, (PASSES * 8)));
 
       // Byte 119: olen * 8 (output length in words, multiplied by 8)

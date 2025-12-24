@@ -97,21 +97,21 @@
         {
           text: "Single byte 'A' - literal tag with length 1",
           uri: "https://github.com/johnezang/pithy/blob/master/pithy.c",
-          // Compressed: 0x01 (varint: length=1), 0x00 (tag: (0 << 2) | 0), 0x41 ('A')
+          // Compressed: 0x01 (varint: length=1), 0x00 (tag: (0 << 2)|0), 0x41 ('A')
           input: OpCodes.AnsiToBytes("A"),
           expected: [0x01, 0x00, 0x41]
         },
         {
           text: "Three bytes 'abc' - literal tag with length 3",
           uri: "https://github.com/johnezang/pithy/blob/master/pithy.c",
-          // Compressed: 0x03 (varint), 0x08 (tag: (2 << 2) | 0 = 8), 'abc'
+          // Compressed: 0x03 (varint), 0x08 (tag: (2 << 2)|0 = 8), 'abc'
           input: OpCodes.AnsiToBytes("abc"),
           expected: [0x03, 0x08, 0x61, 0x62, 0x63]
         },
         {
           text: "Short text 'Hello' - all literals",
           uri: "https://github.com/johnezang/pithy/blob/master/pithy.c",
-          // Compressed: 0x05 (varint), 0x10 (tag: (4 << 2) | 0), 'Hello'
+          // Compressed: 0x05 (varint), 0x10 (tag: (4 << 2)|0), 'Hello'
           input: OpCodes.AnsiToBytes("Hello"),
           expected: [0x05, 0x10, 0x48, 0x65, 0x6C, 0x6C, 0x6F]
         },
@@ -136,12 +136,12 @@
         {
           text: "Long literal sequence (65 bytes) - extended length encoding",
           uri: "https://github.com/johnezang/pithy/blob/master/pithy.c",
-          // Tag: ((59 + extraBytes) << 2) | 0 where extraBytes=1 for 60+5=65 bytes
+          // Tag: (OpCodes.Shl32((59 + extraBytes), 2))|0 where extraBytes=1 for 60+5=65 bytes
           // Tag = (60 << 2) = 240 = 0xF0
           input: Array.from({length: 65}, (_, i) => i&0xFF),
           expected: (() => {
             const result = [0x41]; // varint: 65
-            result.push(0xF0); // literal tag: (60 << 2) | 0 = 240
+            result.push(0xF0); // literal tag: (60 << 2)|0 = 240
             result.push(0x05); // extra length byte: 60 + 5 = 65
             result.push(...Array.from({length: 65}, (_, i) => i&0xFF));
             return result;
@@ -323,7 +323,7 @@
 
       while (ip < input.length && op < uncompressedLength) {
         const tag = input[ip++];
-        const tagType = tag&0x03;
+        const tagType = OpCodes.And32(tag, 0x03);
 
         if (tagType === PITHY_LITERAL) {
           // Literal bytes
@@ -351,11 +351,11 @@
 
           if (tagType === PITHY_COPY_1_BYTE) {
             // 1-byte offset (11 bits total: 3 bits length, 5 bits offset high, 8 bits offset low - 3 bits for type)
-            const lenBits = OpCodes.Shr32(tag, 2)&0x07; // 3 bits for length-4
+            const lenBits = OpCodes.And32(OpCodes.Shr32(tag, 2), 0x07); // 3 bits for length-4
             copyLen = lenBits + 4;
             const offsetHigh = OpCodes.Shr32(tag, 5); // 5 bits
             const offsetLow = input[ip++];
-            copyOffset = OpCodes.Shl32(offsetHigh, 8) | offsetLow;
+            copyOffset = OpCodes.Or32(OpCodes.Shl32(offsetHigh, 8), offsetLow);
           } else if (tagType === PITHY_COPY_2_BYTE) {
             // 2-byte offset
             copyLen = OpCodes.Shr32(tag, 2) + 1;
@@ -367,7 +367,7 @@
                 copyLen += OpCodes.Shl32(input[ip++], i * 8);
               }
             }
-            copyOffset = input[ip++] | OpCodes.Shl32(input[ip++], 8);
+            copyOffset = OpCodes.Or32(input[ip++], OpCodes.Shl32(input[ip++], 8));
           } else { // PITHY_COPY_3_BYTE
             // 3-byte offset
             copyLen = OpCodes.Shr32(tag, 2) + 1;
@@ -379,7 +379,7 @@
                 copyLen += OpCodes.Shl32(input[ip++], i * 8);
               }
             }
-            copyOffset = input[ip++] | OpCodes.Shl32(input[ip++], 8) | OpCodes.Shl32(input[ip++], 16);
+            copyOffset = OpCodes.Or32(OpCodes.Or32(input[ip++], OpCodes.Shl32(input[ip++], 8)), OpCodes.Shl32(input[ip++], 16));
           }
 
           // Copy from earlier in output
@@ -402,7 +402,7 @@
 
         if (chunkLen < 60) {
           // Short literal: encode length-1 in upper 6 bits
-          const tag = OpCodes.Shl32(chunkLen - 1, 2) | PITHY_LITERAL;
+          const tag = OpCodes.Or32(OpCodes.Shl32(chunkLen - 1, 2), PITHY_LITERAL);
           output.push(tag);
         } else {
           // Long literal: tag indicates extended length
@@ -417,13 +417,13 @@
           } while (temp > 0);
 
           // Emit tag with extra byte count
-          const tag = OpCodes.Shl32(59 + extraBytes, 2) | PITHY_LITERAL;
+          const tag = OpCodes.Or32(OpCodes.Shl32(59 + extraBytes, 2), PITHY_LITERAL);
           output.push(tag);
 
           // Emit extra length bytes (little-endian)
           temp = lenMinusBase;
           for (let i = 0; i < extraBytes; i++) {
-            output.push(temp&0xFF);
+            output.push(OpCodes.And32(temp, 0xFF));
             temp = OpCodes.Shr32(temp, 8);
           }
         }
@@ -449,15 +449,15 @@
         if (offset < this.MAX_OFFSET_1BYTE && chunkLen < 12) {
           // 1-byte offset encoding (short copies)
           // 3 bits for length-4, 5 bits for offset high, 8 bits for offset low
-          const lenBits = (chunkLen - 4)&0x07;
-          const offsetHigh = OpCodes.Shr32(offset, 8)&0x1F;
-          const tag = OpCodes.Shl32(offsetHigh, 5) | OpCodes.Shl32(lenBits, 2) | PITHY_COPY_1_BYTE;
+          const lenBits = OpCodes.And32(chunkLen - 4, 0x07);
+          const offsetHigh = OpCodes.And32(OpCodes.Shr32(offset, 8), 0x1F);
+          const tag = OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(offsetHigh, 5), OpCodes.Shl32(lenBits, 2)), PITHY_COPY_1_BYTE);
           output.push(tag);
-          output.push(offset&0xFF);
+          output.push(OpCodes.And32(offset, 0xFF));
         } else if (offset < this.MAX_OFFSET_2BYTE) {
           // 2-byte offset encoding
           if (chunkLen < 64) {
-            const tag = OpCodes.Shl32(chunkLen - 1, 2) | PITHY_COPY_2_BYTE;
+            const tag = OpCodes.Or32(OpCodes.Shl32(chunkLen - 1, 2), PITHY_COPY_2_BYTE);
             output.push(tag);
           } else {
             // Extended length
@@ -470,22 +470,22 @@
               temp = OpCodes.Shr32(temp, 8);
             } while (temp > 0);
 
-            const tag = OpCodes.Shl32(63 + extraBytes, 2) | PITHY_COPY_2_BYTE;
+            const tag = OpCodes.Or32(OpCodes.Shl32(63 + extraBytes, 2), PITHY_COPY_2_BYTE);
             output.push(tag);
 
             temp = lenMinusBase;
             for (let i = 0; i < extraBytes; i++) {
-              output.push(temp&0xFF);
+              output.push(OpCodes.And32(temp, 0xFF));
               temp = OpCodes.Shr32(temp, 8);
             }
           }
 
-          output.push(offset&0xFF);
-          output.push(OpCodes.Shr32(offset, 8)&0xFF);
+          output.push(OpCodes.And32(offset, 0xFF));
+          output.push(OpCodes.And32(OpCodes.Shr32(offset, 8), 0xFF));
         } else {
           // 3-byte offset encoding
           if (chunkLen < 64) {
-            const tag = OpCodes.Shl32(chunkLen - 1, 2) | PITHY_COPY_3_BYTE;
+            const tag = OpCodes.Or32(OpCodes.Shl32(chunkLen - 1, 2), PITHY_COPY_3_BYTE);
             output.push(tag);
           } else {
             // Extended length
@@ -498,19 +498,19 @@
               temp = OpCodes.Shr32(temp, 8);
             } while (temp > 0);
 
-            const tag = OpCodes.Shl32(63 + extraBytes, 2) | PITHY_COPY_3_BYTE;
+            const tag = OpCodes.Or32(OpCodes.Shl32(63 + extraBytes, 2), PITHY_COPY_3_BYTE);
             output.push(tag);
 
             temp = lenMinusBase;
             for (let i = 0; i < extraBytes; i++) {
-              output.push(temp&0xFF);
+              output.push(OpCodes.And32(temp, 0xFF));
               temp = OpCodes.Shr32(temp, 8);
             }
           }
 
-          output.push(offset&0xFF);
-          output.push(OpCodes.Shr32(offset, 8)&0xFF);
-          output.push(OpCodes.Shr32(offset, 16)&0xFF);
+          output.push(OpCodes.And32(offset, 0xFF));
+          output.push(OpCodes.And32(OpCodes.Shr32(offset, 8), 0xFF));
+          output.push(OpCodes.And32(OpCodes.Shr32(offset, 16), 0xFF));
         }
 
         length -= chunkLen;
@@ -526,10 +526,7 @@
       }
 
       // Use OpCodes for bit operations
-      const v = data[pos] |
-                OpCodes.Shl32(data[pos + 1], 8) |
-                OpCodes.Shl32(data[pos + 2], 16) |
-                OpCodes.Shl32(data[pos + 3], 24);
+      const v = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(data[pos], OpCodes.Shl32(data[pos + 1], 8)), OpCodes.Shl32(data[pos + 2], 16)), OpCodes.Shl32(data[pos + 3], 24));
 
       // Simple hash function
       const hash = OpCodes.ToDWord(v * 0x1E35A7BD);
@@ -556,10 +553,10 @@
      */
     _writeVarint(output, value) {
       while (value >= 128) {
-        output.push((value&0x7F) | 0x80);
+        output.push(OpCodes.Or32(OpCodes.And32(value, 0x7F), 0x80));
         value = OpCodes.Shr32(value, 7);
       }
-      output.push(value&0x7F);
+      output.push(OpCodes.And32(value, 0x7F));
     }
 
     /**
@@ -574,9 +571,9 @@
       while (pos < input.length) {
         const byte = input[pos++];
         bytesRead++;
-        result |= OpCodes.Shl32(byte&0x7F, shift);
+        result = OpCodes.Or32(result, OpCodes.Shl32(OpCodes.And32(byte, 0x7F), shift));
 
-        if ((byte&0x80) === 0) {
+        if (OpCodes.And32(byte, 0x80) === 0) {
           break;
         }
 

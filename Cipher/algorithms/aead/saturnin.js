@@ -883,7 +883,7 @@ class SaturninShortInstance extends IAeadInstance {
       const temp = decrypted[16 + index];
       const temp2 = OpCodes.AndN(check2, (-(1 - (OpCodes.Shr32(OpCodes.XorN(temp, 0x80) + 0xFF, 8)))));
       len |= OpCodes.AndN(temp2, index);
-      check2 &= ~temp2;
+      check2 = OpCodes.ToUint32(OpCodes.AndN(check2, OpCodes.XorN(temp2, 0xFFFFFFFF)));
       check1 |= OpCodes.AndN(check2, OpCodes.Shr32(temp + 0xFF, 8));
     }
     check1 |= check2;
@@ -891,7 +891,7 @@ class SaturninShortInstance extends IAeadInstance {
     // check1 is 0 if valid, non-zero if invalid
     const result = OpCodes.Shr32(check1 - 1, 8); // -1 if valid, 0 if invalid
 
-    if (~result !== 0) {
+    if (OpCodes.ToUint32(OpCodes.XorN(result, 0xFFFFFFFF)) !== 0) {
       throw new Error("Authentication failed: invalid nonce or padding");
     }
 

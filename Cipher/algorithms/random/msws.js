@@ -113,7 +113,7 @@
       // Test vectors verified against C# reference implementation
       // This matches the C# implementation in the Hawkynt Randomizer project
       // Weyl constant: 0xB5AD4ECEDA1CE2A9 (from golden ratio)
-      // Seed initialization: state = (seed << 64) | ~seed, weyl = 0
+      // Seed initialization: state = (OpCodes.Shl32(seed, 64))|~seed, weyl = 0
       // Output: Middle 64 bits from 128-bit state (state >> 32)
       // Reference: C# MiddleSquareWeylSequence.cs implementation
       this.tests = [
@@ -200,7 +200,7 @@
       // Convert seed bytes to 64-bit BigInt (big-endian)
       let seed64 = 0n;
       for (let i = 0; i < Math.min(seedBytes.length, 8); ++i) {
-        seed64 = OpCodes.OrN(OpCodes.ShiftLn(seed64, 8n), BigInt(OpCodes.AndN(seedBytes[i], 0xFF)));
+        seed64 = OpCodes.OrN(OpCodes.ShiftLn(seed64, 8n), BigInt(OpCodes.And32(seedBytes[i], 0xFF)));
       }
 
       // Initialize state as per MSWS specification: state = (seed left-shift 64) bitwise-OR ~seed

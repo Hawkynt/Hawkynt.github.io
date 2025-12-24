@@ -276,7 +276,7 @@
         throw new Error("Key not set");
       }
       for (let i = 0; i < data.length; i++) {
-        this.inputBuffer.push(data[i] & 0xff);
+        this.inputBuffer.push(data[i]&0xff);
       }
     }
 
@@ -326,7 +326,7 @@
 
     _expandKey(keyBytes) {
       const tables = this.tables;
-      const keyCopy = Uint8Array.from(keyBytes, value => value & 0xff);
+      const keyCopy = Uint8Array.from(keyBytes, value => value&0xff);
       const nk = keyCopy.length / 4;
       const nr = nk + 6;
       const totalWords = NB * (nr + 1);
@@ -334,24 +334,24 @@
 
       for (let i = 0; i < nk; i++) {
         const offset = i * 4;
-        words[i] = OpCodes.Pack32BE(
+        words[i] = OpCodes.ToUint32(OpCodes.Pack32BE(
           keyCopy[offset],
           keyCopy[offset + 1],
           keyCopy[offset + 2],
           keyCopy[offset + 3]
-        ) >>> 0;
+        ));
       }
 
       let rconIndex = 0;
       for (let i = nk; i < totalWords; i++) {
         let temp = words[i - 1];
         if (i % nk === 0) {
-          temp = (subWord(rotWord(temp), tables) ^ OpCodes.Pack32BE(tables.RCON[rconIndex], 0, 0, 0)) >>> 0;
+          temp = OpCodes.ToUint32(OpCodes.Xor32(subWord(rotWord(temp), tables), OpCodes.Pack32BE(tables.RCON[rconIndex], 0, 0, 0)));
           rconIndex++;
         } else if (nk > 6 && (i % nk) === 4) {
           temp = subWord(temp, tables);
         }
-        words[i] = (words[i - nk] ^ temp) >>> 0;
+        words[i] = OpCodes.ToUint32(OpCodes.Xor32(words[i - nk], temp));
       }
 
       const roundKeys = new Uint8Array(totalWords * 4);
@@ -384,7 +384,7 @@
 
       const state = new Uint8Array(BLOCK_SIZE);
       for (let i = 0; i < BLOCK_SIZE; i++) {
-        state[i] = block[i] & 0xff;
+        state[i] = block[i]&0xff;
       }
 
       this._addRoundKey(state, 0);
@@ -418,7 +418,7 @@
 
       const state = new Uint8Array(BLOCK_SIZE);
       for (let i = 0; i < BLOCK_SIZE; i++) {
-        state[i] = block[i] & 0xff;
+        state[i] = block[i]&0xff;
       }
 
       this._addRoundKey(state, this.rounds);
@@ -445,7 +445,7 @@
     _addRoundKey(state, round) {
       const offset = round * BLOCK_SIZE;
       for (let i = 0; i < BLOCK_SIZE; i++) {
-        state[i] = (state[i] ^ this.roundKeys[offset + i]) & 0xff;
+        state[i] = (state[i]^this.roundKeys[offset + i])&0xff;
       }
     }
 
@@ -514,17 +514,17 @@
         const s3 = state[base + 3];
 
         state[base] = (
-          OpCodes.GF256Mul(s0, 2) ^ OpCodes.GF256Mul(s1, 3) ^ s2 ^ s3
-        ) & 0xff;
+          OpCodes.GF256Mul(s0, 2)^OpCodes.GF256Mul(s1, 3)^s2^s3
+        )&0xff;
         state[base + 1] = (
-          s0 ^ OpCodes.GF256Mul(s1, 2) ^ OpCodes.GF256Mul(s2, 3) ^ s3
-        ) & 0xff;
+          s0^OpCodes.GF256Mul(s1, 2)^OpCodes.GF256Mul(s2, 3)^s3
+        )&0xff;
         state[base + 2] = (
-          s0 ^ s1 ^ OpCodes.GF256Mul(s2, 2) ^ OpCodes.GF256Mul(s3, 3)
-        ) & 0xff;
+          s0^s1^OpCodes.GF256Mul(s2, 2)^OpCodes.GF256Mul(s3, 3)
+        )&0xff;
         state[base + 3] = (
-          OpCodes.GF256Mul(s0, 3) ^ s1 ^ s2 ^ OpCodes.GF256Mul(s3, 2)
-        ) & 0xff;
+          OpCodes.GF256Mul(s0, 3)^s1^s2^OpCodes.GF256Mul(s3, 2)
+        )&0xff;
       }
     }
 
@@ -537,17 +537,17 @@
         const s3 = state[base + 3];
 
         state[base] = (
-          OpCodes.GF256Mul(s0, 14) ^ OpCodes.GF256Mul(s1, 11) ^ OpCodes.GF256Mul(s2, 13) ^ OpCodes.GF256Mul(s3, 9)
-        ) & 0xff;
+          OpCodes.GF256Mul(s0, 14)^OpCodes.GF256Mul(s1, 11)^OpCodes.GF256Mul(s2, 13)^OpCodes.GF256Mul(s3, 9)
+        )&0xff;
         state[base + 1] = (
-          OpCodes.GF256Mul(s0, 9) ^ OpCodes.GF256Mul(s1, 14) ^ OpCodes.GF256Mul(s2, 11) ^ OpCodes.GF256Mul(s3, 13)
-        ) & 0xff;
+          OpCodes.GF256Mul(s0, 9)^OpCodes.GF256Mul(s1, 14)^OpCodes.GF256Mul(s2, 11)^OpCodes.GF256Mul(s3, 13)
+        )&0xff;
         state[base + 2] = (
-          OpCodes.GF256Mul(s0, 13) ^ OpCodes.GF256Mul(s1, 9) ^ OpCodes.GF256Mul(s2, 14) ^ OpCodes.GF256Mul(s3, 11)
-        ) & 0xff;
+          OpCodes.GF256Mul(s0, 13)^OpCodes.GF256Mul(s1, 9)^OpCodes.GF256Mul(s2, 14)^OpCodes.GF256Mul(s3, 11)
+        )&0xff;
         state[base + 3] = (
-          OpCodes.GF256Mul(s0, 11) ^ OpCodes.GF256Mul(s1, 13) ^ OpCodes.GF256Mul(s2, 9) ^ OpCodes.GF256Mul(s3, 14)
-        ) & 0xff;
+          OpCodes.GF256Mul(s0, 11)^OpCodes.GF256Mul(s1, 13)^OpCodes.GF256Mul(s2, 9)^OpCodes.GF256Mul(s3, 14)
+        )&0xff;
       }
     }
   }

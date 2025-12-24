@@ -314,7 +314,7 @@
       const keyLength = keyBytes.length;
 
       // Key must be multiple of 4 bytes
-      if (keyLength === 0 || (keyLength & 3) !== 0) {
+      if (keyLength === 0 || OpCodes.And32(keyLength, 3) !== 0) {
         throw new Error(`Invalid SOBER-128 key size: ${keyLength} bytes. Key length must be multiple of 4 bytes`);
       }
 
@@ -344,7 +344,7 @@
       const ivLength = ivData.length;
 
       // IV must be multiple of 4 bytes
-      if (ivLength === 0 || (ivLength & 3) !== 0) {
+      if (ivLength === 0 || OpCodes.And32(ivLength, 3) !== 0) {
         throw new Error(`Invalid SOBER-128 IV size: ${ivLength} bytes. IV length must be multiple of 4 bytes`);
       }
 
@@ -416,8 +416,8 @@
 
       // Handle any previously buffered bytes
       while (this.nbuf !== 0 && inlen !== 0) {
-        output.push(this.inputBuffer[inpos++] ^ (this.sbuf & 0xFF));
-        this.sbuf >>>= 8;
+        output.push(OpCodes.Xor32(this.inputBuffer[inpos++], OpCodes.And32(this.sbuf, 0xFF)));
+        this.sbuf = OpCodes.Shr32(this.sbuf, 8);
         this.nbuf -= 8;
         --inlen;
       }
@@ -434,7 +434,7 @@
         const w3 = this.inputBuffer[inpos++];
 
         const word = OpCodes.Pack32LE(w0, w1, w2, w3);
-        const result = (word ^ t) >>> 0;
+        const result = OpCodes.ToUint32(OpCodes.Xor32(word, t));
 
         const unpacked = OpCodes.Unpack32LE(result);
         output.push(unpacked[0]);
@@ -452,8 +452,8 @@
         this.nbuf = 32;
 
         while (this.nbuf !== 0 && inlen !== 0) {
-          output.push(this.inputBuffer[inpos++] ^ (this.sbuf & 0xFF));
-          this.sbuf >>>= 8;
+          output.push(OpCodes.Xor32(this.inputBuffer[inpos++], OpCodes.And32(this.sbuf, 0xFF)));
+          this.sbuf = OpCodes.Shr32(this.sbuf, 8);
           this.nbuf -= 8;
           --inlen;
         }
@@ -473,7 +473,7 @@
       this.R[0] = 1;
       this.R[1] = 1;
       for (let i = 2; i < N; i++) {
-        this.R[i] = (this.R[i - 1] + this.R[i - 2]) >>> 0;
+        this.R[i] = OpCodes.ToUint32((this.R[i - 1] + this.R[i - 2]));
       }
       this.konst = INITKONST;
 
@@ -482,15 +482,15 @@
         const k = this._byte2word(this._key, i);
 
         // Add key word to register
-        this.R[KEYP] = (this.R[KEYP] + k) >>> 0;
+        this.R[KEYP] = OpCodes.ToUint32(this.R[KEYP] + k);
         this._cycle();
 
         // XOR nonlinear function output into register
-        this.R[FOLDP] ^= this._nltap();
+        this.R[FOLDP] = OpCodes.Xor32(this.R[FOLDP], this._nltap());
       }
 
       // Fold in key length
-      this.R[KEYP] = (this.R[KEYP] + this._key.length) >>> 0;
+      this.R[KEYP] = OpCodes.ToUint32((this.R[KEYP] + this._key.length));
 
       // Diffusion rounds
       this._diffuse();
@@ -517,15 +517,15 @@
         const k = this._byte2word(this._iv, i);
 
         // Add IV word to register
-        this.R[KEYP] = (this.R[KEYP] + k) >>> 0;
+        this.R[KEYP] = OpCodes.ToUint32(this.R[KEYP] + k);
         this._cycle();
 
         // XOR nonlinear function output into register
-        this.R[FOLDP] ^= this._nltap();
+        this.R[FOLDP] = OpCodes.Xor32(this.R[FOLDP], this._nltap());
       }
 
       // Fold in IV length
-      this.R[KEYP] = (this.R[KEYP] + this._iv.length) >>> 0;
+      this.R[KEYP] = OpCodes.ToUint32((this.R[KEYP] + this._iv.length));
 
       // Diffusion rounds
       this._diffuse();
@@ -546,10 +546,10 @@
     // Step the LFSR (Linear Feedback Shift Register)
     _cycle() {
       // LFSR feedback polynomial: x^17 + x^15 + x^4 + 1
-      // R[0] = R[15] ^ R[4] ^ (R[0] << 8) ^ Multab[R[0] >> 24]
-      const t = (this.R[0] << 8) >>> 0;
+      // R[0] = R[15] xor R[4] xor (R[0] left-shift 8) xor Multab[R[0] right-shift 24]
+      const t = OpCodes.Shl32(this.R[0], 8);
       const idx = OpCodes.GetByte(this.R[0], 3);  // Extract MSB (high byte)
-      this.R[0] = (this.R[15] ^ this.R[4] ^ t ^ Multab[idx]) >>> 0;
+      this.R[0] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.R[15], this.R[4]), t), Multab[idx]);
 
       // Rotate register
       const temp = this.R[0];
@@ -562,14 +562,14 @@
     // Non-Linear Function (NLF) - produces keystream word
     _nltap() {
       // Combine multiple register elements with S-box lookups
-      let t = (this.R[0] + this.R[16]) >>> 0;
-      t ^= Sbox[OpCodes.GetByte(t, 3)];  // S-box lookup with high byte
+      let t = OpCodes.ToUint32(this.R[0] + this.R[16]);
+      t = OpCodes.Xor32(t, Sbox[OpCodes.GetByte(t, 3)]);  // S-box lookup with high byte
       t = OpCodes.RotR32(t, 8);
-      t = ((t + this.R[1]) ^ this.konst) >>> 0;
-      t = (t + this.R[6]) >>> 0;
-      t ^= Sbox[OpCodes.GetByte(t, 3)];  // S-box lookup with high byte
-      t = (t + this.R[13]) >>> 0;
-      return t >>> 0;
+      t = OpCodes.ToUint32(OpCodes.Xor32(t + this.R[1], this.konst));
+      t = OpCodes.ToUint32(t + this.R[6]);
+      t = OpCodes.Xor32(t, Sbox[OpCodes.GetByte(t, 3)]);  // S-box lookup with high byte
+      t = OpCodes.ToUint32(t + this.R[13]);
+      return OpCodes.ToUint32(t);
     }
 
     // Diffusion rounds for key/IV setup
@@ -585,16 +585,16 @@
         // After cycle, calculate NLF at current position
         // In C this would be NLFUNC(st, z+1) but after rotation,
         // position 0 now contains what we need
-        let t = (this.R[0] + this.R[16 % N]) >>> 0;
-        t ^= Sbox[OpCodes.GetByte(t, 3)];  // S-box lookup with high byte
+        let t = OpCodes.ToUint32(this.R[0] + this.R[16 % N]);
+        t = OpCodes.Xor32(t, Sbox[OpCodes.GetByte(t, 3)]);  // S-box lookup with high byte
         t = OpCodes.RotR32(t, 8);
-        t = ((t + this.R[1]) ^ this.konst) >>> 0;
-        t = (t + this.R[6]) >>> 0;
-        t ^= Sbox[OpCodes.GetByte(t, 3)];  // S-box lookup with high byte
-        t = (t + this.R[13]) >>> 0;
+        t = OpCodes.ToUint32(OpCodes.Xor32(t + this.R[1], this.konst));
+        t = OpCodes.ToUint32(t + this.R[6]);
+        t = OpCodes.Xor32(t, Sbox[OpCodes.GetByte(t, 3)]);  // S-box lookup with high byte
+        t = OpCodes.ToUint32(t + this.R[13]);
 
         // XOR into fold position (which is FOLDP from current position)
-        this.R[FOLDP] ^= t;
+        this.R[FOLDP] = OpCodes.Xor32(this.R[FOLDP], t);
       }
     }
 
@@ -605,9 +605,9 @@
       do {
         this._cycle();
         newkonst = this._nltap();
-      } while ((newkonst & 0xFF000000) === 0);
+      } while (OpCodes.ToByte(OpCodes.Shr32(newkonst, 24)) === 0);
 
-      this.konst = newkonst >>> 0;
+      this.konst = OpCodes.ToUint32(newkonst);
     }
 
     // Save register state (after key setup)

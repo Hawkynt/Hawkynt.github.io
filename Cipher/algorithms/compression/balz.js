@@ -215,10 +215,7 @@
       }
 
       // Read original size from header
-      const originalSize = data[0] |
-                          OpCodes.Shl32(data[1], 8) |
-                          OpCodes.Shl32(data[2], 16) |
-                          OpCodes.Shl32(data[3], 24);
+      const originalSize = data[0]|OpCodes.Shl32(data[1], 8)|OpCodes.Shl32(data[2], 16)|OpCodes.Shl32(data[3], 24);
 
       if (originalSize === 0) {
         this.inputBuffer = [];
@@ -419,10 +416,7 @@
       if (data.length < 4) return [];
 
       // Read stream length
-      const len = data[0] |
-                  OpCodes.Shl32(data[1], 8) |
-                  OpCodes.Shl32(data[2], 16) |
-                  OpCodes.Shl32(data[3], 24);
+      const len = data[0]|OpCodes.Shl32(data[1], 8)|OpCodes.Shl32(data[2], 16)|OpCodes.Shl32(data[3], 24);
 
       const stream = [];
       let pos = 4;

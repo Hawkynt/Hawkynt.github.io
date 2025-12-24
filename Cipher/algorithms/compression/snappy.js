@@ -460,7 +460,7 @@
       if (length === 0) return;
 
       if (length<=this.MAX_LITERAL_LENGTH_SHORT) {
-        // Short literal: tag = ((length-1) << 2) | 0x00
+        // Short literal: tag = (OpCodes.Shl32((length-1), 2))|0x00
         output.push(OpCodes.OrN(OpCodes.Shl8(length-1, 2), 0x00));
       } else {
         // Extended literal length encoding

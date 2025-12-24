@@ -71,10 +71,10 @@
    * Provides non-linear transformation in the SPARKLE permutation
    *
    * Reference implementation uses left rotations:
-   * x += ROT(y, 1); y ^= ROT(x, 8); x ^= k;
-   * x += ROT(y, 15); y ^= ROT(x, 15); x ^= k;
-   * x += y; y ^= ROT(x, 1); x ^= k;
-   * x += ROT(y, 8); y ^= ROT(x, 16); x ^= k;
+   * x += ROT(y, 1); y ^= ROT(x, 8); x = OpCodes.Xor32(x, k);
+   * x += ROT(y, 15); y ^= ROT(x, 15); x = OpCodes.Xor32(x, k);
+   * x += y; y ^= ROT(x, 1); x = OpCodes.Xor32(x, k);
+   * x += ROT(y, 8); y ^= ROT(x, 16); x = OpCodes.Xor32(x, k);
    *
    * @param {number} x - Left 32-bit word
    * @param {number} y - Right 32-bit word
@@ -348,7 +348,7 @@
       this.STEPS_BIG = 11;          // Big steps for initialization/finalization
 
       // Domain separation constants (little-endian byte position 3)
-      // Format: (domain_value << 24) for the last word
+      // Format: (OpCodes.Shl32(domain_value, 24)) for the last word
       this._A0 = 0x04000000;        // 0x04 in MSB position (partial AD block)
       this._A1 = 0x05000000;        // 0x05 in MSB position (full AD block)
       this._M2 = 0x06000000;        // 0x06 in MSB position (partial message block)
@@ -442,7 +442,7 @@
 
     /**
      * Initialize state when both key and nonce are set
-     * State layout: [Rate (8 words) | Capacity (4 words)]
+     * State layout: [Rate (8 words)|Capacity (4 words)]
      * Initial: Nonce in rate, Key in capacity
      */
     _initializeIfReady() {
@@ -811,7 +811,7 @@
         // Tag generation: tag = capacity XOR key
         // Reference: sparkle.c line 233-234
         // lw_xor_block_2_src(c, SCHWAEMM_256_128_RIGHT(s), k, SCHWAEMM_256_128_TAG_SIZE)
-        // This means: tag[i] = capacity[i] ^ key[i]
+        // This means: tag[i] = capacity[i]^key[i]
         for (let i = 0; i < this.TAG_BYTES; ++i) {
           const wordIdx = OpCodes.Shr32(this.RATE_BYTES + i, 2);
           const byteIdx = OpCodes.Shl32(OpCodes.AndN(i, 3), 3);

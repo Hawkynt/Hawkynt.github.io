@@ -69,35 +69,35 @@
       // Column 0: s0, s4, s8
       x = OpCodes.RotL32(s0, 24);
       y = OpCodes.RotL32(s4, 9);
-      s4 = (y ^ x ^ ((x | s8) << 1)) >>> 0;
-      s0 = (s8 ^ y ^ ((x & y) << 3)) >>> 0;
-      s8 = (x ^ (s8 << 1) ^ ((y & s8) << 2)) >>> 0;
+      s4 = OpCodes.Xor32(OpCodes.Xor32(y, x), OpCodes.Shl32((x|s8), 1));
+      s0 = OpCodes.Xor32(OpCodes.Xor32(s8, y), OpCodes.Shl32((x&y), 3));
+      s8 = OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.Shl32(s8, 1)), OpCodes.Shl32((y&s8), 2));
 
       // Column 1: s1, s5, s9
       x = OpCodes.RotL32(s1, 24);
       y = OpCodes.RotL32(s5, 9);
-      s5 = (y ^ x ^ ((x | s9) << 1)) >>> 0;
-      s1 = (s9 ^ y ^ ((x & y) << 3)) >>> 0;
-      s9 = (x ^ (s9 << 1) ^ ((y & s9) << 2)) >>> 0;
+      s5 = OpCodes.Xor32(OpCodes.Xor32(y, x), OpCodes.Shl32((x|s9), 1));
+      s1 = OpCodes.Xor32(OpCodes.Xor32(s9, y), OpCodes.Shl32((x&y), 3));
+      s9 = OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.Shl32(s9, 1)), OpCodes.Shl32((y&s9), 2));
 
       // Column 2: s2, s6, s10
       x = OpCodes.RotL32(s2, 24);
       y = OpCodes.RotL32(s6, 9);
-      s6 = (y ^ x ^ ((x | s10) << 1)) >>> 0;
-      s2 = (s10 ^ y ^ ((x & y) << 3)) >>> 0;
-      s10 = (x ^ (s10 << 1) ^ ((y & s10) << 2)) >>> 0;
+      s6 = OpCodes.Xor32(OpCodes.Xor32(y, x), OpCodes.Shl32((x|s10), 1));
+      s2 = OpCodes.Xor32(OpCodes.Xor32(s10, y), OpCodes.Shl32((x&y), 3));
+      s10 = OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.Shl32(s10, 1)), OpCodes.Shl32((y&s10), 2));
 
       // Column 3: s3, s7, s11
       x = OpCodes.RotL32(s3, 24);
       y = OpCodes.RotL32(s7, 9);
-      s7 = (y ^ x ^ ((x | s11) << 1)) >>> 0;
-      s3 = (s11 ^ y ^ ((x & y) << 3)) >>> 0;
-      s11 = (x ^ (s11 << 1) ^ ((y & s11) << 2)) >>> 0;
+      s7 = OpCodes.Xor32(OpCodes.Xor32(y, x), OpCodes.Shl32((x|s11), 1));
+      s3 = OpCodes.Xor32(OpCodes.Xor32(s11, y), OpCodes.Shl32((x&y), 3));
+      s11 = OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.Shl32(s11, 1)), OpCodes.Shl32((y&s11), 2));
 
       // Small swap (swap s0<->s1, s2<->s3)
       x = s0;
       y = s2;
-      s0 = (s1 ^ 0x9e377900 ^ round) >>> 0;
+      s0 = OpCodes.Xor32(OpCodes.Xor32(s1, 0x9e377900), round);
       s1 = x;
       s2 = s3;
       s3 = y;
@@ -106,59 +106,59 @@
       // Column 0
       x = OpCodes.RotL32(s0, 24);
       y = OpCodes.RotL32(s4, 9);
-      s4 = (y ^ x ^ ((x | s8) << 1)) >>> 0;
-      s0 = (s8 ^ y ^ ((x & y) << 3)) >>> 0;
-      s8 = (x ^ (s8 << 1) ^ ((y & s8) << 2)) >>> 0;
+      s4 = OpCodes.Xor32(OpCodes.Xor32(y, x), OpCodes.Shl32((x|s8), 1));
+      s0 = OpCodes.Xor32(OpCodes.Xor32(s8, y), OpCodes.Shl32((x&y), 3));
+      s8 = OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.Shl32(s8, 1)), OpCodes.Shl32((y&s8), 2));
 
       // Column 1
       x = OpCodes.RotL32(s1, 24);
       y = OpCodes.RotL32(s5, 9);
-      s5 = (y ^ x ^ ((x | s9) << 1)) >>> 0;
-      s1 = (s9 ^ y ^ ((x & y) << 3)) >>> 0;
-      s9 = (x ^ (s9 << 1) ^ ((y & s9) << 2)) >>> 0;
+      s5 = OpCodes.Xor32(OpCodes.Xor32(y, x), OpCodes.Shl32((x|s9), 1));
+      s1 = OpCodes.Xor32(OpCodes.Xor32(s9, y), OpCodes.Shl32((x&y), 3));
+      s9 = OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.Shl32(s9, 1)), OpCodes.Shl32((y&s9), 2));
 
       // Column 2
       x = OpCodes.RotL32(s2, 24);
       y = OpCodes.RotL32(s6, 9);
-      s6 = (y ^ x ^ ((x | s10) << 1)) >>> 0;
-      s2 = (s10 ^ y ^ ((x & y) << 3)) >>> 0;
-      s10 = (x ^ (s10 << 1) ^ ((y & s10) << 2)) >>> 0;
+      s6 = OpCodes.Xor32(OpCodes.Xor32(y, x), OpCodes.Shl32((x|s10), 1));
+      s2 = OpCodes.Xor32(OpCodes.Xor32(s10, y), OpCodes.Shl32((x&y), 3));
+      s10 = OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.Shl32(s10, 1)), OpCodes.Shl32((y&s10), 2));
 
       // Column 3
       x = OpCodes.RotL32(s3, 24);
       y = OpCodes.RotL32(s7, 9);
-      s7 = (y ^ x ^ ((x | s11) << 1)) >>> 0;
-      s3 = (s11 ^ y ^ ((x & y) << 3)) >>> 0;
-      s11 = (x ^ (s11 << 1) ^ ((y & s11) << 2)) >>> 0;
+      s7 = OpCodes.Xor32(OpCodes.Xor32(y, x), OpCodes.Shl32((x|s11), 1));
+      s3 = OpCodes.Xor32(OpCodes.Xor32(s11, y), OpCodes.Shl32((x&y), 3));
+      s11 = OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.Shl32(s11, 1)), OpCodes.Shl32((y&s11), 2));
 
       // Round 2: SP-box, big swap
       // Column 0
       x = OpCodes.RotL32(s0, 24);
       y = OpCodes.RotL32(s4, 9);
-      s4 = (y ^ x ^ ((x | s8) << 1)) >>> 0;
-      s0 = (s8 ^ y ^ ((x & y) << 3)) >>> 0;
-      s8 = (x ^ (s8 << 1) ^ ((y & s8) << 2)) >>> 0;
+      s4 = OpCodes.Xor32(OpCodes.Xor32(y, x), OpCodes.Shl32((x|s8), 1));
+      s0 = OpCodes.Xor32(OpCodes.Xor32(s8, y), OpCodes.Shl32((x&y), 3));
+      s8 = OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.Shl32(s8, 1)), OpCodes.Shl32((y&s8), 2));
 
       // Column 1
       x = OpCodes.RotL32(s1, 24);
       y = OpCodes.RotL32(s5, 9);
-      s5 = (y ^ x ^ ((x | s9) << 1)) >>> 0;
-      s1 = (s9 ^ y ^ ((x & y) << 3)) >>> 0;
-      s9 = (x ^ (s9 << 1) ^ ((y & s9) << 2)) >>> 0;
+      s5 = OpCodes.Xor32(OpCodes.Xor32(y, x), OpCodes.Shl32((x|s9), 1));
+      s1 = OpCodes.Xor32(OpCodes.Xor32(s9, y), OpCodes.Shl32((x&y), 3));
+      s9 = OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.Shl32(s9, 1)), OpCodes.Shl32((y&s9), 2));
 
       // Column 2
       x = OpCodes.RotL32(s2, 24);
       y = OpCodes.RotL32(s6, 9);
-      s6 = (y ^ x ^ ((x | s10) << 1)) >>> 0;
-      s2 = (s10 ^ y ^ ((x & y) << 3)) >>> 0;
-      s10 = (x ^ (s10 << 1) ^ ((y & s10) << 2)) >>> 0;
+      s6 = OpCodes.Xor32(OpCodes.Xor32(y, x), OpCodes.Shl32((x|s10), 1));
+      s2 = OpCodes.Xor32(OpCodes.Xor32(s10, y), OpCodes.Shl32((x&y), 3));
+      s10 = OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.Shl32(s10, 1)), OpCodes.Shl32((y&s10), 2));
 
       // Column 3
       x = OpCodes.RotL32(s3, 24);
       y = OpCodes.RotL32(s7, 9);
-      s7 = (y ^ x ^ ((x | s11) << 1)) >>> 0;
-      s3 = (s11 ^ y ^ ((x & y) << 3)) >>> 0;
-      s11 = (x ^ (s11 << 1) ^ ((y & s11) << 2)) >>> 0;
+      s7 = OpCodes.Xor32(OpCodes.Xor32(y, x), OpCodes.Shl32((x|s11), 1));
+      s3 = OpCodes.Xor32(OpCodes.Xor32(s11, y), OpCodes.Shl32((x&y), 3));
+      s11 = OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.Shl32(s11, 1)), OpCodes.Shl32((y&s11), 2));
 
       // Big swap (swap s0<->s2, s1<->s3)
       x = s0;
@@ -172,45 +172,45 @@
       // Column 0
       x = OpCodes.RotL32(s0, 24);
       y = OpCodes.RotL32(s4, 9);
-      s4 = (y ^ x ^ ((x | s8) << 1)) >>> 0;
-      s0 = (s8 ^ y ^ ((x & y) << 3)) >>> 0;
-      s8 = (x ^ (s8 << 1) ^ ((y & s8) << 2)) >>> 0;
+      s4 = OpCodes.Xor32(OpCodes.Xor32(y, x), OpCodes.Shl32((x|s8), 1));
+      s0 = OpCodes.Xor32(OpCodes.Xor32(s8, y), OpCodes.Shl32((x&y), 3));
+      s8 = OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.Shl32(s8, 1)), OpCodes.Shl32((y&s8), 2));
 
       // Column 1
       x = OpCodes.RotL32(s1, 24);
       y = OpCodes.RotL32(s5, 9);
-      s5 = (y ^ x ^ ((x | s9) << 1)) >>> 0;
-      s1 = (s9 ^ y ^ ((x & y) << 3)) >>> 0;
-      s9 = (x ^ (s9 << 1) ^ ((y & s9) << 2)) >>> 0;
+      s5 = OpCodes.Xor32(OpCodes.Xor32(y, x), OpCodes.Shl32((x|s9), 1));
+      s1 = OpCodes.Xor32(OpCodes.Xor32(s9, y), OpCodes.Shl32((x&y), 3));
+      s9 = OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.Shl32(s9, 1)), OpCodes.Shl32((y&s9), 2));
 
       // Column 2
       x = OpCodes.RotL32(s2, 24);
       y = OpCodes.RotL32(s6, 9);
-      s6 = (y ^ x ^ ((x | s10) << 1)) >>> 0;
-      s2 = (s10 ^ y ^ ((x & y) << 3)) >>> 0;
-      s10 = (x ^ (s10 << 1) ^ ((y & s10) << 2)) >>> 0;
+      s6 = OpCodes.Xor32(OpCodes.Xor32(y, x), OpCodes.Shl32((x|s10), 1));
+      s2 = OpCodes.Xor32(OpCodes.Xor32(s10, y), OpCodes.Shl32((x&y), 3));
+      s10 = OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.Shl32(s10, 1)), OpCodes.Shl32((y&s10), 2));
 
       // Column 3
       x = OpCodes.RotL32(s3, 24);
       y = OpCodes.RotL32(s7, 9);
-      s7 = (y ^ x ^ ((x | s11) << 1)) >>> 0;
-      s3 = (s11 ^ y ^ ((x & y) << 3)) >>> 0;
-      s11 = (x ^ (s11 << 1) ^ ((y & s11) << 2)) >>> 0;
+      s7 = OpCodes.Xor32(OpCodes.Xor32(y, x), OpCodes.Shl32((x|s11), 1));
+      s3 = OpCodes.Xor32(OpCodes.Xor32(s11, y), OpCodes.Shl32((x&y), 3));
+      s11 = OpCodes.Xor32(OpCodes.Xor32(x, OpCodes.Shl32(s11, 1)), OpCodes.Shl32((y&s11), 2));
     }
 
     // Store state back (little-endian)
-    state[0] = s0 >>> 0;
-    state[1] = s1 >>> 0;
-    state[2] = s2 >>> 0;
-    state[3] = s3 >>> 0;
-    state[4] = s4 >>> 0;
-    state[5] = s5 >>> 0;
-    state[6] = s6 >>> 0;
-    state[7] = s7 >>> 0;
-    state[8] = s8 >>> 0;
-    state[9] = s9 >>> 0;
-    state[10] = s10 >>> 0;
-    state[11] = s11 >>> 0;
+    state[0] = OpCodes.ToUint32(s0);
+    state[1] = OpCodes.ToUint32(s1);
+    state[2] = OpCodes.ToUint32(s2);
+    state[3] = OpCodes.ToUint32(s3);
+    state[4] = OpCodes.ToUint32(s4);
+    state[5] = OpCodes.ToUint32(s5);
+    state[6] = OpCodes.ToUint32(s6);
+    state[7] = OpCodes.ToUint32(s7);
+    state[8] = OpCodes.ToUint32(s8);
+    state[9] = OpCodes.ToUint32(s9);
+    state[10] = OpCodes.ToUint32(s10);
+    state[11] = OpCodes.ToUint32(s11);
   }
 
   /**
@@ -341,10 +341,10 @@
       function stateToBytes() {
         for (j = 0; j < 12; j++) {
           word = self.state[j];
-          stateBytes[j * 4 + 0] = word & 0xFF;
-          stateBytes[j * 4 + 1] = (word >>> 8) & 0xFF;
-          stateBytes[j * 4 + 2] = (word >>> 16) & 0xFF;
-          stateBytes[j * 4 + 3] = (word >>> 24) & 0xFF;
+          stateBytes[j * 4 + 0] = word&0xFF;
+          stateBytes[j * 4 + 1] = (OpCodes.Shr32(word, 8))&0xFF;
+          stateBytes[j * 4 + 2] = (OpCodes.Shr32(word, 16))&0xFF;
+          stateBytes[j * 4 + 3] = (OpCodes.Shr32(word, 24))&0xFF;
         }
       }
 
@@ -352,11 +352,8 @@
       function bytesToState() {
         for (j = 0; j < 12; j++) {
           self.state[j] = (
-            stateBytes[j * 4 + 0] |
-            (stateBytes[j * 4 + 1] << 8) |
-            (stateBytes[j * 4 + 2] << 16) |
-            (stateBytes[j * 4 + 3] << 24)
-          ) >>> 0;
+            stateBytes[j * 4 + 0]|(OpCodes.Shl32(stateBytes[j * 4 + 1], 8))|(OpCodes.Shl32(stateBytes[j * 4 + 2], 16))|(OpCodes.Shl32(stateBytes[j * 4 + 3], 24))
+          );
         }
       }
 
@@ -405,10 +402,10 @@
       function stateToBytes() {
         for (j = 0; j < 12; j++) {
           word = self.state[j];
-          stateBytes[j * 4 + 0] = word & 0xFF;
-          stateBytes[j * 4 + 1] = (word >>> 8) & 0xFF;
-          stateBytes[j * 4 + 2] = (word >>> 16) & 0xFF;
-          stateBytes[j * 4 + 3] = (word >>> 24) & 0xFF;
+          stateBytes[j * 4 + 0] = word&0xFF;
+          stateBytes[j * 4 + 1] = (OpCodes.Shr32(word, 8))&0xFF;
+          stateBytes[j * 4 + 2] = (OpCodes.Shr32(word, 16))&0xFF;
+          stateBytes[j * 4 + 3] = (OpCodes.Shr32(word, 24))&0xFF;
         }
       }
 
@@ -416,11 +413,8 @@
       function bytesToState() {
         for (j = 0; j < 12; j++) {
           self.state[j] = (
-            stateBytes[j * 4 + 0] |
-            (stateBytes[j * 4 + 1] << 8) |
-            (stateBytes[j * 4 + 2] << 16) |
-            (stateBytes[j * 4 + 3] << 24)
-          ) >>> 0;
+            stateBytes[j * 4 + 0]|(OpCodes.Shl32(stateBytes[j * 4 + 1], 8))|(OpCodes.Shl32(stateBytes[j * 4 + 2], 16))|(OpCodes.Shl32(stateBytes[j * 4 + 3], 24))
+          );
         }
       }
 

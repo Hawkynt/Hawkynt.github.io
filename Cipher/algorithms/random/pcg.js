@@ -248,11 +248,11 @@
       let result = OpCodes.AndN(state, mask64);
 
       // Rotate right by 'rotate' bits (using 64-bit rotation)
-      // rotr(s, rotate) = (s >> rotate) | (s << (64 - rotate))
-      const rotateAmount = rotate & 63; // Ensure rotate is 0-63
+      // rotr(s, rotate) = (s >> rotate)|(s << (64 - rotate))
+      const rotateAmount = OpCodes.And32(rotate, 63); // Ensure rotate is 0-63
       if (rotateAmount !== 0) {
         const shifted = OpCodes.ShiftRn(result, BigInt(rotateAmount));
-        const wrapped = OpCodes.ShiftLn(result, BigInt(64 - rotateAmount)) & mask64;
+        const wrapped = OpCodes.AndN(OpCodes.ShiftLn(result, BigInt(64 - rotateAmount)), mask64);
         result = OpCodes.OrN(shifted, wrapped);
       }
 
@@ -267,7 +267,7 @@
 
       // Extract upper 32 bits for better distribution
       const value32 = Number(OpCodes.ShiftRn(value64, 32n));
-      return value32 >>> 0; // Ensure unsigned 32-bit
+      return OpCodes.ToUint32(value32); // Ensure unsigned 32-bit
     }
 
     /**

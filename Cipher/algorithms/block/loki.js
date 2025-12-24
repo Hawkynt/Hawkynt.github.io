@@ -92,7 +92,7 @@
 
       this.references = [
         new AlgorithmFramework.LinkItem("Original LOKI Paper", "https://www.unsw.adfa.edu.au/~lpb/papers/loki.pdf"),
-        new AlgorithmFramework.LinkItem("Brown & Pieprzyk Design", "https://link.springer.com/chapter/10.1007/3-540-47555-9_36")
+        new AlgorithmFramework.LinkItem("Brown&Pieprzyk Design", "https://link.springer.com/chapter/10.1007/3-540-47555-9_36")
       ];
 
       this.knownVulnerabilities = [
@@ -258,15 +258,15 @@
       for (let round = 0; round < this.ROUNDS; round++) {
         // Standard Feistel: L_new = R_old, R_new = L_old XOR f(R_old, K)
         const newLeft = right;
-        const newRight = left ^ this._fFunction(right, KL, KR);
+        const newRight = OpCodes.Xor32(left, this._fFunction(right, KL, KR));
 
         left = newLeft;
         right = newRight;
 
         // Rotate key for next round (12 bits left)
         const temp_key = KL;
-        KL = OpCodes.RotL32(KL, 12) ^ OpCodes.RotR32(KR, 20);
-        KR = OpCodes.RotL32(KR, 12) ^ OpCodes.RotR32(temp_key, 20);
+        KL = OpCodes.Xor32(OpCodes.RotL32(KL, 12), OpCodes.RotR32(KR, 20));
+        KR = OpCodes.Xor32(OpCodes.RotL32(KR, 12), OpCodes.RotR32(temp_key, 20));
       }
 
       // Convert back to bytes using OpCodes
@@ -294,8 +294,8 @@
       allKeys.push([KL, KR]);
       for (let round = 0; round < this.ROUNDS - 1; round++) {
         const temp_key = KL;
-        KL = OpCodes.RotL32(KL, 12) ^ OpCodes.RotR32(KR, 20);
-        KR = OpCodes.RotL32(KR, 12) ^ OpCodes.RotR32(temp_key, 20);
+        KL = OpCodes.Xor32(OpCodes.RotL32(KL, 12), OpCodes.RotR32(KR, 20));
+        KR = OpCodes.Xor32(OpCodes.RotL32(KR, 12), OpCodes.RotR32(temp_key, 20));
         allKeys.push([KL, KR]);
       }
 
@@ -304,7 +304,7 @@
         // Reverse Feistel: L_new = R_old XOR f(L_old, K), R_new = L_old
         const [roundKL, roundKR] = allKeys[round];
         const newRight = left;
-        const newLeft = right ^ this._fFunction(left, roundKL, roundKR);
+        const newLeft = OpCodes.Xor32(right, this._fFunction(left, roundKL, roundKR));
 
         left = newLeft;
         right = newRight;
@@ -319,7 +319,7 @@
 
     _fFunction(input, KL, KR) {
       // XOR with round key
-      let temp = input ^ KL;
+      let temp = OpCodes.Xor32(input, KL);
 
       // Apply LOKI89 S-box function (12-bit input, 8-bit output)
       let sboxResult = 0;
@@ -327,17 +327,17 @@
       // Process in 4 chunks of 8 bits each
       for (let i = 0; i < 4; i++) {
         // Extract 12-bit value (8 bits from temp + 4 bits from position)
-        let val12 = ((temp >>> (i * 8)) & 0xFF) | ((i & 0x0F) << 8);
+        let val12 = (OpCodes.Shr32(temp, (i * 8))&0xFF)|OpCodes.Shl32((i&0x0F), 8);
 
         // Apply S-box using simplified GF exponentiation
         let sboxOut = this._sBoxLOKI(val12, i);
 
         // Combine result
-        sboxResult |= (sboxOut << (i * 8));
+        sboxResult |= OpCodes.Shl32(sboxOut, (i * 8));
       }
 
       // XOR with second key half
-      sboxResult ^= KR;
+      sboxResult = OpCodes.Xor32(sboxResult, KR);
 
       // Apply permutation P
       return this._permutationP(sboxResult);
@@ -348,18 +348,18 @@
       const sfn = this.SFN[sboxIndex];
 
       // Extract row and column for S-box lookup
-      const row = ((input >>> 8) & 0x0C) | (input & 0x03);
-      const col = (input >>> 2) & 0xFF;
+      const row = (OpCodes.Shr32(input, 8)&0x0C)|(input&0x03);
+      const col = OpCodes.Shr32(input, 2)&0xFF;
 
       // Simple S-box computation (simplified from full GF exponentiation)
-      let t = col ^ row;
+      let t = OpCodes.Xor32(col, row);
 
       // Basic non-linear transformation
-      t = ((t << 1) ^ (t >>> 7)) & 0xFF;
-      t = t ^ ((t << 3) | (t >>> 5));
-      t = t ^ sfn.exp;
+      t = OpCodes.ToByte(OpCodes.Xor32(OpCodes.Shl32(t, 1), OpCodes.Shr32(t, 7)));
+      t = OpCodes.Xor32(t, (OpCodes.Shl32(t, 3)|OpCodes.Shr32(t, 5)));
+      t = OpCodes.Xor32(t, sfn.exp);
 
-      return t & 0xFF;
+      return OpCodes.ToByte(t);
     }
 
     _permutationP(input) {
@@ -367,11 +367,11 @@
 
       // Apply 32-bit permutation using OpCodes
       for (let i = 0; i < 32; i++) {
-        const bit = (input >>> (31 - this.P_TABLE[i])) & 1;
-        output |= (bit << (31 - i));
+        const bit = OpCodes.Shr32(input, (31 - this.P_TABLE[i]))&1;
+        output |= OpCodes.Shl32(bit, (31 - i));
       }
 
-      return output >>> 0; // Ensure unsigned
+      return OpCodes.ToUint32(output); // Ensure unsigned
     }
   }
 
@@ -414,7 +414,7 @@
 
       this.references = [
         new AlgorithmFramework.LinkItem("LOKI91 Specification", "https://www.unsw.adfa.edu.au/~lpb/papers/loki91.pdf"),
-        new AlgorithmFramework.LinkItem("Brown & Pieprzyk 1991", "https://link.springer.com/chapter/10.1007/3-540-57220-1_66")
+        new AlgorithmFramework.LinkItem("Brown&Pieprzyk 1991", "https://link.springer.com/chapter/10.1007/3-540-57220-1_66")
       ];
 
       this.knownVulnerabilities = [
@@ -538,7 +538,7 @@
         const constant = this.KEY_CONSTANTS[round % 12];
 
         // Apply non-linear transformation
-        right = left ^ this._enhancedKeyFunction(right, round, constant);
+        right = OpCodes.Xor32(left, this._enhancedKeyFunction(right, round, constant));
         left = temp;
 
         // Additional rotation for better key distribution
@@ -548,7 +548,7 @@
         }
 
         // Extract 48-bit round key from current state
-        const roundKey48 = ((left & 0xFFFF0000) << 16) | (right & 0xFFFFFFFF);
+        const roundKey48 = OpCodes.Shl32((left&0xFFFF0000), 16)|(right&0xFFFFFFFF);
         roundKeys[round] = this._split48ToBytes(roundKey48);
       }
 
@@ -557,7 +557,7 @@
 
     _enhancedKeyFunction(input, round, constant) {
       // Apply round constant
-      input ^= constant;
+      input = OpCodes.Xor32(input, constant);
 
       // Rotate based on round using OpCodes
       input = OpCodes.RotL32(input, ((round % 7) + 1));
@@ -565,9 +565,9 @@
       // Apply S-box substitution to each byte using OpCodes
       const bytes = OpCodes.Unpack32BE(input);
       for (let i = 0; i < 4; i++) {
-        const high4 = (bytes[i] >>> 4) & 0x0F;
-        const low4 = bytes[i] & 0x0F;
-        bytes[i] = (this.SBOX[i % 4][high4] << 4) | this.SBOX[(i + 1) % 4][low4];
+        const high4 = OpCodes.Shr32(bytes[i], 4)&0x0F;
+        const low4 = bytes[i]&0x0F;
+        bytes[i] = OpCodes.Shl32(this.SBOX[i % 4][high4], 4)|this.SBOX[(i + 1) % 4][low4];
       }
 
       return OpCodes.Pack32BE(bytes[0], bytes[1], bytes[2], bytes[3]);
@@ -576,8 +576,8 @@
     _split48ToBytes(value) {
       const result = new Array(6);
       for (let i = 5; i >= 0; i--) {
-        result[i] = value & 0xFF;
-        value >>>= 8;
+        result[i] = OpCodes.ToByte(value);
+        value = OpCodes.Shr32(value, 8);
       }
       return result;
     }
@@ -628,7 +628,7 @@
       for (let round = 0; round < this.ROUNDS; round++) {
         // Standard Feistel: L_new = R_old, R_new = L_old XOR f(R_old, K)
         const newLeft = right;
-        const newRight = left ^ this._fFunction(right, this.roundKeys[round]);
+        const newRight = OpCodes.Xor32(left, this._fFunction(right, this.roundKeys[round]));
 
         left = newLeft;
         right = newRight;
@@ -654,7 +654,7 @@
       for (let round = this.ROUNDS - 1; round >= 0; round--) {
         // Reverse Feistel: L_new = R_old XOR f(L_old, K), R_new = L_old
         const newRight = left;
-        const newLeft = right ^ this._fFunction(left, this.roundKeys[round]);
+        const newLeft = OpCodes.Xor32(right, this._fFunction(left, this.roundKeys[round]));
 
         left = newLeft;
         right = newRight;
@@ -678,14 +678,14 @@
 
       // S-box substitution: apply to each 4-bit nibble
       for (let i = 0; i < 4; i++) {
-        const high4 = (inputBytes[i] >>> 4) & 0x0F;
-        const low4 = inputBytes[i] & 0x0F;
+        const high4 = OpCodes.Shr32(inputBytes[i], 4)&0x0F;
+        const low4 = inputBytes[i]&0x0F;
 
         // Apply S-boxes
         const newHigh = this.SBOX[i % 4][high4];
         const newLow = this.SBOX[(i + 1) % 4][low4];
 
-        inputBytes[i] = (newHigh << 4) | newLow;
+        inputBytes[i] = OpCodes.Shl32(newHigh, 4)|newLow;
       }
 
       // Additional XOR with remaining round key bytes
@@ -869,16 +869,16 @@
         // S1: x^31 mod irreducible polynomial
         let val = i;
         for (let j = 0; j < 5; j++) {
-          val = ((val << 1) ^ (val >>> 12 ? 0x100D : 0)) & 0x1FFF;
+          val = ((OpCodes.Shl32(val, 1))^(OpCodes.Shr32(val, 12) ? 0x100D : 0))&0x1FFF;
         }
-        this.S1[i] = val & 0xFF;
+        this.S1[i] = val&0xFF;
 
         // S2: x^17 mod different irreducible polynomial
         val = i;
         for (let j = 0; j < 4; j++) {
-          val = ((val << 1) ^ (val >>> 12 ? 0x1053 : 0)) & 0x1FFF;
+          val = ((OpCodes.Shl32(val, 1))^(OpCodes.Shr32(val, 12) ? 0x1053 : 0))&0x1FFF;
         }
-        this.S2[i] = val & 0xFF;
+        this.S2[i] = val&0xFF;
       }
 
       this.isInitialized = true;
@@ -1025,18 +1025,18 @@
       const k2 = key[1];
 
       // Basic mixing with key
-      let t1 = (a1 ^ k1) + (a2 ^ k2);
-      let t2 = (a2 ^ k2) + OpCodes.RotL32(a1 ^ k1, 11);
+      let t1 = (a1^k1) + (a2^k2);
+      let t2 = (a2^k2) + OpCodes.RotL32(a1^k1, 11);
 
       // Simple substitution layer using rotation and XOR
-      t1 = OpCodes.RotL32(t1, 7) ^ OpCodes.RotR32(t1, 11);
-      t2 = OpCodes.RotR32(t2, 13) ^ OpCodes.RotL32(t2, 5);
+      t1 = OpCodes.RotL32(t1, 7)^OpCodes.RotR32(t1, 11);
+      t2 = OpCodes.RotR32(t2, 13)^OpCodes.RotL32(t2, 5);
 
       // Additional mixing
-      const result1 = t1 ^ OpCodes.RotL32(t2, 17);
-      const result2 = t2 ^ OpCodes.RotR32(t1, 19);
+      const result1 = t1^OpCodes.RotL32(t2, 17);
+      const result2 = t2^OpCodes.RotR32(t1, 19);
 
-      return [result1 >>> 0, result2 >>> 0];
+      return [OpCodes.ToUint32(result1), OpCodes.ToUint32(result2)];
     }
 
     // Utility methods for 64-bit arithmetic
@@ -1053,7 +1053,7 @@
     }
 
     _xorLong(a, b) {
-      return [(a[0] ^ b[0]) >>> 0, (a[1] ^ b[1]) >>> 0];
+      return [OpCodes.ToUint32((a[0]^b[0])), OpCodes.ToUint32((a[1]^b[1]))];
     }
 
     _rotLong(longVal, positions) {
@@ -1064,8 +1064,8 @@
       if (positions === 32) {
         return [longVal[1], longVal[0]];
       } else if (positions < 32) {
-        const high = ((longVal[0] << positions) | (longVal[1] >>> (32 - positions))) >>> 0;
-        const low = ((longVal[1] << positions) | (longVal[0] >>> (32 - positions))) >>> 0;
+        const high = OpCodes.ToUint32(OpCodes.Shl32(longVal[0], positions)|OpCodes.Shr32(longVal[1], (32 - positions)));
+        const low = OpCodes.ToUint32(OpCodes.Shl32(longVal[1], positions)|OpCodes.Shr32(longVal[0], (32 - positions)));
         return [high, low];
       } else {
         return this._rotLong([longVal[1], longVal[0]], positions - 32);

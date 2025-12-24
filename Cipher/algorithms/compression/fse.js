@@ -443,7 +443,7 @@
 
     _unpackShort(b0, b1) {
       // Unpack 16-bit value using OpCodes for shifts
-      return (b0&0xFF) | OpCodes.Shl32(b1&0xFF, 8);
+      return (b0&0xFF)|OpCodes.Shl32(b1&0xFF, 8);
     }
   }
 

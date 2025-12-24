@@ -199,10 +199,10 @@
     _computeHash(context) {
       let hash = 0;
       for (let i = 0; i < context.length; ++i) {
-        // hash = (hash << 4) ^ byte
-        hash = ((hash << 4) & 0xFFFF) ^ context[i];
+        // hash = (left shift hash by 4) XOR byte
+        hash = OpCodes.Xor32((OpCodes.Shl32(hash, 4))&0xFFFF, context[i]);
       }
-      return hash & (this.hashTableSize - 1);
+      return hash&(this.hashTableSize - 1);
     }
 
     /**
@@ -235,7 +235,7 @@
         const predicted = model[hash];
         if (predicted === currentByte && pos >= contextSize) {
           // Prediction match - set bit to 1
-          controlByte |= (1 << bitPos);
+          controlByte |= (OpCodes.Shl32(1, bitPos));
         } else {
           // Prediction failed or not enough context - output literal
           pendingLiterals.push(currentByte);
@@ -288,7 +288,7 @@
           }
 
           // Check control bit
-          const isMatch = (controlByte & (1 << bitPos)) !== 0;
+          const isMatch = (controlByte&(OpCodes.Shl32(1, bitPos))) !== 0;
 
           let byte;
           if (isMatch && result.length >= contextSize) {

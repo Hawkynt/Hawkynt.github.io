@@ -66,7 +66,7 @@
       // Documentation and references
       this.documentation = [
         new LinkItem(
-          "Richardson & Urbanke - Modern Coding Theory",
+          "Richardson&Urbanke - Modern Coding Theory",
           "https://www.cambridge.org/core/books/modern-coding-theory/5D29BDA526321BF2566C5C879F577B0C"
         ),
         new LinkItem(
@@ -85,7 +85,7 @@
 
       this.references = [
         new LinkItem(
-          "Richardson & Urbanke 2008 - Multi-Edge Type LDPC Codes",
+          "Richardson&Urbanke 2008 - Multi-Edge Type LDPC Codes",
           "https://www.semanticscholar.org/paper/Multi-Edge-Type-LDPC-Codes-Richardson-Urbanke/27ed099a5e74d9eae71700a187d91fba648da2fd"
         ),
         new LinkItem(
@@ -126,7 +126,7 @@
       // This creates a (16,8) code: 8 information bits -> 16 codeword bits
       //
       // Test vectors use round-trip validation and specific patterns
-      // Reference: Richardson & Urbanke Multi-Edge Type framework
+      // Reference: Richardson&Urbanke Multi-Edge Type framework
       this.tests = [
         {
           text: "ME-LDPC all-zero codeword (2-edge type, rate 1/2)",
@@ -191,7 +191,7 @@
       this.result = null;
 
       // Multi-Edge Type LDPC Parameters
-      // Educational 2-edge type construction inspired by Richardson & Urbanke
+      // Educational 2-edge type construction inspired by Richardson&Urbanke
       //
       // Edge Type 1: Connects information variable nodes (degree 3) to check nodes
       // Edge Type 2: Connects parity variable nodes (degree 2) to check nodes
@@ -343,7 +343,7 @@
 
     /**
      * Transform parity-check matrix to systematic form for efficient encoding
-     * Uses row operations to convert H to [OpCodes.XorN(P, T) | I] form, then G = [OpCodes.OrN(I, P)]
+     * Uses row operations to convert H to [OpCodes.XorN(P, T)|I] form, then G = [OpCodes.OrN(I, P)]
      */
     transformToSystematicForm() {
       // For LDPC codes, we need to solve H*OpCodes.XorN(c, T) = 0 for encoding
@@ -435,7 +435,7 @@
         for (let row = pivotRow + 1; row < m; ++row) {
           if (aug[row][col] === 1) {
             for (let c = 0; c <= n; ++c) {
-              aug[row][c] ^= aug[pivotRow][c];
+              aug[row][c] = OpCodes.XorN(aug[row][c], aug[pivotRow][c]);
             }
           }
         }
