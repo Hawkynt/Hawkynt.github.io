@@ -195,22 +195,22 @@
     // ChaCha20 quarter-round operation
     quarterRound: function(state, a, b, c, d) {
       // a += b; d ^= a; d <<<= 16;
-      state[a] = (state[a] + state[b]) >>> 0;
+      state[a] = global.OpCodes.ToUint32(state[a] + state[b]);
       state[d] = global.OpCodes.XorN(state[d], state[a]);
       state[d] = global.OpCodes.RotL32(state[d], 16);
 
       // c += d; b ^= c; b <<<= 12;
-      state[c] = (state[c] + state[d]) >>> 0;
+      state[c] = global.OpCodes.ToUint32(state[c] + state[d]);
       state[b] = global.OpCodes.XorN(state[b], state[c]);
       state[b] = global.OpCodes.RotL32(state[b], 12);
 
       // a += b; d ^= a; d <<<= 8;
-      state[a] = (state[a] + state[b]) >>> 0;
+      state[a] = global.OpCodes.ToUint32(state[a] + state[b]);
       state[d] = global.OpCodes.XorN(state[d], state[a]);
       state[d] = global.OpCodes.RotL32(state[d], 8);
 
       // c += d; b ^= c; b <<<= 7;
-      state[c] = (state[c] + state[d]) >>> 0;
+      state[c] = global.OpCodes.ToUint32(state[c] + state[d]);
       state[b] = global.OpCodes.XorN(state[b], state[c]);
       state[b] = global.OpCodes.RotL32(state[b], 7);
     },
@@ -340,7 +340,7 @@
       
       // Add original state to working state
       for (let i = 0; i < 16; i++) {
-        workingState[i] = (workingState[i] + state[i]) >>> 0;
+        workingState[i] = global.OpCodes.ToUint32(workingState[i] + state[i]);
       }
       
       // Convert to byte array (little-endian)

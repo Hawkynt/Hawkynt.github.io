@@ -570,7 +570,7 @@
      * Uses Gaussian elimination with partial pivoting
      */
     _solveLinearSystem(A, b, n) {
-      // Create augmented matrix [A | b]
+      // Create augmented matrix [A|b]
       const augmented = [];
       for (let i = 0; i < n; i++) {
         augmented[i] = [];

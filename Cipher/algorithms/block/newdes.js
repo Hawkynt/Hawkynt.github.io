@@ -321,15 +321,15 @@
         // Each round uses 7 bytes of key material
 
         // XOR left half with rotor[right half XOR key]
-        block[0] ^= this.rotor[block[4] ^ unravelledKey[keyPtr++]];
-        block[1] ^= this.rotor[block[5] ^ unravelledKey[keyPtr++]];
-        block[2] ^= this.rotor[block[6] ^ unravelledKey[keyPtr++]];
-        block[3] ^= this.rotor[block[7] ^ unravelledKey[keyPtr++]];
+        block[0] = OpCodes.Xor32(block[0], this.rotor[block[4]^unravelledKey[keyPtr++]]);
+        block[1] = OpCodes.Xor32(block[1], this.rotor[block[5]^unravelledKey[keyPtr++]]);
+        block[2] = OpCodes.Xor32(block[2], this.rotor[block[6]^unravelledKey[keyPtr++]]);
+        block[3] = OpCodes.Xor32(block[3], this.rotor[block[7]^unravelledKey[keyPtr++]]);
 
         // XOR right half with rotor[left half XOR key]
-        block[4] ^= this.rotor[block[0] ^ unravelledKey[keyPtr++]];
-        block[5] ^= this.rotor[block[1] ^ unravelledKey[keyPtr++]];
-        block[6] ^= this.rotor[block[2] ^ unravelledKey[keyPtr++]];
+        block[4] = OpCodes.Xor32(block[4], this.rotor[block[0]^unravelledKey[keyPtr++]]);
+        block[5] = OpCodes.Xor32(block[5], this.rotor[block[1]^unravelledKey[keyPtr++]]);
+        block[6] = OpCodes.Xor32(block[6], this.rotor[block[2]^unravelledKey[keyPtr++]]);
 
         // Note: block[7] doesn't get additional XOR in this step
         // This creates the asymmetric structure that NewDES requires
@@ -352,21 +352,21 @@
         // Reverse the operations from encryption
         // Apply the same XOR pattern but in reverse order
 
-        // Reverse: block[6] ^= this.rotor[block[2] ^ unravelledKey[keyPtr++]];
-        block[6] ^= this.rotor[block[2] ^ unravelledKey[keyPtr + 6]];
-        // Reverse: block[5] ^= this.rotor[block[1] ^ unravelledKey[keyPtr++]];
-        block[5] ^= this.rotor[block[1] ^ unravelledKey[keyPtr + 5]];
-        // Reverse: block[4] ^= this.rotor[block[0] ^ unravelledKey[keyPtr++]];
-        block[4] ^= this.rotor[block[0] ^ unravelledKey[keyPtr + 4]];
+        // Reverse: block[6] = OpCodes.Xor32(block[6], this.rotor[block[2]^unravelledKey[keyPtr++]]);
+        block[6] = OpCodes.Xor32(block[6], this.rotor[block[2]^unravelledKey[keyPtr + 6]]);
+        // Reverse: block[5] = OpCodes.Xor32(block[5], this.rotor[block[1]^unravelledKey[keyPtr++]]);
+        block[5] = OpCodes.Xor32(block[5], this.rotor[block[1]^unravelledKey[keyPtr + 5]]);
+        // Reverse: block[4] = OpCodes.Xor32(block[4], this.rotor[block[0]^unravelledKey[keyPtr++]]);
+        block[4] = OpCodes.Xor32(block[4], this.rotor[block[0]^unravelledKey[keyPtr + 4]]);
 
-        // Reverse: block[3] ^= this.rotor[block[7] ^ unravelledKey[keyPtr++]];
-        block[3] ^= this.rotor[block[7] ^ unravelledKey[keyPtr + 3]];
-        // Reverse: block[2] ^= this.rotor[block[6] ^ unravelledKey[keyPtr++]];
-        block[2] ^= this.rotor[block[6] ^ unravelledKey[keyPtr + 2]];
-        // Reverse: block[1] ^= this.rotor[block[5] ^ unravelledKey[keyPtr++]];
-        block[1] ^= this.rotor[block[5] ^ unravelledKey[keyPtr + 1]];
-        // Reverse: block[0] ^= this.rotor[block[4] ^ unravelledKey[keyPtr++]];
-        block[0] ^= this.rotor[block[4] ^ unravelledKey[keyPtr]];
+        // Reverse: block[3] = OpCodes.Xor32(block[3], this.rotor[block[7]^unravelledKey[keyPtr++]]);
+        block[3] = OpCodes.Xor32(block[3], this.rotor[block[7]^unravelledKey[keyPtr + 3]]);
+        // Reverse: block[2] = OpCodes.Xor32(block[2], this.rotor[block[6]^unravelledKey[keyPtr++]]);
+        block[2] = OpCodes.Xor32(block[2], this.rotor[block[6]^unravelledKey[keyPtr + 2]]);
+        // Reverse: block[1] = OpCodes.Xor32(block[1], this.rotor[block[5]^unravelledKey[keyPtr++]]);
+        block[1] = OpCodes.Xor32(block[1], this.rotor[block[5]^unravelledKey[keyPtr + 1]]);
+        // Reverse: block[0] = OpCodes.Xor32(block[0], this.rotor[block[4]^unravelledKey[keyPtr++]]);
+        block[0] = OpCodes.Xor32(block[0], this.rotor[block[4]^unravelledKey[keyPtr]]);
 
         keyPtr -= 7; // Move to previous round's key
       }

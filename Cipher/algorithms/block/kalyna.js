@@ -160,13 +160,13 @@
   function KalynaGF256Mul(a, b) {
     let product = 0;
     for (let i = 0; i < 8; i++) {
-      if (b & 1) product ^= a;
-      const hiBit = a & 0x80;
-      a = (a << 1) & 0xff; // GF(2^8) field operation - not replaceable with OpCodes
-      if (hiBit) a ^= 0x1d;
-      b >>= 1; // GF(2^8) field operation - not replaceable with OpCodes
+      if (OpCodes.And32(b, 1)) product = OpCodes.Xor32(product, a);
+      const hiBit = OpCodes.And32(a, 0x80);
+      a = OpCodes.And32(OpCodes.Shl32(a, 1), 0xff);
+      if (hiBit) a = OpCodes.Xor32(a, 0x1d);
+      b = OpCodes.Shr32(b, 1);
     }
-    return product & 0xff;
+    return OpCodes.And32(product, 0xff);
   }
 
   // Initialize T-tables from S-boxes and MDS matrix
@@ -763,7 +763,7 @@
     const evenBytes = new Array(16);
     for (let i = 0; i < 2; i++) {
       for (let j = 0; j < 8; j++) {
-        evenBytes[i * 8 + j] = Number((evenkey[i] >> BigInt(j * 8)) & 0xFFn);
+        evenBytes[i * 8 + j] = Number((evenkey[i] >> BigInt(j * 8))&0xFFn);
       }
     }
 
@@ -789,47 +789,33 @@
   // AddKey: Modular addition (Crypto++ line 111-129)
   function AddKey(x, k) {
     const y = new Array(2);
-    y[0] = (x[0] + k[0]) & 0xFFFFFFFFFFFFFFFFn;
-    y[1] = (x[1] + k[1]) & 0xFFFFFFFFFFFFFFFFn;
+    y[0] = (x[0] + k[0])&0xFFFFFFFFFFFFFFFFn;
+    y[1] = (x[1] + k[1])&0xFFFFFFFFFFFFFFFFn;
     return y;
   }
 
   // SubKey: Modular subtraction (Crypto++ line 132-150)
   function SubKey(x, k) {
     const y = new Array(2);
-    y[0] = (x[0] - k[0]) & 0xFFFFFFFFFFFFFFFFn;
-    y[1] = (x[1] - k[1]) & 0xFFFFFFFFFFFFFFFFn;
+    y[0] = (x[0] - k[0])&0xFFFFFFFFFFFFFFFFn;
+    y[1] = (x[1] - k[1])&0xFFFFFFFFFFFFFFFFn;
     return y;
   }
 
   // AddConstant: Add constant to all words (Crypto++ line 153-171)
   function AddConstant(src, constant) {
     const dst = new Array(2);
-    dst[0] = (src[0] + constant) & 0xFFFFFFFFFFFFFFFFn;
-    dst[1] = (src[1] + constant) & 0xFFFFFFFFFFFFFFFFn;
+    dst[0] = (src[0] + constant)&0xFFFFFFFFFFFFFFFFn;
+    dst[1] = (src[1] + constant)&0xFFFFFFFFFFFFFFFFn;
     return dst;
   }
 
   // G0128: T-table transformation WITHOUT key (Crypto++ line 173-179)
   function G0128(x) {
     const y = new Array(2);
-    y[0] = T[0][Number(x[0] & 0xFFn)] ^
-           T[1][Number((x[0] >> 8n) & 0xFFn)] ^
-           T[2][Number((x[0] >> 16n) & 0xFFn)] ^
-           T[3][Number((x[0] >> 24n) & 0xFFn)] ^
-           T[4][Number((x[1] >> 32n) & 0xFFn)] ^
-           T[5][Number((x[1] >> 40n) & 0xFFn)] ^
-           T[6][Number((x[1] >> 48n) & 0xFFn)] ^
-           T[7][Number((x[1] >> 56n) & 0xFFn)];
+    y[0] = T[0][Number(x[0]&0xFFn)]^T[1][Number((x[0] >> 8n)&0xFFn)]^T[2][Number((x[0] >> 16n)&0xFFn)]^T[3][Number((x[0] >> 24n)&0xFFn)]^T[4][Number((x[1] >> 32n)&0xFFn)]^T[5][Number((x[1] >> 40n)&0xFFn)]^T[6][Number((x[1] >> 48n)&0xFFn)]^T[7][Number((x[1] >> 56n)&0xFFn)];
 
-    y[1] = T[0][Number(x[1] & 0xFFn)] ^
-           T[1][Number((x[1] >> 8n) & 0xFFn)] ^
-           T[2][Number((x[1] >> 16n) & 0xFFn)] ^
-           T[3][Number((x[1] >> 24n) & 0xFFn)] ^
-           T[4][Number((x[0] >> 32n) & 0xFFn)] ^
-           T[5][Number((x[0] >> 40n) & 0xFFn)] ^
-           T[6][Number((x[0] >> 48n) & 0xFFn)] ^
-           T[7][Number((x[0] >> 56n) & 0xFFn)];
+    y[1] = T[0][Number(x[1]&0xFFn)]^T[1][Number((x[1] >> 8n)&0xFFn)]^T[2][Number((x[1] >> 16n)&0xFFn)]^T[3][Number((x[1] >> 24n)&0xFFn)]^T[4][Number((x[0] >> 32n)&0xFFn)]^T[5][Number((x[0] >> 40n)&0xFFn)]^T[6][Number((x[0] >> 48n)&0xFFn)]^T[7][Number((x[0] >> 56n)&0xFFn)];
 
     return y;
   }
@@ -837,25 +823,9 @@
   // G128: T-table transformation with key XOR (Crypto++ line 373-379)
   function G128(x, k) {
     const y = new Array(2);
-    y[0] = k[0] ^
-           T[0][Number(x[0] & 0xFFn)] ^
-           T[1][Number((x[0] >> 8n) & 0xFFn)] ^
-           T[2][Number((x[0] >> 16n) & 0xFFn)] ^
-           T[3][Number((x[0] >> 24n) & 0xFFn)] ^
-           T[4][Number((x[1] >> 32n) & 0xFFn)] ^
-           T[5][Number((x[1] >> 40n) & 0xFFn)] ^
-           T[6][Number((x[1] >> 48n) & 0xFFn)] ^
-           T[7][Number((x[1] >> 56n) & 0xFFn)];
+    y[0] = k[0]^T[0][Number(x[0]&0xFFn)]^T[1][Number((x[0] >> 8n)&0xFFn)]^T[2][Number((x[0] >> 16n)&0xFFn)]^T[3][Number((x[0] >> 24n)&0xFFn)]^T[4][Number((x[1] >> 32n)&0xFFn)]^T[5][Number((x[1] >> 40n)&0xFFn)]^T[6][Number((x[1] >> 48n)&0xFFn)]^T[7][Number((x[1] >> 56n)&0xFFn)];
 
-    y[1] = k[1] ^
-           T[0][Number(x[1] & 0xFFn)] ^
-           T[1][Number((x[1] >> 8n) & 0xFFn)] ^
-           T[2][Number((x[1] >> 16n) & 0xFFn)] ^
-           T[3][Number((x[1] >> 24n) & 0xFFn)] ^
-           T[4][Number((x[0] >> 32n) & 0xFFn)] ^
-           T[5][Number((x[0] >> 40n) & 0xFFn)] ^
-           T[6][Number((x[0] >> 48n) & 0xFFn)] ^
-           T[7][Number((x[0] >> 56n) & 0xFFn)];
+    y[1] = k[1]^T[0][Number(x[1]&0xFFn)]^T[1][Number((x[1] >> 8n)&0xFFn)]^T[2][Number((x[1] >> 16n)&0xFFn)]^T[3][Number((x[1] >> 24n)&0xFFn)]^T[4][Number((x[0] >> 32n)&0xFFn)]^T[5][Number((x[0] >> 40n)&0xFFn)]^T[6][Number((x[0] >> 48n)&0xFFn)]^T[7][Number((x[0] >> 56n)&0xFFn)];
 
     return y;
   }
@@ -864,24 +834,10 @@
   function GL128(x, k) {
     const y = new Array(2);
     y[0] = (k[0] + (
-           T[0][Number(x[0] & 0xFFn)] ^
-           T[1][Number((x[0] >> 8n) & 0xFFn)] ^
-           T[2][Number((x[0] >> 16n) & 0xFFn)] ^
-           T[3][Number((x[0] >> 24n) & 0xFFn)] ^
-           T[4][Number((x[1] >> 32n) & 0xFFn)] ^
-           T[5][Number((x[1] >> 40n) & 0xFFn)] ^
-           T[6][Number((x[1] >> 48n) & 0xFFn)] ^
-           T[7][Number((x[1] >> 56n) & 0xFFn)])) & 0xFFFFFFFFFFFFFFFFn;
+           T[0][Number(x[0]&0xFFn)]^T[1][Number((x[0] >> 8n)&0xFFn)]^T[2][Number((x[0] >> 16n)&0xFFn)]^T[3][Number((x[0] >> 24n)&0xFFn)]^T[4][Number((x[1] >> 32n)&0xFFn)]^T[5][Number((x[1] >> 40n)&0xFFn)]^T[6][Number((x[1] >> 48n)&0xFFn)]^T[7][Number((x[1] >> 56n)&0xFFn)]))&0xFFFFFFFFFFFFFFFFn;
 
     y[1] = (k[1] + (
-           T[0][Number(x[1] & 0xFFn)] ^
-           T[1][Number((x[1] >> 8n) & 0xFFn)] ^
-           T[2][Number((x[1] >> 16n) & 0xFFn)] ^
-           T[3][Number((x[1] >> 24n) & 0xFFn)] ^
-           T[4][Number((x[0] >> 32n) & 0xFFn)] ^
-           T[5][Number((x[0] >> 40n) & 0xFFn)] ^
-           T[6][Number((x[0] >> 48n) & 0xFFn)] ^
-           T[7][Number((x[0] >> 56n) & 0xFFn)])) & 0xFFFFFFFFFFFFFFFFn;
+           T[0][Number(x[1]&0xFFn)]^T[1][Number((x[1] >> 8n)&0xFFn)]^T[2][Number((x[1] >> 16n)&0xFFn)]^T[3][Number((x[1] >> 24n)&0xFFn)]^T[4][Number((x[0] >> 32n)&0xFFn)]^T[5][Number((x[0] >> 40n)&0xFFn)]^T[6][Number((x[0] >> 48n)&0xFFn)]^T[7][Number((x[0] >> 56n)&0xFFn)]))&0xFFFFFFFFFFFFFFFFn;
 
     return y;
   }
@@ -891,23 +847,9 @@
   // Result: IT[S[byte]] = IMDS * IS[S[byte]] = IMDS * byte (since IS[S[x]] = x)
   function IMC128(x) {
     const y = new Array(2);
-    y[0] = IT[0][S[0][Number(x[0] & 0xFFn)]] ^
-           IT[1][S[1][Number((x[0] >> 8n) & 0xFFn)]] ^
-           IT[2][S[2][Number((x[0] >> 16n) & 0xFFn)]] ^
-           IT[3][S[3][Number((x[0] >> 24n) & 0xFFn)]] ^
-           IT[4][S[0][Number((x[0] >> 32n) & 0xFFn)]] ^
-           IT[5][S[1][Number((x[0] >> 40n) & 0xFFn)]] ^
-           IT[6][S[2][Number((x[0] >> 48n) & 0xFFn)]] ^
-           IT[7][S[3][Number((x[0] >> 56n) & 0xFFn)]];
+    y[0] = IT[0][S[0][Number(x[0]&0xFFn)]]^IT[1][S[1][Number((x[0] >> 8n)&0xFFn)]]^IT[2][S[2][Number((x[0] >> 16n)&0xFFn)]]^IT[3][S[3][Number((x[0] >> 24n)&0xFFn)]]^IT[4][S[0][Number((x[0] >> 32n)&0xFFn)]]^IT[5][S[1][Number((x[0] >> 40n)&0xFFn)]]^IT[6][S[2][Number((x[0] >> 48n)&0xFFn)]]^IT[7][S[3][Number((x[0] >> 56n)&0xFFn)]];
 
-    y[1] = IT[0][S[0][Number(x[1] & 0xFFn)]] ^
-           IT[1][S[1][Number((x[1] >> 8n) & 0xFFn)]] ^
-           IT[2][S[2][Number((x[1] >> 16n) & 0xFFn)]] ^
-           IT[3][S[3][Number((x[1] >> 24n) & 0xFFn)]] ^
-           IT[4][S[0][Number((x[1] >> 32n) & 0xFFn)]] ^
-           IT[5][S[1][Number((x[1] >> 40n) & 0xFFn)]] ^
-           IT[6][S[2][Number((x[1] >> 48n) & 0xFFn)]] ^
-           IT[7][S[3][Number((x[1] >> 56n) & 0xFFn)]];
+    y[1] = IT[0][S[0][Number(x[1]&0xFFn)]]^IT[1][S[1][Number((x[1] >> 8n)&0xFFn)]]^IT[2][S[2][Number((x[1] >> 16n)&0xFFn)]]^IT[3][S[3][Number((x[1] >> 24n)&0xFFn)]]^IT[4][S[0][Number((x[1] >> 32n)&0xFFn)]]^IT[5][S[1][Number((x[1] >> 40n)&0xFFn)]]^IT[6][S[2][Number((x[1] >> 48n)&0xFFn)]]^IT[7][S[3][Number((x[1] >> 56n)&0xFFn)]];
 
     return y;
   }
@@ -915,25 +857,9 @@
   // IG128: Inverse G with key XOR (Crypto++ line 293-299)
   function IG128(x, k) {
     const y = new Array(2);
-    y[0] = k[0] ^
-           IT[0][Number(x[0] & 0xFFn)] ^
-           IT[1][Number((x[0] >> 8n) & 0xFFn)] ^
-           IT[2][Number((x[0] >> 16n) & 0xFFn)] ^
-           IT[3][Number((x[0] >> 24n) & 0xFFn)] ^
-           IT[4][Number((x[1] >> 32n) & 0xFFn)] ^
-           IT[5][Number((x[1] >> 40n) & 0xFFn)] ^
-           IT[6][Number((x[1] >> 48n) & 0xFFn)] ^
-           IT[7][Number((x[1] >> 56n) & 0xFFn)];
+    y[0] = k[0]^IT[0][Number(x[0]&0xFFn)]^IT[1][Number((x[0] >> 8n)&0xFFn)]^IT[2][Number((x[0] >> 16n)&0xFFn)]^IT[3][Number((x[0] >> 24n)&0xFFn)]^IT[4][Number((x[1] >> 32n)&0xFFn)]^IT[5][Number((x[1] >> 40n)&0xFFn)]^IT[6][Number((x[1] >> 48n)&0xFFn)]^IT[7][Number((x[1] >> 56n)&0xFFn)];
 
-    y[1] = k[1] ^
-           IT[0][Number(x[1] & 0xFFn)] ^
-           IT[1][Number((x[1] >> 8n) & 0xFFn)] ^
-           IT[2][Number((x[1] >> 16n) & 0xFFn)] ^
-           IT[3][Number((x[1] >> 24n) & 0xFFn)] ^
-           IT[4][Number((x[0] >> 32n) & 0xFFn)] ^
-           IT[5][Number((x[0] >> 40n) & 0xFFn)] ^
-           IT[6][Number((x[0] >> 48n) & 0xFFn)] ^
-           IT[7][Number((x[0] >> 56n) & 0xFFn)];
+    y[1] = k[1]^IT[0][Number(x[1]&0xFFn)]^IT[1][Number((x[1] >> 8n)&0xFFn)]^IT[2][Number((x[1] >> 16n)&0xFFn)]^IT[3][Number((x[1] >> 24n)&0xFFn)]^IT[4][Number((x[0] >> 32n)&0xFFn)]^IT[5][Number((x[0] >> 40n)&0xFFn)]^IT[6][Number((x[0] >> 48n)&0xFFn)]^IT[7][Number((x[0] >> 56n)&0xFFn)];
 
     return y;
   }
@@ -945,25 +871,11 @@
 
     // Pack inverse S-box bytes with XOR, then subtract key (Crypto++ line 335-336)
     // CRITICAL: Parentheses ensure all XORs complete before subtraction
-    y[0] = ((BigInt(IS[0][Number(x[0] & 0xFFn)]) ^
-             (BigInt(IS[1][Number((x[0] >> 8n) & 0xFFn)]) << 8n) ^
-             (BigInt(IS[2][Number((x[0] >> 16n) & 0xFFn)]) << 16n) ^
-             (BigInt(IS[3][Number((x[0] >> 24n) & 0xFFn)]) << 24n) ^
-             (BigInt(IS[0][Number((x[1] >> 32n) & 0xFFn)]) << 32n) ^
-             (BigInt(IS[1][Number((x[1] >> 40n) & 0xFFn)]) << 40n) ^
-             (BigInt(IS[2][Number((x[1] >> 48n) & 0xFFn)]) << 48n) ^
-             (BigInt(IS[3][Number((x[1] >> 56n) & 0xFFn)]) << 56n)) -
-            k[0]) & 0xFFFFFFFFFFFFFFFFn;
+    y[0] = ((BigInt(IS[0][Number(x[0]&0xFFn)])^(BigInt(IS[1][Number((x[0] >> 8n)&0xFFn)]) << 8n)^(BigInt(IS[2][Number((x[0] >> 16n)&0xFFn)]) << 16n)^(BigInt(IS[3][Number((x[0] >> 24n)&0xFFn)]) << 24n)^(BigInt(IS[0][Number((x[1] >> 32n)&0xFFn)]) << 32n)^(BigInt(IS[1][Number((x[1] >> 40n)&0xFFn)]) << 40n)^(BigInt(IS[2][Number((x[1] >> 48n)&0xFFn)]) << 48n)^(BigInt(IS[3][Number((x[1] >> 56n)&0xFFn)]) << 56n)) -
+            k[0])&0xFFFFFFFFFFFFFFFFn;
 
-    y[1] = ((BigInt(IS[0][Number(x[1] & 0xFFn)]) ^
-             (BigInt(IS[1][Number((x[1] >> 8n) & 0xFFn)]) << 8n) ^
-             (BigInt(IS[2][Number((x[1] >> 16n) & 0xFFn)]) << 16n) ^
-             (BigInt(IS[3][Number((x[1] >> 24n) & 0xFFn)]) << 24n) ^
-             (BigInt(IS[0][Number((x[0] >> 32n) & 0xFFn)]) << 32n) ^
-             (BigInt(IS[1][Number((x[0] >> 40n) & 0xFFn)]) << 40n) ^
-             (BigInt(IS[2][Number((x[0] >> 48n) & 0xFFn)]) << 48n) ^
-             (BigInt(IS[3][Number((x[0] >> 56n) & 0xFFn)]) << 56n)) -
-            k[1]) & 0xFFFFFFFFFFFFFFFFn;
+    y[1] = ((BigInt(IS[0][Number(x[1]&0xFFn)])^(BigInt(IS[1][Number((x[1] >> 8n)&0xFFn)]) << 8n)^(BigInt(IS[2][Number((x[1] >> 16n)&0xFFn)]) << 16n)^(BigInt(IS[3][Number((x[1] >> 24n)&0xFFn)]) << 24n)^(BigInt(IS[0][Number((x[0] >> 32n)&0xFFn)]) << 32n)^(BigInt(IS[1][Number((x[0] >> 40n)&0xFFn)]) << 40n)^(BigInt(IS[2][Number((x[0] >> 48n)&0xFFn)]) << 48n)^(BigInt(IS[3][Number((x[0] >> 56n)&0xFFn)]) << 56n)) -
+            k[1])&0xFFFFFFFFFFFFFFFFn;
 
     return y;
   }
@@ -1085,7 +997,7 @@
           rkeys[(round + 1) * 2 + 1] = oddkey[1];
         }
 
-        constant = constant << 1n; // BigInt shift for round constant - OpCodes does not support BigInt
+        constant = constant << 1n; // BigInt shift for round constant
       }
 
       // For decryption: apply IMC128 to round keys 2,4,6,8,10,12,14,16,18 (Crypto++ line 486-490)
@@ -1148,7 +1060,7 @@
           k[3] = t;
         }
 
-        constant = constant << 1n; // BigInt shift for round constant - OpCodes does not support BigInt
+        constant = constant << 1n; // BigInt shift for round constant
       }
 
       // For decryption: apply IMC128 to round keys (for 256-bit)
@@ -1224,7 +1136,7 @@
       const output = new Array(16);
       for (let i = 0; i < 2; i++) {
         for (let j = 0; j < 8; j++) {
-          output[i * 8 + j] = Number((t1[i] >> BigInt(j * 8)) & 0xFFn);
+          output[i * 8 + j] = Number((t1[i] >> BigInt(j * 8))&0xFFn);
         }
       }
       return output;
@@ -1291,7 +1203,7 @@
       const output = new Array(16);
       for (let i = 0; i < 2; i++) {
         for (let j = 0; j < 8; j++) {
-          output[i * 8 + j] = Number((t1[i] >> BigInt(j * 8)) & 0xFFn);
+          output[i * 8 + j] = Number((t1[i] >> BigInt(j * 8))&0xFFn);
         }
       }
       return output;

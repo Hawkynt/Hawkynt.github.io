@@ -286,54 +286,54 @@ class XSalsa20Instance extends IAlgorithmInstance {
     // 20 rounds (10 double-rounds)
     for (let i = 0; i < 10; i++) {
       // Column rounds
-      x4 = OpCodes.XorN(x4, OpCodes.RotL32((x0 + x12) | 0, 7));
-      x8 = OpCodes.XorN(x8, OpCodes.RotL32((x4 + x0) | 0, 9));
-      x12 = OpCodes.XorN(x12, OpCodes.RotL32((x8 + x4) | 0, 13));
-      x0 = OpCodes.XorN(x0, OpCodes.RotL32((x12 + x8) | 0, 18));
+      x4 = OpCodes.XorN(x4, OpCodes.RotL32(OpCodes.ToInt(x0 + x12), 7));
+      x8 = OpCodes.XorN(x8, OpCodes.RotL32(OpCodes.ToInt(x4 + x0), 9));
+      x12 = OpCodes.XorN(x12, OpCodes.RotL32(OpCodes.ToInt(x8 + x4), 13));
+      x0 = OpCodes.XorN(x0, OpCodes.RotL32(OpCodes.ToInt(x12 + x8), 18));
 
-      x9 = OpCodes.XorN(x9, OpCodes.RotL32((x5 + x1) | 0, 7));
-      x13 = OpCodes.XorN(x13, OpCodes.RotL32((x9 + x5) | 0, 9));
-      x1 = OpCodes.XorN(x1, OpCodes.RotL32((x13 + x9) | 0, 13));
-      x5 = OpCodes.XorN(x5, OpCodes.RotL32((x1 + x13) | 0, 18));
+      x9 = OpCodes.XorN(x9, OpCodes.RotL32(OpCodes.ToInt(x5 + x1), 7));
+      x13 = OpCodes.XorN(x13, OpCodes.RotL32(OpCodes.ToInt(x9 + x5), 9));
+      x1 = OpCodes.XorN(x1, OpCodes.RotL32(OpCodes.ToInt(x13 + x9), 13));
+      x5 = OpCodes.XorN(x5, OpCodes.RotL32(OpCodes.ToInt(x1 + x13), 18));
 
-      x14 = OpCodes.XorN(x14, OpCodes.RotL32((x10 + x6) | 0, 7));
-      x2 = OpCodes.XorN(x2, OpCodes.RotL32((x14 + x10) | 0, 9));
-      x6 = OpCodes.XorN(x6, OpCodes.RotL32((x2 + x14) | 0, 13));
-      x10 = OpCodes.XorN(x10, OpCodes.RotL32((x6 + x2) | 0, 18));
+      x14 = OpCodes.XorN(x14, OpCodes.RotL32(OpCodes.ToInt(x10 + x6), 7));
+      x2 = OpCodes.XorN(x2, OpCodes.RotL32(OpCodes.ToInt(x14 + x10), 9));
+      x6 = OpCodes.XorN(x6, OpCodes.RotL32(OpCodes.ToInt(x2 + x14), 13));
+      x10 = OpCodes.XorN(x10, OpCodes.RotL32(OpCodes.ToInt(x6 + x2), 18));
 
-      x3 = OpCodes.XorN(x3, OpCodes.RotL32((x15 + x11) | 0, 7));
-      x7 = OpCodes.XorN(x7, OpCodes.RotL32((x3 + x15) | 0, 9));
-      x11 = OpCodes.XorN(x11, OpCodes.RotL32((x7 + x3) | 0, 13));
-      x15 = OpCodes.XorN(x15, OpCodes.RotL32((x11 + x7) | 0, 18));
+      x3 = OpCodes.XorN(x3, OpCodes.RotL32(OpCodes.ToInt(x15 + x11), 7));
+      x7 = OpCodes.XorN(x7, OpCodes.RotL32(OpCodes.ToInt(x3 + x15), 9));
+      x11 = OpCodes.XorN(x11, OpCodes.RotL32(OpCodes.ToInt(x7 + x3), 13));
+      x15 = OpCodes.XorN(x15, OpCodes.RotL32(OpCodes.ToInt(x11 + x7), 18));
 
       // Diagonal rounds
-      x1 = OpCodes.XorN(x1, OpCodes.RotL32((x0 + x3) | 0, 7));
-      x2 = OpCodes.XorN(x2, OpCodes.RotL32((x1 + x0) | 0, 9));
-      x3 = OpCodes.XorN(x3, OpCodes.RotL32((x2 + x1) | 0, 13));
-      x0 = OpCodes.XorN(x0, OpCodes.RotL32((x3 + x2) | 0, 18));
+      x1 = OpCodes.XorN(x1, OpCodes.RotL32(OpCodes.ToInt(x0 + x3), 7));
+      x2 = OpCodes.XorN(x2, OpCodes.RotL32(OpCodes.ToInt(x1 + x0), 9));
+      x3 = OpCodes.XorN(x3, OpCodes.RotL32(OpCodes.ToInt(x2 + x1), 13));
+      x0 = OpCodes.XorN(x0, OpCodes.RotL32(OpCodes.ToInt(x3 + x2), 18));
 
-      x6 = OpCodes.XorN(x6, OpCodes.RotL32((x5 + x4) | 0, 7));
-      x7 = OpCodes.XorN(x7, OpCodes.RotL32((x6 + x5) | 0, 9));
-      x4 = OpCodes.XorN(x4, OpCodes.RotL32((x7 + x6) | 0, 13));
-      x5 = OpCodes.XorN(x5, OpCodes.RotL32((x4 + x7) | 0, 18));
+      x6 = OpCodes.XorN(x6, OpCodes.RotL32(OpCodes.ToInt(x5 + x4), 7));
+      x7 = OpCodes.XorN(x7, OpCodes.RotL32(OpCodes.ToInt(x6 + x5), 9));
+      x4 = OpCodes.XorN(x4, OpCodes.RotL32(OpCodes.ToInt(x7 + x6), 13));
+      x5 = OpCodes.XorN(x5, OpCodes.RotL32(OpCodes.ToInt(x4 + x7), 18));
 
-      x11 = OpCodes.XorN(x11, OpCodes.RotL32((x10 + x9) | 0, 7));
-      x8 = OpCodes.XorN(x8, OpCodes.RotL32((x11 + x10) | 0, 9));
-      x9 = OpCodes.XorN(x9, OpCodes.RotL32((x8 + x11) | 0, 13));
-      x10 = OpCodes.XorN(x10, OpCodes.RotL32((x9 + x8) | 0, 18));
+      x11 = OpCodes.XorN(x11, OpCodes.RotL32(OpCodes.ToInt(x10 + x9), 7));
+      x8 = OpCodes.XorN(x8, OpCodes.RotL32(OpCodes.ToInt(x11 + x10), 9));
+      x9 = OpCodes.XorN(x9, OpCodes.RotL32(OpCodes.ToInt(x8 + x11), 13));
+      x10 = OpCodes.XorN(x10, OpCodes.RotL32(OpCodes.ToInt(x9 + x8), 18));
 
-      x12 = OpCodes.XorN(x12, OpCodes.RotL32((x15 + x14) | 0, 7));
-      x13 = OpCodes.XorN(x13, OpCodes.RotL32((x12 + x15) | 0, 9));
-      x14 = OpCodes.XorN(x14, OpCodes.RotL32((x13 + x12) | 0, 13));
-      x15 = OpCodes.XorN(x15, OpCodes.RotL32((x14 + x13) | 0, 18));
+      x12 = OpCodes.XorN(x12, OpCodes.RotL32(OpCodes.ToInt(x15 + x14), 7));
+      x13 = OpCodes.XorN(x13, OpCodes.RotL32(OpCodes.ToInt(x12 + x15), 9));
+      x14 = OpCodes.XorN(x14, OpCodes.RotL32(OpCodes.ToInt(x13 + x12), 13));
+      x15 = OpCodes.XorN(x15, OpCodes.RotL32(OpCodes.ToInt(x14 + x13), 18));
     }
 
     // Add input to output (final step of Salsa20)
     return [
-      (x0 + input[0]) | 0, (x1 + input[1]) | 0, (x2 + input[2]) | 0, (x3 + input[3]) | 0,
-      (x4 + input[4]) | 0, (x5 + input[5]) | 0, (x6 + input[6]) | 0, (x7 + input[7]) | 0,
-      (x8 + input[8]) | 0, (x9 + input[9]) | 0, (x10 + input[10]) | 0, (x11 + input[11]) | 0,
-      (x12 + input[12]) | 0, (x13 + input[13]) | 0, (x14 + input[14]) | 0, (x15 + input[15]) | 0
+      OpCodes.ToInt(x0 + input[0]), OpCodes.ToInt(x1 + input[1]), OpCodes.ToInt(x2 + input[2]), OpCodes.ToInt(x3 + input[3]),
+      OpCodes.ToInt(x4 + input[4]), OpCodes.ToInt(x5 + input[5]), OpCodes.ToInt(x6 + input[6]), OpCodes.ToInt(x7 + input[7]),
+      OpCodes.ToInt(x8 + input[8]), OpCodes.ToInt(x9 + input[9]), OpCodes.ToInt(x10 + input[10]), OpCodes.ToInt(x11 + input[11]),
+      OpCodes.ToInt(x12 + input[12]), OpCodes.ToInt(x13 + input[13]), OpCodes.ToInt(x14 + input[14]), OpCodes.ToInt(x15 + input[15])
     ];
   }
 

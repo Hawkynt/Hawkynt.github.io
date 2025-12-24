@@ -8,8 +8,8 @@
  *
  * Period: 2^4096 - 1 (approximately 10^1233)
  * State: 4096 bits (128 × 32-bit words)
- * Algorithm: t = x[i] XOR (x[i] << a)
- *            x[i] = x[j] XOR (x[j] >> b) XOR (t XOR (t >> c))
+ * Algorithm: t = x[i] XOR (x[i] left-shift a)
+ *            x[i] = x[j] XOR (x[j] right-shift b) XOR (t XOR (t right-shift c))
  * Parameters: a=10, b=5, c=26, lags i=(p+0)%128, j=(p+97)%128
  *
  * Reference: Brent, R.P. (2004). Note on Marsaglia's Xorshift Random Number Generators.
@@ -272,8 +272,8 @@
      * Generate next 32-bit value using XOR4096 algorithm
      *
      * Algorithm from Brent (2004):
-     * t = x[i] XOR (x[i] << a)
-     * x[i] = x[j] XOR (x[j] >> b) XOR (t XOR (t >> c))
+     * t = x[i] XOR (x[i] left-shift a)
+     * x[i] = x[j] XOR (x[j] right-shift b) XOR (t XOR (t right-shift c))
      * return x[i]
      *
      * Where:
@@ -294,11 +294,11 @@
       const xi = this._state[i];
       const xj = this._state[j];
 
-      // Step 1: t = x[i] XOR (x[i] << a)
-      let t = OpCodes.ToUint32(OpCodes.XorN(xi, OpCodes.Shl32(xi, this._a)));
+      // Step 1: t = x[i] XOR (x[i] left-shift a)
+      let t = OpCodes.Xor32(xi, OpCodes.Shl32(xi, this._a));
 
-      // Step 2: x[i] = x[j] XOR (x[j] >> b) XOR (t XOR (t >> c))
-      this._state[i] = OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(xj, OpCodes.Shr32(xj, this._b)), OpCodes.XorN(t, OpCodes.Shr32(t, this._c))));
+      // Step 2: x[i] = x[j] XOR (x[j] right-shift b) XOR (t XOR (t right-shift c))
+      this._state[i] = OpCodes.Xor32(OpCodes.Xor32(xj, OpCodes.Shr32(xj, this._b)), OpCodes.Xor32(t, OpCodes.Shr32(t, this._c)));
 
       // Advance position (circular buffer)
       this._position = (this._position + 1) % 128;

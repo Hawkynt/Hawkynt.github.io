@@ -184,7 +184,7 @@
 
           if (match.length >= this.MIN_MATCH_LENGTH) {
             // Encode match (simplified format)
-            // Format: 0x80 | length_high, length_low_and_offset_high, offset_low
+            // Format: 0x80|length_high, length_low_and_offset_high, offset_low
             const adjustedLength = match.length - this.MIN_MATCH_LENGTH;
 
             // Split offset into high and low bytes using OpCodes
@@ -196,8 +196,8 @@
             const lengthHigh = OpCodes.ToByte(OpCodes.Shr8(adjustedLength, 4)&OpCodes.BitMask(3)); // High 3 bits of length
             const lengthLow = OpCodes.ToByte(adjustedLength&OpCodes.BitMask(4));                    // Low 4 bits of length
 
-            output.push(OpCodes.ToByte(OpCodes.Shl8(1, 7) | lengthHigh)); // Control byte with bit 7 set + high length bits
-            output.push(OpCodes.ToByte(OpCodes.Shl8(lengthLow, 4) | offsetHigh)); // Low length bits + high offset bits
+            output.push(OpCodes.ToByte(OpCodes.Shl8(1, 7)|lengthHigh)); // Control byte with bit 7 set + high length bits
+            output.push(OpCodes.ToByte(OpCodes.Shl8(lengthLow, 4)|offsetHigh)); // Low length bits + high offset bits
             output.push(OpCodes.ToByte(offsetLow)); // Low offset byte
 
             // Add matched data to dictionary
@@ -256,7 +256,7 @@
 
             // Decode length using OpCodes shift functions and BitMask
             const lengthLow = OpCodes.ToByte(OpCodes.Shr8(lengthLowAndOffsetHigh, 4)&OpCodes.BitMask(4));
-            const length = OpCodes.ToByte(OpCodes.Shl8(lengthHigh, 4) | lengthLow) + this.MIN_MATCH_LENGTH;
+            const length = OpCodes.ToByte(OpCodes.Shl8(lengthHigh, 4)|lengthLow) + this.MIN_MATCH_LENGTH;
 
             // Decode offset using OpCodes Pack16BE to reconstruct 16-bit value
             const offsetHigh = OpCodes.ToByte(lengthLowAndOffsetHigh&OpCodes.BitMask(4));

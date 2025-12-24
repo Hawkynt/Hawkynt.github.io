@@ -106,7 +106,7 @@
       this.S[4][0] = OpCodes.XorN(this.S[4][0], this.S[3][0]); this.S[4][1] = OpCodes.XorN(this.S[4][1], this.S[3][1]);
       this.S[2][0] = OpCodes.XorN(this.S[2][0], this.S[1][0]); this.S[2][1] = OpCodes.XorN(this.S[2][1], this.S[1][1]);
 
-      // S-box: Compute ~xi & xj (Chi layer)
+      // S-box: Compute ~xi&xj (Chi layer)
       const t0_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[0][0], this.S[1][0]));
       const t0_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[0][1], this.S[1][1]));
       const t1_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[1][0], this.S[2][0]));
@@ -553,7 +553,7 @@
         const bitIndex = 7 - (bit % 8);
         const bitValue = OpCodes.AndN(OpCodes.Shr32(y[byteIndex], bitIndex), 0x01);
 
-        // XOR bit into state[0] MSB: x0 ^= (bit << 7) << 56
+        // XOR bit into state[0] MSB: x0 ^= OpCodes.Shl32((OpCodes.Shl32(bit, 7)), 56)
         state.S[0][1] = OpCodes.ToUint32(OpCodes.XorN(state.S[0][1], OpCodes.Shl32(OpCodes.Shl32(bitValue, 7), 24)));
 
         // Single round (sB = 1)

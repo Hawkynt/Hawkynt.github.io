@@ -118,11 +118,11 @@ class Shacal2Instance extends IBlockCipherInstance {
   }
 
   _sigma0(x) {
-    return OpCodes.RotR32(x, 7) ^ OpCodes.RotR32(x, 18) ^ (x >>> 3);
+    return OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(x, 7), OpCodes.RotR32(x, 18)), OpCodes.Shr32(x, 3));
   }
 
   _sigma1(x) {
-    return OpCodes.RotR32(x, 17) ^ OpCodes.RotR32(x, 19) ^ (x >>> 10);
+    return OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(x, 17), OpCodes.RotR32(x, 19)), OpCodes.Shr32(x, 10));
   }
 
   _keySchedule() {
@@ -143,29 +143,29 @@ class Shacal2Instance extends IBlockCipherInstance {
     for (let i = 16; i < 64; ++i) {
       const s0 = this._sigma0(this.RK[i - 15]);
       const s1 = this._sigma1(this.RK[i - 2]);
-      this.RK[i] = (this.RK[i - 16] + s0 + this.RK[i - 7] + s1) >>> 0;
+      this.RK[i] = OpCodes.ToUint32((this.RK[i - 16] + s0 + this.RK[i - 7] + s1));
     }
 
     // Add round constants
     for (let i = 0; i < 64; ++i) {
-      this.RK[i] = (this.RK[i] + this.RC[i]) >>> 0;
+      this.RK[i] = OpCodes.ToUint32((this.RK[i] + this.RC[i]));
     }
   }
 
   _Ch(x, y, z) {
-    return (x & y) ^ (~x & z);
+    return OpCodes.Xor32((x&y), (OpCodes.ToUint32(~x)&z));
   }
 
   _Maj(x, y, z) {
-    return (x & y) ^ (x & z) ^ (y & z);
+    return OpCodes.Xor32(OpCodes.Xor32((x&y), (x&z)), (y&z));
   }
 
   _Sigma0(x) {
-    return OpCodes.RotR32(x, 2) ^ OpCodes.RotR32(x, 13) ^ OpCodes.RotR32(x, 22);
+    return OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(x, 2), OpCodes.RotR32(x, 13)), OpCodes.RotR32(x, 22));
   }
 
   _Sigma1(x) {
-    return OpCodes.RotR32(x, 6) ^ OpCodes.RotR32(x, 11) ^ OpCodes.RotR32(x, 25);
+    return OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(x, 6), OpCodes.RotR32(x, 11)), OpCodes.RotR32(x, 25));
   }
 
   _encryptBlock(block) {
@@ -183,35 +183,35 @@ class Shacal2Instance extends IBlockCipherInstance {
     for (let r = 0; r < 64; r += 8) {
       // Unrolled 8 rounds
       H = (H + this._Sigma1(E) + this._Ch(E, F, G) + this.RK[r]) >>> 0;
-      D = (D + H) >>> 0;
+      D = OpCodes.ToUint32((D + H));
       H = (H + this._Sigma0(A) + this._Maj(A, B, C)) >>> 0;
 
       G = (G + this._Sigma1(D) + this._Ch(D, E, F) + this.RK[r+1]) >>> 0;
-      C = (C + G) >>> 0;
+      C = OpCodes.ToUint32((C + G));
       G = (G + this._Sigma0(H) + this._Maj(H, A, B)) >>> 0;
 
       F = (F + this._Sigma1(C) + this._Ch(C, D, E) + this.RK[r+2]) >>> 0;
-      B = (B + F) >>> 0;
+      B = OpCodes.ToUint32((B + F));
       F = (F + this._Sigma0(G) + this._Maj(G, H, A)) >>> 0;
 
       E = (E + this._Sigma1(B) + this._Ch(B, C, D) + this.RK[r+3]) >>> 0;
-      A = (A + E) >>> 0;
+      A = OpCodes.ToUint32((A + E));
       E = (E + this._Sigma0(F) + this._Maj(F, G, H)) >>> 0;
 
       D = (D + this._Sigma1(A) + this._Ch(A, B, C) + this.RK[r+4]) >>> 0;
-      H = (H + D) >>> 0;
+      H = OpCodes.ToUint32((H + D));
       D = (D + this._Sigma0(E) + this._Maj(E, F, G)) >>> 0;
 
       C = (C + this._Sigma1(H) + this._Ch(H, A, B) + this.RK[r+5]) >>> 0;
-      G = (G + C) >>> 0;
+      G = OpCodes.ToUint32((G + C));
       C = (C + this._Sigma0(D) + this._Maj(D, E, F)) >>> 0;
 
       B = (B + this._Sigma1(G) + this._Ch(G, H, A) + this.RK[r+6]) >>> 0;
-      F = (F + B) >>> 0;
+      F = OpCodes.ToUint32((F + B));
       B = (B + this._Sigma0(C) + this._Maj(C, D, E)) >>> 0;
 
       A = (A + this._Sigma1(F) + this._Ch(F, G, H) + this.RK[r+7]) >>> 0;
-      E = (E + A) >>> 0;
+      E = OpCodes.ToUint32((E + A));
       A = (A + this._Sigma0(B) + this._Maj(B, C, D)) >>> 0;
     }
 
@@ -235,42 +235,42 @@ class Shacal2Instance extends IBlockCipherInstance {
     for (let r = 0; r < 64; r += 8) {
       // Round 7 reverse (B,C,D,->E, F,G,H,->A)
       A = (A - this._Sigma0(B) - this._Maj(B, C, D)) >>> 0;
-      E = (E - A) >>> 0;
+      E = OpCodes.ToUint32((E - A));
       A = (A - this._Sigma1(F) - this._Ch(F, G, H) - this.RK[63-r]) >>> 0;
 
       // Round 6 reverse (C,D,E,->F, G,H,A,->B)
       B = (B - this._Sigma0(C) - this._Maj(C, D, E)) >>> 0;
-      F = (F - B) >>> 0;
+      F = OpCodes.ToUint32((F - B));
       B = (B - this._Sigma1(G) - this._Ch(G, H, A) - this.RK[62-r]) >>> 0;
 
       // Round 5 reverse (D,E,F,->G, H,A,B,->C)
       C = (C - this._Sigma0(D) - this._Maj(D, E, F)) >>> 0;
-      G = (G - C) >>> 0;
+      G = OpCodes.ToUint32((G - C));
       C = (C - this._Sigma1(H) - this._Ch(H, A, B) - this.RK[61-r]) >>> 0;
 
       // Round 4 reverse (E,F,G,->H, A,B,C,->D)
       D = (D - this._Sigma0(E) - this._Maj(E, F, G)) >>> 0;
-      H = (H - D) >>> 0;
+      H = OpCodes.ToUint32((H - D));
       D = (D - this._Sigma1(A) - this._Ch(A, B, C) - this.RK[60-r]) >>> 0;
 
       // Round 3 reverse (F,G,H,->A, B,C,D,->E)
       E = (E - this._Sigma0(F) - this._Maj(F, G, H)) >>> 0;
-      A = (A - E) >>> 0;
+      A = OpCodes.ToUint32((A - E));
       E = (E - this._Sigma1(B) - this._Ch(B, C, D) - this.RK[59-r]) >>> 0;
 
       // Round 2 reverse (G,H,A,->B, C,D,E,->F)
       F = (F - this._Sigma0(G) - this._Maj(G, H, A)) >>> 0;
-      B = (B - F) >>> 0;
+      B = OpCodes.ToUint32((B - F));
       F = (F - this._Sigma1(C) - this._Ch(C, D, E) - this.RK[58-r]) >>> 0;
 
       // Round 1 reverse (H,A,B,->C, D,E,F,->G)
       G = (G - this._Sigma0(H) - this._Maj(H, A, B)) >>> 0;
-      C = (C - G) >>> 0;
+      C = OpCodes.ToUint32((C - G));
       G = (G - this._Sigma1(D) - this._Ch(D, E, F) - this.RK[57-r]) >>> 0;
 
       // Round 0 reverse (A,B,C,->D, E,F,G,->H)
       H = (H - this._Sigma0(A) - this._Maj(A, B, C)) >>> 0;
-      D = (D - H) >>> 0;
+      D = OpCodes.ToUint32((D - H));
       H = (H - this._Sigma1(E) - this._Ch(E, F, G) - this.RK[56-r]) >>> 0;
     }
 

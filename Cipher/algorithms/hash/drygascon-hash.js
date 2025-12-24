@@ -114,7 +114,7 @@
       this.S[4][0] = OpCodes.ToUint32(OpCodes.XorN(this.S[4][0], this.S[3][0]));
       this.S[4][1] = OpCodes.ToUint32(OpCodes.XorN(this.S[4][1], this.S[3][1]));
 
-      // t[i] = (~x[i]) & x[i+1]
+      // t[i] = (~x[i])&x[i+1]
       const t0_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[0][0], this.S[1][0]));
       const t0_h = OpCodes.ToUint32(OpCodes.AndN(~this.S[0][1], this.S[1][1]));
       const t1_l = OpCodes.ToUint32(OpCodes.AndN(~this.S[1][0], this.S[2][0]));
@@ -190,122 +190,122 @@
     // Core round function
     coreRound(roundNum) {
       // Add round constant to S[4]: ((0x0F - round) << 4) | round
-      const c = ((0x0F - roundNum) << 4) | roundNum;
-      this.S[4][0] = (this.S[4][0] ^ c) >>> 0;
+      const c = OpCodes.Or32(OpCodes.Shl32(0x0F - roundNum, 4), roundNum);
+      this.S[4][0] = OpCodes.Xor32(this.S[4][0], c);
 
       // Substitution layer (chi function)
-      this.S[0][0] = (this.S[0][0] ^ this.S[8][0]) >>> 0;
-      this.S[0][1] = (this.S[0][1] ^ this.S[8][1]) >>> 0;
-      this.S[2][0] = (this.S[2][0] ^ this.S[1][0]) >>> 0;
-      this.S[2][1] = (this.S[2][1] ^ this.S[1][1]) >>> 0;
-      this.S[4][0] = (this.S[4][0] ^ this.S[3][0]) >>> 0;
-      this.S[4][1] = (this.S[4][1] ^ this.S[3][1]) >>> 0;
-      this.S[6][0] = (this.S[6][0] ^ this.S[5][0]) >>> 0;
-      this.S[6][1] = (this.S[6][1] ^ this.S[5][1]) >>> 0;
-      this.S[8][0] = (this.S[8][0] ^ this.S[7][0]) >>> 0;
-      this.S[8][1] = (this.S[8][1] ^ this.S[7][1]) >>> 0;
+      this.S[0][0] = OpCodes.Xor32(this.S[0][0], this.S[8][0]);
+      this.S[0][1] = OpCodes.Xor32(this.S[0][1], this.S[8][1]);
+      this.S[2][0] = OpCodes.Xor32(this.S[2][0], this.S[1][0]);
+      this.S[2][1] = OpCodes.Xor32(this.S[2][1], this.S[1][1]);
+      this.S[4][0] = OpCodes.Xor32(this.S[4][0], this.S[3][0]);
+      this.S[4][1] = OpCodes.Xor32(this.S[4][1], this.S[3][1]);
+      this.S[6][0] = OpCodes.Xor32(this.S[6][0], this.S[5][0]);
+      this.S[6][1] = OpCodes.Xor32(this.S[6][1], this.S[5][1]);
+      this.S[8][0] = OpCodes.Xor32(this.S[8][0], this.S[7][0]);
+      this.S[8][1] = OpCodes.Xor32(this.S[8][1], this.S[7][1]);
 
-      // t[i] = (~x[i]) & x[i+1]
-      const t0_l = ((~this.S[0][0]) & this.S[1][0]) >>> 0;
-      const t0_h = ((~this.S[0][1]) & this.S[1][1]) >>> 0;
-      const t1_l = ((~this.S[1][0]) & this.S[2][0]) >>> 0;
-      const t1_h = ((~this.S[1][1]) & this.S[2][1]) >>> 0;
-      const t2_l = ((~this.S[2][0]) & this.S[3][0]) >>> 0;
-      const t2_h = ((~this.S[2][1]) & this.S[3][1]) >>> 0;
-      const t3_l = ((~this.S[3][0]) & this.S[4][0]) >>> 0;
-      const t3_h = ((~this.S[3][1]) & this.S[4][1]) >>> 0;
-      const t4_l = ((~this.S[4][0]) & this.S[5][0]) >>> 0;
-      const t4_h = ((~this.S[4][1]) & this.S[5][1]) >>> 0;
-      const t5_l = ((~this.S[5][0]) & this.S[6][0]) >>> 0;
-      const t5_h = ((~this.S[5][1]) & this.S[6][1]) >>> 0;
-      const t6_l = ((~this.S[6][0]) & this.S[7][0]) >>> 0;
-      const t6_h = ((~this.S[6][1]) & this.S[7][1]) >>> 0;
-      const t7_l = ((~this.S[7][0]) & this.S[8][0]) >>> 0;
-      const t7_h = ((~this.S[7][1]) & this.S[8][1]) >>> 0;
-      const t8_l = ((~this.S[8][0]) & this.S[0][0]) >>> 0;
-      const t8_h = ((~this.S[8][1]) & this.S[0][1]) >>> 0;
+      // t[i] = (~x[i])&x[i+1]
+      const t0_l = OpCodes.And32(OpCodes.Not32(this.S[0][0]), this.S[1][0]);
+      const t0_h = OpCodes.And32(OpCodes.Not32(this.S[0][1]), this.S[1][1]);
+      const t1_l = OpCodes.And32(OpCodes.Not32(this.S[1][0]), this.S[2][0]);
+      const t1_h = OpCodes.And32(OpCodes.Not32(this.S[1][1]), this.S[2][1]);
+      const t2_l = OpCodes.And32(OpCodes.Not32(this.S[2][0]), this.S[3][0]);
+      const t2_h = OpCodes.And32(OpCodes.Not32(this.S[2][1]), this.S[3][1]);
+      const t3_l = OpCodes.And32(OpCodes.Not32(this.S[3][0]), this.S[4][0]);
+      const t3_h = OpCodes.And32(OpCodes.Not32(this.S[3][1]), this.S[4][1]);
+      const t4_l = OpCodes.And32(OpCodes.Not32(this.S[4][0]), this.S[5][0]);
+      const t4_h = OpCodes.And32(OpCodes.Not32(this.S[4][1]), this.S[5][1]);
+      const t5_l = OpCodes.And32(OpCodes.Not32(this.S[5][0]), this.S[6][0]);
+      const t5_h = OpCodes.And32(OpCodes.Not32(this.S[5][1]), this.S[6][1]);
+      const t6_l = OpCodes.And32(OpCodes.Not32(this.S[6][0]), this.S[7][0]);
+      const t6_h = OpCodes.And32(OpCodes.Not32(this.S[6][1]), this.S[7][1]);
+      const t7_l = OpCodes.And32(OpCodes.Not32(this.S[7][0]), this.S[8][0]);
+      const t7_h = OpCodes.And32(OpCodes.Not32(this.S[7][1]), this.S[8][1]);
+      const t8_l = OpCodes.And32(OpCodes.Not32(this.S[8][0]), this.S[0][0]);
+      const t8_h = OpCodes.And32(OpCodes.Not32(this.S[8][1]), this.S[0][1]);
 
       // x[i] ^= t[i+1]
-      this.S[0][0] = (this.S[0][0] ^ t1_l) >>> 0;
-      this.S[0][1] = (this.S[0][1] ^ t1_h) >>> 0;
-      this.S[1][0] = (this.S[1][0] ^ t2_l) >>> 0;
-      this.S[1][1] = (this.S[1][1] ^ t2_h) >>> 0;
-      this.S[2][0] = (this.S[2][0] ^ t3_l) >>> 0;
-      this.S[2][1] = (this.S[2][1] ^ t3_h) >>> 0;
-      this.S[3][0] = (this.S[3][0] ^ t4_l) >>> 0;
-      this.S[3][1] = (this.S[3][1] ^ t4_h) >>> 0;
-      this.S[4][0] = (this.S[4][0] ^ t5_l) >>> 0;
-      this.S[4][1] = (this.S[4][1] ^ t5_h) >>> 0;
-      this.S[5][0] = (this.S[5][0] ^ t6_l) >>> 0;
-      this.S[5][1] = (this.S[5][1] ^ t6_h) >>> 0;
-      this.S[6][0] = (this.S[6][0] ^ t7_l) >>> 0;
-      this.S[6][1] = (this.S[6][1] ^ t7_h) >>> 0;
-      this.S[7][0] = (this.S[7][0] ^ t8_l) >>> 0;
-      this.S[7][1] = (this.S[7][1] ^ t8_h) >>> 0;
-      this.S[8][0] = (this.S[8][0] ^ t0_l) >>> 0;
-      this.S[8][1] = (this.S[8][1] ^ t0_h) >>> 0;
+      this.S[0][0] = OpCodes.Xor32(this.S[0][0], t1_l);
+      this.S[0][1] = OpCodes.Xor32(this.S[0][1], t1_h);
+      this.S[1][0] = OpCodes.Xor32(this.S[1][0], t2_l);
+      this.S[1][1] = OpCodes.Xor32(this.S[1][1], t2_h);
+      this.S[2][0] = OpCodes.Xor32(this.S[2][0], t3_l);
+      this.S[2][1] = OpCodes.Xor32(this.S[2][1], t3_h);
+      this.S[3][0] = OpCodes.Xor32(this.S[3][0], t4_l);
+      this.S[3][1] = OpCodes.Xor32(this.S[3][1], t4_h);
+      this.S[4][0] = OpCodes.Xor32(this.S[4][0], t5_l);
+      this.S[4][1] = OpCodes.Xor32(this.S[4][1], t5_h);
+      this.S[5][0] = OpCodes.Xor32(this.S[5][0], t6_l);
+      this.S[5][1] = OpCodes.Xor32(this.S[5][1], t6_h);
+      this.S[6][0] = OpCodes.Xor32(this.S[6][0], t7_l);
+      this.S[6][1] = OpCodes.Xor32(this.S[6][1], t7_h);
+      this.S[7][0] = OpCodes.Xor32(this.S[7][0], t8_l);
+      this.S[7][1] = OpCodes.Xor32(this.S[7][1], t8_h);
+      this.S[8][0] = OpCodes.Xor32(this.S[8][0], t0_l);
+      this.S[8][1] = OpCodes.Xor32(this.S[8][1], t0_h);
 
       // x1 ^= x0; x3 ^= x2; x5 ^= x4; x7 ^= x6; x0 ^= x8; x4 = ~x4;
-      this.S[1][0] = (this.S[1][0] ^ this.S[0][0]) >>> 0;
-      this.S[1][1] = (this.S[1][1] ^ this.S[0][1]) >>> 0;
-      this.S[3][0] = (this.S[3][0] ^ this.S[2][0]) >>> 0;
-      this.S[3][1] = (this.S[3][1] ^ this.S[2][1]) >>> 0;
-      this.S[5][0] = (this.S[5][0] ^ this.S[4][0]) >>> 0;
-      this.S[5][1] = (this.S[5][1] ^ this.S[4][1]) >>> 0;
-      this.S[7][0] = (this.S[7][0] ^ this.S[6][0]) >>> 0;
-      this.S[7][1] = (this.S[7][1] ^ this.S[6][1]) >>> 0;
-      this.S[0][0] = (this.S[0][0] ^ this.S[8][0]) >>> 0;
-      this.S[0][1] = (this.S[0][1] ^ this.S[8][1]) >>> 0;
-      this.S[4][0] = (~this.S[4][0]) >>> 0;
-      this.S[4][1] = (~this.S[4][1]) >>> 0;
+      this.S[1][0] = OpCodes.Xor32(this.S[1][0], this.S[0][0]);
+      this.S[1][1] = OpCodes.Xor32(this.S[1][1], this.S[0][1]);
+      this.S[3][0] = OpCodes.Xor32(this.S[3][0], this.S[2][0]);
+      this.S[3][1] = OpCodes.Xor32(this.S[3][1], this.S[2][1]);
+      this.S[5][0] = OpCodes.Xor32(this.S[5][0], this.S[4][0]);
+      this.S[5][1] = OpCodes.Xor32(this.S[5][1], this.S[4][1]);
+      this.S[7][0] = OpCodes.Xor32(this.S[7][0], this.S[6][0]);
+      this.S[7][1] = OpCodes.Xor32(this.S[7][1], this.S[6][1]);
+      this.S[0][0] = OpCodes.Xor32(this.S[0][0], this.S[8][0]);
+      this.S[0][1] = OpCodes.Xor32(this.S[0][1], this.S[8][1]);
+      this.S[4][0] = OpCodes.Not32(this.S[4][0]);
+      this.S[4][1] = OpCodes.Not32(this.S[4][1]);
 
       // Linear diffusion layer (bit-interleaved rotations)
       let r1, r2, r2a;
 
       r1 = rotr64_interleaved_odd(this.S[0][0], this.S[0][1], 9);
       r2 = rotr64_interleaved(this.S[0][0], this.S[0][1], 14);
-      this.S[0][0] = (this.S[0][0] ^ r1[0] ^ r2[0]) >>> 0;
-      this.S[0][1] = (this.S[0][1] ^ r1[1] ^ r2[1]) >>> 0;
+      this.S[0][0] = OpCodes.Xor32(OpCodes.Xor32(this.S[0][0], r1[0]), r2[0]);
+      this.S[0][1] = OpCodes.Xor32(OpCodes.Xor32(this.S[0][1], r1[1]), r2[1]);
 
       r1 = rotr64_interleaved_odd(this.S[1][0], this.S[1][1], 30);
       r2 = rotr64_interleaved(this.S[1][0], this.S[1][1], 19);
-      this.S[1][0] = (this.S[1][0] ^ r1[0] ^ r2[0]) >>> 0;
-      this.S[1][1] = (this.S[1][1] ^ r1[1] ^ r2[1]) >>> 0;
+      this.S[1][0] = OpCodes.Xor32(OpCodes.Xor32(this.S[1][0], r1[0]), r2[0]);
+      this.S[1][1] = OpCodes.Xor32(OpCodes.Xor32(this.S[1][1], r1[1]), r2[1]);
 
       r2a = rotr64_interleaved_odd(this.S[2][0], this.S[2][1], 0);
       r2 = rotr64_interleaved(this.S[2][0], this.S[2][1], 3);
-      this.S[2][0] = (this.S[2][0] ^ r2a[0] ^ r2[0]) >>> 0;
-      this.S[2][1] = (this.S[2][1] ^ r2a[1] ^ r2[1]) >>> 0;
+      this.S[2][0] = OpCodes.Xor32(OpCodes.Xor32(this.S[2][0], r2a[0]), r2[0]);
+      this.S[2][1] = OpCodes.Xor32(OpCodes.Xor32(this.S[2][1], r2a[1]), r2[1]);
 
       r1 = rotr64_interleaved(this.S[3][0], this.S[3][1], 5);
       r2 = rotr64_interleaved_odd(this.S[3][0], this.S[3][1], 8);
-      this.S[3][0] = (this.S[3][0] ^ r1[0] ^ r2[0]) >>> 0;
-      this.S[3][1] = (this.S[3][1] ^ r1[1] ^ r2[1]) >>> 0;
+      this.S[3][0] = OpCodes.Xor32(OpCodes.Xor32(this.S[3][0], r1[0]), r2[0]);
+      this.S[3][1] = OpCodes.Xor32(OpCodes.Xor32(this.S[3][1], r1[1]), r2[1]);
 
       r1 = rotr64_interleaved_odd(this.S[4][0], this.S[4][1], 3);
       r2 = rotr64_interleaved(this.S[4][0], this.S[4][1], 20);
-      this.S[4][0] = (this.S[4][0] ^ r1[0] ^ r2[0]) >>> 0;
-      this.S[4][1] = (this.S[4][1] ^ r1[1] ^ r2[1]) >>> 0;
+      this.S[4][0] = OpCodes.Xor32(OpCodes.Xor32(this.S[4][0], r1[0]), r2[0]);
+      this.S[4][1] = OpCodes.Xor32(OpCodes.Xor32(this.S[4][1], r1[1]), r2[1]);
 
       r1 = rotr64_interleaved_odd(this.S[5][0], this.S[5][1], 15);
       r2 = rotr64_interleaved(this.S[5][0], this.S[5][1], 13);
-      this.S[5][0] = (this.S[5][0] ^ r1[0] ^ r2[0]) >>> 0;
-      this.S[5][1] = (this.S[5][1] ^ r1[1] ^ r2[1]) >>> 0;
+      this.S[5][0] = OpCodes.Xor32(OpCodes.Xor32(this.S[5][0], r1[0]), r2[0]);
+      this.S[5][1] = OpCodes.Xor32(OpCodes.Xor32(this.S[5][1], r1[1]), r2[1]);
 
       r1 = rotr64_interleaved_odd(this.S[6][0], this.S[6][1], 26);
       r2 = rotr64_interleaved(this.S[6][0], this.S[6][1], 29);
-      this.S[6][0] = (this.S[6][0] ^ r1[0] ^ r2[0]) >>> 0;
-      this.S[6][1] = (this.S[6][1] ^ r1[1] ^ r2[1]) >>> 0;
+      this.S[6][0] = OpCodes.Xor32(OpCodes.Xor32(this.S[6][0], r1[0]), r2[0]);
+      this.S[6][1] = OpCodes.Xor32(OpCodes.Xor32(this.S[6][1], r1[1]), r2[1]);
 
       r1 = rotr64_interleaved_odd(this.S[7][0], this.S[7][1], 4);
       r2 = rotr64_interleaved(this.S[7][0], this.S[7][1], 23);
-      this.S[7][0] = (this.S[7][0] ^ r1[0] ^ r2[0]) >>> 0;
-      this.S[7][1] = (this.S[7][1] ^ r1[1] ^ r2[1]) >>> 0;
+      this.S[7][0] = OpCodes.Xor32(OpCodes.Xor32(this.S[7][0], r1[0]), r2[0]);
+      this.S[7][1] = OpCodes.Xor32(OpCodes.Xor32(this.S[7][1], r1[1]), r2[1]);
 
       r1 = rotr64_interleaved_odd(this.S[8][0], this.S[8][1], 21);
       r2 = rotr64_interleaved(this.S[8][0], this.S[8][1], 25);
-      this.S[8][0] = (this.S[8][0] ^ r1[0] ^ r2[0]) >>> 0;
-      this.S[8][1] = (this.S[8][1] ^ r1[1] ^ r2[1]) >>> 0;
+      this.S[8][0] = OpCodes.Xor32(OpCodes.Xor32(this.S[8][0], r1[0]), r2[0]);
+      this.S[8][1] = OpCodes.Xor32(OpCodes.Xor32(this.S[8][1], r1[1]), r2[1]);
     }
   }
 
@@ -341,8 +341,8 @@
       // Constant-time selection
       let result = 0;
       for (let i = 0; i < wordsCount; ++i) {
-        const mask = ((i === index) ? 0xFFFFFFFF : 0) >>> 0;
-        result = (result ^ (xW[i] & mask)) >>> 0;
+        const mask = ((i === index) ? 0xFFFFFFFF : 0);
+        result = OpCodes.Xor32(result, OpCodes.And32(xW[i], mask));
       }
       return result;
     }
@@ -353,44 +353,44 @@
 
       // Mix 10-bit groups into state
       const mixData = new Array(14);
-      mixData[0] = data[0] | (data[1] << 8);
-      mixData[1] = (data[1] >>> 2) | (data[2] << 6);
-      mixData[2] = (data[2] >>> 4) | (data[3] << 4);
-      mixData[3] = (data[3] >>> 6) | (data[4] << 2);
-      mixData[4] = data[5] | (data[6] << 8);
-      mixData[5] = (data[6] >>> 2) | (data[7] << 6);
-      mixData[6] = (data[7] >>> 4) | (data[8] << 4);
-      mixData[7] = (data[8] >>> 6) | (data[9] << 2);
-      mixData[8] = data[10] | (data[11] << 8);
-      mixData[9] = (data[11] >>> 2) | (data[12] << 6);
-      mixData[10] = (data[12] >>> 4) | (data[13] << 4);
-      mixData[11] = (data[13] >>> 6) | (data[14] << 2);
-      mixData[12] = data[15] ^ ds;  // Domain separator added here
-      mixData[13] = ds >>> 10;
+      mixData[0] = OpCodes.Or32(data[0], OpCodes.Shl32(data[1], 8));
+      mixData[1] = OpCodes.Or32(OpCodes.Shr32(data[1], 2), OpCodes.Shl32(data[2], 6));
+      mixData[2] = OpCodes.Or32(OpCodes.Shr32(data[2], 4), OpCodes.Shl32(data[3], 4));
+      mixData[3] = OpCodes.Or32(OpCodes.Shr32(data[3], 6), OpCodes.Shl32(data[4], 2));
+      mixData[4] = OpCodes.Or32(data[5], OpCodes.Shl32(data[6], 8));
+      mixData[5] = OpCodes.Or32(OpCodes.Shr32(data[6], 2), OpCodes.Shl32(data[7], 6));
+      mixData[6] = OpCodes.Or32(OpCodes.Shr32(data[7], 4), OpCodes.Shl32(data[8], 4));
+      mixData[7] = OpCodes.Or32(OpCodes.Shr32(data[8], 6), OpCodes.Shl32(data[9], 2));
+      mixData[8] = OpCodes.Or32(data[10], OpCodes.Shl32(data[11], 8));
+      mixData[9] = OpCodes.Or32(OpCodes.Shr32(data[11], 2), OpCodes.Shl32(data[12], 6));
+      mixData[10] = OpCodes.Or32(OpCodes.Shr32(data[12], 4), OpCodes.Shl32(data[13], 4));
+      mixData[11] = OpCodes.Or32(OpCodes.Shr32(data[13], 6), OpCodes.Shl32(data[14], 2));
+      mixData[12] = OpCodes.Xor32(data[15], ds);  // Domain separator added here
+      mixData[13] = OpCodes.Shr32(ds, 10);
 
       // Mix rounds: 13 rounds with core_round, last without
       for (let i = 0; i < 13; ++i) {
-        this.mixPhaseRound(mixData[i] & 0x3FF);
+        this.mixPhaseRound(OpCodes.And32(mixData[i], 0x3FF));
         this.c.coreRound(0);
       }
       // Final mix round without core_round after it
-      this.mixPhaseRound(mixData[13] & 0x3FF);
+      this.mixPhaseRound(OpCodes.And32(mixData[13], 0x3FF));
     }
 
     // Mix a single 10-bit value into state
     mixPhaseRound(data) {
       const wordsCount = this.xsize / 4;
-      const x0 = this.selectX((data) & 0x03);
-      const x1 = this.selectX((data >>> 2) & 0x03);
-      const x2 = this.selectX((data >>> 4) & 0x03);
-      const x3 = this.selectX((data >>> 6) & 0x03);
-      const x4 = this.selectX((data >>> 8) & 0x03);
+      const x0 = this.selectX(OpCodes.And32(data, 0x03));
+      const x1 = this.selectX(OpCodes.And32(OpCodes.Shr32(data, 2), 0x03));
+      const x2 = this.selectX(OpCodes.And32(OpCodes.Shr32(data, 4), 0x03));
+      const x3 = this.selectX(OpCodes.And32(OpCodes.Shr32(data, 6), 0x03));
+      const x4 = this.selectX(OpCodes.And32(OpCodes.Shr32(data, 8), 0x03));
 
-      this.c.S[0][0] = (this.c.S[0][0] ^ x0) >>> 0;
-      this.c.S[1][0] = (this.c.S[1][0] ^ x1) >>> 0;
-      this.c.S[2][0] = (this.c.S[2][0] ^ x2) >>> 0;
-      this.c.S[3][0] = (this.c.S[3][0] ^ x3) >>> 0;
-      this.c.S[4][0] = (this.c.S[4][0] ^ x4) >>> 0;
+      this.c.S[0][0] = OpCodes.Xor32(this.c.S[0][0], x0);
+      this.c.S[1][0] = OpCodes.Xor32(this.c.S[1][0], x1);
+      this.c.S[2][0] = OpCodes.Xor32(this.c.S[2][0], x2);
+      this.c.S[3][0] = OpCodes.Xor32(this.c.S[3][0], x3);
+      this.c.S[4][0] = OpCodes.Xor32(this.c.S[4][0], x4);
     }
 
     // G function: run core rounds and squeeze output
@@ -414,10 +414,10 @@
           this.c.S[4][1]   // W[9]
         ];
 
-        const out0 = (W[0] ^ W[5]) >>> 0;
-        const out1 = (W[1] ^ W[6]) >>> 0;
-        const out2 = (W[2] ^ W[7]) >>> 0;
-        const out3 = (W[3] ^ W[4]) >>> 0;
+        const out0 = OpCodes.Xor32(W[0], W[5]);
+        const out1 = OpCodes.Xor32(W[1], W[6]);
+        const out2 = OpCodes.Xor32(W[2], W[7]);
+        const out3 = OpCodes.Xor32(W[3], W[4]);
 
         // Convert to bytes
         const b0 = OpCodes.Unpack32LE(out0);
@@ -433,10 +433,10 @@
           this.r[12] = b3[0]; this.r[13] = b3[1]; this.r[14] = b3[2]; this.r[15] = b3[3];
         } else {
           // Subsequent rounds: XOR into r[]
-          this.r[0] ^= b0[0]; this.r[1] ^= b0[1]; this.r[2] ^= b0[2]; this.r[3] ^= b0[3];
-          this.r[4] ^= b1[0]; this.r[5] ^= b1[1]; this.r[6] ^= b1[2]; this.r[7] ^= b1[3];
-          this.r[8] ^= b2[0]; this.r[9] ^= b2[1]; this.r[10] ^= b2[2]; this.r[11] ^= b2[3];
-          this.r[12] ^= b3[0]; this.r[13] ^= b3[1]; this.r[14] ^= b3[2]; this.r[15] ^= b3[3];
+          this.r[0] = OpCodes.Xor32(this.r[0], b0[0]); this.r[1] = OpCodes.Xor32(this.r[1], b0[1]); this.r[2] = OpCodes.Xor32(this.r[2], b0[2]); this.r[3] = OpCodes.Xor32(this.r[3], b0[3]);
+          this.r[4] = OpCodes.Xor32(this.r[4], b1[0]); this.r[5] = OpCodes.Xor32(this.r[5], b1[1]); this.r[6] = OpCodes.Xor32(this.r[6], b1[2]); this.r[7] = OpCodes.Xor32(this.r[7], b1[3]);
+          this.r[8] = OpCodes.Xor32(this.r[8], b2[0]); this.r[9] = OpCodes.Xor32(this.r[9], b2[1]); this.r[10] = OpCodes.Xor32(this.r[10], b2[2]); this.r[11] = OpCodes.Xor32(this.r[11], b2[3]);
+          this.r[12] = OpCodes.Xor32(this.r[12], b3[0]); this.r[13] = OpCodes.Xor32(this.r[13], b3[1]); this.r[14] = OpCodes.Xor32(this.r[14], b3[2]); this.r[15] = OpCodes.Xor32(this.r[15], b3[3]);
         }
       }
     }
@@ -490,8 +490,8 @@
       // Constant-time selection
       let result = 0;
       for (let i = 0; i < wordsCount; ++i) {
-        const mask = ((i === index) ? 0xFFFFFFFF : 0) >>> 0;
-        result = (result ^ (xW[i] & mask)) >>> 0;
+        const mask = ((i === index) ? 0xFFFFFFFF : 0);
+        result = OpCodes.Xor32(result, OpCodes.And32(xW[i], mask));
       }
       return result;
     }
@@ -505,35 +505,35 @@
       // Exactly matching C code line-by-line
 
       // Round 1: data[0..2] (bits 0-23, take bits 0-17)
-      this.mixPhaseRound(data[0] | (data[1] << 8) | (data[2] << 16));
+      this.mixPhaseRound(OpCodes.Or32(OpCodes.Or32(data[0], OpCodes.Shl32(data[1], 8)), OpCodes.Shl32(data[2], 16)));
       this.c.coreRound(0);
 
       // Round 2: data[2..4] shifted (bits 18-41, take bits 18-35)
-      this.mixPhaseRound((data[2] >>> 2) | (data[3] << 6) | (data[4] << 14));
+      this.mixPhaseRound(OpCodes.Or32(OpCodes.Or32(OpCodes.Shr32(data[2], 2), OpCodes.Shl32(data[3], 6)), OpCodes.Shl32(data[4], 14)));
       this.c.coreRound(0);
 
       // Round 3: data[4..6] shifted (bits 36-59, take bits 36-53)
-      this.mixPhaseRound((data[4] >>> 4) | (data[5] << 4) | (data[6] << 12));
+      this.mixPhaseRound(OpCodes.Or32(OpCodes.Or32(OpCodes.Shr32(data[4], 4), OpCodes.Shl32(data[5], 4)), OpCodes.Shl32(data[6], 12)));
       this.c.coreRound(0);
 
       // Round 4: data[6..8] shifted (bits 54-77, take bits 54-71)
-      this.mixPhaseRound((data[6] >>> 6) | (data[7] << 2) | (data[8] << 10));
+      this.mixPhaseRound(OpCodes.Or32(OpCodes.Or32(OpCodes.Shr32(data[6], 6), OpCodes.Shl32(data[7], 2)), OpCodes.Shl32(data[8], 10)));
       this.c.coreRound(0);
 
       // Round 5: data[9..11] (bits 72-95, take bits 72-89)
-      this.mixPhaseRound(data[9] | (data[10] << 8) | (data[11] << 16));
+      this.mixPhaseRound(OpCodes.Or32(OpCodes.Or32(data[9], OpCodes.Shl32(data[10], 8)), OpCodes.Shl32(data[11], 16)));
       this.c.coreRound(0);
 
       // Round 6: data[11..13] shifted (bits 90-113, take bits 90-107)
-      this.mixPhaseRound((data[11] >>> 2) | (data[12] << 6) | (data[13] << 14));
+      this.mixPhaseRound(OpCodes.Or32(OpCodes.Or32(OpCodes.Shr32(data[11], 2), OpCodes.Shl32(data[12], 6)), OpCodes.Shl32(data[13], 14)));
       this.c.coreRound(0);
 
       // Round 7: data[13..15] shifted (bits 108-127, take bits 108-125)
-      this.mixPhaseRound((data[13] >>> 4) | (data[14] << 4) | (data[15] << 12));
+      this.mixPhaseRound(OpCodes.Or32(OpCodes.Or32(OpCodes.Shr32(data[13], 4), OpCodes.Shl32(data[14], 4)), OpCodes.Shl32(data[15], 12)));
       this.c.coreRound(0);
 
       // Round 8: data[15] final 2 bits + domain separator (bits 126-127)
-      this.mixPhaseRound((data[15] >>> 6) ^ ds);
+      this.mixPhaseRound(OpCodes.Xor32(OpCodes.Shr32(data[15], 6), ds));
 
       // Reset domain for next block
       this.domain = 0;
@@ -549,18 +549,18 @@
       const x = new Array(indices);
 
       for (let i = 0; i < indices; ++i) {
-        x[i] = this.selectX((data >>> (i * 2)) & 0x03);
+        x[i] = this.selectX(OpCodes.And32(OpCodes.Shr32(data, (i * 2)), 0x03));
       }
 
-      this.c.S[0][0] = (this.c.S[0][0] ^ x[0]) >>> 0;
-      this.c.S[1][0] = (this.c.S[1][0] ^ x[1]) >>> 0;
-      this.c.S[2][0] = (this.c.S[2][0] ^ x[2]) >>> 0;
-      this.c.S[3][0] = (this.c.S[3][0] ^ x[3]) >>> 0;
-      this.c.S[4][0] = (this.c.S[4][0] ^ x[4]) >>> 0;
-      this.c.S[5][0] = (this.c.S[5][0] ^ x[5]) >>> 0;
-      this.c.S[6][0] = (this.c.S[6][0] ^ x[6]) >>> 0;
-      this.c.S[7][0] = (this.c.S[7][0] ^ x[7]) >>> 0;
-      this.c.S[8][0] = (this.c.S[8][0] ^ x[8]) >>> 0;
+      this.c.S[0][0] = OpCodes.Xor32(this.c.S[0][0], x[0]);
+      this.c.S[1][0] = OpCodes.Xor32(this.c.S[1][0], x[1]);
+      this.c.S[2][0] = OpCodes.Xor32(this.c.S[2][0], x[2]);
+      this.c.S[3][0] = OpCodes.Xor32(this.c.S[3][0], x[3]);
+      this.c.S[4][0] = OpCodes.Xor32(this.c.S[4][0], x[4]);
+      this.c.S[5][0] = OpCodes.Xor32(this.c.S[5][0], x[5]);
+      this.c.S[6][0] = OpCodes.Xor32(this.c.S[6][0], x[6]);
+      this.c.S[7][0] = OpCodes.Xor32(this.c.S[7][0], x[7]);
+      this.c.S[8][0] = OpCodes.Xor32(this.c.S[8][0], x[8]);
     }
 
     // G function for GASCON256: XOR pattern W[0]^W[5]^W[10]^W[15], etc.
@@ -589,10 +589,10 @@
         ];
 
         // XOR pattern for 256 variant
-        const out0 = (W[0] ^ W[5] ^ W[10] ^ W[15]) >>> 0;
-        const out1 = (W[1] ^ W[6] ^ W[11] ^ W[12]) >>> 0;
-        const out2 = (W[2] ^ W[7] ^ W[8] ^ W[13]) >>> 0;
-        const out3 = (W[3] ^ W[4] ^ W[9] ^ W[14]) >>> 0;
+        const out0 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(W[0], W[5]), W[10]), W[15]);
+        const out1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(W[1], W[6]), W[11]), W[12]);
+        const out2 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(W[2], W[7]), W[8]), W[13]);
+        const out3 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(W[3], W[4]), W[9]), W[14]);
 
         // Convert to bytes
         const b0 = OpCodes.Unpack32LE(out0);
@@ -608,10 +608,10 @@
           this.r[12] = b3[0]; this.r[13] = b3[1]; this.r[14] = b3[2]; this.r[15] = b3[3];
         } else {
           // Subsequent rounds: XOR into r[]
-          this.r[0] ^= b0[0]; this.r[1] ^= b0[1]; this.r[2] ^= b0[2]; this.r[3] ^= b0[3];
-          this.r[4] ^= b1[0]; this.r[5] ^= b1[1]; this.r[6] ^= b1[2]; this.r[7] ^= b1[3];
-          this.r[8] ^= b2[0]; this.r[9] ^= b2[1]; this.r[10] ^= b2[2]; this.r[11] ^= b2[3];
-          this.r[12] ^= b3[0]; this.r[13] ^= b3[1]; this.r[14] ^= b3[2]; this.r[15] ^= b3[3];
+          this.r[0] = OpCodes.Xor32(this.r[0], b0[0]); this.r[1] = OpCodes.Xor32(this.r[1], b0[1]); this.r[2] = OpCodes.Xor32(this.r[2], b0[2]); this.r[3] = OpCodes.Xor32(this.r[3], b0[3]);
+          this.r[4] = OpCodes.Xor32(this.r[4], b1[0]); this.r[5] = OpCodes.Xor32(this.r[5], b1[1]); this.r[6] = OpCodes.Xor32(this.r[6], b1[2]); this.r[7] = OpCodes.Xor32(this.r[7], b1[3]);
+          this.r[8] = OpCodes.Xor32(this.r[8], b2[0]); this.r[9] = OpCodes.Xor32(this.r[9], b2[1]); this.r[10] = OpCodes.Xor32(this.r[10], b2[2]); this.r[11] = OpCodes.Xor32(this.r[11], b2[3]);
+          this.r[12] = OpCodes.Xor32(this.r[12], b3[0]); this.r[13] = OpCodes.Xor32(this.r[13], b3[1]); this.r[14] = OpCodes.Xor32(this.r[14], b3[2]); this.r[15] = OpCodes.Xor32(this.r[15], b3[3]);
         }
       }
     }
@@ -809,7 +809,7 @@
 
       if (mLen === 0) {
         // Empty message: final block with domain separation
-        this.state.domain = DRYDOMAIN128_ASSOC_DATA | DRYDOMAIN128_FINAL | DRYDOMAIN128_PADDED;
+        this.state.domain = OpCodes.Or32(OpCodes.Or32(DRYDOMAIN128_ASSOC_DATA, DRYDOMAIN128_FINAL), DRYDOMAIN128_PADDED);
         this.state.f([], 0);
       } else {
         let offset = 0;
@@ -823,9 +823,9 @@
 
         // Final block with domain separation (ASSOC_DATA for hash mode)
         const lastBlock = message.slice(offset);
-        this.state.domain = DRYDOMAIN128_ASSOC_DATA | DRYDOMAIN128_FINAL;
+        this.state.domain = OpCodes.Or32(DRYDOMAIN128_ASSOC_DATA, DRYDOMAIN128_FINAL);
         if (lastBlock.length < this.state.rate) {
-          this.state.domain |= DRYDOMAIN128_PADDED;
+          this.state.domain = OpCodes.Or32(this.state.domain, DRYDOMAIN128_PADDED);
         }
         this.state.f(lastBlock, lastBlock.length);
       }
@@ -1021,7 +1021,7 @@
       // Process message as associated data (following drygascon256_process_ad)
       if (mLen === 0) {
         // Empty message: final block with domain separation
-        this.state.domain = DRYDOMAIN256_ASSOC_DATA | DRYDOMAIN256_FINAL | DRYDOMAIN256_PADDED;
+        this.state.domain = OpCodes.Or32(OpCodes.Or32(DRYDOMAIN256_ASSOC_DATA, DRYDOMAIN256_FINAL), DRYDOMAIN256_PADDED);
         this.state.fAbsorb([], 0);
         this.state.g();  // Final block gets full g() with squeeze
       } else {
@@ -1037,9 +1037,9 @@
 
         // Final block with domain separation (ASSOC_DATA for hash mode)
         const lastBlock = message.slice(offset);
-        this.state.domain = DRYDOMAIN256_ASSOC_DATA | DRYDOMAIN256_FINAL;
+        this.state.domain = OpCodes.Or32(DRYDOMAIN256_ASSOC_DATA, DRYDOMAIN256_FINAL);
         if (lastBlock.length < this.state.rate) {
-          this.state.domain |= DRYDOMAIN256_PADDED;
+          this.state.domain = OpCodes.Or32(this.state.domain, DRYDOMAIN256_PADDED);
         }
         this.state.fAbsorb(lastBlock, lastBlock.length);
         this.state.g();  // Final block gets full g() with squeeze

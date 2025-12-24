@@ -56,19 +56,19 @@
    * @returns {Object} {s00, s01} - Updated state words
    */
   function ArxBox(rc, s00, s01) {
-    s00 = OpCodes.ToDWord(s00 + OpCodes.RotR32(s01, 31));
-    s01 ^= OpCodes.RotR32(s00, 24);
-    s00 ^= rc;
-    s00 = OpCodes.ToDWord(s00 + OpCodes.RotR32(s01, 17));
-    s01 ^= OpCodes.RotR32(s00, 17);
-    s00 ^= rc;
-    s00 = OpCodes.ToDWord(s00 + s01);
-    s01 ^= OpCodes.RotR32(s00, 31);
-    s00 ^= rc;
-    s00 = OpCodes.ToDWord(s00 + OpCodes.RotR32(s01, 24));
-    s01 ^= OpCodes.RotR32(s00, 16);
-    s00 ^= rc;
-    return { s00: s00 >>> 0, s01: s01 >>> 0 };
+    s00 = OpCodes.ToUint32(s00 + OpCodes.RotR32(s01, 31));
+    s01 = OpCodes.Xor32(s01, OpCodes.RotR32(s00, 24));
+    s00 = OpCodes.Xor32(s00, rc);
+    s00 = OpCodes.ToUint32(s00 + OpCodes.RotR32(s01, 17));
+    s01 = OpCodes.Xor32(s01, OpCodes.RotR32(s00, 17));
+    s00 = OpCodes.Xor32(s00, rc);
+    s00 = OpCodes.ToUint32(s00 + s01);
+    s01 = OpCodes.Xor32(s01, OpCodes.RotR32(s00, 31));
+    s00 = OpCodes.Xor32(s00, rc);
+    s00 = OpCodes.ToUint32(s00 + OpCodes.RotR32(s01, 24));
+    s01 = OpCodes.Xor32(s01, OpCodes.RotR32(s00, 16));
+    s00 = OpCodes.Xor32(s00, rc);
+    return { s00: OpCodes.ToUint32(s00), s01: OpCodes.ToUint32(s01) };
   }
 
   /**
@@ -77,7 +77,7 @@
    * @returns {number} Mixed word
    */
   function ELL(x) {
-    return OpCodes.RotR32(x, 16) ^ (x & 0xFFFF);
+    return OpCodes.Xor32(OpCodes.RotR32(x, 16), (x&0xFFFF));
   }
 
   /**
@@ -101,8 +101,8 @@
 
     for (let step = 0; step < steps; ++step) {
       // Add round constant
-      s01 ^= RCON[step & 7];
-      s03 ^= step;
+      s01 = OpCodes.Xor32(s01, RCON[step&7]);
+      s03 = OpCodes.Xor32(s03, step);
 
       // ARXBox layer
       let result;
@@ -131,15 +131,15 @@
       s11 = result.s01;
 
       // Linear layer
-      const t024 = ELL(s00 ^ s02 ^ s04);
-      const t135 = ELL(s01 ^ s03 ^ s05);
+      const t024 = ELL(OpCodes.Xor32(OpCodes.Xor32(s00, s02), s04));
+      const t135 = ELL(OpCodes.Xor32(OpCodes.Xor32(s01, s03), s05));
 
-      const u00 = s00 ^ s06;
-      const u01 = s01 ^ s07;
-      const u02 = s02 ^ s08;
-      const u03 = s03 ^ s09;
-      const u04 = s04 ^ s10;
-      const u05 = s05 ^ s11;
+      const u00 = OpCodes.Xor32(s00, s06);
+      const u01 = OpCodes.Xor32(s01, s07);
+      const u02 = OpCodes.Xor32(s02, s08);
+      const u03 = OpCodes.Xor32(s03, s09);
+      const u04 = OpCodes.Xor32(s04, s10);
+      const u05 = OpCodes.Xor32(s05, s11);
 
       s06 = s00;
       s07 = s01;
@@ -148,26 +148,26 @@
       s10 = s04;
       s11 = s05;
 
-      s00 = u02 ^ t135;
-      s01 = u03 ^ t024;
-      s02 = u04 ^ t135;
-      s03 = u05 ^ t024;
-      s04 = u00 ^ t135;
-      s05 = u01 ^ t024;
+      s00 = OpCodes.Xor32(u02, t135);
+      s01 = OpCodes.Xor32(u03, t024);
+      s02 = OpCodes.Xor32(u04, t135);
+      s03 = OpCodes.Xor32(u05, t024);
+      s04 = OpCodes.Xor32(u00, t135);
+      s05 = OpCodes.Xor32(u01, t024);
     }
 
-    state[0] = s00 >>> 0;
-    state[1] = s01 >>> 0;
-    state[2] = s02 >>> 0;
-    state[3] = s03 >>> 0;
-    state[4] = s04 >>> 0;
-    state[5] = s05 >>> 0;
-    state[6] = s06 >>> 0;
-    state[7] = s07 >>> 0;
-    state[8] = s08 >>> 0;
-    state[9] = s09 >>> 0;
-    state[10] = s10 >>> 0;
-    state[11] = s11 >>> 0;
+    state[0] = OpCodes.ToUint32(s00);
+    state[1] = OpCodes.ToUint32(s01);
+    state[2] = OpCodes.ToUint32(s02);
+    state[3] = OpCodes.ToUint32(s03);
+    state[4] = OpCodes.ToUint32(s04);
+    state[5] = OpCodes.ToUint32(s05);
+    state[6] = OpCodes.ToUint32(s06);
+    state[7] = OpCodes.ToUint32(s07);
+    state[8] = OpCodes.ToUint32(s08);
+    state[9] = OpCodes.ToUint32(s09);
+    state[10] = OpCodes.ToUint32(s10);
+    state[11] = OpCodes.ToUint32(s11);
   }
 
   /**
@@ -320,9 +320,10 @@
 
     Result() {
       // Addition of constant M1 or M2 to the state
+      const midStateIndex = OpCodes.Shr32(STATE_WORDS, 1) - 1; // 12/2 - 1 = 5
       if (this.bufferPos < RATE_BYTES) {
         // M1: incomplete block
-        this.state[(STATE_WORDS >> 1) - 1] ^= (1 << 24);
+        this.state[midStateIndex] = OpCodes.Xor32(this.state[midStateIndex], OpCodes.Shl32(1, 24));
 
         // Padding: append 0x80 followed by zeros
         this.buffer[this.bufferPos] = 0x80;
@@ -331,7 +332,7 @@
         }
       } else {
         // M2: complete block
-        this.state[(STATE_WORDS >> 1) - 1] ^= (1 << 25);
+        this.state[midStateIndex] = OpCodes.Xor32(this.state[midStateIndex], OpCodes.Shl32(1, 25));
       }
 
       // Process final block with BIG steps
@@ -341,20 +342,20 @@
       const output = new Array(DIGEST_BYTES);
       for (let i = 0; i < RATE_WORDS; ++i) {
         const word = this.state[i];
-        output[i * 4 + 0] = word & 0xFF;
-        output[i * 4 + 1] = (word >>> 8) & 0xFF;
-        output[i * 4 + 2] = (word >>> 16) & 0xFF;
-        output[i * 4 + 3] = (word >>> 24) & 0xFF;
+        output[i * 4 + 0] = word&0xFF;
+        output[i * 4 + 1] = OpCodes.Shr32(word, 8)&0xFF;
+        output[i * 4 + 2] = OpCodes.Shr32(word, 16)&0xFF;
+        output[i * 4 + 3] = OpCodes.Shr32(word, 24)&0xFF;
       }
 
       // Second extraction: apply slim permutation and extract next 16 bytes
       SparkleOpt12(this.state, SPARKLE_STEPS_SLIM);
       for (let i = 0; i < RATE_WORDS; ++i) {
         const word = this.state[i];
-        output[16 + i * 4 + 0] = word & 0xFF;
-        output[16 + i * 4 + 1] = (word >>> 8) & 0xFF;
-        output[16 + i * 4 + 2] = (word >>> 16) & 0xFF;
-        output[16 + i * 4 + 3] = (word >>> 24) & 0xFF;
+        output[16 + i * 4 + 0] = word&0xFF;
+        output[16 + i * 4 + 1] = OpCodes.Shr32(word, 8)&0xFF;
+        output[16 + i * 4 + 2] = OpCodes.Shr32(word, 16)&0xFF;
+        output[16 + i * 4 + 3] = OpCodes.Shr32(word, 24)&0xFF;
       }
 
       // Reset for next operation
@@ -379,15 +380,15 @@
       const t3 = OpCodes.Pack32LE(block[12], block[13], block[14], block[15]);
 
       // Addition of buffer block to state using Feistel function
-      const tx = ELL(t0 ^ t2);
-      const ty = ELL(t1 ^ t3);
+      const tx = ELL(OpCodes.Xor32(t0, t2));
+      const ty = ELL(OpCodes.Xor32(t1, t3));
 
-      this.state[0] ^= t0 ^ ty;
-      this.state[1] ^= t1 ^ tx;
-      this.state[2] ^= t2 ^ ty;
-      this.state[3] ^= t3 ^ tx;
-      this.state[4] ^= ty;
-      this.state[5] ^= tx;
+      this.state[0] = OpCodes.Xor32(this.state[0], OpCodes.Xor32(t0, ty));
+      this.state[1] = OpCodes.Xor32(this.state[1], OpCodes.Xor32(t1, tx));
+      this.state[2] = OpCodes.Xor32(this.state[2], OpCodes.Xor32(t2, ty));
+      this.state[3] = OpCodes.Xor32(this.state[3], OpCodes.Xor32(t3, tx));
+      this.state[4] = OpCodes.Xor32(this.state[4], ty);
+      this.state[5] = OpCodes.Xor32(this.state[5], tx);
 
       // Apply Sparkle permutation
       SparkleOpt12(this.state, steps);

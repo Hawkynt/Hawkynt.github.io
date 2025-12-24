@@ -387,7 +387,7 @@
         // T3 <- T3 XOR F1(RK_{2i+1}, T2)
         t3 ^= this._f1(t2, rk1);
 
-        // Rotate: T0 | T1 | T2 | T3 <- T1 | T2 | T3 | T0
+        // Rotate: T0|T1|T2|T3 <- T1|T2|T3|T0
         // Skip rotation on last round (Sony reference line 197: if(r) check)
         if (i < r - 1) {
           const tmp = t0;
@@ -398,7 +398,7 @@
         }
       }
 
-      // Output: T0 | T1 | T2 | T3 (no post-rotation needed)
+      // Output: T0|T1|T2|T3 (no post-rotation needed)
       // Convert 32-bit words back to bytes (big-endian per RFC 6114)
       const result = [];
       result.push(...OpCodes.Unpack32BE(t0));
@@ -474,8 +474,8 @@
       const wk3 = OpCodes.Pack32BE(this.wk[3][0], this.wk[3][1], this.wk[3][2], this.wk[3][3]);
 
       // Pre-whitening: P1 ^= WK0, P3 ^= WK1
-      p1 ^= wk0;
-      p3 ^= wk1;
+      p1 = OpCodes.Xor32(p1, wk0);
+      p3 = OpCodes.Xor32(p3, wk1);
 
       // Rounds (each round uses 2 round keys)
       const r = this.rk.length / 2;
@@ -486,7 +486,7 @@
         // P3 ^= F1(RK_{2i+1}, P2)
         p3 ^= this._f1(p2, this.rk[round * 2 + 1]);
 
-        // Rotate: P0 | P1 | P2 | P3 <- P1 | P2 | P3 | P0
+        // Rotate: P0|P1|P2|P3 <- P1|P2|P3|P0
         // Skip rotation on last round (Sony reference clefia_ref.c line 197)
         if (round < r - 1) {
           const tmp = p0;
@@ -498,8 +498,8 @@
       }
 
       // Post-whitening: P1 ^= WK2, P3 ^= WK3
-      p1 ^= wk2;
-      p3 ^= wk3;
+      p1 = OpCodes.Xor32(p1, wk2);
+      p3 = OpCodes.Xor32(p3, wk3);
 
       // Convert output words back to bytes (big-endian per RFC 6114)
       const result = [];
@@ -524,13 +524,13 @@
       const wk3 = OpCodes.Pack32BE(this.wk[3][0], this.wk[3][1], this.wk[3][2], this.wk[3][3]);
 
       // Inverse pre-whitening: C1 ^= WK2, C3 ^= WK3
-      c1 ^= wk2;
-      c3 ^= wk3;
+      c1 = OpCodes.Xor32(c1, wk2);
+      c3 = OpCodes.Xor32(c3, wk3);
 
       // Inverse rounds (each round uses 2 round keys)
       const r = this.rk.length / 2;
       for (let round = r - 1; round >= 0; round--) {
-        // Inverse rotate: C0 | C1 | C2 | C3 <- C3 | C0 | C1 | C2
+        // Inverse rotate: C0|C1|C2|C3 <- C3|C0|C1|C2
         // Skip rotation on first decryption round (last encryption round)
         if (round < r - 1) {
           const tmp = c3;
@@ -548,8 +548,8 @@
       }
 
       // Inverse post-whitening: C1 ^= WK0, C3 ^= WK1
-      c1 ^= wk0;
-      c3 ^= wk1;
+      c1 = OpCodes.Xor32(c1, wk0);
+      c3 = OpCodes.Xor32(c3, wk1);
 
       // Convert output words back to bytes (big-endian per RFC 6114)
       const result = [];

@@ -307,7 +307,7 @@
         throw new Error('XorShift128 not initialized: set seed first');
       }
 
-      // Step 1: t = x ^ (x << 11)
+      // Step 1: t = x^(OpCodes.Shl32(x, 11))
       let t = this._x;
       const xShifted = OpCodes.Shl32(this._x, 11);
       t = OpCodes.XorN(t, xShifted);
@@ -318,7 +318,7 @@
       this._y = this._z;
       this._z = this._w;
 
-      // Step 3: w = w ^ (w >> 19) ^ (t ^ (t >> 8))
+      // Step 3: w = w^(w >> 19)^(t^(t >> 8))
       const wShr19 = OpCodes.Shr32(this._w, 19);
       const tShr8 = OpCodes.Shr32(t, 8);
       const wXorShr = OpCodes.XorN(this._w, wShr19);

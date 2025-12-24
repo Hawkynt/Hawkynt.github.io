@@ -512,7 +512,7 @@
         h[i] = BLAKE2B_IV[i];
       }
 
-      // Parameter block: h[0] ^= 0x01010000 ^ (keylen << 8) ^ outlen
+      // Parameter block: h[0] ^= 0x01010000^(OpCodes.Shl32(keylen, 8))^outlen
       h[0] = OpCodes.XorN(h[0], OpCodes.XorN(BigInt(0x01010000), OpCodes.XorN(OpCodes.ShiftLn(BigInt(this._key.length), 8), BigInt(this._outputSize))));
 
       // Process key block if key is provided

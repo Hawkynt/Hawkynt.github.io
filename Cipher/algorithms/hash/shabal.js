@@ -110,32 +110,39 @@
     // Add message block to B
     addM(m) {
       for (let i = 0; i < 16; ++i) {
-        this.b[i] = (this.b[i] + m[i]) >>> 0;
+        this.b[i] = OpCodes.ToUint32(this.b[i] + m[i]);
       }
     }
 
     // Subtract message block from C
     subM(m) {
       for (let i = 0; i < 16; ++i) {
-        this.c[i] = (this.c[i] - m[i]) >>> 0;
+        this.c[i] = OpCodes.ToUint32(this.c[i] - m[i]);
       }
     }
 
     // XOR block counter into A
     xorW() {
-      this.a[0] = (this.a[0]^(this.w&0xFFFFFFFF)) >>> 0;
-      this.a[1] = (this.a[1]^((this.w / 0x100000000) >>> 0)) >>> 0;
+      this.a[0] = OpCodes.Xor32(this.a[0], OpCodes.ToUint32(this.w));
+      this.a[1] = OpCodes.Xor32(this.a[1], OpCodes.ToUint32(this.w / 0x100000000));
     }
 
     // Permutation element operation
     permElt(xa0, xa1, xb0, xb1, xb2, xb3, xc0, xm) {
       const t1 = OpCodes.RotL32(this.a[xa1], 15);
-      const t2 = (t1 * 5) >>> 0;
-      const t3 = ((this.a[xa0]^t2^this.c[xc0]) * 3) >>> 0;
-      this.a[xa0] = (t3^this.b[xb1]^(this.b[xb2]&~this.b[xb3])^xm) >>> 0;
+      const t2 = OpCodes.ToUint32(t1 * 5);
+      const xor1 = OpCodes.Xor32(this.a[xa0], t2);
+      const xor2 = OpCodes.Xor32(xor1, this.c[xc0]);
+      const t3 = OpCodes.ToUint32(xor2 * 3);
+      const notB3 = OpCodes.ToUint32(~this.b[xb3]);
+      const andNotB = OpCodes.ToUint32(this.b[xb2]&notB3);
+      const xor3 = OpCodes.Xor32(t3, this.b[xb1]);
+      const xor4 = OpCodes.Xor32(xor3, andNotB);
+      this.a[xa0] = OpCodes.Xor32(xor4, xm);
 
       const t = OpCodes.RotL32(this.b[xb0], 1);
-      this.b[xb0] = (~(t^this.a[xa0])) >>> 0;
+      const xorResult = OpCodes.Xor32(t, this.a[xa0]);
+      this.b[xb0] = OpCodes.ToUint32(~xorResult);
     }
 
     // Full permutation on message block
@@ -207,18 +214,18 @@
       this.permBlocks(m);
 
       // Add C elements to A
-      this.a[0] = (this.a[0] + this.c[11] + this.c[15] + this.c[3]) >>> 0;
-      this.a[1] = (this.a[1] + this.c[12] + this.c[0] + this.c[4]) >>> 0;
-      this.a[2] = (this.a[2] + this.c[13] + this.c[1] + this.c[5]) >>> 0;
-      this.a[3] = (this.a[3] + this.c[14] + this.c[2] + this.c[6]) >>> 0;
-      this.a[4] = (this.a[4] + this.c[15] + this.c[3] + this.c[7]) >>> 0;
-      this.a[5] = (this.a[5] + this.c[0] + this.c[4] + this.c[8]) >>> 0;
-      this.a[6] = (this.a[6] + this.c[1] + this.c[5] + this.c[9]) >>> 0;
-      this.a[7] = (this.a[7] + this.c[2] + this.c[6] + this.c[10]) >>> 0;
-      this.a[8] = (this.a[8] + this.c[3] + this.c[7] + this.c[11]) >>> 0;
-      this.a[9] = (this.a[9] + this.c[4] + this.c[8] + this.c[12]) >>> 0;
-      this.a[10] = (this.a[10] + this.c[5] + this.c[9] + this.c[13]) >>> 0;
-      this.a[11] = (this.a[11] + this.c[6] + this.c[10] + this.c[14]) >>> 0;
+      this.a[0] = OpCodes.ToUint32(this.a[0] + this.c[11] + this.c[15] + this.c[3]);
+      this.a[1] = OpCodes.ToUint32(this.a[1] + this.c[12] + this.c[0] + this.c[4]);
+      this.a[2] = OpCodes.ToUint32(this.a[2] + this.c[13] + this.c[1] + this.c[5]);
+      this.a[3] = OpCodes.ToUint32(this.a[3] + this.c[14] + this.c[2] + this.c[6]);
+      this.a[4] = OpCodes.ToUint32(this.a[4] + this.c[15] + this.c[3] + this.c[7]);
+      this.a[5] = OpCodes.ToUint32(this.a[5] + this.c[0] + this.c[4] + this.c[8]);
+      this.a[6] = OpCodes.ToUint32(this.a[6] + this.c[1] + this.c[5] + this.c[9]);
+      this.a[7] = OpCodes.ToUint32(this.a[7] + this.c[2] + this.c[6] + this.c[10]);
+      this.a[8] = OpCodes.ToUint32(this.a[8] + this.c[3] + this.c[7] + this.c[11]);
+      this.a[9] = OpCodes.ToUint32(this.a[9] + this.c[4] + this.c[8] + this.c[12]);
+      this.a[10] = OpCodes.ToUint32(this.a[10] + this.c[5] + this.c[9] + this.c[13]);
+      this.a[11] = OpCodes.ToUint32(this.a[11] + this.c[6] + this.c[10] + this.c[14]);
     }
 
     // Swap B and C arrays

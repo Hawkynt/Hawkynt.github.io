@@ -93,8 +93,8 @@
   // ===== BIT PERMUTATION HELPERS =====
 
   function bitPermuteStep(value, mask, shift) {
-    const t = ((value >>> shift) ^ value) & mask;
-    return ((value ^ t) ^ (t << shift)) >>> 0;
+    const t = ((OpCodes.Shr32(value, shift))^value)&mask;
+    return ((value^t)^(OpCodes.Shl32(t, shift))) >>> 0;
   }
 
   function perm3Inner(x) {
@@ -102,7 +102,7 @@
     x = bitPermuteStep(x, 0x00cc00cc, 6);
     x = bitPermuteStep(x, 0x0000f0f0, 12);
     x = bitPermuteStep(x, 0x000000ff, 24);
-    return x >>> 0;
+    return OpCodes.ToUint32(x);
   }
 
   function perm0(x) {
@@ -138,7 +138,7 @@
       x = bitPermuteStep(x, 0x00cc00cc, 6);
       x = bitPermuteStep(x, 0x0000f0f0, 12);
       x = bitPermuteStep(x, 0x0000ff00, 8);
-      return x >>> 0;
+      return OpCodes.ToUint32(x);
     };
 
     s0 = permWords(s0);
@@ -150,22 +150,22 @@
     // C ref: output[0]=s0, output[1]=s1, output[2]=s2, output[3]=s3,
     //        output[4]=s0>>8, output[5]=s1>>8, ...
     const output = new Uint8Array(16);
-    output[0] = s0 & 0xFF;
-    output[1] = s1 & 0xFF;
-    output[2] = s2 & 0xFF;
-    output[3] = s3 & 0xFF;
-    output[4] = (s0 >>> 8) & 0xFF;
-    output[5] = (s1 >>> 8) & 0xFF;
-    output[6] = (s2 >>> 8) & 0xFF;
-    output[7] = (s3 >>> 8) & 0xFF;
-    output[8] = (s0 >>> 16) & 0xFF;
-    output[9] = (s1 >>> 16) & 0xFF;
-    output[10] = (s2 >>> 16) & 0xFF;
-    output[11] = (s3 >>> 16) & 0xFF;
-    output[12] = (s0 >>> 24) & 0xFF;
-    output[13] = (s1 >>> 24) & 0xFF;
-    output[14] = (s2 >>> 24) & 0xFF;
-    output[15] = (s3 >>> 24) & 0xFF;
+    output[0] = s0&0xFF;
+    output[1] = s1&0xFF;
+    output[2] = s2&0xFF;
+    output[3] = s3&0xFF;
+    output[4] = (OpCodes.Shr32(s0, 8))&0xFF;
+    output[5] = (OpCodes.Shr32(s1, 8))&0xFF;
+    output[6] = (OpCodes.Shr32(s2, 8))&0xFF;
+    output[7] = (OpCodes.Shr32(s3, 8))&0xFF;
+    output[8] = (OpCodes.Shr32(s0, 16))&0xFF;
+    output[9] = (OpCodes.Shr32(s1, 16))&0xFF;
+    output[10] = (OpCodes.Shr32(s2, 16))&0xFF;
+    output[11] = (OpCodes.Shr32(s3, 16))&0xFF;
+    output[12] = (OpCodes.Shr32(s0, 24))&0xFF;
+    output[13] = (OpCodes.Shr32(s1, 24))&0xFF;
+    output[14] = (OpCodes.Shr32(s2, 24))&0xFF;
+    output[15] = (OpCodes.Shr32(s3, 24))&0xFF;
 
     // Pack into 32-bit words for processing
     const words = new Uint32Array(4);
@@ -192,16 +192,16 @@
     bytes[12] = w3[0]; bytes[13] = w3[1]; bytes[14] = w3[2]; bytes[15] = w3[3];
 
     // De-interleave bytes to reconstruct the four words
-    // C ref: s0 = (input[12]<<24) | (input[8]<<16) | (input[4]<<8) | input[0]
-    let s0 = (bytes[12] << 24) | (bytes[8] << 16) | (bytes[4] << 8) | bytes[0];
-    let s1 = (bytes[13] << 24) | (bytes[9] << 16) | (bytes[5] << 8) | bytes[1];
-    let s2 = (bytes[14] << 24) | (bytes[10] << 16) | (bytes[6] << 8) | bytes[2];
-    let s3 = (bytes[15] << 24) | (bytes[11] << 16) | (bytes[7] << 8) | bytes[3];
+    // C ref: s0 = (input[12]<<24)|(input[8]<<16)|(input[4]<<8)|input[0]
+    let s0 = (OpCodes.Shl32(bytes[12], 24))|(OpCodes.Shl32(bytes[8], 16))|(OpCodes.Shl32(bytes[4], 8))|bytes[0];
+    let s1 = (OpCodes.Shl32(bytes[13], 24))|(OpCodes.Shl32(bytes[9], 16))|(OpCodes.Shl32(bytes[5], 8))|bytes[1];
+    let s2 = (OpCodes.Shl32(bytes[14], 24))|(OpCodes.Shl32(bytes[10], 16))|(OpCodes.Shl32(bytes[6], 8))|bytes[2];
+    let s3 = (OpCodes.Shl32(bytes[15], 24))|(OpCodes.Shl32(bytes[11], 16))|(OpCodes.Shl32(bytes[7], 8))|bytes[3];
 
-    s0 = s0 >>> 0;
-    s1 = s1 >>> 0;
-    s2 = s2 >>> 0;
-    s3 = s3 >>> 0;
+    s0 = OpCodes.ToUint32(s0);
+    s1 = OpCodes.ToUint32(s1);
+    s2 = OpCodes.ToUint32(s2);
+    s3 = OpCodes.ToUint32(s3);
 
     // Apply inverse of PERM_WORDS
     const invPermWords = function(x) {
@@ -209,7 +209,7 @@
       x = bitPermuteStep(x, 0x0000cccc, 14);
       x = bitPermuteStep(x, 0x00f000f0, 4);
       x = bitPermuteStep(x, 0x0000ff00, 8);
-      return x >>> 0;
+      return OpCodes.ToUint32(x);
     };
 
     s0 = invPermWords(s0);
@@ -251,13 +251,13 @@
     // Perform all 40 rounds
     for (let round = 0; round < 40; ++round) {
       // SubCells - apply the S-box
-      s1 ^= s0 & s2;
-      s0 ^= s1 & s3;
-      s2 ^= s0 | s1;
-      s3 ^= s2;
-      s1 ^= s3;
-      s3 ^= 0xFFFFFFFF;
-      s2 ^= s0 & s1;
+      s1 = OpCodes.Xor32(s1, s0&s2);
+      s0 = OpCodes.Xor32(s0, s1&s3);
+      s2 = OpCodes.Xor32(s2, s0|s1);
+      s3 = OpCodes.Xor32(s3, s2);
+      s1 = OpCodes.Xor32(s1, s3);
+      s3 = OpCodes.Xor32(s3, 0xFFFFFFFF);
+      s2 = OpCodes.Xor32(s2, s0&s1);
 
       // Swap s0 and s3
       let temp = s0;
@@ -271,13 +271,13 @@
       s3 = perm3(s3);
 
       // AddRoundKey - XOR in the key schedule and round constant
-      s2 ^= w1;
-      s1 ^= w3;
-      s3 ^= (0x80000000 ^ GIFT128_RC[round]) >>> 0;
+      s2 = OpCodes.Xor32(s2, w1);
+      s1 = OpCodes.Xor32(s1, w3);
+      s3 = OpCodes.Xor32(s3, OpCodes.ToUint32(0x80000000^GIFT128_RC[round]));
 
       // AddTweak - XOR in the tweak every 5 rounds except the last
       if (((round + 1) % 5) === 0 && round < 39) {
-        s0 ^= tweak;
+        s0 = OpCodes.Xor32(s0, tweak);
       }
 
       // Rotate the key schedule
@@ -285,8 +285,7 @@
       w3 = w2;
       w2 = w1;
       w1 = w0;
-      w0 = (((temp & 0xFFFC0000) >>> 2) | ((temp & 0x00030000) << 14) |
-            ((temp & 0x00000FFF) << 4) | ((temp & 0x0000F000) >>> 12)) >>> 0;
+      w0 = (OpCodes.Shr32((temp&0xFFFC0000), 2)|OpCodes.Shl32((temp&0x00030000), 14)|OpCodes.Shl32((temp&0x00000FFF), 4)|OpCodes.Shr32((temp&0x0000F000), 12)) >>> 0;
     }
 
     // Pack result and convert to nibbles
@@ -315,7 +314,7 @@
     // C reference: while (mlen > 16) - process until <= 16 bytes remain
     while (mlen - offset > 16) {
       for (let i = 0; i < 16; ++i) {
-        tag[i] ^= m[offset + i];
+        tag[i] = OpCodes.Xor32(tag[i], m[offset + i]);
       }
       const encrypted = gift128nEncrypt(ks, tag);
       for (let i = 0; i < 16; ++i) {
@@ -329,7 +328,7 @@
     if (remaining === 16) {
       // Full last block with tweak1
       for (let i = 0; i < 16; ++i) {
-        tag[i] ^= m[offset + i];
+        tag[i] = OpCodes.Xor32(tag[i], m[offset + i]);
       }
       const encrypted = gift128tEncrypt(ks, tag, tweak1);
       for (let i = 0; i < 16; ++i) {
@@ -338,9 +337,9 @@
     } else if (remaining > 0) {
       // Partial last block with padding and tweak2
       for (let i = 0; i < remaining; ++i) {
-        tag[i] ^= m[offset + i];
+        tag[i] = OpCodes.Xor32(tag[i], m[offset + i]);
       }
-      tag[remaining] ^= 0x01; // Padding bit
+      tag[remaining] = OpCodes.Xor32(tag[remaining], 0x01); // Padding bit
       const encrypted = gift128tEncrypt(ks, tag, tweak2);
       for (let i = 0; i < 16; ++i) {
         tag[i] = encrypted[i];
@@ -399,7 +398,7 @@
     while (offset + 16 <= len) {
       const encrypted = gift128nEncrypt(ks, block);
       for (let i = 0; i < 16; ++i) {
-        output[offset + i] = encrypted[i] ^ input[offset + i];
+        output[offset + i] = OpCodes.Xor32(encrypted[i], input[offset + i]);
         block[i] = encrypted[i];
       }
       offset += 16;
@@ -410,7 +409,7 @@
     if (remaining > 0) {
       const encrypted = gift128nEncrypt(ks, block);
       for (let i = 0; i < remaining; ++i) {
-        output[offset + i] = encrypted[i] ^ input[offset + i];
+        output[offset + i] = OpCodes.Xor32(encrypted[i], input[offset + i]);
       }
     }
   }
@@ -420,7 +419,7 @@
   function constantTimeCompare(a, b) {
     let result = 0;
     for (let i = 0; i < 16; ++i) {
-      result |= a[i] ^ b[i];
+      result |= OpCodes.Xor32(a[i], b[i]);
     }
     return result === 0;
   }

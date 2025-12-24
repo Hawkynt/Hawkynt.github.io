@@ -136,14 +136,14 @@
   // Extract byte from 64-bit word at position (0-7)
   // pos 0 = MSB (bits 56-63), pos 7 = LSB (bits 0-7)
   function getByte(word, pos) {
-    const shift = BigInt(OpCodes.AndN(~pos, 7) * 8);
-    return Number((word >> shift) & 0xFFn);
+    const shift = BigInt(OpCodes.AndN(OpCodes.ToUint32(~pos), 7) * 8);
+    return Number(OpCodes.AndN(OpCodes.ShiftRn(word, shift), 0xFFn));
   }
 
   // Rotate right for 64-bit BigInt
   function rotr64(value, bits) {
     const shift = BigInt(bits);
-    return ((value >> shift) | (value << (64n - shift))) & 0xFFFFFFFFFFFFFFFFn;
+    return OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftRn(value, shift), OpCodes.ShiftLn(value, 64n - shift)), 0xFFFFFFFFFFFFFFFFn);
   }
 
   // Whirlpool theta_pi_gamma operation using single S-box with rotations (Botan approach)
@@ -157,8 +157,7 @@
     const s6 = SB0[getByte(x6, 6)];
     const s7 = SB0[getByte(x7, 7)];
 
-    return s0 ^ rotr64(s1, 8) ^ rotr64(s2, 16) ^ rotr64(s3, 24) ^
-           rotr64(s4, 32) ^ rotr64(s5, 40) ^ rotr64(s6, 48) ^ rotr64(s7, 56);
+    return OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(s0, rotr64(s1, 8)), rotr64(s2, 16)), rotr64(s3, 24)), rotr64(s4, 32)), rotr64(s5, 40)), rotr64(s6, 48)), rotr64(s7, 56));
   }
 
   /**
@@ -277,7 +276,7 @@
       for (let i = 0; i < 8; i++) {
         blockWords[i] = 0n;
         for (let j = 0; j < 8; j++) {
-          blockWords[i] = (blockWords[i] << 8n) | BigInt(block[i * 8 + j]);
+          blockWords[i] = OpCodes.OrN(OpCodes.ShiftLn(blockWords[i], 8n), BigInt(block[i * 8 + j]));
         }
       }
 
@@ -291,8 +290,8 @@
       for (let r = 1; r <= WHIRLPOOL_ROUNDS; r++) {
         const prevIdx = 8 * (r - 1);
         const currIdx = 8 * r;
-        K[currIdx + 0] = whirlpoolOp(K[prevIdx+0], K[prevIdx+7], K[prevIdx+6], K[prevIdx+5],
-                                      K[prevIdx+4], K[prevIdx+3], K[prevIdx+2], K[prevIdx+1]) ^ RC[r-1];
+        K[currIdx + 0] = OpCodes.XorN(whirlpoolOp(K[prevIdx+0], K[prevIdx+7], K[prevIdx+6], K[prevIdx+5],
+                                      K[prevIdx+4], K[prevIdx+3], K[prevIdx+2], K[prevIdx+1]), RC[r-1]);
         K[currIdx + 1] = whirlpoolOp(K[prevIdx+1], K[prevIdx+0], K[prevIdx+7], K[prevIdx+6],
                                       K[prevIdx+5], K[prevIdx+4], K[prevIdx+3], K[prevIdx+2]);
         K[currIdx + 2] = whirlpoolOp(K[prevIdx+2], K[prevIdx+1], K[prevIdx+0], K[prevIdx+7],
@@ -310,26 +309,26 @@
       }
 
       // Initialize state with block XOR key
-      let B0 = blockWords[0] ^ K[0];
-      let B1 = blockWords[1] ^ K[1];
-      let B2 = blockWords[2] ^ K[2];
-      let B3 = blockWords[3] ^ K[3];
-      let B4 = blockWords[4] ^ K[4];
-      let B5 = blockWords[5] ^ K[5];
-      let B6 = blockWords[6] ^ K[6];
-      let B7 = blockWords[7] ^ K[7];
+      let B0 = OpCodes.XorN(blockWords[0], K[0]);
+      let B1 = OpCodes.XorN(blockWords[1], K[1]);
+      let B2 = OpCodes.XorN(blockWords[2], K[2]);
+      let B3 = OpCodes.XorN(blockWords[3], K[3]);
+      let B4 = OpCodes.XorN(blockWords[4], K[4]);
+      let B5 = OpCodes.XorN(blockWords[5], K[5]);
+      let B6 = OpCodes.XorN(blockWords[6], K[6]);
+      let B7 = OpCodes.XorN(blockWords[7], K[7]);
 
       // 10 rounds of Whirlpool transformation
       for (let r = 1; r <= WHIRLPOOL_ROUNDS; r++) {
         const keyIdx = 8 * r;
-        const T0 = whirlpoolOp(B0, B7, B6, B5, B4, B3, B2, B1) ^ K[keyIdx + 0];
-        const T1 = whirlpoolOp(B1, B0, B7, B6, B5, B4, B3, B2) ^ K[keyIdx + 1];
-        const T2 = whirlpoolOp(B2, B1, B0, B7, B6, B5, B4, B3) ^ K[keyIdx + 2];
-        const T3 = whirlpoolOp(B3, B2, B1, B0, B7, B6, B5, B4) ^ K[keyIdx + 3];
-        const T4 = whirlpoolOp(B4, B3, B2, B1, B0, B7, B6, B5) ^ K[keyIdx + 4];
-        const T5 = whirlpoolOp(B5, B4, B3, B2, B1, B0, B7, B6) ^ K[keyIdx + 5];
-        const T6 = whirlpoolOp(B6, B5, B4, B3, B2, B1, B0, B7) ^ K[keyIdx + 6];
-        const T7 = whirlpoolOp(B7, B6, B5, B4, B3, B2, B1, B0) ^ K[keyIdx + 7];
+        const T0 = OpCodes.XorN(whirlpoolOp(B0, B7, B6, B5, B4, B3, B2, B1), K[keyIdx + 0]);
+        const T1 = OpCodes.XorN(whirlpoolOp(B1, B0, B7, B6, B5, B4, B3, B2), K[keyIdx + 1]);
+        const T2 = OpCodes.XorN(whirlpoolOp(B2, B1, B0, B7, B6, B5, B4, B3), K[keyIdx + 2]);
+        const T3 = OpCodes.XorN(whirlpoolOp(B3, B2, B1, B0, B7, B6, B5, B4), K[keyIdx + 3]);
+        const T4 = OpCodes.XorN(whirlpoolOp(B4, B3, B2, B1, B0, B7, B6, B5), K[keyIdx + 4]);
+        const T5 = OpCodes.XorN(whirlpoolOp(B5, B4, B3, B2, B1, B0, B7, B6), K[keyIdx + 5]);
+        const T6 = OpCodes.XorN(whirlpoolOp(B6, B5, B4, B3, B2, B1, B0, B7), K[keyIdx + 6]);
+        const T7 = OpCodes.XorN(whirlpoolOp(B7, B6, B5, B4, B3, B2, B1, B0), K[keyIdx + 7]);
 
         B0 = T0;
         B1 = T1;
@@ -342,14 +341,14 @@
       }
 
       // Miyaguchi-Preneel: hash = hash XOR final_state XOR block
-      this.state[0] ^= B0 ^ blockWords[0];
-      this.state[1] ^= B1 ^ blockWords[1];
-      this.state[2] ^= B2 ^ blockWords[2];
-      this.state[3] ^= B3 ^ blockWords[3];
-      this.state[4] ^= B4 ^ blockWords[4];
-      this.state[5] ^= B5 ^ blockWords[5];
-      this.state[6] ^= B6 ^ blockWords[6];
-      this.state[7] ^= B7 ^ blockWords[7];
+      this.state[0] = OpCodes.XorN(this.state[0], OpCodes.XorN(B0, blockWords[0]));
+      this.state[1] = OpCodes.XorN(this.state[1], OpCodes.XorN(B1, blockWords[1]));
+      this.state[2] = OpCodes.XorN(this.state[2], OpCodes.XorN(B2, blockWords[2]));
+      this.state[3] = OpCodes.XorN(this.state[3], OpCodes.XorN(B3, blockWords[3]));
+      this.state[4] = OpCodes.XorN(this.state[4], OpCodes.XorN(B4, blockWords[4]));
+      this.state[5] = OpCodes.XorN(this.state[5], OpCodes.XorN(B5, blockWords[5]));
+      this.state[6] = OpCodes.XorN(this.state[6], OpCodes.XorN(B6, blockWords[6]));
+      this.state[7] = OpCodes.XorN(this.state[7], OpCodes.XorN(B7, blockWords[7]));
     }
 
     /**
@@ -362,7 +361,7 @@
       if (typeof data === 'string') {
         const bytes = [];
         for (let i = 0; i < data.length; i++) {
-          bytes.push(OpCodes.AndN(data.charCodeAt(i), 0xFF));
+          bytes.push(OpCodes.ToByte(data.charCodeAt(i)));
         }
         data = bytes;
       }
@@ -419,7 +418,7 @@
       // Append 64-bit length in big-endian format (like reference implementation)
       const bitLength = this.totalLength * 8;
       for (let i = 0; i < 8; i++) {
-        this.buffer[56 + i] = Number((BigInt(bitLength) >> BigInt(56 - i * 8)) & 0xFFn);
+        this.buffer[56 + i] = Number(OpCodes.AndN(OpCodes.ShiftRn(BigInt(bitLength), BigInt(56 - i * 8)), 0xFFn));
       }
       this.bufferLength = 64;
 
@@ -431,7 +430,7 @@
       for (let i = 0; i < 8; i++) {
         const word = this.state[i];
         for (let j = 0; j < 8; j++) {
-          result[i * 8 + j] = Number((word >> BigInt(56 - j * 8)) & 0xFFn);
+          result[i * 8 + j] = Number(OpCodes.AndN(OpCodes.ShiftRn(word, BigInt(56 - j * 8)), 0xFFn));
         }
       }
 

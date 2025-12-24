@@ -601,7 +601,7 @@
       // Convert message to BigInt (this would normally be a hash)
       let x = 0n;
       for (let i = 0; i < message.length; ++i) {
-        x = OpCodes.ShiftLn(x, 8n) | BigInt(message[i]);
+        x = OpCodes.ShiftLn(x, 8n)|BigInt(message[i]);
       }
 
       // Ensure x < n
@@ -719,7 +719,7 @@
       // Convert signature to BigInt
       let s = 0n;
       for (let i = 0; i < signature.length; ++i) {
-        s = OpCodes.ShiftLn(s, 8n) | BigInt(signature[i]);
+        s = OpCodes.ShiftLn(s, 8n)|BigInt(signature[i]);
       }
 
       // Apply public function

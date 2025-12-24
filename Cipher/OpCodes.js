@@ -155,6 +155,97 @@
     },
 
     /**
+     * Arithmetic right shift for 32-bit signed values
+     * Preserves the sign bit (sign-extends) unlike logical shift
+     * @param {int32} value - Signed 32-bit value to shift
+     * @param {int32} positions - Number of positions to shift
+     * @returns {int32} Shifted 32-bit signed value
+     */
+    Shr32Signed: function(value, positions) {
+      return (value|0) >> (positions|0);
+    },
+
+    // ========================[ BITWISE LOGICAL OPERATIONS (8/16-bit) ]========================
+
+    /**
+     * Bitwise AND for 8-bit values
+     * @param {uint8} a - First operand
+     * @param {uint8} b - Second operand
+     * @returns {uint8} 8-bit AND result
+     */
+    And8: function(a, b) {
+      return (a & b) & 0xFF;
+    },
+
+    /**
+     * Bitwise OR for 8-bit values
+     * @param {uint8} a - First operand
+     * @param {uint8} b - Second operand
+     * @returns {uint8} 8-bit OR result
+     */
+    Or8: function(a, b) {
+      return (a | b) & 0xFF;
+    },
+
+    /**
+     * Bitwise XOR for 8-bit values
+     * @param {uint8} a - First operand
+     * @param {uint8} b - Second operand
+     * @returns {uint8} 8-bit XOR result
+     */
+    Xor8: function(a, b) {
+      return (a ^ b) & 0xFF;
+    },
+
+    /**
+     * Bitwise NOT for 8-bit values
+     * @param {uint8} a - Operand
+     * @returns {uint8} 8-bit NOT result
+     */
+    Not8: function(a) {
+      return (~a) & 0xFF;
+    },
+
+    /**
+     * Bitwise AND for 16-bit values
+     * @param {uint16} a - First operand
+     * @param {uint16} b - Second operand
+     * @returns {uint16} 16-bit AND result
+     */
+    And16: function(a, b) {
+      return (a & b) & 0xFFFF;
+    },
+
+    /**
+     * Bitwise OR for 16-bit values
+     * @param {uint16} a - First operand
+     * @param {uint16} b - Second operand
+     * @returns {uint16} 16-bit OR result
+     */
+    Or16: function(a, b) {
+      return (a | b) & 0xFFFF;
+    },
+
+    /**
+     * Bitwise XOR for 16-bit values
+     * @param {uint16} a - First operand
+     * @param {uint16} b - Second operand
+     * @returns {uint16} 16-bit XOR result
+     */
+    Xor16: function(a, b) {
+      return (a ^ b) & 0xFFFF;
+    },
+
+    /**
+     * Bitwise NOT for 16-bit values
+     * @param {uint16} a - Operand
+     * @returns {uint16} 16-bit NOT result
+     */
+    Not16: function(a) {
+      return (~a) & 0xFFFF;
+    },
+
+    /**
      * Rotate left (circular left shift) for 64-bit BigInt values
      * @param {BigInt} value - 64-bit BigInt value to rotate
      * @param {int32} positions - Number of positions to rotate (0-63)
@@ -3874,6 +3965,24 @@
     },
 
     /**
+     * Convert a value to unsigned 16-bit integer
+     * @param {number} value - Value to convert
+     * @returns {number} Unsigned 16-bit integer
+     */
+    ToUint16: function(value) {
+      return (value >>> 0) & 0xFFFF;
+    },
+
+    /**
+     * Convert a value to unsigned 8-bit integer
+     * @param {number} value - Value to convert
+     * @returns {number} Unsigned 8-bit integer
+     */
+    ToUint8: function(value) {
+      return (value >>> 0) & 0xFF;
+    },
+
+    /**
      * Constant-time array equality comparison
      * @param {uint8[]} arr1 - First byte array
      * @param {uint8[]} arr2 - Second byte array
@@ -3922,6 +4031,35 @@
      */
     XorN: function(a, b) {
       return a ^ b;
+    },
+
+    /**
+     * Bitwise AND for 32-bit values, returning unsigned result
+     * @param {int32} a - First operand
+     * @param {int32} b - Second operand
+     * @returns {uint32} Unsigned 32-bit AND result
+     */
+    And32: function(a, b) {
+      return (a & b) >>> 0;
+    },
+
+    /**
+     * Bitwise OR for 32-bit values, returning unsigned result
+     * @param {int32} a - First operand
+     * @param {int32} b - Second operand
+     * @returns {uint32} Unsigned 32-bit OR result
+     */
+    Or32: function(a, b) {
+      return (a | b) >>> 0;
+    },
+
+    /**
+     * Bitwise NOT for 32-bit values, returning unsigned result
+     * @param {int32} a - Operand
+     * @returns {uint32} Unsigned 32-bit NOT result
+     */
+    Not32: function(a) {
+      return (~a) >>> 0;
     },
 
     /**

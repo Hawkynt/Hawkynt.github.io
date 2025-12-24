@@ -177,7 +177,7 @@
       // codeword[i] = info[i], codeword[k+i] = info[i]
 
       // For demonstration, we use an identity-like structure
-      // that ensures H = [I | I] form, making parity bits equal to info bits
+      // that ensures H = [I|I] form, making parity bits equal to info bits
       this.protographMatrix = [
         [1, 1] // Single check: v0 + v1 = 0, gives parity = info
       ];
@@ -287,14 +287,14 @@
     }
 
     /**
-     * Transform H to systematic form [I | P] using Gaussian elimination
+     * Transform H to systematic form [I|P] using Gaussian elimination
      * Then compute encoding matrix P for systematic encoding
      */
     transformToSystematicForm() {
-      // For systematic LDPC codes, we need H in form [I_m | P]
+      // For systematic LDPC codes, we need H in form [I_m|P]
       // where I_m is mxm identity and P is mx(n-m)
       //
-      // Then for codeword c = [p | s] (parity | systematic),
+      // Then for codeword c = [p|s] (parity|systematic),
       // we have p = P * s
       //
       // Since direct Gaussian elimination is complex, for educational purposes
@@ -434,7 +434,7 @@
         throw new Error('Protograph LDPC encode: Input must be exactly ' + this.k + ' bits');
       }
 
-      // Systematic encoding: codeword = [systematic_bits | parity_bits]
+      // Systematic encoding: codeword = [systematic_bits|parity_bits]
       // Parity bits computed as: parity = P * systematic (over GF(2))
       const codeword = new Array(this.n).fill(0);
 

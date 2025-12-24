@@ -231,7 +231,7 @@
 
       // Header: format version and data length
       output.push(0); // Format version
-      output.push(data.length & 0xFF);
+      output.push(data.length&0xFF);
       output.push(OpCodes.Shr8(data.length, 8));
       output.push(OpCodes.Shr16(data.length, 16));
       output.push(OpCodes.Shr32(data.length, 24));
@@ -249,8 +249,8 @@
           // Encode match: [1 = match flag, offset high, offset low, length]
           output.push(1); // Match flag
           output.push(OpCodes.Shr8(match.offset, 8));
-          output.push(match.offset & 0xFF);
-          output.push(match.length & 0xFF);
+          output.push(match.offset&0xFF);
+          output.push(match.length&0xFF);
 
           // Add match bytes to dictionary and update context hashes
           for (let i = 0; i < match.length; ++i) {
@@ -358,7 +358,7 @@
       if (uniqueBytes.length === 1) {
         const byte = parseInt(uniqueBytes[0]);
         const count = data.length;
-        return [255, byte, count & 0xFF, OpCodes.Shr32(count, 8) & 0xFF, OpCodes.Shr32(count, 16) & 0xFF];
+        return [255, byte, count&0xFF, OpCodes.Shr32(count, 8)&0xFF, OpCodes.Shr32(count, 16)&0xFF];
       }
 
       // Build Huffman tree and generate codes
@@ -431,17 +431,17 @@
 
       // Number of unique symbols
       const symbolCount = Object.keys(frequencies).length;
-      output.push(symbolCount & 0xFF);
+      output.push(symbolCount&0xFF);
 
       // Write frequency table
       for (const [byte, freq] of Object.entries(frequencies)) {
         output.push(parseInt(byte));
-        output.push(freq & 0xFF);
+        output.push(freq&0xFF);
         output.push(OpCodes.Shr8(freq, 8));
       }
 
       // Write bit length
-      output.push(bitString.length & 0xFF);
+      output.push(bitString.length&0xFF);
       output.push(OpCodes.Shr8(bitString.length, 8));
       output.push(OpCodes.Shr16(bitString.length, 16));
       output.push(OpCodes.Shr32(bitString.length, 24));

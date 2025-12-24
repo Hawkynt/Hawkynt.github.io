@@ -19,7 +19,7 @@
  * 1. Implicit modulo (b = 2^64): Uses 64-bit arithmetic, carry is top 64 bits
  * 2. Explicit modulo: Allows custom modulus for specialized applications
  *
- * Reference: Marsaglia & Zaman (1991). "A new class of random number generators"
+ * Reference: Marsaglia&Zaman (1991). "A new class of random number generators"
  * Annals of Applied Probability, 1(3), 462-480.
  *
  * AlgorithmFramework Format
@@ -234,21 +234,21 @@
       this._stateHigh = 0;
 
       if (seedBytes.length >= 1) this._stateLow |= seedBytes[0];
-      if (seedBytes.length >= 2) this._stateLow |= (seedBytes[1] << 8);
-      if (seedBytes.length >= 3) this._stateLow |= (seedBytes[2] << 16);
-      if (seedBytes.length >= 4) this._stateLow |= (seedBytes[3] << 24);
+      if (seedBytes.length >= 2) this._stateLow |= OpCodes.Shl32(seedBytes[1], 8);
+      if (seedBytes.length >= 3) this._stateLow |= OpCodes.Shl32(seedBytes[2], 16);
+      if (seedBytes.length >= 4) this._stateLow |= OpCodes.Shl32(seedBytes[3], 24);
       if (seedBytes.length >= 5) this._stateHigh |= seedBytes[4];
-      if (seedBytes.length >= 6) this._stateHigh |= (seedBytes[5] << 8);
-      if (seedBytes.length >= 7) this._stateHigh |= (seedBytes[6] << 16);
-      if (seedBytes.length >= 8) this._stateHigh |= (seedBytes[7] << 24);
+      if (seedBytes.length >= 6) this._stateHigh |= OpCodes.Shl32(seedBytes[5], 8);
+      if (seedBytes.length >= 7) this._stateHigh |= OpCodes.Shl32(seedBytes[6], 16);
+      if (seedBytes.length >= 8) this._stateHigh |= OpCodes.Shl32(seedBytes[7], 24);
 
       // Ensure unsigned 32-bit
-      this._stateLow = this._stateLow >>> 0;
-      this._stateHigh = this._stateHigh >>> 0;
+      this._stateLow = OpCodes.ToUint32(this._stateLow);
+      this._stateHigh = OpCodes.ToUint32(this._stateHigh);
 
       // Initialize carry to ~state (bitwise NOT of seed)
-      this._carryLow = (~this._stateLow) >>> 0;
-      this._carryHigh = (~this._stateHigh) >>> 0;
+      this._carryLow = OpCodes.ToUint32((~this._stateLow));
+      this._carryHigh = OpCodes.ToUint32((~this._stateHigh));
 
       // If seed provides carry value (bytes 9-16), use it
       if (seedBytes.length >= 9) {
@@ -256,16 +256,16 @@
         this._carryHigh = 0;
 
         if (seedBytes.length >= 9) this._carryLow |= seedBytes[8];
-        if (seedBytes.length >= 10) this._carryLow |= (seedBytes[9] << 8);
-        if (seedBytes.length >= 11) this._carryLow |= (seedBytes[10] << 16);
-        if (seedBytes.length >= 12) this._carryLow |= (seedBytes[11] << 24);
+        if (seedBytes.length >= 10) this._carryLow |= OpCodes.Shl32(seedBytes[9], 8);
+        if (seedBytes.length >= 11) this._carryLow |= OpCodes.Shl32(seedBytes[10], 16);
+        if (seedBytes.length >= 12) this._carryLow |= OpCodes.Shl32(seedBytes[11], 24);
         if (seedBytes.length >= 13) this._carryHigh |= seedBytes[12];
-        if (seedBytes.length >= 14) this._carryHigh |= (seedBytes[13] << 8);
-        if (seedBytes.length >= 15) this._carryHigh |= (seedBytes[14] << 16);
-        if (seedBytes.length >= 16) this._carryHigh |= (seedBytes[15] << 24);
+        if (seedBytes.length >= 14) this._carryHigh |= OpCodes.Shl32(seedBytes[13], 8);
+        if (seedBytes.length >= 15) this._carryHigh |= OpCodes.Shl32(seedBytes[14], 16);
+        if (seedBytes.length >= 16) this._carryHigh |= OpCodes.Shl32(seedBytes[15], 24);
 
-        this._carryLow = this._carryLow >>> 0;
-        this._carryHigh = this._carryHigh >>> 0;
+        this._carryLow = OpCodes.ToUint32(this._carryLow);
+        this._carryHigh = OpCodes.ToUint32(this._carryHigh);
       }
 
       this._ready = true;
@@ -279,7 +279,7 @@
      * Set custom multiplier (optional)
      */
     set multiplier(value) {
-      this._multiplier = value >>> 0; // Ensure unsigned 32-bit
+      this._multiplier = OpCodes.ToUint32(value); // Ensure unsigned 32-bit
     }
 
     get multiplier() {
@@ -290,7 +290,7 @@
      * Set custom modulo (optional, 0 = implicit modulo 2^64)
      */
     set modulo(value) {
-      this._modulo = value >>> 0;
+      this._modulo = OpCodes.ToUint32(value);
     }
 
     get modulo() {
@@ -303,7 +303,7 @@
      * Algorithm:
      *   temp = state * multiplier + carry
      *   state = temp mod 2^64 (low 64 bits)
-     *   carry = temp >> 64 (high 64 bits)
+     *   carry = OpCodes.Shr32(temp, 64) (high 64 bits)
      *
      * We simulate 128-bit arithmetic using 32-bit operations
      *
@@ -335,20 +335,20 @@
 
       // Combine: result = lowMul + (lowCarry + highMul) * 2^32 + highCarry * 2^64
       // We track as [result0, result1, result2, result3] each 32-bit
-      let r0 = (lowMul >>> 0);
-      let r1 = ((lowCarry + highMul) >>> 0);
-      let r2 = (highCarry >>> 0) + Math.floor((lowCarry + highMul) / 0x100000000);
+      let r0 = (OpCodes.ToUint32(lowMul));
+      let r1 = OpCodes.ToUint32(((lowCarry + highMul)));
+      let r2 = (OpCodes.ToUint32(highCarry)) + Math.floor((lowCarry + highMul) / 0x100000000);
       let r3 = Math.floor(r2 / 0x100000000);
-      r2 = r2 >>> 0;
+      r2 = OpCodes.ToUint32(r2);
 
       // Add carry (64-bit)
-      r0 = (r0 + this._carryLow) >>> 0;
-      const carryAdd = (r0 < this._carryLow) ? 1 : 0;
-      r1 = (r1 + this._carryHigh + carryAdd) >>> 0;
-      const carry1 = ((r1 < this._carryHigh) || (r1 === this._carryHigh && carryAdd > 0)) ? 1 : 0;
-      r2 = (r2 + carry1) >>> 0;
-      const carry2 = (r2 < carry1) ? 1 : 0;
-      r3 = (r3 + carry2) >>> 0;
+      r0 = OpCodes.ToUint32((r0 + this._carryLow));
+      const carryAdd = (r0< this._carryLow) ? 1 : 0;
+      r1 = OpCodes.ToUint32((r1 + this._carryHigh + carryAdd));
+      const carry1 = ((r1< this._carryHigh)|| (r1 === this._carryHigh && carryAdd> 0)) ? 1 : 0;
+      r2 = OpCodes.ToUint32((r2 + carry1));
+      const carry2 = (r2< carry1) ? 1 : 0;
+      r3 = OpCodes.ToUint32((r3 + carry2));
 
       // New state is low 64 bits (r0, r1)
       this._stateLow = r0;
@@ -385,14 +385,14 @@
         // Extract bytes (little-endian order)
         const bytesToExtract = Math.min(bytesRemaining, 8);
 
-        if (bytesToExtract >= 1) output.push(value.low & 0xFF);
-        if (bytesToExtract >= 2) output.push((value.low >>> 8) & 0xFF);
-        if (bytesToExtract >= 3) output.push((value.low >>> 16) & 0xFF);
-        if (bytesToExtract >= 4) output.push((value.low >>> 24) & 0xFF);
-        if (bytesToExtract >= 5) output.push(value.high & 0xFF);
-        if (bytesToExtract >= 6) output.push((value.high >>> 8) & 0xFF);
-        if (bytesToExtract >= 7) output.push((value.high >>> 16) & 0xFF);
-        if (bytesToExtract >= 8) output.push((value.high >>> 24) & 0xFF);
+        if (bytesToExtract >= 1) output.push(value.low&0xFF);
+        if (bytesToExtract >= 2) output.push((OpCodes.Shr32(value.low, 8))&0xFF);
+        if (bytesToExtract >= 3) output.push((OpCodes.Shr32(value.low, 16))&0xFF);
+        if (bytesToExtract >= 4) output.push((OpCodes.Shr32(value.low, 24))&0xFF);
+        if (bytesToExtract >= 5) output.push(value.high&0xFF);
+        if (bytesToExtract >= 6) output.push((OpCodes.Shr32(value.high, 8))&0xFF);
+        if (bytesToExtract >= 7) output.push((OpCodes.Shr32(value.high, 16))&0xFF);
+        if (bytesToExtract >= 8) output.push((OpCodes.Shr32(value.high, 24))&0xFF);
 
         bytesRemaining -= bytesToExtract;
       }

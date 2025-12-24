@@ -237,7 +237,7 @@
       // Convert seed bytes to 32-bit unsigned integer (little-endian)
       let seedValue = 0;
       for (let i = 0; i < Math.min(seedBytes.length, 4); ++i) {
-        seedValue = OpCodes.OrN(seedValue, OpCodes.Shl32(seedBytes[i], i * 8));
+        seedValue = seedValue|OpCodes.Shl32(seedBytes[i], i * 8);
       }
       seedValue = OpCodes.ToUint32(seedValue);
 
@@ -255,20 +255,20 @@
         const prevLow = this._state[prevIdx];
         const prevHigh = this._state[prevIdx + 1];
 
-        // XOR with (prev >> 30) - using BigInt for accuracy
-        const prev64 = (BigInt(prevHigh) << 32n) | BigInt(prevLow);
-        const shift30 = prev64 >> 30n;
-        const xored64 = prev64 ^ shift30;
+        // XOR with (prev right-shift 30) - using BigInt for accuracy
+        const prev64 = (OpCodes.ShiftLn(BigInt(prevHigh), 32n)|BigInt(prevLow));
+        const shift30 = OpCodes.ShiftRn(prev64, 30n);
+        const xored64 = OpCodes.XorN(prev64, shift30);
 
         // Multiply by INIT_MULTIPLIER
-        const mult64 = (xored64 * BigInt(INIT_MULTIPLIER)) & 0xFFFFFFFFFFFFFFFFn;
+        const mult64 = (xored64 * BigInt(INIT_MULTIPLIER))&0xFFFFFFFFFFFFFFFFn;
 
         // Add index
-        const sum64 = (mult64 + BigInt(i)) & 0xFFFFFFFFFFFFFFFFn;
+        const sum64 = (mult64 + BigInt(i))&0xFFFFFFFFFFFFFFFFn;
 
         // Store result
-        this._state[idx] = OpCodes.ToUint32(Number(sum64 & 0xFFFFFFFFn));
-        this._state[idx + 1] = OpCodes.ToUint32(Number(sum64 >> 32n));
+        this._state[idx] = OpCodes.ToUint32(Number(sum64&0xFFFFFFFFn));
+        this._state[idx + 1] = OpCodes.ToUint32(Number(OpCodes.ShiftRn(sum64, 32n)&0xFFFFFFFFn));
       }
 
       // Apply initial mask to ensure IEEE 754 format
@@ -293,8 +293,8 @@
       for (let i = 0; i < N64; ++i) {
         const idx = i * 2;
         // Apply LOW_MASK and set HIGH_CONST
-        this._state[idx] = OpCodes.ToUint32(OpCodes.AndN(this._state[idx], LOW_MASK_LOW));
-        this._state[idx + 1] = OpCodes.ToUint32(OpCodes.OrN(OpCodes.AndN(this._state[idx + 1], LOW_MASK_HIGH), HIGH_CONST_HIGH));
+        this._state[idx] = OpCodes.ToUint32(this._state[idx]&LOW_MASK_LOW);
+        this._state[idx + 1] = OpCodes.ToUint32((this._state[idx + 1]&LOW_MASK_HIGH)|HIGH_CONST_HIGH);
       }
     }
 
@@ -312,23 +312,23 @@
       for (let i = 0; i < 2; ++i) {
         const idx = i * 2;
         const pcvIdx = i * 2;
-        innerLow = OpCodes.XorN(innerLow, OpCodes.AndN(this._state[idx], pcv[pcvIdx]));
-        innerHigh = OpCodes.XorN(innerHigh, OpCodes.AndN(this._state[idx + 1], pcv[pcvIdx + 1]));
+        innerLow = OpCodes.Xor32(innerLow, this._state[idx]&pcv[pcvIdx]);
+        innerHigh = OpCodes.Xor32(innerHigh, this._state[idx + 1]&pcv[pcvIdx + 1]);
       }
 
       // Reduce to single bit
-      let inner = OpCodes.XorN(innerLow, innerHigh);
+      let inner = OpCodes.Xor32(innerLow, innerHigh);
       for (let i = 16; i > 0; i = OpCodes.Shr32(i, 1)) {
-        inner = OpCodes.XorN(inner, OpCodes.Shr32(inner, i));
+        inner = OpCodes.Xor32(inner, OpCodes.Shr32(inner, i));
       }
-      inner = OpCodes.AndN(inner, 1);
+      inner = inner&1;
 
       // If inner is 0, modify state to ensure full period
       if (inner === 0) {
-        this._state[0] = OpCodes.XorN(this._state[0], FIX1_LOW);
-        this._state[1] = OpCodes.ToUint32(OpCodes.XorN(this._state[1], FIX1_HIGH));
-        this._state[2] = OpCodes.XorN(this._state[2], FIX2_LOW);
-        this._state[3] = OpCodes.ToUint32(OpCodes.XorN(this._state[3], FIX2_HIGH));
+        this._state[0] = OpCodes.Xor32(this._state[0], FIX1_LOW);
+        this._state[1] = OpCodes.Xor32(this._state[1], FIX1_HIGH);
+        this._state[2] = OpCodes.Xor32(this._state[2], FIX2_LOW);
+        this._state[3] = OpCodes.Xor32(this._state[3], FIX2_HIGH);
 
         // Re-apply initial mask
         this._initialMask();
@@ -339,10 +339,10 @@
      * dSFMT recursion formula (portable C version)
      * Based on dSFMT-common.h do_recursion for standard C
      *
-     * lung->u[0] = (t0 << DSFMT_SL1) ^ (L1 >> 32) ^ (L1 << 32) ^ b->u[0];
-     * lung->u[1] = (t1 << DSFMT_SL1) ^ (L0 >> 32) ^ (L0 << 32) ^ b->u[1];
-     * r->u[0] = (lung->u[0] >> DSFMT_SR) ^ (lung->u[0] & DSFMT_MSK1) ^ t0;
-     * r->u[1] = (lung->u[1] >> DSFMT_SR) ^ (lung->u[1] & DSFMT_MSK2) ^ t1;
+     * lung->u[0] = (t0 left-shift DSFMT_SL1) xor (L1 right-shift 32) xor (L1 left-shift 32) xor b->u[0];
+     * lung->u[1] = (t1 left-shift DSFMT_SL1) xor (L0 right-shift 32) xor (L0 left-shift 32) xor b->u[1];
+     * r->u[0] = (lung->u[0] right-shift DSFMT_SR) xor (lung->u[0] and DSFMT_MSK1) xor t0;
+     * r->u[1] = (lung->u[1] right-shift DSFMT_SR) xor (lung->u[1] and DSFMT_MSK2) xor t1;
      *
      * @param {number} aIdx - Index to 'a' block (128-bit = 4x32)
      * @param {number} bIdx - Index to 'b' block
@@ -351,40 +351,40 @@
      */
     _doRecursion(aIdx, bIdx, lungIdx, rIdx) {
       // Load values using BigInt for 64-bit operations
-      const t0 = (BigInt(this._state[aIdx + 1]) << 32n) | BigInt(this._state[aIdx]);
-      const t1 = (BigInt(this._state[aIdx + 3]) << 32n) | BigInt(this._state[aIdx + 2]);
-      const L0 = (BigInt(this._state[lungIdx + 1]) << 32n) | BigInt(this._state[lungIdx]);
-      const L1 = (BigInt(this._state[lungIdx + 3]) << 32n) | BigInt(this._state[lungIdx + 2]);
-      const b0 = (BigInt(this._state[bIdx + 1]) << 32n) | BigInt(this._state[bIdx]);
-      const b1 = (BigInt(this._state[bIdx + 3]) << 32n) | BigInt(this._state[bIdx + 2]);
+      const t0 = (OpCodes.ShiftLn(BigInt(this._state[aIdx + 1]), 32n)|BigInt(this._state[aIdx]));
+      const t1 = (OpCodes.ShiftLn(BigInt(this._state[aIdx + 3]), 32n)|BigInt(this._state[aIdx + 2]));
+      const L0 = (OpCodes.ShiftLn(BigInt(this._state[lungIdx + 1]), 32n)|BigInt(this._state[lungIdx]));
+      const L1 = (OpCodes.ShiftLn(BigInt(this._state[lungIdx + 3]), 32n)|BigInt(this._state[lungIdx + 2]));
+      const b0 = (OpCodes.ShiftLn(BigInt(this._state[bIdx + 1]), 32n)|BigInt(this._state[bIdx]));
+      const b1 = (OpCodes.ShiftLn(BigInt(this._state[bIdx + 3]), 32n)|BigInt(this._state[bIdx + 2]));
 
       // Update lung
-      // lung[0] = (t0 << SL1) ^ (L1 >> 32) ^ (L1 << 32) ^ b0
-      const newL0 = (((t0 << BigInt(SL1)) ^ (L1 >> 32n) ^ (L1 << 32n) ^ b0) & 0xFFFFFFFFFFFFFFFFn);
+      // lung[0] = (t0 left-shift SL1) xor (L1 right-shift 32) xor (L1 left-shift 32) xor b0
+      const newL0 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.ShiftLn(t0, BigInt(SL1)), OpCodes.ShiftRn(L1, 32n)), OpCodes.ShiftLn(L1, 32n)), b0)&0xFFFFFFFFFFFFFFFFn;
 
-      // lung[1] = (t1 << SL1) ^ (L0 >> 32) ^ (L0 << 32) ^ b1
-      const newL1 = (((t1 << BigInt(SL1)) ^ (L0 >> 32n) ^ (L0 << 32n) ^ b1) & 0xFFFFFFFFFFFFFFFFn);
+      // lung[1] = (t1 left-shift SL1) xor (L0 right-shift 32) xor (L0 left-shift 32) xor b1
+      const newL1 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.ShiftLn(t1, BigInt(SL1)), OpCodes.ShiftRn(L0, 32n)), OpCodes.ShiftLn(L0, 32n)), b1)&0xFFFFFFFFFFFFFFFFn;
 
       // Store lung
-      this._state[lungIdx] = OpCodes.ToUint32(Number(newL0 & 0xFFFFFFFFn));
-      this._state[lungIdx + 1] = OpCodes.ToUint32(Number(newL0 >> 32n));
-      this._state[lungIdx + 2] = OpCodes.ToUint32(Number(newL1 & 0xFFFFFFFFn));
-      this._state[lungIdx + 3] = OpCodes.ToUint32(Number(newL1 >> 32n));
+      this._state[lungIdx] = OpCodes.ToUint32(Number(newL0&0xFFFFFFFFn));
+      this._state[lungIdx + 1] = OpCodes.ToUint32(Number(OpCodes.ShiftRn(newL0, 32n)&0xFFFFFFFFn));
+      this._state[lungIdx + 2] = OpCodes.ToUint32(Number(newL1&0xFFFFFFFFn));
+      this._state[lungIdx + 3] = OpCodes.ToUint32(Number(OpCodes.ShiftRn(newL1, 32n)&0xFFFFFFFFn));
 
       // Compute output r
-      // r[0] = (lung[0] >> SR) ^ (lung[0] & MSK1) ^ t0
+      // r[0] = (lung[0] right-shift SR) xor (lung[0] and MSK1) xor t0
       const msk1 = BigInt(MSK1);
-      const r0 = (((newL0 >> BigInt(SR)) ^ (newL0 & msk1) ^ t0) & 0xFFFFFFFFFFFFFFFFn);
+      const r0 = OpCodes.XorN(OpCodes.XorN(OpCodes.ShiftRn(newL0, BigInt(SR)), OpCodes.AndN(newL0, msk1)), t0)&0xFFFFFFFFFFFFFFFFn;
 
-      // r[1] = (lung[1] >> SR) ^ (lung[1] & MSK2) ^ t1
+      // r[1] = (lung[1] right-shift SR) xor (lung[1] and MSK2) xor t1
       const msk2 = BigInt(MSK2);
-      const r1 = (((newL1 >> BigInt(SR)) ^ (newL1 & msk2) ^ t1) & 0xFFFFFFFFFFFFFFFFn);
+      const r1 = OpCodes.XorN(OpCodes.XorN(OpCodes.ShiftRn(newL1, BigInt(SR)), OpCodes.AndN(newL1, msk2)), t1)&0xFFFFFFFFFFFFFFFFn;
 
       // Store result
-      this._state[rIdx] = OpCodes.ToUint32(Number(r0 & 0xFFFFFFFFn));
-      this._state[rIdx + 1] = OpCodes.ToUint32(Number(r0 >> 32n));
-      this._state[rIdx + 2] = OpCodes.ToUint32(Number(r1 & 0xFFFFFFFFn));
-      this._state[rIdx + 3] = OpCodes.ToUint32(Number(r1 >> 32n));
+      this._state[rIdx] = OpCodes.ToUint32(Number(r0&0xFFFFFFFFn));
+      this._state[rIdx + 1] = OpCodes.ToUint32(Number(OpCodes.ShiftRn(r0, 32n)&0xFFFFFFFFn));
+      this._state[rIdx + 2] = OpCodes.ToUint32(Number(r1&0xFFFFFFFFn));
+      this._state[rIdx + 3] = OpCodes.ToUint32(Number(OpCodes.ShiftRn(r1, 32n)&0xFFFFFFFFn));
     }
 
     /**

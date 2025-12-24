@@ -240,7 +240,7 @@
       // Polynomial division
       const remainder = this.polyDivide(dividend, this.generator);
 
-      // Systematic encoding: message | remainder
+      // Systematic encoding: message|remainder
       return [...message, ...remainder];
     }
 

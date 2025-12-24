@@ -67,9 +67,9 @@
   const MD4_H = Object.freeze([0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476]);
 
   // MD4 auxiliary functions
-  function MD4_F(x, y, z) { return (x & y) | (~x & z); }
-  function MD4_G(x, y, z) { return (x & y) | (x & z) | (y & z); }
-  function MD4_AUX_H(x, y, z) { return x ^ y ^ z; }
+  function MD4_F(x, y, z) { return OpCodes.ToUint32((x&y)|((OpCodes.ToUint32(~x))&z)); }
+  function MD4_G(x, y, z) { return OpCodes.ToUint32((x&y)|(x&z)|(y&z)); }
+  function MD4_AUX_H(x, y, z) { return OpCodes.Xor32(OpCodes.Xor32(x, y), z); }
 
   // Shared padding function for MD4/MD5 (Merkle-Damgard construction)
   function padMessageMD(msgBytes) {
@@ -89,7 +89,7 @@
     }
 
     // Append original length in bits mod 2^64 to message as 64-bit little-endian integer
-    const bitLengthLow = bitLength & 0xFFFFFFFF;
+    const bitLengthLow = OpCodes.ToUint32(bitLength);
     const bitLengthHigh = Math.floor(bitLength / 0x100000000);
 
     const lengthBytes = OpCodes.Unpack32LE(bitLengthLow).concat(OpCodes.Unpack32LE(bitLengthHigh));
@@ -234,7 +234,7 @@
       for (let i = 0; i < paddedData.length; i += 16) {
         for (let j = 0; j < 16; j++) {
           const c = paddedData[i + j];
-          checksum[j] ^= MD2_S[c ^ L];
+          checksum[j] = OpCodes.ToByte(OpCodes.Xor32(checksum[j], MD2_S[OpCodes.ToByte(OpCodes.Xor32(c, L))]));
           L = checksum[j];
         }
       }
@@ -248,18 +248,17 @@
         // Copy block into X[16..31]
         for (let j = 0; j < 16; j++) {
           hash[16 + j] = finalData[i + j];
-          hash[32 + j] = hash[16 + j] ^ hash[j];
+          hash[32 + j] = OpCodes.ToByte(OpCodes.Xor32(hash[16 + j], hash[j]));
         }
 
         // 18 rounds of transformation
         let t = 0;
         for (let round = 0; round < 18; round++) {
           for (let k = 0; k < 48; k++) {
-            t = hash[k] ^ MD2_S[t];
+            t = OpCodes.ToByte(OpCodes.Xor32(hash[k], MD2_S[t]));
             hash[k] = t;
           }
-          const mod_val = 0xFF + 1;
-          t = (t + round) % mod_val;
+          t = OpCodes.ToByte(OpCodes.ToUint32(t + round));
         }
       }
 
@@ -466,7 +465,7 @@
 
         const vars = [A, B, C, D];
         for (const [a, b, c, d, xi, s] of round1Ops) {
-          const temp = (vars[a] + MD4_F(vars[b], vars[c], vars[d]) + X[xi]) >>> 0;
+          const temp = OpCodes.ToUint32(vars[a] + MD4_F(vars[b], vars[c], vars[d]) + X[xi]);
           vars[a] = OpCodes.RotL32(temp, s);
         }
         [A, B, C, D] = vars;
@@ -481,7 +480,7 @@
 
         const vars2 = [A, B, C, D];
         for (const [a, b, c, d, xi, s] of round2Ops) {
-          const temp = (vars2[a] + MD4_G(vars2[b], vars2[c], vars2[d]) + X[xi] + 0x5A827999) >>> 0;
+          const temp = OpCodes.ToUint32(vars2[a] + MD4_G(vars2[b], vars2[c], vars2[d]) + X[xi] + 0x5A827999);
           vars2[a] = OpCodes.RotL32(temp, s);
         }
         [A, B, C, D] = vars2;
@@ -496,16 +495,16 @@
 
         const vars3 = [A, B, C, D];
         for (const [a, b, c, d, xi, s] of round3Ops) {
-          const temp = (vars3[a] + MD4_AUX_H(vars3[b], vars3[c], vars3[d]) + X[xi] + 0x6ED9EBA1) >>> 0;
+          const temp = OpCodes.ToUint32(vars3[a] + MD4_AUX_H(vars3[b], vars3[c], vars3[d]) + X[xi] + 0x6ED9EBA1);
           vars3[a] = OpCodes.RotL32(temp, s);
         }
         [A, B, C, D] = vars3;
 
         // Add this chunk's hash to result so far
-        h[0] = (h[0] + A) >>> 0;
-        h[1] = (h[1] + B) >>> 0;
-        h[2] = (h[2] + C) >>> 0;
-        h[3] = (h[3] + D) >>> 0;
+        h[0] = OpCodes.ToUint32(h[0] + A);
+        h[1] = OpCodes.ToUint32(h[1] + B);
+        h[2] = OpCodes.ToUint32(h[2] + C);
+        h[3] = OpCodes.ToUint32(h[3] + D);
       }
 
       // Convert to byte array (little-endian)
@@ -814,10 +813,10 @@
       );
 
       // MD5 auxiliary functions
-      const F = (x, y, z) => (x & y) | (~x & z);
-      const G = (x, y, z) => (x & z) | (y & ~z);
-      const H = (x, y, z) => x ^ y ^ z;
-      const I = (x, y, z) => y ^ (x | ~z);
+      const F = (x, y, z) => OpCodes.ToUint32((x&y)|((OpCodes.ToUint32(~x))&z));
+      const G = (x, y, z) => OpCodes.ToUint32((x&z)|(y&(OpCodes.ToUint32(~z))));
+      const H = (x, y, z) => OpCodes.Xor32(OpCodes.Xor32(x, y), z);
+      const I = (x, y, z) => OpCodes.Xor32(y, OpCodes.ToUint32(x|(OpCodes.ToUint32(~z))));
 
       // MD5 shift amounts per round (RFC 1321)
       const shifts = [
@@ -845,18 +844,18 @@
           g = (7 * i) % 16;
         }
 
-        f = (f + a + k[i] + w[g]) >>> 0;
+        f = OpCodes.ToUint32(f + a + k[i] + w[g]);
         a = d;
         d = c;
         c = b;
-        b = (b + OpCodes.RotL32(f, shifts[i])) >>> 0;
+        b = OpCodes.ToUint32(b + OpCodes.RotL32(f, shifts[i]));
       }
 
       // Add to hash
-      this.h[0] = (this.h[0] + a) >>> 0;
-      this.h[1] = (this.h[1] + b) >>> 0;
-      this.h[2] = (this.h[2] + c) >>> 0;
-      this.h[3] = (this.h[3] + d) >>> 0;
+      this.h[0] = OpCodes.ToUint32(this.h[0] + a);
+      this.h[1] = OpCodes.ToUint32(this.h[1] + b);
+      this.h[2] = OpCodes.ToUint32(this.h[2] + c);
+      this.h[3] = OpCodes.ToUint32(this.h[3] + d);
     }
   }
 

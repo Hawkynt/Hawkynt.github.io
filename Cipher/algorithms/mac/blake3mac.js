@@ -403,7 +403,7 @@
       if (this.blocks_compressed === 0) {
         flags |= CHUNK_START;
       }
-      flags |= CHUNK_END | ROOT;
+      flags |= CHUNK_END|ROOT;
 
       // Compress the final block
       const block_data = Array.from(this.block).concat(new Array(Math.max(0, 64 - this.block_len)).fill(0));

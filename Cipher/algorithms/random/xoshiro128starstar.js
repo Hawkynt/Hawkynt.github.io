@@ -71,11 +71,11 @@
     state = OpCodes.ToInt(state + GOLDEN_GAMMA);
     let z = state;
 
-    z = Math.imul(z^OpCodes.Shr32(z, 16), MIX_CONST_1);
+    z = Math.imul(OpCodes.Xor32(z, OpCodes.Shr32(z, 16)), MIX_CONST_1);
     z = OpCodes.ToDWord(z);
-    z = Math.imul(z^OpCodes.Shr32(z, 15), MIX_CONST_2);
+    z = Math.imul(OpCodes.Xor32(z, OpCodes.Shr32(z, 15)), MIX_CONST_2);
     z = OpCodes.ToDWord(z);
-    z = z^OpCodes.Shr32(z, 15);
+    z = OpCodes.Xor32(z, OpCodes.Shr32(z, 15));
 
     return { value: OpCodes.ToDWord(z), nextState: state };
   }
@@ -223,7 +223,7 @@
       // Convert seed bytes to 32-bit value (little-endian)
       let seedValue = 0;
       for (let i = 0; i < Math.min(4, seedBytes.length); ++i) {
-        seedValue |= OpCodes.Shl32(seedBytes[i], i * 8);
+        seedValue = OpCodes.Or32(seedValue, OpCodes.Shl32(seedBytes[i], i * 8));
       }
       seedValue = OpCodes.ToDWord(seedValue);
 
@@ -270,12 +270,12 @@
       // State update
       const t = OpCodes.Shl32(this._s1, 9);
 
-      this._s2 ^= this._s0;
-      this._s3 ^= this._s1;
-      this._s1 ^= this._s2;
-      this._s0 ^= this._s3;
+      this._s2 = OpCodes.Xor32(this._s2, this._s0);
+      this._s3 = OpCodes.Xor32(this._s3, this._s1);
+      this._s1 = OpCodes.Xor32(this._s1, this._s2);
+      this._s0 = OpCodes.Xor32(this._s0, this._s3);
 
-      this._s2 ^= t;
+      this._s2 = OpCodes.Xor32(this._s2, t);
       this._s3 = OpCodes.RotL32(this._s3, 11);
 
       // Ensure all state values remain unsigned 32-bit
@@ -311,7 +311,7 @@
         // Extract bytes in little-endian order
         const bytesToExtract = Math.min(4, length - bytesGenerated);
         for (let i = 0; i < bytesToExtract; ++i) {
-          const byteVal = OpCodes.Shr32(value32, i * 8) &0xFF;
+          const byteVal = OpCodes.And32(OpCodes.Shr32(value32, i * 8), 0xFF);
           output.push(byteVal);
           ++bytesGenerated;
         }
@@ -372,11 +372,11 @@
 
       for (let i = 0; i < JUMP.length; ++i) {
         for (let b = 0; b < 32; ++b) {
-          if ((JUMP[i] &OpCodes.Shl32(1, b)) !== 0) {
-            s0 ^= this._s0;
-            s1 ^= this._s1;
-            s2 ^= this._s2;
-            s3 ^= this._s3;
+          if (OpCodes.And32(JUMP[i], OpCodes.Shl32(1, b)) !== 0) {
+            s0 = OpCodes.Xor32(s0, this._s0);
+            s1 = OpCodes.Xor32(s1, this._s1);
+            s2 = OpCodes.Xor32(s2, this._s2);
+            s3 = OpCodes.Xor32(s3, this._s3);
           }
           this._next32();
         }
@@ -404,11 +404,11 @@
 
       for (let i = 0; i < LONG_JUMP.length; ++i) {
         for (let b = 0; b < 32; ++b) {
-          if ((LONG_JUMP[i] &OpCodes.Shl32(1, b)) !== 0) {
-            s0 ^= this._s0;
-            s1 ^= this._s1;
-            s2 ^= this._s2;
-            s3 ^= this._s3;
+          if (OpCodes.And32(LONG_JUMP[i], OpCodes.Shl32(1, b)) !== 0) {
+            s0 = OpCodes.Xor32(s0, this._s0);
+            s1 = OpCodes.Xor32(s1, this._s1);
+            s2 = OpCodes.Xor32(s2, this._s2);
+            s3 = OpCodes.Xor32(s3, this._s3);
           }
           this._next32();
         }

@@ -329,7 +329,7 @@
       // Perform wrapping operation (RFC 3394 algorithm)
       for (let j = 0; j <= 5; ++j) {
         for (let i = 0; i < n; ++i) {
-          // B = ARIA(K, A | R[i])
+          // B = ARIA(K, A|R[i])
           const block = [...A, ...R[i]];
           this.ariaInstance.Feed(block);
           const B = this.ariaInstance.Result();
@@ -348,7 +348,7 @@
         }
       }
 
-      // Output is A | R[0] | R[1] | ... | R[n-1]
+      // Output is A|R[0]|R[1]|...|R[n-1]
       const output = [...A];
       for (let i = 0; i < n; ++i) {
         output.push(...R[i]);
@@ -414,7 +414,7 @@
               A_copy[8 - k] = OpCodes.XorN(A_copy[8 - k], OpCodes.AndN(OpCodes.Shr32(t, (k - 1) * 8), 0xFF));
             }
 
-            // B = ARIA_Decrypt(K, (A XOR t) | R[i])
+            // B = ARIA_Decrypt(K, (A XOR t)|R[i])
             const block = [...A_copy, ...R[i]];
             ariaDecrypt.Feed(block);
             const B = ariaDecrypt.Result();

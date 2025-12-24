@@ -86,15 +86,15 @@
 
     if (positions < 32) {
       return [
-        ((low << positions) | (high >>> (32 - positions))) >>> 0,
-        ((high << positions) | (low >>> (32 - positions))) >>> 0
+        OpCodes.Or32(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, (32 - positions))),
+        OpCodes.Or32(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, (32 - positions)))
       ];
     }
 
     positions -= 32;
     return [
-      ((high << positions) | (low >>> (32 - positions))) >>> 0,
-      ((low << positions) | (high >>> (32 - positions))) >>> 0
+      OpCodes.Or32(OpCodes.Shl32(high, positions), OpCodes.Shr32(low, (32 - positions))),
+      OpCodes.Or32(OpCodes.Shl32(low, positions), OpCodes.Shr32(high, (32 - positions)))
     ];
   }
 
@@ -107,29 +107,29 @@
    * @returns {uint32[][]} Array of [a0_new, b1, b2, b3]
    */
   function knotSbox64Array(a0, a1, a2, a3) {
-    var t1_l = (~a0[0]) >>> 0;
-    var t1_h = (~a0[1]) >>> 0;
+    var t1_l = OpCodes.Not32(a0[0]);
+    var t1_h = OpCodes.Not32(a0[1]);
 
-    var t3_l = (a2[0] ^ (a1[0] & t1_l)) >>> 0;
-    var t3_h = (a2[1] ^ (a1[1] & t1_h)) >>> 0;
+    var t3_l = OpCodes.Xor32(a2[0], OpCodes.And32(a1[0], t1_l));
+    var t3_h = OpCodes.Xor32(a2[1], OpCodes.And32(a1[1], t1_h));
 
-    var b3_l = (a3[0] ^ t3_l) >>> 0;
-    var b3_h = (a3[1] ^ t3_h) >>> 0;
+    var b3_l = OpCodes.Xor32(a3[0], t3_l);
+    var b3_h = OpCodes.Xor32(a3[1], t3_h);
 
-    var t6_l = (a3[0] ^ t1_l) >>> 0;
-    var t6_h = (a3[1] ^ t1_h) >>> 0;
+    var t6_l = OpCodes.Xor32(a3[0], t1_l);
+    var t6_h = OpCodes.Xor32(a3[1], t1_h);
 
-    var b2_l = ((a1[0] | a2[0]) ^ t6_l) >>> 0;
-    var b2_h = ((a1[1] | a2[1]) ^ t6_h) >>> 0;
+    var b2_l = OpCodes.Xor32(OpCodes.Or32(a1[0], a2[0]), t6_l);
+    var b2_h = OpCodes.Xor32(OpCodes.Or32(a1[1], a2[1]), t6_h);
 
-    t1_l = (a1[0] ^ a3[0]) >>> 0;
-    t1_h = (a1[1] ^ a3[1]) >>> 0;
+    t1_l = OpCodes.Xor32(a1[0], a3[0]);
+    t1_h = OpCodes.Xor32(a1[1], a3[1]);
 
-    var a0_l = (t1_l ^ (t3_l & t6_l)) >>> 0;
-    var a0_h = (t1_h ^ (t3_h & t6_h)) >>> 0;
+    var a0_l = OpCodes.Xor32(t1_l, OpCodes.And32(t3_l, t6_l));
+    var a0_h = OpCodes.Xor32(t1_h, OpCodes.And32(t3_h, t6_h));
 
-    var b1_l = (t3_l ^ (b2_l & t1_l)) >>> 0;
-    var b1_h = (t3_h ^ (b2_h & t1_h)) >>> 0;
+    var b1_l = OpCodes.Xor32(t3_l, OpCodes.And32(b2_l, t1_l));
+    var b1_h = OpCodes.Xor32(t3_h, OpCodes.And32(b2_h, t1_h));
 
     return [
       [a0_l, a0_h],
@@ -167,7 +167,7 @@
     // Perform permutation rounds
     for (var r = 0; r < rounds; r++) {
       // Add round constant to first word
-      x0[0] = (x0[0] ^ RC7[r]) >>> 0;
+      x0[0] = OpCodes.Xor32(x0[0], RC7[r]);
 
       // Apply S-box
       var sboxResult = knotSbox64Array(x0, x1, x2, x3);
@@ -227,14 +227,14 @@
    * @returns {uint32[]} Array [a0_new, b1, b2, b3]
    */
   function knotSbox32(a0, a1, a2, a3) {
-    var t1 = (~a0) >>> 0;
-    var t3 = (a2 ^ (a1 & t1)) >>> 0;
-    var b3 = (a3 ^ t3) >>> 0;
-    var t6 = (a3 ^ t1) >>> 0;
-    var b2 = ((a1 | a2) ^ t6) >>> 0;
-    t1 = (a1 ^ a3) >>> 0;
-    var a0_new = (t1 ^ (t3 & t6)) >>> 0;
-    var b1 = (t3 ^ (b2 & t1)) >>> 0;
+    var t1 = OpCodes.Not32(a0);
+    var t3 = OpCodes.Xor32(a2, OpCodes.And32(a1, t1));
+    var b3 = OpCodes.Xor32(a3, t3);
+    var t6 = OpCodes.Xor32(a3, t1);
+    var b2 = OpCodes.Xor32(OpCodes.Or32(a1, a2), t6);
+    t1 = OpCodes.Xor32(a1, a3);
+    var a0_new = OpCodes.Xor32(t1, OpCodes.And32(t3, t6));
+    var b1 = OpCodes.Xor32(t3, OpCodes.And32(b2, t1));
 
     return [a0_new, b1, b2, b3];
   }
@@ -253,27 +253,27 @@
       b0_shift_low = low64_l;
       b0_shift_high = low64_h;
     } else if (bits < 32) {
-      b0_shift_low = (low64_l << bits) >>> 0;
-      b0_shift_high = ((low64_h << bits) | (low64_l >>> (32 - bits))) >>> 0;
+      b0_shift_low = OpCodes.Shl32(low64_l, bits);
+      b0_shift_high = OpCodes.Or32(OpCodes.Shl32(low64_h, bits), OpCodes.Shr32(low64_l, (32 - bits)));
     } else {
       b0_shift_low = 0;
-      b0_shift_high = (low64_l << (bits - 32)) >>> 0;
+      b0_shift_high = OpCodes.Shl32(low64_l, (bits - 32));
     }
 
-    var b1_shift = (high32 >>> (32 - bits)) >>> 0;
-    var a0_low = (b0_shift_low | b1_shift) >>> 0;
+    var b1_shift = OpCodes.Shr32(high32, (32 - bits));
+    var a0_low = OpCodes.Or32(b0_shift_low, b1_shift);
     var a0_high = b0_shift_high;
 
-    var a1_from_b1 = (high32 << bits) >>> 0;
+    var a1_from_b1 = OpCodes.Shl32(high32, bits);
     var shift_right = 64 - bits;
     var a1_from_b0;
     if (shift_right >= 32) {
-      a1_from_b0 = (low64_h >>> (shift_right - 32)) >>> 0;
+      a1_from_b0 = OpCodes.Shr32(low64_h, (shift_right - 32));
     } else {
-      a1_from_b0 = ((low64_h >>> shift_right) | (low64_l << (32 - shift_right))) >>> 0;
+      a1_from_b0 = OpCodes.Or32(OpCodes.Shr32(low64_h, shift_right), OpCodes.Shl32(low64_l, (32 - shift_right)));
     }
 
-    var a1 = (a1_from_b1 | a1_from_b0) >>> 0;
+    var a1 = OpCodes.Or32(a1_from_b1, a1_from_b0);
 
     return [a0_low, a0_high, a1];
   }
@@ -292,18 +292,18 @@
     var shift3 = 96 - bits;
 
     var p1_low = 0;
-    var p1_high = (low64_l << shift2) >>> 0;
+    var p1_high = OpCodes.Shl32(low64_l, shift2);
 
-    var p2_low = (high32 << shift2) >>> 0;
-    var p2_high = (high32 >>> (32 - shift2)) >>> 0;
+    var p2_low = OpCodes.Shl32(high32, shift2);
+    var p2_high = OpCodes.Shr32(high32, (32 - shift2));
 
-    var p3_low = (low64_h >>> (shift3 - 32)) >>> 0;
+    var p3_low = OpCodes.Shr32(low64_h, (shift3 - 32));
     var p3_high = 0;
 
-    var a0_low = (p1_low | p2_low | p3_low) >>> 0;
-    var a0_high = (p1_high | p2_high | p3_high) >>> 0;
+    var a0_low = OpCodes.Or32(OpCodes.Or32(p1_low, p2_low), p3_low);
+    var a0_high = OpCodes.Or32(OpCodes.Or32(p1_high, p2_high), p3_high);
 
-    var a1 = ((low64_h << shift2) | (low64_l >>> (32 - shift2))) >>> 0;
+    var a1 = OpCodes.Or32(OpCodes.Shl32(low64_h, shift2), OpCodes.Shr32(low64_l, (32 - shift2)));
 
     return [a0_low, a0_high, a1];
   }
@@ -335,7 +335,7 @@
     // Perform permutation rounds
     for (var r = 0; r < rounds; r++) {
       // Add round constant to first 64-bit word
-      x0_l = (x0_l ^ RC7[r]) >>> 0;
+      x0_l = OpCodes.Xor32(x0_l, RC7[r]);
 
       // Apply S-box to 64-bit parts
       var sboxResult64 = knotSbox64Array([x0_l, x0_h], [x2_l, x2_h], [x4_l, x4_h], [x6_l, x6_h]);
@@ -440,34 +440,34 @@
     function shift64L(low, high, bits) {
       if (bits === 0) return [low, high];
       if (bits >= 32) {
-        return [0, (low << (bits - 32)) >>> 0];
+        return [0, OpCodes.Shl32(low, (bits - 32))];
       }
       return [
-        (low << bits) >>> 0,
-        ((high << bits) | (low >>> (32 - bits))) >>> 0
+        OpCodes.Shl32(low, bits),
+        OpCodes.Or32(OpCodes.Shl32(high, bits), OpCodes.Shr32(low, (32 - bits)))
       ];
     }
 
     function shift64R(low, high, bits) {
       if (bits === 0) return [low, high];
       if (bits >= 32) {
-        return [((high >>> (bits - 32)) | 0) >>> 0, 0];
+        return [OpCodes.Shr32(high, (bits - 32)), 0];
       }
       return [
-        ((low >>> bits) | (high << (32 - bits))) >>> 0,
-        (high >>> bits) >>> 0
+        OpCodes.Or32(OpCodes.Shr32(low, bits), OpCodes.Shl32(high, (32 - bits))),
+        OpCodes.Shr32(high, bits)
       ];
     }
 
     var b0_shifted = shift64L(b0_l, b0_h, bits);
     var b1_shifted_r = shift64R(b1_l, b1_h, 64 - bits);
-    var a0_l = (b0_shifted[0] | b1_shifted_r[0]) >>> 0;
-    var a0_h = (b0_shifted[1] | b1_shifted_r[1]) >>> 0;
+    var a0_l = OpCodes.Or32(b0_shifted[0], b1_shifted_r[0]);
+    var a0_h = OpCodes.Or32(b0_shifted[1], b1_shifted_r[1]);
 
     var b1_shifted = shift64L(b1_l, b1_h, bits);
     var b0_shifted_r = shift64R(b0_l, b0_h, 64 - bits);
-    var a1_l = (b1_shifted[0] | b0_shifted_r[0]) >>> 0;
-    var a1_h = (b1_shifted[1] | b0_shifted_r[1]) >>> 0;
+    var a1_l = OpCodes.Or32(b1_shifted[0], b0_shifted_r[0]);
+    var a1_h = OpCodes.Or32(b1_shifted[1], b0_shifted_r[1]);
 
     return [a0_l, a0_h, a1_l, a1_h];
   }
@@ -485,29 +485,29 @@
    * @returns {uint32[]} Flat array of 8 values
    */
   function knotSbox64Flat(a0_l, a0_h, a1_l, a1_h, a2_l, a2_h, a3_l, a3_h) {
-    var t1_l = (~a0_l) >>> 0;
-    var t1_h = (~a0_h) >>> 0;
+    var t1_l = OpCodes.Not32(a0_l);
+    var t1_h = OpCodes.Not32(a0_h);
 
-    var t3_l = (a2_l ^ (a1_l & t1_l)) >>> 0;
-    var t3_h = (a2_h ^ (a1_h & t1_h)) >>> 0;
+    var t3_l = OpCodes.Xor32(a2_l, OpCodes.And32(a1_l, t1_l));
+    var t3_h = OpCodes.Xor32(a2_h, OpCodes.And32(a1_h, t1_h));
 
-    var b3_l = (a3_l ^ t3_l) >>> 0;
-    var b3_h = (a3_h ^ t3_h) >>> 0;
+    var b3_l = OpCodes.Xor32(a3_l, t3_l);
+    var b3_h = OpCodes.Xor32(a3_h, t3_h);
 
-    var t6_l = (a3_l ^ t1_l) >>> 0;
-    var t6_h = (a3_h ^ t1_h) >>> 0;
+    var t6_l = OpCodes.Xor32(a3_l, t1_l);
+    var t6_h = OpCodes.Xor32(a3_h, t1_h);
 
-    var b2_l = ((a1_l | a2_l) ^ t6_l) >>> 0;
-    var b2_h = ((a1_h | a2_h) ^ t6_h) >>> 0;
+    var b2_l = OpCodes.Xor32(OpCodes.Or32(a1_l, a2_l), t6_l);
+    var b2_h = OpCodes.Xor32(OpCodes.Or32(a1_h, a2_h), t6_h);
 
-    t1_l = (a1_l ^ a3_l) >>> 0;
-    t1_h = (a1_h ^ a3_h) >>> 0;
+    t1_l = OpCodes.Xor32(a1_l, a3_l);
+    t1_h = OpCodes.Xor32(a1_h, a3_h);
 
-    var a0_new_l = (t1_l ^ (t3_l & t6_l)) >>> 0;
-    var a0_new_h = (t1_h ^ (t3_h & t6_h)) >>> 0;
+    var a0_new_l = OpCodes.Xor32(t1_l, OpCodes.And32(t3_l, t6_l));
+    var a0_new_h = OpCodes.Xor32(t1_h, OpCodes.And32(t3_h, t6_h));
 
-    var b1_l = (t3_l ^ (b2_l & t1_l)) >>> 0;
-    var b1_h = (t3_h ^ (b2_h & t1_h)) >>> 0;
+    var b1_l = OpCodes.Xor32(t3_l, OpCodes.And32(b2_l, t1_l));
+    var b1_h = OpCodes.Xor32(t3_h, OpCodes.And32(b2_h, t1_h));
 
     return [
       a0_new_l, a0_new_h,
@@ -545,7 +545,7 @@
     // Perform permutation rounds
     for (var r = 0; r < rounds; r++) {
       // Add round constant to first word (low 32 bits)
-      x0_l = (x0_l ^ RC8[r]) >>> 0;
+      x0_l = OpCodes.Xor32(x0_l, RC8[r]);
 
       // Apply S-box to both columns
       var sbox0 = knotSbox64Flat(x0_l, x0_h, x2_l, x2_h, x4_l, x4_h, x6_l, x6_h);
@@ -1120,7 +1120,7 @@
       var offset = 0;
       while (offset + this.RATE <= this.buffer.length) {
         for (var i = 0; i < this.RATE; i++) {
-          this.state[i] ^= this.buffer[offset + i];
+          this.state[i] = OpCodes.Xor32(this.state[i], this.buffer[offset + i]);
         }
         knot256Permute(this.state, this.ROUNDS);
         offset += this.RATE;
@@ -1129,11 +1129,11 @@
       // Process final partial block
       var remaining = this.buffer.length - offset;
       for (var i = 0; i < remaining; i++) {
-        this.state[i] ^= this.buffer[offset + i];
+        this.state[i] = OpCodes.Xor32(this.state[i], this.buffer[offset + i]);
       }
 
       // Add padding
-      this.state[remaining] ^= 0x01;
+      this.state[remaining] = OpCodes.Xor32(this.state[remaining], 0x01);
 
       // Apply permutation
       knot256Permute(this.state, this.ROUNDS);
@@ -1189,7 +1189,7 @@
       }
 
       // Set domain separator
-      this.state[this.STATE_SIZE - 1] ^= 0x80;
+      this.state[this.STATE_SIZE - 1] = OpCodes.Xor32(this.state[this.STATE_SIZE - 1], 0x80);
 
       this.buffer = [];
     }
@@ -1215,7 +1215,7 @@
       var offset = 0;
       while (offset + this.RATE <= this.buffer.length) {
         for (var i = 0; i < this.RATE; i++) {
-          this.state[i] ^= this.buffer[offset + i];
+          this.state[i] = OpCodes.Xor32(this.state[i], this.buffer[offset + i]);
         }
         knot384Permute(this.state, this.ROUNDS);
         offset += this.RATE;
@@ -1224,11 +1224,11 @@
       // Process final partial block
       var remaining = this.buffer.length - offset;
       for (var i = 0; i < remaining; i++) {
-        this.state[i] ^= this.buffer[offset + i];
+        this.state[i] = OpCodes.Xor32(this.state[i], this.buffer[offset + i]);
       }
 
       // Add padding
-      this.state[remaining] ^= 0x01;
+      this.state[remaining] = OpCodes.Xor32(this.state[remaining], 0x01);
 
       // Apply permutation
       knot384Permute(this.state, this.ROUNDS);
@@ -1309,7 +1309,7 @@
       var offset = 0;
       while (offset + this.RATE <= this.buffer.length) {
         for (var i = 0; i < this.RATE; i++) {
-          this.state[i] ^= this.buffer[offset + i];
+          this.state[i] = OpCodes.Xor32(this.state[i], this.buffer[offset + i]);
         }
         knot384Permute(this.state, this.ROUNDS);
         offset += this.RATE;
@@ -1318,11 +1318,11 @@
       // Process final partial block
       var remaining = this.buffer.length - offset;
       for (var i = 0; i < remaining; i++) {
-        this.state[i] ^= this.buffer[offset + i];
+        this.state[i] = OpCodes.Xor32(this.state[i], this.buffer[offset + i]);
       }
 
       // Add padding
-      this.state[remaining] ^= 0x01;
+      this.state[remaining] = OpCodes.Xor32(this.state[remaining], 0x01);
 
       // Apply permutation
       knot384Permute(this.state, this.ROUNDS);
@@ -1400,7 +1400,7 @@
       var offset = 0;
       while (offset + this.RATE <= this.buffer.length) {
         for (var i = 0; i < this.RATE; i++) {
-          this.state[i] ^= this.buffer[offset + i];
+          this.state[i] = OpCodes.Xor32(this.state[i], this.buffer[offset + i]);
         }
         knot512Permute(this.state, this.ROUNDS);
         offset += this.RATE;
@@ -1409,11 +1409,11 @@
       // Process final partial block
       var remaining = this.buffer.length - offset;
       for (var i = 0; i < remaining; i++) {
-        this.state[i] ^= this.buffer[offset + i];
+        this.state[i] = OpCodes.Xor32(this.state[i], this.buffer[offset + i]);
       }
 
       // Add padding
-      this.state[remaining] ^= 0x01;
+      this.state[remaining] = OpCodes.Xor32(this.state[remaining], 0x01);
 
       // Apply permutation
       knot512Permute(this.state, this.ROUNDS);

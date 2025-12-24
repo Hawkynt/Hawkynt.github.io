@@ -371,8 +371,8 @@
     // Add round key (XOR operation)
     _addRoundKey(state, roundKey) {
       return {
-        high: OpCodes.XorN(state.high, roundKey.high) >>> 0,
-        low: OpCodes.XorN(state.low, roundKey.low) >>> 0
+        high: OpCodes.ToUint32(OpCodes.XorN(state.high, roundKey.high)),
+        low: OpCodes.ToUint32(OpCodes.XorN(state.low, roundKey.low))
       };
     }
 
@@ -382,19 +382,19 @@
 
       // Process high 32 bits
       for (let i = 0; i < 8; i++) {
-        const nibble = (state.high >>> (28 - i * 4)) & 0xF;
+        const nibble = OpCodes.AndN(OpCodes.Shr32(state.high, 28 - i * 4), 0xF);
         const sboxValue = this.algorithm.SBOX[nibble];
-        result.high |= (sboxValue << (28 - i * 4));
+        result.high = OpCodes.OrN(result.high, OpCodes.Shl32(sboxValue, 28 - i * 4));
       }
 
       // Process low 32 bits
       for (let i = 0; i < 8; i++) {
-        const nibble = (state.low >>> (28 - i * 4)) & 0xF;
+        const nibble = OpCodes.AndN(OpCodes.Shr32(state.low, 28 - i * 4), 0xF);
         const sboxValue = this.algorithm.SBOX[nibble];
-        result.low |= (sboxValue << (28 - i * 4));
+        result.low = OpCodes.OrN(result.low, OpCodes.Shl32(sboxValue, 28 - i * 4));
       }
 
-      return { high: result.high >>> 0, low: result.low >>> 0 };
+      return { high: OpCodes.ToUint32(result.high), low: OpCodes.ToUint32(result.low) };
     }
 
     // Apply inverse S-box to all 4-bit nibbles
@@ -403,19 +403,19 @@
 
       // Process high 32 bits
       for (let i = 0; i < 8; i++) {
-        const nibble = (state.high >>> (28 - i * 4)) & 0xF;
+        const nibble = OpCodes.AndN(OpCodes.Shr32(state.high, 28 - i * 4), 0xF);
         const sboxValue = this.algorithm.SBOX_INV[nibble];
-        result.high |= (sboxValue << (28 - i * 4));
+        result.high = OpCodes.OrN(result.high, OpCodes.Shl32(sboxValue, 28 - i * 4));
       }
 
       // Process low 32 bits
       for (let i = 0; i < 8; i++) {
-        const nibble = (state.low >>> (28 - i * 4)) & 0xF;
+        const nibble = OpCodes.AndN(OpCodes.Shr32(state.low, 28 - i * 4), 0xF);
         const sboxValue = this.algorithm.SBOX_INV[nibble];
-        result.low |= (sboxValue << (28 - i * 4));
+        result.low = OpCodes.OrN(result.low, OpCodes.Shl32(sboxValue, 28 - i * 4));
       }
 
-      return { high: result.high >>> 0, low: result.low >>> 0 };
+      return { high: OpCodes.ToUint32(result.high), low: OpCodes.ToUint32(result.low) };
     }
 
     // Apply bit permutation layer following PRESENT specification
@@ -433,8 +433,8 @@
       // Extract all 64 bits into array for permutation
       const bits = new Array(64);
       for (let i = 0; i < 32; i++) {
-        bits[i] = (state.high >>> (31 - i)) & 1;
-        bits[i + 32] = (state.low >>> (31 - i)) & 1;
+        bits[i] = OpCodes.AndN(OpCodes.Shr32(state.high, 31 - i), 1);
+        bits[i + 32] = OpCodes.AndN(OpCodes.Shr32(state.low, 31 - i), 1);
       }
 
       // Apply PRESENT permutation using lookup table
@@ -446,14 +446,14 @@
       // Reconstruct the 64-bit state from permuted bits
       for (let i = 0; i < 32; i++) {
         if (permutedBits[i]) {
-          result.high |= (1 << (31 - i));
+          result.high = OpCodes.OrN(result.high, OpCodes.Shl32(1, 31 - i));
         }
         if (permutedBits[i + 32]) {
-          result.low |= (1 << (31 - i));
+          result.low = OpCodes.OrN(result.low, OpCodes.Shl32(1, 31 - i));
         }
       }
 
-      return { high: result.high >>> 0, low: result.low >>> 0 };
+      return { high: OpCodes.ToUint32(result.high), low: OpCodes.ToUint32(result.low) };
     }
 
     // Apply inverse bit permutation layer
@@ -477,8 +477,8 @@
       // Extract all 64 bits into array for inverse permutation
       const bits = new Array(64);
       for (let i = 0; i < 32; i++) {
-        bits[i] = (state.high >>> (31 - i)) & 1;
-        bits[i + 32] = (state.low >>> (31 - i)) & 1;
+        bits[i] = OpCodes.AndN(OpCodes.Shr32(state.high, 31 - i), 1);
+        bits[i + 32] = OpCodes.AndN(OpCodes.Shr32(state.low, 31 - i), 1);
       }
 
       // Apply inverse PRESENT permutation using inverse lookup table
@@ -490,14 +490,14 @@
       // Reconstruct the 64-bit state from inverse permuted bits
       for (let i = 0; i < 32; i++) {
         if (permutedBits[i]) {
-          result.high |= (1 << (31 - i));
+          result.high = OpCodes.OrN(result.high, OpCodes.Shl32(1, 31 - i));
         }
         if (permutedBits[i + 32]) {
-          result.low |= (1 << (31 - i));
+          result.low = OpCodes.OrN(result.low, OpCodes.Shl32(1, 31 - i));
         }
       }
 
-      return { high: result.high >>> 0, low: result.low >>> 0 };
+      return { high: OpCodes.ToUint32(result.high), low: OpCodes.ToUint32(result.low) };
     }
 
     // Generate round keys using PRESENT key schedule (variant-specific)
@@ -516,30 +516,30 @@
       // Convert key to 80-bit BigInt (big-endian)
       let key = BigInt(0);
       for (let i = 0; i < this.algorithm.KEY_SIZE; i++) {
-        const byteValue = BigInt(keyBytes[i] & 0xFF);
+        const byteValue = BigInt(OpCodes.AndN(keyBytes[i], 0xFF));
         key = key * BigInt(256) + byteValue; // Build big-endian integer
       }
 
       // Generate 32 round keys (rounds 1-32)
       for (let round = 1; round <= this.algorithm.ROUNDS; round++) {
         // Extract 64-bit round key from leftmost bits (bits 79-16)
-        const roundKey64 = key >> BigInt(16); // Shift right by 16 to get top 64 bits
+        const roundKey64 = OpCodes.ShiftRn(key, BigInt(16)); // Shift right by 16 to get top 64 bits
 
         // Split into high and low 32-bit words
-        const roundKeyHigh = Number((roundKey64 >> BigInt(32)) & BigInt(0xFFFFFFFF));
+        const roundKeyHigh = Number((OpCodes.ShiftRn(roundKey64, BigInt(32))) & BigInt(0xFFFFFFFF));
         const roundKeyLow = Number(roundKey64 & BigInt(0xFFFFFFFF));
 
         roundKeys[round - 1] = {
-          high: roundKeyHigh >>> 0,
-          low: roundKeyLow >>> 0
+          high: OpCodes.ToUint32(roundKeyHigh),
+          low: OpCodes.ToUint32(roundKeyLow)
         };
 
         // Update key state for next round (if not last round)
         if (round < this.algorithm.ROUNDS) {
           // Step 1: Rotate left by 61 positions
           const mask = (BigInt(1) << BigInt(19)) - BigInt(1); // 2^19 - 1
-          const leftPart = key >> BigInt(19); // key >> 19
-          const rightPart = (key & mask) << BigInt(61); // (key & mask) << 61
+          const leftPart = key >> BigInt(19);
+          const rightPart = (key & mask) << BigInt(61);
           key = rightPart + leftPart;
 
           // Step 2: Apply S-box to leftmost 4 bits (bits 79-76)
@@ -547,12 +547,12 @@
           const sboxValue = BigInt(this.algorithm.SBOX[topNibble]);
 
           // Replace top 4 bits
-          const bottomPart = key & ((BigInt(1) << BigInt(76)) - BigInt(1)); // key & (2**76-1)
+          const bottomPart = key & ((BigInt(1) << BigInt(76)) - BigInt(1));
           key = (sboxValue << BigInt(76)) + bottomPart;
 
           // Step 3: XOR bits with round counter at position 15
           const counterValue = BigInt(round) << BigInt(15);
-          key = key^counterValue;
+          key = key ^ counterValue;
 
           // Ensure key stays within 80-bit range
           key = key & ((BigInt(1) << BigInt(80)) - BigInt(1));
@@ -581,7 +581,7 @@
         const high = Number((roundKey >> 32n) & 0xFFFFFFFFn);
         const low = Number(roundKey & 0xFFFFFFFFn);
 
-        roundKeys[round] = { high: high >>> 0, low: low >>> 0 };
+        roundKeys[round] = { high: OpCodes.ToUint32(high), low: OpCodes.ToUint32(low) };
 
         // Update key state for next round (if not last round)
         if (round < this.algorithm.ROUNDS - 1) {
@@ -599,8 +599,8 @@
           keyState = (keyState & ~(0xFn << 120n)) | (sboxed2 << 120n);
 
           // Step 4: XOR round counter with bits 66-62 (use 1-indexed round counter)
-          const roundCounter = BigInt(round + 1) & 0x1Fn;
-          keyState = keyState^(roundCounter << 62n);
+          const roundCounter = BigInt((round + 1) & 0x1F);
+          keyState = keyState ^ (roundCounter << 62n);
         }
       }
 

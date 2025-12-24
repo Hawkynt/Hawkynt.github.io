@@ -351,7 +351,7 @@
           const match = this._findFastMatch(block, pos, hashTable);
 
           if (match.length >= 3) {
-            output.push(0xFF, match.length, match.offset & 0xFF, (match.offset >> 8) & 0xFF);
+            output.push(0xFF, match.length, match.offset&0xFF, OpCodes.Shr32(match.offset, 8)&0xFF);
             pos += match.length;
           } else {
             output.push(block[pos]);
@@ -360,7 +360,7 @@
 
           // Update hash table
           if (pos + 2 < block.length) {
-            const hash = (block[pos] << 16) | (block[pos + 1] << 8) | block[pos + 2];
+            const hash = OpCodes.Shl32(block[pos], 16)|OpCodes.Shl32(block[pos + 1], 8)|block[pos + 2];
             hashTable.set(hash, pos);
           }
         }
@@ -375,7 +375,7 @@
         while (pos < data.length) {
           if (data[pos] === 0xFF && pos + 3 < data.length) {
             const length = data[pos + 1];
-            const offset = data[pos + 2] | (data[pos + 3] << 8);
+            const offset = data[pos + 2]|OpCodes.Shl32(data[pos + 3], 8);
 
             for (let i = 0; i < length; i++) {
               const sourcePos = output.length - offset;
@@ -396,7 +396,7 @@
       _findFastMatch(block, pos, hashTable) {
         if (pos + 2 >= block.length) return { length: 0, offset: 0 };
 
-        const hash = (block[pos] << 16) | (block[pos + 1] << 8) | block[pos + 2];
+        const hash = OpCodes.Shl32(block[pos], 16)|OpCodes.Shl32(block[pos + 1], 8)|block[pos + 2];
         const candidatePos = hashTable.get(hash);
 
         if (candidatePos !== undefined && candidatePos < pos) {
@@ -633,17 +633,17 @@
         let crc = 0xFFFFFFFF;
 
         for (const byte of data) {
-          crc ^= byte;
+          crc = OpCodes.Xor32(crc, byte);
           for (let i = 0; i < 8; i++) {
-            if (crc & 1) {
-              crc = (crc >>> 1) ^ this.CRC32_POLYNOMIAL;
+            if (crc&1) {
+              crc = OpCodes.Xor32(OpCodes.Shr32(crc, 1), this.CRC32_POLYNOMIAL);
             } else {
-              crc = crc >>> 1;
+              crc = OpCodes.Shr32(crc, 1);
             }
           }
         }
 
-        return (~crc) >>> 0; // Ensure unsigned 32-bit
+        return OpCodes.ToUint32(~crc); // Ensure unsigned 32-bit
       }
 
       _packBSCData(blocks, originalLength) {

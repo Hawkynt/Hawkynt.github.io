@@ -23,7 +23,7 @@
  * References:
  * - David B. Thomas, "MWC64X - Uniform random number generator for OpenCL"
  *   http://cas.ee.ic.ac.uk/people/dt10/research/rngs-gpu-mwc64x.html
- * - Marsaglia & Zaman (1991), "A new class of random number generators"
+ * - Marsaglia&Zaman (1991), "A new class of random number generators"
  *
  * AlgorithmFramework Format
  * (c)2006-2025 Hawkynt
@@ -87,7 +87,7 @@
           "http://cas.ee.ic.ac.uk/people/dt10/research/rngs-gpu-mwc64x.html"
         ),
         new LinkItem(
-          "Original MWC Paper: Marsaglia & Zaman (1991)",
+          "Original MWC Paper: Marsaglia&Zaman (1991)",
           "https://projecteuclid.org/journals/annals-of-applied-probability/volume-1/issue-3/A-New-Class-of-Random-Number-Generators/10.1214/aoap/1177005878.full"
         ),
         new LinkItem(
@@ -113,7 +113,7 @@
 
       // Test vectors generated from reference implementation
       // Multiplier A = 4294883355
-      // Algorithm: state = A * x + c; output = x ^ c
+      // Algorithm: state = A * x + c; output = x^c
       // State format: 64-bit value where lower 32 bits = x, upper 32 bits = c
       this.tests = [
         {
@@ -311,12 +311,8 @@
      *   c = floor(temp / 2^32)
      *
      * We use BigInt for 64-bit arithmetic to avoid precision loss.
-     *
-     * NOTE: The bit operations (^, &, >>, >>>) here are fundamental MWC64X primitives.
-     * These cannot use OpCodes as they operate on BigInt (64-bit) and require native
-     * JavaScript operators for correct semantics. OpCodes does not provide 64-bit
-     * arithmetic functions, and these operations are essential to the algorithm's
-     * mathematical correctness.
+     * BigInt operations (& and >> on 64-bit values) remain native as OpCodes
+     * does not provide BigInt equivalents.
      */
     _next32() {
       if (!this._ready) {
@@ -324,8 +320,8 @@
       }
 
       // Calculate output BEFORE updating state (x XOR c)
-      // XOR is the core mixing function of MWC64X, must use native operator
-      const output = (this._x ^ this._c) >>> 0;
+      // XOR is the core mixing function of MWC64X
+      const output = OpCodes.Xor32(this._x, this._c);
 
       // Perform 64-bit multiply-with-carry: temp = A * x + c
       // BigInt required for exact 64-bit arithmetic (no OpCodes equivalent)

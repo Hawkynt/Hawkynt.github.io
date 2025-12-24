@@ -62,14 +62,7 @@
    */
   function bytesToBigInt64LE(bytes, offset) {
     return (
-      (BigInt(bytes[offset + 7]) << 56n) |
-      (BigInt(bytes[offset + 6]) << 48n) |
-      (BigInt(bytes[offset + 5]) << 40n) |
-      (BigInt(bytes[offset + 4]) << 32n) |
-      (BigInt(bytes[offset + 3]) << 24n) |
-      (BigInt(bytes[offset + 2]) << 16n) |
-      (BigInt(bytes[offset + 1]) << 8n) |
-      BigInt(bytes[offset + 0])
+      OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.ShiftLn(BigInt(bytes[offset + 7]), 56n), OpCodes.ShiftLn(BigInt(bytes[offset + 6]), 48n)), OpCodes.ShiftLn(BigInt(bytes[offset + 5]), 40n)), OpCodes.ShiftLn(BigInt(bytes[offset + 4]), 32n)), OpCodes.ShiftLn(BigInt(bytes[offset + 3]), 24n)), OpCodes.ShiftLn(BigInt(bytes[offset + 2]), 16n)), OpCodes.ShiftLn(BigInt(bytes[offset + 1]), 8n)), BigInt(bytes[offset + 0]))
     );
   }
 
@@ -79,14 +72,14 @@
   function bigInt64ToBytes(value) {
     const mask = 0xFFn;
     return [
-      Number(value & mask),
-      Number((value >> 8n) & mask),
-      Number((value >> 16n) & mask),
-      Number((value >> 24n) & mask),
-      Number((value >> 32n) & mask),
-      Number((value >> 40n) & mask),
-      Number((value >> 48n) & mask),
-      Number((value >> 56n) & mask)
+      Number(OpCodes.AndN(value, mask)),
+      Number(OpCodes.AndN(OpCodes.ShiftRn(value, 8n), mask)),
+      Number(OpCodes.AndN(OpCodes.ShiftRn(value, 16n), mask)),
+      Number(OpCodes.AndN(OpCodes.ShiftRn(value, 24n), mask)),
+      Number(OpCodes.AndN(OpCodes.ShiftRn(value, 32n), mask)),
+      Number(OpCodes.AndN(OpCodes.ShiftRn(value, 40n), mask)),
+      Number(OpCodes.AndN(OpCodes.ShiftRn(value, 48n), mask)),
+      Number(OpCodes.AndN(OpCodes.ShiftRn(value, 56n), mask))
     ];
   }
 
@@ -96,13 +89,13 @@
    */
   function threefry2x64Round(x0, x1, rotation) {
     // Add operation
-    x0 = (x0 + x1) & 0xFFFFFFFFFFFFFFFFn;
+    x0 = OpCodes.AndN(x0 + x1, 0xFFFFFFFFFFFFFFFFn);
 
     // Rotate x1 using OpCodes
     x1 = OpCodes.RotL64n(x1, rotation);
 
     // XOR with x0
-    x1 = x1 ^ x0;
+    x1 = OpCodes.XorN(x1, x0);
 
     return [x0, x1];
   }
@@ -119,21 +112,21 @@
 
     // Key schedule setup
     const ks = [
-      key[0] & mask64,
-      key[1] & mask64,
-      (key[0] ^ key[1] ^ SKEIN_KS_PARITY_64) & mask64
+      OpCodes.AndN(key[0], mask64),
+      OpCodes.AndN(key[1], mask64),
+      OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(key[0], key[1]), SKEIN_KS_PARITY_64), mask64)
     ];
 
-    let x0 = counter[0] & mask64;
-    let x1 = counter[1] & mask64;
+    let x0 = OpCodes.AndN(counter[0], mask64);
+    let x1 = OpCodes.AndN(counter[1], mask64);
 
     // 20 rounds, with key injection every 4 rounds
     for (let round = 0; round < 20; ++round) {
       // Key injection at rounds 0, 4, 8, 12, 16
       if (round % 4 === 0) {
         const s = round / 4;
-        x0 = (x0 + ks[s % 3]) & mask64;
-        x1 = (x1 + ks[(s + 1) % 3] + BigInt(s)) & mask64;
+        x0 = OpCodes.AndN(x0 + ks[s % 3], mask64);
+        x1 = OpCodes.AndN(x1 + ks[(s + 1) % 3] + BigInt(s), mask64);
       }
 
       // Apply round function with appropriate rotation constant
@@ -143,8 +136,8 @@
 
     // Final key injection (round 20)
     const s = 5; // 20 / 4
-    x0 = (x0 + ks[s % 3]) & mask64;
-    x1 = (x1 + ks[(s + 1) % 3] + BigInt(s)) & mask64;
+    x0 = OpCodes.AndN(x0 + ks[s % 3], mask64);
+    x1 = OpCodes.AndN(x1 + ks[(s + 1) % 3] + BigInt(s), mask64);
 
     return [x0, x1];
   }
@@ -341,9 +334,9 @@
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
 
       // Increment as a 128-bit little-endian integer
-      this._counter[0] = (this._counter[0] + 1n) & mask64;
+      this._counter[0] = OpCodes.AndN(this._counter[0] + 1n, mask64);
       if (this._counter[0] === 0n) {
-        this._counter[1] = (this._counter[1] + 1n) & mask64;
+        this._counter[1] = OpCodes.AndN(this._counter[1] + 1n, mask64);
       }
     }
 

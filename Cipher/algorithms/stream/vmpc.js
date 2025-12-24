@@ -305,7 +305,7 @@
       // Process input data byte by byte (stream cipher)
       for (let i = 0; i < this.inputBuffer.length; i++) {
         const keystreamByte = this._generateKeystreamByte();
-        output.push(OpCodes.XorN(this.inputBuffer[i], keystreamByte));
+        output.push(OpCodes.Xor32(this.inputBuffer[i], keystreamByte));
       }
 
       // Clear input buffer for next operation
@@ -326,11 +326,11 @@
       // Step 2: Key Scheduling Algorithm (KSA) - scramble P with key over 768 rounds
       this.s = 0;
       for (let m = 0; m < 768; m++) {
-        const i = m & 0xFF;  // m mod 256
+        const i = OpCodes.ToByte(m);  // m mod 256
         const keyByte = this._key[m % this._key.length];
 
         // s = P[(s + P[i] + key[m mod keyLen]) mod 256]
-        this.s = this.P[(this.s + this.P[i] + keyByte) & 0xFF];
+        this.s = this.P[OpCodes.ToByte(this.s + this.P[i] + keyByte)];
 
         // Swap P[i] and P[s]
         const temp = this.P[i];
@@ -340,11 +340,11 @@
 
       // Step 3: IV Scheduling - further scramble P with IV over 768 rounds
       for (let m = 0; m < 768; m++) {
-        const i = m & 0xFF;  // m mod 256
+        const i = OpCodes.ToByte(m);  // m mod 256
         const ivByte = this._iv[m % this._iv.length];
 
         // s = P[(s + P[i] + iv[m mod ivLen]) mod 256]
-        this.s = this.P[(this.s + this.P[i] + ivByte) & 0xFF];
+        this.s = this.P[OpCodes.ToByte(this.s + this.P[i] + ivByte)];
 
         // Swap P[i] and P[s]
         const temp = this.P[i];
@@ -360,25 +360,25 @@
     // Pseudo-Random Generation Algorithm (PRGA) - generate one keystream byte
     _generateKeystreamByte() {
       // Load P[n]
-      const pn = this.P[this.n & 0xFF];
+      const pn = this.P[OpCodes.ToByte(this.n)];
 
       // Update s: s = P[(s + P[n]) mod 256]
-      this.s = this.P[(this.s + pn) & 0xFF];
+      this.s = this.P[OpCodes.ToByte(this.s + pn)];
 
       // Load P[s]
-      const ps = this.P[this.s & 0xFF];
+      const ps = this.P[OpCodes.ToByte(this.s)];
 
       // Triple indirection to generate keystream byte
       // z = P[(P[P[s]] + 1) mod 256]
       // ps already contains P[s], so P[ps] is P[P[s]], and P[(P[ps] + 1)] is P[P[P[s]] + 1]
-      const z = this.P[(this.P[ps & 0xFF] + 1) & 0xFF];
+      const z = this.P[OpCodes.ToByte(this.P[OpCodes.ToByte(ps)] + 1)];
 
       // Swap P[n] and P[s]
-      this.P[this.n & 0xFF] = ps;
-      this.P[this.s & 0xFF] = pn;
+      this.P[OpCodes.ToByte(this.n)] = ps;
+      this.P[OpCodes.ToByte(this.s)] = pn;
 
       // Increment n: n = (n + 1) mod 256
-      this.n = (this.n + 1) & 0xFF;
+      this.n = OpCodes.ToByte(this.n + 1);
 
       return z;
     }

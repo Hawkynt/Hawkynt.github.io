@@ -252,9 +252,9 @@
       // Convert seed bytes to 32-bit unsigned integer (little-endian)
       let seedValue = 0;
       for (let i = 0; i < Math.min(seedBytes.length, 4); ++i) {
-        seedValue |= (seedBytes[i] << (i * 8));
+        seedValue = OpCodes.Or32(seedValue, OpCodes.Shl32(seedBytes[i], i * 8));
       }
-      seedValue = seedValue >>> 0; // Ensure unsigned
+      seedValue = OpCodes.ToUint32(seedValue); // Ensure unsigned
 
       // Initialize state using linear congruential generator
       // C++ uses: linear_congruential_engine<result_type, 40014u, 0u, 2147483563u>
@@ -281,7 +281,7 @@
         }
 
         // Modulo 2^48
-        this._state[i] = sum & MASK_48BIT;
+        this._state[i] = sum&MASK_48BIT;
       }
 
       // Initialize carry: 1 if last state element is 0, otherwise 0
@@ -329,7 +329,7 @@
       }
 
       // Update state and get result
-      this._state[this._index] = xi & MASK_48BIT;
+      this._state[this._index] = xi&MASK_48BIT;
       const result = this._state[this._index];
 
       // Advance index (circular)
@@ -388,12 +388,12 @@
       for (let i = 0; i < fullValues; ++i) {
         const value = this._next48();
         // Output in little-endian format (6 bytes)
-        output.push(Number(value & 0xFFn));
-        output.push(Number((value >> 8n) & 0xFFn));
-        output.push(Number((value >> 16n) & 0xFFn));
-        output.push(Number((value >> 24n) & 0xFFn));
-        output.push(Number((value >> 32n) & 0xFFn));
-        output.push(Number((value >> 40n) & 0xFFn));
+        output.push(Number(value&0xFFn));
+        output.push(Number((value >> 8n)&0xFFn));
+        output.push(Number((value >> 16n)&0xFFn));
+        output.push(Number((value >> 24n)&0xFFn));
+        output.push(Number((value >> 32n)&0xFFn));
+        output.push(Number((value >> 40n)&0xFFn));
       }
 
       // Handle remaining bytes (if length not multiple of 6)
@@ -401,7 +401,7 @@
       if (remainingBytes > 0) {
         const value = this._next48();
         for (let i = 0; i < remainingBytes; ++i) {
-          output.push(Number((value >> BigInt(i * 8)) & 0xFFn));
+          output.push(Number((value >> BigInt(i * 8))&0xFFn));
         }
       }
 

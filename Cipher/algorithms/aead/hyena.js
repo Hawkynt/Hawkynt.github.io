@@ -80,8 +80,8 @@
 
   // Bit permutation helper
   function bitPermuteStep(value, mask, shift) {
-    const t = OpCodes.AndN(OpCodes.XorN(OpCodes.Shr32(value, shift), value), mask);
-    return OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(value, t), OpCodes.Shl32(t, shift)));
+    const t = OpCodes.And32(OpCodes.Xor32(OpCodes.Shr32(value, shift), value), mask);
+    return OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(value, t), OpCodes.Shl32(t, shift)));
   }
 
   // PERM3_INNER - core permutation for GIFT-128
@@ -90,7 +90,7 @@
     x = bitPermuteStep(x, 0x00cc00cc, 6);
     x = bitPermuteStep(x, 0x0000f0f0, 12);
     x = bitPermuteStep(x, 0x000000ff, 24);
-    return OpCodes.Shr32(x, 0);
+    return OpCodes.ToUint32(x);
   }
 
   // Row permutations PERM0-PERM3
@@ -124,7 +124,7 @@
       x = bitPermuteStep(x, 0x00cc00cc, 6);
       x = bitPermuteStep(x, 0x0000f0f0, 12);
       x = bitPermuteStep(x, 0x0000ff00, 8);
-      return OpCodes.Shr32(x, 0);
+      return OpCodes.ToUint32(x);
     }
 
     s0 = permWords(s0);
@@ -134,22 +134,22 @@
 
     // Rearrange bytes
     const output = new Uint8Array(16);
-    output[0] = OpCodes.AndN(s0, 0xFF);
-    output[1] = OpCodes.AndN(s1, 0xFF);
-    output[2] = OpCodes.AndN(s2, 0xFF);
-    output[3] = OpCodes.AndN(s3, 0xFF);
-    output[4] = OpCodes.AndN(OpCodes.Shr32(s0, 8), 0xFF);
-    output[5] = OpCodes.AndN(OpCodes.Shr32(s1, 8), 0xFF);
-    output[6] = OpCodes.AndN(OpCodes.Shr32(s2, 8), 0xFF);
-    output[7] = OpCodes.AndN(OpCodes.Shr32(s3, 8), 0xFF);
-    output[8] = OpCodes.AndN(OpCodes.Shr32(s0, 16), 0xFF);
-    output[9] = OpCodes.AndN(OpCodes.Shr32(s1, 16), 0xFF);
-    output[10] = OpCodes.AndN(OpCodes.Shr32(s2, 16), 0xFF);
-    output[11] = OpCodes.AndN(OpCodes.Shr32(s3, 16), 0xFF);
-    output[12] = OpCodes.AndN(OpCodes.Shr32(s0, 24), 0xFF);
-    output[13] = OpCodes.AndN(OpCodes.Shr32(s1, 24), 0xFF);
-    output[14] = OpCodes.AndN(OpCodes.Shr32(s2, 24), 0xFF);
-    output[15] = OpCodes.AndN(OpCodes.Shr32(s3, 24), 0xFF);
+    output[0] = OpCodes.ToByte(s0);
+    output[1] = OpCodes.ToByte(s1);
+    output[2] = OpCodes.ToByte(s2);
+    output[3] = OpCodes.ToByte(s3);
+    output[4] = OpCodes.ToByte(s0 >> 8);
+    output[5] = OpCodes.ToByte(s1 >> 8);
+    output[6] = OpCodes.ToByte(s2 >> 8);
+    output[7] = OpCodes.ToByte(s3 >> 8);
+    output[8] = OpCodes.ToByte(s0 >> 16);
+    output[9] = OpCodes.ToByte(s1 >> 16);
+    output[10] = OpCodes.ToByte(s2 >> 16);
+    output[11] = OpCodes.ToByte(s3 >> 16);
+    output[12] = OpCodes.ToByte(s0 >> 24);
+    output[13] = OpCodes.ToByte(s1 >> 24);
+    output[14] = OpCodes.ToByte(s2 >> 24);
+    output[15] = OpCodes.ToByte(s3 >> 24);
 
     return output;
   }
@@ -157,10 +157,10 @@
   // Convert word-based to nibble-based representation
   function gift128nToNibbles(input) {
     // Load bytes and rearrange
-    const s0 = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(input[12], 24), OpCodes.Shl32(input[8], 16)), OpCodes.Shl32(input[4], 8)), input[0]);
-    const s1 = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(input[13], 24), OpCodes.Shl32(input[9], 16)), OpCodes.Shl32(input[5], 8)), input[1]);
-    const s2 = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(input[14], 24), OpCodes.Shl32(input[10], 16)), OpCodes.Shl32(input[6], 8)), input[2]);
-    const s3 = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(input[15], 24), OpCodes.Shl32(input[11], 16)), OpCodes.Shl32(input[7], 8)), input[3]);
+    const s0 = OpCodes.Or32(OpCodes.Shl32(input[12], 24), OpCodes.Or32(OpCodes.Shl32(input[8], 16), OpCodes.Or32(OpCodes.Shl32(input[4], 8), input[0])));
+    const s1 = OpCodes.Or32(OpCodes.Shl32(input[13], 24), OpCodes.Or32(OpCodes.Shl32(input[9], 16), OpCodes.Or32(OpCodes.Shl32(input[5], 8), input[1])));
+    const s2 = OpCodes.Or32(OpCodes.Shl32(input[14], 24), OpCodes.Or32(OpCodes.Shl32(input[10], 16), OpCodes.Or32(OpCodes.Shl32(input[6], 8), input[2])));
+    const s3 = OpCodes.Or32(OpCodes.Shl32(input[15], 24), OpCodes.Or32(OpCodes.Shl32(input[11], 16), OpCodes.Or32(OpCodes.Shl32(input[7], 8), input[3])));
 
     // Apply inverse permutation
     function invPermWords(x) {
@@ -181,10 +181,10 @@
     const words = [t0, t1, t2, t3];
     for (let i = 0; i < 4; ++i) {
       const w = words[3 - i];
-      output[i * 4] = OpCodes.AndN(w, 0xFF);
-      output[i * 4 + 1] = OpCodes.AndN(OpCodes.Shr32(w, 8), 0xFF);
-      output[i * 4 + 2] = OpCodes.AndN(OpCodes.Shr32(w, 16), 0xFF);
-      output[i * 4 + 3] = OpCodes.AndN(OpCodes.Shr32(w, 24), 0xFF);
+      output[i * 4] = OpCodes.And32(w, 0xFF);
+      output[i * 4 + 1] = OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF);
+      output[i * 4 + 2] = OpCodes.And32(OpCodes.Shr32(w, 16), 0xFF);
+      output[i * 4 + 3] = OpCodes.And32(OpCodes.Shr32(w, 24), 0xFF);
     }
 
     return output;
@@ -206,13 +206,13 @@
     // Perform 40 rounds (per C line 1102-1133)
     for (let round = 0; round < 40; ++round) {
       // SubCells - apply S-box (per C line 1104-1113)
-      s1 = OpCodes.XorN(s1, OpCodes.AndN(s0, s2));
-      s0 = OpCodes.XorN(s0, OpCodes.AndN(s1, s3));
-      s2 = OpCodes.XorN(s2, OpCodes.OrN(s0, s1));
-      s3 = OpCodes.XorN(s3, s2);
-      s1 = OpCodes.XorN(s1, s3);
-      s3 = OpCodes.XorN(s3, 0xFFFFFFFF);
-      s2 = OpCodes.XorN(s2, OpCodes.AndN(s0, s1));
+      s1 = OpCodes.Xor32(s1, OpCodes.And32(s0, s2));
+      s0 = OpCodes.Xor32(s0, OpCodes.And32(s1, s3));
+      s2 = OpCodes.Xor32(s2, OpCodes.Or32(s0, s1));
+      s3 = OpCodes.Xor32(s3, s2);
+      s1 = OpCodes.Xor32(s1, s3);
+      s3 = OpCodes.Xor32(s3, 0xFFFFFFFF);
+      s2 = OpCodes.Xor32(s2, OpCodes.And32(s0, s1));
       const temp = s0;
       s0 = s3;
       s3 = temp;
@@ -224,16 +224,16 @@
       s3 = perm3(s3);
 
       // AddRoundKey - XOR with key schedule and round constant (per C line 1122-1124)
-      s2 = OpCodes.XorN(s2, w1);
-      s1 = OpCodes.XorN(s1, w3);
-      s3 = OpCodes.ToUint32(OpCodes.XorN(s3, OpCodes.XorN(0x80000000, GIFT128_RC[round])));
+      s2 = OpCodes.Xor32(s2, w1);
+      s1 = OpCodes.Xor32(s1, w3);
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, OpCodes.Xor32(0x80000000, GIFT128_RC[round])));
 
       // Rotate the key schedule (per C line 1127-1132)
       const temp2 = w3;
       w3 = w2;
       w2 = w1;
       w1 = w0;
-      w0 = OpCodes.ToUint32(OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shr32(OpCodes.AndN(temp2, 0xFFFC0000), 2), OpCodes.Shl32(OpCodes.AndN(temp2, 0x00030000), 14)), OpCodes.Shl32(OpCodes.AndN(temp2, 0x00000FFF), 4)), OpCodes.Shr32(OpCodes.AndN(temp2, 0x0000F000), 12)));
+      w0 = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shr32(OpCodes.And32(temp2, 0xFFFC0000), 2), OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(temp2, 0x00030000), 14), OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(temp2, 0x00000FFF), 4), OpCodes.Shr32(OpCodes.And32(temp2, 0x0000F000), 12)))));
     }
 
     // Write output
@@ -263,23 +263,23 @@
   // ===== HYENA DELTA OPERATIONS =====
 
   // Double a delta value in F(2^64) field
-  // D = D << 1 if top bit is 0, or D = (D << 1) ^ 0x1B otherwise
+  // D = OpCodes.Shl32(D, 1) if top bit is 0, or D = (OpCodes.Shl32(D, 1))^0x1B otherwise
   function hyenaDoubleDelta(D) {
-    const mask = OpCodes.AndN(OpCodes.Shr32(D[0], 7), 1);
+    const mask = OpCodes.And32(OpCodes.Shr32(D[0], 7), 1);
     for (let i = 0; i < 7; ++i) {
-      D[i] = OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(D[i], 1), OpCodes.Shr32(D[i + 1], 7)), 0xFF);
+      D[i] = OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(D[i], 1), OpCodes.Shr32(D[i + 1], 7)), 0xFF);
     }
-    D[7] = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(D[7], 1), (mask ? 0x1B : 0)), 0xFF);
+    D[7] = OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(D[7], 1), (mask ? 0x1B : 0)), 0xFF);
   }
 
   // Triple a delta value in F(2^64) field
-  // D' = D ^ (D << 1) if top bit is 0, or D' = D ^ (D << 1) ^ 0x1B otherwise
+  // D' = D^(OpCodes.Shl32(D, 1)) if top bit is 0, or D' = D^(OpCodes.Shl32(D, 1))^0x1B otherwise
   function hyenaTripleDelta(D) {
-    const mask = OpCodes.AndN(OpCodes.Shr32(D[0], 7), 1);
+    const mask = OpCodes.And32(OpCodes.Shr32(D[0], 7), 1);
     for (let i = 0; i < 7; ++i) {
-      D[i] = OpCodes.XorN(D[i], OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(D[i], 1), OpCodes.Shr32(D[i + 1], 7)), 0xFF));
+      D[i] = OpCodes.Xor32(D[i], OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(D[i], 1), OpCodes.Shr32(D[i + 1], 7)), 0xFF));
     }
-    D[7] = OpCodes.XorN(D[7], OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(D[7], 1), (mask ? 0x1B : 0)), 0xFF));
+    D[7] = OpCodes.Xor32(D[7], OpCodes.And32(OpCodes.Xor32(OpCodes.Shl32(D[7], 1), (mask ? 0x1B : 0)), 0xFF));
   }
 
   // ===== HYENA-v1 IMPLEMENTATION =====
@@ -298,7 +298,7 @@
 
       // XOR feedback with Y[8..15] and D
       for (let i = 0; i < 8; ++i) {
-        feedback[8 + i] ^= OpCodes.XorN(Y[8 + i], D[i]);
+        feedback[8 + i] ^= OpCodes.Xor32(Y[8 + i], D[i]);
       }
 
       // XOR Y with feedback
@@ -321,7 +321,7 @@
         feedback[i] = ad[pos + i];
       }
       for (let i = 0; i < 8; ++i) {
-        feedback[8 + i] ^= OpCodes.XorN(Y[8 + i], D[i]);
+        feedback[8 + i] ^= OpCodes.Xor32(Y[8 + i], D[i]);
       }
       for (let i = 0; i < 16; ++i) {
         Y[i] ^= feedback[i];
@@ -360,10 +360,10 @@
     // Initialize Y with domain separation
     Y[0] = 0;
     if (ad.length === 0) {
-      Y[0] = OpCodes.OrN(Y[0], 0x01);
+      Y[0] = OpCodes.Or32(Y[0], 0x01);
     }
     if (ad.length === 0 && plaintext.length === 0) {
-      Y[0] = OpCodes.OrN(Y[0], 0x02);
+      Y[0] = OpCodes.Or32(Y[0], 0x02);
     }
     Y[1] = 0;
     Y[2] = 0;
@@ -398,10 +398,10 @@
           feedback[i] = plaintext[mpos + i];
         }
         for (let i = 0; i < 8; ++i) {
-          feedback[8 + i] ^= OpCodes.XorN(Y[8 + i], D[i]);
+          feedback[8 + i] ^= OpCodes.Xor32(Y[8 + i], D[i]);
         }
         for (let i = 0; i < 16; ++i) {
-          ciphertext[cpos + i] = OpCodes.XorN(plaintext[mpos + i], Y[i]);
+          ciphertext[cpos + i] = OpCodes.Xor32(plaintext[mpos + i], Y[i]);
           Y[i] ^= feedback[i];
         }
 
@@ -420,10 +420,10 @@
           feedback[i] = plaintext[mpos + i];
         }
         for (let i = 0; i < 8; ++i) {
-          feedback[8 + i] ^= OpCodes.XorN(Y[8 + i], D[i]);
+          feedback[8 + i] ^= OpCodes.Xor32(Y[8 + i], D[i]);
         }
         for (let i = 0; i < 16; ++i) {
-          ciphertext[cpos + i] = OpCodes.XorN(plaintext[mpos + i], Y[i]);
+          ciphertext[cpos + i] = OpCodes.Xor32(plaintext[mpos + i], Y[i]);
           Y[i] ^= feedback[i];
         }
         cpos += 16;
@@ -448,7 +448,7 @@
           feedback[8 + i] ^= D[i];
         }
         for (let i = 0; i < mlen; ++i) {
-          ciphertext[cpos + i] = OpCodes.XorN(plaintext[mpos + i], Y[i]);
+          ciphertext[cpos + i] = OpCodes.Xor32(plaintext[mpos + i], Y[i]);
         }
         for (let i = 0; i < 16; ++i) {
           Y[i] ^= feedback[i];
@@ -493,10 +493,10 @@
     // Initialize Y with domain separation
     Y[0] = 0;
     if (ad.length === 0) {
-      Y[0] = OpCodes.OrN(Y[0], 0x01);
+      Y[0] = OpCodes.Or32(Y[0], 0x01);
     }
     if (ad.length === 0 && clen === 0) {
-      Y[0] = OpCodes.OrN(Y[0], 0x02);
+      Y[0] = OpCodes.Or32(Y[0], 0x02);
     }
     Y[1] = 0;
     Y[2] = 0;
@@ -530,7 +530,7 @@
           feedback[i] = ciphertext[cpos + i];
         }
         for (let i = 0; i < 16; ++i) {
-          plaintext[mpos + i] = OpCodes.XorN(ciphertext[cpos + i], Y[i]);
+          plaintext[mpos + i] = OpCodes.Xor32(ciphertext[cpos + i], Y[i]);
         }
         for (let i = 0; i < 8; ++i) {
           feedback[i] = plaintext[mpos + i];
@@ -557,7 +557,7 @@
           feedback[i] = ciphertext[cpos + i];
         }
         for (let i = 0; i < 16; ++i) {
-          plaintext[mpos + i] = OpCodes.XorN(ciphertext[cpos + i], Y[i]);
+          plaintext[mpos + i] = OpCodes.Xor32(ciphertext[cpos + i], Y[i]);
         }
         for (let i = 0; i < 8; ++i) {
           feedback[i] = plaintext[mpos + i];
@@ -579,14 +579,14 @@
             feedback[i] = ciphertext[cpos + i];
           }
           for (let i = 0; i < mlen; ++i) {
-            plaintext[mpos + i] = OpCodes.XorN(ciphertext[cpos + i], Y[i]);
+            plaintext[mpos + i] = OpCodes.Xor32(ciphertext[cpos + i], Y[i]);
           }
           for (let i = 0; i < 8; ++i) {
             feedback[i] = plaintext[mpos + i];
           }
         } else {
           for (let i = 0; i < mlen; ++i) {
-            plaintext[mpos + i] = OpCodes.XorN(ciphertext[cpos + i], Y[i]);
+            plaintext[mpos + i] = OpCodes.Xor32(ciphertext[cpos + i], Y[i]);
           }
           for (let i = 0; i < mlen; ++i) {
             feedback[i] = plaintext[mpos + i];

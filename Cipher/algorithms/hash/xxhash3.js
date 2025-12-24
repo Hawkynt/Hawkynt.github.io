@@ -189,7 +189,7 @@
         // Convert byte array to 64-bit seed
         this.seed = 0;
         for (let i = 0; i < 8; i++) {
-          this.seed = (this.seed << 8) | (key[i] || 0);
+          this.seed = OpCodes.Or32(OpCodes.Shl32(this.seed, 8), (key[i] || 0));
         }
       } else if (typeof key === 'string') {
         // Hash string to create seed
@@ -209,7 +209,7 @@
     simpleHash(str) {
       let hash = 0;
       for (let i = 0; i < str.length; i++) {
-        hash = ((hash << 5) - hash + str.charCodeAt(i)) & 0xFFFFFFFF;
+        hash = OpCodes.And32((OpCodes.Shl32(hash, 5)) - hash + str.charCodeAt(i), 0xFFFFFFFF);
       }
       return hash;
     }
@@ -219,10 +219,7 @@
       offset = offset || 0;
       if (offset + 4 > data.length) return 0;
 
-      return (data[offset] |
-              (data[offset + 1] << 8) |
-              (data[offset + 2] << 16) |
-              (data[offset + 3] << 24)) >>> 0;
+      return OpCodes.ToDWord(OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(data[offset], OpCodes.Shl32(data[offset + 1], 8)), OpCodes.Shl32(data[offset + 2], 16)), OpCodes.Shl32(data[offset + 3], 24)));
     }
 
     // Read 64-bit little endian (as BigInt) - manual implementation
@@ -235,29 +232,29 @@
         result |= byte << (BigInt(i) * 8n);
       }
 
-      return result & 0xFFFFFFFFFFFFFFFFn;
+      return result&0xFFFFFFFFFFFFFFFFn;
     }
 
     // xxHash3 avalanche function (for PRIME_MX1 based mixing)
     avalanche(h64) {
       h64 = h64 & 0xFFFFFFFFFFFFFFFFn; // Ensure 64-bit
-      h64 ^= h64 >> 37n;
+      h64 = h64 ^ (h64 >> 37n);
       h64 *= this.PRIME_MX1;
       h64 = h64 & 0xFFFFFFFFFFFFFFFFn; // Mask to 64-bit
-      h64 ^= h64 >> 32n;
+      h64 = h64 ^ (h64 >> 32n);
       return h64 & 0xFFFFFFFFFFFFFFFFn;
     }
 
     // xxHash3 avalanche_XXH64 function (official XXH64-style avalanche)
     avalanche_XXH64(h64) {
       h64 = h64 & 0xFFFFFFFFFFFFFFFFn; // Ensure 64-bit
-      h64 ^= h64 >> 33n;
+      h64 = h64 ^ (h64 >> 33n);
       h64 *= this.PRIME64_2;
       h64 = h64 & 0xFFFFFFFFFFFFFFFFn; // Mask to 64-bit
-      h64 ^= h64 >> 29n;
+      h64 = h64 ^ (h64 >> 29n);
       h64 *= this.PRIME64_3;
       h64 = h64 & 0xFFFFFFFFFFFFFFFFn; // Mask to 64-bit
-      h64 ^= h64 >> 32n;
+      h64 = h64 ^ (h64 >> 32n);
       return h64 & 0xFFFFFFFFFFFFFFFFn;
     }
 
@@ -284,9 +281,9 @@
       if (len <= 3) {
         // Combine input bytes according to official algorithm
         let combined = BigInt(input[len - 1] || 0); // last byte (LSB)
-        combined |= (BigInt(len) << 8n); // length
-        combined |= (BigInt(input[0] || 0) << 16n); // first byte
-        combined |= (BigInt(input[len >> 1] || 0) << 24n); // middle-or-last byte (MSB)
+        combined |= BigInt(len) << 8n; // length
+        combined |= BigInt(input[0] || 0) << 16n; // first byte
+        combined |= BigInt(input[len >> 1] || 0) << 24n; // middle-or-last byte (MSB)
 
         // Read secret[0:8] as two 32-bit values
         const secretWord0 = BigInt(OpCodes.Pack32LE(this.SECRET[0], this.SECRET[1], this.SECRET[2], this.SECRET[3]));
@@ -303,8 +300,7 @@
         seed ^= OpCodes.Pack64LE(0x3c, 0x28, 0x52, 0xbb, 0x91, 0xc3, 0x00, 0xcb);
         let input1 = this.readLE64(input, 0);
         let input2 = this.readLE64(input, len - 8);
-        let bitflip = OpCodes.Pack64LE(0x88, 0xd0, 0x65, 0x8b, 0x1b, 0x53, 0x2e, 0xa3) ^
-                     OpCodes.Pack64LE(0x71, 0x64, 0x48, 0x97, 0xa2, 0x0d, 0xf9, 0x4e);
+        let bitflip = OpCodes.Pack64LE(0x88, 0xd0, 0x65, 0x8b, 0x1b, 0x53, 0x2e, 0xa3) ^ OpCodes.Pack64LE(0x71, 0x64, 0x48, 0x97, 0xa2, 0x0d, 0xf9, 0x4e);
         let keyed = input1 ^ input2 ^ bitflip;
         return this.avalanche_XXH64(keyed);
       }
@@ -324,7 +320,7 @@
 
       // For larger inputs, use simplified approach
       let acc = BigInt(len) * this.PRIME64_1;
-      acc ^= seed;
+      acc = acc ^ seed;
 
       // Process 16-byte chunks
       let offset = 0;
@@ -388,7 +384,7 @@
       if (typeof message === 'string') {
         const bytes = [];
         for (let i = 0; i < message.length; i++) {
-          bytes.push(message.charCodeAt(i) & 0xFF);
+          bytes.push(OpCodes.ToByte(message.charCodeAt(i)));
         }
         message = bytes;
       }

@@ -60,10 +60,10 @@
   // Rotate left and XOR for mixing
   function rotlXor64(x, n, xor) {
     const mask = 0xFFFFFFFFFFFFFFFFn;
-    x = BigInt(x) & mask;
-    xor = BigInt(xor) & mask;
-    n = Number(n) & 63;
-    return (((x << BigInt(n)) | (x >> BigInt(64 - n))) ^ xor) & mask;
+    x = BigInt(x)&mask;
+    xor = BigInt(xor)&mask;
+    n = OpCodes.And32(Number(n), 63);
+    return (((x << BigInt(n))|(x >> BigInt(64 - n)))^xor)&mask;
   }
 
   // Threefish-512 encryption
@@ -74,8 +74,8 @@
     const kw = new Array(17);
     let knw = C_240;
     for (let i = 0; i < 8; i++) {
-      kw[i] = BigInt(key[i]) & mask;
-      knw ^= kw[i];
+      kw[i] = BigInt(key[i])&mask;
+      knw = knw^kw[i];
     }
     kw[8] = knw;
     for (let i = 0; i < 8; i++) {
@@ -84,21 +84,21 @@
 
     // Tweak schedule
     const t = new Array(5);
-    t[0] = BigInt(tweak[0]) & mask;
-    t[1] = BigInt(tweak[1]) & mask;
-    t[2] = t[0] ^ t[1];
+    t[0] = BigInt(tweak[0])&mask;
+    t[1] = BigInt(tweak[1])&mask;
+    t[2] = t[0]^t[1];
     t[3] = t[0];
     t[4] = t[1];
 
     // Load block into state
-    let b0 = BigInt(block[0]) & mask;
-    let b1 = BigInt(block[1]) & mask;
-    let b2 = BigInt(block[2]) & mask;
-    let b3 = BigInt(block[3]) & mask;
-    let b4 = BigInt(block[4]) & mask;
-    let b5 = BigInt(block[5]) & mask;
-    let b6 = BigInt(block[6]) & mask;
-    let b7 = BigInt(block[7]) & mask;
+    let b0 = BigInt(block[0])&mask;
+    let b1 = BigInt(block[1])&mask;
+    let b2 = BigInt(block[2])&mask;
+    let b3 = BigInt(block[3])&mask;
+    let b4 = BigInt(block[4])&mask;
+    let b5 = BigInt(block[5])&mask;
+    let b6 = BigInt(block[6])&mask;
+    let b7 = BigInt(block[7])&mask;
 
     // Initial subkey injection
     b0 += kw[0];
@@ -180,8 +180,8 @@
 
     // Mask all to 64-bit before returning
     return [
-      b0 & mask, b1 & mask, b2 & mask, b3 & mask,
-      b4 & mask, b5 & mask, b6 & mask, b7 & mask
+      b0&mask, b1&mask, b2&mask, b3&mask,
+      b4&mask, b5&mask, b6&mask, b7&mask
     ];
   }
 
@@ -235,14 +235,7 @@
       // Convert current block to 64-bit words (little-endian)
       for (let i = 0; i < 8; i++) {
         const offset = i * 8;
-        this.message[i] = BigInt(this.currentBlock[offset]) |
-                         (BigInt(this.currentBlock[offset + 1]) << 8n) |
-                         (BigInt(this.currentBlock[offset + 2]) << 16n) |
-                         (BigInt(this.currentBlock[offset + 3]) << 24n) |
-                         (BigInt(this.currentBlock[offset + 4]) << 32n) |
-                         (BigInt(this.currentBlock[offset + 5]) << 40n) |
-                         (BigInt(this.currentBlock[offset + 6]) << 48n) |
-                         (BigInt(this.currentBlock[offset + 7]) << 56n);
+        this.message[i] = BigInt(this.currentBlock[offset])|(BigInt(this.currentBlock[offset + 1]) << 8n)|(BigInt(this.currentBlock[offset + 2]) << 16n)|(BigInt(this.currentBlock[offset + 3]) << 24n)|(BigInt(this.currentBlock[offset + 4]) << 32n)|(BigInt(this.currentBlock[offset + 5]) << 40n)|(BigInt(this.currentBlock[offset + 6]) << 48n)|(BigInt(this.currentBlock[offset + 7]) << 56n);
       }
 
       // Encrypt message with Threefish using current chain as key
@@ -250,7 +243,7 @@
 
       // XOR with message (Davies-Meyer construction)
       for (let i = 0; i < 8; i++) {
-        chain[i] = (output[i] ^ this.message[i]) & 0xFFFFFFFFFFFFFFFFn;
+        chain[i] = (output[i]^this.message[i])&0xFFFFFFFFFFFFFFFFn;
       }
     }
 
@@ -319,7 +312,7 @@
       // Output length in bits (little-endian 64-bit)
       const outBits = BigInt(this.outputBits);
       for (let i = 0; i < 8; i++) {
-        config[8 + i] = Number((outBits >> BigInt(i * 8)) & 0xFFn);
+        config[8 + i] = Number((outBits >> BigInt(i * 8))&0xFFn);
       }
 
       this.ubi.reset(PARAM_TYPE_CONFIG);
@@ -357,7 +350,7 @@
         const word = outputWords[i];
         const bytesToWrite = Math.min(8, outputBytes - i * 8);
         for (let j = 0; j < bytesToWrite; j++) {
-          result[i * 8 + j] = Number((word >> BigInt(j * 8)) & 0xFFn);
+          result[i * 8 + j] = Number((word >> BigInt(j * 8))&0xFFn);
         }
       }
 

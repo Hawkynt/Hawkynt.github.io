@@ -7,7 +7,7 @@
  * - ChaCha8: 8 rounds (used in Go runtime, fastest)
  * - ChaCha12: 12 rounds (balanced)
  * - ChaCha20: 20 rounds (original specification, most secure)
- * - Tyche: 20 rounds with different initialization (Neves & Araujo variant)
+ * - Tyche: 20 rounds with different initialization (Neves&Araujo variant)
  *
  * The algorithm is counter-based, meaning it's stateless and can efficiently
  * generate any position in the keystream without computing prior values.
@@ -21,7 +21,7 @@
  *
  * References:
  * - ChaCha specification by Daniel J. Bernstein (2008)
- * - Tyche: "Fast and Small Nonlinear Pseudorandom Number Generators" by Neves & Araujo (2011)
+ * - Tyche: "Fast and Small Nonlinear Pseudorandom Number Generators" by Neves&Araujo (2011)
  *
  * AlgorithmFramework Format
  * (c)2006-2025 Hawkynt
@@ -66,23 +66,23 @@
 
   /**
    * ChaCha quarter round operation
-   * Performs: a += b; d ^= a; d = ROL(d, 16);
-   *           c += d; b ^= c; b = ROL(b, 12);
-   *           a += b; d ^= a; d = ROL(d, 8);
-   *           c += d; b ^= c; b = ROL(b, 7);
+   * Performs: a += b; d = OpCodes.Xor32(d, a); d = ROL(d, 16);
+   *           c += d; b = OpCodes.Xor32(b, c); b = ROL(b, 12);
+   *           a += b; d = OpCodes.Xor32(d, a); d = ROL(d, 8);
+   *           c += d; b = OpCodes.Xor32(b, c); b = ROL(b, 7);
    */
   function quarterRound(state, a, b, c, d) {
     state[a] = OpCodes.Add32(state[a], state[b]);
-    state[d] = OpCodes.RotL32(state[d] ^ state[a], 16);
+    state[d] = OpCodes.RotL32(OpCodes.Xor32(state[d], state[a]), 16);
 
     state[c] = OpCodes.Add32(state[c], state[d]);
-    state[b] = OpCodes.RotL32(state[b] ^ state[c], 12);
+    state[b] = OpCodes.RotL32(OpCodes.Xor32(state[b], state[c]), 12);
 
     state[a] = OpCodes.Add32(state[a], state[b]);
-    state[d] = OpCodes.RotL32(state[d] ^ state[a], 8);
+    state[d] = OpCodes.RotL32(OpCodes.Xor32(state[d], state[a]), 8);
 
     state[c] = OpCodes.Add32(state[c], state[d]);
-    state[b] = OpCodes.RotL32(state[b] ^ state[c], 7);
+    state[b] = OpCodes.RotL32(OpCodes.Xor32(state[b], state[c]), 7);
   }
 
   /**
@@ -362,7 +362,7 @@
       // Parse as little-endian 64-bit
       this._nonce = 0n;
       for (let i = 0; i < 8; i++) {
-        this._nonce |= BigInt(nonceBytes[i]) << BigInt(i * 8);
+        this._nonce = this._nonce | (BigInt(nonceBytes[i]) << BigInt(i * 8));
       }
 
       this._resetState();
@@ -372,7 +372,7 @@
       const result = new Array(8);
       let n = this._nonce;
       for (let i = 0; i < 8; i++) {
-        result[i] = Number(n & 0xFFn);
+        result[i] = Number(OpCodes.And32(n, 0xFFn));
         n >>= 8n;
       }
       return result;
@@ -391,7 +391,7 @@
       // Parse as little-endian 64-bit
       this._counter = 0n;
       for (let i = 0; i < 8; i++) {
-        this._counter |= BigInt(counterBytes[i]) << BigInt(i * 8);
+        this._counter = this._counter | (BigInt(counterBytes[i]) << BigInt(i * 8));
       }
 
       this._resetState();
@@ -444,18 +444,18 @@
         state[0] = seedHigh;
         state[1] = seedLow;
         state[2] = 0x9E3779B9; // Golden ratio constant (PHI)
-        state[3] = this._streamIndex ^ 0x51866487; // Stream index XOR constant
+        state[3] = OpCodes.Xor32(this._streamIndex, 0x51866487); // Stream index XOR constant
 
         // Tyche warm-up: 20 quarter-round iterations on the 4-word state
         for (let i = 0; i < 20; ++i) {
           state[0] = OpCodes.Add32(state[0], state[1]);
-          state[3] = OpCodes.RotL32(state[3] ^ state[0], 16);
+          state[3] = OpCodes.RotL32(OpCodes.Xor32(state[3], state[0]), 16);
           state[2] = OpCodes.Add32(state[2], state[3]);
-          state[1] = OpCodes.RotL32(state[1] ^ state[2], 12);
+          state[1] = OpCodes.RotL32(OpCodes.Xor32(state[1], state[2]), 12);
           state[0] = OpCodes.Add32(state[0], state[1]);
-          state[3] = OpCodes.RotL32(state[3] ^ state[0], 8);
+          state[3] = OpCodes.RotL32(OpCodes.Xor32(state[3], state[0]), 8);
           state[2] = OpCodes.Add32(state[2], state[3]);
-          state[1] = OpCodes.RotL32(state[1] ^ state[2], 7);
+          state[1] = OpCodes.RotL32(OpCodes.Xor32(state[1], state[2]), 7);
         }
       } else {
         // Standard ChaCha initialization
@@ -500,22 +500,22 @@
 
         // Perform one Tyche quarter-round to advance the state
         this._tycheState[0] = OpCodes.Add32(this._tycheState[0], this._tycheState[1]);
-        this._tycheState[3] = OpCodes.RotL32(this._tycheState[3] ^ this._tycheState[0], 16);
+        this._tycheState[3] = OpCodes.RotL32(OpCodes.Xor32(this._tycheState[3], this._tycheState[0]), 16);
         this._tycheState[2] = OpCodes.Add32(this._tycheState[2], this._tycheState[3]);
-        this._tycheState[1] = OpCodes.RotL32(this._tycheState[1] ^ this._tycheState[2], 12);
+        this._tycheState[1] = OpCodes.RotL32(OpCodes.Xor32(this._tycheState[1], this._tycheState[2]), 12);
         this._tycheState[0] = OpCodes.Add32(this._tycheState[0], this._tycheState[1]);
-        this._tycheState[3] = OpCodes.RotL32(this._tycheState[3] ^ this._tycheState[0], 8);
+        this._tycheState[3] = OpCodes.RotL32(OpCodes.Xor32(this._tycheState[3], this._tycheState[0]), 8);
         this._tycheState[2] = OpCodes.Add32(this._tycheState[2], this._tycheState[3]);
-        this._tycheState[1] = OpCodes.RotL32(this._tycheState[1] ^ this._tycheState[2], 7);
+        this._tycheState[1] = OpCodes.RotL32(OpCodes.Xor32(this._tycheState[1], this._tycheState[2]), 7);
 
         // Return 4 bytes from b (state[1]) in little-endian
         // Litdex Next() returns only _State[1] after Mix()
         const b = this._tycheState[1];
         return [
-          b & 0xFF,
-          (b >>> 8) & 0xFF,
-          (b >>> 16) & 0xFF,
-          (b >>> 24) & 0xFF
+          OpCodes.And32(b, 0xFF),
+          OpCodes.And32(OpCodes.Shr32(b, 8), 0xFF),
+          OpCodes.And32(OpCodes.Shr32(b, 16), 0xFF),
+          OpCodes.And32(OpCodes.Shr32(b, 24), 0xFF)
         ];
       }
 
@@ -527,10 +527,10 @@
       const bytes = [];
       for (let i = 0; i < 16; i++) {
         const word = output[i];
-        bytes.push(word & 0xFF);
-        bytes.push((word >>> 8) & 0xFF);
-        bytes.push((word >>> 16) & 0xFF);
-        bytes.push((word >>> 24) & 0xFF);
+        bytes.push(OpCodes.And32(word, 0xFF));
+        bytes.push(OpCodes.And32(OpCodes.Shr32(word, 8), 0xFF));
+        bytes.push(OpCodes.And32(OpCodes.Shr32(word, 16), 0xFF));
+        bytes.push(OpCodes.And32(OpCodes.Shr32(word, 24), 0xFF));
       }
 
       // Increment counter

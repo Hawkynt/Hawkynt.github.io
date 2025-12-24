@@ -61,13 +61,13 @@
       this.tests = [
         new TestCase(
           [0x01, 0x02, 0x03, 0x04],
-          [0x0A], // (1+2+3+4) & 0xFF
+          [0x0A], // (1+2+3+4)&0xFF
           "Simple sequence",
           "Sum8 calculation"
         ),
         new TestCase(
           [0xFF, 0xFF],
-          [0xFE], // (255+255) & 0xFF = 254
+          [0xFE], // (255+255)&0xFF = 254
           "Overflow test",
           "Sum8 with overflow"
         )

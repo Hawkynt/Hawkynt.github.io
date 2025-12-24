@@ -141,151 +141,49 @@
 
     // Matrix multiplication functions for encryption
     static matrixMultiply_b881b9ca(y) {
-      const result = y ^
-        OpCodes.RotR32(y, 2) ^
-        OpCodes.RotR32(y, 3) ^
-        OpCodes.RotR32(y, 4) ^
-        OpCodes.RotR32(y, 8) ^
-        OpCodes.RotR32(y, 15) ^
-        OpCodes.RotR32(y, 16) ^
-        OpCodes.RotR32(y, 18) ^
-        OpCodes.RotR32(y, 19) ^
-        OpCodes.RotR32(y, 20) ^
-        OpCodes.RotR32(y, 23) ^
-        OpCodes.RotR32(y, 24) ^
-        OpCodes.RotR32(y, 25) ^
-        OpCodes.RotR32(y, 28) ^
-        OpCodes.RotR32(y, 30);
-      return result >>> 0;
+      const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, OpCodes.RotR32(y, 2)), OpCodes.RotR32(y, 3)), OpCodes.RotR32(y, 4)), OpCodes.RotR32(y, 8)), OpCodes.RotR32(y, 15)), OpCodes.RotR32(y, 16)), OpCodes.RotR32(y, 18)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 20)), OpCodes.RotR32(y, 23)), OpCodes.RotR32(y, 24)), OpCodes.RotR32(y, 25)), OpCodes.RotR32(y, 28)), OpCodes.RotR32(y, 30));
+      return OpCodes.ToUint32(result);
     }
 
     static matrixMultiply_a3861085(y) {
-      const result = y ^
-        OpCodes.RotR32(y, 2) ^
-        OpCodes.RotR32(y, 6) ^
-        OpCodes.RotR32(y, 7) ^
-        OpCodes.RotR32(y, 8) ^
-        OpCodes.RotR32(y, 13) ^
-        OpCodes.RotR32(y, 14) ^
-        OpCodes.RotR32(y, 19) ^
-        OpCodes.RotR32(y, 24) ^
-        OpCodes.RotR32(y, 29) ^
-        OpCodes.RotR32(y, 31);
-      return result >>> 0;
+      const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, OpCodes.RotR32(y, 2)), OpCodes.RotR32(y, 6)), OpCodes.RotR32(y, 7)), OpCodes.RotR32(y, 8)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 14)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 24)), OpCodes.RotR32(y, 29)), OpCodes.RotR32(y, 31));
+      return OpCodes.ToUint32(result);
     }
 
     static matrixMultiply_63417021(y) {
-      const result = OpCodes.RotR32(y, 1) ^
-        OpCodes.RotR32(y, 2) ^
-        OpCodes.RotR32(y, 6) ^
-        OpCodes.RotR32(y, 7) ^
-        OpCodes.RotR32(y, 9) ^
-        OpCodes.RotR32(y, 15) ^
-        OpCodes.RotR32(y, 17) ^
-        OpCodes.RotR32(y, 18) ^
-        OpCodes.RotR32(y, 19) ^
-        OpCodes.RotR32(y, 26) ^
-        OpCodes.RotR32(y, 31);
-      return result >>> 0;
+      const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(y, 1), OpCodes.RotR32(y, 2)), OpCodes.RotR32(y, 6)), OpCodes.RotR32(y, 7)), OpCodes.RotR32(y, 9)), OpCodes.RotR32(y, 15)), OpCodes.RotR32(y, 17)), OpCodes.RotR32(y, 18)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 26)), OpCodes.RotR32(y, 31));
+      return OpCodes.ToUint32(result);
     }
 
     static matrixMultiply_692cf280(y) {
-      const result = OpCodes.RotR32(y, 1) ^
-        OpCodes.RotR32(y, 2) ^
-        OpCodes.RotR32(y, 4) ^
-        OpCodes.RotR32(y, 7) ^
-        OpCodes.RotR32(y, 10) ^
-        OpCodes.RotR32(y, 12) ^
-        OpCodes.RotR32(y, 13) ^
-        OpCodes.RotR32(y, 16) ^
-        OpCodes.RotR32(y, 17) ^
-        OpCodes.RotR32(y, 18) ^
-        OpCodes.RotR32(y, 19) ^
-        OpCodes.RotR32(y, 22) ^
-        OpCodes.RotR32(y, 24);
-      return result >>> 0;
+      const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(y, 1), OpCodes.RotR32(y, 2)), OpCodes.RotR32(y, 4)), OpCodes.RotR32(y, 7)), OpCodes.RotR32(y, 10)), OpCodes.RotR32(y, 12)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 16)), OpCodes.RotR32(y, 17)), OpCodes.RotR32(y, 18)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 22)), OpCodes.RotR32(y, 24));
+      return OpCodes.ToUint32(result);
     }
 
     static matrixMultiply_48a54813(y) {
-      const result = OpCodes.RotR32(y, 1) ^
-        OpCodes.RotR32(y, 4) ^
-        OpCodes.RotR32(y, 8) ^
-        OpCodes.RotR32(y, 10) ^
-        OpCodes.RotR32(y, 13) ^
-        OpCodes.RotR32(y, 15) ^
-        OpCodes.RotR32(y, 17) ^
-        OpCodes.RotR32(y, 20) ^
-        OpCodes.RotR32(y, 27) ^
-        OpCodes.RotR32(y, 30) ^
-        OpCodes.RotR32(y, 31);
-      return result >>> 0;
+      const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(y, 1), OpCodes.RotR32(y, 4)), OpCodes.RotR32(y, 8)), OpCodes.RotR32(y, 10)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 15)), OpCodes.RotR32(y, 17)), OpCodes.RotR32(y, 20)), OpCodes.RotR32(y, 27)), OpCodes.RotR32(y, 30)), OpCodes.RotR32(y, 31));
+      return OpCodes.ToUint32(result);
     }
 
     // Matrix multiplication functions for decryption (inverse)
     static matrixMultiply_2037a121(y) {
-      const result = OpCodes.RotR32(y, 2) ^
-        OpCodes.RotR32(y, 10) ^
-        OpCodes.RotR32(y, 11) ^
-        OpCodes.RotR32(y, 13) ^
-        OpCodes.RotR32(y, 14) ^
-        OpCodes.RotR32(y, 15) ^
-        OpCodes.RotR32(y, 16) ^
-        OpCodes.RotR32(y, 18) ^
-        OpCodes.RotR32(y, 23) ^
-        OpCodes.RotR32(y, 26) ^
-        OpCodes.RotR32(y, 31);
-      return result >>> 0;
+      const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(y, 2), OpCodes.RotR32(y, 10)), OpCodes.RotR32(y, 11)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 14)), OpCodes.RotR32(y, 15)), OpCodes.RotR32(y, 16)), OpCodes.RotR32(y, 18)), OpCodes.RotR32(y, 23)), OpCodes.RotR32(y, 26)), OpCodes.RotR32(y, 31));
+      return OpCodes.ToUint32(result);
     }
 
     static matrixMultiply_108ff2a0(y) {
-      const result = OpCodes.RotR32(y, 3) ^
-        OpCodes.RotR32(y, 8) ^
-        OpCodes.RotR32(y, 12) ^
-        OpCodes.RotR32(y, 13) ^
-        OpCodes.RotR32(y, 14) ^
-        OpCodes.RotR32(y, 15) ^
-        OpCodes.RotR32(y, 16) ^
-        OpCodes.RotR32(y, 17) ^
-        OpCodes.RotR32(y, 18) ^
-        OpCodes.RotR32(y, 19) ^
-        OpCodes.RotR32(y, 22) ^
-        OpCodes.RotR32(y, 24) ^
-        OpCodes.RotR32(y, 26);
-      return result >>> 0;
+      const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(y, 3), OpCodes.RotR32(y, 8)), OpCodes.RotR32(y, 12)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 14)), OpCodes.RotR32(y, 15)), OpCodes.RotR32(y, 16)), OpCodes.RotR32(y, 17)), OpCodes.RotR32(y, 18)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 22)), OpCodes.RotR32(y, 24)), OpCodes.RotR32(y, 26));
+      return OpCodes.ToUint32(result);
     }
 
     static matrixMultiply_9054d8c0(y) {
-      const result = y ^
-        OpCodes.RotR32(y, 3) ^
-        OpCodes.RotR32(y, 9) ^
-        OpCodes.RotR32(y, 11) ^
-        OpCodes.RotR32(y, 13) ^
-        OpCodes.RotR32(y, 16) ^
-        OpCodes.RotR32(y, 17) ^
-        OpCodes.RotR32(y, 19) ^
-        OpCodes.RotR32(y, 20) ^
-        OpCodes.RotR32(y, 24) ^
-        OpCodes.RotR32(y, 25);
-      return result >>> 0;
+      const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(y, OpCodes.RotR32(y, 3)), OpCodes.RotR32(y, 9)), OpCodes.RotR32(y, 11)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 16)), OpCodes.RotR32(y, 17)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 20)), OpCodes.RotR32(y, 24)), OpCodes.RotR32(y, 25));
+      return OpCodes.ToUint32(result);
     }
 
     static matrixMultiply_3354b117(y) {
-      const result = OpCodes.RotR32(y, 2) ^
-        OpCodes.RotR32(y, 3) ^
-        OpCodes.RotR32(y, 6) ^
-        OpCodes.RotR32(y, 7) ^
-        OpCodes.RotR32(y, 9) ^
-        OpCodes.RotR32(y, 11) ^
-        OpCodes.RotR32(y, 13) ^
-        OpCodes.RotR32(y, 16) ^
-        OpCodes.RotR32(y, 18) ^
-        OpCodes.RotR32(y, 19) ^
-        OpCodes.RotR32(y, 23) ^
-        OpCodes.RotR32(y, 27) ^
-        OpCodes.RotR32(y, 29) ^
-        OpCodes.RotR32(y, 30) ^
-        OpCodes.RotR32(y, 31);
-      return result >>> 0;
+      const result = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.RotR32(y, 2), OpCodes.RotR32(y, 3)), OpCodes.RotR32(y, 6)), OpCodes.RotR32(y, 7)), OpCodes.RotR32(y, 9)), OpCodes.RotR32(y, 11)), OpCodes.RotR32(y, 13)), OpCodes.RotR32(y, 16)), OpCodes.RotR32(y, 18)), OpCodes.RotR32(y, 19)), OpCodes.RotR32(y, 23)), OpCodes.RotR32(y, 27)), OpCodes.RotR32(y, 29)), OpCodes.RotR32(y, 30)), OpCodes.RotR32(y, 31));
+      return OpCodes.ToUint32(result);
     }
 
     // Property setter for key - validates and sets up key schedule
@@ -336,19 +234,19 @@
       // Derive round keys for all 14 rounds
       for (let round = 0; round < Pyjamask128Instance.ROUNDS; ++round) {
         // Mix the columns
-        const temp = (k0 ^ k1 ^ k2 ^ k3) >>> 0;
-        k0 = (k0 ^ temp) >>> 0;
-        k1 = (k1 ^ temp) >>> 0;
-        k2 = (k2 ^ temp) >>> 0;
-        k3 = (k3 ^ temp) >>> 0;
+        const temp = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(k0, k1), k2), k3));
+        k0 = OpCodes.ToUint32(OpCodes.Xor32(k0, temp));
+        k1 = OpCodes.ToUint32(OpCodes.Xor32(k1, temp));
+        k2 = OpCodes.ToUint32(OpCodes.Xor32(k2, temp));
+        k3 = OpCodes.ToUint32(OpCodes.Xor32(k3, temp));
 
         // Mix the rows and add round constants
         // Note: The specification says rotate left, but reference code uses right rotation
         k0 = Pyjamask128Instance.matrixMultiply_b881b9ca(k0);
-        k0 = (k0 ^ 0x00000080 ^ round) >>> 0;
-        k1 = (OpCodes.RotR32(k1, 8) ^ 0x00006a00) >>> 0;
-        k2 = (OpCodes.RotR32(k2, 15) ^ 0x003f0000) >>> 0;
-        k3 = (OpCodes.RotR32(k3, 18) ^ 0x24000000) >>> 0;
+        k0 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(k0, 0x00000080), round));
+        k1 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotR32(k1, 8), 0x00006a00));
+        k2 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotR32(k2, 15), 0x003f0000));
+        k3 = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.RotR32(k3, 18), 0x24000000));
 
         // Store round key
         roundKeys.push(k0, k1, k2, k3);
@@ -359,34 +257,34 @@
 
     // Pyjamask-128 S-box
     sbox(s0, s1, s2, s3) {
-      s0 = (s0 ^ s3) >>> 0;
-      s3 = (s3 ^ (s0 & s1)) >>> 0;
-      s0 = (s0 ^ (s1 & s2)) >>> 0;
-      s1 = (s1 ^ (s2 & s3)) >>> 0;
-      s2 = (s2 ^ (s0 & s3)) >>> 0;
-      s2 = (s2 ^ s1) >>> 0;
-      s1 = (s1 ^ s0) >>> 0;
-      s3 = (~s3) >>> 0;
-      s2 = (s2 ^ s3) >>> 0;
-      s3 = (s3 ^ s2) >>> 0;
-      s2 = (s2 ^ s3) >>> 0;
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s3));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s0&s1));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s1&s2));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s2&s3));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s0&s3));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s1));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s0));
+      s3 = OpCodes.ToUint32(~s3);
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s3));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s2));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s3));
 
       return [s0, s1, s2, s3];
     }
 
     // Inverse Pyjamask-128 S-box
     sboxInverse(s0, s1, s2, s3) {
-      s2 = (s2 ^ s3) >>> 0;
-      s3 = (s3 ^ s2) >>> 0;
-      s2 = (s2 ^ s3) >>> 0;
-      s3 = (~s3) >>> 0;
-      s1 = (s1 ^ s0) >>> 0;
-      s2 = (s2 ^ s1) >>> 0;
-      s2 = (s2 ^ (s0 & s3)) >>> 0;
-      s1 = (s1 ^ (s2 & s3)) >>> 0;
-      s0 = (s0 ^ (s1 & s2)) >>> 0;
-      s3 = (s3 ^ (s0 & s1)) >>> 0;
-      s0 = (s0 ^ s3) >>> 0;
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s3));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s2));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s3));
+      s3 = OpCodes.ToUint32(~s3);
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s0));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s1));
+      s2 = OpCodes.ToUint32(OpCodes.Xor32(s2, s0&s3));
+      s1 = OpCodes.ToUint32(OpCodes.Xor32(s1, s2&s3));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s1&s2));
+      s3 = OpCodes.ToUint32(OpCodes.Xor32(s3, s0&s1));
+      s0 = OpCodes.ToUint32(OpCodes.Xor32(s0, s3));
 
       return [s0, s1, s2, s3];
     }
@@ -408,10 +306,10 @@
         const rkOffset = round * 4;
 
         // Add round key
-        s0 = (s0 ^ this.roundKeys[rkOffset]) >>> 0;
-        s1 = (s1 ^ this.roundKeys[rkOffset + 1]) >>> 0;
-        s2 = (s2 ^ this.roundKeys[rkOffset + 2]) >>> 0;
-        s3 = (s3 ^ this.roundKeys[rkOffset + 3]) >>> 0;
+        s0 = OpCodes.ToUint32((s0^this.roundKeys[rkOffset]));
+        s1 = OpCodes.ToUint32((s1^this.roundKeys[rkOffset + 1]));
+        s2 = OpCodes.ToUint32((s2^this.roundKeys[rkOffset + 2]));
+        s3 = OpCodes.ToUint32((s3^this.roundKeys[rkOffset + 3]));
 
         // Apply S-box
         [s0, s1, s2, s3] = this.sbox(s0, s1, s2, s3);
@@ -425,10 +323,10 @@
 
       // Final round key addition
       const finalRkOffset = Pyjamask128Instance.ROUNDS * 4;
-      s0 = (s0 ^ this.roundKeys[finalRkOffset]) >>> 0;
-      s1 = (s1 ^ this.roundKeys[finalRkOffset + 1]) >>> 0;
-      s2 = (s2 ^ this.roundKeys[finalRkOffset + 2]) >>> 0;
-      s3 = (s3 ^ this.roundKeys[finalRkOffset + 3]) >>> 0;
+      s0 = OpCodes.ToUint32((s0^this.roundKeys[finalRkOffset]));
+      s1 = OpCodes.ToUint32((s1^this.roundKeys[finalRkOffset + 1]));
+      s2 = OpCodes.ToUint32((s2^this.roundKeys[finalRkOffset + 2]));
+      s3 = OpCodes.ToUint32((s3^this.roundKeys[finalRkOffset + 3]));
 
       // Store ciphertext (big-endian)
       const output = [];
@@ -454,10 +352,10 @@
 
       // Initial round key subtraction (final round key)
       const finalRkOffset = Pyjamask128Instance.ROUNDS * 4;
-      s0 = (s0 ^ this.roundKeys[finalRkOffset]) >>> 0;
-      s1 = (s1 ^ this.roundKeys[finalRkOffset + 1]) >>> 0;
-      s2 = (s2 ^ this.roundKeys[finalRkOffset + 2]) >>> 0;
-      s3 = (s3 ^ this.roundKeys[finalRkOffset + 3]) >>> 0;
+      s0 = OpCodes.ToUint32((s0^this.roundKeys[finalRkOffset]));
+      s1 = OpCodes.ToUint32((s1^this.roundKeys[finalRkOffset + 1]));
+      s2 = OpCodes.ToUint32((s2^this.roundKeys[finalRkOffset + 2]));
+      s3 = OpCodes.ToUint32((s3^this.roundKeys[finalRkOffset + 3]));
 
       // Perform all 14 decryption rounds (in reverse)
       for (let round = Pyjamask128Instance.ROUNDS - 1; round >= 0; --round) {
@@ -472,10 +370,10 @@
 
         // Subtract round key
         const rkOffset = round * 4;
-        s0 = (s0 ^ this.roundKeys[rkOffset]) >>> 0;
-        s1 = (s1 ^ this.roundKeys[rkOffset + 1]) >>> 0;
-        s2 = (s2 ^ this.roundKeys[rkOffset + 2]) >>> 0;
-        s3 = (s3 ^ this.roundKeys[rkOffset + 3]) >>> 0;
+        s0 = OpCodes.ToUint32((s0^this.roundKeys[rkOffset]));
+        s1 = OpCodes.ToUint32((s1^this.roundKeys[rkOffset + 1]));
+        s2 = OpCodes.ToUint32((s2^this.roundKeys[rkOffset + 2]));
+        s3 = OpCodes.ToUint32((s3^this.roundKeys[rkOffset + 3]));
       }
 
       // Store plaintext (big-endian)

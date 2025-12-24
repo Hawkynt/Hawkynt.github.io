@@ -163,10 +163,10 @@
 
         // Add header with maxOrder and original size
         compressed.push(this.maxOrder);
-        compressed.push(data.length & 0xFF);
-        compressed.push((data.length >>> 8) & 0xFF);
-        compressed.push((data.length >>> 16) & 0xFF);
-        compressed.push((data.length >>> 24) & 0xFF);
+        compressed.push(OpCodes.ToByte(data.length));
+        compressed.push(OpCodes.ToByte(OpCodes.Shr32(data.length, 8)));
+        compressed.push(OpCodes.ToByte(OpCodes.Shr32(data.length, 16)));
+        compressed.push(OpCodes.ToByte(OpCodes.Shr32(data.length, 24)));
 
         // Compress each byte
         for (let i = 0; i < data.length; i++) {
@@ -196,10 +196,7 @@
 
         // Parse header
         const maxOrder = data[0];
-        const originalSize = data[1] | 
-                            (data[2] << 8) | 
-                            (data[3] << 16) | 
-                            (data[4] << 24);
+        const originalSize = data[1]|OpCodes.Shl32(data[2], 8)|OpCodes.Shl32(data[3], 16)|OpCodes.Shl32(data[4], 24);
 
         // Reset decompression state
         this.maxOrder = maxOrder;
@@ -353,7 +350,7 @@
       _stringToBytes(str) {
         const bytes = [];
         for (let i = 0; i < str.length; i++) {
-          bytes.push(str.charCodeAt(i) & 0xFF);
+          bytes.push(str.charCodeAt(i)&0xFF);
         }
         return bytes;
       }

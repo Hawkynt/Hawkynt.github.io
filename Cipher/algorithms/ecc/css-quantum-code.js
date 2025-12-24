@@ -68,8 +68,8 @@
 
       this.references = [
         new LinkItem("Steane's Original Paper (1996)", "https://arxiv.org/abs/quant-ph/9605011"),
-        new LinkItem("Calderbank & Shor (1996)", "https://arxiv.org/abs/quant-ph/9512032"),
-        new LinkItem("Nielsen & Chuang - Quantum Computation", "https://doi.org/10.1017/CBO9780511976667"),
+        new LinkItem("Calderbank&Shor (1996)", "https://arxiv.org/abs/quant-ph/9512032"),
+        new LinkItem("Nielsen&Chuang - Quantum Computation", "https://doi.org/10.1017/CBO9780511976667"),
         new LinkItem("Preskill - Quantum Error Correction Notes", "http://theory.caltech.edu/~preskill/ph219/chap7.pdf"),
         new LinkItem("Gottesman - Stabilizer Codes", "https://arxiv.org/abs/quant-ph/9705052")
       ];
@@ -295,7 +295,7 @@
      */
     syndromeToErrorPosition(syndrome) {
       // Convert syndrome to integer
-      const syndromeValue = OpCodes.OrN(OpCodes.OrN(syndrome[0], OpCodes.Shl32(syndrome[1], 1)), OpCodes.Shl32(syndrome[2], 2));
+      const syndromeValue = OpCodes.OrN(OpCodes.OrN(syndrome[0], OpCodes.ShiftLn(syndrome[1], 1)), OpCodes.ShiftLn(syndrome[2], 2));
 
       if (syndromeValue === 0) {
         return -1; // No error
@@ -330,7 +330,7 @@
       }
 
       const syndrome = this.measureSyndrome(data);
-      const syndromeValue = OpCodes.OrN(OpCodes.OrN(syndrome[0], OpCodes.Shl32(syndrome[1], 1)), OpCodes.Shl32(syndrome[2], 2));
+      const syndromeValue = OpCodes.OrN(OpCodes.OrN(syndrome[0], OpCodes.ShiftLn(syndrome[1], 1)), OpCodes.ShiftLn(syndrome[2], 2));
 
       return syndromeValue !== 0;
     }

@@ -391,7 +391,7 @@
     _encryptPair(L, R) {
       // 16 rounds of Feistel network
       // Reference: bcrypt.js _encipher function (unrolled for clarity)
-      // Note: Output order matches bcrypt.js: lr[0] = r ^ P[17], lr[1] = l
+      // Note: Output order matches bcrypt.js: lr[0] = r^P[17], lr[1] = l
 
       L = OpCodes.ToUint32(OpCodes.XorN(L, this.pBox[0]));
 

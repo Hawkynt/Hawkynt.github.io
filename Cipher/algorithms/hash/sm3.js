@@ -48,12 +48,12 @@
 
   // ===== SM3 PERMUTATION FUNCTIONS =====
 
-  // P0 permutation: X ^ ROL(X, 9) ^ ROL(X, 17)
+  // P0 permutation: X^ROL(X, 9)^ROL(X, 17)
   function P0(X) {
     return OpCodes.XorN(X, OpCodes.XorN(OpCodes.RotL32(X, 9), OpCodes.RotL32(X, 17)));
   }
 
-  // P1 permutation: X ^ ROL(X, 15) ^ ROL(X, 23)
+  // P1 permutation: X^ROL(X, 15)^ROL(X, 23)
   function P1(X) {
     return OpCodes.XorN(X, OpCodes.XorN(OpCodes.RotL32(X, 15), OpCodes.RotL32(X, 23)));
   }
@@ -277,7 +277,7 @@
         const TJ = j < 16 ? 0x79CC4519 : 0x7A879D8A;
         const TJrot = OpCodes.RotL32(TJ, j % 32);
 
-        // Compute W'[j] = W[j] ^ W[j+4]
+        // Compute W'[j] = W[j]^W[j+4]
         const Wj = W[j];
         const Wjp = OpCodes.XorN(Wj, W[j + 4]);
 

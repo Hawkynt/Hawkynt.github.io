@@ -30,10 +30,10 @@
  * - Hardware testing applications
  *
  * References:
- * - Goresky & Klapper: "Feedback Registers Based on Ramified Extensions of the 2-Adic Numbers" (1994)
- * - Goresky & Klapper: "Arithmetic Crosscorrelations of Feedback with Carry Shift Register Sequences" (1997)
- * - Klapper & Goresky: "Cryptanalysis Based on 2-Adic Rational Approximation" (1995)
- * - Arnault & Berger: "F-FCSR: Design of a New Class of Stream Ciphers" (2005)
+ * - Goresky&Klapper: "Feedback Registers Based on Ramified Extensions of the 2-Adic Numbers" (1994)
+ * - Goresky&Klapper: "Arithmetic Crosscorrelations of Feedback with Carry Shift Register Sequences" (1997)
+ * - Klapper&Goresky: "Cryptanalysis Based on 2-Adic Rational Approximation" (1995)
+ * - Arnault&Berger: "F-FCSR: Design of a New Class of Stream Ciphers" (2005)
  *
  * AlgorithmFramework Format
  * (c)2006-2025 Hawkynt
@@ -93,19 +93,19 @@
       // Documentation
       this.documentation = [
         new LinkItem(
-          "Goresky & Klapper: Feedback Registers Based on Ramified Extensions (1994)",
+          "Goresky&Klapper: Feedback Registers Based on Ramified Extensions (1994)",
           "https://link.springer.com/chapter/10.1007/3-540-58691-1_52"
         ),
         new LinkItem(
-          "Goresky & Klapper: Arithmetic Crosscorrelations of FCSR Sequences (1997)",
+          "Goresky&Klapper: Arithmetic Crosscorrelations of FCSR Sequences (1997)",
           "https://ieeexplore.ieee.org/document/575854"
         ),
         new LinkItem(
-          "Klapper & Goresky: Cryptanalysis Based on 2-Adic Rational Approximation (1995)",
+          "Klapper&Goresky: Cryptanalysis Based on 2-Adic Rational Approximation (1995)",
           "https://link.springer.com/chapter/10.1007/3-540-44750-4_20"
         ),
         new LinkItem(
-          "Arnault & Berger: F-FCSR: Design of a New Class of Stream Ciphers (2005)",
+          "Arnault&Berger: F-FCSR: Design of a New Class of Stream Ciphers (2005)",
           "https://link.springer.com/chapter/10.1007/11502760_2"
         ),
         new LinkItem(
@@ -116,11 +116,11 @@
 
       this.references = [
         new LinkItem(
-          "Goresky & Klapper: Pseudo-noise sequences based on algebraic feedback shift registers (2006)",
+          "Goresky&Klapper: Pseudo-noise sequences based on algebraic feedback shift registers (2006)",
           "https://ieeexplore.ieee.org/document/1626204"
         ),
         new LinkItem(
-          "Klapper & Xu: Register synthesis for algebraic feedback shift registers (2007)",
+          "Klapper&Xu: Register synthesis for algebraic feedback shift registers (2007)",
           "https://www.sciencedirect.com/science/article/pii/S1071579706000402"
         )
       ];
@@ -266,7 +266,7 @@
       }
 
       // Extract carry bit from LSB of seed (matching C# line 12)
-      this._carryBit = OpCodes.AndN(seedBytes[0], 1);
+      this._carryBit = OpCodes.And32(seedBytes[0], 1);
 
       this._ready = true;
     }
@@ -307,27 +307,27 @@
      */
     _calculateFeedback() {
       // Perform AND operation on both words
-      const maskedLow = OpCodes.AndN(OpCodes.ToUint32(this._stateLow), OpCodes.ToUint32(this._connectionLow));
-      const maskedHigh = OpCodes.AndN(OpCodes.ToUint32(this._stateHigh), OpCodes.ToUint32(this._connectionHigh));
+      const maskedLow = OpCodes.And32(this._stateLow, this._connectionLow);
+      const maskedHigh = OpCodes.And32(this._stateHigh, this._connectionHigh);
 
       // XOR reduction on low word
       let resultLow = maskedLow;
-      resultLow = OpCodes.XorN(resultLow, OpCodes.Shr32(resultLow, 16));
-      resultLow = OpCodes.XorN(resultLow, OpCodes.Shr32(resultLow, 8));
-      resultLow = OpCodes.XorN(resultLow, OpCodes.Shr32(resultLow, 4));
-      resultLow = OpCodes.XorN(resultLow, OpCodes.Shr32(resultLow, 2));
-      resultLow = OpCodes.XorN(resultLow, OpCodes.Shr32(resultLow, 1));
+      resultLow = OpCodes.Xor32(resultLow, OpCodes.Shr32(resultLow, 16));
+      resultLow = OpCodes.Xor32(resultLow, OpCodes.Shr32(resultLow, 8));
+      resultLow = OpCodes.Xor32(resultLow, OpCodes.Shr32(resultLow, 4));
+      resultLow = OpCodes.Xor32(resultLow, OpCodes.Shr32(resultLow, 2));
+      resultLow = OpCodes.Xor32(resultLow, OpCodes.Shr32(resultLow, 1));
 
       // XOR reduction on high word
       let resultHigh = maskedHigh;
-      resultHigh = OpCodes.XorN(resultHigh, OpCodes.Shr32(resultHigh, 16));
-      resultHigh = OpCodes.XorN(resultHigh, OpCodes.Shr32(resultHigh, 8));
-      resultHigh = OpCodes.XorN(resultHigh, OpCodes.Shr32(resultHigh, 4));
-      resultHigh = OpCodes.XorN(resultHigh, OpCodes.Shr32(resultHigh, 2));
-      resultHigh = OpCodes.XorN(resultHigh, OpCodes.Shr32(resultHigh, 1));
+      resultHigh = OpCodes.Xor32(resultHigh, OpCodes.Shr32(resultHigh, 16));
+      resultHigh = OpCodes.Xor32(resultHigh, OpCodes.Shr32(resultHigh, 8));
+      resultHigh = OpCodes.Xor32(resultHigh, OpCodes.Shr32(resultHigh, 4));
+      resultHigh = OpCodes.Xor32(resultHigh, OpCodes.Shr32(resultHigh, 2));
+      resultHigh = OpCodes.Xor32(resultHigh, OpCodes.Shr32(resultHigh, 1));
 
       // Combine both results
-      return OpCodes.AndN(OpCodes.XorN(resultLow, resultHigh), 1);
+      return OpCodes.And32(OpCodes.Xor32(resultLow, resultHigh), 1);
     }
 
     /**
@@ -337,10 +337,10 @@
      * FCSR algorithm (from C# lines 24-36):
      * 1. Compute feedback bit from state AND connection integer
      * 2. Add feedback bit + carry bit
-     * 3. Extract new carry from bit 1 of sum (sum >> 1)
+     * 3. Extract new carry from bit 1 of sum (OpCodes.Shr32(sum, 1))
      * 4. Output current LSB of state
      * 5. Shift state right by 1
-     * 6. Insert (sum & 1) at bit 63
+     * 6. Insert (sum&1) at bit 63
      */
     _stepFCSR() {
       // Calculate feedback bit from current state (C# line 25)
@@ -350,19 +350,19 @@
       const feedbackCarrySum = feedbackBit + this._carryBit;
 
       // Extract new carry bit (bit 1 of sum) (C# line 27)
-      this._carryBit = OpCodes.AndN(OpCodes.Shr32(feedbackCarrySum, 1), 1);
+      this._carryBit = OpCodes.And32(OpCodes.Shr32(feedbackCarrySum, 1), 1);
 
       // Output bit is current LSB of state (C# line 30)
-      const outputBit = OpCodes.AndN(this._stateLow, 1);
+      const outputBit = OpCodes.And32(this._stateLow, 1);
 
       // Shift state right: move LSB of high into MSB of low (C# line 31)
-      const carryFromHigh = OpCodes.AndN(this._stateHigh, 1);
-      this._stateLow = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shr32(this._stateLow, 1), OpCodes.Shl32(carryFromHigh, 31)));
+      const carryFromHigh = OpCodes.And32(this._stateHigh, 1);
+      this._stateLow = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shr32(this._stateLow, 1), OpCodes.Shl32(carryFromHigh, 31)));
       this._stateHigh = OpCodes.ToUint32(OpCodes.Shr32(this._stateHigh, 1));
 
-      // Insert (feedbackCarrySum & 1) at bit 63 (C# line 34)
-      const insertBit = OpCodes.AndN(feedbackCarrySum, 1);
-      this._stateHigh = OpCodes.ToUint32(OpCodes.OrN(this._stateHigh, OpCodes.Shl32(insertBit, 31)));
+      // Insert (feedbackCarrySum&1) at bit 63 (C# line 34)
+      const insertBit = OpCodes.And32(feedbackCarrySum, 1);
+      this._stateHigh = OpCodes.ToUint32(OpCodes.Or32(this._stateHigh, OpCodes.Shl32(insertBit, 31)));
 
       return outputBit;
     }
@@ -387,7 +387,7 @@
         // Generate 8 bits for this byte (C# line 19: qword |= (ulong)GetNextBit() << i)
         for (let bitIdx = 0; bitIdx < 8; ++bitIdx) {
           const bit = this._stepFCSR();
-          byte = OpCodes.OrN(byte, OpCodes.Shl32(bit, bitIdx));
+          byte = OpCodes.Or32(byte, OpCodes.Shl32(bit, bitIdx));
         }
         result[byteIdx] = byte;
       }

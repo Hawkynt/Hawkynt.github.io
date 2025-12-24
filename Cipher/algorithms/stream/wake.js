@@ -46,7 +46,7 @@
    *
    * Implementation note: This cipher requires signed 32-bit integer arithmetic
    * in several places (GenKey function) to match the original C++ reference.
-   * The | 0 conversions are intentional for compatibility with the reference.
+   * The|0 conversions are intentional for compatibility with the reference.
    */
   class WAKE_Base extends StreamCipherAlgorithm {
     constructor(name, isBigEndian) {
@@ -232,22 +232,23 @@
      * Generates the 257-word table used by M() function
      *
      * IMPORTANT: The original C++ implementation uses signed 32-bit integers
-     * with arithmetic right shift (>>). JavaScript requires explicit conversion
-     * to signed integers using | 0 to match this behavior.
+     * with arithmetic right shift. JavaScript requires explicit conversion
+     * to signed integers using|0 to match this behavior.
      */
     _genKey(k0, k1, k2, k3) {
-      // Initialize first 4 entries (using >>> 0 for unsigned)
-      this.t[0] = k0 >>> 0;
-      this.t[1] = k1 >>> 0;
-      this.t[2] = k2 >>> 0;
-      this.t[3] = k3 >>> 0;
+      // Initialize first 4 entries (using ToUint32 for unsigned)
+      this.t[0] = OpCodes.ToUint32(k0);
+      this.t[1] = OpCodes.ToUint32(k1);
+      this.t[2] = OpCodes.ToUint32(k2);
+      this.t[3] = OpCodes.ToUint32(k3);
 
       // Fill table (lines 42-46)
       // CRITICAL: x must be signed for arithmetic shift to match C++ behavior
       for (var p = 4; p < 256; p++) {
-        var x = (this.t[p - 4] + this.t[p - 1]) | 0; // Signed 32-bit
-        // Arithmetic shift >> preserves sign, then XOR with TT lookup
-        this.t[p] = ((x >> 3) ^ this.TT[x & 7]) >>> 0;
+        var x = OpCodes.ToInt(OpCodes.Add32(this.t[p - 4], this.t[p - 1])); // Signed 32-bit
+        // Arithmetic right shift by 3 preserves sign, then XOR with TT lookup
+        // NOTE: Using OpCodes.Shr32Signed for signed arithmetic shift (OpCodes.Shr32 is unsigned)
+        this.t[p] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Shr32Signed(x, 3), this.TT[OpCodes.And32(x, 7)]));
       }
 
       // Mix first entries (lines 48-49)
@@ -257,25 +258,25 @@
 
       // Change top byte to permutation (lines 50-54)
       // CRITICAL: x and z must be signed integers for correct overflow behavior
-      var x = this.t[33] | 0;
-      var z = (this.t[59] | 0x01000001) | 0;
-      z = (z & 0xff7fffff) | 0;
+      var x = OpCodes.ToInt(this.t[33]);
+      var z = OpCodes.ToInt(OpCodes.Or32(this.t[59], 0x01000001));
+      z = OpCodes.ToInt(OpCodes.And32(z, 0xff7fffff));
 
       for (var p = 0; p < 256; p++) {
-        x = ((x & 0xff7fffff) + z) | 0; // Signed addition with mask
-        this.t[p] = ((this.t[p] & 0x00ffffff) ^ x) >>> 0;
+        x = OpCodes.ToInt(OpCodes.Add32(OpCodes.And32(x, 0xff7fffff), z)); // Signed addition with mask
+        this.t[p] = OpCodes.ToUint32(OpCodes.Xor32(OpCodes.And32(this.t[p], 0x00ffffff), x));
       }
 
       // Further permutation changes (lines 56-60)
       // Exact translation of C++:
-      // t[p] = t[y = byte(t[p ^ y] ^ y)];
+      // t[p] = t[y = byte(t[p^y]^y)];
       // t[y] = t[p + 1];
       this.t[256] = this.t[0];
-      var y = x & 0xFF;
+      var y = OpCodes.And32(x, 0xFF);
 
       for (var p = 0; p < 256; p++) {
-        // y = byte(t[p ^ y] ^ y)
-        y = ((this.t[(p ^ y) & 0xFF] ^ y) & 0xFF);
+        // y = byte(t[p XOR y] XOR y)
+        y = OpCodes.ToByte(OpCodes.Xor32(this.t[OpCodes.ToByte(OpCodes.Xor32(p, y))], y));
         // t[p] = t[y]
         var temp = this.t[y];
         // t[y] = t[p + 1]
@@ -287,11 +288,11 @@
 
     /**
      * M() mixing function from Crypto++ wake.cpp lines 27-31
-     * M(x, y) = ((x + y) >> 8) ^ t[(x + y) & 0xFF]
+     * M(x, y) = ((x + y) right shift 8) XOR t[(x + y)&0xFF]
      */
     _M(x, y) {
       var w = OpCodes.Add32(x, y);
-      return OpCodes.Shr32(w, 8) ^ this.t[w & 0xFF];
+      return OpCodes.Xor32(OpCodes.Shr32(w, 8), this.t[OpCodes.ToByte(w)]);
     }
 
     /**
@@ -307,7 +308,7 @@
       this.r5 = this._M(this.r5, this.r4);
       this.r6 = this._M(this.r6, this.r5);
 
-      return output >>> 0;
+      return OpCodes.ToUint32(output);
     }
 
     /**
@@ -360,7 +361,7 @@
       var output = [];
       for (var i = 0; i < this.inputBuffer.length; i++) {
         var keystreamByte = this._getNextKeystreamByte();
-        output.push(this.inputBuffer[i] ^ keystreamByte);
+        output.push(OpCodes.Xor32(this.inputBuffer[i], keystreamByte));
       }
 
       this.inputBuffer = [];

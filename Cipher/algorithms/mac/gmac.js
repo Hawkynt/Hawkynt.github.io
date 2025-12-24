@@ -452,7 +452,7 @@
           }
 
           // Right shift v across all 16 bytes with carry propagation
-          // These manual >>> 1 operations are essential for GF(2^128) multiplication
+          // These OpCodes.Shr32(manual, 1) operations are essential for GF(2^128) multiplication
           // and cannot be replaced - OpCodes has no multi-byte shift-with-carry function
           const carry = OpCodes.AndN(v[15], 1);
           for (let k = 15; k > 0; k--) {

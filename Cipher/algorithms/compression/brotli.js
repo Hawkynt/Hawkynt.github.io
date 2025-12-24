@@ -799,7 +799,7 @@
 
     decodeInsertCopy(code) {
       // RFC 7932 Section 4: Insert and copy length encoding
-      // Command code format: (insertLenCode << 6) | copyLenCode | (distanceCode << 3)
+      // Command code format: (OpCodes.Shl32(insertLenCode, 6))|copyLenCode|(OpCodes.Shl32(distanceCode, 3))
 
       const insertLenCode = OpCodes.Shr16(code, 6);
       const copyLenCode = OpCodes.ToByte(OpCodes.Shr16(code, 3)&7);

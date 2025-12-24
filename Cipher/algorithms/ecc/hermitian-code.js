@@ -92,7 +92,7 @@
       // Generator matrix constructed from evaluating functions at 8 rational points
       // Each symbol is from GF(4) = {0, 1, α, α+1} represented as {0, 1, 2, 3}
       // Based on basis functions {1, x, y} evaluated at rational points
-      // Reference: "Algebraic Geometry Codes from Hermitian Curves" - Garcia & Stichtenoth
+      // Reference: "Algebraic Geometry Codes from Hermitian Curves" - Garcia&Stichtenoth
       this.tests = [
         {
           text: "Hermitian [8,3] all zeros codeword",

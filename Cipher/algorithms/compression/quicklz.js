@@ -102,8 +102,8 @@
 
       // Test vectors - Generated from QuickLZ Level 1 format specification
       // Format: [9-byte header][Control word][Encoded data]
-      // Header: flags(1) | compressed_size(4,LE) | decompressed_size(4,LE)
-      // Control word: finalized as (cword >> 1) | (1 << 31), contains literal(0) or match(1) bits
+      // Header: flags(1)|compressed_size(4,LE)|decompressed_size(4,LE)
+      // Control word: finalized as (cword >> 1)|(1 << 31), contains literal(0) or match(1) bits
       this.tests = [
         {
           text: "Empty data",
@@ -227,7 +227,7 @@
 
       let ip = 0;           // Input position
       let cwordPos = output.length;  // Control word position
-      let cword = 1 << 31;  // Control word value - marker starts at bit 31
+      let cword = OpCodes.Shl32(1, 31);  // Control word value - marker starts at bit 31
       let cwordVal = cword; // Working value that shifts down
 
       // Reserve space for control word
@@ -235,14 +235,14 @@
 
       while (ip < inputLength) {
         // Check if marker has reached bit 0 (need new control word)
-        if ((cwordVal & 1) === 1) {
+        if (OpCodes.And32(cwordVal, 1) === 1) {
           // Write current control word with finalization
-          const finalCword = (cword >>> 1) | (1 << 31);
+          const finalCword = OpCodes.Or32(OpCodes.Shr32(cword, 1), OpCodes.Shl32(1, 31));
           this._updateU32LE(output, cwordPos, finalCword);
           // Start new control word
           cwordPos = output.length;
           this._writeU32LE(output, 0);
-          cword = 1 << 31;
+          cword = OpCodes.Shl32(1, 31);
           cwordVal = cword;
         }
 
@@ -282,7 +282,7 @@
 
         if (matchLen >= this.MIN_MATCH) {
           // Encode match - set corresponding bit in cword (at marker position)
-          cword = cword | cwordVal;
+          cword = OpCodes.Or32(cword, cwordVal);
           this._encodeMatch(output, matchHash, matchLen);
           ip += matchLen;
         } else {
@@ -292,11 +292,11 @@
         }
 
         // Shift marker down by 1 bit
-        cwordVal = cwordVal >>> 1;
+        cwordVal = OpCodes.Shr32(cwordVal, 1);
       }
 
       // Write final control word with finalization
-      const finalCword = (cword >>> 1) | (1 << 31);
+      const finalCword = OpCodes.Or32(OpCodes.Shr32(cword, 1), OpCodes.Shl32(1, 31));
       this._updateU32LE(output, cwordPos, finalCword);
 
       // Update compressed size in header
@@ -345,11 +345,11 @@
         ip += 4;
 
         // Process tokens - continue until bit 0 becomes 1 (marker)
-        while ((cword & 1) !== 1 && output.length < headerInfo.decompressedSize) {
+        while (OpCodes.And32(cword, 1) !== 1 && output.length < headerInfo.decompressedSize) {
           if (ip >= input.length) break;
 
           // Check bit 0 for literal (0) or match (1)
-          if ((cword & 1) !== 0) {
+          if (OpCodes.And32(cword, 1) !== 0) {
             // Match - read encoded match
             const matchInfo = this._decodeMatch(input, ip, hashTable, output);
             if (!matchInfo) break;
@@ -393,7 +393,7 @@
           }
 
           // Shift control word right by 1 bit to get next control bit
-          cword = cword >>> 1;
+          cword = OpCodes.Shr32(cword, 1);
         }
       }
 
@@ -404,7 +404,7 @@
     // ===== HELPER METHODS =====
 
     /**
-     * QuickLZ Level 1 hash function: ((i >> 12) ^ i) & (QLZ_HASH_VALUES - 1)
+     * QuickLZ Level 1 hash function: ((OpCodes.Shr32(i, 12))^i)&(QLZ_HASH_VALUES - 1)
      */
     _hash(data, pos) {
       if (pos + 2 >= data.length) return 0;
@@ -413,9 +413,9 @@
       const fetch = OpCodes.Pack32LE(data[pos], data[pos + 1], data[pos + 2], 0);
       const shifted = OpCodes.Shr32(fetch, 12);
       // XOR the shifted value with original
-      const xored = (shifted ^ fetch) >>> 0;
+      const xored = OpCodes.Xor32(shifted, fetch);
       // Mask to hash table size
-      return xored & this.HASH_MASK;
+      return OpCodes.And32(xored, this.HASH_MASK);
     }
 
     /**
@@ -429,18 +429,18 @@
         // Short/medium match: 2 bytes
         // Lower 4 bits: length - 2
         // Upper 12 bits: hash value
-        const masked = hash & 0x0FFF;
+        const masked = OpCodes.And32(hash, 0x0FFF);
         const shifted = OpCodes.Shl16(masked, 4);
-        const encoded = shifted | (length - 2);
+        const encoded = OpCodes.Or32(shifted, length - 2);
         output.push(OpCodes.ToByte(encoded));
         output.push(OpCodes.ToByte(OpCodes.Shr16(encoded, 8)));
       } else {
         // Long match: 3 bytes
-        // Byte 0-1: hash (lower 4 bits) | 0xF (upper 4 bits)
+        // Byte 0-1: hash (lower 4 bits)|0xF (upper 4 bits)
         // Byte 2: length - 18
-        const masked = hash & 0x0FFF;
+        const masked = OpCodes.And32(hash, 0x0FFF);
         const shifted = OpCodes.Shl16(masked, 4);
-        const encoded = shifted | 0x0F;
+        const encoded = OpCodes.Or32(shifted, 0x0F);
         output.push(OpCodes.ToByte(encoded));
         output.push(OpCodes.ToByte(OpCodes.Shr16(encoded, 8)));
         output.push(OpCodes.ToByte(length - 18));
@@ -456,10 +456,10 @@
 
       const byte0 = input[pos];
       const byte1 = input[pos + 1];
-      const encoded = byte0 | (byte1 << 8);
+      const encoded = OpCodes.Or32(byte0, OpCodes.Shl32(byte1, 8));
 
-      const lengthField = encoded & 0x0F;
-      const hash = (encoded >> 4) & 0x0FFF;
+      const lengthField = OpCodes.And32(encoded, 0x0F);
+      const hash = OpCodes.And32(OpCodes.Shr32(encoded, 4), 0x0FFF);
 
       let length;
       let nextPos;
@@ -488,7 +488,7 @@
     _writeHeader(output, decompressedSize) {
       // Flags byte: bit 0=compressed, bit 1=long header, bits 2-3=level, bit 6=always set
       const levelShifted = OpCodes.Shl8(this.COMPRESSION_LEVEL, this.FLAG_LEVEL_SHIFT);
-      const flags = this.FLAG_COMPRESSED | this.FLAG_HEADER_LONG | levelShifted | this.FLAG_RESERVED;
+      const flags = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(this.FLAG_COMPRESSED, this.FLAG_HEADER_LONG), levelShifted), this.FLAG_RESERVED);
       output.push(flags);
 
       // Compressed size (4 bytes, LE) - placeholder, will be updated
@@ -513,8 +513,8 @@
      */
     _readHeader(input) {
       const flags = input[0];
-      const isCompressed = (flags & this.FLAG_COMPRESSED) !== 0;
-      const isLongHeader = (flags & this.FLAG_HEADER_LONG) !== 0;
+      const isCompressed = OpCodes.And32(flags, this.FLAG_COMPRESSED) !== 0;
+      const isLongHeader = OpCodes.And32(flags, this.FLAG_HEADER_LONG) !== 0;
 
       let compressedSize, decompressedSize, headerSize;
 
@@ -526,7 +526,7 @@
       } else {
         // Short header: 3 bytes
         headerSize = 3;
-        compressedSize = input[1] | (input[2] << 8);
+        compressedSize = OpCodes.Or32(input[1], OpCodes.Shl32(input[2], 8));
         decompressedSize = compressedSize; // Approximation for short header
       }
 
@@ -543,30 +543,27 @@
      * Write 32-bit little-endian value
      */
     _writeU32LE(output, value) {
-      output.push(value & 0xFF);
-      output.push((value >> 8) & 0xFF);
-      output.push((value >> 16) & 0xFF);
-      output.push((value >> 24) & 0xFF);
+      output.push(OpCodes.ToByte(value));
+      output.push(OpCodes.ToByte(OpCodes.Shr32(value, 8)));
+      output.push(OpCodes.ToByte(OpCodes.Shr32(value, 16)));
+      output.push(OpCodes.ToByte(OpCodes.Shr32(value, 24)));
     }
 
     /**
      * Update 32-bit little-endian value at position
      */
     _updateU32LE(output, pos, value) {
-      output[pos] = value & 0xFF;
-      output[pos + 1] = (value >> 8) & 0xFF;
-      output[pos + 2] = (value >> 16) & 0xFF;
-      output[pos + 3] = (value >> 24) & 0xFF;
+      output[pos] = OpCodes.ToByte(value);
+      output[pos + 1] = OpCodes.ToByte(OpCodes.Shr32(value, 8));
+      output[pos + 2] = OpCodes.ToByte(OpCodes.Shr32(value, 16));
+      output[pos + 3] = OpCodes.ToByte(OpCodes.Shr32(value, 24));
     }
 
     /**
      * Read 32-bit little-endian value
      */
     _readU32LE(input, pos) {
-      return input[pos] |
-             (input[pos + 1] << 8) |
-             (input[pos + 2] << 16) |
-             (input[pos + 3] << 24);
+      return OpCodes.Pack32LE(input[pos], input[pos + 1], input[pos + 2], input[pos + 3]);
     }
 
     /**

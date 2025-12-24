@@ -191,20 +191,20 @@
 
       // Simple mixing based on GOST principles
       for (let i = 0; i < 64; i++) {
-        result[i] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(h[i], m[i]), (h[i] + m[i])), (i * 13)), 0xFF);
+        result[i] = OpCodes.ToByte(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(h[i], m[i]), OpCodes.ToUint32(h[i] + m[i])), i * 13));
       }
 
       // Apply simple transformations
       for (let round = 0; round < 12; round++) {
         // Simple substitution
         for (let i = 0; i < 64; i++) {
-          result[i] = OpCodes.AndN(OpCodes.XorN(OpCodes.XorN((result[i] * 251), (result[(i + 1) % 64] * 13)), round), 0xFF);
+          result[i] = OpCodes.ToByte(OpCodes.Xor32(OpCodes.Xor32(OpCodes.ToUint32(result[i] * 251), OpCodes.ToUint32(result[(i + 1) % 64] * 13)), round));
         }
 
         // Simple permutation
         const temp = OpCodes.CopyArray(result);
         for (let i = 0; i < 64; i++) {
-          result[i] = temp[(i * 7 + round) % 64];
+          result[i] = temp[OpCodes.ToUint32((i * 7 + round) % 64)];
         }
       }
 

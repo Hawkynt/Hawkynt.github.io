@@ -228,17 +228,17 @@
         );
 
         // Initialize state using the same algorithm as C# version
-        const s0 = (low ^ 0xAAD26B49) >>> 0;
-        const s1 = (high ^ 0xF7DCEFDD) >>> 0;
-        const t0 = (1099087573 * s0) >>> 0;
-        const t1 = (2591861531 * s1) >>> 0;
+        const s0 = OpCodes.Xor32(low, 0xAAD26B49);
+        const s1 = OpCodes.Xor32(high, 0xF7DCEFDD);
+        const t0 = OpCodes.ToUint32((1099087573 * s0));
+        const t1 = OpCodes.ToUint32((2591861531 * s1));
 
-        this._weyl = (6615241 + t1 + t0) >>> 0;
-        this._x = (123456789 + t0) >>> 0;
-        this._y = (362436069 ^ t0) >>> 0;
-        this._z = (521288629 + t1) >>> 0;
-        this._w = (88675123 ^ t1) >>> 0;
-        this._v = (5783321 + t0) >>> 0;
+        this._weyl = OpCodes.ToUint32(6615241 + t1 + t0);
+        this._x = OpCodes.ToUint32(123456789 + t0);
+        this._y = OpCodes.Xor32(362436069, t0);
+        this._z = OpCodes.ToUint32(521288629 + t1);
+        this._w = OpCodes.Xor32(88675123, t1);
+        this._v = OpCodes.ToUint32(5783321 + t0);
 
         this._ready = true;
         return;
@@ -273,11 +273,11 @@
      * Generate next 32-bit value using xorwow algorithm
      *
      * Algorithm from Marsaglia (2003) with Weyl sequence:
-     * t = x ^ (x >> 2)
-     * t = t ^ (t << 1)
+     * t = x XOR (x right-shift 2)
+     * t = t XOR (t left-shift 1)
      * x = y; y = z; z = w; w = v
-     * v = v ^ (v << 4)
-     * v = v ^ t
+     * v = v XOR (v left-shift 4)
+     * v = v XOR t
      * weyl = weyl + WEYL_CONSTANT
      * return v + weyl
      */
@@ -286,11 +286,11 @@
         throw new Error('XorWow not initialized: set seed first');
       }
 
-      // Step 1: t = x ^ (x >> 2)
-      let t = (this._x ^ (this._x >>> 2)) >>> 0;
+      // Step 1: t = x XOR (x right-shift 2)
+      let t = OpCodes.Xor32(this._x, OpCodes.Shr32(this._x, 2));
 
-      // Step 2: t = t ^ (t << 1)
-      t = (t ^ (t << 1)) >>> 0;
+      // Step 2: t = t XOR (t left-shift 1)
+      t = OpCodes.Xor32(t, OpCodes.Shl32(t, 1));
 
       // Step 3: Rotate state variables (x=y, y=z, z=w, w=v)
       this._x = this._y;
@@ -298,17 +298,17 @@
       this._z = this._w;
       this._w = this._v;
 
-      // Step 4: v = v ^ (v << 4)
-      this._v = (this._v ^ (this._v << 4)) >>> 0;
+      // Step 4: v = v XOR (v left-shift 4)
+      this._v = OpCodes.Xor32(this._v, OpCodes.Shl32(this._v, 4));
 
-      // Step 5: v = v ^ t
-      this._v = (this._v ^ t) >>> 0;
+      // Step 5: v = v^t
+      this._v = OpCodes.Xor32(this._v, t);
 
       // Step 6: Add Weyl sequence
-      this._weyl = (this._weyl + this._WEYL_CONSTANT) >>> 0;
+      this._weyl = OpCodes.ToUint32((this._weyl + this._WEYL_CONSTANT));
 
       // Step 7: Return combined result
-      return (this._v + this._weyl) >>> 0;
+      return OpCodes.ToUint32((this._v + this._weyl));
     }
 
     /**

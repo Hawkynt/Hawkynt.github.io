@@ -179,7 +179,7 @@
       this.KeySize = 0;
 
       // TEA constants
-      this.DELTA = OpCodes.Pack32BE(...OpCodes.Hex8ToBytes("9E3779B9")); // Magic constant (2^32 / golden ratio)
+      this.DELTA = OpCodes.Pack32BE(...OpCodes.Hex8ToBytes("9E3779B9")); // Magic constant (OpCodes.Xor32(2, 32) / golden ratio)
       this.ROUNDS = 32;        // Standard TEA uses 32 rounds
     }
 

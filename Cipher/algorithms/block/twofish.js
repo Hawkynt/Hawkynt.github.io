@@ -96,10 +96,10 @@
   ]);
 
   // Constants from C# reference
-  const P_00 = 1, P_01 = 0, P_02 = 0, P_03 = P_01 ^ 1, P_04 = 1;
-  const P_10 = 0, P_11 = 0, P_12 = 1, P_13 = P_11 ^ 1, P_14 = 0;
-  const P_20 = 1, P_21 = 1, P_22 = 0, P_23 = P_21 ^ 1, P_24 = 0;
-  const P_30 = 0, P_31 = 1, P_32 = 1, P_33 = P_31 ^ 1, P_34 = 1;
+  const P_00 = 1, P_01 = 0, P_02 = 0, P_03 = P_01^1, P_04 = 1;
+  const P_10 = 0, P_11 = 0, P_12 = 1, P_13 = P_11^1, P_14 = 0;
+  const P_20 = 1, P_21 = 1, P_22 = 0, P_23 = P_21^1, P_24 = 0;
+  const P_30 = 0, P_31 = 1, P_32 = 1, P_33 = P_31^1, P_34 = 1;
 
   const GF256_FDBK = 0x169;
   const GF256_FDBK_2 = Math.floor(GF256_FDBK / 2);
@@ -213,15 +213,15 @@
       let j;
 
       for (let i = 0; i < MAX_KEY_BITS; i++) {
-        j = P[0][i] & 0xff;
+        j = P[0][i]&0xff;
         m1[0] = j;
-        mX[0] = this._Mx_X(j) & 0xff;
-        mY[0] = this._Mx_Y(j) & 0xff;
+        mX[0] = this._Mx_X(j)&0xff;
+        mY[0] = this._Mx_Y(j)&0xff;
 
-        j = P[1][i] & 0xff;
+        j = P[1][i]&0xff;
         m1[1] = j;
-        mX[1] = this._Mx_X(j) & 0xff;
-        mY[1] = this._Mx_Y(j) & 0xff;
+        mX[1] = this._Mx_X(j)&0xff;
+        mY[1] = this._Mx_Y(j)&0xff;
 
         this.gMDS0[i] = OpCodes.Pack32LE(m1[P_00], mX[P_00], mY[P_00], mY[P_00]);
         this.gMDS1[i] = OpCodes.Pack32LE(mY[P_10], mY[P_10], mX[P_10], m1[P_10]);
@@ -231,21 +231,19 @@
     }
 
     _LFSR1(x) {
-      return ((x >>> 1) ^ (((x & 0x01) !== 0) ? GF256_FDBK_2 : 0));
+      return ((OpCodes.Shr32(x, 1))^(((x&0x01) !== 0) ? GF256_FDBK_2 : 0));
     }
 
     _LFSR2(x) {
-      return ((x >>> 2) ^
-              (((x & 0x02) !== 0) ? GF256_FDBK_2 : 0) ^
-              (((x & 0x01) !== 0) ? GF256_FDBK_4 : 0));
+      return ((OpCodes.Shr32(x, 2))^(((x&0x02) !== 0) ? GF256_FDBK_2 : 0)^(((x&0x01) !== 0) ? GF256_FDBK_4 : 0));
     }
 
     _Mx_X(x) {
-      return x ^ this._LFSR2(x);
+      return x^this._LFSR2(x);
     }
 
     _Mx_Y(x) {
-      return x ^ this._LFSR1(x) ^ this._LFSR2(x);
+      return x^this._LFSR1(x)^this._LFSR2(x);
     }
 
     /**
@@ -392,9 +390,9 @@
         A = this._F32(q, k32e);
         B = this._F32(q + SK_BUMP, k32o);
         B = OpCodes.RotL32(B, 8);
-        A = (A + B) >>> 0;
+        A = OpCodes.ToUint32((A + B));
         this.gSubKeys[i * 2] = A;
-        A = (A + B) >>> 0;
+        A = OpCodes.ToUint32((A + B));
         this.gSubKeys[i * 2 + 1] = OpCodes.RotL32(A, SK_ROTL);
       }
 
@@ -408,30 +406,30 @@
       
       for (let i = 0; i < MAX_KEY_BITS; i++) {
         b0 = b1 = b2 = b3 = i;
-        switch (this.k64Cnt & 3) {
+        switch (this.k64Cnt&3) {
           case 1:
-            this.gSBox[i * 2] = this.algorithm.gMDS0[(P[P_01][b0] & 0xff) ^ this._M_b0(k0)];
-            this.gSBox[i * 2 + 1] = this.algorithm.gMDS1[(P[P_11][b1] & 0xff) ^ this._M_b1(k0)];
-            this.gSBox[i * 2 + 0x200] = this.algorithm.gMDS2[(P[P_21][b2] & 0xff) ^ this._M_b2(k0)];
-            this.gSBox[i * 2 + 0x201] = this.algorithm.gMDS3[(P[P_31][b3] & 0xff) ^ this._M_b3(k0)];
+            this.gSBox[i * 2] = this.algorithm.gMDS0[(P[P_01][b0]&0xff)^this._M_b0(k0)];
+            this.gSBox[i * 2 + 1] = this.algorithm.gMDS1[(P[P_11][b1]&0xff)^this._M_b1(k0)];
+            this.gSBox[i * 2 + 0x200] = this.algorithm.gMDS2[(P[P_21][b2]&0xff)^this._M_b2(k0)];
+            this.gSBox[i * 2 + 0x201] = this.algorithm.gMDS3[(P[P_31][b3]&0xff)^this._M_b3(k0)];
             break;
           case 0: // 256 bits of key
-            b0 = (P[P_04][b0] & 0xff) ^ this._M_b0(k3);
-            b1 = (P[P_14][b1] & 0xff) ^ this._M_b1(k3);
-            b2 = (P[P_24][b2] & 0xff) ^ this._M_b2(k3);
-            b3 = (P[P_34][b3] & 0xff) ^ this._M_b3(k3);
+            b0 = (P[P_04][b0]&0xff)^this._M_b0(k3);
+            b1 = (P[P_14][b1]&0xff)^this._M_b1(k3);
+            b2 = (P[P_24][b2]&0xff)^this._M_b2(k3);
+            b3 = (P[P_34][b3]&0xff)^this._M_b3(k3);
             // fall through
           case 3: // 192 bits of key
-            b0 = (P[P_03][b0] & 0xff) ^ this._M_b0(k2);
-            b1 = (P[P_13][b1] & 0xff) ^ this._M_b1(k2);
-            b2 = (P[P_23][b2] & 0xff) ^ this._M_b2(k2);
-            b3 = (P[P_33][b3] & 0xff) ^ this._M_b3(k2);
+            b0 = (P[P_03][b0]&0xff)^this._M_b0(k2);
+            b1 = (P[P_13][b1]&0xff)^this._M_b1(k2);
+            b2 = (P[P_23][b2]&0xff)^this._M_b2(k2);
+            b3 = (P[P_33][b3]&0xff)^this._M_b3(k2);
             // fall through
           case 2: // 128 bits of key
-            this.gSBox[i * 2] = this.algorithm.gMDS0[(P[P_01][(P[P_02][b0] & 0xff) ^ this._M_b0(k1)] & 0xff) ^ this._M_b0(k0)];
-            this.gSBox[i * 2 + 1] = this.algorithm.gMDS1[(P[P_11][(P[P_12][b1] & 0xff) ^ this._M_b1(k1)] & 0xff) ^ this._M_b1(k0)];
-            this.gSBox[i * 2 + 0x200] = this.algorithm.gMDS2[(P[P_21][(P[P_22][b2] & 0xff) ^ this._M_b2(k1)] & 0xff) ^ this._M_b2(k0)];
-            this.gSBox[i * 2 + 0x201] = this.algorithm.gMDS3[(P[P_31][(P[P_32][b3] & 0xff) ^ this._M_b3(k1)] & 0xff) ^ this._M_b3(k0)];
+            this.gSBox[i * 2] = this.algorithm.gMDS0[(P[P_01][(P[P_02][b0]&0xff)^this._M_b0(k1)]&0xff)^this._M_b0(k0)];
+            this.gSBox[i * 2 + 1] = this.algorithm.gMDS1[(P[P_11][(P[P_12][b1]&0xff)^this._M_b1(k1)]&0xff)^this._M_b1(k0)];
+            this.gSBox[i * 2 + 0x200] = this.algorithm.gMDS2[(P[P_21][(P[P_22][b2]&0xff)^this._M_b2(k1)]&0xff)^this._M_b2(k0)];
+            this.gSBox[i * 2 + 0x201] = this.algorithm.gMDS3[(P[P_31][(P[P_32][b3]&0xff)^this._M_b3(k1)]&0xff)^this._M_b3(k0)];
             break;
         }
       }
@@ -512,31 +510,28 @@
       const k3 = k32[3] || 0;
 
       let result = 0;
-      switch (this.k64Cnt & 3) {
+      switch (this.k64Cnt&3) {
         case 1:
-          result = this.algorithm.gMDS0[(P[P_01][b0] & 0xff) ^ this._M_b0(k0)] ^
-                  this.algorithm.gMDS1[(P[P_11][b1] & 0xff) ^ this._M_b1(k0)] ^
-                  this.algorithm.gMDS2[(P[P_21][b2] & 0xff) ^ this._M_b2(k0)] ^
-                  this.algorithm.gMDS3[(P[P_31][b3] & 0xff) ^ this._M_b3(k0)];
+          result = this.algorithm.gMDS0[(P[P_01][b0]&0xff)^this._M_b0(k0)]^this.algorithm.gMDS1[(P[P_11][b1]&0xff)^this._M_b1(k0)]^this.algorithm.gMDS2[(P[P_21][b2]&0xff)^this._M_b2(k0)]^this.algorithm.gMDS3[(P[P_31][b3]&0xff)^this._M_b3(k0)];
           break;
         case 0: // 256 bits of key
-          b0 = (P[P_04][b0] & 0xff) ^ this._M_b0(k3);
-          b1 = (P[P_14][b1] & 0xff) ^ this._M_b1(k3);
-          b2 = (P[P_24][b2] & 0xff) ^ this._M_b2(k3);
-          b3 = (P[P_34][b3] & 0xff) ^ this._M_b3(k3);
+          b0 = (P[P_04][b0]&0xff)^this._M_b0(k3);
+          b1 = (P[P_14][b1]&0xff)^this._M_b1(k3);
+          b2 = (P[P_24][b2]&0xff)^this._M_b2(k3);
+          b3 = (P[P_34][b3]&0xff)^this._M_b3(k3);
           // fall through
         case 3: // 192 bits of key
-          b0 = (P[P_03][b0] & 0xff) ^ this._M_b0(k2);
-          b1 = (P[P_13][b1] & 0xff) ^ this._M_b1(k2);
-          b2 = (P[P_23][b2] & 0xff) ^ this._M_b2(k2);
-          b3 = (P[P_33][b3] & 0xff) ^ this._M_b3(k2);
+          b0 = (P[P_03][b0]&0xff)^this._M_b0(k2);
+          b1 = (P[P_13][b1]&0xff)^this._M_b1(k2);
+          b2 = (P[P_23][b2]&0xff)^this._M_b2(k2);
+          b3 = (P[P_33][b3]&0xff)^this._M_b3(k2);
           // fall through
         case 2: // 128 bits of key
           result = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(
-                  this.algorithm.gMDS0[(P[P_01][(P[P_02][b0] & 0xff) ^ this._M_b0(k1)] & 0xff) ^ this._M_b0(k0)],
-                  this.algorithm.gMDS1[(P[P_11][(P[P_12][b1] & 0xff) ^ this._M_b1(k1)] & 0xff) ^ this._M_b1(k0)]),
-                  this.algorithm.gMDS2[(P[P_21][(P[P_22][b2] & 0xff) ^ this._M_b2(k1)] & 0xff) ^ this._M_b2(k0)]),
-                  this.algorithm.gMDS3[(P[P_31][(P[P_32][b3] & 0xff) ^ this._M_b3(k1)] & 0xff) ^ this._M_b3(k0)]);
+                  this.algorithm.gMDS0[(P[P_01][(P[P_02][b0]&0xff)^this._M_b0(k1)]&0xff)^this._M_b0(k0)],
+                  this.algorithm.gMDS1[(P[P_11][(P[P_12][b1]&0xff)^this._M_b1(k1)]&0xff)^this._M_b1(k0)]),
+                  this.algorithm.gMDS2[(P[P_21][(P[P_22][b2]&0xff)^this._M_b2(k1)]&0xff)^this._M_b2(k0)]),
+                  this.algorithm.gMDS3[(P[P_31][(P[P_32][b3]&0xff)^this._M_b3(k1)]&0xff)^this._M_b3(k0)]);
           break;
       }
       return OpCodes.ToUint32(result);

@@ -588,8 +588,8 @@
       const prefix = [DOMAIN_SEP_M1, DOMAIN_SEP_M2, DOMAIN_SEP_M3, DOMAIN_SEP_M4][variant - 1];
       const tagSize = this.algorithm.tag_size;
 
-      // Initialize tweakey: [TK1(16) | TK2(16) | TK3(16)]
-      // TK1 = [zeros(16) | nonce(padded) | key(16)] - wait this is wrong
+      // Initialize tweakey: [TK1(16)|TK2(16)|TK3(16)]
+      // TK1 = [zeros(16)|nonce(padded)|key(16)] - wait this is wrong
       // From C: TK1[0-15]=0, TK2[16-31]=nonce(padded), TK3[32-47]=key
       const tweakey = new Array(48);
 
@@ -637,13 +637,13 @@
           // Decrypt block
           skinny_128_384_encrypt_tk_full(tweakey, result_block, block);
           for (let i = 0; i < 16; i++) {
-            sum[i] ^= result_block[i];
+            sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], result_block[i]));
             output.push(result_block[i]);
           }
         } else {
           // Encrypt block
           for (let i = 0; i < 16; i++) {
-            sum[i] ^= block[i];
+            sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], block[i]));
           }
           skinny_128_384_encrypt_tk_full(tweakey, result_block, block);
           output.push(...result_block);
@@ -676,14 +676,14 @@
         for (let i = 0; i < mlen; i++) {
           if (isDecrypt) {
             const p = OpCodes.XorN(partial[i], keystream[i]);
-            sum[i] ^= p;
+            sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], p));
             output.push(p);
           } else {
-            sum[i] ^= partial[i];
+            sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], partial[i]));
             output.push(OpCodes.XorN(partial[i], keystream[i]));
           }
         }
-        sum[mlen] ^= 0x80;
+        sum[mlen] = OpCodes.ToByte(OpCodes.XorN(sum[mlen], 0x80));
 
         // Update LFSR
         const feedback = OpCodes.AndN(lfsr_bytes[7], 0x80) ? 0x1B : 0x00;
@@ -734,7 +734,7 @@
         skinny_128_384_encrypt_tk_full(tweakey, encrypted, block);
 
         for (let i = 0; i < 16; i++) {
-          tag[i] ^= encrypted[i];
+          tag[i] = OpCodes.ToByte(OpCodes.XorN(tag[i], encrypted[i]));
         }
 
         offset += 16;
@@ -764,7 +764,7 @@
         skinny_128_384_encrypt_tk_full(tweakey, encrypted, block);
 
         for (let i = 0; i < 16; i++) {
-          tag[i] ^= encrypted[i];
+          tag[i] = OpCodes.ToByte(OpCodes.XorN(tag[i], encrypted[i]));
         }
       }
     }
@@ -774,7 +774,7 @@
       const prefix = [DOMAIN_SEP_M5, DOMAIN_SEP_M6][variant - 5];
       const tagSize = this.algorithm.tag_size;
 
-      // Initialize tweakey: [TK1(16) | TK2(16)]
+      // Initialize tweakey: [TK1(16)|TK2(16)]
       // TK1 = nonce(right-aligned with zero padding) + domain byte
       // TK2 = key
       const tweakey = new Array(32);
@@ -816,12 +816,12 @@
         if (isDecrypt) {
           skinny_128_256_encrypt_tk_full(tweakey, result_block, block);
           for (let i = 0; i < 16; i++) {
-            sum[i] ^= result_block[i];
+            sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], result_block[i]));
             output.push(result_block[i]);
           }
         } else {
           for (let i = 0; i < 16; i++) {
-            sum[i] ^= block[i];
+            sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], block[i]));
           }
           skinny_128_256_encrypt_tk_full(tweakey, result_block, block);
           output.push(...result_block);
@@ -851,14 +851,14 @@
         for (let i = 0; i < mlen; i++) {
           if (isDecrypt) {
             const p = OpCodes.XorN(partial[i], keystream[i]);
-            sum[i] ^= p;
+            sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], p));
             output.push(p);
           } else {
-            sum[i] ^= partial[i];
+            sum[i] = OpCodes.ToByte(OpCodes.XorN(sum[i], partial[i]));
             output.push(OpCodes.XorN(partial[i], keystream[i]));
           }
         }
-        sum[mlen] ^= 0x80;
+        sum[mlen] = OpCodes.ToByte(OpCodes.XorN(sum[mlen], 0x80));
 
         const feedback = OpCodes.AndN(lfsr, 0x800000) ? 0x1B : 0x00;
         lfsr = OpCodes.AndN(OpCodes.XorN(OpCodes.Shl32(lfsr, 1), feedback), 0xFFFFFF);
@@ -903,7 +903,7 @@
         skinny_128_256_encrypt_tk_full(tweakey, encrypted, block);
 
         for (let i = 0; i < 16; i++) {
-          tag[i] ^= encrypted[i];
+          tag[i] = OpCodes.ToByte(OpCodes.XorN(tag[i], encrypted[i]));
         }
 
         offset += 16;
@@ -930,7 +930,7 @@
         skinny_128_256_encrypt_tk_full(tweakey, encrypted, block);
 
         for (let i = 0; i < 16; i++) {
-          tag[i] ^= encrypted[i];
+          tag[i] = OpCodes.ToByte(OpCodes.XorN(tag[i], encrypted[i]));
         }
       }
     }

@@ -246,8 +246,8 @@
 
       // Speck encryption: 27 rounds of ARX operations
       // Round function based on NSA specification:
-      // x = (ROR(x, 8) + y) ^ roundKey
-      // y = ROL(y, 3) ^ x
+      // x = (ROR(x, 8) + y)^roundKey
+      // y = ROL(y, 3)^x
       for (let i = 0; i < this.algorithm.ROUNDS; i++) {
         // Right rotate x by 8 bits, add y, then XOR with round key
         x = OpCodes.RotR32(x, this.algorithm.ALPHA);
@@ -283,14 +283,14 @@
 
       // Speck decryption: reverse the encryption process
       // Inverse operations in reverse order:
-      // y = ROR(y ^ x, 3)
-      // x = ROL((x ^ roundKey) - y, 8)
+      // y = ROR(OpCodes.Xor32(y, x), 3)
+      // x = ROL((OpCodes.Xor32(x, roundKey)) - y, 8)
       for (let i = this.algorithm.ROUNDS - 1; i >= 0; i--) {
-        // Reverse: y = ROL(y, 3) ^ x
+        // Reverse: y = ROL(y, 3)^x
         y = OpCodes.XorN(y, x);
         y = OpCodes.RotR32(y, this.algorithm.BETA);
 
-        // Reverse: x = (ROR(x, 8) + y) ^ roundKey
+        // Reverse: x = (ROR(x, 8) + y)^roundKey
         x = OpCodes.XorN(x, this.roundKeys[i]);
         x = OpCodes.ToUint32(x - y);
         x = OpCodes.RotL32(x, this.algorithm.ALPHA);
@@ -329,13 +329,13 @@
       // Key schedule uses same ARX structure as round function
       for (let i = 0; i < this.algorithm.ROUNDS - 1; i++) {
         // Apply round function to l[i % 3] and roundKeys[i]
-        // l[i % 3] = (ROR(l[i % 3], 8) + roundKeys[i]) ^ i
+        // l[i % 3] = (ROR(l[i % 3], 8) + roundKeys[i])^i
         const idx = i % 3;
         l[idx] = OpCodes.RotR32(l[idx], this.algorithm.ALPHA);
         l[idx] = OpCodes.ToUint32(l[idx] + roundKeys[i]);
         l[idx] = OpCodes.XorN(l[idx], i);
 
-        // Generate next round key: roundKeys[i+1] = ROL(roundKeys[i], 3) ^ l[i % 3]
+        // Generate next round key: roundKeys[i+1] = ROL(roundKeys[i], 3)^l[i % 3]
         roundKeys[i + 1] = OpCodes.XorN(OpCodes.RotL32(roundKeys[i], this.algorithm.BETA), l[idx]);
       }
 

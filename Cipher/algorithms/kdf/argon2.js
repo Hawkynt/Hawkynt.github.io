@@ -77,10 +77,10 @@
 
     // First block: H0 = H(LE32(outputLength) || input)
     const lengthBytes = new Uint8Array(4);
-    lengthBytes[0] = OpCodes.AndN(outputLength, 0xFF);
-    lengthBytes[1] = OpCodes.AndN(OpCodes.Shr32(outputLength, 8), 0xFF);
-    lengthBytes[2] = OpCodes.AndN(OpCodes.Shr32(outputLength, 16), 0xFF);
-    lengthBytes[3] = OpCodes.AndN(OpCodes.Shr32(outputLength, 24), 0xFF);
+    lengthBytes[0] = OpCodes.ToByte(outputLength);
+    lengthBytes[1] = OpCodes.ToByte(OpCodes.Shr32(outputLength, 8));
+    lengthBytes[2] = OpCodes.ToByte(OpCodes.Shr32(outputLength, 16));
+    lengthBytes[3] = OpCodes.ToByte(OpCodes.Shr32(outputLength, 24));
 
     const firstInput = new Uint8Array(lengthBytes.length + input.length);
     firstInput.set(lengthBytes, 0);
@@ -133,21 +133,21 @@
 
     function rotr64(x, n) {
       const mask = BigInt('0xffffffffffffffff');
-      x = x & mask;
-      n = BigInt(n) & BigInt(63);
-      return ((x >> n) | (x << (BigInt(64) - n))) & mask;
+      x = OpCodes.AndN(x, mask);
+      n = OpCodes.AndN(BigInt(n), BigInt(63));
+      return OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftRn(x, n), OpCodes.ShiftLn(x, (BigInt(64) - n))), mask);
     }
 
     function G(v, a, b, c, d, x, y) {
       const mask = BigInt('0xffffffffffffffff');
-      v[a] = (v[a] + v[b] + x) & mask;
-      v[d] = rotr64(v[d] ^ v[a], 32);
-      v[c] = (v[c] + v[d]) & mask;
-      v[b] = rotr64(v[b] ^ v[c], 24);
-      v[a] = (v[a] + v[b] + y) & mask;
-      v[d] = rotr64(v[d] ^ v[a], 16);
-      v[c] = (v[c] + v[d]) & mask;
-      v[b] = rotr64(v[b] ^ v[c], 63);
+      v[a] = OpCodes.AndN((v[a] + v[b] + x), mask);
+      v[d] = rotr64(OpCodes.XorN(v[d], v[a]), 32);
+      v[c] = OpCodes.AndN((v[c] + v[d]), mask);
+      v[b] = rotr64(OpCodes.XorN(v[b], v[c]), 24);
+      v[a] = OpCodes.AndN((v[a] + v[b] + y), mask);
+      v[d] = rotr64(OpCodes.XorN(v[d], v[a]), 16);
+      v[c] = OpCodes.AndN((v[c] + v[d]), mask);
+      v[b] = rotr64(OpCodes.XorN(v[b], v[c]), 63);
     }
 
     function compress(h, block, counter, finalBlock) {
@@ -156,9 +156,9 @@
       for (let i = 0; i < 8; i++) v[i] = h[i];
       for (let i = 0; i < 8; i++) v[i + 8] = IV[i];
 
-      v[12] ^= counter & BigInt('0xffffffffffffffff');
-      v[13] ^= (counter >> BigInt(64)) & BigInt('0xffffffffffffffff');
-      if (finalBlock) v[14] ^= BigInt('0xffffffffffffffff');
+      v[12] = OpCodes.XorN(v[12], OpCodes.AndN(counter, BigInt('0xffffffffffffffff')));
+      v[13] = OpCodes.XorN(v[13], OpCodes.AndN(OpCodes.ShiftRn(counter, BigInt(64)), BigInt('0xffffffffffffffff')));
+      if (finalBlock) v[14] = OpCodes.XorN(v[14], BigInt('0xffffffffffffffff'));
 
       for (let round = 0; round < 12; round++) {
         const s = SIGMA[round % 10];
@@ -173,7 +173,7 @@
       }
 
       for (let i = 0; i < 8; i++) {
-        h[i] ^= v[i] ^ v[i + 8];
+        h[i] = OpCodes.XorN(h[i], OpCodes.XorN(v[i], v[i + 8]));
       }
     }
 
@@ -182,7 +182,7 @@
       for (let i = 0; i < bytes.length; i += 8) {
         let word = BigInt(0);
         for (let j = 0; j < 8 && i + j < bytes.length; j++) {
-          word |= BigInt(bytes[i + j]) << BigInt(j * 8);
+          word = OpCodes.OrN(word, OpCodes.ShiftLn(BigInt(bytes[i + j]), BigInt(j * 8)));
         }
         words.push(word);
       }
@@ -195,8 +195,8 @@
       for (let i = 0; i < words.length && byteIndex < length; i++) {
         let word = words[i];
         for (let j = 0; j < 8 && byteIndex < length; j++) {
-          bytes[byteIndex++] = Number(word & BigInt('0xff'));
-          word >>= BigInt(8);
+          bytes[byteIndex++] = Number(OpCodes.AndN(word, BigInt('0xff')));
+          word = OpCodes.ShiftRn(word, BigInt(8));
         }
       }
       return bytes;
@@ -204,10 +204,7 @@
 
     // Initialize state
     const h = [...IV];
-    h[0] ^= BigInt(outputLength || BLAKE2B_OUTBYTES) |
-            (BigInt(key ? key.length : 0) << BigInt(8)) |
-            (BigInt(1) << BigInt(16)) |
-            (BigInt(1) << BigInt(24));
+    h[0] = OpCodes.XorN(h[0], OpCodes.OrN(BigInt(outputLength || BLAKE2B_OUTBYTES), OpCodes.OrN(OpCodes.ShiftLn(BigInt(key ? key.length : 0), BigInt(8)), OpCodes.OrN(OpCodes.ShiftLn(BigInt(1), BigInt(16)), OpCodes.ShiftLn(BigInt(1), BigInt(24))))));
 
     let counter = BigInt(0);
     const buffer = new Uint8Array(BLAKE2B_BLOCKBYTES);
@@ -260,17 +257,17 @@
    * 32-bit multiply returning 64-bit result as {h, l}
    */
   function mul(a, b) {
-    const aL = OpCodes.AndN(a, 0xffff);
+    const aL = OpCodes.And32(a, 0xffff);
     const aH = OpCodes.Shr32(a, 16);
-    const bL = OpCodes.AndN(b, 0xffff);
+    const bL = OpCodes.And32(b, 0xffff);
     const bH = OpCodes.Shr32(b, 16);
     const ll = Math.imul(aL, bL);
     const hl = Math.imul(aH, bL);
     const lh = Math.imul(aL, bH);
     const hh = Math.imul(aH, bH);
-    const carry = OpCodes.Shr32(ll, 16) + OpCodes.AndN(hl, 0xffff) + lh;
-    const high = OpCodes.OrN(hh + OpCodes.Shr32(hl, 16) + OpCodes.Shr32(carry, 16), 0);
-    const low = OpCodes.OrN(OpCodes.Shl32(carry, 16), OpCodes.AndN(ll, 0xffff));
+    const carry = OpCodes.Shr32(ll, 16) + OpCodes.And32(hl, 0xffff) + lh;
+    const high = OpCodes.Or32(hh + OpCodes.Shr32(hl, 16) + OpCodes.Shr32(carry, 16), 0);
+    const low = OpCodes.Or32(OpCodes.Shl32(carry, 16), OpCodes.And32(ll, 0xffff));
     return { h: high, l: low };
   }
 
@@ -279,21 +276,21 @@
    */
   function mul2(a, b) {
     const { h, l } = mul(a, b);
-    return { h: OpCodes.AndN(OpCodes.OrN(OpCodes.Shl32(h, 1), OpCodes.Shr32(l, 31)), 0xffffffff), l: OpCodes.AndN(OpCodes.Shl32(l, 1), 0xffffffff) };
+    return { h: OpCodes.And32(OpCodes.Or32(OpCodes.Shl32(h, 1), OpCodes.Shr32(l, 31)), 0xffffffff), l: OpCodes.And32(OpCodes.Shl32(l, 1), 0xffffffff) };
   }
 
   /**
    * 64-bit addition of 3 values: Al + Bl + Cl (returns lower 32 bits)
    */
   function add3L(Al, Bl, Cl) {
-    return (Al >>> 0) + (Bl >>> 0) + (Cl >>> 0);
+    return OpCodes.ToUint32(Al) + OpCodes.ToUint32(Bl) + OpCodes.ToUint32(Cl);
   }
 
   /**
    * 64-bit addition of 3 values: returns high 32 bits with carry from low
    */
   function add3H(low, Ah, Bh, Ch) {
-    return OpCodes.OrN(Ah + Bh + Ch + OpCodes.OrN((low / 0x100000000), 0), 0);
+    return OpCodes.Or32(Ah + Bh + Ch + OpCodes.Or32((low / 0x100000000), 0), 0);
   }
 
   /**
@@ -305,14 +302,14 @@
   /**
    * 64-bit right rotate for shift in [1, 32)
    */
-  function rotrSH(h, l, s) { return OpCodes.OrN(OpCodes.Shr32(h, s), OpCodes.Shl32(l, (32 - s))); }
-  function rotrSL(h, l, s) { return OpCodes.OrN(OpCodes.Shl32(h, (32 - s)), OpCodes.Shr32(l, s)); }
+  function rotrSH(h, l, s) { return OpCodes.Or32(OpCodes.Shr32(h, s), OpCodes.Shl32(l, (32 - s))); }
+  function rotrSL(h, l, s) { return OpCodes.Or32(OpCodes.Shl32(h, (32 - s)), OpCodes.Shr32(l, s)); }
 
   /**
    * 64-bit right rotate for shift in (32, 64)
    */
-  function rotrBH(h, l, s) { return OpCodes.OrN(OpCodes.Shl32(h, (64 - s)), OpCodes.Shr32(l, (s - 32))); }
-  function rotrBL(h, l, s) { return OpCodes.OrN(OpCodes.Shr32(h, (s - 32)), OpCodes.Shl32(l, (64 - s))); }
+  function rotrBH(h, l, s) { return OpCodes.Or32(OpCodes.Shl32(h, (64 - s)), OpCodes.Shr32(l, (s - 32))); }
+  function rotrBL(h, l, s) { return OpCodes.Or32(OpCodes.Shr32(h, (s - 32)), OpCodes.Shl32(l, (64 - s))); }
 
   /**
    * BlaMka: A + B + (2 * u32(A) * u32(B))
@@ -320,7 +317,7 @@
   function blamka(Ah, Al, Bh, Bl) {
     const { h: Ch, l: Cl } = mul2(Al, Bl);
     const Rll = add3L(Al, Bl, Cl);
-    return { h: add3H(Rll, Ah, Bh, Ch), l: OpCodes.OrN(Rll, 0) };
+    return { h: add3H(Rll, Ah, Bh, Ch), l: OpCodes.Or32(Rll, 0) };
   }
 
   /**
@@ -333,19 +330,19 @@
     let Dl = A2_BUF[2*d], Dh = A2_BUF[2*d + 1];
 
     ({ h: Ah, l: Al } = blamka(Ah, Al, Bh, Bl));
-    ({ Dh, Dl } = { Dh: OpCodes.XorN(Dh, Ah), Dl: OpCodes.XorN(Dl, Al) });
+    ({ Dh, Dl } = { Dh: OpCodes.Xor32(Dh, Ah), Dl: OpCodes.Xor32(Dl, Al) });
     ({ Dh, Dl } = { Dh: rotr32H(Dh, Dl), Dl: rotr32L(Dh, Dl) });
 
     ({ h: Ch, l: Cl } = blamka(Ch, Cl, Dh, Dl));
-    ({ Bh, Bl } = { Bh: OpCodes.XorN(Bh, Ch), Bl: OpCodes.XorN(Bl, Cl) });
+    ({ Bh, Bl } = { Bh: OpCodes.Xor32(Bh, Ch), Bl: OpCodes.Xor32(Bl, Cl) });
     ({ Bh, Bl } = { Bh: rotrSH(Bh, Bl, 24), Bl: rotrSL(Bh, Bl, 24) });
 
     ({ h: Ah, l: Al } = blamka(Ah, Al, Bh, Bl));
-    ({ Dh, Dl } = { Dh: OpCodes.XorN(Dh, Ah), Dl: OpCodes.XorN(Dl, Al) });
+    ({ Dh, Dl } = { Dh: OpCodes.Xor32(Dh, Ah), Dl: OpCodes.Xor32(Dl, Al) });
     ({ Dh, Dl } = { Dh: rotrSH(Dh, Dl, 16), Dl: rotrSL(Dh, Dl, 16) });
 
     ({ h: Ch, l: Cl } = blamka(Ch, Cl, Dh, Dl));
-    ({ Bh, Bl } = { Bh: OpCodes.XorN(Bh, Ch), Bl: OpCodes.XorN(Bl, Cl) });
+    ({ Bh, Bl } = { Bh: OpCodes.Xor32(Bh, Ch), Bl: OpCodes.Xor32(Bl, Cl) });
     ({ Bh, Bl } = { Bh: rotrBH(Bh, Bl, 63), Bl: rotrBL(Bh, Bl, 63) });
 
     A2_BUF[2*a] = Al; A2_BUF[2*a + 1] = Ah;
@@ -376,7 +373,7 @@
   function block(B, xPos, yPos, outPos, needXor) {
     // XOR input blocks into A2_BUF
     for (let i = 0; i < 256; i++) {
-      A2_BUF[i] = OpCodes.XorN(B[xPos + i], B[yPos + i]);
+      A2_BUF[i] = OpCodes.Xor32(B[xPos + i], B[yPos + i]);
     }
 
     // Apply P to 8 columns (each column has 16 consecutive elements in index space)
@@ -394,11 +391,11 @@
     // XOR result back with both original inputs
     if (needXor) {
       for (let i = 0; i < 256; i++) {
-        B[outPos + i] = OpCodes.XorN(B[outPos + i], OpCodes.XorN(A2_BUF[i], OpCodes.XorN(B[xPos + i], B[yPos + i])));
+        B[outPos + i] = OpCodes.Xor32(B[outPos + i], OpCodes.Xor32(A2_BUF[i], OpCodes.Xor32(B[xPos + i], B[yPos + i])));
       }
     } else {
       for (let i = 0; i < 256; i++) {
-        B[outPos + i] = OpCodes.XorN(A2_BUF[i], OpCodes.XorN(B[xPos + i], B[yPos + i]));
+        B[outPos + i] = OpCodes.Xor32(A2_BUF[i], OpCodes.Xor32(B[xPos + i], B[yPos + i]));
       }
     }
 
@@ -430,7 +427,7 @@
       const hashView = new Uint8Array(hash);
       for (let i = 0; i < dkLen; i++) {
         if (i % 4 === 0) result[OpCodes.Shr32(i, 2)] = 0;
-        result[OpCodes.Shr32(i, 2)] = OpCodes.OrN(result[OpCodes.Shr32(i, 2)], OpCodes.Shl32(hashView[i], ((i % 4) * 8)));
+        result[OpCodes.Shr32(i, 2)] = OpCodes.Or32(result[OpCodes.Shr32(i, 2)], OpCodes.Shl32(hashView[i], ((i % 4) * 8)));
       }
       return result;
     }
@@ -460,7 +457,7 @@
     const result = new Uint32Array(Math.ceil(dkLen / 4));
     for (let i = 0; i < dkLen; i++) {
       if (i % 4 === 0) result[OpCodes.Shr32(i, 2)] = 0;
-      result[OpCodes.Shr32(i, 2)] = OpCodes.OrN(result[OpCodes.Shr32(i, 2)], OpCodes.Shl32(out[i], ((i % 4) * 8)));
+      result[OpCodes.Shr32(i, 2)] = OpCodes.Or32(result[OpCodes.Shr32(i, 2)], OpCodes.Shl32(out[i], ((i % 4) * 8)));
     }
     return result;
   }
@@ -544,17 +541,17 @@
     let pos = 0;
 
     for (const item of items) {
-      input[pos++] = OpCodes.AndN(item, 0xFF);
-      input[pos++] = OpCodes.AndN(OpCodes.Shr32(item, 8), 0xFF);
-      input[pos++] = OpCodes.AndN(OpCodes.Shr32(item, 16), 0xFF);
-      input[pos++] = OpCodes.AndN(OpCodes.Shr32(item, 24), 0xFF);
+      input[pos++] = OpCodes.And32(item, 0xFF);
+      input[pos++] = OpCodes.And32(OpCodes.Shr32(item, 8), 0xFF);
+      input[pos++] = OpCodes.And32(OpCodes.Shr32(item, 16), 0xFF);
+      input[pos++] = OpCodes.And32(OpCodes.Shr32(item, 24), 0xFF);
     }
 
     for (const data of dataItems) {
-      input[pos++] = OpCodes.AndN(data.length, 0xFF);
-      input[pos++] = OpCodes.AndN(OpCodes.Shr32(data.length, 8), 0xFF);
-      input[pos++] = OpCodes.AndN(OpCodes.Shr32(data.length, 16), 0xFF);
-      input[pos++] = OpCodes.AndN(OpCodes.Shr32(data.length, 24), 0xFF);
+      input[pos++] = OpCodes.And32(data.length, 0xFF);
+      input[pos++] = OpCodes.And32(OpCodes.Shr32(data.length, 8), 0xFF);
+      input[pos++] = OpCodes.And32(OpCodes.Shr32(data.length, 16), 0xFF);
+      input[pos++] = OpCodes.And32(OpCodes.Shr32(data.length, 24), 0xFF);
       input.set(data, pos);
       pos += data.length;
     }
@@ -597,7 +594,7 @@
     const B_final = new Uint32Array(256);
     for (let l = 0; l < p; l++) {
       for (let j = 0; j < 256; j++) {
-        B_final[j] = OpCodes.XorN(B_final[j], B[256 * (laneLen * l + laneLen - 1) + j]);
+        B_final[j] = OpCodes.Xor32(B_final[j], B[256 * (laneLen * l + laneLen - 1) + j]);
       }
     }
     return Hp(B_final, dkLen);
@@ -672,7 +669,7 @@
     // Convert Uint32Array to byte array
     const result = new Uint8Array(dkLen);
     for (let i = 0; i < dkLen; i++) {
-      result[i] = OpCodes.AndN(OpCodes.Shr32(resultU32[OpCodes.Shr32(i, 2)], ((i % 4) * 8)), 0xFF);
+      result[i] = OpCodes.And32(OpCodes.Shr32(resultU32[OpCodes.Shr32(i, 2)], ((i % 4) * 8)), 0xFF);
     }
 
     return result;
