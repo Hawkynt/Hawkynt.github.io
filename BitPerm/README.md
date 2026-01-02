@@ -47,28 +47,51 @@ Click a source bit, then click target positions to route it. You can also:
 
 ### 2. Select Target CPU
 
-Choose from presets like:
+Choose from presets organized by category:
 
+**Modern x86/x64:**
 - Modern x64 (Haswell+) - full BMI2, SIMD support
-- Intel Core 2 - no BMI2, but has SSSE3
-- Pentium 4 - slower shifts/multiplies
-- ARM Cortex M4 - embedded, 32-bit only
-- MOS 6502 - 8-bit, no hardware multiply
+- AMD Zen (Ryzen) - fast PSHUFB
+- Intel Core 2 / Nehalem - no BMI2, has SSSE3
+- Intel Atom - in-order execution
 
-Each preset configures available instructions and their cycle costs.
+**Legacy x86:**
+- Intel Pentium 4 - slow shifts
+- Intel Pentium 1 (P5)
+- AMD Athlon / Duron
+- Intel 486/386/8086
+
+**ARM:**
+- ARM Cortex A64 (NEON)
+- ARM Cortex M4 - embedded, 32-bit
+
+**Retro 8-bit:**
+- Zilog Z80 - no hardware multiply
+- MOS 6502 - 8-bit only
+
+**Game Consoles:**
+- Sony PlayStation 1 (R3000)
+- Nintendo 64 (VR4300)
+- Sony PlayStation 3 (Cell) - with SIMD
+- Sony PlayStation 5 (Zen 2) - full BMI2
+
+Each preset configures available instructions and their cycle costs. Click the gear icon to fine-tune costs or create a custom preset.
 
 ### 3. Generate Code
 
 The solver produces multiple solutions ranked by estimated cycle count:
 
-- **Composite (Greedy)**: Combines shifts, rotates, and multiplies
+- **Composite (Greedy)**: Fast heuristic-based solver using shifts, rotates, and multiplies
+- **Composite (Exhaustive)**: Optimal tree-search solver using Dijkstra's algorithm (shown when search completes within limits)
 - **BMI2 (PEXT/PDEP)**: Two-instruction solution on supporting CPUs
 - **PSHUFB**: Byte-level shuffle for aligned permutations
 - **LUT**: Lookup table for small bit widths (8/16-bit)
 
-### The Solver Algorithm
+### The Solver Algorithms
 
-The greedy solver works by iteratively finding the best operation to route remaining bits:
+#### Greedy Solver
+
+The greedy solver works by iteratively finding the locally best operation:
 
 1. **Shift Analysis**: For each shift amount 0..width-1, count how many remaining bits would be correctly positioned. Differentiate between pure shifts (bits don't wrap) and rotates (bits wrap around).
 
@@ -77,6 +100,25 @@ The greedy solver works by iteratively finding the best operation to route remai
 3. **Masking**: After each operation, mask out correctly-routed bits to prevent interference with subsequent operations.
 
 4. **Cost Optimization**: Score each candidate operation by `(bits_routed * 10) - cycle_cost` and pick the best.
+
+#### Exhaustive Solver
+
+The exhaustive solver uses Dijkstra's algorithm to explore all possible operation sequences:
+
+1. **State Space**: Each state is defined by the remaining bits to route.
+
+2. **Operation Generation**: At each state, generate all valid shifts, rotates, and multiplications.
+
+3. **Priority Queue**: States are explored in order of total accumulated cost (cycle count).
+
+4. **Optimal Path**: Finds the truly optimal solution with minimum total cycles.
+
+**Limits**: To prevent exponential blowup, the exhaustive search has hard limits:
+- Maximum 10,000 states explored
+- Maximum operations = number of bits to route (any more would be suboptimal)
+- 5-second timeout
+
+When limits are exceeded, the exhaustive solution is simply not shown (like PEXT on CPUs without BMI2).
 
 ## Supported Bit Widths
 
