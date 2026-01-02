@@ -140,147 +140,446 @@ const OP_REV = 'rev';             // Byte reversal (ARM, x86 BSWAP)
 const OP_RBIT = 'rbit';           // Bit reversal (ARM only)
 
 // Building Blocks Library - Centralized registry of all available operations
-// Each block defines: what it does, required capability, cost lookup, and supported platforms
-const BUILDING_BLOCKS = {
-    // === Basic Logic Operations ===
-    and: {
-        id: 'and', name: 'AND', category: 'logic',
-        description: 'Bitwise AND with mask',
-        costKey: 'basic', enableKey: null,  // Always available
-        codeGen: (w, mask) => `x & ${formatHex(mask, w)}`
-    },
-    or: {
-        id: 'or', name: 'OR', category: 'logic',
-        description: 'Bitwise OR to combine results',
-        costKey: 'basic', enableKey: null,
-        codeGen: (w, a, b) => `${a} | ${b}`
-    },
-    xor: {
-        id: 'xor', name: 'XOR', category: 'logic',
-        description: 'Bitwise exclusive OR',
-        costKey: 'basic', enableKey: null,
-        codeGen: (w, a, b) => `${a} ^ ${b}`
-    },
-    not: {
-        id: 'not', name: 'NOT', category: 'logic',
-        description: 'Bitwise complement',
-        costKey: 'basic', enableKey: null,
-        codeGen: (w, x) => `~${x}`
-    },
+// Each block defines:
+//   - id, name, category, description: identification and documentation
+//   - costKey, enableKey: for cost lookup and enable/disable check
+//   - platforms: optional array of CPU presets that support this operation
+//   - canRoute(src, dst, w): returns true if this block can route bit from position src to dst
+//   - getShift(src, dst, w): returns the shift/rotation amount needed (for shift-based ops)
+//   - apply(inputMask, w, params): returns output mask showing where input bits land
+//   - genCode(w, params, inputExpr): generates code string for this operation
+//   - findRoutings(routeMap, remainingMask, w): finds all valid uses of this block
 
-    // === Shift Operations ===
+const BUILDING_BLOCKS = {
+    // === Shift Left ===
     shl: {
         id: 'shl', name: 'Shift Left', category: 'shift',
-        description: 'Logical shift left by constant',
+        description: 'Logical shift left - bits move to higher positions, low bits become 0',
         costKey: 'shift', enableKey: 'shift',
-        codeGen: (w, x, n) => `${x} << ${n}`
+        // Can route src→dst if dst > src and dst-src doesn't exceed width
+        canRoute: (src, dst, w) => dst > src && dst < w,
+        getShift: (src, dst, w) => dst - src,
+        // Apply shift: each bit at position p moves to p+n (if p+n < w)
+        apply: (inputMask, w, n) => {
+            const maxVal = (1n << BigInt(w)) - 1n;
+            return (inputMask << BigInt(n)) & maxVal;
+        },
+        genCode: (w, n, expr) => n === 0 ? expr : `(${expr} << ${n})`,
+        // Find all bits that can be routed with a single shift-left of amount n
+        findRoutings: (routeMap, remainingMask, w) => {
+            const results = [];
+            for (let n = 1; n < w; ++n) {
+                let mask = 0n;
+                for (let dst = n; dst < w; ++dst) {
+                    if (!((remainingMask >> BigInt(dst)) & 1n)) continue;
+                    const src = routeMap[dst];
+                    if (src >= 0 && dst - src === n && src + n < w) mask |= (1n << BigInt(dst));
+                }
+                if (mask > 0n) results.push({ n, mask, count: popcount(mask) });
+            }
+            return results;
+        }
     },
+
+    // === Shift Right ===
     shr: {
         id: 'shr', name: 'Shift Right', category: 'shift',
-        description: 'Logical shift right by constant',
+        description: 'Logical shift right - bits move to lower positions, high bits become 0',
         costKey: 'shift', enableKey: 'shift',
-        codeGen: (w, x, n) => `${x} >> ${n}`
-    },
-    rol: {
-        id: 'rol', name: 'Rotate Left', category: 'shift',
-        description: 'Circular rotate left',
-        costKey: 'rotate', enableKey: 'rotate',
-        codeGen: (w, x, n) => `rol${w}(${x}, ${n})`
-    },
-    ror: {
-        id: 'ror', name: 'Rotate Right', category: 'shift',
-        description: 'Circular rotate right',
-        costKey: 'rotate', enableKey: 'rotate',
-        codeGen: (w, x, n) => `ror${w}(${x}, ${n})`
+        canRoute: (src, dst, w) => dst < src && src < w,
+        getShift: (src, dst, w) => src - dst,
+        apply: (inputMask, w, n) => inputMask >> BigInt(n),
+        genCode: (w, n, expr) => n === 0 ? expr : `(${expr} >> ${n})`,
+        findRoutings: (routeMap, remainingMask, w) => {
+            const results = [];
+            for (let n = 1; n < w; ++n) {
+                let mask = 0n;
+                for (let dst = 0; dst < w - n; ++dst) {
+                    if (!((remainingMask >> BigInt(dst)) & 1n)) continue;
+                    const src = routeMap[dst];
+                    if (src >= n && src - dst === n) mask |= (1n << BigInt(dst));
+                }
+                if (mask > 0n) results.push({ n, mask, count: popcount(mask) });
+            }
+            return results;
+        }
     },
 
-    // === Multiply Operations ===
+    // === Rotate Left ===
+    rol: {
+        id: 'rol', name: 'Rotate Left', category: 'rotate',
+        description: 'Circular rotate left - bits wrap around from high to low',
+        costKey: 'rotate', enableKey: 'rotate',
+        canRoute: (src, dst, w) => true,  // Can always route via rotation
+        getShift: (src, dst, w) => ((dst - src) % w + w) % w,
+        apply: (inputMask, w, n) => {
+            const maxVal = (1n << BigInt(w)) - 1n;
+            const left = (inputMask << BigInt(n)) & maxVal;
+            const right = inputMask >> BigInt(w - n);
+            return left | right;
+        },
+        genCode: (w, n, expr) => n === 0 ? expr : `rol${w}(${expr}, ${n})`,
+        findRoutings: (routeMap, remainingMask, w) => {
+            const results = [];
+            for (let n = 1; n < w; ++n) {
+                let mask = 0n;
+                let hasWrap = false, hasNoWrap = false;
+                for (let dst = 0; dst < w; ++dst) {
+                    if (!((remainingMask >> BigInt(dst)) & 1n)) continue;
+                    const src = routeMap[dst];
+                    if (src < 0) continue;
+                    const delta = ((dst - src) % w + w) % w;
+                    if (delta === n) {
+                        mask |= (1n << BigInt(dst));
+                        if (src + n >= w) hasWrap = true;
+                        else hasNoWrap = true;
+                    }
+                }
+                if (mask > 0n) results.push({ n, mask, count: popcount(mask), needsRotate: hasWrap && hasNoWrap });
+            }
+            return results;
+        }
+    },
+
+    // === Rotate Right ===
+    ror: {
+        id: 'ror', name: 'Rotate Right', category: 'rotate',
+        description: 'Circular rotate right - bits wrap around from low to high',
+        costKey: 'rotate', enableKey: 'rotate',
+        canRoute: (src, dst, w) => true,
+        getShift: (src, dst, w) => ((src - dst) % w + w) % w,
+        apply: (inputMask, w, n) => {
+            const maxVal = (1n << BigInt(w)) - 1n;
+            const right = inputMask >> BigInt(n);
+            const left = (inputMask << BigInt(w - n)) & maxVal;
+            return left | right;
+        },
+        genCode: (w, n, expr) => n === 0 ? expr : `ror${w}(${expr}, ${n})`,
+        findRoutings: (routeMap, remainingMask, w) => {
+            const results = [];
+            for (let n = 1; n < w; ++n) {
+                let mask = 0n;
+                for (let dst = 0; dst < w; ++dst) {
+                    if (!((remainingMask >> BigInt(dst)) & 1n)) continue;
+                    const src = routeMap[dst];
+                    if (src < 0) continue;
+                    const delta = ((src - dst) % w + w) % w;
+                    if (delta === n) mask |= (1n << BigInt(dst));
+                }
+                if (mask > 0n) results.push({ n, mask, count: popcount(mask) });
+            }
+            return results;
+        }
+    },
+
+    // === Multiply (bit scatter) ===
     mul: {
         id: 'mul', name: 'Multiply', category: 'arithmetic',
-        description: 'Integer multiplication (scatter bits via multiplier)',
+        description: 'Integer multiply - each set bit in multiplier copies input shifted by that amount',
         costKey: 'mul', enableKey: 'mul',
-        codeGen: (w, x, m) => `${x} * ${formatHex(m, w)}`
+        // Multiplication can route multiple bits simultaneously via bit spreading
+        canRoute: (src, dst, w) => dst >= src && dst < w,
+        apply: (inputMask, w, multiplier) => {
+            // Each input bit is spread to multiple positions based on multiplier bits
+            const maxVal = (1n << BigInt(w)) - 1n;
+            let result = 0n;
+            for (let b = 0; b < w; ++b) {
+                if ((multiplier >> BigInt(b)) & 1n)
+                    result |= (inputMask << BigInt(b)) & maxVal;
+            }
+            return result;  // Note: may have collisions (multiple bits landing same position)
+        },
+        genCode: (w, multiplier, expr) => `(${expr} * ${formatHex(multiplier, w)})`,
+        // Complex: handled separately by existing mul solver logic
+        findRoutings: null
     },
 
-    // === BMI2 Operations (x86 Haswell+, AMD Zen3+) ===
+    // === PEXT (Parallel Bit Extract) ===
     pext: {
         id: 'pext', name: 'PEXT', category: 'bmi2',
-        description: 'Parallel bit extract - gather selected bits to contiguous positions',
+        description: 'Parallel bit extract - gather bits at mask positions to contiguous low bits',
         costKey: 'bmi', enableKey: 'bmi',
-        platforms: [CPU_MODERN, CPU_ZEN3],  // Native fast; Zen1/2 microcoded but functional
-        codeGen: (w, x, mask) => `pext(${x}, ${formatHex(mask, w)})`
+        platforms: [CPU_MODERN, CPU_ZEN1_2, CPU_ZEN3],
+        // PEXT gathers: bit at mask position i (counting set bits) goes to output position j
+        apply: (inputMask, w, extractMask) => {
+            let result = 0n, j = 0n;
+            for (let i = 0; i < w; ++i) {
+                if ((extractMask >> BigInt(i)) & 1n) {
+                    if ((inputMask >> BigInt(i)) & 1n)
+                        result |= (1n << j);
+                    ++j;
+                }
+            }
+            return result;
+        },
+        genCode: (w, mask, expr) => `pext(${expr}, ${formatHex(mask, w)})`,
+        findRoutings: null  // Used in combination with PDEP
     },
+
+    // === PDEP (Parallel Bit Deposit) ===
     pdep: {
         id: 'pdep', name: 'PDEP', category: 'bmi2',
-        description: 'Parallel bit deposit - scatter contiguous bits to selected positions',
+        description: 'Parallel bit deposit - scatter contiguous low bits to mask positions',
         costKey: 'bmi', enableKey: 'bmi',
-        platforms: [CPU_MODERN, CPU_ZEN3],
-        codeGen: (w, x, mask) => `pdep(${x}, ${formatHex(mask, w)})`
+        platforms: [CPU_MODERN, CPU_ZEN1_2, CPU_ZEN3],
+        // PDEP scatters: bit at input position j goes to the j-th set bit position in mask
+        apply: (inputMask, w, depositMask) => {
+            let result = 0n, j = 0n;
+            for (let i = 0; i < w; ++i) {
+                if ((depositMask >> BigInt(i)) & 1n) {
+                    if ((inputMask >> j) & 1n)
+                        result |= (1n << BigInt(i));
+                    ++j;
+                }
+            }
+            return result;
+        },
+        genCode: (w, mask, expr) => `pdep(${expr}, ${formatHex(mask, w)})`,
+        findRoutings: null
     },
 
-    // === SIMD Shuffle Operations ===
+    // === PSHUFB (Packed Shuffle Bytes) ===
     pshufb: {
         id: 'pshufb', name: 'PSHUFB', category: 'simd',
-        description: 'Packed shuffle bytes (SSSE3/NEON TBL)',
+        description: 'Shuffle bytes - each output byte selected from input by index (SSSE3/NEON TBL)',
         costKey: 'pshufb', enableKey: 'pshufb',
         platforms: [CPU_MODERN, CPU_ZEN1_2, CPU_ZEN3, CPU_CORE2, CPU_ATOM, CPU_ARM_A64, CPU_APPLE_M1, CPU_XBOX360, CPU_PS3],
-        codeGen: (w, x, indices) => `pshufb(${x}, ${indices})`
+        // Operates on bytes, not individual bits - each output byte comes from indexed input byte
+        apply: (inputMask, w, indices) => {
+            // indices is array of byte indices; operates on byte granularity
+            const numBytes = w / 8;
+            let result = 0n;
+            for (let outByte = 0; outByte < numBytes; ++outByte) {
+                const srcByte = indices[outByte];
+                if (srcByte >= 0 && srcByte < numBytes) {
+                    const byteMask = (inputMask >> BigInt(srcByte * 8)) & 0xFFn;
+                    result |= byteMask << BigInt(outByte * 8);
+                }
+            }
+            return result;
+        },
+        genCode: (w, indices, expr) => `pshufb(${expr}, {${indices.join(',')}})`,
+        findRoutings: null  // Handled by separate PSHUFB solver
     },
 
-    // === PowerPC-Specific Operations ===
+    // === RLWINM (PowerPC Rotate Left Word Immediate then AND with Mask) ===
     rlwinm: {
         id: 'rlwinm', name: 'RLWINM', category: 'powerpc',
-        description: 'Rotate left word immediate then AND with mask (single instruction)',
-        costKey: 'shift', enableKey: 'shift',  // Uses shift cost (1 cycle on PPC)
-        platforms: [CPU_GAMECUBE, CPU_XBOX360, CPU_PS3],  // PowerPC-based systems
-        // rlwinm rA, rS, SH, MB, ME - rotates rS left by SH, masks bits MB:ME, stores in rA
-        codeGen: (w, x, sh, mb, me) => `rlwinm(${x}, ${sh}, ${mb}, ${me})`
+        description: 'Rotate left then AND mask - single instruction combines rotate + mask (PowerPC)',
+        costKey: 'shift', enableKey: 'rotate',
+        platforms: [CPU_GAMECUBE, CPU_XBOX360, CPU_PS3],
+        // rlwinm rD, rS, SH, MB, ME: rotate rS left by SH, then AND with mask from bit MB to ME
+        apply: (inputMask, w, sh, mb, me) => {
+            const maxVal = (1n << BigInt(w)) - 1n;
+            // Rotate left
+            const rotated = ((inputMask << BigInt(sh)) | (inputMask >> BigInt(w - sh))) & maxVal;
+            // Create mask from MB to ME (PowerPC bit numbering: 0 is MSB)
+            let mask = 0n;
+            if (mb <= me) {
+                for (let i = mb; i <= me; ++i) mask |= (1n << BigInt(w - 1 - i));
+            } else {
+                // Wrap-around mask
+                for (let i = mb; i < w; ++i) mask |= (1n << BigInt(w - 1 - i));
+                for (let i = 0; i <= me; ++i) mask |= (1n << BigInt(w - 1 - i));
+            }
+            return rotated & mask;
+        },
+        genCode: (w, sh, mb, me, expr) => `rlwinm(${expr}, ${sh}, ${mb}, ${me})`,
+        findRoutings: (routeMap, remainingMask, w) => {
+            // Find contiguous bit ranges that share same rotation amount
+            const results = [];
+            for (let sh = 0; sh < w; ++sh) {
+                let ranges = [];
+                let start = -1;
+                for (let dst = 0; dst < w; ++dst) {
+                    if (!((remainingMask >> BigInt(dst)) & 1n)) {
+                        if (start >= 0) { ranges.push([start, dst - 1]); start = -1; }
+                        continue;
+                    }
+                    const src = routeMap[dst];
+                    if (src < 0) { if (start >= 0) { ranges.push([start, dst - 1]); start = -1; } continue; }
+                    const delta = ((dst - src) % w + w) % w;
+                    if (delta === sh) {
+                        if (start < 0) start = dst;
+                    } else {
+                        if (start >= 0) { ranges.push([start, dst - 1]); start = -1; }
+                    }
+                }
+                if (start >= 0) ranges.push([start, w - 1]);
+                for (const [lo, hi] of ranges) {
+                    if (hi >= lo) {
+                        let mask = 0n;
+                        for (let i = lo; i <= hi; ++i) mask |= (1n << BigInt(i));
+                        // Convert to PPC bit numbering (0=MSB)
+                        const mb = w - 1 - hi, me = w - 1 - lo;
+                        results.push({ sh, mb, me, mask, count: hi - lo + 1 });
+                    }
+                }
+            }
+            return results;
+        }
     },
+
+    // === ANDC (AND with Complement) ===
     andc: {
         id: 'andc', name: 'ANDC', category: 'powerpc',
-        description: 'AND with complement - a & ~b in single instruction',
+        description: 'AND with complement - computes a & ~b in single instruction (PowerPC/RISC)',
         costKey: 'basic', enableKey: null,
         platforms: [CPU_GAMECUBE, CPU_XBOX360, CPU_PS3],
-        codeGen: (w, a, b) => `andc(${a}, ${b})`  // = a & ~b
+        apply: (aMask, w, bMask) => aMask & ~bMask,
+        genCode: (w, expr1, expr2) => `andc(${expr1}, ${expr2})`,
+        findRoutings: null  // Helper op, not used for routing
     },
 
-    // === ARM-Specific Operations ===
+    // === BFI (Bit Field Insert) - ARM ===
     bfi: {
         id: 'bfi', name: 'BFI', category: 'arm',
-        description: 'Bit field insert - insert low bits into destination at position',
+        description: 'Bit field insert - copy width bits from src[0..width-1] to dst[lsb..lsb+width-1]',
         costKey: 'basic', enableKey: null,
         platforms: [CPU_ARM_A64, CPU_ARM_M4, CPU_APPLE_M1],
-        codeGen: (w, dst, src, lsb, width) => `bfi(${dst}, ${src}, ${lsb}, ${width})`
-    },
-    bfx: {
-        id: 'bfx', name: 'UBFX', category: 'arm',
-        description: 'Unsigned bit field extract - extract bits to low position',
-        costKey: 'basic', enableKey: null,
-        platforms: [CPU_ARM_A64, CPU_ARM_M4, CPU_APPLE_M1],
-        codeGen: (w, x, lsb, width) => `ubfx(${x}, ${lsb}, ${width})`
-    },
-    rev: {
-        id: 'rev', name: 'REV', category: 'byteswap',
-        description: 'Reverse byte order (ARM REV, x86 BSWAP)',
-        costKey: 'basic', enableKey: null,
-        platforms: [CPU_MODERN, CPU_ZEN1_2, CPU_ZEN3, CPU_CORE2, CPU_ARM_A64, CPU_ARM_M4, CPU_APPLE_M1],
-        codeGen: (w, x) => `bswap${w}(${x})`
-    },
-    rbit: {
-        id: 'rbit', name: 'RBIT', category: 'arm',
-        description: 'Reverse all bits in register (ARM only)',
-        costKey: 'basic', enableKey: null,
-        platforms: [CPU_ARM_A64, CPU_ARM_M4, CPU_APPLE_M1],
-        codeGen: (w, x) => `rbit(${x})`
+        apply: (srcMask, w, lsb, width) => {
+            // Take low 'width' bits from src, place at position lsb
+            const fieldMask = (1n << BigInt(width)) - 1n;
+            return (srcMask & fieldMask) << BigInt(lsb);
+        },
+        genCode: (w, lsb, width, dstExpr, srcExpr) => `bfi(${dstExpr}, ${srcExpr}, ${lsb}, ${width})`,
+        findRoutings: (routeMap, remainingMask, w) => {
+            // Find contiguous ranges where source bits 0..n-1 go to lsb..lsb+n-1
+            const results = [];
+            for (let lsb = 0; lsb < w; ++lsb) {
+                let width = 0;
+                let mask = 0n;
+                for (let i = 0; lsb + i < w; ++i) {
+                    const dst = lsb + i;
+                    if (!((remainingMask >> BigInt(dst)) & 1n)) break;
+                    const src = routeMap[dst];
+                    if (src !== i) break;  // Must come from position i (low bits of source)
+                    mask |= (1n << BigInt(dst));
+                    ++width;
+                }
+                if (width > 0) results.push({ lsb, width, mask, count: width });
+            }
+            return results;
+        }
     },
 
-    // === Lookup Table ===
+    // === UBFX (Unsigned Bit Field Extract) - ARM ===
+    ubfx: {
+        id: 'ubfx', name: 'UBFX', category: 'arm',
+        description: 'Unsigned bit field extract - copy bits from src[lsb..lsb+width-1] to dst[0..width-1]',
+        costKey: 'basic', enableKey: null,
+        platforms: [CPU_ARM_A64, CPU_ARM_M4, CPU_APPLE_M1],
+        apply: (inputMask, w, lsb, width) => {
+            const fieldMask = (1n << BigInt(width)) - 1n;
+            return (inputMask >> BigInt(lsb)) & fieldMask;
+        },
+        genCode: (w, lsb, width, expr) => `ubfx(${expr}, ${lsb}, ${width})`,
+        findRoutings: (routeMap, remainingMask, w) => {
+            // Find contiguous ranges where source bits lsb..lsb+n-1 go to 0..n-1
+            const results = [];
+            for (let lsb = 0; lsb < w; ++lsb) {
+                let width = 0;
+                let mask = 0n;
+                for (let i = 0; i < w && lsb + i < w; ++i) {
+                    const dst = i;
+                    if (!((remainingMask >> BigInt(dst)) & 1n)) break;
+                    const src = routeMap[dst];
+                    if (src !== lsb + i) break;  // Must come from position lsb+i
+                    mask |= (1n << BigInt(dst));
+                    ++width;
+                }
+                if (width > 0) results.push({ lsb, width, mask, count: width });
+            }
+            return results;
+        }
+    },
+
+    // === REV / BSWAP (Byte Reversal) ===
+    rev: {
+        id: 'rev', name: 'REV/BSWAP', category: 'byteswap',
+        description: 'Reverse byte order - byte 0↔last, 1↔second-to-last, etc. (ARM REV, x86 BSWAP)',
+        costKey: 'basic', enableKey: null,
+        platforms: [CPU_MODERN, CPU_ZEN1_2, CPU_ZEN3, CPU_CORE2, CPU_ARM_A64, CPU_ARM_M4, CPU_APPLE_M1],
+        apply: (inputMask, w) => {
+            const numBytes = w / 8;
+            let result = 0n;
+            for (let b = 0; b < numBytes; ++b) {
+                const byteMask = (inputMask >> BigInt(b * 8)) & 0xFFn;
+                result |= byteMask << BigInt((numBytes - 1 - b) * 8);
+            }
+            return result;
+        },
+        genCode: (w, expr) => `bswap${w}(${expr})`,
+        // Returns routing if byte-swap matches the required permutation
+        findRoutings: (routeMap, remainingMask, w) => {
+            if (w < 16) return [];  // Need at least 16 bits for byte swap
+            const numBytes = w / 8;
+            let mask = 0n;
+            let count = 0;
+            for (let dst = 0; dst < w; ++dst) {
+                if (!((remainingMask >> BigInt(dst)) & 1n)) continue;
+                const src = routeMap[dst];
+                if (src < 0) continue;
+                // Expected source for byte-swap: bit in byte B, position P → byte (numBytes-1-B), position P
+                const dstByte = Math.floor(dst / 8);
+                const dstBit = dst % 8;
+                const expectedSrc = (numBytes - 1 - dstByte) * 8 + dstBit;
+                if (src === expectedSrc) {
+                    mask |= (1n << BigInt(dst));
+                    ++count;
+                }
+            }
+            if (count > 0) return [{ mask, count }];
+            return [];
+        }
+    },
+
+    // === RBIT (Bit Reversal) - ARM only ===
+    rbit: {
+        id: 'rbit', name: 'RBIT', category: 'arm',
+        description: 'Reverse all bits - bit 0↔bit (w-1), bit 1↔bit (w-2), etc. (ARM only)',
+        costKey: 'basic', enableKey: null,
+        platforms: [CPU_ARM_A64, CPU_ARM_M4, CPU_APPLE_M1],
+        apply: (inputMask, w) => {
+            let result = 0n;
+            for (let i = 0; i < w; ++i)
+                if ((inputMask >> BigInt(i)) & 1n)
+                    result |= (1n << BigInt(w - 1 - i));
+            return result;
+        },
+        genCode: (w, expr) => `rbit(${expr})`,
+        findRoutings: (routeMap, remainingMask, w) => {
+            let mask = 0n;
+            let count = 0;
+            for (let dst = 0; dst < w; ++dst) {
+                if (!((remainingMask >> BigInt(dst)) & 1n)) continue;
+                const src = routeMap[dst];
+                if (src === w - 1 - dst) {
+                    mask |= (1n << BigInt(dst));
+                    ++count;
+                }
+            }
+            if (count > 0) return [{ mask, count }];
+            return [];
+        }
+    },
+
+    // === LUT (Lookup Table) ===
     lut: {
         id: 'lut', name: 'LUT', category: 'memory',
-        description: 'Lookup table - precomputed permutation for small widths',
-        costKey: 'lut', enableKey: null,  // Always available but may be slow
-        codeGen: (w, x, tableName) => `${tableName}[${x}]`
+        description: 'Lookup table - precomputed permutation array, useful for small bit widths',
+        costKey: 'lut', enableKey: null,
+        apply: (inputVal, w, table) => BigInt(table[Number(inputVal)]),
+        genCode: (w, tableName, expr) => `${tableName}[${expr}]`,
+        findRoutings: null  // Always applicable for small widths
     }
+};
+
+// Popcount helper for BigInt
+const popcount = (n) => {
+    let count = 0;
+    while (n > 0n) { if (n & 1n) ++count; n >>= 1n; }
+    return count;
 };
 
 // Helper: Check if a building block is available for current config
@@ -308,9 +607,150 @@ const getBlockCost = (blockId, config) => {
 };
 
 // Get all available blocks for current config/preset
-const getAvailableBlocks = (config, preset) => {
-    return Object.keys(BUILDING_BLOCKS).filter(id => isBlockAvailable(id, config, preset));
+const getAvailableBlocks = (config, preset) =>
+    Object.keys(BUILDING_BLOCKS).filter(id => isBlockAvailable(id, config, preset));
+
+// Get all available routing blocks (blocks that can move bits)
+const getRoutingBlocks = (config, preset) =>
+    getAvailableBlocks(config, preset).filter(id => {
+        const block = BUILDING_BLOCKS[id];
+        return block.findRoutings !== null || block.canRoute;
+    });
+
+// Settings Configuration - defines how building blocks appear in the settings UI
+// Each entry groups related blocks and defines their display properties
+const SETTINGS_CONFIG = [
+    // === Core Operations (toggleable) ===
+    {
+        id: 'shift',
+        label: 'Shift (<<, >>)',
+        description: 'Logical shifts - move bits left/right, fill with zeros',
+        costKey: 'shift',
+        enableKey: 'shift',
+        blocks: ['shl', 'shr'],
+        alwaysAvailable: false,
+        order: 1
+    },
+    {
+        id: 'rotate',
+        label: 'Rotate (ROL, ROR)',
+        description: 'Circular rotations - bits wrap around',
+        costKey: 'rotate',
+        enableKey: 'rotate',
+        blocks: ['rol', 'ror'],
+        alwaysAvailable: false,
+        order: 2
+    },
+    {
+        id: 'mul',
+        label: 'Multiply',
+        description: 'Integer multiplication - scatter bits via multiplier constant',
+        costKey: 'mul',
+        enableKey: 'mul',
+        blocks: ['mul'],
+        alwaysAvailable: false,
+        order: 3
+    },
+    // === Advanced Operations (platform-specific) ===
+    {
+        id: 'bmi',
+        label: 'PEXT/PDEP (BMI2)',
+        description: 'Parallel bit extract/deposit - Intel Haswell+, AMD Zen+',
+        costKey: 'bmi',
+        enableKey: 'bmi',
+        blocks: ['pext', 'pdep'],
+        alwaysAvailable: false,
+        order: 10
+    },
+    {
+        id: 'pshufb',
+        label: 'PSHUFB/TBL (SIMD)',
+        description: 'Byte shuffle - SSSE3, AVX, NEON TBL',
+        costKey: 'pshufb',
+        enableKey: 'pshufb',
+        blocks: ['pshufb'],
+        alwaysAvailable: false,
+        order: 11
+    },
+    {
+        id: 'rlwinm',
+        label: 'RLWINM (PowerPC)',
+        description: 'Rotate left word then AND with mask - single instruction',
+        costKey: 'rlwinm',
+        enableKey: 'rlwinm',
+        blocks: ['rlwinm', 'andc'],
+        platforms: [CPU_GAMECUBE, CPU_XBOX360, CPU_PS3],
+        alwaysAvailable: false,
+        order: 20
+    },
+    {
+        id: 'bfx',
+        label: 'BFI/UBFX (ARM)',
+        description: 'Bit field insert/extract - ARM Thumb-2, A64',
+        costKey: 'bfx',
+        enableKey: 'bfx',
+        blocks: ['bfi', 'ubfx'],
+        platforms: [CPU_ARM_A64, CPU_ARM_M4, CPU_APPLE_M1],
+        alwaysAvailable: false,
+        order: 21
+    },
+    {
+        id: 'rev',
+        label: 'BSWAP/REV',
+        description: 'Byte reversal - x86 BSWAP, ARM REV',
+        costKey: 'rev',
+        enableKey: 'rev',
+        blocks: ['rev'],
+        platforms: [CPU_MODERN, CPU_ZEN1_2, CPU_ZEN3, CPU_CORE2, CPU_ARM_A64, CPU_ARM_M4, CPU_APPLE_M1],
+        alwaysAvailable: false,
+        order: 22
+    },
+    {
+        id: 'rbit',
+        label: 'RBIT (ARM)',
+        description: 'Reverse all bits in register - ARM only',
+        costKey: 'rbit',
+        enableKey: 'rbit',
+        blocks: ['rbit'],
+        platforms: [CPU_ARM_A64, CPU_ARM_M4, CPU_APPLE_M1],
+        alwaysAvailable: false,
+        order: 23
+    },
+    // === Always Available Operations ===
+    {
+        id: 'basic',
+        label: 'Logic (AND, OR, XOR)',
+        description: 'Bitwise logic operations - always available',
+        costKey: 'basic',
+        enableKey: null,
+        blocks: [],
+        alwaysAvailable: true,
+        order: 100
+    },
+    {
+        id: 'lut',
+        label: 'LUT (≤8-bit)',
+        description: 'Lookup table - precomputed permutation for small bit widths',
+        costKey: 'lut',
+        enableKey: null,
+        blocks: ['lut'],
+        alwaysAvailable: true,
+        order: 101
+    }
+];
+
+// Check if a settings group is supported by the current preset
+const isSettingSupported = (setting, preset) => {
+    // If no platform restriction, check if any block in group is available
+    if (!setting.platforms) return true;
+    return setting.platforms.includes(preset);
 };
+
+// Get settings groups for current preset (filters out unsupported platform-specific ops)
+const getSettingsForPreset = (preset) =>
+    SETTINGS_CONFIG
+        .filter(s => s.alwaysAvailable || isSettingSupported(s, preset))
+        .sort((a, b) => a.order - b.order);
 
 // Tool identifiers
 const TOOL_BRUSH = 'brush';
@@ -438,16 +878,6 @@ class PriorityQueue {
 // --- EXHAUSTIVE SEARCH LIMITS ---
 const SEARCH_MAX_STATES = 10000;
 const SEARCH_TIMEOUT_MS = 5000;
-
-// Helper: count bits set in a BigInt
-const popcount = (n) => {
-    let count = 0;
-    while (n > 0n) {
-        if (n & 1n) ++count;
-        n >>= 1n;
-    }
-    return count;
-};
 
 // --- OPERATION GENERATORS FOR EXHAUSTIVE SEARCH ---
 
@@ -836,69 +1266,119 @@ const formatRor = (expr, amount, width) => {
 // Cycle counts are instruction latencies for register operands (throughput may differ)
 const PRESETS = {
     // Modern x86/x64 - Source: Agner Fog instruction tables, uops.info
-    // SHL/ROR: 1 cycle latency. IMUL r,r: 3 cycles. PEXT/PDEP: 3 cycles. PSHUFB: 1-2 cycles. L1 load: 4-5 cycles
-    [CPU_MODERN]: { name: 'Intel Haswell+ (i5/i7/i9)', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 3, bmi: 3, pshufb: 2, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: true, pshufb: true } },
+    // SHL/ROR: 1 cycle latency. IMUL r,r: 3 cycles. PEXT/PDEP: 3 cycles. PSHUFB: 1-2 cycles. BSWAP: 1 cycle. L1 load: 4-5 cycles
+    [CPU_MODERN]: { name: 'Intel Haswell+ (i5/i7/i9)', allowedWidths: [8,16,32,64,128],
+        costs: { shift: 1, rotate: 1, mul: 3, bmi: 3, pshufb: 2, lut: 4, basic: 1, rlwinm: 999, bfx: 999, rev: 1, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: true, pshufb: true, rlwinm: false, bfx: false, rev: true, rbit: false } },
     // AMD Zen1/2: PEXT/PDEP microcoded (~18 cycles) - Source: uops.info, chessprogramming.org/BMI2
-    [CPU_ZEN1_2]: { name: 'AMD Zen1/2 (Ryzen 1000-2000)', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 3, bmi: 18, pshufb: 1, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: true, pshufb: true } },
+    [CPU_ZEN1_2]: { name: 'AMD Zen1/2 (Ryzen 1000-2000)', allowedWidths: [8,16,32,64,128],
+        costs: { shift: 1, rotate: 1, mul: 3, bmi: 18, pshufb: 1, lut: 4, basic: 1, rlwinm: 999, bfx: 999, rev: 1, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: true, pshufb: true, rlwinm: false, bfx: false, rev: true, rbit: false } },
     // AMD Zen3+: Native PEXT/PDEP (3 cycles) - Source: uops.info
-    [CPU_ZEN3]: { name: 'AMD Zen3+ (Ryzen 3000+)', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 3, bmi: 3, pshufb: 1, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: true, pshufb: true } },
-    // Core 2/Nehalem: IMUL latency 4 cycles. No BMI2. SSSE3 PSHUFB available
-    [CPU_CORE2]: { name: 'Intel Core 2 / Nehalem', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 4, bmi: 999, pshufb: 2, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true } },
+    [CPU_ZEN3]: { name: 'AMD Zen3+ (Ryzen 3000+)', allowedWidths: [8,16,32,64,128],
+        costs: { shift: 1, rotate: 1, mul: 3, bmi: 3, pshufb: 1, lut: 4, basic: 1, rlwinm: 999, bfx: 999, rev: 1, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: true, pshufb: true, rlwinm: false, bfx: false, rev: true, rbit: false } },
+    // Core 2/Nehalem: IMUL latency 4 cycles. No BMI2. SSSE3 PSHUFB available. BSWAP: 1 cycle
+    [CPU_CORE2]: { name: 'Intel Core 2 / Nehalem', allowedWidths: [8,16,32,64,128],
+        costs: { shift: 1, rotate: 1, mul: 4, bmi: 999, pshufb: 2, lut: 4, basic: 1, rlwinm: 999, bfx: 999, rev: 1, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true, rlwinm: false, bfx: false, rev: true, rbit: false } },
     // Intel Atom (Bonnell): In-order. IMUL ~5 cycles. PSHUFB ~4 cycles
-    [CPU_ATOM]: { name: 'Intel Atom (In-Order)', allowedWidths: [8,16,32,64], costs: { shift: 1, rotate: 1, mul: 5, bmi: 999, pshufb: 4, lut: 5, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true } },
+    [CPU_ATOM]: { name: 'Intel Atom (In-Order)', allowedWidths: [8,16,32,64],
+        costs: { shift: 1, rotate: 1, mul: 5, bmi: 999, pshufb: 4, lut: 5, basic: 1, rlwinm: 999, bfx: 999, rev: 1, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true, rlwinm: false, bfx: false, rev: true, rbit: false } },
 
     // Legacy x86 - Source: Intel 80x86 Programmer's Reference, Agner Fog, emulators.com/docs/pentium_1.htm
     // Pentium 4 NetBurst: NO barrel shifter! SHL/ROR: 4-6 cycles. MUL: 10-16 cycles
-    [CPU_PENTIUM4]: { name: 'Intel Pentium 4', allowedWidths: [8,16,32,64], costs: { shift: 4, rotate: 4, mul: 14, bmi: 999, pshufb: 999, lut: 6, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
-    // Pentium 1 (P5): SHL/ROR: 1 cycle. MUL r32: 10-11 cycles. L1 load: ~3 cycles
-    [CPU_PENTIUM]: { name: 'Intel Pentium 1 (P5)', allowedWidths: [8,16,32,64], costs: { shift: 1, rotate: 1, mul: 11, bmi: 999, pshufb: 999, lut: 5, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    [CPU_PENTIUM4]: { name: 'Intel Pentium 4', allowedWidths: [8,16,32,64],
+        costs: { shift: 4, rotate: 4, mul: 14, bmi: 999, pshufb: 999, lut: 6, basic: 1, rlwinm: 999, bfx: 999, rev: 1, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false, rlwinm: false, bfx: false, rev: true, rbit: false } },
+    // Pentium 1 (P5): SHL/ROR: 1 cycle. MUL r32: 10-11 cycles. L1 load: ~3 cycles. BSWAP: 1 cycle
+    [CPU_PENTIUM]: { name: 'Intel Pentium 1 (P5)', allowedWidths: [8,16,32,64],
+        costs: { shift: 1, rotate: 1, mul: 11, bmi: 999, pshufb: 999, lut: 5, basic: 1, rlwinm: 999, bfx: 999, rev: 1, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false, rlwinm: false, bfx: false, rev: true, rbit: false } },
     // AMD Athlon K7: SHL/ROR: 1 cycle. IMUL r32,r32: 4-5 cycles. Good L1 cache
-    [CPU_ATHLON]: { name: 'AMD Athlon / Duron', allowedWidths: [8,16,32,64], costs: { shift: 1, rotate: 1, mul: 5, bmi: 999, pshufb: 999, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
-    // Intel 486: SHL reg,imm: 2 cycles. SHL reg,CL: 3 cycles. MUL: 13-42 cycles (avg ~18)
-    [CPU_I486]: { name: 'Intel 486', allowedWidths: [8,16,32], costs: { shift: 2, rotate: 2, mul: 18, bmi: 999, pshufb: 999, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
-    // Intel 386: SHL reg,imm: 3 cycles. MUL: 9-38 cycles (avg ~24). No cache on base 386
-    [CPU_I386]: { name: 'Intel 386', allowedWidths: [8,16,32], costs: { shift: 3, rotate: 3, mul: 24, bmi: 999, pshufb: 999, lut: 8, basic: 2 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    [CPU_ATHLON]: { name: 'AMD Athlon / Duron', allowedWidths: [8,16,32,64],
+        costs: { shift: 1, rotate: 1, mul: 5, bmi: 999, pshufb: 999, lut: 4, basic: 1, rlwinm: 999, bfx: 999, rev: 1, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false, rlwinm: false, bfx: false, rev: true, rbit: false } },
+    // Intel 486: SHL reg,imm: 2 cycles. SHL reg,CL: 3 cycles. MUL: 13-42 cycles (avg ~18). BSWAP: 1 cycle (486+)
+    [CPU_I486]: { name: 'Intel 486', allowedWidths: [8,16,32],
+        costs: { shift: 2, rotate: 2, mul: 18, bmi: 999, pshufb: 999, lut: 4, basic: 1, rlwinm: 999, bfx: 999, rev: 1, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false, rlwinm: false, bfx: false, rev: true, rbit: false } },
+    // Intel 386: SHL reg,imm: 3 cycles. MUL: 9-38 cycles (avg ~24). No cache on base 386. No BSWAP
+    [CPU_I386]: { name: 'Intel 386', allowedWidths: [8,16,32],
+        costs: { shift: 3, rotate: 3, mul: 24, bmi: 999, pshufb: 999, lut: 8, basic: 2, rlwinm: 999, bfx: 999, rev: 999, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false, rlwinm: false, bfx: false, rev: false, rbit: false } },
     // Intel 8086: SHL reg,1: 2 cycles. SHL reg,CL: 8+4n cycles. MUL: 70-154 cycles. No cache, slow bus
-    [CPU_I8086]: { name: 'Intel 8086', allowedWidths: [8,16], costs: { shift: 8, rotate: 8, mul: 118, bmi: 999, pshufb: 999, lut: 20, basic: 4 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    [CPU_I8086]: { name: 'Intel 8086', allowedWidths: [8,16],
+        costs: { shift: 8, rotate: 8, mul: 118, bmi: 999, pshufb: 999, lut: 20, basic: 4, rlwinm: 999, bfx: 999, rev: 999, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false, rlwinm: false, bfx: false, rev: false, rbit: false } },
 
     // ARM - Source: ARM Technical Reference Manuals, ARM Architecture Reference Manual
-    // Cortex-A53/A64: SHL/ROR: 1 cycle. MUL: 3-4 cycles. TBL (NEON shuffle): 1-2 cycles. L1: 4 cycles
-    [CPU_ARM_A64]: { name: 'ARM Cortex A64 (NEON)', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 4, bmi: 999, pshufb: 2, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true } },
-    // Cortex-M4: Single-cycle multiplier. LSL/ROR: 1 cycle. MUL: 1 cycle. Flash wait states for LUT
-    [CPU_ARM_M4]: { name: 'ARM Cortex M4', allowedWidths: [8,16,32], costs: { shift: 1, rotate: 1, mul: 1, bmi: 999, pshufb: 999, lut: 3, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
-    // Apple M1/M2/M3: ARM64 + NEON. Dual-pipe multiply. TBL: 1 cycle - Source: lemire.me benchmarks
-    [CPU_APPLE_M1]: { name: 'Apple M1/M2/M3', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 3, bmi: 999, pshufb: 1, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true } },
+    // Cortex-A53/A64: SHL/ROR: 1 cycle. MUL: 3-4 cycles. TBL (NEON shuffle): 1-2 cycles. BFI/UBFX: 1 cycle. REV/RBIT: 1 cycle
+    [CPU_ARM_A64]: { name: 'ARM Cortex A64 (NEON)', allowedWidths: [8,16,32,64,128],
+        costs: { shift: 1, rotate: 1, mul: 4, bmi: 999, pshufb: 2, lut: 4, basic: 1, rlwinm: 999, bfx: 1, rev: 1, rbit: 1 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true, rlwinm: false, bfx: true, rev: true, rbit: true } },
+    // Cortex-M4: Single-cycle multiplier. LSL/ROR: 1 cycle. MUL: 1 cycle. BFI/UBFX: 1 cycle. REV/RBIT: 1 cycle
+    [CPU_ARM_M4]: { name: 'ARM Cortex M4', allowedWidths: [8,16,32],
+        costs: { shift: 1, rotate: 1, mul: 1, bmi: 999, pshufb: 999, lut: 3, basic: 1, rlwinm: 999, bfx: 1, rev: 1, rbit: 1 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false, rlwinm: false, bfx: true, rev: true, rbit: true } },
+    // Apple M1/M2/M3: ARM64 + NEON. Dual-pipe multiply. TBL: 1 cycle. BFI/UBFX/REV/RBIT: 1 cycle
+    [CPU_APPLE_M1]: { name: 'Apple M1/M2/M3', allowedWidths: [8,16,32,64,128],
+        costs: { shift: 1, rotate: 1, mul: 3, bmi: 999, pshufb: 1, lut: 4, basic: 1, rlwinm: 999, bfx: 1, rev: 1, rbit: 1 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true, rlwinm: false, bfx: true, rev: true, rbit: true } },
 
     // RISC - Source: RISC-V Bitmanip Extension Specification
     // RISC-V with B extension: ROL/ROR native. No PDEP/PEXT equivalent
-    [CPU_RISCV]: { name: 'RISC-V (B extension)', allowedWidths: [32,64], costs: { shift: 1, rotate: 1, mul: 3, bmi: 999, pshufb: 999, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    [CPU_RISCV]: { name: 'RISC-V (B extension)', allowedWidths: [32,64],
+        costs: { shift: 1, rotate: 1, mul: 3, bmi: 999, pshufb: 999, lut: 4, basic: 1, rlwinm: 999, bfx: 999, rev: 1, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false, rlwinm: false, bfx: false, rev: true, rbit: false } },
 
     // Classic Home Computers - Source: MC68000 Programmer's Reference Manual
     // M68000: ASL/LSL/ROL reg,#imm: 6+2n cycles. MULS/MULU: 70+ cycles
-    [CPU_68000]: { name: 'Motorola 68000 (Amiga/Atari ST)', allowedWidths: [8,16,32], costs: { shift: 6, rotate: 6, mul: 70, bmi: 999, pshufb: 999, lut: 12, basic: 4 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    [CPU_68000]: { name: 'Motorola 68000 (Amiga/Atari ST)', allowedWidths: [8,16,32],
+        costs: { shift: 6, rotate: 6, mul: 70, bmi: 999, pshufb: 999, lut: 12, basic: 4, rlwinm: 999, bfx: 999, rev: 999, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false, rlwinm: false, bfx: false, rev: false, rbit: false } },
     // Z80: RLCA/RRA: 4 T-states. RLC r (CB-prefixed): 8 T-states. No MUL. LD A,(HL): 7 T-states
-    [CPU_Z80]: { name: 'Zilog Z80', allowedWidths: [8,16], costs: { shift: 4, rotate: 4, mul: 999, bmi: 999, pshufb: 999, lut: 11, basic: 4 }, enables: { shift: true, rotate: true, mul: false, bmi: false, pshufb: false } },
+    [CPU_Z80]: { name: 'Zilog Z80', allowedWidths: [8,16],
+        costs: { shift: 4, rotate: 4, mul: 999, bmi: 999, pshufb: 999, lut: 11, basic: 4, rlwinm: 999, bfx: 999, rev: 999, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: false, bmi: false, pshufb: false, rlwinm: false, bfx: false, rev: false, rbit: false } },
     // 6502: ASL A/ROL A: 2 cycles (shifts only by 1 bit). No MUL. LDA abs,X: 4-5 cycles
-    [CPU_6502]: { name: 'MOS 6502', allowedWidths: [8], costs: { shift: 2, rotate: 2, mul: 999, bmi: 999, pshufb: 999, lut: 5, basic: 2 }, enables: { shift: true, rotate: true, mul: false, bmi: false, pshufb: false } },
+    [CPU_6502]: { name: 'MOS 6502', allowedWidths: [8],
+        costs: { shift: 2, rotate: 2, mul: 999, bmi: 999, pshufb: 999, lut: 5, basic: 2, rlwinm: 999, bfx: 999, rev: 999, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: false, bmi: false, pshufb: false, rlwinm: false, bfx: false, rev: false, rbit: false } },
 
     // Classic Consoles - Source: IBM PowerPC 750 User's Manual, Renesas SH-4 Hardware Manual
-    // GameCube/Wii PowerPC 750: rlwinm (rotate+mask in 1 op). MUL: 3 cycles
-    [CPU_GAMECUBE]: { name: 'GameCube/Wii (PowerPC 750)', allowedWidths: [8,16,32], costs: { shift: 1, rotate: 1, mul: 3, bmi: 999, pshufb: 999, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    // GameCube/Wii PowerPC 750: rlwinm (rotate+mask in 1 op): 1 cycle. MUL: 3 cycles
+    [CPU_GAMECUBE]: { name: 'GameCube/Wii (PowerPC 750)', allowedWidths: [8,16,32],
+        costs: { shift: 1, rotate: 1, mul: 3, bmi: 999, pshufb: 999, lut: 4, basic: 1, rlwinm: 1, bfx: 999, rev: 999, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false, rlwinm: true, bfx: false, rev: false, rbit: false } },
     // Dreamcast SH-4: 2-way dual-issue. SHL/ROT: 1 cycle. MUL: 2-4 cycles. 16KB caches
-    [CPU_DREAMCAST]: { name: 'Dreamcast (SH-4)', allowedWidths: [8,16,32], costs: { shift: 1, rotate: 1, mul: 3, bmi: 999, pshufb: 999, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
-    // Xbox 360 Xenon: PowerPC with VMX-128 SIMD. vperm: 1 cycle
-    [CPU_XBOX360]: { name: 'Xbox 360 (Xenon)', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 3, bmi: 999, pshufb: 1, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true } },
+    [CPU_DREAMCAST]: { name: 'Dreamcast (SH-4)', allowedWidths: [8,16,32],
+        costs: { shift: 1, rotate: 1, mul: 3, bmi: 999, pshufb: 999, lut: 4, basic: 1, rlwinm: 999, bfx: 999, rev: 1, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false, rlwinm: false, bfx: false, rev: true, rbit: false } },
+    // Xbox 360 Xenon: PowerPC with VMX-128 SIMD. vperm: 1 cycle. rlwinm: 1 cycle
+    [CPU_XBOX360]: { name: 'Xbox 360 (Xenon)', allowedWidths: [8,16,32,64,128],
+        costs: { shift: 1, rotate: 1, mul: 3, bmi: 999, pshufb: 1, lut: 4, basic: 1, rlwinm: 1, bfx: 999, rev: 999, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true, rlwinm: true, bfx: false, rev: false, rbit: false } },
 
     // Retro Consoles - Source: n64brew.dev, psxdev.net, psdevwiki.com
     // PS1 R3000: SLL/SRL: 1 cycle. MULT: ~10-36 cycles (writes HI/LO). 1KB scratchpad D$
-    [CPU_PS1]: { name: 'Sony PlayStation 1 (R3000)', allowedWidths: [8,16,32], costs: { shift: 1, rotate: 1, mul: 20, bmi: 999, pshufb: 999, lut: 5, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    [CPU_PS1]: { name: 'Sony PlayStation 1 (R3000)', allowedWidths: [8,16,32],
+        costs: { shift: 1, rotate: 1, mul: 20, bmi: 999, pshufb: 999, lut: 5, basic: 1, rlwinm: 999, bfx: 999, rev: 999, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false, rlwinm: false, bfx: false, rev: false, rbit: false } },
     // N64 VR4300: SLL/SRL: 1 cycle. MULT: ~8 cycles (improved over R3000). 8KB D$
-    [CPU_N64]: { name: 'Nintendo 64 (VR4300)', allowedWidths: [8,16,32,64], costs: { shift: 1, rotate: 1, mul: 8, bmi: 999, pshufb: 999, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
-    // PS3 Cell SPU: SHL: 2 cycles (even pipe). MPY 16x16: 7 cycles. Local store load: 6 cycles
-    [CPU_PS3]: { name: 'Sony PlayStation 3 (Cell)', allowedWidths: [8,16,32,64,128], costs: { shift: 2, rotate: 2, mul: 7, bmi: 999, pshufb: 2, lut: 6, basic: 2 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true } },
+    [CPU_N64]: { name: 'Nintendo 64 (VR4300)', allowedWidths: [8,16,32,64],
+        costs: { shift: 1, rotate: 1, mul: 8, bmi: 999, pshufb: 999, lut: 4, basic: 1, rlwinm: 999, bfx: 999, rev: 999, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false, rlwinm: false, bfx: false, rev: false, rbit: false } },
+    // PS3 Cell SPU: SHL: 2 cycles (even pipe). MPY 16x16: 7 cycles. Local store load: 6 cycles. rlwinm (PPE): 1 cycle
+    [CPU_PS3]: { name: 'Sony PlayStation 3 (Cell)', allowedWidths: [8,16,32,64,128],
+        costs: { shift: 2, rotate: 2, mul: 7, bmi: 999, pshufb: 2, lut: 6, basic: 2, rlwinm: 1, bfx: 999, rev: 999, rbit: 999 },
+        enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true, rlwinm: true, bfx: false, rev: false, rbit: false } },
 
-    // Custom - user-defined values
-    [CPU_CUSTOM]: { name: 'Custom', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 4, bmi: 3, pshufb: 2, lut: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: true, pshufb: true } }
+    // Custom - user-defined values (all features enabled for maximum flexibility)
+    [CPU_CUSTOM]: { name: 'Custom', allowedWidths: [8,16,32,64,128],
+        costs: { shift: 1, rotate: 1, mul: 4, bmi: 3, pshufb: 2, lut: 4, basic: 1, rlwinm: 1, bfx: 1, rev: 1, rbit: 1 },
+        enables: { shift: true, rotate: true, mul: true, bmi: true, pshufb: true, rlwinm: true, bfx: true, rev: true, rbit: true } }
 };
 
 // --- VISUALIZER ---
@@ -2296,60 +2776,58 @@ const BitPermutationApp = () => {
                         </div>
                     </div>
                     <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Instruction Costs (Cycles)</label>
-                        <div className="grid grid-cols-4 gap-2 text-[10px] uppercase font-bold text-slate-500 border-b border-slate-800 pb-1 mb-2"><span>Instr</span><span>Enabled</span><span>Cost</span><span></span></div>
-                        {['shift', 'rotate', 'mul', 'bmi', 'pshufb'].map(key => {
-                            const isSupported = baseCapabilities[key];
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Building Blocks</label>
+                        <div className="grid grid-cols-4 gap-2 text-[10px] uppercase font-bold text-slate-500 border-b border-slate-800 pb-1 mb-2">
+                            <span>Operation</span><span>Enabled</span><span>Cost</span><span></span>
+                        </div>
+                        {getSettingsForPreset(preset).map((setting, idx) => {
+                            const isSupported = setting.alwaysAvailable ||
+                                (setting.enableKey ? baseCapabilities[setting.enableKey] : true);
+                            const isPlatformSupported = !setting.platforms || setting.platforms.includes(preset);
+                            const isAvailable = isSupported && isPlatformSupported;
+                            const isToggleable = setting.enableKey !== null && !setting.alwaysAvailable;
+                            const showSeparator = idx > 0 && (
+                                (setting.alwaysAvailable && !getSettingsForPreset(preset)[idx-1].alwaysAvailable) ||
+                                (setting.platforms && !getSettingsForPreset(preset)[idx-1].platforms)
+                            );
+
                             return (
-                                <div key={key} className={`grid grid-cols-4 gap-2 items-center mb-2 ${!isSupported ? 'opacity-40' : ''}`}>
-                                    <span className="text-sm font-mono capitalize text-slate-300">
-                                        {key === 'bmi' ? 'PEXT/PDEP' : key === 'pshufb' ? 'PSHUFB' : key}
+                                <div key={setting.id} className={`grid grid-cols-4 gap-2 items-center mb-2 ${!isAvailable ? 'opacity-40' : ''} ${showSeparator ? 'border-t border-slate-800 pt-2 mt-2' : ''}`}>
+                                    <span
+                                        className="text-sm font-mono text-slate-300 truncate"
+                                        title={setting.description}
+                                    >
+                                        {setting.label}
                                     </span>
-                                    <input
-                                        type="checkbox"
-                                        checked={config.enables[key]}
-                                        onChange={(e) => handleConfigChange(key, 'enabled', e.target.checked)}
-                                        disabled={!isSupported}
-                                        className="accent-cyan-500 disabled:cursor-not-allowed"
-                                        title={isSupported ? 'Toggle this instruction' : 'Not supported by this CPU'}
-                                    />
+                                    {isToggleable ? (
+                                        <input
+                                            type="checkbox"
+                                            checked={config.enables[setting.enableKey] ?? false}
+                                            onChange={(e) => handleConfigChange(setting.enableKey, 'enabled', e.target.checked)}
+                                            disabled={!isAvailable}
+                                            className="accent-cyan-500 disabled:cursor-not-allowed"
+                                            title={isAvailable ? `Toggle ${setting.label}` : 'Not supported by this CPU'}
+                                        />
+                                    ) : (
+                                        <span className="text-xs text-slate-500 text-center">
+                                            {setting.alwaysAvailable ? 'always' : '—'}
+                                        </span>
+                                    )}
                                     <input
                                         type="number"
-                                        value={config.costs[key]}
-                                        onChange={(e) => handleConfigChange(key, 'cost', e.target.value)}
+                                        min="1"
+                                        value={config.costs[setting.costKey] ?? 1}
+                                        onChange={(e) => handleConfigChange(setting.costKey, 'cost', e.target.value)}
                                         disabled={preset !== CPU_CUSTOM}
                                         className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white disabled:opacity-50"
+                                        title={`Cycle cost for ${setting.label}`}
                                     />
-                                    <span className="text-xs text-slate-600">{isSupported ? 'cyc' : 'N/A'}</span>
+                                    <span className="text-xs text-slate-600">
+                                        {isAvailable ? 'cyc' : 'N/A'}
+                                    </span>
                                 </div>
                             );
                         })}
-                        {/* Basic (logic) operations - always available */}
-                        <div className="grid grid-cols-4 gap-2 items-center mb-2 border-t border-slate-800 pt-2 mt-2">
-                            <span className="text-sm font-mono text-slate-300" title="Cost for AND, OR, XOR masking operations">logic (|,&,^)</span>
-                            <span className="text-xs text-slate-500 text-center">always</span>
-                            <input
-                                type="number"
-                                value={config.costs.basic}
-                                onChange={(e) => handleConfigChange('basic', 'cost', e.target.value)}
-                                disabled={preset !== CPU_CUSTOM}
-                                className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white disabled:opacity-50"
-                            />
-                            <span className="text-xs text-slate-600">cyc</span>
-                        </div>
-                        {/* LUT - always available for 8-bit */}
-                        <div className="grid grid-cols-4 gap-2 items-center mb-2">
-                            <span className="text-sm font-mono text-slate-300" title="Lookup table access (address calc + memory read)">LUT (≤8-bit)</span>
-                            <span className="text-xs text-slate-500 text-center">always</span>
-                            <input
-                                type="number"
-                                value={config.costs.lut}
-                                onChange={(e) => handleConfigChange('lut', 'cost', e.target.value)}
-                                disabled={preset !== CPU_CUSTOM}
-                                className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white disabled:opacity-50"
-                            />
-                            <span className="text-xs text-slate-600">cyc</span>
-                        </div>
                     </div>
                 </div>
                 <div className="mt-6 flex justify-end"><button onClick={() => setShowConfig(false)} className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold rounded">Done</button></div>
