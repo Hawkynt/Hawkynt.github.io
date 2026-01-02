@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+    <!-- Use UTF-8 everywhere to avoid encoding issues; legacy UAs still render text/links. -->
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <meta http-equiv="Content-Style-Type" content="text/css" />
+    <meta http-equiv="Content-Script-Type" content="text/JavaScript" />
+    <meta http-equiv="expires" content="0" />
+    <meta http-equiv="Language" content="en" />
+
+    <!-- Modern SEO (harmless to old UAs) -->
+    <meta name="description" content="BitPerm - Visual bit permutation designer generating optimized code for various CPU architectures using shifts, rotates, multiplications, and SIMD instructions." />
+    <meta name="keywords" content="SynthelicZ, Hawkynt, bit permutation, bit manipulation, code generator, SIMD, BMI2, PEXT, PDEP, optimization" />
+    <meta name="robots" content="index,follow" />
+
+    <!-- Open Graph / Twitter -->
+    <meta property="og:title" content="BitPerm - Bit Permutation Code Generator" />
+    <meta property="og:description" content="Visual bit permutation designer with optimized code generation for various CPU architectures." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://hawkynt.github.io/BitPerm/" />
+    <meta property="og:image" content="https://hawkynt.github.io/favicon.ico" />
+    <meta name="twitter:card" content="summary" />
+
+    <!-- Legacy site verification kept (harmless) -->
+    <meta name="verify-v1" content="0cvNcn5f2mj21LAsFvUBD7BIdUbn/unV4Toy1yBLWvw=" />
+    <meta name="google-site-verification" content="LkZ6DT0_GlcimQOKrWL20jv4jtUh0DBsh1ZPLXQqk3A" />
+
+    <link rel="shortcut icon" href="../favicon.ico" />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BitPerm - Modular Routing Engine</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 750: '#2d3748', 850: '#1a202c', 950: '#020617' },
+                        cyan: { 450: '#15b0d6' },
+                        orange: { 450: '#f97316' }
+                    },
+                    fontFamily: { mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'] },
+                    animation: { 'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite' }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #020617; color: #e2e8f0; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        .no-select { user-select: none; -webkit-user-select: none; }
+        .high-contrast-text { text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+        .tool-btn { @apply flex items-center gap-2 px-3 py-2 rounded-md text-xs font-bold transition-all border border-transparent; }
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            padding: 1rem;
+        }
+        .modal-content {
+            animation: modalIn 0.2s ease-out;
+        }
+        @keyframes modalIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        /* Fix select dropdown styling */
+        select.cpu-select {
+            background-color: rgba(30, 41, 59, 0.5);
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+            padding-right: 28px;
+        }
+        select.cpu-select option {
+            background-color: #1e293b;
+            color: #e2e8f0;
+            padding: 8px;
+        }
+        select.cpu-select option:hover,
+        select.cpu-select option:checked {
+            background-color: #334155;
+        }
+        /* Dashed border for inverted bits */
+        .bit-inverted {
+            border-style: dashed !important;
+        }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+// --- ICONS ---
+const IconBinary = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="14" y="14" width="4" height="6" rx="2"/><rect x="6" y="4" width="4" height="6" rx="2"/><path d="M6 20h4"/><path d="M14 10h4"/><path d="M6 14h2v6"/><path d="M14 4h2v6"/></svg>);
+const IconRotate = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>);
+const IconTrash = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>);
+const IconCopy = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>);
+const IconCheck = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20 6 9 17l-5-5"/></svg>);
+const IconZap = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>);
+const IconMinusCircle = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>);
+const IconPlusCircle = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>);
+const IconToggle = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M2 12h20"/><path d="m15 5 6 7-6 7"/></svg>);
+const IconChevronDown = ({ className, rotate=false }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={{ transform: rotate ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}><path d="m6 9 6 6 6-6"/></svg>);
+const IconFill = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 11H5 m14 0a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2m14 0V9a2 2 0 0 0-2-2M5 11V9a2 2 0 0 1 2-2m0 0V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2M7 7h10"/></svg>);
+const IconInfo = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>);
+const IconX = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>);
+const IconSettings = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>);
+
+// --- FORMATTING HELPERS ---
+const formatHex = (val, width) => {
+    const maxVal = (1n << BigInt(width)) - 1n;
+    const masked = BigInt(val) & maxVal;
+    let s = masked.toString(16).toUpperCase();
+    const hexDigits = Math.ceil(width / 4);
+    s = s.padStart(hexDigits, '0');
+    if (width > 32) return "0x" + s + "ULL";
+    if (width > 16) return "0x" + s + "U";
+    return "0x" + s;
+};
+
+const formatRol = (expr, amount, width) => {
+    if (amount === 0) return expr;
+    return `rol${width}(${expr}, ${amount})`;
+};
+
+const formatRor = (expr, amount, width) => {
+    if (amount === 0) return expr;
+    return `ror${width}(${expr}, ${amount})`;
+};
+
+// --- PRESETS DATA ---
+const PRESETS = {
+    'modern': { name: 'Modern x64 (Haswell+)', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 3, bmi: 3, pshufb: 2, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: true, pshufb: true } },
+    'core2': { name: 'Intel Core 2 / Nehalem', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 4, bmi: 999, pshufb: 2, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true } },
+    'pentium4': { name: 'Intel Pentium 4', allowedWidths: [8,16,32,64], costs: { shift: 4, rotate: 4, mul: 10, bmi: 999, pshufb: 999, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    'pentium': { name: 'Intel Pentium 1 (P5)', allowedWidths: [8,16,32,64], costs: { shift: 1, rotate: 1, mul: 10, bmi: 999, pshufb: 999, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    'i486': { name: 'Intel 486', allowedWidths: [8,16,32], costs: { shift: 3, rotate: 3, mul: 20, bmi: 999, pshufb: 999, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    'i386': { name: 'Intel 386', allowedWidths: [8,16,32], costs: { shift: 7, rotate: 7, mul: 40, bmi: 999, pshufb: 999, basic: 2 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    'i8086': { name: 'Intel 8086', allowedWidths: [8,16], costs: { shift: 20, rotate: 20, mul: 130, bmi: 999, pshufb: 999, basic: 4 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    'athlon': { name: 'AMD Athlon / Duron', allowedWidths: [8,16,32,64], costs: { shift: 1, rotate: 1, mul: 4, bmi: 999, pshufb: 999, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    'zen': { name: 'AMD Zen (Ryzen)', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 3, bmi: 3, pshufb: 1, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: true, pshufb: true } },
+    'atom': { name: 'Intel Atom (In-Order)', allowedWidths: [8,16,32,64], costs: { shift: 1, rotate: 1, mul: 5, bmi: 999, pshufb: 4, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true } },
+    'arm_m4': { name: 'ARM Cortex M4', allowedWidths: [8,16,32], costs: { shift: 1, rotate: 1, mul: 1, bmi: 999, pshufb: 999, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: false } },
+    'arm_a64': { name: 'ARM Cortex A64 (NEON)', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 3, bmi: 999, pshufb: 1, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: false, pshufb: true } },
+    '6502': { name: 'MOS 6502', allowedWidths: [8], costs: { shift: 12, rotate: 12, mul: 500, bmi: 999, pshufb: 999, basic: 4 }, enables: { shift: true, rotate: true, mul: false, bmi: false, pshufb: false } },
+    'custom': { name: 'Custom', allowedWidths: [8,16,32,64,128], costs: { shift: 1, rotate: 1, mul: 4, bmi: 3, pshufb: 2, basic: 1 }, enables: { shift: true, rotate: true, mul: true, bmi: true, pshufb: true } }
+};
+
+// --- VISUALIZER ---
+const StepVisualizer = ({ width, state, prevState, sideEffects }) => {
+    return (
+        <div className="flex flex-wrap gap-0.5 mt-2 bg-slate-900 p-1.5 rounded border border-slate-900 shadow-inner">
+            {Array(width).fill(null).map((_, i) => {
+                const bit = state[i];
+                const oldBit = prevState ? prevState[i] : null;
+                const sideEffect = sideEffects ? sideEffects[i] : null;
+                let style = {}; let content = "?"; let title = `Bit ${i}: Unsolved`;
+                if (sideEffect) {
+                    // Side-effect: bit was here after operation but masked out
+                    const hue = Math.floor((sideEffect.val * 360) / width);
+                    style = {
+                        backgroundColor: `hsla(${hue}, 85%, 55%, 0.05)`,
+                        borderColor: `hsla(${hue}, 85%, 55%, 0.3)`,
+                        borderStyle: 'dotted',
+                        color: `hsla(${hue}, 85%, 75%, 0.3)`,
+                    };
+                    content = sideEffect.val;
+                    title = `Bit ${i}: Source ${sideEffect.val} (masked out)`;
+                } else if (!bit) {
+                    style = { borderColor: '#334155', borderStyle: 'dashed', opacity: 0.2, color: '#475569' };
+                } else {
+                    const isNew = !oldBit || bit.val !== oldBit.val || bit.type !== oldBit.type;
+                    if (bit.type === 'src') {
+                        const hue = Math.floor((bit.val * 360) / width);
+                        const bgAlpha = isNew ? 0.3 : 0.1;
+                        const borderAlpha = isNew ? 1.0 : 0.3;
+                        const textAlpha = isNew ? 1.0 : 0.4;
+                        style = {
+                            backgroundColor: `hsla(${hue}, 85%, 55%, ${bgAlpha})`,
+                            borderColor: `hsla(${hue}, 85%, 55%, ${borderAlpha})`,
+                            color: `hsla(${hue}, 85%, 75%, ${textAlpha})`,
+                            fontWeight: isNew ? 'bold' : 'normal'
+                        };
+                        content = bit.val;
+                        title = `Bit ${i} <- Source ${bit.val} (${isNew?'New':'Kept'})`;
+                    } else if (bit.type === 'const') {
+                        const isOne = bit.val === 1;
+                        style = {
+                            backgroundColor: isOne ? (isNew?'#059669':'#064e3b') : (isNew?'#dc2626':'#450a0a'),
+                            borderColor: isOne ? '#10b981' : '#f87171',
+                            color: 'white',
+                            opacity: isNew ? 1 : 0.5
+                        };
+                        content = bit.val;
+                        title = `Bit ${i} = ${bit.val}`;
+                    }
+                }
+                return <div key={i} title={title} className="w-3.5 h-4 sm:w-4 sm:h-5 text-[7px] sm:text-[9px] flex items-center justify-center border rounded-[1px] font-mono leading-none select-none transition-all" style={style}>{content}</div>;
+            })}
+        </div>
+    );
+};
+
+// --- APP ---
+const { useState, useMemo, useEffect, useRef, useCallback } = React;
+
+const BitPermutationApp = () => {
+  const [bitWidth, setBitWidth] = useState(32);
+  const [mapping, setMapping] = useState(Array(32).fill(null).map((_, i) => ({ type: 'src', val: i, inv: false })));
+  const [activeTool, setActiveTool] = useState('brush');
+  const [selectedSource, setSelectedSource] = useState(null);
+  const [invertBrush, setInvertBrush] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [expandedStrategies, setExpandedStrategies] = useState({});
+  const [showHelp, setShowHelp] = useState(true);
+  const [showConfig, setShowConfig] = useState(false);
+  const [preset, setPreset] = useState('modern');
+  const [config, setConfig] = useState(PRESETS['modern']);
+
+  const containerRef = useRef(null);
+  const [lines, setLines] = useState([]);
+
+  // Calculate connection lines
+  useEffect(() => {
+    const updateLines = () => {
+      if (!containerRef.current) return;
+      const container = containerRef.current;
+      const containerRect = container.getBoundingClientRect();
+      const newLines = [];
+
+      mapping.forEach((m, destIdx) => {
+        if (m.type !== 'src') return;
+        const srcEl = document.getElementById(`src-btn-${m.val}`);
+        const destEl = document.getElementById(`dest-btn-${destIdx}`);
+        if (!srcEl || !destEl) return;
+
+        const srcRect = srcEl.getBoundingClientRect();
+        const destRect = destEl.getBoundingClientRect();
+
+        const x1 = srcRect.left + srcRect.width / 2 - containerRect.left;
+        const y1 = srcRect.bottom - containerRect.top;
+        const x2 = destRect.left + destRect.width / 2 - containerRect.left;
+        const y2 = destRect.top - containerRect.top;
+
+        const hue = Math.floor((m.val * 360) / bitWidth);
+        newLines.push({
+          id: `${m.val}-${destIdx}`,
+          x1, y1, x2, y2,
+          src: m.val,
+          color: `hsl(${hue}, 70%, 50%)`,
+          dashed: m.inv
+        });
+      });
+
+      setLines(newLines);
+    };
+
+    updateLines();
+    window.addEventListener('resize', updateLines);
+    return () => window.removeEventListener('resize', updateLines);
+  }, [mapping, bitWidth]);
+
+  const toggleStrategy = (name) => {
+    setExpandedStrategies(prev => ({ ...prev, [name]: !prev[name] }));
+  };
+
+  const copyToClipboard = (e, text) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // --- ACTIONS ---
+  const initializeMapping = (width) => {
+    const newMap = Array(width).fill(null).map((_, i) => {
+      if (i < mapping.length && mapping[i].type === 'src' && mapping[i].val < width) return mapping[i];
+      return { type: 'src', val: i, inv: false };
+    });
+    setMapping(newMap); setBitWidth(width); setSelectedSource(null); setActiveTool('brush'); setExpandedStrategies({});
+  };
+
+  const handleSourceClick = (idx) => { setSelectedSource(idx); setActiveTool('brush'); };
+
+  const handleDestClick = (destIndex) => {
+    const newMapping = [...mapping]; const current = newMapping[destIndex];
+    if (activeTool === 'brush') {
+        if (selectedSource !== null) {
+            if (current.type === 'src' && current.val === selectedSource && current.inv === invertBrush) newMapping[destIndex] = { type: 'empty', val: 0, inv: false };
+            else newMapping[destIndex] = { type: 'src', val: selectedSource, inv: invertBrush };
+        }
+    }
+    else if (activeTool === 'set0') newMapping[destIndex] = { type: 'const', val: 0, inv: false };
+    else if (activeTool === 'set1') newMapping[destIndex] = { type: 'const', val: 1, inv: false };
+    else if (activeTool === 'eraser') newMapping[destIndex] = { type: 'empty', val: 0, inv: false };
+    setMapping(newMapping);
+  };
+
+  const handleBulkAction = (action) => {
+      let newMapping = [...mapping];
+      if (action === 'fill_empty_1') newMapping = newMapping.map(m => m.type === 'empty' ? { type: 'const', val: 1, inv: false } : m);
+      else if (action === 'clear_1s') newMapping = newMapping.map(m => (m.type === 'const' && m.val === 1) ? { type: 'empty', val: 0, inv: false } : m);
+      else if (action === 'fill_empty_0') newMapping = newMapping.map(m => m.type === 'empty' ? { type: 'const', val: 0, inv: false } : m);
+      else if (action === 'clear_0s') newMapping = newMapping.map(m => (m.type === 'const' && m.val === 0) ? { type: 'empty', val: 0, inv: false } : m);
+      else if (action === 'clear_routed') newMapping = newMapping.map(m => m.type === 'src' ? { type: 'empty', val: 0, inv: false } : m);
+      setMapping(newMapping);
+  };
+
+  const handleQuickAction = (type) => {
+    let newMap = [...mapping];
+    switch (type) {
+      case 'identity': newMap = newMap.map((_, i) => ({ type: 'src', val: i, inv: false })); break;
+      case 'reverse': newMap = newMap.map((_, i) => ({ type: 'src', val: bitWidth - 1 - i, inv: false })); break;
+      case 'swap_halves': newMap = newMap.map((_, i) => ({ type: 'src', val: (i < bitWidth/2 ? i + bitWidth/2 : i - bitWidth/2), inv: false })); break;
+      case 'set_all_0': newMap = newMap.map(() => ({ type: 'const', val: 0, inv: false })); break;
+      case 'clear': newMap = newMap.map(() => ({ type: 'empty', val: 0, inv: false })); break;
+    }
+    setMapping(newMap);
+  };
+
+  const handlePresetChange = (newPreset) => {
+      setPreset(newPreset);
+      const newConfig = JSON.parse(JSON.stringify(PRESETS[newPreset]));
+      setConfig(newConfig);
+      if (!newConfig.allowedWidths.includes(bitWidth)) {
+          const valid = newConfig.allowedWidths;
+          initializeMapping(valid[valid.length - 1]);
+      }
+  };
+
+  const handleConfigChange = (key, field, value) => {
+      if (preset !== 'custom') handlePresetChange('custom');
+      setConfig(prev => {
+          const next = { ...prev };
+          if (field === 'enabled') next.enables[key] = value; else next.costs[key] = parseInt(value) || 0;
+          return next;
+      });
+  };
+
+  // --- SOLVER ---
+  const solvePermutation = useMemo(() => {
+    const solutions = [];
+    const costs = config.costs;
+    const enables = config.enables;
+    const w = bitWidth;
+    const wBig = BigInt(w);
+    const fullMask = (1n << wBig) - 1n;
+
+    let logicXor = 0n, logicOr = 0n, logicAnd = fullMask;
+
+    // Build route map: routeMap[dest] = source bit index, or -1 if not routed
+    const routeMap = mapping.map((m, destIdx) => {
+      if (m.type === 'const') {
+        if (m.val === 1) logicOr |= (1n << BigInt(destIdx));
+        else logicAnd &= ~(1n << BigInt(destIdx));
+        return -1;
+      }
+      if (m.type === 'empty') return -1;
+      if (m.type === 'src') {
+        if (m.inv) logicXor |= (1n << BigInt(destIdx));
+        return m.val;
+      }
+      return -1;
+    });
+
+    // Calculate masks
+    let routedMask = 0n;
+    const maskBySource = {};
+    routeMap.forEach((s, d) => {
+      if (s !== -1) {
+        routedMask |= (1n << BigInt(d));
+        maskBySource[s] = (maskBySource[s] || 0n) | (1n << BigInt(d));
+      }
+    });
+
+    let activeSourceBits = new Set();
+    routeMap.forEach((s, d) => { if(s!==-1) activeSourceBits.add(s); });
+    let allSourcesMask = 0n;
+    activeSourceBits.forEach(s => allSourcesMask |= (1n << BigInt(s)));
+
+    // --- GREEDY COMPOSITE SOLVER ---
+    let remainingMask = routedMask;
+    let compositeParts = [];
+    let compositeCycles = 0;
+    let steps = [];
+    let accumulatedState = new Array(w).fill(null);
+    let loopCount = 0;
+
+    while (remainingMask > 0n && loopCount < 64) {
+        let prevAccumulatedState = [...accumulatedState];
+        ++loopCount;
+
+        // Find best shift/rotate delta
+        let bestDelta = { score: -Infinity, shift: 0, mask: 0n, count: 0 };
+        if (enables.shift || enables.rotate) {
+            for (let s = 0; s < w; ++s) {
+                let currentMask = 0n;
+                for (let d = 0; d < w; ++d) {
+                    if (!((remainingMask >> BigInt(d)) & 1n)) continue;
+                    const src = routeMap[d];
+                    let delta = (d - src) % w;
+                    if (delta < 0) delta += w;
+                    if (delta === s) currentMask |= (1n << BigInt(d));
+                }
+
+                let count = 0;
+                let t = currentMask;
+                while(t > 0n) { if(t & 1n) ++count; t >>= 1n; }
+                if (count === 0) continue;
+
+                // Determine operation type and cost
+                let allWrap = true, noneWrap = true;
+                for(let d = 0; d < w; ++d) {
+                    if ((currentMask >> BigInt(d)) & 1n) {
+                        const src = routeMap[d];
+                        if (src + s >= w) noneWrap = false;
+                        else allWrap = false;
+                    }
+                }
+
+                let cost = costs.basic;
+                if (s > 0) {
+                    if (noneWrap || allWrap) {
+                        cost += enables.shift ? costs.shift : Infinity;
+                    } else {
+                        cost += enables.rotate ? costs.rotate : (enables.shift ? (costs.shift * 2 + costs.basic) : Infinity);
+                    }
+                }
+
+                const score = count * 10 - cost;
+                if (score > bestDelta.score) {
+                    bestDelta = { score, count, shift: s, mask: currentMask, allWrap, noneWrap };
+                }
+            }
+        }
+
+        // Find best multiplication
+        let bestMul = { score: -Infinity, shift: 0, mul: 0n, mask: 0n, count: 0 };
+        if (w <= 64 && enables.mul) {
+            // Right-shift then multiply: (x >> S) * M
+            // For dest d from source s: bit s shifted right by S, then multiplied
+            // The source bit s ends up at positions s-S+k for each set bit k in M
+            // So if we want bit s at position d: d = s - S + k, so k = d - s + S
+            for (let S = 0; S < w; ++S) {
+                let candidateK = new Map(); // k -> list of {d, s}
+
+                for (let d = 0; d < w; ++d) {
+                    if (!((remainingMask >> BigInt(d)) & 1n)) continue;
+                    const s = routeMap[d];
+                    // For right-shift multiply: (x >> S) * M
+                    // Bit s after >> S is at position s-S (if s >= S)
+                    // Multiplying by M with bit k set: position s-S goes to s-S+k
+                    // We want s-S+k = d, so k = d - (s - S) = d - s + S
+                    const k = d - s + S;
+                    if (k >= 0 && k < w && s >= S) {
+                        if (!candidateK.has(k)) candidateK.set(k, []);
+                        candidateK.get(k).push({d, s});
+                    }
+                }
+
+                if (candidateK.size === 0) continue;
+
+                // Build multiplier from all candidate k values
+                let M = 0n;
+                candidateK.forEach((list, k) => M |= (1n << BigInt(k)));
+
+                // Verify each target: check that other source bits don't interfere
+                let validTargetsMask = 0n;
+                for (const [k, targets] of candidateK) {
+                    for (const {d, s} of targets) {
+                        // Simulate multiplication without source bit s
+                        const shiftedWithoutS = (allSourcesMask & ~(1n << BigInt(s))) >> BigInt(S);
+                        let interference = false;
+
+                        // Check if any other bit lands at position d
+                        for (let otherS = 0; otherS < w; ++otherS) {
+                            if (otherS === s) continue;
+                            if (!((allSourcesMask >> BigInt(otherS)) & 1n)) continue;
+                            if (otherS < S) continue; // Would be shifted out
+                            const otherPos = otherS - S;
+                            // After multiply by M, this bit goes to otherPos + each k in M
+                            for (const [mk, _] of candidateK) {
+                                if (otherPos + mk === d) {
+                                    interference = true;
+                                    break;
+                                }
+                            }
+                            if (interference) break;
+                        }
+
+                        if (!interference) {
+                            validTargetsMask |= (1n << BigInt(d));
+                        }
+                    }
+                }
+
+                if (validTargetsMask > 0n) {
+                    let count = 0;
+                    let t = validTargetsMask;
+                    while(t > 0n) { if(t & 1n) ++count; t >>= 1n; }
+
+                    const cost = costs.mul + (S > 0 ? costs.shift : 0) + costs.basic;
+                    const score = count * 10 - cost;
+
+                    if (score > bestMul.score) {
+                        bestMul = { score, count, type: 'mul_r', shift: S, mul: M, mask: validTargetsMask, cost };
+                    }
+                }
+            }
+
+            // Left-multiply then shift: (x * M) >> S
+            // Bit s multiplied by M goes to s+k for each set bit k in M, then shifted right by S
+            // Final position: s + k - S = d, so k = d + S - s
+            for (let S = 0; S < w; ++S) {
+                let candidateK = new Map();
+
+                for (let d = 0; d < w; ++d) {
+                    if (!((remainingMask >> BigInt(d)) & 1n)) continue;
+                    const s = routeMap[d];
+                    const k = d + S - s;
+                    if (k >= 0 && k < w) {
+                        // Check if s + k < 2*w (doesn't overflow before shift)
+                        if (s + k < 2 * w) {
+                            if (!candidateK.has(k)) candidateK.set(k, []);
+                            candidateK.get(k).push({d, s});
+                        }
+                    }
+                }
+
+                if (candidateK.size === 0) continue;
+
+                let M = 0n;
+                candidateK.forEach((list, k) => M |= (1n << BigInt(k)));
+
+                let validTargetsMask = 0n;
+                for (const [k, targets] of candidateK) {
+                    for (const {d, s} of targets) {
+                        let interference = false;
+
+                        for (let otherS = 0; otherS < w; ++otherS) {
+                            if (otherS === s) continue;
+                            if (!((allSourcesMask >> BigInt(otherS)) & 1n)) continue;
+
+                            for (const [mk, _] of candidateK) {
+                                const preShiftPos = otherS + mk;
+                                if (preShiftPos >= S && preShiftPos - S === d && preShiftPos < 2 * w) {
+                                    interference = true;
+                                    break;
+                                }
+                            }
+                            if (interference) break;
+                        }
+
+                        if (!interference) {
+                            validTargetsMask |= (1n << BigInt(d));
+                        }
+                    }
+                }
+
+                if (validTargetsMask > 0n) {
+                    let count = 0;
+                    let t = validTargetsMask;
+                    while(t > 0n) { if(t & 1n) ++count; t >>= 1n; }
+
+                    const cost = costs.mul + (S > 0 ? costs.shift : 0) + costs.basic;
+                    const score = count * 10 - cost;
+
+                    if (score > bestMul.score) {
+                        bestMul = { score, count, type: 'mul_l', shift: S, mul: M, mask: validTargetsMask, cost };
+                    }
+                }
+            }
+        }
+
+        // Choose best operation
+        let chosen = null;
+        if (bestMul.count > 0 && bestMul.score > bestDelta.score) {
+            chosen = { ...bestMul };
+        } else if (bestDelta.count > 0) {
+            chosen = { type: 'delta', ...bestDelta };
+        } else {
+            break;
+        }
+
+        // Generate code for chosen operation
+        let blockCode = "";
+        const hexMask = formatHex(chosen.mask, w);
+        let desc = "";
+        let sideEffects = new Array(w).fill(null);
+
+        // Update accumulated state
+        for(let d = 0; d < w; ++d) {
+            if ((chosen.mask >> BigInt(d)) & 1n) {
+                accumulatedState[d] = { type: 'src', val: routeMap[d] };
+            }
+        }
+
+        // Calculate side effects - bits that would be placed but are masked out
+        if (chosen.type === 'delta') {
+            const s = chosen.shift;
+            // For each source bit, calculate where it would land after shift/rotate
+            for (let srcBit = 0; srcBit < w; ++srcBit) {
+                if (!((allSourcesMask >> BigInt(srcBit)) & 1n)) continue;
+                let destPos;
+                if (chosen.noneWrap) {
+                    destPos = srcBit + s;
+                    if (destPos >= w) continue; // Shifted out
+                } else if (chosen.allWrap) {
+                    destPos = srcBit - (w - s);
+                    if (destPos < 0) continue;
+                } else {
+                    destPos = (srcBit + s) % w;
+                }
+                // If this position is not in our chosen mask and not already solved
+                if (!((chosen.mask >> BigInt(destPos)) & 1n) && !accumulatedState[destPos]) {
+                    sideEffects[destPos] = { type: 'src', val: srcBit };
+                }
+            }
+        } else {
+            // Multiplication side effects
+            for (let srcBit = 0; srcBit < w; ++srcBit) {
+                if (!((allSourcesMask >> BigInt(srcBit)) & 1n)) continue;
+                // Calculate where each source bit lands after multiply
+                for (let k = 0; k < w; ++k) {
+                    if (!((chosen.mul >> BigInt(k)) & 1n)) continue;
+                    let destPos;
+                    if (chosen.type === 'mul_r') {
+                        if (srcBit < chosen.shift) continue;
+                        destPos = (srcBit - chosen.shift + k);
+                    } else {
+                        destPos = (srcBit + k - chosen.shift);
+                    }
+                    if (destPos >= 0 && destPos < w) {
+                        if (!((chosen.mask >> BigInt(destPos)) & 1n) && !accumulatedState[destPos]) {
+                            sideEffects[destPos] = { type: 'src', val: srcBit };
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check if mask is needed
+        const otherRouted = routedMask & ~chosen.mask;
+        let needsMask = true;
+
+        if (chosen.type === 'delta') {
+            const s = chosen.shift;
+            let allWrap = chosen.allWrap;
+            let noneWrap = chosen.noneWrap;
+
+            let rawRes = 0n;
+            if (noneWrap) {
+                rawRes = (allSourcesMask << BigInt(s)) & fullMask;
+            } else if (allWrap) {
+                rawRes = allSourcesMask >> BigInt(w - s);
+            } else {
+                const l = (allSourcesMask << BigInt(s)) & fullMask;
+                const r = allSourcesMask >> BigInt(w - s);
+                rawRes = l | r;
+            }
+            if ((rawRes & otherRouted) === 0n) needsMask = false;
+
+            if (s === 0) {
+                blockCode = needsMask ? `(x & ${hexMask})` : `x`;
+                desc = `Pass through ${chosen.count} bits.`;
+                compositeCycles += costs.basic;
+            } else {
+                if (noneWrap) {
+                    const core = needsMask ? `(x & ${hexMask})` : `x`;
+                    blockCode = `(${core} << ${s})`;
+                    desc = `Left shift by ${s}.`;
+                    compositeCycles += costs.shift;
+                } else if (allWrap) {
+                    const core = needsMask ? `(x & ${hexMask})` : `x`;
+                    blockCode = `(${core} >> ${w - s})`;
+                    desc = `Right shift by ${w - s}.`;
+                    compositeCycles += costs.shift;
+                } else {
+                    const core = needsMask ? `(x & ${hexMask})` : `x`;
+                    blockCode = formatRol(core, s, w);
+                    desc = `Rotate left by ${s}.`;
+                    compositeCycles += enables.rotate ? costs.rotate : (costs.shift * 2 + costs.basic);
+                }
+                if (needsMask) compositeCycles += costs.basic;
+            }
+        } else {
+            // Multiplication
+            const hexM = formatHex(chosen.mul, w);
+            let core;
+
+            if (chosen.type === 'mul_r') {
+                if (chosen.shift === 0) {
+                    core = `(x * ${hexM})`;
+                } else {
+                    core = `((x >> ${chosen.shift}) * ${hexM})`;
+                }
+            } else {
+                if (chosen.shift === 0) {
+                    core = `(x * ${hexM})`;
+                } else {
+                    core = `((x * ${hexM}) >> ${chosen.shift})`;
+                }
+            }
+
+            // Check if masking is needed
+            let rawRes = 0n;
+            if (chosen.type === 'mul_r') {
+                rawRes = ((allSourcesMask >> BigInt(chosen.shift)) * chosen.mul) & fullMask;
+            } else {
+                rawRes = ((allSourcesMask * chosen.mul) >> BigInt(chosen.shift)) & fullMask;
+            }
+            if ((rawRes & otherRouted) === 0n) needsMask = false;
+
+            blockCode = needsMask ? `(${core} & ${hexMask})` : core;
+            compositeCycles += chosen.cost;
+            desc = `Multiply ${chosen.type === 'mul_r' ? '(right)' : '(left)'}. Routes ${chosen.count} bits.`;
+        }
+
+        compositeParts.push(`temp |= ${blockCode};`);
+        steps.push({
+            name: `Block ${compositeParts.length}`,
+            desc: desc,
+            code: `temp |= ${blockCode};`,
+            state: [...accumulatedState],
+            prevState: [...prevAccumulatedState],
+            sideEffects: sideEffects
+        });
+        remainingMask &= ~chosen.mask;
+    }
+
+    // Generate final code
+    let compositeCode = "";
+    if (compositeParts.length > 0) {
+        compositeCode = `uint${w}_t temp = 0;\n` + compositeParts.join("\n") + "\n";
+        let resExpr = "temp";
+        let logicCycles = 0;
+        let prevAccumulatedState = [...accumulatedState];
+
+        // Handle forced 0s
+        let forceClearMask = 0n;
+        mapping.forEach((m, i) => { if (m.type === 'const' && m.val === 0) forceClearMask |= (1n << BigInt(i)); });
+        if (forceClearMask > 0n) {
+            const m = fullMask ^ forceClearMask;
+            resExpr = `(${resExpr} & ${formatHex(m, w)})`;
+            logicCycles += costs.basic;
+            steps.push({
+                name: "Logic: Force 0s",
+                desc: "Clear bits.",
+                code: `result &= ${formatHex(m, w)};`,
+                state: [...accumulatedState],
+                prevState: prevAccumulatedState
+            });
+        }
+
+        // Handle forced 1s
+        let forceSetMask = 0n;
+        mapping.forEach((m, i) => { if (m.type === 'const' && m.val === 1) forceSetMask |= (1n << BigInt(i)); });
+        if (forceSetMask > 0n) {
+            resExpr = `(${resExpr} | ${formatHex(forceSetMask, w)})`;
+            logicCycles += costs.basic;
+            const nextState = [...accumulatedState];
+            for(let d = 0; d < w; ++d) {
+                if((forceSetMask >> BigInt(d)) & 1n) nextState[d] = { type: 'const', val: 1 };
+            }
+            steps.push({
+                name: "Logic: Force 1s",
+                desc: "Set bits.",
+                code: `result |= ${formatHex(forceSetMask, w)};`,
+                state: nextState,
+                prevState: prevAccumulatedState
+            });
+            accumulatedState = nextState;
+        }
+
+        // Handle inversions
+        if (logicXor > 0n) {
+            resExpr = `(${resExpr} ^ ${formatHex(logicXor, w)})`;
+            logicCycles += costs.basic;
+            steps.push({
+                name: "Logic: Invert",
+                desc: "Invert bits.",
+                code: `result ^= ${formatHex(logicXor, w)};`,
+                state: [...accumulatedState],
+                prevState: accumulatedState
+            });
+        }
+
+        compositeCode += `return ${resExpr};`;
+        compositeCycles += logicCycles;
+    } else {
+        let resExpr = "0";
+        if (logicOr > 0n) resExpr = formatHex(logicOr, w);
+        compositeCode = `return ${resExpr};`;
+    }
+
+    solutions.push({
+        name: "Composite (Greedy)",
+        desc: "Optimized using shifts, rotates, and multiplications.",
+        cycles: compositeCycles,
+        code: compositeCode,
+        steps: steps
+    });
+
+    // --- BMI2 PEXT/PDEP SOLUTION ---
+    if (enables.bmi && routedMask > 0n) {
+        // Build extraction mask (which source bits are used)
+        let srcMask = 0n;
+        const srcBits = [];
+        routeMap.forEach((src, dest) => {
+            if (src !== -1) {
+                srcMask |= (1n << BigInt(src));
+                srcBits.push({ src, dest });
+            }
+        });
+
+        // Check if PEXT/PDEP can handle this (no duplicate sources)
+        const srcCounts = {};
+        let canUseBmi = true;
+        srcBits.forEach(({src}) => {
+            srcCounts[src] = (srcCounts[src] || 0) + 1;
+            if (srcCounts[src] > 1) canUseBmi = false;
+        });
+
+        if (canUseBmi) {
+            // Sort by source position to get correct PEXT order
+            srcBits.sort((a, b) => a.src - b.src);
+
+            // Build PDEP mask
+            let pdepMask = 0n;
+            srcBits.forEach(({dest}) => pdepMask |= (1n << BigInt(dest)));
+
+            const bmiCode = `uint${w}_t temp = pext(x, ${formatHex(srcMask, w)});\nreturn pdep(temp, ${formatHex(pdepMask, w)});`;
+            solutions.push({
+                name: "BMI2 (PEXT/PDEP)",
+                desc: "Hardware scatter/gather.",
+                cycles: costs.bmi * 2,
+                code: bmiCode
+            });
+        }
+    }
+
+    // --- PSHUFB SOLUTION (for byte-aligned permutations) ---
+    if (enables.pshufb && w >= 64 && (w % 8 === 0)) {
+        // Check if all permutations are byte-aligned
+        let byteAligned = true;
+        const byteWidth = w / 8;
+        const byteMap = new Array(byteWidth).fill(-1);
+
+        for (let byte = 0; byte < byteWidth && byteAligned; ++byte) {
+            const destStart = byte * 8;
+            let srcByte = -1;
+            let allSame = true;
+
+            for (let bit = 0; bit < 8; ++bit) {
+                const m = mapping[destStart + bit];
+                if (m.type !== 'src') { allSame = false; break; }
+                if (m.inv) { allSame = false; break; }
+
+                const expectedSrcByte = Math.floor(m.val / 8);
+                const expectedBitInByte = m.val % 8;
+
+                if (expectedBitInByte !== bit) { allSame = false; break; }
+                if (srcByte === -1) srcByte = expectedSrcByte;
+                else if (srcByte !== expectedSrcByte) { allSame = false; break; }
+            }
+
+            if (allSame && srcByte !== -1) {
+                byteMap[byte] = srcByte;
+            } else if (!allSame) {
+                byteAligned = false;
+            }
+        }
+
+        if (byteAligned && byteMap.some(b => b !== -1)) {
+            const shuffleBytes = byteMap.map(b => b === -1 ? 0x80 : b);
+            const shuffleHex = shuffleBytes.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(', 0x');
+            const pshufbCode = `// Shuffle control: { 0x${shuffleHex} }\nreturn pshufb(x, shuffle_mask);`;
+            solutions.push({
+                name: "PSHUFB (SSSE3)",
+                desc: "Byte-level shuffle.",
+                cycles: costs.pshufb,
+                code: pshufbCode
+            });
+        }
+    }
+
+    // --- LUT SOLUTION ---
+    if (w <= 16) {
+        solutions.push({
+            name: "LUT (Lookup Table)",
+            desc: "Precomputed lookup table.",
+            cycles: 2,
+            code: "return lut[x];"
+        });
+    }
+
+    return solutions.sort((a, b) => a.cycles - b.cycles);
+  }, [mapping, bitWidth, config]);
+
+  // --- RENDER ---
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans flex flex-col">
+      {/* CONFIG MODAL */}
+      {showConfig && (
+        <div className="modal-overlay" onClick={(e) => { if(e.target === e.currentTarget) setShowConfig(false); }}>
+            <div className="modal-content bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg p-6 shadow-2xl">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-bold text-white flex items-center gap-2"><IconSettings className="w-6 h-6 text-slate-400"/> Solver Configuration</h3>
+                    <button onClick={() => setShowConfig(false)} className="text-slate-500 hover:text-white"><IconX className="w-6 h-6"/></button>
+                </div>
+                <div className="space-y-6">
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Register Widths</label>
+                        <div className="flex gap-2 flex-wrap">
+                            {[8, 16, 32, 64, 128].map(size => (
+                                <label key={size} className="flex items-center gap-2 bg-slate-950 px-3 py-2 rounded border border-slate-700">
+                                    <input
+                                        type="checkbox"
+                                        checked={config.allowedWidths.includes(size)}
+                                        onChange={(e) => {
+                                            if (preset !== 'custom') handlePresetChange('custom');
+                                            setConfig(prev => {
+                                                const newWidths = e.target.checked
+                                                    ? [...prev.allowedWidths, size].sort((a,b) => a-b)
+                                                    : prev.allowedWidths.filter(w => w !== size);
+                                                return { ...prev, allowedWidths: newWidths };
+                                            });
+                                        }}
+                                        className="accent-cyan-500"
+                                    />
+                                    <span className="text-sm text-slate-300">{size}-bit</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Instruction Costs (Cycles)</label>
+                        <div className="grid grid-cols-4 gap-2 text-[10px] uppercase font-bold text-slate-500 border-b border-slate-800 pb-1 mb-2"><span>Instr</span><span>Enabled</span><span>Cost</span><span></span></div>
+                        {['shift', 'rotate', 'mul', 'bmi', 'pshufb'].map(key => (
+                            <div key={key} className="grid grid-cols-4 gap-2 items-center mb-2">
+                                <span className="text-sm font-mono capitalize text-slate-300">
+                                    {key === 'bmi' ? 'PEXT/PDEP' : key === 'pshufb' ? 'PSHUFB' : key}
+                                </span>
+                                <input
+                                    type="checkbox"
+                                    checked={config.enables[key]}
+                                    onChange={(e) => handleConfigChange(key, 'enabled', e.target.checked)}
+                                    disabled={preset !== 'custom'}
+                                    className="accent-cyan-500"
+                                />
+                                <input
+                                    type="number"
+                                    value={config.costs[key]}
+                                    onChange={(e) => handleConfigChange(key, 'cost', e.target.value)}
+                                    disabled={preset !== 'custom'}
+                                    className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white disabled:opacity-50"
+                                />
+                                <span className="text-xs text-slate-600">cyc</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <div className="mt-6 flex justify-end"><button onClick={() => setShowConfig(false)} className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold rounded">Done</button></div>
+            </div>
+        </div>
+      )}
+
+      {/* HELP MODAL */}
+      {showHelp && (
+        <div className="modal-overlay" onClick={(e) => { if(e.target === e.currentTarget) setShowHelp(false); }}>
+            <div className="modal-content bg-slate-900 border border-slate-700 rounded-xl max-w-2xl w-full p-6 shadow-2xl relative">
+                <button onClick={() => setShowHelp(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white"><IconX className="w-6 h-6"/></button>
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-cyan-600 to-blue-700 rounded-lg shadow-lg flex items-center justify-center text-white"><IconBinary className="w-7 h-7"/></div>
+                    <div><h2 className="text-2xl font-bold text-white">BitPerm Engine</h2><p className="text-sm text-cyan-400">Optimized Code Generator</p></div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-300">
+                    <div className="bg-slate-950 p-3 rounded border border-slate-800">
+                        <h3 className="font-bold text-white mb-2 flex items-center gap-2"><IconZap className="w-4 h-4 text-cyan-400"/> Routing</h3>
+                        <ul className="list-disc list-inside space-y-1 text-slate-400 text-xs">
+                            <li><strong>Brush:</strong> Click Source, then Target.</li>
+                            <li><strong>Toggle:</strong> Click existing target to remove.</li>
+                            <li><strong>Invert:</strong> Logic NOT on connection.</li>
+                        </ul>
+                    </div>
+                    <div className="bg-slate-950 p-3 rounded border border-slate-800">
+                        <h3 className="font-bold text-white mb-2 flex items-center gap-2"><IconPlusCircle className="w-4 h-4 text-emerald-400"/> Logic</h3>
+                        <ul className="list-disc list-inside space-y-1 text-slate-400 text-xs">
+                            <li><strong>Set 1/0:</strong> Force constants.</li>
+                            <li><strong>Erase:</strong> Mark as "Don't Care" (Optimization).</li>
+                            <li><strong>Bulk:</strong> Use toolbar buttons to fill/clear.</li>
+                        </ul>
+                    </div>
+                    <div className="bg-slate-950 p-3 rounded border border-slate-800 md:col-span-2">
+                        <h3 className="font-bold text-white mb-2 flex items-center gap-2"><IconSettings className="w-4 h-4 text-orange-400"/> CPU Presets</h3>
+                        <p className="text-slate-400 text-xs">Select a target CPU from the dropdown to configure available instructions and their cycle costs. Click the gear icon for detailed settings.</p>
+                    </div>
+                </div>
+                <button onClick={() => setShowHelp(false)} className="mt-6 w-full py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg transition-all">Start Routing</button>
+            </div>
+        </div>
+      )}
+
+      {/* HEADER */}
+      <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur-md sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setShowHelp(true)}>
+             <div className="w-10 h-10 bg-gradient-to-br from-cyan-600 to-blue-700 rounded-lg shadow-lg shadow-cyan-900/20 flex items-center justify-center text-white group-hover:scale-105 transition-transform"><IconBinary className="w-6 h-6"/></div>
+             <div>
+                 <h1 className="text-xl font-bold tracking-tight text-white group-hover:text-cyan-400 transition-colors">Bit<span className="text-cyan-400 group-hover:text-white transition-colors">Perm</span></h1>
+                 <span className="text-[10px] text-slate-500 flex items-center gap-1"><IconInfo className="w-3 h-3"/> Help</span>
+             </div>
+          </div>
+          <div className="flex items-center gap-4">
+              {/* CPU Preset Dropdown + Gear */}
+              <div className="flex items-center gap-1">
+                  <select
+                      value={preset}
+                      onChange={(e) => handlePresetChange(e.target.value)}
+                      className="cpu-select border border-slate-700 text-slate-300 text-xs font-medium px-3 py-1.5 rounded-l focus:outline-none focus:border-cyan-500 cursor-pointer"
+                  >
+                      {Object.entries(PRESETS).map(([key, val]) => (
+                          <option key={key} value={key}>{val.name}</option>
+                      ))}
+                  </select>
+                  <button
+                      onClick={() => setShowConfig(true)}
+                      className="flex items-center justify-center px-2 py-1.5 bg-slate-800/50 hover:bg-slate-700 border border-l-0 border-slate-700 rounded-r text-slate-400 hover:text-white transition-all"
+                      title="Configure instruction costs"
+                  >
+                      <IconSettings className="w-4 h-4"/>
+                  </button>
+              </div>
+              <div className="w-px h-6 bg-slate-800"></div>
+              <div className="flex bg-slate-800/50 p-1 rounded-lg">
+                 {[8, 16, 32, 64, 128].map(size => {
+                    const isDisabled = !config.allowedWidths.includes(size);
+                    return (
+                        <button
+                            key={size}
+                            onClick={() => initializeMapping(size)}
+                            disabled={isDisabled}
+                            className={`px-3 py-1 text-xs font-medium rounded transition-all ${
+                                bitWidth === size ? 'bg-slate-600 text-white shadow-sm' :
+                                isDisabled ? 'text-slate-700 cursor-not-allowed bg-slate-900/50' : 'text-slate-500 hover:text-slate-300'
+                            }`}
+                        >
+                            {size}
+                        </button>
+                    );
+                 })}
+              </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 max-w-7xl mx-auto w-full p-4 lg:p-6 space-y-6">
+         {/* Toolbar & Grids */}
+         <div className="flex flex-col gap-2 p-3 bg-slate-900 rounded-xl border border-slate-800">
+            <div className="flex flex-wrap gap-2 items-center">
+                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                   <button onClick={() => setActiveTool('brush')} className={`tool-btn ${activeTool === 'brush' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}><IconZap className="w-4 h-4" /> Source</button>
+                   <button onClick={() => setActiveTool('set1')} className={`tool-btn ${activeTool === 'set1' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}><IconPlusCircle className="w-4 h-4" /> Set 1</button>
+                   <button onClick={() => setActiveTool('set0')} className={`tool-btn ${activeTool === 'set0' ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}><IconMinusCircle className="w-4 h-4" /> Set 0</button>
+                   <button onClick={() => setActiveTool('eraser')} className={`tool-btn ${activeTool === 'eraser' ? 'bg-slate-700 text-slate-200' : 'text-slate-400 hover:bg-slate-800'}`}><IconTrash className="w-4 h-4" /> Erase</button>
+                </div>
+                <div className="w-px h-6 bg-slate-800 mx-2 hidden sm:block"></div>
+                <div className="flex items-center gap-2">
+                   <button onClick={() => handleQuickAction('identity')} className="p-2 text-slate-400 hover:bg-slate-800 rounded" title="Reset"><IconRotate className="w-4 h-4" /></button>
+                   <button onClick={() => handleQuickAction('clear')} className="p-2 text-red-400 hover:bg-red-900/20 rounded" title="Clear All"><IconTrash className="w-4 h-4" /></button>
+                </div>
+            </div>
+            <div className="flex items-center gap-2 px-1 min-h-[30px]">
+                {activeTool === 'brush' && (
+                    <>
+                        <button onClick={() => setInvertBrush(!invertBrush)} className={`flex items-center gap-2 px-3 py-1 rounded text-xs font-medium border transition-all ${invertBrush ? 'bg-orange-900/30 border-orange-500 text-orange-400' : 'bg-slate-900 border-slate-700 text-slate-400'}`}><IconToggle className="w-3.5 h-3.5" /> Invert Mode</button>
+                        <button onClick={() => handleBulkAction('clear_routed')} className="flex items-center gap-1 px-3 py-1 rounded text-xs font-medium text-slate-400 border border-slate-700 hover:bg-slate-800 hover:text-white ml-auto transition-all"><IconTrash className="w-3.5 h-3.5" /> Clear Routing</button>
+                    </>
+                )}
+                {activeTool === 'set1' && (
+                    <div className="flex gap-2 w-full">
+                        <button onClick={() => handleBulkAction('fill_empty_1')} className="flex items-center gap-1 px-3 py-1 rounded text-xs font-medium bg-emerald-900/20 text-emerald-400 border border-emerald-800 hover:bg-emerald-900/40"><IconFill className="w-3.5 h-3.5" /> Fill Empty with 1s</button>
+                        <button onClick={() => handleBulkAction('clear_1s')} className="flex items-center gap-1 px-3 py-1 rounded text-xs font-medium text-slate-400 border border-slate-700 hover:bg-slate-800 ml-auto">Clear all 1s</button>
+                    </div>
+                )}
+                {activeTool === 'set0' && (
+                    <div className="flex gap-2 w-full">
+                        <button onClick={() => handleBulkAction('fill_empty_0')} className="flex items-center gap-1 px-3 py-1 rounded text-xs font-medium bg-red-900/20 text-red-400 border border-red-800 hover:bg-red-900/40"><IconFill className="w-3.5 h-3.5" /> Fill Empty with 0s</button>
+                        <button onClick={() => handleBulkAction('clear_0s')} className="flex items-center gap-1 px-3 py-1 rounded text-xs font-medium text-slate-400 border border-slate-700 hover:bg-slate-800 ml-auto">Clear all 0s</button>
+                    </div>
+                )}
+            </div>
+         </div>
+
+         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 relative items-start">
+            <div className="lg:col-span-8 relative min-h-[350px] flex flex-col gap-12 lg:sticky lg:top-20" ref={containerRef}>
+               <svg className="absolute inset-0 pointer-events-none z-0 w-full h-full overflow-visible">
+                 {lines.map((line) => (
+                   <path key={line.id} d={`M ${line.x1} ${line.y1} C ${line.x1} ${line.y1 + 50}, ${line.x2} ${line.y2 - 50}, ${line.x2} ${line.y2}`} fill="none" stroke={line.color} strokeWidth={selectedSource === line.src ? "3" : "1.5"} strokeDasharray={line.dashed ? "5,5" : "none"} strokeOpacity={selectedSource === line.src ? "1" : "0.3"} />
+                 ))}
+               </svg>
+               <div className="relative z-10 bg-slate-900/80 p-5 rounded-xl border border-slate-800 shadow-xl">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Input (Source)</div>
+                  <div className="flex flex-wrap gap-1.5 justify-center sm:justify-start">
+                     {Array(bitWidth).fill(null).map((_, i) => (
+                        <div key={i} id={`src-btn-${i}`} onClick={() => handleSourceClick(i)} className={`relative w-8 h-10 flex items-center justify-center font-mono text-xs rounded cursor-pointer transition-all border ${selectedSource === i ? 'bg-cyan-500 text-black border-cyan-400 scale-110 shadow-lg z-20 font-bold' : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700 hover:text-white'}`} style={{ borderBottom: selectedSource !== i ? `2px solid hsl(${Math.floor((i * 360) / bitWidth)}, 70%, 50%)` : '' }}>{i}</div>
+                     ))}
+                  </div>
+               </div>
+               <div className="relative z-10 bg-slate-900/80 p-5 rounded-xl border border-slate-800 shadow-xl mt-auto">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Output (Target)</div>
+                  <div className="flex flex-wrap gap-1.5 justify-center sm:justify-start">
+                     {mapping.map((m, i) => {
+                        let bg = "bg-slate-800"; let txt = "text-white"; let border = "border-slate-700"; let content = "";
+                        if (m.type === 'empty') { bg = "bg-slate-800/20"; txt = "text-slate-700"; border = "border-slate-800 border-dashed opacity-40"; content="X"; }
+                        else if (m.type === 'const') {
+                           content = m.val;
+                           if (m.val === 1) { bg = "bg-emerald-600"; txt = "text-white font-bold high-contrast-text"; border = "border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)]"; }
+                           else { bg = "bg-red-600"; txt = "text-white font-bold high-contrast-text"; border = "border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]"; }
+                        } else if (m.type === 'src') {
+                           content = m.val;
+                           const hue = Math.floor((m.val * 360) / bitWidth);
+                           border = `border-[hsl(${hue},70%,50%)]`;
+                           bg = `bg-[hsla(${hue},70%,50%,0.1)]`;
+                           if (m.inv) {
+                              border += " border-dashed";
+                           }
+                        }
+                        return (
+                           <div key={i} id={`dest-btn-${i}`} onClick={() => handleDestClick(i)} className={`relative w-8 h-10 flex items-center justify-center font-mono text-xs rounded cursor-pointer transition-all border ${bg} ${txt} ${border} hover:scale-105`}>
+                              {m.type === 'src' && m.inv && <span className="absolute -top-2 right-0 text-[10px] text-orange-500 font-bold">~</span>}
+                              <span className="text-[9px] opacity-70 absolute top-0.5 left-1">{i}</span>
+                              <span className="mt-2 text-sm">{content}</span>
+                           </div>
+                        );
+                     })}
+                  </div>
+               </div>
+            </div>
+
+            <div className="lg:col-span-4 flex flex-col gap-4">
+               <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest lg:sticky lg:top-20 bg-slate-950 z-10 py-2 -my-2">Solutions</h3>
+               <div className="space-y-3">
+                  {solvePermutation.map((sol, idx) => {
+                     const isExpanded = expandedStrategies[sol.name];
+                     const isBest = idx === 0;
+                     return (
+                       <div key={idx} className={`bg-slate-950 border border-slate-800 rounded-lg transition-all overflow-hidden ${isExpanded ? '' : 'hover:border-cyan-500/30'}`}>
+                          <div onClick={() => toggleStrategy(sol.name)} className="flex justify-between items-center p-3 cursor-pointer">
+                             <div className="flex items-center gap-2">
+                                <IconChevronDown className="w-3 h-3 text-slate-500" rotate={isExpanded} />
+                                <div>
+                                   <span className={`text-xs font-bold ${isBest ? 'text-cyan-400' : 'text-slate-300'}`}>{sol.name}</span>
+                                   {!isExpanded && <p className="text-[10px] text-slate-500 truncate w-32">{sol.desc}</p>}
+                                </div>
+                             </div>
+                             <span className="text-[10px] font-mono bg-slate-900 text-emerald-500 px-1.5 py-0.5 rounded border border-emerald-900/30 whitespace-nowrap">{sol.cycles} Cyc</span>
+                          </div>
+
+                          {isExpanded && (
+                             <div className="p-3 pt-0 border-t border-slate-800 bg-slate-900/30 animate-in fade-in slide-in-from-top-1">
+                                <p className="text-[10px] text-slate-500 mb-3 mt-2">{sol.desc}</p>
+                                {sol.steps && sol.steps.length > 0 && (
+                                    <div className="space-y-4 mb-4">
+                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Construction Steps</div>
+                                        {sol.steps.map((step, sIdx) => (
+                                            <div key={sIdx} className="flex flex-col gap-1 border-l-2 border-slate-700 pl-2">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="font-mono text-[10px] text-cyan-500">{step.name}</span>
+                                                    <span className="text-[9px] text-slate-600 font-mono">{step.code.split(';')[0]}</span>
+                                                </div>
+                                                <div className="text-[10px] text-slate-400">{step.desc}</div>
+                                                {step.state && <StepVisualizer width={bitWidth} state={step.state} prevState={step.prevState} sideEffects={step.sideEffects} />}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                <div className="relative">
+                                   <div className="absolute top-0 right-0 p-1 flex gap-1">
+                                      <button onClick={(e) => copyToClipboard(e, sol.code)} className="text-slate-500 hover:text-white p-1.5 rounded hover:bg-slate-700 bg-slate-800 border border-slate-700"><IconCopy className="w-3 h-3"/></button>
+                                   </div>
+                                   <pre className="text-[10px] font-mono text-slate-300 bg-slate-950 p-3 rounded border border-slate-800 overflow-x-auto whitespace-pre-wrap leading-relaxed">{sol.code}</pre>
+                                </div>
+                             </div>
+                          )}
+                       </div>
+                     );
+                  })}
+               </div>
+            </div>
+         </div>
+      </main>
+
+      {copied && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-cyan-500 text-black px-4 py-2 rounded-full font-bold shadow-lg flex items-center gap-2 animate-bounce z-50 text-xs"><IconCheck className="w-4 h-4" /> Copied!</div>}
+    </div>
+  );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<BitPermutationApp />);
+
+</script>
+</body>
+</html>
